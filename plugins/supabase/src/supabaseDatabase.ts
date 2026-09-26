@@ -17,17 +17,17 @@ export type SupabaseDatabaseConfig = SupabaseServiceRoleConfig;
 /**
  * Hot Updater's database on Supabase: the storage engine through the shared
  * SQL core, fenced by the schema settings. Every read and write goes through
- * the service-role-only apply RPC.
+ * the service-role-only apply RPC, which runs no DDL, so Supabase migrations
+ * create the tables.
  */
 export const supabaseDatabase = (
   config: SupabaseDatabaseConfig,
-): EngineDatabase =>
-  createEngineDatabase({
-    name: "supabaseDatabase",
-    adapter: createSqlAdapter({
-      executor: supabaseExecutor(
-        createClient(config.supabaseUrl, resolveSupabaseServiceRoleKey(config)),
-      ),
-      tablePrefix: SUPABASE_TABLE_PREFIX,
-    }),
+): EngineDatabase => {
+  const { migrations: _migrations, ...adapter } = createSqlAdapter({
+    executor: supabaseExecutor(
+      createClient(config.supabaseUrl, resolveSupabaseServiceRoleKey(config)),
+    ),
+    tablePrefix: SUPABASE_TABLE_PREFIX,
   });
+  return createEngineDatabase({ name: "supabaseDatabase", adapter });
+};

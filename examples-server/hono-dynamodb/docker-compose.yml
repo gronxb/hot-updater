@@ -5,8 +5,10 @@ services:
     ports:
       - "${DYNAMODB_PORT:-8000}:8000"
 
+  # MinIO no longer publishes images. Silo is a maintained MinIO fork that keeps
+  # the MINIO_* variables and /minio/* routes the e2e scripts use.
   minio:
-    image: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
+    image: pgsty/silo:RELEASE.2026-09-16T00-00-00Z
     command: server /data --console-address ":9001"
     ports:
       - "${MINIO_API_PORT:-9000}:9000"

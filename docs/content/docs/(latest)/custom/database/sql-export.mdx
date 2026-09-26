@@ -26,6 +26,9 @@ You'll be prompted to select:
 - MySQL
 - SQLite
 
+These are the supported databases; MySQL must be 8.0 or later. CockroachDB
+and SQL Server are not supported.
+
 ## Direct provider selection
 
 Specify the database dialect directly:
@@ -43,11 +46,17 @@ npx hot-updater db generate --sql sqlite
 
 ## Output
 
-The command generates one file, `hot-updater.sql`.
+The command generates one file, `hot-updater.sql`. It reads no server file,
+so it is the SQL that `hot-updater db migrate` applies with the Kysely adapter
+for a server without [third-party plugins](/docs/custom/server-plugins#create-the-plugins-tables):
 
-The SQL file includes:
-- Hot Updater table definitions
-- Dialect-specific syntax for your selected database
+- Hot Updater's tables and indexes in your dialect's syntax, with binary
+  string collation and no database foreign keys
+- The settings table and its schema settings rows, written last
+
+Apply the whole file to a new, empty database. The server checks the settings
+rows before its first read or write, and its handlers answer 503 until they
+exist, so a partly applied file never serves traffic.
 
 ## Preview before saving
 
@@ -65,7 +74,8 @@ The command will:
 
 ## Skip confirmation
 
-Use `--yes` to skip confirmation and overwrite existing files:
+Use `--yes` to skip confirmation and overwrite existing files. Without a
+dialect, `--yes` generates PostgreSQL:
 
 ```bash
 npx hot-updater db generate --sql postgresql --yes

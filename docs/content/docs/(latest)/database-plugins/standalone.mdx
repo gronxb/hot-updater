@@ -1,13 +1,15 @@
 ---
 title: "Standalone Repository"
-description: Connect your CLI to a self-hosted Hot Updater server.
+description: Connect your CLI and Console to a self-hosted Hot Updater server.
 icon: Server
 ---
 
 ## Overview
 
-Configure `standaloneRepository` in your Hot Updater CLI to connect to a
-self-hosted backend server.
+Configure `standaloneRepository` as the `database` in `hot-updater.config.ts`
+when your metadata lives behind a self-hosted server. It does not open the
+database itself: it calls the server's admin handler, and the server runs each
+change on its own database.
 
 <Callout type="info">
 See the [Self-Hosting (Custom) Guide](/docs/custom/overview) for complete server implementation instructions using `@hot-updater/server` with database adapters (Drizzle, Prisma, Kysely, MongoDB) and frameworks (Hono, Express, Elysia).
@@ -55,34 +57,32 @@ database rows through the admin API.
 
 ## Configuration
 
-The `standaloneRepository` HTTP repository accepts the following options:
+`standaloneRepository` accepts the following options:
 
 ```typescript
 interface StandaloneRepositoryConfig {
   baseUrl: string; // Exact root where handlers.admin is mounted
-  commonHeaders?: Record<string, string>; // Framework authentication headers
-  routes?: Routes; // Optional custom route configuration
+  commonHeaders?: Record<string, string>; // Sent with every admin request
 }
 ```
 
-`routes` remaps only the five legacy-compatible Bundle CRUD/list requests.
-Release, Release Catalog, database commit, and Channel requests use the fixed
-canonical paths documented below:
+Every admin path is fixed relative to `baseUrl`. The repository is
+`{ name, core, fetchAdmin }`:
 
-```typescript
-interface RouteConfig {
-  path: string;
-  headers?: Record<string, string>;
-}
+- `core` is core's API for Bundles, Releases, Release Catalogs and Channels,
+  sent over the admin API. The CLI's commands and the Console use it.
+- `fetchAdmin(path)` sends a GET to the admin handler with the same headers.
+  The Console reads the server's Insights through it.
 
-interface Routes {
-  create?: () => RouteConfig;
-  update?: (bundleId: string) => RouteConfig;
-  list?: () => RouteConfig;
-  retrieve?: (bundleId: string) => RouteConfig;
-  delete?: (bundleId: string) => RouteConfig;
-}
-```
+Before its first request, `core` reads `GET /version` from the admin handler.
+A server that reports an `adminProtocol` below 2, or none, fails with a
+message to upgrade `@hot-updater/server` on the server. When the server
+answers 503 because its database lacks its schema settings, the CLI says to
+run `hot-updater db migrate` where the server's database is configured.
+
+`standaloneRepository` belongs only in `hot-updater.config.ts` and Console
+configuration. `createHotUpdater` needs the server's own database and throws
+`HotUpdaterConfigError` when given this repository.
 
 ### Secure example
 
@@ -115,109 +115,99 @@ database: standaloneRepository({
 });
 ```
 
-### With custom routes
-
-```typescript title="hot-updater.config.ts"
-const adminToken = process.env.HOT_UPDATER_ADMIN_TOKEN;
-if (!adminToken) {
-  throw new Error("HOT_UPDATER_ADMIN_TOKEN is required");
-}
-
-database: standaloneRepository({
-  baseUrl: "https://api.example.com/hot-updater/admin",
-  commonHeaders: {
-    Authorization: `Bearer ${adminToken}`,
-  },
-  routes: { // [!code ++]
-    create: () => ({ // [!code ++]
-      path: "/v1/bundles", // [!code ++]
-      headers: { "X-Custom-Header": "value" }, // [!code ++]
-    }), // [!code ++]
-    update: (bundleId) => ({ // [!code ++]
-      path: `/v1/bundles/${bundleId}`, // [!code ++]
-      headers: { "X-Custom-Header": "value" }, // [!code ++]
-    }), // [!code ++]
-    list: () => ({ // [!code ++]
-      path: "/v1/bundles", // [!code ++]
-    }), // [!code ++]
-    retrieve: (bundleId) => ({ // [!code ++]
-      path: `/v1/bundles/${bundleId}`, // [!code ++]
-    }), // [!code ++]
-    delete: (bundleId) => ({ // [!code ++]
-      path: `/v1/bundles/${bundleId}`, // [!code ++]
-    }), // [!code ++]
-  }, // [!code ++]
-});
-```
-
 ## Server contract
 
-`standaloneRepository` is an HTTP client. If you are building a custom
-backend, your server must implement the admin contract below. All paths in the
-table are relative to `baseUrl`.
+`standaloneRepository` is an HTTP client for the admin API, protocol 2. All
+paths are relative to `baseUrl`, and every response carries
+`cache-control: private, no-store`.
 
 <Callout type="info">
   If you use `@hot-updater/server`, you do not need to implement these
-  endpoints manually. `createHotUpdater()` provides this contract through
-  `handlers.admin`, including the canonical `GET /channels` route.
+  endpoints. `createHotUpdater()` provides this contract through
+  `handlers.admin`.
 </Callout>
 
-### Contract types
+### Version
 
-```typescript
-interface PaginationInfo {
-  total: number;
-  hasNextPage: boolean;
-  hasPreviousPage: boolean;
-  currentPage: number;
-  totalPages: number;
-  nextCursor?: string | null;
-  previousCursor?: string | null;
-}
+`GET /version` reports the protocol:
 
-interface DataResponse<TData> {
-  data: TData;
-}
-
-interface Paginated<TData> extends DataResponse<TData> {
-  pagination: PaginationInfo;
-}
-
-type PaginatedResult = Paginated<Bundle[]>;
-interface ChannelRow {
-  id: string;
-  name: string;
-}
-type ChannelsResponse = DataResponse<{ channels: ChannelRow[] }>;
+```json
+{ "adminProtocol": 2, "infrastructureGeneration": 1, "version": "1.0.0" }
 ```
 
-### Default routes
+### Routes
 
-These are the routes used by `standaloneRepository`. The `routes` option can
-remap only the five Bundle rows marked remappable. All other rows use fixed
-paths relative to `baseUrl`.
+The types are exported from `@hot-updater/plugin-core`. A successful JSON
+response wraps its result in `data`.
 
-| Method | Default route                 | Mapping    | Success response                     |
-| ------ | ----------------------------- | ---------- | ------------------------------------ |
-| POST   | `/bundles`                    | remappable | `{ "success": true }`                |
-| PATCH  | `/bundles/:id`                | remappable | `{ "success": true }`                |
-| GET    | `/bundles`                    | remappable | `Paginated<Bundle[]>`                |
-| GET    | `/bundles/:id`                | remappable | `Bundle`                             |
-| DELETE | `/bundles/:id`                | remappable | `{ "success": true }`                |
-| GET    | `/releases/:id`               | fixed      | `DataResponse<ReleaseRow>`           |
-| GET    | `/releases`                   | fixed      | `DataResponse<ReleaseRow[]>`         |
-| GET    | `/release-catalogs/:scopeKey` | fixed      | `DataResponse<ReleaseCatalogRow>`    |
-| GET    | `/release-catalogs`           | fixed      | `DataResponse<ReleaseCatalogRow[]>`  |
-| POST   | `/database/commit`            | fixed      | `DataResponse<DatabaseCommitResult>` |
-| GET    | `/channels`                   | fixed      | `ChannelsResponse`                   |
-| POST   | `/channels`                   | fixed      | `DataResponse<ChannelInsertResult>`  |
-| DELETE | `/channels/:id`               | fixed      | `204 No Content`                     |
+| Method   | Route                                   | Request                                             | Success response                                        |
+| -------- | --------------------------------------- | --------------------------------------------------- | ------------------------------------------------------- |
+| `GET`    | `/bundles`                              | Page, `platform`, `total=true`                      | `BundleDetail[]`, with `next` and `total`               |
+| `GET`    | `/bundles/:id`                          |                                                     | `BundleDetail`, or `404`                                |
+| `PATCH`  | `/bundles/:id`                          | The Bundle fields to change                         | `204`                                                   |
+| `POST`   | `/bundles/delete`                       | `{ ids: string[] }`                                 | `204`                                                   |
+| `GET`    | `/bundles/:id/children`                 | Page                                                | `BundlePatchRow[]` whose base is the Bundle             |
+| `GET`    | `/base-candidates/:candidateKey`        | `before=<bundle id>`, `limit` (1–100, default 3)    | Auto-patch base Bundle IDs                              |
+| `POST`   | `/releases`                             | `{ deployments: Deployment[] }`                     | `201`, `ReleaseCatalogMutationResult[]`                 |
+| `GET`    | `/releases`                             | Page and one filter set                             | `ReleaseRow[]`                                          |
+| `GET`    | `/releases/:id`                         |                                                     | `ReleaseRow`, or `404`                                  |
+| `PATCH`  | `/releases/:id`                         | `{ patch, expectedRevision? }`                      | `ReleaseCatalogMutationResult`                          |
+| `POST`   | `/releases/:id/preflight`               | `{ patch, expectedRevision? }`                      | `ReleaseCatalogMutationPreflight`                       |
+| `POST`   | `/releases/:id/promote`                 | `{ targetChannel, action?, expectedRevision? }`     | `PromoteReleaseResult`                                  |
+| `DELETE` | `/releases/:id`                         | `confirm=<release id>`, optional `expectedRevision` | `ReleaseCatalogMutationResult`                          |
+| `GET`    | `/release-catalogs`                     | Page                                                | `ReleaseCatalogRow[]`                                   |
+| `GET`    | `/release-catalogs/:scopeKey`           |                                                     | `ReleaseCatalogRow`, or `404`                           |
+| `POST`   | `/release-catalogs/:scopeKey/rebuild`   |                                                     | `ReleaseCatalogRebuildResult`                           |
+| `POST`   | `/release-catalogs/:scopeKey/preflight` |                                                     | `ReleaseCatalogRebuildPreflight`                        |
+| `GET`    | `/channels`                             | Optional `name`                                     | `ChannelRow[]`, or the `ChannelRow` for `name` or `404` |
+| `POST`   | `/channels`                             | `{ name }`                                          | The `ChannelRow` of that name, created when missing     |
+| `DELETE` | `/channels/:id`                         |                                                     | `204`                                                   |
 
-### Bundle shape
+`PATCH /releases/:id` takes a `ReleasePolicyPatch`. `promote` copies a Bundle
+Release into `targetChannel`; `action: "move"` also disables the source.
+`DELETE /releases/:id` deletes a disabled Release and names it twice, in the
+path and as `confirm`. `PATCH /bundles/:id` rejects a body whose `id` names
+another Bundle; `patches`, when given, replaces the Bundle's patches.
 
-Create requests send full `Bundle` objects. Update requests send
-`Partial<Bundle>` and, if an `id` is present in the body, it must match the
-`:id` route parameter.
+### Pages and filters
+
+List routes page by key. `order` is `asc` or `desc` (default `desc`), `limit`
+is 1–500 (default 50, at most 100 for `/bundles`), and `cursor` is the `next`
+value of the previous page. A page carries `next` only when it is full.
+`GET /bundles?total=true` adds `total`, the number of Bundles, for `platform`
+when given.
+
+`GET /releases` accepts one of the filter sets its indexes serve: none;
+`channelId` and `platform`, optionally with `enabled`; `bundleId`; or
+`scopeKey`, optionally with `enabled`. Any other combination answers `400`.
+A `v=2` parameter is accepted on every route and changes nothing.
+
+### Deployments
+
+`POST /releases` writes each deployment's Bundle with its patches and its
+Release, with the next Release Catalog of each scope, in one transaction. A
+deployment names a new Bundle, or `bundleId` to publish a new Release for a
+Bundle the server already stores:
+
+```typescript
+interface DeployReleasePolicy {
+  channel: string;
+  enabled: boolean;
+  fingerprintHash: string | null;
+  message: string | null;
+  rolloutCohortCount?: number; // 0 to 1000
+  shouldForceUpdate: boolean;
+  targetAppVersion: string | null;
+  targetCohorts?: string[];
+}
+
+type Deployment =
+  | { bundle: Bundle; release: DeployReleasePolicy }
+  | { bundleId: string; release: DeployReleasePolicy };
+```
+
+A `Bundle` holds immutable artifact data; Channel, rollout, targeting,
+enablement, force-update and message policy belong to its Release:
 
 ```typescript
 interface BundlePatchArtifact {
@@ -242,101 +232,28 @@ interface Bundle {
 }
 ```
 
-Every patch `byteSize` is a required non-negative safe integer. Bundle objects
-contain immutable manifest artifact data only; Channel,
-rollout, targeting, enablement, force-update, and message policy belong to
-Releases.
+### Errors
 
-### List bundles contract
+A refusal answers `{ "code": "...", "error": "..." }`:
 
-`GET /bundles` must accept the pagination and filter query params used by
-the console and `standaloneRepository`, and return a paginated JSON body.
+| Status | Codes                                                                             |
+| ------ | --------------------------------------------------------------------------------- |
+| `404`  | `RELEASE_NOT_FOUND`, `BUNDLE_NOT_FOUND`                                           |
+| `409`  | `VERSION_CONFLICT`, or `REFERENCED` when a Release still uses a Bundle to delete  |
+| `400`  | Other Release and Catalog refusals, such as `ENABLED_RELEASE` and `INVALID_SCOPE` |
 
-Cursor-based pagination is the official contract. `page` is an optional
-positive integer for page-aligned requests and cannot be combined with
-`after` or `before` in the same request.
+`DELETE /channels/:id` answers `404` with
+`{ "data": { "deleted": false, "reason": "not_found" } }`, or `409` with the
+reason `not_empty` while a Release still uses the Channel. A request that fails
+validation answers `400` with `{ "error": "..." }`. While the server's database
+lacks its schema settings, every route that reaches it answers `503`.
 
-Supported query params:
+### Insights routes
 
-| Query param | Type                 | Notes                                                          |
-| ----------- | -------------------- | -------------------------------------------------------------- |
-| `platform`  | `"ios" \| "android"` | Exact match                                                    |
-| `limit`     | `number`             | Window size                                                    |
-| `page`      | `number`             | Optional positive page number for stable page-aligned requests |
-| `after`     | `string`             | Fetch the next window after this bundle ID                     |
-| `before`    | `string`             | Fetch the previous window before this bundle ID                |
-
-Expected response:
-
-```json
-{
-  "data": [
-    {
-      "id": "bundle-id",
-      "platform": "ios",
-      "manifestStorageUri": "s3://bucket/bundles/bundle-id/manifest.json",
-      "manifestFileHash": "manifest-file-hash",
-      "assetBaseStorageUri": "s3://bucket/assets",
-      "gitCommitHash": null,
-      "patches": []
-    }
-  ],
-  "pagination": {
-    "total": 1,
-    "hasNextPage": false,
-    "hasPreviousPage": false,
-    "currentPage": 1,
-    "totalPages": 1,
-    "nextCursor": null,
-    "previousCursor": null
-  }
-}
-```
-
-`standaloneRepository` reads pagination metadata from the response body. It
-does not derive pagination from headers. `currentPage` and `totalPages` are
-kept for backwards compatibility; `nextCursor` and `previousCursor` are the
-preferred navigation fields.
-
-If your standalone server is backed by object storage or manifest files, keep
-`GET /bundles` on an index-backed path once the index is warm. Cursor
-pages should not require rescanning all manifests, and this should be covered
-by deterministic read-counter regression tests.
-
-### Retrieve and channels contract
-
-- `GET /bundles/:id` should return `200` with a `Bundle` body or `404` if
-  the bundle does not exist.
-- `GET /channels` must return normalized Channel rows:
-
-```json
-{
-  "data": {
-    "channels": [
-      { "id": "channel-production", "name": "production" },
-      { "id": "channel-staging", "name": "staging" }
-    ]
-  }
-}
-```
-
-- `POST /channels` must accept a concurrency-safe insert:
-
-```json
-{
-  "row": { "id": "candidate-id", "name": "production" },
-  "onConflict": "returnExisting"
-}
-```
-
-It returns `{ "data": { "row": ChannelRow, "inserted": boolean } }`. When
-the name already exists, `row` is the canonical stored row rather than the
-caller's losing candidate.
-
-- `DELETE /channels/:id` deletes an empty Channel and returns
-  `204 No Content`. It returns `404` with reason `not_found` for a missing ID
-  and `409` with reason `not_empty` when a Release still references the Channel.
-  The reference check and deletion are atomic.
+With the `insights()` plugin, the admin handler also serves `GET /overview`,
+`/events`, `/installations`, `/installations/:installId` and
+`/installations/:installId/events`. Without it, each answers `204` with
+`x-hot-updater-insights: disabled`.
 
 ### Minimal `@hot-updater/server` example
 
@@ -345,36 +262,30 @@ If you want this contract without implementing it yourself, use
 
 ```typescript
 import { createHotUpdater } from "@hot-updater/server";
+import { apiKeys } from "@hot-updater/server/plugins/api-keys";
+import { insights } from "@hot-updater/server/plugins/insights";
 
 const hotUpdater = createHotUpdater({
   database,
-  clientAccess: { type: "api-key" },
+  plugins: [insights(), apiKeys()],
   storage: [storage],
 });
 ```
 
-Mount `hotUpdater.handlers.admin` at `/hot-updater/admin` to expose the Bundle,
-Release, Release Catalog, database-commit, Channel, and Insights-query routes.
-Protect that mount with framework middleware and configure matching
+Mount `hotUpdater.handlers.admin` at `/hot-updater/admin` to expose these
+routes. Protect that mount with framework middleware and configure matching
 `commonHeaders` in `standaloneRepository`. Mounting the handler is the explicit
 opt-in; there is no built-in admin authenticator.
 
-`standaloneRepository` remains an admin HTTP client used only in
-`hot-updater.config.ts`. Its Bundle-management boundary includes Bundles,
-patches, Releases, Release Catalogs, Channels, and the conditional commit that
-keeps those records consistent. It does not expose Insights or client
-API key administration. The server-side `database` passed to
-`createHotUpdater` owns those additional official domains. Insights is always
-available, while the required `clientAccess` policy decides whether client
-routes are public or require an API key.
-
 <Callout type="warn">
-  The Console cannot read Insights or manage API keys through
-  `standaloneRepository`. Local/direct-provider Console access is unaffected. A
-  hosted Console must protect its browser session separately and keep the admin
-  bearer token in server-side `commonHeaders`. Do not put that token in browser
-  or React Native code, and do not pass `standaloneRepository` to
-  `createHotUpdater`.
+  Through `standaloneRepository`, the Console manages Bundles, Releases and
+  Channels, and reads the server's Insights overview, events and
+  installations. It cannot show usage or Release activity, and it does not
+  manage the server's API keys; manage them with
+  [`hot-updater api-key`](/docs/custom/api-key-authentication) against the
+  server's `createHotUpdater` module. A hosted Console must protect its browser
+  session separately and keep the admin bearer token in server-side
+  `commonHeaders`. Do not put that token in browser or React Native code.
 </Callout>
 
 ## Next steps

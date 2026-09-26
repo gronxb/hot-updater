@@ -1,6 +1,6 @@
 ---
 title: "Move from v0 to v1"
-description: "Use an AI agent to migrate your app and infrastructure to v1 while keeping v0 apps working."
+description: "Use an AI agent to migrate your app and infrastructure to v1 while v0 apps keep working, or bring a 1.0 release candidate server to the final release."
 icon: BetweenHorizontalStart
 ---
 
@@ -16,6 +16,10 @@ with this model.
   endpoints intact, scaffold v1 alongside them, and ship the v1 endpoint in a
   new native app build.
 </Callout>
+
+A server that already runs a 1.0 release candidate follows
+[Upgrade from a 1.0 release candidate](#upgrade-from-a-10-release-candidate)
+instead: it recreates its database and moves its server options to plugins.
 
 ## Compatibility boundary
 
@@ -266,15 +270,39 @@ server code or plugins, update these boundaries before connecting a v1 app:
 
 | v0 surface | v1 replacement |
 | --- | --- |
-| Unified `createHandler`, `createHotUpdater().handler`, `HandlerOptions` | Separate `createHandlers(...).client/admin` or `createHotUpdater().handlers.client/admin`. Mount the admin handler behind framework authentication before the broader client mount. |
+| Unified `createHandler`, `createHotUpdater().handler`, `HandlerOptions` | `createHotUpdater().handlers.client` and `.admin`. Mount the admin handler behind framework authentication before the broader client mount. |
 | `toNodeHandler(hotUpdater)` | Pass the individual handler, such as `toNodeHandler(hotUpdater.handlers.admin)`. |
+| Instance methods such as `getBundleById`, `getBundles`, `insertBundle`, `updateBundleById`, `deleteBundleById` and `getChannels` | `hotUpdater.core` reads and typed operations, such as `getBundle`, `listBundles`, `deploy`, `updateBundle`, `deleteBundles` and `listChannels`. |
 | `storages`, `storagePlugins` | `storage: [storagePlugin]` in `createHotUpdater`. |
-| Database/storage `() => plugin` thunks | Pass plugin objects directly to `createHotUpdater` and `defineConfig`. Built-in provider factories already return those objects. |
-| `features.clientAccessKeys` | Required `clientAccess: { type: "api-key" }` or explicit `{ type: "public" }`. API-key mode uses `x-api-key`, or your configured `headerName`. |
-| `features`, `features.bundles`, `features.updateCheck`, server Insights flags and `queryAccess` | Mount the handler surfaces explicitly. Client ingestion and admin query routes are always present; opt out of SDK reporting with `insights: false`. |
+| Database/storage `() => plugin` thunks | Pass database and storage objects directly to `createHotUpdater` and `defineConfig`. Built-in provider factories already return those objects. |
+| `features.clientAccessKeys` | `apiKeys()` from `@hot-updater/server/plugins/api-keys` in `plugins`. It requires `x-api-key`, or the `headerName` you pass. For public client routes, set `clientAccess: "public"` instead. |
+| `features`, `features.bundles`, `features.updateCheck`, server Insights flags and `queryAccess` | Mount the handler surfaces explicitly. `insights()` from `@hot-updater/server/plugins/insights` in `plugins` serves Insights; without it, the Insights routes answer `204` with `x-hot-updater-insights: disabled`. Apps opt out of reporting with `insights: false`. |
 | Server `basePath` | Let the framework own the mount path and use that client root as the app's `baseURL`. |
 | `authorityId`, server `cwd`, runtime request-context parameters | Remove these settings. Catalog identity is automatic; capture credentials, SDK clients and runtime bindings when constructing plugins. Handlers take one `Request`. |
-| `standaloneRepository.baseUrl` pointing at a shared client root | Use the exact admin root, such as `https://example.com/hot-updater/admin`; fixed operations use paths relative to it. Remove a custom `routes.channels` override. |
+| `standaloneRepository.baseUrl` pointing at a shared client root | Use the exact admin root, such as `https://example.com/hot-updater/admin`. Remove custom `routes`: the repository speaks the admin API's protocol 2. |
+
+A v1 server lists the plugins it runs; `plugins` defaults to none:
+
+```ts title="src/hotUpdater.ts"
+import { createHotUpdater } from "@hot-updater/server";
+import { kyselyAdapter } from "@hot-updater/server/adapters/kysely";
+import { apiKeys } from "@hot-updater/server/plugins/api-keys";
+import { insights } from "@hot-updater/server/plugins/insights";
+
+import { db } from "./db";
+import { storage } from "./storage";
+
+export const hotUpdater = createHotUpdater({
+  database: kyselyAdapter({ db, provider: "postgresql" }),
+  storage: [storage],
+  plugins: [insights(), apiKeys()],
+});
+```
+
+Client routes have one policy: a plugin that provides client authentication,
+such as `apiKeys()`, or `clientAccess: "public"`. Startup throws
+`HotUpdaterConfigError` when both or neither are set. `hotUpdater.api` holds
+each plugin's API by id, such as `hotUpdater.api.apiKeys.create({ name })`.
 
 The app receives the client API key, never the admin bearer token. Protect the
 admin mount with middleware and fail startup if its credential is missing.
@@ -293,14 +321,18 @@ Persistent Channel management uses the authenticated admin root's
 
 ### Database and storage implementations
 
-Custom database providers implement the fixed `bundles`, `bundlePatches`,
-`releases`, `releaseCatalogs`, `channels`, `insights` and `apiKeys` models,
-plus ordered atomic `commit({ changes, expectations })` and optional `dispose`.
-This replaces the factory/double-curried contract and top-level
-`getBundleById`, `getBundles`, `getChannels`, `getUpdateInfo`, `commitBundle`
-and `onUnmount`. Provider query DSLs and provider-owned update selection are
-not extension points. Use the
-[database conformance guide](/docs/database-plugins/custom-database).
+A custom database provider implements a storage adapter: batched `get`,
+index-range `query`, atomic `write` of guarded operations and `fits`. Build it
+on the SQL core (`createSqlAdapter`), the key-value helper (`createKvAdapter`)
+or the contract directly, and return it with
+`createEngineDatabase({ name, adapter })` from `@hot-updater/server/database`.
+The adapter knows nothing about Bundles or Releases: core and its plugins run
+on the storage engine above it and compile Release Catalogs there. This
+replaces the factory/double-curried contract and top-level `getBundleById`,
+`getBundles`, `getChannels`, `getUpdateInfo`, `commitBundle` and `onUnmount`.
+Provider query DSLs and provider-owned update selection are not extension
+points. See [Custom Database Adapter](/docs/database-plugins/custom-database),
+and [Server Plugins](/docs/custom/server-plugins) for features beyond core.
 
 `LegacyBundle` is removed. Delivery fields (`channel`, `enabled`,
 `fingerprintHash`, `message`, `rolloutCohortCount`, `shouldForceUpdate`,
@@ -333,9 +365,9 @@ v0 mutable per-Bundle asset layout or its cleanup fallback.
 | `@hot-updater/supabase`: root `supabaseEdgeFunctionDatabase` and `supabaseEdgeFunctionStorage` | `supabaseDatabase` and `supabaseStorage` from `@hot-updater/supabase/edge`. |
 | `@hot-updater/js`: `verifyJwtSignedUrl`, `withJwtSignedUrl` | Provider-owned download URL handling or the server storage handler. |
 | `@hot-updater/js`, `@hot-updater/postgres`: `getUpdateInfo` | Release Catalog compilation and exact reads, then device selection; disable the public Bundle for rollback. |
-| `@hot-updater/plugin-core`: `createBlobDatabasePlugin` | A database that can atomically commit the fixed Release/Catalog models. |
+| `@hot-updater/plugin-core`: `createBlobDatabasePlugin` | A storage adapter over a store with atomic conditional writes, such as `createKvAdapter({ store })`, returned with `createEngineDatabase`. Plain object storage cannot provide those writes. |
 | `@hot-updater/plugin-core`: `createNodeStoragePlugin`, `createRuntimeStoragePlugin`, `createUniversalStoragePlugin` | `createStoragePlugin` with flat operations. |
-| `@hot-updater/plugin-core`: `createRequestUpdateBundleResolver`, `getRequestUpdateBundleSeeds` | `createRequestBundleResolver` for request-scoped artifact reads. |
+| `@hot-updater/plugin-core`: `createRequestUpdateBundleResolver`, `getRequestUpdateBundleSeeds` | None: core resolves an artifact with one batch read of both Bundles and one read of their patch. |
 
 Server-side `s3Storage` does not implicitly produce S3 presigned URLs. Configure
 `downloadUrlSigningKey` or an explicit `getDownloadUrl` implementation. CLI-only
@@ -411,3 +443,140 @@ Do not point v1 binaries at v0 infrastructure.
 Removing the old v0 infrastructure is an operational decision based on your
 remaining installed v0 population. Once removed, those binaries lose OTA
 service but continue to launch their embedded or last installed bundle.
+
+## Upgrade from a 1.0 release candidate
+
+A server built on a 1.0 release candidate (`1.0.0-rc.*`) needs a new database
+layout and new `createHotUpdater` options before it runs the final release.
+Upgrade `hot-updater` and every `@hot-updater/*` package to the same release,
+then follow these steps.
+
+### 1. Recreate the database
+
+Release candidate databases are recreated, not converted. The final schema
+adds the storage engine's version and reference-counter columns, aggregate
+tables and a `schema.engine` settings row. The server checks that row before
+its first read and answers `503` until it exists, and `hot-updater db migrate`
+refuses a database that has `schema.core` but no `schema.engine`.
+
+Create the new layout on empty storage, then redeploy the bundles you serve
+from their source artifacts. Release candidate metadata, such as bundles,
+Releases, channels, Insights events and API keys, is not copied.
+
+| Provider | Create the new layout |
+| --- | --- |
+| AWS | Rerun `hot-updater init` with a new DynamoDB table name; init refuses a table that still has the `hot-updater-update-index` secondary index. Init creates the table and writes its schema settings, as `migrateDynamoDB(config)` does for a custom server. Delete the old table, which has deletion protection, once nothing reads it. |
+| Cloudflare | Rerun `hot-updater init` and choose **Create New D1 Database**. A release candidate D1 database records `0001_hot-updater_1.0.0.sql` as applied, so it never receives the final schema. |
+| Firebase | Delete the release candidate's `hot_updater_v1_*` collections or choose a new project, then rerun `hot-updater init`; init refuses a project where those collections hold data. The final layout keeps every item in the `hot_updater_v1` collection, and init runs `migrateFirebaseDatabase` after deploying its indexes. |
+| Supabase | Rerun `hot-updater init` and create a new project; init reports a release candidate schema as incompatible. To keep the project, first drop the release candidate's `hot_updater_v1_*` tables and functions and mark its migrations reverted with `supabase migration repair --status reverted <version>`. |
+| Kysely | Point `kyselyAdapter` at an empty PostgreSQL, MySQL or SQLite database and run `hot-updater db migrate`, or apply the SQL that `hot-updater db generate` writes. |
+| `@hot-updater/postgres` | Apply the package's `sql/bundles.sql` to an empty database. |
+| Drizzle | Run `hot-updater db generate`, apply the schema to an empty database with `drizzle-kit push`, then run `hot-updater db migrate` to write the settings rows. |
+| Prisma | Run `hot-updater db generate`, apply the models to an empty database with `prisma db push` or `prisma migrate`, then run `hot-updater db migrate`. |
+| MongoDB | Point `mongoAdapter` at an empty database on a replica set or sharded cluster and run `hot-updater db migrate`. |
+
+Managed `hot-updater init` registers the key saved as `HOT_UPDATER_API_KEY` in
+the new database, so apps keep their client key. On a custom server, register
+the key your apps already send with
+`hotUpdater.api.apiKeys.register({ apiKey, name })`; an unknown key gets `401`.
+
+### 2. Rewrite `createHotUpdater` with the codemod
+
+`clientAccess` objects are removed, and Insights, which the release candidates
+ran by default, is a plugin. `hot-updater codemod client-access` rewrites each
+`createHotUpdater` call in place and keeps the rest of the file as it is:
+
+- `clientAccess: { type: "public" }` becomes `clientAccess: "public"`.
+- `clientAccess: { type: "api-key", headerName }` is removed, and `apiKeys()`
+  joins `plugins`, with the same `headerName` when one was set.
+- A call without `plugins` gets `insights()`.
+- Missing `apiKeys` and `insights` imports are added.
+
+Preview the diff, then write the files:
+
+```sh
+npx hot-updater codemod client-access src --dry-run
+npx hot-updater codemod client-access src
+```
+
+```ts title="src/hotUpdater.ts"
+import { createHotUpdater } from "@hot-updater/server";
+import { kyselyAdapter } from "@hot-updater/server/adapters/kysely";
+import { apiKeys } from "@hot-updater/server/plugins/api-keys"; // [!code ++]
+import { insights } from "@hot-updater/server/plugins/insights"; // [!code ++]
+
+import { db } from "./db";
+import { storage } from "./storage";
+
+export const hotUpdater = createHotUpdater({
+  database: kyselyAdapter({ db, provider: "postgresql" }),
+  clientAccess: { type: "api-key" }, // [!code --]
+  plugins: [insights(), apiKeys()], // [!code ++]
+  storage: [storage],
+});
+```
+
+The command takes files, directories or globs, and defaults to the current
+directory without `node_modules`, `dist` and `build`. It reports a call that it
+cannot rewrite safely, such as a `clientAccess` or `plugins` value held in a
+variable or options built with a spread, and leaves that file unchanged; the
+command then exits with code `1`. Migrate those calls by hand. Calls that
+already use `clientAccess: "public"` or `plugins` stay as they are, so the
+command can run again.
+
+Managed AWS, Cloudflare, Firebase and Supabase servers come from the provider
+templates, which pass the provider's `plugins` list. Rerunning
+`hot-updater init`, or applying the `hot-updater agent infra upgrade`
+templates, deploys them.
+
+### 3. Serve Insights and API keys as plugins
+
+`createHotUpdater({ database, storage, plugins, clientAccess })` runs only the
+plugins you list:
+
+- `insights()` from `@hot-updater/server/plugins/insights` records bundle
+  events and serves the Insights reads. Without it, `POST /events` and the
+  admin Insights routes answer `204` with `x-hot-updater-insights: disabled`.
+- `apiKeys()` from `@hot-updater/server/plugins/api-keys` requires an API key
+  on client routes, in `x-api-key` or the `headerName` you pass. Manage keys
+  with `hot-updater api-key create`, `list` and `revoke`, or with
+  `hotUpdater.api.apiKeys` in process.
+- `clientAccess: "public"` leaves client routes public. Set it only when no
+  plugin provides client authentication. A `clientAccess` object is a type
+  error, and startup throws `HotUpdaterConfigError` for it.
+
+Managed providers export the plugins their server runs as `plugins`, and
+`hot-updater init` writes a `hotUpdater.plugins.ts` that re-exports them.
+`hot-updater console` runs the plugins that file exports over the configured
+database; without it, a managed project's console shows Insights as off and
+does not manage API keys. Write your own plugins with the
+[server plugin API](/docs/custom/server-plugins).
+
+### 4. Replace removed APIs
+
+| Removed | Replacement |
+| --- | --- |
+| `clientAccess: { type: "public" }` | `clientAccess: "public"` |
+| `clientAccess: { type: "api-key", headerName }` | `apiKeys({ headerName })` in `plugins` |
+| Insights on by default | `insights()` in `plugins` |
+| Instance methods such as `getBundles`, `getBundleById`, `insertBundle`, `updateBundleById`, `deleteBundleById`, `getReleases`, `updateReleasePolicy`, `deleteRelease`, `getChannels`, `insertChannel`, `deleteChannel` and `commitDatabase` | `hotUpdater.core`: `getBundle`, `listBundles`, `deploy`, `updateBundle`, `deleteBundles`, `listReleases`, `updateReleasePolicy`, `deleteRelease`, `promoteRelease`, `listChannels`, `ensureChannel`, `deleteChannel` and the other typed operations |
+| `hotUpdater.insights`, `hotUpdater.apiKeys` | `hotUpdater.api.insights`, `hotUpdater.api.apiKeys` |
+| `createHandlers` | `hotUpdater.handlers.client` and `.admin` |
+| `registerApiKey`, `createApiKey`, `provisionApiKey` | `hotUpdater.api.apiKeys.register`, `create` and `provision` |
+| `DatabasePlugin`, `createDatabasePlugin`, `createDatabaseClient`, the model and commit types, `commitReleaseCatalogMutation(s)`, `createLegacyDatabasePlugin`, `BundleRepository` | A storage adapter returned with `createEngineDatabase({ name, adapter })` from `@hot-updater/server/database`; see [Custom Database Adapter](/docs/database-plugins/custom-database) |
+| Offset pages: `calculatePagination`, `paginateBundles`, `PaginationInfo`, `PaginatedResult` | Keyset pages from `hotUpdater.core`, such as `listBundles({ limit, after })` |
+| `createRequestBundleResolver` and the bundle query helpers of `@hot-updater/plugin-core` | None: core reads through declared indexes and resolves artifacts itself |
+| `setupDatabasePluginTestSuite`, `setupDatabaseClientTestSuite` | `setupDatabaseTestSuite`, with `setupDatabaseAdapterConformanceSuite` and `setupReadBudgetTestSuite` for an adapter, from `@hot-updater/test-utils` |
+| Admin API protocol 1, `POST /database/commit`, `POST /bundles`, `DELETE /bundles/:id` | Protocol 2: deploy with `POST /releases`, delete with `POST /bundles/delete` |
+| `standaloneRepository` protocol 1 reads and custom `routes` | `standaloneRepository({ baseUrl, commonHeaders })` over protocol 2; upgrade the server's `@hot-updater/server` with the CLI |
+| `mongoAdapter({ transactions })`, `drizzleAdapter({ transaction })`, `prismaAdapter({ relationMode })` | Remove the option. Every write runs in a transaction; MongoDB needs a replica set or sharded cluster. |
+| CockroachDB and SQL Server | PostgreSQL, MySQL or SQLite |
+| `getKyselyAppUsage`, `getKyselyReleaseActivity`, `readKyselyInsightsHead`, `recordKyselyInsightsOverview` | `hotUpdater.api.insights` reads, such as `getAppUsage` and `getReleaseActivity` |
+| `DYNAMODB_UPDATE_INDEX_NAME` from `@hot-updater/aws` | None: the table has no secondary index |
+
+### 5. Verify the server
+
+Run `hot-updater doctor --server-base-url <base-url>` from the app directory,
+then deploy a bundle to a test channel. A release build that sends its client
+key applies the update after a restart, and the Console shows its Insights
+events when `insights()` runs.

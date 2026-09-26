@@ -18,9 +18,10 @@ describe("standalone-dynamodb local infrastructure contract", () => {
 
     expect(dockerCompose).toContain("amazon/dynamodb-local:");
     expect(dockerCompose).toContain(
-      "image: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z",
+      "image: pgsty/silo:RELEASE.2026-09-16T00-00-00Z",
     );
-    expect(dockerCompose).not.toMatch(/image:\s+minio\/minio/);
+    // Neither Docker Hub nor Quay serves MinIO images any more.
+    expect(dockerCompose).not.toContain("minio/minio");
     expect(dockerCompose).not.toContain("localstack");
     expect(dockerCompose).not.toContain("amazonaws.com");
   });

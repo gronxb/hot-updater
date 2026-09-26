@@ -1,675 +1,739 @@
 ---
-title: "Custom Database Plugin"
-description: Create a database provider for Hot Updater's Release Catalog architecture.
+title: "Custom Database Adapter"
+description: Write a storage adapter that runs Hot Updater's database on your backend, and test it with the published suites.
 icon: Hammer
 ---
 
-## Installation
+## When to write an adapter
+
+Every Hot Updater database runs on one storage engine. Core (Bundles,
+Releases, Release Catalogs and Channels) and server plugins such as
+`insights()` and `apiKeys()` declare tables and indexes, and the engine turns
+their reads and transactions into a few calls on a storage adapter. The adapter
+stores rows and reads index ranges with its backend's native features. It knows
+nothing about Bundles, Releases or plugins.
+
+Write an adapter when no existing one reaches your backend. Database plugins
+cover [Supabase](/docs/database-plugins/supabase),
+[Cloudflare D1](/docs/database-plugins/cloudflare),
+[Firestore](/docs/database-plugins/firestore) and
+[DynamoDB](/docs/database-plugins/aws), and a
+[custom server](/docs/custom/overview#database-adapters) can use Kysely,
+Drizzle, Prisma or MongoDB. A database that speaks PostgreSQL, MySQL or SQLite
+needs only a SQL executor.
+
+## Install
 
 ```package-install
-npm install @hot-updater/plugin-core
+npm install @hot-updater/server @hot-updater/plugin-core
+npm install @hot-updater/test-utils vitest --save-dev
 ```
 
-Install the public conformance suite and test server in the provider project:
+`@hot-updater/server/database` exports the adapter contract and the helpers
+that implement it, and `@hot-updater/plugin-core` exports the `EngineDatabase`
+type that a provider returns. Keep the three Hot Updater packages on the same
+version. The examples run PostgreSQL through `pg`; use your own driver in its
+place.
 
-```package-install
-npm install @hot-updater/test-utils @hot-updater/server vitest --save-dev
+## How the pieces fit
+
+```text
+createHotUpdater, CLI, console
+  core and plugins     tables, indexes, typed reads and transactions
+  storage engine       guards, retries, references, aggregates, schema fence
+  storage adapter      get, query, write, fits
+  your backend
 ```
 
-## Contract
+A provider's factory returns an `EngineDatabase`, `{ name, adapter, dispose? }`.
+`hot-updater.config.ts`, the console and `createHotUpdater` all take it as
+`database`. The engine keeps references, cascades, counters and retries itself
+and expresses them as the ops below, so an adapter implements none of them.
 
-`createDatabasePlugin` exposes seven fixed persistence models and one atomic
-commit boundary:
+## The adapter contract
 
 ```ts
-createDatabasePlugin({
-  name,
-  models: {
-    bundles,
-    bundlePatches,
-    releases,
-    releaseCatalogs,
-    channels,
-    insights,
-    apiKeys,
-  },
-  commit,
-  dispose,
-});
-```
-
-There is no `queries` member or provider-owned update decision. Hot Updater
-compiles desired-state policy into Release catalogs when Releases change. A
-device catalog GET performs one exact catalog read and never scans Releases or
-Bundles.
-
-The fixed domains are:
-
-- `bundles`: immutable artifact metadata.
-- `bundle_patches`: patch artifacts owned by Bundles.
-- `releases`: mutable rollout and compatibility policy that references an
-  artifact Bundle.
-- `release_catalogs`: deterministic projections with persistent identity and
-  generation history, keyed by scope.
-- `channels`: persistent deployment-channel identity.
-- `insights`: immutable Bundle reports and latest installation state.
-- `api_keys`: hashed API key records.
-
-`private_hot_updater_settings` remains the schema-version marker managed by
-the server database tooling.
-
-## Domain interfaces
-
-Use the exported interfaces rather than redeclaring them:
-
-```ts
-import type {
-  InsightsModel,
-  BundleModel,
-  BundlePatchModel,
-  ChannelModel,
-  ApiKeyModel,
-  DatabaseCommit,
-  DatabaseCommitResult,
-  ReleaseCatalogModel,
-  ReleaseModel,
-} from "@hot-updater/plugin-core";
-```
-
-### Bundles and patches
-
-```ts
-interface BundleModel {
-  findById(id: string): Promise<BundleRow | null>;
-  findMany(query: BundleModelQuery): Promise<readonly BundleRow[]>;
-  count(where?: DatabaseBundleQueryWhere): Promise<number>;
-}
-
-interface BundlePatchModel {
-  findByBundleIds(
-    bundleIds: readonly string[],
-  ): Promise<readonly BundlePatchRow[]>;
+interface DatabaseAdapter {
+  /** Names the adapter in messages, such as "sql:postgresql". */
+  readonly id: string;
+  /** Whether the ops commit atomically in one write. */
+  fits(ops: readonly WriteOp[]): boolean;
+  /** A strongly consistent batch point read, in the order of `keys`. */
+  get(
+    table: PhysicalTable,
+    keys: readonly DatabaseKey[],
+  ): Promise<readonly (StoredRow | null)[]>;
+  /** One index range, up to `request.limit` rows. */
+  query(
+    table: PhysicalTable,
+    request: QueryRequest,
+  ): Promise<readonly StoredRow[]>;
+  /** Applies every op or none. */
+  write(ops: readonly WriteOp[]): Promise<WriteResult>;
+  /** Creates tables; only the migration helpers call it. */
+  readonly migrations?: {
+    apply(tables: readonly PhysicalTable[]): Promise<void>;
+  };
+  dispose?(): Promise<void>;
 }
 ```
 
-Apply filters and ordering before offset and limit. An empty `id.in` filter
-and an empty patch owner list return no rows without I/O. Bundle rows contain
-artifact identity and storage fields only; rollout, channel, compatibility,
-force-update, and message fields belong to Releases.
+### Tables and values
 
-`BundlePatchRow.byte_size` is a required immutable non-negative safe integer.
-Reject missing, fractional, negative, or out-of-range values on every read and
-write. Bundle manifest storage fields are required. Optional manifest asset
-`downloadByteSize` and `downloadFileHash` values live in manifest JSON and are
-not additional database columns.
-
-### Releases
+Each call names a `PhysicalTable`: its columns, its primary key (a list of
+columns) and its indexes. The table name is logical, and an adapter may add
+its own prefix.
 
 ```ts
-interface ReleaseModel {
-  findById(id: string): Promise<ReleaseRow | null>;
-  findMany(input: {
-    beforeReleaseId?: string;
-    bundleId?: string;
-    channelId?: string;
-    enabled?: boolean;
-    platform?: "ios" | "android";
-    limit: number;
-  }): Promise<readonly ReleaseRow[]>;
-  findManyByScope(input: {
-    scopeKey: string;
-    afterReleaseId?: string;
-    limit: number;
-    consistency: "strong";
-  }): Promise<readonly ReleaseRow[]>;
+interface PhysicalTable {
+  readonly name: string;
+  readonly columns: readonly PhysicalColumn[];
+  readonly key: readonly string[];
+  readonly indexes: readonly PhysicalIndex[];
+}
+
+interface PhysicalIndex {
+  readonly name: string;
+  readonly eq: readonly string[];
+  readonly sort: readonly string[];
+  readonly unique?: true;
 }
 ```
 
-`findMany` supports management views in newest-first Release-ID order.
-`findManyByScope` is the catalog compiler input and has stricter semantics:
+| Column field | Meaning                                                                                                     |
+| ------------ | ----------------------------------------------------------------------------------------------------------- |
+| `type`       | `string`, `integer` (safe integers), `number` (finite numbers), `boolean`, or `json` (any JSON value)       |
+| `nullable`   | Whether the column holds `null`                                                                             |
+| `maxLength`  | Strings: the longest value in UTF-16 code units; unbounded text when absent                                 |
+| `ascii`      | Strings: ASCII only, so a backend that limits index size (MySQL) can store it in single bytes               |
+| `default`    | A whole number the backend stores when a write leaves the column out; the engine's own columns default to 0 |
+| `multi`      | An array of 1–16 values of `type`, indexable in `eq` only                                                   |
 
-- read the canonical primary storage path with strong consistency;
-- order by Release ID ascending;
-- apply `afterReleaseId` as an exclusive keyset cursor;
-- never use an eventually consistent secondary index;
-- return at most `limit` rows.
+Every table has `_v`, the row version that guards writes. Key and index values
+are strings, numbers or booleans. Rows come back exactly as written: empty,
+long and non-ASCII strings, integers up to `Number.MAX_SAFE_INTEGER`, arrays in
+their order, and nested JSON. `normalizeStoredRow(table, raw, { jsonText })`
+converts what drivers return (int8 as text, `BigInt`, decimals, SQLite 0 and 1,
+JSON as text) to stored values.
 
-The compiler may page tens of thousands of Releases without holding a write
-transaction open. The catalog-generation expectation described below detects
-any write that crosses that snapshot.
+### Point reads
 
-### Release catalogs
+`get(table, keys)` reads rows by primary key, strongly consistently, in one
+batch. It returns one entry per key in the order of `keys`, with `null` for a
+key that has no row. An empty `keys` returns no rows.
+
+### Index reads
 
 ```ts
-interface ReleaseCatalogModel {
-  findByScopeKey(scopeKey: string): Promise<ReleaseCatalogRow | null>;
-  findMany(input: {
-    afterScopeKey?: string;
-    limit: number;
-  }): Promise<readonly ReleaseCatalogRow[]>;
+interface QueryRequest {
+  readonly index: string;
+  /** One value for each `eq` column of the index, in order. */
+  readonly eq: readonly DatabaseKeyValue[];
+  readonly lower?: QueryBound;
+  readonly upper?: QueryBound;
+  readonly order: "asc" | "desc";
+  /** 1–500 rows. */
+  readonly limit: number;
+}
+
+interface QueryBound {
+  /** A prefix of the index's order columns. */
+  readonly values: readonly DatabaseKeyValue[];
+  readonly inclusive: boolean;
 }
 ```
 
-`findByScopeKey` is an exact point read. `findMany` orders by scope key and is
-used by migration and rebuild tooling. Providers do not compile or interpret
-the JSON payload. Only an atomic commit may write `releaseCatalogs`.
+- An index orders rows by its `sort` columns, then by the key columns that
+  neither `eq` nor `sort` names. `indexOrderColumns(table, index)` returns
+  them. Bounds compare a prefix of that tuple, and the engine pages by passing
+  the last row's tuple as an exclusive bound.
+- Strings order by UTF-8 bytes, with no collation: `B` sorts before `a`, and
+  `a ` after `a`. Numbers order numerically, and `false` before `true`.
+- A row with `null` in an index column is not in that index. A multi-valued
+  `eq` column indexes the row under each of its values.
+- A unique index holds at most one row for each `eq` tuple.
+- Return `limit` rows unless the range ends first. When the backend reads in
+  native pages, keep reading them: a result shorter than `limit` means the
+  range has ended. The test suites pass `nativePageSize` to your adapter
+  factory to cap native pages at two rows and check that every page still
+  fills.
 
-Never delete the last catalog for a scope. Removing the last eligible Release
-writes a tombstone catalog with a higher generation.
+### Writes and guards
 
-Back up Catalog rows together with Releases. Rebuild preserves an existing
-Catalog's identity and generation history; it cannot recover that history from
-Release rows alone. Restore a missing Catalog row from backup before rebuilding
-or deploying to its scope.
+A write is a list of ops, applied atomically:
 
-### Channels and API keys
+| Op          | Applies when                                                                     | Effect                                                                         |
+| ----------- | -------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| `insert`    | no row has the key                                                               | writes `row`, `_v` included                                                    |
+| `patch`     | the row's `_v` is `guard.v`                                                      | writes the columns in `set`, and sets `_v` to `guard.v + 1`                    |
+| `delete`    | the row's `_v` is `guard.v`                                                      | deletes the row                                                                |
+| `increment` | the row exists or `init` is given, and its `_v` is `guard.v` when a guard is set | creates a missing row from `init`, then adds `by` to its columns and 1 to `_v` |
+| `check`     | the row's `_v` is `guard.v`                                                      | writes nothing, but conflicts with any concurrent write to the row             |
 
-Channel names are exact and case-sensitive. Concurrent insert returns the
-canonical stored row. Empty Channels persist until explicit deletion, and the
-reference check plus deletion must be atomic. API key creation is idempotent
-by hash; revocation updates only `revoked_at_ms`.
+A write has at most one op per row, and every guard is checked against the
+rows as they were before the write. An insert or patch fails when it would give
+a unique index a second row with the same values. The engine sends deletes
+first, so a later op in the same write can take a unique value that a delete
+frees. `patch` and `delete` carry `previous`, the row as the engine read it,
+for adapters that keep their own index entries.
 
-### Insights
+`write` resolves to one of three results, and throws only when it cannot tell
+whether the write committed:
 
-Implement `InsightsModel` with these five exported input types. Every call takes
-an object; custom providers do not implement the bundled internal CRUD adapter.
+| Result                       | When                                                                                                         | The engine                                                                                                                                                              |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `{ ok: true }`               | every op applied                                                                                             | returns                                                                                                                                                                 |
+| `{ ok: false, failedOp }`    | the op at position `failedOp` failed its guard or a unique index, and nothing applied                        | reads that row again: it reports `DatabaseConstraintError` (`exists`, `unique` or `not_found`) when the current state confirms it, and otherwise reruns the transaction |
+| `{ ok: false, retry: true }` | a transient failure: a deadlock, serialization failure, lock timeout, busy database, or transaction conflict | sends the write again after a backoff                                                                                                                                   |
+| thrown error                 | the outcome is unknown, such as a connection lost during commit                                              | reports `DatabaseAmbiguousCommitError` and never sends the write again                                                                                                  |
+
+A `check` guards a row that the transaction read and does not change, so two
+transactions cannot each change what the other read. The SQL core locks the
+row with `SELECT … FOR UPDATE`; on SQLite, `BEGIN IMMEDIATE` locks the whole
+database. The MongoDB adapter increments a field on the row, so a concurrent
+transaction on it conflicts.
+
+### Write limits
+
+`fits(ops)` says whether the ops fit in one atomic write of the backend: its
+limits on ops, items or bytes. The engine asks before every write and refuses
+a transaction that does not fit with `DatabaseConstraintError` `too_large`,
+before anything is sent. Return `true` when the backend has no limit.
+
+### Migrations
+
+`migrations.apply(tables)` creates each table with its indexes. A table that
+exists keeps its rows, so running it twice changes nothing. Only the migration
+tooling calls it: `migrateBuiltInSchema` and `hot-updater db migrate`. Leave it
+out when other tooling creates the tables, as Supabase's migrations do for its
+RPC, which runs no DDL.
+
+## Choose how to build it
+
+| Backend                                                   | Implement                               | Built this way                                                                            |
+| --------------------------------------------------------- | --------------------------------------- | ----------------------------------------------------------------------------------------- |
+| PostgreSQL, MySQL or SQLite                               | a `SqlExecutor` for `createSqlAdapter`  | `postgres`, `d1Database`, `supabaseDatabase`, and the Kysely, Drizzle and Prisma adapters |
+| A key-value store with atomic conditional writes          | a `KeyValueStore` for `createKvAdapter` | `dynamoDB`, `firebaseDatabase`                                                            |
+| Any other backend with transactions and secondary indexes | `DatabaseAdapter` itself                | the MongoDB adapter                                                                       |
+
+### A SQL executor
+
+`createSqlAdapter({ executor })` compiles every read and write to SQL for
+PostgreSQL, MySQL or SQLite, and runs it through an executor for your driver:
 
 ```ts
-interface InsightsModel {
-  recordEvent(input: InsightsRecordEventInput): Promise<void>;
-  listEvents(
-    input: InsightsListEventsInput,
-  ): Promise<readonly BundleEventRow[]>;
-  findLatestEvents(
-    input: InsightsFindLatestEventsInput,
-  ): Promise<readonly BundleEventRow[]>;
-  countLatestEvents(input: InsightsCountLatestEventsInput): Promise<number>;
-  countEvents(input: InsightsCountEventsInput): Promise<number>;
+interface SqlExecutor {
+  readonly dialect: "postgresql" | "mysql" | "sqlite";
+  /** Runs one statement: `{ sql, params }` to `{ rows, changes }`. */
+  execute(statement: SqlStatement): Promise<SqlResult>;
+  /** Commits when `fn` resolves and rolls back when it throws. */
+  transaction<T>(fn: (connection: SqlConnection) => Promise<T>): Promise<T>;
+  /** Runs statements as one atomic batch, for drivers without transactions. */
+  batch?(statements: readonly SqlStatement[]): Promise<readonly SqlResult[]>;
 }
 ```
 
-`recordEvent({ event })` receives one validated, immutable `BundleEventRow`. Store
-it once by `id`; the first accepted payload wins, even if a retry carries different
-fields. There is no required installation table or second input to prepare.
-
-A provider may maintain a private latest index keyed by `install_id`, containing
-the canonical access fields or the complete supplied event. Event acceptance and
-advancing that index must be one native atomic operation. Replace its fields
-only if `(received_at_ms, id)` increases. A duplicate event ID changes nothing,
-including private indexes. Older events enter history without restoring an old
-user association. A winning `user_id: null` removes the previous association.
-Implement these storage rules directly; no lifecycle helper or reducer is required.
-
-`metadata` uses the same JSON value conventions as Bundle metadata. Its required
-known keys are `cohort: string`, `username: string | null`,
-`update_strategy: "appVersion" | "fingerprint" | null`,
-`fingerprint_hash: string | null`, and `sdk_version: string | null`.
-Core validates these and the event-type relationship before calling `recordEvent`.
-Preserve all supplied JSON keys, including nested objects, arrays, and nulls.
-Do not unpack metadata into provider-specific columns or interpret it for queries.
-
-`listEvents({ filter, sinceMs?, beforeReceivedAtMs, after?, limit })` returns
-newest-first `(received_at_ms, id)` order in the half-open interval
-`[sinceMs ?? 0, beforeReceivedAtMs)`. `after: { receivedAtMs, id }` is an
-exclusive key: return strictly smaller tuples. The fixed filter is one of:
-
-```ts
-{ kind: "all" }
-{ kind: "installationMovement", installId }
-{ kind: "bundle", platform, channel, type: "RECOVERED", fromBundleId }
-{ kind: "bundle", platform, channel,
-  type: "UPDATE_DOWNLOADED" | "UPDATE_APPLIED" | "UNCHANGED", toBundleId }
-```
-
-Installation movement means `UPDATE_DOWNLOADED`, `UPDATE_APPLIED`, or `RECOVERED`. Apply filters
-before the limit using indexed cursor ranges; do not load global history or
-walk preceding pages. Limits are integers from 1 to 101; core uses lookahead
-to return at most 100. A short or empty native page with a continuation token
-is not exhaustion: continue until the result prefix is full or exhausted.
-
-`findLatestEvents` returns canonical event rows, not installation DTOs:
-
-```ts
-type InsightsFindLatestEventsInput =
-  | { installId: string }
-  | { userId: string; afterInstallId?: string; limit: number };
-
-type InsightsCountLatestEventsInput = {
-  platform: "ios" | "android";
-  channel: string;
-  sinceMs: number;
-  bundle?: readonly {
-    field: "from_bundle_id" | "to_bundle_id";
-    value: string;
-    types: readonly BundleEventRow["type"][];
-  }[];
-};
-```
-
-For each installation, select the greatest `(received_at_ms, id)` across all
-its events, including `UNCHANGED`, before applying user, scope, receipt-window,
-or bundle predicates. Otherwise a historical match can restore a logged-out user.
-Exact lookup returns zero or one row. A user page returns matches ordered by
-`install_id` in ascending UTF-8 byte order, strictly after `afterInstallId`, with
-the same 1 to 101 limit. IDs are case-sensitive without Unicode normalization.
-A lagging secondary user index must validate candidates against canonical state
-and continue past stale candidates; newly assigned users can be temporarily absent.
-
-`countLatestEvents` counts selected latest events matching `platform`, `channel`,
-and `received_at_ms >= sinceMs`. If `bundle` is supplied, it contains one or two predicates joined by OR.
-A predicate matches when `event[predicate.field] === predicate.value` and
-`event.type` is in `predicate.types`. Count a matching installation once even
-when both predicates match. Evaluate the disjunction in one native query or
-stable installation traversal; do not sum independently observed counts. These are fixed native predicates;
-core supplies the Downloaded/from-bundle or other-type/to-bundle cases.
-Do not derive running/pending state inside the plugin. Use a native event query
-or a private latest index. A mutable last-seen cursor can double-count rows;
-DynamoDB instead traverses stable installation IDs in a compact scope partition. Propagate query failure
-rather than returning partial counts.
-
-`countEvents({ filter, sinceMs, beforeReceivedAtMs })` counts a fixed raw bundle
-filter in the same receipt interval as `listEvents`. The filter has platform,
-channel, type, and `fromBundleId` for `RECOVERED` or `toBundleId` for
-`UPDATE_DOWNLOADED`/`UPDATE_APPLIED`/`UNCHANGED`; it has no `kind`. `UNCHANGED` means the running files did not change, including selecting another Release for those same files. Its `from_bundle_id` and `metadata.update_strategy` must be null. Recovery B → A therefore
-counts against B while latest state names A. Counts concern reports, not
-unique attempts or installations. Count all native pages or propagate failure.
-
-Core owns report preparation, validation, windows, cursors, movement semantics,
-and product labels. Providers own atomic storage, native queries, indexes, and
-scalar counts. Do not implement summary objects, group-by, top-N distributions,
-chart buckets, or independently maintained outcome tables. Separate live counts
-are not a common snapshot and must not imply an exact percentage. Document
-query costs. Do not return partial results; propagate native errors.
-
-The public constructor validates queries and returned rows, but cannot prove
-atomicity or index usage. Run the repository conformance suite plus native rollback,
-concurrency, continuation, schema-bootstrap, and query-plan tests for your
-backend.
-
-#### Native storage patterns
-
-The bundled SQL and MongoDB providers keep a private `bundle_event_heads`
-table/collection with `install_id`, `id`, `received_at_ms`, `user_id`, `platform`,
-`channel`, `type`, `from_bundle_id`, and `to_bundle_id`. These are canonical event
-fields used for latest ordering, user pages, and count predicates. Metadata,
-release IDs, app version, and calculated running/pending state are not copied.
-This physical layout is not a required custom-provider model.
-
-A PostgreSQL provider can append and advance the head atomically in one statement:
-
-```ts
-async function recordEvent({ event }: InsightsRecordEventInput) {
-  await sql.query(
-    `WITH accepted AS (
-       INSERT INTO bundle_events
-       SELECT * FROM jsonb_populate_record(NULL::bundle_events, $1::jsonb)
-       ON CONFLICT (id) DO NOTHING RETURNING *
-     )
-     INSERT INTO bundle_event_heads (
-       install_id, id, received_at_ms, user_id, platform, channel,
-       type, from_bundle_id, to_bundle_id
-     )
-     SELECT install_id, id, received_at_ms, user_id, platform, channel,
-       type, from_bundle_id, to_bundle_id FROM accepted
-     ON CONFLICT (install_id) DO UPDATE SET
-       id = excluded.id, received_at_ms = excluded.received_at_ms,
-       user_id = excluded.user_id, platform = excluded.platform,
-       channel = excluded.channel, type = excluded.type,
-       from_bundle_id = excluded.from_bundle_id,
-       to_bundle_id = excluded.to_bundle_id
-     WHERE (excluded.received_at_ms, excluded.id) >
-       (bundle_event_heads.received_at_ms, bundle_event_heads.id)`,
-    [JSON.stringify(event)],
-  );
-}
-```
-
-The bundled providers index heads by `(user_id, install_id)`,
-`(platform, channel, received_at_ms)`, and the two bundle-count tuples
-`(type, platform, channel, from_bundle_id, received_at_ms)` and
-`(type, platform, channel, to_bundle_id, received_at_ms)`.
-For a user page, select at most `limit` head IDs using `userId` and the optional
-exclusive installation cursor, then join those IDs to `bundle_events`. Return
-complete canonical event rows. Count the matching heads directly; no event
-hydration is needed for a scalar count. Latest-state reads then depend on current
-installations, without revisiting each installation's retained history. Counts
-still require database work proportional to the relevant current entries.
-
-A Firestore-style provider can keep a private latest collection. Its `recordEvent`
-implementation only copies the supplied object and compares the receipt tuple:
-
-```ts
-async function recordEvent({ event }: InsightsRecordEventInput) {
-  await db.runTransaction(async (tx) => {
-    const eventRef = events.doc(event.id);
-    // Use a reversible, collision-free document key for arbitrary install IDs.
-    const latestRef = latest.doc(Buffer.from(event.install_id).toString("hex"));
-    const [accepted, previous] = await tx.getAll(eventRef, latestRef);
-    if (accepted.exists) return;
-    const row = previous.data();
-    tx.create(eventRef, event);
-    if (!row || event.received_at_ms > row.received_at_ms ||
-        (event.received_at_ms === row.received_at_ms && event.id > row.id)) {
-      tx.set(latestRef, event);
-    }
-  });
-}
-```
-
-Read that private collection by exact document key or supplied native predicates;
-return its complete event unchanged. No pending-bundle calculation, metadata
-helper, background worker, or public repair method is part of the contract.
-The bundled SQL and Firestore implementations exercise these patterns through
-`setupDatabasePluginTestSuite`; custom authors use the same suite described below.
-
-
-## Atomic commit and optimistic CAS
-
-`commit` receives one declarative envelope. All changes and expectations are
-one transaction:
-
-```ts
-const result = await database.commit({
-  expectations: [
-    { model: "releases", id: release.id, revision: release.revision },
-    {
-      model: "releaseCatalogs",
-      scopeKey: catalog.scope_key,
-      generation: catalog.generation,
-    },
-  ],
-  changes: [
-    {
-      model: "releases",
-      operation: "update",
-      where: { id: release.id },
-      update: nextRelease,
-    },
-    {
-      model: "releaseCatalogs",
-      operation: "put",
-      row: nextCatalog,
-    },
-  ],
-});
-```
-
-An expectation version of `null` means the row must not exist. Check every
-expectation and apply every change inside one short provider-native
-transaction. A mismatch returns the actual version and writes nothing:
-
-```ts
-{
-  committed: false,
-  conflict: {
-    changeIndex: -1,
-    reason: "version_conflict",
-    model: "releaseCatalogs",
-    key: scopeKey,
-    expectedVersion: 41,
-    actualVersion: 42,
-  },
-}
-```
-
-Expected missing targets and referenced-row deletes continue to return their
-source `changeIndex`. All other validation, constraint, and provider failures
-reject. A provider without an atomic conditional primitive must reject before
-its first write; there is no Release-now/catalog-later fallback.
-
-## Implement the 1.0.0 schema
-
-The initial `1.0.0` schema includes the required Insights storage and indexes,
-exact identity collations, and atomic recording. Initialization creates
-the complete schema on empty storage and no-ops for an initialized `1.0.0`
-database. Unsupported populated storage is rejected without deleting its data.
-
-1. Remove `queries`, `getUpdateInfo`, provider decision SQL/RPCs, and any
-   desired-state cache owned by the provider.
-2. Keep Bundle rows as immutable manifest artifacts and validate patch byte
-   sizes. Store rollout and compatibility policy on Releases.
-3. Add Channel, Release, and Release-catalog storage, indexes, and references.
-4. Implement exact catalog reads and strongly consistent, keyset-paged Release
-   scope reads.
-5. Extend the atomic commit with Release revision and catalog generation
-   expectations.
-6. Implement atomic Insights recording and the fixed queries above. Record
-   `schema.core = 1.0.0` after successful initialization;
-   reject unsupported source versions without deleting their data.
-7. Run conformance and integration tests against the real backend.
-
-Provider-specific consistency requirements:
-
-- DynamoDB uses a strongly consistent base-table scope partition, not a GSI.
-- Firestore uses strong server reads and transaction preconditions.
-- PostgreSQL, Supabase, and SQL adapters use ordered primary reads and revision
-  and generation predicates in the write transaction.
-- MongoDB uses deterministic majority reads and a short write transaction.
-- D1 must prove a failed generation predicate aborts the complete batch.
-
-## Create a provider
+A complete provider over `pg`:
 
 ```ts title="myDatabase.ts"
+import type { EngineDatabase } from "@hot-updater/plugin-core";
 import {
-  createDatabasePlugin,
-  type DatabaseCommit,
-  type DatabaseCommitResult,
-} from "@hot-updater/plugin-core";
+  createEngineDatabase,
+  createSqlAdapter,
+  migrateBuiltInSchema,
+  type SqlConnection,
+  type SqlExecutor,
+} from "@hot-updater/server/database";
+import pg, { type PoolClient, type PoolConfig } from "pg";
 
-export const myDatabase = ({ db }: { db: MyDatabaseClient }) => {
-  const commit = (input: DatabaseCommit): Promise<DatabaseCommitResult> =>
-    db.transaction((transaction) =>
-      applyConditionalChanges(transaction, input),
-    );
-
-  return createDatabasePlugin({
-    name: "my-database",
-    models: {
-      bundles: createBundleModel(db),
-      bundlePatches: createBundlePatchModel(db),
-      releases: createReleaseModel(db),
-      releaseCatalogs: createReleaseCatalogModel(db),
-      channels: createChannelModel(db),
-      insights: createInsightsModel(db),
-      apiKeys: createApiKeyModel(db),
+/** Runs the SQL core's statements on a pool; a transaction holds one client. */
+export const myExecutor = (pool: pg.Pool): SqlExecutor => {
+  const over = (runner: pg.Pool | PoolClient): SqlConnection => ({
+    execute: async ({ sql, params }) => {
+      const result = await runner.query(sql, [...params]);
+      return { rows: result.rows, changes: result.rowCount ?? 0 };
     },
-    commit,
-    dispose: () => db.close(),
   });
+  return {
+    dialect: "postgresql",
+    ...over(pool),
+    async transaction(fn) {
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+        const result = await fn(over(client));
+        await client.query("COMMIT");
+        return result;
+      } catch (error) {
+        await client.query("ROLLBACK").catch(() => undefined);
+        throw error;
+      } finally {
+        client.release();
+      }
+    },
+  };
+};
+
+/** Hot Updater's database on PostgreSQL through `pg`. */
+export const myDatabase = (config: PoolConfig): EngineDatabase => {
+  const pool = new pg.Pool(config);
+  return {
+    ...createEngineDatabase({
+      name: "myDatabase",
+      adapter: createSqlAdapter({ executor: myExecutor(pool) }),
+    }),
+    dispose: () => pool.end(),
+  };
+};
+
+/** Creates the tables, then writes the settings rows the schema fence checks. */
+export const migrateMyDatabase = async (config: PoolConfig) => {
+  const pool = new pg.Pool(config);
+  try {
+    await migrateBuiltInSchema(
+      createSqlAdapter({ executor: myExecutor(pool) }),
+      "myDatabase",
+    );
+  } finally {
+    await pool.end();
+  }
 };
 ```
 
-Keep SQL values parameterized and preserve the canonical snake-case row
-fields. Database methods do not receive request context; close over the
-configured client or runtime binding.
+- `execute` returns the rows of a `SELECT` and, as `changes`, the number of
+  rows an `INSERT`, `UPDATE` or `DELETE` changed. The core reads `changes` to
+  tell whether a guarded update applied.
+- `transaction` runs `fn` on one connection. On SQLite, begin it with
+  `BEGIN IMMEDIATE` and run statements one at a time.
+- Keep the driver's error codes on what you throw (`code`, `errno`, `sqlState`,
+  also on `cause`). The core maps a unique violation to `failedOp`, and a
+  serialization failure, deadlock, lock timeout or busy database to `retry`,
+  by SQLSTATE, MySQL and SQLite codes.
+- Statements use `$1`, `$2`… on PostgreSQL and `?` elsewhere. JSON and
+  multi-valued values are bound as JSON text, cast to `jsonb` on PostgreSQL,
+  and booleans as 0 or 1 outside PostgreSQL.
+- A driver with a Kysely dialect needs no executor of its own:
+  `kyselyExecutor(db, dialect)` from `@hot-updater/server/adapters/kysely` is
+  one, and the `postgres` provider is `createSqlAdapter` over it.
 
-## Catalog transport caching
+| `createSqlAdapter` option | Meaning                                                                             |
+| ------------------------- | ----------------------------------------------------------------------------------- |
+| `executor`                | The executor                                                                        |
+| `tablePrefix`             | Prepended to every table name                                                       |
+| `maxOps`                  | The most ops one write accepts (default 1,000); `fits` refuses more                 |
+| `maxParams`               | The most parameters one statement binds; a batch read splits to fit (D1 allows 100) |
 
-The database contract is independent of HTTP caching. If a custom deployment
-places a shared cache in front of the server, its catalog cache key must include
-the host, canonical path, supported content encoding, and the configured API
-key header (`x-api-key` by default). When using `clientAccess.headerName`,
-partition on that header instead. It must not include installation state.
-Invalid-key and error responses remain `private, no-store`.
+An executor without interactive transactions, such as D1 or a database RPC,
+provides `batch` instead. Each write is then one atomic batch that records the
+first failed guard in the `_hu_write` table (`WRITE_GUARD_TABLE`) and applies
+its changes only when no guard failed. `migrations.apply` creates that table
+with the others.
 
-If custom authentication varies on any other header, map that identity to one
-stable, documented catalog cache partition and include it in the cache key.
-Do not enable shared caching for arbitrary request headers without an explicit
-partition contract.
+`adapter.migrations.apply` creates tables with `createTableStatements(dialect,
+tables, tablePrefix)`: strings with binary collation (`COLLATE "C"` on
+PostgreSQL, `utf8mb4_0900_bin` or `ascii_bin` on MySQL), whole numbers as
+`bigint`, and a table `<table>__<index>` for each index over a multi-valued
+column.
 
-## Test the provider
+### A key-value store
 
-Use the same conformance suite as the official database providers. Install the
-published `@hot-updater/test-utils` package; no repository checkout is needed.
-Keep test-utils, server, and plugin-core on the same Hot Updater version.
+`createKvAdapter({ store, tablePrefix })` implements the contract over a store
+with strongly consistent point reads, sorted partitions and atomic conditional
+writes, such as DynamoDB or Firestore:
 
-```bash
-pnpm add -D @hot-updater/test-utils @hot-updater/server vitest
+```ts
+interface KeyValueStore {
+  readonly id: string;
+  /** The most items and bytes one write takes, per item, and per key. */
+  readonly limits: {
+    readonly items: number;
+    readonly bytes: number;
+    readonly itemBytes?: number;
+    readonly keyBytes?: { readonly pk: number; readonly sk: number };
+  };
+  /** Strongly consistent point reads, in the order of `keys`. */
+  get(keys: readonly KvKey[]): Promise<readonly (StoredRow | null)[]>;
+  /** One native page of one partition's sort-key range. */
+  query(
+    range: KvRange,
+  ): Promise<{ readonly items: readonly KvItem[]; readonly more: boolean }>;
+  /** Applies every op or none. */
+  write(ops: readonly KvOp[]): Promise<WriteResult>;
+  /** Prepares the store, such as creating its table. */
+  readonly migrations?: { apply(): Promise<void> };
+  dispose?(): Promise<void>;
+}
 ```
 
-Connect your plugin and its test database lifecycle:
+- An item is addressed by a partition key `pk` and a sort key `sk`, both
+  strings. Sort keys compare by UTF-8 bytes.
+- `query({ pk, gte, lt, order, limit, after })` returns one page of the
+  partition's items from `gte` up to `lt`, past `after`, and `more` when the
+  range may go on. An empty page ends the range.
+- `write(ops)` applies `put`, `delete`, `check` and `add`, an increment that
+  creates a missing item from `init`. Every op's `condition` (the item exists,
+  does not exist, or has `_v` equal to `v`) sees the state before the write.
+  Return `failedOp` for an op whose condition failed and `retry` for a
+  transient conflict, as an adapter does.
+- If the store throws when its table is missing, give that error
+  `code: "42P01"`, as the DynamoDB store does, so the schema fence reports a
+  missing schema.
+
+The helper stores a row as one item at `pk = <table>`, and an index in key
+order reads those items. Every other index adds an item per entry in its own
+partition, holding a copy of the row, written in the same write. A unique entry
+is an item that one row at a time may hold. `fits` counts items and bytes
+against `limits`. The
+[DynamoDB store](https://github.com/gronxb/hot-updater/blob/next/plugins/aws/src/dynamoDBStore.ts)
+and the
+[Firestore store](https://github.com/gronxb/hot-updater/blob/next/plugins/firebase/src/firestoreStore.ts)
+are complete implementations. Wrap the adapter as in `myDatabase`, with
+`createKvAdapter({ store })` in place of `createSqlAdapter`.
+
+### The contract directly
+
+A backend with its own transactions and secondary indexes can implement
+`DatabaseAdapter` directly: keep each table's rows by key, create each index
+as declared, and read an index range in `indexOrderColumns` order.
+`createMemoryAdapter()` implements every rule on this page and is the
+reference. The
+[MongoDB adapter](https://github.com/gronxb/hot-updater/blob/next/packages/server/src/adapters/mongodbAdapter.ts)
+is a production one: a collection per table keyed by `_id`, guards as
+conditional updates, and one transaction per write. While you develop, wrap
+your adapter in `verifyAdapter(adapter)`. It fails reads that return rows for
+other keys, rows outside the range or out of order, or more than `limit` rows,
+and writes that touch a row twice or that `fits` refuses.
+
+## Wrap it as a database
+
+`createEngineDatabase({ name, adapter })` returns the `EngineDatabase` a
+provider's factory returns, as `myDatabase` does. It puts the adapter behind
+the schema fence and forwards the adapter's `dispose`. Add your own `dispose`
+when the factory opens a client. When the adapter has `migrations`, the
+database also carries the migration that `hot-updater db migrate` runs.
+
+| Option                 | Meaning                                                                                                                                                                                              |
+| ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `name`                 | Names the database in messages; `createHotUpdater` reports it as `adapterName`                                                                                                                       |
+| `adapter`              | The storage adapter                                                                                                                                                                                  |
+| `onCachedRoutesChange` | Called after a committed write that changes what the cacheable client routes answer (a Release Catalog row), so a CDN in front of them can purge its copies. `dynamoDB` invalidates CloudFront here. |
+
+Pass the database to the CLI and the server. Partial configuration:
+
+```ts title="hot-updater.config.ts"
+import { defineConfig } from "hot-updater";
+
+import { myDatabase } from "./myDatabase";
+
+export default defineConfig({
+  // build: ...,
+  // storage: ...,
+  database: myDatabase({ connectionString: process.env.DATABASE_URL }),
+});
+```
+
+```ts title="server.ts"
+import { createHotUpdater } from "@hot-updater/server";
+import { apiKeys } from "@hot-updater/server/plugins/api-keys";
+import { insights } from "@hot-updater/server/plugins/insights";
+
+import { myDatabase } from "./myDatabase";
+
+export const hotUpdater = createHotUpdater({
+  database: myDatabase({ connectionString: process.env.DATABASE_URL }),
+  // storage: [...],
+  plugins: [insights(), apiKeys()],
+});
+```
+
+## Create the schema
+
+Migrations write settings rows to `private_hot_updater_settings` last, after
+every table exists: `schema.engine` (`"1"`) and one row per module,
+`schema.core`, `schema.insights` and `schema.apiKeys` (`"1.0.0"`). Before a
+process's first read or write, the schema fence reads them in one batch. A
+missing or different row throws `HotUpdaterSchemaMigrationRequiredError`,
+which names the setting, and the server's handlers answer 503. A read that
+fails because the settings table is missing counts as a missing row when the
+error says so: PostgreSQL `42P01` or `42703`, MySQL `ER_NO_SUCH_TABLE` or
+`ER_BAD_FIELD_ERROR`, or a message such as `no such table`. Any other failure,
+such as a refused connection, is thrown as it is.
+
+Export a migration with your factory, as `migrateMyDatabase` does.
+`migrateBuiltInSchema(adapter, name)` passes core's and the built-in plugins'
+tables to `adapter.migrations.apply`, then writes the settings rows. Running it
+again changes nothing. It refuses a database that has `schema.core` but no
+`schema.engine`; create a new database instead. Run the migration from a
+script, a deploy job or your provider's setup command, as `migrateDynamoDB` and
+`migrateFirebaseDatabase` do for their providers.
+
+`hot-updater db migrate` runs the same migration from the file that exports the
+server's `hotUpdater`, and adds the tables and settings rows of the server's
+third-party plugins; see
+[Server Plugins](/docs/custom/server-plugins#create-the-plugins-tables). It
+refuses a database whose adapter has no `migrations`.
+
+A SQL provider can check in its schema instead.
+`generateEngineSql(dialect, builtInSchema, builtInSettings, { tablePrefix })`
+from `@hot-updater/server/db` returns the statements: tables and indexes, then
+the settings rows. The `postgres` and D1 providers generate their checked-in
+SQL this way, and a test fails when a file differs from the generator. Add
+`createTableStatements(dialect, [WRITE_GUARD_TABLE])` when the executor has
+`batch`. When other tooling creates the tables,
+`writeSchemaSettings(adapter, name, builtInSettings)` writes only the settings
+rows.
+
+A provider whose schema is applied as migration files adds
+`generateSchema(version, name, target)` to its database, as `supabaseDatabase`
+and the REST `d1Database` do. `hot-updater db generate` calls it with
+`"latest"` and the server's `target`, `{ schema, settings }` (`builtInTarget`
+from `@hot-updater/server/database` without third-party plugins), and writes
+the returned `code` to its relative `path`. When the adapter also has
+`migrations`, as D1's does, `hot-updater db migrate` applies the same schema
+directly; without them, as with Supabase, it points to `db generate`.
+
+## Test the adapter
+
+`@hot-updater/test-utils` publishes the suites that every official database
+runs. Register all three:
+
+| Suite                                  | Runs                                                                                             | Against                                  |
+| -------------------------------------- | ------------------------------------------------------------------------------------------------ | ---------------------------------------- |
+| `setupDatabaseAdapterConformanceSuite` | the contract on this page, case by case                                                          | your adapter, on two test tables         |
+| `setupReadBudgetTestSuite`             | what each read of core and the built-in plugins costs                                            | your adapter, on the built-in tables     |
+| `setupDatabaseTestSuite`               | core, Bundles, the Release Catalog contract and Insights, through the admin and client HTTP APIs | your database, behind `createHotUpdater` |
+
+The examples expect `TEST_DATABASE_URL` to name an empty PostgreSQL database.
+Each suite creates its own tables, and the specs drop or empty them through
+this helper:
+
+```ts title="testTables.ts"
+import { isMultiIndex, type PhysicalTable } from "@hot-updater/server/database";
+
+/** The quoted tables the SQL core creates for `tables`, index tables included. */
+export const tableNames = (tables: readonly PhysicalTable[], prefix = "") =>
+  tables
+    .flatMap((table) => [
+      table.name,
+      ...table.indexes
+        .filter((index) => isMultiIndex(table, index))
+        .map((index) => `${table.name}__${index.name}`),
+    ])
+    .map((name) => `"${prefix}${name}"`)
+    .join(", ");
+```
+
+### Adapter conformance
+
+```ts title="myDatabase.conformance.spec.ts"
+import { createSqlAdapter } from "@hot-updater/server/database";
+import { setupDatabaseAdapterConformanceSuite } from "@hot-updater/test-utils";
+import pg from "pg";
+import { afterAll } from "vitest";
+
+import { myExecutor } from "./myDatabase";
+import { tableNames } from "./testTables";
+
+const pool = new pg.Pool({ connectionString: process.env.TEST_DATABASE_URL });
+afterAll(() => pool.end());
+
+setupDatabaseAdapterConformanceSuite({
+  name: "myDatabase",
+  createAdapter: async ({ tables }) => {
+    const adapter = createSqlAdapter({ executor: myExecutor(pool) });
+    await adapter.migrations!.apply(tables);
+    return {
+      adapter,
+      cleanup: async () => {
+        await pool.query(`DROP TABLE ${tableNames(tables)}`);
+      },
+    };
+  },
+});
+```
+
+| Option          | Meaning                                                                                                                                                                                                                                         |
+| --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `name`          | Names the suite                                                                                                                                                                                                                                 |
+| `createAdapter` | Returns `{ adapter, cleanup? }` over newly created, empty `tables`, for each case; `cleanup` runs after the case. One case passes `nativePageSize: 2`: fetch at most that many rows per native page. A backend without native pages ignores it. |
+| `maxOps`        | The most ops one write accepts. The suite then checks that `fits` refuses one more op and that nothing is written. Omit it when the backend has no limit.                                                                                       |
+| `writers`       | Concurrent writers in the contention cases (default 32)                                                                                                                                                                                         |
+
+The cases cover value round-trips, point reads in key order, each op's guard,
+all-or-nothing writes with a failure at every position, unique indexes and the
+op they name, UTF-8 byte order, cursor paging without gaps or repeats,
+multi-valued indexes, full pages under capped native pages, one winner among
+concurrent writers, no lost increments, write-skew rejection, and over-limit
+writes refused before sending. Every call also passes through `verifyAdapter`.
+
+A key-value store takes `nativePageSize` as its page size. Its `maxOps` is the
+number of conformance inserts one write fits: the DynamoDB spec sets 33,
+since an insert there is 3 items and a transaction takes 100.
+
+### Read budgets
+
+```ts title="myDatabase.readBudgets.spec.ts"
+import { builtInSchema, createSqlAdapter } from "@hot-updater/server/database";
+import {
+  createMeasuredDatabase,
+  targetBaseCandidateKey,
+} from "@hot-updater/server/db";
+import { apiKeys } from "@hot-updater/server/plugins/api-keys";
+import { insights } from "@hot-updater/server/plugins/insights";
+import {
+  postgresRowsExamined,
+  setupReadBudgetTestSuite,
+} from "@hot-updater/test-utils";
+import pg from "pg";
+import { afterAll } from "vitest";
+
+import { myExecutor } from "./myDatabase";
+import { tableNames } from "./testTables";
+
+const pool = new pg.Pool({ connectionString: process.env.TEST_DATABASE_URL });
+afterAll(() => pool.end());
+
+setupReadBudgetTestSuite({
+  name: "myDatabase",
+  server: {
+    createMeasuredDatabase,
+    builtInSchema,
+    plugins: [insights(), apiKeys()],
+    targetBaseCandidateKey,
+  },
+  createAdapter: async ({ tables }) => {
+    // Each read is explained on one session of the pool.
+    const session = await pool.connect();
+    const reads = postgresRowsExamined(
+      async (sql, params) => (await session.query(sql, [...params])).rows,
+    );
+    const adapter = createSqlAdapter({
+      executor: reads.wrap(myExecutor(pool)),
+      tablePrefix: "budget_",
+    });
+    await adapter.migrations!.apply(tables);
+    return {
+      adapter,
+      examined: reads.examined,
+      cleanup: async () => {
+        session.release();
+        await pool.query(`DROP TABLE ${tableNames(tables, "budget_")}`);
+      },
+    };
+  },
+});
+```
+
+`createMeasuredDatabase(adapter, plugins, options)` from
+`@hot-updater/server/db` assembles core and the plugins as `createHotUpdater`
+does, on an engine that checks every adapter call, without the schema fence.
+The suite seeds Bundles, Releases, Channels, an API key and Insights events,
+caps native pages at two rows, and checks each API's reads exactly, at the
+adapter and at the engine. For example, the update check is one point read of
+a catalog row, and artifact resolution is one batch read of two Bundles plus
+one patch read.
+
+| `createAdapter` result | Meaning                                                                                                                                                                                                       |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `adapter`              | Your adapter over newly created, empty `tables`: core's and the built-in plugins'                                                                                                                             |
+| `cleanup`              | Runs after the suite                                                                                                                                                                                          |
+| `examined`             | SQL backends: the rows the database examined. `postgresRowsExamined(query)` and `mysqlRowsExamined(query)` explain each read the wrapped executor runs, so a read that scans more rows than it returns fails. |
+| `indexCopies`          | `true` when index reads return row copies without `_v`, as `createKvAdapter` does; a transaction then reads the rows it guards again                                                                          |
+
+### The server over HTTP
 
 ```ts title="myDatabase.spec.ts"
 import { createHotUpdater } from "@hot-updater/server";
+import { builtInSchema } from "@hot-updater/server/database";
+import { createDatabasePluginApis } from "@hot-updater/server/db";
 import {
-  setupDatabasePluginTestSuite,
+  createInsightsModel,
+  insights,
+} from "@hot-updater/server/plugins/insights";
+import {
+  setupDatabaseTestSuite,
   startHttpTestServer,
 } from "@hot-updater/test-utils";
-import { myDatabase } from "./myDatabase";
-import { createTestDatabase, migrateDatabase, resetDatabase } from "./testDatabase";
+import pg from "pg";
 
-let db: Awaited<ReturnType<typeof createTestDatabase>>;
+import { migrateMyDatabase, myDatabase } from "./myDatabase";
+import { tableNames } from "./testTables";
 
-setupDatabasePluginTestSuite({
-  name: "my database",
-  createHttpClient: (options) => startHttpTestServer(
-    createHotUpdater({ ...options, clientAccess: { type: "public" } }).handlers,
-  ),
-  migrate: async () => {
-    db = await createTestDatabase();
-    await migrateDatabase(db);
+const config = { connectionString: process.env.TEST_DATABASE_URL };
+const pool = new pg.Pool(config);
+
+setupDatabaseTestSuite({
+  name: "myDatabase",
+  migrate: () => migrateMyDatabase(config),
+  createDatabase: () => myDatabase(config),
+  // Every table but the settings, which the schema fence checks.
+  reset: async () => {
+    await pool.query(`TRUNCATE ${tableNames(builtInSchema.tables)}`);
   },
-  createPlugin: () => myDatabase({ db }),
-  reset: () => resetDatabase(db),
-  dispose: async (plugin) => {
-    await plugin.dispose?.();
+  dispose: async (database) => {
+    await database.dispose?.();
+    await pool.end();
   },
+  createHttpClient: (options) =>
+    startHttpTestServer(
+      createHotUpdater({
+        ...options,
+        plugins: [insights()],
+        clientAccess: "public",
+      }).handlers,
+    ),
+  createInsightsModel: (database) =>
+    createInsightsModel(
+      createDatabasePluginApis(database, [insights()]).insights,
+    ),
 });
 ```
 
-`migrate` creates the isolated database and applies its schema once, before
-`createPlugin`. `reset` clears all test data before each scenario while retaining
-the schema and schema-version settings. `dispose` closes the plugin and removes
-any test resources after the suite. The HTTP adapter above connects the actual
-server to the suite. Do not copy scenarios or implement expected responses in the adapter.
+| Option                | Meaning                                                                                                                                                                                                        |
+| --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `migrate`             | Creates the tables and settings rows, once, before `createDatabase`                                                                                                                                            |
+| `createDatabase`      | Your database, as your factory returns it                                                                                                                                                                      |
+| `reset`               | Empties every data table before each test and keeps the settings rows                                                                                                                                          |
+| `dispose`             | Closes the database after the suite                                                                                                                                                                            |
+| `createHttpClient`    | Serves the handlers of `createHotUpdater({ database, storage, plugins: [insights()], clientAccess: "public" })`: `startHttpTestServer` on loopback in Node, or `createHandlerHttpTestClient` in a Workers pool |
+| `createInsightsModel` | Optional. Also runs the Insights report contract in process, on the plugin's tables                                                                                                                            |
+
+The suite sends real requests to the admin API and the client routes. It runs
+core's operations, the Bundle admin API, the Release Catalog contract and the
+Insights routes. The Release Catalog scenarios pass each catalog they receive
+to the production client selector and carry a simulated device from its
+built-in bundle to OTA A, OTA B, back to A, and back to built-in. Other
+scenarios cover deleted Releases, the native minimum, cohort changes and
+crashed updates.
+
+Run the specs with Vitest:
 
 ```bash
-pnpm exec vitest run myDatabase.spec.ts
+TEST_DATABASE_URL=postgres://localhost:5432/hot_updater_test npx vitest run
 ```
 
-Vitest runs in Node by default. `startHttpTestServer` starts a loopback HTTP
-server using your plugin; the suite supplies deterministic storage fixtures and
-runs real `fetch` requests through its admin and client handlers. Every registered
-provider must pass the complete suite. Passing establishes compatibility with the **DatabasePlugin and Release
-Catalog HTTP contracts for that Hot Updater version**:
+### Test a running server
 
-- Model reads and writes, pagination and ordering, relations, Channel safety,
-  atomic rollback, independent Release/Catalog version and absence expectations,
-  and competing conditional writes with exactly one winner.
-- Insights event identity, deduplication, counts, filtering, and ordering.
-- Version and fingerprint projections, rollout metadata, rollback candidates,
-  Catalog identity, cache expiry, ETag revalidation, and HTTP errors.
-- Artifact identity and archive, manifest, and patch response selection.
-- Device selection across built-in → OTA A → OTA B → rollback A → built-in,
-  using HTTP catalogs and the production client selector. Each OTA transition
-  verifies the selected Bundle's artifact before advancing the simulated device.
-- Deleted active Releases, rollback below the native minimum, incompatible
-  Releases, cohort changes, and exclusion of crashed Bundles on later checks.
+`setupReleaseCatalogTestSuite` runs the Release Catalog scenarios against a
+server you started, through its framework routing and authentication:
 
-This is the acceptance gate used by the official providers. New contract
-scenarios are added centrally and run against every provider without changes to
-its setup. Run the complete suite against your actual test backend without skipped
-scenarios or mocked model methods. Repository mutation tests also run deliberately
-broken providers through this public suite to verify that known contract violations
-fail. Passing certifies the exercised versioned contracts; it does not prove every
-possible execution or deployment condition.
-
-Provider-specific concurrency stress, migrations, real storage access, and
-native installation have their own integration tests; the conformance suite
-certifies the database and HTTP behavior above.
-
-For a complete implementation of the lifecycle, see the
-[mock provider tests](https://github.com/gronxb/hot-updater/blob/next/plugins/mock/src/test/mockDatabase.spec.ts).
-
-### Test an existing HTTP server
-
-Use the HTTP suite directly to verify framework routing and authentication on a
-separately started server. All `examples-server` projects run this same suite
-against their spawned server processes.
-
-```ts
+```ts title="server.spec.ts"
 import {
   createHttpTestClient,
   setupReleaseCatalogTestSuite,
 } from "@hot-updater/test-utils";
 
-// Start your server against an isolated, disposable database in beforeAll.
-// Stop the server and dispose of that database in afterAll.
 setupReleaseCatalogTestSuite({
-  getClient: () => createHttpTestClient({
-    clientBaseUrl: "http://127.0.0.1:3000/hot-updater",
-    adminBaseUrl: "http://127.0.0.1:3000/hot-updater/admin",
-    adminHeaders: { Authorization: `Bearer ${adminToken}` },
-    // clientHeaders: { "x-api-key": clientApiKey },
-  }),
+  getClient: () =>
+    createHttpTestClient({
+      clientBaseUrl: "http://127.0.0.1:3000/hot-updater",
+      adminBaseUrl: "http://127.0.0.1:3000/hot-updater/admin",
+      adminHeaders: { Authorization: `Bearer ${process.env.ADMIN_TOKEN}` },
+    }),
 });
 ```
 
-Configure the test server's storage with `createReleaseCatalogTestStorage` from
-`@hot-updater/test-utils/node`. That entry does not load Vitest and can
-be imported by a separate server process. The database provider suite supplies
-it automatically to `createHttpClient`.
-
-Data preparation and policy changes use admin HTTP APIs; assertions use client
-and admin HTTP responses. Lifecycle scenarios pass the received Catalog to
-`selectDesiredRelease` from `@hot-updater/core`, just as the React Native client
-does. The simulated device retains its active Bundle, Release receipt, native
-minimum, cohort, and crash history between checks. Catalog refreshes honor real
-server cache expiry. The suite verifies selection and artifact resolution;
-native byte installation, activation, restart, and crash recovery require device
-E2Es. It never calls the database or compiler directly.
-
-The suite isolates cache keys by Channel and removes
-reusable Bundle/Release fixtures after each scenario. The harness disposes of
-the database after the suite to remove Channels and Catalogs, which have no
-public Catalog deletion API.
-
-For a Workers Vitest pool, replace `startHttpTestServer` with
-`createHandlerHttpTestClient` from the same package. The provider still runs the
-same conformance suite at its Web Request/Response boundary; see the
-[D1 provider setup](https://github.com/gronxb/hot-updater/blob/next/plugins/cloudflare/worker/src/databasePlugins.integration.spec.ts).
-
-## Configure Hot Updater
-
-Use the same provider in the CLI and self-hosted server:
-
-```ts title="hot-updater.config.ts"
-import { defineConfig } from "hot-updater";
-
-export default defineConfig({
-  database: myDatabase({ db }), // [!code ++]
-  // build: ...
-  // storage: ...
-});
-```
-
-```ts title="server.ts"
-export const hotUpdater = createHotUpdater({
-  database: myDatabase({ db }), // [!code ++]
-  clientAccess: { type: "api-key" },
-  storage,
-});
-```
-
-The CLI and server use the same database. Catalog identity is managed
-automatically; there is no additional identifier to configure or synchronize.
-
-## Standalone repositories
-
-A Standalone management repository exposes Bundle, patch, Release, catalog,
-and Channel models through the canonical server routes. It is not a complete
-database plugin because the server owns Insights, API keys, compilation,
-and the actual atomic transaction.
-
-## SQL Server limitation
-
-The Prisma SQL Server adapter retains its other models, but its five Insights
-methods reject before database I/O. SQL Server's padded string equality can
-merge IDs that differ by trailing spaces; its default Unicode/UUID ordering
-also differs from this contract. There is no silent fallback to weaker identity
-or pagination semantics. Use a supported Insights provider for these views.
-
-For `UPDATE_DOWNLOADED`, core maps the latest event to a response with its
-`from_bundle_id` running and its `to_bundle_id` / `to_release_id` pending.
-Other event types clear the pending response fields. These are server DTO rules,
-not fields that custom providers must store.
+Start the server on a disposable database, with
+`createReleaseCatalogTestStorage()` from `@hot-updater/test-utils/node` in its
+`storage`. That entry does not load Vitest, so a separate server process can
+import it. Add `clientHeaders` when the server's client routes need a key.

@@ -7,14 +7,14 @@ Add plugins to `createHotUpdater`. The new `@hot-updater/server/plugins` subpath
 
 `createHotUpdater({ database, plugins, storage, clientAccess })` runs each plugin's `init` once at startup and exposes each API as `hotUpdater.api.<id>`. Endpoints mount on `handlers.client`, behind the client-route policy, or on `handlers.admin`.
 
-Client routes have one policy source: exactly one plugin that provides `clientAuth`, or `clientAccess` (`"public"` or the existing objects). The types count clientAuth plugins in a tuple and name the fix. Startup throws `HotUpdaterConfigError` for any of these:
+Client routes have one policy source: exactly one plugin that provides `clientAuth`, or `clientAccess: "public"`. The types count clientAuth plugins in a tuple and name the fix. Startup throws `HotUpdaterConfigError` for any of these:
 
 - duplicate plugin ids
 - a `kind` key or other unknown keys
 - an async `init`
 - a `provides.clientAuth` that disagrees with the instance
 - colliding routes
-- plugin tables on a database that has no engine adapter yet
+- a database that is not on the storage engine
 
 Cacheable client responses vary by the policy's headers, so public servers now send `Vary: Accept-Encoding` alone.
 

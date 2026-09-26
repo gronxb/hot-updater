@@ -11,6 +11,30 @@ update, completed downloads waiting to apply, successful applications, and recov
 [verifying your first OTA](/docs/get-started/test-ota) and while operating a
 rollout.
 
+## Turn on the server plugin
+
+The server records reports through the `insights()`
+[server plugin](/docs/custom/server-plugins). The managed AWS, Cloudflare,
+Firebase, and Supabase servers run it. A custom server lists it in
+`createHotUpdater`:
+
+```ts title="src/hotUpdater.ts (excerpt)"
+import { createHotUpdater } from "@hot-updater/server";
+import { apiKeys } from "@hot-updater/server/plugins/api-keys";
+import { insights } from "@hot-updater/server/plugins/insights";
+
+export const hotUpdater = createHotUpdater({
+  database,
+  plugins: [insights(), apiKeys()], // [!code ++]
+});
+```
+
+`insights()` accepts `POST /events` on the client handler and serves the
+Insights queries on the admin handler. Its tables are part of the schema that
+`hot-updater db migrate` and each provider's migration create, whichever
+plugins the server runs. Without `insights()`, those routes answer `204` with
+`x-hot-updater-insights: disabled` and the app's reports are not stored.
+
 ## Configure reporting
 
 [`HotUpdater.init`](/docs/react-native-api/init) enables Insights by default.
@@ -39,12 +63,13 @@ reporting without
 starting an update check; use [custom update flows](/docs/guides/custom-update)
 to check, download, and apply updates at your chosen time. Use one configuration
 API per app. If your custom server intentionally uses
-`clientAccess: { type: "public" }`, omit the
+`clientAccess: "public"` instead of `apiKeys()`, omit the
 client-key header. See [API key authentication](/docs/custom/api-key-authentication).
 
 Set `insights: false` in your `init` or `wrap` options to disable client reporting.
-Native app-ready handling and crash recovery still run, and server Insights
-routes remain available. This setting does not delete reports already stored.
+Native app-ready handling and crash recovery still run, and the server's
+Insights routes are unchanged. This setting does not delete reports already
+stored.
 
 The client reports these outcomes:
 
@@ -115,16 +140,26 @@ not an applied-update check. Combine the running app's visible change with the
 app-ready outcome and the server's received report.
 
 If an expected report is absent, check that reporting is enabled, the app
-reached readiness, and the handler URL and client header match the deployed
-server. Inspect app logs for Insights warnings. Server availability and
-filters affect what the Console can show; a missing report does not prove
-that the update failed.
+reached readiness, the server runs `insights()`, and the handler URL and client
+header match the deployed server. Inspect app logs for Insights warnings.
+Server availability and filters affect what the Console can show; a missing
+report does not prove that the update failed.
 
 ## Read the Console
 
-Use [the local or deployed Console](/docs/guides/console). Insights views need a
-direct database plugin; `standaloneRepository` does not currently proxy the
-Insights models.
+Use [the local or deployed Console](/docs/guides/console). Where it reads
+Insights depends on its database configuration:
+
+- With a direct database, it runs `insights()` over that database, as the
+  server does. `hot-updater console` loads the plugins that the project's
+  `hotUpdater.plugins.ts` exports as `plugins`; `hot-updater init` writes that
+  file for managed providers. A deployed Console takes `plugins` in its
+  [configuration](/docs/guides/console-deployment#add-your-plugins). Without
+  `insights()` there, the Insights pages show that Insights is off.
+- With `standaloneRepository`, it reads the Insights overview, events, and
+  installations from the server's admin handler, and shows that Insights is
+  off when the server runs without `insights()`. App usage and bundle activity
+  need a direct database configuration.
 
 The Bundles list shows compact **Active**, **Downloaded**, and **Recovered** counts over the last
 30 days. Bundle Detail keeps these counts and a small activity graph above

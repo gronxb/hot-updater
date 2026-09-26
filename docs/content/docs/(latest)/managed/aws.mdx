@@ -215,10 +215,11 @@ credentials stay in the deploy environment.
 <Callout type="info">
   The managed AWS runtime exposes `/version` publicly. OTA update checks and
   Insights ingestion require `x-api-key: $HOT_UPDATER_API_KEY`, using a key
-  registered or created during init. Internally, Insights is always available
-  and `clientAccess` uses the `api-key` policy; only `handlers.client` is
-  mounted. API keys do not authorize Insights query routes, and bundle
-  management endpoints are not mounted on the public function URL.
+  registered or created during init. Internally, the server runs the
+  `insights()` and `apiKeys()` plugins that `@hot-updater/aws` exports as
+  `plugins`; only `handlers.client` is mounted. API keys do not authorize
+  Insights query routes, and bundle management endpoints are not mounted on
+  the public function URL.
 </Callout>
 
 ## Cost and capacity

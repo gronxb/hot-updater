@@ -1,6 +1,6 @@
 ---
 title: "Firestore Database"
-description: Store your Hot Updater bundle metadata in Cloud Firestore, Firebase's NoSQL document database.
+description: Run Hot Updater's database in one Cloud Firestore collection.
 icon: firebase
 ---
 
@@ -23,14 +23,16 @@ configuration below.
 ## Configuration
 
 ```typescript
-import type { Credential } from 'firebase-admin/app';
+import type { AppOptions } from "firebase-admin/app";
 
-interface FirebaseDatabaseConfig {
-  projectId: string;               // Firebase project ID
-  credential: Credential;          // Firebase credential
-  collection?: string;             // The one collection it uses; defaults to "hot_updater_v1"
-}
+type FirebaseDatabaseConfig = AppOptions & {
+  collection?: string; // The one collection it uses; defaults to "hot_updater_v1"
+};
 ```
+
+Pass `projectId` and `credential`, as for any Firebase Admin app. The database
+initializes the default Firebase Admin app with these options, or uses the
+default app when the process has already initialized one.
 
 ## Collection and indexes
 
@@ -39,10 +41,11 @@ The database keeps every row in one collection, `hot_updater_v1` by default, as
 a copy of it, written in the same transaction. Reads use two composite indexes,
 on `pk` ascending with `sk` ascending and descending, and `row` is exempt from
 single-field indexing. `firestore.indexes.json` from the managed setup declares
-both; deploy it and wait until the indexes are ready before serving traffic.
+both for `hot_updater_v1`; deploy it and wait until the indexes are ready
+before serving traffic. If you set `collection`, declare the same indexes and
+exemption for that collection instead.
 
-Then write the schema settings the database checks before its first read.
-`firebaseDatabase()` answers 503 until they exist:
+Then write the schema settings the database checks before its first read:
 
 ```typescript
 import { migrateFirebaseDatabase } from '@hot-updater/firebase';
@@ -54,9 +57,44 @@ await migrateFirebaseDatabase({
 });
 ```
 
-`hot-updater init` and the managed setup's key script both run it. Data in the
-`hot_updater_v1_*` collections comes from a 1.0 release candidate; use a new
-project, or delete those collections, for 1.0.
+`migrateFirebaseDatabase` takes the same configuration as `firebaseDatabase`.
+`hot-updater init` and the managed setup's key script both run it.
+`hot-updater db migrate`, run with the file that exports a server's
+`hotUpdater`, writes the same settings, and those of the server's
+[third-party plugins](/docs/custom/server-plugins#create-the-plugins-tables),
+whose tables need no collection or index of their own.
+Init refuses a project whose `hot_updater_v1_*` collections hold data; to
+replace a database that a 1.0 release candidate created, follow the
+[upgrade guide](/docs/guides/upgrade-to-v1).
+
+## Schema settings
+
+The settings are the rows `schema.engine`, `schema.core`, `schema.insights` and
+`schema.apiKeys`. Before its first read or write, the database checks them in
+one batch read. While one is missing or different, it throws
+`HotUpdaterSchemaMigrationRequiredError`, which names the setting, and the
+server's handlers answer 503. A running server checks again on its next
+request, so it recovers without a restart once the settings exist.
+
+## How the collection is used
+
+`firebaseDatabase(config)` returns an engine database,
+`{ name, adapter, dispose }`, which `defineConfig` and `createHotUpdater` both
+accept. Its adapter is the
+key-value helper over the collection, behind the schema settings check:
+
+- Each document's id is a hash of its `pk` and `sk`. Maps and arrays are stored
+  as JSON text, since Firestore has no nested arrays and does not keep map key
+  order.
+- A write is one `runTransaction` that reads only the documents its operations
+  guard. Counters increment without a read.
+- A transaction holds at most 500 writes and 10 MB, a document at most 1 MB,
+  and `pk` and `sk` at most 1,500 bytes each. A write over these limits is
+  refused before anything is written.
+
+The collection holds core's rows (Bundles, patches, Releases, Release Catalogs,
+Channels and their counters) and the rows of the built-in Insights and API key
+plugins.
 
 ## Environment variables
 
@@ -124,6 +162,31 @@ export default defineConfig({
   // ... other config
 });
 ```
+
+## Custom server usage
+
+Use `firebaseDatabase` with `createHotUpdater` for self-hosted servers:
+
+```typescript title="src/hotUpdater.ts"
+import { firebaseDatabase } from "@hot-updater/firebase"; // [!code ++]
+import { createHotUpdater } from "@hot-updater/server";
+import { apiKeys } from "@hot-updater/server/plugins/api-keys";
+import { insights } from "@hot-updater/server/plugins/insights";
+import { applicationDefault } from "firebase-admin/app";
+
+export const hotUpdater = createHotUpdater({
+  database: firebaseDatabase({ // [!code ++]
+    projectId: process.env.FIREBASE_PROJECT_ID!, // [!code ++]
+    credential: applicationDefault(), // [!code ++]
+  }), // [!code ++]
+  plugins: [insights(), apiKeys()],
+  // ... other options
+});
+```
+
+`insights()` records app events, and `apiKeys()` protects client routes with
+the `x-api-key` header. The managed Cloud Function runs the same list, which
+`@hot-updater/firebase` exports as `plugins`.
 
 ## Dependencies
 

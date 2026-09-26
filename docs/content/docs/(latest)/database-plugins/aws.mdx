@@ -1,6 +1,6 @@
 ---
 title: "AWS DynamoDB"
-description: Store Hot Updater bundle and patch metadata in DynamoDB.
+description: Run Hot Updater's database on one DynamoDB table.
 
 icon: aws
 ---
@@ -34,8 +34,8 @@ aws dynamodb create-table \
     AttributeName=sk,KeyType=RANGE
 ```
 
-Then write the schema settings the plugin checks before its first read.
-`dynamoDB()` answers 503 until they exist:
+Then write the schema settings with `migrateDynamoDB`, which takes the same
+configuration as `dynamoDB`:
 
 ```typescript
 import { migrateDynamoDB } from "@hot-updater/aws";
@@ -44,62 +44,75 @@ await migrateDynamoDB({ tableName: "hot-updater", region: "us-east-1" });
 ```
 
 When the table is missing, `migrateDynamoDB` also creates it, on demand and
-without deletion protection, which suits DynamoDB Local. A table with the
-`hot-updater-update-index` secondary index comes from a 1.0 release candidate;
-create a new table for 1.0.
+without deletion protection, which suits DynamoDB Local. To write the settings
+with the AWS CLI instead, use `dynamodb/schema-settings.json` from
+`hot-updater infra scaffold --provider aws`; see
+[Infrastructure Templates](/docs/guides/infrastructure-templates).
 
-The same table stores all seven official database domains: Bundles, Bundle
-patches, Releases, Release Catalogs, Channels, Insights events, and API keys.
-`dynamoDB()` provides all seven models directly; there is no
-component registry or feature migration to compose before serving traffic:
+`hot-updater db migrate`, run with the file that exports a server's
+`hotUpdater`, does the same, and also writes the settings items of the
+server's [third-party plugins](/docs/custom/server-plugins#create-the-plugins-tables).
+Their tables are key prefixes in the same table, so they need nothing else.
 
-```typescript
-import { dynamoDB } from "@hot-updater/aws";
-import { createHotUpdater } from "@hot-updater/server";
+## Schema settings
 
-const database = dynamoDB({
-  tableName: "hot-updater",
-  region: "us-east-1",
-});
-const hotUpdater = createHotUpdater({
-  database,
-  clientAccess: { type: "api-key" },
-});
-```
+The settings are four items under the partition `private_hot_updater_settings`:
+`schema.engine`, `schema.core`, `schema.insights` and `schema.apiKeys`. Before
+its first read or write, the database checks them in one batch read. While one
+is missing or different, it throws `HotUpdaterSchemaMigrationRequiredError`,
+which names the setting, and the server's handlers answer 503. A running
+server checks again on its next request, so it recovers without a restart
+once the settings exist.
 
-The built-in Insights event and query routes are always available.
-`clientAccess` is required. The `api-key` policy protects update checks and
-event ingestion with keys stored through the database's official API key model.
+`hot-updater init` refuses an existing table of another shape, such as one
+with the `hot-updater-update-index` secondary index. To replace a table that a
+1.0 release candidate created, follow the
+[upgrade guide](/docs/guides/upgrade-to-v1).
+
+## How the table is used
+
+`dynamoDB(config)` returns an engine database, `{ name, adapter, dispose }`,
+which `defineConfig` and `createHotUpdater` both accept. Its adapter is the
+key-value helper over the table, behind the schema settings check:
+
+- Each row is one item whose `pk` is its table's name. Each index a row belongs
+  to adds an item holding a copy of it, whose `pk` starts with `<table>#`,
+  written in the same transaction.
+- Reads are strongly consistent. A unique lookup, such as an API key by its
+  hash, is one point read.
+- Each write is one `TransactWriteItems` call with a client request token.
+
+The table holds core's rows (Bundles, patches, Releases, Release Catalogs,
+Channels and their counters) and the rows of the built-in Insights and API key
+plugins. `dispose()` closes the DynamoDB and CloudFront clients.
 
 ## Configuration
 
 ```typescript
-interface DynamoDBConfig {
+import type { DynamoDBClientConfig } from "@aws-sdk/client-dynamodb";
+
+interface DynamoDBConfig extends DynamoDBClientConfig {
   tableName: string;
-  region?: string;
-  endpoint?: string;
-  apiBasePath?: string;
   cloudfrontDistributionId?: string;
-  shouldWaitForInvalidation?: boolean;
-  credentials?: {
-    accessKeyId: string;
-    secretAccessKey: string;
-  };
+  apiBasePath?: string; // default: "/release-catalogs"
+  shouldWaitForInvalidation?: boolean; // default: false
 }
 ```
 
-If `credentials` is omitted, the AWS SDK default credential chain is used. This
-lets you rely on local AWS CLI sessions, `AWS_PROFILE`, shared config files, or
-other standard AWS credential sources.
+The other options, such as `region`, `endpoint` and `credentials`, configure
+the AWS SDK's DynamoDB client. If `credentials` is omitted, the AWS SDK default
+credential chain is used. This lets you rely on local AWS CLI sessions,
+`AWS_PROFILE`, shared config files, or other standard AWS credential sources.
 
-When `cloudfrontDistributionId` is set, a successful database commit containing
-a Bundle or Bundle-patch change submits an invalidation for
-`/release-catalogs/*` by default. Commits that change only Releases, Release
-Catalogs, Channels, Insights, or API keys do not trigger this
-adapter-level invalidation. Override `apiBasePath` only when a custom deployment
-mounts the catalog routes elsewhere. Set `shouldWaitForInvalidation: true` when
-a deployment or E2E flow must wait for CloudFront propagation; it defaults to
-`false`.
+When `cloudfrontDistributionId` is set, each committed write that changes a
+Release Catalog, such as a deploy or a Release policy change, invalidates
+`<apiBasePath>/*` on that distribution, `/release-catalogs/*` by default.
+Writes that change no Catalog, such as Insights events or API keys, invalidate
+nothing. Override `apiBasePath` only when a custom deployment mounts the
+catalog routes elsewhere. A failed invalidation logs a warning, and the write
+still succeeds.
+Set `shouldWaitForInvalidation: true` when a deployment or E2E flow must wait
+for CloudFront propagation; it waits up to five minutes.
 
 ## Usage
 
@@ -156,8 +169,10 @@ Use `dynamoDB` with `createHotUpdater` for self-hosted servers:
 ```typescript title="src/hotUpdater.ts"
 import { dynamoDB } from "@hot-updater/aws"; // [!code ++]
 import { createHotUpdater } from "@hot-updater/server";
+import { apiKeys } from "@hot-updater/server/plugins/api-keys";
+import { insights } from "@hot-updater/server/plugins/insights";
 
-const hotUpdater = createHotUpdater({
+export const hotUpdater = createHotUpdater({
   database: dynamoDB({ // [!code ++]
     tableName: process.env.AWS_DYNAMODB_TABLE_NAME!, // [!code ++]
     region: process.env.AWS_REGION!, // [!code ++]
@@ -166,24 +181,30 @@ const hotUpdater = createHotUpdater({
       secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!, // [!code ++]
     }, // [!code ++]
   }), // [!code ++]
-  clientAccess: { type: "api-key" },
+  plugins: [insights(), apiKeys()],
 });
 ```
+
+`insights()` records app events, and `apiKeys()` protects client routes with
+the `x-api-key` header. The managed AWS server runs the same list, which
+`@hot-updater/aws` exports as `plugins`.
+
+## Permissions
 
 The Lambda or server role reads with `BatchGetItem` and `Query`, and writes
 with `TransactWriteItems`, which needs `PutItem`, `UpdateItem`, `DeleteItem`,
 and `ConditionCheckItem` on the table. Every item's partition key is a table
 name, or a table name followed by `#` for its index items, so a
 `dynamodb:LeadingKeys` condition can scope the role to Hot Updater's items; the
-managed setup's policy lists them.
+managed setup's policy lists them. `migrateDynamoDB` also needs
+`DescribeTable`, and `CreateTable` when it creates the table.
 
-Reads are strongly consistent. Each row is one item, and each index a row
-belongs to adds an item holding a copy of it, written in the same transaction.
-A unique lookup, such as an API key by its hash, is one point read.
+## Transaction limits
 
-DynamoDB permits at most 100 items and 4 MB in one transaction, and 400 KB in
-one item. Every `commit({ changes, expectations })` envelope is one transaction,
-with its index items, relation counters, and cascade deletions; a commit over
-the limit is refused before anything is written. A Release with a wide app
-version range also writes up to 16 base-candidate rows, so commit Releases a
-few at a time.
+DynamoDB permits at most 100 items and 4 MB in one transaction, 400 KB in one
+item, and keys of 2,048 bytes for `pk` and 1,024 bytes for `sk`. A
+transaction carries its rows' index items, reference counters and aggregate
+rows. A deploy writes each Bundle with its patches, its Release and the next
+Catalog of its scope; a Release whose app version range spans several minor
+versions also writes up to 16 auto-patch candidate rows. A write over the
+limits is refused before anything is written.

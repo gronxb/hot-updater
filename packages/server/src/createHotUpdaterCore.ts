@@ -9,7 +9,8 @@ import {
   HotUpdaterConfigError,
 } from "./assembly/assemblePlugins";
 import type { CoreApi } from "./core/api";
-import type { ToolingDatabase } from "./db/types";
+import { toolingTargetOf } from "./database/builtInDatabase";
+import type { ToolingDatabase, ToolingTarget } from "./db/types";
 import {
   type ClientRoutePolicy,
   createHotUpdaterHandlers,
@@ -164,6 +165,8 @@ export const hotUpdaterCoreMetadata = Symbol.for(
 export type HotUpdaterCoreMetadata = {
   /** The configured database, with the tooling `hot-updater db` runs. */
   readonly database: ToolingDatabase;
+  /** The tables and settings rows that tooling creates for this server's plugins. */
+  readonly target: ToolingTarget;
 };
 
 export function getHotUpdaterCoreMetadata(
@@ -236,7 +239,10 @@ export function createHotUpdater<
   };
   Object.defineProperty(api, hotUpdaterCoreMetadata, {
     enumerable: false,
-    value: { database } satisfies HotUpdaterCoreMetadata,
+    value: {
+      database,
+      target: toolingTargetOf(options.plugins ?? []),
+    } satisfies HotUpdaterCoreMetadata,
   });
   return api;
 }

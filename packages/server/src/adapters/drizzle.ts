@@ -1,6 +1,6 @@
 import {
-  builtInSchema,
   builtInSettings,
+  builtInTarget,
   createEngineDatabase,
 } from "../database/builtInDatabase";
 import { createSqlAdapter } from "../database/sql/sqlAdapter";
@@ -44,20 +44,20 @@ export const drizzleAdapter = (config: DrizzleConfig): ToolingDatabase => {
       adapter: createSqlAdapter({ executor }),
     }),
     provider,
-    generateSchema: (version: Parameters<SchemaGenerator>[0]) => {
+    generateSchema: ((version, _name, { schema } = builtInTarget) => {
       if (version !== "latest" && version !== builtInSettings["schema.core"]) {
         throw new Error(`Invalid version ${version}`);
       }
       return {
-        code: generateDrizzleEngineSchema(provider, builtInSchema),
+        code: generateDrizzleEngineSchema(provider, schema),
         path: "hot-updater-schema.ts",
       };
-    },
-    createMigrator: () =>
+    }) satisfies SchemaGenerator,
+    createMigrator: ({ settings } = builtInTarget) =>
       createSettingsMigrator({
         adapterName: "drizzle",
         executor,
-        settings: builtInSettings,
+        settings,
         applyTables: "`drizzle-kit push` (or your drizzle-kit migrations)",
       }),
   };

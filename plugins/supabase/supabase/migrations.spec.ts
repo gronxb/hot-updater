@@ -3,7 +3,12 @@ import path from "node:path";
 
 import { PGlite } from "@electric-sql/pglite";
 import { createHotUpdater } from "@hot-updater/server";
-import { createDatabasePluginApis } from "@hot-updater/server/db";
+import {
+  createDatabasePluginApis,
+  createMigrator,
+  generateSchema,
+} from "@hot-updater/server/db";
+import { definePlugin, defineTable } from "@hot-updater/server/plugins";
 import {
   createInsightsModel,
   insights,
@@ -16,6 +21,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { supabaseDatabase } from "../src/supabaseDatabase";
 import { toApplyStatement } from "../src/supabaseExecutor";
+import { supabaseDatabase as supabaseToolingDatabase } from "../src/supabaseMigration";
 import {
   SUPABASE_APPLY_FUNCTION,
   SUPABASE_SETTINGS_TABLE,
@@ -153,6 +159,67 @@ describe("Supabase schema", () => {
       ]),
     ).resolves.toMatchObject({ rows: [{ r: [{ rows: [], changes: 0 }] }] });
     await db.close();
+  });
+
+  it("generates a migration that adds a server's plugin tables to the apply RPC", async () => {
+    const notes = definePlugin({
+      id: "notes",
+      schemaVersion: "1",
+      schema: {
+        notes: defineTable(
+          { id: { type: "string" }, text: { type: "string" } },
+          { key: ["id"] },
+        ),
+      },
+      init: ({ db }) => ({
+        api: {
+          add: (id: string, text: string) =>
+            db.transaction(async (tx) => {
+              tx.create("notes", { id, text });
+            }),
+          read: (id: string) => db.findOne("notes", { id }),
+        },
+      }),
+    });
+    const hotUpdater = createHotUpdater({
+      database: supabaseToolingDatabase({
+        supabaseUrl: "https://project.supabase.co",
+        supabaseServiceRoleKey: "service-role-key",
+      }),
+      plugins: [notes],
+      clientAccess: "public",
+    });
+    // The apply RPC runs no DDL, so the schema comes from migration files.
+    expect(() => createMigrator(hotUpdater)).toThrow(
+      "run `hot-updater db generate`",
+    );
+    const migration = generateSchema(hotUpdater, "latest");
+    expect(migration.path).toMatch(
+      /^supabase\/migrations\/\d{14}_hot-updater\.sql$/u,
+    );
+
+    const db = await createDatabase();
+    state.db = db;
+    try {
+      await expect(hotUpdater.api.notes.read("n1")).rejects.toThrow(
+        '"schema.notes" for supabaseDatabase is missing',
+      );
+      await db.exec(
+        `RESET ROLE; ${migration.code} GRANT ALL ON ALL TABLES IN SCHEMA public TO service_role; SET ROLE service_role;`,
+      );
+      await hotUpdater.api.notes.add("n1", "hello");
+      await expect(hotUpdater.api.notes.read("n1")).resolves.toEqual({
+        id: "n1",
+        text: "hello",
+      });
+      const secured = await db.query<{ secured: boolean }>(
+        "SELECT rowsecurity AS secured FROM pg_tables WHERE tablename = 'hot_updater_v1_notes_notes'",
+      );
+      expect(secured.rows).toEqual([{ secured: true }]);
+    } finally {
+      state.db = undefined;
+      await db.close();
+    }
   });
 });
 

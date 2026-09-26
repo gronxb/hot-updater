@@ -12,6 +12,9 @@ or your existing backend. Make the database and storage environment variables
 available to the server and schema commands. The React Native project's deploy
 configuration is a separate step.
 
+`kyselyAdapter` supports PostgreSQL, MySQL 8.0 or later, and SQLite.
+CockroachDB and SQL Server are not supported.
+
 ## Installation
 
 Install Kysely and SQLite driver.
@@ -34,7 +37,7 @@ Create a database connection file:
 import { Kysely, SqliteDialect } from "kysely";
 import Database from "better-sqlite3";
 
-export const db = new Kysely({
+export const db = new Kysely<object>({
   dialect: new SqliteDialect({
     database: new Database("./data/database.db"),
   }),
@@ -48,12 +51,14 @@ Create the Hot Updater instance:
 ```typescript title="src/hotUpdater.ts"
 import { createHotUpdater } from "@hot-updater/server";
 import { kyselyAdapter } from "@hot-updater/server/adapters/kysely"; // [!code ++]
+import { apiKeys } from "@hot-updater/server/plugins/api-keys";
+import { insights } from "@hot-updater/server/plugins/insights";
 import { s3Storage } from "@hot-updater/aws";
 import { db } from "./kysely";
 
 export const hotUpdater = createHotUpdater({
   database: kyselyAdapter({ db, provider: "sqlite" }), // [!code ++]
-  clientAccess: { type: "api-key" },
+  plugins: [insights(), apiKeys()],
   storage: [
     s3Storage({
       region: "auto",
@@ -69,16 +74,24 @@ export const hotUpdater = createHotUpdater({
 });
 ```
 
+`kyselyAdapter({ db, provider })` takes only these two options. It returns an
+engine database with the migrator that `hot-updater db` runs. `provider` is
+`"postgresql"`, `"mysql"` or `"sqlite"` and must match the Kysely dialect. The
+adapter runs Hot Updater's shared SQL core on the Kysely instance, with one
+transaction per write; on SQLite, each transaction begins with
+`BEGIN IMMEDIATE`. `insights()` records app events, and `apiKeys()` protects
+the client routes with the `x-api-key` header.
+
 ## Schema management
 
-Generate SQL migration files for Hot Updater tables:
+Generate an SQL migration file for Hot Updater's tables:
 
 ```bash
 mkdir -p data
 npx hot-updater db generate src/hotUpdater.ts --yes
 ```
 
-Apply migrations to the database:
+Apply the schema to the database:
 
 ```bash
 npx hot-updater db migrate src/hotUpdater.ts
@@ -87,10 +100,23 @@ npx hot-updater db migrate src/hotUpdater.ts
 <Callout>
 **Generate vs Migrate**
 
-- `generate` - Creates SQL migration files for manual review before applying to database
-- `migrate` - Runs Kysely migrator to directly apply migrations to the database
+- `generate` - Writes the SQL to `hot-updater_migrations/` for review or for your own migration tool
+- `migrate` - Applies the same SQL to the database through Kysely
 
 </Callout>
+
+The SQL creates the tables and indexes, with no database foreign keys, then
+writes the schema settings rows last. The tables include those of the
+server's [third-party plugins](/docs/custom/server-plugins#create-the-plugins-tables). `db migrate` runs it in one transaction
+on PostgreSQL and SQLite. Both commands read the database first and do
+nothing when its settings are current; run `db migrate` again after upgrading
+Hot Updater. They refuse a database created by an older Hot Updater schema
+instead of converting it; start from an empty database.
+
+The server checks the settings rows before its first read or write. Until
+they exist, it throws `HotUpdaterSchemaMigrationRequiredError` and its
+handlers answer 503. A running server checks again on its next request, so it
+recovers once the migration has run.
 
 <Callout>
   Need to generate SQL without config? See [SQL

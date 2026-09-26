@@ -22,6 +22,7 @@ backend, use the matching integration below and keep its established tooling.
 | `hot-updater.config.ts` | React Native project or deploy job | Build bundles, upload artifacts and send management requests through `standaloneRepository`.   |
 | `createHotUpdater`      | Server project                     | Compile Release Catalogs and serve client and admin handlers using a direct database provider. |
 | Database adapter        | Server project                     | Persist canonical rows, prepare the schema and commit changes atomically.                      |
+| Server plugins          | Server project                     | Add Insights, API keys, or your own tables, APIs and routes to `createHotUpdater`.             |
 | Storage plugin          | Deploy job and server              | Upload artifacts and resolve their stored locations for downloads.                             |
 
 Pass database and storage plugin objects directly to `createHotUpdater` and
@@ -41,8 +42,8 @@ schema before creating the first API key or serving requests.
 | Adapter                                  | Schema preparation                                                                                           |
 | ---------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
 | [Kysely](/docs/custom/database/kysely)   | Generate SQL for review, then use `hot-updater db migrate`.                                                  |
-| [Drizzle](/docs/custom/database/drizzle) | Generate the Drizzle schema and apply it with Drizzle Kit.                                                   |
-| [Prisma](/docs/custom/database/prisma)   | Generate/merge the Prisma models, regenerate the client and apply the schema with Prisma.                    |
+| [Drizzle](/docs/custom/database/drizzle) | Generate the Drizzle schema, apply it with Drizzle Kit, then use `hot-updater db migrate`.                   |
+| [Prisma](/docs/custom/database/prisma)   | Generate/merge the Prisma models, apply the schema with Prisma, then use `hot-updater db migrate`.           |
 | [MongoDB](/docs/custom/database/mongodb) | Use a replica set or sharded cluster with transactions enabled; apply indexes with `hot-updater db migrate`. |
 
 For database tooling outside an ORM, use [SQL schema export](/docs/custom/database/sql-export).
@@ -62,19 +63,23 @@ prefix, including for signed storage-download URLs resolved against `baseURL`.
 
 ## Runtime policy
 
-Every `createHotUpdater` configuration sets `clientAccess`. Use
-`{ type: "api-key" }` to require a client key for Release Catalogs, artifact
-resolution and Insights ingestion, or explicitly choose `{ type: "public" }`.
+Client routes need exactly one access policy. Add the `apiKeys()` plugin to
+require a client key for Release Catalogs, artifact resolution, Insights
+ingestion and plugin client routes, or explicitly set `clientAccess: "public"`.
+`createHotUpdater` refuses a configuration with neither or both.
 
-| Handler           | Routes and access                                                                                                                                                              |
-| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `handlers.client` | Public `/version`; Release Catalogs, artifacts and `POST /events` follow `clientAccess`; signed storage-download routes are available when the storage provider supports them. |
-| `handlers.admin`  | Bundle, Release, catalog, Channel, database-commit and Insights-query routes. Your framework authenticates every request before mounting this handler.                         |
+| Handler           | Routes and access                                                                                                                                                                                       |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `handlers.client` | Public `/version`; Release Catalogs, artifacts, `POST /events` and plugin client routes follow the client policy; signed storage-download routes are available when the storage provider supports them. |
+| `handlers.admin`  | Bundle, Release, catalog and Channel routes, Insights queries and plugin admin routes. Your framework authenticates every request before mounting this handler.                                         |
 
-Insights is built in. React Native clients report lifecycle events by default
-and can opt out with `HotUpdater.init({ insights: false })`. Client API keys do
-not grant admin or Insights-query access. See [API keys](/docs/custom/api-key-authentication)
-for bootstrap and rotation, and the
+Insights runs as the `insights()` plugin. React Native clients report lifecycle
+events by default and can opt out with `HotUpdater.init({ insights: false })`;
+without the plugin, the Insights routes answer `204` with
+`x-hot-updater-insights: disabled`. Client API keys do not grant admin or
+Insights-query access. See [API keys](/docs/custom/api-key-authentication) for
+bootstrap and rotation, [Server Plugins](/docs/custom/server-plugins) to add
+your own tables and routes, and the
 [repository server contract](/docs/database-plugins/standalone#server-contract)
 for the HTTP operations used by the CLI.
 

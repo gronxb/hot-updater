@@ -1,4 +1,12 @@
-import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readdir,
+  readFile,
+  rm,
+  stat,
+  writeFile,
+} from "fs/promises";
 import { tmpdir } from "os";
 import path from "path";
 
@@ -30,6 +38,7 @@ const mockCli = vi.hoisted(() => ({
 const mockServer = vi.hoisted(() => ({
   createMigrator: vi.fn(),
   generateSchema: vi.fn(),
+  generatesSchema: vi.fn(() => false),
 }));
 
 vi.mock("@hot-updater/cli-tools", () => ({
@@ -59,11 +68,13 @@ vi.mock("./utils/load-hot-updater", () => ({
 vi.mock("@hot-updater/server/db", () => ({
   createMigrator: mockServer.createMigrator,
   generateSchema: mockServer.generateSchema,
+  generatesSchema: mockServer.generatesSchema,
 }));
 
 describe("generate command", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockServer.generatesSchema.mockReturnValue(false);
     mockServer.createMigrator.mockReturnValue({
       migrateToLatest: vi.fn(async () => ({
         getSQL: () =>
@@ -78,7 +89,7 @@ describe("generate command", () => {
     vi.restoreAllMocks();
   });
 
-  it("rejects MongoDB migration file generation after disposing loaded config", async () => {
+  it("rejects generation for a database without schema files after disposing loaded config", async () => {
     const events: string[] = [];
     const dispose = vi.fn(async () => {
       events.push("dispose");
@@ -107,7 +118,7 @@ describe("generate command", () => {
     );
     expect(mockCli.log.error).toHaveBeenCalledWith(
       expect.stringContaining(
-        "MongoDB does not support migration file generation.",
+        "The mongodb database does not generate schema files.",
       ),
     );
     expect(mockCli.log.error).toHaveBeenCalledWith(
@@ -183,6 +194,46 @@ describe("generate command", () => {
       await expect(
         stat(path.join(outputDir, "hot-updater-schema.ts")),
       ).rejects.toThrow();
+    } finally {
+      await rm(outputDir, { recursive: true, force: true });
+    }
+  });
+
+  it("writes a provider's migration once, skipping a rerun that repeats it", async () => {
+    const outputDir = await mkdtemp(
+      path.join(tmpdir(), "hot-updater-supabase-migration-"),
+    );
+    const loadedConfig: LoadHotUpdaterResult = {
+      absoluteConfigPath: "/repo/src/db.ts",
+      adapterName: "supabaseDatabase",
+      dispose: vi.fn(),
+      hotUpdater: {
+        adapterName: "supabaseDatabase",
+      },
+    };
+    const migrations = path.join(outputDir, "supabase", "migrations");
+    mockServer.generatesSchema.mockReturnValue(true);
+    mockServer.generateSchema
+      .mockReturnValueOnce({
+        code: "CREATE TABLE notes_notes (id text);\n",
+        path: "supabase/migrations/20260924000000_hot-updater.sql",
+      })
+      .mockReturnValueOnce({
+        code: "CREATE TABLE notes_notes (id text);\n",
+        path: "supabase/migrations/20260924000100_hot-updater.sql",
+      });
+    vi.mocked(loadHotUpdater).mockResolvedValue(loadedConfig);
+
+    try {
+      await generate({ configPath: "src/db.ts", outputDir, skipConfirm: true });
+      await generate({ configPath: "src/db.ts", outputDir, skipConfirm: true });
+
+      await expect(readdir(migrations)).resolves.toEqual([
+        "20260924000000_hot-updater.sql",
+      ]);
+      expect(mockCli.log.warn).toHaveBeenCalledWith(
+        "Identical migration already exists: 20260924000000_hot-updater.sql",
+      );
     } finally {
       await rm(outputDir, { recursive: true, force: true });
     }

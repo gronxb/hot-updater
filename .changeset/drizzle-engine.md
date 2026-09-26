@@ -10,4 +10,4 @@ Run the Drizzle adapter on the new storage engine. `drizzleAdapter({ db, provide
 - **Schema:** `hot-updater db generate` writes the engine's tables as a Drizzle schema for `drizzle-kit push`. Every column is typed exactly as the SQL schema declares it.
 - **Migrations:** after `drizzle-kit push`, `hot-updater db migrate` now runs for Drizzle and writes only the settings rows. It asks for the tables when they are missing and refuses a pre-engine database.
 - **Schema fence:** the adapter fences its schema, so handlers answer 503 until `db migrate` has run.
-- **Unused options:** the `schema` and `transaction` options are accepted and ignored.
+- **Unused options:** the `schema` option is accepted and ignored; it is for drizzle-kit. The `transaction` option is gone: every write runs in a transaction.
