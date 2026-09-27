@@ -1,0 +1,50 @@
+{
+  "commit": "f8bae42db534a377cd5e9f42b339c1f16b262b78",
+  "runs": {
+    "standalone-kysely": {
+      "taskId": "job-20260927004257-frf7c0",
+      "result": "passed",
+      "runtimeSha": null
+    },
+    "standalone-drizzle": {
+      "taskId": "job-20260927011314-bzr6ij",
+      "result": "passed",
+      "runtimeSha": null
+    },
+    "standalone-prisma": {
+      "taskId": "job-20260927013829-g0y21i",
+      "result": "passed",
+      "runtimeSha": null
+    },
+    "standalone-mongodb": {
+      "taskId": "job-20260927020335-55ndnh",
+      "result": "passed",
+      "runtimeSha": null
+    },
+    "standalone-dynamodb": {
+      "taskId": "job-20260927023012-7o7a1r",
+      "result": "passed",
+      "runtimeSha": null
+    },
+    "supabase": {
+      "taskId": "job-20260927052715-f88x69",
+      "result": "passed",
+      "runtimeSha": "10"
+    },
+    "cloudflare": {
+      "taskId": "job-20260927030038-hix4ch",
+      "result": "passed",
+      "runtimeSha": "4656076f-493d-4984-8524-cd6586bca90d"
+    },
+    "firebase": {
+      "taskId": "job-20260927044113-qu163p",
+      "result": "passed",
+      "runtimeSha": "4fe6718ead84d2b0e4465bb1ead78d2820b78532"
+    },
+    "aws": {
+      "taskId": "job-20260927071930-sg5esb",
+      "result": "passed",
+      "runtimeSha": "18"
+    }
+  }
+}
