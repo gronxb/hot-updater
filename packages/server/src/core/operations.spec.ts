@@ -12,7 +12,7 @@ import {
 import { describe, expect, it } from "vitest";
 
 import { createBundleFixture } from "../../../test-utils/src/databaseTestFixtures";
-import { createInProcessCoreApi } from "./api";
+import { createDatabaseCoreApi, createInProcessCoreApi } from "./api";
 
 const setup = () => {
   let clock = 1_000;
@@ -319,5 +319,97 @@ describe("core operations", () => {
     await expect(core.getBundle(target.id)).resolves.toMatchObject({
       patches: [],
     });
+  });
+});
+
+describe("cached client routes", () => {
+  /** Core over `adapter` with a purge that counts its calls. */
+  const withPurges = (adapter: DatabaseAdapter = createMemoryAdapter()) => {
+    let purges = 0;
+    const core = createInProcessCoreApi(adapter, {
+      onCachedRoutesChange: async () => {
+        purges += 1;
+      },
+    });
+    return { core, purges: () => purges };
+  };
+
+  it("purges once after a deploy commits, however many catalogs it wrote", async () => {
+    const { core, purges } = withPurges();
+    const android = {
+      ...createBundleFixture("702"),
+      platform: "android",
+    } as const;
+
+    await core.deploy([
+      deployment(createBundleFixture("701")),
+      deployment(android),
+    ]);
+
+    expect(purges()).toBe(1);
+  });
+
+  it("purges nothing for a write that changes no catalog, or for a preview", async () => {
+    const { core, purges } = withPurges();
+
+    await core.ensureChannel("beta");
+    expect(purges()).toBe(0);
+    const [deployed] = await core.deploy([
+      deployment(createBundleFixture("711")),
+    ]);
+    expect(purges()).toBe(1);
+    await core.preflightReleasePolicy({
+      releaseId: deployed!.release!.id,
+      patch: { rolloutCohortCount: 250 },
+    });
+
+    expect(purges()).toBe(1);
+  });
+
+  it("purges once, for the attempt that commits", async () => {
+    const memory = createMemoryAdapter();
+    const direct = createInProcessCoreApi(memory);
+    await direct.deploy([deployment(createBundleFixture("721"))]);
+    let raced = false;
+    // The first catalog write lets a concurrent deploy to the same scope land first, so the transaction reruns.
+    const adapter: DatabaseAdapter = {
+      ...memory,
+      write: async (ops) => {
+        if (
+          !raced &&
+          ops.some(
+            (op) => op.type !== "check" && op.table.name === "release_catalogs",
+          )
+        ) {
+          raced = true;
+          await direct.deploy([deployment(createBundleFixture("722"))]);
+        }
+        return memory.write(ops);
+      },
+    };
+    const { core, purges } = withPurges(adapter);
+
+    const [result] = await core.deploy([
+      deployment(createBundleFixture("723")),
+    ]);
+
+    expect(raced).toBe(true);
+    expect(result!.catalog.generation).toBe(3);
+    expect(purges()).toBe(1);
+  });
+
+  it("takes the purge from a configured database", async () => {
+    let purges = 0;
+    const core = createDatabaseCoreApi({
+      name: "memory",
+      adapter: createMemoryAdapter(),
+      onCachedRoutesChange: async () => {
+        purges += 1;
+      },
+    });
+
+    await core.deploy([deployment(createBundleFixture("731"))]);
+
+    expect(purges).toBe(1);
   });
 });

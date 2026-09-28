@@ -3,9 +3,9 @@ import { setupDatabaseAdapterConformanceSuite } from "@hot-updater/test-utils";
 import { Kysely } from "kysely";
 import { PGliteDialect } from "kysely-pglite-dialect";
 
-import { builtInSettings } from "../database/builtInDatabase";
 import { SETTINGS_TABLE } from "../database/fence";
 import { createTableStatements } from "../database/sql/sqlSchema";
+import { builtInSettings } from "../db/builtInDatabase";
 import { settingsStatements } from "../db/engineSql";
 import { kyselyAdapter } from "./kysely";
 

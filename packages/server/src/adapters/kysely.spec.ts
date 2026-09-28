@@ -15,10 +15,10 @@ import {
 } from "../../../test-utils/src/databaseTestFixtures";
 import { createDatabasePluginApis } from "../assembly/databasePlugins";
 import { createInProcessCoreApi } from "../core/api";
-import { builtInSchema } from "../database/builtInDatabase";
 import { DatabaseConstraintError } from "../database/errors";
 import { HotUpdaterSchemaMigrationRequiredError } from "../database/fence";
 import { isMultiIndex, quoteSql } from "../database/sql/sqlSchema";
+import { builtInSchema } from "../db/builtInDatabase";
 import type { ToolingDatabase } from "../db/types";
 import { createHotUpdater } from "../index";
 import { createInsightsModel, insights } from "../plugins/insights";

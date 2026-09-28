@@ -1,10 +1,7 @@
 import type { Kysely } from "kysely";
 
-import {
-  builtInTarget,
-  createEngineDatabase,
-} from "../database/builtInDatabase";
 import { createSqlAdapter } from "../database/sql/sqlAdapter";
+import { builtInTarget, createEngineDatabase } from "../db/builtInDatabase";
 import { createEngineSqlMigrator } from "../db/engineSqlMigrator";
 import type { ORMSQLProvider, ToolingDatabase } from "../db/types";
 import { kyselyExecutor } from "./kyselyExecutor";

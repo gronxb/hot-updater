@@ -141,7 +141,7 @@ export {
   createEngineDatabase,
   migrateBuiltInSchema,
   type EngineDatabaseOptions,
-} from "./builtInDatabase";
+} from "../db/builtInDatabase";
 export { migrateSchema, writeSchemaSettings } from "../db/schemaSettings";
 export {
   checkSchemaFence,

@@ -10,7 +10,10 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { createBundleFixture } from "../../../../test-utils/src/databaseTestFixtures";
 import { createInProcessCoreApi } from "../../core/api";
-import { createEngineDatabase, migrateBuiltInSchema } from "../builtInDatabase";
+import {
+  createEngineDatabase,
+  migrateBuiltInSchema,
+} from "../../db/builtInDatabase";
 import {
   createSqlAdapter,
   type SqlExecutor,

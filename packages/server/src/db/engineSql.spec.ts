@@ -5,11 +5,6 @@ import { afterAll, describe, expect, it } from "vitest";
 
 import { createBundleFixture } from "../../../test-utils/src/databaseTestFixtures";
 import { createInProcessCoreApi } from "../core/api";
-import {
-  builtInSchema,
-  builtInSettings,
-  createEngineDatabase,
-} from "../database/builtInDatabase";
 import { createSqlAdapter } from "../database/sql/sqlAdapter";
 import {
   createTableStatements,
@@ -20,6 +15,11 @@ import {
   pgliteExecutor,
   sqliteExecutor,
 } from "../database/sql/sqlTestExecutors";
+import {
+  builtInSchema,
+  builtInSettings,
+  createEngineDatabase,
+} from "./builtInDatabase";
 import { generateEngineSql } from "./engineSql";
 
 const sql = (dialect: "postgresql" | "mysql" | "sqlite") =>

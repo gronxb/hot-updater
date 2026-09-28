@@ -1,6 +1,7 @@
 import { createMemoryAdapter } from "@hot-updater/plugin-core/internal";
 import { describe, expect, it, vi } from "vitest";
 
+import { createBundleFixture } from "../../../test-utils/src/databaseTestFixtures";
 import { createHotUpdater } from "../createHotUpdaterCore";
 import { defineTable } from "../database/schema";
 import { listHotUpdaterRoutes } from "../handler";
@@ -199,6 +200,33 @@ describe("createHotUpdater with plugins", () => {
     );
     expect(response.status).toBe(200);
     expect(response.headers.get("vary")).toBeNull();
+  });
+
+  it("purges the database's cached client routes after core writes a Release Catalog, not after a plugin write", async () => {
+    const onCachedRoutesChange = vi.fn(async () => undefined);
+    const hotUpdater = createHotUpdater({
+      database: { ...database(), onCachedRoutesChange },
+      plugins: [notes],
+      clientAccess: "public",
+    });
+
+    await hotUpdater.api.notes.add("n1", "hello");
+    expect(onCachedRoutesChange).not.toHaveBeenCalled();
+    await hotUpdater.core.deploy([
+      {
+        bundle: createBundleFixture("801"),
+        release: {
+          channel: "production",
+          enabled: true,
+          fingerprintHash: null,
+          message: null,
+          shouldForceUpdate: false,
+          targetAppVersion: "1.0.0",
+        },
+      },
+    ]);
+
+    expect(onCachedRoutesChange).toHaveBeenCalledTimes(1);
   });
 
   it("rejects every misconfiguration at startup", () => {

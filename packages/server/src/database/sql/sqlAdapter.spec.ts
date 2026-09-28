@@ -9,7 +9,7 @@ import {
 } from "@hot-updater/test-utils";
 import { afterAll, describe, expect, it } from "vitest";
 
-import { builtInSchema } from "../builtInDatabase";
+import { builtInSchema } from "../../db/builtInDatabase";
 import {
   classifySqlError,
   createSqlAdapter,

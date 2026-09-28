@@ -9,6 +9,11 @@ export interface EngineDatabase {
   /** The provider's name, for messages. */
   readonly name: string;
   readonly adapter: DatabaseAdapter;
+  /**
+   * Purges a CDN's copies of the cacheable client routes. Core calls it after
+   * a committed write that changes what those routes answer.
+   */
+  readonly onCachedRoutesChange?: () => Promise<void>;
   dispose?(): Promise<void>;
 }
 

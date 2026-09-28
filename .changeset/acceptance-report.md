@@ -3,4 +3,4 @@
 "@hot-updater/aws": patch
 ---
 
-`createEngineDatabase` takes `onCachedRoutesChange`, called after a committed write that changes what the cacheable client routes answer: a Release Catalog row, while a check op changes nothing. The server decides which tables that is, so a provider adapter names no table: `dynamoDB` passes its CloudFront invalidation there.
+`createEngineDatabase` takes `onCachedRoutesChange`, a CDN purge for the cacheable client routes that core calls after a committed write that changes a Release Catalog. Core decides which writes those are, so neither a provider adapter nor the storage engine names a table: `dynamoDB` passes its CloudFront invalidation there.

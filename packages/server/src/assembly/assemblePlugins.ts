@@ -3,7 +3,6 @@ import type { DatabaseAdapter } from "@hot-updater/plugin-core/internal";
 import { createCoreApi, type CoreApi } from "../core/api";
 import { createCoreReads, type CoreStorage } from "../core/reads";
 import { coreModule } from "../core/schema";
-import { addedSettings, builtInModules } from "../database/builtInDatabase";
 import { createDatabaseEngine } from "../database/database";
 import type { ReadMeasurement } from "../database/engine";
 import { fencedName, withSchemaFence } from "../database/fence";
@@ -13,6 +12,7 @@ import {
   type SchemaModule,
 } from "../database/resolveSchema";
 import type { ModuleSchema } from "../database/schema";
+import { addedSettings, builtInModules } from "../db/builtInDatabase";
 import { builtInPlugin } from "../plugins/builtIn";
 import type {
   ClientAuth,
@@ -177,11 +177,14 @@ export const assemblePlugins = (
     now = Date.now,
     storage = { resolveFileUrl: async () => null },
     verify = false,
+    onCachedRoutesChange,
   }: {
     readonly now?: () => number;
     readonly storage?: CoreStorage;
     /** Runs the engine in verify mode, which meters reads for `measureReads`. */
     readonly verify?: boolean;
+    /** The database's CDN purge, which core calls after a catalog write. */
+    readonly onCachedRoutesChange?: () => Promise<void>;
   } = {},
 ): AssembledPlugins => {
   if (!Array.isArray(value))
@@ -223,7 +226,10 @@ export const assemblePlugins = (
     verify,
   });
   const coreDatabase = engine.database(coreModule);
-  const core = createCoreApi(coreDatabase, storage, { now });
+  const core = createCoreApi(coreDatabase, storage, {
+    now,
+    ...(onCachedRoutesChange === undefined ? {} : { onCachedRoutesChange }),
+  });
   const reads = createCoreReads(coreDatabase, storage);
   const api: Record<string, unknown> = {};
   const endpoints: MountedEndpoint[] = [];

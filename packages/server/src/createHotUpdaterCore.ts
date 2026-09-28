@@ -9,7 +9,7 @@ import {
   HotUpdaterConfigError,
 } from "./assembly/assemblePlugins";
 import type { CoreApi } from "./core/api";
-import { toolingTargetOf } from "./database/builtInDatabase";
+import { toolingTargetOf } from "./db/builtInDatabase";
 import type { ToolingDatabase, ToolingTarget } from "./db/types";
 import {
   type ClientRoutePolicy,
@@ -203,6 +203,9 @@ export function createHotUpdater<
   );
   const plugins = assemblePlugins(options.plugins ?? [], database.adapter, {
     storage: { readStorageText, resolveFileUrl },
+    ...(database.onCachedRoutesChange === undefined
+      ? {}
+      : { onCachedRoutesChange: () => database.onCachedRoutesChange!() }),
   });
   const clientAuth = plugins.clientAuth;
   if (clientAuth !== undefined && publicClients) {

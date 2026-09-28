@@ -1,9 +1,9 @@
+import { createSqlAdapter } from "../database/sql/sqlAdapter";
 import {
   builtInSettings,
   builtInTarget,
   createEngineDatabase,
-} from "../database/builtInDatabase";
-import { createSqlAdapter } from "../database/sql/sqlAdapter";
+} from "../db/builtInDatabase";
 import {
   generatePrismaEngineSchema,
   prismaCollationStatements,

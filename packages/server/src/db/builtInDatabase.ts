@@ -1,13 +1,7 @@
 import type { DatabaseAdapter } from "@hot-updater/plugin-core/internal";
 
 import { coreModule, HOT_UPDATER_SCHEMA_VERSION } from "../core/schema";
-import { createEngineMigrator } from "../db/engineMigrator";
-import { migrateSchema } from "../db/schemaSettings";
-import type { ToolingDatabase, ToolingTarget } from "../db/types";
-import { apiKeys, apiKeysSchema } from "../plugins/api-keys";
-import { builtInPlugin } from "../plugins/builtIn";
-import { insights, insightsSchema } from "../plugins/insights";
-import type { ModelShape } from "./definitions";
+import type { ModelShape } from "../database/definitions";
 import {
   ENGINE_SCHEMA_KEY,
   ENGINE_SCHEMA_VERSION,
@@ -15,8 +9,14 @@ import {
   readSettings,
   withSchemaFence,
   type SchemaSettings,
-} from "./fence";
-import { resolveSchema, type SchemaModule } from "./resolveSchema";
+} from "../database/fence";
+import { resolveSchema, type SchemaModule } from "../database/resolveSchema";
+import { apiKeys, apiKeysSchema } from "../plugins/api-keys";
+import { builtInPlugin } from "../plugins/builtIn";
+import { insights, insightsSchema } from "../plugins/insights";
+import { createEngineMigrator } from "./engineMigrator";
+import { migrateSchema } from "./schemaSettings";
+import type { ToolingDatabase, ToolingTarget } from "./types";
 
 /** Core and the built-in plugins: their tables keep their names. */
 export const builtInModules: readonly SchemaModule[] = [
@@ -92,18 +92,13 @@ export const toolingTargetOf = (
   };
 };
 
-/** The tables the cacheable client routes answer from: the update check reads one catalog row. */
-const CACHED_ROUTE_TABLES = new Set([
-  builtInSchema.models.get("release_catalogs")!.table.name,
-]);
-
 export interface EngineDatabaseOptions {
   readonly name: string;
   readonly adapter: DatabaseAdapter;
   /**
-   * Called after a committed write that changes what the cacheable client
-   * routes answer, so a CDN in front of them can purge its copies. A check
-   * only guards a row it read, so it changes nothing.
+   * Purges a CDN's copies of the cacheable client routes. Core calls it after
+   * a committed write that changes what those routes answer, since only core
+   * knows which of its tables they read.
    */
   readonly onCachedRoutesChange?: () => Promise<void>;
 }
@@ -144,26 +139,8 @@ export const createEngineDatabase = ({
     });
   return {
     name,
-    adapter:
-      onCachedRoutesChange === undefined
-        ? fenced
-        : {
-            ...fenced,
-            async write(ops) {
-              const result = await fenced.write(ops);
-              if (
-                result.ok &&
-                ops.some(
-                  (op) =>
-                    op.type !== "check" &&
-                    CACHED_ROUTE_TABLES.has(op.table.name),
-                )
-              ) {
-                await onCachedRoutesChange();
-              }
-              return result;
-            },
-          },
+    adapter: fenced,
+    ...(onCachedRoutesChange === undefined ? {} : { onCachedRoutesChange }),
     ...(adapter.dispose === undefined
       ? {}
       : { dispose: () => adapter.dispose!() }),

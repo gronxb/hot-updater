@@ -11,8 +11,8 @@ import mysql from "mysql2/promise";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { createDatabasePluginApis } from "../assembly/databasePlugins";
-import { builtInSchema } from "../database/builtInDatabase";
 import { isMultiIndex, quoteSql } from "../database/sql/sqlSchema";
+import { builtInSchema } from "../db/builtInDatabase";
 import { createHotUpdater } from "../index";
 import { createInsightsModel, insights } from "../plugins/insights";
 import { prismaAdapter } from "./prisma";

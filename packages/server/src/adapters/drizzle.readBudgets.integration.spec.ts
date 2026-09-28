@@ -5,8 +5,8 @@ import {
 } from "@hot-updater/test-utils";
 import { drizzle } from "drizzle-orm/pglite";
 
-import { builtInSchema, builtInSettings } from "../database/builtInDatabase";
 import { createSqlAdapter } from "../database/sql/sqlAdapter";
+import { builtInSchema, builtInSettings } from "../db/builtInDatabase";
 import { generateEngineSql } from "../db/engineSql";
 import { readBudgetServer } from "../readBudgets.testFixtures";
 import { drizzleExecutor } from "./drizzleExecutor";

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { builtInSettings } from "../database/builtInDatabase";
+import { builtInSettings } from "../db/builtInDatabase";
 import { createHotUpdater } from "../index";
 import { insights } from "../plugins/insights";
 import {

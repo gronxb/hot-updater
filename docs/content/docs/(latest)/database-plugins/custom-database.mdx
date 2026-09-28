@@ -412,11 +412,11 @@ the schema fence and forwards the adapter's `dispose`. Add your own `dispose`
 when the factory opens a client. When the adapter has `migrations`, the
 database also carries the migration that `hot-updater db migrate` runs.
 
-| Option                 | Meaning                                                                                                                                                                                              |
-| ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `name`                 | Names the database in messages; `createHotUpdater` reports it as `adapterName`                                                                                                                       |
-| `adapter`              | The storage adapter                                                                                                                                                                                  |
-| `onCachedRoutesChange` | Called after a committed write that changes what the cacheable client routes answer (a Release Catalog row), so a CDN in front of them can purge its copies. `dynamoDB` invalidates CloudFront here. |
+| Option                 | Meaning                                                                                                                                                                                        |
+| ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `name`                 | Names the database in messages; `createHotUpdater` reports it as `adapterName`                                                                                                                 |
+| `adapter`              | The storage adapter                                                                                                                                                                            |
+| `onCachedRoutesChange` | A CDN purge for the cacheable client routes. Core calls it after a committed write that changes a Release Catalog, so the adapter never names a table. `dynamoDB` invalidates CloudFront here. |
 
 Pass the database to the CLI and the server. Partial configuration:
 

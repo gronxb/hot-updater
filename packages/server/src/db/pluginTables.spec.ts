@@ -8,15 +8,15 @@ import { drizzleAdapter } from "../adapters/drizzle";
 import { kyselyAdapter } from "../adapters/kysely";
 import { prismaAdapter } from "../adapters/prisma";
 import { createHotUpdater } from "../createHotUpdaterCore";
-import {
-  builtInTarget,
-  createEngineDatabase,
-  toolingTargetOf,
-} from "../database/builtInDatabase";
 import { HotUpdaterSchemaMigrationRequiredError } from "../database/fence";
 import { defineTable } from "../database/schema";
 import { definePlugin } from "../plugins/definePlugin";
 import { insights } from "../plugins/insights";
+import {
+  builtInTarget,
+  createEngineDatabase,
+  toolingTargetOf,
+} from "./builtInDatabase";
 import { createMigrator, generateSchema } from "./index";
 
 const notes = definePlugin({

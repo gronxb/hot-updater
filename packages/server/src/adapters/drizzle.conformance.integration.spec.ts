@@ -2,9 +2,9 @@ import { PGlite } from "@electric-sql/pglite";
 import { setupDatabaseAdapterConformanceSuite } from "@hot-updater/test-utils";
 import { drizzle } from "drizzle-orm/pglite";
 
-import { builtInSettings } from "../database/builtInDatabase";
 import { SETTINGS_TABLE } from "../database/fence";
 import { createTableStatements } from "../database/sql/sqlSchema";
+import { builtInSettings } from "../db/builtInDatabase";
 import { settingsStatements } from "../db/engineSql";
 import { drizzleAdapter } from "./drizzle";
 

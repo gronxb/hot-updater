@@ -5,7 +5,7 @@ import {
 import { describe, expect, expectTypeOf, it, vi } from "vitest";
 
 import packageJson from "../package.json" with { type: "json" };
-import { builtInSettings } from "./database/builtInDatabase";
+import { builtInSettings } from "./db/builtInDatabase";
 import { createHotUpdater, HotUpdaterConfigError } from "./index";
 import type {
   ClientAccessPolicy,

@@ -93,9 +93,9 @@ the device selects its update from the catalog.
 Every answer other than a catalog and its `304` is `private, no-store`. A
 shared cache in front of the client routes keys a catalog by host, path,
 `Accept-Encoding` and the client-auth header, never by installation state. A
-database can purge those copies after each catalog write with
-`onCachedRoutesChange`, which
-[`createEngineDatabase` takes](/docs/database-plugins/custom-database#wrap-it-as-a-database).
+database can purge those copies: core calls its `onCachedRoutesChange`, which
+[`createEngineDatabase` takes](/docs/database-plugins/custom-database#wrap-it-as-a-database),
+after each committed write that changes a catalog.
 
 A GraphQL, RPC or other transport needs an HTTP adapter or proxy that serves
 these routes with the same answers.

@@ -1,10 +1,7 @@
 import type { MongoClient } from "mongodb";
 
-import {
-  builtInTarget,
-  createEngineDatabase,
-} from "../database/builtInDatabase";
 import { SETTINGS_TABLE } from "../database/fence";
+import { builtInTarget, createEngineDatabase } from "../db/builtInDatabase";
 import { createEngineMigrator } from "../db/engineMigrator";
 import type { ToolingDatabase } from "../db/types";
 import { createMongoAdapter } from "./mongodbAdapter";
