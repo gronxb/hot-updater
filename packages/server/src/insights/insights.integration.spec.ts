@@ -145,8 +145,7 @@ describe("createHotUpdater Insights", () => {
           username: "Jane",
         },
       ],
-      // The page read 90 days; the cursor goes on to the days before them.
-      nextCursor: expect.any(String),
+      nextCursor: null,
     });
     expect(installation.status).toBe(200);
     await expect(installation.json()).resolves.toMatchObject({
@@ -261,6 +260,8 @@ describe("createHotUpdater Insights", () => {
     "/events?bundleId=B",
     "/events?platform=ios&channel=production&bundleId=B&outcome=UNCHANGED",
     "/events?sinceMs=20&beforeReceivedAtMs=10",
+    // 90 days and 1 ms, longer than a bundle list covers.
+    "/events?platform=ios&channel=production&bundleId=B&outcome=applied&sinceMs=0&beforeReceivedAtMs=7776000001",
     "/installations/install-1/events?platform=ios&channel=production&bundleId=B&outcome=applied",
   ])("rejects ambiguous or invalid Insights query %s", async (path) => {
     const hotUpdater = start();
@@ -271,6 +272,26 @@ describe("createHotUpdater Insights", () => {
         )
       ).status,
     ).toBe(400);
+  });
+
+  it("lists at most 90 days of events, and says so for a longer range", async () => {
+    const hotUpdater = start();
+    const range = "sinceMs=0&beforeReceivedAtMs=7776000001";
+    const events = await hotUpdater.handlers.admin(
+      new Request(`https://example.com/events?${range}`),
+    );
+    expect(events.status).toBe(400);
+    await expect(events.json()).resolves.toEqual({
+      error:
+        "Insights event lists cover at most 90 days: send a sinceMs no more than 90 days before beforeReceivedAtMs.",
+    });
+    // An installation's history is one index range, however long.
+    const history = await hotUpdater.handlers.admin(
+      new Request(
+        `https://example.com/installations/install-1/events?${range}`,
+      ),
+    );
+    expect(history.status).toBe(200);
   });
 
   it("checks the schema settings before Insights reads and writes", async () => {

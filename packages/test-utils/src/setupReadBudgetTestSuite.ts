@@ -445,8 +445,24 @@ const READ_BUDGETS: readonly ReadBudget[] = [
     returned: (channel) => (channel === null ? 0 : 1),
   }),
   budget({
-    api: "list events: limit rows, and one zero-row query per empty day",
-    // Day 2 holds event 25, day 1 nothing, day 0 the other four.
+    api: "list events of a dense day: limit rows from one query",
+    // The history day holds 72 events: the page reads 5 of them, and no hint.
+    read: ({ insights }) =>
+      insights.listEvents({
+        filter: { kind: "all" },
+        sinceMs: T0 - DAY,
+        beforeReceivedAtMs: T0,
+        limit: 5,
+      }),
+    adapter: reads(0, 0, 1, 5),
+    engine: { calls: 1, rows: 5 },
+    returned: (events) => events.length,
+  }),
+  budget({
+    api: "list events across a gap: limit rows, one empty day, and one outcome row",
+    // Day 2 holds event 25 and day 1 nothing, so one outcome row, hour 4 of
+    // day 0, names the day below it: a query for its newest shard row and a
+    // batch get of the 7 others. Day 0 then holds the other four.
     read: ({ insights }) =>
       insights.listEvents({
         filter: bundleEvents,
@@ -454,13 +470,15 @@ const READ_BUDGETS: readonly ReadBudget[] = [
         beforeReceivedAtMs: T0 + 3 * DAY,
         limit: 5,
       }),
-    adapter: reads(0, 0, 3, 5),
-    engine: { calls: 3, rows: 5 },
-    returned: (events) => events.length,
+    adapter: reads(1, 7, 4, 6),
+    engine: { calls: 4, rows: 6 },
+    // The events, and the outcome row that named day 0.
+    returned: (events) => events.length + 1,
   }),
   budget({
-    api: "list events over an empty window: one zero-row query per day, 90 at most",
-    // The 90 days before the history day hold nothing: the widest window read.
+    api: "list events over an empty range: its top day and one outcome read, both empty",
+    // The 90 days before the history day hold nothing: the top day reads
+    // empty, and the per-day event count finds no day below it.
     read: ({ insights }) =>
       insights.listEvents({
         filter: { kind: "all" },
@@ -468,8 +486,8 @@ const READ_BUDGETS: readonly ReadBudget[] = [
         beforeReceivedAtMs: T0 - DAY,
         limit: 5,
       }),
-    adapter: reads(0, 0, 90, 0),
-    engine: { calls: 90, rows: 0 },
+    adapter: reads(0, 0, 2, 0),
+    engine: { calls: 2, rows: 0 },
     returned: (events) => events.length,
   }),
   budget({
@@ -608,12 +626,13 @@ const READ_BUDGETS: readonly ReadBudget[] = [
     // The event and install 2's head; then a batch get per aggregate: the
     // event's 11 sketch rows (its release hour, channel hour and day, and 4
     // usage identities by hour and day), and the old and new heads' gauge
-    // rows, 2 of the distribution and 4 by bundle.
+    // rows: 2 of the distribution, 4 by bundle, and 2 of their (from, to)
+    // pairs.
     read: ({ insights }) =>
       insights.recordEvent(
         eventOf(26, { install_id: "install-2", received_at_ms: T0 + 3 * HOUR }),
       ),
-    adapter: reads(5, 19, 0, 0),
+    adapter: reads(5, 21, 0, 0),
     engine: { calls: 2, rows: 1 },
     writes: 1,
   }),

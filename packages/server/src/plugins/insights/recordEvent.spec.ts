@@ -22,6 +22,7 @@ import {
   type InsightsIdentityParts,
   type InsightsSchema,
 } from "./index";
+import { DAILY_EVENTS } from "./schema";
 
 const HOUR = 3_600_000;
 const DAY = 86_400_000;
@@ -144,6 +145,15 @@ describe.each(backends)("insights recordEvent on %s", (_name, adapter) => {
           limit: 100,
         })
       ).rows;
+    /** The per-day count of every event, which the global event list reads. */
+    const everyEvent = async () =>
+      (
+        await db.findAggregates("insights_outcomes", {
+          index: "byRef",
+          where: DAILY_EVENTS,
+          limit: 100,
+        })
+      ).rows;
     return {
       ...harness,
       db,
@@ -152,12 +162,21 @@ describe.each(backends)("insights recordEvent on %s", (_name, adapter) => {
       distribution,
       byBundle,
       outcomes,
+      everyEvent,
     };
   };
 
   it("records the event with derived keys, the head, gauges, counters, and sketches", async () => {
-    const { api, db, overview, sketch, distribution, byBundle, outcomes } =
-      await setup();
+    const {
+      api,
+      db,
+      overview,
+      sketch,
+      distribution,
+      byBundle,
+      outcomes,
+      everyEvent,
+    } = await setup();
     await api.recordEvent(event(1));
 
     await expect(
@@ -191,6 +210,10 @@ describe.each(backends)("insights recordEvent on %s", (_name, adapter) => {
     await expect(
       outcomes("UPDATE_APPLIED", "to:bundle-2"),
     ).resolves.toMatchObject([{ bucket_start_ms: hour(T), events: 1 }]);
+    // Every event's row is a UTC day's, not an hour's.
+    await expect(everyEvent()).resolves.toEqual([
+      { ...DAILY_EVENTS, bucket_start_ms: T - (T % DAY), events: 1 },
+    ]);
 
     const release = { scopeKind: "release", releaseKind: "specific" } as const;
     const counters = { downloads: 0, launches: 1, failed_launches: 0 };
@@ -256,7 +279,7 @@ describe.each(backends)("insights recordEvent on %s", (_name, adapter) => {
   });
 
   it("changes nothing for a repeated id, even with another payload", async () => {
-    const { api, db, outcomes } = await setup();
+    const { api, db, outcomes, everyEvent } = await setup();
     await api.recordEvent(event(1));
     await api.recordEvent(
       event(1, { install_id: "install-2", received_at_ms: T + HOUR }),
@@ -271,6 +294,7 @@ describe.each(backends)("insights recordEvent on %s", (_name, adapter) => {
     await expect(
       outcomes("UPDATE_APPLIED", "to:bundle-2"),
     ).resolves.toMatchObject([{ events: 1 }]);
+    await expect(everyEvent()).resolves.toMatchObject([{ events: 1 }]);
   });
 
   it("moves the head only for a newer event and deletes gauge rows that reach zero", async () => {

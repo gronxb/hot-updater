@@ -7,6 +7,16 @@ import { createInsightsProvider } from "./provider";
 const eventId = (index: number) =>
   `00000000-0000-7000-8000-${String(index).padStart(12, "0")}`;
 
+const HOUR = 3_600_000;
+const DAY = 86_400_000;
+const cutoff = Date.UTC(2026, 8, 20, 9, 30);
+const bundle = {
+  platform: "ios",
+  channel: "production",
+  bundleId: "bundle-after",
+  outcome: "applied",
+} as const;
+
 type TransitionEventRow = Extract<
   BundleEventRow,
   { readonly type: "UPDATE_APPLIED" | "RECOVERED" }
@@ -158,74 +168,122 @@ describe("createInsightsProvider", () => {
     );
   });
 
-  it("continues below a 90-day window that ends after the start, even from an empty page", async () => {
-    const DAY = 86_400_000;
-    const cutoff = Date.UTC(2026, 8, 20);
+  it("lists the 90 days before the cutoff without a start, and all of an installation's history", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(cutoff);
     const fixture = createModel();
-    fixture.listEvents
-      .mockResolvedValueOnce([])
-      .mockResolvedValueOnce([eventRow(eventId(1), cutoff - 120 * DAY)]);
     const provider = createInsightsProvider(fixture.model);
 
-    const first = await provider.listEvents({
+    await provider.listEvents({});
+    await provider.listEvents({ beforeReceivedAtMs: cutoff - DAY, bundle });
+    await provider.listInstallationEvents({ installId: "install-1" });
+
+    expect(
+      fixture.listEvents.mock.calls.map(([input]) => [
+        input.sinceMs,
+        input.beforeReceivedAtMs,
+      ]),
+    ).toEqual([
+      [cutoff - 90 * DAY, cutoff],
+      [cutoff - 91 * DAY, cutoff - DAY],
+      [0, cutoff],
+    ]);
+  });
+
+  it("answers 400 for a global or bundle range over 90 days, before the database", async () => {
+    const fixture = createModel();
+    const provider = createInsightsProvider(fixture.model);
+    const range = { beforeReceivedAtMs: cutoff, sinceMs: cutoff - 90 * DAY };
+
+    for (const input of [{}, { bundle }]) {
+      await expect(
+        provider.listEvents({ ...input, ...range, sinceMs: range.sinceMs - 1 }),
+      ).rejects.toThrow(
+        new InsightsBadRequestError(
+          "Insights event lists cover at most 90 days: send a sinceMs no more than 90 days before beforeReceivedAtMs.",
+        ),
+      );
+      await provider.listEvents({ ...input, ...range });
+    }
+    await provider.listInstallationEvents({
+      installId: "install-1",
       beforeReceivedAtMs: cutoff,
-      sinceMs: cutoff - 150 * DAY,
-      limit: 2,
+      sinceMs: 0,
     });
+    expect(
+      fixture.listEvents.mock.calls.map(([input]) => input.sinceMs),
+    ).toEqual([range.sinceMs, range.sinceMs, 0]);
+  });
+
+  it("returns a cursor only after a full page, and keeps the first page's range", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(cutoff);
+    const fixture = createModel();
+    fixture.listEvents
+      .mockResolvedValueOnce([
+        eventRow(eventId(3), cutoff - HOUR),
+        eventRow(eventId(2), cutoff - 30 * DAY),
+      ])
+      .mockResolvedValueOnce([eventRow(eventId(1), cutoff - 60 * DAY)]);
+    const provider = createInsightsProvider(fixture.model);
+
+    const first = await provider.listEvents({ limit: 2 });
+    // Days later, the next page still reads the first page's range.
+    vi.setSystemTime(cutoff + 3 * DAY);
     const second = await provider.listEvents({
-      beforeReceivedAtMs: cutoff,
       cursor: first.nextCursor ?? undefined,
       limit: 2,
     });
 
-    expect(first).toMatchObject({ data: [] });
-    expect(first.nextCursor).not.toBeNull();
-    expect(second.data.map(({ id }) => id)).toEqual([eventId(1)]);
-    expect(second.nextCursor).toBeNull();
-    expect(fixture.listEvents.mock.calls.map(([input]) => input)).toEqual([
-      {
-        beforeReceivedAtMs: cutoff,
-        limit: 2,
-        sinceMs: cutoff - 90 * DAY,
-        filter: { kind: "all" },
-      },
-      {
-        beforeReceivedAtMs: cutoff - 90 * DAY,
-        limit: 2,
-        sinceMs: cutoff - 150 * DAY,
-        filter: { kind: "all" },
-      },
-    ]);
+    expect(
+      JSON.parse(Buffer.from(first.nextCursor!, "base64url").toString("utf8")),
+    ).toEqual({
+      after: { id: eventId(2), receivedAtMs: cutoff - 30 * DAY },
+      beforeReceivedAtMs: cutoff,
+      sinceMs: cutoff - 90 * DAY,
+      kind: "events",
+      filter: { kind: "all" },
+      version: 2,
+    });
+    expect(second).toMatchObject({
+      beforeReceivedAtMs: cutoff,
+      nextCursor: null,
+    });
+    expect(fixture.listEvents).toHaveBeenLastCalledWith({
+      after: { id: eventId(2), receivedAtMs: cutoff - 30 * DAY },
+      beforeReceivedAtMs: cutoff,
+      sinceMs: cutoff - 90 * DAY,
+      filter: { kind: "all" },
+      limit: 2,
+    });
+    // A short page and an empty one end the list.
+    await expect(provider.listEvents({ limit: 2 })).resolves.toMatchObject({
+      data: [],
+      nextCursor: null,
+    });
   });
 
-  it("rejects forged window positions before they reach the database boundary", async () => {
-    const DAY = 86_400_000;
-    const cutoff = Date.UTC(2026, 8, 20);
+  it("rejects the cursors that continued below a window of days", async () => {
     const fixture = createModel();
     const provider = createInsightsProvider(fixture.model);
-    const first = await provider.listEvents({
+    const window = {
       beforeReceivedAtMs: cutoff,
-      sinceMs: cutoff - 150 * DAY,
-      limit: 1,
-    });
-    const payload = JSON.parse(
-      Buffer.from(first.nextCursor!, "base64url").toString("utf8"),
-    );
-    expect(payload.olderThanMs).toBe(cutoff - 90 * DAY);
+      kind: "events",
+      filter: { kind: "all" },
+      version: 2,
+    };
     for (const position of [
-      { olderThanMs: cutoff - 150 * DAY },
-      { olderThanMs: cutoff + 1 },
-      { olderThanMs: 1.5 },
-      { after: { id: eventId(1), receivedAtMs: cutoff - DAY } },
+      { olderThanMs: cutoff - 90 * DAY, sinceMs: cutoff - 150 * DAY },
+      { olderThanMs: cutoff - 10 * DAY, sinceMs: cutoff - 30 * DAY },
     ]) {
       const cursor = Buffer.from(
-        JSON.stringify({ ...payload, ...position }),
+        JSON.stringify({ ...window, ...position }),
       ).toString("base64url");
-      await expect(provider.listEvents({ cursor })).rejects.toBeInstanceOf(
-        InsightsBadRequestError,
+      await expect(provider.listEvents({ cursor })).rejects.toThrow(
+        new InsightsBadRequestError("Invalid Insights cursor."),
       );
     }
-    expect(fixture.listEvents).toHaveBeenCalledOnce();
+    expect(fixture.listEvents).not.toHaveBeenCalled();
   });
 
   it("binds event cursors to their filter", async () => {
@@ -437,12 +495,6 @@ describe("createInsightsProvider", () => {
     const fixture = createModel();
     fixture.listEvents.mockResolvedValue([eventRow(eventId(2), 900)]);
     const provider = createInsightsProvider(fixture.model);
-    const bundle = {
-      platform: "ios",
-      channel: "production",
-      bundleId: "bundle-after",
-      outcome: "applied",
-    } as const;
     const first = await provider.listEvents({
       bundle,
       sinceMs: 100,

@@ -178,7 +178,11 @@ const insightsLatestByBundle = defineAggregate(
   },
 );
 
-/** Events by outcome and the bundle a bundle filter matches. */
+/**
+ * Events by outcome and the bundle a bundle filter matches, a row an hour;
+ * and every event, a row a UTC day (`DAILY_EVENTS`). Bundle counts sum the
+ * hourly rows, and event lists read either to skip days without events.
+ */
 const insightsOutcomes = defineAggregate(
   {
     platform: { type: "string", maxLength: 16 },
@@ -199,6 +203,18 @@ const insightsOutcomes = defineAggregate(
     },
   },
 );
+
+/**
+ * The `insights_outcomes` identity that counts every event, for the global
+ * event list. Its bucket is a UTC day, not an hour. Every event's platform
+ * is ios or android, so no outcome row of a bundle filter shares it.
+ */
+export const DAILY_EVENTS = {
+  platform: "*",
+  channel: "",
+  type: "",
+  bundle_ref: "",
+} as const;
 
 export const insightsSchema = {
   bundle_events: bundleEvents,

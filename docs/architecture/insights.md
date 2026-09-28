@@ -22,13 +22,13 @@ by default; `HotUpdater.init({ insights: false })` opts out.
 
 Custom database authors implement five operations, all with object inputs:
 
-| Method                                                                  | Responsibility                                                                |
-| ----------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
-| `recordEvent({ event })`                                       | Store one immutable event; any private latest copy advances atomically      |
-| `listEvents({ filter, sinceMs, beforeReceivedAtMs, after, limit })`     | Indexed newest-first global, installation-movement, or bundle-outcome history |
+| Method                                                                 | Responsibility                                                                |
+| ---------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| `recordEvent({ event })`                                               | Store one immutable event; any private latest copy advances atomically        |
+| `listEvents({ filter, sinceMs, beforeReceivedAtMs, after, limit })`    | Indexed newest-first global, installation-movement, or bundle-outcome history |
 | `findLatestEvents({ installId } or { userId, afterInstallId, limit })` | Exact latest-state lookup or current-user page                                |
-| `countLatestEvents({ platform, channel, sinceMs, bundle })`          | Count recent latest rows, optionally naming one bundle                        |
-| `countEvents({ filter, sinceMs, beforeReceivedAtMs })`                  | Count accepted reports matching one raw bundle/type/scope filter              |
+| `countLatestEvents({ platform, channel, sinceMs, bundle })`            | Count recent latest rows, optionally naming one bundle                        |
+| `countEvents({ filter, sinceMs, beforeReceivedAtMs })`                 | Count accepted reports matching one raw bundle/type/scope filter              |
 
 The [custom database guide](../content/docs/%28latest%29/database-plugins/custom-database.mdx#insights)
 specifies ordering, atomicity, idempotency, visibility, pagination, and test
@@ -72,13 +72,23 @@ The UI displays them independently and does not clamp them into a ratio.
 Event pages sort descending by `(received_at_ms, id)`, apply filters before a
 limit of at most 101, and use an exclusive keyset cursor. Receipt intervals are
 `[sinceMs, beforeReceivedAtMs)`. Native continuation pages must be exhausted
-before returning a short result. The global and bundle lists read one query
-per UTC day, so one database call covers at most 90 days below the page's top
-and rejects a wider interval. The provider pages through the rest: a short or
-empty page whose 90 days end after `sinceMs` still carries a cursor, which
-resumes below those days. Core does not aggregate raw history. The Console
-keeps previous cursors in session memory; only the current cursor and filter
-bounds appear in its URL.
+before returning a short result. As in other analytics products, the global
+and bundle lists show raw events only inside a fixed range of at most 90 days,
+a duration of 90 × 24 hours however many UTC days it touches: without
+`sinceMs`, the 90 days before `beforeReceivedAtMs`; a longer range is a `400`.
+The cursor carries that range and the page's last row, and only a full page
+returns one, so pages run newest first and stop at the range start.
+Installation history is one index range and has no such limit.
+
+The global and bundle lists read one query per UTC day that holds a matching
+event. Each event also increments a per-day counter: an `insights_outcomes`
+row whose platform is `*` and whose bucket is a UTC day, not an hour. After a
+day reads empty, one outcome read names the newest day below it that holds
+events: that per-day row for the global list, the filter's own hourly outcome
+rows for a bundle list. A gap of any length costs one empty day and one
+outcome read, and dense days read nothing extra. Core does not aggregate raw
+history. The Console keeps previous cursors in session memory; only the
+current cursor and filter bounds appear in its URL.
 
 Latest-state counts use provider-private current entries. SQL and MongoDB count
 compact heads; Firestore uses native latest-document counts. DynamoDB traverses

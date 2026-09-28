@@ -162,9 +162,8 @@ export interface InsightsModel {
    * Descending (received_at_ms, id), in [sinceMs ?? 0, beforeReceivedAtMs).
    * Apply filters and the exclusive cursor before limit (1..101). Return the
    * complete matching prefix; native continuation pages must not truncate it.
-   * A global or bundle list may reject an interval longer than 90 UTC days
-   * from its top (the cursor, else the cutoff) down to `sinceMs`; callers
-   * page older days with a lower `beforeReceivedAtMs`.
+   * A global or bundle list may reject a range longer than 90 × 24 hours;
+   * the server asks for older events with an earlier range instead.
    */
   listEvents(
     input: InsightsListEventsInput,
