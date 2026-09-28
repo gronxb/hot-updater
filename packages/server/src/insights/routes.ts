@@ -1,6 +1,9 @@
+import { InsightsEventConflictError } from "@hot-updater/plugin-core";
+
 import {
   InsightsBadRequestError,
   InsightsPayloadTooLargeError,
+  isDatabaseBusyError,
 } from "./errors";
 import { parseBundleEventRequest } from "./eventInput";
 import {
@@ -10,9 +13,16 @@ import {
 } from "./queryInput";
 import type { InsightsProvider } from "./types";
 
-const json = (body: unknown, status: number): Response =>
+/** Seconds a client waits before it resends a request the busy database refused. */
+const RETRY_AFTER_SECONDS = 5;
+
+const json = (
+  body: unknown,
+  status: number,
+  headers: Readonly<Record<string, string>> = {},
+): Response =>
   Response.json(body, {
-    headers: { "cache-control": "private, no-store" },
+    headers: { "cache-control": "private, no-store", ...headers },
     status,
   });
 
@@ -38,8 +48,23 @@ const run = async (operation: () => Promise<Response>): Promise<Response> => {
     if (error instanceof InsightsBadRequestError) {
       return json({ error: error.message }, 400);
     }
+    if (error instanceof InsightsEventConflictError) {
+      return json({ error: error.message }, 409);
+    }
     if (error instanceof InsightsPayloadTooLargeError) {
       return json({ error: error.message }, 413);
+    }
+    // Back-pressure: a busy database has not failed the request, so the
+    // client may send it again after Retry-After. A 500 would read as a fault.
+    // The warning keeps the overload visible to whoever runs the server.
+    if (isDatabaseBusyError(error)) {
+      console.warn(
+        "[hot-updater] Insights answered 503: the database is busy.",
+        error,
+      );
+      return json({ error: "Service unavailable" }, 503, {
+        "retry-after": String(RETRY_AFTER_SECONDS),
+      });
     }
     throw error;
   }

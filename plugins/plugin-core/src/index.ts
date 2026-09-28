@@ -17,6 +17,7 @@ export {
   DatabaseBundleNotFoundError,
   DatabasePluginInputError,
   DatabaseRowReferencedError,
+  InsightsEventConflictError,
   type DatabasePluginInputErrorCode,
 } from "./databaseErrors";
 export * from "./createStorageKeyBuilder";

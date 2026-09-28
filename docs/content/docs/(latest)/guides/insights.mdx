@@ -115,6 +115,25 @@ The overview keeps all status totals above the tabs; switching tabs changes the 
 
 ![Completed downloads and the remaining pending installation](/docs/console/insights-download-pending.png)
 
+## How the server accepts reports
+
+`POST /events` takes one report as a JSON body of at most 16 KB. Fields the
+server does not know are ignored, so a report from a newer SDK still records on
+an older server; a known field with an invalid value is refused.
+
+A report can carry an `eventId`: a lowercase UUIDv7 that the client creates
+once for the report and sends again with every retry. The server stores the
+report under that ID, so a retried report counts once. Without an `eventId`,
+the server creates the ID, and a retry counts as another report.
+
+| Status | Meaning |
+| --- | --- |
+| `204` | Recorded, or already recorded under the same `eventId` |
+| `400` | A missing or invalid field, including an `eventId` that is not a UUIDv7 |
+| `409` | Another installation already sent a report with this `eventId`; nothing is stored |
+| `413` | The body is larger than 16 KB |
+| `503` | The database is busy; send the report again after the `Retry-After` seconds |
+
 ## Identify an installation
 
 Read [`HotUpdater.getInstallId()`](/docs/react-native-api/getInstallId) in a
@@ -240,7 +259,10 @@ range. The server also counts reports per day, so a list skips quiet days
 instead of reading each one.
 
 These counts reflect received reports, not the full installed population.
-Reports without a known bundle ID are excluded from the per-ID chart. History
-reads are capped at 50,000 events for each reporting period. Partial
-history is labeled in the UI; the active-user total is shown as a lower bound
-with **≥**, and unavailable usage intervals are shown as gaps.
+Reports without a known bundle ID are excluded from the per-ID chart. Every
+period ends with the current UTC hour, so a report counts as soon as the server
+records it, and a chart's last interval is still filling. The Console reads
+hourly and daily totals that the server updates as it records each report; it
+does not scan raw events. DAU, WAU, MAU, active users per interval, and unique
+users are estimates from HyperLogLog sketches, typically within about 3%, and
+show with **≈**. Report and launch counts and distributions are exact.
