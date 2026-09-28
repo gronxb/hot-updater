@@ -3,6 +3,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { isUUIDv7 } from "../../../../packages/core/dist/index.mjs";
 import { createBundleDiff } from "../../../../packages/server/dist/db/index.mjs";
 import {
   standaloneRepository,
@@ -18,8 +19,8 @@ export async function createPublicMatrixBundleDiff({
   targetBundleId,
   tokenPath = path.join(example, ".hot-updater/ota/admin-token"),
 }) {
-  assert.match(baseBundleId, /^[a-f0-9]{64}$/);
-  assert.match(targetBundleId, /^[a-f0-9]{64}$/);
+  assert.ok(isUUIDv7(baseBundleId), "The base Bundle ID must be UUIDv7");
+  assert.ok(isUUIDv7(targetBundleId), "The target Bundle ID must be UUIDv7");
   assert.equal(typeof releaseId, "string");
   assert.ok(releaseId.length > 0);
   const token = (await fs.readFile(tokenPath, "utf8")).trim();

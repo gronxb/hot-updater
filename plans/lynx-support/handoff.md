@@ -1,12 +1,12 @@
 # Lynx support handoff and completion plan
 
-The latest `ee3b18b62` React/iOS matrix passes confirmed-interruption recovery
-and C reselection. Actual pre-confirm detail fatal recovery recreates ready C
-main and detail, but the driver incorrectly waits for visible main text while
-detail is on top. It now validates the reconstructed detail and uses native
-back through the existing helper. Native behavior is unchanged. Retain
-`evidence/public-matrix-ee3b18b62-failure.json`; no complete cell is claimed.
-The shared full job remains queued, actual checkout pending.
+The latest `6dc6352db` React/iOS matrix passes pre-confirm fatal full-stack
+recovery/native back and pre-confirm process recovery, then fails the reverse
+delta helper's obsolete SHA-256 Bundle ID assertion. The helper now uses the
+shared UUIDv7 predicate. A targeted real-server probe creates both reverse
+BSDIFFs successfully with archive-free delivery; device application is pending.
+Retain `evidence/public-matrix-6dc6352db-failure.json`; no full cell is claimed.
+Shared full job `job-20260928211636-6hdwci` is running on actual `6dc6352db`.
 
 Latest follow-up (2026-09-29): shared job `job-20260928211636-6hdwci` remains
 queued, actual checkout pending. The `7cc24042b` matrix stops at an ambiguous

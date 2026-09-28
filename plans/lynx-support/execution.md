@@ -1185,3 +1185,20 @@ top. Use the existing reconstructed-detail observer: require complete native
 readiness, native back to C main, and its matching route-close event. Do not
 open a duplicate detail. Retain `evidence/public-matrix-ee3b18b62-failure.json`;
 this is device progress, not a complete matrix cell.
+
+
+## 2026-09-29 reverse delta UUID identity correction
+
+On `6dc6352db`, React/iOS additionally passes reconstructed C detail readiness
+and native back after a pre-confirm fatal, then pre-confirm process interruption
+and C recovery. Reverse delta preparation fails before device application because
+its matrix-only helper still treats Bundle IDs as 64-character hashes. Use the
+shared `isUUIDv7` contract for Bundle IDs; file digests remain SHA-256. Against
+the retained real local server and compiler outputs, the corrected helper creates
+both C-to-B and B-to-A BSDIFFs and returns manifest delivery with no full archive.
+This targeted probe does not claim device application. The probe server was
+stopped. Retain `evidence/public-matrix-6dc6352db-failure.json`.
+
+Shared job `job-20260928211636-6hdwci` started and resolved actual commit
+`6dc6352db14392126f71c63015ba434bf6c4093a`; its final result is pending. Preserve
+that checkout even if subsequent matrix-only corrections advance PR HEAD.

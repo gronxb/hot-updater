@@ -1,0 +1,47 @@
+{
+  "sourceCommit": "6dc6352db14392126f71c63015ba434bf6c4093a",
+  "cell": "react-ios",
+  "completedCells": 0,
+  "failure": "Reverse delta helper requires a SHA-256 string for Bundle IDs, while current Bundle identity uses UUIDv7.",
+  "nativeEventCount": 622,
+  "additionalCompletedDevicePhases": [
+    "pre-confirm detail fatal recovery: complete C stack and native back",
+    "pre-confirm process interruption and complete C recovery"
+  ],
+  "followUp": "Validate Bundle IDs with the shared isUUIDv7 predicate, leaving file hashes as SHA-256.",
+  "targetedRealServerVerification": {
+    "source": "same retained local DB and verified compiler artifacts after failed run",
+    "result": "Both C-to-B and B-to-A real BSDIFF generations succeed; each delivery response has null full-archive URL/hash and a main-bundle BSDIFF entry.",
+    "deviceApplicationClaimed": false
+  },
+  "retainedArtifacts": {
+    "reverse-delta-probe.json": {
+      "path": "/tmp/lynx-6dc6352db-matrix-failure/reverse-delta-probe.json",
+      "sha256": "7eb745ea668fd9a5debfe6c77306cf2ca62f98ad54abdacd14128ee30134b2fd"
+    },
+    "state.json": {
+      "path": "/tmp/lynx-6dc6352db-matrix-failure/state.json",
+      "sha256": "a1407d4e2fac7d2d57c2506bf8f29bdd8b7eb25d0cc6a7606dfe657902578771"
+    },
+    "matrix-events.jsonl": {
+      "path": "/tmp/lynx-6dc6352db-matrix-failure/matrix-events.jsonl",
+      "sha256": "d5196f8bf3975174b0c45fbebf45c017595b43d2ce2ac7c312a8169680bccf02"
+    },
+    "runner.log": {
+      "path": "/tmp/lynx-6dc6352db-matrix-failure/runner.log",
+      "sha256": "e336267aa18156f845143d067b5f006ffcc1c97bb3195070918fbb0978e89d98"
+    },
+    "probe-inputs.json": {
+      "path": "/tmp/lynx-6dc6352db-matrix-failure/probe-inputs.json",
+      "sha256": "c70999eec868eaf080eba969b13b14b48232a2bc86dd21c9f054ed604628e386"
+    },
+    "generation-events.json": {
+      "path": "/tmp/lynx-6dc6352db-matrix-failure/generation-events.json",
+      "sha256": "79bb8e4f2593e484138f353234fe6c5d4ab489ffee02576f3f32e2e219350956"
+    },
+    "ota-server.log": {
+      "path": "/tmp/lynx-6dc6352db-matrix-failure/ota-server.log",
+      "sha256": "ebfa91f8042e989e1d8f06ff6f608c11fa28cea97215f279d624c0d9003eaf47"
+    }
+  }
+}
