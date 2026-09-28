@@ -17,6 +17,9 @@ vi.mock("react-native", () => ({
 const failureCases = [
   { label: "400", responseStatus: 400 },
   { label: "404", responseStatus: 404 },
+] as const;
+
+const retryableFailureCases = [
   { label: "500", responseStatus: 500 },
   {
     error: Object.assign(new Error("request aborted"), { name: "AbortError" }),
@@ -128,6 +131,61 @@ describe("automatic notifyAppReady transport failures", () => {
         });
         expect(warn).toHaveBeenCalledWith(
           "[HotUpdater] Automatic notifyAppReady insights failed:",
+          expect.any(Error),
+        );
+      } finally {
+        warn.mockRestore();
+      }
+    },
+  );
+
+  it.each(retryableFailureCases)(
+    "retries a $label failure in the background without delaying UNCHANGED readiness",
+    async (failureCase) => {
+      stubNotifyFrame();
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const onError = vi.fn();
+      const onNotifyAppReady = vi.fn();
+      const fetchMock = vi.fn<typeof fetch>(async () => {
+        if ("error" in failureCase) {
+          throw failureCase.error;
+        }
+
+        return new Response(null, { status: failureCase.responseStatus });
+      });
+      vi.stubGlobal("fetch", fetchMock);
+      Reflect.set(globalThis, "HotUpdater", {
+        SDK_VERSION: "test-sdk-version",
+      });
+
+      try {
+        const [{ createHttpClient }, { init }] = await Promise.all([
+          import("./httpClient"),
+          import("./wrap"),
+        ]);
+        const client = createHttpClient(
+          "https://updates.example.test/hot-updater",
+        );
+
+        init({ insights: true, client, onError, onNotifyAppReady });
+        await vi.runOnlyPendingTimersAsync();
+
+        expect(fetchMock).toHaveBeenCalledTimes(1);
+        expect(onNotifyAppReady).toHaveBeenCalledWith({
+          status: "UNCHANGED",
+        });
+        expect(warn).not.toHaveBeenCalled();
+
+        await vi.runAllTimersAsync();
+
+        const eventIds = fetchMock.mock.calls.map(
+          ([, request]) => JSON.parse(String(request?.body)).eventId,
+        );
+        expect(eventIds).toHaveLength(3);
+        expect(new Set(eventIds).size).toBe(1);
+        expect(onError).not.toHaveBeenCalled();
+        expect(warn).toHaveBeenCalledExactlyOnceWith(
+          "[HotUpdater] Insights UNCHANGED event was not delivered:",
           expect.any(Error),
         );
       } finally {

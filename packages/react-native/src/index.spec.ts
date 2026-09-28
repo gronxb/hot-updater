@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { HotUpdaterInitOptions, HotUpdaterOptions } from "./wrap";
 
@@ -31,6 +31,7 @@ const mocks = vi.hoisted(() => {
     getInstallId: vi.fn(() => "install-id"),
     getManifest: vi.fn(() => null),
     getMinBundleId: vi.fn(() => "min-bundle-id"),
+    getPersistedUserIdentity: vi.fn(() => ({})),
     init: vi.fn(),
     isChannelSwitched: vi.fn(() => false),
     notifyAppReady: vi.fn(() => ({ status: "UNCHANGED" as const })),
@@ -71,6 +72,7 @@ vi.mock("./native", () => ({
   getInstallId: mocks.getInstallId,
   getManifest: mocks.getManifest,
   getMinBundleId: mocks.getMinBundleId,
+  getPersistedUserIdentity: mocks.getPersistedUserIdentity,
   isChannelSwitched: mocks.isChannelSwitched,
   notifyAppReady: mocks.notifyAppReady,
   reload: mocks.reload,
@@ -97,6 +99,11 @@ describe("HotUpdater client initialization", () => {
     }));
     mocks.checkForUpdate.mockResolvedValue(null);
     mocks.wrap.mockImplementation((Component: unknown) => Component);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
   });
 
   it("exposes the console ID through the existing getter only", async () => {
@@ -177,6 +184,68 @@ describe("HotUpdater client initialization", () => {
       expect.objectContaining({ insights: false }),
     );
   });
+
+  it.each([
+    { dev: true, insights: undefined, expected: false },
+    { dev: true, insights: true, expected: false },
+    { dev: true, insights: false, expected: false },
+    { dev: true, insights: { debug: true }, expected: true },
+    { dev: false, insights: { debug: true }, expected: true },
+    { dev: false, insights: { debug: false }, expected: true },
+    { dev: false, insights: false, expected: false },
+  ] as const)(
+    "resolves insights $insights to $expected when __DEV__ is $dev",
+    async ({ dev, insights, expected }) => {
+      vi.stubGlobal("__DEV__", dev);
+      vi.spyOn(console, "error").mockImplementation(() => undefined);
+      const HotUpdater = await importHotUpdater();
+
+      HotUpdater.init({ baseURL: "https://updates.example.com", insights });
+      HotUpdater.wrap({
+        baseURL: "https://updates.example.com",
+        insights,
+        updateStrategy: "appVersion",
+      });
+
+      expect(mocks.init).toHaveBeenCalledWith(
+        expect.objectContaining({ insights: expected }),
+      );
+      expect(mocks.wrap).toHaveBeenCalledWith(
+        expect.objectContaining({ insights: expected }),
+      );
+    },
+  );
+
+  it.each([
+    { dev: true, reports: false },
+    { dev: false, reports: true },
+  ])(
+    "gates manual checks and downloads on the build type (__DEV__: $dev)",
+    async ({ dev, reports }) => {
+      vi.stubGlobal("__DEV__", dev);
+      const sendInsightsEvent = vi.fn(async () => undefined);
+      mocks.createHttpClient.mockReturnValue({
+        createSession: vi.fn(async () => ({ sendInsightsEvent })),
+      } as never);
+      mocks.updateBundle.mockResolvedValueOnce(true);
+      const HotUpdater = await importHotUpdater();
+      HotUpdater.init({ baseURL: "https://updates.example.com" });
+
+      await HotUpdater.checkForUpdate({ updateStrategy: "appVersion" });
+      await HotUpdater.updateBundle({
+        assets: {},
+        bundleId: "next-bundle-id",
+        manifestFileHash: "manifest-hash",
+        manifestUrl: "https://updates.example.com/manifest.json",
+        status: "UPDATE",
+      });
+
+      expect(mocks.checkForUpdate).toHaveBeenCalledWith(
+        expect.objectContaining({ insights: reports }),
+      );
+      expect(sendInsightsEvent).toHaveBeenCalledTimes(reports ? 1 : 0);
+    },
+  );
 
   it("requires baseURL and rejects the removed resolver shape", async () => {
     const HotUpdater = await importHotUpdater();

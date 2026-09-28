@@ -30,9 +30,15 @@ interface CommonHotUpdaterOptions {
   /**
    * Sends app-ready transitions and same-Bundle Release adoptions to the
    * configured server. Defaults to `true`; set to `false` to disable client
-   * reporting.
+   * reporting. Debug builds (`__DEV__`) send nothing unless you pass
+   * `{ debug: true }`, so development sessions stay out of production data.
    */
-  insights?: boolean;
+  insights?:
+    | boolean
+    | {
+        /** Also report from debug builds. Defaults to `false`. */
+        debug?: boolean;
+      };
   /** Base URL of a server exposing the Hot Updater v1 client HTTP protocol. */
   baseURL: HotUpdaterBaseURL;
   requestHeaders?: Record<string, string>;
@@ -54,6 +60,7 @@ export type HotUpdaterInitOptions = CommonHotUpdaterOptions;
 export type HotUpdaterOptions = AutoUpdateOptions;
 
 type InternalCommonOptions = {
+  /** Whether this runtime reports, with the debug-build default applied. */
   insights?: boolean;
   client: HotUpdaterHttpClient;
   requestHeaders?: Record<string, string>;

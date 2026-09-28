@@ -94,6 +94,21 @@ type HotUpdaterWrap = {
 };
 
 /**
+ * Debug builds report only with `insights: { debug: true }`, so development
+ * sessions do not mix into production Insights. `__DEV__` is defined only in
+ * a React Native bundle; anywhere else, such as unit tests, counts as release.
+ */
+const resolveInsights = (
+  insights: HotUpdaterInitOptions["insights"],
+): boolean => {
+  if (insights === false) return false;
+  const isDebugBuild = typeof __DEV__ !== "undefined" && __DEV__;
+  return (
+    !isDebugBuild || (typeof insights === "object" && insights?.debug === true)
+  );
+};
+
+/**
  * Creates a HotUpdater client instance with all update management methods.
  * This function is called once on module initialization to create a singleton instance.
  */
@@ -161,7 +176,7 @@ function createHotUpdaterClient() {
       const { baseURL, ...rest } = autoOptions;
       return {
         ...rest,
-        insights: rest.insights ?? true,
+        insights: resolveInsights(rest.insights),
         client: createHttpClient(baseURL),
       };
     }
@@ -181,7 +196,7 @@ function createHotUpdaterClient() {
       const { baseURL, ...baseURLRest } = rest;
       return {
         ...baseURLRest,
-        insights: baseURLRest.insights ?? true,
+        insights: resolveInsights(baseURLRest.insights),
         client: createHttpClient(baseURL),
       };
     }
