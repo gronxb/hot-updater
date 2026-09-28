@@ -163,7 +163,7 @@ export function validateMatrixRuntimeJournalDiagnostics(value: unknown): void {
                 : { count: 1, first: "1", last: "1", truncated: true },
           );
     const reopened = summaryReceipt(item.afterReopen, `${mode}.afterReopen`);
-    if (JSON.stringify(reopened.receipt) !== JSON.stringify(prior.receipt)) {
+    if (!isDeepStrictEqual(reopened.receipt, prior.receipt)) {
       throw new Error(`${mode} changed canonical journal bytes after reopen`);
     }
     if (reopened.byteLength > 16_777_216) {

@@ -109,6 +109,21 @@ remaining implementation, diagnosis, and verification are performed here.
 
 ## Latest September 29 validation
 
+- The clean `5c239fc3d` public matrix run reaches native journal diagnostics.
+  It exposes unordered NSDictionary receipt members being compared with
+  `JSON.stringify`; all six actual receipts have equal bytes, hashes, and
+  metadata. Strict structural equality fixes that false failure without relaxing
+  byte equality. All 36 diagnostics/runner tests and captured-receipt replay
+  pass. Matrix teardown now releases its own device session on failure.
+- Current full job `job-20260928162042-ocwb3m` used `aa2ade4c3` for native setup
+  and `5c239fc3d` for device shard worktrees. Both native builds pass, but this
+  mixed-source run must not establish final acceptance. Execution has reported
+  Android recovery font-diagnostic validation and an iOS simulator-command
+  timeout. A follow-up is queued as `job-20260928164123-6zd6ks`.
+- Broad integration is not green: 402 pass, one failure, ten skipped, with
+  DynamoDB cleanup and MySQL setup timeouts. Focused retry passes DynamoDB 63/63
+  and MySQL 9/10; the fumadb patch/deletion serialization deadline remains.
+
 - `job-20260928154852-ej3uiq` on `d689f46d6` is terminal **46/52**
   (iOS 25/26, Android 21/26). Historical best remains 51/52.
 - `job-20260928162042-ocwb3m` started on `aa2ade4c3`, which includes the

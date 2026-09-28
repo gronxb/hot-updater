@@ -3,6 +3,7 @@ import crypto from "node:crypto";
 import { describe, expect, it } from "vitest";
 
 import {
+  validateMatrixRuntimeJournalDiagnostics,
   validateNavigationStackBoundary,
   validateRuntimeJournalDiagnostics,
 } from "./native-diagnostics-evidence";
@@ -85,7 +86,65 @@ function validJournalEvidence() {
   };
 }
 
+function validMatrixJournalEvidence() {
+  const summary = (value: ReturnType<typeof receipt>) => ({
+    processId: "68231",
+    schemaVersion: value.snapshot.schemaVersion,
+    eventCount: value.snapshot.events.length,
+    oldestSequence: value.snapshot.oldestSequence,
+    latestSequence: value.snapshot.latestSequence,
+    truncated: value.snapshot.truncated,
+    byteLength: value.byteLength,
+    sha256: value.sha256,
+    canonicalUtf8: value.canonicalUtf8,
+  });
+  return {
+    fixtures: Object.entries(validJournalEvidence().fixtures).map(
+      ([mode, value]) => {
+        const installed = summary(value);
+        const afterAppend = summary(
+          receipt(
+            mode === "count-plus-one"
+              ? Array.from({ length: 256 }, (_, index) => event(index + 3))
+              : mode === "byte-plus-one"
+                ? Array.from({ length: 256 }, (_, index) => event(index + 2))
+                : [event(1)],
+            true,
+          ),
+        );
+        const prior = mode === "retention-limit" ? installed : afterAppend;
+        return { mode, installed, afterAppend, afterReopen: { ...prior } };
+      },
+    ),
+    restored: summary(receipt([], false)),
+  };
+}
+
 describe("native Lynx diagnostics evidence", () => {
+  it("accepts unchanged matrix journal receipts reordered by native JSON serialization", () => {
+    const evidence = validMatrixJournalEvidence();
+    for (const fixture of evidence.fixtures) {
+      fixture.afterReopen = Object.fromEntries(
+        Object.entries(fixture.afterReopen).reverse(),
+      ) as typeof fixture.afterReopen;
+    }
+    expect(() =>
+      validateMatrixRuntimeJournalDiagnostics(evidence),
+    ).not.toThrow();
+  });
+
+  it.each(["sha256", "latestSequence", "processId"] as const)(
+    "rejects a changed %s after reopening a matrix journal",
+    (key) => {
+      const evidence = validMatrixJournalEvidence();
+      evidence.fixtures[0]!.afterReopen[key] =
+        key === "sha256" ? "0".repeat(64) : "999";
+      expect(() => validateMatrixRuntimeJournalDiagnostics(evidence)).toThrow(
+        "changed canonical journal bytes after reopen",
+      );
+    },
+  );
+
   it("accepts the exact retention, repair, and event-field boundary receipt", () => {
     expect(() =>
       validateRuntimeJournalDiagnostics(validJournalEvidence()),

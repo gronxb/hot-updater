@@ -1417,6 +1417,13 @@ runtime identities and verify process/generation/context changes at their define
 boundaries. Complete the acceptance matrix in section 7 on unchanged release
 binaries, without a development server.
 
+Native diagnostic receipt objects have unordered JSON members. Compare their
+validated fields independent of member order, while requiring exact equality of
+the canonical journal bytes, SHA-256, byte length, sequence bounds, retention
+state, and process identity across reopen. A receipt serialization order change
+must not conceal or falsely report a persisted journal change. Matrix teardown
+must release only the device session owned by that run, including on failure.
+
 ### G4 — Subsequent proposals
 
 Use G3 evidence to propose analytics telemetry, independent per-page delivery

@@ -2195,7 +2195,11 @@ try {
     }
   }
 } finally {
-  await stopServer();
+  try {
+    for (const adapter of adapters.values()) adapter.close?.();
+  } finally {
+    await stopServer();
+  }
 }
 
 const summary = {

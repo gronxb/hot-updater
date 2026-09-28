@@ -385,6 +385,10 @@ class IOSAdapter {
     this.device(iosNativeBackArguments());
   }
 
+  close() {
+    this.device(["close"]);
+  }
+
   async screenshot(name) {
     const target = path.join(this.resultsDir, `${name}.png`);
     let failure;

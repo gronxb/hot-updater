@@ -606,3 +606,28 @@ type-check projects, and workspace lint pass. The workspace integration suite
 is still running and has reported a DynamoDB test timeout and a MySQL setup
 timeout; it is not green. The production iOS build was interrupted to commit
 these harness corrections with an intact source attestation and must resume.
+
+## 2026-09-29 matrix journal receipt comparison
+
+The clean `5c239fc3d` matrix run reaches the real iOS navigation and journal
+diagnostics, then rejects `retention-limit` after reopen. Captured native
+diagnostics prove all six installed/appended and reopened receipts have exactly
+the same values; only NSDictionary JSON member order differs. The validator now
+uses strict structural equality, retaining exact canonical byte/hash and every
+metadata comparison. A regression fails before the change and passes afterward;
+changed hash, sequence, and process receipts remain rejected. All 36 focused
+diagnostics/runner tests pass, and replay of all six captured receipts passes.
+Matrix teardown now closes its own agent-device session even on a failed cell.
+The six-cell acceptance gate is still open.
+
+The broad integration run finishes with 402 passed, one failed, and ten skipped
+tests: DynamoDB's per-test cleanup hook times out, and MySQL setup times out.
+A focused two-file retry passes all 63 DynamoDB tests and nine MySQL tests,
+leaving the MySQL fumadb patch/deletion serialization test at its 30-second
+deadline. It is being investigated separately; integration is not green.
+
+The active full E2E job started native setup on `aa2ade4c3`, but its device shard
+worktrees resolve `5c239fc3d`. Preserve that provenance distinction rather than
+describing the whole job as a single-source acceptance run. Both native builds
+pass; scenario execution remains in progress. The queued follow-up is
+`job-20260928164123-6zd6ks`.
