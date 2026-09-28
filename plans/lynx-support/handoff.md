@@ -117,9 +117,34 @@ remaining implementation, diagnosis, and verification are performed here.
   reproducing tests verify exact bytes and sequence continuation. Swift journal
   tests pass 22/22 and Android diagnostics pass 6/6. The iOS fingerprint and both
   plist values are refreshed; Android remains unchanged. Retained evidence: `evidence/ios-diagnostic-double-restore.json`.
-- A production dependency audit finds `hot-updater -> apple-helper ->
-  @hot-updater/react-native`. Move RN CocoaPods environment policy behind the RN
-  integration before claiming a Lynx-only CLI install. This is still outstanding.
+- The common CLI no longer depends on RN through the Apple helper. Bare, Rock
+  and Expo supply RN CocoaPods policy through the selected integration. The
+  isolated production-tarball install additionally exposed a Kysely root-export
+  leak; its helpers now live under the Kysely adapter entrypoint. CLI help and
+  Lynx/Cloudflare scaffolding execute without RN, Expo or Kysely installed.
+  Scaffold doctor correctly rejects unresolved deployment placeholders; this is
+  not remote infrastructure or complete onboarding proof. Retained evidence:
+  `evidence/isolated-cli-neutrality.json`. All 27 build and 35 type projects pass,
+  workspace lint passes, and 36 focused tests pass. Full units pass 3,893/3,893
+  in 348 files before the subsequent three stored-exclusion test cases.
+  Other native-helper RN log/port assumptions remain to be audited.
+- The full shared job's iOS result is 25/26. Its multipage scenario explicitly
+  deletes app data, then incorrectly compares the new journal's sequence 1 with
+  the deleted journal's sequence 1. The driver now archives the completed ledger
+  after a successful explicit deletion and retains every receipt in final
+  evidence. Failed resets, normal controls, relaunches and OTA transitions keep
+  strict overlap checks. The reproduction and full driver/ledger suites pass
+  67/67. This fix still needs a fresh complete device run. Android's first four
+  failures are startup timeouts under severe host load; later scenarios pass,
+  but causation has not been established.
+- Full job `job-20260928181940-4izq1i` finishes **46/52** (iOS 25/26, Android
+  21/26). The last Android failure incorrectly reads iOS exclusion field names;
+  the captured device state has the expected Release once in `unconfirmed` and
+  no `crashed` entries. Use OS-specific raw fields and the native Android empty
+  default, retaining strict malformed/duplicate checks. Driver/ledger/store
+  suites pass 79/79 after both harness fixes. Retained full results and actual
+  exclusion state: `evidence/shared-e2e-ca366bcb6.json`. A new full device run is
+  required; historical best remains 51/52 and no complete matrix cell is claimed.
 
 - `26b23ee18` builds both clean native matrix targets. Its iOS B-to-C phase
   recreates both pages, loads all resources and confirms C in the same process,

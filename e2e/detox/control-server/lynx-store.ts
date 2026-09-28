@@ -77,7 +77,7 @@ export function lynxCrashedBundleIds(
   platform: "ios" | "android",
   bundleIdForRelease: (releaseId: string) => string | null = () => null,
 ): string[] {
-  const raw = platform === "ios" ? journal.crashedBundleIds : journal.crashed;
+  const raw = lynxStoredExclusions(journal, platform).crashedBundleIds;
   const crashed = Array.isArray(raw)
     ? raw.filter((id): id is string => typeof id === "string")
     : [];
@@ -89,6 +89,22 @@ export function lynxCrashedBundleIds(
     }
   }
   return crashed;
+}
+
+export function lynxStoredExclusions(
+  journal: Record<string, unknown>,
+  platform: "ios" | "android",
+) {
+  return platform === "ios"
+    ? {
+        unconfirmedReleaseIds: journal.unconfirmedReleaseIds,
+        crashedBundleIds: journal.crashedBundleIds,
+      }
+    : {
+        unconfirmedReleaseIds:
+          journal.unconfirmed === undefined ? [] : journal.unconfirmed,
+        crashedBundleIds: journal.crashed === undefined ? [] : journal.crashed,
+      };
 }
 
 function selectionFromReceipt(receipt: Record<string, unknown> | null) {

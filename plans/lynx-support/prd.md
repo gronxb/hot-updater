@@ -1371,6 +1371,11 @@ Implement `@hot-updater/lynx` and `examples/lynx` against the G1 contracts.
 - Enforce the neutral-package dependency and source-policy boundary described in
   section 2.2, while RN regression fixtures prove unchanged RN/Hermes behavior
   through the RN integration.
+  The production dependency closure of the common CLI must not install an
+  application integration transitively through native utility packages. CocoaPods
+  environment defaults belong to the selected integration; the common Apple
+  helper passes those values through without discovering RN. Preserve existing
+  RN prebuilt defaults and explicit environment overrides for Bare, Rock and Expo.
 - Provide reproducible ReactLynx, VueLynx and pinned-source OctaneLynx entrypoints,
   each producing real `main.lynx.bundle` and `detail.lynx.bundle` A/B/C output,
   with shared host integration and documented native prerequisites.
@@ -1427,6 +1432,18 @@ Diagnostic fixture restoration must preserve the exact live journal and its next
 sequence. Repeated success/finally cleanup is idempotent; it must not replace a
 restored journal with an empty envelope or discard a backup before restoration
 succeeds. Checkpoint the real journal before and after fixture execution.
+
+The shared runner may explicitly delete local application data to isolate later
+recovery cases. A successful data-deletion control response ends that journal's
+lifetime: archive its complete external ledger receipt with the reset stage and
+start a new ledger for the new application data. Retain every prior receipt in
+the final scenario evidence. A failed reset, ordinary control request, process
+restart, OTA activation, or diagnostic fixture cleanup never grants this boundary;
+sequence overlap and canonical-byte checks remain strict within each lifetime.
+Interruption assertions read each OS's actual persisted exclusion fields and
+preserve the distinction between an unconfirmed Release and a crashed Bundle.
+An omitted optional Android exclusion list means empty; duplicate identifiers or
+malformed lists must still fail the exact-once and non-crash assertions.
 
 Run `checkForUpdate`, installation, and reload from the host-designated primary
 context. A secondary page cannot authorize catalog selection or mutate the OTA

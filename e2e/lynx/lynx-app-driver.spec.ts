@@ -345,6 +345,59 @@ describe("Lynx app text assertions", () => {
 });
 
 describe("Lynx managed page evidence actions", () => {
+  it("preserves the completed ledger when explicit app-data deletion starts a new journal", async () => {
+    const snapshot = JSON.parse(androidJournalFixture().snapshot);
+    const { driver } = createDriver(() => ({
+      generationEvents: JSON.stringify(snapshot),
+      updateActionResult: "generation-events -> captured",
+    }));
+    await driver.captureGenerationEvents("before reset");
+    const previous = driver.runtimeEventLedgerReceipt();
+
+    await driver.control("clear app data", "/e2e/reset-local-app-state");
+    snapshot.events[0].details.generationId = "new-installation";
+    await driver.captureGenerationEvents("after reset");
+
+    expect(driver.runtimeEventLedgerReceipt()).toMatchObject({
+      appDataResets: [
+        {
+          stage: "clear app data",
+          ledger: { sha256: previous.sha256, eventCount: 5 },
+        },
+      ],
+      eventCount: 5,
+    });
+    expect(driver.runtimeEventLedgerReceipt().sha256).not.toBe(previous.sha256);
+    snapshot.events[0].details.generationId = "unexpected-rewrite";
+    await expect(
+      driver.captureGenerationEvents("corrupt journal"),
+    ).rejects.toThrow("changed bytes");
+  });
+
+  it.each(["failed reset", "ordinary control"])(
+    "keeps byte-overlap checks after %s",
+    async (operation) => {
+      const snapshot = JSON.parse(androidJournalFixture().snapshot);
+      const { driver, fetch } = createDriver(() => ({
+        generationEvents: JSON.stringify(snapshot),
+        updateActionResult: "generation-events -> captured",
+      }));
+      await driver.captureGenerationEvents("before control");
+      if (operation === "failed reset") {
+        fetch.mockRejectedValueOnce(new Error("reset failed"));
+        await expect(
+          driver.control("failed clear", "/e2e/reset-local-app-state"),
+        ).rejects.toThrow("reset failed");
+      } else {
+        await driver.control("ordinary control", "/e2e/screen-state");
+      }
+      snapshot.events[0].details.generationId = "unexpected-rewrite";
+      await expect(
+        driver.captureGenerationEvents("corrupt journal"),
+      ).rejects.toThrow("changed bytes");
+    },
+  );
+
   it("waits for the detail page close request before returning", async () => {
     let screenReads = 0;
     const fetch = vi.fn(async (_url: string, init?: RequestInit) => ({

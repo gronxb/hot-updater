@@ -83,6 +83,7 @@ import {
   LYNX_E2E_BUILTIN_BUNDLE_ID,
   lynxAndroidInstalledManifestPaths,
   lynxCrashedBundleIds,
+  lynxStoredExclusions,
   lynxReceipt,
   synthesizeLynxCrashHistory,
   synthesizeLynxLaunchReport,
@@ -7817,8 +7818,10 @@ export function handleAssertLynxPageInterruptionState(input: {
   }
   const state = readLynxJournalValue();
   if (!state) throw new Error("Lynx native state is missing");
-  const unconfirmedReleaseIds = state.unconfirmedReleaseIds;
-  const crashedBundleIds = state.crashedBundleIds;
+  const { unconfirmedReleaseIds, crashedBundleIds } = lynxStoredExclusions(
+    state,
+    fixtureSession.platform,
+  );
   if (
     !Array.isArray(unconfirmedReleaseIds) ||
     unconfirmedReleaseIds.filter((value) => value === input.releaseId)

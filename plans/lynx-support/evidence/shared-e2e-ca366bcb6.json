@@ -1,0 +1,348 @@
+{
+  "jobId": "job-20260928181940-4izq1i",
+  "commit": "ca366bcb60902cf20e264cd222f808528a2606f5",
+  "profile": "standalone-kysely",
+  "passed": 46,
+  "failed": 6,
+  "total": 52,
+  "byPlatform": {
+    "ios": {
+      "passed": 25,
+      "total": 26
+    },
+    "android": {
+      "passed": 21,
+      "total": 26
+    }
+  },
+  "scenarios": [
+    {
+      "platform": "android",
+      "scenario": "multi-asset-replacement",
+      "status": "failed",
+      "shard": "android-s1",
+      "failure": "launch second multi-asset app: wait overlay ready timed out waiting for runtimeScenarioMarker after 60000ms; last observed <missing>"
+    },
+    {
+      "platform": "android",
+      "scenario": "bspatch-archive-to-diff-ota",
+      "status": "failed",
+      "shard": "android-s1",
+      "failure": "launch archive base app: wait overlay ready timed out waiting for runtimeScenarioMarker after 60000ms; last observed <missing>"
+    },
+    {
+      "platform": "android",
+      "scenario": "bspatch-disabled-chain-rollback",
+      "status": "passed",
+      "shard": "android-s1"
+    },
+    {
+      "platform": "android",
+      "scenario": "numeric-cohort-rollout",
+      "status": "passed",
+      "shard": "android-s1"
+    },
+    {
+      "platform": "android",
+      "scenario": "target-cohorts-only",
+      "status": "passed",
+      "shard": "android-s1"
+    },
+    {
+      "platform": "android",
+      "scenario": "targeted-cohort-switchback",
+      "status": "passed",
+      "shard": "android-s1"
+    },
+    {
+      "platform": "android",
+      "scenario": "disabled-bundle-rollback-to-builtin",
+      "status": "passed",
+      "shard": "android-s1"
+    },
+    {
+      "platform": "android",
+      "scenario": "fingerprint-initial-install",
+      "status": "passed",
+      "shard": "android-s1"
+    },
+    {
+      "platform": "android",
+      "scenario": "same-bundle-release-adoption",
+      "status": "passed",
+      "shard": "android-s1"
+    },
+    {
+      "platform": "android",
+      "scenario": "stale-catalog-after-newer-generation",
+      "status": "passed",
+      "shard": "android-s1"
+    },
+    {
+      "platform": "android",
+      "scenario": "failed-download-same-generation-retry",
+      "status": "passed",
+      "shard": "android-s1"
+    },
+    {
+      "platform": "android",
+      "scenario": "crash-then-next-safe-update",
+      "status": "passed",
+      "shard": "android-s1"
+    },
+    {
+      "platform": "android",
+      "scenario": "ten-crash-history-safe-bundle",
+      "status": "passed",
+      "shard": "android-s1"
+    },
+    {
+      "platform": "android",
+      "scenario": "release-ota-recovery",
+      "status": "failed",
+      "shard": "android-s2",
+      "failure": "launch crash update app: wait overlay ready timed out waiting for runtimeScenarioMarker after 60000ms; last observed <missing>"
+    },
+    {
+      "platform": "android",
+      "scenario": "bspatch-consecutive-diff-ota",
+      "status": "failed",
+      "shard": "android-s2",
+      "failure": "launch diff bundle A app: wait overlay ready timed out waiting for runtimeScenarioMarker after 60000ms; last observed <missing>"
+    },
+    {
+      "platform": "android",
+      "scenario": "bspatch-manifest-diff-fallback",
+      "status": "passed",
+      "shard": "android-s2"
+    },
+    {
+      "platform": "android",
+      "scenario": "runtime-channel-switch-reset",
+      "status": "passed",
+      "shard": "android-s2"
+    },
+    {
+      "platform": "android",
+      "scenario": "target-cohorts-rollout-interaction",
+      "status": "passed",
+      "shard": "android-s2"
+    },
+    {
+      "platform": "android",
+      "scenario": "force-update-auto-reload",
+      "status": "passed",
+      "shard": "android-s2"
+    },
+    {
+      "platform": "android",
+      "scenario": "disabled-bundle-rollback-to-previous-ota",
+      "status": "passed",
+      "shard": "android-s2"
+    },
+    {
+      "platform": "android",
+      "scenario": "catalog-only-no-update",
+      "status": "passed",
+      "shard": "android-s2"
+    },
+    {
+      "platform": "android",
+      "scenario": "size-aware-artifact-selection",
+      "status": "passed",
+      "shard": "android-s2"
+    },
+    {
+      "platform": "android",
+      "scenario": "slow-old-artifact-after-newer-install",
+      "status": "passed",
+      "shard": "android-s2"
+    },
+    {
+      "platform": "android",
+      "scenario": "republished-crashed-bundle-skipped",
+      "status": "passed",
+      "shard": "android-s2"
+    },
+    {
+      "platform": "android",
+      "scenario": "runtime-channel-crash-restore",
+      "status": "passed",
+      "shard": "android-s2"
+    },
+    {
+      "platform": "android",
+      "scenario": "sparkling-multipage-ota",
+      "status": "failed",
+      "shard": "android-s2",
+      "failure": "multi-page pre-confirm interruption: prove unconfirmed not crashed failed with HTTP 500: {\"details\":{\"expected\":\"01a0e965-218a-7a19-af41-04f0d5167af0\"},\"error\":\"Interrupted page Release was not classified unconfirmed exactly once\"}"
+    },
+    {
+      "platform": "ios",
+      "scenario": "multi-asset-replacement",
+      "status": "passed",
+      "shard": "ios-s1"
+    },
+    {
+      "platform": "ios",
+      "scenario": "bspatch-archive-to-diff-ota",
+      "status": "passed",
+      "shard": "ios-s1"
+    },
+    {
+      "platform": "ios",
+      "scenario": "bspatch-disabled-chain-rollback",
+      "status": "passed",
+      "shard": "ios-s1"
+    },
+    {
+      "platform": "ios",
+      "scenario": "numeric-cohort-rollout",
+      "status": "passed",
+      "shard": "ios-s1"
+    },
+    {
+      "platform": "ios",
+      "scenario": "target-cohorts-only",
+      "status": "passed",
+      "shard": "ios-s1"
+    },
+    {
+      "platform": "ios",
+      "scenario": "targeted-cohort-switchback",
+      "status": "passed",
+      "shard": "ios-s1"
+    },
+    {
+      "platform": "ios",
+      "scenario": "disabled-bundle-rollback-to-builtin",
+      "status": "passed",
+      "shard": "ios-s1"
+    },
+    {
+      "platform": "ios",
+      "scenario": "fingerprint-initial-install",
+      "status": "passed",
+      "shard": "ios-s1"
+    },
+    {
+      "platform": "ios",
+      "scenario": "same-bundle-release-adoption",
+      "status": "passed",
+      "shard": "ios-s1"
+    },
+    {
+      "platform": "ios",
+      "scenario": "stale-catalog-after-newer-generation",
+      "status": "passed",
+      "shard": "ios-s1"
+    },
+    {
+      "platform": "ios",
+      "scenario": "failed-download-same-generation-retry",
+      "status": "passed",
+      "shard": "ios-s1"
+    },
+    {
+      "platform": "ios",
+      "scenario": "crash-then-next-safe-update",
+      "status": "passed",
+      "shard": "ios-s1"
+    },
+    {
+      "platform": "ios",
+      "scenario": "ten-crash-history-safe-bundle",
+      "status": "passed",
+      "shard": "ios-s1"
+    },
+    {
+      "platform": "ios",
+      "scenario": "release-ota-recovery",
+      "status": "passed",
+      "shard": "ios-s2"
+    },
+    {
+      "platform": "ios",
+      "scenario": "bspatch-consecutive-diff-ota",
+      "status": "passed",
+      "shard": "ios-s2"
+    },
+    {
+      "platform": "ios",
+      "scenario": "bspatch-manifest-diff-fallback",
+      "status": "passed",
+      "shard": "ios-s2"
+    },
+    {
+      "platform": "ios",
+      "scenario": "runtime-channel-switch-reset",
+      "status": "passed",
+      "shard": "ios-s2"
+    },
+    {
+      "platform": "ios",
+      "scenario": "target-cohorts-rollout-interaction",
+      "status": "passed",
+      "shard": "ios-s2"
+    },
+    {
+      "platform": "ios",
+      "scenario": "force-update-auto-reload",
+      "status": "passed",
+      "shard": "ios-s2"
+    },
+    {
+      "platform": "ios",
+      "scenario": "disabled-bundle-rollback-to-previous-ota",
+      "status": "passed",
+      "shard": "ios-s2"
+    },
+    {
+      "platform": "ios",
+      "scenario": "catalog-only-no-update",
+      "status": "passed",
+      "shard": "ios-s2"
+    },
+    {
+      "platform": "ios",
+      "scenario": "size-aware-artifact-selection",
+      "status": "passed",
+      "shard": "ios-s2"
+    },
+    {
+      "platform": "ios",
+      "scenario": "slow-old-artifact-after-newer-install",
+      "status": "passed",
+      "shard": "ios-s2"
+    },
+    {
+      "platform": "ios",
+      "scenario": "republished-crashed-bundle-skipped",
+      "status": "passed",
+      "shard": "ios-s2"
+    },
+    {
+      "platform": "ios",
+      "scenario": "runtime-channel-crash-restore",
+      "status": "passed",
+      "shard": "ios-s2"
+    },
+    {
+      "platform": "ios",
+      "scenario": "sparkling-multipage-ota",
+      "status": "failed",
+      "shard": "ios-s2",
+      "failure": "multi-page lifecycle: capture reset embedded A: overlapping native event 1 changed bytes"
+    }
+  ],
+  "androidInterruptionRawExclusions": {
+    "unconfirmed": [
+      "01a0e965-218a-7a19-af41-04f0d5167af0"
+    ]
+  },
+  "analysis": {
+    "iosMultipage": "The driver compared event 1 across deliberate app-data deletion; archive each completed lifetime and start a new ledger only after successful deletion.",
+    "androidMultipage": "The assertion read iOS exclusion field names. The actual Android unconfirmed list contains the expected Release exactly once; missing crashed means an empty list.",
+    "androidStartup": "Four early ready-marker timeouts coincided with high host load and ADB timeouts. Causation is not established; rerun unchanged assertions after diagnosis."
+  }
+}

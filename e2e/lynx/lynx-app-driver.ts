@@ -119,7 +119,11 @@ export class LynxAppDriver implements DetoxAppDriver {
   private activeLaunchGeneration: string | null = null;
   private iosLaunchProcessId: string | null = null;
   private iosAgentDeviceUdid: string | null = null;
-  private readonly generationEventLedger = new GenerationEventLedger();
+  private generationEventLedger = new GenerationEventLedger();
+  private readonly appDataResets: {
+    stage: string;
+    ledger: GenerationEventLedgerReceipt;
+  }[] = [];
   private stageValues: Record<string, unknown>;
 
   constructor(
@@ -195,6 +199,17 @@ export class LynxAppDriver implements DetoxAppDriver {
         ? this.controlClient.runJob.bind(this.controlClient)
         : this.controlClient.postJson.bind(this.controlClient);
       const result = await runner(stage, pathName, resolvedBody);
+      if (pathName === "/e2e/reset-local-app-state") {
+        const completed = {
+          stage,
+          ledger: this.generationEventLedger.receipt(),
+        };
+        this.appDataResets.push(completed);
+        this.generationEventLedger = new GenerationEventLedger();
+        console.log(
+          `[lynx-generation-ledger:app-data-reset] ${JSON.stringify(completed)}`,
+        );
+      }
       if (
         this.platform === "android" &&
         pathName === "/e2e/jobs/wait-for-android-restart"
@@ -251,10 +266,9 @@ export class LynxAppDriver implements DetoxAppDriver {
 
   async resetAppState(stage: string): Promise<void> {
     await this.runStage(stage, async () => {
-      await this.controlClient.postJson(
+      await this.control(
         `${stage}: reset local app state`,
         "/e2e/reset-local-app-state",
-        {},
       );
       await this.launchApp();
     });
@@ -353,8 +367,11 @@ export class LynxAppDriver implements DetoxAppDriver {
     return snapshot;
   }
 
-  runtimeEventLedgerReceipt(): GenerationEventLedgerReceipt {
-    return this.generationEventLedger.receipt();
+  runtimeEventLedgerReceipt() {
+    return {
+      ...this.generationEventLedger.receipt(),
+      appDataResets: [...this.appDataResets],
+    };
   }
 
   async captureDiagnosticReceipt<T>(stage: string, testID: string): Promise<T> {

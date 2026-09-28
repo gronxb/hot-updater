@@ -840,3 +840,74 @@ Swift journal tests pass 22/22 and Android diagnostics pass 6/6. The normal CLI
 refreshes the iOS fingerprint and both plist values; Android is unchanged because
 its diagnostics are excluded from the production fingerprint. Rebuild the matrix. Full shared job `job-20260928181940-4izq1i` remains on
 `ca366bcb6`; no results from the later fix may be attributed to that job.
+
+
+## 2026-09-29 common CLI CocoaPods dependency
+
+A production dependency walk exposes `hot-updater -> apple-helper ->
+@hot-updater/react-native`. The Apple helper also discovers RN and injects RN
+CocoaPods flags into an unrelated Podfile. A dependency-closure regression and
+plain/Bundler Podfile tests fail on that implementation.
+
+Add the optional integration-owned `getPodInstallEnvironment` hook and pass its
+result through native iOS build/run to CocoaPods. Bare, Rock and Expo obtain RN
+prebuilt defaults from `@hot-updater/react-native`; explicit environment overrides
+remain intact. The common Apple helper drops its RN dependency and performs no
+RN discovery. Fifteen focused dependency, Podfile, command and RN policy tests
+pass. The workspace build passes all 27 projects and types pass all 35 projects.
+
+The matrix retry on `7eb4f9e03` proves live journal preservation (82 events before
+diagnostics, 219 afterward). It then stops during C deployment because a local
+package-link refresh removed the old Apple helper's RN dependency before its
+compiled output was rebuilt. This run is not an OTA runtime failure or completed
+matrix cell. Finish rebuilding tools and rerun against a committed checkout.
+Full shared job `job-20260928181940-4izq1i` uses separate worktrees pinned to
+`ca366bcb6` and is unaffected by those local dependency edits. Its first two
+Android scenarios time out waiting for a ready marker; native snapshots retain
+confirmed generations, but `adb` diagnostics also time out under host load over
+130. The cause is not yet established; retain the strict readiness checks.
+
+The real packed-install fixture subsequently exposes a separate optional-peer
+leak: the server root exports Kysely Insights helpers and makes CLI `--help`
+require Kysely. Move those exports to the existing Kysely adapter entrypoint and
+update the Postgres consumer. A subprocess regression blocks all optional ORM
+drivers and fails before the fix. Rebuilding all 27 projects passes, and an
+isolated installation of ten production tarballs runs CLI help with neither RN,
+Expo, nor Kysely installed. Six focused suites pass 36/36. The first workspace
+unit run passes 3,887/3,888; its sole failure assumes common CLI Expo validation.
+Split that test into scaffold-without-config-execution and actual selected-Expo
+doctor checks; both pass. Final workspace units/types/lint are rerun after these
+changes; full onboarding/deployment proof remains outstanding.
+
+## 2026-09-29 explicit app-data deletion evidence boundary
+
+Full job `job-20260928181940-4izq1i` finishes iOS at 25/26. Its last multipage
+failure is `capture reset embedded A: overlapping native event 1 changed bytes`.
+The scenario explicitly calls `/e2e/reset-local-app-state`; the control server
+deletes the full Lynx data directory, including the native journal. The driver
+incorrectly keeps the prior lifetime's external ledger for the new journal.
+This is distinct from diagnostic double restoration fixed in `7eb4f9e03`.
+
+Archive the prior receipt only after a successful explicit app-data deletion and
+include every archived receipt in final evidence. Start a fresh ledger for the
+new data lifetime. Do not reset on ordinary controls, failed deletion, relaunch,
+reload or diagnostic cleanup. The reproducing test fails on changed event 1;
+67/67 driver and ledger tests pass after the fix, including failure and corruption
+checks. Native runtime behavior and within-lifetime byte comparisons are unchanged.
+
+The completed full job is **46/52**: iOS 25/26 and Android 21/26. Retain all
+scenario outcomes in `evidence/shared-e2e-ca366bcb6.json`. The final Android
+multipage failure reads iOS's `unconfirmedReleaseIds`/`crashedBundleIds` names
+from Android state. Direct device inspection finds the expected Release exactly
+once in `unconfirmed`; `crashed` is absent, meaning empty in the Android store.
+Map the raw stored exclusions by OS, keeping absent Android lists empty and
+preserving malformed/duplicate values for strict assertions. Do not use the RN
+compatibility crash-history projection for this check. Three focused driver,
+ledger and store suites pass 79/79 after both harness corrections.
+
+The common dependency changes pass the full workspace suite: **3,893/3,893 in
+348 files**. This run precedes the three new stored-exclusion cases, which pass
+in the focused 79-test run. All 27 build projects, 35 type projects and workspace
+lint pass. Supabase's exact import-map expectation is updated because its server
+entrypoint no longer pulls in the unused optional Kysely peer. Commit and rebuild
+before fresh device acceptance; these results do not upgrade the old job's score.

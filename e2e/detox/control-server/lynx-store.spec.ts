@@ -7,6 +7,7 @@ import {
   LYNX_E2E_BUILTIN_BUNDLE_ID,
   lynxAndroidInstalledManifestPaths,
   lynxCrashedBundleIds,
+  lynxStoredExclusions,
   RN_E2E_BUILTIN_BUNDLE_ID,
   synthesizeLynxCrashHistory,
   synthesizeLynxLaunchReport,
@@ -26,6 +27,32 @@ const receipt = {
 };
 
 describe("Lynx E2E store projection", () => {
+  it.each(["ios", "android"] as const)(
+    "reads %s interruption exclusions without promoting an unconfirmed Release to a crashed Bundle",
+    (platform) => {
+      const journal =
+        platform === "ios"
+          ? { unconfirmedReleaseIds: ["pending-release"], crashedBundleIds: [] }
+          : { unconfirmed: ["pending-release"] };
+      expect(lynxStoredExclusions(journal, platform)).toEqual({
+        unconfirmedReleaseIds: ["pending-release"],
+        crashedBundleIds: [],
+      });
+    },
+  );
+
+  it("preserves duplicate and malformed exclusions for strict assertions", () => {
+    expect(
+      lynxStoredExclusions(
+        { unconfirmed: ["pending", "pending"], crashed: "invalid" },
+        "android",
+      ),
+    ).toEqual({
+      unconfirmedReleaseIds: ["pending", "pending"],
+      crashedBundleIds: "invalid",
+    });
+  });
+
   it("recognizes the Lynx example app id", () => {
     expect(isLynxE2eAppId("com.hotupdater.lynxexample")).toBe(true);
     expect(isLynxE2eAppId("com.hotupdater.example")).toBe(false);
