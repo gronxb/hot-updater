@@ -1,7 +1,4 @@
-import {
-  InsightsEventConflictError,
-  type BundleEventRow,
-} from "@hot-updater/plugin-core";
+import type { BundleEventRow } from "@hot-updater/plugin-core";
 import {
   addInsightsDistinct,
   assertBundleEventRow,
@@ -208,9 +205,8 @@ const isNewer = (event: Head, head: Head) =>
 /**
  * Records one event in one transaction: one batch read of the event and its
  * installation's head, one of the gauge and sketch rows it changes, then one
- * write. A repeated id changes nothing, and one stored for another
- * installation throws `InsightsEventConflictError`; an older event still
- * counts in its own hour but never replaces the head.
+ * write. A repeated id changes nothing, whichever installation sends it; an
+ * older event still counts in its own hour but never replaces the head.
  */
 export const recordEvent = (
   db: HotUpdaterDatabase<InsightsSchema>,
@@ -222,15 +218,10 @@ export const recordEvent = (
       tx.findOne("bundle_events", { id: event.id }),
       tx.findOne("bundle_event_heads", { install_id: event.install_id }),
     ]);
-    if (existing !== null) {
-      // A retry repeats its report's id and changes nothing. The same id from
-      // another installation is a different report: refusing it tells that
-      // client, where ignoring it would drop the report without a word.
-      if (existing.install_id !== event.install_id) {
-        throw new InsightsEventConflictError(event.id);
-      }
-      return;
-    }
+    // The id is the report's idempotency key: a retry, or any report under
+    // an id already stored, changes nothing, as analytics ingestion drops
+    // duplicates.
+    if (existing !== null) return;
     tx.create("bundle_events", event);
     countEvent(tx, event);
     const fields = headFields(event);

@@ -123,14 +123,14 @@ an older server; a known field with an invalid value is refused.
 
 A report can carry an `eventId`: a lowercase UUIDv7 that the client creates
 once for the report and sends again with every retry. The server stores the
-report under that ID, so a retried report counts once. Without an `eventId`,
-the server creates the ID, and a retry counts as another report.
+report under that ID, so a retried report counts once, and a report under an
+ID the server already stored changes nothing. Without an `eventId`, the server
+creates the ID, and a retry counts as another report.
 
 | Status | Meaning |
 | --- | --- |
 | `204` | Recorded, or already recorded under the same `eventId` |
 | `400` | A missing or invalid field, including an `eventId` that is not a UUIDv7 |
-| `409` | Another installation already sent a report with this `eventId`; nothing is stored |
 | `413` | The body is larger than 16 KB |
 | `503` | The database is busy; send the report again after the `Retry-After` seconds |
 

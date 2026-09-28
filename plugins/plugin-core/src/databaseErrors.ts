@@ -7,19 +7,6 @@ export class DatabaseBundleNotFoundError extends Error {
   }
 }
 
-/**
- * An Insights event ID already recorded for another installation. A client
- * repeats its own report's ID on a retry, so this is a different report: it
- * is refused, not merged into the stored one.
- */
-export class InsightsEventConflictError extends Error {
-  readonly name = "InsightsEventConflictError";
-
-  constructor(readonly eventId: string) {
-    super(`Event ${eventId} is already recorded for another installation.`);
-  }
-}
-
 /** A row a delete names is still referenced, such as a bundle a release uses. */
 export class DatabaseRowReferencedError extends Error {
   readonly name = "DatabaseRowReferencedError";

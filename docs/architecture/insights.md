@@ -27,22 +27,22 @@ custom database implements the adapter contract, not Insights methods. Its API,
 validated at the boundary as `InsightsModel` from `@hot-updater/plugin-core`,
 is what the Insights routes, the Console, and the e2e harness read through:
 
-| Method                                                                 | What the plugin does                                                                                                                                                                                                                                               |
-| ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `recordEvent({ event })`                                               | One transaction: store the event, move the installation's head when the event is newer, and update counters, gauges, and sketches. A repeated ID from the same installation changes nothing; one another installation recorded throws `InsightsEventConflictError` |
-| `listEvents({ filter, sinceMs, beforeReceivedAtMs, after, limit })`    | Newest-first global, installation-movement, or bundle-outcome history                                                                                                                                                                                              |
-| `findLatestEvents({ installId } or { userId, afterInstallId, limit })` | An installation's head, or a user's installations in install ID order                                                                                                                                                                                              |
-| `countLatestEvents({ platform, channel, sinceMs, bundle })`            | Heads in the window: gauges for whole hours, heads for a partial first hour                                                                                                                                                                                        |
-| `countEvents({ filter, sinceMs, beforeReceivedAtMs })`                 | Reports of one bundle outcome: hourly counters, raw events for partial hours at either edge                                                                                                                                                                        |
-| `getReleaseActivity(...)`                                              | Downloads, launches, and failed launches from counters; unique users from sketches                                                                                                                                                                                 |
-| `getAppUsage(...)`                                                     | Active installations from sketches, per interval and in total; the latest-report distribution from gauges                                                                                                                                                          |
+| Method                                                                 | What the plugin does                                                                                                                                                                              |
+| ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `recordEvent({ event })`                                               | One transaction: store the event, move the installation's head when the event is newer, and update counters, gauges, and sketches. A repeated ID changes nothing, whichever installation sends it |
+| `listEvents({ filter, sinceMs, beforeReceivedAtMs, after, limit })`    | Newest-first global, installation-movement, or bundle-outcome history                                                                                                                             |
+| `findLatestEvents({ installId } or { userId, afterInstallId, limit })` | An installation's head, or a user's installations in install ID order                                                                                                                             |
+| `countLatestEvents({ platform, channel, sinceMs, bundle })`            | Heads in the window: gauges for whole hours, heads for a partial first hour                                                                                                                       |
+| `countEvents({ filter, sinceMs, beforeReceivedAtMs })`                 | Reports of one bundle outcome: hourly counters, raw events for partial hours at either edge                                                                                                       |
+| `getReleaseActivity(...)`                                              | Downloads, launches, and failed launches from counters; unique users from sketches                                                                                                                |
+| `getAppUsage(...)`                                                     | Active installations from sketches, per interval and in total; the latest-report distribution from gauges                                                                                         |
 
 The server sets each report's receipt time and metadata. The report ID is the
 client's `eventId`, a UUIDv7, when it sends one, so a retried report counts
 once; otherwise the server creates the ID. `POST /events` ignores fields it
-does not know, answers `409` for an `eventId` another installation sent, and
-answers `503` with `Retry-After: 5` while the database is busy: a transaction
-out of retries (`DatabaseConflictError`) or a throttled read. Core owns
+does not know and answers `503` with `Retry-After: 5` while the database is
+busy: a transaction out of retries (`DatabaseConflictError`) or a throttled
+read. Core owns
 movement semantics, scope/window selection, opaque cursors, and UI labels.
 
 Sketches are HyperLogLog registers (1,024 per sketch), so unique counts are

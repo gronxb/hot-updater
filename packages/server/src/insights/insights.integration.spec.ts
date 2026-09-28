@@ -501,7 +501,7 @@ describe("createHotUpdater Insights", () => {
     expect(tooLarge.status).toBe(413);
   });
 
-  it("counts a retried report once under its client event ID and refuses the ID to another installation", async () => {
+  it("counts a retried report once under its client event ID, whichever installation repeats it", async () => {
     const hotUpdater = start();
     const eventId = "01987a6e-4c00-7abc-8def-0123456789ab";
     const report = { ...event, eventId };
@@ -533,13 +533,15 @@ describe("createHotUpdater Insights", () => {
       data: [{ id: eventId, installId: "install-1" }],
     });
 
-    const conflict = await hotUpdater.handlers.client(
-      eventRequest({ ...report, installId: "install-2" }),
-    );
-    expect(conflict.status).toBe(409);
-    await expect(conflict.json()).resolves.toEqual({
-      error: `Event ${eventId} is already recorded for another installation.`,
-    });
+    // A report under a stored ID changes nothing, as analytics ingestion
+    // drops duplicates.
+    expect(
+      (
+        await hotUpdater.handlers.client(
+          eventRequest({ ...report, installId: "install-2" }),
+        )
+      ).status,
+    ).toBe(204);
     expect(
       (
         await hotUpdater.handlers.admin(

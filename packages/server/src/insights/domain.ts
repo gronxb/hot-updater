@@ -6,9 +6,9 @@ export type CreateBundleEventRequestBase = {
   /**
    * The report's idempotency key: a canonical lowercase UUIDv7 that the
    * client creates once per report and repeats on every retry. The server
-   * stores the report under it, so a retried report counts once; the same ID
-   * from another installation answers `409`. Without it, the server creates
-   * the ID, and a retry counts as another report.
+   * stores the report under it, so a retried report counts once, and a
+   * report under an ID already stored changes nothing. Without it, the
+   * server creates the ID, and a retry counts as another report.
    */
   readonly eventId?: string;
   readonly installId: string;

@@ -153,10 +153,8 @@ export interface InsightsGetAppUsageResult {
 export interface InsightsModel {
   /**
    * Persist the immutable event once. A private latest-event index, if used,
-   * advances atomically for a greater (received_at_ms, id). A duplicate event
-   * ID from the same installation is a complete no-op; one recorded for
-   * another installation rejects with `InsightsEventConflictError` and
-   * changes nothing.
+   * advances atomically for a greater (received_at_ms, id). Duplicate event
+   * IDs are complete no-ops, whichever installation sends them.
    * Retry the identical prepared input after an ambiguous commit outcome.
    */
   recordEvent(input: InsightsRecordEventInput): Promise<void>;

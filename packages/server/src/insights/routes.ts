@@ -1,5 +1,3 @@
-import { InsightsEventConflictError } from "@hot-updater/plugin-core";
-
 import {
   InsightsBadRequestError,
   InsightsPayloadTooLargeError,
@@ -47,9 +45,6 @@ const run = async (operation: () => Promise<Response>): Promise<Response> => {
   } catch (error) {
     if (error instanceof InsightsBadRequestError) {
       return json({ error: error.message }, 400);
-    }
-    if (error instanceof InsightsEventConflictError) {
-      return json({ error: error.message }, 409);
     }
     if (error instanceof InsightsPayloadTooLargeError) {
       return json({ error: error.message }, 413);

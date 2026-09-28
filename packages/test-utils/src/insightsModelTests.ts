@@ -150,7 +150,7 @@ export const registerInsightsModelTests = (
       );
     });
 
-    it("treats duplicate IDs as complete no-ops, including changed retry payloads, and refuses another installation's", async () => {
+    it("treats duplicate IDs as complete no-ops, including changed retry payloads", async () => {
       const model = state.getDatabase();
       const event = createBundleEventRowFixture("901", 100);
       await Promise.all([
@@ -165,11 +165,8 @@ export const registerInsightsModelTests = (
         user_id: "changed-user",
       };
       await record(model, changed);
-      // The same ID from another installation is a different report.
       const otherInstallation = { ...changed, install_id: "different-install" };
-      await expect(record(model, otherInstallation)).rejects.toMatchObject({
-        name: "InsightsEventConflictError",
-      });
+      await record(model, otherInstallation);
       await expect(
         model.findLatestEvents({
           installId: event.install_id,

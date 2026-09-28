@@ -36,10 +36,7 @@ const createInsightsApi = (
   db: HotUpdaterDatabase<InsightsSchema>,
   now: () => number,
 ) => ({
-  /**
-   * Records one validated event row. A repeated id changes nothing; one that
-   * another installation recorded throws `InsightsEventConflictError`.
-   */
+  /** Records one validated event row; a repeated id changes nothing. */
   recordEvent: (event: BundleEventRow) => recordEvent(db, event),
   listEvents: (input: InsightsListEventsInput) => listEvents(db, input),
   findLatestEvents: (input: InsightsFindLatestEventsInput) =>

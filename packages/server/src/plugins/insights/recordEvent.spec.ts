@@ -1,9 +1,6 @@
 import { DatabaseSync } from "node:sqlite";
 
-import {
-  InsightsEventConflictError,
-  type BundleEventRow,
-} from "@hot-updater/plugin-core";
+import type { BundleEventRow } from "@hot-updater/plugin-core";
 import {
   countInsightsDistinct,
   createMemoryAdapter,
@@ -284,11 +281,9 @@ describe.each(backends)("insights recordEvent on %s", (_name, adapter) => {
   it("changes nothing for a repeated id, even with another payload", async () => {
     const { api, db, outcomes, everyEvent } = await setup();
     await api.recordEvent(event(1));
-    await expect(
-      api.recordEvent(
-        event(1, { install_id: "install-2", received_at_ms: T + HOUR }),
-      ),
-    ).rejects.toBeInstanceOf(InsightsEventConflictError);
+    await api.recordEvent(
+      event(1, { install_id: "install-2", received_at_ms: T + HOUR }),
+    );
 
     await expect(
       db.findOne("bundle_events", { id: uuid(1) }),
@@ -418,7 +413,7 @@ describe.each(backends)("insights recordEvent on %s", (_name, adapter) => {
     expect(counted).toBe(installs.length);
   });
 
-  it("records a retry of its own report once and refuses its id to a racing installation", async () => {
+  it("records a retried report once, and a racing installation's report under its id not at all", async () => {
     const { api, db, outcomes } = await setup();
     await api.recordEvent(event(1));
     // A retry repeats the report's id, even when it arrives an hour later.
@@ -431,23 +426,18 @@ describe.each(backends)("insights recordEvent on %s", (_name, adapter) => {
     ).resolves.toMatchObject([{ events: 1 }]);
 
     // The later writer reads the winner's row, at once or in the rerun after
-    // its own insert fails.
+    // its own insert fails, and changes nothing.
     const installs = ["install-2", "install-3"];
-    const raced = await Promise.allSettled(
+    await Promise.all(
       installs.map((install) =>
         api.recordEvent(event(2, { install_id: install })),
       ),
     );
-    const winner = raced.findIndex(({ status }) => status === "fulfilled");
-    expect(raced[1 - winner]).toMatchObject({
-      status: "rejected",
-      reason: expect.any(InsightsEventConflictError),
-    });
+    const stored = await db.findOne("bundle_events", { id: uuid(2) });
+    const loser = installs.find((install) => install !== stored?.install_id);
+    expect(installs).toContain(stored?.install_id);
     await expect(
-      db.findOne("bundle_events", { id: uuid(2) }),
-    ).resolves.toMatchObject({ install_id: installs[winner] });
-    await expect(
-      db.findOne("bundle_event_heads", { install_id: installs[1 - winner]! }),
+      db.findOne("bundle_event_heads", { install_id: loser! }),
     ).resolves.toBeNull();
   });
 });
