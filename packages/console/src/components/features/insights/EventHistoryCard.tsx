@@ -14,7 +14,14 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import type { InsightsEventRow, InsightsViewPage } from "@/lib/insights-view";
+import {
+  EVENT_RANGES,
+  type EventRange,
+  eventRanges,
+  type InsightsEventRow,
+  type InsightsViewPage,
+  widerEventRange,
+} from "@/lib/insights-view";
 
 import {
   EventBundleTransition,
@@ -25,11 +32,18 @@ import {
 import { EventHistoryList } from "./EventHistoryList";
 import { InsightsErrorAlert } from "./InsightsErrorAlert";
 import { InsightsPagination } from "./InsightsPagination";
+import { PeriodSelector } from "./InsightsPeriodSelector";
 
 type EventsLocationState = {
   readonly eventsBefore: number;
   readonly eventsCursor?: string;
+  readonly eventsRange?: EventRange;
 };
+
+const rangePeriods = EVENT_RANGES.map((value) => ({
+  value,
+  name: `Last ${eventRanges[value].period}`,
+}));
 
 function EventIdentity({
   event,
@@ -94,8 +108,10 @@ export function EventHistoryCard({
   isLoading,
   onNext,
   onPrevious,
+  onRangeChange,
   onRefresh,
   pageNumber,
+  range,
   title = "All events",
 }: {
   readonly children?: ReactNode;
@@ -106,12 +122,28 @@ export function EventHistoryCard({
   readonly isLoading: boolean;
   readonly onNext: () => void;
   readonly onPrevious: () => void;
+  /** Lets the list change its range; a list with a fixed window leaves it out. */
+  readonly onRangeChange?: (range: EventRange) => void;
   readonly onRefresh: () => void;
   readonly pageNumber: number;
+  /** The time range the list reads, named by its empty and end states. */
+  readonly range?: EventRange;
   readonly title?: string;
 }) {
   const dateTimeFormat = useInsightsTimeFormat();
   const hasPrevious = pageNumber > 1;
+  const wider = range === undefined ? undefined : widerEventRange(range);
+  const widen =
+    wider !== undefined && onRangeChange ? (
+      <Button
+        className="h-11 px-3 lg:h-8"
+        onClick={() => onRangeChange(wider)}
+        type="button"
+        variant="outline"
+      >
+        {`Show the last ${eventRanges[wider].period}`}
+      </Button>
+    ) : null;
 
   return (
     <Card className="@container min-w-0 shadow-sm" aria-busy={isFetching}>
@@ -120,16 +152,26 @@ export function EventHistoryCard({
           <CardTitle>
             <h2>{title}</h2>
           </CardTitle>
-          <Button
-            className="h-11 lg:h-8"
-            disabled={isFetching}
-            onClick={onRefresh}
-            size="lg"
-            variant="outline"
-          >
-            <RefreshCw aria-hidden="true" data-icon="inline-start" />
-            Refresh
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            {range !== undefined && onRangeChange ? (
+              <PeriodSelector
+                label="Time range"
+                onPeriodChange={onRangeChange}
+                period={range}
+                periods={rangePeriods}
+              />
+            ) : null}
+            <Button
+              className="h-11 lg:h-8"
+              disabled={isFetching}
+              onClick={onRefresh}
+              size="lg"
+              variant="outline"
+            >
+              <RefreshCw aria-hidden="true" data-icon="inline-start" />
+              Refresh
+            </Button>
+          </div>
         </div>
         {children}
       </CardHeader>
@@ -223,16 +265,29 @@ export function EventHistoryCard({
                 </div>
               </>
             ) : (
-              <div className="px-6 pb-6 text-sm text-muted-foreground">
-                {history.nextCursor
-                  ? "No events in this period. Older events continue on the next page."
-                  : hasPrevious
-                    ? "No older events."
-                    : title === "All events"
-                      ? "No events recorded yet"
-                      : "No matching reports in this period"}
+              <div className="flex flex-wrap items-center justify-between gap-3 px-4 pb-4 sm:px-6 sm:pb-6">
+                <p className="text-sm text-muted-foreground">
+                  {hasPrevious
+                    ? "No older events in this range."
+                    : range !== undefined
+                      ? `No events in the last ${eventRanges[range].period}.`
+                      : title === "All events"
+                        ? "No events recorded yet"
+                        : "No matching reports in this period"}
+                </p>
+                {hasPrevious ? null : widen}
               </div>
             )}
+            {range !== undefined &&
+            history.nextCursor === null &&
+            (history.data.length > 0 || hasPrevious) ? (
+              <div className="flex flex-wrap items-center justify-between gap-3 border-t px-4 py-3 sm:px-6">
+                <p className="text-sm text-muted-foreground">
+                  Start of range reached
+                </p>
+                {widen}
+              </div>
+            ) : null}
             {history.data.length > 0 || hasPrevious || history.nextCursor ? (
               <InsightsPagination
                 hasPrevious={hasPrevious}

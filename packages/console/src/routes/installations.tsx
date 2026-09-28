@@ -24,6 +24,7 @@ import {
   useInsightsInstallationsQuery,
   useInsightsStatusQuery,
 } from "@/lib/insights-api";
+import { DEFAULT_EVENT_RANGE, eventRangeBounds } from "@/lib/insights-view";
 
 import {
   getInsightsScrollRestorationKey,
@@ -65,6 +66,7 @@ function InstallationsPage() {
   const hasSelection = search.installId !== undefined;
   const hasLookup = hasSearchQuery || hasSelection;
   const eventsBefore = search.eventsBefore ?? initialEventsBefore;
+  const eventsRange = search.eventsRange ?? DEFAULT_EVENT_RANGE;
   const historyBefore = search.historyBefore ?? initialHistoryBefore;
 
   const updateSearch = (
@@ -106,7 +108,7 @@ function InstallationsPage() {
   const insightsOn = status.data?.insights === "on";
   const events = useInsightsEventsQuery(
     {
-      beforeReceivedAtMs: eventsBefore,
+      ...eventRangeBounds(eventsRange, eventsBefore),
       cursor: search.eventsCursor,
       limit: 20,
     },
@@ -254,6 +256,7 @@ function InstallationsPage() {
               eventsLocation={{
                 eventsBefore,
                 eventsCursor: search.eventsCursor,
+                eventsRange: search.eventsRange,
               }}
               history={events.data}
               isFetching={events.isFetching}
@@ -278,6 +281,17 @@ function InstallationsPage() {
                   { eventsBack: previous.stack },
                 );
               }}
+              onRangeChange={(range) => {
+                updateSearch(
+                  {
+                    eventsBefore: freshBefore(),
+                    eventsCursor: undefined,
+                    eventsRange: range,
+                  },
+                  false,
+                  { eventsBack: [] },
+                );
+              }}
               onRefresh={() => {
                 updateSearch(
                   {
@@ -289,6 +303,7 @@ function InstallationsPage() {
                 );
               }}
               pageNumber={eventsBack.length + 1}
+              range={eventsRange}
             >
               {installationLookup}
             </EventHistoryCard>
