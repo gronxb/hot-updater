@@ -725,3 +725,19 @@ The regression supplies a stale previous-page close and delays the current
 page's event; both back and JavaScript-close cases fail before the fix and pass
 afterward. The related driver, scenario, and evidence suites pass **72/72**.
 Native source and fingerprint are unchanged by this harness correction.
+
+
+## 2026-09-29 SDK sample viewport
+
+The clean `c4a9985a5` matrix reaches verified C preparation in the retained B
+primary. Its captured accessibility tree places `Install with detail open` at
+y=845 inside a Lynx viewport ending at y=840; the accessibility backend still
+labels the action hittable. The tap does not reach the SDK and no navigation
+occurs. This is sample layout and driver targeting, not secondary authority.
+
+React, Vue, and Octane SDK pages now use compact spacing and a 64 px resource
+image, retaining ordinary 46 px action targets. Production pages are unchanged.
+The driver rejects action centers outside any ancestor's visible rectangle
+even when accessibility reports hittable. The captured geometry reproduces
+the false acceptance before the fix. All 121 matrix tests, example type checks,
+and three actual compiler builds pass; device verification is still required.

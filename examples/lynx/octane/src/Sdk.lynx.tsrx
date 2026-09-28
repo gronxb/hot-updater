@@ -13,7 +13,7 @@ export function App() @{
   const openDetail = () => { navigate({ path: "detail.lynx.bundle", options: { params: { title: "Second Page" } } }, (result) => console.log("HOT_UPDATER_PAGE_OPEN", result)); };
   useEffect(() => { void startSdk(setStatus, () => setFontReady(true), loadProbeFont, loadExternalBootstrap, loadDynamicProbe); }, []);
 
-  <view class="page">
+  <view class="page sdk-page">
     <text class="eyebrow">{"HOT UPDATER / OCTANELYNX SDK"}</text>
     <text class="title">{"Bundle " + variant}</text>
     <image class="probe" src={imageUrl} bindload={sdkImageLoaded} />

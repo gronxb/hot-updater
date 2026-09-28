@@ -109,6 +109,13 @@ remaining implementation, diagnosis, and verification are performed here.
 
 ## Latest September 29 validation
 
+- The `c4a9985a5` matrix stops before B-to-C navigation: the prepared-update
+  action lies below the viewport, despite a misleading hittable flag. Compact
+  SDK-only layout fixes all three samples; the driver rejects offscreen
+  centers. The reproducing geometry test fails before the fix; 121 matrix
+  tests, example types, and all compiler builds pass after it. Rebuild and
+  rerun the native matrix. No complete matrix cell is claimed.
+
 - Current full job also exposes an iOS detail-close observation race: capture
   stops at sequence 276, and native back completes at 277. Read-only durable
   evidence is retained in `evidence/ios-detail-close-race.json`. All single-page

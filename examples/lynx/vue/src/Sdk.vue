@@ -54,7 +54,7 @@ onMounted(() => {
 </script>
 
 <template>
-  <view class="page">
+  <view class="page sdk-page">
     <text class="eyebrow">HOT UPDATER / VUELYNX SDK</text>
     <text class="title">Bundle {{ variant }}</text>
     <image class="probe" :src="imageUrl" @load="sdkImageLoaded" />

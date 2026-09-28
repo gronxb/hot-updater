@@ -37,7 +37,7 @@ function App() {
   }, []);
 
   return (
-    <view className="page">
+    <view className="page sdk-page">
       <text className="eyebrow">HOT UPDATER / REACTLYNX SDK</text>
       <text className="title">Bundle {variant}</text>
       <image className="probe" src={imageUrl} bindload={sdkImageLoaded} />

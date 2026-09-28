@@ -54,3 +54,17 @@ text {
   color: #fff;
   font-size: 18px;
 }
+
+.sdk-page {
+  padding: 24px;
+  gap: 12px;
+}
+
+.sdk-page .probe {
+  width: 64px;
+  height: 64px;
+}
+
+.sdk-page .action {
+  padding: 12px 20px;
+}

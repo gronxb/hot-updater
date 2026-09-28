@@ -462,6 +462,34 @@ describe("Lynx public matrix runner", () => {
     ).toThrow("no tappable bounds");
   });
 
+  it("rejects an offscreen Lynx action even when accessibility calls it hittable", () => {
+    expect(() =>
+      iosActionTarget(
+        {
+          data: {
+            nodes: [
+              { index: 0, rect: { x: 0, y: 0, width: 402, height: 874 } },
+              {
+                index: 1,
+                parentIndex: 0,
+                label: "lynxview",
+                rect: { x: 0, y: 92, width: 402, height: 748 },
+              },
+              {
+                index: 2,
+                parentIndex: 1,
+                label: "Install with detail open",
+                hittable: true,
+                rect: { x: 24, y: 845, width: 354, height: 54 },
+              },
+            ],
+          },
+        },
+        "Install with detail open",
+      ),
+    ).toThrow("outside visible bounds");
+  });
+
   it("builds the dedicated matrix targets and emits their exact artifact paths", () => {
     const result = buildNative(["--", "--dry-run", "--target", "matrix"]);
     expect(result.status).toBe(0);

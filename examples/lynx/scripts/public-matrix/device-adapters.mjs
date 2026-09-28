@@ -61,7 +61,6 @@ export function iosActionTarget(snapshot, label) {
     );
   }
   const [node] = matches;
-  if (node.hittable === true) return { kind: "semantic" };
   const { x, y, width, height } = node.rect ?? {};
   if (
     ![x, y, width, height].every(Number.isFinite) ||
@@ -70,10 +69,31 @@ export function iosActionTarget(snapshot, label) {
   ) {
     throw new Error(`iOS action ${label} has no tappable bounds`);
   }
+  const centerX = x + width / 2;
+  const centerY = y + height / 2;
+  let parentIndex = node.parentIndex;
+  while (parentIndex !== undefined) {
+    const parent = snapshot.data.nodes.find(
+      (item) => item.index === parentIndex,
+    );
+    if (!parent) break;
+    const bounds = parent.rect;
+    if (
+      bounds &&
+      (centerX < bounds.x ||
+        centerX >= bounds.x + bounds.width ||
+        centerY < bounds.y ||
+        centerY >= bounds.y + bounds.height)
+    ) {
+      throw new Error(`iOS action ${label} is outside visible bounds`);
+    }
+    parentIndex = parent.parentIndex;
+  }
+  if (node.hittable === true) return { kind: "semantic" };
   return {
     kind: "coordinates",
-    x: Math.floor(x + width / 2),
-    y: Math.floor(y + height / 2),
+    x: Math.floor(centerX),
+    y: Math.floor(centerY),
   };
 }
 
