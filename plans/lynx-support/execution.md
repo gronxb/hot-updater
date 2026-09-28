@@ -1173,3 +1173,15 @@ cancellation/reconstruction. The next deployment stops before device execution:
 Use `confirmed-interruption` for the compiler output name; the evidence role
 remains `CONFIRMED_INTERRUPTION`. This changes no native or SDK behavior. Retain
 `evidence/public-matrix-089cf0b11-failure.json`; no full cell has completed.
+
+
+## 2026-09-29 fatal recovery preserves the detail stack
+
+Fresh `ee3b18b62` React/iOS passes confirmed-interruption recovery to embedded A
+and reselects C. The actual pre-confirm detail fatal records `runtimeFailed`,
+then recreates C with both main and detail ready in the same process. The driver
+incorrectly waits for visible main text while the reconstructed detail is on
+top. Use the existing reconstructed-detail observer: require complete native
+readiness, native back to C main, and its matching route-close event. Do not
+open a duplicate detail. Retain `evidence/public-matrix-ee3b18b62-failure.json`;
+this is device progress, not a complete matrix cell.

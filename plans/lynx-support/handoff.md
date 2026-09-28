@@ -1,13 +1,12 @@
 # Lynx support handoff and completion plan
 
-The latest `089cf0b11` React/iOS matrix passes cached incompatibility rejection,
-same-Release full-stack recreation with both stale authorities rejected, and
-pending-page transition cancellation/reconstruction. It then fails before the
-confirmed-interruption deployment because its fixture name contains an
-underscore. The compiler output name now uses a hyphen; native behavior and
-evidence roles are unchanged. Retain
-`evidence/public-matrix-089cf0b11-failure.json`. No complete cell is claimed;
-the full shared job remains queued, actual checkout pending.
+The latest `ee3b18b62` React/iOS matrix passes confirmed-interruption recovery
+and C reselection. Actual pre-confirm detail fatal recovery recreates ready C
+main and detail, but the driver incorrectly waits for visible main text while
+detail is on top. It now validates the reconstructed detail and uses native
+back through the existing helper. Native behavior is unchanged. Retain
+`evidence/public-matrix-ee3b18b62-failure.json`; no complete cell is claimed.
+The shared full job remains queued, actual checkout pending.
 
 Latest follow-up (2026-09-29): shared job `job-20260928211636-6hdwci` remains
 queued, actual checkout pending. The `7cc24042b` matrix stops at an ambiguous

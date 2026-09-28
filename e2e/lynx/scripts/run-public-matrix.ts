@@ -1713,16 +1713,13 @@ async function runCell(
       String(event.bundleId) === C.bundleId,
     "fatal candidate recovery",
   );
-  await adapter.waitForText("Bundle C ready");
-  await exerciseDetailPage(
+  const fatalEvents = await closeReconstructedDetailPage(
     adapter,
     cursor,
     C,
     postInterruptionProcess,
     "C",
-    "back",
   );
-  const fatalEvents = eventsSince(adapter, cursor);
   await checkpointRuntimeEvents(
     adapter,
     runtimeEventLedger,

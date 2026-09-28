@@ -1,0 +1,160 @@
+{
+  "sourceCommit": "ee3b18b62e7aa1a01d65342734e36f7793bfdaa9",
+  "cell": "react-ios",
+  "completedCells": 0,
+  "failure": "Driver waits for primary C text while package correctly reconstructs the complete stack with ready detail C on top after pre-confirm fatal recovery.",
+  "nativeEventCount": 568,
+  "observations": [
+    {
+      "event": "generationStarted",
+      "reason": "startupRecovery",
+      "bundleId": "00000000-0000-7000-8000-000000000000",
+      "releaseId": null,
+      "processId": "1524",
+      "generationId": "AE757DE5-3551-4B7A-A192-1668929C999D",
+      "contextId": "32B6E5D3-0C86-4093-9F8A-970633A27CEE",
+      "pageEntry": "main.lynx.bundle",
+      "confirmation": null
+    },
+    {
+      "event": "jsReady",
+      "reason": null,
+      "bundleId": "00000000-0000-7000-8000-000000000000",
+      "releaseId": null,
+      "processId": "1524",
+      "generationId": "AE757DE5-3551-4B7A-A192-1668929C999D",
+      "contextId": "32B6E5D3-0C86-4093-9F8A-970633A27CEE",
+      "pageEntry": "main.lynx.bundle",
+      "confirmation": {
+        "status": "CONFIRMED",
+        "transition": {
+          "from": {
+            "bundleId": "01a0ea11-6a61-7e40-9c2a-1b200c6d8aa5",
+            "channel": "lynx-matrix-1790633256868-91268-react-ios",
+            "kind": "BUNDLE",
+            "releaseId": "01a0ea11-6b97-7406-b22f-cc65af2acbd7"
+          },
+          "kind": "RECOVERED",
+          "to": {
+            "bundleId": "00000000-0000-7000-8000-000000000000",
+            "channel": "lynx-matrix-1790633256868-91268-react-ios",
+            "kind": "BUILTIN",
+            "releaseId": null
+          }
+        },
+        "transitionId": "53DAEB51-040A-4D7C-809E-D878447C8E9E"
+      }
+    },
+    {
+      "event": "generationStarted",
+      "reason": "reload",
+      "bundleId": "01a0ea10-bfd8-7508-a4e0-b50cd97af711",
+      "releaseId": "01a0ea10-c142-70c4-a2b9-8f14eec74af8",
+      "processId": "1524",
+      "generationId": "3FA1BBA8-CCB0-42E2-A590-B301B187BED9",
+      "contextId": "488F61CE-D8C5-493D-A82C-670A0B64553E",
+      "pageEntry": "main.lynx.bundle",
+      "confirmation": null
+    },
+    {
+      "event": "jsReady",
+      "reason": null,
+      "bundleId": "01a0ea10-bfd8-7508-a4e0-b50cd97af711",
+      "releaseId": "01a0ea10-c142-70c4-a2b9-8f14eec74af8",
+      "processId": "1524",
+      "generationId": "3FA1BBA8-CCB0-42E2-A590-B301B187BED9",
+      "contextId": "488F61CE-D8C5-493D-A82C-670A0B64553E",
+      "pageEntry": "main.lynx.bundle",
+      "confirmation": {
+        "status": "CONFIRMED",
+        "transition": {
+          "from": {
+            "bundleId": "00000000-0000-7000-8000-000000000000",
+            "channel": "lynx-matrix-1790633256868-91268-react-ios",
+            "kind": "BUILTIN",
+            "releaseId": null
+          },
+          "kind": "UPDATE_APPLIED",
+          "to": {
+            "bundleId": "01a0ea10-bfd8-7508-a4e0-b50cd97af711",
+            "channel": "lynx-matrix-1790633256868-91268-react-ios",
+            "kind": "BUNDLE",
+            "releaseId": "01a0ea10-c142-70c4-a2b9-8f14eec74af8"
+          }
+        },
+        "transitionId": "34040ADC-01A0-4D2A-8537-02E1010A31C6"
+      }
+    },
+    {
+      "event": "generationStarted",
+      "reason": "reload",
+      "bundleId": "01a0ea11-969f-78b1-83a7-ec298188d989",
+      "releaseId": "01a0ea11-98a4-7621-883a-17a6568189c8",
+      "processId": "1524",
+      "generationId": "234A1E25-10AA-48D2-BFE2-4DD35CC54ABA",
+      "contextId": "151EF514-6F2A-467E-9483-E6B48A159796",
+      "pageEntry": "main.lynx.bundle",
+      "confirmation": null
+    },
+    {
+      "event": "runtimeFailed",
+      "reason": null,
+      "bundleId": "01a0ea11-969f-78b1-83a7-ec298188d989",
+      "releaseId": "01a0ea11-98a4-7621-883a-17a6568189c8",
+      "processId": "1524",
+      "generationId": "234A1E25-10AA-48D2-BFE2-4DD35CC54ABA",
+      "contextId": "D0A7CF1E-709B-491D-A2A7-275FEBAF4301",
+      "pageEntry": "detail.lynx.bundle",
+      "confirmation": null
+    },
+    {
+      "event": "generationStarted",
+      "reason": "recovery",
+      "bundleId": "01a0ea10-bfd8-7508-a4e0-b50cd97af711",
+      "releaseId": "01a0ea10-c142-70c4-a2b9-8f14eec74af8",
+      "processId": "1524",
+      "generationId": "663A1FE0-85CF-46EB-9CB8-31D42EF106D2",
+      "contextId": "B19B9E43-FF88-41F1-9557-628A79566B10",
+      "pageEntry": "main.lynx.bundle",
+      "confirmation": null
+    },
+    {
+      "event": "jsReady",
+      "reason": null,
+      "bundleId": "01a0ea10-bfd8-7508-a4e0-b50cd97af711",
+      "releaseId": "01a0ea10-c142-70c4-a2b9-8f14eec74af8",
+      "processId": "1524",
+      "generationId": "663A1FE0-85CF-46EB-9CB8-31D42EF106D2",
+      "contextId": "B19B9E43-FF88-41F1-9557-628A79566B10",
+      "pageEntry": "main.lynx.bundle",
+      "confirmation": {
+        "status": "ALREADY_CONFIRMED",
+        "transition": null,
+        "transitionId": null
+      }
+    }
+  ],
+  "followUp": "Observe the reconstructed C detail, require complete native readiness, then close it via real native back before validating primary C. Do not open a duplicate detail.",
+  "retainedArtifacts": {
+    "state.json": {
+      "path": "/tmp/lynx-ee3b18b62-matrix-failure/state.json",
+      "sha256": "7a17f0be7a1ab4e78acacbd4298ee1c359482f4b5e2e78d5df99dd61286ad972"
+    },
+    "matrix-events.jsonl": {
+      "path": "/tmp/lynx-ee3b18b62-matrix-failure/matrix-events.jsonl",
+      "sha256": "eb2c5fc06390555d49fb5f8999091e645ef32778d22f082807a45afd0e3a8204"
+    },
+    "runner.log": {
+      "path": "/tmp/lynx-ee3b18b62-matrix-failure/runner.log",
+      "sha256": "fda68e5c25cbd7de684fc5489b152f8ff8633459cd3ad894a79b8b38db12475f"
+    },
+    "generation-events.json": {
+      "path": "/tmp/lynx-ee3b18b62-matrix-failure/generation-events.json",
+      "sha256": "d6e49f28753e427485060ded8bfd01ac4fd3533d9a8901aeb0dae232b785a19c"
+    },
+    "ota-server.log": {
+      "path": "/tmp/lynx-ee3b18b62-matrix-failure/ota-server.log",
+      "sha256": "1356d7cdc1d0c8f3942cd1ba180ed061ad6369f22b0536a8df02b70ec830693e"
+    }
+  }
+}
