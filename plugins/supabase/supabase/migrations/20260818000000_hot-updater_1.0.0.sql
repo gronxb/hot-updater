@@ -36,8 +36,6 @@ CREATE UNIQUE INDEX IF NOT EXISTS "hot_updater_v1_channels_name" ON "hot_updater
 
 CREATE TABLE IF NOT EXISTS "hot_updater_v1_bundle_totals" ("platform_key" varchar(16) COLLATE "C" NOT NULL, "_shard" bigint NOT NULL, "bundles" bigint NOT NULL, "_v" bigint NOT NULL DEFAULT 0, PRIMARY KEY ("platform_key", "_shard"));
 
-CREATE TABLE IF NOT EXISTS "hot_updater_v1_base_candidates" ("candidate_key" varchar(2048) COLLATE "C" NOT NULL, "bundle_id" varchar(36) COLLATE "C" NOT NULL, "_shard" bigint NOT NULL, "releases" bigint NOT NULL, "_v" bigint NOT NULL DEFAULT 0, PRIMARY KEY ("candidate_key", "bundle_id", "_shard"));
-
 CREATE TABLE IF NOT EXISTS "hot_updater_v1_bundle_events" ("id" varchar(36) COLLATE "C" NOT NULL, "type" varchar(32) COLLATE "C" NOT NULL, "install_id" varchar(255) COLLATE "C" NOT NULL, "user_id" varchar(255) COLLATE "C", "from_release_id" varchar(36) COLLATE "C", "from_bundle_id" varchar(36) COLLATE "C", "to_release_id" varchar(36) COLLATE "C", "to_bundle_id" varchar(36) COLLATE "C" NOT NULL, "platform" varchar(16) COLLATE "C" NOT NULL, "app_version" text COLLATE "C" NOT NULL, "channel" text COLLATE "C" NOT NULL, "metadata" jsonb NOT NULL, "received_at_ms" bigint NOT NULL, "day" bigint, "movement_install_id" text COLLATE "C", "bundle_ref" jsonb, "_v" bigint NOT NULL DEFAULT 0, PRIMARY KEY ("id"));
 
 CREATE INDEX IF NOT EXISTS "hot_updater_v1_bundle_events_recent" ON "hot_updater_v1_bundle_events" ("channel", "platform", "day", "received_at_ms", "id");
@@ -86,8 +84,6 @@ ALTER TABLE "hot_updater_v1_channels" ENABLE ROW LEVEL SECURITY;
 
 ALTER TABLE "hot_updater_v1_bundle_totals" ENABLE ROW LEVEL SECURITY;
 
-ALTER TABLE "hot_updater_v1_base_candidates" ENABLE ROW LEVEL SECURITY;
-
 ALTER TABLE "hot_updater_v1_bundle_events" ENABLE ROW LEVEL SECURITY;
 
 ALTER TABLE "hot_updater_v1_bundle_events__byBundle" ENABLE ROW LEVEL SECURITY;
@@ -129,7 +125,7 @@ BEGIN
   FOR item IN SELECT value FROM jsonb_array_elements(p_statements) LOOP
     statement := item->>'sql';
     FOR target IN SELECT (regexp_matches(statement, '(?:FROM|INTO|UPDATE|JOIN) "([^"]+)"', 'g'))[1] LOOP
-      IF NOT target = ANY (ARRAY['hot_updater_v1_bundles', 'hot_updater_v1_bundle_patches', 'hot_updater_v1_releases', 'hot_updater_v1_release_catalogs', 'hot_updater_v1_channels', 'hot_updater_v1_bundle_totals', 'hot_updater_v1_base_candidates', 'hot_updater_v1_bundle_events', 'hot_updater_v1_bundle_events__byBundle', 'hot_updater_v1_bundle_event_heads', 'hot_updater_v1_insights_overview', 'hot_updater_v1_insights_sketches', 'hot_updater_v1_insights_distribution', 'hot_updater_v1_insights_latest_by_bundle', 'hot_updater_v1_insights_outcomes', 'hot_updater_v1_api_keys', 'hot_updater_v1_private_hot_updater_settings', 'hot_updater_v1__hu_write']) THEN
+      IF NOT target = ANY (ARRAY['hot_updater_v1_bundles', 'hot_updater_v1_bundle_patches', 'hot_updater_v1_releases', 'hot_updater_v1_release_catalogs', 'hot_updater_v1_channels', 'hot_updater_v1_bundle_totals', 'hot_updater_v1_bundle_events', 'hot_updater_v1_bundle_events__byBundle', 'hot_updater_v1_bundle_event_heads', 'hot_updater_v1_insights_overview', 'hot_updater_v1_insights_sketches', 'hot_updater_v1_insights_distribution', 'hot_updater_v1_insights_latest_by_bundle', 'hot_updater_v1_insights_outcomes', 'hot_updater_v1_api_keys', 'hot_updater_v1_private_hot_updater_settings', 'hot_updater_v1__hu_write']) THEN
         RAISE EXCEPTION 'hot_updater_v1_apply: % is not a Hot Updater table', target USING ERRCODE = '42501';
       END IF;
     END LOOP;

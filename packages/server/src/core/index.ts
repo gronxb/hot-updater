@@ -1,9 +1,6 @@
 export {
-  MINOR_LINE_CAP,
-  minorLinesOf,
-  releaseBaseCandidateKeys,
   targetBaseCandidateKey,
-  type MinorLines,
+  type BaseCandidateTarget,
 } from "./baseCandidates";
 export {
   createCoreApi,

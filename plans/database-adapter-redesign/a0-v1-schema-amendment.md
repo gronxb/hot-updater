@@ -188,7 +188,6 @@ closes cursors. An index whose eq is empty and whose sort is the key is served b
 | `release_catalogs` | `scope_key` | `all [; scope_key]` | + `_v`; `release_catalogs_channel_idx` is dropped |
 | `channels` | `id` | `name` unique; `all [; name]` | + `_v`, `_refs_releases_channel_id` |
 | `bundle_totals` (aggregate) | `platform_key`, `_shard` | — | New. Counter `bundles`; `platform_key` is `*` or a platform |
-| `base_candidates` (aggregate) | `candidate_key`, `bundle_id`, `_shard` | `byKey [candidate_key; bundle_id]` | New. Gauge `releases`, deleted at zero; the key is channel + platform + fingerprint, or channel + platform + minor line (up to 16 per release) |
 
 ### Insights (`schema.insights`)
 

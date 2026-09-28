@@ -76,7 +76,6 @@ export async function resetDecisionFixtures() {
       "bundles",
       "channels",
       "bundle_totals",
-      "base_candidates",
     ].map((collection) => db.collection(collection).deleteMany({})),
   );
 }

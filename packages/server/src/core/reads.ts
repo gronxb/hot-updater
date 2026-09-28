@@ -24,6 +24,7 @@ import {
   type ReleaseCatalogRequest,
 } from "../db/releaseCatalog";
 import { resolveManifestArtifacts } from "../db/updateArtifacts";
+import { baseBundleIdsOf, parseBaseCandidateKey } from "./baseCandidates";
 import type { CoreSchema } from "./schema";
 
 export type CoreDatabase = HotUpdaterDatabase<CoreSchema>;
@@ -282,20 +283,20 @@ export const createCoreReads = (db: CoreDatabase, storage: CoreStorage) => {
       return rows[0]?.bundles ?? 0;
     },
 
-    /** Auto-patch bases for a new bundle: the newest older bundles sharing its candidate key. */
+    /** Auto-patch bases for a new bundle: one point read of its scope's catalog. */
     async findBaseBundleIds(
       candidateKey: string,
       bundleId: string,
       limit: number,
     ): Promise<string[]> {
-      const { rows } = await db.findAggregates("base_candidates", {
-        index: "byKey",
-        where: { candidate_key: candidateKey },
-        range: { lt: bundleId },
-        order: "desc",
-        limit,
+      const query = parseBaseCandidateKey(candidateKey);
+      if (query === null) return [];
+      const row = await db.findOne("release_catalogs", {
+        scope_key: query.scopeKey,
       });
-      return rows.map((row) => row.bundle_id);
+      return row === null
+        ? []
+        : baseBundleIdsOf(toCatalogRow(row), query.range, bundleId, limit);
     },
 
     async getRelease(id: string): Promise<ReleaseRow | null> {

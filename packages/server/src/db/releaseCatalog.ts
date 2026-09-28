@@ -25,7 +25,8 @@ export type ReleaseCatalogRequest =
       readonly fingerprintHash: string;
     };
 
-const parseCompiledCatalog = (
+/** A stored catalog payload, checked against its strategy's shape. */
+export const parseCompiledCatalog = (
   payload: string,
   strategy: ReleaseCatalogRequest["strategy"],
 ): CompiledReleaseCatalog => {

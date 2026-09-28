@@ -108,16 +108,6 @@ export const bundle_totals = pgTable("bundle_totals", {
   primaryKey({ columns: [table["platform_key"], table["_shard"]] }),
 ]);
 
-export const base_candidates = pgTable("base_candidates", {
-  "candidate_key": column("varchar(2048) COLLATE \"C\"")("candidate_key").notNull(),
-  "bundle_id": column("varchar(36) COLLATE \"C\"")("bundle_id").notNull(),
-  "_shard": column("bigint")("_shard").notNull(),
-  "releases": column("bigint")("releases").notNull(),
-  "_v": column("bigint")("_v").notNull().default(0),
-}, (table) => [
-  primaryKey({ columns: [table["candidate_key"], table["bundle_id"], table["_shard"]] }),
-]);
-
 export const bundle_events = pgTable("bundle_events", {
   "id": column("varchar(36) COLLATE \"C\"")("id").notNull(),
   "type": column("varchar(32) COLLATE \"C\"")("type").notNull(),

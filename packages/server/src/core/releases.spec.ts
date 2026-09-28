@@ -88,7 +88,7 @@ const setup = async () => {
 };
 
 const baseKey = targetBaseCandidateKey({
-  channelId: channel.id,
+  channel: channel.name,
   platform: "ios",
   fingerprintHash: null,
   appVersion: "1.0.0",

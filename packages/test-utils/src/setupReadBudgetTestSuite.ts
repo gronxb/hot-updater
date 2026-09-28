@@ -109,8 +109,8 @@ export interface ReadBudgetServer {
   readonly plugins: readonly unknown[];
   /** `targetBaseCandidateKey` from `@hot-updater/server/db`. */
   targetBaseCandidateKey(target: {
-    readonly channelId: string;
-    readonly platform: string;
+    readonly channel: string;
+    readonly platform: "ios" | "android";
     readonly fingerprintHash: string | null;
     readonly appVersion: string | null;
   }): string | null;
@@ -297,7 +297,7 @@ const seed = async (database: ReadBudgetDatabase, server: ReadBudgetServer) => {
     nightlyId: (await channel("nightly")).id,
     /** The auto-patch base key of a new production iOS 1.0.0 bundle. */
     candidateKey: server.targetBaseCandidateKey({
-      channelId: productionId,
+      channel: "production",
       platform: "ios",
       fingerprintHash: null,
       appVersion: "1.0.0",
@@ -421,11 +421,11 @@ const READ_BUDGETS: readonly ReadBudget[] = [
     returned: (releases) => releases.length,
   }),
   budget({
-    api: "deploy base candidates: at most maxBaseBundles rows",
+    api: "deploy base candidates: 1 catalog point read",
     read: ({ core, candidateKey }) =>
       core.findBaseBundleIds(candidateKey, createBundleFixture("107").id, 2),
-    adapter: reads(0, 0, 1, 2),
-    engine: { calls: 1, rows: 2 },
+    adapter: reads(1, 1, 0, 0),
+    engine: { calls: 1, rows: 1 },
     check: (ids) =>
       expect(ids).toEqual(
         ["106", "105"].map((suffix) => createBundleFixture(suffix).id),
@@ -566,11 +566,11 @@ const READ_BUDGETS: readonly ReadBudget[] = [
   budget({
     api: "catalog compile: the scope's enabled releases, all used",
     // A deploy reads the channel, the scope's catalog (once, then as the root
-    // of each range), its 4 enabled releases, its latest release, and the new
-    // bundle's base-candidate row; with copies, it reads those 5 releases whole.
+    // of each range), its 4 enabled releases, and its latest release; with
+    // copies, it reads those 5 releases whole.
     read: ({ core }) =>
       core.deploy([{ bundle: bundleOf("107"), release: production }]),
-    adapter: (copies) => reads(copies ? 6 : 4, copies ? 9 : 4, 3, 6),
+    adapter: (copies) => reads(copies ? 5 : 3, copies ? 8 : 3, 3, 6),
     engine: { calls: 6, rows: 9 },
     writes: 1,
   }),

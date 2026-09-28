@@ -186,10 +186,10 @@ const formatUploadProgress = (
 };
 
 /**
- * The newest older bundles an enabled release in the same channel and
- * platform serves to the new bundle's devices: the same fingerprint, or an
- * app version range sharing the target's minor line. A target spanning
- * several minor lines gets none. One read of at most `maxBaseBundles` rows.
+ * Older bundles that enabled releases in the same channel and platform serve
+ * to the new bundle's devices: the same fingerprint, or an app version range
+ * that intersects the target's; newest release first, at most
+ * `maxBaseBundles`. One point read of the scope's Release Catalog.
  */
 const getPatchBaseBundleIds = async ({
   bundleId,
@@ -209,11 +209,9 @@ const getPatchBaseBundleIds = async ({
     fingerprintHash: string | null;
   };
 }): Promise<string[]> => {
-  const channelRow = await core.findChannelByName(channel);
-  if (channelRow === null) return [];
   const candidateKey = targetBaseCandidateKey({
     appVersion: target.appVersion,
-    channelId: channelRow.id,
+    channel,
     fingerprintHash: target.fingerprintHash,
     platform,
   });

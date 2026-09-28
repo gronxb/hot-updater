@@ -105,14 +105,6 @@ model bundle_totals {
   hu_v BigInt @default(0) @map("_v")
   @@id([platform_key, hu_shard])
 }
-model base_candidates {
-  candidate_key String @db.VarChar(2048)
-  bundle_id String @db.VarChar(36)
-  hu_shard BigInt @map("_shard")
-  releases BigInt
-  hu_v BigInt @default(0) @map("_v")
-  @@id([candidate_key, bundle_id, hu_shard])
-}
 model bundle_events {
   id String @db.VarChar(36)
   type String @db.VarChar(32)

@@ -34,8 +34,6 @@ CREATE UNIQUE INDEX IF NOT EXISTS "channels_name" ON "channels" ("name");
 
 CREATE TABLE IF NOT EXISTS "bundle_totals" ("platform_key" varchar(16) COLLATE "C" NOT NULL, "_shard" bigint NOT NULL, "bundles" bigint NOT NULL, "_v" bigint NOT NULL DEFAULT 0, PRIMARY KEY ("platform_key", "_shard"));
 
-CREATE TABLE IF NOT EXISTS "base_candidates" ("candidate_key" varchar(2048) COLLATE "C" NOT NULL, "bundle_id" varchar(36) COLLATE "C" NOT NULL, "_shard" bigint NOT NULL, "releases" bigint NOT NULL, "_v" bigint NOT NULL DEFAULT 0, PRIMARY KEY ("candidate_key", "bundle_id", "_shard"));
-
 CREATE TABLE IF NOT EXISTS "bundle_events" ("id" varchar(36) COLLATE "C" NOT NULL, "type" varchar(32) COLLATE "C" NOT NULL, "install_id" varchar(255) COLLATE "C" NOT NULL, "user_id" varchar(255) COLLATE "C", "from_release_id" varchar(36) COLLATE "C", "from_bundle_id" varchar(36) COLLATE "C", "to_release_id" varchar(36) COLLATE "C", "to_bundle_id" varchar(36) COLLATE "C" NOT NULL, "platform" varchar(16) COLLATE "C" NOT NULL, "app_version" text COLLATE "C" NOT NULL, "channel" text COLLATE "C" NOT NULL, "metadata" jsonb NOT NULL, "received_at_ms" bigint NOT NULL, "day" bigint, "movement_install_id" text COLLATE "C", "bundle_ref" jsonb, "_v" bigint NOT NULL DEFAULT 0, PRIMARY KEY ("id"));
 
 CREATE INDEX IF NOT EXISTS "bundle_events_recent" ON "bundle_events" ("channel", "platform", "day", "received_at_ms", "id");
