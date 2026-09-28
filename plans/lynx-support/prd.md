@@ -1138,6 +1138,10 @@ string:
 | `bundleId`      | Nonempty string for the selected embedded or OTA Bundle; never null for managed-generation evidence.                                                                                                                                    |
 | `releaseId`     | Nonempty string for an OTA Release, including promotion or rollback; explicit null only for the embedded selection. Empty string and omission are invalid.                                                                              |
 
+A pending-page `runtimeFailed` event captures the native `pageAttemptId` before
+terminalization or context invalidation. Its ID must match the verified-fatal
+terminal; a collector may not infer or synthesize a missing ID afterward.
+
 Except for the canonical decimal grammar of `processId`, identity strings are
 opaque and compared byte for byte. Producers and consumers do not trim,
 normalize, case-fold, parse, or stringify them.

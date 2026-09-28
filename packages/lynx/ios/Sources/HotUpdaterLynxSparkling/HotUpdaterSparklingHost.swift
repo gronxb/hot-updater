@@ -2046,6 +2046,9 @@ private final class HotUpdaterSparklingLifecycle: NSObject,
                     "processId": String(ProcessInfo.processInfo.processIdentifier),
                     "generationId": generation.id,
                     "contextId": context.id,
+                    "pageAttemptId": hotUpdaterJSONValue(
+                        try? controller.pendingPageAttemptId(context)
+                    ),
                     "attemptId": controller.attemptId,
                     "bundleId": controller.runningSelection.bundleId,
                     "releaseId": hotUpdaterJSONValue(
@@ -2102,6 +2105,9 @@ private final class HotUpdaterSparklingLifecycle: NSObject,
             "processId": String(ProcessInfo.processInfo.processIdentifier),
             "generationId": generation.id,
             "contextId": context.id,
+            "pageAttemptId": hotUpdaterJSONValue(
+                try? controller.pendingPageAttemptId(context)
+            ),
             "attemptId": controller.attemptId,
             "bundleId": controller.runningSelection.bundleId,
             "releaseId": hotUpdaterJSONValue(

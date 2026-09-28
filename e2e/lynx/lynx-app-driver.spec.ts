@@ -1406,6 +1406,11 @@ describe("Lynx startup failure diagnostics", () => {
 
       await expect(launch).resolves.toBeUndefined();
       expect(launches).toBe(2);
+      const preparedLaunches = fetch.mock.calls
+        .filter(([url]) => String(url).endsWith("/e2e/prepare-app-launch"))
+        .map(([, init]) => JSON.parse(String(init?.body)).launchGeneration);
+      expect(preparedLaunches).toHaveLength(2);
+      expect(new Set(preparedLaunches).size).toBe(2);
       expect(
         fetch.mock.calls.filter(
           ([url, init]) =>

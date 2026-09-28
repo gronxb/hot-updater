@@ -234,6 +234,9 @@ export const beginE2eScreenStateLaunch = (launchGeneration: string | null) => {
 export const setE2eScreenStateLaunchGeneration = (
   launchGeneration: string | null,
 ) => {
+  if (e2eScreenStateLaunchGeneration !== launchGeneration) {
+    e2eScreenStateRuntimeGenerationEpoch = null;
+  }
   e2eScreenStateLaunchGeneration = launchGeneration;
 };
 

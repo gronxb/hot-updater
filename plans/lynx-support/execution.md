@@ -1202,3 +1202,35 @@ stopped. Retain `evidence/public-matrix-6dc6352db-failure.json`.
 Shared job `job-20260928211636-6hdwci` started and resolved actual commit
 `6dc6352db14392126f71c63015ba434bf6c4093a`; its final result is pending. Preserve
 that checkout even if subsequent matrix-only corrections advance PR HEAD.
+
+
+## 2026-09-29 fatal attempt attribution and process-epoch regression
+
+The `1dcf23cf5` React/iOS matrix executes every driver phase, including real
+reverse C-to-B-to-A deltas and confirmed-C fatal fallback to embedded A. Final
+evidence validation rejects the fatal event's null `pageAttemptId`; its matching
+verified-fatal terminal has the actual ID. The iOS lifecycle observer now reads
+the real pending ID before classification for both diagnostic and actual errors.
+The collector remains strict. Retain `evidence/public-matrix-1dcf23cf5-failure.json`;
+this is still zero fully validated cells.
+
+The shared job's native setup uses `6dc6352db`, but its later-created runner
+worktrees and deployed JS use `1dcf23cf5`. Those commits have identical native
+source; record both rather than treating setup SHA as the whole job's checkout.
+The running job exposes two iOS crash-relaunch state-publication failures:
+`release-ota-recovery` and `crash-then-next-safe-update`. Both logs reject new
+process epoch 1 after an in-process recovery raised the prior epoch. Crash
+relaunch now prepares a fresh launch identity through the existing control
+endpoint. A changed launch identity resets the server epoch; setting the same
+identity retains stale-runtime protection. The new regressions fail before the
+fix; all 212 focused tests across five suites pass afterward. Swift executes
+137 tests, 13 skipped, zero failures. Device revalidation is still required.
+
+The iOS fingerprint scenario independently catches a stale committed fingerprint
+from the earlier native recovery change. Regenerate fingerprint.json and both
+iOS plist values after the fatal-attribution change; the CLI fingerprint check
+now matches. The new iOS fingerprint is
+`ad84b7ed81a63a2a1f954d756f8c3b876281fdb501a4c963efd84630ad1edd42`;
+Android is unchanged. Never reuse the earlier native binaries as current proof.
+The running shared job is allowed to finish; a subsequent exact-source run is
+required for these corrections.

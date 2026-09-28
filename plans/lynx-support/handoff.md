@@ -1,12 +1,15 @@
 # Lynx support handoff and completion plan
 
-The latest `6dc6352db` React/iOS matrix passes pre-confirm fatal full-stack
-recovery/native back and pre-confirm process recovery, then fails the reverse
-delta helper's obsolete SHA-256 Bundle ID assertion. The helper now uses the
-shared UUIDv7 predicate. A targeted real-server probe creates both reverse
-BSDIFFs successfully with archive-free delivery; device application is pending.
-Retain `evidence/public-matrix-6dc6352db-failure.json`; no full cell is claimed.
-Shared full job `job-20260928211636-6hdwci` is running on actual `6dc6352db`.
+The latest `1dcf23cf5` React/iOS matrix executes every driver phase, including
+reverse deltas and confirmed-C recovery, but strict final validation rejects a
+missing iOS fatal `pageAttemptId`. The lifecycle emitter now captures the native
+pending ID before classification; no completed cell is claimed. The shared job
+is still running (native setup `6dc6352db`, runner checkout `1dcf23cf5`) and has
+iOS crash-relaunch epoch and stale-fingerprint failures. Both corrections are
+implemented, 212 focused tests and Swift's 137 executed tests pass (13 skipped),
+and the regenerated fingerprint matches. Fresh native builds and reruns remain
+required. See the last execution checkpoint and
+`evidence/public-matrix-1dcf23cf5-failure.json`.
 
 Latest follow-up (2026-09-29): shared job `job-20260928211636-6hdwci` remains
 queued, actual checkout pending. The `7cc24042b` matrix stops at an ambiguous

@@ -5,6 +5,7 @@ import {
   handlePatchE2eScreenState,
   readE2eScreenStateSnapshot,
   resetE2eScreenState,
+  setE2eScreenStateLaunchGeneration,
 } from "./screen-state.ts";
 
 describe("E2E screen state control boundary", () => {
@@ -142,6 +143,46 @@ describe("E2E screen state control boundary", () => {
     expect(readE2eScreenStateSnapshot().runtimeScenarioMarker).toBe(
       "replacement-marker",
     );
+  });
+
+  it("resets the runtime epoch only when a new process launch is prepared", () => {
+    beginE2eScreenStateLaunch("before-crash");
+    handlePatchE2eScreenState({
+      launchGeneration: "before-crash",
+      runtimeGenerationEpoch: "2",
+      runtimeScenarioMarker: "recovered-in-process",
+    });
+    setE2eScreenStateLaunchGeneration("before-crash");
+    expect(() =>
+      handlePatchE2eScreenState({
+        launchGeneration: "before-crash",
+        runtimeGenerationEpoch: "1",
+        updateActionResult: "stale callback",
+      }),
+    ).toThrow("stale screen state runtime generation");
+
+    setE2eScreenStateLaunchGeneration("after-crash");
+    expect(() =>
+      handlePatchE2eScreenState({
+        launchGeneration: "before-crash",
+        runtimeGenerationEpoch: "3",
+        runtimeScenarioMarker: "late old process",
+      }),
+    ).toThrow("stale screen state launch generation");
+    expect(
+      handlePatchE2eScreenState({
+        launchGeneration: "after-crash",
+        runtimeGenerationEpoch: "1",
+        runtimeScenarioMarker: "new process ready",
+        updateActionResult: "current-channel -> adopted ID stable-release",
+      }),
+    ).toMatchObject({
+      runtimeGenerationEpoch: "1",
+      screenState: {
+        runtimeScenarioMarker: "new process ready",
+        updateActionResult: "current-channel -> adopted ID stable-release",
+      },
+    });
   });
 
   it("rejects ordinary evidence from a retired launch or runtime generation", () => {

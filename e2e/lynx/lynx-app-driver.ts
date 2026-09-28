@@ -276,8 +276,14 @@ export class LynxAppDriver implements DetoxAppDriver {
           }
           await new Promise((resolve) => setTimeout(resolve, 500));
         }
-        await this.clearOverlayMarker(stage, launchGeneration);
-        await this.launchApp({ launchGeneration });
+        const recoveryLaunchGeneration = randomUUID();
+        await this.controlClient.postJson(
+          `${stage}: prepare recovery launch`,
+          "/e2e/prepare-app-launch",
+          { launchGeneration: recoveryLaunchGeneration },
+        );
+        await this.clearOverlayMarker(stage, recoveryLaunchGeneration);
+        await this.launchApp({ launchGeneration: recoveryLaunchGeneration });
       }
       const runtimeScenarioMarker = await this.waitForOverlayReady(stage);
       await this.assertNoManagedResourceErrors(stage, runtimeScenarioMarker);
