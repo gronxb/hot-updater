@@ -32,7 +32,7 @@ function Detail() {
       <view
         className="action"
         bindtap={() =>
-          close(undefined, (result) =>
+          close({ animated: false }, (result) =>
             console.log("HOT_UPDATER_PAGE_CLOSE", result),
           )
         }

@@ -66,11 +66,14 @@ remaining implementation, diagnosis, and verification are performed here.
   smoke checks on a 16 KB device. React's actual button admits a separate
   detail bundle in the same generation. All 31 Sparkling JVM tests pass.
   See [the retained smoke evidence](./evidence/fresco-16kb-smoke.json).
-- The iOS appearance-hook experiment compiles but does not prove native back.
-  Its patch is preserved at
-  `/Users/gronxb/.codex/lynx-support/ios-appearance-investigation.patch`; the
-  worktree uses committed iOS source while validating the Fresco change. Do not
-  count debugger-mutated processes as acceptance evidence.
+- The iOS adapter now uses Sparkling's container appearance callback and connects
+  the iOS 26 content-pop gesture to the visible Sparkling page. An incremental
+  Release binary passes actual back, cancelled pending-page swipe, and animated
+  JavaScript close. Runners use agent-device's real edge-swipe preset. The React
+  matrix and shared E2E detail now also request nonanimated close; verify that
+  synchronous path on the next clean binary. The original appearance-only patch
+  at `/Users/gronxb/.codex/lynx-support/ios-appearance-investigation.patch` is
+  superseded. Do not count debugger-mutated processes as acceptance evidence.
 - Full workspace unit tests on `6d50f8a49` pass 3,854/3,854 in 343 files.
   Its clean Android production binary passes real main/detail readiness and
   Sparkling open/close navigation on the 16 KB emulator.
@@ -87,6 +90,9 @@ remaining implementation, diagnosis, and verification are performed here.
 - Commit `3f860ef7c` fixes multi-page pending metadata waits to use the exact
   republished Release ID and forbids automatic relaunch while observing it.
   Driver tests pass 61/61, BSDIFF tests 17/17, and orchestration tests 2/2.
+- Full job `job-20260928154852-ej3uiq` on `d689f46d6` has passed both native
+  Release builds and entered device execution. It does not include the subsequent
+  iOS navigation change. Its scenario result is pending; best remains 51/52.
 - Neutral CLI policy was moved behind integration hooks in `0c76a3d71` and
   `a18776c50`; focused common CLI/RN/Expo suites passed 521/146/44 tests.
 

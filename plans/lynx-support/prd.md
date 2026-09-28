@@ -748,6 +748,17 @@ back and `sparkling-navigation.close()` pop the authorized top page, retire its
 context and leases, and reveal the preceding page. A close request from a page
 that is not the live authorized top cannot pop another page.
 
+The iOS adapter observes completed page appearances through Sparkling's public
+container lifecycle callback, because Sparkling owns the navigation controller
+delegate and does not forward its callbacks. A completed native pop reconciles
+the managed stack once; a cancelled interactive pop leaves the page and its
+admission intact. An explicit JavaScript close owns its cancellation and
+retirement even when a nonanimated pop synchronously invokes an appearance
+callback. On iOS 26, the adapter connects UIKit's content-pop gesture to the
+visible Sparkling page's gesture delegate as well as retaining the existing edge
+gesture. Both gestures are enabled only above the root page. This behavior is
+owned by the packaged adapter and requires no example-native workaround.
+
 The managed native stack contains at most 16 pages, including the primary page.
 The native bridge rejects a seventeenth push before invoking an upstream open,
 creating a container, or mutating the logical or platform stack. Transition and

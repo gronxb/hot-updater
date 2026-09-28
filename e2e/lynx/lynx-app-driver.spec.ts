@@ -490,8 +490,9 @@ describe("Lynx managed page evidence actions", () => {
     expect(vi.mocked(spawnSync)).toHaveBeenCalledWith(
       "agent-device",
       [
-        "back",
-        "--system",
+        "gesture",
+        "swipe",
+        "right-edge",
         "--session",
         expect.stringMatching(/^lynx-e2e-/),
         "--json",

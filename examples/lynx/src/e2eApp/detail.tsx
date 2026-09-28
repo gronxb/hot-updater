@@ -23,7 +23,8 @@ const patchScreenState = (patch: Record<string, unknown>) =>
 
 const closeDetailPage = () =>
   new Promise<void>((resolve, reject) => {
-    close(undefined, (result) => {
+    // Exercise the synchronous native appearance callback during a close.
+    close({ animated: false }, (result) => {
       if (result.code === 1) resolve();
       else reject(new Error(result.msg));
     });

@@ -114,8 +114,7 @@ private struct EmbeddedMetadata: Decodable {
 }
 
 /** Owns one real full-page Sparkling navigation stack and its generation. */
-public final class HotUpdaterSparklingHost: NSObject,
-    UINavigationControllerDelegate {
+public final class HotUpdaterSparklingHost: NSObject {
     private let configuration: HotUpdaterSparklingConfiguration
     let events: HotUpdaterSparklingEventHandler?
     let eventJournal: SparklingGenerationEventJournal
@@ -127,6 +126,7 @@ public final class HotUpdaterSparklingHost: NSObject,
     private weak var navigationController:
         HotUpdaterSparklingViewController?
     private var transitionInFlight: LynxManagedTransitionAcceptance?
+    private var isClosingPage = false
     private var recoveredTerminalEventsEmitted = false
     private var closed = false
     private let launchConfiguration: [String: String]
@@ -190,7 +190,6 @@ public final class HotUpdaterSparklingHost: NSObject,
             throw HotUpdaterSparklingError.navigationUnavailable
         }
         let navigation = HotUpdaterSparklingViewController(host: self)
-        navigation.delegate = self
         navigation.setNavigationBarHidden(true, animated: false)
         navigationController = navigation
         let logical = controller.recoveryPages.isEmpty
@@ -563,6 +562,10 @@ public final class HotUpdaterSparklingHost: NSObject,
             page.generation.context,
             reason: .sparklingClose
         )
+        // A nonanimated pop can synchronously make the preceding page appear.
+        // This route owns cancellation and retirement until the pop returns.
+        isClosingPage = true
+        defer { isClosingPage = false }
         guard navigationController.popViewController(animated: animated)
                 === page.container else {
             throw HotUpdaterSparklingError.navigationUnavailable
@@ -580,15 +583,27 @@ public final class HotUpdaterSparklingHost: NSObject,
         retire(page)
     }
 
-    public func navigationController(
-        _ navigationController: UINavigationController,
-        didShow viewController: UIViewController,
-        animated: Bool
+    private func pageDidAppear(
+        _ container: SPKContainerProtocol,
+        generation: SparklingGenerationEvents
     ) {
         requireMainThread()
-        navigationController.interactivePopGestureRecognizer?.isEnabled =
-            navigationController.viewControllers.count > 1
-        guard !closed, transitionInFlight == nil else { return }
+        guard !closed, generation === generationEvents,
+              let navigationController,
+              let visible = container as? SPKViewController,
+              navigationController.topViewController === visible else { return }
+        // Sparkling owns the navigation and edge-gesture delegates while its
+        // page is visible. Its appearance callback runs after that setup.
+        let canPop = navigationController.viewControllers.count > 1
+        navigationController.interactivePopGestureRecognizer?.isEnabled = canPop
+        if #available(iOS 26.0, *) {
+            // Sparkling 2.1 owns the edge gesture only. Its hidden navigation
+            // bar also needs the same page delegate on UIKit's content gesture.
+            let contentPop = navigationController.interactiveContentPopGestureRecognizer
+            contentPop?.delegate = visible
+            contentPop?.isEnabled = canPop
+        }
+        guard transitionInFlight == nil, !isClosingPage else { return }
         let live = Set(
             navigationController.viewControllers.map(ObjectIdentifier.init)
         )
@@ -843,6 +858,10 @@ public final class HotUpdaterSparklingHost: NSObject,
                 generation: generation
             )
         }
+        let pageAppearanceHandler: (SPKContainerProtocol) -> Void = {
+            [weak self] container in
+            self?.pageDidAppear(container, generation: generation)
+        }
 #if HOT_UPDATER_LYNX_DIAGNOSTICS
         let lifecycle = HotUpdaterSparklingLifecycle(
             controller: generationController,
@@ -850,6 +869,7 @@ public final class HotUpdaterSparklingHost: NSObject,
             pageEntry: logical.entry,
             generation: generation,
             failAfterFirstContentForDiagnostics: failAfterFirstContent,
+            appeared: pageAppearanceHandler,
             failed: pageFailureHandler
         )
 #else
@@ -858,6 +878,7 @@ public final class HotUpdaterSparklingHost: NSObject,
             context: context,
             pageEntry: logical.entry,
             generation: generation,
+            appeared: pageAppearanceHandler,
             failed: pageFailureHandler
         )
 #endif
@@ -1374,7 +1395,6 @@ public final class HotUpdaterSparklingHost: NSObject,
         guard !closed else { return }
         retireCurrentGeneration(reason: "close")
         closed = true
-        navigationController?.delegate = nil
         navigationController = nil
     }
 
@@ -1404,11 +1424,6 @@ public final class HotUpdaterSparklingViewController: UINavigationController {
 
     public required init?(coder: NSCoder) {
         fatalError("init(coder:) is unavailable")
-    }
-
-    public override func viewDidLoad() {
-        super.viewDidLoad()
-        interactivePopGestureRecognizer?.isEnabled = viewControllers.count > 1
     }
 
     public func close() {
@@ -1953,6 +1968,7 @@ private final class HotUpdaterSparklingLifecycle: NSObject,
     private let context: LynxLaunchContext
     private let pageEntry: String
     private let generation: SparklingGenerationEvents
+    private let appeared: (SPKContainerProtocol) -> Void
     private let failed: (ManagedPageFailure) -> Void
 #if HOT_UPDATER_LYNX_DIAGNOSTICS
     private var failAfterFirstContentForDiagnostics = false
@@ -1963,12 +1979,14 @@ private final class HotUpdaterSparklingLifecycle: NSObject,
         context: LynxLaunchContext,
         pageEntry: String,
         generation: SparklingGenerationEvents,
+        appeared: @escaping (SPKContainerProtocol) -> Void,
         failed: @escaping (ManagedPageFailure) -> Void
     ) {
         self.controller = controller
         self.context = context
         self.pageEntry = pageEntry
         self.generation = generation
+        self.appeared = appeared
         self.failed = failed
     }
 
@@ -1979,6 +1997,7 @@ private final class HotUpdaterSparklingLifecycle: NSObject,
         pageEntry: String,
         generation: SparklingGenerationEvents,
         failAfterFirstContentForDiagnostics: Bool,
+        appeared: @escaping (SPKContainerProtocol) -> Void,
         failed: @escaping (ManagedPageFailure) -> Void
     ) {
         self.init(
@@ -1986,12 +2005,17 @@ private final class HotUpdaterSparklingLifecycle: NSObject,
             context: context,
             pageEntry: pageEntry,
             generation: generation,
+            appeared: appeared,
             failed: failed
         )
         self.failAfterFirstContentForDiagnostics =
             failAfterFirstContentForDiagnostics
     }
 #endif
+
+    func containerViewDidAppear(_ container: SPKContainerProtocol) {
+        appeared(container)
+    }
 
     func containerDidFirstScreen(_ container: SPKContainerProtocol) {
         do {

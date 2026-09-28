@@ -78,7 +78,7 @@ export function iosActionTarget(snapshot, label) {
 }
 
 export function iosNativeBackArguments() {
-  return ["back", "--system"];
+  return ["gesture", "swipe", "right-edge"];
 }
 
 function parseEvents(text) {

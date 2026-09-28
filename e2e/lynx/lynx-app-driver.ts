@@ -505,8 +505,9 @@ export class LynxAppDriver implements DetoxAppDriver {
       try {
         this.openIosAgentDeviceSession(session);
         this.runOrThrow("agent-device", [
-          "back",
-          "--system",
+          "gesture",
+          "swipe",
+          "right-edge",
           "--session",
           session,
           "--json",

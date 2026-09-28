@@ -87,8 +87,12 @@ const nativeConfigSha256 = (files: Record<string, string>) =>
     .digest("hex");
 
 describe("public matrix device operations", () => {
-  it("uses the platform-native iOS back operation", () => {
-    expect(iosNativeBackArguments()).toEqual(["back", "--system"]);
+  it("drives iOS back with a native edge swipe", () => {
+    expect(iosNativeBackArguments()).toEqual([
+      "gesture",
+      "swipe",
+      "right-edge",
+    ]);
   });
 });
 

@@ -499,3 +499,35 @@ tools first as documented by [mise](https://mise.jdx.dev/configuration/settings.
 The same environment then selects Ruby 3.3.10 and completes the actual bootstrap,
 including Bundler and all 17 CocoaPods dependencies. This build-environment fix
 does not count as device scenario acceptance.
+
+## 2026-09-29 iOS navigation lifecycle follow-up
+
+Full job `job-20260928154852-ej3uiq` on `d689f46d6` passes both native Release
+builds and has entered device execution. Its scenario result is still pending.
+
+The independent iOS investigation identified two adapter defects. Sparkling
+replaces the navigation controller delegate without forwarding `didShow`, so
+the adapter now reconciles completed pops from its public container appearance
+callback. UIKit's iOS 26 content-pop gesture also needed the visible Sparkling
+page delegate while the navigation bar is hidden. The adapter connects that
+gesture and enables back gestures only above the root. Synchronous JavaScript
+close is guarded against duplicate cancellation from a nested appearance
+callback. No application-native code or upstream Sparkling source is patched.
+
+An incremental Release matrix binary with executable SHA-256
+`9dcddec3178b952712c25da44b0ef99fed49504a008e87693024929198666f64`
+passes actual React main/detail navigation on the dedicated iOS 26.4 simulator.
+A completed edge swipe emits one native-back record and reveals main. A short
+cancelled gesture on a pending detail preserves that context without a terminal
+record; a later completed swipe records exactly one `authorized-cancel` with
+reason `nativeBack` and null transition ID. Animated JavaScript close also
+returns to main without an extra native-back record. These are targeted local
+checks, not the six-cell matrix gate. The full E2E and React matrix detail now
+request a nonanimated close to cover its synchronous lifecycle callback.
+
+The agent-device `back --system` XCTest drag did not navigate reliably on the
+same binary. Both runners now use its real `gesture swipe right-edge` preset,
+which invokes UIKit navigation and passes the targeted device check. Native
+event and stack assertions remain unchanged. Focused driver/matrix tests pass
+89/89, and fingerprint tests pass 12/12. A clean native receipt and complete
+device rerun are still required for this navigation change.
