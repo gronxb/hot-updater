@@ -799,6 +799,9 @@ public final class HotUpdaterSparklingHost: NSObject {
             pages.map(\.container),
             animated: false
         )
+        for page in pages.dropFirst() {
+            emitStack("pageOpened", page: page)
+        }
     }
 
     private func buildPage(

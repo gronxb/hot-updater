@@ -109,6 +109,26 @@ remaining implementation, diagnosis, and verification are performed here.
 
 ## Latest September 29 validation
 
+- Latest completed full job `job-20260928162042-ocwb3m`: **46/52**, iOS 24/26,
+  Android 22/26. Failures: iOS manifest-diff log query timeout and multi-page
+  reconstruction evidence; Android three pre-ready crash/font checks and one
+  detail admission race. `job-20260928164123-6zd6ks` was cancelled during setup
+  because it did not include these fixes. Queue a new full run on the fix commit.
+- Captured iOS C pages are truly rebuilt/admitted, but lacked `pageOpened`.
+  The package now emits it after native stack attachment. Normal multi-page
+  checks wait for matching admission/terminal evidence; Android originally
+  captured first content at sequence 23 before admission at 24/25.
+- Crash fixtures now inject verified pre-ready failure before optional resource
+  warmup. Strict font/journal/recovery assertions remain. Public React/Vue/Octane
+  detail pages now have SDK check/install/reload controls after native admission.
+  All three compiler builds, 120 focused tests, example types and targeted lint
+  pass. New native builds and complete device runs remain required.
+- `b23299eda` matrix got through journal diagnostics, B offline retention, and
+  missing/corrupt C rejection; it stopped at the missing detail update control.
+  Its device session was cleaned up successfully. No whole cell has passed yet.
+- MySQL's last serialization test passed in isolation without code changes;
+  no database fix was made for the transient integration timeouts.
+
 - The clean `5c239fc3d` public matrix run reaches native journal diagnostics.
   It exposes unordered NSDictionary receipt members being compared with
   `JSON.stringify`; all six actual receipts have equal bytes, hashes, and

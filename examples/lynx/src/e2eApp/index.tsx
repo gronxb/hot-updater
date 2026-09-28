@@ -490,6 +490,12 @@ function App() {
     let timer: ReturnType<typeof setTimeout> | null = null;
     void (async () => {
       try {
+        if (!(await runtimeConfigurationReady)) return;
+        setLaunchStatus("Current Launch Status: STARTING");
+        await publishRuntimeSnapshot("Current Launch Status: STARTING");
+        // Inject startup failure before resource warmup can emit diagnostics
+        // for a generation that deliberately never confirms readiness.
+        if (await maybeCrashForE2E()) return;
         const ready = await bootstrapRuntimeReady(
           runtimeConfigurationReady,
           async () => {
@@ -511,9 +517,6 @@ function App() {
             });
           },
           async () => {
-            setLaunchStatus("Current Launch Status: STARTING");
-            await publishRuntimeSnapshot("Current Launch Status: STARTING");
-            if (await maybeCrashForE2E()) return;
             await confirmRuntimeReady(HotUpdater, async (status) => {
               setLaunchStatus(status);
               await publishRuntimeSnapshot(status);

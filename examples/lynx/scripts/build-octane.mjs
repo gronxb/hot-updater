@@ -85,11 +85,11 @@ try {
     path.join(cwd, "node_modules/@lynx-js/config-rsbuild-plugin"),
     path.join(fixture, "node_modules/@lynx-js/config-rsbuild-plugin"),
   );
+  await fs.copyFile(
+    path.join(cwd, "spike/sdk.ts"),
+    path.join(fixture, "src/sdk-shared.ts"),
+  );
   if (isSdk) {
-    await fs.copyFile(
-      path.join(cwd, "spike/sdk.ts"),
-      path.join(fixture, "src/sdk-shared.ts"),
-    );
     await fs.copyFile(
       path.join(cwd, "spike/navigation-boundary.ts"),
       path.join(fixture, "src/navigation-boundary.ts"),

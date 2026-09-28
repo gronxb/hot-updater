@@ -37,6 +37,33 @@ export function sdkImageLoaded() {
   completeImage?.();
 }
 
+async function initializeSdk() {
+  if (initialized) return;
+  const launchConfiguration = await HotUpdater.getLaunchConfiguration();
+  const baseURL =
+    launchConfiguration.appBaseURL ?? "http://localhost:3007/hot-updater";
+  evidenceOrigin = evidenceOriginFrom(baseURL);
+  HotUpdater.init({ baseURL });
+  initialized = true;
+}
+
+export async function startDetailSdk(status: (value: string) => void) {
+  try {
+    await initializeSdk();
+    if (["unconfirmed", "detail-unconfirmed"].includes(__SPIKE_BEHAVIOR__)) {
+      status(`Detail bundle ${variant}: readiness deliberately withheld`);
+      console.log("HOT_UPDATER_DETAIL_UNCONFIRMED", variant);
+      return;
+    }
+    const receipt = await HotUpdater.notifyAppReady();
+    ready = true;
+    status(`Detail bundle ${variant} ready`);
+    console.log("HOT_UPDATER_DETAIL_READY", JSON.stringify(receipt));
+  } catch (error) {
+    status(`Detail failed: ${String(error)}`);
+  }
+}
+
 export async function startSdk(
   status: (value: string) => void,
   fontRegistered: () => void,
@@ -45,17 +72,7 @@ export async function startSdk(
   loadDynamic: (url: string) => Promise<string>,
 ) {
   try {
-    if (!initialized) {
-      const launchConfiguration = await HotUpdater.getLaunchConfiguration();
-      evidenceOrigin = evidenceOriginFrom(
-        launchConfiguration.appBaseURL ?? "http://localhost:3007/hot-updater",
-      );
-      HotUpdater.init({
-        baseURL:
-          launchConfiguration.appBaseURL ?? "http://localhost:3007/hot-updater",
-      });
-      initialized = true;
-    }
+    await initializeSdk();
     const launch = await HotUpdater.getLaunchInfo();
     console.log("HOT_UPDATER_SDK_LAUNCH", JSON.stringify(launch));
     console.log(

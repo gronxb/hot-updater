@@ -1,25 +1,15 @@
 /** @jsxImportSource @octanejs/lynx/intrinsics */
 import { useEffect, useState } from "octane";
-import { HotUpdater } from "@hot-updater/lynx";
 import { close } from "@hot-updater/lynx/navigation";
 
-import { variant } from "./bridge";
-
-declare const __SPIKE_BEHAVIOR__: string;
+import { checkSdkUpdate, installSdkUpdateAndReload, startDetailSdk, variant } from "./sdk-shared";
 
 export function Detail() @{
   const [status, setStatus] = useState(`Detail bundle ${variant}`);
+  const [canInstall, setCanInstall] = useState(false);
   const closeDetail = () => { close(undefined, (result) => console.log("HOT_UPDATER_PAGE_CLOSE", result)); };
   useEffect(() => {
-    if (["unconfirmed", "detail-unconfirmed"].includes(__SPIKE_BEHAVIOR__)) {
-      setStatus(`Detail bundle ${variant}: readiness deliberately withheld`);
-      console.log("HOT_UPDATER_DETAIL_UNCONFIRMED", variant);
-      return;
-    }
-    void HotUpdater.notifyAppReady().then((receipt) => {
-    setStatus(`Detail bundle ${variant} ready`);
-    console.log("HOT_UPDATER_DETAIL_READY", JSON.stringify(receipt));
-  }).catch((error) => setStatus(`Detail failed: ${String(error)}`));
+    void startDetailSdk(setStatus);
   }, []);
 
   <view class="page">
@@ -29,5 +19,13 @@ export function Detail() @{
     <view class="action" bindtap={closeDetail}>
       <text class="action-label">{"Close detail page"}</text>
     </view>
+    <view class="action" bindtap={() => { void checkSdkUpdate(setStatus, setCanInstall); }}>
+      <text class="action-label">{"Check update"}</text>
+    </view>
+    @if (canInstall) {
+      <view class="action" bindtap={() => { void installSdkUpdateAndReload(setStatus, setCanInstall); }}>
+        <text class="action-label">{"Install and reload"}</text>
+      </view>
+    }
   </view>
 }

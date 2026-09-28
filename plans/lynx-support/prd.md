@@ -1424,6 +1424,23 @@ state, and process identity across reopen. A receipt serialization order change
 must not conceal or falsely report a persisted journal change. Matrix teardown
 must release only the device session owned by that run, including on failure.
 
+The public React, Vue, and Octane detail pages must expose SDK update checking
+and immediate installation after native page admission. Exercise these controls
+while the detail page remains on the stack, then prove same-process replacement
+of both pages. A reconstructed iOS secondary page emits `pageOpened` only after
+its new Sparkling controller is attached to the native navigation stack. A
+visible page marker is not admission evidence: E2E waits for the matching
+`pageAdmitted` and durable `pageAttemptTerminal` records before asserting a
+successful page cycle.
+
+Shared pre-ready crash fixtures inject the verified secondary-page failure after
+SDK configuration and before optional font/external/dynamic resource warmup.
+They never publish readiness. The recovered runtime still performs the complete
+resource/readiness chain. This preserves the strict Android font diagnostic
+exception above; an intentional crash must not be treated as successful font
+readiness. Post-admission fatal recovery remains separately covered by the
+multi-page lifecycle scenario.
+
 ### G4 — Subsequent proposals
 
 Use G3 evidence to propose analytics telemetry, independent per-page delivery

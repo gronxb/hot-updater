@@ -1,27 +1,20 @@
-import { HotUpdater } from "@hot-updater/lynx";
 import { close } from "@hot-updater/lynx/navigation";
 import { root, useEffect, useState } from "@lynx-js/react";
 
-import { variant } from "../../spike/bridge";
+import {
+  checkSdkUpdate,
+  installSdkUpdateAndReload,
+  startDetailSdk,
+  variant,
+} from "../../spike/sdk";
 
 import "../../style.css";
 
-declare const __SPIKE_BEHAVIOR__: string;
-
 function Detail() {
   const [status, setStatus] = useState(`Detail bundle ${variant}`);
+  const [canInstall, setCanInstall] = useState(false);
   useEffect(() => {
-    if (["unconfirmed", "detail-unconfirmed"].includes(__SPIKE_BEHAVIOR__)) {
-      setStatus(`Detail bundle ${variant}: readiness deliberately withheld`);
-      console.log("HOT_UPDATER_DETAIL_UNCONFIRMED", variant);
-      return;
-    }
-    void HotUpdater.notifyAppReady()
-      .then((receipt) => {
-        setStatus(`Detail bundle ${variant} ready`);
-        console.log("HOT_UPDATER_DETAIL_READY", JSON.stringify(receipt));
-      })
-      .catch((error) => setStatus(`Detail failed: ${String(error)}`));
+    void startDetailSdk(setStatus);
   }, []);
 
   return (
@@ -39,6 +32,22 @@ function Detail() {
       >
         <text className="action-label">Close detail page</text>
       </view>
+      <view
+        className="action"
+        bindtap={() => void checkSdkUpdate(setStatus, setCanInstall)}
+      >
+        <text className="action-label">Check update</text>
+      </view>
+      {canInstall ? (
+        <view
+          className="action"
+          bindtap={() =>
+            void installSdkUpdateAndReload(setStatus, setCanInstall)
+          }
+        >
+          <text className="action-label">Install and reload</text>
+        </view>
+      ) : null}
     </view>
   );
 }

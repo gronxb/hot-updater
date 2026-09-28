@@ -171,14 +171,18 @@ describe("Lynx E2E page entry bootstrap", () => {
     const observation =
       await import("../../examples/lynx/src/e2eApp/runtimeObservation");
     vi.mocked(observation.bootstrapRuntimeReady).mockImplementationOnce(
-      async (configuration, _load, confirm) => {
+      async (configuration, load, confirm) => {
         if (!(await configuration)) return false;
+        await load();
         await confirm();
         return false;
       },
     );
     const fixture = await import("../../examples/lynx/src/e2eApp/patchSurface");
     vi.spyOn(fixture, "maybeCrashForE2E").mockResolvedValue(true);
+    const loadResources = vi
+      .spyOn(fixture, "loadE2EStartupResources")
+      .mockResolvedValue(undefined);
     const effects = await loadEntry("main");
     effects[0]?.();
     await vi.advanceTimersByTimeAsync(0);
@@ -196,6 +200,7 @@ describe("Lynx E2E page entry bootstrap", () => {
       published.every((state) => state.runtimeScenarioMarker === null),
     ).toBe(true);
     expect(observation.confirmRuntimeReady).not.toHaveBeenCalled();
+    expect(loadResources).not.toHaveBeenCalled();
   });
 
   it.each(["main", "detail"] as const)(

@@ -631,3 +631,43 @@ worktrees resolve `5c239fc3d`. Preserve that provenance distinction rather than
 describing the whole job as a single-source acceptance run. Both native builds
 pass; scenario execution remains in progress. The queued follow-up is
 `job-20260928164123-6zd6ks`.
+
+## 2026-09-29 real page lifecycle gaps
+
+`job-20260928162042-ocwb3m` finishes 46/52 (iOS 24/26, Android 22/26).
+The six failures are iOS `bspatch-manifest-diff-fallback` (30-second simulator
+log query timeout) and `sparkling-multipage-ota`, plus Android
+`release-ota-recovery`, `crash-then-next-safe-update`,
+`republished-crashed-bundle-skipped`, and `sparkling-multipage-ota`.
+Historical best remains 51/52. The follow-up job `job-20260928164123-6zd6ks`
+was cancelled in setup because it lacked the newly diagnosed fixes.
+
+Captured iOS events 296–322 prove both C pages were rebuilt and admitted with
+new contexts, but reconstruction omitted `pageOpened`. The package now emits
+the real event after attaching the rebuilt controllers. Android's captured
+snapshot stopped at sequence 23 (`firstContent`), while its durable journal
+subsequently contained admission at 24 and its terminal receipt at 25. Normal
+page cycles now reuse the existing bounded wait for those exact native records.
+The regression exercises that delayed admission rather than treating a visible
+marker as readiness.
+
+The three Android crash failures share `order.fatal-boundary`: the crash fixture
+loaded its custom font and then intentionally failed before confirmation. It
+now injects that pre-ready native page failure before optional resource warmup;
+the recovered page must still prove full resources and readiness. The strict
+font diagnostic validator is unchanged. The crash bootstrap regression fails
+before the change and passes afterward. Device recovery remains to be rerun.
+
+The clean `b23299eda` public matrix passes the six journal diagnostics, installs
+B, verifies offline B retention and rejects missing/corrupt C detail bytes. It
+then reveals that the retained detail page has no `Check update` control.
+React, Vue, and Octane detail pages now initialize the public SDK for their own
+context and expose checking and installation/reload after admission. Tests
+cover admission gating and deliberate unconfirmed fixtures. All three real
+compiler builds, 120 focused tests, example type checks, and targeted lint pass.
+The matrix failure also confirms its own agent-device session is released.
+
+The remaining MySQL serialization test passes on the next isolated execution
+without a code change. Read-only process observations show active schema DDL,
+not a stuck transaction. This focused success does not turn the earlier broad
+integration run green.

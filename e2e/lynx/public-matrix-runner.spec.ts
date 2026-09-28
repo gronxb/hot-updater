@@ -527,6 +527,73 @@ describe("Lynx public matrix runner", () => {
     fs.rmSync(temporary, { recursive: true, force: true });
   });
 
+  it("waits for detail admission before checking, installing, and reloading from that page", async () => {
+    vi.resetModules();
+    vi.clearAllMocks();
+    vi.stubGlobal("__SPIKE_VARIANT__", "B");
+    vi.stubGlobal("__SPIKE_BEHAVIOR__", "normal");
+    vi.stubGlobal("__SPIKE_ASSET_PREFIX__", "hu://");
+    vi.stubGlobal("__SDK_RESOURCES__", false);
+    let admit!: (value: { status: string }) => void;
+    native.notifyAppReady.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          admit = resolve;
+        }),
+    );
+    const updateBundle = vi.fn().mockResolvedValue(true);
+    native.checkForUpdate.mockResolvedValue({
+      id: "release-c",
+      bundleId: "bundle-c",
+      releaseId: "release-c",
+      transitionKind: "UPDATE",
+      updateBundle,
+    });
+    native.reload.mockResolvedValue({ status: "TRANSITION_ACCEPTED" });
+    const sdk = await import("../../examples/lynx/spike/sdk");
+    const status = vi.fn();
+    const canInstall = vi.fn();
+    const startup = sdk.startDetailSdk(status);
+    await vi.waitFor(() =>
+      expect(native.notifyAppReady).toHaveBeenCalledOnce(),
+    );
+    expect(native.init).toHaveBeenCalledExactlyOnceWith({
+      baseURL: "https://updates.test",
+    });
+    await sdk.checkSdkUpdate(status, canInstall);
+    expect(native.checkForUpdate).not.toHaveBeenCalled();
+
+    admit({ status: "PAGE_ADMITTED" });
+    await startup;
+    expect(status).toHaveBeenLastCalledWith("Detail bundle B ready");
+    await sdk.checkSdkUpdate(status, canInstall);
+    expect(canInstall).toHaveBeenLastCalledWith(true);
+    await sdk.installSdkUpdateAndReload(status, canInstall);
+    expect(updateBundle).toHaveBeenCalledOnce();
+    expect(native.reload).toHaveBeenCalledOnce();
+  });
+
+  it.each(["unconfirmed", "detail-unconfirmed"])(
+    "withholds detail update actions for the %s fixture",
+    async (behavior) => {
+      vi.resetModules();
+      vi.clearAllMocks();
+      vi.stubGlobal("__SPIKE_VARIANT__", "B");
+      vi.stubGlobal("__SPIKE_BEHAVIOR__", behavior);
+      vi.stubGlobal("__SPIKE_ASSET_PREFIX__", "hu://");
+      vi.stubGlobal("__SDK_RESOURCES__", false);
+      const sdk = await import("../../examples/lynx/spike/sdk");
+      const status = vi.fn();
+      await sdk.startDetailSdk(status);
+      await sdk.checkSdkUpdate(status, vi.fn());
+      expect(status).toHaveBeenLastCalledWith(
+        "Detail bundle B: readiness deliberately withheld",
+      );
+      expect(native.notifyAppReady).not.toHaveBeenCalled();
+      expect(native.checkForUpdate).not.toHaveBeenCalled();
+    },
+  );
+
   it("keeps a failed public SDK install as a failure and never reloads", async () => {
     vi.resetModules();
     vi.stubGlobal("__SPIKE_VARIANT__", "B");

@@ -68,13 +68,13 @@ const navigationBoundaryParameters = (
   return { a: "é".repeat(512), b: "b".repeat(970) };
 };
 
-async function waitForManagedDetailOpened(
+export async function waitForManagedDetailOpened(
   app: LynxAppDriver,
   stage: string,
   options: {
     readonly platform: "ios" | "android";
     readonly main: ManagedPageIdentity;
-    readonly expectedParameters: Readonly<Record<string, string>>;
+    readonly expectedParameters?: Readonly<Record<string, string>>;
   },
 ): Promise<ManagedPageIdentity> {
   let lastError: unknown;
@@ -202,13 +202,11 @@ async function provePageCycle(
   );
   const main = knownMain ?? assertManagedMainPage(beforeOpen, selection);
   await app.openDetailPage(`${label}: open managed detail`, marker);
-  const opened = await app.captureGenerationEvents(
+  const detail = await waitForManagedDetailOpened(
+    app,
     `${label}: capture detail native evidence`,
+    { platform: app.platformName, main },
   );
-  const detail = assertManagedDetailOpened(opened, {
-    platform: app.platformName,
-    main,
-  });
   if (closeWith === "back") {
     await app.nativeBack(`${label}: native back from detail`);
   } else {
@@ -660,13 +658,11 @@ export const sparklingMultipageOtaScenario = {
       "multi-page B to C: keep managed detail open",
       "sparkling-multipage-b",
     );
-    const openBEvents = await app.captureGenerationEvents(
+    const openBDetail = await waitForManagedDetailOpened(
+      app,
       "multi-page B to C: capture open native stack",
+      { platform: app.platformName, main: mainB },
     );
-    const openBDetail = assertManagedDetailOpened(openBEvents, {
-      platform: app.platformName,
-      main: mainB,
-    });
 
     await app.control(
       "multi-page C: deploy",
@@ -738,10 +734,11 @@ export const sparklingMultipageOtaScenario = {
       before: mainB,
       after: selectionC,
     });
-    const reconstructedCDetail = assertManagedDetailOpened(cReplacementEvents, {
-      platform: app.platformName,
-      main: mainC,
-    });
+    const reconstructedCDetail = await waitForManagedDetailOpened(
+      app,
+      "multi-page C: wait for reconstructed detail admission",
+      { platform: app.platformName, main: mainC },
+    );
     if (reconstructedCDetail.contextId === openBDetail.contextId) {
       throw new Error(
         "Managed reload reused the old detail context instead of reconstructing it",

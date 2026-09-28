@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import type { GenerationEventsSnapshot } from "../../examples/lynx/src/e2eApp/generationEvents";
 import {
@@ -11,6 +11,7 @@ import {
   assertManagedStackDepthAfterBack,
   assertManagedVerifiedFatalDetail,
 } from "./multipage-evidence";
+import { waitForManagedDetailOpened } from "./scenarios/sparkling-multipage-ota";
 
 const main = {
   runtimeId: "lynx-runtime",
@@ -180,40 +181,47 @@ describe("managed Lynx multi-page evidence", () => {
     ).toThrow("distinct context in the running Release");
   });
 
-  it("accepts Android's durable admission callback order", () => {
-    expect(
-      assertManagedDetailOpened(
-        snapshot([
-          event("4", "routeOpened", {
-            ...detail,
-            nativePageClass:
-              "com.hotupdater.lynx.sparkling.HotUpdaterSparklingPageActivity",
-            sourceContextId: main.contextId,
-            pageParameters: { title: "Second Page" },
-            orderedPageEntries: ["main.lynx.bundle", "detail.lynx.bundle"],
-            topPageEntry: "detail.lynx.bundle",
-            outcome: "opened",
-          }),
-          event("5", "resourceLoaded", {
-            ...detail,
-            path: "detail.lynx.bundle",
-            sha256: "a".repeat(64),
-          }),
-          event("6", "firstContent", detail),
-          event("7", "pageAdmitted", detail),
-          event("8", "pageAttemptTerminal", {
-            ...detail,
-            nativePageClass:
-              "com.hotupdater.lynx.sparkling.HotUpdaterSparklingPageActivity",
-            sourceContextId: main.contextId,
-            orderedPageEntries: ["main.lynx.bundle", "detail.lynx.bundle"],
-            topPageEntry: "detail.lynx.bundle",
-            terminal: "admitted",
-          }),
-        ]),
+  it("waits for Android detail admission after its content and marker are visible", async () => {
+    const admitted = snapshot([
+      event("4", "routeOpened", {
+        ...detail,
+        nativePageClass:
+          "com.hotupdater.lynx.sparkling.HotUpdaterSparklingPageActivity",
+        sourceContextId: main.contextId,
+        pageParameters: { title: "Second Page" },
+        orderedPageEntries: ["main.lynx.bundle", "detail.lynx.bundle"],
+        topPageEntry: "detail.lynx.bundle",
+        outcome: "opened",
+      }),
+      event("5", "resourceLoaded", {
+        ...detail,
+        path: "detail.lynx.bundle",
+        sha256: "a".repeat(64),
+      }),
+      event("6", "firstContent", detail),
+      event("7", "pageAdmitted", detail),
+      event("8", "pageAttemptTerminal", {
+        ...detail,
+        nativePageClass:
+          "com.hotupdater.lynx.sparkling.HotUpdaterSparklingPageActivity",
+        sourceContextId: main.contextId,
+        orderedPageEntries: ["main.lynx.bundle", "detail.lynx.bundle"],
+        topPageEntry: "detail.lynx.bundle",
+        terminal: "admitted",
+      }),
+    ]);
+    const captureGenerationEvents = vi
+      .fn()
+      .mockResolvedValueOnce(snapshot(admitted.events.slice(0, 3)))
+      .mockResolvedValue(admitted);
+    await expect(
+      waitForManagedDetailOpened(
+        { captureGenerationEvents } as never,
+        "detail admission",
         { platform: "android", main },
       ),
-    ).toMatchObject({ contextId: detail.contextId });
+    ).resolves.toMatchObject({ contextId: detail.contextId });
+    expect(captureGenerationEvents).toHaveBeenCalledTimes(2);
   });
 
   it("rejects any generation transition after an atomic install failure", () => {
