@@ -784,3 +784,36 @@ tests, example types, and three real compiler builds pass afterward.
 The complete workspace unit suite on `d3cbbd6f9` passes **3,866/3,866 tests
 in 343 files**, and workspace lint passes. Fresh native builds, a new full
 shared E2E job, and the six-cell public matrix remain required.
+
+
+## 2026-09-29 reconstructed readiness observation
+
+The clean `26b23ee18` matrix builds both native targets and actually replaces B
+main and detail with C in iOS process `91162`. C generation
+`A11A8535-5381-43D5-8F04-52633C322371` has distinct new contexts, all six page
+resources, detail admission and a confirmed `UPDATE_APPLIED`. The runner still
+times out because its readiness predicate only accepts a one-page initial
+stack. The collector also incorrectly infers reconstruction from initial
+context count; Android declares the retained two-page logical stack before its
+secondary Activity attaches.
+
+Share exact stack/context validation between the predicate and collector.
+iOS requires both declared contexts; Android may start with its primary, but
+must subsequently prove the matching native route, distinct secondary identity,
+resources, admission and durable terminal. Negative tests reject mismatched
+contexts, parameters, missing resources and missing readiness. Both platform
+regressions fail before the change and pass afterward. Replaying the captured
+iOS C journal also passes the full collector. This is evidence for that phase,
+not a completed public matrix cell.
+
+Preserving the next-page pending diagnostic exposes a related harness deadlock:
+primary native confirmation correctly waits for the pending secondary, while
+JavaScript previously waited for confirmation before starting diagnostic polling.
+Start diagnostic polling after configuration and resources, with confirmation
+already requested. The ready marker still waits for native approval. The
+regression proves diagnostics remain responsive with a pending confirmation and
+no ready marker. Five focused evidence/startup suites pass 52/52; the complete Lynx E2E unit
+project passes 460/460 in 22 files, including real compiler builds. Example types
+and targeted lint pass. The earlier full verify command was stopped while
+waiting for PR checks, before any new job was queued. Rebuild and rerun both
+acceptance gates on the committed changes.

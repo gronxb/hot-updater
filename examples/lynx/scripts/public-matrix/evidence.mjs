@@ -133,6 +133,61 @@ export function eventIdentity(event) {
   return identity;
 }
 
+function assertLaunchMembership(started, identity, opened, detailIdentity) {
+  assert.ok(
+    Array.isArray(started.contextIds),
+    "generationStarted must declare its initial context membership",
+  );
+  assert.equal(started.primaryContextId, identity.contextId);
+  const contextIds = [identity.contextId, detailIdentity.contextId];
+  const reconstructedStack = started.orderedPageEntries?.length === 2;
+  assert.deepEqual(
+    started.orderedPageEntries,
+    reconstructedStack
+      ? ["main.lynx.bundle", "detail.lynx.bundle"]
+      : ["main.lynx.bundle"],
+    "generationStarted must declare the ordered managed page entries",
+  );
+  assert.equal(
+    started.topPageEntry,
+    reconstructedStack ? "detail.lynx.bundle" : "main.lynx.bundle",
+  );
+  if (reconstructedStack) {
+    assert.ok(
+      JSON.stringify(started.orderedPageParameters) ===
+        JSON.stringify([[], [{ name: "title", value: "Second Page" }]]) ||
+        JSON.stringify(started.orderedPageParameters) ===
+          JSON.stringify([{}, { title: "Second Page" }]),
+      "Reconstructed detail parameters changed",
+    );
+  }
+  // Android starts the primary before its retained secondary Activity attaches.
+  // The matching routeOpened and both pages' readiness must still be observed.
+  const primaryStartsFirst =
+    opened.event === "routeOpened" && started.contextIds.length === 1;
+  assert.deepEqual(
+    started.contextIds,
+    reconstructedStack && !primaryStartsFirst
+      ? contextIds
+      : [identity.contextId],
+    "generationStarted membership does not match the observed page contexts",
+  );
+  assert.deepEqual(opened.orderedPageEntries, [
+    "main.lynx.bundle",
+    "detail.lynx.bundle",
+  ]);
+  assert.equal(opened.topPageEntry, "detail.lynx.bundle");
+  assert.equal(opened.outcome, "opened");
+  assert.deepEqual(opened.parameters ?? opened.pageParameters, {
+    title: "Second Page",
+  });
+  assert.match(
+    String(opened.nativePageClass),
+    /SPKViewController|HotUpdaterSparklingPageActivity$/,
+  );
+  return reconstructedStack;
+}
+
 function hasCompleteLaunchEvents(
   events,
   build,
@@ -145,10 +200,7 @@ function hasCompleteLaunchEvents(
       event.event === "generationStarted" &&
       value(event.processId) === String(processId) &&
       value(event.bundleId) === build.bundleId &&
-      value(event.releaseId) === build.releaseId &&
-      Array.isArray(event.contextIds) &&
-      event.contextIds.length === 1 &&
-      event.topPageEntry === "main.lynx.bundle",
+      value(event.releaseId) === build.releaseId,
   );
   if (!started) return false;
   let identity;
@@ -169,7 +221,13 @@ function hasCompleteLaunchEvents(
         JSON.stringify(["main.lynx.bundle", "detail.lynx.bundle"]),
   );
   if (!opened) return false;
-  const detailIdentity = eventIdentity(opened);
+  let detailIdentity;
+  try {
+    detailIdentity = eventIdentity(opened);
+    assertLaunchMembership(started, identity, opened, detailIdentity);
+  } catch {
+    return false;
+  }
   const pageAttemptId = value(opened.pageAttemptId);
   const complete = (memberIdentity, pageEntry, readyEvent, expectReady) =>
     events.some(
@@ -412,34 +470,6 @@ function collectLaunchEvidence({
     `generationStarted for ${build.variant}`,
   );
   const identity = eventIdentity(started);
-  assert.ok(
-    Array.isArray(started.contextIds),
-    "generationStarted must declare its initial context membership",
-  );
-  const initialContextIds = started.contextIds.map(String);
-  assert.ok(
-    (initialContextIds.length === 1 || initialContextIds.length === 2) &&
-      initialContextIds[0] === identity.contextId,
-    "generationStarted must contain the ordered managed page contexts",
-  );
-  const reconstructedStack = initialContextIds.length === 2;
-  assert.deepEqual(
-    started.orderedPageEntries,
-    reconstructedStack
-      ? ["main.lynx.bundle", "detail.lynx.bundle"]
-      : ["main.lynx.bundle"],
-    "generationStarted page order does not match its managed contexts",
-  );
-  if (reconstructedStack) {
-    assert.ok(
-      JSON.stringify(started.orderedPageParameters) ===
-        JSON.stringify([[], [{ name: "title", value: "Second Page" }]]) ||
-        JSON.stringify(started.orderedPageParameters) ===
-          JSON.stringify([{}, { title: "Second Page" }]),
-      "Reconstructed detail parameters changed",
-    );
-    assert.equal(started.topPageEntry, "detail.lynx.bundle");
-  }
   const opened = requireEvent(
     phaseEvents,
     phaseEvents.some((event) => event.event === "pageOpened")
@@ -452,28 +482,15 @@ function collectLaunchEvidence({
       value(event.contextId) !== identity.contextId,
     `real detail navigation for ${build.variant}`,
   );
-  assert.deepEqual(opened.orderedPageEntries, [
-    "main.lynx.bundle",
-    "detail.lynx.bundle",
-  ]);
-  assert.equal(opened.topPageEntry, "detail.lynx.bundle");
-  assert.equal(opened.outcome, "opened");
-  assert.deepEqual(opened.parameters ?? opened.pageParameters, {
-    title: "Second Page",
-  });
-  assert.match(
-    String(opened.nativePageClass),
-    /SPKViewController|HotUpdaterSparklingPageActivity$/,
-  );
   const detailIdentity = eventIdentity(opened);
   const pageAttemptId = value(opened.pageAttemptId);
   assert.ok(pageAttemptId, "Detail navigation is missing pageAttemptId");
   const contextIds = [identity.contextId, detailIdentity.contextId];
-  if (reconstructedStack) assert.deepEqual(initialContextIds, contextIds);
-  assert.deepEqual(
-    opened.orderedPageEntries,
-    ["main.lynx.bundle", "detail.lynx.bundle"],
-    "Detail navigation must push the real native page stack",
+  const reconstructedStack = assertLaunchMembership(
+    started,
+    identity,
+    opened,
+    detailIdentity,
   );
   const members = [
     { memberIdentity: identity, pageEntry: "main.lynx.bundle", primary: true },

@@ -161,7 +161,121 @@ function evidenceEvents() {
   ];
 }
 
+function reconstructedEvents(platform: "ios" | "android") {
+  const events = evidenceEvents();
+  const started = events.find((item) => item.event === "generationStarted")!;
+  Object.assign(started, {
+    contextIds:
+      platform === "ios"
+        ? [identity.contextId, secondaryContextId]
+        : [identity.contextId],
+    orderedPageEntries: ["main.lynx.bundle", "detail.lynx.bundle"],
+    orderedPageParameters:
+      platform === "ios"
+        ? [[], [{ name: "title", value: "Second Page" }]]
+        : [{}, { title: "Second Page" }],
+    topPageEntry: "detail.lynx.bundle",
+    reason: "reload",
+  });
+  if (platform === "ios") {
+    const opened = events.find((item) => item.event === "routeOpened")!;
+    Object.assign(opened, {
+      event: "pageOpened",
+      nativePageClass: "Sparkling.SPKViewController",
+    });
+    const terminalIndex = events.findIndex(
+      (item) => item.event === "pageAttemptTerminal",
+    );
+    const [terminal] = events.splice(terminalIndex, 1);
+    events.splice(
+      events.findIndex((item) => item.event === "pageAdmitted"),
+      0,
+      terminal,
+    );
+  }
+  return events;
+}
+
 describe("Lynx public matrix native event evidence", () => {
+  it.each(["ios", "android"] as const)(
+    "accepts %s reconstruction only after both actual page contexts are ready",
+    (platform) => {
+      const events = reconstructedEvents(platform);
+      expect(hasCompleteReadyEvents(events, build, identity.processId)).toBe(
+        true,
+      );
+      expect(
+        collectReadyLaunch({
+          phaseEvents: events,
+          allEvents: events,
+          build,
+          processId: identity.processId,
+        }),
+      ).toMatchObject({
+        reconstructedStack: true,
+        contextIds: [identity.contextId, secondaryContextId],
+      });
+      for (const missing of [
+        "firstContent",
+        "resourceLoaded",
+        "pageAdmitted",
+        "pageAttemptTerminal",
+      ]) {
+        const incomplete = events.filter(
+          (item) =>
+            item.contextId !== secondaryContextId || item.event !== missing,
+        );
+        expect(
+          hasCompleteReadyEvents(incomplete, build, identity.processId),
+        ).toBe(false);
+        expect(() =>
+          collectReadyLaunch({
+            phaseEvents: incomplete,
+            allEvents: incomplete,
+            build,
+            processId: identity.processId,
+          }),
+        ).toThrow();
+      }
+    },
+  );
+
+  it.each([
+    { platform: "ios", change: { contextIds: [identity.contextId] } },
+    {
+      platform: "ios",
+      change: { contextIds: [identity.contextId, "unrelated-detail"] },
+    },
+    {
+      platform: "android",
+      change: { orderedPageParameters: [{}, { title: "Different Page" }] },
+    },
+    {
+      platform: "android",
+      change: { primaryContextId: secondaryContextId },
+    },
+  ] as const)(
+    "rejects inconsistent reconstructed membership: %j",
+    ({ platform, change }) => {
+      const events = reconstructedEvents(platform);
+      Object.assign(
+        events.find((item) => item.event === "generationStarted")!,
+        change,
+      );
+      expect(hasCompleteReadyEvents(events, build, identity.processId)).toBe(
+        false,
+      );
+      expect(() =>
+        collectReadyLaunch({
+          phaseEvents: events,
+          allEvents: events,
+          build,
+          processId: identity.processId,
+        }),
+      ).toThrow();
+    },
+  );
+
   it("accepts a detail admission slice captured after generation start", () => {
     const postStart = evidenceEvents().filter(
       (item) =>

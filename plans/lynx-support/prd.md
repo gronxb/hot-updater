@@ -1439,6 +1439,15 @@ visible page marker is not admission evidence: E2E waits for the matching
 `pageAdmitted` and durable `pageAttemptTerminal` records before asserting a
 successful page cycle.
 
+Reconstruction evidence must follow each platform's actual attachment order.
+iOS declares both new contexts at generation start. Android starts the primary
+before attaching the retained secondary Activity, so its initial context set
+can contain only the primary while declaring the complete retained page stack.
+Both cases require the exact ordered entries, parameters and top page, followed
+by matching native navigation, distinct current-generation contexts, complete
+resources and readiness for both pages. Declared stack membership alone cannot
+prove that a secondary page was reconstructed.
+
 Shared pre-ready crash fixtures inject the verified secondary-page failure after
 SDK configuration and before optional font/external/dynamic resource warmup.
 They never publish readiness. The recovered runtime still performs the complete
@@ -1562,6 +1571,10 @@ and client authority. The runtime marker used by the driver is published only
 after startup confirmation; `STARTING`, startup errors, and a bundle about to
 execute the crash fixture must not satisfy the driver's ready condition. Native
 recovery evidence must remain correlated with that ready runtime's marker.
+After configuration and startup resources succeed, diagnostic polling remains
+available while native confirmation is pending. An intentionally pending
+reconstructed secondary must not prevent the driver from inspecting or
+cancelling it; polling does not publish readiness or bypass native admission.
 The pending-action deadline must match the driver's bounded 60-second wait,
 including native stack diagnostics; a successful long-running diagnostic must
 not permanently disable later evidence capture. When returning to a retained

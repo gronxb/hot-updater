@@ -109,6 +109,21 @@ remaining implementation, diagnosis, and verification are performed here.
 
 ## Latest September 29 validation
 
+- `26b23ee18` builds both clean native matrix targets. Its iOS B-to-C phase
+  recreates both pages, loads all resources and confirms C in the same process,
+  but the readiness predicate rejects any two-page generation start. Shared
+  predicate/collector membership validation now accepts actual iOS and Android
+  attachment order while requiring both pages' complete evidence. Both platform
+  regression tests fail before the fix; replay of the real C journal passes.
+- Pending reconstructed detail admission also holds primary confirmation. The
+  E2E control loop now starts after configuration/resources while confirmation
+  remains pending, so inspection/cancellation cannot deadlock. It still publishes
+  no ready marker until native confirmation. Five focused suites pass 52/52;
+  the complete Lynx E2E unit project passes 460/460 in 22 files, including real
+  compiler builds. Example types and targeted lint pass. The attempted full verify on `26b23ee18`
+  stopped during PR-check waiting and never queued a job. Both complete device
+  gates must be rerun after committing these corrections.
+
 - Full job `job-20260928171631-2fpuk1` is terminal **49/52**, iOS 24/26 and
   Android 25/26. Historical best remains 51/52. iOS failures (fingerprint and
   close timing) are fixed. Android's reconstructed pending-page fixture lost

@@ -138,12 +138,39 @@ describe("Lynx E2E startup resources", () => {
     expect(notifyAppReady).toHaveBeenCalledOnce();
     expect(publishMarker).toHaveBeenCalledOnce();
     expect(startControlPolling).toHaveBeenCalledOnce();
-    expect(publishMarker.mock.invocationCallOrder[0]).toBeLessThan(
+    expect(notifyAppReady.mock.invocationCallOrder[0]).toBeLessThan(
       startControlPolling.mock.invocationCallOrder[0],
     );
   });
 
-  it("does not start pending-action polling when marker publication fails", async () => {
+  it("keeps diagnostics responsive while a reconstructed detail holds native readiness", async () => {
+    const admission = deferred<{ status: "READY" }>();
+    const notifyAppReady = vi.fn(() => admission.promise);
+    const publishMarker = vi.fn(async () => undefined);
+    const startControlPolling = vi.fn();
+    let completed = false;
+    const bootstrap = bootstrapRuntimeReady(
+      Promise.resolve(true),
+      async () => undefined,
+      () => confirmRuntimeReady({ notifyAppReady }, publishMarker),
+      startControlPolling,
+    ).then((ready) => {
+      completed = true;
+      return ready;
+    });
+
+    await vi.waitFor(() => expect(startControlPolling).toHaveBeenCalledOnce());
+    expect(notifyAppReady).toHaveBeenCalledOnce();
+    expect(publishMarker).not.toHaveBeenCalled();
+    expect(completed).toBe(false);
+    admission.resolve({ status: "READY" });
+    await expect(bootstrap).resolves.toBe(true);
+    expect(publishMarker).toHaveBeenCalledExactlyOnceWith(
+      "Current Launch Status: READY",
+    );
+  });
+
+  it("keeps diagnostic polling available when marker publication fails", async () => {
     const startControlPolling = vi.fn();
 
     await expect(
@@ -156,7 +183,7 @@ describe("Lynx E2E startup resources", () => {
         startControlPolling,
       ),
     ).rejects.toThrow("marker was not acknowledged");
-    expect(startControlPolling).not.toHaveBeenCalled();
+    expect(startControlPolling).toHaveBeenCalledOnce();
   });
 
   it("never confirms or publishes when startup resources are mixed", async () => {

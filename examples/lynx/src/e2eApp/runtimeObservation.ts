@@ -60,8 +60,11 @@ export async function bootstrapRuntimeReady(
 ): Promise<boolean> {
   if (!(await configurationReady)) return false;
   await loadStartupResources();
-  await confirmReady();
+  const confirmation = confirmReady();
+  // A pending secondary can intentionally hold confirmation while the driver
+  // needs to inspect or cancel that page. Readiness publication still awaits it.
   startControlPolling();
+  await confirmation;
   return true;
 }
 
