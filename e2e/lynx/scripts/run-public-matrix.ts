@@ -1569,6 +1569,9 @@ async function runCell(
     runtimeEventLedger,
     `${cellId}: cross-provenance rejection`,
   );
+  // The rejection cache does not remove this Release from catalog selection.
+  // Retire the negative fixture before later phases select eligible C again.
+  await setReleaseEnabled(incompatibleBuild.releaseId, false);
 
   cursor = eventCursor(adapter);
   adapter.clickText("Reload with detail open");

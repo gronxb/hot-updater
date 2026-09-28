@@ -1153,3 +1153,11 @@ wrong metadata response hashes; all 138 focused tests and targeted lint pass.
 No package or native behavior changes. The retained failure is
 `evidence/public-matrix-ad0734918-failure.json`. Complete matrix cells remain
 zero; the confirmed-fatal host correction still needs its full device phase.
+
+Before the next device run, static review also found that the incompatible
+Release remained enabled after its cache assertion. Native incompatibility
+caching does not change catalog eligibility, so later fallback-to-C selection
+would keep choosing that newer negative fixture. Disable it through the real
+admin policy endpoint only after both rejection checks and their evidence
+checkpoint. This isolates later phases without changing SDK selection policy
+or weakening the rejection/cache proof.
