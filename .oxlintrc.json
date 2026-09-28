@@ -1,6 +1,7 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
   "plugins": ["typescript", "unicorn", "oxc", "react", "jsx-a11y"],
+  "jsPlugins": ["./scripts/oxlint/hot-updater.mjs"],
   "categories": {
     "correctness": "error"
   },
@@ -68,7 +69,8 @@
     "react/no-array-index-key": "off",
     "unicorn/no-document-cookie": "off",
     "unicorn/no-thenable": "off",
-    "unicorn/prefer-node-protocol": "off"
+    "unicorn/prefer-node-protocol": "off",
+    "hot-updater/no-filtered-find-many": "error"
   },
   "overrides": [
     {
