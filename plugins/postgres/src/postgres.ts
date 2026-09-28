@@ -24,7 +24,7 @@ import {
   getKyselyReleaseActivity,
   readKyselyInsightsHead,
   recordKyselyInsightsOverview,
-} from "@hot-updater/server";
+} from "@hot-updater/server/adapters/kysely";
 import {
   Kysely,
   PostgresDialect,

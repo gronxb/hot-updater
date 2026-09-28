@@ -19,6 +19,13 @@ import {
   getKyselyReleaseActivity,
 } from "./kyselyInsightsOverview";
 
+export {
+  getKyselyAppUsage,
+  getKyselyReleaseActivity,
+  readKyselyInsightsHead,
+  recordKyselyInsightsOverview,
+} from "./kyselyInsightsOverview";
+
 type KyselySQLProvider = Exclude<ORMSQLProvider, "mssql">;
 
 export type { RelationMode, KyselySQLProvider as SQLProvider };
