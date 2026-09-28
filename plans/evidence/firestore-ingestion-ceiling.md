@@ -1,5 +1,10 @@
 # Database adapter redesign: Firestore ingestion ceiling
 
+These figures describe the Firestore emulator on one development machine, not a Firestore project, and are not
+production limits. The emulator runs in a JVM on the same machine, so no call crosses a network, and it ends a
+contended lock wait only after a fixed 2 seconds (see "Why throughput collapses above it"). The load is the
+most contended on purpose: every move lands on one channel in the same hour.
+
 Recorded on 2026-09-24 (KST) for D9 (PRD metric "Firestore and Supabase ingestion ceilings: measured and
 recorded"). The measurement is `plugins/firebase/src/firestore.ingestion.integration.spec.ts`, which logs one
 `firestore-ingestion-ceiling` JSON line:
@@ -40,7 +45,8 @@ and each such conflict costs a writer 2 seconds.
 The store reads a document inside its transaction only when an op guards it. Of the rows a move guards, only
 Insights' gauge and sketch rows (32 and 16 shards) are shared between moves: Insights reads, merges, and writes
 them back under a `_v` guard. At 400 and 800 offered moves per second, all 16 writers were busy, and 202 lock
-waits timed out in the run, most of them from the 400 step on. Throughput fell to 29 and 16 moves per second.
+waits timed out in the run, most of them from the 400 step on. On the emulator, throughput fell to 29 and 16
+moves per second.
 
 Firestore's documentation says that contention is resolved "by delaying or failing one of the operations"
 ([Transaction data contention](https://docs.cloud.google.com/firestore/native/docs/transaction-data-contention))

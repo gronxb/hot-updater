@@ -142,8 +142,11 @@ const runtimeBundle = (id: string, overrides: Partial<Bundle> = {}): Bundle =>
   });
 
 /**
- * PRD D6: B3's rollout moves through the apply RPC, measured and recorded.
- * HOT_UPDATER_INGESTION_CEILING=1 runs the whole ladder of rates.
+ * PRD D6: B3's rollout moves through the apply RPC, measured and recorded in
+ * plans/evidence/supabase-ingestion-ceiling.md.
+ * HOT_UPDATER_INGESTION_CEILING=1 runs the whole ladder of rates. The stack
+ * runs in local Docker, so the figures describe this host and setup, not a
+ * Supabase project's limits.
  */
 const INGESTION_LADDER = process.env.HOT_UPDATER_INGESTION_CEILING === "1";
 const INGESTION_MOVES = INGESTION_LADDER ? 600 : 200;
