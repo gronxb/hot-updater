@@ -375,6 +375,10 @@ export const createAdminRouteHandlers = (): Record<string, RouteHandler> => ({
     return noContent();
   }),
 
+  countBundles: onCore(async (core, request) =>
+    json({ data: await core.countBundles(platformOf(new URL(request.url))) }),
+  ),
+
   countBundleChildren: onCore(async (core, request) => {
     const ids = (new URL(request.url).searchParams.get("ids") ?? "")
       .split(",")
@@ -509,6 +513,7 @@ export const ADMIN_ROUTES: readonly {
   { method: "GET", path: "/channels", handler: "getChannels" },
   { method: "POST", path: "/channels", handler: "createChannel" },
   { method: "DELETE", path: "/channels/:id", handler: "deleteChannel" },
+  { method: "GET", path: "/bundles/count", handler: "countBundles" },
   {
     method: "GET",
     path: "/bundles/child-counts",
