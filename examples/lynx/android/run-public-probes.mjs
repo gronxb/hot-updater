@@ -82,9 +82,6 @@ const launch = async (framework) => {
     framework,
   ]);
   await new Promise((resolve) => setTimeout(resolve, 1200));
-  // 16 KB compatibility dialog covers the Lynx actions after pm clear.
-  adb(["shell", "input", "tap", "1027", "2535"]);
-  await new Promise((resolve) => setTimeout(resolve, 400));
 };
 
 const apk = path.join(android, "app/build/outputs/apk/release/app-release.apk");

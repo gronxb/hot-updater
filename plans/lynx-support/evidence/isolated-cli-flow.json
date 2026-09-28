@@ -1,0 +1,569 @@
+{
+  "recordedAt": "2026-09-29T05:10:00+09:00",
+  "source": {
+    "baseCommit": "9cbc0c985ba51b3d1f34c762e3f365268eebad62",
+    "uncommittedChanges": {
+      "packages/hot-updater/src/commands/doctor.ts": "cf7b80e457cb8a464cc93152be79101cdc327ae85624a2f3aa384281cd522d55"
+    },
+    "description": "Production tarballs built from the base commit, then the CLI rebuilt and reinstalled with the doctor dependency-specifier fix."
+  },
+  "installation": {
+    "workspaceLinks": false,
+    "forbiddenPackagesAbsent": [
+      "react-native",
+      "@hot-updater/react-native",
+      "expo",
+      "@expo/fingerprint"
+    ],
+    "lockSha256": "19282e14f3a29c9aed4dc1e74b8bc4181c1f2cfeac931d98823b9acf2656202f",
+    "packages": {
+      "node_modules/@hot-updater/android-helper": "1.0.0-rc.14",
+      "node_modules/@hot-updater/apple-helper": "1.0.0-rc.14",
+      "node_modules/@hot-updater/bsdiff": "1.0.0-rc.14",
+      "node_modules/@hot-updater/cli-tools": "1.0.0-rc.14",
+      "node_modules/@hot-updater/console": "1.0.0-rc.16",
+      "node_modules/@hot-updater/core": "1.0.0-rc.14",
+      "node_modules/@hot-updater/lynx": "1.0.0-rc.14",
+      "node_modules/@hot-updater/plugin-core": "1.0.0-rc.14",
+      "node_modules/@hot-updater/server": "1.0.0-rc.14",
+      "node_modules/@hot-updater/standalone": "1.0.0-rc.14",
+      "node_modules/hot-updater": "1.0.0-rc.16"
+    },
+    "tarballs": [
+      {
+        "name": "hot-updater-android-helper-1.0.0-rc.14.tgz",
+        "sha256": "bd545e055687e5a900d1042d61a2d80b3c3d4c1dba958fc38cd54a9553e9e831"
+      },
+      {
+        "name": "hot-updater-apple-helper-1.0.0-rc.14.tgz",
+        "sha256": "bdff5aa1e19e125406354dd37e73c0bd31377cc5fb6647d2daf1c93f7552d48d"
+      },
+      {
+        "name": "hot-updater-bsdiff-1.0.0-rc.14.tgz",
+        "sha256": "65ded851aebb25378ef3a532eb05f8074a621460f49887b1dcfc7851530ce3ba"
+      },
+      {
+        "name": "hot-updater-cli-tools-1.0.0-rc.14.tgz",
+        "sha256": "2b7e794852104dd6e7bf23bf3030b2abbaec242cdf65ca5fdcd13bd11df37e34"
+      },
+      {
+        "name": "hot-updater-console-1.0.0-rc.16.tgz",
+        "sha256": "2d2523ff3813a39a59b3a1c80ee903e1f004fd7a8ed0cfc78e1fc8c394046772"
+      },
+      {
+        "name": "hot-updater-core-1.0.0-rc.14.tgz",
+        "sha256": "9b7c81b2c14cfebe001a0d3408c8f4020e53653e0a3b582c12ea0ee12860e1fe"
+      },
+      {
+        "name": "hot-updater-lynx-1.0.0-rc.14.tgz",
+        "sha256": "f645b7e967cf98654ea1e355b953705bd1d032d3006af3d9f66b03ee33c2c7ca"
+      },
+      {
+        "name": "hot-updater-plugin-core-1.0.0-rc.14.tgz",
+        "sha256": "609e62ed1cb82c8485711ec0ad56a0ddae828eb2022124c4550c3817f4337f2b"
+      },
+      {
+        "name": "hot-updater-server-1.0.0-rc.14.tgz",
+        "sha256": "d79cd7dec32eeb964a475f6ae1415c3c9a8ed98bf660ca96aa1358887aa78f25"
+      },
+      {
+        "name": "hot-updater-standalone-1.0.0-rc.14.tgz",
+        "sha256": "128c66d8c870af7b0582264fd410247bd84f47ef553b6de597b9a4a1ca615f55"
+      },
+      {
+        "name": "hot-updater-1.0.0-rc.16.tgz",
+        "sha256": "f7adfb62cceac3693ac20627b45cbf832a9aa684f2d13589516fe4e66d9990ba"
+      }
+    ]
+  },
+  "commands": {
+    "help": 0,
+    "keys generate --key-size 2048": 0,
+    "fingerprint create": 0,
+    "fingerprint": 0,
+    "doctor --json": 0,
+    "deploy ios --target-app-version 1.0.0 --channel production": 0,
+    "deploy android --target-app-version 1.0.0 --channel production": 0
+  },
+  "doctor": {
+    "success": true,
+    "details": {
+      "hotUpdaterVersion": "1.0.0-rc.16",
+      "packageJsonPath": "isolated-fixture/package.json",
+      "installedHotUpdaterPackages": [
+        "@hot-updater/lynx",
+        "@hot-updater/standalone",
+        "@hot-updater/server",
+        "@hot-updater/plugin-core"
+      ],
+      "native": {
+        "updateStrategy": "appVersion",
+        "fingerprintJsonPath": "fingerprint.json",
+        "ios": {
+          "detected": true,
+          "files": ["ios/Info.plist"]
+        },
+        "android": {
+          "detected": true,
+          "files": ["android/app/src/main/AndroidManifest.xml"]
+        },
+        "issues": []
+      }
+    }
+  },
+  "nativeFingerprint": {
+    "ios": {
+      "hash": "14c51ead6e934a453adba448def0eebda6262d0697862d25c3c21af820090c7c",
+      "sourceCount": 38
+    },
+    "android": {
+      "hash": "29370b74c797d34036daf9f87176db229257adcdf7a6ba710d25116881fa7761",
+      "sourceCount": 40
+    }
+  },
+  "compiledInput": {
+    "description": "Reused verified real ReactLynx main/detail/resource output; no compiler or native build is claimed by this fixture.",
+    "receiptSha256": "378ac2c3aabfab29d94e5f3f699082232cf37b67d57b6558d413a1a9b88e7822",
+    "files": [
+      {
+        "path": "assets/OFL.txt",
+        "bytes": 4380,
+        "sha256": "262481e844521b326f5ecd053e59b98c8b2da78c8ee1bdbb6e8174305e54935a"
+      },
+      {
+        "path": "assets/bootstrap.js",
+        "bytes": 898,
+        "sha256": "5ba4fd983d7f61ad324c9125aee2b5fdf1ecfe8ea5ff9d283d0b42bee3ef7f84"
+      },
+      {
+        "path": "assets/probe.png",
+        "bytes": 74,
+        "sha256": "fc91145f783ebed0066f6d0a47694d35965da77642b399bc2bd6664c571bba37"
+      },
+      {
+        "path": "assets/probe.ttf",
+        "bytes": 324820,
+        "sha256": "1b08e7fc267a5c7e1d614100f604b83e7e8a0be241f0f288faa2b3ac93a683ba"
+      },
+      {
+        "path": "detail.lynx.bundle",
+        "bytes": 130773,
+        "sha256": "192ec75564f7036ce72091cd3451a07e6c0d59407c4efda896592c66a9ecb41e"
+      },
+      {
+        "path": "dynamic/component.lynx.bundle",
+        "bytes": 2803,
+        "sha256": "2d8771f322c0e78b4f5aefc0e9b34070142202349c648724dd472517d05c2f93"
+      },
+      {
+        "path": "main.lynx.bundle",
+        "bytes": 144877,
+        "sha256": "c856b01bce94228275e5bef6d6130d2fd763bb0cd0641d3e8387040e772995cc"
+      }
+    ]
+  },
+  "server": {
+    "processes": 1,
+    "instances": 2,
+    "database": "Two independent in-memory PGlite databases through Kysely",
+    "schemaVersions": ["1.0.0", "1.0.0"],
+    "routes": ["/lynx", "/other"],
+    "storage": "Independent filesystem roots and signed-download keys",
+    "matchingSelector": {
+      "channel": "production",
+      "targetAppVersion": "1.0.0"
+    },
+    "clientAccess": "public, on loopback only"
+  },
+  "deliveries": [
+    {
+      "project": "lynx",
+      "platform": "ios",
+      "releaseId": "01a0e999-ea72-7e9e-a9fe-d27c4fecc0bb",
+      "bundleId": "01a0e999-e92c-7c7a-bb66-f150c0cd7378",
+      "catalogId": "01a0e999-ea78-71c9-aa04-e699532baf91",
+      "catalogHash": "sha256:aa5442bff1210a5f3166b00c35bd680e83343e43e5177bae90876e19ab38107f",
+      "scopeKey": "v1:app-version:ios:cHJvZHVjdGlvbg",
+      "archiveSha256": "29369e0b5ab47161a14971203f94de74a0f661eda101437b25a9d857fd9fccc4",
+      "archiveBytes": 271947,
+      "manifest": {
+        "schemaVersion": 1,
+        "bundleId": "01a0e999-e92c-7c7a-bb66-f150c0cd7378",
+        "platform": "ios",
+        "entry": "main.lynx.bundle",
+        "pageEntries": ["detail.lynx.bundle", "main.lynx.bundle"],
+        "pageEssentialResources": [
+          {
+            "entry": "detail.lynx.bundle",
+            "resources": ["detail.lynx.bundle"]
+          },
+          {
+            "entry": "main.lynx.bundle",
+            "resources": [
+              "assets/bootstrap.js",
+              "assets/probe.png",
+              "assets/probe.ttf",
+              "dynamic/component.lynx.bundle",
+              "main.lynx.bundle"
+            ]
+          }
+        ],
+        "runtimeId": "sparkling-c4ce8d2-navigation-2.1.0-rc.12-lynx-3.9.0-primjs-3.8.0-alpha.6-ios-managed-pages-v1"
+      },
+      "rsaSignatureVerified": true,
+      "signedAssetsVerified": [
+        {
+          "path": "assets/OFL.txt",
+          "sha256": "262481e844521b326f5ecd053e59b98c8b2da78c8ee1bdbb6e8174305e54935a"
+        },
+        {
+          "path": "assets/bootstrap.js",
+          "sha256": "5ba4fd983d7f61ad324c9125aee2b5fdf1ecfe8ea5ff9d283d0b42bee3ef7f84"
+        },
+        {
+          "path": "assets/probe.png",
+          "sha256": "fc91145f783ebed0066f6d0a47694d35965da77642b399bc2bd6664c571bba37"
+        },
+        {
+          "path": "assets/probe.ttf",
+          "sha256": "1b08e7fc267a5c7e1d614100f604b83e7e8a0be241f0f288faa2b3ac93a683ba"
+        },
+        {
+          "path": "detail.lynx.bundle",
+          "sha256": "192ec75564f7036ce72091cd3451a07e6c0d59407c4efda896592c66a9ecb41e"
+        },
+        {
+          "path": "dynamic/component.lynx.bundle",
+          "sha256": "2d8771f322c0e78b4f5aefc0e9b34070142202349c648724dd472517d05c2f93"
+        },
+        {
+          "path": "hot-updater-lynx.json",
+          "sha256": "4b8fa60c272d4581ba1281cc5ef529ed514233d035ee9a04580a361d92046e57"
+        },
+        {
+          "path": "main.lynx.bundle",
+          "sha256": "c856b01bce94228275e5bef6d6130d2fd763bb0cd0641d3e8387040e772995cc"
+        }
+      ],
+      "compiledFilesVerified": 7,
+      "otherProjectStatus": {
+        "artifact": 404,
+        "release": 404,
+        "bundle": 404,
+        "signedStorage": 404
+      }
+    },
+    {
+      "project": "other",
+      "platform": "ios",
+      "releaseId": "01a0e9a2-1d58-75d7-91d6-32b99425219a",
+      "bundleId": "01a0e9a2-1c13-7c32-bf9a-1a84c0dd7a03",
+      "catalogId": "01a0e9a2-1d5e-7114-ae3f-b1c1ed7f76ca",
+      "catalogHash": "sha256:e83ab1d41c805c283dc6f5bd0e4e68825cbbea3d5d1f3ba4b2d26d5c7ba41bc1",
+      "scopeKey": "v1:app-version:ios:cHJvZHVjdGlvbg",
+      "archiveSha256": "64264d1d132181ff0826b63186e8d21233d99988089dfd8a5e2f83f8321187da",
+      "archiveBytes": 271942,
+      "manifest": {
+        "schemaVersion": 1,
+        "bundleId": "01a0e9a2-1c13-7c32-bf9a-1a84c0dd7a03",
+        "platform": "ios",
+        "entry": "main.lynx.bundle",
+        "pageEntries": ["detail.lynx.bundle", "main.lynx.bundle"],
+        "pageEssentialResources": [
+          {
+            "entry": "detail.lynx.bundle",
+            "resources": ["detail.lynx.bundle"]
+          },
+          {
+            "entry": "main.lynx.bundle",
+            "resources": [
+              "assets/bootstrap.js",
+              "assets/probe.png",
+              "assets/probe.ttf",
+              "dynamic/component.lynx.bundle",
+              "main.lynx.bundle"
+            ]
+          }
+        ],
+        "runtimeId": "sparkling-c4ce8d2-navigation-2.1.0-rc.12-lynx-3.9.0-primjs-3.8.0-alpha.6-ios-managed-pages-v1"
+      },
+      "rsaSignatureVerified": true,
+      "signedAssetsVerified": [
+        {
+          "path": "assets/OFL.txt",
+          "sha256": "262481e844521b326f5ecd053e59b98c8b2da78c8ee1bdbb6e8174305e54935a"
+        },
+        {
+          "path": "assets/bootstrap.js",
+          "sha256": "5ba4fd983d7f61ad324c9125aee2b5fdf1ecfe8ea5ff9d283d0b42bee3ef7f84"
+        },
+        {
+          "path": "assets/probe.png",
+          "sha256": "fc91145f783ebed0066f6d0a47694d35965da77642b399bc2bd6664c571bba37"
+        },
+        {
+          "path": "assets/probe.ttf",
+          "sha256": "1b08e7fc267a5c7e1d614100f604b83e7e8a0be241f0f288faa2b3ac93a683ba"
+        },
+        {
+          "path": "detail.lynx.bundle",
+          "sha256": "192ec75564f7036ce72091cd3451a07e6c0d59407c4efda896592c66a9ecb41e"
+        },
+        {
+          "path": "dynamic/component.lynx.bundle",
+          "sha256": "2d8771f322c0e78b4f5aefc0e9b34070142202349c648724dd472517d05c2f93"
+        },
+        {
+          "path": "hot-updater-lynx.json",
+          "sha256": "f4869052c69f551cee258d7bcb9ee6872ba523a02c274df2047a361fab8674e6"
+        },
+        {
+          "path": "main.lynx.bundle",
+          "sha256": "c856b01bce94228275e5bef6d6130d2fd763bb0cd0641d3e8387040e772995cc"
+        }
+      ],
+      "compiledFilesVerified": 7,
+      "otherProjectStatus": {
+        "artifact": 404,
+        "release": 404,
+        "bundle": 404,
+        "signedStorage": 404
+      }
+    },
+    {
+      "project": "lynx",
+      "platform": "android",
+      "releaseId": "01a0e99a-24b7-73bb-9c57-63269883bbc5",
+      "bundleId": "01a0e99a-2372-754f-bc97-68d08ca8ea81",
+      "catalogId": "01a0e99a-24bd-726e-8ed0-58b5eee91eec",
+      "catalogHash": "sha256:fcd6ef68ef667acc3f0f60e840ba7e350b51011ade09ebc59e0791f69c27933b",
+      "scopeKey": "v1:app-version:android:cHJvZHVjdGlvbg",
+      "archiveSha256": "660358f2c6cb8a08530c32d67abaa5a9932649b1e4a6f7ecfef079249e60d9b4",
+      "archiveBytes": 271953,
+      "manifest": {
+        "schemaVersion": 1,
+        "bundleId": "01a0e99a-2372-754f-bc97-68d08ca8ea81",
+        "platform": "android",
+        "entry": "main.lynx.bundle",
+        "pageEntries": ["detail.lynx.bundle", "main.lynx.bundle"],
+        "pageEssentialResources": [
+          {
+            "entry": "detail.lynx.bundle",
+            "resources": ["detail.lynx.bundle"]
+          },
+          {
+            "entry": "main.lynx.bundle",
+            "resources": [
+              "assets/bootstrap.js",
+              "assets/probe.png",
+              "assets/probe.ttf",
+              "dynamic/component.lynx.bundle",
+              "main.lynx.bundle"
+            ]
+          }
+        ],
+        "runtimeId": "android-sparkling-2.1.0-rc.12-navsrc-937f70d7c3012a5a-lynx-3.9.0-primjs-3.8.0-alpha.6-managed-pages-v1"
+      },
+      "rsaSignatureVerified": true,
+      "signedAssetsVerified": [
+        {
+          "path": "assets/OFL.txt",
+          "sha256": "262481e844521b326f5ecd053e59b98c8b2da78c8ee1bdbb6e8174305e54935a"
+        },
+        {
+          "path": "assets/bootstrap.js",
+          "sha256": "5ba4fd983d7f61ad324c9125aee2b5fdf1ecfe8ea5ff9d283d0b42bee3ef7f84"
+        },
+        {
+          "path": "assets/probe.png",
+          "sha256": "fc91145f783ebed0066f6d0a47694d35965da77642b399bc2bd6664c571bba37"
+        },
+        {
+          "path": "assets/probe.ttf",
+          "sha256": "1b08e7fc267a5c7e1d614100f604b83e7e8a0be241f0f288faa2b3ac93a683ba"
+        },
+        {
+          "path": "detail.lynx.bundle",
+          "sha256": "192ec75564f7036ce72091cd3451a07e6c0d59407c4efda896592c66a9ecb41e"
+        },
+        {
+          "path": "dynamic/component.lynx.bundle",
+          "sha256": "2d8771f322c0e78b4f5aefc0e9b34070142202349c648724dd472517d05c2f93"
+        },
+        {
+          "path": "hot-updater-lynx.json",
+          "sha256": "1e27d928b67fef4e9d6f1ddeb71f9b8266467d76b9f8ccf3448b3517ad94b42f"
+        },
+        {
+          "path": "main.lynx.bundle",
+          "sha256": "c856b01bce94228275e5bef6d6130d2fd763bb0cd0641d3e8387040e772995cc"
+        }
+      ],
+      "compiledFilesVerified": 7,
+      "otherProjectStatus": {
+        "artifact": 404,
+        "release": 404,
+        "bundle": 404,
+        "signedStorage": 404
+      }
+    },
+    {
+      "project": "other",
+      "platform": "android",
+      "releaseId": "01a0e9a2-1f7a-7cf7-94d3-18bc80d47e2c",
+      "bundleId": "01a0e9a2-1e48-7543-ab58-ce2c5a871035",
+      "catalogId": "01a0e9a2-1f80-7866-8a4e-040ac135a38a",
+      "catalogHash": "sha256:473dd66903dbfd3d3a17cba113492d2f41eb97dfb987abea4d0755e7dd22382a",
+      "scopeKey": "v1:app-version:android:cHJvZHVjdGlvbg",
+      "archiveSha256": "b5585c9f56c319543b60e49987a90fd0dfdba65b093235ad09f6845382968340",
+      "archiveBytes": 271950,
+      "manifest": {
+        "schemaVersion": 1,
+        "bundleId": "01a0e9a2-1e48-7543-ab58-ce2c5a871035",
+        "platform": "android",
+        "entry": "main.lynx.bundle",
+        "pageEntries": ["detail.lynx.bundle", "main.lynx.bundle"],
+        "pageEssentialResources": [
+          {
+            "entry": "detail.lynx.bundle",
+            "resources": ["detail.lynx.bundle"]
+          },
+          {
+            "entry": "main.lynx.bundle",
+            "resources": [
+              "assets/bootstrap.js",
+              "assets/probe.png",
+              "assets/probe.ttf",
+              "dynamic/component.lynx.bundle",
+              "main.lynx.bundle"
+            ]
+          }
+        ],
+        "runtimeId": "android-sparkling-2.1.0-rc.12-navsrc-937f70d7c3012a5a-lynx-3.9.0-primjs-3.8.0-alpha.6-managed-pages-v1"
+      },
+      "rsaSignatureVerified": true,
+      "signedAssetsVerified": [
+        {
+          "path": "assets/OFL.txt",
+          "sha256": "262481e844521b326f5ecd053e59b98c8b2da78c8ee1bdbb6e8174305e54935a"
+        },
+        {
+          "path": "assets/bootstrap.js",
+          "sha256": "5ba4fd983d7f61ad324c9125aee2b5fdf1ecfe8ea5ff9d283d0b42bee3ef7f84"
+        },
+        {
+          "path": "assets/probe.png",
+          "sha256": "fc91145f783ebed0066f6d0a47694d35965da77642b399bc2bd6664c571bba37"
+        },
+        {
+          "path": "assets/probe.ttf",
+          "sha256": "1b08e7fc267a5c7e1d614100f604b83e7e8a0be241f0f288faa2b3ac93a683ba"
+        },
+        {
+          "path": "detail.lynx.bundle",
+          "sha256": "192ec75564f7036ce72091cd3451a07e6c0d59407c4efda896592c66a9ecb41e"
+        },
+        {
+          "path": "dynamic/component.lynx.bundle",
+          "sha256": "2d8771f322c0e78b4f5aefc0e9b34070142202349c648724dd472517d05c2f93"
+        },
+        {
+          "path": "hot-updater-lynx.json",
+          "sha256": "5812e6c7a5b55b010ea4c3d9cb0c652eab19ccb6a4b4814f51606ea555a831b4"
+        },
+        {
+          "path": "main.lynx.bundle",
+          "sha256": "c856b01bce94228275e5bef6d6130d2fd763bb0cd0641d3e8387040e772995cc"
+        }
+      ],
+      "compiledFilesVerified": 7,
+      "otherProjectStatus": {
+        "artifact": 404,
+        "release": 404,
+        "bundle": 404,
+        "signedStorage": 404
+      }
+    }
+  ],
+  "validation": {
+    "focusedTests": "62/62 across doctor and package-version resolution",
+    "cliBuild": true,
+    "cliTypes": true,
+    "focusedLint": true,
+    "workspaceUnits": {
+      "passed": 3911,
+      "files": 350,
+      "durationSeconds": 333.59,
+      "maxWorkers": 1
+    },
+    "workspaceLint": true,
+    "workspaceUnitsLogSha256": "4e357eb47f173a50f2ae117dc1cf6dad17fdf30bf192a9cc05f27835c16efcac"
+  },
+  "limits": [
+    "This is a local CLI/deployment proof, not public-cloud onboarding or device OTA acceptance.",
+    "Both populated project fixtures use Lynx output; RN-versus-Lynx mixed-runtime behavior remains covered by the separate server integration tests.",
+    "The native configuration files were copied for fingerprint/doctor validation; no new native binary was built.",
+    "The shared full E2E and six-cell public matrix gates remain open."
+  ],
+  "logHashes": {
+    "help.log": "bb30336e5f6a6e50bf591a9b3bbe13623dff05de923ecc53529c4b10c6846de7",
+    "keys.log": "41268de7a2212d92d0d6cc5a93a73cc55187330d32956170ca8e76a3bb22c31c",
+    "fingerprint-create.log": "676b13d3d20eb58cd764620ce51be4017a831220d7332fa46f126e375c0bafe6",
+    "fingerprint-check.log": "ac9eba04bac0c90b72bfc2052fdcda2631e3c94923966f852e47ccdea4c94c99",
+    "doctor-app.json": "ed8b5b52356e6142f51c54a11283f1a5847b84e9f54fd72557586b401c50284d",
+    "doctor-app-fixed.json": "b601e932e12cfd7cc7d4becece5661f8f9bac40edeb9b5d876bf0a6a1b254cef",
+    "deploy-ios.log": "e4d3f714adbbd121c0abb07a6bd9a49878aebc81765dc0512fb3554adf451f04",
+    "deploy-android.log": "d655aadd149412a410a780ee970907b56f936b052453d05b25d4ec45e5799a26",
+    "deploy-other-ios.log": "1b01bad29d83d166f1ac082936fac5e10bc0666db84ad8b8377dd90d545af437",
+    "deploy-other-android.log": "07729eed77a6a1574b0db5a27fb235f0efd43c678e5fc32cce8c869328ff38d9",
+    "deploy-auth-lynx.log": "0c8ac459b47d91a91ba92b0a7544f6d94c61e4b4a115846a07c0844102b85949",
+    "deploy-auth-other.log": "460626052e8373d8f4218153c2e265a9dded4e594d543ec6b66d1bd7b8b59d5f"
+  },
+  "nativeFingerprintFileSha256": "2973e9db21efda0e0a549582af7637e7797510f18654b561c506a15e131bdca6",
+  "authenticationFollowUp": {
+    "description": "A second run of the same two-instance server enables per-project client API keys and Hono bearer authentication on each admin route. Each populated project receives a new signed iOS deployment through the CLI.",
+    "checks": [
+      {
+        "project": "lynx",
+        "releaseId": "01a0e9a9-8861-7245-bd44-c849c5a8ba12",
+        "bundleId": "01a0e9a9-86e1-742a-b8ee-de6ccdd70c34",
+        "catalogId": "01a0e9a9-886a-7970-89af-b3d2f51ada36",
+        "schemaVersion": "1.0.0",
+        "status": {
+          "catalogWithoutKey": 401,
+          "catalogWithForeignKey": 401,
+          "catalogWithOwnKey": 200,
+          "artifactWithForeignKey": 401,
+          "artifactWithOwnKey": 200,
+          "ownSignedStorage": 200,
+          "foreignSignedStorage": 404,
+          "adminWithoutToken": 401,
+          "adminWithForeignToken": 401,
+          "adminWithOwnToken": 200,
+          "foreignReleaseWithValidOtherProjectToken": 404
+        }
+      },
+      {
+        "project": "other",
+        "releaseId": "01a0e9a9-8be4-70f1-bbbc-0b568b3d2bbf",
+        "bundleId": "01a0e9a9-89d9-7ce0-b856-1c9e06d4185e",
+        "catalogId": "01a0e9a9-8bec-7ba8-af22-a9e5d6dea634",
+        "schemaVersion": "1.0.0",
+        "status": {
+          "catalogWithoutKey": 401,
+          "catalogWithForeignKey": 401,
+          "catalogWithOwnKey": 200,
+          "artifactWithForeignKey": 401,
+          "artifactWithOwnKey": 200,
+          "ownSignedStorage": 200,
+          "foreignSignedStorage": 404,
+          "adminWithoutToken": 401,
+          "adminWithForeignToken": 401,
+          "adminWithOwnToken": 200,
+          "foreignReleaseWithValidOtherProjectToken": 404
+        }
+      }
+    ],
+    "credentialsRecorded": false
+  }
+}

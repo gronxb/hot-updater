@@ -53,6 +53,9 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
       message: vi.fn(),
     },
   },
+  resolvePackageVersion: (
+    await importOriginal<typeof import("@hot-updater/cli-tools")>()
+  ).resolvePackageVersion,
   readPackageUp: vi.fn(),
 }));
 
@@ -659,6 +662,67 @@ describe("doctor", () => {
       },
     });
   });
+
+  it.each([
+    ["compatible tarballs", "1.0.0-rc.14", true],
+    ["incompatible tarballs", "2.0.0", false],
+    ["uninstalled tarball", null, false],
+  ] as const)(
+    "checks installed versions for %s",
+    async (_name, version, success) => {
+      const cwd = await createTempProject();
+      const packageName =
+        version === null
+          ? "@hot-updater/missing-test-integration"
+          : "@hot-updater/lynx";
+      try {
+        for (const [name, installedVersion] of [
+          ["hot-updater", "1.0.0-rc.16"],
+          [packageName, version],
+        ] as const) {
+          if (installedVersion === null) continue;
+          await writeFile(
+            path.join(cwd, "node_modules", name, "package.json"),
+            JSON.stringify({ name, version: installedVersion }),
+          );
+        }
+        mockReadPackageUp.mockResolvedValue({
+          packageJson: {
+            dependencies: {
+              "hot-updater": "file:./hot-updater.tgz",
+              [packageName]: "file:./hot-updater-lynx.tgz",
+            },
+          },
+          path: path.join(cwd, "package.json"),
+        });
+        const result = await doctor({ cwd });
+        if (success) {
+          expect(result).toBe(true);
+        } else if (version === null) {
+          expect(result).toMatchObject({
+            success: false,
+            error: expect.any(String),
+          });
+        } else {
+          expect(result).toMatchObject({
+            success: false,
+            details: {
+              hotUpdaterVersion: "1.0.0-rc.16",
+              versionMismatches: [
+                {
+                  packageName: "@hot-updater/lynx",
+                  currentVersion: "2.0.0",
+                  expectedVersion: "1.0.0-rc.16",
+                },
+              ],
+            },
+          });
+        }
+      } finally {
+        await fs.rm(cwd, { recursive: true, force: true });
+      }
+    },
+  );
 
   it("should return true if only hot-updater CLI is present and no other @hot-updater packages", async () => {
     mockReadPackageUp.mockResolvedValue({

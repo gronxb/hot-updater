@@ -8,6 +8,7 @@ import {
   loadConfig,
   p,
   readPackageUp,
+  resolvePackageVersion,
 } from "@hot-updater/cli-tools";
 import { merge } from "es-toolkit";
 import {
@@ -569,14 +570,25 @@ export async function doctor(
     );
 
     // Check hot-updater version
-    const hotUpdaterVersion = allDependencies["hot-updater"];
+    const hotUpdaterSpecifier = allDependencies["hot-updater"];
 
-    if (!hotUpdaterVersion) {
+    if (!hotUpdaterSpecifier) {
       return {
         success: false,
         error: "hot-updater CLI not found. Please install it first.",
       };
     }
+
+    const dependencyVersion = (specifier: string, packageName: string) =>
+      normalizeRange(specifier)
+        ? specifier
+        : resolvePackageVersion(packageName, {
+            searchFrom: path.dirname(packageJsonPath),
+          });
+    const hotUpdaterVersion = dependencyVersion(
+      hotUpdaterSpecifier,
+      "hot-updater",
+    );
 
     // Find all @hot-updater packages
     const hotUpdaterPackages = Object.keys(allDependencies).filter((key) =>
@@ -586,7 +598,10 @@ export async function doctor(
     const versionMismatches: VersionMismatch[] = [];
 
     for (const packageName of hotUpdaterPackages) {
-      const currentVersion = allDependencies[packageName];
+      const currentSpecifier = allDependencies[packageName];
+      const currentVersion = currentSpecifier
+        ? dependencyVersion(currentSpecifier, packageName)
+        : undefined;
       if (
         hotUpdaterVersion &&
         currentVersion &&

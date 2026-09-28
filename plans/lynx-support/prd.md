@@ -1367,7 +1367,9 @@ Implement `@hot-updater/lynx` and `examples/lynx` against the G1 contracts.
 - Replace the common CLI's fixed Bare/Rock/Expo build enum with an
   integration-owned setup/doctor/fingerprint/remediation descriptor. A Lynx-only
   fixture must complete the generic CLI flow without installing or inspecting
-  React Native or Expo.
+  React Native or Expo. Doctor must compare installed versions for local
+  tarballs and other non-semver dependency specifiers, preserve declared semver
+  range checks, and reject an unresolved installation.
 - Enforce the neutral-package dependency and source-policy boundary described in
   section 2.2, while RN regression fixtures prove unchanged RN/Hermes behavior
   through the RN integration.
@@ -1761,6 +1763,21 @@ RN, Expo or Kysely. Scaffold doctor correctly rejects unresolved deployment
 placeholders. Complete onboarding, signing, deployment and infrastructure health
 remain separate evidence obligations. See
 [the isolated installation record](./evidence/isolated-cli-neutrality.json).
+
+A second isolated production-tarball fixture completes key generation, native
+fingerprint generation/checking, app doctor, and signed iOS/Android deployment
+without RN or Expo. It adds Kysely explicitly for its local server. Two populated
+instances in one process use identical platform/channel/version selectors but
+separate databases and storage. All four downloaded archives and every asset
+signature/hash verify; foreign artifact, Release, Bundle and signed-storage reads
+return 404 in both directions. A second authenticated server run accepts each
+project's own client key/admin token and rejects missing or foreign credentials
+with 401, while valid foreign-project access still cannot read the other Release.
+This uses retained real compiler output and copied
+native configuration, so it does not establish a fresh compiler/native build,
+cloud onboarding or device acceptance. See [the CLI flow record](./evidence/isolated-cli-flow.json).
+The follow-up passes CLI build/types, workspace lint and all 3,911 unit tests
+in 350 files.
 
 Workspace verification for the pushed implementation passes 27 build projects,
 35 type-check projects, lint, and 3,893 unit tests in 348 files before the three

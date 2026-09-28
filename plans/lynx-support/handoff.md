@@ -60,17 +60,27 @@ Full job `job-20260928191114-vsk520` on `da5ae4636` finishes **49/52**
 The native evidence identifies three harness defects: a two-second forced
 relaunch before verified fatal handling, an incorrect pending-download
 expectation for server A adopting embedded A, and an initial two-context
-expectation before Android attaches its secondary Activity. All are fixed
-locally with failing-before regressions; the 91 focused tests pass. The Android
+expectation before Android attaches its secondary Activity. All are fixed in pushed `9cbc0c985`
+with failing-before regressions; the 91 focused tests pass. The Android
 reconstruction evaluator also passes the unchanged captured native journal.
 Unconfirmed Releases no longer appear as crashed Bundles in shared test metadata.
 See `evidence/shared-e2e-da5ae4636.json` and the execution ledger's final section.
 
 The native-helper neutrality follow-up passes rebuilt workspace build, types and
 lint, plus **3,908/3,908 units in 350 files** (`/tmp/lynx-post-vsk-units.log`).
-Commit explicit paths, preserve all six staged-only helpers, push and run a fresh
-full agent job.
+Full job `job-20260928195209-rzyw0v` was requested on `9cbc0c985`; another task
+currently owns the bot devices. Preserve that task and all six staged-only helpers.
 Historical best remains 51/52; no current complete public matrix cell is claimed.
+
+An additional local doctor fix now resolves non-semver dependency specifiers to
+installed versions. The isolated production-tarball fixture passes key generation,
+fingerprint, app doctor and four signed deployments across two populated projects.
+All archive/asset signatures and page hashes verify, with bidirectional namespace
+isolation. See `evidence/isolated-cli-flow.json`; this does not replace either
+native gate. The doctor/resolver suites pass 62/62 and CLI build/types/lint pass.
+All **3,911/3,911 workspace units in 350 files** and workspace lint now pass.
+The queued device job has no resolved commit yet. Push these tested changes
+before it starts and verify the exact checkout commit from the actual job.
 
 ## September 29 resume checkpoint
 

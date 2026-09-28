@@ -970,3 +970,48 @@ workspace build (27 projects), types (35 projects), and lint pass. Full unit
 validation passes **3,908/3,908 in 350 files**. These changes need a fresh pushed
 full device run;
 they do not convert the failed job into acceptance or close the separate matrix.
+
+## 2026-09-29 isolated CLI deployment and doctor
+
+Full shared job `job-20260928195209-rzyw0v` is queued on pushed `9cbc0c985`.
+Another task owns the bot devices; leave that task untouched. No fresh device
+outcome is claimed while this job is queued.
+
+An isolated production-tarball installation, without workspace links, completes
+key generation, fingerprint creation/checking, app doctor and signed delivery.
+RN, the RN integration, Expo and Expo fingerprint are absent. Two PGlite-backed
+instances in one loopback server both deploy iOS and Android with the same
+production/1.0.0 selectors. All four archives and all 32 asset signatures verify,
+as do the retained compiler file hashes and page/resource metadata. Both directions
+reject foreign artifact, Release, Bundle and signed-storage reads. Both databases
+remain at schema 1.0.0. Retain `evidence/isolated-cli-flow.json`.
+
+The fixture exposes doctor comparing `file:` tarball locations as version strings.
+Resolve installed package versions only for non-semver specifiers through the
+existing neutral package resolver. Declared semver ranges retain their previous
+comparison. Three regressions cover compatible tarballs, incompatible versions
+and a missing installation; all fail before the change. The combined doctor and
+resolver suites pass 62/62, focused lint and CLI build/types pass, and reinstalling
+the rebuilt CLI tarball makes the unchanged local installation pass doctor.
+Do not normalize or replace the fixture's dependency specifiers to mask the bug.
+
+This fixture reuses hash-verified compiler output and copied native configuration;
+it is not a new compiler/native run, cloud onboarding or public matrix receipt. The queued job has no resolved commit while waiting. Push the tested doctor
+fix before it starts and record the actual checkout commit from all job worktrees.
+
+A final 16 KB policy audit removes the obsolete compatibility-dialog dismissal
+from the early Android public probe script. The aligned binary requires no
+compatibility mode or automated warning bypass; the Fresco exception remains
+limited to the package-owned source/ABI adaptation.
+
+A second real server run adds separate client API keys and Hono admin bearer
+middleware. Each project receives a signed iOS deployment using the repository's
+`commonHeaders` configuration. Both client catalog/artifact and admin requests
+reject foreign credentials with 401; own credentials succeed, and a valid other
+project token cannot read the original project's Release (404). Signed storage
+URLs remain isolated. Credentials stay in private temporary files and are absent
+from the retained evidence. Both local fixture servers are stopped after checks.
+
+Final validation passes **3,911/3,911 unit tests in 350 files** with one worker
+(333.59 seconds), workspace lint, CLI build/types, and the legacy probe script's
+syntax check. The six pre-existing staged helper diffs remain byte-identical.
