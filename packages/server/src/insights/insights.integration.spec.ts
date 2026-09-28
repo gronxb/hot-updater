@@ -159,11 +159,13 @@ describe("createHotUpdater Insights", () => {
       nextCursor: null,
     });
     expect(active.status).toBe(200);
+    // Whole hours, ending with the current one.
+    const end = Date.parse("2026-08-12T01:00:00.000Z");
     await expect(active.json()).resolves.toEqual({
       platform: "ios",
       channel: "production",
-      sinceMs: Date.now() - 24 * 60 * 60 * 1_000,
-      beforeReceivedAtMs: Date.now(),
+      sinceMs: end - 24 * 60 * 60 * 1_000,
+      beforeReceivedAtMs: end,
       reportingInstallations: { count: 1, measuredAtMs: Date.now() },
       window: "24h",
     });
@@ -215,7 +217,7 @@ describe("createHotUpdater Insights", () => {
     expect(overview.status).toBe(200);
     await expect(overview.json()).resolves.toMatchObject({
       sinceMs: 0,
-      beforeReceivedAtMs: 500,
+      beforeReceivedAtMs: 60 * 60 * 1_000,
       reportingInstallations: { count: 2 },
       bundle: {
         bundleId: "B",
