@@ -69,6 +69,7 @@ const PACKAGE_NATIVE_INPUTS = {
     "android/libs/*.jar",
     "android/src/main/**/*",
     "android-sparkling/build.gradle",
+    "android-sparkling/fresco-compat.gradle",
     "android-sparkling/src/main/**/*",
     "package.json",
   ],

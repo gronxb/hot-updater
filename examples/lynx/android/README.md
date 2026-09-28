@@ -5,6 +5,14 @@ The `:app` module is the production Sparkling scaffold for
 at commit `c4ce8d25c5ea277e13752d68ff1f2a66f5704240` and pins Lynx 3.9.0 and
 PrimJS 3.8.0-alpha.6.
 
+The packaged Sparkling integration temporarily recompiles the pinned Lynx image
+service for Fresco 3.4.0. Its source checksum, API adaptation, and removal
+condition are documented in [the compatibility note](../../../packages/lynx/android-sparkling/fresco-compat/README.md).
+Exclude `org.lynxsdk.lynx:lynx-service-image` from the Sparkling dependency as
+shown in the example Gradle files; the package supplies the replacement and
+Fresco dependencies. Keep the standard Sparkling `PoolFactory` initialization.
+There is no application allocator override or legacy JNI packaging.
+
 Its application-owned native code has two responsibilities:
 
 - `LynxApplication` registers the packaged Hot Updater and managed-navigation
@@ -40,7 +48,7 @@ provenance before compiling it:
 - Sparkling Method POM / Gradle module SHA-256:
   `5d42601a13e3ffcf92fc973248e50b342ad78aa72fc297c051707fca8f207a06` /
   `01fd39296eddb16f3ab50ed5efd0880737d29d98900d1d7564e9e18637599e17`
-- excluded production transitive resolution graph SHA-256:
+- upstream devtool-excluded reference graph SHA-256:
   `c68329c1968de962c8574f298ba46f43db016195bbbf4422b5e01145278aebe3`
 
 The Android source digest reads files below `android/src/main` in sorted
@@ -48,8 +56,9 @@ source-root-relative UTF-8 path order and feeds each relative path, a NUL byte,
 and the raw file bytes to SHA-256. The matching runtime identity is
 `android-sparkling-2.1.0-rc.12-navsrc-937f70d7c3012a5a-lynx-3.9.0-primjs-3.8.0-alpha.6-managed-pages-v1`.
 The graph digest hashes the sorted resolved `owner -> requested => selected`
-edges, including a trailing newline, after applying the production devtool
-exclusions.
+edges, including a trailing newline, after applying the devtool exclusions.
+This is the unmodified upstream reference graph; the Fresco adaptation and its dependencies are tracked separately
+in the native fingerprint.
 
 Each pushed logical page is hosted by the packaged full-page
 `HotUpdaterSparklingPageActivity`. Native owns the Activity back stack, binds

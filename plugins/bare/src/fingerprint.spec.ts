@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("@hot-updater/react-native/build", () => ({
+  createReactNativeDoctor: vi.fn(),
   createReactNativeFingerprint: mocks.createReactNativeFingerprint,
   selectReactNativeArtifacts: vi.fn(),
 }));

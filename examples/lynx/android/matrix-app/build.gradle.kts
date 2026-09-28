@@ -62,18 +62,17 @@ dependencies {
   implementation(project(":hot-updater-lynx-sparkling-diagnostics"))
   implementation("org.lynxsdk.lynx:lynx:3.9.0")
   implementation("org.lynxsdk.lynx:lynx-jssdk:3.9.0")
-  implementation("org.lynxsdk.lynx:lynx-service-image:3.9.0")
   implementation("org.lynxsdk.lynx:lynx-service-http:3.9.0")
   implementation("org.lynxsdk.lynx:lynx-service-log:3.9.0")
   implementation("org.lynxsdk.lynx:primjs:3.8.0-alpha.6")
   implementation("com.tiktok.sparkling:sparkling:2.1.0-rc.12") {
+    exclude(group = "org.lynxsdk.lynx", module = "lynx-service-image")
     exclude(group = "org.lynxsdk.lynx", module = "lynx-service-devtool")
     exclude(group = "org.lynxsdk.lynx", module = "lynx-devtool")
     exclude(group = "org.lynxsdk.lynx", module = "debug-router")
     exclude(group = "org.lynxsdk.lynx", module = "base-devtool")
   }
   implementation("com.tiktok.sparkling:sparkling-method:2.1.0-rc.12")
-  implementation("com.facebook.fresco:fresco:3.4.0")
 }
 
 tasks.named("preBuild").configure { dependsOn(verifyMatrixEmbedded) }

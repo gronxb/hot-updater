@@ -1,6 +1,6 @@
 {
   "ios": {
-    "hash": "09dd7e5da3707fec03b4c88243d651f802eec4a79a1b64c63df16bc8d8fe34e6",
+    "hash": "4221e17019dd385b3497b17a74381ce9d926427f58a0da8c341224b26f56cd18",
     "sources": [
       {
         "type": "file",
@@ -151,9 +151,9 @@
         "reasons": [
           "lynx-native-input"
         ],
-        "hash": "631675bc33d1554a20cd0d699e00433c5a623317b909178054c4e92de4c7c779",
+        "hash": "8939d6efdfda7ce92f1fe1cf0c9d71d3e110e403f7d27bac79e2f6116d125269",
         "debugInfo": {
-          "byteSize": 73510
+          "byteSize": 75687
         }
       },
       {
@@ -294,9 +294,9 @@
         "reasons": [
           "lynx-native-input"
         ],
-        "hash": "8ad823175e24e566e56d75be967bb90bad21c37a6d664ad4fa853ed2408cf2e5",
+        "hash": "7cb63748509bc3c99a3c7e1f89198fe7818323395f5d51787891e866485d6784",
         "debugInfo": {
-          "byteSize": 74696
+          "byteSize": 74984
         }
       },
       {
@@ -360,9 +360,9 @@
         "reasons": [
           "lynx-native-input"
         ],
-        "hash": "2c1638c695c74cf2ae3a6fbfbae3e1ac7ce7858503650993460f06d33b268cbe",
+        "hash": "7eb37ac338687c5a05249fc35314142e3e9a1b8f5e587dd20d0c46ddf6a3f20e",
         "debugInfo": {
-          "byteSize": 1578
+          "byteSize": 1737
         }
       },
       {
@@ -522,7 +522,7 @@
     ]
   },
   "android": {
-    "hash": "da49959889f6dc77e4601e86f8303a32b7ba9964cc464cd156bb70b25a146501",
+    "hash": "5cfd41c0de299a80e715d03c0f50820c4ddcf971e0f7bf6cc28f2e21fddeb2e6",
     "sources": [
       {
         "type": "file",
@@ -530,9 +530,20 @@
         "reasons": [
           "lynx-native-input"
         ],
-        "hash": "4a944c09aa33d51bc29a6e5f43d67f9df18099b1821bcd63a586fc96452bac1a",
+        "hash": "dd37cb5b33aa5fc55770557a61beb3fc1cf13038e488f7bb1fc1adaa1250d507",
         "debugInfo": {
-          "byteSize": 9140
+          "byteSize": 9300
+        }
+      },
+      {
+        "type": "file",
+        "filePath": "@hot-updater/lynx/android-sparkling/fresco-compat.gradle",
+        "reasons": [
+          "lynx-native-input"
+        ],
+        "hash": "2ec74d2870c6ba6d73853df1bbceba25206d69f1ed4d8b2bb878695cf10c1672",
+        "debugInfo": {
+          "byteSize": 2060
         }
       },
       {
@@ -904,9 +915,9 @@
         "reasons": [
           "lynx-native-input"
         ],
-        "hash": "2c1638c695c74cf2ae3a6fbfbae3e1ac7ce7858503650993460f06d33b268cbe",
+        "hash": "7eb37ac338687c5a05249fc35314142e3e9a1b8f5e587dd20d0c46ddf6a3f20e",
         "debugInfo": {
-          "byteSize": 1578
+          "byteSize": 1737
         }
       },
       {
@@ -915,9 +926,9 @@
         "reasons": [
           "lynx-native-input"
         ],
-        "hash": "310518c8a7b3134feb426873f0a868296ac2ae2710f21378f68a58d4fed91426",
+        "hash": "5236ee714845e29f01205ed1daf6813a0d0aa8768af9179ac5e1b5a11383bdc9",
         "debugInfo": {
-          "byteSize": 5625
+          "byteSize": 5371
         }
       },
       {
@@ -937,9 +948,9 @@
         "reasons": [
           "lynx-native-input"
         ],
-        "hash": "7f0a8b61040acbdfc9b987c739020b48daae30714f22d042504cb0959ed8e4c3",
+        "hash": "94d70e15bdc0776dae2671a07892db4d8046ba72449518336b82eed009ec91c8",
         "debugInfo": {
-          "byteSize": 1216
+          "byteSize": 1307
         }
       },
       {
@@ -970,7 +981,7 @@
         "reasons": [
           "lynx-native-input"
         ],
-        "hash": "979d72605a194ea55e485826bd326eb52bbd5cf3e754770bcef9ebd26ff6d9de",
+        "hash": "40ae19d570d43674967d1a2b78da4e859dcb0ad4439d6ee300ab596f3f3f0a66",
         "debugInfo": {
           "byteSize": 138
         }
@@ -992,7 +1003,7 @@
         "reasons": [
           "lynx-native-input"
         ],
-        "hash": "48c4bccbd89a0db69144352c37947864551a264e1053cd1b83c5d2d6fae20b14",
+        "hash": "21a6d84e1b973bcaa4429ceff63c50c85f2a383f16cb807a63ed0af817125ee6",
         "debugInfo": {
           "byteSize": 230
         }

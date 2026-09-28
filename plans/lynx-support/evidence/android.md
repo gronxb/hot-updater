@@ -1,15 +1,36 @@
 # Android G1 native feasibility evidence
 
-## Production 16 KB packaging follow-up (2026-09-22)
+## Fresco 3 compatibility follow-up (2026-09-28)
 
-The production example now uses AGP 8.5.2, Gradle 8.7, Kotlin 2.0.21, and
-Fresco 3.4.0. It does not enable `jniLibs.useLegacyPackaging`. The release APK
-passes `zipalign -c -P 16 -v 4`; all 24 packaged ARM64 and x86_64 shared
-libraries have ELF `LOAD` alignment of at least 16 KB; and bundletool 1.16.0
-reports `PAGE_ALIGNMENT_16K` for the release AAB. The same build-tool and Fresco
-versions are used by the separate E2E and matrix applications, which also build
-successfully. This supersedes the provisional compatibility-mode limitation
-recorded in the original G1 spike below.
+The earlier 16 KB packaging-only claim was insufficient: `6e38d9c02` aligned
+its native libraries but crashed when Lynx's Fresco-2-compiled image service
+called Fresco 3 interfaces (`IncompatibleClassChangeError: CloseableBitmap`).
+The user explicitly authorized a Fresco-only workaround on September 22.
+
+The optional Sparkling package now recompiles the checksum-pinned upstream
+3.9.0 source with Fresco 3.4.0 and adapts its three animation callback argument
+types. Application initialization uses the upstream Sparkling pool factory;
+`MemoryChunkType.BUFFER_MEMORY` has been removed. The package retains the source
+license and includes the adaptation in the Android native fingerprint.
+
+Preliminary evidence is retained in [fresco-16kb-smoke.json](./fresco-16kb-smoke.json):
+
+- Production, shipped E2E, and matrix Release APKs build. All 28 shared libraries
+  per APK across ARM64 and x86_64 are uncompressed and have ELF `LOAD` alignment
+  of at least 16 KB. All three APKs pass `zipalign -c -P 16 4`.
+- The production AAB builds and bundletool 1.16.0 reports `PAGE_ALIGNMENT_16K`.
+- One unchanged matrix APK on `emulator-5560` (`PAGE_SIZE=16384`, ARM64) loads
+  the real managed PNG and font and confirms readiness for React, Vue, and
+  Octane. React's actual main-page button opens and admits `detail.lynx.bundle`
+  in a separate Sparkling Activity in the same process and generation.
+- All 31 Sparkling JVM tests pass. The two new regressions verify bitmap
+  reference ownership across producer/Lynx release and Fresco animation callback
+  dispatch, including stopped-loop suppression.
+
+These are smoke and packaging checks against the uncommitted adaptation, not a
+six-cell OTA matrix or the required 52-scenario full job. The historical private
+spike below used compatibility workarounds and does not establish the current
+16 KB acceptance requirement.
 
 Status: native A/B resource, bridge, startup recovery and context scenarios passed
 within the private G1 boundary described below. This is a private feasibility host, not an

@@ -541,12 +541,14 @@ describe("production native update endpoint", () => {
       "Runtime.getRuntime()",
       "System.exit(",
       "Process.killProcess(",
+      "MemoryChunkType",
+      "setMemoryChunkType(",
     ]) {
       expect(productionNativeSource).not.toContain(workaround);
     }
   });
 
-  it("uses Android's native 16 KB packaging instead of legacy JNI compression", async () => {
+  it("uses modern Android packaging without legacy JNI compression", async () => {
     const [rootBuild, wrapper, ...applicationBuilds] = await Promise.all([
       fs.readFile(path.join(exampleRoot, "android/build.gradle.kts"), "utf8"),
       fs.readFile(
@@ -572,9 +574,6 @@ describe("production native update endpoint", () => {
     );
     expect(wrapper).toContain("gradle-8.7-all.zip");
     for (const applicationBuild of applicationBuilds) {
-      expect(applicationBuild).toContain(
-        'implementation("com.facebook.fresco:fresco:3.4.0")',
-      );
       expect(applicationBuild).not.toContain("useLegacyPackaging");
     }
   });

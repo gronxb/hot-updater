@@ -155,7 +155,29 @@ library for every included ABI must have ELF `LOAD` segments aligned to at least
 release AAB must declare `PAGE_ALIGNMENT_16K`. A compressed-JNI workaround or
 Android's page-size compatibility mode does not satisfy this requirement.
 Prebuilt dependencies that fail the requirement must be upgraded to a compatible
-release rather than repaired by application-owned native code.
+release rather than repaired by application-owned native code. Do not bypass
+native allocation with `MemoryChunkType.BUFFER_MEMORY`, suppress the platform's
+compatibility warning, or drop a promised ABI to make the checks pass.
+
+Packaging checks alone do not establish support. On a device reporting a 16,384
+byte page size, the same release binary must decode its real managed image,
+load its font, navigate between independently compiled page bundles, and apply
+an OTA update with managed runtime recreation. Record the resolved dependencies
+and binary identity with those results. An ABI-incompatible image-service upgrade
+is rejected even if its APK and ELF alignment checks pass. If neither an
+upstream dependency nor the approved Fresco adaptation satisfies these checks,
+retain this as a release blocker; do not declare 16 KB support or replace these
+checks with a 4 KB-device result.
+
+Fresco-specific exception approved on 2026-09-22: the optional packaged Android
+Sparkling integration may adapt the pinned upstream Lynx image service to a
+16 KB-compatible Fresco release. Keep this workaround in the integration build,
+record the upstream source checksum and exact changes, retain its license, and
+verify bitmap ownership and animation callbacks as well as real image loading.
+The production example continues to use standard Sparkling/Fresco initialization.
+This exception does not authorize other application-owned native workarounds,
+compressed JNI packaging, or page-size compatibility mode. Remove the adaptation
+when a verified upstream binary supports the selected Fresco API.
 
 ### 2.2 Engine-neutral delivery requirements (2026-09-13 amendment)
 

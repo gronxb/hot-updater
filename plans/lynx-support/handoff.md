@@ -1,15 +1,15 @@
 # Lynx support handoff and completion plan
 
-Updated: 2026-09-21 (Asia/Seoul).
+Updated: 2026-09-28 (Asia/Seoul).
 
 ## Resume location
 
-- Worktree: `/Users/gronxb/workspace/hot-updater-lynx`
+- Worktree: `/Volumes/SSD_2TB/workspace/hot-updater-lynx`
 - Branch: `codex/lynx-support`
 - PRD decision HEAD: `01bb61260b932e20d3e3f8a3e8e957369f887e17`
 - Pull request: [#1300: feat(lynx): add OTA updates for Lynx apps](https://github.com/gronxb/hot-updater/pull/1300)
 - Previous Grok session: `01a09054-0a33-7111-a493-8ddacfda539a`
-- The original checkout, `/Users/gronxb/workspace/hot-updater2`, contains earlier
+- The original checkout, `/Volumes/SSD_2TB/workspace/hot-updater2`, contains earlier
   work and must be preserved. Run commands in the worktree above explicitly.
 
 The Grok session ended at an earlier handoff commit. The English PRD and
@@ -53,6 +53,30 @@ delegation notes: continue directly in the current task without subagents. The
 existing adversarial review remains an input to reconciliation, while all
 remaining implementation, diagnosis, and verification are performed here.
 
+## September 28 resume checkpoint
+
+- Pushed HEAD before this follow-up: `6e38d9c02`.
+- Fresco 3.4 alone caused a `CloseableBitmap` ABI crash. The user approved a
+  Fresco-only workaround; the PRD records it. A package-owned, checksum-pinned
+  source rebuild now fixes the class/interface ABI and animation callbacks.
+  The example uses upstream pool initialization without `BUFFER_MEMORY`.
+- All Android release products build; each APK's 28 ARM64/x86_64 libraries pass
+  ELF and ZIP 16 KB alignment, and the AAB reports `PAGE_ALIGNMENT_16K`.
+  One unchanged matrix APK passes React/Vue/Octane real image/font/readiness
+  smoke checks on a 16 KB device. React's actual button admits a separate
+  detail bundle in the same generation. All 31 Sparkling JVM tests pass.
+  See [the retained smoke evidence](./evidence/fresco-16kb-smoke.json).
+- The iOS appearance-hook experiment compiles but does not prove native back.
+  Its patch is preserved at
+  `/Users/gronxb/.codex/lynx-support/ios-appearance-investigation.patch`; the
+  worktree uses committed iOS source while validating the Fresco change. Do not
+  count debugger-mutated processes as acceptance evidence.
+- Latest full job `job-20260922013654-ku1gwj` (`966236e35`) failed. No job is
+  currently running or queued; best remains 51/52. The six current matrix
+  receipts and a clean full default job remain required.
+- Neutral CLI policy was moved behind integration hooks in `0c76a3d71` and
+  `a18776c50`; focused common CLI/RN/Expo suites passed 521/146/44 tests.
+
 ## Current implementation checkpoint
 
 The September 13 PRD contains the user's final decisions: three equal framework
@@ -73,7 +97,7 @@ gate.
 | Sparkling integration | Optional packaged iOS/Android hosts own bridge, resources, readiness, recovery, leases, and all-container generation replacement                                                                                                                                               | Run the lifecycle matrix on devices                                  |
 | Production examples   | `SparklingGo` and Android `:app` contain configuration, registration, and packaged host/view attachment only; current native builds pass                                                                                                                                       | Current device acceptance                                            |
 | Matrix harness        | Separate iOS scheme and Android module reuse one binary per OS across React, Vue, and Octane; strict correlated receipts reject synthetic patch or stale-context evidence                                                                                                      | Real six-cell device execution                                       |
-| Shared E2E            | The 25 applicable shared scenarios exclude only `metadata-v1-migration`; `sparkling-multipage-ota` adds the page-based Sparkling scenario, for 26 scenarios per OS                                                                                                             | Pass the queued full job on both OSes                                |
+| Shared E2E            | The 25 applicable shared scenarios exclude only `metadata-v1-migration`; `sparkling-multipage-ota` adds the page-based Sparkling scenario, for 26 scenarios per OS                                                                                                             | Pass a fresh full job on both OSes                                |
 
 The final prerelease client omits manifest, filesystem install-identity, user,
 event-listener, and init-time insights APIs because the native integration has no
@@ -123,13 +147,14 @@ The E2E bot reads `e2e/lynx/default-scenario-names.json` from the checked-out PR
 commit and routes Lynx jobs to `examples/lynx` with application ID
 `com.hotupdater.lynxexample`.
 
-The pushed implementation is `348284787`. Focused package type checks,
-workspace lint, and 207 recovery/driver E2E unit tests are green. Full job
-`job-20260921204853-cw3i89` is queued on that commit. The active goal remains
+The earlier `348284787` checkpoint passed focused package type checks,
+workspace lint, and 207 recovery/driver E2E unit tests. Its subsequent full job
+`job-20260921204853-cw3i89` failed. The resume checkpoint above supersedes its
+previous queued status. The active goal remains
 unfinished until both 26-scenario platform runs pass and the final records are
 reconciled.
 
-## Current E2E campaign
+## Historical E2E campaign
 
 Full job `job-20260921154048-iwq7hq` established a new best combined result of
 46/52 on `ba25ecd98`, with iOS at 24/26 and Android at 22/26. It exposed four
@@ -202,21 +227,21 @@ when required for the next job, without sweeping these files into a commit.
 
 ## Completion sequence
 
-1. Preserve the completed implementation and focused validation through commit
-   `348284787`.
+1. Preserve the Fresco adaptation and existing staged-only helpers. Reconcile
+   each subsequent receipt against its actual source commit.
 2. Build both production scaffold targets and both matrix targets. Run workspace
    build, types, lint, unit, and integration checks, then update the component
    evidence with exact commands and results.
 3. Commit explicit implementation paths without the six staged-only helpers,
    push the branch, and wait for Integration on that exact commit.
-4. Finish full job `job-20260921204853-cw3i89` on the corrected commit and
-   diagnose any reproducible failure directly until green.
+4. Queue a fresh full job on the corrected pushed commit and diagnose each
+   reproducible failure directly until both platform runs are green.
 5. Run the separate public matrix with one unchanged binary per OS across React,
    Vue, and Octane. Require six strict receipts, then update the English PRD,
    evidence, and PR with the verified commit, binaries, job, and cell results.
 
 ```sh
-cd /Users/gronxb/workspace/hot-updater-lynx
+cd /Volumes/SSD_2TB/workspace/hot-updater-lynx
 hot-updater-agent status -limit 5
 hot-updater-agent verify -platform full -profile standalone-kysely -env-target examples/lynx/.env.hotupdater
 # After the command returns a job ID:

@@ -19,3 +19,8 @@ reset persists the default scope before the same recreation and invalidates the
 JS state snapshot on success or failure.
 The shared acceptance contract requires verified forward A-to-B and B-to-C
 BSDIFF and reverse C-to-B and B-to-A BSDIFF without counting archive fallback.
+
+Adapt the pinned Lynx Android image service to Fresco 3.4 within the optional
+Sparkling package, retaining source integrity and bitmap/animation behavior.
+Use standard application initialization and 16 KB-aligned native packaging.
+Include the adaptation in the native compatibility fingerprint.

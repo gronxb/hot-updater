@@ -2,6 +2,7 @@ import java.security.MessageDigest
 
 apply plugin: 'com.android.library'
 apply plugin: 'kotlin-android'
+apply from: 'fresco-compat.gradle'
 
 def navigationPackage = providers.gradleProperty('sparklingNavigationPackageDir')
     .orElse(providers.environmentVariable('SPARKLING_NAVIGATION_PACKAGE_DIR'))
@@ -99,6 +100,7 @@ dependencies {
     api project(':hot-updater-lynx')
     compileOnly 'org.lynxsdk.lynx:lynx:3.9.0'
     compileOnly('com.tiktok.sparkling:sparkling:2.1.0-rc.12') {
+        exclude group: 'org.lynxsdk.lynx', module: 'lynx-service-image'
         exclude group: 'org.lynxsdk.lynx', module: 'lynx-service-devtool'
         exclude group: 'org.lynxsdk.lynx', module: 'lynx-devtool'
         exclude group: 'org.lynxsdk.lynx', module: 'debug-router'
@@ -107,6 +109,7 @@ dependencies {
     compileOnly 'com.tiktok.sparkling:sparkling-method:2.1.0-rc.12'
     compileOnly 'androidx.appcompat:appcompat:1.6.1'
     testImplementation 'junit:junit:4.13.2'
+    testImplementation 'org.lynxsdk.lynx:lynx:3.9.0'
     testImplementation 'org.json:json:20240303'
     testImplementation 'com.tiktok.sparkling:sparkling-method:2.1.0-rc.12'
     testImplementation 'androidx.appcompat:appcompat:1.6.1'

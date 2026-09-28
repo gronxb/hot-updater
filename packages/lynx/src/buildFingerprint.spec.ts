@@ -324,6 +324,25 @@ describe("Lynx native fingerprint", () => {
     );
   });
 
+  it("invalidates Android compatibility when the Fresco adaptation changes", async () => {
+    const directory = path.join(packageRoot, "android-sparkling");
+    await fs.mkdir(directory, { recursive: true });
+    const adapter = path.join(directory, "fresco-compat.gradle");
+    await fs.writeFile(adapter, "sourceChecksum = 'revision-a'");
+    const before = await createFingerprint({ platform: "android" });
+    await fs.writeFile(adapter, "sourceChecksum = 'revision-b'");
+    const after = await createFingerprint({ platform: "android" });
+
+    expect(after.hash).not.toBe(before.hash);
+    expect(after.sources).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          filePath: "@hot-updater/lynx/android-sparkling/fresco-compat.gradle",
+        }),
+      ]),
+    );
+  });
+
   it("includes integration-configured native sources", async () => {
     const source = path.join(cwd, "native-profile.txt");
     await fs.writeFile(source, "profile-a");

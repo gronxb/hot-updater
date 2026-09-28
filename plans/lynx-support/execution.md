@@ -1,7 +1,7 @@
 # Lynx implementation goal and execution ledger
 
-Status: active on 2026-09-21. The English PRD is finalized, the implementation
-is pushed, and the final full-platform device gate is queued. Read the current
+Status: active on 2026-09-28. The English PRD includes the approved Fresco-only
+exception. The final full-platform device gate and six-cell matrix remain open. Read the current
 [handoff and completion plan](./handoff.md) first. Historical G1/G2 observations
 below remain useful evidence but do not establish current acceptance.
 
@@ -113,20 +113,20 @@ The pushed implementation at `f54a3ae47` implements the consolidated PRD contrac
 - React Native/Hermes selection and default native fingerprinting are owned by
   `@hot-updater/react-native`; bare and Rock consume that provider. Expo owns its
   fingerprint discovery. Common packaging, server, and storage paths consume
-  explicit integration declarations. The common CLI is not yet neutral: init,
-  doctor, conflict detection, signing remediation, default app-version discovery,
-  and config scaffolding still encode RN or Expo policy.
+  explicit integration declarations. The common CLI setup, doctor, conflict,
+  signing remediation, and scaffolding policy now use integration hooks; see
+  the September 22 neutral-core checkpoint below.
 - The optional Sparkling host owns the bridge, all managed resource loaders,
   primary/secondary authority, startup observations, recovery, leases, and
   same-process replacement of every managed runtime and view. Production
   `SparklingGo` and Android `:app` sources contain configuration and packaged
   host wiring only.
-- The Android example uses AGP 8.5.2, Gradle 8.7, Kotlin 2.0.21, and the first
-  16 KB-aligned Fresco line, 3.4.0. Legacy compressed-JNI packaging is absent.
-  The production release APK passes 16 KB ZIP alignment, all 24 native
-  libraries across ARM64 and x86_64 pass ELF alignment, and its AAB declares
-  `PAGE_ALIGNMENT_16K`. Production, E2E, and matrix release applications build
-  with the same toolchain.
+- The Android example uses AGP 8.5.2, Gradle 8.7, and Kotlin 2.0.21. The
+  approved package-owned Fresco 3.4 adaptation fixes an image-service ABI crash
+  found after packaging checks passed. Current builds and all 28 native
+  libraries per APK pass alignment checks, and three-framework image/font
+  smoke checks pass on a 16 KB device. Full OTA acceptance is still required;
+  see [the Android evidence](./evidence/android.md).
 - Separate nonproduction iOS and Android matrix targets expose the lifecycle
   controls needed for strict six-cell evidence. The runner requires correlated
   process, generation, context, attempt, release, resource, patch, and transition
@@ -155,13 +155,12 @@ package/example type checks, and workspace lint pass. Full job
 `job-20260921204853-cw3i89` still gates G3; the current six-cell device run also
 remains pending.
 
-The neutral-package source audit currently finds policy coupling in
+The earlier neutral-package source audit found policy coupling in
 `ConfigBuilder.ts`, `hotUpdaterConfig.ts`, `init.ts`, `doctor.ts`,
 `infra/scaffold.ts`, `keys.ts`, `conflictDetection.ts`, `expoDetection.ts`,
 `validateSigningConfig.ts`, and `getDefaultTargetAppVersion.ts`, plus the
-React Native metadata helper exported by `@hot-updater/cli-tools`. Release work
-must replace these closed assumptions with integration hooks, then pass the
-neutral source boundary, a Lynx-only CLI fixture, and RN regression coverage.
+React Native metadata helper exported by `@hot-updater/cli-tools`. The September 22 commits below replace these assumptions with integration
+hooks and record the neutral-source and RN/Expo regression results.
 
 ## Execution observations
 
@@ -432,3 +431,21 @@ neutral source boundary, a Lynx-only CLI fixture, and RN regression coverage.
   Android evaluator's same-generation sibling-page journal interleaving without
   accepting different-generation or different-provenance evidence; the focused
   evaluator suite passes 49/49. A new exact-HEAD full run is still required.
+
+## 2026-09-28 Fresco compatibility checkpoint
+
+The user approved a Fresco-specific workaround. The package rebuilds pinned
+upstream image-service source against Fresco 3.4.0, adapting animation callback
+parameters and retaining the upstream license. The example uses Sparkling's
+normal pool configuration; no native-memory bypass remains. Source hashing and
+the native fingerprint cover the adaptation. All three Android release targets,
+production AAB, 31 Sparkling JVM tests, 16 KB ELF/ZIP alignment, and real
+React/Vue/Octane image/font/readiness smoke checks pass. React also admits its
+separate detail bundle through the actual main-page button.
+
+The latest full job, `job-20260922013654-ku1gwj` on `966236e35`, is terminal
+failure. Its automatic lint classification incorrectly matches the installed
+`@shadcn/lint` dependency; consult the child logs for the actual failures. No
+full job is currently queued. The historical best remains 51/52. The iOS native
+back lifecycle experiment remains unproven. Its patch is preserved outside the
+worktree as recorded in the handoff; committed iOS source remains in use.
