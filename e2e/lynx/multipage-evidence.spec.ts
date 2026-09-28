@@ -8,6 +8,7 @@ import {
   assertManagedInstallRejected,
   assertManagedMainPage,
   assertManagedPageTerminal,
+  assertManagedReconstructedStack,
   assertManagedStackDepthAfterBack,
   assertManagedVerifiedFatalDetail,
 } from "./multipage-evidence";
@@ -50,6 +51,78 @@ const snapshot = (
 });
 
 describe("managed Lynx multi-page evidence", () => {
+  it("verifies Android reconstruction when the secondary attaches after generation start", () => {
+    const stack = {
+      orderedPageEntries: ["main.lynx.bundle", "detail.lynx.bundle"],
+      topPageEntry: "detail.lynx.bundle",
+    };
+    const page = {
+      ...detail,
+      ...stack,
+      sourceContextId: main.contextId,
+      nativePageClass:
+        "com.hotupdater.lynx.sparkling.HotUpdaterSparklingPageActivity",
+    };
+    const events = snapshot([
+      event("1", "generationStarted", {
+        ...main,
+        ...stack,
+        contextIds: [main.contextId],
+        orderedPageParameters: [{}, { title: "Second Page" }],
+      }),
+      event("2", "firstContent", main),
+      event("3", "jsReady", main),
+      event("4", "routeOpened", {
+        ...page,
+        outcome: "opened",
+        parameters: { title: "Second Page" },
+      }),
+      event("5", "resourceLoaded", {
+        ...detail,
+        path: "detail.lynx.bundle",
+        sha256: "a".repeat(64),
+      }),
+      event("6", "firstContent", detail),
+      event("7", "pageAdmitted", detail),
+      event("8", "pageAttemptTerminal", { ...page, terminal: "admitted" }),
+    ]);
+    expect(
+      assertManagedReconstructedStack(events, {
+        platform: "android",
+        selection: main,
+      }),
+    ).toMatchObject({
+      main: { contextId: main.contextId, generationId: main.generationId },
+      detail: { contextId: detail.contextId, generationId: main.generationId },
+    });
+    const incomplete = snapshot(
+      events.events.filter((item) => item.name !== "pageAdmitted"),
+    );
+    expect(() =>
+      assertManagedReconstructedStack(incomplete, {
+        platform: "android",
+        selection: main,
+      }),
+    ).toThrow("detail admission");
+    const wrongContext = structuredClone(events);
+    wrongContext.events[0].details.contextIds = [
+      main.contextId,
+      "unrelated-detail",
+    ];
+    expect(() =>
+      assertManagedReconstructedStack(wrongContext, {
+        platform: "android",
+        selection: main,
+      }),
+    ).toThrow("declared secondary context");
+    expect(() =>
+      assertManagedReconstructedStack(events, {
+        platform: "ios",
+        selection: main,
+      }),
+    ).toThrow("two ordered contexts");
+  });
+
   it("requires a new native-back event at the expected stack depth", () => {
     const events = snapshot([
       event("10", "nativeBack", {

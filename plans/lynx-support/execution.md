@@ -911,3 +911,62 @@ in the focused 79-test run. All 27 build projects, 35 type projects and workspac
 lint pass. Supabase's exact import-map expectation is updated because its server
 entrypoint no longer pulls in the unused optional Kysely peer. Commit and rebuild
 before fresh device acceptance; these results do not upgrade the old job's score.
+
+## 2026-09-29 remaining native-helper policy
+
+Fresh full job `job-20260928191114-vsk520` starts from pushed `da5ae4636` after
+PR checks pass. Keep heavy local builds separate from its device execution while
+investigating the prior four startup timeouts. A read-only observer captures
+failure journals, stored exclusions and host load.
+
+The remaining helper audit reproduces Xcode returning `Lynx.framework` instead
+of the application when dependency settings appear first. A legitimate app named
+`React` is also excluded by the old RN-specific name filter. Prefer the `.app`
+product by standard `WRAPPER_EXTENSION`, retaining the prior fallback for
+framework-only builds. Both regressions fail before the fix and pass afterward.
+Remove the unused Gradle RN-port argument path (neither caller supplied it),
+use generic native-tool progress stages and remove the RN codegen TODO from the
+common Apple helper. Both helper type projects and focused lint pass. Build the
+two changed helper packages after the ongoing native setup; these local changes
+are not part of the `da5ae4636` device job.
+
+A follow-up finds the Android launcher implicitly forwarding port 8081 even for
+Lynx. Move that default into the RN integration through the optional native-build
+`developmentServerPort` field. Bare, Rock and Expo retain 8081, explicit CLI
+ports win, and a missing integration default produces no reverse rule. A command
+regression fails before the change; selection, forwarding and CocoaPods policy
+tests pass 14/14. Rebuild integration packages before running their type and
+regression checks because the new field/export is not in the previous dist files.
+
+## 2026-09-29 full-run failure diagnosis on da5ae4636
+
+Full job `job-20260928191114-vsk520` finishes **49/52**: iOS 25/26 and
+Android 24/26. All five worktrees used the same pushed commit. The four earlier
+Android startup timeouts pass in this run. Native evidence and every scenario
+outcome are retained in `evidence/shared-e2e-da5ae4636.json`.
+
+- Android's republished-crash scenario force-relaunched after two seconds,
+  before native fatal handling. The captured store contains only an unconfirmed
+  Release. The driver now waits for the candidate's actual durable crash list
+  entry before recovery; a 60-second deadline fails without forcing a second
+  launch. Remove the shared test projection that treated unconfirmed Releases
+  as crashed Bundles. A delayed-crash regression fails before the change, and
+  both OSes reject interruption-only evidence without relaunching.
+- iOS's final lifecycle reset starts on embedded A, whose Bundle identity is
+  identical to server A. Native correctly adopts the server Release into the
+  confirmed receipt. Require the exact adoption and stable metadata before the
+  explicit managed reload, retaining the full generation-transition assertion.
+- Android recovery starts the primary context before attaching the retained
+  secondary Activity. Accept that initial context count only on Android, while
+  requiring the actual route, verified resource, first content, admission,
+  exactly ordered stack and durable terminal. Check a declared second context
+  against the attached identity and require the reconstructed primary's content
+  and readiness. The corrected evaluator passes the unchanged captured journal;
+  missing admission and a mismatched declared context still fail.
+
+The three focused reproductions fail before their fixes. The combined driver,
+store, multipage evidence and orchestration suites pass **91/91**. Rebuilt
+workspace build (27 projects), types (35 projects), and lint pass. Full unit
+validation passes **3,908/3,908 in 350 files**. These changes need a fresh pushed
+full device run;
+they do not convert the failed job into acceptance or close the separate matrix.

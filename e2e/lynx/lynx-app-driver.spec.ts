@@ -1353,18 +1353,25 @@ describe("Lynx startup failure diagnostics", () => {
     );
   });
 
-  it("allows an expected crash launch to omit a process ID", async () => {
+  it("waits for durable fatal classification before relaunching a slow crash fixture", async () => {
     vi.useFakeTimers();
     try {
       let launches = 0;
+      let fatalRecorded = false;
       const fetch = vi.fn(async (url: string) => ({
         ok: true,
         status: 200,
         text: async () =>
           JSON.stringify(
-            url.endsWith("/e2e/runtime-config")
-              ? { screenState: { runtimeScenarioMarker: "ready" } }
-              : {},
+            url.endsWith("/e2e/lynx-crash-state")
+              ? {
+                  nextBundleId: "candidate",
+                  crashedBundleIds: fatalRecorded ? ["candidate"] : [],
+                  unconfirmedReleaseIds: ["pending-release"],
+                }
+              : url.endsWith("/e2e/runtime-config")
+                ? { screenState: { runtimeScenarioMarker: "ready" } }
+                : {},
           ),
       }));
       vi.mocked(spawnSync).mockImplementation((_command, args) => {
@@ -1392,7 +1399,10 @@ describe("Lynx startup failure diagnostics", () => {
       const launch = driver.launch("expected crash launch", {
         expectCrash: true,
       });
-      await vi.advanceTimersByTimeAsync(2_000);
+      await vi.advanceTimersByTimeAsync(3_000);
+      expect(launches).toBe(1);
+      fatalRecorded = true;
+      await vi.advanceTimersByTimeAsync(1_000);
 
       await expect(launch).resolves.toBeUndefined();
       expect(launches).toBe(2);
@@ -1413,6 +1423,52 @@ describe("Lynx startup failure diagnostics", () => {
       vi.useRealTimers();
     }
   });
+
+  it.each(["ios", "android"] as const)(
+    "does not force recovery when %s records only an interrupted Release",
+    async (platform) => {
+      vi.useFakeTimers();
+      try {
+        const fetch = vi.fn(async (url: string) => ({
+          ok: true,
+          status: 200,
+          text: async () =>
+            JSON.stringify(
+              url.endsWith("/e2e/lynx-crash-state")
+                ? {
+                    nextBundleId: "candidate",
+                    crashedBundleIds: [],
+                    unconfirmedReleaseIds: ["release"],
+                  }
+                : {},
+            ),
+        }));
+        vi.mocked(spawnSync).mockReturnValue({
+          status: 0,
+          stdout: "",
+          stderr: "",
+        } as ReturnType<typeof spawnSync>);
+        const driver = new LynxAppDriver(
+          createControlClient({ baseUrl: "http://control.test", fetch }),
+          platform,
+          {},
+        );
+        const result = expect(
+          driver.launch("crash fixture", { expectCrash: true }),
+        ).rejects.toThrow("expected native crash classification for candidate");
+        await vi.advanceTimersByTimeAsync(60_000);
+        await result;
+        const launches = vi
+          .mocked(spawnSync)
+          .mock.calls.filter(([, args]) =>
+            args?.includes(platform === "ios" ? "launch" : "start"),
+          );
+        expect(launches).toHaveLength(1);
+      } finally {
+        vi.useRealTimers();
+      }
+    },
+  );
 
   it("fails immediately with native evidence when the launched iOS process dies", async () => {
     const fetch = vi.fn(async () => ({

@@ -1877,14 +1877,6 @@ function releaseIdForBundle(bundleId: string | null) {
   );
 }
 
-function bundleIdForRelease(releaseId: string) {
-  return (
-    fixtureSession.deployedBundles.findLast(
-      (record) => record.releaseId === releaseId,
-    )?.bundleId ?? null
-  );
-}
-
 function readLynxJournalValue(): Record<string, unknown> | null {
   const scopePath = ensureLynxScopePath();
   if (!scopePath) {
@@ -1939,11 +1931,7 @@ function readLynxSynthesizedSnapshot(
       exists: true,
       path: journalPath,
       readError: null,
-      value: synthesizeLynxMetadata(
-        journal,
-        fixtureSession.platform,
-        bundleIdForRelease,
-      ),
+      value: synthesizeLynxMetadata(journal, fixtureSession.platform),
     };
   }
   if (fileName === "crashed-history.json") {
@@ -1951,11 +1939,7 @@ function readLynxSynthesizedSnapshot(
       exists: true,
       path: journalPath,
       readError: null,
-      value: synthesizeLynxCrashHistory(
-        journal,
-        fixtureSession.platform,
-        bundleIdForRelease,
-      ),
+      value: synthesizeLynxCrashHistory(journal, fixtureSession.platform),
     };
   }
   const confirmed = lynxReceipt(journal, fixtureSession.platform, "confirmed");
@@ -1964,7 +1948,6 @@ function readLynxSynthesizedSnapshot(
   const crashedBundleIds = lynxCrashedBundleIds(
     journal,
     fixtureSession.platform,
-    bundleIdForRelease,
   );
   const report = synthesizeLynxLaunchReport({
     crashedBundleIds,
@@ -7920,6 +7903,17 @@ export async function handleWaitForCrashRecovery(
   options: { signal?: AbortSignal } = {},
 ) {
   return waitForCrashRecovery(stableBundleId, crashedBundleId, options);
+}
+
+export function handleLynxCrashState() {
+  if (!isLynxE2eApp()) throw new Error("Lynx crash state requires a Lynx app");
+  const journal = readLynxJournalValue();
+  if (!journal) throw new Error("Lynx native state is unavailable");
+  return {
+    nextBundleId:
+      lynxReceipt(journal, fixtureSession.platform, "next")?.bundleId ?? null,
+    ...lynxStoredExclusions(journal, fixtureSession.platform),
+  };
 }
 
 export async function handlePrepareAppLaunch(options?: {

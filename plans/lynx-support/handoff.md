@@ -53,6 +53,25 @@ delegation notes: continue directly in the current task without subagents. The
 existing adversarial review remains an input to reconciliation, while all
 remaining implementation, diagnosis, and verification are performed here.
 
+## Latest full-run diagnosis
+
+Full job `job-20260928191114-vsk520` on `da5ae4636` finishes **49/52**
+(iOS 25/26, Android 24/26). All four previous Android startup timeouts pass.
+The native evidence identifies three harness defects: a two-second forced
+relaunch before verified fatal handling, an incorrect pending-download
+expectation for server A adopting embedded A, and an initial two-context
+expectation before Android attaches its secondary Activity. All are fixed
+locally with failing-before regressions; the 91 focused tests pass. The Android
+reconstruction evaluator also passes the unchanged captured native journal.
+Unconfirmed Releases no longer appear as crashed Bundles in shared test metadata.
+See `evidence/shared-e2e-da5ae4636.json` and the execution ledger's final section.
+
+The native-helper neutrality follow-up passes rebuilt workspace build, types and
+lint, plus **3,908/3,908 units in 350 files** (`/tmp/lynx-post-vsk-units.log`).
+Commit explicit paths, preserve all six staged-only helpers, push and run a fresh
+full agent job.
+Historical best remains 51/52; no current complete public matrix cell is claimed.
+
 ## September 29 resume checkpoint
 
 - Fresco adaptation commit: `6d50f8a49`.
@@ -127,7 +146,15 @@ remaining implementation, diagnosis, and verification are performed here.
   `evidence/isolated-cli-neutrality.json`. All 27 build and 35 type projects pass,
   workspace lint passes, and 36 focused tests pass. Full units pass 3,893/3,893
   in 348 files before the subsequent three stored-exclusion test cases.
-  Other native-helper RN log/port assumptions remain to be audited.
+  The remaining native-helper audit is implemented locally: prefer Xcode `.app`
+  products over dependency frameworks, remove the unused RN Gradle port branch,
+  and use generic native-tool progress stages. Two reproducing selection tests,
+  both helper type projects and focused lint pass. Helper builds remain pending;
+  these edits are not yet part of the pushed device-job commit.
+  The follow-up also moves the Android development port default from the common
+  launcher into RN build integrations, preserving explicit overrides and omitting
+  implicit Lynx forwarding. Fourteen focused native-policy tests pass; the new
+  plugin-core field and RN export still need rebuilt package validation.
 - The full shared job's iOS result is 25/26. Its multipage scenario explicitly
   deletes app data, then incorrectly compares the new journal's sequence 1 with
   the deleted journal's sequence 1. The driver now archives the completed ledger
@@ -145,6 +172,9 @@ remaining implementation, diagnosis, and verification are performed here.
   suites pass 79/79 after both harness fixes. Retained full results and actual
   exclusion state: `evidence/shared-e2e-ca366bcb6.json`. A new full device run is
   required; historical best remains 51/52 and no complete matrix cell is claimed.
+- Fresh full job `job-20260928191114-vsk520` ran on pushed `da5ae4636`
+  after PR checks pass. Do not overlap heavy local builds with device execution.
+  The read-only observer also captures native exclusion fields on failures.
 
 - `26b23ee18` builds both clean native matrix targets. Its iOS B-to-C phase
   recreates both pages, loads all resources and confirms C in the same process,

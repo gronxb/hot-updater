@@ -1376,6 +1376,12 @@ Implement `@hot-updater/lynx` and `examples/lynx` against the G1 contracts.
   environment defaults belong to the selected integration; the common Apple
   helper passes those values through without discovering RN. Preserve existing
   RN prebuilt defaults and explicit environment overrides for Bare, Rock and Expo.
+  Native helpers select application artifacts using standard build metadata,
+  without framework-specific target-name exclusions or implicit flags. Their
+  progress reporting follows the native build tools' lifecycle.
+  Development server port defaults belong to the selected integration. Preserve
+  RN's default and explicit CLI overrides; an integration without a default must
+  not create an implicit Android port-forwarding rule.
 - Provide reproducible ReactLynx, VueLynx and pinned-source OctaneLynx entrypoints,
   each producing real `main.lynx.bundle` and `detail.lynx.bundle` A/B/C output,
   with shared host integration and documented native prerequisites.
@@ -1442,6 +1448,13 @@ restart, OTA activation, or diagnostic fixture cleanup never grants this boundar
 sequence overlap and canonical-byte checks remain strict within each lifetime.
 Interruption assertions read each OS's actual persisted exclusion fields and
 preserve the distinction between an unconfirmed Release and a crashed Bundle.
+Expected-crash fixtures must wait for the installed candidate's durable native
+crash classification before relaunching recovery. A fixed delay or interrupted
+startup does not prove a verified fatal outcome, and shared-runner metadata must
+never promote an unconfirmed Release into a crashed Bundle. If a server Release
+adopts the currently running embedded Bundle, require the exact adopted Release
+and already-confirmed state before explicit generation recreation; do not require
+a fictitious pending download for identical running bytes.
 An omitted optional Android exclusion list means empty; duplicate identifiers or
 malformed lists must still fail the exact-once and non-crash assertions.
 
@@ -1662,8 +1675,8 @@ cell.
 ## 9. Current implementation and remaining evidence
 
 The PRD decision commit is `01bb61260b932e20d3e3f8a3e8e957369f887e17` on PR
-#1300. The current pushed implementation is
-`f54a3ae47`. It includes the engine-independent
+#1300. The current pushed device-job implementation is
+`da5ae4636` (2026-09-29). It includes the engine-independent
 runtime and build API, strict archive and delta installers, engine-neutral
 delivery declarations, integration-owned React Native and Expo fingerprint
 policy, packaged Sparkling hosts, the production example, and the framework
@@ -1731,41 +1744,54 @@ dynamic-component paths are distinct capabilities and are not framework-lazy
 evidence. See the dated
 [evidence reconciliation](./evidence/reconciliation-2026-09-13.md).
 
-Verification on the current implementation includes:
+The package-owned Fresco adaptation in `6d50f8a49` rebuilds checksum-pinned
+Lynx image-service sources against Fresco 3.4.0 and adapts the animation callback
+ABI. The production app keeps standard Sparkling pool initialization. All 28
+native libraries across both promised Android ABIs pass ELF and APK ZIP alignment;
+the release AAB reports `PAGE_ALIGNMENT_16K`. One unchanged matrix APK passes
+React, Vue and Octane image/font/readiness smoke checks on a 16 KB device. These
+smoke results do not replace complete OTA matrix receipts. See
+[the retained Fresco evidence](./evidence/fresco-16kb-smoke.json).
 
-- `pnpm --filter @hot-updater/lynx test:type` and
-  `pnpm --dir examples/lynx test:type`;
-- Android Sparkling `testDebugUnitTest`, including managed-runtime replacement;
-- `pnpm -w lint`;
-- 429 E2E unit tests in 22 files, including page-stack back synchronization,
-  delta evidence, crash recovery projection, and the explicit Lynx manifest;
-- 17 focused Android crash projection and recovery tests; and
-- green GitHub Integration on the pushed implementation commit.
+The common CLI production closure no longer installs RN through the Apple
+helper. Selected Bare, Rock and Expo integrations own CocoaPods defaults.
+Optional Kysely helpers live under the Kysely adapter entrypoint, so CLI help and
+Lynx scaffolding execute in an isolated production-tarball installation without
+RN, Expo or Kysely. Scaffold doctor correctly rejects unresolved deployment
+placeholders. Complete onboarding, signing, deployment and infrastructure health
+remain separate evidence obligations. See
+[the isolated installation record](./evidence/isolated-cli-neutrality.json).
 
-Focused device validation through `ba25ecd98` includes Android
-`force-update-auto-reload` in one process with a replaced managed generation and
-new Bundle, Release, marker, and `UPDATE_APPLIED` receipt. Android
-`bspatch-disabled-chain-rollback` also passes with actual forward and reverse
-BSDIFF chains. Swift `LynxControllerLocalTests` pass 32/32.
+Workspace verification for the pushed implementation passes 27 build projects,
+35 type-check projects, lint, and 3,893 unit tests in 348 files before the three
+subsequent stored-exclusion test cases. The later driver, event-ledger and native
+store suites pass 79/79. The pending helper follow-up selects Xcode application
+products from standard metadata, removes framework-specific progress policy,
+and moves the Android development-port default into RN integrations. Its 14
+focused native-policy tests and two integration fingerprint tests pass. The
+complete rebuilt workspace passes 27 build projects, 35 type projects, lint and
+3,908/3,908 unit tests in 350 files, including the subsequent full-run fixes.
 
-Full job `job-20260921181047-umah90` ran with profile `standalone-kysely`,
-`examples/lynx/.env.hotupdater`, application ID
-`com.hotupdater.lynxexample`, and 26 scenarios per OS. It passed 51/52 on
-`f54a3ae47`: iOS passed 26/26 and Android passed 25/26. The sole failure was the
-final Android `sparkling-multipage-ota` generation. Its launch-wide log window
-still included three already observed font diagnostics after the bounded native
-journal had evicted an earlier page generation, so strict correlation rejected
-the count. Commit `348284787` creates a new Android log checkpoint after every
-successful managed-resource validation. This bounds subsequent checks to
-unverified diagnostics without weakening native identity, ordering, font-load,
-readiness, or fatal-boundary validation. Full job
-`job-20260921233538-pspvrq` later reproduced the same final Android scenario with
-an interleaved same-generation sibling-page boundary after journal truncation.
-Commit `338c75c3a` makes the evaluator ignore only sibling-page identities whose
-runtime, process, generation, attempt, Bundle, and Release provenance all match;
-different-generation and different-provenance boundaries still reject. The
-focused journal suite passes 49/49. A current full run has not yet verified that
-fix, so the 51/52 result remains the best record and is not final acceptance.
+The historical best full shared result is 51/52 on `f54a3ae47`. The later full
+job `job-20260928181940-4izq1i` on `ca366bcb6` finishes 46/52 (iOS 25/26,
+Android 21/26). It exposes two concrete harness errors: comparing journal bytes
+across explicit app-data deletion and reading iOS exclusion fields on Android.
+Both have reproducing regressions and are fixed in `da5ae4636`. Four early
+Android startup timeouts coincided with severe host load; their cause was not
+established. See [all 52 outcomes](./evidence/shared-e2e-ca366bcb6.json).
+
+Full job `job-20260928191114-vsk520` ran on `da5ae4636` with profile
+`standalone-kysely`, `examples/lynx/.env.hotupdater`, application ID
+`com.hotupdater.lynxexample`, and the complete 26-scenario manifest per OS.
+It finishes **49/52**: iOS 25/26 and Android 24/26. The remaining failures are
+premature forced recovery before native crash classification, an incorrect
+pending-download expectation for same-Bundle adoption, and an initial two-context
+expectation before Android attaches its retained secondary Activity. All have
+reproducing regressions. The corrected reconstruction evaluator also passes
+against the unchanged captured Android journal. See
+[all outcomes and native evidence](./evidence/shared-e2e-da5ae4636.json).
+A fresh complete device run is required. The separate six-cell public matrix
+remains incomplete; no current complete cell is claimed.
 
 ## 10. Execution sequence and completion criteria
 

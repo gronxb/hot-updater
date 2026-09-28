@@ -199,6 +199,7 @@ async function resetAndInstallServerA(
     marker,
     "bundleA",
     "releaseA",
+    { sameBundleAdoption: true },
   );
   const selectionA = selection(app, "bundleA", "releaseA");
   const events = await app.captureGenerationEvents(
@@ -251,6 +252,7 @@ export async function installAndReload(
     readonly diffBaseBundleKey?: string;
     readonly diffPatchAssetPathKey?: string;
     readonly proveOffline?: boolean;
+    readonly sameBundleAdoption?: boolean;
   } = {},
 ): Promise<void> {
   await app.tap(
@@ -260,7 +262,10 @@ export async function installAndReload(
   await app.assertText(
     `${label}: assert installed Release`,
     "update-action-result",
-    `$${releaseKey}`,
+    options.sameBundleAdoption
+      ? `current-channel -> adopted ID $${releaseKey}`
+      : `$${releaseKey}`,
+    options.sameBundleAdoption ? { exactText: true } : undefined,
   );
   if (options.diffBaseBundleKey) {
     if (!options.diffPatchAssetPathKey) {
@@ -280,13 +285,13 @@ export async function installAndReload(
     );
   }
   await app.control(
-    `${label}: wait staging pending`,
+    `${label}: wait ${options.sameBundleAdoption ? "adopted stable" : "staging pending"}`,
     "/e2e/jobs/wait-for-metadata",
     {
       bundleId: `$${bundleKey}`,
       releaseId: `$${releaseKey}`,
       relaunchLimit: 0,
-      verificationPending: true,
+      verificationPending: !options.sameBundleAdoption,
     },
   );
   if (options.proveOffline) {

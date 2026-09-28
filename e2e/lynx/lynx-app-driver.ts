@@ -234,12 +234,48 @@ export class LynxAppDriver implements DetoxAppDriver {
         { launchGeneration },
       );
       await this.clearOverlayMarker(stage, launchGeneration);
+      const crashState =
+        options.expectCrash === true
+          ? await this.controlClient.postJson(
+              `${stage}: read crash candidate`,
+              "/e2e/lynx-crash-state",
+            )
+          : null;
+      const crashBundleId =
+        typeof crashState?.nextBundleId === "string"
+          ? crashState.nextBundleId
+          : null;
+      if (
+        crashState &&
+        (typeof crashBundleId !== "string" ||
+          !Array.isArray(crashState.crashedBundleIds) ||
+          crashState.crashedBundleIds.includes(crashBundleId))
+      ) {
+        throw new Error(`${stage}: expected a new installed crash candidate`);
+      }
       await this.launchApp({
         expectCrash: options.expectCrash === true,
         launchGeneration,
       });
       if (options.expectCrash === true) {
-        await new Promise((resolve) => setTimeout(resolve, 2000));
+        const deadline = Date.now() + 60_000;
+        for (;;) {
+          const state = await this.controlClient.postJson(
+            `${stage}: wait durable crash`,
+            "/e2e/lynx-crash-state",
+          );
+          if (
+            Array.isArray(state.crashedBundleIds) &&
+            state.crashedBundleIds.includes(crashBundleId)
+          )
+            break;
+          if (Date.now() >= deadline) {
+            throw new Error(
+              `${stage}: expected native crash classification for ${crashBundleId}; observed ${JSON.stringify(state)}`,
+            );
+          }
+          await new Promise((resolve) => setTimeout(resolve, 500));
+        }
         await this.clearOverlayMarker(stage, launchGeneration);
         await this.launchApp({ launchGeneration });
       }

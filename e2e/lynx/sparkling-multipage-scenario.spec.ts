@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { getLynxScenarioDefinition, listLynxScenarioNames } from "./scenarios";
 import {
@@ -20,6 +20,36 @@ describe("shipped Sparkling multi-page orchestration", () => {
         (name) => name === "sparkling-multipage-ota",
       ),
     ).toEqual(["sparkling-multipage-ota"]);
+  });
+
+  it("adopts server A over identical embedded bytes before explicitly recreating the generation", async () => {
+    const control = vi.fn(
+      async (
+        _stage: string,
+        path: string,
+        body: { verificationPending?: boolean },
+      ) => {
+        if (path === "/e2e/jobs/wait-for-metadata")
+          expect(body.verificationPending).toBe(false);
+      },
+    );
+    const reloadManagedGeneration = vi.fn();
+    const assertText = vi.fn();
+    await installAndReload(
+      { tap: vi.fn(), assertText, control, reloadManagedGeneration } as never,
+      "server A",
+      "marker A",
+      "bundleA",
+      "releaseA",
+      { sameBundleAdoption: true },
+    );
+    expect(reloadManagedGeneration).toHaveBeenCalledOnce();
+    expect(assertText).toHaveBeenCalledWith(
+      "server A: assert installed Release",
+      "update-action-result",
+      "current-channel -> adopted ID $releaseA",
+      { exactText: true },
+    );
   });
 
   it("requires the real mixed no-archive patch receipt before native reload", async () => {

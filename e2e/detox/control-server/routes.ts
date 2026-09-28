@@ -22,6 +22,7 @@ import {
   handleComputeRolloutSample,
   handleConfigureProxy,
   handleLaunchAndroidCrashApp,
+  handleLynxCrashState,
   handlePrepareAppLaunch,
   handleProxyRemoteAssetRequest,
   handleProxyState,
@@ -752,6 +753,8 @@ app.post("/e2e/assert-crash-history", async (c) => {
 
   return c.json(await handleAssertCrashHistory(payload.bundleId));
 });
+
+app.post("/e2e/lynx-crash-state", (c) => c.json(handleLynxCrashState()));
 
 app.post("/e2e/prepare-app-launch", async (c) => {
   return c.json(await handlePrepareAppLaunch(await c.req.json()));

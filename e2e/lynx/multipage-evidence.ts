@@ -472,7 +472,11 @@ export function assertManagedReconstructedStack(
   }
   const main = identity(started);
   const contextIds = strings(started.details.contextIds, "contextIds");
-  if (contextIds.length !== 2 || contextIds[0] !== main.contextId) {
+  if (
+    contextIds[0] !== main.contextId ||
+    (contextIds.length !== 2 &&
+      !(options.platform === "android" && contextIds.length === 1))
+  ) {
     throw new Error(
       "Reconstructed generation must contain two ordered contexts",
     );
@@ -499,6 +503,24 @@ export function assertManagedReconstructedStack(
     platform: options.platform,
     main,
   });
+  if (contextIds.length === 2 && contextIds[1] !== detail.contextId) {
+    throw new Error(
+      "Reconstruction did not attach its declared secondary context",
+    );
+  }
+  for (const name of ["firstContent", "jsReady"]) {
+    requireEvent(
+      snapshot,
+      [name],
+      (event) => {
+        const observed = identity(event);
+        return (
+          observed.contextId === main.contextId && sameSelection(observed, main)
+        );
+      },
+      `reconstructed main ${name}`,
+    );
+  }
   if (
     options.previous &&
     (main.contextId === options.previous.main.contextId ||
