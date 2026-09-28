@@ -501,7 +501,7 @@ export class LynxAppDriver implements DetoxAppDriver {
           env: this.env,
         });
       };
-      this.releaseIosAgentDeviceSessions();
+      this.closeIosAgentDeviceSession(`lynx-e2e-${process.pid}`);
       try {
         this.openIosAgentDeviceSession(session);
         this.runOrThrow("agent-device", [
@@ -662,7 +662,7 @@ export class LynxAppDriver implements DetoxAppDriver {
       }),
     );
     if (this.platform === "ios") {
-      this.releaseIosAgentDeviceSessions();
+      this.closeIosAgentDeviceSession(`lynx-e2e-${process.pid}`);
       const output = this.runLaunch(
         "xcrun",
         [
@@ -1200,42 +1200,7 @@ Android launch log marker was not found`,
       const leftover = this.leftoverAgentDeviceSession(error);
       if (leftover === null) throw error;
       this.closeIosAgentDeviceSession(leftover);
-      this.releaseIosAgentDeviceSessions();
       open();
-    }
-  }
-
-  private releaseIosAgentDeviceSessions(): void {
-    const listed = spawnSync("agent-device", ["session", "list", "--json"], {
-      encoding: "utf8",
-      env: this.env,
-    });
-    const names: string[] = [];
-    try {
-      const parsed = JSON.parse(String(listed.stdout ?? "{}"));
-      const sessions = parsed?.data?.sessions ?? parsed?.sessions ?? [];
-      if (Array.isArray(sessions)) {
-        for (const session of sessions) {
-          if (typeof session === "string" && session.length > 0) {
-            names.push(session);
-            continue;
-          }
-          const name =
-            session && typeof session === "object"
-              ? (session as { name?: unknown; session?: unknown; id?: unknown })
-              : null;
-          const value = name?.name ?? name?.session ?? name?.id;
-          if (typeof value === "string" && value.length > 0) names.push(value);
-        }
-      }
-    } catch {
-      // A leftover session list is best-effort cleanup.
-    }
-    for (const name of names) {
-      spawnSync("agent-device", ["close", "--session", name, "--json"], {
-        encoding: "utf8",
-        env: this.env,
-      });
     }
   }
 

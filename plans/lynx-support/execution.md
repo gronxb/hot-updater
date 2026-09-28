@@ -464,3 +464,11 @@ attestation to reject the checkout. Normal package builds now keep the committed
 WASM; maintainers explicitly use `build:wasm` when updating its Rust source. The
 source-integrity check remains strict. The full device gate must be rerun after
 this build fix; historical best remains 51/52.
+
+The shared iOS driver also closed every active `agent-device` session before
+launch and back actions, including sessions owned by other device runners.
+Cleanup now targets only the current process's session; a device-in-use retry
+can still close the exact stale E2E session identified by that device's error.
+A regression reproduces the cross-session closure before the fix, and all 61
+driver tests pass afterward. BSDIFF asset and runtime tests pass 17/17, with the
+committed WASM hash unchanged by the normal package build.

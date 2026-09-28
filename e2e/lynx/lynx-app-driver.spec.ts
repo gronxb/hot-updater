@@ -508,6 +508,42 @@ describe("Lynx managed page evidence actions", () => {
     );
   });
 
+  it("preserves other device sessions during iOS native back", async () => {
+    vi.mocked(spawnSync).mockImplementation(
+      () =>
+        ({
+          status: 0,
+          stdout: JSON.stringify({
+            success: true,
+            data: {
+              sessions: [{ name: "lynx-e2e-98765" }, { name: "manual-qa" }],
+            },
+          }),
+        }) as ReturnType<typeof spawnSync>,
+    );
+    const client = createControlClient({
+      baseUrl: "http://control.test",
+      fetch: vi.fn(),
+    });
+    const ios = new LynxAppDriver(client, "ios", {
+      HOT_UPDATER_E2E_IOS_SIMULATOR_NAME:
+        "10AB9405-035A-4243-8D85-154B641AA009",
+    });
+
+    await ios.nativeBack("native back");
+
+    const closedSessions = vi
+      .mocked(spawnSync)
+      .mock.calls.filter(
+        ([command, args]) => command === "agent-device" && args[0] === "close",
+      )
+      .map(([, args]) => args[2]);
+    expect(closedSessions.length).toBeGreaterThan(0);
+    expect(new Set(closedSessions)).toEqual(
+      new Set([`lynx-e2e-${process.pid}`]),
+    );
+  });
+
   it("steals a leftover agent-device session during iOS native back", async () => {
     let openCount = 0;
     vi.mocked(spawnSync).mockImplementation((command, args) => {
