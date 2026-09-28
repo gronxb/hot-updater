@@ -1,7 +1,7 @@
 /**
  * The acceptance manifest (PRD "Final acceptance"): one row per
- * implementation, with the files S1 and S2 measure, the suites S3 and S4
- * read, and the e2e profiles S5 reads.
+ * implementation, with the files S1, S2, S6, and S7 measure, the suites S3
+ * and S4 read, and the e2e profiles S5 reads.
  */
 
 export interface AcceptanceSuite {
@@ -14,7 +14,10 @@ export interface AcceptanceSuite {
 
 export interface AcceptanceRow {
   readonly name: string;
-  /** Repo-relative entry files; S1 and S2 follow their relative imports. */
+  /**
+   * Repo-relative entry files. The walk follows their relative imports and
+   * `@hot-updater/server` subpath imports, resolved to their source.
+   */
   readonly entries: readonly string[];
   /** Shared code the walk stops at: another row's code, or DB tooling. */
   readonly shared: readonly string[];
@@ -34,10 +37,16 @@ export interface AcceptanceRow {
   readonly multiplier: string;
 }
 
-/** Engine, SQL core, KV helper, schema fence, and the built-in database. */
+/** The storage engine layer: engine, SQL core, KV helper, and schema fence. */
 const SERVER_DATABASE = "packages/server/src/database/**";
-/** `hot-updater db` tooling: migrators and schema generators. */
+/**
+ * `hot-updater db` tooling and the built-in database: migrators, schema
+ * generators, and the built-in schema every provider is fenced and migrated
+ * with.
+ */
 const DB_TOOLING = "packages/server/src/db/**";
+/** What every provider's database builds on, through `@hot-updater/server/database` and `/db`. */
+const SERVER_SHARED = [SERVER_DATABASE, DB_TOOLING];
 /** The provider check the server's SQL adapters share. */
 const SQL_PROVIDERS = "packages/server/src/adapters/sqlProviders.ts";
 
@@ -65,7 +74,13 @@ export const rows: readonly AcceptanceRow[] = [
   {
     name: "Postgres plugin",
     entries: ["plugins/postgres/src/postgres.ts"],
-    shared: [],
+    // The Kysely adapter it re-exports is a row of its own.
+    shared: [
+      ...SERVER_SHARED,
+      SQL_PROVIDERS,
+      "packages/server/src/adapters/kysely.ts",
+      "packages/server/src/adapters/kyselyExecutor.ts",
+    ],
     budget: 50,
     budgetLabel: "Re-export",
     atomicity: "Through the Kysely executor",
@@ -188,7 +203,7 @@ export const rows: readonly AcceptanceRow[] = [
       "plugins/supabase/src/supabaseMigration.ts",
       "plugins/supabase/src/supabaseSchema.ts",
     ],
-    shared: [],
+    shared: SERVER_SHARED,
     budget: 300,
     budgetLabel: "≤ 300, apply RPC included",
     atomicity: "Generic apply RPC",
@@ -214,7 +229,7 @@ export const rows: readonly AcceptanceRow[] = [
       "plugins/cloudflare/src/d1Executor.ts",
       "plugins/cloudflare/src/worker/d1Database.ts",
     ],
-    shared: [],
+    shared: SERVER_SHARED,
     budget: 300,
     atomicity: "`batch()` + `_hu_write` guard",
     suites: [
@@ -240,7 +255,7 @@ export const rows: readonly AcceptanceRow[] = [
       "plugins/firebase/src/firebaseDatabase.ts",
       "plugins/firebase/src/firestoreStore.ts",
     ],
-    shared: [],
+    shared: SERVER_SHARED,
     budget: 300,
     atomicity: "`runTransaction` on guarded documents",
     suites: [
@@ -265,7 +280,7 @@ export const rows: readonly AcceptanceRow[] = [
       "plugins/aws/src/dynamoDBStore.ts",
     ],
     // CloudFront invalidation is the AWS deployment's CDN, not storage.
-    shared: ["plugins/aws/src/cloudFrontInvalidation.ts"],
+    shared: [...SERVER_SHARED, "plugins/aws/src/cloudFrontInvalidation.ts"],
     budget: 300,
     atomicity: "`TransactWriteItems` + conditions",
     suites: [
@@ -444,6 +459,19 @@ export const rows: readonly AcceptanceRow[] = [
     ],
     multiplier:
       "Counts logical rows at its boundary; each backend's multiplier applies below it.",
+  },
+];
+
+/**
+ * Layers that must stay free of the domain as a whole, beyond the rows in
+ * them: every file passes S1's rules on its own. The storage engine layer
+ * holds the engine, the SQL core, the KV helper, and the schema fence; the
+ * built-in database, which binds core's schema, lives in `db/` tooling.
+ */
+export const layers = [
+  {
+    name: "Storage engine layer",
+    files: ["packages/server/src/database/**"],
   },
 ];
 

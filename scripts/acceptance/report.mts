@@ -1,10 +1,12 @@
 /**
  * The acceptance report (PRD "Final acceptance"): measures every manifest row
- * against S1–S5 and redraws the implementation table. A row that fails a
- * check shows that check instead of Smooth, and the script exits 1. It also
- * checks request paths for over-fetching (no `limit + 1`, no filtered
- * `findMany` results), which fails the run too, and prints each row's
- * cyclomatic complexity and native read multiplier.
+ * against S1–S7 and redraws the implementation table. A row that fails a
+ * check shows that check instead of Smooth, and the script exits 1. S6 is
+ * complexity (no function above cyclomatic 20) and S7 over-fetching (no
+ * `limit + 1`, no filtered `findMany` results) in the row's code. Two checks
+ * outside the rows fail the run too: request paths (server, console, and
+ * plugins) have no over-fetching, and the storage engine layer as a whole
+ * passes S1. It also prints each row's native read multiplier.
  *
  *   pnpm acceptance [--run | --results <vitest json>...] [--commit <sha>] [--json <file>]
  *
@@ -34,6 +36,7 @@ import {
   type AcceptanceRow,
   domainImports,
   genericFieldNames,
+  layers,
   rows,
 } from "./manifest.mts";
 
@@ -62,6 +65,8 @@ const PAGE_CAP_CASE = "fills every page when native pages are capped";
 const EVIDENCE = "plans/evidence/database-redesign-e2e.json";
 /** Profiles on a managed runtime, whose evidence names the deployed runtime. */
 const MANAGED_PROFILES = new Set(["supabase", "cloudflare", "firebase", "aws"]);
+/** S6: the highest cyclomatic complexity a function may have (ESLint's default). */
+const MAX_COMPLEXITY = 20;
 
 type Node = { type: string; start: number; [key: string]: unknown };
 
@@ -126,6 +131,32 @@ const resolveRelative = (from: string, specifier: string) => {
 const matches = (file: string, globs: readonly string[]) =>
   globs.some((glob) => path.matchesGlob(relative(file), glob));
 
+/** `@hot-updater/server` subpaths by their source entry: the package builds `src/` unbundled into `dist/`. */
+const serverEntries = (() => {
+  const { exports } = JSON.parse(
+    readFileSync(path.join(root, "packages/server/package.json"), "utf8"),
+  ) as { exports: Record<string, string | { import?: string }> };
+  return new Map(
+    Object.entries(exports).flatMap(([subpath, target]) => {
+      const file = typeof target === "string" ? undefined : target.import;
+      if (!file?.startsWith("./dist/")) return [];
+      const source = file.replace("./dist/", "src/").replace(/\.mjs$/, ".ts");
+      return [
+        [
+          `@hot-updater/server${subpath.slice(1)}`,
+          path.join(root, "packages/server", source),
+        ],
+      ];
+    }),
+  );
+})();
+
+/** A domain package import (S1), named by its specifier. */
+const isDomainPackage = (specifier: string) =>
+  domainImports.packages.some((pattern) =>
+    path.matchesGlob(specifier, pattern),
+  );
+
 /** The row's files: its entries and every relative import short of shared code. */
 const graphOf = (row: AcceptanceRow) => {
   const files = new Map<string, SourceFile>();
@@ -139,11 +170,17 @@ const graphOf = (row: AcceptanceRow) => {
     const parsed = parse(file, readFileSync(file, "utf8"));
     files.set(file, parsed);
     for (const specifier of parsed.imports) {
-      if (!specifier.startsWith(".")) {
+      const relativeImport = specifier.startsWith(".");
+      if (
+        !relativeImport &&
+        (isDomainPackage(specifier) || !serverEntries.has(specifier))
+      ) {
         external.push({ file, specifier });
         continue;
       }
-      const target = resolveRelative(file, specifier);
+      const target = relativeImport
+        ? resolveRelative(file, specifier)
+        : serverEntries.get(specifier);
       if (!target)
         throw new Error(`${relative(file)}: cannot resolve ${specifier}`);
       if (matches(target, domainImports.files)) {
@@ -330,9 +367,7 @@ const boundary = (
   for (const { file, specifier } of graph.external) {
     if (
       matches(path.join(root, specifier), domainImports.files) ||
-      domainImports.packages.some((pattern) =>
-        path.matchesGlob(specifier, pattern),
-      )
+      isDomainPackage(specifier)
     ) {
       violations.push(`${relative(file)} imports ${specifier}`);
     }
@@ -515,9 +550,9 @@ const DECISIONS = new Set([
 ]);
 
 /**
- * Cyclomatic complexity of each function in the row's graph: 1, plus one per
- * branch, loop, catch, case, and `&&`, `||`, or `??`; nested functions count
- * on their own. The PRD asks for lower complexity; the report shows it.
+ * S6: cyclomatic complexity of each function in the row's graph: 1, plus one
+ * per branch, loop, catch, case, and `&&`, `||`, or `??`; nested functions
+ * count on their own. No function may score above MAX_COMPLEXITY.
  */
 const complexity = (graph: ReturnType<typeof graphOf>) => {
   const functions: { at: string; score: number }[] = [];
@@ -557,7 +592,7 @@ const complexity = (graph: ReturnType<typeof graphOf>) => {
   return {
     functions: functions.length,
     max: functions[0],
-    over20: functions.filter((fn) => fn.score > 20).length,
+    over: functions.filter((fn) => fn.score > MAX_COMPLEXITY),
   };
 };
 
@@ -575,16 +610,13 @@ const requestPathFiles = () =>
       .map((file) => path.join(root, dir, file)),
   );
 
-/**
- * Zero over-fetching on request paths: no page read with `limit + 1`, and the
- * lint rule that bans filtering `findMany` results reports nothing.
- */
-const overFetch = () => {
+/** Page reads with `limit + 1` in the given files; a file is parsed only when it names a limit. */
+const limitPlusOne = (
+  files: readonly { file: string; source: string; program?: Node }[],
+) => {
   const problems: string[] = [];
-  for (const file of requestPathFiles()) {
-    const source = readFileSync(file, "utf8");
+  for (const { file, source, program } of files) {
     if (!/limit/.test(source)) continue;
-    const { program } = parse(file, source);
     const isLimit = (node: unknown) => {
       const value = unwrap(node) as
         | (Node & { name?: string; property?: { name?: string } })
@@ -616,8 +648,13 @@ const overFetch = () => {
         if (key !== "start" && key !== "end") visit(child);
       }
     };
-    visit(program);
+    visit(program ?? parse(file, source).program);
   }
+  return problems;
+};
+
+/** Files the lint rule that bans filtering `findMany` results reports, across packages and plugins. */
+const filteredFindMany = (() => {
   const lint = spawnSync(
     path.join(root, "node_modules/.bin/oxlint"),
     ["-c", ".oxlintrc.json", "--format", "json", "packages", "plugins"],
@@ -627,16 +664,76 @@ const overFetch = () => {
     const { diagnostics } = JSON.parse(lint.stdout) as {
       diagnostics: { code: string; filename: string }[];
     };
-    for (const { code, filename } of diagnostics) {
-      if (code === "hot-updater(no-filtered-find-many)") {
-        problems.push(`${filename} filters findMany results`);
-      }
-    }
+    return diagnostics
+      .filter(({ code }) => code === "hot-updater(no-filtered-find-many)")
+      .map(({ filename }) => path.resolve(root, filename));
   } catch {
-    problems.push("the no-filtered-find-many lint rule did not run");
+    return undefined;
   }
-  return problems;
+})();
+
+/** Filtered `findMany` results, in the given files or anywhere. */
+const filtered = (files?: readonly { file: string }[]) => {
+  if (filteredFindMany === undefined) {
+    return ["the no-filtered-find-many lint rule did not run"];
+  }
+  const only = files && new Set(files.map(({ file }) => file));
+  return filteredFindMany
+    .filter((file) => only === undefined || only.has(file))
+    .map((file) => `${relative(file)} filters findMany results`);
 };
+
+/** S7: no over-fetching in the row's code. */
+const overFetchIn = (graph: ReturnType<typeof graphOf>) => [
+  ...limitPlusOne(graph.files),
+  ...filtered(graph.files),
+];
+
+/**
+ * Zero over-fetching on request paths: no page read with `limit + 1` in the
+ * server, the console, or any plugin, and no filtered `findMany` results.
+ */
+const overFetch = () => [
+  ...limitPlusOne(
+    requestPathFiles().map((file) => ({
+      file,
+      source: readFileSync(file, "utf8"),
+    })),
+  ),
+  ...filtered(),
+];
+
+/**
+ * Each layer as a whole passes S1: every file on its own, with its direct
+ * imports, whether or not a row measures it.
+ */
+const layerBoundaries = (names: ReadonlySet<string>) =>
+  layers.flatMap(({ name, files: globs }) => {
+    const files = globs.flatMap((glob) => {
+      const dir = path.join(root, glob.replace(/\/\*\*$/, ""));
+      return (readdirSync(dir, { recursive: true }) as string[])
+        .filter(
+          (file) =>
+            file.endsWith(".ts") && !/\.(spec|test-d)\.ts$|\.d\.ts$/.test(file),
+        )
+        .map((file) => path.join(dir, file));
+    });
+    const parsed = files.map((file) => parse(file, readFileSync(file, "utf8")));
+    const external = parsed.flatMap(({ file, imports }) =>
+      imports.flatMap((specifier) => {
+        if (!specifier.startsWith(".")) {
+          return isDomainPackage(specifier) ? [{ file, specifier }] : [];
+        }
+        const target = resolveRelative(file, specifier);
+        return target && matches(target, domainImports.files)
+          ? [{ file, specifier: relative(target) }]
+          : [];
+      }),
+    );
+    return boundary({ files: parsed, external }, names).map(
+      (problem) => `${name}: ${problem}`,
+    );
+  });
 
 /** S3's last clause: no config option turns transactions on or off. */
 const transactionOptions = (graph: ReturnType<typeof graphOf>) => {
@@ -876,6 +973,7 @@ const report = [];
 for (const row of rows) {
   const graph = graphOf(row);
   const measured = await size(graph);
+  const rowComplexity = complexity(graph);
   const checks = {
     S1: boundary(graph, names),
     S2: [
@@ -889,6 +987,10 @@ for (const row of rows) {
     S3: atomicity(row, transactionOptions(graph)),
     S4: reads(row),
     S5: endToEnd(row, commit),
+    S6: rowComplexity.over.map(
+      ({ at, score }) => `${at} scores ${score} > ${MAX_COMPLEXITY}`,
+    ),
+    S7: overFetchIn(graph),
   };
   const failing = Object.entries(checks)
     .filter(([, problems]) => problems.length > 0)
@@ -899,10 +1001,11 @@ for (const row of rows) {
     files: measured.files,
     checks,
     failing,
-    complexity: complexity(graph),
+    complexity: rowComplexity,
   });
 }
 const overFetchProblems = overFetch();
+const layerProblems = layerBoundaries(names);
 
 const budgetOf = (row: AcceptanceRow) =>
   row.budgetLabel ?? `≤ ${row.budget.toLocaleString("en-US")}`;
@@ -937,21 +1040,24 @@ for (const { row, files, checks } of report) {
   );
   if (problems.length > 0) console.log(problems.join("\n"));
 }
+const listed = (problems: readonly string[], pass: string) =>
+  problems.length === 0
+    ? pass
+    : `\n${problems.map((problem) => `  ${problem}`).join("\n")}`;
 console.log(
-  `\nRequest paths, zero over-fetching: ${
-    overFetchProblems.length === 0
-      ? "no limit + 1, and no findMany results filtered"
-      : `\n${overFetchProblems.map((problem) => `  ${problem}`).join("\n")}`
-  }`,
+  `\nRequest paths, zero over-fetching: ${listed(overFetchProblems, "no limit + 1, and no findMany results filtered")}`,
+);
+console.log(
+  `Storage engine layer, zero boundary violations: ${listed(layerProblems, "no domain imports, model names, or table.name branches in any file")}`,
 );
 console.log(
   [
-    "\nComplexity (cyclomatic, per function):\n",
-    "| Implementation | Functions | Highest | Over 20 |",
+    `\nComplexity (S6, cyclomatic, per function; at most ${MAX_COMPLEXITY}):\n`,
+    `| Implementation | Functions | Highest | Over ${MAX_COMPLEXITY} |`,
     "| --- | --- | --- | --- |",
     ...report.map(
-      ({ row, complexity: { functions, max, over20 } }) =>
-        `| ${row.name} | ${functions} | ${max ? `${max.score} (${max.at})` : "-"} | ${over20} |`,
+      ({ row, complexity: { functions, max, over } }) =>
+        `| ${row.name} | ${functions} | ${max ? `${max.score} (${max.at})` : "-"} | ${over.length} |`,
     ),
   ].join("\n"),
 );
@@ -980,6 +1086,7 @@ if (args.json) {
           }),
         ),
         overFetch: overFetchProblems,
+        layers: layerProblems,
       },
       null,
       2,
@@ -988,6 +1095,7 @@ if (args.json) {
 }
 process.exitCode =
   report.every(({ failing }) => failing.length === 0) &&
-  overFetchProblems.length === 0
+  overFetchProblems.length === 0 &&
+  layerProblems.length === 0
     ? 0
     : 1;
