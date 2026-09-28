@@ -69,6 +69,7 @@ private final class MatrixHost {
     }
 
     let managed: HotUpdaterSparklingHost
+    var staleProbe: HotUpdaterSparklingStaleProbe?
 
     init(
         framework: String,
@@ -113,7 +114,14 @@ private final class MatrixHost {
         )
         managed = try HotUpdaterSparklingHost(
             configuration: configuration,
-            events: events,
+            events: { name, details in
+                if name == "generationWillRetire",
+                   details["reason"] as? String == "reload",
+                   let owner = Self.shared {
+                    owner.staleProbe = owner.managed.captureDiagnosticAuthorities()
+                }
+                events?(name, details)
+            },
             launchConfiguration: try HotUpdaterSparklingLaunchConfiguration
                 .parse(arguments: ProcessInfo.processInfo.arguments)
         )
@@ -196,7 +204,6 @@ private final class MatrixHarnessViewController: UIViewController {
     private let host: HotUpdaterSparklingHost
     private let content = UIStackView()
     private var containers: [HotUpdaterSparklingViewController] = []
-    private var staleProbe: HotUpdaterSparklingStaleProbe?
 
     init(host: HotUpdaterSparklingHost) {
         self.host = host
@@ -216,7 +223,6 @@ private final class MatrixHarnessViewController: UIViewController {
         view.addSubview(content)
 
         let actions = UIStackView(arrangedSubviews: [
-            button("Replace primary", action: #selector(replacePrimary)),
             button("Verify stale after reload", action: #selector(verifyStale)),
             button("Fail secondary", action: #selector(failSecondary)),
             button("Hold secondary", action: #selector(holdSecondary)),
@@ -228,7 +234,6 @@ private final class MatrixHarnessViewController: UIViewController {
         actions.distribution = .fillEqually
         content.addArrangedSubview(actions)
         install(try! host.makeViewController())
-        staleProbe = host.captureDiagnosticAuthorities()
     }
 
     override func viewDidLayoutSubviews() {
@@ -236,21 +241,13 @@ private final class MatrixHarnessViewController: UIViewController {
         content.frame = view.safeAreaLayoutGuide.layoutFrame
     }
 
-    @objc private func replacePrimary() {
-        staleProbe = host.captureDiagnosticAuthorities()
-        host.triggerReloadForDiagnostics { result in
-            if case .failure(let error) = result {
-                NSLog("Managed reload failed: %@", error.localizedDescription)
-            }
-        }
-    }
-
     @objc private func verifyStale() {
-        staleProbe!.verifyStaleAuthorities()
+        let owner = MatrixHost.shared!
+        owner.staleProbe!.verifyStaleAuthorities()
+        owner.staleProbe = nil
     }
 
     @objc private func failSecondary() {
-        staleProbe = host.captureDiagnosticAuthorities()
         host.armNextPageFatalFailureForDiagnostics()
     }
 

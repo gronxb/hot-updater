@@ -560,111 +560,120 @@ describe("Lynx public matrix runner", () => {
     fs.rmSync(temporary, { recursive: true, force: true });
   });
 
-  it("keeps OTA authority in the primary and waits for the new detail's durable admission", async () => {
-    vi.resetModules();
-    vi.clearAllMocks();
-    vi.useFakeTimers();
-    try {
-      vi.stubGlobal("__SPIKE_VARIANT__", "B");
-      vi.stubGlobal("__SPIKE_BEHAVIOR__", "normal");
-      vi.stubGlobal("__SPIKE_ASSET_PREFIX__", "hu://");
-      vi.stubGlobal("__SDK_RESOURCES__", false);
-      native.getLaunchInfo.mockResolvedValue({ running: { bundleId: "B" } });
-      native.notifyAppReady.mockResolvedValue({ status: "CONFIRMED" });
-      native.navigate.mockImplementation((_options, complete) =>
-        complete({ code: 1 }),
-      );
-      native.reload.mockResolvedValue({ status: "TRANSITION_ACCEPTED" });
-      const beforeNavigationInstall = vi.fn().mockResolvedValue(true);
-      const updateBundle = vi.fn().mockResolvedValue(true);
-      native.checkForUpdate
-        .mockResolvedValueOnce({
-          id: "release-c",
-          updateBundle: beforeNavigationInstall,
-        })
-        .mockResolvedValue({
+  it.each(["update", "current"])(
+    "keeps %s reload authority in the primary and waits for the new detail's durable admission",
+    async (mode) => {
+      vi.resetModules();
+      vi.clearAllMocks();
+      vi.useFakeTimers();
+      try {
+        vi.stubGlobal("__SPIKE_VARIANT__", "B");
+        vi.stubGlobal("__SPIKE_BEHAVIOR__", "normal");
+        vi.stubGlobal("__SPIKE_ASSET_PREFIX__", "hu://");
+        vi.stubGlobal("__SDK_RESOURCES__", false);
+        native.getLaunchInfo.mockResolvedValue({ running: { bundleId: "B" } });
+        native.notifyAppReady.mockResolvedValue({ status: "CONFIRMED" });
+        native.navigate.mockImplementation((_options, complete) =>
+          complete({ code: 1 }),
+        );
+        native.reload.mockResolvedValue({ status: "TRANSITION_ACCEPTED" });
+        const beforeNavigationInstall = vi.fn().mockResolvedValue(true);
+        const updateBundle = vi.fn().mockResolvedValue(true);
+        native.checkForUpdate.mockReset().mockResolvedValue({
           id: "release-c",
           updateBundle,
         });
-      const primary = {
-        sequence: "10",
-        name: "jsReady",
-        details: {
-          pageEntry: "main.lynx.bundle",
-          generationId: "generation-b",
-          contextId: "primary-b",
-        },
-      };
-      const admitted = {
-        sequence: "13",
-        name: "pageAdmitted",
-        details: {
-          pageEntry: "detail.lynx.bundle",
-          generationId: "generation-b",
-          contextId: "detail-new",
-          pageAttemptId: "attempt-new",
-        },
-      };
-      const oldTerminal = {
-        sequence: "9",
-        name: "pageAttemptTerminal",
-        details: {
-          terminal: "admitted",
-          contextId: "detail-old",
-          pageAttemptId: "attempt-old",
-        },
-      };
-      const terminal = {
-        ...oldTerminal,
-        sequence: "14",
-        details: {
-          terminal: "admitted",
-          contextId: "detail-new",
-          pageAttemptId: "attempt-new",
-        },
-      };
-      native.getRuntimeEvents
-        .mockResolvedValueOnce({
-          latestSequence: "10",
-          events: [oldTerminal, primary],
-        })
-        .mockResolvedValueOnce({
-          latestSequence: "13",
-          events: [oldTerminal, primary, admitted],
-        })
-        .mockResolvedValue({
-          latestSequence: "14",
-          events: [primary, admitted, terminal],
-        });
-      const sdk = await import("../../examples/lynx/spike/sdk");
-      const status = vi.fn();
-      const canInstall = vi.fn();
-      sdk.sdkImageLoaded();
-      await sdk.startSdk(status, vi.fn(), vi.fn(), vi.fn(), vi.fn());
-      await sdk.checkSdkUpdate(status, canInstall);
-      const operation = sdk.installSdkUpdateWithDetail(status, canInstall);
-      await vi.advanceTimersByTimeAsync(0);
-      expect(native.navigate).toHaveBeenCalledExactlyOnceWith(
-        {
-          path: "detail.lynx.bundle",
-          options: { params: { title: "Second Page" } },
-        },
-        expect.any(Function),
-      );
-      expect(updateBundle).not.toHaveBeenCalled();
-      expect(native.reload).not.toHaveBeenCalled();
-      await vi.advanceTimersByTimeAsync(100);
-      await operation;
-      expect(native.checkForUpdate).toHaveBeenCalledTimes(2);
-      expect(beforeNavigationInstall).not.toHaveBeenCalled();
-      expect(updateBundle).toHaveBeenCalledOnce();
-      expect(native.reload).toHaveBeenCalledOnce();
-      expect(native.init).toHaveBeenCalledOnce();
-      expect(native.notifyAppReady).toHaveBeenCalledOnce();
-    } finally {
-      vi.useRealTimers();
-    }
-  });
+        if (mode === "update") {
+          native.checkForUpdate.mockResolvedValueOnce({
+            id: "release-c",
+            updateBundle: beforeNavigationInstall,
+          });
+        }
+        const primary = {
+          sequence: "10",
+          name: "jsReady",
+          details: {
+            pageEntry: "main.lynx.bundle",
+            generationId: "generation-b",
+            contextId: "primary-b",
+          },
+        };
+        const admitted = {
+          sequence: "13",
+          name: "pageAdmitted",
+          details: {
+            pageEntry: "detail.lynx.bundle",
+            generationId: "generation-b",
+            contextId: "detail-new",
+            pageAttemptId: "attempt-new",
+          },
+        };
+        const oldTerminal = {
+          sequence: "9",
+          name: "pageAttemptTerminal",
+          details: {
+            terminal: "admitted",
+            contextId: "detail-old",
+            pageAttemptId: "attempt-old",
+          },
+        };
+        const terminal = {
+          ...oldTerminal,
+          sequence: "14",
+          details: {
+            terminal: "admitted",
+            contextId: "detail-new",
+            pageAttemptId: "attempt-new",
+          },
+        };
+        native.getRuntimeEvents
+          .mockResolvedValueOnce({
+            latestSequence: "10",
+            events: [oldTerminal, primary],
+          })
+          .mockResolvedValueOnce({
+            latestSequence: "13",
+            events: [oldTerminal, primary, admitted],
+          })
+          .mockResolvedValue({
+            latestSequence: "14",
+            events: [primary, admitted, terminal],
+          });
+        const sdk = await import("../../examples/lynx/spike/sdk");
+        const status = vi.fn();
+        const canInstall = vi.fn();
+        sdk.sdkImageLoaded();
+        await sdk.startSdk(status, vi.fn(), vi.fn(), vi.fn(), vi.fn());
+        if (mode === "update") await sdk.checkSdkUpdate(status, canInstall);
+        const operation =
+          mode === "update"
+            ? sdk.installSdkUpdateWithDetail(status, canInstall)
+            : sdk.reloadSdkWithDetail();
+        await vi.advanceTimersByTimeAsync(0);
+        expect(native.navigate).toHaveBeenCalledExactlyOnceWith(
+          {
+            path: "detail.lynx.bundle",
+            options: { params: { title: "Second Page" } },
+          },
+          expect.any(Function),
+        );
+        expect(updateBundle).not.toHaveBeenCalled();
+        expect(native.reload).not.toHaveBeenCalled();
+        await vi.advanceTimersByTimeAsync(100);
+        await operation;
+        expect(native.checkForUpdate).toHaveBeenCalledTimes(
+          mode === "update" ? 2 : 0,
+        );
+        expect(beforeNavigationInstall).not.toHaveBeenCalled();
+        expect(updateBundle).toHaveBeenCalledTimes(mode === "update" ? 1 : 0);
+        expect(native.reload).toHaveBeenCalledOnce();
+        expect(native.init).toHaveBeenCalledOnce();
+        expect(native.notifyAppReady).toHaveBeenCalledOnce();
+      } finally {
+        vi.useRealTimers();
+      }
+    },
+  );
 
   it("keeps a failed public SDK install as a failure and never reloads", async () => {
     vi.clearAllMocks();
@@ -840,7 +849,7 @@ describe("Lynx public matrix runner", () => {
       "origin-off B retained launch",
       "real B to C BSDIFF and same-process generation reload",
       "retained old-context rejection after reload",
-      "primary removal and full generation recreation",
+      "same-Release primary and detail generation recreation",
       "fatal detail after primary confirmation and full generation recovery",
       "fatal detail before primary confirmation and full generation recovery",
       "pending detail process death after confirmation and full-stack recovery",

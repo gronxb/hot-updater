@@ -198,6 +198,57 @@ function reconstructedEvents(platform: "ios" | "android") {
 
 describe("Lynx public matrix native event evidence", () => {
   it.each(["ios", "android"] as const)(
+    "accepts a newly admitted %s detail after the reconstructed detail closes",
+    (platform) => {
+      const initial = reconstructedEvents(platform);
+      const closed = event(platform === "ios" ? "nativeBack" : "routeClosed", {
+        contextId: secondaryContextId,
+        pageEntry: "detail.lynx.bundle",
+        orderedPageEntries: ["main.lynx.bundle"],
+        topPageEntry: "main.lynx.bundle",
+        ...(platform === "ios" ? { topContextId: identity.contextId } : {}),
+      });
+      const reopened = JSON.parse(
+        JSON.stringify(
+          initial.filter((item) => item.contextId === secondaryContextId),
+        ).replaceAll(secondaryContextId, "reopened-detail"),
+      );
+      const phaseEvents = [
+        ...initial.filter((item) => item.contextId !== secondaryContextId),
+        ...reopened,
+      ];
+      const allEvents = [...initial, closed, ...reopened];
+      expect(
+        collectReadyLaunch({
+          phaseEvents,
+          allEvents,
+          build,
+          processId: identity.processId,
+        }),
+      ).toMatchObject({
+        contextIds: [identity.contextId, "reopened-detail"],
+        reconstructedStack: false,
+      });
+      if (platform === "ios") {
+        for (const invalid of [
+          [...initial, ...reopened],
+          [...initial, ...reopened, closed],
+          [...initial, { ...closed, contextId: "unrelated" }, ...reopened],
+        ]) {
+          expect(() =>
+            collectReadyLaunch({
+              phaseEvents,
+              allEvents: invalid,
+              build,
+              processId: identity.processId,
+            }),
+          ).toThrow();
+        }
+      }
+    },
+  );
+
+  it.each(["ios", "android"] as const)(
     "accepts %s reconstruction only after both actual page contexts are ready",
     (platform) => {
       const events = reconstructedEvents(platform);

@@ -2,6 +2,18 @@
 
 Updated: 2026-09-29 (Asia/Seoul).
 
+Latest execution checkpoint: shared full job `job-20260928195209-rzyw0v` is
+running on actual commit `a5bb32fb3`. Preserve its exact-commit results even when
+later local matrix fixes are pushed. The independent React/iOS matrix reached C
+readiness but failed because only the initial primary authority was captured;
+see `evidence/public-matrix-a5bb32fb3-failure.json`. Both matrix shells now capture
+the live stack at retirement. The same-Release phase uses public primary-owned
+navigation/admission/reload, with strict reopened-detail lifecycle evidence.
+Focused matrix validation is 131/131; fresh device acceptance remains outstanding.
+Production iOS on `a5bb32fb3` passed real navigation/readiness with diagnostics
+absent (`evidence/production-scaffold-ios-a5bb32fb3.json`), without network OTA
+because the endpoint was unconfigured. Refresh production Android separately.
+
 ## Resume location
 
 - Worktree: `/Volumes/SSD_2TB/workspace/hot-updater-lynx`

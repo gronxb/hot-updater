@@ -1,0 +1,281 @@
+{
+  "sourceCommit": "a5bb32fb3c5b80fc52fdfbdb3490c7b8d8515c90",
+  "target": "production scaffold",
+  "platform": "ios",
+  "device": "3A0A8EB7-9381-4CFD-B002-5B16F539D445",
+  "runtime": "iOS 26.4 simulator, ARM64",
+  "nativeArtifact": {
+    "path": "/Volumes/SSD_2TB/workspace/hot-updater-lynx/examples/lynx/ios/build/Build/Products/Release-iphonesimulator/SparklingGo.app",
+    "appId": "com.hotupdater.lynxexample",
+    "scheme": "SparklingGo",
+    "arch": "arm64",
+    "runtimeId": "sparkling-c4ce8d2-navigation-2.1.0-rc.12-lynx-3.9.0-primjs-3.8.0-alpha.6-ios-managed-pages-v1",
+    "embeddedContract": {
+      "source": {
+        "schemaVersion": "lynx-production-embedded-contract-v1",
+        "files": [
+          "detail.lynx.bundle",
+          "dynamic/component.lynx.bundle",
+          "main.lynx.bundle"
+        ],
+        "forbiddenMarkers": [
+          "http://localhost:3007",
+          "http://127.0.0.1:",
+          "/matrix-runtime-snapshot",
+          "HOT_UPDATER_",
+          "E2E_",
+          "navigation-boundary",
+          "Verify navigation boundary",
+          "Capture runtime events",
+          "targeted-qa-detox",
+          "detail-diagnostic"
+        ],
+        "checks": {
+          "detail.lynx.bundle": {
+            "forbiddenPresent": [],
+            "requiredPresent": [
+              "sparkling-navigation",
+              "router.close",
+              "Close detail page"
+            ],
+            "sdkCallsPresent": [
+              ".notifyAppReady()"
+            ]
+          },
+          "dynamic/component.lynx.bundle": {
+            "forbiddenPresent": [],
+            "requiredPresent": [],
+            "sdkCallsPresent": []
+          },
+          "main.lynx.bundle": {
+            "forbiddenPresent": [],
+            "requiredPresent": [
+              "sparkling-navigation",
+              "router.open",
+              "detail.lynx.bundle",
+              "Open detail page"
+            ],
+            "sdkCallsPresent": [
+              ".getLaunchConfiguration()",
+              ".init({baseURL:",
+              ".checkForUpdate({updateStrategy:",
+              ".updateBundle()",
+              ".notifyAppReady()",
+              ".reload()"
+            ]
+          }
+        }
+      },
+      "materialized": {
+        "schemaVersion": "lynx-production-embedded-contract-v1",
+        "files": [
+          "detail.lynx.bundle",
+          "dynamic/component.lynx.bundle",
+          "main.lynx.bundle"
+        ],
+        "forbiddenMarkers": [
+          "http://localhost:3007",
+          "http://127.0.0.1:",
+          "/matrix-runtime-snapshot",
+          "HOT_UPDATER_",
+          "E2E_",
+          "navigation-boundary",
+          "Verify navigation boundary",
+          "Capture runtime events",
+          "targeted-qa-detox",
+          "detail-diagnostic"
+        ],
+        "checks": {
+          "detail.lynx.bundle": {
+            "forbiddenPresent": [],
+            "requiredPresent": [
+              "sparkling-navigation",
+              "router.close",
+              "Close detail page"
+            ],
+            "sdkCallsPresent": [
+              ".notifyAppReady()"
+            ]
+          },
+          "dynamic/component.lynx.bundle": {
+            "forbiddenPresent": [],
+            "requiredPresent": [],
+            "sdkCallsPresent": []
+          },
+          "main.lynx.bundle": {
+            "forbiddenPresent": [],
+            "requiredPresent": [
+              "sparkling-navigation",
+              "router.open",
+              "detail.lynx.bundle",
+              "Open detail page"
+            ],
+            "sdkCallsPresent": [
+              ".getLaunchConfiguration()",
+              ".init({baseURL:",
+              ".checkForUpdate({updateStrategy:",
+              ".updateBundle()",
+              ".notifyAppReady()",
+              ".reload()"
+            ]
+          }
+        }
+      }
+    },
+    "sourceCommit": "a5bb32fb3c5b80fc52fdfbdb3490c7b8d8515c90",
+    "binarySha256": "4960ac242a3ff19b75ffa187e5943fe0b9fb08bde3b6c2c724accb2ca5613fc0",
+    "artifactHashKind": "deterministic-full-app-tree-v1",
+    "nativeFingerprintSha256": "5e974506f06db9df695a95fcf410de5c30e089784516586f491f729a83674693",
+    "diagnostics": {
+      "expected": "absent",
+      "markers": [
+        "HotUpdaterLynxDiagnosticsContext",
+        "installRuntimeJournalFixtureForDiagnostics"
+      ],
+      "present": []
+    },
+    "nativeConfig": {
+      "files": {
+        "examples/lynx/fingerprint.json": "500c9785a76d7e9ce6870b31baaf9cf2e2ec5bc43042c348be038c9b01b4a109",
+        "examples/lynx/ios/Podfile": "9d903232276107c32e6661e8452a5c8f14565e4ded295f7d3273f7d2fda14f5b",
+        "examples/lynx/ios/Podfile.lock": "1c1456b46464a2029d0153a533073ac0ac15188c71f658c6d9a16b55a2d2370e",
+        "examples/lynx/ios/SparklingGo.xcodeproj/project.pbxproj": "6a5b1079326494d1eadc12da7ffc25460461ba65632e97a809d9f636e2f949f6",
+        "examples/lynx/ios/SparklingGo.xcodeproj/xcshareddata/xcschemes/SparklingGo.xcscheme": "6df2ba031c22bf6d10f69653ec24fbf0151a01a16ca91f58feb034cc41a5495f"
+      },
+      "sha256": "a929246489b8f313c1bf0e6c45240e4f678c6f5ae1edd86de8a1af2359232cb5"
+    },
+    "sparklingCheckout": {
+      "path": "ios/.upstream/sparkling",
+      "commit": "c4ce8d25c5ea277e13752d68ff1f2a66f5704240",
+      "archiveSha256": "98939fa2d30710cb1b1071a0eb37521a3a8ebd4c2f6a9d81e7828eafe8299337"
+    }
+  },
+  "sourceIntegrity": {
+    "checkedCommit": "a5bb32fb3c5b80fc52fdfbdb3490c7b8d8515c90",
+    "clean": true,
+    "trackedChanges": [],
+    "allowedTrackedChanges": [
+      "examples-server/hono-kysely-pglite/hot-updater_migrations/migration_2026-09-11T14-30-47.sql",
+      "examples-server/hono-kysely-pglite/src/db.ts",
+      "examples-server/hono-kysely-pglite/src/localFsStorage.mjs",
+      "examples-server/hono-kysely-pglite/src/localFsStorage.ts",
+      "examples/lynx/.gitignore",
+      "examples/lynx/scripts/e2e-kysely-deploy.mjs"
+    ],
+    "trackedTreeSha256": "21997c81f4d3bf44919d8119cdb002d74e670113b969e41366dec2bfddb918f1"
+  },
+  "appBaseURLConfigured": false,
+  "processId": "6850",
+  "generationId": "6A121184-9E37-4213-BD6E-26BAEA0730C1",
+  "primaryContextId": "5B16245F-940B-4D47-BDD0-9B4E32FA799D",
+  "openedContexts": [
+    "631AAE2F-2DAC-465F-8B7A-7589E13D79D8",
+    "C314A381-D5B5-4316-AD13-E19D1832AB01"
+  ],
+  "checks": {
+    "mainReadyAndConfirmed": true,
+    "separateDetailBundleLoadedTwice": true,
+    "detailBytesMatchEmbeddedArtifact": true,
+    "allObservedResourceHashesMatchEmbeddedArtifact": true,
+    "distinctAdmittedDetailContexts": true,
+    "javascriptCloseReturnsToMain": true,
+    "nativeBackReturnsToMain": true,
+    "sameProcessAndGeneration": true,
+    "diagnosticsAbsentFromBinary": true,
+    "screenshotsVisuallyInspected": true
+  },
+  "eventSummary": [
+    {
+      "name": "generationStarted",
+      "sequence": "14",
+      "pageEntry": "main.lynx.bundle",
+      "contextId": "5B16245F-940B-4D47-BDD0-9B4E32FA799D"
+    },
+    {
+      "name": "firstContent",
+      "sequence": "17",
+      "pageEntry": "main.lynx.bundle",
+      "contextId": "5B16245F-940B-4D47-BDD0-9B4E32FA799D"
+    },
+    {
+      "name": "jsReady",
+      "sequence": "19",
+      "pageEntry": "main.lynx.bundle",
+      "contextId": "5B16245F-940B-4D47-BDD0-9B4E32FA799D"
+    },
+    {
+      "name": "pageOpened",
+      "sequence": "24",
+      "pageEntry": "detail.lynx.bundle",
+      "contextId": "631AAE2F-2DAC-465F-8B7A-7589E13D79D8"
+    },
+    {
+      "name": "firstContent",
+      "sequence": "25",
+      "pageEntry": "detail.lynx.bundle",
+      "contextId": "631AAE2F-2DAC-465F-8B7A-7589E13D79D8"
+    },
+    {
+      "name": "pageAttemptTerminal",
+      "sequence": "26",
+      "pageEntry": "detail.lynx.bundle",
+      "contextId": "631AAE2F-2DAC-465F-8B7A-7589E13D79D8"
+    },
+    {
+      "name": "pageAdmitted",
+      "sequence": "27",
+      "pageEntry": "detail.lynx.bundle",
+      "contextId": "631AAE2F-2DAC-465F-8B7A-7589E13D79D8"
+    },
+    {
+      "name": "pageClosed",
+      "sequence": "28",
+      "pageEntry": "detail.lynx.bundle",
+      "contextId": "631AAE2F-2DAC-465F-8B7A-7589E13D79D8"
+    },
+    {
+      "name": "pageOpened",
+      "sequence": "33",
+      "pageEntry": "detail.lynx.bundle",
+      "contextId": "C314A381-D5B5-4316-AD13-E19D1832AB01"
+    },
+    {
+      "name": "firstContent",
+      "sequence": "34",
+      "pageEntry": "detail.lynx.bundle",
+      "contextId": "C314A381-D5B5-4316-AD13-E19D1832AB01"
+    },
+    {
+      "name": "pageAttemptTerminal",
+      "sequence": "35",
+      "pageEntry": "detail.lynx.bundle",
+      "contextId": "C314A381-D5B5-4316-AD13-E19D1832AB01"
+    },
+    {
+      "name": "pageAdmitted",
+      "sequence": "36",
+      "pageEntry": "detail.lynx.bundle",
+      "contextId": "C314A381-D5B5-4316-AD13-E19D1832AB01"
+    },
+    {
+      "name": "nativeBack",
+      "sequence": "37",
+      "pageEntry": "detail.lynx.bundle",
+      "contextId": "C314A381-D5B5-4316-AD13-E19D1832AB01"
+    }
+  ],
+  "artifacts": {
+    "main.png": "af29743142ea321c2fd8a230c5b791b299a68cd3242f6e0cb3b471717b7e999d",
+    "native-artifacts.json": "1717b4c1c1de7c803ca91c37a7e2ed8112758a469f80ade967f74cd5e8bf117f",
+    "close-events.json": "c123a1352155e2d29b5081a2b3bc54b34e52cb5a6db174f6c15025e53c5ccb3b",
+    "final-events.json": "34dfbf177f39af47cfd616c7e409d5e875470f28e520ba4104f82f21a0ef8a3d",
+    "back-events.json": "34dfbf177f39af47cfd616c7e409d5e875470f28e520ba4104f82f21a0ef8a3d",
+    "detail.png": "a4b554abdae4bc5d06df359911d5a7a0cee76778402ede0c375c546d0e615660",
+    "detail-events.json": "bc197b548b0dd026e571cccfec2df6ff69bb961f75c80b84b5e1c7b3aacf2d7d",
+    "main-events-0.json": "99a10b2f4a9cb05c7d6d100ffb9fb36cc94155cd5fdc6c66105bd391d646d094"
+  },
+  "limits": [
+    "The production endpoint is intentionally unconfigured; the UI states this and no network OTA is claimed.",
+    "This is production scaffold/navigation acceptance; full shared E2E and public six-cell OTA acceptance remain separate."
+  ]
+}

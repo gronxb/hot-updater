@@ -15,6 +15,7 @@ import {
   installSdkUpdate,
   installSdkUpdateAndReload,
   installSdkUpdateWithDetail,
+  reloadSdkWithDetail,
   resources,
   sdkImageLoaded,
   startSdk,
@@ -65,6 +66,9 @@ onMounted(() => {
     </view>
     <view class="action" @tap="verifyNavigationBoundary(setStatus)">
       <text class="action-label">Verify navigation boundary</text>
+    </view>
+    <view class="action" @tap="reloadSdkWithDetail()">
+      <text class="action-label">Reload with detail open</text>
     </view>
     <view class="action" @tap="captureRuntimeEvents(setStatus)">
       <text class="action-label">Capture runtime events</text>

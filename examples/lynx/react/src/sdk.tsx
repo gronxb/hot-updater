@@ -14,6 +14,7 @@ import {
   installSdkUpdate,
   installSdkUpdateAndReload,
   installSdkUpdateWithDetail,
+  reloadSdkWithDetail,
   resources,
   sdkImageLoaded,
   startSdk,
@@ -58,6 +59,9 @@ function App() {
         }
       >
         <text className="action-label">Open detail page</text>
+      </view>
+      <view className="action" bindtap={() => void reloadSdkWithDetail()}>
+        <text className="action-label">Reload with detail open</text>
       </view>
       <view
         className="action"

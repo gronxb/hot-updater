@@ -1015,3 +1015,39 @@ from the retained evidence. Both local fixture servers are stopped after checks.
 Final validation passes **3,911/3,911 unit tests in 350 files** with one worker
 (333.59 seconds), workspace lint, CLI build/types, and the legacy probe script's
 syntax check. The six pre-existing staged helper diffs remain byte-identical.
+
+## 2026-09-29 public matrix authority capture
+
+The full shared job `job-20260928195209-rzyw0v` starts on `a5bb32fb3` after the
+queue clears. Read the actual setup/shard HEADs; the original request time and
+local log filename do not establish the executed commit. It remains independent
+of subsequent local matrix fixes.
+
+The freshly built production iOS scaffold on that commit passes main readiness,
+exact resource hashes, two separately compiled detail launches, JavaScript close,
+and native back in one process/generation. Diagnostics are absent from the Release
+binary. The unconfigured production endpoint means no network OTA claim. Retain
+`evidence/production-scaffold-ios-a5bb32fb3.json`; fresh Android production
+validation and full/public-matrix acceptance remain separate obligations.
+
+The fresh React/iOS public cell completes real delta delivery and C generation
+readiness but times out expecting two retained-authority rejections. Saved native
+sequence 321 contains only the primary rejection; the shell captured at initial
+startup, before detail creation. The append-only external callback record is
+intact, so bounded-journal eviction did not cause this timeout. Keep the failure
+receipt and original evidence hashes in `evidence/public-matrix-a5bb32fb3-failure.json`.
+
+Capture diagnostic authorities at the actual generation-retirement boundary on
+both OSes and consume that probe once. The same-Release phase now uses the public
+SDK to navigate/admit a detail and reload from its retained primary, replacing an
+obsolete shell button that only reloaded one page while expecting a nonexistent
+`primaryRemoved` event. For a reopened detail, require its predecessor's native
+close/back evidence and preserve exact primary identity and retirement membership.
+These are nonproduction fixture/collector changes, not native application setup.
+
+New focused regressions fail before the changes and the matrix runner, contract,
+and evidence suites pass **131/131** afterward. Missing/reordered/foreign close
+records, incorrect retirement membership, missing admission/terminal/resource
+events, reused contexts, and secondary authority remain rejection cases. A fresh
+native matrix build and actual device run are still required; no complete public
+cell is claimed by these unit results.

@@ -133,13 +133,18 @@ export function eventIdentity(event) {
   return identity;
 }
 
-function assertLaunchMembership(started, identity, opened, detailIdentity) {
+function assertLaunchMembership(
+  started,
+  identity,
+  opened,
+  detailIdentity,
+  events,
+) {
   assert.ok(
     Array.isArray(started.contextIds),
     "generationStarted must declare its initial context membership",
   );
   assert.equal(started.primaryContextId, identity.contextId);
-  const contextIds = [identity.contextId, detailIdentity.contextId];
   const reconstructedStack = started.orderedPageEntries?.length === 2;
   assert.deepEqual(
     started.orderedPageEntries,
@@ -165,10 +170,44 @@ function assertLaunchMembership(started, identity, opened, detailIdentity) {
   // The matching routeOpened and both pages' readiness must still be observed.
   const primaryStartsFirst =
     opened.event === "routeOpened" && started.contextIds.length === 1;
+  const openedSequence = eventSequence(events, opened);
+  const closedReconstructedDetail =
+    reconstructedStack &&
+    events
+      .slice(eventSequence(events, started) + 1, openedSequence)
+      .find(
+        (event) =>
+          ["nativeBack", "pageClosed", "routeClosed"].includes(event.event) &&
+          sameGenerationSelection(event, identity) &&
+          event.pageEntry === "detail.lynx.bundle" &&
+          value(event.contextId) !== detailIdentity.contextId &&
+          (primaryStartsFirst ||
+            value(event.contextId) === started.contextIds[1]) &&
+          (event.event === "routeClosed" ||
+            event.topContextId === identity.contextId) &&
+          event.topPageEntry === "main.lynx.bundle" &&
+          JSON.stringify(event.orderedPageEntries) ===
+            JSON.stringify(["main.lynx.bundle"]) &&
+          events
+            .slice(0, eventSequence(events, event))
+            .some(
+              (previous) =>
+                ["pageOpened", "routeOpened"].includes(previous.event) &&
+                sameGenerationSelection(previous, identity) &&
+                previous.contextId === event.contextId &&
+                previous.sourceContextId === identity.contextId &&
+                previous.pageEntry === "detail.lynx.bundle",
+            ),
+      );
   assert.deepEqual(
     started.contextIds,
     reconstructedStack && !primaryStartsFirst
-      ? contextIds
+      ? [
+          identity.contextId,
+          closedReconstructedDetail
+            ? value(closedReconstructedDetail.contextId)
+            : detailIdentity.contextId,
+        ]
       : [identity.contextId],
     "generationStarted membership does not match the observed page contexts",
   );
@@ -185,7 +224,7 @@ function assertLaunchMembership(started, identity, opened, detailIdentity) {
     String(opened.nativePageClass),
     /SPKViewController|HotUpdaterSparklingPageActivity$/,
   );
-  return reconstructedStack;
+  return reconstructedStack && !closedReconstructedDetail;
 }
 
 function hasCompleteLaunchEvents(
@@ -224,7 +263,7 @@ function hasCompleteLaunchEvents(
   let detailIdentity;
   try {
     detailIdentity = eventIdentity(opened);
-    assertLaunchMembership(started, identity, opened, detailIdentity);
+    assertLaunchMembership(started, identity, opened, detailIdentity, events);
   } catch {
     return false;
   }
@@ -491,6 +530,7 @@ function collectLaunchEvidence({
     identity,
     opened,
     detailIdentity,
+    allEvents,
   );
   const members = [
     { memberIdentity: identity, pageEntry: "main.lynx.bundle", primary: true },

@@ -1475,6 +1475,21 @@ visible page marker is not admission evidence: E2E waits for the matching
 `pageAdmitted` and durable `pageAttemptTerminal` records before asserting a
 successful page cycle.
 
+Retained-authority probes must capture the complete live page stack at the
+native `generationWillRetire` boundary, before controllers are destroyed. An
+initial-primary-only capture cannot establish stale secondary rejection. Require
+one real `STALE_CONTEXT` rejection for each exact retired context, with its
+original generation and selection identity. The diagnostic capture belongs only
+to the nonproduction matrix shell; production scaffold code remains unchanged.
+
+The same-Release lifecycle phase also navigates to and admits a real detail page
+through the retained primary before calling `HotUpdater.reload()`. It recreates
+both runtimes in the same process without inventing a `primaryRemoved` event.
+If a previously reconstructed detail was closed and reopened, use the new
+context's admission evidence and require the preceding native close/back record.
+The primary generation identity must remain exact, and the subsequent retirement
+must match the currently live context set rather than the earlier closed page.
+
 Reconstruction evidence must follow each platform's actual attachment order.
 iOS declares both new contexts at generation start. Android starts the primary
 before attaching the retained secondary Activity, so its initial context set
@@ -1778,6 +1793,23 @@ native configuration, so it does not establish a fresh compiler/native build,
 cloud onboarding or device acceptance. See [the CLI flow record](./evidence/isolated-cli-flow.json).
 The follow-up passes CLI build/types, workspace lint and all 3,911 unit tests
 in 350 files.
+
+On `a5bb32fb3`, the production iOS scaffold builds in Release with diagnostics
+absent, loads the embedded image/font/external module/dynamic component, admits
+two separately opened detail contexts, and returns to the main page through
+JavaScript close and native back in one process/generation. Retain
+[the production iOS receipt](./evidence/production-scaffold-ios-a5bb32fb3.json).
+The endpoint is intentionally unconfigured; this proves scaffold/navigation
+acceptance and does not claim production network OTA.
+
+The separate public matrix on that commit reaches React/iOS C readiness after
+real A-to-B and B-to-C delta delivery, then fails the stale-authority phase:
+the shell captured only the initial primary. Retain
+[the failure record](./evidence/public-matrix-a5bb32fb3-failure.json).
+It remains zero complete cells. Fix capture timing and the same-Release lifecycle
+driver without reducing context, resource, readiness, or terminal assertions.
+The independent full shared job `job-20260928195209-rzyw0v` resolves to
+`a5bb32fb3` and is still running; its results must retain that source identity.
 
 Workspace verification for the pushed implementation passes 27 build projects,
 35 type-check projects, lint, and 3,893 unit tests in 348 files before the three

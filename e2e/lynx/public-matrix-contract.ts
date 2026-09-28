@@ -2426,13 +2426,11 @@ export function validateLynxMatrixCell(value: unknown): void {
   );
   if (
     JSON.stringify(beforePrimaryRemoval.identity) !==
-      JSON.stringify(after.identity) ||
-    JSON.stringify(beforePrimaryRemoval.contextIds) !==
-      JSON.stringify(after.contextIds)
+    JSON.stringify(after.identity)
   ) {
     fail(
       "cell.phases.primaryLifecycle.beforeRemoval",
-      "must be the live generation produced by the B to C reload",
+      "must retain the primary identity produced by the B to C reload",
     );
   }
   generationRetirement(

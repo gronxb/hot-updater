@@ -259,6 +259,22 @@ export async function installSdkUpdateWithDetail(
   if (busy) throw new Error("An SDK update action is already running");
   if (!prepared) throw new Error("No verified SDK update is prepared");
   const selectedReleaseId = prepared.id;
+  await openAdmittedDetail();
+  // Opening and admitting the page changes the native selection snapshot.
+  await checkSdkUpdate(status, canInstall);
+  if (!prepared || prepared.id !== selectedReleaseId) {
+    throw new Error("The selected Release changed during detail navigation");
+  }
+  return installSdkUpdateAndReload(status, canInstall);
+}
+
+export async function reloadSdkWithDetail() {
+  if (busy) throw new Error("An SDK update action is already running");
+  await openAdmittedDetail();
+  return HotUpdater.reload();
+}
+
+async function openAdmittedDetail() {
   const before = await HotUpdater.getRuntimeEvents();
   const primary = before.events
     .slice()
@@ -303,14 +319,7 @@ export async function installSdkUpdateWithDetail(
           event.details.contextId === admitted.details.contextId,
       )
     ) {
-      // Opening and admitting the page changes the native selection snapshot.
-      await checkSdkUpdate(status, canInstall);
-      if (!prepared || prepared.id !== selectedReleaseId) {
-        throw new Error(
-          "The selected Release changed during detail navigation",
-        );
-      }
-      return installSdkUpdateAndReload(status, canInstall);
+      return;
     }
     await new Promise((resolve) => setTimeout(resolve, 100));
   }

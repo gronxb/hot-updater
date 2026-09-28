@@ -1061,6 +1061,28 @@ describe("Lynx public matrix evidence contract", () => {
     expect(() => validateLynxMatrixCell(makeCell())).not.toThrow();
   });
 
+  it("requires the reopened detail's exact retirement set in the retained primary generation", () => {
+    const cell = makeCell();
+    const lifecycle = cell.phases.primaryLifecycle;
+    const reopened = "context-after-reopened-detail";
+    lifecycle.beforeRemoval = JSON.parse(
+      JSON.stringify(lifecycle.beforeRemoval).replaceAll(
+        "context-after-secondary",
+        reopened,
+      ),
+    );
+    expect(() => validateLynxMatrixCell(cell)).toThrow();
+    lifecycle.generationRetirement = JSON.parse(
+      JSON.stringify(lifecycle.generationRetirement).replaceAll(
+        "context-after-secondary",
+        reopened,
+      ),
+    );
+    expect(() => validateLynxMatrixCell(cell)).not.toThrow();
+    lifecycle.beforeRemoval.identity.generationId = "unrelated-generation";
+    expect(() => validateLynxMatrixCell(cell)).toThrow();
+  });
+
   it("accepts a clean native receipt with no public-key injection", () => {
     const cell = makeCell();
     cell.nativeArtifacts = makeNativeArtifacts(["ios"], hash("f"), false);

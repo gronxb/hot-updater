@@ -111,7 +111,7 @@ const phaseNames = [
   "real B to C BSDIFF and same-process generation reload",
   "retained old-context rejection after reload",
   "cross-provenance native rejection without cached redownload",
-  "primary removal and full generation recreation",
+  "same-Release primary and detail generation recreation",
   "pending-detail managed-transition cancellation and reconstruction",
   "fatal detail after primary confirmation and full generation recovery",
   "fatal detail before primary confirmation and full generation recovery",
@@ -1553,25 +1553,28 @@ async function runCell(
   );
 
   cursor = eventCursor(adapter);
-  adapter.clickText("Replace primary");
-  await adapter.waitForText("Bundle C ready");
-  adapter.clickText("Open detail page");
-  await adapter.waitForText("Detail bundle C ready");
-  await waitForReadyEvents(adapter, cursor, C, reloadProcess);
-  adapter.clickText("Verify stale after reload");
-  await waitForStaleContextRejections(adapter, cursor, C.bundleId);
-  adapter.clickText("Close detail page");
-  await adapter.waitForText("Bundle C ready");
-  await waitForEvent(
+  adapter.clickText("Reload with detail open");
+  const sameReleaseEvents = await closeReconstructedDetailPage(
     adapter,
     cursor,
-    (event) =>
-      ["pageClosed", "routeClosed"].includes(event.event) &&
-      event.pageEntry === "detail.lynx.bundle" &&
-      event.topPageEntry === "main.lynx.bundle",
-    "primary-replacement detail close",
+    C,
+    reloadProcess,
+    "C",
   );
-  const primaryReplacementEvents = eventsSince(adapter, cursor);
+  const previousGeneration = cEvents.findLast(
+    (event: any) => event.event === "generationStarted",
+  ).generationId;
+  const beforePrimaryReplacementEvents = [
+    ...cEvents.filter((event: any) => event.pageEntry === "main.lynx.bundle"),
+    ...sameReleaseEvents.filter(
+      (event: any) => event.generationId === previousGeneration,
+    ),
+  ];
+  adapter.clickText("Verify stale after reload");
+  await waitForStaleContextRejections(adapter, cursor, C.bundleId);
+  const primaryReplacementEvents = eventsSince(adapter, cursor).filter(
+    (event: any) => event.generationId !== previousGeneration,
+  );
   await checkpointRuntimeEvents(
     adapter,
     runtimeEventLedger,
@@ -1905,10 +1908,15 @@ async function runCell(
     build: C,
     processId: reloadProcess,
   });
+  const beforePrimaryReplacement = collectReadyLaunch({
+    phaseEvents: beforePrimaryReplacementEvents,
+    allEvents,
+    build: C,
+    processId: reloadProcess,
+  });
   const primaryGenerationRetirement = collectInvalidatedContexts(
     allEvents,
-    afterReload,
-    { reason: "primaryRemoved" },
+    beforePrimaryReplacement,
   );
   const confirmedDetailFatalPending = collectFatalPendingDetailLaunch({
     phaseEvents: confirmedDetailFatalEvents,
@@ -2074,7 +2082,7 @@ async function runCell(
         generationRetirement,
       },
       primaryLifecycle: {
-        beforeRemoval: afterReload,
+        beforeRemoval: beforePrimaryReplacement,
         generationRetirement: primaryGenerationRetirement,
         afterReplacement: afterPrimaryReplacement,
       },

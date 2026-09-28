@@ -39,7 +39,6 @@ class MatrixActivity : Activity() {
         (lastNonConfigurationInstance as? HotUpdaterSparklingHost)?.let { retained ->
             host = retained
             setContentView(retained.reattachPrimary(this))
-            staleProbe = retained.captureDiagnosticAuthorities()
             installDiagnosticControls()
             return
         }
@@ -65,6 +64,9 @@ class MatrixActivity : Activity() {
                 allowDiagnosticIntentLaunchConfiguration = true,
             ),
             HotUpdaterSparklingEventListener { name, details ->
+                if (name == "generationWillRetire" && details["reason"] == "reload") {
+                    staleProbe = checkNotNull(host).captureDiagnosticAuthorities()
+                }
                 val event = JSONObject(details)
                     .put("event", name)
                     .put("observedAt", observedAt())
@@ -85,7 +87,6 @@ class MatrixActivity : Activity() {
         )
         host = managedHost
         setContentView(managedHost.createView(this))
-        staleProbe = managedHost.captureDiagnosticAuthorities()
         installDiagnosticControls()
     }
 
@@ -100,21 +101,12 @@ class MatrixActivity : Activity() {
         controls = LinearLayout(this).also { row ->
             row.orientation = LinearLayout.HORIZONTAL
             row.setBackgroundColor(0xccffffff.toInt())
-            row.addView(action("Replace primary") {
-                val managedHost = checkNotNull(host)
-                staleProbe = managedHost.captureDiagnosticAuthorities()
-                managedHost.triggerReloadForDiagnostics { result ->
-                    result.exceptionOrNull()?.let { error ->
-                        Log.e("HotUpdaterLynx", "Managed reload failed", error)
-                    }
-                }
-            })
             row.addView(action("Verify stale after reload") {
                 checkNotNull(staleProbe).verifyStaleAuthorities()
+                staleProbe = null
             })
             row.addView(action("Fail secondary") {
                 val managedHost = checkNotNull(host)
-                staleProbe = managedHost.captureDiagnosticAuthorities()
                 managedHost.armNextPageFatalFailureForDiagnostics()
             })
             row.addView(action("Hold secondary") {
