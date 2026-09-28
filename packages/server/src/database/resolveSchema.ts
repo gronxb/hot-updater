@@ -11,6 +11,7 @@ import type {
   ModelShape,
   ReferenceAction,
   SchemaShape,
+  TableShape,
 } from "./definitions";
 
 export const SHARD_COLUMN = "_shard";
@@ -80,22 +81,12 @@ const metricsOf = (model: AggregateShape) => [
   ...model.distinct,
 ];
 
-/** Every problem in one model's declaration, its roots and references included. */
-const problemsOf = (
-  module: SchemaModule,
-  model: string,
-  definition: ModelShape,
-): string[] => {
-  const problems: string[] = [];
-  const add = (message: string) =>
-    problems.push(`${module.id}.${model}: ${message}`);
-  const table = (name: string) => {
-    const target = module.schema[name];
-    return target?.kind === "table" ? target : undefined;
-  };
-  if (!NAME.test(model)) {
-    add("model names use lowercase letters, digits, and _");
-  }
+type Add = (message: string) => void;
+/** A table of the model's own module, by model name. */
+type TableOf = (name: string) => TableShape | undefined;
+
+/** Field names, the key, and each field's options. */
+const fieldProblems = (definition: ModelShape, add: Add) => {
   const names = [
     ...Object.keys(definition.fields),
     ...(definition.kind === "table"
@@ -130,6 +121,83 @@ const problemsOf = (
       add(`field "${name}" is ascii but not a string`);
     }
   }
+};
+
+/** A table's derived fields and references. */
+const tableProblems = (definition: TableShape, add: Add, table: TableOf) => {
+  for (const [name, derived] of Object.entries(definition.derived)) {
+    if (typeof derived.compute !== "function") {
+      add(`derived field "${name}" has no compute function`);
+    }
+    if (derived.multi && derived.type === "json") {
+      add(`derived field "${name}" cannot be multi-valued json`);
+    }
+  }
+  for (const [name, { type, references }] of Object.entries(
+    definition.fields,
+  )) {
+    if (references === undefined) continue;
+    const target = table(references.model);
+    const targetKey =
+      target?.key.length === 1 ? target.fields[target.key[0]!] : undefined;
+    if (targetKey === undefined) {
+      add(
+        `field "${name}" references "${references.model}", which is not a single-key table of this module`,
+      );
+    } else if (targetKey.type !== type) {
+      add(
+        `field "${name}" and the key of "${references.model}" differ in type`,
+      );
+    }
+    if (
+      references.onDelete === "cascade" &&
+      !Object.values(definition.indexes).some(
+        ({ eq }) => eq.length === 1 && eq[0] === name,
+      )
+    ) {
+      add(`cascade on "${name}" needs an index whose eq is exactly [${name}]`);
+    }
+  }
+};
+
+/** An aggregate's identity, metrics, and shards. */
+const aggregateProblems = (definition: AggregateShape, add: Add) => {
+  const identity = Object.keys(definition.fields);
+  if (definition.key.join("\u0000") !== identity.join("\u0000")) {
+    add(
+      `key must list the identity fields in declaration order: ${identity.join(", ")}`,
+    );
+  }
+  if (metricsOf(definition).length === 0) add("aggregate has no metrics");
+  if (
+    definition.distinct.length > 0 &&
+    definition.counters.length + definition.gauges.length > 0
+  ) {
+    add("distinct sketches need an aggregate of their own");
+  }
+  const { shards } = definition;
+  if (!Number.isSafeInteger(shards) || shards < 1 || shards > MAX_SHARDS) {
+    add(`shards must be 1–${MAX_SHARDS}`);
+  }
+};
+
+/** Every problem in one model's declaration, its roots and references included. */
+const problemsOf = (
+  module: SchemaModule,
+  model: string,
+  definition: ModelShape,
+): string[] => {
+  const problems: string[] = [];
+  const add = (message: string) =>
+    problems.push(`${module.id}.${model}: ${message}`);
+  const table = (name: string) => {
+    const target = module.schema[name];
+    return target?.kind === "table" ? target : undefined;
+  };
+  if (!NAME.test(model)) {
+    add("model names use lowercase letters, digits, and _");
+  }
+  fieldProblems(definition, add);
   for (const [name, index] of Object.entries(definition.indexes)) {
     const columns = [...index.eq, ...index.sort];
     if (!INDEX_NAME.test(name)) {
@@ -170,61 +238,8 @@ const problemsOf = (
       );
     }
   }
-  if (definition.kind === "table") {
-    for (const [name, derived] of Object.entries(definition.derived)) {
-      if (typeof derived.compute !== "function") {
-        add(`derived field "${name}" has no compute function`);
-      }
-      if (derived.multi && derived.type === "json") {
-        add(`derived field "${name}" cannot be multi-valued json`);
-      }
-    }
-    for (const [name, { type, references }] of Object.entries(
-      definition.fields,
-    )) {
-      if (references === undefined) continue;
-      const target = table(references.model);
-      const targetKey =
-        target?.key.length === 1 ? target.fields[target.key[0]!] : undefined;
-      if (targetKey === undefined) {
-        add(
-          `field "${name}" references "${references.model}", which is not a single-key table of this module`,
-        );
-      } else if (targetKey.type !== type) {
-        add(
-          `field "${name}" and the key of "${references.model}" differ in type`,
-        );
-      }
-      if (
-        references.onDelete === "cascade" &&
-        !Object.values(definition.indexes).some(
-          ({ eq }) => eq.length === 1 && eq[0] === name,
-        )
-      ) {
-        add(
-          `cascade on "${name}" needs an index whose eq is exactly [${name}]`,
-        );
-      }
-    }
-    return problems;
-  }
-  const identity = Object.keys(definition.fields);
-  if (key.join("\u0000") !== identity.join("\u0000")) {
-    add(
-      `key must list the identity fields in declaration order: ${identity.join(", ")}`,
-    );
-  }
-  if (metricsOf(definition).length === 0) add("aggregate has no metrics");
-  if (
-    definition.distinct.length > 0 &&
-    definition.counters.length + definition.gauges.length > 0
-  ) {
-    add("distinct sketches need an aggregate of their own");
-  }
-  const { shards } = definition;
-  if (!Number.isSafeInteger(shards) || shards < 1 || shards > MAX_SHARDS) {
-    add(`shards must be 1–${MAX_SHARDS}`);
-  }
+  if (definition.kind === "table") tableProblems(definition, add, table);
+  else aggregateProblems(definition, add);
   return problems;
 };
 
