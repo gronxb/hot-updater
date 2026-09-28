@@ -10,7 +10,8 @@ import { createPluginTestHarness } from "@hot-updater/test-utils";
 import { describe, expect, it } from "vitest";
 
 import * as engine from "../../database";
-import { insights } from "./index";
+import { createInsightsProvider } from "../../insights/provider";
+import { createInsightsModel, insights } from "./index";
 
 const HOUR = 3_600_000;
 const DAY = 86_400_000;
@@ -73,6 +74,74 @@ const metered = (inner: DatabaseAdapter) => {
   };
   return { adapter, rows };
 };
+
+describe("insights latest events by bundle", () => {
+  const setup = () =>
+    createPluginTestHarness(insights(), { engine, now: () => T0 + DAY });
+  const halfPast = T0 + 30 * 60_000;
+
+  it("counts each latest event once for the overview's predicates, even from a bundle to itself", async () => {
+    const harness = await setup();
+    for (const [n, moved] of [
+      [31, { type: "UPDATE_APPLIED", from_bundle_id: "X", to_bundle_id: "X" }],
+      [
+        32,
+        { type: "UPDATE_DOWNLOADED", from_bundle_id: "X", to_bundle_id: "X" },
+      ],
+      [33, { type: "RECOVERED", from_bundle_id: "X", to_bundle_id: "X" }],
+      [
+        34,
+        { type: "UPDATE_DOWNLOADED", from_bundle_id: "X", to_bundle_id: "Y" },
+      ],
+    ] as const) {
+      await harness.api.recordEvent(
+        event(n, { ...moved, received_at_ms: halfPast }),
+      );
+    }
+    const bundle = [
+      { field: "from_bundle_id", value: "X", types: ["UPDATE_DOWNLOADED"] },
+      {
+        field: "to_bundle_id",
+        value: "X",
+        types: ["UNCHANGED", "UPDATE_APPLIED", "RECOVERED"],
+      },
+    ] as const;
+    // Whole hours from gauges, then a partial hour from heads.
+    for (const sinceMs of [T0, T0 + 1]) {
+      await expect(
+        harness.api.countLatestEvents({
+          platform: "ios",
+          channel: "production",
+          sinceMs,
+          bundle,
+        }),
+      ).resolves.toBe(4);
+    }
+  });
+
+  it("rejects predicates on both fields that share a type, which the gauges would count twice", async () => {
+    const harness = await setup();
+    await harness.api.recordEvent(
+      event(21, {
+        type: "UPDATE_DOWNLOADED",
+        from_bundle_id: "A",
+        to_bundle_id: "B",
+        received_at_ms: halfPast,
+      }),
+    );
+    await expect(
+      harness.api.countLatestEvents({
+        platform: "ios",
+        channel: "production",
+        sinceMs: T0,
+        bundle: [
+          { field: "from_bundle_id", value: "A", types: ["UPDATE_DOWNLOADED"] },
+          { field: "to_bundle_id", value: "B", types: ["UPDATE_DOWNLOADED"] },
+        ],
+      }),
+    ).rejects.toMatchObject({ code: "invalid-query" });
+  });
+});
 
 describe("insights read budgets", () => {
   const setup = async () => {
@@ -244,5 +313,67 @@ describe("insights read budgets", () => {
       "insights_distribution",
       "insights_sketches",
     ]);
+  });
+});
+
+describe("insights event list windows", () => {
+  const setup = async () => {
+    const harness = await createPluginTestHarness(insights(), {
+      engine,
+      now: () => T0 + DAY,
+    });
+    const provider = createInsightsProvider(createInsightsModel(harness.api));
+    return { harness, provider };
+  };
+
+  it("reads one query per UTC day of a 90-day window and rejects a wider one", async () => {
+    const { harness } = await setup();
+    const input = {
+      filter: { kind: "all" as const },
+      beforeReceivedAtMs: T0 + DAY,
+      limit: 5,
+    };
+    const empty = await harness.measureReads(() =>
+      harness.api.listEvents({ ...input, sinceMs: T0 - 89 * DAY }),
+    );
+    expect(empty.result).toEqual([]);
+    expect(empty.adapter).toMatchObject({ queries: 90, rows: 0 });
+    await expect(
+      harness.api.listEvents({ ...input, sinceMs: T0 - 89 * DAY - 1 }),
+    ).rejects.toMatchObject({ code: "invalid-query" });
+    await expect(harness.api.listEvents(input)).rejects.toMatchObject({
+      code: "invalid-query",
+    });
+  });
+
+  it("pages every event, one window of at most 90 days per call", async () => {
+    const { harness, provider } = await setup();
+    // A full first page, a window with nothing in it, and older events past it.
+    for (const [n, receivedAtMs] of [
+      [1, T0 + 2 * HOUR],
+      [2, T0 + HOUR],
+      [3, T0 - 95 * DAY],
+      [4, T0 - 200 * DAY],
+    ] as const) {
+      await harness.api.recordEvent(event(n, { received_at_ms: receivedAtMs }));
+    }
+    const pages: string[][] = [];
+    const reads: number[] = [];
+    let cursor: string | undefined;
+    do {
+      const measured = await harness.measureReads(() =>
+        provider.listEvents({
+          beforeReceivedAtMs: T0 + DAY,
+          sinceMs: T0 - 250 * DAY,
+          limit: 2,
+          ...(cursor === undefined ? {} : { cursor }),
+        }),
+      );
+      pages.push(measured.result.data.map(({ id }) => id));
+      reads.push(measured.adapter.queries);
+      cursor = measured.result.nextCursor ?? undefined;
+    } while (cursor !== undefined);
+    expect(pages).toEqual([[1, 2].map(uuid), [], [3].map(uuid), [4].map(uuid)]);
+    expect(Math.max(...reads)).toBeLessThanOrEqual(90);
   });
 });

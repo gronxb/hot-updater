@@ -1,17 +1,18 @@
-import type {
-  BundleEventRow,
-  InsightsBundleEventFilter,
-  InsightsCountEventsInput,
-  InsightsCountLatestEventsInput,
-  InsightsFindLatestEventsInput,
-  InsightsGetAppUsageInput,
-  InsightsGetAppUsageResult,
-  InsightsGetReleaseActivityInput,
-  InsightsGetReleaseActivityResult,
-  InsightsListEventsInput,
-  InsightsTimeRange,
-  ReleaseActivityMetrics,
-  ReleaseReference,
+import {
+  DatabasePluginInputError,
+  type BundleEventRow,
+  type InsightsBundleEventFilter,
+  type InsightsCountEventsInput,
+  type InsightsCountLatestEventsInput,
+  type InsightsFindLatestEventsInput,
+  type InsightsGetAppUsageInput,
+  type InsightsGetAppUsageResult,
+  type InsightsGetReleaseActivityInput,
+  type InsightsGetReleaseActivityResult,
+  type InsightsListEventsInput,
+  type InsightsTimeRange,
+  type ReleaseActivityMetrics,
+  type ReleaseReference,
 } from "@hot-updater/plugin-core";
 import {
   countInsightsDistinct,
@@ -20,6 +21,7 @@ import {
 
 import type { HotUpdaterDatabase } from "../../database/database";
 import type { Page } from "../../database/engineReads";
+import { eventListStart } from "../../insights/eventWindow";
 import { insightsIdentity, type InsightsIdentityParts } from "./recordEvent";
 import { DAY_MS, HOUR_MS, type InsightsSchema } from "./schema";
 
@@ -27,8 +29,6 @@ type Db = HotUpdaterDatabase<InsightsSchema>;
 type Parts = Omit<InsightsIdentityParts, "periodKind">;
 
 const PAGE = 500;
-/** How far back a day-partitioned list reads. */
-const LIST_DAYS = 90;
 
 const hourFloor = (ms: number) => ms - (ms % HOUR_MS);
 const hourCeil = (ms: number) => hourFloor(ms + HOUR_MS - 1);
@@ -83,7 +83,11 @@ const scopeOf = (filter: InsightsBundleEventFilter) => ({
   bundle_ref: bundleRef(filter),
 });
 
-/** Newest first over [since, before), after the cursor; day-partitioned lists read at most 90 days. */
+/**
+ * Newest first over [since, before), after the cursor. A day-partitioned
+ * list reads one query per UTC day, so it takes a window of at most 90 days
+ * (`eventListStart`) and rejects a wider one instead of cutting it short.
+ */
 export const listEvents = async (
   db: Db,
   input: InsightsListEventsInput,
@@ -107,11 +111,14 @@ export const listEvents = async (
     });
     return page.rows.map(toEvent);
   }
+  if (since < eventListStart(input)) {
+    throw new DatabasePluginInputError("invalid-query");
+  }
   const rows: BundleEventRow[] = [];
   const top = dayFloor(
     input.after?.receivedAtMs ?? input.beforeReceivedAtMs - 1,
   );
-  const bottom = Math.max(dayFloor(since), top - (LIST_DAYS - 1) * DAY_MS);
+  const bottom = dayFloor(since);
   for (let day = top; day >= bottom && rows.length < limit; day -= DAY_MS) {
     const rest = limit - rows.length;
     const page =
@@ -212,6 +219,36 @@ type Predicate = {
   readonly type: string;
 };
 
+/**
+ * A bundle filter's distinct (field, value, type) predicates. The gauges
+ * count each field on its own, so a head matching predicates on both fields
+ * would count twice: a type may appear under one field only.
+ */
+const latestPredicates = (
+  bundle: InsightsCountLatestEventsInput["bundle"],
+): readonly Predicate[] | undefined => {
+  if (bundle === undefined) return undefined;
+  const fieldOf = new Map<string, Predicate["field"]>();
+  for (const { field, types } of bundle) {
+    for (const type of types) {
+      if ((fieldOf.get(type) ?? field) !== field) {
+        throw new DatabasePluginInputError("invalid-query");
+      }
+      fieldOf.set(type, field);
+    }
+  }
+  return [
+    ...new Map(
+      bundle.flatMap(({ field, value, types }) =>
+        types.map((type) => [
+          JSON.stringify([field, value, type]),
+          { field, value, type },
+        ]),
+      ),
+    ).values(),
+  ];
+};
+
 /** Heads whose latest event falls in [sinceMs, end), a partial hour: those events' installs, then their heads. */
 const countPartialHeads = async (
   db: Db,
@@ -257,19 +294,7 @@ export const countLatestEvents = async (
 ): Promise<number> => {
   const { platform, channel, sinceMs } = input;
   const start = hourCeil(sinceMs);
-  const predicates =
-    input.bundle === undefined
-      ? undefined
-      : [
-          ...new Map(
-            input.bundle.flatMap(({ field, value, types }) =>
-              types.map((type) => [
-                JSON.stringify([field, value, type]),
-                { field, value, type },
-              ]),
-            ),
-          ).values(),
-        ];
+  const predicates = latestPredicates(input.bundle);
   let total = 0;
   if (predicates === undefined) {
     const rows = await drain((page) =>

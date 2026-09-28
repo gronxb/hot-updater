@@ -101,7 +101,9 @@ describe("createConsoleRuntime", () => {
     });
 
     await expect(runtime.insights.status()).resolves.toBe("off");
-    expect(fetchAdmin).toHaveBeenCalledWith("/events?limit=1");
+    expect(fetchAdmin).toHaveBeenCalledWith(
+      expect.stringMatching(/^\/events\?limit=1&sinceMs=\d+$/),
+    );
     expect(runtime.insights.model).toBeNull();
     expect(runtime.apiKeys).toBeNull();
   });

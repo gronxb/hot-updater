@@ -459,6 +459,20 @@ const READ_BUDGETS: readonly ReadBudget[] = [
     returned: (events) => events.length,
   }),
   budget({
+    api: "list events over an empty window: one zero-row query per day, 90 at most",
+    // The 90 days before the history day hold nothing: the widest window read.
+    read: ({ insights }) =>
+      insights.listEvents({
+        filter: { kind: "all" },
+        sinceMs: T0 - 91 * DAY,
+        beforeReceivedAtMs: T0 - DAY,
+        limit: 5,
+      }),
+    adapter: reads(0, 0, 90, 0),
+    engine: { calls: 90, rows: 0 },
+    returned: (events) => events.length,
+  }),
+  budget({
     api: "latest events by install: 1 point read",
     read: ({ insights }) =>
       insights.findLatestEvents({ installId: "install-1" }),

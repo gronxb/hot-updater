@@ -72,9 +72,13 @@ The UI displays them independently and does not clamp them into a ratio.
 Event pages sort descending by `(received_at_ms, id)`, apply filters before a
 limit of at most 101, and use an exclusive keyset cursor. Receipt intervals are
 `[sinceMs, beforeReceivedAtMs)`. Native continuation pages must be exhausted
-before returning a short result. Core does not aggregate raw history. The
-Console keeps previous cursors in session memory; only the current cursor and
-filter bounds appear in its URL.
+before returning a short result. The global and bundle lists read one query
+per UTC day, so one database call covers at most 90 days below the page's top
+and rejects a wider interval. The provider pages through the rest: a short or
+empty page whose 90 days end after `sinceMs` still carries a cursor, which
+resumes below those days. Core does not aggregate raw history. The Console
+keeps previous cursors in session memory; only the current cursor and filter
+bounds appear in its URL.
 
 Latest-state counts use provider-private current entries. SQL and MongoDB count
 compact heads; Firestore uses native latest-document counts. DynamoDB traverses

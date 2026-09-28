@@ -158,6 +158,76 @@ describe("createInsightsProvider", () => {
     );
   });
 
+  it("continues below a 90-day window that ends after the start, even from an empty page", async () => {
+    const DAY = 86_400_000;
+    const cutoff = Date.UTC(2026, 8, 20);
+    const fixture = createModel();
+    fixture.listEvents
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([eventRow(eventId(1), cutoff - 120 * DAY)]);
+    const provider = createInsightsProvider(fixture.model);
+
+    const first = await provider.listEvents({
+      beforeReceivedAtMs: cutoff,
+      sinceMs: cutoff - 150 * DAY,
+      limit: 2,
+    });
+    const second = await provider.listEvents({
+      beforeReceivedAtMs: cutoff,
+      cursor: first.nextCursor ?? undefined,
+      limit: 2,
+    });
+
+    expect(first).toMatchObject({ data: [] });
+    expect(first.nextCursor).not.toBeNull();
+    expect(second.data.map(({ id }) => id)).toEqual([eventId(1)]);
+    expect(second.nextCursor).toBeNull();
+    expect(fixture.listEvents.mock.calls.map(([input]) => input)).toEqual([
+      {
+        beforeReceivedAtMs: cutoff,
+        limit: 2,
+        sinceMs: cutoff - 90 * DAY,
+        filter: { kind: "all" },
+      },
+      {
+        beforeReceivedAtMs: cutoff - 90 * DAY,
+        limit: 2,
+        sinceMs: cutoff - 150 * DAY,
+        filter: { kind: "all" },
+      },
+    ]);
+  });
+
+  it("rejects forged window positions before they reach the database boundary", async () => {
+    const DAY = 86_400_000;
+    const cutoff = Date.UTC(2026, 8, 20);
+    const fixture = createModel();
+    const provider = createInsightsProvider(fixture.model);
+    const first = await provider.listEvents({
+      beforeReceivedAtMs: cutoff,
+      sinceMs: cutoff - 150 * DAY,
+      limit: 1,
+    });
+    const payload = JSON.parse(
+      Buffer.from(first.nextCursor!, "base64url").toString("utf8"),
+    );
+    expect(payload.olderThanMs).toBe(cutoff - 90 * DAY);
+    for (const position of [
+      { olderThanMs: cutoff - 150 * DAY },
+      { olderThanMs: cutoff + 1 },
+      { olderThanMs: 1.5 },
+      { after: { id: eventId(1), receivedAtMs: cutoff - DAY } },
+    ]) {
+      const cursor = Buffer.from(
+        JSON.stringify({ ...payload, ...position }),
+      ).toString("base64url");
+      await expect(provider.listEvents({ cursor })).rejects.toBeInstanceOf(
+        InsightsBadRequestError,
+      );
+    }
+    expect(fixture.listEvents).toHaveBeenCalledOnce();
+  });
+
   it("binds event cursors to their filter", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(1_000);

@@ -145,7 +145,8 @@ describe("createHotUpdater Insights", () => {
           username: "Jane",
         },
       ],
-      nextCursor: null,
+      // The page read 90 days; the cursor goes on to the days before them.
+      nextCursor: expect.any(String),
     });
     expect(installation.status).toBe(200);
     await expect(installation.json()).resolves.toMatchObject({

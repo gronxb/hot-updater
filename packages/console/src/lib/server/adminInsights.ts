@@ -18,6 +18,8 @@ export class InsightsOffError extends Error {
 /** A GET on a self-hosted server's admin handler. */
 export type FetchAdmin = (path: string) => Promise<Response>;
 
+const HOUR_MS = 60 * 60 * 1_000;
+
 const isOff = (response: Response) =>
   response.status === 204 &&
   response.headers.get("x-hot-updater-insights") === "disabled";
@@ -110,8 +112,17 @@ export const createAdminInsightsReads = (fetchAdmin: FetchAdmin) => {
 
   return {
     reads,
-    /** Asks the server whether it runs Insights: one page of one event. */
+    /**
+     * Asks the server whether it runs Insights: one event of the last hour,
+     * so the list reads at most two days.
+     */
     status: async (): Promise<"on" | "off"> =>
-      isOff(await fetchAdmin("/events?limit=1")) ? "off" : "on",
+      isOff(
+        await fetchAdmin(
+          withQuery("/events", { limit: 1, sinceMs: Date.now() - HOUR_MS }),
+        ),
+      )
+        ? "off"
+        : "on",
   };
 };

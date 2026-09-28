@@ -50,7 +50,11 @@ export type InsightsFindLatestEventsInput =
 
 export interface InsightsCountLatestEventsInput extends InsightsScope {
   readonly sinceMs: number;
-  /** Optional OR of one or two fixed predicates; count a matching event once. */
+  /**
+   * Optional OR of one or two fixed predicates; count a matching event once.
+   * Predicates on different fields never share a type, so no latest event
+   * matches two of them.
+   */
   readonly bundle?: readonly {
     readonly field: "from_bundle_id" | "to_bundle_id";
     readonly value: string;
@@ -162,6 +166,9 @@ export interface InsightsModel {
    * Descending (received_at_ms, id), in [sinceMs ?? 0, beforeReceivedAtMs).
    * Apply filters and the exclusive cursor before limit (1..101). Return the
    * complete matching prefix; native continuation pages must not truncate it.
+   * A global or bundle list may reject an interval longer than 90 UTC days
+   * from its top (the cursor, else the cutoff) down to `sinceMs`; callers
+   * page older days with a lower `beforeReceivedAtMs`.
    */
   listEvents(
     input: InsightsListEventsInput,
