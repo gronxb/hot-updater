@@ -1593,36 +1593,6 @@ async function runCell(
     `${cellId}: pending managed transition`,
   );
 
-  cursor = eventCursor(adapter);
-  adapter.clickText("Fail secondary");
-  adapter.clickText("Open detail page");
-  await waitForEvent(
-    adapter,
-    cursor,
-    (event) =>
-      event.event === "runtimeFailed" &&
-      String(event.bundleId) === C.bundleId &&
-      event.pageEntry === "detail.lynx.bundle",
-    "fatal detail after primary confirmation",
-  );
-  await waitForEvent(
-    adapter,
-    cursor,
-    (event) =>
-      event.event === "generationStarted" &&
-      event.reason === "recovery" &&
-      String(event.bundleId) === C.bundleId,
-    "confirmed C detail recovery",
-  );
-  await adapter.waitForText("Bundle C ready");
-  await exerciseDetailPage(adapter, cursor, C, reloadProcess, "C", "close");
-  const confirmedDetailFatalEvents = eventsSince(adapter, cursor);
-  await checkpointRuntimeEvents(
-    adapter,
-    runtimeEventLedger,
-    `${cellId}: confirmed detail fatal`,
-  );
-
   const confirmedInterruptionDeployment = await deploy({
     framework,
     platform,
@@ -1660,15 +1630,15 @@ async function runCell(
     interruptedProcess,
     "Pending-detail process interruption did not replace the OS process",
   );
-  await adapter.waitForText("Detail bundle C ready");
+  await adapter.waitForText("Detail bundle A ready");
   await waitForReadyEvents(
     adapter,
     cursor,
-    C,
+    A,
     confirmedInterruptionRecoveryProcess,
   );
   adapter.clickText("Close detail page");
-  await adapter.waitForText("Bundle C ready");
+  await adapter.waitForText("Bundle A ready");
   const confirmedInterruptionRecoveryEvents = eventsSince(adapter, cursor);
   await checkpointRuntimeEvents(
     adapter,
@@ -1677,6 +1647,14 @@ async function runCell(
   );
   const confirmedInterruptionState = stateForChannel(adapter, channel);
   const postInterruptionProcess = adapter.processId();
+
+  // A confirmed interrupted Release has replaced the stored confirmation.
+  // Recover embedded A, then select eligible C again for the remaining probes.
+  await setReleaseEnabled(confirmedInterruption.releaseId, false);
+  adapter.clickText("Check update");
+  await adapter.waitForText("Update verified and ready to install.");
+  adapter.clickText("Install and reload");
+  await adapter.waitForText("Bundle C ready");
 
   const fatalDeployment = await deploy({
     framework,
@@ -1850,6 +1828,48 @@ async function runCell(
   );
   assert.equal(adapter.processId(), rollbackProcess);
 
+  // Run the confirmed-C fatal probe last: a verified crash must suppress C,
+  // so later rollback and recovery phases cannot keep using it as a baseline.
+  await setReleaseEnabled(C.releaseId, true);
+  cursor = eventCursor(adapter);
+  adapter.clickText("Check update");
+  await adapter.waitForText("Update verified and ready to install.");
+  adapter.clickText("Install and reload");
+  await adapter.waitForText("Bundle C ready");
+  const confirmedFatalBaselineEvents = await exerciseDetailPage(
+    adapter,
+    cursor,
+    C,
+    rollbackProcess,
+    "C",
+    "close",
+  );
+  cursor = eventCursor(adapter);
+  adapter.clickText("Fail secondary");
+  adapter.clickText("Open detail page");
+  await waitForEvent(
+    adapter,
+    cursor,
+    (event) =>
+      event.event === "runtimeFailed" &&
+      String(event.bundleId) === C.bundleId &&
+      event.pageEntry === "detail.lynx.bundle",
+    "fatal detail after primary confirmation",
+  );
+  const confirmedDetailFatalEvents = await closeReconstructedDetailPage(
+    adapter,
+    cursor,
+    A,
+    rollbackProcess,
+    "A",
+  );
+  const confirmedDetailFatalState = stateForChannel(adapter, channel);
+  await checkpointRuntimeEvents(
+    adapter,
+    runtimeEventLedger,
+    `${cellId}: confirmed detail fatal`,
+  );
+
   const allEvents = adapter.readEvents();
   validateAttributedDiagnostics(allEvents);
   const allLogs = adapter.readNativeLogs();
@@ -1918,13 +1938,19 @@ async function runCell(
     allEvents,
     beforePrimaryReplacement,
   );
+  const confirmedFatalBaseline = collectReadyLaunch({
+    phaseEvents: confirmedFatalBaselineEvents,
+    allEvents,
+    build: C,
+    processId: rollbackProcess,
+  });
   const confirmedDetailFatalPending = collectFatalPendingDetailLaunch({
     phaseEvents: confirmedDetailFatalEvents,
     allEvents,
     build: C,
-    processId: reloadProcess,
+    processId: rollbackProcess,
     primaryReady: true,
-    existingLaunch: afterPendingManagedTransition,
+    existingLaunch: confirmedFatalBaseline,
   });
   const confirmedDetailFatalFailure = collectSecondaryFatalFailure(
     confirmedDetailFatalEvents,
@@ -1938,8 +1964,8 @@ async function runCell(
   const confirmedDetailFatalRecovered = collectReadyLaunch({
     phaseEvents: confirmedDetailFatalEvents,
     allEvents,
-    build: C,
-    processId: reloadProcess,
+    build: A,
+    processId: rollbackProcess,
   });
   const confirmedInterruptionLaunch = collectPendingDetailLaunch({
     phaseEvents: confirmedInterruptionAttemptEvents,
@@ -1955,7 +1981,7 @@ async function runCell(
   const confirmedInterruptionRecovered = collectReadyLaunch({
     phaseEvents: confirmedInterruptionRecoveryEvents,
     allEvents,
-    build: C,
+    build: A,
     processId: confirmedInterruptionRecoveryProcess,
   });
   const fatalCandidateLaunch = collectFatalPendingDetailLaunch({
@@ -2096,6 +2122,12 @@ async function runCell(
         ),
       },
       confirmedDetailFatal: {
+        baseline: confirmedFatalBaseline,
+        persistedExclusions: exclusions(
+          confirmedDetailFatalState,
+          "unconfirmed",
+        ),
+        crashedBundleIds: exclusions(confirmedDetailFatalState, "fatal"),
         beforeFailure: confirmedDetailFatalPending,
         failureEvent: confirmedDetailFatalFailure,
         generationRetirement: confirmedDetailFatalRetirement,

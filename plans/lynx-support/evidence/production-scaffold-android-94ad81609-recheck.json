@@ -1,0 +1,75 @@
+{
+  "sourceCommit": "94ad81609899b5a459554011627e0ef59f58c8bb",
+  "binarySha256": "f49e9ebfb3f1cf08fded334fb0f8e5fefe2ce075b5808ca4bebf635544e323e7",
+  "observedAt": "2026-09-28T21:15:56.978170+00:00",
+  "platform": "android",
+  "device": {
+    "serial": "emulator-5560",
+    "pageSize": 16384,
+    "android": "17"
+  },
+  "pid": "12016",
+  "checks": {
+    "detailReadyThreeTimes": true,
+    "javascriptCloseReturnsToMain": true,
+    "systemBackReturnsToMainTwice": true,
+    "mainImageAndFontVisibleAfterBack": true,
+    "screenshotsVisuallyReviewed": true,
+    "sourceOrBinaryChanged": false
+  },
+  "limits": [
+    "Previous black system-back screenshot remains retained; its cause is not established and this successful recheck does not erase it.",
+    "Production app is non-debuggable and device is not rootable; no private generation/context journal is claimed.",
+    "Endpoint is unconfigured; no production network OTA is claimed."
+  ],
+  "artifacts": {
+    "recheck-main.png": {
+      "path": "/tmp/lynx-94ad81609-scaffold-android/recheck-main.png",
+      "sha256": "4caad78a6fbb89cdab8e5d6131f439c1de2f62b8418e6f9f90c45330d3f88c7d"
+    },
+    "recheck-detail.png": {
+      "path": "/tmp/lynx-94ad81609-scaffold-android/recheck-detail.png",
+      "sha256": "bea2c1003bf1975a97d67a53d5940cd90c3771918271d5923765cdc2203d22f2"
+    },
+    "recheck-back.png": {
+      "path": "/tmp/lynx-94ad81609-scaffold-android/recheck-back.png",
+      "sha256": "4caad78a6fbb89cdab8e5d6131f439c1de2f62b8418e6f9f90c45330d3f88c7d"
+    },
+    "recheck-detail-second.png": {
+      "path": "/tmp/lynx-94ad81609-scaffold-android/recheck-detail-second.png",
+      "sha256": "bea2c1003bf1975a97d67a53d5940cd90c3771918271d5923765cdc2203d22f2"
+    },
+    "recheck-js-close.png": {
+      "path": "/tmp/lynx-94ad81609-scaffold-android/recheck-js-close.png",
+      "sha256": "4caad78a6fbb89cdab8e5d6131f439c1de2f62b8418e6f9f90c45330d3f88c7d"
+    },
+    "recheck-detail-third.png": {
+      "path": "/tmp/lynx-94ad81609-scaffold-android/recheck-detail-third.png",
+      "sha256": "bea2c1003bf1975a97d67a53d5940cd90c3771918271d5923765cdc2203d22f2"
+    },
+    "recheck-back-after-js-close.png": {
+      "path": "/tmp/lynx-94ad81609-scaffold-android/recheck-back-after-js-close.png",
+      "sha256": "4caad78a6fbb89cdab8e5d6131f439c1de2f62b8418e6f9f90c45330d3f88c7d"
+    },
+    "recheck-back-activities.txt": {
+      "path": "/tmp/lynx-94ad81609-scaffold-android/recheck-back-activities.txt",
+      "sha256": "1c1bb9c2528fa921e1cd8defa6e0b4a755c40947688048b6ccf1b23a413a9fe2"
+    },
+    "recheck-back-windows.txt": {
+      "path": "/tmp/lynx-94ad81609-scaffold-android/recheck-back-windows.txt",
+      "sha256": "fb18fab120915933fb4e02030e88b376700cb6353b03236e410b04389939687f"
+    },
+    "recheck-back-logcat.txt": {
+      "path": "/tmp/lynx-94ad81609-scaffold-android/recheck-back-logcat.txt",
+      "sha256": "b0bbfd82ed3c710556820028ec61eb8f5e7efc48011a543f5a1076242b583b3e"
+    },
+    "recheck-final-activities.txt": {
+      "path": "/tmp/lynx-94ad81609-scaffold-android/recheck-final-activities.txt",
+      "sha256": "0f72163d541c15851783aaa11341168ff43400b2959e942f335b413ce30dd0d2"
+    },
+    "recheck.pid": {
+      "path": "/tmp/lynx-94ad81609-scaffold-android/recheck.pid",
+      "sha256": "d759b7b2c90f25a9d05ff430fd93e686a69f8a637e2e90b0d0a90d9fa90c719f"
+    }
+  }
+}

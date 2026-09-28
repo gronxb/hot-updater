@@ -1828,6 +1828,25 @@ focused native-policy tests and two integration fingerprint tests pass. The
 complete rebuilt workspace passes 27 build projects, 35 type projects, lint and
 3,908/3,908 unit tests in 350 files, including the subsequent full-run fixes.
 
+The `7cc24042b` public matrix retains zero complete cells. A native button
+selector ambiguity stops the runner after C reconstruction; manually targeting
+the actual button proves both old contexts are rejected. A subsequent real
+confirmed-detail failure exposes duplicate iOS failure classification through
+already-revoked authority. The follow-up records a failure once, preserves its
+durable stack, and reconstructs only a different eligible Bundle/Release identity.
+Recovery from an excluded confirmed Release must report `RECOVERED`, including
+server-to-embedded fallback when the Bundle ID is unchanged. No schema migration
+is introduced. See [the native failure record](./evidence/public-matrix-7cc24042b-failure.json).
+
+Matrix ordering must respect durable selection policy. A confirmed interrupted
+Release recovers to embedded A when no other eligible stored confirmation exists;
+C must then be explicitly selected again. Run the confirmed-C fatal probe last,
+after reverse rollbacks and a real C reactivation. Require embedded A stack
+reconstruction, C Release suppression and C Bundle crash history. A receipt that
+reuses failed C cannot pass. A successful same-binary Android production navigation
+recheck is retained alongside the initial unexplained black screenshot, rather
+than replacing it. Fresh complete device runs remain required.
+
 The historical best full shared result is 51/52 on `f54a3ae47`. The later full
 job `job-20260928181940-4izq1i` on `ca366bcb6` finishes 46/52 (iOS 25/26,
 Android 21/26). It exposes two concrete harness errors: comparing journal bytes

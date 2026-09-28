@@ -608,6 +608,7 @@ function makeRecovery(
   candidate: ReturnType<typeof makeBuild>,
   stable: ReturnType<typeof makeBuild>,
   suffix: string,
+  source = stable,
 ) {
   const processBase =
     kind === "fatal" ? 500 : kind === "confirmed-interruption" ? 600 : 700;
@@ -632,7 +633,7 @@ function makeRecovery(
             failedContextId,
             true,
             false,
-            transitionConfirmation("UPDATE_APPLIED", stable, candidate),
+            transitionConfirmation("UPDATE_APPLIED", source, candidate),
           )
         : makeUnconfirmed(
             candidate,
@@ -645,7 +646,11 @@ function makeRecovery(
     kind === "fatal" ? failedProcessId : String(processBase + 1),
     `${suffix}-recovered-generation`,
     `${suffix}-recovered-context`,
-    transitionConfirmation("RECOVERED", candidate, stable),
+    {
+      ...transitionConfirmation("RECOVERED", candidate, stable),
+      status:
+        kind === "confirmed-interruption" ? "CONFIRMED" : "ALREADY_CONFIRMED",
+    },
   );
   recovered.evaluationSequence = 41;
   recovered.firstContentSequence = 44;
@@ -964,19 +969,28 @@ function makeCell(framework = "react", platform = "ios") {
         },
       },
       confirmedDetailFatal: {
+        baseline: makeReady(
+          C,
+          "400",
+          "generation-confirmed-fatal",
+          "context-confirmed-fatal",
+          transitionConfirmation("UPDATE_APPLIED", serverA, C),
+        ),
+        persistedExclusions: [C.releaseId],
+        crashedBundleIds: [C.bundleId],
         beforeFailure: makeFatalPending(
           C,
-          "300",
-          "generation-pending-new",
-          "context-pending-new",
+          "400",
+          "generation-confirmed-fatal",
+          "context-confirmed-fatal",
           true,
         ),
         failureEvent: {
           runtimeId: C.runtimeId,
-          processId: "300",
-          generationId: "generation-pending-new",
-          contextId: "context-pending-new-secondary",
-          attemptId: "context-pending-new-attempt",
+          processId: "400",
+          generationId: "generation-confirmed-fatal",
+          contextId: "context-confirmed-fatal-secondary",
+          attemptId: "context-confirmed-fatal-attempt",
           bundleId: C.bundleId,
           releaseId: C.releaseId,
           event: "runtimeFailed",
@@ -985,18 +999,21 @@ function makeCell(framework = "react", platform = "ios") {
           generationFailedSequence: 15,
           pageAttemptTerminal: {
             runtimeId: C.runtimeId,
-            processId: "300",
-            generationId: "generation-pending-new",
-            contextId: "context-pending-new-secondary",
-            attemptId: "context-pending-new-attempt",
+            processId: "400",
+            generationId: "generation-confirmed-fatal",
+            contextId: "context-confirmed-fatal-secondary",
+            attemptId: "context-confirmed-fatal-attempt",
             bundleId: C.bundleId,
             releaseId: C.releaseId,
-            pageAttemptId: "context-pending-new-secondary-page-attempt",
+            pageAttemptId: "context-confirmed-fatal-secondary-page-attempt",
             terminal: "verified-fatal",
           },
         },
         generationRetirement: {
-          contextIds: ["context-pending-new", "context-pending-new-secondary"],
+          contextIds: [
+            "context-confirmed-fatal",
+            "context-confirmed-fatal-secondary",
+          ],
           leaseScope: "context",
           expectedLeaseCount: LYNX_MATRIX_RESOURCE_PATHS.length,
           inFlightResourceCount: 0,
@@ -1008,17 +1025,20 @@ function makeCell(framework = "react", platform = "ios") {
           lateOldContextEventCount: 0,
         },
         recovered: makeReady(
-          C,
-          "300",
+          A,
+          "400",
           "generation-confirmed-fatal-recovery",
           "context-confirmed-fatal-recovery",
+          { ...transitionConfirmation("RECOVERED", C, A), status: "CONFIRMED" },
+          true,
         ),
       },
       confirmedInterruptionRecovery: makeRecovery(
         "confirmed-interruption",
         confirmedInterruption,
-        C,
+        A,
         "confirmed-interruption",
+        C,
       ),
       fatalRecovery: makeRecovery("fatal", fatal, C, "fatal"),
       unconfirmedRecovery: makeRecovery(
@@ -1060,6 +1080,26 @@ describe("Lynx public matrix evidence contract", () => {
   it("accepts exact real-observation fields for one complete cell", () => {
     expect(() => validateLynxMatrixCell(makeCell())).not.toThrow();
   });
+
+  it("rejects confirmed fatal recovery into the suppressed C Release", () => {
+    const cell = makeCell();
+    cell.phases.confirmedDetailFatal.recovered = makeReady(
+      cell.builds.C,
+      "300",
+      "invalid-recovery",
+      "invalid-context",
+    );
+    expect(() => validateLynxMatrixCell(cell)).toThrow();
+  });
+
+  it.each(["persistedExclusions", "crashedBundleIds"] as const)(
+    "requires durable %s after a confirmed C detail failure",
+    (field) => {
+      const cell = makeCell();
+      cell.phases.confirmedDetailFatal[field] = [];
+      expect(() => validateLynxMatrixCell(cell)).toThrow();
+    },
+  );
 
   it("requires the reopened detail's exact retirement set in the retained primary generation", () => {
     const cell = makeCell();

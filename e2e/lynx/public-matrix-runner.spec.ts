@@ -443,7 +443,10 @@ describe("Lynx public matrix runner", () => {
         },
         "Trigger diagnostic",
       ),
-    ).toEqual({ kind: "semantic" });
+    ).toEqual({
+      kind: "semantic",
+      selector: 'label="Trigger diagnostic" role=button',
+    });
     expect(() =>
       iosActionTarget(
         {
@@ -460,6 +463,29 @@ describe("Lynx public matrix runner", () => {
         "Open detail page",
       ),
     ).toThrow("no tappable bounds");
+  });
+
+  it("targets the native button when its container repeats the action label", () => {
+    const button = {
+      type: "Button",
+      label: "Verify stale after reload",
+      hittable: true,
+      rect: { x: 0, y: 62, width: 57, height: 30 },
+    };
+    const container = {
+      ...button,
+      type: "Other",
+      rect: { x: 0, y: 62, width: 402, height: 778 },
+    };
+    expect(
+      iosActionTarget({ data: { nodes: [container, button] } }, button.label),
+    ).toEqual({
+      kind: "semantic",
+      selector: 'label="Verify stale after reload" role=button',
+    });
+    expect(() =>
+      iosActionTarget({ data: { nodes: [button, button] } }, button.label),
+    ).toThrow("Expected exactly one iOS action");
   });
 
   it("rejects an offscreen Lynx action even when accessibility calls it hittable", () => {

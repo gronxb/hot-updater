@@ -52,9 +52,11 @@ export function formatAppleLogStart(value) {
 }
 
 export function iosActionTarget(snapshot, label) {
-  const matches = snapshot?.data?.nodes?.filter(
+  const labelled = snapshot?.data?.nodes?.filter(
     (node) => String(node.label ?? "") === label,
   );
+  const buttons = labelled?.filter((node) => node.type === "Button");
+  const matches = buttons?.length ? buttons : labelled;
   if (!matches || matches.length !== 1) {
     throw new Error(
       `Expected exactly one iOS action ${label}, found ${matches?.length ?? 0}`,
@@ -89,7 +91,12 @@ export function iosActionTarget(snapshot, label) {
     }
     parentIndex = parent.parentIndex;
   }
-  if (node.hittable === true) return { kind: "semantic" };
+  if (node.hittable === true) {
+    return {
+      kind: "semantic",
+      selector: `label=${JSON.stringify(label)} role=button`,
+    };
+  }
   return {
     kind: "coordinates",
     x: Math.floor(centerX),
@@ -395,7 +402,7 @@ class IOSAdapter {
   clickText(text) {
     const target = iosActionTarget(this.snapshot(), text);
     if (target.kind === "semantic") {
-      this.device(["find", text, "click"]);
+      this.device(["press", target.selector]);
       return;
     }
     this.device(["press", String(target.x), String(target.y)]);

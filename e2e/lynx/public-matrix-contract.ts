@@ -1651,6 +1651,7 @@ function recovery(
   candidateBuild: JsonRecord,
   stableBuild: JsonRecord,
   at: string,
+  sourceBuild: JsonRecord = stableBuild,
 ) {
   const item = record(value, at);
   exactString(item.kind, kind, `${at}.kind`);
@@ -1702,10 +1703,10 @@ function recovery(
       {
         kind: "UPDATE_APPLIED",
         from: {
-          bundleId: string(stableBuild.bundleId, "stableBuild.bundleId"),
+          bundleId: string(sourceBuild.bundleId, "sourceBuild.bundleId"),
           releaseId: nullableString(
-            stableBuild.releaseId,
-            "stableBuild.releaseId",
+            sourceBuild.releaseId,
+            "sourceBuild.releaseId",
           ),
         },
         to: candidate,
@@ -1837,7 +1838,7 @@ function recovery(
   }
   nativeConfirmation(
     recovered.confirmation,
-    "ALREADY_CONFIRMED",
+    kind === "confirmed-interruption" ? "CONFIRMED" : "ALREADY_CONFIRMED",
     {
       kind: "RECOVERED",
       from: candidate,
@@ -2564,6 +2565,21 @@ export function validateLynxMatrixCell(value: unknown): void {
     phases.confirmedDetailFatal,
     "cell.phases.confirmedDetailFatal",
   );
+  const confirmedFatalBaseline = readyLaunch(
+    confirmedFatal.baseline,
+    c,
+    "cell.phases.confirmedDetailFatal.baseline",
+  );
+  nativeConfirmation(
+    confirmedFatalBaseline.confirmation,
+    "CONFIRMED",
+    {
+      kind: "UPDATE_APPLIED",
+      from: { bundleId: serverA.bundleId, releaseId: serverA.releaseId },
+      to: { bundleId: c.bundleId, releaseId: c.releaseId },
+    },
+    "cell.phases.confirmedDetailFatal.baseline.confirmation",
+  );
   const beforeConfirmedFatal = fatalPendingLaunch(
     confirmedFatal.beforeFailure,
     c,
@@ -2576,12 +2592,13 @@ export function validateLynxMatrixCell(value: unknown): void {
   );
   if (
     JSON.stringify(beforeConfirmedFatal.identity) !==
-      JSON.stringify(pendingAfter.identity) ||
-    beforeConfirmedFatal.contextIds[0] !== pendingAfter.identity.contextId
+      JSON.stringify(confirmedFatalBaseline.identity) ||
+    beforeConfirmedFatal.contextIds[0] !==
+      confirmedFatalBaseline.identity.contextId
   ) {
     fail(
       "cell.phases.confirmedDetailFatal.beforeFailure",
-      "must be the confirmed post-pending-transition generation",
+      "must be the confirmed reactivated C generation",
     );
   }
   const confirmedFailure = identity(
@@ -2660,15 +2677,42 @@ export function validateLynxMatrixCell(value: unknown): void {
   );
   const confirmedFatalRecovered = readyLaunch(
     confirmedFatal.recovered,
-    c,
+    a,
     "cell.phases.confirmedDetailFatal.recovered",
   );
   nativeConfirmation(
     confirmedFatalRecovered.confirmation,
-    "ALREADY_CONFIRMED",
-    null,
+    "CONFIRMED",
+    {
+      kind: "RECOVERED",
+      from: { bundleId: c.bundleId, releaseId: c.releaseId },
+      to: { bundleId: a.bundleId, releaseId: a.releaseId },
+    },
     "cell.phases.confirmedDetailFatal.recovered.confirmation",
   );
+  boolean(
+    confirmedFatalRecovered.reconstructedStack,
+    true,
+    "cell.phases.confirmedDetailFatal.recovered.reconstructedStack",
+  );
+  const confirmedFatalExclusions = stringArray(
+    confirmedFatal.persistedExclusions,
+    "cell.phases.confirmedDetailFatal.persistedExclusions",
+  );
+  const confirmedFatalCrashes = stringArray(
+    confirmedFatal.crashedBundleIds,
+    "cell.phases.confirmedDetailFatal.crashedBundleIds",
+  );
+  if (
+    !confirmedFatalExclusions.includes(c.releaseId) ||
+    !confirmedFatalCrashes.includes(c.bundleId) ||
+    confirmedFatalCrashes.includes(a.bundleId)
+  ) {
+    fail(
+      "cell.phases.confirmedDetailFatal",
+      "must suppress C and preserve embedded A",
+    );
+  }
   if (
     confirmedFatalRecovered.identity.processId !==
       beforeConfirmedFatal.identity.processId ||
@@ -2687,8 +2731,9 @@ export function validateLynxMatrixCell(value: unknown): void {
     phases.confirmedInterruptionRecovery,
     "confirmed-interruption",
     confirmedInterruption,
-    c,
+    a,
     "cell.phases.confirmedInterruptionRecovery",
+    c,
   );
   recovery(
     phases.fatalRecovery,
@@ -2759,6 +2804,17 @@ export function validateLynxMatrixCell(value: unknown): void {
     serverA,
     "cell.phases.reverseRollback.bToA.launch",
   );
+  if (
+    confirmedFatalBaseline.identity.processId !==
+      rollbackA.identity.processId ||
+    confirmedFatalBaseline.identity.generationId ===
+      rollbackA.identity.generationId
+  ) {
+    fail(
+      "cell.phases.confirmedDetailFatal.baseline",
+      "must reactivate C after rollback in the same process",
+    );
+  }
   nativeConfirmation(
     rollbackA.confirmation,
     "CONFIRMED",

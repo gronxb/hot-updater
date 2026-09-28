@@ -715,6 +715,15 @@ final class LynxControllerLocalTests: XCTestCase {
         controller = try LynxController(configuration: config)
         context = controller!.createContext(primary: true)
         XCTAssertEqual(try controller!.begin(context).bundleId, embeddedId)
+        try controller!.observedContent(context)
+        var confirmation: LynxConfirmationResult?
+        controller!.notifyAppReady(context) { confirmation = try? $0.get() }
+        XCTAssertEqual(confirmation?.status, "CONFIRMED")
+        XCTAssertEqual(confirmation?.transition?.kind, "RECOVERED")
+        XCTAssertEqual(confirmation?.transition?.from.bundleId, bundleB)
+        XCTAssertEqual(confirmation?.transition?.from.releaseId, releaseB)
+        XCTAssertEqual(confirmation?.transition?.to.bundleId, embeddedId)
+        XCTAssertNil(confirmation?.transition?.to.releaseId)
     }
 
     func testDurableConfirmationFailureDoesNotAdoptTheCandidate() throws {

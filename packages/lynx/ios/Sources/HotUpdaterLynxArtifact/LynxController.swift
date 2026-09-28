@@ -334,6 +334,29 @@ public final class LynxController {
             }
             recoveredChanged = true
         }
+        // A confirmed Release can fail a later page admission. Its durable
+        // suppression still identifies recovery after its startup pending
+        // record has been cleared.
+        if failedPendingSelection == nil,
+           let confirmed = recovered.confirmed,
+           let releaseId = try confirmed.policy.releaseId,
+           recovered.unconfirmedReleaseIds.contains(releaseId) {
+            failedPendingSelection = confirmed
+            if recoveredPages.isEmpty,
+               let terminal = recovered.pageAttemptTerminals?.last(where: {
+                   $0.terminal == "verified-fatal"
+                       && (try? Self.sameIdentity($0.selection.policy, confirmed.policy)) == true
+               }) {
+                recoveredPages = terminal.stack.map {
+                    LynxManagedLogicalPage(
+                        entry: $0.entry,
+                        parameters: $0.parameters.map {
+                            .init(name: $0.name, value: $0.value)
+                        }
+                    )
+                }
+            }
+        }
         if recoveredPages.isEmpty,
            let transition = recovered.managedTransition {
             recoveredPages = transition.stack.map {

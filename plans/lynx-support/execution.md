@@ -1077,3 +1077,46 @@ and JavaScript close are visible. The system-back screenshot is black despite
 the primary Activity being reported resumed; keep that check open for diagnosis.
 Do not count this as completed Android scaffold acceptance. The non-root,
 non-debuggable production app does not expose its private journal for extraction.
+
+
+## 2026-09-29 confirmed generation recovery and native action targeting
+
+The full shared job `job-20260928211636-6hdwci` is queued after green PR checks;
+its actual checkout commit must be read when it starts. No new shared pass count
+is available. The latest completed result remains 50/52 on `a5bb32fb3`.
+
+The fresh `7cc24042b` public matrix completes React/iOS A-to-B offline activation
+and B-to-C reconstruction, then stops because the automation matches both a
+native button and its container. A manual role-qualified button action on the
+unchanged binary produces both expected stale-context rejections. A subsequent
+real confirmed-C detail-fatal probe exposes a package error: iOS records the
+fatal page, then tries to classify the same failure again through revoked
+context authority. The retained native record ends in `terminalPersistenceFailed`
+with `STALE_CONTEXT`. See `evidence/public-matrix-7cc24042b-failure.json`.
+
+The host now skips duplicate classification for already-persisted failures and
+compares full Bundle/Release identity before reconstructing a fallback. A server
+Release for the embedded Bundle can therefore recover to the embedded selection;
+a failed embedded selection cannot reopen itself. The controller recognizes a
+suppressed confirmed Release as recovery and retains its verified-fatal page
+stack from the durable terminal record. This uses existing state fields and adds
+no migration. A failing-before native regression distinguishes `RECOVERED` from
+an ordinary update. Swift validation executes 137 tests, 13 skipped and zero
+failures; the focused matrix suites pass 135/135. The complete workspace passes
+3,919/3,919 unit tests in 350 files, all 35 type projects, and lint.
+
+The matrix's old confirmed-failure expectations also conflict with the PRD:
+a confirmed interrupted Release has replaced the stored confirmation, and a
+verified fatal C must be excluded. The interruption phase now observes embedded
+A recovery and explicitly selects eligible C again. The confirmed-C fatal probe
+runs after reverse rollbacks, reactivates C through the public SDK, then requires
+embedded A reconstruction, durable Release suppression, and Bundle crash history.
+It cannot reuse C as the recovered selection. Native action selection specifies
+the button role and still rejects multiple actual buttons.
+
+The unchanged Android production `94ad81609` APK subsequently shows three real
+detail openings, JavaScript close and two successful system backs with main
+image/font content and unchanged PID. Retain the successful recheck separately
+from the initial unexplained black screenshot; no app or package workaround was
+added. Neither production scaffold smoke claims network OTA with its endpoint
+unconfigured. See `evidence/production-scaffold-android-94ad81609-recheck.json`.

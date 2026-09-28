@@ -202,16 +202,14 @@ public final class HotUpdaterSparklingHost: NSObject {
                 : "startupRecovery")
             return navigation
         } catch {
-            if controller.runningSelection.bundleId
-                != configuration.controller.embeddedBundleId {
-                recoverReconstruction(
-                    logical,
-                    navigation: navigation,
-                    transitionId: controller.managedTransitionId,
-                    message: error.localizedDescription
-                )
-                if !closed, !pages.isEmpty { return navigation }
-            }
+            recoverReconstruction(
+                logical,
+                navigation: navigation,
+                transitionId: controller.managedTransitionId,
+                message: error.localizedDescription,
+                failureRecorded: error is ManagedPageConstructionError
+            )
+            if !closed, !pages.isEmpty { return navigation }
             failClosed(
                 reason: "initialAttachFailed",
                 message: error.localizedDescription
@@ -353,7 +351,8 @@ public final class HotUpdaterSparklingHost: NSObject {
                 logical,
                 navigation: navigationController,
                 transitionId: acceptance.transitionId,
-                message: error.localizedDescription
+                message: error.localizedDescription,
+                failureRecorded: error is ManagedPageConstructionError
             )
         }
     }
@@ -362,12 +361,14 @@ public final class HotUpdaterSparklingHost: NSObject {
         _ logical: [LynxManagedLogicalPage],
         navigation: HotUpdaterSparklingViewController,
         transitionId: String?,
-        message: String
+        message: String,
+        failureRecorded: Bool = false
     ) {
-        let mayRetry = controller.runningSelection.bundleId
-            != configuration.controller.embeddedBundleId
+        let failedSelection = controller.runningSelection
         do {
-            _ = try recordGenerationFailure()
+            if !failureRecorded {
+                _ = try recordGenerationFailure()
+            }
         } catch {
             transitionInFlight = nil
             failClosed(
@@ -376,14 +377,15 @@ public final class HotUpdaterSparklingHost: NSObject {
             )
             return
         }
-        retireCurrentGeneration(reason: "reconstructionRecovery")
-        guard mayRetry else {
-            transitionInFlight = nil
-            failClosed(reason: "embeddedFailure", message: message)
-            return
-        }
+        retireCurrentGeneration(reason: "recovery")
         do {
             try startGeneration()
+            guard controller.runningSelection.bundleId != failedSelection.bundleId
+                || controller.runningSelection.releaseId != failedSelection.releaseId else {
+                transitionInFlight = nil
+                failClosed(reason: "embeddedFailure", message: message)
+                return
+            }
             try buildStack(logical, in: navigation)
             transitionInFlight = nil
             emitGenerationStarted(
@@ -459,7 +461,8 @@ public final class HotUpdaterSparklingHost: NSObject {
                 stack,
                 navigation: navigationController,
                 transitionId: controller.managedTransitionId,
-                message: error.localizedDescription
+                message: error.localizedDescription,
+                failureRecorded: true
             )
             throw error
         }
@@ -716,7 +719,8 @@ public final class HotUpdaterSparklingHost: NSObject {
             logical,
             navigation: navigationController,
             transitionId: controller.managedTransitionId,
-            message: failure.message
+            message: failure.message,
+            failureRecorded: true
         )
     }
 

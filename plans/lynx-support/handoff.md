@@ -1,5 +1,18 @@
 # Lynx support handoff and completion plan
 
+Latest follow-up (2026-09-29): shared job `job-20260928211636-6hdwci` remains
+queued, actual checkout pending. The `7cc24042b` matrix stops at an ambiguous
+native button after React/iOS C reconstruction (zero complete cells). Manual
+role-qualified targeting verifies both stale contexts, then a real confirmed-C
+detail fatal exposes iOS duplicate failure classification. The current changes
+fix that package path and recovery classification, align matrix failure selection
+with durable suppression, and pass 135 focused matrix tests plus Swift's 137
+executed tests (13 skipped). Fresh native matrix builds and device runs are next.
+The successful Android same-APK navigation recheck is retained separately from
+its earlier unexplained black screenshot. Read the final execution checkpoint
+and `evidence/public-matrix-7cc24042b-failure.json` before resuming.
+
+
 Updated: 2026-09-29 (Asia/Seoul).
 
 Latest execution checkpoint: shared full job `job-20260928195209-rzyw0v` finishes
