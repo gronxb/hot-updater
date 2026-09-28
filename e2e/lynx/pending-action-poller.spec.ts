@@ -20,6 +20,36 @@ afterEach(() => {
 });
 
 describe("Lynx pending-action poller", () => {
+  it("continues capturing evidence after a 28-second native stack diagnostic", async () => {
+    vi.useFakeTimers();
+    const stackCreation = deferred<void>();
+    const capture = vi.fn(async () => undefined);
+    const onActionTimeout = vi.fn(async () => undefined);
+    let testID = "action-exercise-navigation-stack-boundary";
+    const poller = createPendingActionPoller({
+      fetchState: async () => response({ action: { testID } }),
+      getActionHandlers: () => ({
+        "action-exercise-navigation-stack-boundary": () =>
+          stackCreation.promise,
+        "action-capture-generation-events": capture,
+      }),
+      getPendingActionURL: () => "http://control.test/e2e/pending-action",
+      markHandled: vi.fn(),
+      navigateToTestId: vi.fn(),
+      onActionTimeout,
+    });
+
+    const first = poller.pollOnce();
+    await vi.advanceTimersByTimeAsync(28_000);
+    stackCreation.resolve();
+    await first;
+    testID = "action-capture-generation-events";
+    await poller.pollOnce();
+
+    expect(onActionTimeout).not.toHaveBeenCalled();
+    expect(capture).toHaveBeenCalledOnce();
+  });
+
   it("serializes concurrent polls before the slow peek resolves", async () => {
     const peek = deferred<ReturnType<typeof response>>();
     const handler = vi.fn(async () => undefined);

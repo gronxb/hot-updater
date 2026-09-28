@@ -107,6 +107,32 @@ remaining implementation, diagnosis, and verification are performed here.
 - Neutral CLI policy was moved behind integration hooks in `0c76a3d71` and
   `a18776c50`; focused common CLI/RN/Expo suites passed 521/146/44 tests.
 
+## Latest September 29 validation
+
+- `job-20260928154852-ej3uiq` on `d689f46d6` is terminal **46/52**
+  (iOS 25/26, Android 21/26). Historical best remains 51/52.
+- `job-20260928162042-ocwb3m` started on `aa2ade4c3`, which includes the
+  navigation and startup fixes. Its native builds are running. It does not
+  contain the subsequent poller deadline or matrix status corrections below.
+- The Android stack diagnostic took 28,149 ms, exceeding the poller's old
+  20-second deadline. Native journal sequence 215 proves all pages closed to
+  main, but the halted poller could not publish the follow-up evidence. The
+  deadline now matches the driver's 60-second bound. A regression fails before
+  this fix and passes afterward.
+- The public matrix build on `7a3ced5f2` passes both native builds. The device run
+  completes iOS depth-16 native back but fails on a stale UI status expectation.
+  Retained-page waits now preserve diagnostic/error text and check the main page
+  alongside unchanged native evidence assertions. Poller/matrix/bootstrap/driver
+  suites pass 189/189; example type checks pass. Rebuild and rerun the matrix.
+- `aa2ade4c3` fixes the CLI doctor's cross-package test type root. Doctor tests
+  pass 57/57, all 35 workspace type checks pass, and workspace lint passes.
+  Integration tests are still running with DynamoDB and MySQL timeouts; inspect
+  `/tmp/lynx-7a3ced5-workspace-integration.log` before counting any acceptance.
+- The production iOS wrapper was interrupted during its cold build to allow
+  these source changes. Resume it after committing; its current output is not
+  a successful artifact receipt. Keep the dedicated matrix simulator and
+  16 KB emulator separate from the bot's devices.
+
 ## Current implementation checkpoint
 
 The September 13 PRD contains the user's final decisions: three equal framework

@@ -45,7 +45,9 @@ export function createPendingActionPoller(options: {
   readonly onActionTimeout: () => Promise<void>;
   readonly pollIntervalMs?: number;
 }) {
-  const actionTimeoutMs = options.actionTimeoutMs ?? 20_000;
+  // Match the driver's action deadline; creating the full native stack can
+  // take more than 20 seconds before its diagnostic receipt is published.
+  const actionTimeoutMs = options.actionTimeoutMs ?? 60_000;
   const fetchTimeoutMs = options.fetchTimeoutMs ?? 5_000;
   const pollIntervalMs = options.pollIntervalMs ?? 200;
   let pollInFlight: Promise<void> | null = null;

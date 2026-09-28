@@ -562,3 +562,47 @@ The combined bootstrap, runtime-observation, and driver suites pass 80/80;
 example type checks, targeted lint, and formatting also pass. The current full
 job does not contain either startup fix or the iOS navigation fix. Its final
 result and a new full run on the fixes remain required.
+
+## 2026-09-29 completed baseline and harness corrections
+
+Full job `job-20260928154852-ej3uiq` on `d689f46d6` finishes **46/52**:
+iOS 25/26 and Android 21/26. Failures are iOS `sparkling-multipage-ota`, and
+Android `multi-asset-replacement`, `release-ota-recovery`,
+`republished-crashed-bundle-skipped`, `runtime-channel-crash-restore`, and
+`sparkling-multipage-ota`. This does not replace the historical best of 51/52.
+The current follow-up, `job-20260928162042-ocwb3m`, resolves its source when it
+starts and is building `aa2ade4c3`, including the navigation and startup fixes.
+
+The Android stack failure has independent native evidence: the retained journal
+contains all 15 `routeClosed` events, ending at sequence 215 with only
+`main.lynx.bundle`. Its stack diagnostic took 28,149 ms, exceeding the E2E
+poller's 20-second action timeout. That timeout permanently halted the main
+page poller, so the final capture request remained unanswered. The poller now
+uses the same bounded 60-second deadline as the driver. A regression reproduces
+the 28-second diagnostic and lost subsequent capture before the fix, then
+passes afterward; serialization and the explicit hung-action timeout remain.
+
+A clean two-platform public matrix build on `7a3ced5f2` passes source integrity.
+Its iOS app tree is `eb92c01b595cedf84f0c04b12ea08c656d4a58117c12897ce3be120a934e73a3`;
+its ARM64 device APK is `b68d0f04b594a4fc5dc8a636f2e7c4f870863a4da9d0420744b0ed3cb856b467`.
+All 14 packaged ARM64 native libraries are uncompressed and have ELF LOAD
+alignment of at least 16 KB; APK ZIP alignment also passes. The dedicated
+Android device reports a 16,384-byte page size. The earlier two-ABI packaging
+checks remain separate evidence.
+
+That public matrix reaches iOS native stack depth 16 and completes all 15 real
+back gestures, but then fails because the retained main page still correctly
+shows its runtime-capture status instead of the initial readiness text. The
+runner now checks the retained main page identity after diagnostics and rejected
+installs, preserving the native readiness, stack, process, generation, and
+install-rejection assertions. The six-cell run must be repeated. The combined
+poller, public matrix, bootstrap, and driver suites pass 189/189 after these
+corrections; example type checks pass.
+
+The common CLI doctor test previously imported RN implementation source into the
+CLI TypeScript root. Commit `aa2ade4c3` loads the real integration using the
+existing cross-package test convention. All 57 doctor tests, all 35 workspace
+type-check projects, and workspace lint pass. The workspace integration suite
+is still running and has reported a DynamoDB test timeout and a MySQL setup
+timeout; it is not green. The production iOS build was interrupted to commit
+these harness corrections with an intact source attestation and must resume.

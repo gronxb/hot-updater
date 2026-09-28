@@ -787,7 +787,10 @@ async function exerciseNativeDiagnostics(adapter: any, displayVariant: string) {
       `native stack close from depth ${depth}`,
     );
   }
-  await adapter.waitForText(`Bundle ${displayVariant} ready`);
+  // The retained main page still shows its runtime-capture status. Its native
+  // readiness and each completed stack pop are verified independently.
+  await adapter.waitForText(`Bundle ${displayVariant}`);
+  await adapter.waitForText("Open detail page");
 
   cursor = adapter.readDiagnostics().length;
   adapter.clickText("Exercise event boundaries");
@@ -1064,7 +1067,9 @@ async function rejectRawDetailTarget(
     if (mode === "missing") await fsp.rename(moved, detail.file);
     else await fsp.writeFile(detail.file, original);
   }
-  await adapter.waitForText(`Bundle ${displayVariant} ready`);
+  // A rejected install preserves the main page and its failure message.
+  await adapter.waitForText(`Bundle ${displayVariant}`);
+  await adapter.waitForText("Open detail page");
   assert.equal(adapter.processId(), processBefore);
   const eventsAfter = adapter.readEvents();
   const generationAfter = eventsAfter.findLast(
@@ -1221,7 +1226,8 @@ async function rejectCrossProvenanceTarget(
     requestCountAfterFirst,
     "Cached cross-provenance rejection downloaded the artifact again",
   );
-  await adapter.waitForText(`Bundle ${displayVariant} ready`);
+  await adapter.waitForText(`Bundle ${displayVariant}`);
+  await adapter.waitForText("Open detail page");
   assert.equal(adapter.processId(), processId);
   const eventsAfter = adapter.readEvents();
   const generationAfter = eventsAfter.findLast(

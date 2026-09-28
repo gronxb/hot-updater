@@ -1532,6 +1532,12 @@ and client authority. The runtime marker used by the driver is published only
 after startup confirmation; `STARTING`, startup errors, and a bundle about to
 execute the crash fixture must not satisfy the driver's ready condition. Native
 recovery evidence must remain correlated with that ready runtime's marker.
+The pending-action deadline must match the driver's bounded 60-second wait,
+including native stack diagnostics; a successful long-running diagnostic must
+not permanently disable later evidence capture. When returning to a retained
+main page, matrix checks use its page identity and native readiness evidence.
+Diagnostic output and installation errors remain visible instead of being
+mistaken for missing readiness or reset to a synthetic success message.
 
 The required agent invocation is `hot-updater-agent verify -platform full -profile standalone-kysely -env-target examples/lynx/.env.hotupdater`. Both iOS
 and Android children must execute the repository's shipped `e2e:lynx` runner,
