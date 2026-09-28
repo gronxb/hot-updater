@@ -2210,7 +2210,15 @@ async function runCell(
     },
     passed: true,
   };
-  validateLynxMatrixCell(receipt);
+  try {
+    validateLynxMatrixCell(receipt);
+  } catch (error) {
+    await fsp.writeFile(
+      path.join(cellDir, "failed-receipt.json"),
+      `${JSON.stringify({ ...receipt, passed: false, validationError: String(error) }, null, 2)}\n`,
+    );
+    throw error;
+  }
   await fsp.writeFile(
     path.join(cellDir, "receipt.json"),
     `${JSON.stringify(receipt, null, 2)}\n`,

@@ -1,0 +1,404 @@
+{
+  "jobId": "job-20260928211636-6hdwci",
+  "nativeSetupCommit": "6dc6352db14392126f71c63015ba434bf6c4093a",
+  "runnerCommit": "1dcf23cf5aecf829871fd02157ab3e2b1e40e1d1",
+  "sourceNote": "The bot resolves the branch again when runner worktrees are created. Native sources match between these two commits, but this is not a single-commit acceptance run.",
+  "profile": "standalone-kysely",
+  "envTarget": "examples/lynx/.env.hotupdater",
+  "passed": 45,
+  "failed": 7,
+  "total": 52,
+  "byPlatform": {
+    "ios": {
+      "passed": 20,
+      "total": 26
+    },
+    "android": {
+      "passed": 25,
+      "total": 26
+    }
+  },
+  "logs": [
+    {
+      "shard": "ios-s1",
+      "file": "job-20260928211636-6hdwci-ios-s1.log",
+      "sha256": "c3e6b90245b3bbf78f97461d28d224c221fead21f6de7dada40192414d403e44"
+    },
+    {
+      "shard": "ios-s2",
+      "file": "job-20260928211636-6hdwci-ios-s2.log",
+      "sha256": "572bb11990cc85d1164513ad535f9d4fb49c5ac352f024756d1b4f45008946b9"
+    },
+    {
+      "shard": "android-s1",
+      "file": "job-20260928211636-6hdwci-android-s1.log",
+      "sha256": "6d350b1cb7998c752d5d73e7ff96d57eb9a9d87c78f00a4721f2a545d7c85c77"
+    },
+    {
+      "shard": "android-s2",
+      "file": "job-20260928211636-6hdwci-android-s2.log",
+      "sha256": "7ee813d94355a30ef5060d117393844777bfd2ef39ffbf65355440d0217c48f3"
+    }
+  ],
+  "scenarios": [
+    {
+      "platform": "ios",
+      "scenario": "multi-asset-replacement",
+      "status": "passed",
+      "shard": "ios-s1"
+    },
+    {
+      "platform": "ios",
+      "scenario": "bspatch-archive-to-diff-ota",
+      "status": "passed",
+      "shard": "ios-s1"
+    },
+    {
+      "platform": "ios",
+      "scenario": "bspatch-disabled-chain-rollback",
+      "status": "passed",
+      "shard": "ios-s1"
+    },
+    {
+      "platform": "ios",
+      "scenario": "numeric-cohort-rollout",
+      "status": "passed",
+      "shard": "ios-s1"
+    },
+    {
+      "platform": "ios",
+      "scenario": "target-cohorts-only",
+      "status": "passed",
+      "shard": "ios-s1"
+    },
+    {
+      "platform": "ios",
+      "scenario": "targeted-cohort-switchback",
+      "status": "passed",
+      "shard": "ios-s1"
+    },
+    {
+      "platform": "ios",
+      "scenario": "disabled-bundle-rollback-to-builtin",
+      "status": "passed",
+      "shard": "ios-s1"
+    },
+    {
+      "platform": "ios",
+      "scenario": "fingerprint-initial-install",
+      "status": "failed",
+      "shard": "ios-s1"
+    },
+    {
+      "platform": "ios",
+      "scenario": "same-bundle-release-adoption",
+      "status": "passed",
+      "shard": "ios-s1"
+    },
+    {
+      "platform": "ios",
+      "scenario": "stale-catalog-after-newer-generation",
+      "status": "passed",
+      "shard": "ios-s1"
+    },
+    {
+      "platform": "ios",
+      "scenario": "failed-download-same-generation-retry",
+      "status": "passed",
+      "shard": "ios-s1"
+    },
+    {
+      "platform": "ios",
+      "scenario": "crash-then-next-safe-update",
+      "status": "failed",
+      "shard": "ios-s1"
+    },
+    {
+      "platform": "ios",
+      "scenario": "ten-crash-history-safe-bundle",
+      "status": "passed",
+      "shard": "ios-s1"
+    },
+    {
+      "platform": "ios",
+      "scenario": "release-ota-recovery",
+      "status": "failed",
+      "shard": "ios-s2"
+    },
+    {
+      "platform": "ios",
+      "scenario": "bspatch-consecutive-diff-ota",
+      "status": "passed",
+      "shard": "ios-s2"
+    },
+    {
+      "platform": "ios",
+      "scenario": "bspatch-manifest-diff-fallback",
+      "status": "passed",
+      "shard": "ios-s2"
+    },
+    {
+      "platform": "ios",
+      "scenario": "runtime-channel-switch-reset",
+      "status": "passed",
+      "shard": "ios-s2"
+    },
+    {
+      "platform": "ios",
+      "scenario": "target-cohorts-rollout-interaction",
+      "status": "passed",
+      "shard": "ios-s2"
+    },
+    {
+      "platform": "ios",
+      "scenario": "force-update-auto-reload",
+      "status": "passed",
+      "shard": "ios-s2"
+    },
+    {
+      "platform": "ios",
+      "scenario": "disabled-bundle-rollback-to-previous-ota",
+      "status": "passed",
+      "shard": "ios-s2"
+    },
+    {
+      "platform": "ios",
+      "scenario": "catalog-only-no-update",
+      "status": "passed",
+      "shard": "ios-s2"
+    },
+    {
+      "platform": "ios",
+      "scenario": "size-aware-artifact-selection",
+      "status": "passed",
+      "shard": "ios-s2"
+    },
+    {
+      "platform": "ios",
+      "scenario": "slow-old-artifact-after-newer-install",
+      "status": "passed",
+      "shard": "ios-s2"
+    },
+    {
+      "platform": "ios",
+      "scenario": "republished-crashed-bundle-skipped",
+      "status": "failed",
+      "shard": "ios-s2"
+    },
+    {
+      "platform": "ios",
+      "scenario": "runtime-channel-crash-restore",
+      "status": "failed",
+      "shard": "ios-s2"
+    },
+    {
+      "platform": "ios",
+      "scenario": "sparkling-multipage-ota",
+      "status": "failed",
+      "shard": "ios-s2"
+    },
+    {
+      "platform": "android",
+      "scenario": "multi-asset-replacement",
+      "status": "passed",
+      "shard": "android-s1"
+    },
+    {
+      "platform": "android",
+      "scenario": "bspatch-archive-to-diff-ota",
+      "status": "passed",
+      "shard": "android-s1"
+    },
+    {
+      "platform": "android",
+      "scenario": "bspatch-disabled-chain-rollback",
+      "status": "passed",
+      "shard": "android-s1"
+    },
+    {
+      "platform": "android",
+      "scenario": "numeric-cohort-rollout",
+      "status": "passed",
+      "shard": "android-s1"
+    },
+    {
+      "platform": "android",
+      "scenario": "target-cohorts-only",
+      "status": "passed",
+      "shard": "android-s1"
+    },
+    {
+      "platform": "android",
+      "scenario": "targeted-cohort-switchback",
+      "status": "passed",
+      "shard": "android-s1"
+    },
+    {
+      "platform": "android",
+      "scenario": "disabled-bundle-rollback-to-builtin",
+      "status": "passed",
+      "shard": "android-s1"
+    },
+    {
+      "platform": "android",
+      "scenario": "fingerprint-initial-install",
+      "status": "passed",
+      "shard": "android-s1"
+    },
+    {
+      "platform": "android",
+      "scenario": "same-bundle-release-adoption",
+      "status": "passed",
+      "shard": "android-s1"
+    },
+    {
+      "platform": "android",
+      "scenario": "stale-catalog-after-newer-generation",
+      "status": "passed",
+      "shard": "android-s1"
+    },
+    {
+      "platform": "android",
+      "scenario": "failed-download-same-generation-retry",
+      "status": "passed",
+      "shard": "android-s1"
+    },
+    {
+      "platform": "android",
+      "scenario": "crash-then-next-safe-update",
+      "status": "passed",
+      "shard": "android-s1"
+    },
+    {
+      "platform": "android",
+      "scenario": "ten-crash-history-safe-bundle",
+      "status": "passed",
+      "shard": "android-s1"
+    },
+    {
+      "platform": "android",
+      "scenario": "release-ota-recovery",
+      "status": "passed",
+      "shard": "android-s2"
+    },
+    {
+      "platform": "android",
+      "scenario": "bspatch-consecutive-diff-ota",
+      "status": "passed",
+      "shard": "android-s2"
+    },
+    {
+      "platform": "android",
+      "scenario": "bspatch-manifest-diff-fallback",
+      "status": "passed",
+      "shard": "android-s2"
+    },
+    {
+      "platform": "android",
+      "scenario": "runtime-channel-switch-reset",
+      "status": "passed",
+      "shard": "android-s2"
+    },
+    {
+      "platform": "android",
+      "scenario": "target-cohorts-rollout-interaction",
+      "status": "passed",
+      "shard": "android-s2"
+    },
+    {
+      "platform": "android",
+      "scenario": "force-update-auto-reload",
+      "status": "passed",
+      "shard": "android-s2"
+    },
+    {
+      "platform": "android",
+      "scenario": "disabled-bundle-rollback-to-previous-ota",
+      "status": "passed",
+      "shard": "android-s2"
+    },
+    {
+      "platform": "android",
+      "scenario": "catalog-only-no-update",
+      "status": "passed",
+      "shard": "android-s2"
+    },
+    {
+      "platform": "android",
+      "scenario": "size-aware-artifact-selection",
+      "status": "passed",
+      "shard": "android-s2"
+    },
+    {
+      "platform": "android",
+      "scenario": "slow-old-artifact-after-newer-install",
+      "status": "passed",
+      "shard": "android-s2"
+    },
+    {
+      "platform": "android",
+      "scenario": "republished-crashed-bundle-skipped",
+      "status": "passed",
+      "shard": "android-s2"
+    },
+    {
+      "platform": "android",
+      "scenario": "runtime-channel-crash-restore",
+      "status": "passed",
+      "shard": "android-s2"
+    },
+    {
+      "platform": "android",
+      "scenario": "sparkling-multipage-ota",
+      "status": "failed",
+      "shard": "android-s2"
+    }
+  ],
+  "findings": [
+    {
+      "scenarios": [
+        "ios/fingerprint-initial-install"
+      ],
+      "cause": "Committed fingerprint predates the native recovery changes. dad654d45 regenerates it and passes the CLI check."
+    },
+    {
+      "scenarios": [
+        "ios/release-ota-recovery",
+        "ios/crash-then-next-safe-update",
+        "ios/republished-crashed-bundle-skipped",
+        "ios/runtime-channel-crash-restore"
+      ],
+      "cause": "A recovery relaunch reused the launch identity after same-process recovery advanced the runtime epoch. New process epoch 1 was rejected. dad654d45 prepares a new launch identity and resets only its epoch; focused regressions pass."
+    },
+    {
+      "scenarios": [
+        "android/sparkling-multipage-ota"
+      ],
+      "cause": "Native fatal classification and same-process reconstruction into builtin A complete. The wait endpoint replaces explicit releaseId=null with the last deployed server Release ID. Preserve null as an exact builtin selection; infer only omitted IDs. Regression fails before correction."
+    },
+    {
+      "scenarios": [
+        "ios/sparkling-multipage-ota"
+      ],
+      "cause": "Sixteen pages are admitted, but the single edge swipe produces no nativeBack event. The intact 203-event journal is not truncated. No root cause or fix is claimed. A subsequent dad654d45 matrix-binary manual check admits 16 pages and observes each exact native back depth from 15 through 1. The shared-app full rerun is still required."
+    }
+  ],
+  "journalEvidence": [
+    {
+      "file": "android-s2-sparkling-multipage-ota.json",
+      "sha256": "1a57a6cf49ca86620fec7bd7d5e83cf3a683662d738913480d059977bee6ee32",
+      "eventCount": 84
+    },
+    {
+      "file": "ios-s2-sparkling-multipage-ota.json",
+      "sha256": "548af9b9f37aece3b31e7e05d1193e70662ba54080ccd65aa9519b470813483f",
+      "eventCount": 203
+    }
+  ],
+  "acceptance": "Failed full job; historical best remains 51/52. All 52 scenarios retained.",
+  "retainedJournalReplay": {
+    "path": "/tmp/lynx-6hdwci-android-fatal-replay.json",
+    "sha256": "c5ab7d672539d1f50c933593aa577c795d98d068fc5c2252f3ea7fb9f10d5458",
+    "result": "The unchanged recorded Android journal passes assertManagedMainPage, assertManagedVerifiedFatalDetail and assertManagedReconstructedStack; old and recovered main process IDs match. This is recorded-evidence evaluation, not a new E2E pass."
+  }
+}

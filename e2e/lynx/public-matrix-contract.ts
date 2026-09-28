@@ -31,7 +31,7 @@ export const LYNX_MATRIX_PAGE_ESSENTIAL_RESOURCES = [
     entry: "main.lynx.bundle",
     resources: LYNX_MATRIX_RESOURCE_PATHS.filter(
       (path) => path !== "detail.lynx.bundle",
-    ),
+    ).sort(),
   },
 ] as const;
 

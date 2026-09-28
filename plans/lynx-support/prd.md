@@ -1830,6 +1830,23 @@ metadata, with zero relaunches, before capturing fatal/recovery evidence. Keep
 all authentic fatal, selection, stack and readiness assertions. Retain
 [the exact job record](./evidence/shared-e2e-a5bb32fb3.json).
 
+The subsequent shared job `job-20260928211636-6hdwci` finishes **45/52**
+(iOS 20/26, Android 25/26). Native setup uses `6dc6352db`, while runner worktrees
+use `1dcf23cf5`; this is not single-commit acceptance. The fingerprint and four
+crash-relaunch epoch failures are corrected in `dad654d45`. Android's multipage
+fatal recovery succeeds natively, but its metadata wait overwrites explicit
+`releaseId: null` with a deployed Release. A builtin expectation must preserve
+null; only omitted IDs may infer a deployment. The remaining iOS stack-back
+failure has no nativeBack event after its gesture and still requires shared-app
+revalidation. Retain [the failed job record](./evidence/shared-e2e-6hdwci.json).
+
+The `dad654d45` React/iOS matrix executes all device phases and collects 775
+native events before final resource-graph validation fails. The validator must
+match the compiler's canonical sorted resource list while preserving exact
+membership and page order. No complete cell is claimed. Failed validation
+receipts must retain the actual error and `passed: false`; they are not success
+receipts. See [the matrix record](./evidence/public-matrix-dad654d45-failure.json).
+
 Workspace verification for the pushed implementation passes 27 build projects,
 35 type-check projects, lint, and 3,893 unit tests in 348 files before the three
 subsequent stored-exclusion test cases. The later driver, event-ledger and native

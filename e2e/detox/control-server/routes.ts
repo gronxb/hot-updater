@@ -463,7 +463,7 @@ app.post("/e2e/jobs/wait-for-metadata", async (c) => {
   const payload = (await c.req.json()) as {
     attempts?: number;
     bundleId?: string;
-    releaseId?: string;
+    releaseId?: string | null;
     recoveredStableBundleId?: string;
     relaunchLimit?: number;
     verificationPending?: boolean;
@@ -542,7 +542,7 @@ app.post("/e2e/compute-rollout-sample", async (c) => {
 app.post("/e2e/wait-for-metadata", async (c) => {
   const payload = (await c.req.json()) as {
     bundleId?: string;
-    releaseId?: string;
+    releaseId?: string | null;
     verificationPending?: boolean;
   };
   if (!payload.bundleId || typeof payload.verificationPending !== "boolean") {

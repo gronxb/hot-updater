@@ -99,6 +99,10 @@ import {
   isExactLynxFirstOtaArchiveSelection,
   type ArtifactSelectionEvidence,
 } from "./manifest-diff-assertion.ts";
+import {
+  isExpectedMetadataStateReached,
+  resolveMetadataWaitReleaseId,
+} from "./metadata-wait.ts";
 import { hasNativeInstallEvent } from "./native-install-log.ts";
 import { inferPatchAssetPathFromStorageUri } from "./patch-storage-path.ts";
 import { resetPendingE2eAction } from "./pending-action.ts";
@@ -2762,39 +2766,6 @@ function isMetadataActiveBundle(
   );
 }
 
-function isExpectedMetadataStateReached(
-  metadataState: {
-    stableBundleId: string | null;
-    stagingBundleId: string | null;
-    verificationPending: boolean | null;
-    stagingSelection: MetadataSelection | null;
-  },
-  bundleId: string,
-  verificationPending: boolean,
-  releaseId?: string,
-) {
-  if (metadataState.stagingBundleId !== bundleId) {
-    return false;
-  }
-
-  if (
-    releaseId !== undefined &&
-    metadataState.stagingSelection?.releaseId !== releaseId
-  ) {
-    return false;
-  }
-
-  if (metadataState.verificationPending === verificationPending) {
-    return true;
-  }
-
-  return (
-    !isLynxE2eApp() &&
-    verificationPending &&
-    metadataState.verificationPending === false
-  );
-}
-
 function isExpectedCrashRecoveryReached(
   metadataState: {
     stagingBundleId: string | null;
@@ -2831,6 +2802,7 @@ function formatObservedMetadataState(details: {
 function createWaitForMetadataTimeoutError(args: {
   attempts: number;
   bundleId: string;
+  releaseId?: string | null;
   crashHistory: JsonSnapshot;
   launchReport: JsonSnapshot;
   metadata: JsonSnapshot;
@@ -2850,6 +2822,11 @@ function createWaitForMetadataTimeoutError(args: {
     "Timed out waiting for metadata state.",
     `Expected stagingBundleId=${args.bundleId} and verificationPending=${String(args.verificationPending)}.`,
     `${formatObservedMetadataState(observedState)}.`,
+    ...(args.releaseId !== undefined
+      ? [
+          `Expected releaseId=${String(args.releaseId)}; observed releaseId=${String(observedState.stagingSelection?.releaseId)}.`,
+        ]
+      : []),
     ...(signatureFailure ? [`Native failure: ${signatureFailure}`] : []),
     `Metadata path: ${args.metadata.path}`,
     `Native log path: ${nativeLogPath}`,
@@ -2859,6 +2836,7 @@ function createWaitForMetadataTimeoutError(args: {
     attempts: args.attempts,
     expected: {
       bundleId: args.bundleId,
+      releaseId: args.releaseId,
       verificationPending: args.verificationPending,
     },
     observed: {
@@ -5313,7 +5291,7 @@ async function dismissAndroidAnrWindow(reason: string) {
 
 type WaitForMetadataOptions = {
   attempts?: number;
-  releaseId?: string;
+  releaseId?: string | null;
   recoveredStableBundleId?: string;
   relaunchLimit?: number;
   signal?: AbortSignal;
@@ -5360,6 +5338,7 @@ async function waitForIosMetadataState(
             bundleId,
             verificationPending,
             options.releaseId,
+            isLynxE2eApp(),
           )
         ) {
           return;
@@ -5406,6 +5385,7 @@ async function waitForIosMetadataState(
     attempts: totalAttempts,
     bundleId,
     ...readIosWaitForMetadataDiagnostics(),
+    releaseId: options.releaseId,
     verificationPending,
   });
 }
@@ -5446,6 +5426,7 @@ async function waitForAndroidMetadataState(
             bundleId,
             verificationPending,
             options.releaseId,
+            isLynxE2eApp(),
           )
         ) {
           return;
@@ -5495,6 +5476,7 @@ async function waitForAndroidMetadataState(
     attempts: totalAttempts,
     bundleId,
     ...readAndroidWaitForMetadataDiagnostics(),
+    releaseId: options.releaseId,
     verificationPending,
   });
 }
@@ -6450,11 +6432,11 @@ async function waitForMetadata(
   verificationPending: boolean,
   options: WaitForMetadataOptions = {},
 ) {
-  const releaseId =
-    options.releaseId ??
-    fixtureSession.deployedBundles.findLast(
-      (record) => record.bundleId === bundleId,
-    )?.releaseId;
+  const releaseId = resolveMetadataWaitReleaseId(
+    bundleId,
+    options.releaseId,
+    fixtureSession.deployedBundles,
+  );
   const releaseAwareOptions = { ...options, releaseId };
   throwIfAborted(options.signal);
   if (fixtureSession.platform === "ios") {

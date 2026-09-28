@@ -1234,3 +1234,51 @@ now matches. The new iOS fingerprint is
 Android is unchanged. Never reuse the earlier native binaries as current proof.
 The running shared job is allowed to finish; a subsequent exact-source run is
 required for these corrections.
+
+
+## 2026-09-29 exact resource graph and builtin recovery selection
+
+The `dad654d45` React/iOS run executes all driver phases and collects 775
+native events. Final receipt validation rejects the compiler-authored resource
+graph: the compiler/normalizer sort main-page resources, while the validator
+builds an unsorted expectation. Sort that canonical expectation without changing
+its members or page order. A regression feeds the real build normalizer into
+the cell validator and fails before the fix. Future validation failures retain
+`failed-receipt.json` with `passed: false` and the actual error. This run remains
+zero validated cells; see `evidence/public-matrix-dad654d45-failure.json`.
+
+Shared job `job-20260928211636-6hdwci` finishes **45/52**: iOS 20/26 and
+Android 25/26. Setup uses `6dc6352db`; runners use `1dcf23cf5`. The fingerprint
+failure and four iOS relaunch/epoch failures are addressed in `dad654d45`, but
+require a fresh run. Android's final multipage journal proves a verified fatal
+and complete builtin reconstruction. The test endpoint nevertheless replaces
+explicit `releaseId: null` with the last server Release for the same Bundle.
+Infer only an omitted ID, retain null as an exact builtin identity, and include
+expected/observed Release IDs in timeout diagnostics. The regression fails
+before the correction and retains exact Release matching and RN confirmation
+race behavior. Keep `evidence/shared-e2e-6hdwci.json`.
+
+The remaining iOS multipage failure contains 16 admitted pages and no native
+back event after its single gesture; the 203-event journal is not truncated.
+Do not mask it with relaxed depth assertions or an assumed root cause. Manual
+checks on the unchanged `dad654d45` matrix binary on dedicated iOS device
+`3A0A8EB7-9381-4CFD-B002-5B16F539D445` observe each native back depth from 15 to
+1 after admitting all 16 pages. The shared-app full rerun remains required.
+Retained local evidence: `/tmp/lynx-stack-forensic-before-swipe.json`,
+`/tmp/lynx-stack-forensic-after-swipe-events.json`, and
+`/tmp/lynx-stack-forensic-backs.json`. The device session is closed.
+
+Run a new full shared job and six-cell matrix from one frozen pushed commit.
+Historical best stays 51/52; no completed matrix cell is claimed yet. The
+Fresco-only exception remains package-owned, checksum-pinned and included in
+fingerprinting. No native workaround is added to the scaffold application.
+
+Focused verification after these corrections passes 230/230 tests across seven
+suites; targeted formatting/lint and git diff checks pass.
+
+Full workspace verification initially exposes two stale source-layout contracts
+after extracting metadata matching. Register the two helper files in the tracked
+E2E surface and replace the text-slicing assertion with actual RN/Lynx metadata
+matching for a rollback base versus the active staging Bundle. Those 98 harness
+contracts pass; the fresh full workspace run then passes **3,928/3,928 tests in
+351 files** (`/tmp/lynx-metadata-graph-workspace-green.log`). No scenario is removed.

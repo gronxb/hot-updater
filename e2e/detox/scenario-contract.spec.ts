@@ -7,6 +7,7 @@ import { transformFileSync, transformSync } from "@babel/core";
 import { describe, expect, it } from "vitest";
 
 import type { JsonObject } from "./control-client.ts";
+import { isExpectedMetadataStateReached } from "./control-server/metadata-wait.ts";
 import { PAX_LONG_ASSET_MANIFEST_PATH } from "./pax-long-path-fixture.ts";
 import {
   getDetoxScenarioDefinition,
@@ -2949,33 +2950,35 @@ describe("Detox scenario contract", () => {
     ]);
   });
 
-  it("does not treat a rollback stable base as the active metadata bundle", async () => {
-    const controllerSource = await fs.readFile(
-      detoxControlServerControllerPath,
-      "utf8",
-    );
-    const activePredicateBody = controllerSource.slice(
-      controllerSource.indexOf("function isMetadataActiveBundle"),
-      controllerSource.indexOf("function isExpectedMetadataStateReached"),
-    );
-    const expectedStateBody = controllerSource.slice(
-      controllerSource.indexOf("function isExpectedMetadataStateReached"),
-      controllerSource.indexOf("function isExpectedCrashRecoveryReached"),
-    );
-
-    expect(activePredicateBody).toContain(
-      "metadataState.stagingBundleId === bundleId ||",
-    );
-    expect(activePredicateBody).toContain(
-      "metadataState.stableBundleId === bundleId",
-    );
-    expect(expectedStateBody).toContain(
-      "metadataState.stagingBundleId !== bundleId",
-    );
-    expect(expectedStateBody).not.toContain(
-      "isMetadataActiveBundle(metadataState, bundleId)",
-    );
-  });
+  it.each([false, true])(
+    "does not treat a rollback stable base as the active metadata bundle (Lynx=%s)",
+    (isLynx) => {
+      const state = {
+        stableBundleId: "rollback-base-A",
+        stagingBundleId: "active-B",
+        stagingSelection: { releaseId: "release-B" },
+        verificationPending: false,
+      };
+      expect(
+        isExpectedMetadataStateReached(
+          state,
+          "rollback-base-A",
+          false,
+          undefined,
+          isLynx,
+        ),
+      ).toBe(false);
+      expect(
+        isExpectedMetadataStateReached(
+          state,
+          "active-B",
+          false,
+          "release-B",
+          isLynx,
+        ),
+      ).toBe(true);
+    },
+  );
 
   it("models disabled bsdiff chain rollback through C to B to A to built-in", async () => {
     const stages = await scenarioStages("bspatch-disabled-chain-rollback");

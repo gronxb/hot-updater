@@ -3,6 +3,10 @@ import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
 
 import {
+  normalizeBuild,
+  pageEssentialResources,
+} from "../../examples/lynx/scripts/public-matrix/evidence.mjs";
+import {
   expectedRawDetailNativeFailure,
   MISSING_ASSET_RESPONSE_SHA256,
 } from "../../examples/lynx/scripts/public-matrix/raw-detail-rejection.mjs";
@@ -1090,6 +1094,31 @@ function makeCell(framework = "react", platform = "ios") {
 describe("Lynx public matrix evidence contract", () => {
   it("accepts exact real-observation fields for one complete cell", () => {
     expect(() => validateLynxMatrixCell(makeCell())).not.toThrow();
+  });
+
+  it("accepts the compiler resource graph through the actual build normalizer", () => {
+    const cell = makeCell();
+    const embedded = cell.builds.A;
+    cell.builds.A = normalizeBuild({
+      role: "A",
+      compilerReceipt: {
+        provenance: embedded.provenance,
+        pageEntries: embedded.pageEntries,
+        pageEssentialResources,
+        files: Object.entries(embedded.files).map(([path, file]) => ({
+          path,
+          sha256: file.sha256,
+          bytes: file.byteSize,
+        })),
+      },
+      embeddedReceipt: {
+        source: embedded.source,
+        embeddedBundleId: embedded.bundleId,
+        manifestFileHash: embedded.manifestSha256,
+      },
+      runtimeId: embedded.runtimeId,
+    });
+    expect(() => validateLynxMatrixCell(cell)).not.toThrow();
   });
 
   it("rejects confirmed fatal recovery into the suppressed C Release", () => {

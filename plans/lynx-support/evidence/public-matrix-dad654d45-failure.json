@@ -1,0 +1,34 @@
+{
+  "sourceCommit": "dad654d455258da31667f4f918d149fdb741f14b",
+  "cell": "react-ios",
+  "completedCells": 0,
+  "failure": "Final receipt validation rejects the sorted compiler-authored main-page resource graph because the validator uses an unsorted resource list.",
+  "devicePhasesReached": "All driver phases and evidence collection complete, including forward/reverse deltas, offline activation, whole-stack transitions and confirmed/unconfirmed fatal/interruption recovery. No validated cell is claimed.",
+  "followUp": "Require the canonical sorted resource graph; a regression runs the real normalizeBuild output through the cell validator and fails before the correction. Retain exact resource membership and page ordering. Save future failed receipts with passed=false and the validation error.",
+  "retainedArtifacts": {
+    "state.json": {
+      "path": "/tmp/lynx-dad654d45-matrix-failure/state.json",
+      "sha256": "86c83c562988199b9ca36436e048be034cd0bfe86bd505aa0994e45f0512663b"
+    },
+    "matrix-events.jsonl": {
+      "path": "/tmp/lynx-dad654d45-matrix-failure/matrix-events.jsonl",
+      "sha256": "3b2a1367a97190689d4d3e36f999020d74a398f70ffe4c231ce8a8183ff7d46f"
+    },
+    "events.json": {
+      "path": "/tmp/lynx-dad654d45-matrix-failure/events.json",
+      "sha256": "649332447718fc28a25be33b1ae515e9c1367d22b4d6cabdbe43a33beb38e0b5"
+    },
+    "runner.log": {
+      "path": "/tmp/lynx-dad654d45-matrix-failure/runner.log",
+      "sha256": "d9f134afea63d7d6bb3623240ab3c03841e8a86bb08b830b6ec2435dd9b4afdc"
+    },
+    "generation-events.json": {
+      "path": "/tmp/lynx-dad654d45-matrix-failure/generation-events.json",
+      "sha256": "aa8967396663ca6d499bedfd40d23635bd9970614d1e30014950e86aa0595e03"
+    },
+    "ota-server.log": {
+      "path": "/tmp/lynx-dad654d45-matrix-failure/ota-server.log",
+      "sha256": "99771323fbf0d1c1fb4eb02c3bfee4ddc81d60182e09b9ff333e3fa57d22d62c"
+    }
+  }
+}
