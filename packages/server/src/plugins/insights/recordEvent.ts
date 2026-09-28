@@ -4,6 +4,7 @@ import {
   assertBundleEventRow,
   compareUtf8,
   currentInsightsReleaseId,
+  insightsKey,
   insightsOverviewDeltas,
   insightsOverviewId,
   type InsightsOverviewIdentity,
@@ -51,7 +52,18 @@ const headFields = (event: BundleEventRow) => {
   return { ...fields, current_release_id: currentInsightsReleaseId(event) };
 };
 
-/** Moves a head's gauges: the distribution row and one row per bundle it references. */
+/**
+ * The `insights_latest_by_bundle` field of a head's (from, to) pair. A head
+ * matches a `from` and a `to` predicate of one type at once only through its
+ * pair, so this gauge is what a count subtracts to count it once.
+ */
+export const PAIR_FIELD = "from_to";
+
+/** The pair gauge's `bundle_id`: a hash of the two bundle ids, which fit no single 36-character column. */
+export const bundlePairKey = (from: string, to: string): string =>
+  insightsKey(`${from.length}:${from}${to.length}:${to}`);
+
+/** Moves a head's gauges: the distribution row, one row per bundle it references, and its pair. */
 const countHead = (
   tx: HotUpdaterTransaction<InsightsSchema>,
   head: Head,
@@ -81,6 +93,21 @@ const countHead = (
         channel: head.channel,
         bundle_field: field,
         bundle_id: bundleId,
+        type: head.type,
+        bucket_start_ms: bucket,
+      },
+      { installations: delta },
+      { shardBy },
+    );
+  }
+  if (head.from_bundle_id !== null) {
+    tx.aggregate(
+      "insights_latest_by_bundle",
+      {
+        platform: head.platform,
+        channel: head.channel,
+        bundle_field: PAIR_FIELD,
+        bundle_id: bundlePairKey(head.from_bundle_id, head.to_bundle_id),
         type: head.type,
         bucket_start_ms: bucket,
       },

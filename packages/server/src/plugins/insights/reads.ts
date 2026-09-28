@@ -22,7 +22,12 @@ import {
 import type { HotUpdaterDatabase } from "../../database/database";
 import type { Page } from "../../database/engineReads";
 import { eventListStart } from "../../insights/eventWindow";
-import { insightsIdentity, type InsightsIdentityParts } from "./recordEvent";
+import {
+  bundlePairKey,
+  insightsIdentity,
+  PAIR_FIELD,
+  type InsightsIdentityParts,
+} from "./recordEvent";
 import { DAY_MS, HOUR_MS, type InsightsSchema } from "./schema";
 
 type Db = HotUpdaterDatabase<InsightsSchema>;
@@ -219,24 +224,11 @@ type Predicate = {
   readonly type: string;
 };
 
-/**
- * A bundle filter's distinct (field, value, type) predicates. The gauges
- * count each field on its own, so a head matching predicates on both fields
- * would count twice: a type may appear under one field only.
- */
+/** A bundle filter's distinct (field, value, type) predicates. */
 const latestPredicates = (
   bundle: InsightsCountLatestEventsInput["bundle"],
 ): readonly Predicate[] | undefined => {
   if (bundle === undefined) return undefined;
-  const fieldOf = new Map<string, Predicate["field"]>();
-  for (const { field, types } of bundle) {
-    for (const type of types) {
-      if ((fieldOf.get(type) ?? field) !== field) {
-        throw new DatabasePluginInputError("invalid-query");
-      }
-      fieldOf.set(type, field);
-    }
-  }
   return [
     ...new Map(
       bundle.flatMap(({ field, value, types }) =>
@@ -308,15 +300,19 @@ export const countLatestEvents = async (
     );
     total += rows.reduce((sum, row) => sum + row.latest_installations, 0);
   } else {
-    for (const { field, value, type } of predicates) {
+    const gauge = async (
+      bundleField: string,
+      bundleId: string,
+      type: string,
+    ) => {
       const rows = await drain((page) =>
         db.findAggregates("insights_latest_by_bundle", {
           index: "byBundle",
           where: {
             platform,
             channel,
-            bundle_field: field,
-            bundle_id: value,
+            bundle_field: bundleField,
+            bundle_id: bundleId,
             type,
           },
           range: { gte: start },
@@ -324,7 +320,24 @@ export const countLatestEvents = async (
           ...page,
         }),
       );
-      total += rows.reduce((sum, row) => sum + row.installations, 0);
+      return rows.reduce((sum, row) => sum + row.installations, 0);
+    };
+    for (const { field, value, type } of predicates) {
+      total += await gauge(field, value, type);
+    }
+    // A head has one (from, to) pair, so it matches a `from` and a `to`
+    // predicate of one type only through that pair: subtract the pair's gauge
+    // to count it once.
+    for (const from of predicates) {
+      if (from.field !== "from_bundle_id") continue;
+      for (const to of predicates) {
+        if (to.field !== "to_bundle_id" || to.type !== from.type) continue;
+        total -= await gauge(
+          PAIR_FIELD,
+          bundlePairKey(from.value, to.value),
+          from.type,
+        );
+      }
     }
   }
   return sinceMs < start

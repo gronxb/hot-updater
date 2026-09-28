@@ -2,7 +2,6 @@ import { isRecord, validateBundleEventFields } from "./bundleEventRow";
 import { DatabasePluginInputError } from "./databaseErrors";
 import type {
   BundleEventRow,
-  InsightsCountLatestEventsInput,
   InsightsEventFilter,
   InsightsModel,
 } from "./types";
@@ -167,18 +166,6 @@ const validateAggregateResult = (value: unknown): void => {
   }
 };
 
-/** Whether bundle predicates on different fields share a type: one latest event could match both. */
-const sharesTypeAcrossFields = (
-  bundle: NonNullable<InsightsCountLatestEventsInput["bundle"]>,
-): boolean =>
-  bundle.some((left) =>
-    bundle.some(
-      (right) =>
-        left.field !== right.field &&
-        left.types.some((type) => right.types.includes(type)),
-    ),
-  );
-
 /** Validate custom and bundled providers at the same public boundary. */
 export const createValidatedInsightsModel = (
   model: InsightsModel,
@@ -301,8 +288,6 @@ export const createValidatedInsightsModel = (
               ),
           )))
     )
-      invalidQuery();
-    if (input.bundle !== undefined && sharesTypeAcrossFields(input.bundle))
       invalidQuery();
     return validateCount(await model.countLatestEvents(input));
   },

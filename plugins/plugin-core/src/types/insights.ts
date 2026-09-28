@@ -50,11 +50,7 @@ export type InsightsFindLatestEventsInput =
 
 export interface InsightsCountLatestEventsInput extends InsightsScope {
   readonly sinceMs: number;
-  /**
-   * Optional OR of one or two fixed predicates; count a matching event once.
-   * Predicates on different fields never share a type, so no latest event
-   * matches two of them.
-   */
+  /** Optional OR of one or two fixed predicates; count a matching event once. */
   readonly bundle?: readonly {
     readonly field: "from_bundle_id" | "to_bundle_id";
     readonly value: string;

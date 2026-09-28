@@ -119,27 +119,61 @@ describe("insights latest events by bundle", () => {
     }
   });
 
-  it("rejects predicates on both fields that share a type, which the gauges would count twice", async () => {
+  it("counts a head once when a from and a to predicate of one type both match it", async () => {
     const harness = await setup();
-    await harness.api.recordEvent(
-      event(21, {
-        type: "UPDATE_DOWNLOADED",
-        from_bundle_id: "A",
-        to_bundle_id: "B",
-        received_at_ms: halfPast,
-      }),
-    );
-    await expect(
+    for (const [n, moved] of [
+      [21, { from_bundle_id: "A", to_bundle_id: "B" }],
+      [22, { from_bundle_id: "A", to_bundle_id: "C" }],
+      [23, { from_bundle_id: "D", to_bundle_id: "B" }],
+      [24, { from_bundle_id: "B", to_bundle_id: "B" }],
+    ] as const) {
+      await harness.api.recordEvent(
+        event(n, {
+          ...moved,
+          type: "UPDATE_DOWNLOADED",
+          received_at_ms: halfPast,
+        }),
+      );
+    }
+    const types = ["UPDATE_DOWNLOADED"] as const;
+    const count = (
+      bundle: readonly {
+        readonly field: "from_bundle_id" | "to_bundle_id";
+        readonly value: string;
+        readonly types: readonly "UPDATE_DOWNLOADED"[];
+      }[],
+      sinceMs: number,
+    ) =>
       harness.api.countLatestEvents({
         platform: "ios",
         channel: "production",
-        sinceMs: T0,
-        bundle: [
-          { field: "from_bundle_id", value: "A", types: ["UPDATE_DOWNLOADED"] },
-          { field: "to_bundle_id", value: "B", types: ["UPDATE_DOWNLOADED"] },
-        ],
-      }),
-    ).rejects.toMatchObject({ code: "invalid-query" });
+        sinceMs,
+        bundle,
+      });
+    // Whole hours from gauges, then a partial hour from heads.
+    for (const sinceMs of [T0, T0 + 1]) {
+      // From A or to B: A→B, A→C, D→B, and B→B. The gauges alone say 5,
+      // counting A→B under both predicates.
+      await expect(
+        count(
+          [
+            { field: "from_bundle_id", value: "A", types },
+            { field: "to_bundle_id", value: "B", types },
+          ],
+          sinceMs,
+        ),
+      ).resolves.toBe(4);
+      // B→B matches from B and to B through one pair: A→B, D→B, B→B.
+      await expect(
+        count(
+          [
+            { field: "from_bundle_id", value: "B", types },
+            { field: "to_bundle_id", value: "B", types },
+          ],
+          sinceMs,
+        ),
+      ).resolves.toBe(3);
+    }
   });
 });
 
