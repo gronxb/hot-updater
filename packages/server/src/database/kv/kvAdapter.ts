@@ -133,11 +133,15 @@ const pastPrefix = (prefix: string) => `${prefix.slice(0, -1)}\u0002`;
 /** A unique item's sort key, and an index item's when its order is empty. */
 const ONLY = "#";
 
+/** The engine's shard column (`SHARD_COLUMN`), which ends every aggregate's key. */
+const SHARD = "_shard";
+
 interface Layout {
   readonly table: PhysicalTable;
   readonly rows: string;
-  /** The columns index copies hold: all but `_v` and counters (columns with a default). */
+  /** The columns index copies hold: all but `_v` and counters. */
   readonly copied: readonly string[];
+  /** Columns with a default, and an aggregate's integer metrics. */
   readonly counters: readonly string[];
   /** Indexes with items of their own: unique ones, and those not in key order. */
   readonly indexed: readonly PhysicalIndex[];
@@ -171,7 +175,8 @@ export interface KvAdapterOptions {
  * per entry at `pk = <table>#<index>#enc(eq)`, `sk = enc(order)`, and each
  * unique entry one item at `sk = "#"`, written only where no other row holds
  * it. Index items hold a copy of the row without `_v` or counters, so an
- * increment, which changes only those, never makes them stale.
+ * increment, which changes only those, never makes them stale; an aggregate's
+ * metrics count as counters, so its gauge patches rewrite only the row item.
  */
 export const createKvAdapter = ({
   store,
@@ -181,8 +186,18 @@ export const createKvAdapter = ({
   const layoutOf = (table: PhysicalTable): Layout => {
     const known = layouts.get(table);
     if (known) return known;
+    // Every integer outside an aggregate's key is a metric, which each of its
+    // writes changes: copies leave it out, so a gauge patch rewrites no copy.
+    const aggregate = table.key.at(-1) === SHARD;
     const counters = table.columns
-      .filter((column) => column.default !== undefined && column.name !== V)
+      .filter(
+        (column) =>
+          column.name !== V &&
+          (column.default !== undefined ||
+            (aggregate &&
+              column.type === "integer" &&
+              !table.key.includes(column.name))),
+      )
       .map((column) => column.name);
     const layout = {
       table,

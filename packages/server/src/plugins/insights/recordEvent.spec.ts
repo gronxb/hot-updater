@@ -12,6 +12,8 @@ import { describe, expect, it } from "vitest";
 
 import * as engine from "../../database";
 import type { HotUpdaterDatabase } from "../../database/database";
+import { createKvAdapter } from "../../database/kv/kvAdapter";
+import { createMemoryKeyValueStore } from "../../database/kv/kvTestStore";
 import { createSqlAdapter } from "../../database/sql/sqlAdapter";
 import { sqliteExecutor } from "../../database/sql/sqlTestExecutors";
 import {
@@ -64,6 +66,10 @@ const backends: [string, () => DatabaseAdapter][] = [
       createSqlAdapter({
         executor: sqliteExecutor(new DatabaseSync(":memory:")),
       }),
+  ],
+  [
+    "the key-value helper",
+    () => createKvAdapter({ store: createMemoryKeyValueStore() }),
   ],
 ];
 
@@ -159,7 +165,7 @@ describe.each(backends)("insights recordEvent on %s", (_name, adapter) => {
     ).resolves.toMatchObject({
       day: T - (T % DAY),
       movement_install_id: "install-1",
-      bundle_ref: ["from:bundle-1", "to:bundle-2"],
+      bundle_ref: ["to:bundle-2"],
     });
     await expect(
       db.findOne("bundle_event_heads", { install_id: "install-1" }),
@@ -220,6 +226,32 @@ describe.each(backends)("insights recordEvent on %s", (_name, adapter) => {
         );
         expect(countInsightsDistinct(usage!.activity_users)).toBe(1);
       }
+    }
+  });
+
+  it("keys an event by the one bundle its bundle filter reads", async () => {
+    const { api, db } = await setup();
+    await api.recordEvent(event(1));
+    await api.recordEvent(
+      event(2, { type: "RECOVERED", install_id: "install-2" }),
+    );
+
+    await expect(
+      db.findOne("bundle_events", { id: uuid(2) }),
+    ).resolves.toMatchObject({ bundle_ref: ["from:bundle-1"] });
+    const scope = { platform: "ios", channel: "production" } as const;
+    for (const [n, filter] of [
+      [1, { ...scope, type: "UPDATE_APPLIED", toBundleId: "bundle-2" }],
+      [2, { ...scope, type: "RECOVERED", fromBundleId: "bundle-1" }],
+    ] as const) {
+      await expect(
+        api.listEvents({
+          filter: { kind: "bundle", ...filter },
+          sinceMs: T,
+          beforeReceivedAtMs: T + HOUR,
+          limit: 10,
+        }),
+      ).resolves.toMatchObject([{ id: uuid(n) }]);
     }
   });
 

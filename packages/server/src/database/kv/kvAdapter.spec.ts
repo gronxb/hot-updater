@@ -10,8 +10,9 @@ import { conformanceCounters, conformanceItems } from "@hot-updater/test-utils";
 import { describe, expect, it } from "vitest";
 
 import { createDatabaseEngine } from "../database";
+import { shardOf } from "../engineAggregates";
 import { resolveSchema } from "../resolveSchema";
-import { defineTable } from "../schema";
+import { defineAggregate, defineTable } from "../schema";
 import {
   createKvAdapter,
   encodeKvKey,
@@ -464,5 +465,97 @@ describe("the engine over the key-value adapter", () => {
     await expect(db.findOne("keys", { id: "k" })).resolves.toMatchObject({
       note: "moved+",
     });
+  });
+});
+
+describe("an aggregate's metrics over the key-value adapter", () => {
+  const installs = defineAggregate(
+    {
+      scope: { type: "string" },
+      version: { type: "string" },
+      bucket: { type: "integer" },
+    },
+    {
+      key: ["scope", "version", "bucket"],
+      gauges: ["installs"],
+      shards: 2,
+      indexes: { byBucket: { eq: ["scope"], sort: ["bucket"] } },
+    },
+  );
+  const module = { id: "kv", schema: { installs } } as const;
+  const schema = resolveSchema([module]);
+
+  const setup = () => {
+    const store = createMemoryKeyValueStore();
+    const sizes: number[] = [];
+    const adapter = createKvAdapter({
+      store: {
+        ...store,
+        write: (ops) => {
+          sizes.push(ops.length);
+          return store.write(ops);
+        },
+      },
+    });
+    const db = createDatabaseEngine({ adapter, schema }).database(module);
+    const move = (by: number) =>
+      db.transaction(async (tx) => {
+        tx.aggregate(
+          "installs",
+          { scope: "s", version: "1", bucket: 0 },
+          { installs: by },
+          { shardBy: "install" },
+        );
+      });
+    const read = async () =>
+      (
+        await db.findAggregates("installs", {
+          index: "byBucket",
+          where: { scope: "s" },
+          limit: 10,
+        })
+      ).rows;
+    return { store, sizes, move, read };
+  };
+
+  it("patches a gauge in its row item alone, and reads it from the row", async () => {
+    const { sizes, move, read } = setup();
+    await move(1);
+    await move(2);
+    await expect(read()).resolves.toEqual([
+      { scope: "s", version: "1", bucket: 0, installs: 3 },
+    ]);
+    await move(-3);
+
+    // An insert and a delete write the row and its index item; a patch, the row.
+    expect(sizes).toEqual([2, 1, 2]);
+    await expect(read()).resolves.toEqual([]);
+  });
+
+  it("reads the row's gauge past an index item that still holds one", async () => {
+    const { store, move, read } = setup();
+    await move(1);
+    const shard = shardOf("install", 2);
+    // An index item from before copies left metrics out.
+    await store.write([
+      {
+        type: "put",
+        key: {
+          pk: `installs#byBucket#${encodeKvKey(["s"])}`,
+          sk: encodeKvKey([0, "1", shard]),
+        },
+        value: {
+          scope: "s",
+          version: "1",
+          bucket: 0,
+          _shard: shard,
+          installs: 7,
+        },
+      },
+    ]);
+
+    await expect(read()).resolves.toEqual([
+      { scope: "s", version: "1", bucket: 0, installs: 1 },
+    ]);
   });
 });

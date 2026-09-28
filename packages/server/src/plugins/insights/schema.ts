@@ -34,15 +34,14 @@ const bundleEvents = defineTable(
         type: "string",
         compute: (row) => (MOVEMENTS.has(row.type) ? row.install_id : null),
       },
-      /** `from:<bundle>` and `to:<bundle>`, read by bundle filters. */
+      /** The bundle a bundle filter matches: `from:<bundle>` for RECOVERED, else `to:<bundle>`. */
       bundle_ref: {
         type: "string",
         multi: true,
         compute: (row) => [
-          ...(row.from_bundle_id === null
-            ? []
-            : [`from:${row.from_bundle_id}`]),
-          `to:${row.to_bundle_id}`,
+          row.type === "RECOVERED" && row.from_bundle_id !== null
+            ? `from:${row.from_bundle_id}`
+            : `to:${row.to_bundle_id}`,
         ],
       },
     },

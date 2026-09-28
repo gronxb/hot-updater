@@ -271,7 +271,7 @@ export const rows: readonly AcceptanceRow[] = [
     writeLimit: true,
     profiles: ["firebase"],
     multiplier:
-      "Index reads return row copies, so a transaction reads the rows it guards again whole (deploy's catalog compile: 6 gets of 9 keys for 4 of 4), and a unique read of a table with counters adds its row item.",
+      "Index reads return row copies, so a transaction reads the rows it guards again whole (deploy's catalog compile: 6 gets of 9 keys for 4 of 4), and copies of a table with counters (reference counters, or an aggregate's metrics) add a get of their rows per read.",
   },
   {
     name: "DynamoDB",
@@ -296,7 +296,7 @@ export const rows: readonly AcceptanceRow[] = [
     writeLimit: true,
     profiles: ["standalone-dynamodb", "aws"],
     multiplier:
-      "Index reads return row copies, so a transaction reads the rows it guards again whole (deploy's catalog compile: 6 gets of 9 keys for 4 of 4), and a unique read of a table with counters adds its row item.",
+      "Index reads return row copies, so a transaction reads the rows it guards again whole (deploy's catalog compile: 6 gets of 9 keys for 4 of 4), and copies of a table with counters (reference counters, or an aggregate's metrics) add a get of their rows per read.",
   },
   {
     name: "Memory (reference)",
@@ -381,7 +381,7 @@ export const rows: readonly AcceptanceRow[] = [
     writeLimit: true,
     profiles: ["standalone-dynamodb", "aws", "firebase"],
     multiplier:
-      "Index reads return row copies, so a transaction reads the rows it guards again whole (deploy's catalog compile: 6 gets of 9 keys for 4 of 4), and a unique read of a table with counters adds its row item.",
+      "Index reads return row copies, so a transaction reads the rows it guards again whole (deploy's catalog compile: 6 gets of 9 keys for 4 of 4), and copies of a table with counters (reference counters, or an aggregate's metrics) add a get of their rows per read.",
   },
   {
     name: "Schema fence",
