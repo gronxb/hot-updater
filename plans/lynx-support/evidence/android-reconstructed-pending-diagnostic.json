@@ -1,0 +1,291 @@
+{
+  "schemaVersion": 1,
+  "jobId": "job-20260928171631-2fpuk1",
+  "sourceCommit": "972c11e94cf4dcc5aea29c196cd61d690f36eddb",
+  "scenario": "android/sparkling-multipage-ota",
+  "failure": "Pending detail already reached admission or terminal state",
+  "durableJournalSha256": "1e950cdf692ccaf8fc33cf89800d139201fba3ee47188f6d836799adbc88b2df",
+  "events": [
+    {
+      "details": {
+        "animated": true,
+        "attemptId": "0f837e13-79a1-439d-9a99-b8fee6b5fd3e",
+        "bundleId": "00000000-0000-7000-8000-000000000000",
+        "cause": "router.open",
+        "containerId": "03cc201d-07e4-407f-8d91-5b8ae1e6ea14",
+        "contextId": "1f2d6ca0-3950-4f03-b148-8e5148275938",
+        "generationId": "1ad38790-08ff-483d-9f86-3534b345fbb9",
+        "nativePageClass": "com.hotupdater.lynx.sparkling.HotUpdaterSparklingPageActivity",
+        "orderedPageEntries": [
+          "main.lynx.bundle",
+          "detail.lynx.bundle"
+        ],
+        "orderedPageParameters": [
+          {},
+          {
+            "title": "Second Page"
+          }
+        ],
+        "outcome": "opened",
+        "pageAttemptId": "1f2d6ca0-3950-4f03-b148-8e5148275938",
+        "pageEntry": "detail.lynx.bundle",
+        "pageParameters": {
+          "title": "Second Page"
+        },
+        "processId": "19864",
+        "releaseId": "01a0e922-9590-75d9-9e7c-d7a55ea00c30",
+        "runtimeId": "android-sparkling-2.1.0-rc.12-navsrc-937f70d7c3012a5a-lynx-3.9.0-primjs-3.8.0-alpha.6-managed-pages-v1",
+        "sourceContextId": "0f837e13-79a1-439d-9a99-b8fee6b5fd3e",
+        "topPageEntry": "detail.lynx.bundle",
+        "transitionId": null
+      },
+      "name": "routeOpened",
+      "sequence": "402"
+    },
+    {
+      "details": {
+        "attemptId": "0f837e13-79a1-439d-9a99-b8fee6b5fd3e",
+        "bundleId": "00000000-0000-7000-8000-000000000000",
+        "containerId": "03cc201d-07e4-407f-8d91-5b8ae1e6ea14",
+        "contextId": "1f2d6ca0-3950-4f03-b148-8e5148275938",
+        "generationId": "1ad38790-08ff-483d-9f86-3534b345fbb9",
+        "nativePageClass": "com.hotupdater.lynx.sparkling.HotUpdaterSparklingPageActivity",
+        "pageAttemptId": "1f2d6ca0-3950-4f03-b148-8e5148275938",
+        "pageEntry": "detail.lynx.bundle",
+        "pageParameters": {
+          "title": "Second Page"
+        },
+        "processId": "19864",
+        "releaseId": "01a0e922-9590-75d9-9e7c-d7a55ea00c30",
+        "runtimeId": "android-sparkling-2.1.0-rc.12-navsrc-937f70d7c3012a5a-lynx-3.9.0-primjs-3.8.0-alpha.6-managed-pages-v1",
+        "transitionId": null
+      },
+      "name": "firstContent",
+      "sequence": "407"
+    },
+    {
+      "details": {
+        "attemptId": "0f837e13-79a1-439d-9a99-b8fee6b5fd3e",
+        "bundleId": "00000000-0000-7000-8000-000000000000",
+        "containerId": "03cc201d-07e4-407f-8d91-5b8ae1e6ea14",
+        "contextId": "1f2d6ca0-3950-4f03-b148-8e5148275938",
+        "generationId": "1ad38790-08ff-483d-9f86-3534b345fbb9",
+        "nativePageClass": "com.hotupdater.lynx.sparkling.HotUpdaterSparklingPageActivity",
+        "orderedPageEntries": [
+          "main.lynx.bundle",
+          "detail.lynx.bundle"
+        ],
+        "orderedPageParameters": [
+          {},
+          {
+            "title": "Second Page"
+          }
+        ],
+        "pageAttemptId": "1f2d6ca0-3950-4f03-b148-8e5148275938",
+        "pageEntry": "detail.lynx.bundle",
+        "pageParameters": {
+          "title": "Second Page"
+        },
+        "processId": "19864",
+        "reason": "managedTransition",
+        "releaseId": "01a0e922-9590-75d9-9e7c-d7a55ea00c30",
+        "runtimeId": "android-sparkling-2.1.0-rc.12-navsrc-937f70d7c3012a5a-lynx-3.9.0-primjs-3.8.0-alpha.6-managed-pages-v1",
+        "sourceContextId": "0f837e13-79a1-439d-9a99-b8fee6b5fd3e",
+        "terminal": "authorized-cancel",
+        "topContextId": "0f837e13-79a1-439d-9a99-b8fee6b5fd3e",
+        "topPageEntry": "detail.lynx.bundle",
+        "transitionId": "49214ed7-cf1c-45d6-9b68-f574180662e0"
+      },
+      "name": "pageAttemptTerminal",
+      "sequence": "408"
+    },
+    {
+      "details": {
+        "attemptId": "0f837e13-79a1-439d-9a99-b8fee6b5fd3e",
+        "bundleId": "00000000-0000-7000-8000-000000000000",
+        "containerId": "9666d033-c0b1-401c-b1b5-ecbc2196f316",
+        "contextId": "0f837e13-79a1-439d-9a99-b8fee6b5fd3e",
+        "generationId": "1ad38790-08ff-483d-9f86-3534b345fbb9",
+        "nativePageClass": "com.hotupdater.lynxexample.OtaActivity",
+        "orderedPageEntries": [
+          "main.lynx.bundle",
+          "detail.lynx.bundle"
+        ],
+        "orderedPageParameters": [
+          {},
+          {
+            "title": "Second Page"
+          }
+        ],
+        "pageAttemptId": null,
+        "pageEntry": "main.lynx.bundle",
+        "pageParameters": {},
+        "processId": "19864",
+        "releaseId": "01a0e922-9590-75d9-9e7c-d7a55ea00c30",
+        "runtimeId": "android-sparkling-2.1.0-rc.12-navsrc-937f70d7c3012a5a-lynx-3.9.0-primjs-3.8.0-alpha.6-managed-pages-v1",
+        "sourceContextId": "0f837e13-79a1-439d-9a99-b8fee6b5fd3e",
+        "status": "TRANSITION_ACCEPTED",
+        "topPageEntry": "detail.lynx.bundle",
+        "transitionId": "49214ed7-cf1c-45d6-9b68-f574180662e0",
+        "trigger": "reload"
+      },
+      "name": "transitionAccepted",
+      "sequence": "409"
+    },
+    {
+      "details": {
+        "animated": false,
+        "attemptId": "1a13e1a0-41e7-4a13-a729-d524ae34b41d",
+        "bundleId": "01a0e922-c7c0-73ff-bded-c6a1805e86fd",
+        "cause": "reconstruction",
+        "containerId": "0b3a7166-542c-406d-b279-4ba74cc0c7a6",
+        "contextId": "3b97baad-782b-47ca-991c-a4f6f4b6f7f6",
+        "generationId": "dc823a26-88f1-4eae-aafe-1c2e92ed3fc5",
+        "nativePageClass": "com.hotupdater.lynx.sparkling.HotUpdaterSparklingPageActivity",
+        "orderedPageEntries": [
+          "main.lynx.bundle",
+          "detail.lynx.bundle"
+        ],
+        "orderedPageParameters": [
+          {},
+          {
+            "title": "Second Page"
+          }
+        ],
+        "outcome": "opened",
+        "pageAttemptId": "3b97baad-782b-47ca-991c-a4f6f4b6f7f6",
+        "pageEntry": "detail.lynx.bundle",
+        "pageParameters": {
+          "title": "Second Page"
+        },
+        "processId": "19864",
+        "releaseId": "01a0e925-4102-79ab-907c-bc4609c82db0",
+        "runtimeId": "android-sparkling-2.1.0-rc.12-navsrc-937f70d7c3012a5a-lynx-3.9.0-primjs-3.8.0-alpha.6-managed-pages-v1",
+        "sourceContextId": "1a13e1a0-41e7-4a13-a729-d524ae34b41d",
+        "topPageEntry": "detail.lynx.bundle",
+        "transitionId": null
+      },
+      "name": "routeOpened",
+      "sequence": "426"
+    },
+    {
+      "details": {
+        "attemptId": "1a13e1a0-41e7-4a13-a729-d524ae34b41d",
+        "bundleId": "01a0e922-c7c0-73ff-bded-c6a1805e86fd",
+        "containerId": "0b3a7166-542c-406d-b279-4ba74cc0c7a6",
+        "contextId": "3b97baad-782b-47ca-991c-a4f6f4b6f7f6",
+        "generationId": "dc823a26-88f1-4eae-aafe-1c2e92ed3fc5",
+        "nativePageClass": "com.hotupdater.lynx.sparkling.HotUpdaterSparklingPageActivity",
+        "pageAttemptId": "3b97baad-782b-47ca-991c-a4f6f4b6f7f6",
+        "pageEntry": "detail.lynx.bundle",
+        "pageParameters": {
+          "title": "Second Page"
+        },
+        "processId": "19864",
+        "releaseId": "01a0e925-4102-79ab-907c-bc4609c82db0",
+        "runtimeId": "android-sparkling-2.1.0-rc.12-navsrc-937f70d7c3012a5a-lynx-3.9.0-primjs-3.8.0-alpha.6-managed-pages-v1",
+        "transitionId": "49214ed7-cf1c-45d6-9b68-f574180662e0"
+      },
+      "name": "firstContent",
+      "sequence": "435"
+    },
+    {
+      "details": {
+        "attemptId": "1a13e1a0-41e7-4a13-a729-d524ae34b41d",
+        "bundleId": "01a0e922-c7c0-73ff-bded-c6a1805e86fd",
+        "confirmation": {
+          "pageAttemptId": "3b97baad-782b-47ca-991c-a4f6f4b6f7f6",
+          "status": "PAGE_ADMITTED"
+        },
+        "containerId": "0b3a7166-542c-406d-b279-4ba74cc0c7a6",
+        "contextId": "3b97baad-782b-47ca-991c-a4f6f4b6f7f6",
+        "generationId": "dc823a26-88f1-4eae-aafe-1c2e92ed3fc5",
+        "nativePageClass": "com.hotupdater.lynx.sparkling.HotUpdaterSparklingPageActivity",
+        "pageAttemptId": "3b97baad-782b-47ca-991c-a4f6f4b6f7f6",
+        "pageEntry": "detail.lynx.bundle",
+        "pageParameters": {
+          "title": "Second Page"
+        },
+        "processId": "19864",
+        "releaseId": "01a0e925-4102-79ab-907c-bc4609c82db0",
+        "runtimeId": "android-sparkling-2.1.0-rc.12-navsrc-937f70d7c3012a5a-lynx-3.9.0-primjs-3.8.0-alpha.6-managed-pages-v1",
+        "transitionId": "49214ed7-cf1c-45d6-9b68-f574180662e0"
+      },
+      "name": "pageAdmitted",
+      "sequence": "443"
+    },
+    {
+      "details": {
+        "attemptId": "1a13e1a0-41e7-4a13-a729-d524ae34b41d",
+        "bundleId": "01a0e922-c7c0-73ff-bded-c6a1805e86fd",
+        "containerId": "0b3a7166-542c-406d-b279-4ba74cc0c7a6",
+        "contextId": "3b97baad-782b-47ca-991c-a4f6f4b6f7f6",
+        "generationId": "dc823a26-88f1-4eae-aafe-1c2e92ed3fc5",
+        "nativePageClass": "com.hotupdater.lynx.sparkling.HotUpdaterSparklingPageActivity",
+        "orderedPageEntries": [
+          "main.lynx.bundle",
+          "detail.lynx.bundle"
+        ],
+        "orderedPageParameters": [
+          {},
+          {
+            "title": "Second Page"
+          }
+        ],
+        "pageAttemptId": "3b97baad-782b-47ca-991c-a4f6f4b6f7f6",
+        "pageEntry": "detail.lynx.bundle",
+        "pageParameters": {
+          "title": "Second Page"
+        },
+        "processId": "19864",
+        "releaseId": "01a0e925-4102-79ab-907c-bc4609c82db0",
+        "runtimeId": "android-sparkling-2.1.0-rc.12-navsrc-937f70d7c3012a5a-lynx-3.9.0-primjs-3.8.0-alpha.6-managed-pages-v1",
+        "sourceContextId": "1a13e1a0-41e7-4a13-a729-d524ae34b41d",
+        "terminal": "admitted",
+        "topContextId": "3b97baad-782b-47ca-991c-a4f6f4b6f7f6",
+        "topPageEntry": "detail.lynx.bundle",
+        "transitionId": "49214ed7-cf1c-45d6-9b68-f574180662e0"
+      },
+      "name": "pageAttemptTerminal",
+      "sequence": "444"
+    },
+    {
+      "details": {
+        "attemptId": "1a13e1a0-41e7-4a13-a729-d524ae34b41d",
+        "bundleId": "01a0e922-c7c0-73ff-bded-c6a1805e86fd",
+        "confirmation": {
+          "status": "CONFIRMED",
+          "transition": {
+            "from": {
+              "bundleId": "00000000-0000-7000-8000-000000000000",
+              "channel": "production",
+              "kind": "BUNDLE",
+              "releaseId": "01a0e922-9590-75d9-9e7c-d7a55ea00c30"
+            },
+            "kind": "UPDATE_APPLIED",
+            "to": {
+              "bundleId": "01a0e922-c7c0-73ff-bded-c6a1805e86fd",
+              "channel": "production",
+              "kind": "BUNDLE",
+              "releaseId": "01a0e925-4102-79ab-907c-bc4609c82db0"
+            }
+          },
+          "transitionId": "49214ed7-cf1c-45d6-9b68-f574180662e0"
+        },
+        "containerId": "8fb28aaf-9197-4cf0-9033-213c12965a91",
+        "contextId": "1a13e1a0-41e7-4a13-a729-d524ae34b41d",
+        "generationId": "dc823a26-88f1-4eae-aafe-1c2e92ed3fc5",
+        "nativePageClass": "com.hotupdater.lynxexample.OtaActivity",
+        "pageAttemptId": null,
+        "pageEntry": "main.lynx.bundle",
+        "pageParameters": {},
+        "processId": "19864",
+        "releaseId": "01a0e925-4102-79ab-907c-bc4609c82db0",
+        "runtimeId": "android-sparkling-2.1.0-rc.12-navsrc-937f70d7c3012a5a-lynx-3.9.0-primjs-3.8.0-alpha.6-managed-pages-v1",
+        "transitionId": "49214ed7-cf1c-45d6-9b68-f574180662e0"
+      },
+      "name": "jsReady",
+      "sequence": "445"
+    }
+  ]
+}

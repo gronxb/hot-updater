@@ -1428,8 +1428,10 @@ Run `checkForUpdate`, installation, and reload from the host-designated primary
 context. A secondary page cannot authorize catalog selection or mutate the OTA
 selection. The public React, Vue, and Octane samples prepare the update in the
 primary, navigate to the separate detail bundle, wait for that page's native
-admission and durable terminal record, then install and reload through the
-retained primary context. Prove same-process replacement of both pages. This
+admission and durable terminal record, then recheck the same Release through
+that primary context before installation. Page admission changes native state;
+an authorization from before navigation must not be reused. Install and reload
+through the retained primary context. Prove same-process replacement of both pages. This
 flow must not broaden secondary-context authority. A reconstructed iOS secondary
 page emits `pageOpened` only after
 its new Sparkling controller is attached to the native navigation stack. A

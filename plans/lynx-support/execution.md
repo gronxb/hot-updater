@@ -741,3 +741,46 @@ The driver rejects action centers outside any ancestor's visible rectangle
 even when accessibility reports hittable. The captured geometry reproduces
 the false acceptance before the fix. All 121 matrix tests, example type checks,
 and three actual compiler builds pass; device verification is still required.
+
+
+## 2026-09-29 full-run result and reconstructed-page diagnostic
+
+Full job `job-20260928171631-2fpuk1` finishes **49/52** on one commit
+(`972c11e94`): iOS 24/26 and Android 25/26. Its iOS failures are the stale
+fingerprint and early close observation, already corrected. Android completes
+forward and reverse multi-page deltas, pending close/back, and then fails the
+pre-confirmation interruption fixture because the reconstructed detail was
+admitted instead of held pending.
+
+The native journal proves old-page cancellation at 408 and accepted transition
+at 409, followed by new detail admission at 443/444 and primary confirmation
+at 445. `replaceGeneration` cleared the unconsumed one-shot next-page diagnostic
+before reconstructing that page. Preserve this forward diagnostic until the
+next secondary page consumes it; old-page progress observers still clear, and
+closing the host still clears all observers. The existing shared scenario is
+the device regression. Evidence is in
+`evidence/android-reconstructed-pending-diagnostic.json`.
+
+Refresh Android's fingerprint and all three configured manifest values with
+the normal CLI; fingerprint verification matches. Sparkling JVM tests pass
+31/31. Running the diagnostics suite also exposes an earlier extra class-closing
+brace that prevented its last restore test from compiling. Remove that brace;
+all six diagnostics JVM tests pass, including restoring the live journal.
+
+## 2026-09-29 selection refresh after page admission
+
+The compact SDK layout reaches real B detail navigation. The next matrix
+failure is a stale selection authorization: opening/admitting the page changes
+the native state captured by the earlier catalog selection. A scoped device
+inspection returns to primary and observes `Release catalog selection became
+stale before it was committed`. Primary JavaScript did execute the operation;
+this is not evidence of a paused background runtime. The sample now rechecks
+after durable detail admission, requires the same selected Release, and then
+installs/reloads through the primary. Native stale-selection checks remain
+unchanged. The regression forbids reusing the pre-navigation installer and
+requires a second catalog check. It fails before the change; all 121 matrix
+tests, example types, and three real compiler builds pass afterward.
+
+The complete workspace unit suite on `d3cbbd6f9` passes **3,866/3,866 tests
+in 343 files**, and workspace lint passes. Fresh native builds, a new full
+shared E2E job, and the six-cell public matrix remain required.

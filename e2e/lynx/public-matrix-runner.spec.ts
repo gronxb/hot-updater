@@ -575,11 +575,17 @@ describe("Lynx public matrix runner", () => {
         complete({ code: 1 }),
       );
       native.reload.mockResolvedValue({ status: "TRANSITION_ACCEPTED" });
+      const beforeNavigationInstall = vi.fn().mockResolvedValue(true);
       const updateBundle = vi.fn().mockResolvedValue(true);
-      native.checkForUpdate.mockResolvedValue({
-        id: "release-c",
-        updateBundle,
-      });
+      native.checkForUpdate
+        .mockResolvedValueOnce({
+          id: "release-c",
+          updateBundle: beforeNavigationInstall,
+        })
+        .mockResolvedValue({
+          id: "release-c",
+          updateBundle,
+        });
       const primary = {
         sequence: "10",
         name: "jsReady",
@@ -649,6 +655,8 @@ describe("Lynx public matrix runner", () => {
       expect(native.reload).not.toHaveBeenCalled();
       await vi.advanceTimersByTimeAsync(100);
       await operation;
+      expect(native.checkForUpdate).toHaveBeenCalledTimes(2);
+      expect(beforeNavigationInstall).not.toHaveBeenCalled();
       expect(updateBundle).toHaveBeenCalledOnce();
       expect(native.reload).toHaveBeenCalledOnce();
       expect(native.init).toHaveBeenCalledOnce();

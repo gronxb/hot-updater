@@ -598,7 +598,8 @@ class HotUpdaterSparklingHost(
     private fun replaceGeneration(reason: String) {
         requireMainThread()
         if (closed) return
-        pageCreatedObserver = null
+        // An armed one-shot diagnostic targets the next secondary page,
+        // including one reconstructed by this transition.
         pageProgressObserver = null
         val retained = pages.map { it.logical }
         val primaryActivity = pages.firstOrNull()?.activity?.get()

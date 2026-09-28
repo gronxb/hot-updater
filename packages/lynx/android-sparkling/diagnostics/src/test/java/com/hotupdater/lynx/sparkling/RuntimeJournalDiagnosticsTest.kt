@@ -126,7 +126,6 @@ class RuntimeJournalDiagnosticsTest {
             root.deleteRecursively()
         }
     }
-}
 
     @Test
     fun restorePutsLiveEventsBack() {

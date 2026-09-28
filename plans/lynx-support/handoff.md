@@ -109,6 +109,27 @@ remaining implementation, diagnosis, and verification are performed here.
 
 ## Latest September 29 validation
 
+- Full job `job-20260928171631-2fpuk1` is terminal **49/52**, iOS 24/26 and
+  Android 25/26. Historical best remains 51/52. iOS failures (fingerprint and
+  close timing) are fixed. Android's reconstructed pending-page fixture lost
+  its next-page diagnostic during replacement; preserve the unconsumed
+  observer until the new detail consumes it. Old-page progress observers still
+  clear. Native evidence is retained in
+  `evidence/android-reconstructed-pending-diagnostic.json`.
+- Android fingerprint and three manifest values are refreshed; the normal CLI
+  verifies both platform fingerprints. Sparkling JVM tests pass 31/31 and
+  diagnostics pass 6/6 after fixing a prior extra class-closing brace.
+- The `d3cbbd6f9` matrix opens B detail through the now-visible SDK button, but
+  rejects its pre-navigation installation authorization as stale. The sample
+  now rechecks the same Release after detail admission before installing.
+  The native stale-selection contract is unchanged. All 121 matrix tests,
+  example types, and three real compiler builds pass. Rebuild/rerun required.
+- `d3cbbd6f9` full workspace units pass 3,866/3,866 in 343 files; workspace
+  lint passes. The 413/413 full integration result remains from `972c11e94`.
+- The scoped manual session `lynx-primary-pause-probe` was closed. No bot
+  devices were modified by the failure observer; both captured journals are
+  under `/tmp/lynx-2fpuk1-native-journals`.
+
 - The `c4a9985a5` matrix stops before B-to-C navigation: the prepared-update
   action lies below the viewport, despite a misleading hittable flag. Compact
   SDK-only layout fixes all three samples; the driver rejects offscreen
