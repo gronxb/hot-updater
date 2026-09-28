@@ -30,6 +30,8 @@ export interface AcceptanceRow {
   readonly writeLimit: boolean;
   /** S5: `hot-updater-agent` profiles; none is N/A. */
   readonly profiles: readonly string[];
+  /** How the backend's native reads relate to the logical rows S4 budgets. */
+  readonly multiplier: string;
 }
 
 /** Engine, SQL core, KV helper, schema fence, and the built-in database. */
@@ -79,6 +81,8 @@ export const rows: readonly AcceptanceRow[] = [
     ],
     writeLimit: false,
     profiles: ["standalone-kysely"],
+    multiplier:
+      "Rows examined equal logical rows: EXPLAIN allows 1 per key and row, 0 per read.",
   },
   {
     name: "Kysely adapter",
@@ -101,6 +105,8 @@ export const rows: readonly AcceptanceRow[] = [
     ],
     writeLimit: false,
     profiles: ["standalone-kysely"],
+    multiplier:
+      "Rows examined equal logical rows: EXPLAIN allows 1 per key and row, 0 per read.",
   },
   {
     name: "Prisma adapter",
@@ -123,6 +129,8 @@ export const rows: readonly AcceptanceRow[] = [
     ],
     writeLimit: false,
     profiles: ["standalone-prisma"],
+    multiplier:
+      "Rows examined equal logical rows: EXPLAIN allows 1 per key and row, 0 per read.",
   },
   {
     name: "MongoDB adapter",
@@ -145,6 +153,8 @@ export const rows: readonly AcceptanceRow[] = [
     ],
     writeLimit: false,
     profiles: ["standalone-mongodb"],
+    multiplier:
+      "Native reads equal logical rows, a `batchSize` page at a time.",
   },
   {
     name: "Drizzle adapter",
@@ -167,6 +177,8 @@ export const rows: readonly AcceptanceRow[] = [
     ],
     writeLimit: false,
     profiles: ["standalone-drizzle"],
+    multiplier:
+      "Rows examined equal logical rows: EXPLAIN allows 1 per key and row, 0 per read.",
   },
   {
     name: "Supabase",
@@ -192,6 +204,8 @@ export const rows: readonly AcceptanceRow[] = [
     ],
     writeLimit: true,
     profiles: ["supabase"],
+    multiplier:
+      "Rows examined equal logical rows: EXPLAIN of the core's statement allows 1 per key and row, 0 per read.",
   },
   {
     name: "Cloudflare D1",
@@ -217,6 +231,8 @@ export const rows: readonly AcceptanceRow[] = [
     ],
     writeLimit: true,
     profiles: ["cloudflare"],
+    multiplier:
+      "`rows_read` at most 2 per key and row, plus 1 per get or query.",
   },
   {
     name: "Firebase",
@@ -239,6 +255,8 @@ export const rows: readonly AcceptanceRow[] = [
     ],
     writeLimit: true,
     profiles: ["firebase"],
+    multiplier:
+      "Index reads return row copies, so a transaction reads the rows it guards again whole (deploy's catalog compile: 6 gets of 9 keys for 4 of 4), and a unique read of a table with counters adds its row item.",
   },
   {
     name: "DynamoDB",
@@ -262,6 +280,8 @@ export const rows: readonly AcceptanceRow[] = [
     ],
     writeLimit: true,
     profiles: ["standalone-dynamodb", "aws"],
+    multiplier:
+      "Index reads return row copies, so a transaction reads the rows it guards again whole (deploy's catalog compile: 6 gets of 9 keys for 4 of 4), and a unique read of a table with counters adds its row item.",
   },
   {
     name: "Memory (reference)",
@@ -285,6 +305,7 @@ export const rows: readonly AcceptanceRow[] = [
     ],
     writeLimit: false,
     profiles: [],
+    multiplier: "Native reads equal logical rows.",
   },
   {
     name: "Shared `sqlAdapter` core",
@@ -323,6 +344,8 @@ export const rows: readonly AcceptanceRow[] = [
       "supabase",
       "cloudflare",
     ],
+    multiplier:
+      "Rows examined equal logical rows on pooled PostgreSQL and MySQL (EXPLAIN ANALYZE), 1 per key and row.",
   },
   {
     name: "Shared KV helper",
@@ -342,6 +365,8 @@ export const rows: readonly AcceptanceRow[] = [
     ],
     writeLimit: true,
     profiles: ["standalone-dynamodb", "aws", "firebase"],
+    multiplier:
+      "Index reads return row copies, so a transaction reads the rows it guards again whole (deploy's catalog compile: 6 gets of 9 keys for 4 of 4), and a unique read of a table with counters adds its row item.",
   },
   {
     name: "Schema fence",
@@ -375,6 +400,7 @@ export const rows: readonly AcceptanceRow[] = [
       "firebase",
       "aws",
     ],
+    multiplier: "One settings read per process, then none.",
   },
   {
     name: "Engine",
@@ -416,6 +442,8 @@ export const rows: readonly AcceptanceRow[] = [
       "firebase",
       "aws",
     ],
+    multiplier:
+      "Counts logical rows at its boundary; each backend's multiplier applies below it.",
   },
 ];
 
@@ -435,8 +463,9 @@ export const domainImports = {
 };
 
 /**
- * Schema field names that name no domain concept: engine columns, and words
- * any storage code uses.
+ * Schema field names that name no domain concept: words any storage code
+ * uses, including `message`, which every Error has. Engine columns (`_v`,
+ * `_shard`) are skipped where names are read.
  */
 export const genericFieldNames = [
   "id",
@@ -446,17 +475,4 @@ export const genericFieldNames = [
   "key",
   "value",
   "message",
-  "payload",
-  "metadata",
-  "hash",
-  "prefix",
-  "role",
-  "operation",
-  "revision",
-  "generation",
-  "identity",
-  "strategy",
-  "enabled",
-  "day",
-  "events",
 ];
