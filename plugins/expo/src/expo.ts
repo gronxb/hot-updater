@@ -10,6 +10,7 @@ import type {
 } from "@hot-updater/plugin-core";
 import {
   createReactNativeDoctor,
+  getReactNativePodInstallEnvironment,
   selectReactNativeArtifacts,
 } from "@hot-updater/react-native/build";
 import { ExecaError, execa } from "execa";
@@ -197,6 +198,8 @@ export const expo =
         doctor: createReactNativeDoctor(cwd),
       },
       nativeBuild: {
+        getPodInstallEnvironment: () =>
+          getReactNativePodInstallEnvironment(cwd),
         fingerprint: (options) => createExpoFingerprint(cwd, options),
         getBundleSigningPublicKey: () => getExpoBundleSigningPublicKey(cwd),
         getFingerprintExtraSources: async () =>

@@ -170,6 +170,10 @@ export type NativeFingerprintProvider = (
 
 export interface BuildPlugin {
   nativeBuild?: {
+    /** Integration-owned environment for CocoaPods installation. */
+    getPodInstallEnvironment?: () =>
+      | Record<string, string>
+      | Promise<Record<string, string>>;
     /** Fingerprint native inputs using the selected build integration. */
     fingerprint?: NativeFingerprintProvider;
     /** Use the plugin's native key resolver instead of RN config discovery. */

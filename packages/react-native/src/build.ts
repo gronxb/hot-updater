@@ -9,6 +9,7 @@ import {
 
 export { createReactNativeFingerprint } from "./buildFingerprint";
 export { createReactNativeDoctor } from "./doctor";
+export { getReactNativePodInstallEnvironment } from "./podInstallEnvironment";
 export {
   getReactNativeMetadatas,
   type ReactNativeMetadata,

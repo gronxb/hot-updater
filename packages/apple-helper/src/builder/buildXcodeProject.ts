@@ -33,6 +33,7 @@ export const buildXcodeProject = async ({
   destination = [],
   useGenericDestination = false,
   installPods,
+  podInstallEnvironment,
   extraParams,
 }: {
   sourceDir: string;
@@ -44,12 +45,13 @@ export const buildXcodeProject = async ({
   destination?: IosBuildDestination[];
   useGenericDestination?: boolean;
   installPods?: boolean;
+  podInstallEnvironment?: Record<string, string>;
   extraParams?: string[];
 }): Promise<{ appPath: string; infoPlistPath: string }> => {
   const xcodeProject = await parseXcodeProjectInfo(sourceDir);
 
   if (installPods) {
-    await installPodsIfNeeded(sourceDir);
+    await installPodsIfNeeded(sourceDir, podInstallEnvironment);
   }
 
   const derivedDataPath = await createRandomTmpDir();

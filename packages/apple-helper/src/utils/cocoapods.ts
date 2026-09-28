@@ -2,10 +2,12 @@ import fs from "fs";
 import path from "path";
 
 import { getCwd, p } from "@hot-updater/cli-tools";
-import { getReactNativeMetadatas } from "@hot-updater/react-native/build";
 import { execa } from "execa";
 
-export const installPodsIfNeeded = async (sourceDir: string): Promise<void> => {
+export const installPodsIfNeeded = async (
+  sourceDir: string,
+  environment?: Record<string, string>,
+): Promise<void> => {
   const podfilePath = path.join(sourceDir, "Podfile");
 
   // Check if Podfile exists
@@ -37,7 +39,7 @@ export const installPodsIfNeeded = async (sourceDir: string): Promise<void> => {
       podSpinner.start("Installing CocoaPods dependencies");
       await execa("bundle", ["exec", "pod", "install"], {
         cwd: sourceDir,
-        env: preparePodInstallEnvVars(),
+        env: environment,
       });
       podSpinner.stop("CocoaPods dependencies installed");
     } else {
@@ -45,7 +47,7 @@ export const installPodsIfNeeded = async (sourceDir: string): Promise<void> => {
       spinner.start("Installing CocoaPods dependencies");
       await execa("pod", ["install"], {
         cwd: sourceDir,
-        env: preparePodInstallEnvVars(),
+        env: environment,
       });
       spinner.stop("CocoaPods dependencies installed");
     }
@@ -65,25 +67,4 @@ const checkShouldUseBundler = async (gemfilePath: string): Promise<boolean> => {
   } catch {
     return false;
   }
-};
-
-const preparePodInstallEnvVars = (): Record<string, string> => {
-  const { minor } = getReactNativeMetadatas().version;
-  const usePrebuiltReactNative = minor >= 81;
-
-  return {
-    RCT_IGNORE_PODS_DEPRECATION: "1",
-    RCT_USE_RN_DEP:
-      process.env["RCT_USE_RN_DEP"] !== undefined
-        ? String(process.env["RCT_USE_RN_DEP"])
-        : usePrebuiltReactNative
-          ? "1"
-          : "0",
-    RCT_USE_PREBUILT_RNCORE:
-      process.env["RCT_USE_PREBUILT_RNCORE"] !== undefined
-        ? String(process.env["RCT_USE_PREBUILT_RNCORE"])
-        : usePrebuiltReactNative
-          ? "1"
-          : "0",
-  };
 };

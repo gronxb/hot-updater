@@ -1471,9 +1471,6 @@ importers:
       '@hot-updater/plugin-core':
         specifier: workspace:*
         version: link:../../plugins/plugin-core
-      '@hot-updater/react-native':
-        specifier: workspace:*
-        version: link:../react-native
       execa:
         specifier: catalog:tools
         version: 9.5.2

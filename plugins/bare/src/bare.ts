@@ -11,6 +11,7 @@ import type {
 } from "@hot-updater/plugin-core";
 import {
   createReactNativeDoctor,
+  getReactNativePodInstallEnvironment,
   createReactNativeFingerprint,
   selectReactNativeArtifacts,
 } from "@hot-updater/react-native/build";
@@ -307,6 +308,8 @@ export const bare =
         doctor: createReactNativeDoctor(cwd),
       },
       nativeBuild: {
+        getPodInstallEnvironment: () =>
+          getReactNativePodInstallEnvironment(cwd),
         fingerprint: (options) =>
           fingerprint
             ? fingerprint(options)

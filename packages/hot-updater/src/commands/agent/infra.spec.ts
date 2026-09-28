@@ -277,6 +277,27 @@ describe("published agent infrastructure commands", () => {
     expect(
       run("setup", "--provider", "cloudflare", "--build", "expo").status,
     ).toBe(0);
+    expect(
+      await readFile(path.join(cwd, "hot-updater.config.ts"), "utf8"),
+    ).toBe('throw new Error("config must not execute");');
+  });
+
+  it("diagnoses expo-updates through the selected Expo integration", async () => {
+    await writeFile(
+      path.join(cwd, "package.json"),
+      JSON.stringify({
+        dependencies: { "expo-updates": "1.0.0", "hot-updater": "1.0.0" },
+      }),
+    );
+    const expoPath = path.resolve(
+      import.meta.dirname,
+      "../../../../../plugins/expo/dist/index.mjs",
+    );
+    await writeFile(
+      path.join(cwd, "hot-updater.config.ts"),
+      `import { expo } from ${JSON.stringify(pathToFileURL(expoPath).href)};
+       export default { build: expo(), updateStrategy: "appVersion" };`,
+    );
     const doctor = spawnSync(process.execPath, [cliPath, "doctor", "--json"], {
       cwd,
       encoding: "utf8",
