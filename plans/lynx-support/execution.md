@@ -671,3 +671,28 @@ The remaining MySQL serialization test passes on the next isolated execution
 without a code change. Read-only process observations show active schema DDL,
 not a stuck transaction. This focused success does not turn the earlier broad
 integration run green.
+
+## 2026-09-29 primary-context OTA authority
+
+Commit `972c11e94` passes the full unit suite (3,865 tests in 343 files), all 35
+workspace type-check projects, workspace lint, and clean native matrix builds
+on both OSes. Full job `job-20260928171631-2fpuk1` uses that same commit for
+native setup and all four device shard worktrees; its native builds pass and
+scenario execution is in progress.
+
+The matrix run exposes a contract mistake in the new detail controls: native
+catalog authorization correctly rejects a secondary context with `STALE_CONTEXT`.
+Those controls are removed. Existing native authority remains unchanged. The
+primary SDK page now offers `Install with detail open`: it navigates through
+Sparkling, waits for the new detail's native admission and durable terminal,
+then installs and reloads through the retained primary context. React, Vue, and
+Octane use the same flow. The before-reload receipt uses the actual newly opened
+detail context; the earlier offline-retention receipt remains distinct.
+Regression coverage rejects a stale previous detail terminal as evidence that
+the newly opened page is admitted. The 120 matrix regression tests, example
+type checks, targeted lint, and all three real compiler builds pass. Device
+validation of this flow is pending.
+
+The full workspace integration rerun on `972c11e94` passes **413/413 tests in
+28 files** in 687 seconds (`/tmp/lynx-972c11e-workspace-integration.log`). No
+database code changed for the preceding transient timeouts.

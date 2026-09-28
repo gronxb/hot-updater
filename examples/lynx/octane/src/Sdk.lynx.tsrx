@@ -4,7 +4,7 @@ import { loadDynamicProbe, loadExternalBootstrap, loadProbeFont } from "@hot-upd
 import { navigate } from "@hot-updater/lynx/navigation";
 
 import { verifyNavigationBoundary } from "./navigation-boundary";
-import { captureRuntimeEvents, checkSdkUpdate, imageUrl, installSdkUpdate, installSdkUpdateAndReload, resources, sdkImageLoaded, startSdk, variant } from "./sdk-shared";
+import { captureRuntimeEvents, checkSdkUpdate, imageUrl, installSdkUpdate, installSdkUpdateAndReload, installSdkUpdateWithDetail, resources, sdkImageLoaded, startSdk, variant } from "./sdk-shared";
 
 export function App() @{
   const [status, setStatus] = useState(`Bundle ${variant}: starting`);
@@ -40,6 +40,9 @@ export function App() @{
         </view>
         <view class="action" bindtap={() => { void installSdkUpdateAndReload(setStatus, setCanInstall); }}>
           <text class="action-label">{"Install and reload"}</text>
+        </view>
+        <view class="action" bindtap={() => { void installSdkUpdateWithDetail(setStatus, setCanInstall); }}>
+          <text class="action-label">{"Install with detail open"}</text>
         </view>
       </view>
     }

@@ -1424,10 +1424,14 @@ state, and process identity across reopen. A receipt serialization order change
 must not conceal or falsely report a persisted journal change. Matrix teardown
 must release only the device session owned by that run, including on failure.
 
-The public React, Vue, and Octane detail pages must expose SDK update checking
-and immediate installation after native page admission. Exercise these controls
-while the detail page remains on the stack, then prove same-process replacement
-of both pages. A reconstructed iOS secondary page emits `pageOpened` only after
+Run `checkForUpdate`, installation, and reload from the host-designated primary
+context. A secondary page cannot authorize catalog selection or mutate the OTA
+selection. The public React, Vue, and Octane samples prepare the update in the
+primary, navigate to the separate detail bundle, wait for that page's native
+admission and durable terminal record, then install and reload through the
+retained primary context. Prove same-process replacement of both pages. This
+flow must not broaden secondary-context authority. A reconstructed iOS secondary
+page emits `pageOpened` only after
 its new Sparkling controller is attached to the native navigation stack. A
 visible page marker is not admission evidence: E2E waits for the matching
 `pageAdmitted` and durable `pageAttemptTerminal` records before asserting a

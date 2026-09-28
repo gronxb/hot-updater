@@ -1447,7 +1447,7 @@ async function runCell(
   cursor = eventCursor(adapter);
   const processBRetain = adapter.launch(framework, channel);
   await adapter.waitForText("Bundle B ready");
-  let bRetainEvents = await leaveDetailPageOpen(
+  const bRetainEvents = await leaveDetailPageOpen(
     adapter,
     cursor,
     B,
@@ -1489,13 +1489,11 @@ async function runCell(
     );
   }
   cursor = eventCursor(adapter);
-  await leaveDetailPageOpen(adapter, cursor, B, processBRetain, "B");
-  cursor = eventCursor(adapter);
   const reloadProcess = adapter.processId();
   assert.equal(reloadProcess, processBRetain);
   adapter.clickText("Check update");
   await adapter.waitForText("Update verified and ready to install.");
-  adapter.clickText("Install and reload");
+  adapter.clickText("Install with detail open");
   const cEvents = await closeReconstructedDetailPage(
     adapter,
     cursor,
@@ -1503,6 +1501,16 @@ async function runCell(
     reloadProcess,
     "C",
   );
+  const bBeforeReloadEvents = [
+    ...bRetainEvents.filter(
+      (event: any) => event.pageEntry === "main.lynx.bundle",
+    ),
+    ...cEvents.filter(
+      (event: any) =>
+        String(event.bundleId) === B.bundleId &&
+        String(event.releaseId) === B.releaseId,
+    ),
+  ];
   await checkpointRuntimeEvents(
     adapter,
     runtimeEventLedger,
@@ -1875,7 +1883,12 @@ async function runCell(
     build: C,
     processId: reloadProcess,
   });
-  const beforeReload = retainB;
+  const beforeReload = collectReadyLaunch({
+    phaseEvents: bBeforeReloadEvents,
+    allEvents,
+    build: B,
+    processId: processBRetain,
+  });
   const generationRetirement = collectInvalidatedContexts(
     allEvents,
     beforeReload,

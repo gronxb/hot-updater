@@ -27,6 +27,12 @@ if (update && (await update.updateBundle()) && update.shouldForceUpdate) {
 }
 ```
 
+Run update checks, installation, and reload from the host-designated primary
+page context. Secondary pages report their own readiness with
+`notifyAppReady()`; they cannot authorize or stage an OTA selection. The primary
+context can apply an update while a detail page is open, rebuilding the full
+managed stack in the same process.
+
 Importing the package and calling `init()` do not call native code, register a
 listener, or open a network connection. The background runtime and native
 integration must provide `fetch`, `AbortController`, and a readable response

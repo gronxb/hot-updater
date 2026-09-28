@@ -109,6 +109,22 @@ remaining implementation, diagnosis, and verification are performed here.
 
 ## Latest September 29 validation
 
+- `972c11e94` passes the complete workspace unit suite (3,865/3,865, 343 files),
+  all 35 workspace type projects, workspace lint, and both clean native builds.
+  Full job `job-20260928171631-2fpuk1` uses exactly that commit for native setup
+  and all four device shards. Native builds pass; scenario execution is active.
+- Its public matrix discovers that secondary-page catalog authorization is
+  correctly rejected with `STALE_CONTEXT`. The added detail controls are removed.
+  The primary SDK page now navigates, waits for the new detail's durable native
+  admission, and installs/reloads from the retained primary. Native authority
+  is unchanged. The before-reload receipt is separated from offline retention
+  so it names the actual current detail context. New matrix execution is needed.
+- The full workspace integration rerun passes **413/413 tests in 28 files**,
+  recorded in `/tmp/lynx-972c11e-workspace-integration.log`. No database code
+  changed for the earlier timeouts. The primary-authority corrections pass
+  120 matrix tests, example type checking, targeted lint, and real React, Vue,
+  and Octane compiler builds; clean native/device matrix validation is next.
+
 - Latest completed full job `job-20260928162042-ocwb3m`: **46/52**, iOS 24/26,
   Android 22/26. Failures: iOS manifest-diff log query timeout and multi-page
   reconstruction evidence; Android three pre-ready crash/font checks and one

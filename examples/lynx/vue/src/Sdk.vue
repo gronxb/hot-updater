@@ -14,6 +14,7 @@ import {
   imageUrl,
   installSdkUpdate,
   installSdkUpdateAndReload,
+  installSdkUpdateWithDetail,
   resources,
   sdkImageLoaded,
   startSdk,
@@ -77,6 +78,13 @@ onMounted(() => {
       @tap="installSdkUpdate(setStatus, setCanInstall)"
     >
       <text class="action-label">Install next launch</text>
+    </view>
+    <view
+      v-if="canInstall"
+      class="action"
+      @tap="installSdkUpdateWithDetail(setStatus, setCanInstall)"
+    >
+      <text class="action-label">Install with detail open</text>
     </view>
     <view
       v-if="canInstall"

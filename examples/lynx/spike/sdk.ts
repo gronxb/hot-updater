@@ -3,6 +3,7 @@ import {
   LynxUpdaterError,
   type CheckForUpdateResult,
 } from "@hot-updater/lynx";
+import { navigate } from "@hot-updater/lynx/navigation";
 
 declare const __SPIKE_VARIANT__: string;
 declare const __SPIKE_BEHAVIOR__: string;
@@ -37,33 +38,6 @@ export function sdkImageLoaded() {
   completeImage?.();
 }
 
-async function initializeSdk() {
-  if (initialized) return;
-  const launchConfiguration = await HotUpdater.getLaunchConfiguration();
-  const baseURL =
-    launchConfiguration.appBaseURL ?? "http://localhost:3007/hot-updater";
-  evidenceOrigin = evidenceOriginFrom(baseURL);
-  HotUpdater.init({ baseURL });
-  initialized = true;
-}
-
-export async function startDetailSdk(status: (value: string) => void) {
-  try {
-    await initializeSdk();
-    if (["unconfirmed", "detail-unconfirmed"].includes(__SPIKE_BEHAVIOR__)) {
-      status(`Detail bundle ${variant}: readiness deliberately withheld`);
-      console.log("HOT_UPDATER_DETAIL_UNCONFIRMED", variant);
-      return;
-    }
-    const receipt = await HotUpdater.notifyAppReady();
-    ready = true;
-    status(`Detail bundle ${variant} ready`);
-    console.log("HOT_UPDATER_DETAIL_READY", JSON.stringify(receipt));
-  } catch (error) {
-    status(`Detail failed: ${String(error)}`);
-  }
-}
-
 export async function startSdk(
   status: (value: string) => void,
   fontRegistered: () => void,
@@ -72,7 +46,17 @@ export async function startSdk(
   loadDynamic: (url: string) => Promise<string>,
 ) {
   try {
-    await initializeSdk();
+    if (!initialized) {
+      const launchConfiguration = await HotUpdater.getLaunchConfiguration();
+      evidenceOrigin = evidenceOriginFrom(
+        launchConfiguration.appBaseURL ?? "http://localhost:3007/hot-updater",
+      );
+      HotUpdater.init({
+        baseURL:
+          launchConfiguration.appBaseURL ?? "http://localhost:3007/hot-updater",
+      });
+      initialized = true;
+    }
     const launch = await HotUpdater.getLaunchInfo();
     console.log("HOT_UPDATER_SDK_LAUNCH", JSON.stringify(launch));
     console.log(
@@ -266,6 +250,65 @@ export async function installSdkUpdate(
   } finally {
     busy = false;
   }
+}
+
+export async function installSdkUpdateWithDetail(
+  status: (value: string) => void,
+  canInstall: (value: boolean) => void,
+) {
+  if (busy) throw new Error("An SDK update action is already running");
+  if (!prepared) throw new Error("No verified SDK update is prepared");
+  const before = await HotUpdater.getRuntimeEvents();
+  const primary = before.events
+    .slice()
+    .reverse()
+    .find(
+      (event) =>
+        event.name === "jsReady" &&
+        event.details.pageEntry === "main.lynx.bundle",
+    );
+  if (!primary || !before.latestSequence)
+    throw new Error("Missing confirmed primary page before detail navigation");
+  const checkpoint = before.latestSequence;
+  await new Promise<void>((resolve, reject) => {
+    navigate(
+      {
+        path: "detail.lynx.bundle",
+        options: { params: { title: "Second Page" } },
+      },
+      (result) =>
+        result.code === 1 ? resolve() : reject(new Error(result.msg)),
+    );
+  });
+  const deadline = Date.now() + 30_000;
+  while (Date.now() < deadline) {
+    const snapshot = await HotUpdater.getRuntimeEvents();
+    const admitted = snapshot.events.find(
+      (event) =>
+        event.name === "pageAdmitted" &&
+        event.details.pageEntry === "detail.lynx.bundle" &&
+        event.details.generationId === primary.details.generationId &&
+        (event.sequence.length > checkpoint.length ||
+          (event.sequence.length === checkpoint.length &&
+            event.sequence > checkpoint)),
+    );
+    if (
+      admitted &&
+      snapshot.events.some(
+        (event) =>
+          event.name === "pageAttemptTerminal" &&
+          event.details.terminal === "admitted" &&
+          event.details.pageAttemptId === admitted.details.pageAttemptId &&
+          event.details.contextId === admitted.details.contextId,
+      )
+    ) {
+      return installSdkUpdateAndReload(status, canInstall);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  throw new Error(
+    "Detail page did not complete native admission before reload",
+  );
 }
 
 export async function installSdkUpdateAndReload(

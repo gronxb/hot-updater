@@ -13,6 +13,7 @@ import {
   imageUrl,
   installSdkUpdate,
   installSdkUpdateAndReload,
+  installSdkUpdateWithDetail,
   resources,
   sdkImageLoaded,
   startSdk,
@@ -83,6 +84,14 @@ function App() {
             bindtap={() => void installSdkUpdate(setStatus, setCanInstall)}
           >
             <text className="action-label">Install next launch</text>
+          </view>
+          <view
+            className="action"
+            bindtap={() =>
+              void installSdkUpdateWithDetail(setStatus, setCanInstall)
+            }
+          >
+            <text className="action-label">Install with detail open</text>
           </view>
           <view
             className="action"

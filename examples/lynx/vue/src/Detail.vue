@@ -1,28 +1,31 @@
 <script setup lang="ts">
+import { HotUpdater } from "@hot-updater/lynx";
 import { close } from "@hot-updater/lynx/navigation";
 import { onMounted, ref } from "vue-lynx";
 
-import {
-  checkSdkUpdate,
-  installSdkUpdateAndReload,
-  startDetailSdk,
-  variant,
-} from "../../spike/sdk";
+import { variant } from "../../spike/bridge";
 
 import "../../style.css";
 
+declare const __SPIKE_BEHAVIOR__: string;
+
 const status = ref(`Detail bundle ${variant}`);
-const canInstall = ref(false);
-function setStatus(value: string) {
-  status.value = value;
-}
-function setCanInstall(value: boolean) {
-  canInstall.value = value;
-}
 const closeDetail = () =>
   close(undefined, (result) => console.log("HOT_UPDATER_PAGE_CLOSE", result));
 onMounted(() => {
-  void startDetailSdk(setStatus);
+  if (["unconfirmed", "detail-unconfirmed"].includes(__SPIKE_BEHAVIOR__)) {
+    status.value = `Detail bundle ${variant}: readiness deliberately withheld`;
+    console.log("HOT_UPDATER_DETAIL_UNCONFIRMED", variant);
+    return;
+  }
+  void HotUpdater.notifyAppReady()
+    .then((receipt) => {
+      status.value = `Detail bundle ${variant} ready`;
+      console.log("HOT_UPDATER_DETAIL_READY", JSON.stringify(receipt));
+    })
+    .catch((error) => {
+      status.value = `Detail failed: ${String(error)}`;
+    });
 });
 </script>
 
@@ -33,16 +36,6 @@ onMounted(() => {
     <text class="description">{{ status }}</text>
     <view class="action" @tap="closeDetail">
       <text class="action-label">Close detail page</text>
-    </view>
-    <view class="action" @tap="checkSdkUpdate(setStatus, setCanInstall)">
-      <text class="action-label">Check update</text>
-    </view>
-    <view
-      v-if="canInstall"
-      class="action"
-      @tap="installSdkUpdateAndReload(setStatus, setCanInstall)"
-    >
-      <text class="action-label">Install and reload</text>
     </view>
   </view>
 </template>
