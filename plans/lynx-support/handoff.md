@@ -109,6 +109,16 @@ remaining implementation, diagnosis, and verification are performed here.
 
 ## Latest September 29 validation
 
+- Current full job also exposes an iOS detail-close observation race: capture
+  stops at sequence 276, and native back completes at 277. Read-only durable
+  evidence is retained in `evidence/ios-detail-close-race.json`. All single-page
+  closes/backs now wait for exact native closure evidence, including pending
+  cancellation. Both reproducing tests fail before the fix; 72 related tests
+  pass after it. No native change or new fingerprint is needed for this fix.
+- `c4a9985a5` passes both native matrix builds with the refreshed fingerprint.
+  The matrix is running with dedicated devices and results at
+  `/tmp/lynx-matrix-c4a9985`; log `/tmp/lynx-matrix-c4a9985.log`.
+
 - Primary-context OTA correction `1bd67a4a5` passes both clean native matrix
   builds. Before device execution, the current full E2E exposes a stale iOS
   fingerprint from the host lifecycle change. The normal CLI regenerates the

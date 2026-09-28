@@ -11,7 +11,10 @@ import {
   assertManagedStackDepthAfterBack,
   assertManagedVerifiedFatalDetail,
 } from "./multipage-evidence";
-import { waitForManagedDetailOpened } from "./scenarios/sparkling-multipage-ota";
+import {
+  waitForManagedDetailClosed,
+  waitForManagedDetailOpened,
+} from "./scenarios/sparkling-multipage-ota";
 
 const main = {
   runtimeId: "lynx-runtime",
@@ -74,6 +77,43 @@ describe("managed Lynx multi-page evidence", () => {
       }),
     ).toThrow("Missing authentic native native back to stack depth 1 event");
   });
+
+  it.each(["back", "close"] as const)(
+    "waits for the matching iOS detail %s event after the UI action returns",
+    async (cause) => {
+      const completed = event(
+        "277",
+        cause === "back" ? "nativeBack" : "pageClosed",
+        {
+          ...detail,
+          outcome: cause === "back" ? "nativeBack" : "closed",
+          orderedPageEntries: ["main.lynx.bundle"],
+          topPageEntry: "main.lynx.bundle",
+        },
+      );
+      const stale = {
+        ...completed,
+        sequence: "250",
+        details: {
+          ...completed.details,
+          contextId: "previous-detail-context",
+        },
+      };
+      const captureGenerationEvents = vi
+        .fn()
+        .mockResolvedValueOnce(
+          snapshot([stale, event("276", "pageAdmitted", detail)]),
+        )
+        .mockResolvedValue(snapshot([stale, completed]));
+      const result = await waitForManagedDetailClosed(
+        { captureGenerationEvents } as never,
+        "detail close",
+        { platform: "ios", detail, cause },
+      );
+      expect(captureGenerationEvents).toHaveBeenCalledTimes(2);
+      expect(result.events).toContainEqual(completed);
+    },
+  );
 
   it("proves a real iOS detail page, its admission, params, and JS close", () => {
     const initial = snapshot([

@@ -92,6 +92,27 @@ export async function waitForManagedDetailOpened(
   throw lastError;
 }
 
+export async function waitForManagedDetailClosed(
+  app: LynxAppDriver,
+  stage: string,
+  options: Parameters<typeof assertManagedDetailClosed>[1],
+) {
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= 20; attempt += 1) {
+    const snapshot = await app.captureGenerationEvents(
+      attempt === 1 ? stage : `${stage} retry ${attempt}`,
+    );
+    try {
+      assertManagedDetailClosed(snapshot, options);
+      return snapshot;
+    } catch (error) {
+      lastError = error;
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
+  }
+  throw lastError;
+}
+
 async function closeManagedStackToRoot(
   app: LynxAppDriver,
   startingDepth: number,
@@ -212,14 +233,11 @@ async function provePageCycle(
   } else {
     await app.closeDetailPage(`${label}: close detail through router`);
   }
-  const closed = await app.captureGenerationEvents(
+  await waitForManagedDetailClosed(
+    app,
     `${label}: capture detail close evidence`,
+    { platform: app.platformName, detail, cause: closeWith },
   );
-  assertManagedDetailClosed(closed, {
-    platform: app.platformName,
-    detail,
-    cause: closeWith,
-  });
   return main;
 }
 
@@ -486,10 +504,9 @@ export const sparklingMultipageOtaScenario = {
       await app.closeDetailPage(
         `multi-page navigation ${vector}: close accepted page`,
       );
-      assertManagedDetailClosed(
-        await app.captureGenerationEvents(
-          `multi-page navigation ${vector}: capture close evidence`,
-        ),
+      await waitForManagedDetailClosed(
+        app,
+        `multi-page navigation ${vector}: capture close evidence`,
         { platform: app.platformName, detail: boundaryDetail, cause: "close" },
       );
     }
@@ -747,10 +764,9 @@ export const sparklingMultipageOtaScenario = {
     await app.closeDetailPage(
       "multi-page C: close reconstructed managed detail",
     );
-    assertManagedDetailClosed(
-      await app.captureGenerationEvents(
-        "multi-page C: capture reconstructed detail close",
-      ),
+    await waitForManagedDetailClosed(
+      app,
+      "multi-page C: capture reconstructed detail close",
       {
         platform: app.platformName,
         detail: reconstructedCDetail,
@@ -865,17 +881,14 @@ export const sparklingMultipageOtaScenario = {
       serverAMain,
     );
     await app.closeDetailPage("multi-page pending close: Sparkling close");
-    const pendingCloseEvents = await app.captureGenerationEvents(
+    const pendingCloseEvents = await waitForManagedDetailClosed(
+      app,
       "multi-page pending close: capture terminal",
+      { platform: app.platformName, detail: pendingClose, cause: "close" },
     );
     assertManagedPageTerminal(pendingCloseEvents, pendingClose, {
       reason: "sparklingClose",
       terminal: "authorized-cancel",
-    });
-    assertManagedDetailClosed(pendingCloseEvents, {
-      platform: app.platformName,
-      detail: pendingClose,
-      cause: "close",
     });
 
     const pendingBack = await openPendingDetail(
@@ -885,17 +898,14 @@ export const sparklingMultipageOtaScenario = {
       serverAMain,
     );
     await app.nativeBack("multi-page pending back: native back");
-    const pendingBackEvents = await app.captureGenerationEvents(
+    const pendingBackEvents = await waitForManagedDetailClosed(
+      app,
       "multi-page pending back: capture terminal",
+      { platform: app.platformName, detail: pendingBack, cause: "back" },
     );
     assertManagedPageTerminal(pendingBackEvents, pendingBack, {
       reason: "nativeBack",
       terminal: "authorized-cancel",
-    });
-    assertManagedDetailClosed(pendingBackEvents, {
-      platform: app.platformName,
-      detail: pendingBack,
-      cause: "back",
     });
 
     await app.control(

@@ -707,3 +707,21 @@ reproduces exactly that native-file difference. Regenerate `fingerprint.json`
 and both configured iOS plist hashes through `hot-updater fingerprint create`;
 Android's hash remains unchanged. Rebuild native binaries before device
 acceptance. This keeps native compatibility validation strict.
+
+
+## 2026-09-29 delayed native detail close evidence
+
+The same full job's iOS multi-page scenario fails after B's native back: the
+first JS journal capture ends at sequence 276 (`pageAdmitted`), while a
+read-only capture of the durable native journal contains the matching actual
+`nativeBack` at 277 with only main remaining. The retained evidence is
+`evidence/ios-detail-close-race.json`. Native navigation succeeds; the test
+observes before the animation/lifecycle callback completes.
+
+All single-detail close/back paths now wait within the existing bounded
+20-attempt policy for the exact context and final native stack evidence.
+Pending-page cancellation still requires its own matching durable terminal.
+The regression supplies a stale previous-page close and delays the current
+page's event; both back and JavaScript-close cases fail before the fix and pass
+afterward. The related driver, scenario, and evidence suites pass **72/72**.
+Native source and fingerprint are unchanged by this harness correction.
