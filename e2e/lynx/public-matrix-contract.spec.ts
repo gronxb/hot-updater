@@ -801,6 +801,11 @@ function makeCell(framework = "react", platform = "ios") {
             runtimeId: incompatible.runtimeId,
             manifestSha256: incompatible.manifestSha256,
             artifactUrl: "https://updates.test/files/incompatible/archive.zip",
+            manifestUrl:
+              "https://updates.test/files/incompatible/manifest.json",
+            metadataUrl:
+              "https://updates.test/files/incompatible/metadata.json",
+            metadataSha256: hash("e"),
           },
           running: {
             bundleId: C.bundleId,
@@ -811,8 +816,14 @@ function makeCell(framework = "react", platform = "ios") {
           },
           nativeErrorCode: "INCOMPATIBLE",
           rejectedBeforeGenerationEvaluation: true,
-          firstArtifactRequestCount: 1,
+          firstArtifactRequestCount: 0,
           cachedArtifactRequestCount: 0,
+          firstManifestRequestCount: 1,
+          cachedManifestRequestCount: 0,
+          firstMetadataRequestCount: 1,
+          cachedMetadataRequestCount: 0,
+          manifestResponseSha256: incompatible.manifestSha256,
+          metadataResponseSha256: hash("e"),
         },
       },
       deltaB: {
@@ -1472,6 +1483,25 @@ describe("Lynx public matrix evidence contract", () => {
       "a cross-provenance candidate redownloaded after native rejection",
       (cell: any) => {
         cell.phases.crossProvenance.rejection.cachedArtifactRequestCount = 1;
+      },
+    ],
+    [
+      "cross-provenance metadata fetched again after native rejection",
+      (cell: any) => {
+        cell.phases.crossProvenance.rejection.cachedMetadataRequestCount = 1;
+      },
+    ],
+    [
+      "an incompatible check without a manifest response",
+      (cell: any) => {
+        cell.phases.crossProvenance.rejection.firstManifestRequestCount = 0;
+      },
+    ],
+    [
+      "a metadata response with different authenticated bytes",
+      (cell: any) => {
+        cell.phases.crossProvenance.rejection.metadataResponseSha256 =
+          hash("f");
       },
     ],
     [

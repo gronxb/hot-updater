@@ -1,12 +1,13 @@
 # Lynx support handoff and completion plan
 
-The latest `d06cb07da` matrix advances past both stale-context rejections, then
-stops on an obsolete install-time expectation for incompatible artifacts. The
-SDK correctly rejects during check preflight. The runner correction requires
-two separately observed check failures and retains exact first/cached download
-counts. No complete cell is claimed; the confirmed-fatal host fix still needs
-to reach its device phase. See the last execution checkpoint.
-
+The latest `ad0734918` matrix reaches incompatible check preflight and stops
+because the driver expects an archive download. The native request instead
+fetches the manifest and changed runtime metadata from running C. The driver
+now measures that representation: exact response hashes, one first manifest and
+metadata request, zero archive requests, and zero cached redownloads after a
+separately observed second check. All 138 focused tests pass. Retain
+`evidence/public-matrix-ad0734918-failure.json`; no complete cell is claimed.
+The shared full job remains queued, with actual checkout still pending.
 
 Latest follow-up (2026-09-29): shared job `job-20260928211636-6hdwci` remains
 queued, actual checkout pending. The `7cc24042b` matrix stops at an ambiguous

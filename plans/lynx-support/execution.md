@@ -1135,3 +1135,21 @@ label from satisfying that wait. Exact archive request counts, unchanged running
 generation and no candidate evaluation remain mandatory. No SDK behavior or
 native artifact changes in this correction. Retain
 `evidence/public-matrix-d06cb07da-failure.json`; complete cells remain zero.
+
+
+## 2026-09-29 incompatible metadata transport correction
+
+The fresh `ad0734918` React/iOS run reaches check-time `INCOMPATIBLE`, then
+waits for a nonexistent second archive request. Server evidence identifies the
+only ZIP request as the deployment verifier. Native preflight requests the
+from-C delivery representation, manifest and changed runtime metadata instead.
+The negative fixture is deliberately metadata-only. The corrected driver
+resolves that actual representation before checking, verifies both response
+hashes against deployed files, requires exactly one manifest and metadata GET
+and no archive GET, then separately observes cached rejection with no further
+file requests. Process, generation and no-evaluation assertions remain intact.
+Three regressions reject cached metadata downloads, missing manifest reads and
+wrong metadata response hashes; all 138 focused tests and targeted lint pass.
+No package or native behavior changes. The retained failure is
+`evidence/public-matrix-ad0734918-failure.json`. Complete matrix cells remain
+zero; the confirmed-fatal host correction still needs its full device phase.

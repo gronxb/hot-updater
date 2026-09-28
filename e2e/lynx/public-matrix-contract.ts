@@ -2358,6 +2358,26 @@ export function validateLynxMatrixCell(value: unknown): void {
     rejectedCandidate.artifactUrl,
     "cell.phases.crossProvenance.rejection.candidate.artifactUrl",
   );
+  for (const field of ["manifestUrl", "metadataUrl"]) {
+    absoluteUrl(
+      rejectedCandidate[field],
+      `cell.phases.crossProvenance.rejection.candidate.${field}`,
+    );
+  }
+  const metadataSha256 = hash(
+    rejectedCandidate.metadataSha256,
+    "cell.phases.crossProvenance.rejection.candidate.metadataSha256",
+  );
+  exactString(
+    provenanceRejection.manifestResponseSha256,
+    incompatible.manifestSha256,
+    "cell.phases.crossProvenance.rejection.manifestResponseSha256",
+  );
+  exactString(
+    provenanceRejection.metadataResponseSha256,
+    metadataSha256,
+    "cell.phases.crossProvenance.rejection.metadataResponseSha256",
+  );
   const provenanceRunning = record(
     provenanceRejection.running,
     "cell.phases.crossProvenance.rejection.running",
@@ -2408,12 +2428,16 @@ export function validateLynxMatrixCell(value: unknown): void {
     "cell.phases.crossProvenance.rejection.rejectedBeforeGenerationEvaluation",
   );
   if (
-    provenanceRejection.firstArtifactRequestCount !== 1 ||
-    provenanceRejection.cachedArtifactRequestCount !== 0
+    provenanceRejection.firstArtifactRequestCount !== 0 ||
+    provenanceRejection.cachedArtifactRequestCount !== 0 ||
+    provenanceRejection.firstManifestRequestCount !== 1 ||
+    provenanceRejection.cachedManifestRequestCount !== 0 ||
+    provenanceRejection.firstMetadataRequestCount !== 1 ||
+    provenanceRejection.cachedMetadataRequestCount !== 0
   ) {
     fail(
       "cell.phases.crossProvenance.rejection",
-      "expected one initial artifact request and no cached redownload",
+      "expected one initial manifest and metadata request, no archive and no cached redownload",
     );
   }
   const primaryLifecycle = record(

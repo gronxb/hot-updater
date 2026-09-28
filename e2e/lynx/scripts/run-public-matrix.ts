@@ -1179,13 +1179,21 @@ async function rejectCrossProvenanceTarget(
 ) {
   assert.equal(deployment.incompatibleRuntimeAllowed, true);
   assert.notEqual(deployment.runtimeId, running.runtimeId);
-  assert.equal(
-    deployment.deliveryArtifactResponse?.changedAssets,
-    undefined,
-    "Cross-provenance fixture must use ordinary complete-artifact delivery",
-  );
   const artifactUrl = deployment.fileUrl;
   assert.equal(typeof artifactUrl, "string");
+  const response = await fetch(
+    `${origin}/hot-updater/artifacts/${deployment.bundleId}/from/${running.bundleId}`,
+  );
+  assert.equal(response.status, 200);
+  const delivery: any = await response.json();
+  assert.equal(delivery.fileUrl, null);
+  assert.equal(delivery.fileHash, null);
+  const manifestUrl = delivery.manifestUrl;
+  const metadataUrl =
+    delivery.changedAssets?.["hot-updater-lynx.json"]?.file?.url;
+  assert.equal(typeof manifestUrl, "string");
+  assert.equal(typeof metadataUrl, "string");
+  const metadataSha256 = deployment.files["hot-updater-lynx.json"].sha256;
   const eventsBefore = adapter.readEvents();
   const generationBefore = eventsBefore.findLast(
     (event: any) => event.event === "generationStarted",
@@ -1194,19 +1202,24 @@ async function rejectCrossProvenanceTarget(
   assert.equal(String(generationBefore?.releaseId), running.releaseId);
   const processId = adapter.processId();
   const requestCountBefore = serverRequestCount(artifactUrl);
+  const manifestCountBefore = serverRequestCount(manifestUrl);
+  const metadataCountBefore = serverRequestCount(metadataUrl);
 
   adapter.clickText("Check update");
   await adapter.waitForText("Update check failed:");
   await adapter.waitForText("INCOMPATIBLE");
-  const requestCountAfterFirst = await waitForServerRequestCount(
-    artifactUrl,
-    requestCountBefore + 1,
-  );
+  assert.equal(serverRequestCount(artifactUrl), requestCountBefore);
+  assert.equal(serverRequestCount(manifestUrl), manifestCountBefore + 1);
+  assert.equal(serverRequestCount(metadataUrl), metadataCountBefore + 1);
+  const manifestResponse = serverRequests(manifestUrl).at(-1);
+  const metadataResponse = serverRequests(metadataUrl).at(-1);
+  assert.equal(manifestResponse?.status, 200);
+  assert.equal(metadataResponse?.status, 200);
   assert.equal(
-    requestCountAfterFirst,
-    requestCountBefore + 1,
-    "The first incompatible check fetched the artifact more than once",
+    manifestResponse?.responseSha256,
+    deployment.files["manifest.json"].sha256,
   );
+  assert.equal(metadataResponse?.responseSha256, metadataSha256);
 
   // Clear the first error so the second wait cannot match its stale status.
   adapter.clickText("Capture runtime events");
@@ -1217,9 +1230,11 @@ async function rejectCrossProvenanceTarget(
   await new Promise((resolve) => setTimeout(resolve, 500));
   assert.equal(
     serverRequestCount(artifactUrl),
-    requestCountAfterFirst,
+    requestCountBefore,
     "Cached cross-provenance rejection downloaded the artifact again",
   );
+  assert.equal(serverRequestCount(manifestUrl), manifestCountBefore + 1);
+  assert.equal(serverRequestCount(metadataUrl), metadataCountBefore + 1);
   await adapter.waitForText(`Bundle ${displayVariant}`);
   await adapter.waitForText("Open detail page");
   assert.equal(adapter.processId(), processId);
@@ -1245,6 +1260,9 @@ async function rejectCrossProvenanceTarget(
       runtimeId: deployment.runtimeId,
       manifestSha256: deployment.persistedManifestFileHash,
       artifactUrl,
+      manifestUrl,
+      metadataUrl,
+      metadataSha256,
     },
     running: {
       bundleId: running.bundleId,
@@ -1255,8 +1273,14 @@ async function rejectCrossProvenanceTarget(
     },
     nativeErrorCode: "INCOMPATIBLE",
     rejectedBeforeGenerationEvaluation: true,
-    firstArtifactRequestCount: 1,
+    firstArtifactRequestCount: 0,
     cachedArtifactRequestCount: 0,
+    firstManifestRequestCount: 1,
+    cachedManifestRequestCount: 0,
+    firstMetadataRequestCount: 1,
+    cachedMetadataRequestCount: 0,
+    manifestResponseSha256: manifestResponse.responseSha256,
+    metadataResponseSha256: metadataResponse.responseSha256,
   };
 }
 

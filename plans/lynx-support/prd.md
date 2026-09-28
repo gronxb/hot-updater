@@ -1570,6 +1570,14 @@ archive inspection do not prove device OTA.
 | Valid runtime journal append crosses a retention bound                             | Accept the append after minimum oldest-first eviction, retain at most 256 events and 16 MiB, and atomically persist sticky `truncated=true`                                                                                                                                                            |
 | Persisted runtime journal is corrupt or already oversized                          | Trust no old event or sequence; atomically repair to an empty `truncated=true` journal before future use, or keep the journal unavailable if durable repair fails                                                                                                                                      |
 
+For the metadata-only incompatible-runtime fixture, resolve delivery from the
+actual running Bundle. Check-time rejection must fetch and authenticate exactly
+one manifest and changed runtime metadata response, without downloading a full
+archive or evaluating the candidate. A second independently observed check must
+use the native incompatibility cache with no manifest, metadata or archive
+redownload. Record response hashes and retain the same running process and
+generation; deployment-verifier requests do not count as device downloads.
+
 Let `S` be the ordered shared default scenario manifest. The shipped Lynx default
 manifest is exactly `S` with only `metadata-v1-migration` removed, followed by
 exactly one Lynx-specific scenario named `sparkling-multipage-ota`. It may not

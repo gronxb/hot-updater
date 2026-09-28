@@ -1,0 +1,64 @@
+{
+  "sourceCommit": "ad0734918ffe3afb239898bb0432d9ea4c8c60ae",
+  "cell": "react-ios",
+  "completedCells": 0,
+  "failure": "The runner expects an archive GET during incompatible check preflight, but the native request uses manifest and changed metadata delivery from running C.",
+  "nativeEventCount": 320,
+  "observedRequests": [
+    {
+      "time": "2026-09-28T21:48:07.871Z",
+      "method": "GET",
+      "requestUrl": "http://127.0.0.1:18791/files/bundles/01a0e9fd-4f02-7c2d-b7e4-7dcad16f3e47/bundle.zip",
+      "path": "/files/bundles/01a0e9fd-4f02-7c2d-b7e4-7dcad16f3e47/bundle.zip",
+      "status": 200,
+      "responseErrorCode": null,
+      "responseByteLength": 269831,
+      "responseSha256": "3e735e49a334a86dec8427c2a04dcd494a299e25fb82221d7f6a9d17865314e6"
+    },
+    {
+      "time": "2026-09-28T21:48:09.156Z",
+      "method": "GET",
+      "requestUrl": "http://127.0.0.1:18791/files/bundles/01a0e9fd-4f02-7c2d-b7e4-7dcad16f3e47/manifest.json",
+      "path": "/files/bundles/01a0e9fd-4f02-7c2d-b7e4-7dcad16f3e47/manifest.json",
+      "status": 200,
+      "responseErrorCode": null,
+      "responseByteLength": 1711,
+      "responseSha256": "07499f417a88f566b7975f6032b18e376698bf64a0192cd5e8e5c95b71b19fdd"
+    },
+    {
+      "time": "2026-09-28T21:48:09.180Z",
+      "method": "GET",
+      "requestUrl": "http://127.0.0.1:18791/files/assets/sha256/22/22efab66cf3de45ca86caadb1142894bf64f1e6f324896f3881d0c47a9d793f8.json",
+      "path": "/files/assets/sha256/22/22efab66cf3de45ca86caadb1142894bf64f1e6f324896f3881d0c47a9d793f8.json",
+      "status": 200,
+      "responseErrorCode": null,
+      "responseByteLength": 716,
+      "responseSha256": "22efab66cf3de45ca86caadb1142894bf64f1e6f324896f3881d0c47a9d793f8"
+    }
+  ],
+  "archiveRequestOrigin": "Deployment verifier before the UI check; no additional archive request from native preflight.",
+  "cachedCheckObserved": false,
+  "followUp": "Resolve actual delivery from running C; require one manifest and metadata response with exact hashes on the first check, zero archive requests, and no manifest, metadata or archive redownload on a separately observed cached check. Preserve unchanged generation and no candidate evaluation.",
+  "retainedArtifacts": {
+    "state.json": {
+      "path": "/tmp/lynx-ad0734918-matrix-failure/state.json",
+      "sha256": "c03a454ffd1a29223f64070a89f199dfd33ac3e753e8616bce3df9365bfa5936"
+    },
+    "matrix-events.jsonl": {
+      "path": "/tmp/lynx-ad0734918-matrix-failure/matrix-events.jsonl",
+      "sha256": "f6525d95e049f50d63d7d864c2124d19aaf1c758828af98f74c372e6089112e3"
+    },
+    "runner.log": {
+      "path": "/tmp/lynx-ad0734918-matrix-failure/runner.log",
+      "sha256": "21ea3a5a7ab28c4bcbceeba7b3c52e43177ef527abfbcbb702f865e09e34bbc8"
+    },
+    "generation-events.json": {
+      "path": "/tmp/lynx-ad0734918-matrix-failure/generation-events.json",
+      "sha256": "64073ffbbec334f27ff0a8bdf801458b5de6ac939dcf0aa2a57b2b8277c0f7c4"
+    },
+    "ota-server.log": {
+      "path": "/tmp/lynx-ad0734918-matrix-failure/ota-server.log",
+      "sha256": "27e4d7fff42a85dd4beaa1cdfd8e2c04f73b682dc31e2f7dfe26e4d9d3d85ba1"
+    }
+  }
+}
