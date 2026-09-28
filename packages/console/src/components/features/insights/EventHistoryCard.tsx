@@ -224,11 +224,13 @@ export function EventHistoryCard({
               </>
             ) : (
               <div className="px-6 pb-6 text-sm text-muted-foreground">
-                {hasPrevious || history.nextCursor
-                  ? "No events on this page"
-                  : title === "All events"
-                    ? "No events recorded yet"
-                    : "No matching reports in this period"}
+                {history.nextCursor
+                  ? "No events in this period. Older events continue on the next page."
+                  : hasPrevious
+                    ? "No older events."
+                    : title === "All events"
+                      ? "No events recorded yet"
+                      : "No matching reports in this period"}
               </div>
             )}
             {history.data.length > 0 || hasPrevious || history.nextCursor ? (
