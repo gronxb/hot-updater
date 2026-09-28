@@ -1,6 +1,6 @@
 # Lynx support handoff and completion plan
 
-Updated: 2026-09-28 (Asia/Seoul).
+Updated: 2026-09-29 (Asia/Seoul).
 
 ## Resume location
 
@@ -53,9 +53,9 @@ delegation notes: continue directly in the current task without subagents. The
 existing adversarial review remains an input to reconciliation, while all
 remaining implementation, diagnosis, and verification are performed here.
 
-## September 28 resume checkpoint
+## September 29 resume checkpoint
 
-- Pushed HEAD before this follow-up: `6e38d9c02`.
+- Fresco adaptation commit: `6d50f8a49`.
 - Fresco 3.4 alone caused a `CloseableBitmap` ABI crash. The user approved a
   Fresco-only workaround; the PRD records it. A package-owned, checksum-pinned
   source rebuild now fixes the class/interface ABI and animation callbacks.
@@ -71,9 +71,15 @@ remaining implementation, diagnosis, and verification are performed here.
   `/Users/gronxb/.codex/lynx-support/ios-appearance-investigation.patch`; the
   worktree uses committed iOS source while validating the Fresco change. Do not
   count debugger-mutated processes as acceptance evidence.
-- Latest full job `job-20260922013654-ku1gwj` (`966236e35`) failed. No job is
-  currently running or queued; best remains 51/52. The six current matrix
-  receipts and a clean full default job remain required.
+- Full workspace unit tests on `6d50f8a49` pass 3,854/3,854 in 343 files.
+  Its clean Android production binary passes real main/detail readiness and
+  Sparkling open/close navigation on the 16 KB emulator.
+- Latest full job `job-20260928151428-detpgp` (`6d50f8a49`) failed in setup
+  before any scenario: the ordinary BSDIFF build regenerated the tracked WASM
+  with a different Rust toolchain. Normal builds now use the committed asset;
+  `build:wasm` remains the explicit regeneration command. The native source
+  attestation remains strict. Rerun the full job after the build fix. Best
+  remains 51/52; the six current matrix receipts are also still required.
 - Neutral CLI policy was moved behind integration hooks in `0c76a3d71` and
   `a18776c50`; focused common CLI/RN/Expo suites passed 521/146/44 tests.
 

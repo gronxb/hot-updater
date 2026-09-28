@@ -27,8 +27,16 @@ Preliminary evidence is retained in [fresco-16kb-smoke.json](./fresco-16kb-smoke
   reference ownership across producer/Lynx release and Fresco animation callback
   dispatch, including stopped-loop suppression.
 
-These are smoke and packaging checks against the uncommitted adaptation, not a
-six-cell OTA matrix or the required 52-scenario full job. The historical private
+The preliminary hashes above belong to the uncommitted adaptation. After
+committing it as `6d50f8a49`, the clean production scaffold build produced APK
+SHA-256 `1427667b2b8ef8b3c5dce7c63cb515c46c5d98d0b1b11ec05ba0126243427f55`.
+On the same 16 KB emulator, the actual main-page button opened the independent
+detail bundle, which displayed `Detail page ready.`; its Sparkling close button
+returned to the main page. The production binary contains no diagnostic module
+and this smoke build has no OTA endpoint configured.
+
+These are smoke and packaging checks, not a six-cell OTA matrix or the required
+52-scenario full job. The historical private
 spike below used compatibility workarounds and does not establish the current
 16 KB acceptance requirement.
 

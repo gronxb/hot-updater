@@ -47,7 +47,7 @@
     "rust/hdiff-wasm/src"
   ],
   "scripts": {
-    "build": "pnpm run build:wasm && tsdown",
+    "build": "tsdown",
     "build:watch": "tsdown --watch",
     "build:wasm": "node ./scripts/wasm-build/build-wasm.mjs",
     "test": "vitest run",

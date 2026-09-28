@@ -1,6 +1,6 @@
 # Lynx implementation goal and execution ledger
 
-Status: active on 2026-09-28. The English PRD includes the approved Fresco-only
+Status: active on 2026-09-29. The English PRD includes the approved Fresco-only
 exception. The final full-platform device gate and six-cell matrix remain open. Read the current
 [handoff and completion plan](./handoff.md) first. Historical G1/G2 observations
 below remain useful evidence but do not establish current acceptance.
@@ -8,7 +8,7 @@ below remain useful evidence but do not establish current acceptance.
 ## Goal
 
 Execute the [approved PRD](./prd.md) in
-`/Users/gronxb/workspace/hot-updater-lynx`, branch `codex/lynx-support`, based on
+`/Volumes/SSD_2TB/workspace/hot-updater-lynx`, branch `codex/lynx-support`, based on
 `17d1030a1`. Deliver `@hot-updater/lynx` and `examples/lynx` with framework-independent
 Lynx support for ReactLynx, VueLynx and OctaneLynx on iOS and Android.
 
@@ -449,3 +449,18 @@ failure. Its automatic lint classification incorrectly matches the installed
 full job is currently queued. The historical best remains 51/52. The iOS native
 back lifecycle experiment remains unproven. Its patch is preserved outside the
 worktree as recorded in the handoff; committed iOS source remains in use.
+
+## 2026-09-29 committed Fresco validation and build reproducibility
+
+Commit `6d50f8a49` passes the full workspace unit suite: 3,854 tests in 343
+files. The clean Android production scaffold build also passes real main/detail
+readiness and Sparkling open/close navigation on the 16 KB emulator; its exact
+binary hash is recorded in the Android evidence.
+
+Full job `job-20260928151428-detpgp` on that commit failed before any device
+scenario. The ordinary BSDIFF package build recompiled the checked-in WASM with
+a different Rust toolchain, changing its bytes and causing the native source
+attestation to reject the checkout. Normal package builds now keep the committed
+WASM; maintainers explicitly use `build:wasm` when updating its Rust source. The
+source-integrity check remains strict. The full device gate must be rerun after
+this build fix; historical best remains 51/52.
