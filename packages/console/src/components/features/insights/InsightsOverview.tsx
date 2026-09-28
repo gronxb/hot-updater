@@ -18,6 +18,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import type { RecoveryInput, RecoveryReport } from "@/lib/insights-recovery";
 
+import { EstimatedCount } from "./EstimatedCount";
 import { InsightsErrorAlert } from "./InsightsErrorAlert";
 import { InsightsInfo } from "./InsightsInfo";
 import { InsightsPeriodSelector } from "./InsightsPeriodSelector";
@@ -37,8 +38,9 @@ const rate = (report: RecoveryReport): string => {
 
 function ReleaseHealth({ report }: { readonly report: RecoveryReport }) {
   const attempts = report.launches + report.failedLaunches;
+  const uniqueUsers = <EstimatedCount value={report.uniqueUsers} />;
   const metrics = [
-    ["Unique users", report.uniqueUsers.toLocaleString()],
+    ["Unique users", uniqueUsers],
     ["Launches", report.launches.toLocaleString()],
     ["Failed launches", report.failedLaunches.toLocaleString()],
     ["Crash rate", attempts === 0 ? "— / No launch reports" : rate(report)],
@@ -53,7 +55,7 @@ function ReleaseHealth({ report }: { readonly report: RecoveryReport }) {
               {label === "Unique users" ? (
                 <InsightsInfo label="About unique users">
                   Distinct installations with a reported successful launch in
-                  this scope and period.
+                  this scope and period, estimated: typically within about 3%.
                 </InsightsInfo>
               ) : label === "Crash rate" ? (
                 <InsightsInfo label="About crash rate">

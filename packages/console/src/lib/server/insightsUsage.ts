@@ -1,6 +1,6 @@
 import type { InsightsModel } from "@hot-updater/plugin-core";
 
-import { recoveryWindows } from "../insights-recovery";
+import { insightsPeriodEnd, recoveryWindows } from "../insights-recovery";
 import {
   readAppUsageInput,
   type AppUsageInput,
@@ -14,7 +14,7 @@ export async function getAppUsageReport(
 ): Promise<AppUsageReport> {
   readAppUsageInput(input);
   const { intervalMs, durationMs } = recoveryWindows[input.window];
-  const end = Math.floor(now / 3_600_000) * 3_600_000;
+  const end = insightsPeriodEnd(now);
   const start = Math.max(0, end - durationMs);
   const report = await model.getAppUsage({
     channel: input.channel,

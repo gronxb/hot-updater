@@ -85,6 +85,10 @@ stays subordinate to exact values and actions.
   install IDs whose latest report falls in the selected 24 hours, 7 days, or 30
   days. Outcome values count accepted reports. Never imply realtime state,
   complete fleet coverage, an exact share, success rate, or rollout completion.
+- Unique counts read from sketches (DAU, WAU, MAU, active users per interval,
+  and a release's unique users) are estimates, typically within about 3%. Show
+  them with ≈ and an Estimated label for hover and screen readers; zero stays
+  exact. Report, launch, and latest-state counts are exact.
 
 ## 5. Reusable Primitives
 

@@ -1,6 +1,7 @@
 import type { InsightsModel } from "@hot-updater/plugin-core";
 
 import {
+  insightsPeriodEnd,
   readRecoveryInput,
   recoveryWindows,
   type RecoveryInput,
@@ -13,7 +14,7 @@ export async function getRecoveryReport(
   now = Date.now(),
 ): Promise<RecoveryReport> {
   readRecoveryInput(input);
-  const end = Math.floor(now / 3_600_000) * 3_600_000;
+  const end = insightsPeriodEnd(now);
   const start = Math.max(0, end - recoveryWindows[input.window].durationMs);
   const result = await model.getReleaseActivity(
     input.releaseId === undefined

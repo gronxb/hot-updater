@@ -31,6 +31,15 @@ export const recoveryWindows = {
   "30d": { durationMs: 30 * 86_400_000, intervalMs: 86_400_000 },
 } as const;
 
+/**
+ * Where a period ends: the end of the current UTC hour, as the server's
+ * reporting overview ends. The counters keep whole hours, so this is the
+ * latest end that still counts a report received just now; every Insights
+ * card ends here, so their numbers cover the same hours.
+ */
+export const insightsPeriodEnd = (now: number): number =>
+  Math.ceil(now / 3_600_000) * 3_600_000;
+
 export function readRecoveryInput(input: RecoveryInput): RecoveryInput {
   if (
     !input ||
