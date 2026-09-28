@@ -101,7 +101,6 @@ describe("createInsightsProvider", () => {
       .mockResolvedValueOnce([
         eventRow(eventId(3), 999),
         eventRow(eventId(2), 900),
-        eventRow(eventId(1), 800),
       ])
       .mockResolvedValueOnce([eventRow(eventId(1), 800)]);
     const provider = createInsightsProvider(fixture.model);
@@ -113,7 +112,7 @@ describe("createInsightsProvider", () => {
     expect(first.nextCursor).not.toBeNull();
     expect(fixture.listEvents).toHaveBeenNthCalledWith(1, {
       beforeReceivedAtMs: 1_000,
-      limit: 3,
+      limit: 2,
       sinceMs: 0,
       filter: { kind: "all" },
     });
@@ -128,20 +127,42 @@ describe("createInsightsProvider", () => {
     expect(fixture.listEvents).toHaveBeenNthCalledWith(2, {
       after: { id: eventId(2), receivedAtMs: 900 },
       beforeReceivedAtMs: 1_000,
-      limit: 3,
+      limit: 2,
       sinceMs: 0,
       filter: { kind: "all" },
     });
+  });
+
+  it("reads only `limit` rows, so a full last page is followed by an empty one", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1_000);
+    const fixture = createModel();
+    fixture.listEvents
+      .mockResolvedValueOnce([
+        eventRow(eventId(2), 900),
+        eventRow(eventId(1), 800),
+      ])
+      .mockResolvedValueOnce([]);
+    const provider = createInsightsProvider(fixture.model);
+
+    const first = await provider.listEvents({ limit: 2 });
+    const second = await provider.listEvents({
+      cursor: first.nextCursor ?? undefined,
+      limit: 2,
+    });
+
+    expect(first.nextCursor).not.toBeNull();
+    expect(second).toMatchObject({ data: [], nextCursor: null });
+    expect(fixture.listEvents.mock.calls.map(([input]) => input.limit)).toEqual(
+      [2, 2],
+    );
   });
 
   it("binds event cursors to their filter", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(1_000);
     const fixture = createModel();
-    fixture.listEvents.mockResolvedValue([
-      eventRow(eventId(2), 900),
-      eventRow(eventId(1), 800),
-    ]);
+    fixture.listEvents.mockResolvedValue([eventRow(eventId(2), 900)]);
     const provider = createInsightsProvider(fixture.model);
     const allEvents = await provider.listEvents({ limit: 1 });
 
@@ -198,7 +219,7 @@ describe("createInsightsProvider", () => {
     ]);
     expect(fixture.listEvents).toHaveBeenCalledWith({
       beforeReceivedAtMs: 1_000,
-      limit: 11,
+      limit: 10,
       sinceMs: 0,
       filter: { kind: "installationMovement", installId: "install-2" },
     });
@@ -209,7 +230,6 @@ describe("createInsightsProvider", () => {
     fixture.findLatestEvents.mockResolvedValue([
       installationRow("install-a"),
       installationRow("install-b"),
-      installationRow("install-c"),
     ]);
     const provider = createInsightsProvider(fixture.model);
 
@@ -223,7 +243,7 @@ describe("createInsightsProvider", () => {
       "install-b",
     ]);
     expect(fixture.findLatestEvents).toHaveBeenCalledWith({
-      limit: 3,
+      limit: 2,
       userId: "user-1",
     });
     await expect(
@@ -258,6 +278,31 @@ describe("createInsightsProvider", () => {
       sinceMs: Date.now() - 7 * 24 * 60 * 60 * 1_000,
     });
     expect(fixture.countEvents).not.toHaveBeenCalled();
+  });
+
+  it("counts whole hours that end with the current one", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-12T10:25:00.000Z"));
+    const fixture = createModel();
+    fixture.countLatestEvents.mockResolvedValue(4);
+    const provider = createInsightsProvider(fixture.model);
+
+    const overview = await provider.getReportingOverview({
+      window: "24h",
+      platform: "ios",
+      channel: "production",
+    });
+
+    const end = Date.parse("2026-08-12T11:00:00.000Z");
+    expect(overview).toMatchObject({
+      beforeReceivedAtMs: end,
+      sinceMs: end - 24 * 60 * 60 * 1_000,
+    });
+    expect(fixture.countLatestEvents).toHaveBeenCalledWith({
+      platform: "ios",
+      channel: "production",
+      sinceMs: end - 24 * 60 * 60 * 1_000,
+    });
   });
 
   it("attributes recovery to the source bundle and reuses its count predicate for drill-down", async () => {
@@ -314,16 +359,13 @@ describe("createInsightsProvider", () => {
     expect(fixture.listEvents).toHaveBeenCalledWith({
       ...counted,
       filter: { kind: "bundle", ...counted.filter },
-      limit: 51,
+      limit: 50,
     });
   });
 
   it("binds bundle cursors to the outcome, scope, bundle, and both time bounds", async () => {
     const fixture = createModel();
-    fixture.listEvents.mockResolvedValue([
-      eventRow(eventId(2), 900),
-      eventRow(eventId(1), 800),
-    ]);
+    fixture.listEvents.mockResolvedValue([eventRow(eventId(2), 900)]);
     const provider = createInsightsProvider(fixture.model);
     const bundle = {
       platform: "ios",
@@ -354,10 +396,7 @@ describe("createInsightsProvider", () => {
 
   it("rejects forged event keys before they reach the database boundary", async () => {
     const fixture = createModel();
-    fixture.listEvents.mockResolvedValue([
-      eventRow(eventId(2), 900),
-      eventRow(eventId(1), 800),
-    ]);
+    fixture.listEvents.mockResolvedValue([eventRow(eventId(2), 900)]);
     const provider = createInsightsProvider(fixture.model);
     const first = await provider.listEvents({
       sinceMs: 100,

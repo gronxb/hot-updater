@@ -32,6 +32,8 @@ const MAX_EVENT_ID_LENGTH = 1_024;
 const MAX_IDENTITY_LENGTH = 255;
 const MAX_CURSOR_LENGTH = 8 * 1_024;
 
+const HOUR_MS = 60 * 60 * 1_000;
+
 const WINDOW_MS: Record<ActiveInstallationWindow, number> = {
   "24h": 24 * 60 * 60 * 1_000,
   "7d": 7 * 24 * 60 * 60 * 1_000,
@@ -381,17 +383,17 @@ const pageEventRows = async <T extends EventHistoryRow>(
     sinceMs,
     beforeReceivedAtMs,
     ...(cursor === undefined ? {} : { after: cursor.after }),
-    limit: limit + 1,
+    limit,
   };
   const rows = await model.listEvents(databaseInput);
   assertEventRows(rows, databaseInput);
-  const pageRows = rows.slice(0, limit);
-  const last = pageRows.at(-1);
+  const last = rows.at(-1);
   return {
     beforeReceivedAtMs,
-    data: pageRows.map(map),
+    data: rows.map(map),
+    // A full page carries the cursor, so the last call may read an empty page.
     nextCursor:
-      rows.length > limit && last
+      rows.length === limit && last
         ? encodeCursor({
             after: { id: last.id, receivedAtMs: last.received_at_ms },
             beforeReceivedAtMs,
@@ -502,16 +504,15 @@ export const createInsightsProvider = (
         ...(cursor === undefined
           ? {}
           : { afterInstallId: cursor.afterInstallId }),
-        limit: limit + 1,
+        limit,
       };
       const rows = await model.findLatestEvents(databaseInput);
       assertInstallationRows(rows, databaseInput);
-      const pageRows = rows.slice(0, limit);
-      const last = pageRows.at(-1);
+      const last = rows.at(-1);
       return {
-        data: pageRows.map(toInstallationRow),
+        data: rows.map(toInstallationRow),
         nextCursor:
-          rows.length > limit && last
+          rows.length === limit && last
             ? encodeCursor({
                 afterInstallId: last.install_id,
                 kind: "user-installations",
@@ -529,7 +530,11 @@ export const createInsightsProvider = (
           "Invalid reporting installation window.",
         );
       }
-      const beforeReceivedAtMs = Date.now();
+      // Whole hours, ending with the current one: the counts read only the
+      // maintained hour and day rows, never raw events.
+      const now = Date.now();
+      const beforeReceivedAtMs =
+        now - (now % HOUR_MS) + (now % HOUR_MS === 0 ? 0 : HOUR_MS);
       const sinceMs = Math.max(0, beforeReceivedAtMs - WINDOW_MS[window]);
       const measure = async (count: Promise<number>) => {
         const value = await count;
