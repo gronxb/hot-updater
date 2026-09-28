@@ -536,7 +536,9 @@ plugins you list:
 
 - `insights()` from `@hot-updater/server/plugins/insights` records bundle
   events and serves the Insights reads. Without it, `POST /events` and the
-  admin Insights routes answer `204` with `x-hot-updater-insights: disabled`.
+  admin Insights routes answer `204` with `x-hot-updater-insights: disabled`,
+  and the server logs a warning on the first event it drops. The
+  `HotUpdaterConfigError` for a `clientAccess` object also names `insights()`.
 - `apiKeys()` from `@hot-updater/server/plugins/api-keys` requires an API key
   on client routes, in `x-api-key` or the `headerName` you pass. Manage keys
   with `hot-updater api-key create`, `list` and `revoke`, or with

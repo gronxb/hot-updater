@@ -33,7 +33,10 @@ export const hotUpdater = createHotUpdater({
 Insights queries on the admin handler. Its tables are part of the schema that
 `hot-updater db migrate` and each provider's migration create, whichever
 plugins the server runs. Without `insights()`, those routes answer `204` with
-`x-hot-updater-insights: disabled` and the app's reports are not stored.
+`x-hot-updater-insights: disabled` and the app's reports are not stored. The
+server logs one warning, on the first report it drops, that names `insights()`.
+To run without Insights on purpose, also set `insights: false` in
+`HotUpdater.init`, so apps stop sending reports.
 
 ## Configure reporting
 

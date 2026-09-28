@@ -1,9 +1,9 @@
 import { createMemoryAdapter } from "@hot-updater/plugin-core/internal";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createHotUpdater } from "../createHotUpdaterCore";
 import { listHotUpdaterRoutes } from "../handler";
-import { INSIGHTS_ROUTES } from "../insights/routes";
+import { INSIGHTS_OFF_WARNING, INSIGHTS_ROUTES } from "../insights/routes";
 import { definePlugin } from "../plugins/definePlugin";
 import { insights } from "../plugins/insights";
 import { HotUpdaterConfigError } from "./assemblePlugins";
@@ -38,7 +38,12 @@ const insightsRoutes = INSIGHTS_ROUTES.map(({ method, path, access }) => ({
 }));
 
 describe("Insights routes with plugins", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it("come from the insights plugin when plugins hold it", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const hotUpdater = createHotUpdater({
       database: database(),
       plugins: [insights()],
@@ -64,9 +69,11 @@ describe("Insights routes with plugins", () => {
     expect(listHotUpdaterRoutes(hotUpdater.handlers)).toEqual(
       expect.arrayContaining(insightsRoutes),
     );
+    expect(warn).not.toHaveBeenCalled();
   });
 
   it("answer 204 with x-hot-updater-insights: disabled when plugins leave it out", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const hotUpdater = createHotUpdater({
       database: database(),
       plugins: [],
@@ -86,6 +93,30 @@ describe("Insights routes with plugins", () => {
     }
     expect(listHotUpdaterRoutes(hotUpdater.handlers)).toEqual(
       expect.arrayContaining(insightsRoutes),
+    );
+    expect(warn).toHaveBeenCalledOnce();
+    expect(warn).toHaveBeenCalledWith(INSIGHTS_OFF_WARNING);
+  });
+
+  it("warn once per server, on the first event dropped without insights()", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const hotUpdater = createHotUpdater({
+      database: database(),
+      clientAccess: "public",
+    });
+    const report = () =>
+      hotUpdater.handlers.client(
+        request("/events", { method: "POST", body: JSON.stringify(event) }),
+      );
+
+    expect(warn).not.toHaveBeenCalled();
+    expect((await report()).status).toBe(204);
+    expect((await report()).status).toBe(204);
+    expect(warn).toHaveBeenCalledOnce();
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining(
+        "Add insights() from @hot-updater/server/plugins/insights to plugins",
+      ),
     );
   });
 });
