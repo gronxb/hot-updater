@@ -262,6 +262,29 @@ describe("auto-patch bases against the rule deploy used before", () => {
     expect(withoutBases).toEqual([]);
   });
 
+  it("pairs no target in the gap of a lone release's range", async () => {
+    const core = createInProcessCoreApi(createMemoryAdapter());
+    await core.deploy([
+      {
+        bundle: bundleOf(100),
+        release: policy({ targetAppVersion: "1.2.x || 1.5.x" }),
+      },
+    ]);
+    for (const [appVersion, bases] of [
+      ["1.4.0", []],
+      ["1.2.4", [idOf(100)]],
+      ["1.5.2", [idOf(100)]],
+    ] as const) {
+      const target = { appVersion, fingerprintHash: null };
+      await expect(
+        referenceBaseBundleIds(core, "production", target, NEWEST, 3),
+      ).resolves.toEqual(bases);
+      await expect(
+        baseBundleIds(core, "production", target, NEWEST, 3),
+      ).resolves.toEqual(bases);
+    }
+  });
+
   it("differs only for an exact prerelease target that a release names", async () => {
     // Both rules pair `1.2.3-beta.1` only with ranges that allow its
     // prerelease; the catalog keeps no range text, so once a release names
