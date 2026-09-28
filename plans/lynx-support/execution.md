@@ -488,3 +488,14 @@ and fatal-transition checks. All metadata waits in this managed-transition
 scenario set `relaunchLimit: 0`, so observing staging cannot activate it by
 restarting the app. The existing scenario orchestration tests verify the exact
 Release and the no-relaunch contract and pass 2/2.
+
+Job `job-20260928153356-xfwoeg` on `3f860ef7c` also failed before scenarios:
+pinning the Ruby version did not fix the inherited shell's PATH precedence.
+Replaying the running bot's environment reproduces the discrepancy: mise
+resolves a directly invoked Ruby to 3.3.10, while a child shell still resolves
+`bundle` and `ruby` from `/usr/bin`. The native bootstrap now sets
+`MISE_ACTIVATE_AGGRESSIVE=1` for that subprocess only, placing the selected
+tools first as documented by [mise](https://mise.jdx.dev/configuration/settings.html#activate_aggressive).
+The same environment then selects Ruby 3.3.10 and completes the actual bootstrap,
+including Bundler and all 17 CocoaPods dependencies. This build-environment fix
+does not count as device scenario acceptance.

@@ -74,12 +74,19 @@ remaining implementation, diagnosis, and verification are performed here.
 - Full workspace unit tests on `6d50f8a49` pass 3,854/3,854 in 343 files.
   Its clean Android production binary passes real main/detail readiness and
   Sparkling open/close navigation on the 16 KB emulator.
-- Latest full job `job-20260928151428-detpgp` (`6d50f8a49`) failed in setup
-  before any scenario: the ordinary BSDIFF build regenerated the tracked WASM
-  with a different Rust toolchain. Normal builds now use the committed asset;
-  `build:wasm` remains the explicit regeneration command. The native source
-  attestation remains strict. Rerun the full job after the build fix. Best
-  remains 51/52; the six current matrix receipts are also still required.
+- Jobs `job-20260928151428-detpgp`, `job-20260928152140-ogt541`, and
+  `job-20260928153356-xfwoeg` failed in setup before any scenario. Normal
+  BSDIFF builds now preserve the committed WASM (`74fa25c2e`), and device
+  cleanup is scoped to the runner's own session (`705635434`). Android Release
+  builds and native source attestation pass. The latest iOS bootstrap failure
+  was reproduced with the bot's inherited environment: a child shell selected
+  system Ruby despite mise's explicit version argument. The bootstrap now
+  forces selected tool paths first with `MISE_ACTIVATE_AGGRESSIVE=1` and pins
+  Ruby 3.3.10. Rerun the full gate; best remains 51/52 and the six current
+  matrix receipts are still required.
+- Commit `3f860ef7c` fixes multi-page pending metadata waits to use the exact
+  republished Release ID and forbids automatic relaunch while observing it.
+  Driver tests pass 61/61, BSDIFF tests 17/17, and orchestration tests 2/2.
 - Neutral CLI policy was moved behind integration hooks in `0c76a3d71` and
   `a18776c50`; focused common CLI/RN/Expo suites passed 521/146/44 tests.
 
@@ -103,7 +110,7 @@ gate.
 | Sparkling integration | Optional packaged iOS/Android hosts own bridge, resources, readiness, recovery, leases, and all-container generation replacement                                                                                                                                               | Run the lifecycle matrix on devices                                  |
 | Production examples   | `SparklingGo` and Android `:app` contain configuration, registration, and packaged host/view attachment only; current native builds pass                                                                                                                                       | Current device acceptance                                            |
 | Matrix harness        | Separate iOS scheme and Android module reuse one binary per OS across React, Vue, and Octane; strict correlated receipts reject synthetic patch or stale-context evidence                                                                                                      | Real six-cell device execution                                       |
-| Shared E2E            | The 25 applicable shared scenarios exclude only `metadata-v1-migration`; `sparkling-multipage-ota` adds the page-based Sparkling scenario, for 26 scenarios per OS                                                                                                             | Pass a fresh full job on both OSes                                |
+| Shared E2E            | The 25 applicable shared scenarios exclude only `metadata-v1-migration`; `sparkling-multipage-ota` adds the page-based Sparkling scenario, for 26 scenarios per OS                                                                                                             | Pass a fresh full job on both OSes                                   |
 
 The final prerelease client omits manifest, filesystem install-identity, user,
 event-listener, and init-time insights APIs because the native integration has no

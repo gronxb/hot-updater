@@ -256,10 +256,11 @@ const androidAbis =
       ? ["x86_64"]
       : null;
 
-function run(command, args, cwd) {
+function run(command, args, cwd, env = process.env) {
   if (values["dry-run"]) return;
   const result = spawnSync(command, args, {
     cwd,
+    env,
     encoding: "utf8",
     stdio: "inherit",
   });
@@ -494,7 +495,12 @@ for (const platform of platforms) {
       "Build/Products/Release-iphonesimulator",
       `${definition.iosScheme}.app`,
     );
-    run("mise", ["exec", "ruby@3.3.10", "--", "sh", "bootstrap.sh"], iosDir);
+    // An inherited mise activation can place system Ruby ahead of the selected
+    // tool for child shell commands. Keep the pinned Ruby first for Bundler.
+    run("mise", ["exec", "ruby@3.3.10", "--", "sh", "bootstrap.sh"], iosDir, {
+      ...process.env,
+      MISE_ACTIVATE_AGGRESSIVE: "1",
+    });
     run(
       "xcodebuild",
       [
