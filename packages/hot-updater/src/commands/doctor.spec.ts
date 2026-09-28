@@ -4,10 +4,10 @@ import os from "os";
 import path from "path";
 
 import { getCwd, loadConfig, readPackageUp } from "@hot-updater/cli-tools";
+import type { IntegrationDoctorResult } from "@hot-updater/plugin-core";
 import { HOT_UPDATER_SERVER_VERSION } from "@hot-updater/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { createReactNativeDoctor } from "../../../react-native/src/doctor";
 import { packageJsonData } from "../packageJson";
 import { createDatabasePluginHarness } from "./databasePlugin.testFixtures";
 import {
@@ -23,6 +23,13 @@ import {
   resolveVersionEndpoint,
 } from "./doctor";
 import { getRequiredUpdateTarget } from "./doctorInfrastructureTargets";
+
+// Exercise the real integration without including RN source in the CLI project.
+const { createReactNativeDoctor } = await vi.importActual<{
+  createReactNativeDoctor: (
+    cwd: string,
+  ) => () => Promise<IntegrationDoctorResult>;
+}>(path.resolve(import.meta.dirname, "../../../react-native/src/doctor.ts"));
 
 vi.mock("../packageJson", () => ({ packageJsonData: { version: "1.0.0" } }));
 
