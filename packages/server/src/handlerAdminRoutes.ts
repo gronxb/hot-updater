@@ -375,6 +375,18 @@ export const createAdminRouteHandlers = (): Record<string, RouteHandler> => ({
     return noContent();
   }),
 
+  countBundleChildren: onCore(async (core, request) => {
+    const ids = (new URL(request.url).searchParams.get("ids") ?? "")
+      .split(",")
+      .filter((id) => id.length > 0);
+    if (ids.length === 0 || ids.length > 100) {
+      throw new HandlerBadRequestError(
+        "Bundle child counts take ids=<bundle id>,... with 1 to 100 ids.",
+      );
+    }
+    return json({ data: await core.countBundleChildren(ids) });
+  }),
+
   listBundleChildren: onCore(async (core, request, params) => {
     const input = keyset(new URL(request.url));
     const rows = await core.listPatchesFromBase(
@@ -497,6 +509,11 @@ export const ADMIN_ROUTES: readonly {
   { method: "GET", path: "/channels", handler: "getChannels" },
   { method: "POST", path: "/channels", handler: "createChannel" },
   { method: "DELETE", path: "/channels/:id", handler: "deleteChannel" },
+  {
+    method: "GET",
+    path: "/bundles/child-counts",
+    handler: "countBundleChildren",
+  },
   { method: "GET", path: "/bundles/:id", handler: "getBundle" },
   { method: "GET", path: "/bundles", handler: "listBundles" },
   { method: "PATCH", path: "/bundles/:id", handler: "updateBundle" },

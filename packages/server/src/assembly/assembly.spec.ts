@@ -125,6 +125,7 @@ describe("createHotUpdater with plugins", () => {
       { method: "GET", path: "/channels", access: "admin" },
       { method: "POST", path: "/channels", access: "admin" },
       { method: "DELETE", path: "/channels/:id", access: "admin" },
+      { method: "GET", path: "/bundles/child-counts", access: "admin" },
       { method: "GET", path: "/bundles/:id", access: "admin" },
       { method: "GET", path: "/bundles", access: "admin" },
       { method: "PATCH", path: "/bundles/:id", access: "admin" },

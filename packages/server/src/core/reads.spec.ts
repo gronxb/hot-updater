@@ -225,6 +225,14 @@ describe("core reads", () => {
     await expect(
       reads.listPatchesFromBase(base.id, { limit: 10 }),
     ).resolves.toEqual([patch]);
+    await expect(
+      reads.countBundleChildren([
+        base.id,
+        target.id,
+        base.id,
+        fixtureMissingId,
+      ]),
+    ).resolves.toEqual({ [base.id]: 1, [target.id]: 0, [fixtureMissingId]: 0 });
     await expect(reads.countBundles()).resolves.toBe(2);
     await expect(reads.countBundles("android")).resolves.toBe(0);
     await expect(

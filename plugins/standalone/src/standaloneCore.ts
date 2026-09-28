@@ -233,6 +233,15 @@ export const createStandaloneCoreApi = (
       }
       return value.total;
     },
+    countBundleChildren: async (baseBundleIds) => {
+      const ids = [...new Set(baseBundleIds)];
+      if (ids.length === 0) return {};
+      return (
+        (await call<Record<string, number>>("GET", "/bundles/child-counts", {
+          query: { ...v2, ids: ids.join(",") },
+        })) ?? {}
+      );
+    },
     listPatchesFromBase: (baseBundleId, input) =>
       list<BundlePatchRow>(
         `/bundles/${encode(baseBundleId)}/children`,

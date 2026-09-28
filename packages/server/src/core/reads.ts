@@ -217,6 +217,24 @@ export const createCoreReads = (db: CoreDatabase, storage: CoreStorage) => {
     },
 
     /** One page of the patches that start from a bundle, by target bundle id. */
+    /** Each base bundle's reference counter: one batch read of the bundle rows, and no patches. */
+    async countBundleChildren(
+      baseBundleIds: readonly string[],
+    ): Promise<Record<string, number>> {
+      const ids = [...new Set(baseBundleIds)];
+      if (ids.length === 0) return {};
+      const rows = await db.findByKeys(
+        "bundles",
+        ids.map((id) => ({ id })),
+      );
+      return Object.fromEntries(
+        ids.map((id, position) => [
+          id,
+          rows[position]?._refs_bundle_patches_base_bundle_id ?? 0,
+        ]),
+      );
+    },
+
     async listPatchesFromBase(
       baseBundleId: string,
       input: KeysetInput,

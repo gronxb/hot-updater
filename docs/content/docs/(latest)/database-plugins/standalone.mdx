@@ -147,6 +147,7 @@ response wraps its result in `data`.
 | `PATCH`  | `/bundles/:id`                          | The Bundle fields to change                         | `204`                                                   |
 | `POST`   | `/bundles/delete`                       | `{ ids: string[] }`                                 | `204`                                                   |
 | `GET`    | `/bundles/:id/children`                 | Page                                                | `BundlePatchRow[]` whose base is the Bundle             |
+| `GET`    | `/bundles/child-counts`                 | `ids=<bundle id>,...` (1–100)                       | Each base Bundle's child count, by ID                   |
 | `GET`    | `/base-candidates/:candidateKey`        | `before=<bundle id>`, `limit` (1–100, default 3)    | Auto-patch base Bundle IDs                              |
 | `POST`   | `/releases`                             | `{ deployments: Deployment[] }`                     | `201`, `ReleaseCatalogMutationResult[]`                 |
 | `GET`    | `/releases`                             | Page and one filter set                             | `ReleaseRow[]`                                          |

@@ -102,6 +102,10 @@ export interface HotUpdaterCoreApi {
     baseBundleId: string,
     input: KeysetInput,
   ): Promise<BundlePatchRow[]>;
+  /** Each base bundle's child count, from its reference counter: one batch read of the bundle rows. */
+  countBundleChildren(
+    baseBundleIds: readonly string[],
+  ): Promise<Record<string, number>>;
   /** Auto-patch bases for a new bundle: the newest older bundles sharing its candidate key. */
   findBaseBundleIds(
     candidateKey: string,
