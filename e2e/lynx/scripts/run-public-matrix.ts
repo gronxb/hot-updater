@@ -1343,7 +1343,7 @@ async function runCell(
     await compile(
       framework,
       platform,
-      "CONFIRMED_INTERRUPTION",
+      "CONFIRMED-INTERRUPTION",
       "B",
       "detail-unconfirmed",
     ),

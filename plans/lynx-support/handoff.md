@@ -1,13 +1,13 @@
 # Lynx support handoff and completion plan
 
-The latest `ad0734918` matrix reaches incompatible check preflight and stops
-because the driver expects an archive download. The native request instead
-fetches the manifest and changed runtime metadata from running C. The driver
-now measures that representation: exact response hashes, one first manifest and
-metadata request, zero archive requests, and zero cached redownloads after a
-separately observed second check. All 138 focused tests pass. Retain
-`evidence/public-matrix-ad0734918-failure.json`; no complete cell is claimed.
-The shared full job remains queued, with actual checkout still pending.
+The latest `089cf0b11` React/iOS matrix passes cached incompatibility rejection,
+same-Release full-stack recreation with both stale authorities rejected, and
+pending-page transition cancellation/reconstruction. It then fails before the
+confirmed-interruption deployment because its fixture name contains an
+underscore. The compiler output name now uses a hyphen; native behavior and
+evidence roles are unchanged. Retain
+`evidence/public-matrix-089cf0b11-failure.json`. No complete cell is claimed;
+the full shared job remains queued, actual checkout pending.
 
 Latest follow-up (2026-09-29): shared job `job-20260928211636-6hdwci` remains
 queued, actual checkout pending. The `7cc24042b` matrix stops at an ambiguous

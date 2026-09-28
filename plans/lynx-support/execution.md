@@ -1161,3 +1161,15 @@ would keep choosing that newer negative fixture. Disable it through the real
 admin policy endpoint only after both rejection checks and their evidence
 checkpoint. This isolates later phases without changing SDK selection policy
 or weakening the rejection/cache proof.
+
+
+## 2026-09-29 same-Release and cached incompatibility device progress
+
+On fresh `089cf0b11` binaries, React/iOS passes the manifest/metadata negative
+fixture and cached no-redownload proof, same-Release full-stack recreation with
+both retired C authorities rejected, and pending-page managed transition
+cancellation/reconstruction. The next deployment stops before device execution:
+`confirmed_interruption` violates ota-deploy's hyphen-only fixture name contract.
+Use `confirmed-interruption` for the compiler output name; the evidence role
+remains `CONFIRMED_INTERRUPTION`. This changes no native or SDK behavior. Retain
+`evidence/public-matrix-089cf0b11-failure.json`; no full cell has completed.
