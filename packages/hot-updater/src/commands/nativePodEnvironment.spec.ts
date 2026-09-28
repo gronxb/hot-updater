@@ -4,6 +4,7 @@ const mocks = vi.hoisted(() => ({
   prepare: vi.fn(),
   buildIos: vi.fn(async () => ({})),
   runIos: vi.fn(async () => ({})),
+  runAndroid: vi.fn(async () => ({})),
   environment: vi.fn(),
   buildPlugin: vi.fn(),
 }));
@@ -13,7 +14,7 @@ vi.mock("@hot-updater/apple-helper", () => ({
 }));
 vi.mock("@hot-updater/android-helper", () => ({
   buildAndroid: vi.fn(),
-  runAndroid: vi.fn(),
+  runAndroid: mocks.runAndroid,
 }));
 vi.mock("@hot-updater/cli-tools", () => ({
   getCwd: () => "/app",
@@ -36,7 +37,7 @@ vi.mock("../utils/cli-ui", () => ({
 }));
 
 import { buildIosNative } from "./buildNative";
-import { runIosNative } from "./runNative";
+import { runAndroidNative, runIosNative } from "./runNative";
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -46,6 +47,34 @@ beforeEach(() => {
     nativeBuild: { getPodInstallEnvironment: mocks.environment },
   });
 });
+
+it.each([
+  { configured: undefined, explicit: undefined, expected: undefined },
+  { configured: 8081, explicit: undefined, expected: "8081" },
+  { configured: 8081, explicit: "5060", expected: "5060" },
+])(
+  "uses the selected Android development port: $expected",
+  async ({ configured, explicit, expected }) => {
+    mocks.buildPlugin.mockResolvedValue({
+      name: "selected-integration",
+      nativeBuild: { developmentServerPort: configured },
+    });
+    mocks.prepare.mockResolvedValue({
+      config: { build: mocks.buildPlugin },
+      androidSchemeConfig: {},
+    });
+    await runAndroidNative({
+      scheme: "debug",
+      interactive: false,
+      port: explicit,
+    });
+    expect(mocks.runAndroid).toHaveBeenCalledWith(
+      expect.objectContaining({
+        runOption: expect.objectContaining({ port: expected }),
+      }),
+    );
+  },
+);
 
 describe.each([
   {

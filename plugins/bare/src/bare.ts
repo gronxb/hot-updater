@@ -12,6 +12,7 @@ import type {
 import {
   createReactNativeDoctor,
   getReactNativePodInstallEnvironment,
+  REACT_NATIVE_DEV_SERVER_PORT,
   createReactNativeFingerprint,
   selectReactNativeArtifacts,
 } from "@hot-updater/react-native/build";
@@ -308,6 +309,7 @@ export const bare =
         doctor: createReactNativeDoctor(cwd),
       },
       nativeBuild: {
+        developmentServerPort: REACT_NATIVE_DEV_SERVER_PORT,
         getPodInstallEnvironment: () =>
           getReactNativePodInstallEnvironment(cwd),
         fingerprint: (options) =>

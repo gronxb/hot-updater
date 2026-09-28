@@ -142,4 +142,3 @@ const extractAppFromXcarchive = (archivePath: string) => {
 // - Parallel build support for multiple schemes/configurations
 // - Build artifact signing verification
 // - Build size analysis and optimization suggestions
-// - Integration with React Native codegen for new architecture support

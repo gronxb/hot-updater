@@ -11,6 +11,7 @@ import type {
 import {
   createReactNativeDoctor,
   getReactNativePodInstallEnvironment,
+  REACT_NATIVE_DEV_SERVER_PORT,
   selectReactNativeArtifacts,
 } from "@hot-updater/react-native/build";
 import { ExecaError, execa } from "execa";
@@ -198,6 +199,7 @@ export const expo =
         doctor: createReactNativeDoctor(cwd),
       },
       nativeBuild: {
+        developmentServerPort: REACT_NATIVE_DEV_SERVER_PORT,
         getPodInstallEnvironment: () =>
           getReactNativePodInstallEnvironment(cwd),
         fingerprint: (options) => createExpoFingerprint(cwd, options),

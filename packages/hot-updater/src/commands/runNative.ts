@@ -37,9 +37,16 @@ const runNativeInternal = async <
     p.log.info(ui.line(["Running", ui.platform(platformName)]));
 
     if (platform === "android") {
+      const buildPlugin = await preparedConfig.config.build({ cwd: getCwd() });
+      const runOption = options as AndroidNativeRunOptions;
       await runAndroid({
         schemeConfig: preparedConfig.androidSchemeConfig!,
-        runOption: options as AndroidNativeRunOptions,
+        runOption: {
+          ...runOption,
+          port:
+            runOption.port ??
+            buildPlugin.nativeBuild?.developmentServerPort?.toString(),
+        },
       });
     } else {
       const schemeConfig = preparedConfig.iosSchemeConfig!;

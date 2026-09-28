@@ -10,7 +10,7 @@ type RunGradleArgs = {
   tasks: string[];
   logPrefix: string;
   appModuleName: string;
-  args: { extraParams?: string[]; port?: string | number };
+  args: { extraParams?: string[] };
   androidProjectPath: string;
 };
 
@@ -77,10 +77,6 @@ App Moudle ${appModuleName}
 Tasks      ${tasks.join(", ")}
 Args       ${gradleArgs.join(" ")}
 `);
-
-  if ("port" in args && args.port != null) {
-    gradleArgs.push(`-PreactNativeDevServerPort=${args.port}`);
-  }
 
   const logger = createGradleLogger({ logPrefix });
   await logger.start();

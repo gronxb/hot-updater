@@ -170,6 +170,8 @@ export type NativeFingerprintProvider = (
 
 export interface BuildPlugin {
   nativeBuild?: {
+    /** Integration-owned development server port used unless explicitly overridden. */
+    developmentServerPort?: number;
     /** Integration-owned environment for CocoaPods installation. */
     getPodInstallEnvironment?: () =>
       | Record<string, string>

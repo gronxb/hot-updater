@@ -10,6 +10,7 @@ import {
 export { createReactNativeFingerprint } from "./buildFingerprint";
 export { createReactNativeDoctor } from "./doctor";
 export { getReactNativePodInstallEnvironment } from "./podInstallEnvironment";
+export const REACT_NATIVE_DEV_SERVER_PORT = 8081;
 export {
   getReactNativeMetadatas,
   type ReactNativeMetadata,
