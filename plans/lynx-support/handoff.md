@@ -2,8 +2,12 @@
 
 Updated: 2026-09-29 (Asia/Seoul).
 
-Latest execution checkpoint: shared full job `job-20260928195209-rzyw0v` is
-running on actual commit `a5bb32fb3`. Preserve its exact-commit results even when
+Latest execution checkpoint: shared full job `job-20260928195209-rzyw0v` finishes
+50/52 (25/26 per OS) on actual commit `a5bb32fb3`. Both failures overwrite the
+unobserved confirmed-detail open request with evidence capture. The scenario now
+waits for detail observation and confirmed embedded recovery without relaunching;
+84 focused tests pass, and a fresh full run remains required.
+Preserve exact-commit results even when
 later local matrix fixes are pushed. The independent React/iOS matrix reached C
 readiness but failed because only the initial primary authority was captured;
 see `evidence/public-matrix-a5bb32fb3-failure.json`. Both matrix shells now capture
@@ -12,7 +16,10 @@ navigation/admission/reload, with strict reopened-detail lifecycle evidence.
 Focused matrix validation is 131/131; fresh device acceptance remains outstanding.
 Production iOS on `a5bb32fb3` passed real navigation/readiness with diagnostics
 absent (`evidence/production-scaffold-ios-a5bb32fb3.json`), without network OTA
-because the endpoint was unconfigured. Refresh production Android separately.
+because the endpoint was unconfigured. Production Android `94ad81609` builds
+with diagnostics absent and 14 ARM64 libraries aligned to 16 KB; image/font,
+detail readiness and JavaScript close pass. System back produces a black
+screenshot on the Android 17 emulator; diagnose before marking this gate passed.
 
 ## Resume location
 

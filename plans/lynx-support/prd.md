@@ -1809,7 +1809,14 @@ the shell captured only the initial primary. Retain
 It remains zero complete cells. Fix capture timing and the same-Release lifecycle
 driver without reducing context, resource, readiness, or terminal assertions.
 The independent full shared job `job-20260928195209-rzyw0v` resolves to
-`a5bb32fb3` and is still running; its results must retain that source identity.
+`a5bb32fb3` and finishes **50/52**, 25/26 per OS. Both failures are the final
+confirmed-detail fatal phase: the driver queues evidence capture immediately
+after an unobserved open request, overwriting the open in its single-slot
+mailbox. Neither native journal contains the requested detail. Use the existing
+navigation-observation helper and wait for exact confirmed embedded-fallback
+metadata, with zero relaunches, before capturing fatal/recovery evidence. Keep
+all authentic fatal, selection, stack and readiness assertions. Retain
+[the exact job record](./evidence/shared-e2e-a5bb32fb3.json).
 
 Workspace verification for the pushed implementation passes 27 build projects,
 35 type-check projects, lint, and 3,893 unit tests in 348 files before the three

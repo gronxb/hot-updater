@@ -1065,9 +1065,21 @@ export const sparklingMultipageOtaScenario = {
       "multi-page confirmed fatal: arm next detail fatal",
       "action-arm-next-detail-fatal",
     );
-    await app.tap(
+    // Observe navigation before queueing evidence: the control mailbox has one
+    // slot, so a bare tap followed by capture can overwrite the open request.
+    await app.openDetailPage(
       "multi-page confirmed fatal: open real detail",
-      "action-open-detail-page",
+      markerA,
+    );
+    await app.control(
+      "multi-page confirmed fatal: wait for confirmed embedded recovery",
+      "/e2e/jobs/wait-for-metadata",
+      {
+        bundleId: observedBundleA,
+        releaseId: null,
+        relaunchLimit: 0,
+        verificationPending: false,
+      },
     );
     const confirmedFatalEvents = await app.captureGenerationEvents(
       "multi-page confirmed fatal: capture failure and recovery",

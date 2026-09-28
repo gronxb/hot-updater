@@ -1051,3 +1051,29 @@ records, incorrect retirement membership, missing admission/terminal/resource
 events, reused contexts, and secondary authority remain rejection cases. A fresh
 native matrix build and actual device run are still required; no complete public
 cell is claimed by these unit results.
+
+## 2026-09-29 full-run confirmed fatal action delivery
+
+`job-20260928195209-rzyw0v` completes **50/52**, iOS 25/26 and Android 25/26,
+on `a5bb32fb3`. All preceding shared scenarios pass. Both final multipage failures
+are `Missing authentic verified detail fatal`. The native journals stop at the
+confirmed server-A primary; no detail was created. Stage timing shows a bare
+open request followed milliseconds later by evidence capture, while the control
+server keeps only one pending action. Capture overwrote navigation before the
+application consumed it.
+
+Use the existing `openDetailPage` helper to require the observed detail marker
+and parameters before the next command. Then wait for exact confirmed embedded
+recovery metadata with `relaunchLimit: 0`. Only afterward capture and apply the
+unchanged native fatal, recovered-selection and reconstructed-stack assertions.
+The four focused driver, orchestration, evidence and poller suites pass **84/84**.
+This changes the scenario's command ordering, not the SDK or the failure criteria.
+Retain `evidence/shared-e2e-a5bb32fb3.json` and run a fresh full job.
+
+The `94ad81609` matrix native builds pass on both OSes. Its fresh production
+Android Release excludes diagnostics and passes all 14 ARM64 libraries' ELF/ZIP
+16 KB alignment. On the 16 KB Android 17 emulator, images/fonts, detail readiness,
+and JavaScript close are visible. The system-back screenshot is black despite
+the primary Activity being reported resumed; keep that check open for diagnosis.
+Do not count this as completed Android scaffold acceptance. The non-root,
+non-debuggable production app does not expose its private journal for extraction.
