@@ -1525,6 +1525,14 @@ combination, proves one process value across managed recreation, and proves a
 different value after OS process replacement without coercing replayed
 identities.
 
+The E2E app must receive the control server's update proxy configuration before
+initializing update requests or reporting readiness. A delayed or failed
+configuration request cannot silently bypass the proxy and its channel namespace
+and client authority. The runtime marker used by the driver is published only
+after startup confirmation; `STARTING`, startup errors, and a bundle about to
+execute the crash fixture must not satisfy the driver's ready condition. Native
+recovery evidence must remain correlated with that ready runtime's marker.
+
 The required agent invocation is `hot-updater-agent verify -platform full -profile standalone-kysely -env-target examples/lynx/.env.hotupdater`. Both iOS
 and Android children must execute the repository's shipped `e2e:lynx` runner,
 use application ID `com.hotupdater.lynxexample`, load the manifest from the exact

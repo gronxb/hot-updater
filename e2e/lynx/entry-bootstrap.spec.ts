@@ -96,6 +96,7 @@ async function loadEntry(entry: Entry): Promise<Effect[]> {
 
 afterEach(() => {
   vi.clearAllTimers();
+  vi.clearAllMocks();
   vi.useRealTimers();
   vi.resetModules();
   vi.restoreAllMocks();
@@ -104,6 +105,99 @@ afterEach(() => {
 });
 
 describe("Lynx E2E page entry bootstrap", () => {
+  it("waits for a delayed test proxy configuration before starting update actions", async () => {
+    vi.useFakeTimers();
+    Object.defineProperty(globalThis, "NativeModules", {
+      configurable: true,
+      value: {},
+    });
+    let resolveConfiguration!: (value: unknown) => void;
+    const configuration = new Promise((resolve) => {
+      resolveConfiguration = resolve;
+    });
+    const fetchState = vi.fn((url: string) =>
+      url.includes("/runtime-config")
+        ? configuration
+        : Promise.resolve({
+            json: async () => ({ action: null }),
+            ok: true,
+            status: 200,
+          }),
+    );
+    Object.defineProperty(globalThis, "fetch", {
+      configurable: true,
+      value: fetchState,
+    });
+    const { HotUpdater } = await import("../../packages/lynx/dist/index.mjs");
+    const effects = await loadEntry("main");
+    effects[0]?.();
+    await vi.advanceTimersByTimeAsync(2500);
+
+    expect(HotUpdater.init).not.toHaveBeenCalled();
+    expect(
+      fetchState.mock.calls.some(([url]) => url.includes("/pending-action")),
+    ).toBe(false);
+
+    resolveConfiguration({
+      json: async () => ({ baseURL: "http://127.0.0.1:3114/hot-updater" }),
+      ok: true,
+      status: 200,
+    });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(HotUpdater.init).toHaveBeenCalledExactlyOnceWith({
+      baseURL: "http://127.0.0.1:3114/hot-updater",
+      requestTimeout: 15000,
+    });
+    expect(
+      fetchState.mock.calls.some(([url]) => url.includes("/pending-action")),
+    ).toBe(true);
+  });
+
+  it("does not publish the crashing bundle as a ready runtime", async () => {
+    vi.useFakeTimers();
+    Object.defineProperty(globalThis, "NativeModules", {
+      configurable: true,
+      value: {},
+    });
+    const fetchState = vi.fn(async (_url: string, _init?: RequestInit) => ({
+      json: async () => ({ baseURL: "http://127.0.0.1:3114/hot-updater" }),
+      ok: true,
+      status: 200,
+    }));
+    Object.defineProperty(globalThis, "fetch", {
+      configurable: true,
+      value: fetchState,
+    });
+    const observation =
+      await import("../../examples/lynx/src/e2eApp/runtimeObservation");
+    vi.mocked(observation.bootstrapRuntimeReady).mockImplementationOnce(
+      async (configuration, _load, confirm) => {
+        if (!(await configuration)) return false;
+        await confirm();
+        return false;
+      },
+    );
+    const fixture = await import("../../examples/lynx/src/e2eApp/patchSurface");
+    vi.spyOn(fixture, "maybeCrashForE2E").mockResolvedValue(true);
+    const effects = await loadEntry("main");
+    effects[0]?.();
+    await vi.advanceTimersByTimeAsync(0);
+
+    const published = fetchState.mock.calls
+      .filter(([url]) => url.endsWith("/screen-state"))
+      .map(([, init]) => JSON.parse(String(init?.body)));
+    expect(published).toContainEqual(
+      expect.objectContaining({
+        launchStatus: "Current Launch Status: STARTING",
+        runtimeScenarioMarker: null,
+      }),
+    );
+    expect(
+      published.every((state) => state.runtimeScenarioMarker === null),
+    ).toBe(true);
+    expect(observation.confirmRuntimeReady).not.toHaveBeenCalled();
+  });
+
   it.each(["main", "detail"] as const)(
     "evaluates %s without fetch and resolves it when background polling starts",
     async (entry) => {

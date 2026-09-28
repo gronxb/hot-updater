@@ -531,3 +531,34 @@ which invokes UIKit navigation and passes the targeted device check. Native
 event and stack assertions remain unchanged. Focused driver/matrix tests pass
 89/89, and fingerprint tests pass 12/12. A clean native receipt and complete
 device rerun are still required for this navigation change.
+
+The clean matrix wrapper subsequently succeeds on `66a2df9be`. Its full app tree
+SHA-256 is `23f3b68ea8e6523d335a19208394b31211421f0318637a3872c8e2d92ef6b9d5`,
+and the installed tree matches exactly. One fresh, unmodified process passes
+nonanimated JavaScript close, admitted-page native back, cancelled pending-page
+swipe, and completed pending-page native back. Exact native events and artifact
+provenance are retained in [the navigation smoke evidence](./evidence/ios-navigation-smoke.json).
+The six-cell OTA matrix remains outstanding.
+
+## 2026-09-29 shared E2E startup races
+
+The running `d689f46d6` full job reveals two Android harness failures after native
+builds pass. `multi-asset-replacement` sends its first catalog request directly
+to the provider's unnamespaced production channel and receives HTTP 404. The
+E2E startup code silently fell back to the native provider URL when the control
+configuration took more than two seconds. Initialization now waits for a valid
+proxy configuration with a bounded request; a failure reports startup error
+instead of bypassing the namespace and client authority.
+
+`release-ota-recovery` captured the crash fixture's marker as ready while its
+screen status was still `STARTING`. By the time the driver read authoritative
+recovery evidence, the actual stable bundle correctly reported a different
+marker. Startup now publishes a null marker until confirmation, including on
+startup errors. The driver still requires exact agreement with the eventual
+ready runtime; no resource-error or native-journal assertion is weakened.
+
+Two regressions reproduce these failures before the fix and pass afterward.
+The combined bootstrap, runtime-observation, and driver suites pass 80/80;
+example type checks, targeted lint, and formatting also pass. The current full
+job does not contain either startup fix or the iOS navigation fix. Its final
+result and a new full run on the fixes remain required.

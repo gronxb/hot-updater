@@ -82,7 +82,6 @@ type ScreenState = {
 };
 
 let runtimeConfigURL = "http://localhost:3107/e2e/runtime-config";
-let appBaseURL = "http://localhost:3007/hot-updater";
 let launchGeneration: string | null = null;
 let runtimeGenerationEpoch: string | null = null;
 let automaticForceUpdate = false;
@@ -97,28 +96,31 @@ let pendingActionURL = screenStateURL.replace(
 const fetchState = (url: string, init?: RequestInit) => fetch(url, init);
 
 async function resolveAppBaseURL(): Promise<string> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15_000);
   try {
-    const response = await Promise.race([
-      fetchState(runtimeConfigURL).catch(() => null),
-      new Promise<null>((resolve) => {
-        setTimeout(() => resolve(null), 2000);
-      }),
-    ]);
-    if (!response) {
-      return appBaseURL;
+    const response = await fetchState(runtimeConfigURL, {
+      signal: controller.signal,
+    });
+    if (!response.ok) {
+      throw new Error(
+        `E2E runtime configuration returned HTTP ${response.status}`,
+      );
     }
     const config = (await response.json()) as {
       automaticForceUpdate?: boolean;
       baseURL?: string;
     };
-    automaticForceUpdate = config.automaticForceUpdate === true;
-    if (typeof config.baseURL === "string" && config.baseURL.length > 0) {
-      return config.baseURL;
+    if (typeof config.baseURL !== "string" || config.baseURL.length === 0) {
+      throw new Error(
+        "E2E runtime configuration is missing its update proxy URL",
+      );
     }
-  } catch {
-    // Fall back to the compile-time control-server URL.
+    automaticForceUpdate = config.automaticForceUpdate === true;
+    return config.baseURL;
+  } finally {
+    clearTimeout(timeout);
   }
-  return appBaseURL;
 }
 
 const patchScreenState = async (patch: Partial<ScreenState>) => {
@@ -452,7 +454,10 @@ function App() {
         initialCohort.current = snapshot.currentCohort;
       await patchScreenState({
         ...snapshot,
-        runtimeScenarioMarker: scenarioMarker,
+        runtimeScenarioMarker:
+          launchStatusValue === "Current Launch Status: STARTING"
+            ? null
+            : scenarioMarker,
         ...(launchStatusValue ? { launchStatus: launchStatusValue } : {}),
       });
     } catch (error) {
@@ -531,7 +536,7 @@ function App() {
         setLaunchStatus(status);
         await patchScreenState({
           launchStatus: status,
-          runtimeScenarioMarker: scenarioMarker,
+          runtimeScenarioMarker: null,
         });
         ensurePendingActionPoller();
       }
@@ -724,7 +729,6 @@ const configureE2eRuntime = async (): Promise<boolean> => {
   );
   if (!resolved) return false;
   runtimeConfigURL = resolved.runtimeConfigURL;
-  appBaseURL = resolved.appBaseURL;
   launchGeneration = resolved.launchGeneration ?? null;
   runtimeGenerationEpoch = resolved.runtimeGenerationEpoch ?? null;
   screenStateURL = runtimeConfigURL.endsWith("/runtime-config")
@@ -735,16 +739,9 @@ const configureE2eRuntime = async (): Promise<boolean> => {
     "/pending-action",
   );
   HotUpdater.init({
-    baseURL: appBaseURL,
+    baseURL: await resolveAppBaseURL(),
     requestTimeout: 15000,
   });
-  const resolvedBaseURL = await resolveAppBaseURL();
-  if (resolvedBaseURL !== appBaseURL) {
-    HotUpdater.init({
-      baseURL: resolvedBaseURL,
-      requestTimeout: 15000,
-    });
-  }
   return true;
 };
 

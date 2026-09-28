@@ -71,7 +71,11 @@ remaining implementation, diagnosis, and verification are performed here.
   Release binary passes actual back, cancelled pending-page swipe, and animated
   JavaScript close. Runners use agent-device's real edge-swipe preset. The React
   matrix and shared E2E detail now also request nonanimated close; verify that
-  synchronous path on the next clean binary. The original appearance-only patch
+  synchronous path on every full run. A clean matrix build on `66a2df9be` now
+  passes four targeted navigation checks, including nonanimated close, in one
+  unmodified process. Its installed full app tree matches the build receipt;
+  see [the native navigation smoke evidence](./evidence/ios-navigation-smoke.json).
+  The original appearance-only patch
   at `/Users/gronxb/.codex/lynx-support/ios-appearance-investigation.patch` is
   superseded. Do not count debugger-mutated processes as acceptance evidence.
 - Full workspace unit tests on `6d50f8a49` pass 3,854/3,854 in 343 files.
@@ -93,6 +97,13 @@ remaining implementation, diagnosis, and verification are performed here.
 - Full job `job-20260928154852-ej3uiq` on `d689f46d6` has passed both native
   Release builds and entered device execution. It does not include the subsequent
   iOS navigation change. Its scenario result is pending; best remains 51/52.
+- That job exposed two Android startup races: a two-second configuration fallback
+  bypassed the test proxy and returned 404; a crash fixture's `STARTING` marker
+  was accepted before the recovered stable bundle reported readiness. Both have
+  reproducing regressions. The E2E entry now requires proxy configuration before
+  initialization and publishes no ready marker before confirmation or on startup
+  failure. All 80 bootstrap/runtime-observation/driver tests pass after the fix.
+  A full job on the navigation and startup fixes remains required.
 - Neutral CLI policy was moved behind integration hooks in `0c76a3d71` and
   `a18776c50`; focused common CLI/RN/Expo suites passed 521/146/44 tests.
 

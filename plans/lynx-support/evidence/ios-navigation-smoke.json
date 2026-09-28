@@ -1,0 +1,409 @@
+{
+  "date": "2026-09-29",
+  "scope": "Targeted React iOS navigation smoke; not full OTA or six-cell matrix acceptance",
+  "sourceCommit": "66a2df9beaa95090a54185135f0edee59f9c2e29",
+  "sourceIntegrity": {
+    "checkedCommit": "66a2df9beaa95090a54185135f0edee59f9c2e29",
+    "clean": true,
+    "trackedChanges": [],
+    "allowedTrackedChanges": [
+      "examples-server/hono-kysely-pglite/hot-updater_migrations/migration_2026-09-11T14-30-47.sql",
+      "examples-server/hono-kysely-pglite/src/db.ts",
+      "examples-server/hono-kysely-pglite/src/localFsStorage.mjs",
+      "examples-server/hono-kysely-pglite/src/localFsStorage.ts",
+      "examples/lynx/.gitignore",
+      "examples/lynx/scripts/e2e-kysely-deploy.mjs"
+    ],
+    "trackedTreeSha256": "c69ee3ac6f90a8190267f7b7ae64220d9003e25a2f9ef4373f6d32ef4a79440b"
+  },
+  "device": {
+    "udid": "3A0A8EB7-9381-4CFD-B002-5B16F539D445",
+    "os": "iOS 26.4"
+  },
+  "artifact": {
+    "binarySha256": "23f3b68ea8e6523d335a19208394b31211421f0318637a3872c8e2d92ef6b9d5",
+    "artifactHashKind": "deterministic-full-app-tree-v1",
+    "nativeFingerprintSha256": "fc4a90349b70415e07f58052a15306079c8377ba8e663bd31d65b209d04fb0db",
+    "installedTreeMatches": true
+  },
+  "processId": "65017",
+  "scenarios": [
+    "nonanimated JavaScript close returns to main exactly once",
+    "native edge swipe returns admitted detail to main",
+    "cancelled swipe preserves pending page without a terminal record",
+    "completed swipe cancels pending page once with nativeBack"
+  ],
+  "cancelledSwipe": {
+    "contextId": "4973441D-85DA-4D79-8283-A6B204BDCEBE",
+    "processId": "65017",
+    "generationId": "FB03BD57-17DA-4A9E-BCE6-0572F1ABA671",
+    "eventCount": 551,
+    "terminalRecords": [],
+    "uiLabel": "Detail A"
+  },
+  "uiSnapshots": [
+    {
+      "step": "after-close",
+      "visible": "Bundle A ready. Check for an update."
+    },
+    {
+      "step": "after-back",
+      "visible": "Bundle A ready. Check for an update."
+    },
+    {
+      "step": "pending-back",
+      "visible": "Bundle A ready. Check for an update."
+    }
+  ],
+  "events": [
+    {
+      "attemptId": "FCBFA375-7C2D-44E7-8A76-7F0AD6D48CE4",
+      "bundleId": "00000000-0000-7000-8000-000000000000",
+      "containerClass": "Sparkling.SPKViewController",
+      "containerId": "F0EC7D39-8498-462F-949E-7FC67206E47A",
+      "contextId": "A158C5AD-6270-43AD-A6C7-05FA84D7E0F3",
+      "event": "pageOpened",
+      "framework": "react",
+      "generationId": "FB03BD57-17DA-4A9E-BCE6-0572F1ABA671",
+      "nativePageClass": "Sparkling.SPKViewController",
+      "observedAt": "2026-09-28T16:12:19Z",
+      "orderedPageEntries": ["main.lynx.bundle", "detail.lynx.bundle"],
+      "orderedPageParameters": [
+        [],
+        [
+          {
+            "name": "title",
+            "value": "Second Page"
+          }
+        ]
+      ],
+      "orderedParameters": [
+        {
+          "name": "title",
+          "value": "Second Page"
+        }
+      ],
+      "outcome": "opened",
+      "pageAttemptId": "3CC5010C-5F96-427F-8B5D-1047851BA940",
+      "pageClass": "Sparkling.SPKViewController",
+      "pageEntry": "detail.lynx.bundle",
+      "parameters": {
+        "title": "Second Page"
+      },
+      "processId": "65017",
+      "releaseId": null,
+      "runtimeId": "sparkling-c4ce8d2-navigation-2.1.0-rc.12-lynx-3.9.0-primjs-3.8.0-alpha.6-ios-managed-pages-v1",
+      "sourceContextId": "9348AD4F-E5A0-4C4B-AA93-642445EF3EFB",
+      "topContextId": "A158C5AD-6270-43AD-A6C7-05FA84D7E0F3",
+      "topPageEntry": "detail.lynx.bundle",
+      "transitionId": null
+    },
+    {
+      "attemptId": "FCBFA375-7C2D-44E7-8A76-7F0AD6D48CE4",
+      "bundleId": "00000000-0000-7000-8000-000000000000",
+      "containerClass": "Sparkling.SPKViewController",
+      "containerId": "F0EC7D39-8498-462F-949E-7FC67206E47A",
+      "contextId": "A158C5AD-6270-43AD-A6C7-05FA84D7E0F3",
+      "event": "pageAttemptTerminal",
+      "framework": "react",
+      "generationId": "FB03BD57-17DA-4A9E-BCE6-0572F1ABA671",
+      "nativePageClass": "Sparkling.SPKViewController",
+      "observedAt": "2026-09-28T16:12:19Z",
+      "orderedPageEntries": ["main.lynx.bundle", "detail.lynx.bundle"],
+      "orderedPageParameters": [
+        [],
+        [
+          {
+            "name": "title",
+            "value": "Second Page"
+          }
+        ]
+      ],
+      "orderedParameters": [
+        {
+          "name": "title",
+          "value": "Second Page"
+        }
+      ],
+      "pageAttemptId": "3CC5010C-5F96-427F-8B5D-1047851BA940",
+      "pageClass": "Sparkling.SPKViewController",
+      "pageEntry": "detail.lynx.bundle",
+      "parameters": {
+        "title": "Second Page"
+      },
+      "processId": "65017",
+      "reason": "admission",
+      "releaseId": null,
+      "runtimeId": "sparkling-c4ce8d2-navigation-2.1.0-rc.12-lynx-3.9.0-primjs-3.8.0-alpha.6-ios-managed-pages-v1",
+      "sourceContextId": "9348AD4F-E5A0-4C4B-AA93-642445EF3EFB",
+      "terminal": "admitted",
+      "topContextId": "A158C5AD-6270-43AD-A6C7-05FA84D7E0F3",
+      "topPageEntry": "detail.lynx.bundle",
+      "transitionId": null
+    },
+    {
+      "attemptId": "FCBFA375-7C2D-44E7-8A76-7F0AD6D48CE4",
+      "bundleId": "00000000-0000-7000-8000-000000000000",
+      "containerClass": "Sparkling.SPKViewController",
+      "containerId": "F0EC7D39-8498-462F-949E-7FC67206E47A",
+      "contextId": "A158C5AD-6270-43AD-A6C7-05FA84D7E0F3",
+      "event": "pageClosed",
+      "framework": "react",
+      "generationId": "FB03BD57-17DA-4A9E-BCE6-0572F1ABA671",
+      "nativePageClass": "Sparkling.SPKViewController",
+      "observedAt": "2026-09-28T16:12:42Z",
+      "orderedPageEntries": ["main.lynx.bundle"],
+      "orderedPageParameters": [[]],
+      "orderedParameters": [
+        {
+          "name": "title",
+          "value": "Second Page"
+        }
+      ],
+      "outcome": "closed",
+      "pageAttemptId": "3CC5010C-5F96-427F-8B5D-1047851BA940",
+      "pageClass": "Sparkling.SPKViewController",
+      "pageEntry": "detail.lynx.bundle",
+      "parameters": {
+        "title": "Second Page"
+      },
+      "processId": "65017",
+      "releaseId": null,
+      "runtimeId": "sparkling-c4ce8d2-navigation-2.1.0-rc.12-lynx-3.9.0-primjs-3.8.0-alpha.6-ios-managed-pages-v1",
+      "sourceContextId": "9348AD4F-E5A0-4C4B-AA93-642445EF3EFB",
+      "topContextId": "9348AD4F-E5A0-4C4B-AA93-642445EF3EFB",
+      "topPageEntry": "main.lynx.bundle",
+      "transitionId": null
+    },
+    {
+      "attemptId": "FCBFA375-7C2D-44E7-8A76-7F0AD6D48CE4",
+      "bundleId": "00000000-0000-7000-8000-000000000000",
+      "containerClass": "Sparkling.SPKViewController",
+      "containerId": "7117C50F-22C1-4F86-871C-B3A83EE6F577",
+      "contextId": "32CC3DC6-DE2A-4B9F-9581-7B9C0052FA62",
+      "event": "pageOpened",
+      "framework": "react",
+      "generationId": "FB03BD57-17DA-4A9E-BCE6-0572F1ABA671",
+      "nativePageClass": "Sparkling.SPKViewController",
+      "observedAt": "2026-09-28T16:13:39Z",
+      "orderedPageEntries": ["main.lynx.bundle", "detail.lynx.bundle"],
+      "orderedPageParameters": [
+        [],
+        [
+          {
+            "name": "title",
+            "value": "Second Page"
+          }
+        ]
+      ],
+      "orderedParameters": [
+        {
+          "name": "title",
+          "value": "Second Page"
+        }
+      ],
+      "outcome": "opened",
+      "pageAttemptId": "C6551300-4106-4948-972D-C869C97201D3",
+      "pageClass": "Sparkling.SPKViewController",
+      "pageEntry": "detail.lynx.bundle",
+      "parameters": {
+        "title": "Second Page"
+      },
+      "processId": "65017",
+      "releaseId": null,
+      "runtimeId": "sparkling-c4ce8d2-navigation-2.1.0-rc.12-lynx-3.9.0-primjs-3.8.0-alpha.6-ios-managed-pages-v1",
+      "sourceContextId": "9348AD4F-E5A0-4C4B-AA93-642445EF3EFB",
+      "topContextId": "32CC3DC6-DE2A-4B9F-9581-7B9C0052FA62",
+      "topPageEntry": "detail.lynx.bundle",
+      "transitionId": null
+    },
+    {
+      "attemptId": "FCBFA375-7C2D-44E7-8A76-7F0AD6D48CE4",
+      "bundleId": "00000000-0000-7000-8000-000000000000",
+      "containerClass": "Sparkling.SPKViewController",
+      "containerId": "7117C50F-22C1-4F86-871C-B3A83EE6F577",
+      "contextId": "32CC3DC6-DE2A-4B9F-9581-7B9C0052FA62",
+      "event": "pageAttemptTerminal",
+      "framework": "react",
+      "generationId": "FB03BD57-17DA-4A9E-BCE6-0572F1ABA671",
+      "nativePageClass": "Sparkling.SPKViewController",
+      "observedAt": "2026-09-28T16:13:39Z",
+      "orderedPageEntries": ["main.lynx.bundle", "detail.lynx.bundle"],
+      "orderedPageParameters": [
+        [],
+        [
+          {
+            "name": "title",
+            "value": "Second Page"
+          }
+        ]
+      ],
+      "orderedParameters": [
+        {
+          "name": "title",
+          "value": "Second Page"
+        }
+      ],
+      "pageAttemptId": "C6551300-4106-4948-972D-C869C97201D3",
+      "pageClass": "Sparkling.SPKViewController",
+      "pageEntry": "detail.lynx.bundle",
+      "parameters": {
+        "title": "Second Page"
+      },
+      "processId": "65017",
+      "reason": "admission",
+      "releaseId": null,
+      "runtimeId": "sparkling-c4ce8d2-navigation-2.1.0-rc.12-lynx-3.9.0-primjs-3.8.0-alpha.6-ios-managed-pages-v1",
+      "sourceContextId": "9348AD4F-E5A0-4C4B-AA93-642445EF3EFB",
+      "terminal": "admitted",
+      "topContextId": "32CC3DC6-DE2A-4B9F-9581-7B9C0052FA62",
+      "topPageEntry": "detail.lynx.bundle",
+      "transitionId": null
+    },
+    {
+      "attemptId": "FCBFA375-7C2D-44E7-8A76-7F0AD6D48CE4",
+      "bundleId": "00000000-0000-7000-8000-000000000000",
+      "containerClass": "Sparkling.SPKViewController",
+      "containerId": "7117C50F-22C1-4F86-871C-B3A83EE6F577",
+      "contextId": "32CC3DC6-DE2A-4B9F-9581-7B9C0052FA62",
+      "event": "nativeBack",
+      "framework": "react",
+      "generationId": "FB03BD57-17DA-4A9E-BCE6-0572F1ABA671",
+      "nativePageClass": "Sparkling.SPKViewController",
+      "observedAt": "2026-09-28T16:13:42Z",
+      "orderedPageEntries": ["main.lynx.bundle"],
+      "orderedPageParameters": [[]],
+      "orderedParameters": [
+        {
+          "name": "title",
+          "value": "Second Page"
+        }
+      ],
+      "outcome": "nativeBack",
+      "pageAttemptId": "C6551300-4106-4948-972D-C869C97201D3",
+      "pageClass": "Sparkling.SPKViewController",
+      "pageEntry": "detail.lynx.bundle",
+      "parameters": {
+        "title": "Second Page"
+      },
+      "processId": "65017",
+      "releaseId": null,
+      "runtimeId": "sparkling-c4ce8d2-navigation-2.1.0-rc.12-lynx-3.9.0-primjs-3.8.0-alpha.6-ios-managed-pages-v1",
+      "sourceContextId": "9348AD4F-E5A0-4C4B-AA93-642445EF3EFB",
+      "topContextId": "9348AD4F-E5A0-4C4B-AA93-642445EF3EFB",
+      "topPageEntry": "main.lynx.bundle",
+      "transitionId": null
+    },
+    {
+      "attemptId": "FCBFA375-7C2D-44E7-8A76-7F0AD6D48CE4",
+      "bundleId": "00000000-0000-7000-8000-000000000000",
+      "containerClass": "Sparkling.SPKViewController",
+      "containerId": "B6BEE71D-B7F1-45F5-90E7-CB2F6A214F9F",
+      "contextId": "4973441D-85DA-4D79-8283-A6B204BDCEBE",
+      "event": "pageOpened",
+      "framework": "react",
+      "generationId": "FB03BD57-17DA-4A9E-BCE6-0572F1ABA671",
+      "nativePageClass": "Sparkling.SPKViewController",
+      "observedAt": "2026-09-28T16:14:37Z",
+      "orderedPageEntries": ["main.lynx.bundle", "detail.lynx.bundle"],
+      "orderedPageParameters": [
+        [],
+        [
+          {
+            "name": "title",
+            "value": "Second Page"
+          }
+        ]
+      ],
+      "orderedParameters": [
+        {
+          "name": "title",
+          "value": "Second Page"
+        }
+      ],
+      "outcome": "opened",
+      "pageAttemptId": "AC45B648-9928-4509-A578-EF1ED5AFB1EB",
+      "pageClass": "Sparkling.SPKViewController",
+      "pageEntry": "detail.lynx.bundle",
+      "parameters": {
+        "title": "Second Page"
+      },
+      "processId": "65017",
+      "releaseId": null,
+      "runtimeId": "sparkling-c4ce8d2-navigation-2.1.0-rc.12-lynx-3.9.0-primjs-3.8.0-alpha.6-ios-managed-pages-v1",
+      "sourceContextId": "9348AD4F-E5A0-4C4B-AA93-642445EF3EFB",
+      "topContextId": "4973441D-85DA-4D79-8283-A6B204BDCEBE",
+      "topPageEntry": "detail.lynx.bundle",
+      "transitionId": null
+    },
+    {
+      "attemptId": "FCBFA375-7C2D-44E7-8A76-7F0AD6D48CE4",
+      "bundleId": "00000000-0000-7000-8000-000000000000",
+      "containerClass": "Sparkling.SPKViewController",
+      "containerId": "B6BEE71D-B7F1-45F5-90E7-CB2F6A214F9F",
+      "contextId": "4973441D-85DA-4D79-8283-A6B204BDCEBE",
+      "event": "pageAttemptTerminal",
+      "framework": "react",
+      "generationId": "FB03BD57-17DA-4A9E-BCE6-0572F1ABA671",
+      "nativePageClass": "Sparkling.SPKViewController",
+      "observedAt": "2026-09-28T16:15:13Z",
+      "orderedPageEntries": ["main.lynx.bundle"],
+      "orderedPageParameters": [[]],
+      "orderedParameters": [
+        {
+          "name": "title",
+          "value": "Second Page"
+        }
+      ],
+      "pageAttemptId": "AC45B648-9928-4509-A578-EF1ED5AFB1EB",
+      "pageClass": "Sparkling.SPKViewController",
+      "pageEntry": "detail.lynx.bundle",
+      "parameters": {
+        "title": "Second Page"
+      },
+      "processId": "65017",
+      "reason": "nativeBack",
+      "releaseId": null,
+      "runtimeId": "sparkling-c4ce8d2-navigation-2.1.0-rc.12-lynx-3.9.0-primjs-3.8.0-alpha.6-ios-managed-pages-v1",
+      "sourceContextId": "9348AD4F-E5A0-4C4B-AA93-642445EF3EFB",
+      "terminal": "authorized-cancel",
+      "topContextId": "9348AD4F-E5A0-4C4B-AA93-642445EF3EFB",
+      "topPageEntry": "main.lynx.bundle",
+      "transitionId": null
+    },
+    {
+      "attemptId": "FCBFA375-7C2D-44E7-8A76-7F0AD6D48CE4",
+      "bundleId": "00000000-0000-7000-8000-000000000000",
+      "containerClass": "Sparkling.SPKViewController",
+      "containerId": "B6BEE71D-B7F1-45F5-90E7-CB2F6A214F9F",
+      "contextId": "4973441D-85DA-4D79-8283-A6B204BDCEBE",
+      "event": "nativeBack",
+      "framework": "react",
+      "generationId": "FB03BD57-17DA-4A9E-BCE6-0572F1ABA671",
+      "nativePageClass": "Sparkling.SPKViewController",
+      "observedAt": "2026-09-28T16:15:13Z",
+      "orderedPageEntries": ["main.lynx.bundle"],
+      "orderedPageParameters": [[]],
+      "orderedParameters": [
+        {
+          "name": "title",
+          "value": "Second Page"
+        }
+      ],
+      "outcome": "nativeBack",
+      "pageAttemptId": "AC45B648-9928-4509-A578-EF1ED5AFB1EB",
+      "pageClass": "Sparkling.SPKViewController",
+      "pageEntry": "detail.lynx.bundle",
+      "parameters": {
+        "title": "Second Page"
+      },
+      "processId": "65017",
+      "releaseId": null,
+      "runtimeId": "sparkling-c4ce8d2-navigation-2.1.0-rc.12-lynx-3.9.0-primjs-3.8.0-alpha.6-ios-managed-pages-v1",
+      "sourceContextId": "9348AD4F-E5A0-4C4B-AA93-642445EF3EFB",
+      "topContextId": "9348AD4F-E5A0-4C4B-AA93-642445EF3EFB",
+      "topPageEntry": "main.lynx.bundle",
+      "transitionId": null
+    }
+  ]
+}
