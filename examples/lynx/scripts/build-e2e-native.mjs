@@ -494,7 +494,7 @@ for (const platform of platforms) {
       "Build/Products/Release-iphonesimulator",
       `${definition.iosScheme}.app`,
     );
-    run("mise", ["exec", "--", "sh", "bootstrap.sh"], iosDir);
+    run("mise", ["exec", "ruby@3.3.10", "--", "sh", "bootstrap.sh"], iosDir);
     run(
       "xcodebuild",
       [

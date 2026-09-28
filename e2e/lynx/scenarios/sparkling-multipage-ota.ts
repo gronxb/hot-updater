@@ -268,6 +268,8 @@ export async function installAndReload(
     "/e2e/jobs/wait-for-metadata",
     {
       bundleId: `$${bundleKey}`,
+      releaseId: `$${releaseKey}`,
+      relaunchLimit: 0,
       verificationPending: true,
     },
   );
@@ -294,6 +296,8 @@ export async function installAndReload(
     "/e2e/jobs/wait-for-metadata",
     {
       bundleId: `$${bundleKey}`,
+      releaseId: `$${releaseKey}`,
+      relaunchLimit: 0,
       verificationPending: false,
     },
   );
@@ -921,7 +925,12 @@ export const sparklingMultipageOtaScenario = {
     await app.control(
       "multi-page pre-confirm interruption: wait B pending",
       "/e2e/jobs/wait-for-metadata",
-      { bundleId: "$bundleB", verificationPending: true },
+      {
+        bundleId: "$bundleB",
+        releaseId: "$releaseBPending",
+        relaunchLimit: 0,
+        verificationPending: true,
+      },
     );
     await app.tap(
       "multi-page pre-confirm interruption: arm reconstructed detail pending",
@@ -1088,7 +1097,12 @@ export const sparklingMultipageOtaScenario = {
     await app.control(
       "multi-page pre-confirm fatal: wait B pending",
       "/e2e/jobs/wait-for-metadata",
-      { bundleId: "$bundleB", verificationPending: true },
+      {
+        bundleId: "$bundleB",
+        releaseId: "$releaseBFatal",
+        relaunchLimit: 0,
+        verificationPending: true,
+      },
     );
     await app.tap(
       "multi-page pre-confirm fatal: arm reconstructed detail fatal",

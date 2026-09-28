@@ -73,6 +73,30 @@ describe("shipped Sparkling multi-page orchestration", () => {
         bundleId: "$bundleB",
       },
     });
+    expect(
+      calls.filter((call) => call.path === "/e2e/jobs/wait-for-metadata"),
+    ).toEqual([
+      {
+        kind: "control",
+        path: "/e2e/jobs/wait-for-metadata",
+        body: {
+          bundleId: "$bundleB",
+          releaseId: "$releaseB",
+          relaunchLimit: 0,
+          verificationPending: true,
+        },
+      },
+      {
+        kind: "control",
+        path: "/e2e/jobs/wait-for-metadata",
+        body: {
+          bundleId: "$bundleB",
+          releaseId: "$releaseB",
+          relaunchLimit: 0,
+          verificationPending: false,
+        },
+      },
+    ]);
     const mixedProof = calls.findIndex(
       (call) => call.path === "/e2e/assert-bundle-artifact-selection",
     );

@@ -472,3 +472,19 @@ can still close the exact stale E2E session identified by that device's error.
 A regression reproduces the cross-session closure before the fix, and all 61
 driver tests pass afterward. BSDIFF asset and runtime tests pass 17/17, with the
 committed WASM hash unchanged by the normal package build.
+
+Job `job-20260928152140-ogt541` on `705635434` then passed the strict source
+check and Android Release build, but failed before scenarios because iOS
+bootstrap selected macOS Ruby 2.6. The native build command now explicitly
+selects Ruby 3.3.10, matching the Gemfile lock, without relying on global mise
+configuration. Bundler's dependency check passes with global configuration
+disabled.
+
+The earlier Android multi-page pending-state failure also has a concrete cause:
+the republish endpoint returns a new Release without replacing the original
+deployment record used by the metadata wait's default Release lookup. The
+scenario now supplies the exact republished Release ID for both interruption
+and fatal-transition checks. All metadata waits in this managed-transition
+scenario set `relaunchLimit: 0`, so observing staging cannot activate it by
+restarting the app. The existing scenario orchestration tests verify the exact
+Release and the no-relaunch contract and pass 2/2.
