@@ -1120,3 +1120,18 @@ image/font content and unchanged PID. Retain the successful recheck separately
 from the initial unexplained black screenshot; no app or package workaround was
 added. Neither production scaffold smoke claims network OTA with its endpoint
 unconfigured. See `evidence/production-scaffold-android-94ad81609-recheck.json`.
+
+
+## 2026-09-29 compatibility preflight matrix correction
+
+Fresh `d06cb07da` matrix binaries build on both OSes. React/iOS passes real
+A-to-B offline activation, B-to-C reconstruction and both stale-authority
+rejections. The next phase stops because the runner expects install readiness
+for an incompatible runtime. Native correctly rejects it during the authorized
+check preflight and records one incompatible-artifact cache entry. The runner
+now requires check-time `INCOMPATIBLE` on both attempts. An observed diagnostic
+status replaces the first error before the second click, preventing a stale
+label from satisfying that wait. Exact archive request counts, unchanged running
+generation and no candidate evaluation remain mandatory. No SDK behavior or
+native artifact changes in this correction. Retain
+`evidence/public-matrix-d06cb07da-failure.json`; complete cells remain zero.

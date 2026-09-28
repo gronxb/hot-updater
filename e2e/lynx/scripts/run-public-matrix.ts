@@ -1196,9 +1196,7 @@ async function rejectCrossProvenanceTarget(
   const requestCountBefore = serverRequestCount(artifactUrl);
 
   adapter.clickText("Check update");
-  await adapter.waitForText("Update verified and ready to install.");
-  adapter.clickText("Install next launch");
-  await adapter.waitForText("Installation failed:");
+  await adapter.waitForText("Update check failed:");
   await adapter.waitForText("INCOMPATIBLE");
   const requestCountAfterFirst = await waitForServerRequestCount(
     artifactUrl,
@@ -1207,18 +1205,14 @@ async function rejectCrossProvenanceTarget(
   assert.equal(
     requestCountAfterFirst,
     requestCountBefore + 1,
-    "The first incompatible preparation fetched the artifact more than once",
+    "The first incompatible check fetched the artifact more than once",
   );
 
+  // Clear the first error so the second wait cannot match its stale status.
+  adapter.clickText("Capture runtime events");
+  await adapter.waitForText("Runtime events captured:");
   adapter.clickText("Check update");
-  const cachedResult = await adapter.waitForEitherText([
-    "Update check failed:",
-    "Update verified and ready to install.",
-  ]);
-  if (cachedResult === "Update verified and ready to install.") {
-    adapter.clickText("Install next launch");
-    await adapter.waitForText("Installation failed:");
-  }
+  await adapter.waitForText("Update check failed:");
   await adapter.waitForText("INCOMPATIBLE");
   await new Promise((resolve) => setTimeout(resolve, 500));
   assert.equal(
