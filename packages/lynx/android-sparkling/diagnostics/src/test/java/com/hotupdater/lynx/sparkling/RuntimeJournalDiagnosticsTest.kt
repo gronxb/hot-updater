@@ -145,6 +145,8 @@ class RuntimeJournalDiagnosticsTest {
                 ),
             )
             val diagnostics = diagnostics(root)
+            val file = root.resolve("hot-updater-lynx/runtime-events/events.json")
+            val original = file.readText()
             diagnostics.install("retention-limit")
             val during = diagnostics.receipt().getJSONObject("snapshot")
             assertEquals(
@@ -152,12 +154,23 @@ class RuntimeJournalDiagnosticsTest {
                 during.getJSONArray("events").getJSONObject(0).getString("name"),
             )
             diagnostics.restore()
+            assertEquals(original, file.readText())
+            // Explicit success restoration can be followed by finally cleanup.
+            diagnostics.restore()
+            assertEquals(original, file.readText())
             val restored = diagnostics.receipt().getJSONObject("snapshot")
             assertEquals(
                 "generationStarted",
                 restored.getJSONArray("events").getJSONObject(0).getString("name"),
             )
             assertEquals("1", restored.getString("latestSequence"))
+            diagnostics.append()
+            diagnostics.reopen()
+            assertEquals(
+                "2",
+                diagnostics.receipt().getJSONObject("snapshot")
+                    .getString("latestSequence"),
+            )
         } finally {
             root.deleteRecursively()
         }

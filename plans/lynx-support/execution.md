@@ -817,3 +817,26 @@ project passes 460/460 in 22 files, including real compiler builds. Example type
 and targeted lint pass. The earlier full verify command was stopped while
 waiting for PR checks, before any new job was queued. Rebuild and rerun both
 acceptance gates on the committed changes.
+
+
+## 2026-09-29 repeated diagnostic journal restoration
+
+The `ca366bcb6` matrix passes C reconstruction/readiness and reaches its next
+native journal checkpoint. The external ledger correctly rejects changed bytes
+for sequence 1. Captured snapshots show 82 live events before native diagnostics,
+zero afterward, and a new sequence 1 from B at the C checkpoint. The iOS matrix
+explicitly restores to inspect the receipt, then restores again in deferred
+cleanup. With no remaining backup, the second call replaced the journal with an
+empty envelope. Evidence: `evidence/ios-diagnostic-double-restore.json`.
+
+Restoration now does nothing when no fixture backup is pending, and clears the
+backup only after successful restoration. The iOS regression preserves exact
+bytes through explicit/deferred cleanup, appends the next live event and reopens
+the file; it fails on the original implementation. The corresponding Android
+API has the same destructive repeated-call behavior, reproduced by extending its
+existing live-journal restore test. Correct both diagnostic implementations;
+production journal semantics and strict external-ledger checks are unchanged.
+Swift journal tests pass 22/22 and Android diagnostics pass 6/6. The normal CLI
+refreshes the iOS fingerprint and both plist values; Android is unchanged because
+its diagnostics are excluded from the production fingerprint. Rebuild the matrix. Full shared job `job-20260928181940-4izq1i` remains on
+`ca366bcb6`; no results from the later fix may be attributed to that job.

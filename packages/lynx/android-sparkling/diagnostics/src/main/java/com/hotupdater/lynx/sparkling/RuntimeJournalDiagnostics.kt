@@ -69,9 +69,10 @@ class RuntimeJournalDiagnostics(
     }
 
     fun restore() {
-        write(backup ?: EMPTY_JOURNAL.toByteArray())
-        backup = null
+        val bytes = backup ?: return
+        write(bytes)
         journal = LynxGenerationEventJournal(filesDir)
+        backup = null
     }
 
     fun exerciseFieldBoundaries(): JSONObject {

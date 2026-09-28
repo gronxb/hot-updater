@@ -1423,6 +1423,10 @@ the canonical journal bytes, SHA-256, byte length, sequence bounds, retention
 state, and process identity across reopen. A receipt serialization order change
 must not conceal or falsely report a persisted journal change. Matrix teardown
 must release only the device session owned by that run, including on failure.
+Diagnostic fixture restoration must preserve the exact live journal and its next
+sequence. Repeated success/finally cleanup is idempotent; it must not replace a
+restored journal with an empty envelope or discard a backup before restoration
+succeeds. Checkpoint the real journal before and after fixture execution.
 
 Run `checkForUpdate`, installation, and reload from the host-designated primary
 context. A secondary page cannot authorize catalog selection or mutate the OTA

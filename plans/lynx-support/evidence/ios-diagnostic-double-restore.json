@@ -1,0 +1,103 @@
+{
+  "sourceCommit": "ca366bcb60902cf20e264cd222f808528a2606f5",
+  "platform": "ios",
+  "failure": "B to C: overlapping native event 1 changed bytes",
+  "cause": "The matrix restores the diagnostic journal explicitly to capture a receipt and again in deferred cleanup. The second restore had no backup and overwrote the live journal with an empty envelope.",
+  "snapshots": [
+    {
+      "stage": "before native boundaries",
+      "receivedAt": "2026-09-28T18:18:27.152Z",
+      "oldestSequence": "1",
+      "latestSequence": "82",
+      "truncated": false,
+      "eventCount": 82,
+      "firstEvent": {
+        "sequence": "1",
+        "name": "generationWillEvaluate",
+        "details": {
+          "transitionId": null,
+          "attemptId": "308FA2D1-881F-40FC-AD93-C71BDB497602",
+          "topPageEntry": "main.lynx.bundle",
+          "orderedPageEntries": [
+            "main.lynx.bundle"
+          ],
+          "runtimeId": "sparkling-c4ce8d2-navigation-2.1.0-rc.12-lynx-3.9.0-primjs-3.8.0-alpha.6-ios-managed-pages-v1",
+          "containerClass": "Sparkling.SPKViewController",
+          "pageClass": "Sparkling.SPKViewController",
+          "releaseId": null,
+          "generationId": "1A27883B-143E-4CFD-BD57-CEB531034805",
+          "pageEntry": "main.lynx.bundle",
+          "essentialResources": [
+            "assets/bootstrap.js",
+            "assets/probe.png",
+            "assets/probe.ttf",
+            "dynamic/component.lynx.bundle",
+            "main.lynx.bundle"
+          ],
+          "sourceContextId": null,
+          "processId": "2832",
+          "pageAttemptId": null,
+          "orderedPageParameters": [
+            []
+          ],
+          "nativePageClass": "Sparkling.SPKViewController",
+          "primary": true,
+          "bundleId": "00000000-0000-7000-8000-000000000000",
+          "contextId": "F0CC39D1-2EF9-4BF5-A572-C1FD80CE1DD4"
+        }
+      }
+    },
+    {
+      "stage": "after native boundaries",
+      "receivedAt": "2026-09-28T18:18:59.259Z",
+      "oldestSequence": null,
+      "latestSequence": null,
+      "truncated": false,
+      "eventCount": 0,
+      "firstEvent": null
+    },
+    {
+      "stage": "B to C",
+      "receivedAt": "2026-09-28T18:19:47.064Z",
+      "oldestSequence": "1",
+      "latestSequence": "101",
+      "truncated": false,
+      "eventCount": 101,
+      "firstEvent": {
+        "sequence": "1",
+        "name": "generationWillEvaluate",
+        "details": {
+          "transitionId": null,
+          "orderedPageEntries": [
+            "main.lynx.bundle"
+          ],
+          "primary": true,
+          "bundleId": "01a0e93c-e1f4-7fcc-9cb2-b012d7fbf762",
+          "nativePageClass": "Sparkling.SPKViewController",
+          "pageClass": "Sparkling.SPKViewController",
+          "processId": "6103",
+          "pageAttemptId": null,
+          "generationId": "D62C22DE-5712-4150-9C26-47CC115B89E6",
+          "topPageEntry": "main.lynx.bundle",
+          "containerClass": "Sparkling.SPKViewController",
+          "pageEntry": "main.lynx.bundle",
+          "essentialResources": [
+            "assets/bootstrap.js",
+            "assets/probe.png",
+            "assets/probe.ttf",
+            "dynamic/component.lynx.bundle",
+            "main.lynx.bundle"
+          ],
+          "sourceContextId": null,
+          "contextId": "3FB12922-0161-466D-8455-9B91D843EF01",
+          "releaseId": "01a0e93c-e36f-78f3-89dc-77ac37e28f40",
+          "attemptId": "7790C148-2174-4F94-A80B-737C163B66BB",
+          "orderedPageParameters": [
+            []
+          ],
+          "runtimeId": "sparkling-c4ce8d2-navigation-2.1.0-rc.12-lynx-3.9.0-primjs-3.8.0-alpha.6-ios-managed-pages-v1"
+        }
+      }
+    }
+  ]
+}

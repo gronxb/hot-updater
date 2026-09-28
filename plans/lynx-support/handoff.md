@@ -109,6 +109,18 @@ remaining implementation, diagnosis, and verification are performed here.
 
 ## Latest September 29 validation
 
+- Full job `job-20260928181940-4izq1i` is running on `ca366bcb6`. The separate
+  matrix now passes C reconstruction/readiness, then exposes destructive repeated
+  iOS diagnostic journal restoration (82 live events become zero). The explicit
+  successful restore plus deferred cleanup must be idempotent. Both native
+  diagnostic APIs now preserve the restored journal when no backup is pending;
+  reproducing tests verify exact bytes and sequence continuation. Swift journal
+  tests pass 22/22 and Android diagnostics pass 6/6. The iOS fingerprint and both
+  plist values are refreshed; Android remains unchanged. Retained evidence: `evidence/ios-diagnostic-double-restore.json`.
+- A production dependency audit finds `hot-updater -> apple-helper ->
+  @hot-updater/react-native`. Move RN CocoaPods environment policy behind the RN
+  integration before claiming a Lynx-only CLI install. This is still outstanding.
+
 - `26b23ee18` builds both clean native matrix targets. Its iOS B-to-C phase
   recreates both pages, loads all resources and confirms C in the same process,
   but the readiness predicate rejects any two-page generation start. Shared

@@ -271,16 +271,12 @@ final class SparklingGenerationEventJournal {
     func restoreDiagnosticsFixture() throws {
         lock.lock()
         defer { lock.unlock() }
-        let bytes: Data
-        if let backup = diagnosticsBackup {
-            bytes = backup
-        } else {
-            bytes = try Self.encode(StoredJournal())
-        }
-        diagnosticsBackup = nil
+        guard let bytes = diagnosticsBackup else { return }
+        let restored = try Self.decode(bytes)
         guard persist(bytes) else { throw Unavailable.persistenceFailed }
-        state = try Self.decode(bytes)
+        state = restored
         unavailable = nil
+        diagnosticsBackup = nil
     }
 
     private func captureDiagnosticsBackupIfNeeded() throws {

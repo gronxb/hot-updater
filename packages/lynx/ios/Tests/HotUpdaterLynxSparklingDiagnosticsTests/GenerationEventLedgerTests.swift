@@ -83,6 +83,33 @@ final class GenerationEventLedgerTests: XCTestCase {
         XCTAssertEqual(try repaired.snapshot()["truncated"] as? Bool, true)
     }
 #if HOT_UPDATER_LYNX_DIAGNOSTICS
+    func testRepeatedFixtureCleanupPreservesLiveJournalAndSequence() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let file = directory.appendingPathComponent("events.json")
+        let journal = SparklingGenerationEventJournal(file: file)
+        XCTAssertTrue(journal.append(name: "live-before", details: [:]))
+        let original = try Data(contentsOf: file)
+
+        try journal.installDiagnosticsFixture("count-plus-one")
+        try journal.installDiagnosticsFixture("corrupt-json")
+        try journal.restoreDiagnosticsFixture()
+        XCTAssertEqual(try Data(contentsOf: file), original)
+        // The explicit successful restore is followed by deferred cleanup.
+        try journal.restoreDiagnosticsFixture()
+        XCTAssertEqual(try Data(contentsOf: file), original)
+        XCTAssertTrue(journal.append(name: "live-after", details: [:]))
+        let reopened = SparklingGenerationEventJournal(file: file)
+        let events = try XCTUnwrap(
+            try reopened.snapshot()["events"] as? [[String: Any]]
+        )
+        XCTAssertEqual(events.compactMap { $0["name"] as? String }, [
+            "live-before", "live-after",
+        ])
+        XCTAssertEqual(events.compactMap { $0["sequence"] as? String }, ["1", "2"])
+    }
+
     func testDiagnosticsFixturesExerciseRetentionEvictionAndRepair() throws {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString)
