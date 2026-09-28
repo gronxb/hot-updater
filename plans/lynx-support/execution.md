@@ -696,3 +696,14 @@ validation of this flow is pending.
 The full workspace integration rerun on `972c11e94` passes **413/413 tests in
 28 files** in 687 seconds (`/tmp/lynx-972c11e-workspace-integration.log`). No
 database code changed for the preceding transient timeouts.
+
+
+## 2026-09-29 iOS fingerprint refresh
+
+Full job `job-20260928171631-2fpuk1` rejects the iOS fingerprint install at
+deploy time: the committed fingerprint still describes the Sparkling host
+before the reconstructed-page event fix. The normal fingerprint command
+reproduces exactly that native-file difference. Regenerate `fingerprint.json`
+and both configured iOS plist hashes through `hot-updater fingerprint create`;
+Android's hash remains unchanged. Rebuild native binaries before device
+acceptance. This keeps native compatibility validation strict.

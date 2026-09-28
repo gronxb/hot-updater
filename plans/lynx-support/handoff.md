@@ -109,6 +109,12 @@ remaining implementation, diagnosis, and verification are performed here.
 
 ## Latest September 29 validation
 
+- Primary-context OTA correction `1bd67a4a5` passes both clean native matrix
+  builds. Before device execution, the current full E2E exposes a stale iOS
+  fingerprint from the host lifecycle change. The normal CLI regenerates the
+  fingerprint and both configured plist hashes; Android's hash is unchanged.
+  New native receipts and a full E2E rerun are required after this refresh.
+
 - `972c11e94` passes the complete workspace unit suite (3,865/3,865, 343 files),
   all 35 workspace type projects, workspace lint, and both clean native builds.
   Full job `job-20260928171631-2fpuk1` uses exactly that commit for native setup
@@ -136,7 +142,7 @@ remaining implementation, diagnosis, and verification are performed here.
   captured first content at sequence 23 before admission at 24/25.
 - Crash fixtures now inject verified pre-ready failure before optional resource
   warmup. Strict font/journal/recovery assertions remain. Public React/Vue/Octane
-  detail pages now have SDK check/install/reload controls after native admission.
+  detail controls from `972c11e94` are superseded by the primary-context flow.
   All three compiler builds, 120 focused tests, example types and targeted lint
   pass. New native builds and complete device runs remain required.
 - `b23299eda` matrix got through journal diagnostics, B offline retention, and
