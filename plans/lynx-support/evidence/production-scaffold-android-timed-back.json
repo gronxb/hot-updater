@@ -1,0 +1,53 @@
+{
+  "beforePid": "12016",
+  "afterPid": "12016",
+  "back": {
+    "success": true,
+    "data": {
+      "action": "back",
+      "mode": "in-app",
+      "message": "Back"
+    }
+  },
+  "frames": [
+    {
+      "path": "/tmp/lynx-production-back-forensic/back-0.2.png",
+      "requestedSeconds": 0.2,
+      "capturedAtSeconds": 0.20744908298365772
+    },
+    {
+      "path": "/tmp/lynx-production-back-forensic/back-0.6.png",
+      "requestedSeconds": 0.6,
+      "capturedAtSeconds": 0.8630452500656247
+    },
+    {
+      "path": "/tmp/lynx-production-back-forensic/back-1.2.png",
+      "requestedSeconds": 1.2,
+      "capturedAtSeconds": 1.2001532909926027
+    },
+    {
+      "path": "/tmp/lynx-production-back-forensic/back-3.png",
+      "requestedSeconds": 3,
+      "capturedAtSeconds": 3.007984791067429
+    },
+    {
+      "path": "/tmp/lynx-production-back-forensic/back-6.png",
+      "requestedSeconds": 6,
+      "capturedAtSeconds": 6.0042748330160975
+    }
+  ],
+  "apkSha256": "f49e9ebfb3f1cf08fded334fb0f8e5fefe2ce075b5808ca4bebf635544e323e7",
+  "sourceCommit": "94ad81609 (unchanged installed production APK)",
+  "device": "emulator-5560",
+  "purpose": "Investigate retained initial black system-back screenshot",
+  "result": "After real separate detail navigation, system back returns visibly to main. The frame at 0.863 seconds and final frame at 6.004 seconds show the main page, image and font. Process 12016 stays unchanged. This reproduction does not establish the original black screenshot cause.",
+  "artifactHashes": {
+    "back-0.2.png": "755c9122adefd14f6f02b0899a0e320b3101c88b2b01efe2447040b1458e8ba1",
+    "back-0.6.png": "86c4d6605ad3d402c173da6cb03345817a353d4b17f97fa46c1608a828c0b3a7",
+    "main.png": "4caad78a6fbb89cdab8e5d6131f439c1de2f62b8418e6f9f90c45330d3f88c7d",
+    "back-1.2.png": "86c4d6605ad3d402c173da6cb03345817a353d4b17f97fa46c1608a828c0b3a7",
+    "back-3.png": "4d789797d0ca4de18a29521c046b0123ec60e357c202f9bed7286d29be833322",
+    "back-6.png": "4d789797d0ca4de18a29521c046b0123ec60e357c202f9bed7286d29be833322",
+    "detail.png": "bea2c1003bf1975a97d67a53d5940cd90c3771918271d5923765cdc2203d22f2"
+  }
+}

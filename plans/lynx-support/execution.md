@@ -1282,3 +1282,50 @@ E2E surface and replace the text-slicing assertion with actual RN/Lynx metadata
 matching for a rollback base versus the active staging Bundle. Those 98 harness
 contracts pass; the fresh full workspace run then passes **3,928/3,928 tests in
 351 files** (`/tmp/lynx-metadata-graph-workspace-green.log`). No scenario is removed.
+
+
+## 2026-09-29 payload identity and recovery evidence
+
+The `08163b59a` React/iOS run completes all driver phases and retains 775 native
+events, but final validation fails at embedded/server A equality. Every one of
+the eight installed files is byte-identical. The manifests differ only in
+transport metadata (Brotli/download hash and sizes). The normalizer now binds
+manifest bytes to the recorded digest, verifies compiler output bytes against
+artifact files, and retains all eight payload hashes/sizes for exact A/server-A
+comparison. Detail admission retains PAGE_ADMITTED and its own identity, with
+no primary jsReadySequence. Regressions reproduce both former rejection paths.
+
+Offline inspection of the complete failed receipt exposes two native issues
+before another run: recovered process-interruption events are emitted after
+page evaluation, and pre-confirm secondary fatal recovery loses the RECOVERED
+source because reportPageFailure clears the pending startup selection. Move
+the terminal replay before initial stack construction and leave that startup
+selection for recovery to consume, matching primary fatal behavior. A Swift
+scenario confirms B, starts C, fails C's detail before primary readiness, then
+requires B recovery, C Bundle/Release exclusions and exactly one C-to-B response.
+It fails before the correction and passes afterward. Swift executes 138 tests,
+13 skipped, zero failures. No final-contract assertion is relaxed; the original
+receipt remains failed. Fatal event sequence numbers now use the full event
+journal consistently. See `evidence/public-matrix-08163b59a-failure.json`.
+
+Fresh production iOS evidence at `08163b59a` verifies the installed full app
+tree, real image/font resources, separate detail contexts, JS close and native
+back, with diagnostics absent. This is not network OTA evidence. Android's
+original black screenshot is explained by its retained keyguard/display-sleep
+state, stopped/nonvisible root activity and absent focus. Unchanged APK timed
+back checks show the main page visible by 0.863 seconds and still visible at
+6.004 seconds in PID 12016. Keep the original failure, diagnosis and successful
+checks separately; no application workaround is warranted. Subsequent native
+changes require fresh production iOS proof.
+
+Shared job `job-20260928230647-4uc5ag` remains queued for the pushed `08163b59a`
+source while these local corrections are prepared. Do not advance remote HEAD
+between its setup and runner checkouts. Latest completed shared result remains
+45/52; historical best remains 51/52; complete public matrix cells remain 0/6.
+
+Verification after the payload/recovery corrections: the full workspace passes
+**3,933/3,933 tests in 351 files** (`/tmp/lynx-payload-recovery-workspace.log`),
+the two focused matrix suites pass **112/112**, and targeted formatting/lint
+and diff checks pass. The refreshed iOS fingerprint is
+`3cec7835e41b5684ee038ffbe12e7802b3f85aae7199810412b50b23dc57d4c7`;
+Android remains unchanged. Six pre-existing staged helpers remain byte-identical.

@@ -13,6 +13,7 @@ import {
 import { SPARKLING_NAVIGATION_PROVENANCE } from "../../packages/lynx/src/navigationProvenance";
 import {
   expectedLynxMatrixCellIds,
+  LYNX_MATRIX_ARTIFACT_PATHS,
   LYNX_MATRIX_ANDROID_SPARKLING_ARTIFACTS,
   LYNX_MATRIX_INCOMPATIBLE_RUNTIME_IDS,
   LYNX_MATRIX_IOS_SPARKLING_CHECKOUT,
@@ -305,6 +306,12 @@ function makeBuild(variant: string, marker: string) {
     bundleId: `${variant.toLowerCase()}-bundle`,
     releaseId: variant === "A" ? null : `${variant.toLowerCase()}-release`,
     manifestSha256: hash(marker),
+    artifactFiles: Object.fromEntries(
+      LYNX_MATRIX_ARTIFACT_PATHS.map((path, index) => [
+        path,
+        { sha256: hash(String(index + 1)), byteSize: index + 1 },
+      ]),
+    ),
     pageEntries: LYNX_MATRIX_PAGE_ENTRIES,
     pageEssentialResources: LYNX_MATRIX_PAGE_ESSENTIAL_RESOURCES,
     sparklingNavigation: { ...SPARKLING_NAVIGATION_PROVENANCE },
@@ -1096,6 +1103,37 @@ describe("Lynx public matrix evidence contract", () => {
     expect(() => validateLynxMatrixCell(makeCell())).not.toThrow();
   });
 
+  it.each(["confirmedInterruptionRecovery", "unconfirmedRecovery"])(
+    "rejects %s when the interrupted attempt is recorded after recovery begins",
+    (phaseName) => {
+      const cell = makeCell();
+      const phase = cell.phases[phaseName];
+      phase.failureEvent.terminalSequence =
+        phase.recovered.evaluationSequence + 1;
+      expect(() => validateLynxMatrixCell(cell)).toThrow(
+        "recovery evaluation must follow the durable process interruption",
+      );
+    },
+  );
+
+  it("accepts server transport metadata without changing the embedded payload", () => {
+    const cell = makeCell();
+    cell.builds.serverA.manifestSha256 = hash("e");
+    cell.phases.reverseRollback.bToA.delivery.manifestSha256 = hash("e");
+    expect(() => validateLynxMatrixCell(cell)).not.toThrow();
+  });
+
+  it.each(["assets/OFL.txt", "hot-updater-lynx.json"])(
+    "rejects a changed %s even when the compiler page files match",
+    (path) => {
+      const cell = makeCell();
+      cell.builds.serverA.artifactFiles[path].sha256 = hash("e");
+      expect(() => validateLynxMatrixCell(cell)).toThrow(
+        "must register the exact embedded compiler Bundle A",
+      );
+    },
+  );
+
   it("accepts the compiler resource graph through the actual build normalizer", () => {
     const cell = makeCell();
     const embedded = cell.builds.A;
@@ -1115,6 +1153,10 @@ describe("Lynx public matrix evidence contract", () => {
         source: embedded.source,
         embeddedBundleId: embedded.bundleId,
         manifestFileHash: embedded.manifestSha256,
+        files: {
+          ...embedded.artifactFiles,
+          "manifest.json": { sha256: embedded.manifestSha256, byteSize: 100 },
+        },
       },
       runtimeId: embedded.runtimeId,
     });

@@ -1,0 +1,90 @@
+{
+  "sourceCommit": "08163b59af8ee7c951d6db671807dd9baf25872b",
+  "cell": "react-ios",
+  "completedCells": 0,
+  "failure": "Error: Invalid Lynx matrix receipt at cell.builds.serverA: must register the exact embedded compiler Bundle A with a server Release",
+  "nativeEventCount": 775,
+  "diagnosis": [
+    "All eight installed payload files match between embedded A and server A. Manifest differences describe Brotli transport and download byte sizes, not installed payload differences. Validate every payload hash/size while binding each manifest to its own delivery.",
+    "Detail pageAdmitted event indices were incorrectly placed in jsReadySequence. The collector now reserves jsReadySequence for the primary context.",
+    "The retained receipt exposes two later product/evidence failures: iOS replayed durable process-interruption events after recovery evaluation, and pre-confirm detail fatal recovery lost its RECOVERED transition source when reportPageFailure cleared the pending startup attempt.",
+    "Keep the original receipt failed. Offline traversal only identifies additional assertions; it is not new device acceptance. Fresh native builds and all six matrix cells remain required."
+  ],
+  "recoveryOrdering": {
+    "confirmedInterruptionRecovery": {
+      "terminalSequence": 462,
+      "recoveredEvaluationSequence": 444
+    },
+    "unconfirmedRecovery": {
+      "terminalSequence": 611,
+      "recoveredEvaluationSequence": 593
+    }
+  },
+  "fatalRecoveryConfirmation": {
+    "status": "ALREADY_CONFIRMED",
+    "transition": null,
+    "transitionId": null
+  },
+  "retainedArtifacts": {
+    "build-receipts/react-ios-A-sdk3-managed-embedded.json": {
+      "path": "/tmp/lynx-08163b59a-matrix-failure/build-receipts/react-ios-A-sdk3-managed-embedded.json",
+      "sha256": "93396d0a2138ef0da0d06652bbb6523964c529d1fabc7564a4b85cd408d60a6b"
+    },
+    "build-receipts/react-ios-matrix-1790636927254-19750-ios-a-zip.json": {
+      "path": "/tmp/lynx-08163b59a-matrix-failure/build-receipts/react-ios-matrix-1790636927254-19750-ios-a-zip.json",
+      "sha256": "2b1f6a452d82aa999befdaf4db5d3dc97fadf7facc61f6ce773c053fef6e68c0"
+    },
+    "build-receipts/react-ios-matrix-1790636927254-19750-ios-b-zip.json": {
+      "path": "/tmp/lynx-08163b59a-matrix-failure/build-receipts/react-ios-matrix-1790636927254-19750-ios-b-zip.json",
+      "sha256": "0ad0ea9901c8d08948fa88ff41f24a8c973ceeb3002137468f9013493003cf63"
+    },
+    "build-receipts/react-ios-matrix-1790636927254-19750-ios-c-zip.json": {
+      "path": "/tmp/lynx-08163b59a-matrix-failure/build-receipts/react-ios-matrix-1790636927254-19750-ios-c-zip.json",
+      "sha256": "c2fa731bd777e675573aee4c22b2841be0a5dfa455eb605a4d5680c780c00094"
+    },
+    "build-receipts/react-ios-matrix-1790636927254-19750-ios-confirmed-interruption-zip.json": {
+      "path": "/tmp/lynx-08163b59a-matrix-failure/build-receipts/react-ios-matrix-1790636927254-19750-ios-confirmed-interruption-zip.json",
+      "sha256": "0874026b0aa9b0392916d4f121f01f5a2a5f954bae768ee8a1cdff67915496be"
+    },
+    "build-receipts/react-ios-matrix-1790636927254-19750-ios-fatal-zip.json": {
+      "path": "/tmp/lynx-08163b59a-matrix-failure/build-receipts/react-ios-matrix-1790636927254-19750-ios-fatal-zip.json",
+      "sha256": "cdf74244720bb895caa153d764167e4e7ccc95daf458a3190a82c910b07c7148"
+    },
+    "build-receipts/react-ios-matrix-1790636927254-19750-ios-incompatible-zip.json": {
+      "path": "/tmp/lynx-08163b59a-matrix-failure/build-receipts/react-ios-matrix-1790636927254-19750-ios-incompatible-zip.json",
+      "sha256": "71f519ab8354ddc4ba925fd112e66acf9923f4dcb96b5f0acefe645737ff8fbd"
+    },
+    "build-receipts/react-ios-matrix-1790636927254-19750-ios-unconfirmed-zip.json": {
+      "path": "/tmp/lynx-08163b59a-matrix-failure/build-receipts/react-ios-matrix-1790636927254-19750-ios-unconfirmed-zip.json",
+      "sha256": "b781bb99c3bcf9daef8be701e9cdfdd5d2db0584346423c21df64406b2ec4593"
+    },
+    "events.json": {
+      "path": "/tmp/lynx-08163b59a-matrix-failure/events.json",
+      "sha256": "4bc2fad203b40b4053a31ad6f5bb52781e26330ee6571296917b1f3730c63056"
+    },
+    "failed-receipt.json": {
+      "path": "/tmp/lynx-08163b59a-matrix-failure/failed-receipt.json",
+      "sha256": "adae0bb3b78dd1bacf7497426147b74cee6a167c46f300400b0830e6937b2275"
+    },
+    "generation-events.json": {
+      "path": "/tmp/lynx-08163b59a-matrix-failure/generation-events.json",
+      "sha256": "c41276d705dba414df488122f8ea8958a25f382087088cd9a70c44f30f7516fc"
+    },
+    "matrix-events.jsonl": {
+      "path": "/tmp/lynx-08163b59a-matrix-failure/matrix-events.jsonl",
+      "sha256": "7fef816c5c78ed1362bbc2231f9f85db50ebf950770914a79b1967535ab0de73"
+    },
+    "ota-server.log": {
+      "path": "/tmp/lynx-08163b59a-matrix-failure/ota-server.log",
+      "sha256": "b21e0d34130d78810681c7b334042168a1f334f6e9dc32ba6e62c88129a1542a"
+    },
+    "runner.log": {
+      "path": "/tmp/lynx-08163b59a-matrix-failure/runner.log",
+      "sha256": "e34ab68318344e397607264aab1c6e9ca1702d57fc242a189db389b96cf78198"
+    },
+    "state.json": {
+      "path": "/tmp/lynx-08163b59a-matrix-failure/state.json",
+      "sha256": "a9a501170f0a50e20b4ec759c4a8cb21affd60c90f00fd1274bee27114048f27"
+    }
+  }
+}

@@ -21,6 +21,11 @@ export const LYNX_MATRIX_RESOURCE_PATHS = [
   "assets/bootstrap.js",
   "dynamic/component.lynx.bundle",
 ] as const;
+export const LYNX_MATRIX_ARTIFACT_PATHS = [
+  ...LYNX_MATRIX_RESOURCE_PATHS,
+  "assets/OFL.txt",
+  "hot-updater-lynx.json",
+] as const;
 export const LYNX_MATRIX_PAGE_ENTRIES = [
   "detail.lynx.bundle",
   "main.lynx.bundle",
@@ -1272,6 +1277,32 @@ function build(
       fail(`${at}.files.${path}.byteSize`, "expected a positive integer");
     }
   }
+  const artifactFiles = record(item.artifactFiles, `${at}.artifactFiles`);
+  sameMembers(
+    Object.keys(artifactFiles),
+    LYNX_MATRIX_ARTIFACT_PATHS,
+    `${at}.artifactFiles`,
+  );
+  for (const path of LYNX_MATRIX_ARTIFACT_PATHS) {
+    const fileAt = `${at}.artifactFiles.${path}`;
+    const file = record(artifactFiles[path], fileAt);
+    hash(file.sha256, `${fileAt}.sha256`);
+    if (
+      !Number.isSafeInteger(file.byteSize) ||
+      (file.byteSize as number) <= 0
+    ) {
+      fail(`${fileAt}.byteSize`, "expected a positive integer");
+    }
+    if (path in files) {
+      const compilerFile = record(files[path], `${at}.files.${path}`);
+      if (
+        file.sha256 !== compilerFile.sha256 ||
+        file.byteSize !== compilerFile.byteSize
+      ) {
+        fail(fileAt, "artifact must preserve the compiler output bytes");
+      }
+    }
+  }
   return item;
 }
 
@@ -1961,8 +1992,22 @@ export function validateLynxMatrixCell(value: unknown): void {
   const serverA = build(builds.serverA, "A", "cell.builds.serverA");
   if (
     serverA.bundleId !== a.bundleId ||
-    serverA.manifestSha256 !== a.manifestSha256 ||
-    JSON.stringify(serverA.files) !== JSON.stringify(a.files)
+    LYNX_MATRIX_ARTIFACT_PATHS.some((path) => {
+      const embedded = record(a.artifactFiles, "cell.builds.A.artifactFiles");
+      const deployed = record(
+        serverA.artifactFiles,
+        "cell.builds.serverA.artifactFiles",
+      );
+      const left = record(
+        embedded[path],
+        `cell.builds.A.artifactFiles.${path}`,
+      );
+      const right = record(
+        deployed[path],
+        `cell.builds.serverA.artifactFiles.${path}`,
+      );
+      return left.sha256 !== right.sha256 || left.byteSize !== right.byteSize;
+    })
   ) {
     fail(
       "cell.builds.serverA",

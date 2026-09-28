@@ -664,7 +664,8 @@ function collectLaunchEvidence({
       readinessAuthority: primary,
       evaluationSequence: eventSequence(allEvents, evaluation),
       firstContentSequence: eventSequence(allEvents, firstContentEvent),
-      jsReadySequence: readyEvent ? eventSequence(allEvents, readyEvent) : null,
+      jsReadySequence:
+        primary && readyEvent ? eventSequence(allEvents, readyEvent) : null,
       firstContent: eventIdentity(firstContentEvent),
       jsReady: primary && readyEvent ? eventIdentity(readyEvent) : null,
       pageAdmitted: !primary && readyEvent ? eventIdentity(readyEvent) : null,
@@ -1239,6 +1240,25 @@ export function normalizeBuild({
     assert.ok(built, `Compiler output ${role} is missing ${path}`);
     files[path] = { sha256: built.sha256, byteSize: built.bytes };
   }
+  const manifestSha256 =
+    receipt.persistedManifestFileHash ?? receipt.manifestFileHash;
+  assert.equal(
+    receipt.files?.["manifest.json"]?.sha256,
+    manifestSha256,
+    `Artifact ${role} manifest bytes differ from its recorded digest`,
+  );
+  const artifactFiles = Object.fromEntries(
+    Object.entries(receipt.files)
+      .filter(([path]) => path !== "manifest.json")
+      .sort(([left], [right]) => left.localeCompare(right)),
+  );
+  for (const [path, file] of Object.entries(files)) {
+    assert.deepEqual(
+      artifactFiles[path],
+      file,
+      `Artifact ${role} changed compiler output ${path}`,
+    );
+  }
   return {
     variant: role,
     compiler,
@@ -1251,10 +1271,8 @@ export function normalizeBuild({
     pageEntries,
     pageEssentialResources,
     sparklingNavigation: SPARKLING_NAVIGATION_PROVENANCE,
-    manifestSha256:
-      receipt.persistedManifestFileHash ??
-      receipt.manifestFileHash ??
-      receipt.manifestFileHash,
+    manifestSha256,
+    artifactFiles,
     files,
   };
 }

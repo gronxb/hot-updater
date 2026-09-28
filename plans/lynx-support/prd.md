@@ -844,7 +844,8 @@ gate; `verified-fatal` invalidates the startup attempt, and
 past this gate.
 
 On process start, a durable page attempt with no terminal state is atomically
-committed as `process-interruption`. If an OTA Release was still pending, it
+committed as `process-interruption`. Replay its durable event before evaluating
+any recovered page, retaining the old attempt identity and exactly-once marker. If an OTA Release was still pending, it
 participates in the existing unconfirmed-startup outcome: suppress that Release
 ID and recover the
 captured ordered logical stack and parameters on an eligible complete selection,
@@ -866,7 +867,10 @@ can no longer mutate state. Late first-content, resource, ready, close or error
 signals from an attempt in any of the four terminal states, or from a retired or
 previous-generation attempt, are stale no-ops with an observable rejection
 result. Recovery consumes each durable `process-interruption` once, so repeated
-starts cannot repeat suppression or reanimate the abandoned attempt.
+starts cannot repeat suppression or reanimate the abandoned attempt. A verified
+secondary failure before primary confirmation must retain its startup selection
+until recovery consumes it, so the next readiness response reports the exact
+failed-to-recovered Release transition once.
 
 If detail first load fails before the primary Release is confirmed, the failure
 is part of the current generation's pending startup attempt. Native durably
@@ -1847,6 +1851,16 @@ membership and page order. No complete cell is claimed. Failed validation
 receipts must retain the actual error and `passed: false`; they are not success
 receipts. See [the matrix record](./evidence/public-matrix-dad654d45-failure.json).
 
+The `08163b59a` matrix again executes all device phases, but its final receipt
+fails. Its retained evidence identifies four corrections: compare every installed
+payload file between embedded/server A while allowing compression metadata to
+change the transport manifest; reserve `jsReadySequence` for primary readiness;
+replay iOS interruption terminals before recovered-page evaluation; and preserve
+the failed startup selection for a pre-confirm secondary fatal's `RECOVERED`
+response. Each manifest remains bound to its actual digest and delivery. Offline
+inspection does not convert this run into a passing cell. See
+[the retained receipt diagnosis](./evidence/public-matrix-08163b59a-failure.json).
+
 Workspace verification for the pushed implementation passes 27 build projects,
 35 type-check projects, lint, and 3,893 unit tests in 348 files before the three
 subsequent stored-exclusion test cases. The later driver, event-ledger and native
@@ -1872,9 +1886,16 @@ Release recovers to embedded A when no other eligible stored confirmation exists
 C must then be explicitly selected again. Run the confirmed-C fatal probe last,
 after reverse rollbacks and a real C reactivation. Require embedded A stack
 reconstruction, C Release suppression and C Bundle crash history. A receipt that
-reuses failed C cannot pass. A successful same-binary Android production navigation
-recheck is retained alongside the initial unexplained black screenshot, rather
-than replacing it. Fresh complete device runs remain required.
+reuses failed C cannot pass. The initial Android production black screenshot is now explained by the retained
+system dump: keyguard held a display sleep token, the root activity was stopped
+and not client-visible, and no window had focus. The unchanged APK passes visible
+native back checks in the same process; retain the original failure and
+[the keyguard diagnosis](./evidence/production-scaffold-android-keyguard-diagnosis.json).
+No native workaround is added. A fresh production iOS `08163b59a` binary passes
+navigation/resources with diagnostics absent and the installed app tree verified
+([evidence](./evidence/production-scaffold-ios-08163b59a.json)). Its endpoint was
+unconfigured, so no network OTA is claimed. Subsequent native corrections still
+require fresh builds and complete device acceptance.
 
 The historical best full shared result is 51/52 on `f54a3ae47`. The later full
 job `job-20260928181940-4izq1i` on `ca366bcb6` finishes 46/52 (iOS 25/26,

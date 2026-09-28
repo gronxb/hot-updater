@@ -1459,7 +1459,8 @@ public final class LynxController {
                 in: &next
             )
         }
-        if next.pending?.attemptId == attemptId { next.pending = nil }
+        // Recovery consumes the startup attempt to retain the failed Release
+        // as the source of the RECOVERED transition.
         next.revision = UUID().uuidString
         try save(next)
         fatal = true

@@ -1971,7 +1971,7 @@ async function runCell(
     existingLaunch: confirmedFatalBaseline,
   });
   const confirmedDetailFatalFailure = collectSecondaryFatalFailure(
-    confirmedDetailFatalEvents,
+    allEvents,
     confirmedDetailFatalPending,
   );
   const confirmedDetailFatalRetirement = collectInvalidatedContexts(
@@ -2010,7 +2010,7 @@ async function runCell(
     primaryReady: false,
   });
   const fatalFailure = collectSecondaryFatalFailure(
-    fatalEvents,
+    allEvents,
     fatalCandidateLaunch,
   );
   const fatalGenerationRetirement = collectInvalidatedContexts(

@@ -33,17 +33,18 @@ uncompressed JNI and correct ELF/ZIP 16 KB alignment remain required.
   Android 25/26. Native setup `6dc6352db`; runner checkout `1dcf23cf5`.
   See `evidence/shared-e2e-6hdwci.json`. Historical best remains **51/52**;
   prior completed `a5bb32fb3` run was 50/52.
-- Public matrix: **0/6 validated cells**. The `dad654d45` React/iOS run
-  executes every driver phase and collects 775 events, but final validation
-  rejects a sorted compiler resource graph against an unsorted expectation.
-  See `evidence/public-matrix-dad654d45-failure.json`.
-- Current workspace: **3,928/3,928 units in 351 files** pass after the harness
+- Public matrix: **0/6 validated cells**. `08163b59a` React/iOS completes all
+  device phases and records 775 events. Final receipt replay identifies artifact
+  transport metadata, detail readiness attribution, delayed interruption replay
+  and a missing pre-confirm fatal recovery transition. See
+  `evidence/public-matrix-08163b59a-failure.json`; offline analysis is not a pass.
+- Current workspace: **3,933/3,933 units in 351 files** pass after the harness
   corrections. Prior native baseline: 27 build projects, 35 type projects and
   workspace lint passed; targeted lint/formatting pass for the latest edits.
-  Swift: 137 executed, 13 skipped, zero failures.
+  Swift: 138 executed, 13 skipped, zero failures after the new native regression.
 - Current focused regressions cover the actual build normalizer/validator and
   explicit builtin Release identity. Read the final execution checkpoint for
-  commands and exact subsequent test counts (currently 230/230 across seven suites).
+  commands and exact subsequent test counts (latest: 112/112 across two matrix suites).
 - Fresco: 28 ARM64/x86_64 libraries pass ELF/ZIP 16 KB checks; AAB reports
   PAGE_ALIGNMENT_16K. One unchanged matrix APK loads real images/fonts for
   React/Vue/Octane on a 16 KB ARM64 device (`evidence/fresco-16kb-smoke.json`).
@@ -61,11 +62,21 @@ Its iOS fingerprint is
 These changes address the previous final matrix attribution failure, four shared
 iOS epoch failures and the stale fingerprint failure. Fresh shared proof is needed.
 
-The next corrections retain the compiler's canonical sorted resource graph and
-preserve explicit releaseId=null in metadata waits. Null means builtin recovery;
-only undefined may infer a deployed Release. The Android journal already proves
-the fatal and same-process builtin reconstruction. Timeout diagnostics now show
-both Release IDs. Do not weaken exact identity, lifecycle or resource assertions.
+`08163b59a` retains the compiler's canonical sorted resource graph and preserves
+explicit releaseId=null in metadata waits. Null means builtin recovery; only
+undefined may infer a deployed Release. The full shared job
+`job-20260928230647-4uc5ag` is queued; verify its resolved source before pushing
+while setup/runner checkouts are in progress.
+
+The subsequent correction compares all eight installed payload hashes/sizes,
+binds each transport manifest to its own digest, and reserves jsReadySequence
+for the primary context. It replays iOS interruption terminals before stack
+evaluation and retains the failed pending startup selection for exactly one
+RECOVERED response. A Swift scenario confirms B, fails unconfirmed C's detail,
+and requires B recovery with C crash/suppression history and C-to-B provenance.
+Swift: 138 executed, 13 skipped, zero failures. The iOS fingerprint is now
+`3cec7835e41b5684ee038ffbe12e7802b3f85aae7199810412b50b23dc57d4c7`;
+Android is unchanged. Fresh native builds are mandatory.
 
 The iOS shared multipage case admitted 16 pages but emitted no nativeBack after
 one gesture. Its intact 203-event journal rules out truncation. A manual check
@@ -83,12 +94,13 @@ Do not introduce speculative native code or blind repeated gestures.
    six React/Vue/Octane × iOS/Android cells. Do not edit, reinstall or manually
    interact with devices while matrix execution is live. Failed receipts are
    evidence, never passing cells.
-3. Refresh production iOS build/smoke after the native recovery changes.
-   Prior `a5bb32fb3` smoke passed navigation/resources with diagnostics absent,
-   without network OTA because its endpoint was unconfigured.
-4. Preserve the first Android production black system-back screenshot until its
-   cause is understood. The unchanged `94ad81609` APK subsequently passed
-   three detail opens, JS close and two system backs in one process.
+3. Production iOS `08163b59a` smoke passed with its installed full app tree
+   verified and diagnostics absent. Repeat after the subsequent native changes;
+   these endpoint-unconfigured smokes do not establish network OTA.
+4. Android's original black screenshot is explained by keyguard/display sleep,
+   a stopped/nonvisible root and no focused window. Preserve the original plus
+   `production-scaffold-android-keyguard-diagnosis.json` and unchanged-APK timed
+   backs. The initiator of keyguard was not captured; no native workaround.
 5. Keep pinned Vue/Octane compiler lazy-output limitations explicit. Core
    external/dynamic component proof does not establish compiler lazy bundles.
 6. Update PRD, execution evidence and PR accurately; complete the goal only
@@ -102,8 +114,8 @@ Do not introduce speculative native code or blind repeated gestures.
   interact with them during jobs or interrupt unrelated work.
 - Latest local checkpoint: `/tmp/lynx-latest-checkpoint.json`; verify live
   processes before relying on its session IDs.
-- Latest matrix output: `/tmp/lynx-dad654d45-public-matrix/` and retained raw
-  failure `/tmp/lynx-dad654d45-matrix-failure/`.
+- Latest matrix output: `/tmp/lynx-08163b59a-public-matrix/` and retained raw
+  failure `/tmp/lynx-08163b59a-matrix-failure/`.
 - Shared journals: `/tmp/lynx-7cc24042b-native-journals/`.
 - Native builds use bounded tools: prepend `/tmp/lynx-bounded-native-tools`
   to PATH, set RAYON_NUM_THREADS=2, UV_THREADPOOL_SIZE=2 and

@@ -196,6 +196,7 @@ public final class HotUpdaterSparklingHost: NSObject {
             ? [LynxManagedLogicalPage(entry: controller.runningArtifact.entry)]
             : controller.recoveryPages
         do {
+            emitRecoveredPageAttemptTerminals()
             try buildStack(logical, in: navigation)
             emitGenerationStarted(reason: logical.count == 1
                 ? "initial"
@@ -1264,10 +1265,7 @@ public final class HotUpdaterSparklingHost: NSObject {
         ]
     }
 
-    private func emitGenerationStarted(
-        reason: String,
-        transitionId: String? = nil
-    ) {
+    private func emitRecoveredPageAttemptTerminals() {
         if !recoveredTerminalEventsEmitted {
             recoveredTerminalEventsEmitted = true
             controller.recoveredPageAttemptTerminals.forEach { record in
@@ -1288,6 +1286,12 @@ public final class HotUpdaterSparklingHost: NSObject {
                 }
             }
         }
+    }
+
+    private func emitGenerationStarted(
+        reason: String,
+        transitionId: String? = nil
+    ) {
         guard let primary = pages.first else { return }
         generationEvents.emit("generationStarted", details(for: primary).merging(
             currentStackDetails()

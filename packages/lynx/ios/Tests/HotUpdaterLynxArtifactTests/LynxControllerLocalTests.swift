@@ -60,14 +60,21 @@ final class LynxControllerLocalTests: XCTestCase {
     }
 
     @discardableResult
-    private func writeTree(at directory: URL, bundleId: String, marker: String) throws -> String {
+    private func writeTree(at directory: URL, bundleId: String, marker: String, managedPages: Bool = false) throws -> String {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        let metadataObject: [String: Any] = [
+        var metadataObject: [String: Any] = [
             "schemaVersion": 1, "bundleId": bundleId, "platform": "ios",
             "entry": "main.lynx.bundle", "runtimeId": runtime,
         ]
+        if managedPages {
+            metadataObject["pageEntries"] = ["detail.lynx.bundle", "main.lynx.bundle"]
+            metadataObject["pageEssentialResources"] = [
+                ["entry": "detail.lynx.bundle", "resources": ["detail.lynx.bundle"]],
+                ["entry": "main.lynx.bundle", "resources": ["main.lynx.bundle"]],
+            ]
+        }
         let metadata = try JSONSerialization.data(withJSONObject: metadataObject, options: [.sortedKeys]) + Data("\n".utf8)
-        let files: [String: Data] = [
+        var files: [String: Data] = [
             "main.lynx.bundle": Data("entry-\(marker)".utf8),
             "assets/probe.png": Data([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A]),
             "assets/probe.ttf": Data("FONT-\(marker)".utf8),
@@ -75,6 +82,7 @@ final class LynxControllerLocalTests: XCTestCase {
             "dynamic/component.lynx.bundle": Data("dyn-\(marker)".utf8),
             "hot-updater-lynx.json": metadata,
         ]
+        if managedPages { files["detail.lynx.bundle"] = Data("detail-\(marker)".utf8) }
         var assets: [String: [String: String]] = [:]
         for (name, bytes) in files {
             let file = directory.appendingPathComponent(name)
@@ -187,9 +195,9 @@ final class LynxControllerLocalTests: XCTestCase {
             selectionContextHash: contextHash)
     }
 
-    private func plantNext(_ config: LynxControllerConfiguration, releaseId: String, bundleId: String, marker: String) throws {
+    private func plantNext(_ config: LynxControllerConfiguration, releaseId: String, bundleId: String, marker: String, managedPages: Bool = false) throws {
         let store = try home(config.root)
-        let digest = try writeTree(at: store.appendingPathComponent("bundles/\(bundleId)"), bundleId: bundleId, marker: marker)
+        let digest = try writeTree(at: store.appendingPathComponent("bundles/\(bundleId)"), bundleId: bundleId, marker: marker, managedPages: managedPages)
         let journal = LynxControllerJournal(file: store.appendingPathComponent("state.json"))
         var state = try journal.load()
         let snapshot = LynxPolicySnapshot(
@@ -613,6 +621,53 @@ final class LynxControllerLocalTests: XCTestCase {
         XCTAssertEqual(controller!.runningSelection.releaseId, releaseD)
         XCTAssertEqual(try controller!.getState(context)["runningConfirmed"] as? Bool, false)
         XCTAssertEqual(String(data: try controller!.resource("hot-updater:///main.lynx.bundle", context: context), encoding: .utf8), "entry-B")
+    }
+
+    func testUnconfirmedDetailFatalRetainsRecoveryTransitionUntilConfirmation() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("lynx-page-fatal-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let embedded = root.appendingPathComponent("embedded")
+        let digest = try writeTree(at: embedded, bundleId: embeddedId, marker: "A", managedPages: true)
+        let config = configuration(root: root.appendingPathComponent("store"), embedded: embedded, digest: digest)
+        var controller = try LynxController(configuration: config)
+        try controller.close()
+        try plantNext(config, releaseId: releaseB, bundleId: bundleB, marker: "B", managedPages: true)
+        controller = try LynxController(configuration: config)
+        var primary = controller.createContext(primary: true)
+        XCTAssertEqual(try controller.begin(primary).bundleId, bundleB)
+        try confirm(controller, primary, resource: "main.lynx.bundle")
+        try controller.close()
+
+        try plantNext(config, releaseId: releaseC, bundleId: bundleC, marker: "C", managedPages: true)
+        let journal = LynxControllerJournal(file: try home(config.root).appendingPathComponent("state.json"))
+        var state = try journal.load()
+        state.catalogs[catalogKey()] = try catalogJSON(releases: [(releaseC, bundleC), (releaseB, bundleB)])
+        try journal.save(state)
+        controller = try LynxController(configuration: config)
+        primary = controller.createContext(primary: true)
+        XCTAssertEqual(try controller.begin(primary).bundleId, bundleC)
+        let detail = controller.createContext(primary: false)
+        _ = try controller.begin(detail, pageEntry: "detail.lynx.bundle", generationId: "failed-generation", stack: [
+            .init(entry: "main.lynx.bundle"), .init(entry: "detail.lynx.bundle"),
+        ], sourceContextId: primary.id)
+        XCTAssertTrue(try controller.reportPageFailure(detail))
+        XCTAssertThrowsError(try controller.observedContent(detail))
+        try controller.close()
+
+        controller = try LynxController(configuration: config)
+        primary = controller.createContext(primary: true)
+        XCTAssertEqual(try controller.begin(primary).bundleId, bundleB)
+        let recovered = try controller.getState(primary)
+        XCTAssertEqual(recovered["crashedBundleIds"] as? [String], [bundleC])
+        XCTAssertEqual(recovered["unconfirmedReleaseIds"] as? [String], [releaseC])
+        var result: LynxConfirmationResult?
+        controller.notifyAppReady(primary) { result = try? $0.get() }
+        XCTAssertEqual(result?.status, "ALREADY_CONFIRMED")
+        XCTAssertEqual(result?.transition?.kind, "RECOVERED")
+        XCTAssertEqual(result?.transition?.from.releaseId, releaseC)
+        XCTAssertEqual(result?.transition?.to.releaseId, releaseB)
+        controller.notifyAppReady(primary) { result = try? $0.get() }
+        XCTAssertNil(result?.transition)
     }
 
     func testFatalBundleFailureRecordsCrashAndReleaseSuppression() throws {

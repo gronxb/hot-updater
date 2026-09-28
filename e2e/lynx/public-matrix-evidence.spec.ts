@@ -265,6 +265,17 @@ describe("Lynx public matrix native event evidence", () => {
       ).toMatchObject({
         reconstructedStack: true,
         contextIds: [identity.contextId, secondaryContextId],
+        members: [
+          { primary: true, jsReadySequence: expect.any(Number) },
+          {
+            primary: false,
+            readinessAuthority: false,
+            jsReadySequence: null,
+            jsReady: null,
+            pageAdmitted: { contextId: secondaryContextId },
+            confirmation: { status: "PAGE_ADMITTED" },
+          },
+        ],
       });
       for (const missing of [
         "firstContent",
@@ -367,22 +378,46 @@ describe("Lynx public matrix native event evidence", () => {
         sparklingNavigation: SPARKLING_NAVIGATION_PROVENANCE,
       },
     };
-    expect(
-      normalizeBuild({
-        role: "B",
-        compilerReceipt,
-        deploymentReceipt: {
-          bundleId: "bundle-b",
-          releaseId: "release-b",
-          persistedManifestFileHash: "a".repeat(64),
-        },
-        runtimeId: "runtime",
-      }),
-    ).toMatchObject({
+    const deploymentReceipt = {
+      bundleId: "bundle-b",
+      releaseId: "release-b",
+      persistedManifestFileHash: "a".repeat(64),
+      files: {
+        ...Object.fromEntries(
+          compilerReceipt.files.map((file) => [
+            file.path,
+            { sha256: file.sha256, byteSize: file.bytes },
+          ]),
+        ),
+        "assets/OFL.txt": { sha256: "7".repeat(64), byteSize: 7 },
+        "hot-updater-lynx.json": { sha256: "8".repeat(64), byteSize: 8 },
+        "manifest.json": { sha256: "a".repeat(64), byteSize: 100 },
+      },
+    };
+    const input = {
+      role: "B",
+      compilerReceipt,
+      deploymentReceipt,
+      runtimeId: "runtime",
+    };
+    expect(normalizeBuild(input)).toMatchObject({
       pageEntries,
       pageEssentialResources,
       sparklingNavigation: SPARKLING_NAVIGATION_PROVENANCE,
     });
+    const wrongManifest = structuredClone(input);
+    wrongManifest.deploymentReceipt.files["manifest.json"].sha256 = "b".repeat(
+      64,
+    );
+    expect(() => normalizeBuild(wrongManifest)).toThrow(
+      "manifest bytes differ from its recorded digest",
+    );
+    const changedPage = structuredClone(input);
+    changedPage.deploymentReceipt.files["detail.lynx.bundle"].sha256 =
+      "b".repeat(64);
+    expect(() => normalizeBuild(changedPage)).toThrow(
+      "changed compiler output detail.lynx.bundle",
+    );
     expect(() =>
       normalizeBuild({
         role: "B",
@@ -540,6 +575,14 @@ describe("Lynx public matrix native event evidence", () => {
       processId: identity.processId,
     });
     expect(ready.identity).toEqual(identity);
+    expect(ready.members[1]).toMatchObject({
+      primary: false,
+      readinessAuthority: false,
+      jsReadySequence: null,
+      jsReady: null,
+      pageAdmitted: { contextId: secondaryContextId },
+      confirmation: { status: "PAGE_ADMITTED" },
+    });
     expect(ready.confirmation).toMatchObject({
       status: "CONFIRMED",
       transition: { kind: "UPDATE_APPLIED" },
