@@ -1,3 +1,4 @@
+import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import {
   BatchWriteCommand,
   DynamoDBDocumentClient,
@@ -55,6 +56,53 @@ setupDatabaseAdapterConformanceSuite({
       },
     };
   },
+});
+
+describe("dynamoDB store", () => {
+  it("reads no item past an exclusive upper bound, in either order", async () => {
+    const client = new DynamoDBClient(local.config);
+    let itemsRead = 0;
+    client.middlewareStack.add(
+      (next) => async (args) => {
+        const result = await next(args);
+        const output = result.output as { Items?: unknown[] } | undefined;
+        itemsRead += output?.Items?.length ?? 0;
+        return result;
+      },
+      // Outermost, so `output` is the deserialized response.
+      { step: "initialize" },
+    );
+    const tableName = local.tableName();
+    const store = createDynamoDBStore({ client, tableName });
+    await store.migrations!.apply();
+    const sk = (key: string) => `${key}\u0001`;
+    await store.write(
+      ["a", "b", "c"].map((key) => ({
+        key: { pk: "p", sk: sk(key) },
+        type: "put" as const,
+        value: { id: key },
+      })),
+    );
+
+    for (const order of ["asc", "desc"] as const) {
+      itemsRead = 0;
+      const page = await store.query({
+        pk: "p",
+        gte: sk("a"),
+        lt: sk("c"),
+        lte: "c",
+        order,
+        limit: 10,
+      });
+
+      expect(page.items.map((item) => item.sk)).toEqual(
+        order === "asc" ? [sk("a"), sk("b")] : [sk("b"), sk("a")],
+      );
+      expect(itemsRead).toBe(2);
+    }
+    client.destroy();
+    await local.dropTable(tableName);
+  });
 });
 
 describe("dynamoDB", () => {

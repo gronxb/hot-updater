@@ -177,40 +177,42 @@ export const createDynamoDBStore = ({
       }
       return keys.map((key) => found.get(idOf(key)) ?? null);
     },
-    async query({ pk, gte, lt, order, limit, after }) {
+    async query({ pk, gte, lt, lte, order, limit, after }) {
       // `pk` and `sk` are no reserved words, so the condition names them as is.
       let condition = "pk = :pk";
+      // BETWEEN is inclusive, so it takes the helper's inclusive form of `lt`.
       if (gte !== undefined && lt !== undefined)
-        condition += " AND sk BETWEEN :gte AND :lt";
+        condition += " AND sk BETWEEN :gte AND :lte";
       else if (gte !== undefined) condition += " AND sk >= :gte";
       else if (lt !== undefined) condition += " AND sk < :lt";
-      let start: Record<string, unknown> | undefined =
-        after === undefined ? undefined : { pk, sk: after };
-      for (;;) {
-        const result = await documents
-          .send(
-            new QueryCommand({
-              TableName: tableName,
-              KeyConditionExpression: condition,
-              // The client drops an undefined bound, which DynamoDB would refuse as unused.
-              ExpressionAttributeValues: { ":pk": pk, ":gte": gte, ":lt": lt },
-              ScanIndexForward: order === "asc",
-              ConsistentRead: true,
-              Limit: Math.min(limit, nativePageSize ?? limit),
-              ExclusiveStartKey: start,
-            }),
-          )
-          .catch(missingTable);
-        // BETWEEN includes `lt`, which the range excludes.
-        const items = (result.Items ?? [])
-          .filter((item) => item.sk !== lt)
-          .map((item) => ({ sk: item.sk as string, value: toRow(item) }));
-        start = result.LastEvaluatedKey;
-        // A page that held only `lt` is not the range's end.
-        if (items.length > 0 || start === undefined) {
-          return { items, more: start !== undefined };
-        }
-      }
+      const result = await documents
+        .send(
+          new QueryCommand({
+            TableName: tableName,
+            KeyConditionExpression: condition,
+            // The client drops an unused value, which DynamoDB would refuse.
+            ExpressionAttributeValues: {
+              ":pk": pk,
+              ":gte": gte,
+              ...(gte !== undefined && lt !== undefined
+                ? { ":lte": lte ?? lt }
+                : { ":lt": lt }),
+            },
+            ScanIndexForward: order === "asc",
+            ConsistentRead: true,
+            Limit: Math.min(limit, nativePageSize ?? limit),
+            ExclusiveStartKey:
+              after === undefined ? undefined : { pk, sk: after },
+          }),
+        )
+        .catch(missingTable);
+      return {
+        items: (result.Items ?? []).map((item) => ({
+          sk: item.sk as string,
+          value: toRow(item),
+        })),
+        more: result.LastEvaluatedKey !== undefined,
+      };
     },
     async write(ops) {
       try {
