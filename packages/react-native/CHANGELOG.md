@@ -1,5 +1,15 @@
 # @hot-updater/react-native
 
+## 0.36.16
+
+### Patch Changes
+
+- e1f9314: Stop re-rendering the wrapped app on download progress updates. `HotUpdater.wrap` now subscribes to progress only inside the fallback component and the `onProgress` reporter.
+  - @hot-updater/cli-tools@0.36.16
+  - @hot-updater/core@0.36.16
+  - @hot-updater/js@0.36.16
+  - @hot-updater/plugin-core@0.36.16
+
 ## 0.36.15
 
 ### Patch Changes

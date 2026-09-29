@@ -1,5 +1,14 @@
 # @hot-updater/supabase
 
+## 0.36.16
+
+### Patch Changes
+
+- @hot-updater/cli-tools@0.36.16
+- @hot-updater/core@0.36.16
+- @hot-updater/server@0.36.16
+- @hot-updater/plugin-core@0.36.16
+
 ## 0.36.15
 
 ### Patch Changes
