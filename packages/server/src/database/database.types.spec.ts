@@ -61,7 +61,7 @@ describe("database API types", () => {
 
   it("has no count, offset, or free-form filter", () => {
     expectTypeOf<keyof HotUpdaterDatabase<Schema>>().toEqualTypeOf<
-      "findOne" | "findMany" | "findAggregates" | "transaction"
+      "findOne" | "findByKeys" | "findMany" | "findAggregates" | "transaction"
     >();
     typeOnly((db) => {
       // @ts-expect-error There is no count.
