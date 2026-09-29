@@ -1,17 +1,18 @@
-import type {
-  BundleEventRow,
-  InsightsBundleEventFilter,
-  InsightsCountEventsInput,
-  InsightsCountLatestEventsInput,
-  InsightsFindLatestEventsInput,
-  InsightsGetAppUsageInput,
-  InsightsGetAppUsageResult,
-  InsightsGetReleaseActivityInput,
-  InsightsGetReleaseActivityResult,
-  InsightsListEventsInput,
-  InsightsTimeRange,
-  ReleaseActivityMetrics,
-  ReleaseReference,
+import {
+  DatabasePluginInputError,
+  type BundleEventRow,
+  type InsightsBundleEventFilter,
+  type InsightsCountEventsInput,
+  type InsightsCountLatestEventsInput,
+  type InsightsFindLatestEventsInput,
+  type InsightsGetAppUsageInput,
+  type InsightsGetAppUsageResult,
+  type InsightsGetReleaseActivityInput,
+  type InsightsGetReleaseActivityResult,
+  type InsightsListEventsInput,
+  type InsightsTimeRange,
+  type ReleaseActivityMetrics,
+  type ReleaseReference,
 } from "@hot-updater/plugin-core";
 import {
   countInsightsDistinct,
@@ -20,15 +21,29 @@ import {
 
 import type { HotUpdaterDatabase } from "../../database/database";
 import type { Page } from "../../database/engineReads";
-import { insightsIdentity, type InsightsIdentityParts } from "./recordEvent";
-import { DAY_MS, HOUR_MS, type InsightsSchema } from "./schema";
+import { EVENT_LIST_RANGE_MS } from "../../insights/provider";
+import {
+  bundlePairKey,
+  insightsIdentity,
+  PAIR_FIELD,
+  type InsightsIdentityParts,
+} from "./recordEvent";
+import { DAILY_EVENTS, DAY_MS, HOUR_MS, type InsightsSchema } from "./schema";
 
 type Db = HotUpdaterDatabase<InsightsSchema>;
 type Parts = Omit<InsightsIdentityParts, "periodKind">;
+/** The lists that read one UTC day a query: global and bundle. */
+type DayFilter = Exclude<
+  InsightsListEventsInput["filter"],
+  { readonly kind: "installationMovement" }
+>;
+/** Receipt bounds: from `since` to the cutoff, or to the cursor's row. */
+interface EventRange {
+  readonly gte: number;
+  readonly lt: number | readonly [number, string];
+}
 
 const PAGE = 500;
-/** How far back a day-partitioned list reads. */
-const LIST_DAYS = 90;
 
 const hourFloor = (ms: number) => ms - (ms % HOUR_MS);
 const hourCeil = (ms: number) => hourFloor(ms + HOUR_MS - 1);
@@ -83,7 +98,65 @@ const scopeOf = (filter: InsightsBundleEventFilter) => ({
   bundle_ref: bundleRef(filter),
 });
 
-/** Newest first over [since, before), after the cursor; day-partitioned lists read at most 90 days. */
+/** One UTC day of a global or bundle list, newest first. */
+const eventsOfDay = (
+  db: Db,
+  filter: DayFilter,
+  day: number,
+  range: EventRange,
+  limit: number,
+) =>
+  filter.kind === "all"
+    ? db.findMany("bundle_events", {
+        index: "byDay",
+        where: { day },
+        range,
+        order: "desc",
+        limit,
+      })
+    : db.findMany("bundle_events", {
+        index: "byBundle",
+        where: { ...scopeOf(filter), day },
+        range,
+        order: "desc",
+        limit,
+      });
+
+/**
+ * The newest UTC day before `day`, and not before `since`'s, that holds an
+ * event the list matches, from one outcome row: the global list's per-day
+ * count, or the bundle filter's own hourly one.
+ */
+const newestDayBelow = async (
+  db: Db,
+  filter: DayFilter,
+  day: number,
+  since: number,
+): Promise<number | undefined> => {
+  const counted =
+    filter.kind === "all"
+      ? { where: DAILY_EVENTS, from: dayFloor(since) }
+      : { where: scopeOf(filter), from: hourFloor(since) };
+  const [newest] = (
+    await db.findAggregates("insights_outcomes", {
+      index: "byRef",
+      where: counted.where,
+      range: { gte: counted.from, lt: day },
+      order: "desc",
+      limit: 1,
+    })
+  ).rows;
+  return newest === undefined ? undefined : dayFloor(newest.bucket_start_ms);
+};
+
+/**
+ * Newest first over [since, before), after the cursor. The global and bundle
+ * lists cover at most 90 × 24 hours, however many UTC days that touches, and
+ * reject a longer range instead of cutting it short. They read one query per
+ * UTC day that holds a matching event: a day that holds none is read once,
+ * then one outcome row names the newest day below it that does, so a gap of
+ * any length costs two reads.
+ */
 export const listEvents = async (
   db: Db,
   input: InsightsListEventsInput,
@@ -107,30 +180,25 @@ export const listEvents = async (
     });
     return page.rows.map(toEvent);
   }
+  if (input.beforeReceivedAtMs - since > EVENT_LIST_RANGE_MS) {
+    throw new DatabasePluginInputError("invalid-query");
+  }
   const rows: BundleEventRow[] = [];
-  const top = dayFloor(
+  const bottom = dayFloor(since);
+  let day: number | undefined = dayFloor(
     input.after?.receivedAtMs ?? input.beforeReceivedAtMs - 1,
   );
-  const bottom = Math.max(dayFloor(since), top - (LIST_DAYS - 1) * DAY_MS);
-  for (let day = top; day >= bottom && rows.length < limit; day -= DAY_MS) {
-    const rest = limit - rows.length;
-    const page =
-      filter.kind === "all"
-        ? await db.findMany("bundle_events", {
-            index: "byDay",
-            where: { day },
-            range,
-            order: "desc",
-            limit: rest,
-          })
-        : await db.findMany("bundle_events", {
-            index: "byBundle",
-            where: { ...scopeOf(filter), day },
-            range,
-            order: "desc",
-            limit: rest,
-          });
+  while (day !== undefined && day >= bottom && rows.length < limit) {
+    const page = await eventsOfDay(db, filter, day, range, limit - rows.length);
     rows.push(...page.rows.map(toEvent));
+    // A day with events may continue into the day before it; after an empty
+    // day, the outcome counters name the next day to read, if any is left.
+    day =
+      page.rows.length > 0
+        ? day - DAY_MS
+        : day > bottom
+          ? await newestDayBelow(db, filter, day, since)
+          : undefined;
   }
   return rows;
 };
@@ -212,6 +280,23 @@ type Predicate = {
   readonly type: string;
 };
 
+/** A bundle filter's distinct (field, value, type) predicates. */
+const latestPredicates = (
+  bundle: InsightsCountLatestEventsInput["bundle"],
+): readonly Predicate[] | undefined => {
+  if (bundle === undefined) return undefined;
+  return [
+    ...new Map(
+      bundle.flatMap(({ field, value, types }) =>
+        types.map((type) => [
+          JSON.stringify([field, value, type]),
+          { field, value, type },
+        ]),
+      ),
+    ).values(),
+  ];
+};
+
 /** Heads whose latest event falls in [sinceMs, end), a partial hour: those events' installs, then their heads. */
 const countPartialHeads = async (
   db: Db,
@@ -257,19 +342,7 @@ export const countLatestEvents = async (
 ): Promise<number> => {
   const { platform, channel, sinceMs } = input;
   const start = hourCeil(sinceMs);
-  const predicates =
-    input.bundle === undefined
-      ? undefined
-      : [
-          ...new Map(
-            input.bundle.flatMap(({ field, value, types }) =>
-              types.map((type) => [
-                JSON.stringify([field, value, type]),
-                { field, value, type },
-              ]),
-            ),
-          ).values(),
-        ];
+  const predicates = latestPredicates(input.bundle);
   let total = 0;
   if (predicates === undefined) {
     const rows = await drain((page) =>
@@ -283,15 +356,19 @@ export const countLatestEvents = async (
     );
     total += rows.reduce((sum, row) => sum + row.latest_installations, 0);
   } else {
-    for (const { field, value, type } of predicates) {
+    const gauge = async (
+      bundleField: string,
+      bundleId: string,
+      type: string,
+    ) => {
       const rows = await drain((page) =>
         db.findAggregates("insights_latest_by_bundle", {
           index: "byBundle",
           where: {
             platform,
             channel,
-            bundle_field: field,
-            bundle_id: value,
+            bundle_field: bundleField,
+            bundle_id: bundleId,
             type,
           },
           range: { gte: start },
@@ -299,7 +376,24 @@ export const countLatestEvents = async (
           ...page,
         }),
       );
-      total += rows.reduce((sum, row) => sum + row.installations, 0);
+      return rows.reduce((sum, row) => sum + row.installations, 0);
+    };
+    for (const { field, value, type } of predicates) {
+      total += await gauge(field, value, type);
+    }
+    // A head has one (from, to) pair, so it matches a `from` and a `to`
+    // predicate of one type only through that pair: subtract the pair's gauge
+    // to count it once.
+    for (const from of predicates) {
+      if (from.field !== "from_bundle_id") continue;
+      for (const to of predicates) {
+        if (to.field !== "to_bundle_id" || to.type !== from.type) continue;
+        total -= await gauge(
+          PAIR_FIELD,
+          bundlePairKey(from.value, to.value),
+          from.type,
+        );
+      }
     }
   }
   return sinceMs < start

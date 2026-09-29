@@ -46,6 +46,8 @@ describe("Release health", () => {
       />,
     );
     expect(screen.getByText("Unique users")).toBeDefined();
+    // Unique users come from a sketch, so the value reads as an estimate.
+    expect(screen.getByTitle("Estimated").textContent).toBe("≈Estimated 5");
     expect(screen.getByText("Launches")).toBeDefined();
     expect(screen.getByText("Failed launches")).toBeDefined();
     expect(screen.getByText("9.09%")).toBeDefined();

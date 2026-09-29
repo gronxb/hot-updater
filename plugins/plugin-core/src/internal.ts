@@ -15,6 +15,7 @@ export {
   currentInsightsReleaseId,
   insightsDistributionIdentity,
   insightsOverviewDeltas,
+  insightsKey,
   insightsOverviewId,
   insightsOverviewValues,
   type InsightsOverviewDelta,

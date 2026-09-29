@@ -1,7 +1,12 @@
 /**
  * The acceptance report (PRD "Final acceptance"): measures every manifest row
- * against S1–S5 and redraws the implementation table. A row that fails a
- * check shows that check instead of Smooth, and the script exits 1.
+ * against S1–S7 and redraws the implementation table. A row that fails a
+ * check shows that check instead of Smooth, and the script exits 1. S6 is
+ * complexity (no function above cyclomatic 20) and S7 over-fetching (no
+ * `limit + 1`, no filtered `findMany` results) in the row's code. Two checks
+ * outside the rows fail the run too: request paths (server, console, and
+ * plugins) have no over-fetching, and the storage engine layer as a whole
+ * passes S1. It also prints each row's native read multiplier.
  *
  *   pnpm acceptance [--run | --results <vitest json>...] [--commit <sha>] [--json <file>]
  *
@@ -12,7 +17,13 @@
  * from `pnpm test:integration`. Without either they fail as not run. S5 reads plans/evidence/database-redesign-e2e.json.
  */
 import { execFileSync, spawnSync } from "node:child_process";
-import { existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  readdirSync,
+  readFileSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -25,6 +36,7 @@ import {
   type AcceptanceRow,
   domainImports,
   genericFieldNames,
+  layers,
   rows,
 } from "./manifest.mts";
 
@@ -51,6 +63,10 @@ const ATOMICITY_CASES = [
 const OVER_LIMIT_CASE = "rejects an over-limit write before sending it";
 const PAGE_CAP_CASE = "fills every page when native pages are capped";
 const EVIDENCE = "plans/evidence/database-redesign-e2e.json";
+/** Profiles on a managed runtime, whose evidence names the deployed runtime. */
+const MANAGED_PROFILES = new Set(["supabase", "cloudflare", "firebase", "aws"]);
+/** S6: the highest cyclomatic complexity a function may have (ESLint's default). */
+const MAX_COMPLEXITY = 20;
 
 type Node = { type: string; start: number; [key: string]: unknown };
 
@@ -115,6 +131,32 @@ const resolveRelative = (from: string, specifier: string) => {
 const matches = (file: string, globs: readonly string[]) =>
   globs.some((glob) => path.matchesGlob(relative(file), glob));
 
+/** `@hot-updater/server` subpaths by their source entry: the package builds `src/` unbundled into `dist/`. */
+const serverEntries = (() => {
+  const { exports } = JSON.parse(
+    readFileSync(path.join(root, "packages/server/package.json"), "utf8"),
+  ) as { exports: Record<string, string | { import?: string }> };
+  return new Map(
+    Object.entries(exports).flatMap(([subpath, target]) => {
+      const file = typeof target === "string" ? undefined : target.import;
+      if (!file?.startsWith("./dist/")) return [];
+      const source = file.replace("./dist/", "src/").replace(/\.mjs$/, ".ts");
+      return [
+        [
+          `@hot-updater/server${subpath.slice(1)}`,
+          path.join(root, "packages/server", source),
+        ],
+      ];
+    }),
+  );
+})();
+
+/** A domain package import (S1), named by its specifier. */
+const isDomainPackage = (specifier: string) =>
+  domainImports.packages.some((pattern) =>
+    path.matchesGlob(specifier, pattern),
+  );
+
 /** The row's files: its entries and every relative import short of shared code. */
 const graphOf = (row: AcceptanceRow) => {
   const files = new Map<string, SourceFile>();
@@ -128,11 +170,17 @@ const graphOf = (row: AcceptanceRow) => {
     const parsed = parse(file, readFileSync(file, "utf8"));
     files.set(file, parsed);
     for (const specifier of parsed.imports) {
-      if (!specifier.startsWith(".")) {
+      const relativeImport = specifier.startsWith(".");
+      if (
+        !relativeImport &&
+        (isDomainPackage(specifier) || !serverEntries.has(specifier))
+      ) {
         external.push({ file, specifier });
         continue;
       }
-      const target = resolveRelative(file, specifier);
+      const target = relativeImport
+        ? resolveRelative(file, specifier)
+        : serverEntries.get(specifier);
       if (!target)
         throw new Error(`${relative(file)}: cannot resolve ${specifier}`);
       if (matches(target, domainImports.files)) {
@@ -165,25 +213,95 @@ const domainNames = async () => {
     names.add(name);
     names.add(model.table.name);
     for (const column of model.table.columns) {
-      if (column.name.startsWith("_")) continue;
+      // Engine columns name no domain concept; `_refs_*` counters do.
+      if (column.name === "_v" || column.name === "_shard") continue;
       if (!genericFieldNames.includes(column.name)) names.add(column.name);
     }
   }
   return names;
 };
 
-const isTableName = (node: unknown): boolean => {
-  const value = node as Node | undefined;
+/** A table: `table`, `SETTINGS_TABLE`, `rowsTable`, or `<x>.table`. */
+const isTableObject = (node: unknown): boolean => {
+  const value = node as
+    | (Node & { name?: string; computed?: boolean })
+    | undefined;
+  const isTableWord = (name: string | undefined) =>
+    name !== undefined && /^table$|Table$|(^|_)TABLE$/.test(name);
+  return (
+    (value?.type === "Identifier" && isTableWord(value.name)) ||
+    (value?.type === "MemberExpression" &&
+      !value.computed &&
+      isTableWord((value.property as { name?: string }).name))
+  );
+};
+
+/** A table's name: `<table>.name`, or a name bound to one in the same file. */
+const isTableName = (
+  node: unknown,
+  aliases: ReadonlySet<string> = new Set(),
+): boolean => {
+  const value = unwrap(node) as (Node & { name?: string }) | undefined;
+  if (value?.type === "Identifier") return aliases.has(value.name!);
   if (value?.type !== "MemberExpression" || value.computed) return false;
   if ((value.property as Node & { name?: string }).name !== "name")
     return false;
-  const object = value.object as Node & { name?: string; computed?: boolean };
-  return (
-    (object.type === "Identifier" && object.name === "table") ||
-    (object.type === "MemberExpression" &&
-      !object.computed &&
-      (object.property as { name?: string }).name === "table")
-  );
+  return isTableObject(value.object);
+};
+
+/** Names a file binds to a table's name: `const n = table.name`, `const { name } = table`. */
+const tableNameAliases = (program: Node) => {
+  const aliases = new Set<string>();
+  const visit = (node: unknown): void => {
+    if (Array.isArray(node)) return node.forEach(visit);
+    if (!node || typeof node !== "object") return;
+    const value = node as Node;
+    if (value.type === "VariableDeclarator") {
+      const id = value.id as Node & {
+        name?: string;
+        properties?: (Node & {
+          key?: { name?: string };
+          value?: Node & { name?: string };
+        })[];
+      };
+      if (id.type === "Identifier" && isTableName(value.init)) {
+        aliases.add(id.name!);
+      }
+      if (id.type === "ObjectPattern" && isTableObject(unwrap(value.init))) {
+        for (const property of id.properties ?? []) {
+          if (
+            property.type === "Property" &&
+            property.key?.name === "name" &&
+            property.value?.type === "Identifier"
+          ) {
+            aliases.add(property.value.name!);
+          }
+        }
+      }
+    }
+    for (const [key, child] of Object.entries(value)) {
+      if (key !== "start" && key !== "end") visit(child);
+    }
+  };
+  visit(program);
+  return aliases;
+};
+
+/** Names a module declares at its top level: fixed collections, when they hold tables. */
+const moduleConstants = (program: Node) => {
+  const names = new Set<string>();
+  for (const statement of program.body as Node[]) {
+    const declaration =
+      statement.type === "ExportNamedDeclaration"
+        ? (statement.declaration as Node | null)
+        : statement;
+    if (declaration?.type !== "VariableDeclaration") continue;
+    for (const declarator of declaration.declarations as Node[]) {
+      const id = declarator.id as { type: string; name?: string };
+      if (id.type === "Identifier") names.add(id.name!);
+    }
+  }
+  return names;
 };
 
 type Binding = "string" | "strings";
@@ -210,6 +328,7 @@ const isStringLiteral = (node: unknown) => {
 /** Names bound to a string, or to a list or set of strings, in one file. */
 const literalBindings = (program: Node) => {
   const bindings = new Map<string, Binding>();
+  /** A fixed collection: a non-empty array or Set literal. An empty one filled later is not. */
   const strings = (node: unknown) => {
     const value = unwrap(node);
     const list =
@@ -219,7 +338,7 @@ const literalBindings = (program: Node) => {
         : value;
     return (
       list?.type === "ArrayExpression" &&
-      (list.elements as unknown[]).every(isStringLiteral)
+      (list.elements as unknown[]).length > 0
     );
   };
   const visit = (node: unknown): void => {
@@ -248,9 +367,7 @@ const boundary = (
   for (const { file, specifier } of graph.external) {
     if (
       matches(path.join(root, specifier), domainImports.files) ||
-      domainImports.packages.some((pattern) =>
-        path.matchesGlob(specifier, pattern),
-      )
+      isDomainPackage(specifier)
     ) {
       violations.push(`${relative(file)} imports ${specifier}`);
     }
@@ -259,12 +376,27 @@ const boundary = (
     const at = (node: Node) =>
       `${relative(file)}:${lineOf(source, node.start)}`;
     const bindings = literalBindings(program);
+    const aliases = tableNameAliases(program);
+    const constants = moduleConstants(program);
+    const tableName = (node: unknown) => isTableName(node, aliases);
     /** A string, or a name bound to one: comparing table.name with it singles a table out. */
+    const constant = (node: unknown) => {
+      const value = unwrap(node) as (Node & { name?: string }) | undefined;
+      return (
+        value?.type === "Identifier" &&
+        (constants.has(value.name!) || /^[A-Z][A-Z0-9_]*$/.test(value.name!))
+      );
+    };
     const named = (node: unknown) => {
       const value = unwrap(node) as (Node & { name?: string }) | undefined;
       return (
         isStringLiteral(value) ||
-        (value?.type === "Identifier" && bindings.get(value.name!) === "string")
+        (value?.type === "Identifier" &&
+          (bindings.get(value.name!) === "string" || constant(value))) ||
+        // Another table's name, when that table is a constant: SETTINGS_TABLE.name.
+        (value?.type === "MemberExpression" &&
+          isTableName(value) &&
+          constant(value.object))
       );
     };
     const visit = (node: unknown): void => {
@@ -296,15 +428,15 @@ const boundary = (
         case "BinaryExpression":
           if (
             ["===", "!==", "==", "!="].includes(value.operator as string) &&
-            ((isTableName(value.left) && named(value.right)) ||
-              (isTableName(value.right) && named(value.left)))
+            ((tableName(value.left) && named(value.right)) ||
+              (tableName(value.right) && named(value.left)))
           ) {
             violations.push(`${at(value)} branches on table.name`);
           }
           break;
         case "SwitchStatement":
           if (
-            isTableName(value.discriminant) &&
+            tableName(value.discriminant) &&
             (value.cases as { test?: unknown }[]).some(({ test }) =>
               named(test),
             )
@@ -317,15 +449,32 @@ const boundary = (
             object?: Node & { name?: string };
             property?: { name?: string };
           };
-          const list = unwrap(callee.object);
-          if (
-            callee.type === "MemberExpression" &&
-            ["has", "includes"].includes(callee.property?.name ?? "") &&
-            isTableName((value.arguments as unknown[])[0]) &&
+          const list = unwrap(callee.object) as
+            | (Node & { name?: string; regex?: unknown })
+            | undefined;
+          const method = callee.property?.name ?? "";
+          const args = value.arguments as unknown[];
+          if (callee.type !== "MemberExpression") break;
+          // A fixed collection of tables: literal names, or a module-level constant.
+          const membership =
+            ["has", "includes"].includes(method) &&
+            tableName(args[0]) &&
             ((list?.type === "Identifier" &&
-              bindings.get((list as { name?: string }).name!) === "strings") ||
-              list?.type === "ArrayExpression")
-          ) {
+              (bindings.get(list.name!) === "strings" ||
+                constants.has(list.name!))) ||
+              list?.type === "ArrayExpression");
+          // A string test on the name: startsWith, endsWith, a regex.
+          const inspection =
+            (["startsWith", "endsWith", "includes", "match", "search"].includes(
+              method,
+            ) &&
+              tableName(list) &&
+              args.some(named)) ||
+            (method === "test" &&
+              list?.type === "Literal" &&
+              list.regex !== undefined &&
+              tableName(args[0]));
+          if (membership || inspection) {
             violations.push(`${at(value)} branches on table.name`);
           }
           break;
@@ -383,6 +532,208 @@ const size = async (graph: ReturnType<typeof graphOf>) => {
   files.sort((left, right) => right.lines - left.lines);
   return { lines: files.reduce((sum, file) => sum + file.lines, 0), files };
 };
+
+const FUNCTIONS = new Set([
+  "FunctionDeclaration",
+  "FunctionExpression",
+  "ArrowFunctionExpression",
+]);
+const DECISIONS = new Set([
+  "IfStatement",
+  "ConditionalExpression",
+  "ForStatement",
+  "ForInStatement",
+  "ForOfStatement",
+  "WhileStatement",
+  "DoWhileStatement",
+  "CatchClause",
+]);
+
+/**
+ * S6: cyclomatic complexity of each function in the row's graph: 1, plus one
+ * per branch, loop, catch, case, and `&&`, `||`, or `??`; nested functions
+ * count on their own. No function may score above MAX_COMPLEXITY.
+ */
+const complexity = (graph: ReturnType<typeof graphOf>) => {
+  const functions: { at: string; score: number }[] = [];
+  for (const { file, source, program } of graph.files) {
+    const score = (node: unknown, own: { score: number }): void => {
+      if (Array.isArray(node))
+        return node.forEach((child) => score(child, own));
+      if (!node || typeof node !== "object") return;
+      const value = node as Node;
+      if (FUNCTIONS.has(value.type)) {
+        const inner = { score: 1 };
+        score(value.body, inner);
+        functions.push({
+          at: `${relative(file)}:${lineOf(source, value.start)}`,
+          score: inner.score,
+        });
+        return;
+      }
+      if (DECISIONS.has(value.type)) own.score += 1;
+      if (value.type === "SwitchCase" && value.test) own.score += 1;
+      if (
+        (value.type === "LogicalExpression" ||
+          value.type === "AssignmentExpression") &&
+        ["&&", "||", "??", "&&=", "||=", "??="].includes(
+          value.operator as string,
+        )
+      ) {
+        own.score += 1;
+      }
+      for (const [key, child] of Object.entries(value)) {
+        if (key !== "start" && key !== "end") score(child, own);
+      }
+    };
+    score(program, { score: 0 });
+  }
+  functions.sort((left, right) => right.score - left.score);
+  return {
+    functions: functions.length,
+    max: functions[0],
+    over: functions.filter((fn) => fn.score > MAX_COMPLEXITY),
+  };
+};
+
+/** Request-path code: the server, the console, and every plugin's source, without tests. */
+const requestPathFiles = () =>
+  ["packages/server/src", "packages/console/src", "plugins"].flatMap((dir) =>
+    (readdirSync(path.join(root, dir), { recursive: true }) as string[])
+      .filter(
+        (file) =>
+          /\.tsx?$/.test(file) &&
+          !/\.(spec|test)\.tsx?$|\.d\.ts$/.test(file) &&
+          !/(^|\/)(node_modules|dist|lib|build)\//.test(file) &&
+          (dir !== "plugins" || /^[^/]+\/src\//.test(file)),
+      )
+      .map((file) => path.join(root, dir, file)),
+  );
+
+/** Page reads with `limit + 1` in the given files; a file is parsed only when it names a limit. */
+const limitPlusOne = (
+  files: readonly { file: string; source: string; program?: Node }[],
+) => {
+  const problems: string[] = [];
+  for (const { file, source, program } of files) {
+    if (!/limit/.test(source)) continue;
+    const isLimit = (node: unknown) => {
+      const value = unwrap(node) as
+        | (Node & { name?: string; property?: { name?: string } })
+        | undefined;
+      return (
+        (value?.type === "Identifier" && /limit$/i.test(value.name!)) ||
+        (value?.type === "MemberExpression" &&
+          /limit$/i.test(value.property?.name ?? ""))
+      );
+    };
+    const isOne = (node: unknown) =>
+      (unwrap(node) as Node | undefined)?.type === "Literal" &&
+      (unwrap(node) as Node).value === 1;
+    const visit = (node: unknown): void => {
+      if (Array.isArray(node)) return node.forEach(visit);
+      if (!node || typeof node !== "object") return;
+      const value = node as Node;
+      if (
+        value.type === "BinaryExpression" &&
+        value.operator === "+" &&
+        ((isLimit(value.left) && isOne(value.right)) ||
+          (isOne(value.left) && isLimit(value.right)))
+      ) {
+        problems.push(
+          `${relative(file)}:${lineOf(source, value.start)} reads limit + 1`,
+        );
+      }
+      for (const [key, child] of Object.entries(value)) {
+        if (key !== "start" && key !== "end") visit(child);
+      }
+    };
+    visit(program ?? parse(file, source).program);
+  }
+  return problems;
+};
+
+/** Files the lint rule that bans filtering `findMany` results reports, across packages and plugins. */
+const filteredFindMany = (() => {
+  const lint = spawnSync(
+    path.join(root, "node_modules/.bin/oxlint"),
+    ["-c", ".oxlintrc.json", "--format", "json", "packages", "plugins"],
+    { cwd: root, encoding: "utf8" },
+  );
+  try {
+    const { diagnostics } = JSON.parse(lint.stdout) as {
+      diagnostics: { code: string; filename: string }[];
+    };
+    return diagnostics
+      .filter(({ code }) => code === "hot-updater(no-filtered-find-many)")
+      .map(({ filename }) => path.resolve(root, filename));
+  } catch {
+    return undefined;
+  }
+})();
+
+/** Filtered `findMany` results, in the given files or anywhere. */
+const filtered = (files?: readonly { file: string }[]) => {
+  if (filteredFindMany === undefined) {
+    return ["the no-filtered-find-many lint rule did not run"];
+  }
+  const only = files && new Set(files.map(({ file }) => file));
+  return filteredFindMany
+    .filter((file) => only === undefined || only.has(file))
+    .map((file) => `${relative(file)} filters findMany results`);
+};
+
+/** S7: no over-fetching in the row's code. */
+const overFetchIn = (graph: ReturnType<typeof graphOf>) => [
+  ...limitPlusOne(graph.files),
+  ...filtered(graph.files),
+];
+
+/**
+ * Zero over-fetching on request paths: no page read with `limit + 1` in the
+ * server, the console, or any plugin, and no filtered `findMany` results.
+ */
+const overFetch = () => [
+  ...limitPlusOne(
+    requestPathFiles().map((file) => ({
+      file,
+      source: readFileSync(file, "utf8"),
+    })),
+  ),
+  ...filtered(),
+];
+
+/**
+ * Each layer as a whole passes S1: every file on its own, with its direct
+ * imports, whether or not a row measures it.
+ */
+const layerBoundaries = (names: ReadonlySet<string>) =>
+  layers.flatMap(({ name, files: globs }) => {
+    const files = globs.flatMap((glob) => {
+      const dir = path.join(root, glob.replace(/\/\*\*$/, ""));
+      return (readdirSync(dir, { recursive: true }) as string[])
+        .filter(
+          (file) =>
+            file.endsWith(".ts") && !/\.(spec|test-d)\.ts$|\.d\.ts$/.test(file),
+        )
+        .map((file) => path.join(dir, file));
+    });
+    const parsed = files.map((file) => parse(file, readFileSync(file, "utf8")));
+    const external = parsed.flatMap(({ file, imports }) =>
+      imports.flatMap((specifier) => {
+        if (!specifier.startsWith(".")) {
+          return isDomainPackage(specifier) ? [{ file, specifier }] : [];
+        }
+        const target = resolveRelative(file, specifier);
+        return target && matches(target, domainImports.files)
+          ? [{ file, specifier: relative(target) }]
+          : [];
+      }),
+    );
+    return boundary({ files: parsed, external }, names).map(
+      (problem) => `${name}: ${problem}`,
+    );
+  });
 
 /** S3's last clause: no config option turns transactions on or off. */
 const transactionOptions = (graph: ReturnType<typeof graphOf>) => {
@@ -456,8 +807,11 @@ const testResults = (() => {
   );
 })();
 
-/** The tests of one manifest suite, or why they cannot count. */
-const suiteTests = (suite: AcceptanceRow["suites"][number]) => {
+/** The tests of one manifest suite, or why they cannot count. A skip counts as a failure unless `skippable` expects it. */
+const suiteTests = (
+  suite: AcceptanceRow["suites"][number],
+  skippable: (title: string) => boolean = () => false,
+) => {
   if (!testResults) return { error: "not run" };
   const tests = testResults
     .filter(
@@ -468,10 +822,14 @@ const suiteTests = (suite: AcceptanceRow["suites"][number]) => {
     .filter((test) => test.ancestorTitles.includes(suite.describe));
   if (tests.length === 0) return { error: `no "${suite.describe}" tests` };
   const failed = tests.filter(
-    (test) => test.status !== "passed" && test.status !== "skipped",
+    (test) =>
+      test.status !== "passed" &&
+      !(test.status === "skipped" && skippable(test.title)),
   );
   if (failed.length > 0) {
-    return { error: `${failed.length} failed in "${suite.describe}"` };
+    return {
+      error: `${failed.length} failed or skipped in "${suite.describe}"`,
+    };
   }
   return { tests };
 };
@@ -484,7 +842,11 @@ const atomicity = (row: AcceptanceRow, options: readonly string[]) => {
   );
   if (suites.length === 0) return problems;
   for (const suite of suites) {
-    const result = suiteTests(suite);
+    // Only a backend with no cap on one write skips the over-limit case.
+    const result = suiteTests(
+      suite,
+      (title) => title === OVER_LIMIT_CASE && !row.writeLimit,
+    );
     if (result.error) {
       problems.push(result.error);
       continue;
@@ -505,14 +867,38 @@ const atomicity = (row: AcceptanceRow, options: readonly string[]) => {
   return problems;
 };
 
-/** S4: read budgets and full pages under capped native pages. */
+/** The read-budget list: every API any manifest read-budget suite measured. */
+const readBudgetApis = (() => {
+  const titles = new Set<string>();
+  for (const suite of rows.flatMap((row) => row.suites)) {
+    if (!suite.describe.endsWith("read budgets")) continue;
+    const result = suiteTests(suite);
+    for (const test of result.tests ?? []) titles.add(test.title);
+  }
+  return titles;
+})();
+
+/** S4: read budgets for every API on the list, and full pages under capped native pages. */
 const reads = (row: AcceptanceRow) => {
   const problems: string[] = [];
   for (const suite of row.suites) {
-    const result = suiteTests(suite);
+    // A conformance suite is read here for its page-cap case; S3 judges its over-limit skip.
+    const result = suiteTests(
+      suite,
+      (title) => title === OVER_LIMIT_CASE && !row.writeLimit,
+    );
     if (result.error) {
       problems.push(result.error);
       continue;
+    }
+    if (suite.describe.endsWith("read budgets")) {
+      const measured = new Set(result.tests!.map((test) => test.title));
+      const missing = [...readBudgetApis].filter((api) => !measured.has(api));
+      if (missing.length > 0) {
+        problems.push(
+          `${missing.length} read-budget APIs missing in "${suite.describe}"`,
+        );
+      }
     }
     if (
       suite.describe.endsWith("conformance") &&
@@ -524,6 +910,30 @@ const reads = (row: AcceptanceRow) => {
     }
   }
   return problems;
+};
+
+/**
+ * Whether evidence recorded for `verified` holds at the report's commit: the
+ * same commit, or one whose only changes since are evidence files, since
+ * recording the evidence is itself a commit.
+ */
+const verifiedAt = (verified: string) => {
+  if (commit.startsWith(verified) || verified.startsWith(commit)) return true;
+  try {
+    const changed = execFileSync(
+      "git",
+      ["diff", "--name-only", verified, commit],
+      { cwd: root, encoding: "utf8" },
+    )
+      .split("\n")
+      .filter(Boolean);
+    return (
+      changed.length > 0 &&
+      changed.every((file) => file.startsWith("plans/evidence/"))
+    );
+  } catch {
+    return false;
+  }
 };
 
 /** S5: every profile of the row passed on the final commit. */
@@ -538,17 +948,17 @@ const endToEnd = (row: AcceptanceRow, commit: string) => {
       { taskId?: string; result?: string; runtimeSha?: string | null }
     >;
   };
-  if (
-    !commit.startsWith(evidence.commit) &&
-    !evidence.commit.startsWith(commit)
-  ) {
+  if (!verifiedAt(evidence.commit)) {
     return [`evidence is for ${evidence.commit}, not ${commit}`];
   }
   return row.profiles.flatMap((profile) => {
     const run = evidence.runs[profile];
-    return run?.result === "passed" && run.taskId
-      ? []
-      : [`${profile} has not passed`];
+    if (run?.result !== "passed" || !run.taskId) {
+      return [`${profile} has not passed`];
+    }
+    return MANAGED_PROFILES.has(profile) && !run.runtimeSha
+      ? [`${profile} names no managed runtime`]
+      : [];
   });
 };
 
@@ -563,6 +973,7 @@ const report = [];
 for (const row of rows) {
   const graph = graphOf(row);
   const measured = await size(graph);
+  const rowComplexity = complexity(graph);
   const checks = {
     S1: boundary(graph, names),
     S2: [
@@ -576,6 +987,10 @@ for (const row of rows) {
     S3: atomicity(row, transactionOptions(graph)),
     S4: reads(row),
     S5: endToEnd(row, commit),
+    S6: rowComplexity.over.map(
+      ({ at, score }) => `${at} scores ${score} > ${MAX_COMPLEXITY}`,
+    ),
+    S7: overFetchIn(graph),
   };
   const failing = Object.entries(checks)
     .filter(([, problems]) => problems.length > 0)
@@ -586,8 +1001,11 @@ for (const row of rows) {
     files: measured.files,
     checks,
     failing,
+    complexity: rowComplexity,
   });
 }
+const overFetchProblems = overFetch();
+const layerProblems = layerBoundaries(names);
 
 const budgetOf = (row: AcceptanceRow) =>
   row.budgetLabel ?? `≤ ${row.budget.toLocaleString("en-US")}`;
@@ -622,24 +1040,62 @@ for (const { row, files, checks } of report) {
   );
   if (problems.length > 0) console.log(problems.join("\n"));
 }
+const listed = (problems: readonly string[], pass: string) =>
+  problems.length === 0
+    ? pass
+    : `\n${problems.map((problem) => `  ${problem}`).join("\n")}`;
+console.log(
+  `\nRequest paths, zero over-fetching: ${listed(overFetchProblems, "no limit + 1, and no findMany results filtered")}`,
+);
+console.log(
+  `Storage engine layer, zero boundary violations: ${listed(layerProblems, "no domain imports, model names, or table.name branches in any file")}`,
+);
+console.log(
+  [
+    `\nComplexity (S6, cyclomatic, per function; at most ${MAX_COMPLEXITY}):\n`,
+    `| Implementation | Functions | Highest | Over ${MAX_COMPLEXITY} |`,
+    "| --- | --- | --- | --- |",
+    ...report.map(
+      ({ row, complexity: { functions, max, over } }) =>
+        `| ${row.name} | ${functions} | ${max ? `${max.score} (${max.at})` : "-"} | ${over.length} |`,
+    ),
+  ].join("\n"),
+);
+console.log(
+  [
+    "\nNative read multipliers (S4 budgets count logical rows):\n",
+    ...report.map(({ row }) => `- ${row.name}: ${row.multiplier}`),
+  ].join("\n"),
+);
 if (args.json) {
   writeFileSync(
     args.json,
     `${JSON.stringify(
       {
         commit,
-        rows: report.map(({ row, lines, files, checks, failing }) => ({
-          name: row.name,
-          lines,
-          budget: row.budget,
-          files,
-          checks,
-          smooth: failing.length === 0,
-        })),
+        rows: report.map(
+          ({ row, lines, files, checks, failing, complexity }) => ({
+            name: row.name,
+            lines,
+            budget: row.budget,
+            files,
+            checks,
+            smooth: failing.length === 0,
+            complexity,
+            multiplier: row.multiplier,
+          }),
+        ),
+        overFetch: overFetchProblems,
+        layers: layerProblems,
       },
       null,
       2,
     )}\n`,
   );
 }
-process.exitCode = report.every(({ failing }) => failing.length === 0) ? 0 : 1;
+process.exitCode =
+  report.every(({ failing }) => failing.length === 0) &&
+  overFetchProblems.length === 0 &&
+  layerProblems.length === 0
+    ? 0
+    : 1;

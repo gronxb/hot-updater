@@ -1,9 +1,9 @@
-import {
-  builtInSchema,
-  builtInSettings,
-  createEngineDatabase,
-} from "../database/builtInDatabase";
 import { createSqlAdapter } from "../database/sql/sqlAdapter";
+import {
+  builtInSettings,
+  builtInTarget,
+  createEngineDatabase,
+} from "../db/builtInDatabase";
 import {
   generatePrismaEngineSchema,
   prismaCollationStatements,
@@ -37,27 +37,27 @@ export const prismaAdapter = (config: PrismaConfig): ToolingDatabase => {
     config.prisma as PrismaTransactionalClient,
     provider,
   );
-  const collations = prismaCollationStatements(provider, builtInSchema);
   return {
     ...createEngineDatabase({
       name: "prisma",
       adapter: createSqlAdapter({ executor }),
     }),
     provider,
-    generateSchema: ((version) => {
+    generateSchema: ((version, _name, { schema } = builtInTarget) => {
       if (version !== "latest" && version !== builtInSettings["schema.core"]) {
         throw new Error(`Invalid version ${version}`);
       }
       return {
-        code: generatePrismaEngineSchema(provider, builtInSchema),
+        code: generatePrismaEngineSchema(provider, schema),
         path: "prisma/schema.prisma",
       };
     }) satisfies SchemaGenerator,
-    createMigrator: () =>
-      createSettingsMigrator({
+    createMigrator: ({ schema, settings } = builtInTarget) => {
+      const collations = prismaCollationStatements(provider, schema);
+      return createSettingsMigrator({
         adapterName: "prisma",
         executor,
-        settings: builtInSettings,
+        settings,
         applyTables: "`prisma db push` (or `prisma migrate`)",
         ...(collations.length === 0
           ? {}
@@ -68,6 +68,7 @@ export const prismaAdapter = (config: PrismaConfig): ToolingDatabase => {
                 statements: collations,
               },
             }),
-      }),
+      });
+    },
   };
 };

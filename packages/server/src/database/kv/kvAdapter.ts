@@ -50,6 +50,13 @@ export interface KvRange {
   readonly pk: string;
   readonly gte?: string;
   readonly lt?: string;
+  /**
+   * `lt` as an inclusive bound, with `lt`: every key the helper writes is
+   * below `lt` exactly when it is at most `lte`. A store whose two-sided
+   * range is inclusive (DynamoDB's `BETWEEN`) uses it to read nothing past
+   * the range.
+   */
+  readonly lte?: string;
   readonly order: "asc" | "desc";
   readonly limit: number;
   readonly after?: string;
@@ -368,7 +375,11 @@ export const createKvAdapter = ({
     if (gte !== undefined && lt !== undefined && compareUtf8(gte, lt) >= 0) {
       return null;
     }
-    return { gte, lt };
+    if (lt === undefined) return { gte, lt };
+    // No key holds U+0000, so none sorts between an `lt` without its final
+    // separator and `lt`; and no key ends in U+0002, so an `lt` from
+    // `pastPrefix` is never a key itself.
+    return { gte, lt, lte: lt.endsWith(SEPARATOR) ? lt.slice(0, -1) : lt };
   };
 
   return {

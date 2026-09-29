@@ -1,4 +1,16 @@
+/**
+ * The body of `POST /events`. Fields the server does not know are ignored, so
+ * a newer client's report still records on an older server.
+ */
 export type CreateBundleEventRequestBase = {
+  /**
+   * The report's idempotency key: a canonical lowercase UUIDv7 that the
+   * client creates once per report and repeats on every retry. The server
+   * stores the report under it, so a retried report counts once, and a
+   * report under an ID already stored changes nothing. Without it, the
+   * server creates the ID, and a retry counts as another report.
+   */
+  readonly eventId?: string;
   readonly installId: string;
   readonly toBundleId: string;
   readonly userId?: string;

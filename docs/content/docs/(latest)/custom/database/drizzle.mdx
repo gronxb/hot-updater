@@ -12,6 +12,20 @@ or your existing backend. Make the database and storage environment variables
 available to the server and schema commands. The React Native project's deploy
 configuration is a separate step.
 
+`drizzleAdapter` supports PostgreSQL, MySQL 8.0 or later, and SQLite, through
+these Drizzle drivers:
+
+| Database   | Drivers                                                  |
+| ---------- | -------------------------------------------------------- |
+| PostgreSQL | node-postgres, postgres-js, PGlite, Neon over WebSockets |
+| MySQL      | mysql2                                                   |
+| SQLite     | libSQL, better-sqlite3, bun:sqlite                       |
+
+Hot Updater runs every write in an interactive transaction. On first use, the
+adapter checks that the driver can run one and throws
+`DrizzleTransactionUnsupportedError` for a driver that cannot, such as Neon
+over HTTP. CockroachDB and SQL Server are not supported.
+
 ## Installation
 
 Install Drizzle ORM and SQLite driver.
@@ -33,11 +47,13 @@ Create a database connection file:
 ```typescript title="src/drizzle.ts"
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import Database from "better-sqlite3";
-import * as schema from "../hot-updater-schema"; // [!code ++]
 
 const sqlite = new Database("./data/database.db");
-export const db = drizzle(sqlite, { schema }); // [!code ++]
+export const db = drizzle(sqlite);
 ```
+
+Hot Updater reads and writes through SQL, so the Drizzle instance does not
+need Hot Updater's schema.
 
 ## Hot Updater configuration
 
@@ -46,12 +62,14 @@ Create the Hot Updater instance:
 ```typescript title="src/hotUpdater.ts"
 import { createHotUpdater } from "@hot-updater/server";
 import { drizzleAdapter } from "@hot-updater/server/adapters/drizzle"; // [!code ++]
+import { apiKeys } from "@hot-updater/server/plugins/api-keys";
+import { insights } from "@hot-updater/server/plugins/insights";
 import { s3Storage } from "@hot-updater/aws";
 import { db } from "./drizzle";
 
 export const hotUpdater = createHotUpdater({
   database: drizzleAdapter({ db, provider: "sqlite" }), // [!code ++]
-  clientAccess: { type: "api-key" },
+  plugins: [insights(), apiKeys()],
   storage: [
     s3Storage({
       region: "auto",
@@ -67,6 +85,16 @@ export const hotUpdater = createHotUpdater({
 });
 ```
 
+`drizzleAdapter` takes `db`, a Drizzle database or a function that returns
+one on first use, and `provider`: `"postgresql"`, `"mysql"` or `"sqlite"`,
+matching the driver. Its `schema` option is accepted and ignored. It returns
+an engine database with the schema generator and migrator that
+`hot-updater db` runs. On
+better-sqlite3 and bun:sqlite, which run synchronously, the adapter runs one
+statement at a time and begins each transaction with `BEGIN IMMEDIATE`.
+`insights()` records app events, and `apiKeys()` protects the client routes
+with the `x-api-key` header.
+
 ## Schema generation
 
 Generate the Drizzle schema for Hot Updater tables.
@@ -76,10 +104,14 @@ mkdir -p data
 npx hot-updater db generate src/hotUpdater.ts --yes
 ```
 
-This command writes `hot-updater-schema.ts` at the project root. The generator
-can bootstrap the missing import shown above on its first run.
+This command writes `hot-updater-schema.ts` at the project root: every table,
+key and index, with each column typed exactly as Hot Updater's SQL schema
+declares it, and no foreign keys. The tables include those of the server's
+[third-party plugins](/docs/custom/server-plugins#create-the-plugins-tables).
 
-Point Drizzle Kit at the generated file and the same SQLite database:
+Point Drizzle Kit at the generated file and the same SQLite database. If your
+config already lists schema files, add `./hot-updater-schema.ts` to its
+`schema` array:
 
 ```typescript title="drizzle.config.ts"
 import { defineConfig } from "drizzle-kit";
@@ -101,9 +133,13 @@ npx drizzle-kit push
 npx hot-updater db migrate src/hotUpdater.ts --yes
 ```
 
-Drizzle Kit creates the tables. `db migrate` then writes the settings rows the
-server checks before its first read; until they exist, the server answers 503.
-Run both again after upgrading Hot Updater.
+Drizzle Kit creates the tables. `db migrate` then writes only the settings
+rows. It asks you to apply the tables first when they are missing, and it
+refuses a database created by an older Hot Updater schema instead of
+converting it. The server checks the settings rows before its first read or
+write; until they exist, it throws `HotUpdaterSchemaMigrationRequiredError`
+and its handlers answer 503. A running server checks again on its next
+request. Run all three commands again after upgrading Hot Updater.
 
 <Callout>
   Need to generate SQL without config? See [SQL

@@ -538,24 +538,24 @@ function compileAppVersion(releases: readonly Release[]): {
   const descriptorIndex = new Map(
     retainedReleases.map((release, index) => [release.id, index]),
   );
+  // Merge neighbours before dropping empty segments, so two parts of a
+  // range never merge across the gap between them.
   const segments = mergeSegments(
-    segmentReleases
-      .map(({ segment, retainedIds, rollbackIds }) => ({
-        ...segment,
-        releaseIndexes: releases
-          .filter((release) => retainedIds.has(release.id))
-          .map((release) => descriptorIndex.get(release.id)!)
-          .filter((index) => index !== undefined),
-        rollbackReleaseIndexes: releases
-          .filter((release) => rollbackIds.has(release.id))
-          .map((release) => descriptorIndex.get(release.id)!)
-          .filter((index) => index !== undefined),
-      }))
-      .filter(
-        (segment) =>
-          segment.releaseIndexes.length > 0 ||
-          segment.rollbackReleaseIndexes.length > 0,
-      ),
+    segmentReleases.map(({ segment, retainedIds, rollbackIds }) => ({
+      ...segment,
+      releaseIndexes: releases
+        .filter((release) => retainedIds.has(release.id))
+        .map((release) => descriptorIndex.get(release.id)!)
+        .filter((index) => index !== undefined),
+      rollbackReleaseIndexes: releases
+        .filter((release) => rollbackIds.has(release.id))
+        .map((release) => descriptorIndex.get(release.id)!)
+        .filter((index) => index !== undefined),
+    })),
+  ).filter(
+    (segment) =>
+      segment.releaseIndexes.length > 0 ||
+      segment.rollbackReleaseIndexes.length > 0,
   );
 
   return {

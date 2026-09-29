@@ -1,6 +1,7 @@
 import {
   InsightsBadRequestError,
   InsightsPayloadTooLargeError,
+  isDatabaseBusyError,
 } from "./errors";
 import { parseBundleEventRequest } from "./eventInput";
 import {
@@ -10,9 +11,16 @@ import {
 } from "./queryInput";
 import type { InsightsProvider } from "./types";
 
-const json = (body: unknown, status: number): Response =>
+/** Seconds a client waits before it resends a request the busy database refused. */
+const RETRY_AFTER_SECONDS = 5;
+
+const json = (
+  body: unknown,
+  status: number,
+  headers: Readonly<Record<string, string>> = {},
+): Response =>
   Response.json(body, {
-    headers: { "cache-control": "private, no-store" },
+    headers: { "cache-control": "private, no-store", ...headers },
     status,
   });
 
@@ -40,6 +48,18 @@ const run = async (operation: () => Promise<Response>): Promise<Response> => {
     }
     if (error instanceof InsightsPayloadTooLargeError) {
       return json({ error: error.message }, 413);
+    }
+    // Back-pressure: a busy database has not failed the request, so the
+    // client may send it again after Retry-After. A 500 would read as a fault.
+    // The warning keeps the overload visible to whoever runs the server.
+    if (isDatabaseBusyError(error)) {
+      console.warn(
+        "[hot-updater] Insights answered 503: the database is busy.",
+        error,
+      );
+      return json({ error: "Service unavailable" }, 503, {
+        "retry-after": String(RETRY_AFTER_SECONDS),
+      });
     }
     throw error;
   }
@@ -99,6 +119,26 @@ export const insightsDisabled: InsightsRouteHandler = async () =>
     },
     status: 204,
   });
+
+/** What a server without the insights plugin logs on the first event it drops. */
+export const INSIGHTS_OFF_WARNING =
+  "[hot-updater] Insights is off, so POST /events answered 204 and stored nothing. Add insights() from @hot-updater/server/plugins/insights to plugins to record app events, or set insights: false in the app's HotUpdater.init to stop sending them. This warning prints once per server.";
+
+/**
+ * The client's `POST /events` without the insights plugin. It answers as
+ * {@link insightsDisabled} does, so apps need no change, and warns on the
+ * first event it drops, so a server that left out `insights()` says so.
+ */
+export const createDroppedEventHandler = (): InsightsRouteHandler => {
+  let warned = false;
+  return (params, request) => {
+    if (!warned) {
+      warned = true;
+      console.warn(INSIGHTS_OFF_WARNING);
+    }
+    return insightsDisabled(params, request);
+  };
+};
 
 export const createInsightsRouteHandlers = (
   provider: InsightsProvider,

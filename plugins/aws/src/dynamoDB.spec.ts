@@ -3,10 +3,7 @@ import {
   CreateInvalidationCommand,
   GetInvalidationCommand,
 } from "@aws-sdk/client-cloudfront";
-import {
-  DynamoDBClient,
-  TransactionCanceledException,
-} from "@aws-sdk/client-dynamodb";
+import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import {
   BatchGetCommand,
   DynamoDBDocumentClient,
@@ -17,7 +14,6 @@ import {
   builtInSettings,
   encodeKvKey,
   SETTINGS_TABLE,
-  type StoredRow,
   type WriteOp,
 } from "@hot-updater/server/database";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -42,40 +38,23 @@ const settingsItems = Object.entries(builtInSettings).map(([key, value]) => ({
   _v: 0,
 }));
 
-/** An insert into a built-in table; DynamoDB is mocked, so only its key matters. */
-const insert = (table: string, row: StoredRow): WriteOp => ({
+/** A Release Catalog insert; DynamoDB is mocked, so only its key matters. */
+const catalogInsert: WriteOp = {
   type: "insert",
-  table: builtInSchema.models.get(table)!.table,
-  row: { ...row, _v: 0 },
-});
+  table: builtInSchema.models.get("release_catalogs")!.table,
+  row: { scope_key: "v1:app-version:ios:cHJvZHVjdGlvbg", _v: 0 },
+};
 
-const catalogInsert = insert("release_catalogs", {
-  scope_key: "v1:app-version:ios:cHJvZHVjdGlvbg",
-});
-const channelInsert = insert("channels", {
-  id: "channel:cHJvZHVjdGlvbg",
-  name: "production",
-});
-
-/** DynamoDB holding the schema settings; each transaction commits, or is canceled on a failed condition. */
-const mockDynamoDB = ({ commits = true } = {}) =>
+/** DynamoDB holding the schema settings, where every transaction commits. */
+const mockDynamoDB = () =>
   vi
     .spyOn(DynamoDBDocumentClient.prototype, "send")
     .mockImplementation(async (command: unknown) => {
       if (command instanceof BatchGetCommand) {
         return { Responses: { [TABLE_NAME]: settingsItems } } as never;
       }
-      if (!(command instanceof TransactWriteCommand)) {
-        throw new Error("Unexpected command");
-      }
-      if (!commits) {
-        throw new TransactionCanceledException({
-          $metadata: {},
-          message: "Transaction cancelled",
-          CancellationReasons: [{ Code: "ConditionalCheckFailed" }],
-        });
-      }
-      return {} as never;
+      if (command instanceof TransactWriteCommand) return {} as never;
+      throw new Error("Unexpected command");
     });
 
 const mockCloudFront = () =>
@@ -87,14 +66,11 @@ describe("dynamoDB CloudFront invalidation", () => {
     vi.restoreAllMocks();
   });
 
-  it("invalidates the update-check routes once after a write that changes a Release Catalog", async () => {
-    mockDynamoDB();
+  it("gives core a purge that invalidates the update-check routes", async () => {
     const send = mockCloudFront();
     const database = dynamoDB(config);
 
-    await expect(
-      database.adapter.write([channelInsert, catalogInsert]),
-    ).resolves.toEqual({ ok: true });
+    await database.onCachedRoutesChange?.();
 
     expect(send).toHaveBeenCalledTimes(1);
     const [command] = send.mock.calls[0]!;
@@ -110,12 +86,12 @@ describe("dynamoDB CloudFront invalidation", () => {
     await database.dispose?.();
   });
 
-  it("does not invalidate after a write to other tables", async () => {
+  it("leaves the choice of writes to core: a catalog write through the adapter purges nothing", async () => {
     mockDynamoDB();
     const send = mockCloudFront();
     const database = dynamoDB(config);
 
-    await expect(database.adapter.write([channelInsert])).resolves.toEqual({
+    await expect(database.adapter.write([catalogInsert])).resolves.toEqual({
       ok: true,
     });
 
@@ -123,55 +99,17 @@ describe("dynamoDB CloudFront invalidation", () => {
     await database.dispose?.();
   });
 
-  it("does not invalidate for a check that only guards a catalog it read", async () => {
-    mockDynamoDB();
-    const send = mockCloudFront();
-    const database = dynamoDB(config);
-    const catalogCheck: WriteOp = {
-      type: "check",
-      table: builtInSchema.models.get("release_catalogs")!.table,
-      key: ["v1:app-version:ios:cHJvZHVjdGlvbg"],
-      guard: { v: 0 },
-    };
-
-    await expect(
-      database.adapter.write([channelInsert, catalogCheck]),
-    ).resolves.toEqual({ ok: true });
-
-    expect(send).not.toHaveBeenCalled();
-    await database.dispose?.();
-  });
-
-  it("does not invalidate after a failed write", async () => {
-    mockDynamoDB({ commits: false });
-    const send = mockCloudFront();
-    const database = dynamoDB(config);
-
-    await expect(database.adapter.write([catalogInsert])).resolves.toEqual({
-      ok: false,
-      failedOp: 0,
-    });
-
-    expect(send).not.toHaveBeenCalled();
-    await database.dispose?.();
-  });
-
-  it("does not reach CloudFront without a distribution", async () => {
-    mockDynamoDB();
+  it("has no purge without a distribution", async () => {
     const send = mockCloudFront();
     const database = dynamoDB({ region: "us-east-1", tableName: TABLE_NAME });
 
-    await expect(database.adapter.write([catalogInsert])).resolves.toEqual({
-      ok: true,
-    });
-
+    expect(database.onCachedRoutesChange).toBeUndefined();
     expect(send).not.toHaveBeenCalled();
     await database.dispose?.();
   });
 
   it("waits for the invalidation to complete when configured", async () => {
     vi.useFakeTimers();
-    mockDynamoDB();
     const send = mockCloudFront().mockImplementation(
       async (command: unknown) =>
         ({
@@ -186,24 +124,21 @@ describe("dynamoDB CloudFront invalidation", () => {
     );
     const database = dynamoDB({ ...config, shouldWaitForInvalidation: true });
 
-    const write = database.adapter.write([catalogInsert]);
+    const purge = database.onCachedRoutesChange?.();
     await vi.advanceTimersByTimeAsync(2_000);
 
-    await expect(write).resolves.toEqual({ ok: true });
+    await expect(purge).resolves.toBeUndefined();
     expect(send).toHaveBeenCalledTimes(2);
     expect(send.mock.calls[1]?.[0]).toBeInstanceOf(GetInvalidationCommand);
     await database.dispose?.();
   });
 
   it("only warns when the invalidation fails", async () => {
-    mockDynamoDB();
     mockCloudFront().mockRejectedValue(new Error("Access denied"));
     const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
     const database = dynamoDB(config);
 
-    await expect(database.adapter.write([catalogInsert])).resolves.toEqual({
-      ok: true,
-    });
+    await expect(database.onCachedRoutesChange?.()).resolves.toBeUndefined();
 
     expect(warn).toHaveBeenCalledWith(
       "[hot-updater/aws] CloudFront invalidation failed; continuing without cache invalidation.",

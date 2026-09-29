@@ -74,12 +74,14 @@ Create the Hot Updater instance.
 ```typescript title="src/hotUpdater.ts"
 import { createHotUpdater } from "@hot-updater/server";
 import { drizzleAdapter } from "@hot-updater/server/adapters/drizzle";
+import { apiKeys } from "@hot-updater/server/plugins/api-keys";
+import { insights } from "@hot-updater/server/plugins/insights";
 import { s3Storage } from "@hot-updater/aws";
 import { db } from "./drizzle";
 
 export const hotUpdater = createHotUpdater({
   database: drizzleAdapter({ db, provider: "postgresql" }),
-  clientAccess: { type: "api-key" },
+  plugins: [insights(), apiKeys()],
   storage: [
     s3Storage({
       region: "auto",
@@ -160,11 +162,15 @@ export default defineConfig({
 ```bash
 npx vercel env pull .env.local
 npx drizzle-kit push
+npx hot-updater db migrate src/hotUpdater.ts
 ```
 
-Because this server uses `clientAccess: { type: "api-key" }`, also
+Like `db generate`, `db migrate` needs `DATABASE_URL` and the storage
+variables in its process. It writes the settings rows the server checks before
+its first request; until they exist, its handlers answer `503`. Because this server runs `apiKeys()`, also
 [create a client API key and configure `x-api-key` in the app](/docs/custom/quick-start#bootstrap-the-schema-and-api-key)
 against the target Vercel environment's database before the first update check.
+`insights()` records the app's Insights events.
 
 ## Development
 

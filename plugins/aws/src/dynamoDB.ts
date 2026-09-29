@@ -45,8 +45,8 @@ export const migrateDynamoDB = async (config: DynamoDBConfig) => {
 
 /**
  * Hot Updater's database on one DynamoDB table, through the storage engine.
- * A write that changes what the update-check routes answer invalidates their
- * CloudFront copies.
+ * With a distribution, it gives core the CloudFront invalidation core runs
+ * after a write that changes what the update-check routes answer.
  */
 export const dynamoDB = (config: DynamoDBConfig): EngineDatabase => {
   const { client, adapter } = adapterOf(config);

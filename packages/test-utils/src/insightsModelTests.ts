@@ -507,6 +507,33 @@ export const registerInsightsModelTests = (
       );
     });
 
+    it("counts a latest installation once when a from and a to predicate both match it", async () => {
+      const model = state.getDatabase();
+      const moved = createBundleEventRowFixture("9701", 100);
+      await record(model, moved);
+      await expectInsightsIndex(
+        () =>
+          model.countLatestEvents({
+            platform: moved.platform,
+            channel: moved.channel,
+            sinceMs: 0,
+            bundle: [
+              {
+                field: "from_bundle_id",
+                value: moved.from_bundle_id,
+                types: [moved.type],
+              },
+              {
+                field: "to_bundle_id",
+                value: moved.to_bundle_id,
+                types: [moved.type],
+              },
+            ],
+          }),
+        1,
+      );
+    });
+
     it("returns zero for successful empty scalar queries", async () => {
       const model = state.getDatabase();
       await expect(

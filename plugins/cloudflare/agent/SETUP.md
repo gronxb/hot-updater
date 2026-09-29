@@ -24,6 +24,10 @@ Record observations in deployment.json as described in COMMON.md.
 - [ ] **cf.database — Prepare D1**
   - Requires: cf.account; inspect existing table names before adoption.
   - Run: query/reuse a compatible database or create the selected new database.
+    A database whose d1_migrations records `0001_hot-updater_1.0.0.sql` but whose
+    `private_hot_updater_settings` has no `schema.engine` row comes from a 1.0
+    release candidate and is not compatible: create a new database, or drop its
+    Hot Updater tables and d1_migrations before cf.schema.
   - Verify/record: save d1DatabaseId and d1DatabaseName from the provider response.
   - Retry: query the selected account/name; never replace a database to retry.
 

@@ -5,7 +5,7 @@ import {
 import { describe, expect, expectTypeOf, it, vi } from "vitest";
 
 import packageJson from "../package.json" with { type: "json" };
-import { builtInSettings } from "./database/builtInDatabase";
+import { builtInSettings } from "./db/builtInDatabase";
 import { createHotUpdater, HotUpdaterConfigError } from "./index";
 import type {
   ClientAccessPolicy,
@@ -186,19 +186,23 @@ describe("runtime createHotUpdater", () => {
     );
   });
 
-  it("rejects a clientAccess object, naming apiKeys()", () => {
+  it("rejects a clientAccess object, naming apiKeys() and insights()", () => {
     const withObject = (clientAccess: unknown) => () =>
       createHotUpdater({
         clientAccess: clientAccess as ClientAccessPolicy,
         database: createRuntimeDatabase(),
       });
+    const keepInsights =
+      "To keep Insights, which the release candidates ran by default, add insights() from @hot-updater/server/plugins/insights to plugins.";
 
     expect(withObject({ type: "api-key", headerName: "x-client-key" })).toThrow(
       'clientAccess: { type: "api-key" } was removed in 1.0. Remove it and add apiKeys({ headerName: "x-client-key" }) from @hot-updater/server/plugins/api-keys to plugins',
     );
+    expect(withObject({ type: "api-key" })).toThrow(keepInsights);
     expect(withObject({ type: "public" })).toThrow(
       'clientAccess objects were removed in 1.0. Use clientAccess: "public", or add apiKeys()',
     );
+    expect(withObject({ type: "public" })).toThrow(keepInsights);
     expect(withObject("private")).toThrow(HotUpdaterConfigError);
   });
 });

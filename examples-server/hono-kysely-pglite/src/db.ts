@@ -73,8 +73,7 @@ export async function resetDecisionFixtures() {
       releases,
       bundles,
       channels,
-      bundle_totals,
-      base_candidates
+      bundle_totals
     CASCADE
   `.execute(kysely);
 }

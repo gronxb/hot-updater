@@ -85,6 +85,10 @@ stays subordinate to exact values and actions.
   install IDs whose latest report falls in the selected 24 hours, 7 days, or 30
   days. Outcome values count accepted reports. Never imply realtime state,
   complete fleet coverage, an exact share, success rate, or rollout completion.
+- Unique counts read from sketches (DAU, WAU, MAU, active users per interval,
+  and a release's unique users) are estimates, typically within about 3%. Show
+  them with ≈ and an Estimated label for hover and screen readers; zero stays
+  exact. Report, launch, and latest-state counts are exact.
 
 ## 5. Reusable Primitives
 
@@ -120,11 +124,14 @@ while submitting/loading when relevant, loading, empty, error, and success.
 - **All events:** shared Overview / Events navigation makes event history a
   primary Insights destination. Native links retain page-navigation semantics.
   The installation route without a search or selected installation shows every
-  recorded event type, newest first, with no reporting-period or bundle filter.
-  The title, refresh action, and compact installation lookup sit inside the list
-  header. The lookup is not an event filter. Event history uses keyset pages and
-  has no total-count claim. Each installation links to its history; returning
-  restores the source event page and scroll position.
+  recorded event type in one time range, newest first, with no bundle filter:
+  the last 24 hours, 7 days (default), 30 days, or 90 days, ending when the list
+  loads or the range changes. The title, time range, refresh action, and compact
+  installation lookup sit inside the list header. The lookup is not an event
+  filter. Event history uses keyset pages that stop at the range start and has
+  no total-count claim. An empty range and the range start say so and offer the
+  next longer range. Each installation links to its history; returning restores
+  the source event page, range, and scroll position.
   Wide table columns follow time, event, user ID / install ID, app, and bundle.
   Narrow event rows lead with status and time, then identity, app, and bundle;
   this preserves each event's context without hiding columns offscreen. Times

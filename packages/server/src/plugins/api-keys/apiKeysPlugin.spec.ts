@@ -2,7 +2,7 @@ import {
   createMemoryAdapter,
   type DatabaseAdapter,
 } from "@hot-updater/plugin-core/internal";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { createHotUpdater } from "../../createHotUpdaterCore";
 import { definePlugin } from "../definePlugin";
@@ -70,9 +70,11 @@ describe("API keys plugin", () => {
     expect((await client(catalog, { "x-api-key": "not-a-key" })).status).toBe(
       401,
     );
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     expect(
       (await client("/events", {}, { method: "POST", body: "{" })).status,
     ).toBe(401);
+    expect(warn).not.toHaveBeenCalled();
     // Past the key, /events answers that Insights is off: no insights() here.
     const events = await client(
       "/events",
@@ -81,6 +83,8 @@ describe("API keys plugin", () => {
     );
     expect(events.status).toBe(204);
     expect(events.headers.get("x-hot-updater-insights")).toBe("disabled");
+    expect(warn).toHaveBeenCalledOnce();
+    warn.mockRestore();
     const allowed = await client("/cached", { "x-api-key": API_KEY });
     expect(allowed.status).toBe(200);
     expect(allowed.headers.get("vary")).toBe("x-api-key");

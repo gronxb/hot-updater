@@ -114,6 +114,37 @@ describe("compileReleaseCatalog", () => {
     }
   });
 
+  it("serves no version in the gap between a range's parts", async () => {
+    for (const targetAppVersion of ["1.2.x || 1.5.x", "1.0.0 || 2.0.0"]) {
+      const releases = [release(1, { targetAppVersion })];
+      const compilation = await compileReleaseCatalog({
+        releases,
+        strategy: "APP_VERSION",
+      });
+
+      for (const appVersion of [
+        "1.0.0",
+        "1.2.3",
+        "1.4.0",
+        "1.5.1",
+        "1.9.0",
+        "2.0.0",
+      ]) {
+        const expected = compatibleIds(releases, appVersion);
+        for (const project of [
+          projectCompiledCatalog,
+          projectCompiledRollbackCatalog,
+        ]) {
+          expect(
+            project(compilation.payload, appVersion).map(
+              ({ releaseId }) => releaseId,
+            ),
+          ).toEqual(expected);
+        }
+      }
+    }
+  });
+
   it("is byte-deterministic across provider iteration and target order", async () => {
     const first = release(1, { targetCohorts: ["qa", "design"] });
     const second = release(2);

@@ -45,12 +45,13 @@ const fnv = (value: string, seed: bigint): string => {
   return result.toString(16).padStart(16, "0");
 };
 
+/** A 128-bit hex key for a string: two FNV-1a 64 hashes with different seeds. */
+export const insightsKey = (value: string): string =>
+  `${fnv(value, 0xcbf29ce484222325n)}${fnv(value, 0x84222325cbf29ce4n)}`;
+
 export const insightsOverviewId = (
   identity: InsightsOverviewIdentity,
-): string => {
-  const value = encodeIdentity(identity);
-  return `${fnv(value, 0xcbf29ce484222325n)}${fnv(value, 0x84222325cbf29ce4n)}`;
-};
+): string => insightsKey(encodeIdentity(identity));
 
 export const insightsOverviewValues = (identity: InsightsOverviewIdentity) => ({
   id: insightsOverviewId(identity),

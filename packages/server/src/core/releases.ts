@@ -19,11 +19,7 @@ import {
 } from "@hot-updater/plugin-core";
 
 import { toCatalogRow, toReleaseRow, type CoreDatabase } from "./reads";
-import {
-  insertBundle,
-  moveBaseCandidates,
-  type CoreTransaction,
-} from "./writes";
+import { insertBundle, type CoreTransaction } from "./writes";
 
 const PAGE = 500;
 
@@ -247,7 +243,6 @@ export const changeRelease = async (
       release = { ...before, ...set };
     }
   }
-  moveBaseCandidates(tx, before, release);
   const changedId = before?.id ?? release?.id;
   const next = [
     ...enabled.filter(({ id }) => id !== changedId),

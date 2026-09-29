@@ -154,7 +154,7 @@ export interface InsightsModel {
   /**
    * Persist the immutable event once. A private latest-event index, if used,
    * advances atomically for a greater (received_at_ms, id). Duplicate event
-   * IDs are complete no-ops.
+   * IDs are complete no-ops, whichever installation sends them.
    * Retry the identical prepared input after an ambiguous commit outcome.
    */
   recordEvent(input: InsightsRecordEventInput): Promise<void>;
@@ -162,6 +162,8 @@ export interface InsightsModel {
    * Descending (received_at_ms, id), in [sinceMs ?? 0, beforeReceivedAtMs).
    * Apply filters and the exclusive cursor before limit (1..101). Return the
    * complete matching prefix; native continuation pages must not truncate it.
+   * A global or bundle list may reject a range longer than 90 × 24 hours;
+   * the server asks for older events with an earlier range instead.
    */
   listEvents(
     input: InsightsListEventsInput,

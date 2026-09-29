@@ -1,246 +1,378 @@
+import type { Bundle } from "@hot-updater/core";
+import type { HotUpdaterCoreApi } from "@hot-updater/plugin-core";
+import { createMemoryAdapter } from "@hot-updater/plugin-core/internal";
 import { normalizeRange, rangesIntersect } from "verkit";
 import { describe, expect, it } from "vitest";
 
+import { createBundleFixture } from "../../../test-utils/src/databaseTestFixtures";
+import { createInProcessCoreApi } from "./api";
 import {
-  MINOR_LINE_CAP,
-  minorLinesOf,
-  releaseBaseCandidateKeys,
+  parseBaseCandidateKey,
   targetBaseCandidateKey,
+  type BaseCandidateTarget,
 } from "./baseCandidates";
 
-const release = (
-  targetAppVersion: string,
-  overrides: Partial<Parameters<typeof releaseBaseCandidateKeys>[0]> = {},
-) => ({
-  kind: "BUNDLE" as const,
-  bundle_id: "bundle-1",
+type Target = Pick<BaseCandidateTarget, "appVersion" | "fingerprintHash">;
+
+/**
+ * The rule `deploy.ts` used before base candidates came from the catalog
+ * (`getPatchBaseBundles` on `next`): page the channel and platform's enabled
+ * releases newest first, keep bundle releases older than the new bundle with
+ * the same fingerprint or an intersecting range, each bundle once.
+ */
+const referenceBaseBundleIds = async (
+  core: HotUpdaterCoreApi,
+  channel: string,
+  target: Target,
+  bundleId: string,
+  maxBaseBundles: number,
+): Promise<string[]> => {
+  const channelRow = await core.findChannelByName(channel);
+  if (channelRow === null) return [];
+  const pageSize = Math.max(maxBaseBundles * 3, 10);
+  const found: string[] = [];
+  let after: string | undefined;
+  while (found.length < maxBaseBundles) {
+    const releases = await core.listReleases({
+      filter: {
+        kind: "channelPlatform",
+        channelId: channelRow.id,
+        platform: "ios",
+        enabled: true,
+      },
+      order: "desc",
+      limit: pageSize,
+      ...(after === undefined ? {} : { after }),
+    });
+    for (const release of releases) {
+      const left = target.appVersion && normalizeRange(target.appVersion);
+      const right =
+        release.target_app_version &&
+        normalizeRange(release.target_app_version);
+      const compatible = target.fingerprintHash
+        ? release.strategy === "FINGERPRINT" &&
+          release.fingerprint_hash === target.fingerprintHash
+        : release.strategy === "APP_VERSION" &&
+          !!left &&
+          !!right &&
+          rangesIntersect(left, right);
+      const id = release.bundle_id;
+      if (
+        compatible &&
+        release.kind === "BUNDLE" &&
+        id !== null &&
+        id < bundleId &&
+        !found.includes(id) &&
+        found.length < maxBaseBundles
+      ) {
+        found.push(id);
+      }
+    }
+    if (releases.length < pageSize) break;
+    after = releases.at(-1)!.id;
+  }
+  return found;
+};
+
+const baseBundleIds = (
+  core: HotUpdaterCoreApi,
+  channel: string,
+  target: Target,
+  bundleId: string,
+  maxBaseBundles: number,
+): Promise<string[]> => {
+  const key = targetBaseCandidateKey({ channel, platform: "ios", ...target });
+  return key === null
+    ? Promise.resolve([])
+    : core.findBaseBundleIds(key, bundleId, maxBaseBundles);
+};
+
+const bundleOf = (n: number): Bundle => ({
+  ...createBundleFixture(String(n)),
+  patches: [],
+});
+const idOf = (n: number) => createBundleFixture(String(n)).id;
+const NEWEST = idOf(999);
+
+const policy = (overrides: {
+  readonly channel?: string;
+  readonly targetAppVersion?: string | null;
+  readonly fingerprintHash?: string | null;
+}) => ({
+  channel: "production",
   enabled: true,
-  channel_id: "channel-1",
-  platform: "ios" as const,
-  strategy: "APP_VERSION" as const,
-  fingerprint_hash: null,
-  target_app_version: targetAppVersion,
+  fingerprintHash: null,
+  message: null,
+  shouldForceUpdate: false,
+  targetAppVersion: null,
   ...overrides,
 });
 
-const target = (appVersion: string) => ({
-  channelId: "channel-1",
-  platform: "ios",
-  fingerprintHash: null,
-  appVersion,
-});
+const RELEASE_RANGES = [
+  "1.0.0",
+  "1.2.3",
+  "1.2.9",
+  "1.3.0",
+  "2.0.0",
+  "0.2.5",
+  "1.2.3-beta.1",
+  "1.2",
+  "1.2.x",
+  "2.x",
+  "~1.2.3",
+  "~1.2.5",
+  "^0.2.3",
+  ">=1.0.0 <1.4.0",
+  ">=1.2.0 <=1.2.5",
+  "1.2.3 - 1.4.0",
+  ">=1.0.0 <1.16.0",
+  "1.2.x || 1.5.x",
+  "1.0.0 || 2.0.0",
+  "1.x",
+  "^1.2.3",
+  ">=1.2.0",
+  "<2.0.0",
+  "*",
+  "1.20.0",
+  "1.20.x",
+  ">=1.5.0 <2.1.0",
+  "3.0.0",
+];
 
-const linesFrom = (major: number, first: number, count: number) =>
-  Array.from({ length: count }, (_, n) => `${major}.${first + n}`);
-
-/** New rule: the release holds the target's single minor line. */
-const sharesLine = (releaseRange: string, targetRange: string) => {
-  const key = targetBaseCandidateKey(target(targetRange));
-  return (
-    key !== null &&
-    releaseBaseCandidateKeys(release(releaseRange)).includes(key)
-  );
-};
-
-/** Today's rule in `deploy.ts`: the two ranges intersect. */
-const intersects = (releaseRange: string, targetRange: string) => {
-  const left = normalizeRange(targetRange);
-  const right = normalizeRange(releaseRange);
-  return left !== null && right !== null && rangesIntersect(left, right);
-};
-
-describe("minor lines", () => {
-  it.each([
-    ["1.2.3", ["1.2"], false],
-    ["1.2.3-beta.1", ["1.2"], false],
-    ["1.2.x", ["1.2"], false],
-    ["1.2", ["1.2"], false],
-    ["~1.2.3", ["1.2"], false],
-    ["^0.2.3", ["0.2"], false],
-    [">=1.0.0 <1.4.0", ["1.0", "1.1", "1.2", "1.3"], false],
-    ["1.2.3 - 1.4.0", ["1.2", "1.3", "1.4"], false],
-    ["1.5.x || 1.2.x", ["1.2", "1.5"], false],
-    ["1.0.0 || 2.0.0", ["1.0", "2.0"], false],
-    [">=1.0.0 <1.16.0", linesFrom(1, 0, 16), false],
-    [">=1.0.0 <1.17.0", linesFrom(1, 0, 16), true],
-    ["1.x", linesFrom(1, 0, 16), true],
-    ["^1.2.3", linesFrom(1, 2, 16), true],
-    [">=1.5.0 <2.1.0", linesFrom(1, 5, 16), true],
-    ["*", linesFrom(0, 0, 16), true],
-  ])("%s covers %j (truncated: %s)", (range, lines, truncated) => {
-    expect(minorLinesOf(range)).toEqual({ lines, truncated });
-  });
-
-  it("rejects invalid ranges", () => {
-    expect(minorLinesOf("not a range")).toBeNull();
-    expect(releaseBaseCandidateKeys(release("not a range"))).toEqual([]);
-    expect(targetBaseCandidateKey(target("not a range"))).toBeNull();
-  });
-});
+const TARGET_RANGES = [
+  "1.0.0",
+  "1.2.0",
+  "1.2.3",
+  "1.2.4",
+  "1.2.9",
+  "1.3.0",
+  "1.5.2",
+  "1.15.2",
+  "1.16.0",
+  "1.20.0",
+  "2.0.0",
+  "3.0.0",
+  "0.2.5",
+  "1.2",
+  "1.2.x",
+  "~1.2.3",
+  "^1.2.3",
+  "1.x",
+  "2.x",
+  "0.x",
+  ">=1.2.0 <2",
+  ">=1.0.0",
+  "1.2.3 || 2.0.0",
+  "*",
+];
 
 describe("base candidate keys", () => {
-  it("keys an enabled bundle release by fingerprint, or by each minor line up to the cap", () => {
-    expect(releaseBaseCandidateKeys(release("1.2.x"))).toEqual([
-      JSON.stringify(["channel-1", "ios", "app-version", "1.2"]),
-    ]);
-    expect(releaseBaseCandidateKeys(release("1.x"))).toHaveLength(
-      MINOR_LINE_CAP,
-    );
-    expect(
-      releaseBaseCandidateKeys(
-        release("1.0.0", {
-          strategy: "FINGERPRINT",
-          fingerprint_hash: "fp",
-          target_app_version: null,
-        }),
-      ),
-    ).toEqual([JSON.stringify(["channel-1", "ios", "fingerprint", "fp"])]);
-    for (const overrides of [
-      { enabled: false },
-      { kind: "EMBEDDED" as const, bundle_id: null },
-      { target_app_version: null },
-    ]) {
-      expect(releaseBaseCandidateKeys(release("1.2.x", overrides))).toEqual([]);
-    }
-  });
-
-  it("keeps keys ASCII for any channel id", () => {
+  it("names the target's catalog scope and normalized range", () => {
     const key = targetBaseCandidateKey({
-      ...target("1.2.3"),
-      channelId: "채널-🚀",
+      channel: "채널-🚀",
+      platform: "ios",
+      fingerprintHash: null,
+      appVersion: "1.2.x",
     })!;
     expect(key).toMatch(/^[\x20-\x7e]+$/u);
-    expect(JSON.parse(key)).toEqual(["채널-🚀", "ios", "app-version", "1.2"]);
+    expect(parseBaseCandidateKey(key)).toEqual({
+      scopeKey: expect.stringMatching(/^v1:app-version:ios:/),
+      range: ">=1.2.0 <1.3.0-0",
+    });
+    expect(
+      parseBaseCandidateKey(
+        targetBaseCandidateKey({
+          channel: "production",
+          platform: "android",
+          fingerprintHash: "fp",
+          appVersion: "1.x",
+        })!,
+      ),
+    ).toEqual({
+      scopeKey: expect.stringMatching(/^v1:fingerprint:android:.*:fp$/),
+      range: null,
+    });
   });
 
-  it("gives a new bundle a key only when its target spans one minor line", () => {
-    expect(targetBaseCandidateKey(target("1.2.3"))).toBe(
-      JSON.stringify(["channel-1", "ios", "app-version", "1.2"]),
-    );
-    expect(targetBaseCandidateKey(target("~1.2.3"))).not.toBeNull();
-    expect(targetBaseCandidateKey(target("1.x"))).toBeNull();
-    expect(targetBaseCandidateKey(target(">=1.2.0 <1.4.0"))).toBeNull();
+  it("names nothing for an invalid range or key", () => {
     expect(
-      targetBaseCandidateKey({ ...target("1.x"), fingerprintHash: "fp" }),
-    ).toBe(JSON.stringify(["channel-1", "ios", "fingerprint", "fp"]));
+      targetBaseCandidateKey({
+        channel: "production",
+        platform: "ios",
+        fingerprintHash: null,
+        appVersion: "not a range",
+      }),
+    ).toBeNull();
+    for (const key of [
+      "",
+      "[]",
+      '["v1:app-version:ios"]',
+      '["x", "*"]',
+      '["v1:app-version:ios:cHJvZHVjdGlvbg", "not a range"]',
+    ]) {
+      expect(parseBaseCandidateKey(key)).toBeNull();
+    }
   });
 });
 
-/**
- * PRD follow-up "minor-line cap (default 16), checked in C1 against today's
- * compatibility rule": today `deploy.ts` pairs ranges that intersect.
- */
-describe("the minor-line rule against today's rule", () => {
-  const releases = [
-    "1.0.0",
-    "1.2.3",
-    "1.2.9",
-    "1.3.0",
-    "2.0.0",
-    "0.2.5",
-    "1.2.3-beta.1",
-    "1.2.x",
-    "2.x",
-    "~1.2.3",
-    "~1.2.5",
-    "^0.2.3",
-    ">=1.0.0 <1.4.0",
-    ">=1.2.0 <=1.2.5",
-    "1.2.3 - 1.4.0",
-    ">=1.0.0 <1.16.0",
-    "1.2.x || 1.5.x",
-    "1.0.0 || 2.0.0",
-    "1.x",
-    "^1.2.3",
-    ">=1.2.0",
-    "<2.0.0",
-    "*",
-  ];
-  const targets = [
-    "1.0.0",
-    "1.2.0",
-    "1.2.3",
-    "1.2.4",
-    "1.2.9",
-    "1.3.0",
-    "1.5.2",
-    "1.15.2",
-    "1.16.0",
-    "1.20.0",
-    "2.0.0",
-    "0.2.5",
-    "1.2.x",
-    "~1.2.3",
-    "1.x",
-    "*",
-  ];
-  const pairs = releases.flatMap((releaseRange) =>
-    targets.map((targetRange) => ({
-      releaseRange,
-      targetRange,
-      today: intersects(releaseRange, targetRange),
-      next: sharesLine(releaseRange, targetRange),
-    })),
-  );
-
-  it("keeps every match today's rule makes for a one-line target and a release within the cap", () => {
-    const kept = pairs.filter(
-      ({ releaseRange, targetRange, today }) =>
-        today &&
-        minorLinesOf(targetRange, 1)?.truncated === false &&
-        minorLinesOf(releaseRange)?.truncated === false,
-    );
-    expect(kept.length).toBeGreaterThan(0);
-    expect(kept.filter(({ next }) => !next)).toEqual([]);
-  });
-
-  const oneLine = (range: string) =>
-    minorLinesOf(range, 1)?.truncated === false;
-
-  it("adds only matches where the ranges share a minor line but no version", () => {
-    const added = pairs.filter(({ today, next }) => next && !today);
-    expect(added).toHaveLength(19);
-    expect(added).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          releaseRange: "1.2.3",
-          targetRange: "1.2.4",
-        }),
-        expect.objectContaining({
-          releaseRange: "~1.2.5",
-          targetRange: "1.2.3",
-        }),
-      ]),
-    );
-  });
-
-  it("loses matches only for targets spanning several lines and for lines past a wide release's cap", () => {
-    const lost = pairs.filter(({ today, next }) => today && !next);
-    const pastCap = lost.filter(({ targetRange }) => oneLine(targetRange));
-    for (const { releaseRange } of pastCap) {
-      expect(minorLinesOf(releaseRange)?.truncated).toBe(true);
+describe("auto-patch bases against the rule deploy used before", () => {
+  it("finds exactly the bases the reference finds, for every range pair", async () => {
+    const core = createInProcessCoreApi(createMemoryAdapter());
+    for (const [n, range] of RELEASE_RANGES.entries()) {
+      await core.deploy([
+        {
+          bundle: bundleOf(100 + n),
+          release: policy({ targetAppVersion: range }),
+        },
+      ]);
     }
-    expect(pastCap).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ releaseRange: "1.x", targetRange: "1.16.0" }),
-        // `*` keeps 0.0 to 0.15, so it no longer serves 1.x targets
-        expect.objectContaining({ releaseRange: "*", targetRange: "1.0.0" }),
-      ]),
+    const differences: string[] = [];
+    const withoutBases: string[] = [];
+    let matches = 0;
+    for (const range of TARGET_RANGES) {
+      const target = { appVersion: range, fingerprintHash: null };
+      const reference = await referenceBaseBundleIds(
+        core,
+        "production",
+        target,
+        NEWEST,
+        100,
+      );
+      matches += reference.length;
+      if (reference.length === 0) withoutBases.push(range);
+      const found = await baseBundleIds(
+        core,
+        "production",
+        target,
+        NEWEST,
+        100,
+      );
+      if (JSON.stringify(found) !== JSON.stringify(reference)) {
+        differences.push(range);
+      }
+      // `maxBaseBundles` keeps the newest releases first, as before
+      await expect(
+        baseBundleIds(core, "production", target, NEWEST, 3),
+      ).resolves.toEqual(reference.slice(0, 3));
+    }
+    expect(differences).toEqual([]);
+    // 299 of the 672 pairs meet, and every target, `*` and `1.x` included,
+    // finds bases
+    expect(matches).toBe(299);
+    expect(withoutBases).toEqual([]);
+  });
+
+  it("pairs no target in the gap of a lone release's range", async () => {
+    const core = createInProcessCoreApi(createMemoryAdapter());
+    await core.deploy([
+      {
+        bundle: bundleOf(100),
+        release: policy({ targetAppVersion: "1.2.x || 1.5.x" }),
+      },
+    ]);
+    for (const [appVersion, bases] of [
+      ["1.4.0", []],
+      ["1.2.4", [idOf(100)]],
+      ["1.5.2", [idOf(100)]],
+    ] as const) {
+      const target = { appVersion, fingerprintHash: null };
+      await expect(
+        referenceBaseBundleIds(core, "production", target, NEWEST, 3),
+      ).resolves.toEqual(bases);
+      await expect(
+        baseBundleIds(core, "production", target, NEWEST, 3),
+      ).resolves.toEqual(bases);
+    }
+  });
+
+  it("differs only for an exact prerelease target that a release names", async () => {
+    // Both rules pair `1.2.3-beta.1` only with ranges that allow its
+    // prerelease; the catalog keeps no range text, so once a release names
+    // that prerelease, the other ranges around it pair with it too. No
+    // device runs a prerelease app version: the update check coerces it.
+    const core = createInProcessCoreApi(createMemoryAdapter());
+    for (const [n, range] of ["1.2.x", "1.2.3-beta.1"].entries()) {
+      await core.deploy([
+        {
+          bundle: bundleOf(100 + n),
+          release: policy({ targetAppVersion: range }),
+        },
+      ]);
+    }
+    const target = { appVersion: "1.2.3-beta.1", fingerprintHash: null };
+    await expect(
+      referenceBaseBundleIds(core, "production", target, NEWEST, 3),
+    ).resolves.toEqual([idOf(101)]);
+    await expect(
+      baseBundleIds(core, "production", target, NEWEST, 3),
+    ).resolves.toEqual([idOf(101), idOf(100)]);
+    const ranged = { appVersion: "1.2.x", fingerprintHash: null };
+    await expect(
+      baseBundleIds(core, "production", ranged, NEWEST, 3),
+    ).resolves.toEqual(
+      await referenceBaseBundleIds(core, "production", ranged, NEWEST, 3),
     );
-    expect({
-      pairs: pairs.length,
-      today: pairs.filter(({ today }) => today).length,
-      agree: pairs.filter(({ today, next }) => today === next).length,
-      added: pairs.filter(({ today, next }) => next && !today).length,
-      lostSeveralLineTargets: lost.length - pastCap.length,
-      lostPastCap: pastCap.length,
-    }).toEqual({
-      pairs: 368,
-      today: 165,
-      agree: 279,
-      added: 19,
-      lostSeveralLineTargets: 40,
-      lostPastCap: 30,
+  });
+
+  it("orders by release like the reference: promotions, republishes, disabled releases, fingerprints", async () => {
+    const core = createInProcessCoreApi(createMemoryAdapter());
+    const both = async (target: Target) => {
+      const reference = await referenceBaseBundleIds(
+        core,
+        "production",
+        target,
+        NEWEST,
+        3,
+      );
+      await expect(
+        baseBundleIds(core, "production", target, NEWEST, 3),
+      ).resolves.toEqual(reference);
+      return reference;
+    };
+    const v1 = { appVersion: "1.0.0", fingerprintHash: null };
+    const [staged] = await core.deploy([
+      {
+        bundle: bundleOf(10),
+        release: policy({ channel: "staging", targetAppVersion: "1.0.0" }),
+      },
+    ]);
+    const releaseIds: string[] = [];
+    for (let n = 11; n <= 15; n += 1) {
+      const [deployed] = await core.deploy([
+        { bundle: bundleOf(n), release: policy({ targetAppVersion: "1.0.0" }) },
+      ]);
+      releaseIds.push(deployed!.release!.id);
+    }
+    expect(await both(v1)).toEqual([15, 14, 13].map(idOf));
+    // a promotion is the newest release of an older bundle
+    await core.promoteRelease({
+      releaseId: staged!.release!.id,
+      targetChannel: "production",
     });
+    expect(await both(v1)).toEqual([10, 15, 14].map(idOf));
+    await core.deploy([
+      { bundleId: idOf(11), release: policy({ targetAppVersion: "1.0.0" }) },
+    ]);
+    expect(await both(v1)).toEqual([11, 10, 15].map(idOf));
+    await core.updateReleasePolicy({
+      releaseId: releaseIds[4]!,
+      patch: { enabled: false },
+    });
+    expect(await both(v1)).toEqual([11, 10, 14].map(idOf));
+    for (let n = 20; n <= 23; n += 1) {
+      await core.deploy([
+        {
+          bundle: bundleOf(n),
+          release: policy({ fingerprintHash: n === 22 ? "fp-b" : "fp-a" }),
+        },
+      ]);
+    }
+    expect(await both({ appVersion: null, fingerprintHash: "fp-a" })).toEqual(
+      [23, 21, 20].map(idOf),
+    );
+    // the new bundle is never its own base, nor is a newer one
+    await expect(
+      baseBundleIds(core, "production", v1, idOf(14), 3),
+    ).resolves.toEqual([11, 10, 13].map(idOf));
   });
 });

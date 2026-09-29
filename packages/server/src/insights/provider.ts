@@ -32,12 +32,24 @@ const MAX_EVENT_ID_LENGTH = 1_024;
 const MAX_IDENTITY_LENGTH = 255;
 const MAX_CURSOR_LENGTH = 8 * 1_024;
 
+const HOUR_MS = 60 * 60 * 1_000;
+
 const WINDOW_MS: Record<ActiveInstallationWindow, number> = {
   "24h": 24 * 60 * 60 * 1_000,
   "7d": 7 * 24 * 60 * 60 * 1_000,
   "30d": 30 * 24 * 60 * 60 * 1_000,
 };
 
+/**
+ * The longest receipt range, `[sinceMs, beforeReceivedAtMs)`, of a global or
+ * bundle event list, and the range one covers without `sinceMs`: raw events
+ * are listed inside a time range, as analytics products list them. It is a
+ * duration, so a range that ends mid-day touches 91 UTC days. Installation
+ * history is one index range and reads back to `sinceMs`.
+ */
+export const EVENT_LIST_RANGE_MS = 90 * 24 * HOUR_MS;
+
+/** A full page's last row, and the range every page of the list shares. */
 type EventCursorPayload = {
   readonly after: InsightsEventCursor;
   readonly beforeReceivedAtMs: number;
@@ -188,6 +200,8 @@ const readEventCursor = (
   filter: InsightsEventFilter,
 ): EventCursorPayload => {
   const cursor = decodeCursor(value);
+  // A cursor names the row it continues after. One that only held a time
+  // (`olderThanMs`) resumed below a window of days, which lists no longer do.
   if (
     !isRecord(cursor) ||
     cursor.version !== 2 ||
@@ -335,17 +349,34 @@ const toInstallationRow = (row: BundleEventRow): InstallationRow => ({
   username: row.metadata.username,
 });
 
-const pageEventRows = async <T extends EventHistoryRow>(
-  model: InsightsModel,
-  input: InsightsEventPageInput,
+interface EventBounds {
+  readonly beforeReceivedAtMs: number;
+  readonly sinceMs: number;
+}
+
+/**
+ * Where a list without `sinceMs` starts: 90 days before its cutoff for the
+ * global and bundle lists, at the first event for installation history.
+ */
+const defaultEventStart = (
   filter: InsightsEventFilter,
-  map: (row: BundleEventRow) => T,
-) => {
-  const limit = readLimit(input.limit);
-  const cursor =
-    input.cursor === undefined
-      ? undefined
-      : readEventCursor(input.cursor, filter);
+  beforeReceivedAtMs: number,
+): number =>
+  filter.kind === "installationMovement"
+    ? 0
+    : Math.max(0, beforeReceivedAtMs - EVENT_LIST_RANGE_MS);
+
+/** Whether a cursor's row lies inside the list's range. */
+const isInsideBounds = ({ after }: EventCursorPayload, bounds: EventBounds) =>
+  after.receivedAtMs >= bounds.sinceMs &&
+  after.receivedAtMs < bounds.beforeReceivedAtMs;
+
+/** A page's range: its cursor's, which the request may repeat but not change. */
+const readEventBounds = (
+  input: InsightsEventPageInput,
+  cursor: EventCursorPayload | undefined,
+  filter: InsightsEventFilter,
+): EventBounds => {
   const beforeReceivedAtMs =
     cursor?.beforeReceivedAtMs ??
     (input.beforeReceivedAtMs === undefined
@@ -363,41 +394,63 @@ const pageEventRows = async <T extends EventHistoryRow>(
   const sinceMs =
     cursor?.sinceMs ??
     (input.sinceMs === undefined
-      ? 0
+      ? defaultEventStart(filter, beforeReceivedAtMs)
       : requireTimestamp(input.sinceMs, "event start"));
+  const bounds = { beforeReceivedAtMs, sinceMs };
   if (
     sinceMs > beforeReceivedAtMs ||
     (input.sinceMs !== undefined && input.sinceMs !== sinceMs) ||
-    (cursor !== undefined &&
-      (cursor.after.receivedAtMs < sinceMs ||
-        cursor.after.receivedAtMs >= beforeReceivedAtMs))
+    (cursor !== undefined && !isInsideBounds(cursor, bounds))
   ) {
     throw new InsightsBadRequestError(
       "Insights cursor or range does not match the requested event start.",
     );
   }
-  const databaseInput = {
+  if (
+    filter.kind !== "installationMovement" &&
+    beforeReceivedAtMs - sinceMs > EVENT_LIST_RANGE_MS
+  ) {
+    throw new InsightsBadRequestError(
+      "Insights event lists cover at most 90 days: send a sinceMs no more than 90 days before beforeReceivedAtMs.",
+    );
+  }
+  return bounds;
+};
+
+const pageEventRows = async <T extends EventHistoryRow>(
+  model: InsightsModel,
+  input: InsightsEventPageInput,
+  filter: InsightsEventFilter,
+  map: (row: BundleEventRow) => T,
+) => {
+  const limit = readLimit(input.limit);
+  const cursor =
+    input.cursor === undefined
+      ? undefined
+      : readEventCursor(input.cursor, filter);
+  const bounds = readEventBounds(input, cursor, filter);
+  const query = {
     filter,
-    sinceMs,
-    beforeReceivedAtMs,
+    ...bounds,
     ...(cursor === undefined ? {} : { after: cursor.after }),
-    limit: limit + 1,
+    limit,
   };
-  const rows = await model.listEvents(databaseInput);
-  assertEventRows(rows, databaseInput);
-  const pageRows = rows.slice(0, limit);
-  const last = pageRows.at(-1);
+  const rows = await model.listEvents(query);
+  assertEventRows(rows, query);
+  const last = rows.at(-1);
   return {
-    beforeReceivedAtMs,
-    data: pageRows.map(map),
+    beforeReceivedAtMs: bounds.beforeReceivedAtMs,
+    data: rows.map(map),
+    // A short page ends the range, so only a full page carries a cursor,
+    // with the range every page shares: the last call may read an empty
+    // page, and no page ends before the range start while events remain.
     nextCursor:
-      rows.length > limit && last
+      rows.length === limit && last
         ? encodeCursor({
             after: { id: last.id, receivedAtMs: last.received_at_ms },
-            beforeReceivedAtMs,
+            ...bounds,
             kind: "events",
             filter,
-            sinceMs,
             version: 2,
           })
         : null,
@@ -502,16 +555,15 @@ export const createInsightsProvider = (
         ...(cursor === undefined
           ? {}
           : { afterInstallId: cursor.afterInstallId }),
-        limit: limit + 1,
+        limit,
       };
       const rows = await model.findLatestEvents(databaseInput);
       assertInstallationRows(rows, databaseInput);
-      const pageRows = rows.slice(0, limit);
-      const last = pageRows.at(-1);
+      const last = rows.at(-1);
       return {
-        data: pageRows.map(toInstallationRow),
+        data: rows.map(toInstallationRow),
         nextCursor:
-          rows.length > limit && last
+          rows.length === limit && last
             ? encodeCursor({
                 afterInstallId: last.install_id,
                 kind: "user-installations",
@@ -529,7 +581,11 @@ export const createInsightsProvider = (
           "Invalid reporting installation window.",
         );
       }
-      const beforeReceivedAtMs = Date.now();
+      // Whole hours, ending with the current one: the counts read only the
+      // maintained hour and day rows, never raw events.
+      const now = Date.now();
+      const beforeReceivedAtMs =
+        now - (now % HOUR_MS) + (now % HOUR_MS === 0 ? 0 : HOUR_MS);
       const sinceMs = Math.max(0, beforeReceivedAtMs - WINDOW_MS[window]);
       const measure = async (count: Promise<number>) => {
         const value = await count;

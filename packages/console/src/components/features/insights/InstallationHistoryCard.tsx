@@ -247,8 +247,8 @@ export function InstallationHistoryCard({
           ) : (
             <>
               <div className="p-6 text-sm text-muted-foreground">
-                {pageNumber > 1 || history?.nextCursor
-                  ? "No bundle changes on this page."
+                {pageNumber > 1
+                  ? "No older bundle changes."
                   : "No bundle changes recorded yet."}
               </div>
               {history && (pageNumber > 1 || history.nextCursor) ? (

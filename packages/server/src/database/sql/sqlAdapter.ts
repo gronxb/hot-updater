@@ -517,7 +517,12 @@ export const createSqlAdapter = ({
 
     migrations: {
       async apply(tables) {
-        const statements = createTableStatements(dialect, tables, tablePrefix);
+        // A batching executor's writes also need the write guard table.
+        const created =
+          executor.batch && !tables.includes(WRITE_GUARD_TABLE)
+            ? [...tables, WRITE_GUARD_TABLE]
+            : tables;
+        const statements = createTableStatements(dialect, created, tablePrefix);
         for (const text of statements) {
           await executor.execute({ sql: text, params: [] });
         }

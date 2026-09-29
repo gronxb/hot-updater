@@ -87,11 +87,17 @@ describe("bundle children", () => {
     });
   });
 
-  it("reads each base bundle once, with no bundle scan", async () => {
-    const getBundle = vi.fn(async () => null);
+  it("reads each base bundle's counter once, in one batch", async () => {
+    const countBundleChildren = vi.fn(async () => ({}));
 
-    await getBundleChildCounts({ getBundle }, [id(1), id(1), "", id(2)]);
+    await getBundleChildCounts({ countBundleChildren }, [
+      id(1),
+      id(1),
+      "",
+      id(2),
+    ]);
+    await getBundleChildCounts({ countBundleChildren }, ["", ""]);
 
-    expect(getBundle.mock.calls).toEqual([[id(1)], [id(2)]]);
+    expect(countBundleChildren.mock.calls).toEqual([[[id(1), id(2)]]]);
   });
 });

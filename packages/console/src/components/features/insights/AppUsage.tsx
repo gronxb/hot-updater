@@ -40,6 +40,7 @@ import type { InsightsWindow } from "@/lib/insights-api";
 import type { InsightsSearch } from "@/lib/insights-search";
 import type { AppUsageReport } from "@/lib/insights-usage";
 
+import { EstimatedCount } from "./EstimatedCount";
 import { InsightsErrorAlert } from "./InsightsErrorAlert";
 import { InsightsInfo } from "./InsightsInfo";
 import { InsightsPeriodSelector } from "./InsightsPeriodSelector";
@@ -195,7 +196,11 @@ export function AppUsage({
                       <TableRow key={point.startMs}>
                         <TableCell>{times.format(point.startMs)}</TableCell>
                         <TableCell className="text-right tabular-nums">
-                          {point.installations?.toLocaleString() ?? "Unknown"}
+                          {point.installations === null ? (
+                            "Unknown"
+                          ) : (
+                            <EstimatedCount value={point.installations} />
+                          )}
                         </TableCell>
                       </TableRow>
                     ))}

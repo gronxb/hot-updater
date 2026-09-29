@@ -225,6 +225,14 @@ describe("core reads", () => {
     await expect(
       reads.listPatchesFromBase(base.id, { limit: 10 }),
     ).resolves.toEqual([patch]);
+    await expect(
+      reads.countBundleChildren([
+        base.id,
+        target.id,
+        base.id,
+        fixtureMissingId,
+      ]),
+    ).resolves.toEqual({ [base.id]: 1, [target.id]: 0, [fixtureMissingId]: 0 });
     await expect(reads.countBundles()).resolves.toBe(2);
     await expect(reads.countBundles("android")).resolves.toBe(0);
     await expect(
@@ -259,52 +267,34 @@ describe("core reads", () => {
     await expect(reads.findChannelByName("staging")).resolves.toBeNull();
   });
 
-  it("finds auto-patch bases newest first below the new bundle, and drops a candidate at zero", async () => {
+  it("finds auto-patch bases in one point read of the scope's catalog", async () => {
     const { engine, reads } = await setup();
     const key = targetBaseCandidateKey({
-      channelId: channel.id,
+      channel: channel.name,
       platform: "ios",
       fingerprintHash: null,
-      appVersion: "1.2.3",
+      appVersion: "1.0.x",
     })!;
-    const ids = ["1", "2", "3", "4"].map(
-      (n) => `01900000-0000-7000-8000-00000000000${n}`,
-    );
-    const db = engine.database(coreModule);
-    await db.transaction(async (tx) => {
-      for (const id of ids.slice(0, 3)) {
-        tx.aggregate(
-          "base_candidates",
-          { candidate_key: key, bundle_id: id },
-          { releases: 1 },
-        );
-      }
-      tx.aggregate(
-        "base_candidates",
-        { candidate_key: `${key}-other`, bundle_id: ids[0]! },
-        { releases: 1 },
-      );
-    });
     const found = await engine.measureReads(() =>
-      reads.findBaseBundleIds(key, ids[3]!, 2),
+      reads.findBaseBundleIds(key, fixtureMissingId, 3),
     );
-    expect(found.result).toEqual([ids[2], ids[1]]);
-    expect(found.adapter).toEqual({ gets: 0, keys: 0, queries: 1, rows: 2 });
-    await expect(reads.findBaseBundleIds(key, ids[2]!, 3)).resolves.toEqual([
-      ids[1],
-      ids[0],
-    ]);
-
-    await db.transaction(async (tx) => {
-      tx.aggregate(
-        "base_candidates",
-        { candidate_key: key, bundle_id: ids[1]! },
-        { releases: -1 },
-      );
-    });
-    await expect(reads.findBaseBundleIds(key, ids[3]!, 3)).resolves.toEqual([
-      ids[2],
-      ids[0],
-    ]);
+    expect(found.result).toEqual([target.id]);
+    expect(found.adapter).toEqual({ gets: 1, keys: 1, queries: 0, rows: 0 });
+    // only bundles older than the new one, and only ranges that meet its own
+    await expect(reads.findBaseBundleIds(key, target.id, 3)).resolves.toEqual(
+      [],
+    );
+    const other = targetBaseCandidateKey({
+      channel: channel.name,
+      platform: "ios",
+      fingerprintHash: null,
+      appVersion: "1.1.0",
+    })!;
+    await expect(
+      reads.findBaseBundleIds(other, fixtureMissingId, 3),
+    ).resolves.toEqual([]);
+    await expect(
+      reads.findBaseBundleIds("not a key", fixtureMissingId, 3),
+    ).resolves.toEqual([]);
   });
 });

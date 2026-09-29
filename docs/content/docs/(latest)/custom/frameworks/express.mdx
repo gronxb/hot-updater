@@ -17,13 +17,15 @@ npm install @types/express --save-dev
 ## Setup and security
 
 Set up a [database adapter](/docs/custom/database/drizzle), generate its Hot Updater
-schema, and apply the schema before starting the server.
+schema, and apply the schema before starting the server. Create
+`src/hotUpdater.ts` with `createHotUpdater`, as in the
+[quick start](/docs/custom/quick-start#hot-updater-configuration).
 
-The recommended self-hosted client policy uses built-in API key authentication
-for update-check and Insights ingestion routes. Always protect admin routes with
-framework middleware in the same mount chain as the admin handler. Update-check
-routes are usually exposed for React Native clients, but that is a deployment
-choice:
+The recommended self-hosted setup runs the `apiKeys()` plugin, which requires
+an API key on update-check, Insights ingestion, and plugin client routes.
+Always protect admin routes with framework middleware in the same mount chain
+as the admin handler. Update-check routes are usually exposed for React Native
+clients, but that is a deployment choice:
 
 - Client OTA: `/hot-updater/release-catalogs/*`, `/hot-updater/artifacts/*`
 - Optional public diagnostics: `/hot-updater/version`
@@ -95,10 +97,13 @@ export default defineConfig({
 
 ## Handler boundaries
 
-Insights ingestion and query capabilities are built in. Client reporting is on
-by default and can be disabled in the mobile SDK. The client API key protects
-catalog reads, artifact resolution and Insights ingestion; it does not
-protect or authorize the admin handler.
+With `insights()` in `plugins`, `handlers.client` accepts Insights events and
+`handlers.admin` serves Insights queries; without it, those routes answer `204`
+with `x-hot-updater-insights: disabled`. Client reporting is on by default and
+can be disabled in the mobile SDK. [Server plugin](/docs/custom/server-plugins)
+endpoints mount on the same two handlers. The client API key protects catalog
+reads, artifact resolution, Insights ingestion, and plugin client routes; it
+does not protect or authorize the admin handler.
 
 See the [shared handler boundary](/docs/custom/overview#runtime-policy) for route
 groups and the [repository server contract](/docs/database-plugins/standalone#server-contract)

@@ -217,21 +217,25 @@ export const createStandaloneCoreApi = (
         ...(platform === undefined ? {} : { platform }),
       }),
     countBundles: async (platform) => {
-      const value = await request("GET", "/bundles", {
-        query: {
-          ...v2,
-          limit: "1",
-          total: "true",
-          ...(platform === undefined ? {} : { platform }),
-        },
+      const total = await call<unknown>("GET", "/bundles/count", {
+        query: { ...v2, ...(platform === undefined ? {} : { platform }) },
       });
-      if (value === null || typeof value.total !== "number") {
+      if (typeof total !== "number") {
         throw new StandaloneDatabaseError(
           "invalid-response",
-          "The server answered a bundle count without total.",
+          "The server answered a bundle count without a number.",
         );
       }
-      return value.total;
+      return total;
+    },
+    countBundleChildren: async (baseBundleIds) => {
+      const ids = [...new Set(baseBundleIds)];
+      if (ids.length === 0) return {};
+      return (
+        (await call<Record<string, number>>("GET", "/bundles/child-counts", {
+          query: { ...v2, ids: ids.join(",") },
+        })) ?? {}
+      );
     },
     listPatchesFromBase: (baseBundleId, input) =>
       list<BundlePatchRow>(

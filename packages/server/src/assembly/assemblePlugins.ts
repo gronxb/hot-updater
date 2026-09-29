@@ -5,8 +5,14 @@ import { createCoreReads, type CoreStorage } from "../core/reads";
 import { coreModule } from "../core/schema";
 import { createDatabaseEngine } from "../database/database";
 import type { ReadMeasurement } from "../database/engine";
-import { resolveSchema, type SchemaModule } from "../database/resolveSchema";
+import { fencedName, withSchemaFence } from "../database/fence";
+import {
+  resolveSchema,
+  validateSchema,
+  type SchemaModule,
+} from "../database/resolveSchema";
 import type { ModuleSchema } from "../database/schema";
+import { addedSettings, builtInModules } from "../db/builtInDatabase";
 import { builtInPlugin } from "../plugins/builtIn";
 import type {
   ClientAuth,
@@ -171,11 +177,14 @@ export const assemblePlugins = (
     now = Date.now,
     storage = { resolveFileUrl: async () => null },
     verify = false,
+    onCachedRoutesChange,
   }: {
     readonly now?: () => number;
     readonly storage?: CoreStorage;
     /** Runs the engine in verify mode, which meters reads for `measureReads`. */
     readonly verify?: boolean;
+    /** The database's CDN purge, which core calls after a catalog write. */
+    readonly onCachedRoutesChange?: () => Promise<void>;
   } = {},
 ): AssembledPlugins => {
   if (!Array.isArray(value))
@@ -194,13 +203,33 @@ export const assemblePlugins = (
       schema: plugin.schema,
       ...(plugin[builtInPlugin] ? {} : { namespace: plugin.id }),
     }));
+  const added = modules.filter(({ namespace }) => namespace !== undefined);
+  if (added.length > 0) {
+    // Tooling creates the built-in tables and settings rows whichever plugins
+    // a server runs, so a third-party plugin takes none of their names.
+    const taken = added.find(({ id }) =>
+      builtInModules.some((module) => module.id === id),
+    );
+    if (taken !== undefined) {
+      fail(`Plugin "${taken.id}" uses a built-in plugin's id.`);
+    }
+    validateSchema([...builtInModules, ...added]);
+  }
+  // A fenced database also waits for each third-party plugin's settings row.
+  const name = fencedName(adapter);
   const engine = createDatabaseEngine({
-    adapter,
+    adapter:
+      name === undefined || added.length === 0
+        ? adapter
+        : withSchemaFence(adapter, name, addedSettings(plugins)),
     schema: resolveSchema([coreModule, ...modules]),
     verify,
   });
   const coreDatabase = engine.database(coreModule);
-  const core = createCoreApi(coreDatabase, storage, { now });
+  const core = createCoreApi(coreDatabase, storage, {
+    now,
+    ...(onCachedRoutesChange === undefined ? {} : { onCachedRoutesChange }),
+  });
   const reads = createCoreReads(coreDatabase, storage);
   const api: Record<string, unknown> = {};
   const endpoints: MountedEndpoint[] = [];

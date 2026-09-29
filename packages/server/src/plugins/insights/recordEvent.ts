@@ -4,6 +4,7 @@ import {
   assertBundleEventRow,
   compareUtf8,
   currentInsightsReleaseId,
+  insightsKey,
   insightsOverviewDeltas,
   insightsOverviewId,
   type InsightsOverviewIdentity,
@@ -13,7 +14,7 @@ import type {
   HotUpdaterDatabase,
   HotUpdaterTransaction,
 } from "../../database/database";
-import { DAY_MS, HOUR_MS, type InsightsSchema } from "./schema";
+import { DAILY_EVENTS, DAY_MS, HOUR_MS, type InsightsSchema } from "./schema";
 
 /** The head columns `countHead` reads. */
 interface Head {
@@ -30,6 +31,7 @@ interface Head {
 }
 
 const hourOf = (ms: number) => ms - (ms % HOUR_MS);
+const dayOf = (ms: number) => ms - (ms % DAY_MS);
 
 /** An overview or sketch row's scope and period; day periods roll up channel and usage rows. */
 export type InsightsIdentityParts = Omit<
@@ -51,7 +53,18 @@ const headFields = (event: BundleEventRow) => {
   return { ...fields, current_release_id: currentInsightsReleaseId(event) };
 };
 
-/** Moves a head's gauges: the distribution row and one row per bundle it references. */
+/**
+ * The `insights_latest_by_bundle` field of a head's (from, to) pair. A head
+ * matches a `from` and a `to` predicate of one type at once only through its
+ * pair, so this gauge is what a count subtracts to count it once.
+ */
+export const PAIR_FIELD = "from_to";
+
+/** The pair gauge's `bundle_id`: a hash of the two bundle ids, which fit no single 36-character column. */
+export const bundlePairKey = (from: string, to: string): string =>
+  insightsKey(`${from.length}:${from}${to.length}:${to}`);
+
+/** Moves a head's gauges: the distribution row, one row per bundle it references, and its pair. */
 const countHead = (
   tx: HotUpdaterTransaction<InsightsSchema>,
   head: Head,
@@ -88,9 +101,28 @@ const countHead = (
       { shardBy },
     );
   }
+  if (head.from_bundle_id !== null) {
+    tx.aggregate(
+      "insights_latest_by_bundle",
+      {
+        platform: head.platform,
+        channel: head.channel,
+        bundle_field: PAIR_FIELD,
+        bundle_id: bundlePairKey(head.from_bundle_id, head.to_bundle_id),
+        type: head.type,
+        bucket_start_ms: bucket,
+      },
+      { installations: delta },
+      { shardBy },
+    );
+  }
 };
 
-/** Counters and sketches for one event: release, channel, and usage rows, with day rollups for channel and usage. */
+/**
+ * Counters and sketches for one event: release, channel, and usage rows, with
+ * day rollups for channel and usage; and its outcome rows, its bundle
+ * filter's hour and every event's day.
+ */
 const countEvent = (
   tx: HotUpdaterTransaction<InsightsSchema>,
   event: BundleEventRow,
@@ -102,7 +134,7 @@ const countEvent = (
       parts.scopeKind === "channel" || parts.scopeKind === "usage"
         ? ([
             ["hour", bucketStartMs],
-            ["day", event.received_at_ms - (event.received_at_ms % DAY_MS)],
+            ["day", dayOf(event.received_at_ms)],
           ] as const)
         : ([[parts.periodKind, bucketStartMs]] as const);
     for (const [periodKind, bucket] of periods) {
@@ -154,6 +186,15 @@ const countEvent = (
     { events: 1 },
     { shardBy },
   );
+  // The global event list reads only the days this row counts: a gap costs
+  // it one empty day and one read of this row, not a read a day. One more
+  // blind increment per event, on the event's shard like the others.
+  tx.aggregate(
+    "insights_outcomes",
+    { ...DAILY_EVENTS, bucket_start_ms: dayOf(event.received_at_ms) },
+    { events: 1 },
+    { shardBy },
+  );
 };
 
 const isNewer = (event: Head, head: Head) =>
@@ -164,8 +205,8 @@ const isNewer = (event: Head, head: Head) =>
 /**
  * Records one event in one transaction: one batch read of the event and its
  * installation's head, one of the gauge and sketch rows it changes, then one
- * write. A repeated id changes nothing; an older event still counts in its own
- * hour but never replaces the head.
+ * write. A repeated id changes nothing, whichever installation sends it; an
+ * older event still counts in its own hour but never replaces the head.
  */
 export const recordEvent = (
   db: HotUpdaterDatabase<InsightsSchema>,
@@ -177,6 +218,9 @@ export const recordEvent = (
       tx.findOne("bundle_events", { id: event.id }),
       tx.findOne("bundle_event_heads", { install_id: event.install_id }),
     ]);
+    // The id is the report's idempotency key: a retry, or any report under
+    // an id already stored, changes nothing, as analytics ingestion drops
+    // duplicates.
     if (existing !== null) return;
     tx.create("bundle_events", event);
     countEvent(tx, event);

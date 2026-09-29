@@ -80,10 +80,15 @@ export const countInsightsDistinct = (
     if (register === 0) empty += 1;
   }
   const alpha = 0.7213 / (1 + 1.079 / REGISTER_COUNT);
+  const raw = (alpha * REGISTER_COUNT ** 2) / inverseSum;
+  // HyperLogLog's small-range rule (Flajolet et al., 2007): linear counting
+  // only while the raw estimate is at most 2.5 times the register count and
+  // some register is still empty. Past that, the few registers left empty
+  // make linear counting swing by 5-10%, while the raw estimate stays ~3%.
   const estimate =
-    empty > 0
+    raw <= 2.5 * REGISTER_COUNT && empty > 0
       ? REGISTER_COUNT * Math.log(REGISTER_COUNT / empty)
-      : (alpha * REGISTER_COUNT ** 2) / inverseSum;
+      : raw;
   return Math.max(0, Math.round(estimate));
 };
 

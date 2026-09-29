@@ -29,14 +29,11 @@ export async function getBundleChildren(
   );
 }
 
-/** How many bundles patch from each base: each base bundle's reference counter, no scan. */
+/** How many bundles patch from each base: each base bundle's reference counter, in one batch read. */
 export async function getBundleChildCounts(
-  core: Pick<HotUpdaterCoreApi, "getBundle">,
+  core: Pick<HotUpdaterCoreApi, "countBundleChildren">,
   baseBundleIds: readonly string[],
 ): Promise<Record<string, number>> {
   const ids = [...new Set(baseBundleIds.filter(Boolean))];
-  const details = await Promise.all(ids.map((id) => core.getBundle(id)));
-  return Object.fromEntries(
-    ids.map((id, position) => [id, details[position]?.childCount ?? 0]),
-  );
+  return ids.length === 0 ? {} : core.countBundleChildren(ids);
 }

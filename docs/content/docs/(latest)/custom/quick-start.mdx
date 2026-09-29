@@ -57,7 +57,7 @@ mkdir -p data
 import { Kysely, SqliteDialect } from "kysely";
 import Database from "better-sqlite3";
 
-export const db = new Kysely({
+export const db = new Kysely<object>({
   dialect: new SqliteDialect({
     database: new Database("./data/database.db"),
   }),
@@ -66,12 +66,14 @@ export const db = new Kysely({
 
 ## Hot Updater configuration
 
-Create the Hot Updater instance with your database adapter and storage plugin (see [Storage Plugins](/docs/custom/overview#storage-plugins)).
+Create the Hot Updater instance with your database adapter, storage plugin (see [Storage Plugins](/docs/custom/overview#storage-plugins)), and server plugins.
 
 ```typescript title="src/hotUpdater.ts"
 import { existsSync } from "node:fs";
 import { createHotUpdater } from "@hot-updater/server";
 import { kyselyAdapter } from "@hot-updater/server/adapters/kysely";
+import { apiKeys } from "@hot-updater/server/plugins/api-keys";
+import { insights } from "@hot-updater/server/plugins/insights";
 import { s3Storage } from "@hot-updater/aws";
 import { db } from "./kysely";
 
@@ -81,7 +83,7 @@ if (existsSync(".env.hotupdater")) {
 
 export const hotUpdater = createHotUpdater({
   database: kyselyAdapter({ db, provider: "sqlite" }),
-  clientAccess: { type: "api-key" },
+  plugins: [insights(), apiKeys()],
   storage: [
     s3Storage({
       region: "auto",
@@ -97,16 +99,25 @@ export const hotUpdater = createHotUpdater({
 });
 ```
 
-`createHotUpdater` mounts update-check routes and `/version`. This example uses
-the recommended `api-key` policy for update checks and Insights ingestion.
-Admin routes used by the CLI `standaloneRepository` live on a separate handler;
-mount that handler only behind framework authentication.
+`createHotUpdater` mounts update-check routes and `/version`. The two
+[server plugins](/docs/custom/server-plugins) add the rest of this setup:
 
-Server Insights routes are always available. React Native clients send
-lifecycle events by default and can opt out with
+- `apiKeys()` requires an API key on update checks, artifact resolution,
+  Insights ingestion, and plugin client routes; `/version` and signed storage
+  downloads stay public. It stores each key's SHA-256 digest in the database.
+- `insights()` records the lifecycle events React Native clients send and
+  serves the Insights reads on the admin handler. Without it, the Insights
+  routes answer `204` with `x-hot-updater-insights: disabled`.
+
+Admin routes used by the CLI `standaloneRepository` live on a separate handler;
+mount that handler only behind framework authentication. React Native clients
+send lifecycle events by default and can opt out with
 `HotUpdater.init({ insights: false })`.
-`clientAccess` is required so the client authentication policy is never
-selected implicitly.
+
+Client routes need exactly one access policy: a plugin that authenticates
+clients, such as `apiKeys()`, or `clientAccess: "public"`. `createHotUpdater`
+refuses a configuration with neither or both, so the policy is never selected
+implicitly.
 
 ## Server setup
 
@@ -139,9 +150,9 @@ serve({ fetch: app.fetch, port: 3000 }, (info) => {
 
 ## Security settings
 
-The recommended self-hosted policy requires an API key for update-check and
-Insights ingestion routes. Always protect admin routes separately before
-mounting `handlers.admin`.
+The recommended self-hosted setup runs `apiKeys()`, which requires an API key
+for update-check and Insights ingestion routes. Always protect admin routes
+separately before mounting `handlers.admin`.
 
 Update-check routes are usually exposed for React Native clients, but that is a
 deployment choice:
@@ -167,15 +178,20 @@ HOT_UPDATER_ADMIN_TOKEN=your-secret-auth-token
 
 ## Bootstrap the schema and API key
 
-Generate and apply the database schema first:
+Generate the SQL for review, then apply the database schema:
 
 ```bash
 npx hot-updater db generate src/hotUpdater.ts --yes
 npx hot-updater db migrate src/hotUpdater.ts
 ```
 
-Then create the API key for your mobile app from the same direct
-`createHotUpdater` configuration:
+`db generate` writes the SQL to `hot-updater_migrations/`. `db migrate` creates
+core's tables and the tables of `insights()` and `apiKeys()`, then writes the
+settings rows the server checks before its first request. Until they exist,
+the handlers answer `503`.
+
+Then create the API key for your mobile app through the `apiKeys()` plugin of
+the same `createHotUpdater` configuration:
 
 ```bash
 npx hot-updater api-key create src/hotUpdater.ts --name "Mobile app"
@@ -272,9 +288,23 @@ The server's `.env.hotupdater` is not loaded into the mobile app automatically.
 ## Unauthenticated alternative
 
 If you intentionally want client update and Insights ingestion routes to be
-unauthenticated, set `clientAccess: { type: "public" }` and omit `x-api-key`
-from React Native `requestHeaders`. This does not make the admin handler public;
-its framework authentication remains required.
+unauthenticated, remove `apiKeys()` and set `clientAccess: "public"`:
+
+```typescript title="src/hotUpdater.ts (excerpt)"
+export const hotUpdater = createHotUpdater({
+  database: kyselyAdapter({ db, provider: "sqlite" }),
+  plugins: [insights(), apiKeys()], // [!code --]
+  plugins: [insights()], // [!code ++]
+  clientAccess: "public", // [!code ++]
+  storage: [
+    // ...
+  ],
+});
+```
+
+Then omit `x-api-key` from React Native `requestHeaders`, and skip
+`api-key create`. This does not make the admin handler public; its framework
+authentication remains required.
 
 ## Verify and deploy
 

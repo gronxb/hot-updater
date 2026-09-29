@@ -7,11 +7,8 @@ import type {
 import { createStoragePlugin } from "@hot-updater/plugin-core";
 import { createMemoryAdapter } from "@hot-updater/plugin-core/internal";
 
-import {
-  builtInSchema,
-  createEngineDatabase,
-} from "./database/builtInDatabase";
 import type { SchemaSettings } from "./database/fence";
+import { builtInSchema, createEngineDatabase } from "./db/builtInDatabase";
 import { migrateSchema } from "./db/schemaSettings";
 
 export const runtimeBundle: Bundle = {

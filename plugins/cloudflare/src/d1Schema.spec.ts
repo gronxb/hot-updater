@@ -3,35 +3,19 @@ import path from "node:path";
 import { DatabaseSync, type SqliteValue } from "node:sqlite";
 
 import {
-  builtInSchema,
-  builtInSettings,
-  createTableStatements,
-  WRITE_GUARD_TABLE,
-} from "@hot-updater/server/database";
-import {
   createDatabaseCoreApi,
-  generateEngineSql,
   HotUpdaterSchemaMigrationRequiredError,
 } from "@hot-updater/server/db";
 import { describe, expect, it } from "vitest";
 
 import { createBundleFixture } from "../../../packages/test-utils/src/databaseTestFixtures";
 import { createD1Database } from "./d1Executor";
+import { d1SchemaSql, d1SchemaStatements } from "./d1Schema";
 
 const FILES = [
   "plugins/cloudflare/sql/bundles.sql",
   "plugins/cloudflare/worker/migrations/0001_hot-updater_1.0.0.sql",
 ].map((file) => path.resolve(file));
-
-/** D1's schema: the guard table batch writes need, then the shared SQL schema, settings last. */
-const statements = () => [
-  ...createTableStatements("sqlite", [WRITE_GUARD_TABLE]),
-  ...generateEngineSql("sqlite", builtInSchema, builtInSettings),
-];
-const expectedSql = () =>
-  `-- HotUpdater.schema\n\n${statements()
-    .map((statement) => `${statement};`)
-    .join("\n\n")}\n`;
 
 /** D1's API over `node:sqlite`: statements one at a time, batches in one transaction. */
 const sqliteD1 = (db: DatabaseSync) => {
@@ -61,11 +45,11 @@ const sqliteD1 = (db: DatabaseSync) => {
 describe("d1 schema", () => {
   it("checks in exactly the generated schema as the SQL file and the first migration", async () => {
     if (process.env.HOT_UPDATER_UPDATE_SQL === "1") {
-      for (const file of FILES) await fs.writeFile(file, expectedSql());
+      for (const file of FILES) await fs.writeFile(file, d1SchemaSql());
     }
     // Regenerate with HOT_UPDATER_UPDATE_SQL=1 after the schema changes.
     for (const file of FILES) {
-      expect(await fs.readFile(file, "utf8")).toBe(expectedSql());
+      expect(await fs.readFile(file, "utf8")).toBe(d1SchemaSql());
     }
   });
 
@@ -75,7 +59,7 @@ describe("d1 schema", () => {
     await expect(core.listChannels()).rejects.toBeInstanceOf(
       HotUpdaterSchemaMigrationRequiredError,
     );
-    for (const statement of statements()) db.exec(statement);
+    for (const statement of d1SchemaStatements()) db.exec(statement);
     const [deployed] = await core.deploy([
       {
         bundle: createBundleFixture("1"),

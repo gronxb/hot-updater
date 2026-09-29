@@ -36,10 +36,11 @@ connection, CLI/API or browser can handle missing account-level prerequisites.
     MCP migration operations must preserve the same names/history and SQL.
   - Verify/record: supplied migrations are applied, expected tables/schema version
     exist, and the API schema cache can access them. Record applied filenames.
-    Existing generation 1 projects also need
-    `20260922000000_idempotent_channel_commit.sql`: it replaces the commit RPC
-    without changing table layouts or `schema.core`, and makes missing Channel
-    deletion an atomic no-op. Preserve the original initialization migration.
+    `hot_updater_v1_*` tables or functions without a `schema.engine` settings
+    row come from a 1.0 release candidate and are not upgraded in place: drop
+    them, mark each Hot Updater migration in the history reverted with
+    `npx supabase migration repair --status reverted <version>`, then push, or
+    use a new project.
   - Retry: inspect actual schema/history before replaying anything. Only the exact
     missing `supabase_migrations.schema_migrations` relation on a fresh project
     permits proceeding from failed history fetch to the first push. This error

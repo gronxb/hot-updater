@@ -7,13 +7,13 @@ import {
 } from "@hot-updater/plugin-core/internal";
 import { afterAll, describe, expect, it, vi } from "vitest";
 
-import { migrateSchema, writeSchemaSettings } from "../db/schemaSettings";
-import { createHotUpdater } from "../index";
 import {
   builtInSettings,
   createEngineDatabase,
   migrateBuiltInSchema,
-} from "./builtInDatabase";
+} from "../db/builtInDatabase";
+import { migrateSchema, writeSchemaSettings } from "../db/schemaSettings";
+import { createHotUpdater } from "../index";
 import {
   checkSchemaFence,
   HotUpdaterSchemaMigrationRequiredError,

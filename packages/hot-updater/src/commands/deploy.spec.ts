@@ -1443,11 +1443,11 @@ describe("deploy rollout wiring", () => {
     });
     await mockGetBundlesWithFixtures([
       {
-        bundle: { id: fixtureBundleId(122) },
+        bundle: { id: fixtureBundleId(121) },
         release: { targetAppVersion: "1.0.x" },
       },
       {
-        bundle: { id: fixtureBundleId(121) },
+        bundle: { id: fixtureBundleId(122) },
         release: { targetAppVersion: "1.0.x" },
       },
     ]);
@@ -1532,7 +1532,7 @@ describe("deploy rollout wiring", () => {
     );
   });
 
-  it("does not create an automatic patch when a prerelease target shares no minor line with the base", async () => {
+  it("does not create an automatic patch when a prerelease target is outside the base range", async () => {
     mockCli.loadConfig.mockResolvedValue({
       build: async () => mockBuildPlugin,
       database: harnessDatabase,
@@ -1562,22 +1562,30 @@ describe("deploy rollout wiring", () => {
     expect(mockServer.createBundleDiff).not.toHaveBeenCalled();
   });
 
-  it("gets no automatic patch bases for a target spanning several minor lines", async () => {
+  it("creates automatic patches for a target spanning several minor lines", async () => {
     mockCli.loadConfig.mockResolvedValue({
       build: async () => mockBuildPlugin,
       database: harnessDatabase,
       fingerprint: {},
       patch: {
         enabled: true,
-        maxBaseBundles: 1,
+        maxBaseBundles: 2,
       },
       storage: mockStoragePlugin,
       updateStrategy: "appVersion",
     });
     await mockGetBundlesWithFixtures([
       {
+        bundle: { id: fixtureBundleId(120) },
+        release: { targetAppVersion: "2.0.0" },
+      },
+      {
+        bundle: { id: fixtureBundleId(121) },
+        release: { targetAppVersion: "*" },
+      },
+      {
         bundle: { id: fixtureBundleId(122) },
-        release: { targetAppVersion: "1.0.x" },
+        release: { targetAppVersion: "1.20.x" },
       },
     ]);
 
@@ -1589,10 +1597,10 @@ describe("deploy rollout wiring", () => {
       targetAppVersion: "1.x",
     });
 
-    expect(mockServer.createBundleDiff).not.toHaveBeenCalled();
-    expect(mockCli.p.outro).toHaveBeenCalledWith(
-      expect.stringContaining("Deployment successful"),
-    );
+    expect(mockServer.createBundleDiff).toHaveBeenCalledTimes(2);
+    expect(
+      mockServer.createBundleDiff.mock.calls.map(([ids]) => ids.baseBundleId),
+    ).toEqual([fixtureBundleId(122), fixtureBundleId(121)]);
   });
 
   it("finds automatic patch bases by fingerprint", async () => {

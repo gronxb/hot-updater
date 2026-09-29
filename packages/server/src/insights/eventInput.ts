@@ -1,4 +1,8 @@
-import { createUUIDv7, type BundleEventRow } from "@hot-updater/plugin-core";
+import {
+  createUUIDv7,
+  isUUIDv7,
+  type BundleEventRow,
+} from "@hot-updater/plugin-core";
 
 import type {
   CreateBundleEventRequest,
@@ -12,24 +16,6 @@ import {
 const MAX_EVENT_STRING_LENGTH = 1_024;
 const MAX_IDENTITY_LENGTH = 255;
 export const EVENT_BODY_MAX_BYTES = 16 * 1_024;
-
-const eventKeys = new Set([
-  "type",
-  "installId",
-  "toBundleId",
-  "userId",
-  "username",
-  "platform",
-  "appVersion",
-  "channel",
-  "cohort",
-  "fingerprintHash",
-  "fromBundleId",
-  "fromReleaseId",
-  "toReleaseId",
-  "updateStrategy",
-  "sdkVersion",
-]);
 
 function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -68,6 +54,21 @@ function requireIdentityField(
   const value = requireStringField(payload, key);
   if (value.length > MAX_IDENTITY_LENGTH) {
     throw new InsightsBadRequestError(`Invalid event field: ${key}`);
+  }
+  return value;
+}
+
+/**
+ * The report's idempotency key, when the client sends one: it creates the
+ * UUIDv7 once and repeats it on every retry of that report.
+ */
+function readEventId(
+  payload: Readonly<Record<string, unknown>>,
+): string | undefined {
+  const value = payload.eventId;
+  if (value === undefined) return undefined;
+  if (!isUUIDv7(value)) {
+    throw new InsightsBadRequestError("Invalid event field: eventId");
   }
   return value;
 }
@@ -113,17 +114,18 @@ async function parseJson(request: Request): Promise<unknown> {
 }
 
 function requireEvent(payload: unknown): CreateBundleEventRequest {
-  if (
-    !isRecord(payload) ||
-    Object.keys(payload).some((key) => !eventKeys.has(key))
-  ) {
+  // Fields this server does not know are ignored, not refused, so a report
+  // from a newer SDK that adds one still records on an older server.
+  if (!isRecord(payload)) {
     throw new InsightsBadRequestError("Invalid event payload");
   }
   const platform = requireStringField(payload, "platform");
   if (platform !== "ios" && platform !== "android") {
     throw new InsightsBadRequestError("Invalid event field: platform");
   }
+  const eventId = readEventId(payload);
   const base: CreateBundleEventRequestBase = {
+    ...(eventId === undefined ? {} : { eventId }),
     installId: requireIdentityField(payload, "installId"),
     toBundleId: requireStringField(payload, "toBundleId"),
     ...(payload.userId === undefined
@@ -192,7 +194,8 @@ export function createBundleEventRow(
     app_version: input.appVersion,
     channel: input.channel,
     from_release_id: input.fromReleaseId,
-    id: createUUIDv7(),
+    // The client's ID makes a retried report the same row, which records once.
+    id: input.eventId ?? createUUIDv7(),
     install_id: input.installId,
     platform: input.platform,
     received_at_ms: Date.now(),

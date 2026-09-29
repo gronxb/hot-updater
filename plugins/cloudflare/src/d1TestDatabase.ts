@@ -1,24 +1,14 @@
 import { DatabaseSync, type SqliteValue } from "node:sqlite";
 
-import {
-  builtInSchema,
-  builtInSettings,
-  createTableStatements,
-  WRITE_GUARD_TABLE,
-} from "@hot-updater/server/database";
-import { generateEngineSql } from "@hot-updater/server/db";
-
 import type { D1ResultLike } from "./d1Executor";
+import { d1SchemaStatements } from "./d1Schema";
 
-/** A migrated D1 database over `node:sqlite`, answering as D1 does. */
-export const createD1TestDatabase = () => {
+/** A D1 database over `node:sqlite`, answering as D1 does; migrated unless given other statements. */
+export const createD1TestDatabase = (
+  statements: readonly string[] = d1SchemaStatements(),
+) => {
   const db = new DatabaseSync(":memory:");
-  for (const sql of [
-    ...createTableStatements("sqlite", [WRITE_GUARD_TABLE]),
-    ...generateEngineSql("sqlite", builtInSchema, builtInSettings),
-  ]) {
-    db.exec(sql);
-  }
+  for (const sql of statements) db.exec(sql);
   const run = (sql: string, params: readonly unknown[]): D1ResultLike => {
     const statement = db.prepare(sql);
     const values = params as SqliteValue[];

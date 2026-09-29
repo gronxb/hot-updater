@@ -1,18 +1,13 @@
 import { PGlite } from "@electric-sql/pglite";
 import {
-  createTableStatements,
-  isMultiIndex,
+  builtInTarget,
   type PhysicalTable,
 } from "@hot-updater/server/database";
 import { setupDatabaseAdapterConformanceSuite } from "@hot-updater/test-utils";
 import { vi } from "vitest";
 
 import { supabaseDatabase } from "./supabaseDatabase";
-import {
-  SUPABASE_TABLE_PREFIX,
-  supabaseSchemaStatements,
-  supabaseTableNames,
-} from "./supabaseSchema";
+import { supabaseSchemaStatements } from "./supabaseSchema";
 
 const state = vi.hoisted(() => ({ db: undefined as PGlite | undefined }));
 
@@ -37,42 +32,19 @@ vi.mock("@supabase/supabase-js", () => ({
   }),
 }));
 
-/** The apply RPC's table list, as the generated function spells it. */
-const tableList = (names: readonly string[]) =>
-  `ARRAY[${names.map((name) => `'${name}'`).join(", ")}]`;
-
 /**
  * Supabase's migration with the conformance tables beside Hot Updater's:
  * under the prefix, with row-level security, and in the apply RPC's table
- * list, the one change to the generated function.
+ * list, as a migration for plugin tables adds them.
  */
-const migration = (tables: readonly PhysicalTable[]): string[] => {
-  const names = tables
-    .flatMap((table) => [
-      table.name,
-      ...table.indexes
-        .filter((index) => isMultiIndex(table, index))
-        .map((index) => `${table.name}__${index.name}`),
-    ])
-    .map((name) => SUPABASE_TABLE_PREFIX + name);
-  const builtIn = tableList(supabaseTableNames());
-  const statements = supabaseSchemaStatements();
-  const apply = statements.findIndex((statement) =>
-    statement.includes(builtIn),
-  );
-  if (apply === -1) {
-    throw new Error("The generated apply RPC's table list changed shape.");
-  }
-  statements[apply] = statements[apply]!.replace(
-    builtIn,
-    tableList([...supabaseTableNames(), ...names]),
-  );
-  return [
-    ...createTableStatements("postgresql", tables, SUPABASE_TABLE_PREFIX),
-    ...names.map((name) => `ALTER TABLE "${name}" ENABLE ROW LEVEL SECURITY`),
-    ...statements,
-  ];
-};
+const migration = (tables: readonly PhysicalTable[]): string[] =>
+  supabaseSchemaStatements({
+    schema: {
+      ...builtInTarget.schema,
+      tables: [...builtInTarget.schema.tables, ...tables],
+    },
+    settings: builtInTarget.settings,
+  });
 
 /**
  * The adapter `supabaseDatabase` returns, schema fence included: every read

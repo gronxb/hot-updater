@@ -71,11 +71,13 @@ capture the native R2 binding when constructing the plugin:
 ```typescript title="src/hotUpdater.ts"
 import { d1Database, r2Storage } from "@hot-updater/cloudflare/worker"; // [!code ++]
 import { createHotUpdater } from "@hot-updater/server";
+import { apiKeys } from "@hot-updater/server/plugins/api-keys";
+import { insights } from "@hot-updater/server/plugins/insights";
 import { env } from "cloudflare:workers";
 
 export const hotUpdater = createHotUpdater({
   database: d1Database(env.DB),
-  clientAccess: { type: "api-key" },
+  plugins: [insights(), apiKeys()],
   storage: [
     r2Storage({
       bucket: env.BUCKET, // [!code ++]

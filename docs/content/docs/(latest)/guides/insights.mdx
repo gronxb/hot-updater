@@ -11,6 +11,33 @@ update, completed downloads waiting to apply, successful applications, and recov
 [verifying your first OTA](/docs/get-started/test-ota) and while operating a
 rollout.
 
+## Turn on the server plugin
+
+The server records reports through the `insights()`
+[server plugin](/docs/custom/server-plugins). The managed AWS, Cloudflare,
+Firebase, and Supabase servers run it. A custom server lists it in
+`createHotUpdater`:
+
+```ts title="src/hotUpdater.ts (excerpt)"
+import { createHotUpdater } from "@hot-updater/server";
+import { apiKeys } from "@hot-updater/server/plugins/api-keys";
+import { insights } from "@hot-updater/server/plugins/insights";
+
+export const hotUpdater = createHotUpdater({
+  database,
+  plugins: [insights(), apiKeys()], // [!code ++]
+});
+```
+
+`insights()` accepts `POST /events` on the client handler and serves the
+Insights queries on the admin handler. Its tables are part of the schema that
+`hot-updater db migrate` and each provider's migration create, whichever
+plugins the server runs. Without `insights()`, those routes answer `204` with
+`x-hot-updater-insights: disabled` and the app's reports are not stored. The
+server logs one warning, on the first report it drops, that names `insights()`.
+To run without Insights on purpose, also set `insights: false` in
+`HotUpdater.init`, so apps stop sending reports.
+
 ## Configure reporting
 
 [`HotUpdater.init`](/docs/react-native-api/init) enables Insights by default.
@@ -39,12 +66,25 @@ reporting without
 starting an update check; use [custom update flows](/docs/guides/custom-update)
 to check, download, and apply updates at your chosen time. Use one configuration
 API per app. If your custom server intentionally uses
-`clientAccess: { type: "public" }`, omit the
+`clientAccess: "public"` instead of `apiKeys()`, omit the
 client-key header. See [API key authentication](/docs/custom/api-key-authentication).
 
 Set `insights: false` in your `init` or `wrap` options to disable client reporting.
-Native app-ready handling and crash recovery still run, and server Insights
-routes remain available. This setting does not delete reports already stored.
+Native app-ready handling and crash recovery still run, and the server's
+Insights routes are unchanged. This setting does not delete reports already
+stored.
+
+Debug builds, where `__DEV__` is `true`, send no reports by default, so
+development sessions do not mix into production Insights. To test reporting
+from a debug build, opt in; in a release build, `{ debug: true }` behaves like
+`true`:
+
+```tsx
+HotUpdater.init({
+  baseURL: "<your-update-server-url>",
+  insights: { debug: true }, // [!code ++]
+});
+```
 
 The client reports these outcomes:
 
@@ -55,14 +95,44 @@ The client reports these outcomes:
 | `UPDATE_APPLIED` | Native app-ready state reports that an OTA transition became active. |
 | `RECOVERED` | Native app-ready state reports recovery from a failed update. |
 
-Automatic startup reporting is attempted once per JavaScript runtime. The automatic `wrap` flow defers `UNCHANGED` until its update check finds no update. A successful download reports `UPDATE_DOWNLOADED` instead. Custom flows using `init` may report `UNCHANGED` at startup followed by a download later. Repeated reports of the same pending selection are deduplicated within the runtime. Selecting a different pending bundle and then returning to an earlier one reports both changes. Reporting
-is best effort: a network failure produces a warning and does not block app
-startup or trigger rollback. `onNotifyAppReady` receives local native state;
-it is not confirmation that the server received an event.
+Automatic startup reporting sends one report per JavaScript runtime. The automatic `wrap` flow defers `UNCHANGED` until its update check finds no update. A successful download reports `UPDATE_DOWNLOADED` instead. Custom flows using `init` may report `UNCHANGED` at startup followed by a download later. Repeated reports of the same pending selection are deduplicated within the runtime. Selecting a different pending bundle and then returning to an earlier one reports both changes.
+
+Reporting is best effort and does not trigger rollback. A report that fails
+with a network error, a timeout, `429`, or a `5xx` is retried in the
+background, so a retry never delays app startup or an update: up to three
+attempts in all, about 1 second and then 2 seconds apart, or after the
+server's `Retry-After` (at most 30 seconds). Each attempt has its own
+`requestTimeout`, and every attempt carries the same client `eventId`, a
+UUIDv7, so the server counts a retried report once. A report refused with
+another status, such as `400`, is not retried. Reports leave one at a time in
+the order the app made them, so a retry never lands after a later report. The
+SDK logs a warning when it drops a report. Retries live in memory: a report
+still pending when the app closes or reloads is lost. `onNotifyAppReady`
+receives local native state; it is not confirmation that the server received
+an event.
 
 The overview keeps all status totals above the tabs; switching tabs changes the chart. **Downloaded** is one state: the bundle has downloaded and is waiting to apply. Its count and trend follow the latest reported waiting state. **Active** uses the running Release ID, so downloading a bundle does not increase its Active count. Applying, recovering, or a newer no-change report clears the pending snapshot. Historical `UNCHANGED` events cannot tell whether a download completed with an older SDK; they are not backfilled.
 
 ![Completed downloads and the remaining pending installation](/docs/console/insights-download-pending.png)
+
+## How the server accepts reports
+
+`POST /events` takes one report as a JSON body of at most 16 KB. Fields the
+server does not know are ignored, so a report from a newer SDK still records on
+an older server; a known field with an invalid value is refused.
+
+A report can carry an `eventId`: a lowercase UUIDv7 that the client creates
+once for the report and sends again with every retry. The server stores the
+report under that ID, so a retried report counts once, and a report under an
+ID the server already stored changes nothing. Without an `eventId`, the server
+creates the ID, and a retry counts as another report.
+
+| Status | Meaning |
+| --- | --- |
+| `204` | Recorded, or already recorded under the same `eventId` |
+| `400` | A missing or invalid field, including an `eventId` that is not a UUIDv7 |
+| `413` | The body is larger than 16 KB |
+| `503` | The database is busy; send the report again after the `Retry-After` seconds |
 
 ## Identify an installation
 
@@ -99,7 +169,9 @@ in [Security](/docs/policy/security).
 ## Verify reporting
 
 1. Launch a native build configured with the SDK, reachable client handler,
-   and valid client key. Copy its `getInstallId()` value.
+   and valid client key. Use a release build, or set
+   `insights: { debug: true }` in a debug build. Copy its `getInstallId()`
+   value.
 2. Open the Console's **Insights → All events** and find that installation.
    Confirm the report's app version, channel, and platform. An `UNCHANGED`
    report is enough to verify startup reporting before the first OTA.
@@ -114,17 +186,28 @@ reflect a staged selection before its code is running. A selected ID alone is
 not an applied-update check. Combine the running app's visible change with the
 app-ready outcome and the server's received report.
 
-If an expected report is absent, check that reporting is enabled, the app
-reached readiness, and the handler URL and client header match the deployed
-server. Inspect app logs for Insights warnings. Server availability and
-filters affect what the Console can show; a missing report does not prove
-that the update failed.
+If an expected report is absent, check that reporting is enabled (a debug
+build also needs `insights: { debug: true }`), the app reached readiness, the
+server runs `insights()`, and the handler URL and client header match the
+deployed server. Inspect app logs for Insights warnings.
+Server availability and filters affect what the Console can show; a missing
+report does not prove that the update failed.
 
 ## Read the Console
 
-Use [the local or deployed Console](/docs/guides/console). Insights views need a
-direct database plugin; `standaloneRepository` does not currently proxy the
-Insights models.
+Use [the local or deployed Console](/docs/guides/console). Where it reads
+Insights depends on its database configuration:
+
+- With a direct database, it runs `insights()` over that database, as the
+  server does. `hot-updater console` loads the plugins that the project's
+  `hotUpdater.plugins.ts` exports as `plugins`; `hot-updater init` writes that
+  file for managed providers. A deployed Console takes `plugins` in its
+  [configuration](/docs/guides/console-deployment#add-your-plugins). Without
+  `insights()` there, the Insights pages show that Insights is off.
+- With `standaloneRepository`, it reads the Insights overview, events, and
+  installations from the server's admin handler, and shows that Insights is
+  off when the server runs without `insights()`. App usage and bundle activity
+  need a direct database configuration.
 
 The Bundles list shows compact **Active**, **Downloaded**, and **Recovered** counts over the last
 30 days. Bundle Detail keeps these counts and a small activity graph above
@@ -166,11 +249,20 @@ within that period, so moving to a new bundle reduces the old bundle’s count.
 Select **Recovered** to compare installations recovered from each bundle per
 interval. Highlighting an ID keeps the other lines visible.
 
-Open **All events** on the activity card to browse reports from newest to oldest,
-20 per page.
+Open **All events** on the activity card to browse the last 90 days of reports
+from newest to oldest, 20 per page; paging stops at the start of that range.
+Like other analytics tools, event lists show raw reports only inside a time
+range of at most 90 days: the admin `GET /events` route takes `sinceMs` and
+`beforeReceivedAtMs`, lists the 90 days before `beforeReceivedAtMs` (by
+default, now) when `sinceMs` is left out, and answers `400` for a longer
+range. The server also counts reports per day, so a list skips quiet days
+instead of reading each one.
 
 These counts reflect received reports, not the full installed population.
-Reports without a known bundle ID are excluded from the per-ID chart. History
-reads are capped at 50,000 events for each reporting period. Partial
-history is labeled in the UI; the active-user total is shown as a lower bound
-with **≥**, and unavailable usage intervals are shown as gaps.
+Reports without a known bundle ID are excluded from the per-ID chart. Every
+period ends with the current UTC hour, so a report counts as soon as the server
+records it, and a chart's last interval is still filling. The Console reads
+hourly and daily totals that the server updates as it records each report; it
+does not scan raw events. DAU, WAU, MAU, active users per interval, and unique
+users are estimates from HyperLogLog sketches, typically within about 3%, and
+show with **≈**. Report and launch counts and distributions are exact.

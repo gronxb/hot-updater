@@ -79,4 +79,29 @@ describe("InstallationHistoryCard", () => {
 
     expect(screen.getByText("No bundle changes recorded yet.")).toBeDefined();
   });
+
+  it("says an empty page after a full one has no older bundle changes", () => {
+    render(
+      <InstallationHistoryCard
+        error={null}
+        history={{ data: [], nextCursor: null }}
+        isLoading={false}
+        onNext={vi.fn()}
+        onPrevious={vi.fn()}
+        pageNumber={2}
+        selectedEvent={event}
+        selectedInstallId="install-1"
+      />,
+    );
+
+    expect(screen.getByText("No older bundle changes.")).toBeDefined();
+    expect(
+      (screen.getByRole("button", { name: "Previous" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(false);
+    expect(
+      (screen.getByRole("button", { name: "Next" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
+  });
 });

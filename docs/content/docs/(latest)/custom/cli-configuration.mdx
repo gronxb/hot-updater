@@ -76,9 +76,20 @@ the hierarchical `protocol://bucket/encoded/slash/key` storage URIs correctly.
 these values in the CLI's environment; the mobile app connects to the client
 root with its own API key.
 
-See the [Standalone Repository reference](/docs/database-plugins/standalone#configuration)
-for all options, alternate authentication headers and custom Bundle route
-mapping. Release, Release Catalog, commit and Channel paths are fixed.
+`standaloneRepository` takes only these two options. Its routes are the
+server's admin API, so they cannot be remapped. See the
+[Standalone Repository reference](/docs/database-plugins/standalone#configuration)
+for alternate authentication headers.
+
+## Server plugins
+
+With `standaloneRepository`, the [server plugins](/docs/custom/server-plugins)
+run only on the server. The Console reads the server's Insights overview,
+events, and installations from its admin handler; App usage, bundle activity,
+and API key management need a direct database configuration. To manage API
+keys, run `hot-updater api-key` in the server project with the file that
+creates `hotUpdater`, as in
+[Manage API keys](/docs/custom/api-key-authentication#manage-api-keys).
 
 ## API endpoints
 
@@ -97,7 +108,11 @@ npx hot-updater bundle list
 
 A successful list, including an empty list for a new installation, verifies
 the configured admin URL and credentials. A `401` means the CLI header and
-server middleware do not agree. It does not verify the mobile client path.
+server middleware do not agree. A `503` means the server's database is not
+ready; if it needs migrations, run `hot-updater db migrate` where the server's
+database is configured. A message to upgrade `@hot-updater/server` means the
+server does not speak the admin API protocol this CLI needs. A successful list
+does not verify the mobile client path.
 
 Then [set up your app](/docs/get-started/app-setup) with the client URL and API
 key, and [test an OTA update](/docs/get-started/test-ota) in a release build.

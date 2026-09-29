@@ -1,6 +1,6 @@
 ---
 title: "Supabase Database"
-description: Store your Hot Updater bundle metadata in Supabase PostgreSQL database.
+description: Run Hot Updater's database on Supabase PostgreSQL.
 icon: supabase
 ---
 
@@ -14,12 +14,59 @@ npm install @hot-updater/supabase --save-dev
 
 Set up the backend with an [AI agent or the interactive
 CLI](/docs/managed/supabase#step-2-configure-supabase), then use the
-configuration below.
+configuration below. Managed setup applies the migration for you.
 
-The settings below connect to an initialized database; they do not create
-its tables or RPC functions. Complete provider setup first, or apply the
-SQL migrations from the installed `@hot-updater/supabase` package's
-`supabase/migrations` directory to the selected project before using the plugin.
+The settings below connect to an initialized database; they do not create its
+tables or RPC function, and `hot-updater db migrate` does not run for
+Supabase. To prepare a project yourself, copy
+`20260818000000_hot-updater_1.0.0.sql` from the installed
+`@hot-updater/supabase` package's `supabase/migrations` directory into your
+project's `supabase/migrations` directory, then apply it with the Supabase CLI
+linked to that project:
+
+```bash
+npx supabase db push
+```
+
+The migration creates Hot Updater's tables under the `hot_updater_v1_` prefix,
+with row-level security on every table, the write guard table, and the
+`hot_updater_v1_apply` function, then writes the schema settings rows last.
+
+An Edge Function that runs
+[third-party plugins](/docs/custom/server-plugins#create-the-plugins-tables)
+also needs their tables, and the apply function must be allowed to reach them.
+`hot-updater db generate` writes a migration that does both to
+`supabase/migrations/<timestamp>_hot-updater.sql`; apply it with
+`npx supabase db push`. It reads a Node module that passes the function's
+`plugins` to `createHotUpdater` with `supabaseDatabase` from
+`@hot-updater/supabase`.
+
+## Schema settings
+
+Before its first read or write, the database checks the settings rows
+`schema.engine`, `schema.core`, `schema.insights` and `schema.apiKeys` in one
+batch read. While one is missing or different, or PostgREST cannot find the
+apply function, it throws `HotUpdaterSchemaMigrationRequiredError`, and the
+server's handlers answer 503. A running server checks again on its next
+request, so it recovers once the migration has run.
+
+`hot-updater init` stops when the project already holds an incompatible Hot
+Updater schema. To replace a database that a 1.0 release candidate created,
+follow the [upgrade guide](/docs/guides/upgrade-to-v1).
+
+## How the database is reached
+
+`supabaseDatabase(config)` returns an engine database, `{ name, adapter }`,
+which `defineConfig` and `createHotUpdater` both accept. Its adapter is Hot
+Updater's shared SQL core for PostgreSQL, behind the schema settings check.
+
+Every read and write calls one function with the service role key:
+`hot_updater_v1_apply(p_statements jsonb)`. It runs the SQL core's statements
+in the caller's transaction, so a write, sent as one call, commits
+atomically. The function runs as `SECURITY INVOKER` with a fixed
+`search_path`, and only `service_role` may execute it. It accepts only the SQL
+core's statement shapes on Hot Updater's tables, and every value arrives in
+its `jsonb` parameter, never in the SQL text.
 
 ## Configuration
 
@@ -53,6 +100,8 @@ runtime boundary explicit:
 
 ```typescript title="src/hotUpdater.ts"
 import { createHotUpdater } from "@hot-updater/server";
+import { apiKeys } from "@hot-updater/server/plugins/api-keys";
+import { insights } from "@hot-updater/server/plugins/insights";
 import { supabaseDatabase } from "@hot-updater/supabase/edge"; // [!code ++]
 
 export const hotUpdater = createHotUpdater({
@@ -60,10 +109,14 @@ export const hotUpdater = createHotUpdater({
     supabaseUrl: Deno.env.get("SUPABASE_URL")!, // [!code ++]
     supabaseServiceRoleKey: Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, // [!code ++]
   }), // [!code ++]
-  clientAccess: { type: "api-key" },
+  plugins: [insights(), apiKeys()],
   // ... other options
 });
 ```
+
+`insights()` records app events, and `apiKeys()` protects client routes with
+the `x-api-key` header. The managed Edge Function runs the same list, which
+`@hot-updater/supabase/edge` exports as `plugins`.
 
 ## Complete example
 

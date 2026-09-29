@@ -1,6 +1,7 @@
 // @vitest-environment node
 import type { InsightsModel } from "@hot-updater/plugin-core";
-import { describe, expect, it, vi } from "vitest";
+import { createInsightsProvider } from "@hot-updater/server";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { getAppUsageReport } from "./insightsUsage";
 
@@ -21,6 +22,10 @@ const aggregate = {
   ],
   measuredAtMs: 100,
 };
+
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 describe("App usage aggregate query", () => {
   it("preserves filters and requests the configured interval without raw events", async () => {
@@ -62,20 +67,33 @@ describe("App usage aggregate query", () => {
     expect(report.truncated).toBe(false);
   });
 
-  it("does not widen usage beyond the current completed hour", async () => {
+  it("ends with the current hour, where the reporting overview ends", async () => {
+    const now = 48 * 3_600_000 + 15 * 60_000;
+    vi.useFakeTimers({ now });
     const getAppUsage = vi.fn(async () => aggregate);
-    await getAppUsageReport(
+    const report = await getAppUsageReport(
       { getAppUsage } as unknown as InsightsModel,
-      { platform: "all", channel: "production", window: "24h" },
-      48 * 3_600_000 + 15 * 60_000,
+      { platform: "ios", channel: "production", window: "24h" },
+      now,
     );
     expect(getAppUsage).toHaveBeenCalledWith(
       expect.objectContaining({
         timeRange: {
-          start: 24 * 3_600_000,
-          end: 48 * 3_600_000,
+          start: 25 * 3_600_000,
+          end: 49 * 3_600_000,
         },
       }),
     );
+    const overview = await createInsightsProvider({
+      countLatestEvents: async () => 0,
+    } as unknown as InsightsModel).getReportingOverview({
+      platform: "ios",
+      channel: "production",
+      window: "24h",
+    });
+    expect(report).toMatchObject({
+      sinceMs: overview.sinceMs,
+      beforeReceivedAtMs: overview.beforeReceivedAtMs,
+    });
   });
 });

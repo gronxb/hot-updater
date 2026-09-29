@@ -109,8 +109,8 @@ export interface ReadBudgetServer {
   readonly plugins: readonly unknown[];
   /** `targetBaseCandidateKey` from `@hot-updater/server/db`. */
   targetBaseCandidateKey(target: {
-    readonly channelId: string;
-    readonly platform: string;
+    readonly channel: string;
+    readonly platform: "ios" | "android";
     readonly fingerprintHash: string | null;
     readonly appVersion: string | null;
   }): string | null;
@@ -297,7 +297,7 @@ const seed = async (database: ReadBudgetDatabase, server: ReadBudgetServer) => {
     nightlyId: (await channel("nightly")).id,
     /** The auto-patch base key of a new production iOS 1.0.0 bundle. */
     candidateKey: server.targetBaseCandidateKey({
-      channelId: productionId,
+      channel: "production",
       platform: "ios",
       fingerprintHash: null,
       appVersion: "1.0.0",
@@ -421,11 +421,11 @@ const READ_BUDGETS: readonly ReadBudget[] = [
     returned: (releases) => releases.length,
   }),
   budget({
-    api: "deploy base candidates: at most maxBaseBundles rows",
+    api: "deploy base candidates: 1 catalog point read",
     read: ({ core, candidateKey }) =>
       core.findBaseBundleIds(candidateKey, createBundleFixture("107").id, 2),
-    adapter: reads(0, 0, 1, 2),
-    engine: { calls: 1, rows: 2 },
+    adapter: reads(1, 1, 0, 0),
+    engine: { calls: 1, rows: 1 },
     check: (ids) =>
       expect(ids).toEqual(
         ["106", "105"].map((suffix) => createBundleFixture(suffix).id),
@@ -445,8 +445,24 @@ const READ_BUDGETS: readonly ReadBudget[] = [
     returned: (channel) => (channel === null ? 0 : 1),
   }),
   budget({
-    api: "list events: limit rows, and one zero-row query per empty day",
-    // Day 2 holds event 25, day 1 nothing, day 0 the other four.
+    api: "list events of a dense day: limit rows from one query",
+    // The history day holds 72 events: the page reads 5 of them, and no hint.
+    read: ({ insights }) =>
+      insights.listEvents({
+        filter: { kind: "all" },
+        sinceMs: T0 - DAY,
+        beforeReceivedAtMs: T0,
+        limit: 5,
+      }),
+    adapter: reads(0, 0, 1, 5),
+    engine: { calls: 1, rows: 5 },
+    returned: (events) => events.length,
+  }),
+  budget({
+    api: "list events across a gap: limit rows, one empty day, and one outcome row",
+    // Day 2 holds event 25 and day 1 nothing, so one outcome row, hour 4 of
+    // day 0, names the day below it: a query for its newest shard row and a
+    // batch get of the 7 others. Day 0 then holds the other four.
     read: ({ insights }) =>
       insights.listEvents({
         filter: bundleEvents,
@@ -454,8 +470,24 @@ const READ_BUDGETS: readonly ReadBudget[] = [
         beforeReceivedAtMs: T0 + 3 * DAY,
         limit: 5,
       }),
-    adapter: reads(0, 0, 3, 5),
-    engine: { calls: 3, rows: 5 },
+    adapter: reads(1, 7, 4, 6),
+    engine: { calls: 4, rows: 6 },
+    // The events, and the outcome row that named day 0.
+    returned: (events) => events.length + 1,
+  }),
+  budget({
+    api: "list events over an empty range: its top day and one outcome read, both empty",
+    // The 90 days before the history day hold nothing: the top day reads
+    // empty, and the per-day event count finds no day below it.
+    read: ({ insights }) =>
+      insights.listEvents({
+        filter: { kind: "all" },
+        sinceMs: T0 - 91 * DAY,
+        beforeReceivedAtMs: T0 - DAY,
+        limit: 5,
+      }),
+    adapter: reads(0, 0, 2, 0),
+    engine: { calls: 2, rows: 0 },
     returned: (events) => events.length,
   }),
   budget({
@@ -566,11 +598,11 @@ const READ_BUDGETS: readonly ReadBudget[] = [
   budget({
     api: "catalog compile: the scope's enabled releases, all used",
     // A deploy reads the channel, the scope's catalog (once, then as the root
-    // of each range), its 4 enabled releases, its latest release, and the new
-    // bundle's base-candidate row; with copies, it reads those 5 releases whole.
+    // of each range), its 4 enabled releases, and its latest release; with
+    // copies, it reads those 5 releases whole.
     read: ({ core }) =>
       core.deploy([{ bundle: bundleOf("107"), release: production }]),
-    adapter: (copies) => reads(copies ? 6 : 4, copies ? 9 : 4, 3, 6),
+    adapter: (copies) => reads(copies ? 5 : 3, copies ? 8 : 3, 3, 6),
     engine: { calls: 6, rows: 9 },
     writes: 1,
   }),
@@ -594,12 +626,13 @@ const READ_BUDGETS: readonly ReadBudget[] = [
     // The event and install 2's head; then a batch get per aggregate: the
     // event's 11 sketch rows (its release hour, channel hour and day, and 4
     // usage identities by hour and day), and the old and new heads' gauge
-    // rows, 2 of the distribution and 4 by bundle.
+    // rows: 2 of the distribution, 4 by bundle, and 2 of their (from, to)
+    // pairs.
     read: ({ insights }) =>
       insights.recordEvent(
         eventOf(26, { install_id: "install-2", received_at_ms: T0 + 3 * HOUR }),
       ),
-    adapter: reads(5, 19, 0, 0),
+    adapter: reads(5, 21, 0, 0),
     engine: { calls: 2, rows: 1 },
     writes: 1,
   }),

@@ -102,7 +102,15 @@ export interface HotUpdaterCoreApi {
     baseBundleId: string,
     input: KeysetInput,
   ): Promise<BundlePatchRow[]>;
-  /** Auto-patch bases for a new bundle: the newest older bundles sharing its candidate key. */
+  /** Each base bundle's child count, from its reference counter: one batch read of the bundle rows. */
+  countBundleChildren(
+    baseBundleIds: readonly string[],
+  ): Promise<Record<string, number>>;
+  /**
+   * Auto-patch bases for a new bundle, from its candidate key's catalog
+   * scope: older bundles whose enabled releases serve the key's fingerprint,
+   * or a range intersecting its app version range; newest release first.
+   */
   findBaseBundleIds(
     candidateKey: string,
     bundleId: string,

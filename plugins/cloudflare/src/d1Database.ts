@@ -1,5 +1,9 @@
-import type { EngineDatabase } from "@hot-updater/plugin-core";
-import type { SqlStatement } from "@hot-updater/server/database";
+import {
+  builtInSettings,
+  builtInTarget,
+  type SqlStatement,
+} from "@hot-updater/server/database";
+import type { SchemaGenerator, ToolingDatabase } from "@hot-updater/server/db";
 import Cloudflare from "cloudflare";
 
 import {
@@ -8,6 +12,7 @@ import {
   type D1ResultLike,
   toSqlResult,
 } from "./d1Executor";
+import { d1SchemaSql } from "./d1Schema";
 
 export { D1ExecutionError } from "./d1Executor";
 
@@ -24,8 +29,13 @@ const encode = ({ sql, params }: SqlStatement) => ({
   params: params.map((value) => JSON.stringify(value ?? null)),
 });
 
-/** Hot Updater's database on D1 through the Cloudflare REST API, for the CLI and console. */
-export const d1Database = (config: D1DatabaseConfig): EngineDatabase => {
+/**
+ * Hot Updater's database on D1 through the Cloudflare REST API, for the CLI
+ * and console. `hot-updater db generate` writes a D1 migration of the built-in
+ * tables and the server's plugin tables to `migrations`, and
+ * `hot-updater db migrate` applies them through the API.
+ */
+export const d1Database = (config: D1DatabaseConfig): ToolingDatabase => {
   const cloudflare = new Cloudflare({
     apiToken: config.cloudflareApiToken,
   });
@@ -50,8 +60,24 @@ export const d1Database = (config: D1DatabaseConfig): EngineDatabase => {
     if (results.length !== statements.length) throw new D1ExecutionError();
     return results;
   };
-  return createD1Database({
-    query: async (statement) => (await execute([statement]))[0]!,
-    batch: execute,
-  });
+  return {
+    ...createD1Database({
+      query: async (statement) => (await execute([statement]))[0]!,
+      batch: execute,
+    }),
+    generateSchema: ((version, _name, target = builtInTarget) => {
+      if (version !== "latest" && version !== builtInSettings["schema.core"]) {
+        throw new Error(`Invalid version ${version}`);
+      }
+      // Wrangler applies migrations in the order of their leading numbers.
+      const timestamp = new Date()
+        .toISOString()
+        .replace(/\D/g, "")
+        .slice(0, 14);
+      return {
+        code: d1SchemaSql(target),
+        path: `migrations/${timestamp}_hot-updater.sql`,
+      };
+    }) satisfies SchemaGenerator,
+  };
 };

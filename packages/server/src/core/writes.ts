@@ -5,12 +5,10 @@ import type {
   ChannelDeleteResult,
   ChannelInsertResult,
   ChannelRow,
-  ReleaseRow,
 } from "@hot-updater/plugin-core";
 
 import type { HotUpdaterTransaction, TableRow } from "../database/database";
 import { DatabaseConstraintError } from "../database/errors";
-import { releaseBaseCandidateKeys } from "./baseCandidates";
 import { toChannelRow, type CoreDatabase } from "./reads";
 import type { CoreSchema } from "./schema";
 
@@ -115,34 +113,6 @@ export const replaceBundlePatches = async (
     cursor = page.next;
   }
   for (const row of wanted.values()) tx.create("bundle_patches", row);
-};
-
-/** Moves a release's `base_candidates` gauges from its old keys to its new ones. */
-export const moveBaseCandidates = (
-  tx: CoreTransaction,
-  before: ReleaseRow | null,
-  after: ReleaseRow | null,
-): void => {
-  const deltas = new Map<string, number>();
-  for (const [row, delta] of [
-    [before, -1],
-    [after, 1],
-  ] as const) {
-    if (row === null) continue;
-    for (const key of releaseBaseCandidateKeys(row)) {
-      const id = JSON.stringify([key, row.bundle_id]);
-      deltas.set(id, (deltas.get(id) ?? 0) + delta);
-    }
-  }
-  for (const [id, delta] of deltas) {
-    if (delta === 0) continue;
-    const [candidateKey, bundleId] = JSON.parse(id) as [string, string];
-    tx.aggregate(
-      "base_candidates",
-      { candidate_key: candidateKey, bundle_id: bundleId },
-      { releases: delta },
-    );
-  }
 };
 
 /** A channel by name, created when missing; a concurrent creator's row is returned instead. */

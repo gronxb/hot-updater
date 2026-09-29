@@ -184,6 +184,26 @@ describe("public Insights validation", () => {
     ).rejects.toMatchObject({ code: "invalid-result" });
   });
 
+  it("passes bundle predicates on both fields that share a type to the model", async () => {
+    const countLatestEvents = vi.fn(async () => 1);
+    const model = createModel({ countLatestEvents });
+    const input = {
+      platform: "ios",
+      channel: "production",
+      sinceMs: 0,
+      bundle: [
+        { field: "from_bundle_id", value: "A", types: ["UPDATE_DOWNLOADED"] },
+        {
+          field: "to_bundle_id",
+          value: "B",
+          types: ["UPDATE_APPLIED", "UPDATE_DOWNLOADED"],
+        },
+      ],
+    } as const;
+    await expect(model.countLatestEvents(input)).resolves.toBe(1);
+    expect(countLatestEvents).toHaveBeenCalledWith(input);
+  });
+
   it("propagates native failures and rejects invalid scalar counts", async () => {
     const failure = new Error("native query failed");
     const countInput = {

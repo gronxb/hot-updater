@@ -9,7 +9,8 @@ import {
   HotUpdaterConfigError,
 } from "./assembly/assemblePlugins";
 import type { CoreApi } from "./core/api";
-import type { ToolingDatabase } from "./db/types";
+import { toolingTargetOf } from "./db/builtInDatabase";
+import type { ToolingDatabase, ToolingTarget } from "./db/types";
 import {
   type ClientRoutePolicy,
   createHotUpdaterHandlers,
@@ -140,6 +141,10 @@ const databaseOf = (value: unknown): ToolingDatabase => {
   );
 };
 
+/** A release candidate's config moving to 1.0 also needs `insights()`. */
+const KEEP_INSIGHTS =
+  "To keep Insights, which the release candidates ran by default, add insights() from @hot-updater/server/plugins/insights to plugins.";
+
 /** `"public"`, or nothing; a `clientAccess` object names what replaced it. */
 const isPublic = (value: unknown): boolean => {
   if (value === undefined) return false;
@@ -148,8 +153,8 @@ const isPublic = (value: unknown): boolean => {
     const type = value.type;
     throw new HotUpdaterConfigError(
       type === "api-key"
-        ? `clientAccess: { type: "api-key" } was removed in 1.0. Remove it and add apiKeys(${value.headerName === undefined ? "" : `{ headerName: ${JSON.stringify(value.headerName)} }`}) from @hot-updater/server/plugins/api-keys to plugins, which protects client routes the same way.`
-        : `clientAccess objects were removed in 1.0. Use clientAccess: "public", or add apiKeys() from @hot-updater/server/plugins/api-keys to plugins.`,
+        ? `clientAccess: { type: "api-key" } was removed in 1.0. Remove it and add apiKeys(${value.headerName === undefined ? "" : `{ headerName: ${JSON.stringify(value.headerName)} }`}) from @hot-updater/server/plugins/api-keys to plugins, which protects client routes the same way. ${KEEP_INSIGHTS}`
+        : `clientAccess objects were removed in 1.0. Use clientAccess: "public", or add apiKeys() from @hot-updater/server/plugins/api-keys to plugins. ${KEEP_INSIGHTS}`,
     );
   }
   throw new HotUpdaterConfigError(
@@ -164,6 +169,8 @@ export const hotUpdaterCoreMetadata = Symbol.for(
 export type HotUpdaterCoreMetadata = {
   /** The configured database, with the tooling `hot-updater db` runs. */
   readonly database: ToolingDatabase;
+  /** The tables and settings rows that tooling creates for this server's plugins. */
+  readonly target: ToolingTarget;
 };
 
 export function getHotUpdaterCoreMetadata(
@@ -200,6 +207,9 @@ export function createHotUpdater<
   );
   const plugins = assemblePlugins(options.plugins ?? [], database.adapter, {
     storage: { readStorageText, resolveFileUrl },
+    ...(database.onCachedRoutesChange === undefined
+      ? {}
+      : { onCachedRoutesChange: () => database.onCachedRoutesChange!() }),
   });
   const clientAuth = plugins.clientAuth;
   if (clientAuth !== undefined && publicClients) {
@@ -236,7 +246,10 @@ export function createHotUpdater<
   };
   Object.defineProperty(api, hotUpdaterCoreMetadata, {
     enumerable: false,
-    value: { database } satisfies HotUpdaterCoreMetadata,
+    value: {
+      database,
+      target: toolingTargetOf(options.plugins ?? []),
+    } satisfies HotUpdaterCoreMetadata,
   });
   return api;
 }

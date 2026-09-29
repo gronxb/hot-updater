@@ -5,7 +5,9 @@ retries, at most 10% retried"). The gate is `plugins/aws/src/dynamoDB.contention
 rollout, where each event moves one installation from release A to release B on one channel, through the
 Insights plugin, the engine, D7's key-value helper, and the DynamoDB store, on `amazon/dynamodb-local`.
 It seeds 3,000 installations onto A, then moves them to B at 100 per second over 16 writers, with 5 ms added
-to every adapter call. Every run committed all 3,000 moves with no exhausted retries.
+to every adapter call. Every run committed all 3,000 moves with no exhausted retries. The 100 per second is
+the rate the gate offers, not a measured limit, and the retried shares below describe DynamoDB Local on the
+hosts named here, not a DynamoDB table in production.
 
 | Gauge shards | Sketch shards | Retried moves, one run each |
 |---|---|---|

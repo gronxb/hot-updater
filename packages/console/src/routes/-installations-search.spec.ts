@@ -3,11 +3,12 @@ import { describe, expect, it } from "vitest";
 import { validateInstallationsSearch } from "./-installations-search";
 
 describe("validateInstallationsSearch", () => {
-  it("preserves opaque cursors and stable event cutoffs", () => {
+  it("preserves opaque cursors, stable event cutoffs, and the event range", () => {
     expect(
       validateInstallationsSearch({
         eventsBefore: 100,
         eventsCursor: "events-2",
+        eventsRange: "30d",
         historyBefore: 200,
         historyCursor: "history-2",
         installId: "install-1",
@@ -17,6 +18,7 @@ describe("validateInstallationsSearch", () => {
     ).toEqual({
       eventsBefore: 100,
       eventsCursor: "events-2",
+      eventsRange: "30d",
       historyBefore: 200,
       historyCursor: "history-2",
       installId: "install-1",
@@ -30,6 +32,7 @@ describe("validateInstallationsSearch", () => {
       validateInstallationsSearch({
         eventsBefore: -1,
         eventsCursor: "",
+        eventsRange: "1y",
         historyBefore: 1.5,
         historyCursor: 2,
         searchCursor: false,
@@ -37,6 +40,7 @@ describe("validateInstallationsSearch", () => {
     ).toEqual({
       eventsBefore: undefined,
       eventsCursor: undefined,
+      eventsRange: undefined,
       historyBefore: undefined,
       historyCursor: undefined,
       installId: undefined,
@@ -55,6 +59,7 @@ describe("validateInstallationsSearch", () => {
     ).toEqual({
       eventsBefore: undefined,
       eventsCursor: undefined,
+      eventsRange: undefined,
       historyBefore: undefined,
       historyCursor: undefined,
       installId: undefined,

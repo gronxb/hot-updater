@@ -11,7 +11,11 @@ import type {
   RouteHandler,
 } from "./handlerTypes";
 import { createVersionRouteHandlers } from "./handlerVersionRoutes";
-import { INSIGHTS_ROUTES, insightsDisabled } from "./insights/routes";
+import {
+  createDroppedEventHandler,
+  INSIGHTS_ROUTES,
+  insightsDisabled,
+} from "./insights/routes";
 import { addRoute, createRouter, findRoute } from "./internalRouter";
 
 export type {
@@ -189,7 +193,10 @@ export interface HotUpdaterHandlersOptions {
     token: string,
     signature: string,
   ) => Promise<Response | null>;
-  /** The plugins' endpoints; an Insights route none serves answers that Insights is off. */
+  /**
+   * The plugins' endpoints; an Insights route none serves answers that
+   * Insights is off, and `POST /events` also warns on the first event it drops.
+   */
   readonly endpoints?: readonly MountedEndpoint[];
 }
 
@@ -206,6 +213,7 @@ export function createHotUpdaterHandlers({
     ...Object.fromEntries(
       INSIGHTS_ROUTES.map(({ handler }) => [handler, insightsDisabled]),
     ),
+    appendBundleEvent: createDroppedEventHandler(),
     ...(downloadStorageObject === undefined
       ? {}
       : {

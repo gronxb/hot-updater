@@ -1,6 +1,6 @@
 ---
 title: "Cloudflare D1 Database"
-description: Store your Hot Updater bundle metadata in Cloudflare D1, a serverless SQLite database running at the edge.
+description: Run Hot Updater's database on Cloudflare D1, a serverless SQLite database running at the edge.
 
 icon: cloudflare
 ---
@@ -15,12 +15,60 @@ npm install @hot-updater/cloudflare @hot-updater/aws --save-dev
 
 Set up the backend with an [AI agent or the interactive
 CLI](/docs/managed/cloudflare#step-2-configure-cloudflare), then use the
-configuration below.
+configuration below. Managed setup applies the schema for you.
 
-The settings below connect to an initialized database; they do not create
-its schema. Complete provider setup first, or apply the SQL migrations in
-the installed `@hot-updater/cloudflare` package's `worker/migrations`
-directory in order after verifying schema compatibility.
+`d1Database` connects to a database whose schema already exists; it does not
+create tables when it serves. To prepare a database yourself, apply the
+installed `@hot-updater/cloudflare` package's `sql/bundles.sql` to a new, empty
+D1 database:
+
+```bash
+npx wrangler d1 execute <database-name> --remote \
+  --file node_modules/@hot-updater/cloudflare/sql/bundles.sql
+```
+
+The same SQL ships as the Worker migration
+`worker/migrations/0001_hot-updater_1.0.0.sql`, which managed setup applies
+with `wrangler d1 migrations apply`. It creates Hot Updater's tables and
+indexes and the `_hu_write` table that batch writes use, then writes the
+schema settings rows last.
+
+A Worker that runs
+[third-party plugins](/docs/custom/server-plugins#create-the-plugins-tables)
+also needs their tables. `hot-updater db generate` writes a D1 migration of the
+built-in and plugin tables to `migrations/<timestamp>_hot-updater.sql`; apply
+it with `wrangler d1 migrations apply`. `hot-updater db migrate` applies the
+same schema through the Cloudflare API instead. Both read a Node module that
+passes the Worker's `plugins` to `createHotUpdater` with the REST `d1Database`
+from `@hot-updater/cloudflare`.
+
+## Schema settings
+
+Before its first read or write, the database checks the settings rows
+`schema.engine`, `schema.core`, `schema.insights` and `schema.apiKeys` in one
+batch read. While one is missing or different, it throws
+`HotUpdaterSchemaMigrationRequiredError`, which names the setting, and the
+Worker's handlers answer 503. A running Worker checks again on its next
+request, so it recovers once the migration has run.
+
+## How D1 is used
+
+`d1Database` returns an engine database, `{ name, adapter }`, which
+`defineConfig` and `createHotUpdater` both accept. Its adapter is Hot
+Updater's shared SQL core for SQLite, behind the schema settings check.
+
+D1 has no interactive transactions, so each write is one atomic batch. The
+batch first records each operation's guard in `_hu_write`, against the rows as
+they were before any change, then applies the changes only when no guard
+failed, and finally reads and removes the result. A read that binds many
+values is split to stay within D1's 100 parameters per statement, and one
+write sends at most 450 operations, within a Worker invocation's 1,000 queries
+on the paid plan.
+
+The root export reaches D1 through the Cloudflare REST API, for
+`hot-updater.config.ts` and the Console. It sends each value as JSON text and
+reads it back with `json_extract`. Inside a Worker, use the binding version
+below.
 
 ## Configuration
 
@@ -54,22 +102,27 @@ export default defineConfig({
 
 ## Worker runtime usage
 
-The root export above is for `hot-updater.config.ts` and accesses D1 through
-the Cloudflare API. Inside a Cloudflare Worker, import the same provider name
-from the `/worker` subpath and pass the native D1 binding at the
-`createHotUpdater` boundary:
+The root export above is for `hot-updater.config.ts`. Inside a Cloudflare
+Worker, import the same provider name from the `/worker` subpath and pass the
+native D1 binding at the `createHotUpdater` boundary:
 
 ```typescript title="src/hotUpdater.ts"
 import { d1Database } from "@hot-updater/cloudflare/worker"; // [!code ++]
 import { createHotUpdater } from "@hot-updater/server";
+import { apiKeys } from "@hot-updater/server/plugins/api-keys";
+import { insights } from "@hot-updater/server/plugins/insights";
 import { env } from "cloudflare:workers";
 
 export const hotUpdater = createHotUpdater({
   database: d1Database(env.DB), // [!code ++]
-  clientAccess: { type: "api-key" },
+  plugins: [insights(), apiKeys()],
   // ... other options
 });
 ```
+
+`insights()` records app events, and `apiKeys()` protects client routes with
+the `x-api-key` header. The managed Worker runs the same list, which
+`@hot-updater/cloudflare/worker` exports as `plugins`.
 
 ## Complete example
 

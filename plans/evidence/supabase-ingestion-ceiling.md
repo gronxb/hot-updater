@@ -1,5 +1,10 @@
 # Database adapter redesign: Supabase ingestion ceiling
 
+These figures are test-environment measurements, not production limits of Supabase or of Hot Updater. They
+come from a local Supabase stack in Docker, on a development machine and on a GitHub-hosted runner, under the
+most contended load on purpose: every move lands on one channel in the same hour, with 5 ms added to every
+adapter call. Neither setup is a Supabase project (see Host below).
+
 Recorded on 2026-09-24 (KST) for D6 (PRD metric "Firestore and Supabase ingestion ceilings: measured and
 recorded"). The measurement is the `records the Insights ingestion ceiling through the apply RPC` case of
 `plugins/supabase/supabase/edge-functions/runtime.docker.integration.spec.ts`, which logs one
@@ -26,9 +31,9 @@ over PostgREST v14.6 and Postgres 15. Each step first moves 600 installations on
 | 400 | 600 | 0 | 228 | 27.8% | 107 |
 | 800 | 600 | 0 | 222 | 29.0% | 93 |
 
-**Ceiling: 100 moves per second**, the highest offered rate that was kept up with, no errors, and at most 5%
-retried. Above it, throughput levels off near 100 moves per second, and about 28% of moves resend their
-aggregate rows. Every move still commits. No step reran a transaction.
+**Ceiling in this setup: 100 moves per second**, the highest offered rate that was kept up with, no errors,
+and at most 5% retried. Above it, throughput on this host levels off near 100 moves per second, and about 28%
+of moves resend their aggregate rows. Every move still commits. No step reran a transaction.
 
 Host: Apple M4 (10 cores), Docker Desktop with 6 CPUs and 6 GB. Another integration suite was running on
 the same host, so treat the figures as a lower bound for this setup. A managed project adds the network
@@ -51,4 +56,5 @@ No step met the ceiling's conditions there. Throughput levelled off near 20 move
 offered rate. About a third of moves resent their aggregate rows, and 3 of 3,000 ran out of retries. Ingestion
 answers such a move with 503 and `Retry-After` (PRD, Insights write path). The slower each round trip, the
 longer the gap between a move's reads and its guarded write, and the more often another move changes the
-same aggregate rows in between.
+same aggregate rows in between. These runner figures describe a shared CI VM that ran the whole Supabase stack,
+the edge runtime, and the test process at once; they are not a Supabase project's rate.

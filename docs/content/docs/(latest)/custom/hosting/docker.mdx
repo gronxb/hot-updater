@@ -82,12 +82,14 @@ Create the Hot Updater instance.
 ```typescript title="src/hotUpdater.ts"
 import { createHotUpdater } from "@hot-updater/server";
 import { drizzleAdapter } from "@hot-updater/server/adapters/drizzle";
+import { apiKeys } from "@hot-updater/server/plugins/api-keys";
+import { insights } from "@hot-updater/server/plugins/insights";
 import { s3Storage } from "@hot-updater/aws";
 import { db } from "./drizzle";
 
 export const hotUpdater = createHotUpdater({
   database: drizzleAdapter({ db, provider: "postgresql" }),
-  clientAccess: { type: "api-key" },
+  plugins: [insights(), apiKeys()],
   storage: [
     s3Storage({
       region: "auto",
@@ -168,11 +170,15 @@ export default defineConfig({
 
 ```bash
 npx drizzle-kit push
+npx hot-updater db migrate src/hotUpdater.ts
 ```
 
-Because this server uses `clientAccess: { type: "api-key" }`, also
+`db migrate` writes the settings rows the server checks before its first
+request; until they exist, its handlers answer `503`. Because this server runs
+`apiKeys()`, also
 [create a client API key and configure `x-api-key` in the app](/docs/custom/quick-start#bootstrap-the-schema-and-api-key)
-against this same database before the first update check.
+against this same database before the first update check. `insights()` records
+the app's Insights events.
 
 ## Dockerfile
 
@@ -297,6 +303,7 @@ hostname is `localhost`, while the application container uses `postgres`.
 ```bash
 npx hot-updater db generate src/hotUpdater.ts --yes
 npx drizzle-kit push
+npx hot-updater db migrate src/hotUpdater.ts
 ```
 
 Create the [client API key](/docs/custom/api-key-authentication#bootstrap-a-self-hosted-client)

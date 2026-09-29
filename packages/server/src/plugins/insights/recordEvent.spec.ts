@@ -12,6 +12,8 @@ import { describe, expect, it } from "vitest";
 
 import * as engine from "../../database";
 import type { HotUpdaterDatabase } from "../../database/database";
+import { createKvAdapter } from "../../database/kv/kvAdapter";
+import { createMemoryKeyValueStore } from "../../database/kv/kvTestStore";
 import { createSqlAdapter } from "../../database/sql/sqlAdapter";
 import { sqliteExecutor } from "../../database/sql/sqlTestExecutors";
 import {
@@ -20,6 +22,7 @@ import {
   type InsightsIdentityParts,
   type InsightsSchema,
 } from "./index";
+import { DAILY_EVENTS } from "./schema";
 
 const HOUR = 3_600_000;
 const DAY = 86_400_000;
@@ -64,6 +67,10 @@ const backends: [string, () => DatabaseAdapter][] = [
       createSqlAdapter({
         executor: sqliteExecutor(new DatabaseSync(":memory:")),
       }),
+  ],
+  [
+    "the key-value helper",
+    () => createKvAdapter({ store: createMemoryKeyValueStore() }),
   ],
 ];
 
@@ -138,6 +145,15 @@ describe.each(backends)("insights recordEvent on %s", (_name, adapter) => {
           limit: 100,
         })
       ).rows;
+    /** The per-day count of every event, which the global event list reads. */
+    const everyEvent = async () =>
+      (
+        await db.findAggregates("insights_outcomes", {
+          index: "byRef",
+          where: DAILY_EVENTS,
+          limit: 100,
+        })
+      ).rows;
     return {
       ...harness,
       db,
@@ -146,12 +162,21 @@ describe.each(backends)("insights recordEvent on %s", (_name, adapter) => {
       distribution,
       byBundle,
       outcomes,
+      everyEvent,
     };
   };
 
   it("records the event with derived keys, the head, gauges, counters, and sketches", async () => {
-    const { api, db, overview, sketch, distribution, byBundle, outcomes } =
-      await setup();
+    const {
+      api,
+      db,
+      overview,
+      sketch,
+      distribution,
+      byBundle,
+      outcomes,
+      everyEvent,
+    } = await setup();
     await api.recordEvent(event(1));
 
     await expect(
@@ -159,7 +184,7 @@ describe.each(backends)("insights recordEvent on %s", (_name, adapter) => {
     ).resolves.toMatchObject({
       day: T - (T % DAY),
       movement_install_id: "install-1",
-      bundle_ref: ["from:bundle-1", "to:bundle-2"],
+      bundle_ref: ["to:bundle-2"],
     });
     await expect(
       db.findOne("bundle_event_heads", { install_id: "install-1" }),
@@ -185,6 +210,10 @@ describe.each(backends)("insights recordEvent on %s", (_name, adapter) => {
     await expect(
       outcomes("UPDATE_APPLIED", "to:bundle-2"),
     ).resolves.toMatchObject([{ bucket_start_ms: hour(T), events: 1 }]);
+    // Every event's row is a UTC day's, not an hour's.
+    await expect(everyEvent()).resolves.toEqual([
+      { ...DAILY_EVENTS, bucket_start_ms: T - (T % DAY), events: 1 },
+    ]);
 
     const release = { scopeKind: "release", releaseKind: "specific" } as const;
     const counters = { downloads: 0, launches: 1, failed_launches: 0 };
@@ -223,8 +252,34 @@ describe.each(backends)("insights recordEvent on %s", (_name, adapter) => {
     }
   });
 
+  it("keys an event by the one bundle its bundle filter reads", async () => {
+    const { api, db } = await setup();
+    await api.recordEvent(event(1));
+    await api.recordEvent(
+      event(2, { type: "RECOVERED", install_id: "install-2" }),
+    );
+
+    await expect(
+      db.findOne("bundle_events", { id: uuid(2) }),
+    ).resolves.toMatchObject({ bundle_ref: ["from:bundle-1"] });
+    const scope = { platform: "ios", channel: "production" } as const;
+    for (const [n, filter] of [
+      [1, { ...scope, type: "UPDATE_APPLIED", toBundleId: "bundle-2" }],
+      [2, { ...scope, type: "RECOVERED", fromBundleId: "bundle-1" }],
+    ] as const) {
+      await expect(
+        api.listEvents({
+          filter: { kind: "bundle", ...filter },
+          sinceMs: T,
+          beforeReceivedAtMs: T + HOUR,
+          limit: 10,
+        }),
+      ).resolves.toMatchObject([{ id: uuid(n) }]);
+    }
+  });
+
   it("changes nothing for a repeated id, even with another payload", async () => {
-    const { api, db, outcomes } = await setup();
+    const { api, db, outcomes, everyEvent } = await setup();
     await api.recordEvent(event(1));
     await api.recordEvent(
       event(1, { install_id: "install-2", received_at_ms: T + HOUR }),
@@ -239,6 +294,7 @@ describe.each(backends)("insights recordEvent on %s", (_name, adapter) => {
     await expect(
       outcomes("UPDATE_APPLIED", "to:bundle-2"),
     ).resolves.toMatchObject([{ events: 1 }]);
+    await expect(everyEvent()).resolves.toMatchObject([{ events: 1 }]);
   });
 
   it("moves the head only for a newer event and deletes gauge rows that reach zero", async () => {
@@ -355,5 +411,33 @@ describe.each(backends)("insights recordEvent on %s", (_name, adapter) => {
       0,
     );
     expect(counted).toBe(installs.length);
+  });
+
+  it("records a retried report once, and a racing installation's report under its id not at all", async () => {
+    const { api, db, outcomes } = await setup();
+    await api.recordEvent(event(1));
+    // A retry repeats the report's id, even when it arrives an hour later.
+    await api.recordEvent(event(1, { received_at_ms: T + HOUR }));
+    await expect(
+      db.findOne("bundle_event_heads", { install_id: "install-1" }),
+    ).resolves.toMatchObject({ id: uuid(1), received_at_ms: T });
+    await expect(
+      outcomes("UPDATE_APPLIED", "to:bundle-2"),
+    ).resolves.toMatchObject([{ events: 1 }]);
+
+    // The later writer reads the winner's row, at once or in the rerun after
+    // its own insert fails, and changes nothing.
+    const installs = ["install-2", "install-3"];
+    await Promise.all(
+      installs.map((install) =>
+        api.recordEvent(event(2, { install_id: install })),
+      ),
+    );
+    const stored = await db.findOne("bundle_events", { id: uuid(2) });
+    const loser = installs.find((install) => install !== stored?.install_id);
+    expect(installs).toContain(stored?.install_id);
+    await expect(
+      db.findOne("bundle_event_heads", { install_id: loser! }),
+    ).resolves.toBeNull();
   });
 });

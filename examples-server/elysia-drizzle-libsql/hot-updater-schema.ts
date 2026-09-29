@@ -108,16 +108,6 @@ export const bundle_totals = sqliteTable("bundle_totals", {
   primaryKey({ columns: [table["platform_key"], table["_shard"]] }),
 ]);
 
-export const base_candidates = sqliteTable("base_candidates", {
-  "candidate_key": column("TEXT")("candidate_key").notNull(),
-  "bundle_id": column("TEXT")("bundle_id").notNull(),
-  "_shard": column("INTEGER")("_shard").notNull(),
-  "releases": column("INTEGER")("releases").notNull(),
-  "_v": column("INTEGER")("_v").notNull().default(0),
-}, (table) => [
-  primaryKey({ columns: [table["candidate_key"], table["bundle_id"], table["_shard"]] }),
-]);
-
 export const bundle_events = sqliteTable("bundle_events", {
   "id": column("TEXT")("id").notNull(),
   "type": column("TEXT")("type").notNull(),

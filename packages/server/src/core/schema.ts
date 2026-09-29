@@ -158,19 +158,6 @@ const bundleTotals = defineAggregate(
   },
 );
 
-/** Enabled bundle releases per patch-compatibility key, for auto-patch base search. */
-const baseCandidates = defineAggregate(
-  {
-    candidate_key: { type: "string", maxLength: 2048, ascii: true },
-    bundle_id: { type: "string", maxLength: 36 },
-  },
-  {
-    key: ["candidate_key", "bundle_id"],
-    gauges: ["releases"],
-    indexes: { byKey: { eq: ["candidate_key"], sort: ["bundle_id"] } },
-  },
-);
-
 export const coreSchema = {
   bundles,
   bundle_patches: bundlePatches,
@@ -178,7 +165,6 @@ export const coreSchema = {
   release_catalogs: releaseCatalogs,
   channels,
   bundle_totals: bundleTotals,
-  base_candidates: baseCandidates,
 } as const;
 
 export type CoreSchema = typeof coreSchema;

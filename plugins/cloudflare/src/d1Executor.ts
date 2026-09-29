@@ -1,4 +1,3 @@
-import type { EngineDatabase } from "@hot-updater/plugin-core";
 import {
   createEngineDatabase,
   createSqlAdapter,
@@ -6,6 +5,7 @@ import {
   type SqlResult,
   type SqlStatement,
 } from "@hot-updater/server/database";
+import type { ToolingDatabase } from "@hot-updater/server/db";
 
 /** A D1 result, from the binding or the REST API. */
 export interface D1ResultLike {
@@ -60,7 +60,7 @@ export const D1_MAX_OPS = 450;
 export const createD1Database = (runner: {
   query(statement: SqlStatement): Promise<SqlResult>;
   batch(statements: readonly SqlStatement[]): Promise<readonly SqlResult[]>;
-}): EngineDatabase => {
+}): ToolingDatabase => {
   const executor: SqlExecutor = {
     dialect: "sqlite",
     execute: (statement) =>

@@ -1,12 +1,17 @@
+import {
+  createMemoryAdapter,
+  type DatabaseAdapter,
+} from "@hot-updater/plugin-core/internal";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { builtInSettings } from "../database/builtInDatabase";
+import { builtInSettings } from "../db/builtInDatabase";
 import { createHotUpdater } from "../index";
 import { insights } from "../plugins/insights";
 import {
   createFencedDatabase,
   createRuntimeDatabase,
 } from "../runtime.testFixtures";
+import { EVENT_BODY_MAX_BYTES } from "./eventInput";
 
 /** A server with the Insights plugin on an empty in-memory database. */
 const start = () =>
@@ -159,11 +164,13 @@ describe("createHotUpdater Insights", () => {
       nextCursor: null,
     });
     expect(active.status).toBe(200);
+    // Whole hours, ending with the current one.
+    const end = Date.parse("2026-08-12T01:00:00.000Z");
     await expect(active.json()).resolves.toEqual({
       platform: "ios",
       channel: "production",
-      sinceMs: Date.now() - 24 * 60 * 60 * 1_000,
-      beforeReceivedAtMs: Date.now(),
+      sinceMs: end - 24 * 60 * 60 * 1_000,
+      beforeReceivedAtMs: end,
       reportingInstallations: { count: 1, measuredAtMs: Date.now() },
       window: "24h",
     });
@@ -215,7 +222,7 @@ describe("createHotUpdater Insights", () => {
     expect(overview.status).toBe(200);
     await expect(overview.json()).resolves.toMatchObject({
       sinceMs: 0,
-      beforeReceivedAtMs: 500,
+      beforeReceivedAtMs: 60 * 60 * 1_000,
       reportingInstallations: { count: 2 },
       bundle: {
         bundleId: "B",
@@ -258,6 +265,8 @@ describe("createHotUpdater Insights", () => {
     "/events?bundleId=B",
     "/events?platform=ios&channel=production&bundleId=B&outcome=UNCHANGED",
     "/events?sinceMs=20&beforeReceivedAtMs=10",
+    // 90 days and 1 ms, longer than a bundle list covers.
+    "/events?platform=ios&channel=production&bundleId=B&outcome=applied&sinceMs=0&beforeReceivedAtMs=7776000001",
     "/installations/install-1/events?platform=ios&channel=production&bundleId=B&outcome=applied",
   ])("rejects ambiguous or invalid Insights query %s", async (path) => {
     const hotUpdater = start();
@@ -268,6 +277,26 @@ describe("createHotUpdater Insights", () => {
         )
       ).status,
     ).toBe(400);
+  });
+
+  it("lists at most 90 days of events, and says so for a longer range", async () => {
+    const hotUpdater = start();
+    const range = "sinceMs=0&beforeReceivedAtMs=7776000001";
+    const events = await hotUpdater.handlers.admin(
+      new Request(`https://example.com/events?${range}`),
+    );
+    expect(events.status).toBe(400);
+    await expect(events.json()).resolves.toEqual({
+      error:
+        "Insights event lists cover at most 90 days: send a sinceMs no more than 90 days before beforeReceivedAtMs.",
+    });
+    // An installation's history is one index range, however long.
+    const history = await hotUpdater.handlers.admin(
+      new Request(
+        `https://example.com/installations/install-1/events?${range}`,
+      ),
+    );
+    expect(history.status).toBe(200);
   });
 
   it("checks the schema settings before Insights reads and writes", async () => {
@@ -444,4 +473,153 @@ describe("createHotUpdater Insights", () => {
       });
     },
   );
+
+  it("records a report with fields it does not know and still checks the ones it does", async () => {
+    const hotUpdater = start();
+    const newer = { ...event, networkType: "wifi", screen: { width: 390 } };
+
+    expect((await hotUpdater.handlers.client(eventRequest(newer))).status).toBe(
+      204,
+    );
+    const installation = await hotUpdater.handlers.admin(
+      new Request("https://example.com/installations/install-1"),
+    );
+    await expect(installation.json()).resolves.toMatchObject({
+      installId: "install-1",
+      latestStatus: "UNCHANGED",
+    });
+    const invalid = await hotUpdater.handlers.client(
+      eventRequest({ ...newer, channel: 7 }),
+    );
+    expect(invalid.status).toBe(400);
+    await expect(invalid.json()).resolves.toEqual({
+      error: "Invalid event field: channel",
+    });
+    const tooLarge = await hotUpdater.handlers.client(
+      eventRequest({ ...newer, padding: "x".repeat(EVENT_BODY_MAX_BYTES) }),
+    );
+    expect(tooLarge.status).toBe(413);
+  });
+
+  it("counts a retried report once under its client event ID, whichever installation repeats it", async () => {
+    const hotUpdater = start();
+    const eventId = "01987a6e-4c00-7abc-8def-0123456789ab";
+    const report = { ...event, eventId };
+    const counts = async () => {
+      const overview = await hotUpdater.handlers.admin(
+        new Request(
+          "https://example.com/overview?platform=ios&channel=production&window=24h&bundleId=bundle-1",
+        ),
+      );
+      return (
+        (await overview.json()) as {
+          readonly bundle: { readonly unchangedReports: { count: number } };
+        }
+      ).bundle.unchangedReports.count;
+    };
+
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      expect(
+        (await hotUpdater.handlers.client(eventRequest(report))).status,
+      ).toBe(204);
+    }
+    await expect(counts()).resolves.toBe(1);
+    const events = await hotUpdater.handlers.admin(
+      new Request(
+        `https://example.com/events?beforeReceivedAtMs=${Date.now() + 1}`,
+      ),
+    );
+    await expect(events.json()).resolves.toMatchObject({
+      data: [{ id: eventId, installId: "install-1" }],
+    });
+
+    // A report under a stored ID changes nothing, as analytics ingestion
+    // drops duplicates.
+    expect(
+      (
+        await hotUpdater.handlers.client(
+          eventRequest({ ...report, installId: "install-2" }),
+        )
+      ).status,
+    ).toBe(204);
+    expect(
+      (
+        await hotUpdater.handlers.admin(
+          new Request("https://example.com/installations/install-2"),
+        )
+      ).status,
+    ).toBe(404);
+
+    // Without an ID the server creates one, so each report counts.
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      expect(
+        (await hotUpdater.handlers.client(eventRequest(event))).status,
+      ).toBe(204);
+    }
+    await expect(counts()).resolves.toBe(3);
+  });
+
+  it.each([
+    "event-1",
+    "01987A6E-4C00-7ABC-8DEF-0123456789AB",
+    "01987a6e-4c00-4abc-8def-0123456789ab",
+    null,
+  ])("rejects the event ID %j", async (eventId) => {
+    const hotUpdater = start();
+
+    const response = await hotUpdater.handlers.client(
+      eventRequest({ ...event, eventId }),
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: "Invalid event field: eventId",
+    });
+  });
+
+  it("answers 503 with Retry-After while the database is busy, and 500 when it fails", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const on = (overrides: Partial<DatabaseAdapter>) =>
+      createHotUpdater({
+        database: {
+          name: "testDatabase",
+          adapter: { ...createMemoryAdapter(), ...overrides },
+        },
+        plugins: [insights()],
+        clientAccess: "public",
+      }).handlers.client(eventRequest());
+    const throttled = Object.assign(
+      new Error("The level of configured provisioned throughput was exceeded."),
+      { name: "ProvisionedThroughputExceededException" },
+    );
+
+    // Every write is refused as transient until the engine runs out of retries.
+    const busy = await on({ write: async () => ({ ok: false, retry: true }) });
+    expect(busy.status).toBe(503);
+    expect(busy.headers.get("retry-after")).toBe("5");
+    await expect(busy.json()).resolves.toEqual({
+      error: "Service unavailable",
+    });
+    // A throttled read throws the backend's own error.
+    const throttledRead = await on({
+      get: async () => {
+        throw throttled;
+      },
+    });
+    expect(throttledRead.status).toBe(503);
+    expect(throttledRead.headers.get("retry-after")).toBe("5");
+    const failed = await on({
+      get: async () => {
+        throw new Error("connection refused");
+      },
+    });
+    expect(failed.status).toBe(500);
+    expect(failed.headers.get("retry-after")).toBeNull();
+    // Each 503 warns, and only the failure logs as an error.
+    expect(warn).toHaveBeenCalledTimes(2);
+    expect(error).toHaveBeenCalledTimes(1);
+    error.mockRestore();
+    warn.mockRestore();
+  });
 });

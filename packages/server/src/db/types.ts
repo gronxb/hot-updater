@@ -1,5 +1,8 @@
 import type { EngineDatabase } from "@hot-updater/plugin-core";
 
+import type { SchemaSettings } from "../database/fence";
+import type { ResolvedSchema } from "../database/resolveSchema";
+
 export const sqlProviders = ["sqlite", "mysql", "postgresql"] as const;
 
 export const noSqlProviders = ["mongodb"] as const;
@@ -46,9 +49,19 @@ export interface Migrator {
   migrateToLatest: (options?: MigrateOptions) => Promise<MigrationResult>;
 }
 
+/**
+ * The tables `db migrate` and `db generate` create and the settings rows they
+ * write: the built-in ones, and each third-party plugin's the server runs.
+ */
+export interface ToolingTarget {
+  readonly schema: ResolvedSchema;
+  readonly settings: SchemaSettings;
+}
+
 export type SchemaGenerator = (
   version: string | "latest",
   name?: string,
+  target?: ToolingTarget,
 ) => {
   code: string;
   path: string;
@@ -56,11 +69,12 @@ export type SchemaGenerator = (
 
 /**
  * What `hot-updater db generate` and `db migrate` run for a provider's
- * database, beside the database itself.
+ * database, beside the database itself. Without a target they cover the
+ * built-in tables.
  */
 export interface DatabaseTooling {
   readonly provider?: ORMProvider;
-  readonly createMigrator?: () => Migrator;
+  readonly createMigrator?: (target?: ToolingTarget) => Migrator;
   readonly generateSchema?: SchemaGenerator;
 }
 

@@ -10,7 +10,10 @@ import { createPluginTestHarness } from "@hot-updater/test-utils";
 import { describe, expect, it } from "vitest";
 
 import * as engine from "../../database";
-import { insights } from "./index";
+import { InsightsBadRequestError } from "../../insights/errors";
+import { createInsightsProvider } from "../../insights/provider";
+import type { InsightsEventPageInput } from "../../insights/types";
+import { createInsightsModel, insights } from "./index";
 
 const HOUR = 3_600_000;
 const DAY = 86_400_000;
@@ -74,6 +77,108 @@ const metered = (inner: DatabaseAdapter) => {
   return { adapter, rows };
 };
 
+describe("insights latest events by bundle", () => {
+  const setup = () =>
+    createPluginTestHarness(insights(), { engine, now: () => T0 + DAY });
+  const halfPast = T0 + 30 * 60_000;
+
+  it("counts each latest event once for the overview's predicates, even from a bundle to itself", async () => {
+    const harness = await setup();
+    for (const [n, moved] of [
+      [31, { type: "UPDATE_APPLIED", from_bundle_id: "X", to_bundle_id: "X" }],
+      [
+        32,
+        { type: "UPDATE_DOWNLOADED", from_bundle_id: "X", to_bundle_id: "X" },
+      ],
+      [33, { type: "RECOVERED", from_bundle_id: "X", to_bundle_id: "X" }],
+      [
+        34,
+        { type: "UPDATE_DOWNLOADED", from_bundle_id: "X", to_bundle_id: "Y" },
+      ],
+    ] as const) {
+      await harness.api.recordEvent(
+        event(n, { ...moved, received_at_ms: halfPast }),
+      );
+    }
+    const bundle = [
+      { field: "from_bundle_id", value: "X", types: ["UPDATE_DOWNLOADED"] },
+      {
+        field: "to_bundle_id",
+        value: "X",
+        types: ["UNCHANGED", "UPDATE_APPLIED", "RECOVERED"],
+      },
+    ] as const;
+    // Whole hours from gauges, then a partial hour from heads.
+    for (const sinceMs of [T0, T0 + 1]) {
+      await expect(
+        harness.api.countLatestEvents({
+          platform: "ios",
+          channel: "production",
+          sinceMs,
+          bundle,
+        }),
+      ).resolves.toBe(4);
+    }
+  });
+
+  it("counts a head once when a from and a to predicate of one type both match it", async () => {
+    const harness = await setup();
+    for (const [n, moved] of [
+      [21, { from_bundle_id: "A", to_bundle_id: "B" }],
+      [22, { from_bundle_id: "A", to_bundle_id: "C" }],
+      [23, { from_bundle_id: "D", to_bundle_id: "B" }],
+      [24, { from_bundle_id: "B", to_bundle_id: "B" }],
+    ] as const) {
+      await harness.api.recordEvent(
+        event(n, {
+          ...moved,
+          type: "UPDATE_DOWNLOADED",
+          received_at_ms: halfPast,
+        }),
+      );
+    }
+    const types = ["UPDATE_DOWNLOADED"] as const;
+    const count = (
+      bundle: readonly {
+        readonly field: "from_bundle_id" | "to_bundle_id";
+        readonly value: string;
+        readonly types: readonly "UPDATE_DOWNLOADED"[];
+      }[],
+      sinceMs: number,
+    ) =>
+      harness.api.countLatestEvents({
+        platform: "ios",
+        channel: "production",
+        sinceMs,
+        bundle,
+      });
+    // Whole hours from gauges, then a partial hour from heads.
+    for (const sinceMs of [T0, T0 + 1]) {
+      // From A or to B: A→B, A→C, D→B, and B→B. The gauges alone say 5,
+      // counting A→B under both predicates.
+      await expect(
+        count(
+          [
+            { field: "from_bundle_id", value: "A", types },
+            { field: "to_bundle_id", value: "B", types },
+          ],
+          sinceMs,
+        ),
+      ).resolves.toBe(4);
+      // B→B matches from B and to B through one pair: A→B, D→B, B→B.
+      await expect(
+        count(
+          [
+            { field: "from_bundle_id", value: "B", types },
+            { field: "to_bundle_id", value: "B", types },
+          ],
+          sinceMs,
+        ),
+      ).resolves.toBe(3);
+    }
+  });
+});
+
 describe("insights read budgets", () => {
   const setup = async () => {
     const meter = metered(createMemoryAdapter());
@@ -95,7 +200,7 @@ describe("insights read budgets", () => {
     return { api: harness.api, read };
   };
 
-  it("lists and finds events reading exactly the rows it returns", async () => {
+  it("lists and finds events reading the rows they return, and one outcome row to cross an empty day", async () => {
     const { api, read } = await setup();
     const listed = await read(() =>
       api.listEvents({
@@ -114,8 +219,10 @@ describe("insights read budgets", () => {
     expect(listed.result.map(({ id }) => id)).toEqual(
       [25, 24, 23, 22, 21].map(uuid),
     );
-    expect(listed.adapter.rows).toBe(5);
-    expect(listed.tables).toEqual({ bundle_events: 5 });
+    // Day 2 holds event 25 and day 1 nothing, so one outcome row, hour 4 of
+    // day 0, names the day below it.
+    expect(listed.adapter).toMatchObject({ queries: 4, rows: 6 });
+    expect(listed.tables).toEqual({ bundle_events: 5, insights_outcomes: 1 });
 
     const head = await read(() =>
       api.findLatestEvents({ installId: "install-1" }),
@@ -244,5 +351,375 @@ describe("insights read budgets", () => {
       "insights_distribution",
       "insights_sketches",
     ]);
+  });
+});
+
+/**
+ * The reads an event list makes, in order: each UTC day it reads, as days
+ * from T0, with the rows it found; and each outcome read, with the day it
+ * named.
+ */
+const traced = (inner: DatabaseAdapter) => {
+  const reads: string[] = [];
+  const day = (ms: number) => `day ${(ms - (ms % DAY) - T0) / DAY}`;
+  const adapter: DatabaseAdapter = {
+    ...inner,
+    query: async (table, request) => {
+      const found = await inner.query(table, request);
+      if (table.name === "bundle_events") {
+        reads.push(`${day(Number(request.eq.at(-1)))}: ${found.length}`);
+      }
+      if (table.name === "insights_outcomes") {
+        const newest = found[0]?.bucket_start_ms;
+        reads.push(
+          `hint: ${newest === undefined ? "none" : day(Number(newest))}`,
+        );
+      }
+      return found;
+    },
+  };
+  return { adapter, reads };
+};
+
+const newestFirst = (left: BundleEventRow, right: BundleEventRow) =>
+  right.received_at_ms - left.received_at_ms ||
+  (right.id < left.id ? -1 : right.id > left.id ? 1 : 0);
+
+describe("insights event list ranges", () => {
+  /** The cutoff: noon of T0's day, so the range starts at noon 90 days before. */
+  const before = T0 + 12 * HOUR;
+  const bundleB = {
+    kind: "bundle",
+    platform: "ios",
+    channel: "production",
+    type: "UPDATE_APPLIED",
+    toBundleId: "bundle-b",
+  } as const;
+
+  const setup = async () => {
+    const trace = traced(createMemoryAdapter());
+    const harness = await createPluginTestHarness(insights(), {
+      engine,
+      adapter: trace.adapter,
+      now: () => before,
+    });
+    const provider = createInsightsProvider(createInsightsModel(harness.api));
+    const record = async (
+      events: readonly (readonly [number, number, Partial<BundleEventRow>?])[],
+    ) => {
+      for (const [n, receivedAtMs, overrides] of events) {
+        await harness.api.recordEvent(
+          event(n, { ...overrides, received_at_ms: receivedAtMs }),
+        );
+      }
+    };
+    /** Every page of one provider list, with the reads each made. */
+    const pages = async (input: InsightsEventPageInput) => {
+      const listed: { ids: string[]; reads: string[]; full: boolean }[] = [];
+      let cursor: string | undefined;
+      do {
+        trace.reads.length = 0;
+        const page = await provider.listEvents({
+          ...input,
+          ...(cursor === undefined ? {} : { cursor }),
+        });
+        listed.push({
+          ids: page.data.map(({ id }) => id),
+          reads: [...trace.reads],
+          full: page.data.length === input.limit,
+        });
+        cursor = page.nextCursor ?? undefined;
+      } while (cursor !== undefined);
+      return listed;
+    };
+    return { harness, provider, record, pages, reads: trace.reads };
+  };
+
+  it("rejects a global or bundle range over 90 days, not installation history", async () => {
+    const { harness } = await setup();
+    for (const filter of [{ kind: "all" } as const, bundleB]) {
+      const input = { filter, beforeReceivedAtMs: before, limit: 5 };
+      await expect(
+        harness.api.listEvents({ ...input, sinceMs: before - 90 * DAY }),
+      ).resolves.toEqual([]);
+      for (const sinceMs of [before - 90 * DAY - 1, undefined]) {
+        await expect(
+          harness.api.listEvents({ ...input, sinceMs }),
+        ).rejects.toMatchObject({ code: "invalid-query" });
+      }
+    }
+    await expect(
+      harness.api.listEvents({
+        filter: { kind: "installationMovement", installId: "install-1" },
+        beforeReceivedAtMs: before,
+        limit: 5,
+      }),
+    ).resolves.toEqual([]);
+  });
+
+  it("takes exactly 90 × 24 hours ending mid-day, 91 UTC days, and pages them to the start", async () => {
+    const { harness, provider, record, pages } = await setup();
+    // As the console's "Last 90 days" asks: the cutoff is not a midnight, so
+    // the range starts at noon of its 91st UTC day.
+    const since = before - 90 * DAY;
+    await record([
+      [1, before - 1],
+      [2, T0 - 45 * DAY],
+      [3, since + 1],
+      [4, since],
+      [5, since - 1],
+    ]);
+    const listed = await pages({
+      sinceMs: since,
+      beforeReceivedAtMs: before,
+      limit: 2,
+    });
+    expect(listed).toEqual([
+      {
+        ids: [1, 2].map(uuid),
+        reads: ["day 0: 1", "day -1: 0", "hint: day -45", "day -45: 1"],
+        full: true,
+      },
+      {
+        ids: [3, 4].map(uuid),
+        reads: ["day -45: 0", "hint: day -90", "day -90: 2"],
+        full: true,
+      },
+      { ids: [], reads: ["day -90: 0"], full: false },
+    ]);
+    // One millisecond longer is refused by the plugin and by the provider.
+    await expect(
+      harness.api.listEvents({
+        filter: { kind: "all" },
+        sinceMs: since - 1,
+        beforeReceivedAtMs: before,
+        limit: 2,
+      }),
+    ).rejects.toMatchObject({ code: "invalid-query" });
+    await expect(
+      provider.listEvents({ sinceMs: since - 1, beforeReceivedAtMs: before }),
+    ).rejects.toBeInstanceOf(InsightsBadRequestError);
+  });
+
+  it("reads an empty range as its top day and one hint, and a dense day as one query", async () => {
+    const { harness, record, reads } = await setup();
+    // A day below the range, and past the cutoff on its top day.
+    await record([
+      [1, before - 91 * DAY],
+      [2, before],
+    ]);
+    const list = (filter: typeof bundleB | { readonly kind: "all" }) =>
+      harness.measureReads(() =>
+        harness.api.listEvents({
+          filter,
+          sinceMs: before - 90 * DAY,
+          beforeReceivedAtMs: before,
+          limit: 4,
+        }),
+      );
+    for (const filter of [{ kind: "all" } as const, bundleB]) {
+      reads.length = 0;
+      const empty = await list(filter);
+      expect(empty.result).toEqual([]);
+      expect(empty.adapter).toEqual({ gets: 0, keys: 0, queries: 2, rows: 0 });
+      expect(reads).toEqual(["day 0: 0", "hint: none"]);
+    }
+    await record([3, 4, 5, 6, 7].map((n) => [n, T0 + n * HOUR] as const));
+    for (const filter of [{ kind: "all" } as const, bundleB]) {
+      reads.length = 0;
+      const dense = await list(filter);
+      expect(dense.result.map(({ id }) => id)).toEqual([7, 6, 5, 4].map(uuid));
+      expect(dense.adapter).toEqual({ gets: 0, keys: 0, queries: 1, rows: 4 });
+      expect(reads).toEqual(["day 0: 4"]);
+    }
+  });
+
+  it("crosses gaps of months with one empty day and one hint each, and fills every page down to the range start", async () => {
+    const { record, pages } = await setup();
+    const since = before - 90 * DAY;
+    await record([
+      [1, T0 - 40 * DAY + 3 * HOUR],
+      [2, T0 - 40 * DAY + 2 * HOUR],
+      [3, T0 - 40 * DAY + HOUR],
+      [4, T0 - 80 * DAY + 12 * HOUR],
+      [5, T0 - 80 * DAY + 11 * HOUR],
+      // The range's first day holds events on both sides of its start.
+      [6, since + HOUR],
+      [7, since - HOUR],
+      // Below the range, and past the cutoff on its top day.
+      [8, T0 - 100 * DAY],
+      [9, before + HOUR],
+    ]);
+    // Without `sinceMs`, the range is the 90 days before the cutoff.
+    const listed = await pages({ beforeReceivedAtMs: before, limit: 4 });
+    expect(listed).toEqual([
+      {
+        ids: [1, 2, 3, 4].map(uuid),
+        reads: [
+          "day 0: 0",
+          "hint: day -40",
+          "day -40: 3",
+          "day -41: 0",
+          "hint: day -80",
+          "day -80: 1",
+        ],
+        full: true,
+      },
+      {
+        // The last page ends at the range's last event, with no cursor.
+        ids: [5, 6].map(uuid),
+        reads: ["day -80: 1", "day -81: 0", "hint: day -90", "day -90: 1"],
+        full: false,
+      },
+    ]);
+    // Only the day read before each hint is empty, however long the gap.
+    for (const { reads } of listed) {
+      reads.forEach((read, index) => {
+        if (read.endsWith(": 0")) expect(reads[index + 1]).toMatch(/^hint/);
+      });
+    }
+  });
+
+  it("crosses a bundle's gaps on its own outcome rows, whatever other bundles hold", async () => {
+    const { record, pages } = await setup();
+    const bundleC = { to_bundle_id: "bundle-c" };
+    await record([
+      [1, T0 - DAY],
+      [2, T0 - 2 * DAY, bundleC],
+      [3, T0 - 3 * DAY, bundleC],
+      [4, T0 - 30 * DAY, bundleC],
+      [5, T0 - 50 * DAY + 2 * HOUR],
+      [6, T0 - 50 * DAY + HOUR],
+    ]);
+    const listed = await pages({
+      bundle: {
+        platform: "ios",
+        channel: "production",
+        bundleId: "bundle-b",
+        outcome: "applied",
+      },
+      beforeReceivedAtMs: before,
+      limit: 5,
+    });
+    expect(listed).toEqual([
+      {
+        ids: [1, 5, 6].map(uuid),
+        // Days -3 and -30 hold only bundle-c's events and are never read;
+        // day -2 is the one empty day before a hint.
+        reads: [
+          "day 0: 0",
+          "hint: day -1",
+          "day -1: 1",
+          "day -2: 0",
+          "hint: day -50",
+          "day -50: 2",
+          "day -51: 0",
+          "hint: none",
+        ],
+        full: false,
+      },
+    ]);
+  });
+
+  it("lists every event in the range, alone in a gap or recorded in one while paging", async () => {
+    const { harness, provider, record } = await setup();
+    await record(
+      [0, -1, -17, -53, -54, -88, -89].map(
+        (day, index) => [index + 1, T0 + day * DAY + HOUR] as const,
+      ),
+    );
+    const listed: string[] = [];
+    let cursor: string | undefined;
+    do {
+      const page = await provider.listEvents({
+        beforeReceivedAtMs: before,
+        limit: 2,
+        ...(cursor === undefined ? {} : { cursor }),
+      });
+      if (cursor === undefined) {
+        // Below the first page, in the gap between days -17 and -53.
+        await harness.api.recordEvent(
+          event(8, { received_at_ms: T0 - 30 * DAY }),
+        );
+      }
+      listed.push(...page.data.map(({ id }) => id));
+      cursor = page.nextCursor ?? undefined;
+    } while (cursor !== undefined);
+    expect(listed).toEqual([1, 2, 3, 8, 4, 5, 6, 7].map(uuid));
+  });
+
+  it("pages exactly the events in the range, newest first, whatever the limit", async () => {
+    const { harness, pages } = await setup();
+    const since = T0 - 80 * DAY + 5 * HOUR;
+    let seed = 7;
+    const random = () =>
+      (seed = (seed * 48_271) % 2_147_483_647) / 2_147_483_647;
+    const times = [
+      since - 1,
+      since,
+      before - 1,
+      before,
+      T0 - 30 * DAY,
+      T0 - 30 * DAY - 1,
+      ...Array.from(
+        { length: 54 },
+        () => T0 - 100 * DAY + Math.floor(random() * 101 * DAY),
+      ),
+    ];
+    const events = times.map((receivedAtMs, index) =>
+      event(index + 1, {
+        received_at_ms: receivedAtMs,
+        ...(index % 3 === 0
+          ? { type: "RECOVERED", from_bundle_id: "bundle-b" }
+          : { to_bundle_id: index % 3 === 1 ? "bundle-b" : "bundle-c" }),
+      }),
+    );
+    for (const row of events) await harness.api.recordEvent(row);
+    const selections = [
+      [undefined, () => true],
+      [
+        "applied",
+        (row: BundleEventRow) =>
+          row.type === "UPDATE_APPLIED" && row.to_bundle_id === "bundle-b",
+      ],
+      [
+        "recovered",
+        (row: BundleEventRow) =>
+          row.type === "RECOVERED" && row.from_bundle_id === "bundle-b",
+      ],
+    ] as const;
+    for (const [outcome, matches] of selections) {
+      const expected = events
+        .filter(
+          (row) =>
+            matches(row) &&
+            row.received_at_ms >= since &&
+            row.received_at_ms < before,
+        )
+        .toSorted(newestFirst)
+        .map(({ id }) => id);
+      for (const limit of [1, 3, 8]) {
+        const listed = await pages({
+          ...(outcome === undefined
+            ? {}
+            : {
+                bundle: {
+                  platform: "ios",
+                  channel: "production",
+                  bundleId: "bundle-b",
+                  outcome,
+                },
+              }),
+          sinceMs: since,
+          beforeReceivedAtMs: before,
+          limit,
+        });
+        expect(listed.flatMap(({ ids }) => ids)).toEqual(expected);
+        // Every page but the last is full; the last is empty only after a
+        // full page that ended at the range's last event.
+        expect(listed.slice(0, -1).every(({ full }) => full)).toBe(true);
+        expect(listed.at(-1)!.ids.length).toBe(expected.length % limit);
+      }
+    }
   });
 });

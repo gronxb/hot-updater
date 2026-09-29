@@ -567,6 +567,7 @@ describe.sequential("aws lambda runtime acceptance", () => {
     await expect(
       seedHotUpdater.api.insights.listEvents({
         filter: { kind: "all" },
+        sinceMs: Date.now() - 24 * 60 * 60 * 1_000,
         beforeReceivedAtMs: Date.now() + 1_000,
         limit: 10,
       }),

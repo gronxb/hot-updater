@@ -2,7 +2,7 @@ import type { ReadBudgetServer } from "@hot-updater/test-utils";
 
 import { createMeasuredDatabase } from "./assembly/databasePlugins";
 import { targetBaseCandidateKey } from "./core/baseCandidates";
-import { builtInSchema } from "./database/builtInDatabase";
+import { builtInSchema } from "./db/builtInDatabase";
 import { apiKeys } from "./plugins/api-keys";
 import { insights } from "./plugins/insights";
 

@@ -1,6 +1,12 @@
 import type { DeployReleasePolicy } from "@hot-updater/plugin-core";
+import { createHotUpdater } from "@hot-updater/server";
 import { DatabaseConstraintError } from "@hot-updater/server/database";
-import { createDatabaseCoreApi } from "@hot-updater/server/db";
+import {
+  createDatabaseCoreApi,
+  createMigrator,
+  generateSchema,
+} from "@hot-updater/server/db";
+import { definePlugin, defineTable } from "@hot-updater/server/plugins";
 import { beforeEach, expect, it, vi } from "vitest";
 
 import { createBundleFixture } from "../../../packages/test-utils/src/databaseTestFixtures";
@@ -39,15 +45,42 @@ vi.mock("cloudflare", () => ({
   },
 }));
 
+const config = {
+  accountId: "account-id",
+  cloudflareApiToken: "api-token",
+  databaseId: "database-id",
+};
+
 /** Core's API over the REST database, as the CLI and console run it. */
-const core = () =>
-  createDatabaseCoreApi(
-    d1Database({
-      accountId: "account-id",
-      cloudflareApiToken: "api-token",
-      databaseId: "database-id",
-    }),
-  );
+const core = () => createDatabaseCoreApi(d1Database(config));
+
+/** A third-party plugin with one table. */
+const notes = definePlugin({
+  id: "notes",
+  schemaVersion: "1",
+  schema: {
+    notes: defineTable(
+      { id: { type: "string" }, text: { type: "string" } },
+      { key: ["id"] },
+    ),
+  },
+  init: ({ db }) => ({
+    api: {
+      add: (id: string, text: string) =>
+        db.transaction(async (tx) => {
+          tx.create("notes", { id, text });
+        }),
+      read: (id: string) => db.findOne("notes", { id }),
+    },
+  }),
+});
+
+const server = () =>
+  createHotUpdater({
+    database: d1Database(config),
+    plugins: [notes],
+    clientAccess: "public",
+  });
 
 const release: DeployReleasePolicy = {
   channel: "production",
@@ -120,4 +153,38 @@ it("applies nothing when a guard fails", async () => {
   await expect(
     core().listReleases({ limit: 10, filter: { kind: "all" } }),
   ).resolves.toEqual([]);
+});
+
+it("generates a wrangler migration with a server's plugin tables", async () => {
+  const hotUpdater = server();
+  const migration = generateSchema(hotUpdater, "latest");
+  expect(migration.path).toMatch(/^migrations\/\d{14}_hot-updater\.sql$/u);
+  await expect(hotUpdater.api.notes.read("n1")).rejects.toThrow(
+    '"schema.notes" for d1Database is missing',
+  );
+
+  state.database!.db.exec(migration.code);
+  await hotUpdater.api.notes.add("n1", "hello");
+  await expect(hotUpdater.api.notes.read("n1")).resolves.toEqual({
+    id: "n1",
+    text: "hello",
+  });
+});
+
+it("migrates an empty database's tables, write guard included, through the API", async () => {
+  state.database = createD1TestDatabase([]);
+  const hotUpdater = server();
+  const result = await createMigrator(hotUpdater).migrateToLatest({
+    mode: "from-schema",
+    updateSettings: true,
+  });
+  await result.execute();
+
+  await hotUpdater.api.notes.add("n1", "hello");
+  const [deployed] = await hotUpdater.core.deploy([
+    { bundle: createBundleFixture("1"), release },
+  ]);
+  await expect(
+    hotUpdater.core.getRelease(deployed!.release!.id),
+  ).resolves.toEqual(deployed!.release);
 });

@@ -62,7 +62,8 @@
     "@hot-updater/plugin-core": "workspace:*",
     "@hot-updater/server": "workspace:*",
     "@iarna/toml": "2.2.5",
-    "jiti": "2.6.1"
+    "jiti": "2.6.1",
+    "oxc-parser": "0.141.0"
   },
   "devDependencies": {
     "@aws-sdk/client-kms": "3.1066.0",

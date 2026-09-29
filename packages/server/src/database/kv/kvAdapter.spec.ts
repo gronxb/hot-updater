@@ -12,7 +12,12 @@ import { describe, expect, it } from "vitest";
 import { createDatabaseEngine } from "../database";
 import { resolveSchema } from "../resolveSchema";
 import { defineTable } from "../schema";
-import { createKvAdapter, encodeKvKey, type KeyValueStore } from "./kvAdapter";
+import {
+  createKvAdapter,
+  encodeKvKey,
+  type KeyValueStore,
+  type KvRange,
+} from "./kvAdapter";
 import { createMemoryKeyValueStore } from "./kvTestStore";
 
 const item = (id: string, values: Partial<StoredRow> = {}): StoredRow => ({
@@ -319,6 +324,52 @@ describe("key-value ranges", () => {
       }),
     ).toEqual([]);
     expect(calls).toEqual([]);
+  });
+});
+
+describe("key-value upper bounds", () => {
+  it("gives each upper bound an inclusive form that admits exactly the keys below it", async () => {
+    const memory = createMemoryKeyValueStore();
+    const ranges: KvRange[] = [];
+    const adapter = createKvAdapter({
+      store: {
+        ...memory,
+        query: (range) => {
+          ranges.push(range);
+          return memory.query(range);
+        },
+      },
+    });
+    for (const bounds of [
+      { upper: { values: [5], inclusive: false } },
+      { upper: { values: [5], inclusive: true } },
+      {
+        lower: { values: [-2.5], inclusive: true },
+        upper: { values: [5], inclusive: false },
+      },
+      { lower: { values: [0], inclusive: false } },
+    ]) {
+      await adapter.query(conformanceItems, {
+        index: "byGroup",
+        eq: ["g"],
+        ...bounds,
+        order: "asc",
+        limit: 5,
+      });
+    }
+
+    const keys = [-3, -2.5, 0, 4.999, 5, 5.001, 7].flatMap((score) =>
+      ["", "a", "a\u0000", "a\u0002b", "#"].map((id) =>
+        encodeKvKey([score, id]),
+      ),
+    );
+    const bounded = ranges.filter((range) => range.lt !== undefined);
+    expect(bounded).toHaveLength(3);
+    for (const { lt, lte } of bounded) {
+      for (const key of keys) {
+        expect(compareUtf8(key, lte!) <= 0).toBe(compareUtf8(key, lt!) < 0);
+      }
+    }
   });
 });
 

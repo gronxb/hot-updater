@@ -247,6 +247,9 @@ describe("Standalone core API over admin API protocol 2", () => {
     await expect(
       remote.listPatchesFromBase(base.id, { limit: 10 }),
     ).resolves.toEqual([expect.objectContaining({ bundle_id: target.id })]);
+    await expect(
+      remote.countBundleChildren([base.id, target.id]),
+    ).resolves.toEqual({ [base.id]: 1, [target.id]: 0 });
     await expect(remote.deleteBundles([base.id])).rejects.toMatchObject({
       status: 409,
     });

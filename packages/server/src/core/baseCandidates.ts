@@ -1,117 +1,136 @@
-import type { ReleaseRow } from "@hot-updater/plugin-core";
-import { findMinimumForRange, rangesIntersect, tryParseRange } from "verkit";
+import {
+  createReleaseCatalogScopeKey,
+  encodeChannelKey,
+  parseReleaseCatalogScopeKey,
+} from "@hot-updater/core";
+import type {
+  CompiledCatalogSegment,
+  ReleaseCatalogRow,
+} from "@hot-updater/plugin-core";
+import { normalizeRange, rangesIntersect } from "verkit";
 
-/** Minor lines one release range may cover; a wider range keeps its lowest lines. */
-export const MINOR_LINE_CAP = 16;
+import { parseCompiledCatalog } from "../db/releaseCatalog";
 
-export interface MinorLines {
-  /** `major.minor` lines, lowest first. */
-  readonly lines: readonly string[];
-  /** The range covers more lines than it kept. */
-  readonly truncated: boolean;
-}
-
-/** The minor lines a semver range covers, lowest first, at most `cap`; null for an invalid range. */
-export const minorLinesOf = (
-  range: string,
-  cap = MINOR_LINE_CAP,
-): MinorLines | null => {
-  const parsed = tryParseRange(range);
-  if (parsed === null) return null;
-  const found = new Map<string, readonly [number, number]>();
-  for (const set of parsed.sets) {
-    const exact = set.length === 1 && set[0]?.operator === "" && set[0].version;
-    if (exact) {
-      found.set(`${exact.major}.${exact.minor}`, [exact.major, exact.minor]);
-      continue;
-    }
-    const interval = { options: parsed.options, sets: [set] };
-    const min = findMinimumForRange(interval);
-    if (min === null) continue;
-    // A set is one interval, so its lines run on from its minimum's line.
-    for (
-      let minor = min.minor;
-      minor <= min.minor + cap &&
-      rangesIntersect(interval, `${min.major}.${minor}.x`);
-      minor += 1
-    ) {
-      found.set(`${min.major}.${minor}`, [min.major, minor]);
-    }
-  }
-  const lines = [...found.values()].sort(
-    (left, right) => left[0] - right[0] || left[1] - right[1],
-  );
-  return {
-    lines: lines.slice(0, cap).map(([major, minor]) => `${major}.${minor}`),
-    truncated: lines.length > cap,
-  };
-};
-
-/** JSON with every non-ASCII code unit escaped, so the key is ASCII. */
-const candidateKey = (
-  channelId: string,
-  platform: string,
-  target: readonly ["fingerprint" | "app-version", string],
-) =>
-  JSON.stringify([channelId, platform, ...target]).replace(
-    /[^\x20-\x7e]/g,
-    (unit) => `\\u${unit.charCodeAt(0).toString(16).padStart(4, "0")}`,
-  );
-
-/** The `base_candidates` keys an enabled bundle release holds: its fingerprint, or each minor line of its range. */
-export const releaseBaseCandidateKeys = (
-  release: Pick<
-    ReleaseRow,
-    | "kind"
-    | "bundle_id"
-    | "enabled"
-    | "channel_id"
-    | "platform"
-    | "strategy"
-    | "fingerprint_hash"
-    | "target_app_version"
-  >,
-): string[] => {
-  if (!release.enabled || release.kind !== "BUNDLE" || !release.bundle_id) {
-    return [];
-  }
-  const { channel_id: channelId, platform } = release;
-  if (release.strategy === "FINGERPRINT") {
-    return release.fingerprint_hash
-      ? [
-          candidateKey(channelId, platform, [
-            "fingerprint",
-            release.fingerprint_hash,
-          ]),
-        ]
-      : [];
-  }
-  const covered =
-    release.target_app_version === null
-      ? null
-      : minorLinesOf(release.target_app_version);
-  return (covered?.lines ?? []).map((line) =>
-    candidateKey(channelId, platform, ["app-version", line]),
-  );
-};
-
-/** A new bundle's key for its auto-patch base search; null when its target spans several minor lines. */
-export const targetBaseCandidateKey = (target: {
-  readonly channelId: string;
-  readonly platform: string;
+/** A new bundle's auto-patch target: where it is released, and to whom. */
+export interface BaseCandidateTarget {
+  readonly channel: string;
+  readonly platform: "ios" | "android";
   readonly fingerprintHash: string | null;
   readonly appVersion: string | null;
-}): string | null => {
+}
+
+/** What a base-candidate key names: a catalog scope, and an app-version scope's target range. */
+export interface BaseCandidateQuery {
+  readonly scopeKey: string;
+  readonly range: string | null;
+}
+
+/**
+ * A new bundle's base-candidate key: the Release Catalog scope its devices
+ * update from, and for an app version its normalized range; null for a
+ * target without a valid range.
+ */
+export const targetBaseCandidateKey = (
+  target: BaseCandidateTarget,
+): string | null => {
+  const channelKey = encodeChannelKey(target.channel);
   if (target.fingerprintHash) {
-    return candidateKey(target.channelId, target.platform, [
-      "fingerprint",
-      target.fingerprintHash,
+    return JSON.stringify([
+      createReleaseCatalogScopeKey({
+        channelKey,
+        fingerprintHash: target.fingerprintHash,
+        platform: target.platform,
+        strategy: "FINGERPRINT",
+      }),
     ]);
   }
-  const covered =
-    target.appVersion === null ? null : minorLinesOf(target.appVersion, 1);
-  const line = covered?.truncated === false ? covered.lines[0] : undefined;
-  return line === undefined
+  const range =
+    target.appVersion === null ? null : normalizeRange(target.appVersion);
+  return range === null
     ? null
-    : candidateKey(target.channelId, target.platform, ["app-version", line]);
+    : JSON.stringify([
+        createReleaseCatalogScopeKey({
+          channelKey,
+          platform: target.platform,
+          strategy: "APP_VERSION",
+        }),
+        range,
+      ]);
+};
+
+/** The scope and range a base-candidate key names; null for any other string. */
+export const parseBaseCandidateKey = (
+  key: string,
+): BaseCandidateQuery | null => {
+  try {
+    const parsed: unknown = JSON.parse(key);
+    if (!Array.isArray(parsed) || typeof parsed[0] !== "string") return null;
+    const [scopeKey, text] = parsed as [string, unknown];
+    const { strategy } = parseReleaseCatalogScopeKey(scopeKey);
+    if (strategy === "FINGERPRINT") {
+      return parsed.length === 1 ? { scopeKey, range: null } : null;
+    }
+    const range =
+      parsed.length === 2 && typeof text === "string"
+        ? normalizeRange(text)
+        : null;
+    return range === null ? null : { scopeKey, range };
+  } catch {
+    return null;
+  }
+};
+
+/** A compiled segment as a range: its version when it holds exactly one. */
+const segmentRange = ({ lower, upper }: CompiledCatalogSegment): string =>
+  lower?.inclusive && upper?.inclusive && lower.version === upper.version
+    ? lower.version
+    : [
+        lower === null ? "" : `${lower.inclusive ? ">=" : ">"}${lower.version}`,
+        upper === null ? "" : `${upper.inclusive ? "<=" : "<"}${upper.version}`,
+      ]
+        .join(" ")
+        .trim() || "*";
+
+/**
+ * Auto-patch bases from a scope's compiled Release Catalog, which holds
+ * every enabled bundle release of the scope: those whose range intersects
+ * `range` (all of them in a fingerprint scope), newest release first, each
+ * bundle once and older than `bundleId`, at most `limit`.
+ */
+export const baseBundleIdsOf = (
+  row: ReleaseCatalogRow,
+  range: string | null,
+  bundleId: string,
+  limit: number,
+): string[] => {
+  const catalog = parseCompiledCatalog(row.payload, row.strategy);
+  const serving = new Set(
+    catalog.strategy === "FINGERPRINT"
+      ? catalog.rollbackReleaseIndexes
+      : catalog.segments.flatMap((segment) =>
+          range !== null && rangesIntersect(range, segmentRange(segment))
+            ? segment.rollbackReleaseIndexes
+            : [],
+        ),
+  );
+  const newestFirst = catalog.releaseDescriptors
+    .map((descriptor, index) => ({ descriptor, index }))
+    .sort((left, right) =>
+      left.descriptor.releaseId < right.descriptor.releaseId ? 1 : -1,
+    );
+  const ids: string[] = [];
+  for (const { descriptor, index } of newestFirst) {
+    if (ids.length >= limit) break;
+    const id = descriptor.bundleId;
+    if (
+      serving.has(index) &&
+      descriptor.kind === "BUNDLE" &&
+      id !== null &&
+      id < bundleId &&
+      !ids.includes(id)
+    ) {
+      ids.push(id);
+    }
+  }
+  return ids;
 };

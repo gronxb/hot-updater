@@ -1,12 +1,6 @@
 ---
 "@hot-updater/server": minor
 "@hot-updater/aws": patch
-"@hot-updater/test-utils": minor
 ---
 
-Measure every storage implementation against the redesign's acceptance checks, and bring each within them.
-
-- **Server:** `createEngineDatabase` takes `onCachedRoutesChange`, called after a committed write that changes what the cacheable client routes answer (a Release Catalog row; a check op changes nothing). `dynamoDB` passes its CloudFront invalidation there instead of matching table names itself.
-- **Transactions:** the parent-first order among a write's inserts, which only foreign keys needed, is gone. A write still sends its inserts, then its patches and increments, then its checks, then its deletes, children before parents.
-- **Adapters:** `mongoAdapter`'s `transactions` and `drizzleAdapter`'s `transaction` options, which were already ignored, are gone: every write runs in a transaction.
-- **Schema tooling:** `migrateSchema` and `writeSchemaSettings` live with the db tooling; `@hot-updater/server/database` still exports them, and `HotUpdaterSchemaMigrationRequiredError` lives with the schema fence that throws it.
+`createEngineDatabase` takes `onCachedRoutesChange`, a CDN purge for the cacheable client routes that core calls after a committed write that changes a Release Catalog. Core decides which writes those are, so neither a provider adapter nor the storage engine names a table: `dynamoDB` passes its CloudFront invalidation there.

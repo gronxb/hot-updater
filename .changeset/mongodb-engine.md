@@ -2,7 +2,7 @@
 "@hot-updater/server": minor
 ---
 
-Run the MongoDB adapter on the new storage engine. `mongoAdapter({ client })` keeps its signature; the `transactions` option is accepted and ignored.
+Run the MongoDB adapter on the new storage engine. `mongoAdapter({ client })` keeps its client option; the `transactions` option is gone, since every write runs in a transaction.
 
 - **Storage:** each table is a collection with its key as `_id`, and each index is created as declared. Multi-valued fields use multikey indexes, and unique indexes skip missing values, as SQL's skip nulls.
 - **Writes:** every write runs in one transaction, so MongoDB must run as a replica set or a sharded cluster; a standalone server's first write fails with `MongoTransactionUnsupportedError`.

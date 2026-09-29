@@ -23,6 +23,7 @@ export type {
   Migrator,
   SchemaGenerator,
   ToolingDatabase,
+  ToolingTarget,
 } from "./types";
 export { HotUpdaterSchemaMigrationRequiredError } from "../database/fence";
 export { HOT_UPDATER_SERVER_VERSION } from "../version";
@@ -43,25 +44,33 @@ const getDBMetadata = (hotUpdater: HotUpdaterDBTarget) => {
   return metadata;
 };
 
+/** Whether `hot-updater db generate` writes schema files for a server's database. */
+export const generatesSchema = (hotUpdater: HotUpdaterDBTarget): boolean =>
+  getDBMetadata(hotUpdater).database.generateSchema !== undefined;
+
+/** The migrator for a server's database: its built-in tables and its plugins' tables. */
 export function createMigrator(hotUpdater: HotUpdaterDBTarget): Migrator {
-  const { database } = getDBMetadata(hotUpdater);
+  const { database, target } = getDBMetadata(hotUpdater);
   if (database.createMigrator === undefined) {
     throw new Error(
-      `The ${database.name} database has no migrator; its provider applies the schema.`,
+      database.generateSchema === undefined
+        ? `The ${database.name} database has no migrator; its provider applies the schema.`
+        : `The ${database.name} database applies its schema from migration files: run \`hot-updater db generate\`, then apply the file with the provider's tooling.`,
     );
   }
-  return database.createMigrator();
+  return database.createMigrator(target);
 }
 
 export function generateSchema(
   hotUpdater: HotUpdaterDBTarget,
   ...args: Parameters<SchemaGenerator>
 ): ReturnType<SchemaGenerator> {
-  const { database } = getDBMetadata(hotUpdater);
+  const { database, target } = getDBMetadata(hotUpdater);
   if (database.generateSchema === undefined) {
     throw new Error(
       `The ${database.name} database has no schema generator; run \`hot-updater db migrate\` instead.`,
     );
   }
-  return database.generateSchema(...args);
+  const [version, name] = args;
+  return database.generateSchema(version, name, target);
 }
