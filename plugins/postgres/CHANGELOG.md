@@ -1,5 +1,12 @@
 # @hot-updater/postgres
 
+## 1.0.0-rc.17
+
+### Patch Changes
+
+- Updated dependencies [038c804]
+  - @hot-updater/server@1.0.0-rc.17
+
 ## 1.0.0-rc.16
 
 ### Minor Changes
