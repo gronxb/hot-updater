@@ -44,6 +44,10 @@
       "import": "./dist/plugins/index.mjs",
       "require": "./dist/plugins/index.cjs"
     },
+    "./plugins/insights": {
+      "import": "./dist/plugins/insights/index.mjs",
+      "require": "./dist/plugins/insights/index.cjs"
+    },
     "./package.json": "./package.json"
   },
   "files": [

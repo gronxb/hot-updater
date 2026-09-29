@@ -100,6 +100,10 @@ const validateRow = (
   }
 };
 
+/** Throws `invalid-data` unless `row` is a complete, well-formed bundle event row. */
+export const assertBundleEventRow = (row: unknown): void =>
+  validateRow("bundle_events", row);
+
 /** Downloads and applied transitions belong in installation history. */
 export const isInsightsMovementEvent = (
   event: Pick<BundleEventRow, "type">,
