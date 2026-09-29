@@ -198,6 +198,8 @@ export interface HotUpdaterHandlersOptions {
    * Insights is off, and `POST /events` also warns on the first event it drops.
    */
   readonly endpoints?: readonly MountedEndpoint[];
+  /** The ids of the plugins the server runs, which the admin `/version` lists. */
+  readonly plugins?: readonly string[];
 }
 
 export function createHotUpdaterHandlers({
@@ -205,9 +207,10 @@ export function createHotUpdaterHandlers({
   clientPolicy,
   downloadStorageObject,
   endpoints = [],
+  plugins = [],
 }: HotUpdaterHandlersOptions): HotUpdaterHandlers {
   const routeHandlers: Record<string, RouteHandler> = {
-    ...createVersionRouteHandlers(),
+    ...createVersionRouteHandlers(plugins),
     ...createReleaseCatalogRouteHandlers(),
     ...createAdminRouteHandlers(),
     ...Object.fromEntries(
@@ -293,8 +296,9 @@ export function createHotUpdaterHandlers({
 
   const adminRouter = createRouter<string>();
   const addAdminRoute = mount(adminRouter, true);
-  // The admin mount also reports the protocol, so a standalone client checks it where it calls.
-  addAdminRoute("GET", "/version", "version");
+  // The admin mount also reports the protocol, so a standalone client checks
+  // it where it calls, and the plugins, so a console shows only their features.
+  addAdminRoute("GET", "/version", "adminVersion");
   for (const route of ADMIN_ROUTES) {
     addAdminRoute(route.method, route.path, route.handler);
   }

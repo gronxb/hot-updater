@@ -236,6 +236,7 @@ export function createHotUpdater<
     ...(clientPolicy === undefined ? {} : { clientPolicy }),
     downloadStorageObject,
     endpoints: plugins.endpoints,
+    plugins: Object.keys(plugins.api),
   });
 
   const api = {

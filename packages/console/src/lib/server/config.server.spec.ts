@@ -74,13 +74,41 @@ describe("config.server", () => {
     expect(resolveConsoleConfigMock).toHaveBeenCalledTimes(1);
     expect(first.core).toBe(second.core);
     expect(first.config.database).toBe(database);
-    expect(first.insights).toBe(second.insights);
-    expect(first.apiKeys).not.toBeNull();
-    expect(second.apiKeys).toBe(first.apiKeys);
+    expect(second.runtime).toBe(first.runtime);
+    await expect(first.runtime.features()).resolves.toEqual({
+      insights: false,
+      insightsAnalytics: false,
+      apiKeys: true,
+    });
     await expect(first.core.listChannels()).resolves.toEqual([]);
     expect(first.storagePlugin).toBe(storagePlugin);
     expect(second.storagePlugin).toBe(storagePlugin);
     expect(isConfigLoaded()).toBe(true);
+  });
+
+  it("reads a self-hosted server's plugins once, when the features are first asked for", async () => {
+    const fetchAdmin = vi.fn(async () =>
+      Response.json({ adminProtocol: 2, plugins: ["insights"] }),
+    );
+    resolveConsoleConfigMock.mockResolvedValue({
+      console: {},
+      database: { name: "standalone-repository", core: {}, fetchAdmin },
+      storage: createTestStoragePlugin(),
+    });
+
+    const { prepareConfig } = await import("./config.server");
+    const { runtime } = await prepareConfig(request);
+
+    expect(runtime.remote).toBe(true);
+    expect(fetchAdmin).not.toHaveBeenCalled();
+    await expect(runtime.features()).resolves.toEqual({
+      insights: true,
+      insightsAnalytics: false,
+      apiKeys: false,
+    });
+    await (await prepareConfig(request)).runtime.features();
+    expect(fetchAdmin).toHaveBeenCalledOnce();
+    expect(fetchAdmin).toHaveBeenCalledWith("/version");
   });
 
   it("resets the cached config promise after an initialization failure", async () => {

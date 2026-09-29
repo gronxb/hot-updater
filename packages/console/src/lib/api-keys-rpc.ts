@@ -30,29 +30,20 @@ const parseId = (input: unknown): { readonly id: string } => {
   return { id };
 };
 
-const requireApiKeys = async () => {
-  const { prepareConfig } = await import("./server/config.server");
-  const { apiKeys } = await prepareConfig();
-  if (apiKeys === null) {
-    throw new Error(
-      "API keys are not managed here: add apiKeys() to plugins, or manage a self-hosted server's keys with hot-updater keys on the server.",
-    );
-  }
-  return apiKeys;
+/** API key management, once the console's access check and the feature guard pass. */
+const apiKeyManagement = async () => {
+  const [{ prepareConfig }, { requireFeature }] = await Promise.all([
+    import("./server/config.server"),
+    import("./server/runtime.server"),
+  ]);
+  const { runtime } = await prepareConfig();
+  return requireFeature(runtime, "apiKeys");
 };
-
-export const getApiKeyCapabilityRpc = createServerFn({
-  method: "GET",
-}).handler(async () => {
-  const { prepareConfig } = await import("./server/config.server");
-  const { apiKeys } = await prepareConfig();
-  return { apiKeys: apiKeys !== null } as const;
-});
 
 export const listApiKeysRpc = createServerFn({
   method: "GET",
 }).handler(async (): Promise<ApiKeyView[]> => {
-  const apiKeys = await requireApiKeys();
+  const apiKeys = await apiKeyManagement();
   return [...(await apiKeys.list())].sort(
     (left, right) => right.created_at_ms - left.created_at_ms,
   );
@@ -61,7 +52,7 @@ export const listApiKeysRpc = createServerFn({
 export const createApiKeyRpc = createServerFn({ method: "POST" })
   .validator(parseName)
   .handler(async ({ data }) => {
-    const apiKeys = await requireApiKeys();
+    const apiKeys = await apiKeyManagement();
     const created = await apiKeys.create({ name: data.name });
     return {
       apiKey: created.apiKey,
@@ -72,7 +63,7 @@ export const createApiKeyRpc = createServerFn({ method: "POST" })
 export const revokeApiKeyRpc = createServerFn({ method: "POST" })
   .validator(parseId)
   .handler(async ({ data }): Promise<ApiKeyView> => {
-    const apiKeys = await requireApiKeys();
+    const apiKeys = await apiKeyManagement();
     const revoked = await apiKeys.revoke({ id: data.id });
     if (revoked === null) throw new Error("API key not found.");
     return revoked;

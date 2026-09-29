@@ -56,7 +56,7 @@ import {
   useReleasesQuery,
 } from "@/lib/api";
 import { useBundleActivityQuery } from "@/lib/bundle-activity";
-import { useInsightsStatusQuery } from "@/lib/insights-api";
+import { useConsoleFeature } from "@/lib/console-features-api";
 import type { ReleaseListRow } from "@/lib/server/releaseReachability";
 import { cn } from "@/lib/utils";
 
@@ -425,11 +425,10 @@ function BundlesPage() {
       ? [{ releaseId: release.id, platform: release.platform, channel }]
       : [];
   });
-  const insightsStatus = useInsightsStatusQuery();
-  const activityQuery = useBundleActivityQuery(
-    activityInputs,
-    insightsStatus.data?.activity === true,
-  );
+  const activity = useConsoleFeature("insightsAnalytics");
+  const activityQuery = useBundleActivityQuery(activityInputs, activity);
+  // The Insights column shows only where the console reads release activity.
+  const columnCount = activity ? 11 : 10;
   const activityInputsByRelease = new Map(
     activityInputs.map((input) => [input.releaseId, input]),
   );
@@ -592,20 +591,22 @@ function BundlesPage() {
                                     : "—"}
                               </dd>
                             </div>
-                            <div className="col-span-2 rounded-md bg-muted/40 p-3">
-                              <dt className="mb-2 text-muted-foreground">
-                                Insights
-                              </dt>
-                              <dd>
-                                <BundleMovementSummary
-                                  input={activityInputsByRelease.get(
-                                    release.id,
-                                  )}
-                                  report={activityQuery.data?.[release.id]}
-                                  loading={activityQuery.isFetching}
-                                />
-                              </dd>
-                            </div>
+                            {activity ? (
+                              <div className="col-span-2 rounded-md bg-muted/40 p-3">
+                                <dt className="mb-2 text-muted-foreground">
+                                  Insights
+                                </dt>
+                                <dd>
+                                  <BundleMovementSummary
+                                    input={activityInputsByRelease.get(
+                                      release.id,
+                                    )}
+                                    report={activityQuery.data?.[release.id]}
+                                    loading={activityQuery.isFetching}
+                                  />
+                                </dd>
+                              </div>
+                            ) : null}
                             <div className="col-span-2 flex flex-wrap items-center gap-2 rounded-md bg-muted/40 p-3">
                               <ReleaseStateBadge release={release} />
                               {release.should_force_update ? (
@@ -666,7 +667,7 @@ function BundlesPage() {
                     <TableHead>Enabled</TableHead>
                     <TableHead>Force update</TableHead>
                     <TableHead>Rollout</TableHead>
-                    <TableHead>Insights</TableHead>
+                    {activity ? <TableHead>Insights</TableHead> : null}
                     <TableHead>Message</TableHead>
                     <TableHead>Created</TableHead>
                   </TableRow>
@@ -675,7 +676,7 @@ function BundlesPage() {
                   {releasesQuery.isPending
                     ? Array.from({ length: 7 }, (_, index) => (
                         <TableRow key={index}>
-                          <TableCell colSpan={11}>
+                          <TableCell colSpan={columnCount}>
                             <Skeleton className="h-8 w-full" />
                           </TableCell>
                         </TableRow>
@@ -832,15 +833,17 @@ function BundlesPage() {
                                   percentage={release.rollout_cohort_count / 10}
                                 />
                               </TableCell>
-                              <TableCell>
-                                <BundleMovementSummary
-                                  input={activityInputsByRelease.get(
-                                    release.id,
-                                  )}
-                                  report={activityQuery.data?.[release.id]}
-                                  loading={activityQuery.isFetching}
-                                />
-                              </TableCell>
+                              {activity ? (
+                                <TableCell>
+                                  <BundleMovementSummary
+                                    input={activityInputsByRelease.get(
+                                      release.id,
+                                    )}
+                                    report={activityQuery.data?.[release.id]}
+                                    loading={activityQuery.isFetching}
+                                  />
+                                </TableCell>
+                              ) : null}
                               <TableCell
                                 className="text-sm text-muted-foreground"
                                 title={release.message ?? undefined}
@@ -862,7 +865,7 @@ function BundlesPage() {
                               <TableRow className="hover:bg-transparent">
                                 <TableCell
                                   className="border-t-0 p-0"
-                                  colSpan={11}
+                                  colSpan={columnCount}
                                 >
                                   <ReleaseBundleChildrenPanel
                                     onDetailClick={openChildBundle}
@@ -879,7 +882,7 @@ function BundlesPage() {
                     <TableRow>
                       <TableCell
                         className="h-40 text-center text-muted-foreground"
-                        colSpan={11}
+                        colSpan={columnCount}
                       >
                         {onLaterPage
                           ? "No more bundles on this side."

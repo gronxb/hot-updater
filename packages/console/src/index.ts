@@ -26,9 +26,9 @@ export type HotUpdaterConsoleConfig = Readonly<
     /**
      * The plugins your server runs, such as `[insights(), apiKeys()]`. The
      * console runs them over `database` to read Insights and manage API
-     * keys, and shows a plugin that is not listed as off. A
-     * `standaloneRepository` database needs none: its server answers for its
-     * plugins.
+     * keys, and shows only the features of the plugins listed. A
+     * `standaloneRepository` database needs none: the console reads its
+     * server's plugins from the admin `/version`.
      */
     plugins?: readonly AnyHotUpdaterPlugin[];
   }

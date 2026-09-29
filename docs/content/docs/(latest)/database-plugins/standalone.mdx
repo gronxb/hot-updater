@@ -72,7 +72,7 @@ Every admin path is fixed relative to `baseUrl`. The repository is
 - `core` is core's API for Bundles, Releases, Release Catalogs and Channels,
   sent over the admin API. The CLI's commands and the Console use it.
 - `fetchAdmin(path)` sends a GET to the admin handler with the same headers.
-  The Console reads the server's Insights through it.
+  The Console reads the server's plugins and Insights through it.
 
 Before its first request, `core` reads `GET /version` from the admin handler.
 A server that reports an `adminProtocol` below 2, or none, fails with a
@@ -129,10 +129,17 @@ paths are relative to `baseUrl`, and every response carries
 
 ### Version
 
-`GET /version` reports the protocol:
+`GET /version` reports the protocol and the ids of the plugins the server
+runs, sorted. The Console shows only the features of the plugins listed, and
+none when `plugins` is missing:
 
 ```json
-{ "adminProtocol": 2, "infrastructureGeneration": 1, "version": "1.0.0" }
+{
+  "adminProtocol": 2,
+  "infrastructureGeneration": 1,
+  "version": "1.0.0",
+  "plugins": ["apiKeys", "insights"]
+}
 ```
 
 ### Routes

@@ -1,4 +1,8 @@
-import type { InsightsModel } from "@hot-updater/plugin-core";
+import {
+  type ConfiguredDatabase,
+  type InsightsModel,
+  isRemoteDatabase,
+} from "@hot-updater/plugin-core";
 import {
   type ApiKeyManagementAPI,
   createInsightsProvider,
@@ -10,94 +14,126 @@ import {
 } from "@hot-updater/server/plugins/insights";
 
 import {
+  type ConsoleFeature,
+  ConsoleFeatureUnavailableError,
+  type ConsoleFeatures,
+  resolveConsoleFeatures,
+} from "../console-features";
+import {
   type ConsoleInsightsReads,
   createAdminInsightsReads,
   type FetchAdmin,
-  InsightsOffError,
 } from "./adminInsights";
 
-/** Where the console reads Insights, and whether the server runs it. */
-export interface ConsoleInsights {
-  /** "off" when the server runs without `insights()`; a self-hosted server is asked. */
-  status(): Promise<"on" | "off">;
-  readonly reads: ConsoleInsightsReads;
-  /** Usage and release activity: only a database the console opens itself serves them. */
-  readonly model: InsightsModel | null;
+/** What serves each console feature. */
+export interface ConsoleFeatureApis {
+  readonly insights: ConsoleInsightsReads;
+  readonly insightsAnalytics: InsightsModel;
+  readonly apiKeys: ApiKeyManagementAPI;
 }
 
 export interface ConsoleRuntime {
-  readonly insights: ConsoleInsights;
-  /** API key management, or null when the console cannot manage keys here. */
-  readonly apiKeys: ApiKeyManagementAPI | null;
+  /** Whether the console reaches a self-hosted server through its admin API. */
+  readonly remote: boolean;
+  /** The features on here, resolved once from the plugins the server runs. */
+  features(): Promise<ConsoleFeatures>;
+  /** What serves the features the console can serve here; {@link requireFeature} hands it out. */
+  readonly apis: Partial<ConsoleFeatureApis>;
 }
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null;
 
-const hasMethods = (value: unknown, methods: readonly string[]) =>
-  isRecord(value) &&
-  methods.every((method) => typeof value[method] === "function");
-
-const off = async (): Promise<never> => {
-  throw new InsightsOffError();
+/** The ids of the plugins a self-hosted server lists on its admin `/version`. */
+const readServerPlugins = async (
+  fetchAdmin: FetchAdmin,
+): Promise<readonly string[]> => {
+  const response = await fetchAdmin("/version");
+  if (!response.ok) {
+    throw new Error(`The server answered /version with ${response.status}.`);
+  }
+  const body: unknown = await response.json();
+  const plugins = isRecord(body) ? body.plugins : undefined;
+  // A server from before `/version` listed its plugins reports none, so the
+  // console serves none of their features until the server is upgraded.
+  return Array.isArray(plugins)
+    ? plugins.filter((id): id is string => typeof id === "string")
+    : [];
 };
 
-const insightsOff: ConsoleInsights = {
-  status: async () => "off",
-  reads: {
-    getInstallation: off,
-    getReportingOverview: off,
-    listEvents: off,
-    listInstallationEvents: off,
-    pageInstallationsByCurrentUserId: off,
-  },
-  model: null,
+/** Runs `load` once and keeps its result; a failure is not kept, so the next call retries. */
+const once = <T>(load: () => Promise<T>): (() => Promise<T>) => {
+  let pending: Promise<T> | undefined;
+  return () =>
+    (pending ??= load().catch((error: unknown) => {
+      pending = undefined;
+      throw error;
+    }));
 };
-
-const insightsOn = (model: InsightsModel): ConsoleInsights => ({
-  status: async () => "on",
-  reads: createInsightsProvider(model),
-  model,
-});
 
 /**
- * Where Insights and API keys come from for a console config:
- * - a self-hosted server (`standaloneRepository`) runs its plugins, so the
- *   console reads Insights over its admin API and cannot manage keys;
+ * The console's features and what serves them, for a console config:
+ * - a self-hosted server (`standaloneRepository`) runs its plugins and lists
+ *   them on its admin `/version`; the console reads its Insights events and
+ *   installations through its admin API, and nothing that needs the database;
  * - otherwise the console assembles `plugins` over the database, as the
- *   server does, and a plugin that is not listed is off.
+ *   server does, and serves the features of the plugins it assembled.
  */
 export const createConsoleRuntime = (config: {
-  readonly database: unknown;
+  readonly database: ConfiguredDatabase;
   readonly plugins?: readonly unknown[];
 }): ConsoleRuntime => {
-  const { database, plugins } = config;
-  if (isRecord(database) && typeof database.fetchAdmin === "function") {
-    const admin = createAdminInsightsReads(database.fetchAdmin as FetchAdmin);
+  const { database } = config;
+  if (isRemoteDatabase(database)) {
+    const { fetchAdmin } = database;
     return {
-      insights: { status: admin.status, reads: admin.reads, model: null },
-      apiKeys: null,
+      remote: true,
+      features: once(async () =>
+        resolveConsoleFeatures(await readServerPlugins(fetchAdmin), {
+          remote: true,
+        }),
+      ),
+      apis: { insights: createAdminInsightsReads(fetchAdmin) },
     };
   }
-  const api = createDatabasePluginApis(database, plugins ?? []);
+  const api = createDatabasePluginApis(database, config.plugins ?? []);
+  const features = resolveConsoleFeatures(Object.keys(api), { remote: false });
+  // Assembly refuses a third-party plugin with a built-in plugin's id, so
+  // each id holds that built-in plugin's API.
+  const insightsApi = api.insights as InsightsApi | undefined;
+  const model =
+    insightsApi === undefined ? undefined : createInsightsModel(insightsApi);
   return {
-    insights:
-      api.insights === undefined
-        ? insightsOff
-        : insightsOn(createInsightsModel(api.insights as InsightsApi)),
-    apiKeys: hasMethods(api.apiKeys, ["create", "list", "revoke"])
-      ? (api.apiKeys as ApiKeyManagementAPI)
-      : null,
+    remote: false,
+    features: async () => features,
+    apis: {
+      ...(model === undefined
+        ? {}
+        : {
+            insights: createInsightsProvider(model),
+            insightsAnalytics: model,
+          }),
+      ...(api.apiKeys === undefined
+        ? {}
+        : { apiKeys: api.apiKeys as ApiKeyManagementAPI }),
+    },
   };
 };
 
-/** Insights usage and release activity, which a self-hosted server does not serve over its admin API. */
-export const requireInsightsModel = async (
-  insights: ConsoleInsights,
-): Promise<InsightsModel> => {
-  if (insights.model !== null) return insights.model;
-  if ((await insights.status()) === "off") throw new InsightsOffError();
-  throw new Error(
-    "Insights usage and release activity are read from the database, and a self-hosted server does not serve them over its admin API.",
-  );
+/**
+ * What serves `feature`. Every Insights and API key server function asks
+ * for it first, so a feature the console does not serve is refused with one
+ * error the client recognizes, before anything is read.
+ */
+export const requireFeature = async <F extends ConsoleFeature>(
+  runtime: ConsoleRuntime,
+  feature: F,
+): Promise<ConsoleFeatureApis[F]> => {
+  const api = runtime.apis[feature];
+  if (api === undefined || !(await runtime.features())[feature]) {
+    throw new ConsoleFeatureUnavailableError(feature, {
+      remote: runtime.remote,
+    });
+  }
+  return api as ConsoleFeatureApis[F];
 };

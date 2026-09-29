@@ -4,7 +4,6 @@ import type {
   InsightsEventPageInput,
   InsightsInstallationEventPageInput,
   ActiveInstallationWindow,
-  InsightsProvider,
 } from "@hot-updater/server";
 import { createServerFn } from "@tanstack/react-start";
 
@@ -30,30 +29,15 @@ type InstallationsPageInput = {
   readonly limit: number;
 };
 
-const runtime = async (): Promise<
-  Omit<InsightsProvider, "appendBundleEvent">
-> => {
-  const { prepareConfig } = await import("./server/config.server");
-  const { insights } = await prepareConfig();
-  return insights.reads;
+/** The Insights reads, once the console's access check and the feature guard pass. */
+const insightsReads = async () => {
+  const [{ prepareConfig }, { requireFeature }] = await Promise.all([
+    import("./server/config.server"),
+    import("./server/runtime.server"),
+  ]);
+  const { runtime } = await prepareConfig();
+  return requireFeature(runtime, "insights");
 };
-
-/**
- * Whether the server runs Insights, and whether the console can read usage
- * and release activity: a self-hosted server serves only the event and
- * installation reads over its admin API.
- */
-export const getInsightsStatusRpc = createServerFn({ method: "GET" }).handler(
-  async () => {
-    const { prepareConfig } = await import("./server/config.server");
-    const { insights } = await prepareConfig();
-    const status = await insights.status();
-    return {
-      insights: status,
-      activity: status === "on" && insights.model !== null,
-    } as const;
-  },
-);
 
 const readOverview = (input: InsightsOverviewInput) => input;
 const readEventsPage = (input: EventsPageInput) => input;
@@ -64,26 +48,30 @@ const readInstallId = (input: { readonly installId: string }) => input;
 
 export const getReportingInstallationsRpc = createServerFn({ method: "GET" })
   .validator(readOverview)
-  .handler(async ({ data }) => (await runtime()).getReportingOverview(data));
+  .handler(async ({ data }) =>
+    (await insightsReads()).getReportingOverview(data),
+  );
 
 export const listInsightsEventsRpc = createServerFn({ method: "GET" })
   .validator(readEventsPage)
-  .handler(async ({ data }) => (await runtime()).listEvents(data));
+  .handler(async ({ data }) => (await insightsReads()).listEvents(data));
 
 export const listInsightsInstallationEventsRpc = createServerFn({
   method: "GET",
 })
   .validator(readInstallationEventsPage)
-  .handler(async ({ data }) => (await runtime()).listInstallationEvents(data));
+  .handler(async ({ data }) =>
+    (await insightsReads()).listInstallationEvents(data),
+  );
 
 export const getInsightsInstallationRpc = createServerFn({ method: "GET" })
   .validator(readInstallId)
-  .handler(async ({ data }) => (await runtime()).getInstallation(data));
+  .handler(async ({ data }) => (await insightsReads()).getInstallation(data));
 
 export const findInsightsInstallationsRpc = createServerFn({ method: "GET" })
   .validator(readInstallationPage)
   .handler(async ({ data }) => {
-    const insights = await runtime();
+    const insights = await insightsReads();
     const install = data.cursor
       ? null
       : await insights.getInstallation({ installId: data.identity });

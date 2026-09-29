@@ -7,7 +7,6 @@ import {
   createDatabaseCoreApi,
   createDatabasePluginApis,
 } from "@hot-updater/server/db";
-import { apiKeys } from "@hot-updater/server/plugins/api-keys";
 import { insights } from "@hot-updater/server/plugins/insights";
 
 type DemoReleaseFields = Pick<
@@ -1020,7 +1019,6 @@ export default {
   build: async () => null,
   storage: mockStorage({}),
   database,
-  plugins: [insights(), apiKeys()],
   console: {
     gitUrl: "https://github.com/gronxb/hot-updater",
   },

@@ -303,4 +303,20 @@ describe("Insights through a self-hosted server's admin API", () => {
     expect(offResponse.status).toBe(204);
     expect(offResponse.headers.get("x-hot-updater-insights")).toBe("disabled");
   });
+
+  it("lists the plugins each server runs on its admin /version, as the console reads them", async () => {
+    const plugins = async (adminUrl: string) => {
+      const response = await standaloneRepository({
+        baseUrl: adminUrl,
+      }).fetchAdmin("/version");
+      return ((await response.json()) as { plugins: unknown }).plugins;
+    };
+
+    await expect(plugins(`${baseUrl}/hot-updater/admin`)).resolves.toEqual([
+      "insights",
+    ]);
+    await expect(plugins(`${baseUrl}${offPath}/admin`)).resolves.toEqual([]);
+    const client = await fetch(`${baseUrl}/hot-updater/version`);
+    expect(await client.json()).not.toHaveProperty("plugins");
+  });
 });

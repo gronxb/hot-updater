@@ -1,12 +1,15 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { KeyRound } from "lucide-react";
 
+import { ConsoleFeatureUnavailable } from "@/components/ConsoleFeatureUnavailable";
 import { ApiKeysPage } from "@/components/features/api-keys/ApiKeysPage";
 import { SidebarTrigger } from "@/components/ui/sidebar";
-import { ensureApiKeyRouteAccess } from "@/lib/api-keys-api";
+import { requireConsoleFeature } from "@/lib/console-features-api";
 
 export const Route = createFileRoute("/api-keys")({
-  beforeLoad: ({ context }) => ensureApiKeyRouteAccess(context.queryClient),
+  beforeLoad: ({ context }) =>
+    requireConsoleFeature(context.queryClient, "apiKeys"),
+  notFoundComponent: ConsoleFeatureUnavailable,
   component: ApiKeysRoute,
 });
 

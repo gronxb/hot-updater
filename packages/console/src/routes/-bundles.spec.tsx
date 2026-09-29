@@ -14,15 +14,15 @@ const mocks = vi.hoisted(() => ({
   activity: vi.fn(),
   navigate: vi.fn(),
   search: vi.fn(),
+  insightsAnalytics: true,
 }));
 
 vi.mock("@/lib/bundle-activity", () => ({
   useBundleActivityQuery: mocks.activity,
 }));
-vi.mock("@/lib/insights-api", () => ({
-  useInsightsStatusQuery: () => ({
-    data: { insights: "on", activity: true },
-  }),
+vi.mock("@/lib/console-features-api", () => ({
+  useConsoleFeature: (feature: string) =>
+    feature === "insightsAnalytics" && mocks.insightsAnalytics,
 }));
 
 vi.mock("@tanstack/react-router", () => ({
@@ -154,6 +154,25 @@ describe("BundlesPage", () => {
       );
     },
   );
+  it.each([false, true])(
+    "leaves release insights out where the console does not read them (mobile: %s)",
+    (mobile) => {
+      mocks.isMobile.mockReturnValue(mobile);
+      mocks.insightsAnalytics = false;
+      render(<BundlesPage />);
+
+      expect(screen.queryByText("Insights")).toBeNull();
+      expect(screen.queryByText(/Downloads/)).toBeNull();
+      expect(
+        screen.queryByLabelText("Release insights unavailable"),
+      ).toBeNull();
+      expect(mocks.activity).toHaveBeenCalledWith(expect.any(Array), false);
+      expect(screen.getByText("release-1")).toBeDefined();
+      if (!mobile) {
+        expect(screen.getAllByRole("columnheader")).toHaveLength(10);
+      }
+    },
+  );
   it("keeps bundle management usable when activity is unavailable", () => {
     mocks.activity.mockReturnValue({ error: new Error("Offline") });
     render(<BundlesPage />);
@@ -177,6 +196,7 @@ describe("BundlesPage", () => {
     releases = [release];
     mocks.isMobile.mockReturnValue(false);
     mocks.search.mockReturnValue({});
+    mocks.insightsAnalytics = true;
     release.currentlyUnreachable = false;
   });
 

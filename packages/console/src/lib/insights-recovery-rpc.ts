@@ -18,25 +18,31 @@ export function readBundleActivityInput(
 export const getBundleActivityRpc = createServerFn({ method: "GET" })
   .validator(readBundleActivityInput)
   .handler(async ({ data }) => {
-    const [{ prepareConfig }, { getBundleActivity }, { requireInsightsModel }] =
+    const [{ prepareConfig }, { getBundleActivity }, { requireFeature }] =
       await Promise.all([
         import("./server/config.server"),
         import("./server/bundleActivity"),
         import("./server/runtime.server"),
       ]);
-    const { insights } = await prepareConfig();
-    return getBundleActivity(await requireInsightsModel(insights), data);
+    const { runtime } = await prepareConfig();
+    return getBundleActivity(
+      await requireFeature(runtime, "insightsAnalytics"),
+      data,
+    );
   });
 
 export const getRecoveryReportRpc = createServerFn({ method: "GET" })
   .validator(readRecoveryInput)
   .handler(async ({ data }) => {
-    const [{ prepareConfig }, { getRecoveryReport }, { requireInsightsModel }] =
+    const [{ prepareConfig }, { getRecoveryReport }, { requireFeature }] =
       await Promise.all([
         import("./server/config.server"),
         import("./server/insightsRecovery"),
         import("./server/runtime.server"),
       ]);
-    const { insights } = await prepareConfig();
-    return getRecoveryReport(await requireInsightsModel(insights), data);
+    const { runtime } = await prepareConfig();
+    return getRecoveryReport(
+      await requireFeature(runtime, "insightsAnalytics"),
+      data,
+    );
   });

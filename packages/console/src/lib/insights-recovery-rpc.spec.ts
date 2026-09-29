@@ -1,6 +1,11 @@
 // @vitest-environment node
 
+import type { HotUpdaterCoreApi } from "@hot-updater/plugin-core";
+import { createMemoryAdapter } from "@hot-updater/plugin-core/internal";
+import { insights } from "@hot-updater/server/plugins/insights";
 import { afterEach, describe, expect, it, vi } from "vitest";
+
+import { createConsoleRuntime, requireFeature } from "./server/runtime.server";
 
 const mocks = vi.hoisted(() => ({
   prepare: vi.fn(),
@@ -32,6 +37,21 @@ import {
   getRecoveryReportRpc,
 } from "./insights-recovery-rpc";
 
+const memoryDatabase = () => ({
+  name: "memory",
+  adapter: createMemoryAdapter(),
+});
+
+/** A console that runs insights() over its database, and the model it reads. */
+const withInsights = async () => {
+  const runtime = createConsoleRuntime({
+    database: memoryDatabase(),
+    plugins: [insights()],
+  });
+  mocks.prepare.mockResolvedValue({ runtime });
+  return requireFeature(runtime, "insightsAnalytics");
+};
+
 afterEach(() => vi.resetAllMocks());
 
 describe("recovery report access", () => {
@@ -43,10 +63,7 @@ describe("recovery report access", () => {
   } as const;
 
   it("uses the authenticated console database and preserves the requested ID", async () => {
-    const model = {};
-    mocks.prepare.mockResolvedValue({
-      insights: { model, status: async () => "on" },
-    });
+    const model = await withInsights();
     mocks.report.mockResolvedValue({ series: [] });
     await expect(getRecoveryReportRpc({ data })).resolves.toEqual({
       series: [],
@@ -67,10 +84,7 @@ describe("bundle activity access", () => {
     { platform: "ios", channel: "production", releaseId: "release-a" },
   ] as const;
   it("authenticates batch requests and uses the console database", async () => {
-    const model = {};
-    mocks.prepare.mockResolvedValue({
-      insights: { model, status: async () => "on" },
-    });
+    const model = await withInsights();
     mocks.activity.mockResolvedValue({});
     await expect(getBundleActivityRpc({ data: [...data] })).resolves.toEqual(
       {},
@@ -99,17 +113,46 @@ describe("bundle activity access", () => {
   });
 });
 
-describe("activity without a database the console reads", () => {
-  it("says Insights is off before reading anything", async () => {
-    mocks.prepare.mockResolvedValue({
-      insights: { model: null, status: async () => "off" },
-    });
-
-    await expect(
-      getRecoveryReportRpc({
-        data: { platform: "ios", channel: "production", window: "7d" },
+describe("activity the console does not serve", () => {
+  it.each([
+    [
+      "without insights()",
+      createConsoleRuntime({ database: memoryDatabase() }),
+      "without the insights() plugin",
+    ],
+    [
+      "for a self-hosted server that runs insights()",
+      createConsoleRuntime({
+        database: {
+          name: "standalone-repository",
+          core: {} as HotUpdaterCoreApi,
+          fetchAdmin: async () => Response.json({ plugins: ["insights"] }),
+        },
       }),
-    ).rejects.toThrow("Insights is off");
-    expect(mocks.report).not.toHaveBeenCalled();
-  });
+      "reaches a self-hosted server",
+    ],
+  ])(
+    "is refused %s, before anything is read",
+    async (_case, runtime, message) => {
+      mocks.prepare.mockResolvedValue({ runtime });
+
+      await expect(
+        getRecoveryReportRpc({
+          data: { platform: "ios", channel: "production", window: "7d" },
+        }),
+      ).rejects.toMatchObject({
+        name: "ConsoleFeatureUnavailableError",
+        feature: "insightsAnalytics",
+        status: 404,
+        message: expect.stringContaining(message),
+      });
+      await expect(
+        getBundleActivityRpc({
+          data: [{ platform: "ios", channel: "production", releaseId: "r" }],
+        }),
+      ).rejects.toMatchObject({ feature: "insightsAnalytics" });
+      expect(mocks.report).not.toHaveBeenCalled();
+      expect(mocks.activity).not.toHaveBeenCalled();
+    },
+  );
 });

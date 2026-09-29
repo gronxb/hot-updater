@@ -48,8 +48,8 @@ With a direct database plugin, `hot-updater console` also runs the
 [server plugins](/docs/custom/server-plugins) that `hotUpdater.plugins.ts`, next
 to `hot-updater.config.ts`, exports as `plugins`: `insights()` for the Insights
 pages and `apiKeys()` for API key management. `hot-updater init` writes this
-file for managed providers. Without it, Insights shows as off and API keys are
-not managed here. A deployed console takes the same list as
+file for managed providers. Without it, the console shows neither Insights nor
+API keys. A deployed console takes the same list as
 [`plugins` in its configuration](/docs/guides/console-deployment#add-your-plugins).
 
 ```ts title="hotUpdater.plugins.ts"

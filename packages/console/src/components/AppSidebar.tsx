@@ -7,7 +7,7 @@ import {
   Package,
   Sun,
 } from "lucide-react";
-import { useState } from "react";
+import { type ReactElement, type ReactNode, useState } from "react";
 import { toast } from "sonner";
 
 import { HotUpdaterLogo } from "@/components/HotUpdaterLogo";
@@ -25,23 +25,72 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from "@/components/ui/sidebar";
-import { useApiKeyCapabilityQuery } from "@/lib/api-keys-api";
+import type { ConsoleFeature } from "@/lib/console-features";
+import { useConsoleFeatures } from "@/lib/console-features-api";
+
+type NavigationItem = {
+  readonly label: string;
+  readonly icon: ReactNode;
+  /** The feature the item needs; it shows only while that feature is on. */
+  readonly feature?: ConsoleFeature;
+  readonly active: boolean;
+  readonly link: ReactElement;
+};
 
 export function AppSidebar({ canSignOut = false }: { canSignOut?: boolean }) {
   const { setOpenMobile } = useSidebar();
   const closeMobileSidebar = () => setOpenMobile(false);
   const [signingOut, setSigningOut] = useState(false);
-  const apiKeyCapability = useApiKeyCapabilityQuery();
+  const features = useConsoleFeatures().data?.features;
   const { theme, setTheme } = useTheme();
   const routerState = useRouterState();
   const currentPath = routerState.location.pathname;
 
-  const isBundlesActive = currentPath === "/";
-  const isInsightsActive =
-    currentPath === "/insights" ||
-    currentPath === "/insights/distribution" ||
-    currentPath === "/installations";
-  const isApiKeysActive = currentPath === "/api-keys";
+  const navigation: readonly NavigationItem[] = [
+    {
+      label: "Bundles",
+      icon: <Package />,
+      active: currentPath === "/",
+      link: (
+        <Link
+          to="/"
+          onClick={closeMobileSidebar}
+          search={{
+            afterReleaseId: undefined,
+            beforeReleaseId: undefined,
+            channelId: undefined,
+            enabled: undefined,
+            releaseId: undefined,
+            platform: undefined,
+            bundleId: undefined,
+            scopeKey: undefined,
+          }}
+        />
+      ),
+    },
+    {
+      label: "Insights",
+      icon: <ChartNoAxesCombined />,
+      feature: "insights",
+      active:
+        currentPath === "/insights" ||
+        currentPath === "/insights/distribution" ||
+        currentPath === "/installations",
+      // A self-hosted server's admin API serves events, not the overview.
+      link: features?.insightsAnalytics ? (
+        <Link to="/insights" onClick={closeMobileSidebar} />
+      ) : (
+        <Link to="/installations" onClick={closeMobileSidebar} />
+      ),
+    },
+    {
+      label: "API keys",
+      icon: <KeyRound />,
+      feature: "apiKeys",
+      active: currentPath === "/api-keys",
+      link: <Link to="/api-keys" onClick={closeMobileSidebar} />,
+    },
+  ];
 
   const signOut = async () => {
     setSigningOut(true);
@@ -94,55 +143,23 @@ export function AppSidebar({ canSignOut = false }: { canSignOut?: boolean }) {
           <SidebarGroupLabel>Navigation</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              <SidebarMenuItem>
-                <SidebarMenuButton
-                  isActive={isBundlesActive}
-                  render={
-                    <Link
-                      to="/"
-                      onClick={closeMobileSidebar}
-                      search={{
-                        afterReleaseId: undefined,
-                        beforeReleaseId: undefined,
-                        channelId: undefined,
-                        enabled: undefined,
-                        releaseId: undefined,
-                        platform: undefined,
-                        bundleId: undefined,
-                        scopeKey: undefined,
-                      }}
-                    />
-                  }
-                  tooltip="Bundles"
-                >
-                  <Package />
-                  <span>Bundles</span>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-              <SidebarMenuItem>
-                <SidebarMenuButton
-                  isActive={isInsightsActive}
-                  render={<Link to="/insights" onClick={closeMobileSidebar} />}
-                  tooltip="Insights"
-                >
-                  <ChartNoAxesCombined />
-                  <span>Insights</span>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-              {apiKeyCapability.data?.apiKeys ? (
-                <SidebarMenuItem>
-                  <SidebarMenuButton
-                    isActive={isApiKeysActive}
-                    render={
-                      <Link to="/api-keys" onClick={closeMobileSidebar} />
-                    }
-                    tooltip="API keys"
-                  >
-                    <KeyRound />
-                    <span>API keys</span>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ) : null}
+              {navigation
+                .filter(
+                  ({ feature }) =>
+                    feature === undefined || features?.[feature] === true,
+                )
+                .map((item) => (
+                  <SidebarMenuItem key={item.label}>
+                    <SidebarMenuButton
+                      isActive={item.active}
+                      render={item.link}
+                      tooltip={item.label}
+                    >
+                      {item.icon}
+                      <span>{item.label}</span>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                ))}
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>

@@ -50,4 +50,26 @@ describe("standaloneRepository", () => {
     expect(authorization).toBe("Bearer token");
     expect(url).toBe(`${BASE_URL}/events?limit=1`);
   });
+
+  it("reads the plugins the server runs from its admin /version, fresh each time", async () => {
+    let cacheControl: string | null = null;
+    server.use(
+      http.get(`${BASE_URL}/version`, ({ request }) => {
+        cacheControl = request.headers.get("cache-control");
+        return HttpResponse.json({
+          adminProtocol: 2,
+          plugins: ["apiKeys", "insights"],
+        });
+      }),
+    );
+
+    const response = await standaloneRepository({
+      baseUrl: BASE_URL,
+    }).fetchAdmin("/version");
+
+    await expect(response.json()).resolves.toMatchObject({
+      plugins: ["apiKeys", "insights"],
+    });
+    expect(cacheControl).toBe("no-cache");
+  });
 });
