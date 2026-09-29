@@ -1,5 +1,5 @@
-import { generateKeyPairSync } from "node:crypto";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { generateKeyPairSync, sign, verify } from "node:crypto";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -7,6 +7,7 @@ import * as cliTools from "@hot-updater/cli-tools";
 import { XML } from "expo/config-plugins";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { AndroidConfigParser } from "../../../../packages/hot-updater/src/utils/configParser/androidParser";
 import { transformAndroid, transformIOS } from "./transformers";
 import withHotUpdater, { getPublicKeyFromConfig } from "./withHotUpdater";
 
@@ -94,10 +95,10 @@ describe("getPublicKeyFromConfig", () => {
 
 describe("withHotUpdater - Test Cases", () => {
   describe("Android", () => {
-    it("escapes signing key newlines in AndroidManifest metadata", async () => {
+    it("preserves signing keys through fingerprint and channel manifest rewrites", async () => {
       const dir = await mkdtemp(path.join(tmpdir(), "hot-updater-expo-mod-"));
       tempDirs.push(dir);
-      const { publicKey } = createKeyPair();
+      const { privateKey, publicKey } = createKeyPair();
       await writeFile(path.join(dir, "public-key.pem"), publicKey);
       vi.spyOn(cliTools, "loadConfig").mockResolvedValue({
         updateStrategy: "appVersion",
@@ -146,6 +147,43 @@ describe("withHotUpdater - Test Cases", () => {
       expect(XML.format(result.modResults)).toContain(
         `android:value="${expectedValue}"`,
       );
+
+      const manifestPath = path.join(dir, "AndroidManifest.xml");
+      await writeFile(manifestPath, XML.format(result.modResults));
+
+      const parser = new AndroidConfigParser([manifestPath]);
+      const bundle = Buffer.from("console.log('signed bundle');");
+      const signature = sign("sha256", bundle, privateKey);
+
+      for (const [key, value] of [
+        ["hot_updater_fingerprint_hash", "first-fingerprint"],
+        ["hot_updater_channel", "staging"],
+        ["hot_updater_fingerprint_hash", "second-fingerprint"],
+      ]) {
+        await parser.set(key, value);
+        expect((await parser.get(key)).value).toBe(value);
+
+        const xml = await readFile(manifestPath, "utf-8");
+        const manifest = (await XML.parseXMLAsync(
+          xml,
+        )) as typeof result.modResults;
+        const embeddedKey = manifest.manifest.application?.[0][
+          "meta-data"
+        ]?.find(
+          (item) => item.$?.["android:name"] === "com.hotupdater.PUBLIC_KEY",
+        )?.$?.["android:value"];
+
+        expect(
+          verify(
+            "sha256",
+            bundle,
+            embeddedKey!.replaceAll("\\n", "\n"),
+            signature,
+          ),
+        ).toBe(true);
+        expect(embeddedKey).toBe(expectedValue);
+        expect(xml).not.toContain("&amp;#xA;");
+      }
     });
 
     it("RN 0.82+ Kotlin: input -> output", () => {
