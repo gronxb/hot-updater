@@ -1,87 +1,36 @@
+import type { DeployReleasePolicy } from "@hot-updater/plugin-core";
+import { DatabaseConstraintError } from "@hot-updater/server/database";
+import { createDatabaseCoreApi } from "@hot-updater/server/db";
 import { beforeEach, expect, it, vi } from "vitest";
 
+import { createBundleFixture } from "../../../packages/test-utils/src/databaseTestFixtures";
 import { d1Database } from "./d1Database";
+import { createD1TestDatabase } from "./d1TestDatabase";
 
-type RecordedQuery = {
-  readonly sql: string;
-  readonly params: readonly string[];
+type Body = {
+  readonly sql?: string;
+  readonly params?: readonly string[];
+  readonly batch?: readonly { sql: string; params: readonly string[] }[];
 };
 
-const state = vi.hoisted<{
-  batches: RecordedQuery[][];
-  queries: RecordedQuery[];
-  results: unknown[];
-}>(() => ({ batches: [], queries: [], results: [] }));
+const state = vi.hoisted(() => ({
+  database: undefined as ReturnType<typeof createD1TestDatabase> | undefined,
+  bodies: [] as Body[],
+}));
 
-const bundleD1Row = {
-  id: "bundle-1",
-  platform: "ios",
-  git_commit_hash: null,
-  metadata: '{"version":1}',
-  manifest_storage_uri: "storage://bundle/manifest.json",
-  manifest_file_hash: "manifest-hash",
-  asset_base_storage_uri: "storage://assets",
-} as const;
-
-const eventD1Row = {
-  id: "00000000-0000-7000-8000-000000000001",
-  type: "UPDATE_APPLIED",
-  install_id: "install-1",
-  user_id: "user-1",
-  metadata: {
-    username: "Demo User",
-    cohort: "cohort-1",
-    update_strategy: "appVersion",
-    fingerprint_hash: null,
-    sdk_version: "1.0.0",
-  },
-  from_release_id: null,
-  from_bundle_id: "bundle-previous",
-  to_release_id: null,
-  to_bundle_id: "bundle-current",
-  platform: "ios",
-  app_version: "1.0.0",
-  channel: "production",
-
-  received_at_ms: 100,
-} as const;
-
+/** The REST API over `node:sqlite`, recording each request body. */
 vi.mock("cloudflare", () => ({
   default: class MockCloudflare {
     readonly d1 = {
       database: {
-        query: async (
-          _databaseId: string,
-          input:
-            | { readonly sql: string; readonly params?: readonly string[] }
-            | {
-                readonly batch: readonly {
-                  readonly sql: string;
-                  readonly params?: readonly string[];
-                }[];
-              },
-        ) => {
-          if ("batch" in input) {
-            state.batches.push(
-              input.batch.map(({ sql, params }) => ({
-                sql,
-                params: params ?? [],
-              })),
-            );
-          } else {
-            state.queries.push({
-              sql: input.sql,
-              params: input.params ?? [],
-            });
-          }
+        query: async (_databaseId: string, body: Body) => {
+          state.bodies.push(body);
+          const result = state.database!.batch(
+            body.batch ?? [{ sql: body.sql!, params: body.params ?? [] }],
+          );
           return {
             async *iterPages() {
-              yield {
-                result:
-                  "batch" in input
-                    ? input.batch.map(() => ({ results: [] }))
-                    : [{ results: state.results }],
-              };
+              yield { result };
             },
           };
         },
@@ -90,212 +39,85 @@ vi.mock("cloudflare", () => ({
   },
 }));
 
+/** Core's API over the REST database, as the CLI and console run it. */
+const core = () =>
+  createDatabaseCoreApi(
+    d1Database({
+      accountId: "account-id",
+      cloudflareApiToken: "api-token",
+      databaseId: "database-id",
+    }),
+  );
+
+const release: DeployReleasePolicy = {
+  channel: "production",
+  enabled: true,
+  fingerprintHash: null,
+  message: null,
+  shouldForceUpdate: false,
+  targetAppVersion: "1.0.0",
+};
+
 beforeEach(() => {
-  state.batches.length = 0;
-  state.queries.length = 0;
-  state.results.length = 0;
+  state.database = createD1TestDatabase();
+  state.bodies = [];
 });
 
-it("queries bundles through domain filters", async () => {
-  state.results.push(bundleD1Row);
-  const plugin = d1Database({
-    accountId: "account",
-    cloudflareApiToken: "token",
-    databaseId: "database",
-  });
-
-  const rows = await plugin.models.bundles.findMany({
-    where: { platform: "ios", id: { gte: "bundle-1" } },
-    orderBy: { field: "id", direction: "desc" },
-    limit: 10,
-    offset: 0,
-  });
-
-  expect(rows).toEqual([
-    {
-      ...bundleD1Row,
-      metadata: { version: 1 },
-    },
-  ]);
-  expect(state.queries[0]?.sql).toContain("platform = json_extract(?, '$')");
-  expect(state.queries[0]?.sql).toContain("id >= json_extract(?, '$')");
-  expect(state.queries[0]?.sql).toContain("ORDER BY id DESC");
-});
-
-it("lists normalized channels without scanning bundles", async () => {
-  state.results.push({ id: "channel-production", name: "production" });
-  const plugin = d1Database({
-    accountId: "account",
-    cloudflareApiToken: "token",
-    databaseId: "database",
-  });
-
-  await expect(plugin.models.channels.list({})).resolves.toEqual({
-    channels: [{ id: "channel-production", name: "production" }],
-  });
-
-  expect(state.queries[0]?.params).toEqual(["100", "0"]);
-  expect(state.queries[0]?.sql).toBe(
-    "SELECT * FROM channels ORDER BY name ASC LIMIT json_extract(?, '$') OFFSET json_extract(?, '$')",
+it("binds every value as JSON text and reads it back with json_extract", async () => {
+  const channel = await core().ensureChannel("production");
+  await expect(core().listChannels()).resolves.toEqual([channel]);
+  const statements = state.bodies.flatMap(
+    (body) => body.batch ?? [{ sql: body.sql!, params: body.params ?? [] }],
   );
-  expect(state.queries[0]?.sql).not.toContain("bundles");
-});
-
-it("counts domain-filtered bundle rows in SQL", async () => {
-  state.results.push({ count: 3 });
-  const plugin = d1Database({
-    accountId: "account",
-    cloudflareApiToken: "token",
-    databaseId: "database",
-  });
-
-  await plugin.models.bundles.count({
-    platform: "ios",
-  });
-
-  expect(state.queries[0]?.sql).toContain(
-    "SELECT COUNT(*) AS count FROM bundles",
-  );
-  expect(state.queries[0]?.sql).toContain("platform = json_extract(?, '$')");
-});
-
-it("sends parameterized commits through the D1 batch body", async () => {
-  const plugin = d1Database({
-    accountId: "account",
-    cloudflareApiToken: "token",
-    databaseId: "database",
-  });
-
-  await expect(
-    plugin.commit({
-      changes: [
-        {
-          model: "channels",
-          operation: "insert",
-          row: {
-            id: "00000000-0000-0000-0000-000000000001",
-            name: "production",
-          },
-          onConflict: "ignore",
-        },
-        {
-          model: "channels",
-          operation: "insert",
-          row: {
-            id: "00000000-0000-0000-0000-000000000002",
-            name: "beta",
-          },
-          onConflict: "ignore",
-        },
-      ],
-    }),
-  ).resolves.toEqual({ committed: true });
-
-  expect(state.batches).toHaveLength(1);
-  expect(state.batches[0]).toHaveLength(2);
-  expect(state.batches[0]?.[0]?.params.length).toBeGreaterThan(0);
-  expect(state.batches[0]?.[1]?.params.length).toBeGreaterThan(0);
-});
-
-it("sends the immutable event and canonical head update in one parameterized REST batch", async () => {
-  const plugin = d1Database({
-    accountId: "account",
-    cloudflareApiToken: "token",
-    databaseId: "database",
-  });
-  await expect(
-    plugin.models.insights.recordEvent({
-      event: eventD1Row,
-    }),
-  ).resolves.toBeUndefined();
-  expect(state.queries).toHaveLength(0);
-  expect(state.batches).toHaveLength(1);
-  const [insert, ...remaining] = state.batches[0]!;
-  const summaries = remaining.slice(0, -2);
-  const head = remaining.at(-2);
-  const completed = remaining.at(-1);
-  expect(insert?.sql).toContain("INSERT INTO bundle_events");
-  expect(insert?.sql).toContain("ON CONFLICT(id) DO NOTHING");
-  expect(insert?.params).toEqual(
-    Object.values(eventD1Row).map((value) => JSON.stringify(value)),
-  );
-  expect(summaries.length).toBeGreaterThan(0);
-  expect(summaries.every(({ sql }) => sql.includes("insights_overview"))).toBe(
-    true,
-  );
-  expect(head?.sql).toContain("INSERT INTO bundle_event_heads");
-  expect(head?.sql).toContain(
-    "FROM bundle_events WHERE id = json_extract(?, '$')",
-  );
-  expect(head?.sql).toContain(
-    "WHERE (excluded.received_at_ms, excluded.id) > (bundle_event_heads.received_at_ms, bundle_event_heads.id)",
-  );
-  expect(head?.params).toEqual([JSON.stringify(eventD1Row.id)]);
-  expect(completed?.sql).toContain("SET insights_processed = 1");
-  expect(completed?.params).toEqual([JSON.stringify(eventD1Row.id)]);
-});
-
-it("queries each movement type through a bounded descending range", async () => {
-  const plugin = d1Database({
-    accountId: "account",
-    cloudflareApiToken: "token",
-    databaseId: "database",
-  });
-
-  await expect(
-    plugin.models.insights.listEvents({
-      filter: {
-        kind: "installationMovement",
-        installId: eventD1Row.install_id,
-      },
-      beforeReceivedAtMs: 200,
-      limit: 101,
-    }),
-  ).resolves.toEqual([]);
-
-  expect(state.queries).toHaveLength(3);
-  for (const query of state.queries) {
-    expect(query.sql).toContain("SELECT * FROM bundle_events");
-    expect(query.sql).toContain("type = json_extract(?, '$')");
-    expect(query.sql).toContain("ORDER BY received_at_ms DESC, id DESC");
-    expect(query.params).toContain("101");
+  for (const { sql, params } of statements) {
+    expect(sql.match(/\?/gu)?.length ?? 0).toBe(
+      sql.match(/json_extract\(\?, '\$'\)/gu)?.length ?? 0,
+    );
+    for (const param of params) expect(() => JSON.parse(param)).not.toThrow();
   }
-  expect(state.queries.flatMap(({ params }) => params)).toEqual(
-    expect.arrayContaining([
-      JSON.stringify("UPDATE_DOWNLOADED"),
-      JSON.stringify("UPDATE_APPLIED"),
-      JSON.stringify("RECOVERED"),
-    ]),
+});
+
+it("sends a write as one batch: the guard row, each guard, the changes, then the failure", async () => {
+  await core().ensureChannel("production");
+  state.bodies = [];
+  const [deployed] = await core().deploy([
+    { bundle: createBundleFixture("1"), release },
+  ]);
+  const writes = state.bodies.filter((body) => body.batch !== undefined);
+  expect(writes).toHaveLength(1);
+  const sql = writes[0]!.batch!.map((statement) => statement.sql);
+  expect(sql[0]).toMatch(/^INSERT INTO "_hu_write"/u);
+  expect(sql.at(-2)).toMatch(/^SELECT "failed_op" FROM "_hu_write"/u);
+  expect(sql.at(-1)).toMatch(/^DELETE FROM "_hu_write"/u);
+  await expect(core().getRelease(deployed!.release!.id)).resolves.toEqual(
+    deployed!.release,
   );
 });
 
-it("counts scoped latest events on heads without reading event history", async () => {
-  state.results.push({ count: 2 });
-  const plugin = d1Database({
-    accountId: "account",
-    cloudflareApiToken: "token",
-    databaseId: "database",
-  });
-
+it("applies nothing when a guard fails", async () => {
+  const bundle = createBundleFixture("2");
+  // The patch's base bundle does not exist, so the guard on its row fails.
   await expect(
-    plugin.models.insights.countLatestEvents({
-      platform: "ios",
-      channel: "production",
-      sinceMs: 100,
-    }),
-  ).resolves.toBe(2);
-
-  expect(state.queries).toHaveLength(1);
-  expect(state.queries[0]?.sql).toContain(
-    "SELECT COUNT(*) AS count FROM bundle_event_heads",
-  );
-  expect(state.queries[0]?.sql).toContain("platform = json_extract(?, '$')");
-  expect(state.queries[0]?.sql).toContain("channel = json_extract(?, '$')");
-  expect(state.queries[0]?.sql).toContain("received_at_ms >=");
-  expect(state.queries[0]?.sql).not.toContain("bundle_events");
-  expect(state.queries[0]?.params).toEqual([
-    JSON.stringify("ios"),
-    JSON.stringify("production"),
-    "100",
-  ]);
+    core().deploy([
+      {
+        bundle: {
+          ...bundle,
+          patches: [
+            {
+              baseBundleId: createBundleFixture("1").id,
+              baseFileHash: "base-hash",
+              byteSize: 1,
+              patchFileHash: "patch-hash",
+              patchStorageUri: "storage://patches/2.patch",
+            },
+          ],
+        },
+        release,
+      },
+    ]),
+  ).rejects.toBeInstanceOf(DatabaseConstraintError);
+  await expect(core().getBundle(bundle.id)).resolves.toBeNull();
+  await expect(
+    core().listReleases({ limit: 10, filter: { kind: "all" } }),
+  ).resolves.toEqual([]);
 });

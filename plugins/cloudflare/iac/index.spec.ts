@@ -98,6 +98,7 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => {
   return {
     ...actual,
     confirmInitInputPersistence: mocks.confirmInitInputPersistence,
+    generateHotUpdaterPlugins: vi.fn(),
     makeEnv: mocks.makeEnv,
     p: {
       ...actual.p,

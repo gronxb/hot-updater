@@ -1139,6 +1139,12 @@ describe("resolveEdgeFunctionDenoConfig", () => {
       expect(result.imports).toEqual({
         "@hot-updater/server":
           "./_hot-updater/hot-updater-server/dist/index.mjs",
+        "@hot-updater/server/database":
+          "./_hot-updater/hot-updater-server/dist/database/index.mjs",
+        "@hot-updater/server/plugins/api-keys":
+          "./_hot-updater/hot-updater-server/dist/plugins/api-keys/index.mjs",
+        "@hot-updater/server/plugins/insights":
+          "./_hot-updater/hot-updater-server/dist/plugins/insights/index.mjs",
         "@hot-updater/supabase/edge":
           "./_hot-updater/hot-updater-supabase/dist/edge.mjs",
         "@hot-updater/core": "./_hot-updater/hot-updater-core/dist/index.mjs",
@@ -1158,7 +1164,7 @@ describe("resolveEdgeFunctionDenoConfig", () => {
         hono: `npm:hono@${resolvePackageVersion("hono", {
           searchFrom: path.resolve("plugins/supabase"),
         })}`,
-        kysely: `npm:kysely@${resolvePackageVersion("kysely", {
+        verkit: `npm:verkit@${resolvePackageVersion("verkit", {
           searchFrom: path.resolve("packages/server"),
         })}`,
       });
@@ -1171,7 +1177,7 @@ describe("resolveEdgeFunctionDenoConfig", () => {
           ),
           "utf8",
         ),
-      ).resolves.toContain("./handler.mjs");
+      ).resolves.toContain("./createHotUpdaterCore.mjs");
 
       await expect(
         fs.readFile(

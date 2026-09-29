@@ -139,10 +139,12 @@ describe("aws lambda entrypoint", () => {
       region: "us-east-1",
       tableName: "hot-updater-metadata",
     });
+    const { plugins } = await import("../src/plugins");
     expect(serverMocks.createHotUpdater).toHaveBeenCalledWith(
-      expect.objectContaining({
-        clientAccess: { type: "api-key" },
-      }),
+      expect.objectContaining({ plugins }),
+    );
+    expect(serverMocks.createHotUpdater.mock.lastCall?.[0]).not.toHaveProperty(
+      "clientAccess",
     );
   });
 

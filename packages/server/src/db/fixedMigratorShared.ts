@@ -1,4 +1,4 @@
-import { HOT_UPDATER_SCHEMA_VERSION } from "../schema/types";
+import { HOT_UPDATER_SCHEMA_VERSION } from "../core/schema";
 import type { MigrateOptions, MigrationResult } from "./types";
 
 export const getEmptyMigrationResult = (): MigrationResult => ({
@@ -15,22 +15,3 @@ export const assertSupportedMigrationMode = (options: MigrateOptions): void => {
 
 export const unsupportedSchemaUpgradeMessage = (version: string): string =>
   `Hot Updater v1 cannot migrate schema ${version} in place. Create a new empty database and run migrate or generate against schema ${HOT_UPDATER_SCHEMA_VERSION}.`;
-
-export const assertCurrentOrEmptySchemaVersion = (
-  currentVersion: string | undefined,
-): void => {
-  if (
-    currentVersion !== undefined &&
-    currentVersion !== HOT_UPDATER_SCHEMA_VERSION
-  ) {
-    throw new Error(unsupportedSchemaUpgradeMessage(currentVersion));
-  }
-};
-
-export const inferLegacyCoreSchemaVersion = (
-  legacyVersion: string | undefined,
-): string | undefined => legacyVersion;
-
-export const isCurrentSchemaVersion = (
-  currentVersion: string | undefined,
-): boolean => currentVersion === HOT_UPDATER_SCHEMA_VERSION;

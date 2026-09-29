@@ -6,6 +6,7 @@ import { s3Storage } from "@hot-updater/aws";
 // import admin from "fZrebase-admin";
 import { mockStorage } from "@hot-updater/mock";
 import { createHotUpdater } from "@hot-updater/server";
+import { insights } from "@hot-updater/server/plugins/insights";
 import { mongoAdapter } from "@hot-updater/server/adapters/mongodb";
 
 import { client, closeDatabase as closeMongo, db } from "./mongodb";
@@ -19,11 +20,9 @@ if (existsSync(envFilePath)) {
 // Create Hot Updater instance for CLI
 // Note: MongoDB connection must be established before using this instance
 export const hotUpdater = createHotUpdater({
-  database: mongoAdapter({
-    client,
-    transactions: true,
-  }),
-  clientAccess: { type: "public" },
+  database: mongoAdapter({ client }),
+  plugins: [insights()],
+  clientAccess: "public",
   storage: [
     process.env.NODE_ENV === "test"
       ? (
@@ -76,6 +75,8 @@ export async function resetDecisionFixtures() {
       "releases",
       "bundles",
       "channels",
+      "bundle_totals",
+      "base_candidates",
     ].map((collection) => db.collection(collection).deleteMany({})),
   );
 }

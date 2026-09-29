@@ -71,17 +71,12 @@ describe("IAMManager DynamoDB access", () => {
     const policy = JSON.parse(policyDocument) as {
       Statement: readonly Record<string, unknown>[];
     };
+    // Every table's rows and index items; no secondary index to reach.
     expect(policy.Statement).toEqual([
-      {
-        Action: ["dynamodb:Query"],
-        Effect: "Allow",
-        Resource: [
-          "arn:aws:dynamodb:ap-northeast-2:123456789012:table/hot-updater-metadata/index/hot-updater-update-index",
-        ],
-      },
       {
         Action: [
           "dynamodb:BatchGetItem",
+          "dynamodb:ConditionCheckItem",
           "dynamodb:DeleteItem",
           "dynamodb:GetItem",
           "dynamodb:PutItem",
@@ -92,23 +87,38 @@ describe("IAMManager DynamoDB access", () => {
         Condition: {
           "ForAllValues:StringLike": {
             "dynamodb:LeadingKeys": [
-              "_hot-updater",
               "bundles",
+              "bundles#*",
               "bundle_patches",
-              "release-scope#*",
+              "bundle_patches#*",
+              "releases",
+              "releases#*",
               "release_catalogs",
-              "_hot-updater#release-scope-by-id",
+              "release_catalogs#*",
               "channels",
-              "_hot-updater#channel-names",
+              "channels#*",
+              "bundle_totals",
+              "bundle_totals#*",
+              "base_candidates",
+              "base_candidates#*",
               "bundle_events",
-              "_hot-updater#insights-installations",
-              "_hot-updater#insights-event-ids",
-              "_hot-updater#insights-bundle#*",
-              "_hot-updater#insights-user#*",
-              "_hot-updater#insights-scope#*",
-              "_hot-updater#insights-overview#*",
+              "bundle_events#*",
+              "bundle_event_heads",
+              "bundle_event_heads#*",
+              "insights_overview",
+              "insights_overview#*",
+              "insights_sketches",
+              "insights_sketches#*",
+              "insights_distribution",
+              "insights_distribution#*",
+              "insights_latest_by_bundle",
+              "insights_latest_by_bundle#*",
+              "insights_outcomes",
+              "insights_outcomes#*",
               "api_keys",
-              "_hot-updater#api-key-hashes",
+              "api_keys#*",
+              "private_hot_updater_settings",
+              "private_hot_updater_settings#*",
             ],
           },
         },

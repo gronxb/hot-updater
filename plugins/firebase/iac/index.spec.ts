@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
   functionsDir: "",
   assertFunction: vi.fn(),
   assertInfrastructure: vi.fn(),
+  migrateFirebaseDatabase: vi.fn(),
   provisionApiKey: vi.fn(async () => ({
     apiKey: "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE",
   })),
@@ -19,20 +20,22 @@ const mocks = vi.hoisted(() => ({
   tmpDir: "",
 }));
 
-vi.mock("@hot-updater/server", async () => {
-  const actual = await vi.importActual<typeof import("@hot-updater/server")>(
-    "@hot-updater/server",
+vi.mock("@hot-updater/server/db", async () => {
+  const actual = await vi.importActual<typeof import("@hot-updater/server/db")>(
+    "@hot-updater/server/db",
   );
   return {
     ...actual,
-    provisionApiKey: mocks.provisionApiKey,
+    // The managed server's apiKeys() plugin, over the mocked database.
+    createDatabasePluginApis: vi.fn(() => ({
+      apiKeys: { provision: mocks.provisionApiKey },
+    })),
   };
 });
 
 vi.mock("../src/firebaseDatabase", () => ({
-  firebaseDatabase: vi.fn(() => ({
-    models: { apiKeys: {} },
-  })),
+  firebaseDatabase: vi.fn(() => ({ name: "firebaseDatabase", adapter: {} })),
+  migrateFirebaseDatabase: mocks.migrateFirebaseDatabase,
 }));
 
 vi.mock("firebase-admin/app", async () => {
@@ -288,6 +291,13 @@ describe("Firebase project creation", () => {
     expect(mocks.provisionApiKey).toHaveBeenCalledWith(
       expect.objectContaining({ existingApiKey: API_KEY }),
     );
+    // The schema settings come first, since the database reads nothing without them.
+    expect(mocks.migrateFirebaseDatabase).toHaveBeenCalledWith(
+      expect.objectContaining({ projectId: "existing-project" }),
+    );
+    expect(
+      mocks.migrateFirebaseDatabase.mock.invocationCallOrder[0],
+    ).toBeLessThan(mocks.provisionApiKey.mock.invocationCallOrder[0]!);
     expect(execa).toHaveBeenCalledWith(
       "npx",
       expect.arrayContaining([

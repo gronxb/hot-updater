@@ -1,9 +1,11 @@
 import { NIL_UUID, type Bundle } from "@hot-updater/core";
-import { createDatabaseClient } from "@hot-updater/plugin-core";
+import { createMemoryAdapter } from "@hot-updater/plugin-core/internal";
 import { describe, expect, it, vi } from "vitest";
 
-import { createInMemoryDatabasePlugin } from "../../../test-utils/test/inMemoryDatabasePlugin";
-import { createArtifactResolver } from "./releaseCatalog";
+import { createCoreApi } from "../core/api";
+import { coreModule } from "../core/schema";
+import { createDatabaseEngine } from "../database/database";
+import { resolveSchema } from "../database/resolveSchema";
 import { resolveManifestArtifacts } from "./updateArtifacts";
 
 const CURRENT_ID = "00000000-0000-0000-0000-000000000101";
@@ -169,11 +171,8 @@ describe("resolveManifestArtifacts", () => {
   });
 });
 
-describe("createArtifactResolver", () => {
+describe("core's artifact resolution", () => {
   const setup = async (readManifest = true) => {
-    const databasePlugin = createInMemoryDatabasePlugin();
-    const database = createDatabaseClient(databasePlugin);
-    await database.insertBundle(createBundle(TARGET_ID));
     const manifestText = JSON.stringify({
       bundleId: TARGET_ID,
       assets: {
@@ -183,17 +182,36 @@ describe("createArtifactResolver", () => {
         },
       },
     });
-    return createArtifactResolver({
-      database: databasePlugin,
-      ...(readManifest
-        ? {
-            readStorageText: async (uri: string) =>
-              uri === TARGET_MANIFEST_URI ? manifestText : null,
-          }
-        : {}),
-      resolveFileUrl: async (uri) =>
-        uri ? `https://download.test/${encodeURIComponent(uri)}` : null,
-    });
+    const core = createCoreApi(
+      createDatabaseEngine({
+        adapter: createMemoryAdapter(),
+        schema: resolveSchema([coreModule]),
+      }).database(coreModule),
+      {
+        ...(readManifest
+          ? {
+              readStorageText: async (uri: string) =>
+                uri === TARGET_MANIFEST_URI ? manifestText : null,
+            }
+          : {}),
+        resolveFileUrl: async (uri) =>
+          uri ? `https://download.test/${encodeURIComponent(uri)}` : null,
+      },
+    );
+    await core.deploy([
+      {
+        bundle: createBundle(TARGET_ID),
+        release: {
+          channel: "production",
+          enabled: true,
+          fingerprintHash: null,
+          message: null,
+          shouldForceUpdate: false,
+          targetAppVersion: "*",
+        },
+      },
+    ]);
+    return core.getArtifactInfo;
   };
 
   it("serves the explicit manifest artifact protocol", async () => {

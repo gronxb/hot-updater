@@ -1,216 +1,240 @@
+import { DatabaseSync, type SqliteValue } from "node:sqlite";
+
 import { PGlite } from "@electric-sql/pglite";
 import {
-  setupDatabasePluginTestSuite,
+  setupDatabaseTestSuite,
   startHttpTestServer,
 } from "@hot-updater/test-utils";
-import { Kysely } from "kysely";
+import { Kysely, SqliteDialect } from "kysely";
 import { PGliteDialect } from "kysely-pglite-dialect";
 import { describe, expect, it } from "vitest";
 
 import {
-  createBundlePatchRowFixture,
   createBundleEventRowFixture,
-  createBundleRowFixture,
-  createChannelRowFixture,
+  createBundleFixture,
 } from "../../../test-utils/src/databaseTestFixtures";
-import type { DatabaseAdapterWithCapabilities } from "../db/types";
+import { createDatabasePluginApis } from "../assembly/databasePlugins";
+import { createInProcessCoreApi } from "../core/api";
+import { builtInSchema } from "../database/builtInDatabase";
+import { DatabaseConstraintError } from "../database/errors";
+import { HotUpdaterSchemaMigrationRequiredError } from "../database/fence";
+import { isMultiIndex, quoteSql } from "../database/sql/sqlSchema";
+import type { ToolingDatabase } from "../db/types";
 import { createHotUpdater } from "../index";
-import {
-  DATABASE_PLUGIN_TEST_RESET_SQL,
-  DATABASE_PLUGIN_TEST_SCHEMA_SQL,
-} from "./databasePluginTestDatabase";
-import { kyselyAdapter } from "./kysely";
+import { createInsightsModel, insights } from "../plugins/insights";
+import { kyselyAdapter, type SQLProvider } from "./kysely";
 
-class KyselyTestStateError extends Error {
-  readonly name = "KyselyTestStateError";
+/** Every data table the migration creates; the settings rows stay. */
+const dataTables = builtInSchema.tables.flatMap((table) => [
+  table.name,
+  ...table.indexes
+    .filter((index) => isMultiIndex(table, index))
+    .map((index) => `${table.name}__${index.name}`),
+]);
+
+/** Kysely over `node:sqlite`, as Kysely's SQLite dialect expects. */
+const sqliteKysely = (database: DatabaseSync) =>
+  new Kysely<object>({
+    dialect: new SqliteDialect({
+      database: {
+        close: () => database.close(),
+        prepare: (query) => {
+          const statement = database.prepare(query);
+          return {
+            reader: statement.columns().length > 0,
+            all: (parameters) =>
+              statement.all(...(parameters as SqliteValue[])),
+            run: (parameters) => {
+              const result = statement.run(...(parameters as SqliteValue[]));
+              return {
+                changes: result.changes,
+                lastInsertRowid: result.lastInsertRowid,
+              };
+            },
+            iterate: (parameters) =>
+              statement.iterate(...(parameters as SqliteValue[])),
+          };
+        },
+      },
+    }),
+  });
+
+const migrate = async (database: ToolingDatabase) =>
+  (await database.createMigrator!().migrateToLatest()).execute();
+
+/** The Insights plugin's model over a database, on the server's tables. */
+const insightsOf = (database: ToolingDatabase) =>
+  createInsightsModel(
+    createDatabasePluginApis(database, [insights()]).insights,
+  );
+
+const backends = {
+  postgresql: () => {
+    const client = new PGlite();
+    return {
+      db: new Kysely<object>({ dialect: new PGliteDialect(client) }),
+      exec: (sql: string) => client.exec(sql).then(() => undefined),
+      close: () => client.close(),
+    };
+  },
+  sqlite: () => {
+    const database = new DatabaseSync(":memory:");
+    return {
+      db: sqliteKysely(database),
+      exec: async (sql: string) => database.exec(sql),
+      close: async () => undefined,
+    };
+  },
+} satisfies Record<Exclude<SQLProvider, "mysql">, () => unknown>;
+
+for (const provider of ["postgresql", "sqlite"] as const) {
+  let backend: ReturnType<(typeof backends)[typeof provider]> | undefined;
+  setupDatabaseTestSuite({
+    createHttpClient: (options) =>
+      startHttpTestServer(
+        createHotUpdater({
+          ...options,
+          plugins: [insights()],
+          clientAccess: "public",
+        }).handlers,
+      ),
+    createInsightsModel: insightsOf,
+    name: `kyselyAdapter (${provider})`,
+    migrate: async () => {
+      backend = backends[provider]();
+      await migrate(kyselyAdapter({ db: backend.db, provider }));
+    },
+    createDatabase: () => kyselyAdapter({ db: backend!.db, provider }),
+    reset: async () => {
+      const quote = (name: string) => quoteSql(provider, name);
+      await backend!.exec(
+        provider === "postgresql"
+          ? `TRUNCATE ${dataTables.map(quote).join(", ")} CASCADE`
+          : dataTables.map((name) => `DELETE FROM ${quote(name)};`).join(""),
+      );
+    },
+    dispose: async () => {
+      await backend!.db.destroy();
+      await backend!.close();
+      backend = undefined;
+    },
+  });
 }
 
-let client: PGlite | undefined;
-let database: Kysely<object> | undefined;
-
-const getClient = (): PGlite => {
-  if (client === undefined) throw new KyselyTestStateError();
-  return client;
-};
-
-const getDatabase = (): Kysely<object> => {
-  if (database === undefined) throw new KyselyTestStateError();
-  return database;
-};
-
-setupDatabasePluginTestSuite({
-  createHttpClient: (options) =>
-    startHttpTestServer(
-      createHotUpdater({ ...options, clientAccess: { type: "public" } })
-        .handlers,
-    ),
-  name: "kyselyAdapter PostgreSQL",
-  migrate: async () => {
-    client = new PGlite();
-    database = new Kysely<object>({ dialect: new PGliteDialect(client) });
-    await client.exec(DATABASE_PLUGIN_TEST_SCHEMA_SQL);
-  },
-  createPlugin: (): DatabaseAdapterWithCapabilities =>
-    kyselyAdapter({ db: getDatabase(), provider: "postgresql" }),
-  reset: async () => {
-    await getClient().exec(DATABASE_PLUGIN_TEST_RESET_SQL);
-  },
-  dispose: async () => {
-    await getDatabase().destroy();
-    await getClient().close();
-    database = undefined;
-    client = undefined;
-  },
-});
-
-describe("kyselyAdapter SQLite JSON storage", () => {
-  it("keeps failed event inserts absent and permits retry", async () => {
-    const db = new PGlite();
-    const kysely = new Kysely<object>({ dialect: new PGliteDialect(db) });
-    await db.exec(DATABASE_PLUGIN_TEST_SCHEMA_SQL);
-    await db.exec(
-      "alter table bundle_events add constraint reject_event check (install_id <> 'install-703')",
-    );
-    const plugin = kyselyAdapter({ db: kysely, provider: "postgresql" });
-    const event = createBundleEventRowFixture("703", 100);
-    const input = { event };
+describe("kyselyAdapter migrations and fence", () => {
+  it("migrates once, answers nothing to migrate afterwards, and serves behind the fence", async () => {
+    const { db, close } = backends.postgresql();
+    const database = kyselyAdapter({ db, provider: "postgresql" });
+    const core = createInProcessCoreApi(database.adapter);
+    const migrator = database.createMigrator!();
     try {
-      await expect(plugin.models.insights.recordEvent(input)).rejects.toThrow();
-      expect((await db.query("select id from bundle_events")).rows).toEqual([]);
-      await db.exec("alter table bundle_events drop constraint reject_event");
-      await plugin.models.insights.recordEvent(input);
-      await expect(
-        plugin.models.insights.findLatestEvents({
-          installId: event.install_id,
-        }),
-      ).resolves.toEqual([input.event]);
+      await expect(core.listChannels()).rejects.toBeInstanceOf(
+        HotUpdaterSchemaMigrationRequiredError,
+      );
+      await expect(migrator.getVersion()).resolves.toBeUndefined();
+      const pending = await migrator.migrateToLatest();
+      expect(pending.getSQL?.()).toContain(
+        'CREATE TABLE IF NOT EXISTS "bundles"',
+      );
+      expect(
+        pending.operations.filter(({ type }) => type === "create-table"),
+      ).toHaveLength(builtInSchema.tables.length);
+      await pending.execute();
+      await expect(migrator.getVersion()).resolves.toBe("1.0.0");
+      await expect(migrator.migrateToLatest()).resolves.toMatchObject({
+        operations: [],
+      });
+      await expect(core.listChannels()).resolves.toEqual([]);
     } finally {
-      await kysely.destroy();
-      await db.close();
+      await db.destroy();
+      await close();
     }
   });
-  it("decodes text-backed event metadata in history and latest reads", async () => {
-    const client = new PGlite();
-    const db = new Kysely<object>({ dialect: new PGliteDialect(client) });
-    await client.exec(
-      DATABASE_PLUGIN_TEST_SCHEMA_SQL.replace(
-        "metadata jsonb not null,",
-        "metadata text not null,",
-      ),
-    );
-    const insights = kyselyAdapter({ db, provider: "sqlite" }).models.insights;
-    const base = createBundleEventRowFixture("704", 100);
-    const event = {
-      ...base,
-      metadata: { ...base.metadata, device: { tags: [null, "ko-KR"] } },
-    };
+
+  it("refuses to migrate a database from before the storage engine", async () => {
+    const { db, exec, close } = backends.postgresql();
     try {
-      await insights.recordEvent({ event });
-      expect(
-        (await client.query("select metadata from bundle_events")).rows,
-      ).toEqual([{ metadata: JSON.stringify(event.metadata) }]);
+      await exec(
+        `CREATE TABLE private_hot_updater_settings (key varchar(255) PRIMARY KEY, value varchar(255) NOT NULL, _v bigint NOT NULL DEFAULT 0);
+         INSERT INTO private_hot_updater_settings (key, value) VALUES ('schema.core', '1.0.0');`,
+      );
+      const migrator = kyselyAdapter({
+        db,
+        provider: "postgresql",
+      }).createMigrator!();
+      await expect(migrator.migrateToLatest()).rejects.toMatchObject({
+        setting: { key: "schema.engine", expected: "1", found: null },
+      });
+    } finally {
+      await db.destroy();
+      await close();
+    }
+  });
+
+  it("rolls back a failed event write whole and accepts the retry", async () => {
+    const { db, exec, close } = backends.postgresql();
+    const database = kyselyAdapter({ db, provider: "postgresql" });
+    const model = insightsOf(database);
+    try {
+      await migrate(database);
+      await exec(
+        "ALTER TABLE bundle_events ADD CONSTRAINT reject_event CHECK (install_id <> 'install-703')",
+      );
+      const event = createBundleEventRowFixture("703", 100);
+      await expect(model.recordEvent({ event })).rejects.toThrow();
       await expect(
-        insights.findLatestEvents({ installId: event.install_id }),
-      ).resolves.toEqual([event]);
+        model.findLatestEvents({ installId: event.install_id }),
+      ).resolves.toEqual([]);
+      await exec("ALTER TABLE bundle_events DROP CONSTRAINT reject_event");
+      await model.recordEvent({ event });
       await expect(
-        insights.listEvents({
-          filter: { kind: "all" },
-          beforeReceivedAtMs: 101,
-          limit: 10,
-        }),
+        model.findLatestEvents({ installId: event.install_id }),
       ).resolves.toEqual([event]);
     } finally {
       await db.destroy();
-      await client.close();
+      await close();
     }
   });
 
-  it("round-trips JSON values through text columns", async () => {
-    const sqliteClient = new PGlite();
-    const sqliteDatabase = new Kysely<object>({
-      dialect: new PGliteDialect(sqliteClient),
-    });
-    await sqliteClient.exec(
-      DATABASE_PLUGIN_TEST_SCHEMA_SQL.replace(
-        "metadata jsonb not null default '{}'::jsonb",
-        "metadata text not null",
-      ),
-    );
-    const plugin = kyselyAdapter({ db: sqliteDatabase, provider: "sqlite" });
-    const row = {
-      ...createBundleRowFixture("901"),
-      metadata: { app_version: "1.0.0" },
-    };
-
-    await plugin.commit({
-      changes: [{ model: "bundles", operation: "insert", row }],
-    });
-    const stored = await sqliteClient.query<{
-      metadata: string;
-    }>("select metadata from bundles where id = $1", [row.id]);
-
-    expect(stored.rows[0]).toEqual({
-      metadata: JSON.stringify(row.metadata),
-    });
-    await expect(plugin.models.bundles.findById(row.id)).resolves.toEqual(row);
-    await sqliteDatabase.destroy();
-    await sqliteClient.close();
-  });
-});
-
-describe("kyselyAdapter soft relations", () => {
-  it("rejects an orphan patch and rolls back its owner row", async () => {
-    const softClient = new PGlite();
-    const softDatabase = new Kysely<object>({
-      dialect: new PGliteDialect(softClient),
-    });
-    await softClient.exec(
-      DATABASE_PLUGIN_TEST_SCHEMA_SQL.replaceAll(
-        " references bundles(id) on delete cascade",
-        "",
-      ),
-    );
-    const plugin = kyselyAdapter({
-      db: softDatabase,
-      provider: "postgresql",
-      relationMode: "fumadb",
-    });
-    const owner = createBundleRowFixture("952");
-    const patch = createBundlePatchRowFixture(
-      "missing-base",
-      owner.id,
-      "missing-base",
-    );
-    const channel = createChannelRowFixture();
-
+  it("keeps references without database foreign keys", async () => {
+    const { db, close } = backends.postgresql();
+    const database = kyselyAdapter({ db, provider: "postgresql" });
+    const core = createInProcessCoreApi(database.adapter);
     try {
+      const pending = await database.createMigrator!().migrateToLatest();
+      expect(pending.getSQL?.()).not.toContain("FOREIGN KEY");
+      await pending.execute();
+      const owner = createBundleFixture("952");
       await expect(
-        plugin.commit({
-          changes: [
-            {
-              model: "channels",
-              operation: "insert",
-              row: channel,
-              onConflict: "ignore",
+        core.deploy([
+          {
+            bundle: {
+              ...owner,
+              patches: [
+                {
+                  baseBundleId: "missing-base",
+                  baseFileHash: "base-hash",
+                  byteSize: 1,
+                  patchFileHash: "patch-hash",
+                  patchStorageUri: "storage://patches/952.patch",
+                },
+              ],
             },
-            { model: "bundles", operation: "insert", row: owner },
-            {
-              model: "bundlePatches",
-              operation: "insert",
-              row: patch,
+            release: {
+              channel: "production",
+              enabled: false,
+              fingerprintHash: null,
+              message: null,
+              shouldForceUpdate: false,
+              targetAppVersion: "*",
             },
-          ],
-        }),
-      ).rejects.toThrow("bundle_patches.base_bundle_id.foreign-key");
-      await expect(
-        plugin.models.bundles.findById(owner.id),
-      ).resolves.toBeNull();
-      await expect(plugin.models.channels.list({})).resolves.toEqual({
-        channels: [],
-      });
+          },
+        ]),
+      ).rejects.toBeInstanceOf(DatabaseConstraintError);
+      await expect(core.getBundle(owner.id)).resolves.toBeNull();
     } finally {
-      await softDatabase.destroy();
-      await softClient.close();
+      await db.destroy();
+      await close();
     }
   });
 });

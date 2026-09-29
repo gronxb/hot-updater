@@ -6,6 +6,7 @@ import {
   confirmInitInputPersistence,
   copyDirToTmp,
   formatApiKeyNote,
+  generateHotUpdaterPlugins,
   getHotUpdaterInitInputEnv,
   getInitProviderEnvVars,
   getInitProviderTextPromptValues,
@@ -18,10 +19,11 @@ import {
   transformTemplate,
   writeHotUpdaterConfig,
 } from "@hot-updater/cli-tools";
-import { provisionApiKey } from "@hot-updater/server";
+import { createDatabasePluginApis } from "@hot-updater/server/db";
 import { Cloudflare } from "cloudflare";
 
 import { d1Database } from "../src/d1Database";
+import { plugins } from "../src/plugins";
 import { createWrangler } from "../src/utils/createWrangler";
 import {
   validateCloudflareApiToken,
@@ -704,23 +706,23 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
     workerName,
   });
 
-  const databasePlugin = d1Database({
+  const database = d1Database({
     accountId,
     cloudflareApiToken: apiToken,
     databaseId: selectedD1DatabaseId,
   });
   let apiKey: string;
   try {
-    apiKey = (
-      await provisionApiKey({
-        apiKeys: databasePlugin.models.apiKeys,
-        existingApiKey: initInputEnv.HOT_UPDATER_API_KEY,
-        name: "Cloudflare init",
-      })
-    ).apiKey;
+    apiKey = // The managed server's apiKeys() plugin, on the tables it reads.
+      (
+        await createDatabasePluginApis(database, plugins).apiKeys.provision({
+          existingApiKey: initInputEnv.HOT_UPDATER_API_KEY,
+          name: "Cloudflare init",
+        })
+      ).apiKey;
     await makeEnv({ HOT_UPDATER_API_KEY: apiKey });
   } finally {
-    await databasePlugin.dispose?.();
+    await database.dispose?.();
   }
 
   const configWriteResult = await writeHotUpdaterConfig(
@@ -741,6 +743,7 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
       `Kept existing 'hot-updater.config.ts' unchanged: ${configWriteResult.reason}`,
     );
   }
+  await generateHotUpdaterPlugins("@hot-updater/cloudflare");
 
   if (subdomains.subdomain) {
     p.note(

@@ -117,13 +117,19 @@ command or generated files alone do not prove that a remote step is complete.
    as development dependencies, using its package manager. Preserve unrelated
    dependencies. An MCP connection alone does not configure hot-updater deploy.
 2. Use app/hot-updater.config.ts as the merge source for the app's existing
-   config. Keep custom settings and the existing update strategy. Read
+   config. Keep custom settings and the existing update strategy. Copy
+   app/hotUpdater.plugins.ts beside it unchanged: it re-exports the plugins the
+   deployed server runs, so the CLI and console agree with the server. Read
    ENVIRONMENT.md and fill only the applicable env.example settings in a local ignored
    .env.hotupdater. Provider and signing credential values must not enter logs,
    manifests, instructions, browser URLs, or app bundles. Verify secret files
    are ignored and not tracked.
 3. After the schema is ready, use app/api-key.config.ts and
-   app/provision-api-key.mjs to register a client key. Run the script from the
+   app/provision-api-key.mjs to register a client key. The script registers it
+   through the apiKeys() plugin that app/hotUpdater.plugins.ts lists, on the
+   tables the deployed server reads, so keep that file beside it. When
+   api-key.config.ts exports `migrate` (Firestore), the script runs it first to
+   write the schema settings. Run the script from the
    directory whose .env.hotupdater contains the target provider settings, using
    Node 22.18+ or Node 24+. Install the manifest.json packages where
    these files can resolve them (the default scaffold is nested in the app).

@@ -1,4 +1,5 @@
-import type { ConfigInput, DatabasePlugin } from "@hot-updater/plugin-core";
+import type { ConfigInput, ConfiguredDatabase } from "@hot-updater/plugin-core";
+import type { AnyHotUpdaterPlugin } from "@hot-updater/server/plugins";
 
 export type ConsoleAuthProvider = "google" | "github";
 
@@ -21,7 +22,15 @@ export type ConsoleAuthAdapter = Readonly<{
 
 export type HotUpdaterConsoleConfig = Readonly<
   Omit<Pick<ConfigInput, "console" | "database" | "storage">, "database"> & {
-    database: DatabasePlugin;
+    database: ConfiguredDatabase;
+    /**
+     * The plugins your server runs, such as `[insights(), apiKeys()]`. The
+     * console runs them over `database` to read Insights and manage API
+     * keys, and shows a plugin that is not listed as off. A
+     * `standaloneRepository` database needs none: its server answers for its
+     * plugins.
+     */
+    plugins?: readonly AnyHotUpdaterPlugin[];
   }
 >;
 

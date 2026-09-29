@@ -1,11 +1,8 @@
 import { describe, expect, it } from "vitest";
 
-import { createDatabasePluginHarness } from "../../../packages/hot-updater/src/commands/databasePlugin.testFixtures.ts";
+import { createDatabaseHarness } from "../../../packages/hot-updater/src/commands/database.testFixtures.ts";
 import { commitDeployment } from "../../../packages/hot-updater/src/commands/deployTransaction.ts";
-import {
-  type Bundle,
-  promoteRelease,
-} from "../../../plugins/plugin-core/dist/index.mjs";
+import type { Bundle } from "../../../plugins/plugin-core/dist/index.mjs";
 import { resetFixtureReleases } from "./fixture-release-reset.ts";
 
 const artifact = (
@@ -23,16 +20,16 @@ const artifact = (
 
 describe("Detox fixture Release reset", () => {
   it("clears only the current platform and namespace while preserving shared artifacts and patches", async () => {
-    const harness = createDatabasePluginHarness();
-    const database = harness.plugin;
+    const harness = createDatabaseHarness();
+    const { core } = harness;
     const namespace = "e2e-current-job-ios-s1";
     const base = artifact(1);
     const orphan = artifact(6);
-    harness.setBundles([orphan]);
+    await harness.setBundles([orphan]);
     const deploy = async (bundle: Bundle, channel: string, enabled = true) =>
       (
         await commitDeployment({
-          database,
+          core: harness.core,
           bundle,
           release: {
             channel,
@@ -47,8 +44,7 @@ describe("Detox fixture Release reset", () => {
 
     // The fixture artifact also serves production and is an external patch base.
     const ownProduction = await deploy(base, `${namespace}-production`);
-    await promoteRelease({
-      database,
+    await core.promoteRelease({
       releaseId: ownProduction.id,
       targetChannel: "production",
     });
@@ -76,22 +72,24 @@ describe("Detox fixture Release reset", () => {
       (release) => !ownIds.includes(release.id),
     );
     const artifactsBefore = await harness.bundles();
-    const channelsBefore = await database.models.channels.list({});
+    const channelsBefore = await core.listChannels();
     const retainedCatalogs = (
-      await database.models.releaseCatalogs.findMany({ limit: 100 })
+      await core.listReleaseCatalogs({ limit: 100 })
     ).filter(
       (catalog) =>
         ![ownProduction.scope_key, ownBeta.scope_key].includes(
           catalog.scope_key,
         ),
     );
-    const patchesBefore = await database.models.bundlePatches.findByBundleIds(
-      artifactsBefore.map(({ id }) => id),
-    );
+    const patchesOf = async (ids: readonly string[]) =>
+      (await Promise.all(ids.map((id) => core.getBundle(id)))).flatMap(
+        (detail) => detail?.patches ?? [],
+      );
+    const patchesBefore = await patchesOf(artifactsBefore.map(({ id }) => id));
     expect(patchesBefore).toHaveLength(1);
 
     const result = await resetFixtureReleases({
-      database,
+      core,
       namespace,
       platform: "ios",
     });
@@ -99,39 +97,36 @@ describe("Detox fixture Release reset", () => {
     expect(result.clearedReleaseIds.sort()).toEqual(ownIds.sort());
     expect(await harness.releases()).toEqual(retainedReleases);
     expect(await harness.bundles()).toEqual(artifactsBefore);
-    expect(await database.models.channels.list({})).toEqual(channelsBefore);
-    expect(
-      await database.models.bundlePatches.findByBundleIds(
-        artifactsBefore.map(({ id }) => id),
-      ),
-    ).toEqual(patchesBefore);
+    expect(await core.listChannels()).toEqual(channelsBefore);
+    expect(await patchesOf(artifactsBefore.map(({ id }) => id))).toEqual(
+      patchesBefore,
+    );
     for (const catalog of retainedCatalogs) {
-      expect(
-        await database.models.releaseCatalogs.findByScopeKey(catalog.scope_key),
-      ).toEqual(catalog);
+      expect(await core.getReleaseCatalogRow(catalog.scope_key)).toEqual(
+        catalog,
+      );
     }
     for (const scopeKey of [ownProduction.scope_key, ownBeta.scope_key]) {
-      expect(
-        await database.models.releaseCatalogs.findByScopeKey(scopeKey),
-      ).toMatchObject({ is_tombstone: true });
+      expect(await core.getReleaseCatalogRow(scopeKey)).toMatchObject({
+        is_tombstone: true,
+      });
     }
   });
 
   it.each([null, "", " \t"])(
     "rejects missing namespace %j before accessing the provider",
     async (namespace) => {
-      const harness = createDatabasePluginHarness();
+      const harness = createDatabaseHarness();
 
       await expect(
         resetFixtureReleases({
-          database: harness.plugin,
+          core: harness.core,
           namespace,
           platform: "ios",
         }),
       ).rejects.toThrow("HOT_UPDATER_E2E_CHANNEL_NAMESPACE");
 
       expect(harness.read).not.toHaveBeenCalled();
-      expect(harness.commit).not.toHaveBeenCalled();
     },
   );
 });

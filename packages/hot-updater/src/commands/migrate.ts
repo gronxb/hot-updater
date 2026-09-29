@@ -2,7 +2,6 @@ import { p } from "@hot-updater/cli-tools";
 import { createMigrator as createHotUpdaterMigrator } from "@hot-updater/server/db";
 
 import { ui } from "../utils/cli-ui";
-import { showMigrateUnsupportedError } from "./utils/adapter-strategies";
 import { loadHotUpdater } from "./utils/load-hot-updater";
 
 export interface MigrateOptions {
@@ -197,15 +196,12 @@ export async function migrate(options: MigrateOptions) {
     switch (adapterName) {
       case "kysely":
       case "mongodb":
-        // Use createMigrator to run migrations
-        await migrateWithMigrator(hotUpdater, skipConfirm, s);
-        break;
-
+      // drizzle-kit and Prisma apply their tables; their migrators set what
+      // the ORM cannot declare and write the settings rows.
       case "drizzle":
       case "prisma":
-        // These adapters have their own migration systems
-        s.stop("Migration not supported");
-        showMigrateUnsupportedError(adapterName);
+        // Use createMigrator to run migrations
+        await migrateWithMigrator(hotUpdater, skipConfirm, s);
         break;
 
       default:

@@ -3,7 +3,7 @@ import { stripVTControlCharacters } from "node:util";
 import type { Bundle, ReleaseRow } from "@hot-updater/plugin-core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { createDatabasePluginHarness } from "./databasePlugin.testFixtures";
+import { createDatabaseHarness } from "./database.testFixtures";
 
 const { loadConfig, log } = vi.hoisted(() => ({
   loadConfig: vi.fn(),
@@ -28,7 +28,7 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
 
 vi.mock("../utils/printBanner", () => ({ printBanner: vi.fn() }));
 
-const databaseHarness = createDatabasePluginHarness();
+const databaseHarness = createDatabaseHarness();
 
 const artifact = (
   id: string,
@@ -68,7 +68,7 @@ describe("Artifact commands", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     databaseHarness.reset();
-    loadConfig.mockResolvedValue({ database: databaseHarness.plugin });
+    loadConfig.mockResolvedValue({ database: databaseHarness.database });
   });
 
   afterEach(() => {
@@ -77,43 +77,40 @@ describe("Artifact commands", () => {
 
   it("paginates through all Release references", async () => {
     const bundleId = "B1";
-    databaseHarness.setBundles([artifact(bundleId)]);
-    const releases = Array.from({ length: 1_001 }, (_, index) =>
+    await databaseHarness.setBundles([artifact(bundleId)]);
+    const releases = Array.from({ length: 501 }, (_, index) =>
       releaseReference(
-        `release-${String(1_001 - index).padStart(4, "0")}`,
+        `release-${String(501 - index).padStart(4, "0")}`,
         bundleId,
       ),
     );
-    const findMany = vi
-      .spyOn(databaseHarness.plugin.models.releases, "findMany")
+    const listReleases = vi
+      .spyOn(databaseHarness.core, "listReleases")
       .mockImplementation(async (input) => {
-        if (input.beforeReleaseId === undefined) {
-          return releases.slice(0, 1_000);
-        }
-        expect(input.beforeReleaseId).toBe(releases[999]!.id);
-        return releases.slice(1_000);
+        expect(input.filter).toEqual({ kind: "bundle", bundleId });
+        if (input.after === undefined) return releases.slice(0, 500);
+        expect(input.after).toBe(releases[499]!.id);
+        return releases.slice(500);
       });
     const { handleArtifactDelete } = await import("./artifact");
 
     await expect(
       handleArtifactDelete([bundleId], { yes: true }),
-    ).rejects.toThrow(releases[1_000]!.id);
+    ).rejects.toThrow(releases[500]!.id);
 
-    expect(findMany).toHaveBeenCalledTimes(2);
+    expect(listReleases).toHaveBeenCalledTimes(2);
     await expect(
-      databaseHarness.plugin.models.bundles.findById(bundleId),
+      databaseHarness.core.getBundle(bundleId),
     ).resolves.not.toBeNull();
   });
 
   it("deletes an unreferenced artifact", async () => {
-    databaseHarness.setBundles([artifact("B1")]);
+    await databaseHarness.setBundles([artifact("B1")]);
     const { handleArtifactDelete } = await import("./artifact");
 
     await handleArtifactDelete(["B1"], { yes: true });
 
-    await expect(
-      databaseHarness.plugin.models.bundles.findById("B1"),
-    ).resolves.toBeNull();
+    await expect(databaseHarness.core.getBundle("B1")).resolves.toBeNull();
     expect(log.success).toHaveBeenCalledWith("Deleted artifact record.");
     expect(
       log.info.mock.calls.map(([message]) =>
@@ -127,19 +124,21 @@ describe("Artifact commands", () => {
 
   it("preserves an artifact referenced by a Release", async () => {
     const bundleId = "00000000-0000-7000-8000-000000000001";
-    databaseHarness.setBundles([artifact(bundleId)]);
-    await databaseHarness.plugin.models.channels.insert({
-      row: { id: "channel-production", name: "production" },
-      onConflict: "returnExisting",
-    });
-    const release = releaseReference(
-      "00000000-0000-7000-8000-000000000002",
-      bundleId,
-    );
-    await databaseHarness.plugin.commit({
-      changes: [{ model: "releases", operation: "insert", row: release }],
-    });
-    databaseHarness.commit.mockClear();
+    const [deployed] = await databaseHarness.core.deploy([
+      {
+        bundle: artifact(bundleId),
+        release: {
+          channel: "production",
+          enabled: true,
+          fingerprintHash: null,
+          message: null,
+          shouldForceUpdate: false,
+          targetAppVersion: "1.0.x",
+        },
+      },
+    ]);
+    const release = deployed!.release!;
+    const deleteBundles = vi.spyOn(databaseHarness.core, "deleteBundles");
     const { handleArtifactDelete } = await import("./artifact");
 
     await expect(
@@ -147,9 +146,9 @@ describe("Artifact commands", () => {
     ).rejects.toThrow(
       `Cannot delete artifacts referenced by bundles. Disable and delete these bundles first:\nArtifact ID ${bundleId}: referenced by bundle IDs ${release.id}`,
     );
-    expect(databaseHarness.commit).not.toHaveBeenCalled();
+    expect(deleteBundles).not.toHaveBeenCalled();
     await expect(
-      databaseHarness.plugin.models.bundles.findById(bundleId),
+      databaseHarness.core.getBundle(bundleId),
     ).resolves.not.toBeNull();
   });
 });

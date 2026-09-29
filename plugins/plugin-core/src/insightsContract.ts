@@ -1,6 +1,5 @@
-import { DatabasePluginInputError } from "./databasePluginCrudValidationErrors";
-import { isRecord } from "./databasePluginCrudValidationFields";
-import { validateCreateData } from "./databasePluginCrudValidationRows";
+import { isRecord, validateBundleEventFields } from "./bundleEventRow";
+import { DatabasePluginInputError } from "./databaseErrors";
 import type {
   BundleEventRow,
   InsightsEventFilter,
@@ -82,7 +81,7 @@ const validateRow = (
   result = false,
 ): void => {
   try {
-    validateCreateData(model, row);
+    validateBundleEventFields(row);
     if (
       !isRecord(row) ||
       typeof row.id !== "string" ||
@@ -99,6 +98,10 @@ const validateRow = (
     throw error;
   }
 };
+
+/** Throws `invalid-data` unless `row` is a complete, well-formed bundle event row. */
+export const assertBundleEventRow = (row: unknown): void =>
+  validateRow("bundle_events", row);
 
 /** Downloads and applied transitions belong in installation history. */
 export const isInsightsMovementEvent = (

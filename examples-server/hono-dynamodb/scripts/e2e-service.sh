@@ -32,21 +32,7 @@ for attempt in $(seq 1 60); do
   sleep 1
 done
 
-if ! aws --endpoint-url "${AWS_DYNAMODB_ENDPOINT}" dynamodb describe-table --table-name "${AWS_DYNAMODB_TABLE_NAME}" >/dev/null 2>&1; then
-  aws --endpoint-url "${AWS_DYNAMODB_ENDPOINT}" dynamodb create-table \
-    --table-name "${AWS_DYNAMODB_TABLE_NAME}" \
-    --billing-mode PAY_PER_REQUEST \
-    --attribute-definitions \
-      AttributeName=pk,AttributeType=S \
-      AttributeName=sk,AttributeType=S \
-      AttributeName=gsi1pk,AttributeType=S \
-      AttributeName=gsi1sk,AttributeType=S \
-    --key-schema \
-      AttributeName=pk,KeyType=HASH \
-      AttributeName=sk,KeyType=RANGE \
-    --global-secondary-indexes '[{"IndexName":"hot-updater-update-index","KeySchema":[{"AttributeName":"gsi1pk","KeyType":"HASH"},{"AttributeName":"gsi1sk","KeyType":"RANGE"}],"Projection":{"ProjectionType":"ALL"}}]' >/dev/null
-  aws --endpoint-url "${AWS_DYNAMODB_ENDPOINT}" dynamodb wait table-exists --table-name "${AWS_DYNAMODB_TABLE_NAME}"
-fi
+# The bootstrap step migrates the database: it creates the table and writes the schema settings.
 
 for attempt in $(seq 1 60); do
   if curl -fsS "${AWS_S3_ENDPOINT}/minio/health/ready" >/dev/null; then

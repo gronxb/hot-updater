@@ -1,4 +1,3 @@
-import type { RouteHandler } from "../handlerTypes";
 import {
   InsightsBadRequestError,
   InsightsPayloadTooLargeError,
@@ -49,9 +48,61 @@ const run = async (operation: () => Promise<Response>): Promise<Response> => {
 const query = (operation: () => Promise<unknown>): Promise<Response> =>
   run(async () => json(await operation(), 200));
 
+/** Every Insights route: where it mounts, and the handler it runs. */
+export const INSIGHTS_ROUTES = [
+  {
+    access: "client",
+    method: "POST",
+    path: "/events",
+    handler: "appendBundleEvent",
+  },
+  { access: "admin", method: "GET", path: "/events", handler: "listEvents" },
+  {
+    access: "admin",
+    method: "GET",
+    path: "/overview",
+    handler: "getReportingOverview",
+  },
+  {
+    access: "admin",
+    method: "GET",
+    path: "/installations",
+    handler: "pageInstallationsByCurrentUserId",
+  },
+  {
+    access: "admin",
+    method: "GET",
+    path: "/installations/:installId/events",
+    handler: "listInstallationEvents",
+  },
+  {
+    access: "admin",
+    method: "GET",
+    path: "/installations/:installId",
+    handler: "getInstallation",
+  },
+] as const;
+
+export type InsightsRouteName = (typeof INSIGHTS_ROUTES)[number]["handler"];
+
+export type InsightsRouteHandler = (
+  params: Readonly<Record<string, string>>,
+  request: Request,
+) => Promise<Response>;
+
+/** Without the insights plugin, its routes answer 204 and say Insights is off. */
+export const insightsDisabled: InsightsRouteHandler = async () =>
+  new Response(null, {
+    headers: {
+      "cache-control": "private, no-store",
+      "x-hot-updater-insights": "disabled",
+    },
+    status: 204,
+  });
+
 export const createInsightsRouteHandlers = (
   provider: InsightsProvider,
-): Record<string, RouteHandler> => ({
+): Record<InsightsRouteName, InsightsRouteHandler> => ({
   appendBundleEvent: async (_params, request) =>
     run(async () => {
       await provider.appendBundleEvent(await parseBundleEventRequest(request));
@@ -86,19 +137,3 @@ export const createInsightsRouteHandlers = (
       ),
     ),
 });
-
-export const registerInsightsClientRoutes = (
-  add: (method: string, path: string, handler: string) => void,
-): void => {
-  add("POST", "/events", "appendBundleEvent");
-};
-
-export const registerInsightsAdminRoutes = (
-  add: (method: string, path: string, handler: string) => void,
-): void => {
-  add("GET", "/events", "listEvents");
-  add("GET", "/overview", "getReportingOverview");
-  add("GET", "/installations", "pageInstallationsByCurrentUserId");
-  add("GET", "/installations/:installId/events", "listInstallationEvents");
-  add("GET", "/installations/:installId", "getInstallation");
-};

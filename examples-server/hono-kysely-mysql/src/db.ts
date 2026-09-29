@@ -5,6 +5,7 @@ import { fileURLToPath } from "url";
 import { s3Storage } from "@hot-updater/aws";
 import { mockStorage } from "@hot-updater/mock";
 import { createHotUpdater } from "@hot-updater/server";
+import { insights } from "@hot-updater/server/plugins/insights";
 import { kyselyAdapter } from "@hot-updater/server/adapters/kysely";
 import { Kysely, MysqlDialect, sql } from "kysely";
 import { createPool } from "mysql2";
@@ -51,7 +52,8 @@ export const hotUpdater = createHotUpdater({
     db: kysely,
     provider: "mysql",
   }),
-  clientAccess: { type: "public" },
+  plugins: [insights()],
+  clientAccess: "public",
   storage: [
     process.env.NODE_ENV === "test"
       ? (

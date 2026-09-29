@@ -3,10 +3,12 @@ import { setTimeout as sleep } from "timers/promises";
 import { loadConfig, p } from "@hot-updater/cli-tools";
 import type {
   Bundle,
-  BundleRepository,
+  ConfiguredDatabase,
+  HotUpdaterCoreApi,
   ReleaseRow,
 } from "@hot-updater/plugin-core";
-import { createDatabaseClient } from "@hot-updater/plugin-core";
+import { rowToBundle } from "@hot-updater/plugin-core";
+import { createDatabaseCoreApi } from "@hot-updater/server/db";
 
 import { ui } from "../utils/cli-ui";
 import { printBanner } from "../utils/printBanner";
@@ -20,9 +22,7 @@ export type ArtifactDeleteOptions = ArtifactMutationOptions;
 
 const DELETE_VERIFY_ATTEMPTS = 12;
 const DELETE_VERIFY_DELAY_MS = 1000;
-const STANDALONE_DATABASE_NAME = "standalone-repository";
-const STANDALONE_DELETE_LOOKUP_LIMIT = 100;
-const RELEASE_REFERENCE_PAGE_SIZE = 1_000;
+const RELEASE_REFERENCE_PAGE_SIZE = 500;
 
 interface BundleReleaseReferences {
   readonly count: number;
@@ -41,8 +41,9 @@ const formatBundleSummary = (bundle: Bundle): string => {
   return ui.block("Artifact", lines);
 };
 
+/** The releases on a bundle, through the index by bundle. */
 const loadReleaseReferences = async (
-  database: BundleRepository,
+  core: HotUpdaterCoreApi,
   bundleId: string,
 ): Promise<BundleReleaseReferences> => {
   const releases: ReleaseRow[] = [];
@@ -51,10 +52,11 @@ const loadReleaseReferences = async (
   let beforeReleaseId: string | undefined;
 
   for (;;) {
-    const page = await database.models.releases.findMany({
-      ...(beforeReleaseId === undefined ? {} : { beforeReleaseId }),
-      bundleId,
+    const page = await core.listReleases({
+      filter: { kind: "bundle", bundleId },
       limit: RELEASE_REFERENCE_PAGE_SIZE,
+      order: "desc",
+      ...(beforeReleaseId === undefined ? {} : { after: beforeReleaseId }),
     });
     for (const release of page) {
       if (release.bundle_id !== bundleId) {
@@ -113,9 +115,9 @@ const refuseNonInteractiveMutation = (action: string): never => {
   process.exit(1);
 };
 
-const safeDispose = async (databasePlugin: BundleRepository): Promise<void> => {
+const safeDispose = async (database: ConfiguredDatabase): Promise<void> => {
   try {
-    await databasePlugin.dispose?.();
+    await database.dispose?.();
   } catch (err) {
     p.log.warn(
       `Database plugin dispose failed (cleanup-only, original error preserved): ${
@@ -138,35 +140,21 @@ export const handleArtifactDelete = async (
   }
 
   const config = await loadConfig(null);
-  const databasePlugin = config.database;
-  const database = createDatabaseClient(databasePlugin);
+  const database = config.database;
   try {
-    // Resolve targets from management snapshots. The standard
-    // standalone API caps list requests at 100 IDs, so only that remote plugin
-    // uses bounded lookups.
-    const lookupBatches =
-      databasePlugin.name === STANDALONE_DATABASE_NAME
-        ? Array.from(
-            {
-              length: Math.ceil(ids.length / STANDALONE_DELETE_LOOKUP_LIMIT),
-            },
-            (_, index) =>
-              ids.slice(
-                index * STANDALONE_DELETE_LOOKUP_LIMIT,
-                (index + 1) * STANDALONE_DELETE_LOOKUP_LIMIT,
-              ),
-          )
-        : [ids];
-    const matchedBundles: Bundle[] = [];
-    for (const batch of lookupBatches) {
-      const { data } = await database.getBundles({
-        where: { id: { in: batch } },
-        limit: batch.length,
-      });
-      matchedBundles.push(...data);
-    }
+    const core = createDatabaseCoreApi(database);
+    const details = await Promise.all(ids.map((id) => core.getBundle(id)));
     const matchedById = new Map(
-      matchedBundles.map((bundle) => [bundle.id, bundle]),
+      details.flatMap((detail) =>
+        detail === null
+          ? []
+          : [
+              [
+                detail.bundle.id,
+                rowToBundle(detail.bundle, detail.patches),
+              ] as const,
+            ],
+      ),
     );
     const targets = ids.flatMap((id) => {
       const bundle = matchedById.get(id);
@@ -184,7 +172,7 @@ export const handleArtifactDelete = async (
     const targetReferences = await Promise.all(
       targets.map(async (bundle) => ({
         bundle,
-        references: await loadReleaseReferences(databasePlugin, bundle.id),
+        references: await loadReleaseReferences(core, bundle.id),
       })),
     );
     const blockers = targetReferences.filter(
@@ -220,15 +208,11 @@ export const handleArtifactDelete = async (
       }
     }
 
-    await database.mutate(async (mutation) => {
-      for (const bundle of targets) {
-        await mutation.deleteBundleById(bundle.id);
-      }
-    });
+    await core.deleteBundles(targets.map(({ id }) => id));
 
     const stillPresent: string[] = [];
     for (const bundle of targets) {
-      const deleted = await waitForDeletedBundle(database, bundle.id);
+      const deleted = await waitForDeletedBundle(core, bundle.id);
       if (!deleted) {
         stillPresent.push(bundle.id);
       }
@@ -250,16 +234,13 @@ export const handleArtifactDelete = async (
       "Storage objects are unchanged. Preview cleanup with hot-updater storage prune --dry-run.",
     );
   } finally {
-    await safeDispose(databasePlugin);
+    await safeDispose(database);
   }
 };
 
-async function waitForDeletedBundle(
-  database: ReturnType<typeof createDatabaseClient>,
-  bundleId: string,
-) {
+async function waitForDeletedBundle(core: HotUpdaterCoreApi, bundleId: string) {
   for (let attempt = 0; attempt < DELETE_VERIFY_ATTEMPTS; attempt += 1) {
-    const refetched = await database.getBundleById(bundleId);
+    const refetched = await core.getBundle(bundleId);
     if (!refetched) {
       return true;
     }

@@ -39,7 +39,7 @@ export const createPatch = async (options: PatchOptions) => {
   }
 
   const config = await loadConfig({ channel: options.channel, platform });
-  const databasePlugin = config.database;
+  const database = config.database;
   const storagePlugin = config.storage;
   assertStorageOperations(storagePlugin, ["get", "put", "delete"]);
 
@@ -60,7 +60,7 @@ export const createPatch = async (options: PatchOptions) => {
         bundleId: options.bundleId,
       },
       {
-        databasePlugin,
+        database,
         storagePlugin,
       },
       {
@@ -73,6 +73,6 @@ export const createPatch = async (options: PatchOptions) => {
     console.error(error);
     process.exit(1);
   } finally {
-    await databasePlugin.dispose?.();
+    await database.dispose?.();
   }
 };

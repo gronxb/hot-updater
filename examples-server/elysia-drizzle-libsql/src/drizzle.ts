@@ -24,6 +24,8 @@ const dbPath =
 export const client = createClient({
   url: `file:${dbPath}`,
 });
+// WAL lets reads run while a transaction commits on another connection.
+await client.execute("PRAGMA journal_mode = WAL");
 
 export const db = drizzle(client, {
   schema,

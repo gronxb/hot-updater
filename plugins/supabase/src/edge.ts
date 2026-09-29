@@ -1,3 +1,4 @@
+export { plugins } from "./plugins";
 export {
   supabaseDatabase,
   type SupabaseDatabaseConfig,

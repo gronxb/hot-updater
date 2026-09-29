@@ -2,12 +2,29 @@ import {
   getHotUpdaterCoreMetadata,
   type RuntimeHotUpdaterAPI,
 } from "../createHotUpdaterCore";
-import { generateSchemaFromHotUpdaterSchema } from "./schemaGenerators";
 import { type Migrator, type SchemaGenerator } from "./types";
 
+export { createDatabaseCoreApi, type CoreApi } from "../core/api";
+export {
+  createDatabasePluginApis,
+  createMeasuredDatabase,
+  type MeasuredDatabase,
+  type MeasuredDatabaseOptions,
+} from "../assembly/databasePlugins";
+export { targetBaseCandidateKey } from "../core/baseCandidates";
 export * from "./createBundleDiff";
-export type { Migrator, SchemaGenerator } from "./types";
-export { HotUpdaterSchemaMigrationRequiredError } from "./schemaReadiness";
+export {
+  generateEngineSql,
+  settingsStatements,
+  type EngineSqlOptions,
+} from "./engineSql";
+export type {
+  DatabaseTooling,
+  Migrator,
+  SchemaGenerator,
+  ToolingDatabase,
+} from "./types";
+export { HotUpdaterSchemaMigrationRequiredError } from "../database/fence";
 export { HOT_UPDATER_SERVER_VERSION } from "../version";
 
 export type HotUpdaterDBTarget = {
@@ -27,21 +44,24 @@ const getDBMetadata = (hotUpdater: HotUpdaterDBTarget) => {
 };
 
 export function createMigrator(hotUpdater: HotUpdaterDBTarget): Migrator {
-  const { adapterCapabilities, core } = getDBMetadata(hotUpdater);
-  return (adapterCapabilities.createMigrator ?? core.createMigrator)();
+  const { database } = getDBMetadata(hotUpdater);
+  if (database.createMigrator === undefined) {
+    throw new Error(
+      `The ${database.name} database has no migrator; its provider applies the schema.`,
+    );
+  }
+  return database.createMigrator();
 }
 
 export function generateSchema(
   hotUpdater: HotUpdaterDBTarget,
   ...args: Parameters<SchemaGenerator>
 ): ReturnType<SchemaGenerator> {
-  const { adapterCapabilities, core } = getDBMetadata(hotUpdater);
-  const schemaGenerator =
-    adapterCapabilities.generateSchema ?? core.generateSchema;
-  return generateSchemaFromHotUpdaterSchema(
-    hotUpdater.adapterName,
-    adapterCapabilities.provider,
-    args[0],
-    schemaGenerator(...args),
-  );
+  const { database } = getDBMetadata(hotUpdater);
+  if (database.generateSchema === undefined) {
+    throw new Error(
+      `The ${database.name} database has no schema generator; run \`hot-updater db migrate\` instead.`,
+    );
+  }
+  return database.generateSchema(...args);
 }

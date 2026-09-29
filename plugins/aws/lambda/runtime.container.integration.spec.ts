@@ -3,11 +3,7 @@ import { access, cp, mkdtemp, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import {
-  CreateTableCommand,
-  DynamoDBClient,
-  waitUntilTableExists,
-} from "@aws-sdk/client-dynamodb";
+import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import {
   CreateBucketCommand,
   DeleteObjectsCommand,
@@ -23,16 +19,12 @@ import {
   ScanCommand,
 } from "@aws-sdk/lib-dynamodb";
 import { transformEnv } from "@hot-updater/cli-tools";
+import type { Bundle } from "@hot-updater/core";
 import {
-  type Bundle,
-  createReleaseCatalogScopeKey,
-  encodeChannelKey,
-} from "@hot-updater/core";
-import {
-  commitReleaseCatalogMutations,
-  createUUIDv7,
-} from "@hot-updater/plugin-core";
-import { createApiKey, createHotUpdater } from "@hot-updater/server";
+  createHotUpdater,
+  type RuntimeHotUpdaterAPI,
+} from "@hot-updater/server";
+import { SETTINGS_TABLE } from "@hot-updater/server/database";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import {
@@ -44,7 +36,8 @@ import {
   stopRuntime,
 } from "../../../packages/test-utils/src/runtimeProcess";
 import { cloudFrontDownloadUrl } from "../src/cloudFrontDownloadUrl";
-import { DYNAMODB_UPDATE_INDEX_NAME, dynamoDB } from "../src/dynamoDB";
+import { dynamoDB, migrateDynamoDB } from "../src/dynamoDB";
+import { plugins } from "../src/plugins";
 import { s3Storage } from "../src/s3Storage";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -229,69 +222,6 @@ const toRuntimeBundle = (bundle: Bundle): Bundle => {
   };
 };
 
-const seedProductionRelease = async ({
-  bundle,
-  database,
-}: {
-  readonly bundle: Bundle;
-  readonly database: ReturnType<typeof dynamoDB>;
-}) => {
-  const channelName = "production";
-  const channelKey = encodeChannelKey(channelName);
-  const channel = (
-    await database.models.channels.insert({
-      row: { id: `channel:${channelKey}`, name: channelName },
-      onConflict: "returnExisting",
-    })
-  ).row;
-  const scopeKey = createReleaseCatalogScopeKey({
-    channelKey,
-    platform: bundle.platform,
-    strategy: "APP_VERSION",
-  });
-  const now = Date.now();
-  await commitReleaseCatalogMutations({
-    database,
-    mutations: [
-      {
-        mutation: {
-          operation: "insert",
-          row: {
-            bundle_id: bundle.id,
-            channel_id: channel.id,
-            created_at_ms: now,
-            enabled: true,
-            fingerprint_hash: null,
-            id: createUUIDv7(),
-            kind: "BUNDLE",
-            message: "hello",
-            operation: "DEPLOY",
-            platform: bundle.platform,
-            revision: 1,
-            rollout_cohort_count: 1_000,
-            scope_key: scopeKey,
-            should_force_update: false,
-            source_release_id: null,
-            strategy: "APP_VERSION",
-            target_app_version: "1.0",
-            target_cohorts: [],
-            updated_at_ms: now,
-          },
-        },
-        scope: {
-          channelId: channel.id,
-          channelName,
-          fingerprintHash: null,
-          platform: bundle.platform,
-          scopeKey,
-          strategy: "APP_VERSION",
-        },
-        updatedAtMs: now,
-      },
-    ],
-  });
-};
-
 describe.sequential("aws lambda runtime acceptance", () => {
   let localstackPort = 0;
   let lambdaPort = 0;
@@ -301,7 +231,7 @@ describe.sequential("aws lambda runtime acceptance", () => {
   let localstackEndpoint = "";
   let database: ReturnType<typeof dynamoDB>;
   let rawApiKey = "";
-  let seedHotUpdater: ReturnType<typeof createHotUpdater>;
+  let seedHotUpdater: RuntimeHotUpdaterAPI<typeof plugins>;
   let s3Client: S3Client;
   let dynamodbClient: DynamoDBDocumentClient;
   let previousAwsEndpointUrl: string | undefined;
@@ -373,7 +303,7 @@ describe.sequential("aws lambda runtime acceptance", () => {
     });
     seedHotUpdater = createHotUpdater({
       database,
-      clientAccess: { type: "api-key" },
+      plugins,
       storage: [
         s3Storage({
           bucketName: S3_BUCKET_NAME,
@@ -429,8 +359,7 @@ describe.sequential("aws lambda runtime acceptance", () => {
       clearBucket(s3Client, S3_BUCKET_NAME),
       clearDynamoDBTable(dynamodbClient),
     ]);
-    const created = await createApiKey({
-      apiKeys: database.models.apiKeys,
+    const created = await seedHotUpdater.api.apiKeys.create({
       name: "Runtime test",
     });
     rawApiKey = created.apiKey;
@@ -476,8 +405,19 @@ describe.sequential("aws lambda runtime acceptance", () => {
       manifestFileHash: "manifest-hash",
       assetBaseStorageUri: "storage://assets",
     });
-    await seedHotUpdater.insertBundle(bundle);
-    await seedProductionRelease({ bundle, database });
+    await seedHotUpdater.core.deploy([
+      {
+        bundle,
+        release: {
+          channel: "production",
+          enabled: true,
+          fingerprintHash: null,
+          message: "hello",
+          shouldForceUpdate: false,
+          targetAppVersion: "1.0",
+        },
+      },
+    ]);
 
     const updatePath = "/release-catalogs/app-version/ios/cHJvZHVjdGlvbg/1.0.0";
     const unauthorizedResponse = await invokeLambda(
@@ -625,7 +565,7 @@ describe.sequential("aws lambda runtime acceptance", () => {
     });
 
     await expect(
-      database.models.insights.listEvents({
+      seedHotUpdater.api.insights.listEvents({
         filter: { kind: "all" },
         beforeReceivedAtMs: Date.now() + 1_000,
         limit: 10,
@@ -661,40 +601,17 @@ const createHostDynamoDBClient = (endpoint: string) =>
     },
   });
 
-const createDynamoDBTable = async (endpoint: string) => {
-  const client = createHostDynamoDBClient(endpoint);
-  await client.send(
-    new CreateTableCommand({
-      TableName: DYNAMODB_TABLE_NAME,
-      BillingMode: "PAY_PER_REQUEST",
-      AttributeDefinitions: [
-        { AttributeName: "pk", AttributeType: "S" },
-        { AttributeName: "sk", AttributeType: "S" },
-        { AttributeName: "gsi1pk", AttributeType: "S" },
-        { AttributeName: "gsi1sk", AttributeType: "S" },
-      ],
-      KeySchema: [
-        { AttributeName: "pk", KeyType: "HASH" },
-        { AttributeName: "sk", KeyType: "RANGE" },
-      ],
-      GlobalSecondaryIndexes: [
-        {
-          IndexName: DYNAMODB_UPDATE_INDEX_NAME,
-          KeySchema: [
-            { AttributeName: "gsi1pk", KeyType: "HASH" },
-            { AttributeName: "gsi1sk", KeyType: "RANGE" },
-          ],
-          Projection: { ProjectionType: "ALL" },
-        },
-      ],
-    }),
-  );
-  await waitUntilTableExists(
-    { client, maxWaitTime: 30 },
-    { TableName: DYNAMODB_TABLE_NAME },
-  );
-  client.destroy();
-};
+/** The plugin's migration creates the table and writes the schema settings it checks. */
+const createDynamoDBTable = (endpoint: string) =>
+  migrateDynamoDB({
+    region: REGION,
+    endpoint,
+    credentials: {
+      accessKeyId: ACCESS_KEY_ID,
+      secretAccessKey: SECRET_ACCESS_KEY,
+    },
+    tableName: DYNAMODB_TABLE_NAME,
+  });
 
 const clearDynamoDBTable = async (client: DynamoDBDocumentClient) => {
   const { Items = [] } = await client.send(
@@ -704,7 +621,10 @@ const clearDynamoDBTable = async (client: DynamoDBDocumentClient) => {
       ExpressionAttributeNames: { "#pk": "pk", "#sk": "sk" },
     }),
   );
-  const keys = Items.map(({ pk, sk }) => ({ pk, sk }));
+  // The schema settings stay, so the plugin keeps serving.
+  const keys = Items.filter(({ pk }) => pk !== SETTINGS_TABLE.name).map(
+    ({ pk, sk }) => ({ pk, sk }),
+  );
   for (let offset = 0; offset < keys.length; offset += 25) {
     await client.send(
       new BatchWriteCommand({
