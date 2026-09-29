@@ -27,6 +27,9 @@ import type { AppOptions } from "firebase-admin/app";
 
 type FirebaseDatabaseConfig = AppOptions & {
   collection?: string; // The one collection it uses; defaults to "hot_updater_v1"
+  aggregateBatching?:
+    | { mode?: "log" | "memory"; windowMs?: number }
+    | false; // default: {}, see Batched Insights totals
 };
 ```
 
@@ -92,6 +95,28 @@ key-value helper over the collection, behind the schema settings check:
 The collection holds core's rows (Bundles, patches, Releases, Release Catalogs,
 Channels and their counters) and the rows of the built-in Insights and API key
 plugins.
+
+## Batched Insights totals
+
+Firestore bills each document write, so `firebaseDatabase` batches Insights'
+totals (its counters, gauges, and sketches) instead of writing them in each
+event's transaction:
+
+- The event's transaction writes the event's own documents and one compressed
+  log document.
+- A compaction merges pending log documents into the totals, one write for
+  each total and one lock document, which lists the log documents it applied.
+  It then deletes them in a plain batch. So no crash loses an event's totals
+  or counts one twice.
+- After an event, the server compacts when a minute has passed since the last
+  compaction. A read of the totals, such as the Console's, compacts first. If
+  it cannot write, it shows the stored totals, up to one window behind.
+
+Set `aggregateBatching: { mode: "memory" }` on a long-lived server to keep
+totals in the process and write them every 15 seconds, without log documents.
+A crash then loses up to one window; call `hotUpdater.flush()` before the
+process exits. `aggregateBatching: false` writes the totals in each event's
+transaction.
 
 ## Environment variables
 

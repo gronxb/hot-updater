@@ -90,6 +90,31 @@ The table holds core's rows (Bundles, patches, Releases, Release Catalogs,
 Channels and their counters) and the rows of the built-in Insights and API key
 plugins. `dispose()` closes the DynamoDB and CloudFront clients.
 
+## Batched Insights totals
+
+DynamoDB bills every item a write touches, so `dynamoDB` batches Insights'
+totals (its counters, gauges, and sketches) instead of writing them in each
+event's transaction:
+
+- The event's transaction writes the event's own rows and one compressed log
+  item, under the partitions `aggregate_log_0` to `aggregate_log_7`.
+- A compaction merges the pending log items into the totals, one write for
+  each total and one lock item, `aggregate_lease`, which lists the log items it
+  applied. It then deletes them with `BatchWriteItem`. So no crash loses an
+  event's totals or counts one twice.
+- After an event, the server compacts when a minute has passed since the last
+  compaction. A read of the totals, such as the Console's, compacts first. If
+  it cannot write, it shows the stored totals, up to one window behind.
+
+On DynamoDB Local, a returning installation's first launch of the day costs
+about 8 write units at 10 or more events a second, instead of about 46.
+
+| Option | Behavior |
+| --- | --- |
+| `aggregateBatching: {}` | The default: log items and a compaction every `windowMs` (60 seconds). Safe on Lambda, Lambda@Edge, and any other runtime. |
+| `aggregateBatching: { mode: "memory" }` | A long-lived server keeps totals in the process and writes them every `windowMs` (15 seconds), with no log items. A crash loses up to one window; call `hotUpdater.flush()` before the process exits. |
+| `aggregateBatching: false` | Writes the totals in each event's transaction. |
+
 ## Configuration
 
 ```typescript
@@ -100,6 +125,9 @@ interface DynamoDBConfig extends DynamoDBClientConfig {
   cloudfrontDistributionId?: string;
   apiBasePath?: string; // default: "/release-catalogs"
   shouldWaitForInvalidation?: boolean; // default: false
+  aggregateBatching?:
+    | { mode?: "log" | "memory"; windowMs?: number }
+    | false; // default: {}, see Batched Insights totals
 }
 ```
 
@@ -195,13 +223,18 @@ the `x-api-key` header. The managed AWS server runs the same list, which
 
 ## Permissions
 
-The Lambda or server role reads with `BatchGetItem` and `Query`, and writes
+The Lambda or server role reads with `BatchGetItem` and `Query`, writes
 with `TransactWriteItems`, which needs `PutItem`, `UpdateItem`, `DeleteItem`,
-and `ConditionCheckItem` on the table. Every item's partition key is a table
-name, or a table name followed by `#` for its index items, so a
-`dynamodb:LeadingKeys` condition can scope the role to Hot Updater's items; the
-managed setup's policy lists them. `migrateDynamoDB` also needs
-`DescribeTable`, and `CreateTable` when it creates the table.
+and `ConditionCheckItem` on the table, and deletes applied Insights log items
+with `BatchWriteItem`. Without `BatchWriteItem`, the compaction deletes them
+through `TransactWriteItems` at twice the cost, and logs one warning. Every
+item's partition key is a table name, or a table name followed by `#` for its
+index items, so a `dynamodb:LeadingKeys` condition can scope the role to Hot
+Updater's items. The managed setup's policy lists them, including
+`aggregate_log_0` to `aggregate_log_7` and `aggregate_lease`; rerun
+`hot-updater init` to update the policy of an earlier setup.
+`migrateDynamoDB` also needs `DescribeTable`, and `CreateTable` when it creates
+the table.
 
 ## Transaction limits
 

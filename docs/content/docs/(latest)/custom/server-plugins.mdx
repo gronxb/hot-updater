@@ -161,7 +161,7 @@ the column `_refs_<child table>_<field>`, which reads return, for example
 
 ### Aggregates
 
-`defineAggregate(identity, { key, counters?, gauges?, distinct?, shards?, indexes? })`
+`defineAggregate(identity, { key, counters?, gauges?, distinct?, shards?, indexes?, batched? })`
 declares rows of metrics keyed by their identity fields. `key` lists every
 identity field in declaration order. Each metric is one of:
 
@@ -189,6 +189,16 @@ A sketch value is a 1,024-character register string. The helpers that build
 exported only from `@hot-updater/plugin-core/internal`, the internal entry
 Insights uses. With `shardBy` set to the counted value, a repeated value merges
 into an unchanged sketch and the engine skips the write.
+
+`batched: true` lets a database that bills each write (DynamoDB and
+Firestore, by default) apply the aggregate's changes after their transaction
+commits, merged with other transactions' changes into one write per row. A
+read of the aggregate applies pending changes first, and shows the stored rows
+up to one window behind when it cannot write. A gauge may then hold a negative
+value on one shard row, and reads still sum the shards. Declare it on metrics
+that can lag a transaction, such as analytics, and not on counts a later
+transaction reads to decide what to write. Other databases write batched
+aggregates in the transaction, as before.
 
 Startup resolves every schema and throws `DatabaseSchemaError` with every
 problem it finds: invalid names, optional or `json` key fields, an undeclared

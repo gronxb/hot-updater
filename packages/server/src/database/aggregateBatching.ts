@@ -529,16 +529,23 @@ export const createAggregateBatches = ({
       const row = known.get(idOf(shard, id));
       return row === undefined ? [] : [{ shard, row }];
     });
-    if (adapter.deleteConsumed) {
-      // The lease lists them as applied, so an unguarded delete is safe.
-      await Promise.all(
+    // The lease lists them as applied, so an unguarded delete is safe. A
+    // store that refuses it (a role without the permission) falls back to
+    // guarded deletes, which cost more but never stall the log.
+    const consumed =
+      adapter.deleteConsumed &&
+      (await Promise.all(
         LOG_TABLES.map((name, at) => {
           const own = rows.flatMap(({ shard, row }) =>
             shard === at ? [row] : [],
           );
           return own.length > 0 && adapter.deleteConsumed!(table(name), own);
         }),
-      );
+      ).then(
+        () => true,
+        (error: unknown) => (warn("log cleanup")(error), false),
+      ));
+    if (consumed) {
       for (const [shard, id] of applied) known.delete(idOf(shard, id));
       return true;
     }
