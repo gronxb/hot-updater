@@ -43,7 +43,9 @@ export const notFoundFeature = (data: unknown): ConsoleFeature | undefined => {
  * A feature route's `beforeLoad`: not found, naming the feature, when the
  * console does not serve it. A failed features read lets the route load: the
  * root layout answers a visitor it does not authorize, and the route's own
- * reads report any other failure.
+ * reads report any other failure. The failure leaves the cache, which a
+ * server render sends to the browser: a refused visitor's failure is the 401
+ * or 403 Response, which the render cannot serialize.
  */
 export const requireConsoleFeature = async (
   queryClient: QueryClient,
@@ -51,7 +53,13 @@ export const requireConsoleFeature = async (
 ): Promise<void> => {
   const featureSet = await queryClient
     .ensureQueryData(consoleFeaturesQueryOptions())
-    .catch(() => undefined);
+    .catch(() => {
+      queryClient.removeQueries({
+        queryKey: consoleFeaturesQueryKey,
+        exact: true,
+      });
+      return undefined;
+    });
   if (featureSet !== undefined && !featureSet.features[feature]) {
     throw notFound({
       data: { feature } satisfies ConsoleFeatureNotFoundData,

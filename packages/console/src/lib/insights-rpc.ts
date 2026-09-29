@@ -7,6 +7,7 @@ import type {
 } from "@hot-updater/server";
 import { createServerFn } from "@tanstack/react-start";
 
+import { consoleAccess } from "./console-access";
 import type {
   InsightsInstallationViewRow,
   InsightsViewPage,
@@ -47,28 +48,33 @@ const readInstallationPage = (input: InstallationsPageInput) => input;
 const readInstallId = (input: { readonly installId: string }) => input;
 
 export const getReportingInstallationsRpc = createServerFn({ method: "GET" })
+  .middleware([consoleAccess])
   .validator(readOverview)
   .handler(async ({ data }) =>
     (await insightsReads()).getReportingOverview(data),
   );
 
 export const listInsightsEventsRpc = createServerFn({ method: "GET" })
+  .middleware([consoleAccess])
   .validator(readEventsPage)
   .handler(async ({ data }) => (await insightsReads()).listEvents(data));
 
 export const listInsightsInstallationEventsRpc = createServerFn({
   method: "GET",
 })
+  .middleware([consoleAccess])
   .validator(readInstallationEventsPage)
   .handler(async ({ data }) =>
     (await insightsReads()).listInstallationEvents(data),
   );
 
 export const getInsightsInstallationRpc = createServerFn({ method: "GET" })
+  .middleware([consoleAccess])
   .validator(readInstallId)
   .handler(async ({ data }) => (await insightsReads()).getInstallation(data));
 
 export const findInsightsInstallationsRpc = createServerFn({ method: "GET" })
+  .middleware([consoleAccess])
   .validator(readInstallationPage)
   .handler(async ({ data }) => {
     const insights = await insightsReads();

@@ -17,7 +17,12 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("@tanstack/react-start", () => ({
+  // The access middleware runs in the server; these specs call handlers directly.
+  createMiddleware: () => ({ server: () => ({}) }),
   createServerFn: () => ({
+    middleware() {
+      return this;
+    },
     validator() {
       return this;
     },

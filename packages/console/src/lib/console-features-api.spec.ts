@@ -73,12 +73,18 @@ describe("feature route guard", () => {
 
   it("lets the route load when the features cannot be read, so the root layout answers", async () => {
     vi.mocked(getConsoleFeaturesRpc).mockRejectedValue(
-      new Error("Unauthorized"),
+      new Response("Unauthorized", { status: 401 }),
     );
+    const queryClient = createQueryClient();
 
     await expect(
-      requireConsoleFeature(createQueryClient(), "apiKeys"),
+      requireConsoleFeature(queryClient, "apiKeys"),
     ).resolves.toBeUndefined();
+    // A server render sends the cache to the browser and cannot serialize the
+    // refusal, so the failed read is not kept.
+    expect(
+      queryClient.getQueryCache().find({ queryKey: consoleFeaturesQueryKey }),
+    ).toBeUndefined();
   });
 });
 

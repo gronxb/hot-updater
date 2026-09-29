@@ -38,8 +38,7 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
   p: mockCli.p,
 }));
 
-vi.mock("@hot-updater/server/db", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@hot-updater/server/db")>()),
+vi.mock("@hot-updater/server/diff", () => ({
   createBundleDiff: mockServer.createBundleDiff,
 }));
 

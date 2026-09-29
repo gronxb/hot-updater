@@ -1,8 +1,10 @@
 import { createServerFn } from "@tanstack/react-start";
 
+import { consoleAccess } from "./console-access";
 import { readAppUsageInput, type AppUsageInput } from "./insights-usage";
 
 export const getAppUsageReportRpc = createServerFn({ method: "GET" })
+  .middleware([consoleAccess])
   .validator((input: AppUsageInput) => {
     readAppUsageInput(input);
     return {

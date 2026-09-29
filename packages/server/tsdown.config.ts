@@ -6,6 +6,7 @@ export default defineConfig([
       "./src/index.ts",
       "./src/node.ts",
       "./src/db/index.ts",
+      "./src/diff.ts",
       "./src/database/index.ts",
       "./src/plugins/index.ts",
       "./src/plugins/insights/index.ts",
