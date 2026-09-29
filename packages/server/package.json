@@ -90,6 +90,7 @@
     "@hot-updater/test-utils": "workspace:*",
     "@types/express": "^5.0.0",
     "@types/node": "catalog:",
+    "@types/pg": "^8.11.10",
     "drizzle-orm": "catalog:db",
     "express": "^4.22.2",
     "execa": "catalog:tools",
@@ -97,6 +98,8 @@
     "kysely-pglite-dialect": "catalog:db",
     "mongodb": "catalog:db",
     "msw": "^2.7.0",
+    "mysql2": "catalog:db",
+    "pg": "catalog:db",
     "uuidv7": "catalog:"
   }
 }
