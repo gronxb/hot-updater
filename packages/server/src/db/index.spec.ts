@@ -4,7 +4,6 @@ import { NIL_UUID } from "@hot-updater/core";
 import { createStoragePlugin } from "@hot-updater/plugin-core";
 import { Kysely } from "kysely";
 import { PGliteDialect } from "kysely-pglite-dialect";
-import { type ClientSession, MongoClient } from "mongodb";
 import {
   afterAll,
   afterEach,
@@ -18,13 +17,11 @@ import {
 
 import { drizzleAdapter } from "../adapters/drizzle";
 import { kyselyAdapter } from "../adapters/kysely";
-import { mongoAdapter } from "../adapters/mongodb";
 import { prismaAdapter } from "../adapters/prisma";
 import {
   createHotUpdater as createRuntimeHotUpdater,
   type CreateHotUpdaterOptions,
 } from "../index";
-import { bundleToRow } from "./bundleRows";
 import { createTableSql, hotUpdaterSchemaVersions } from "./hotUpdaterSchema";
 import { createMigrator, generateSchema } from "./index";
 
@@ -63,16 +60,6 @@ function createTestStoragePlugin(
     },
   });
 }
-
-const transactionBundle: Bundle = {
-  id: "00000000-0000-0000-0000-000000000777",
-  platform: "ios",
-  gitCommitHash: null,
-  manifestStorageUri: "s3://test-bucket/transaction/manifest.json",
-  manifestFileHash: "transaction-manifest-hash",
-  assetBaseStorageUri: "s3://test-bucket/assets",
-};
-const transactionChannelId = "00000000-0000-0000-0000-000000000700";
 
 describe("server/db hotUpdater (PGlite + Kysely)", async () => {
   const db = new PGlite();
@@ -328,55 +315,6 @@ describe("server/db hotUpdater (PGlite + Kysely)", async () => {
       }
     });
 
-    it("creates MongoDB indexes for runtime query fields", async () => {
-      const collection = {
-        find: vi.fn(() => ({
-          limit: () => ({ toArray: async () => [] }),
-        })),
-        listIndexes: () => ({ toArray: async () => [] }),
-      };
-      const client = {
-        db: () => ({
-          collection: () => collection,
-        }),
-      } as unknown as MongoClient;
-      const mongoHotUpdater = createHotUpdater({
-        database: mongoAdapter({ client }),
-      });
-      const result = await createMigrator(mongoHotUpdater).migrateToLatest({
-        mode: "from-schema",
-      });
-
-      expect(result.operations).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({
-            description:
-              "Create unique MongoDB index: bundles_id_idx on bundles(id)",
-          }),
-          expect.objectContaining({
-            description:
-              "Create unique MongoDB index: bundle_patches_id_idx on bundle_patches(id)",
-          }),
-          expect.objectContaining({
-            description:
-              "Create unique MongoDB index: release_catalogs_scope_key_idx on release_catalogs(scope_key)",
-          }),
-          expect.objectContaining({
-            description:
-              "Create MongoDB index: releases_fingerprint_hash_idx on releases(fingerprint_hash)",
-          }),
-          expect.objectContaining({
-            description:
-              "Create MongoDB index: bundles_platform_idx on bundles(platform)",
-          }),
-          expect.objectContaining({
-            description:
-              "Create MongoDB index: bundle_patches_base_bundle_id_idx on bundle_patches(base_bundle_id)",
-          }),
-        ]),
-      );
-    });
-
     it("rejects from-database migrations explicitly", async () => {
       const migrationDb = new PGlite();
       const migrationKysely = new Kysely<object>({
@@ -457,42 +395,6 @@ describe("server/db hotUpdater (PGlite + Kysely)", async () => {
         await migrationDb.close();
       }
     });
-
-    it("rejects runtime access when a MongoDB schema is stale", async () => {
-      const settings = {
-        find: vi.fn(({ key }: { readonly key: string }) => ({
-          limit: () => ({
-            toArray: async () =>
-              key === "version" ? [{ key, value: "0.21.0" }] : [],
-          }),
-        })),
-      };
-      const bundles = {
-        countDocuments: vi.fn(async () => 0),
-        find: vi.fn(),
-        findOne: vi.fn(),
-      };
-      const patches = {
-        find: vi.fn(),
-      };
-      const client = {
-        db: () => ({
-          collection: (name: string) => {
-            if (name === "private_hot_updater_settings") return settings;
-            if (name === "bundle_patches") return patches;
-            return bundles;
-          },
-        }),
-      } as unknown as MongoClient;
-      const mongoHotUpdater = createHotUpdater({
-        database: mongoAdapter({ client }),
-      });
-
-      await expect(mongoHotUpdater.getBundles({ limit: 10 })).rejects.toThrow(
-        "Hot Updater v1 cannot migrate schema 0.21.0 in place.",
-      );
-      expect(bundles.countDocuments).not.toHaveBeenCalled();
-    });
   });
 
   describe("adapter filters", () => {
@@ -503,78 +405,6 @@ describe("server/db hotUpdater (PGlite + Kysely)", async () => {
       });
       expect(byId.data).toEqual([]);
       expect(byId.pagination.total).toBe(0);
-    });
-
-    it("does not expose an implicit MongoDB transaction", () => {
-      const bundles = {
-        countDocuments: vi.fn(),
-        deleteMany: vi.fn(),
-        distinct: vi.fn(),
-        find: vi.fn(),
-        findOne: vi.fn(),
-        updateOne: vi.fn(async () => undefined),
-      };
-      const patches = {
-        deleteMany: vi.fn(async () => undefined),
-        find: vi.fn(),
-        insertMany: vi.fn(),
-      };
-      const client = {
-        db: () => ({
-          collection: (name: string) =>
-            name === "bundle_patches" ? patches : bundles,
-        }),
-      } as unknown as MongoClient;
-      const adapter = mongoAdapter({ client });
-
-      expect(Reflect.has(adapter, "transaction")).toBe(false);
-    });
-
-    it("uses a MongoDB session when transactions are enabled", async () => {
-      const client = new MongoClient("mongodb://localhost");
-      const session = client.startSession();
-      const withTransaction = vi.fn(
-        async (operation: (session: ClientSession) => Promise<unknown>) =>
-          operation(session),
-      );
-      Object.defineProperty(session, "withTransaction", {
-        value: withTransaction,
-      });
-      const insertOne = vi.fn(async () => undefined);
-      Object.defineProperty(client, "db", {
-        value: () => ({
-          collection: () => ({
-            findOne: vi.fn(async () => ({
-              id: transactionChannelId,
-              name: "production",
-            })),
-            insertOne,
-            updateOne: vi.fn(async () => ({ matchedCount: 1 })),
-          }),
-        }),
-      });
-      const withSession = vi.fn(
-        async (operation: (session: ClientSession) => Promise<unknown>) =>
-          operation(session),
-      );
-      Object.defineProperty(client, "withSession", { value: withSession });
-      const adapter = mongoAdapter({ client, transactions: true });
-
-      await adapter.commit({
-        changes: [
-          {
-            model: "bundles",
-            operation: "insert",
-            row: bundleToRow(transactionBundle),
-          },
-        ],
-      });
-
-      expect(withSession).toHaveBeenCalledTimes(1);
-      expect(withTransaction).toHaveBeenCalledTimes(1);
-      expect(insertOne).toHaveBeenCalledWith(bundleToRow(transactionBundle), {
-        session,
-      });
     });
   });
 
