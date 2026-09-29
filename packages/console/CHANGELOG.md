@@ -1,5 +1,14 @@
 # @hot-updater/console
 
+## 1.0.0-rc.19
+
+### Patch Changes
+
+- 038c804: Check console access before a server function reads its input, so a signed-out request gets 401 instead of a validation error. One request asks the auth adapter once.
+- 038c804: A signed-out visit to Insights, Distribution, Installations, or API keys renders the sign-in page instead of failing the server render. The feature guard no longer keeps its refused read in the query cache, whose 401 Response the render could not serialize.
+- Updated dependencies [038c804]
+  - @hot-updater/server@1.0.0-rc.17
+
 ## 1.0.0-rc.18
 
 ### Minor Changes
