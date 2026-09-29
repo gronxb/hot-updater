@@ -38,6 +38,7 @@ export type {
   HotUpdaterTransaction,
   Lookup,
   ReadOptions,
+  ReadRow,
   TableRow,
   UpdateSet,
 } from "../database/database";

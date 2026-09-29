@@ -13,7 +13,7 @@ import {
   type ReleaseRow,
 } from "@hot-updater/plugin-core";
 
-import type { HotUpdaterDatabase, TableRow } from "../database/database";
+import type { HotUpdaterDatabase, ReadRow } from "../database/database";
 import type { Page } from "../database/engineReads";
 import {
   projectReleaseCatalogRow,
@@ -154,7 +154,7 @@ export interface BundleDetail {
 export const createCoreReads = (db: CoreDatabase, storage: CoreStorage) => {
   /** A bundle row's patches, exactly as many as its reference counter holds. */
   const detail = async (
-    row: TableRow<CoreSchema["bundles"]>,
+    row: ReadRow<CoreSchema["bundles"]>,
   ): Promise<BundleDetail> => {
     const count = row._refs_bundle_patches_bundle_id ?? 0;
     const patches: BundlePatchRow[] = [];

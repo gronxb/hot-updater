@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { PhysicalTable } from "./adapter";
 import {
+  canonicalJson,
   compareTuples,
   compareUtf8,
   DatabaseValueError,
@@ -109,5 +110,15 @@ describe("database value helpers", () => {
         { jsonText: false },
       ),
     ).toThrow(DatabaseValueError);
+  });
+});
+
+describe("canonicalJson", () => {
+  it("sorts object keys at every depth and keeps array order", () => {
+    expect(
+      canonicalJson({ b: 1, a: { d: [{ y: 1, x: 2 }, 3], c: null } }),
+    ).toBe(canonicalJson({ a: { c: null, d: [{ x: 2, y: 1 }, 3] }, b: 1 }));
+    expect(canonicalJson([2, 1])).not.toBe(canonicalJson([1, 2]));
+    expect(canonicalJson(undefined)).toBe("null");
   });
 });

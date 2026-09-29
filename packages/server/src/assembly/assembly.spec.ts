@@ -76,10 +76,9 @@ describe("createHotUpdater with plugins", () => {
       clientAccess: "public",
     });
     await hotUpdater.api.notes.add("n1", "hello");
-    await expect(hotUpdater.api.notes.read("n1")).resolves.toMatchObject({
+    await expect(hotUpdater.api.notes.read("n1")).resolves.toEqual({
       id: "n1",
       text: "hello",
-      _v: 0,
     });
     expect(hotUpdater.api.notes.now()).toBeTypeOf("number");
   });
