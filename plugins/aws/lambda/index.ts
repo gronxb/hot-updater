@@ -6,6 +6,7 @@ import { handle } from "hono/lambda-edge";
 
 import { cloudFrontDownloadUrl } from "../src/cloudFrontDownloadUrl";
 import { dynamoDB } from "../src/dynamoDB";
+import { plugins } from "../src/plugins";
 import { s3Storage } from "../src/s3Storage";
 
 declare global {
@@ -52,7 +53,7 @@ const getHotUpdater = (distributionDomainName: string) => {
 
   const hotUpdater = createHotUpdater({
     database,
-    clientAccess: { type: "api-key" },
+    plugins,
     storage: [
       s3Storage({
         bucketName: S3_BUCKET_NAME,

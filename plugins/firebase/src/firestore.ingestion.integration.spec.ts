@@ -6,6 +6,7 @@ import {
   migrateLegacyFacade,
   type RetryOptions,
 } from "@hot-updater/server/database";
+import type { CoreReader } from "@hot-updater/server/plugins";
 import { insights, insightsSchema } from "@hot-updater/server/plugins/insights";
 import {
   runContentionHarness,
@@ -78,7 +79,8 @@ describe("Firestore ingestion", () => {
           schema: legacyFacadeSchema,
           ...(retry === undefined ? {} : { retry }),
         }).database(module),
-        core: {},
+        // Insights never reads core.
+        core: {} as CoreReader,
         now: Date.now,
       }).api;
     const seeded = apiOf(0, { attempts: 64, baseDelayMs: 1, maxDelayMs: 20 });

@@ -14,8 +14,8 @@ import type {
 import { createVersionRouteHandlers } from "./handlerVersionRoutes";
 import {
   createInsightsRouteHandlers,
-  registerInsightsAdminRoutes,
-  registerInsightsClientRoutes,
+  INSIGHTS_ROUTES,
+  insightsDisabled,
 } from "./insights/routes";
 import type { InsightsProvider } from "./insights/types";
 import { addRoute, createRouter, findRoute } from "./internalRouter";
@@ -193,7 +193,11 @@ export function createHandlers(api: HandlerAPI): HotUpdaterHandlers {
 
 export function createHotUpdaterHandlers(
   api: HandlerAPI,
-  insights?: InsightsProvider,
+  /**
+   * The legacy provider serves the Insights routes. `"disabled"` answers each
+   * one that no plugin endpoint serves with 204 and `x-hot-updater-insights: disabled`.
+   */
+  insights?: InsightsProvider | "disabled",
   clientPolicy?: ClientRoutePolicy,
   downloadStorageObject?: (
     token: string,
@@ -206,7 +210,13 @@ export function createHotUpdaterHandlers(
     ...createReleaseCatalogRouteHandlers(),
     ...createReleaseManagementRouteHandlers(),
     ...createBundleRouteHandlers(),
-    ...(insights === undefined ? {} : createInsightsRouteHandlers(insights)),
+    ...(insights === undefined
+      ? {}
+      : insights === "disabled"
+        ? Object.fromEntries(
+            INSIGHTS_ROUTES.map(({ handler }) => [handler, insightsDisabled]),
+          )
+        : createInsightsRouteHandlers(insights)),
     ...(downloadStorageObject === undefined
       ? {}
       : {
@@ -240,6 +250,23 @@ export function createHotUpdaterHandlers(
             : "client",
       });
     };
+  const mountInsights = (
+    access: "client" | "admin",
+    add: (method: string, path: string, handler: string) => void,
+  ) => {
+    if (insights === undefined) return;
+    for (const route of INSIGHTS_ROUTES) {
+      const served = endpoints.some(
+        (endpoint) =>
+          endpoint.access === route.access &&
+          endpoint.method === route.method &&
+          endpoint.path === route.path,
+      );
+      if (route.access === access && !(insights === "disabled" && served)) {
+        add(route.method, route.path, route.handler);
+      }
+    }
+  };
   const clientRouter = createRouter<string>();
   const addClientRoute = mount(clientRouter, false);
   addClientRoute("GET", "/version", "version");
@@ -265,9 +292,7 @@ export function createHotUpdaterHandlers(
     "/artifacts/v1/:targetBundleId/from/:currentBundleId",
     "artifactV1",
   );
-  if (insights !== undefined) {
-    registerInsightsClientRoutes(addClientRoute);
-  }
+  mountInsights("client", addClientRoute);
 
   const adminRouter = createRouter<string>();
   const addAdminRoute = mount(adminRouter, true);
@@ -292,9 +317,7 @@ export function createHotUpdaterHandlers(
   addAdminRoute("POST", "/bundles", "createBundles");
   addAdminRoute("PATCH", "/bundles/:id", "updateBundle");
   addAdminRoute("DELETE", "/bundles/:id", "deleteBundle");
-  if (insights !== undefined) {
-    registerInsightsAdminRoutes(addAdminRoute);
-  }
+  mountInsights("admin", addAdminRoute);
   for (const endpoint of endpoints) {
     const name = `plugin ${endpoint.plugin}: ${endpoint.method} ${endpoint.path}`;
     routeHandlers[name] = (params, request) =>

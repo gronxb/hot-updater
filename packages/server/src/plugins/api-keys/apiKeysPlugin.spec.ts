@@ -107,15 +107,14 @@ describe("API keys plugin", () => {
     expect(
       (await client("/events", {}, { method: "POST", body: "{" })).status,
     ).toBe(401);
-    expect(
-      (
-        await client(
-          "/events",
-          { "x-api-key": API_KEY },
-          { method: "POST", body: "{" },
-        )
-      ).status,
-    ).toBe(400);
+    // Past the key, /events answers that Insights is off: no insights() here.
+    const events = await client(
+      "/events",
+      { "x-api-key": API_KEY },
+      { method: "POST", body: "{" },
+    );
+    expect(events.status).toBe(204);
+    expect(events.headers.get("x-hot-updater-insights")).toBe("disabled");
     const allowed = await client("/cached", { "x-api-key": API_KEY });
     expect(allowed.status).toBe(200);
     expect(allowed.headers.get("vary")).toBe("x-api-key");

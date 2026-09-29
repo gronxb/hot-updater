@@ -1,3 +1,4 @@
+import type { CoreReads } from "../core/reads";
 import type { HotUpdaterDatabase } from "../database/database";
 import type { ModuleSchema } from "../database/schema";
 
@@ -32,8 +33,8 @@ export interface PluginInstance<Api = unknown> {
   readonly clientAuth?: ClientAuth;
 }
 
-/** Core's read-only handle for plugins; C1 fills in the reads. */
-export type CoreReader = Readonly<Record<never, never>>;
+/** Core's reads: bundles, Releases, Catalogs, and channels, each through a declared index. Plugins never write core. */
+export type CoreReader = CoreReads;
 
 export interface PluginContext<S extends ModuleSchema> {
   /** The plugin's own tables and aggregates. */
