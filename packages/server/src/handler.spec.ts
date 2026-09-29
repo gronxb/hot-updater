@@ -20,6 +20,21 @@ describe("createHandlers client routes", () => {
     });
   });
 
+  it("keeps the plugins the server runs off the client /version", async () => {
+    const handler = createHotUpdaterHandlers({
+      api: createApi(),
+      plugins: ["insights", "apiKeys"],
+    }).client;
+
+    const response = await handler(new Request("http://localhost/version"));
+
+    await expect(response.json()).resolves.toEqual({
+      adminProtocol: 2,
+      infrastructureGeneration: HOT_UPDATER_INFRASTRUCTURE_GENERATION,
+      version: HOT_UPDATER_SERVER_VERSION,
+    });
+  });
+
   it.each([
     "/app-version/ios/1.0.0/production/default/default",
     "/fingerprint/android/fingerprint-123/production/default/default",

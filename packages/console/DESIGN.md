@@ -76,8 +76,16 @@ stays subordinate to exact values and actions.
 
 ## 4. Capability and Data States
 
-- Bundles and Insights navigation are always available. Installation history
+- Navigation shows only installed features: Bundles always, Insights when the
+  server runs `insights()`, and API keys when it runs `apiKeys()`. A
+  self-hosted server's admin API serves events but no overview, so there
+  Insights opens on All events and hides Overview. Installation history
   remains a drill-down route under the Insights Events view.
+- A feature route opened without its plugin shows a not-installed state that
+  names the plugin to add and links to the console deployment guide. Inline
+  Insights, the bundle list column and the bundle detail card, is absent
+  where the console does not read release activity; it never stands in with
+  a placeholder or a banner.
 - Data surfaces define loading, empty, success, and genuine error states.
 - Insights language is direct and evidentiary: use Reporting installations,
   Selected bundle installations, Applied reports, Recovered-from reports,

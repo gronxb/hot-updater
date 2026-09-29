@@ -3,6 +3,7 @@ import { ChartNoAxesCombined, ListIcon } from "lucide-react";
 
 import { buttonVariants } from "@/components/ui/button";
 import { SidebarTrigger } from "@/components/ui/sidebar";
+import { useConsoleFeature } from "@/lib/console-features-api";
 import type { InsightsSearch } from "@/lib/insights-search";
 import { cn } from "@/lib/utils";
 
@@ -13,6 +14,8 @@ export function InsightsPageHeader({
   readonly view: "overview" | "events" | "distribution";
   readonly overviewSearch?: InsightsSearch;
 }) {
+  // A self-hosted server's admin API serves events, not the overview.
+  const overview = useConsoleFeature("insightsAnalytics");
   return (
     <header className="sticky top-0 z-10 flex shrink-0 flex-wrap items-center gap-3 border-b bg-background px-3 py-3 sm:bg-card/70 sm:px-4 sm:backdrop-blur-sm">
       <SidebarTrigger className="-ml-1 size-11 lg:size-7" />
@@ -24,20 +27,22 @@ export function InsightsPageHeader({
         <h1 className="text-sm font-medium">Insights</h1>
       </div>
       <nav aria-label="Insights views" className="ml-auto flex gap-2">
-        <Link
-          aria-current={view === "overview" ? "page" : undefined}
-          className={cn(
-            buttonVariants({
-              className: "h-11 px-3 lg:h-8 lg:px-2.5",
-              size: "lg",
-              variant: view === "overview" ? "secondary" : "ghost",
-            }),
-          )}
-          search={overviewSearch}
-          to="/insights"
-        >
-          Overview
-        </Link>
+        {overview ? (
+          <Link
+            aria-current={view === "overview" ? "page" : undefined}
+            className={cn(
+              buttonVariants({
+                className: "h-11 px-3 lg:h-8 lg:px-2.5",
+                size: "lg",
+                variant: view === "overview" ? "secondary" : "ghost",
+              }),
+            )}
+            search={overviewSearch}
+            to="/insights"
+          >
+            Overview
+          </Link>
+        ) : null}
         <Link
           aria-current={view === "events" ? "page" : undefined}
           className={cn(

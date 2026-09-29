@@ -39,10 +39,12 @@ vi.mock("@/components/ui/sidebar", () => ({
   SidebarTrigger: () => null,
 }));
 
+vi.mock("@/lib/console-features-api", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/console-features-api")>()),
+  useConsoleFeature: () => true,
+}));
+
 vi.mock("@/lib/insights-api", () => ({
-  useInsightsStatusQuery: () => ({
-    data: { insights: "on", activity: true },
-  }),
   useInsightsEventsQuery: mocks.events,
   useInsightsInstallationEventsQuery: mocks.history,
   useInsightsInstallationQuery: mocks.installation,

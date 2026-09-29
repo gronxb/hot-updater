@@ -1,6 +1,7 @@
 import type { Deployment } from "@hot-updater/plugin-core";
 import { describe, expect, it } from "vitest";
 
+import { createHotUpdaterHandlers } from "./handler";
 import {
   createAdminHandler,
   createApi,
@@ -50,8 +51,24 @@ describe("admin routes on core", () => {
     const response = await handler(send("GET", "/version"));
 
     expect(response.status).toBe(200);
+    expect(response.headers.get("cache-control")).toBe("private, no-store");
     await expect(response.json()).resolves.toMatchObject({
       adminProtocol: 2,
+      plugins: [],
+    });
+  });
+
+  it("lists the plugins the server runs, sorted, for a console", async () => {
+    const handler = createHotUpdaterHandlers({
+      api: createApi(),
+      plugins: ["insights", "apiKeys"],
+    }).admin;
+
+    const response = await handler(send("GET", "/version"));
+
+    await expect(response.json()).resolves.toMatchObject({
+      adminProtocol: 2,
+      plugins: ["apiKeys", "insights"],
     });
   });
 

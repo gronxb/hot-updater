@@ -6,9 +6,9 @@ import {
 import { ArrowLeft } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
+import { ConsoleFeatureUnavailable } from "@/components/ConsoleFeatureUnavailable";
 import { EventHistoryCard } from "@/components/features/insights/EventHistoryCard";
 import { InsightsPageHeader } from "@/components/features/insights/InsightsPageHeader";
-import { InsightsOffBanner } from "@/components/features/insights/InsightsUnavailable";
 import { InstallationHistoryCard } from "@/components/features/insights/InstallationHistoryCard";
 import { InstallationMatchesCard } from "@/components/features/insights/InstallationMatchesCard";
 import {
@@ -17,12 +17,12 @@ import {
 } from "@/components/features/insights/InstallationPageHeader";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { requireConsoleFeature } from "@/lib/console-features-api";
 import {
   useInsightsEventsQuery,
   useInsightsInstallationEventsQuery,
   useInsightsInstallationQuery,
   useInsightsInstallationsQuery,
-  useInsightsStatusQuery,
 } from "@/lib/insights-api";
 import { DEFAULT_EVENT_RANGE, eventRangeBounds } from "@/lib/insights-view";
 
@@ -45,6 +45,9 @@ const popCursor = (stack: readonly string[]) => ({
 });
 
 export const Route = createFileRoute("/installations")({
+  beforeLoad: ({ context }) =>
+    requireConsoleFeature(context.queryClient, "insights"),
+  notFoundComponent: ConsoleFeatureUnavailable,
   component: InstallationsPage,
   validateSearch: validateInstallationsSearch,
 });
@@ -104,15 +107,13 @@ function InstallationsPage() {
     }
   }, [hasSelection, historyBefore, search.historyBefore]);
 
-  const status = useInsightsStatusQuery();
-  const insightsOn = status.data?.insights === "on";
   const events = useInsightsEventsQuery(
     {
       ...eventRangeBounds(eventsRange, eventsBefore),
       cursor: search.eventsCursor,
       limit: 20,
     },
-    insightsOn && !hasLookup,
+    !hasLookup,
   );
   const matches = useInsightsInstallationsQuery(
     {
@@ -120,7 +121,7 @@ function InstallationsPage() {
       identity: query,
       limit: SEARCH_LIMIT,
     },
-    insightsOn && hasSearchQuery,
+    hasSearchQuery,
   );
 
   useEffect(() => {
@@ -139,7 +140,7 @@ function InstallationsPage() {
 
   const selectedInstallation = useInsightsInstallationQuery(
     search.installId ?? "",
-    insightsOn && hasSelection,
+    hasSelection,
   );
   const history = useInsightsInstallationEventsQuery(
     {
@@ -148,7 +149,7 @@ function InstallationsPage() {
       installId: search.installId ?? "",
       limit: EVENT_LIMIT,
     },
-    insightsOn && hasSelection,
+    hasSelection,
   );
   const selectedEvent =
     selectedInstallation.data ??
@@ -210,19 +211,6 @@ function InstallationsPage() {
       }}
     />
   );
-
-  if (status.data?.insights === "off") {
-    return (
-      <div className="flex h-svh min-h-0 flex-col">
-        <InsightsPageHeader view="events" />
-        <div className="min-h-0 min-w-0 flex-1 overflow-y-auto bg-muted/5 p-3 sm:p-6">
-          <div className="mx-auto flex w-full max-w-7xl flex-col gap-4 sm:gap-6">
-            <InsightsOffBanner />
-          </div>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="flex h-svh min-h-0 flex-col">

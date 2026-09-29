@@ -3,26 +3,13 @@ import type {
   InsightsProvider,
 } from "@hot-updater/server";
 
+import { ConsoleFeatureUnavailableError } from "../console-features";
+
 /** The Insights reads the console pages use. */
 export type ConsoleInsightsReads = Omit<InsightsProvider, "appendBundleEvent">;
 
-/** The server runs without the `insights()` plugin. */
-export class InsightsOffError extends Error {
-  override readonly name = "InsightsOffError";
-
-  constructor() {
-    super("Insights is off: the server runs without the insights() plugin.");
-  }
-}
-
 /** A GET on a self-hosted server's admin handler. */
 export type FetchAdmin = (path: string) => Promise<Response>;
-
-const HOUR_MS = 60 * 60 * 1_000;
-
-const isOff = (response: Response) =>
-  response.status === 204 &&
-  response.headers.get("x-hot-updater-insights") === "disabled";
 
 const withQuery = (
   path: string,
@@ -50,13 +37,18 @@ const eventQuery = ({
 
 /**
  * A self-hosted server's Insights, read through the admin routes its
- * `insights()` plugin serves. A server without the plugin answers them with
- * 204 and `x-hot-updater-insights: disabled`.
+ * `insights()` plugin serves.
  */
-export const createAdminInsightsReads = (fetchAdmin: FetchAdmin) => {
+export const createAdminInsightsReads = (
+  fetchAdmin: FetchAdmin,
+): ConsoleInsightsReads => {
   const read = async <T>(path: string): Promise<T | null> => {
     const response = await fetchAdmin(path);
-    if (isOff(response)) throw new InsightsOffError();
+    // These routes answer with no content only on a server without
+    // insights(), one restarted without it after the console read its plugins.
+    if (response.status === 204) {
+      throw new ConsoleFeatureUnavailableError("insights", { remote: true });
+    }
     if (response.status === 404) return null;
     if (!response.ok) {
       const body: unknown = await response.json().catch(() => null);
@@ -80,7 +72,7 @@ export const createAdminInsightsReads = (fetchAdmin: FetchAdmin) => {
     return value;
   };
 
-  const reads: ConsoleInsightsReads = {
+  return {
     getReportingOverview: ({ platform, channel, window, bundleId }) =>
       required(withQuery("/overview", { platform, channel, window, bundleId })),
     listEvents: ({ bundle, ...input }) =>
@@ -108,21 +100,5 @@ export const createAdminInsightsReads = (fetchAdmin: FetchAdmin) => {
       read(`/installations/${encodeURIComponent(installId)}`),
     pageInstallationsByCurrentUserId: ({ userId, cursor, limit }) =>
       required(withQuery("/installations", { userId, cursor, limit })),
-  };
-
-  return {
-    reads,
-    /**
-     * Asks the server whether it runs Insights: one event of the last hour,
-     * so the list reads at most two days.
-     */
-    status: async (): Promise<"on" | "off"> =>
-      isOff(
-        await fetchAdmin(
-          withQuery("/events", { limit: 1, sinceMs: Date.now() - HOUR_MS }),
-        ),
-      )
-        ? "off"
-        : "on",
   };
 };

@@ -7,7 +7,7 @@ import type {
   BundleActivityReport,
 } from "@/lib/bundle-activity";
 import { useBundleActivityQuery } from "@/lib/bundle-activity";
-import { useInsightsStatusQuery } from "@/lib/insights-api";
+import { useConsoleFeature } from "@/lib/console-features-api";
 
 import { InsightsInfo } from "../insights/InsightsInfo";
 
@@ -73,33 +73,26 @@ export function BundleMovementSummary({
   );
 }
 
+/** The bundle detail's Insights card; absent where the console does not read release activity. */
 export function BundleInsightsSummary({
   input,
 }: {
   readonly input: BundleActivityInput;
 }) {
-  const status = useInsightsStatusQuery();
-  const activity = status.data?.activity === true;
+  const activity = useConsoleFeature("insightsAnalytics");
   const query = useBundleActivityQuery([input], activity);
+  if (!activity) return null;
   return (
     <Card>
       <CardHeader className="px-4 pt-4 pb-3">
         <CardTitle className="text-sm font-medium">Insights</CardTitle>
       </CardHeader>
       <CardContent className="px-4 pb-4">
-        {status.data !== undefined && !activity ? (
-          <p className="text-sm text-muted-foreground">
-            {status.data.insights === "off"
-              ? "Insights is off: the server runs without the insights() plugin."
-              : "Bundle activity is read from the database, which a self-hosted server does not serve to the console."}
-          </p>
-        ) : (
-          <BundleMovementSummary
-            input={input}
-            loading={query.isFetching}
-            report={query.data?.[input.releaseId]}
-          />
-        )}
+        <BundleMovementSummary
+          input={input}
+          loading={query.isFetching}
+          report={query.data?.[input.releaseId]}
+        />
       </CardContent>
     </Card>
   );

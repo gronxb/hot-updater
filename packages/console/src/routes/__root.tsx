@@ -18,6 +18,7 @@ import {
   getConsoleAccessRpc,
   getConsoleAuthProvidersRpc,
 } from "@/lib/auth-rpc";
+import { consoleFeaturesQueryOptions } from "@/lib/console-features-api";
 
 import appCss from "../styles.css?url";
 
@@ -60,11 +61,16 @@ export const Route = createRootRouteWithContext<{
     ],
   }),
 
-  loader: async () => {
+  loader: async ({ context }) => {
     const [access, providers] = await Promise.all([
       getConsoleAccessRpc(),
       getConsoleAuthProvidersRpc(),
     ]);
+    // The authorized layout's navigation shows only the features on, so they
+    // load with it; the query keeps them for the visit.
+    if (access.status === "authorized") {
+      await context.queryClient.prefetchQuery(consoleFeaturesQueryOptions());
+    }
     return { access, providers };
   },
 

@@ -550,8 +550,8 @@ plugins you list:
 Managed providers export the plugins their server runs as `plugins`, and
 `hot-updater init` writes a `hotUpdater.plugins.ts` that re-exports them.
 `hot-updater console` runs the plugins that file exports over the configured
-database; without it, a managed project's console shows Insights as off and
-does not manage API keys. Write your own plugins with the
+database; without it, a managed project's console shows neither Insights nor
+API keys. Write your own plugins with the
 [server plugin API](/docs/custom/server-plugins).
 
 ### 4. Replace removed APIs

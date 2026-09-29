@@ -203,11 +203,11 @@ Insights depends on its database configuration:
   `hotUpdater.plugins.ts` exports as `plugins`; `hot-updater init` writes that
   file for managed providers. A deployed Console takes `plugins` in its
   [configuration](/docs/guides/console-deployment#add-your-plugins). Without
-  `insights()` there, the Insights pages show that Insights is off.
-- With `standaloneRepository`, it reads the Insights overview, events, and
-  installations from the server's admin handler, and shows that Insights is
-  off when the server runs without `insights()`. App usage and bundle activity
-  need a direct database configuration.
+  `insights()` there, the console hides Insights.
+- With `standaloneRepository`, it reads Insights events and installations from
+  the server's admin handler, and hides Insights when the server's admin
+  `/version` does not list `insights()`. App usage and bundle activity need a
+  direct database configuration.
 
 The Bundles list shows compact **Active**, **Downloaded**, and **Recovered** counts over the last
 30 days. Bundle Detail keeps these counts and a small activity graph above

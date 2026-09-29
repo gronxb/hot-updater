@@ -10,10 +10,23 @@ import * as React from "react";
 import { toast } from "sonner";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import type { ConsoleFeatures } from "@/lib/console-features";
+
 import { AppSidebar } from "./AppSidebar";
 
+const allOff: ConsoleFeatures = {
+  insights: false,
+  insightsAnalytics: false,
+  apiKeys: false,
+};
+const allOn: ConsoleFeatures = {
+  insights: true,
+  insightsAnalytics: true,
+  apiKeys: true,
+};
+
 let pathname = "/";
-let apiKeysSupported = false;
+let features: ConsoleFeatures | undefined = allOff;
 const setOpenMobile = vi.fn();
 
 vi.mock("sonner", () => ({ toast: { error: vi.fn() } }));
@@ -31,8 +44,10 @@ vi.mock("@/components/ThemeProvider", () => ({
   useTheme: () => ({ theme: "dark", setTheme: vi.fn() }),
 }));
 
-vi.mock("@/lib/api-keys-api", () => ({
-  useApiKeyCapabilityQuery: () => ({ data: { apiKeys: apiKeysSupported } }),
+vi.mock("@/lib/console-features-api", () => ({
+  useConsoleFeatures: () => ({
+    data: features === undefined ? undefined : { features, remote: false },
+  }),
 }));
 
 vi.mock("@/components/HotUpdaterLogo", () => ({
@@ -87,26 +102,59 @@ describe("AppSidebar navigation", () => {
     vi.unstubAllGlobals();
     vi.clearAllMocks();
     pathname = "/";
-    apiKeysSupported = false;
+    features = allOff;
   });
 
   it.each([/hot updater/i, /bundles/i, /insights/i, /api keys/i])(
     "closes the mobile sidebar when selecting %s",
     (name) => {
-      apiKeysSupported = true;
+      features = allOn;
       render(<AppSidebar />);
       fireEvent.click(screen.getByRole("link", { name }));
       expect(setOpenMobile).toHaveBeenCalledWith(false);
     },
   );
 
-  it("always exposes the canonical Insights destination", () => {
+  it.each([
+    ["no plugins", ["Bundles"], allOff],
+    [
+      "insights() over the database",
+      ["Bundles", "Insights"],
+      { ...allOff, insights: true, insightsAnalytics: true },
+    ],
+    [
+      "insights() on a self-hosted server",
+      ["Bundles", "Insights"],
+      { ...allOff, insights: true },
+    ],
+    ["apiKeys()", ["Bundles", "API keys"], { ...allOff, apiKeys: true }],
+    ["every plugin", ["Bundles", "Insights", "API keys"], allOn],
+    ["the features still loading", ["Bundles"], undefined],
+  ] as const)("with %s, shows %j", (_case, labels, served) => {
+    features = served;
     render(<AppSidebar />);
-    expect(screen.getByRole("link", { name: /bundles/i })).toBeDefined();
+
+    const shown = ["Bundles", "Insights", "API keys"].filter(
+      (label) => screen.queryByRole("link", { name: label }) !== null,
+    );
+    expect(shown).toEqual(labels);
+    expect(screen.queryByRole("link", { name: /installations/i })).toBeNull();
+  });
+
+  it("opens Insights on the overview with usage, and on All events without", () => {
+    features = { ...allOff, insights: true, insightsAnalytics: true };
+    const view = render(<AppSidebar />);
     expect(
       screen.getByRole("link", { name: /insights/i }).getAttribute("href"),
     ).toBe("/insights");
-    expect(screen.queryByRole("link", { name: /installations/i })).toBeNull();
+    view.unmount();
+
+    // A self-hosted server's admin API serves events, not the overview.
+    features = { ...allOff, insights: true };
+    render(<AppSidebar />);
+    expect(
+      screen.getByRole("link", { name: /insights/i }).getAttribute("href"),
+    ).toBe("/installations");
   });
 
   it("hides sign out in the local console", () => {
@@ -152,6 +200,7 @@ describe("AppSidebar navigation", () => {
     "marks Insights active on %s",
     (route) => {
       pathname = route;
+      features = allOn;
       render(<AppSidebar />);
       expect(
         screen
@@ -161,11 +210,8 @@ describe("AppSidebar navigation", () => {
     },
   );
 
-  it("shows API keys only when the database exposes that domain", () => {
-    const view = render(<AppSidebar />);
-    expect(screen.queryByRole("link", { name: /api keys/i })).toBeNull();
-    view.unmount();
-    apiKeysSupported = true;
+  it("links API keys to their page", () => {
+    features = { ...allOff, apiKeys: true };
     render(<AppSidebar />);
     expect(
       screen.getByRole("link", { name: /api keys/i }).getAttribute("href"),

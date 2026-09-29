@@ -1,8 +1,40 @@
 // @vitest-environment node
 
-import { describe, expect, it } from "vitest";
+import type { HotUpdaterCoreApi } from "@hot-updater/plugin-core";
+import { createMemoryAdapter } from "@hot-updater/plugin-core/internal";
+import { apiKeys } from "@hot-updater/server/plugins/api-keys";
+import { insights } from "@hot-updater/server/plugins/insights";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { toApiKeyView } from "./api-keys-rpc";
+import { createConsoleRuntime } from "./server/runtime.server";
+
+const mocks = vi.hoisted(() => ({ prepare: vi.fn() }));
+
+vi.mock("@tanstack/react-start", () => ({
+  createServerFn: () => ({
+    validator() {
+      return this;
+    },
+    handler(handler: (input: unknown) => unknown) {
+      return handler;
+    },
+  }),
+}));
+vi.mock("./server/config.server", () => ({ prepareConfig: mocks.prepare }));
+
+import {
+  createApiKeyRpc,
+  listApiKeysRpc,
+  revokeApiKeyRpc,
+  toApiKeyView,
+} from "./api-keys-rpc";
+
+const memoryDatabase = () => ({
+  name: "memory",
+  adapter: createMemoryAdapter(),
+});
+
+afterEach(() => vi.resetAllMocks());
 
 describe("API-key RPC output", () => {
   it("never serializes the provider lookup hash", () => {
@@ -25,5 +57,60 @@ describe("API-key RPC output", () => {
       role: "client",
     });
     expect("hash" in view).toBe(false);
+  });
+});
+
+describe("API-key RPC access", () => {
+  it("manages keys through the apiKeys() plugin the console runs", async () => {
+    mocks.prepare.mockResolvedValue({
+      runtime: createConsoleRuntime({
+        database: memoryDatabase(),
+        plugins: [apiKeys()],
+      }),
+    });
+
+    const created = await createApiKeyRpc({ data: { name: "CI" } });
+
+    await expect(listApiKeysRpc()).resolves.toEqual([
+      expect.objectContaining({ id: created.record.id, name: "CI" }),
+    ]);
+  });
+
+  it.each([
+    [
+      "without apiKeys()",
+      createConsoleRuntime({
+        database: memoryDatabase(),
+        plugins: [insights()],
+      }),
+      "without the apiKeys() plugin",
+    ],
+    [
+      "for a self-hosted server, which manages its own keys",
+      createConsoleRuntime({
+        database: {
+          name: "standalone-repository",
+          core: {} as HotUpdaterCoreApi,
+          fetchAdmin: async () => Response.json({ plugins: ["apiKeys"] }),
+        },
+      }),
+      "reaches a self-hosted server",
+    ],
+  ])("refuses key management %s", async (_case, runtime, message) => {
+    mocks.prepare.mockResolvedValue({ runtime });
+    const refused = {
+      name: "ConsoleFeatureUnavailableError",
+      feature: "apiKeys",
+      status: 404,
+      message: expect.stringContaining(message),
+    };
+
+    await expect(listApiKeysRpc()).rejects.toMatchObject(refused);
+    await expect(
+      createApiKeyRpc({ data: { name: "CI" } }),
+    ).rejects.toMatchObject(refused);
+    await expect(
+      revokeApiKeyRpc({ data: { id: `api-${"a".repeat(43)}` } }),
+    ).rejects.toMatchObject(refused);
   });
 });

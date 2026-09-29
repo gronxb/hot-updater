@@ -56,7 +56,7 @@ Replace the commented lines before building. Reuse the existing database and buc
 
 Install your chosen [database plugin](/docs/concepts/plugin-system#database-plugin) and [storage plugin](/docs/concepts/plugin-system#storage-plugin). Read credentials from runtime environment variables inside the callback.
 
-Set `plugins` to the [server plugins](/docs/custom/server-plugins) your backend runs. The AWS, Cloudflare, Firebase, and Supabase packages export their managed server's list, `insights()` and `apiKeys()`, as `plugins`. The console runs them over `database` to read Insights and manage API keys, and shows a plugin that is not listed as off. A `standaloneRepository` database needs no `plugins`: the console asks its server.
+Set `plugins` to the [server plugins](/docs/custom/server-plugins) your backend runs. The AWS, Cloudflare, Firebase, and Supabase packages export their managed server's list, `insights()` and `apiKeys()`, as `plugins`. The console runs them over `database` to read Insights and manage API keys, and shows only the features of the plugins listed: Insights with `insights()`, API keys with `apiKeys()`. A `standaloneRepository` database needs no `plugins`: the console reads the plugins its server runs from the server's admin `/version`, and shows their Insights events and installations. App usage, bundle activity, and API keys need the database config.
 
 </Step>
 <Step>
@@ -119,7 +119,7 @@ For another host, select its preset from [Nitro's deployment catalog](https://ni
 ## Verify the deployment
 
 1. Open the HTTPS URL: sign-in should appear before any management data.
-2. Sign in with an allowlisted account: check Bundles and Insights. If Insights shows as off, add `insights()` to `plugins`, or, with `standaloneRepository`, to the server's plugins.
+2. Sign in with an allowlisted account: check Bundles and Insights. If Insights is missing from the navigation, add `insights()` to `plugins`, or, with `standaloneRepository`, to the server's plugins.
 3. Download a bundle, then sign out: management data should no longer be accessible.
 
 </Step>

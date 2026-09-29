@@ -17,6 +17,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/components/ui/sidebar", () => ({ SidebarTrigger: () => null }));
 
+vi.mock("@/lib/console-features-api", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/console-features-api")>()),
+  useConsoleFeature: () => true,
+}));
+
 vi.mock("@/lib/insights-api", () => {
   const installation = {
     installId: "install-1",
@@ -49,9 +54,6 @@ vi.mock("@/lib/insights-api", () => {
     isLoading: false,
   });
   return {
-    useInsightsStatusQuery: () => ({
-      data: { insights: "on", activity: true },
-    }),
     useInsightsEventsQuery: page,
     useInsightsInstallationsQuery: page,
     useInsightsInstallationEventsQuery: page,

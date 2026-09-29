@@ -2,8 +2,9 @@ import { createMemoryAdapter } from "@hot-updater/plugin-core/internal";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createHotUpdater } from "../createHotUpdaterCore";
-import { listHotUpdaterRoutes } from "../handler";
+import { type HotUpdaterHandlers, listHotUpdaterRoutes } from "../handler";
 import { INSIGHTS_OFF_WARNING, INSIGHTS_ROUTES } from "../insights/routes";
+import { apiKeys } from "../plugins/api-keys";
 import { definePlugin } from "../plugins/definePlugin";
 import { insights } from "../plugins/insights";
 import { HotUpdaterConfigError } from "./assemblePlugins";
@@ -118,6 +119,47 @@ describe("Insights routes with plugins", () => {
         "Add insights() from @hot-updater/server/plugins/insights to plugins",
       ),
     );
+  });
+});
+
+describe("admin /version", () => {
+  const plugins = async (hotUpdater: { handlers: HotUpdaterHandlers }) =>
+    (
+      (await (await hotUpdater.handlers.admin(request("/version"))).json()) as {
+        plugins: unknown;
+      }
+    ).plugins;
+
+  it("lists the built-in plugins the server runs, sorted by id", async () => {
+    await expect(
+      plugins(
+        createHotUpdater({
+          database: database(),
+          plugins: [insights(), apiKeys()],
+        }),
+      ),
+    ).resolves.toEqual(["apiKeys", "insights"]);
+    await expect(
+      plugins(
+        createHotUpdater({
+          database: database(),
+          plugins: [insights()],
+          clientAccess: "public",
+        }),
+      ),
+    ).resolves.toEqual(["insights"]);
+  });
+
+  it("lists none for a server without plugins, whose Insights routes still say it is off", async () => {
+    const hotUpdater = createHotUpdater({
+      database: database(),
+      clientAccess: "public",
+    });
+
+    await expect(plugins(hotUpdater)).resolves.toEqual([]);
+    const events = await hotUpdater.handlers.admin(request("/events"));
+    expect(events.status).toBe(204);
+    expect(events.headers.get("x-hot-updater-insights")).toBe("disabled");
   });
 });
 

@@ -68,6 +68,7 @@ export const prepareConfig = async (request: Request = getRequest()) => {
     // over a self-hosted server's admin API.
     core ??= createDatabaseCoreApi(config.database);
 
+    // Insights and API keys: the features of the plugins the server runs.
     if (!runtime) {
       const { createConsoleRuntime } = await import("./runtime.server");
       runtime = createConsoleRuntime(config);
@@ -75,13 +76,7 @@ export const prepareConfig = async (request: Request = getRequest()) => {
 
     const storagePlugin = await loadCachedStoragePlugin(config);
 
-    return {
-      config,
-      core,
-      insights: runtime.insights,
-      apiKeys: runtime.apiKeys,
-      storagePlugin,
-    };
+    return { config, core, runtime, storagePlugin };
   } catch (error) {
     if (
       !(

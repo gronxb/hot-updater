@@ -4,7 +4,6 @@ import { useQuery } from "@tanstack/react-query";
 import {
   findInsightsInstallationsRpc,
   getInsightsInstallationRpc,
-  getInsightsStatusRpc,
   getReportingInstallationsRpc,
   listInsightsEventsRpc,
   listInsightsInstallationEventsRpc,
@@ -36,14 +35,6 @@ const queryKeys = {
     readonly limit: number;
   }) => ["insights", "installation-events", input] as const,
 };
-
-/** Whether the server runs Insights, and whether usage and release activity can be read. */
-export const useInsightsStatusQuery = () =>
-  useQuery({
-    queryKey: ["insights", "status"] as const,
-    queryFn: () => getInsightsStatusRpc(),
-    staleTime: 5 * 60_000,
-  });
 
 export const useReportingInstallationsQuery = (input: InsightsOverviewInput) =>
   useQuery({
