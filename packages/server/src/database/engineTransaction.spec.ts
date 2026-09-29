@@ -616,6 +616,33 @@ describe("engine transactions", () => {
     ).rejects.toThrow(DatabaseQueryError);
   });
 
+  it("writes rows found through a rooted range, guarded by the root rather than a check per row", async () => {
+    const { db, writes } = await setup();
+    await db.transaction(async (tx) => {
+      tx.create("releases", { catalog_id: "c1", id: "r1" });
+      tx.create("releases", { catalog_id: "c1", id: "r2" });
+    });
+    writes.length = 0;
+    await db.transaction(async (tx) => {
+      const { rows } = await tx.findMany("releases", {
+        index: "byCatalog",
+        where: { catalog_id: "c1" },
+        limit: 10,
+      });
+      await tx.delete("releases", rows[0]!);
+    });
+    expect(
+      writes[0]!.map((op) => [
+        op.type,
+        op.table.name,
+        op.type === "insert" ? op.row.id : op.key,
+      ]),
+    ).toEqual([
+      ["increment", "catalogs", ["c1"]],
+      ["delete", "releases", ["c1", "r1"]],
+    ]);
+  });
+
   it("rejects writes over the adapter's atomic limit before sending them", async () => {
     const { db, writes } = await setup({ maxOps: 3, seed: false });
     await expect(

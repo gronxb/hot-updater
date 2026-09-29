@@ -200,7 +200,7 @@ export interface HotUpdaterTransaction<S extends ModuleSchema> {
     options: ReadOptions<S[M], I>,
   ): Promise<Page<TableRow<S[M]>>>;
   create<M extends TableNames<S>>(model: M, row: CreateRow<S[M]>): void;
-  /** Patches a row this transaction read. */
+  /** Patches a row this transaction read, by key or through a rooted range. */
   update<M extends TableNames<S>>(
     model: M,
     row: TableRow<S[M]>,
