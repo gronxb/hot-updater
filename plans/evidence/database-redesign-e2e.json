@@ -1,50 +1,50 @@
 {
-  "commit": "f8bae42db534a377cd5e9f42b339c1f16b262b78",
+  "commit": "4f6df91f0f7424a5ae049f23f770c0928daea039",
   "runs": {
+    "cloudflare": {
+      "taskId": "job-20260928191543-t3ylja",
+      "result": "passed",
+      "runtimeSha": "16156fd9-ff36-42f5-a0da-486165d61128"
+    },
+    "aws": {
+      "taskId": "job-20260929004057-i0f7ld",
+      "result": "passed",
+      "runtimeSha": "22"
+    },
+    "supabase": {
+      "taskId": "job-20260929052635-0iivs6",
+      "result": "passed",
+      "runtimeSha": "15"
+    },
+    "firebase": {
+      "taskId": "job-20260929034431-pzrykv",
+      "result": "passed",
+      "runtimeSha": "ccb7822bffb20f9764ec7324c92ddfb1aa97bfef"
+    },
     "standalone-kysely": {
-      "taskId": "job-20260927004257-frf7c0",
+      "taskId": "job-20260928233836-v6yucm",
       "result": "passed",
       "runtimeSha": null
     },
     "standalone-drizzle": {
-      "taskId": "job-20260927011314-bzr6ij",
+      "taskId": "job-20260929050159-6igza1",
       "result": "passed",
       "runtimeSha": null
     },
     "standalone-prisma": {
-      "taskId": "job-20260927013829-g0y21i",
+      "taskId": "job-20260929010332-0ry1re",
       "result": "passed",
       "runtimeSha": null
     },
     "standalone-mongodb": {
-      "taskId": "job-20260927020335-55ndnh",
+      "taskId": "job-20260929021621-mxikru",
       "result": "passed",
       "runtimeSha": null
     },
     "standalone-dynamodb": {
-      "taskId": "job-20260927023012-7o7a1r",
+      "taskId": "job-20260929043202-jyssdu",
       "result": "passed",
       "runtimeSha": null
-    },
-    "supabase": {
-      "taskId": "job-20260927052715-f88x69",
-      "result": "passed",
-      "runtimeSha": "10"
-    },
-    "cloudflare": {
-      "taskId": "job-20260927030038-hix4ch",
-      "result": "passed",
-      "runtimeSha": "4656076f-493d-4984-8524-cd6586bca90d"
-    },
-    "firebase": {
-      "taskId": "job-20260927044113-qu163p",
-      "result": "passed",
-      "runtimeSha": "4fe6718ead84d2b0e4465bb1ead78d2820b78532"
-    },
-    "aws": {
-      "taskId": "job-20260927071930-sg5esb",
-      "result": "passed",
-      "runtimeSha": "18"
     }
   }
 }
