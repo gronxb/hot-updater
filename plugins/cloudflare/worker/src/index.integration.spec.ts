@@ -1,17 +1,9 @@
-import {
-  type Bundle,
-  createReleaseCatalogScopeKey,
-  encodeChannelKey,
-} from "@hot-updater/core";
-import {
-  commitReleaseCatalogMutations,
-  createUUIDv7,
-} from "@hot-updater/plugin-core";
-import { createHotUpdater, registerApiKey } from "@hot-updater/server";
+import type { Bundle } from "@hot-updater/core";
+import { createHotUpdater } from "@hot-updater/server";
 import { env } from "cloudflare:test";
 import { beforeAll, beforeEach, describe, expect, inject, it } from "vitest";
 
-import { d1Database } from "../../src/worker";
+import { d1Database, plugins } from "../../src/worker";
 import worker, { HOT_UPDATER_BASE_PATH } from "./index";
 
 declare module "vitest" {
@@ -40,84 +32,35 @@ const toRuntimeBundle = (bundle: Bundle): Bundle => {
   };
 };
 
+/** A server on the test database with the plugins the Worker runs. */
+const createSeedServer = () =>
+  createHotUpdater({ database: d1Database(env.DB), plugins });
+
 const seedBundles = async (bundles: Bundle[]) => {
-  const database = d1Database(env.DB);
-  const seedHotUpdater = createHotUpdater({
-    database,
-    clientAccess: { type: "public" },
-  });
-  for (const bundle of bundles.map(toRuntimeBundle)) {
-    const existing = await seedHotUpdater.getBundleById(bundle.id);
-    if (existing === null) {
-      await seedHotUpdater.insertBundle(bundle);
-    } else {
-      await seedHotUpdater.updateBundleById(bundle.id, bundle);
-    }
-    const channelName = "production";
-    const channelKey = encodeChannelKey(channelName);
-    const channel = (
-      await database.models.channels.insert({
-        row: { id: `channel:${channelKey}`, name: channelName },
-        onConflict: "returnExisting",
-      })
-    ).row;
-    const scopeKey = createReleaseCatalogScopeKey({
-      channelKey,
-      platform: bundle.platform,
-      strategy: "APP_VERSION",
-    });
-    const now = Date.now();
-    const releaseId = createUUIDv7();
-    await commitReleaseCatalogMutations({
-      database,
-      mutations: [
-        {
-          mutation: {
-            operation: "insert",
-            row: {
-              bundle_id: bundle.id,
-              channel_id: channel.id,
-              created_at_ms: now,
-              enabled: true,
-              fingerprint_hash: null,
-              id: releaseId,
-              kind: "BUNDLE",
-              message: "hello",
-              operation: "DEPLOY",
-              platform: bundle.platform,
-              revision: 1,
-              rollout_cohort_count: 1_000,
-              scope_key: scopeKey,
-              should_force_update: false,
-              source_release_id: null,
-              strategy: "APP_VERSION",
-              target_app_version: "1.0",
-              target_cohorts: [],
-              updated_at_ms: now,
-            },
-          },
-          scope: {
-            channelId: channel.id,
-            channelName,
-            fingerprintHash: null,
-            platform: bundle.platform,
-            scopeKey,
-            strategy: "APP_VERSION",
-          },
-          updatedAtMs: now,
+  const { core } = createSeedServer();
+  // A deploy publishes into each scope at most once, so each bundle deploys alone.
+  for (const bundle of bundles) {
+    await core.deploy([
+      {
+        bundle: toRuntimeBundle(bundle),
+        release: {
+          channel: "production",
+          enabled: true,
+          fingerprintHash: null,
+          message: "hello",
+          shouldForceUpdate: false,
+          targetAppVersion: "1.0",
         },
-      ],
-    });
+      },
+    ]);
   }
 };
 
 describe.sequential("cloudflare worker runtime acceptance", () => {
   beforeAll(async () => {
     await env.DB.prepare(inject("prepareSql")).run();
-    const database = d1Database(env.DB);
-    await registerApiKey({
+    await createSeedServer().api.apiKeys.register({
       apiKey: API_KEY,
-      apiKeys: database.models.apiKeys,
       name: "Runtime acceptance",
     });
   });

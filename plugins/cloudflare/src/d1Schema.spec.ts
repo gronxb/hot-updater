@@ -3,20 +3,20 @@ import path from "node:path";
 import { DatabaseSync, type SqliteValue } from "node:sqlite";
 
 import {
+  builtInSchema,
+  builtInSettings,
   createTableStatements,
-  legacyFacadeSchema,
-  legacyFacadeSettings,
   WRITE_GUARD_TABLE,
 } from "@hot-updater/server/database";
-import { generateEngineSql } from "@hot-updater/server/db";
+import {
+  createDatabaseCoreApi,
+  generateEngineSql,
+  HotUpdaterSchemaMigrationRequiredError,
+} from "@hot-updater/server/db";
 import { describe, expect, it } from "vitest";
 
-import {
-  createBundleRowFixture,
-  createChannelRowFixture,
-  createReleaseRowFixture,
-} from "../../../packages/test-utils/src/databaseTestFixtures";
-import { createD1DatabasePlugin } from "./d1Executor";
+import { createBundleFixture } from "../../../packages/test-utils/src/databaseTestFixtures";
+import { createD1Database } from "./d1Executor";
 
 const FILES = [
   "plugins/cloudflare/sql/bundles.sql",
@@ -26,7 +26,7 @@ const FILES = [
 /** D1's schema: the guard table batch writes need, then the shared SQL schema, settings last. */
 const statements = () => [
   ...createTableStatements("sqlite", [WRITE_GUARD_TABLE]),
-  ...generateEngineSql("sqlite", legacyFacadeSchema, legacyFacadeSettings),
+  ...generateEngineSql("sqlite", builtInSchema, builtInSettings),
 ];
 const expectedSql = () =>
   `-- HotUpdater.schema\n\n${statements()
@@ -42,7 +42,7 @@ const sqliteD1 = (db: DatabaseSync) => {
       ? { rows: statement.all(...values), changes: 0 }
       : { rows: [], changes: Number(statement.run(...values).changes) };
   };
-  return createD1DatabasePlugin({
+  return createD1Database({
     query: async ({ sql, params }) => run(sql, params),
     batch: async (batch) => {
       db.exec("BEGIN IMMEDIATE");
@@ -71,25 +71,26 @@ describe("d1 schema", () => {
 
   it("serves once the schema is applied, writing each change as one batch", async () => {
     const db = new DatabaseSync(":memory:");
+    const core = createDatabaseCoreApi(sqliteD1(db));
+    await expect(core.listChannels()).rejects.toBeInstanceOf(
+      HotUpdaterSchemaMigrationRequiredError,
+    );
     for (const statement of statements()) db.exec(statement);
-    const plugin = sqliteD1(db);
-    const channel = createChannelRowFixture("production");
-    const bundle = createBundleRowFixture("1");
-    const release = createReleaseRowFixture("1", bundle, channel);
-    await plugin.models.channels.insert({
-      row: channel,
-      onConflict: "returnExisting",
-    });
-    await expect(
-      plugin.commit({
-        changes: [
-          { model: "bundles", operation: "insert", row: bundle },
-          { model: "releases", operation: "insert", row: release },
-        ],
-      }),
-    ).resolves.toEqual({ committed: true });
-    await expect(plugin.models.releases.findById(release.id)).resolves.toEqual(
-      release,
+    const [deployed] = await core.deploy([
+      {
+        bundle: createBundleFixture("1"),
+        release: {
+          channel: "production",
+          enabled: true,
+          fingerprintHash: null,
+          message: null,
+          shouldForceUpdate: false,
+          targetAppVersion: "1.0.0",
+        },
+      },
+    ]);
+    await expect(core.getRelease(deployed!.release!.id)).resolves.toEqual(
+      deployed!.release,
     );
     expect(db.prepare("SELECT COUNT(*) AS n FROM _hu_write").all()).toEqual([
       { n: 0 },

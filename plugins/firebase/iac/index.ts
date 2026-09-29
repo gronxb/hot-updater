@@ -610,24 +610,21 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
     credential,
     projectId: initializeVariable.projectId,
   };
-  const databasePlugin = firebaseDatabase(databaseConfig);
+  const database = firebaseDatabase(databaseConfig);
   let apiKey: string;
   try {
-    // The plugin reads nothing until the schema settings exist.
+    // The database reads nothing until the schema settings exist.
     await migrateFirebaseDatabase(databaseConfig);
     apiKey = // The managed server's apiKeys() plugin, on the tables it reads.
       (
-        await createDatabasePluginApis(
-          databasePlugin,
-          plugins,
-        ).apiKeys.provision({
+        await createDatabasePluginApis(database, plugins).apiKeys.provision({
           existingApiKey: initInputEnv.HOT_UPDATER_API_KEY,
           name: "Firebase init",
         })
       ).apiKey;
     await makeEnv({ HOT_UPDATER_API_KEY: apiKey });
   } finally {
-    await databasePlugin.dispose?.();
+    await database.dispose?.();
     await Promise.all(
       getApps()
         .filter((app) => !existingApps.has(app))

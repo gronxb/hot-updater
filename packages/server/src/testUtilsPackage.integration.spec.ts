@@ -85,21 +85,24 @@ it("runs the complete contract from the published test-utils package", async () 
       import { PGliteDialect } from "kysely-pglite-dialect";
       import { createHotUpdater } from "@hot-updater/server";
       import { kyselyAdapter } from "@hot-updater/server/adapters/kysely";
-      import { createMigrator } from "@hot-updater/server/db";
-      import { setupDatabasePluginTestSuite, startHttpTestServer } from "@hot-updater/test-utils";
+      import { createDatabasePluginApis, createMigrator } from "@hot-updater/server/db";
+      import { createInsightsModel, insights } from "@hot-updater/server/plugins/insights";
+      import { setupDatabaseTestSuite, startHttpTestServer } from "@hot-updater/test-utils";
 
       const db = new PGlite();
       const kysely = new Kysely({ dialect: new PGliteDialect(db) });
-      const plugin = kyselyAdapter({ db: kysely, provider: "postgresql" });
-      setupDatabasePluginTestSuite({
+      const database = kyselyAdapter({ db: kysely, provider: "postgresql" });
+      setupDatabaseTestSuite({
         name: "external provider",
         createHttpClient: (options) => startHttpTestServer(createHotUpdater({
-          ...options, clientAccess: { type: "public" },
+          ...options, plugins: [insights()], clientAccess: "public",
         }).handlers),
-        createPlugin: () => plugin,
+        createInsightsModel: (database) =>
+          createInsightsModel(createDatabasePluginApis(database, [insights()]).insights),
+        createDatabase: () => database,
         migrate: async () => {
           const migration = await createMigrator(createHotUpdater({
-            database: plugin, clientAccess: { type: "public" },
+            database, clientAccess: "public",
           })).migrateToLatest({ mode: "from-schema", updateSettings: true });
           await migration.execute();
         },

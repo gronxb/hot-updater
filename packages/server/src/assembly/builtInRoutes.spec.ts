@@ -1,20 +1,14 @@
 import { createMemoryAdapter } from "@hot-updater/plugin-core/internal";
 import { describe, expect, it } from "vitest";
 
-import { createInMemoryDatabaseHarness } from "../../../test-utils/test/inMemoryDatabasePlugin";
 import { createHotUpdater } from "../createHotUpdaterCore";
-import { createLegacyDatabasePlugin } from "../database/legacyFacade";
 import { listHotUpdaterRoutes } from "../handler";
 import { INSIGHTS_ROUTES } from "../insights/routes";
 import { definePlugin } from "../plugins/definePlugin";
 import { insights } from "../plugins/insights";
 import { HotUpdaterConfigError } from "./assemblePlugins";
 
-const database = () =>
-  createLegacyDatabasePlugin({
-    name: "memory",
-    adapter: createMemoryAdapter(),
-  });
+const database = () => ({ name: "memory", adapter: createMemoryAdapter() });
 
 const event = {
   appVersion: "1.0.0",
@@ -114,29 +108,14 @@ describe("core reads", () => {
       plugins: [channels],
       clientAccess: "public",
     });
-    await hotUpdater.insertChannel({
-      onConflict: "returnExisting",
-      row: { id: "channel-1", name: "production" },
-    });
+    const channel = await hotUpdater.core.ensureChannel("production");
 
     await expect(
       hotUpdater.core.findChannelByName("production"),
-    ).resolves.toMatchObject({ id: "channel-1" });
+    ).resolves.toEqual(channel);
     await expect(hotUpdater.api.channel_names.names()).resolves.toEqual([
       "production",
     ]);
-  });
-
-  it("refuses core reads on a database off the storage engine", async () => {
-    const hotUpdater = createHotUpdater({
-      database: createInMemoryDatabaseHarness().plugin,
-      plugins: [],
-      clientAccess: "public",
-    });
-
-    await expect(hotUpdater.core.listChannels()).rejects.toThrow(
-      "This database does not run on the storage engine, so core reads and plugin tables are unavailable.",
-    );
   });
 
   it('keeps the plugin id "core" for core', () => {

@@ -1,9 +1,9 @@
-import type { DatabasePlugin } from "@hot-updater/plugin-core";
+import type { EngineDatabase } from "@hot-updater/plugin-core";
 import type { SqlStatement } from "@hot-updater/server/database";
 import Cloudflare from "cloudflare";
 
 import {
-  createD1DatabasePlugin,
+  createD1Database,
   D1ExecutionError,
   type D1ResultLike,
   toSqlResult,
@@ -25,7 +25,7 @@ const encode = ({ sql, params }: SqlStatement) => ({
 });
 
 /** Hot Updater's database on D1 through the Cloudflare REST API, for the CLI and console. */
-export const d1Database = (config: D1DatabaseConfig): DatabasePlugin => {
+export const d1Database = (config: D1DatabaseConfig): EngineDatabase => {
   const cloudflare = new Cloudflare({
     apiToken: config.cloudflareApiToken,
   });
@@ -50,7 +50,7 @@ export const d1Database = (config: D1DatabaseConfig): DatabasePlugin => {
     if (results.length !== statements.length) throw new D1ExecutionError();
     return results;
   };
-  return createD1DatabasePlugin({
+  return createD1Database({
     query: async (statement) => (await execute([statement]))[0]!,
     batch: execute,
   });

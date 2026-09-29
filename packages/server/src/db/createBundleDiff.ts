@@ -12,7 +12,7 @@ import {
 } from "@hot-updater/core";
 import type {
   Bundle,
-  BundleRepository,
+  ConfiguredDatabase,
   StoragePluginWith,
 } from "@hot-updater/plugin-core";
 import {
@@ -43,7 +43,8 @@ export interface CreateBundleDiffInput {
 }
 
 export interface CreateBundleDiffDependencies {
-  databasePlugin: BundleRepository;
+  /** The config's database: a provider's, or `standaloneRepository`. */
+  database: ConfiguredDatabase;
   storagePlugin: StoragePluginWith<"get" | "put" | "delete"> | null;
 }
 
@@ -241,7 +242,7 @@ export async function createBundleDiff(
   deps: CreateBundleDiffDependencies,
   options: CreateBundleDiffOptions = {},
 ) {
-  const core = createDatabaseCoreApi(deps.databasePlugin);
+  const core = createDatabaseCoreApi(deps.database);
 
   if (!deps.storagePlugin) {
     throw new Error("Storage plugin is not configured");

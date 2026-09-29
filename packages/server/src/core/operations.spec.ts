@@ -7,6 +7,7 @@ import {
 import {
   createMemoryAdapter,
   DatabaseRowReferencedError,
+  type DatabaseAdapter,
 } from "@hot-updater/plugin-core/internal";
 import { describe, expect, it } from "vitest";
 
@@ -46,6 +47,34 @@ const patchFrom = (bundle: Bundle, base: Bundle) => ({
 });
 
 describe("core operations", () => {
+  it("ensures a channel again when it is deleted between ensuring it and the deploy", async () => {
+    const memory = createMemoryAdapter();
+    const direct = createInProcessCoreApi(memory);
+    let raced = false;
+    // The first release write lets a concurrent delete of its channel land first.
+    const adapter: DatabaseAdapter = {
+      ...memory,
+      write: async (ops) => {
+        if (
+          !raced &&
+          ops.some((op) => op.type === "insert" && op.table.name === "releases")
+        ) {
+          raced = true;
+          const channel = await direct.findChannelByName("production");
+          await direct.deleteChannel(channel!.id);
+        }
+        return memory.write(ops);
+      },
+    };
+    const core = createInProcessCoreApi(adapter);
+
+    const [result] = await core.deploy([deployment(createBundleFixture("1"))]);
+
+    expect(raced).toBe(true);
+    const channel = await core.findChannelByName("production");
+    expect(result!.release!.channel_id).toBe(channel!.id);
+  });
+
   it("deploys bundles with their releases and catalogs, creating the channel", async () => {
     const { core } = setup();
     const ios = createBundleFixture("601");

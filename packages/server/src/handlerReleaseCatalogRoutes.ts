@@ -95,8 +95,7 @@ export const createReleaseCatalogRouteHandlers = (): Record<
   };
 
   return {
-    appVersionReleaseCatalog: async (params, request, api) => {
-      if (api.getReleaseCatalog === undefined) return privateNotFound();
+    appVersionReleaseCatalog: async (params, request, { core }) => {
       const rawAppVersion = requireRouteParam(params, "appVersion");
       const appVersion = canonicalizeAppVersion(rawAppVersion);
       if (appVersion === null || appVersion !== rawAppVersion) {
@@ -113,14 +112,13 @@ export const createReleaseCatalogRouteHandlers = (): Record<
       } as const;
       return catalogResponse(
         await loadCatalog(`app-version:${JSON.stringify(input)}`, () =>
-          api.getReleaseCatalog!(input),
+          core.getReleaseCatalog(input),
         ),
         request,
       );
     },
 
-    fingerprintReleaseCatalog: async (params, request, api) => {
-      if (api.getReleaseCatalog === undefined) return privateNotFound();
+    fingerprintReleaseCatalog: async (params, request, { core }) => {
       const input = {
         channelKey: requireRouteParam(params, "channelKey"),
         fingerprintHash: requireRouteParam(params, "fingerprintHash"),
@@ -129,15 +127,14 @@ export const createReleaseCatalogRouteHandlers = (): Record<
       } as const;
       return catalogResponse(
         await loadCatalog(`fingerprint:${JSON.stringify(input)}`, () =>
-          api.getReleaseCatalog!(input),
+          core.getReleaseCatalog(input),
         ),
         request,
       );
     },
 
-    artifactV1: async (params, _request, api) => {
-      if (api.getArtifactInfo === undefined) return privateNotFound();
-      const info = await api.getArtifactInfo(
+    artifactV1: async (params, _request, { core }) => {
+      const info = await core.getArtifactInfo(
         requireRouteParam(params, "targetBundleId"),
         requireRouteParam(params, "currentBundleId"),
         1,

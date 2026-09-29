@@ -1,6 +1,4 @@
-import { HOT_UPDATER_SCHEMA_VERSION } from "../schema/types";
 import { unsupportedSchemaUpgradeMessage } from "./fixedMigratorShared";
-import type { Migrator } from "./types";
 
 /** A schema setting the fence found missing or different. */
 export interface SchemaSettingMismatch {
@@ -37,20 +35,3 @@ export class HotUpdaterSchemaMigrationRequiredError extends Error {
     this.name = "HotUpdaterSchemaMigrationRequiredError";
   }
 }
-
-export const createSchemaReadinessChecker = (
-  adapterName: string,
-  createMigrator: (() => Migrator) | undefined,
-): (() => Promise<void>) => {
-  if (!createMigrator) return async () => {};
-
-  let ready = false;
-  return async () => {
-    if (ready) return;
-    const version = await createMigrator().getVersion();
-    if (version !== HOT_UPDATER_SCHEMA_VERSION) {
-      throw new HotUpdaterSchemaMigrationRequiredError(adapterName, version);
-    }
-    ready = true;
-  };
-};

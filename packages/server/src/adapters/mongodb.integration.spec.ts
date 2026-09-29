@@ -3,7 +3,7 @@ import path from "node:path";
 
 import {
   setupDatabaseAdapterConformanceSuite,
-  setupDatabasePluginTestSuite,
+  setupDatabaseTestSuite,
   startHttpTestServer,
 } from "@hot-updater/test-utils";
 import { assertDockerComposeAvailable } from "@hot-updater/test-utils/node";
@@ -11,14 +11,13 @@ import { execa } from "execa";
 import { MongoClient } from "mongodb";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import {
-  createBundleRowFixture,
-  createChannelRowFixture,
-  createReleaseRowFixture,
-} from "../../../test-utils/src/databaseTestFixtures";
-import { legacyFacadeSchema } from "../database/legacyFacade";
+import { createBundleFixture } from "../../../test-utils/src/databaseTestFixtures";
+import { createDatabasePluginApis } from "../assembly/databasePlugins";
+import { createInProcessCoreApi } from "../core/api";
+import { builtInSchema } from "../database/builtInDatabase";
 import { HotUpdaterSchemaMigrationRequiredError } from "../db/schemaReadiness";
 import { createHotUpdater } from "../index";
+import { createInsightsModel, insights } from "../plugins/insights";
 import { mongoAdapter } from "./mongodb";
 import { createMongoAdapter } from "./mongodbAdapter";
 
@@ -63,7 +62,7 @@ const connect = async (name: string) => {
 };
 
 let engine: MongoClient;
-let facade: MongoClient;
+let suiteClient: MongoClient;
 
 beforeAll(async () => {
   port = await availablePort();
@@ -73,7 +72,7 @@ beforeAll(async () => {
   };
   await compose(["up", "-d", "--wait"]);
   engine = await connect("engine");
-  facade = await connect("facade");
+  suiteClient = await connect("suite");
 }, 180_000);
 
 afterAll(async () => {
@@ -98,21 +97,28 @@ setupDatabaseAdapterConformanceSuite({
   },
 });
 
-setupDatabasePluginTestSuite({
+setupDatabaseTestSuite({
   createHttpClient: (options) =>
     startHttpTestServer(
-      createHotUpdater({ ...options, clientAccess: { type: "public" } })
-        .handlers,
+      createHotUpdater({
+        ...options,
+        plugins: [insights()],
+        clientAccess: "public",
+      }).handlers,
+    ),
+  createInsightsModel: (database) =>
+    createInsightsModel(
+      createDatabasePluginApis(database, [insights()]).insights,
     ),
   name: "mongoAdapter (replica set)",
   migrate: async () => {
-    const migrator = mongoAdapter({ client: facade }).createMigrator!();
+    const migrator = mongoAdapter({ client: suiteClient }).createMigrator!();
     await (await migrator.migrateToLatest()).execute();
   },
-  createPlugin: () => mongoAdapter({ client: facade }),
+  createDatabase: () => mongoAdapter({ client: suiteClient }),
   reset: async () => {
-    for (const table of legacyFacadeSchema.tables) {
-      await facade.db().collection(table.name).deleteMany({});
+    for (const table of builtInSchema.tables) {
+      await suiteClient.db().collection(table.name).deleteMany({});
     }
   },
   dispose: () => undefined,
@@ -121,35 +127,33 @@ setupDatabasePluginTestSuite({
 describe("mongoAdapter migrations", () => {
   it("serves behind the fence only after db migrate, then has nothing to migrate", async () => {
     const client = await connect("fenced");
-    const plugin = mongoAdapter({ client });
-    await expect(plugin.models.channels.list({})).rejects.toBeInstanceOf(
+    const database = mongoAdapter({ client });
+    const core = createInProcessCoreApi(database.adapter);
+    await expect(core.listChannels()).rejects.toBeInstanceOf(
       HotUpdaterSchemaMigrationRequiredError,
     );
-    const migrator = plugin.createMigrator!();
+    const migrator = database.createMigrator!();
     await (await migrator.migrateToLatest()).execute();
     await expect(migrator.migrateToLatest()).resolves.toMatchObject({
       operations: [],
     });
     await expect(migrator.getVersion()).resolves.toBe("1.0.0");
 
-    const channel = createChannelRowFixture("production");
-    const bundle = createBundleRowFixture("1");
-    const release = createReleaseRowFixture("1", bundle, channel);
-    await plugin.models.channels.insert({
-      row: channel,
-      onConflict: "returnExisting",
-    });
-    await expect(
-      plugin.commit({
-        changes: [
-          { model: "bundles", operation: "insert", row: bundle },
-          { model: "releases", operation: "insert", row: release },
-        ],
-      }),
-    ).resolves.toEqual({ committed: true });
-    await expect(plugin.models.releases.findById(release.id)).resolves.toEqual(
-      release,
-    );
+    const [result] = await core.deploy([
+      {
+        bundle: createBundleFixture("1"),
+        release: {
+          channel: "production",
+          enabled: true,
+          fingerprintHash: null,
+          message: null,
+          shouldForceUpdate: false,
+          targetAppVersion: "1.0.0",
+        },
+      },
+    ]);
+    const release = result!.release!;
+    await expect(core.getRelease(release.id)).resolves.toEqual(release);
   });
 
   it("refuses a v0 database and a database from before the engine", async () => {

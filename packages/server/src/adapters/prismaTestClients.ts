@@ -130,7 +130,6 @@ const prismaCli = createRequire(import.meta.url).resolve(
 const urls: Record<PrismaProvider, string> = {
   sqlite: "file:./unused.db",
   postgresql: "postgresql://unused@localhost/unused",
-  cockroachdb: "postgresql://unused@localhost/unused",
   mysql: "mysql://unused@localhost/unused",
 };
 

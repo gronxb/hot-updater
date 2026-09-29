@@ -1,6 +1,5 @@
-import { DatabasePluginInputError } from "./databasePluginCrudValidationErrors";
-import { isRecord } from "./databasePluginCrudValidationFields";
-import { validateCreateData } from "./databasePluginCrudValidationRows";
+import { isRecord, validateBundleEventFields } from "./bundleEventRow";
+import { DatabasePluginInputError } from "./databaseErrors";
 import type {
   BundleEventRow,
   InsightsEventFilter,
@@ -82,7 +81,7 @@ const validateRow = (
   result = false,
 ): void => {
   try {
-    validateCreateData(model, row);
+    validateBundleEventFields(row);
     if (
       !isRecord(row) ||
       typeof row.id !== "string" ||

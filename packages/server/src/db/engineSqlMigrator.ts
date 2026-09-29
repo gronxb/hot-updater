@@ -1,7 +1,7 @@
+import { HOT_UPDATER_SCHEMA_VERSION } from "../core/schema";
 import type { SchemaSettings } from "../database/fence";
 import type { ResolvedSchema } from "../database/resolveSchema";
 import type { SqlExecutor } from "../database/sql/sqlAdapter";
-import { HOT_UPDATER_SCHEMA_VERSION } from "../schema/types";
 import { generateEngineSql, type EngineSqlOptions } from "./engineSql";
 import {
   assertSupportedMigrationMode,

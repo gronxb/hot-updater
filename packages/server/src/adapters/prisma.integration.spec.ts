@@ -2,7 +2,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
-  setupDatabasePluginTestSuite,
+  setupDatabaseTestSuite,
   startHttpTestServer,
 } from "@hot-updater/test-utils";
 import { assertDockerComposeAvailable } from "@hot-updater/test-utils/node";
@@ -10,9 +10,11 @@ import { execa } from "execa";
 import mysql from "mysql2/promise";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { legacyFacadeSchema } from "../database/legacyFacade";
+import { createDatabasePluginApis } from "../assembly/databasePlugins";
+import { builtInSchema } from "../database/builtInDatabase";
 import { isMultiIndex, quoteSql } from "../database/sql/sqlSchema";
 import { createHotUpdater } from "../index";
+import { createInsightsModel, insights } from "../plugins/insights";
 import { prismaAdapter } from "./prisma";
 import { mysqlPrisma, prismaPushSql } from "./prismaTestClients";
 
@@ -33,7 +35,7 @@ const compose = [
 const server = "mysql://root:hot_updater@127.0.0.1:53306";
 const database = `prisma_${process.pid}`;
 
-const dataTables = legacyFacadeSchema.tables.flatMap((table) => [
+const dataTables = builtInSchema.tables.flatMap((table) => [
   table.name,
   ...table.indexes
     .filter((index) => isMultiIndex(table, index))
@@ -82,15 +84,22 @@ afterAll(async () => {
   await execa("docker", [...compose, "down", "-v"]);
 }, 60_000);
 
-setupDatabasePluginTestSuite({
+setupDatabaseTestSuite({
   createHttpClient: (options) =>
     startHttpTestServer(
-      createHotUpdater({ ...options, clientAccess: { type: "public" } })
-        .handlers,
+      createHotUpdater({
+        ...options,
+        plugins: [insights()],
+        clientAccess: "public",
+      }).handlers,
+    ),
+  createInsightsModel: (database) =>
+    createInsightsModel(
+      createDatabasePluginApis(database, [insights()]).insights,
     ),
   name: "prismaAdapter (MySQL, Prisma's tables)",
   migrate: () => undefined,
-  createPlugin: () =>
+  createDatabase: () =>
     prismaAdapter({ prisma: mysqlPrisma(pool), provider: "mysql" }),
   reset: async () => {
     for (const table of dataTables) {
@@ -115,8 +124,8 @@ describe("prismaAdapter on Prisma's MySQL tables", () => {
       {
         name: "releases",
         col: "channel_id",
-        type: "varchar",
-        collation: "utf8mb4_0900_bin",
+        type: "varbinary",
+        collation: null,
       },
       {
         name: "releases",

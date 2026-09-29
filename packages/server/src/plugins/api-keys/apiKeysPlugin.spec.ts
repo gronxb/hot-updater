@@ -1,48 +1,14 @@
-import type { DatabasePlugin } from "@hot-updater/plugin-core";
 import {
   createMemoryAdapter,
   type DatabaseAdapter,
 } from "@hot-updater/plugin-core/internal";
-import {
-  createPluginTestHarness,
-  setupInsightsModelTestSuite,
-} from "@hot-updater/test-utils";
 import { describe, expect, it } from "vitest";
 
-import { createInMemoryDatabaseHarness } from "../../../../test-utils/test/inMemoryDatabasePlugin";
 import { createHotUpdater } from "../../createHotUpdaterCore";
-import * as engine from "../../database";
 import { definePlugin } from "../definePlugin";
-import { apiKeys, createApiKeyModel } from "./index";
+import { apiKeys } from "./index";
 
 const API_KEY = "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE";
-
-/** Today's in-memory database, with its API key model on the plugin's tables. */
-const legacy = createInMemoryDatabaseHarness();
-let model: DatabasePlugin["models"]["apiKeys"] | undefined;
-const current = () => model!;
-setupInsightsModelTestSuite({
-  name: "in-memory database with the API keys plugin model",
-  createPlugin: () => ({
-    ...legacy.plugin,
-    models: {
-      ...legacy.plugin.models,
-      apiKeys: {
-        create: (row) => current().create(row),
-        findByHash: (hash) => current().findByHash(hash),
-        list: () => current().list(),
-        revoke: (input) => current().revoke(input),
-      },
-    },
-  }),
-  migrate: () => undefined,
-  reset: async () => {
-    legacy.reset();
-    const harness = await createPluginTestHarness(apiKeys(), { engine });
-    model = createApiKeyModel(harness.db as never);
-  },
-  dispose: () => undefined,
-});
 
 /** A client endpoint with a cacheable answer, to see the policy's Vary. */
 const cached = definePlugin({
@@ -70,8 +36,8 @@ const start = (
 ) => {
   const hotUpdater = createHotUpdater({
     database: {
-      ...createInMemoryDatabaseHarness().plugin,
-      engineAdapter: options.adapter ?? createMemoryAdapter(),
+      name: "memory",
+      adapter: options.adapter ?? createMemoryAdapter(),
     },
     plugins: [
       apiKeys(
@@ -177,7 +143,7 @@ describe("API keys plugin", () => {
     expect(allowed.status).toBe(200);
     expect(allowed.headers.get("vary")).toBe("x-hot-updater-key");
     expect(() => apiKeys({ headerName: "invalid header" })).toThrow(
-      "valid header name",
+      "must name a valid header",
     );
   });
 

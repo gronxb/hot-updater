@@ -7,7 +7,11 @@ import {
   type StoragePutInput,
 } from "@hot-updater/plugin-core";
 
-import type { RouteConfig } from "./standaloneRepository";
+/** A storage route: its path, and headers added to the common ones. */
+export interface RouteConfig {
+  readonly path: string;
+  readonly headers?: Readonly<Record<string, string>>;
+}
 
 export interface StorageRoutes {
   put: (input: Omit<StoragePutInput, "body">) => RouteConfig;

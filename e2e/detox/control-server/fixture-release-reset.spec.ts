@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { createDatabasePluginHarness } from "../../../packages/hot-updater/src/commands/databasePlugin.testFixtures.ts";
+import { createDatabaseHarness } from "../../../packages/hot-updater/src/commands/database.testFixtures.ts";
 import { commitDeployment } from "../../../packages/hot-updater/src/commands/deployTransaction.ts";
 import type { Bundle } from "../../../plugins/plugin-core/dist/index.mjs";
 import { resetFixtureReleases } from "./fixture-release-reset.ts";
@@ -20,7 +20,7 @@ const artifact = (
 
 describe("Detox fixture Release reset", () => {
   it("clears only the current platform and namespace while preserving shared artifacts and patches", async () => {
-    const harness = createDatabasePluginHarness();
+    const harness = createDatabaseHarness();
     const { core } = harness;
     const namespace = "e2e-current-job-ios-s1";
     const base = artifact(1);
@@ -116,7 +116,7 @@ describe("Detox fixture Release reset", () => {
   it.each([null, "", " \t"])(
     "rejects missing namespace %j before accessing the provider",
     async (namespace) => {
-      const harness = createDatabasePluginHarness();
+      const harness = createDatabaseHarness();
 
       await expect(
         resetFixtureReleases({

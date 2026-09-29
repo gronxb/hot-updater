@@ -1,9 +1,9 @@
 import { DatabaseSync, type SqliteValue } from "node:sqlite";
 
 import {
+  builtInSchema,
+  builtInSettings,
   createTableStatements,
-  legacyFacadeSchema,
-  legacyFacadeSettings,
   WRITE_GUARD_TABLE,
 } from "@hot-updater/server/database";
 import { generateEngineSql } from "@hot-updater/server/db";
@@ -15,7 +15,7 @@ export const createD1TestDatabase = () => {
   const db = new DatabaseSync(":memory:");
   for (const sql of [
     ...createTableStatements("sqlite", [WRITE_GUARD_TABLE]),
-    ...generateEngineSql("sqlite", legacyFacadeSchema, legacyFacadeSettings),
+    ...generateEngineSql("sqlite", builtInSchema, builtInSettings),
   ]) {
     db.exec(sql);
   }

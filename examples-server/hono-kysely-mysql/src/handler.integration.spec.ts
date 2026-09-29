@@ -1,11 +1,17 @@
 import path from "path";
 import { fileURLToPath } from "url";
 
-import type { Bundle } from "@hot-updater/core";
 import { createHotUpdater, type HotUpdaterAPI } from "@hot-updater/server";
-import { insights } from "@hot-updater/server/plugins/insights";
 import { kyselyAdapter } from "@hot-updater/server/adapters/kysely";
-import { createMigrator } from "@hot-updater/server/db";
+import {
+  createDatabaseCoreApi,
+  createDatabasePluginApis,
+  createMigrator,
+} from "@hot-updater/server/db";
+import {
+  createInsightsModel,
+  insights,
+} from "@hot-updater/server/plugins/insights";
 import {
   createHttpTestClient,
   setupReleaseCatalogTestSuite,
@@ -36,7 +42,6 @@ assertDockerComposeAvailable(
 describe("Hot Updater Handler Integration Tests (Hono + MySQL)", () => {
   let serverProcess: ReturnType<typeof execa> | null = null;
   let baseUrl: string;
-  let hotUpdater: HotUpdaterAPI;
   let closeDatabase: (() => Promise<void>) | null = null;
   const port = 13579;
 
@@ -63,7 +68,6 @@ describe("Hot Updater Handler Integration Tests (Hono + MySQL)", () => {
     const db = await import("./db.js");
     await migrateCurrentSchema(db.hotUpdater, projectRoot);
 
-    hotUpdater = db.hotUpdater;
     closeDatabase = db.closeDatabase;
 
     serverProcess = spawnServerProcess({
@@ -85,29 +89,20 @@ describe("Hot Updater Handler Integration Tests (Hono + MySQL)", () => {
     await cleanupMySQLDatabase(projectRoot);
   }, 60000);
 
-  setupBundleMethodsTestSuite({
-    getBundleById: (id: string) => hotUpdater.getBundleById(id),
-    insertBundle: (bundle: Bundle) => hotUpdater.insertBundle(bundle),
-    getBundles: (options) => hotUpdater.getBundles(options),
-    updateBundleById: (bundleId: string, newBundle: Partial<Bundle>) =>
-      hotUpdater.updateBundleById(bundleId, newBundle),
-    deleteBundleById: (bundleId: string) =>
-      hotUpdater.deleteBundleById(bundleId),
-  });
+  const getClient = () =>
+    createHttpTestClient({
+      clientBaseUrl: `${baseUrl}/hot-updater`,
+      adminBaseUrl: `${baseUrl}/hot-updater/admin`,
+      adminHeaders: { Authorization: `Bearer ${TEST_ADMIN_AUTH_TOKEN}` },
+    });
 
-  setupReleaseCatalogTestSuite({
-    getClient: () =>
-      createHttpTestClient({
-        clientBaseUrl: `${baseUrl}/hot-updater`,
-        adminBaseUrl: `${baseUrl}/hot-updater/admin`,
-        adminHeaders: { Authorization: `Bearer ${TEST_ADMIN_AUTH_TOKEN}` },
-      }),
-  });
+  setupBundleMethodsTestSuite({ getClient });
+
+  setupReleaseCatalogTestSuite({ getClient });
 
   it("keeps the canonical latest event through concurrent writes and altered retries", async () => {
     const { kysely } = await import("./db.js");
-    const insights = kyselyAdapter({ db: kysely, provider: "mysql" }).models
-      .insights;
+    const insights = insightsModelOf(kysely);
     const previous = {
       ...createBundleEventRowFixture("9805", 100),
       user_id: "mysql-previous-user",
@@ -170,8 +165,7 @@ describe("Hot Updater Handler Integration Tests (Hono + MySQL)", () => {
 
   it("rolls back the MySQL event if its head fails, then records the retry", async () => {
     const { kysely } = await import("./db.js");
-    const insights = kyselyAdapter({ db: kysely, provider: "mysql" }).models
-      .insights;
+    const insights = insightsModelOf(kysely);
     const event = createBundleEventRowFixture("9810", 100);
     await sql`alter table bundle_event_heads add constraint reject_test_head check (install_id <> 'install-9810')`.execute(
       kysely,
@@ -198,8 +192,7 @@ describe("Hot Updater Handler Integration Tests (Hono + MySQL)", () => {
 
   it("counts overlapping bundle predicates once, including nullable sources and moved installations", async () => {
     const { kysely } = await import("./db.js");
-    const insights = kyselyAdapter({ db: kysely, provider: "mysql" }).models
-      .insights;
+    const insights = insightsModelOf(kysely);
     const overlap = {
       ...createBundleEventRowFixture("9820", 100),
       channel: "mysql-count-test",
@@ -357,8 +350,8 @@ describe("Hot Updater Handler Integration Tests (Hono + MySQL)", () => {
     }
   });
 
-  it("never leaves a patch behind when fumadb patch creation races a bundle deletion", async () => {
-    const database = `hot_updater_fumadb_${process.pid}`;
+  it("never leaves a patch behind when a patch update races a bundle deletion", async () => {
+    const database = `hot_updater_race_${process.pid}`;
     const gate = `hot_updater_patch_gate_${process.pid}`;
     const admin = createPool({
       host: process.env.MYSQL_HOST || "localhost",
@@ -393,16 +386,12 @@ describe("Hot Updater Handler Integration Tests (Hono + MySQL)", () => {
     const control = createDatabase();
 
     try {
-      const adapter = kyselyAdapter({
-        db: writer,
-        provider: "mysql",
-        relationMode: "fumadb",
-      });
+      const writerDatabase = kyselyAdapter({ db: writer, provider: "mysql" });
       const migrator = createMigrator(
         createHotUpdater({
-          database: adapter,
+          database: writerDatabase,
           clientAccess: "public",
-        plugins: [insights()],
+          plugins: [insights()],
         }),
       );
       const migration = await migrator.migrateToLatest({
@@ -410,84 +399,60 @@ describe("Hot Updater Handler Integration Tests (Hono + MySQL)", () => {
         updateSettings: true,
       });
       await migration.execute();
+      const core = createDatabaseCoreApi(writerDatabase);
 
-      const ownerId = "fumadb-owner";
-      const baseId = "fumadb-base";
-      const createdChannel = await adapter.models.channels.insert({
-        row: { id: "channel-production", name: "production" },
-        onConflict: "returnExisting",
-      });
-      expect(createdChannel.inserted).toBe(true);
-      const resolvedChannel = await adapter.models.channels.insert({
-        row: { id: "channel-production-duplicate", name: "production" },
-        onConflict: "returnExisting",
-      });
-      expect(resolvedChannel).toEqual({
-        row: createdChannel.row,
-        inserted: false,
-      });
+      const ownerId = "race-owner";
+      const baseId = "race-base";
+      const channel = await core.ensureChannel("production");
+      await expect(core.ensureChannel("production")).resolves.toEqual(channel);
+      // Both bundles stored with no release, so the owner may be deleted.
       for (const id of [baseId, ownerId]) {
-        const row = createAdapterBundleRow(id);
-        await expect(
-          adapter.commit({
-            changes: [{ model: "bundles", operation: "insert", row }],
-          }),
-        ).resolves.toEqual({ committed: true });
+        const [deployed] = await core.deploy([
+          {
+            bundle: createBundle(id),
+            release: {
+              channel: "production",
+              enabled: false,
+              fingerprintHash: null,
+              message: null,
+              shouldForceUpdate: false,
+              targetAppVersion: "*",
+            },
+          },
+        ]);
+        await core.deleteRelease({ releaseId: deployed!.release!.id });
       }
       await sql`select get_lock(${gate}, 5)`.execute(control);
       await admin.query(
-        `create trigger \`${database}\`.pause_fumadb_patch before insert on \`${database}\`.bundle_patches for each row set @hot_updater_patch_gate = get_lock('${gate}', 10)`,
+        `create trigger \`${database}\`.pause_patch_insert before insert on \`${database}\`.bundle_patches for each row set @hot_updater_patch_gate = get_lock('${gate}', 10)`,
       );
 
-      const patchCreate = adapter.commit({
-        changes: [
+      const patchUpdate = core.updateBundle(ownerId, {
+        patches: [
           {
-            model: "bundlePatches",
-            operation: "insert",
-            row: {
-              id: "fumadb-patch",
-              bundle_id: ownerId,
-              base_bundle_id: baseId,
-              base_file_hash: "base-hash",
-              patch_file_hash: "patch-hash",
-              patch_storage_uri: "storage://fumadb-patch",
-              byte_size: 3_000_000_002,
-              order_index: 0,
-            },
+            baseBundleId: baseId,
+            baseFileHash: "base-hash",
+            patchFileHash: "patch-hash",
+            patchStorageUri: "storage://race-patch",
+            byteSize: 3_000_000_002,
           },
         ],
       });
       await waitForMySQLUserLock(admin, database);
 
-      const deleteAdapter = kyselyAdapter({
-        db: remover,
-        provider: "mysql",
-        relationMode: "fumadb",
-      });
-      // The deletion commits while the patch insert waits; the patch then
-      // finds its owner gone and rolls back whole.
-      const bundleDelete = deleteAdapter.commit({
-        changes: [
-          {
-            model: "bundles",
-            operation: "delete",
-            where: { id: ownerId },
-          },
-        ],
-      });
-      await expect(bundleDelete).resolves.toEqual({ committed: true });
+      const removerCore = createDatabaseCoreApi(
+        kyselyAdapter({ db: remover, provider: "mysql" }),
+      );
+      // The deletion commits while the patch insert waits; the patch update
+      // then finds its owner gone and writes nothing.
+      await removerCore.deleteBundles([ownerId]);
 
       await sql`select release_lock(${gate})`.execute(control);
-      await expect(patchCreate).rejects.toMatchObject({
-        name: "DatabaseConstraintError",
-        reason: "not_found",
-      });
+      await expect(patchUpdate).rejects.toThrow();
 
+      await expect(removerCore.getBundle(ownerId)).resolves.toBeNull();
       await expect(
-        deleteAdapter.models.bundles.findById(ownerId),
-      ).resolves.toBeNull();
-      await expect(
-        deleteAdapter.models.bundlePatches.findByBundleIds([ownerId]),
+        removerCore.listPatchesFromBase(baseId, { limit: 10 }),
       ).resolves.toEqual([]);
     } finally {
       await Promise.all([
@@ -508,15 +473,23 @@ interface SettingsDatabase {
   };
 }
 
-const createAdapterBundleRow = (id: string) => ({
+const createBundle = (id: string) => ({
   id,
   platform: "ios" as const,
-  git_commit_hash: null,
+  gitCommitHash: null,
   metadata: {},
-  manifest_storage_uri: `storage://${id}/manifest.json`,
-  manifest_file_hash: `${id}-manifest-hash`,
-  asset_base_storage_uri: "storage://assets",
+  manifestStorageUri: `storage://${id}/manifest.json`,
+  manifestFileHash: `${id}-manifest-hash`,
+  assetBaseStorageUri: "storage://assets",
 });
+
+/** The Insights plugin's model on the example's MySQL tables. */
+const insightsModelOf = (kysely: Kysely<object>) =>
+  createInsightsModel(
+    createDatabasePluginApis(kyselyAdapter({ db: kysely, provider: "mysql" }), [
+      insights(),
+    ]).insights,
+  );
 
 const createBundleEventRowFixture = (suffix: string, receivedAtMs: number) => ({
   id: `00000000-0000-7000-8000-${suffix.padStart(12, "0")}`,

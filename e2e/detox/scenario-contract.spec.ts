@@ -642,13 +642,13 @@ describe("Detox scenario contract", () => {
   });
 
   it("resolves deployed console IDs to files and keeps artifact cleanup independent of Releases", async () => {
-    const { createDatabasePluginHarness } =
-      await import("../../packages/hot-updater/src/commands/databasePlugin.testFixtures.ts");
+    const { createDatabaseHarness } =
+      await import("../../packages/hot-updater/src/commands/database.testFixtures.ts");
     const { commitDeployment } =
       await import("../../packages/hot-updater/src/commands/deployTransaction.ts");
     const { rowToBundle } =
       await import("../../plugins/plugin-core/dist/index.mjs");
-    const harness = createDatabasePluginHarness();
+    const harness = createDatabaseHarness();
     const base = {
       assetBaseStorageUri: "storage://assets",
       gitCommitHash: null,
@@ -714,13 +714,13 @@ describe("Detox scenario contract", () => {
       withConfiguredDatabase: (
         callback: (configured: {
           core: typeof harness.core;
-          database: typeof harness.plugin;
+          database: typeof harness.database;
           plugins: undefined;
         }) => unknown,
       ) =>
         callback({
           core: harness.core,
-          database: harness.plugin,
+          database: harness.database,
           plugins: undefined,
         }),
     });

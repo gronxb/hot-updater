@@ -5,10 +5,15 @@ import {
   createMemoryAdapter,
   type DatabaseAdapter,
 } from "@hot-updater/plugin-core/internal";
-import { afterAll, describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it, vi } from "vitest";
 
 import { HotUpdaterSchemaMigrationRequiredError } from "../db/schemaReadiness";
 import { createHotUpdater } from "../index";
+import {
+  builtInSettings,
+  createEngineDatabase,
+  migrateBuiltInSchema,
+} from "./builtInDatabase";
 import {
   checkSchemaFence,
   isMissingSchemaError,
@@ -17,11 +22,6 @@ import {
   withSchemaFence,
   writeSchemaSettings,
 } from "./fence";
-import {
-  createLegacyDatabasePlugin,
-  legacyFacadeSettings,
-  migrateLegacyFacade,
-} from "./legacyFacade";
 import { createSqlAdapter } from "./sql/sqlAdapter";
 import { pgliteExecutor, sqliteExecutor } from "./sql/sqlTestExecutors";
 
@@ -193,7 +193,7 @@ describe("schema fence", () => {
   });
 });
 
-describe("the fenced façade on PGlite", () => {
+describe("a provider's fenced database on PGlite", () => {
   const pglite = new PGlite();
   afterAll(() => pglite.close());
 
@@ -202,28 +202,23 @@ describe("the fenced façade on PGlite", () => {
       executor: pgliteExecutor(pglite),
       tablePrefix: "fence_",
     });
-    const database = createLegacyDatabasePlugin({
-      name: "pglite",
-      adapter,
-      fence: true,
-    });
     const hotUpdater = createHotUpdater({
-      database,
-      clientAccess: { type: "public" },
+      database: createEngineDatabase({ name: "pglite", adapter }),
+      clientAccess: "public",
     });
     const channels = () =>
       hotUpdater.handlers.admin(
         new Request("https://updates.example.com/channels"),
       );
 
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
     expect((await channels()).status).toBe(503);
-    await migrateLegacyFacade(adapter, "pglite");
+    error.mockRestore();
+    await migrateBuiltInSchema(adapter, "pglite");
     await expect(
-      checkSchemaFence(adapter, "pglite", legacyFacadeSettings),
+      checkSchemaFence(adapter, "pglite", builtInSettings),
     ).resolves.toBeUndefined();
     expect((await channels()).status).toBe(200);
-    await expect(database.models.channels.list({})).resolves.toEqual({
-      channels: [],
-    });
+    await expect(hotUpdater.core.listChannels()).resolves.toEqual([]);
   });
 });

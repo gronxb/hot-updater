@@ -1,141 +1,163 @@
-import type { Bundle, Platform } from "@hot-updater/core";
-import { beforeEach, describe, expect, it } from "vitest";
+import type { BundleRow } from "@hot-updater/plugin-core";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-interface PaginationInfo {
-  readonly total: number;
-  readonly hasNextPage: boolean;
-  readonly hasPreviousPage: boolean;
-  readonly currentPage: number;
-  readonly totalPages: number;
-  readonly nextCursor?: string | null;
-}
+import {
+  createAdminApiTestClient,
+  jsonRequest,
+  toDeployBundle,
+} from "./adminApiTestClient";
+import { createBundleRowFixture } from "./databaseTestFixtures";
+import type { HttpTestClient } from "./httpTestClient";
 
-interface ArtifactQueryOptions {
-  readonly where?: {
-    readonly platform?: Platform;
-    readonly id?: {
-      readonly eq?: string;
-      readonly in?: string[];
-    };
-  };
-  readonly limit: number;
-  readonly cursor?: { readonly after: string };
-  readonly orderBy?: {
-    readonly field: "id";
-    readonly direction: "asc" | "desc";
-  };
-}
+type BundleDetail = {
+  readonly bundle: BundleRow;
+  readonly patches: readonly unknown[];
+  readonly childCount: number;
+};
 
-const createBundle = (id: string, overrides: Partial<Bundle> = {}): Bundle => ({
-  id,
-  platform: "ios",
-  gitCommitHash: null,
-  manifestStorageUri: `mock://artifacts/${id}/manifest.json`,
-  manifestFileHash: `manifest-hash-${id}`,
-  assetBaseStorageUri: "mock://assets",
-  ...overrides,
-});
+type BundlePage = {
+  readonly data: BundleDetail[];
+  readonly next?: string;
+  readonly total?: number;
+};
 
-export const setupBundleMethodsTestSuite = ({
-  getBundleById,
-  insertBundle,
-  getBundles,
-  deleteBundleById,
-}: {
-  readonly getBundleById: (id: string) => Promise<Bundle | null>;
-  readonly insertBundle: (bundle: Bundle) => Promise<void>;
-  readonly getBundles: (options: ArtifactQueryOptions) => Promise<{
-    readonly data: Bundle[];
-    readonly pagination: PaginationInfo;
-  }>;
-  readonly updateBundleById?: (
-    bundleId: string,
-    newBundle: Partial<Bundle>,
-  ) => Promise<void>;
-  readonly deleteBundleById: (bundleId: string) => Promise<void>;
-}) => {
-  beforeEach(async () => {
-    for (;;) {
-      const existing = await getBundles({ limit: 1_000 });
-      if (existing.data.length === 0) return;
-      for (const artifact of existing.data) {
-        await deleteBundleById(artifact.id);
-      }
-    }
-  });
+/**
+ * Bundles through admin API protocol 2: deployed with a release, read by
+ * id, paged by key, changed, and deleted. Each test deletes what it wrote.
+ */
+export const setupBundleMethodsTestSuite = (options: {
+  readonly getClient: () => HttpTestClient;
+}): void => {
+  describe("Bundle admin API", () => {
+    const api = createAdminApiTestClient(options.getClient);
+    const { admin, adminJson } = api;
+    let namespace: string;
+    beforeEach(() => {
+      namespace = crypto.randomUUID();
+    });
+    afterEach(async () => {
+      await api.cleanup();
+    });
 
-  describe("Bundle artifact repository", () => {
-    it("persists artifact fields", async () => {
-      const input = createBundle("00000000-0000-0000-0000-000000000010");
+    /** A bundle id unique to the test, ordered by suffix. */
+    const bundleRow = (
+      suffix: string,
+      platform: "ios" | "android" = "ios",
+    ): BundleRow => ({
+      ...createBundleRowFixture(suffix),
+      id: `${namespace.slice(0, 8)}-0000-7000-8000-${suffix.padStart(12, "0")}`,
+      platform,
+    });
+    const deploy = (row: BundleRow) =>
+      api.deploy({
+        bundle: toDeployBundle(row),
+        release: {
+          channel: `bundles-${namespace}`,
+          enabled: false,
+          fingerprintHash: null,
+          message: null,
+          shouldForceUpdate: false,
+          targetAppVersion: "*",
+        },
+      });
+    const mine = (page: BundlePage) =>
+      page.data
+        .map(({ bundle }) => bundle.id)
+        .filter((id) => id.startsWith(namespace.slice(0, 8)));
 
-      await insertBundle(input);
+    it("stores a deployed bundle's fields", async () => {
+      const input = bundleRow("10");
+      await deploy(input);
 
-      const artifact = await getBundleById(input.id);
-      expect(artifact).toMatchObject({
-        id: input.id,
-        platform: "ios",
-        manifestFileHash: input.manifestFileHash,
-        manifestStorageUri: input.manifestStorageUri,
+      const { data } = (await adminJson(`/bundles/${input.id}`)) as {
+        data: BundleDetail;
+      };
+
+      expect(data).toEqual({
+        bundle: input,
+        patches: [],
+        childCount: 0,
       });
     });
 
-    it("returns null for a missing artifact", async () => {
-      await expect(
-        getBundleById("99999999-9999-9999-9999-999999999999"),
-      ).resolves.toBeNull();
+    it("answers 404 for a missing bundle", async () => {
+      const response = await admin(`/bundles/${bundleRow("99").id}`);
+
+      expect(response.status).toBe(404);
+      await response.text();
     });
 
-    it("filters artifacts by platform and id without Release policy filters", async () => {
-      const ios = createBundle("00000000-0000-0000-0000-000000000030");
-      const android = createBundle("00000000-0000-0000-0000-000000000031", {
-        platform: "android",
-      });
-      await insertBundle(ios);
-      await insertBundle(android);
+    it("pages bundles by key and filters by platform", async () => {
+      const first = bundleRow("40");
+      const second = bundleRow("41");
+      const android = bundleRow("42", "android");
+      for (const row of [first, second, android]) await deploy(row);
+      const prefix = `${namespace.slice(0, 8)}-0000-7000-8000-000000000039`;
 
-      const byPlatform = await getBundles({
-        where: { platform: "android" },
-        limit: 10,
-      });
-      const byId = await getBundles({
-        where: { id: { in: [ios.id] } },
-        limit: 10,
-      });
+      const page1 = (await adminJson(
+        `/bundles?order=asc&limit=1&cursor=${prefix}&platform=ios`,
+      )) as BundlePage;
+      const page2 = (await adminJson(
+        `/bundles?order=asc&limit=1&cursor=${page1.next}&platform=ios`,
+      )) as BundlePage;
+      const androidPage = (await adminJson(
+        `/bundles?order=asc&limit=100&cursor=${prefix}&platform=android`,
+      )) as BundlePage;
 
-      expect(byPlatform.data.map(({ id }) => id)).toEqual([android.id]);
-      expect(byId.data.map(({ id }) => id)).toEqual([ios.id]);
+      expect(mine(page1)).toEqual([first.id]);
+      expect(page1.next).toBe(first.id);
+      expect(mine(page2)).toEqual([second.id]);
+      expect(mine(androidPage)).toEqual([android.id]);
     });
 
-    it("supports stable artifact cursor pagination", async () => {
-      const first = createBundle("00000000-0000-0000-0000-000000000040");
-      const second = createBundle("00000000-0000-0000-0000-000000000041");
-      await insertBundle(first);
-      await insertBundle(second);
+    it("counts bundles with a page when asked", async () => {
+      const before = (await adminJson("/bundles?limit=1&total=true")) as {
+        total: number;
+      };
+      await deploy(bundleRow("50"));
 
-      const page1 = await getBundles({
-        limit: 1,
-        orderBy: { field: "id", direction: "desc" },
-      });
-      const cursor = page1.pagination.nextCursor;
-      if (!cursor) throw new Error("Expected an artifact cursor.");
-      const page2 = await getBundles({
-        cursor: { after: cursor },
-        limit: 1,
-        orderBy: { field: "id", direction: "desc" },
-      });
+      const after = (await adminJson("/bundles?limit=1&total=true")) as {
+        total: number;
+      };
 
-      expect(page1.data).toHaveLength(1);
-      expect(page2.data).toHaveLength(1);
-      expect(page1.data[0]?.id).not.toBe(page2.data[0]?.id);
+      expect(after.total).toBe(before.total + 1);
     });
 
-    it("deletes an artifact", async () => {
-      const input = createBundle("00000000-0000-0000-0000-000000000050");
-      await insertBundle(input);
+    it("changes a bundle's fields", async () => {
+      const input = bundleRow("60");
+      await deploy(input);
 
-      await deleteBundleById(input.id);
+      const response = await admin(
+        `/bundles/${input.id}`,
+        jsonRequest("PATCH", { gitCommitHash: "abc123" }),
+      );
 
-      await expect(getBundleById(input.id)).resolves.toBeNull();
+      expect(response.status).toBe(204);
+      expect(
+        ((await adminJson(`/bundles/${input.id}`)) as { data: BundleDetail })
+          .data.bundle.git_commit_hash,
+      ).toBe("abc123");
+    });
+
+    it("refuses to delete a bundle a release uses, then deletes it", async () => {
+      const input = bundleRow("70");
+      const release = await deploy(input);
+
+      const refused = await admin(
+        "/bundles/delete",
+        jsonRequest("POST", { ids: [input.id] }),
+      );
+      expect(refused.status).toBe(409);
+      await refused.text();
+
+      await api.removeRelease(release.id);
+      api.forget(release.id);
+      await adminJson(
+        "/bundles/delete",
+        jsonRequest("POST", { ids: [input.id] }),
+      );
+
+      expect((await admin(`/bundles/${input.id}`)).status).toBe(404);
     });
   });
 };

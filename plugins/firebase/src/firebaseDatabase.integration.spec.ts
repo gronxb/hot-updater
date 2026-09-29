@@ -1,9 +1,17 @@
 import { createHotUpdater } from "@hot-updater/server";
 import { createKvAdapter } from "@hot-updater/server/database";
-import { HotUpdaterSchemaMigrationRequiredError } from "@hot-updater/server/db";
+import {
+  createDatabaseCoreApi,
+  createDatabasePluginApis,
+  HotUpdaterSchemaMigrationRequiredError,
+} from "@hot-updater/server/db";
+import {
+  createInsightsModel,
+  insights,
+} from "@hot-updater/server/plugins/insights";
 import {
   setupDatabaseAdapterConformanceSuite,
-  setupDatabasePluginTestSuite,
+  setupDatabaseTestSuite,
   startHttpTestServer,
 } from "@hot-updater/test-utils";
 import { describe, expect, it } from "vitest";
@@ -40,25 +48,30 @@ setupDatabaseAdapterConformanceSuite({
 describe("firebaseDatabase", () => {
   it("serves only after the migration writes the schema settings", async () => {
     await clearCollection("hot_updater_v1");
-    const plugin = firebaseDatabase(config);
-    await expect(plugin.models.channels.list({})).rejects.toBeInstanceOf(
+    const core = createDatabaseCoreApi(firebaseDatabase(config));
+    await expect(core.listChannels()).rejects.toBeInstanceOf(
       HotUpdaterSchemaMigrationRequiredError,
     );
     await migrateFirebaseDatabase(config);
     await migrateFirebaseDatabase(config);
-    await expect(plugin.models.channels.list({})).resolves.toEqual({
-      channels: [],
-    });
+    await expect(core.listChannels()).resolves.toEqual([]);
   });
 
-  setupDatabasePluginTestSuite({
+  setupDatabaseTestSuite({
     name: "firebaseDatabase (Firestore emulator)",
     createHttpClient: (options) =>
       startHttpTestServer(
-        createHotUpdater({ ...options, clientAccess: { type: "public" } })
-          .handlers,
+        createHotUpdater({
+          ...options,
+          plugins: [insights()],
+          clientAccess: "public",
+        }).handlers,
       ),
-    createPlugin: () => firebaseDatabase(config),
+    createInsightsModel: (database) =>
+      createInsightsModel(
+        createDatabasePluginApis(database, [insights()]).insights,
+      ),
+    createDatabase: () => firebaseDatabase(config),
     migrate: () => migrateFirebaseDatabase(config),
     reset: clearData,
     dispose: () => undefined,

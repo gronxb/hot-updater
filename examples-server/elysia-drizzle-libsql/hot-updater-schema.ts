@@ -22,6 +22,72 @@ export const bundles = sqliteTable("bundles", {
   index("bundles_byPlatform").on(table["platform"], table["id"]),
 ]);
 
+export const bundle_patches = sqliteTable("bundle_patches", {
+  "id": column("TEXT")("id").notNull(),
+  "bundle_id": column("TEXT")("bundle_id").notNull(),
+  "base_bundle_id": column("TEXT")("base_bundle_id").notNull(),
+  "base_file_hash": column("TEXT")("base_file_hash").notNull(),
+  "patch_file_hash": column("TEXT")("patch_file_hash").notNull(),
+  "patch_storage_uri": column("TEXT")("patch_storage_uri").notNull(),
+  "byte_size": column("INTEGER")("byte_size").notNull(),
+  "order_index": column("INTEGER")("order_index").notNull(),
+  "_v": column("INTEGER")("_v").notNull().default(0),
+}, (table) => [
+  primaryKey({ columns: [table["id"]] }),
+  uniqueIndex("bundle_patches_pair").on(table["bundle_id"], table["base_bundle_id"]),
+  index("bundle_patches_byBundle").on(table["bundle_id"], table["order_index"], table["id"]),
+  index("bundle_patches_byBase").on(table["base_bundle_id"], table["bundle_id"], table["id"]),
+]);
+
+export const releases = sqliteTable("releases", {
+  "id": column("TEXT")("id").notNull(),
+  "revision": column("INTEGER")("revision").notNull(),
+  "scope_key": column("TEXT")("scope_key").notNull(),
+  "channel_id": column("TEXT")("channel_id").notNull(),
+  "platform": column("TEXT")("platform").notNull(),
+  "kind": column("TEXT")("kind").notNull(),
+  "bundle_id": column("TEXT")("bundle_id"),
+  "strategy": column("TEXT")("strategy").notNull(),
+  "target_app_version": column("TEXT")("target_app_version"),
+  "fingerprint_hash": column("TEXT")("fingerprint_hash"),
+  "enabled": column("INTEGER")("enabled").notNull(),
+  "should_force_update": column("INTEGER")("should_force_update").notNull(),
+  "message": column("TEXT")("message"),
+  "rollout_cohort_count": column("INTEGER")("rollout_cohort_count").notNull(),
+  "target_cohorts": column("TEXT")("target_cohorts").notNull(),
+  "operation": column("TEXT")("operation").notNull(),
+  "source_release_id": column("TEXT")("source_release_id"),
+  "created_at_ms": column("INTEGER")("created_at_ms").notNull(),
+  "updated_at_ms": column("INTEGER")("updated_at_ms").notNull(),
+  "_v": column("INTEGER")("_v").notNull().default(0),
+}, (table) => [
+  primaryKey({ columns: [table["id"]] }),
+  index("releases_byScope").on(table["scope_key"], table["id"]),
+  index("releases_byScopeEnabled").on(table["scope_key"], table["enabled"], table["id"]),
+  index("releases_byChannelPlatform").on(table["channel_id"], table["platform"], table["id"]),
+  index("releases_byChannelPlatformEnabled").on(table["channel_id"], table["platform"], table["enabled"], table["id"]),
+  index("releases_byBundle").on(table["bundle_id"], table["id"]),
+]);
+
+export const release_catalogs = sqliteTable("release_catalogs", {
+  "scope_key": column("TEXT")("scope_key").notNull(),
+  "catalog_id": column("TEXT")("catalog_id").notNull(),
+  "strategy": column("TEXT")("strategy").notNull(),
+  "channel_id": column("TEXT")("channel_id").notNull(),
+  "channel_key": column("TEXT")("channel_key").notNull(),
+  "platform": column("TEXT")("platform").notNull(),
+  "fingerprint_hash": column("TEXT")("fingerprint_hash"),
+  "generation": column("INTEGER")("generation").notNull(),
+  "payload": column("TEXT")("payload").notNull(),
+  "catalog_hash": column("TEXT")("catalog_hash").notNull(),
+  "byte_size": column("INTEGER")("byte_size").notNull(),
+  "is_tombstone": column("INTEGER")("is_tombstone").notNull(),
+  "updated_at_ms": column("INTEGER")("updated_at_ms").notNull(),
+  "_v": column("INTEGER")("_v").notNull().default(0),
+}, (table) => [
+  primaryKey({ columns: [table["scope_key"]] }),
+]);
+
 export const channels = sqliteTable("channels", {
   "id": column("TEXT")("id").notNull(),
   "name": column("TEXT")("name").notNull(),
@@ -188,72 +254,6 @@ export const api_keys = sqliteTable("api_keys", {
   primaryKey({ columns: [table["id"]] }),
   index("api_keys_byCreated").on(table["created_at_ms"], table["id"]),
   uniqueIndex("api_keys_hash").on(table["hash"]),
-]);
-
-export const bundle_patches = sqliteTable("bundle_patches", {
-  "id": column("TEXT")("id").notNull(),
-  "bundle_id": column("TEXT")("bundle_id").notNull(),
-  "base_bundle_id": column("TEXT")("base_bundle_id").notNull(),
-  "base_file_hash": column("TEXT")("base_file_hash").notNull(),
-  "patch_file_hash": column("TEXT")("patch_file_hash").notNull(),
-  "patch_storage_uri": column("TEXT")("patch_storage_uri").notNull(),
-  "byte_size": column("INTEGER")("byte_size").notNull(),
-  "order_index": column("INTEGER")("order_index").notNull(),
-  "_v": column("INTEGER")("_v").notNull().default(0),
-}, (table) => [
-  primaryKey({ columns: [table["id"]] }),
-  uniqueIndex("bundle_patches_pair").on(table["bundle_id"], table["base_bundle_id"]),
-  index("bundle_patches_byBundle").on(table["bundle_id"], table["order_index"], table["id"]),
-  index("bundle_patches_byBase").on(table["base_bundle_id"], table["bundle_id"], table["id"]),
-]);
-
-export const releases = sqliteTable("releases", {
-  "id": column("TEXT")("id").notNull(),
-  "revision": column("INTEGER")("revision").notNull(),
-  "scope_key": column("TEXT")("scope_key").notNull(),
-  "channel_id": column("TEXT")("channel_id").notNull(),
-  "platform": column("TEXT")("platform").notNull(),
-  "kind": column("TEXT")("kind").notNull(),
-  "bundle_id": column("TEXT")("bundle_id"),
-  "strategy": column("TEXT")("strategy").notNull(),
-  "target_app_version": column("TEXT")("target_app_version"),
-  "fingerprint_hash": column("TEXT")("fingerprint_hash"),
-  "enabled": column("INTEGER")("enabled").notNull(),
-  "should_force_update": column("INTEGER")("should_force_update").notNull(),
-  "message": column("TEXT")("message"),
-  "rollout_cohort_count": column("INTEGER")("rollout_cohort_count").notNull(),
-  "target_cohorts": column("TEXT")("target_cohorts").notNull(),
-  "operation": column("TEXT")("operation").notNull(),
-  "source_release_id": column("TEXT")("source_release_id"),
-  "created_at_ms": column("INTEGER")("created_at_ms").notNull(),
-  "updated_at_ms": column("INTEGER")("updated_at_ms").notNull(),
-  "_v": column("INTEGER")("_v").notNull().default(0),
-}, (table) => [
-  primaryKey({ columns: [table["id"]] }),
-  index("releases_byScope").on(table["scope_key"], table["id"]),
-  index("releases_byScopeEnabled").on(table["scope_key"], table["enabled"], table["id"]),
-  index("releases_byChannelPlatform").on(table["channel_id"], table["platform"], table["id"]),
-  index("releases_byChannelPlatformEnabled").on(table["channel_id"], table["platform"], table["enabled"], table["id"]),
-  index("releases_byBundle").on(table["bundle_id"], table["id"]),
-]);
-
-export const release_catalogs = sqliteTable("release_catalogs", {
-  "scope_key": column("TEXT")("scope_key").notNull(),
-  "catalog_id": column("TEXT")("catalog_id").notNull(),
-  "strategy": column("TEXT")("strategy").notNull(),
-  "channel_id": column("TEXT")("channel_id").notNull(),
-  "channel_key": column("TEXT")("channel_key").notNull(),
-  "platform": column("TEXT")("platform").notNull(),
-  "fingerprint_hash": column("TEXT")("fingerprint_hash"),
-  "generation": column("INTEGER")("generation").notNull(),
-  "payload": column("TEXT")("payload").notNull(),
-  "catalog_hash": column("TEXT")("catalog_hash").notNull(),
-  "byte_size": column("INTEGER")("byte_size").notNull(),
-  "is_tombstone": column("INTEGER")("is_tombstone").notNull(),
-  "updated_at_ms": column("INTEGER")("updated_at_ms").notNull(),
-  "_v": column("INTEGER")("_v").notNull().default(0),
-}, (table) => [
-  primaryKey({ columns: [table["scope_key"]] }),
 ]);
 
 export const private_hot_updater_settings = sqliteTable("private_hot_updater_settings", {

@@ -1,146 +1,43 @@
-import {
-  createDatabaseClient,
-  type DatabasePlugin,
-} from "@hot-updater/plugin-core";
+import type { EngineDatabase } from "@hot-updater/plugin-core";
 import { createHotUpdater } from "@hot-updater/server";
+import { createDatabasePluginApis } from "@hot-updater/server/db";
 import {
-  setupDatabasePluginTestSuite,
+  createInsightsModel,
+  insights,
+} from "@hot-updater/server/plugins/insights";
+import {
+  setupDatabaseTestSuite,
   startHttpTestServer,
 } from "@hot-updater/test-utils";
-import { beforeEach, describe, expect, it } from "vitest";
 
-import { setupDatabaseClientTestSuite } from "../../../../packages/test-utils/src/index";
-import {
-  createMockDatabaseData,
-  mockDatabase,
-  type MockDatabaseData,
-} from "../mockDatabase";
+import { mockDatabase } from "../mockDatabase";
 
-const DEFAULT_LATENCY = { min: 0, max: 0 } as const;
+let current = mockDatabase({ latency: { min: 0, max: 0 } });
 
-let data: MockDatabaseData;
-
-const resetData = (): void => {
-  data.bundles.clear();
-  data.bundlePatches.clear();
-  data.bundleEvents.clear();
-  data.channels.clear();
-  data.apiKeys.clear();
-  data.releaseCatalogs.clear();
-  data.releases.clear();
-  data.bundleEventHeads.clear();
-  data.insightsOverview.clear();
-};
-
-const createPlugin = (): DatabasePlugin =>
-  mockDatabase({ data, latency: DEFAULT_LATENCY });
-
-beforeEach(() => {
-  resetData();
-});
-
-data = createMockDatabaseData();
-
-setupDatabasePluginTestSuite({
+setupDatabaseTestSuite({
+  name: "mockDatabase",
+  migrate: () => undefined,
+  // Each test's reset swaps in an empty mock behind one stable database.
+  createDatabase: (): EngineDatabase => ({
+    name: "mockDatabase",
+    adapter: new Proxy({} as EngineDatabase["adapter"], {
+      get: (_target, key) => Reflect.get(current.adapter, key),
+    }),
+  }),
+  reset: () => {
+    current = mockDatabase({ latency: { min: 0, max: 0 } });
+  },
+  dispose: () => undefined,
   createHttpClient: (options) =>
     startHttpTestServer(
-      createHotUpdater({ ...options, clientAccess: { type: "public" } })
-        .handlers,
+      createHotUpdater({
+        ...options,
+        plugins: [insights()],
+        clientAccess: "public",
+      }).handlers,
     ),
-  name: "mock fixed-model database plugin",
-  createPlugin,
-  migrate: () => undefined,
-  reset: resetData,
-  dispose: () => undefined,
-});
-
-setupDatabaseClientTestSuite({
-  name: "mock database aggregate client",
-  createPlugin,
-  createClient: createDatabaseClient,
-  migrate: () => undefined,
-  reset: resetData,
-  dispose: () => undefined,
-});
-
-describe("mock database provider", () => {
-  it("serializes concurrent channel inserts and returns the canonical row", async () => {
-    const plugin = createPlugin();
-
-    const results = await Promise.all([
-      plugin.models.channels.insert({
-        row: { id: "mock-channel-a", name: "production" },
-        onConflict: "returnExisting",
-      }),
-      plugin.models.channels.insert({
-        row: { id: "mock-channel-b", name: "production" },
-        onConflict: "returnExisting",
-      }),
-    ]);
-
-    expect(results).toEqual([
-      {
-        row: { id: "mock-channel-a", name: "production" },
-        inserted: true,
-      },
-      {
-        row: { id: "mock-channel-a", name: "production" },
-        inserted: false,
-      },
-    ]);
-    expect(data.channels).toEqual(
-      new Map([
-        ["mock-channel-a", { id: "mock-channel-a", name: "production" }],
-      ]),
-    );
-  });
-
-  it("rolls back all table changes when an atomic batch rejects", async () => {
-    const plugin = createPlugin();
-    const row = {
-      id: "bundle-rollback",
-      platform: "ios" as const,
-      git_commit_hash: null,
-      metadata: {},
-      manifest_storage_uri: "storage://bundle/manifest.json",
-      manifest_file_hash: "manifest-hash",
-      asset_base_storage_uri: "storage://assets",
-    };
-    await expect(
-      plugin.commit({
-        changes: [
-          {
-            model: "channels",
-            operation: "insert",
-            row: { id: "channel-rollback", name: "rollback" },
-            onConflict: "ignore",
-          },
-          {
-            model: "bundles",
-            operation: "insert",
-            row,
-          },
-          {
-            model: "bundlePatches",
-            operation: "insert",
-            row: {
-              id: "invalid-patch",
-              bundle_id: "invalid-owner",
-              base_bundle_id: row.id,
-              base_file_hash: "base-file-hash",
-              patch_file_hash: "patch-hash",
-              patch_storage_uri: "storage://patch",
-              byte_size: 3_000_000_002,
-              order_index: 0,
-            },
-          },
-        ],
-      }),
-    ).rejects.toThrow("foreign-key");
-
-    await expect(plugin.models.bundles.findById(row.id)).resolves.toBeNull();
-    await expect(plugin.models.channels.list({})).resolves.toEqual({
-      channels: [],
-    });
-  });
+  createInsightsModel: (database) =>
+    createInsightsModel(
+      createDatabasePluginApis(database, [insights()]).insights,
+    ),
 });

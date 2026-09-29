@@ -1,8 +1,9 @@
+import { HOT_UPDATER_SCHEMA_VERSION } from "../core/schema";
 import {
-  createLegacyDatabasePlugin,
-  legacyFacadeSchema,
-  legacyFacadeSettings,
-} from "../database/legacyFacade";
+  builtInSchema,
+  builtInSettings,
+  createEngineDatabase,
+} from "../database/builtInDatabase";
 import { createSqlAdapter } from "../database/sql/sqlAdapter";
 import {
   generatePrismaEngineSchema,
@@ -10,15 +11,12 @@ import {
   type PrismaProvider,
 } from "../db/enginePrismaSchema";
 import { createSettingsMigrator } from "../db/settingsMigrator";
-import type {
-  DatabaseAdapterWithCapabilities,
-  SchemaGenerator,
-} from "../db/types";
-import { HOT_UPDATER_SCHEMA_VERSION } from "../schema/types";
+import type { SchemaGenerator, ToolingDatabase } from "../db/types";
 import {
   prismaExecutor,
   type PrismaTransactionalClient,
 } from "./prismaExecutor";
+import { checkSqlProvider } from "./sqlProviders";
 
 export type { PrismaProvider };
 
@@ -26,49 +24,33 @@ export interface PrismaConfig {
   /** A Prisma client: raw queries and interactive transactions run on it. */
   readonly prisma: object;
   readonly provider: PrismaProvider;
-  /** Ignored: the engine keeps references itself, so the models have no relations. */
-  readonly relationMode?: "prisma" | "foreign-keys";
-  /** Ignored. */
-  readonly db?: unknown;
 }
 
 /**
  * Hot Updater's database on a Prisma client: the storage engine through the
- * shared SQL core, behind today's `DatabasePlugin` until E2. `db generate`
- * writes the models Prisma applies; `db migrate` then sets the collations
- * Prisma cannot declare and writes the settings rows the schema fence checks.
- * CockroachDB runs as PostgreSQL until E2 removes it.
+ * shared SQL core, fenced by the schema settings. `db generate` writes the
+ * models Prisma applies; `db migrate` then sets the collations Prisma cannot
+ * declare and writes the settings rows the fence checks.
  */
-export const prismaAdapter = (
-  config: PrismaConfig,
-): DatabaseAdapterWithCapabilities => {
-  if ((config.provider as string) === "mssql") {
-    throw new Error(
-      "prismaAdapter: SQL Server is not supported. Use PostgreSQL, MySQL, or SQLite.",
-    );
-  }
+export const prismaAdapter = (config: PrismaConfig): ToolingDatabase => {
+  const provider = checkSqlProvider("prismaAdapter", config.provider);
   const executor = prismaExecutor(
     config.prisma as PrismaTransactionalClient,
-    config.provider === "cockroachdb" ? "postgresql" : config.provider,
+    provider,
   );
-  const collations = prismaCollationStatements(
-    config.provider,
-    legacyFacadeSchema,
-  );
+  const collations = prismaCollationStatements(provider, builtInSchema);
   return {
-    ...createLegacyDatabasePlugin({
+    ...createEngineDatabase({
       name: "prisma",
       adapter: createSqlAdapter({ executor }),
-      fence: true,
     }),
-    adapterName: "prisma",
-    provider: config.provider,
+    provider,
     generateSchema: ((version) => {
       if (version !== "latest" && version !== HOT_UPDATER_SCHEMA_VERSION) {
         throw new Error(`Invalid version ${version}`);
       }
       return {
-        code: generatePrismaEngineSchema(config.provider, legacyFacadeSchema),
+        code: generatePrismaEngineSchema(provider, builtInSchema),
         path: "prisma/schema.prisma",
       };
     }) satisfies SchemaGenerator,
@@ -76,7 +58,7 @@ export const prismaAdapter = (
       createSettingsMigrator({
         adapterName: "prisma",
         executor,
-        settings: legacyFacadeSettings,
+        settings: builtInSettings,
         applyTables: "`prisma db push` (or `prisma migrate`)",
         ...(collations.length === 0
           ? {}

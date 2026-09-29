@@ -3,9 +3,9 @@ import { stripVTControlCharacters } from "node:util";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
-  createDatabasePluginHarness,
+  createDatabaseHarness,
   type DeploymentSeed,
-} from "./databasePlugin.testFixtures";
+} from "./database.testFixtures";
 import {
   commitDeployment,
   type DeployReleasePolicy,
@@ -35,7 +35,7 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
 
 vi.mock("../utils/printBanner", () => ({ printBanner: vi.fn() }));
 
-const databaseHarness = createDatabasePluginHarness();
+const databaseHarness = createDatabaseHarness();
 const originalIsTTY = Object.getOwnPropertyDescriptor(process.stdin, "isTTY");
 
 const deployment = (
@@ -67,7 +67,7 @@ describe("Bundle commands", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     databaseHarness.reset();
-    loadConfig.mockResolvedValue({ database: databaseHarness.plugin });
+    loadConfig.mockResolvedValue({ database: databaseHarness.database });
   });
 
   afterEach(() => {
@@ -80,7 +80,9 @@ describe("Bundle commands", () => {
   it("filters Releases by Bundle and includes creation time in the table", async () => {
     const first = deployment("01900000-0000-7000-8000-000000000001");
     const second = deployment("01900000-0000-7000-8000-000000000002");
-    await databaseHarness.seedDeployments([first, second]);
+    const [firstRelease, secondRelease] = await databaseHarness.seedDeployments(
+      [first, second],
+    );
     const output = vi.spyOn(console, "log").mockImplementation(() => {});
     const { handleReleaseList } = await import("./release");
 
@@ -90,8 +92,8 @@ describe("Bundle commands", () => {
       String(output.mock.calls[0]?.[0]),
     );
     expect(rendered).toContain("Created");
-    expect(rendered).toContain(first.bundle.id);
-    expect(rendered).not.toContain(second.bundle.id);
+    expect(rendered).toContain(firstRelease!.id);
+    expect(rendered).not.toContain(secondRelease!.id);
   });
 
   it("shows console ID and policy without file or catalog internals", async () => {
@@ -138,9 +140,10 @@ describe("Bundle commands", () => {
     } = await import("./release");
 
     await handleReleaseUpdate(id, { message: "verified update", yes: true });
-    await expect(
-      databaseHarness.plugin.models.releases.findById(id),
-    ).resolves.toMatchObject({ message: "verified update", revision: 2 });
+    await expect(databaseHarness.core.getRelease(id)).resolves.toMatchObject({
+      message: "verified update",
+      revision: 2,
+    });
     await handleReleaseEnablement(id, false, { yes: true });
     await handleReleaseEnablement(id, true, { yes: true });
     await handleReleaseEnablement(id, false, { yes: true });
@@ -169,21 +172,19 @@ describe("Bundle commands", () => {
       expect(rendered).not.toContain(release!.scope_key);
       expect(rendered).not.toMatch(/Release ID|Scope|Generation/);
     }
+    await expect(databaseHarness.core.getRelease(id)).resolves.toBeNull();
     await expect(
-      databaseHarness.plugin.models.releases.findById(id),
-    ).resolves.toBeNull();
-    await expect(
-      databaseHarness.plugin.models.bundles.findById(seeded.bundle.id),
+      databaseHarness.core.getBundle(seeded.bundle.id),
     ).resolves.not.toBeNull();
   });
 
   it("previews device-dependent fallback and warns for the sole enabled bundle", async () => {
     const seeded = deployment("01900000-0000-7000-8000-000000000001");
-    await databaseHarness.seedDeployments([seeded]);
+    const [release] = await databaseHarness.seedDeployments([seeded]);
     vi.spyOn(console, "log").mockImplementation(() => {});
     const { handleReleaseEnablement } = await import("./release");
 
-    await handleReleaseEnablement(seeded.bundle.id, false, { yes: true });
+    await handleReleaseEnablement(release!.id, false, { yes: true });
 
     expect(log.message).toHaveBeenCalledWith(
       expect.stringContaining("previous compatible enabled bundle or BUILTIN"),
@@ -195,13 +196,13 @@ describe("Bundle commands", () => {
       expect.stringContaining("only enabled bundle"),
     );
     await expect(
-      databaseHarness.plugin.models.releases.findById(seeded.bundle.id),
+      databaseHarness.core.getRelease(release!.id),
     ).resolves.toMatchObject({ enabled: false, revision: 2 });
   });
 
   it("uses the previewed revision as the disable CAS boundary", async () => {
     const seeded = deployment("01900000-0000-7000-8000-000000000001");
-    await databaseHarness.seedDeployments([seeded]);
+    const [release] = await databaseHarness.seedDeployments([seeded]);
     Object.defineProperty(process.stdin, "isTTY", {
       configurable: true,
       value: true,
@@ -209,18 +210,18 @@ describe("Bundle commands", () => {
     confirm.mockImplementationOnce(async () => {
       await databaseHarness.core.updateReleasePolicy({
         patch: { message: "changed concurrently" },
-        releaseId: seeded.bundle.id,
+        releaseId: release!.id,
       });
       return true;
     });
     const { handleReleaseEnablement } = await import("./release");
 
     await expect(
-      handleReleaseEnablement(seeded.bundle.id, false, {}),
+      handleReleaseEnablement(release!.id, false, {}),
     ).rejects.toThrow(/revision/i);
 
     await expect(
-      databaseHarness.plugin.models.releases.findById(seeded.bundle.id),
+      databaseHarness.core.getRelease(release!.id),
     ).resolves.toMatchObject({
       enabled: true,
       message: "changed concurrently",

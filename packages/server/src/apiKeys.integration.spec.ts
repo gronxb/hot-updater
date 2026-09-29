@@ -1,8 +1,9 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
-import { createInMemoryDatabasePlugin } from "../../test-utils/test/inMemoryDatabasePlugin";
-import { registerApiKey } from "./apiKeys";
 import { API_KEY_HEADER_NAME, createHotUpdater } from "./index";
+import { apiKeys } from "./plugins/api-keys";
+import { insights } from "./plugins/insights";
+import { createRuntimeDatabase } from "./runtime.testFixtures";
 
 const API_KEY = "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE";
 const updateUrl =
@@ -18,30 +19,19 @@ const withApiKey = (url: string, init?: RequestInit) =>
     },
   });
 
-describe("createHotUpdater API keys", () => {
-  it("rejects an invalid API key header name", () => {
-    expect(() =>
-      createHotUpdater({
-        clientAccess: {
-          headerName: "invalid header",
-          type: "api-key",
-        },
-        database: createInMemoryDatabasePlugin(),
-      }),
-    ).toThrow("clientAccess.headerName must be a valid header name.");
+/** A server whose client routes the apiKeys() plugin protects, with one registered key. */
+const start = async () => {
+  const hotUpdater = createHotUpdater({
+    database: createRuntimeDatabase(),
+    plugins: [apiKeys(), insights()],
   });
+  await hotUpdater.api.apiKeys.register({ apiKey: API_KEY, name: "App" });
+  return hotUpdater;
+};
 
+describe("createHotUpdater with the apiKeys() plugin", () => {
   it("protects only client OTA and Insights write routes", async () => {
-    const database = createInMemoryDatabasePlugin();
-    await registerApiKey({
-      apiKeys: database.models.apiKeys,
-      apiKey: API_KEY,
-      name: "App",
-    });
-    const hotUpdater = createHotUpdater({
-      clientAccess: { type: "api-key" },
-      database,
-    });
+    const hotUpdater = await start();
 
     expect(
       (await hotUpdater.handlers.client(new Request(updateUrl))).status,
@@ -59,44 +49,14 @@ describe("createHotUpdater API keys", () => {
     expect(
       (
         await hotUpdater.handlers.admin(
-          withApiKey("https://example.com/events"),
+          new Request("https://example.com/events"),
         )
       ).status,
     ).toBe(200);
   });
 
-  it("creates, lists, and revokes API keys without exposing hashes", async () => {
-    const hotUpdater = createHotUpdater({
-      clientAccess: { type: "public" },
-      database: createInMemoryDatabasePlugin(),
-    });
-
-    const created = await hotUpdater.apiKeys.create({ name: "Production" });
-    expect(created.apiKey).toMatch(/^[A-Za-z0-9_-]{43}$/u);
-    expect(created.record).not.toHaveProperty("hash");
-
-    await expect(hotUpdater.apiKeys.list()).resolves.toEqual([created.record]);
-    const revoked = await hotUpdater.apiKeys.revoke({
-      id: created.record.id,
-    });
-    expect(revoked).toMatchObject({
-      id: created.record.id,
-      revoked_at_ms: expect.any(Number),
-    });
-    expect(revoked).not.toHaveProperty("hash");
-  });
-
   it("authenticates before parsing Insights event bodies", async () => {
-    const database = createInMemoryDatabasePlugin();
-    await registerApiKey({
-      apiKeys: database.models.apiKeys,
-      apiKey: API_KEY,
-      name: "App",
-    });
-    const hotUpdater = createHotUpdater({
-      clientAccess: { type: "api-key" },
-      database,
-    });
+    const hotUpdater = await start();
     const invalidBody = {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -119,74 +79,14 @@ describe("createHotUpdater API keys", () => {
     ).toBe(400);
   });
 
-  it("returns 503 when credential storage is unavailable", async () => {
-    const database = createInMemoryDatabasePlugin();
-    vi.spyOn(database.models.apiKeys, "findByHash").mockRejectedValue(
-      new Error("database offline"),
-    );
+  it('keeps client routes public with clientAccess: "public"', async () => {
     const hotUpdater = createHotUpdater({
-      clientAccess: { type: "api-key" },
-      database,
-    });
-
-    const response = await hotUpdater.handlers.client(withApiKey(updateUrl));
-
-    expect(response.status).toBe(503);
-    await expect(response.json()).resolves.toEqual({
-      error: "Service unavailable",
-    });
-  });
-
-  it("keeps client routes public with the public access policy", async () => {
-    const hotUpdater = createHotUpdater({
-      clientAccess: { type: "public" },
-      database: createInMemoryDatabasePlugin(),
+      clientAccess: "public",
+      database: createRuntimeDatabase(),
     });
 
     expect(
       (await hotUpdater.handlers.client(new Request(updateUrl))).status,
     ).toBe(404);
-  });
-
-  it("reads API keys only from the configured header", async () => {
-    const database = createInMemoryDatabasePlugin();
-    await registerApiKey({
-      apiKeys: database.models.apiKeys,
-      apiKey: API_KEY,
-      name: "App",
-    });
-    const hotUpdater = createHotUpdater({
-      clientAccess: {
-        headerName: "X-Hot-Updater-Key",
-        type: "api-key",
-      },
-      database,
-    });
-    const invalidBody = {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: "not-json",
-    } satisfies RequestInit;
-
-    expect(
-      (
-        await hotUpdater.handlers.client(
-          withApiKey("https://example.com/events", invalidBody),
-        )
-      ).status,
-    ).toBe(401);
-    expect(
-      (
-        await hotUpdater.handlers.client(
-          new Request("https://example.com/events", {
-            ...invalidBody,
-            headers: {
-              ...invalidBody.headers,
-              "x-hot-updater-key": API_KEY,
-            },
-          }),
-        )
-      ).status,
-    ).toBe(400);
   });
 });
