@@ -418,6 +418,50 @@ export const rows: readonly AcceptanceRow[] = [
     multiplier: "One settings read per process, then none.",
   },
   {
+    name: "Aggregate batching",
+    // What batches aggregates declared `batched`: the log rows and their
+    // compaction, the memory buffer, and the flush they share.
+    // It wraps the engine, a row of its own, through `createDatabaseEngine`.
+    entries: ["packages/server/src/database/aggregateBatching.ts"],
+    shared: [
+      "packages/server/src/database/engine*.ts",
+      "packages/server/src/database/resolveSchema.ts",
+      "packages/server/src/database/definitions.ts",
+      "packages/server/src/database/errors.ts",
+      // The schema DSL, which declares the log and lease tables.
+      "packages/server/src/database/schema.ts",
+    ],
+    budget: 450,
+    atomicity:
+      "Log row in the committing write; compaction deletes what it applies",
+    suites: [
+      {
+        project: "unit:default",
+        file: "packages/server/src/database/aggregateBatching.spec.ts",
+        describe: "aggregate batching",
+      },
+      {
+        project: "integration:default",
+        file: "packages/server/src/database/kv/kvAdapter.batching.integration.spec.ts",
+        describe: "key-value (in-memory store) aggregate batching",
+      },
+      {
+        project: "integration:default",
+        file: "plugins/aws/src/dynamoDB.batching.integration.spec.ts",
+        describe: "key-value (DynamoDB Local) aggregate batching",
+      },
+      {
+        project: "integration:default",
+        file: "plugins/firebase/src/firestore.batching.integration.spec.ts",
+        describe: "key-value (Firestore emulator) aggregate batching",
+      },
+    ],
+    writeLimit: false,
+    profiles: ["standalone-dynamodb", "aws", "firebase"],
+    multiplier:
+      "Reads of a batched aggregate first check the 8 log tables (1 query each) and compact what is pending.",
+  },
+  {
     name: "Engine",
     // Reads, transactions, and aggregates; schema resolution and validation.
     entries: [

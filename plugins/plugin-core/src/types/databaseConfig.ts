@@ -2,6 +2,31 @@ import type { HotUpdaterCoreApi } from "../coreApi";
 import type { DatabaseAdapter } from "../database/adapter";
 
 /**
+ * How changes to aggregates declared `batched` reach their rows: after the
+ * transaction that made them commits, merged with other transactions'
+ * changes into one write per aggregate row. Databases that bill each write
+ * (DynamoDB, Firestore) batch them.
+ */
+export interface AggregateBatching {
+  /**
+   * `"log"` (the default) writes each transaction's changes as one log row
+   * in that transaction, and a compaction merges pending log rows into the
+   * aggregates. It loses nothing and suits every runtime. `"memory"` keeps
+   * changes in the process until a timer flushes them. It writes no log
+   * rows, but a crash loses up to one window, and a runtime that freezes
+   * or drops the process between requests (Lambda, Cloud Functions,
+   * Workers) loses more, so use it only on a long-lived server.
+   */
+  readonly mode?: "log" | "memory";
+  /**
+   * How long changes wait before a compaction or a flush: `"log"` compacts
+   * after a commit once this has passed since the last compaction. Defaults
+   * to 15 seconds.
+   */
+  readonly windowMs?: number;
+}
+
+/**
  * A database on Hot Updater's storage engine, as a provider's factory
  * returns it: the adapter that core and plugins run on.
  */
@@ -14,6 +39,8 @@ export interface EngineDatabase {
    * a committed write that changes what those routes answer.
    */
   readonly onCachedRoutesChange?: () => Promise<void>;
+  /** Batches aggregates declared `batched`; absent, they commit with each transaction. */
+  readonly aggregateBatching?: AggregateBatching;
   dispose?(): Promise<void>;
 }
 

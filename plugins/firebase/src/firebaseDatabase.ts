@@ -18,10 +18,18 @@ import { createFirestoreStore } from "./firestoreStore";
 export type FirebaseDatabaseConfig = AppOptions & {
   /** The one collection the database keeps its items in. */
   readonly collection?: string;
+  /**
+   * Firestore bills each document write, so Insights' aggregates are
+   * batched: through log rows a compaction merges (the default), or
+   * `{ mode: "memory" }` on a long-lived server. `false` commits them with
+   * each event.
+   */
+  readonly aggregateBatching?: EngineDatabase["aggregateBatching"] | false;
 };
 
 const adapterOf = ({
   collection = FIREBASE_V1_COLLECTION,
+  aggregateBatching: _,
   ...appOptions
 }: FirebaseDatabaseConfig) => {
   const app = getApps().length ? getApp() : initializeApp(appOptions);
@@ -45,4 +53,5 @@ export const firebaseDatabase = (
   createEngineDatabase({
     name: "firebaseDatabase",
     adapter: adapterOf(config),
+    aggregateBatching: config.aggregateBatching ?? {},
   });
