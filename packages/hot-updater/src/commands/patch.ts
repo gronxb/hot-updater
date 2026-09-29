@@ -3,7 +3,7 @@ import {
   assertStorageOperations,
   type Platform,
 } from "@hot-updater/plugin-core";
-import { createBundleDiff } from "@hot-updater/server/db";
+import { createBundleDiff } from "@hot-updater/server/diff";
 
 import { getPlatform } from "@/prompts/getPlatform";
 import { printBanner } from "@/utils/printBanner";

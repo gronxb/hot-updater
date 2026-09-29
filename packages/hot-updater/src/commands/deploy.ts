@@ -30,10 +30,10 @@ import {
   isContentAddressedAssetFileHash,
 } from "@hot-updater/plugin-core";
 import {
-  createBundleDiff,
   createDatabaseCoreApi,
   targetBaseCandidateKey,
 } from "@hot-updater/server/db";
+import { createBundleDiff } from "@hot-updater/server/diff";
 import isPortReachable from "is-port-reachable";
 import open from "open";
 import { normalizeRange } from "verkit";

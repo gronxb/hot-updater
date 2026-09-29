@@ -12,7 +12,6 @@ export {
   type MeasuredDatabaseOptions,
 } from "../assembly/databasePlugins";
 export { targetBaseCandidateKey } from "../core/baseCandidates";
-export * from "./createBundleDiff";
 export {
   generateEngineSql,
   settingsStatements,
