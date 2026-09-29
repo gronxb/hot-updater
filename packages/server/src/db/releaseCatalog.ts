@@ -1,24 +1,15 @@
 import {
-  ARTIFACT_PROTOCOL_VERSION,
   createReleaseCatalogScopeKey,
-  NIL_UUID,
   RELEASE_CATALOG_FALLBACK_POLICY,
   RELEASE_CATALOG_SCHEMA_VERSION,
-  type ArtifactInfo,
   type ReleaseCatalog,
 } from "@hot-updater/core";
 import {
-  createDatabaseClient,
   projectCompiledCatalog,
   projectCompiledRollbackCatalog,
   type CompiledReleaseCatalog,
-  type DatabasePlugin,
+  type ReleaseCatalogRow,
 } from "@hot-updater/plugin-core";
-
-import { resolveManifestArtifacts } from "./updateArtifacts";
-
-type ResolveFileUrl = (storageUri: string | null) => Promise<string | null>;
-type ReadStorageText = (storageUri: string) => Promise<string | null>;
 
 export type ReleaseCatalogRequest =
   | {
@@ -64,87 +55,51 @@ const parseCompiledCatalog = (
   return parsed as CompiledReleaseCatalog;
 };
 
-export const createReleaseCatalogReader =
-  (database: DatabasePlugin) =>
-  async (input: ReleaseCatalogRequest): Promise<ReleaseCatalog | null> => {
-    const scopeKey =
-      input.strategy === "APP_VERSION"
-        ? createReleaseCatalogScopeKey({
-            channelKey: input.channelKey,
-            platform: input.platform,
-            strategy: "APP_VERSION",
-          })
-        : createReleaseCatalogScopeKey({
-            channelKey: input.channelKey,
-            fingerprintHash: input.fingerprintHash,
-            platform: input.platform,
-            strategy: "FINGERPRINT",
-          });
-    const row = await database.models.releaseCatalogs.findByScopeKey(scopeKey);
-    if (
-      row === null ||
-      row.platform !== input.platform ||
-      row.strategy !== input.strategy ||
-      row.channel_key !== input.channelKey ||
-      row.scope_key !== scopeKey ||
-      row.fingerprint_hash !==
-        (input.strategy === "FINGERPRINT" ? input.fingerprintHash : null)
-    ) {
-      return null;
-    }
-    const compiled = parseCompiledCatalog(row.payload, input.strategy);
-    const releases = projectCompiledCatalog(
-      compiled,
-      input.strategy === "APP_VERSION" ? input.appVersion : undefined,
-    );
-    const rollbackReleases = projectCompiledRollbackCatalog(
-      compiled,
-      input.strategy === "APP_VERSION" ? input.appVersion : undefined,
-    );
-    return {
-      catalogId: row.catalog_id,
-      catalogHash: row.catalog_hash,
-      fallbackPolicy: RELEASE_CATALOG_FALLBACK_POLICY,
-      generation: row.generation,
-      releases,
-      rollbackReleases,
-      schemaVersion: RELEASE_CATALOG_SCHEMA_VERSION,
-      scopeKey,
-    };
-  };
+/** The scope key an update check reads. */
+export const releaseCatalogScopeKeyOf = (
+  input: ReleaseCatalogRequest,
+): string =>
+  input.strategy === "APP_VERSION"
+    ? createReleaseCatalogScopeKey({
+        channelKey: input.channelKey,
+        platform: input.platform,
+        strategy: "APP_VERSION",
+      })
+    : createReleaseCatalogScopeKey({
+        channelKey: input.channelKey,
+        fingerprintHash: input.fingerprintHash,
+        platform: input.platform,
+        strategy: "FINGERPRINT",
+      });
 
-export const createArtifactResolver = (input: {
-  readonly database: DatabasePlugin;
-  readonly readStorageText?: ReadStorageText;
-  readonly resolveFileUrl: ResolveFileUrl;
-}) => {
-  const databaseClient = createDatabaseClient(input.database);
-
-  return async (
-    targetBundleId: string,
-    currentBundleId: string,
-    artifactProtocolVersion: 1,
-  ): Promise<ArtifactInfo | null> => {
-    const [targetBundle, currentBundle] = await Promise.all([
-      databaseClient.getBundleById(targetBundleId),
-      currentBundleId === NIL_UUID
-        ? null
-        : databaseClient.getBundleById(currentBundleId),
-    ]);
-    if (targetBundle === null) return null;
-    if (artifactProtocolVersion !== ARTIFACT_PROTOCOL_VERSION) {
-      return null;
-    }
-    if (input.readStorageText === undefined) {
-      return null;
-    }
-    const manifest = await resolveManifestArtifacts({
-      currentBundle,
-      readStorageText: input.readStorageText,
-      resolveFileUrl: input.resolveFileUrl,
-      targetBundle,
-    });
-    if (manifest === null) return null;
-    return manifest;
+/** Projects a stored catalog row for one update check; null when the row is not this scope's. */
+export const projectReleaseCatalogRow = (
+  row: ReleaseCatalogRow | null,
+  input: ReleaseCatalogRequest,
+  scopeKey = releaseCatalogScopeKeyOf(input),
+): ReleaseCatalog | null => {
+  if (
+    row === null ||
+    row.platform !== input.platform ||
+    row.strategy !== input.strategy ||
+    row.channel_key !== input.channelKey ||
+    row.scope_key !== scopeKey ||
+    row.fingerprint_hash !==
+      (input.strategy === "FINGERPRINT" ? input.fingerprintHash : null)
+  ) {
+    return null;
+  }
+  const compiled = parseCompiledCatalog(row.payload, input.strategy);
+  const appVersion =
+    input.strategy === "APP_VERSION" ? input.appVersion : undefined;
+  return {
+    catalogId: row.catalog_id,
+    catalogHash: row.catalog_hash,
+    fallbackPolicy: RELEASE_CATALOG_FALLBACK_POLICY,
+    generation: row.generation,
+    releases: projectCompiledCatalog(compiled, appVersion),
+    rollbackReleases: projectCompiledRollbackCatalog(compiled, appVersion),
+    schemaVersion: RELEASE_CATALOG_SCHEMA_VERSION,
+    scopeKey,
   };
 };

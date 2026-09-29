@@ -2,8 +2,9 @@ import { spawnSync } from "node:child_process";
 
 import { describe, expect, it, vi } from "vitest";
 
+import { createMemoryAdapter } from "../../plugins/plugin-core/src/internal.ts";
 import { createHotUpdater } from "../../packages/server/src/index.ts";
-import { createInMemoryDatabasePlugin } from "../../packages/test-utils/test/inMemoryDatabasePlugin.ts";
+import { insights } from "../../packages/server/src/plugins/insights/index.ts";
 import {
   readObservedInsightsEvent,
   verifyConsoleInsights,
@@ -31,10 +32,10 @@ describe("Detox Insights HTTP client", () => {
   });
 
   it("queries the deployed server when config only has a standalone admin client", async () => {
-    const serverDatabase = createInMemoryDatabasePlugin();
     const deployedServer = createHotUpdater({
-      database: serverDatabase,
-      clientAccess: { type: "public" },
+      database: { name: "memory", adapter: createMemoryAdapter() },
+      plugins: [insights()],
+      clientAccess: "public",
     });
     const fetch = vi.fn<typeof globalThis.fetch>((input, init) => {
       const request = new Request(input, init);
@@ -89,8 +90,9 @@ describe("Detox Insights HTTP client", () => {
     try {
       const sinceMs = Date.now();
       const server = createHotUpdater({
-        database: createInMemoryDatabasePlugin(),
-        clientAccess: { type: "public" },
+        database: { name: "memory", adapter: createMemoryAdapter() },
+        plugins: [insights()],
+        clientAccess: "public",
       });
       const client = createConsoleInsightsHttpClient({
         baseUrl: "https://example.com",

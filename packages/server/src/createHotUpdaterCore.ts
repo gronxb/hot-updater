@@ -1,113 +1,160 @@
 import {
   assertStorageOperations,
-  type InsightsModel,
   type StoragePlugin,
 } from "@hot-updater/plugin-core";
+import type { DatabaseAdapter } from "@hot-updater/plugin-core/internal";
 
 import {
-  authenticateApiKey,
-  createApiKeyManagement,
-  normalizeApiKeyHeaderName,
-} from "./apiKeys";
-import type { ApiKeyManagementAPI } from "./apiKeys";
-import { createDatabasePluginCore } from "./db/databasePluginCore";
-import { createSchemaReadinessChecker } from "./db/schemaReadiness";
+  assemblePlugins,
+  HotUpdaterConfigError,
+} from "./assembly/assemblePlugins";
+import type { CoreApi } from "./core/api";
+import type { ToolingDatabase } from "./db/types";
 import {
-  type DatabaseAdapterCapabilities,
-  type DatabaseAPI,
-  type DatabasePlugin,
-  isDatabasePlugin,
-} from "./db/types";
-import { createHotUpdaterHandlers, type HotUpdaterHandlers } from "./handler";
-import { createInsightsProvider } from "./insights/provider";
-import type { InsightsProvider } from "./insights/types";
+  type ClientRoutePolicy,
+  createHotUpdaterHandlers,
+  type HotUpdaterHandlers,
+} from "./handler";
+import type { AnyHotUpdaterPlugin, PluginApis } from "./plugins/definePlugin";
 import { createStorageAccess } from "./storageAccess";
 
-export type RuntimeHotUpdaterAPI = DatabaseAPI & {
+export type RuntimeHotUpdaterAPI<
+  TPlugins extends readonly AnyHotUpdaterPlugin[] =
+    readonly AnyHotUpdaterPlugin[],
+> = {
   readonly handlers: HotUpdaterHandlers;
+  /** Core's reads and typed writes: bundles, Releases, Catalogs, and channels. */
+  readonly core: CoreApi;
+  /** Each plugin's API by plugin id. */
+  readonly api: PluginApis<TPlugins>;
+  /** The database's name, which `hot-updater db` commands read. */
   readonly adapterName: string;
-  /**
-   * Built-in Insights provider. Client ingestion and admin query routes are
-   * always mounted; React Native clients report lifecycle events by default
-   * and can opt out with `HotUpdater.init({ insights: false })`.
-   */
-  readonly insights: InsightsProvider;
-  /**
-   * In-process API key lifecycle operations for trusted server tooling.
-   * Creation returns the plaintext once; list and revoke expose only metadata.
-   * This capability is never mounted on the client or admin HTTP handlers.
-   */
-  readonly apiKeys: ApiKeyManagementAPI;
 };
 
 export type HotUpdaterAPI = RuntimeHotUpdaterAPI;
 
-export type ClientAccessPolicy =
-  | {
-      /**
-       * Leaves Release Catalog, artifact, and Insights ingestion routes
-       * publicly accessible without a client credential.
-       */
-      readonly type: "public";
-    }
-  | {
-      /**
-       * Requires a key registered in `database.models.apiKeys` for
-       * Release Catalog, artifact, and Insights ingestion requests.
-       */
-      readonly type: "api-key";
-      /**
-       * Request header containing the API key. Defaults to
-       * `x-api-key`. Clients must send the same header; Release Catalog
-       * responses include it in `Vary` to preserve cache isolation.
-       */
-      readonly headerName?: string;
-    };
+const REMOVED_CLIENT_ACCESS =
+  'clientAccess objects were removed in 1.0: set clientAccess: "public", or add apiKeys() from @hot-updater/server/plugins/api-keys to plugins';
 
-export interface CreateHotUpdaterOptions {
-  readonly database: DatabasePlugin;
-  /**
-   * Required client-route access policy. This choice is explicit so a server
-   * cannot accidentally change between public and authenticated OTA access.
-   * `/version`, storage downloads, and admin-handler routes are unaffected.
-   */
-  readonly clientAccess: ClientAccessPolicy;
-  /** Storage implementations used to read provider-specific storage URIs. */
-  readonly storage?: readonly StoragePlugin[];
+/**
+ * A `clientAccess` object from before 1.0. Its `type` names the fix, so
+ * TypeScript reports it where the object is written.
+ */
+export interface RemovedClientAccess {
+  readonly type: typeof REMOVED_CLIENT_ACCESS;
+  readonly headerName?: string;
 }
 
-const normalizeClientAccess = (
-  value: unknown,
-):
-  | { readonly type: "public" }
-  | {
-      readonly type: "api-key";
-      readonly headerName: string;
-    } => {
-  if (value === null || typeof value !== "object" || Array.isArray(value)) {
-    throw new TypeError("clientAccess must be an object.");
+export type ClientAccessPolicy =
+  /** Leaves client routes public; required when no plugin provides clientAuth. */
+  "public" | RemovedClientAccess;
+
+type ProvidesClientAuth<TPlugin> = TPlugin extends {
+  readonly provides?: infer TProvides;
+}
+  ? TProvides extends { readonly clientAuth: true }
+    ? true
+    : false
+  : false;
+
+type ClientAuthIds<
+  TPlugins extends readonly unknown[],
+  TFound extends string[] = [],
+> = TPlugins extends readonly [infer THead, ...infer TTail]
+  ? ClientAuthIds<
+      TTail,
+      ProvidesClientAuth<THead> extends true
+        ? [
+            ...TFound,
+            THead extends { readonly id: infer TId extends string }
+              ? TId
+              : string,
+          ]
+        : TFound
+    >
+  : TFound;
+
+type JoinIds<TIds extends string[]> = TIds extends [
+  infer TFirst extends string,
+  ...infer TRest extends string[],
+]
+  ? TRest extends []
+    ? `"${TFirst}"`
+    : `"${TFirst}", ${JoinIds<TRest>}`
+  : "";
+
+/**
+ * Client routes have one policy source: exactly one plugin that provides
+ * clientAuth, or an explicit `clientAccess`. Tuples are counted here; an
+ * untyped list that may hold a clientAuth plugin is left to startup.
+ */
+export type ClientAccessRule<TPlugins extends readonly AnyHotUpdaterPlugin[]> =
+  number extends TPlugins["length"]
+    ? true extends ProvidesClientAuth<TPlugins[number]>
+      ? {
+          readonly clientAccess?: "Remove clientAccess: a plugin in this list may provide clientAuth";
+        }
+      : { readonly clientAccess: ClientAccessPolicy }
+    : ClientAuthIds<TPlugins> extends []
+      ? { readonly clientAccess: ClientAccessPolicy }
+      : ClientAuthIds<TPlugins> extends [infer TId extends string]
+        ? {
+            readonly clientAccess?: `Remove clientAccess: plugin "${TId}" provides clientAuth`;
+          }
+        : {
+            readonly clientAuth: `Keep one clientAuth plugin: ${JoinIds<ClientAuthIds<TPlugins>>} all provide it`;
+          };
+
+export type CreateHotUpdaterOptions<
+  TPlugins extends readonly AnyHotUpdaterPlugin[] = readonly [],
+> = {
+  /** A provider's database on the storage engine, such as `kyselyAdapter(...)` or `postgres(...)`. */
+  readonly database: ToolingDatabase;
+  /** Storage implementations used to read provider-specific storage URIs. */
+  readonly storage?: readonly StoragePlugin[];
+  /** Built-in and third-party plugins; at most one provides clientAuth. Defaults to none. */
+  readonly plugins?: TPlugins;
+} & ClientAccessRule<TPlugins>;
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null;
+
+const isAdapter = (value: unknown): value is DatabaseAdapter =>
+  isRecord(value) &&
+  ["fits", "get", "query", "write"].every(
+    (method) => typeof value[method] === "function",
+  );
+
+/** The configured database, when it runs on the storage engine. */
+const databaseOf = (value: unknown): ToolingDatabase => {
+  if (isRecord(value) && typeof value.name === "string") {
+    if (isAdapter(value.adapter)) return value as unknown as ToolingDatabase;
+    if ("core" in value && "fetchAdmin" in value) {
+      throw new HotUpdaterConfigError(
+        "standaloneRepository reaches a server's admin API from the CLI and console. createHotUpdater needs the server's own database, such as kyselyAdapter(...).",
+      );
+    }
   }
-  const policy = value as {
-    readonly headerName?: unknown;
-    readonly type?: unknown;
-  };
-  if (policy.type === "public") return { type: "public" };
-  if (policy.type === "api-key") {
-    return {
-      headerName: normalizeApiKeyHeaderName(policy.headerName),
-      type: "api-key",
-    };
-  }
-  throw new TypeError(
-    'clientAccess.type must be either "public" or "api-key".',
+  throw new HotUpdaterConfigError(
+    "database must be a Hot Updater 1.0 database, such as kyselyAdapter(...) or postgres(...). Upgrade the provider package that created it.",
   );
 };
 
-type DatabasePluginCore = {
-  readonly api: DatabaseAPI;
-  readonly adapterName: string;
-  readonly createMigrator: () => never;
-  readonly generateSchema: () => never;
+/** `"public"`, or nothing; a `clientAccess` object names what replaced it. */
+const isPublic = (value: unknown): boolean => {
+  if (value === undefined) return false;
+  if (value === "public") return true;
+  if (isRecord(value)) {
+    const type = value.type;
+    throw new HotUpdaterConfigError(
+      type === "api-key"
+        ? `clientAccess: { type: "api-key" } was removed in 1.0. Remove it and add apiKeys(${value.headerName === undefined ? "" : `{ headerName: ${JSON.stringify(value.headerName)} }`}) from @hot-updater/server/plugins/api-keys to plugins, which protects client routes the same way.`
+        : `clientAccess objects were removed in 1.0. Use clientAccess: "public", or add apiKeys() from @hot-updater/server/plugins/api-keys to plugins.`,
+    );
+  }
+  throw new HotUpdaterConfigError(
+    'clientAccess must be "public"; to protect client routes, add apiKeys() from @hot-updater/server/plugins/api-keys to plugins.',
+  );
 };
 
 export const hotUpdaterCoreMetadata = Symbol.for(
@@ -115,14 +162,8 @@ export const hotUpdaterCoreMetadata = Symbol.for(
 );
 
 export type HotUpdaterCoreMetadata = {
-  readonly adapterCapabilities: DatabaseAdapterCapabilities;
-  readonly core: DatabasePluginCore;
-};
-
-export type HotUpdaterCore = {
-  readonly api: RuntimeHotUpdaterAPI;
-  readonly adapterCapabilities: DatabaseAdapterCapabilities;
-  readonly core: DatabasePluginCore;
+  /** The configured database, with the tooling `hot-updater db` runs. */
+  readonly database: ToolingDatabase;
 };
 
 export function getHotUpdaterCoreMetadata(
@@ -135,9 +176,11 @@ export function getHotUpdaterCoreMetadata(
   )[hotUpdaterCoreMetadata];
 }
 
-export function createHotUpdaterCore(
-  options: CreateHotUpdaterOptions,
-): HotUpdaterCore {
+export function createHotUpdater<
+  const TPlugins extends readonly AnyHotUpdaterPlugin[] = readonly [],
+>(
+  options: CreateHotUpdaterOptions<TPlugins>,
+): RuntimeHotUpdaterAPI<NoInfer<TPlugins>> {
   for (const key of ["authorityId", "catalogId"]) {
     if (Object.hasOwn(options, key)) {
       throw new TypeError(
@@ -145,110 +188,55 @@ export function createHotUpdaterCore(
       );
     }
   }
-  const database = options.database;
+  const database = databaseOf(options.database);
   const storagePlugins = (options.storage ?? []).map((storage) => {
     assertStorageOperations(storage, ["get", "getDownloadUrl"]);
     return storage;
   });
   const { downloadStorageObject, readStorageText, resolveFileUrl } =
     createStorageAccess(storagePlugins);
-  const adapterCapabilities: DatabaseAdapterCapabilities = database;
-
-  if (!isDatabasePlugin(database)) {
-    throw new Error("@hot-updater/server only supports database plugins.");
+  const publicClients = isPublic(
+    (options as { readonly clientAccess?: unknown }).clientAccess,
+  );
+  const plugins = assemblePlugins(options.plugins ?? [], database.adapter, {
+    storage: { readStorageText, resolveFileUrl },
+  });
+  const clientAuth = plugins.clientAuth;
+  if (clientAuth !== undefined && publicClients) {
+    throw new HotUpdaterConfigError(
+      `Plugin "${clientAuth.plugin}" provides clientAuth, so remove clientAccess.`,
+    );
   }
-
-  const plugin: DatabasePlugin = database;
-  const adapterName = adapterCapabilities.adapterName ?? plugin.name;
-  const assertSchemaReady = createSchemaReadinessChecker(
-    adapterName,
-    adapterCapabilities.createMigrator,
-  );
-  const core = createDatabasePluginCore(plugin, resolveFileUrl, {
-    beforeOperation: assertSchemaReady,
-    readStorageText,
-  });
-  const clientAccess = normalizeClientAccess(options.clientAccess);
-  const insightsModel: InsightsModel = {
-    async recordEvent(input) {
-      await assertSchemaReady();
-      return plugin.models.insights.recordEvent(input);
-    },
-    async listEvents(input) {
-      await assertSchemaReady();
-      return plugin.models.insights.listEvents(input);
-    },
-    async findLatestEvents(input) {
-      await assertSchemaReady();
-      return plugin.models.insights.findLatestEvents(input);
-    },
-    async countLatestEvents(input) {
-      await assertSchemaReady();
-      return plugin.models.insights.countLatestEvents(input);
-    },
-    async countEvents(input) {
-      await assertSchemaReady();
-      return plugin.models.insights.countEvents(input);
-    },
-    async getReleaseActivity(input) {
-      await assertSchemaReady();
-      return plugin.models.insights.getReleaseActivity(input);
-    },
-    async getAppUsage(input) {
-      await assertSchemaReady();
-      return plugin.models.insights.getAppUsage(input);
-    },
-  };
-  const insights = createInsightsProvider(insightsModel);
-  const apiKeys = createApiKeyManagement({
-    apiKeys: plugin.models.apiKeys,
-    beforeOperation: assertSchemaReady,
-  });
-
-  const handlers = createHotUpdaterHandlers(
-    core.api,
-    insights,
-    clientAccess.type === "api-key"
-      ? {
-          authenticate: (request) =>
-            authenticateApiKey({
-              apiKeys: plugin.models.apiKeys,
-              beforeLookup: assertSchemaReady,
-              headerName: clientAccess.headerName,
-              request,
-            }),
-          headerName: clientAccess.headerName,
-        }
-      : undefined,
+  if (clientAuth === undefined && !publicClients) {
+    throw new HotUpdaterConfigError(
+      'Set clientAccess to "public", or add a plugin that provides clientAuth.',
+    );
+  }
+  const clientPolicy: ClientRoutePolicy | undefined =
+    clientAuth === undefined
+      ? undefined
+      : {
+          varyHeaders: clientAuth.varyHeaders.map((header) =>
+            header.toLowerCase(),
+          ),
+          authenticate: (request) => clientAuth.authenticate(request.headers),
+        };
+  const handlers = createHotUpdaterHandlers({
+    api: { core: plugins.core },
+    ...(clientPolicy === undefined ? {} : { clientPolicy }),
     downloadStorageObject,
-  );
+    endpoints: plugins.endpoints,
+  });
 
-  const api: RuntimeHotUpdaterAPI = Object.assign(
-    {
-      adapterName: adapterCapabilities.adapterName ?? core.adapterName,
-      insights,
-      apiKeys,
-      handlers,
-    },
-    core.api,
-  );
+  const api = {
+    adapterName: database.name,
+    handlers,
+    core: plugins.core,
+    api: plugins.api as PluginApis<TPlugins>,
+  };
   Object.defineProperty(api, hotUpdaterCoreMetadata, {
     enumerable: false,
-    value: {
-      adapterCapabilities,
-      core,
-    } satisfies HotUpdaterCoreMetadata,
+    value: { database } satisfies HotUpdaterCoreMetadata,
   });
-
-  return {
-    api,
-    adapterCapabilities,
-    core,
-  };
-}
-
-export function createHotUpdater(
-  options: CreateHotUpdaterOptions,
-): RuntimeHotUpdaterAPI {
-  return createHotUpdaterCore(options).api;
+  return api;
 }

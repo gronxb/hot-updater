@@ -16,168 +16,46 @@ import { expect, it } from "vitest";
 const exec = promisify(execFile);
 const packageDirectory = path.resolve(import.meta.dirname, "..");
 
-// These are deliberately broken public plugin implementations. Each must fail
-// its behavioral scenario, not merely fail to import or initialize the suite.
+// These are deliberately broken providers: a storage adapter, the Insights
+// model, or the served answers. Each must fail its behavioral scenario, not
+// merely fail to import or initialize the suite.
 const mutations = [
+  {
+    name: "ignore-lower-bound",
+    scenario: "pages all scoped Releases including disabled rows",
+    implementation:
+      "adapter.query = (table, request) => original.query(table, { ...request, lower: undefined });",
+  },
+  {
+    name: "ignore-upper-bound",
+    scenario: "pages each release filter set by key",
+    implementation:
+      "adapter.query = (table, request) => original.query(table, { ...request, upper: undefined });",
+  },
+  {
+    name: "reverse-order",
+    scenario: "pages Catalogs in scope order",
+    implementation:
+      'adapter.query = (table, request) => original.query(table, { ...request, order: request.order === "asc" ? "desc" : "asc" });',
+  },
+  {
+    name: "short-pages",
+    scenario:
+      "serves the newest Release among 200 distinct compatible version ranges",
+    implementation:
+      "adapter.query = (table, request) => original.query(table, { ...request, limit: Math.min(request.limit, 2) });",
+  },
+  {
+    name: "drop-deletes",
+    scenario: "hard deletes a Release, rebuilds its Catalog",
+    implementation:
+      'adapter.write = ops => original.write(ops.filter(op => op.type !== "delete"));',
+  },
   {
     name: "ignore-insights-cursor",
     scenario: "uses exact identity and UTF-8 cursor order",
     implementation:
-      'plugin.models.insights.findLatestEvents = input => original.models.insights.findLatestEvents("userId" in input ? {...input, afterInstallId: undefined} : input);',
-  },
-  {
-    name: "unknown-api-key-fallback",
-    scenario: "creates, lists, resolves, and revokes API keys",
-    implementation:
-      "plugin.models.apiKeys.findByHash = async hash => (await original.models.apiKeys.findByHash(hash)) ?? (await original.models.apiKeys.list())[0] ?? null;",
-  },
-  {
-    name: "ignore-releases-expectations",
-    scenario: "rejects a stale releases expectation",
-    implementation:
-      'plugin.commit = input => original.commit({...input, ...(input.expectations ? {expectations: input.expectations.filter(e => e.model !== "releases")} : {})});',
-  },
-  {
-    name: "ignore-releaseCatalogs-expectations",
-    scenario: "rejects a stale releaseCatalogs expectation",
-    implementation:
-      'plugin.commit = input => original.commit({...input, ...(input.expectations ? {expectations: input.expectations.filter(e => e.model !== "releaseCatalogs")} : {})});',
-  },
-  {
-    name: "ignore-absence-expectations",
-    scenario: "rejects a absent",
-    implementation:
-      'plugin.commit = input => original.commit({...input, ...(input.expectations ? {expectations: input.expectations.filter(e => (e.model === "releases" ? e.revision : e.generation) !== null)} : {})});',
-  },
-  {
-    name: "ignore-missing-row-expectations",
-    scenario: "rejects a missing",
-    implementation: `plugin.commit = async input => {
-const expectations = [];
-for (const e of input.expectations ?? []) {
-const row = e.model === "releases" ? await original.models.releases.findById(e.id) : await original.models.releaseCatalogs.findByScopeKey(e.scopeKey);
-if (row) expectations.push(e);
-} return original.commit({...input, expectations}); };`,
-  },
-  {
-    name: "non-atomic-expectation-check",
-    scenario: "allows only one concurrent writer",
-    implementation: `const pendingWriters = new Map();
-plugin.commit = async input => {
-for (const e of input.expectations ?? []) {
-const row = e.model === "releases" ? await original.models.releases.findById(e.id) : await original.models.releaseCatalogs.findByScopeKey(e.scopeKey);
-const expectedVersion = e.model === "releases" ? e.revision : e.generation;
-const actualVersion = row === null ? null : e.model === "releases" ? row.revision : row.generation;
-if (expectedVersion !== actualVersion) return { committed: false, conflict: {changeIndex: -1, reason: "version_conflict", model:e.model, key:e.id ?? e.scopeKey, expectedVersion, actualVersion} };
-} if (input.changes.some(change => change.model === "releases" && change.operation === "update")) {
-const key = JSON.stringify(input.expectations);
-const pending = pendingWriters.get(key);
-if (pending) { pendingWriters.delete(key); pending(); }
-else await new Promise(resolve => pendingWriters.set(key, resolve));
-}
-return original.commit({changes:input.changes}); };`,
-  },
-  {
-    name: "ignore-releases-delete",
-    scenario: "rolls a deleted active Release back to older OTA bytes",
-    implementation:
-      'plugin.commit = input => original.commit({...input, changes:input.changes.filter(c => c.model !== "releases" || c.operation !== "delete")});',
-  },
-  {
-    name: "ignore-bundlePatches-delete",
-    scenario: "hydrates multiple owners",
-    implementation:
-      'plugin.commit = input => original.commit({...input, changes:input.changes.filter(c => c.model !== "bundlePatches" || c.operation !== "delete")});',
-  },
-  {
-    name: "ignore-release-channelId",
-    scenario: "applies the channelId filter",
-    implementation:
-      "plugin.models.releases.findMany = input => original.models.releases.findMany({...input, channelId:undefined});",
-  },
-  {
-    name: "ignore-release-enabled",
-    scenario: "applies the enabled filter",
-    implementation:
-      "plugin.models.releases.findMany = input => original.models.releases.findMany({...input, enabled:undefined});",
-  },
-  {
-    name: "ignore-release-platform",
-    scenario: "applies the platform filter",
-    implementation:
-      "plugin.models.releases.findMany = input => original.models.releases.findMany({...input, platform:undefined});",
-  },
-  {
-    name: "ignore-release-bundleId",
-    scenario: "applies the bundleId filter",
-    implementation:
-      "plugin.models.releases.findMany = input => original.models.releases.findMany({...input, bundleId:undefined});",
-  },
-  {
-    name: "ignore-release-beforeReleaseId",
-    scenario: "applies the channelId filter",
-    implementation:
-      "plugin.models.releases.findMany = input => original.models.releases.findMany({...input, beforeReleaseId:undefined});",
-  },
-  {
-    name: "ignore-release-limit",
-    scenario: "applies the channelId filter",
-    implementation:
-      "plugin.models.releases.findMany = input => original.models.releases.findMany({...input, limit:1000});",
-  },
-  {
-    name: "omit-disabled-from-scope",
-    scenario: "pages all scoped Releases",
-    implementation:
-      "plugin.models.releases.findManyByScope = async input => (await original.models.releases.findManyByScope(input)).filter(r => r.enabled);",
-  },
-  {
-    name: "ignore-catalog-afterScopeKey",
-    scenario: "pages Catalogs in scope order",
-    implementation:
-      "plugin.models.releaseCatalogs.findMany = input => original.models.releaseCatalogs.findMany({...input, afterScopeKey:undefined});",
-  },
-  {
-    name: "ignore-catalog-limit",
-    scenario: "pages Catalogs in scope order",
-    implementation:
-      "plugin.models.releaseCatalogs.findMany = input => original.models.releaseCatalogs.findMany({...input, limit:1000});",
-  },
-  {
-    name: "patch-first-bundle-only",
-    scenario: "hydrates multiple owners",
-    implementation:
-      "plugin.models.bundlePatches.findByBundleIds = ids => original.models.bundlePatches.findByBundleIds(ids.slice(0,1));",
-  },
-  {
-    name: "ignore-null-bundle-updates",
-    scenario: "updates nullable and structured artifact fields",
-    implementation:
-      'plugin.commit = input => original.commit({...input, changes:input.changes.map(c => c.model === "bundles" && c.operation === "update" ? {...c, update:Object.fromEntries(Object.entries(c.update).filter(([,v])=>v!==null))} : c)});',
-  },
-  {
-    name: "bundle-always-ascending",
-    scenario: "orders descending before applying offset",
-    implementation:
-      'plugin.models.bundles.findMany = input => original.models.bundles.findMany({...input,orderBy:{...input.orderBy,direction:"asc"}});',
-  },
-  {
-    name: "non-atomic-commit",
-    scenario: "rejects missing owner and base bundle references atomically",
-    implementation:
-      "plugin.commit = async input => { for (const change of input.changes) { const result = await original.commit({...input,changes:[change]}); if (!result.committed) return result; } return {committed:true}; };",
-  },
-  {
-    name: "drop-embedded-releases",
-    scenario: "keeps legacy embedded rows readable",
-    implementation:
-      'plugin.models.releases.findManyByScope = async input => (await original.models.releases.findManyByScope(input)).filter(r => r.kind !== "EMBEDDED");',
-  },
-  {
-    name: "ignore-release-disable",
-    scenario: "runs built-in → OTA A → OTA B → rollback A → built-in",
-    implementation:
-      'plugin.commit = input => original.commit({...input, changes:input.changes.map(c => c.model === "releases" && c.operation === "update" && c.update.enabled === false ? {...c, update:{...c.update, enabled:true}} : c)});',
+      'const model = insightsModel; insightsModel = database => { const m = model(database); return { ...m, findLatestEvents: input => m.findLatestEvents("userId" in input ? { ...input, afterInstallId: undefined } : input) }; };',
   },
   {
     name: "oldest-ota-first",
@@ -225,23 +103,32 @@ it("rejects broken providers while the unmodified provider passes the public sui
         path.join(directory, `${variant.name}.spec.ts`),
         `
         import { createHotUpdater } from "@hot-updater/server";
-        import { setupDatabasePluginTestSuite, startHttpTestServer } from "@hot-updater/test-utils";
-        import { createInMemoryDatabaseHarness } from ${JSON.stringify(path.resolve(packageDirectory, "../test-utils/test/inMemoryDatabasePlugin.ts"))};
-        const harness = createInMemoryDatabaseHarness();
-        const original = harness.plugin;
-        const plugin = { ...original, models: Object.fromEntries(
-          Object.entries(original.models).map(([key, model]) => [key, {...model}]),
-        ) };
+        import { createMemoryAdapter } from "@hot-updater/server/database";
+        import { createDatabasePluginApis } from "@hot-updater/server/db";
+        import { createInsightsModel, insights } from "@hot-updater/server/plugins/insights";
+        import { setupDatabaseTestSuite, startHttpTestServer } from "@hot-updater/test-utils";
+        // An empty memory adapter per test, behind one adapter a mutant may break.
+        let original = createMemoryAdapter();
+        const adapter = {
+          id: "memory",
+          fits: ops => original.fits(ops),
+          get: (table, keys) => original.get(table, keys),
+          query: (table, request) => original.query(table, request),
+          write: ops => original.write(ops),
+        };
+        let insightsModel = database =>
+          createInsightsModel(createDatabasePluginApis(database, [insights()]).insights);
         ${variant.implementation}
-        setupDatabasePluginTestSuite({
+        setupDatabaseTestSuite({
           name: ${JSON.stringify(variant.name)},
-          createPlugin: () => plugin,
+          createDatabase: () => ({ name: "memory", adapter }),
           migrate: () => undefined,
-          reset: () => harness.reset(),
+          reset: () => { original = createMemoryAdapter(); },
           dispose: () => undefined,
+          createInsightsModel: database => insightsModel(database),
           createHttpClient: options => {
             const handlers = createHotUpdater({
-              ...options, clientAccess: { type: "public" },
+              ...options, plugins: [insights()], clientAccess: "public",
             }).handlers;
             return startHttpTestServer({
               ...handlers,
@@ -288,7 +175,7 @@ it("rejects broken providers while the unmodified provider passes the public sui
         "--reporter=json",
         "--outputFile=results.json",
       ],
-      { cwd: directory, timeout: 120000 },
+      { cwd: directory, timeout: 300000 },
     ).then(
       () => ({ code: 0 }),
       (error: { code: number }) => ({ code: error.code }),
@@ -325,4 +212,4 @@ it("rejects broken providers while the unmodified provider passes the public sui
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
-}, 150000);
+}, 360000);

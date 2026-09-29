@@ -4,6 +4,8 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 import {
+  HOT_UPDATER_PLUGINS_PATH,
+  renderHotUpdaterPlugins,
   renderImportStatements,
   resolvePackageVersion,
   transformEnv,
@@ -122,13 +124,35 @@ for (const provider of providers) {
         ...info,
         named: info.named?.filter((name) => name !== config.storage.callee),
       }));
+    // Firestore has no migration tooling, so its key script writes the schema settings first.
+    const migrate =
+      provider === "firebase"
+        ? `\n/** Writes the schema settings the database checks before its first read. */\nexport const migrate = () =>\n  ${config.database.initializer.replace(/^firebaseDatabase\(/, "migrateFirebaseDatabase(")};\n`
+        : "";
+    const keyImports =
+      provider === "firebase"
+        ? imports.map((info) =>
+            info.pkg === "@hot-updater/firebase"
+              ? {
+                  ...info,
+                  named: [...(info.named ?? []), "migrateFirebaseDatabase"],
+                }
+              : info,
+          )
+        : imports;
     await save(
       path.join(output, "app", `api-key.config.${build}.ts`),
-      `${renderImportStatements(imports)}\n\nif (existsSync(".env.hotupdater")) {
+      `${renderImportStatements(keyImports)}\n\nif (existsSync(".env.hotupdater")) {
   process.loadEnvFile(".env.hotupdater");
-}\n\n${config.helperStatements.map(({ code }) => code).join("\n\n")}\n\nexport const database = ${config.database.initializer};\n`,
+}\n\n${config.helperStatements.map(({ code }) => code).join("\n\n")}\n\nexport const database = ${config.database.initializer};\n${migrate}`,
     );
   }
+  // The plugin list init generates beside the config; the prebuilt server
+  // imports the same list.
+  await save(
+    path.join(output, "app", HOT_UPDATER_PLUGINS_PATH),
+    renderHotUpdaterPlugins(`@hot-updater/${provider}`),
+  );
   await cp(
     path.join(packageRoot, "agent/provision-api-key.mjs"),
     path.join(output, "app/provision-api-key.mjs"),
@@ -270,6 +294,12 @@ for (const provider of providers) {
       awsInputs.buildDynamoDBBackupInput(placeholder("DYNAMODB_TABLE_NAME")),
     );
     await save(
+      path.join(output, "dynamodb/schema-settings.json"),
+      awsInputs.buildDynamoDBSchemaSettingsInput(
+        placeholder("DYNAMODB_TABLE_NAME"),
+      ),
+    );
+    await save(
       path.join(output, "iam/trust-policy.json"),
       awsInputs.LAMBDA_EDGE_TRUST_POLICY,
     );
@@ -301,20 +331,6 @@ for (const provider of providers) {
         await readFile(path.join(root, "iac", file), "utf8"),
       );
     }
-    const dynamodbSource = await readFile(
-      path.join(root, "src/dynamoDB.ts"),
-      "utf8",
-    );
-    await save(
-      path.join(output, "reference/dynamodb-constants.json"),
-      Object.fromEntries(
-        [
-          ...dynamodbSource.matchAll(
-            /export const (DYNAMODB_\w+)\s*=\s*"([^"]+)"/g,
-          ),
-        ].map(([, key, value]) => [key, value]),
-      ),
-    );
     Object.assign(requirements, {
       accountId: null,
       region: null,

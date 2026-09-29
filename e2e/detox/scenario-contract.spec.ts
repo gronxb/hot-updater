@@ -268,10 +268,12 @@ describe("Detox scenario contract", () => {
       ),
     );
 
-    // When / Then: server Insights needs no per-profile flag, while every
-    // profile still declares its client access policy explicitly.
+    // When / Then: every profile runs the insights() plugin and declares its
+    // client access policy explicitly.
     for (const source of sources) {
-      expect(source).toContain("clientAccess: { type:");
+      expect(source).toContain("plugins: [insights()],");
+      expect(source).toContain('clientAccess: "public",');
+      expect(source).not.toContain("clientAccess: { type:");
       expect(source).not.toContain("insights: true");
       expect(source).not.toContain("features:");
     }
@@ -640,13 +642,13 @@ describe("Detox scenario contract", () => {
   });
 
   it("resolves deployed console IDs to files and keeps artifact cleanup independent of Releases", async () => {
-    const { createDatabasePluginHarness } =
-      await import("../../packages/hot-updater/src/commands/databasePlugin.testFixtures.ts");
+    const { createDatabaseHarness } =
+      await import("../../packages/hot-updater/src/commands/database.testFixtures.ts");
     const { commitDeployment } =
       await import("../../packages/hot-updater/src/commands/deployTransaction.ts");
-    const { createDatabaseClient, deleteRelease, updateReleasePolicy } =
+    const { rowToBundle } =
       await import("../../plugins/plugin-core/dist/index.mjs");
-    const harness = createDatabasePluginHarness();
+    const harness = createDatabaseHarness();
     const base = {
       assetBaseStorageUri: "storage://assets",
       gitCommitHash: null,
@@ -671,12 +673,12 @@ describe("Detox scenario contract", () => {
         },
       ],
     };
-    harness.setBundles([
+    await harness.setBundles([
       base,
       { ...base, id: "android-file", platform: "android" },
     ]);
     const { release } = await commitDeployment({
-      database: harness.plugin,
+      core: harness.core,
       bundle: file,
       release: {
         channel: "production",
@@ -706,12 +708,21 @@ describe("Detox scenario contract", () => {
       presets: ["@babel/preset-typescript"],
     })!.code!;
     const controller = new Script(transformed).runInNewContext({
-      createDatabaseClient,
+      rowToBundle,
       fixtureSession: { platform: "ios" },
       logDetoxFixture: () => {},
       withConfiguredDatabase: (
-        callback: (database: typeof harness.plugin) => unknown,
-      ) => callback(harness.plugin),
+        callback: (configured: {
+          core: typeof harness.core;
+          database: typeof harness.database;
+          plugins: undefined;
+        }) => unknown,
+      ) =>
+        callback({
+          core: harness.core,
+          database: harness.database,
+          plugins: undefined,
+        }),
     });
     const buildOutput = ["Release ID", "Bundle ID", "Artifact ID", "Build ID"]
       .map((label) => `│  ${label}: ${file.id}`)
@@ -731,24 +742,24 @@ describe("Detox scenario contract", () => {
       "bundle not found",
     );
 
-    await updateReleasePolicy({
-      database: harness.plugin,
+    await harness.core.updateReleasePolicy({
       releaseId: id,
       patch: { enabled: false },
     });
-    await deleteRelease({ database: harness.plugin, releaseId: id });
+    await harness.core.deleteRelease({ releaseId: id });
     expect(await harness.releases()).toEqual([]);
-    const files = await createDatabaseClient(harness.plugin).getBundles({
-      where: { platform: "ios" },
+    const files = await harness.core.listBundles({
+      platform: "ios",
       limit: 100,
     });
-    expect(
-      files.data.map((bundle: { id: string }) => bundle.id).sort(),
-    ).toEqual([base.id, file.id]);
+    expect(files.map(({ bundle }) => bundle.id).sort()).toEqual([
+      base.id,
+      file.id,
+    ]);
     await expect(
       controller.fetchProviderBundleById(file.id),
     ).resolves.toMatchObject(file);
-    await createDatabaseClient(harness.plugin).deleteBundleById(file.id);
+    await harness.core.deleteBundles([file.id]);
     await expect(controller.fetchProviderBundleById(file.id)).rejects.toThrow(
       "bundle not found",
     );

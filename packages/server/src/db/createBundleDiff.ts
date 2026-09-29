@@ -12,15 +12,17 @@ import {
 } from "@hot-updater/core";
 import type {
   Bundle,
-  BundleRepository,
+  ConfiguredDatabase,
   StoragePluginWith,
 } from "@hot-updater/plugin-core";
 import {
   createBundleStorageKey,
-  createDatabaseClient,
   getManifestAssetDownloadPath,
   resolveManifestAssetStorageUri,
+  rowToBundle,
 } from "@hot-updater/plugin-core";
+
+import { createDatabaseCoreApi } from "../core/api";
 
 type BundleManifest = {
   bundleId: string;
@@ -41,7 +43,8 @@ export interface CreateBundleDiffInput {
 }
 
 export interface CreateBundleDiffDependencies {
-  databasePlugin: BundleRepository;
+  /** The config's database: a provider's, or `standaloneRepository`. */
+  database: ConfiguredDatabase;
   storagePlugin: StoragePluginWith<"get" | "put" | "delete"> | null;
 }
 
@@ -239,7 +242,7 @@ export async function createBundleDiff(
   deps: CreateBundleDiffDependencies,
   options: CreateBundleDiffOptions = {},
 ) {
-  const database = createDatabaseClient(deps.databasePlugin);
+  const core = createDatabaseCoreApi(deps.database);
 
   if (!deps.storagePlugin) {
     throw new Error("Storage plugin is not configured");
@@ -249,8 +252,11 @@ export async function createBundleDiff(
     throw new Error("Base bundle must be different from the target bundle");
   }
 
-  const baseBundle = await database.getBundleById(baseBundleId);
-  const targetBundle = await database.getBundleById(bundleId);
+  const [baseBundle, targetBundle] = (
+    await Promise.all([core.getBundle(baseBundleId), core.getBundle(bundleId)])
+  ).map((detail) =>
+    detail === null ? null : rowToBundle(detail.bundle, detail.patches),
+  );
 
   if (!baseBundle || !targetBundle) {
     throw new Error("Bundle not found");
@@ -347,7 +353,7 @@ export async function createBundleDiff(
     ...targetBundle,
     patches,
   };
-  await database.updateBundleById(targetBundle.id, updatedBundle);
+  await core.updateBundle(targetBundle.id, { patches });
 
   if (
     previousPatch?.patchStorageUri &&

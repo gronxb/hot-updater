@@ -16,6 +16,9 @@ export default defineConfig([
     deps: {
       alwaysBundle: [
         "@hot-updater/server",
+        "@hot-updater/server/database",
+        "@hot-updater/server/plugins/api-keys",
+        "@hot-updater/server/plugins/insights",
         "@hot-updater/plugin-core",
         "@hot-updater/plugin-core/internal",
         "hono/lambda-edge",

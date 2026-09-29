@@ -1,10 +1,9 @@
 import { stripVTControlCharacters } from "node:util";
 
 import type { Bundle } from "@hot-updater/plugin-core";
-import { updateReleasePolicy } from "@hot-updater/plugin-core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { createDatabasePluginHarness } from "./databasePlugin.testFixtures";
+import { createDatabaseHarness } from "./database.testFixtures";
 import {
   commitDeployment,
   type DeployReleasePolicy,
@@ -34,7 +33,7 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
 
 vi.mock("@/utils/printBanner", () => ({ printBanner: vi.fn() }));
 
-const databaseHarness = createDatabasePluginHarness();
+const databaseHarness = createDatabaseHarness();
 const originalIsTTY = Object.getOwnPropertyDescriptor(process.stdin, "isTTY");
 let sourceReleaseId: string;
 
@@ -58,13 +57,12 @@ const sourceRelease: DeployReleasePolicy = {
 };
 
 const releasesForChannel = async (name: string) => {
-  const channel = (
-    await databaseHarness.plugin.models.channels.list({})
-  ).channels.find((row) => row.name === name);
-  if (channel === undefined) return [];
-  return databaseHarness.plugin.models.releases.findMany({
-    channelId: channel.id,
+  const channel = await databaseHarness.core.findChannelByName(name);
+  if (channel === null) return [];
+  return databaseHarness.core.listReleases({
     limit: 100,
+    order: "desc",
+    filter: { kind: "channelPlatform", channelId: channel.id, platform: "ios" },
   });
 };
 
@@ -73,13 +71,13 @@ describe("handlePromote", () => {
     vi.clearAllMocks();
     databaseHarness.reset();
     const result = await commitDeployment({
-      database: databaseHarness.plugin,
+      core: databaseHarness.core,
       bundle: sourceBundle,
       release: sourceRelease,
     });
     sourceReleaseId = result.release!.id;
-    databaseHarness.commit.mockClear();
-    loadConfig.mockResolvedValue({ database: databaseHarness.plugin });
+    databaseHarness.deploy.mockClear();
+    loadConfig.mockResolvedValue({ database: databaseHarness.database });
   });
 
   afterEach(() => {
@@ -141,13 +139,12 @@ describe("handlePromote", () => {
     });
 
     await expect(
-      databaseHarness.plugin.models.releases.findById(sourceReleaseId),
+      databaseHarness.core.getRelease(sourceReleaseId),
     ).resolves.toMatchObject({ enabled: false, revision: 2 });
     expect((await releasesForChannel("beta"))[0]).toMatchObject({
       enabled: true,
       operation: "PROMOTE",
     });
-    expect(databaseHarness.commit).toHaveBeenCalledTimes(1);
     expect(
       stripVTControlCharacters(String(log.message.mock.calls[0]?.[0])),
     ).toContain("disabled atomically");
@@ -159,8 +156,7 @@ describe("handlePromote", () => {
       value: true,
     });
     confirm.mockImplementationOnce(async () => {
-      await updateReleasePolicy({
-        database: databaseHarness.plugin,
+      await databaseHarness.core.updateReleasePolicy({
         patch: { message: "changed concurrently" },
         releaseId: sourceReleaseId,
       });
@@ -174,7 +170,7 @@ describe("handlePromote", () => {
 
     expect(await releasesForChannel("beta")).toEqual([]);
     await expect(
-      databaseHarness.plugin.models.releases.findById(sourceReleaseId),
+      databaseHarness.core.getRelease(sourceReleaseId),
     ).resolves.toMatchObject({
       enabled: true,
       message: "changed concurrently",

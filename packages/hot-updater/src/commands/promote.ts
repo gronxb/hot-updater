@@ -1,6 +1,6 @@
 import { loadConfig, p } from "@hot-updater/cli-tools";
-import type { BundleRepository, ReleaseRow } from "@hot-updater/plugin-core";
-import { promoteRelease } from "@hot-updater/plugin-core";
+import type { ConfiguredDatabase, ReleaseRow } from "@hot-updater/plugin-core";
+import { createDatabaseCoreApi } from "@hot-updater/server/db";
 
 import { printBanner } from "@/utils/printBanner";
 
@@ -15,7 +15,7 @@ export interface PromoteOptions {
   readonly yes?: boolean;
 }
 
-const safeDispose = async (database: BundleRepository): Promise<void> => {
+const safeDispose = async (database: ConfiguredDatabase): Promise<void> => {
   try {
     await database.dispose?.();
   } catch (error) {
@@ -61,16 +61,17 @@ export const handlePromote = async (
   const config = await loadConfig(null);
   const database = config.database;
   try {
+    const core = createDatabaseCoreApi(database);
     const [source, channels] = await Promise.all([
-      database.models.releases.findById(sourceReleaseId),
-      database.models.channels.list({}),
+      core.getRelease(sourceReleaseId),
+      core.listChannels(),
     ]);
     if (source === null) {
       p.log.error(`No bundle with ID ${sourceReleaseId}.`);
       process.exit(1);
     }
     const sourceChannel =
-      channels.channels.find(({ id }) => id === source.channel_id)?.name ??
+      channels.find(({ id }) => id === source.channel_id)?.name ??
       source.channel_id;
     p.log.message(summarizePlan(source, sourceChannel, targetChannel, action));
     if (!options.yes) {
@@ -90,9 +91,8 @@ export const handlePromote = async (
       }
     }
     const result = await withPublicBundleErrors(() =>
-      promoteRelease({
+      core.promoteRelease({
         action,
-        database,
         expectedRevision: source.revision,
         releaseId: source.id,
         targetChannel,

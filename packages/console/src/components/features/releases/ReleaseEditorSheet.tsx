@@ -204,11 +204,14 @@ function RolloutPercentageInput({
 export function ReleaseEditorSheet({
   channels,
   onOpenChange,
+  onShowScope,
   open,
   releaseId,
 }: {
   channels: readonly ChannelRow[];
   onOpenChange: (open: boolean) => void;
+  /** Lists the bundles of this release's catalog scope: its channel, platform, and target kind. */
+  onShowScope?: (scopeKey: string) => void;
   open: boolean;
   releaseId: string;
 }) {
@@ -698,6 +701,16 @@ export function ReleaseEditorSheet({
                       <dd className="mt-1 break-all font-mono text-foreground">
                         {release.scope_key}
                       </dd>
+                      {onShowScope ? (
+                        <Button
+                          className="mt-1 h-auto px-0 text-xs"
+                          onClick={() => onShowScope(release.scope_key)}
+                          size="sm"
+                          variant="link"
+                        >
+                          Show bundles for this target
+                        </Button>
+                      ) : null}
                     </div>
                   </dl>
                   {diagnostics.isError ? (

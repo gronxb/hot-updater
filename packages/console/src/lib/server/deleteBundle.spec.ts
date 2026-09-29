@@ -1,12 +1,14 @@
 // @vitest-environment node
 
-import type {
-  Bundle,
-  DatabaseClient,
-  StoragePlugin,
-  StoragePluginWith,
+import {
+  type Bundle,
+  type BundleDetail,
+  bundleToPatchRows,
+  bundleToRow,
+  createStoragePlugin as createCoreStoragePlugin,
+  type StoragePlugin,
+  type StoragePluginWith,
 } from "@hot-updater/plugin-core";
-import { createStoragePlugin as createCoreStoragePlugin } from "@hot-updater/plugin-core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { deleteBundle, deleteBundles } from "./deleteBundle";
@@ -20,32 +22,21 @@ const baseBundle: Bundle = {
   assetBaseStorageUri: "s3://bucket/assets",
 };
 
-function createDatabaseClient(bundle: Bundle | null = baseBundle) {
-  const bundles = bundle ? [bundle] : [];
-  const databaseClient = {
-    getChannels: vi.fn(),
-    insertChannel: vi.fn(),
-    deleteChannel: vi.fn(),
-    getBundleById: vi.fn(async () => bundle),
-    getBundles: vi.fn(async () => ({
-      data: bundles,
-      pagination: {
-        currentPage: 1,
-        hasNextPage: false,
-        hasPreviousPage: false,
-        total: bundles.length,
-        totalPages: 1,
-      },
-    })),
-    updateBundleById: vi.fn(),
-    insertBundle: vi.fn(),
-    deleteBundleById: vi.fn(),
-    mutate: vi.fn(),
-  } satisfies DatabaseClient;
-  databaseClient.mutate.mockImplementation(async (operation) =>
-    operation(databaseClient),
+const detailOf = (bundle: Bundle): BundleDetail => ({
+  bundle: bundleToRow(bundle),
+  patches: bundleToPatchRows(bundle),
+  childCount: 0,
+});
+
+/** Core over these bundles: point reads, and one delete call. */
+function createCore(...bundles: Bundle[]) {
+  const details = new Map(
+    bundles.map((bundle) => [bundle.id, detailOf(bundle)]),
   );
-  return databaseClient;
+  return {
+    getBundle: vi.fn(async (id: string) => details.get(id) ?? null),
+    deleteBundles: vi.fn(async (_ids: readonly string[]): Promise<void> => {}),
+  };
 }
 
 function createStoragePlugin(
@@ -76,30 +67,24 @@ afterEach(() => {
 
 describe("deleteBundle", () => {
   it("deletes the bundle from database and storage", async () => {
-    const databaseClient = createDatabaseClient();
+    const core = createCore(baseBundle);
     const deleteFromStorage = vi.fn();
     const storagePlugin = createStoragePlugin("s3", {
       delete: deleteFromStorage,
     });
 
-    await deleteBundle(
-      { bundleId: baseBundle.id },
-      { databaseClient, storagePlugin },
-    );
+    await deleteBundle({ bundleId: baseBundle.id }, { core, storagePlugin });
 
-    expect(databaseClient.getBundles).toHaveBeenCalledWith({
-      where: { id: { in: [baseBundle.id] } },
-      limit: 1,
-    });
-    expect(databaseClient.mutate).toHaveBeenCalledOnce();
-    expect(databaseClient.deleteBundleById).toHaveBeenCalledWith(baseBundle.id);
+    expect(core.getBundle).toHaveBeenCalledWith(baseBundle.id);
+    expect(core.deleteBundles).toHaveBeenCalledOnce();
+    expect(core.deleteBundles).toHaveBeenCalledWith([baseBundle.id]);
     expect(deleteFromStorage).toHaveBeenCalledWith({
       storageUri: baseBundle.manifestStorageUri,
     });
 
-    expect(
-      databaseClient.deleteBundleById.mock.invocationCallOrder[0],
-    ).toBeLessThan(deleteFromStorage.mock.invocationCallOrder[0]);
+    expect(core.deleteBundles.mock.invocationCallOrder[0]).toBeLessThan(
+      deleteFromStorage.mock.invocationCallOrder[0]!,
+    );
   });
 
   it("deletes multiple bundles with one database commit", async () => {
@@ -108,17 +93,7 @@ describe("deleteBundle", () => {
       id: "0195a408-8f13-7d9b-8df4-123456789abd",
       manifestStorageUri: "s3://bucket/second-bundle/manifest.json",
     };
-    const databaseClient = createDatabaseClient();
-    databaseClient.getBundles.mockResolvedValue({
-      data: [baseBundle, secondBundle],
-      pagination: {
-        currentPage: 1,
-        hasNextPage: false,
-        hasPreviousPage: false,
-        total: 2,
-        totalPages: 1,
-      },
-    });
+    const core = createCore(baseBundle, secondBundle);
     const deleteFromStorage = vi.fn();
     const storagePlugin = createStoragePlugin("s3", {
       delete: deleteFromStorage,
@@ -126,12 +101,15 @@ describe("deleteBundle", () => {
 
     await deleteBundles(
       { bundleIds: [baseBundle.id, secondBundle.id] },
-      { databaseClient, storagePlugin },
+      { core, storagePlugin },
     );
 
-    expect(databaseClient.getBundles).toHaveBeenCalledOnce();
-    expect(databaseClient.mutate).toHaveBeenCalledOnce();
-    expect(databaseClient.deleteBundleById).toHaveBeenCalledTimes(2);
+    expect(core.getBundle).toHaveBeenCalledTimes(2);
+    expect(core.deleteBundles).toHaveBeenCalledOnce();
+    expect(core.deleteBundles).toHaveBeenCalledWith([
+      baseBundle.id,
+      secondBundle.id,
+    ]);
     expect(deleteFromStorage).toHaveBeenCalledWith({
       storageUri: baseBundle.manifestStorageUri,
     });
@@ -141,43 +119,43 @@ describe("deleteBundle", () => {
   });
 
   it("deletes found bundles and reports stale ids in the same batch", async () => {
-    const databaseClient = createDatabaseClient();
+    const core = createCore(baseBundle);
     const storagePlugin = createStoragePlugin();
 
     await expect(
       deleteBundles(
         { bundleIds: [baseBundle.id, "missing-bundle"] },
-        { databaseClient, storagePlugin },
+        { core, storagePlugin },
       ),
     ).resolves.toEqual({
       deletedBundleIds: [baseBundle.id],
       missingBundleIds: ["missing-bundle"],
     });
 
-    expect(databaseClient.mutate).toHaveBeenCalledOnce();
-    expect(databaseClient.deleteBundleById).toHaveBeenCalledWith(baseBundle.id);
+    expect(core.deleteBundles).toHaveBeenCalledOnce();
+    expect(core.deleteBundles).toHaveBeenCalledWith([baseBundle.id]);
     expect(storagePlugin.delete).toHaveBeenCalledWith({
       storageUri: baseBundle.manifestStorageUri,
     });
   });
 
   it("deduplicates ids before database and storage deletion", async () => {
-    const databaseClient = createDatabaseClient();
+    const core = createCore(baseBundle);
     const storagePlugin = createStoragePlugin();
 
     await deleteBundles(
       { bundleIds: [baseBundle.id, baseBundle.id] },
-      { databaseClient, storagePlugin },
+      { core, storagePlugin },
     );
 
-    expect(databaseClient.getBundles).toHaveBeenCalledOnce();
-    expect(databaseClient.mutate).toHaveBeenCalledOnce();
-    expect(databaseClient.deleteBundleById).toHaveBeenCalledOnce();
+    expect(core.getBundle).toHaveBeenCalledOnce();
+    expect(core.deleteBundles).toHaveBeenCalledOnce();
+    expect(core.deleteBundles).toHaveBeenCalledWith([baseBundle.id]);
     expect(storagePlugin.delete).toHaveBeenCalledOnce();
   });
 
   it("skips storage deletion for http urls", async () => {
-    const databaseClient = createDatabaseClient({
+    const core = createCore({
       ...baseBundle,
       manifestStorageUri: "https://cdn.example.com/manifest.json",
     });
@@ -186,18 +164,15 @@ describe("deleteBundle", () => {
       delete: deleteFromStorage,
     });
 
-    await deleteBundle(
-      { bundleId: baseBundle.id },
-      { databaseClient, storagePlugin },
-    );
+    await deleteBundle({ bundleId: baseBundle.id }, { core, storagePlugin });
 
-    expect(databaseClient.deleteBundleById).toHaveBeenCalledOnce();
+    expect(core.deleteBundles).toHaveBeenCalledOnce();
     expect(deleteFromStorage).not.toHaveBeenCalled();
   });
 
   it("uses an owning https plugin before the direct URL fallback", async () => {
     const storageUri = "https://cdn.example.com/bundle.zip";
-    const databaseClient = createDatabaseClient({
+    const core = createCore({
       ...baseBundle,
       manifestStorageUri: storageUri,
     });
@@ -206,34 +181,28 @@ describe("deleteBundle", () => {
       delete: deleteFromStorage,
     });
 
-    await deleteBundle(
-      { bundleId: baseBundle.id },
-      { databaseClient, storagePlugin },
-    );
+    await deleteBundle({ bundleId: baseBundle.id }, { core, storagePlugin });
 
     expect(deleteFromStorage).toHaveBeenCalledWith({ storageUri });
   });
 
   it("throws before database deletion when the storage protocol is unsupported", async () => {
-    const databaseClient = createDatabaseClient({
+    const core = createCore({
       ...baseBundle,
       manifestStorageUri: "r2://bucket/bundle/manifest.json",
     });
     const storagePlugin = createStoragePlugin("s3");
 
     await expect(
-      deleteBundle(
-        { bundleId: baseBundle.id },
-        { databaseClient, storagePlugin },
-      ),
+      deleteBundle({ bundleId: baseBundle.id }, { core, storagePlugin }),
     ).rejects.toThrow("No storage plugin for protocol: r2");
 
-    expect(databaseClient.deleteBundleById).not.toHaveBeenCalled();
+    expect(core.deleteBundles).not.toHaveBeenCalled();
     expect(storagePlugin.delete).not.toHaveBeenCalled();
   });
 
   it("keeps bundle deletion successful when storage cleanup fails", async () => {
-    const databaseClient = createDatabaseClient();
+    const core = createCore(baseBundle);
     const deleteFromStorage = vi.fn(async () => {
       throw new Error("storage delete failed");
     });
@@ -245,13 +214,10 @@ describe("deleteBundle", () => {
       .mockImplementation(() => undefined);
 
     await expect(
-      deleteBundle(
-        { bundleId: baseBundle.id },
-        { databaseClient, storagePlugin },
-      ),
+      deleteBundle({ bundleId: baseBundle.id }, { core, storagePlugin }),
     ).resolves.toBeUndefined();
 
-    expect(databaseClient.deleteBundleById).toHaveBeenCalledOnce();
+    expect(core.deleteBundles).toHaveBeenCalledOnce();
     expect(deleteFromStorage).toHaveBeenCalledWith({
       storageUri: baseBundle.manifestStorageUri,
     });
@@ -262,7 +228,7 @@ describe("deleteBundle", () => {
   });
 
   it("can return without waiting for storage cleanup", async () => {
-    const databaseClient = createDatabaseClient();
+    const core = createCore(baseBundle);
     const deleteFromStorage = vi.fn(
       () => new Promise<{ deleted: true }>(() => undefined),
     );
@@ -273,11 +239,11 @@ describe("deleteBundle", () => {
     await expect(
       deleteBundle(
         { bundleId: baseBundle.id },
-        { databaseClient, storagePlugin, waitForStorageCleanup: false },
+        { core, storagePlugin, waitForStorageCleanup: false },
       ),
     ).resolves.toBeUndefined();
 
-    expect(databaseClient.deleteBundleById).toHaveBeenCalledOnce();
+    expect(core.deleteBundles).toHaveBeenCalledOnce();
     expect(deleteFromStorage).toHaveBeenCalledWith({
       storageUri: baseBundle.manifestStorageUri,
     });
@@ -290,7 +256,7 @@ describe("deleteBundle", () => {
       manifestFileHash: "manifest-hash",
       manifestStorageUri: "s3://bucket/bundles/bundle-copy-id/manifest.json",
     };
-    const databaseClient = createDatabaseClient(bundleWithManifest);
+    const core = createCore(bundleWithManifest);
     const deleteFromStorage = vi.fn();
     const storagePlugin = createStoragePlugin("s3", {
       delete: deleteFromStorage,
@@ -301,10 +267,10 @@ describe("deleteBundle", () => {
 
     await deleteBundle(
       { bundleId: bundleWithManifest.id },
-      { databaseClient, storagePlugin },
+      { core, storagePlugin },
     );
 
-    expect(databaseClient.getBundles).toHaveBeenCalledOnce();
+    expect(core.getBundle).toHaveBeenCalledOnce();
     expect(fetchManifest).not.toHaveBeenCalled();
     expect(deleteFromStorage).toHaveBeenCalledTimes(1);
     expect(deleteFromStorage).toHaveBeenCalledWith({
@@ -322,19 +288,30 @@ describe("deleteBundle", () => {
   });
 
   it("throws before database deletion when manifest storage uses an unsupported storage protocol", async () => {
-    const databaseClient = createDatabaseClient({
+    const core = createCore({
       ...baseBundle,
       manifestStorageUri: "r2://bucket/bundle/manifest.json",
     });
     const storagePlugin = createStoragePlugin("s3");
 
     await expect(
-      deleteBundle(
-        { bundleId: baseBundle.id },
-        { databaseClient, storagePlugin },
-      ),
+      deleteBundle({ bundleId: baseBundle.id }, { core, storagePlugin }),
     ).rejects.toThrow("No storage plugin for protocol: r2");
 
-    expect(databaseClient.deleteBundleById).not.toHaveBeenCalled();
+    expect(core.deleteBundles).not.toHaveBeenCalled();
+  });
+
+  it("leaves storage alone when a release still uses the bundle", async () => {
+    const core = createCore(baseBundle);
+    core.deleteBundles.mockRejectedValueOnce(
+      new Error("bundles: referenced by releases"),
+    );
+    const storagePlugin = createStoragePlugin("s3");
+
+    await expect(
+      deleteBundle({ bundleId: baseBundle.id }, { core, storagePlugin }),
+    ).rejects.toThrow("referenced by releases");
+
+    expect(storagePlugin.delete).not.toHaveBeenCalled();
   });
 });

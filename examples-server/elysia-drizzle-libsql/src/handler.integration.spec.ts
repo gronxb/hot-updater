@@ -2,9 +2,12 @@ import fs from "fs/promises";
 import path from "path";
 import { fileURLToPath } from "url";
 
-import type { Bundle } from "@hot-updater/core";
-import type { HotUpdaterAPI } from "@hot-updater/server";
 import { drizzleAdapter } from "@hot-updater/server/adapters/drizzle";
+import { createDatabasePluginApis } from "@hot-updater/server/db";
+import {
+  createInsightsModel,
+  insights as insightsPlugin,
+} from "@hot-updater/server/plugins/insights";
 import {
   createHttpTestClient,
   setupReleaseCatalogTestSuite,
@@ -30,7 +33,6 @@ describe("Hot Updater Handler Integration Tests (Elysia)", () => {
   let serverProcess: ReturnType<typeof execa> | null = null;
   let baseUrl: string;
   let testDbPath: string;
-  let hotUpdater: HotUpdaterAPI;
   const port = 13580;
 
   beforeAll(async () => {
@@ -67,6 +69,16 @@ describe("Hot Updater Handler Integration Tests (Elysia)", () => {
       env: { TEST_DB_PATH: testDbPath },
     });
 
+    // Write the settings rows the server checks before its first read
+    await execa(
+      "node",
+      [hotUpdaterCli, "db", "migrate", "src/db.ts", "--yes"],
+      {
+        cwd: projectRoot,
+        env: { TEST_DB_PATH: testDbPath },
+      },
+    );
+
     serverProcess = spawnServerProcess({
       serverCommand: ["pnpm", "exec", "tsx", "src/index.ts"],
       port,
@@ -75,43 +87,31 @@ describe("Hot Updater Handler Integration Tests (Elysia)", () => {
     });
 
     await waitForServer(baseUrl, 180); // 180 attempts * 200ms = 36 seconds
-
-    const db = await import("./db.js");
-    hotUpdater = db.hotUpdater;
   }, 60000);
 
   afterAll(async () => {
     await cleanupServer(baseUrl, serverProcess, testDbPath);
   }, 60000);
 
-  setupBundleMethodsTestSuite({
-    getBundleById: (id: string) => hotUpdater.getBundleById(id),
-    insertBundle: (bundle: Bundle) => hotUpdater.insertBundle(bundle),
-    getBundles: (options) => hotUpdater.getBundles(options),
-    updateBundleById: (bundleId: string, newBundle: Partial<Bundle>) =>
-      hotUpdater.updateBundleById(bundleId, newBundle),
-    deleteBundleById: (bundleId: string) =>
-      hotUpdater.deleteBundleById(bundleId),
-  });
+  const getClient = () =>
+    createHttpTestClient({
+      clientBaseUrl: `${baseUrl}/hot-updater`,
+      adminBaseUrl: `${baseUrl}/hot-updater/admin`,
+      adminHeaders: { Authorization: `Bearer ${TEST_ADMIN_AUTH_TOKEN}` },
+    });
 
-  setupReleaseCatalogTestSuite({
-    getClient: () =>
-      createHttpTestClient({
-        clientBaseUrl: `${baseUrl}/hot-updater`,
-        adminBaseUrl: `${baseUrl}/hot-updater/admin`,
-        adminHeaders: { Authorization: `Bearer ${TEST_ADMIN_AUTH_TOKEN}` },
-      }),
-  });
+  setupBundleMethodsTestSuite({ getClient });
 
-  it("atomically batches lazy Insights events and heads without catalog transactions", async () => {
+  setupReleaseCatalogTestSuite({ getClient });
+
+  it("rolls back a lazy Insights event whose head update fails, then records the retry", async () => {
     const { db, client } = await import("./drizzle.js");
-    const schema = await import("../hot-updater-schema.js");
-    const insights = drizzleAdapter({
-      db: async () => db,
-      provider: "sqlite",
-      schema,
-      transaction: false,
-    }).models.insights;
+    const insights = createInsightsModel(
+      createDatabasePluginApis(
+        drizzleAdapter({ db: async () => db, provider: "sqlite" }),
+        [insightsPlugin()],
+      ).insights,
+    );
     const previous = {
       id: "00000000-0000-7000-8000-000000009880",
       type: "UPDATE_APPLIED" as const,
@@ -139,8 +139,9 @@ describe("Hot Updater Handler Integration Tests (Elysia)", () => {
       received_at_ms: 200,
     };
     await insights.recordEvent({ event: previous });
+    // The installation's head exists, so the second event updates it.
     await client.execute(
-      "CREATE TRIGGER reject_test_head BEFORE INSERT ON bundle_event_heads WHEN new.received_at_ms = 200 BEGIN SELECT raise(abort, 'injected head failure'); END",
+      "CREATE TRIGGER reject_test_head BEFORE UPDATE ON bundle_event_heads WHEN new.received_at_ms = 200 BEGIN SELECT raise(abort, 'injected head failure'); END",
     );
     try {
       await expect(insights.recordEvent({ event: next })).rejects.toThrow();

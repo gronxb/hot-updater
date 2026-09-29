@@ -92,20 +92,19 @@ of replacing them with a handwritten schema.
   the `--sql` flag.
 </Callout>
 
-Regenerate Prisma Client and apply the merged schema:
+Regenerate Prisma Client, apply the merged schema, then finish the migration:
 
 ```bash
 npx prisma generate
 npx prisma db push
+npx hot-updater db migrate src/hotUpdater.ts --yes
 ```
 
-## Query semantics
-
-Prisma uses backend collations and pattern engines for string filters. The
-adapter therefore rejects explicit insensitive comparisons and pattern values
-containing backend metacharacters before querying Prisma. Explicit sensitive
-mode is available only for PostgreSQL, CockroachDB, and MongoDB; other
-providers reject it instead of silently using their default collation.
+Prisma creates the tables, or `prisma migrate` does when you use migrations.
+`db migrate` then sets the collations Prisma cannot declare on PostgreSQL and
+MySQL, so strings compare by their bytes, and writes the settings rows the
+server checks before its first read. Until they exist, the server answers 503.
+Run the same steps again after upgrading Hot Updater.
 
 ## CLI configuration
 

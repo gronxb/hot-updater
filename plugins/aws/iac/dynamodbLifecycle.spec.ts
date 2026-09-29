@@ -28,7 +28,6 @@ vi.mock("@aws-sdk/client-dynamodb", () => ({
   waitUntilTableExists: mocks.waitUntilTableExists,
 }));
 
-import { DYNAMODB_UPDATE_INDEX_NAME } from "../src/dynamoDB";
 import { DynamoDBManager } from "./dynamodb";
 
 const compatibleTable = {
@@ -37,24 +36,8 @@ const compatibleTable = {
   AttributeDefinitions: [
     { AttributeName: "pk", AttributeType: "S" },
     { AttributeName: "sk", AttributeType: "S" },
-    { AttributeName: "gsi1pk", AttributeType: "S" },
-    { AttributeName: "gsi1sk", AttributeType: "S" },
   ],
   BillingModeSummary: { BillingMode: "PAY_PER_REQUEST" },
-  GlobalSecondaryIndexes: [
-    {
-      IndexName: DYNAMODB_UPDATE_INDEX_NAME,
-      KeySchema: [
-        { AttributeName: "gsi1pk", KeyType: "HASH" },
-        { AttributeName: "gsi1sk", KeyType: "RANGE" },
-      ],
-      OnDemandThroughput: {
-        MaxReadRequestUnits: 4_000,
-        MaxWriteRequestUnits: 100,
-      },
-      Projection: { ProjectionType: "ALL" },
-    },
-  ],
   KeySchema: [
     { AttributeName: "pk", KeyType: "HASH" },
     { AttributeName: "sk", KeyType: "RANGE" },

@@ -28,6 +28,10 @@
       "import": "./dist/adapters/prisma.mjs",
       "require": "./dist/adapters/prisma.cjs"
     },
+    "./database": {
+      "import": "./dist/database/index.mjs",
+      "require": "./dist/database/index.cjs"
+    },
     "./db": {
       "import": "./dist/db/index.mjs",
       "require": "./dist/db/index.cjs"
@@ -35,6 +39,18 @@
     "./node": {
       "import": "./dist/node.mjs",
       "require": "./dist/node.cjs"
+    },
+    "./plugins": {
+      "import": "./dist/plugins/index.mjs",
+      "require": "./dist/plugins/index.cjs"
+    },
+    "./plugins/api-keys": {
+      "import": "./dist/plugins/api-keys/index.mjs",
+      "require": "./dist/plugins/api-keys/index.cjs"
+    },
+    "./plugins/insights": {
+      "import": "./dist/plugins/insights/index.mjs",
+      "require": "./dist/plugins/insights/index.cjs"
     },
     "./package.json": "./package.json"
   },
@@ -84,8 +100,11 @@
     "@electric-sql/pglite": "catalog:db",
     "@hot-updater/standalone": "workspace:*",
     "@hot-updater/test-utils": "workspace:*",
+    "@libsql/client": "catalog:db",
     "@types/express": "^5.0.0",
     "@types/node": "catalog:",
+    "@types/pg": "^8.11.10",
+    "drizzle-kit": "^0.31.6",
     "drizzle-orm": "catalog:db",
     "express": "^4.22.2",
     "execa": "catalog:tools",
@@ -93,6 +112,10 @@
     "kysely-pglite-dialect": "catalog:db",
     "mongodb": "catalog:db",
     "msw": "^2.7.0",
-    "uuidv7": "catalog:"
+    "mysql2": "catalog:db",
+    "pg": "catalog:db",
+    "prisma": "catalog:db",
+    "uuidv7": "catalog:",
+    "wrangler": "^4.69.0"
   }
 }

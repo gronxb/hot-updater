@@ -1,9 +1,20 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { createInMemoryDatabasePlugin } from "../../../test-utils/test/inMemoryDatabasePlugin";
+import { builtInSettings } from "../database/builtInDatabase";
 import { createHotUpdater } from "../index";
-import { createSchemaManagedDatabase } from "../runtime.testFixtures";
-import { HOT_UPDATER_SCHEMA_VERSION } from "../schema/types";
+import { insights } from "../plugins/insights";
+import {
+  createFencedDatabase,
+  createRuntimeDatabase,
+} from "../runtime.testFixtures";
+
+/** A server with the Insights plugin on an empty in-memory database. */
+const start = () =>
+  createHotUpdater({
+    database: createRuntimeDatabase(),
+    plugins: [insights()],
+    clientAccess: "public",
+  });
 
 const event = {
   appVersion: "1.0.0",
@@ -36,10 +47,7 @@ afterEach(() => {
 
 describe("createHotUpdater Insights", () => {
   it("ingests a downloaded bundle and exposes the running and pending state until apply", async () => {
-    const hotUpdater = createHotUpdater({
-      database: createInMemoryDatabasePlugin(),
-      clientAccess: { type: "public" },
-    });
+    const hotUpdater = start();
     const downloaded = {
       ...event,
       type: "UPDATE_DOWNLOADED",
@@ -96,12 +104,8 @@ describe("createHotUpdater Insights", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-08-12T00:00:00.000Z"));
     const receivedAtMs = Date.now();
-    const database = createInMemoryDatabasePlugin();
-    const append = vi.spyOn(database.models.insights, "recordEvent");
-    const hotUpdater = createHotUpdater({
-      database,
-      clientAccess: { type: "public" },
-    });
+    const hotUpdater = start();
+    const append = vi.spyOn(hotUpdater.api.insights, "recordEvent");
 
     const ingestion = await hotUpdater.handlers.client(eventRequest());
     vi.advanceTimersByTime(1);
@@ -123,12 +127,10 @@ describe("createHotUpdater Insights", () => {
     expect(ingestion.status).toBe(204);
     expect(append).toHaveBeenCalledWith(
       expect.objectContaining({
-        event: expect.objectContaining({
-          install_id: "install-1",
-          metadata: expect.objectContaining({ sdk_version: "2.0.0" }),
-          to_bundle_id: "bundle-1",
-          type: "UNCHANGED",
-        }),
+        install_id: "install-1",
+        metadata: expect.objectContaining({ sdk_version: "2.0.0" }),
+        to_bundle_id: "bundle-1",
+        type: "UNCHANGED",
       }),
     );
     expect(events.status).toBe(200);
@@ -169,10 +171,7 @@ describe("createHotUpdater Insights", () => {
 
   it("serves scoped bundle counts and the same half-open recovery drill-down", async () => {
     vi.useFakeTimers();
-    const hotUpdater = createHotUpdater({
-      database: createInMemoryDatabasePlugin(),
-      clientAccess: { type: "public" },
-    });
+    const hotUpdater = start();
     const report = async (
       receivedAtMs: number,
       overrides: Record<string, unknown>,
@@ -261,10 +260,7 @@ describe("createHotUpdater Insights", () => {
     "/events?sinceMs=20&beforeReceivedAtMs=10",
     "/installations/install-1/events?platform=ios&channel=production&bundleId=B&outcome=applied",
   ])("rejects ambiguous or invalid Insights query %s", async (path) => {
-    const hotUpdater = createHotUpdater({
-      database: createInMemoryDatabasePlugin(),
-      clientAccess: { type: "public" },
-    });
+    const hotUpdater = start();
     expect(
       (
         await hotUpdater.handlers.admin(
@@ -274,28 +270,26 @@ describe("createHotUpdater Insights", () => {
     ).toBe(400);
   });
 
-  it("checks the official schema before Insights reads and writes", async () => {
-    const database = createSchemaManagedDatabase(
-      "kysely",
-      HOT_UPDATER_SCHEMA_VERSION,
-    );
-    const createMigrator = vi.spyOn(database, "createMigrator");
-    const hotUpdater = createHotUpdater({
-      database,
-      clientAccess: { type: "public" },
+  it("checks the schema settings before Insights reads and writes", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const unmigrated = createHotUpdater({
+      database: await createFencedDatabase("kysely"),
+      plugins: [insights()],
+      clientAccess: "public",
+    });
+    const migrated = createHotUpdater({
+      database: await createFencedDatabase("kysely", builtInSettings),
+      plugins: [insights()],
+      clientAccess: "public",
     });
 
-    expect((await hotUpdater.handlers.client(eventRequest())).status).toBe(204);
-    await hotUpdater.insights.listEvents({});
-
-    expect(createMigrator).toHaveBeenCalledOnce();
+    expect((await unmigrated.handlers.client(eventRequest())).status).toBe(503);
+    expect((await migrated.handlers.client(eventRequest())).status).toBe(204);
+    error.mockRestore();
   });
 
   it("keeps ingestion and queries on separate handler surfaces", async () => {
-    const hotUpdater = createHotUpdater({
-      database: createInMemoryDatabasePlugin(),
-      clientAccess: { type: "public" },
-    });
+    const hotUpdater = start();
 
     expect((await hotUpdater.handlers.client(eventRequest())).status).toBe(204);
     const clientQuery = await hotUpdater.handlers.client(
@@ -313,12 +307,8 @@ describe("createHotUpdater Insights", () => {
   });
 
   it("records same-file selection as no change and rejects a fourth event type", async () => {
-    const database = createInMemoryDatabasePlugin();
-    const recordEvent = vi.spyOn(database.models.insights, "recordEvent");
-    const hotUpdater = createHotUpdater({
-      database,
-      clientAccess: { type: "public" },
-    });
+    const hotUpdater = start();
+    const recordEvent = vi.spyOn(hotUpdater.api.insights, "recordEvent");
     const selection = {
       ...event,
       fromReleaseId: "previous-release",
@@ -327,8 +317,8 @@ describe("createHotUpdater Insights", () => {
     expect(
       (await hotUpdater.handlers.client(eventRequest(selection))).status,
     ).toBe(204);
-    expect(recordEvent).toHaveBeenCalledWith({
-      event: expect.objectContaining({
+    expect(recordEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
         type: "UNCHANGED",
         from_bundle_id: null,
         metadata: expect.objectContaining({ update_strategy: null }),
@@ -336,7 +326,7 @@ describe("createHotUpdater Insights", () => {
         to_release_id: "selected-release",
         to_bundle_id: event.toBundleId,
       }),
-    });
+    );
     const response = await hotUpdater.handlers.client(
       eventRequest({
         ...selection,
@@ -350,10 +340,7 @@ describe("createHotUpdater Insights", () => {
   });
 
   it("returns a stable client error for malformed event payloads", async () => {
-    const hotUpdater = createHotUpdater({
-      database: createInMemoryDatabasePlugin(),
-      clientAccess: { type: "public" },
-    });
+    const hotUpdater = start();
 
     const response = await hotUpdater.handlers.client(
       eventRequest({ ...event, platform: "web" }),
@@ -368,10 +355,7 @@ describe("createHotUpdater Insights", () => {
   it.each(["installId", "userId"] as const)(
     "rejects a 256-character event %s",
     async (field) => {
-      const hotUpdater = createHotUpdater({
-        database: createInMemoryDatabasePlugin(),
-        clientAccess: { type: "public" },
-      });
+      const hotUpdater = start();
 
       const response = await hotUpdater.handlers.client(
         eventRequest({ ...event, [field]: "x".repeat(256) }),
@@ -385,10 +369,7 @@ describe("createHotUpdater Insights", () => {
   );
 
   it("preserves a leading Unicode BOM in exact installation and current-user IDs", async () => {
-    const hotUpdater = createHotUpdater({
-      database: createInMemoryDatabasePlugin(),
-      clientAccess: { type: "public" },
-    });
+    const hotUpdater = start();
     const installId = "\uFEFFinstall";
     const userId = "\uFEFFuser";
     expect(
@@ -422,10 +403,7 @@ describe("createHotUpdater Insights", () => {
   it.each(["\uD800", "\uDC00"])(
     "rejects an unmatched surrogate identity %j",
     async (installId) => {
-      const hotUpdater = createHotUpdater({
-        database: createInMemoryDatabasePlugin(),
-        clientAccess: { type: "public" },
-      });
+      const hotUpdater = start();
       expect(
         (
           await hotUpdater.handlers.client(
@@ -437,10 +415,7 @@ describe("createHotUpdater Insights", () => {
   );
 
   it("rejects 256-character installation query identities", async () => {
-    const hotUpdater = createHotUpdater({
-      database: createInMemoryDatabasePlugin(),
-      clientAccess: { type: "public" },
-    });
+    const hotUpdater = start();
     const tooLong = "x".repeat(256);
 
     const user = await hotUpdater.handlers.admin(
@@ -457,10 +432,7 @@ describe("createHotUpdater Insights", () => {
   it.each(["fromReleaseId", "toReleaseId"] as const)(
     "rejects an omitted %s instead of treating it as null",
     async (field) => {
-      const hotUpdater = createHotUpdater({
-        database: createInMemoryDatabasePlugin(),
-        clientAccess: { type: "public" },
-      });
+      const hotUpdater = start();
       const payload: Record<string, unknown> = { ...event };
       delete payload[field];
 

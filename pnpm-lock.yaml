@@ -5,10 +5,58 @@ settings:
   excludeLinksFromLockfile: false
 
 catalogs:
+  aws:
+    '@aws-sdk/client-s3':
+      specifier: 3.1066.0
+      version: 3.1066.0
+  db:
+    '@electric-sql/pglite':
+      specifier: 0.4.1
+      version: 0.4.1
+    '@libsql/client':
+      specifier: 0.15.15
+      version: 0.15.15
+    '@prisma/client':
+      specifier: 6.19.3
+      version: 6.19.3
+    drizzle-orm:
+      specifier: 0.45.2
+      version: 0.45.2
+    kysely:
+      specifier: 0.28.17
+      version: 0.28.17
+    kysely-pglite-dialect:
+      specifier: 1.2.0
+      version: 1.2.0
+    mongodb:
+      specifier: 6.20.0
+      version: 6.20.0
+    mysql2:
+      specifier: 3.19.1
+      version: 3.19.1
+    pg:
+      specifier: 8.13.1
+      version: 8.13.1
+    prisma:
+      specifier: 6.19.3
+      version: 6.19.3
   default:
+    '@types/node':
+      specifier: ^20
+      version: 20.19.43
+    uuidv7:
+      specifier: ^1.0.2
+      version: 1.2.1
+    verkit:
+      specifier: 0.4.0
+      version: 0.4.0
     vitest:
       specifier: 4.1.4
       version: 4.1.4
+  firebase:
+    firebase-admin:
+      specifier: 14.2.0
+      version: 14.2.0
   hono:
     '@hono/node-server':
       specifier: 1.19.17
@@ -16,7 +64,14 @@ catalogs:
     hono:
       specifier: 4.12.34
       version: 4.12.34
+  supabase:
+    '@supabase/supabase-js':
+      specifier: 2.76.1
+      version: 2.76.1
   tools:
+    '@clack/prompts':
+      specifier: 1.7.0
+      version: 1.7.0
     execa:
       specifier: 9.5.2
       version: 9.5.2
@@ -87,6 +142,9 @@ importers:
       nx:
         specifier: 22.6.3
         version: 22.6.3
+      oxc-parser:
+        specifier: 0.141.0
+        version: 0.141.0
       oxfmt:
         specifier: ^0.43.0
         version: 0.43.0
@@ -1757,15 +1815,24 @@ importers:
       '@hot-updater/test-utils':
         specifier: workspace:*
         version: link:../test-utils
+      '@libsql/client':
+        specifier: catalog:db
+        version: 0.15.15
       '@types/express':
         specifier: ^5.0.0
         version: 5.0.6
       '@types/node':
         specifier: 'catalog:'
         version: 20.19.43
+      '@types/pg':
+        specifier: ^8.11.10
+        version: 8.20.0
+      drizzle-kit:
+        specifier: ^0.31.6
+        version: 0.31.10
       drizzle-orm:
         specifier: catalog:db
-        version: 0.45.2(@cloudflare/workers-types@4.20260611.1)(@electric-sql/pglite@0.4.1)(@libsql/client@0.15.15)(@opentelemetry/api@1.9.1)(@prisma/client@6.19.3(prisma@6.19.3(typescript@7.0.2))(typescript@7.0.2))(@types/pg@8.20.0)(kysely@0.28.17)(mysql2@3.19.1(@types/node@20.19.43))(pg@8.21.0)(prisma@6.19.3(typescript@7.0.2))
+        version: 0.45.2(@cloudflare/workers-types@4.20260611.1)(@electric-sql/pglite@0.4.1)(@libsql/client@0.15.15)(@opentelemetry/api@1.9.1)(@prisma/client@6.19.3(prisma@6.19.3(typescript@7.0.2))(typescript@7.0.2))(@types/pg@8.20.0)(kysely@0.28.17)(mysql2@3.19.1(@types/node@20.19.43))(pg@8.13.1)(prisma@6.19.3(typescript@7.0.2))
       execa:
         specifier: catalog:tools
         version: 9.5.2
@@ -1784,9 +1851,21 @@ importers:
       msw:
         specifier: ^2.7.0
         version: 2.14.6(@types/node@20.19.43)(typescript@7.0.2)
+      mysql2:
+        specifier: catalog:db
+        version: 3.19.1(@types/node@20.19.43)
+      pg:
+        specifier: catalog:db
+        version: 8.13.1
+      prisma:
+        specifier: catalog:db
+        version: 6.19.3(typescript@7.0.2)
       uuidv7:
         specifier: 'catalog:'
         version: 1.2.1
+      wrangler:
+        specifier: ^4.69.0
+        version: 4.99.0(@cloudflare/workers-types@4.20260611.1)
 
   packages/test-utils:
     devDependencies:
@@ -24387,7 +24466,7 @@ snapshots:
   '@libsql/isomorphic-ws@0.1.5':
     dependencies:
       '@types/ws': 8.18.1
-      ws: 8.21.0
+      ws: 8.21.3
     transitivePeerDependencies:
       - bufferutil
       - utf-8-validate
@@ -27140,7 +27219,9 @@ snapshots:
     transitivePeerDependencies:
       - '@babel/core'
       - '@babel/preset-env'
+      - bufferutil
       - supports-color
+      - utf-8-validate
 
   '@react-native/metro-config@0.85.2(@babel/core@7.26.0)':
     dependencies:
@@ -28284,7 +28365,7 @@ snapshots:
       '@types/phoenix': 1.6.7
       '@types/ws': 8.18.1
       tslib: 2.8.1
-      ws: 8.21.0
+      ws: 8.21.3
     transitivePeerDependencies:
       - bufferutil
       - utf-8-validate
@@ -31752,7 +31833,7 @@ snapshots:
       prisma: 6.19.3(@typescript/typescript6@6.0.2)
     optional: true
 
-  drizzle-orm@0.45.2(@cloudflare/workers-types@4.20260611.1)(@electric-sql/pglite@0.4.1)(@libsql/client@0.15.15)(@opentelemetry/api@1.9.1)(@prisma/client@6.19.3(prisma@6.19.3(typescript@7.0.2))(typescript@7.0.2))(@types/pg@8.20.0)(kysely@0.28.17)(mysql2@3.19.1(@types/node@20.19.43))(pg@8.21.0)(prisma@6.19.3(typescript@7.0.2)):
+  drizzle-orm@0.45.2(@cloudflare/workers-types@4.20260611.1)(@electric-sql/pglite@0.4.1)(@libsql/client@0.15.15)(@opentelemetry/api@1.9.1)(@prisma/client@6.19.3(prisma@6.19.3(typescript@7.0.2))(typescript@7.0.2))(@types/pg@8.20.0)(kysely@0.28.17)(mysql2@3.19.1(@types/node@20.19.43))(pg@8.13.1)(prisma@6.19.3(typescript@7.0.2)):
     optionalDependencies:
       '@cloudflare/workers-types': 4.20260611.1
       '@electric-sql/pglite': 0.4.1
@@ -31762,7 +31843,7 @@ snapshots:
       '@types/pg': 8.20.0
       kysely: 0.28.17
       mysql2: 3.19.1(@types/node@20.19.43)
-      pg: 8.21.0
+      pg: 8.13.1
       prisma: 6.19.3(typescript@7.0.2)
 
   dtrace-provider@0.8.8:
@@ -39173,7 +39254,6 @@ snapshots:
       typescript: 7.0.2
     transitivePeerDependencies:
       - magicast
-    optional: true
 
   proc-log@4.2.0: {}
 
@@ -42169,7 +42249,7 @@ snapshots:
   vite@8.0.14(@types/node@25.9.3)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.48.0)(tsx@4.22.4)(yaml@2.9.0):
     dependencies:
       lightningcss: 1.32.0
-      picomatch: 4.0.5
+      picomatch: 4.0.4
       postcss: 8.5.15
       rolldown: 1.0.2
       tinyglobby: 0.2.17

@@ -15,8 +15,10 @@ supply this CLI. Do this before remote provisioning.
   - Inputs: workspace configuration, authenticated account and established region.
   - Run: query existing projects before selecting/creating one; record its intended
     ID before creation. Inspect an existing namespace/function and upgrade files.
-    A legacy project may be reused with separate hot_updater_v1_* collections and
-    hot-updater-v1 Function; preserve old collections/functions.
+    A v0 project may be reused: v1 keeps every item in one hot_updater_v1
+    collection and serves from the hot-updater-v1 Function; preserve old
+    collections/functions. Data in hot_updater_v1_* collections (plural) comes
+    from a 1.0 release candidate: use a new project or delete those collections.
   - Verify/record: projectId and region; ownership and compatible reuse established.
   - Retry: query the same project ID/creation operation before another request.
 
@@ -40,18 +42,20 @@ supply this CLI. Do this before remote provisioning.
     accepted for creation. Record the target/index readiness.
   - Retry: inspect current indexes and wait for building ones; do not remove/recreate them.
 
-- [ ] **fb.database-key — Initialize the adapter and register the client key**
+- [ ] **fb.database-key — Write the schema settings and register the client key**
   - Requires: fb.indexes. Complete this before Function deployment, as init does.
   - Run: follow COMMON.md's Local CLI and client API key steps with working local
     ADC/service-account access. A Firebase CLI/MCP login alone may not authenticate
-    the Admin SDK. Run app/provision-api-key.mjs from the app directory.
-    Its first DB operation initializes a fresh compatible namespace and creates
-    the adapter version marker automatically before registering the key.
+    the Admin SDK. Run app/provision-api-key.mjs from the app directory. It first
+    runs app/api-key.config.ts's `migrate`, which writes the schema settings the
+    database checks before its first read (the database answers 503 until they
+    exist), then registers the key.
   - Verify/record: helper succeeds against the chosen project and the key is
-    persisted privately. An absent marker in a new empty namespace is expected
-    before the helper; do not require or manually create it as a prerequisite.
-  - Retry: the helper rejects incompatible markers/data. Investigate those errors;
-    never overwrite the marker, bypass compatibility checks or rotate the saved key.
+    persisted privately. The settings are documents with
+    `pk = private_hot_updater_settings` in hot_updater_v1; do not create them by hand.
+  - Retry: the migration is idempotent and refuses a database from an unsupported
+    engine version. Investigate those errors; never edit the settings, bypass
+    compatibility checks or rotate the saved key.
 
 - [ ] **fb.function — Deploy the server**
   - Requires: fb.database-key.

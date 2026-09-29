@@ -1,29 +1,13 @@
 import path from "path";
 import { fileURLToPath } from "url";
 
-import {
-  CreateTableCommand,
-  DynamoDBClient,
-  ListTablesCommand,
-  waitUntilTableExists,
-} from "@aws-sdk/client-dynamodb";
+import { DynamoDBClient, ListTablesCommand } from "@aws-sdk/client-dynamodb";
 import {
   CreateBucketCommand,
   HeadBucketCommand,
   S3Client,
 } from "@aws-sdk/client-s3";
-import { DYNAMODB_UPDATE_INDEX_NAME } from "@hot-updater/aws";
-import {
-  type Bundle,
-  createReleaseCatalogScopeKey,
-  encodeChannelKey,
-} from "@hot-updater/core";
-import {
-  commitReleaseCatalogMutations,
-  createUUIDv7,
-  updateReleasePolicy,
-} from "@hot-updater/plugin-core";
-import { createApiKey, type HotUpdaterAPI } from "@hot-updater/server";
+import { migrateDynamoDB } from "@hot-updater/aws";
 import { standaloneRepository } from "@hot-updater/standalone";
 import {
   createHttpTestClient,
@@ -81,37 +65,14 @@ async function createTable() {
     credentials,
   });
   await waitForDynamoDB(client);
-  await client.send(
-    new CreateTableCommand({
-      TableName: tableName,
-      BillingMode: "PAY_PER_REQUEST",
-      AttributeDefinitions: [
-        { AttributeName: "pk", AttributeType: "S" },
-        { AttributeName: "sk", AttributeType: "S" },
-        { AttributeName: "gsi1pk", AttributeType: "S" },
-        { AttributeName: "gsi1sk", AttributeType: "S" },
-      ],
-      KeySchema: [
-        { AttributeName: "pk", KeyType: "HASH" },
-        { AttributeName: "sk", KeyType: "RANGE" },
-      ],
-      GlobalSecondaryIndexes: [
-        {
-          IndexName: DYNAMODB_UPDATE_INDEX_NAME,
-          KeySchema: [
-            { AttributeName: "gsi1pk", KeyType: "HASH" },
-            { AttributeName: "gsi1sk", KeyType: "RANGE" },
-          ],
-          Projection: { ProjectionType: "ALL" },
-        },
-      ],
-    }),
-  );
-  await waitUntilTableExists(
-    { client, maxWaitTime: 30 },
-    { TableName: tableName },
-  );
   client.destroy();
+  // The table, and the schema settings the plugin checks before its first read.
+  await migrateDynamoDB({
+    region,
+    endpoint: dynamodbEndpoint,
+    credentials,
+    tableName,
+  });
 }
 
 async function createBucket() {
@@ -143,7 +104,6 @@ async function createBucket() {
 describe("Hot Updater Handler Integration Tests (Hono + DynamoDB)", () => {
   let serverProcess: ReturnType<typeof execa> | null = null;
   let baseUrl: string;
-  let hotUpdater: HotUpdaterAPI;
   let rawApiKey: string;
 
   beforeAll(async () => {
@@ -185,12 +145,11 @@ describe("Hot Updater Handler Integration Tests (Hono + DynamoDB)", () => {
     await waitForServer(baseUrl, 180);
 
     const db = await import("./db.js");
-    const created = await createApiKey({
-      apiKeys: db.database.models.apiKeys,
+    // The apiKeys() plugin the server runs, on its own tables.
+    const created = await db.hotUpdater.api.apiKeys.create({
       name: "Standalone integration test",
     });
     rawApiKey = created.apiKey;
-    hotUpdater = db.hotUpdater;
   }, 120000);
 
   afterAll(async () => {
@@ -207,25 +166,17 @@ describe("Hot Updater Handler Integration Tests (Hono + DynamoDB)", () => {
     });
   }, 60000);
 
-  setupBundleMethodsTestSuite({
-    getBundleById: (id: string) => hotUpdater.getBundleById(id),
-    insertBundle: (bundle: Bundle) => hotUpdater.insertBundle(bundle),
-    getBundles: (options) => hotUpdater.getBundles(options),
-    updateBundleById: (bundleId: string, bundle: Partial<Bundle>) =>
-      hotUpdater.updateBundleById(bundleId, bundle),
-    deleteBundleById: (bundleId: string) =>
-      hotUpdater.deleteBundleById(bundleId),
-  });
+  const getClient = () =>
+    createHttpTestClient({
+      clientBaseUrl: `${baseUrl}/hot-updater`,
+      adminBaseUrl: `${baseUrl}/hot-updater/admin`,
+      adminHeaders: { Authorization: `Bearer ${TEST_ADMIN_AUTH_TOKEN}` },
+      clientHeaders: { "x-api-key": rawApiKey },
+    });
 
-  setupReleaseCatalogTestSuite({
-    getClient: () =>
-      createHttpTestClient({
-        clientBaseUrl: `${baseUrl}/hot-updater`,
-        adminBaseUrl: `${baseUrl}/hot-updater/admin`,
-        adminHeaders: { Authorization: `Bearer ${TEST_ADMIN_AUTH_TOKEN}` },
-        clientHeaders: { "x-api-key": rawApiKey },
-      }),
-  });
+  setupBundleMethodsTestSuite({ getClient });
+
+  setupReleaseCatalogTestSuite({ getClient });
 
   it("accepts authenticated events without granting client query access", async () => {
     const event = {
@@ -288,89 +239,43 @@ describe("Hot Updater Handler Integration Tests (Hono + DynamoDB)", () => {
     await expect(authorized.json()).resolves.toEqual({ error: "Not found" });
   });
 
-  it("updates Release policy through the authenticated standalone repository", async () => {
-    const database = standaloneRepository({
+  it("deploys and updates Release policy through the authenticated standalone repository", async () => {
+    const { core } = standaloneRepository({
       baseUrl: `${baseUrl}/hot-updater/admin`,
       commonHeaders: {
         Authorization: `Bearer ${TEST_ADMIN_AUTH_TOKEN}`,
       },
     });
     const bundleId = "hono-dynamodb-update-target-app-version";
-    const channelName = "production";
-    const channelKey = encodeChannelKey(channelName);
-    const channel = (
-      await database.models.channels.insert({
-        row: { id: `channel:${channelKey}`, name: channelName },
-        onConflict: "returnExisting",
-      })
-    ).row;
-    const scopeKey = createReleaseCatalogScopeKey({
-      channelKey,
-      platform: "ios",
-      strategy: "APP_VERSION",
-    });
 
-    await hotUpdater.insertBundle({
-      assetBaseStorageUri: `s3://${bucketName}/assets`,
-      id: bundleId,
-      platform: "ios",
-      gitCommitHash: null,
-      manifestFileHash: `${bundleId}-manifest-hash`,
-      manifestStorageUri: `s3://${bucketName}/${bundleId}/manifest.json`,
-    });
-    const now = Date.now();
-    await commitReleaseCatalogMutations({
-      database,
-      mutations: [
-        {
-          mutation: {
-            operation: "insert",
-            row: {
-              bundle_id: bundleId,
-              channel_id: channel.id,
-              created_at_ms: now,
-              enabled: true,
-              fingerprint_hash: null,
-              id: createUUIDv7(),
-              kind: "BUNDLE",
-              message: null,
-              operation: "DEPLOY",
-              platform: "ios",
-              revision: 1,
-              rollout_cohort_count: 1_000,
-              scope_key: scopeKey,
-              should_force_update: false,
-              source_release_id: null,
-              strategy: "APP_VERSION",
-              target_app_version: "1.x.x",
-              target_cohorts: [],
-              updated_at_ms: now,
-            },
-          },
-          scope: {
-            channelId: channel.id,
-            channelName,
-            fingerprintHash: null,
-            platform: "ios",
-            scopeKey,
-            strategy: "APP_VERSION",
-          },
-          updatedAtMs: now,
+    const [deployed] = await core.deploy([
+      {
+        bundle: {
+          assetBaseStorageUri: `s3://${bucketName}/assets`,
+          id: bundleId,
+          platform: "ios",
+          gitCommitHash: null,
+          manifestFileHash: `${bundleId}-manifest-hash`,
+          manifestStorageUri: `s3://${bucketName}/${bundleId}/manifest.json`,
         },
-      ],
-    });
-    const [release] = await database.models.releases.findMany({
-      bundleId,
-      limit: 1,
-    });
-    if (release === undefined) throw new Error("Expected the deployed Release");
-    await updateReleasePolicy({
-      database,
+        release: {
+          channel: "production",
+          enabled: true,
+          fingerprintHash: null,
+          message: null,
+          shouldForceUpdate: false,
+          targetAppVersion: "1.x.x",
+        },
+      },
+    ]);
+    const release = deployed!.release!;
+    await core.updateReleasePolicy({
       releaseId: release.id,
+      expectedRevision: release.revision,
       patch: { targetAppVersion: "1.0.2" },
     });
 
-    expect(await database.models.releases.findById(release.id)).toMatchObject({
+    await expect(core.getRelease(release.id)).resolves.toMatchObject({
       id: release.id,
       target_app_version: "1.0.2",
     });

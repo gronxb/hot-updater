@@ -9,6 +9,8 @@ fi
 
 mkdir -p data
 export TEST_DB_PATH="$(pwd)/data/kysely-${service_port}"
+# Each run starts from an empty database; an older layout is never converted.
+rm -rf "${TEST_DB_PATH}"
 cp .env.hotupdater src/.env.hotupdater
 
 node ../../packages/hot-updater/dist/index.mjs db generate src/db.ts --yes

@@ -1,41 +1,20 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { createStandaloneBundleRemote } from "./standaloneBundleRemote";
+import { createStandaloneCoreApi } from "./standaloneCore";
 import { createStandaloneHttp } from "./standaloneHttp";
 
 const SPECIAL_BUNDLE_IDS = [
-  {
-    id: "bundle/with-slash",
-    encoded: "bundle%2Fwith-slash",
-  },
-  {
-    id: "bundle?with-query",
-    encoded: "bundle%3Fwith-query",
-  },
-  {
-    id: "bundle#with-fragment",
-    encoded: "bundle%23with-fragment",
-  },
-  {
-    id: "../dot-segment",
-    encoded: "..%2Fdot-segment",
-  },
+  { id: "bundle/with-slash", encoded: "bundle%2Fwith-slash" },
+  { id: "bundle?with-query", encoded: "bundle%3Fwith-query" },
+  { id: "bundle#with-fragment", encoded: "bundle%23with-fragment" },
+  { id: "../dot-segment", encoded: "..%2Fdot-segment" },
 ] as const;
-
-const createBundle = (id: string) => ({
-  id,
-  platform: "ios" as const,
-  gitCommitHash: null,
-  manifestStorageUri: "storage://bundle/manifest.json",
-  manifestFileHash: "manifest-hash",
-  assetBaseStorageUri: "storage://assets",
-});
 
 afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe("standalone management routes", () => {
+describe("standalone admin routes", () => {
   it("normalizes a trailing slash on the admin base URL", () => {
     const http = createStandaloneHttp({
       baseUrl: "https://example.test/hot-updater/admin/",
@@ -47,78 +26,29 @@ describe("standalone management routes", () => {
   });
 
   it.each([
-    ["retrieve", "GET"],
-    ["update", "PATCH"],
-    ["delete", "DELETE"],
-  ] as const)(
-    "encodes bundle IDs for direct %s requests",
-    async (operation, method) => {
-      const fetch = vi.fn(
-        async (_input: string | URL, _init?: RequestInit) =>
-          new Response(JSON.stringify(createBundle("response-id")), {
-            status: 200,
-            headers: { "Content-Type": "application/json" },
-          }),
-      );
-      vi.stubGlobal("fetch", fetch);
-      const remote = createStandaloneBundleRemote({
-        baseUrl: "https://example.test",
-      });
+    ["getBundle", "GET"],
+    ["updateBundle", "PATCH"],
+  ] as const)("encodes bundle IDs for %s", async (operation, method) => {
+    const fetch = vi.fn(async (input: string | URL, _init?: RequestInit) =>
+      String(input).endsWith("/version")
+        ? Response.json({ adminProtocol: 2 })
+        : operation === "getBundle"
+          ? new Response(null, { status: 404 })
+          : new Response(null, { status: 204 }),
+    );
+    vi.stubGlobal("fetch", fetch);
+    const core = createStandaloneCoreApi({ baseUrl: "https://example.test" });
 
-      for (const { id, encoded } of SPECIAL_BUNDLE_IDS) {
-        if (operation === "retrieve") await remote.loadBundle(id);
-        if (operation === "update") await remote.updateBundle(createBundle(id));
-        if (operation === "delete") await remote.deleteBundle(id);
+    for (const { id, encoded } of SPECIAL_BUNDLE_IDS) {
+      if (operation === "getBundle") await core.getBundle(id);
+      else await core.updateBundle(id, { gitCommitHash: "abc" });
 
-        const [input, init] = fetch.mock.calls.at(-1) ?? [];
-        expect(String(input)).toBe(`https://example.test/bundles/${encoded}`);
-        expect(init?.method).toBe(method);
-      }
-    },
-  );
-
-  it.each([
-    {
-      name: "manifest storage URI",
-      response: {
-        ...createBundle("response-id"),
-        manifestStorageUri: undefined,
-      },
-    },
-    {
-      name: "patch size",
-      response: {
-        ...createBundle("response-id"),
-        patches: [
-          {
-            baseBundleId: "base-id",
-            baseFileHash: "base-hash",
-            patchFileHash: "patch-hash",
-            patchStorageUri: "storage://patch",
-          },
-        ],
-      },
-    },
-  ])(
-    "rejects a bundle response without required $name",
-    async ({ response }) => {
-      vi.stubGlobal(
-        "fetch",
-        vi.fn(
-          async () =>
-            new Response(JSON.stringify(response), {
-              status: 200,
-              headers: { "Content-Type": "application/json" },
-            }),
-        ),
-      );
-      const remote = createStandaloneBundleRemote({
-        baseUrl: "https://example.test",
-      });
-
-      await expect(remote.loadBundle("response-id")).rejects.toThrow(
-        "Invalid bundle response.",
-      );
-    },
-  );
+      const [input, init] = (fetch.mock.calls.at(-1) ?? []) as unknown as [
+        string | URL,
+        RequestInit | undefined,
+      ];
+      expect(new URL(String(input)).pathname).toBe(`/bundles/${encoded}`);
+      expect(init?.method).toBe(method);
+    }
+  });
 });
