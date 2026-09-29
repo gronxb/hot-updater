@@ -43,7 +43,9 @@ export function ReportingDevicesSummary({
           {metric.period}, including no-change reports. Filtered by platform,
           channel, and app version. The chart counts unique reporting
           installations per {metric.interval}. Unique counts are estimates,
-          typically within about 3%.
+          typically within about 3%. On DynamoDB and Firestore the server
+          updates totals in batches: when the Console cannot write to the
+          database, totals can trail new reports by up to a minute.
           {partial
             ? " Only part of the history is available; the total is a lower bound."
             : ""}
