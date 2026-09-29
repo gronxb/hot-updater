@@ -162,14 +162,11 @@ export const createDynamoDBStore = ({
           .map(({ pk, sk }) => ({ pk, sk }));
         for (let round = 0; pending.length > 0; round += 1) {
           if (round > 0) await sleep(2 ** round * 10);
+          const RequestItems = {
+            [tableName]: { Keys: pending, ConsistentRead: true },
+          };
           const result = await documents
-            .send(
-              new BatchGetCommand({
-                RequestItems: {
-                  [tableName]: { Keys: pending, ConsistentRead: true },
-                },
-              }),
-            )
+            .send(new BatchGetCommand({ RequestItems }))
             .catch(missingTable);
           for (const item of result.Responses?.[tableName] ?? []) {
             found.set(idOf(item as unknown as KvKey), toRow(item));
@@ -187,13 +184,11 @@ export const createDynamoDBStore = ({
           .map(({ pk, sk }) => ({ DeleteRequest: { Key: { pk, sk } } }));
         for (let round = 0; pending.length > 0; round += 1) {
           if (round > 0) await sleep(2 ** round * 10);
-          const result = await documents
-            .send(
-              new BatchWriteCommand({ RequestItems: { [tableName]: pending } }),
-            )
+          const RequestItems = { [tableName]: pending };
+          const { UnprocessedItems } = await documents
+            .send(new BatchWriteCommand({ RequestItems }))
             .catch(missingTable);
-          pending = (result.UnprocessedItems?.[tableName] ??
-            []) as typeof pending;
+          pending = (UnprocessedItems?.[tableName] ?? []) as typeof pending;
         }
       }
     },

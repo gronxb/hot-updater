@@ -29,12 +29,8 @@ export interface DynamoDBConfig extends DynamoDBClientConfig {
 /** The DynamoDB client ignores the CloudFront and batching settings. */
 const adapterOf = ({ tableName, ...clientConfig }: DynamoDBConfig) => {
   const client = new DynamoDBClient(clientConfig);
-  return {
-    client,
-    adapter: createKvAdapter({
-      store: createDynamoDBStore({ client, tableName }),
-    }),
-  };
+  const store = createDynamoDBStore({ client, tableName });
+  return { client, adapter: createKvAdapter({ store }) };
 };
 
 /**
