@@ -12,7 +12,6 @@ import {
   type SupabaseServiceRoleConfig,
 } from "./supabaseConfig";
 import { createSupabaseSignedUrlBatcher } from "./supabaseSignedUrlBatcher";
-import type { Database } from "./types";
 
 const isNotFoundError = (error: { message?: string } | null | undefined) =>
   error?.message?.toLowerCase().includes("not found") === true;
@@ -48,7 +47,7 @@ export const supabaseStorage = (
 ): StoragePluginWith<
   "put" | "get" | "getDownloadUrl" | "exists" | "delete"
 > => {
-  const supabase = createClient<Database>(
+  const supabase = createClient(
     config.supabaseUrl,
     resolveSupabaseServiceRoleKey(config),
   );

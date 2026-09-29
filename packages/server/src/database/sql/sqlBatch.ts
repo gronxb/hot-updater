@@ -46,8 +46,9 @@ const failureOf = (
   const from = `SELECT 1 FROM ${compiler.tableOf(table)} WHERE`;
   const key = (value: DatabaseKey) =>
     compiler.keyMatch(statement, table.key, value);
+  // Locked where the dialect locks (PostgreSQL), so no writer moves a guarded row before the batch commits.
   const exists = (value: DatabaseKey, v?: number) =>
-    `EXISTS (${from} ${key(value)}${v === undefined ? "" : ` AND ${quote(DATABASE_VERSION_COLUMN)} = ${statement.bind(v)}`})`;
+    `EXISTS (${from} ${key(value)}${v === undefined ? "" : ` AND ${quote(DATABASE_VERSION_COLUMN)} = ${statement.bind(v)}`}${compiler.lock})`;
   /** Another row already holding a unique value this op writes. */
   const clashes = (row: StoredRow, own?: DatabaseKey, changed?: string[]) =>
     table.indexes
