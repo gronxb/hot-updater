@@ -1,6 +1,8 @@
 import type { ApiKeyRow } from "@hot-updater/plugin-core";
 import { createServerFn } from "@tanstack/react-start";
 
+import { consoleAccess } from "./console-access";
+
 export type ApiKeyView = Omit<ApiKeyRow, "hash">;
 
 export const toApiKeyView = ({
@@ -42,14 +44,17 @@ const apiKeyManagement = async () => {
 
 export const listApiKeysRpc = createServerFn({
   method: "GET",
-}).handler(async (): Promise<ApiKeyView[]> => {
-  const apiKeys = await apiKeyManagement();
-  return [...(await apiKeys.list())].sort(
-    (left, right) => right.created_at_ms - left.created_at_ms,
-  );
-});
+})
+  .middleware([consoleAccess])
+  .handler(async (): Promise<ApiKeyView[]> => {
+    const apiKeys = await apiKeyManagement();
+    return [...(await apiKeys.list())].sort(
+      (left, right) => right.created_at_ms - left.created_at_ms,
+    );
+  });
 
 export const createApiKeyRpc = createServerFn({ method: "POST" })
+  .middleware([consoleAccess])
   .validator(parseName)
   .handler(async ({ data }) => {
     const apiKeys = await apiKeyManagement();
@@ -61,6 +66,7 @@ export const createApiKeyRpc = createServerFn({ method: "POST" })
   });
 
 export const revokeApiKeyRpc = createServerFn({ method: "POST" })
+  .middleware([consoleAccess])
   .validator(parseId)
   .handler(async ({ data }): Promise<ApiKeyView> => {
     const apiKeys = await apiKeyManagement();

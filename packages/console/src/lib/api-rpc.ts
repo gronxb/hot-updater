@@ -7,6 +7,7 @@ import {
 } from "@hot-updater/plugin-core";
 import { createServerFn } from "@tanstack/react-start";
 
+import { consoleAccess } from "./console-access";
 import { DEFAULT_PAGE_LIMIT } from "./constants";
 import { withPublicBundleMutationErrors } from "./public-bundle-error";
 import { listReleases, readReleaseFilter } from "./server/listReleases";
@@ -78,6 +79,7 @@ const prepare = async () => {
 };
 
 export const getReleases = createServerFn({ method: "GET" })
+  .middleware([consoleAccess])
   .inputValidator((input: GetReleasesInput | undefined) => ({
     filter: readReleaseFilter(input?.filter),
     ...(input?.afterReleaseId === undefined
@@ -98,12 +100,14 @@ export const getReleases = createServerFn({ method: "GET" })
   });
 
 export const getRelease = createServerFn({ method: "GET" })
+  .middleware([consoleAccess])
   .inputValidator((input: { releaseId: string }) => input)
   .handler(async ({ data }) =>
     (await prepare()).core.getRelease(data.releaseId),
   );
 
 export const updateRelease = createServerFn({ method: "POST" })
+  .middleware([consoleAccess])
   .inputValidator((input: ReleaseMutationInput) => input)
   .handler(async ({ data }) => {
     const { core } = await prepare();
@@ -111,6 +115,7 @@ export const updateRelease = createServerFn({ method: "POST" })
   });
 
 export const preflightRelease = createServerFn({ method: "POST" })
+  .middleware([consoleAccess])
   .inputValidator((input: ReleaseMutationInput) => input)
   .handler(async ({ data }) => {
     const { core } = await prepare();
@@ -120,6 +125,7 @@ export const preflightRelease = createServerFn({ method: "POST" })
   });
 
 export const deleteRelease = createServerFn({ method: "POST" })
+  .middleware([consoleAccess])
   .inputValidator((input: DeleteReleaseInput) => input)
   .handler(async ({ data }) => {
     const { core } = await prepare();
@@ -127,6 +133,7 @@ export const deleteRelease = createServerFn({ method: "POST" })
   });
 
 export const promoteRelease = createServerFn({ method: "POST" })
+  .middleware([consoleAccess])
   .inputValidator(
     (input: {
       action: "copy" | "move";
@@ -141,36 +148,40 @@ export const promoteRelease = createServerFn({ method: "POST" })
   });
 
 export const getReleaseCatalogDiagnostics = createServerFn({ method: "GET" })
+  .middleware([consoleAccess])
   .inputValidator((input: { scopeKey: string }) => input)
   .handler(async ({ data }) =>
     (await prepare()).core.getReleaseCatalogRow(data.scopeKey),
   );
 
 // GET /api/config
-export const getConfig = createServerFn().handler(async () => {
-  try {
-    const { config } = await prepare();
-    return { console: config.console };
-  } catch (error) {
-    console.error("Error during config retrieval:", error);
-    throw error;
-  }
-});
+export const getConfig = createServerFn()
+  .middleware([consoleAccess])
+  .handler(async () => {
+    try {
+      const { config } = await prepare();
+      return { console: config.console };
+    } catch (error) {
+      console.error("Error during config retrieval:", error);
+      throw error;
+    }
+  });
 
 // GET /api/channels
-export const getChannels = createServerFn().handler(
-  async (): Promise<ChannelRow[]> => {
+export const getChannels = createServerFn()
+  .middleware([consoleAccess])
+  .handler(async (): Promise<ChannelRow[]> => {
     try {
       return await (await prepare()).core.listChannels();
     } catch (error) {
       console.error("Error during channel retrieval:", error);
       throw error;
     }
-  },
-);
+  });
 
 // POST /api/channels
 export const createChannel = createServerFn({ method: "POST" })
+  .middleware([consoleAccess])
   .inputValidator((input: { name: string }) => {
     const name = typeof input?.name === "string" ? input.name.trim() : "";
     if (name.length === 0) throw new Error("Channel name is required.");
@@ -194,6 +205,7 @@ export const createChannel = createServerFn({ method: "POST" })
 
 // DELETE /api/channels/:id
 export const deleteChannel = createServerFn({ method: "POST" })
+  .middleware([consoleAccess])
   .inputValidator((input: { id: string }) => input)
   .handler(async ({ data }): Promise<{ data: ChannelDeleteResult }> => {
     try {
@@ -205,24 +217,27 @@ export const deleteChannel = createServerFn({ method: "POST" })
   });
 
 // GET /api/config-loaded
-export const getConfigLoaded = createServerFn().handler(async () => {
-  try {
-    const [{ getRequest }, { requireConsoleAccess }] = await Promise.all([
-      import("@tanstack/react-start/server"),
-      import("./server/auth.server"),
-    ]);
-    await requireConsoleAccess(getRequest());
-    const { isConfigLoaded } = await import("./server/config.server");
-    const configLoaded = isConfigLoaded();
-    return { configLoaded };
-  } catch (error) {
-    console.error("Error during config loaded retrieval:", error);
-    throw error;
-  }
-});
+export const getConfigLoaded = createServerFn()
+  .middleware([consoleAccess])
+  .handler(async () => {
+    try {
+      const [{ getRequest }, { requireConsoleAccess }] = await Promise.all([
+        import("@tanstack/react-start/server"),
+        import("./server/auth.server"),
+      ]);
+      await requireConsoleAccess(getRequest());
+      const { isConfigLoaded } = await import("./server/config.server");
+      const configLoaded = isConfigLoaded();
+      return { configLoaded };
+    } catch (error) {
+      console.error("Error during config loaded retrieval:", error);
+      throw error;
+    }
+  });
 
 // GET /api/bundles: newest first, one page by key; the total is one counter row.
 export const getBundles = createServerFn({ method: "GET" })
+  .middleware([consoleAccess])
   .inputValidator((input: GetBundlesInput | undefined) => {
     if (input?.after !== undefined && input.before !== undefined) {
       throw new Error("Page by after or before, not both.");
@@ -280,6 +295,7 @@ export const getBundles = createServerFn({ method: "GET" })
 
 // GET /api/bundles/:bundleId
 export const getBundle = createServerFn({ method: "GET" })
+  .middleware([consoleAccess])
   .inputValidator((input: GetBundleInput) => input)
   .handler(async ({ data }) => {
     try {
@@ -294,6 +310,7 @@ export const getBundle = createServerFn({ method: "GET" })
   });
 
 export const getBundleChildren = createServerFn({ method: "GET" })
+  .middleware([consoleAccess])
   .inputValidator((input: GetBundleChildrenInput) => input)
   .handler(async ({ data }) => {
     try {
@@ -307,6 +324,7 @@ export const getBundleChildren = createServerFn({ method: "GET" })
   });
 
 export const getBundleChildCounts = createServerFn({ method: "GET" })
+  .middleware([consoleAccess])
   .inputValidator((input: GetBundleChildCountsInput) => {
     if (!Array.isArray(input?.bundleIds) || input.bundleIds.length > 100) {
       throw new Error("Choose up to 100 bundles.");
@@ -326,6 +344,7 @@ export const getBundleChildCounts = createServerFn({ method: "GET" })
 
 // DELETE /api/bundles/:bundleId
 export const deleteBundle = createServerFn({ method: "POST" })
+  .middleware([consoleAccess])
   .inputValidator((input: DeleteBundleInput) => input)
   .handler(async ({ data }) => {
     try {
@@ -347,6 +366,7 @@ export const deleteBundle = createServerFn({ method: "POST" })
   });
 
 export const deleteBundles = createServerFn({ method: "POST" })
+  .middleware([consoleAccess])
   .inputValidator((input: DeleteBundlesInput) => input)
   .handler(async ({ data }) => {
     try {

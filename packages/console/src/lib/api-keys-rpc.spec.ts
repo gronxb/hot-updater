@@ -11,7 +11,12 @@ import { createConsoleRuntime } from "./server/runtime.server";
 const mocks = vi.hoisted(() => ({ prepare: vi.fn() }));
 
 vi.mock("@tanstack/react-start", () => ({
+  // The access middleware runs in the server; these specs call handlers directly.
+  createMiddleware: () => ({ server: () => ({}) }),
   createServerFn: () => ({
+    middleware() {
+      return this;
+    },
     validator() {
       return this;
     },

@@ -1,6 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 
 import type { BundleActivityInput } from "./bundle-activity";
+import { consoleAccess } from "./console-access";
 import { readRecoveryInput } from "./insights-recovery";
 
 export function readBundleActivityInput(
@@ -16,6 +17,7 @@ export function readBundleActivityInput(
 }
 
 export const getBundleActivityRpc = createServerFn({ method: "GET" })
+  .middleware([consoleAccess])
   .validator(readBundleActivityInput)
   .handler(async ({ data }) => {
     const [{ prepareConfig }, { getBundleActivity }, { requireFeature }] =
@@ -32,6 +34,7 @@ export const getBundleActivityRpc = createServerFn({ method: "GET" })
   });
 
 export const getRecoveryReportRpc = createServerFn({ method: "GET" })
+  .middleware([consoleAccess])
   .validator(readRecoveryInput)
   .handler(async ({ data }) => {
     const [{ prepareConfig }, { getRecoveryReport }, { requireFeature }] =
