@@ -28,6 +28,10 @@
       "import": "./dist/adapters/prisma.mjs",
       "require": "./dist/adapters/prisma.cjs"
     },
+    "./database": {
+      "import": "./dist/database/index.mjs",
+      "require": "./dist/database/index.cjs"
+    },
     "./db": {
       "import": "./dist/db/index.mjs",
       "require": "./dist/db/index.cjs"
