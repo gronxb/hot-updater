@@ -10,7 +10,7 @@ import {
   type MongoClient,
 } from "mongodb";
 
-import { createMongoMigrator } from "../db/fixedMigrator";
+import { createMongoMigrator } from "../db/fixedMigratorMongo";
 import type { DatabaseAdapterWithCapabilities } from "../db/types";
 import { createMongoCollections } from "./mongodbCollections";
 import {

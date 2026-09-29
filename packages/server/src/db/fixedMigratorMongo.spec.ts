@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import { createInMemoryDatabasePlugin } from "../../../test-utils/test/inMemoryDatabasePlugin";
 import { HOT_UPDATER_SCHEMA_VERSION } from "../schema/types";
 import { createDatabasePluginCore } from "./databasePluginCore";
-import { createMongoMigrator } from "./fixedMigrator";
+import { createMongoMigrator } from "./fixedMigratorMongo";
 import { createSchemaReadinessChecker } from "./schemaReadiness";
 
 function createSettingsMongoClient(

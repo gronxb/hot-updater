@@ -30,9 +30,3 @@ export { HotUpdaterConfigError } from "./assembly/assemblePlugins";
 export * from "./types";
 export { HOT_UPDATER_SERVER_VERSION } from "./version";
 export { HOT_UPDATER_INFRASTRUCTURE_GENERATION } from "./handlerVersionRoutes";
-export {
-  getKyselyAppUsage,
-  getKyselyReleaseActivity,
-  readKyselyInsightsHead,
-  recordKyselyInsightsOverview,
-} from "./adapters/kyselyInsightsOverview";

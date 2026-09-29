@@ -355,7 +355,7 @@ describe("Hot Updater Handler Integration Tests (Hono + MySQL)", () => {
     }
   });
 
-  it("serializes fumadb patch creation with bundle deletion", async () => {
+  it("never leaves a patch behind when fumadb patch creation races a bundle deletion", async () => {
     const database = `hot_updater_fumadb_${process.pid}`;
     const gate = `hot_updater_patch_gate_${process.pid}`;
     const admin = createPool({
@@ -461,25 +461,24 @@ describe("Hot Updater Handler Integration Tests (Hono + MySQL)", () => {
         provider: "mysql",
         relationMode: "fumadb",
       });
-      let deleteSettled = false;
-      const bundleDelete = deleteAdapter
-        .commit({
-          changes: [
-            {
-              model: "bundles",
-              operation: "delete",
-              where: { id: ownerId },
-            },
-          ],
-        })
-        .finally(() => {
-          deleteSettled = true;
-        });
-      await new Promise((resolve) => setTimeout(resolve, 100));
-      expect(deleteSettled).toBe(false);
+      // The deletion commits while the patch insert waits; the patch then
+      // finds its owner gone and rolls back whole.
+      const bundleDelete = deleteAdapter.commit({
+        changes: [
+          {
+            model: "bundles",
+            operation: "delete",
+            where: { id: ownerId },
+          },
+        ],
+      });
+      await expect(bundleDelete).resolves.toEqual({ committed: true });
 
       await sql`select release_lock(${gate})`.execute(control);
-      await Promise.all([patchCreate, bundleDelete]);
+      await expect(patchCreate).rejects.toMatchObject({
+        name: "DatabaseConstraintError",
+        reason: "not_found",
+      });
 
       await expect(
         deleteAdapter.models.bundles.findById(ownerId),
