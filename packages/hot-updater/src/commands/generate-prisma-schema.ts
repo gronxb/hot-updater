@@ -64,8 +64,8 @@ export async function generatePrismaSchema(
   );
   p.log.message(
     ui.block("Run", [
-      ui.kv("Prisma", ui.command("npx prisma generate")),
-      ui.kv("Migrate", ui.command("npx prisma migrate dev")),
+      ui.kv("Tables", ui.command("npx prisma db push")),
+      ui.kv("Settings", ui.command("npx hot-updater db migrate")),
     ]),
   );
 }

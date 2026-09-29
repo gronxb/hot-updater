@@ -114,6 +114,7 @@
     "msw": "^2.7.0",
     "mysql2": "catalog:db",
     "pg": "catalog:db",
+    "prisma": "catalog:db",
     "uuidv7": "catalog:",
     "wrangler": "^4.69.0"
   }
