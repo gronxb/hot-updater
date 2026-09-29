@@ -1,5 +1,33 @@
 # @hot-updater/mock
 
+## 1.0.0-rc.16
+
+### Minor Changes
+
+- 8a03eb2: Narrow the database provider query contract to the operators Hot Updater uses. `DatabaseWhere` accepts only `eq`, `gt`, `gte`, `lt`, `lte`, and `in`, and conditions are always joined with AND. The `ne`, `not_in`, `contains`, `starts_with`, and `ends_with` operators, the `connector` (`OR`) and `mode` (`insensitive`) fields, and `findMany`'s `distinctOn` are removed from the types, the input validation, and every official provider.
+
+  Custom providers built on `@hot-updater/plugin-core/internal` can delete their implementations of the removed operators. Validation rejects a where condition with any key other than `field`, `operator`, and `value`, and rejects `distinctOn`, instead of ignoring them.
+
+### Patch Changes
+
+- Updated dependencies [d482b13]
+- Updated dependencies [d482b13]
+- Updated dependencies [fe03f59]
+- Updated dependencies [d482b13]
+- Updated dependencies [2431c0a]
+- Updated dependencies [ad00722]
+- Updated dependencies [d482b13]
+- Updated dependencies [d482b13]
+- Updated dependencies [f6ffb68]
+- Updated dependencies [c68e9f3]
+- Updated dependencies [065c457]
+- Updated dependencies [8a03eb2]
+- Updated dependencies [aee193e]
+- Updated dependencies [228b6c7]
+- Updated dependencies [065c457]
+- Updated dependencies [df31037]
+  - @hot-updater/plugin-core@1.0.0-rc.16
+
 ## 1.0.0-rc.15
 
 ### Patch Changes

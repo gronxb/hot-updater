@@ -1,5 +1,105 @@
 # @hot-updater/test-utils
 
+## 1.0.0-rc.16
+
+### Minor Changes
+
+- b3576f2: Add aggregates to the storage engine's transactions. `tx.aggregate(model, identity, changes, { shardBy })` records counter and gauge deltas and HLL sketches for one shard row. `shardBy` picks the shard with a stable FNV-1a hash, and gauges of a sharded aggregate require it, so each −1/+1 pair lands on one shard.
+
+  At commit, counter-only rows become blind increments that create the row and bump `_v`. Rows with gauges or sketches are read in one batch per table, merged, and written back under a guard, and a row whose counters and gauges reach zero is deleted. When only aggregate rows fail their guard, or the adapter reports a transient failure, the engine re-reads those rows and resends the write instead of rerunning `fn`. `retry.onRetry` reports each rerun and resend.
+
+  The engine assembly moves to `createEngine`, which addresses tables by physical name; `createDatabaseEngine` adds the typed `database(module)` handle on top of it.
+
+  `@hot-updater/test-utils` adds `runContentionHarness`, which starts transactions at a steady rate through a fixed pool and counts how they ended, and `withAdapterLatency`, which delays every adapter call.
+
+- d3a5570: Add the read side of the built-in Insights plugin: `listEvents`, `findLatestEvents`, `countLatestEvents`, `countEvents`, `getReleaseActivity`, and `getAppUsage`. `createInsightsModel(api)` serves them through the `InsightsModel` contract the console and CLI read.
+
+  How each read is served:
+  - Event lists read one index range per day, going back at most 90 days.
+  - A latest event is one point read.
+  - Counts and activity read hour counters, gauges, and sketches, and windows over 48 hours read channel and usage day rollups.
+  - Only the partial hours at the edge of a millisecond window fall back to raw rows.
+
+  Engine changes:
+  - Range bounds accept a prefix of the order tuple.
+  - Aggregate rows are read in parallel at commit.
+  - `retry.onRetry` receives the failed attempt's number.
+
+  `@hot-updater/test-utils` adds `setupInsightsModelTestSuite`, which runs the Insights report contract against an `InsightsModel`.
+
+- ff1e565: Add plugins to `createHotUpdater`. The new `@hot-updater/server/plugins` subpath exports `definePlugin`, `defineTable`, and `defineAggregate`. A plugin declares its tables and aggregates. Its `init` receives a typed database handle on the storage engine and a clock, and returns its API, its endpoints, and optionally `clientAuth`.
+
+  `createHotUpdater({ database, plugins, storage, clientAccess })` runs each plugin's `init` once at startup and exposes each API as `hotUpdater.api.<id>`. Endpoints mount on `handlers.client`, behind the client-route policy, or on `handlers.admin`.
+
+  Client routes have one policy source: exactly one plugin that provides `clientAuth`, or `clientAccess: "public"`. The types count clientAuth plugins in a tuple and name the fix. Startup throws `HotUpdaterConfigError` for any of these:
+  - duplicate plugin ids
+  - a `kind` key or other unknown keys
+  - an async `init`
+  - a `provides.clientAuth` that disagrees with the instance
+  - colliding routes
+  - a database that is not on the storage engine
+
+  Cacheable client responses vary by the policy's headers, so public servers now send `Vary: Accept-Encoding` alone.
+
+  `@hot-updater/test-utils` adds `createPluginTestHarness`, which runs one plugin on a memory adapter in verify mode, with `measureReads`.
+
+- 152db48: Add the read-budget suite. `@hot-updater/server/db` exports `createMeasuredDatabase(adapter, plugins, options?)`: core and the plugins' APIs assembled as `createHotUpdater` assembles them, on an engine in verify mode over a storage adapter without the schema fence, with `measureReads`.
+
+  `@hot-updater/test-utils` adds `setupReadBudgetTestSuite`, which seeds core and Insights on a backend with native pages capped at two rows and checks every API in the read-budget list at the adapter and at the engine, and `postgresRowsExamined` and `mysqlRowsExamined`, which explain each read a SQL core executor runs to count the rows the database examined.
+
+- 228b6c7: Remove the legacy database contract. Every database runs on the storage engine, and core, its plugins, and the admin API are the only way to its data. Release candidate databases are recreated, not converted.
+  - **Databases:** a provider returns an `EngineDatabase`, `{ name, adapter, dispose? }`, with `provider`, `createMigrator`, and `generateSchema` for `hot-updater db` where it has them. `createEngineDatabase({ name, adapter })` from `@hot-updater/server/database` puts the adapter behind the schema fence with the built-in settings; `builtInSchema`, `builtInSettings`, and `migrateBuiltInSchema` are the built-in tables, their settings rows, and their migration. `DatabasePlugin`, `createDatabasePlugin`, `createDatabaseClient`, the model and commit types, `commitReleaseCatalogMutation(s)`, and `BundleRepository` are gone.
+  - **`createHotUpdater`:** takes `{ database, storage?, plugins?, clientAccess? }`; `plugins` defaults to none. `clientAccess` is `"public"`, or absent when a plugin provides clientAuth. A `clientAccess` object is a type error whose message names `apiKeys()`, and at startup a `HotUpdaterConfigError` that names it too. The instance is `{ handlers, core, api, adapterName }`: bundle, channel, release, Insights, and API key methods on it are gone; use `core` and the plugins' `api`. `registerApiKey`, `createApiKey`, `provisionApiKey`, and `createHandlers` are no longer exported; the `apiKeys()` plugin's API does the same work.
+  - **Handlers:** client routes read catalogs and artifacts through core. The admin API speaks protocol 2 only: `v=2` is accepted and changes nothing, and `POST /database/commit`, `POST /bundles`, and `DELETE /bundles/:id` are gone (deploy with `POST /releases`, delete with `POST /bundles/delete`). `PATCH /bundles/:id` answers 204. The Insights routes come from `insights()`; without it they answer 204 with `x-hot-updater-insights: disabled`.
+  - **Schema:** generated SQL, Drizzle, and Prisma schemas have no database foreign keys; the engine keeps references. CockroachDB and SQL Server are no longer supported, and `relationMode` is gone. The checked-in Postgres and Supabase SQL is regenerated.
+  - **Providers:** `postgres`, `d1Database`, `supabaseDatabase`, `firebaseDatabase`, and `dynamoDB` return engine databases. `dynamoDB` invalidates the cached update-check routes after a write that changes a Release Catalog.
+  - **`standaloneRepository`:** is `{ name, core, fetchAdmin }` over admin API protocol 2; its protocol 1 reads and custom bundle `routes` are gone.
+  - **`@hot-updater/test-utils`:** `setupDatabaseTestSuite` runs core, bundles, the Release Catalog contract, and Insights through admin API protocol 2 over HTTP, and with `createInsightsModel` the Insights report contract. It replaces `setupDatabasePluginTestSuite` and `setupDatabaseClientTestSuite`. `setupBundleMethodsTestSuite` and `setupReleaseCatalogTestSuite` take `{ getClient }` on protocol 2.
+  - **CLI and console:** they read and write through core only. `hot-updater api-key` manages keys through the config's `apiKeys()` plugin, and the console runs the config's `plugins`: without them, Insights and API keys are off.
+
+- df31037: Add the storage adapter contract that every Hot Updater database runs on. An adapter implements batched `get`, index-range `query`, and atomic `write` of guarded ops with its backend's native features, and knows nothing about Hot Updater's domain. `@hot-updater/plugin-core/internal` ships the contract types, value conversion for backend types (int8 text, BigInt, Decimal, SQLite 0/1, JSON text), a `verifyAdapter` wrapper that checks every read and write at the adapter boundary and counts reads, and the reference memory adapter. `@hot-updater/server/database` re-exports them for adapter authors.
+
+  `@hot-updater/test-utils` adds `setupDatabaseAdapterConformanceSuite`: value round-trips, point and range reads, UTF-8 byte ordering, cursor paging without gaps or repeats, multi-valued and unique indexes, full pages under capped native pages, atomic batches with a failure injected at every op, one winner among 32 concurrent writers, no lost increments, write-skew rejection, and over-limit writes rejected before sending.
+
+### Patch Changes
+
+- d482b13: Auto-patch bases match what `deploy` chose before the storage engine. `core.findBaseBundleIds` reads the new bundle's Release Catalog scope in one point read and keeps every enabled bundle release whose target app version range intersects the new target (the same fingerprint, in a fingerprint scope), newest release first, each bundle once and older than the new bundle, up to `patch.maxBaseBundles`. Targets such as `1.x`, `*`, or `>=1.2.0 <2` get bases again, a `*` or `1.x` release serves every version it covers, a release on another patch version of the same minor line no longer takes a slot, and a promoted or republished bundle counts from its newest release.
+
+  `targetBaseCandidateKey` takes the channel name instead of its id, and its key names the catalog scope and the normalized range. The `base_candidates` aggregate and its gauge writes are gone, so each release change writes up to 16 fewer rows; the checked-in D1, Postgres, and Supabase schemas drop the table.
+
+- d482b13: Insights event lists cover one time range, as other analytics products list raw events. The global and bundle lists take `[sinceMs, beforeReceivedAtMs)` of at most 90 × 24 hours; without `sinceMs` they list the 90 days before the cutoff, and a longer range answers 400. Pages run newest first and stop at the range start: only a full page returns a cursor, which carries the range and the page's last row. Each event also counts itself in a per-day row of `insights_outcomes` (platform `*`), so a list skips days without matching events: after an empty day, one outcome read (that row for the global list, the filter's own hourly rows for a bundle list) names the next day that holds one, and a gap of any length costs two reads. The Insights plugin's `listEvents` rejects a global or bundle range longer than 90 × 24 hours. The read-budget suite measures a dense day, a gap, and an empty range.
+- d482b13: `countLatestEvents` counts an installation once when its latest event matches a `from` and a `to` bundle predicate of the same type, over whole hours as it already did over a partial hour. The Insights plugin sums one gauge per predicate, so a download from A to B counted by "from A" and "to B" was counted twice. Each installation's latest event now also keeps a gauge of its (from, to) pair, and the count subtracts the pairs its predicates share: one more gauge per latest event, read and written in the same batch as the others, and a count reads the pairs only when both fields are filtered. The published Insights model suite checks the case.
+- f6ffb68: Add the write side of the built-in Insights plugin at `@hot-updater/server/plugins/insights`. `insights()` declares these models:
+  - `bundle_events`, with a derived `day` and `movement_install_id` and a multi-valued `bundle_ref`
+  - `bundle_event_heads`
+  - five aggregates, all sharded by install id: overview counters, user sketches, the latest-installation distribution, latest events by bundle, and outcome counters
+
+  `api.recordEvent(event)` records one validated event in one transaction. It reads the event and its installation's head in one batch, reads the gauge and sketch rows it changes in a second, then writes once.
+  - A repeated id changes nothing.
+  - A newer event moves the head and its gauges.
+  - An older event still counts in its own hour.
+  - Channel and usage rows also roll up by day.
+
+  Also in this change:
+  - The SQL core no longer creates an index whose columns repeat the primary key.
+  - `@hot-updater/plugin-core/internal` exports `assertBundleEventRow` and `createValidatedInsightsModel`.
+  - The plugin test harness returns the plugin's database handle.
+
+- c68e9f3: Add the key-value helper, from `@hot-updater/server/database`, which the DynamoDB and Firestore databases run on. `createKvAdapter({ store, tablePrefix })` implements the storage adapter over a `KeyValueStore`, which provides strongly consistent point reads, one partition's sort-key range per page, and atomic writes whose conditions see the state before the write.
+  - **Layout:** a row is one item at `pk = <table>`, `sk = enc(key)`, where `encodeKvKey` keeps tuple order as UTF-8 order. An index in key order reads the row items. Every other index adds an item per entry at `pk = <table>#<index>#enc(eq)`, `sk = enc(order)`. A unique entry is one item, written only where no row holds it.
+  - **Index copies:** an index item holds a copy of the row without `_v` or counters (the columns with a default). An increment changes only those, so it never makes a copy stale. An increment on a table with index items may change only counters of an existing row. Reads fill counters from the rows, and a unique read outside a transaction takes one read.
+  - **Pages and limits:** `query` reads native pages until the limit or the range's end. `fits()` counts items and bytes against the store's limits.
+
+  The engine reads a row whole with `get` where a transaction guards it and the adapter returned an index copy, and reruns if the row changed since. Reads outside a transaction no longer return `_v` on any backend; their rows are typed `ReadRow`. The Release Catalog suite in `@hot-updater/test-utils` now commits at most three Releases, with their bundles, at a time. That fits DynamoDB's 100 items per transaction.
+
+- 754a73e: Add the shared SQL core, from `@hot-updater/server/database`. `createSqlAdapter({ executor })` compiles adapter reads and writes to SQL for PostgreSQL, MySQL, and SQLite and runs them through a `SqlExecutor` (one per driver or ORM), with one transaction per write.
+
+  Guards are `UPDATE … WHERE _v = ?`, checks are locking reads (`FOR UPDATE`, or SQLite's `BEGIN IMMEDIATE`), counters are upserts, and index reads compare order tuples with row values (expanded ORs on MySQL). Unique violations name the failed op. Serialization failures, deadlocks, lock timeouts, and `SQLITE_BUSY` ask the engine to retry.
+
+  `createTableStatements` emits DDL with binary collation (`COLLATE "C"`, `utf8mb4_0900_bin`, SQLite's `BINARY`), `bigint` whole numbers, and an index table `<table>__<index>` for each index over a multi-valued field.
+
+  The adapter conformance suite in `@hot-updater/test-utils` now also orders a key with a trailing space after the same key without it.
+
 ## 1.0.0-rc.15
 
 ### Minor Changes
