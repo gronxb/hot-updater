@@ -104,6 +104,15 @@ describe("base candidate keys", () => {
     }
   });
 
+  it("keeps keys ASCII for any channel id", () => {
+    const key = targetBaseCandidateKey({
+      ...target("1.2.3"),
+      channelId: "채널-🚀",
+    })!;
+    expect(key).toMatch(/^[\x20-\x7e]+$/u);
+    expect(JSON.parse(key)).toEqual(["채널-🚀", "ios", "app-version", "1.2"]);
+  });
+
   it("gives a new bundle a key only when its target spans one minor line", () => {
     expect(targetBaseCandidateKey(target("1.2.3"))).toBe(
       JSON.stringify(["channel-1", "ios", "app-version", "1.2"]),

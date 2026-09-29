@@ -9,7 +9,7 @@ import {
 import { validateDatabaseCommit } from "@hot-updater/plugin-core/internal";
 
 import { DatabaseConstraintError } from "../database/errors";
-import { compiledGeneration, toReleaseRow, type CoreDatabase } from "./reads";
+import { compiledGeneration, toReleaseRow } from "./reads";
 import {
   deleteBundle,
   deleteBundlePatches,
@@ -94,9 +94,15 @@ const ensureCatalogs = async (
   }
 };
 
+/** A change core does not own: API keys belong to the api-keys plugin. */
+export type ExternalChange = Extract<
+  DatabaseChange,
+  { readonly model: "apiKeys" }
+>;
+
 const applyChange = async (
   tx: CoreTransaction,
-  change: DatabaseChange,
+  change: Exclude<DatabaseChange, ExternalChange>,
   changeIndex: number,
   scopes: Map<string, ReleaseRow>,
   puts: Set<string>,
@@ -178,18 +184,28 @@ const applyChange = async (
       if (current !== null) await tx.delete("channels", current);
       return;
     }
-    case "apiKeys":
-      throw new DatabasePluginInputError("invalid-model");
   }
+};
+
+const noExternalChanges = async (): Promise<never> => {
+  throw new DatabasePluginInputError("invalid-model");
 };
 
 /**
  * Today's `DatabaseCommit` on the engine, for the legacy façade until E2:
  * expectations first, then each change in order, in one transaction.
+ * `external` applies the changes core does not own in the same transaction;
+ * answering `not_found` fails the commit at that change.
  */
-export const commitLegacyChanges = async (
-  db: CoreDatabase,
+export const commitLegacyChanges = async <TTx extends CoreTransaction>(
+  db: {
+    transaction<R>(fn: (tx: TTx) => Promise<R>): Promise<R>;
+  },
   input: DatabaseCommit,
+  external: (
+    tx: TTx,
+    change: ExternalChange,
+  ) => Promise<"not_found" | undefined> = noExternalChanges,
 ): Promise<DatabaseCommitResult> => {
   validateDatabaseCommit(input);
   try {
@@ -201,7 +217,11 @@ export const commitLegacyChanges = async (
       const puts = new Set<string>();
       for (const [changeIndex, change] of input.changes.entries()) {
         try {
-          await applyChange(tx, change, changeIndex, scopes, puts);
+          if (change.model !== "apiKeys") {
+            await applyChange(tx, change, changeIndex, scopes, puts);
+          } else if ((await external(tx, change)) === "not_found") {
+            throw conflict(changeIndex, "not_found");
+          }
         } catch (error) {
           if (
             error instanceof DatabaseConstraintError &&
