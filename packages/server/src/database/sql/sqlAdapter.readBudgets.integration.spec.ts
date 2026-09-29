@@ -40,6 +40,8 @@ const ready = async (connect: () => Promise<unknown>) => {
   }
 };
 
+const MYSQL_URI = "mysql://root:hot_updater@127.0.0.1:53306/hot_updater";
+
 let postgres: pg.Pool;
 let mariadb: mysql.Pool;
 
@@ -50,11 +52,23 @@ beforeAll(async () => {
       "postgres://postgres:hot_updater@127.0.0.1:55432/hot_updater",
     max: 16,
   });
-  mariadb = mysql.createPool({
-    uri: "mysql://root:hot_updater@127.0.0.1:53306/hot_updater",
-    connectionLimit: 16,
-  });
   await ready(() => postgres.query("SELECT 1"));
+  // Each row a plan evaluates costs as much as an index entry it reads, as
+  // PostgreSQL's planner settings make it, so a small table plans like a
+  // production-sized one: an index range rather than a primary-key prefix
+  // filtered down to it. Sessions opened after the flush use the new cost.
+  await ready(async () => {
+    const admin = await mysql.createConnection(MYSQL_URI);
+    try {
+      await admin.query(
+        "UPDATE mysql.server_cost SET cost_value = 1 WHERE cost_name = 'row_evaluate_cost'",
+      );
+      await admin.query("FLUSH OPTIMIZER_COSTS");
+    } finally {
+      await admin.end();
+    }
+  });
+  mariadb = mysql.createPool({ uri: MYSQL_URI, connectionLimit: 16 });
   await ready(() => mariadb.query("SELECT 1"));
 }, 180_000);
 
