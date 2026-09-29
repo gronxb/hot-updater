@@ -18,7 +18,7 @@ import {
   requireConsoleAccess,
 } from "./auth.server";
 
-const request = new Request("https://console.example.com/");
+let request: Request;
 
 const createAdapter = (
   getAccess: ConsoleAuthAdapter["getAccess"],
@@ -30,6 +30,7 @@ const createAdapter = (
 
 beforeEach(() => {
   getConsoleAuthAdapterMock.mockReset();
+  request = new Request("https://console.example.com/");
 });
 
 describe("console auth boundary", () => {
@@ -64,6 +65,21 @@ describe("console auth boundary", () => {
     await expect(requireConsoleAccess(request)).rejects.toMatchObject({
       status: expectedStatus,
     });
+  });
+
+  it("asks the adapter once per request", async () => {
+    const principal = { email: "admin@example.com" };
+    const adapter = createAdapter(
+      vi.fn(async () => ({ status: "authorized" as const, principal })),
+    );
+    getConsoleAuthAdapterMock.mockResolvedValue(adapter);
+
+    await requireConsoleAccess(request);
+    await requireConsoleAccess(request);
+    expect(adapter.getAccess).toHaveBeenCalledOnce();
+
+    await requireConsoleAccess(new Request("https://console.example.com/"));
+    expect(adapter.getAccess).toHaveBeenCalledTimes(2);
   });
 
   it("delegates provider discovery and auth protocol requests", async () => {
