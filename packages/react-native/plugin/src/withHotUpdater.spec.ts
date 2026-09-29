@@ -2,15 +2,20 @@ import {
   createPrivateKey,
   createPublicKey,
   generateKeyPairSync,
+  sign,
+  verify,
 } from "node:crypto";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
+import * as cliTools from "@hot-updater/cli-tools";
+import { XML } from "expo/config-plugins";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { AndroidConfigParser } from "../../../hot-updater/src/utils/configParser/androidParser";
 import { transformAndroid, transformIOS } from "./transformers";
-import { getPublicKeyFromConfig } from "./withHotUpdater";
+import withHotUpdater, { getPublicKeyFromConfig } from "./withHotUpdater";
 
 const originalPrivateKeyEnv = process.env.HOT_UPDATER_PRIVATE_KEY;
 const tempDirs: string[] = [];
@@ -41,6 +46,7 @@ vi.mock("hot-updater", () => ({
 }));
 
 afterEach(async () => {
+  vi.restoreAllMocks();
   if (originalPrivateKeyEnv === undefined) {
     delete process.env.HOT_UPDATER_PRIVATE_KEY;
   } else {
@@ -93,6 +99,83 @@ describe("getPublicKeyFromConfig", () => {
 
 describe("withHotUpdater - Test Cases", () => {
   describe("Android", () => {
+    it("preserves signing keys through fingerprint and channel manifest rewrites", async () => {
+      const dir = await mkdtemp(path.join(tmpdir(), "hot-updater-expo-mod-"));
+      tempDirs.push(dir);
+      const { privateKey, publicKey } = createKeyPair();
+      process.env.HOT_UPDATER_PRIVATE_KEY = privateKey;
+      vi.spyOn(cliTools, "loadConfig").mockResolvedValue({
+        updateStrategy: "appVersion",
+        signing: { enabled: true },
+      } as Awaited<ReturnType<typeof cliTools.loadConfig>>);
+
+      const config = withHotUpdater({
+        _internal: { projectRoot: dir },
+        name: "Hot Updater Test",
+        slug: "hot-updater-test",
+      });
+      const manifestMod = config.mods?.android?.manifest;
+      if (!manifestMod) {
+        throw new Error("AndroidManifest mod was not registered");
+      }
+
+      const result = await manifestMod({
+        ...config,
+        modRawConfig: config,
+        modRequest: {
+          introspect: true,
+          modName: "manifest",
+          platform: "android",
+          platformProjectRoot: path.join(dir, "android"),
+          projectRoot: dir,
+        },
+        modResults: {
+          manifest: {
+            $: {
+              "xmlns:android": "http://schemas.android.com/apk/res/android",
+            },
+            application: [{}],
+          },
+        } as Parameters<typeof manifestMod>[0]["modResults"],
+      });
+      const manifestPath = path.join(dir, "AndroidManifest.xml");
+      await writeFile(manifestPath, XML.format(result.modResults));
+
+      const parser = new AndroidConfigParser([], [manifestPath]);
+      const bundle = Buffer.from("console.log('signed bundle');");
+      const signature = sign("sha256", bundle, privateKey);
+
+      for (const [key, value] of [
+        ["hot_updater_fingerprint_hash", "first-fingerprint"],
+        ["hot_updater_channel", "staging"],
+        ["hot_updater_fingerprint_hash", "second-fingerprint"],
+      ]) {
+        await parser.set(key, value);
+        expect((await parser.get(key)).value).toBe(value);
+
+        const xml = await readFile(manifestPath, "utf-8");
+        const manifest = (await XML.parseXMLAsync(
+          xml,
+        )) as typeof result.modResults;
+        const embeddedKey = manifest.manifest.application?.[0][
+          "meta-data"
+        ]?.find(
+          (item) => item.$?.["android:name"] === "com.hotupdater.PUBLIC_KEY",
+        )?.$?.["android:value"];
+
+        expect(
+          verify(
+            "sha256",
+            bundle,
+            embeddedKey!.replaceAll("\\n", "\n"),
+            signature,
+          ),
+        ).toBe(true);
+        expect(embeddedKey).toBe(publicKey.trim().replaceAll("\n", "\\n"));
+        expect(xml).not.toContain("&amp;#xA;");
+      }
+    });
+
     it("RN 0.82+ Kotlin: input -> output", () => {
       // Input: Raw RN 0.82 template
       const _input = `package com.rndiffapp
