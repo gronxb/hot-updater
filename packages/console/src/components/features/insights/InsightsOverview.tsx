@@ -30,18 +30,20 @@ const dates = new Intl.DateTimeFormat("en", {
 });
 
 const rate = (report: RecoveryReport): string => {
-  const attempts = report.launches + report.failedLaunches;
+  const attempts = report.activeDays + report.failedLaunches;
   return attempts === 0
     ? "—"
     : `${((report.failedLaunches / attempts) * 100).toFixed(2)}%`;
 };
 
 function ReleaseHealth({ report }: { readonly report: RecoveryReport }) {
-  const attempts = report.launches + report.failedLaunches;
-  const uniqueUsers = <EstimatedCount value={report.uniqueUsers} />;
+  const attempts = report.activeDays + report.failedLaunches;
+  const activeInstallations = (
+    <EstimatedCount value={report.activeInstallations} />
+  );
   const metrics = [
-    ["Unique users", uniqueUsers],
-    ["Launches", report.launches.toLocaleString()],
+    ["Active installations", activeInstallations],
+    ["Active days", report.activeDays.toLocaleString()],
     ["Failed launches", report.failedLaunches.toLocaleString()],
     ["Crash rate", attempts === 0 ? "— / No launch reports" : rate(report)],
   ] as const;
@@ -52,15 +54,22 @@ function ReleaseHealth({ report }: { readonly report: RecoveryReport }) {
           <div key={label} className="flex flex-col gap-1">
             <dt className="flex items-center gap-1 text-sm text-muted-foreground">
               {label}
-              {label === "Unique users" ? (
-                <InsightsInfo label="About unique users">
-                  Distinct installations with a reported successful launch in
-                  this scope and period, estimated: typically within about 3%.
+              {label === "Active installations" ? (
+                <InsightsInfo label="About active installations">
+                  Distinct installations that reported in this scope and period,
+                  or that launched this release, estimated: typically within
+                  about 3%.
+                </InsightsInfo>
+              ) : label === "Active days" ? (
+                <InsightsInfo label="About active days">
+                  Each installation counts once for each UTC day it launched,
+                  and once more on a day an update applies or recovers. The
+                  chart shows each day's daily active installations.
                 </InsightsInfo>
               ) : label === "Crash rate" ? (
                 <InsightsInfo label="About crash rate">
-                  Reported OTA launch failures divided by successful launches
-                  plus failed launches for the same scope and period.
+                  Reported OTA launch failures divided by active days plus
+                  failed launches for the same scope and period.
                 </InsightsInfo>
               ) : null}
             </dt>
@@ -76,10 +85,13 @@ function ReleaseHealth({ report }: { readonly report: RecoveryReport }) {
         </div>
       ) : (
         <ChartContainer
-          aria-label="Daily launches and failed launches"
+          aria-label="Daily active installations and failed launches"
           className="h-64 w-full aspect-auto"
           config={{
-            launches: { label: "Launches", color: "var(--chart-2)" },
+            dailyActiveInstallations: {
+              label: "Daily active installations",
+              color: "var(--chart-2)",
+            },
             failedLaunches: {
               label: "Failed launches",
               color: "var(--chart-1)",
@@ -105,8 +117,8 @@ function ReleaseHealth({ report }: { readonly report: RecoveryReport }) {
               }
             />
             <Line
-              dataKey="launches"
-              stroke="var(--color-launches)"
+              dataKey="dailyActiveInstallations"
+              stroke="var(--color-dailyActiveInstallations)"
               strokeWidth={2}
               isAnimationActive={false}
             />

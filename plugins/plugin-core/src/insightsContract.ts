@@ -57,9 +57,7 @@ const isBundleFilter = (value: unknown, withKind = false): boolean => {
   return value.type === "RECOVERED"
     ? isText(value.fromBundleId) &&
         hasOnlyKeys(value, [...keys, "fromBundleId"])
-    : (value.type === "UPDATE_DOWNLOADED" ||
-        value.type === "UPDATE_APPLIED" ||
-        value.type === "UNCHANGED") &&
+    : (value.type === "UPDATE_DOWNLOADED" || value.type === "UPDATE_APPLIED") &&
         isText(value.toBundleId) &&
         hasOnlyKeys(value, [...keys, "toBundleId"]);
 };

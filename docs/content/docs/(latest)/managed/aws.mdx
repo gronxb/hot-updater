@@ -230,9 +230,13 @@ dedicated CloudFront behavior whose cache key contains the canonical path,
 `x-api-key`, and supported content encoding. It excludes SDK version,
 Authorization, cookies, query strings, and installation state. A cold origin
 fill performs one exact DynamoDB catalog read; a warm CloudFront hit skips both
-Lambda@Edge and DynamoDB. Each authenticated Insights event invokes
-Lambda@Edge and transactionally writes the immutable event, index copies,
-aggregate counters, and any change to the installation's latest-report row.
+Lambda@Edge and DynamoDB. Each authenticated Insights report invokes
+Lambda@Edge. A report the server records is one DynamoDB transaction of 15 to
+30 items, 40 to 66 write request units: the installation's latest-report row,
+the aggregate counters, sketches, and gauges it changes, and, for a download,
+apply, or recovery, the event with its index copies. A launch that repeats the
+installation's latest report on the same UTC day writes nothing; see
+[What Insights writes](/docs/guides/insights#what-insights-writes).
 Review the [DynamoDB pricing model](https://aws.amazon.com/dynamodb/pricing/) and
 [Lambda@Edge pricing](https://aws.amazon.com/lambda/pricing/).
 
@@ -245,9 +249,11 @@ The cap is a cost guardrail and can throttle bursts; protect production
 distributions with AWS WAF rate-based rules and configure AWS Budgets for a
 monthly spending threshold. The AWS adapter does not delete Insights data
 automatically. Event history is keyset-paginated. Reporting overview windows
-align to whole hours and read maintained installation-distribution,
-latest-by-bundle, and outcome aggregates. Direct count queries with partial-hour
-boundaries also read matching raw events or installation heads.
+start at the UTC day they reach into and end with the current hour. They read
+maintained installation-distribution, latest-by-bundle, and outcome
+aggregates, never raw events or installation heads. Latest-installation counts
+take whole UTC days; a direct event count with partial-hour bounds also reads
+the matching raw events.
 
 Bundle metadata has no fixed bundle, patch, or patch-relationship count limit.
 The adapter enforces a 400,000-byte physical-item budget and a 4,000,000-byte,

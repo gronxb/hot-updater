@@ -72,6 +72,9 @@ export function AppUsage({
   const report = query.error ? undefined : query.data;
   const formatTime = (ms: number) =>
     (window === "30d" ? dates : times).format(ms);
+  const distributionPeriod = report
+    ? `since ${dates.format(report.distributionSinceMs)}, 00:00 UTC`
+    : "in the selected period";
   const distributionTotals = report
     ? {
         versions: report.versions.reduce(
@@ -222,7 +225,8 @@ export function AppUsage({
           </CardTitle>
           <InsightsInfo label="How distribution is counted">
             Each reporting installation is counted once, using the app version
-            and platform of its latest matching report in the selected period.
+            and platform of its latest matching report {distributionPeriod}.
+            Latest reports are counted by UTC day.
             {report?.truncated
               ? " Shares reflect only the available history."
               : ""}

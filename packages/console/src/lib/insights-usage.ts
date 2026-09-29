@@ -24,6 +24,12 @@ export type AppUsageReport = {
   readonly bundleDistribution: readonly BundleDistribution[];
   readonly activeInstallations: number;
   readonly sinceMs: number;
+  /**
+   * Where the distribution starts: the start of the UTC day that contains the
+   * period's start. Latest reports are counted by UTC day, so the
+   * distribution covers every UTC day the period touches.
+   */
+  readonly distributionSinceMs: number;
   readonly beforeReceivedAtMs: number;
   readonly intervalMs: number;
   readonly truncated: boolean;

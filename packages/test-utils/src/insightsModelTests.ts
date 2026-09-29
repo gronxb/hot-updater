@@ -358,15 +358,6 @@ export const registerInsightsModelTests = (
           },
           recovered,
         ],
-        [
-          {
-            platform: "ios",
-            channel: "production",
-            type: "UNCHANGED",
-            toBundleId: bundleB,
-          },
-          unchanged,
-        ],
       ];
       for (const [filter, expected] of cases) {
         await expectInsightsIndex(
@@ -389,12 +380,41 @@ export const registerInsightsModelTests = (
           [expected],
         );
       }
+      // An UNCHANGED report is a launch, kept as the installation's latest
+      // event but as no event of its own: no list or event count names it.
+      await expect(
+        model.findLatestEvents({ installId: unchanged.install_id }),
+      ).resolves.toEqual([unchanged]);
+      await expectInsightsIndex(
+        () =>
+          model.listEvents({
+            filter: { kind: "all" },
+            sinceMs: 100,
+            beforeReceivedAtMs: 200,
+            limit: 10,
+          }),
+        // Newest first, ids breaking ties; no UNCHANGED row among them.
+        [excluded[4], recovered, excluded[3], excluded[2], applied],
+      );
+      await expect(
+        model.countEvents({
+          filter: {
+            platform: "ios",
+            channel: "production",
+            type: "UNCHANGED",
+            toBundleId: bundleB,
+          } as unknown as InsightsBundleEventFilter,
+          sinceMs: 100,
+          beforeReceivedAtMs: 200,
+        }),
+      ).rejects.toThrow();
+      // Latest events count whole UTC days: every head above lies in day 0.
       await expectInsightsIndex(
         () =>
           model.countLatestEvents({
             platform: "ios",
             channel: "production",
-            sinceMs: 100,
+            sinceMs: 0,
             bundle: [
               {
                 field: "to_bundle_id",
@@ -410,10 +430,17 @@ export const registerInsightsModelTests = (
           model.countLatestEvents({
             platform: "ios",
             channel: "production",
-            sinceMs: 100,
+            sinceMs: 0,
           }),
-        4,
+        5,
       );
+      await expect(
+        model.countLatestEvents({
+          platform: "ios",
+          channel: "production",
+          sinceMs: 100,
+        }),
+      ).rejects.toThrow();
     });
 
     it("uses exact identity and UTF-8 cursor order for user installations", async () => {

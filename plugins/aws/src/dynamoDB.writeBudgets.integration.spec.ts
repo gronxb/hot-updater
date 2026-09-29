@@ -164,7 +164,8 @@ const eventOf = (
  * One installation's day and the next, in the order the owner measured them
  * (PRD decision 59): a first launch, a relaunch in the same hour and in the
  * next, a download and its apply two hours later, a recovery the hour after,
- * a relaunch the hour after that, and a launch the next UTC day.
+ * a relaunch the hour after that, and a launch on each of the next two UTC
+ * days: an installation's day once it only launches.
  */
 const SCENARIO = [
   {
@@ -234,20 +235,33 @@ const SCENARIO = [
         bundle: "a",
       }),
   },
+  {
+    name: "Launch the day after",
+    event: () =>
+      eventOf(D0 + 2 * DAY + 9 * HOUR + 5 * 60_000, {
+        type: "UNCHANGED",
+        bundle: "a",
+      }),
+  },
 ] as const;
 
-/** The most items and write units each event may take in its one transaction. */
+/**
+ * The most items and write units each event may take in its one transaction
+ * (PRD decision 60). A relaunch the same UTC day, on the bundle its head
+ * already names, writes nothing.
+ */
 const BUDGETS: Readonly<
   Record<(typeof SCENARIO)[number]["name"], { items: number; wru: number }>
 > = {
-  "First launch": { items: 27, wru: 76 },
-  "Same-hour relaunch": { items: 12, wru: 24 },
-  "Next-hour launch": { items: 26, wru: 64 },
-  UPDATE_DOWNLOADED: { items: 27, wru: 62 },
-  UPDATE_APPLIED: { items: 27, wru: 58 },
-  RECOVERED: { items: 33, wru: 78 },
-  "Relaunch after the recovery": { items: 28, wru: 68 },
-  "Next-day launch": { items: 31, wru: 84 },
+  "First launch": { items: 15, wru: 40 },
+  "Same-hour relaunch": { items: 0, wru: 0 },
+  "Next-hour launch": { items: 0, wru: 0 },
+  UPDATE_DOWNLOADED: { items: 19, wru: 42 },
+  UPDATE_APPLIED: { items: 26, wru: 54 },
+  RECOVERED: { items: 30, wru: 66 },
+  "Relaunch after the recovery": { items: 0, wru: 0 },
+  "Next-day launch": { items: 21, wru: 52 },
+  "Launch the day after": { items: 19, wru: 48 },
 };
 
 let local: DynamoDBLocal;

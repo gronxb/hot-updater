@@ -521,21 +521,21 @@ const READ_BUDGETS: readonly ReadBudget[] = [
   }),
   budget({
     api: "countLatestEvents: buckets in the window × shards, all used",
-    // Heads from T0 + 1h: installs 6–11, 12–17, and 18–23 on 6 gauge shards
-    // an hour, install 24's hour, and install 1's on day 2.
+    // Heads from T0, by UTC day: installs 2–24 on 14 gauge shards of day 0,
+    // and install 1's on day 2.
     read: ({ insights }) =>
       insights.countLatestEvents({
         platform: "ios",
         channel: "production",
-        sinceMs: T0 + HOUR,
+        sinceMs: T0,
       }),
-    adapter: reads(0, 0, 1, 20),
-    engine: { calls: 1, rows: 5 },
-    check: (count) => expect(count).toBe(20),
+    adapter: reads(0, 0, 1, 15),
+    engine: { calls: 1, rows: 2 },
+    check: (count) => expect(count).toBe(24),
   }),
   budget({
     api: "countLatestEvents by bundle: buckets in the window × shards, all used",
-    // From T0, hour T0 as well: installs 2–5 on 4 shards; install 1 moved on.
+    // Days 0 and 2, like the distribution: 14 shards and 1.
     read: ({ insights }) =>
       insights.countLatestEvents({
         platform: "ios",
@@ -549,8 +549,8 @@ const READ_BUDGETS: readonly ReadBudget[] = [
           },
         ],
       }),
-    adapter: reads(0, 0, 1, 24),
-    engine: { calls: 1, rows: 6 },
+    adapter: reads(0, 0, 1, 15),
+    engine: { calls: 1, rows: 2 },
     check: (count) => expect(count).toBe(24),
   }),
   budget({
@@ -581,8 +581,9 @@ const READ_BUDGETS: readonly ReadBudget[] = [
   }),
   budget({
     api: "app usage: nonzero distribution and usage-sketch rows in the window, all used",
-    // Usage sketches of days 0 and 2 (14 shards and 1), and the iOS latest
-    // events of six hours (4, 6, 6, 6, 1, and 1 gauge shards); none on Android.
+    // Every platform merges the iOS and Android usage sketches: iOS's of days
+    // 0 and 2 (14 shards and 1). The iOS latest events of days 0 and 2 (14
+    // gauge shards and 1); none on Android.
     read: ({ insights }) =>
       insights.getAppUsage({
         channel: "production",
@@ -590,8 +591,8 @@ const READ_BUDGETS: readonly ReadBudget[] = [
         timeRange: { start: T0, end: T0 + 3 * DAY },
         intervalMs: DAY,
       }),
-    adapter: reads(0, 0, 3, 39),
-    engine: { calls: 3, rows: 8 },
+    adapter: reads(0, 0, 4, 30),
+    engine: { calls: 4, rows: 4 },
     check: ({ versions }) =>
       expect(versions).toEqual([{ name: "1.0.0", installations: 24 }]),
   }),
@@ -623,16 +624,15 @@ const READ_BUDGETS: readonly ReadBudget[] = [
   }),
   budget({
     api: "record an insights event: 2 dependent rounds of batch gets and 1 write",
-    // The event and install 2's head; then a batch get per aggregate: the
-    // event's 11 sketch rows (its release hour, channel hour and day, and 4
-    // usage identities by hour and day), and the old and new heads' gauge
-    // rows: 2 of the distribution, 4 by bundle, and 2 of their (from, to)
-    // pairs.
+    // The event and install 2's head; then the event's 5 sketch rows: its
+    // release's hour, and its platform's usage of every app version and of
+    // its own, by hour and day. The head moves within its UTC day, so its
+    // gauge rows stay as they are and none is read.
     read: ({ insights }) =>
       insights.recordEvent(
         eventOf(26, { install_id: "install-2", received_at_ms: T0 + 3 * HOUR }),
       ),
-    adapter: reads(5, 21, 0, 0),
+    adapter: reads(3, 7, 0, 0),
     engine: { calls: 2, rows: 1 },
     writes: 1,
   }),

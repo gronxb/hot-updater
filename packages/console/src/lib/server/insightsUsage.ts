@@ -7,6 +7,8 @@ import {
   type AppUsageReport,
 } from "../insights-usage";
 
+const DAY_MS = 86_400_000;
+
 export async function getAppUsageReport(
   model: InsightsModel,
   input: AppUsageInput,
@@ -30,6 +32,7 @@ export async function getAppUsageReport(
       report.coverage.sinceMs === null
         ? start
         : Math.max(start, report.coverage.sinceMs),
+    distributionSinceMs: start - (start % DAY_MS),
     beforeReceivedAtMs: end,
     intervalMs,
     truncated: report.coverage.kind === "partial",

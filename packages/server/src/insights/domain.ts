@@ -94,7 +94,7 @@ export type InsightsScope = {
 
 export type InsightsBundleSelection = InsightsScope & {
   readonly bundleId: string;
-  readonly outcome: "downloaded" | "applied" | "recovered" | "unchanged";
+  readonly outcome: "downloaded" | "applied" | "recovered";
 };
 
 export type InsightsCountMeasurement = {
@@ -113,6 +113,5 @@ export type ReportingOverview = InsightsScope & {
     readonly downloadedReports: InsightsCountMeasurement;
     readonly appliedReports: InsightsCountMeasurement;
     readonly recoveredReports: InsightsCountMeasurement;
-    readonly unchangedReports: InsightsCountMeasurement;
   };
 };

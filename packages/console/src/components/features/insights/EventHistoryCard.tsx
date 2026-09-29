@@ -4,7 +4,13 @@ import type { ReactNode } from "react";
 
 import { HashValueDisplay } from "@/components/HashValueDisplay";
 import { Button, buttonVariants } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Table,
@@ -101,6 +107,7 @@ function EventIdentity({
 
 export function EventHistoryCard({
   children,
+  description,
   error,
   eventsLocation,
   history,
@@ -115,6 +122,8 @@ export function EventHistoryCard({
   title = "All events",
 }: {
   readonly children?: ReactNode;
+  /** One line under the title that says what the list holds. */
+  readonly description?: ReactNode;
   readonly error: Error | null;
   readonly eventsLocation: EventsLocationState;
   readonly history: InsightsViewPage<InsightsEventRow> | undefined;
@@ -148,30 +157,35 @@ export function EventHistoryCard({
   return (
     <Card className="@container min-w-0 shadow-sm" aria-busy={isFetching}>
       <CardHeader className="gap-4 p-4 sm:p-6">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <CardTitle>
-            <h2>{title}</h2>
-          </CardTitle>
-          <div className="flex flex-wrap items-center gap-2">
-            {range !== undefined && onRangeChange ? (
-              <PeriodSelector
-                label="Time range"
-                onPeriodChange={onRangeChange}
-                period={range}
-                periods={rangePeriods}
-              />
-            ) : null}
-            <Button
-              className="h-11 lg:h-8"
-              disabled={isFetching}
-              onClick={onRefresh}
-              size="lg"
-              variant="outline"
-            >
-              <RefreshCw aria-hidden="true" data-icon="inline-start" />
-              Refresh
-            </Button>
+        <div className="flex flex-col gap-1.5">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <CardTitle>
+              <h2>{title}</h2>
+            </CardTitle>
+            <div className="flex flex-wrap items-center gap-2">
+              {range !== undefined && onRangeChange ? (
+                <PeriodSelector
+                  label="Time range"
+                  onPeriodChange={onRangeChange}
+                  period={range}
+                  periods={rangePeriods}
+                />
+              ) : null}
+              <Button
+                className="h-11 lg:h-8"
+                disabled={isFetching}
+                onClick={onRefresh}
+                size="lg"
+                variant="outline"
+              >
+                <RefreshCw aria-hidden="true" data-icon="inline-start" />
+                Refresh
+              </Button>
+            </div>
           </div>
+          {description ? (
+            <CardDescription>{description}</CardDescription>
+          ) : null}
         </div>
         {children}
       </CardHeader>

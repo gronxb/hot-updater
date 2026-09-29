@@ -33,6 +33,7 @@ const MAX_IDENTITY_LENGTH = 255;
 const MAX_CURSOR_LENGTH = 8 * 1_024;
 
 const HOUR_MS = 60 * 60 * 1_000;
+const DAY_MS = 24 * HOUR_MS;
 
 const WINDOW_MS: Record<ActiveInstallationWindow, number> = {
   "24h": 24 * 60 * 60 * 1_000,
@@ -169,8 +170,6 @@ const bundleFilter = (
       return { ...scope, type: "UPDATE_APPLIED", toBundleId: bundleId };
     case "recovered":
       return { ...scope, type: "RECOVERED", fromBundleId: bundleId };
-    case "unchanged":
-      return { ...scope, type: "UNCHANGED", toBundleId: bundleId };
     default:
       throw new InsightsBadRequestError("Invalid Insights outcome.");
   }
@@ -581,12 +580,15 @@ export const createInsightsProvider = (
           "Invalid reporting installation window.",
         );
       }
-      // Whole hours, ending with the current one: the counts read only the
-      // maintained hour and day rows, never raw events.
+      // Ending with the current hour and starting with the UTC day the
+      // window reaches into: latest-event gauges count whole UTC days and
+      // outcome counters whole hours, so the counts read only maintained
+      // rows, never raw events.
       const now = Date.now();
       const beforeReceivedAtMs =
         now - (now % HOUR_MS) + (now % HOUR_MS === 0 ? 0 : HOUR_MS);
-      const sinceMs = Math.max(0, beforeReceivedAtMs - WINDOW_MS[window]);
+      const reach = Math.max(0, beforeReceivedAtMs - WINDOW_MS[window]);
+      const sinceMs = reach - (reach % DAY_MS);
       const measure = async (count: Promise<number>) => {
         const value = await count;
         if (!Number.isSafeInteger(value) || value < 0) {
@@ -622,7 +624,6 @@ export const createInsightsProvider = (
         downloadedReports,
         appliedReports,
         recoveredReports,
-        unchangedReports,
       ] = await Promise.all([
         reporting,
         measure(
@@ -646,7 +647,6 @@ export const createInsightsProvider = (
         countOutcome("downloaded"),
         countOutcome("applied"),
         countOutcome("recovered"),
-        countOutcome("unchanged"),
       ]);
       return {
         ...scope,
@@ -660,7 +660,6 @@ export const createInsightsProvider = (
           downloadedReports,
           appliedReports,
           recoveredReports,
-          unchangedReports,
         },
       };
     },

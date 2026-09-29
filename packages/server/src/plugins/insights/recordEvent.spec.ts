@@ -22,12 +22,14 @@ import {
   type InsightsIdentityParts,
   type InsightsSchema,
 } from "./index";
+import { bundlePairKey, COUNTED_BY_DAY, PAIR_FIELD } from "./recordEvent";
 import { DAILY_EVENTS } from "./schema";
 
 const HOUR = 3_600_000;
 const DAY = 86_400_000;
 const T = Date.UTC(2026, 8, 23, 10, 15);
 const hour = (ms: number) => ms - (ms % HOUR);
+const day = (ms: number) => ms - (ms % DAY);
 
 const uuid = (n: number) =>
   `00000000-0000-7000-8000-${String(n).padStart(12, "0")}`;
@@ -58,6 +60,18 @@ const event = (
     received_at_ms: T,
     ...overrides,
   }) as BundleEventRow;
+
+const unchanged = (
+  n: number,
+  overrides: Partial<BundleEventRow> = {},
+): BundleEventRow =>
+  event(n, {
+    type: "UNCHANGED",
+    from_release_id: null,
+    from_bundle_id: null,
+    metadata: { ...event(n).metadata, update_strategy: null },
+    ...overrides,
+  } as Partial<BundleEventRow>);
 
 const backends: [string, () => DatabaseAdapter][] = [
   ["memory", () => createMemoryAdapter()],
@@ -188,14 +202,15 @@ describe.each(backends)("insights recordEvent on %s", (_name, adapter) => {
     });
     await expect(
       db.findOne("bundle_event_heads", { install_id: "install-1" }),
-    ).resolves.toEqual({ ...event(1), current_release_id: "release-2" });
+    ).resolves.toEqual({ ...event(1), current_release_id: COUNTED_BY_DAY });
+    // Gauges count the head in the UTC day of its event.
     await expect(distribution()).resolves.toEqual([
       {
         channel: "production",
         platform: "ios",
         app_version: "1.0.0",
         release_id: "release-2",
-        bucket_start_ms: hour(T),
+        bucket_start_ms: day(T),
         latest_installations: 1,
       },
     ]);
@@ -227,6 +242,11 @@ describe.each(backends)("insights recordEvent on %s", (_name, adapter) => {
         0,
       ),
     ).resolves.toMatchObject(counters);
+    const releaseHour = await sketch(
+      identity({ ...release, releaseId: "release-2", periodKind: "hour" }),
+      hour(T),
+    );
+    expect(countInsightsDistinct(releaseHour!.launch_users)).toBe(1);
     for (const [periodKind, bucket] of [
       ["hour", hour(T)],
       ["day", T - (T % DAY)],
@@ -234,20 +254,34 @@ describe.each(backends)("insights recordEvent on %s", (_name, adapter) => {
       await expect(
         overview(identity({ periodKind }), bucket),
       ).resolves.toMatchObject(counters);
-      const launches = await sketch(identity({ periodKind }), bucket);
-      expect(countInsightsDistinct(launches!.launch_users)).toBe(1);
-      for (const platform of ["ios", "all"] as const) {
+      // A channel's active installations come from its usage rows.
+      await expect(
+        sketch(identity({ periodKind }), bucket),
+      ).resolves.toBeUndefined();
+      for (const appVersionKind of ["specific", "all"] as const) {
         const usage = await sketch(
           identity({
             scopeKind: "usage",
-            platform,
-            appVersionKind: "specific",
-            appVersion: "1.0.0",
+            appVersionKind,
+            appVersion: appVersionKind === "specific" ? "1.0.0" : "",
             periodKind,
           }),
           bucket,
         );
         expect(countInsightsDistinct(usage!.activity_users)).toBe(1);
+        // Every platform's usage merges the platforms' rows on read.
+        await expect(
+          sketch(
+            identity({
+              scopeKind: "usage",
+              platform: "all",
+              appVersionKind,
+              appVersion: appVersionKind === "specific" ? "1.0.0" : "",
+              periodKind,
+            }),
+            bucket,
+          ),
+        ).resolves.toBeUndefined();
       }
     }
   });
@@ -319,12 +353,13 @@ describe.each(backends)("insights recordEvent on %s", (_name, adapter) => {
       id: uuid(2),
       user_id: null,
       type: "UPDATE_DOWNLOADED",
-      current_release_id: "release-2",
+      current_release_id: COUNTED_BY_DAY,
     });
+    // A download leaves the installation on release-2, in the same UTC day.
     await expect(distribution()).resolves.toMatchObject([
       {
         release_id: "release-2",
-        bucket_start_ms: hour(T + 2 * HOUR),
+        bucket_start_ms: day(T),
         latest_installations: 1,
       },
     ]);
@@ -348,10 +383,199 @@ describe.each(backends)("insights recordEvent on %s", (_name, adapter) => {
     await expect(distribution()).resolves.toMatchObject([
       {
         release_id: "release-2",
-        bucket_start_ms: hour(T + 2 * HOUR),
+        bucket_start_ms: day(T),
         latest_installations: 1,
       },
     ]);
+
+    // The next UTC day's event takes the head out of this day's rows.
+    await api.recordEvent(event(5, { received_at_ms: T + DAY }));
+    await expect(distribution()).resolves.toMatchObject([
+      {
+        release_id: "release-2",
+        bucket_start_ms: day(T + DAY),
+        latest_installations: 1,
+      },
+    ]);
+  });
+
+  it("records an UNCHANGED report as a launch that no event or outcome row keeps", async () => {
+    const { api, db, overview, outcomes, everyEvent, byBundle } = await setup();
+    await api.recordEvent(unchanged(1));
+
+    await expect(db.findOne("bundle_events", { id: uuid(1) })).resolves.toBe(
+      null,
+    );
+    await expect(
+      db.findOne("bundle_event_heads", { install_id: "install-1" }),
+    ).resolves.toEqual({ ...unchanged(1), current_release_id: COUNTED_BY_DAY });
+    await expect(outcomes("UNCHANGED", "to:bundle-2")).resolves.toEqual([]);
+    await expect(everyEvent()).resolves.toEqual([]);
+    await expect(
+      overview(identity({ periodKind: "day" }), day(T)),
+    ).resolves.toMatchObject({ launches: 1 });
+    await expect(
+      byBundle("to_bundle_id", "bundle-2", "UNCHANGED"),
+    ).resolves.toMatchObject([{ bucket_start_ms: day(T), installations: 1 }]);
+    await expect(
+      api.listEvents({
+        filter: { kind: "all" },
+        sinceMs: day(T),
+        beforeReceivedAtMs: day(T) + DAY,
+        limit: 10,
+      }),
+    ).resolves.toEqual([]);
+  });
+
+  it("writes nothing for an UNCHANGED report that repeats its head the same UTC day", async () => {
+    const calls: string[] = [];
+    const { api, db, overview } = await setup((inner) => ({
+      ...inner,
+      write: async (ops: readonly WriteOp[]) => {
+        calls.push("write");
+        return inner.write(ops);
+      },
+    }));
+    await api.recordEvent(event(1));
+    calls.length = 0;
+    // Relaunches on the bundle the apply moved to, later that day.
+    await api.recordEvent(unchanged(2, { received_at_ms: T + 5 * HOUR }));
+    await api.recordEvent(unchanged(3, { received_at_ms: T + 6 * HOUR }));
+    expect(calls).toEqual([]);
+    await expect(
+      db.findOne("bundle_event_heads", { install_id: "install-1" }),
+    ).resolves.toMatchObject({ id: uuid(1), type: "UPDATE_APPLIED" });
+    await expect(
+      overview(identity({ periodKind: "day" }), day(T)),
+    ).resolves.toMatchObject({ launches: 1 });
+
+    // An UNCHANGED report keeps no event row, so a retry that lands the next
+    // UTC day is known by the head's id.
+    await api.recordEvent(unchanged(4, { received_at_ms: T + DAY }));
+    calls.length = 0;
+    await api.recordEvent(unchanged(4, { received_at_ms: T + 2 * DAY }));
+    expect(calls).toEqual([]);
+    await expect(
+      overview(identity({ periodKind: "day" }), day(T + 2 * DAY)),
+    ).resolves.toBeUndefined();
+  });
+
+  it("records an UNCHANGED report again for a new UTC day, bundle, user, or a download's head", async () => {
+    const { api, db, overview } = await setup();
+    const head = () =>
+      db.findOne("bundle_event_heads", { install_id: "install-1" });
+    const launches = async (bucket: number) =>
+      (await overview(identity({ periodKind: "day" }), bucket))?.launches;
+
+    await api.recordEvent(unchanged(1));
+    await api.recordEvent(unchanged(2, { user_id: "user-2" }));
+    await expect(head()).resolves.toMatchObject({ id: uuid(2) });
+    await api.recordEvent(
+      unchanged(3, { to_bundle_id: "bundle-3", to_release_id: "release-3" }),
+    );
+    await expect(head()).resolves.toMatchObject({ id: uuid(3) });
+    await expect(launches(day(T))).resolves.toBe(3);
+
+    // A download's head still runs the bundle it came from.
+    await api.recordEvent(
+      event(4, {
+        type: "UPDATE_DOWNLOADED",
+        from_release_id: "release-3",
+        from_bundle_id: "bundle-3",
+        to_release_id: "release-4",
+        to_bundle_id: "bundle-4",
+        received_at_ms: T + HOUR,
+      }),
+    );
+    await api.recordEvent(
+      unchanged(5, {
+        to_bundle_id: "bundle-4",
+        to_release_id: "release-4",
+        received_at_ms: T + 2 * HOUR,
+      }),
+    );
+    await expect(head()).resolves.toMatchObject({ id: uuid(5) });
+
+    await api.recordEvent(
+      unchanged(6, {
+        to_bundle_id: "bundle-4",
+        to_release_id: "release-4",
+        received_at_ms: T + DAY,
+      }),
+    );
+    await expect(head()).resolves.toMatchObject({ id: uuid(6) });
+    await expect(launches(day(T + DAY))).resolves.toBe(1);
+  });
+
+  it("takes a head recorded while gauges counted hours out of its hour rows", async () => {
+    const { api, db, distribution, byBundle } = await setup();
+    // As an earlier release recorded it: the head names its current release,
+    // and its gauges count it in the hour of its event.
+    await db.transaction(async (tx) => {
+      tx.create("bundle_event_heads", {
+        ...event(1),
+        current_release_id: "release-2",
+      });
+      const shardBy = "install-1";
+      tx.aggregate(
+        "insights_distribution",
+        {
+          channel: "production",
+          platform: "ios",
+          app_version: "1.0.0",
+          release_id: "release-2",
+          bucket_start_ms: hour(T),
+        },
+        { latest_installations: 1 },
+        { shardBy },
+      );
+      for (const [field, bundleId] of [
+        ["from_bundle_id", "bundle-1"],
+        ["to_bundle_id", "bundle-2"],
+        [PAIR_FIELD, bundlePairKey("bundle-1", "bundle-2")],
+      ] as const) {
+        tx.aggregate(
+          "insights_latest_by_bundle",
+          {
+            platform: "ios",
+            channel: "production",
+            bundle_field: field,
+            bundle_id: bundleId,
+            type: "UPDATE_APPLIED",
+            bucket_start_ms: hour(T),
+          },
+          { installations: 1 },
+          { shardBy },
+        );
+      }
+    });
+
+    await api.recordEvent(unchanged(2, { received_at_ms: T + DAY }));
+
+    await expect(distribution()).resolves.toEqual([
+      {
+        channel: "production",
+        platform: "ios",
+        app_version: "1.0.0",
+        release_id: "release-2",
+        bucket_start_ms: day(T + DAY),
+        latest_installations: 1,
+      },
+    ]);
+    await expect(
+      byBundle("to_bundle_id", "bundle-2", "UPDATE_APPLIED"),
+    ).resolves.toEqual([]);
+    await expect(
+      byBundle("to_bundle_id", "bundle-2", "UNCHANGED"),
+    ).resolves.toMatchObject([
+      { bucket_start_ms: day(T + DAY), installations: 1 },
+    ]);
+    await expect(
+      db.findOne("bundle_event_heads", { install_id: "install-1" }),
+    ).resolves.toMatchObject({
+      id: uuid(2),
+      current_release_id: COUNTED_BY_DAY,
+    });
   });
 
   it("reads the event and head in one round, gauge and sketch rows in a second, and writes once", async () => {

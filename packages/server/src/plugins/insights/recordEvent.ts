@@ -3,7 +3,6 @@ import {
   addInsightsDistinct,
   assertBundleEventRow,
   compareUtf8,
-  currentInsightsReleaseId,
   insightsKey,
   insightsOverviewDeltas,
   insightsOverviewId,
@@ -16,7 +15,7 @@ import type {
 } from "../../database/database";
 import { DAILY_EVENTS, DAY_MS, HOUR_MS, type InsightsSchema } from "./schema";
 
-/** The head columns `countHead` reads. */
+/** The head columns `countHead` and `repeatsHead` read. */
 interface Head {
   readonly install_id: string;
   readonly id: string;
@@ -24,7 +23,10 @@ interface Head {
   readonly platform: string;
   readonly channel: string;
   readonly type: string;
+  readonly user_id: string | null;
+  readonly from_release_id: string | null;
   readonly from_bundle_id: string | null;
+  readonly to_release_id: string | null;
   readonly to_bundle_id: string;
   readonly current_release_id: string | null;
   readonly app_version: string;
@@ -47,11 +49,37 @@ export const insightsIdentity = (identity: InsightsIdentityParts): string =>
     bucketStartMs: 0,
   });
 
-/** The head columns besides its key: the whole event and its current release. */
+/**
+ * The `current_release_id` of a head whose gauges count it in the UTC day of
+ * its event. A head recorded while gauges counted hours holds its current
+ * release there instead, and stays counted in the hour of its event until it
+ * moves. Both lie inside the event's UTC day, which is what reads sum.
+ */
+export const COUNTED_BY_DAY = "day";
+
+/** The head columns besides its key: the whole event, counted by day. */
 const headFields = (event: BundleEventRow) => {
   const { install_id: _, ...fields } = event;
-  return { ...fields, current_release_id: currentInsightsReleaseId(event) };
+  return { ...fields, current_release_id: COUNTED_BY_DAY };
 };
+
+/**
+ * The bucket a head's gauges count it in, and the release its distribution
+ * row names: the one it runs, which a download leaves at its source.
+ */
+const gaugeSlot = (head: Head) =>
+  head.current_release_id === COUNTED_BY_DAY
+    ? {
+        bucket: dayOf(head.received_at_ms),
+        releaseId:
+          head.type === "UPDATE_DOWNLOADED"
+            ? head.from_release_id
+            : head.to_release_id,
+      }
+    : {
+        bucket: hourOf(head.received_at_ms),
+        releaseId: head.current_release_id,
+      };
 
 /**
  * The `insights_latest_by_bundle` field of a head's (from, to) pair. A head
@@ -70,7 +98,7 @@ const countHead = (
   head: Head,
   delta: 1 | -1,
 ) => {
-  const bucket = hourOf(head.received_at_ms);
+  const { bucket, releaseId } = gaugeSlot(head);
   const shardBy = head.install_id;
   tx.aggregate(
     "insights_distribution",
@@ -78,7 +106,7 @@ const countHead = (
       channel: head.channel,
       platform: head.platform,
       app_version: head.app_version,
-      release_id: head.current_release_id ?? "",
+      release_id: releaseId ?? "",
       bucket_start_ms: bucket,
     },
     { latest_installations: delta },
@@ -120,8 +148,10 @@ const countHead = (
 
 /**
  * Counters and sketches for one event: release, channel, and usage rows, with
- * day rollups for channel and usage; and its outcome rows, its bundle
- * filter's hour and every event's day.
+ * day rollups for channel and usage. Usage rows are written for the event's
+ * platform only, since a read for every platform merges the ios and android
+ * sketches; a channel's active installations come from its usage rows, so
+ * channel rows keep no sketch of their own.
  */
 const countEvent = (
   tx: HotUpdaterTransaction<InsightsSchema>,
@@ -129,6 +159,7 @@ const countEvent = (
 ) => {
   const shardBy = event.install_id;
   for (const delta of insightsOverviewDeltas(event)) {
+    if (delta.identity.platform === "all") continue;
     const { bucketStartMs, ...parts } = delta.identity;
     const periods =
       parts.scopeKind === "channel" || parts.scopeKind === "usage"
@@ -157,7 +188,7 @@ const countEvent = (
         tx.aggregate("insights_overview", key, counters, { shardBy });
       }
       const sketches = {
-        ...(delta.launchIdentity === undefined
+        ...(delta.launchIdentity === undefined || parts.scopeKind === "channel"
           ? {}
           : { launch_users: addInsightsDistinct(null, delta.launchIdentity) }),
         ...(delta.activityIdentity === undefined
@@ -171,6 +202,17 @@ const countEvent = (
       }
     }
   }
+};
+
+/**
+ * A stored event's outcome rows: its bundle filter's hour, and every stored
+ * event's UTC day.
+ */
+const countOutcome = (
+  tx: HotUpdaterTransaction<InsightsSchema>,
+  event: BundleEventRow,
+) => {
+  const shardBy = event.install_id;
   tx.aggregate(
     "insights_outcomes",
     {
@@ -202,11 +244,36 @@ const isNewer = (event: Head, head: Head) =>
     ? event.received_at_ms > head.received_at_ms
     : compareUtf8(event.id, head.id) > 0;
 
+/** What an UNCHANGED report must share with its installation's head to repeat it. */
+const REPEATED_FIELDS = [
+  "channel",
+  "platform",
+  "app_version",
+  "to_bundle_id",
+  "to_release_id",
+  "user_id",
+] as const;
+
+/**
+ * An UNCHANGED report that repeats its installation's head from the same UTC
+ * day: the installation already counts as active that day, on that bundle,
+ * so the report records nothing. A download's head does not count, because
+ * its installation still ran the bundle it downloaded from.
+ */
+const repeatsHead = (event: BundleEventRow, head: Head) =>
+  event.type === "UNCHANGED" &&
+  head.type !== "UPDATE_DOWNLOADED" &&
+  dayOf(event.received_at_ms) === dayOf(head.received_at_ms) &&
+  REPEATED_FIELDS.every((field) => event[field] === head[field]);
+
 /**
  * Records one event in one transaction: one batch read of the event and its
  * installation's head, one of the gauge and sketch rows it changes, then one
- * write. A repeated id changes nothing, whichever installation sends it; an
- * older event still counts in its own hour but never replaces the head.
+ * write. A stored event's id changes nothing when repeated, whichever
+ * installation sends it, and neither does the id of the installation's head.
+ * An UNCHANGED report that repeats its head on the same UTC day writes
+ * nothing at all. An older event still counts in its own hour but never
+ * replaces the head.
  */
 export const recordEvent = (
   db: HotUpdaterDatabase<InsightsSchema>,
@@ -219,10 +286,16 @@ export const recordEvent = (
       tx.findOne("bundle_event_heads", { install_id: event.install_id }),
     ]);
     // The id is the report's idempotency key: a retry, or any report under
-    // an id already stored, changes nothing, as analytics ingestion drops
-    // duplicates.
-    if (existing !== null) return;
-    tx.create("bundle_events", event);
+    // an id already stored or already the installation's head, changes
+    // nothing, as analytics ingestion drops duplicates.
+    if (existing !== null || previous?.id === event.id) return;
+    if (previous !== null && repeatsHead(event, previous)) return;
+    // An UNCHANGED report is a launch: it counts and moves the head, but no
+    // event list shows it, so no event row or outcome row keeps it.
+    if (event.type !== "UNCHANGED") {
+      tx.create("bundle_events", event);
+      countOutcome(tx, event);
+    }
     countEvent(tx, event);
     const fields = headFields(event);
     const head = { ...fields, install_id: event.install_id };

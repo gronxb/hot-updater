@@ -12,10 +12,10 @@ vi.mock("@tanstack/react-router", () => ({
 
 const report: RecoveryReport = {
   downloads: 8,
-  uniqueUsers: 5,
-  launches: 20,
+  activeInstallations: 5,
+  activeDays: 20,
   failedLaunches: 2,
-  points: [{ startMs: 0, launches: 20, failedLaunches: 2 }],
+  points: [{ startMs: 0, dailyActiveInstallations: 20, failedLaunches: 2 }],
   startMs: 0,
   endMs: 86_400_000,
   measuredAtMs: 86_400_000,
@@ -31,7 +31,7 @@ const input = {
 afterEach(cleanup);
 
 describe("Release health", () => {
-  it("shows the agreed metrics and derives crash rate from launch attempts", () => {
+  it("shows the agreed metrics and derives crash rate from launch attempts", async () => {
     render(
       <InsightsOverview
         input={input}
@@ -45,15 +45,29 @@ describe("Release health", () => {
         }}
       />,
     );
-    expect(screen.getByText("Unique users")).toBeDefined();
-    // Unique users come from a sketch, so the value reads as an estimate.
+    expect(screen.getByText("Active installations")).toBeDefined();
+    // Active installations come from a sketch, so the value is an estimate.
     expect(screen.getByTitle("Estimated").textContent).toBe("≈Estimated 5");
-    expect(screen.getByText("Launches")).toBeDefined();
+    expect(
+      screen.getByText("Active days").closest("div")?.querySelector("dd")
+        ?.textContent,
+    ).toBe("20");
     expect(screen.getByText("Failed launches")).toBeDefined();
+    // 2 failed launches / (20 active days + 2 failed launches).
     expect(screen.getByText("9.09%")).toBeDefined();
     expect(
-      screen.getByLabelText("Daily launches and failed launches"),
+      screen.getByLabelText("Daily active installations and failed launches"),
     ).toBeDefined();
+    expect(
+      screen.getByRole("button", { name: "About active installations" }),
+    ).toBeDefined();
+    expect(
+      screen.getByRole("button", { name: "About crash rate" }),
+    ).toBeDefined();
+    fireEvent.click(screen.getByRole("button", { name: "About active days" }));
+    expect((await screen.findByRole("tooltip")).textContent).toContain(
+      "once for each UTC day it launched",
+    );
   });
 
   it("shows the no-launch state instead of a zero crash rate", () => {
@@ -63,7 +77,7 @@ describe("Release health", () => {
         onWindowChange={vi.fn()}
         onRefresh={vi.fn()}
         query={{
-          data: { ...report, launches: 0, failedLaunches: 0, points: [] },
+          data: { ...report, activeDays: 0, failedLaunches: 0, points: [] },
           error: null,
           isPending: false,
           isFetching: false,

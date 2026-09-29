@@ -43,6 +43,11 @@ import {
 import { getAppUsageReportRpc } from "@/lib/insights-usage-rpc";
 
 const PAGE_SIZE = 20;
+const dates = new Intl.DateTimeFormat("en", {
+  month: "short",
+  day: "numeric",
+  timeZone: "UTC",
+});
 export const Route = createFileRoute("/insights_/distribution")({
   beforeLoad: ({ context }) =>
     requireConsoleFeature(context.queryClient, "insightsAnalytics"),
@@ -66,6 +71,9 @@ function DistributionPage() {
     staleTime: 30_000,
   });
   const report = query.error ? undefined : query.data;
+  const distributionPeriod = report
+    ? `since ${dates.format(report.distributionSinceMs)}, 00:00 UTC`
+    : "in this period";
   const rows = (report?.bundleDistribution ?? []).filter(
     (row) => !search.version || row.appVersion === search.version,
   );
@@ -187,11 +195,11 @@ function DistributionPage() {
               <div className="flex items-center justify-between gap-2">
                 <CardTitle>Bundles by app version</CardTitle>
                 <InsightsInfo label="How bundle distribution is counted">
-                  Each installation contributes its latest matching report in
-                  this period. Share is within its app version. Unknown bundle
-                  means no deployment ID was observed for the reported file.
-                  These counts describe reporting installations, not all
-                  installed devices.
+                  Each installation counts once by its latest matching report{" "}
+                  {distributionPeriod}. Latest reports are counted by UTC day.
+                  Share is within its app version. Unknown bundle means no
+                  deployment ID was observed for the reported file. These counts
+                  describe reporting installations, not all installed devices.
                 </InsightsInfo>
               </div>
               <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
