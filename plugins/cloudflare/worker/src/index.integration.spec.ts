@@ -128,6 +128,8 @@ describe.sequential("cloudflare worker runtime acceptance", () => {
     await env.DB.prepare("DELETE FROM releases").run();
     await env.DB.prepare("DELETE FROM bundles").run();
     await env.DB.prepare("DELETE FROM channels").run();
+    await env.DB.prepare("DELETE FROM bundle_totals").run();
+    await env.DB.prepare("DELETE FROM base_candidates").run();
   });
 
   it("serves unversioned Release Catalog routes from the worker entrypoint", async () => {

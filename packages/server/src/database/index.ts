@@ -119,6 +119,8 @@ export {
   type SqlResult,
   type SqlStatement,
 } from "./sql/sqlAdapter";
+export { WRITE_GUARD_TABLE } from "./sql/sqlBatch";
+export { isMultiIndex } from "./sql/sqlSchema";
 export {
   createLegacyDatabasePlugin,
   legacyFacadeSchema,

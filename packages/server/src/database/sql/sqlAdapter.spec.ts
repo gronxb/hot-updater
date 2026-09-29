@@ -17,7 +17,13 @@ import {
   type SqlExecutor,
   type SqlStatement,
 } from "./sqlAdapter";
-import { pgliteExecutor, sqliteExecutor } from "./sqlTestExecutors";
+import { WRITE_GUARD_TABLE } from "./sqlBatch";
+import {
+  pgliteBatchExecutor,
+  pgliteExecutor,
+  sqliteBatchExecutor,
+  sqliteExecutor,
+} from "./sqlTestExecutors";
 
 const pglite = new PGlite();
 afterAll(() => pglite.close());
@@ -52,8 +58,38 @@ setupDatabaseAdapterConformanceSuite({
   },
 });
 
+/** Batch writes: every guard first, then the changes, in one atomic batch (D1). */
+setupDatabaseAdapterConformanceSuite({
+  name: "sql batch (SQLite)",
+  maxOps: 50,
+  createAdapter: async ({ tables }) => {
+    const db = new DatabaseSync(":memory:");
+    const adapter = createSqlAdapter({
+      executor: sqliteBatchExecutor(db),
+      maxOps: 50,
+    });
+    await adapter.migrations?.apply([...tables, WRITE_GUARD_TABLE]);
+    return { adapter, cleanup: async () => db.close() };
+  },
+});
+
+setupDatabaseAdapterConformanceSuite({
+  name: "sql batch (PGlite)",
+  maxOps: 50,
+  createAdapter: async ({ tables }) => {
+    tests += 1;
+    const adapter = createSqlAdapter({
+      executor: pgliteBatchExecutor(pglite),
+      tablePrefix: `b${tests}_`,
+      maxOps: 50,
+    });
+    await adapter.migrations?.apply([...tables, WRITE_GUARD_TABLE]);
+    return { adapter };
+  },
+});
+
 /** Records statements and answers every read with no rows. */
-const recorder = (dialect: SqlExecutor["dialect"]) => {
+const recorder = (dialect: SqlExecutor["dialect"], maxParams?: number) => {
   const statements: SqlStatement[] = [];
   const execute = async (statement: SqlStatement) => {
     statements.push(statement);
@@ -65,10 +101,25 @@ const recorder = (dialect: SqlExecutor["dialect"]) => {
     execute,
     transaction: (fn) => fn({ execute }),
   };
-  return { statements, adapter: createSqlAdapter({ executor }) };
+  return {
+    statements,
+    adapter: createSqlAdapter({
+      executor,
+      ...(maxParams === undefined ? {} : { maxParams }),
+    }),
+  };
 };
 
 describe("sql core", () => {
+  it("splits a batch read so no statement binds more than maxParams", async () => {
+    const { statements, adapter } = recorder("sqlite", 5);
+    const keys = ["a", "b", "c", "d", "e", "f"].map((scope) => [scope, 0]);
+    await expect(adapter.get(conformanceCounters, keys)).resolves.toEqual(
+      keys.map(() => null),
+    );
+    expect(statements.map(({ params }) => params.length)).toEqual([4, 4, 4]);
+  });
+
   it("stores ASCII strings single-byte on MySQL and refuses a key over its byte limit", () => {
     const scopeKey = {
       name: "scope_key",
