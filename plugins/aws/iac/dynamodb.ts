@@ -1,5 +1,6 @@
 import {
   type AttributeDefinition,
+  type BatchWriteItemInput,
   type CreateTableInput,
   type UpdateContinuousBackupsInput,
   DynamoDB,
@@ -8,8 +9,11 @@ import {
   waitUntilTableExists,
 } from "@aws-sdk/client-dynamodb";
 import { InitError } from "@hot-updater/cli-tools";
-
-import { DYNAMODB_UPDATE_INDEX_NAME } from "../src/dynamoDB";
+import {
+  encodeKvKey,
+  legacyFacadeSettings,
+  SETTINGS_TABLE,
+} from "@hot-updater/server/database";
 
 const DYNAMODB_DESCRIBE_TABLE_ACTION = "dynamodb:DescribeTable";
 
@@ -18,7 +22,7 @@ export class DynamoDBTableSchemaError extends Error {
 
   constructor(readonly tableName: string) {
     super(
-      `DynamoDB table "${tableName}" does not match the Hot Updater key and index schema`,
+      `DynamoDB table "${tableName}" does not match the Hot Updater schema: a pk and sk key and no secondary index. A table from before 1.0 keeps its update index; delete it and rerun init to create it again.`,
     );
   }
 }
@@ -51,12 +55,7 @@ const primaryKeySchema = [
   { AttributeName: "sk", KeyType: "RANGE" },
 ] as const satisfies readonly KeySchemaElement[];
 
-const updateIndexKeySchema = [
-  { AttributeName: "gsi1pk", KeyType: "HASH" },
-  { AttributeName: "gsi1sk", KeyType: "RANGE" },
-] as const satisfies readonly KeySchemaElement[];
-
-const keyAttributes = ["pk", "sk", "gsi1pk", "gsi1sk"] as const;
+const keyAttributes = ["pk", "sk"] as const;
 const onDemandThroughput = {
   MaxReadRequestUnits: 4_000,
   MaxWriteRequestUnits: 100,
@@ -74,9 +73,6 @@ const hasKeySchema = (
   );
 
 const hasExpectedSchema = (table: TableDescription | undefined): boolean => {
-  const updateIndex = table?.GlobalSecondaryIndexes?.find(
-    ({ IndexName }) => IndexName === DYNAMODB_UPDATE_INDEX_NAME,
-  );
   return (
     keyAttributes.every((attributeName) =>
       table?.AttributeDefinitions?.some(
@@ -90,12 +86,8 @@ const hasExpectedSchema = (table: TableDescription | undefined): boolean => {
     table.OnDemandThroughput?.MaxWriteRequestUnits ===
       onDemandThroughput.MaxWriteRequestUnits &&
     hasKeySchema(table?.KeySchema, primaryKeySchema) &&
-    hasKeySchema(updateIndex?.KeySchema, updateIndexKeySchema) &&
-    updateIndex?.OnDemandThroughput?.MaxReadRequestUnits ===
-      onDemandThroughput.MaxReadRequestUnits &&
-    updateIndex?.OnDemandThroughput?.MaxWriteRequestUnits ===
-      onDemandThroughput.MaxWriteRequestUnits &&
-    updateIndex?.Projection?.ProjectionType === "ALL"
+    // The storage engine keeps its indexes as items; a secondary index marks a table from before 1.0.
+    (table?.GlobalSecondaryIndexes ?? []).length === 0
   );
 };
 
@@ -109,23 +101,34 @@ export const buildDynamoDBCreateTableInput = (tableName: string) =>
     AttributeDefinitions: [
       { AttributeName: "pk", AttributeType: "S" },
       { AttributeName: "sk", AttributeType: "S" },
-      { AttributeName: "gsi1pk", AttributeType: "S" },
-      { AttributeName: "gsi1sk", AttributeType: "S" },
     ],
     BillingMode: "PAY_PER_REQUEST",
     DeletionProtectionEnabled: true,
-    GlobalSecondaryIndexes: [
-      {
-        IndexName: DYNAMODB_UPDATE_INDEX_NAME,
-        KeySchema: [...updateIndexKeySchema],
-        Projection: { ProjectionType: "ALL" },
-        OnDemandThroughput: onDemandThroughput,
-      },
-    ],
     KeySchema: [...primaryKeySchema],
     OnDemandThroughput: onDemandThroughput,
     TableName: tableName,
   }) satisfies CreateTableInput;
+
+/**
+ * The schema settings items the plugin checks before its first read, as one
+ * BatchWriteItem request: what `migrateDynamoDB` writes to a new table.
+ */
+export const buildDynamoDBSchemaSettingsInput = (tableName: string) =>
+  ({
+    RequestItems: {
+      [tableName]: Object.entries(legacyFacadeSettings).map(([key, value]) => ({
+        PutRequest: {
+          Item: {
+            pk: { S: SETTINGS_TABLE.name },
+            sk: { S: encodeKvKey([key]) },
+            key: { S: key },
+            value: { S: value },
+            _v: { N: "0" },
+          },
+        },
+      })),
+    },
+  }) satisfies BatchWriteItemInput;
 
 export const buildDynamoDBBackupInput = (tableName: string) =>
   ({

@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import path from "path";
 
-import { dynamoDB, s3Storage } from "@hot-updater/aws";
+import { dynamoDB, migrateDynamoDB, s3Storage } from "@hot-updater/aws";
 import { mockStorage } from "@hot-updater/mock";
 import { createHotUpdater } from "@hot-updater/server";
 
@@ -17,12 +17,17 @@ const credentials = {
 };
 const providerNamespace = process.env.HOT_UPDATER_E2E_PROVIDER_NAMESPACE;
 
-export const database = dynamoDB({
+const dynamoDBConfig = {
   region,
   endpoint: process.env.AWS_DYNAMODB_ENDPOINT ?? "http://localhost:8000",
   credentials,
   tableName: process.env.AWS_DYNAMODB_TABLE_NAME ?? "hot-updater-metadata",
-});
+};
+
+export const database = dynamoDB({ ...dynamoDBConfig });
+
+/** Creates the table when it is missing and writes the schema settings the plugin checks first. */
+export const migrateDatabase = () => migrateDynamoDB(dynamoDBConfig);
 
 export const hotUpdater = createHotUpdater({
   database,

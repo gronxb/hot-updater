@@ -370,6 +370,8 @@ describe("deployment artifacts", () => {
       "dynamodb/create-table.json":
         aws.buildDynamoDBCreateTableInput("my-metadata"),
       "dynamodb/enable-pitr.json": aws.buildDynamoDBBackupInput("my-metadata"),
+      "dynamodb/schema-settings.json":
+        aws.buildDynamoDBSchemaSettingsInput("my-metadata"),
       "iam/trust-policy.json": aws.LAMBDA_EDGE_TRUST_POLICY,
       "iam/dynamodb-policy.json": aws.buildDynamoDBPolicy(
         "ap-northeast-2",

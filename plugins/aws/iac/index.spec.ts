@@ -2,13 +2,20 @@ import type { ApiKeyModel } from "@hot-updater/plugin-core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
+  calls: [] as string[],
   ensureTable: vi.fn(),
+  migrateDynamoDB: vi.fn(),
 }));
 
 vi.mock("./dynamodb", () => ({
   DynamoDBManager: vi.fn(function DynamoDBManager() {
     return { ensureTable: mocks.ensureTable };
   }),
+}));
+
+vi.mock("../src/dynamoDB", () => ({
+  dynamoDB: vi.fn(),
+  migrateDynamoDB: mocks.migrateDynamoDB,
 }));
 
 import { prepareDynamoDBApiKey, prepareDynamoDBDeployment } from "./index";
@@ -67,16 +74,25 @@ describe("AWS DynamoDB deployment preparation", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.ensureTable.mockResolvedValue(undefined);
+    mocks.calls.length = 0;
+    mocks.ensureTable.mockImplementation(async () => {
+      mocks.calls.push("ensureTable");
+    });
+    mocks.migrateDynamoDB.mockImplementation(async () => {
+      mocks.calls.push("migrateDynamoDB");
+    });
   });
 
-  it("ensures the official-domain table before deployment", async () => {
-    await prepareDynamoDBDeployment({
+  it("ensures the table, then writes the schema settings the plugin checks", async () => {
+    const input = {
       credentials,
       region: "ap-northeast-2",
       tableName: "hot-updater-metadata",
-    });
+    };
+    await prepareDynamoDBDeployment(input);
 
     expect(mocks.ensureTable).toHaveBeenCalledWith("hot-updater-metadata");
+    expect(mocks.migrateDynamoDB).toHaveBeenCalledWith(input);
+    expect(mocks.calls).toEqual(["ensureTable", "migrateDynamoDB"]);
   });
 });

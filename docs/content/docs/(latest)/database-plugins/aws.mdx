@@ -15,10 +15,10 @@ npm install @hot-updater/aws --save-dev
 
 The [managed AWS setup](/docs/managed/aws#step-2-configure-aws) supports an AI
 agent or the interactive CLI. Both workflows create or validate the DynamoDB
-table before configuring the app.
+table, and write its schema settings, before configuring the app.
 
-For custom installations, create one on-demand table manually with the
-overloaded index used for patch relations and installation movement history:
+For custom installations, create one on-demand table keyed by string `pk` and
+`sk`, with no secondary index:
 
 ```bash
 aws dynamodb create-table \
@@ -29,26 +29,24 @@ aws dynamodb create-table \
   --attribute-definitions \
     AttributeName=pk,AttributeType=S \
     AttributeName=sk,AttributeType=S \
-    AttributeName=gsi1pk,AttributeType=S \
-    AttributeName=gsi1sk,AttributeType=S \
   --key-schema \
     AttributeName=pk,KeyType=HASH \
-    AttributeName=sk,KeyType=RANGE \
-  --global-secondary-indexes '[
-    {
-      "IndexName": "hot-updater-update-index",
-      "KeySchema": [
-        { "AttributeName": "gsi1pk", "KeyType": "HASH" },
-        { "AttributeName": "gsi1sk", "KeyType": "RANGE" }
-      ],
-      "Projection": { "ProjectionType": "ALL" },
-      "OnDemandThroughput": {
-        "MaxReadRequestUnits": 4000,
-        "MaxWriteRequestUnits": 100
-      }
-    }
-  ]'
+    AttributeName=sk,KeyType=RANGE
 ```
+
+Then write the schema settings the plugin checks before its first read.
+`dynamoDB()` answers 503 until they exist:
+
+```typescript
+import { migrateDynamoDB } from "@hot-updater/aws";
+
+await migrateDynamoDB({ tableName: "hot-updater", region: "us-east-1" });
+```
+
+When the table is missing, `migrateDynamoDB` also creates it, on demand and
+without deletion protection, which suits DynamoDB Local. A table with the
+`hot-updater-update-index` secondary index comes from a 1.0 release candidate;
+create a new table for 1.0.
 
 The same table stores all seven official database domains: Bundles, Bundle
 patches, Releases, Release Catalogs, Channels, Insights events, and API keys.
@@ -172,22 +170,20 @@ const hotUpdater = createHotUpdater({
 });
 ```
 
-The Lambda or server role needs `Query` access to the update index,
-`BatchGetItem`/`GetItem` access to Bundle, patch, and API key partitions,
-and `GetItem`/`Query`/`TransactWriteItems` access to Insights partitions. CLI
-and Console writers need the transaction and write permissions required to
-manage Bundle metadata and API keys.
+The Lambda or server role reads with `BatchGetItem` and `Query`, and writes
+with `TransactWriteItems`, which needs `PutItem`, `UpdateItem`, `DeleteItem`,
+and `ConditionCheckItem` on the table. Every item's partition key is a table
+name, or a table name followed by `#` for its index items, so a
+`dynamodb:LeadingKeys` condition can scope the role to Hot Updater's items; the
+managed setup's policy lists them.
 
-The provider does not impose a total bundle, patch, or patch-relationship count
-limit. Each serialized metadata item is limited to 8 KiB, and counters and
-relation counts are updated in the same DynamoDB transaction as each mutation.
-Cursor-based bundle pages read only the requested page, exact bundle references
-use strongly consistent key reads, and single-owner patch hydration uses index
-keys only to discover candidates before strongly reading their base-table rows.
-Unfiltered totals use the transactionally maintained metadata counter. Batch
-reads retry unprocessed keys with bounded exponential backoff.
+Reads are strongly consistent. Each row is one item, and each index a row
+belongs to adds an item holding a copy of it, written in the same transaction.
+A unique lookup, such as an API key by its hash, is one point read.
 
-DynamoDB permits at most 100 actions in one transaction. Every
-`commit({ changes, expectations })` envelope is planned and submitted as one transaction,
-including relation counters and cascade deletions; a commit that exceeds the
-service limit is rejected before it can be partially applied.
+DynamoDB permits at most 100 items and 4 MB in one transaction, and 400 KB in
+one item. Every `commit({ changes, expectations })` envelope is one transaction,
+with its index items, relation counters, and cascade deletions; a commit over
+the limit is refused before anything is written. A Release with a wide app
+version range also writes up to 16 base-candidate rows, so commit Releases a
+few at a time.

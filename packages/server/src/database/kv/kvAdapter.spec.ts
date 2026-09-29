@@ -234,6 +234,14 @@ describe("createKvAdapter", () => {
     expect(adapter.fits([insert(item("a", { note: "x".repeat(2_000) }))])).toBe(
       false,
     );
+    const capped = createKvAdapter({
+      store: createMemoryKeyValueStore({
+        limits: { items: 100, bytes: 4_000, itemBytes: 1_000 },
+      }),
+    });
+    expect(capped.fits([insert(item("a", { note: "x".repeat(900) }))])).toBe(
+      false,
+    );
     expect(
       adapter.fits([
         {
@@ -300,6 +308,25 @@ describe("createKvAdapter", () => {
         },
       ]),
     ).toEqual({ ok: false, failedOp: 1 });
+  });
+});
+
+describe("key-value ranges", () => {
+  it("answers crossing bounds without asking the store", async () => {
+    const { store, calls } = recorded(createMemoryKeyValueStore());
+    const adapter = createKvAdapter({ store });
+
+    expect(
+      await adapter.query(conformanceItems, {
+        index: "byGroup",
+        eq: ["g"],
+        lower: { values: [5], inclusive: false },
+        upper: { values: [5], inclusive: false },
+        order: "asc",
+        limit: 5,
+      }),
+    ).toEqual([]);
+    expect(calls).toEqual([]);
   });
 });
 
