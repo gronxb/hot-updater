@@ -330,11 +330,48 @@ export function wrap(
 
   const { reloadOnForceUpdate = true, ...restOptions } = options;
 
+  // Progress is subscribed only where it is rendered or reported, so progress
+  // events don't re-render the wrapped app.
+  const ProgressReporter = ({
+    onProgress,
+  }: {
+    onProgress: (progress: number) => void;
+  }) => {
+    const progress = useHotUpdaterStore((state) => state.progress);
+
+    useEffect(() => {
+      onProgress(progress);
+    }, [progress]);
+
+    return null;
+  };
+
+  const FallbackWithProgress = ({
+    Fallback,
+    status,
+    message,
+  }: {
+    Fallback: React.FC<HotUpdaterFallbackComponentProps>;
+    status: HotUpdaterFallbackComponentProps["status"];
+    message: string | null;
+  }) => {
+    const progressState = useHotUpdaterStore((state) => state);
+
+    return (
+      <Fallback
+        artifactType={progressState.artifactType}
+        details={progressState.details}
+        downloadedBytes={progressState.downloadedBytes}
+        progress={progressState.progress}
+        status={status}
+        message={message}
+        totalBytes={progressState.totalBytes}
+      />
+    );
+  };
+
   return <P extends object>(WrappedComponent: React.ComponentType<P>) => {
     const HotUpdaterHOC: React.FC<P> = (props: P) => {
-      const progressState = useHotUpdaterStore((state) => state);
-      const progress = progressState.progress;
-
       const [message, setMessage] = useState<string | null>(null);
       const [updateStatus, setUpdateStatus] =
         useState<UpdateStatus>("CHECK_FOR_UPDATE");
@@ -406,10 +443,6 @@ export function wrap(
         }
       });
 
-      useEffect(() => {
-        restOptions.onProgress?.(progress);
-      }, [progress]);
-
       // Read the native launch report after the first render commit.
       useEffect(() => {
         void handleNotifyAppReady(restOptions);
@@ -420,25 +453,28 @@ export function wrap(
         initHotUpdater();
       }, []);
 
-      if (
+      const content =
         restOptions.fallbackComponent &&
-        updateStatus !== "UPDATE_PROCESS_COMPLETED"
-      ) {
-        const Fallback = restOptions.fallbackComponent;
-        return (
-          <Fallback
-            artifactType={progressState.artifactType}
-            details={progressState.details}
-            downloadedBytes={progressState.downloadedBytes}
-            progress={progress}
+        updateStatus !== "UPDATE_PROCESS_COMPLETED" ? (
+          <FallbackWithProgress
+            Fallback={restOptions.fallbackComponent}
             status={updateStatus}
             message={message}
-            totalBytes={progressState.totalBytes}
           />
+        ) : (
+          <WrappedComponent {...props} />
         );
+
+      if (!restOptions.onProgress) {
+        return content;
       }
 
-      return <WrappedComponent {...props} />;
+      return (
+        <>
+          {content}
+          <ProgressReporter onProgress={restOptions.onProgress} />
+        </>
+      );
     };
 
     return HotUpdaterHOC as React.ComponentType<P>;
