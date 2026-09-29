@@ -1,13 +1,11 @@
 import { existsSync } from "node:fs";
 
-import { registerApiKey } from "@hot-updater/server";
-
 const envTargetPath = process.env.HOT_UPDATER_E2E_ENV_TARGET_PATH;
 if (envTargetPath && existsSync(envTargetPath)) {
   process.loadEnvFile(envTargetPath);
 }
 
-const { database, migrateDatabase } = await import("../src/db");
+const { hotUpdater, migrateDatabase } = await import("../src/db");
 await migrateDatabase();
 
 const apiKey = process.env.HOT_UPDATER_API_KEY?.trim();
@@ -15,10 +13,7 @@ if (!apiKey) {
   throw new Error("HOT_UPDATER_API_KEY is required");
 }
 
-await registerApiKey({
-  apiKey,
-  apiKeys: database.models.apiKeys,
-  name: "hot-updater-e2e",
-});
+// The apiKeys() plugin's API, on the tables the server checks.
+await hotUpdater.api.apiKeys.register({ apiKey, name: "hot-updater-e2e" });
 
 console.log("api-key-ready");

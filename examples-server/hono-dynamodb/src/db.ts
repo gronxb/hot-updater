@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import path from "path";
 
-import { dynamoDB, migrateDynamoDB, s3Storage } from "@hot-updater/aws";
+import { dynamoDB, migrateDynamoDB, plugins, s3Storage } from "@hot-updater/aws";
 import { mockStorage } from "@hot-updater/mock";
 import { createHotUpdater } from "@hot-updater/server";
 
@@ -29,9 +29,10 @@ export const database = dynamoDB({ ...dynamoDBConfig });
 /** Creates the table when it is missing and writes the schema settings the plugin checks first. */
 export const migrateDatabase = () => migrateDynamoDB(dynamoDBConfig);
 
+// The managed AWS server's plugins: Insights, and API keys on client routes.
 export const hotUpdater = createHotUpdater({
   database,
-  clientAccess: { type: "api-key" },
+  plugins,
   storage: [
     process.env.NODE_ENV === "test"
       ? (

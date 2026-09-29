@@ -15,11 +15,11 @@ import {
   transformTemplate,
   writeHotUpdaterConfig,
 } from "@hot-updater/cli-tools";
-import type { ApiKeyModel } from "@hot-updater/plugin-core";
-import { provisionApiKey } from "@hot-updater/server";
+import { createDatabasePluginApis } from "@hot-updater/server/db";
 import { execa } from "execa";
 
 import { dynamoDB, migrateDynamoDB } from "../src/dynamoDB";
+import { plugins } from "../src/plugins";
 import { resolveAwsAuth } from "./awsAuth";
 import { getAwsV1SsmParameterName } from "./awsInfrastructureNames";
 import {
@@ -68,12 +68,15 @@ export const prepareDynamoDBDeployment = async (input: {
   await migrateDynamoDB(input);
 };
 
+/** The app's client key, through the managed server's apiKeys() plugin, on the table it reads. */
 export const prepareDynamoDBApiKey = async (input: {
-  readonly apiKeys: ApiKeyModel;
+  readonly database: unknown;
   readonly existingApiKey?: string;
 }): Promise<string> => {
-  const created = await provisionApiKey({
-    apiKeys: input.apiKeys,
+  const created = await createDatabasePluginApis(
+    input.database,
+    plugins,
+  ).apiKeys.provision({
     existingApiKey: input.existingApiKey,
     name: "AWS init",
   });
@@ -349,7 +352,7 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
   let apiKey: string;
   try {
     apiKey = await prepareDynamoDBApiKey({
-      apiKeys: databasePlugin.models.apiKeys,
+      database: databasePlugin,
       existingApiKey: providerEnv.HOT_UPDATER_API_KEY,
     });
     await makeEnv({ HOT_UPDATER_API_KEY: apiKey });

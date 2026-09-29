@@ -2,7 +2,11 @@ import {
   createReleaseCatalogScopeKey,
   encodeChannelKey,
 } from "@hot-updater/core";
-import type { Bundle, Deployment } from "@hot-updater/plugin-core";
+import type {
+  Bundle,
+  BundleDeployment,
+  Deployment,
+} from "@hot-updater/plugin-core";
 import {
   bundleToPatchRows,
   bundleToRow,
@@ -22,7 +26,7 @@ import { createLegacyDatabasePlugin } from "@hot-updater/server/database";
 import { createDatabaseCoreApi } from "@hot-updater/server/db";
 import { vi } from "vitest";
 
-export type DeploymentSeed = Deployment;
+export type DeploymentSeed = BundleDeployment;
 
 const createdAtMsFromId = (id: string): number => {
   try {

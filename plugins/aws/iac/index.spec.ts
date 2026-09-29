@@ -1,4 +1,5 @@
-import type { ApiKeyModel } from "@hot-updater/plugin-core";
+import { createMemoryAdapter } from "@hot-updater/plugin-core/internal";
+import { createLegacyDatabasePlugin } from "@hot-updater/server/database";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
@@ -22,47 +23,44 @@ import { prepareDynamoDBApiKey, prepareDynamoDBDeployment } from "./index";
 
 const EXISTING_API_KEY = "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE";
 
-const createApiKeyTable = () =>
-  ({
-    create: vi.fn(async () => "created" as const),
-    findByHash: vi.fn(async () => null),
-    list: vi.fn(async () => []),
-    revoke: vi.fn(async () => null),
-  }) satisfies ApiKeyModel;
+/** A database on the storage engine, where the apiKeys() plugin keeps its table. */
+const createDatabase = () =>
+  createLegacyDatabasePlugin({
+    name: "memory",
+    adapter: createMemoryAdapter(),
+  });
 
 describe("AWS DynamoDB API key preparation", () => {
   it("registers the existing app key without persisting the raw value", async () => {
-    const apiKeys = createApiKeyTable();
+    const database = createDatabase();
 
     const apiKey = await prepareDynamoDBApiKey({
-      apiKeys,
+      database,
       existingApiKey: EXISTING_API_KEY,
     });
 
     expect(apiKey).toBe(EXISTING_API_KEY);
-    expect(apiKeys.create).toHaveBeenCalledWith(
+    const stored = await database.models.apiKeys.list();
+    expect(stored).toEqual([
       expect.objectContaining({ name: "AWS init", prefix: "AQEBAQ" }),
-    );
-    expect(JSON.stringify(vi.mocked(apiKeys.create).mock.calls)).not.toContain(
-      EXISTING_API_KEY,
-    );
+    ]);
+    expect(JSON.stringify(stored)).not.toContain(EXISTING_API_KEY);
   });
 
   it("creates a canonical app key when the environment has none", async () => {
-    const apiKeys = createApiKeyTable();
+    const database = createDatabase();
 
-    const apiKey = await prepareDynamoDBApiKey({ apiKeys });
+    const apiKey = await prepareDynamoDBApiKey({ database });
 
     expect(apiKey).toMatch(/^[A-Za-z0-9_-]{43}$/u);
-    expect(apiKeys.create).toHaveBeenCalledWith(
+    const stored = await database.models.apiKeys.list();
+    expect(stored).toEqual([
       expect.objectContaining({
         name: "AWS init",
         prefix: apiKey.slice(0, 6),
       }),
-    );
-    expect(JSON.stringify(vi.mocked(apiKeys.create).mock.calls)).not.toContain(
-      apiKey,
-    );
+    ]);
+    expect(JSON.stringify(stored)).not.toContain(apiKey);
   });
 });
 

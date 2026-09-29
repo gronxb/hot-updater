@@ -19,10 +19,11 @@ import {
   transformTemplate,
   writeHotUpdaterConfig,
 } from "@hot-updater/cli-tools";
-import { provisionApiKey } from "@hot-updater/server";
+import { createDatabasePluginApis } from "@hot-updater/server/db";
 import { Cloudflare } from "cloudflare";
 
 import { d1Database } from "../src/d1Database";
+import { plugins } from "../src/plugins";
 import { createWrangler } from "../src/utils/createWrangler";
 import {
   validateCloudflareApiToken,
@@ -712,13 +713,16 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
   });
   let apiKey: string;
   try {
-    apiKey = (
-      await provisionApiKey({
-        apiKeys: databasePlugin.models.apiKeys,
-        existingApiKey: initInputEnv.HOT_UPDATER_API_KEY,
-        name: "Cloudflare init",
-      })
-    ).apiKey;
+    apiKey = // The managed server's apiKeys() plugin, on the tables it reads.
+      (
+        await createDatabasePluginApis(
+          databasePlugin,
+          plugins,
+        ).apiKeys.provision({
+          existingApiKey: initInputEnv.HOT_UPDATER_API_KEY,
+          name: "Cloudflare init",
+        })
+      ).apiKey;
     await makeEnv({ HOT_UPDATER_API_KEY: apiKey });
   } finally {
     await databasePlugin.dispose?.();

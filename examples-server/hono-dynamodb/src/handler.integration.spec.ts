@@ -18,7 +18,7 @@ import {
   createUUIDv7,
   updateReleasePolicy,
 } from "@hot-updater/plugin-core";
-import { createApiKey, type HotUpdaterAPI } from "@hot-updater/server";
+import type { HotUpdaterAPI } from "@hot-updater/server";
 import { standaloneRepository } from "@hot-updater/standalone";
 import {
   createHttpTestClient,
@@ -157,8 +157,8 @@ describe("Hot Updater Handler Integration Tests (Hono + DynamoDB)", () => {
     await waitForServer(baseUrl, 180);
 
     const db = await import("./db.js");
-    const created = await createApiKey({
-      apiKeys: db.database.models.apiKeys,
+    // The apiKeys() plugin the server runs, on its own tables.
+    const created = await db.hotUpdater.api.apiKeys.create({
       name: "Standalone integration test",
     });
     rawApiKey = created.apiKey;

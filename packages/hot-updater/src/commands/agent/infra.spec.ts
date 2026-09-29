@@ -311,6 +311,7 @@ describe("deployment artifacts", () => {
       const providerRoot = path.join(repoRoot, "plugins", provider);
       for (const name of [
         `@hot-updater/${provider}`,
+        "@hot-updater/server",
         ...(provider === "aws" ? ["@aws-sdk/credential-providers"] : []),
         ...(provider === "firebase" ? ["firebase-admin"] : []),
       ]) {
@@ -326,12 +327,16 @@ describe("deployment artifacts", () => {
       const configUrl = pathToFileURL(
         path.join(scaffold.output, "app/api-key.config.ts"),
       );
+      const pluginsUrl = pathToFileURL(
+        path.join(scaffold.output, "app/hotUpdater.plugins.ts"),
+      );
       const result = spawnSync(
         process.execPath,
         [
           "--input-type=module",
           "--eval",
-          `const { database } = await import(${JSON.stringify(configUrl.href)}); console.log(Boolean(database.models.apiKeys)); await database.dispose?.();`,
+          // provision-api-key.mjs's path: the server's apiKeys() plugin over the key config's database.
+          `const { database } = await import(${JSON.stringify(configUrl.href)}); const { plugins } = await import(${JSON.stringify(pluginsUrl.href)}); const { createDatabasePluginApis } = await import("@hot-updater/server/db"); console.log(typeof createDatabasePluginApis(database, plugins).apiKeys.provision); await database.dispose?.();`,
         ],
         {
           cwd,
@@ -353,7 +358,7 @@ describe("deployment artifacts", () => {
       );
       expect(result.error).toBeUndefined();
       expect(result.status, result.stderr).toBe(0);
-      expect(result.stdout.trim()).toBe("true");
+      expect(result.stdout.trim()).toBe("function");
     },
   );
 
