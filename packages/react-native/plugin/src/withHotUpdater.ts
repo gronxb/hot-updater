@@ -10,6 +10,7 @@ import {
   withMainApplication,
   withPlugins,
   withStringsXml,
+  XML,
 } from "expo/config-plugins";
 
 import pkg from "../../package.json";
@@ -284,7 +285,7 @@ const withHotUpdaterConfigAsync =
         upsertAndroidMetaData(
           application,
           ANDROID_META_DATA_KEYS.publicKey,
-          publicKey,
+          XML.escapeAndroidString(publicKey),
         );
       }
 
