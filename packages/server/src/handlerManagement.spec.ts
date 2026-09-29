@@ -10,9 +10,23 @@ describe("createHandlers admin routes", () => {
   it("does not match client routes", async () => {
     const api = createApi();
     const handler = createAdminHandler(api);
-    const response = await handler(new Request("http://localhost/version"));
+    const response = await handler(
+      new Request(
+        "http://localhost/artifacts/v1/01900000-0000-7000-8000-000000000002/from/01900000-0000-7000-8000-000000000001",
+      ),
+    );
 
     expect(response.status).toBe(404);
+  });
+
+  it("reports the admin API protocol where standalone clients call", async () => {
+    const handler = createAdminHandler(createApi());
+    const response = await handler(new Request("http://localhost/version"));
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      adminProtocol: 2,
+    });
   });
 
   it("exposes the canonical Channel-row route and removes the legacy path", async () => {

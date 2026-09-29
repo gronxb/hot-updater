@@ -5,6 +5,7 @@ import {
   type ReleasePolicyPatch,
 } from "@hot-updater/plugin-core";
 
+import { adminV2Reads, isAdminV2 } from "./handlerAdminV2Routes";
 import { HandlerBadRequestError } from "./handlerErrors";
 import { decodeMaybe, requireRouteParam } from "./handlerParameters";
 import type { RouteHandler } from "./handlerTypes";
@@ -75,7 +76,10 @@ export const createReleaseManagementRouteHandlers = (): Record<
       : Response.json({ data: row }, { status: 200 });
   },
 
-  getReleases: async (_params, request, api) => {
+  getReleases: async (params, request, api) => {
+    if (isAdminV2(request)) {
+      return adminV2Reads.listReleases(params, request, api);
+    }
     const url = new URL(request.url);
     const scopeKey = url.searchParams.get("scopeKey");
     const limit = Number(url.searchParams.get("limit") ?? "100");
@@ -140,7 +144,10 @@ export const createReleaseManagementRouteHandlers = (): Record<
       : Response.json({ data: row }, { status: 200 });
   },
 
-  getReleaseCatalogs: async (_params, request, api) => {
+  getReleaseCatalogs: async (params, request, api) => {
+    if (isAdminV2(request)) {
+      return adminV2Reads.listReleaseCatalogs(params, request, api);
+    }
     if (api.getReleaseCatalogs === undefined) return unavailable();
     const url = new URL(request.url);
     const limit = Number(url.searchParams.get("limit") ?? "100");

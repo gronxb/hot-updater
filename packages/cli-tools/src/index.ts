@@ -15,6 +15,7 @@ export * from "./getPackageManager";
 export * from "./getReactNativeMetadatas";
 export * from "./hotUpdaterConfig";
 export * from "./hotUpdaterEnv";
+export * from "./hotUpdaterPlugins";
 export * from "./HotUpdateDirUtil";
 export * from "./infrastructureGeneration";
 export * from "./initProvider";

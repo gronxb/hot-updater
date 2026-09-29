@@ -539,3 +539,189 @@ describe("Handler <-> Standalone Repository Integration", () => {
     });
   });
 });
+
+describe("Standalone core API over admin API protocol 2", () => {
+  const core = () =>
+    standaloneRepository({ baseUrl: `${baseUrl}/hot-updater/admin` }).core;
+  const deployment = (bundle: Bundle, channel = "production") => ({
+    bundle,
+    release: {
+      channel,
+      enabled: true,
+      fingerprintHash: null,
+      message: null,
+      shouldForceUpdate: false,
+      targetAppVersion: "1.0.0",
+    },
+  });
+
+  it("deploys, lists by key, and reads bundles, releases, catalogs, and channels", async () => {
+    const remote = core();
+    const bundles = [uuidv7(), uuidv7(), uuidv7()].map((id) =>
+      createTestBundle({ id }),
+    );
+    const deployed = [];
+    for (const bundle of bundles) {
+      deployed.push(...(await remote.deploy([deployment(bundle)])));
+    }
+    const scopeKey = deployed[0]!.catalog.scope_key;
+    const channel = await remote.findChannelByName("production");
+
+    expect(deployed.map(({ catalog }) => catalog.generation)).toEqual([
+      1, 2, 3,
+    ]);
+    expect(channel).toMatchObject({ name: "production" });
+    await expect(remote.listChannels()).resolves.toEqual([channel]);
+    const first = await remote.listBundles({ limit: 2, order: "desc" });
+    const second = await remote.listBundles({
+      limit: 2,
+      order: "desc",
+      after: first.at(-1)!.bundle.id,
+    });
+    expect([...first, ...second].map(({ bundle }) => bundle.id)).toEqual(
+      bundles.map(({ id }) => id).reverse(),
+    );
+    await expect(remote.countBundles()).resolves.toBe(3);
+    await expect(remote.countBundles("android")).resolves.toBe(0);
+    await expect(remote.getBundle(bundles[0]!.id)).resolves.toMatchObject({
+      bundle: { id: bundles[0]!.id },
+      patches: [],
+      childCount: 0,
+    });
+    await expect(remote.getBundle(uuidv7())).resolves.toBeNull();
+    await expect(
+      remote.listReleases({
+        limit: 10,
+        order: "asc",
+        filter: { kind: "scope", scopeKey, enabled: true },
+      }),
+    ).resolves.toHaveLength(3);
+    await expect(
+      remote.listReleases({
+        limit: 10,
+        filter: {
+          kind: "channelPlatform",
+          channelId: channel!.id,
+          platform: "ios",
+          enabled: false,
+        },
+      }),
+    ).resolves.toEqual([]);
+    await expect(remote.getReleaseCatalogRow(scopeKey)).resolves.toMatchObject({
+      generation: 3,
+    });
+    await expect(remote.listReleaseCatalogs({ limit: 10 })).resolves.toEqual([
+      expect.objectContaining({ scope_key: scopeKey }),
+    ]);
+  });
+
+  it("changes, previews, promotes, and deletes releases, and rebuilds catalogs", async () => {
+    const remote = core();
+    const [deployed] = await remote.deploy([
+      deployment(createTestBundle({ id: uuidv7() })),
+    ]);
+    const releaseId = deployed!.release!.id;
+    const scopeKey = deployed!.catalog.scope_key;
+
+    await expect(
+      remote.preflightReleasePolicy({
+        releaseId,
+        patch: { rolloutCohortCount: 100 },
+      }),
+    ).resolves.toMatchObject({
+      expectedReleaseRevision: 1,
+      release: { revision: 2 },
+    });
+    await expect(
+      remote.updateReleasePolicy({
+        releaseId,
+        expectedRevision: 1,
+        patch: { rolloutCohortCount: 100 },
+      }),
+    ).resolves.toMatchObject({ release: { revision: 2 } });
+    await expect(
+      remote.updateReleasePolicy({
+        releaseId,
+        expectedRevision: 1,
+        patch: { enabled: false },
+      }),
+    ).rejects.toMatchObject({
+      name: "ReleaseManagementError",
+      code: "VERSION_CONFLICT",
+    });
+    const promoted = await remote.promoteRelease({
+      releaseId,
+      targetChannel: "beta",
+      action: "move",
+    });
+    expect(promoted.source!.release).toMatchObject({ enabled: false });
+    expect(promoted.target.release).toMatchObject({
+      operation: "PROMOTE",
+      source_release_id: releaseId,
+    });
+    await expect(
+      remote.preflightReleaseCatalogRebuild(scopeKey),
+    ).resolves.toMatchObject({ changed: false });
+    await expect(remote.rebuildReleaseCatalog(scopeKey)).resolves.toMatchObject(
+      { changed: false },
+    );
+    await expect(remote.deleteRelease({ releaseId })).resolves.toMatchObject({
+      release: null,
+    });
+    await expect(remote.getRelease(releaseId)).resolves.toBeNull();
+  });
+
+  it("creates and deletes channels, replaces patches, and refuses to delete a bundle a release uses", async () => {
+    const remote = core();
+    const base = createTestBundle({ id: uuidv7() });
+    const target = createTestBundle({ id: uuidv7() });
+    await remote.deploy([deployment(base)]);
+    await remote.deploy([deployment(target)]);
+    const qa = await remote.ensureChannel("qa");
+
+    await expect(remote.ensureChannel("qa")).resolves.toEqual(qa);
+    await expect(remote.deleteChannel(qa.id)).resolves.toEqual({
+      deleted: true,
+    });
+    const production = await remote.findChannelByName("production");
+    await expect(remote.deleteChannel(production!.id)).resolves.toEqual({
+      deleted: false,
+      reason: "not_empty",
+    });
+    await remote.updateBundle(target.id, {
+      patches: [
+        {
+          baseBundleId: base.id,
+          baseFileHash: "base-hash",
+          byteSize: 10,
+          patchFileHash: "patch-hash",
+          patchStorageUri: "test://patches/1.patch",
+        },
+      ],
+    });
+    await expect(
+      remote.listPatchesFromBase(base.id, { limit: 10 }),
+    ).resolves.toEqual([expect.objectContaining({ bundle_id: target.id })]);
+    await expect(remote.deleteBundles([base.id])).rejects.toMatchObject({
+      status: 409,
+    });
+  });
+
+  it("fails fast on a server that predates protocol 2, and refuses release filters no index serves", async () => {
+    server.use(
+      http.get(`${baseUrl}/old-server/version`, () =>
+        HttpResponse.json({ error: "Not found" }, { status: 404 }),
+      ),
+    );
+    await expect(
+      standaloneRepository({
+        baseUrl: `${baseUrl}/old-server`,
+      }).core.listChannels(),
+    ).rejects.toThrow("speaks admin API protocol 1, and this CLI needs 2");
+
+    const response = await fetch(
+      `${baseUrl}/hot-updater/admin/releases?v=2&channelId=x`,
+    );
+    expect(response.status).toBe(400);
+  });
+});

@@ -1,6 +1,7 @@
 import type { MountedEndpoint } from "./assembly/assemblePlugins";
 import { HotUpdaterConfigError } from "./assembly/assemblePlugins";
 import { HotUpdaterSchemaMigrationRequiredError } from "./db/schemaReadiness";
+import { createAdminV2RouteHandlers } from "./handlerAdminV2Routes";
 import { createBundleRouteHandlers } from "./handlerBundleRoutes";
 import { HandlerBadRequestError } from "./handlerErrors";
 import { createReleaseCatalogRouteHandlers } from "./handlerReleaseCatalogRoutes";
@@ -210,6 +211,7 @@ export function createHotUpdaterHandlers(
     ...createReleaseCatalogRouteHandlers(),
     ...createReleaseManagementRouteHandlers(),
     ...createBundleRouteHandlers(),
+    ...createAdminV2RouteHandlers(),
     ...(insights === undefined
       ? {}
       : insights === "disabled"
@@ -296,6 +298,10 @@ export function createHotUpdaterHandlers(
 
   const adminRouter = createRouter<string>();
   const addAdminRoute = mount(adminRouter, true);
+  // The admin mount also reports the protocol, so a standalone client checks it where it calls.
+  addAdminRoute("GET", "/version", "version");
+  addAdminRoute("POST", "/releases", "deployReleases");
+  addAdminRoute("POST", "/releases/:id/promote", "promoteRelease");
   addAdminRoute("GET", "/releases/:id", "getRelease");
   addAdminRoute("GET", "/releases", "getReleases");
   addAdminRoute("PATCH", "/releases/:id", "updateRelease");
@@ -308,6 +314,11 @@ export function createHotUpdaterHandlers(
     "/release-catalogs/:scopeKey/rebuild",
     "rebuildReleaseCatalog",
   );
+  addAdminRoute(
+    "POST",
+    "/release-catalogs/:scopeKey/preflight",
+    "preflightReleaseCatalogRebuild",
+  );
   addAdminRoute("POST", "/database/commit", "commitDatabase");
   addAdminRoute("GET", "/channels", "getChannels");
   addAdminRoute("POST", "/channels", "createChannel");
@@ -317,6 +328,9 @@ export function createHotUpdaterHandlers(
   addAdminRoute("POST", "/bundles", "createBundles");
   addAdminRoute("PATCH", "/bundles/:id", "updateBundle");
   addAdminRoute("DELETE", "/bundles/:id", "deleteBundle");
+  addAdminRoute("POST", "/bundles/delete", "deleteBundles");
+  addAdminRoute("GET", "/bundles/:id/children", "listBundleChildren");
+  addAdminRoute("GET", "/base-candidates/:candidateKey", "findBaseCandidates");
   mountInsights("admin", addAdminRoute);
   for (const endpoint of endpoints) {
     const name = `plugin ${endpoint.plugin}: ${endpoint.method} ${endpoint.path}`;

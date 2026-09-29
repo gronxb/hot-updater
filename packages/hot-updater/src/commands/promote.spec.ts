@@ -1,7 +1,6 @@
 import { stripVTControlCharacters } from "node:util";
 
 import type { Bundle } from "@hot-updater/plugin-core";
-import { updateReleasePolicy } from "@hot-updater/plugin-core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createDatabasePluginHarness } from "./databasePlugin.testFixtures";
@@ -73,7 +72,7 @@ describe("handlePromote", () => {
     vi.clearAllMocks();
     databaseHarness.reset();
     const result = await commitDeployment({
-      database: databaseHarness.plugin,
+      core: databaseHarness.core,
       bundle: sourceBundle,
       release: sourceRelease,
     });
@@ -147,7 +146,6 @@ describe("handlePromote", () => {
       enabled: true,
       operation: "PROMOTE",
     });
-    expect(databaseHarness.commit).toHaveBeenCalledTimes(1);
     expect(
       stripVTControlCharacters(String(log.message.mock.calls[0]?.[0])),
     ).toContain("disabled atomically");
@@ -159,8 +157,7 @@ describe("handlePromote", () => {
       value: true,
     });
     confirm.mockImplementationOnce(async () => {
-      await updateReleasePolicy({
-        database: databaseHarness.plugin,
+      await databaseHarness.core.updateReleasePolicy({
         patch: { message: "changed concurrently" },
         releaseId: sourceReleaseId,
       });

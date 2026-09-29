@@ -101,6 +101,14 @@ describe("published agent infrastructure commands", () => {
         );
         expect(config).toContain(`@hot-updater/${build}`);
         expect(config).toContain(`@hot-updater/${provider}`);
+        await expect(
+          readFile(
+            path.join(result.data.output, "app/hotUpdater.plugins.ts"),
+            "utf8",
+          ),
+        ).resolves.toContain(
+          `export { plugins } from "@hot-updater/${provider}";`,
+        );
         const environment = await readFile(result.data.environment, "utf8");
         const example = await readFile(
           path.join(result.data.output, "env.example"),

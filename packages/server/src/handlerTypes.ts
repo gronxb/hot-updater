@@ -1,5 +1,6 @@
 import type { ArtifactInfo, Bundle, ReleaseCatalog } from "@hot-updater/core";
 import type {
+  HotUpdaterCoreApi,
   ChannelDeleteInput,
   ChannelDeleteResult,
   ChannelInsertInput,
@@ -20,6 +21,8 @@ import type { ReleaseCatalogRequest } from "./db/releaseCatalog";
 import type { PaginatedResult } from "./types";
 
 export interface HandlerAPI {
+  /** Core's reads and typed writes, when the database runs on the storage engine: admin API protocol 2. */
+  readonly core?: HotUpdaterCoreApi;
   getReleaseCatalog?: (
     input: ReleaseCatalogRequest,
   ) => Promise<ReleaseCatalog | null>;

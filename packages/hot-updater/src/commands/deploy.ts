@@ -14,9 +14,8 @@ import {
   putStorageFile,
 } from "@hot-updater/cli-tools";
 import type {
-  Bundle,
   BundleRepository,
-  DatabaseMutationClient,
+  HotUpdaterCoreApi,
   Platform,
   ReleaseCatalogMutationResult,
   StoragePluginWith,
@@ -24,17 +23,20 @@ import type {
 import {
   assertStorageOperations,
   createBundleStorageKey,
-  createDatabaseClient,
   createStorageRootUriWithPath,
   createStorageUriWithRelativePath,
   getManifestAssetDownloadPath,
   getManifestAssetStoragePath,
   isContentAddressedAssetFileHash,
 } from "@hot-updater/plugin-core";
-import { createBundleDiff } from "@hot-updater/server/db";
+import {
+  createBundleDiff,
+  createDatabaseCoreApi,
+  targetBaseCandidateKey,
+} from "@hot-updater/server/db";
 import isPortReachable from "is-port-reachable";
 import open from "open";
-import { normalizeRange, rangesIntersect } from "verkit";
+import { normalizeRange } from "verkit";
 
 import { getPlatform } from "@/prompts/getPlatform";
 import { createSignedFileHash } from "@/signedHashUtils";
@@ -183,97 +185,46 @@ const formatUploadProgress = (
   return `Uploading ${percent}% (${completed}/${total}${skippedText})`;
 };
 
-const areTargetAppVersionsPatchCompatible = (a: string, b: string): boolean => {
-  const aRange = normalizeRange(a);
-  const bRange = normalizeRange(b);
-
-  if (!aRange || !bRange) {
-    return false;
-  }
-
-  return rangesIntersect(aRange, bRange);
-};
-
-const getPatchBaseBundles = async ({
+/**
+ * The newest older bundles an enabled release in the same channel and
+ * platform serves to the new bundle's devices: the same fingerprint, or an
+ * app version range sharing the target's minor line. A target spanning
+ * several minor lines gets none. One read of at most `maxBaseBundles` rows.
+ */
+const getPatchBaseBundleIds = async ({
   bundleId,
   channel,
-  database,
-  databasePlugin,
+  core,
   maxBaseBundles,
   platform,
   target,
 }: {
   bundleId: string;
   channel: string;
-  database: DatabaseMutationClient;
-  databasePlugin: BundleRepository;
+  core: HotUpdaterCoreApi;
   maxBaseBundles: number;
   platform: Platform;
   target: {
     appVersion: string | null;
     fingerprintHash: string | null;
   };
-}): Promise<Bundle[]> => {
-  const channelRow = (
-    await databasePlugin.models.channels.list({})
-  ).channels.find(({ name }) => name === channel);
-  if (channelRow === undefined) return [];
-  const pageSize = Math.max(maxBaseBundles * 3, 10);
-  const compatibleBundles: Bundle[] = [];
-  const seenBundleIds = new Set<string>();
-  let beforeReleaseId: string | undefined;
-
-  while (compatibleBundles.length < maxBaseBundles) {
-    const releases = await databasePlugin.models.releases.findMany({
-      ...(beforeReleaseId === undefined ? {} : { beforeReleaseId }),
-      channelId: channelRow.id,
-      enabled: true,
-      limit: pageSize,
-      platform,
-    });
-
-    for (const release of releases) {
-      const releaseIsCompatible = target.fingerprintHash
-        ? release.strategy === "FINGERPRINT" &&
-          release.fingerprint_hash === target.fingerprintHash
-        : target.appVersion !== null &&
-          release.strategy === "APP_VERSION" &&
-          release.target_app_version !== null &&
-          areTargetAppVersionsPatchCompatible(
-            target.appVersion,
-            release.target_app_version,
-          );
-      if (
-        !releaseIsCompatible ||
-        release.kind !== "BUNDLE" ||
-        release.bundle_id === null ||
-        release.bundle_id >= bundleId ||
-        seenBundleIds.has(release.bundle_id)
-      ) {
-        continue;
-      }
-      seenBundleIds.add(release.bundle_id);
-      const bundle = await database.getBundleById(release.bundle_id);
-      if (bundle !== null) compatibleBundles.push(bundle);
-
-      if (compatibleBundles.length >= maxBaseBundles) {
-        break;
-      }
-    }
-
-    if (releases.length < pageSize) break;
-    const nextCursor = releases.at(-1)?.id;
-    if (nextCursor === undefined || nextCursor === beforeReleaseId) break;
-    beforeReleaseId = nextCursor;
-  }
-
-  return compatibleBundles;
+}): Promise<string[]> => {
+  const channelRow = await core.findChannelByName(channel);
+  if (channelRow === null) return [];
+  const candidateKey = targetBaseCandidateKey({
+    appVersion: target.appVersion,
+    channelId: channelRow.id,
+    fingerprintHash: target.fingerprintHash,
+    platform,
+  });
+  if (candidateKey === null) return [];
+  return core.findBaseBundleIds(candidateKey, bundleId, maxBaseBundles);
 };
 
 const createAutoPatches = async ({
   bundleId,
   channel,
-  database,
+  core,
   databasePlugin,
   maxBaseBundles,
   platform,
@@ -282,7 +233,7 @@ const createAutoPatches = async ({
 }: {
   bundleId: string;
   channel: string;
-  database: DatabaseMutationClient;
+  core: HotUpdaterCoreApi;
   databasePlugin: BundleRepository;
   maxBaseBundles: number;
   platform: Platform;
@@ -292,11 +243,10 @@ const createAutoPatches = async ({
     fingerprintHash: string | null;
   };
 }) => {
-  const baseBundles = await getPatchBaseBundles({
+  const baseBundleIds = await getPatchBaseBundleIds({
     bundleId,
     channel,
-    database,
-    databasePlugin,
+    core,
     maxBaseBundles,
     platform,
     target,
@@ -304,11 +254,11 @@ const createAutoPatches = async ({
   const failures: { baseBundleId: string; message: string }[] = [];
   let createdCount = 0;
 
-  for (const baseBundle of baseBundles) {
+  for (const baseBundleId of baseBundleIds) {
     try {
       await createBundleDiff(
         {
-          baseBundleId: baseBundle.id,
+          baseBundleId,
           bundleId,
         },
         {
@@ -322,14 +272,14 @@ const createAutoPatches = async ({
       createdCount += 1;
     } catch (error) {
       failures.push({
-        baseBundleId: baseBundle.id,
+        baseBundleId,
         message: error instanceof Error ? error.message : "Unknown patch error",
       });
     }
   }
 
   return {
-    candidateCount: baseBundles.length,
+    candidateCount: baseBundleIds.length,
     createdCount,
     failures,
   };
@@ -674,9 +624,9 @@ const getMultiPlatformDeploymentContext = ({
 
 const deployPlatform = async ({
   config,
+  core,
   databasePlugin,
   deferAutoPatches,
-  deferredDatabase,
   options,
   persistDeployment,
   platform,
@@ -684,9 +634,9 @@ const deployPlatform = async ({
   platformCount,
 }: {
   config: DeployConfig;
+  core: HotUpdaterCoreApi;
   databasePlugin: BundleRepository;
   deferAutoPatches: boolean;
-  deferredDatabase: DatabaseMutationClient;
   options: DeployOptions;
   persistDeployment: (input: DeploymentWrite) => Promise<void>;
   platform: Platform;
@@ -1159,7 +1109,7 @@ const deployPlatform = async ({
                 patchSummary = await createAutoPatches({
                   bundleId: confirmedBundleId,
                   channel,
-                  database: deferredDatabase,
+                  core,
                   databasePlugin,
                   maxBaseBundles: maxPatchBaseBundles,
                   platform,
@@ -1234,7 +1184,7 @@ export const deploy = async (options: DeployOptions): Promise<void> => {
     ...new Set(platformConfigs.map(({ config }) => config.database)),
   ];
   const databasePlugin = firstPlatformConfig.config.database;
-  const database = createDatabaseClient(databasePlugin);
+  const core = createDatabaseCoreApi(databasePlugin);
 
   const deployPlatforms = async (
     persistDeployment: (input: DeploymentWrite) => Promise<void>,
@@ -1246,9 +1196,9 @@ export const deploy = async (options: DeployOptions): Promise<void> => {
     ] of platformConfigs.entries()) {
       const result = await deployPlatform({
         config,
+        core,
         databasePlugin,
         deferAutoPatches: platforms.length > 1,
-        deferredDatabase: database,
         options,
         persistDeployment,
         platform,
@@ -1270,6 +1220,9 @@ export const deploy = async (options: DeployOptions): Promise<void> => {
       throw new MultiPlatformDatabaseBoundaryError();
     }
     const rolloutPercentage = normalizeRolloutPercentage(options.rollout);
+    // The schema fence (and a self-hosted server's admin protocol) is
+    // checked before anything is built or uploaded.
+    await core.ready();
 
     if (platforms.length > 1) {
       p.note(
@@ -1287,7 +1240,7 @@ export const deploy = async (options: DeployOptions): Promise<void> => {
     let commitResults: readonly ReleaseCatalogMutationResult[];
     if (platforms.length > 1) {
       const committed = await prepareAndCommitBundles({
-        database: databasePlugin,
+        core,
         prepare: deployPlatforms,
       });
       preparedResults = committed.results;
@@ -1295,9 +1248,7 @@ export const deploy = async (options: DeployOptions): Promise<void> => {
     } else {
       const committed: ReleaseCatalogMutationResult[] = [];
       preparedResults = await deployPlatforms(async (input) => {
-        committed.push(
-          await commitDeployment({ database: databasePlugin, ...input }),
-        );
+        committed.push(await commitDeployment({ core, ...input }));
       });
       commitResults = committed;
     }
