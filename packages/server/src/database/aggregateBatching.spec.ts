@@ -301,6 +301,60 @@ describe("aggregate batching", () => {
     }
   });
 
+  it("deletes applied log rows through the adapter's unguarded delete where it has one", async () => {
+    const reference = await setup();
+    await traffic(reference.db);
+    const memory = createMemoryAdapter();
+    await memory.migrations?.apply(batched.tables);
+    const consumed: string[] = [];
+    let lose = true;
+    const log = await setup({
+      batching: { mode: "log", windowMs: 60_000 },
+      adapter: {
+        ...memory,
+        async deleteConsumed(physical, rows) {
+          // The first call fails after it deleted: the next compaction finishes.
+          const deletes = rows.map((row) => ({
+            type: "delete" as const,
+            table: physical,
+            key: [String(row.id)],
+            guard: { v: Number(row._v) },
+            previous: row,
+          }));
+          const current = await memory.get(
+            physical,
+            deletes.map(({ key }) => key),
+          );
+          await memory.write(deletes.filter((_, at) => current[at] !== null));
+          consumed.push(...rows.map((row) => String(row.id)));
+          if (lose) {
+            lose = false;
+            throw new Error("socket hang up");
+          }
+        },
+      },
+    });
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    await traffic(log.db);
+    await log.engine.flush();
+    expect(warn).toHaveBeenCalledWith(
+      "[hot-updater] Aggregate compaction failed.",
+      expect.any(Error),
+    );
+    expect(await snapshot(log.db)).toEqual(await snapshot(reference.db));
+    expect(await logRows(memory)).toEqual([]);
+    expect(consumed.length).toBeGreaterThanOrEqual(60);
+    // No log row left the log through a guarded write.
+    expect(
+      log.writes
+        .flat()
+        .filter(
+          (op) =>
+            op.type === "delete" && op.table.name.startsWith("aggregate_log_"),
+        ),
+    ).toEqual([]);
+  });
+
   it("applies each log row once when two processes compact the same log", async () => {
     const shared = createMemoryAdapter();
     await shared.migrations?.apply(batched.tables);

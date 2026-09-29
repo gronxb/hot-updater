@@ -27,11 +27,19 @@ const LEASE_TABLE = "aggregate_lease";
 const LEASE = { id: "compaction" } as const;
 /** How long a compaction holds the lease before another process may take it. */
 const LEASE_MS = 30_000;
-const WINDOW_MS = 15_000;
+/**
+ * Default windows: log mode compacts every 60 seconds, since reads compact
+ * first; memory mode flushes every 15, since its window is what a crash
+ * loses.
+ */
+const WINDOW_MS = { log: 60_000, memory: 15_000 } as const;
 /** Log rows a compaction reads from each log table for one group. */
 const LOG_PAGE = 200;
-/** Groups one compaction applies: after a commit, before a read, and on flush. */
-const GROUPS = { commit: 4, read: 16, flush: 256 } as const;
+/**
+ * Groups one compaction applies: after a commit, so the request that runs
+ * it waits for one group; before a read; and on flush.
+ */
+const GROUPS = { commit: 1, read: 8, flush: 256 } as const;
 /** Tries per write after a conflict or a transient error. */
 const ATTEMPTS = 5;
 /** Aggregate rows a memory buffer holds before a commit waits for a flush. */
@@ -49,7 +57,7 @@ const log = defineTable(
 /**
  * Held by `holder` until `until`; the next compaction is due at `next`.
  * `applied` lists the log rows a compaction has applied and not yet deleted,
- * as `[log table, id]` pairs, so no compaction applies them again.
+ * as `[log table's index, id]` pairs, so no compaction applies them again.
  */
 const lease = defineTable(
   {
@@ -289,7 +297,8 @@ const encode = async (changes: Iterable<AggregateChange>) => {
 };
 
 interface LogRow {
-  readonly table: string;
+  /** The log table's index in `LOG_TABLES`. */
+  readonly shard: number;
   readonly row: StoredRow;
   readonly changes: Changes;
 }
@@ -318,7 +327,7 @@ export const createAggregateBatches = ({
   engine,
   adapter,
   schema,
-  batching: { mode = "log", windowMs = WINDOW_MS },
+  batching: { mode = "log", windowMs = WINDOW_MS[mode] },
   now,
 }: {
   readonly engine: Engine;
@@ -446,9 +455,9 @@ export const createAggregateBatches = ({
   // "log": log rows, compacted under the lease.
   let nextDue = 0;
   let compacting: Promise<void> | undefined;
-  /** Log rows this process read, by `[table, id]`, for the deletes after a group. */
+  /** Log rows this process read, by `[log table's index, id]`, for the deletes after a group. */
   const known = new Map<string, StoredRow>();
-  const idOf = (name: string, id: unknown) => JSON.stringify([name, id]);
+  const idOf = (shard: number, id: unknown) => JSON.stringify([shard, id]);
 
   /** The lease row as stored once `set` is written over it. */
   const leaseOp = (held: StoredRow, set: Values) => {
@@ -499,48 +508,81 @@ export const createAggregateBatches = ({
     return false;
   };
 
-  /** Deletes the log rows `held` lists as applied; true once none is left. */
+  /** Deletes the log rows `held` lists as applied, in parallel writes; true once none is left. */
   const deleteApplied = async (held: StoredRow) => {
-    const applied = JSON.parse(String(held.applied)) as [string, string][];
-    const missing = applied.filter(([name, id]) => !known.has(idOf(name, id)));
-    const found = await Promise.all(
-      missing.map(([name, id]) =>
-        adapter.get(table(name), [[id]]).then(([row]) => [name, row] as const),
-      ),
+    const applied = JSON.parse(String(held.applied)) as [number, string][];
+    // Rows a previous holder applied are read again, one batch per table.
+    await Promise.all(
+      LOG_TABLES.map(async (name, shard) => {
+        const ids = applied.flatMap(([at, id]) =>
+          at === shard && !known.has(idOf(at, id)) ? [id] : [],
+        );
+        if (ids.length === 0) return;
+        const rows = await adapter.get(
+          table(name),
+          ids.map((id) => [id]),
+        );
+        for (const row of rows) if (row) known.set(idOf(shard, row.id), row);
+      }),
     );
-    for (const [name, row] of found) {
-      if (row) known.set(idOf(name, row.id), row);
+    const rows = applied.flatMap(([shard, id]) => {
+      const row = known.get(idOf(shard, id));
+      return row === undefined ? [] : [{ shard, row }];
+    });
+    if (adapter.deleteConsumed) {
+      // The lease lists them as applied, so an unguarded delete is safe.
+      await Promise.all(
+        LOG_TABLES.map((name, at) => {
+          const own = rows.flatMap(({ shard, row }) =>
+            shard === at ? [row] : [],
+          );
+          return own.length > 0 && adapter.deleteConsumed!(table(name), own);
+        }),
+      );
+      for (const [shard, id] of applied) known.delete(idOf(shard, id));
+      return true;
     }
-    const deletes = applied.flatMap(([name, id]): WriteOp[] => {
-      const row = known.get(idOf(name, id));
-      if (row === undefined) return [];
+    const deletes = rows.map(({ shard, row }): WriteOp => {
       const guard = { v: Number(row[DATABASE_VERSION_COLUMN]) };
-      return [
-        { type: "delete", table: table(name), key: [id], guard, previous: row },
-      ];
+      const target = table(LOG_TABLES[shard]!);
+      return {
+        type: "delete",
+        table: target,
+        key: [String(row.id)],
+        guard,
+        previous: row,
+      };
     });
     let size = deletes.length;
     while (size > 1 && !adapter.fits(deletes.slice(0, size))) {
       size = Math.ceil(size / 2);
     }
+    const chunks = [];
     for (let at = 0; at < deletes.length; at += size) {
-      if (!(await commit(deletes.slice(at, at + size)))) return false;
+      chunks.push(deletes.slice(at, at + size));
     }
-    for (const [name, id] of applied) known.delete(idOf(name, id));
+    const done = await Promise.all(chunks.map(commit));
+    if (done.includes(false)) return false;
+    for (const [shard, id] of applied) known.delete(idOf(shard, id));
     return true;
   };
 
-  /** The oldest pending log rows this schema can read, a page from each table. */
-  const readLogs = async (): Promise<LogRow[]> => {
+  /**
+   * The oldest pending log rows this schema can read, a page from each
+   * table; `more` when a page was full, so more may wait.
+   */
+  const readLogs = async () => {
+    let more = false;
     const pages = await Promise.all(
-      LOG_TABLES.map(async (name) => {
+      LOG_TABLES.map(async (name, shard) => {
         const page = await engine.reads.findMany(name, {
           index: "oldest",
           limit: LOG_PAGE,
         });
+        more ||= page.next !== undefined;
         const decoded = await Promise.all(
           page.rows.map(async (row) => ({
-            table: name,
+            shard,
             row,
             changes: await decode(String(row.changes)),
           })),
@@ -550,11 +592,12 @@ export const createAggregateBatches = ({
         );
       }),
     );
-    return pages
+    const logs: LogRow[] = pages
       .flat()
       .sort((left, right) =>
         compareUtf8(String(left.row.id), String(right.row.id)),
       );
+    return { logs, more };
   };
 
   const rowsFor = async (changes: readonly AggregateChange[]) =>
@@ -564,8 +607,8 @@ export const createAggregateBatches = ({
    * Applies the oldest pending log rows whose merged changes fit in one
    * atomic write with the lease, which lists them as applied; the rows are
    * deleted after it. A log row too large for one write applies in parts,
-   * keeping the rest in it. Returns the lease after the write, or
-   * undefined when a conflict stopped it.
+   * keeping the rest in it. Returns the lease after the write and how many
+   * log rows it applied whole, or undefined when a conflict stopped it.
    */
   const applyGroup = async (held: StoredRow, logs: readonly LogRow[]) => {
     for (let count = logs.length; count > 0; count = Math.floor(count / 2)) {
@@ -574,15 +617,15 @@ export const createAggregateBatches = ({
         new Map(),
         batch.flatMap((entry) => [...entry.changes.values()]),
       );
-      const applied = batch.map(({ table: name, row }) => [name, row.id]);
+      const applied = batch.map(({ shard, row }) => [shard, row.id]);
       const lease = leaseOp(held, { applied: JSON.stringify(applied) });
       const ops = [...(await rowsFor([...changes.values()])), lease.op];
       if (!adapter.fits(ops)) continue;
-      for (const { table: name, row } of batch)
-        known.set(idOf(name, row.id), row);
-      return (await commit(ops)) ? lease.next : undefined;
+      for (const { shard, row } of batch) known.set(idOf(shard, row.id), row);
+      return (await commit(ops)) ? { held: lease.next, count } : undefined;
     }
-    const [{ table: name, row, changes }] = logs as [LogRow];
+    const [{ shard, row, changes }] = logs as [LogRow];
+    const name = LOG_TABLES[shard]!;
     const entries = [...changes.values()];
     for (let take = entries.length - 1; take > 0; take = Math.floor(take / 2)) {
       const kept: WriteOp = {
@@ -596,7 +639,7 @@ export const createAggregateBatches = ({
       const lease = leaseOp(held, {});
       const ops = [...(await rowsFor(entries.slice(0, take))), kept, lease.op];
       if (adapter.fits(ops)) {
-        return (await commit(ops)) ? lease.next : undefined;
+        return (await commit(ops)) ? { held: lease.next, count: 0 } : undefined;
       }
     }
     throw new DatabaseTransactionError(
@@ -617,15 +660,16 @@ export const createAggregateBatches = ({
     try {
       for (let group = 0; ; group += 1) {
         clear = await deleteApplied(held);
-        if (!clear || group === groups) break;
-        const logs = await readLogs();
+        if (!clear || !pending || group === groups) break;
+        const { logs, more } = await readLogs();
         if (logs.length === 0) {
           pending = false;
           break;
         }
-        const next = await applyGroup(held, logs);
-        if (next === undefined) break;
-        [held, clear] = [next, false];
+        const applied = await applyGroup(held, logs);
+        if (applied === undefined) break;
+        [held, clear] = [applied.held, false];
+        pending = more || applied.count < logs.length;
       }
     } finally {
       nextDue = now() + (pending ? 0 : windowMs);

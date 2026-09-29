@@ -6,6 +6,7 @@ import {
 } from "@aws-sdk/client-dynamodb";
 import {
   BatchGetCommand,
+  BatchWriteCommand,
   DynamoDBDocumentClient,
   QueryCommand,
   TransactWriteCommand,
@@ -25,8 +26,9 @@ export const DYNAMODB_LIMITS = {
   keyBytes: { pk: 2_048, sk: 1_024 },
 } as const;
 
-/** BatchGetItem takes 100 keys a call. */
+/** BatchGetItem takes 100 keys a call, and BatchWriteItem 25 requests. */
 const GET_BATCH = 100;
+const WRITE_BATCH = 25;
 
 /** A column named like a key attribute is stored with a leading dot, which no column name has. */
 const attribute = (column: string) =>
@@ -176,6 +178,24 @@ export const createDynamoDBStore = ({
         }
       }
       return keys.map((key) => found.get(idOf(key)) ?? null);
+    },
+    /** Plain BatchWriteItem deletes: 1 write unit per KB each, not a transaction's 2. */
+    async deleteConsumed(keys) {
+      for (let at = 0; at < keys.length; at += WRITE_BATCH) {
+        let pending = keys
+          .slice(at, at + WRITE_BATCH)
+          .map(({ pk, sk }) => ({ DeleteRequest: { Key: { pk, sk } } }));
+        for (let round = 0; pending.length > 0; round += 1) {
+          if (round > 0) await sleep(2 ** round * 10);
+          const result = await documents
+            .send(
+              new BatchWriteCommand({ RequestItems: { [tableName]: pending } }),
+            )
+            .catch(missingTable);
+          pending = (result.UnprocessedItems?.[tableName] ??
+            []) as typeof pending;
+        }
+      }
     },
     async query({ pk, gte, lt, lte, order, limit, after }) {
       // `pk` and `sk` are no reserved words, so the condition names them as is.

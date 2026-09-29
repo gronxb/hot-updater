@@ -20,8 +20,10 @@ export interface AggregateBatching {
   readonly mode?: "log" | "memory";
   /**
    * How long changes wait before a compaction or a flush: `"log"` compacts
-   * after a commit once this has passed since the last compaction. Defaults
-   * to 15 seconds.
+   * after a commit once this has passed since the last compaction, 60
+   * seconds by default, and `"memory"` flushes this often, 15 seconds by
+   * default. A read that cannot compact (read-only credentials) shows
+   * aggregates up to one window behind.
    */
   readonly windowMs?: number;
 }

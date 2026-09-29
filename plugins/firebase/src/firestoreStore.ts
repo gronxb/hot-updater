@@ -237,6 +237,16 @@ export const createFirestoreStore = ({
         return missingDatabase(error);
       }
     },
+    /** A plain batch, which reads nothing, 500 deletes at a time. */
+    async deleteConsumed(keys) {
+      for (let at = 0; at < keys.length; at += FIRESTORE_LIMITS.items) {
+        const batch = firestore.batch();
+        for (const key of keys.slice(at, at + FIRESTORE_LIMITS.items)) {
+          batch.delete(reference(key));
+        }
+        await batch.commit().catch(missingDatabase);
+      }
+    },
     async dispose() {},
   };
 };

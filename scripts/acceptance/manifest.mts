@@ -431,7 +431,7 @@ export const rows: readonly AcceptanceRow[] = [
       // The schema DSL, which declares the log and lease tables.
       "packages/server/src/database/schema.ts",
     ],
-    budget: 450,
+    budget: 650,
     atomicity:
       "Log row in the committing write; compaction deletes what it applies",
     suites: [
