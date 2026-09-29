@@ -1,5 +1,132 @@
 # @hot-updater/cloudflare
 
+## 1.0.0-rc.16
+
+### Minor Changes
+
+- 7758a1e: Run Cloudflare D1 on the new storage engine. `d1Database(config)` over the REST API and `d1Database(env.DB)` inside a Worker keep their signatures.
+  - **Batch writes:** D1 has no interactive transactions, so the shared SQL core gains a batch mode. An executor that provides `batch` writes each change as one atomic batch.
+    - The batch first records each op's guard in the `_hu_write` guard row, against the rows before any change. Unique fields are checked there too, ignoring rows the same write deletes or patches.
+    - Every change then applies only when no guard failed.
+    - The last statements read the first failed op and remove the row.
+  - **Parameter limit:** `createSqlAdapter` accepts `maxParams`, and splits a batch read to stay within it. D1 allows 100 parameters per statement.
+  - **Op limit:** a D1 write sends at most 450 ops, within a Worker invocation's 1,000 queries on the paid plan.
+  - **Schema:** `sql/bundles.sql` and the Worker's `0001_hot-updater_1.0.0.sql` migration are now the generated shared SQL schema, with the guard table and the settings rows. A test fails when either file differs from the generator.
+  - **Schema fence:** the adapter fences its schema, so handlers answer 503 until the migration has run.
+  - **REST:** values are still sent as JSON text and read back with `json_extract`.
+  - **Exports:** `@hot-updater/server/database` exports `WRITE_GUARD_TABLE` and `isMultiIndex`.
+
+- 8a03eb2: Narrow the database provider query contract to the operators Hot Updater uses. `DatabaseWhere` accepts only `eq`, `gt`, `gte`, `lt`, `lte`, and `in`, and conditions are always joined with AND. The `ne`, `not_in`, `contains`, `starts_with`, and `ends_with` operators, the `connector` (`OR`) and `mode` (`insensitive`) fields, and `findMany`'s `distinctOn` are removed from the types, the input validation, and every official provider.
+
+  Custom providers built on `@hot-updater/plugin-core/internal` can delete their implementations of the removed operators. Validation rejects a where condition with any key other than `field`, `operator`, and `value`, and rejects `distinctOn`, instead of ignoring them.
+
+- d482b13: Create third-party plugins' tables with `hot-updater db`.
+  - **Tooling:** `hot-updater db migrate` and `db generate` read the server's `plugins`. Besides the built-in tables, they create each third-party plugin's tables under its id and write its `schema.<id>` settings row last. Kysely's SQL, Drizzle's schema, Prisma's models, MongoDB's collections, and the Supabase and D1 migrations include them; DynamoDB and Firestore need only the settings row.
+  - **Fence:** a server on a fenced database also checks each third-party plugin's `schema.<id>` row before its first read, and answers 503 until `db migrate` writes it.
+  - **Any engine database:** `createEngineDatabase` gives an adapter with `migrations` the migrator `hot-updater db migrate` runs. The command now works for the `postgres` provider, DynamoDB, Firestore, D1's REST database, and custom adapters, besides the Kysely, Drizzle, Prisma, and MongoDB adapters.
+  - **Supabase:** `supabaseDatabase` from `@hot-updater/supabase` generates a migration in `supabase/migrations` with the plugin tables, their row-level security, and an apply RPC that may reach them. Its adapter no longer offers to create tables, since the RPC runs no DDL, so `db migrate` points to `db generate`.
+  - **D1:** the REST `d1Database` generates a Wrangler migration in `migrations`, and `db migrate` applies the same schema through the Cloudflare API.
+  - **Names:** a third-party plugin may not take a built-in plugin's id, or a table name that resolves to a built-in table, such as an `api` plugin's `keys` table.
+  - **SQL core:** `migrations.apply` also creates the write guard table for an executor with `batch`.
+  - **Types:** `SchemaGenerator` and `DatabaseTooling.createMigrator` take a `ToolingTarget` (`{ schema, settings }`, exported from `@hot-updater/server/db`); `builtInTarget` from `@hot-updater/server/database` is the target without third-party plugins.
+  - **CLI:** `db generate` skips a migration identical to one already in its directory.
+
+- 228b6c7: Remove the legacy database contract. Every database runs on the storage engine, and core, its plugins, and the admin API are the only way to its data. Release candidate databases are recreated, not converted.
+  - **Databases:** a provider returns an `EngineDatabase`, `{ name, adapter, dispose? }`, with `provider`, `createMigrator`, and `generateSchema` for `hot-updater db` where it has them. `createEngineDatabase({ name, adapter })` from `@hot-updater/server/database` puts the adapter behind the schema fence with the built-in settings; `builtInSchema`, `builtInSettings`, and `migrateBuiltInSchema` are the built-in tables, their settings rows, and their migration. `DatabasePlugin`, `createDatabasePlugin`, `createDatabaseClient`, the model and commit types, `commitReleaseCatalogMutation(s)`, and `BundleRepository` are gone.
+  - **`createHotUpdater`:** takes `{ database, storage?, plugins?, clientAccess? }`; `plugins` defaults to none. `clientAccess` is `"public"`, or absent when a plugin provides clientAuth. A `clientAccess` object is a type error whose message names `apiKeys()`, and at startup a `HotUpdaterConfigError` that names it too. The instance is `{ handlers, core, api, adapterName }`: bundle, channel, release, Insights, and API key methods on it are gone; use `core` and the plugins' `api`. `registerApiKey`, `createApiKey`, `provisionApiKey`, and `createHandlers` are no longer exported; the `apiKeys()` plugin's API does the same work.
+  - **Handlers:** client routes read catalogs and artifacts through core. The admin API speaks protocol 2 only: `v=2` is accepted and changes nothing, and `POST /database/commit`, `POST /bundles`, and `DELETE /bundles/:id` are gone (deploy with `POST /releases`, delete with `POST /bundles/delete`). `PATCH /bundles/:id` answers 204. The Insights routes come from `insights()`; without it they answer 204 with `x-hot-updater-insights: disabled`.
+  - **Schema:** generated SQL, Drizzle, and Prisma schemas have no database foreign keys; the engine keeps references. CockroachDB and SQL Server are no longer supported, and `relationMode` is gone. The checked-in Postgres and Supabase SQL is regenerated.
+  - **Providers:** `postgres`, `d1Database`, `supabaseDatabase`, `firebaseDatabase`, and `dynamoDB` return engine databases. `dynamoDB` invalidates the cached update-check routes after a write that changes a Release Catalog.
+  - **`standaloneRepository`:** is `{ name, core, fetchAdmin }` over admin API protocol 2; its protocol 1 reads and custom bundle `routes` are gone.
+  - **`@hot-updater/test-utils`:** `setupDatabaseTestSuite` runs core, bundles, the Release Catalog contract, and Insights through admin API protocol 2 over HTTP, and with `createInsightsModel` the Insights report contract. It replaces `setupDatabasePluginTestSuite` and `setupDatabaseClientTestSuite`. `setupBundleMethodsTestSuite` and `setupReleaseCatalogTestSuite` take `{ getClient }` on protocol 2.
+  - **CLI and console:** they read and write through core only. `hot-updater api-key` manages keys through the config's `apiKeys()` plugin, and the console runs the config's `plugins`: without them, Insights and API keys are off.
+
+- 3f30a23: Serve Insights and API keys through plugins.
+  - **Insights routes:** `POST /events` and the admin Insights reads come from the `insights()` plugin. Without it, each answers 204 with `x-hot-updater-insights: disabled`.
+  - **API keys:** the `apiKeys()` plugin protects client routes with the same header the `clientAccess: { type: "api-key" }` option used, so a server that moves to plugins never falls back to public.
+  - **Core reads:** `hotUpdater.core` reads bundles, Releases, Catalogs, and channels. Plugins get the same reads as `ctx.core`, on the same engine. A plugin cannot take the id `core`.
+  - **Plugin APIs:** `hotUpdater.api.insights` and `hotUpdater.api.apiKeys` replace `hotUpdater.insights` and `hotUpdater.apiKeys`.
+  - **Providers:** `@hot-updater/aws`, `cloudflare`, `firebase`, and `supabase` export `plugins`, their managed server's plugin list (`insights()` and `apiKeys()`). The Lambda, Worker, Cloud Function, and Edge Function templates use it, with the same `x-api-key` header.
+  - **CLI:** `generate-standalone-sql` and the missing-export help text use the new options.
+
+### Patch Changes
+
+- d482b13: The agent setup checklists that `hot-updater agent infra` writes describe a 1.0 release candidate's resources the way the upgrade notes do. The Supabase checklist no longer points to a removed commit RPC migration: release candidate tables and functions are dropped and their migrations marked reverted before the push. The Cloudflare checklist treats a D1 database that recorded `0001_hot-updater_1.0.0.sql` without `schema.engine` as incompatible, and the AWS checklist's DynamoDB leading keys match the policy the scaffold writes.
+- d482b13: Auto-patch bases match what `deploy` chose before the storage engine. `core.findBaseBundleIds` reads the new bundle's Release Catalog scope in one point read and keeps every enabled bundle release whose target app version range intersects the new target (the same fingerprint, in a fingerprint scope), newest release first, each bundle once and older than the new bundle, up to `patch.maxBaseBundles`. Targets such as `1.x`, `*`, or `>=1.2.0 <2` get bases again, a `*` or `1.x` release serves every version it covers, a release on another patch version of the same minor line no longer takes a slot, and a promoted or republished bundle counts from its newest release.
+
+  `targetBaseCandidateKey` takes the channel name instead of its id, and its key names the catalog scope and the normalized range. The `base_candidates` aggregate and its gauge writes are gone, so each release change writes up to 16 fewer rows; the checked-in D1, Postgres, and Supabase schemas drop the table.
+
+- fe03f59: Move the CLI onto core's API, add admin API protocol 2 for self-hosted servers, and generate `hotUpdater.plugins.ts` on init.
+  - **CLI on core:** `deploy`, `patch`, `promote`, `catalog`, `storage prune`, artifact deletion, and the bundle commands read and write through core's API. Reads are keyset pages through declared indexes, and writes are typed operations. The CLI opens core in process on the database's storage engine, or through `standaloneRepository` for a self-hosted server.
+  - **Deploy:** before anything is built or uploaded, `deploy` checks the database: the schema fence, or a self-hosted server's admin protocol. Each bundle, its patches, its release, and the next catalog of each scope are written in one core call.
+  - **Auto-patch bases:** bases come from one point read of the new bundle's Release Catalog scope. A base is an older bundle whose enabled release, in the same channel and platform, has the same fingerprint or an app version range intersecting the target's, newest release first, up to `maxBaseBundles`.
+  - **Release lists:** they read the narrowest index the filters allow (bundle, channel and platform, or all) and filter the other fields in the CLI.
+  - **`hotUpdater.core`:** it now has core's typed operations next to its reads: deploy, release policy changes and their preflight, promotion, release deletion, catalog rebuilds, channels, and bundle updates and deletes. On the storage engine, the admin handler writes through them.
+  - **Admin API protocol 2:** `/version` reports `adminProtocol: 2` and is also served by the admin handler. The list routes page by key (`cursor`, `limit`, `order`) and take the indexed filter sets; `v=2` is accepted and changes nothing. New routes: `POST /releases`, `POST /releases/:id/promote`, `POST /release-catalogs/:scopeKey/preflight`, `POST /bundles/delete`, `GET /bundles/:id/children`, and `GET /base-candidates/:candidateKey`.
+  - **`standaloneRepository`:** its `core` is core's API over protocol 2. The first call checks `/version`, so an older server fails with a message to upgrade `@hot-updater/server`. A 503 from the server's schema fence names `hot-updater db migrate`.
+  - **`hot-updater init`:** for AWS, Cloudflare, Firebase, and Supabase, init writes `hotUpdater.plugins.ts` next to `hot-updater.config.ts`. It re-exports the provider's `plugins`, the list the managed server runs. An edited file is kept. The agent scaffolds include the file.
+  - **`hot-updater api-key`:** it manages keys through the config's `apiKeys()` plugin, and refuses a config without it.
+
+- d482b13: `plugins` from `@hot-updater/firebase`, `@hot-updater/supabase/edge`, and `@hot-updater/cloudflare/worker` type-check with `createHotUpdater` in ESM projects. Their exports no longer pin the CommonJS declarations, which referenced the CommonJS types of `@hot-updater/server/plugins` while `createHotUpdater` used the ESM ones.
+- ad00722: Provision API keys through the `apiKeys()` plugin, and let core republish a stored bundle.
+  - **`core.deploy`:** a deployment may name a bundle the database already holds, as `{ bundleId, release }`. It publishes a new release for that bundle in the release's scope and writes no bundle. A missing bundle refuses with `DatabaseBundleNotFoundError`. `Deployment` is now `BundleDeployment | StoredBundleDeployment`, and admin API protocol 2's `POST /releases` accepts both.
+  - **`createDatabasePluginApis`:** it is typed by its plugin list, so `createDatabasePluginApis(database, plugins).apiKeys.provision(...)` needs no cast.
+  - **API key provisioning:** `hot-updater init` for AWS, Cloudflare, Firebase, and Supabase registers the app's client key through the provider's `plugins` (the `apiKeys()` plugin its managed server runs) instead of the database plugin's `models.apiKeys`. The agent scaffold's `provision-api-key.mjs` uses the scaffold's `hotUpdater.plugins.ts` the same way.
+
+- Updated dependencies [152db48]
+- Updated dependencies [23a972d]
+- Updated dependencies [802374f]
+- Updated dependencies [d482b13]
+- Updated dependencies [d482b13]
+- Updated dependencies [d482b13]
+- Updated dependencies [fe03f59]
+- Updated dependencies [8d60f68]
+- Updated dependencies [294c53f]
+- Updated dependencies [d482b13]
+- Updated dependencies [94470aa]
+- Updated dependencies [2431c0a]
+- Updated dependencies [7758a1e]
+- Updated dependencies [7ba867c]
+- Updated dependencies [94b56f3]
+- Updated dependencies [d482b13]
+- Updated dependencies [b3576f2]
+- Updated dependencies [af15ef3]
+- Updated dependencies [aee193e]
+- Updated dependencies [0f670c5]
+- Updated dependencies [ad00722]
+- Updated dependencies [d7df92c]
+- Updated dependencies [d482b13]
+- Updated dependencies [d482b13]
+- Updated dependencies [d482b13]
+- Updated dependencies [d482b13]
+- Updated dependencies [d3a5570]
+- Updated dependencies [d482b13]
+- Updated dependencies [d3a5570]
+- Updated dependencies [f6ffb68]
+- Updated dependencies [d482b13]
+- Updated dependencies [c68e9f3]
+- Updated dependencies [d482b13]
+- Updated dependencies [e542054]
+- Updated dependencies [73b8920]
+- Updated dependencies [065c457]
+- Updated dependencies [8a03eb2]
+- Updated dependencies [ff1e565]
+- Updated dependencies [d482b13]
+- Updated dependencies [aee193e]
+- Updated dependencies [152db48]
+- Updated dependencies [228b6c7]
+- Updated dependencies [eef9466]
+- Updated dependencies [065c457]
+- Updated dependencies [3f30a23]
+- Updated dependencies [065c457]
+- Updated dependencies [754a73e]
+- Updated dependencies [d482b13]
+- Updated dependencies [df31037]
+- Updated dependencies [a6c00ec]
+  - @hot-updater/server@1.0.0-rc.16
+  - @hot-updater/plugin-core@1.0.0-rc.16
+  - @hot-updater/cli-tools@1.0.0-rc.16
+
 ## 1.0.0-rc.15
 
 ### Minor Changes

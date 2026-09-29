@@ -1,5 +1,29 @@
 # @hot-updater/bare
 
+## 1.0.0-rc.16
+
+### Patch Changes
+
+- Updated dependencies [d482b13]
+- Updated dependencies [d482b13]
+- Updated dependencies [fe03f59]
+- Updated dependencies [8d60f68]
+- Updated dependencies [d482b13]
+- Updated dependencies [2431c0a]
+- Updated dependencies [ad00722]
+- Updated dependencies [d482b13]
+- Updated dependencies [d482b13]
+- Updated dependencies [f6ffb68]
+- Updated dependencies [c68e9f3]
+- Updated dependencies [065c457]
+- Updated dependencies [8a03eb2]
+- Updated dependencies [aee193e]
+- Updated dependencies [228b6c7]
+- Updated dependencies [065c457]
+- Updated dependencies [df31037]
+  - @hot-updater/plugin-core@1.0.0-rc.16
+  - @hot-updater/cli-tools@1.0.0-rc.16
+
 ## 1.0.0-rc.15
 
 ### Patch Changes

@@ -1,5 +1,96 @@
 # @hot-updater/console
 
+## 1.0.0-rc.18
+
+### Minor Changes
+
+- 8d60f68: Move the console onto core's API: key cursors, indexed filter sets, counters, and a banner when Insights is off.
+  - **Bundles:** the list pages by key, with Previous, Next, and Newest in place of page numbers. Each page reads only its own releases.
+  - **Filters:** the filters are the sets the release indexes serve: a channel with its platform (and status), an artifact, or a target, which is one catalog scope. The platform filter works with a channel, and the target app version filter is replaced by "Show bundles for this target" in a bundle's diagnostics.
+  - **Counters:** patch counts and a bundle's children come from its reference counter and the patches index, not from paging every bundle. Bundle totals come from one counter row.
+  - **Core:** bundles, releases, catalogs, and channels go through core's API: in process on the database's storage engine, or over a self-hosted server's admin API protocol 2. Creating a channel takes its name. A database that is not on the storage engine is refused with a message to upgrade its provider.
+  - **Insights off:** when the server runs without `insights()`, the Insights pages and bundle panels show that Insights is off instead of an error. A self-hosted server is asked through its admin API, which answers 204 with `x-hot-updater-insights: disabled`. The console reads a self-hosted server's events and installations there. Usage and bundle activity need the database config.
+  - **Plugins in the console:** `defineConsoleConfig({ plugins })` and a project's `hotUpdater.plugins.ts`, which `hot-updater console` loads, give the console the plugins the server runs. It assembles them over the database with `createDatabasePluginApis` from `@hot-updater/server/db`, on the server's tables. Without them, Insights and API keys are off.
+  - **API keys:** the console manages keys through the `apiKeys()` plugin's API. It does not manage a self-hosted server's keys.
+  - **`standaloneRepository`:** it has `fetchAdmin(path)`, a GET on the server's admin handler with the repository's headers.
+  - **`@hot-updater/cli-tools`:** it adds `loadHotUpdaterPlugins`.
+
+### Patch Changes
+
+- d482b13: Bundle child counts come from each base bundle's reference counter alone. `HotUpdaterCoreApi` gains `countBundleChildren(ids)`, which reads the bundle rows in one batch and no patches, and admin API protocol 2 gains `GET /bundles/child-counts?ids=...` (1 to 100 IDs) for a standalone server. The console's patch counts use it instead of reading each bundle with its own patches.
+- d482b13: The All events list reads one time range, newest first: the last 24 hours, 7 days (the default), 30 days, or 90 days, ending when the list loads or the range changes. Changing the range returns to the first page, and the URL keeps it. Pages stop at the range start: a range without events, and its last page, say so and offer the next longer range. An empty page after a full one says there are no older events, in All events and in installation history.
+- d482b13: Insights shows unique counts as estimates and reads one period end. DAU, WAU, MAU, the active users per interval, and a release's unique users come from HyperLogLog sketches, so they show as "≈ 1,234" with an Estimated label for hover and screen readers; zero stays exact. App usage and release health now end with the current UTC hour, as the reporting overview does, so a report counts as soon as the server records it instead of after the hour ends.
+- d482b13: The console's Insights on/off check for a self-hosted server asks for one event of the last hour, so it reads at most two days instead of walking up to 90 empty ones.
+- 23a972d: The console shows only the features whose plugins the server runs.
+  - **Navigation:** Insights appears when the server runs `insights()`, and API keys when it runs `apiKeys()`. A feature's page opened without its plugin names the plugin to add and links to the console deployment guide.
+  - **Bundles:** the list's Insights column and the bundle detail's Insights card appear only where the console reads release activity, instead of a "—" or a note.
+  - **`standaloneRepository`:** the console reads the server's plugins once, from its admin `/version`, instead of asking the Insights events route. When the server runs `insights()`, Insights opens on All events with its events and installations; usage, bundle activity, and API keys need the database config. A server on an older `@hot-updater/server` lists no plugins on `/version`, so its console shows neither Insights nor API keys until the server is upgraded.
+  - **Server functions:** every Insights and API key server function checks its feature first, and refuses one the console does not serve with the same not-found error.
+
+- 228b6c7: Remove the legacy database contract. Every database runs on the storage engine, and core, its plugins, and the admin API are the only way to its data. Release candidate databases are recreated, not converted.
+  - **Databases:** a provider returns an `EngineDatabase`, `{ name, adapter, dispose? }`, with `provider`, `createMigrator`, and `generateSchema` for `hot-updater db` where it has them. `createEngineDatabase({ name, adapter })` from `@hot-updater/server/database` puts the adapter behind the schema fence with the built-in settings; `builtInSchema`, `builtInSettings`, and `migrateBuiltInSchema` are the built-in tables, their settings rows, and their migration. `DatabasePlugin`, `createDatabasePlugin`, `createDatabaseClient`, the model and commit types, `commitReleaseCatalogMutation(s)`, and `BundleRepository` are gone.
+  - **`createHotUpdater`:** takes `{ database, storage?, plugins?, clientAccess? }`; `plugins` defaults to none. `clientAccess` is `"public"`, or absent when a plugin provides clientAuth. A `clientAccess` object is a type error whose message names `apiKeys()`, and at startup a `HotUpdaterConfigError` that names it too. The instance is `{ handlers, core, api, adapterName }`: bundle, channel, release, Insights, and API key methods on it are gone; use `core` and the plugins' `api`. `registerApiKey`, `createApiKey`, `provisionApiKey`, and `createHandlers` are no longer exported; the `apiKeys()` plugin's API does the same work.
+  - **Handlers:** client routes read catalogs and artifacts through core. The admin API speaks protocol 2 only: `v=2` is accepted and changes nothing, and `POST /database/commit`, `POST /bundles`, and `DELETE /bundles/:id` are gone (deploy with `POST /releases`, delete with `POST /bundles/delete`). `PATCH /bundles/:id` answers 204. The Insights routes come from `insights()`; without it they answer 204 with `x-hot-updater-insights: disabled`.
+  - **Schema:** generated SQL, Drizzle, and Prisma schemas have no database foreign keys; the engine keeps references. CockroachDB and SQL Server are no longer supported, and `relationMode` is gone. The checked-in Postgres and Supabase SQL is regenerated.
+  - **Providers:** `postgres`, `d1Database`, `supabaseDatabase`, `firebaseDatabase`, and `dynamoDB` return engine databases. `dynamoDB` invalidates the cached update-check routes after a write that changes a Release Catalog.
+  - **`standaloneRepository`:** is `{ name, core, fetchAdmin }` over admin API protocol 2; its protocol 1 reads and custom bundle `routes` are gone.
+  - **`@hot-updater/test-utils`:** `setupDatabaseTestSuite` runs core, bundles, the Release Catalog contract, and Insights through admin API protocol 2 over HTTP, and with `createInsightsModel` the Insights report contract. It replaces `setupDatabasePluginTestSuite` and `setupDatabaseClientTestSuite`. `setupBundleMethodsTestSuite` and `setupReleaseCatalogTestSuite` take `{ getClient }` on protocol 2.
+  - **CLI and console:** they read and write through core only. `hot-updater api-key` manages keys through the config's `apiKeys()` plugin, and the console runs the config's `plugins`: without them, Insights and API keys are off.
+
+- Updated dependencies [152db48]
+- Updated dependencies [23a972d]
+- Updated dependencies [802374f]
+- Updated dependencies [d482b13]
+- Updated dependencies [d482b13]
+- Updated dependencies [d482b13]
+- Updated dependencies [fe03f59]
+- Updated dependencies [8d60f68]
+- Updated dependencies [294c53f]
+- Updated dependencies [d482b13]
+- Updated dependencies [94470aa]
+- Updated dependencies [2431c0a]
+- Updated dependencies [7758a1e]
+- Updated dependencies [7ba867c]
+- Updated dependencies [94b56f3]
+- Updated dependencies [d482b13]
+- Updated dependencies [b3576f2]
+- Updated dependencies [af15ef3]
+- Updated dependencies [aee193e]
+- Updated dependencies [0f670c5]
+- Updated dependencies [ad00722]
+- Updated dependencies [d7df92c]
+- Updated dependencies [d482b13]
+- Updated dependencies [d482b13]
+- Updated dependencies [d482b13]
+- Updated dependencies [d482b13]
+- Updated dependencies [d3a5570]
+- Updated dependencies [d482b13]
+- Updated dependencies [d3a5570]
+- Updated dependencies [f6ffb68]
+- Updated dependencies [d482b13]
+- Updated dependencies [c68e9f3]
+- Updated dependencies [d482b13]
+- Updated dependencies [e542054]
+- Updated dependencies [73b8920]
+- Updated dependencies [065c457]
+- Updated dependencies [8a03eb2]
+- Updated dependencies [ff1e565]
+- Updated dependencies [d482b13]
+- Updated dependencies [aee193e]
+- Updated dependencies [152db48]
+- Updated dependencies [228b6c7]
+- Updated dependencies [eef9466]
+- Updated dependencies [065c457]
+- Updated dependencies [3f30a23]
+- Updated dependencies [065c457]
+- Updated dependencies [754a73e]
+- Updated dependencies [d482b13]
+- Updated dependencies [df31037]
+- Updated dependencies [a6c00ec]
+  - @hot-updater/server@1.0.0-rc.16
+  - @hot-updater/plugin-core@1.0.0-rc.16
+  - @hot-updater/cli-tools@1.0.0-rc.16
+
 ## 1.0.0-rc.17
 
 ### Minor Changes

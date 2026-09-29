@@ -1,5 +1,91 @@
 # @hot-updater/postgres
 
+## 1.0.0-rc.16
+
+### Minor Changes
+
+- e542054: Run the Kysely adapter and the `postgres` plugin on the new storage engine. Their factory signatures are unchanged.
+  - **Kysely:** `kyselyAdapter` runs PostgreSQL, MySQL, and SQLite through the shared SQL core with `kyselyExecutor`.
+    - Its migrator applies the generated SQL schema: tables, indexes, and the settings rows, written last.
+    - The migrator refuses a v0 or pre-engine database instead of converting it.
+  - **Schema fence:** both adapters fence their schema. A database without the `schema.engine` row is refused before its first read, and handlers answer 503.
+  - **`postgres` plugin:** `sql/bundles.sql` is now the generated SQL schema, and a test fails when the two differ.
+  - **Removed:** the plugin-specific Insights helpers `getKyselyAppUsage`, `getKyselyReleaseActivity`, `readKyselyInsightsHead`, and `recordKyselyInsightsOverview` are no longer exported from `@hot-updater/server`.
+  - **Upgrade note:** the 1.0.0 infrastructure upgrade note now says that RC databases created before the adapter redesign must be recreated.
+
+- 8a03eb2: Narrow the database provider query contract to the operators Hot Updater uses. `DatabaseWhere` accepts only `eq`, `gt`, `gte`, `lt`, `lte`, and `in`, and conditions are always joined with AND. The `ne`, `not_in`, `contains`, `starts_with`, and `ends_with` operators, the `connector` (`OR`) and `mode` (`insensitive`) fields, and `findMany`'s `distinctOn` are removed from the types, the input validation, and every official provider.
+
+  Custom providers built on `@hot-updater/plugin-core/internal` can delete their implementations of the removed operators. Validation rejects a where condition with any key other than `field`, `operator`, and `value`, and rejects `distinctOn`, instead of ignoring them.
+
+- 228b6c7: Remove the legacy database contract. Every database runs on the storage engine, and core, its plugins, and the admin API are the only way to its data. Release candidate databases are recreated, not converted.
+  - **Databases:** a provider returns an `EngineDatabase`, `{ name, adapter, dispose? }`, with `provider`, `createMigrator`, and `generateSchema` for `hot-updater db` where it has them. `createEngineDatabase({ name, adapter })` from `@hot-updater/server/database` puts the adapter behind the schema fence with the built-in settings; `builtInSchema`, `builtInSettings`, and `migrateBuiltInSchema` are the built-in tables, their settings rows, and their migration. `DatabasePlugin`, `createDatabasePlugin`, `createDatabaseClient`, the model and commit types, `commitReleaseCatalogMutation(s)`, and `BundleRepository` are gone.
+  - **`createHotUpdater`:** takes `{ database, storage?, plugins?, clientAccess? }`; `plugins` defaults to none. `clientAccess` is `"public"`, or absent when a plugin provides clientAuth. A `clientAccess` object is a type error whose message names `apiKeys()`, and at startup a `HotUpdaterConfigError` that names it too. The instance is `{ handlers, core, api, adapterName }`: bundle, channel, release, Insights, and API key methods on it are gone; use `core` and the plugins' `api`. `registerApiKey`, `createApiKey`, `provisionApiKey`, and `createHandlers` are no longer exported; the `apiKeys()` plugin's API does the same work.
+  - **Handlers:** client routes read catalogs and artifacts through core. The admin API speaks protocol 2 only: `v=2` is accepted and changes nothing, and `POST /database/commit`, `POST /bundles`, and `DELETE /bundles/:id` are gone (deploy with `POST /releases`, delete with `POST /bundles/delete`). `PATCH /bundles/:id` answers 204. The Insights routes come from `insights()`; without it they answer 204 with `x-hot-updater-insights: disabled`.
+  - **Schema:** generated SQL, Drizzle, and Prisma schemas have no database foreign keys; the engine keeps references. CockroachDB and SQL Server are no longer supported, and `relationMode` is gone. The checked-in Postgres and Supabase SQL is regenerated.
+  - **Providers:** `postgres`, `d1Database`, `supabaseDatabase`, `firebaseDatabase`, and `dynamoDB` return engine databases. `dynamoDB` invalidates the cached update-check routes after a write that changes a Release Catalog.
+  - **`standaloneRepository`:** is `{ name, core, fetchAdmin }` over admin API protocol 2; its protocol 1 reads and custom bundle `routes` are gone.
+  - **`@hot-updater/test-utils`:** `setupDatabaseTestSuite` runs core, bundles, the Release Catalog contract, and Insights through admin API protocol 2 over HTTP, and with `createInsightsModel` the Insights report contract. It replaces `setupDatabasePluginTestSuite` and `setupDatabaseClientTestSuite`. `setupBundleMethodsTestSuite` and `setupReleaseCatalogTestSuite` take `{ getClient }` on protocol 2.
+  - **CLI and console:** they read and write through core only. `hot-updater api-key` manages keys through the config's `apiKeys()` plugin, and the console runs the config's `plugins`: without them, Insights and API keys are off.
+
+### Patch Changes
+
+- d482b13: Auto-patch bases match what `deploy` chose before the storage engine. `core.findBaseBundleIds` reads the new bundle's Release Catalog scope in one point read and keeps every enabled bundle release whose target app version range intersects the new target (the same fingerprint, in a fingerprint scope), newest release first, each bundle once and older than the new bundle, up to `patch.maxBaseBundles`. Targets such as `1.x`, `*`, or `>=1.2.0 <2` get bases again, a `*` or `1.x` release serves every version it covers, a release on another patch version of the same minor line no longer takes a slot, and a promoted or republished bundle counts from its newest release.
+
+  `targetBaseCandidateKey` takes the channel name instead of its id, and its key names the catalog scope and the normalized range. The `base_candidates` aggregate and its gauge writes are gone, so each release change writes up to 16 fewer rows; the checked-in D1, Postgres, and Supabase schemas drop the table.
+
+- Updated dependencies [152db48]
+- Updated dependencies [23a972d]
+- Updated dependencies [802374f]
+- Updated dependencies [d482b13]
+- Updated dependencies [d482b13]
+- Updated dependencies [d482b13]
+- Updated dependencies [fe03f59]
+- Updated dependencies [8d60f68]
+- Updated dependencies [294c53f]
+- Updated dependencies [d482b13]
+- Updated dependencies [94470aa]
+- Updated dependencies [2431c0a]
+- Updated dependencies [7758a1e]
+- Updated dependencies [7ba867c]
+- Updated dependencies [94b56f3]
+- Updated dependencies [d482b13]
+- Updated dependencies [b3576f2]
+- Updated dependencies [af15ef3]
+- Updated dependencies [aee193e]
+- Updated dependencies [0f670c5]
+- Updated dependencies [ad00722]
+- Updated dependencies [d7df92c]
+- Updated dependencies [d482b13]
+- Updated dependencies [d482b13]
+- Updated dependencies [d482b13]
+- Updated dependencies [d482b13]
+- Updated dependencies [d3a5570]
+- Updated dependencies [d482b13]
+- Updated dependencies [d3a5570]
+- Updated dependencies [f6ffb68]
+- Updated dependencies [d482b13]
+- Updated dependencies [c68e9f3]
+- Updated dependencies [d482b13]
+- Updated dependencies [e542054]
+- Updated dependencies [73b8920]
+- Updated dependencies [065c457]
+- Updated dependencies [8a03eb2]
+- Updated dependencies [ff1e565]
+- Updated dependencies [d482b13]
+- Updated dependencies [aee193e]
+- Updated dependencies [152db48]
+- Updated dependencies [228b6c7]
+- Updated dependencies [eef9466]
+- Updated dependencies [065c457]
+- Updated dependencies [3f30a23]
+- Updated dependencies [065c457]
+- Updated dependencies [754a73e]
+- Updated dependencies [d482b13]
+- Updated dependencies [df31037]
+- Updated dependencies [a6c00ec]
+  - @hot-updater/server@1.0.0-rc.16
+  - @hot-updater/plugin-core@1.0.0-rc.16
+
 ## 1.0.0-rc.15
 
 ### Minor Changes
