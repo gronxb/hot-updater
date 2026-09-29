@@ -1,12 +1,6 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": [
-    "typescript",
-    "unicorn",
-    "oxc",
-    "react",
-    "jsx-a11y"
-  ],
+  "plugins": ["typescript", "unicorn", "oxc", "react", "jsx-a11y"],
   "categories": {
     "correctness": "error"
   },
@@ -74,5 +68,53 @@
     "unicorn/no-document-cookie": "off",
     "unicorn/no-thenable": "off",
     "unicorn/prefer-node-protocol": "off"
-  }
+  },
+  "overrides": [
+    {
+      "files": [
+        "packages/server/src/database/**",
+        "packages/server/src/core/**"
+      ],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "paths": [
+              {
+                "name": "typescript",
+                "message": "Use OXC for source analysis; TypeScript is compiler-only."
+              },
+              {
+                "name": "@typescript/native",
+                "message": "Use OXC for source analysis; TypeScript is compiler-only."
+              },
+              {
+                "name": "@typescript/typescript6",
+                "message": "Use OXC for source analysis; TypeScript is compiler-only."
+              }
+            ],
+            "patterns": [
+              {
+                "group": [
+                  "typescript/*",
+                  "@typescript/native/*",
+                  "@typescript/typescript6/*"
+                ],
+                "message": "Use OXC for source analysis; TypeScript is compiler-only."
+              },
+              {
+                "group": [
+                  "**/plugins",
+                  "**/plugins/**",
+                  "@hot-updater/server/plugins",
+                  "@hot-updater/server/plugins/**"
+                ],
+                "message": "Core and the engine never import plugins; plugins depend on them, not the reverse."
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
 }

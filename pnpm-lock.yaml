@@ -1851,6 +1851,9 @@ importers:
       uuidv7:
         specifier: 'catalog:'
         version: 1.2.1
+      wrangler:
+        specifier: ^4.69.0
+        version: 4.99.0(@cloudflare/workers-types@4.20260611.1)
 
   packages/test-utils:
     devDependencies:

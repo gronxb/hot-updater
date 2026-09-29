@@ -7,6 +7,7 @@ export default defineConfig([
       "./src/node.ts",
       "./src/db/index.ts",
       "./src/database/index.ts",
+      "./src/plugins/index.ts",
       "./src/adapters/kysely.ts",
       "./src/adapters/drizzle.ts",
       "./src/adapters/prisma.ts",

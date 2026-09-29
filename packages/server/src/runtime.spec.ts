@@ -50,7 +50,7 @@ describe("runtime createHotUpdater", () => {
     expectTypeOf<ConfigInput>().not.toHaveProperty("catalogId");
     expectTypeOf<HandlerAPI>().toHaveProperty("getBundles");
     expectTypeOf<keyof CreateHotUpdaterOptions>().toEqualTypeOf<
-      "clientAccess" | "database" | "storage"
+      "clientAccess" | "database" | "plugins" | "storage"
     >();
     expectTypeOf<CreateHotUpdaterOptions>().toHaveProperty("clientAccess");
     expectTypeOf<
@@ -178,7 +178,9 @@ describe("runtime createHotUpdater", () => {
       createHotUpdater({
         database: createRuntimeDatabase(),
       } as unknown as CreateHotUpdaterOptions),
-    ).toThrow("clientAccess must be an object.");
+    ).toThrow(
+      'Set clientAccess to "public", or add a plugin that provides clientAuth.',
+    );
   });
 
   it("rejects an unsupported client access policy", () => {

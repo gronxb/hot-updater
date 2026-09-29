@@ -10,6 +10,10 @@ import {
   normalizeApiKeyHeaderName,
 } from "./apiKeys";
 import type { ApiKeyManagementAPI } from "./apiKeys";
+import {
+  assemblePlugins,
+  HotUpdaterConfigError,
+} from "./assembly/assemblePlugins";
 import { createDatabasePluginCore } from "./db/databasePluginCore";
 import { createSchemaReadinessChecker } from "./db/schemaReadiness";
 import {
@@ -18,13 +22,23 @@ import {
   type DatabasePlugin,
   isDatabasePlugin,
 } from "./db/types";
-import { createHotUpdaterHandlers, type HotUpdaterHandlers } from "./handler";
+import {
+  type ClientRoutePolicy,
+  createHotUpdaterHandlers,
+  type HotUpdaterHandlers,
+} from "./handler";
 import { createInsightsProvider } from "./insights/provider";
 import type { InsightsProvider } from "./insights/types";
+import type { AnyHotUpdaterPlugin, PluginApis } from "./plugins/definePlugin";
 import { createStorageAccess } from "./storageAccess";
 
-export type RuntimeHotUpdaterAPI = DatabaseAPI & {
+export type RuntimeHotUpdaterAPI<
+  TPlugins extends readonly AnyHotUpdaterPlugin[] =
+    readonly AnyHotUpdaterPlugin[],
+> = DatabaseAPI & {
   readonly handlers: HotUpdaterHandlers;
+  /** Each plugin's API by plugin id. */
+  readonly api: PluginApis<TPlugins>;
   readonly adapterName: string;
   /**
    * Built-in Insights provider. Client ingestion and admin query routes are
@@ -43,6 +57,8 @@ export type RuntimeHotUpdaterAPI = DatabaseAPI & {
 export type HotUpdaterAPI = RuntimeHotUpdaterAPI;
 
 export type ClientAccessPolicy =
+  /** Leaves client routes public; required when no plugin provides clientAuth. */
+  | "public"
   | {
       /**
        * Leaves Release Catalog, artifact, and Insights ingestion routes
@@ -64,17 +80,71 @@ export type ClientAccessPolicy =
       readonly headerName?: string;
     };
 
-export interface CreateHotUpdaterOptions {
+type ProvidesClientAuth<TPlugin> = TPlugin extends {
+  readonly provides?: infer TProvides;
+}
+  ? TProvides extends { readonly clientAuth: true }
+    ? true
+    : false
+  : false;
+
+type ClientAuthIds<
+  TPlugins extends readonly unknown[],
+  TFound extends string[] = [],
+> = TPlugins extends readonly [infer THead, ...infer TTail]
+  ? ClientAuthIds<
+      TTail,
+      ProvidesClientAuth<THead> extends true
+        ? [
+            ...TFound,
+            THead extends { readonly id: infer TId extends string }
+              ? TId
+              : string,
+          ]
+        : TFound
+    >
+  : TFound;
+
+type JoinIds<TIds extends string[]> = TIds extends [
+  infer TFirst extends string,
+  ...infer TRest extends string[],
+]
+  ? TRest extends []
+    ? `"${TFirst}"`
+    : `"${TFirst}", ${JoinIds<TRest>}`
+  : "";
+
+/**
+ * Client routes have one policy source: exactly one plugin that provides
+ * clientAuth, or an explicit `clientAccess`. Tuples are counted here; an
+ * untyped list that may hold a clientAuth plugin is left to startup.
+ */
+export type ClientAccessRule<TPlugins extends readonly AnyHotUpdaterPlugin[]> =
+  number extends TPlugins["length"]
+    ? true extends ProvidesClientAuth<TPlugins[number]>
+      ? {
+          readonly clientAccess?: "Remove clientAccess: a plugin in this list may provide clientAuth";
+        }
+      : { readonly clientAccess: ClientAccessPolicy }
+    : ClientAuthIds<TPlugins> extends []
+      ? { readonly clientAccess: ClientAccessPolicy }
+      : ClientAuthIds<TPlugins> extends [infer TId extends string]
+        ? {
+            readonly clientAccess?: `Remove clientAccess: plugin "${TId}" provides clientAuth`;
+          }
+        : {
+            readonly clientAuth: `Keep one clientAuth plugin: ${JoinIds<ClientAuthIds<TPlugins>>} all provide it`;
+          };
+
+export type CreateHotUpdaterOptions<
+  TPlugins extends readonly AnyHotUpdaterPlugin[] = readonly [],
+> = {
   readonly database: DatabasePlugin;
-  /**
-   * Required client-route access policy. This choice is explicit so a server
-   * cannot accidentally change between public and authenticated OTA access.
-   * `/version`, storage downloads, and admin-handler routes are unaffected.
-   */
-  readonly clientAccess: ClientAccessPolicy;
   /** Storage implementations used to read provider-specific storage URIs. */
   readonly storage?: readonly StoragePlugin[];
-}
+  /** Built-in and third-party plugins; at most one provides clientAuth. */
+  readonly plugins?: TPlugins;
+} & ClientAccessRule<TPlugins>;
 
 const normalizeClientAccess = (
   value: unknown,
@@ -84,8 +154,14 @@ const normalizeClientAccess = (
       readonly type: "api-key";
       readonly headerName: string;
     } => {
+  if (value === undefined) {
+    throw new HotUpdaterConfigError(
+      'Set clientAccess to "public", or add a plugin that provides clientAuth.',
+    );
+  }
+  if (value === "public") return { type: "public" };
   if (value === null || typeof value !== "object" || Array.isArray(value)) {
-    throw new TypeError("clientAccess must be an object.");
+    throw new TypeError('clientAccess must be "public" or an object.');
   }
   const policy = value as {
     readonly headerName?: unknown;
@@ -136,7 +212,7 @@ export function getHotUpdaterCoreMetadata(
 }
 
 export function createHotUpdaterCore(
-  options: CreateHotUpdaterOptions,
+  options: CreateHotUpdaterOptions<readonly AnyHotUpdaterPlugin[]>,
 ): HotUpdaterCore {
   for (const key of ["authorityId", "catalogId"]) {
     if (Object.hasOwn(options, key)) {
@@ -168,7 +244,24 @@ export function createHotUpdaterCore(
     beforeOperation: assertSchemaReady,
     readStorageText,
   });
-  const clientAccess = normalizeClientAccess(options.clientAccess);
+  const plugins = assemblePlugins(
+    options.plugins ?? [],
+    adapterCapabilities.engineAdapter,
+  );
+  const clientAccess =
+    plugins.clientAuth === undefined
+      ? normalizeClientAccess(
+          (options as { readonly clientAccess?: unknown }).clientAccess,
+        )
+      : undefined;
+  if (
+    plugins.clientAuth !== undefined &&
+    (options as { readonly clientAccess?: unknown }).clientAccess !== undefined
+  ) {
+    throw new HotUpdaterConfigError(
+      `Plugin "${plugins.clientAuth.plugin}" provides clientAuth, so remove clientAccess.`,
+    );
+  }
   const insightsModel: InsightsModel = {
     async recordEvent(input) {
       await assertSchemaReady();
@@ -205,22 +298,33 @@ export function createHotUpdaterCore(
     beforeOperation: assertSchemaReady,
   });
 
+  const clientAuth = plugins.clientAuth;
+  const clientPolicy: ClientRoutePolicy | undefined =
+    clientAuth !== undefined
+      ? {
+          varyHeaders: clientAuth.varyHeaders.map((header) =>
+            header.toLowerCase(),
+          ),
+          authenticate: (request) => clientAuth.authenticate(request.headers),
+        }
+      : clientAccess?.type === "api-key"
+        ? {
+            varyHeaders: [clientAccess.headerName],
+            authenticate: (request) =>
+              authenticateApiKey({
+                apiKeys: plugin.models.apiKeys,
+                beforeLookup: assertSchemaReady,
+                headerName: clientAccess.headerName,
+                request,
+              }),
+          }
+        : undefined;
   const handlers = createHotUpdaterHandlers(
     core.api,
     insights,
-    clientAccess.type === "api-key"
-      ? {
-          authenticate: (request) =>
-            authenticateApiKey({
-              apiKeys: plugin.models.apiKeys,
-              beforeLookup: assertSchemaReady,
-              headerName: clientAccess.headerName,
-              request,
-            }),
-          headerName: clientAccess.headerName,
-        }
-      : undefined,
+    clientPolicy,
     downloadStorageObject,
+    plugins.endpoints,
   );
 
   const api: RuntimeHotUpdaterAPI = Object.assign(
@@ -229,6 +333,7 @@ export function createHotUpdaterCore(
       insights,
       apiKeys,
       handlers,
+      api: plugins.api,
     },
     core.api,
   );
@@ -247,8 +352,12 @@ export function createHotUpdaterCore(
   };
 }
 
-export function createHotUpdater(
-  options: CreateHotUpdaterOptions,
-): RuntimeHotUpdaterAPI {
-  return createHotUpdaterCore(options).api;
+export function createHotUpdater<
+  const TPlugins extends readonly AnyHotUpdaterPlugin[] = readonly [],
+>(
+  options: CreateHotUpdaterOptions<TPlugins>,
+): RuntimeHotUpdaterAPI<NoInfer<TPlugins>> {
+  return createHotUpdaterCore(
+    options as CreateHotUpdaterOptions<readonly AnyHotUpdaterPlugin[]>,
+  ).api as RuntimeHotUpdaterAPI<TPlugins>;
 }
