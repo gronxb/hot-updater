@@ -88,8 +88,8 @@ The agent uses `hot-updater agent infra upgrade`, reads the applicable versioned
 upgrade files, and creates the required v1 resources with your provider tools.
 
 Use a separate v1 database namespace and endpoint. Firebase and Supabase can
-reuse the existing project: v1 uses `hot_updater_v1_*` collections or tables and
-a separate `hot-updater-v1` function. Cloudflare needs a separate D1 database
+reuse the existing project: v1 uses the `hot_updater_v1` Firestore collection or
+`hot_updater_v1_*` tables and a separate `hot-updater-v1` function. Cloudflare needs a separate D1 database
 and Worker. Keep each provider's v0 resources intact.
 
 Managed initialization rejects selected v0 resources before mutating them.

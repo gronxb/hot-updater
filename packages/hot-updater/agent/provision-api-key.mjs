@@ -3,7 +3,9 @@ import { readFile, writeFile } from "node:fs/promises";
 
 import { provisionApiKey } from "@hot-updater/server";
 
-import { database } from "./api-key.config.ts";
+import * as target from "./api-key.config.ts";
+
+const { database } = target;
 
 const keyPath = new URL("./api-key.local", import.meta.url);
 try {
@@ -21,6 +23,8 @@ try {
     apiKey = existingApiKey || randomBytes(32).toString("base64url");
     await writeFile(keyPath, apiKey, { flag: "wx", mode: 0o600 });
   }
+  // Providers without migration tooling (Firestore) write their schema settings here.
+  await target.migrate?.();
   const result = await provisionApiKey({
     apiKeys: database.models.apiKeys,
     existingApiKey: apiKey.trim(),

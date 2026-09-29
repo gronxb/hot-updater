@@ -67,3 +67,50 @@ export async function provisionApiKey({ existingApiKey }) {
     await rm(root, { recursive: true, force: true });
   }
 });
+
+it("runs the config's migration before registering the key", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "hot-updater-agent-key-"));
+  try {
+    await cp(
+      path.resolve(import.meta.dirname, "../../../agent/provision-api-key.mjs"),
+      path.join(root, "provision-api-key.mjs"),
+    );
+    await writeFile(
+      path.join(root, "api-key.config.ts"),
+      `import { appendFileSync } from "node:fs";
+export const database = { models: { apiKeys: {} } };
+export const migrate = async () => appendFileSync("calls", "migrate\\n");
+`,
+    );
+    const moduleRoot = path.join(root, "node_modules/@hot-updater/server");
+    await mkdir(moduleRoot, { recursive: true });
+    await writeFile(
+      path.join(moduleRoot, "package.json"),
+      JSON.stringify({ type: "module", exports: "./index.mjs" }),
+    );
+    await writeFile(
+      path.join(moduleRoot, "index.mjs"),
+      `
+import { appendFileSync } from "node:fs";
+export async function provisionApiKey() {
+  appendFileSync("calls", "provision\\n");
+  return { record: { id: "key-record" } };
+}
+`,
+    );
+
+    const result = spawnSync(process.execPath, ["provision-api-key.mjs"], {
+      cwd: root,
+      encoding: "utf8",
+      timeout: 10_000,
+      env: { ...process.env, HOT_UPDATER_API_KEY: "" },
+    });
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(await readFile(path.join(root, "calls"), "utf8")).toBe(
+      "migrate\nprovision\n",
+    );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});

@@ -36,7 +36,11 @@ import {
   stopRuntime,
   waitForHttpOk,
 } from "../../../../packages/test-utils/src/runtimeProcess";
-import { firebaseDatabase } from "../../src/firebaseDatabase";
+import {
+  firebaseDatabase,
+  migrateFirebaseDatabase,
+} from "../../src/firebaseDatabase";
+import { FIREBASE_V1_COLLECTION } from "../../src/firebaseInfrastructureNames";
 import { firebaseStorage } from "../../src/firebaseStorage";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -294,6 +298,7 @@ exec node "${path.join(firebaseFunctionsPackagePath, "lib/bin/firebase-functions
     };
 
     database = firebaseDatabase({ ...adminOptions });
+    await migrateFirebaseDatabase({ ...adminOptions });
     await registerApiKey({
       apiKey: API_KEY,
       apiKeys: database.models.apiKeys,
@@ -349,13 +354,11 @@ exec node "${path.join(firebaseFunctionsPackagePath, "lib/bin/firebase-functions
   beforeEach(async () => {
     cdnObjects.clear();
     await clearStorageBucket(storageBucket);
-    await clearFirestoreCollection("hot_updater_v1_bundle_patches");
-    await clearFirestoreCollection("hot_updater_v1_release_catalogs");
-    await clearFirestoreCollection("hot_updater_v1_releases");
-    await clearFirestoreCollection("hot_updater_v1_bundles");
-    await clearFirestoreCollection("hot_updater_v1_channels");
-    await clearFirestoreCollection("hot_updater_v1_private_settings", (id) =>
-      id.startsWith("channel_id_"),
+    // The schema settings and the API key the function authenticates with stay.
+    await clearFirestoreCollection(FIREBASE_V1_COLLECTION, (pk) =>
+      ["private_hot_updater_settings", "api_keys"].every(
+        (table) => pk !== table && !pk.startsWith(`${table}#`),
+      ),
     );
   });
 
@@ -467,20 +470,17 @@ exec node "${path.join(firebaseFunctionsPackagePath, "lib/bin/firebase-functions
 
 const clearFirestoreCollection = async (
   collectionName: string,
-  matches: (id: string) => boolean = () => true,
+  matches: (pk: string) => boolean,
 ) => {
   const firestore = getFirestore();
-  const snapshot = await firestore.collection(collectionName).get();
-
-  if (snapshot.empty) {
-    return;
+  const doomed = (await firestore.collection(collectionName).get()).docs.filter(
+    (doc) => matches(String(doc.get("pk"))),
+  );
+  for (let at = 0; at < doomed.length; at += 400) {
+    const batch = firestore.batch();
+    for (const doc of doomed.slice(at, at + 400)) batch.delete(doc.ref);
+    await batch.commit();
   }
-
-  const batch = firestore.batch();
-  for (const doc of snapshot.docs) {
-    if (matches(doc.id)) batch.delete(doc.ref);
-  }
-  await batch.commit();
 };
 
 const clearStorageBucket = async (storageBucket: string) => {

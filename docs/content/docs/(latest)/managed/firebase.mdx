@@ -217,8 +217,8 @@ export default defineConfig({
 
 ### Resource names
 
-Managed Firestore collections use the fixed `hot_updater_v1_*` namespace,
-and the managed Function is named `hot-updater-v1`. Bundles use the project's
+Managed Firestore keeps every item in the `hot_updater_v1` collection, and the
+managed Function is named `hot-updater-v1`. Bundles use the project's
 canonical Storage bucket with independent object keys.
 
 ### Release catalog cache

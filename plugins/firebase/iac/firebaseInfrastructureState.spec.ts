@@ -7,12 +7,11 @@ import {
 
 describe("Firebase infrastructure generation", () => {
   it.each([
-    [{ adapterVersion: undefined, hasData: false }, "fresh"],
-    [{ adapterVersion: 1, hasData: true }, "incompatible"],
-    [{ adapterVersion: 3, hasData: false }, "incompatible"],
-    [{ adapterVersion: undefined, hasData: true }, "incompatible"],
-    [{ adapterVersion: 4, hasData: true }, "v1"],
-    [{ adapterVersion: 5, hasData: true }, "incompatible"],
+    [{ engine: undefined, preEngineData: false }, "fresh"],
+    [{ engine: "1", preEngineData: false }, "v1"],
+    [{ engine: "2", preEngineData: false }, "incompatible"],
+    [{ engine: undefined, preEngineData: true }, "incompatible"],
+    [{ engine: "1", preEngineData: true }, "incompatible"],
   ] as const)("classifies %j as %s", (input, expected) => {
     expect(resolveFirebaseInfrastructureState(input)).toBe(expected);
   });
