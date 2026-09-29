@@ -20,10 +20,8 @@ describe("standalone-s3 local S3 contract", () => {
     // When: the local S3 service contract is inspected.
     // Then: the contract is MinIO, not LocalStack or an external R2/S3 provider.
     expect(dockerCompose).toContain("minio:");
-    expect(dockerCompose).toContain(
-      "image: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z",
-    );
-    expect(dockerCompose).not.toMatch(/image:\s+minio\/minio/);
+    expect(dockerCompose).toContain("build: ./minio");
+    expect(dockerCompose).not.toMatch(/image:\s+(?:quay\.io\/)?minio\/minio/);
     expect(dockerCompose).toContain("MINIO_ROOT_USER");
     expect(dockerCompose).not.toContain("localstack");
     expect(dockerCompose).not.toContain("4566:4566");

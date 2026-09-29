@@ -84,6 +84,13 @@ describe("Hot Updater Handler Integration Tests (Hono + S3)", () => {
   let hotUpdater: HotUpdaterAPI;
   const port = 13595;
 
+  // A cold source build can exceed the server startup timeout.
+  beforeAll(async () => {
+    await execa("docker", ["compose", "build", "minio"], {
+      cwd: projectRoot,
+    });
+  }, 600000);
+
   beforeAll(async () => {
     // Kill any process using the port before starting
     await killPort(port);
