@@ -42,6 +42,15 @@ keep the file outside the app bundle and exclude local environment files from
 Git. A Firebase CLI login alone does not necessarily authenticate the local
 Admin SDK.
 
+When `cdnUrl` is omitted, the server needs a service-account identity that can
+sign download URLs as well as read objects. For keyless signing, enable the
+IAM Service Account Credentials API and grant the calling identity
+`iam.serviceAccounts.signBlob` on the signing service account. A local user
+ADC session or bucket access alone does not establish that signing access.
+Follow the [Google Cloud signing setup](https://cloud.google.com/storage/docs/access-control/signing-urls-with-helpers).
+Using the actual server identity, call `getDownloadUrl` for an existing object
+and fetch its returned URL before serving updates.
+
 ```bash title=".env.hotupdater"
 # Optional: a private credential file when existing ADC is unavailable
 # GOOGLE_APPLICATION_CREDENTIALS=/private/path/to/your-service-account-key.json
@@ -67,7 +76,7 @@ const credential = applicationDefault();
 export default defineConfig({
   storage: firebaseStorage({ // [!code ++]
     projectId: process.env.FIREBASE_PROJECT_ID, // [!code ++]
-    storageBucket: process.env.FIREBASE_STORAGE_BUCKET, // [!code ++]
+    storageBucket: process.env.FIREBASE_STORAGE_BUCKET!, // [!code ++]
     credential, // [!code ++]
   }), // [!code ++]
   // ... other config

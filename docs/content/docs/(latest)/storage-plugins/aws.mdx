@@ -10,6 +10,12 @@ icon: aws
 npm install @hot-updater/aws --save-dev
 ```
 
+For a custom server, install the runtime dependency in the server project:
+
+```package-install
+npm install @hot-updater/aws
+```
+
 ## Setup
 
 For a complete provider deployment, follow the [AWS setup](/docs/managed/aws#step-2-configure-aws).
@@ -60,20 +66,10 @@ export default defineConfig({
 
 ### Cloudflare R2
 
-```typescript title="hot-updater.config.ts"
-export default defineConfig({
-  storage: s3Storage({
-    region: "auto", // [!code ++]
-    endpoint: `https://${process.env.CLOUDFLARE_ACCOUNT_ID}.r2.cloudflarestorage.com`, // [!code ++]
-    credentials: {
-      accessKeyId: process.env.R2_ACCESS_KEY_ID, // [!code ++]
-      secretAccessKey: process.env.R2_SECRET_ACCESS_KEY, // [!code ++]
-    },
-    bucketName: "my-r2-bucket", // [!code ++]
-  }),
-  // ... other config
-});
-```
+Use [`r2Storage`](/docs/storage-plugins/cloudflare) for R2, including the
+managed Cloudflare Worker. It records `r2://` locations that the Worker can
+resolve. `s3Storage` always records `s3://` locations, even with an R2 endpoint,
+so it requires a server that registers an `s3` storage plugin.
 
 ## Protocol
 

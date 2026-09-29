@@ -56,7 +56,13 @@ npx vercel deploy --prod
 
 Open the production URL and follow [Verify the deployment](/docs/guides/console-deployment#verify-the-deployment).
 
-Test a real-sized bundle download: the console proxies it through the function, so [Vercel's payload and execution limits](https://vercel.com/docs/functions/limitations) apply.
+Use **Download manifest** in a bundle's details and verify `manifest.json`.
+The console streams the manifest through the function when a storage plugin
+handles its URI; otherwise, public HTTP(S) manifest URLs redirect to storage.
+[Vercel's payload and execution limits](https://vercel.com/docs/functions/limitations)
+apply to responses streamed through the function. This action does not download
+the JavaScript bundle or its assets; verify OTA delivery with the
+[app update workflow](/docs/get-started/test-ota).
 
 </Step>
 </Steps>

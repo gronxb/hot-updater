@@ -1,4 +1,4 @@
-# Hot Updater Console (v2)
+# Hot Updater Console
 
 Modern web-based management console for Hot Updater built with **TanStack Start** and **shadcn/ui**.
 
@@ -6,11 +6,11 @@ Modern web-based management console for Hot Updater built with **TanStack Start*
 
 - **Bundle Management** - View, filter, and manage OTA update bundles
 - **Real-time Filtering** - Filter by platform (iOS/Android) and channel
-- **Bundle Editor** - Edit bundle configurations with intuitive forms
+- **Release Editor** - Edit delivery policy, rollout, and target cohorts
 - **Rollout Control** - Adjust rollout percentage with visual slider
 - **Rollout Statistics** - View deployment metrics and success rates
-- **Channel Promotion** - Copy or move bundles between channels
-- **Emergency Rollback** - One-click disable and rollback
+- **Channel Promotion** - Copy or move releases between channels
+- **Rollback** - Disable a release and save; devices reconsider it on their next update check
 - **Dark Mode** - Full dark mode support with system preference detection
 - **Responsive Design** - Works seamlessly on desktop, tablet, and mobile
 
@@ -21,13 +21,11 @@ Modern web-based management console for Hot Updater built with **TanStack Start*
 - **TanStack Start** - Full-stack React framework with SSR
 - **TanStack Router** - File-based routing with type safety
 - **TanStack Query** - Data fetching and caching
-- **TanStack Form** - Form state management and validation
-- **TanStack Table** - Powerful table with sorting and pagination
 - **React 19** - Latest React features
 
 ### UI Components
 
-- **shadcn/ui** - High-quality accessible components (Radix Mira style)
+- **shadcn/ui** - High-quality accessible components built on Base UI
 - **Tailwind CSS v4** - Utility-first CSS with oklch color system
 - **Lucide React** - Beautiful icon library
 - **Sonner** - Toast notifications
@@ -40,27 +38,33 @@ Modern web-based management console for Hot Updater built with **TanStack Start*
 ## 📦 Installation
 
 ```bash
-# Install dependencies (from monorepo root)
+# Install and build workspace dependencies (from monorepo root)
 pnpm install
+pnpm -w build
 ```
 
 ## 🏃‍♂️ Development
 
 ```bash
-# Start development server
-pnpm dev
+# Run these commands from the monorepo root
+# Start the local development server
+pnpm --dir packages/console dev
 
-# Build for production
-pnpm build
-
-# Preview production build
-pnpm preview
+# Build and preview the local console package
+pnpm --dir packages/console build
+pnpm --dir packages/console preview
 
 # Type checking
-pnpm test:type
+pnpm --dir packages/console test:type
 ```
 
-The console will be available at `http://localhost:3000`.
+The development server is available at `http://localhost:3000`.
+
+This package's Vite configuration uses the local console adapter, which grants
+management access without sign-in in both development and built output. Keep
+this build and preview local. For production hosting, follow the
+[Console deployment guide](https://hot-updater.dev/docs/guides/console-deployment)
+and configure its hosted template with a `ConsoleAuthAdapter`.
 
 ## 📁 Project Structure
 
@@ -68,26 +72,27 @@ The console will be available at `http://localhost:3000`.
 src/
 ├── routes/
 │   ├── __root.tsx              # Root layout with providers
-│   ├── index.tsx               # Bundle list page
-│   └── api/                    # API routes (future)
+│   ├── index.tsx               # Bundle/release list page
+│   ├── -releases-search.ts     # URL filter validation
+│   └── api/                    # Authentication and bundle downloads
 ├── components/
 │   ├── ui/                     # shadcn components
 │   ├── features/
-│   │   └── bundles/            # Bundle-related components
+│   │   ├── bundles/            # Bundle metadata and rollout details
+│   │   └── releases/           # Release policy editor
 │   ├── PlatformIcon.tsx        # iOS/Android icons
 │   ├── BundleIdDisplay.tsx     # Truncated bundle ID with tooltip
 │   ├── RolloutPercentageBadge.tsx
 │   ├── TimestampDisplay.tsx    # UUIDv7 timestamp formatting
 │   ├── ChannelBadge.tsx
 │   └── EnabledStatusIcon.tsx
-├── hooks/
-│   └── useFilterParams.ts      # URL-based filter state
 ├── lib/
 │   ├── api.ts                  # React Query hooks
+│   ├── api-rpc.ts              # TanStack Start server functions
 │   ├── constants.ts            # Shared constants
 │   ├── utils.ts                # Utility functions
 │   └── server/
-│       ├── api.server.ts       # Server functions
+│       ├── auth.server.ts      # Management access checks
 │       └── config.server.ts    # Hot Updater config loader
 └── styles.css                  # Global styles & theme variables
 ```
@@ -96,63 +101,64 @@ src/
 
 ### Bundle List Page
 
-- **FilterToolbar** - Platform and channel filters with reset button
-- **BundlesTable** - Server-side paginated table (20 per page)
-- **BundleTableColumns** - Column definitions with custom cell renderers
+- **BundlesPage** - Release-backed list with server-side pagination (20 per page)
+- **BundleFilterToolbar** - Platform, channel, and enabled-state filters
+- Both live in `src/routes/index.tsx`.
 
-### Bundle Editor Sheet
+### Release Editor Sheet
 
-- **BundleEditorSheet** - Right-side slide-out panel
-- **BundleEditorForm** - TanStack Form with validation
+- **ReleaseEditorSheet** - Slide-out editor for release policy, rollout, and promotion
 - **BundleMetadata** - Read-only bundle information display
+- Saving preflights the policy, then updates it with the expected release revision.
+- To roll back a release, turn off **Enabled** and select **Save changes**.
+  On the next update check, devices select a previous eligible release or the
+  built-in app when none remains; the app still controls applying the result.
 
 ### Dialogs
 
-- **PromoteChannelDialog** - Channel promotion with copy/move toggle
-- **DeleteBundleDialog** - Confirmation dialog with bundle details
-- **EmergencyRollbackButton** - One-click disable + 0% rollout
+- **ReleaseEditorSheet** contains promotion and release-deletion dialogs.
+- **RolloutCohortsDialog** displays rollout and targeted cohorts.
+- **ChannelManagementDialog** creates and deletes channels.
 
 ## 🔌 API Integration
 
-The console integrates with the configured Hot Updater storage and database plugins through TanStack Start server functions:
+The console integrates with the configured Hot Updater storage and database
+plugins through TanStack Start server functions in `src/lib/api-rpc.ts`.
+Functions with input take a `{ data: input }` argument:
 
-- `getConfig()` - Load console configuration
-- `getChannels()` - List available channels
-- `getBundles(filters)` - List bundles with pagination
-- `getBundle(bundleId)` - Get single bundle details
-- `updateBundle(bundleId, data)` - Update bundle configuration
-- `createBundle(bundle)` - Create new bundle
-- `deleteBundle(bundleId)` - Delete bundle
+- `getConfig()` and `getChannels()` load configuration and channels.
+- `getReleases({ data: { filter, limit, beforeReleaseId, afterReleaseId } })`
+  lists releases using the supported `ReleaseFilter` shapes.
+- `getRelease({ data: { releaseId } })` reads a release.
+- `preflightRelease({ data: { releaseId, expectedRevision, patch } })` validates
+  a `ReleasePolicyPatch`; `updateRelease` takes the same input to save it.
+- `deleteRelease({ data: { releaseId, expectedRevision } })` deletes a release.
+- `promoteRelease({ data: { releaseId, expectedRevision, targetChannel, action } })`
+  copies or moves a release; `action` is `"copy"` or `"move"`.
+- `getBundles({ data: { platform, limit, after, before } })` lists bundle artifacts;
+  `getBundle({ data: { bundleId } })` reads one and
+  `deleteBundle({ data: { bundleId } })` deletes one.
+
+Use one pagination cursor at a time.
 
 ## 🎯 Configuration
 
-Configure Hot Updater in `hot-updater.config.ts`:
+The checked-in [demo configuration](hot-updater.config.ts) seeds sample bundles
+and releases through `createDatabaseCoreApi(database.withoutLatency()).deploy`.
+For an empty local mock console, use this `hot-updater.config.ts`:
 
 ```typescript
-import {
-  createMockDatabaseData,
-  mockDatabase,
-  mockStorage,
-} from "@hot-updater/mock";
-import { bundleToRow, type Bundle } from "@hot-updater/plugin-core";
-
-const bundles: Bundle[] = [
-  // ... your bundles
-];
-
-const databaseData = createMockDatabaseData();
-for (const bundle of bundles) {
-  databaseData.bundles.set(bundle.id, bundleToRow(bundle));
-}
+import { mockDatabase, mockStorage } from "@hot-updater/mock";
 
 export default {
   storage: mockStorage({}),
   database: mockDatabase({
     latency: { min: 500, max: 700 },
-    data: databaseData,
   }),
 };
 ```
+
+Mock data is held in memory and resets when the configuration is reloaded.
 
 ## 🌈 Theming
 
@@ -167,23 +173,23 @@ The console uses Tailwind CSS v4 with oklch color space for accessible colors. T
 - Full TypeScript strict mode
 - Type-safe server functions with TanStack Start
 - Type-safe routing with TanStack Router
-- Type-safe forms with TanStack Form
+- Typed release-policy drafts and revision-aware mutations
 
 ## 📊 Data Flow
 
-1. **URL State** → `useFilterParams()` hook manages filter state in URL
+1. **URL State** → `Route.useSearch()` and `-releases-search.ts` manage release filters
 2. **Server Functions** → TanStack Start server functions call the configured storage and database plugins
-3. **React Query** → `useBundlesQuery()` fetches and caches data
+3. **React Query** → `useReleasesQuery()` and `useBundleQuery()` fetch and cache data
 4. **UI Components** → Display data with shadcn components
-5. **Mutations** → `useUpdateBundleMutation()` updates data with optimistic updates
-6. **Cache Invalidation** → React Query automatically refreshes affected queries
+5. **Mutations** → `usePreflightReleaseMutation()` validates changes before `useUpdateReleaseMutation()` saves them
+6. **Cache Invalidation** → Successful updates invalidate release, catalog, and channel queries
 
 ## 🚦 Development Guidelines
 
 - **Server-only code** must use `.server.ts` extension
 - **Client-side constants** live in `src/lib/constants.ts`
 - **shadcn components** are customizable in `src/components/ui/`
-- **Form validation** uses TanStack Form validators
+- **Release validation** checks the draft locally and preflights changes on the server
 - **Toast notifications** use Sonner for success/error feedback
 
 ## 🐛 Troubleshooting
@@ -196,7 +202,7 @@ The console uses Tailwind CSS v4 with oklch color space for accessible colors. T
 ### Development Server
 
 - Default port is 3000
-- Change port: `pnpm dev --port 3001`
+- Change port: `pnpm --dir packages/console dev --port 3001`
 
 ### Hot Updater Config
 

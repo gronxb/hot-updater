@@ -231,33 +231,37 @@ dedicated CloudFront behavior whose cache key contains the canonical path,
 Authorization, cookies, query strings, and installation state. A cold origin
 fill performs one exact DynamoDB catalog read; a warm CloudFront hit skips both
 Lambda@Edge and DynamoDB. Each authenticated Insights event invokes
-Lambda@Edge and writes the immutable event plus the installation's latest-report
-pointer in one DynamoDB transaction. Server-side Insights queries read cursor
-pages or canonical latest-report rows; they do not materialize the raw event
-log.
+Lambda@Edge and transactionally writes the immutable event, index copies,
+aggregate counters, and any change to the installation's latest-report row.
 Review the [DynamoDB pricing model](https://aws.amazon.com/dynamodb/pricing/) and
 [Lambda@Edge pricing](https://aws.amazon.com/lambda/pricing/).
 
 Each API key authorizes OTA selectors and event ingestion, but not
 Insights query or management routes. Managed tables cap on-demand throughput
-at 4,000 reads and 100 writes per second for both the table and update index.
+at 4,000 read request units and 100 write request units per second on one table,
+with no secondary index. These are capacity units, not event counts: event
+throughput depends on the transactional item, index-copy, and aggregate writes.
 The cap is a cost guardrail and can throttle bursts; protect production
 distributions with AWS WAF rate-based rules and configure AWS Budgets for a
 monthly spending threshold. The AWS adapter does not delete Insights data
-automatically. Event history is keyset-paginated. Reporting-installation counts
-read all canonical installation rows, including inactive rows; bundle-outcome
-counts consume the matching indexed range.
+automatically. Event history is keyset-paginated. Reporting overview windows
+align to whole hours and read maintained installation-distribution,
+latest-by-bundle, and outcome aggregates. Direct count queries with partial-hour
+boundaries also read matching raw events or installation heads.
 
 Bundle metadata has no fixed bundle, patch, or patch-relationship count limit.
-Each serialized metadata item is limited to 8 KiB. The database maintains counters
-and relation counts in the same transactions as metadata writes. Cursor pages
-and exact/single-owner hydration use targeted key/index reads; owner-index keys
-are hydrated from strongly consistent base-table rows and unprocessed batch keys
-use bounded exponential backoff. Unfiltered totals use the transactionally
-maintained metadata counter. Broad filtered scans paginate through all matching
-metadata and may be throttled by the managed table's throughput cost guardrail.
-DynamoDB's 100-action transaction service limit applies to the complete
-`commit({ changes, expectations })` envelope, including cascade deletions.
+The adapter enforces a 400,000-byte physical-item budget and a 4,000,000-byte,
+100-action transaction budget. These budgets include row and index overhead,
+aggregate updates, and cascade deletions; they are not metadata-only limits.
+The database maintains counters and relation counts in the same transactions as
+metadata writes. Cursor pages and exact/single-owner hydration use targeted
+key/index reads; owner-index keys are hydrated from strongly consistent
+base-table rows. Unprocessed batch keys retry with exponential backoff and no
+internal retry-count or elapsed-time limit, so sustained throttling can continue
+until an external request or runtime timeout. Unfiltered totals use the
+transactionally maintained metadata counter. Broad filtered scans paginate
+through all matching metadata and may be throttled by the managed table's
+throughput cost guardrail.
 
 New tables enable deletion protection. Init validates the billing mode,
 throughput caps, string key types, and index layout before reusing an existing
@@ -280,7 +284,7 @@ at no extra charge; see [invalidation pricing](https://docs.aws.amazon.com/Amazo
 Rerunning init preserves unrelated CloudFront origins/cache behaviors and S3
 bucket-policy statements. Lambda roles and signing keys are isolated by the
 Lambda name and grant access only to the selected bucket, SSM parameter,
-DynamoDB table, and update index. Init provisions these resources through AWS
+and DynamoDB table. Init provisions these resources through AWS
 APIs rather than a CloudFormation stack, so deletion and rollback remain
 operator-managed.
 

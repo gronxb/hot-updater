@@ -10,7 +10,8 @@ import { Tabs, Tab } from 'fumadocs-ui/components/tabs';
 
 - BugSnag Account: Sign up here if you don't have one.
 - API Key: Copy the API key of your project from your BugSnag dashboard.
-- Install the plugin:
+- Complete the [BugSnag React Native setup](https://docs.bugsnag.com/platforms/react-native/react-native/manual-setup/), including the `@bugsnag/react-native` runtime package, iOS pods, and native API-key configuration and initialization. Verify that your app reports a test error before adding OTA sourcemap uploads.
+- Install the build plugin:
 
 ```package-install
 npm install @hot-updater/bugsnag-plugin @bugsnag/cli --save-dev
@@ -104,13 +105,16 @@ export default defineConfig({
 
 ## Step 2: Set the `codeBundleId` in your app
 
-BugSnag matches errors from OTA-updated apps to the uploaded sourcemaps through the `codeBundleId`. Pass the file identifier from the current manifest when starting BugSnag:
+BugSnag matches errors from OTA-updated apps to the uploaded sourcemaps through
+the `codeBundleId`. Add the file identifier from the current manifest to your
+existing `Bugsnag.start` options, retaining the rest of your configuration:
 
 ```tsx title="App.tsx"
 import Bugsnag from "@bugsnag/react-native";
 import { HotUpdater } from "@hot-updater/react-native"; // [!code ++]
 
 Bugsnag.start({
+  // Keep your existing BugSnag options.
   codeBundleId: HotUpdater.getManifest().bundleId, // [!code ++]
 });
 ```

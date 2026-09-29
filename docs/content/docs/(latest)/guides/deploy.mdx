@@ -42,34 +42,44 @@ Options:
 
 ## Usage
 
-### Default Mode
+<a id="default-mode" />
 
-When you omit `-p` and `-i`, Hot Updater deploys **iOS first, then Android**
-sequentially. If the iOS deploy fails, Android is not attempted.
+### Deploy Both Platforms
 
-Run the following command:
+Deploy each platform explicitly. To deploy iOS first and Android only after it
+succeeds, run:
 
-```package-install
-npx hot-updater deploy
+```bash
+npx hot-updater deploy -p ios -o .hot-updater/output/deploy/ios &&
+  npx hot-updater deploy -p android -o .hot-updater/output/deploy/android
 ```
 
-- This is the default mode for CI/CD pipelines when both platforms should move
-  together.
-- Local bundle artifacts are written under platform-specific directories such as
-  `<bundle-output-path>/ios/bundle/` and `<bundle-output-path>/android/bundle/`.
+Each command commits independently. If Android fails, the successful iOS
+update remains published. Keep the channel, rollout, and other delivery options
+consistent across both commands when they should share the same policy.
+
+Omitting `-p` requests both platforms but can fail with
+`Deploying multiple platforms requires a shared database configuration.` even
+when both platforms use the same backend. Use the explicit sequence above.
+
+With `-p`, the archive is written directly to
+`<bundle-output-path>/bundle.tar.br`. The commands above therefore produce
+`.hot-updater/output/deploy/ios/bundle.tar.br` and
+`.hot-updater/output/deploy/android/bundle.tar.br`. The manifest and unarchived
+files remain in the build plugin's output directory, which is configured
+separately.
 
 ### Deployment Result
 
-After the database commit succeeds, the default two-platform deploy prints one
-ID per platform in the final success area:
+After its database commit succeeds, each single-platform deploy prints its
+public Bundle ID:
 
 ```text
 Deployment successful
-    iOS ID:     01a0586e-a286-7a74-a959-6d2c770b8793
-    Android ID: 01a0586f-e975-7c24-8078-62b20b8fe2dd
+    ID: 01a0586e-a286-7a74-a959-6d2c770b8793
 ```
 
-A single-platform deploy prints the same result with one `ID:` line.
+Record the ID from each platform's command.
 
 Interactive deploy opens that exact update in the console. Use this ID with
 `bundle show`, `bundle update`, `bundle disable`, `bundle delete`, or
@@ -103,15 +113,14 @@ The `-i` (or `--interactive`) flag enables interactive keyboard input.
 
 ### For Continuous Deployment (CD) Pipelines
 
-Use this mode when a pipeline should deploy only one platform.
-
-Run the following command:
+Use `-p` to scope each CI job or step to exactly one platform:
 
 ```package-install
-npx hot-updater deploy -p <"ios" | "android">
+npx hot-updater deploy -p ios
 ```
 
-- Use `-p` to scope the deploy to exactly one platform.
+Use `-p android` for Android, or the [explicit sequence above](#deploy-both-platforms)
+when one job deploys both platforms.
 
 ### Force Update
 
@@ -163,7 +172,7 @@ Bundle. Numeric cohort selection is seeded by its ID and remains stable
 when that Bundle's rollout policy changes.
 
 If you omit `-r`, the default value is `100`, so the new Bundle is eligible for
-the entire numeric audience immediately.
+all numeric and valid custom cohorts immediately.
 
 For more on gradual rollout, current device cohorts, and cohort targeting from
 the console, see [Rollout & Cohorts](/docs/guides/rollout-cohorts).
@@ -178,8 +187,8 @@ Run the following command:
 npx hot-updater deploy -p <"ios" | "android"> -m "<message>"
 ```
 
-If you omit `-p`, the same message is applied to both sequential platform
-deploys.
+Pass the same `-m` value to each platform command when both updates should
+share a message.
 
 ## Force Update Flag Difference
 

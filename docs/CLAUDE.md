@@ -8,7 +8,9 @@ guide; do not duplicate its page inventory here.
 
 - Current documentation lives in `content/docs/(latest)` and is served at
   `/docs/...`. Leave `content/docs/v0` unchanged unless explicitly requested.
-- Keep v0/v1 comparisons and transition steps in `guides/upgrade-to-v1.mdx`.
+- Treat latest content as the stable release. Keep v0/v1 comparisons and
+  transition steps in `guides/upgrade-to-v1.mdx`; omit release-candidate
+  setup and migration procedures.
   Preserve literal resource names, API paths and protocol identifiers.
 - Organize the sidebar by tasks using explicit `meta.json` order, including
   cross-directory references. Preserve source URLs and useful old anchors when

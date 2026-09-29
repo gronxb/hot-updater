@@ -22,19 +22,24 @@ follow the [Cloudflare R2 API token guide](https://developers.cloudflare.com/r2/
 ## Configuration
 
 ```typescript
-interface R2S3StorageConfig {
+import type { S3ClientConfig } from "@aws-sdk/client-s3";
+
+interface R2S3StorageConfig extends S3ClientConfig {
   accountId: string;
   bucketName: string;
-  credentials: {
-    accessKeyId: string;
-    secretAccessKey: string;
-  };
+  credentials: NonNullable<S3ClientConfig["credentials"]>;
   basePath?: string;
   downloadUrlSigningKey?: string;
 }
 ```
 
 `r2Storage` requires S3-compatible credentials for its Node.js/CLI transport.
+It accepts the AWS SDK's `endpoint` option and defaults to
+`https://<account-id>.r2.cloudflarestorage.com`. For a bucket restricted to a
+jurisdiction, set its corresponding endpoint; for example,
+`endpoint: "https://<account-id>.eu.r2.cloudflarestorage.com"` for an EU
+bucket. See Cloudflare's [jurisdiction-specific endpoints](https://developers.cloudflare.com/r2/api/tokens/)
+for EU, FedRAMP, and US buckets.
 
 ## Usage
 
@@ -44,11 +49,11 @@ import { defineConfig } from "hot-updater";
 
 export default defineConfig({
   storage: r2Storage({ // [!code ++]
-    accountId: process.env.CLOUDFLARE_ACCOUNT_ID, // [!code ++]
+    accountId: process.env.CLOUDFLARE_ACCOUNT_ID!, // [!code ++]
     bucketName: "my-r2-bucket", // [!code ++]
     credentials: { // [!code ++]
-      accessKeyId: process.env.R2_ACCESS_KEY_ID, // [!code ++]
-      secretAccessKey: process.env.R2_SECRET_ACCESS_KEY, // [!code ++]
+      accessKeyId: process.env.R2_ACCESS_KEY_ID!, // [!code ++]
+      secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!, // [!code ++]
     }, // [!code ++]
   }), // [!code ++]
   // ... other config

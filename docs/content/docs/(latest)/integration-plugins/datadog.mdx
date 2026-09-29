@@ -11,11 +11,56 @@ import { Tabs, Tab } from 'fumadocs-ui/components/tabs';
 - Datadog Account: Sign up here if you don't have one.
 - Auth Token: Generate a token from your Datadog dashboard. This must be defined as the environment variable `DATADOG_API_KEY`.
 - Datadog site: specify the site for the API key with `DATADOG_SITE` (e.g., `DATADOG_SITE=datadoghq.eu`).
-- Install the plugin:
+- Complete the [Datadog React Native SDK setup](https://docs.datadoghq.com/real_user_monitoring/application_monitoring/react_native/setup/) and verify a test error reaches Datadog.
+- Install the build plugin:
 
 ```package-install
 npm install @hot-updater/datadog-plugin @datadog/datadog-ci --save-dev
 ```
+
+## Configure the OTA identity
+
+Each OTA bundle needs its own sourcemap identity. Without a Debug ID, Datadog
+matches on service, version, bundle name, and platform, then picks the highest
+build number. Changing `buildNumber` alone cannot distinguish devices running
+different OTA bundles for the same native version. See
+[Datadog's matching rules](https://docs.datadoghq.com/error_tracking/frontend/mobile/reactnative/#get-deobfuscated-stack-traces).
+
+The following recipe uses Datadog's
+[`versionSuffix` option](https://docs.datadoghq.com/real_user_monitoring/application_monitoring/react_native/setup/codepush/#alternatives).
+It assumes the target native app version is `1.0.0`. Create a shared module
+imported by both the app and `hot-updater.config.ts`:
+
+```ts title="datadog-release.ts"
+// Change this suffix for every OTA build, including rebuilds of the same commit.
+export const datadogVersionSuffix = "ota.20260930.1";
+export const datadogReleaseVersion = `1.0.0-${datadogVersionSuffix}`;
+```
+
+Set the suffix on your existing Datadog SDK configuration before initializing
+it. This is an excerpt from that initialization module:
+
+```ts
+import { datadogVersionSuffix } from "./datadog-release";
+
+// config is your existing Datadog SDK configuration.
+config.versionSuffix = datadogVersionSuffix;
+```
+
+Datadog adds the dash, so the runtime reports `1.0.0-ota.20260930.1`. Keep your
+existing SDK service name and use that same service in the upload options
+below. Bundle this shared module into the OTA update; an environment variable
+set only for the deploy process does not configure the running app. If you also
+build a native binary from this source, set `DATADOG_RELEASE_VERSION` to the same
+full version for Datadog's native-build sourcemap upload.
+
+Use a new suffix for every OTA build and retain that build's value when rolling
+back or promoting the same files. This recipe targets native version `1.0.0`;
+if the same OTA can run on other native versions, upload the same map under each
+resulting version or configure
+[Datadog Metro Debug IDs](https://docs.datadoghq.com/error_tracking/frontend/mobile/reactnative/#use-datadog-metro-configuration)
+for your build pipeline. `withDatadog` uploads files; it does not inject Debug IDs
+or set the runtime SDK version.
 
 ## Step 1: Wrap your build plugin
 
@@ -29,6 +74,7 @@ import { existsSync } from "node:fs";
 import { bare } from "@hot-updater/bare";
 import { withDatadog } from "@hot-updater/datadog-plugin"; // [!code ++]
 import { defineConfig } from "hot-updater";
+import { datadogReleaseVersion } from "./datadog-release";
 
 if (existsSync(".env.hotupdater")) {
   process.loadEnvFile(".env.hotupdater");
@@ -44,8 +90,8 @@ export default defineConfig({
     { // [!code ++]
       // Sort sourcemaps for the same version by this build number.
       buildNumber: "build number", // [!code ++]
-      // Match the release version used by the app's logs.
-      releaseVersion: "release version", // [!code ++]
+      // Match this OTA bundle's runtime SDK version.
+      releaseVersion: datadogReleaseVersion, // [!code ++]
       // Datadog service associated with these sourcemaps.
       service: "service", // [!code ++]
     }, // [!code ++]
@@ -59,6 +105,7 @@ export default defineConfig({
 ```ts title="hot-updater.config.ts"
 import { withDatadog } from "@hot-updater/datadog-plugin"; // [!code ++]
 import { defineConfig } from "hot-updater";
+import { datadogReleaseVersion } from "./datadog-release";
 import { expo } from "@hot-updater/expo";
 
 export default defineConfig({
@@ -70,8 +117,8 @@ export default defineConfig({
     { // [!code ++]
       // Sort sourcemaps for the same version by this build number.
       buildNumber: "build number", // [!code ++]
-      // Match the release version used by the app's logs.
-      releaseVersion: "release version", // [!code ++]
+      // Match this OTA bundle's runtime SDK version.
+      releaseVersion: datadogReleaseVersion, // [!code ++]
       // Datadog service associated with these sourcemaps.
       service: "service", // [!code ++]
     }, // [!code ++]
@@ -86,6 +133,7 @@ export default defineConfig({
 ```ts title="hot-updater.config.ts"
 import { withDatadog } from "@hot-updater/datadog-plugin"; // [!code ++]
 import { defineConfig } from "hot-updater";
+import { datadogReleaseVersion } from "./datadog-release";
 import { rock } from "@hot-updater/rock";
 
 export default defineConfig({
@@ -97,8 +145,8 @@ export default defineConfig({
     { // [!code ++]
       // Sort sourcemaps for the same version by this build number.
       buildNumber: "build number", // [!code ++]
-      // Match the release version used by the app's logs.
-      releaseVersion: "release version", // [!code ++]
+      // Match this OTA bundle's runtime SDK version.
+      releaseVersion: datadogReleaseVersion, // [!code ++]
       // Datadog service associated with these sourcemaps.
       service: "service", // [!code ++]
     }, // [!code ++]
@@ -112,12 +160,14 @@ export default defineConfig({
 </Tabs>
 
 <Callout title="Automatic Upload">
-`withDatadog()` uploads all generated sourcemaps to Datadog during `hot-updater deploy`.
+`withDatadog()` uploads the selected bundle and its sourcemap to Datadog during
+`hot-updater deploy`.
 </Callout>
 
 ## Step 2: Deploy
 
-Deploy the update to build the bundle and upload its sourcemaps to Datadog.
+Set a new suffix in `datadog-release.ts`, then deploy the update to build the
+bundle and upload its sourcemap with that version.
 
 ```package-install
 npx hot-updater deploy -i
@@ -125,12 +175,11 @@ npx hot-updater deploy -i
 
 ## Verify symbolication
 
-Install a release build, deploy a small JavaScript change with sourcemaps
-enabled, and trigger a controlled test error from the updated code. In your
-monitoring dashboard, confirm the stack points to the original source file
-and line in that update. A successful upload alone does not prove the app and
-uploaded map use the same identity.
+Keep two devices on different OTA bundles for the same native app version.
+Use distinct suffixes and make the test error occur at different source lines
+in each bundle. After both maps have been uploaded, trigger the error on both
+devices and confirm each stack points to its own original source line.
 
-Match the runtime SDK's service, release version and build number to the values
-passed to `withDatadog`. Configure that SDK through your existing Datadog app
-integration before performing the test.
+Check the reported service and version against each upload. A successful
+upload or a correct stack from only the newest bundle does not verify that
+older installed bundles still resolve to the right map.

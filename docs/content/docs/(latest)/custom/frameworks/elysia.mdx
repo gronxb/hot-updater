@@ -7,10 +7,15 @@ version: "v0.22.0"
 
 ## Installation
 
-Install Elysia and its bearer token plugin.
+This recipe runs on Node.js. Install Elysia, its Node adapter and bearer token
+plugin.
 
 ```package-install
-npm install elysia @elysiajs/bearer
+npm install elysia @elysiajs/node @elysiajs/bearer
+```
+
+```package-install
+npm install --save-dev tsx
 ```
 
 ## Setup and security
@@ -36,6 +41,7 @@ token and scopes the authentication hook to an admin sub-app:
 
 ```typescript title="src/index.ts"
 import { Elysia } from "elysia";
+import { node } from "@elysiajs/node";
 import { bearer } from "@elysiajs/bearer"; // [!code ++]
 import { hotUpdater } from "./hotUpdater"; // [!code ++]
 
@@ -53,16 +59,18 @@ const adminApp = new Elysia() // [!code ++]
   }) // [!code ++]
   .mount("/", hotUpdater.handlers.admin); // [!code ++]
 
-new Elysia()
+new Elysia({ adapter: node() })
   .mount("/hot-updater/admin", adminApp) // [!code ++]
   .mount("/hot-updater", hotUpdater.handlers.client) // [!code ++]
   .listen(3000);
 ```
 
-Set your auth token in environment variables:
+Start the server with the database and storage variables available, and export
+your admin token in the same shell:
 
 ```bash
-HOT_UPDATER_ADMIN_TOKEN=your-secret-auth-token
+export HOT_UPDATER_ADMIN_TOKEN=your-secret-auth-token
+npx tsx src/index.ts
 ```
 
 Configure the CLI to include the auth token when deploying bundles:

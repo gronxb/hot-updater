@@ -462,9 +462,8 @@ such as a refused connection, is thrown as it is.
 Export a migration with your factory, as `migrateMyDatabase` does.
 `migrateBuiltInSchema(adapter, name)` passes core's and the built-in plugins'
 tables to `adapter.migrations.apply`, then writes the settings rows. Running it
-again changes nothing. It refuses a database that has `schema.core` but no
-`schema.engine`; create a new database instead. Run the migration from a
-script, a deploy job or your provider's setup command, as `migrateDynamoDB` and
+again changes nothing. Run it from a script, a deploy job or your provider's
+setup command, as `migrateDynamoDB` and
 `migrateFirebaseDatabase` do for their providers.
 
 `hot-updater db migrate` runs the same migration from the file that exports the
@@ -478,8 +477,10 @@ A SQL provider can check in its schema instead.
 from `@hot-updater/server/db` returns the statements: tables and indexes, then
 the settings rows. The `postgres` and D1 providers generate their checked-in
 SQL this way, and a test fails when a file differs from the generator. Add
-`createTableStatements(dialect, [WRITE_GUARD_TABLE])` when the executor has
-`batch`. When other tooling creates the tables,
+`createTableStatements(dialect, [WRITE_GUARD_TABLE], tablePrefix)` when the
+executor has `batch`. Use the same `tablePrefix` for schema generation, the
+write guard table, and `createSqlAdapter`. When other tooling creates the
+tables,
 `writeSchemaSettings(adapter, name, builtInSettings)` writes only the settings
 rows.
 

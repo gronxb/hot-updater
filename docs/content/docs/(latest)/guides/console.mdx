@@ -88,7 +88,8 @@ authenticates browser users, while the framework middleware in front of
 `/api/*` routes belong to the Console application and are not the Hot Updater
 admin API. Through the standalone repository, the Console reads the server's
 Insights overview, events, and installations from the admin handler. App usage,
-bundle activity, and API key management need a direct database plugin.
+Release health, bundle activity, and API key management need a direct database
+plugin.
 
 Use Bundle commands for automation and CI scripts:
 
@@ -148,8 +149,9 @@ stored objects and shared assets.
 
 ## Insights
 
-The Bundles list and detail show recent **Active** and **Rollback** counts.
-Open Insights to inspect reporting installations, adoption, and recovery history.
+The Bundles list and detail show lifetime **Downloads**, **Known launches**,
+and **Known crashes**, with a crash rate. Open Insights to inspect release
+health for a selected period, reporting installations, and event history.
 
 Follow the [Insights guide](/docs/guides/insights) to configure reporting,
 identify an installation, verify an applied update, and interpret the counts.

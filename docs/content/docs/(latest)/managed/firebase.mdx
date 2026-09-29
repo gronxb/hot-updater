@@ -79,10 +79,23 @@ The initializer then prompts you to:
 3. Deploy the Firestore indexes used to store and query updates.
 4. Create the first client API key or reuse the saved key.
 5. Deploy a Firebase Function v2 called `hot-updater-v1`.
-6. Add a new IAM policy to the service account of the function.
+6. Grant the Function's service account the IAM Service Account Token Creator role if needed.
 
   </Accordion>
 </Accordions>
+
+After init, enable the IAM Service Account Credentials API in the selected
+project:
+
+```bash
+gcloud services enable iamcredentials.googleapis.com --project <project-id>
+```
+
+Init grants the runtime signing role but does not enable this API. Default
+Storage download URLs require both the API and `iam.serviceAccounts.signBlob`
+on the Function's runtime service account. See
+[Google Cloud signing requirements](https://cloud.google.com/storage/docs/authentication/creating-signatures).
+This download-URL signing is separate from optional bundle signing below.
 
 <video
   src={"/docs/get-started/init-firebase.mov"}
@@ -98,8 +111,12 @@ The initializer then prompts you to:
 After setup, review the local configuration. Interactive init writes the settings
 below to `.env.hotupdater`; an agent merges the needed settings into your project.
 The project, region, and canonical bucket are persisted for deterministic reruns.
-The service-account path is included only when configured and approved for
-persistence.
+When no credential-file path is supplied, init can write the active placeholder
+`GOOGLE_APPLICATION_CREDENTIALS=your-credentials.json`. If you use existing
+application-default credentials (ADC), remove or comment out that line before
+running deploy or any command that loads `hot-updater.config.ts`; otherwise the
+Admin SDK tries to load the nonexistent file. Keep a credential-file assignment
+only when it points to your intended private local file.
 
 ```
 HOT_UPDATER_FIREBASE_PROJECT_ID=your-project-id
@@ -273,6 +290,8 @@ For server templates to apply with your own deployment tooling, use
    authenticated update download or application.
 3. Complete [Test an OTA update](/docs/get-started/test-ota) on a release build.
    Verify that the app downloads and runs the changed code, then survives a restart.
+   With default signed Storage URLs, an actual artifact download also verifies
+   the Function's signing API and IAM access; an empty catalog does not.
 
 An agent should report the selected resources, verified URL, configuration file
 paths and verification result. Report a missing access, billing or native-build

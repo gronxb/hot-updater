@@ -20,9 +20,11 @@ A production-ready Hot Updater server example using:
 
 Use Node.js 20.19 or later for native environment-file loading.
 
-1. Install the workspace dependencies and enter this package:
+1. Install and build the workspace dependencies from the repository root, then
+   enter this package:
 ```bash
 pnpm install
+pnpm -w build
 cd examples-server/hono-kysely-pglite
 ```
 

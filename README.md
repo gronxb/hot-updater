@@ -77,14 +77,14 @@
   files that already exist on the device, while deploys prepare `.bsdiff`
   patches for changed Hermes bundles by default.
 
-  In practice, a release that would normally ship a 10 MB archive can be
-  delivered as a ~600 KB patch when the Hermes bytecode change is small. The
-  server compares the exact known bytes for the manifest and primary changed
-  files with the archive. When both sizes are known, a patch is preferred only
-  when it is strictly smaller than the complete file, and a total diff equal to
-  or larger than the archive selects the archive path. Unknown size metadata or
-  a missing transformed-file hash preserves the existing manifest-first and
-  runtime fallback behavior without storage probes or a native API change.
+  The server offers individual files, eligible patches, and an optional
+  archive. When patch and complete-file sizes are known and the complete file
+  is available, the server omits patches that are not strictly smaller. The
+  native runtime checks which files it can reuse locally, then chooses between
+  individual downloads and the archive.
+  Archive selection requires at least two network files and compares their
+  planned download sizes, with bounded TAR overhead allowed for a full download
+  without patches. Manifest bytes are not part of that comparison.
 
   See the [Bundle Diffing guide](https://hot-updater.dev/docs/guides/bundle-diffing)
   for the full runtime behavior and fallback rules.

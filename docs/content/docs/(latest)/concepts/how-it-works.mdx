@@ -10,10 +10,11 @@ A deployment creates a Bundle with one ID. The deployment result, Console,
 `HotUpdater.getBundleId()`, and every `hot-updater bundle` command use that
 same ID.
 
-A Bundle's delivery settings include its channel, platform, compatibility
-target, enabled state, rollout, target cohorts, force-update value, and message.
-Changing those settings keeps the same ID. Promoting a Bundle creates a new ID
-in the target channel without uploading the same bytes again.
+A Bundle belongs to a channel, platform, and compatibility scope. Supported
+policy edits keep the same ID: app-version range, enabled state, rollout,
+target cohorts, force-update value, and message. Channel, platform, and
+fingerprint targets cannot be changed with a policy edit. Promoting a Bundle
+creates a new ID in the target channel without uploading the same bytes again.
 
 ```text
 deploy → ID → bundle show/update/enable/disable/delete/promote

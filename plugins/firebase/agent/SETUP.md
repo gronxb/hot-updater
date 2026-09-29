@@ -15,10 +15,11 @@ supply this CLI. Do this before remote provisioning.
   - Inputs: workspace configuration, authenticated account and established region.
   - Run: query existing projects before selecting/creating one; record its intended
     ID before creation. Inspect an existing namespace/function and upgrade files.
-    A v0 project may be reused: v1 keeps every item in one hot_updater_v1
-    collection and serves from the hot-updater-v1 Function; preserve old
-    collections/functions. Data in hot_updater_v1_* collections (plural) comes
-    from a 1.0 release candidate: use a new project or delete those collections.
+    The runtime keeps every item in the hot_updater_v1 collection and serves from
+    the hot-updater-v1 Function. Preserve unrelated collections/functions and
+    stop before mutation if the existing namespace or endpoint is incompatible.
+    Nonempty hot_updater_v1_* collections are an unsupported layout; preserve
+    them and investigate before adopting the project.
   - Verify/record: projectId and region; ownership and compatible reuse established.
   - Retry: query the same project ID/creation operation before another request.
 
@@ -44,18 +45,25 @@ supply this CLI. Do this before remote provisioning.
 
 - [ ] **fb.database-key — Write the schema settings and register the client key**
   - Requires: fb.indexes. Complete this before Function deployment, as init does.
-  - Run: follow COMMON.md's Local CLI and client API key steps with working local
-    ADC/service-account access. A Firebase CLI/MCP login alone may not authenticate
-    the Admin SDK. Run app/provision-api-key.mjs from the app directory. It first
+  - Run: with working local ADC/service-account access, inspect the selected
+    project's hot_updater_v1 collection before running the helper. Read the
+    settings document with `pk = private_hot_updater_settings` and
+    `row.key = schema.engine`; its `row.value` must be the string `"1"` when
+    present. A missing marker is acceptable only for an empty namespace. Stop
+    on any other value, a populated namespace without the marker, or an unknown
+    layout; preserve the data and settings for investigation. The helper does
+    not enforce this unsupported-engine check and can overwrite the marker.
+    Then follow COMMON.md's Local CLI and client API key steps. A Firebase
+    CLI/MCP login alone may not authenticate the Admin SDK.
+    Run app/provision-api-key.mjs from the app directory. It first
     runs app/api-key.config.ts's `migrate`, which writes the schema settings the
     database checks before its first read (the database answers 503 until they
     exist), then registers the key.
   - Verify/record: helper succeeds against the chosen project and the key is
     persisted privately. The settings are documents with
     `pk = private_hot_updater_settings` in hot_updater_v1; do not create them by hand.
-  - Retry: the migration is idempotent and refuses a database from an unsupported
-    engine version. Investigate those errors; never edit the settings, bypass
-    compatibility checks or rotate the saved key.
+  - Retry: repeat the compatibility preflight, then rerun the helper with the
+    saved key. Never edit settings to bypass a failed check or rotate the key.
 
 - [ ] **fb.function — Deploy the server**
   - Requires: fb.database-key.

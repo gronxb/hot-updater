@@ -51,8 +51,7 @@ server's handlers answer 503. A running server checks again on its next
 request, so it recovers once the migration has run.
 
 `hot-updater init` stops when the project already holds an incompatible Hot
-Updater schema. To replace a database that a 1.0 release candidate created,
-follow the [upgrade guide](/docs/guides/upgrade-to-v1).
+Updater schema.
 
 ## How the database is reached
 
@@ -79,14 +78,22 @@ interface SupabaseDatabaseConfig {
 
 ## Usage
 
+These CLI examples load the `HOT_UPDATER_SUPABASE_*` variables written to
+`.env.hotupdater` by managed setup. Keep that file's existing values.
+
 ```typescript title="hot-updater.config.ts"
+import { existsSync } from "node:fs";
 import { supabaseDatabase } from "@hot-updater/supabase"; // [!code ++]
 import { defineConfig } from "hot-updater";
 
+if (existsSync(".env.hotupdater")) {
+  process.loadEnvFile(".env.hotupdater");
+}
+
 export default defineConfig({
   database: supabaseDatabase({ // [!code ++]
-    supabaseUrl: process.env.SUPABASE_URL, // [!code ++]
-    supabaseServiceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY, // [!code ++]
+    supabaseUrl: process.env.HOT_UPDATER_SUPABASE_URL!, // [!code ++]
+    supabaseServiceRoleKey: process.env.HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY!, // [!code ++]
   }), // [!code ++]
   // ... other config
 });
@@ -123,18 +130,23 @@ the `x-api-key` header. The managed Edge Function runs the same list, which
 Combined storage and database:
 
 ```typescript
+import { existsSync } from "node:fs";
 import { supabaseStorage, supabaseDatabase } from "@hot-updater/supabase";
 import { defineConfig } from "hot-updater";
 
+if (existsSync(".env.hotupdater")) {
+  process.loadEnvFile(".env.hotupdater");
+}
+
 export default defineConfig({
   storage: supabaseStorage({
-    supabaseUrl: process.env.SUPABASE_URL,
-    supabaseServiceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY,
-    bucketName: "hot-updater-bundles",
+    supabaseUrl: process.env.HOT_UPDATER_SUPABASE_URL!,
+    supabaseServiceRoleKey: process.env.HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY!,
+    bucketName: process.env.HOT_UPDATER_SUPABASE_BUCKET_NAME!,
   }),
   database: supabaseDatabase({
-    supabaseUrl: process.env.SUPABASE_URL,
-    supabaseServiceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY,
+    supabaseUrl: process.env.HOT_UPDATER_SUPABASE_URL!,
+    supabaseServiceRoleKey: process.env.HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY!,
   }),
   // ... other config
 });

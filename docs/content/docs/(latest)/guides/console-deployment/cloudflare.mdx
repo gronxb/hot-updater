@@ -50,7 +50,7 @@ npx wrangler d1 list
 npx wrangler r2 bucket list
 ```
 
-Reuse the existing resources; no new database or console-specific migration is needed.
+Reuse the existing production resources; no new database or console-specific migration is needed. Local preview uses a separate database that needs initialization below.
 
 </Step>
 <Step>
@@ -108,10 +108,17 @@ cp examples/cloudflare/.dev.vars.example .dev.vars
 
 ```package-install
 npm run build:cloudflare
+npx wrangler d1 execute DB --local --file node_modules/@hot-updater/cloudflare/worker/migrations/0001_hot-updater_1.0.0.sql
 npm run preview:cloudflare
 ```
 
-Register the localhost OAuth callback. Preview uses local D1/R2 data by default.
+Run these commands from the console checkout root. The SQL file ships with
+`@hot-updater/cloudflare` and initializes the schema in the local `DB` binding
+used by preview. Repeat initialization if you clear the local Wrangler state.
+
+Register the localhost OAuth callback. Preview uses separate local D1/R2 data
+by default; it does not copy production bundles or reports. See
+[D1 local development](https://developers.cloudflare.com/d1/best-practices/local-development/).
 
 <Accordions>
 <Accordion title="Update or roll back">

@@ -12,7 +12,7 @@ or your existing backend. Make the database and storage environment variables
 available to the server and schema commands. The React Native project's deploy
 configuration is a separate step.
 
-`prismaAdapter` supports PostgreSQL, MySQL 8.0 or later, and SQLite.
+`prismaAdapter` supports PostgreSQL, MySQL 8.0.17 or later, and SQLite.
 CockroachDB and SQL Server are not supported.
 
 ## Installation
@@ -24,18 +24,19 @@ npm install @hot-updater/server @hot-updater/aws @prisma/client@6.19.3
 ```
 
 ```package-install
-npm install --save-dev hot-updater prisma@6.19.3
+npm install --save-dev hot-updater prisma@6.19.3 dotenv
 ```
 
 Initialize Prisma:
 
 ```bash
-npx prisma@6.19.3 init --datasource-provider sqlite --generator-provider prisma-client-js
+npx prisma@6.19.3 init --datasource-provider sqlite --generator-provider prisma-client-js --output ../src/generated/prisma
 npx prisma generate
 ```
 
-Generate the initial client before creating `src/prisma.ts`; the Hot Updater
-schema command loads that module while preparing the managed models.
+The explicit output generates the client in `src/generated/prisma`. Generate
+it before creating `src/prisma.ts`; the Hot Updater schema command loads that
+module while preparing the managed models.
 
 For other databases, see [Prisma's database documentation](https://www.prisma.io/docs/orm/overview/databases).
 
@@ -44,7 +45,7 @@ For other databases, see [Prisma's database documentation](https://www.prisma.io
 Create a database connection file:
 
 ```typescript title="src/prisma.ts"
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient } from "./generated/prisma";
 
 export const prisma = new PrismaClient();
 ```

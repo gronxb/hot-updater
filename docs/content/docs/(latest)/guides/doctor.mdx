@@ -154,9 +154,6 @@ setup or upgrade, an agent with that access should follow the generated
 infrastructure instructions and verify the result. Pause only for a missing
 prerequisite, uncertain remote state, or a new consequential decision.
 
-Bundle index repair is only available when the active database adapter exposes
-diagnostics hooks. Adapters without those hooks report `not-applicable`.
-
 ## Check Infrastructure
 
 To check the deployed server in CI or a non-interactive shell, pass the public
@@ -221,11 +218,12 @@ delivery policy needs inspection. Run it from the workspace containing your
 npx hot-updater db catalog preflight --json
 ```
 
-With no scope arguments, it inspects all scopes found in Release and Catalog
-rows without writing. Review each result's `state` (`verified`, `missing`, or
-`rebuild required`) and diagnostics; successful command execution alone does
-not mean every projection is verified. Copy the relevant `scopeKey` from the
-output to inspect or repair only that scope:
+With no scope arguments, it inspects scopes with an existing Catalog row,
+including empty catalogs, without writing. It does not discover Release scopes
+whose Catalog row is missing. Review each result's `state` and diagnostics;
+successful command execution alone does not mean every projection is verified
+or every Release scope was inspected. Copy the relevant `scopeKey` from the
+output to inspect or repair that existing catalog:
 
 ```bash
 npx hot-updater db catalog preflight "<scope-key>" --json
@@ -238,10 +236,13 @@ Rebuild writes compiled projections from the authoritative Release rows. Use
 scope reports `verified`. Then retry **Check and apply update** in the app and
 [verify that it applies](/docs/get-started/test-ota#3-apply-it-in-the-app).
 
-If the command reports `CATALOG_IDENTITY_MISSING`, restore the original Catalog
-row from backup before rebuilding or deploying. Do not invent a new identity
-for an existing Release history. These commands repair projections; they do
-not recover missing source policy or replace a native OTA delivery test.
+If an expected scope is absent from the output, compare it with the Release
+records in your database. An explicitly requested scope without a Catalog row
+fails with `Release catalog scope not found`. Restore its original Catalog row
+from backup before rebuilding or deploying; do the same if a core operation
+reports `CATALOG_IDENTITY_MISSING`. Do not invent a new identity for an existing
+Release history. These commands repair projections; they do not recover missing
+source policy or replace a native OTA delivery test.
 
 To preview a proposed change to one Bundle's policy, use
 [`bundle preflight`](/docs/guides/console#preview-and-protect-automated-changes).

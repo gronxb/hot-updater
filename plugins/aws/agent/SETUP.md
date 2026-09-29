@@ -11,7 +11,8 @@ init. reference/ is additional context, not executable provisioning code.
   - Run: verify caller identity, regional S3/DynamoDB resources and any existing
     Lambda/CloudFront deployment. Resolve ambiguous account/region choices. Check
     generation/schema and applicable upgrade files before adopting resources.
-    For legacy infrastructure, use separate table/Lambda/distribution identities.
+    If the generation or schema is incompatible or unknown, stop before mutation
+    and follow COMMON.md's compatibility guidance.
   - Verify/record: accountId, region, resource names and compatible reuse decisions.
     Save intended names before creating anything. S3 may be shared with data/policies preserved.
   - Retry: query the same account/region/names; denied listings do not mean absence.
@@ -25,20 +26,23 @@ init. reference/ is additional context, not executable provisioning code.
 
 - [ ] **aws.database — Prepare DynamoDB**
   - Requires: aws.storage. Fill DYNAMODB_TABLE_NAME in the three dynamodb/ JSON files.
-  - Run: inspect an existing table against create-table.json. If absent, use
+  - Run: inspect an existing table against create-table.json and read its schema
+    settings before writing. A populated table must have `schema.engine` = `1`;
+    stop if its schema or settings are incompatible or unknown. If absent, use
     `aws dynamodb create-table --region <region> --cli-input-json file://dynamodb/create-table.json`.
     Wait for ACTIVE, then inspect PITR; when disabled, use
     `aws dynamodb update-continuous-backups --region <region> --cli-input-json file://dynamodb/enable-pitr.json`.
-    Then write the schema settings the plugin checks before its first read (the
-    migration for this provider; the plugin answers 503 until they exist):
+    For a new empty table, write the schema settings the plugin checks before its
+    first read (the migration for this provider; the plugin answers 503 until
+    they exist):
     `aws dynamodb batch-write-item --region <region> --cli-input-json file://dynamodb/schema-settings.json`.
   - Verify/record: tableName; string pk/sk keys, no secondary index,
     PAY_PER_REQUEST and throughput limits match the JSON; the table is ACTIVE, PITR
     is enabled, and the items in schema-settings.json exist under
     pk `private_hot_updater_settings`. New tables have deletion protection
-    enabled; preserve that setting on reused tables. A table with the
-    `hot-updater-update-index` secondary index is from before 1.0: reject it in
-    place and use a separate table identity.
+    enabled; preserve that setting on reused tables. A table with a secondary
+    index, including `hot-updater-update-index`, is incompatible; do not change
+    its schema or settings to make it pass.
   - Retry: describe the same table/backups/items; write only what is missing.
 
 - [ ] **aws.client-key — Initialize local access and the client key**
@@ -69,8 +73,6 @@ init. reference/ is additional context, not executable provisioning code.
     The DynamoDB leading-key condition lists each table name and `<table>#*`,
     as iam/dynamodb-policy.json does; a policy with other leading keys denies
     the storage engine's reads and writes.
-    Send an authenticated Insights event through the deployed endpoint and
-    confirm it succeeds; an artifact download alone does not verify these permissions.
   - Retry: retrieve role/policies and allow propagation; reuse the selected role.
 
 - [ ] **aws.signing — Prepare download signing**
@@ -124,7 +126,9 @@ init. reference/ is additional context, not executable provisioning code.
   - Requires: aws.distribution.
   - Run: fill HOT_UPDATER_CLOUDFRONT_DISTRIBUTION_ID now that it exists. Complete
     common.verify, common.local and common.report in COMMON.md using the actual
-    distribution URL.
+    distribution URL. Send an authenticated Insights event through that endpoint
+    and confirm it succeeds; an artifact download alone does not verify the
+    DynamoDB write permissions.
   - Verify/record: local config and standard credential chain work; server version,
     generation and catalog authentication pass; check signed artifact access when
     available and report requested app integration separately.
