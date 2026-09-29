@@ -40,7 +40,6 @@ setupDatabaseAdapterConformanceSuite({
   name: "key-value (DynamoDB Local)",
   // 34 conformance inserts are 102 items, over DynamoDB's 100 per transaction.
   maxOps: 33,
-  writers: 16,
   createAdapter: async ({ nativePageSize }) => {
     const tableName = local.tableName();
     const store = createDynamoDBStore({

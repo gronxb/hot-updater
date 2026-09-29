@@ -119,8 +119,8 @@ export {
   type SqlExecutor,
   type SqlResult,
   type SqlStatement,
+  WRITE_GUARD_TABLE,
 } from "./sql/sqlAdapter";
-export { WRITE_GUARD_TABLE } from "./sql/sqlBatch";
 export {
   createKvAdapter,
   encodeKvKey,
@@ -138,15 +138,15 @@ export {
   builtInSettings,
   createEngineDatabase,
   migrateBuiltInSchema,
+  type EngineDatabaseOptions,
 } from "./builtInDatabase";
+export { migrateSchema, writeSchemaSettings } from "../db/schemaSettings";
 export {
   checkSchemaFence,
   isMissingSchemaError,
   ENGINE_SCHEMA_KEY,
   ENGINE_SCHEMA_VERSION,
-  migrateSchema,
   SETTINGS_TABLE,
   withSchemaFence,
-  writeSchemaSettings,
   type SchemaSettings,
 } from "./fence";

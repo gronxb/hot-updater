@@ -1,4 +1,3 @@
-import { CloudFrontClient } from "@aws-sdk/client-cloudfront";
 import {
   DynamoDBClient,
   type DynamoDBClientConfig,
@@ -10,7 +9,7 @@ import {
   migrateBuiltInSchema,
 } from "@hot-updater/server/database";
 
-import { invalidateCloudFront } from "./cloudFrontInvalidation";
+import { createUpdateRouteInvalidation } from "./cloudFrontInvalidation";
 import { createDynamoDBStore } from "./dynamoDBStore";
 
 export interface DynamoDBConfig extends DynamoDBClientConfig {
@@ -20,9 +19,7 @@ export interface DynamoDBConfig extends DynamoDBClientConfig {
   readonly tableName: string;
 }
 
-/** The table the update check reads, so CloudFront caches what its rows hold. */
-const RELEASE_CATALOGS_TABLE = "release_catalogs";
-
+/** The DynamoDB client ignores the CloudFront settings in its config. */
 const adapterOf = ({ tableName, ...clientConfig }: DynamoDBConfig) => {
   const client = new DynamoDBClient(clientConfig);
   return {
@@ -48,62 +45,17 @@ export const migrateDynamoDB = async (config: DynamoDBConfig) => {
 
 /**
  * Hot Updater's database on one DynamoDB table, through the storage engine.
- * A write that changes Release Catalogs invalidates the CloudFront routes
- * that cache update checks.
+ * A write that changes what the update-check routes answer invalidates their
+ * CloudFront copies.
  */
 export const dynamoDB = (config: DynamoDBConfig): EngineDatabase => {
-  const {
-    apiBasePath = "/release-catalogs",
-    cloudfrontDistributionId,
-    shouldWaitForInvalidation = false,
-    ...rest
-  } = config;
-  const { client, adapter } = adapterOf(rest);
-  const cloudFront = cloudfrontDistributionId
-    ? new CloudFrontClient({
-        credentials: rest.credentials,
-        region: rest.region,
-      })
-    : null;
-  const invalidateUpdateRoutes = async () => {
-    if (!cloudFront || !cloudfrontDistributionId) return;
-    try {
-      await invalidateCloudFront(
-        cloudFront,
-        cloudfrontDistributionId,
-        [`${apiBasePath.replace(/\/+$/, "")}/*`],
-        { shouldWait: shouldWaitForInvalidation },
-      );
-    } catch (error) {
-      console.warn(
-        "[hot-updater/aws] CloudFront invalidation failed; continuing without cache invalidation.",
-        {
-          distributionId: cloudfrontDistributionId,
-          error: error instanceof Error ? error.message : "Unknown error",
-        },
-      );
-    }
-  };
+  const { client, adapter } = adapterOf(config);
+  const cloudFront = createUpdateRouteInvalidation(config);
   return {
     ...createEngineDatabase({
       name: "dynamoDB",
-      adapter: {
-        ...adapter,
-        async write(ops) {
-          const result = await adapter.write(ops);
-          // A check only guards a row it read; it changes nothing cached.
-          if (
-            result.ok &&
-            ops.some(
-              (op) =>
-                op.type !== "check" && op.table.name === RELEASE_CATALOGS_TABLE,
-            )
-          ) {
-            await invalidateUpdateRoutes();
-          }
-          return result;
-        },
-      },
+      adapter,
+      onCachedRoutesChange: cloudFront?.invalidate,
     }),
     async dispose() {
       await adapter.dispose?.();

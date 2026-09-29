@@ -9,9 +9,10 @@ import {
   type WriteOp,
 } from "@hot-updater/plugin-core/internal";
 
+import { fnv1a } from "./cursor";
+import type { AggregateShape } from "./definitions";
 import { DatabaseTransactionError } from "./errors";
 import type { ResolvedModel } from "./resolveSchema";
-import type { AggregateDefinition } from "./schema";
 
 /** The pending changes to one shard row of an aggregate. */
 export interface AggregateChange {
@@ -23,16 +24,11 @@ export interface AggregateChange {
 }
 
 const definitionOf = (model: ResolvedModel) =>
-  model.definition as AggregateDefinition;
+  model.definition as AggregateShape;
 
-/** A stable FNV-1a hash, so every change keyed by one value lands on one shard. */
-export const shardOf = (value: string, shards: number): number => {
-  let hash = 0x811c9dc5;
-  for (const byte of new TextEncoder().encode(value)) {
-    hash = Math.imul(hash ^ byte, 0x01000193) >>> 0;
-  }
-  return hash % shards;
-};
+/** Every change keyed by one value lands on one shard. */
+export const shardOf = (value: string, shards: number): number =>
+  fnv1a(value) % shards;
 
 /** Merges one `tx.aggregate` call into its shard row's pending changes. */
 export const recordAggregate = (
@@ -42,37 +38,40 @@ export const recordAggregate = (
   values: Readonly<Record<string, unknown>>,
   shardBy: string | undefined,
 ) => {
-  const { fields, key, counters, gauges, distinct, shards } =
-    definitionOf(model);
-  const fail = (message: string): never => {
-    throw new DatabaseTransactionError(`${model.table.name}: ${message}`);
-  };
-  const names = Object.keys(fields);
+  const {
+    key: fields,
+    counters,
+    gauges,
+    distinct,
+    shards,
+  } = definitionOf(model);
+  const fail = (message: string) =>
+    new DatabaseTransactionError(`${model.table.name}: ${message}`);
   if (
-    Object.keys(identity).length !== names.length ||
-    !names.every((name) => isKeyValue(identity[name]))
+    Object.keys(identity).length !== fields.length ||
+    !fields.every((name) => isKeyValue(identity[name]))
   ) {
-    fail(`aggregate takes exactly its identity fields: ${names.join(", ")}.`);
+    throw fail(
+      `aggregate takes exactly its identity fields: ${fields.join(", ")}.`,
+    );
   }
   if (
     shardBy === undefined &&
     shards > 1 &&
     gauges.some((gauge) => gauge in values)
   ) {
-    fail("gauges of a sharded aggregate need shardBy.");
+    throw fail("gauges of a sharded aggregate need shardBy.");
   }
   const shard =
     shardBy === undefined
       ? Math.floor(Math.random() * shards)
       : shardOf(shardBy, shards);
-  const row = [...key.map((name) => identity[name] as DatabaseKeyValue), shard];
-  const id = JSON.stringify([model.table.name, row]);
-  const change = changes.get(id) ?? {
-    model,
-    key: row,
-    deltas: {},
-    sketches: {},
-  };
+  const key = [
+    ...fields.map((name) => identity[name] as DatabaseKeyValue),
+    shard,
+  ];
+  const id = JSON.stringify([model.table.name, key]);
+  const change = changes.get(id) ?? { model, key, deltas: {}, sketches: {} };
   changes.set(id, change);
   for (const [metric, value] of Object.entries(values)) {
     if (distinct.includes(metric) && typeof value === "string") {
@@ -86,21 +85,22 @@ export const recordAggregate = (
     ) {
       change.deltas[metric] = (change.deltas[metric] ?? 0) + Number(value);
     } else {
-      fail(`${metric} is not a counter, gauge, or sketch of this aggregate.`);
+      throw fail(
+        `${metric} is not a counter, gauge, or sketch of this aggregate.`,
+      );
     }
   }
 };
 
+/** A shard row before its first change: every metric zero or empty. */
 const blank = (model: ResolvedModel, key: DatabaseKey): StoredRow => {
   const { counters, gauges, distinct } = definitionOf(model);
-  return {
-    ...Object.fromEntries(
-      model.table.key.map((column, position) => [column, key[position]!]),
-    ),
-    ...Object.fromEntries([...counters, ...gauges].map((name) => [name, 0])),
-    ...Object.fromEntries(distinct.map((name) => [name, null])),
-    [DATABASE_VERSION_COLUMN]: 0,
-  };
+  return Object.fromEntries([
+    ...model.table.key.map((column, position) => [column, key[position]!]),
+    ...[...counters, ...gauges].map((name) => [name, 0]),
+    ...distinct.map((name) => [name, null]),
+    [DATABASE_VERSION_COLUMN, 0],
+  ]);
 };
 
 /**
@@ -127,14 +127,14 @@ const rewrite = (
       sketch,
     ]);
   }
-  const row = { ...base, ...set };
   // A merge that changes nothing (a sketch already counting its value) is not written.
   if (
-    current !== null &&
+    current &&
     Object.entries(set).every(([metric, value]) => current[metric] === value)
   ) {
     return undefined;
   }
+  const row = { ...base, ...set };
   if (gauges.some((gauge) => Number(row[gauge]) < 0)) {
     throw new NegativeGaugeError(`${table.name}: a gauge went below 0.`);
   }
@@ -163,21 +163,15 @@ export const compileAggregates = async (
   const merged = new Map<ResolvedModel, AggregateChange[]>();
   for (const change of changes) {
     const { model, key, deltas, sketches } = change;
-    const { gauges } = definitionOf(model);
     if (
       Object.keys(sketches).length > 0 ||
-      gauges.some((gauge) => (deltas[gauge] ?? 0) !== 0)
+      definitionOf(model).gauges.some((gauge) => (deltas[gauge] ?? 0) !== 0)
     ) {
       merged.set(model, [...(merged.get(model) ?? []), change]);
     } else if (Object.values(deltas).some((delta) => delta !== 0)) {
+      const { table } = model;
       const init = blank(model, key);
-      ops.push({
-        type: "increment",
-        table: model.table,
-        key,
-        by: deltas,
-        init,
-      });
+      ops.push({ type: "increment", table, key, by: deltas, init });
     }
   }
   const groups = [...merged.values()];

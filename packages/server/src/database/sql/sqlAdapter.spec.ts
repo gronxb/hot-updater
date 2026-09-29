@@ -16,8 +16,8 @@ import {
   createTableStatements,
   type SqlExecutor,
   type SqlStatement,
+  WRITE_GUARD_TABLE,
 } from "./sqlAdapter";
-import { WRITE_GUARD_TABLE } from "./sqlBatch";
 import {
   pgliteBatchExecutor,
   pgliteExecutor,

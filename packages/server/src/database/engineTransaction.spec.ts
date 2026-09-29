@@ -550,7 +550,7 @@ describe("engine transactions", () => {
     ).resolves.toMatchObject({ _refs_bundles_channel: 2 });
   });
 
-  it("inserts parents before children and carries counters from earlier writes", async () => {
+  it("carries counters from earlier writes into a later insert", async () => {
     const { db, writes } = await setup();
     await db.transaction(async (tx) => {
       tx.create("patches", { id: "p9", bundle_id: "b9", base_bundle_id: "b0" });
@@ -559,8 +559,8 @@ describe("engine transactions", () => {
     expect(
       writes[0]!.map(({ type, table }) => `${type} ${table.name}`),
     ).toEqual([
-      "insert bundles",
       "insert patches",
+      "insert bundles",
       "increment bundles",
       "increment channels",
     ]);

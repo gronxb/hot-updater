@@ -1,6 +1,7 @@
 import {
   type DatabaseAdapter,
   type DatabaseKey,
+  type DatabaseKeyValue,
   DATABASE_VERSION_COLUMN as V,
   findPhysicalColumn,
   findPhysicalIndex,
@@ -42,9 +43,7 @@ export class MongoTransactionUnsupportedError extends Error {
   }
 }
 
-type StoredId =
-  | DatabaseKey[number]
-  | Readonly<Record<string, DatabaseKey[number]>>;
+type StoredId = DatabaseKeyValue | Readonly<Record<string, DatabaseKeyValue>>;
 
 /** A single key column is the `_id`; a composite key is a document in key-column order. */
 const idOf = (table: PhysicalTable, key: DatabaseKey): StoredId =>
@@ -93,10 +92,9 @@ const indexDescription = (
   const columns = index.unique
     ? index.eq
     : [...index.eq, ...indexOrderColumns(table, index)];
-  const nullable = columns.filter(
-    (column) => findPhysicalColumn(table, column).nullable,
-  );
-  const exists = nullable.map((column) => [column, { $exists: true }]);
+  const exists = columns
+    .filter((column) => findPhysicalColumn(table, column).nullable)
+    .map((column) => [column, { $exists: true }]);
   return {
     name: index.name,
     key: Object.fromEntries(columns.map((column) => [column, 1])),
@@ -139,17 +137,13 @@ export const createMongoAdapter = (
       (await target.updateOne(filter, change, { session })).matchedCount === 1;
     switch (op.type) {
       case "patch": {
-        const entries = Object.entries(op.set);
-        const unset = entries.filter(([, value]) => value === null);
-        return update(byId(_id, op.guard.v), {
-          $set: {
-            ...Object.fromEntries(
-              entries.filter(([, value]) => value !== null),
-            ),
-            [V]: op.guard.v + 1,
-          },
-          $unset: Object.fromEntries(unset.map(([key]) => [key, ""])),
-        });
+        const $set: Document = { [V]: op.guard.v + 1 };
+        const $unset: Document = {};
+        for (const [name, value] of Object.entries(op.set)) {
+          if (value === null) $unset[name] = "";
+          else $set[name] = value;
+        }
+        return update(byId(_id, op.guard.v), { $set, $unset });
       }
       case "delete":
         return (
@@ -270,10 +264,9 @@ export const createMongoAdapter = (
             ? { ok: false, retry: true }
             : { ok: false, failedOp: position };
         }
-        if (failure?.code === 20) {
-          throw new MongoTransactionUnsupportedError(error);
-        }
-        throw error;
+        throw failure?.code === 20
+          ? new MongoTransactionUnsupportedError(error)
+          : error;
       } finally {
         await session.endSession();
       }

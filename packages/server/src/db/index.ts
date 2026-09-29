@@ -5,7 +5,12 @@ import {
 import { type Migrator, type SchemaGenerator } from "./types";
 
 export { createDatabaseCoreApi, type CoreApi } from "../core/api";
-export { createDatabasePluginApis } from "../assembly/databasePlugins";
+export {
+  createDatabasePluginApis,
+  createMeasuredDatabase,
+  type MeasuredDatabase,
+  type MeasuredDatabaseOptions,
+} from "../assembly/databasePlugins";
 export { targetBaseCandidateKey } from "../core/baseCandidates";
 export * from "./createBundleDiff";
 export {
@@ -19,7 +24,7 @@ export type {
   SchemaGenerator,
   ToolingDatabase,
 } from "./types";
-export { HotUpdaterSchemaMigrationRequiredError } from "./schemaReadiness";
+export { HotUpdaterSchemaMigrationRequiredError } from "../database/fence";
 export { HOT_UPDATER_SERVER_VERSION } from "../version";
 
 export type HotUpdaterDBTarget = {
