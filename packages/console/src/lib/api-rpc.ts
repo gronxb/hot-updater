@@ -80,7 +80,7 @@ const prepare = async () => {
 
 export const getReleases = createServerFn({ method: "GET" })
   .middleware([consoleAccess])
-  .inputValidator((input: GetReleasesInput | undefined) => ({
+  .validator((input: GetReleasesInput | undefined) => ({
     filter: readReleaseFilter(input?.filter),
     ...(input?.afterReleaseId === undefined
       ? {}
@@ -101,14 +101,14 @@ export const getReleases = createServerFn({ method: "GET" })
 
 export const getRelease = createServerFn({ method: "GET" })
   .middleware([consoleAccess])
-  .inputValidator((input: { releaseId: string }) => input)
+  .validator((input: { releaseId: string }) => input)
   .handler(async ({ data }) =>
     (await prepare()).core.getRelease(data.releaseId),
   );
 
 export const updateRelease = createServerFn({ method: "POST" })
   .middleware([consoleAccess])
-  .inputValidator((input: ReleaseMutationInput) => input)
+  .validator((input: ReleaseMutationInput) => input)
   .handler(async ({ data }) => {
     const { core } = await prepare();
     return withPublicBundleMutationErrors(() => core.updateReleasePolicy(data));
@@ -116,7 +116,7 @@ export const updateRelease = createServerFn({ method: "POST" })
 
 export const preflightRelease = createServerFn({ method: "POST" })
   .middleware([consoleAccess])
-  .inputValidator((input: ReleaseMutationInput) => input)
+  .validator((input: ReleaseMutationInput) => input)
   .handler(async ({ data }) => {
     const { core } = await prepare();
     return withPublicBundleMutationErrors(() =>
@@ -126,7 +126,7 @@ export const preflightRelease = createServerFn({ method: "POST" })
 
 export const deleteRelease = createServerFn({ method: "POST" })
   .middleware([consoleAccess])
-  .inputValidator((input: DeleteReleaseInput) => input)
+  .validator((input: DeleteReleaseInput) => input)
   .handler(async ({ data }) => {
     const { core } = await prepare();
     return withPublicBundleMutationErrors(() => core.deleteRelease(data));
@@ -134,7 +134,7 @@ export const deleteRelease = createServerFn({ method: "POST" })
 
 export const promoteRelease = createServerFn({ method: "POST" })
   .middleware([consoleAccess])
-  .inputValidator(
+  .validator(
     (input: {
       action: "copy" | "move";
       expectedRevision?: number;
@@ -149,7 +149,7 @@ export const promoteRelease = createServerFn({ method: "POST" })
 
 export const getReleaseCatalogDiagnostics = createServerFn({ method: "GET" })
   .middleware([consoleAccess])
-  .inputValidator((input: { scopeKey: string }) => input)
+  .validator((input: { scopeKey: string }) => input)
   .handler(async ({ data }) =>
     (await prepare()).core.getReleaseCatalogRow(data.scopeKey),
   );
@@ -182,7 +182,7 @@ export const getChannels = createServerFn()
 // POST /api/channels
 export const createChannel = createServerFn({ method: "POST" })
   .middleware([consoleAccess])
-  .inputValidator((input: { name: string }) => {
+  .validator((input: { name: string }) => {
     const name = typeof input?.name === "string" ? input.name.trim() : "";
     if (name.length === 0) throw new Error("Channel name is required.");
     return { name };
@@ -206,7 +206,7 @@ export const createChannel = createServerFn({ method: "POST" })
 // DELETE /api/channels/:id
 export const deleteChannel = createServerFn({ method: "POST" })
   .middleware([consoleAccess])
-  .inputValidator((input: { id: string }) => input)
+  .validator((input: { id: string }) => input)
   .handler(async ({ data }): Promise<{ data: ChannelDeleteResult }> => {
     try {
       return { data: await (await prepare()).core.deleteChannel(data.id) };
@@ -233,7 +233,7 @@ export const getConfigLoaded = createServerFn()
 // GET /api/bundles: newest first, one page by key; the total is one counter row.
 export const getBundles = createServerFn({ method: "GET" })
   .middleware([consoleAccess])
-  .inputValidator((input: GetBundlesInput | undefined) => {
+  .validator((input: GetBundlesInput | undefined) => {
     if (input?.after !== undefined && input.before !== undefined) {
       throw new Error("Page by after or before, not both.");
     }
@@ -291,7 +291,7 @@ export const getBundles = createServerFn({ method: "GET" })
 // GET /api/bundles/:bundleId
 export const getBundle = createServerFn({ method: "GET" })
   .middleware([consoleAccess])
-  .inputValidator((input: GetBundleInput) => input)
+  .validator((input: GetBundleInput) => input)
   .handler(async ({ data }) => {
     try {
       const detail = await (await prepare()).core.getBundle(data.bundleId);
@@ -306,7 +306,7 @@ export const getBundle = createServerFn({ method: "GET" })
 
 export const getBundleChildren = createServerFn({ method: "GET" })
   .middleware([consoleAccess])
-  .inputValidator((input: GetBundleChildrenInput) => input)
+  .validator((input: GetBundleChildrenInput) => input)
   .handler(async ({ data }) => {
     try {
       const [{ core }, { getBundleChildren: readBundleChildren }] =
@@ -320,7 +320,7 @@ export const getBundleChildren = createServerFn({ method: "GET" })
 
 export const getBundleChildCounts = createServerFn({ method: "GET" })
   .middleware([consoleAccess])
-  .inputValidator((input: GetBundleChildCountsInput) => {
+  .validator((input: GetBundleChildCountsInput) => {
     if (!Array.isArray(input?.bundleIds) || input.bundleIds.length > 100) {
       throw new Error("Choose up to 100 bundles.");
     }
@@ -340,7 +340,7 @@ export const getBundleChildCounts = createServerFn({ method: "GET" })
 // DELETE /api/bundles/:bundleId
 export const deleteBundle = createServerFn({ method: "POST" })
   .middleware([consoleAccess])
-  .inputValidator((input: DeleteBundleInput) => input)
+  .validator((input: DeleteBundleInput) => input)
   .handler(async ({ data }) => {
     try {
       const { deleteBundle: deleteBundleWithStorage } =
@@ -362,7 +362,7 @@ export const deleteBundle = createServerFn({ method: "POST" })
 
 export const deleteBundles = createServerFn({ method: "POST" })
   .middleware([consoleAccess])
-  .inputValidator((input: DeleteBundlesInput) => input)
+  .validator((input: DeleteBundlesInput) => input)
   .handler(async ({ data }) => {
     try {
       const { deleteBundles: deleteBundlesWithStorage } =
