@@ -38,7 +38,8 @@ and build configuration.
 
 ## Step 2: Configure Cloudflare
 
-Choose how to set up Cloudflare:
+Before reusing a populated D1 database, complete the [schema
+checks](#schema-validation). Then choose how to set up Cloudflare:
 
 <Tabs items={["AI agent", "Terminal"]}>
   <Tab value="AI agent">
@@ -205,8 +206,37 @@ init runs.
 
 ### Schema validation
 
-Init checks the Release Catalog schema before applying migrations or deploying
-the Worker. It stops without changing D1 when the existing schema is incompatible.
+Init checks whether `bundles` and `release_catalogs` exist. It rejects a database
+with `bundles` but no `release_catalogs`; it does not validate all columns,
+indexes, schema settings, or migration history. A database that passes this check
+can still fail after init applies migrations and deploys the Worker.
+
+Before reusing a populated database:
+
+1. Inspect its table and index definitions with a read-only query:
+
+   ```bash
+   npx wrangler d1 execute <database-name> --remote \
+     --command "SELECT name, sql FROM sqlite_schema WHERE type IN ('table', 'index') ORDER BY name;"
+   ```
+
+2. Compare the Hot Updater definitions with the installed package's
+   `node_modules/@hot-updater/cloudflare/worker/migrations/0001_hot-updater_1.0.0.sql`.
+   If the settings and migration-history tables exist, inspect them too:
+
+   ```bash
+   npx wrangler d1 execute <database-name> --remote \
+     --command "SELECT key, value FROM private_hot_updater_settings;"
+   npx wrangler d1 execute <database-name> --remote \
+     --command "SELECT name FROM d1_migrations ORDER BY id;"
+   ```
+
+   The [schema settings](/docs/database-plugins/cloudflare#schema-settings) must
+   match the installed schema. A recorded migration name alone does not prove
+   compatibility, and init will not rerun an already-recorded migration.
+3. Reuse only a verified compatible database. If its schema or migration history
+   is incompatible, create a new D1 database and preserve the existing one. Do not
+   edit schema settings to bypass compatibility checks.
 
 ### Release catalog cache
 

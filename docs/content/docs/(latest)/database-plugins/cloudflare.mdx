@@ -8,8 +8,11 @@ icon: cloudflare
 ## Installation
 
 ```package-install
-npm install @hot-updater/cloudflare @hot-updater/aws --save-dev
+npm install @hot-updater/cloudflare --save-dev
 ```
+
+For a Worker or other deployed server, install `@hot-updater/cloudflare` as a
+runtime dependency instead of a development dependency.
 
 ## Setup
 
@@ -82,18 +85,26 @@ interface D1DatabaseConfig {
 
 ## Usage
 
+These CLI examples load the `HOT_UPDATER_CLOUDFLARE_*` variables written to
+`.env.hotupdater` by managed setup. Keep that file's existing values.
+
 ```typescript title="hot-updater.config.ts"
+import { existsSync } from "node:fs";
 import { d1Database } from "@hot-updater/cloudflare"; // [!code ++]
 import { defineConfig } from "hot-updater";
 import { build } from "./build";
 import { storage } from "./storage";
 
+if (existsSync(".env.hotupdater")) {
+  process.loadEnvFile(".env.hotupdater");
+}
+
 export default defineConfig({
   build,
   database: d1Database({ // [!code ++]
-    databaseId: process.env.D1_DATABASE_ID!, // [!code ++]
-    accountId: process.env.CLOUDFLARE_ACCOUNT_ID!, // [!code ++]
-    cloudflareApiToken: process.env.CLOUDFLARE_API_TOKEN!, // [!code ++]
+    databaseId: process.env.HOT_UPDATER_CLOUDFLARE_D1_DATABASE_ID!, // [!code ++]
+    accountId: process.env.HOT_UPDATER_CLOUDFLARE_ACCOUNT_ID!, // [!code ++]
+    cloudflareApiToken: process.env.HOT_UPDATER_CLOUDFLARE_API_TOKEN!, // [!code ++]
   }), // [!code ++]
   storage,
   updateStrategy: "appVersion",
@@ -126,29 +137,33 @@ the `x-api-key` header. The managed Worker runs the same list, which
 
 ## Complete example
 
-Combined R2 storage and D1 database:
+Combined R2 storage and D1 database. `r2Storage` records the `r2://` locations
+that the managed Worker resolves:
 
 ```typescript
-import { d1Database } from "@hot-updater/cloudflare";
-import { s3Storage } from "@hot-updater/aws";
+import { existsSync } from "node:fs";
+import { d1Database, r2Storage } from "@hot-updater/cloudflare";
 import { defineConfig } from "hot-updater";
 import { build } from "./build";
 
+if (existsSync(".env.hotupdater")) {
+  process.loadEnvFile(".env.hotupdater");
+}
+
 export default defineConfig({
   build,
-  storage: s3Storage({
-    region: "auto",
-    endpoint: `https://${process.env.CLOUDFLARE_ACCOUNT_ID!}.r2.cloudflarestorage.com`,
+  storage: r2Storage({
+    accountId: process.env.HOT_UPDATER_CLOUDFLARE_ACCOUNT_ID!,
     credentials: {
-      accessKeyId: process.env.R2_ACCESS_KEY_ID!,
-      secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
+      accessKeyId: process.env.HOT_UPDATER_CLOUDFLARE_R2_ACCESS_KEY_ID!,
+      secretAccessKey: process.env.HOT_UPDATER_CLOUDFLARE_R2_SECRET_ACCESS_KEY!,
     },
-    bucketName: "my-r2-bucket",
+    bucketName: process.env.HOT_UPDATER_CLOUDFLARE_R2_BUCKET_NAME!,
   }),
   database: d1Database({
-    databaseId: process.env.D1_DATABASE_ID!,
-    accountId: process.env.CLOUDFLARE_ACCOUNT_ID!,
-    cloudflareApiToken: process.env.CLOUDFLARE_API_TOKEN!,
+    databaseId: process.env.HOT_UPDATER_CLOUDFLARE_D1_DATABASE_ID!,
+    accountId: process.env.HOT_UPDATER_CLOUDFLARE_ACCOUNT_ID!,
+    cloudflareApiToken: process.env.HOT_UPDATER_CLOUDFLARE_API_TOKEN!,
   }),
   updateStrategy: "appVersion",
 });

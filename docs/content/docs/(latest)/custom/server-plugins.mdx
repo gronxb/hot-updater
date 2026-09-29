@@ -670,9 +670,16 @@ cannot load. Point the commands at a Node module that passes the same
 `@hot-updater/cloudflare` (the REST API) or `supabaseDatabase` from
 `@hot-updater/supabase`.
 
-Migrations create missing tables and indexes and never change an existing
-table. A schema change that alters a table, such as a new field, needs your own
+Hot Updater's migrations create missing tables but do not add or remove columns
+on existing tables. A schema change such as a new field needs your own
 migration before `db migrate` records the new `schemaVersion`.
+
+For Kysely/MySQL, generated indexes are part of `CREATE TABLE IF NOT EXISTS`,
+so adding an index to an existing table also requires your own `CREATE INDEX`
+or `ALTER TABLE` migration. Apply it before recording the new `schemaVersion`,
+especially for a unique index: the setting alone does not enforce uniqueness.
+PostgreSQL and SQLite SQL migrations can create missing indexes separately;
+Drizzle and Prisma require applying the updated schema with their own tools.
 
 A third-party plugin cannot take a built-in name: `insights` as an id, or a
 table that resolves to a built-in one, such as an `api` plugin's `keys` table

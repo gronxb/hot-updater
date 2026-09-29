@@ -12,14 +12,15 @@ selects only objects that are no longer referenced.
 
 It can remove:
 
-- Orphaned bundle objects under recognized artifact paths:
-  `<artifact-id>/...` and `bundles/<artifact-id>/...`.
+- Orphaned bundle objects under `bundles/<artifact-id>/...`, where the artifact
+  ID is a UUIDv7.
 - Patch objects that are no longer referenced, including orphaned patches under
   a target Bundle that is still live.
 - Unreferenced content-addressed assets under `assets/sha256/...`.
 
 Live bundle objects, referenced patches and assets, recently modified objects,
 objects without a modification timestamp, and unknown files are protected.
+Root-level `<artifact-id>/...` paths are not recognized and remain protected.
 
 <Callout type="info">
   Pruning does not delete live bundle records. Delete records you no longer
@@ -34,6 +35,16 @@ Start by listing the bundles you intend to retire:
 npx hot-updater bundle list --channel production --platform ios --limit 100 --json
 ```
 
+Before deleting each selected bundle, save its Artifact ID from the `bundle_id`
+field in the list output or inspect it directly:
+
+```package-install
+npx hot-updater bundle show <id> --json
+```
+
+The console also shows this ID in Advanced diagnostics. These lookups are no
+longer available after the bundle record is deleted.
+
 Disable each selected bundle, then hard-delete it. Hard deletion is separate
 from operational rollback.
 
@@ -42,9 +53,8 @@ npx hot-updater bundle disable <id> --yes
 npx hot-updater bundle delete <id> --yes
 ```
 
-Multiple bundle IDs can reuse the same immutable artifact. Obtain the Artifact
-ID from Advanced diagnostics (or `bundle_id` in `bundle show <id> --json`),
-then delete the artifact record after every referencing bundle is gone:
+Multiple bundle IDs can reuse the same immutable artifact. After every
+referencing bundle is gone, delete the artifact record using the IDs you saved:
 
 ```package-install
 npx hot-updater bundle artifact delete <artifact-id> <another-artifact-id> --yes

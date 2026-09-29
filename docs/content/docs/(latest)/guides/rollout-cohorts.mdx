@@ -23,10 +23,10 @@ The selected Bundle then points to the immutable Bundle the device installs.
   directly on the device.
 
 <Callout type="info">
-  Percentage rollout applies only to numeric cohorts. Custom cohorts do not
-  participate in percentage rollout on their own. To keep a custom cohort such
-  as `qa` receiving the same Bundle alongside numeric rollout, add it to `Target
-  Cohorts`.
+  Below 100%, percentage rollout selects numeric cohorts; custom cohorts such
+  as `qa` require an explicit entry in `Target Cohorts`. A 100% rollout also
+  includes every valid custom cohort, even when `Target Cohorts` is empty.
+  Named cohorts do not isolate testers from later full-rollout Bundles.
 </Callout>
 
 ## Deploy a Bundle with Rollout

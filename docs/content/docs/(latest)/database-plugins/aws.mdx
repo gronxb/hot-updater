@@ -11,6 +11,12 @@ icon: aws
 npm install @hot-updater/aws --save-dev
 ```
 
+For a custom server, install the runtime dependency in the server project:
+
+```package-install
+npm install @hot-updater/aws
+```
+
 ## Create the table
 
 The [managed AWS setup](/docs/managed/aws#step-2-configure-aws) supports an AI
@@ -65,9 +71,7 @@ server checks again on its next request, so it recovers without a restart
 once the settings exist.
 
 `hot-updater init` refuses an existing table of another shape, such as one
-with the `hot-updater-update-index` secondary index. To replace a table that a
-1.0 release candidate created, follow the
-[upgrade guide](/docs/guides/upgrade-to-v1).
+with the `hot-updater-update-index` secondary index.
 
 ## How the table is used
 
@@ -205,6 +209,5 @@ DynamoDB permits at most 100 items and 4 MB in one transaction, 400 KB in one
 item, and keys of 2,048 bytes for `pk` and 1,024 bytes for `sk`. A
 transaction carries its rows' index items, reference counters and aggregate
 rows. A deploy writes each Bundle with its patches, its Release and the next
-Catalog of its scope; a Release whose app version range spans several minor
-versions also writes up to 16 auto-patch candidate rows. A write over the
-limits is refused before anything is written.
+Catalog of its scope. A write over the limits is refused before anything is
+written.

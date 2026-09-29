@@ -111,9 +111,10 @@ still pending when the app closes or reloads is lost. `onNotifyAppReady`
 receives local native state; it is not confirmation that the server received
 an event.
 
-The overview keeps all status totals above the tabs; switching tabs changes the chart. **Downloaded** is one state: the bundle has downloaded and is waiting to apply. Its count and trend follow the latest reported waiting state. **Active** uses the running Release ID, so downloading a bundle does not increase its Active count. Applying, recovering, or a newer no-change report clears the pending snapshot. Historical `UNCHANGED` events cannot tell whether a download completed with an older SDK; they are not backfilled.
-
-![Completed downloads and the remaining pending installation](/docs/console/insights-download-pending.png)
+The Console summarizes these reports in **App usage** and **Release health**.
+Use an installation's event history to check whether a reported download was
+followed by an apply or recovery report. A download count does not tell you how
+many installations are still waiting to apply it.
 
 ## How the server accepts reports
 
@@ -206,17 +207,23 @@ Insights depends on its database configuration:
   `insights()` there, the console hides Insights.
 - With `standaloneRepository`, it reads Insights events and installations from
   the server's admin handler, and hides Insights when the server's admin
-  `/version` does not list `insights()`. App usage and bundle activity need a
-  direct database configuration.
+  `/version` does not list `insights()`. App usage, Release health, and bundle
+  activity need a direct database configuration.
 
-The Bundles list shows compact **Active**, **Downloaded**, and **Recovered** counts over the last
-30 days. Bundle Detail keeps these counts and a small activity graph above
-Delivery settings.
+The Bundles list and detail show lifetime **Downloads**, **Known launches**,
+and **Known crashes** for each Release ID. These count received download,
+successful launch, and failed OTA launch reports; repeated launches from one
+installation can increase the totals. Known crashes are launch failures that
+triggered recovery. Their rate is known crashes divided by known launches plus
+known crashes. Select the summary to open Release health for that ID.
 
-Insights opens with **All platforms** and a 24-hour period. Select **7d** or
-**30d** in App usage to update its metric, chart, and distributions. Bundle
-activity has its own independent period selector. Search and select a channel, optionally select a platform and app
-version, then choose **Apply filters**.
+Insights opens on the `production` channel. **App usage** starts with
+**All platforms** and a 24-hour period; **Release health** starts with **iOS**
+and **7d**. Each card has its own **24h**, **7d**, or **30d** period selector.
+
+Choose a **Channel** for both cards. **Usage platform** and **App version**
+filter App usage; **Health platform** and the optional **Release ID** filter
+Release health. Choose **Apply filters** to update the reports.
 
 App usage shows one metric for the selected period: **DAU** for the last 24
 hours, **WAU** for the last 7 days, or **MAU** for the last 30 days. Each counts
@@ -239,18 +246,22 @@ app version. The detail view keeps the overview's reporting scope, supports
 accounts for installations whose reported file has no observed deployment ID.
 Period and filter selections survive navigation back to the overview.
 
-![App usage and bundle trends with sample data](/docs/console/insights-overview.png)
-
 ![Bundle distribution by app version with sample data](/docs/console/insights-distribution.png)
 
-The bundle chart includes every bundle ID observed with the selected filters.
-**Active** follows each installation’s last reported ID
-within that period, so moving to a new bundle reduces the old bundle’s count.
-Select **Recovered** to compare installations recovered from each bundle per
-interval. Highlighting an ID keeps the other lines visible.
+**Release health** shows **Unique users**, **Launches**, **Failed launches**,
+and **Crash rate** for the selected channel, health platform, and period.
+Leave **Release ID** empty to include the whole scope, or enter one ID to
+inspect that release. **Unique users** estimates distinct installations with a
+successful launch report. **Crash rate** is reported OTA launch failures
+divided by successful plus failed launches in the same scope and period. The
+chart shows daily launches and failed launches. These period totals are
+separate from the lifetime counters in the Bundles list and detail.
 
-Open **All events** on the activity card to browse the last 90 days of reports
-from newest to oldest, 20 per page; paging stops at the start of that range.
+Open **All events** in the header, or **Event history** on Release health, to
+browse reports from newest to oldest, 20 per page. The Console starts with
+**7d**; select **30d** or **90d** for older reports. Paging stops at the start
+of the selected range.
+
 Like other analytics tools, event lists show raw reports only inside a time
 range of at most 90 days: the admin `GET /events` route takes `sinceMs` and
 `beforeReceivedAtMs`, lists the 90 days before `beforeReceivedAtMs` (by
@@ -259,9 +270,10 @@ range. The server also counts reports per day, so a list skips quiet days
 instead of reading each one.
 
 These counts reflect received reports, not the full installed population.
-Reports without a known bundle ID are excluded from the per-ID chart. Every
-period ends with the current UTC hour, so a report counts as soon as the server
-records it, and a chart's last interval is still filling. The Console reads
+Release health includes reports without a known Release ID when no ID filter
+is set; selecting an ID limits it to reports attributed to that release. Every
+overview period ends with the current UTC hour, so a report counts as soon as
+the server records it, and a chart's last interval is still filling. The Console reads
 hourly and daily totals that the server updates as it records each report; it
 does not scan raw events. DAU, WAU, MAU, active users per interval, and unique
 users are estimates from HyperLogLog sketches, typically within about 3%, and

@@ -11,7 +11,8 @@ Record observations in deployment.json as described in COMMON.md.
     ambiguous choices with the user. Before adopting an existing Hot Updater
     Worker, inspect /version and D1 schema; read the applicable upgrade files.
   - Verify/record: accountId and intended resource names are established; any
-    existing endpoint/schema is compatible. Legacy D1/Workers need separate resources.
+    existing endpoint/schema is compatible. Stop on an incompatible or unknown
+    generation/schema before changing resources.
   - Retry: resolve denied/incomplete discovery before treating a resource as absent.
 
 - [ ] **cf.storage — Prepare R2**
@@ -24,10 +25,10 @@ Record observations in deployment.json as described in COMMON.md.
 - [ ] **cf.database — Prepare D1**
   - Requires: cf.account; inspect existing table names before adoption.
   - Run: query/reuse a compatible database or create the selected new database.
-    A database whose d1_migrations records `0001_hot-updater_1.0.0.sql` but whose
-    `private_hot_updater_settings` has no `schema.engine` row comes from a 1.0
-    release candidate and is not compatible: create a new database, or drop its
-    Hot Updater tables and d1_migrations before cf.schema.
+    For an existing namespace, inspect schema and migration history and require
+    `schema.engine` = `1` in `private_hot_updater_settings`. Stop if the schema is
+    incompatible or a recorded migration does not match the actual schema;
+    preserve the database and migration history for investigation.
   - Verify/record: save d1DatabaseId and d1DatabaseName from the provider response.
   - Retry: query the selected account/name; never replace a database to retry.
 

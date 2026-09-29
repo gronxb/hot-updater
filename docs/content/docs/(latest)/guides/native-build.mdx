@@ -132,7 +132,6 @@ Builds an APK, installs it on target devices, and launches the main activity.
 Options:
   -d, --device [deviceName | deviceId]  specify the ADB device name or use default
   --port <port>                         specify the port number
-  --app-id-suffix <appIdSuffix>         specify the app ID suffix
 ```
 
 ```package-install
@@ -142,6 +141,10 @@ EXPERIMENTAL=1 npx hot-updater run:android -s releaseApk -d "Pixel_6_Pro_API_35"
 - `-d` selects a specific device; otherwise all connected devices receive the build (or the CLI launches the first emulator).
 - `--port` forwards the Metro port before the app starts.
 - The CLI derives the main activity from the package name.
+- For a Gradle variant with an application ID suffix, set
+  `nativeBuild.android.<scheme>.applicationId` to the full ID, such as
+  `com.example.app.internal`. The launcher uses that value directly;
+  `--app-id-suffix` does not change it.
 
 ### `hot-updater run:ios`
 
@@ -153,11 +156,15 @@ Options:
 ```
 
 ```package-install
-EXPERIMENTAL=1 npx hot-updater run:ios -s simulatorDebug -d "iPhone 15 (iOS 17.5)"
+EXPERIMENTAL=1 npx hot-updater run:ios -s simulatorDebug -d "iPhone 15"
 ```
 
 - Works with `devicectl` (physical devices) and `simctl` (simulators); interactive mode lists everything discovered.
-- If no device is specified, the first available simulator is used and Simulator.app is opened automatically.
+- Without `-d` or `-i`, the first booted device or simulator is selected, with
+  physical devices checked first. If none is booted, the CLI uses the first
+  available simulator and opens Simulator.app.
+- Use `-d "<device-udid>"` when multiple runtimes have a simulator with the same
+  name, or use `-i` to select the target interactively.
 
 ## Artifact storage
 

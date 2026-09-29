@@ -7,8 +7,8 @@ icon: Database
 Use `useHotUpdaterStore` to show OTA update progress in your React Native UI.
 
 For most apps, `progress` and `isUpdateDownloaded` are enough. Use
-`artifactType` and `details` only when you want to render bundle diffing
-progress for individual files.
+`artifactType` and `details` only when you want to render progress for
+individual download entries.
 
 ## Basic usage
 
@@ -43,11 +43,15 @@ function App() {
 | `progress`           | `number`              | Overall update progress from `0` to `1`.          |
 | `isUpdateDownloaded` | `boolean`             | `true` when `progress` reaches `1`.               |
 | `artifactType`       | `"diff" \| null` | Current download type, or `null` before progress starts. |
-| `details`            | `object \| null`      | Per-file progress for bundle diffing updates.     |
+| `details`            | `object \| null`      | Progress for individual download entries.         |
 
-When `artifactType` is `"diff"`, Hot Updater is reusing unchanged files from
-the current OTA or built-in app and downloading only the files that changed. In this
-case, `details` contains `totalFilesCount`, `completedFilesCount`, and `files`.
+When `artifactType` is `"diff"`, Hot Updater is using the manifest-based update
+path. It can reuse local files, download individual files or patches, or choose
+a full archive based on download cost. `details` contains `totalFilesCount`,
+`completedFilesCount`, and `files` for the actual download entries.
+
+A full archive download appears as one `bundle.tar.br` entry. Its file counts
+refer to that download, not the number of assets extracted from the archive.
 
 ```tsx
 import { useHotUpdaterStore } from "@hot-updater/react-native";
@@ -61,7 +65,7 @@ function UpdateProgress() {
       <Text>{Math.round(progress * 100)}%</Text>
       {artifactType === "diff" && details ? (
         <Text>
-          {details.completedFilesCount}/{details.totalFilesCount} files
+          {details.completedFilesCount}/{details.totalFilesCount} downloads
         </Text>
       ) : null}
     </View>

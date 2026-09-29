@@ -63,9 +63,6 @@ await migrateFirebaseDatabase({
 `hotUpdater`, writes the same settings, and those of the server's
 [third-party plugins](/docs/custom/server-plugins#create-the-plugins-tables),
 whose tables need no collection or index of their own.
-Init refuses a project whose `hot_updater_v1_*` collections hold data; to
-replace a database that a 1.0 release candidate created, follow the
-[upgrade guide](/docs/guides/upgrade-to-v1).
 
 ## Schema settings
 
@@ -108,6 +105,8 @@ Admin SDK.
 # Optional: a private credential file when existing ADC is unavailable
 # GOOGLE_APPLICATION_CREDENTIALS=/private/path/to/your-service-account-key.json
 FIREBASE_PROJECT_ID=your-project-id
+# Required for the combined storage example below
+FIREBASE_STORAGE_BUCKET=your-bucket-name
 ```
 
 ## Usage
@@ -152,7 +151,7 @@ const credential = applicationDefault();
 export default defineConfig({
   storage: firebaseStorage({
     projectId: process.env.FIREBASE_PROJECT_ID,
-    storageBucket: process.env.FIREBASE_STORAGE_BUCKET,
+    storageBucket: process.env.FIREBASE_STORAGE_BUCKET!,
     credential
   }),
   database: firebaseDatabase({

@@ -3,8 +3,10 @@
 The Waku/Fumadocs site serves current documentation from
 `content/docs/(latest)` at `/docs/...`. Archived v0 content lives in
 `content/docs/v0` at `/docs/v0/...`. Change latest content for current behavior;
-keep version-transition instructions in `guides/upgrade-to-v1.mdx` and preserve
-historical release/architecture records. Use “Hot Updater” without a major-version
+keep v0-to-v1 transition instructions in `guides/upgrade-to-v1.mdx` and preserve
+historical release/architecture records. Current guides describe the stable
+release; do not include release-candidate setup or migration procedures.
+Use “Hot Updater” without a major-version
 label in general setup and agent workflows. The version selector uses `v1.0` and
 `v0.36`. Reserve “v1” for v0 migration guidance; keep literal resource names, API
 paths and protocol identifiers.

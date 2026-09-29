@@ -149,9 +149,13 @@ changing the result shape.
 | `hot-updater deploy`                              | `put`, `get`, `exists`, `delete`   |
 | `hot-updater patch`                               | `get`, `put`, `delete`             |
 | `hot-updater bundle promote`                      | None; reuses the existing artifact |
-| Console server mutations                          | `get`, `put`, `delete`             |
-| `createHotUpdater({ storage })` update responses  | `getDownloadUrl`                   |
-| `createHotUpdater({ storage })` download handling | `get`                              |
+| Console server mutations                          | `get`, `put`, `exists`, `delete`    |
+| `createHotUpdater({ storage })` registration       | `get`, `getDownloadUrl`            |
+
+Every storage plugin registered with `createHotUpdater` must provide both
+`get` and `getDownloadUrl`, including plugins that deliver artifacts through a
+CDN. The server reads stored manifests with `get` and resolves artifact URLs
+with `getDownloadUrl`.
 
 `delete` always targets exactly one object and returns `{ deleted: true }` once
 that object is absent. Deleting an already-missing object has the same result,

@@ -19,8 +19,9 @@ operation-specific instructions and manifest.json before making changes.
   result. Derive routine names from the app and reuse established region/settings.
   Do not ask the user to pre-create resources or supply IDs you can obtain.
   Check ownership and naming conflicts before adopting or creating resources.
-- If v0 is detected, read upgrades/1.0.0.md before selecting
-  resources. Parallel v1 setup has provider-specific project reuse rules.
+- If v0 is detected, follow the
+  [upgrade guide](https://hot-updater.dev/docs/guides/upgrade-to-v1) before
+  selecting resources.
 - Discover the connected MCP tools and their actual permissions. Use available
   provider MCP, CLI, or API capabilities for each step. A browser can complete
   console-only setup or authentication. A project-scoped MCP connection might
@@ -128,8 +129,9 @@ command or generated files alone do not prove that a remote step is complete.
    app/provision-api-key.mjs to register a client key. The script registers it
    through the apiKeys() plugin that app/hotUpdater.plugins.ts lists, on the
    tables the deployed server reads, so keep that file beside it. When
-   api-key.config.ts exports `migrate` (Firestore), the script runs it first to
-   write the schema settings. Run the script from the
+   api-key.config.ts exports `migrate` (Firestore), complete SETUP.md's database
+   compatibility preflight before running it; the helper writes schema settings
+   but does not reject every unsupported engine version. Run the script from the
    directory whose .env.hotupdater contains the target provider settings, using
    Node 22.18+ or Node 24+. Install the manifest.json packages where
    these files can resolve them (the default scaffold is nested in the app).
@@ -255,14 +257,15 @@ separate validation result.
 Read upgrades/README.md and the versioned files listed there. Inspect the live
 server version, generation, migration history, previous manifest and customizations.
 Read the installed generation's baseline for context and all later requirement
-files through the target in ascending order before applying changes. Include
-baseline context for prerelease builds. Do not read only the newest file or
-skip intermediate releases. Previously applied steps provide context; verify
-actual state instead of replaying them. Use the common sections and the selected
-provider's section in each file to plan and apply the complete transition.
+files through the target in ascending order before applying changes. Do not read
+only the newest file or skip intermediate releases. Previously applied steps
+provide context; verify actual state instead of replaying them. Use the common
+sections and the selected provider's section in each file to plan and apply the
+complete transition.
 If the deployed version is newer than this scaffold, obtain a suitable CLI
 version; do not downgrade it. Unknown generation/schema is a blocker to adoption.
-Generation 0 requires separate generation 1 resources and a new native build.
+For generation 0, follow the
+[upgrade guide](https://hot-updater.dev/docs/guides/upgrade-to-v1).
 Never assume a generic redeploy is sufficient for an undocumented migration.
 
 Use the fresh upgrade directory as a comparison source. Preserve the original

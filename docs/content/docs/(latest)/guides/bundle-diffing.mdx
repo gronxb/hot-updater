@@ -32,6 +32,12 @@ What the device downloads depends on what changed:
 | Later OTA, changed regular asset | Complete new asset file |
 | Later OTA, changed Hermes bundle file | `.bsdiff` patch when available, otherwise the complete new Hermes bundle file |
 
+These are the per-file transfer rules. After local reuse, the runtime can
+instead download the automatically generated `bundle.tar.br` archive when at
+least two files remain and its transfer-cost comparison favors the archive.
+See [Artifact Compression](/docs/guides/compression) for selection and fallback
+behavior.
+
 For example, an update with a 10 MB Hermes file might only need to download a
 600 KB patch when the byte-level changes are small.
 
@@ -197,6 +203,7 @@ Hot Updater prepares the manifest delivery path:
 
 - Uploads the manifest and per-file manifest assets.
 - Records manifest and asset storage metadata.
+- Creates `bundle.tar.br` and records its hash and sizes in the manifest.
 - Creates `.bsdiff` patch files for changed Hermes bundles when binary patching
   is enabled.
 
@@ -204,13 +211,14 @@ Hot Updater prepares the manifest delivery path:
 
 There is no older OTA bundle on the device yet. Hot Updater resolves each
 manifest path against the packaged app, verifies the packaged file's hash, and
-copies matches into staging. It downloads only paths that are absent or whose
-hash differs. Hermes patching still starts with a later OTA because a patch
-from the built-in Hermes file is not generated yet.
+copies matches into staging. It downloads the remaining files individually or
+uses the archive when the transfer-cost comparison selects it. Hermes patching
+still starts with a later OTA because a patch from the built-in Hermes file is
+not generated yet.
 
 ### Later OTA updates
 
-After that, updates can be assembled from smaller pieces:
+On the per-file route, later updates can be assembled from smaller pieces:
 
 1. The app reads the new update manifest.
 2. Files that already exist in the current OTA bundle are copied locally.
@@ -236,10 +244,10 @@ downloads and verifies the complete new Hermes bundle file.
 Use `useHotUpdaterStore` when you want to check which files were downloaded
 during a bundle diffing update.
 
-Use `progress` for the overall update progress. Use `details.files` for
-per-file progress during manifest-based diffing.
-
-Manifest updates use `artifactType: "diff"` and expose per-file details.
+Use `progress` for the overall update progress. Manifest updates use
+`artifactType: "diff"`; `details.files` describes their download entries.
+`completedFilesCount` and `totalFilesCount` count those entries, not the number
+of changed or installed target files.
 
 ```tsx
 import { Text, View } from "react-native";
@@ -257,7 +265,7 @@ function UpdateDownloadProgress() {
       {artifactType === "diff" && details ? (
         <View>
           <Text>
-            Changed files: {details.completedFilesCount}/
+            Downloads: {details.completedFilesCount}/
             {details.totalFilesCount}
           </Text>
 
@@ -279,10 +287,14 @@ function UpdateDownloadProgress() {
 }
 ```
 
-In `details.files`, `path` is the final file path inside the OTA bundle.
-`downloadPath` is the artifact that was transferred. They are usually the same,
-but can differ when Hot Updater downloads an intermediate artifact such as a
-`.bsdiff` patch.
+For individual-file downloads, `path` is the final file path inside the OTA
+bundle and `downloadPath` is the transferred artifact. They can differ for an
+intermediate artifact such as a `.bsdiff` patch.
+
+For an archive download, `details.files` contains one entry with both `path`
+and `downloadPath` set to `bundle.tar.br`, and `totalFilesCount` is `1`. That
+entry represents the transport archive, not a file in the installed bundle,
+even when the archive installs many target files.
 
 ## Signing
 

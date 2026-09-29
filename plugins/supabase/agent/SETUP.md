@@ -10,6 +10,9 @@ connection, CLI/API or browser can handle missing account-level prerequisites.
   - Run: query projects and record the selected organization/name before creating
     a missing project. Wait for database readiness. Inspect existing functions,
     schema and /version before adoption; read applicable upgrade files first.
+    This scaffold and its required doctor checks support hot-updater-v1 only.
+    If the intended deployment uses another function name, report that limitation
+    before provisioning; do not rename the function or replace its endpoint.
   - Verify/record: projectId/reference and actual project URL are known, the
     database is ready, and an existing namespace/endpoint is compatible.
   - Retry: query the original organization/name or returned operation ID; a timeout
@@ -25,7 +28,12 @@ connection, CLI/API or browser can handle missing account-level prerequisites.
 
 - [ ] **sb.schema — Apply pending database migrations**
   - Requires: sb.storage; inspect actual schema and migration history first.
-  - Run: fill %%BUCKET_NAME%% in supabase/migrations with SQL-safe escaping and
+  - Run: an existing Hot Updater namespace must have `schema.engine` = `1` in
+    `hot_updater_v1_private_hot_updater_settings`. Stop before applying SQL if
+    that marker is missing or unsupported, or recorded migrations disagree with
+    the actual schema. Preserve the namespace and history for investigation.
+    For a fresh namespace or a verified compatible installation, fill
+    %%BUCKET_NAME%% in supabase/migrations with SQL-safe escaping and
     the project ID in config.toml. Preserve original migration filenames.
     With local CLI access, use private session/environment credentials and run
     these commands from the scaffold root, one at a time:
@@ -36,11 +44,6 @@ connection, CLI/API or browser can handle missing account-level prerequisites.
     MCP migration operations must preserve the same names/history and SQL.
   - Verify/record: supplied migrations are applied, expected tables/schema version
     exist, and the API schema cache can access them. Record applied filenames.
-    `hot_updater_v1_*` tables or functions without a `schema.engine` settings
-    row come from a 1.0 release candidate and are not upgraded in place: drop
-    them, mark each Hot Updater migration in the history reverted with
-    `npx supabase migration repair --status reverted <version>`, then push, or
-    use a new project.
   - Retry: inspect actual schema/history before replaying anything. Only the exact
     missing `supabase_migrations.schema_migrations` relation on a fresh project
     permits proceeding from failed history fetch to the first push. This error
@@ -59,15 +62,16 @@ connection, CLI/API or browser can handle missing account-level prerequisites.
 
 - [ ] **sb.function — Deploy the complete Edge Function**
   - Requires: sb.client-key.
-  - Run: fill __HOT_UPDATER_BUCKET_NAME__. Default function: hot-updater-v1.
-    If preserving another function name, update its directory, functionName in
-    index.ts and config.toml entry together. Deploy deno.json and all _hot-updater/
+  - Run: fill __HOT_UPDATER_BUCKET_NAME__. Keep the hot-updater-v1 directory,
+    functionName in index.ts and config.toml entry unchanged. Confirm
+    ownership before deploying over an existing hot-updater-v1 function.
+    Deploy deno.json and all _hot-updater/
     vendored files along with index.ts. Keep verify_jwt=false for x-api-key auth.
     From the scaffold root:
-    `npx supabase functions deploy <function-name> --project-ref <project-id> --no-verify-jwt`.
+    `npx supabase functions deploy hot-updater-v1 --project-ref <project-id> --no-verify-jwt`.
   - Verify/record: the active function uses the complete bundle and has runtime
     SUPABASE_URL/SUPABASE_SERVICE_ROLE_KEY. Save functionName and baseUrl as
-    https://<project-id>.supabase.co/functions/v1/<function-name>.
+    https://<project-id>.supabase.co/functions/v1/hot-updater-v1.
   - Retry: inspect function status/logs and redeploy only the incomplete function;
     do not repeat completed schema changes or key registration unnecessarily.
 

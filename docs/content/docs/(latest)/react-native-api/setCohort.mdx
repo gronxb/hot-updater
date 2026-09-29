@@ -38,11 +38,12 @@ Numeric cohorts are passed as strings, for example `HotUpdater.setCohort("500")`
 
 - Call `HotUpdater.getCohort()` first if you need to restore the previous value
   later.
-- Percentage rollout applies only to numeric cohorts.
-- To keep a custom cohort such as `qa` receiving a Bundle alongside numeric
-  rollout, add that value to `Target Cohorts` in the console. This keeps the
-  same Bundle available to `qa` even if you later raise its numeric rollout
-  from `0%` to `50%`.
+- Partial percentage rollout applies to numeric cohorts. At `100%`, a Bundle
+  is also eligible for custom cohorts, even when they are absent from
+  `Target Cohorts`.
+- To include a custom cohort such as `qa` at rollout values below `100%`, add
+  that value to `Target Cohorts` in the console. This keeps the same Bundle
+  available to `qa` when you raise its numeric rollout from `0%` to `50%`.
 
 ## Related APIs
 
