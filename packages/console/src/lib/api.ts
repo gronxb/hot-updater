@@ -1,6 +1,5 @@
 import type {
-  ChannelDeleteInput,
-  ChannelInsertInput,
+  ReleaseFilter,
   ReleasePolicyPatch,
 } from "@hot-updater/plugin-core";
 import {
@@ -34,9 +33,10 @@ import {
 
 type BundleFilters = {
   platform?: "ios" | "android";
-  page?: number;
-  limit?: string;
+  limit?: number;
+  /** Bundles older than this id: the next page. */
   after?: string;
+  /** Bundles newer than this id: the previous page. */
   before?: string;
 };
 
@@ -71,15 +71,13 @@ export const queryKeys = {
 };
 
 export type ReleaseFilters = {
-  afterReleaseId?: string;
+  /** One of the filter sets the release indexes serve; none lists every release. */
+  filter?: ReleaseFilter;
+  /** Releases older than this id: the next page. */
   beforeReleaseId?: string;
-  bundleId?: string;
-  channelId?: string;
-  enabled?: boolean;
-  platform?: "ios" | "android";
+  /** Releases newer than this id: the previous page. */
+  afterReleaseId?: string;
   limit?: number;
-  page?: number;
-  targetAppVersion?: string;
 };
 
 function removeBundleFromQueryData(
@@ -213,7 +211,7 @@ export function useCreateChannelMutation() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (input: ChannelInsertInput) =>
+    mutationFn: (input: { name: string }) =>
       createChannelApi({ data: input }).then((response) => response.data),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: queryKeys.channels });
@@ -225,7 +223,7 @@ export function useDeleteChannelMutation() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (input: ChannelDeleteInput) =>
+    mutationFn: (input: { id: string }) =>
       deleteChannelApi({ data: input }).then((response) => response.data),
     onSettled: async () => {
       await queryClient.invalidateQueries({ queryKey: queryKeys.channels });

@@ -122,7 +122,7 @@ describe("ChannelManagementDialog", () => {
     cleanup();
   });
 
-  it("creates a channel with returnExisting conflict semantics", async () => {
+  it("creates a channel by its trimmed name", async () => {
     mockCreateChannel.mutateAsync.mockResolvedValue({
       row: { id: "channel-beta", name: "beta" },
       inserted: true,
@@ -137,8 +137,7 @@ describe("ChannelManagementDialog", () => {
 
     await waitFor(() => {
       expect(mockCreateChannel.mutateAsync).toHaveBeenCalledWith({
-        row: { id: expect.any(String), name: "beta" },
-        onConflict: "returnExisting",
+        name: "beta",
       });
     });
     expect(mockToastSuccess).toHaveBeenCalledWith("Channel beta created");

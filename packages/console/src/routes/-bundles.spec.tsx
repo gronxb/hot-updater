@@ -19,6 +19,11 @@ const mocks = vi.hoisted(() => ({
 vi.mock("@/lib/bundle-activity", () => ({
   useBundleActivityQuery: mocks.activity,
 }));
+vi.mock("@/lib/insights-api", () => ({
+  useInsightsStatusQuery: () => ({
+    data: { insights: "on", activity: true },
+  }),
+}));
 
 vi.mock("@tanstack/react-router", () => ({
   createFileRoute: () => (options: Record<string, unknown>) => ({
@@ -112,14 +117,7 @@ vi.mock("@/lib/api", () => ({
     ],
   }),
   useReleasesQuery: () => ({
-    data: {
-      data: releases,
-      pagination: {
-        currentPage: 1,
-        hasNextPage: false,
-        hasPreviousPage: false,
-      },
-    },
+    data: { data: releases },
     error: null,
     isError: false,
     isPending: false,
@@ -144,13 +142,16 @@ describe("BundlesPage", () => {
       expect(within(summary).getByText("Known launches 789")).toBeDefined();
       expect(within(summary).getByText(/Known crashes 2/)).toBeDefined();
       expect(within(summary).getByText(/0\.25%/)).toBeDefined();
-      expect(mocks.activity).toHaveBeenCalledWith([
-        {
-          platform: "ios",
-          channel: "e2e-job-20260812132427-qy22fi-android-s2-production",
-          releaseId: "release-1",
-        },
-      ]);
+      expect(mocks.activity).toHaveBeenCalledWith(
+        [
+          {
+            platform: "ios",
+            channel: "e2e-job-20260812132427-qy22fi-android-s2-production",
+            releaseId: "release-1",
+          },
+        ],
+        true,
+      );
     },
   );
   it("keeps bundle management usable when activity is unavailable", () => {
@@ -301,25 +302,19 @@ describe("BundlesPage", () => {
     },
   );
 
-  it("keeps the main Console filters and pagination summary", () => {
+  it("filters by the sets the release indexes serve and pages by key", () => {
     render(<BundlesPage />);
 
-    const targetAppVersion = screen.getByLabelText("Target app version");
-    fireEvent.change(targetAppVersion, { target: { value: "1.2.x" } });
-    fireEvent.keyDown(targetAppVersion, { key: "Enter" });
-
-    expect(mocks.navigate).toHaveBeenCalledWith({
-      resetScroll: true,
-      search: { targetAppVersion: "1.2.x" },
-      to: "/",
-    });
+    // Target versions filter only through a scope.
+    expect(screen.queryByLabelText("Target app version")).toBeNull();
     expect(
       screen.getByText((_, node) =>
-        Boolean(node?.textContent === "Showing 1 to 1 entries"),
+        Boolean(node?.textContent === "1 entry, newest first"),
       ),
     ).toBeDefined();
+    expect(screen.queryByText(/^Page /)).toBeNull();
     expect(
-      screen.getByText((_, node) => Boolean(node?.textContent === "Page 1")),
-    ).toBeDefined();
+      screen.getByRole("button", { name: "Next" }).hasAttribute("disabled"),
+    ).toBe(true);
   });
 });

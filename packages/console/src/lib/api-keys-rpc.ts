@@ -1,5 +1,4 @@
 import type { ApiKeyRow } from "@hot-updater/plugin-core";
-import { createApiKey } from "@hot-updater/server";
 import { createServerFn } from "@tanstack/react-start";
 
 export type ApiKeyView = Omit<ApiKeyRow, "hash">;
@@ -31,43 +30,39 @@ const parseId = (input: unknown): { readonly id: string } => {
   return { id };
 };
 
-const requireStore = async () => {
+const requireApiKeys = async () => {
   const { prepareConfig } = await import("./server/config.server");
-  const { apiKeyStore } = await prepareConfig();
-  if (apiKeyStore === null) {
+  const { apiKeys } = await prepareConfig();
+  if (apiKeys === null) {
     throw new Error(
-      "API keys are not supported by the configured database plugin.",
+      "API keys are not managed here: add apiKeys() to plugins, or manage a self-hosted server's keys with hot-updater keys on the server.",
     );
   }
-  return apiKeyStore;
+  return apiKeys;
 };
 
 export const getApiKeyCapabilityRpc = createServerFn({
   method: "GET",
 }).handler(async () => {
   const { prepareConfig } = await import("./server/config.server");
-  const { apiKeyStore } = await prepareConfig();
-  return { apiKeys: apiKeyStore !== null } as const;
+  const { apiKeys } = await prepareConfig();
+  return { apiKeys: apiKeys !== null } as const;
 });
 
 export const listApiKeysRpc = createServerFn({
   method: "GET",
-}).handler(async () => {
-  const store = await requireStore();
-  const records = await store.list();
-  return [...records]
-    .sort((left, right) => right.created_at_ms - left.created_at_ms)
-    .map(toApiKeyView);
+}).handler(async (): Promise<ApiKeyView[]> => {
+  const apiKeys = await requireApiKeys();
+  return [...(await apiKeys.list())].sort(
+    (left, right) => right.created_at_ms - left.created_at_ms,
+  );
 });
 
 export const createApiKeyRpc = createServerFn({ method: "POST" })
   .validator(parseName)
   .handler(async ({ data }) => {
-    const store = await requireStore();
-    const created = await createApiKey({
-      apiKeys: store,
-      name: data.name,
-    });
+    const apiKeys = await requireApiKeys();
+    const created = await apiKeys.create({ name: data.name });
     return {
       apiKey: created.apiKey,
       record: created.record,
@@ -76,12 +71,9 @@ export const createApiKeyRpc = createServerFn({ method: "POST" })
 
 export const revokeApiKeyRpc = createServerFn({ method: "POST" })
   .validator(parseId)
-  .handler(async ({ data }) => {
-    const store = await requireStore();
-    const revoked = await store.revoke({
-      id: data.id,
-      revokedAtMs: Date.now(),
-    });
+  .handler(async ({ data }): Promise<ApiKeyView> => {
+    const apiKeys = await requireApiKeys();
+    const revoked = await apiKeys.revoke({ id: data.id });
     if (revoked === null) throw new Error("API key not found.");
-    return toApiKeyView(revoked);
+    return revoked;
   });

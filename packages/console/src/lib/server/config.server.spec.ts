@@ -1,9 +1,8 @@
 // @vitest-environment node
 
-import {
-  createDatabasePlugin,
-  createStoragePlugin,
-} from "@hot-updater/plugin-core";
+import { createStoragePlugin } from "@hot-updater/plugin-core";
+import { createMemoryAdapter } from "@hot-updater/plugin-core/internal";
+import { createLegacyDatabasePlugin } from "@hot-updater/server/database";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const { requireConsoleAccessMock, resolveConsoleConfigMock } = vi.hoisted(
@@ -24,62 +23,7 @@ vi.mock("./console-runtime.server", () => ({
 const request = new Request("https://console.example.com/");
 
 const createTestDatabasePlugin = (name: string) =>
-  createDatabasePlugin({
-    name,
-    models: {
-      bundles: {
-        findById: vi.fn(async () => null),
-        findMany: vi.fn(async () => []),
-        count: vi.fn(async () => 0),
-      },
-      bundlePatches: {
-        findByBundleIds: vi.fn(async () => []),
-      },
-      releases: {
-        findById: vi.fn(async () => null),
-        findMany: vi.fn(async () => []),
-        findManyByScope: vi.fn(async () => []),
-      },
-      releaseCatalogs: {
-        findByScopeKey: vi.fn(async () => null),
-        findMany: vi.fn(async () => []),
-      },
-      channels: {
-        insert: vi.fn(async ({ row }) => ({ row, inserted: true })),
-        list: vi.fn(async () => ({ channels: [] })),
-        delete: vi.fn(async () => ({ deleted: true as const })),
-      },
-      insights: {
-        recordEvent: vi.fn(async () => undefined),
-        listEvents: vi.fn(async () => []),
-        countEvents: vi.fn(async () => 0),
-        findLatestEvents: vi.fn(async () => []),
-        countLatestEvents: vi.fn(async () => 0),
-        getReleaseActivity: vi.fn(async () => ({
-          coverage: { kind: "complete" as const, sinceMs: 0 },
-          data: [],
-          measuredAtMs: 0,
-        })),
-        getAppUsage: vi.fn(async () => ({
-          coverage: { kind: "complete" as const, sinceMs: 0 },
-          activeInstallations: 0,
-          points: [],
-          appVersions: [],
-          versions: [],
-          platforms: [],
-          bundleDistribution: [],
-          measuredAtMs: 0,
-        })),
-      },
-      apiKeys: {
-        create: vi.fn(async () => "created" as const),
-        findByHash: vi.fn(async () => null),
-        list: vi.fn(async () => []),
-        revoke: vi.fn(async () => null),
-      },
-    },
-    commit: vi.fn(async () => ({ committed: true as const })),
-  });
+  createLegacyDatabasePlugin({ name, adapter: createMemoryAdapter() });
 
 function createTestStoragePlugin() {
   return createStoragePlugin({
@@ -106,7 +50,7 @@ beforeEach(() => {
 });
 
 describe("config.server", () => {
-  it("caches the loaded config and reuses its database and runtime clients", async () => {
+  it("caches the loaded config and reuses core and the runtime", async () => {
     const database = createTestDatabasePlugin("db");
     const storagePlugin = createTestStoragePlugin();
 
@@ -125,10 +69,12 @@ describe("config.server", () => {
 
     expect(requireConsoleAccessMock).toHaveBeenCalledTimes(2);
     expect(resolveConsoleConfigMock).toHaveBeenCalledTimes(1);
-    expect(first.databaseClient).toBe(second.databaseClient);
+    expect(first.core).toBe(second.core);
     expect(first.config.database).toBe(database);
-    expect(first.apiKeyStore).toBe(database.models.apiKeys);
-    expect(second.apiKeyStore).toBe(first.apiKeyStore);
+    expect(first.insights).toBe(second.insights);
+    expect(first.apiKeys).not.toBeNull();
+    expect(second.apiKeys).toBe(first.apiKeys);
+    await expect(first.core.listChannels()).resolves.toEqual([]);
     expect(first.storagePlugin).toBe(storagePlugin);
     expect(second.storagePlugin).toBe(storagePlugin);
     expect(isConfigLoaded()).toBe(true);
@@ -199,5 +145,23 @@ describe("config.server", () => {
 
     expect(resolveConsoleConfigMock).not.toHaveBeenCalled();
     expect(consoleErrorSpy).not.toHaveBeenCalled();
+  });
+
+  it("refuses a database that is not on the storage engine", async () => {
+    const consoleErrorSpy = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => undefined);
+    resolveConsoleConfigMock.mockResolvedValue({
+      console: { port: 1422 },
+      database: { name: "old-provider", models: {} },
+      storage: createTestStoragePlugin(),
+    });
+
+    const { prepareConfig } = await import("./config.server");
+
+    await expect(prepareConfig(request)).rejects.toThrow(
+      "Upgrade its provider package to 1.0.",
+    );
+    expect(consoleErrorSpy).toHaveBeenCalledOnce();
   });
 });

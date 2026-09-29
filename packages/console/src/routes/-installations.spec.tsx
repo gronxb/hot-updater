@@ -40,6 +40,9 @@ vi.mock("@/components/ui/sidebar", () => ({
 }));
 
 vi.mock("@/lib/insights-api", () => ({
+  useInsightsStatusQuery: () => ({
+    data: { insights: "on", activity: true },
+  }),
   useInsightsEventsQuery: mocks.events,
   useInsightsInstallationEventsQuery: mocks.history,
   useInsightsInstallationQuery: mocks.installation,
