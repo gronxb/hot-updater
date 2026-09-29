@@ -23,7 +23,7 @@ export interface AggregateBatching {
    * after a commit once this has passed since the last compaction, 60
    * seconds by default, and `"memory"` flushes this often, 15 seconds by
    * default. A read that cannot compact (read-only credentials) shows
-   * aggregates up to one window behind.
+   * aggregates that can leave out up to one window of the latest changes.
    */
   readonly windowMs?: number;
 }

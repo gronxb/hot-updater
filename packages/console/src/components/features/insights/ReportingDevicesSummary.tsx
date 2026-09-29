@@ -45,7 +45,7 @@ export function ReportingDevicesSummary({
           installations per {metric.interval}. Unique counts are estimates,
           typically within about 3%. On DynamoDB and Firestore the server
           updates totals in batches: when the Console cannot write to the
-          database, totals can trail new reports by up to a minute.
+          database, totals can leave out up to a minute of the latest reports.
           {partial
             ? " Only part of the history is available; the total is a lower bound."
             : ""}

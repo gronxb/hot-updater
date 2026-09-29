@@ -110,7 +110,8 @@ event's transaction:
   or counts one twice.
 - After an event, the server compacts when a minute has passed since the last
   compaction. A read of the totals, such as the Console's, compacts first. If
-  it cannot write, it shows the stored totals, up to one window behind.
+  it cannot write, it shows the stored totals, which can leave out up to one
+  window of the latest events.
 
 Set `aggregateBatching: { mode: "memory" }` on a long-lived server to keep
 totals in the process and write them every 15 seconds, without log documents.

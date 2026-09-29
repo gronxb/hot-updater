@@ -294,8 +294,8 @@ hourly and daily totals that the server updates as it records each report; it
 does not scan raw events. On DynamoDB and Firestore, the server updates these
 totals in batches (see [What Insights writes](#what-insights-writes)), and a
 read applies pending batches first. A Console that cannot write to the database,
-such as one with read-only credentials, shows totals up to one batching window
-behind the reports, a minute by default. DAU, WAU, MAU, active users per interval, and active
+such as one with read-only credentials, shows totals that can leave out up to
+one batching window of the latest reports, a minute by default. DAU, WAU, MAU, active users per interval, and active
 installations are estimates from HyperLogLog sketches, typically within about
 3%, and show with **≈**. Report counts, active days, and distributions are
 exact.
