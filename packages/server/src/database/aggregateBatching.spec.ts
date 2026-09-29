@@ -263,31 +263,41 @@ describe("aggregate batching", () => {
     expect(aggregateOps(reference.writes)).toBeGreaterThan(150);
   });
 
-  it("applies a compacted log row once when the write's outcome is lost", async () => {
+  it("applies each log row once when a compaction write's outcome is lost", async () => {
     const reference = await setup();
     await traffic(reference.db);
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    for (const applied of [true, false]) {
-      let lose = false;
-      const log = await setup({
-        batching: { mode: "log", windowMs: 60_000 },
-        fault: async (ops, write) => {
-          if (!lose || !ops.some((op) => op.type === "delete"))
-            return undefined;
-          lose = false;
-          if (applied) await write(ops);
-          throw new Error("socket hang up");
-        },
-      });
-      await traffic(log.db);
-      lose = true;
-      await log.engine.flush();
-      expect(warn).toHaveBeenLastCalledWith(
-        "[hot-updater] Aggregate compaction failed.",
-        expect.any(Error),
-      );
-      expect(await snapshot(log.db)).toEqual(await snapshot(reference.db));
-      expect(await logRows(log.memory)).toEqual([]);
+    // The group write (aggregate rows and the lease listing them as applied),
+    // then the deletes after it: each lost after it committed, or before.
+    const writes = {
+      group: (ops: readonly WriteOp[]) =>
+        ops.some(({ table: { name } }) => name === "opens"),
+      deletes: (ops: readonly WriteOp[]) =>
+        ops.every((op) => op.type === "delete"),
+    };
+    for (const [kind, matches] of Object.entries(writes)) {
+      for (const applied of [true, false]) {
+        let lose = false;
+        const log = await setup({
+          batching: { mode: "log", windowMs: 60_000 },
+          fault: async (ops, write) => {
+            if (!lose || !matches(ops)) return undefined;
+            lose = false;
+            if (applied) await write(ops);
+            throw new Error("socket hang up");
+          },
+        });
+        await traffic(log.db);
+        lose = true;
+        await log.engine.flush();
+        expect(lose, `${kind} write`).toBe(false);
+        expect(warn).toHaveBeenLastCalledWith(
+          "[hot-updater] Aggregate compaction failed.",
+          expect.any(Error),
+        );
+        expect(await snapshot(log.db)).toEqual(await snapshot(reference.db));
+        expect(await logRows(log.memory)).toEqual([]);
+      }
     }
   });
 

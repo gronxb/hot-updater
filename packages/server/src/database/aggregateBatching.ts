@@ -28,10 +28,10 @@ const LEASE = { id: "compaction" } as const;
 /** How long a compaction holds the lease before another process may take it. */
 const LEASE_MS = 30_000;
 const WINDOW_MS = 15_000;
-/** Log rows a compaction reads from each log table at once. */
-const LOG_PAGE = 50;
-/** Atomic writes one compaction makes: after a commit, before a read, and on flush. */
-const CHUNKS = { commit: 4, read: 16, flush: 256 } as const;
+/** Log rows a compaction reads from each log table for one group. */
+const LOG_PAGE = 200;
+/** Groups one compaction applies: after a commit, before a read, and on flush. */
+const GROUPS = { commit: 4, read: 16, flush: 256 } as const;
 /** Tries per write after a conflict or a transient error. */
 const ATTEMPTS = 5;
 /** Aggregate rows a memory buffer holds before a commit waits for a flush. */
@@ -46,13 +46,18 @@ const log = defineTable(
   { key: ["id"], indexes: { oldest: { eq: [], sort: ["id"] } } },
 );
 
-/** Held by `holder` until `until`; the next compaction is due at `next`. */
+/**
+ * Held by `holder` until `until`; the next compaction is due at `next`.
+ * `applied` lists the log rows a compaction has applied and not yet deleted,
+ * as `[log table, id]` pairs, so no compaction applies them again.
+ */
 const lease = defineTable(
   {
     id: { type: "string", maxLength: 16 },
     holder: { type: "string", maxLength: 32 },
     until: { type: "integer" },
     next: { type: "integer" },
+    applied: { type: "string" },
   },
   { key: ["id"] },
 );
@@ -241,9 +246,32 @@ const unpack = (value: unknown) =>
         .join("")
     : value;
 
-/** A log row's `changes`: each entry is a table, an identity, and values. */
-const encode = (changes: Iterable<AggregateChange>): string =>
-  JSON.stringify({
+/** Raw deflate of `text` as base64, where the runtime has `CompressionStream`. */
+const deflate = async (text: string) => {
+  if (typeof CompressionStream === "undefined") return undefined;
+  const stream = new Blob([text])
+    .stream()
+    .pipeThrough(new CompressionStream("deflate-raw"));
+  let binary = "";
+  for (const byte of new Uint8Array(await new Response(stream).arrayBuffer()))
+    binary += String.fromCharCode(byte);
+  return btoa(binary);
+};
+
+const inflate = (base64: string) =>
+  new Response(
+    new Blob([Uint8Array.from(atob(base64), (char) => char.charCodeAt(0))])
+      .stream()
+      .pipeThrough(new DecompressionStream("deflate-raw")),
+  ).text();
+
+/**
+ * A log row's `changes`: entries of a table, an identity, and values, as
+ * JSON, or `z` and its deflate where shorter, so a row stays under the 1 KB
+ * that DynamoDB bills as one unit.
+ */
+const encode = async (changes: Iterable<AggregateChange>) => {
+  const json = JSON.stringify({
     v: 1,
     c: [...changes].map(({ model, key, deltas, sketches }) => {
       const packed = Object.entries(sketches).map(([name, sketch]) => [
@@ -254,6 +282,11 @@ const encode = (changes: Iterable<AggregateChange>): string =>
       return [model.table.name, key.slice(0, -1), values];
     }),
   });
+  const zipped = await deflate(json);
+  return zipped !== undefined && zipped.length < json.length
+    ? `z${zipped}`
+    : json;
+};
 
 interface LogRow {
   readonly table: string;
@@ -300,6 +333,7 @@ export const createAggregateBatches = ({
     );
   }
   const holder = crypto.randomUUID().replaceAll("-", "");
+  const table = (name: string) => schema.models.get(name)!.table;
   const warned = new Set<string>();
   const warn = (what: string) => (error: unknown) => {
     if (warned.has(what)) return;
@@ -308,10 +342,11 @@ export const createAggregateBatches = ({
   };
 
   /** A log row's changes, or undefined when it names an aggregate or metric this schema lacks. */
-  const decode = (text: string): Changes | undefined => {
+  const decode = async (text: string): Promise<Changes | undefined> => {
     const changes: Changes = new Map();
     try {
-      const { c } = JSON.parse(text) as {
+      const json = text.startsWith("z") ? await inflate(text.slice(1)) : text;
+      const { c } = JSON.parse(json) as {
         readonly c: readonly [string, DatabaseKey, Values][];
       };
       for (const [name, identity, values] of c) {
@@ -411,72 +446,48 @@ export const createAggregateBatches = ({
   // "log": log rows, compacted under the lease.
   let nextDue = 0;
   let compacting: Promise<void> | undefined;
+  /** Log rows this process read, by `[table, id]`, for the deletes after a group. */
+  const known = new Map<string, StoredRow>();
+  const idOf = (name: string, id: unknown) => JSON.stringify([name, id]);
 
+  /** The lease row as stored once `set` is written over it. */
+  const leaseOp = (held: StoredRow, set: Values) => {
+    const next = { ...held, ...set, _v: Number(held._v) + 1 } as StoredRow;
+    const op: WriteOp = {
+      type: "patch",
+      table: table(LEASE_TABLE),
+      key: [LEASE.id],
+      set: set as StoredRow,
+      guard: { v: Number(held._v) },
+      previous: held,
+    };
+    return { op, next };
+  };
+
+  /** The lease row as stored after this process takes it, or undefined when it is held or not due. */
   const takeLease = (force: boolean) =>
-    engine.transaction(async (tx) => {
+    engine.transaction(async (tx): Promise<StoredRow | undefined> => {
       const at = now();
       const held = await tx.findOne(LEASE_TABLE, LEASE);
       const fields = { holder, until: at + LEASE_MS };
       if (held === null) {
-        tx.create(LEASE_TABLE, { ...LEASE, ...fields, next: 0 });
-        return true;
+        const row = { ...LEASE, ...fields, next: 0, applied: "[]" };
+        tx.create(LEASE_TABLE, row);
+        return { ...row, _v: 0 };
       }
       nextDue = Number(held.next);
-      if (Number(held.until) > at || (!force && nextDue > at)) return false;
+      // This process runs one compaction at a time, so a lease it holds is
+      // one a failed write left behind.
+      const taken = held.holder !== holder && Number(held.until) > at;
+      if (taken || (!force && nextDue > at)) return undefined;
       tx.update(LEASE_TABLE, held, fields);
-      return true;
+      return { ...held, ...fields, _v: Number(held._v) + 1 };
     });
-
-  const releaseLease = (next: number) =>
-    engine.transaction(async (tx) => {
-      const held = await tx.findOne(LEASE_TABLE, LEASE);
-      if (held?.holder === holder) {
-        tx.update(LEASE_TABLE, held, { until: 0, next });
-      }
-    });
-
-  /** The oldest pending log rows this schema can read, a page from each table. */
-  const readLogs = async (): Promise<LogRow[]> => {
-    const pages = await Promise.all(
-      LOG_TABLES.map(async (name) => {
-        const page = await engine.reads.findMany(name, {
-          index: "oldest",
-          limit: LOG_PAGE,
-        });
-        return page.rows.flatMap((row) => {
-          const changes = decode(String(row.changes));
-          return changes === undefined ? [] : [{ table: name, row, changes }];
-        });
-      }),
-    );
-    return pages
-      .flat()
-      .sort((left, right) =>
-        compareUtf8(String(left.row.id), String(right.row.id)),
-      );
-  };
-
-  /** Deletes a log row, or keeps only `rest` of its changes. */
-  const logOp = (
-    { table: name, row }: LogRow,
-    rest?: readonly AggregateChange[],
-  ): WriteOp => {
-    const target = {
-      table: schema.models.get(name)!.table,
-      key: [String(row.id)],
-      guard: { v: Number(row[DATABASE_VERSION_COLUMN]) },
-      previous: row,
-    };
-    return rest === undefined
-      ? { type: "delete", ...target }
-      : { type: "patch", ...target, set: { changes: encode(rest) } };
-  };
 
   /**
    * Writes `ops` once, retrying transient errors; true when it committed.
-   * A conflict leaves the log rows for the next compaction, and a write
-   * whose outcome is unknown throws: either way no log row applies twice,
-   * since it is deleted in the write that applies it.
+   * A conflict leaves its log rows for the next compaction; a write whose
+   * outcome is unknown throws, and the next compaction reads what it did.
    */
   const commit = async (ops: WriteOp[]) => {
     for (let failures = 0; failures < ATTEMPTS; failures += 1) {
@@ -488,81 +499,171 @@ export const createAggregateBatches = ({
     return false;
   };
 
-  const withChanges = async (
-    changes: readonly AggregateChange[],
-    logOps: readonly WriteOp[],
-  ) => (await compile(adapter, changes, () => 0)).filter(isOp).concat(logOps);
+  /** Deletes the log rows `held` lists as applied; true once none is left. */
+  const deleteApplied = async (held: StoredRow) => {
+    const applied = JSON.parse(String(held.applied)) as [string, string][];
+    const missing = applied.filter(([name, id]) => !known.has(idOf(name, id)));
+    const found = await Promise.all(
+      missing.map(([name, id]) =>
+        adapter.get(table(name), [[id]]).then(([row]) => [name, row] as const),
+      ),
+    );
+    for (const [name, row] of found) {
+      if (row) known.set(idOf(name, row.id), row);
+    }
+    const deletes = applied.flatMap(([name, id]): WriteOp[] => {
+      const row = known.get(idOf(name, id));
+      if (row === undefined) return [];
+      const guard = { v: Number(row[DATABASE_VERSION_COLUMN]) };
+      return [
+        { type: "delete", table: table(name), key: [id], guard, previous: row },
+      ];
+    });
+    let size = deletes.length;
+    while (size > 1 && !adapter.fits(deletes.slice(0, size))) {
+      size = Math.ceil(size / 2);
+    }
+    for (let at = 0; at < deletes.length; at += size) {
+      if (!(await commit(deletes.slice(at, at + size)))) return false;
+    }
+    for (const [name, id] of applied) known.delete(idOf(name, id));
+    return true;
+  };
+
+  /** The oldest pending log rows this schema can read, a page from each table. */
+  const readLogs = async (): Promise<LogRow[]> => {
+    const pages = await Promise.all(
+      LOG_TABLES.map(async (name) => {
+        const page = await engine.reads.findMany(name, {
+          index: "oldest",
+          limit: LOG_PAGE,
+        });
+        const decoded = await Promise.all(
+          page.rows.map(async (row) => ({
+            table: name,
+            row,
+            changes: await decode(String(row.changes)),
+          })),
+        );
+        return decoded.flatMap(({ changes, ...entry }) =>
+          changes === undefined ? [] : [{ ...entry, changes }],
+        );
+      }),
+    );
+    return pages
+      .flat()
+      .sort((left, right) =>
+        compareUtf8(String(left.row.id), String(right.row.id)),
+      );
+  };
+
+  const rowsFor = async (changes: readonly AggregateChange[]) =>
+    (await compile(adapter, changes, () => 0)).filter(isOp);
 
   /**
-   * Applies the oldest log rows that fit in one atomic write with their
-   * deletes, or part of one log row too large for a write, keeping the rest
-   * in it. False when a conflict stopped it.
+   * Applies the oldest pending log rows whose merged changes fit in one
+   * atomic write with the lease, which lists them as applied; the rows are
+   * deleted after it. A log row too large for one write applies in parts,
+   * keeping the rest in it. Returns the lease after the write, or
+   * undefined when a conflict stopped it.
    */
-  const compactChunk = async (logs: readonly LogRow[]): Promise<boolean> => {
-    let count = logs.length;
-    const deletes = () => logs.slice(0, count).map((entry) => logOp(entry));
-    while (count > 1 && !adapter.fits(deletes())) count = Math.ceil(count / 2);
-    for (; count > 0; count = Math.floor(count / 2)) {
+  const applyGroup = async (held: StoredRow, logs: readonly LogRow[]) => {
+    for (let count = logs.length; count > 0; count = Math.floor(count / 2)) {
       const batch = logs.slice(0, count);
       const changes = mergeAll(
         new Map(),
         batch.flatMap((entry) => [...entry.changes.values()]),
       );
-      const ops = await withChanges([...changes.values()], deletes());
-      if (adapter.fits(ops)) return commit(ops);
+      const applied = batch.map(({ table: name, row }) => [name, row.id]);
+      const lease = leaseOp(held, { applied: JSON.stringify(applied) });
+      const ops = [...(await rowsFor([...changes.values()])), lease.op];
+      if (!adapter.fits(ops)) continue;
+      for (const { table: name, row } of batch)
+        known.set(idOf(name, row.id), row);
+      return (await commit(ops)) ? lease.next : undefined;
     }
-    const [first] = logs;
-    const entries = [...first!.changes.values()];
+    const [{ table: name, row, changes }] = logs as [LogRow];
+    const entries = [...changes.values()];
     for (let take = entries.length - 1; take > 0; take = Math.floor(take / 2)) {
-      const kept = logOp(first!, entries.slice(take));
-      const ops = await withChanges(entries.slice(0, take), [kept]);
-      if (adapter.fits(ops)) return commit(ops);
+      const kept: WriteOp = {
+        type: "patch",
+        table: table(name),
+        key: [String(row.id)],
+        set: { changes: await encode(entries.slice(take)) },
+        guard: { v: Number(row[DATABASE_VERSION_COLUMN]) },
+        previous: row,
+      };
+      const lease = leaseOp(held, {});
+      const ops = [...(await rowsFor(entries.slice(0, take))), kept, lease.op];
+      if (adapter.fits(ops)) {
+        return (await commit(ops)) ? lease.next : undefined;
+      }
     }
     throw new DatabaseTransactionError(
-      `${first!.table}: one aggregate change does not fit in one write.`,
+      `${name}: one aggregate change does not fit in one write.`,
     );
   };
 
-  /** Compacts up to `chunks` atomic writes; the next is due at once when some are left. */
-  const run = async (force: boolean, chunks: number) => {
-    if (!(await takeLease(force))) return;
+  /**
+   * Applies up to `groups` groups under the lease, deleting each group's log
+   * rows before the next; the next compaction is due at once when some are
+   * left. The lease release clears the applied list once its rows are gone.
+   */
+  const run = async (force: boolean, groups: number) => {
+    let held = await takeLease(force);
+    if (held === undefined) return;
     let pending = true;
+    let clear = false;
     try {
-      for (let chunk = 0; chunk < chunks; chunk += 1) {
+      for (let group = 0; ; group += 1) {
+        clear = await deleteApplied(held);
+        if (!clear || group === groups) break;
         const logs = await readLogs();
         if (logs.length === 0) {
           pending = false;
           break;
         }
-        if (!(await compactChunk(logs))) break;
+        const next = await applyGroup(held, logs);
+        if (next === undefined) break;
+        [held, clear] = [next, false];
       }
     } finally {
       nextDue = now() + (pending ? 0 : windowMs);
-      await releaseLease(nextDue);
+      const set = {
+        until: 0,
+        next: nextDue,
+        ...(clear ? { applied: "[]" } : {}),
+      };
+      await commit([leaseOp(held, set).op]);
+      known.clear();
     }
   };
 
   /** One compaction at a time in this process; never rejects. */
-  const compact = (force: boolean, chunks: number): Promise<void> =>
-    (compacting ??= run(force, chunks)
+  const compact = (force: boolean, groups: number): Promise<void> =>
+    (compacting ??= run(force, groups)
       .catch(warn("compaction"))
       .finally(() => {
         compacting = undefined;
       }));
 
-  const hasPending = async () =>
-    (
-      await Promise.all(
-        LOG_TABLES.map((name) =>
-          engine.reads.findMany(name, { index: "oldest", limit: 1 }),
-        ),
-      )
-    ).some((page) => page.rows.length > 0);
+  let checking: Promise<boolean> | undefined;
+  /** Whether any log row waits; reads at once share one check. */
+  const hasPending = () =>
+    (checking ??= Promise.all(
+      LOG_TABLES.map((name) =>
+        engine.reads.findMany(name, { index: "oldest", limit: 1 }),
+      ),
+    )
+      .then((pages) => pages.some((page) => page.rows.length > 0))
+      .finally(() => {
+        checking = undefined;
+      }));
 
   /** Takes a committed transaction's changes; never rejects, since the transaction already committed. */
   const committed = async (changes: Changes) => {
     if (mode === "log") {
-      if (now() >= nextDue) await compact(false, CHUNKS.commit);
+      if (now() >= nextDue) await compact(false, GROUPS.commit);
       return;
     }
     mergeAll(buffer, changes.values());
@@ -573,7 +674,7 @@ export const createAggregateBatches = ({
   const flush = async () => {
     await flushBuffer();
     if (mode === "log" && (await hasPending())) {
-      await compact(true, CHUNKS.flush);
+      await compact(true, GROUPS.flush);
     }
   };
 
@@ -615,7 +716,7 @@ export const createAggregateBatches = ({
             const merged = mergeAll(new Map(), attempt.values());
             tx.create(LOG_TABLES[shard]!, {
               id,
-              changes: encode(merged.values()),
+              changes: await encode(merged.values()),
             });
           }
           return value;
@@ -636,7 +737,7 @@ export const createAggregateBatches = ({
           warn("read")(error);
           return false;
         });
-        if (pending) await compact(true, CHUNKS.read);
+        if (pending) await compact(true, GROUPS.read);
       }
     },
 
