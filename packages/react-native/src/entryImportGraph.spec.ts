@@ -55,11 +55,32 @@ describe("@hot-updater/react-native root entry", () => {
     expect(graph.filter((file) => file.startsWith("plugins/"))).toEqual([]);
   });
 
+  it("bundles no test helper", () => {
+    expect(graph).not.toContain("testing.ts");
+  });
+
   it("sends no Insights request", () => {
     const insightsCode = graph.filter((file) => {
       const source = readFileSync(join(sourceRoot, file), "utf8");
       return /["'`/]events["'`]/.test(source);
     });
     expect(insightsCode).toEqual([]);
+  });
+});
+
+describe("@hot-updater/react-native/testing entry", () => {
+  const graph = [...collectGraph(join(sourceRoot, "testing.ts"))].map((file) =>
+    relative(sourceRoot, file),
+  );
+
+  it("runs the SDK's plugin host without React Native or the native module", () => {
+    expect(graph).toContain("createPluginHost.ts");
+    expect(graph).not.toContain("native.ts");
+    const reactNativeImports = graph.filter((file) =>
+      /\bfrom\s*["']react-native["']/.test(
+        readFileSync(join(sourceRoot, file), "utf8"),
+      ),
+    );
+    expect(reactNativeImports).toEqual([]);
   });
 });

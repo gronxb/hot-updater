@@ -1,0 +1,8 @@
+{
+  "name": "@hot-updater/react-native/testing",
+  "private": true,
+  "source": "../src/testing.ts",
+  "main": "../lib/commonjs/testing.js",
+  "module": "../lib/module/testing.js",
+  "types": "../lib/typescript/commonjs/testing.d.ts"
+}

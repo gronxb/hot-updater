@@ -4,86 +4,69 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type {
   AppReadyResult,
   BundleDownloadedInfo,
-  HotUpdaterClientHooks,
-  UpdateCheckResult,
   UpdateError,
 } from "../../clientPlugin";
-import type { InsightsOptions, InsightsUser } from "./index";
+import {
+  type ClientPluginTestRequest,
+  type ClientPluginTestStorage,
+  createTestStorage,
+  setupClientPlugin,
+} from "../../testing";
+import { insights, type InsightsOptions, type InsightsUser } from "./index";
 import type { InsightsEventBody } from "./sender";
-
-vi.mock("react-native", () => ({
-  Platform: { OS: "ios" },
-}));
-
-const native = vi.hoisted(() => {
-  Reflect.set(globalThis, "HotUpdater", { SDK_VERSION: "test-sdk-version" });
-  const storage = new Map<string, string>();
-  return {
-    storage,
-    getAppVersion: vi.fn<() => string | null>(() => "1.0.0"),
-    getBundleId: vi.fn(() => "bundle-a"),
-    getChannel: vi.fn(() => "production"),
-    getCohort: vi.fn(() => "123"),
-    getFingerprintHash: vi.fn<() => string | null>(() => "fingerprint-hash"),
-    getInstallId: vi.fn(() => "install-id"),
-    getStorageItem: vi.fn((key: string) => storage.get(key) ?? null),
-    setStorageItem: vi.fn((key: string, value: string | null) => {
-      if (value === null) storage.delete(key);
-      else storage.set(key, value);
-    }),
-  };
-});
-
-vi.mock("../../native", () => native);
 
 const DAY_MS = 86_400_000;
 const MORNING = Date.UTC(2026, 8, 30, 9);
 
+/** The device a test's launches share, and what the server received. */
+let storage: ClientPluginTestStorage;
+let sent: ClientPluginTestRequest[] = [];
 let responses: (number | (() => Response))[] = [];
-const fetchMock = vi.fn(async (_url: string, _init?: RequestInit) => {
-  const next = responses.shift() ?? 204;
-  return typeof next === "number"
-    ? new Response(null, { status: next })
-    : next();
-});
+let appVersion: string | null = "1.0.0";
+let installId: () => string = () => "install-id";
+let isDebugBuild = false;
+
 const sentEvents = () =>
-  fetchMock.mock.calls.map(
-    ([, init]) => JSON.parse(String(init?.body)) as InsightsEventBody,
-  );
+  sent.map((request) => request.json<InsightsEventBody>());
 const sentTypes = () => sentEvents().map(({ type }) => type);
 
 /** A server without Insights mounts no `/events`. */
 const disabledResponse = () => new Response(null, { status: 404 });
 
-/** Starts a JavaScript runtime with the plugin; native storage persists across launches. */
+/** Starts a JavaScript runtime with the plugin on the test's device. */
 const launch = async (
   options: InsightsOptions = {},
-  beforeInit?: (
-    plugin: ReturnType<(typeof import("./index"))["insights"]>,
-  ) => void,
+  beforeInit?: (plugin: ReturnType<typeof insights>) => void,
 ) => {
-  vi.resetModules();
-  const [{ configurePlugins, emitPluginHook }, { insights }] =
-    await Promise.all([import("../../pluginHost"), import("./index")]);
   const plugin = insights(options);
   beforeInit?.(plugin);
-  configurePlugins([plugin], {
+  const runtime = setupClientPlugin(plugin, {
     baseURL: "https://updates.example.com/hot-updater",
     requestHeaders: { "x-api-key": "client-key" },
+    respond: (request) => {
+      sent.push(request);
+      const next = responses.shift() ?? 204;
+      return typeof next === "number"
+        ? new Response(null, { status: next })
+        : next();
+    },
+    storage,
+    installId,
+    appVersion,
+    sdkVersion: "test-sdk-version",
+    isDebugBuild,
+    bundleId: "bundle-a",
+    channel: "production",
+    cohort: "123",
+    fingerprintHash: "fingerprint-hash",
   });
-  const emit = <K extends keyof HotUpdaterClientHooks>(
-    name: K,
-    payload: Parameters<NonNullable<HotUpdaterClientHooks[K]>>[0],
-  ) => {
-    emitPluginHook(name, () => payload);
-  };
   return {
     plugin,
-    appReady: (result: AppReadyResult) => emit("onAppReady", result),
-    updateCheck: (result: UpdateCheckResult) => emit("onUpdateCheck", result),
-    downloaded: (info: BundleDownloadedInfo) =>
-      emit("onBundleDownloaded", info),
-    updateError: (error: UpdateError) => emit("onUpdateError", error),
+    runtime,
+    appReady: runtime.hooks.onAppReady,
+    updateCheck: runtime.hooks.onUpdateCheck,
+    downloaded: runtime.hooks.onBundleDownloaded,
+    updateError: runtime.hooks.onUpdateError,
   };
 };
 
@@ -144,17 +127,16 @@ describe("insights() client plugin", () => {
   beforeEach(() => {
     vi.useFakeTimers({ now: MORNING });
     vi.spyOn(Math, "random").mockReturnValue(0.5);
-    vi.stubGlobal("fetch", fetchMock);
-    vi.stubGlobal("__DEV__", false);
-    fetchMock.mockClear();
+    storage = createTestStorage();
+    sent = [];
     responses = [];
-    native.storage.clear();
-    native.getAppVersion.mockReturnValue("1.0.0");
+    appVersion = "1.0.0";
+    installId = () => "install-id";
+    isDebugBuild = false;
   });
 
   afterEach(() => {
     vi.useRealTimers();
-    vi.unstubAllGlobals();
     vi.restoreAllMocks();
   });
 
@@ -164,10 +146,11 @@ describe("insights() client plugin", () => {
     app.appReady(unchangedLaunch());
     await flush();
 
-    expect(fetchMock).toHaveBeenCalledOnce();
-    const [url, init] = fetchMock.mock.calls[0]!;
-    expect(url).toBe("https://updates.example.com/hot-updater/events");
-    expect(new Headers(init?.headers).get("x-api-key")).toBe("client-key");
+    expect(sent).toHaveLength(1);
+    expect(sent[0]).toMatchObject({
+      url: "https://updates.example.com/hot-updater/events",
+      headers: { "x-api-key": "client-key" },
+    });
     const [event] = sentEvents();
     expect(isUUIDv7(event?.eventId)).toBe(true);
     expect(event).toEqual({
@@ -196,7 +179,7 @@ describe("insights() client plugin", () => {
       vi.setSystemTime(Date.UTC(2026, 8, 30, 23, 59));
       (await launch()).appReady(unchangedLaunch());
       await flush();
-      expect(fetchMock).toHaveBeenCalledOnce();
+      expect(sent).toHaveLength(1);
 
       vi.setSystemTime(Date.UTC(2026, 9, 1, 0, 1));
       (await launch()).appReady(unchangedLaunch());
@@ -225,7 +208,7 @@ describe("insights() client plugin", () => {
       (await launch()).appReady(unchangedLaunch());
       await flush();
 
-      native.getAppVersion.mockReturnValue("1.0.1");
+      appVersion = "1.0.1";
       (await launch()).appReady(unchangedLaunch());
       await flush();
 
@@ -395,7 +378,7 @@ describe("insights() client plugin", () => {
       vi.setSystemTime(MORNING + DAY_MS - 1);
       (await launch()).appReady(appliedLaunch);
       await flush();
-      expect(fetchMock).toHaveBeenCalledOnce();
+      expect(sent).toHaveLength(1);
 
       vi.setSystemTime(MORNING + DAY_MS);
       (await launch()).appReady(appliedLaunch);
@@ -413,10 +396,7 @@ describe("insights() client plugin", () => {
     });
 
     it("ends a pause that starts after now, from a clock that went back", async () => {
-      native.storage.set(
-        "plugins/insights/pausedAt",
-        String(MORNING + 60 * 60 * 1000),
-      );
+      storage.set("insights", "pausedAt", String(MORNING + 60 * 60 * 1000));
 
       (await launch()).appReady(unchangedLaunch());
       await flush();
@@ -435,7 +415,7 @@ describe("insights() client plugin", () => {
       (await launch()).updateError(downloadFailure());
       await flush();
 
-      expect(fetchMock).toHaveBeenCalledOnce();
+      expect(sent).toHaveLength(1);
       const [event] = sentEvents();
       expect(event).toMatchObject({
         fromBundleId: "bundle-a",
@@ -689,42 +669,48 @@ describe("insights() client plugin", () => {
   ])(
     "sends from a debug build only with debug: true ($debug)",
     async ({ debug, sends }) => {
-      vi.stubGlobal("__DEV__", true);
+      isDebugBuild = true;
       const app = await launch(debug === undefined ? {} : { debug });
 
       app.appReady(unchangedLaunch());
       await flush();
 
-      expect(fetchMock).toHaveBeenCalledTimes(sends ? 1 : 0);
+      expect(sent).toHaveLength(sends ? 1 : 0);
     },
   );
 
   it("reports a failed install id read as a plugin error, not an update failure", async () => {
-    native.getInstallId.mockImplementationOnce(() => {
+    installId = () => {
       throw new Error("native install id unavailable");
-    });
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    };
     const app = await launch();
 
     app.appReady(unchangedLaunch());
     await flush();
 
-    expect(fetchMock).not.toHaveBeenCalled();
-    expect(warn).toHaveBeenCalledWith(
-      '[HotUpdater] Plugin "insights" failed in onAppReady',
-      expect.objectContaining({ message: "native install id unavailable" }),
-    );
+    expect(sent).toEqual([]);
+    expect(
+      app.runtime.errors.map((error) => [
+        error.message,
+        (error.cause as Error).message,
+      ]),
+    ).toEqual([
+      [
+        '[HotUpdater] Plugin "insights" failed in onAppReady',
+        "native install id unavailable",
+      ],
+    ]);
   });
 
   it("skips a report without a native app version", async () => {
-    native.getAppVersion.mockReturnValue(null);
+    appVersion = null;
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const app = await launch();
 
     app.appReady(unchangedLaunch());
     await flush();
 
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(sent).toEqual([]);
     expect(warn).toHaveBeenCalledWith(
       "[HotUpdater] Insights needs the native app version; the UNCHANGED event was not sent.",
     );

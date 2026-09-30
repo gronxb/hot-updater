@@ -29,12 +29,24 @@
         "default": "./lib/commonjs/plugins/insights/index.js"
       }
     },
+    "./testing": {
+      "source": "./src/testing.ts",
+      "import": {
+        "types": "./lib/typescript/module/testing.d.ts",
+        "default": "./lib/module/testing.js"
+      },
+      "require": {
+        "types": "./lib/typescript/commonjs/testing.d.ts",
+        "default": "./lib/commonjs/testing.js"
+      }
+    },
     "./package.json": "./package.json"
   },
   "files": [
     "src",
     "lib",
     "plugins",
+    "testing",
     "android",
     "ios",
     "cpp",
