@@ -2,10 +2,12 @@ import fs from "fs/promises";
 import os from "os";
 import path from "path";
 
+import { InitError } from "@hot-updater/cli-tools";
 import { definePlugin, defineTable } from "@hot-updater/server/plugins";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { plugins } from "../src/plugins";
+import { resolveEdgeFunctionDenoConfig } from "./index";
 import {
   stageEdgeFunctionFromDefinition,
   writePluginMigration,
@@ -115,6 +117,7 @@ describe("the managed Edge Function from a project's server definition", () => {
       functionDir,
       functionName: "hot-updater-v1",
       packageRoot,
+      projectRoot: project,
     });
 
     // The entry loads the bundle; the file that built it is gone.
@@ -129,8 +132,14 @@ describe("the managed Edge Function from a project's server definition", () => {
       path.join(functionDir, "hotUpdater.mjs"),
       "utf-8",
     );
-    // The definition reads process.env, which the Edge Runtime may lack.
-    expect(code.startsWith("const process = globalThis.process")).toBe(true);
+    // A CommonJS dependency can require a built-in, and the definition can
+    // read process.env, which the Edge Runtime may lack.
+    expect(
+      code.startsWith(
+        'import { createRequire as __hotUpdaterCreateRequire } from "node:module";',
+      ),
+    ).toBe(true);
+    expect(code).toContain("globalThis.process ??= { env: {} };");
     expect(code).toContain("sample notes plugin");
     // What init set up is in the code; the function's name is its base path.
     expect(code).toContain('"bundles"');
@@ -138,7 +147,85 @@ describe("the managed Edge Function from a project's server definition", () => {
     expect(code).not.toContain("HotUpdater.BUCKET_NAME");
     // The function's import map vendors the server it runs on.
     expect(code).toMatch(/from "@hot-updater\/server"/u);
+    expect(code).toMatch(/from "@hot-updater\/server\/plugins"/u);
     expect(code).toMatch(/from "@supabase\/supabase-js"/u);
+    // None of the machine's paths are deployed.
+    expect(code).not.toContain(project);
+    expect(code).not.toContain(await fs.realpath(project));
+    expect(code).not.toContain(os.homedir());
+
+    // The import map vendors what the bundle leaves to the function's
+    // server, such as the plugin API the project's plugin is written with,
+    // from the packages the function's server depends on.
+    const { imports } = await resolveEdgeFunctionDenoConfig(functionDir);
+    expect(imports["@hot-updater/server/plugins"]).toMatch(
+      /^\.\/.*server.*plugins.*\.m?js$/u,
+    );
+    await expect(
+      fs.access(
+        path.join(functionDir, imports["@hot-updater/server/plugins"]!),
+      ),
+    ).resolves.toBeUndefined();
+  });
+
+  it("offers the definition every export of @hot-updater/supabase", async () => {
+    const names = Object.keys(await import("@hot-updater/supabase")).sort();
+    const definition = path.join(project, "hotUpdater.ts");
+    await fs.writeFile(
+      definition,
+      `import { ${names.join(", ")} } from "@hot-updater/supabase";
+import { createHotUpdater } from "@hot-updater/server";
+
+export const imported = [${names.join(", ")}];
+export default createHotUpdater({
+  database: supabaseDatabase({ supabaseUrl: "the CLI's" }),
+  storage: [supabaseStorage({ supabaseUrl: "the CLI's", bucketName: "the CLI's" })],
+  plugins,
+});
+`,
+    );
+    const functionDir = path.join(project, "supabase", "functions", "fn");
+    await fs.mkdir(functionDir, { recursive: true });
+
+    await stageEdgeFunctionFromDefinition({
+      bucketName: "bundles",
+      definition,
+      functionDir,
+      functionName: "hot-updater-v1",
+      packageRoot,
+      projectRoot: project,
+    });
+
+    expect(names).toEqual(
+      expect.arrayContaining([
+        "plugins",
+        "supabaseDatabase",
+        "supabaseStorage",
+      ]),
+    );
+  });
+
+  it("names the definition when it cannot be bundled", async () => {
+    const definition = path.join(project, "hotUpdater.ts");
+    await fs.writeFile(
+      definition,
+      `import { notes } from "@acme/missing-plugin";\nexport const hotUpdater = notes;\n`,
+    );
+    const functionDir = path.join(project, "supabase", "functions", "fn");
+    await fs.mkdir(functionDir, { recursive: true });
+
+    const failure = stageEdgeFunctionFromDefinition({
+      bucketName: "bundles",
+      definition,
+      functionDir,
+      functionName: "hot-updater-v1",
+      packageRoot,
+      projectRoot: project,
+    });
+    await expect(failure).rejects.toBeInstanceOf(InitError);
+    await expect(failure).rejects.toThrow(
+      /^Could not bundle hotUpdater\.ts into the Supabase Edge Function: .*Could not resolve "@acme\/missing-plugin"/su,
+    );
   });
 
   it("migrates the plugins' tables and settings rows after the package's migration", async () => {

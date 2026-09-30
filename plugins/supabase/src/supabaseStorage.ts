@@ -1,9 +1,10 @@
 import {
-  createStorageKeyBuilder,
   createStorageAdapter,
+  createStorageKeyBuilder,
   createStorageUri,
   parseStorageUri,
   type StorageAdapterWith,
+  withAdapterResource,
 } from "@hot-updater/plugin-core";
 import { createClient } from "@supabase/supabase-js";
 
@@ -70,7 +71,7 @@ export const supabaseStorage = (
     return parsed;
   };
 
-  return createStorageAdapter({
+  const adapter = createStorageAdapter({
     name: "supabaseStorage",
     protocol: "supabase-storage",
     async put({ key, body, contentLength, contentType }) {
@@ -123,5 +124,9 @@ export const supabaseStorage = (
       }
       return { deleted: true };
     },
+  });
+  return withAdapterResource(adapter, {
+    supabaseUrl: config.supabaseUrl?.replace(/\/+$/u, ""),
+    bucketName: config.bucketName,
   });
 };

@@ -39,6 +39,7 @@ export const stageEdgeFunctionFromDefinition = async ({
   functionDir,
   functionName,
   packageRoot,
+  projectRoot = process.cwd(),
 }: {
   bucketName: string;
   /** The server definition's absolute path. */
@@ -46,6 +47,8 @@ export const stageEdgeFunctionFromDefinition = async ({
   functionDir: string;
   functionName: string;
   packageRoot: string;
+  /** The project's directory, which the bundle's paths are relative to. */
+  projectRoot?: string;
 }) => {
   const runtime = path.join(packageRoot, "dist", "managed.mjs");
   const entry = path.join(functionDir, "managed.ts");
@@ -53,15 +56,18 @@ export const stageEdgeFunctionFromDefinition = async ({
     entry,
     [
       `import { serveManagedEdgeFunction } from ${JSON.stringify(runtime)};`,
-      `import { hotUpdater } from ${JSON.stringify(definition)};`,
+      `import * as definition from ${JSON.stringify(definition)};`,
       "",
-      "serveManagedEdgeFunction(hotUpdater);",
+      // The export the CLI reads: `hotUpdater`, or the default export.
+      "serveManagedEdgeFunction(definition.hotUpdater ?? definition.default);",
       "",
     ].join("\n"),
   );
   try {
     await bundleServer({
       input: entry,
+      definition,
+      projectRoot,
       outfile: path.join(functionDir, DEFINITION_MODULE),
       format: "esm",
       platform: "neutral",
@@ -73,7 +79,8 @@ export const stageEdgeFunctionFromDefinition = async ({
         "HotUpdater.FUNCTION_NAME": JSON.stringify(functionName),
       },
       // The definition reads process.env, which the Edge Runtime may lack.
-      banner: "const process = globalThis.process ?? { env: {} };",
+      // A global, since a bundled module may import `process` itself.
+      banner: "globalThis.process ??= { env: {} };",
       target: "the Supabase Edge Function",
     });
   } finally {

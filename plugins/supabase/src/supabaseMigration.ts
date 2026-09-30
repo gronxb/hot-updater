@@ -1,3 +1,4 @@
+import { withAdapterResource } from "@hot-updater/plugin-core";
 import { coreSettings, coreTarget } from "@hot-updater/server/database";
 import type {
   SchemaGenerator,
@@ -33,12 +34,16 @@ export const supabaseMigration = (target: ToolingTarget = coreTarget) => {
  */
 export const supabaseDatabase = (
   config: SupabaseDatabaseConfig,
-): ToolingDatabase => ({
-  ...engineDatabase(config),
-  generateSchema: ((version, _name, target = coreTarget) => {
-    if (version !== "latest" && version !== coreSettings["schema.core"]) {
-      throw new Error(`Invalid version ${version}`);
-    }
-    return supabaseMigration(target);
-  }) satisfies SchemaGenerator,
-});
+): ToolingDatabase =>
+  withAdapterResource(
+    {
+      ...engineDatabase(config),
+      generateSchema: ((version, _name, target = coreTarget) => {
+        if (version !== "latest" && version !== coreSettings["schema.core"]) {
+          throw new Error(`Invalid version ${version}`);
+        }
+        return supabaseMigration(target);
+      }) satisfies SchemaGenerator,
+    },
+    { supabaseUrl: config.supabaseUrl?.replace(/\/+$/u, "") },
+  );
