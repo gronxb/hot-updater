@@ -1,5 +1,20 @@
 # @hot-updater/test-utils
 
+## 1.0.0-rc.17
+
+### Minor Changes
+
+- 9cd555b: `setupDatabaseTestSuite` runs core's suites only; server plugins' suites run when a provider lists them in `plugins`. The Insights suites moved to the Insights plugin: pass `insightsTestSuite({ createModel })` from `@hot-updater/server/plugins/insights/testing`, which also exports `setupInsightsModelTestSuite` and `createBundleEventRowFixture`, and serve `insights()` from `createHttpClient`. `createInsightsModel` is no longer an option of `setupDatabaseTestSuite`, and `@hot-updater/test-utils` no longer exports the Insights suites.
+
+### Patch Changes
+
+- e696e69: Add `setupAggregateBatchingTestSuite`, which runs batched aggregates on a key-value store. It checks that reads return what transactional writes return in log and memory mode, that two servers compacting one log under 16 concurrent writers apply each log row once, and that a log row too large for one write is applied in parts.
+- 530cca5: Tables and aggregates can expire their rows, with no scheduler. `defineTable` and `defineAggregate` take `retention: { field, days }`, where `field` is an integer field of epoch milliseconds and a row expires `days` after it; a model with retention takes part in no reference or rooted index. The days are a runtime value, so a plugin may take them as an option: the tables and indexes are the same for any period. DynamoDB and Firestore delete expired rows with their native TTL: the key-value helper stamps each row's items and index copies with their expiry, kept as `_ttl` and `expireAt`. MongoDB stamps `_expireAt`, a Date, under a TTL index. On PostgreSQL, MySQL, SQLite, D1, and Supabase, the adapter implements the optional `DatabaseAdapter.prune(table, before, limit)` over an index that leads with the field, which `hot-updater db generate` and `db migrate` create when the table has none, and the server prunes during writes: the write that takes the lease row in the settings table first deletes up to 500 expired rows a table, and other servers skip. The next pass is due in an hour, or in a minute while a pass still found a full batch. The adapter conformance suite takes `retention: "prune"` or `"ttl"` and checks either, and the read-budget suite expects recording an Insights event to read its 7 rows in 4 batch gets.
+- 1ddd5fc: The read-budget and Insights model suites expect latest-event counts over whole UTC days, usage sketches per platform, and no stored `UNCHANGED` events.
+- 9a6715f: The read-budget suite types the Insights reads it measures with its own copies of the Insights plugin's types, since `@hot-updater/plugin-core` no longer exports them.
+- a084eda: `setupReadBudgetTestSuite` creates the tables of core and of the `plugins` it measures, through its `server`'s `toolingTargetOf`, the one from `@hot-updater/server/database`. `createPluginTestHarness` keeps the table names of a plugin with `namespace: false`.
+- b317d49: The Insights suites in `@hot-updater/server/plugins/insights/testing` check update failures. The model suite checks that an update failure is listed in event lists and installation history without moving the latest report, and that a failed check is in no bundle list. The HTTP routes suite records a failure and reads it through `GET /failures`, and `createBundleEventRowFixture` no longer carries `username`. The read-budget suite in `@hot-updater/test-utils` reads a release's and a channel's update failures, over a period and since the release's first report, and its local Insights types follow the new event row.
+
 ## 1.0.0-rc.16
 
 ### Minor Changes

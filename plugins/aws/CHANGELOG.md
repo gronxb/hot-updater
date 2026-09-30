@@ -1,5 +1,50 @@
 # @hot-updater/aws
 
+## 1.0.0-rc.18
+
+### Minor Changes
+
+- 9cd555b: The plugin that provides `clientAuth` describes the credential an app sends in `cli.clientCredential`: its label, header, environment variable, and how to generate and provision it. `@hot-updater/server/db` exports `clientAuthOf`, `generateClientCredential`, and `provisionClientCredential`, which read it from a plugin list.
+
+  Managed init provisions the app's credential through the provider's plugins and prints `HotUpdater.init` with that credential's header, or with no `requestHeaders` when client routes are public; `@hot-updater/cli-tools` exports `renderAppSetup` and `printAppSetup` for it. AWS CloudFront cache and origin-request policies key on the client-route policy's `varyHeaders` instead of a fixed `x-api-key`.
+
+  Agent and infrastructure scaffolds record the server's `clientAuth` in `manifest.json` and render their instructions from it. The helper is `app/provision-client-credential.mjs` with `app/database.config.ts`, and it saves `app/client-credential.local`. `hot-updater doctor` reads the credential's header and variable from the scaffold, and skips the 401 check when client routes are public.
+
+- 9cd555b: A server plugin names the client plugin an app adds to `HotUpdater.init`'s `plugins` in `cli.clientPlugin`, as `{ module, name }`; `insights()` names `insights` from `@hot-updater/react-native/plugins/insights`. `createHotUpdater` checks them at startup: each names an export the app can import, not a reserved word, `App`, or `HotUpdater`, and no two plugins name one export from different modules. `@hot-updater/server/db` exports `clientPluginsOf`, which reads them from a plugin list. Managed init passes them to `printAppSetup`, which imports them and adds them to `plugins`, and agent scaffolds record them in `manifest.json` and render the app code in their instructions from them.
+
+### Patch Changes
+
+- e696e69: `dynamoDB()` batches Insights' totals by default. An event writes its own items plus one compressed log item, under the partitions `aggregate_log_0` to `aggregate_log_7`, instead of every total it changes. A compaction merges pending log items into the totals every minute and deletes them with `BatchWriteItem`, under the lock item `aggregate_lease`. Set `aggregateBatching: { mode: "memory" }` on a long-lived server, or `false` to write totals in each event's transaction. The IAM policy changed to allow `BatchWriteItem` and the new partitions: rerun `hot-updater init`, and recreate release candidate data if needed. Without `BatchWriteItem`, log items are deleted through `TransactWriteItems` instead.
+- e696e69: The 1.0.0 infrastructure upgrade notes that `hot-updater infra scaffold` writes, and the AWS agent setup, list the DynamoDB policy's batched Insights log partitions, `aggregate_log_0` to `aggregate_log_7` and `aggregate_lease`, and its `BatchWriteItem` permission. The IAM policy changed: rerun `hot-updater init`, and recreate release candidate data if needed. The notes' Insights check reads overview summaries through the Console or the admin API on DynamoDB and Firestore, since a read applies pending batches first.
+- d7f1688: The `HotUpdater.init` snippet that managed `init` prints now adds the Insights client plugin, `plugins: [insights()]` from `@hot-updater/react-native/plugins/insights`, since an app reports to Insights only with it. The CLI's agent setup instructions add the same plugin.
+- a084eda: Each provider's schema follows the plugins its server runs.
+  - **PostgreSQL:** `sql/bundles.sql` holds core's tables and settings rows. Add the tables and settings rows of the server's plugins, such as `insights()`, with `hot-updater db migrate`.
+  - **DynamoDB:** `migrateDynamoDB(config, plugins)` creates the table when it is missing and writes the settings items of core and `plugins`. `hot-updater init` and `dynamodb/schema-settings.json` from `hot-updater infra scaffold` use the managed server's `plugins`, as its IAM policy does.
+  - **Firestore:** `migrateFirebaseDatabase(config, plugins)` writes the settings rows of core and `plugins`. `hot-updater init` passes the managed server's `plugins`.
+  - **D1 and Supabase:** the checked-in migrations hold the tables of core and of the managed server's plugins, Insights and API keys. `hot-updater db generate` for a server on the REST `d1Database` or on `supabaseDatabase` writes core's tables and those of the plugins it runs.
+
+- 530cca5: Each provider deletes rows past their table's retention with no scheduler. DynamoDB deletes items by Time to Live on `_ttl`: `migrateDynamoDB`, `hot-updater db migrate`, and the managed AWS setup turn it on, and `hot-updater infra scaffold` writes `dynamodb/enable-ttl.json`. Firestore deletes documents by a TTL policy on `expireAt`, declared in `firestore.indexes.json`. Cloudflare D1 and Supabase delete them during writes, in bounded batches, within D1's query limit for one Worker invocation and through Supabase's apply RPC. The D1 and Supabase schemas add the Insights daily and lifetime tables and the indexes pruning walks. A deployment from a 1.0.0 release candidate recreates its database and updates the server, app, and console together.
+- b317d49: The PostgreSQL, D1, and Supabase schemas add the Insights update failure counters and sketches, and the `insights_sketches_lifetime` and `insights_failures` tables, under the plugin's schema `1.2.0`, and drop `bundle_event_heads.current_release_id`. The DynamoDB IAM policy covers the two new partitions: rerun `hot-updater init`. A deployment from a 1.0.0 release candidate recreates its database.
+- Updated dependencies [e696e69]
+- Updated dependencies [e696e69]
+- Updated dependencies [9574287]
+- Updated dependencies [9cd555b]
+- Updated dependencies [9cd555b]
+- Updated dependencies [9cd555b]
+- Updated dependencies [1ddd5fc]
+- Updated dependencies [9cd555b]
+- Updated dependencies [530cca5]
+- Updated dependencies [b317d49]
+- Updated dependencies [9cd555b]
+- Updated dependencies [9a6715f]
+- Updated dependencies [9a6715f]
+- Updated dependencies [a084eda]
+- Updated dependencies [530cca5]
+- Updated dependencies [b317d49]
+  - @hot-updater/plugin-core@1.0.0-rc.17
+  - @hot-updater/server@1.0.0-rc.18
+  - @hot-updater/cli-tools@1.0.0-rc.17
+
 ## 1.0.0-rc.17
 
 ### Patch Changes
