@@ -1525,6 +1525,171 @@ struct BundleFileStorageServiceTests {
         #expect(downloads.requestedURLs.contains(localURL) == false)
     }
 
+    @Test(arguments: ["manifest", "file"])
+    func retriesATransientDownloadFailure(resource: String) throws {
+        let root = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(root) }
+        let bytes = Data("target hermes".utf8)
+        let hash = try #require(sha256(bytes, in: root))
+        let manifest = try makeManifestData(bundleId: "target", assets: ["index.ios.bundle": hash])
+        let manifestURL = URL(string: "https://example.com/manifest.json")!
+        let fileURL = URL(string: "https://example.com/index.ios.bundle")!
+        let flakyURL = resource == "manifest" ? manifestURL : fileURL
+        let downloads = MappingDownloadService(
+            contents: [manifestURL: manifest, fileURL: bytes],
+            transientFailures: [flakyURL: [DownloadError.httpStatus(503)]]
+        )
+        let service = makeStorageService(documentsDirectory: root, downloadService: downloads,
+            builtInAssetResolver: MappingBuiltInAssetResolver(contents: [:]))
+
+        let result = updateBundle(service, bundleId: "target", manifestURL: manifestURL,
+            manifestHash: try #require(sha256(manifest, in: root)),
+            assets: ["index.ios.bundle": ChangedAssetDescriptor(fileUrl: fileURL, fileHash: hash)])
+
+        #expect(result.failureError == nil)
+        #expect(downloads.requestedURLs.filter { $0 == flakyURL }.count == 2)
+    }
+
+    @Test
+    func triesA404Once() throws {
+        let root = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(root) }
+        let bytes = Data("target hermes".utf8)
+        let hash = try #require(sha256(bytes, in: root))
+        let manifest = try makeManifestData(bundleId: "target", assets: ["index.ios.bundle": hash])
+        let manifestURL = URL(string: "https://example.com/manifest.json")!
+        let fileURL = URL(string: "https://example.com/index.ios.bundle")!
+        let downloads = MappingDownloadService(
+            contents: [manifestURL: manifest, fileURL: bytes],
+            transientFailures: [fileURL: [DownloadError.httpStatus(404, originCode: "NoSuchKey")]]
+        )
+        let service = makeStorageService(documentsDirectory: root, downloadService: downloads,
+            builtInAssetResolver: MappingBuiltInAssetResolver(contents: [:]))
+
+        let result = updateBundle(service, bundleId: "target", manifestURL: manifestURL,
+            manifestHash: try #require(sha256(manifest, in: root)),
+            assets: ["index.ios.bundle": ChangedAssetDescriptor(fileUrl: fileURL, fileHash: hash)])
+
+        #expect(updateFailure(of: result) == UpdateFailure.http(status: 404, originCode: "NoSuchKey").with(resource: .file))
+        #expect(downloads.requestedURLs == [manifestURL, fileURL])
+    }
+
+    @Test
+    func stopsAfterThreeAttemptsWithTheLastFailure() throws {
+        let root = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(root) }
+        let bytes = Data("target hermes".utf8)
+        let hash = try #require(sha256(bytes, in: root))
+        let manifest = try makeManifestData(bundleId: "target", assets: ["index.ios.bundle": hash])
+        let manifestURL = URL(string: "https://example.com/manifest.json")!
+        let fileURL = URL(string: "https://example.com/index.ios.bundle")!
+        let downloads = MappingDownloadService(
+            contents: [manifestURL: manifest, fileURL: bytes],
+            transientFailures: [fileURL: [
+                URLError(.timedOut),
+                DownloadError.httpStatus(429),
+                DownloadError.httpStatus(502, originCode: "SlowDown"),
+            ]]
+        )
+        let service = makeStorageService(documentsDirectory: root, downloadService: downloads,
+            builtInAssetResolver: MappingBuiltInAssetResolver(contents: [:]))
+
+        let result = updateBundle(service, bundleId: "target", manifestURL: manifestURL,
+            manifestHash: try #require(sha256(manifest, in: root)),
+            assets: ["index.ios.bundle": ChangedAssetDescriptor(fileUrl: fileURL, fileHash: hash)])
+
+        #expect(updateFailure(of: result) == UpdateFailure.http(status: 502, originCode: "SlowDown").with(resource: .file))
+        #expect(downloads.requestedURLs.filter { $0 == fileURL }.count == DownloadError.maximumAttempts)
+    }
+
+    @Test
+    func archiveIsTriedOnceBeforeItsFallback() throws {
+        let root = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(root) }
+        let files = [
+            "index.ios.bundle": Data("fallback bundle".utf8),
+            "assets/remote.png": Data("fallback remote".utf8),
+        ]
+        let tar = try makeTar(files: files)
+        let archive = try brotliCompress(tar)
+        let manifest = try makeArchiveManifestData(
+            bundleId: "target",
+            files: files,
+            archiveHash: try #require(sha256(archive, in: root)),
+            archiveByteSize: archive.count,
+            tarByteSize: tar.count,
+            originalDownloadByteSize: 4096
+        )
+        let manifestURL = URL(string: "https://example.com/manifest.json")!
+        let archiveURL = URL(string: "https://example.com/bundle.tar.br")!
+        let bundleURL = URL(string: "https://example.com/index.ios.bundle")!
+        let remoteURL = URL(string: "https://example.com/assets/remote.png")!
+        let downloads = MappingDownloadService(
+            contents: [
+                manifestURL: manifest,
+                archiveURL: archive,
+                bundleURL: files["index.ios.bundle"]!,
+                remoteURL: files["assets/remote.png"]!,
+            ],
+            transientFailures: [archiveURL: [DownloadError.httpStatus(503)]]
+        )
+        let service = makeStorageService(documentsDirectory: root, downloadService: downloads,
+            builtInAssetResolver: MappingBuiltInAssetResolver(contents: [:]))
+
+        let result = updateBundle(service, bundleId: "target", manifestURL: manifestURL,
+            manifestHash: try #require(sha256(manifest, in: root)),
+            archiveURL: archiveURL,
+            assets: [
+                "index.ios.bundle": ChangedAssetDescriptor(
+                    fileUrl: bundleURL,
+                    fileHash: try #require(sha256(files["index.ios.bundle"]!, in: root))
+                ),
+                "assets/remote.png": ChangedAssetDescriptor(
+                    fileUrl: remoteURL,
+                    fileHash: try #require(sha256(files["assets/remote.png"]!, in: root))
+                ),
+            ])
+
+        #expect((try? result.get()) == UpdateDelivery(method: .manifest, patchFallback: false))
+        #expect(downloads.requestedURLs.filter { $0 == archiveURL }.count == 1)
+        #expect(Set(downloads.requestedURLs.dropFirst(2)) == Set([bundleURL, remoteURL]))
+    }
+
+    @Test
+    func onlyTransientDownloadFailuresAreRetryable() {
+        let retryable: [Error] = [
+            DownloadError.httpStatus(408),
+            DownloadError.httpStatus(429),
+            DownloadError.httpStatus(500),
+            DownloadError.httpStatus(503, originCode: "SlowDown"),
+            DownloadError.incompleteDownload(expected: 10, actual: 4),
+            URLError(.timedOut),
+            URLError(.cannotFindHost),
+            URLError(.cannotConnectToHost),
+            URLError(.networkConnectionLost),
+            URLError(.notConnectedToInternet),
+        ]
+        let final: [Error] = [
+            DownloadError.httpStatus(400),
+            DownloadError.httpStatus(403, originCode: "ExpiredToken"),
+            DownloadError.httpStatus(404),
+            DownloadError.invalidContentLength,
+            URLError(.cancelled),
+            URLError(.serverCertificateUntrusted),
+            URLError(.secureConnectionFailed),
+            URLError(.badURL),
+            CocoaError(.fileWriteOutOfSpace),
+            NSError(domain: "HotUpdater", code: 0),
+        ]
+
+        for error in retryable {
+            #expect(DownloadError.isRetryable(error), "\(error) should be retryable")
+        }
+        for error in final {
+            #expect(!DownloadError.isRetryable(error), "\(error) should not be retryable")
+        }
+    }
+
     @Test
     func archivePromotionFailureRestoresPreparedFilesBeforeFallback() throws {
         let root = try makeWorkingDirectory()
@@ -2265,7 +2430,8 @@ private func makeStorageService(
         preferences: preferences,
         isolationKey: testIsolationKey,
         builtInBundleIdProvider: { builtInBundleId },
-        builtInAssetResolver: builtInAssetResolver
+        builtInAssetResolver: builtInAssetResolver,
+        downloadRetryDelay: 0
     )
 }
 
@@ -2521,12 +2687,19 @@ private final class UnusedDownloadService: DownloadService {
 private final class MappingDownloadService: DownloadService {
     private let contents: [URL: Data]
     private let failures: [URL: Error]
+    /// Failures answered once each, in order, before a URL's contents.
+    private var transientFailures: [URL: [Error]]
     private let lock = NSLock()
     private var urls: [URL] = []
 
-    init(contents: [URL: Data], failures: [URL: Error] = [:]) {
+    init(
+        contents: [URL: Data],
+        failures: [URL: Error] = [:],
+        transientFailures: [URL: [Error]] = [:]
+    ) {
         self.contents = contents
         self.failures = failures
+        self.transientFailures = transientFailures
     }
 
     var requestedURLs: [URL] {
@@ -2544,8 +2717,11 @@ private final class MappingDownloadService: DownloadService {
     ) -> URLSessionDownloadTask? {
         lock.lock()
         urls.append(url)
+        let transientFailure = transientFailures[url]?.isEmpty == false
+            ? transientFailures[url]?.removeFirst()
+            : nil
         lock.unlock()
-        if let failure = failures[url] {
+        if let failure = transientFailure ?? failures[url] {
             completion(.failure(failure))
             return nil
         }

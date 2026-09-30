@@ -363,6 +363,8 @@ class BundleFileStorageService: BundleStorageService {
 
     private let fileSystem: FileSystemService
     private let downloadService: DownloadService
+    /// The wait before a download's second attempt; it doubles for each later one.
+    private let downloadRetryDelay: TimeInterval
     private let preferences: PreferencesService
     private let isolationKey: String
 
@@ -738,9 +740,11 @@ class BundleFileStorageService: BundleStorageService {
                     let fingerprintHash = HotUpdaterConfig.shared.fingerprintHash
                         ?? Bundle.main.object(forInfoDictionaryKey: "HOT_UPDATER_FINGERPRINT_HASH") as? String
                     return (fingerprintHash?.isEmpty == false) ? .fingerprint : .appVersion
-                }) {
+                },
+                downloadRetryDelay: TimeInterval = 1) {
 
         self.fileSystem = fileSystem
+        self.downloadRetryDelay = downloadRetryDelay
         self.downloadService = downloadService
         self.preferences = preferences
         self.isolationKey = isolationKey
@@ -1616,7 +1620,42 @@ class BundleFileStorageService: BundleStorageService {
         DispatchQueue.global(qos: .background).async(execute: workItem)
     }
 
+    /**
+     * Downloads `url`, trying again after a retryable failure (see
+     * `DownloadError.isRetryable`) up to `DownloadError.maximumAttempts`
+     * attempts in all, 1 and then 2 seconds apart, unless `retrying` is
+     * false. The last attempt's result is returned, so a failure keeps what
+     * classifies it. Blocks the calling thread.
+     */
     private func downloadFileSynchronously(
+        from url: URL,
+        to destination: String,
+        retrying: Bool = true,
+        progressHandler: @escaping (DownloadProgress) -> Void
+    ) -> Result<URL, Error> {
+        var attempt = 1
+        while true {
+            let result = downloadFileOnce(
+                from: url,
+                to: destination,
+                progressHandler: progressHandler
+            )
+            guard case .failure(let error) = result,
+                  retrying,
+                  attempt < DownloadError.maximumAttempts,
+                  DownloadError.isRetryable(error) else {
+                return result
+            }
+            let delay = downloadRetryDelay * pow(2, Double(attempt - 1))
+            NSLog("[BundleStorage] Download failed (attempt \(attempt)/\(DownloadError.maximumAttempts)): \(error.localizedDescription). Retrying in \(delay)s")
+            if delay > 0 {
+                Thread.sleep(forTimeInterval: delay)
+            }
+            attempt += 1
+        }
+    }
+
+    private func downloadFileOnce(
         from url: URL,
         to destination: String,
         progressHandler: @escaping (DownloadProgress) -> Void
@@ -2233,9 +2272,11 @@ class BundleFileStorageService: BundleStorageService {
             files: progressFiles
         )
 
+        // One attempt: a failed archive falls back to per-file downloads, which retry.
         switch downloadFileSynchronously(
             from: archiveUrl,
             to: compressedPath,
+            retrying: false,
             progressHandler: { progress in
                 self.updateDiffProgressFile(
                     files: &progressFiles,

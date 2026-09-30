@@ -1,6 +1,7 @@
 package com.hotupdater
 
 import android.util.Log
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
@@ -15,10 +16,11 @@ import okio.Source
 import okio.buffer
 import java.io.File
 import java.io.IOException
-import java.net.SocketTimeoutException
+import java.net.MalformedURLException
 import java.net.URL
-import java.net.UnknownHostException
 import java.util.concurrent.TimeUnit
+import javax.net.ssl.SSLHandshakeException
+import javax.net.ssl.SSLPeerUnverifiedException
 
 /**
  * Exception for incomplete downloads with size information
@@ -176,12 +178,32 @@ private class ProgressResponseBody(
 }
 
 /**
+ * Whether a failed download may succeed if tried again: a network failure or
+ * timeout, a body that ended early, or a 408, 429, or 5xx answer. Another 4xx,
+ * a TLS certificate failure, a canceled call, and a local storage failure
+ * would fail the same way again.
+ */
+internal fun isRetryableDownloadError(error: Exception): Boolean =
+    when (error) {
+        is HttpStatusException -> error.statusCode == 408 || error.statusCode == 429 || error.statusCode >= 500
+        is LocalStorageException -> false
+        is SSLHandshakeException, is SSLPeerUnverifiedException -> false
+        is MalformedURLException -> false
+        is IOException -> error.message != "Canceled"
+        else -> false
+    }
+
+/**
  * OkHttp-based implementation of DownloadService with resume support
  */
-class OkHttpDownloadService : DownloadService {
+class OkHttpDownloadService internal constructor(
+    private val initialRetryDelayMs: Long,
+) : DownloadService {
+    constructor() : this(INITIAL_RETRY_DELAY_MS)
+
     companion object {
         private const val TAG = "OkHttpDownloadService"
-        private const val MAX_RETRIES = 3
+        internal const val MAX_ATTEMPTS = 3
         private const val INITIAL_RETRY_DELAY_MS = 1000L
         private const val TIMEOUT_SECONDS = 30L
     }
@@ -194,6 +216,12 @@ class OkHttpDownloadService : DownloadService {
             .writeTimeout(TIMEOUT_SECONDS, TimeUnit.SECONDS)
             .build()
 
+    /**
+     * Downloads [fileUrl], trying again after a retryable failure (see
+     * [isRetryableDownloadError]) up to [MAX_ATTEMPTS] attempts in all, 1 and
+     * then 2 seconds apart. The last attempt's result is returned, so a
+     * failure keeps what classified it.
+     */
     override suspend fun downloadFile(
         fileUrl: URL,
         destination: File,
@@ -201,39 +229,30 @@ class OkHttpDownloadService : DownloadService {
         progressCallback: (DownloadProgress) -> Unit,
     ): DownloadResult =
         withContext(Dispatchers.IO) {
-            var attempt = 0
-            var lastException: Exception? = null
-
-            while (attempt < MAX_RETRIES) {
-                try {
-                    return@withContext attemptDownload(
-                        fileUrl,
-                        destination,
-                        fileSizeCallback,
-                        progressCallback,
-                    )
-                } catch (e: Exception) {
-                    lastException = e
-                    attempt++
-
-                    if (attempt < MAX_RETRIES && isRetryableException(e)) {
-                        val delayMs = INITIAL_RETRY_DELAY_MS * (1 shl (attempt - 1))
-                        Log.d(
-                            TAG,
-                            "Download failed (attempt $attempt/$MAX_RETRIES): ${e.message}. Retrying in ${delayMs}ms...",
-                        )
-                        delay(delayMs)
-                    } else {
-                        Log.d(TAG, "Download failed: ${e.message}")
-                        break
-                    }
-                }
+            var attempt = 1
+            var result = attemptOrError(fileUrl, destination, fileSizeCallback, progressCallback)
+            while (
+                result is DownloadResult.Error &&
+                attempt < MAX_ATTEMPTS &&
+                isRetryableDownloadError(result.exception)
+            ) {
+                val delayMs = initialRetryDelayMs * (1 shl (attempt - 1))
+                Log.d(
+                    TAG,
+                    "Download failed (attempt $attempt/$MAX_ATTEMPTS): ${result.exception.message}. Retrying in ${delayMs}ms...",
+                )
+                delay(delayMs)
+                attempt++
+                result = attemptOrError(fileUrl, destination, fileSizeCallback, progressCallback)
             }
-
-            DownloadResult.Error(lastException ?: Exception("Download failed after $MAX_RETRIES attempts"))
+            if (result is DownloadResult.Error) {
+                Log.d(TAG, "Download failed (attempt $attempt/$MAX_ATTEMPTS): ${result.exception.message}")
+            }
+            result
         }
 
-    override suspend fun downloadFileOnce(
+    /** One attempt; an exception a callback threw, such as the disk space check's, is its error. */
+    private suspend fun attemptOrError(
         fileUrl: URL,
         destination: File,
         fileSizeCallback: ((Long) -> Unit)?,
@@ -241,9 +260,19 @@ class OkHttpDownloadService : DownloadService {
     ): DownloadResult =
         try {
             attemptDownload(fileUrl, destination, fileSizeCallback, progressCallback)
+        } catch (error: CancellationException) {
+            throw error
         } catch (error: Exception) {
             DownloadResult.Error(error)
         }
+
+    /** One attempt with no retry, for a download with a fallback, such as the archive's per-file downloads. */
+    override suspend fun downloadFileOnce(
+        fileUrl: URL,
+        destination: File,
+        fileSizeCallback: ((Long) -> Unit)?,
+        progressCallback: (DownloadProgress) -> Unit,
+    ): DownloadResult = attemptOrError(fileUrl, destination, fileSizeCallback, progressCallback)
 
     private suspend fun attemptDownload(
         fileUrl: URL,
@@ -351,18 +380,5 @@ class OkHttpDownloadService : DownloadService {
                 }
                 DownloadResult.Error(e)
             }
-        }
-
-    /**
-     * Check if exception is retryable
-     */
-    private fun isRetryableException(e: Exception): Boolean =
-        when (e) {
-            is SocketTimeoutException,
-            is UnknownHostException,
-            is IOException,
-            -> true
-
-            else -> false
         }
 }
