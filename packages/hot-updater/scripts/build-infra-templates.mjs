@@ -146,10 +146,11 @@ for (const provider of providers) {
         ...info,
         named: info.named?.filter((name) => name !== config.storage.callee),
       }));
-    // Firestore has no migration tooling, so the credential script writes the schema settings first.
+    // Firestore has no migration tooling, so the credential script writes the
+    // schema settings of core and the deployed server's plugins first.
     const migrate =
       provider === "firebase"
-        ? `\n/** Writes the schema settings the database checks before its first read. */\nexport const migrate = () =>\n  ${config.database.initializer.replace(/^firebaseDatabase\(/, "migrateFirebaseDatabase(")};\n`
+        ? `\n/** Writes the schema settings of core and \`plugins\`, which the database checks before its first read. */\nexport const migrate = (\n  plugins: Parameters<typeof migrateFirebaseDatabase>[1],\n) =>\n  ${config.database.initializer.replace(/^firebaseDatabase\(/, "migrateFirebaseDatabase(").replace(/\)$/u, ", plugins)")};\n`
         : "";
     const keyImports =
       provider === "firebase"

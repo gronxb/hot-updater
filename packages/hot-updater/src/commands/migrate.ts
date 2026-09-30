@@ -195,7 +195,7 @@ export async function migrate(options: MigrateOptions) {
     // Every database on the storage engine migrates through its migrator:
     // drizzle-kit and Prisma apply their tables, so theirs set what the ORM
     // cannot declare and write the settings rows; any other adapter creates
-    // the built-in and plugin tables itself.
+    // core's tables and the plugins' tables itself.
     await migrateWithMigrator(hotUpdater, skipConfirm, s);
   } catch (error) {
     p.log.error("Failed to run migration");

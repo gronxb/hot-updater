@@ -135,7 +135,8 @@ command or generated files alone do not prove that a remote step is complete.
    are ignored and not tracked.
 3. After the schema is ready, run app/provision-client-credential.mjs with
    app/database.config.ts beside it. When database.config.ts exports `migrate`
-   (Firestore), the script first writes the schema settings; complete SETUP.md's
+   (Firestore), the script first writes the schema settings of core and the
+   plugins app/hotUpdater.plugins.ts lists; complete SETUP.md's
    database compatibility preflight before running it, since the helper does
    not reject every unsupported engine version. Run the script from the
    directory whose .env.hotupdater contains the target provider settings, using

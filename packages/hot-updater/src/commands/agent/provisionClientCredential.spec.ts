@@ -124,12 +124,13 @@ it("reuses the credential the environment holds", async () => {
   );
 });
 
-it("runs the config's migration before registering the credential", async () => {
+it("runs the config's migration for the server's plugins before registering the credential", async () => {
   await scaffold({
     plugins: '["apiKeys"]',
     config: `import { appendFileSync } from "node:fs";
 export const database = {};
-export const migrate = async () => appendFileSync("calls", "migrate\\n");
+export const migrate = async (plugins) =>
+  appendFileSync("calls", \`migrate \${JSON.stringify(plugins)}\\n\`);
 `,
   });
 
@@ -137,7 +138,7 @@ export const migrate = async () => appendFileSync("calls", "migrate\\n");
 
   expect(result.status, result.stderr).toBe(0);
   expect(await readFile(path.join(root, "calls"), "utf8")).toBe(
-    "migrate\nprovision\n",
+    'migrate ["apiKeys"]\nprovision\n',
   );
 });
 

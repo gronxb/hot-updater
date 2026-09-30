@@ -10,6 +10,7 @@ import {
 import { tmpdir } from "os";
 import path from "path";
 
+import { insights } from "@hot-updater/server/plugins/insights";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { generate } from "./generate";
@@ -40,8 +41,12 @@ const mockServer = vi.hoisted(() => ({
   generateSchema: vi.fn(),
   generatesSchema: vi.fn(() => false),
 }));
+const mockPlugins = vi.hoisted(() => ({
+  findPluginList: vi.fn(),
+}));
 
 vi.mock("@hot-updater/cli-tools", () => ({
+  HOT_UPDATER_PLUGINS_PATH: "hotUpdater.plugins.ts",
   colors: {
     blue: (value: string) => value,
     cyan: (value: string) => value,
@@ -61,19 +66,26 @@ vi.mock("@hot-updater/cli-tools", () => ({
   },
 }));
 
-vi.mock("./utils/load-hot-updater", () => ({
+vi.mock("./utils/load-hot-updater", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./utils/load-hot-updater")>()),
   loadHotUpdater: vi.fn(),
 }));
 
-vi.mock("@hot-updater/server/db", () => ({
+vi.mock("@hot-updater/server/db", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@hot-updater/server/db")>()),
   createMigrator: mockServer.createMigrator,
   generateSchema: mockServer.generateSchema,
   generatesSchema: mockServer.generatesSchema,
 }));
 
+vi.mock("./pluginCommands", () => ({
+  findPluginList: mockPlugins.findPluginList,
+}));
+
 describe("generate command", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockPlugins.findPluginList.mockResolvedValue(undefined);
     mockServer.generatesSchema.mockReturnValue(false);
     mockServer.createMigrator.mockReturnValue({
       migrateToLatest: vi.fn(async () => ({
@@ -129,7 +141,7 @@ describe("generate command", () => {
     expect(events).toEqual(["dispose", "exit:1"]);
   });
 
-  it("generates standalone MySQL SQL without a real connection pool", async () => {
+  it("generates standalone MySQL SQL of core's tables without a plugin list, and says so", async () => {
     const outputDir = await mkdtemp(
       path.join(tmpdir(), "hot-updater-mysql-sql-"),
     );
@@ -147,11 +159,80 @@ describe("generate command", () => {
         "utf-8",
       );
 
-      expect(sql).toContain("CREATE TABLE IF NOT EXISTS bundles");
-      expect(sql).toContain("`key` varchar(255) PRIMARY KEY");
-      expect(sql).toContain("ON DUPLICATE KEY UPDATE");
+      expect(mockPlugins.findPluginList).toHaveBeenCalledWith(
+        [],
+        process.cwd(),
+        [],
+      );
+      expect(mockCli.log.info).toHaveBeenCalledWith(
+        "No server config or hotUpdater.plugins.ts found, so the SQL holds core's tables only.",
+      );
+      expect(sql).toMatch(/CREATE TABLE IF NOT EXISTS `?bundles`?/u);
+      expect(sql).toContain("private_hot_updater_settings");
+      expect(sql).not.toContain("bundle_events");
     } finally {
       await rm(outputDir, { recursive: true, force: true });
+    }
+  });
+
+  it("adds the tables and settings rows of the plugins it finds", async () => {
+    const outputDir = await mkdtemp(
+      path.join(tmpdir(), "hot-updater-plugin-sql-"),
+    );
+    mockPlugins.findPluginList.mockResolvedValue({
+      from: "hotUpdater.plugins.ts",
+      plugins: [insights()],
+    });
+
+    try {
+      await generate({
+        configPath: "",
+        outputDir,
+        skipConfirm: true,
+        sql: "postgresql",
+      });
+
+      const sql = await readFile(
+        path.join(outputDir, "hot-updater.sql"),
+        "utf-8",
+      );
+      expect(mockCli.log.info).toHaveBeenCalledWith(
+        "Adding the tables of the plugins in hotUpdater.plugins.ts.",
+      );
+      expect(sql).toContain("bundle_events");
+      expect(sql).toContain("schema.insights");
+      expect(sql).not.toContain("api_keys");
+    } finally {
+      await rm(outputDir, { recursive: true, force: true });
+    }
+  });
+
+  it("reads the plugins of the server config the first argument names, and writes to the second", async () => {
+    const directory = await mkdtemp(
+      path.join(tmpdir(), "hot-updater-config-sql-"),
+    );
+    const configPath = path.join(directory, "hotUpdater.ts");
+    const outputDir = path.join(directory, "out");
+    await writeFile(configPath, "export {};\n", "utf-8");
+
+    try {
+      await generate({
+        configPath,
+        outputDir,
+        skipConfirm: true,
+        sql: "sqlite",
+      });
+
+      expect(mockPlugins.findPluginList).toHaveBeenCalledWith(
+        [configPath],
+        process.cwd(),
+        [],
+      );
+      await expect(
+        stat(path.join(outputDir, "hot-updater.sql")),
+      ).resolves.toBeTruthy();
+    } finally {
+      await rm(directory, { recursive: true, force: true });
     }
   });
 

@@ -22,6 +22,7 @@ import {
 } from "./utils/generate-command-control";
 import { resolveGeneratedSchemaOutputPath } from "./utils/generated-schema-artifact";
 import {
+  isConfigFile,
   type LoadHotUpdaterResult,
   loadHotUpdater,
 } from "./utils/load-hot-updater";
@@ -41,12 +42,16 @@ export async function generate(options: GenerateOptions) {
     sql = false,
   } = options;
 
-  // If --sql flag is set, use standalone SQL generation
+  // With --sql, the first argument names the server config whose plugins'
+  // tables to add only when it is a config file; otherwise it is the output
+  // directory.
   if (sql) {
+    const named = configPath !== "" && isConfigFile(configPath, process.cwd());
     return generateStandaloneSQL({
-      outputDir: outputDir || ".",
+      outputDir: (named ? outputDir : (outputDir ?? configPath)) || ".",
       skipConfirm,
       provider: typeof sql === "string" ? sql : undefined,
+      ...(named ? { configPath } : {}),
     });
   }
 

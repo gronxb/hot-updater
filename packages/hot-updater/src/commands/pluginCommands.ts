@@ -134,6 +134,31 @@ async function* findPluginSources(
   }
 }
 
+/** A project's plugin list, found where plugin commands find theirs. */
+export interface FoundPluginList {
+  /** The file that lists the plugins, for messages. */
+  readonly from: string;
+  readonly plugins: readonly unknown[];
+}
+
+/**
+ * The project's first plugin list, as plugin commands look for theirs: a
+ * server config file among `args`, `hotUpdater.plugins.ts`, then the default
+ * server configs. Undefined when the project has none; a default config that
+ * fails to load is reported in `failures`.
+ */
+export const findPluginList = async (
+  args: readonly string[],
+  cwd: string,
+  failures: string[] = [],
+): Promise<FoundPluginList | undefined> => {
+  for await (const source of findPluginSources(args, cwd, failures)) {
+    await source.dispose();
+    return { from: source.from, plugins: source.plugins };
+  }
+  return undefined;
+};
+
 const pluginUi: PluginCommandUi = {
   block: (heading, lines) => ui.block(heading, [...lines]),
   kv: (label, value) => ui.kv(label, value),

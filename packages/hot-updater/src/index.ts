@@ -681,13 +681,13 @@ dbCommand
   .description("Generate SQL migration file (does not execute)")
   .argument(
     "[configPath]",
-    "path to the config file that exports hotUpdater (not required with --sql)",
+    "path to the config file that exports hotUpdater (optional with --sql)",
   )
   .argument("[outputDir]", "output directory (default: hot-updater_migrations)")
   .option("-y, --yes", "skip confirmation prompt", false)
   .option(
     "--sql [provider]",
-    "generate standalone SQL file without reading config. Optional provider: postgresql, mysql, sqlite (default: interactive selection)",
+    "generate a standalone SQL file of core's tables and the server's plugins' tables, from the config, hotUpdater.plugins.ts, or a default server config when one is found. Optional provider: postgresql, mysql, sqlite (default: interactive selection)",
   )
   .action(
     async (
@@ -696,12 +696,10 @@ dbCommand
       options: { yes: boolean; sql?: string | true },
     ) => {
       const sql = options.sql === true ? true : options.sql || false;
-      const isStandaloneSql = sql !== false;
 
       await generate({
-        configPath: isStandaloneSql ? "" : configPath || "",
-        outputDir:
-          isStandaloneSql && outputDir === undefined ? configPath : outputDir,
+        configPath: configPath || "",
+        outputDir,
         skipConfirm: options.yes,
         sql,
       });
