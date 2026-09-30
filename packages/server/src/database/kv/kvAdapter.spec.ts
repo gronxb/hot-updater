@@ -9,9 +9,10 @@ import {
 import { conformanceCounters, conformanceItems } from "@hot-updater/test-utils";
 import { describe, expect, it } from "vitest";
 
+import { aggregateBatchingModule } from "../aggregateBatching";
 import { createDatabaseEngine } from "../database";
 import { resolveSchema } from "../resolveSchema";
-import { defineTable } from "../schema";
+import { defineAggregate, defineTable } from "../schema";
 import {
   createKvAdapter,
   encodeKvKey,
@@ -365,7 +366,8 @@ describe("createKvAdapter", () => {
         row: item("never"),
       },
     ]);
-    expect(stamps()).toEqual([1_007, undefined]);
+    expect(stamps()).toEqual([1_007]);
+    expect(store.expiries().size).toBe(6);
   });
 
   it("stamps a counter row it creates, and leaves an existing one's expiry", async () => {
@@ -393,6 +395,43 @@ describe("createKvAdapter", () => {
     expect(await adapter.get(counters, [["c", 3]])).toEqual([
       { scope: "c", shard: 3, hits: 2, _v: 2 },
     ]);
+  });
+
+  it("stamps the rows a batched aggregate's compaction writes, and no log row", async () => {
+    const DAY = 86_400_000;
+    const store = createMemoryKeyValueStore();
+    const hits = defineAggregate(
+      { day: { type: "integer" } },
+      {
+        key: ["day"],
+        counters: ["hits"],
+        shards: 2,
+        batched: true,
+        indexes: { all: { eq: [], sort: ["day"] } },
+        retention: { field: "day", days: 1 },
+      },
+    );
+    const module = { id: "stats", schema: { hits } } as const;
+    const engine = createDatabaseEngine({
+      adapter: createKvAdapter({ store }),
+      schema: resolveSchema([module, aggregateBatchingModule]),
+      batching: { mode: "log", windowMs: 60_000 },
+      now: () => 10 * DAY,
+    });
+    const db = engine.database(module);
+
+    await db.transaction(async (tx) => {
+      tx.aggregate("hits", { day: DAY }, { hits: 1 }, { shardBy: "a" });
+    });
+    await engine.flush();
+
+    // The shard row expires a day after its day; the log rows it came from
+    // are gone, and the lease row never expires.
+    expect(new Set(store.expiries().values())).toEqual(new Set([2 * DAY]));
+    expect(
+      (await db.findAggregates("hits", { index: "all", where: {}, limit: 10 }))
+        .rows,
+    ).toEqual([{ day: DAY, hits: 1 }]);
   });
 });
 

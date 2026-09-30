@@ -48,10 +48,9 @@ const renamed = (record: object, rename: (name: string) => string) =>
 const ttl = (expiresAt: number | undefined): StoredRow =>
   expiresAt === undefined ? {} : { _ttl: Math.ceil(expiresAt / 1000) };
 const toItem = (key: KvKey, row: StoredRow, expiresAt?: number) => ({
-  ...renamed(row, attribute),
+  ...renamed({ ...row, ...ttl(expiresAt) }, attribute),
   pk: key.pk,
   sk: key.sk,
-  ...ttl(expiresAt),
 });
 const toRow = ({ pk: _pk, sk: _sk, _ttl, ...item }: Record<string, unknown>) =>
   renamed(item, (name) => name.replace(/^\./, "")) as StoredRow;
@@ -294,8 +293,8 @@ export const createDynamoDBStore = ({
         const { TimeToLiveDescription: ttl } = await client.send(
           new DescribeTimeToLiveCommand({ TableName: tableName }),
         );
-        const status = ttl?.TimeToLiveStatus ?? "DISABLED";
-        if (status === "ENABLED" || status === "ENABLING") return;
+        // ENABLED or ENABLING: DynamoDB refuses to turn TTL on twice.
+        if (ttl?.TimeToLiveStatus?.startsWith("ENABL")) return;
         const spec = { AttributeName: DYNAMODB_TTL_ATTRIBUTE, Enabled: true };
         const input = { TableName: tableName, TimeToLiveSpecification: spec };
         await client.send(new UpdateTimeToLiveCommand(input));
