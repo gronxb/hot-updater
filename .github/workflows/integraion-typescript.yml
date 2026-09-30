@@ -106,6 +106,10 @@ jobs:
       - run: pnpm install
       - name: Build
         run: pnpm build
+      # The Prisma example servers import their generated client. In one job,
+      # `pnpm test:type` generated it before the integration tests ran.
+      - name: Generate the example servers' Prisma clients
+        run: pnpm --filter "@examples-server/*prisma*" exec prisma generate
       - name: Integration test
         if: ${{ !matrix.java }}
         run: pnpm test:integration
