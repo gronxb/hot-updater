@@ -2,6 +2,7 @@ export * from "./BuildLogger";
 export * from "./appSetup";
 export * from "./banner";
 export * from "./bundleSigning";
+export * from "./bundleServer";
 export * from "./ConfigBuilder";
 export * from "./colors";
 export * from "./copyDirToTmp";

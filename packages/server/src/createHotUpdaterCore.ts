@@ -173,6 +173,14 @@ export const hotUpdaterCoreMetadata = Symbol.for(
   "@hot-updater/server/core-metadata",
 );
 
+/** A plugin's endpoint on `handlers.client`. */
+export interface ClientEndpoint {
+  readonly plugin: string;
+  readonly method: string;
+  /** Relative to the handler's mount; `:name` segments are parameters. */
+  readonly path: string;
+}
+
 export type HotUpdaterCoreMetadata = {
   /** The configured database, with the tooling `hot-updater db` runs. */
   readonly database: ToolingDatabase;
@@ -182,6 +190,11 @@ export type HotUpdaterCoreMetadata = {
   readonly target: ToolingTarget;
   /** The plugins as configured, whose commands the CLI adds. */
   readonly plugins: readonly AnyHotUpdaterPlugin[];
+  /**
+   * The plugins' endpoints on `handlers.client`, which a host that routes
+   * by path, such as a CDN in front of the server, sends to it.
+   */
+  readonly clientEndpoints: readonly ClientEndpoint[];
 };
 
 export function getHotUpdaterCoreMetadata(
@@ -274,6 +287,9 @@ export function createHotUpdater<
       storage,
       target: toolingTargetOf(options.plugins ?? []),
       plugins: options.plugins ?? [],
+      clientEndpoints: plugins.endpoints
+        .filter((endpoint) => endpoint.access === "client")
+        .map(({ plugin, method, path }) => ({ plugin, method, path })),
     } satisfies HotUpdaterCoreMetadata,
   });
   return api;

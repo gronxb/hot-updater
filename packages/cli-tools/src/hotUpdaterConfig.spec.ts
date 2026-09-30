@@ -6,8 +6,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { type BuildType, ConfigBuilder } from "./ConfigBuilder";
 import {
-  assertManagedServerDefinition,
   createHotUpdaterConfigScaffoldFromBuilder,
+  importManagedServerDefinition,
+  readManagedServerDefinition,
   readServerDefinitionStatus,
   writeHotUpdaterConfig,
   writeHotUpdaterFiles,
@@ -450,19 +451,24 @@ export const plugins = [insights()];
   });
 });
 
-describe("assertManagedServerDefinition", () => {
-  it("allows a definition init wrote, or none, and refuses one the project edited", async () => {
+describe("readManagedServerDefinition", () => {
+  it("names the definition a managed init deploys, and whether the project edited it", async () => {
     const cwd = await createTempDir();
     const scaffold = createSupabaseScaffold("bare");
     const definitionPath = path.join(cwd, "hotUpdater.ts");
 
-    await expect(
-      assertManagedServerDefinition(scaffold, cwd),
-    ).resolves.toBeUndefined();
+    // None yet, or the one init writes: the provider's prebuilt server runs.
+    await expect(readManagedServerDefinition(scaffold, cwd)).resolves.toEqual({
+      path: definitionPath,
+      edited: false,
+    });
     await fs.writeFile(definitionPath, `${scaffold.definition.text}\n`);
-    await expect(
-      assertManagedServerDefinition(scaffold, cwd),
-    ).resolves.toBeUndefined();
+    await expect(readManagedServerDefinition(scaffold, cwd)).resolves.toEqual({
+      path: definitionPath,
+      edited: false,
+    });
+
+    // The project's own plugins: init bundles the definition.
     await fs.writeFile(
       definitionPath,
       scaffold.definition.text.replace(
@@ -470,8 +476,50 @@ describe("assertManagedServerDefinition", () => {
         "  plugins: [...plugins, notes()],\n",
       ),
     );
-    await expect(assertManagedServerDefinition(scaffold, cwd)).rejects.toThrow(
-      "hotUpdater.ts differs from the server definition init writes",
+    await expect(readManagedServerDefinition(scaffold, cwd)).resolves.toEqual({
+      path: definitionPath,
+      edited: true,
+    });
+
+    // The one the config points at.
+    await fs.writeFile(
+      path.join(cwd, "hot-updater.config.ts"),
+      `import { defineConfig } from "hot-updater";
+
+export default defineConfig({
+  server: "./servers/supabase.ts",
+});
+`,
     );
+    await expect(readManagedServerDefinition(scaffold, cwd)).resolves.toEqual({
+      path: path.join(cwd, "servers/supabase.ts"),
+      edited: false,
+    });
+  });
+});
+
+describe("importManagedServerDefinition", () => {
+  it("loads the definition after .env.hotupdater, which it reads as it loads", async () => {
+    const cwd = await createTempDir();
+    const definitionPath = path.join(cwd, "hotUpdater.ts");
+    await fs.writeFile(
+      path.join(cwd, ".env.hotupdater"),
+      "HOT_UPDATER_MANAGED_SPEC_BUCKET=bundles\n",
+    );
+    await fs.writeFile(
+      definitionPath,
+      "export const hotUpdater = { bucket: process.env.HOT_UPDATER_MANAGED_SPEC_BUCKET };\n",
+    );
+
+    try {
+      const loaded = await importManagedServerDefinition(
+        { path: definitionPath, edited: true },
+        cwd,
+      );
+
+      expect(loaded.hotUpdater).toEqual({ bucket: "bundles" });
+    } finally {
+      delete process.env["HOT_UPDATER_MANAGED_SPEC_BUCKET"];
+    }
   });
 });

@@ -1,3 +1,4 @@
+import { existsSync } from "fs";
 import fs from "fs/promises";
 import path from "path";
 
@@ -20,8 +21,8 @@ import {
   type ProviderConfig,
   renderImportStatements,
 } from "./ConfigBuilder";
-import { InitError } from "./initOptions";
 import { p } from "./prompts";
+import { importServerModule, type ServerModule } from "./serverModule";
 
 export type CreateHotUpdaterConfigScaffoldOptions = {
   build: BuildType;
@@ -951,20 +952,44 @@ export const writeHotUpdaterFiles = async (
   return { config, definition, pluginsFile: "kept" };
 };
 
+/** The server definition a managed init deploys. */
+export interface ManagedServerDefinition {
+  readonly path: string;
+  /**
+   * Whether the project changed it from the one init writes, so init
+   * bundles it rather than deploying the provider's prebuilt server.
+   */
+  readonly edited: boolean;
+}
+
 /**
- * Refuses a server definition the project edited: a managed server runs
- * the definition init writes.
+ * The server definition a managed init deploys: the one an existing
+ * hot-updater.config.ts points at, or the one it writes.
  */
-export const assertManagedServerDefinition = async (
+export const readManagedServerDefinition = async (
   scaffold: HotUpdaterConfigScaffold,
   cwd: string = process.cwd(),
-): Promise<void> => {
+): Promise<ManagedServerDefinition> => {
   const definitionPath = await resolveServerDefinitionPath(scaffold, cwd);
-  if (
-    (await readServerDefinitionStatus(scaffold, definitionPath)) === "edited"
-  ) {
-    throw new InitError(
-      `${path.relative(cwd, definitionPath)} differs from the server definition init writes, which is the one this managed server runs. Restore it, or remove it and rerun init.`,
-    );
+  return {
+    path: definitionPath,
+    edited:
+      (await readServerDefinitionStatus(scaffold, definitionPath)) === "edited",
+  };
+};
+
+/**
+ * Loads the server definition a managed init deploys, once
+ * `.env.hotupdater` holds what it reads: the file hot-updater.config.ts
+ * loads before the CLI reads the definition.
+ */
+export const importManagedServerDefinition = async (
+  definition: ManagedServerDefinition,
+  cwd: string = process.cwd(),
+): Promise<ServerModule> => {
+  const envFile = path.join(cwd, ".env.hotupdater");
+  if (existsSync(envFile)) {
+    process.loadEnvFile(envFile);
   }
+  return importServerModule(definition.path);
 };
