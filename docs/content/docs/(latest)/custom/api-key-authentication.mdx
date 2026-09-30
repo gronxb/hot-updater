@@ -110,8 +110,9 @@ database lookup.
 - **Never cache authentication failures.** Preserve
   `Cache-Control: private, no-store` for `401`, `403`, and other error responses.
   The one cacheable `404` is a scope with no catalog yet, marked
-  `x-hot-updater-catalog: none`; it uses the catalog's five-second TTL and
-  holds nothing a key protects.
+  `x-hot-updater-catalog: none`; it carries the catalog's `Cache-Control` and
+  holds nothing a key protects. CloudFront keeps a cached `404` for at least
+  its error caching minimum TTL, ten seconds by default.
   Keep artifact-resolution responses and Insights writes uncached.
 
 ## Manage API keys
