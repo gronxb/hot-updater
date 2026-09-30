@@ -57,10 +57,12 @@ supply this CLI. Do this before remote provisioning.
     not enforce this unsupported-engine check and can overwrite the marker.
     Then follow COMMON.md's Local CLI and client credential steps. A Firebase
     CLI/MCP login alone may not authenticate the Admin SDK.
-    Run app/provision-client-credential.mjs from the app directory. It first
-    runs app/database.config.ts's `migrate`, which writes the schema settings the
-    database checks before its first read (the database answers 503 until they
-    exist),
+    Run app/provision-client-credential.mjs from the app directory with
+    HOT_UPDATER_FIREBASE_STORAGE_BUCKET set to the bucket fb.services recorded:
+    the helper loads app/hotUpdater.ts, whose storage needs it. It first runs
+    app/migrate.ts to write the schema settings of core and the plugins
+    app/hotUpdater.ts runs, which the database checks before its first read
+    (the database answers 503 until they exist),
 <!-- if credential -->
     then registers the client {{CREDENTIAL_LABEL}}.
   - Verify/record: helper succeeds against the chosen project and the

@@ -1,17 +1,30 @@
+import { existsSync } from "node:fs";
 import { readFile, writeFile } from "node:fs/promises";
 
 import {
   clientAuthOf,
   generateClientCredential,
   provisionClientCredential,
+  serverDefinitionOf,
 } from "@hot-updater/server/db";
 
-import * as target from "./database.config.ts";
-import { plugins } from "./hotUpdater.plugins.ts";
-
-const { database } = target;
+// The server definition reads process.env when it loads, so the settings go
+// first; a static import would load it before them.
+if (existsSync(".env.hotupdater")) {
+  process.loadEnvFile(".env.hotupdater");
+}
+const { hotUpdater } = await import("./hotUpdater.ts");
+const definition = serverDefinitionOf(hotUpdater);
+if (definition === undefined) {
+  throw new Error(
+    "hotUpdater.ts must export `hotUpdater`, the server createHotUpdater from @hot-updater/server returns.",
+  );
+}
+const { database, plugins } = definition;
 
 const credentialPath = new URL("./client-credential.local", import.meta.url);
+// Providers without migration tooling (Firestore) ship migrate.ts.
+const migrationPath = new URL("./migrate.ts", import.meta.url);
 try {
   // The plugin that protects the deployed server's client routes, if any.
   const clientAuth = clientAuthOf(plugins);
@@ -33,9 +46,12 @@ try {
       await writeFile(credentialPath, credential, { flag: "wx", mode: 0o600 });
     }
   }
-  // Providers without migration tooling (Firestore) write the schema settings
-  // of core and the deployed server's plugins here.
-  await target.migrate?.(plugins);
+  if (existsSync(migrationPath)) {
+    // It writes the schema settings of core and the deployed server's
+    // plugins, which the database checks before its first read.
+    const { migrate } = await import(migrationPath.href);
+    await migrate(plugins);
+  }
   if (clientAuth === undefined) {
     console.log("Client routes are public: there is no client credential.");
   } else {

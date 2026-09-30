@@ -126,27 +126,31 @@ command or generated files alone do not prove that a remote step is complete.
    as development dependencies, using its package manager. Preserve unrelated
    dependencies. An MCP connection alone does not configure hot-updater deploy.
 2. Use app/hot-updater.config.ts as the merge source for the app's existing
-   config. Keep custom settings and the existing update strategy. Copy
-   app/hotUpdater.plugins.ts beside it unchanged: it re-exports the plugins the
-   deployed server runs, so the CLI and console agree with the server. Read
-   ENVIRONMENT.md and fill only the applicable env.example settings in a local ignored
-   .env.hotupdater. Provider and signing credential values must not enter logs,
-   manifests, instructions, browser URLs, or app bundles. Verify secret files
-   are ignored and not tracked.
+   config. Keep custom settings and the existing update strategy, and point
+   `server` at ./hotUpdater.ts as it does. Copy app/hotUpdater.ts beside the
+   app's config unchanged: it is the server definition, with the database,
+   storage, and plugins the deployed server runs, so the CLI and console agree
+   with the server. Read ENVIRONMENT.md and fill only the applicable
+   env.example settings in a local ignored .env.hotupdater, which the config
+   loads before the server definition reads them. Provider and signing
+   credential values must not enter logs, manifests, instructions, browser
+   URLs, or app bundles. Verify secret files are ignored and not tracked.
 3. After the schema is ready, run app/provision-client-credential.mjs with
-   app/database.config.ts beside it. When database.config.ts exports `migrate`
-   (Firestore), the script first writes the schema settings of core and the
-   plugins app/hotUpdater.plugins.ts lists; complete SETUP.md's
+   app/hotUpdater.ts beside it, and app/migrate.ts where the scaffold has one
+   (Firestore). With app/migrate.ts, the script first writes the schema
+   settings of core and the plugins app/hotUpdater.ts runs; complete SETUP.md's
    database compatibility preflight before running it, since the helper does
    not reject every unsupported engine version. Run the script from the
-   directory whose .env.hotupdater contains the target provider settings, using
-   Node 22.18+ or Node 24+. Install the manifest.json packages where these
-   files can resolve them (the default scaffold is nested in the app). From the
-   app directory, run `node <scaffold-path>/app/provision-client-credential.mjs`.
+   directory whose .env.hotupdater contains the target provider settings: it
+   loads that file before the server definition, which reads its database and
+   storage settings as it loads. Use Node 22.18+ or Node 24+. Install the
+   manifest.json packages where these files can resolve them (the default
+   scaffold is nested in the app). From the app directory, run
+   `node <scaffold-path>/app/provision-client-credential.mjs`.
 <!-- if credential -->
    It registers the app's client {{CREDENTIAL_LABEL}} through the plugin that
-   manifest.json's clientAuth names, which app/hotUpdater.plugins.ts lists, on
-   the tables the deployed server reads, so keep that file beside it. The
+   manifest.json's clientAuth names, which app/hotUpdater.ts runs, on the
+   tables the deployed server reads, so keep that file beside it. The
    script saves client-credential.local before the remote request and reuses it
    on retry; keep that file private. If an existing deployment has
    {{CREDENTIAL_ENV}}, provide that value in the environment or .env.hotupdater

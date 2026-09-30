@@ -19,7 +19,6 @@ import type { BuildType } from "@hot-updater/cli-tools";
 import { ui } from "../../utils/cli-ui";
 import { type InitProvider, INIT_PROVIDER_PACKAGES } from "../initProviders";
 import {
-  CLIENT_CREDENTIAL_CONFIG,
   CLIENT_CREDENTIAL_FILE,
   CLIENT_CREDENTIAL_SCRIPT,
   type InfraClientAuth,
@@ -239,19 +238,15 @@ export async function scaffoldInfra(
   const staging = await mkdtemp(
     path.join(path.dirname(output), ".hot-updater-infra-"),
   );
+  const appDir = path.join(staging, "app");
   try {
     await cp(source, staging, { recursive: true });
     if (forAgent) {
       for (const choice of INFRA_BUILDS) {
-        for (const basename of [
-          "hot-updater.config",
-          CLIENT_CREDENTIAL_CONFIG,
-        ]) {
-          const file = path.join(staging, "app", `${basename}.${choice}.ts`);
-          if (choice === build)
-            await rename(file, path.join(staging, "app", `${basename}.ts`));
-          else await rm(file);
-        }
+        const file = path.join(appDir, `hot-updater.config.${choice}.ts`);
+        if (choice === build)
+          await rename(file, path.join(appDir, "hot-updater.config.ts"));
+        else await rm(file);
       }
     } else {
       for (const file of AGENT_FILES)
@@ -263,9 +258,13 @@ export async function scaffoldInfra(
       `node_modules/\n.env*\n!env.example\n${CLIENT_CREDENTIAL_FILE}\n*.pem\n*.zip\n*.secret\n`,
     );
     if (forAgent) {
-      const configText = await readFile(
-        path.join(staging, "app/hot-updater.config.ts"),
-        "utf8",
+      // Every variable the app's TypeScript reads: the config, the server
+      // definition it points at, and Firestore's migration.
+      const appSources = await Promise.all(
+        (await readdir(appDir))
+          .filter((file) => file.endsWith(".ts"))
+          .sort()
+          .map((file) => readFile(path.join(appDir, file), "utf8")),
       );
       const inputs = Object.values(
         INIT_PROVIDER_PACKAGES[provider].definition.inputs,
@@ -273,8 +272,10 @@ export async function scaffoldInfra(
       const { clientAuth } = template;
       const keys = new Set([
         ...inputs.map(({ envKey }) => envKey),
-        ...[...configText.matchAll(/process\.env\.([A-Z_0-9]+)/g)].map(
-          (match) => match[1]!,
+        ...appSources.flatMap((text) =>
+          [...text.matchAll(/process\.env\.([A-Z_0-9]+)/g)].map(
+            (match) => match[1]!,
+          ),
         ),
         ...(clientAuth === null ? [] : [clientAuth.credential.env]),
       ]);

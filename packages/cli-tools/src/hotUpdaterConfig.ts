@@ -736,6 +736,46 @@ export const writeHotUpdaterConfig = async (
 };
 
 /**
+ * What a module does, apart from its formatting: its imports, sorted, and
+ * the rest without whitespace, semicolons, trailing commas, or quote style,
+ * so a definition a formatter rewrote still reads as the one init wrote.
+ */
+const moduleShape = (text: string): string => {
+  const source = parseConfigSource(text);
+  if (source === null) return text;
+  const imports = source.program.body.filter(
+    (statement) => statement.type === "ImportDeclaration",
+  );
+  const importShapes = imports
+    .map((statement) => {
+      const specifiers = statement.specifiers
+        .map((specifier) =>
+          specifier.type === "ImportSpecifier"
+            ? `${specifier.importKind ?? "value"}:${getNodeText(source, specifier.imported)}:${specifier.local.name}`
+            : `${specifier.type}:${specifier.local.name}`,
+        )
+        .sort();
+      return `${statement.importKind ?? "value"} ${statement.source.value} ${specifiers.join(",")}`;
+    })
+    .sort();
+  const code = applyTextEdits(
+    text,
+    imports.map((statement) => ({
+      start: statement.start,
+      end: statement.end,
+      text: "",
+    })),
+  )
+    .replace(/\s+|;/gu, "")
+    .replace(/,([}\])])/gu, "$1")
+    .replaceAll("'", '"');
+  return [...importShapes, code].join("\n");
+};
+
+const sameModule = (left: string, right: string) =>
+  left.trim() === right.trim() || moduleShape(left) === moduleShape(right);
+
+/**
  * How the server definition at `filePath` compares with the scaffold's:
  * `missing`, `unchanged`, `outdated` (one init wrote before, which the
  * scaffold replaces), or `edited`, the project's own.
@@ -746,9 +786,9 @@ export const readServerDefinitionStatus = async (
 ): Promise<"missing" | "unchanged" | "outdated" | "edited"> => {
   const text = await readTextFile(filePath);
   if (text === null) return "missing";
-  if (text.trim() === scaffold.definition.text.trim()) return "unchanged";
-  return (scaffold.definition.replaces ?? []).some(
-    (previous) => text.trim() === previous.trim(),
+  if (sameModule(text, scaffold.definition.text)) return "unchanged";
+  return (scaffold.definition.replaces ?? []).some((previous) =>
+    sameModule(text, previous),
   )
     ? "outdated"
     : "edited";

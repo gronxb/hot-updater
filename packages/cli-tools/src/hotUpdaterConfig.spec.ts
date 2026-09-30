@@ -246,6 +246,40 @@ export default defineConfig({
   });
 });
 
+describe("readServerDefinitionStatus", () => {
+  it("reads a definition a formatter rewrote as the one init wrote", async () => {
+    const definitionPath = path.join(await createTempDir(), "hotUpdater.ts");
+    const scaffold = createSupabaseScaffold("bare");
+    // Another formatter's style: sorted, wrapped imports, single quotes, no
+    // semicolons, and a wrapped property.
+    const formatted = scaffold.definition.text
+      .replace(
+        'import { plugins, supabaseDatabase, supabaseStorage } from "@hot-updater/supabase";\nimport { createHotUpdater } from "@hot-updater/server";',
+        "import { createHotUpdater } from '@hot-updater/server'\nimport {\n  supabaseStorage,\n  plugins,\n  supabaseDatabase,\n} from '@hot-updater/supabase'",
+      )
+      .replace(
+        "    bucketName: process.env.HOT_UPDATER_SUPABASE_BUCKET_NAME!,",
+        "    bucketName:\n      process.env.HOT_UPDATER_SUPABASE_BUCKET_NAME!,",
+      )
+      .replace("});", "})");
+    expect(formatted).not.toBe(scaffold.definition.text);
+    await fs.writeFile(definitionPath, formatted, "utf-8");
+
+    await expect(
+      readServerDefinitionStatus(scaffold, definitionPath),
+    ).resolves.toBe("unchanged");
+
+    await fs.writeFile(
+      definitionPath,
+      formatted.replace("  plugins,\n", "  plugins: [...plugins, notes()],\n"),
+      "utf-8",
+    );
+    await expect(
+      readServerDefinitionStatus(scaffold, definitionPath),
+    ).resolves.toBe("edited");
+  });
+});
+
 describe("writeServerDefinition", () => {
   it("writes the definition when it is missing, and never overwrites the project's own", async () => {
     const definitionPath = path.join(

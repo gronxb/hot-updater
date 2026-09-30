@@ -3,6 +3,7 @@ import path from "node:path";
 
 import { describe, expect, it } from "vitest";
 
+import { readServerDefinitionStatus } from "../../packages/cli-tools/src/hotUpdaterConfig";
 import { getConfigScaffold as aws } from "../../plugins/aws/iac/templates";
 import { getConfigScaffold as cloudflare } from "../../plugins/cloudflare/iac/configTemplate";
 import { getConfigScaffold as firebase } from "../../plugins/firebase/iac/configTemplate";
@@ -20,16 +21,12 @@ describe("example app managed servers", () => {
   ])(
     "defines the %s profile's server as init does, so init redeploys it and the controller reads Insights in process",
     async (provider, scaffold) => {
-      const definition = await readFile(
-        path.join(exampleDir, "servers", `${provider}.ts`),
-        "utf8",
-      );
+      const file = path.join(exampleDir, "servers", `${provider}.ts`);
 
-      expect(definition).toBe(`${scaffold.definition.text}\n`);
-      expect(definition).toContain(
-        `import { createHotUpdater } from "@hot-updater/server";`,
+      await expect(readServerDefinitionStatus(scaffold, file)).resolves.toBe(
+        "unchanged",
       );
-      expect(definition).toMatch(/\n {2}plugins,\n/u);
+      expect(await readFile(file, "utf8")).toMatch(/\n {2}plugins,\n/u);
     },
   );
 
