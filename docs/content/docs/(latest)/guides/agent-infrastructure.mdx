@@ -124,8 +124,10 @@ your app's existing configuration and prepares credentials for future CLI deploy
 Connecting an MCP server does not automatically provide credentials to the CLI.
 
 The scaffold deploys the provider's prebuilt server, so keep `app/hotUpdater.ts`
-as it is. To run other server plugins, edit it in the app and redeploy with
-init, as [Server Plugins](/docs/managed/server-plugins) describes. The
+as it is. To run other server plugins, edit it in the app and deploy it with
+`hot-updater init`, passing `--provider` and `--build`, since the scaffold
+doesn't save them; see [Server Plugins](/docs/managed/server-plugins#redeploy).
+The
 Cloudflare and Supabase migrations are the package's migration of core's
 tables, then the prebuilt server's plugins' tables in
 `worker/migrations/0002_hot-updater_plugins.sql` or

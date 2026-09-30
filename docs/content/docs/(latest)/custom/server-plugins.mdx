@@ -884,11 +884,12 @@ with your plugin and the packages it imports, into the provider's runtime; see
   Node.js in Lambda@Edge or Cloud Functions. Write it against Web APIs, such as
   `fetch` and Web streams, and depend on packages that run in each.
 - serves its client endpoints only. A managed server mounts no admin handler,
-  so the CLI and the Console reach the plugin through its API and its CLI
-  commands.
+  so users reach the plugin through its CLI commands, and through code that
+  imports the definition, such as `hotUpdater.api.feedback`. The Console shows
+  only Insights and API keys.
 - reads its options where the server runs, without `.env.hotupdater`.
-  Lambda@Edge has no environment variables, and init deploys no environment
-  file with a Cloud Function; see
+  Lambda@Edge takes no environment variables of your own, and init deploys no
+  environment file with a Cloud Function; see
   [A plugin's settings and secrets](/docs/managed/server-plugins#a-plugins-settings-and-secrets).
   Say in your README which options are secrets and how each provider supplies
   them.

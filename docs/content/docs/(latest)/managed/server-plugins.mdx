@@ -29,7 +29,7 @@ the plugin to `plugins`:
 import { d1Database, plugins, r2Storage } from "@hot-updater/cloudflare";
 import { createHotUpdater } from "@hot-updater/server";
 
-import { feedback } from "./feedback"; // [!code ++]
+import { feedback } from "./src/feedback"; // [!code ++]
 
 export const hotUpdater = createHotUpdater({
   // ... database and storage, as init wrote them
@@ -38,15 +38,23 @@ export const hotUpdater = createHotUpdater({
 ```
 
 Init bundles the plugin and the npm packages it imports. Only what the runtime
-provides stays outside the bundle: `cloudflare:*` modules on Workers, the AWS
-SDK on Lambda@Edge, `firebase-admin` and `firebase-functions` on Cloud
-Functions, and on Supabase the Hot Updater packages and `supabase-js`, which the
-function's import map vendors.
+provides stays outside the bundle:
 
-A managed server serves client routes only. A plugin's client endpoints, such
-as `POST /feedback`, run there; its admin endpoints don't. The CLI and the
-Console reach the plugin through the definition instead, such as through its
-API and its CLI commands.
+- on Workers, `cloudflare:*` modules;
+- on Supabase, the Hot Updater packages and `supabase-js`, which the function's
+  import map vendors;
+- on Lambda@Edge, the AWS SDK packages Hot Updater's function uses, such as
+  `@aws-sdk/client-s3`, `@aws-sdk/lib-dynamodb`, and
+  `@aws-sdk/credential-providers`. Another AWS client that a plugin imports is
+  bundled, and counts toward the zip's 50 MB;
+- on Cloud Functions, `firebase-admin` and `firebase-functions`.
+
+A managed server serves client routes only, whatever the definition lists. A
+plugin's client endpoints, such as `POST /feedback`, run there; its admin
+endpoints don't. Reach the plugin through the definition instead: through its
+CLI commands, and through code that imports the definition, such as a script
+that calls `hotUpdater.api.feedback`. The Console shows only Insights and API
+keys, which it reads over the database, so it needs no admin routes.
 
 When a plugin names a client plugin, the `App.tsx` code that init prints adds
 it to `HotUpdater.init({ plugins })`, and
@@ -93,7 +101,13 @@ npx hot-updater init --from-env-file .env.hotupdater
 
 `--from-env-file` reports every missing value instead of asking for it. Pass
 `--provider` and `--build` to choose them explicitly, or leave out
-`--from-env-file` to answer prompts.
+`--from-env-file` to answer prompts. A project that the
+[agent infrastructure](#agent-infrastructure) scaffold set up has neither saved,
+so pass both:
+
+```bash
+npx hot-updater init --provider <cloudflare|supabase|aws|firebase> --build <bare|rock|expo> --from-env-file .env.hotupdater
+```
 
 Init follows `server` in `hot-updater.config.ts` to the definition. Before it
 creates or changes any resource, it loads the definition with `.env.hotupdater`
@@ -112,6 +126,9 @@ applied and checks it:
 - A package the definition imports must be installed in the project, and the
   bundle can hold only one copy of `@hot-updater/server`: install the version
   your provider package uses.
+
+On Firebase, when init creates a new project, it creates the project first and
+stops; the next init checks the definition before it changes the project.
 
 In the managed server, the provider's database and storage are the ones init
 set up. The settings the definition passes them are the CLI's, such as its
@@ -138,7 +155,7 @@ runtime's environment:
 | ---------- | -------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
 | Cloudflare | The Worker's variables and secrets, at module scope too. Init sets `BUCKET_NAME` and `STORAGE_DOWNLOAD_URL_SIGNING_KEY`.          | `npx wrangler secret put <NAME> --name <worker>`. A redeploy keeps secrets and replaces variables. |
 | Supabase   | The function's environment: Supabase's `SUPABASE_*` values and the project's secrets.                                            | `npx supabase secrets set <NAME>=<value>`                                                           |
-| AWS        | None: Lambda@Edge has no environment variables.                                                                                  | None. Host a plugin that needs one on a [custom server](/docs/custom/overview).                     |
+| AWS        | Only Lambda's reserved variables, such as `AWS_REGION`: Lambda@Edge takes no variables of your own.                              | None. Host a plugin that needs one on a [custom server](/docs/custom/overview).                     |
 | Firebase   | What Cloud Functions sets, such as `GCLOUD_PROJECT` and `FIREBASE_CONFIG`. Init deploys no `.env` file with the function.         | None through init. Host a plugin that needs one on a [custom server](/docs/custom/overview).        |
 
 A value missing where the server runs reaches the plugin as whatever the
@@ -157,15 +174,22 @@ runtime has, often `undefined`.
   and lease; core's tables and the settings rows change only through the CLI.
   While CloudFront still runs the previous version, the role keeps that
   version's access, and the first init after the distribution reports the new
-  version as Deployed removes it. IAM limits a role's inline policies to 10,240
-  characters: init refuses a definition whose plugins' tables go past that, and
-  names the plugins.
-- **Size:** the function's zip must stay under Lambda@Edge's 50 MB limit. Init
-  checks it before it creates a resource.
+  version as Deployed removes it.
+- **Policy size:** IAM limits a role's inline policies to 10,240 characters.
+  Init checks this when it sets up the role, after the bucket, the table, and
+  the API key. It refuses a definition whose plugins' tables go past the limit,
+  and names the plugins. When only the kept access of the previous version goes
+  past it, init asks for two inits: first a definition without the plugins it
+  drops, then, once the distribution reports that deploy as Deployed, one with
+  the plugins it adds.
+- **Zip size:** the function's zip must stay under Lambda@Edge's 50 MB limit.
+  Init checks it before it creates a resource.
 
 ## Agent infrastructure
 
 The [agent infrastructure](/docs/guides/agent-infrastructure) scaffold deploys
 the prebuilt servers: keep its `app/hotUpdater.ts` as it is. Its D1 and
 Supabase migrations are core's tables, then the prebuilt server's plugins'
-tables. To run other plugins, edit the definition and redeploy with init.
+tables. To run other plugins, edit the definition and deploy it with init,
+passing `--provider` and `--build`, as [Redeploy](#redeploy) shows: the scaffold
+doesn't save the build and provider that `--from-env-file` reads.

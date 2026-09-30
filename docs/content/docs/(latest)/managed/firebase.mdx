@@ -172,9 +172,10 @@ client API key belongs in the mobile app's build-time configuration; provider
 credentials stay in the deploy environment.
 
 <Callout type="info">
-  The managed Firebase runtime exposes `/version` publicly. OTA update checks
-  and Insights ingestion require `x-api-key: $HOT_UPDATER_API_KEY`. Internally,
-  it enables Insights and mounts only `handlers.client`. Admin routes,
+  The managed Firebase runtime exposes `/version` publicly and mounts only
+  `handlers.client`, whatever the server definition lists. With the default
+  plugins, `insights()` and `apiKeys()`, OTA update checks and Insights
+  ingestion require `x-api-key: $HOT_UPDATER_API_KEY`. Admin routes,
   including Insights queries, are not mounted on the public Function URL.
 </Callout>
 
