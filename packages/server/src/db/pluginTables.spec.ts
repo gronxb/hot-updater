@@ -197,7 +197,7 @@ describe("plugin tables in db tooling", () => {
     ).toContain("model notes_notes {");
   });
 
-  it("checks a plugin's id and tables against core and the other plugins the server runs", () => {
+  it("checks a plugin's id and tables against core, the other plugins the server runs, and Hot Updater's own ids", () => {
     const named = definePlugin({
       id: "insights",
       schemaVersion: "1",
@@ -232,12 +232,17 @@ describe("plugin tables in db tooling", () => {
           : { clientAccess: "public" }),
       } as Parameters<typeof createHotUpdater>[0]);
 
-    // Only the plugins a server runs get tables, so these fit on their own.
-    expect(start([named])).not.toThrow();
-    expect(start([tabled])).not.toThrow();
-    expect(start([named, insights()])).toThrow(
-      'Plugin "insights" is registered twice.',
+    // Only Hot Updater's own plugins take their ids, even when absent;
+    // a copy of one loses the factory's mark.
+    expect(start([named])).toThrow(
+      "which is reserved for Hot Updater's insights() plugin",
     );
+    expect(start([{ ...insights() }])).toThrow(
+      "which is reserved for Hot Updater's insights() plugin",
+    );
+    expect(start([insights(), apiKeys()])).not.toThrow();
+    // Only the plugins a server runs get tables, so this fits on its own.
+    expect(start([tabled])).not.toThrow();
     expect(start([tabled, apiKeys()])).toThrow(
       'apiKeys.api_keys: table "api_keys" is also declared by api.keys',
     );

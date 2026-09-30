@@ -4,6 +4,8 @@ import { Command } from "@commander-js/extra-typings";
 import { createMemoryAdapter } from "@hot-updater/plugin-core/internal";
 import { createHotUpdater } from "@hot-updater/server";
 import { definePlugin } from "@hot-updater/server/plugins";
+import { apiKeys } from "@hot-updater/server/plugins/api-keys";
+import { insights } from "@hot-updater/server/plugins/insights";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { PLUGIN_COMMANDS_HINT, registerPluginCommands } from "./pluginCommands";
@@ -379,6 +381,31 @@ describe("registerPluginCommands", () => {
     const help = created.helpInformation();
     expect(help).toMatch(/counter\s+Read the counter \(counter\)/u);
     expect(help).not.toContain("Shadowed");
+  });
+
+  it("lists the commands of Hot Updater's own plugins for a standaloneRepository config", async () => {
+    cli.loadHotUpdaterPlugins.mockResolvedValue([insights(), apiKeys()]);
+    cli.loadConfig.mockResolvedValue({
+      database: { name: "standalone", core: {}, fetchAdmin: vi.fn() },
+    });
+    const created = program();
+    await registerPluginCommands(created, argv("--help"), cwd);
+
+    expect(created.helpInformation()).toMatch(/api-key\s+.*\(apiKeys\)/u);
+  });
+
+  it("refuses a plugin that takes a reserved id without being Hot Updater's own", async () => {
+    cli.loadHotUpdaterPlugins.mockResolvedValue([
+      { ...counter(), id: "insights", namespace: false },
+    ]);
+    const created = program();
+    const written = output(created);
+    await registerPluginCommands(created, argv("--help"), cwd);
+
+    created.outputHelp();
+    expect(written.out).toContain(
+      'plugins[0] takes the id "insights", which is reserved for Hot Updater\'s insights() plugin',
+    );
   });
 
   it("keeps help working when the plugin list fails to load", async () => {

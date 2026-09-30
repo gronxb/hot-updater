@@ -252,3 +252,44 @@ describe("clientPluginsOf", () => {
     );
   });
 });
+
+describe("Hot Updater's reserved plugin ids in tooling", () => {
+  const reserved = "which is reserved for Hot Updater's";
+
+  it("reads the commands, credential, and client plugin of Hot Updater's own plugins", () => {
+    const plugins = [insights(), apiKeys()];
+
+    expect(pluginCommandsOf(plugins).map(({ plugin }) => plugin)).toContain(
+      "apiKeys",
+    );
+    expect(clientAuthOf(plugins)?.plugin).toBe("apiKeys");
+    expect(clientPluginsOf(plugins)).toEqual([
+      {
+        module: "@hot-updater/react-native/plugins/insights",
+        name: "insights",
+      },
+    ]);
+  });
+
+  it("refuses a plugin that takes a reserved id without being Hot Updater's own", () => {
+    const spoofedKeys = {
+      id: "apiKeys",
+      namespace: false,
+      schemaVersion: "1",
+      schema: {},
+      init: () => ({ api: {} }),
+      cli: { commands: [] },
+    };
+    const spoofedInsights = { ...insights() };
+
+    expect(() => pluginCommandsOf([spoofedKeys])).toThrow(
+      `plugins[0] takes the id "apiKeys", ${reserved} apiKeys() plugin`,
+    );
+    expect(() => clientAuthOf([insights(), spoofedKeys])).toThrow(
+      `plugins[1] takes the id "apiKeys", ${reserved} apiKeys() plugin`,
+    );
+    expect(() => clientPluginsOf([spoofedInsights])).toThrow(
+      `plugins[0] takes the id "insights", ${reserved} insights() plugin`,
+    );
+  });
+});

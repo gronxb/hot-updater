@@ -339,6 +339,20 @@ describe("createHotUpdater with plugins", () => {
       ],
       [
         {
+          plugins: [{ ...valid, namespace: false, id: "insights" }],
+          clientAccess: "public",
+        },
+        `plugins[0] takes the id "insights", which is reserved for Hot Updater's insights() plugin; give this plugin another id.`,
+      ],
+      [
+        {
+          plugins: [{ ...valid, namespace: false, id: "apiKeys" }],
+          clientAccess: "public",
+        },
+        `plugins[0] takes the id "apiKeys", which is reserved for Hot Updater's apiKeys() plugin; give this plugin another id.`,
+      ],
+      [
+        {
           plugins: [{ ...valid, cli: { hooks: [] } }],
           clientAccess: "public",
         },

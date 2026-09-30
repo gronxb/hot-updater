@@ -17,6 +17,7 @@ import type {
   PluginEndpoint,
   PluginInstance,
 } from "../plugins/definePlugin";
+import { checkReservedId } from "../plugins/official";
 import { clientPluginsOf } from "./clientPlugins";
 import { HotUpdaterConfigError } from "./configError";
 
@@ -91,6 +92,7 @@ const checkPlugin = (value: unknown, at: string): PluginShape => {
   if (plugin.id === coreModule.id) {
     fail(`${at} uses the id "core", which is core's own.`);
   }
+  checkReservedId(value, at);
   if (
     typeof plugin.schemaVersion !== "string" ||
     !isRecord(plugin.schema) ||

@@ -25,6 +25,7 @@ export {
   type ProvisionedClientCredential,
 } from "../assembly/pluginCli";
 export { targetBaseCandidateKey } from "../core/baseCandidates";
+export { isOfficialPlugin } from "../plugins/official";
 export {
   generateEngineSql,
   settingsStatements,
