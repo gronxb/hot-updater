@@ -93,9 +93,9 @@ export const bundlePairKey = (from: string, to: string): string =>
 
 /**
  * Moves a head's gauges: the distribution row, one row per bundle it
- * references, and its pair. Deleting an installation takes it back with -1.
+ * references, and its pair; -1 takes back the head an event replaces.
  */
-export const countHead = (
+const countHead = (
   tx: HotUpdaterTransaction<InsightsSchema>,
   head: Head,
   delta: 1 | -1,
