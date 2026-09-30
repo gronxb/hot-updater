@@ -14,13 +14,21 @@ import { createD1Database } from "./d1Executor";
 import { d1SchemaSql, d1SchemaStatements } from "./d1Schema";
 import { plugins } from "./plugins";
 
-/** The managed Worker's migration: core's tables and its plugins'. */
+/** The managed Worker's schema: core's tables and its plugins'. */
 const managedSql = () => d1SchemaSql(toolingTargetOf(plugins));
 
+/**
+ * The checked-in SQL: the tests' schema, which is the managed Worker's,
+ * and the Worker's first migration, which holds core's alone; init
+ * migrates the tables of the plugins the Worker runs after it.
+ */
 const FILES = [
-  "plugins/cloudflare/sql/bundles.sql",
-  "plugins/cloudflare/worker/migrations/0001_hot-updater_1.0.0.sql",
-].map((file) => path.resolve(file));
+  ["plugins/cloudflare/sql/bundles.sql", managedSql],
+  [
+    "plugins/cloudflare/worker/migrations/0001_hot-updater_1.0.0.sql",
+    () => d1SchemaSql(),
+  ],
+] as const;
 
 /** D1's API over `node:sqlite`: statements one at a time, batches in one transaction. */
 const sqliteD1 = (db: DatabaseSync) => {
@@ -50,11 +58,13 @@ const sqliteD1 = (db: DatabaseSync) => {
 describe("d1 schema", () => {
   it("checks in exactly the generated schema as the SQL file and the first migration", async () => {
     if (process.env.HOT_UPDATER_UPDATE_SQL === "1") {
-      for (const file of FILES) await fs.writeFile(file, managedSql());
+      for (const [file, sql] of FILES) {
+        await fs.writeFile(path.resolve(file), sql());
+      }
     }
     // Regenerate with HOT_UPDATER_UPDATE_SQL=1 after the schema changes.
-    for (const file of FILES) {
-      expect(await fs.readFile(file, "utf8")).toBe(managedSql());
+    for (const [file, sql] of FILES) {
+      expect(await fs.readFile(path.resolve(file), "utf8")).toBe(sql());
     }
   });
 

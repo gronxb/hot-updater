@@ -18,6 +18,18 @@ export default defineConfig([
     failOnWarn: true,
   },
   {
+    // What `@hot-updater/cloudflare` is when init bundles a project's server
+    // definition into the managed Worker.
+    entry: ["src/worker/managed.ts"],
+    format: ["esm"],
+    dts: false,
+    outDir: "dist/worker",
+    deps: {
+      neverBundle: ["cloudflare:workers"],
+    },
+    failOnWarn: true,
+  },
+  {
     entry: ["iac/init/index.ts"],
     format: ["esm", "cjs"],
     dts: true,

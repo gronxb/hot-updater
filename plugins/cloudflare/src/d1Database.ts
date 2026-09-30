@@ -3,7 +3,11 @@ import {
   coreTarget,
   type SqlStatement,
 } from "@hot-updater/server/database";
-import type { SchemaGenerator, ToolingDatabase } from "@hot-updater/server/db";
+import type {
+  SchemaGenerator,
+  ToolingDatabase,
+  ToolingTarget,
+} from "@hot-updater/server/db";
 import Cloudflare from "cloudflare";
 
 import {
@@ -28,6 +32,19 @@ const encode = ({ sql, params }: SqlStatement) => ({
   sql: sql.replaceAll("?", () => "json_extract(?, '$')"),
   params: params.map((value) => JSON.stringify(value ?? null)),
 });
+
+/**
+ * A Wrangler migration of `target`'s tables and settings rows. It is named
+ * after the time, since Wrangler applies migrations in the order of their
+ * leading numbers, and every statement can run again.
+ */
+export const d1Migration = (target: ToolingTarget = coreTarget) => {
+  const timestamp = new Date().toISOString().replace(/\D/g, "").slice(0, 14);
+  return {
+    code: d1SchemaSql(target),
+    path: `migrations/${timestamp}_hot-updater.sql`,
+  };
+};
 
 /**
  * Hot Updater's database on D1 through the Cloudflare REST API, for the CLI
@@ -69,15 +86,7 @@ export const d1Database = (config: D1DatabaseConfig): ToolingDatabase => {
       if (version !== "latest" && version !== coreSettings["schema.core"]) {
         throw new Error(`Invalid version ${version}`);
       }
-      // Wrangler applies migrations in the order of their leading numbers.
-      const timestamp = new Date()
-        .toISOString()
-        .replace(/\D/g, "")
-        .slice(0, 14);
-      return {
-        code: d1SchemaSql(target),
-        path: `migrations/${timestamp}_hot-updater.sql`,
-      };
+      return d1Migration(target);
     }) satisfies SchemaGenerator,
   };
 };

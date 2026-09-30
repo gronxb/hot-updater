@@ -5,7 +5,7 @@ import path from "path";
 import {
   confirmInitInputPersistence,
   copyDirToTmp,
-  assertManagedServerDefinition,
+  importManagedServerDefinition,
   getHotUpdaterInitInputEnv,
   getInitProviderEnvVars,
   getInitProviderTextPromptValues,
@@ -17,10 +17,12 @@ import {
   readHotUpdaterInitEnv,
   type RunInitOptions,
   transformTemplate,
+  readManagedServerDefinition,
   writeHotUpdaterFiles,
 } from "@hot-updater/cli-tools";
 import {
   clientPluginsOf,
+  managedServerDefinitionOf,
   provisionClientCredential,
   type ProvisionedClientCredential,
 } from "@hot-updater/server/db";
@@ -55,6 +57,10 @@ import {
 import { inputCloudflareInitSecrets } from "./cloudflareInitSecrets";
 import { getConfigScaffold } from "./configTemplate";
 import { initProvider as CLOUDFLARE_INIT_PROVIDER } from "./init/index";
+import {
+  buildWorkerFromDefinition,
+  writePluginMigration,
+} from "./managedWorker";
 
 const deployWorker = async (
   apiToken: string,
@@ -63,14 +69,20 @@ const deployWorker = async (
     credentialSource,
     d1DatabaseId,
     d1DatabaseName,
+    definition,
     nonInteractive,
+    plugins: serverPlugins,
     r2BucketName,
     workerName,
   }: {
     credentialSource: CloudflareCredentialSource;
     d1DatabaseId: string;
     d1DatabaseName: string;
+    /** The project's server definition, when it edited it; otherwise the prebuilt Worker runs. */
+    definition: string | undefined;
     nonInteractive: boolean;
+    /** The plugins the Worker runs, whose tables the migration creates. */
+    plugins: readonly unknown[];
     r2BucketName: string;
     workerName: string;
   },
@@ -110,6 +122,14 @@ const deployWorker = async (
       BUCKET_NAME: r2BucketName,
     };
 
+    if (definition !== undefined) {
+      wranglerConfig.main = await buildWorkerFromDefinition({
+        definition,
+        packageRoot: cloudflarePackageRoot,
+        workerRoot,
+      });
+    }
+
     await fs.writeFile(
       path.join(workerRoot, "wrangler.json"),
       JSON.stringify(wranglerConfig, null, 2),
@@ -138,6 +158,8 @@ const deployWorker = async (
       }
     }
 
+    // The package's migration holds core's tables; this one the plugins'.
+    await writePluginMigration(workerRoot, serverPlugins);
     await wrangler("d1", "migrations", "apply", d1DatabaseName, "--remote");
 
     await wrangler("deploy", "--name", workerName);
@@ -174,7 +196,7 @@ const deployWorker = async (
 export const runInit = async ({ build, envFile }: RunInitOptions) => {
   const cwd = getCwd();
   const scaffold = getConfigScaffold(build);
-  await assertManagedServerDefinition(scaffold, cwd);
+  const definition = await readManagedServerDefinition(scaffold, cwd);
   const nonInteractive = envFile !== undefined;
   const initEnvSources = await readHotUpdaterInitEnv(cwd, envFile);
   const { managedEnv } = initEnvSources;
@@ -685,11 +707,21 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
     [CLOUDFLARE_INIT_PROVIDER.inputs.d1DatabaseName.envKey]: d1DatabaseName,
   });
 
+  // The plugins the Worker runs: the package's, or those of the project's
+  // edited definition, which reads what .env.hotupdater now holds.
+  const serverPlugins = definition.edited
+    ? managedServerDefinitionOf(
+        (await importManagedServerDefinition(definition, cwd)).hotUpdater,
+        { provider: "Cloudflare", database: "d1Database", storage: "r2" },
+      ).plugins
+    : plugins;
   await deployWorker(infrastructureApiToken, accountId, {
     credentialSource: infrastructureCredentialSource,
     d1DatabaseId: selectedD1DatabaseId,
     d1DatabaseName,
+    definition: definition.edited ? definition.path : undefined,
     nonInteractive,
+    plugins: serverPlugins,
     r2BucketName: selectedBucketName,
     workerName,
   });
@@ -702,7 +734,7 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
   // The app's credential, through the managed server's plugins, on the tables they read.
   let credential: ProvisionedClientCredential | undefined;
   try {
-    credential = await provisionClientCredential(database, plugins, {
+    credential = await provisionClientCredential(database, serverPlugins, {
       env: initInputEnv,
       name: "Cloudflare init",
     });
@@ -723,7 +755,7 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
         }
       : {}),
     ...(credential === undefined ? {} : { credential }),
-    clientPlugins: clientPluginsOf(plugins),
+    clientPlugins: clientPluginsOf(serverPlugins),
   });
 
   p.log.message(
