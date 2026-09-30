@@ -1,10 +1,10 @@
 import type {
+  InsightsScope,
   ReportingOverview,
   InsightsEventPageInput,
   InsightsInstallationEventPageInput,
   ActiveInstallationWindow,
-} from "@hot-updater/server";
-import type { InsightsScope } from "@hot-updater/server/plugins/insights";
+} from "@hot-updater/server/plugins/insights";
 import { createServerFn } from "@tanstack/react-start";
 
 import { consoleAccess } from "./console-access";

@@ -1,4 +1,4 @@
-import type { InsightsEventPageInput } from "@hot-updater/server";
+import type { InsightsEventPageInput } from "@hot-updater/server/plugins/insights";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import {

@@ -1,4 +1,7 @@
-import type { EventHistoryRow, InstallationRow } from "@hot-updater/server";
+import type {
+  EventHistoryRow,
+  InstallationRow,
+} from "@hot-updater/server/plugins/insights";
 
 export type InsightsEventRow = EventHistoryRow;
 export type InsightsInstallationViewRow = InstallationRow;

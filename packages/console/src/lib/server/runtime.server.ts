@@ -2,13 +2,11 @@ import {
   type ConfiguredDatabase,
   isRemoteDatabase,
 } from "@hot-updater/plugin-core";
-import {
-  type ApiKeyManagementAPI,
-  createInsightsProvider,
-} from "@hot-updater/server";
 import { createDatabasePluginApis } from "@hot-updater/server/db";
+import type { ApiKeyManagementAPI } from "@hot-updater/server/plugins/api-keys";
 import {
   createInsightsModel,
+  createInsightsProvider,
   type InsightsApi,
   type InsightsModel,
 } from "@hot-updater/server/plugins/insights";

@@ -2,7 +2,7 @@ import { existsSync, statSync } from "fs";
 import path from "path";
 
 import { p } from "@hot-updater/cli-tools";
-import type { ApiKeyManagementAPI } from "@hot-updater/server";
+import type { ApiKeyManagementAPI } from "@hot-updater/server/plugins/api-keys";
 import { createJiti } from "jiti";
 
 import { ui } from "../../utils/cli-ui";
@@ -12,7 +12,10 @@ import {
   resolveGeneratedSchemaPlaceholderPath,
 } from "./generated-schema-placeholder";
 
-export type { ApiKeyManagementAPI, ApiKeyMetadata } from "@hot-updater/server";
+export type {
+  ApiKeyManagementAPI,
+  ApiKeyMetadata,
+} from "@hot-updater/server/plugins/api-keys";
 
 export interface HotUpdaterInstance {
   adapterName: string;

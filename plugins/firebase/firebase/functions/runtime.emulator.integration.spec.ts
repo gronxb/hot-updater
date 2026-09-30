@@ -17,17 +17,15 @@ import { transformEnv } from "@hot-updater/cli-tools";
 import type { Bundle } from "@hot-updater/core";
 import type { HotUpdaterCoreApi } from "@hot-updater/plugin-core";
 import {
-  createInsightsProvider,
-  type InsightsProvider,
-} from "@hot-updater/server";
-import {
   createDatabaseCoreApi,
   createDatabasePluginApis,
 } from "@hot-updater/server/db";
 import { apiKeys } from "@hot-updater/server/plugins/api-keys";
 import {
   createInsightsModel,
+  createInsightsProvider,
   insights,
+  type InsightsProvider,
 } from "@hot-updater/server/plugins/insights";
 import { getApps, initializeApp } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
