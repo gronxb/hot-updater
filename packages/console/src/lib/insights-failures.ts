@@ -47,19 +47,18 @@ export function readUpdateFailuresInput(
 }
 
 /**
- * Installations with a failed update, over those plus the downloads: each
- * installation reports a bundle's download once, so downloads count the
- * installations that got the update. Null without either.
+ * The failure rate of update attempts: failed download and install reports,
+ * over those plus download reports. Null without either.
  */
 export const failureRate = ({
-  failedInstallations,
+  failedUpdates,
   downloads,
-}: Pick<InsightsUpdateFailures, "failedInstallations" | "downloads">):
+}: Pick<InsightsUpdateFailures, "failedUpdates" | "downloads">):
   | number
   | null =>
-  failedInstallations + downloads === 0
+  failedUpdates + downloads === 0
     ? null
-    : failedInstallations / (failedInstallations + downloads);
+    : failedUpdates / (failedUpdates + downloads);
 
 /** Of the downloads that tried a patch, the share that fell back to files or the archive. */
 export const patchFallbackRate = ({

@@ -171,8 +171,8 @@ export const insightsOverviewDeltas = (
       failedLaunches: 0,
     });
   } else if (event.type !== "UPDATE_FAILED") {
-    // A failed update is no launch; it counts as activity below, and the
-    // Insights plugin counts the failure itself.
+    // A failed update is no launch. recordEvent counts a failure itself and
+    // asks for no deltas of it.
     metric(event.to_release_id, {
       downloads: 0,
       launches: 1,

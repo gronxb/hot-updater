@@ -743,6 +743,8 @@ describe("createHotUpdater Insights", () => {
       "platform=ios&channel=production",
       `platform=ios&channel=production&start=${hour}`,
       "platform=ios&channel=production&start=a&end=b",
+      // Over 30 days, the console's longest period.
+      `platform=ios&channel=production&start=${hour - 30 * 86_400_000}&end=${hour + 1}`,
     ]) {
       expect((await read(invalid)).status).toBe(400);
     }

@@ -104,9 +104,9 @@ export function BundleDownloadFailures({
       )}
       <InsightsInfo label="About download failures">
         Reported failures to download or install this release, since its first
-        report; each client reports one at most once a UTC day. The rate is
-        installations with a failure divided by those plus download reports, and
-        its installations are estimated.
+        report; each client reports one at most once a UTC day. The rate is the
+        failure rate of update attempts: failures divided by failures plus
+        download reports.
       </InsightsInfo>
     </span>
   );

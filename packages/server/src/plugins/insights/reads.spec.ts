@@ -605,7 +605,7 @@ describe("insights update failures", () => {
     ]);
   });
 
-  it("reads a release's failures since its first from the kept rows, and needs a range for a channel", async () => {
+  it("reads a release's failures since its first from the kept rows, and needs a range of at most 30 days for a channel", async () => {
     const { api, read } = await setup();
     const lifetime = await read(() =>
       api.getUpdateFailures({ ...scope, releaseId: "release-b" }),
@@ -632,6 +632,8 @@ describe("insights update failures", () => {
       scope,
       { ...scope, platform: "web" },
       { ...scope, releaseId: "release-b", timeRange: { start: 10, end: 10 } },
+      // Longer than the console's longest period, 30 days.
+      { ...scope, timeRange: { start: T0, end: T0 + 30 * DAY + 1 } },
     ]) {
       await expect(
         api.getUpdateFailures(invalid as never),

@@ -190,8 +190,8 @@ function FailuresReport({ report }: { readonly report: UpdateFailuresReport }) {
           {report.failedUpdates.toLocaleString()}
         </Metric>
         <Metric
-          label="Failure rate"
-          info="Installations with a failed download or install, divided by those plus download reports: each installation reports a bundle's download once. Installations are estimated."
+          label="Attempt failure rate"
+          info="The failure rate of update attempts: failed download and install reports divided by those plus download reports."
         >
           {formatRate(failureRate(report))}
         </Metric>

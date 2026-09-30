@@ -37,8 +37,8 @@ describe("release Insights sections", () => {
   it("shows a release's download failures and their rate in its Insights card", async () => {
     const { useUpdateFailuresQuery } = await import("@/lib/insights-api");
     render(<BundleInsightsSummary input={input} />);
-    // 4 failed installations over 4 + 36 downloads.
-    expect(screen.getByText("Download failures 12 (10.00%)")).toBeDefined();
+    // 12 failure reports over 12 + 36 download reports.
+    expect(screen.getByText("Download failures 12 (25.00%)")).toBeDefined();
     expect(useUpdateFailuresQuery).toHaveBeenCalledWith(input);
   });
 
@@ -46,7 +46,7 @@ describe("release Insights sections", () => {
     features.insightsAnalytics = false;
     render(<ReleaseFailuresSection input={input} />);
     expect(screen.getByText("Insights")).toBeDefined();
-    expect(screen.getByText("Download failures 12 (10.00%)")).toBeDefined();
+    expect(screen.getByText("Download failures 12 (25.00%)")).toBeDefined();
   });
 
   it("leaves them to the activity card where the console reads release activity", () => {

@@ -287,12 +287,14 @@ const failureDetail = (failure: BundleEventFailure): string =>
   ]);
 
 /**
- * An update failure's counters, sketches, and breakdown row. A failed check
- * counts for its channel: its `check_failures` and the `check` sketch of
- * installations. Any other failure counts `failed_updates` and the
- * `failure` sketch for its channel, and for its target release, when it
- * names one, by hour and since the release's first failure. A failure is no
- * launch and no activity: the installation reports its launch that day.
+ * An update failure's sketches, breakdown row, and lifetime counter. Its
+ * hourly breakdown row is what windowed reads sum, so no hourly or daily
+ * counter repeats it. A failed check counts for its channel, in the `check`
+ * sketch of installations. Any other failure counts in the channel's
+ * `failure` sketch, and for its target release, when it names one, in the
+ * release's hourly and lifetime `failure` sketches and its lifetime
+ * `failed_updates`, which the bundle detail reads. A failure is no launch
+ * and no activity: the installation reports its launch that day.
  */
 const countFailure = (
   tx: HotUpdaterTransaction<InsightsSchema>,
@@ -310,20 +312,21 @@ const countFailure = (
   } as const;
   const channel = { ...scope, releaseKind: "all", releaseId: "" } as const;
   const users = { failed_users: addDistinct(null, event.install_id) };
-  const counted = check ? { check_failures: 1 } : { failed_updates: 1 };
   for (const [periodKind, bucket] of [
     ["hour", hour],
     ["day", dayOf(event.received_at_ms)],
   ] as const) {
-    const models = PERIOD_MODELS[periodKind];
-    const key = (scopeKind: InsightsIdentityParts["scopeKind"]) => ({
-      identity: insightsIdentity({ ...channel, scopeKind, periodKind }),
-      bucket_start_ms: bucket,
+    const identity = insightsIdentity({
+      ...channel,
+      scopeKind: check ? "check" : "failure",
+      periodKind,
     });
-    tx.aggregate(models.counters, key("channel"), counted, { shardBy });
-    tx.aggregate(models.sketches, key(check ? "check" : "failure"), users, {
-      shardBy,
-    });
+    tx.aggregate(
+      PERIOD_MODELS[periodKind].sketches,
+      { identity, bucket_start_ms: bucket },
+      users,
+      { shardBy },
+    );
   }
   const releaseId = check ? null : event.to_release_id;
   if (releaseId !== null) {
@@ -336,14 +339,21 @@ const countFailure = (
         identity: insightsIdentity({ ...release, scopeKind, periodKind }),
         bucket_start_ms: bucket,
       });
-      tx.aggregate(
-        PERIOD_MODELS[periodKind].counters,
-        key("release"),
-        { failed_updates: 1 },
-        { shardBy },
-      );
       tx.aggregate(sketches, key("failure"), users, { shardBy });
     }
+    tx.aggregate(
+      "insights_overview_lifetime",
+      {
+        identity: insightsIdentity({
+          ...release,
+          scopeKind: "release",
+          periodKind: "lifetime",
+        }),
+        bucket_start_ms: 0,
+      },
+      { failed_updates: 1 },
+      { shardBy },
+    );
   }
   tx.aggregate(
     "insights_failures",

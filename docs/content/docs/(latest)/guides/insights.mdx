@@ -344,9 +344,10 @@ Release ID, and period:
 
 - **Failed updates** counts failed downloads and installs. A client reports a
   failure at most once a UTC day for each stage, reason, and target bundle.
+- **Attempt failure rate** is the failure rate of update attempts: failed
+  updates divided by themselves plus download reports.
 - **Failed installations** estimates the distinct installations with such a
-  failure, and **Failure rate** divides them by themselves plus the download
-  reports: each installation reports a bundle's download once.
+  failure.
 - **Patch fallback rate** is the share of downloads that tried a patch and
   fell back to the changed files or the full archive.
 - Without a Release ID, **Failed checks** counts failed update checks, and
@@ -363,8 +364,9 @@ downloads and installs since its first report, with the same rate. On a
 self-hosted server, the admin route
 `GET /failures?platform=ios&channel=production&releaseId=<id>` answers a
 release's failures since its first report; add `start` and `end`, in epoch
-milliseconds, for a period, which a channel without `releaseId` needs. The
-server API is `hotUpdater.api.insights.getUpdateFailures(input)`.
+milliseconds, for a period of at most 30 days, which a channel without
+`releaseId` needs. The server API is
+`hotUpdater.api.insights.getUpdateFailures(input)`.
 
 ## How long Insights keeps data
 
@@ -437,8 +439,8 @@ when its totals are written in that transaction, as with
 | `UPDATE_DOWNLOADED` | 19 | 42 |
 | `UPDATE_APPLIED` | 26 | 54 |
 | `RECOVERED` | 30 | 66 |
-| `UPDATE_FAILED` for a download or install | 17 | 42 |
-| `UPDATE_FAILED` for an update check | 11 | 26 |
+| `UPDATE_FAILED` for a download or install | 14 | 36 |
+| `UPDATE_FAILED` for an update check | 9 | 22 |
 
 A first launch the day after an apply or a recovery takes 21 items and 52 WRU,
 since it also moves the update's latest-report rows. A recovery that carries

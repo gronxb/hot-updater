@@ -177,10 +177,11 @@ const window = { eq: ["identity"], sort: ["bucket_start_ms"] } as const;
 
 /**
  * Counters of one period kind: hourly, daily, or lifetime at bucket 0. A
- * release or channel row counts downloads, launches, and failed launches;
- * update failures that are no failed check (`failed_updates`), failed checks
- * (a channel's `check_failures`); and downloads a patch delivered and those
- * that fell back from one.
+ * release or channel row counts downloads, launches, and failed launches,
+ * and downloads a patch delivered and those that fell back from one. A
+ * release's lifetime row counts its failed updates (`failed_updates`), since
+ * no breakdown row outlives the raw period; windowed reads sum
+ * `insights_failures` instead.
  */
 const counters = (retention?: BucketRetention) =>
   defineAggregate(identityFields, {
@@ -190,7 +191,6 @@ const counters = (retention?: BucketRetention) =>
       "launches",
       "failed_launches",
       "failed_updates",
-      "check_failures",
       "patch_downloads",
       "patch_fallbacks",
     ],

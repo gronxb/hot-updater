@@ -172,7 +172,6 @@ model insights_overview {
   launches BigInt
   failed_launches BigInt
   failed_updates BigInt
-  check_failures BigInt
   patch_downloads BigInt
   patch_fallbacks BigInt
   hu_v BigInt @default(0) @map("_v")
@@ -198,7 +197,6 @@ model insights_overview_daily {
   launches BigInt
   failed_launches BigInt
   failed_updates BigInt
-  check_failures BigInt
   patch_downloads BigInt
   patch_fallbacks BigInt
   hu_v BigInt @default(0) @map("_v")
@@ -224,7 +222,6 @@ model insights_overview_lifetime {
   launches BigInt
   failed_launches BigInt
   failed_updates BigInt
-  check_failures BigInt
   patch_downloads BigInt
   patch_fallbacks BigInt
   hu_v BigInt @default(0) @map("_v")

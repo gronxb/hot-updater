@@ -81,8 +81,9 @@ describe("UpdateFailures", () => {
       within(card).getByText(label).closest("div")!.querySelector("dd")!
         .textContent;
     expect(metric("Failed updates")).toBe("4");
-    // 3 failed installations over 3 + 9 downloads.
-    expect(metric("Failure rate")).toBe("25.00%");
+    // The failure rate of update attempts: 4 failure reports over 4 + 9
+    // download reports.
+    expect(metric("Attempt failure rate")).toBe("30.77%");
     // 1 fallback of 4 patch attempts.
     expect(metric("Patch fallback rate")).toBe("25.00%");
     // A release has no check metrics.

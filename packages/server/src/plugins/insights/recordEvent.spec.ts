@@ -614,13 +614,18 @@ describe.each(backends)("insights recordEvent on %s", (_name, adapter) => {
       releaseKind: "specific",
       releaseId: "release-3",
     } as const;
+    // Only the lifetime row counts the failure: windowed reads sum the
+    // breakdown's hourly rows.
+    await expect(
+      overview(identity({ ...release, periodKind: "lifetime" }), 0, "lifetime"),
+    ).resolves.toMatchObject({ failed_updates: 1, launches: 0 });
+    await expect(
+      overview(identity({ ...release, periodKind: "hour" }), hour(T)),
+    ).resolves.toBeUndefined();
     for (const [periodKind, bucket] of [
       ["hour", hour(T)],
       ["lifetime", 0],
     ] as const) {
-      await expect(
-        overview(identity({ ...release, periodKind }), bucket, periodKind),
-      ).resolves.toMatchObject({ failed_updates: 1, launches: 0 });
       await expect(
         failedUsers(
           identity({ ...release, scopeKind: "failure", periodKind }),
@@ -633,10 +638,11 @@ describe.each(backends)("insights recordEvent on %s", (_name, adapter) => {
       ["hour", hour(T)],
       ["day", day(T)],
     ] as const) {
-      // A failure is no launch: the channel's launch is the apply's.
+      // A failure is no launch, and no counter: the channel's launch is the
+      // apply's.
       await expect(
         overview(identity({ periodKind }), bucket, periodKind),
-      ).resolves.toMatchObject({ failed_updates: 1, launches: 1 });
+      ).resolves.toMatchObject({ failed_updates: 0, launches: 1 });
       await expect(
         failedUsers(
           identity({ scopeKind: "failure", periodKind }),
@@ -716,7 +722,7 @@ describe.each(backends)("insights recordEvent on %s", (_name, adapter) => {
     ] as const) {
       await expect(
         overview(identity({ periodKind }), bucket, periodKind),
-      ).resolves.toMatchObject({ check_failures: 1, failed_updates: 0 });
+      ).resolves.toBeUndefined();
       await expect(
         failedUsers(
           identity({ scopeKind: "check", periodKind }),

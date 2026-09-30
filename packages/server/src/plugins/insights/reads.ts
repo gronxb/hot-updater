@@ -423,7 +423,6 @@ interface CounterRow {
   readonly launches: number;
   readonly failed_launches: number;
   readonly failed_updates: number;
-  readonly check_failures: number;
   readonly patch_downloads: number;
   readonly patch_fallbacks: number;
 }
@@ -823,12 +822,16 @@ export interface InsightsUpdateFailures {
   };
 }
 
+/** The longest period the failures read covers: the console's longest, 30 days. */
+export const UPDATE_FAILURES_RANGE_MS = 30 * DAY_MS;
+
 const isRange = (range: InsightsTimeRange | undefined) =>
   range === undefined ||
   (Number.isSafeInteger(range.start) &&
     Number.isSafeInteger(range.end) &&
     range.start >= 0 &&
-    range.start < range.end);
+    range.start < range.end &&
+    range.end - range.start <= UPDATE_FAILURES_RANGE_MS);
 
 const isText = (value: unknown, maxLength: number) =>
   typeof value === "string" && value.length > 0 && value.length <= maxLength;
@@ -907,12 +910,14 @@ const breakdownOf = (
 };
 
 /**
- * A release's or a channel's update failures: counts from the counters, the
- * failed installations from their sketches, and over a time range the
- * breakdown by stage, reason, and detail, and recoveries by exit reason.
- * A release reads hourly rows, a channel daily rows past 48 hours like its
- * activity; the breakdown's rows are hourly, so its coverage is the raw
- * period's.
+ * A release's or a channel's update failures. Since a release's first
+ * report: its lifetime counters and failed installations. Over a time range
+ * of at most 30 days: failures, failed checks, the breakdown by stage,
+ * reason, and detail, and recoveries by exit reason, all summed from the
+ * breakdown's hourly rows; downloads and failed launches from the counters;
+ * failed installations from their sketches. A release reads hourly rows, a
+ * channel daily rows past 48 hours like its activity; the breakdown's rows
+ * are hourly, so its coverage is the raw period's.
  */
 export const getUpdateFailures = async (
   db: Db,
@@ -993,15 +998,24 @@ export const getUpdateFailures = async (
   ]);
   const total = (field: Exclude<keyof CounterRow, "bucket_start_ms">) =>
     counters.reduce((sum, row) => sum + row[field], 0);
-  const { breakdown, byExitReason } = breakdownOf(
+  const scoped =
     releaseId === undefined
       ? rows
-      : rows.filter((row) => row.release_id === releaseId),
-  );
+      : rows.filter((row) => row.release_id === releaseId);
+  // The breakdown's hourly rows hold every failure of the window, so its
+  // counts are summed from them rather than kept twice.
+  const failuresAt = (counted: (stage: string) => boolean) =>
+    scoped.reduce(
+      (sum, row) => sum + (counted(row.stage) ? Math.max(0, row.events) : 0),
+      0,
+    );
+  const { breakdown, byExitReason } = breakdownOf(scoped);
   return {
     coverage: coverageOf(timeRange.start, kept.hour),
     measuredAtMs: at,
-    failedUpdates: total("failed_updates"),
+    failedUpdates: failuresAt(
+      (stage) => stage !== "check" && stage !== "launch",
+    ),
     failedInstallations: failed(failures),
     downloads: total("downloads"),
     patchDownloads: total("patch_downloads"),
@@ -1009,7 +1023,7 @@ export const getUpdateFailures = async (
     ...(days
       ? {
           checks: {
-            failures: total("check_failures"),
+            failures: failuresAt((stage) => stage === "check"),
             failedInstallations: failed(checks),
             activeInstallations: countDistinct(
               mergeDistinct(active.map((row) => row.activity_users)),

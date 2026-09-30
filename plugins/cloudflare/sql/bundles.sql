@@ -52,7 +52,7 @@ CREATE INDEX IF NOT EXISTS "bundle_event_heads_byUser" ON "bundle_event_heads" (
 
 CREATE INDEX IF NOT EXISTS "bundle_event_heads__retention" ON "bundle_event_heads" ("received_at_ms", "install_id");
 
-CREATE TABLE IF NOT EXISTS "insights_overview" ("identity" TEXT NOT NULL, "bucket_start_ms" INTEGER NOT NULL, "_shard" INTEGER NOT NULL, "downloads" INTEGER NOT NULL, "launches" INTEGER NOT NULL, "failed_launches" INTEGER NOT NULL, "failed_updates" INTEGER NOT NULL, "check_failures" INTEGER NOT NULL, "patch_downloads" INTEGER NOT NULL, "patch_fallbacks" INTEGER NOT NULL, "_v" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY ("identity", "bucket_start_ms", "_shard"));
+CREATE TABLE IF NOT EXISTS "insights_overview" ("identity" TEXT NOT NULL, "bucket_start_ms" INTEGER NOT NULL, "_shard" INTEGER NOT NULL, "downloads" INTEGER NOT NULL, "launches" INTEGER NOT NULL, "failed_launches" INTEGER NOT NULL, "failed_updates" INTEGER NOT NULL, "patch_downloads" INTEGER NOT NULL, "patch_fallbacks" INTEGER NOT NULL, "_v" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY ("identity", "bucket_start_ms", "_shard"));
 
 CREATE INDEX IF NOT EXISTS "insights_overview__retention" ON "insights_overview" ("bucket_start_ms", "identity", "_shard");
 
@@ -60,7 +60,7 @@ CREATE TABLE IF NOT EXISTS "insights_sketches" ("identity" TEXT NOT NULL, "bucke
 
 CREATE INDEX IF NOT EXISTS "insights_sketches__retention" ON "insights_sketches" ("bucket_start_ms", "identity", "_shard");
 
-CREATE TABLE IF NOT EXISTS "insights_overview_daily" ("identity" TEXT NOT NULL, "bucket_start_ms" INTEGER NOT NULL, "_shard" INTEGER NOT NULL, "downloads" INTEGER NOT NULL, "launches" INTEGER NOT NULL, "failed_launches" INTEGER NOT NULL, "failed_updates" INTEGER NOT NULL, "check_failures" INTEGER NOT NULL, "patch_downloads" INTEGER NOT NULL, "patch_fallbacks" INTEGER NOT NULL, "_v" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY ("identity", "bucket_start_ms", "_shard"));
+CREATE TABLE IF NOT EXISTS "insights_overview_daily" ("identity" TEXT NOT NULL, "bucket_start_ms" INTEGER NOT NULL, "_shard" INTEGER NOT NULL, "downloads" INTEGER NOT NULL, "launches" INTEGER NOT NULL, "failed_launches" INTEGER NOT NULL, "failed_updates" INTEGER NOT NULL, "patch_downloads" INTEGER NOT NULL, "patch_fallbacks" INTEGER NOT NULL, "_v" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY ("identity", "bucket_start_ms", "_shard"));
 
 CREATE INDEX IF NOT EXISTS "insights_overview_daily__retention" ON "insights_overview_daily" ("bucket_start_ms", "identity", "_shard");
 
@@ -68,7 +68,7 @@ CREATE TABLE IF NOT EXISTS "insights_sketches_daily" ("identity" TEXT NOT NULL, 
 
 CREATE INDEX IF NOT EXISTS "insights_sketches_daily__retention" ON "insights_sketches_daily" ("bucket_start_ms", "identity", "_shard");
 
-CREATE TABLE IF NOT EXISTS "insights_overview_lifetime" ("identity" TEXT NOT NULL, "bucket_start_ms" INTEGER NOT NULL, "_shard" INTEGER NOT NULL, "downloads" INTEGER NOT NULL, "launches" INTEGER NOT NULL, "failed_launches" INTEGER NOT NULL, "failed_updates" INTEGER NOT NULL, "check_failures" INTEGER NOT NULL, "patch_downloads" INTEGER NOT NULL, "patch_fallbacks" INTEGER NOT NULL, "_v" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY ("identity", "bucket_start_ms", "_shard"));
+CREATE TABLE IF NOT EXISTS "insights_overview_lifetime" ("identity" TEXT NOT NULL, "bucket_start_ms" INTEGER NOT NULL, "_shard" INTEGER NOT NULL, "downloads" INTEGER NOT NULL, "launches" INTEGER NOT NULL, "failed_launches" INTEGER NOT NULL, "failed_updates" INTEGER NOT NULL, "patch_downloads" INTEGER NOT NULL, "patch_fallbacks" INTEGER NOT NULL, "_v" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY ("identity", "bucket_start_ms", "_shard"));
 
 CREATE TABLE IF NOT EXISTS "insights_sketches_lifetime" ("identity" TEXT NOT NULL, "bucket_start_ms" INTEGER NOT NULL, "_shard" INTEGER NOT NULL, "failed_users" TEXT, "_v" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY ("identity", "bucket_start_ms", "_shard"));
 

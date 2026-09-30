@@ -636,9 +636,10 @@ const READ_BUDGETS: readonly ReadBudget[] = [
   }),
   budget({
     api: "update failures of a release over a window: buckets × shards, all used",
-    // Day 3's hour 0: release-b's counters and failure sketches on the 2
-    // shards of installs 3 and 5, and the channel's 2 breakdown rows, the
-    // check's on 1 shard; the release keeps the download's.
+    // Day 3's hour 0: no counters, since nothing but failures happened;
+    // release-b's failure sketches on the 2 shards of installs 3 and 5; and
+    // the channel's 2 breakdown rows, the check's on 1 shard, of which the
+    // release keeps the download's.
     read: ({ insights }) =>
       insights.getUpdateFailures({
         platform: "ios",
@@ -646,8 +647,8 @@ const READ_BUDGETS: readonly ReadBudget[] = [
         releaseId: "release-b",
         timeRange: { start: T0 + 3 * DAY, end: T0 + 4 * DAY },
       }),
-    adapter: reads(0, 0, 3, 7),
-    engine: { calls: 3, rows: 4 },
+    adapter: reads(0, 0, 3, 5),
+    engine: { calls: 3, rows: 3 },
     check: (failures) => {
       expect(failures).toMatchObject({ failedUpdates: 2 });
       expect(failures.breakdown).toEqual([
@@ -662,16 +663,16 @@ const READ_BUDGETS: readonly ReadBudget[] = [
   }),
   budget({
     api: "update failures of a channel over a window: buckets × shards, all used",
-    // Day 3's hour 0: the channel's counters on 3 shards, its failure and
-    // check sketches on 2 and 1, no usage rows, and its 2 breakdown rows.
+    // Day 3's hour 0: no counters or usage rows, the channel's failure and
+    // check sketches on 2 shards and 1, and its 2 breakdown rows.
     read: ({ insights }) =>
       insights.getUpdateFailures({
         platform: "ios",
         channel: "production",
         timeRange: { start: T0 + 3 * DAY, end: T0 + 4 * DAY },
       }),
-    adapter: reads(0, 0, 5, 9),
-    engine: { calls: 5, rows: 5 },
+    adapter: reads(0, 0, 5, 6),
+    engine: { calls: 5, rows: 4 },
     check: (failures) =>
       expect(failures).toMatchObject({
         failedUpdates: 2,

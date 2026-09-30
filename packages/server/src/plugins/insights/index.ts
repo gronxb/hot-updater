@@ -89,7 +89,6 @@ const createInsightsApi = (
 
 export type InsightsApi = ReturnType<typeof createInsightsApi>;
 
-
 /** `GET /failures`'s query: a scope, an optional release, and a time range or none. */
 const readFailuresQuery = (url: URL): InsightsUpdateFailuresInput => {
   const query = url.searchParams;
@@ -116,7 +115,8 @@ const readFailuresQuery = (url: URL): InsightsUpdateFailuresInput => {
 
 /**
  * The admin route of the update failures read: a release's (`releaseId`)
- * since its first report, or over `start`–`end`, or a channel's over a range.
+ * since its first report, or over `start`–`end`, or a channel's over a range,
+ * which covers at most 30 days.
  */
 const failuresEndpoint = (api: InsightsApi): PluginEndpoint => ({
   access: "admin",
@@ -133,7 +133,7 @@ const failuresEndpoint = (api: InsightsApi): PluginEndpoint => ({
         return Response.json(
           {
             error:
-              "Send platform and channel, and releaseId or start and end in epoch milliseconds.",
+              "Send platform and channel, and releaseId or start and end in epoch milliseconds, at most 30 days apart.",
           },
           { status: 400 },
         );
