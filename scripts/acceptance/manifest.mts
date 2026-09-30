@@ -465,13 +465,49 @@ export const rows: readonly AcceptanceRow[] = [
       "Reads of a batched aggregate first check the 8 log tables (1 query each) and compact what is pending.",
   },
   {
+    name: "Retention",
+    // The schema DSL's retention option: its validation, the physical form
+    // each adapter maps natively (a TTL on every item, or `prune`), and the
+    // lease-guarded pass that prunes during writes where no TTL does, with no
+    // scheduler. The engine only calls it and drops a gauge change on a row
+    // retention already deleted.
+    entries: ["packages/server/src/database/retention.ts"],
+    // The model shapes it reads are the engine's.
+    shared: ["packages/server/src/database/definitions.ts"],
+    budget: 100,
+    atomicity:
+      "The writer that takes the lease row prunes in batches that recheck each row's expiry; a TTL deletes natively",
+    suites: [
+      {
+        project: "unit:default",
+        file: "packages/server/src/database/retention.spec.ts",
+        describe: "retention",
+      },
+    ],
+    writeLimit: false,
+    profiles: [
+      "standalone-kysely",
+      "standalone-drizzle",
+      "standalone-prisma",
+      "standalone-mongodb",
+      "standalone-dynamodb",
+      "supabase",
+      "cloudflare",
+      "firebase",
+      "aws",
+    ],
+    multiplier:
+      "A pass, at most hourly across servers, reads the lease row and deletes at most 500 expired rows a table in one or two SQL statements; TTL backends (DynamoDB, Firestore, MongoDB) read nothing.",
+  },
+  {
     name: "Engine",
     // Reads, transactions, and aggregates; schema resolution and validation.
+    // Retention is a row of its own that resolveSchema calls.
     entries: [
       "packages/server/src/database/engine.ts",
       "packages/server/src/database/resolveSchema.ts",
     ],
-    shared: [],
+    shared: ["packages/server/src/database/retention.ts"],
     budget: 1500,
     atomicity: "Owns transactions and aggregates",
     // Every row's suites run on the engine; its own fault injection and contention specs:

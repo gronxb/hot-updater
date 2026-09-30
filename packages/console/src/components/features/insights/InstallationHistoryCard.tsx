@@ -2,7 +2,13 @@ import { RefreshCw } from "lucide-react";
 
 import { HashValueDisplay } from "@/components/HashValueDisplay";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -13,12 +19,18 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  DEFAULT_INSIGHTS_RETENTION,
+  formatDays,
+  type InsightsRetentionDays,
+} from "@/lib/insights-retention";
 import type {
   InsightsEventRow,
   InsightsInstallationViewRow,
   InsightsViewPage,
 } from "@/lib/insights-view";
 
+import { DeleteInsightsDataDialog } from "./DeleteInsightsDataDialog";
 import {
   EventBundleTransition,
   EventTimestamp,
@@ -44,23 +56,32 @@ const getLastKnownBundleId = (
       : event.toBundleId;
 
 export function InstallationHistoryCard({
+  canDelete = false,
   error,
   history,
   isLoading,
+  onDeleted,
   onNext,
   onPrevious,
   onRefresh,
   pageNumber,
+  retention = DEFAULT_INSIGHTS_RETENTION,
   selectedEvent,
   selectedInstallId,
 }: {
+  /** Whether the console deletes Insights data here. */
+  readonly canDelete?: boolean;
   readonly error: unknown;
   readonly history: InsightsViewPage<InsightsEventRow> | undefined;
   readonly isLoading: boolean;
+  /** After the installation's or its user's data is deleted. */
+  readonly onDeleted?: () => void;
   readonly onRefresh?: () => void;
   readonly onNext: () => void;
   readonly onPrevious: () => void;
   readonly pageNumber: number;
+  /** How long the server keeps Insights rows. */
+  readonly retention?: InsightsRetentionDays;
   readonly selectedEvent:
     | InsightsEventRow
     | InsightsInstallationViewRow
@@ -93,18 +114,37 @@ export function InstallationHistoryCard({
                   : "Select an installation"}
               </h2>
             </CardTitle>
+            {selectedInstallId !== undefined ? (
+              <CardDescription>
+                Bundle changes are kept for {formatDays(retention.rawDays)}; the
+                latest report, for {formatDays(retention.dailyDays)} after the
+                installation last reports.
+              </CardDescription>
+            ) : null}
           </div>
-          {onRefresh && selectedInstallId !== undefined ? (
-            <Button
-              className="h-11 lg:h-8"
-              size="lg"
-              variant="outline"
-              onClick={onRefresh}
-              disabled={isLoading}
-            >
-              <RefreshCw aria-hidden="true" data-icon="inline-start" />
-              Refresh
-            </Button>
+          {selectedInstallId !== undefined ? (
+            <div className="flex flex-wrap items-center gap-2">
+              {onRefresh ? (
+                <Button
+                  className="h-11 lg:h-8"
+                  size="lg"
+                  variant="outline"
+                  onClick={onRefresh}
+                  disabled={isLoading}
+                >
+                  <RefreshCw aria-hidden="true" data-icon="inline-start" />
+                  Refresh
+                </Button>
+              ) : null}
+              {canDelete ? (
+                <DeleteInsightsDataDialog
+                  installId={selectedInstallId}
+                  userId={selectedEvent?.userId ?? null}
+                  onDeleted={onDeleted}
+                  retention={retention}
+                />
+              ) : null}
+            </div>
           ) : null}
         </div>
       </CardHeader>

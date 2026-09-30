@@ -58,6 +58,14 @@ const byId = (
 ): Filter<Document> =>
   (v === undefined ? { _id } : { _id, [V]: v }) as unknown as Filter<Document>;
 
+/** MongoDB's TTL monitor deletes a document once its `_expireAt` passes. */
+const TTL = { name: "_expireAt", key: { _expireAt: 1 }, expireAfterSeconds: 0 };
+/** When a row with retention expires; a null retention column never does. */
+const expireAt = ({ retention }: PhysicalTable, row: StoredRow) => {
+  const at = row[retention!.column];
+  return typeof at === "number" ? new Date(at + retention!.ms) : null;
+};
+
 /** Null columns are left out, so unique indexes skip them as SQL's do. */
 const toDocument = (table: PhysicalTable, row: StoredRow): Document => ({
   _id: idOf(table, rowKey(table, row)),
@@ -66,6 +74,7 @@ const toDocument = (table: PhysicalTable, row: StoredRow): Document => ({
       row[name] === null || row[name] === undefined ? [] : [[name, row[name]]],
     ),
   ),
+  ...(table.retention && { [TTL.name]: expireAt(table, row) }),
 });
 
 /** `columns op bound` over a tuple prefix, expanded into ORs. */
@@ -143,6 +152,8 @@ export const createMongoAdapter = (
           if (value === null) $unset[name] = "";
           else $set[name] = value;
         }
+        if (op.table.retention)
+          $set[TTL.name] = expireAt(op.table, { ...op.previous, ...op.set });
         return update(byId(_id, op.guard.v), { $set, $unset });
       }
       case "delete":
@@ -168,6 +179,8 @@ export const createMongoAdapter = (
           if (by !== undefined) set[name] = { $add: [stored, by] };
           else if (start !== null) set[name] = stored;
         }
+        // A Date or null in a pipeline stage is a literal, not an expression.
+        if (op.table.retention) set[TTL.name] = expireAt(op.table, op.init);
         await target.updateOne(byId(_id), [{ $set: set }], {
           upsert: true,
           session,
@@ -282,6 +295,7 @@ export const createMongoAdapter = (
             .catch((error: unknown) => {
               if (mongoError(error)?.code !== 48) throw error;
             });
+          if (table.retention) await collection(table).createIndexes([TTL]);
           if (table.indexes.length === 0) continue;
           await collection(table).createIndexes(
             table.indexes.map((index) => indexDescription(table, index)),

@@ -204,6 +204,21 @@ export const verifyAdapter = (
       }
       return rows;
     },
+    ...(adapter.prune && {
+      async prune(table: PhysicalTable, before: number, limit: number) {
+        if (table.retention === undefined) {
+          fail(`${table.name} has no retention to prune by.`);
+        }
+        if (!Number.isSafeInteger(limit) || limit < 1) {
+          fail("prune limit must be a positive integer.");
+        }
+        const deleted = await adapter.prune!(table, before, limit);
+        if (!Number.isSafeInteger(deleted) || deleted < 0 || deleted > limit) {
+          fail(`${table.name} prune reported ${deleted} rows for ${limit}.`);
+        }
+        return deleted;
+      },
+    }),
     async write(ops) {
       verifyWrite(adapter, ops);
       const result = await adapter.write(ops);

@@ -8,10 +8,10 @@ import { InsightsOverview } from "@/components/features/insights/InsightsOvervie
 import { InsightsPageHeader } from "@/components/features/insights/InsightsPageHeader";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { requireConsoleFeature } from "@/lib/console-features-api";
-import type { InsightsWindow } from "@/lib/insights-api";
+import { useInsightsRetention } from "@/lib/insights-api";
 import { getRecoveryReportRpc } from "@/lib/insights-recovery-rpc";
 import { validateInsightsSearch } from "@/lib/insights-search";
-import type { AppUsageScope } from "@/lib/insights-usage";
+import type { AppUsageScope, UsageWindow } from "@/lib/insights-usage";
 import { getAppUsageReportRpc } from "@/lib/insights-usage-rpc";
 
 export const Route = createFileRoute("/insights")({
@@ -25,6 +25,7 @@ export const Route = createFileRoute("/insights")({
 function InsightsPage() {
   const search = Route.useSearch();
   const navigate = Route.useNavigate();
+  const retention = useInsightsRetention();
   const usageWindow = search.window ?? "24h";
   const bundleWindow = search.bundleWindow ?? "7d";
   const channel = search.channel ?? search.healthChannel ?? "production";
@@ -33,7 +34,7 @@ function InsightsPage() {
     channel,
     appVersion: search.appVersion,
   };
-  const setUsageWindow = (window: InsightsWindow) =>
+  const setUsageWindow = (window: UsageWindow) =>
     void navigate({ search: { ...search, window } });
   const input = { ...scope, window: usageWindow };
   const bundleInput = {
@@ -93,6 +94,7 @@ function InsightsPage() {
             search={{ ...scope, window: usageWindow, bundleWindow }}
             window={usageWindow}
             onWindowChange={setUsageWindow}
+            retention={retention}
           />
           <InsightsOverview
             input={bundleInput}

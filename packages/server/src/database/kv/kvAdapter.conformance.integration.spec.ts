@@ -8,6 +8,8 @@ setupDatabaseAdapterConformanceSuite({
   // The store takes 100 items per write, and a conformance insert is 3: a
   // row and 2 index items. 33 inserts fit; 34 are 102 items.
   maxOps: 33,
+  // Rows of a table with retention carry a TTL the store deletes them by.
+  retention: "ttl",
   createAdapter: async ({ nativePageSize }) => ({
     adapter: createKvAdapter({
       store: createMemoryKeyValueStore({ nativePageSize }),

@@ -20,7 +20,9 @@ import {
   resolveConsoleFeatures,
 } from "../console-features";
 import {
+  type ConsoleInsightsDeletion,
   type ConsoleInsightsReads,
+  createAdminInsightsDeletion,
   createAdminInsightsReads,
   type FetchAdmin,
 } from "./adminInsights";
@@ -29,6 +31,7 @@ import {
 export interface ConsoleFeatureApis {
   readonly insights: ConsoleInsightsReads;
   readonly insightsAnalytics: InsightsModel;
+  readonly insightsDeletion: ConsoleInsightsDeletion;
   readonly apiKeys: ApiKeyManagementAPI;
 }
 
@@ -71,11 +74,25 @@ const once = <T>(load: () => Promise<T>): (() => Promise<T>) => {
     }));
 };
 
+/** What serves the Insights features, over the `insights()` plugin's API. */
+const insightsFeatureApis = (api: InsightsApi) => {
+  const model = createInsightsModel(api);
+  return {
+    insights: {
+      ...createInsightsProvider(model),
+      getRetention: async () => api.retention,
+    },
+    insightsAnalytics: model,
+    insightsDeletion: api,
+  };
+};
+
 /**
  * The console's features and what serves them, for a console config:
  * - a self-hosted server (`standaloneRepository`) runs its plugins and lists
- *   them on its admin `/version`; the console reads its Insights events and
- *   installations through its admin API, and nothing that needs the database;
+ *   them on its admin `/version`; the console reads and deletes its Insights
+ *   events and installations through its admin API, and nothing that needs
+ *   the database;
  * - otherwise the console assembles `plugins` over the database, as the
  *   server does, and serves the features of the plugins it assembled.
  */
@@ -93,7 +110,10 @@ export const createConsoleRuntime = (config: {
           remote: true,
         }),
       ),
-      apis: { insights: createAdminInsightsReads(fetchAdmin) },
+      apis: {
+        insights: createAdminInsightsReads(fetchAdmin),
+        insightsDeletion: createAdminInsightsDeletion(fetchAdmin),
+      },
     };
   }
   const api = createDatabasePluginApis(database, config.plugins ?? []);
@@ -101,18 +121,11 @@ export const createConsoleRuntime = (config: {
   // Assembly refuses a third-party plugin with a built-in plugin's id, so
   // each id holds that built-in plugin's API.
   const insightsApi = api.insights as InsightsApi | undefined;
-  const model =
-    insightsApi === undefined ? undefined : createInsightsModel(insightsApi);
   return {
     remote: false,
     features: async () => features,
     apis: {
-      ...(model === undefined
-        ? {}
-        : {
-            insights: createInsightsProvider(model),
-            insightsAnalytics: model,
-          }),
+      ...(insightsApi === undefined ? {} : insightsFeatureApis(insightsApi)),
       ...(api.apiKeys === undefined
         ? {}
         : { apiKeys: api.apiKeys as ApiKeyManagementAPI }),

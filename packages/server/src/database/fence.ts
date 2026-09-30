@@ -167,5 +167,9 @@ export const withSchemaFence = (
     query: (table, request) =>
       fence().then(() => adapter.query(table, request)),
     write: (ops) => fence().then(() => adapter.write(ops)),
+    ...(adapter.prune && {
+      prune: (table, before, limit) =>
+        fence().then(() => adapter.prune!(table, before, limit)),
+    }),
   };
 };

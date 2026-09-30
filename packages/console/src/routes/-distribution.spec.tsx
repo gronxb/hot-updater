@@ -211,4 +211,9 @@ describe("Distribution details", () => {
       version: "2.0.0-rc+qa",
     });
   });
+  it("takes 12 months for App usage only", () => {
+    expect(
+      validateDistributionSearch({ window: "12m", bundleWindow: "12m" }),
+    ).toMatchObject({ window: "12m", bundleWindow: undefined });
+  });
 });

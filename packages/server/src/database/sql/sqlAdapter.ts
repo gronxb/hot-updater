@@ -20,6 +20,7 @@ import {
 import {
   createTableStatements,
   isMultiIndex,
+  pruneStatements,
   quoteSql,
   type SqlDialect,
 } from "./sqlSchema";
@@ -513,6 +514,25 @@ export const createSqlAdapter = ({
         }
         throw error;
       }
+    },
+
+    async prune(table, before, limit) {
+      const statements = pruneStatements(
+        dialect,
+        table,
+        tablePrefix,
+        limit,
+      ).map((render) => sql((bind) => render(() => bind(before))));
+      const results = executor.batch
+        ? await executor.batch(statements)
+        : await executor.transaction(async (connection) => {
+            const done: SqlResult[] = [];
+            for (const statement of statements) {
+              done.push(await connection.execute(statement));
+            }
+            return done;
+          });
+      return results.at(-1)?.changes ?? 0;
     },
 
     migrations: {
