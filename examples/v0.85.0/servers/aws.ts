@@ -2,6 +2,8 @@ import { fromSSO } from "@aws-sdk/credential-provider-sso";
 import { dynamoDB, plugins, s3Storage } from "@hot-updater/aws";
 import { createHotUpdater } from "@hot-updater/server";
 
+import { sample } from "./samplePlugin";
+
 const awsOptions = {
   region: process.env.HOT_UPDATER_S3_REGION!,
   credentials: fromSSO({ profile: process.env.HOT_UPDATER_AWS_PROFILE! }),
@@ -24,5 +26,5 @@ export const hotUpdater = createHotUpdater({
       bucketName: process.env.HOT_UPDATER_S3_BUCKET_NAME!,
     }),
   ],
-  plugins,
+  plugins: [...plugins, sample()],
 });

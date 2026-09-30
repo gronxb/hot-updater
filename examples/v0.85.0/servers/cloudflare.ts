@@ -1,6 +1,8 @@
 import { d1Database, plugins, r2Storage } from "@hot-updater/cloudflare";
 import { createHotUpdater } from "@hot-updater/server";
 
+import { sample } from "./samplePlugin";
+
 /**
  * The Hot Updater server: its database, storage, and plugins.
  * hot-updater.config.ts points the CLI and the console here.
@@ -22,5 +24,5 @@ export const hotUpdater = createHotUpdater({
       },
     }),
   ],
-  plugins,
+  plugins: [...plugins, sample()],
 });
