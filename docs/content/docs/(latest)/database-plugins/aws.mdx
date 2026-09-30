@@ -40,6 +40,17 @@ aws dynamodb create-table \
     AttributeName=sk,KeyType=RANGE
 ```
 
+Turn on its TTL for `_ttl`. The plugin writes `_ttl`, in epoch seconds, on
+every item of a row with [retention](/docs/custom/server-plugins#retention),
+such as Insights events and rollups, and DynamoDB deletes expired items
+without write cost:
+
+```bash
+aws dynamodb update-time-to-live \
+  --table-name hot-updater \
+  --time-to-live-specification Enabled=true,AttributeName=_ttl
+```
+
 Then write the schema settings with `migrateDynamoDB`, which takes the same
 configuration as `dynamoDB`:
 
@@ -50,7 +61,8 @@ await migrateDynamoDB({ tableName: "hot-updater", region: "us-east-1" });
 ```
 
 When the table is missing, `migrateDynamoDB` also creates it, on demand and
-without deletion protection, which suits DynamoDB Local. To write the settings
+without deletion protection, which suits DynamoDB Local. Either way it turns
+on the table's TTL for `_ttl` when TTL is off. To write the settings
 with the AWS CLI instead, use `dynamodb/schema-settings.json` from
 `hot-updater infra scaffold --provider aws`; see
 [Infrastructure Templates](/docs/guides/infrastructure-templates).

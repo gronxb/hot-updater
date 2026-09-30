@@ -155,6 +155,16 @@ export const sqlTableShapes = (
         },
       ];
     });
+    // A prune walks expired rows in an index's order, so one leads with the column.
+    const retention = table.retention && retentionOrder(table);
+    if (retention && !retention.indexed) {
+      indexes.push({
+        kind: "index",
+        name: shortSqlName(`${name}__retention`),
+        unique: false,
+        columns: retention.columns,
+      });
+    }
     return {
       name,
       columns: table.columns.map((column) => ({
@@ -202,4 +212,75 @@ export const createTableStatements = (
     ];
   };
   return sqlTableShapes(dialect, tables, tablePrefix).flatMap(render);
+};
+
+/**
+ * The order a prune walks a table's expired rows in, which ends with the
+ * key so it is total: the columns of the first index that leads with the
+ * retention column, or the key when it does, or else the column and the
+ * key, which then need an index of their own (`indexed` false).
+ */
+export const retentionOrder = (table: PhysicalTable) => {
+  const { column } = table.retention!;
+  for (const index of table.indexes) {
+    const columns = [...index.eq, ...indexOrderColumns(table, index)];
+    if (!index.unique && !isMultiIndex(table, index) && columns[0] === column) {
+      return { columns, indexed: true };
+    }
+  }
+  if (table.key[0] === column) return { columns: table.key, indexed: true };
+  const key = table.key.filter((field) => field !== column);
+  return { columns: [column, ...key], indexed: false };
+};
+
+/**
+ * The statements that delete up to `limit` expired rows of a table with
+ * retention, oldest first in {@link retentionOrder}: its multi-valued index
+ * entries, then the rows, which a concurrent write that moved the retention
+ * column past `before` keeps. `before` renders the bound each time it
+ * appears. MySQL deletes with ORDER BY and LIMIT. Elsewhere the cutoff is
+ * the last of the `limit` oldest expired rows in that order, a row value
+ * the index ranges over, and the shapes pass Supabase's apply RPC: no IN, no
+ * AS, aliases `i` and `b`.
+ */
+export const pruneStatements = (
+  dialect: SqlDialect,
+  table: PhysicalTable,
+  tablePrefix: string,
+  limit: number,
+): ((before: () => string) => string)[] => {
+  const quote = (name: string) => quoteSql(dialect, name);
+  const name = quote(`${tablePrefix}${table.name}`);
+  const at = quote(table.retention!.column);
+  const order = retentionOrder(table).columns.map(quote);
+  const list = (alias: string, direction = "") =>
+    order.map((column) => `${alias}.${column}${direction}`).join(", ");
+  const oldest = (before: () => string) =>
+    `SELECT ${list("i")} FROM ${name} i WHERE i.${at} <= ${before()} ORDER BY ${list("i", " ASC")} LIMIT ${limit}`;
+  const doomed = (alias: string, before: () => string) =>
+    `${alias}.${at} <= ${before()} AND (${list(alias)}) <= (SELECT ${list("b")} FROM (${oldest(before)}) b ORDER BY ${list("b", " DESC")} LIMIT 1)`;
+  const entries = table.indexes
+    .filter((index) => isMultiIndex(table, index))
+    .map((index) => quote(`${tablePrefix}${table.name}__${index.name}`));
+  const keyOf = (left: string, right: string) =>
+    table.key
+      .map((column) => `${left}.${quote(column)} = ${right}.${quote(column)}`)
+      .join(" AND ");
+  if (dialect === "mysql") {
+    return [
+      ...entries.map(
+        (index) => (before: () => string) =>
+          `DELETE e FROM ${index} e JOIN (${oldest(before)}) d ON ${keyOf("e", "d")}`,
+      ),
+      (before) =>
+        `DELETE FROM ${name} WHERE ${at} <= ${before()} ORDER BY ${order.join(", ")} LIMIT ${limit}`,
+    ];
+  }
+  return [
+    ...entries.map(
+      (index) => (before: () => string) =>
+        `DELETE FROM ${index} WHERE EXISTS (SELECT * FROM ${name} b WHERE ${keyOf("b", index)} AND ${doomed("b", before)})`,
+    ),
+    (before) => `DELETE FROM ${name} WHERE ${doomed(name, before)}`,
+  ];
 };

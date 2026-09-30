@@ -17,13 +17,18 @@ import {
 } from "@/components/features/insights/InstallationPageHeader";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { requireConsoleFeature } from "@/lib/console-features-api";
+import {
+  requireConsoleFeature,
+  useConsoleFeature,
+} from "@/lib/console-features-api";
 import {
   useInsightsEventsQuery,
   useInsightsInstallationEventsQuery,
   useInsightsInstallationQuery,
   useInsightsInstallationsQuery,
+  useInsightsRetention,
 } from "@/lib/insights-api";
+import { formatDays } from "@/lib/insights-retention";
 import { DEFAULT_EVENT_RANGE, eventRangeBounds } from "@/lib/insights-view";
 
 import {
@@ -55,6 +60,8 @@ export const Route = createFileRoute("/installations")({
 function InstallationsPage() {
   const search = Route.useSearch();
   const navigate = Route.useNavigate();
+  const canDelete = useConsoleFeature("insightsDeletion");
+  const retention = useInsightsRetention();
   const [draftQuery, setDraftQuery] = useState(search.query ?? "");
   const [initialEventsBefore] = useState(freshBefore);
   const [initialHistoryBefore] = useState(freshBefore);
@@ -240,7 +247,7 @@ function InstallationsPage() {
           ) : null}
           {!hasLookup ? (
             <EventHistoryCard
-              description="Downloads, applies, and recoveries, newest first. A launch without an update counts in App usage and in its installation's latest report."
+              description={`Downloads, applies, and recoveries, newest first, kept for ${formatDays(retention.rawDays)}. A launch without an update counts in App usage and in its installation's latest report.`}
               error={events.error}
               eventsLocation={{
                 eventsBefore,
@@ -293,6 +300,7 @@ function InstallationsPage() {
               }}
               pageNumber={eventsBack.length + 1}
               range={eventsRange}
+              rawDays={retention.rawDays}
             >
               {installationLookup}
             </EventHistoryCard>
@@ -346,6 +354,7 @@ function InstallationsPage() {
                 />
               ) : null}
               <InstallationHistoryCard
+                canDelete={canDelete}
                 error={history.error ?? selectedInstallation.error}
                 history={history.data}
                 isLoading={history.isLoading || selectedInstallation.isLoading}
@@ -384,7 +393,19 @@ function InstallationsPage() {
                     { historyBack: [] },
                   );
                 }}
+                onDeleted={() => {
+                  updateSearch(
+                    {
+                      historyBefore: undefined,
+                      historyCursor: undefined,
+                      installId: undefined,
+                    },
+                    true,
+                    { historyBack: [] },
+                  );
+                }}
                 pageNumber={historyBack.length + 1}
+                retention={retention}
                 selectedEvent={selectedEvent}
                 selectedInstallId={search.installId}
               />

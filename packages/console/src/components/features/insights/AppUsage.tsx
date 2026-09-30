@@ -36,14 +36,18 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import type { InsightsWindow } from "@/lib/insights-api";
+import {
+  DEFAULT_INSIGHTS_RETENTION,
+  type InsightsRetentionDays,
+  keepsTwelveMonths,
+} from "@/lib/insights-retention";
 import type { InsightsSearch } from "@/lib/insights-search";
-import type { AppUsageReport } from "@/lib/insights-usage";
+import type { AppUsageReport, UsageWindow } from "@/lib/insights-usage";
 
 import { EstimatedCount } from "./EstimatedCount";
 import { InsightsErrorAlert } from "./InsightsErrorAlert";
 import { InsightsInfo } from "./InsightsInfo";
-import { InsightsPeriodSelector } from "./InsightsPeriodSelector";
+import { UsagePeriodSelector } from "./InsightsPeriodSelector";
 import { ReportingDevicesSummary } from "./ReportingDevicesSummary";
 
 const dates = new Intl.DateTimeFormat("en", {
@@ -63,15 +67,18 @@ export function AppUsage({
   search,
   window,
   onWindowChange,
+  retention = DEFAULT_INSIGHTS_RETENTION,
 }: {
   readonly query: UseQueryResult<AppUsageReport>;
+  /** How long the server keeps Insights rows. */
+  readonly retention?: InsightsRetentionDays;
   readonly search: InsightsSearch;
-  readonly window: InsightsWindow;
-  readonly onWindowChange: (window: InsightsWindow) => void;
+  readonly window: UsageWindow;
+  readonly onWindowChange: (window: UsageWindow) => void;
 }) {
   const report = query.error ? undefined : query.data;
   const formatTime = (ms: number) =>
-    (window === "30d" ? dates : times).format(ms);
+    (window === "30d" || window === "12m" ? dates : times).format(ms);
   const distributionPeriod = report
     ? `since ${dates.format(report.distributionSinceMs)}, 00:00 UTC`
     : "in the selected period";
@@ -92,9 +99,10 @@ export function AppUsage({
       <Card aria-label="App usage" role="region" className="min-w-0 shadow-sm">
         <CardHeader className="flex-row flex-wrap items-center justify-between gap-4">
           <CardTitle>App usage</CardTitle>
-          <InsightsPeriodSelector
+          <UsagePeriodSelector
             window={window}
             onWindowChange={onWindowChange}
+            twelveMonths={keepsTwelveMonths(retention)}
           />
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
@@ -103,6 +111,7 @@ export function AppUsage({
             count={report?.activeInstallations}
             isPending={query.isPending}
             partial={report?.truncated ?? false}
+            retention={retention}
           />
           {query.isPending ? (
             <Skeleton aria-label="Loading app usage" className="h-48" />

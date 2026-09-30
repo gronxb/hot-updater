@@ -25,25 +25,31 @@ init. reference/ is additional context, not executable provisioning code.
   - Retry: query the bucket/location before any repeated creation request.
 
 - [ ] **aws.database — Prepare DynamoDB**
-  - Requires: aws.storage. Fill DYNAMODB_TABLE_NAME in the three dynamodb/ JSON files.
+  - Requires: aws.storage. Fill DYNAMODB_TABLE_NAME in the four dynamodb/ JSON files.
   - Run: inspect an existing table against create-table.json and read its schema
     settings before writing. A populated table must have `schema.engine` = `1`;
     stop if its schema or settings are incompatible or unknown. If absent, use
     `aws dynamodb create-table --region <region> --cli-input-json file://dynamodb/create-table.json`.
     Wait for ACTIVE, then inspect PITR; when disabled, use
     `aws dynamodb update-continuous-backups --region <region> --cli-input-json file://dynamodb/enable-pitr.json`.
+    Inspect TTL with `aws dynamodb describe-time-to-live --region <region> --table-name <table>`;
+    when it is disabled, turn it on for `_ttl`, which retention writes on every
+    item of an expiring row and DynamoDB deletes for free:
+    `aws dynamodb update-time-to-live --region <region> --cli-input-json file://dynamodb/enable-ttl.json`.
+    TTL on another attribute blocks it: stop and ask the user.
     For a new empty table, write the schema settings the plugin checks before its
     first read (the migration for this provider; the plugin answers 503 until
     they exist):
     `aws dynamodb batch-write-item --region <region> --cli-input-json file://dynamodb/schema-settings.json`.
   - Verify/record: tableName; string pk/sk keys, no secondary index,
     PAY_PER_REQUEST and throughput limits match the JSON; the table is ACTIVE, PITR
-    is enabled, and the items in schema-settings.json exist under
+    is enabled, TTL is ENABLED (or ENABLING) on `_ttl`, and the items in
+    schema-settings.json exist under
     pk `private_hot_updater_settings`. New tables have deletion protection
     enabled; preserve that setting on reused tables. A table with a secondary
     index, including `hot-updater-update-index`, is incompatible; do not change
     its schema or settings to make it pass.
-  - Retry: describe the same table/backups/items; write only what is missing.
+  - Retry: describe the same table/backups/TTL/items; write only what is missing.
 
 - [ ] **aws.client-key — Initialize local access and the client key**
   - Requires: aws.database. Run this before Lambda deployment, as init does.

@@ -50,9 +50,25 @@ CREATE TABLE IF NOT EXISTS "bundle_event_heads" ("install_id" TEXT NOT NULL, "id
 
 CREATE INDEX IF NOT EXISTS "bundle_event_heads_byUser" ON "bundle_event_heads" ("user_id", "install_id");
 
+CREATE INDEX IF NOT EXISTS "bundle_event_heads__retention" ON "bundle_event_heads" ("received_at_ms", "install_id");
+
 CREATE TABLE IF NOT EXISTS "insights_overview" ("identity" TEXT NOT NULL, "bucket_start_ms" INTEGER NOT NULL, "_shard" INTEGER NOT NULL, "downloads" INTEGER NOT NULL, "launches" INTEGER NOT NULL, "failed_launches" INTEGER NOT NULL, "_v" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY ("identity", "bucket_start_ms", "_shard"));
 
+CREATE INDEX IF NOT EXISTS "insights_overview__retention" ON "insights_overview" ("bucket_start_ms", "identity", "_shard");
+
 CREATE TABLE IF NOT EXISTS "insights_sketches" ("identity" TEXT NOT NULL, "bucket_start_ms" INTEGER NOT NULL, "_shard" INTEGER NOT NULL, "launch_users" TEXT, "activity_users" TEXT, "_v" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY ("identity", "bucket_start_ms", "_shard"));
+
+CREATE INDEX IF NOT EXISTS "insights_sketches__retention" ON "insights_sketches" ("bucket_start_ms", "identity", "_shard");
+
+CREATE TABLE IF NOT EXISTS "insights_overview_daily" ("identity" TEXT NOT NULL, "bucket_start_ms" INTEGER NOT NULL, "_shard" INTEGER NOT NULL, "downloads" INTEGER NOT NULL, "launches" INTEGER NOT NULL, "failed_launches" INTEGER NOT NULL, "_v" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY ("identity", "bucket_start_ms", "_shard"));
+
+CREATE INDEX IF NOT EXISTS "insights_overview_daily__retention" ON "insights_overview_daily" ("bucket_start_ms", "identity", "_shard");
+
+CREATE TABLE IF NOT EXISTS "insights_sketches_daily" ("identity" TEXT NOT NULL, "bucket_start_ms" INTEGER NOT NULL, "_shard" INTEGER NOT NULL, "launch_users" TEXT, "activity_users" TEXT, "_v" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY ("identity", "bucket_start_ms", "_shard"));
+
+CREATE INDEX IF NOT EXISTS "insights_sketches_daily__retention" ON "insights_sketches_daily" ("bucket_start_ms", "identity", "_shard");
+
+CREATE TABLE IF NOT EXISTS "insights_overview_lifetime" ("identity" TEXT NOT NULL, "bucket_start_ms" INTEGER NOT NULL, "_shard" INTEGER NOT NULL, "downloads" INTEGER NOT NULL, "launches" INTEGER NOT NULL, "failed_launches" INTEGER NOT NULL, "_v" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY ("identity", "bucket_start_ms", "_shard"));
 
 CREATE TABLE IF NOT EXISTS "insights_distribution" ("channel" TEXT NOT NULL, "platform" TEXT NOT NULL, "app_version" TEXT NOT NULL, "release_id" TEXT NOT NULL, "bucket_start_ms" INTEGER NOT NULL, "_shard" INTEGER NOT NULL, "latest_installations" INTEGER NOT NULL, "_v" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY ("channel", "platform", "app_version", "release_id", "bucket_start_ms", "_shard"));
 
@@ -60,9 +76,15 @@ CREATE INDEX IF NOT EXISTS "insights_distribution_byScope" ON "insights_distribu
 
 CREATE INDEX IF NOT EXISTS "insights_distribution_byVersion" ON "insights_distribution" ("channel", "platform", "app_version", "bucket_start_ms", "release_id", "_shard");
 
+CREATE INDEX IF NOT EXISTS "insights_distribution__retention" ON "insights_distribution" ("bucket_start_ms", "channel", "platform", "app_version", "release_id", "_shard");
+
 CREATE TABLE IF NOT EXISTS "insights_latest_by_bundle" ("platform" TEXT NOT NULL, "channel" TEXT NOT NULL, "bundle_field" TEXT NOT NULL, "bundle_id" TEXT NOT NULL, "type" TEXT NOT NULL, "bucket_start_ms" INTEGER NOT NULL, "_shard" INTEGER NOT NULL, "installations" INTEGER NOT NULL, "_v" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY ("platform", "channel", "bundle_field", "bundle_id", "type", "bucket_start_ms", "_shard"));
 
+CREATE INDEX IF NOT EXISTS "insights_latest_by_bundle__retention" ON "insights_latest_by_bundle" ("bucket_start_ms", "platform", "channel", "bundle_field", "bundle_id", "type", "_shard");
+
 CREATE TABLE IF NOT EXISTS "insights_outcomes" ("platform" TEXT NOT NULL, "channel" TEXT NOT NULL, "type" TEXT NOT NULL, "bundle_ref" TEXT NOT NULL, "bucket_start_ms" INTEGER NOT NULL, "_shard" INTEGER NOT NULL, "events" INTEGER NOT NULL, "_v" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY ("platform", "channel", "type", "bundle_ref", "bucket_start_ms", "_shard"));
+
+CREATE INDEX IF NOT EXISTS "insights_outcomes__retention" ON "insights_outcomes" ("bucket_start_ms", "platform", "channel", "type", "bundle_ref", "_shard");
 
 CREATE TABLE IF NOT EXISTS "api_keys" ("id" TEXT NOT NULL, "hash" TEXT NOT NULL, "name" TEXT NOT NULL, "prefix" TEXT NOT NULL, "role" TEXT NOT NULL, "created_at_ms" INTEGER NOT NULL, "revoked_at_ms" INTEGER, "_v" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY ("id"));
 
@@ -76,6 +98,6 @@ INSERT INTO "private_hot_updater_settings" ("key", "value", "_v") VALUES ('schem
 
 INSERT INTO "private_hot_updater_settings" ("key", "value", "_v") VALUES ('schema.core', '1.0.0', 0) ON CONFLICT ("key") DO UPDATE SET "value" = excluded."value";
 
-INSERT INTO "private_hot_updater_settings" ("key", "value", "_v") VALUES ('schema.insights', '1.0.0', 0) ON CONFLICT ("key") DO UPDATE SET "value" = excluded."value";
+INSERT INTO "private_hot_updater_settings" ("key", "value", "_v") VALUES ('schema.insights', '1.1.0', 0) ON CONFLICT ("key") DO UPDATE SET "value" = excluded."value";
 
 INSERT INTO "private_hot_updater_settings" ("key", "value", "_v") VALUES ('schema.apiKeys', '1.0.0', 0) ON CONFLICT ("key") DO UPDATE SET "value" = excluded."value";

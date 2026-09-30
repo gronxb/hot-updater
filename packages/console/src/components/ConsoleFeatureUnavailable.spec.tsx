@@ -12,7 +12,12 @@ vi.mock("@/lib/console-features-api", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/console-features-api")>()),
   useConsoleFeatures: () => ({
     data: {
-      features: { insights: false, insightsAnalytics: false, apiKeys: false },
+      features: {
+        insights: false,
+        insightsAnalytics: false,
+        insightsDeletion: false,
+        apiKeys: false,
+      },
       remote: mocks.remote,
     },
   }),

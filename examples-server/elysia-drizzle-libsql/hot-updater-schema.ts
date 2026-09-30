@@ -164,6 +164,7 @@ export const bundle_event_heads = sqliteTable("bundle_event_heads", {
 }, (table) => [
   primaryKey({ columns: [table["install_id"]] }),
   index("bundle_event_heads_byUser").on(table["user_id"], table["install_id"]),
+  index("bundle_event_heads__retention").on(table["received_at_ms"], table["install_id"]),
 ]);
 
 export const insights_overview = sqliteTable("insights_overview", {
@@ -176,6 +177,7 @@ export const insights_overview = sqliteTable("insights_overview", {
   "_v": column("INTEGER")("_v").notNull().default(0),
 }, (table) => [
   primaryKey({ columns: [table["identity"], table["bucket_start_ms"], table["_shard"]] }),
+  index("insights_overview__retention").on(table["bucket_start_ms"], table["identity"], table["_shard"]),
 ]);
 
 export const insights_sketches = sqliteTable("insights_sketches", {
@@ -184,6 +186,44 @@ export const insights_sketches = sqliteTable("insights_sketches", {
   "_shard": column("INTEGER")("_shard").notNull(),
   "launch_users": column("TEXT")("launch_users"),
   "activity_users": column("TEXT")("activity_users"),
+  "_v": column("INTEGER")("_v").notNull().default(0),
+}, (table) => [
+  primaryKey({ columns: [table["identity"], table["bucket_start_ms"], table["_shard"]] }),
+  index("insights_sketches__retention").on(table["bucket_start_ms"], table["identity"], table["_shard"]),
+]);
+
+export const insights_overview_daily = sqliteTable("insights_overview_daily", {
+  "identity": column("TEXT")("identity").notNull(),
+  "bucket_start_ms": column("INTEGER")("bucket_start_ms").notNull(),
+  "_shard": column("INTEGER")("_shard").notNull(),
+  "downloads": column("INTEGER")("downloads").notNull(),
+  "launches": column("INTEGER")("launches").notNull(),
+  "failed_launches": column("INTEGER")("failed_launches").notNull(),
+  "_v": column("INTEGER")("_v").notNull().default(0),
+}, (table) => [
+  primaryKey({ columns: [table["identity"], table["bucket_start_ms"], table["_shard"]] }),
+  index("insights_overview_daily__retention").on(table["bucket_start_ms"], table["identity"], table["_shard"]),
+]);
+
+export const insights_sketches_daily = sqliteTable("insights_sketches_daily", {
+  "identity": column("TEXT")("identity").notNull(),
+  "bucket_start_ms": column("INTEGER")("bucket_start_ms").notNull(),
+  "_shard": column("INTEGER")("_shard").notNull(),
+  "launch_users": column("TEXT")("launch_users"),
+  "activity_users": column("TEXT")("activity_users"),
+  "_v": column("INTEGER")("_v").notNull().default(0),
+}, (table) => [
+  primaryKey({ columns: [table["identity"], table["bucket_start_ms"], table["_shard"]] }),
+  index("insights_sketches_daily__retention").on(table["bucket_start_ms"], table["identity"], table["_shard"]),
+]);
+
+export const insights_overview_lifetime = sqliteTable("insights_overview_lifetime", {
+  "identity": column("TEXT")("identity").notNull(),
+  "bucket_start_ms": column("INTEGER")("bucket_start_ms").notNull(),
+  "_shard": column("INTEGER")("_shard").notNull(),
+  "downloads": column("INTEGER")("downloads").notNull(),
+  "launches": column("INTEGER")("launches").notNull(),
+  "failed_launches": column("INTEGER")("failed_launches").notNull(),
   "_v": column("INTEGER")("_v").notNull().default(0),
 }, (table) => [
   primaryKey({ columns: [table["identity"], table["bucket_start_ms"], table["_shard"]] }),
@@ -202,6 +242,7 @@ export const insights_distribution = sqliteTable("insights_distribution", {
   primaryKey({ columns: [table["channel"], table["platform"], table["app_version"], table["release_id"], table["bucket_start_ms"], table["_shard"]] }),
   index("insights_distribution_byScope").on(table["channel"], table["platform"], table["bucket_start_ms"], table["app_version"], table["release_id"], table["_shard"]),
   index("insights_distribution_byVersion").on(table["channel"], table["platform"], table["app_version"], table["bucket_start_ms"], table["release_id"], table["_shard"]),
+  index("insights_distribution__retention").on(table["bucket_start_ms"], table["channel"], table["platform"], table["app_version"], table["release_id"], table["_shard"]),
 ]);
 
 export const insights_latest_by_bundle = sqliteTable("insights_latest_by_bundle", {
@@ -216,6 +257,7 @@ export const insights_latest_by_bundle = sqliteTable("insights_latest_by_bundle"
   "_v": column("INTEGER")("_v").notNull().default(0),
 }, (table) => [
   primaryKey({ columns: [table["platform"], table["channel"], table["bundle_field"], table["bundle_id"], table["type"], table["bucket_start_ms"], table["_shard"]] }),
+  index("insights_latest_by_bundle__retention").on(table["bucket_start_ms"], table["platform"], table["channel"], table["bundle_field"], table["bundle_id"], table["type"], table["_shard"]),
 ]);
 
 export const insights_outcomes = sqliteTable("insights_outcomes", {
@@ -229,6 +271,7 @@ export const insights_outcomes = sqliteTable("insights_outcomes", {
   "_v": column("INTEGER")("_v").notNull().default(0),
 }, (table) => [
   primaryKey({ columns: [table["platform"], table["channel"], table["type"], table["bundle_ref"], table["bucket_start_ms"], table["_shard"]] }),
+  index("insights_outcomes__retention").on(table["bucket_start_ms"], table["platform"], table["channel"], table["type"], table["bundle_ref"], table["_shard"]),
 ]);
 
 export const api_keys = sqliteTable("api_keys", {

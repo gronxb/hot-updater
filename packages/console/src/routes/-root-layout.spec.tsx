@@ -73,7 +73,12 @@ describe("RootLayout", () => {
 
 describe("root loader", () => {
   const served = {
-    features: { insights: true, insightsAnalytics: false, apiKeys: false },
+    features: {
+      insights: true,
+      insightsAnalytics: false,
+      insightsDeletion: true,
+      apiKeys: false,
+    },
     remote: true,
   };
 

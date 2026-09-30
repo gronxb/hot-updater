@@ -33,6 +33,12 @@ export interface DatabaseAdapterConformanceOptions {
   readonly maxOps?: number;
   /** Concurrent writers in the contention cases (default 32). */
   readonly writers?: number;
+  /**
+   * How the backend deletes rows past a table's retention: `prune` (the
+   * default) through the adapter, or `ttl`, natively on every item, with no
+   * `prune` on the adapter.
+   */
+  readonly retention?: "prune" | "ttl";
 }
 
 export const conformanceItems: PhysicalTable = {
@@ -77,7 +83,41 @@ export const conformanceCounters: PhysicalTable = {
   indexes: [{ name: "byScope", eq: ["scope"], sort: ["shard"] }],
 };
 
-const tables = [conformanceItems, conformanceCounters] as const;
+/** Rows expire 1,000 ms after `at`; a null `at` never expires. */
+export const conformanceExpiring: PhysicalTable = {
+  name: "conformance_expiring",
+  columns: [
+    { name: "id", type: "string", nullable: false, maxLength: 64 },
+    { name: "grp", type: "string", nullable: false, maxLength: 64 },
+    { name: "at", type: "integer", nullable: true },
+    {
+      name: "tags",
+      type: "string",
+      nullable: true,
+      maxLength: 64,
+      multi: true,
+    },
+    { name: "_v", type: "integer", nullable: false },
+  ],
+  key: ["id"],
+  indexes: [
+    { name: "byGroup", eq: ["grp"], sort: ["id"] },
+    { name: "byTag", eq: ["tags"], sort: [] },
+  ],
+  retention: { column: "at", ms: 1_000 },
+};
+
+const tables = [
+  conformanceItems,
+  conformanceCounters,
+  conformanceExpiring,
+] as const;
+
+const expiring = (id: string, at: number | null): WriteOp => ({
+  type: "insert",
+  table: conformanceExpiring,
+  row: { id, grp: "g", at, tags: ["t"], _v: 0 },
+});
 
 const item = (id: string, values: Partial<StoredRow> = {}): StoredRow => ({
   id,
@@ -657,6 +697,78 @@ export const setupDatabaseAdapterConformanceSuite = (
         1,
       );
     });
+
+    const expiringIds = async (adapter: DatabaseAdapter) => ({
+      byGroup: ids(
+        await adapter.query(conformanceExpiring, {
+          index: "byGroup",
+          eq: ["g"],
+          order: "asc",
+          limit: 500,
+        }),
+      ),
+      byTag: ids(
+        await adapter.query(conformanceExpiring, {
+          index: "byTag",
+          eq: ["t"],
+          order: "asc",
+          limit: 500,
+        }),
+      ),
+    });
+
+    it.skipIf(options.retention === "ttl")(
+      "prunes expired rows oldest first, up to the limit, with their index entries",
+      async () => {
+        const adapter = await setup();
+        await ok(adapter, [
+          expiring("a", 300),
+          expiring("b", 100),
+          expiring("c", 200),
+          expiring("d", null),
+          expiring("e", 5_000),
+          expiring("f", 100),
+        ]);
+
+        // At or below 250: b and f (100) first, oldest first, then c (200).
+        expect(await adapter.prune!(conformanceExpiring, 250, 2)).toBe(2);
+        expect((await expiringIds(adapter)).byGroup).toEqual([
+          "a",
+          "c",
+          "d",
+          "e",
+        ]);
+        expect(await adapter.prune!(conformanceExpiring, 250, 10)).toBe(1);
+        expect(await adapter.prune!(conformanceExpiring, 250, 10)).toBe(0);
+        expect(await expiringIds(adapter)).toEqual({
+          byGroup: ["a", "d", "e"],
+          byTag: ["a", "d", "e"],
+        });
+        expect(
+          await adapter.get(conformanceExpiring, [["b"], ["c"], ["d"]]),
+        ).toEqual([null, null, expect.objectContaining({ id: "d", at: null })]);
+        // Other tables keep their rows.
+        await ok(adapter, [insert(item("kept"))]);
+        expect(await adapter.prune!(conformanceExpiring, 10_000, 10)).toBe(2);
+        expect(ids(await query(adapter, { index: "all", eq: [] }))).toEqual([
+          "kept",
+        ]);
+      },
+    );
+
+    it.skipIf(options.retention !== "ttl")(
+      "leaves expired rows to the backend's TTL and reads them until it deletes them",
+      async () => {
+        const adapter = await setup();
+        expect(adapter.prune).toBeUndefined();
+        await ok(adapter, [expiring("old", 0), expiring("never", null)]);
+
+        expect(await expiringIds(adapter)).toEqual({
+          byGroup: ["never", "old"],
+          byTag: ["never", "old"],
+        });
+      },
+    );
 
     it.skipIf(options.maxOps === undefined)(
       "rejects an over-limit write before sending it",

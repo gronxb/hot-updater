@@ -3,6 +3,7 @@ import {
   type BatchWriteItemInput,
   type CreateTableInput,
   type UpdateContinuousBackupsInput,
+  type UpdateTimeToLiveInput,
   DynamoDB,
   type KeySchemaElement,
   type TableDescription,
@@ -15,6 +16,8 @@ import {
   SETTINGS_TABLE,
 } from "@hot-updater/server/database";
 
+import { DYNAMODB_TTL_ATTRIBUTE } from "../src/dynamoDBStore";
+
 const DYNAMODB_DESCRIBE_TABLE_ACTION = "dynamodb:DescribeTable";
 
 export class DynamoDBTableSchemaError extends Error {
@@ -23,6 +26,20 @@ export class DynamoDBTableSchemaError extends Error {
   constructor(readonly tableName: string) {
     super(
       `DynamoDB table "${tableName}" does not match the Hot Updater schema: a pk and sk key and no secondary index. A table from before 1.0 keeps its update index; delete it and rerun init to create it again.`,
+    );
+  }
+}
+
+/** TTL is on for another attribute; a table has one, and the store writes `_ttl`. */
+export class DynamoDBTimeToLiveError extends Error {
+  readonly name = "DynamoDBTimeToLiveError";
+
+  constructor(
+    readonly tableName: string,
+    readonly attributeName: string | undefined,
+  ) {
+    super(
+      `DynamoDB table "${tableName}" has TTL on "${attributeName}", but Hot Updater expires rows by "${DYNAMODB_TTL_ATTRIBUTE}". Turn TTL off on the table (aws dynamodb update-time-to-live --table-name ${tableName} --time-to-live-specification Enabled=false,AttributeName=${attributeName}), then rerun init.`,
     );
   }
 }
@@ -138,6 +155,19 @@ export const buildDynamoDBBackupInput = (tableName: string) =>
     TableName: tableName,
   }) satisfies UpdateContinuousBackupsInput;
 
+/**
+ * Turns on the table's TTL, which deletes expired items for free: the store
+ * writes `_ttl`, in epoch seconds, on every item of a row with retention.
+ */
+export const buildDynamoDBTimeToLiveInput = (tableName: string) =>
+  ({
+    TableName: tableName,
+    TimeToLiveSpecification: {
+      AttributeName: DYNAMODB_TTL_ATTRIBUTE,
+      Enabled: true,
+    },
+  }) satisfies UpdateTimeToLiveInput;
+
 export class DynamoDBManager {
   private readonly client: DynamoDB;
 
@@ -180,17 +210,29 @@ export class DynamoDBManager {
     await this.ensureLifecycle(tableName);
   }
 
+  /** Point-in-time recovery and TTL, each turned on only when it is off. */
   private async ensureLifecycle(tableName: string): Promise<void> {
     const { ContinuousBackupsDescription } =
       await this.client.describeContinuousBackups({ TableName: tableName });
     if (
       ContinuousBackupsDescription?.PointInTimeRecoveryDescription
-        ?.PointInTimeRecoveryStatus === "ENABLED"
+        ?.PointInTimeRecoveryStatus !== "ENABLED"
     ) {
+      await this.client.updateContinuousBackups(
+        buildDynamoDBBackupInput(tableName),
+      );
+    }
+    // UpdateTimeToLive refuses a repeat, so an enabled TTL is left as it is.
+    const { TimeToLiveDescription: ttl } = await this.client.describeTimeToLive(
+      { TableName: tableName },
+    );
+    const status = ttl?.TimeToLiveStatus;
+    if (status === "ENABLED" || status === "ENABLING") {
+      if (ttl?.AttributeName !== DYNAMODB_TTL_ATTRIBUTE) {
+        throw new DynamoDBTimeToLiveError(tableName, ttl?.AttributeName);
+      }
       return;
     }
-    await this.client.updateContinuousBackups(
-      buildDynamoDBBackupInput(tableName),
-    );
+    await this.client.updateTimeToLive(buildDynamoDBTimeToLiveInput(tableName));
   }
 }

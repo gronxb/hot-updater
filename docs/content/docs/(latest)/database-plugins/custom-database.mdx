@@ -70,6 +70,11 @@ interface DatabaseAdapter {
   ): Promise<readonly StoredRow[]>;
   /** Applies every op or none. */
   write(ops: readonly WriteOp[]): Promise<WriteResult>;
+  /**
+   * Deletes up to `limit` expired rows of a table with retention, oldest
+   * first; left out where the backend expires rows natively.
+   */
+  prune?(table: PhysicalTable, before: number, limit: number): Promise<number>;
   /** Creates tables; only the migration helpers call it. */
   readonly migrations?: {
     apply(tables: readonly PhysicalTable[]): Promise<void>;
@@ -90,6 +95,8 @@ interface PhysicalTable {
   readonly columns: readonly PhysicalColumn[];
   readonly key: readonly string[];
   readonly indexes: readonly PhysicalIndex[];
+  /** Rows expire `ms` after the epoch milliseconds in `column`. */
+  readonly retention?: { readonly column: string; readonly ms: number };
 }
 
 interface PhysicalIndex {
@@ -115,6 +122,34 @@ long and non-ASCII strings, integers up to `Number.MAX_SAFE_INTEGER`, arrays in
 their order, and nested JSON. `normalizeStoredRow(table, raw, { jsonText })`
 converts what drivers return (int8 as text, `BigInt`, decimals, SQLite 0 and 1,
 JSON as text) to stored values.
+
+### Retention
+
+A table with `retention` expires a row `ms` after the time in its `column`
+(`expiresAt(table, row)`); a null time never expires. An adapter maps it to
+its backend's cheapest mechanism, one of two:
+
+- **A native TTL.** Stamp the expiry on every item the row writes, index
+  copies and unique entries included, and let the backend delete them.
+  Leave `prune` out. The key-value helper passes `expiresAt` on each `KvOp`
+  it puts or creates, and a `KeyValueStore` maps it: DynamoDB to `_ttl` in
+  epoch seconds, Firestore to an `expireAt` timestamp. The MongoDB adapter
+  stamps `_expireAt`, a Date, under a TTL index.
+- **`prune(table, before, limit)`.** Delete up to `limit` rows whose
+  retention column is at or below `before`, oldest first (ties in any
+  order), with their index entries, and resolve to how many went. Recheck the
+  column as you delete, so a row a concurrent write moved past `before`
+  stays. Walk an index that starts with the column, so a prune reads only
+  the rows it deletes: the SQL core uses the first index or key that starts
+  with it and otherwise creates `<table>__retention` on the column and the
+  key. The server calls it during writes, with no scheduler: the write that
+  takes the lease row in the settings table first runs one pass of up to
+  500 rows a table, due hourly, or a minute later while a pass found a full
+  batch.
+
+The engine never deletes an expired row itself, and until the backend does
+a read may still return one. The conformance suite checks `prune` unless
+you pass `retention: "ttl"`.
 
 ### Point reads
 
@@ -500,7 +535,7 @@ runs. Register all three:
 
 | Suite                                  | Runs                                                                                             | Against                                  |
 | -------------------------------------- | ------------------------------------------------------------------------------------------------ | ---------------------------------------- |
-| `setupDatabaseAdapterConformanceSuite` | the contract on this page, case by case                                                          | your adapter, on two test tables         |
+| `setupDatabaseAdapterConformanceSuite` | the contract on this page, case by case                                                          | your adapter, on three test tables       |
 | `setupReadBudgetTestSuite`             | what each read of core and the built-in plugins costs                                            | your adapter, on the built-in tables     |
 | `setupDatabaseTestSuite`               | core, Bundles, the Release Catalog contract and Insights, through the admin and client HTTP APIs | your database, behind `createHotUpdater` |
 

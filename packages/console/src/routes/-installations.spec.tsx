@@ -45,10 +45,15 @@ vi.mock("@/lib/console-features-api", async (importOriginal) => ({
 }));
 
 vi.mock("@/lib/insights-api", () => ({
+  useDeleteInsightsDataMutation: () => ({
+    isPending: false,
+    mutateAsync: vi.fn(),
+  }),
   useInsightsEventsQuery: mocks.events,
   useInsightsInstallationEventsQuery: mocks.history,
   useInsightsInstallationQuery: mocks.installation,
   useInsightsInstallationsQuery: mocks.matches,
+  useInsightsRetention: () => ({ rawDays: 90, dailyDays: 400 }),
 }));
 
 import { Route } from "./installations";
@@ -150,7 +155,7 @@ describe("InstallationsPage", () => {
     expect(screen.getByRole("heading", { name: "All events" })).toBeDefined();
     expect(
       screen.getByText(
-        "Downloads, applies, and recoveries, newest first. A launch without an update counts in App usage and in its installation's latest report.",
+        "Downloads, applies, and recoveries, newest first, kept for 90 days. A launch without an update counts in App usage and in its installation's latest report.",
       ),
     ).toBeDefined();
     // Reports stored before launches stopped being events still show.

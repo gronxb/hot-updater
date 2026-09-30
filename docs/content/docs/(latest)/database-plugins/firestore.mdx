@@ -48,6 +48,12 @@ both for `hot_updater_v1`; deploy it and wait until the indexes are ready
 before serving traffic. If you set `collection`, declare the same indexes and
 exemption for that collection instead.
 
+Every document of a row with [retention](/docs/custom/server-plugins#retention),
+such as Insights events and rollups, carries an `expireAt` timestamp beside
+`pk` and `sk`. The same file declares a TTL policy on `expireAt`, exempt from
+indexing, and Firestore deletes those documents, usually within a day of
+their expiry. Declare it too if you set `collection`.
+
 Then write the schema settings the database checks before its first read:
 
 ```typescript

@@ -6,6 +6,7 @@ import {
   type DatabaseKey,
   type DatabaseKeyValue,
   DATABASE_VERSION_COLUMN as V,
+  expiresAt,
   findPhysicalIndex,
   indexEntries,
   indexOrderColumns,
@@ -33,6 +34,12 @@ export type KvCondition = { readonly exists: boolean } | { readonly v: number };
 export type KvOp = {
   readonly key: KvKey;
   readonly condition?: KvCondition;
+  /**
+   * When a put's or a created item expires, in epoch milliseconds, which
+   * the store maps to its native TTL. Every item of a row of a table with
+   * retention carries it, index copies included.
+   */
+  readonly expiresAt?: number;
 } & (
   | { readonly type: "put"; readonly value: StoredRow }
   | { readonly type: "delete" }
@@ -206,6 +213,11 @@ export const createKvAdapter = ({
     `${layout.rows}#${index.name}#${encodeKvKey(eq)}`;
   const copyOf = (layout: Layout, row: StoredRow): StoredRow =>
     Object.fromEntries(layout.copied.map((name) => [name, row[name] ?? null]));
+  /** The expiry every item of `row` carries, for a table with retention. */
+  const stamp = (table: PhysicalTable, row: StoredRow | undefined) => {
+    const at = row && expiresAt(table, row);
+    return at === undefined ? {} : { expiresAt: at };
+  };
 
   /** Every index and unique item a row has, by address. */
   const itemsOf = (layout: Layout, row: StoredRow | null) => {
@@ -247,6 +259,7 @@ export const createKvAdapter = ({
         key: item.key,
         value: copy!,
         condition: taken ? { exists: false } : undefined,
+        ...stamp(layout.table, after!),
       });
     }
     return ops;
@@ -281,6 +294,7 @@ export const createKvAdapter = ({
             by: { ...op.by, [V]: 1 },
             init: op.init,
             condition: condition ?? (op.init ? undefined : { exists: true }),
+            ...stamp(op.table, op.init),
           },
         ];
       case "delete":
@@ -295,7 +309,7 @@ export const createKvAdapter = ({
             ? op.row
             : { ...op.previous, ...op.set, [V]: op.guard.v + 1 };
         return [
-          { type: "put", key, value: row, condition },
+          { type: "put", key, value: row, condition, ...stamp(op.table, row) },
           ...indexOps(layout, before, row),
         ];
       }

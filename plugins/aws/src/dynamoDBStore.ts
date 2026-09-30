@@ -1,7 +1,9 @@
 import {
   CreateTableCommand,
   DescribeTableCommand,
+  DescribeTimeToLiveCommand,
   type DynamoDBClient,
+  UpdateTimeToLiveCommand,
   waitUntilTableExists,
 } from "@aws-sdk/client-dynamodb";
 import {
@@ -30,6 +32,12 @@ export const DYNAMODB_LIMITS = {
 const GET_BATCH = 100;
 const WRITE_BATCH = 25;
 
+/**
+ * The table's TTL attribute: epoch seconds on every item of a row that
+ * expires, which DynamoDB deletes for free. No column is named like it.
+ */
+export const DYNAMODB_TTL_ATTRIBUTE = "_ttl";
+
 /** A column named like a key attribute is stored with a leading dot, which no column name has. */
 const attribute = (column: string) =>
   column === "pk" || column === "sk" ? `.${column}` : column;
@@ -37,12 +45,15 @@ const renamed = (record: object, rename: (name: string) => string) =>
   Object.fromEntries(
     Object.entries(record).map(([name, value]) => [rename(name), value]),
   );
-const toItem = (key: KvKey, row: StoredRow) => ({
+const ttl = (expiresAt: number | undefined): StoredRow =>
+  expiresAt === undefined ? {} : { _ttl: Math.ceil(expiresAt / 1000) };
+const toItem = (key: KvKey, row: StoredRow, expiresAt?: number) => ({
   ...renamed(row, attribute),
   pk: key.pk,
   sk: key.sk,
+  ...ttl(expiresAt),
 });
-const toRow = ({ pk: _pk, sk: _sk, ...item }: Record<string, unknown>) =>
+const toRow = ({ pk: _pk, sk: _sk, _ttl, ...item }: Record<string, unknown>) =>
   renamed(item, (name) => name.replace(/^\./, "")) as StoredRow;
 
 const idOf = ({ pk, sk }: KvKey) => JSON.stringify([pk, sk]);
@@ -86,14 +97,14 @@ const toTransactItem = (tableName: string, op: KvOp) => {
   const Key = { pk: op.key.pk, sk: op.key.sk };
   switch (op.type) {
     case "put":
-      return { Put: item({ Item: toItem(op.key, op.value) }) };
+      return { Put: item({ Item: toItem(op.key, op.value, op.expiresAt) }) };
     case "delete":
       return { Delete: item({ Key }) };
     case "check":
       return { ConditionCheck: item({ Key, ConditionExpression: guard! }) };
     case "add": {
       // A missing item starts from `init`; a missing attribute counts from 0.
-      const init = op.init ?? {};
+      const init = { ...op.init, ...ttl(op.expiresAt) };
       const sets = Object.keys({ ...init, ...op.by }).map((column) => {
         const path = name(attribute(column));
         const by = op.by[column];
@@ -251,32 +262,43 @@ export const createDynamoDBStore = ({
       }
     },
     migrations: {
-      /** Creates the table for local and test runs; `hot-updater init` creates it in AWS. */
+      /**
+       * Creates the table for local and test runs, and turns on its TTL,
+       * which every table the store runs on needs; `hot-updater init`
+       * creates it in AWS.
+       */
       async apply() {
         try {
           await client.send(new DescribeTableCommand({ TableName: tableName }));
-          return;
         } catch (error) {
           if (nameOf(error) !== "ResourceNotFoundException") throw error;
+          await client.send(
+            new CreateTableCommand({
+              TableName: tableName,
+              AttributeDefinitions: [
+                { AttributeName: "pk", AttributeType: "S" },
+                { AttributeName: "sk", AttributeType: "S" },
+              ],
+              KeySchema: [
+                { AttributeName: "pk", KeyType: "HASH" },
+                { AttributeName: "sk", KeyType: "RANGE" },
+              ],
+              BillingMode: "PAY_PER_REQUEST",
+            }),
+          );
+          await waitUntilTableExists(
+            { client, maxWaitTime: 120, minDelay: 1, maxDelay: 1 },
+            { TableName: tableName },
+          );
         }
-        await client.send(
-          new CreateTableCommand({
-            TableName: tableName,
-            AttributeDefinitions: [
-              { AttributeName: "pk", AttributeType: "S" },
-              { AttributeName: "sk", AttributeType: "S" },
-            ],
-            KeySchema: [
-              { AttributeName: "pk", KeyType: "HASH" },
-              { AttributeName: "sk", KeyType: "RANGE" },
-            ],
-            BillingMode: "PAY_PER_REQUEST",
-          }),
+        const { TimeToLiveDescription: ttl } = await client.send(
+          new DescribeTimeToLiveCommand({ TableName: tableName }),
         );
-        await waitUntilTableExists(
-          { client, maxWaitTime: 120, minDelay: 1, maxDelay: 1 },
-          { TableName: tableName },
-        );
+        const status = ttl?.TimeToLiveStatus ?? "DISABLED";
+        if (status === "ENABLED" || status === "ENABLING") return;
+        const spec = { AttributeName: DYNAMODB_TTL_ATTRIBUTE, Enabled: true };
+        const input = { TableName: tableName, TimeToLiveSpecification: spec };
+        await client.send(new UpdateTimeToLiveCommand(input));
       },
     },
   };

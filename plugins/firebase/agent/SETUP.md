@@ -40,7 +40,9 @@ supply this CLI. Do this before remote provisioning.
     unrelated indexes/rules. From firebase/ run
     `npx firebase deploy --only firestore:indexes --project <project-id>`.
   - Verify/record: required indexes are ready in the selected project, not merely
-    accepted for creation. Record the target/index readiness.
+    accepted for creation, and the TTL policy on `expireAt` in hot_updater_v1 is
+    active (`gcloud firestore fields ttls list --project <project-id>`), which
+    deletes rows past their tables' retention. Record the target/index readiness.
   - Retry: inspect current indexes and wait for building ones; do not remove/recreate them.
 
 - [ ] **fb.database-key — Write the schema settings and register the client key**

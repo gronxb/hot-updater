@@ -106,15 +106,16 @@ export const createEngineReads = ({
     return rows;
   };
 
-  const modelOf = (name: string, kind: "table" | "aggregate") => {
+  /** A model of `kind` by physical table name, for reads and transactions. */
+  const modelOf = (name: string, kind: "table" | "aggregate" = "table") => {
     const model = schema.models.get(name);
     if (model?.definition.kind === kind) return model;
     throw new DatabaseQueryError(
       model === undefined
         ? `Unknown model ${name}.`
         : kind === "table"
-          ? `${name} is an aggregate; read it with findAggregates.`
-          : `${name} is a table; read it with findMany.`,
+          ? `${name} is an aggregate; read it with findAggregates and change it with aggregate.`
+          : `${name} is a table; read it with findMany and change it with create, update, or delete.`,
     );
   };
 
@@ -185,6 +186,7 @@ export const createEngineReads = ({
 
   return {
     maxPageSize,
+    modelOf,
     reads: {
       total: (): EngineReadCount => count,
       reset: () => {

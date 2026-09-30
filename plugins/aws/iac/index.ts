@@ -467,6 +467,7 @@ export {
   buildDynamoDBCreateTableInput,
   buildDynamoDBBackupInput,
   buildDynamoDBSchemaSettingsInput,
+  buildDynamoDBTimeToLiveInput,
 } from "./dynamodb";
 export {
   buildDynamoDBPolicy,

@@ -48,6 +48,8 @@ export interface TableShape {
   readonly key: readonly string[];
   readonly derived: Readonly<Record<string, DerivedShape>>;
   readonly indexes: Readonly<Record<string, IndexDefinition>>;
+  /** Rows expire `days` after the epoch milliseconds in `field`. */
+  readonly retention?: { readonly field: string; readonly days: number };
 }
 
 export interface AggregateShape {
@@ -64,6 +66,8 @@ export interface AggregateShape {
   /** Fixed once data exists. */
   readonly shards: number;
   readonly indexes: Readonly<Record<string, IndexDefinition>>;
+  /** On an identity field; a change to a row past it is dropped. */
+  readonly retention?: { readonly field: string; readonly days: number };
 }
 
 export type ModelShape = TableShape | AggregateShape;

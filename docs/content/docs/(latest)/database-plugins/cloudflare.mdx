@@ -135,6 +135,11 @@ export const hotUpdater = createHotUpdater({
 the `x-api-key` header. The managed Worker runs the same list, which
 `@hot-updater/cloudflare/worker` exports as `plugins`.
 
+Rows past their tables' [retention](/docs/custom/server-plugins#retention),
+such as Insights events and rollups, need no cron trigger. The Worker request
+whose write takes the hourly lease first deletes a bounded batch of them,
+within D1's query limit for one invocation.
+
 ## Complete example
 
 Combined R2 storage and D1 database. `r2Storage` records the `r2://` locations
