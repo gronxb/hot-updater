@@ -16,35 +16,36 @@ runtime dependency instead of a development dependency.
 
 ## Setup
 
-Set up the backend with an [AI agent or the interactive
-CLI](/docs/managed/cloudflare#step-2-configure-cloudflare), then use the
-configuration below. Managed setup applies the schema for you.
+Set up the backend with an
+[AI agent or the interactive CLI](/docs/managed/cloudflare#step-2-configure-cloudflare),
+then use the configuration below. Managed setup applies the schema for you: the
+package's Worker migration of core's tables,
+`worker/migrations/0001_hot-updater_1.0.0.sql`, then one that init writes for
+the plugins the server runs.
 
 `d1Database` connects to a database whose schema already exists; it does not
-create tables when it serves. To prepare a database yourself, apply the
-installed `@hot-updater/cloudflare` package's `sql/bundles.sql` to a new, empty
-D1 database:
+create tables when it serves. To prepare a database for a server that runs
+Insights and API keys, the managed Worker's default plugins, apply the installed
+`@hot-updater/cloudflare` package's `sql/bundles.sql` to a new, empty D1
+database:
 
 ```bash
 npx wrangler d1 execute <database-name> --remote \
   --file node_modules/@hot-updater/cloudflare/sql/bundles.sql
 ```
 
-The same SQL ships as the Worker migration
-`worker/migrations/0001_hot-updater_1.0.0.sql`, which managed setup applies
-with `wrangler d1 migrations apply`. It creates the tables and indexes of core
-and of the managed Worker's plugins, Insights and API keys, and the `_hu_write`
-table that batch writes use, then writes the schema settings rows last.
+It creates the tables and indexes of core, Insights, and API keys, and the
+`_hu_write` table that batch writes use, then writes the schema settings rows
+last.
 
-A Worker that runs other
-[plugins](/docs/custom/server-plugins#create-the-plugins-tables)
-also needs their tables. `hot-updater db generate` writes a D1 migration of
-core's tables and the plugins' tables to
-`migrations/<timestamp>_hot-updater.sql`; apply
-it with `wrangler d1 migrations apply`. `hot-updater db migrate` applies the
-same schema through the Cloudflare API instead. Both read a Node module that
-passes the Worker's `plugins` to `createHotUpdater` with the REST `d1Database`
-from `@hot-updater/cloudflare`.
+For a server with other
+[plugins](/docs/custom/server-plugins#create-the-plugins-tables),
+`hot-updater db generate` writes a D1 migration of core's tables and the
+plugins' tables to `migrations/<timestamp>_hot-updater.sql`; apply it with
+`wrangler d1 migrations apply`. `hot-updater db migrate` applies the same schema
+through the Cloudflare API instead. Both read a Node module that passes the
+Worker's `plugins` to `createHotUpdater` with the REST `d1Database` from
+`@hot-updater/cloudflare`, and neither drops the tables of a plugin you remove.
 
 ## Schema settings
 
@@ -131,7 +132,7 @@ export const hotUpdater = createHotUpdater({
 ```
 
 `insights()` records app events, and `apiKeys()` protects client routes with
-the `x-api-key` header. The managed Worker runs the same list, which
+the `x-api-key` header. The managed Worker's default list is the same, which
 `@hot-updater/cloudflare/worker` exports as `plugins`.
 
 The CLI and the Console load a server definition in Node, where
@@ -149,7 +150,8 @@ within D1's query limit for one invocation.
 
 The server definition `hot-updater init` writes for managed Cloudflare, with R2
 storage and the D1 database. `r2Storage` records the `r2://` locations that the
-managed Worker resolves, and `plugins` is the managed server's list:
+managed Worker resolves, and `plugins` is the provider's default list, which you
+can [edit](/docs/managed/server-plugins):
 
 ```typescript title="hotUpdater.ts"
 import { d1Database, plugins, r2Storage } from "@hot-updater/cloudflare";

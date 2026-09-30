@@ -174,19 +174,21 @@ credentials stay in the deploy environment.
 
 Init writes two files: `hot-updater.config.ts`, with the deploy settings and
 `server`, and `hotUpdater.ts`, the server definition with your Supabase database
-and storage and the managed Edge Function's plugins. The CLI and the Console
-read the definition; `plugins` is the managed server's list, `insights()` and
-`apiKeys()`, from `@hot-updater/supabase`.
+and storage and the plugins the managed Edge Function runs. The CLI and the
+Console read the definition. `plugins` starts as the provider's list,
+`insights()` and `apiKeys()`, from `@hot-updater/supabase`. To add a plugin or
+drop one, edit it and rerun init; see
+[Server Plugins](/docs/managed/server-plugins).
 
 On a rerun, init keeps an existing `server` and a wrapped build such as
 `withSentry(bare())`, and removes `database`, `storage`, and `plugins` from the
-config, since the definition holds them. It stops when the server definition
-differs from the one it writes, because the managed server runs that one:
-restore the file, or remove it and rerun init. When it cannot edit
-`hot-updater.config.ts`, such as a config that a function returns, it leaves the
-file unchanged and prints the `server: "./hotUpdater.ts",` line to add and the
-keys to remove. It removes a `hotUpdater.plugins.ts` that an older init wrote,
-and names one you wrote, since nothing reads it anymore.
+config, since the definition holds them. It keeps a server definition you edited
+and bundles it into the managed Edge Function, after checking that its database
+and storage are the provider's, on the resources init set up. When it cannot
+edit `hot-updater.config.ts`, such as a config that a function returns, it
+leaves the file unchanged and prints the `server: "./hotUpdater.ts",` line to
+add and the keys to remove. It removes a `hotUpdater.plugins.ts` that an older
+init wrote, and names one you wrote, since nothing reads it anymore.
 
 ```ts title="hot-updater.config.ts"
 import { bare } from "@hot-updater/bare";

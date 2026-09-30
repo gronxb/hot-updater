@@ -61,10 +61,13 @@ The server URL and **client** API key connect the app to the server.
 `.env.hotupdater` is not automatically loaded into the mobile app. Provider,
 service-role and admin credentials remain in the CLI/server environment.
 
-Re-running `init` with another provider stops at the existing `hotUpdater.ts`,
-the previous provider's server definition, which differs from the one init
-writes. Rename it, such as to `hotUpdater.previous.ts` to keep the old
-server's definition, then rerun init to write the new provider's. Init keeps
+<a id="switch-providers" />
+
+Re-running `init` with another provider replaces the `hotUpdater.ts` that the
+previous provider's init wrote with its own. A `hotUpdater.ts` you edited for
+the previous provider is refused before init touches a resource: deploy it with
+`hot-updater init --provider <previous provider>`, give it the new provider's
+database and storage, or remove it and rerun init, which writes one. Init keeps
 unrelated config, the previous provider's variables in `.env.hotupdater`, and
 its infrastructure. Keep old resources until installed binaries no longer
 depend on them.

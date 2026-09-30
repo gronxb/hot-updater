@@ -21,12 +21,14 @@ definition's `createHotUpdater`, to `hot-updater.config.ts`, or to
 | [Server plugin](/docs/custom/server-plugins)                | `plugins` in the server definition, where the CLI also finds its tables and commands |
 | [Client plugin](/docs/react-native-api/client-plugins)      | `plugins` in `HotUpdater.init` or `HotUpdater.wrap`, in the app                      |
 
-Storage and database adapters and server plugins run on a
-[custom server](/docs/custom/overview). The managed Cloudflare, Supabase, AWS,
-and Firebase servers are prebuilt with their provider's adapters and
-`plugins` list, so a user of one moves to a custom server to add yours. A
-client plugin runs in any app, but routes it calls on the update server need
-a server plugin on that server. Ship a feature that spans both from
+Storage and database adapters run on a [custom server](/docs/custom/overview);
+a managed Cloudflare, Supabase, AWS, or Firebase server runs on its provider's.
+Server plugins run on both: a user of a managed server adds yours to
+`hotUpdater.ts` and reruns init, which bundles it into the provider's runtime,
+where it works as
+[Run on a managed server](/docs/custom/server-plugins#run-on-a-managed-server)
+describes. A client plugin runs in any app, but routes it calls on the update
+server need a server plugin on that server. Ship a feature that spans both from
 [one package with an entry per side](#ship-both-sides-from-one-package), as
 Hot Updater's own Insights does. The server plugin names the client one in
 [`cli.clientPlugin`](/docs/custom/server-plugins#name-the-apps-client-plugin).
@@ -217,8 +219,9 @@ Your README is where users learn the package. Include:
 - a partial `hot-updater.config.ts` or `createHotUpdater` configuration that
   keeps the user's other options;
 - the resources to create first, such as a bucket, a table, or a key;
-- for a server plugin, its routes, its CLI commands, its `clientAuth`, and
-  the tables `hot-updater db migrate` creates;
+- for a server plugin, its routes, its CLI commands, its `clientAuth`, the
+  tables `hot-updater db migrate` creates, and on which managed providers it
+  runs, with where it reads its settings and secrets there;
 - for a client plugin, the hooks it uses and the data it sends or stores on
   the device;
 - the Hot Updater versions you test against.

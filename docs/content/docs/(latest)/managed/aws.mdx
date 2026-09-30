@@ -286,17 +286,23 @@ not cached. Cache identity uses only the API key and content encoding.
 
 If regional reach matters less than transfer price, change the distribution price
 class in AWS after init; later init runs preserve that setting. Init invalidates
-only `/version`, `/events`, `/release-catalogs/*`, and `/artifacts/*`, leaving
-immutable bundle caches warm.
+only `/version`, `/release-catalogs/*`, `/artifacts/*`, and the paths of the
+plugins' client endpoints, such as Insights' `/events`, leaving immutable
+bundle caches warm.
 CloudFront provides the first 1,000 invalidation paths per account each month
 at no extra charge; see [invalidation pricing](https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/PayingForInvalidation.html).
 
 Rerunning init preserves unrelated CloudFront origins/cache behaviors and S3
-bucket-policy statements. Lambda roles and signing keys are isolated by the
-Lambda name and grant access only to the selected bucket, SSM parameter,
-and DynamoDB table. Init provisions these resources through AWS
-APIs rather than a CloudFormation stack, so deletion and rollback remain
-operator-managed.
+bucket-policy statements. Init names its CloudFront cache and origin request
+policies after their settings and never changes an existing one, so two
+distributions in one account keep their own. After it updates the distribution,
+it deletes Hot Updater's policies that no distribution uses. Lambda roles and
+signing keys are isolated by the Lambda name and grant access only to the
+selected bucket, SSM parameter, and DynamoDB table; within the table, the role
+reaches core's rows and the rows of the plugins the definition lists, as
+[Server Plugins](/docs/managed/server-plugins#aws) describes. Init provisions
+these resources through AWS APIs rather than a CloudFormation stack, so
+deletion and rollback remain operator-managed.
 
 Init checks the selected distribution's `/version` response before writing env
 files or changing AWS resources. Incompatible infrastructure is rejected before
@@ -311,19 +317,20 @@ database a distinct `basePath` before using prune.
 
 Init writes two files: `hot-updater.config.ts`, with the deploy settings and
 `server`, and `hotUpdater.ts`, the server definition with your AWS database and
-storage and the managed Lambda@Edge function's plugins. The CLI and the Console
-read the definition; `plugins` is the managed server's list, `insights()` and
-`apiKeys()`, from `@hot-updater/aws`.
+storage and the plugins the managed Lambda@Edge function runs. The CLI and the
+Console read the definition. `plugins` starts as the provider's list,
+`insights()` and `apiKeys()`, from `@hot-updater/aws`. To add a plugin or drop
+one, edit it and rerun init; see [Server Plugins](/docs/managed/server-plugins).
 
 On a rerun, init keeps an existing `server` and a wrapped build such as
 `withSentry(bare())`, and removes `database`, `storage`, and `plugins` from the
-config, since the definition holds them. It stops when the server definition
-differs from the one it writes, because the managed server runs that one:
-restore the file, or remove it and rerun init. When it cannot edit
-`hot-updater.config.ts`, such as a config that a function returns, it leaves the
-file unchanged and prints the `server: "./hotUpdater.ts",` line to add and the
-keys to remove. It removes a `hotUpdater.plugins.ts` that an older init wrote,
-and names one you wrote, since nothing reads it anymore.
+config, since the definition holds them. It keeps a server definition you edited
+and bundles it into the managed Lambda@Edge function, after checking that its
+database and storage are the provider's, on the resources init set up. When it
+cannot edit `hot-updater.config.ts`, such as a config that a function returns,
+it leaves the file unchanged and prints the `server: "./hotUpdater.ts",` line to
+add and the keys to remove. It removes a `hotUpdater.plugins.ts` that an older
+init wrote, and names one you wrote, since nothing reads it anymore.
 
 If you choose **current AWS CLI/default session**, the definition uses the AWS
 SDK default provider chain instead of embedding access keys:

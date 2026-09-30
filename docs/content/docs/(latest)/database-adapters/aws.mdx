@@ -53,7 +53,8 @@ aws dynamodb update-time-to-live \
 
 Then write the schema settings with `migrateDynamoDB`. It takes the same
 configuration as `dynamoDB`, and the plugins the server runs, such as
-`plugins` from `@hot-updater/aws`: the managed server's Insights and API keys.
+`plugins` from `@hot-updater/aws`: Insights and API keys, the managed server's
+default list.
 
 ```typescript
 import { migrateDynamoDB, plugins } from "@hot-updater/aws";
@@ -194,7 +195,8 @@ export const hotUpdater = createHotUpdater({
 ## Complete example
 
 This is the server definition `hot-updater init` writes for managed AWS with the
-current AWS CLI session; `plugins` is the managed server's list:
+current AWS CLI session. `plugins` is the provider's default list, which you
+can [edit](/docs/managed/server-plugins):
 
 ```typescript title="hotUpdater.ts"
 import { dynamoDB, plugins, s3Storage } from "@hot-updater/aws";

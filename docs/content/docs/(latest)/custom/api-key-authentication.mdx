@@ -156,11 +156,13 @@ without digests. `register` stores a known plaintext key idempotently, and
 management routes to `handlers.client` or `handlers.admin`.
 
 AWS, Cloudflare, Firebase, and Supabase run `apiKeys()` in their managed
-servers and export that plugin list as `plugins`. Their init registers an
-existing `HOT_UPDATER_API_KEY` or creates one through it, then stores the
-plaintext only in the local environment file. Afterwards, `hot-updater api-key`
-in the app directory manages the same keys through the server definition that
-init writes to `hotUpdater.ts`.
+servers by default and export that plugin list as `plugins`. Their init
+registers an existing `HOT_UPDATER_API_KEY` or creates one through it, then
+stores the plaintext only in the local environment file. Afterwards,
+`hot-updater api-key` in the app directory manages the same keys through the
+server definition that init writes to `hotUpdater.ts`. A managed project that
+[drops `apiKeys()`](/docs/managed/server-plugins#drop-insights-or-api-keys)
+sets `clientAccess: "public"`, and init then provisions no key.
 
 ## Rotate an API key
 

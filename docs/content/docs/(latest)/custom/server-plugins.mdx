@@ -23,8 +23,8 @@ contract, and their sources in the repository's `plugins/insights` and
 `plugins/api-keys` are worked references: Insights has derived and multi-valued
 fields, sharded counters, gauges, and sketches, and a transaction that reads in
 batches; API keys has a unique field and `clientAuth`. Plugins run on a
-[custom server](/docs/custom/overview); the managed provider servers run their
-provider's fixed `plugins` list.
+[custom server](/docs/custom/overview), and on a managed server whose
+definition lists them; see [Run on a managed server](#run-on-a-managed-server).
 
 This page builds a `feedback` plugin: app installations open feedback threads
 for a bundle, and admins read them.
@@ -500,6 +500,8 @@ export const hotUpdater = createHotUpdater({
 `hotUpdater.api.feedback.listOpen(bundleId)`. `POST /feedback` joins the other
 client routes behind `apiKeys()`, and `GET /feedback/threads/:id` joins the
 admin routes. Before the first request, [create the plugin's tables](#create-the-plugins-tables).
+On a managed server, add the plugin to the `plugins` of the `hotUpdater.ts`
+that init wrote, and [redeploy](/docs/managed/server-plugins#redeploy).
 
 ## Write in a transaction
 
@@ -867,6 +869,37 @@ Drizzle and Prisma require applying the updated schema with their own tools.
 A plugin's tables need to be free of core's and of those of the other plugins
 the server runs: beside `apiKeys()`, an `api` plugin's `keys` table
 (`api_keys`) fails at startup.
+
+On a managed server, `hot-updater init` creates the tables of the plugins the
+definition lists; see [Run on a managed server](#run-on-a-managed-server).
+
+## Run on a managed server
+
+A project on a managed Cloudflare, Supabase, AWS, or Firebase server adds your
+plugin to its `hotUpdater.ts`, and `hot-updater init` bundles the definition,
+with your plugin and the packages it imports, into the provider's runtime; see
+[Server Plugins](/docs/managed/server-plugins). There, the plugin:
+
+- runs in a Cloudflare Worker, in a Supabase Edge Function on Deno, or on
+  Node.js in Lambda@Edge or Cloud Functions. Write it against Web APIs, such as
+  `fetch` and Web streams, and depend on packages that run in each.
+- serves its client endpoints only. A managed server mounts no admin handler,
+  so the CLI and the Console reach the plugin through its API and its CLI
+  commands.
+- reads its options where the server runs, without `.env.hotupdater`.
+  Lambda@Edge has no environment variables, and init deploys no environment
+  file with a Cloud Function; see
+  [A plugin's settings and secrets](/docs/managed/server-plugins#a-plugins-settings-and-secrets).
+  Say in your README which options are secrets and how each provider supplies
+  them.
+- gets a CloudFront behavior for each client endpoint on AWS. Init refuses an
+  endpoint under `/bundles` or `/assets`, or one that starts with a parameter
+  such as `/:id`, so start paths with the plugin's own segment, as
+  `/feedback` does. Each of the plugin's tables also adds to the function
+  role's policy, which IAM caps.
+- has its tables created by init: a D1 or Supabase migration of them, or their
+  settings rows on DynamoDB and Firestore. A project that drops the plugin
+  keeps its tables and rows.
 
 ## Test with the plugin harness
 

@@ -71,9 +71,9 @@ await migrateFirebaseDatabase(
 
 `migrateFirebaseDatabase` takes the same configuration as `firebaseDatabase`,
 and the plugins the server runs: here `plugins` from `@hot-updater/firebase`,
-the managed server's Insights and API keys. `hot-updater init` and the managed
-setup's key script both run it. `hot-updater db migrate`, which loads the
-server definition, writes the same settings for the server's
+Insights and API keys, the managed server's default list. `hot-updater init` and
+the managed setup's key script both run it. `hot-updater db migrate`, which
+loads the server definition, writes the same settings for the server's
 [plugins](/docs/custom/server-plugins#create-the-plugins-tables), whose tables
 need no collection or index of their own.
 
@@ -173,7 +173,8 @@ export const hotUpdater = createHotUpdater({
 ## Complete example
 
 The server definition `hot-updater init` writes for managed Firebase, with Cloud
-Storage and Firestore; `plugins` is the managed server's list:
+Storage and Firestore. `plugins` is the provider's default list, which you can
+[edit](/docs/managed/server-plugins):
 
 ```typescript title="hotUpdater.ts"
 import { firebaseDatabase, firebaseStorage, plugins } from "@hot-updater/firebase";

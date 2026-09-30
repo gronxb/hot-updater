@@ -49,14 +49,15 @@ definition, and update the copy with it.
 | [Storage adapter](#storage-adapter)    | Stores bundle artifacts and resolves their download URLs                            | CLI, Console, server           | Supabase, Cloudflare R2, AWS S3, Firebase, Standalone                               | [Create a storage adapter](/docs/storage-adapters/custom-storage)   |
 | [Database adapter](#database-adapter)  | Stores Bundles, Releases, Release Catalogs, Channels, and server plugins' tables    | CLI, Console, server           | Supabase, Cloudflare D1, DynamoDB, Firestore, Kysely, Drizzle, Prisma, MongoDB | [Create a database adapter](/docs/database-adapters/custom-database) |
 | [Signing adapter](#signing-adapter)    | Signs artifact hashes during deploy                                                 | CLI                            | [Local PEM](/docs/guides/signing/local), [AWS KMS](/docs/guides/signing/aws-kms), [Google Cloud KMS](/docs/guides/signing/google-cloud-kms), [remote](/docs/guides/signing/remote) | `BundleSigningAdapter` from `@hot-updater/plugin-core`              |
-| [Server plugin](#server-plugins)       | Adds tables, APIs, routes, CLI commands, and client authentication to the update server | Server; the CLI creates tables | [`insights()`](/docs/guides/insights), [`apiKeys()`](/docs/custom/api-key-authentication) | [Create a server plugin](/docs/custom/server-plugins)               |
+| [Server plugin](#server-plugins)       | Adds tables, APIs, routes, CLI commands, and client authentication to the update server | Server; the CLI or managed init creates tables | [`insights()`](/docs/guides/insights), [`apiKeys()`](/docs/custom/api-key-authentication) | [Create a server plugin](/docs/custom/server-plugins)               |
 | [Client plugin](#client-plugins)       | Observes launches, update checks, downloads, and failures in the app, and calls the server | React Native app               | [Insights](/docs/react-native-api/insights)                                         | [Create a client plugin](/docs/react-native-api/client-plugins)     |
 | [Integration plugin](#integration-plugins) | Uploads source maps for the bundles a build adapter makes                       | CLI                            | [Sentry](/docs/integration-plugins/sentry), [Datadog](/docs/integration-plugins/datadog), [BugSnag](/docs/integration-plugins/bugsnag) | A function that wraps a build adapter                               |
 
-The managed Cloudflare, Supabase, AWS, and Firebase servers are prebuilt with
-their provider's storage and database adapters and server plugins. Other
-adapters and server plugins run on a [custom server](/docs/custom/overview).
-Client plugins run in any app.
+A managed Cloudflare, Supabase, AWS, or Firebase server runs on its provider's
+storage and database adapters, and runs the server plugins its definition
+lists: Insights and API keys by default, or the ones you
+[choose](/docs/managed/server-plugins). Other storage and database adapters run
+on a [custom server](/docs/custom/overview). Client plugins run in any app.
 
 A feature can ship both halves, as Insights does: a server plugin that stores
 data and serves routes, and a client plugin that calls those routes with the
@@ -204,11 +205,12 @@ database choice supported by the selected build workflow.
 
 Server plugins extend the update server rather than the CLI. They run inside
 `createHotUpdater`, own tables and aggregates on the server's database, and add
-APIs, routes and client authentication. Core has none of their tables or
-routes: a server has Insights only when it runs the `insights()` plugin, which
-records Insights reports, and `apiKeys()` protects client routes. Managed
-providers run both. To write one for a custom server, see
-[Create a server plugin](/docs/custom/server-plugins).
+APIs, routes and client authentication. Core has none of their tables or routes:
+a server has Insights only when it runs the `insights()` plugin, which records
+Insights reports, and `apiKeys()` protects client routes. Managed providers run
+both unless the project
+[drops them](/docs/managed/server-plugins#drop-insights-or-api-keys). To write
+one, see [Create a server plugin](/docs/custom/server-plugins).
 
 Hot Updater's own plugins are packages built the same way:
 `@hot-updater/plugin-insights` and `@hot-updater/plugin-api-keys`.

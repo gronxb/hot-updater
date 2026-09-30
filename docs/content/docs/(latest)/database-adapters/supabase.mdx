@@ -14,33 +14,32 @@ npm install @hot-updater/server @hot-updater/supabase --save-dev
 
 Set up the backend with an [AI agent or the interactive
 CLI](/docs/managed/supabase#step-2-configure-supabase), then use the
-configuration below. Managed setup applies the migration for you.
+configuration below. Managed setup applies the migrations for you: the
+package's migration of core's tables, then one that init writes for the plugins
+the server runs.
 
 The settings below connect to an initialized database; they do not create its
 tables or RPC function, and `hot-updater db migrate` does not run for
-Supabase. To prepare a project yourself, copy
-`20260818000000_hot-updater_1.0.0.sql` from the installed
-`@hot-updater/supabase` package's `supabase/migrations` directory into your
-project's `supabase/migrations` directory, then apply it with the Supabase CLI
-linked to that project:
+Supabase. To prepare a project yourself, run `hot-updater db generate` with a
+server definition that passes the server's
+[plugins](/docs/custom/server-plugins#create-the-plugins-tables) to
+`createHotUpdater` with `supabaseDatabase` from `@hot-updater/supabase`. It
+writes `supabase/migrations/<timestamp>_hot-updater.sql`; apply it with the
+Supabase CLI linked to that project:
 
 ```bash
+npx hot-updater db generate src/hotUpdater.ts
 npx supabase db push
 ```
 
-The migration creates the tables of core and of the managed Edge Function's
-plugins, Insights and API keys, under the `hot_updater_v1_` prefix, with
-row-level security on every table, the write guard table, and the
-`hot_updater_v1_apply` function, then writes the schema settings rows last.
-
-An Edge Function that runs other
-[plugins](/docs/custom/server-plugins#create-the-plugins-tables)
-also needs their tables, and the apply function must be allowed to reach them.
-`hot-updater db generate` writes a migration that does both to
-`supabase/migrations/<timestamp>_hot-updater.sql`; apply it with
-`npx supabase db push`. It reads a Node module that passes the function's
-`plugins` to `createHotUpdater` with `supabaseDatabase` from
-`@hot-updater/supabase`.
+The migration creates the tables of core and of those plugins under the
+`hot_updater_v1_` prefix, with row-level security on every table, the write
+guard table, and the `hot_updater_v1_apply` function allowed to reach them,
+then writes the schema settings rows last. Every statement can run again, so
+generate and push again after you add a plugin; a plugin you remove keeps its
+tables. The package's `supabase/migrations/20260818000000_hot-updater_1.0.0.sql`
+holds core's tables alone, without the settings rows of Insights or API keys
+that a server running them checks.
 
 ## Schema settings
 
@@ -135,7 +134,8 @@ the `x-api-key` header. The managed Edge Function runs the same list, which
 ## Complete example
 
 The server definition `hot-updater init` writes for managed Supabase, with
-Storage and the Postgres database; `plugins` is the managed server's list:
+Storage and the Postgres database. `plugins` is the provider's default list,
+which you can [edit](/docs/managed/server-plugins):
 
 ```typescript title="hotUpdater.ts"
 import { createHotUpdater } from "@hot-updater/server";

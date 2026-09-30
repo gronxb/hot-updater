@@ -346,9 +346,9 @@ A SQL provider can check in its schema instead.
 settings rows. Pass `coreSchema` and `coreSettings` from
 `@hot-updater/server/database` for core alone, or the `schema` and `settings`
 of `toolingTargetOf(plugins)` for core and those plugins. The `postgres`
-provider generates its checked-in SQL for core, and D1 for core and the
-managed Worker's plugins; a test fails when a file differs from the
-generator. Add
+provider generates its checked-in SQL for core, and D1 its first Worker
+migration for core and `sql/bundles.sql` for core and the managed Worker's
+default plugins; a test fails when a file differs from the generator. Add
 `createTableStatements(dialect, [WRITE_GUARD_TABLE], tablePrefix)` when the
 executor has `batch`. Use the same `tablePrefix` for schema generation, the
 write guard table, and `createSqlAdapter`. When other tooling creates the

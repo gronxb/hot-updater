@@ -123,6 +123,14 @@ each variable's purpose, when it is needed and where to obtain it. The JSON
 your app's existing configuration and prepares credentials for future CLI deploys.
 Connecting an MCP server does not automatically provide credentials to the CLI.
 
+The scaffold deploys the provider's prebuilt server, so keep `app/hotUpdater.ts`
+as it is. To run other server plugins, edit it in the app and redeploy with
+init, as [Server Plugins](/docs/managed/server-plugins) describes. The
+Cloudflare and Supabase migrations are the package's migration of core's
+tables, then the prebuilt server's plugins' tables in
+`worker/migrations/0002_hot-updater_plugins.sql` or
+`supabase/migrations/20260818000001_hot-updater_plugins.sql`.
+
 The agent configures optional creation or authentication fields only when your setup needs them.
 For example, an existing Supabase project needs no new-project name or region,
 and the AWS scaffold can use an existing profile or role without creating access

@@ -21,8 +21,9 @@ extra to install.
 
 The server records reports through the `insights()`
 [server plugin](/docs/custom/server-plugins). The managed AWS, Cloudflare,
-Firebase, and Supabase servers run it. A custom server lists it in
-`createHotUpdater`:
+Firebase, and Supabase servers run it unless the project
+[drops it](/docs/managed/server-plugins#drop-insights-or-api-keys). A custom
+server lists it in `createHotUpdater`:
 
 ```ts title="src/hotUpdater.ts (excerpt)"
 import { createHotUpdater } from "@hot-updater/server";
@@ -37,11 +38,12 @@ export const hotUpdater = createHotUpdater({
 
 `insights()` accepts `POST /events` on the client handler and serves the
 Insights queries on the admin handler. `hot-updater db migrate` creates its
-tables for a server that runs it, and the migrations of the managed Cloudflare,
-Supabase, AWS, and Firebase servers include them. Without `insights()`, the
-server has no Insights routes: they answer `404`, and the app's reports are not
-stored. An app with the Insights plugin then stops reporting for 24 hours at a
-time; see [when the server has Insights off](/docs/react-native-api/insights#when-the-server-has-insights-off).
+tables for a server that runs it, and a managed server's init creates them when
+its definition lists `insights()`. A server that stops running it keeps its
+tables and rows. Without `insights()`, the server has no Insights routes: they
+answer `404`, and the app's reports are not stored. An app with the Insights
+plugin then stops reporting for 24 hours at a time; see
+[when the server has Insights off](/docs/react-native-api/insights#when-the-server-has-insights-off).
 On the server, `insights({ retention })` sets how long the plugin keeps data;
 see [How long Insights keeps data](#how-long-insights-keeps-data).
 
