@@ -1246,7 +1246,14 @@ function readInsightsModel({
   plugins,
 }: ConfiguredServer): InsightsModel | null {
   try {
-    const api = createDatabasePluginApis(database, plugins ?? []);
+    // Insights alone, so the server's other plugins, whose tables a redeploy
+    // creates, never gate what the verification reads.
+    const api = createDatabasePluginApis(
+      database,
+      (plugins ?? []).filter(
+        (plugin) => (plugin as { readonly id?: unknown }).id === "insights",
+      ),
+    );
     return api.insights === undefined
       ? null
       : createInsightsModel(
