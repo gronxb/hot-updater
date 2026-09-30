@@ -229,12 +229,15 @@ describe("clientPluginsOf", () => {
   it.each([
     [{ module: "", name: "fb" }],
     [{ module: "feedback-rn", name: "fb()" }],
+    [{ module: "feedback-rn", name: "default" }],
+    [{ module: "feedback-rn", name: "HotUpdater" }],
+    [{ module: "feedback-rn", name: "App" }],
     ["feedback-rn"],
-  ])("refuses a client plugin without a module and export (%j)", (value) => {
+  ])("refuses a client plugin the app cannot import (%j)", (value) => {
     expect(() =>
       clientPluginsOf([withClientPlugin("feedback", value)]),
     ).toThrow(
-      'Plugin "feedback" cli.clientPlugin needs a module and the name of its export.',
+      'Plugin "feedback" cli.clientPlugin needs a module and an export name the app can import',
     );
   });
 

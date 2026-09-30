@@ -159,7 +159,6 @@ model bundle_event_heads {
   channel String
   metadata String
   received_at_ms BigInt
-  current_release_id String?
   hu_v BigInt @default(0) @map("_v")
   @@id([install_id])
   @@index([user_id, install_id], map: "bundle_event_heads_byUser")
@@ -172,6 +171,9 @@ model insights_overview {
   downloads BigInt
   launches BigInt
   failed_launches BigInt
+  failed_updates BigInt
+  patch_downloads BigInt
+  patch_fallbacks BigInt
   hu_v BigInt @default(0) @map("_v")
   @@id([identity, bucket_start_ms, hu_shard])
   @@index([bucket_start_ms, identity, hu_shard], map: "insights_overview__retention")
@@ -182,6 +184,7 @@ model insights_sketches {
   hu_shard BigInt @map("_shard")
   launch_users String?
   activity_users String?
+  failed_users String?
   hu_v BigInt @default(0) @map("_v")
   @@id([identity, bucket_start_ms, hu_shard])
   @@index([bucket_start_ms, identity, hu_shard], map: "insights_sketches__retention")
@@ -193,6 +196,9 @@ model insights_overview_daily {
   downloads BigInt
   launches BigInt
   failed_launches BigInt
+  failed_updates BigInt
+  patch_downloads BigInt
+  patch_fallbacks BigInt
   hu_v BigInt @default(0) @map("_v")
   @@id([identity, bucket_start_ms, hu_shard])
   @@index([bucket_start_ms, identity, hu_shard], map: "insights_overview_daily__retention")
@@ -203,6 +209,7 @@ model insights_sketches_daily {
   hu_shard BigInt @map("_shard")
   launch_users String?
   activity_users String?
+  failed_users String?
   hu_v BigInt @default(0) @map("_v")
   @@id([identity, bucket_start_ms, hu_shard])
   @@index([bucket_start_ms, identity, hu_shard], map: "insights_sketches_daily__retention")
@@ -214,6 +221,17 @@ model insights_overview_lifetime {
   downloads BigInt
   launches BigInt
   failed_launches BigInt
+  failed_updates BigInt
+  patch_downloads BigInt
+  patch_fallbacks BigInt
+  hu_v BigInt @default(0) @map("_v")
+  @@id([identity, bucket_start_ms, hu_shard])
+}
+model insights_sketches_lifetime {
+  identity String
+  bucket_start_ms BigInt
+  hu_shard BigInt @map("_shard")
+  failed_users String?
   hu_v BigInt @default(0) @map("_v")
   @@id([identity, bucket_start_ms, hu_shard])
 }
@@ -255,6 +273,20 @@ model insights_outcomes {
   hu_v BigInt @default(0) @map("_v")
   @@id([platform, channel, type, bundle_ref, bucket_start_ms, hu_shard])
   @@index([bucket_start_ms, platform, channel, type, bundle_ref, hu_shard], map: "insights_outcomes__retention")
+}
+model insights_failures {
+  platform String
+  channel String
+  bucket_start_ms BigInt
+  release_id String
+  stage String
+  reason String
+  detail String
+  hu_shard BigInt @map("_shard")
+  events BigInt
+  hu_v BigInt @default(0) @map("_v")
+  @@id([platform, channel, bucket_start_ms, release_id, stage, reason, detail, hu_shard])
+  @@index([bucket_start_ms, platform, channel, release_id, stage, reason, detail, hu_shard], map: "insights_failures__retention")
 }
 model api_keys {
   id String

@@ -22,8 +22,10 @@ import {
   createDatabaseCoreApi,
   createDatabasePluginApis,
 } from "../../../packages/server/dist/db/index.mjs";
-import { createInsightsProvider } from "../../../packages/server/dist/index.mjs";
-import { createInsightsModel } from "../../../packages/server/dist/plugins/insights/index.mjs";
+import {
+  createInsightsModel,
+  createInsightsProvider,
+} from "../../../packages/server/dist/plugins/insights/index.mjs";
 import {
   type InsightsModel,
   type ConfiguredDatabase,

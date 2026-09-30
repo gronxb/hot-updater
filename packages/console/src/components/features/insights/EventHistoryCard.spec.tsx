@@ -30,7 +30,6 @@ const event: InsightsEventRow = {
   toBundleId: "bundle-new",
   type: "UPDATE_APPLIED",
   userId: "user-1",
-  username: null,
 };
 
 const renderCard = (props: Partial<ComponentProps<typeof EventHistoryCard>>) =>

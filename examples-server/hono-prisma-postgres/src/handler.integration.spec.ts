@@ -251,7 +251,6 @@ describe("Hot Updater Handler Integration Tests (Hono + Prisma + PostgreSQL)", (
       install_id: installId,
       user_id: index === 15 ? null : "previous-user",
       metadata: {
-        username: null,
         cohort: "0",
         update_strategy: "appVersion",
         fingerprint_hash: null,

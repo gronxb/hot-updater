@@ -5,14 +5,20 @@ import type {
   HotUpdaterTransaction,
 } from "../../database/database";
 import { assertBundleEventRow } from "./contract";
-import type { BundleEventRow } from "./eventRow";
+import type { BundleEventFailure, BundleEventRow } from "./eventRow";
 import {
   insightsKey,
   insightsOverviewDeltas,
   insightsOverviewId,
   type InsightsOverviewIdentity,
 } from "./overview";
-import { DAILY_EVENTS, DAY_MS, HOUR_MS, type InsightsSchema } from "./schema";
+import {
+  DAILY_EVENTS,
+  DAY_MS,
+  HOUR_MS,
+  isFailedCheck,
+  type InsightsSchema,
+} from "./schema";
 
 /** The head columns `countHead` and `repeatsHead` read. */
 interface Head {
@@ -27,58 +33,49 @@ interface Head {
   readonly from_bundle_id: string | null;
   readonly to_release_id: string | null;
   readonly to_bundle_id: string;
-  readonly current_release_id: string | null;
   readonly app_version: string;
 }
 
 const hourOf = (ms: number) => ms - (ms % HOUR_MS);
 const dayOf = (ms: number) => ms - (ms % DAY_MS);
 
-/** An overview or sketch row's scope and period; day periods roll up channel and usage rows. */
+/**
+ * An overview or sketch row's scope and period; day periods roll up channel
+ * and usage rows. The `failure` and `check` scopes key the sketches of
+ * installations whose update, or whose update check, failed.
+ */
 export type InsightsIdentityParts = Omit<
   InsightsOverviewIdentity,
-  "bucketStartMs" | "periodKind"
-> & { readonly periodKind: InsightsOverviewIdentity["periodKind"] | "day" };
+  "bucketStartMs" | "periodKind" | "scopeKind"
+> & {
+  readonly scopeKind:
+    | InsightsOverviewIdentity["scopeKind"]
+    | "failure"
+    | "check";
+  readonly periodKind: InsightsOverviewIdentity["periodKind"] | "day";
+};
 
 /** The `identity` of an overview or sketch row: its scope and period, hashed. */
 export const insightsIdentity = (identity: InsightsIdentityParts): string =>
   insightsOverviewId({
     ...identity,
+    scopeKind: identity.scopeKind as InsightsOverviewIdentity["scopeKind"],
     periodKind: identity.periodKind as InsightsOverviewIdentity["periodKind"],
     bucketStartMs: 0,
   });
 
 /**
- * The `current_release_id` of a head whose gauges count it in the UTC day of
- * its event. A head recorded while gauges counted hours holds its current
- * release there instead, and stays counted in the hour of its event until it
- * moves. Both lie inside the event's UTC day, which is what reads sum.
+ * The bucket a head's gauges count it in, the UTC day of its event, and the
+ * release its distribution row names: the one it runs, which a download
+ * leaves at its source.
  */
-export const COUNTED_BY_DAY = "day";
-
-/** The head columns besides its key: the whole event, counted by day. */
-const headFields = (event: BundleEventRow) => {
-  const { install_id: _, ...fields } = event;
-  return { ...fields, current_release_id: COUNTED_BY_DAY };
-};
-
-/**
- * The bucket a head's gauges count it in, and the release its distribution
- * row names: the one it runs, which a download leaves at its source.
- */
-const gaugeSlot = (head: Head) =>
-  head.current_release_id === COUNTED_BY_DAY
-    ? {
-        bucket: dayOf(head.received_at_ms),
-        releaseId:
-          head.type === "UPDATE_DOWNLOADED"
-            ? head.from_release_id
-            : head.to_release_id,
-      }
-    : {
-        bucket: hourOf(head.received_at_ms),
-        releaseId: head.current_release_id,
-      };
+const gaugeSlot = (head: Head) => ({
+  bucket: dayOf(head.received_at_ms),
+  releaseId:
+    head.type === "UPDATE_DOWNLOADED"
+      ? head.from_release_id
+      : head.to_release_id,
+});
 
 /**
  * The `insights_latest_by_bundle` field of a head's (from, to) pair. A head
@@ -93,9 +90,9 @@ export const bundlePairKey = (from: string, to: string): string =>
 
 /**
  * Moves a head's gauges: the distribution row, one row per bundle it
- * references, and its pair. Deleting an installation takes it back with -1.
+ * references, and its pair; -1 takes back the head an event replaces.
  */
-export const countHead = (
+const countHead = (
   tx: HotUpdaterTransaction<InsightsSchema>,
   head: Head,
   delta: 1 | -1,
@@ -161,12 +158,24 @@ const PERIOD_MODELS = {
   lifetime: { counters: "insights_overview_lifetime", sketches: undefined },
 } as const;
 
+/** A download's patch counters: a patch delivered it, or it fell back from one. */
+const patchCounters = (event: BundleEventRow) =>
+  event.type !== "UPDATE_DOWNLOADED"
+    ? {}
+    : {
+        ...(event.metadata.delivery === "patch" ? { patch_downloads: 1 } : {}),
+        ...(event.metadata.patch_fallback === true
+          ? { patch_fallbacks: 1 }
+          : {}),
+      };
+
 /**
  * Counters and sketches for one event: release, channel, and usage rows, with
  * day rollups for channel and usage. Usage rows are written for the event's
  * platform only, since a read for every platform merges the ios and android
  * sketches; a channel's active installations come from its usage rows, so
- * channel rows keep no sketch of their own.
+ * channel rows keep no sketch of their own. A download's patch counters go
+ * in the rows that count it.
  */
 const countEvent = (
   tx: HotUpdaterTransaction<InsightsSchema>,
@@ -193,13 +202,18 @@ const countEvent = (
         downloads?: number;
         launches?: number;
         failed_launches?: number;
-      } = Object.fromEntries(
-        [
-          ["downloads", delta.downloads],
-          ["launches", delta.launches],
-          ["failed_launches", delta.failedLaunches],
-        ].filter(([, value]) => value !== 0),
-      );
+        patch_downloads?: number;
+        patch_fallbacks?: number;
+      } = {
+        ...Object.fromEntries(
+          [
+            ["downloads", delta.downloads],
+            ["launches", delta.launches],
+            ["failed_launches", delta.failedLaunches],
+          ].filter(([, value]) => value !== 0),
+        ),
+        ...(delta.downloads === 0 ? {} : patchCounters(event)),
+      };
       if (Object.keys(counters).length > 0) {
         tx.aggregate(models.counters, key, counters, { shardBy });
       }
@@ -221,29 +235,31 @@ const countEvent = (
 };
 
 /**
- * A stored event's outcome rows: its bundle filter's hour, and every stored
- * event's UTC day.
+ * A stored event's outcome rows: its bundle filter's hour, which a failed
+ * check has none of, and every stored event's UTC day.
  */
 const countOutcome = (
   tx: HotUpdaterTransaction<InsightsSchema>,
   event: BundleEventRow,
 ) => {
   const shardBy = event.install_id;
-  tx.aggregate(
-    "insights_outcomes",
-    {
-      platform: event.platform,
-      channel: event.channel,
-      type: event.type,
-      bundle_ref:
-        event.type === "RECOVERED"
-          ? `from:${event.from_bundle_id}`
-          : `to:${event.to_bundle_id}`,
-      bucket_start_ms: hourOf(event.received_at_ms),
-    },
-    { events: 1 },
-    { shardBy },
-  );
+  if (!isFailedCheck(event)) {
+    tx.aggregate(
+      "insights_outcomes",
+      {
+        platform: event.platform,
+        channel: event.channel,
+        type: event.type,
+        bundle_ref:
+          event.type === "RECOVERED"
+            ? `from:${event.from_bundle_id}`
+            : `to:${event.to_bundle_id}`,
+        bucket_start_ms: hourOf(event.received_at_ms),
+      },
+      { events: 1 },
+      { shardBy },
+    );
+  }
   // The global event list reads only the days this row counts: a gap costs
   // it one empty day and one read of this row, not a read a day. One more
   // blind increment per event, on the event's shard like the others.
@@ -252,6 +268,132 @@ const countOutcome = (
     { ...DAILY_EVENTS, bucket_start_ms: dayOf(event.received_at_ms) },
     { events: 1 },
     { shardBy },
+  );
+};
+
+/** The row check requires an UPDATE_FAILED row's failure; its type leaves it optional. */
+const UNKNOWN_FAILURE: BundleEventFailure = {
+  stage: "unknown",
+  reason: "unknown",
+};
+
+/** A failure's `detail`: what else the client knew, as a JSON array. */
+const failureDetail = (failure: BundleEventFailure): string =>
+  JSON.stringify([
+    failure.resource ?? null,
+    failure.http_status ?? null,
+    failure.origin_code ?? null,
+    failure.transport ?? null,
+  ]);
+
+/**
+ * An update failure's sketches, breakdown row, and lifetime counter. Its
+ * hourly breakdown row is what windowed reads sum, so no hourly or daily
+ * counter repeats it. A failed check counts for its channel, in the `check`
+ * sketch of installations. Any other failure counts in the channel's
+ * `failure` sketch, and for its target release, when it names one, in the
+ * release's hourly and lifetime `failure` sketches and its lifetime
+ * `failed_updates`, which the bundle detail reads. A failure is no launch
+ * and no activity: the installation reports its launch that day.
+ */
+const countFailure = (
+  tx: HotUpdaterTransaction<InsightsSchema>,
+  event: BundleEventRow & { readonly type: "UPDATE_FAILED" },
+) => {
+  const shardBy = event.install_id;
+  const failure = event.metadata.failure ?? UNKNOWN_FAILURE;
+  const check = failure.stage === "check";
+  const hour = hourOf(event.received_at_ms);
+  const scope = {
+    channel: event.channel,
+    platform: event.platform,
+    appVersionKind: "all",
+    appVersion: "",
+  } as const;
+  const channel = { ...scope, releaseKind: "all", releaseId: "" } as const;
+  const users = { failed_users: addDistinct(null, event.install_id) };
+  for (const [periodKind, bucket] of [
+    ["hour", hour],
+    ["day", dayOf(event.received_at_ms)],
+  ] as const) {
+    const identity = insightsIdentity({
+      ...channel,
+      scopeKind: check ? "check" : "failure",
+      periodKind,
+    });
+    tx.aggregate(
+      PERIOD_MODELS[periodKind].sketches,
+      { identity, bucket_start_ms: bucket },
+      users,
+      { shardBy },
+    );
+  }
+  const releaseId = check ? null : event.to_release_id;
+  if (releaseId !== null) {
+    const release = { ...scope, releaseKind: "specific", releaseId } as const;
+    for (const [periodKind, bucket, sketches] of [
+      ["hour", hour, "insights_sketches"],
+      ["lifetime", 0, "insights_sketches_lifetime"],
+    ] as const) {
+      const key = (scopeKind: InsightsIdentityParts["scopeKind"]) => ({
+        identity: insightsIdentity({ ...release, scopeKind, periodKind }),
+        bucket_start_ms: bucket,
+      });
+      tx.aggregate(sketches, key("failure"), users, { shardBy });
+    }
+    tx.aggregate(
+      "insights_overview_lifetime",
+      {
+        identity: insightsIdentity({
+          ...release,
+          scopeKind: "release",
+          periodKind: "lifetime",
+        }),
+        bucket_start_ms: 0,
+      },
+      { failed_updates: 1 },
+      { shardBy },
+    );
+  }
+  tx.aggregate(
+    "insights_failures",
+    {
+      platform: event.platform,
+      channel: event.channel,
+      bucket_start_ms: hour,
+      release_id: releaseId ?? "",
+      stage: failure.stage,
+      reason: failure.reason,
+      detail: failureDetail(failure),
+    },
+    { events: 1 },
+    { shardBy },
+  );
+};
+
+/**
+ * A recovery's exit reason, which Android 11+ reports, in the breakdown of
+ * the release whose launch failed: stage `launch`, the reason as its reason.
+ */
+const countExit = (
+  tx: HotUpdaterTransaction<InsightsSchema>,
+  event: BundleEventRow,
+) => {
+  const exit = event.metadata.previous_process_exit;
+  if (event.type !== "RECOVERED" || exit === undefined) return;
+  tx.aggregate(
+    "insights_failures",
+    {
+      platform: event.platform,
+      channel: event.channel,
+      bucket_start_ms: hourOf(event.received_at_ms),
+      release_id: event.from_release_id ?? "",
+      stage: "launch",
+      reason: exit,
+      detail: "",
+    },
+    { events: 1 },
+    { shardBy: event.install_id },
   );
 };
 
@@ -291,7 +433,8 @@ const repeatsHead = (event: BundleEventRow, head: Head) =>
  * when repeated, whichever installation sends it, and neither does the id
  * of the installation's head. An UNCHANGED report that repeats its head on
  * the same UTC day writes nothing at all. An older event still counts in its
- * own hour but never replaces the head.
+ * own hour but never replaces the head. An update failure is stored and
+ * counted, but changes what no installation runs, so it moves no head.
  */
 export const recordEvent = (
   db: HotUpdaterDatabase<InsightsSchema>,
@@ -314,16 +457,20 @@ export const recordEvent = (
       tx.create("bundle_events", event);
       countOutcome(tx, event);
     }
+    if (event.type === "UPDATE_FAILED") {
+      countFailure(tx, event);
+      return;
+    }
     countEvent(tx, event);
-    const fields = headFields(event);
-    const head = { ...fields, install_id: event.install_id };
-    if (previous !== null && !isNewer(head, previous)) return;
+    countExit(tx, event);
+    if (previous !== null && !isNewer(event, previous)) return;
     if (previous === null) {
-      tx.create("bundle_event_heads", head);
+      tx.create("bundle_event_heads", event);
     } else {
+      const { install_id: _, ...fields } = event;
       countHead(tx, previous, -1);
       tx.update("bundle_event_heads", previous, fields);
     }
-    countHead(tx, head, 1);
+    countHead(tx, event, 1);
   });
 };

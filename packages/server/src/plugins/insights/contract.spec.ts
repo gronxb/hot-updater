@@ -14,7 +14,6 @@ const event: BundleEventRow = {
   install_id: "install",
   user_id: "user",
   metadata: {
-    username: null,
     cohort: "0",
     update_strategy: "appVersion",
     fingerprint_hash: null,
@@ -65,7 +64,7 @@ describe("public Insights validation", () => {
     for (const invalid of [
       { ...event, install_id: "broken-\ud800" },
       { ...event, user_id: "broken-\udc00" },
-      { ...event, metadata: { ...event.metadata, username: "broken-\ud800" } },
+      { ...event, metadata: { ...event.metadata, cohort: "broken-\ud800" } },
       { ...event, id: "not-a-uuid" },
     ]) {
       await expect(
@@ -75,6 +74,52 @@ describe("public Insights validation", () => {
       ).rejects.toMatchObject({ code: "invalid-data" });
     }
     expect(recordEvent).not.toHaveBeenCalled();
+  });
+
+  it("takes an update failure with what failed, and refuses one without it", async () => {
+    const recordEvent = vi.fn(async () => undefined);
+    const model = createModel({ recordEvent });
+    const failed = {
+      ...event,
+      type: "UPDATE_FAILED",
+      metadata: {
+        ...event.metadata,
+        failure: {
+          stage: "download",
+          reason: "http",
+          resource: "artifact",
+          http_status: 403,
+          origin_code: "AccessDenied",
+        },
+      },
+    } as BundleEventRow;
+    await model.recordEvent({ event: failed });
+    expect(recordEvent).toHaveBeenCalledTimes(1);
+    for (const invalid of [
+      { ...failed, metadata: event.metadata },
+      { ...failed, from_bundle_id: null },
+      {
+        ...failed,
+        metadata: {
+          ...failed.metadata,
+          failure: { stage: "download", reason: "http", http_status: "403" },
+        },
+      },
+      {
+        ...failed,
+        metadata: { ...failed.metadata, failure: { stage: "download" } },
+      },
+      {
+        ...event,
+        type: "UPDATE_DOWNLOADED",
+        metadata: { ...event.metadata, patch_fallback: "yes" },
+      },
+    ]) {
+      await expect(
+        model.recordEvent({ event: invalid as BundleEventRow }),
+      ).rejects.toMatchObject({ code: "invalid-data" });
+    }
+    expect(recordEvent).toHaveBeenCalledTimes(1);
   });
 
   it.each([

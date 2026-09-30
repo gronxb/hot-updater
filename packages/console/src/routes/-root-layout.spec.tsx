@@ -76,7 +76,6 @@ describe("root loader", () => {
     features: {
       insights: true,
       insightsAnalytics: false,
-      insightsDeletion: true,
       apiKeys: false,
     },
     remote: true,

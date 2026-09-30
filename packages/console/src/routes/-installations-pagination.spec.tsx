@@ -26,7 +26,6 @@ vi.mock("@/lib/insights-api", () => {
   const installation = {
     installId: "install-1",
     userId: "user-1",
-    username: null,
     appVersion: "1.5.0",
     channel: "production",
     platform: "ios",
@@ -54,10 +53,6 @@ vi.mock("@/lib/insights-api", () => {
     isLoading: false,
   });
   return {
-    useDeleteInsightsDataMutation: () => ({
-      isPending: false,
-      mutateAsync: () => Promise.resolve(),
-    }),
     useInsightsEventsQuery: page,
     useInsightsRetention: () => ({ rawDays: 90, dailyDays: 400 }),
     useInsightsInstallationsQuery: page,

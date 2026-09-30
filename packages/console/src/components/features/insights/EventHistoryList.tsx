@@ -29,7 +29,7 @@ export function EventHistoryList<T extends InsightsEventRow>({
             className="flex min-w-0 flex-col gap-3 px-4 py-4 sm:px-6"
           >
             <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
-              <EventTypeDetails type={event.type} />
+              <EventTypeDetails event={event} />
               <div className="text-xs tabular-nums">
                 <EventTimestamp
                   value={event.receivedAtMs}

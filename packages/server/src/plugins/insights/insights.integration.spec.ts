@@ -35,7 +35,6 @@ const event = {
   type: "UNCHANGED",
   updateStrategy: null,
   userId: "user-1",
-  username: "Jane",
   sdkVersion: "2.0.0",
 } as const;
 
@@ -151,7 +150,6 @@ describe("createHotUpdater Insights", () => {
       latestStatus: "UNCHANGED",
       receivedAtMs,
       userId: "user-1",
-      username: "Jane",
     });
     expect(matches.status).toBe(200);
     await expect(matches.json()).resolves.toMatchObject({
@@ -229,6 +227,7 @@ describe("createHotUpdater Insights", () => {
         downloadedReports: { count: 0, measuredAtMs: 500 },
         appliedReports: { count: 1, measuredAtMs: 500 },
         recoveredReports: { count: 1, measuredAtMs: 500 },
+        failedReports: { count: 0, measuredAtMs: 500 },
       },
     });
     const drilldown = await hotUpdater.handlers.admin(
@@ -477,18 +476,30 @@ describe("createHotUpdater Insights", () => {
 
   it("records a report with fields it does not know and still checks the ones it does", async () => {
     const hotUpdater = start();
-    const newer = { ...event, networkType: "wifi", screen: { width: 390 } };
+    const recordEvent = vi.spyOn(hotUpdater.api.insights, "recordEvent");
+    // `username` left the contract; an older client's is ignored like any other.
+    const newer = {
+      ...event,
+      networkType: "wifi",
+      screen: { width: 390 },
+      username: "Jane",
+    };
 
     expect((await hotUpdater.handlers.client(eventRequest(newer))).status).toBe(
       204,
     );
+    expect(recordEvent.mock.calls[0]![0].metadata).not.toHaveProperty(
+      "username",
+    );
     const installation = await hotUpdater.handlers.admin(
       new Request("https://example.com/installations/install-1"),
     );
-    await expect(installation.json()).resolves.toMatchObject({
+    const found = await installation.json();
+    expect(found).toMatchObject({
       installId: "install-1",
       latestStatus: "UNCHANGED",
     });
+    expect(found).not.toHaveProperty("username");
     const invalid = await hotUpdater.handlers.client(
       eventRequest({ ...newer, channel: 7 }),
     );
@@ -500,6 +511,243 @@ describe("createHotUpdater Insights", () => {
       eventRequest({ ...newer, padding: "x".repeat(EVENT_BODY_MAX_BYTES) }),
     );
     expect(tooLarge.status).toBe(413);
+  });
+
+  it("records every update failure, reading unknown or malformed parts as unknown, and lists it with what failed", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(Date.UTC(2026, 8, 20, 10));
+    const hotUpdater = start();
+    const failed = {
+      ...event,
+      type: "UPDATE_FAILED",
+      fromBundleId: "bundle-1",
+      toBundleId: "bundle-2",
+      toReleaseId: "release-2",
+      updateStrategy: "appVersion",
+    };
+    const report = async (metadata: unknown) => {
+      const response = await hotUpdater.handlers.client(
+        eventRequest({ ...failed, metadata }),
+      );
+      expect(response.status).toBe(204);
+      vi.advanceTimersByTime(1);
+    };
+    await report({
+      failure: {
+        stage: "download",
+        reason: "http",
+        resource: "artifact",
+        httpStatus: 403,
+        originCode: "AccessDenied",
+      },
+    });
+    // A newer client's stage, reason, resource, and transport.
+    await report({
+      failure: {
+        stage: "verify",
+        reason: "quantum",
+        resource: "shard",
+        transport: "carrier-pigeon",
+      },
+    });
+    // No failure, one that is not an object, and malformed optional fields.
+    await report(undefined);
+    await report({ failure: "broken" });
+    await report({
+      failure: {
+        stage: "install",
+        reason: "storage",
+        httpStatus: "403",
+        originCode: "not a code",
+        previousProcessExit: "x".repeat(65),
+      },
+    });
+
+    const events = await hotUpdater.handlers.admin(
+      new Request(
+        `https://example.com/events?platform=ios&channel=production&bundleId=bundle-2&outcome=failed&beforeReceivedAtMs=${Date.now()}`,
+      ),
+    );
+    expect(events.status).toBe(200);
+    const { data } = (await events.json()) as {
+      data: { type: string; failure: unknown }[];
+    };
+    expect(data.map(({ type }) => type)).toEqual(
+      Array(5).fill("UPDATE_FAILED"),
+    );
+    expect(data.map(({ failure }) => failure)).toEqual([
+      { stage: "install", reason: "storage" },
+      { stage: "unknown", reason: "unknown" },
+      { stage: "unknown", reason: "unknown" },
+      {
+        stage: "unknown",
+        reason: "unknown",
+        resource: "unknown",
+        transport: "unknown",
+      },
+      {
+        stage: "download",
+        reason: "http",
+        resource: "artifact",
+        httpStatus: 403,
+        originCode: "AccessDenied",
+      },
+    ]);
+    // A failure moves no installation: none has reported a launch.
+    expect(
+      (
+        await hotUpdater.handlers.admin(
+          new Request("https://example.com/installations/install-1"),
+        )
+      ).status,
+    ).toBe(404);
+    // Only a structurally invalid report is refused.
+    for (const invalid of [
+      { ...failed, fromBundleId: null },
+      { ...failed, updateStrategy: null },
+      { ...failed, eventId: "not-a-uuid" },
+    ]) {
+      expect(
+        (await hotUpdater.handlers.client(eventRequest(invalid))).status,
+      ).toBe(400);
+    }
+  });
+
+  it("keeps how a bundle arrived and why a crashed process exited", async () => {
+    const hotUpdater = start();
+    const movement = {
+      ...event,
+      fromBundleId: "bundle-1",
+      toBundleId: "bundle-2",
+      toReleaseId: "release-2",
+      updateStrategy: "appVersion",
+    };
+    for (const body of [
+      {
+        ...movement,
+        type: "UPDATE_DOWNLOADED",
+        metadata: { delivery: "archive", patchFallback: true },
+      },
+      {
+        ...movement,
+        type: "RECOVERED",
+        installId: "install-2",
+        metadata: { previousProcessExit: "CRASH_NATIVE" },
+      },
+      {
+        ...movement,
+        type: "UPDATE_DOWNLOADED",
+        installId: "install-3",
+        metadata: { delivery: "teleport", patchFallback: "yes" },
+      },
+    ]) {
+      expect(
+        (await hotUpdater.handlers.client(eventRequest(body))).status,
+      ).toBe(204);
+    }
+    const events = await hotUpdater.handlers.admin(
+      new Request(
+        `https://example.com/events?beforeReceivedAtMs=${Date.now() + 1}`,
+      ),
+    );
+    const { data } = (await events.json()) as {
+      data: Record<string, unknown>[];
+    };
+    const byInstall = Object.fromEntries(
+      data.map((row) => [row.installId, row]),
+    );
+    expect(byInstall["install-1"]).toMatchObject({
+      delivery: "archive",
+      patchFallback: true,
+    });
+    expect(byInstall["install-2"]).toMatchObject({
+      previousProcessExit: "CRASH_NATIVE",
+    });
+    expect(byInstall["install-3"]).toMatchObject({ delivery: "unknown" });
+    expect(byInstall["install-3"]).not.toHaveProperty("patchFallback");
+  });
+
+  it("serves a release's and a channel's update failures to admins", async () => {
+    vi.useFakeTimers();
+    const at = Date.UTC(2026, 8, 20, 10, 30);
+    vi.setSystemTime(at);
+    const hotUpdater = start();
+    const failed = (installId: string, failure: Record<string, unknown>) =>
+      hotUpdater.handlers.client(
+        eventRequest({
+          ...event,
+          installId,
+          type: "UPDATE_FAILED",
+          fromBundleId: "bundle-1",
+          toBundleId: failure.stage === "check" ? "bundle-1" : "bundle-2",
+          toReleaseId: failure.stage === "check" ? null : "release-2",
+          updateStrategy: "appVersion",
+          metadata: { failure },
+        }),
+      );
+    await failed("install-1", {
+      stage: "download",
+      reason: "http",
+      httpStatus: 403,
+    });
+    await failed("install-2", { stage: "check", reason: "http" });
+    const hour = at - (at % 3_600_000);
+    const range = `start=${hour}&end=${hour + 3_600_000}`;
+    const read = (query: string) =>
+      hotUpdater.handlers.admin(
+        new Request(`https://example.com/failures?${query}`),
+      );
+
+    const release = await read(
+      `platform=ios&channel=production&releaseId=release-2&${range}`,
+    );
+    expect(release.status).toBe(200);
+    await expect(release.json()).resolves.toMatchObject({
+      failedUpdates: 1,
+      failedInstallations: 1,
+      downloads: 0,
+      breakdown: [
+        {
+          stage: "download",
+          reason: "http",
+          events: 1,
+          details: [
+            {
+              resource: null,
+              httpStatus: 403,
+              originCode: null,
+              transport: null,
+              events: 1,
+            },
+          ],
+        },
+      ],
+      recoveries: { failedLaunches: 0, byExitReason: [] },
+    });
+    await expect(
+      (
+        await read("platform=ios&channel=production&releaseId=release-2")
+      ).json(),
+    ).resolves.toMatchObject({ failedUpdates: 1, failedInstallations: 1 });
+    const channel = await read(`platform=ios&channel=production&${range}`);
+    await expect(channel.json()).resolves.toMatchObject({
+      failedUpdates: 1,
+      checks: { failures: 1, failedInstallations: 1 },
+      breakdown: [
+        { stage: "check", reason: "http", events: 1 },
+        { stage: "download", reason: "http", events: 1 },
+      ],
+    });
+    for (const invalid of [
+      "channel=production&releaseId=release-2",
+      "platform=ios&channel=production",
+      `platform=ios&channel=production&start=${hour}`,
+      "platform=ios&channel=production&start=a&end=b",
+      // Over 30 days, the console's longest period.
+      `platform=ios&channel=production&start=${hour - 30 * 86_400_000}&end=${hour + 1}`,
+    ]) {
+      expect((await read(invalid)).status).toBe(400);
+    }
   });
 
   it("counts a retried report once under its client event ID, whichever installation repeats it", async () => {

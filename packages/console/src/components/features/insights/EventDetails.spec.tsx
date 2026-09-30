@@ -37,7 +37,7 @@ describe("Insights event details", () => {
   it("labels a completed download with separate running and pending bundles", () => {
     render(
       <>
-        <EventTypeDetails type="UPDATE_DOWNLOADED" />
+        <EventTypeDetails event={{ type: "UPDATE_DOWNLOADED" }} />
         <EventBundleTransition
           event={{
             type: "UPDATE_DOWNLOADED",
@@ -57,7 +57,7 @@ describe("Insights event details", () => {
     const type = "UNCHANGED";
     render(
       <>
-        <EventTypeDetails type={type} />
+        <EventTypeDetails event={{ type }} />
         <EventBundleTransition
           event={{
             type,
@@ -77,18 +77,91 @@ describe("Insights event details", () => {
     expect(screen.queryByTitle(type)).toBeNull();
   });
 
+  it("says where and why an update failed, and names no target for a failed check", () => {
+    const view = render(
+      <>
+        <EventTypeDetails
+          event={{
+            type: "UPDATE_FAILED",
+            failure: {
+              stage: "download",
+              reason: "http",
+              httpStatus: 403,
+              originCode: "ExpiredToken",
+            },
+          }}
+        />
+        <EventBundleTransition
+          event={{
+            type: "UPDATE_FAILED",
+            fromBundleId: "file-a",
+            toBundleId: "file-b",
+            failure: { stage: "download", reason: "http" },
+          }}
+        />
+      </>,
+    );
+    expect(screen.getByText("Update failed").className).toContain(
+      "bg-destructive",
+    );
+    expect(
+      screen.getByText("Download failed: HTTP error · HTTP 403 · ExpiredToken"),
+    ).toBeDefined();
+    expect(screen.getByText("Running")).toBeDefined();
+    expect(screen.getByText("Target")).toBeDefined();
+
+    view.rerender(
+      <EventBundleTransition
+        event={{
+          type: "UPDATE_FAILED",
+          fromBundleId: "file-a",
+          toBundleId: "file-a",
+          failure: { stage: "check", reason: "invalid_response" },
+        }}
+      />,
+    );
+    expect(screen.getByText("Running")).toBeDefined();
+    expect(screen.queryByText("Target")).toBeNull();
+  });
+
+  it("notes how a download arrived and why a crashed process exited", () => {
+    const view = render(
+      <EventTypeDetails
+        event={{
+          type: "UPDATE_DOWNLOADED",
+          delivery: "archive",
+          patchFallback: true,
+        }}
+      />,
+    );
+    expect(
+      screen.getByText("The patch failed. The full archive was downloaded."),
+    ).toBeDefined();
+
+    view.rerender(
+      <EventTypeDetails
+        event={{ type: "RECOVERED", previousProcessExit: "ANR" }}
+      />,
+    );
+    expect(
+      screen.getByText("The crashed process exited with ANR."),
+    ).toBeDefined();
+  });
+
   it("uses distinct product labels for event meaning", () => {
-    const view = render(<EventTypeDetails type="UPDATE_APPLIED" />);
+    const view = render(
+      <EventTypeDetails event={{ type: "UPDATE_APPLIED" }} />,
+    );
     expect(screen.getByText("Update applied")).toBeDefined();
     expect(screen.getByText("Update applied").className).toContain(
       "text-success",
     );
 
-    view.rerender(<EventTypeDetails type="RECOVERED" />);
+    view.rerender(<EventTypeDetails event={{ type: "RECOVERED" }} />);
     expect(screen.getByText("Recovered")).toBeDefined();
     expect(screen.getByText("Recovered").className).toContain("text-warning");
 
-    view.rerender(<EventTypeDetails type="UNCHANGED" />);
+    view.rerender(<EventTypeDetails event={{ type: "UNCHANGED" }} />);
     expect(screen.getByText("No change")).toBeDefined();
     expect(
       screen.getByText("No download or apply was reported at this point."),

@@ -53,7 +53,6 @@ const move = (
     app_version: "1.0.0",
     channel: "production",
     metadata: {
-      username: null,
       cohort: "1",
       update_strategy: "appVersion",
       fingerprint_hash: null,

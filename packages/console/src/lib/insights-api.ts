@@ -1,11 +1,11 @@
 import type { InsightsEventPageInput } from "@hot-updater/server/plugins/insights";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 
 import {
-  deleteInsightsDataRpc,
-  type InsightsDeletionResult,
-  type InsightsDeletionTarget,
-} from "./insights-deletion-rpc";
+  readUpdateFailuresInput,
+  type UpdateFailuresInput,
+} from "./insights-failures";
+import { getUpdateFailuresRpc } from "./insights-failures-rpc";
 import {
   DEFAULT_INSIGHTS_RETENTION,
   type InsightsRetentionDays,
@@ -109,6 +109,20 @@ export const useInsightsInstallationEventsQuery = (
     staleTime: STALE_TIME_MS,
   });
 
+/** A release's or a channel's update failures; lifetime for a release without a window. */
+export const useUpdateFailuresQuery = (
+  input: UpdateFailuresInput,
+  enabled = true,
+) =>
+  useQuery({
+    queryKey: ["insights", "update-failures", input],
+    queryFn: () =>
+      getUpdateFailuresRpc({ data: readUpdateFailuresInput(input) }),
+    enabled,
+    refetchOnWindowFocus: true,
+    staleTime: STALE_TIME_MS,
+  });
+
 /**
  * How long the server keeps Insights rows; the defaults until it answers, or
  * when it does not report them.
@@ -120,34 +134,3 @@ export const useInsightsRetention = (): InsightsRetentionDays =>
     // A server's periods change only when it restarts.
     staleTime: Infinity,
   }).data ?? DEFAULT_INSIGHTS_RETENTION;
-
-/** Deletion calls one confirmation makes before it stops and asks for another. */
-const MAX_DELETION_CALLS = 100;
-
-/**
- * Deletes a target's Insights data: repeats the server's bounded deletion
- * until nothing remains, then refreshes every Insights read.
- */
-export const useDeleteInsightsDataMutation = () => {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: async (
-      target: InsightsDeletionTarget,
-    ): Promise<InsightsDeletionResult["deleted"]> => {
-      const total = { installations: 0, events: 0 };
-      for (let calls = 0; calls < MAX_DELETION_CALLS; calls += 1) {
-        const { deleted, complete } = await deleteInsightsDataRpc({
-          data: target,
-        });
-        total.installations += deleted.installations;
-        total.events += deleted.events;
-        if (complete) return total;
-      }
-      throw new Error(
-        `Deleted ${total.events.toLocaleString()} events so far; some data remains. Delete again to finish.`,
-      );
-    },
-    // Even a failed deletion may have removed rows.
-    onSettled: () => queryClient.invalidateQueries({ queryKey: ["insights"] }),
-  });
-};

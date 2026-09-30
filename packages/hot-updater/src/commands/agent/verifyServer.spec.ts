@@ -80,7 +80,10 @@ type Reply = {
 const emptyCatalog: Reply = {
   status: 404,
   body: { error: "Not found" },
-  headers: { "cache-control": "private, no-store" },
+  headers: {
+    "cache-control": "public, max-age=0, s-maxage=5",
+    "x-hot-updater-catalog": "none",
+  },
 };
 
 const createFixture = async (

@@ -17,11 +17,16 @@ const preflight = vi.fn();
 const promote = vi.fn();
 const update = vi.fn();
 const recovery = vi.fn();
+const failures = vi.fn();
 
 vi.mock("@/components/features/insights/ReleaseActivity", () => ({
   BundleInsightsSummary: (props: unknown) => {
     recovery(props);
     return <div>Activity · 24 hours</div>;
+  },
+  ReleaseFailuresSection: (props: unknown) => {
+    failures(props);
+    return <div>Download failures · lifetime</div>;
   },
   releaseActivityColumn: { Cell: () => null },
 }));
@@ -327,6 +332,12 @@ describe("ReleaseEditorSheet", () => {
 
     expect(screen.queryByText("Activity · 24 hours")).toBeNull();
     expect(recovery).not.toHaveBeenCalled();
+    // Insights still serves the release's download failures, as through a
+    // self-hosted server's admin API.
+    expect(screen.getByText("Download failures · lifetime")).toBeDefined();
+    expect(failures).toHaveBeenCalledWith({
+      input: expect.objectContaining({ releaseId: release.id }),
+    });
     expect(screen.getByText("Delivery settings")).toBeDefined();
   });
 

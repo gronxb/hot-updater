@@ -63,9 +63,10 @@ const expandClientPlugins = (
 ): string[] => {
   if (line.includes("{{CLIENT_PLUGIN_IMPORTS}}")) {
     return clientPlugins.map(({ module, name }) =>
+      // A function inserts the text as it is, `$` included.
       line.replace(
         "{{CLIENT_PLUGIN_IMPORTS}}",
-        `import { ${name} } from ${JSON.stringify(module)};`,
+        () => `import { ${name} } from ${JSON.stringify(module)};`,
       ),
     );
   }
@@ -73,8 +74,7 @@ const expandClientPlugins = (
     return clientPlugins.length === 0
       ? []
       : [
-          line.replace(
-            "{{CLIENT_PLUGINS}}",
+          line.replace("{{CLIENT_PLUGINS}}", () =>
             clientPlugins.map(({ name }) => `${name}()`).join(", "),
           ),
         ];
@@ -131,7 +131,7 @@ export const renderAgentInstructions = (
     if (clientAuth === null) {
       throw new Error(`${token} appears outside a credential block.`);
     }
-    rendered = rendered.replaceAll(token, clientAuth.credential[key]);
+    rendered = rendered.replaceAll(token, () => clientAuth.credential[key]);
   }
   if (rendered.includes("{{CLIENT_PLUGIN_LIST}}")) {
     if (clientPlugins.length === 0) {
@@ -139,8 +139,7 @@ export const renderAgentInstructions = (
         "{{CLIENT_PLUGIN_LIST}} appears outside a clientPlugins block.",
       );
     }
-    rendered = rendered.replaceAll(
-      "{{CLIENT_PLUGIN_LIST}}",
+    rendered = rendered.replaceAll("{{CLIENT_PLUGIN_LIST}}", () =>
       clientPlugins
         .map(({ module, name }) => `\`${name}()\` from \`${module}\``)
         .join(", "),

@@ -121,6 +121,10 @@ describe("Release catalog routes", () => {
       ),
     );
     expect(otherChannel.status).toBe(404);
+    expect(otherChannel.headers.get("cache-control")).toBe(
+      "public, max-age=0, s-maxage=5",
+    );
+    expect(otherChannel.headers.get("x-hot-updater-catalog")).toBe("none");
     expect(catalogReads()).toBe(2);
 
     const legacyAuthorityPath = await hotUpdater.handlers.client(
@@ -132,6 +136,9 @@ describe("Release catalog routes", () => {
     expect(legacyAuthorityPath.status).toBe(404);
     expect(legacyAuthorityPath.headers.get("cache-control")).toBe(
       "private, no-store",
+    );
+    expect(legacyAuthorityPath.headers.has("x-hot-updater-catalog")).toBe(
+      false,
     );
     expect(catalogReads()).toBe(2);
     const write = vi.spyOn(database.adapter, "write");

@@ -93,6 +93,17 @@ describe("renderAgentInstructions", () => {
     );
   });
 
+  it("inserts names as they are, `$` included", () => {
+    const dollars = { module: "feedback-rn", name: "$$fb" };
+    const rendered = renderAgentInstructions(app, {
+      clientAuth: null,
+      clientPlugins: [dollars],
+    });
+    expect(rendered).toContain('import { $$fb } from "feedback-rn";');
+    expect(rendered).toContain("  plugins: [$$fb()],");
+    expect(rendered).toContain("Add `$$fb()` from `feedback-rn` once.");
+  });
+
   it("leaves out the client plugin lines when there are none", () => {
     expect(
       renderAgentInstructions(app, { clientAuth: null, clientPlugins: [] }),

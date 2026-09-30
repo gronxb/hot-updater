@@ -2,6 +2,7 @@ import {
   Activity,
   Check,
   ChevronDown,
+  CircleAlert,
   Download,
   RotateCcw,
 } from "lucide-react";
@@ -9,6 +10,7 @@ import { useEffect, useState } from "react";
 
 import { HashValueDisplay } from "@/components/HashValueDisplay";
 import { Badge } from "@/components/ui/badge";
+import { describeFailure } from "@/lib/insights-failures";
 import type { InsightsEventRow } from "@/lib/insights-view";
 
 type EventHistoryRow = InsightsEventRow;
@@ -32,6 +34,12 @@ const eventTypes = {
     description: "Recovered from a crashed bundle.",
     variant: "warning",
     icon: RotateCcw,
+  },
+  UPDATE_FAILED: {
+    label: "Update failed",
+    description: "An update check, download, or install failed.",
+    variant: "destructive",
+    icon: CircleAlert,
   },
   UNCHANGED: {
     label: "No change",
@@ -105,13 +113,45 @@ export function EventTimestamp({
   );
 }
 
+const deliveries: Readonly<Record<string, string>> = {
+  patch: "A patch delivered it.",
+  manifest: "Only the changed files were downloaded.",
+  archive: "The full archive was downloaded.",
+};
+
+/** What the event's report added: where an update failed, how a bundle arrived, why a process exited. */
+const eventNote = (
+  event: Pick<
+    EventHistoryRow,
+    "type" | "failure" | "delivery" | "patchFallback" | "previousProcessExit"
+  >,
+): string | null => {
+  if (event.type === "UPDATE_FAILED" && event.failure) {
+    return describeFailure(event.failure);
+  }
+  if (event.type === "UPDATE_DOWNLOADED" && event.delivery) {
+    const delivered = deliveries[event.delivery] ?? null;
+    return event.patchFallback
+      ? `The patch failed. ${delivered ?? ""}`.trim()
+      : delivered;
+  }
+  if (event.type === "RECOVERED" && event.previousProcessExit) {
+    return `The crashed process exited with ${event.previousProcessExit}.`;
+  }
+  return null;
+};
+
 export function EventTypeDetails({
-  type,
+  event,
 }: {
-  readonly type: EventHistoryRow["type"];
+  readonly event: Pick<
+    EventHistoryRow,
+    "type" | "failure" | "delivery" | "patchFallback" | "previousProcessExit"
+  >;
 }) {
-  const eventType = eventTypes[type];
+  const eventType = eventTypes[event.type];
   const Icon = eventType.icon;
+  const note = eventNote(event);
   return (
     <div className="flex min-w-0 flex-col items-start gap-2">
       <Badge
@@ -122,8 +162,13 @@ export function EventTypeDetails({
         {eventType.label}
       </Badge>
       <p className="max-w-56 whitespace-normal text-xs text-muted-foreground">
-        {eventType.description}
+        {event.type === "UPDATE_FAILED" && note ? note : eventType.description}
       </p>
+      {event.type !== "UPDATE_FAILED" && note ? (
+        <p className="max-w-56 whitespace-normal text-xs text-muted-foreground">
+          {note}
+        </p>
+      ) : null}
     </div>
   );
 }
@@ -132,18 +177,27 @@ export function EventBundleTransition({
   event,
   touch = false,
 }: {
-  readonly event: Pick<EventHistoryRow, "type" | "fromBundleId" | "toBundleId">;
+  readonly event: Pick<
+    EventHistoryRow,
+    "type" | "fromBundleId" | "toBundleId" | "failure"
+  >;
   readonly touch?: boolean;
 }) {
   const downloaded = event.type === "UPDATE_DOWNLOADED";
+  const failed = event.type === "UPDATE_FAILED";
+  // A failed check targets no bundle: it names the one running.
+  const targeted = !failed || event.failure?.stage !== "check";
   const changed =
-    downloaded || event.type === "UPDATE_APPLIED" || event.type === "RECOVERED";
+    downloaded ||
+    failed ||
+    event.type === "UPDATE_APPLIED" ||
+    event.type === "RECOVERED";
   return (
     <dl className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-2 gap-y-2">
       {event.fromBundleId && changed ? (
         <>
           <dt className="text-muted-foreground">
-            {downloaded ? "Running" : "From"}
+            {downloaded || failed ? "Running" : "From"}
           </dt>
           <dd>
             <HashValueDisplay
@@ -153,15 +207,25 @@ export function EventBundleTransition({
           </dd>
         </>
       ) : null}
-      <dt className="text-muted-foreground">
-        {downloaded ? "Pending" : changed ? "To" : "Current"}
-      </dt>
-      <dd>
-        <HashValueDisplay
-          value={event.toBundleId}
-          buttonClassName={touch ? "min-h-11 px-3" : undefined}
-        />
-      </dd>
+      {targeted ? (
+        <>
+          <dt className="text-muted-foreground">
+            {downloaded
+              ? "Pending"
+              : failed
+                ? "Target"
+                : changed
+                  ? "To"
+                  : "Current"}
+          </dt>
+          <dd>
+            <HashValueDisplay
+              value={event.toBundleId}
+              buttonClassName={touch ? "min-h-11 px-3" : undefined}
+            />
+          </dd>
+        </>
+      ) : null}
     </dl>
   );
 }

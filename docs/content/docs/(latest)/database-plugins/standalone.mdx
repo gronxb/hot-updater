@@ -71,10 +71,8 @@ Every admin path is fixed relative to `baseUrl`. The repository is
 
 - `core` is core's API for Bundles, Releases, Release Catalogs and Channels,
   sent over the admin API. The CLI's commands and the Console use it.
-- `fetchAdmin(path, init?)` sends a request to the admin handler with the same
-  headers: a GET, unless `init.method` names another method. The Console reads
-  the server's plugins and Insights through it, and deletes Insights data
-  through it.
+- `fetchAdmin(path)` sends a GET to the admin handler with the same headers.
+  The Console reads the server's plugins and Insights through it.
 
 Before its first request, `core` reads `GET /version` from the admin handler.
 A server that reports an `adminProtocol` below 2, or none, fails with a
@@ -267,24 +265,14 @@ With the `insights()` plugin, the admin handler also serves `GET /overview`,
 `x-hot-updater-insights: disabled`. These routes read the reports that apps
 send with the [Insights client plugin](/docs/react-native-api/insights).
 
+`GET /failures?platform=ios&channel=production&releaseId=<id>` answers a
+release's update failures since its first report; add `start` and `end`, in
+epoch milliseconds, for a period of at most 30 days, which a channel without
+`releaseId` needs. It answers `400` for a channel without them or for a longer
+period. See [Update failures](/docs/guides/insights#update-failures).
+
 `insights()` also serves `GET /retention`, which answers how long it keeps
-data as `{ "rawDays": 90, "dailyDays": 400 }`, and two routes that delete
-Insights data:
-
-| Method   | Route                        | Deletes                                                          |
-| -------- | ---------------------------- | ---------------------------------------------------------------- |
-| `DELETE` | `/installations/:installId`  | The installation's events and latest report                      |
-| `DELETE` | `/installations?userId=<id>` | That of every installation whose latest report names the user ID |
-
-Each request deletes a bounded batch and answers what it deleted and whether
-anything remains, as
-`{ "deleted": { "installations": 1, "events": 42 }, "complete": false }`.
-Repeat it until `complete` is `true`; deleting what is gone answers
-`complete: true` with zero counts. `DELETE /installations` without `userId`
-answers `400`, and a busy database answers `503` with `Retry-After`. A server
-without `insights()`, or from before these routes, answers `404`. See
-[Insights](/docs/guides/insights#delete-an-installations-or-a-users-data) for
-what stays.
+data as `{ "rawDays": 90, "dailyDays": 400 }`.
 
 ### Minimal `@hot-updater/server` example
 
@@ -310,9 +298,8 @@ opt-in; there is no built-in admin authenticator.
 
 <Callout type="warn">
   Through `standaloneRepository`, the Console manages Bundles, Releases and
-  Channels, reads the server's Insights overview, events and installations,
-  and deletes an installation's or a user's Insights data. It cannot show usage
-  or Release activity, and it does not
+  Channels, and reads the server's Insights overview, events and
+  installations. It cannot show usage or Release activity, and it does not
   manage the server's API keys; manage them with
   [`hot-updater api-key`](/docs/custom/api-key-authentication) against the
   server's `createHotUpdater` module. A hosted Console must protect its browser
