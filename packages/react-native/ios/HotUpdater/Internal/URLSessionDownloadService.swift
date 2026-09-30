@@ -84,6 +84,49 @@ enum DownloadError: Error, Equatable {
     }
 }
 
+extension DownloadError {
+    /// Attempts per download that retries, the first one included.
+    static let maximumAttempts = 3
+
+    /// Whether a failed download may succeed if tried again: a network
+    /// failure or timeout, a body that ended early, or a 408, 429, or 5xx
+    /// answer. Another 4xx, a TLS failure, a cancelled task, and a local file
+    /// failure would fail the same way again.
+    static func isRetryable(_ error: Error) -> Bool {
+        if let downloadError = error as? DownloadError {
+            switch downloadError {
+            case .httpStatus(let status, _):
+                return status == 408 || status == 429 || status >= 500
+            case .incompleteDownload:
+                return true
+            case .invalidContentLength:
+                return false
+            }
+        }
+        let nsError = error as NSError
+        guard nsError.domain == NSURLErrorDomain else {
+            return false
+        }
+        switch URLError.Code(rawValue: nsError.code) {
+        case .timedOut,
+             .cannotFindHost,
+             .cannotConnectToHost,
+             .networkConnectionLost,
+             .dnsLookupFailed,
+             .notConnectedToInternet,
+             .cannotLoadFromNetwork,
+             .callIsActive,
+             .dataNotAllowed,
+             .internationalRoamingOff,
+             .backgroundSessionWasDisconnected,
+             .badServerResponse:
+            return true
+        default:
+            return false
+        }
+    }
+}
+
 class URLSessionDownloadService: NSObject, DownloadService {
     private let stateLock = NSRecursiveLock()
     private var session: URLSession!
