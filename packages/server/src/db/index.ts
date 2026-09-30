@@ -45,11 +45,6 @@ export {
   serverDefinitionOf,
   type ServerDefinition,
 } from "./serverDefinition";
-export {
-  clientEndpointsOf,
-  managedServerDefinitionOf,
-  type ManagedServer,
-} from "../assembly/managedServer";
 
 export type HotUpdaterDBTarget = {
   readonly adapterName: string;

@@ -1,3 +1,8 @@
+export {
+  type AdapterResource,
+  adapterResourceOf,
+  withAdapterResource,
+} from "./adapterResource";
 export { DatabaseRowReferencedError } from "./databaseErrors";
 export { isDatabaseJsonObject } from "./databaseJsonValue";
 export type * from "./types/internal";

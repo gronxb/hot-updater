@@ -1,7 +1,5 @@
-import {
-  type EngineDatabase,
-  withAdapterResource,
-} from "@hot-updater/plugin-core";
+import type { EngineDatabase } from "@hot-updater/plugin-core";
+import { withAdapterResource } from "@hot-updater/plugin-core/internal";
 import {
   createEngineDatabase,
   createKvAdapter,

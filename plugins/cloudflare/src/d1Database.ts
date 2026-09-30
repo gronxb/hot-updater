@@ -1,4 +1,4 @@
-import { withAdapterResource } from "@hot-updater/plugin-core";
+import { withAdapterResource } from "@hot-updater/plugin-core/internal";
 import {
   coreSettings,
   coreTarget,

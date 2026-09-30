@@ -17,8 +17,8 @@ import {
   type StorageAdapter,
   type StorageAdapterWith,
   type StorageObject,
-  withAdapterResource,
 } from "@hot-updater/plugin-core";
+import { withAdapterResource } from "@hot-updater/plugin-core/internal";
 
 import { applyS3RuntimeAwsConfig } from "./runtimeAwsConfig";
 

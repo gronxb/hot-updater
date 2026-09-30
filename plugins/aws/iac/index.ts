@@ -19,12 +19,14 @@ import {
 import type { PluginTables } from "@hot-updater/server/database";
 import {
   clientAuthOf,
-  clientEndpointsOf,
   clientPluginsOf,
-  managedServerDefinitionOf,
   provisionClientCredential,
   type ProvisionedClientCredential,
 } from "@hot-updater/server/db";
+import {
+  clientEndpointsOf,
+  managedServerDefinitionOf,
+} from "@hot-updater/server/internal";
 import { execa } from "execa";
 
 import { dynamoDB, migrateDynamoDB } from "../src/dynamoDB";

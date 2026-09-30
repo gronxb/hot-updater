@@ -1,8 +1,8 @@
 import {
   type AdapterResource,
   adapterResourceOf,
-} from "@hot-updater/plugin-core";
-import { createMemoryAdapter } from "@hot-updater/plugin-core/internal";
+  createMemoryAdapter,
+} from "@hot-updater/plugin-core/internal";
 
 import type { ClientEndpoint } from "../createHotUpdaterCore";
 import {

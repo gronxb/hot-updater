@@ -1,7 +1,5 @@
-import {
-  type StorageAdapterWith,
-  withAdapterResource,
-} from "@hot-updater/plugin-core";
+import type { StorageAdapterWith } from "@hot-updater/plugin-core";
+import { withAdapterResource } from "@hot-updater/plugin-core/internal";
 
 import { createR2S3Storage, type R2S3StorageConfig } from "./r2S3Storage";
 

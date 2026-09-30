@@ -4,8 +4,8 @@ import {
   createStorageUri,
   parseStorageUri,
   type StorageAdapterWith,
-  withAdapterResource,
 } from "@hot-updater/plugin-core";
+import { withAdapterResource } from "@hot-updater/plugin-core/internal";
 import { createClient } from "@supabase/supabase-js";
 
 import {

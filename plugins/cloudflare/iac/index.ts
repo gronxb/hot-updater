@@ -21,10 +21,10 @@ import {
 } from "@hot-updater/cli-tools";
 import {
   clientPluginsOf,
-  managedServerDefinitionOf,
   provisionClientCredential,
   type ProvisionedClientCredential,
 } from "@hot-updater/server/db";
+import { managedServerDefinitionOf } from "@hot-updater/server/internal";
 import { Cloudflare } from "cloudflare";
 
 import { d1Database } from "../src/d1Database";

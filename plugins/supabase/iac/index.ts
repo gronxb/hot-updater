@@ -26,10 +26,10 @@ import {
 } from "@hot-updater/cli-tools";
 import {
   clientPluginsOf,
-  managedServerDefinitionOf,
   provisionClientCredential,
   type ProvisionedClientCredential,
 } from "@hot-updater/server/db";
+import { managedServerDefinitionOf } from "@hot-updater/server/internal";
 import { delay } from "es-toolkit";
 import { ExecaError, execa } from "execa";
 

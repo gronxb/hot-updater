@@ -8,7 +8,7 @@ import path from "node:path";
 
 import { loadManagedServerDefinition } from "@hot-updater/cli-tools";
 import { createHotUpdater } from "@hot-updater/server";
-import { managedServerDefinitionOf } from "@hot-updater/server/db";
+import { managedServerDefinitionOf } from "@hot-updater/server/internal";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { getPlatformProxy } from "wrangler";
 
