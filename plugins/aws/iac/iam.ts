@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 
 import { IAM } from "@aws-sdk/client-iam";
 import { STS } from "@aws-sdk/client-sts";
-import { p } from "@hot-updater/cli-tools";
+import { InitError, p } from "@hot-updater/cli-tools";
 import {
   aggregateBatchingModule,
   coreTarget,
@@ -34,8 +34,8 @@ export const dynamoDBLeadingKeys = (
 
 /**
  * The partitions the managed server writes: its plugins' tables and the
- * aggregate log. Core's tables and the settings rows change only through
- * the CLI, and third-party plugins share the function's role.
+ * aggregate log and lease. Core's tables and the settings rows change only
+ * through the CLI, and third-party plugins share the function's role.
  */
 export const dynamoDBWriteLeadingKeys = (
   plugins: readonly PluginTables[] = packagePlugins,
@@ -292,6 +292,15 @@ export const LAMBDA_EDGE_TRUST_POLICY = {
 
 const DYNAMODB_POLICY_NAME = "HotUpdaterDynamoDBReadAccess";
 
+/** IAM's limit on a role's inline policies together, whitespace aside. */
+export const ROLE_POLICY_SIZE_LIMIT = 10_240;
+
+const policySizeOf = (documents: readonly object[]) =>
+  documents.reduce<number>(
+    (total, document) => total + JSON.stringify(document).length,
+    0,
+  );
+
 /** The function's execution role, one per Lambda installation. */
 const roleNameOf = (lambdaName: string) =>
   `hot-updater-edge-${createHash("sha256")
@@ -360,27 +369,10 @@ export class IAMManager {
   private async ensureDynamoDBPolicy(
     iamClient: IAM,
     roleName: string,
-    accountId: string,
-    tableName: string,
-    plugins: readonly PluginTables[],
-    edge: EdgeDeployment | undefined,
+    document: object,
   ): Promise<void> {
-    // The edges may still run the versions before this one, until the
-    // distribution deploys it: their access stays.
-    const previous = retainedDynamoDBAccess(
-      await this.readDynamoDBPolicyState(iamClient, roleName),
-      edge,
-    );
     await iamClient.putRolePolicy({
-      PolicyDocument: JSON.stringify(
-        buildDynamoDBPolicy(
-          this.region,
-          accountId,
-          tableName,
-          plugins,
-          previous,
-        ),
-      ),
+      PolicyDocument: JSON.stringify(document),
       PolicyName: DYNAMODB_POLICY_NAME,
       RoleName: roleName,
     });
@@ -487,6 +479,45 @@ export class IAMManager {
     const assumeRolePolicyDocument = JSON.stringify(LAMBDA_EDGE_TRUST_POLICY);
     const roleName = roleNameOf(options.lambdaName);
 
+    // The function's DynamoDB access, and the access it keeps for the
+    // versions the edges may still run, which the edges run until the
+    // distribution deploys this one. IAM limits a role's inline policies
+    // together, so they are checked before any is written.
+    const previous = retainedDynamoDBAccess(
+      await this.readDynamoDBPolicyState(iamClient, roleName),
+      options.edge,
+    );
+    const dynamoDBPolicy = buildDynamoDBPolicy(
+      this.region,
+      accountId,
+      options.dynamodbTableName,
+      options.plugins,
+      previous,
+    );
+    const fixedPolicies = [
+      buildS3Policy(options.bucketName),
+      buildSsmPolicy(this.region, accountId, options.ssmParameterName),
+    ];
+    const policySize = policySizeOf([...fixedPolicies, dynamoDBPolicy]);
+    if (policySize > ROLE_POLICY_SIZE_LIMIT) {
+      const pluginIds =
+        options.plugins.map(({ id }) => id).join(", ") || "none";
+      const withoutKept = policySizeOf([
+        ...fixedPolicies,
+        buildDynamoDBPolicy(
+          this.region,
+          accountId,
+          options.dynamodbTableName,
+          options.plugins,
+        ),
+      ]);
+      throw new InitError(
+        withoutKept <= ROLE_POLICY_SIZE_LIMIT
+          ? `The managed AWS server's role would hold ${policySize} characters of IAM policy, over IAM's ${ROLE_POLICY_SIZE_LIMIT} for a role's inline policies, because it also keeps the access of the versions the distribution may still run while this deploy rolls out. Deploy the change in two inits: first a server definition without the plugins it drops, then, once the distribution reports that deploy as Deployed, one with the plugins it adds (plugins: ${pluginIds}).`
+          : `The managed AWS server's role would hold ${policySize} characters of IAM policy for the tables of its plugins (${pluginIds}), over IAM's ${ROLE_POLICY_SIZE_LIMIT} for a role's inline policies. Remove plugins or their tables from the server definition, or host the server yourself.`,
+      );
+    }
+
     try {
       const { Role: existingRole } = await iamClient.getRole({
         RoleName: roleName,
@@ -500,14 +531,7 @@ export class IAMManager {
           accountId,
           options.ssmParameterName,
         );
-        await this.ensureDynamoDBPolicy(
-          iamClient,
-          roleName,
-          accountId,
-          options.dynamodbTableName,
-          options.plugins,
-          options.edge,
-        );
+        await this.ensureDynamoDBPolicy(iamClient, roleName, dynamoDBPolicy);
         p.log.info(
           `Using existing IAM role: ${roleName} (${existingRole.Arn})`,
         );
@@ -543,14 +567,7 @@ export class IAMManager {
         );
         p.log.info(`Added resource-scoped policies to ${roleName}`);
 
-        await this.ensureDynamoDBPolicy(
-          iamClient,
-          roleName,
-          accountId,
-          options.dynamodbTableName,
-          options.plugins,
-          options.edge,
-        );
+        await this.ensureDynamoDBPolicy(iamClient, roleName, dynamoDBPolicy);
         p.log.info(`Added DynamoDB read policy to ${roleName}`);
 
         return lambdaRoleArn;

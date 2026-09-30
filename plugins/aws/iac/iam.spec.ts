@@ -30,6 +30,7 @@ vi.mock("@aws-sdk/client-sts", () => ({
   }),
 }));
 
+import { InitError } from "@hot-updater/cli-tools";
 import { definePlugin, defineTable } from "@hot-updater/server/plugins";
 
 import { plugins } from "../src/plugins";
@@ -407,6 +408,81 @@ describe("IAMManager DynamoDB access", () => {
       "HotUpdaterPreviousRead",
       "HotUpdaterPreviousWrite",
     ]);
+  });
+
+  /** A plugin with `count` tables whose names are long. */
+  const pluginWithTables = (id: string, count: number) =>
+    definePlugin({
+      id,
+      schemaVersion: "1",
+      schema: Object.fromEntries(
+        Array.from({ length: count }, (_, index) => [
+          `table_with_a_rather_long_descriptive_name_${index}`,
+          defineTable(
+            { id: { type: "string", maxLength: 64 } },
+            { key: ["id"] },
+          ),
+        ]),
+      ),
+      init: () => ({ api: {} }),
+    });
+
+  it("refuses plugins whose tables would take the role past IAM's policy limit, before writing any policy", async () => {
+    const manager = new IAMManager("ap-northeast-2", {
+      accessKeyId: "test-access-key",
+      secretAccessKey: "test-secret-key",
+    });
+
+    const setup = manager.createOrSelectRole({
+      bucketName: "hot-updater-storage",
+      dynamodbTableName: "hot-updater-metadata",
+      lambdaName: "hot-updater-edge",
+      ssmParameterName: "/hot-updater/hot-updater-storage/keypair",
+      plugins: [...plugins, pluginWithTables("catalogSync", 60)],
+    });
+
+    await expect(setup).rejects.toBeInstanceOf(InitError);
+    await expect(setup).rejects.toThrow(
+      /^The managed AWS server's role would hold \d+ characters of IAM policy for the tables of its plugins \(insights, apiKeys, catalogSync\), over IAM's 10240 for a role's inline policies\. Remove plugins or their tables from the server definition, or host the server yourself\.$/u,
+    );
+    expect(mocks.putRolePolicy).not.toHaveBeenCalled();
+  });
+
+  it("refuses a change whose rollout would take the role past IAM's policy limit, and deploys it in two inits", async () => {
+    const manager = new IAMManager("ap-northeast-2", {
+      accessKeyId: "test-access-key",
+      secretAccessKey: "test-secret-key",
+    });
+    const before = [
+      pluginWithTables("reports", 22),
+    ] as unknown as typeof plugins;
+    const after = [
+      pluginWithTables("billing", 22),
+    ] as unknown as typeof plugins;
+    await initWith(manager, before, undefined, "1");
+    mocks.putRolePolicy.mockClear();
+
+    // Version 1 serves until the new one deploys, so its access stays
+    // beside the new definition's, which together don't fit.
+    for (const edge of [rollingOutTo("1"), deployedOn("1")]) {
+      await expect(initWith(manager, after, edge)).rejects.toThrow(
+        "because it also keeps the access of the versions the distribution may still run while this deploy rolls out. Deploy the change in two inits: first a server definition without the plugins it drops, then, once the distribution reports that deploy as Deployed, one with the plugins it adds (plugins: billing).",
+      );
+    }
+    expect(mocks.putRolePolicy).not.toHaveBeenCalled();
+
+    // First without the plugin it drops, then with the one it adds.
+    await initWith(manager, [], deployedOn("1"), "2");
+    await initWith(manager, after, deployedOn("2"), "3");
+    // Version 2's access is within version 3's, so nothing else is kept.
+    const statements = dynamoDBStatements();
+    expect(Object.keys(statements)).toEqual([
+      "HotUpdaterReadV3",
+      "HotUpdaterWriteV3",
+    ]);
+    expect(statements["HotUpdaterReadV3"]?.keys).toContain(
+      "billing_table_with_a_rather_long_descriptive_name_0",
+    );
   });
 
   it("keeps a policy from before the split while the deployment it served rolls out", async () => {

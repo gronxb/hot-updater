@@ -469,12 +469,6 @@ export const runInit = async ({
       functionArn,
       pluginPaths,
     });
-  await iamManager.recordDeployedVersion({
-    dynamodbTableName: resolvedDynamoDBTableName,
-    functionArn,
-    lambdaName,
-    plugins: serverPlugins,
-  });
 
   // Update S3 bucket policy (allow CloudFront access)
   const accountId = functionArn.split(":")[4];
@@ -484,6 +478,24 @@ export const runInit = async ({
     distributionId,
     accountId,
   });
+
+  // The version the distribution now runs: the next init drops the access it
+  // keeps for the versions before once the distribution deploys it. Without
+  // the record, it keeps them, so a failure here only delays that.
+  try {
+    await iamManager.recordDeployedVersion({
+      dynamodbTableName: resolvedDynamoDBTableName,
+      functionArn,
+      lambdaName,
+      plugins: serverPlugins,
+    });
+  } catch (error) {
+    p.log.warn(
+      `Could not record the deployed Lambda@Edge version in its role's policy, so the next init keeps the access of the versions before it: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+  }
 
   await makeEnv({
     [AWS_INIT_PROVIDER.inputs.distributionId.envKey]: distributionId,

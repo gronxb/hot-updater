@@ -318,6 +318,23 @@ describe("AWS init with the project's server definition", () => {
     expect(mocks.ensureTable).not.toHaveBeenCalled();
   });
 
+  it("finishes init when recording the deployed version fails, which only delays dropping the old versions' access", async () => {
+    root = await project();
+    mocks.recordDeployedVersion.mockRejectedValue(
+      Object.assign(new Error("Rate exceeded"), { name: "Throttling" }),
+    );
+
+    await runInit({ build: "bare", envFile: ".env.hotupdater" });
+
+    expect(mocks.updateBucketPolicy).toHaveBeenCalled();
+    expect(mocks.printAppSetup).toHaveBeenCalled();
+    expect(mocks.log.warn).toHaveBeenCalledWith(
+      expect.stringContaining(
+        "Could not record the deployed Lambda@Edge version in its role's policy",
+      ),
+    );
+  });
+
   it("deploys the bundled definition and gives its plugins their tables, the role's access, the credential, and CloudFront routes", async () => {
     root = await project(withNotes);
 
@@ -354,11 +371,10 @@ describe("AWS init with the project's server definition", () => {
       lambdaName: "hot-updater-edge",
       plugins: migrated,
     });
+    // After the bucket policy, which gives the distribution S3 access.
     expect(
       mocks.recordDeployedVersion.mock.invocationCallOrder[0],
-    ).toBeGreaterThan(
-      mocks.createOrUpdateDistribution.mock.invocationCallOrder[0]!,
-    );
+    ).toBeGreaterThan(mocks.updateBucketPolicy.mock.invocationCallOrder[0]!);
     expect(mocks.createOrUpdateDistribution).toHaveBeenCalledWith(
       expect.objectContaining({
         clientHeaders: ["x-api-key"],
