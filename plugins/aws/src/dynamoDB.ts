@@ -6,6 +6,8 @@ import type { EngineDatabase } from "@hot-updater/plugin-core";
 import {
   createEngineDatabase,
   createKvAdapter,
+  migrateCoreSchema,
+  type PluginTables,
 } from "@hot-updater/server/database";
 
 import { createUpdateRouteInvalidation } from "./cloudFrontInvalidation";
@@ -26,10 +28,26 @@ export interface DynamoDBConfig extends DynamoDBClientConfig {
 }
 
 /** The DynamoDB client ignores the CloudFront and batching settings. */
-export const adapterOf = ({ tableName, ...clientConfig }: DynamoDBConfig) => {
+const adapterOf = ({ tableName, ...clientConfig }: DynamoDBConfig) => {
   const client = new DynamoDBClient(clientConfig);
   const store = createDynamoDBStore({ client, tableName });
   return { client, adapter: createKvAdapter({ store }) };
+};
+
+/**
+ * Creates the table when it is missing and writes the schema settings of
+ * core and `plugins`, the plugins the server runs, which the database checks
+ * before its first read. `hot-updater init` runs it in AWS with the managed
+ * server's plugins.
+ */
+export const migrateDynamoDB = (
+  config: DynamoDBConfig,
+  plugins: readonly PluginTables[] = [],
+) => {
+  const { client, adapter } = adapterOf(config);
+  return migrateCoreSchema(adapter, "dynamoDB", plugins).finally(() =>
+    client.destroy(),
+  );
 };
 
 /**

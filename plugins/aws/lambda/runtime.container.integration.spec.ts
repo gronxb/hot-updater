@@ -36,8 +36,7 @@ import {
   stopRuntime,
 } from "../../../packages/test-utils/src/runtimeProcess";
 import { cloudFrontDownloadUrl } from "../src/cloudFrontDownloadUrl";
-import { dynamoDB } from "../src/dynamoDB";
-import { migrateDynamoDB } from "../src/dynamoDBMigration";
+import { dynamoDB, migrateDynamoDB } from "../src/dynamoDB";
 import { plugins } from "../src/plugins";
 import { s3Storage } from "../src/s3Storage";
 

@@ -325,6 +325,20 @@ describe("createHotUpdater with plugins", () => {
       ],
       [
         {
+          plugins: [{ ...valid, namespace: "valid" }],
+          clientAccess: "public",
+        },
+        "plugins[0] may only set namespace: false.",
+      ],
+      [
+        {
+          plugins: [{ ...valid, namespace: false, id: "Valid" }],
+          clientAccess: "public",
+        },
+        "plugins[0] needs an id matching ^[a-z][A-Za-z0-9_]*$.",
+      ],
+      [
+        {
           plugins: [{ ...valid, cli: { hooks: [] } }],
           clientAccess: "public",
         },

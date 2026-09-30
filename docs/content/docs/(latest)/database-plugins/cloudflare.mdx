@@ -49,8 +49,9 @@ from `@hot-updater/cloudflare`.
 ## Schema settings
 
 Before its first read or write, the database checks the settings rows
-`schema.engine`, `schema.core`, and `schema.<id>` for each plugin the Worker
-runs, such as `schema.insights` and `schema.apiKeys`, in one batch read. While one is missing or different, it throws
+`schema.engine` and `schema.core` in one batch read, and the Worker checks
+`schema.<id>` for each plugin it runs, such as `schema.insights` and
+`schema.apiKeys`, in another. While one is missing or different, it throws
 `HotUpdaterSchemaMigrationRequiredError`, which names the setting, and the
 Worker's handlers answer 503. A running Worker checks again on its next
 request, so it recovers once the migration has run.

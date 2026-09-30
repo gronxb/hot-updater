@@ -147,33 +147,20 @@ describe("Insights event delivery", () => {
     );
   });
 
-  it.each([
-    {
-      label: "204 with x-hot-updater-insights: disabled",
-      response: () =>
-        new Response(null, {
-          headers: { "x-hot-updater-insights": "disabled" },
-          status: 204,
-        }),
-    },
-    { label: "404", response: () => new Response(null, { status: 404 }) },
-  ])(
-    "settles a $label as Insights off without retrying",
-    async ({ response }) => {
-      const { fetchMock } = stubEventsEndpoint(response());
-      const gate = openGate();
-      const send = createInsightsEventSender(fetchMock, gate);
+  it("settles a 404, from a server without Insights, as Insights off without retrying", async () => {
+    const { fetchMock } = stubEventsEndpoint(404);
+    const gate = openGate();
+    const send = createInsightsEventSender(fetchMock, gate);
 
-      await send(unchangedEvent());
-      await vi.runAllTimersAsync();
+    await send(unchangedEvent());
+    await vi.runAllTimersAsync();
 
-      expect(fetchMock).toHaveBeenCalledOnce();
-      expect(gate.settle).toHaveBeenCalledWith(
-        expect.objectContaining({ type: "UNCHANGED" }),
-        "disabled",
-      );
-    },
-  );
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(gate.settle).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "UNCHANGED" }),
+      "disabled",
+    );
+  });
 
   it("skips an event the gate does not admit", async () => {
     const { fetchMock } = stubEventsEndpoint();

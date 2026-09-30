@@ -22,8 +22,7 @@ import {
 } from "@hot-updater/server/db";
 import { execa } from "execa";
 
-import { dynamoDB } from "../src/dynamoDB";
-import { migrateDynamoDB } from "../src/dynamoDBMigration";
+import { dynamoDB, migrateDynamoDB } from "../src/dynamoDB";
 import { plugins } from "../src/plugins";
 import { resolveAwsAuth } from "./awsAuth";
 import { getAwsV1SsmParameterName } from "./awsInfrastructureNames";

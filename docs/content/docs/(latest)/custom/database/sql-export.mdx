@@ -7,7 +7,7 @@ version: "v0.22.0"
 
 ## Overview
 
-Export Hot Updater table schemas as plain SQL files without connecting to a database. Use this when you need standalone SQL for manual database setup.
+Export Hot Updater table schemas as plain SQL files for manual database setup. The command generates the SQL without a database connection, but it loads your server config to find its plugins.
 
 <Callout>
 For ORM-specific schema generation (Drizzle, Prisma, Kysely), see the respective adapter documentation pages.
@@ -58,7 +58,9 @@ npx hot-updater db generate src/hotUpdater.ts --sql postgresql
 ```
 
 It names the file it read the plugins from. Without one, it says so and
-generates core's tables only.
+generates core's tables only. The command imports that file as your server
+does, so a config that opens a database when it is imported, such as a PGlite
+client that creates its data directory, does so here too.
 
 ## Output
 

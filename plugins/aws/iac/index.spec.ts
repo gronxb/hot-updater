@@ -19,9 +19,6 @@ vi.mock("./dynamodb", () => ({
 
 vi.mock("../src/dynamoDB", () => ({
   dynamoDB: vi.fn(),
-}));
-
-vi.mock("../src/dynamoDBMigration", () => ({
   migrateDynamoDB: mocks.migrateDynamoDB,
 }));
 
