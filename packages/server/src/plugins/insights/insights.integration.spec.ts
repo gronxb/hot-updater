@@ -4,7 +4,7 @@ import {
 } from "@hot-updater/plugin-core/internal";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { builtInSettings } from "../../db/builtInDatabase";
+import { toolingTargetOf } from "../../db/coreDatabase";
 import { createHotUpdater } from "../../index";
 import {
   createFencedDatabase,
@@ -308,7 +308,10 @@ describe("createHotUpdater Insights", () => {
       clientAccess: "public",
     });
     const migrated = createHotUpdater({
-      database: await createFencedDatabase("kysely", builtInSettings),
+      database: await createFencedDatabase(
+        "kysely",
+        toolingTargetOf([insights()]).settings,
+      ),
       plugins: [insights()],
       clientAccess: "public",
     });

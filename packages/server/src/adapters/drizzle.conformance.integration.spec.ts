@@ -4,7 +4,7 @@ import { drizzle } from "drizzle-orm/pglite";
 
 import { SETTINGS_TABLE } from "../database/fence";
 import { createTableStatements } from "../database/sql/sqlSchema";
-import { builtInSettings } from "../db/builtInDatabase";
+import { coreSettings } from "../db/coreDatabase";
 import { settingsStatements } from "../db/engineSql";
 import { drizzleAdapter } from "./drizzle";
 
@@ -22,7 +22,7 @@ setupDatabaseAdapterConformanceSuite({
     await client.exec(
       [
         ...createTableStatements("postgresql", [...tables, SETTINGS_TABLE]),
-        ...settingsStatements("postgresql", builtInSettings),
+        ...settingsStatements("postgresql", coreSettings),
       ].join(";\n"),
     );
     return {

@@ -1,6 +1,7 @@
 /**
- * The plugin authoring API. Built-in and third-party plugins declare their
- * tables and aggregates here and receive a typed database handle in `init`.
+ * The plugin authoring API. Hot Updater's own plugins and third-party ones
+ * declare their tables and aggregates here and receive a typed database
+ * handle in `init`.
  */
 export {
   addDistinct,

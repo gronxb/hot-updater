@@ -11,12 +11,13 @@ import {
 } from "@aws-sdk/client-dynamodb";
 import { InitError } from "@hot-updater/cli-tools";
 import {
-  builtInSettings,
   encodeKvKey,
   SETTINGS_TABLE,
+  toolingTargetOf,
 } from "@hot-updater/server/database";
 
 import { DYNAMODB_TTL_ATTRIBUTE } from "../src/dynamoDBStore";
+import { plugins } from "../src/plugins";
 
 const DYNAMODB_DESCRIBE_TABLE_ACTION = "dynamodb:DescribeTable";
 
@@ -127,23 +128,26 @@ export const buildDynamoDBCreateTableInput = (tableName: string) =>
   }) satisfies CreateTableInput;
 
 /**
- * The schema settings items the plugin checks before its first read, as one
- * BatchWriteItem request: what `migrateDynamoDB` writes to a new table.
+ * The schema settings items of core and the managed server's plugins, which
+ * the database checks before its first read, as one BatchWriteItem request:
+ * what `migrateDynamoDB` writes to a new table for those plugins.
  */
 export const buildDynamoDBSchemaSettingsInput = (tableName: string) =>
   ({
     RequestItems: {
-      [tableName]: Object.entries(builtInSettings).map(([key, value]) => ({
-        PutRequest: {
-          Item: {
-            pk: { S: SETTINGS_TABLE.name },
-            sk: { S: encodeKvKey([key]) },
-            key: { S: key },
-            value: { S: value },
-            _v: { N: "0" },
+      [tableName]: Object.entries(toolingTargetOf(plugins).settings).map(
+        ([key, value]) => ({
+          PutRequest: {
+            Item: {
+              pk: { S: SETTINGS_TABLE.name },
+              sk: { S: encodeKvKey([key]) },
+              key: { S: key },
+              value: { S: value },
+              _v: { N: "0" },
+            },
           },
-        },
-      })),
+        }),
+      ),
     },
   }) satisfies BatchWriteItemInput;
 

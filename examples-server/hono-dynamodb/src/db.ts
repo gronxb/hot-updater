@@ -26,8 +26,8 @@ const dynamoDBConfig = {
 
 export const database = dynamoDB({ ...dynamoDBConfig });
 
-/** Creates the table when it is missing and writes the schema settings the plugin checks first. */
-export const migrateDatabase = () => migrateDynamoDB(dynamoDBConfig);
+/** Creates the table when it is missing and writes the schema settings of core and the server's plugins. */
+export const migrateDatabase = () => migrateDynamoDB(dynamoDBConfig, plugins);
 
 // The managed AWS server's plugins: Insights, and API keys on client routes.
 export const hotUpdater = createHotUpdater({

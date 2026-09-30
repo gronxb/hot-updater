@@ -9,6 +9,7 @@ import { promisify } from "node:util";
 import type { PGlite, Transaction } from "@electric-sql/pglite";
 import type { Pool as MysqlPool, PoolConnection } from "mysql2/promise";
 
+import type { ToolingTarget } from "../db/types";
 import { prismaAdapter, type PrismaProvider } from "./prisma";
 import type {
   PrismaRawClient,
@@ -133,9 +134,13 @@ const urls: Record<PrismaProvider, string> = {
   mysql: "mysql://unused@localhost/unused",
 };
 
-/** The DDL `prisma db push` runs for the generated models on an empty database, from Prisma's CLI. */
+/**
+ * The DDL `prisma db push` runs for the models generated for `target` (core
+ * and the plugins it lists) on an empty database, from Prisma's CLI.
+ */
 export const prismaPushSql = async (
   provider: PrismaProvider,
+  target?: ToolingTarget,
 ): Promise<string> => {
   const directory = await mkdtemp(
     path.join(os.tmpdir(), "hot-updater-prisma-"),
@@ -144,6 +149,8 @@ export const prismaPushSql = async (
     const file = path.join(directory, "schema.prisma");
     const models = prismaAdapter({ prisma: {}, provider }).generateSchema!(
       "latest",
+      undefined,
+      target,
     ).code;
     await writeFile(
       file,

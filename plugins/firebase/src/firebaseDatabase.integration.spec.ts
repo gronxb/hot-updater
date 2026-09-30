@@ -81,7 +81,7 @@ describe("firebaseDatabase", () => {
       }),
     ],
     createDatabase: () => firebaseDatabase(config),
-    migrate: () => migrateFirebaseDatabase(config),
+    migrate: () => migrateFirebaseDatabase(config, [insights()]),
     reset: clearData,
     dispose: () => undefined,
   });

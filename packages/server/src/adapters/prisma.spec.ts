@@ -13,7 +13,7 @@ import { createInProcessCoreApi } from "../core/api";
 import { HotUpdaterSchemaMigrationRequiredError } from "../database/fence";
 import { classifySqlError } from "../database/sql/sqlAdapter";
 import { isMultiIndex, quoteSql } from "../database/sql/sqlSchema";
-import { builtInSchema } from "../db/builtInDatabase";
+import { toolingTargetOf } from "../db/coreDatabase";
 import type { ToolingDatabase } from "../db/types";
 import { createHotUpdater } from "../index";
 import { createInsightsModel, insights } from "../plugins/insights";
@@ -25,8 +25,11 @@ import {
 } from "./prismaExecutor";
 import { pglitePrisma, prismaPushSql, sqlitePrisma } from "./prismaTestClients";
 
+/** What the suites run: core and the Insights plugin. */
+const target = toolingTargetOf([insights()]);
+
 /** Every data table; the settings rows stay across tests. */
-const dataTables = builtInSchema.tables.flatMap((table) => [
+const dataTables = target.schema.tables.flatMap((table) => [
   table.name,
   ...table.indexes
     .filter((index) => isMultiIndex(table, index))
@@ -37,7 +40,7 @@ const dataTables = builtInSchema.tables.flatMap((table) => [
 const backends = {
   postgresql: async () => {
     const db = new PGlite();
-    await db.exec(await prismaPushSql("postgresql"));
+    await db.exec(await prismaPushSql("postgresql", target));
     const prisma = pglitePrisma(db);
     return {
       prisma,
@@ -47,7 +50,7 @@ const backends = {
   },
   sqlite: async () => {
     const db = new DatabaseSync(":memory:");
-    db.exec(await prismaPushSql("sqlite"));
+    db.exec(await prismaPushSql("sqlite", target));
     return {
       prisma: sqlitePrisma(db),
       exec: async (sql: string) => db.exec(sql),
@@ -57,7 +60,7 @@ const backends = {
 } as const;
 
 const migrate = async (database: ToolingDatabase) =>
-  (await database.createMigrator!().migrateToLatest()).execute();
+  (await database.createMigrator!(target).migrateToLatest()).execute();
 
 for (const provider of ["postgresql", "sqlite"] as const) {
   let backend: Awaited<ReturnType<(typeof backends)[typeof provider]>>;

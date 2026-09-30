@@ -9,7 +9,7 @@ import {
   HotUpdaterConfigError,
 } from "./assembly/assemblePlugins";
 import type { CoreApi } from "./core/api";
-import { toolingTargetOf } from "./db/builtInDatabase";
+import { toolingTargetOf } from "./db/coreDatabase";
 import type { ToolingDatabase, ToolingTarget } from "./db/types";
 import {
   type ClientRoutePolicy,
@@ -120,7 +120,7 @@ export type CreateHotUpdaterOptions<
   readonly database: ToolingDatabase;
   /** Storage implementations used to read provider-specific storage URIs. */
   readonly storage?: readonly StoragePlugin[];
-  /** Built-in and third-party plugins; at most one provides clientAuth. Defaults to none. */
+  /** The plugins the server runs; at most one provides clientAuth. Defaults to none. */
   readonly plugins?: TPlugins;
 } & ClientAccessRule<TPlugins>;
 

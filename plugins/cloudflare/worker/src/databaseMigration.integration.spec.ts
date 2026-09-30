@@ -1,5 +1,5 @@
 import { createHotUpdater } from "@hot-updater/server";
-import { builtInSchema, isMultiIndex } from "@hot-updater/server/database";
+import { isMultiIndex, toolingTargetOf } from "@hot-updater/server/database";
 import {
   createInsightsModel,
   insights,
@@ -8,6 +8,7 @@ import { createBundleEventRowFixture } from "@hot-updater/server/plugins/insight
 import { env } from "cloudflare:test";
 import { expect, inject, it } from "vitest";
 
+import { plugins } from "../../src/plugins";
 import { d1Database } from "../../src/worker";
 
 declare module "vitest" {
@@ -19,8 +20,8 @@ declare module "vitest" {
   }
 }
 
-/** Every data table: each model's table and the index tables of its multi-valued indexes. */
-const dataTables = builtInSchema.tables.flatMap((table) => [
+/** Every data table of the managed server's migration: each model's table and the index tables of its multi-valued indexes. */
+const dataTables = toolingTargetOf(plugins).schema.tables.flatMap((table) => [
   table.name,
   ...table.indexes
     .filter((index) => isMultiIndex(table, index))

@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { DatabaseSync, type SqliteValue } from "node:sqlite";
 
+import { toolingTargetOf } from "@hot-updater/server/database";
 import {
   createDatabaseCoreApi,
   HotUpdaterSchemaMigrationRequiredError,
@@ -11,6 +12,10 @@ import { describe, expect, it } from "vitest";
 import { createBundleFixture } from "../../../packages/test-utils/src/databaseTestFixtures";
 import { createD1Database } from "./d1Executor";
 import { d1SchemaSql, d1SchemaStatements } from "./d1Schema";
+import { plugins } from "./plugins";
+
+/** The managed Worker's migration: core's tables and its plugins'. */
+const managedSql = () => d1SchemaSql(toolingTargetOf(plugins));
 
 const FILES = [
   "plugins/cloudflare/sql/bundles.sql",
@@ -45,11 +50,11 @@ const sqliteD1 = (db: DatabaseSync) => {
 describe("d1 schema", () => {
   it("checks in exactly the generated schema as the SQL file and the first migration", async () => {
     if (process.env.HOT_UPDATER_UPDATE_SQL === "1") {
-      for (const file of FILES) await fs.writeFile(file, d1SchemaSql());
+      for (const file of FILES) await fs.writeFile(file, managedSql());
     }
     // Regenerate with HOT_UPDATER_UPDATE_SQL=1 after the schema changes.
     for (const file of FILES) {
-      expect(await fs.readFile(file, "utf8")).toBe(d1SchemaSql());
+      expect(await fs.readFile(file, "utf8")).toBe(managedSql());
     }
   });
 

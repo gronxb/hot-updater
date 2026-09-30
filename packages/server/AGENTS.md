@@ -23,8 +23,9 @@ Keep the `@hot-updater/server` subpaths semantically strict:
 - `@hot-updater/server/database` is the public storage engine entry for
   database providers and storage adapter authors.
   - Export the storage adapter contract, `createSqlAdapter`,
-    `createKvAdapter`, `createEngineDatabase`, the built-in schema and
-    settings, and the migration helpers that providers call.
+    `createKvAdapter`, `createEngineDatabase`, core's schema and settings,
+    `toolingTargetOf` for core with a server's plugins, and the migration
+    helpers that providers call.
   - `createPluginTestHarness` from `@hot-updater/test-utils` takes this module
     as its `engine`.
 - `@hot-updater/server/runtime` should not exist.

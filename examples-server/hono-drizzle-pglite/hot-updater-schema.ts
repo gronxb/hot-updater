@@ -274,21 +274,6 @@ export const insights_outcomes = pgTable("insights_outcomes", {
   index("insights_outcomes__retention").on(table["bucket_start_ms"], table["platform"], table["channel"], table["type"], table["bundle_ref"], table["_shard"]),
 ]);
 
-export const api_keys = pgTable("api_keys", {
-  "id": column("varchar(255) COLLATE \"C\"")("id").notNull(),
-  "hash": column("varchar(64) COLLATE \"C\"")("hash").notNull(),
-  "name": column("varchar(64) COLLATE \"C\"")("name").notNull(),
-  "prefix": column("varchar(16) COLLATE \"C\"")("prefix").notNull(),
-  "role": column("varchar(16) COLLATE \"C\"")("role").notNull(),
-  "created_at_ms": column("bigint")("created_at_ms").notNull(),
-  "revoked_at_ms": column("bigint")("revoked_at_ms"),
-  "_v": column("bigint")("_v").notNull().default(0),
-}, (table) => [
-  primaryKey({ columns: [table["id"]] }),
-  index("api_keys_byCreated").on(table["created_at_ms"], table["id"]),
-  uniqueIndex("api_keys_hash").on(table["hash"]),
-]);
-
 export const private_hot_updater_settings = pgTable("private_hot_updater_settings", {
   "key": column("varchar(255) COLLATE \"C\"")("key").notNull(),
   "value": column("varchar(255) COLLATE \"C\"")("value").notNull(),

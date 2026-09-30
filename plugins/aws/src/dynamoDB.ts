@@ -6,7 +6,6 @@ import type { EngineDatabase } from "@hot-updater/plugin-core";
 import {
   createEngineDatabase,
   createKvAdapter,
-  migrateBuiltInSchema,
 } from "@hot-updater/server/database";
 
 import { createUpdateRouteInvalidation } from "./cloudFrontInvalidation";
@@ -27,23 +26,10 @@ export interface DynamoDBConfig extends DynamoDBClientConfig {
 }
 
 /** The DynamoDB client ignores the CloudFront and batching settings. */
-const adapterOf = ({ tableName, ...clientConfig }: DynamoDBConfig) => {
+export const adapterOf = ({ tableName, ...clientConfig }: DynamoDBConfig) => {
   const client = new DynamoDBClient(clientConfig);
   const store = createDynamoDBStore({ client, tableName });
   return { client, adapter: createKvAdapter({ store }) };
-};
-
-/**
- * Creates the table when it is missing and writes the schema settings the
- * database checks before its first read. `hot-updater init` runs it in AWS.
- */
-export const migrateDynamoDB = async (config: DynamoDBConfig) => {
-  const { client, adapter } = adapterOf(config);
-  try {
-    await migrateBuiltInSchema(adapter, "dynamoDB");
-  } finally {
-    client.destroy();
-  }
 };
 
 /**

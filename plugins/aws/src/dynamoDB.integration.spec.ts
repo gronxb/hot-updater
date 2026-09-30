@@ -30,11 +30,12 @@ import {
 } from "@hot-updater/test-utils";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { dynamoDB, migrateDynamoDB } from "./dynamoDB";
+import { dynamoDB } from "./dynamoDB";
 import {
   type DynamoDBLocal,
   startDynamoDBLocal,
 } from "./dynamoDB.integration-fixture";
+import { migrateDynamoDB } from "./dynamoDBMigration";
 import { createDynamoDBStore, DYNAMODB_TTL_ATTRIBUTE } from "./dynamoDBStore";
 
 let local: DynamoDBLocal;
@@ -236,7 +237,7 @@ describe("dynamoDB", () => {
     ],
     createDatabase: () => dynamoDB(config()),
     migrate: async () => {
-      await migrateDynamoDB(config());
+      await migrateDynamoDB(config(), [insights()]);
     },
     reset: clear,
     dispose: async (database) => {

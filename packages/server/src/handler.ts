@@ -12,11 +12,6 @@ import type {
 } from "./handlerTypes";
 import { createVersionRouteHandlers } from "./handlerVersionRoutes";
 import { addRoute, createRouter, findRoute } from "./internalRouter";
-import {
-  createDroppedEventHandler,
-  INSIGHTS_ROUTES,
-  insightsDisabled,
-} from "./plugins/insights/routes";
 
 export type {
   HandlerAPI,
@@ -193,10 +188,7 @@ export interface HotUpdaterHandlersOptions {
     token: string,
     signature: string,
   ) => Promise<Response | null>;
-  /**
-   * The plugins' endpoints; an Insights route none serves answers that
-   * Insights is off, and `POST /events` also warns on the first event it drops.
-   */
+  /** The plugins' endpoints; a route no plugin serves answers 404. */
   readonly endpoints?: readonly MountedEndpoint[];
   /** The ids of the plugins the server runs, which the admin `/version` lists. */
   readonly plugins?: readonly string[];
@@ -213,10 +205,6 @@ export function createHotUpdaterHandlers({
     ...createVersionRouteHandlers(plugins),
     ...createReleaseCatalogRouteHandlers(),
     ...createAdminRouteHandlers(),
-    ...Object.fromEntries(
-      INSIGHTS_ROUTES.map(({ handler }) => [handler, insightsDisabled]),
-    ),
-    appendBundleEvent: createDroppedEventHandler(),
     ...(downloadStorageObject === undefined
       ? {}
       : {
@@ -250,23 +238,6 @@ export function createHotUpdaterHandlers({
             : "client",
       });
     };
-  /** The Insights routes no plugin endpoint serves, which answer that Insights is off. */
-  const mountInsights = (
-    access: "client" | "admin",
-    add: (method: string, path: string, handler: string) => void,
-  ) => {
-    for (const route of INSIGHTS_ROUTES) {
-      const served = endpoints.some(
-        (endpoint) =>
-          endpoint.access === route.access &&
-          endpoint.method === route.method &&
-          endpoint.path === route.path,
-      );
-      if (route.access === access && !served) {
-        add(route.method, route.path, route.handler);
-      }
-    }
-  };
   const clientRouter = createRouter<string>();
   const addClientRoute = mount(clientRouter, false);
   addClientRoute("GET", "/version", "version");
@@ -292,7 +263,6 @@ export function createHotUpdaterHandlers({
     "/artifacts/v1/:targetBundleId/from/:currentBundleId",
     "artifactV1",
   );
-  mountInsights("client", addClientRoute);
 
   const adminRouter = createRouter<string>();
   const addAdminRoute = mount(adminRouter, true);
@@ -302,7 +272,6 @@ export function createHotUpdaterHandlers({
   for (const route of ADMIN_ROUTES) {
     addAdminRoute(route.method, route.path, route.handler);
   }
-  mountInsights("admin", addAdminRoute);
   for (const endpoint of endpoints) {
     const name = `plugin ${endpoint.plugin}: ${endpoint.method} ${endpoint.path}`;
     routeHandlers[name] = (params, request) =>

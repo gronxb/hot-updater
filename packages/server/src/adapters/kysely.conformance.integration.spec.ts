@@ -5,7 +5,7 @@ import { PGliteDialect } from "kysely-pglite-dialect";
 
 import { SETTINGS_TABLE } from "../database/fence";
 import { createTableStatements } from "../database/sql/sqlSchema";
-import { builtInSettings } from "../db/builtInDatabase";
+import { coreSettings } from "../db/coreDatabase";
 import { settingsStatements } from "../db/engineSql";
 import { kyselyAdapter } from "./kysely";
 
@@ -21,7 +21,7 @@ setupDatabaseAdapterConformanceSuite({
     await client.exec(
       [
         ...createTableStatements("postgresql", [...tables, SETTINGS_TABLE]),
-        ...settingsStatements("postgresql", builtInSettings),
+        ...settingsStatements("postgresql", coreSettings),
       ].join(";\n"),
     );
     const db = new Kysely<object>({ dialect: new PGliteDialect(client) });

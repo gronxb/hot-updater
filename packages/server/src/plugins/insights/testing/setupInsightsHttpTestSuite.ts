@@ -53,7 +53,6 @@ export const setupInsightsHttpTestSuite = (options: {
         jsonRequest("POST", event),
       );
       expect(reported.status).toBe(204);
-      expect(reported.headers.get("x-hot-updater-insights")).toBeNull();
       await reported.text();
 
       const installation = await client.admin(

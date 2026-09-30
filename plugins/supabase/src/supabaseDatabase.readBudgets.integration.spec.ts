@@ -1,5 +1,8 @@
 import { PGlite } from "@electric-sql/pglite";
-import { builtInSchema, createSqlAdapter } from "@hot-updater/server/database";
+import {
+  toolingTargetOf,
+  createSqlAdapter,
+} from "@hot-updater/server/database";
 import {
   createMeasuredDatabase,
   targetBaseCandidateKey,
@@ -25,7 +28,7 @@ setupReadBudgetTestSuite({
   name: "supabase apply RPC (PGlite)",
   server: {
     createMeasuredDatabase,
-    builtInSchema,
+    toolingTargetOf,
     plugins: [insights(), apiKeys()],
     targetBaseCandidateKey,
   },
@@ -34,7 +37,7 @@ setupReadBudgetTestSuite({
     await db.exec(
       "CREATE ROLE anon; CREATE ROLE authenticated; CREATE ROLE service_role BYPASSRLS;",
     );
-    await db.exec(supabaseSchemaSql());
+    await db.exec(supabaseSchemaSql(toolingTargetOf([insights(), apiKeys()])));
     await db.exec(
       "GRANT ALL ON ALL TABLES IN SCHEMA public TO service_role; SET ROLE service_role;",
     );

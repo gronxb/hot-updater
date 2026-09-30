@@ -1,9 +1,9 @@
 import { createSqlAdapter } from "../database/sql/sqlAdapter";
 import {
-  builtInSettings,
-  builtInTarget,
+  coreSettings,
+  coreTarget,
   createEngineDatabase,
-} from "../db/builtInDatabase";
+} from "../db/coreDatabase";
 import { generateDrizzleEngineSchema } from "../db/engineDrizzleSchema";
 import { createSettingsMigrator } from "../db/settingsMigrator";
 import type {
@@ -44,8 +44,8 @@ export const drizzleAdapter = (config: DrizzleConfig): ToolingDatabase => {
       adapter: createSqlAdapter({ executor }),
     }),
     provider,
-    generateSchema: ((version, _name, { schema } = builtInTarget) => {
-      if (version !== "latest" && version !== builtInSettings["schema.core"]) {
+    generateSchema: ((version, _name, { schema } = coreTarget) => {
+      if (version !== "latest" && version !== coreSettings["schema.core"]) {
         throw new Error(`Invalid version ${version}`);
       }
       return {
@@ -53,7 +53,7 @@ export const drizzleAdapter = (config: DrizzleConfig): ToolingDatabase => {
         path: "hot-updater-schema.ts",
       };
     }) satisfies SchemaGenerator,
-    createMigrator: ({ settings } = builtInTarget) =>
+    createMigrator: ({ settings } = coreTarget) =>
       createSettingsMigrator({
         adapterName: "drizzle",
         executor,

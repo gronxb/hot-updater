@@ -7,7 +7,7 @@ import {
   HeadBucketCommand,
   S3Client,
 } from "@aws-sdk/client-s3";
-import { migrateDynamoDB } from "@hot-updater/aws";
+import { migrateDynamoDB, plugins } from "@hot-updater/aws";
 import { standaloneRepository } from "@hot-updater/standalone";
 import {
   createHttpTestClient,
@@ -66,13 +66,17 @@ async function createTable() {
   });
   await waitForDynamoDB(client);
   client.destroy();
-  // The table, and the schema settings the plugin checks before its first read.
-  await migrateDynamoDB({
-    region,
-    endpoint: dynamodbEndpoint,
-    credentials,
-    tableName,
-  });
+  // The table, and the schema settings of core and the server's plugins,
+  // which the database checks before its first read.
+  await migrateDynamoDB(
+    {
+      region,
+      endpoint: dynamodbEndpoint,
+      credentials,
+      tableName,
+    },
+    plugins,
+  );
 }
 
 async function createBucket() {

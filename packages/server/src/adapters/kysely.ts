@@ -1,7 +1,7 @@
 import type { Kysely } from "kysely";
 
 import { createSqlAdapter } from "../database/sql/sqlAdapter";
-import { builtInTarget, createEngineDatabase } from "../db/builtInDatabase";
+import { coreTarget, createEngineDatabase } from "../db/coreDatabase";
 import { createEngineSqlMigrator } from "../db/engineSqlMigrator";
 import type { ORMSQLProvider, ToolingDatabase } from "../db/types";
 import { kyselyExecutor } from "./kyselyExecutor";
@@ -35,7 +35,7 @@ export const kyselyAdapter = <TDatabase extends object>(
       adapter: createSqlAdapter({ executor }),
     }),
     provider,
-    createMigrator: ({ schema, settings } = builtInTarget) =>
+    createMigrator: ({ schema, settings } = coreTarget) =>
       createEngineSqlMigrator({
         adapterName: "kysely",
         executor,

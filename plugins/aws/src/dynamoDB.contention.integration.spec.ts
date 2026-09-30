@@ -1,11 +1,11 @@
 import {
   aggregateBatchingModule,
-  builtInSchema,
   createDatabaseEngine,
   createKvAdapter,
-  migrateBuiltInSchema,
+  migrateCoreSchema,
   resolveSchema,
   type RetryOptions,
+  toolingTargetOf,
 } from "@hot-updater/server/database";
 import type { CoreReader } from "@hot-updater/server/plugins";
 import {
@@ -81,14 +81,14 @@ describe("Insights rollout gate on DynamoDB Local", () => {
         tableName: local.tableName(),
       }),
     });
-    await migrateBuiltInSchema(adapter, "dynamoDB");
+    await migrateCoreSchema(adapter, "dynamoDB", [insights()]);
     const module = { id: "insights", schema: insightsSchema } as const;
     const apiOf = (latencyMs: number, retry?: RetryOptions) =>
       insights().init({
         db: createDatabaseEngine({
           adapter:
             latencyMs > 0 ? withAdapterLatency(adapter, latencyMs) : adapter,
-          schema: builtInSchema,
+          schema: toolingTargetOf([insights()]).schema,
           ...(retry === undefined ? {} : { retry }),
         }).database(module),
         // Insights never reads core.
@@ -138,7 +138,7 @@ describe("Insights rollout gate on DynamoDB Local", () => {
         tableName: local.tableName(),
       }),
     });
-    await migrateBuiltInSchema(adapter, "dynamoDB");
+    await migrateCoreSchema(adapter, "dynamoDB", [insights()]);
     const module = { id: "insights", schema: insightsSchema } as const;
     const schema = resolveSchema([module, aggregateBatchingModule]);
     const retries = { rerun: 0, resend: 0, retriedTransactions: 0 };

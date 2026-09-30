@@ -10,7 +10,9 @@ import {
 } from "@hot-updater/test-utils";
 import { afterAll, describe, expect, it } from "vitest";
 
-import { builtInSchema } from "../../db/builtInDatabase";
+import { toolingTargetOf } from "../../db/coreDatabase";
+import { apiKeys } from "../../plugins/api-keys";
+import { insights } from "../../plugins/insights";
 import {
   classifySqlError,
   createSqlAdapter,
@@ -149,7 +151,10 @@ describe("sql core", () => {
     );
     // every table the façade spans fits
     expect(() =>
-      createTableStatements("mysql", builtInSchema.tables),
+      createTableStatements(
+        "mysql",
+        toolingTargetOf([insights(), apiKeys()]).schema.tables,
+      ),
     ).not.toThrow();
   });
 

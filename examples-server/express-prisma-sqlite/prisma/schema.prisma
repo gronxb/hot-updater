@@ -256,19 +256,6 @@ model insights_outcomes {
   @@id([platform, channel, type, bundle_ref, bucket_start_ms, hu_shard])
   @@index([bucket_start_ms, platform, channel, type, bundle_ref, hu_shard], map: "insights_outcomes__retention")
 }
-model api_keys {
-  id String
-  hash String
-  name String
-  prefix String
-  role String
-  created_at_ms BigInt
-  revoked_at_ms BigInt?
-  hu_v BigInt @default(0) @map("_v")
-  @@id([id])
-  @@index([created_at_ms, id], map: "api_keys_byCreated")
-  @@unique([hash], map: "api_keys_hash")
-}
 model private_hot_updater_settings {
   key String
   value String

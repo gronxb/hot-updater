@@ -8,15 +8,10 @@ import { aggregateBatchingModule } from "../database/aggregateBatching";
 import { createDatabaseEngine } from "../database/database";
 import type { ReadMeasurement } from "../database/engine";
 import { fencedName, SETTINGS_TABLE, withSchemaFence } from "../database/fence";
-import {
-  resolveSchema,
-  validateSchema,
-  type SchemaModule,
-} from "../database/resolveSchema";
+import { resolveSchema, validateSchema } from "../database/resolveSchema";
 import { pruneDuringWrites } from "../database/retention";
 import type { ModuleSchema } from "../database/schema";
-import { addedSettings, builtInModules } from "../db/builtInDatabase";
-import { builtInPlugin } from "../plugins/builtIn";
+import { pluginModule, pluginSettings } from "../db/coreDatabase";
 import type {
   ClientAuth,
   PluginEndpoint,
@@ -50,8 +45,8 @@ interface PluginShape {
   readonly provides?: { readonly clientAuth?: true };
   readonly schemaVersion: string;
   readonly schema: ModuleSchema;
+  readonly namespace?: false;
   init(context: unknown): PluginInstance;
-  readonly [builtInPlugin]?: true;
 }
 
 const PLUGIN_KEYS = new Set([
@@ -59,14 +54,16 @@ const PLUGIN_KEYS = new Set([
   "provides",
   "schemaVersion",
   "schema",
+  "namespace",
   "init",
   "cli",
 ]);
 const CLI_KEYS = new Set(["commands", "clientCredential", "clientPlugin"]);
 const INSTANCE_KEYS = new Set(["api", "endpoints", "clientAuth"]);
 const METHODS = new Set(["GET", "POST", "PUT", "PATCH", "DELETE"]);
-const BUILT_IN_ID = /^[a-z][A-Za-z0-9]*$/u;
-const PLUGIN_ID = /^[a-z][a-z0-9_]*$/u;
+/** An id that prefixes table names is a SQL name; one that does not may use camelCase. */
+const PREFIX_ID = /^[a-z][a-z0-9_]*$/u;
+const UNPREFIXED_ID = /^[a-z][A-Za-z0-9_]*$/u;
 const PATH = /^(\/(:?[A-Za-z0-9_.~-]+))+$/u;
 
 const fail = (message: string): never => {
@@ -84,7 +81,10 @@ const checkPlugin = (value: unknown, at: string): PluginShape => {
   const unknown = Object.keys(value).find((key) => !PLUGIN_KEYS.has(key));
   if (unknown !== undefined) fail(`${at} has an unknown key "${unknown}".`);
   const plugin = value as unknown as PluginShape;
-  const pattern = plugin[builtInPlugin] ? BUILT_IN_ID : PLUGIN_ID;
+  if (plugin.namespace !== undefined && plugin.namespace !== false) {
+    fail(`${at} may only set namespace: false.`);
+  }
+  const pattern = plugin.namespace === false ? UNPREFIXED_ID : PREFIX_ID;
   if (typeof plugin.id !== "string" || !pattern.test(plugin.id)) {
     fail(`${at} needs an id matching ${pattern.source}.`);
   }
@@ -229,30 +229,16 @@ export const assemblePlugins = (
   }
   // Tooling prints them; a server checks them at startup like the rest.
   clientPluginsOf(plugins);
-  const modules: (SchemaModule & { readonly schema: ModuleSchema })[] =
-    plugins.map((plugin) => ({
-      id: plugin.id,
-      schema: plugin.schema,
-      ...(plugin[builtInPlugin] ? {} : { namespace: plugin.id }),
-    }));
-  const added = modules.filter(({ namespace }) => namespace !== undefined);
-  if (added.length > 0) {
-    // Tooling creates the built-in tables and settings rows whichever plugins
-    // a server runs, so a third-party plugin takes none of their names.
-    const taken = added.find(({ id }) =>
-      builtInModules.some((module) => module.id === id),
-    );
-    if (taken !== undefined) {
-      fail(`Plugin "${taken.id}" uses a built-in plugin's id.`);
-    }
-    validateSchema([...builtInModules, ...added]);
-  }
-  // A fenced database also waits for each third-party plugin's settings row.
+  const modules = plugins.map(pluginModule);
+  // Tooling creates the tables of the plugins a server runs, so their names
+  // need to be free of core's and of each other's, not of anyone else's.
+  if (modules.length > 0) validateSchema([coreModule, ...modules]);
+  // A fenced database also waits for each plugin's settings row.
   const name = fencedName(adapter);
   const fenced =
-    name === undefined || added.length === 0
+    name === undefined || plugins.length === 0
       ? adapter
-      : withSchemaFence(adapter, name, addedSettings(plugins));
+      : withSchemaFence(adapter, name, pluginSettings(plugins));
   const schema = resolveSchema([
     coreModule,
     ...modules,

@@ -17,10 +17,10 @@ import { assemblePlugins } from "./assemblePlugins";
 
 /**
  * The plugins' APIs by plugin id over a configured database, assembled as
- * `createHotUpdater` assembles them: how the console runs Insights and API
- * keys in process, and how init provisions a key, on the tables the server
- * uses. A database off the storage engine, `standaloneRepository` included,
- * is refused: its server runs the plugins.
+ * `createHotUpdater` assembles them: how the console and the CLI run a
+ * plugin in process, on the tables the server uses. A database off the
+ * storage engine, `standaloneRepository` included, is refused: its server
+ * runs the plugins.
  */
 export function createDatabasePluginApis<
   const TPlugins extends readonly AnyHotUpdaterPlugin[],

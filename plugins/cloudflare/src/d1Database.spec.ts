@@ -54,7 +54,7 @@ const config = {
 /** Core's API over the REST database, as the CLI and console run it. */
 const core = () => createDatabaseCoreApi(d1Database(config));
 
-/** A third-party plugin with one table. */
+/** A plugin with one table. */
 const notes = definePlugin({
   id: "notes",
   schemaVersion: "1",

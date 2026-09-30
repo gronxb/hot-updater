@@ -1,4 +1,4 @@
-import { builtInSchema } from "@hot-updater/server/database";
+import { toolingTargetOf } from "@hot-updater/server/database";
 import {
   createMeasuredDatabase,
   targetBaseCandidateKey,
@@ -66,7 +66,7 @@ setupReadBudgetTestSuite({
   name: "d1 (workerd)",
   server: {
     createMeasuredDatabase,
-    builtInSchema,
+    toolingTargetOf,
     plugins: [insights(), apiKeys()],
     targetBaseCandidateKey,
   },

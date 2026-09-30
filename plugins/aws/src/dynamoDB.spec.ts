@@ -10,8 +10,8 @@ import {
   TransactWriteCommand,
 } from "@aws-sdk/lib-dynamodb";
 import {
-  builtInSchema,
-  builtInSettings,
+  coreSchema,
+  coreSettings,
   createKvAdapter,
   encodeKvKey,
   type PhysicalTable,
@@ -33,7 +33,7 @@ const config = {
 } satisfies DynamoDBConfig;
 
 /** The settings items the schema fence reads before the first write. */
-const settingsItems = Object.entries(builtInSettings).map(([key, value]) => ({
+const settingsItems = Object.entries(coreSettings).map(([key, value]) => ({
   pk: SETTINGS_TABLE.name,
   sk: encodeKvKey([key]),
   key,
@@ -44,7 +44,7 @@ const settingsItems = Object.entries(builtInSettings).map(([key, value]) => ({
 /** A Release Catalog insert; DynamoDB is mocked, so only its key matters. */
 const catalogInsert: WriteOp = {
   type: "insert",
-  table: builtInSchema.models.get("release_catalogs")!.table,
+  table: coreSchema.models.get("release_catalogs")!.table,
   row: { scope_key: "v1:app-version:ios:cHJvZHVjdGlvbg", _v: 0 },
 };
 

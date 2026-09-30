@@ -15,15 +15,16 @@ import {
   pgliteExecutor,
   sqliteExecutor,
 } from "../database/sql/sqlTestExecutors";
-import {
-  builtInSchema,
-  builtInSettings,
-  createEngineDatabase,
-} from "./builtInDatabase";
+import { apiKeys } from "../plugins/api-keys";
+import { insights } from "../plugins/insights";
+import { createEngineDatabase, toolingTargetOf } from "./coreDatabase";
 import { generateEngineSql } from "./engineSql";
 
+/** Core's tables and the Insights and API keys plugins'. */
+const target = toolingTargetOf([insights(), apiKeys()]);
+
 const sql = (dialect: "postgresql" | "mysql" | "sqlite") =>
-  generateEngineSql(dialect, builtInSchema, builtInSettings);
+  generateEngineSql(dialect, target.schema, target.settings);
 
 describe("the shared SQL schema", () => {
   it("defaults engine columns, has no foreign keys, and writes the settings last", () => {
@@ -53,7 +54,7 @@ describe("the shared SQL schema", () => {
   });
 
   it("describes each table as its DDL creates it, for ORM schema generators", () => {
-    const tables = builtInSchema.tables;
+    const tables = target.schema.tables;
     const names = (shapes: readonly SqlTableShape[]): string[] =>
       shapes.flatMap((shape) => [
         shape.name,

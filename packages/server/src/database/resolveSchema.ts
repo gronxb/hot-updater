@@ -21,7 +21,7 @@ export const MAX_SHARDS = 64;
 export interface SchemaModule {
   readonly id: string;
   readonly schema: SchemaShape;
-  /** Prefixes this module's table names; third-party plugins use their id. */
+  /** Prefixes this module's table names; a plugin uses its id unless it sets `namespace: false`. */
   readonly namespace?: string;
 }
 

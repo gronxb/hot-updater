@@ -40,9 +40,8 @@ export interface AcceptanceRow {
 /** The storage engine layer: engine, SQL core, KV helper, and schema fence. */
 const SERVER_DATABASE = "packages/server/src/database/**";
 /**
- * `hot-updater db` tooling and the built-in database: migrators, schema
- * generators, and the built-in schema every provider is fenced and migrated
- * with.
+ * `hot-updater db` tooling and core's database: migrators, schema
+ * generators, and core's schema every provider is fenced and migrated with.
  */
 const DB_TOOLING = "packages/server/src/db/**";
 /** What every provider's database builds on, through `@hot-updater/server/database` and `/db`. */

@@ -290,7 +290,7 @@ describe("Insights through a self-hosted server's admin API", () => {
     );
   });
 
-  it("reads events with the repository's headers, and a server without insights() says it is off", async () => {
+  it("reads events with the repository's headers, and a server without insights() serves no Insights route", async () => {
     const on = standaloneRepository({
       baseUrl: `${baseUrl}/hot-updater/admin`,
     });
@@ -300,8 +300,7 @@ describe("Insights through a self-hosted server's admin API", () => {
 
     const off = standaloneRepository({ baseUrl: `${baseUrl}${offPath}/admin` });
     const offResponse = await off.fetchAdmin("/events?limit=1");
-    expect(offResponse.status).toBe(204);
-    expect(offResponse.headers.get("x-hot-updater-insights")).toBe("disabled");
+    expect(offResponse.status).toBe(404);
   });
 
   it("lists the plugins each server runs on its admin /version, as the console reads them", async () => {

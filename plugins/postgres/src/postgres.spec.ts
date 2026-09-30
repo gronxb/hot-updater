@@ -3,7 +3,11 @@ import path from "node:path";
 
 import { PGlite } from "@electric-sql/pglite";
 import { createHotUpdater } from "@hot-updater/server";
-import { builtInSchema, builtInSettings } from "@hot-updater/server/database";
+import {
+  coreSchema,
+  coreSettings,
+  toolingTargetOf,
+} from "@hot-updater/server/database";
 import {
   createDatabaseCoreApi,
   createDatabasePluginApis,
@@ -26,18 +30,21 @@ import { postgres } from "./postgres";
 
 const SQL_FILE = path.resolve("plugins/postgres/sql/bundles.sql");
 
-/** The checked-in schema: the shared SQL schema, generated, never hand-edited. */
+/** The checked-in schema: core's shared SQL schema, generated, never hand-edited. */
 const expectedSql = () =>
   `-- HotUpdater.schema\n\n${generateEngineSql(
     "postgresql",
-    builtInSchema,
-    builtInSettings,
+    coreSchema,
+    coreSettings,
   )
     .map((statement) => `${statement};`)
     .join("\n\n")}\n`;
 
+/** What the suite runs: core and the Insights plugin. */
+const target = toolingTargetOf([insights()]);
+
 /** Every data table; the settings rows stay across tests. */
-const dataTables = builtInSchema.tables
+const dataTables = target.schema.tables
   .flatMap((table) => [
     table.name,
     ...table.indexes
@@ -73,6 +80,12 @@ setupDatabaseTestSuite({
   migrate: async () => {
     client = new PGlite();
     await client.exec(await fs.readFile(SQL_FILE, "utf8"));
+    // The plugin's tables and settings row, as `hot-updater db migrate` adds them.
+    await client.exec(
+      generateEngineSql("postgresql", target.schema, target.settings).join(
+        ";\n",
+      ),
+    );
   },
   createDatabase: () => postgres({ dialect: new PGliteDialect(client!) }),
   reset: async () => {
@@ -114,10 +127,8 @@ describe("postgres plugin schema", () => {
           )
         ).rows,
       ).toEqual([
-        { key: "schema.apiKeys", value: "1.0.0" },
         { key: "schema.core", value: "1.0.0" },
         { key: "schema.engine", value: "1" },
-        { key: "schema.insights", value: "1.1.0" },
       ]);
     } finally {
       await database.dispose?.();

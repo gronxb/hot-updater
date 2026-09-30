@@ -98,7 +98,7 @@ describe("createHotUpdater with plugins", () => {
     expect(hotUpdater.api.notes.now()).toBeTypeOf("number");
   });
 
-  it("mounts endpoints by access and lists every route with its access", () => {
+  it("mounts endpoints by access and lists every route with its access, core's and the plugins' only", () => {
     const { handlers } = createHotUpdater({
       database: database(),
       plugins: [notes, keys()],
@@ -120,7 +120,6 @@ describe("createHotUpdater with plugins", () => {
         path: "/artifacts/v1/:targetBundleId/from/:currentBundleId",
         access: "client",
       },
-      { method: "POST", path: "/events", access: "client" },
       { method: "GET", path: "/version", access: "admin" },
       { method: "POST", path: "/releases", access: "admin" },
       { method: "POST", path: "/releases/:id/promote", access: "admin" },
@@ -156,15 +155,6 @@ describe("createHotUpdater with plugins", () => {
         path: "/base-candidates/:candidateKey",
         access: "admin",
       },
-      { method: "GET", path: "/events", access: "admin" },
-      { method: "GET", path: "/overview", access: "admin" },
-      { method: "GET", path: "/installations", access: "admin" },
-      {
-        method: "GET",
-        path: "/installations/:installId/events",
-        access: "admin",
-      },
-      { method: "GET", path: "/installations/:installId", access: "admin" },
       { method: "GET", path: "/notes/:id", access: "client" },
       { method: "DELETE", path: "/notes/:id", access: "admin" },
     ]);

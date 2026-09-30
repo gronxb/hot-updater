@@ -32,10 +32,7 @@ describe("standaloneRepository", () => {
       http.get(`${BASE_URL}/events`, ({ request }) => {
         authorization = request.headers.get("authorization");
         url = request.url;
-        return new HttpResponse(null, {
-          status: 204,
-          headers: { "x-hot-updater-insights": "disabled" },
-        });
+        return HttpResponse.json({ data: [], nextCursor: null });
       }),
     );
     const repository = standaloneRepository({
@@ -45,8 +42,11 @@ describe("standaloneRepository", () => {
 
     const response = await repository.fetchAdmin("/events?limit=1");
 
-    expect(response.status).toBe(204);
-    expect(response.headers.get("x-hot-updater-insights")).toBe("disabled");
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      data: [],
+      nextCursor: null,
+    });
     expect(authorization).toBe("Bearer token");
     expect(url).toBe(`${BASE_URL}/events?limit=1`);
   });

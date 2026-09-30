@@ -15,7 +15,7 @@ import { createInProcessCoreApi } from "../core/api";
 import { DatabaseConstraintError } from "../database/errors";
 import { HotUpdaterSchemaMigrationRequiredError } from "../database/fence";
 import { isMultiIndex, quoteSql } from "../database/sql/sqlSchema";
-import { builtInSchema } from "../db/builtInDatabase";
+import { coreSchema, toolingTargetOf } from "../db/coreDatabase";
 import type { ToolingDatabase } from "../db/types";
 import { createHotUpdater } from "../index";
 import { createInsightsModel, insights } from "../plugins/insights";
@@ -25,8 +25,11 @@ import {
 } from "../plugins/insights/testing";
 import { kyselyAdapter, type SQLProvider } from "./kysely";
 
+/** What the suites run: core and the Insights plugin. */
+const target = toolingTargetOf([insights()]);
+
 /** Every data table the migration creates; the settings rows stay. */
-const dataTables = builtInSchema.tables.flatMap((table) => [
+const dataTables = target.schema.tables.flatMap((table) => [
   table.name,
   ...table.indexes
     .filter((index) => isMultiIndex(table, index))
@@ -61,7 +64,7 @@ const sqliteKysely = (database: DatabaseSync) =>
   });
 
 const migrate = async (database: ToolingDatabase) =>
-  (await database.createMigrator!().migrateToLatest()).execute();
+  (await database.createMigrator!(target).migrateToLatest()).execute();
 
 /** The Insights plugin's model over a database, on the server's tables. */
 const insightsOf = (database: ToolingDatabase) =>
@@ -139,7 +142,7 @@ describe("kyselyAdapter migrations and fence", () => {
       );
       expect(
         pending.operations.filter(({ type }) => type === "create-table"),
-      ).toHaveLength(builtInSchema.tables.length);
+      ).toHaveLength(coreSchema.tables.length);
       await pending.execute();
       await expect(migrator.getVersion()).resolves.toBe("1.0.0");
       await expect(migrator.migrateToLatest()).resolves.toMatchObject({

@@ -22,7 +22,8 @@ import {
 } from "@hot-updater/server/db";
 import { execa } from "execa";
 
-import { dynamoDB, migrateDynamoDB } from "../src/dynamoDB";
+import { dynamoDB } from "../src/dynamoDB";
+import { migrateDynamoDB } from "../src/dynamoDBMigration";
 import { plugins } from "../src/plugins";
 import { resolveAwsAuth } from "./awsAuth";
 import { getAwsV1SsmParameterName } from "./awsInfrastructureNames";
@@ -69,7 +70,7 @@ export const prepareDynamoDBDeployment = async (input: {
   const dynamodbManager = new DynamoDBManager(input.region, input.credentials);
   await dynamodbManager.ensureTable(input.tableName);
   // The plugin reads nothing until the table's schema settings exist.
-  await migrateDynamoDB(input);
+  await migrateDynamoDB(input, plugins);
 };
 
 export const runInit = async ({ build, envFile }: RunInitOptions) => {

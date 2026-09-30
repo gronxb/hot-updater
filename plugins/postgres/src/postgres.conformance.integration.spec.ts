@@ -1,6 +1,6 @@
 import { PGlite } from "@electric-sql/pglite";
 import {
-  builtInSettings,
+  coreSettings,
   createTableStatements,
   SETTINGS_TABLE,
 } from "@hot-updater/server/database";
@@ -23,7 +23,7 @@ setupDatabaseAdapterConformanceSuite({
     await client.exec(
       [
         ...createTableStatements("postgresql", [...tables, SETTINGS_TABLE]),
-        ...settingsStatements("postgresql", builtInSettings),
+        ...settingsStatements("postgresql", coreSettings),
       ].join(";\n"),
     );
     const database = postgres({ dialect: new PGliteDialect(client) });

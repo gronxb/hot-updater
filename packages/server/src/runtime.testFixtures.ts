@@ -8,8 +8,10 @@ import { createStoragePlugin } from "@hot-updater/plugin-core";
 import { createMemoryAdapter } from "@hot-updater/plugin-core/internal";
 
 import type { SchemaSettings } from "./database/fence";
-import { builtInSchema, createEngineDatabase } from "./db/builtInDatabase";
+import { createEngineDatabase, toolingTargetOf } from "./db/coreDatabase";
 import { migrateSchema } from "./db/schemaSettings";
+import { apiKeys } from "./plugins/api-keys";
+import { insights } from "./plugins/insights";
 
 export const runtimeBundle: Bundle = {
   id: "00000000-0000-0000-0000-000000000001",
@@ -39,6 +41,9 @@ export const createRuntimeDatabase = (
   adapter: createMemoryAdapter(),
 });
 
+/** Every table the runtime specs use: core's, Insights', and API keys'. */
+const runtimeTables = toolingTargetOf([insights(), apiKeys()]).schema.tables;
+
 /**
  * An in-memory database behind the schema fence, as a provider builds it:
  * its tables and `settings` rows written first, or none at all.
@@ -49,7 +54,7 @@ export const createFencedDatabase = async (
 ): Promise<EngineDatabase> => {
   const adapter = createMemoryAdapter();
   if (settings !== undefined) {
-    await migrateSchema(adapter, name, builtInSchema.tables, settings);
+    await migrateSchema(adapter, name, runtimeTables, settings);
   }
   return createEngineDatabase({ name, adapter });
 };

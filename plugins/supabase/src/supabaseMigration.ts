@@ -1,4 +1,4 @@
-import { builtInSettings, builtInTarget } from "@hot-updater/server/database";
+import { coreSettings, coreTarget } from "@hot-updater/server/database";
 import type { SchemaGenerator, ToolingDatabase } from "@hot-updater/server/db";
 
 import {
@@ -9,16 +9,16 @@ import { supabaseSchemaSql } from "./supabaseSchema";
 
 /**
  * Hot Updater's database on Supabase, with the migration `hot-updater db
- * generate` writes to `supabase/migrations`: the built-in tables, the
- * server's plugin tables, the apply RPC that may name them, and their
- * settings rows. `supabase db push` applies it.
+ * generate` writes to `supabase/migrations`: core's tables, the server's
+ * plugin tables, the apply RPC that may name them, and their settings rows.
+ * `supabase db push` applies it.
  */
 export const supabaseDatabase = (
   config: SupabaseDatabaseConfig,
 ): ToolingDatabase => ({
   ...engineDatabase(config),
-  generateSchema: ((version, _name, target = builtInTarget) => {
-    if (version !== "latest" && version !== builtInSettings["schema.core"]) {
+  generateSchema: ((version, _name, target = coreTarget) => {
+    if (version !== "latest" && version !== coreSettings["schema.core"]) {
       throw new Error(`Invalid version ${version}`);
     }
     // Supabase applies migrations in the order of their timestamps.

@@ -596,7 +596,7 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
   let clientCredential: ProvisionedClientCredential | undefined;
   try {
     // The database reads nothing until the schema settings exist.
-    await migrateFirebaseDatabase(databaseConfig);
+    await migrateFirebaseDatabase(databaseConfig, plugins);
     // The app's credential, through the managed server's plugins, on the tables they read.
     clientCredential = await provisionClientCredential(database, plugins, {
       env: initInputEnv,

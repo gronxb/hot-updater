@@ -1,9 +1,9 @@
 import {
-  builtInSchema,
   createDatabaseEngine,
   createKvAdapter,
-  migrateBuiltInSchema,
+  migrateCoreSchema,
   type RetryOptions,
+  toolingTargetOf,
 } from "@hot-updater/server/database";
 import type { CoreReader } from "@hot-updater/server/plugins";
 import {
@@ -72,14 +72,14 @@ describe("Firestore ingestion", () => {
     const adapter = createKvAdapter({
       store: createFirestoreStore({ firestore, collection }),
     });
-    await migrateBuiltInSchema(adapter, "firestore");
+    await migrateCoreSchema(adapter, "firestore", [insights()]);
     const module = { id: "insights", schema: insightsSchema } as const;
     const apiOf = (latencyMs: number, retry?: RetryOptions) =>
       insights().init({
         db: createDatabaseEngine({
           adapter:
             latencyMs > 0 ? withAdapterLatency(adapter, latencyMs) : adapter,
-          schema: builtInSchema,
+          schema: toolingTargetOf([insights()]).schema,
           ...(retry === undefined ? {} : { retry }),
         }).database(module),
         // Insights never reads core.

@@ -6,10 +6,7 @@ import { type HotUpdaterHandlers, listHotUpdaterRoutes } from "../handler";
 import { apiKeys } from "../plugins/api-keys";
 import { definePlugin } from "../plugins/definePlugin";
 import { insights } from "../plugins/insights";
-import {
-  INSIGHTS_OFF_WARNING,
-  INSIGHTS_ROUTES,
-} from "../plugins/insights/routes";
+import { INSIGHTS_ROUTES } from "../plugins/insights/routes";
 import { HotUpdaterConfigError } from "./assemblePlugins";
 
 const database = () => ({ name: "memory", adapter: createMemoryAdapter() });
@@ -62,7 +59,6 @@ describe("Insights routes with plugins", () => {
       }),
     );
     expect(ingested.status).toBe(204);
-    expect(ingested.headers.get("x-hot-updater-insights")).toBeNull();
     const installation = await hotUpdater.handlers.admin(
       request("/installations/install-1"),
     );
@@ -76,7 +72,7 @@ describe("Insights routes with plugins", () => {
     expect(warn).not.toHaveBeenCalled();
   });
 
-  it("answer 204 with x-hot-updater-insights: disabled when plugins leave it out", async () => {
+  it("are not mounted when plugins leave it out: core serves no Insights route", async () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const hotUpdater = createHotUpdater({
       database: database(),
@@ -91,37 +87,12 @@ describe("Insights routes with plugins", () => {
           ...(method === "POST" ? { body: JSON.stringify(event) } : {}),
         }),
       );
-      expect(response.status, `${method} ${path}`).toBe(204);
-      expect(response.headers.get("x-hot-updater-insights")).toBe("disabled");
-      expect(response.headers.get("cache-control")).toBe("private, no-store");
+      expect(response.status, `${method} ${path}`).toBe(404);
     }
-    expect(listHotUpdaterRoutes(hotUpdater.handlers)).toEqual(
-      expect.arrayContaining(insightsRoutes),
+    expect(listHotUpdaterRoutes(hotUpdater.handlers)).not.toEqual(
+      expect.arrayContaining([insightsRoutes[0]]),
     );
-    expect(warn).toHaveBeenCalledOnce();
-    expect(warn).toHaveBeenCalledWith(INSIGHTS_OFF_WARNING);
-  });
-
-  it("warn once per server, on the first event dropped without insights()", async () => {
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    const hotUpdater = createHotUpdater({
-      database: database(),
-      clientAccess: "public",
-    });
-    const report = () =>
-      hotUpdater.handlers.client(
-        request("/events", { method: "POST", body: JSON.stringify(event) }),
-      );
-
     expect(warn).not.toHaveBeenCalled();
-    expect((await report()).status).toBe(204);
-    expect((await report()).status).toBe(204);
-    expect(warn).toHaveBeenCalledOnce();
-    expect(warn).toHaveBeenCalledWith(
-      expect.stringContaining(
-        "Add insights() from @hot-updater/server/plugins/insights to plugins",
-      ),
-    );
   });
 });
 
@@ -133,7 +104,7 @@ describe("admin /version", () => {
       }
     ).plugins;
 
-  it("lists the built-in plugins the server runs, sorted by id", async () => {
+  it("lists the plugins the server runs, sorted by id", async () => {
     await expect(
       plugins(
         createHotUpdater({
@@ -153,16 +124,16 @@ describe("admin /version", () => {
     ).resolves.toEqual(["insights"]);
   });
 
-  it("lists none for a server without plugins, whose Insights routes still say it is off", async () => {
+  it("lists none for a server without plugins, which serves no Insights route", async () => {
     const hotUpdater = createHotUpdater({
       database: database(),
       clientAccess: "public",
     });
 
     await expect(plugins(hotUpdater)).resolves.toEqual([]);
-    const events = await hotUpdater.handlers.admin(request("/events"));
-    expect(events.status).toBe(204);
-    expect(events.headers.get("x-hot-updater-insights")).toBe("disabled");
+    expect((await hotUpdater.handlers.admin(request("/events"))).status).toBe(
+      404,
+    );
   });
 });
 

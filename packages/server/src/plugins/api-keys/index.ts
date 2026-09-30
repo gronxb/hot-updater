@@ -1,4 +1,3 @@
-import { markBuiltIn } from "../builtIn";
 import { definePlugin } from "../definePlugin";
 import {
   API_KEY_HEADER_NAME,
@@ -27,48 +26,48 @@ export interface ApiKeysOptions {
 }
 
 /**
- * Built-in API keys: protects client routes with keys whose SHA-256 digests
+ * API keys: protects client routes with keys whose SHA-256 digests
  * are stored, and manages them in-process.
  */
 export const apiKeys = (options: ApiKeysOptions = {}) => {
   const headerName = normalizeApiKeyHeaderName(
     options.headerName ?? API_KEY_HEADER_NAME,
   );
-  return markBuiltIn(
-    definePlugin({
-      id: "apiKeys",
-      provides: { clientAuth: true },
-      schemaVersion: "1.0.0",
-      schema: apiKeysSchema,
-      init: ({ db }) => {
-        const model = createApiKeyModel(db);
-        return {
-          api: {
-            ...createApiKeyManagement({ apiKeys: model }),
-            /** Registers a known plaintext key idempotently, for managed init. */
-            register: (input: {
-              readonly apiKey: string;
-              readonly name: string;
-              readonly createdAtMs?: number;
-            }) => registerApiKey({ ...input, apiKeys: model }),
-            /** Reuses a saved key or creates one, for managed init. */
-            provision: (input: {
-              readonly existingApiKey?: string;
-              readonly name: string;
-            }) => provisionApiKey({ ...input, apiKeys: model }),
-          },
-          clientAuth: {
-            varyHeaders: [headerName],
-            authenticate: (headers: Headers) =>
-              authenticateApiKey({
-                apiKeys: model,
-                headerName,
-                request: { headers } as Request,
-              }),
-          },
-        };
-      },
-      cli: apiKeysCli(headerName),
-    }),
-  );
+  return definePlugin({
+    id: "apiKeys",
+    // Keeps its table's name, api_keys, and with it the camelCase id.
+    namespace: false,
+    provides: { clientAuth: true },
+    schemaVersion: "1.0.0",
+    schema: apiKeysSchema,
+    init: ({ db }) => {
+      const model = createApiKeyModel(db);
+      return {
+        api: {
+          ...createApiKeyManagement({ apiKeys: model }),
+          /** Registers a known plaintext key idempotently, for managed init. */
+          register: (input: {
+            readonly apiKey: string;
+            readonly name: string;
+            readonly createdAtMs?: number;
+          }) => registerApiKey({ ...input, apiKeys: model }),
+          /** Reuses a saved key or creates one, for managed init. */
+          provision: (input: {
+            readonly existingApiKey?: string;
+            readonly name: string;
+          }) => provisionApiKey({ ...input, apiKeys: model }),
+        },
+        clientAuth: {
+          varyHeaders: [headerName],
+          authenticate: (headers: Headers) =>
+            authenticateApiKey({
+              apiKeys: model,
+              headerName,
+              request: { headers } as Request,
+            }),
+        },
+      };
+    },
+    cli: apiKeysCli(headerName),
+  });
 };

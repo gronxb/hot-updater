@@ -3,9 +3,13 @@ import path from "node:path";
 
 import { PGlite } from "@electric-sql/pglite";
 import { kyselyExecutor } from "@hot-updater/server/adapters/kysely";
-import { builtInSchema, createSqlAdapter } from "@hot-updater/server/database";
+import {
+  toolingTargetOf,
+  createSqlAdapter,
+} from "@hot-updater/server/database";
 import {
   createMeasuredDatabase,
+  generateEngineSql,
   targetBaseCandidateKey,
 } from "@hot-updater/server/db";
 import { apiKeys } from "@hot-updater/server/plugins/api-keys";
@@ -17,16 +21,19 @@ import {
 import { Kysely } from "kysely";
 import { PGliteDialect } from "kysely-pglite-dialect";
 
+const plugins = [insights(), apiKeys()];
+
 /**
  * `postgres({ dialect })`'s composition without its schema fence: the SQL
- * core over Kysely's executor on a PGlite dialect, on `sql/bundles.sql`.
+ * core over Kysely's executor on a PGlite dialect, on `sql/bundles.sql` and
+ * the plugins' tables, as `hot-updater db migrate` adds them.
  */
 setupReadBudgetTestSuite({
   name: "postgres (PGlite)",
   server: {
     createMeasuredDatabase,
-    builtInSchema,
-    plugins: [insights(), apiKeys()],
+    toolingTargetOf,
+    plugins,
     targetBaseCandidateKey,
   },
   createAdapter: async () => {
@@ -36,6 +43,10 @@ setupReadBudgetTestSuite({
         path.join(import.meta.dirname, "../sql/bundles.sql"),
         "utf8",
       ),
+    );
+    const { schema, settings } = toolingTargetOf(plugins);
+    await client.exec(
+      generateEngineSql("postgresql", schema, settings).join(";\n"),
     );
     const db = new Kysely<object>({ dialect: new PGliteDialect(client) });
     const reads = postgresRowsExamined(

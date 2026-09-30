@@ -12,7 +12,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { createDatabasePluginApis } from "../assembly/databasePlugins";
 import { isMultiIndex, quoteSql } from "../database/sql/sqlSchema";
-import { builtInSchema } from "../db/builtInDatabase";
+import { toolingTargetOf } from "../db/coreDatabase";
 import { createHotUpdater } from "../index";
 import { createInsightsModel, insights } from "../plugins/insights";
 import { insightsTestSuite } from "../plugins/insights/testing";
@@ -36,7 +36,10 @@ const compose = [
 const server = "mysql://root:hot_updater@127.0.0.1:53306";
 const database = `prisma_${process.pid}`;
 
-const dataTables = builtInSchema.tables.flatMap((table) => [
+/** What the suite runs: core and the Insights plugin. */
+const target = toolingTargetOf([insights()]);
+
+const dataTables = target.schema.tables.flatMap((table) => [
   table.name,
   ...table.indexes
     .filter((index) => isMultiIndex(table, index))
@@ -66,7 +69,7 @@ beforeAll(async () => {
   await admin.query(
     `DROP DATABASE IF EXISTS ${database}; CREATE DATABASE ${database}`,
   );
-  await admin.query(`USE ${database}; ${await prismaPushSql("mysql")}`);
+  await admin.query(`USE ${database}; ${await prismaPushSql("mysql", target)}`);
   pool = mysql.createPool({
     uri: `${server}/${database}`,
     connectionLimit: 16,
@@ -74,7 +77,7 @@ beforeAll(async () => {
   const migrator = prismaAdapter({
     prisma: mysqlPrisma(pool),
     provider: "mysql",
-  }).createMigrator!();
+  }).createMigrator!(target);
   await (await migrator.migrateToLatest()).execute();
 }, 180_000);
 
