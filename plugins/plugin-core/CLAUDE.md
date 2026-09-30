@@ -46,8 +46,10 @@ pnpm test # Uses @cloudflare/vitest-pool-workers
 ### Storage Adapter Contract
 
 - `src/database`: the `DatabaseAdapter` contract, `createMemoryAdapter()`,
-  `verifyAdapter()`, and value helpers, exported from `./internal` and
-  published to adapter authors through `@hot-updater/server/database`
+  `verifyAdapter()`, value helpers, and the distinct-count sketches of
+  aggregate `distinct` metrics, exported from `./internal` and published to
+  adapter authors through `@hot-updater/server/database` (the sketches to
+  plugin authors through `@hot-updater/server/plugins`)
 
 ### Utility Functions
 
