@@ -359,6 +359,40 @@ describe("CloudFrontManager", () => {
     );
   });
 
+  it("makes a policy again and retries once when another deployment's init deleted it before the update", async () => {
+    const manager = new CloudFrontManager("ap-northeast-2", {
+      accessKeyId: "test-access-key",
+      secretAccessKey: "test-secret-key",
+    });
+    // Between this init's list and its update, another deployment's init
+    // deletes the shared cache policy, which it found unused.
+    mockCloudFront.updateDistribution.mockImplementationOnce(
+      async ({ DistributionConfig }) => {
+        cachePolicies.delete(
+          DistributionConfig.DefaultCacheBehavior.CachePolicyId,
+        );
+        throw Object.assign(new Error("gone"), { name: "NoSuchCachePolicy" });
+      },
+    );
+
+    await manager.createOrUpdateDistribution({
+      keyGroupId: "new-key-group-id",
+      bucketName: "hot-updater-storage",
+      clientHeaders: ["x-api-key"],
+      functionArn:
+        "arn:aws:lambda:us-east-1:123456789012:function:hot-updater:2",
+    });
+
+    expect(mockCloudFront.createCachePolicy).toHaveBeenCalledTimes(3);
+    expect(mockCloudFront.getDistributionConfig).toHaveBeenCalledTimes(2);
+    expect(mockCloudFront.updateDistribution).toHaveBeenCalledTimes(2);
+    const [first, second] = mockCloudFront.updateDistribution.mock.calls.map(
+      ([input]) => input.DistributionConfig.DefaultCacheBehavior.CachePolicyId,
+    );
+    expect(second).not.toBe(first);
+    expect(cachePolicies.has(second)).toBe(true);
+  });
+
   it("deletes Hot Updater's policies no distribution uses, and keeps those in use, just made, or not its own", async () => {
     const manager = new CloudFrontManager("ap-northeast-2", {
       accessKeyId: "test-access-key",

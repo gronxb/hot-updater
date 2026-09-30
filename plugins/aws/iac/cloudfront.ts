@@ -403,47 +403,73 @@ export class CloudFrontManager {
     if (!oacId) throw new Error("Failed to get Origin Access Control ID");
 
     const bucketDomain = `${options.bucketName}.s3.${this.region}.amazonaws.com`;
-    let releaseCatalogCachePolicyId: string;
-    let sharedCachePolicyId: string;
-    let originRequestPolicyId: string;
-    try {
-      [
-        sharedCachePolicyId,
-        releaseCatalogCachePolicyId,
-        originRequestPolicyId,
-      ] = await Promise.all([
-        this.getOrCreateCachePolicy(
-          cloudfrontClient,
-          buildSharedCachePolicyConfig(options.clientHeaders),
-        ),
-        this.getOrCreateCachePolicy(
-          cloudfrontClient,
-          buildReleaseCatalogCachePolicyConfig(options.clientHeaders),
-        ),
-        this.getOrCreateOriginRequestPolicy(
-          cloudfrontClient,
-          buildOriginRequestPolicyConfig(options.clientHeaders),
-        ),
-      ]);
-    } catch (error) {
-      throw new Error(
-        `Failed to get or create CloudFront request policies: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
-      );
-    }
-
-    const newOverrides = buildDistributionConfigOverrides({
+    const resolvePolicies = async () => {
+      try {
+        const [
+          sharedCachePolicyId,
+          releaseCatalogCachePolicyId,
+          originRequestPolicyId,
+        ] = await Promise.all([
+          this.getOrCreateCachePolicy(
+            cloudfrontClient,
+            buildSharedCachePolicyConfig(options.clientHeaders),
+          ),
+          this.getOrCreateCachePolicy(
+            cloudfrontClient,
+            buildReleaseCatalogCachePolicyConfig(options.clientHeaders),
+          ),
+          this.getOrCreateOriginRequestPolicy(
+            cloudfrontClient,
+            buildOriginRequestPolicyConfig(options.clientHeaders),
+          ),
+        ]);
+        return {
+          originRequestPolicyId,
+          releaseCatalogCachePolicyId,
+          sharedCachePolicyId,
+        };
+      } catch (error) {
+        throw new Error(
+          `Failed to get or create CloudFront request policies: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+      }
+    };
+    let policies = await resolvePolicies();
+    /**
+     * Runs `apply` with the policies, and once more with policies made again
+     * when a policy it named is gone: another deployment's init can delete
+     * an older policy it found unused, after this one found it.
+     */
+    const withPolicies = async <T>(
+      apply: (current: typeof policies) => Promise<T>,
+    ): Promise<T> => {
+      try {
+        return await apply(policies);
+      } catch (error) {
+        if (!isNamed(error, "NoSuchCachePolicy", "NoSuchOriginRequestPolicy")) {
+          throw error;
+        }
+        policies = await resolvePolicies();
+        return await apply(policies);
+      }
+    };
+    const configOptions = (current: typeof policies) => ({
       bucketName: options.bucketName,
       bucketDomain,
       functionArn: options.functionArn,
       keyGroupId: options.keyGroupId,
       oacId,
-      originRequestPolicyId,
-      releaseCatalogCachePolicyId,
-      sharedCachePolicyId,
+      ...current,
       pluginPaths: options.pluginPaths ?? [],
     });
+    const usedPolicies = () =>
+      new Set([
+        policies.sharedCachePolicyId,
+        policies.releaseCatalogCachePolicyId,
+        policies.originRequestPolicyId,
+      ]);
 
     if (selectedDistribution) {
       await makeEnv({
@@ -453,33 +479,28 @@ export class CloudFrontManager {
         `Existing CloudFront distribution selected. Distribution ID: ${selectedDistribution.Id}.`,
       );
       try {
-        const { DistributionConfig, ETag } =
-          await cloudfrontClient.getDistributionConfig({
+        await withPolicies(async (current) => {
+          const { DistributionConfig, ETag } =
+            await cloudfrontClient.getDistributionConfig({
+              Id: selectedDistribution.Id,
+            });
+          if (!DistributionConfig) {
+            throw new Error("CloudFront distribution config was not returned");
+          }
+          const finalConfig = applyDistributionConfigOverrides(
+            DistributionConfig,
+            buildDistributionConfigOverrides(configOptions(current)),
+          );
+          await cloudfrontClient.updateDistribution({
             Id: selectedDistribution.Id,
+            IfMatch: ETag,
+            DistributionConfig: finalConfig,
           });
-        if (!DistributionConfig) {
-          throw new Error("CloudFront distribution config was not returned");
-        }
-        const finalConfig = applyDistributionConfigOverrides(
-          DistributionConfig,
-          newOverrides,
-        );
-        await cloudfrontClient.updateDistribution({
-          Id: selectedDistribution.Id,
-          IfMatch: ETag,
-          DistributionConfig: finalConfig,
         });
         p.log.success(
           "CloudFront distribution updated with new Lambda function ARN.",
         );
-        await this.deleteUnusedPolicies(
-          cloudfrontClient,
-          new Set([
-            sharedCachePolicyId,
-            releaseCatalogCachePolicyId,
-            originRequestPolicyId,
-          ]),
-        );
+        await this.deleteUnusedPolicies(cloudfrontClient, usedPolicies());
         await cloudfrontClient.createInvalidation({
           DistributionId: selectedDistribution.Id,
           InvalidationBatch: {
@@ -511,22 +532,12 @@ export class CloudFrontManager {
     }
 
     // Create a new distribution if none exists
-    const finalDistributionConfig = buildDistributionConfig({
-      bucketName: options.bucketName,
-      bucketDomain,
-      functionArn: options.functionArn,
-      keyGroupId: options.keyGroupId,
-      oacId,
-      originRequestPolicyId,
-      releaseCatalogCachePolicyId,
-      sharedCachePolicyId,
-      pluginPaths: options.pluginPaths ?? [],
-    });
-
     try {
-      const distResp = await cloudfrontClient.createDistribution({
-        DistributionConfig: finalDistributionConfig,
-      });
+      const distResp = await withPolicies((current) =>
+        cloudfrontClient.createDistribution({
+          DistributionConfig: buildDistributionConfig(configOptions(current)),
+        }),
+      );
       if (!distResp.Distribution?.Id || !distResp.Distribution?.DomainName) {
         throw new Error(
           "Failed to create CloudFront distribution: No ID or DomainName returned",
@@ -537,14 +548,7 @@ export class CloudFrontManager {
       await makeEnv({
         HOT_UPDATER_CLOUDFRONT_DISTRIBUTION_ID: distributionId,
       });
-      await this.deleteUnusedPolicies(
-        cloudfrontClient,
-        new Set([
-          sharedCachePolicyId,
-          releaseCatalogCachePolicyId,
-          originRequestPolicyId,
-        ]),
-      );
+      await this.deleteUnusedPolicies(cloudfrontClient, usedPolicies());
       p.log.success(
         `Created new CloudFront distribution. Distribution ID: ${distributionId}`,
       );
