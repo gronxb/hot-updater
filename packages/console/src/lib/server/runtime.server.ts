@@ -2,7 +2,10 @@ import {
   type ConfiguredDatabase,
   isRemoteDatabase,
 } from "@hot-updater/plugin-core";
-import { createDatabasePluginApis } from "@hot-updater/server/db";
+import {
+  createDatabasePluginApis,
+  isOfficialPlugin,
+} from "@hot-updater/server/db";
 
 import {
   type ConsoleFeature,
@@ -90,6 +93,8 @@ export const createConsoleRuntime = (config: {
   const { database } = config;
   if (isRemoteDatabase(database)) {
     const { fetchAdmin } = database;
+    // The server's assembly refuses a plugin that takes a reserved id
+    // without the mark, so its /version ids name Hot Updater's own plugins.
     return {
       remote: true,
       features: once(async () =>
@@ -102,15 +107,22 @@ export const createConsoleRuntime = (config: {
       ),
     };
   }
-  const api = createDatabasePluginApis(database, config.plugins ?? []);
-  const features = resolveConsoleFeatures(Object.keys(api), { remote: false });
+  const plugins = config.plugins ?? [];
+  const api = createDatabasePluginApis(database, plugins);
+  // A feature's plugin is Hot Updater's own, which alone may take its id:
+  // assembly refuses any other, and features key on the factory's mark.
+  const official = new Set(
+    plugins
+      .filter(isOfficialPlugin)
+      .map((plugin) => (plugin as { id: string }).id),
+  );
+  const features = resolveConsoleFeatures([...official], { remote: false });
   return {
     remote: false,
     features: async () => features,
-    // A feature reads the plugin with its plugin's id, taken to be Hot
-    // Updater's own, as a self-hosted server's /version list is.
     apis: featureApis((feature) => {
-      const pluginApi = api[consoleFeatures[feature].plugin];
+      const { plugin } = consoleFeatures[feature];
+      const pluginApi = official.has(plugin) ? api[plugin] : undefined;
       return pluginApi === undefined
         ? undefined
         : consoleFeatureApis[feature].local(pluginApi as never);

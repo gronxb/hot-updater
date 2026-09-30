@@ -1,4 +1,5 @@
 import { definePlugin } from "../definePlugin";
+import { markOfficial } from "../official";
 import {
   API_KEY_HEADER_NAME,
   authenticateApiKey,
@@ -33,7 +34,7 @@ export const apiKeys = (options: ApiKeysOptions = {}) => {
   const headerName = normalizeApiKeyHeaderName(
     options.headerName ?? API_KEY_HEADER_NAME,
   );
-  return definePlugin({
+  const plugin = definePlugin({
     id: "apiKeys",
     // Keeps its table's name, api_keys, and with it the camelCase id.
     namespace: false,
@@ -70,4 +71,6 @@ export const apiKeys = (options: ApiKeysOptions = {}) => {
     },
     cli: apiKeysCli(headerName),
   });
+  // Only this factory may take the id; tooling and the console tell it by the mark.
+  return markOfficial(plugin);
 };
