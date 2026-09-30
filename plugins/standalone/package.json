@@ -49,6 +49,7 @@
   "devDependencies": {
     "mime": "2.6.0",
     "@types/mime": "^2.0.3",
+    "@hot-updater/test-utils": "workspace:*",
     "@types/node": "catalog:",
     "msw": "^2.7.0",
     "verkit": "catalog:",

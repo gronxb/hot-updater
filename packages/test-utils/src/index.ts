@@ -4,6 +4,7 @@ export * from "./setupCoreAdminTestSuite";
 export * from "./setupSemverSatisfiesTestSuite";
 export * from "./setupDatabaseTestSuite";
 export * from "./setupDatabaseAdapterConformanceSuite";
+export * from "./setupStorageAdapterTestSuite";
 export * from "./setupReadBudgetTestSuite";
 export * from "./setupAggregateBatchingTestSuite";
 export * from "./sqlRowsExamined";
