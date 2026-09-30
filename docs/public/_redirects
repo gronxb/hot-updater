@@ -41,7 +41,7 @@
 /docs/v0/guides/bundle-diffing /docs/guides/bundle-diffing 301
 /docs/v0/guides/bundle-signing /docs/guides/bundle-signing 301
 /docs/v0/guides/channel-management /docs/guides/channel-management 301
-/docs/v0/guides/compression /docs/guides/compression 301
+/docs/v0/guides/compression /docs/guides/bundle-diffing 301
 /docs/v0/guides/console /docs/guides/console 301
 /docs/v0/guides/custom-update /docs/guides/custom-update 301
 /docs/v0/guides/deploy /docs/guides/deploy 301
@@ -97,6 +97,11 @@
 /api/markdown/build-plugins/* /api/markdown/build-adapters/:splat 301
 /api/markdown/storage-plugins/* /api/markdown/storage-adapters/:splat 301
 /api/markdown/database-plugins/* /api/markdown/database-adapters/:splat 301
+
+# Artifact Compression merged into Bundle Diffing
+/docs/guides/compression /docs/guides/bundle-diffing 301
+/docs/guides/compression.md /docs/guides/bundle-diffing.md 301
+/api/markdown/guides/compression.md /api/markdown/guides/bundle-diffing.md 301
 
 # setUser moved to the Insights client plugin
 /docs/react-native-api/setUser /docs/react-native-api/insights 301

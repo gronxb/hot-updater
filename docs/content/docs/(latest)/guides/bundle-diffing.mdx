@@ -33,9 +33,8 @@ What the device downloads depends on what changed:
 
 These are the per-file transfer rules. After local reuse, the runtime can
 instead download the automatically generated `bundle.tar.br` archive when at
-least two files remain and its transfer-cost comparison favors the archive.
-See [Artifact Compression](/docs/guides/compression) for selection and fallback
-behavior.
+least two files remain and its transfer-cost comparison favors the archive; see
+[Per-file or archive](#per-file-or-archive).
 
 For example, an update with a 10 MB Hermes file might only need to download a
 600 KB patch when the byte-level changes are small.
@@ -226,6 +225,25 @@ On the per-file route, later updates can be assembled from smaller pieces:
    patch that matches the currently installed OTA bundle.
 5. If the patch matches, the app downloads the patch and applies it to the
    existing Hermes bundle to produce the new Hermes bundle.
+
+### Per-file or archive
+
+Deploy compresses eligible individual files with Brotli and also creates
+`bundle.tar.br` with every target file. The manifest records each file's
+installed hash and, for a compressed file, its download hash and size, plus
+the archive's hash and sizes. There is no setting for compression or the
+archive, and ZIP and `tar.gz` archives are not supported.
+
+With at least two files left to download, the client compares the archive's
+bytes with the per-file transfer, patches included. When every target file
+needs downloading and no patch is offered, it also allows the archive's TAR
+framing and padding, which saves many requests for a complete bundle whose
+files compress poorly. Otherwise the archive must be smaller. Missing or
+invalid sizes keep the per-file route.
+
+Both routes verify the same files and hashes before activating the update. If
+the archive fails, the client discards its extraction and tries the per-file
+plan once, which can transfer more bytes.
 
 ### Verification and fallback
 
