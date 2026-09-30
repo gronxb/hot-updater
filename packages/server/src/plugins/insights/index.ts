@@ -5,12 +5,6 @@ import { isDatabaseBusyError } from "../../database/busy";
 import type { HotUpdaterDatabase } from "../../database/database";
 import { markBuiltIn } from "../builtIn";
 import { definePlugin, type PluginEndpoint } from "../definePlugin";
-import {
-  deleteInstallation,
-  deleteUser,
-  type InsightsDeletion,
-  type InsightsDeletionOptions,
-} from "./deletion";
 import type { BundleEventRow } from "./eventRow";
 import { createInsightsModel } from "./model";
 import type {
@@ -42,7 +36,6 @@ import {
   RAW_RETENTION_DAYS,
 } from "./schema";
 
-export type { InsightsDeletion, InsightsDeletionOptions } from "./deletion";
 export type * from "./domain";
 export type {
   BundleEventFailure,
@@ -92,77 +85,10 @@ const createInsightsApi = (
   /** A release's or a channel's update failures, and their breakdown over a time range. */
   getUpdateFailures: (input: InsightsUpdateFailuresInput) =>
     getUpdateFailures(db, input, now, retention),
-  /** Deletes one installation's events and latest event, a bounded batch a call. */
-  deleteInstallation: (installId: string, options?: InsightsDeletionOptions) =>
-    deleteInstallation(db, installId, options),
-  /** Deletes every installation whose latest event names the user. */
-  deleteUser: (userId: string, options?: InsightsDeletionOptions) =>
-    deleteUser(db, userId, options),
 });
 
 export type InsightsApi = ReturnType<typeof createInsightsApi>;
 
-/** Rows one admin DELETE removes, so a request stays short; callers repeat until `complete`. */
-const DELETION_LIMIT = 500;
-
-const deletionAnswer = async (
-  deletion: () => Promise<InsightsDeletion>,
-): Promise<Response> => {
-  try {
-    return Response.json(await deletion());
-  } catch (error) {
-    if (!isDatabaseBusyError(error)) throw error;
-    return Response.json(
-      { error: "Service unavailable" },
-      { status: 503, headers: { "retry-after": "5" } },
-    );
-  }
-};
-
-/**
- * The admin routes that delete Insights data: one installation's, or that of
- * every installation whose latest event names `userId`. Each answers what it
- * deleted and whether anything remains; deleting what is gone deletes
- * nothing and completes.
- */
-const deletionEndpoints = (api: InsightsApi): PluginEndpoint[] => [
-  {
-    access: "admin",
-    method: "DELETE",
-    path: "/installations/:installId",
-    handler: async (_request, { installId }) => {
-      let id: string;
-      try {
-        id = decodeURIComponent(installId!);
-      } catch {
-        return Response.json(
-          { error: "Invalid route parameter: installId" },
-          { status: 400 },
-        );
-      }
-      return deletionAnswer(() =>
-        api.deleteInstallation(id, { limit: DELETION_LIMIT }),
-      );
-    },
-  },
-  {
-    access: "admin",
-    method: "DELETE",
-    path: "/installations",
-    handler: async (request) => {
-      const userId = new URL(request.url).searchParams.get("userId");
-      if (!userId) {
-        return Response.json(
-          { error: "userId is required to delete installations." },
-          { status: 400 },
-        );
-      }
-      return deletionAnswer(() =>
-        api.deleteUser(userId, { limit: DELETION_LIMIT }),
-      );
-    },
-  },
-];
 
 /** `GET /failures`'s query: a scope, an optional release, and a time range or none. */
 const readFailuresQuery = (url: URL): InsightsUpdateFailuresInput => {
@@ -247,8 +173,7 @@ const retentionOf = ({ retention }: InsightsOptions): InsightsRetention => {
  * Built-in Insights: bundle lifecycle events and update failures, each
  * installation's latest event, and the counters, gauges, and sketches its
  * reads come from, each kept for its retention. It serves `POST /events` to
- * clients, and the Insights reads, update failures, deletions, and retention
- * to admins.
+ * clients, and the Insights reads, update failures, and retention to admins.
  */
 export const insights = (options: InsightsOptions = {}) => {
   const retention = retentionOf(options);
@@ -265,28 +190,26 @@ export const insights = (options: InsightsOptions = {}) => {
         const routes = createInsightsRouteHandlers(
           createInsightsProvider(createInsightsModel(api)),
         );
-        return {
-          api,
-          endpoints: [
-            ...INSIGHTS_ROUTES.map(({ access, method, path, handler }) => ({
-              access,
-              method,
-              path,
-              handler: (
-                request: Request,
-                params: Readonly<Record<string, string>>,
-              ) => routes[handler](params, request),
-            })),
-            ...deletionEndpoints(api),
-            failuresEndpoint(api),
-            {
-              access: "admin",
-              method: "GET",
-              path: "/retention",
-              handler: async () => Response.json(retention),
-            },
-          ],
-        };
+        // Declared, so the plugin's type names no runtime's Response.
+        const endpoints: PluginEndpoint[] = [
+          ...INSIGHTS_ROUTES.map(({ access, method, path, handler }) => ({
+            access,
+            method,
+            path,
+            handler: (
+              request: Request,
+              params: Readonly<Record<string, string>>,
+            ) => routes[handler](params, request),
+          })),
+          failuresEndpoint(api),
+          {
+            access: "admin",
+            method: "GET",
+            path: "/retention",
+            handler: async () => Response.json(retention),
+          },
+        ];
+        return { api, endpoints };
       },
       // Apps report their events through the SDK's Insights client plugin.
       cli: {

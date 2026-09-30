@@ -17,13 +17,11 @@ import { AppSidebar } from "./AppSidebar";
 const allOff: ConsoleFeatures = {
   insights: false,
   insightsAnalytics: false,
-  insightsDeletion: false,
   apiKeys: false,
 };
 const allOn: ConsoleFeatures = {
   insights: true,
   insightsAnalytics: true,
-  insightsDeletion: true,
   apiKeys: true,
 };
 

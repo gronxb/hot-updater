@@ -22,6 +22,7 @@ import type {
   PluginEndpoint,
   PluginInstance,
 } from "../plugins/definePlugin";
+import { clientPluginsOf } from "./clientPlugins";
 import { HotUpdaterConfigError } from "./configError";
 
 export { HotUpdaterConfigError };
@@ -226,6 +227,8 @@ export const assemblePlugins = (
     if (ids.has(id)) fail(`Plugin "${id}" is registered twice.`);
     ids.add(id);
   }
+  // Tooling prints them; a server checks them at startup like the rest.
+  clientPluginsOf(plugins);
   const modules: (SchemaModule & { readonly schema: ModuleSchema })[] =
     plugins.map((plugin) => ({
       id: plugin.id,

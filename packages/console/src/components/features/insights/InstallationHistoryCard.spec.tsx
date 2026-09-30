@@ -5,13 +5,6 @@ import type { InsightsEventRow } from "@/lib/insights-view";
 
 import { InstallationHistoryCard } from "./InstallationHistoryCard";
 
-vi.mock("@/lib/insights-api", () => ({
-  useDeleteInsightsDataMutation: () => ({
-    isPending: false,
-    mutateAsync: vi.fn(),
-  }),
-}));
-
 const event: InsightsEventRow = {
   appVersion: "1.2.3",
   channel: "production",
@@ -111,10 +104,9 @@ describe("InstallationHistoryCard", () => {
     ).toBe(true);
   });
 
-  it("offers deletion only where the console deletes Insights data", () => {
-    const card = (canDelete: boolean) => (
+  it("says how long the installation's reports are kept", () => {
+    render(
       <InstallationHistoryCard
-        canDelete={canDelete}
         error={null}
         history={{ data: [event], nextCursor: null }}
         isLoading={false}
@@ -123,13 +115,8 @@ describe("InstallationHistoryCard", () => {
         pageNumber={1}
         selectedEvent={event}
         selectedInstallId="install-1"
-      />
+      />,
     );
-    const { rerender } = render(card(false));
-    expect(screen.queryByRole("button", { name: "Delete data" })).toBeNull();
     expect(screen.getByText(/kept for 90 days/)).toBeDefined();
-
-    rerender(card(true));
-    expect(screen.getByRole("button", { name: "Delete data" })).toBeDefined();
   });
 });

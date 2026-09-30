@@ -419,33 +419,6 @@ No scheduler is needed: expired data leaves by native TTL or during writes.
 Reads never depend on deletion: expired rows that remain are outside every
 period the Console reads.
 
-## Delete an installation's or a user's data
-
-Deleting an installation removes its downloads, applies, and recoveries, and
-its latest report, which also leaves the distributions. Deleting a user
-removes the data of every installation whose latest report names that user ID.
-An installation whose latest report names another user keeps its events, even
-those it reported under the deleted user: delete it by its install ID, or let
-its events age out with the raw period.
-
-Totals and unique-installation sketches hold no identifiers and stay: a sketch
-keeps 1,024 small numbers derived from hashed installation IDs, never an ID or
-a whole hash. They age out with the periods above, and lifetime counters are
-kept.
-
-- **Console**: search for the install ID or user ID, open the installation, and
-  choose **Delete data** in **Installation history**. Turn on **Every
-  installation of this user** to delete the user's data. The Console asks for
-  confirmation, and offers deletion only when the server runs `insights()`.
-- **Admin API**: `DELETE /installations/:installId` and
-  `DELETE /installations?userId=<id>` delete a bounded batch and answer
-  `{ "deleted": { "installations": 1, "events": 42 }, "complete": true }`.
-  Repeat the request while `complete` is `false`. A busy database answers
-  `503` with `Retry-After`.
-- **Server API**: `hotUpdater.api.insights.deleteInstallation(installId)` and
-  `hotUpdater.api.insights.deleteUser(userId)` answer the same way and take an
-  optional `{ limit }` of rows per call.
-
 ## What Insights writes
 
 Most reports are launches. The Insights plugin sends an installation's launch

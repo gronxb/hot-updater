@@ -171,8 +171,8 @@ Send the saved client {{CREDENTIAL_LABEL}} in its {{CREDENTIAL_HEADER}} request
 header.
 <!-- end -->
 <!-- if clientPlugins -->
-Add {{CLIENT_PLUGIN_LIST}} to its `plugins` once, so the app works with the
-server's plugins.
+Add {{CLIENT_PLUGIN_LIST}} to that call's `plugins` once, so the app works with
+the server's plugins.
 <!-- end -->
 Preserve the project's update strategy, update UX and other plugins. If
 integration is missing, follow the matching version's [app setup](https://hot-updater.dev/docs/get-started/app-setup#configure-the-update-client)

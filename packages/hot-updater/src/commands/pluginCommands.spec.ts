@@ -306,6 +306,10 @@ describe("registerPluginCommands", () => {
         "hot-updater counter show needs a database the CLI opens itself",
       ),
     );
+    // The command's own arguments come before the config's path.
+    expect(cli.log.error).toHaveBeenCalledWith(
+      expect.stringContaining(": hot-updater counter show <label> <path>."),
+    );
     expect(fetchAdmin).not.toHaveBeenCalled();
     expect(lines).toEqual([]);
   });

@@ -16,9 +16,9 @@ export type StandaloneRepository = RemoteDatabase;
 
 /**
  * A self-hosted server's database for the CLI and console: core's API over
- * the server's admin API protocol 2, and requests to its admin handler for
- * the routes core does not cover, such as a plugin's Insights routes.
- * Insights and API keys belong to the server's own database and plugins.
+ * the server's admin API protocol 2, and GETs on its admin handler for the
+ * routes core does not cover, such as the Insights reads. Insights and API
+ * keys belong to the server's own database and plugins.
  */
 export const standaloneRepository = (
   config: StandaloneRepositoryConfig,
@@ -27,19 +27,9 @@ export const standaloneRepository = (
   return Object.freeze({
     name: "standalone-repository",
     core: createStandaloneCoreApi(config),
-    fetchAdmin: (
-      path: string,
-      {
-        method = "GET",
-        body,
-      }: Parameters<RemoteDatabase["fetchAdmin"]>[1] = {},
-    ) =>
+    fetchAdmin: (path: string) =>
       fetch(http.buildUrl(path), {
-        method,
-        headers: http.headers(
-          method === "GET" ? { "Cache-Control": "no-cache" } : {},
-        ),
-        ...(body === undefined ? {} : { body }),
+        headers: http.headers({ "Cache-Control": "no-cache" }),
       }),
   });
 };

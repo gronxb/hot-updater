@@ -10,7 +10,7 @@ import {
 } from "./console-features";
 
 describe("consoleFeatures", () => {
-  it("maps each feature to a built-in plugin, and only event reads and deletion to a self-hosted server", () => {
+  it("maps each feature to a built-in plugin, and only event reads to a self-hosted server", () => {
     expect(consoleFeatures).toEqual({
       insights: { plugin: "insights", label: "Insights", remote: true },
       insightsAnalytics: {
@@ -18,7 +18,6 @@ describe("consoleFeatures", () => {
         label: "Insights",
         remote: false,
       },
-      insightsDeletion: { plugin: "insights", label: "Insights", remote: true },
       apiKeys: { plugin: "apiKeys", label: "API keys", remote: false },
     });
   });
@@ -31,19 +30,16 @@ describe("resolveConsoleFeatures", () => {
     ).toEqual({
       insights: true,
       insightsAnalytics: true,
-      insightsDeletion: true,
       apiKeys: true,
     });
     expect(resolveConsoleFeatures(["insights"], { remote: false })).toEqual({
       insights: true,
       insightsAnalytics: true,
-      insightsDeletion: true,
       apiKeys: false,
     });
     expect(resolveConsoleFeatures(["apiKeys"], { remote: false })).toEqual({
       insights: false,
       insightsAnalytics: false,
-      insightsDeletion: false,
       apiKeys: true,
     });
   });
@@ -54,13 +50,11 @@ describe("resolveConsoleFeatures", () => {
     ).toEqual({
       insights: true,
       insightsAnalytics: false,
-      insightsDeletion: true,
       apiKeys: false,
     });
     expect(resolveConsoleFeatures(["apiKeys"], { remote: true })).toEqual({
       insights: false,
       insightsAnalytics: false,
-      insightsDeletion: false,
       apiKeys: false,
     });
   });
@@ -69,7 +63,6 @@ describe("resolveConsoleFeatures", () => {
     const none = {
       insights: false,
       insightsAnalytics: false,
-      insightsDeletion: false,
       apiKeys: false,
     };
 

@@ -40,7 +40,6 @@ describe("getConsoleFeaturesRpc", () => {
       features: {
         insights: true,
         insightsAnalytics: true,
-        insightsDeletion: true,
         apiKeys: false,
       },
       remote: false,
@@ -63,7 +62,6 @@ describe("getConsoleFeaturesRpc", () => {
       features: {
         insights: true,
         insightsAnalytics: false,
-        insightsDeletion: true,
         apiKeys: false,
       },
       remote: true,

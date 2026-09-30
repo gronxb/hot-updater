@@ -1,7 +1,6 @@
 import type {
   InsightsEventPageInput,
   InsightsProvider,
-  InsightsDeletion,
   InsightsUpdateFailures,
   InsightsUpdateFailuresInput,
 } from "@hot-updater/server/plugins/insights";
@@ -23,20 +22,8 @@ export type ConsoleInsightsReads = Omit<
   ): Promise<InsightsUpdateFailures>;
 };
 
-/**
- * Deleting Insights data, a bounded batch a call: `complete` is false while
- * rows remain, and the caller asks again.
- */
-export interface ConsoleInsightsDeletion {
-  deleteInstallation(installId: string): Promise<InsightsDeletion>;
-  deleteUser(userId: string): Promise<InsightsDeletion>;
-}
-
-/** A request to a self-hosted server's admin handler: a GET unless `init` names another method. */
-export type FetchAdmin = (
-  path: string,
-  init?: { readonly method?: string },
-) => Promise<Response>;
+/** A GET on a self-hosted server's admin handler. */
+export type FetchAdmin = (path: string) => Promise<Response>;
 
 /** The `error` a failed admin route answered with, or a message naming its status. */
 const errorOf = async (response: Response, path: string): Promise<Error> => {
@@ -144,30 +131,5 @@ export const createAdminInsightsReads = (
     getRetention: async () =>
       (await read<InsightsRetentionDays>("/retention")) ??
       DEFAULT_INSIGHTS_RETENTION,
-  };
-};
-
-/**
- * A self-hosted server's Insights deletion, through the admin `DELETE`
- * routes its `insights()` plugin serves. Each request deletes a bounded batch.
- */
-export const createAdminInsightsDeletion = (
-  fetchAdmin: FetchAdmin,
-): ConsoleInsightsDeletion => {
-  const remove = async (path: string): Promise<InsightsDeletion> => {
-    const response = await fetchAdmin(path, { method: "DELETE" });
-    // Its /version lists insights(), so a server without these routes predates them.
-    if (response.status === 404 || response.status === 405) {
-      throw new Error(
-        "The server has no Insights deletion route. Upgrade @hot-updater/server on the server.",
-      );
-    }
-    if (!response.ok) throw await errorOf(response, path);
-    return (await response.json()) as InsightsDeletion;
-  };
-  return {
-    deleteInstallation: (installId) =>
-      remove(`/installations/${encodeURIComponent(installId)}`),
-    deleteUser: (userId) => remove(withQuery("/installations", { userId })),
   };
 };
