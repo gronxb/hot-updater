@@ -4,7 +4,6 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 import {
-  renderImportStatements,
   resolvePackageVersion,
   SERVER_DEFINITION_PATH,
   transformEnv,
@@ -146,31 +145,26 @@ for (const provider of providers) {
     `${definition.text}\n`,
   );
   if (provider === "firebase") {
-    // Firestore has no migration tooling, so the credential script writes the
-    // schema settings of core and the deployed server's plugins first, with
-    // the database's own settings and credentials.
-    const migration = definition.database.initializer
-      .replace(/^firebaseDatabase\(/u, "migrateFirebaseDatabase(")
-      .replace(/\)$/u, ", plugins)");
+    // Firestore has no migration tooling, so the credential script runs the
+    // migrator of the server definition it loaded: core's settings and those
+    // of the definition's plugins, over the definition's own database.
     await save(
       path.join(output, "app/migrate.ts"),
-      `${renderImportStatements([
-        { pkg: "@hot-updater/firebase", named: ["migrateFirebaseDatabase"] },
-        ...definition.imports.filter(({ pkg }) =>
-          pkg.startsWith("firebase-admin"),
-        ),
-      ])}
-
-${definition.intermediateCode}
+      `import { createMigrator } from "@hot-updater/server/db";
 
 /**
- * Writes the schema settings of core and \`plugins\`, which the database
- * checks before its first read.
+ * Writes the schema settings of core and the plugins \`hotUpdater\` runs,
+ * which its database checks before its first read.
  */
-export const migrate = (
-  plugins: Parameters<typeof migrateFirebaseDatabase>[1],
-) =>
-  ${migration};
+export const migrate = async (
+  hotUpdater: Parameters<typeof createMigrator>[0],
+) => {
+  const result = await createMigrator(hotUpdater).migrateToLatest({
+    mode: "from-schema",
+    updateSettings: true,
+  });
+  await result.execute();
+};
 `,
     );
   }

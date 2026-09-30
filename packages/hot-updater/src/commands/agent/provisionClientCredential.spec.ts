@@ -180,12 +180,16 @@ it("rejects a hotUpdater.ts that exports no server definition", async () => {
   await expect(stat(path.join(root, SECRET))).rejects.toThrow();
 });
 
-it("runs migrate.ts for the server's plugins before registering the credential", async () => {
+it("runs migrate.ts with the server definition before registering the credential", async () => {
   await scaffold({
     plugins: '["apiKeys"]',
     migration: `import { appendFileSync } from "node:fs";
-export const migrate = async (plugins) =>
-  appendFileSync("calls", \`migrate \${JSON.stringify(plugins)}\\n\`);
+import { serverDefinitionOf } from "@hot-updater/server/db";
+export const migrate = async (hotUpdater) =>
+  appendFileSync(
+    "calls",
+    \`migrate \${JSON.stringify(serverDefinitionOf(hotUpdater).plugins)}\\n\`,
+  );
 `,
   });
 

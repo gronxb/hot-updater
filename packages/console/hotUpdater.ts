@@ -657,6 +657,9 @@ const bundles: DemoDeployment[] = [
 ];
 
 const database = mockDatabase({ latency: { min: 150, max: 320 } });
+// The plugins whose features the console shows; the seed writes through
+// the same ones the server runs.
+const plugins = [insights(), apiKeys()] as const;
 // Seeding skips the delay the console sees.
 const seed = database.withoutLatency();
 const core = createDatabaseCoreApi(seed);
@@ -1055,7 +1058,7 @@ const adjustedBundleEvents = bundleEvents.map((event) => ({
   received_at_ms: event.received_at_ms + receiptOffsetMs,
 }));
 
-const insightsApi = createDatabasePluginApis(seed, [insights()]).insights;
+const insightsApi = createDatabasePluginApis(seed, plugins).insights;
 for (const event of adjustedBundleEvents) {
   await insightsApi.recordEvent(event);
 }
@@ -1067,5 +1070,5 @@ for (const event of adjustedBundleEvents) {
 export const hotUpdater = createHotUpdater({
   database,
   storage: [mockStorage({})],
-  plugins: [insights(), apiKeys()],
+  plugins,
 });

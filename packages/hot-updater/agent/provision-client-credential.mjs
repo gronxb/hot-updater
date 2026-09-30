@@ -50,7 +50,7 @@ try {
     // It writes the schema settings of core and the deployed server's
     // plugins, which the database checks before its first read.
     const { migrate } = await import(migrationPath.href);
-    await migrate(plugins);
+    await migrate(hotUpdater);
   }
   if (clientAuth === undefined) {
     console.log("Client routes are public: there is no client credential.");
