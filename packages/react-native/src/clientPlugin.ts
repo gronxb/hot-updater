@@ -2,6 +2,12 @@
  * The client plugin contract. Built-in plugins, such as
  * `@hot-updater/react-native/plugins/insights`, and third-party plugins use
  * the same one, as server plugins do.
+ *
+ * Keep this module free of state and of classes that code checks with
+ * `instanceof`. A plugin can load it through
+ * `@hot-updater/react-native/client-plugin` in one module format while the
+ * app loads it through the root entry in the other, so two copies can run
+ * side by side.
  */
 
 export type UpdateStrategy = "fingerprint" | "appVersion";

@@ -20,7 +20,11 @@ interface ExportTarget {
 const packageJson = readJson("package.json") as {
   readonly exports: Record<
     string,
-    { readonly import: ExportTarget; readonly require: ExportTarget }
+    {
+      readonly source: string;
+      readonly import: ExportTarget;
+      readonly require: ExportTarget;
+    }
   >;
   readonly files: readonly string[];
 };
@@ -37,6 +41,7 @@ describe.each(["client-plugin", "plugins/insights"])(
 
     it("points at the files the export map names", () => {
       expect(stub.name).toBe(`@hot-updater/react-native/${subpath}`);
+      expect(fromStub(stub.source)).toBe(posix.normalize(target.source));
       expect(fromStub(stub.main)).toBe(posix.normalize(target.require.default));
       expect(fromStub(stub.module)).toBe(
         posix.normalize(target.import.default),
