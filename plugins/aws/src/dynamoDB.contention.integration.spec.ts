@@ -29,7 +29,9 @@ import { createDynamoDBStore } from "./dynamoDBStore";
  * PRD D8: B3's rollout on DynamoDB Local, 16 writers, zero exhausted retries,
  * at most 10% retried. The retried share grows with DynamoDB Local's latency,
  * so on CI, a shared runner, the case checks every move commits and records
- * the share (plans/evidence/dynamodb-rollout-gate.md); elsewhere it holds the bound.
+ * the share, recorded at
+ * https://github.com/gronxb/hot-updater/blob/c08ebf3f657fa8de51c35a8c8ea29966ba54f828/plans/evidence/dynamodb-rollout-gate.md;
+ * elsewhere it holds the bound.
  */
 const ENFORCE_RETRIED_BOUND = !process.env.CI;
 const INSTALLS = 3000;

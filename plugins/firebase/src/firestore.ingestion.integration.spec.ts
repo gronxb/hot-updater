@@ -22,7 +22,8 @@ import { createFirestoreStore } from "./firestoreStore";
 
 /**
  * PRD D9: B3's rollout moves through the Firestore store, measured and
- * recorded in plans/evidence/firestore-ingestion-ceiling.md.
+ * recorded at
+ * https://github.com/gronxb/hot-updater/blob/c08ebf3f657fa8de51c35a8c8ea29966ba54f828/plans/evidence/firestore-ingestion-ceiling.md.
  * HOT_UPDATER_INGESTION_CEILING=1 runs the whole ladder of rates, the same as
  * Supabase's. The emulator has no network round trips and ends a contended
  * lock wait only after 2 seconds, so it measures the store's behavior, not
