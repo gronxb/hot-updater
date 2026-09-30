@@ -139,21 +139,21 @@ describe("runtime createHotUpdater", () => {
   });
 
   it.each(["s3", "https"])(
-    "rejects registered %s storage without getDownloadUrl",
+    "rejects registered %s storage without getDownloadUrl where the handlers are mounted",
     (protocol) => {
       const storage = createStorageAdapter({
         name: "deployOnlyStorage",
         protocol,
         get: async () => ({ response: null }),
       });
+      // Tooling reads the definition, whose storage may only upload.
+      const hotUpdater = createHotUpdater({
+        clientAccess: "public",
+        database: createRuntimeDatabase(),
+        storage: [storage],
+      });
 
-      expect(() =>
-        createHotUpdater({
-          clientAccess: "public",
-          database: createRuntimeDatabase(),
-          storage: [storage],
-        }),
-      ).toThrow(
+      expect(() => hotUpdater.handlers).toThrow(
         'Storage adapter "deployOnlyStorage" does not implement getDownloadUrl.',
       );
     },

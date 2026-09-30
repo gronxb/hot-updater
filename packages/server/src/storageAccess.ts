@@ -1,6 +1,6 @@
 import {
   parseStorageDownloadPath,
-  type StorageAdapterWith,
+  type StorageAdapter,
 } from "@hot-updater/plugin-core";
 
 const assertRemoteUrl = (value: string) => {
@@ -39,7 +39,7 @@ const tokensEqual = (left: string, right: string) => {
 };
 
 export const createStorageAccess = (
-  storageAdapters: StorageAdapterWith<"get">[],
+  storageAdapters: readonly StorageAdapter[],
 ) => {
   const protocols = new Set<string>();
   for (const storage of storageAdapters) {
@@ -59,7 +59,14 @@ export const createStorageAccess = (
   ): Promise<Response | null> => {
     const protocol = getStorageProtocol(storageUri);
     const storage = findStorage(protocol);
-    if (storage) return (await storage.get({ storageUri })).response;
+    if (storage) {
+      if (!storage.get) {
+        throw new Error(
+          `Storage adapter "${storage.name}" does not implement get.`,
+        );
+      }
+      return (await storage.get({ storageUri })).response;
+    }
 
     if (isRemoteUrlProtocol(protocol)) {
       const response = await fetch(storageUri);
@@ -111,13 +118,13 @@ export const createStorageAccess = (
         const requestedPath = `/storage/${storageUriToken}/${encodedSignature}`;
         const requested = parseStorageDownloadPath(requestedPath);
         if (!requested) return null;
-        let storage: StorageAdapterWith<"get"> | undefined;
+        let storage: StorageAdapter | undefined;
         try {
           storage = findStorage(getStorageProtocol(requested.storageUri));
         } catch {
           return null;
         }
-        if (!storage?.getDownloadUrl) return null;
+        if (!storage?.getDownloadUrl || !storage.get) return null;
         const { url: downloadUrl } = await storage.getDownloadUrl({
           storageUri: requested.storageUri,
         });

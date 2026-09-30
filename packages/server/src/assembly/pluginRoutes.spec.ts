@@ -123,6 +123,27 @@ describe("admin /version", () => {
     ).resolves.toEqual(["insights"]);
   });
 
+  it("lists the client plugins an app adds for them, which doctor checks", async () => {
+    const hotUpdater = createHotUpdater({
+      database: database(),
+      plugins: [insights(), apiKeys()],
+    });
+    const version = (await (
+      await hotUpdater.handlers.admin(request("/version"))
+    ).json()) as { clientPlugins: unknown };
+
+    expect(version.clientPlugins).toEqual([
+      {
+        module: "@hot-updater/react-native/plugins/insights",
+        name: "insights",
+      },
+    ]);
+    // Apps never learn which plugins a server runs.
+    await expect(
+      (await hotUpdater.handlers.client(request("/version"))).json(),
+    ).resolves.not.toHaveProperty("clientPlugins");
+  });
+
   it("lists none for a server without plugins, which serves no Insights route", async () => {
     const hotUpdater = createHotUpdater({
       database: database(),
