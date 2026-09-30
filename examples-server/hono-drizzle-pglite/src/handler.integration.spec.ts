@@ -119,7 +119,10 @@ describe("Hot Updater Handler Integration Tests (Hono + Drizzle + PGlite)", () =
     expect(authorizedBundles.status).toBe(200);
     expect(version.status).toBe(200);
     expect(updateCheck.status).toBe(404);
-    expect(updateCheck.headers.get("cache-control")).toBe("private, no-store");
+    expect(updateCheck.headers.get("cache-control")).toBe(
+      "public, max-age=0, s-maxage=5",
+    );
+    expect(updateCheck.headers.get("x-hot-updater-catalog")).toBe("none");
     await expect(updateCheck.json()).resolves.toEqual({ error: "Not found" });
   });
 });

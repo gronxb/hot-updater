@@ -226,8 +226,8 @@ npx hot-updater doctor --scope infrastructure --infra-dir <scaffold-path> --json
 For fingerprint updates, use `--fingerprint <fingerprint>` instead of
 `--app-version`. Doctor checks the local scaffold and live server generation/version,
 then the same Release Catalog URL without a key (401) and with the saved key
-(valid 200, or the exact private, no-store empty-catalog 404). It reads keys from
-private local storage and returns sanitized JSON. The existing
+(valid 200, or the empty-catalog 404 marked `x-hot-updater-catalog: none`).
+It reads keys from private local storage and returns sanitized JSON. The existing
 `app/verify-server.mjs` helper remains available and shares doctor's server probe.
 
 Require exit code 0, `success: true`, and the requested
