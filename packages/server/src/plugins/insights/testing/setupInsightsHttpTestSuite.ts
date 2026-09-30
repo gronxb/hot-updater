@@ -1,8 +1,13 @@
 import { describe, expect, it } from "vitest";
 
-import { jsonRequest } from "./adminApiTestClient";
 import { expectInsightsIndex } from "./expectInsightsIndex";
-import type { HttpTestClient } from "./httpTestClient";
+import type { HttpTestClient } from "./types";
+
+const jsonRequest = (method: string, body: unknown) => ({
+  method,
+  headers: { "content-type": "application/json" },
+  body: JSON.stringify(body),
+});
 
 type InstallationPage = {
   readonly data: readonly {

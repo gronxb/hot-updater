@@ -14,6 +14,7 @@ import {
   createInsightsModel,
   insights,
 } from "@hot-updater/server/plugins/insights";
+import { insightsTestSuite } from "@hot-updater/server/plugins/insights/testing";
 import {
   setupDatabaseTestSuite,
   startHttpTestServer,
@@ -60,10 +61,14 @@ setupDatabaseTestSuite({
         clientAccess: "public",
       }).handlers,
     ),
-  createInsightsModel: (database) =>
-    createInsightsModel(
-      createDatabasePluginApis(database, [insights()]).insights,
-    ),
+  plugins: [
+    insightsTestSuite({
+      createModel: (database) =>
+        createInsightsModel(
+          createDatabasePluginApis(database, [insights()]).insights,
+        ),
+    }),
+  ],
   name: "postgres plugin",
   migrate: async () => {
     client = new PGlite();

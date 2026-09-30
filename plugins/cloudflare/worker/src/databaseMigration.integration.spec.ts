@@ -4,10 +4,10 @@ import {
   createInsightsModel,
   insights,
 } from "@hot-updater/server/plugins/insights";
+import { createBundleEventRowFixture } from "@hot-updater/server/plugins/insights/testing";
 import { env } from "cloudflare:test";
 import { expect, inject, it } from "vitest";
 
-import { createBundleEventRowFixture } from "../../../../packages/test-utils/src/databaseTestFixtures";
 import { d1Database } from "../../src/worker";
 
 declare module "vitest" {

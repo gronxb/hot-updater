@@ -18,6 +18,7 @@ import { HotUpdaterSchemaMigrationRequiredError } from "../database/fence";
 import { builtInSchema } from "../db/builtInDatabase";
 import { createHotUpdater } from "../index";
 import { createInsightsModel, insights } from "../plugins/insights";
+import { insightsTestSuite } from "../plugins/insights/testing";
 import { mongoAdapter } from "./mongodb";
 import { createMongoAdapter } from "./mongodbAdapter";
 
@@ -106,10 +107,14 @@ setupDatabaseTestSuite({
         clientAccess: "public",
       }).handlers,
     ),
-  createInsightsModel: (database) =>
-    createInsightsModel(
-      createDatabasePluginApis(database, [insights()]).insights,
-    ),
+  plugins: [
+    insightsTestSuite({
+      createModel: (database) =>
+        createInsightsModel(
+          createDatabasePluginApis(database, [insights()]).insights,
+        ),
+    }),
+  ],
   name: "mongoAdapter (replica set)",
   migrate: async () => {
     const migrator = mongoAdapter({ client: suiteClient }).createMigrator!();

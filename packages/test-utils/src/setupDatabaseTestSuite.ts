@@ -1,49 +1,51 @@
-import type {
-  EngineDatabase,
-  InsightsModel,
-  StoragePlugin,
-} from "@hot-updater/plugin-core";
+import type { EngineDatabase, StoragePlugin } from "@hot-updater/plugin-core";
 import { afterEach, beforeEach, describe } from "vitest";
 
 import {
   setupDatabaseTestRunner,
   type DatabaseTestLifecycle,
 } from "./databaseTestRunner";
-import type { HttpTestServer } from "./httpTestClient";
-import { registerInsightsModelTests } from "./insightsModelTests";
+import type { HttpTestClient, HttpTestServer } from "./httpTestClient";
 import { createReleaseCatalogTestStorage } from "./releaseCatalogHttpFixtures";
 import { setupBundleMethodsTestSuite } from "./setupBundleMethodsTestSuite";
 import { setupCoreAdminTestSuite } from "./setupCoreAdminTestSuite";
-import { setupInsightsHttpTestSuite } from "./setupInsightsHttpTestSuite";
 import { setupReleaseCatalogTestSuite } from "./setupReleaseCatalogTestSuite";
 
 export type { DatabaseTestLifecycle } from "./databaseTestRunner";
+
+/**
+ * A server plugin's tests on a provider's database, such as the Insights
+ * plugin's `insightsTestSuite()`. The provider's HTTP server must run the
+ * plugin.
+ */
+export interface DatabasePluginTestSuite<TDatabase = unknown> {
+  readonly name: string;
+  register(context: {
+    readonly getClient: () => HttpTestClient;
+    readonly getDatabase: () => TDatabase;
+  }): void;
+}
 
 export type DatabaseTestSuiteOptions<
   TDatabase extends EngineDatabase = EngineDatabase,
 > = DatabaseTestLifecycle<TDatabase> & {
   /**
-   * Serves the handlers of `createHotUpdater({ database, storage, plugins:
-   * [insights()], clientAccess: "public" })` over HTTP: in process, or in the
-   * runtime the provider deploys to.
+   * Serves the handlers of `createHotUpdater({ database, storage, plugins,
+   * clientAccess: "public" })` over HTTP, in process or in the runtime the
+   * provider deploys to, with the plugins whose suites `plugins` lists.
    */
   readonly createHttpClient: (options: {
     readonly database: TDatabase;
     readonly storage: readonly StoragePlugin[];
   }) => HttpTestServer | Promise<HttpTestServer>;
-  /**
-   * The Insights plugin's model on the database, to run the Insights report
-   * contract on its tables: `(database) => createInsightsModel(
-   * createDatabasePluginApis(database, [insights()]).insights)`.
-   */
-  readonly createInsightsModel?: (database: TDatabase) => InsightsModel;
+  /** The suites of the server plugins the provider opts in to test. */
+  readonly plugins?: readonly DatabasePluginTestSuite<TDatabase>[];
 };
 
 /**
  * A provider's database under Hot Updater's server: core's operations, the
- * Release Catalog contract, bundles, and Insights, all through HTTP, on the
- * tables the provider's tooling creates; with `createInsightsModel`, also the
- * Insights report contract in process.
+ * Release Catalog contract, and bundles, all through HTTP, on the tables the
+ * provider's tooling creates, then each opted-in plugin's suite.
  */
 export const setupDatabaseTestSuite = <TDatabase extends EngineDatabase>(
   options: DatabaseTestSuiteOptions<TDatabase>,
@@ -69,13 +71,9 @@ export const setupDatabaseTestSuite = <TDatabase extends EngineDatabase>(
     setupCoreAdminTestSuite({ getClient });
     setupBundleMethodsTestSuite({ getClient });
     setupReleaseCatalogTestSuite({ getClient });
-    setupInsightsHttpTestSuite({ getClient });
-    const { createInsightsModel } = options;
-    if (createInsightsModel !== undefined) {
-      describe("Insights model", () => {
-        registerInsightsModelTests({
-          getDatabase: () => createInsightsModel(getDatabase()),
-        });
+    for (const suite of options.plugins ?? []) {
+      describe(suite.name, () => {
+        suite.register({ getClient, getDatabase });
       });
     }
   });

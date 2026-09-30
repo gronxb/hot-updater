@@ -87,6 +87,7 @@ it("runs the complete contract from the published test-utils package", async () 
       import { kyselyAdapter } from "@hot-updater/server/adapters/kysely";
       import { createDatabasePluginApis, createMigrator } from "@hot-updater/server/db";
       import { createInsightsModel, insights } from "@hot-updater/server/plugins/insights";
+      import { insightsTestSuite } from "@hot-updater/server/plugins/insights/testing";
       import { setupDatabaseTestSuite, startHttpTestServer } from "@hot-updater/test-utils";
 
       const db = new PGlite();
@@ -97,8 +98,10 @@ it("runs the complete contract from the published test-utils package", async () 
         createHttpClient: (options) => startHttpTestServer(createHotUpdater({
           ...options, plugins: [insights()], clientAccess: "public",
         }).handlers),
-        createInsightsModel: (database) =>
-          createInsightsModel(createDatabasePluginApis(database, [insights()]).insights),
+        plugins: [insightsTestSuite({
+          createModel: (database) =>
+            createInsightsModel(createDatabasePluginApis(database, [insights()]).insights),
+        })],
         createDatabase: () => database,
         migrate: async () => {
           const migration = await createMigrator(createHotUpdater({
