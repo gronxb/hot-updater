@@ -13,6 +13,7 @@ import {
 } from "./managedWorker";
 
 const packageRoot = path.resolve(import.meta.dirname, "..");
+const repositoryRoot = path.resolve(packageRoot, "../..");
 
 /** A project's server definition, as init writes it, with a plugin of its own. */
 const DEFINITION = `import { d1Database, plugins, r2Storage } from "@hot-updater/cloudflare";
@@ -111,7 +112,7 @@ describe("the managed Worker from a project's server definition", () => {
       "utf-8",
     );
     expect(code).toContain("sample notes plugin");
-    expect(code).toMatch(/from "cloudflare:workers"/u);
+    expect(code).toMatch(/from\s*"cloudflare:workers"/u);
     // A CommonJS dependency can require a built-in on workerd.
     expect(
       code.startsWith(
@@ -123,9 +124,15 @@ describe("the managed Worker from a project's server definition", () => {
     expect(code).not.toContain("S3Client");
     // None of the machine's paths are deployed, and the entry that built it
     // is gone.
-    expect(code).not.toContain(project);
-    expect(code).not.toContain(await fs.realpath(project));
-    expect(code).not.toContain(os.homedir());
+    for (const local of [
+      project,
+      await fs.realpath(project),
+      repositoryRoot,
+      await fs.realpath(repositoryRoot),
+      os.homedir(),
+    ]) {
+      expect(code).not.toContain(local);
+    }
     await expect(
       fs.access(path.join(workerRoot, "managed.ts")),
     ).rejects.toThrow();

@@ -14,6 +14,7 @@ import {
 } from "./managedEdgeFunction";
 
 const packageRoot = path.resolve(import.meta.dirname, "..");
+const repositoryRoot = path.resolve(packageRoot, "../..");
 
 /** A project's server definition, as init writes it, with a plugin of its own. */
 const DEFINITION = `import { createHotUpdater } from "@hot-updater/server";
@@ -146,13 +147,21 @@ describe("the managed Edge Function from a project's server definition", () => {
     expect(code).toContain('"hot-updater-v1"');
     expect(code).not.toContain("HotUpdater.BUCKET_NAME");
     // The function's import map vendors the server it runs on.
-    expect(code).toMatch(/from "@hot-updater\/server"/u);
-    expect(code).toMatch(/from "@hot-updater\/server\/plugins"/u);
-    expect(code).toMatch(/from "@supabase\/supabase-js"/u);
-    // None of the machine's paths are deployed.
-    expect(code).not.toContain(project);
-    expect(code).not.toContain(await fs.realpath(project));
-    expect(code).not.toContain(os.homedir());
+    expect(code).toMatch(/from\s*"@hot-updater\/server"/u);
+    expect(code).toMatch(/from\s*"@hot-updater\/server\/plugins"/u);
+    expect(code).toMatch(/from\s*"@supabase\/supabase-js"/u);
+    // None of the machine's paths are deployed: not the project's, the
+    // repository's its packages come from, or the home directory, not even
+    // in a module's name, which esbuild writes from the project.
+    for (const local of [
+      project,
+      await fs.realpath(project),
+      repositoryRoot,
+      await fs.realpath(repositoryRoot),
+      os.homedir(),
+    ]) {
+      expect(code).not.toContain(local);
+    }
 
     // The import map vendors what the bundle leaves to the function's
     // server, such as the plugin API the project's plugin is written with,

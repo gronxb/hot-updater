@@ -9,6 +9,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildFunctionFromDefinition } from "./managedFunction";
 
 const packageRoot = path.resolve(import.meta.dirname, "..");
+const repositoryRoot = path.resolve(packageRoot, "../..");
 
 /** A project's server definition, as init writes it, with a plugin of its own. */
 const DEFINITION = `import {
@@ -189,10 +190,18 @@ describe("the managed Cloud Function from a project's server definition", () => 
     expect(code).toMatch(/require\("firebase-admin\/app"\)/u);
     expect(code).toMatch(/require\("firebase-functions\/v2\/https"\)/u);
     expect(code).not.toMatch(/require\("@hot-updater\//u);
-    // None of the machine's paths are deployed.
-    expect(code).not.toContain(project);
-    expect(code).not.toContain(await fs.realpath(project));
-    expect(code).not.toContain(os.homedir());
+    // None of the machine's paths are deployed: not the project's, the
+    // repository's its packages come from, or the home directory, not even
+    // in a module's name, which esbuild writes from the project.
+    for (const local of [
+      project,
+      await fs.realpath(project),
+      repositoryRoot,
+      await fs.realpath(repositoryRoot),
+      os.homedir(),
+    ]) {
+      expect(code).not.toContain(local);
+    }
 
     // It loads as the function does and answers the health check.
     const response = await get(loadFunction(functionsDir), "/ping");

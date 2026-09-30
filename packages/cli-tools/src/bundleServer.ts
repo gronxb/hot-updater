@@ -209,6 +209,15 @@ export const bundleServer = async ({
         : {}),
       ...(define === undefined ? {} : { define: { ...define } }),
       ...(preamble === "" ? {} : { banner: { js: preamble } }),
+      // The deployed code carries no path of the machine that bundled it:
+      // esbuild names each module by its path from the working directory,
+      // which climbs out of the project to a package outside it. Minifying
+      // whitespace drops the module comments, and minifying identifiers the
+      // path keys of its CommonJS and lazy ESM wrappers; keepNames keeps the
+      // names of functions and classes.
+      minifyWhitespace: true,
+      minifyIdentifiers: true,
+      keepNames: true,
       metafile: true,
       logLevel: "silent",
     });

@@ -12,6 +12,7 @@ import {
   loadManagedServerDefinition,
   makeEnv,
   MissingInitInputsError,
+  moduleSpecifiersOf,
   p,
   printAppSetup,
   readHotUpdaterInitEnv,
@@ -83,11 +84,6 @@ const SUPABASE_SCHEMA_READINESS_MAX_ATTEMPTS = 60;
 const SUPABASE_SCHEMA_READINESS_POLL_INTERVAL_MS = 1000;
 const LEGACY_SUPABASE_CATALOG_CDN_URL_ENV_KEY =
   "HOT_UPDATER_SUPABASE_CATALOG_CDN_URL";
-const STATIC_IMPORT_SPECIFIER_PATTERN =
-  /^\s*(?:import|export)\s+(?:type\s+)?(?:[^"'`]+?\s+from\s+)?["']([^"']+)["'];?/gm;
-const DYNAMIC_IMPORT_SPECIFIER_PATTERN =
-  /\bimport\s*\(\s*["']([^"']+)["']\s*\)/g;
-
 export const getLegacySupabaseConfigReference = (configText: string) => {
   if (configText.includes("HOT_UPDATER_SUPABASE_ANON_KEY")) {
     return "HOT_UPDATER_SUPABASE_ANON_KEY";
@@ -240,19 +236,14 @@ const collectBareImportSpecifiers = async (entryPath: string) => {
     }
 
     visitedFiles.add(currentFile);
+    // Only modules import others; a JSON file imports nothing.
+    if (!/\.[cm]?[jt]sx?$/u.test(currentFile)) {
+      continue;
+    }
     const source = await fs.readFile(currentFile, "utf8");
 
-    const matches = [
-      ...source.matchAll(STATIC_IMPORT_SPECIFIER_PATTERN),
-      ...source.matchAll(DYNAMIC_IMPORT_SPECIFIER_PATTERN),
-    ];
-
-    for (const match of matches) {
-      const specifier = match[1];
-      if (!specifier) {
-        continue;
-      }
-
+    // Parsed, since a bundle such as the server definition's is minified.
+    for (const specifier of moduleSpecifiersOf(currentFile, source)) {
       if (specifier.startsWith("./") || specifier.startsWith("../")) {
         const resolvedPath = await resolveLocalModulePath(
           currentFile,

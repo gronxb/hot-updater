@@ -9,6 +9,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildLambdaFromDefinition } from "./managedLambda";
 
 const packageRoot = path.resolve(import.meta.dirname, "..");
+const repositoryRoot = path.resolve(packageRoot, "../..");
 
 /** A project's server definition, as init writes it, with a plugin of its own. */
 const DEFINITION = `import { dynamoDB, plugins, s3Storage } from "@hot-updater/aws";
@@ -107,10 +108,18 @@ describe("the managed Lambda@Edge function from a project's server definition", 
     expect(code).not.toMatch(/require\("@aws-sdk\/client-sts"\)/u);
     expect(code).toContain("GetCallerIdentityCommand");
     expect(code).not.toMatch(/require\("@hot-updater\//u);
-    // None of the machine's paths are deployed.
-    expect(code).not.toContain(project);
-    expect(code).not.toContain(await fs.realpath(project));
-    expect(code).not.toContain(os.homedir());
+    // None of the machine's paths are deployed: not the project's, the
+    // repository's its packages come from, or the home directory, not even
+    // in a module's name, which esbuild writes from the project.
+    for (const local of [
+      project,
+      await fs.realpath(project),
+      repositoryRoot,
+      await fs.realpath(repositoryRoot),
+      os.homedir(),
+    ]) {
+      expect(code).not.toContain(local);
+    }
 
     // It loads as the function does, and exports its handler.
     globalThis.HotUpdater = {

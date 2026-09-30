@@ -220,6 +220,20 @@ const deploy = async (name: string, serverPlugins: string) => {
   return { workerRoot, url: await serve(workerRoot) };
 };
 
+/** The script `wrangler deploy` uploads for the staged Worker. */
+const uploadedScript = async (workerRoot: string) => {
+  const outdir = path.join(workerRoot, "..", "upload");
+  await wrangler(workerRoot, ["deploy", "--dry-run", "--outdir", outdir]);
+  const scripts = (await fs.readdir(outdir)).filter((file) =>
+    /\.m?js$/u.test(file),
+  );
+  return (
+    await Promise.all(
+      scripts.map((file) => fs.readFile(path.join(outdir, file), "utf-8")),
+    )
+  ).join("\n");
+};
+
 /**
  * The compatibility date workerd runs the Worker on: the one init deploys
  * it with, or the newest this machine's workerd supports, when it is older
@@ -466,6 +480,18 @@ exports.digest = (text) => crypto.createHash("sha256").update(text).digest("hex"
       expect(reported.status).toBe(204);
     } finally {
       await stop();
+    }
+
+    // What Wrangler uploads carries none of the machine's paths.
+    const script = await uploadedScript(workerRoot);
+    expect(script).toContain("/notes/:id");
+    for (const local of [
+      root,
+      await fs.realpath(root),
+      path.resolve(packageRoot, "../.."),
+      os.homedir(),
+    ]) {
+      expect(script).not.toContain(local);
     }
 
     // Wrangler kept rc.20's migration, which it had applied, and applied

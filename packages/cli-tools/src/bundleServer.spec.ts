@@ -88,7 +88,7 @@ describe("bundleServer", () => {
       target: "a test server",
     });
 
-    expect(await fs.readFile(outfile, "utf-8")).toMatch(/from "node:fs"/u);
+    expect(await fs.readFile(outfile, "utf-8")).toMatch(/from\s*"node:fs"/u);
   });
 
   it("replaces exact imports: a path is bundled, and a name stays an import", async () => {
@@ -119,8 +119,8 @@ describe("bundleServer", () => {
 
     const code = await fs.readFile(outfile, "utf-8");
     expect(code).toContain("from the worker entry");
-    expect(code).toMatch(/from "provider\/edge"/u);
-    expect(code).toMatch(/from "provider\/sub"/u);
+    expect(code).toMatch(/from\s*"provider\/edge"/u);
+    expect(code).toMatch(/from\s*"provider\/sub"/u);
   });
 
   it("replaces defined expressions and puts the banner first", async () => {
@@ -178,27 +178,65 @@ describe("bundleServer", () => {
     );
   });
 
-  it("keeps the machine's paths out of the bundle, and names the definition when it fails", async () => {
+  it("keeps every module's path out of the bundle, and names the definition when it fails", async () => {
+    // A project inside a monorepo: a module of the project, a CommonJS
+    // dependency, and a workspace package outside the project, whose path
+    // from it climbs through the machine's directories.
     await write(
-      "entry.ts",
-      'import { notes } from "./server/notes";\nexport const plugins = [notes];\n',
+      "packages/shared/index.ts",
+      'export const shared = "from the workspace package";\n',
     );
-    const outfile = path.join(root, "out/index.cjs");
+    await pkg(
+      "app/node_modules/cjs-dep",
+      "cjs-dep",
+      'exports.cjs = "from the CommonJS dependency";\n',
+    );
+    await write(
+      "app/server/notes.ts",
+      'export const notes = { id: "notes" };\n',
+    );
+    await write(
+      "app/entry.ts",
+      [
+        'import { cjs } from "cjs-dep";',
+        'import { shared } from "../packages/shared/index";',
+        'import { notes } from "./server/notes";',
+        "export const plugins = [notes, shared, cjs];",
+        "",
+      ].join("\n"),
+    );
+    const project = path.join(root, "app");
+    const outfile = path.join(project, "out/index.mjs");
 
-    await bundleServer({
-      input: path.join(root, "entry.ts"),
-      definition: path.join(root, "entry.ts"),
-      projectRoot: root,
-      outfile,
-      format: "cjs",
-      platform: "node",
-      target: "a test server",
-    });
+    for (const [format, platform] of [
+      ["cjs", "node"],
+      ["esm", "neutral"],
+    ] as const) {
+      await bundleServer({
+        input: path.join(project, "entry.ts"),
+        definition: path.join(project, "entry.ts"),
+        projectRoot: project,
+        outfile,
+        format,
+        platform,
+        target: "a test server",
+      });
 
-    const code = await fs.readFile(outfile, "utf-8");
-    expect(code).toContain("// server/notes.ts");
-    expect(code).not.toContain(root);
-    expect(code).not.toContain(os.homedir());
+      const code = await fs.readFile(outfile, "utf-8");
+      expect(code).toContain("from the workspace package");
+      expect(code).toContain("from the CommonJS dependency");
+      // No module comment or wrapper names a module by its path.
+      for (const modulePath of [
+        "server/notes",
+        "packages/shared",
+        "cjs-dep/index.js",
+        root,
+        await fs.realpath(root),
+        os.homedir(),
+      ]) {
+        expect(code).not.toContain(modulePath);
+      }
+    }
 
     await write(
       "broken.ts",
@@ -243,7 +281,7 @@ describe("bundleServer", () => {
 
     const code = await fs.readFile(outfile, "utf-8");
     expect(code).toContain("the npm sqlite");
-    expect(code).toMatch(/from "node:sqlite"/u);
+    expect(code).toMatch(/from\s*"node:sqlite"/u);
   });
 
   it("lets a CommonJS dependency require a built-in on a runtime that is not Node", async () => {
