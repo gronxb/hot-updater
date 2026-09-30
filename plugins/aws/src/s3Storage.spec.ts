@@ -197,6 +197,52 @@ describe("s3Storage", () => {
     );
   });
 
+  it("lists an object under the URI put returned for its key", async () => {
+    const key = "releases/한글 #1.zip";
+    uploadDone.mockResolvedValue({ Bucket: "updates", Key: `root/${key}` });
+    vi.spyOn(S3Client.prototype, "send").mockResolvedValue({
+      Contents: [{ Key: `root/${key}`, Size: 6 }],
+    } as never);
+    const storage = s3Storage({
+      basePath: "root",
+      bucketName: "updates",
+      region: "us-east-1",
+    });
+
+    const { storageUri } = await storage.put({
+      key,
+      body: stream("bundle"),
+      contentLength: 6,
+      contentType: "application/zip",
+    });
+
+    expect(storageUri).toBe(
+      "s3://updates/root/releases/%ED%95%9C%EA%B8%80%20%231.zip",
+    );
+    await expect(storage.listObjects()).resolves.toEqual([
+      { key, lastModifiedAt: undefined, size: 6, storageUri },
+    ]);
+  });
+
+  it("does not list keys that no put writes, such as folder markers", async () => {
+    vi.spyOn(S3Client.prototype, "send").mockResolvedValue({
+      Contents: [
+        { Key: "root/assets/", Size: 0 },
+        { Key: "root/assets/logo.png", Size: 4 },
+      ],
+    } as never);
+    const storage = s3Storage({ basePath: "root", bucketName: "updates" });
+
+    await expect(storage.listObjects()).resolves.toEqual([
+      {
+        key: "assets/logo.png",
+        lastModifiedAt: undefined,
+        size: 4,
+        storageUri: "s3://updates/root/assets/logo.png",
+      },
+    ]);
+  });
+
   it("deletes exact relative object keys in S3 batches", async () => {
     const deletedBatches: string[][] = [];
     vi.spyOn(S3Client.prototype, "send").mockImplementation(
