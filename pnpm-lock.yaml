@@ -2338,6 +2338,9 @@ importers:
         specifier: workspace:*
         version: link:../plugin-core
     devDependencies:
+      '@hot-updater/test-utils':
+        specifier: workspace:*
+        version: link:../../packages/test-utils
       '@types/mime':
         specifier: ^2.0.3
         version: 2.0.3
