@@ -2,17 +2,18 @@ import fs from "fs";
 import path from "path";
 
 import {
-  assertManagedServerDefinition,
   confirmInitInputPersistence,
   getHotUpdaterInitInputEnv,
   getInitProviderEnvVars,
   HOT_UPDATER_SERVER_PACKAGE_VERSION_ENV,
+  importManagedServerDefinition,
   InitError,
   link,
   makeEnv,
   p,
   printAppSetup,
   readHotUpdaterInitEnv,
+  readManagedServerDefinition,
   resolveHotUpdaterServerVersion,
   resolvePackageVersion,
   type RunInitOptions,
@@ -20,9 +21,11 @@ import {
 } from "@hot-updater/cli-tools";
 import {
   clientPluginsOf,
+  managedServerDefinitionOf,
   provisionClientCredential,
   type ProvisionedClientCredential,
 } from "@hot-updater/server/db";
+import type { AnyHotUpdaterPlugin } from "@hot-updater/server/plugins";
 import { isEqual, sortBy, uniqWith } from "es-toolkit";
 import { ExecaError, execa } from "execa";
 import {
@@ -52,6 +55,7 @@ import {
 } from "./firebaseInitInputs";
 import { resolveFirebaseRegion } from "./firebaseRegion";
 import { initProvider as FIREBASE_INIT_PROVIDER } from "./init/index";
+import { buildFunctionFromDefinition } from "./managedFunction";
 import { prepareFirebaseTemplate } from "./prepareTemplate";
 import { createFirebaseProject, initFirebaseUser, setEnv } from "./select";
 
@@ -389,6 +393,8 @@ const printTemplate = async (
   credential: ProvisionedClientCredential | undefined,
   projectId: string,
   region: string,
+  /** The plugins the function runs, whose client plugins the app adds. */
+  serverPlugins: readonly AnyHotUpdaterPlugin[],
   cliEnv?: FirebaseCliEnv,
 ) => {
   try {
@@ -421,7 +427,7 @@ const printTemplate = async (
     printAppSetup({
       baseURL: functionUrl,
       ...(credential === undefined ? {} : { credential }),
-      clientPlugins: clientPluginsOf(plugins),
+      clientPlugins: clientPluginsOf(serverPlugins),
     });
   } catch (error) {
     if (error instanceof ExecaError) {
@@ -443,7 +449,10 @@ const checkIfGcloudCliInstalled = async () => {
 };
 
 export const runInit = async ({ build, envFile }: RunInitOptions) => {
-  await assertManagedServerDefinition(getConfigScaffold(build), process.cwd());
+  const definition = await readManagedServerDefinition(
+    getConfigScaffold(build),
+    process.cwd(),
+  );
   const nonInteractive = envFile !== undefined;
   const initEnvSources = await readHotUpdaterInitEnv(process.cwd(), envFile);
   const { managedEnv } = initEnvSources;
@@ -539,10 +548,6 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
     await removeTmpDir();
     return;
   }
-  const functionsCode = transformEnv(functionsIndexPath, {
-    REGION: currentRegion,
-  });
-  await fs.promises.writeFile(functionsIndexPath, functionsCode);
   await setEnv({
     projectId: initializeVariable.projectId,
     storageBucket: initializeVariable.storageBucket,
@@ -553,6 +558,30 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
         FIREBASE_INIT_PROVIDER.inputs.applicationCredentials.envKey
       ],
   });
+  const existingApps = new Set(getApps());
+  // The server the function runs: the package's, or the project's edited
+  // definition, which reads what .env.hotupdater now holds. Its function is
+  // bundled in place of the prebuilt one before anything is deployed.
+  const serverPlugins = definition.edited
+    ? managedServerDefinitionOf(
+        (await importManagedServerDefinition(definition, process.cwd()))
+          .hotUpdater,
+        { provider: "Firebase", database: "firebaseDatabase", storage: "gs" },
+      ).plugins
+    : plugins;
+  if (definition.edited) {
+    await buildFunctionFromDefinition({
+      definition: definition.path,
+      packageRoot: path.dirname(
+        require.resolve("@hot-updater/firebase/package.json"),
+      ),
+      functionsDir,
+    });
+  }
+  const functionsCode = transformEnv(functionsIndexPath, {
+    REGION: currentRegion,
+  });
+  await fs.promises.writeFile(functionsIndexPath, functionsCode);
 
   if (
     runtimePackageInfo.serverPackageVersion !==
@@ -590,7 +619,6 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
         JSON.parse(await fs.promises.readFile(applicationCredentials, "utf-8")),
       )
     : applicationDefault();
-  const existingApps = new Set(getApps());
   const databaseConfig = {
     credential,
     projectId: initializeVariable.projectId,
@@ -599,12 +627,16 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
   let clientCredential: ProvisionedClientCredential | undefined;
   try {
     // The database reads nothing until the schema settings exist.
-    await migrateFirebaseDatabase(databaseConfig, plugins);
+    await migrateFirebaseDatabase(databaseConfig, serverPlugins);
     // The app's credential, through the managed server's plugins, on the tables they read.
-    clientCredential = await provisionClientCredential(database, plugins, {
-      env: initInputEnv,
-      name: "Firebase init",
-    });
+    clientCredential = await provisionClientCredential(
+      database,
+      serverPlugins,
+      {
+        env: initInputEnv,
+        name: "Firebase init",
+      },
+    );
     if (clientCredential !== undefined) {
       await makeEnv({ [clientCredential.env]: clientCredential.value });
     }
@@ -706,6 +738,7 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
     clientCredential,
     initializeVariable.projectId,
     currentRegion,
+    serverPlugins,
     cliEnv,
   );
   await removeTmpDir();
