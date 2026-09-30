@@ -3,25 +3,33 @@
  * the source of truth: the console serves a feature only when the server runs
  * its plugin, and against a self-hosted server (`standaloneRepository`) only
  * the features its admin API serves (`remote`); the rest read the database.
- * Navigation, route guards, and server functions all read this registry.
+ * Navigation, route guards, and server functions all read this registry. Its
+ * other halves, keyed by the same features, hold what serves each feature on
+ * the server (`server/console-feature-apis.ts`) and what each adds to pages
+ * (`components/features/console-feature-ui.tsx`).
  */
 export const consoleFeatures = {
   /** Event history and installation lookups, which the admin API serves too. */
-  insights: { plugin: "insights", remote: true },
+  insights: { plugin: "insights", label: "Insights", remote: true },
   /** App usage, distribution, and release activity, read from the database. */
-  insightsAnalytics: { plugin: "insights", remote: false },
+  insightsAnalytics: { plugin: "insights", label: "Insights", remote: false },
   /** Deleting an installation's or a user's Insights data, which the admin API serves too. */
-  insightsDeletion: { plugin: "insights", remote: true },
+  insightsDeletion: { plugin: "insights", label: "Insights", remote: true },
   /** API key management: `apiKeys()` mounts no admin routes to manage them. */
-  apiKeys: { plugin: "apiKeys", remote: false },
+  apiKeys: { plugin: "apiKeys", label: "API keys", remote: false },
 } as const satisfies Readonly<
-  Record<string, { readonly plugin: string; readonly remote: boolean }>
+  Record<
+    string,
+    {
+      readonly plugin: string;
+      /** How navigation and the not-installed page name the feature. */
+      readonly label: string;
+      readonly remote: boolean;
+    }
+  >
 >;
 
 export type ConsoleFeature = keyof typeof consoleFeatures;
-
-/** A plugin some feature needs, by the id the server assembles it under. */
-export type ConsolePlugin = (typeof consoleFeatures)[ConsoleFeature]["plugin"];
 
 /** Whether each feature is on. */
 export type ConsoleFeatures = Readonly<Record<ConsoleFeature, boolean>>;

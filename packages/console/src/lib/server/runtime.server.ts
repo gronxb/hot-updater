@@ -3,35 +3,21 @@ import {
   isRemoteDatabase,
 } from "@hot-updater/plugin-core";
 import { createDatabasePluginApis } from "@hot-updater/server/db";
-import type { ApiKeyManagementAPI } from "@hot-updater/server/plugins/api-keys";
-import {
-  createInsightsModel,
-  createInsightsProvider,
-  type InsightsApi,
-  type InsightsModel,
-} from "@hot-updater/server/plugins/insights";
 
 import {
   type ConsoleFeature,
   ConsoleFeatureUnavailableError,
   type ConsoleFeatures,
+  consoleFeatures,
   resolveConsoleFeatures,
 } from "../console-features";
 import {
-  type ConsoleInsightsDeletion,
-  type ConsoleInsightsReads,
-  createAdminInsightsDeletion,
-  createAdminInsightsReads,
+  type ConsoleFeatureApis,
+  consoleFeatureApis,
   type FetchAdmin,
-} from "./adminInsights";
+} from "./console-feature-apis";
 
-/** What serves each console feature. */
-export interface ConsoleFeatureApis {
-  readonly insights: ConsoleInsightsReads;
-  readonly insightsAnalytics: InsightsModel;
-  readonly insightsDeletion: ConsoleInsightsDeletion;
-  readonly apiKeys: ApiKeyManagementAPI;
-}
+export type { ConsoleFeatureApis } from "./console-feature-apis";
 
 export interface ConsoleRuntime {
   /** Whether the console reaches a self-hosted server through its admin API. */
@@ -72,25 +58,28 @@ const once = <T>(load: () => Promise<T>): (() => Promise<T>) => {
     }));
 };
 
-/** What serves the Insights features, over the `insights()` plugin's API. */
-const insightsFeatureApis = (api: InsightsApi) => {
-  const model = createInsightsModel(api);
-  return {
-    insights: {
-      ...createInsightsProvider(model),
-      getRetention: async () => api.retention,
-    },
-    insightsAnalytics: model,
-    insightsDeletion: api,
-  };
-};
+const featureIds = Object.keys(consoleFeatureApis) as ConsoleFeature[];
+
+/**
+ * What serves each feature, built by its factory: over the plugins' APIs the
+ * console assembled, or over a self-hosted server's admin API. A feature
+ * without its plugin, or without a factory for the admin API, has none.
+ */
+const featureApis = (
+  build: (feature: ConsoleFeature) => unknown,
+): Partial<ConsoleFeatureApis> =>
+  Object.fromEntries(
+    featureIds.flatMap((feature) => {
+      const api = build(feature);
+      return api === undefined ? [] : [[feature, api]];
+    }),
+  );
 
 /**
  * The console's features and what serves them, for a console config:
  * - a self-hosted server (`standaloneRepository`) runs its plugins and lists
- *   them on its admin `/version`; the console reads and deletes its Insights
- *   events and installations through its admin API, and nothing that needs
- *   the database;
+ *   them on its admin `/version`; the console serves what that server's admin
+ *   API serves, and nothing that needs the database;
  * - otherwise the console assembles `plugins` over the database, as the
  *   server does, and serves the features of the plugins it assembled.
  */
@@ -108,33 +97,31 @@ export const createConsoleRuntime = (config: {
           remote: true,
         }),
       ),
-      apis: {
-        insights: createAdminInsightsReads(fetchAdmin),
-        insightsDeletion: createAdminInsightsDeletion(fetchAdmin),
-      },
+      apis: featureApis((feature) =>
+        consoleFeatureApis[feature].remote?.(fetchAdmin),
+      ),
     };
   }
   const api = createDatabasePluginApis(database, config.plugins ?? []);
   const features = resolveConsoleFeatures(Object.keys(api), { remote: false });
-  // Assembly refuses a third-party plugin with a built-in plugin's id, so
-  // each id holds that built-in plugin's API.
-  const insightsApi = api.insights as InsightsApi | undefined;
   return {
     remote: false,
     features: async () => features,
-    apis: {
-      ...(insightsApi === undefined ? {} : insightsFeatureApis(insightsApi)),
-      ...(api.apiKeys === undefined
-        ? {}
-        : { apiKeys: api.apiKeys as ApiKeyManagementAPI }),
-    },
+    // Assembly refuses a third-party plugin with a built-in plugin's id, so
+    // each id holds the API the feature's factory expects.
+    apis: featureApis((feature) => {
+      const pluginApi = api[consoleFeatures[feature].plugin];
+      return pluginApi === undefined
+        ? undefined
+        : consoleFeatureApis[feature].local(pluginApi as never);
+    }),
   };
 };
 
 /**
- * What serves `feature`. Every Insights and API key server function asks
- * for it first, so a feature the console does not serve is refused with one
- * error the client recognizes, before anything is read.
+ * What serves `feature`. Every feature's server function asks for it first,
+ * so a feature the console does not serve is refused with one error the
+ * client recognizes, before anything is read.
  */
 export const requireFeature = async <F extends ConsoleFeature>(
   runtime: ConsoleRuntime,
