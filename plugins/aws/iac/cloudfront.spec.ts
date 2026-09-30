@@ -8,6 +8,8 @@ import {
   buildOriginRequestPolicyConfig,
   buildReleaseCatalogCachePolicyConfig,
   buildSharedCachePolicyConfig,
+  MANAGED_ALL_VIEWER_EXCEPT_HOST_HEADER_POLICY_ID,
+  MANAGED_CACHING_DISABLED_POLICY_ID,
   pluginCacheBehaviorPaths,
 } from "./cloudfrontDistributionConfig";
 
@@ -20,6 +22,8 @@ const baseOptions = {
   originRequestPolicyId: "origin-request-policy-id",
   releaseCatalogCachePolicyId: "release-catalog-cache-policy-id",
   sharedCachePolicyId: "shared-cache-policy-id",
+  // Insights' endpoint, as the prebuilt server's plugins give it.
+  pluginPaths: ["/events"],
 };
 
 describe("buildDistributionConfigOverrides", () => {
@@ -111,10 +115,16 @@ describe("buildDistributionConfigOverrides", () => {
 
     expect(behaviorItems.map(({ PathPattern }) => PathPattern)).toEqual([
       "/release-catalogs/*",
-      "/events",
       "/artifacts/*",
       "/version",
+      "/events",
     ]);
+    expect(
+      behaviorItems.find(({ PathPattern }) => PathPattern === "/events"),
+    ).toMatchObject({
+      CachePolicyId: MANAGED_CACHING_DISABLED_POLICY_ID,
+      OriginRequestPolicyId: MANAGED_ALL_VIEWER_EXCEPT_HOST_HEADER_POLICY_ID,
+    });
     expect(catalogBehavior.CachePolicyId).toBe(
       baseOptions.releaseCatalogCachePolicyId,
     );
@@ -417,9 +427,9 @@ describe("buildDistributionConfigOverrides", () => {
     ).toEqual([
       "/api/*",
       "/release-catalogs/*",
-      "/events",
       "/artifacts/*",
       "/version",
+      "/events",
     ]);
   });
 
@@ -476,9 +486,9 @@ describe("buildDistributionConfigOverrides", () => {
       "/custom/private/*",
       "/api/*",
       "/release-catalogs/*",
-      "/events",
       "/artifacts/*",
       "/version",
+      "/events",
     ]);
   });
 
@@ -549,9 +559,9 @@ describe("buildDistributionConfigOverrides", () => {
       "/*.js",
       "/api/*",
       "/release-catalogs/*",
-      "/events",
       "/artifacts/*",
       "/version",
+      "/events",
     ]);
   });
 });
@@ -560,14 +570,15 @@ describe("pluginCacheBehaviorPaths", () => {
   it("sends each plugin client endpoint to the function, up to its first parameter", () => {
     expect(
       pluginCacheBehaviorPaths([
-        // Insights' endpoint is the managed server's own.
+        // Insights' endpoint comes from the plugins too, so a server without
+        // insights() stops sending /events to the function.
         { plugin: "insights", path: "/events" },
         { plugin: "notes", path: "/notes/:id" },
         { plugin: "notes", path: "/notes/:id/comments" },
         { plugin: "notes", path: "/notes-feed" },
         { plugin: "notes", path: "/release-catalogs/notes/:id" },
       ]),
-    ).toEqual(["/notes/*", "/notes-feed"]);
+    ).toEqual(["/events", "/notes/*", "/notes-feed"]);
   });
 
   it("refuses an endpoint where CloudFront serves bundles from S3", () => {
@@ -580,7 +591,7 @@ describe("pluginCacheBehaviorPaths", () => {
     }
   });
 
-  it("adds a behavior for each path, with the function on origin requests", () => {
+  it("adds a behavior for each path, with the function on origin requests and AWS's policies for passing requests through", () => {
     const overrides = buildDistributionConfigOverrides({
       ...baseOptions,
       pluginPaths: ["/notes/*"],
@@ -595,8 +606,10 @@ describe("pluginCacheBehaviorPaths", () => {
       ),
     ).toMatchObject({
       AllowedMethods: { Quantity: 7 },
-      CachePolicyId: baseOptions.sharedCachePolicyId,
-      OriginRequestPolicyId: baseOptions.originRequestPolicyId,
+      // A plugin's endpoint answers what it likes: nothing is cached, and
+      // the function gets every header but Host, cookie, and query string.
+      CachePolicyId: MANAGED_CACHING_DISABLED_POLICY_ID,
+      OriginRequestPolicyId: MANAGED_ALL_VIEWER_EXCEPT_HOST_HEADER_POLICY_ID,
       LambdaFunctionAssociations: {
         Quantity: 1,
         Items: [

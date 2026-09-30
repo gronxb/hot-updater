@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import type {
   AllowedMethods,
   CachePolicyConfig,
@@ -5,6 +7,33 @@ import type {
   Origin,
   OriginRequestPolicyConfig,
 } from "@aws-sdk/client-cloudfront";
+import { InitError } from "@hot-updater/cli-tools";
+
+/**
+ * `config` named `base` and a hash of its content. A CloudFront policy
+ * belongs to the whole account, so a deployment whose server reads other
+ * client headers, such as one without API keys, gets a policy of its own,
+ * and init creates one when it is missing but never changes one in place.
+ */
+const namedByContent = <T extends { readonly Name: string | undefined }>(
+  base: string,
+  config: Omit<T, "Name">,
+): T =>
+  ({
+    ...config,
+    Name: `${base}-${createHash("sha256")
+      .update(JSON.stringify(config))
+      .digest("hex")
+      .slice(0, 16)}`,
+  }) as unknown as T;
+
+/** AWS's managed cache policy that caches nothing. */
+export const MANAGED_CACHING_DISABLED_POLICY_ID =
+  "4135ea2d-6df8-44a3-9df3-4b5a84be39ad";
+
+/** AWS's managed origin request policy that forwards every viewer header but Host, every cookie, and every query string. */
+export const MANAGED_ALL_VIEWER_EXCEPT_HOST_HEADER_POLICY_ID =
+  "b689b0a8-53d0-40ab-baf2-68738e2966ac";
 
 /**
  * The request headers a cache key holds: those the server's client-route
@@ -29,60 +58,63 @@ const headersConfig = (
 // which breaks S3 origins and bloats the cache key beyond the client-route headers.
 export const buildSharedCachePolicyConfig = (
   clientHeaders: readonly string[],
-): CachePolicyConfig => ({
-  Name: "HotUpdaterOriginCacheControlV2",
-  Comment:
-    "Honor origin Cache-Control without forwarding viewer Host/cookies/query strings",
-  DefaultTTL: 0,
-  MaxTTL: 31_536_000,
-  MinTTL: 0,
-  ParametersInCacheKeyAndForwardedToOrigin: {
-    EnableAcceptEncodingBrotli: true,
-    EnableAcceptEncodingGzip: true,
-    HeadersConfig: headersConfig(clientHeaders),
-    CookiesConfig: {
-      CookieBehavior: "none",
+): CachePolicyConfig =>
+  namedByContent<CachePolicyConfig>("HotUpdaterOriginCacheControlV2", {
+    Comment:
+      "Honor origin Cache-Control without forwarding viewer Host/cookies/query strings",
+    DefaultTTL: 0,
+    MaxTTL: 31_536_000,
+    MinTTL: 0,
+    ParametersInCacheKeyAndForwardedToOrigin: {
+      EnableAcceptEncodingBrotli: true,
+      EnableAcceptEncodingGzip: true,
+      HeadersConfig: headersConfig(clientHeaders),
+      CookiesConfig: {
+        CookieBehavior: "none",
+      },
+      QueryStringsConfig: {
+        QueryStringBehavior: "none",
+      },
     },
-    QueryStringsConfig: {
-      QueryStringBehavior: "none",
-    },
-  },
-});
+  });
 
 export const buildReleaseCatalogCachePolicyConfig = (
   clientHeaders: readonly string[],
-): CachePolicyConfig => ({
-  Name: "HotUpdaterReleaseCatalogV1",
-  Comment:
-    "Cache Release catalogs by canonical path, client credential, and encoding",
-  DefaultTTL: 0,
-  MaxTTL: 5,
-  MinTTL: 0,
-  ParametersInCacheKeyAndForwardedToOrigin: {
-    EnableAcceptEncodingBrotli: true,
-    EnableAcceptEncodingGzip: true,
-    HeadersConfig: headersConfig(clientHeaders),
-    CookiesConfig: { CookieBehavior: "none" },
-    QueryStringsConfig: { QueryStringBehavior: "none" },
-  },
-});
+): CachePolicyConfig =>
+  namedByContent<CachePolicyConfig>("HotUpdaterReleaseCatalogV1", {
+    Comment:
+      "Cache Release catalogs by canonical path, client credential, and encoding",
+    DefaultTTL: 0,
+    MaxTTL: 5,
+    MinTTL: 0,
+    ParametersInCacheKeyAndForwardedToOrigin: {
+      EnableAcceptEncodingBrotli: true,
+      EnableAcceptEncodingGzip: true,
+      HeadersConfig: headersConfig(clientHeaders),
+      CookiesConfig: { CookieBehavior: "none" },
+      QueryStringsConfig: { QueryStringBehavior: "none" },
+    },
+  });
 
 export const buildOriginRequestPolicyConfig = (
   clientHeaders: readonly string[],
-): OriginRequestPolicyConfig => ({
-  Name: "HotUpdaterManagedApiOriginRequestV2",
-  Comment:
-    "Forward managed API bodies, query strings, and the client credential",
-  HeadersConfig: {
-    HeaderBehavior: "whitelist",
-    Headers: {
-      Quantity: clientHeaders.length + 1,
-      Items: ["content-type", ...clientHeaders],
+): OriginRequestPolicyConfig =>
+  namedByContent<OriginRequestPolicyConfig>(
+    "HotUpdaterManagedApiOriginRequestV2",
+    {
+      Comment:
+        "Forward managed API bodies, query strings, and the client credential",
+      HeadersConfig: {
+        HeaderBehavior: "whitelist",
+        Headers: {
+          Quantity: clientHeaders.length + 1,
+          Items: ["content-type", ...clientHeaders],
+        },
+      },
+      CookiesConfig: { CookieBehavior: "none" },
+      QueryStringsConfig: { QueryStringBehavior: "all" },
     },
-  },
-  CookiesConfig: { CookieBehavior: "none" },
-  QueryStringsConfig: { QueryStringBehavior: "all" },
-});
+  );
 
 export type DistributionConfigOverrides = {
   Origins: NonNullable<DistributionConfig["Origins"]>;
@@ -127,8 +159,8 @@ const HOT_UPDATER_BEHAVIOR_BASE = {
   AllowedMethods: READ_ONLY_METHODS,
 } as const;
 
+/** Core's routes the function serves; the plugins' come from their client endpoints. */
 export const HOT_UPDATER_CACHE_BEHAVIOR_PATHS = [
-  "/events",
   "/artifacts/*",
   "/version",
 ] as const;
@@ -181,7 +213,7 @@ export const pluginCacheBehaviorPaths = (
       continue;
     }
     if (pattern === "/*" || STORAGE_PATH_SEGMENTS.has(segments[1] ?? "")) {
-      throw new Error(
+      throw new InitError(
         `Plugin "${plugin}" serves ${path}, but the managed AWS server's CloudFront distribution serves bundles from S3 there. Move the plugin's endpoint, or host the server yourself.`,
       );
     }
@@ -448,16 +480,25 @@ export const buildDistributionConfigOverrides = (options: {
           sharedCachePolicyId: options.releaseCatalogCachePolicyId,
         }),
       ),
-      ...[
-        ...HOT_UPDATER_CACHE_BEHAVIOR_PATHS,
-        ...(options.pluginPaths ?? []),
-      ].map((pathPattern) =>
+      ...HOT_UPDATER_CACHE_BEHAVIOR_PATHS.map((pathPattern) =>
         buildCacheBehavior({
           bucketName: options.bucketName,
           functionArn: options.functionArn,
           originRequestPolicyId: options.originRequestPolicyId,
           pathPattern,
           sharedCachePolicyId: options.sharedCachePolicyId,
+        }),
+      ),
+      // A plugin's endpoint answers what it likes: nothing is cached, and
+      // the function gets the whole request.
+      ...(options.pluginPaths ?? []).map((pathPattern) =>
+        buildCacheBehavior({
+          bucketName: options.bucketName,
+          functionArn: options.functionArn,
+          originRequestPolicyId:
+            MANAGED_ALL_VIEWER_EXCEPT_HOST_HEADER_POLICY_ID,
+          pathPattern,
+          sharedCachePolicyId: MANAGED_CACHING_DISABLED_POLICY_ID,
         }),
       ),
     ],

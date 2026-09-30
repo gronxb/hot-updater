@@ -7,6 +7,7 @@ import {
   copyDirToTmp,
   createZip,
   getCwd,
+  InitError,
   p,
   transformEnv,
 } from "@hot-updater/cli-tools";
@@ -19,13 +20,16 @@ export const LAMBDA_EDGE_MAX_ZIP_BYTES = 50 * 1024 * 1024;
 
 const megabytes = (bytes: number) => `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 
-/** Zips `dir` to `outfile`, refusing code Lambda@Edge would reject. */
-const zipLambda = async (dir: string, outfile: string) => {
+/**
+ * Zips `dir` to `outfile`, refusing code Lambda@Edge would reject;
+ * `definition` names the server definition it was bundled from.
+ */
+const zipLambda = async (dir: string, outfile: string, definition?: string) => {
   await createZip({ outfile, targetDir: dir });
   const { size } = await fs.stat(outfile);
   if (size > LAMBDA_EDGE_MAX_ZIP_BYTES) {
-    throw new Error(
-      `The Lambda@Edge function zips to ${megabytes(size)}, over Lambda@Edge's ${megabytes(LAMBDA_EDGE_MAX_ZIP_BYTES)} limit. Remove large dependencies from your server definition's plugins, or host the server yourself.`,
+    throw new InitError(
+      `${definition === undefined ? "The Lambda@Edge function" : `${definition} bundles into a Lambda@Edge function that`} zips to ${megabytes(size)}, over Lambda@Edge's ${megabytes(LAMBDA_EDGE_MAX_ZIP_BYTES)} limit for origin-request functions. Remove large dependencies from its plugins, or host the server yourself.`,
     );
   }
 };
@@ -59,11 +63,16 @@ export const stageLambda = async (
       packageRoot: path.dirname(
         require.resolve("@hot-updater/aws/package.json"),
       ),
+      projectRoot: getCwd(),
       lambdaDir: dir,
     });
     const zip = `${dir}.zip`;
     try {
-      await zipLambda(dir, zip);
+      await zipLambda(
+        dir,
+        zip,
+        path.relative(getCwd(), definition) || definition,
+      );
     } finally {
       await fs.rm(zip, { force: true });
     }

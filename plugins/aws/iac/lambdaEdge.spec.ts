@@ -33,6 +33,7 @@ vi.mock("@hot-updater/cli-tools", () => ({
   })),
   createZip: vi.fn(async () => undefined),
   getCwd: vi.fn(() => "/tmp"),
+  InitError: class InitError extends Error {},
   p: {
     log: { error: vi.fn(), info: vi.fn() },
     tasks: vi.fn(
@@ -250,7 +251,7 @@ describe("LambdaEdgeDeployer", () => {
 
     // Then
     await expect(deployment).rejects.toThrow(
-      "The Lambda@Edge function zips to 50.0 MB, over Lambda@Edge's 50.0 MB limit.",
+      "The Lambda@Edge function zips to 50.0 MB, over Lambda@Edge's 50.0 MB limit for origin-request functions.",
     );
     expect(lambdaMocks.createFunction).not.toHaveBeenCalled();
     expect(lambdaMocks.updateFunctionCode).not.toHaveBeenCalled();

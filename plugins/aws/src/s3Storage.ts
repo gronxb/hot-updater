@@ -9,14 +9,15 @@ import {
 } from "@aws-sdk/client-s3";
 import { Upload } from "@aws-sdk/lib-storage";
 import {
+  createStorageAdapter,
   createStorageDownloadUrl,
   createStorageKeyBuilder,
-  createStorageAdapter,
   createStorageUri,
   parseStorageUri,
-  type StorageObject,
   type StorageAdapter,
   type StorageAdapterWith,
+  type StorageObject,
+  withAdapterResource,
 } from "@hot-updater/plugin-core";
 
 import { applyS3RuntimeAwsConfig } from "./runtimeAwsConfig";
@@ -111,7 +112,7 @@ export function s3Storage(
     return parsed;
   };
 
-  return createStorageAdapter({
+  const adapter = createStorageAdapter({
     name: "s3Storage",
     protocol: "s3",
     async listObjects(prefix) {
@@ -252,4 +253,5 @@ export function s3Storage(
       return { deleted: true };
     },
   });
+  return withAdapterResource(adapter, { bucketName });
 }

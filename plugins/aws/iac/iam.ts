@@ -5,6 +5,7 @@ import { STS } from "@aws-sdk/client-sts";
 import { p } from "@hot-updater/cli-tools";
 import {
   aggregateBatchingModule,
+  coreTarget,
   type PluginTables,
   resolveSchema,
   SETTINGS_TABLE,
@@ -13,55 +14,153 @@ import {
 
 import { plugins as packagePlugins } from "../src/plugins";
 
+/** Each table's rows, and its index items after `#`. */
+const partitionsOf = (tables: readonly { readonly name: string }[]) =>
+  tables.flatMap(({ name }) => [name, `${name}#*`]);
+
 /**
- * The partitions the managed server's items use: each table's rows of core
- * and `plugins`, the plugins the server runs, and its index items after
- * `#`, the log and lease tables of batched aggregates included.
+ * The partitions the managed server reads: the tables of core and
+ * `plugins`, the plugins the server runs, the settings rows, and the log and
+ * lease tables of batched aggregates.
  */
 export const dynamoDBLeadingKeys = (
   plugins: readonly PluginTables[] = packagePlugins,
 ): string[] =>
-  [
+  partitionsOf([
     ...toolingTargetOf(plugins).schema.tables,
     ...resolveSchema([aggregateBatchingModule]).tables,
     SETTINGS_TABLE,
-  ].flatMap(({ name }) => [name, `${name}#*`]);
+  ]);
 
+/**
+ * The partitions the managed server writes: its plugins' tables and the
+ * aggregate log. Core's tables and the settings rows change only through
+ * the CLI, and third-party plugins share the function's role.
+ */
+export const dynamoDBWriteLeadingKeys = (
+  plugins: readonly PluginTables[] = packagePlugins,
+): string[] => {
+  const core = new Set(coreTarget.schema.tables.map(({ name }) => name));
+  return partitionsOf([
+    ...toolingTargetOf(plugins).schema.tables.filter(
+      ({ name }) => !core.has(name),
+    ),
+    ...resolveSchema([aggregateBatchingModule]).tables,
+  ]);
+};
+
+/** The partitions a deployment reads and writes. */
+export interface DynamoDBAccess {
+  readonly read: readonly string[];
+  readonly write: readonly string[];
+}
+
+const READ_ACTIONS = [
+  "dynamodb:BatchGetItem",
+  "dynamodb:ConditionCheckItem",
+  "dynamodb:GetItem",
+  "dynamodb:Query",
+];
+
+// The key-value store writes with TransactWriteItems and deletes consumed
+// aggregate log rows with BatchWriteItem.
+const WRITE_ACTIONS = [
+  "dynamodb:BatchWriteItem",
+  "dynamodb:DeleteItem",
+  "dynamodb:PutItem",
+  "dynamodb:TransactWriteItems",
+  "dynamodb:UpdateItem",
+];
+
+const statementsOf = (
+  prefix: string,
+  tableArn: string,
+  access: DynamoDBAccess,
+) => [
+  {
+    Sid: `${prefix}Read`,
+    Action: READ_ACTIONS,
+    Condition: {
+      "ForAllValues:StringLike": { "dynamodb:LeadingKeys": [...access.read] },
+    },
+    Effect: "Allow",
+    Resource: [tableArn],
+  },
+  {
+    Sid: `${prefix}Write`,
+    Action: WRITE_ACTIONS,
+    Condition: {
+      "ForAllValues:StringLike": { "dynamodb:LeadingKeys": [...access.write] },
+    },
+    Effect: "Allow",
+    Resource: [tableArn],
+  },
+];
+
+const sameAccess = (left: DynamoDBAccess, right: DynamoDBAccess) =>
+  [left.read, left.write].every(
+    (keys, at) =>
+      JSON.stringify([...keys].sort()) ===
+      JSON.stringify([...[right.read, right.write][at]!].sort()),
+  );
+
+/**
+ * The function's DynamoDB access: `plugins`' partitions, and while a deploy
+ * rolls out, `previous`, the deployment it replaces, whose version the edges
+ * keep running for minutes. The next deploy drops `previous`.
+ */
 export const buildDynamoDBPolicy = (
   region: string,
   accountId: string,
   tableName: string,
   plugins: readonly PluginTables[] = packagePlugins,
+  previous?: DynamoDBAccess,
 ) => {
   const tableArn = `arn:aws:dynamodb:${region}:${accountId}:table/${tableName}`;
+  const current = {
+    read: dynamoDBLeadingKeys(plugins),
+    write: dynamoDBWriteLeadingKeys(plugins),
+  };
   return {
     Version: "2012-10-17",
     Statement: [
-      {
-        // The key-value store reads with BatchGetItem and Query, writes with
-        // TransactWriteItems, and deletes consumed aggregate log rows with
-        // BatchWriteItem.
-        Action: [
-          "dynamodb:BatchGetItem",
-          "dynamodb:BatchWriteItem",
-          "dynamodb:ConditionCheckItem",
-          "dynamodb:DeleteItem",
-          "dynamodb:GetItem",
-          "dynamodb:PutItem",
-          "dynamodb:Query",
-          "dynamodb:TransactWriteItems",
-          "dynamodb:UpdateItem",
-        ],
-        Condition: {
-          "ForAllValues:StringLike": {
-            "dynamodb:LeadingKeys": dynamoDBLeadingKeys(plugins),
-          },
-        },
-        Effect: "Allow",
-        Resource: [tableArn],
-      },
+      ...statementsOf("HotUpdater", tableArn, current),
+      ...(previous === undefined || sameAccess(previous, current)
+        ? []
+        : statementsOf("HotUpdaterPrevious", tableArn, previous)),
     ],
   };
+};
+
+type PolicyStatement = {
+  readonly Sid?: string;
+  readonly Action?: string | readonly string[];
+  readonly Condition?: Record<string, Record<string, string | string[]>>;
+};
+
+/**
+ * The access a policy document gives its current deployment, read back so
+ * the next deploy keeps it while it rolls out. A policy from before the
+ * split has one statement for both.
+ */
+export const dynamoDBAccessOf = (
+  document: string,
+): DynamoDBAccess | undefined => {
+  const { Statement = [] } = JSON.parse(document) as {
+    readonly Statement?: readonly PolicyStatement[];
+  };
+  const keysOf = (statement: PolicyStatement | undefined) => {
+    const keys =
+      statement?.Condition?.["ForAllValues:StringLike"]?.[
+        "dynamodb:LeadingKeys"
+      ];
+    return keys === undefined ? undefined : [keys].flat();
+  };
+  const read = keysOf(Statement.find(({ Sid }) => Sid === "HotUpdaterRead"));
+  const write = keysOf(Statement.find(({ Sid }) => Sid === "HotUpdaterWrite"));
+  if (read !== undefined && write !== undefined) return { read, write };
+  const legacy = keysOf(Statement.find(({ Sid }) => Sid === undefined));
+  return legacy === undefined ? undefined : { read: legacy, write: legacy };
 };
 
 export const buildS3Policy = (bucketName: string) => {
@@ -113,6 +212,8 @@ export const LAMBDA_EDGE_TRUST_POLICY = {
   ],
 };
 
+const DYNAMODB_POLICY_NAME = "HotUpdaterDynamoDBReadAccess";
+
 export class IAMManager {
   private region: string;
   private credentials: { accessKeyId: string; secretAccessKey: string };
@@ -150,6 +251,27 @@ export class IAMManager {
     }
   }
 
+  /** The access the role gives the deployment it has now, if any. */
+  private async readDynamoDBAccess(
+    iamClient: IAM,
+    roleName: string,
+  ): Promise<DynamoDBAccess | undefined> {
+    try {
+      const { PolicyDocument } = await iamClient.getRolePolicy({
+        PolicyName: DYNAMODB_POLICY_NAME,
+        RoleName: roleName,
+      });
+      return PolicyDocument === undefined
+        ? undefined
+        : dynamoDBAccessOf(decodeURIComponent(PolicyDocument));
+    } catch (error) {
+      if (error instanceof Error && error.name === "NoSuchEntityException") {
+        return undefined;
+      }
+      throw error;
+    }
+  }
+
   private async ensureDynamoDBPolicy(
     iamClient: IAM,
     roleName: string,
@@ -157,11 +279,20 @@ export class IAMManager {
     tableName: string,
     plugins: readonly PluginTables[],
   ): Promise<void> {
+    // The edges run the deployment it replaces until the distribution
+    // deploys, so its access stays until the next init.
+    const previous = await this.readDynamoDBAccess(iamClient, roleName);
     await iamClient.putRolePolicy({
       PolicyDocument: JSON.stringify(
-        buildDynamoDBPolicy(this.region, accountId, tableName, plugins),
+        buildDynamoDBPolicy(
+          this.region,
+          accountId,
+          tableName,
+          plugins,
+          previous,
+        ),
       ),
-      PolicyName: "HotUpdaterDynamoDBReadAccess",
+      PolicyName: DYNAMODB_POLICY_NAME,
       RoleName: roleName,
     });
   }

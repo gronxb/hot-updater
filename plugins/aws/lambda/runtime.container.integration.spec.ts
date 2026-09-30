@@ -10,6 +10,7 @@ import {
   HeadBucketCommand,
   ListBucketsCommand,
   ListObjectsV2Command,
+  PutObjectCommand,
   S3Client,
 } from "@aws-sdk/client-s3";
 import { PutParameterCommand, SSMClient } from "@aws-sdk/client-ssm";
@@ -110,14 +111,20 @@ export const notes = definePlugin({
  * passes the CLI's settings, which the function's runtime module ignores
  * for the table and bucket init set up.
  */
-const DEFINITION = `import { dynamoDB, plugins, s3Storage } from "@hot-updater/aws";
+const DEFINITION = `import { fromNodeProviderChain } from "@aws-sdk/credential-providers";
+import { dynamoDB, plugins, s3Storage } from "@hot-updater/aws";
 import { createHotUpdater } from "@hot-updater/server";
 
 import { notes } from "./notes";
 
+const awsOptions = {
+  region: "the CLI's",
+  credentials: fromNodeProviderChain(),
+};
+
 export const hotUpdater = createHotUpdater({
-  database: dynamoDB({ region: "the CLI's", tableName: "the CLI's" }),
-  storage: [s3Storage({ region: "the CLI's", bucketName: "the CLI's" })],
+  database: dynamoDB({ ...awsOptions, tableName: "the CLI's" }),
+  storage: [s3Storage({ ...awsOptions, bucketName: "the CLI's" })],
   plugins: [...plugins, notes],
 });
 `;
@@ -454,6 +461,7 @@ describe.sequential("aws lambda runtime acceptance", () => {
     await buildLambdaFromDefinition({
       definition: path.join(definitionProjectDir, "hotUpdater.ts"),
       packageRoot: path.join(WORKSPACE_ROOT, "plugins/aws"),
+      projectRoot: definitionProjectDir,
       lambdaDir: definitionRuntimeDir,
     });
     await writeFile(
@@ -767,6 +775,76 @@ describe.sequential("aws lambda runtime acceptance", () => {
       }),
     );
     expect(((await reported.json()) as { status?: string }).status).toBe("204");
+  });
+
+  it("signs the download URLs a project's definition serves for the request's distribution", async () => {
+    const bundle = toRuntimeBundle({
+      id: "00000000-0000-0000-0000-000000000002",
+      platform: "ios",
+      gitCommitHash: null,
+      manifestStorageUri: "storage://unused/manifest.json",
+      manifestFileHash: "manifest-hash",
+      assetBaseStorageUri: "storage://assets",
+    });
+    await s3Client.send(
+      new PutObjectCommand({
+        Bucket: S3_BUCKET_NAME,
+        Key: `bundles/${bundle.id}/manifest.json`,
+        Body: JSON.stringify({
+          bundleId: bundle.id,
+          assets: {
+            "index.ios.bundle": {
+              fileHash: "target-hbc-hash",
+              downloadFileHash: "a".repeat(64),
+              downloadByteSize: 1_000,
+            },
+          },
+        }),
+        ContentType: "application/json",
+      }),
+    );
+    await seedHotUpdater.core.deploy([
+      {
+        bundle,
+        release: {
+          channel: "production",
+          enabled: true,
+          fingerprintHash: null,
+          message: "signed",
+          shouldForceUpdate: false,
+          targetAppVersion: "1.0",
+        },
+      },
+    ]);
+
+    const response = await invokeLambda(
+      definitionLambdaPort,
+      createCloudFrontEvent({
+        path: `/artifacts/v1/${bundle.id}/from/00000000-0000-0000-0000-000000000000`,
+        headers: new Headers({ "x-api-key": rawApiKey }),
+      }),
+    );
+    const payload = (await response.json()) as {
+      body?: string;
+      status?: string;
+    };
+    expect(payload.status).toBe("200");
+    const artifacts = (await readLambdaJson(payload)) as {
+      manifestUrl?: string;
+      assets?: Record<string, { file?: { url?: string } }>;
+    };
+
+    // Signed with the key pair in SSM, for the distribution the request came through.
+    const manifestUrl = new URL(artifacts.manifestUrl!);
+    expect(manifestUrl.origin).toBe(PUBLIC_BASE_URL);
+    expect(manifestUrl.pathname).toBe(`/bundles/${bundle.id}/manifest.json`);
+    expect(manifestUrl.searchParams.get("Key-Pair-Id")).toBe(
+      CLOUDFRONT_KEY_PAIR_ID,
+    );
+    expect(manifestUrl.searchParams.get("Signature")).toBeTruthy();
+    expect(
+      new URL(artifacts.assets!["index.ios.bundle"]!.file!.url!).origin,
+    ).toBe(PUBLIC_BASE_URL);
   });
 });
 

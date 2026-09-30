@@ -3,6 +3,7 @@ import { createRequire } from "module";
 import os from "os";
 import path from "path";
 
+import { InitError } from "@hot-updater/cli-tools";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { buildLambdaFromDefinition } from "./managedLambda";
@@ -13,6 +14,9 @@ const packageRoot = path.resolve(import.meta.dirname, "..");
 const DEFINITION = `import { dynamoDB, plugins, s3Storage } from "@hot-updater/aws";
 import { createHotUpdater } from "@hot-updater/server";
 import { definePlugin, defineTable } from "@hot-updater/server/plugins";
+import { GetCallerIdentityCommand, STSClient } from "@aws-sdk/client-sts";
+
+const whoAmI = () => new STSClient({}).send(new GetCallerIdentityCommand({}));
 
 const notes = definePlugin({
   id: "notes",
@@ -30,7 +34,8 @@ const notes = definePlugin({
         method: "GET",
         path: "/notes/:id",
         access: "client",
-        handler: async () => Response.json({ from: "sample notes plugin" }),
+        handler: async () =>
+          Response.json({ from: "sample notes plugin", whoAmI: typeof whoAmI }),
       },
     ],
   }),
@@ -82,7 +87,12 @@ describe("the managed Lambda@Edge function from a project's server definition", 
     const definition = path.join(project, "hotUpdater.ts");
     await fs.writeFile(definition, DEFINITION);
 
-    await buildLambdaFromDefinition({ definition, packageRoot, lambdaDir });
+    await buildLambdaFromDefinition({
+      definition,
+      packageRoot,
+      projectRoot: project,
+      lambdaDir,
+    });
 
     // The function's code is one file; the entry that built it is gone.
     await expect(fs.readdir(lambdaDir)).resolves.toEqual(["index.cjs"]);
@@ -91,9 +101,16 @@ describe("the managed Lambda@Edge function from a project's server definition", 
     // Init replaces these with the table, bucket, and key pair it set up.
     expect(code).toContain("HotUpdater.DYNAMODB_TABLE_NAME");
     expect(code).toContain("HotUpdater.CLOUDFRONT_KEY_PAIR_ID");
-    // The Lambda runtime provides the AWS SDK; everything else is inside.
+    // The Lambda runtime provides the AWS SDK clients the prebuilt function
+    // takes from it; a client a plugin brings is bundled at its version.
     expect(code).toMatch(/require\("@aws-sdk\/client-dynamodb"\)/u);
+    expect(code).not.toMatch(/require\("@aws-sdk\/client-sts"\)/u);
+    expect(code).toContain("GetCallerIdentityCommand");
     expect(code).not.toMatch(/require\("@hot-updater\//u);
+    // None of the machine's paths are deployed.
+    expect(code).not.toContain(project);
+    expect(code).not.toContain(await fs.realpath(project));
+    expect(code).not.toContain(os.homedir());
 
     // It loads as the function does, and exports its handler.
     globalThis.HotUpdater = {
@@ -117,11 +134,45 @@ describe("the managed Lambda@Edge function from a project's server definition", 
       `import { notes } from "@acme/missing-plugin";\nexport const hotUpdater = notes;\n`,
     );
 
-    await expect(
-      buildLambdaFromDefinition({ definition, packageRoot, lambdaDir }),
-    ).rejects.toThrow(
-      `Could not build the AWS Lambda@Edge function with ${path.join(lambdaDir, "managed.ts")}`,
+    const failure = buildLambdaFromDefinition({
+      definition,
+      packageRoot,
+      projectRoot: project,
+      lambdaDir,
+    });
+    await expect(failure).rejects.toBeInstanceOf(InitError);
+    await expect(failure).rejects.toThrow(
+      /^Could not bundle hotUpdater\.ts into the AWS Lambda@Edge function: .*hotUpdater\.ts:1:\d+: ERROR: Could not resolve "@acme\/missing-plugin" Fix the server definition, or host the server yourself\.$/su,
     );
     await expect(fs.readdir(lambdaDir)).resolves.toEqual([]);
+  });
+
+  it("offers the definition every export of @hot-updater/aws", async () => {
+    const names = Object.keys(await import("@hot-updater/aws")).sort();
+    const definition = path.join(project, "hotUpdater.ts");
+    await fs.writeFile(
+      definition,
+      `import { ${names.join(", ")} } from "@hot-updater/aws";
+import { createHotUpdater } from "@hot-updater/server";
+
+export const imported = [${names.join(", ")}];
+export default createHotUpdater({
+  database: dynamoDB({ tableName: "the CLI's" }),
+  storage: [s3Storage({ bucketName: "the CLI's" })],
+  plugins,
+});
+`,
+    );
+
+    await buildLambdaFromDefinition({
+      definition,
+      packageRoot,
+      projectRoot: project,
+      lambdaDir,
+    });
+
+    expect(names).toEqual(
+      expect.arrayContaining(["dynamoDB", "plugins", "s3Storage"]),
+    );
   });
 });

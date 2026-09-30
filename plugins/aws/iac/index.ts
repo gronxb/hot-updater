@@ -5,8 +5,8 @@ import {
   getHotUpdaterInitInputEnv,
   getInitProviderEnvVars,
   getInitProviderTextPromptValues,
-  importManagedServerDefinition,
   link,
+  loadManagedServerDefinition,
   makeEnv,
   p,
   printAppSetup,
@@ -19,6 +19,7 @@ import {
 import type { PluginTables } from "@hot-updater/server/database";
 import {
   clientAuthOf,
+  clientEndpointsOf,
   clientPluginsOf,
   managedServerDefinitionOf,
   provisionClientCredential,
@@ -341,18 +342,34 @@ export const runInit = async ({
   });
 
   // The server the function runs: the package's, or the project's edited
-  // definition, which reads what .env.hotupdater now holds. Its function is
-  // bundled first, so a definition that cannot run there fails before any
-  // resource changes.
+  // definition, which reads what .env.hotupdater now holds. It is checked and
+  // its function bundled before init changes any resource. CloudFront sends
+  // the paths of its plugins' client endpoints to the function.
   const server = definition.edited
-    ? managedServerDefinitionOf(
-        (await importManagedServerDefinition(definition, process.cwd()))
-          .hotUpdater,
-        { provider: "AWS", database: "dynamoDB", storage: "s3" },
-      )
-    : undefined;
-  const serverPlugins = server?.plugins ?? plugins;
-  const pluginPaths = pluginCacheBehaviorPaths(server?.clientEndpoints ?? []);
+    ? await loadManagedServerDefinition(definition, (hotUpdater) => {
+        const loaded = managedServerDefinitionOf(hotUpdater, {
+          provider: "AWS",
+          database: "dynamoDB",
+          storage: "s3",
+          resources: {
+            database: {
+              region: bucketRegion,
+              tableName: resolvedDynamoDBTableName,
+            },
+            storage: { bucketName },
+          },
+        });
+        return {
+          plugins: loaded.plugins,
+          pluginPaths: pluginCacheBehaviorPaths(loaded.clientEndpoints),
+        };
+      })
+    : {
+        plugins,
+        pluginPaths: pluginCacheBehaviorPaths(clientEndpointsOf(plugins)),
+      };
+  const serverPlugins = server.plugins;
+  const { pluginPaths } = server;
   const definitionLambda = definition.edited
     ? await stageLambda(definition.path)
     : undefined;
