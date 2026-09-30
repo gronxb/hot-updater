@@ -22,7 +22,7 @@ import {
 
 import type { HotUpdaterDatabase } from "../../database/database";
 import type { Page } from "../../database/engineReads";
-import { EVENT_LIST_RANGE_MS } from "../../insights/provider";
+import { EVENT_LIST_RANGE_MS } from "./provider";
 import {
   bundlePairKey,
   insightsIdentity,

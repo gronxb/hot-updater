@@ -1,13 +1,13 @@
 export type { HotUpdaterHandler, HotUpdaterHandlers } from "./handler";
-export { createInsightsProvider } from "./insights/provider";
-export type * from "./insights/domain";
-export type * from "./insights/types";
-export { API_KEY_HEADER_NAME } from "./apiKeys";
+export { createInsightsProvider } from "./plugins/insights/provider";
+export type * from "./plugins/insights/domain";
+export type * from "./plugins/insights/types";
+export { API_KEY_HEADER_NAME } from "./plugins/api-keys/apiKeys";
 export type {
   ApiKeyManagementAPI,
   ApiKeyMetadata,
   CreatedApiKey,
-} from "./apiKeys";
+} from "./plugins/api-keys/apiKeys";
 export { createHotUpdater } from "./createHotUpdaterCore";
 export type {
   ClientAccessPolicy,

@@ -10,10 +10,10 @@ import { createPluginTestHarness } from "@hot-updater/test-utils";
 import { describe, expect, it } from "vitest";
 
 import * as engine from "../../database";
-import { InsightsBadRequestError } from "../../insights/errors";
-import { createInsightsProvider } from "../../insights/provider";
-import type { InsightsEventPageInput } from "../../insights/types";
+import { InsightsBadRequestError } from "./errors";
 import { createInsightsModel, insights } from "./index";
+import { createInsightsProvider } from "./provider";
+import type { InsightsEventPageInput } from "./types";
 
 const HOUR = 3_600_000;
 const DAY = 86_400_000;

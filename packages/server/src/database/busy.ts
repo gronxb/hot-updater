@@ -1,16 +1,4 @@
-import { DatabaseConflictError } from "../database/errors";
-
-export class InsightsBadRequestError extends Error {
-  readonly name = "InsightsBadRequestError";
-}
-
-export class InsightsPayloadTooLargeError extends Error {
-  readonly name = "InsightsPayloadTooLargeError";
-
-  constructor(readonly maximumBytes: number) {
-    super(`Event payload exceeds ${maximumBytes} bytes`);
-  }
-}
+import { DatabaseConflictError } from "./errors";
 
 /** Error names the AWS SDKs give a throttled request, as their retry strategy classifies them. */
 const THROTTLING_NAMES = new Set([

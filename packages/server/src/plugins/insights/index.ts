@@ -10,12 +10,7 @@ import type {
 
 import { HotUpdaterConfigError } from "../../assembly/configError";
 import type { HotUpdaterDatabase } from "../../database/database";
-import { isDatabaseBusyError } from "../../insights/errors";
-import { createInsightsProvider } from "../../insights/provider";
-import {
-  createInsightsRouteHandlers,
-  INSIGHTS_ROUTES,
-} from "../../insights/routes";
+import { isDatabaseBusyError } from "../../database/busy";
 import { markBuiltIn } from "../builtIn";
 import { definePlugin, type PluginEndpoint } from "../definePlugin";
 import {
@@ -25,6 +20,7 @@ import {
   type InsightsDeletionOptions,
 } from "./deletion";
 import { createInsightsModel } from "./model";
+import { createInsightsProvider } from "./provider";
 import {
   countEvents,
   countLatestEvents,
@@ -34,6 +30,7 @@ import {
   listEvents,
 } from "./reads";
 import { recordEvent } from "./recordEvent";
+import { createInsightsRouteHandlers, INSIGHTS_ROUTES } from "./routes";
 import {
   createInsightsSchema,
   DAILY_RETENTION_DAYS,
@@ -43,7 +40,9 @@ import {
 } from "./schema";
 
 export type { InsightsDeletion, InsightsDeletionOptions } from "./deletion";
+export type * from "./domain";
 export { createInsightsModel } from "./model";
+export { createInsightsProvider } from "./provider";
 export { insightsIdentity, type InsightsIdentityParts } from "./recordEvent";
 export {
   createInsightsSchema,
@@ -52,6 +51,7 @@ export {
   type InsightsRetention,
   type InsightsSchema,
 } from "./schema";
+export type * from "./types";
 
 const createInsightsApi = (
   db: HotUpdaterDatabase<InsightsSchema>,
