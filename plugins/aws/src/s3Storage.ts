@@ -80,6 +80,18 @@ export function s3Storage(
     return value ? `${value}/` : "";
   };
 
+  /**
+   * The URI `put` returns for the key, or null for a key no `put` writes,
+   * such as a folder marker that ends in "/".
+   */
+  const getListedStorageUri = (key: string) => {
+    try {
+      return createStorageUri({ bucket: bucketName, key, protocol: "s3" });
+    } catch {
+      return null;
+    }
+  };
+
   const getRelativeKey = (key: string) => {
     if (!normalizedBasePath) {
       return key;
@@ -119,12 +131,16 @@ export function s3Storage(
           if (!object.Key) {
             continue;
           }
+          const storageUri = getListedStorageUri(object.Key);
+          if (storageUri === null) {
+            continue;
+          }
 
           objects.push({
             key: getRelativeKey(object.Key),
             lastModifiedAt: object.LastModified,
             size: object.Size ?? 0,
-            storageUri: `s3://${bucketName}/${object.Key}`,
+            storageUri,
           });
         }
 
