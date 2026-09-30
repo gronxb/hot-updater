@@ -1,8 +1,4 @@
-import {
-  generateHotUpdaterPlugins,
-  makeEnv,
-  writeHotUpdaterConfig,
-} from "@hot-updater/cli-tools";
+import { makeEnv, writeHotUpdaterFiles } from "@hot-updater/cli-tools";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
@@ -27,10 +23,6 @@ vi.mock("@hot-updater/cli-tools", async () => {
   return {
     ...actual,
     createHotUpdaterConfigScaffold: vi.fn().mockReturnValue({}),
-    generateHotUpdaterPlugins: vi.fn().mockResolvedValue({
-      status: "created",
-      path: "hotUpdater.plugins.ts",
-    }),
     makeEnv: vi.fn().mockResolvedValue(""),
     p: {
       ...actual.p,
@@ -49,9 +41,8 @@ vi.mock("@hot-updater/cli-tools", async () => {
         }
       }),
     },
-    writeHotUpdaterConfig: vi.fn().mockResolvedValue({
-      status: "created",
-      path: "hot-updater.config.ts",
+    writeHotUpdaterFiles: vi.fn().mockResolvedValue({
+      config: { status: "created", path: "hot-updater.config.ts" },
     }),
   };
 });
@@ -83,14 +74,18 @@ describe("setEnv", () => {
         preserveKeys: ["GOOGLE_APPLICATION_CREDENTIALS"],
       },
     );
-    expect(vi.mocked(writeHotUpdaterConfig)).toHaveBeenCalledOnce();
-    const scaffold = vi.mocked(writeHotUpdaterConfig).mock.calls[0]?.[0];
-    expect(scaffold?.text).toContain(
+    expect(vi.mocked(writeHotUpdaterFiles)).toHaveBeenCalledOnce();
+    const [scaffold, options] =
+      vi.mocked(writeHotUpdaterFiles).mock.calls[0] ?? [];
+    // The credential helper belongs to the server definition.
+    expect(scaffold?.text).not.toContain("applicationDefault");
+    expect(scaffold?.definition.text).toContain(
       "// Reuse working application-default credentials (ADC).",
     );
-    expect(vi.mocked(generateHotUpdaterPlugins)).toHaveBeenCalledWith(
-      "@hot-updater/firebase",
+    expect(scaffold?.definition.text).toContain(
+      'import { firebaseDatabase, firebaseStorage, plugins } from "@hot-updater/firebase";',
     );
+    expect(options).toMatchObject({ settings: "Firebase" });
   });
 });
 

@@ -2,7 +2,7 @@ import {
   colors,
   confirmInitInputPersistence,
   ensureInstallPackages,
-  generateHotUpdaterPlugins,
+  assertManagedServerDefinition,
   getHotUpdaterInitInputEnv,
   getInitProviderEnvVars,
   getInitProviderTextPromptValues,
@@ -12,7 +12,7 @@ import {
   printAppSetup,
   readHotUpdaterInitEnv,
   type RunInitOptions,
-  writeHotUpdaterConfig,
+  writeHotUpdaterFiles,
 } from "@hot-updater/cli-tools";
 import {
   clientAuthOf,
@@ -110,6 +110,8 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
 
   const { awsProfile, configAuthMode, credentials, mode } =
     await resolveAwsAuth(providerEnv, nonInteractive);
+  const scaffold = getConfigScaffold(build, configAuthMode);
+  await assertManagedServerDefinition(scaffold, process.cwd());
   const resolvedAuthInputs = {
     ...savedInputs,
     accessKeyId:
@@ -407,11 +409,6 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
     accountId,
   });
 
-  // Create configuration file
-  const configWriteResult = await writeHotUpdaterConfig(
-    getConfigScaffold(build, configAuthMode),
-  );
-
   await makeEnv({
     [AWS_INIT_PROVIDER.inputs.distributionId.envKey]: distributionId,
   });
@@ -428,16 +425,10 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
   }
 
   p.log.success("Generated '.env.hotupdater' file with AWS settings.");
-  if (configWriteResult.status === "created") {
-    p.log.success("Generated 'hot-updater.config.ts' file with AWS settings.");
-  } else if (configWriteResult.status === "merged") {
-    p.log.success("Updated 'hot-updater.config.ts' file with AWS settings.");
-  } else {
-    p.log.warn(
-      `Kept existing 'hot-updater.config.ts' unchanged: ${configWriteResult.reason}`,
-    );
-  }
-  await generateHotUpdaterPlugins("@hot-updater/aws");
+  await writeHotUpdaterFiles(scaffold, {
+    cwd: process.cwd(),
+    settings: "AWS",
+  });
 
   // The app's server URL is the CloudFront domain.
   printAppSetup({

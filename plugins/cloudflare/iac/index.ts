@@ -5,7 +5,7 @@ import path from "path";
 import {
   confirmInitInputPersistence,
   copyDirToTmp,
-  generateHotUpdaterPlugins,
+  assertManagedServerDefinition,
   getHotUpdaterInitInputEnv,
   getInitProviderEnvVars,
   getInitProviderTextPromptValues,
@@ -17,7 +17,7 @@ import {
   readHotUpdaterInitEnv,
   type RunInitOptions,
   transformTemplate,
-  writeHotUpdaterConfig,
+  writeHotUpdaterFiles,
 } from "@hot-updater/cli-tools";
 import {
   clientPluginsOf,
@@ -173,6 +173,8 @@ const deployWorker = async (
 
 export const runInit = async ({ build, envFile }: RunInitOptions) => {
   const cwd = getCwd();
+  const scaffold = getConfigScaffold(build);
+  await assertManagedServerDefinition(scaffold, cwd);
   const nonInteractive = envFile !== undefined;
   const initEnvSources = await readHotUpdaterInitEnv(cwd, envFile);
   const { managedEnv } = initEnvSources;
@@ -711,25 +713,8 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
     await database.dispose?.();
   }
 
-  const configWriteResult = await writeHotUpdaterConfig(
-    getConfigScaffold(build),
-  );
-
   p.log.success("Generated '.env.hotupdater' file with Cloudflare settings.");
-  if (configWriteResult.status === "created") {
-    p.log.success(
-      "Generated 'hot-updater.config.ts' file with Cloudflare settings.",
-    );
-  } else if (configWriteResult.status === "merged") {
-    p.log.success(
-      "Updated 'hot-updater.config.ts' file with Cloudflare settings.",
-    );
-  } else {
-    p.log.warn(
-      `Kept existing 'hot-updater.config.ts' unchanged: ${configWriteResult.reason}`,
-    );
-  }
-  await generateHotUpdaterPlugins("@hot-updater/cloudflare");
+  await writeHotUpdaterFiles(scaffold, { cwd, settings: "Cloudflare" });
 
   printAppSetup({
     ...(subdomains.subdomain

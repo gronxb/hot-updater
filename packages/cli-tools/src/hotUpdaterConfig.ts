@@ -20,6 +20,8 @@ import {
   type ProviderConfig,
   renderImportStatements,
 } from "./ConfigBuilder";
+import { InitError } from "./initOptions";
+import { p } from "./prompts";
 
 export type CreateHotUpdaterConfigScaffoldOptions = {
   build: BuildType;
@@ -61,6 +63,11 @@ export type HotUpdaterConfigScaffold = {
       callee: string;
     };
     intermediateCode: string;
+    /**
+     * Definitions init wrote before for this provider, such as with other
+     * credentials, which this one replaces rather than keeps.
+     */
+    replaces?: readonly string[];
   };
 };
 
@@ -77,10 +84,11 @@ export type WriteHotUpdaterConfigResult = {
 
 export type WriteServerDefinitionResult = {
   /**
-   * `kept` when the file already defines another server: the project's own,
-   * which init never overwrites.
+   * `updated` when it replaced one init wrote before, and `kept` when the
+   * file already defines another server: the project's own, which init
+   * never overwrites.
    */
-  status: "created" | "unchanged" | "kept";
+  status: "created" | "updated" | "unchanged" | "kept";
   path: string;
 };
 
@@ -729,16 +737,20 @@ export const writeHotUpdaterConfig = async (
 
 /**
  * How the server definition at `filePath` compares with the scaffold's:
- * `missing`, `unchanged`, or `edited`, the project's own.
+ * `missing`, `unchanged`, `outdated` (one init wrote before, which the
+ * scaffold replaces), or `edited`, the project's own.
  */
 export const readServerDefinitionStatus = async (
   scaffold: HotUpdaterConfigScaffold,
   filePath: string,
-): Promise<"missing" | "unchanged" | "edited"> => {
+): Promise<"missing" | "unchanged" | "outdated" | "edited"> => {
   const text = await readTextFile(filePath);
   if (text === null) return "missing";
-  return text.trim() === scaffold.definition.text.trim()
-    ? "unchanged"
+  if (text.trim() === scaffold.definition.text.trim()) return "unchanged";
+  return (scaffold.definition.replaces ?? []).some(
+    (previous) => text.trim() === previous.trim(),
+  )
+    ? "outdated"
     : "edited";
 };
 
@@ -751,13 +763,111 @@ export const writeServerDefinition = async (
   filePath: string,
 ): Promise<WriteServerDefinitionResult> => {
   const status = await readServerDefinitionStatus(scaffold, filePath);
-  if (status === "missing") {
+  if (status === "missing" || status === "outdated") {
     await fs.mkdir(path.dirname(filePath), { recursive: true });
     await fs.writeFile(filePath, `${scaffold.definition.text}\n`, "utf-8");
-    return { status: "created", path: filePath };
+    return {
+      status: status === "missing" ? "created" : "updated",
+      path: filePath,
+    };
   }
   return {
     status: status === "unchanged" ? "unchanged" : "kept",
     path: filePath,
   };
+};
+
+/**
+ * The string literal `server` of the config at `configPath`, or undefined
+ * when there is no config, it sets no `server`, or sets one dynamically.
+ */
+export const readConfiguredServer = async (
+  configPath = HOT_UPDATER_CONFIG_PATH,
+): Promise<string | undefined> => {
+  const text = await readTextFile(configPath);
+  const source = text === null ? null : parseConfigSource(text);
+  const config = source === null ? null : findDefineConfigObject(source);
+  return config === null
+    ? undefined
+    : findServerPointer(config.objectExpression);
+};
+
+/**
+ * The server definition init deploys: the one an existing
+ * hot-updater.config.ts points at, or the one it writes.
+ */
+export const resolveServerDefinitionPath = async (
+  scaffold: HotUpdaterConfigScaffold,
+  cwd: string,
+): Promise<string> =>
+  path.resolve(
+    cwd,
+    (await readConfiguredServer(path.join(cwd, HOT_UPDATER_CONFIG_PATH))) ??
+      scaffold.server,
+  );
+
+/**
+ * Writes hot-updater.config.ts and the server definition it points at, and
+ * says what it did. `settings` names the provider in messages, such as
+ * "Supabase".
+ */
+export const writeHotUpdaterFiles = async (
+  scaffold: HotUpdaterConfigScaffold,
+  { cwd = process.cwd(), settings }: { cwd?: string; settings: string },
+): Promise<{
+  readonly config: WriteHotUpdaterConfigResult;
+  readonly definition?: WriteServerDefinitionResult;
+}> => {
+  const config = await writeHotUpdaterConfig(
+    scaffold,
+    path.join(cwd, HOT_UPDATER_CONFIG_PATH),
+  );
+  if (config.status === "created") {
+    p.log.success(
+      `Generated '${HOT_UPDATER_CONFIG_PATH}' file with ${settings} settings.`,
+    );
+  } else if (config.status === "merged") {
+    p.log.success(
+      `Updated '${HOT_UPDATER_CONFIG_PATH}' file with ${settings} settings.`,
+    );
+  } else {
+    p.log.warn(
+      `Kept existing '${HOT_UPDATER_CONFIG_PATH}' unchanged: ${config.reason} Point its server at your server definition.`,
+    );
+  }
+  if (config.server === undefined) return { config };
+
+  const definition = await writeServerDefinition(
+    scaffold,
+    path.resolve(cwd, config.server),
+  );
+  const shown = path.relative(cwd, definition.path);
+  if (definition.status === "created") {
+    p.log.success(
+      `Generated '${shown}': the server's database, storage, and plugins.`,
+    );
+  } else if (definition.status === "updated") {
+    p.log.success(`Updated '${shown}' with ${settings} settings.`);
+  } else if (definition.status === "kept") {
+    p.log.info(`Kept '${shown}': the project's own server definition.`);
+  }
+  return { config, definition };
+};
+
+/**
+ * Refuses a server definition the project edited: a managed server runs
+ * the definition init writes.
+ */
+export const assertManagedServerDefinition = async (
+  scaffold: HotUpdaterConfigScaffold,
+  cwd: string = process.cwd(),
+): Promise<void> => {
+  const definitionPath = await resolveServerDefinitionPath(scaffold, cwd);
+  if (
+    (await readServerDefinitionStatus(scaffold, definitionPath)) === "edited"
+  ) {
+    throw new InitError(
+      `${path.relative(cwd, definitionPath)} differs from the server definition init writes, which is the one this managed server runs. Restore it, or remove it and rerun init.`,
+    );
+  }
 };

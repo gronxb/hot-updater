@@ -3,7 +3,6 @@ import {
   ConfigBuilder,
   createHotUpdaterConfigScaffoldFromBuilder,
   type HotUpdaterConfigScaffold,
-  type ManagedHelperStatement,
   type ProviderConfig,
 } from "@hot-updater/cli-tools";
 
@@ -12,7 +11,7 @@ export type AwsConfigScaffoldAuthMode =
   | { mode: "local"; profile: string | null }
   | { mode: "sso"; profile: string };
 
-export const getConfigScaffold = (
+const renderConfigScaffold = (
   build: BuildType,
   authMode: AwsConfigScaffoldAuthMode,
 ): HotUpdaterConfigScaffold => {
@@ -32,59 +31,38 @@ export const getConfigScaffold = (
   })`,
   };
 
-  let helperStatements: ManagedHelperStatement[];
+  let awsOptions: string;
 
   switch (authMode.mode) {
     case "sso":
-      helperStatements = [
-        {
-          name: "awsOptions",
-          strategy: "merge-object",
-          replaceIncompatibleProperties: ["credentials"],
-          code: `
+      awsOptions = `
 const awsOptions = {
   region: process.env.HOT_UPDATER_S3_REGION!,
   credentials: fromSSO({ profile: process.env.HOT_UPDATER_AWS_PROFILE! }),
-};`.trim(),
-        },
-      ];
+};`.trim();
       break;
     case "local":
-      helperStatements = [
-        {
-          name: "awsOptions",
-          strategy: "merge-object",
-          replaceIncompatibleProperties: ["credentials"],
-          code: authMode.profile
-            ? `
+      awsOptions = authMode.profile
+        ? `
 const awsOptions = {
   region: process.env.HOT_UPDATER_S3_REGION!,
   credentials: fromIni({ profile: process.env.HOT_UPDATER_AWS_PROFILE! }),
 };`.trim()
-            : `
+        : `
 const awsOptions = {
   region: process.env.HOT_UPDATER_S3_REGION!,
   credentials: fromNodeProviderChain(),
-};`.trim(),
-        },
-      ];
+};`.trim();
       break;
     case "account":
-      helperStatements = [
-        {
-          name: "awsOptions",
-          strategy: "merge-object",
-          replaceIncompatibleProperties: ["credentials"],
-          code: `
+      awsOptions = `
 const awsOptions = {
   region: process.env.HOT_UPDATER_S3_REGION!,
   credentials: {
     accessKeyId: process.env.HOT_UPDATER_S3_ACCESS_KEY_ID!,
     secretAccessKey: process.env.HOT_UPDATER_S3_SECRET_ACCESS_KEY!,
   },
-};`.trim(),
-        },
-      ];
+};`.trim();
       break;
   }
 
@@ -92,9 +70,11 @@ const awsOptions = {
     .setBuildType(build)
     .setStorage(storageConfig)
     .setDatabase(databaseConfig)
-    .setIntermediateCode(
-      helperStatements.map((statement) => statement.code.trim()).join("\n\n"),
-    );
+    .setPlugins({
+      imports: [{ pkg: "@hot-updater/aws", named: ["plugins"] }],
+      configString: "plugins",
+    })
+    .setIntermediateCode(awsOptions);
 
   switch (authMode.mode) {
     case "sso":
@@ -113,9 +93,30 @@ const awsOptions = {
       break;
   }
 
-  return createHotUpdaterConfigScaffoldFromBuilder(builder, {
-    helperStatements,
-  });
+  return createHotUpdaterConfigScaffoldFromBuilder(builder);
+};
+
+/** Every way init authenticates the CLI, which only the credentials tell apart. */
+const AUTH_MODES: readonly AwsConfigScaffoldAuthMode[] = [
+  { mode: "account" },
+  { mode: "local", profile: null },
+  { mode: "local", profile: "profile" },
+  { mode: "sso", profile: "profile" },
+];
+
+export const getConfigScaffold = (
+  build: BuildType,
+  authMode: AwsConfigScaffoldAuthMode,
+): HotUpdaterConfigScaffold => {
+  const scaffold = renderConfigScaffold(build, authMode);
+  // A definition init wrote with other credentials is replaced, not kept.
+  const replaces = AUTH_MODES.map(
+    (other) => renderConfigScaffold(build, other).definition.text,
+  ).filter((text) => text !== scaffold.definition.text);
+  return {
+    ...scaffold,
+    definition: { ...scaffold.definition, replaces },
+  };
 };
 
 export const getConfigTemplate = (

@@ -46,7 +46,6 @@ const mockPlugins = vi.hoisted(() => ({
 }));
 
 vi.mock("@hot-updater/cli-tools", () => ({
-  HOT_UPDATER_PLUGINS_PATH: "hotUpdater.plugins.ts",
   colors: {
     blue: (value: string) => value,
     cyan: (value: string) => value,
@@ -165,7 +164,7 @@ describe("generate command", () => {
         [],
       );
       expect(mockCli.log.info).toHaveBeenCalledWith(
-        "No server config or hotUpdater.plugins.ts found, so the SQL holds core's tables only.",
+        "No server definition found, so the SQL holds core's tables only.",
       );
       expect(sql).toMatch(/CREATE TABLE IF NOT EXISTS `?bundles`?/u);
       expect(sql).toContain("private_hot_updater_settings");
@@ -180,7 +179,7 @@ describe("generate command", () => {
       path.join(tmpdir(), "hot-updater-plugin-sql-"),
     );
     mockPlugins.findPluginList.mockResolvedValue({
-      from: "hotUpdater.plugins.ts",
+      from: "src/hotUpdater.ts",
       plugins: [insights()],
     });
 
@@ -197,7 +196,7 @@ describe("generate command", () => {
         "utf-8",
       );
       expect(mockCli.log.info).toHaveBeenCalledWith(
-        "Adding the tables of the plugins in hotUpdater.plugins.ts.",
+        "Adding the tables of the plugins in src/hotUpdater.ts.",
       );
       expect(sql).toContain("bundle_events");
       expect(sql).toContain("schema.insights");

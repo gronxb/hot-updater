@@ -91,8 +91,8 @@ const configuredServerSource = async (
 /**
  * The project's plugin lists, in order: a server definition among `args`,
  * the one hot-updater.config.ts points at, then the default server modules,
- * each loaded only once the one before it is passed over. One that fails to
- * load is reported in `failures` and skipped.
+ * each loaded only once the one before it is passed over. A default module
+ * that fails to load is reported in `failures` and skipped.
  */
 async function* findPluginSources(
   args: readonly string[],
@@ -111,12 +111,8 @@ async function* findPluginSources(
     seen.add(source.configPath!);
     yield source;
   }
-  let configured: PluginSource | undefined;
-  try {
-    configured = await configuredServerSource(cwd);
-  } catch (error) {
-    failures.push(`hot-updater.config.ts: ${messageOf(error)}`);
-  }
+  // The definition the config names fails loudly, unlike a default guess.
+  const configured = await configuredServerSource(cwd);
   if (configured !== undefined) {
     if (seen.has(configured.configPath!)) {
       await configured.dispose();
