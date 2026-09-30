@@ -95,8 +95,10 @@ describe("API-key RPC access", () => {
       createConsoleRuntime({
         database: {
           name: "standalone-repository",
+          url: "https://updates.example.com/hot-updater/admin",
           core: {} as HotUpdaterCoreApi,
           fetchAdmin: async () => Response.json({ plugins: ["apiKeys"] }),
+          storage: [],
         },
       }),
       "reaches a self-hosted server",

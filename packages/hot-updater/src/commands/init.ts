@@ -33,6 +33,8 @@ const BUILD_ADAPTER_KEYS = ["bare", "rock", "expo"] as const;
 
 const REQUIRED_PACKAGES = {
   dependencies: ["@hot-updater/react-native"],
+  // The server definition init writes imports createHotUpdater.
+  devDependencies: ["@hot-updater/server"],
 };
 
 interface BuildAdapterChoice {
@@ -220,6 +222,7 @@ export const init = async (options: InitOptions = {}) => {
       ],
       devDependencies: [
         ...buildAdapterPackage.devDependencies,
+        ...REQUIRED_PACKAGES.devDependencies,
         ...providerPackage.devDependencies,
         providerPackage.packageName,
       ],

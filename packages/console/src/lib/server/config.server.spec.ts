@@ -57,10 +57,9 @@ describe("config.server", () => {
     const storageAdapter = createTestStorageAdapter();
 
     resolveConsoleConfigMock.mockResolvedValue({
-      console: { port: 1422 },
       database,
       plugins: [apiKeys()],
-      storage: storageAdapter,
+      storage: [storageAdapter],
     });
 
     const { isConfigLoaded, prepareConfig } = await import("./config.server");
@@ -81,8 +80,8 @@ describe("config.server", () => {
       apiKeys: true,
     });
     await expect(first.core.listChannels()).resolves.toEqual([]);
-    expect(first.storageAdapter).toBe(storageAdapter);
-    expect(second.storageAdapter).toBe(storageAdapter);
+    expect(first.storage).toEqual([storageAdapter]);
+    expect(second.storage).toEqual([storageAdapter]);
     expect(isConfigLoaded()).toBe(true);
   });
 
@@ -90,10 +89,16 @@ describe("config.server", () => {
     const fetchAdmin = vi.fn(async () =>
       Response.json({ adminProtocol: 2, plugins: ["insights"] }),
     );
+    const storage = [createTestStorageAdapter()];
     resolveConsoleConfigMock.mockResolvedValue({
-      console: {},
-      database: { name: "standalone-repository", core: {}, fetchAdmin },
-      storage: createTestStorageAdapter(),
+      database: {
+        name: "standalone-repository",
+        url: "https://updates.example.com/hot-updater/admin",
+        core: {},
+        fetchAdmin,
+        storage,
+      },
+      storage,
     });
 
     const { prepareConfig } = await import("./config.server");
@@ -121,9 +126,8 @@ describe("config.server", () => {
     resolveConsoleConfigMock
       .mockRejectedValueOnce(new Error("load failed"))
       .mockResolvedValueOnce({
-        console: { port: 1422 },
         database,
-        storage: storageAdapter,
+        storage: [storageAdapter],
       });
 
     const { prepareConfig } = await import("./config.server");
@@ -134,33 +138,28 @@ describe("config.server", () => {
 
     expect(resolveConsoleConfigMock).toHaveBeenCalledTimes(2);
     expect(recovered.config.database).toBe(database);
-    expect(recovered.storageAdapter).toBe(storageAdapter);
+    expect(recovered.storage).toEqual([storageAdapter]);
     expect(consoleErrorSpy).toHaveBeenCalledTimes(1);
   });
 
-  it("reports a missing console storage capability", async () => {
+  it("reads and deletes with storage that does not upload", async () => {
     const database = createTestDatabase("db");
     const storage = createStorageAdapter({
       name: "runtimeOnlyStorage",
       protocol: "s3",
       get: vi.fn(async () => ({ response: null })),
     });
-    const consoleErrorSpy = vi
-      .spyOn(console, "error")
-      .mockImplementation(() => undefined);
-
     resolveConsoleConfigMock.mockResolvedValue({
-      console: { port: 1422 },
       database,
-      storage,
+      storage: [storage],
     });
 
     const { prepareConfig } = await import("./config.server");
 
-    await expect(prepareConfig(request)).rejects.toThrow(
-      'Storage adapter "runtimeOnlyStorage" does not implement put.',
-    );
-    expect(consoleErrorSpy).toHaveBeenCalledOnce();
+    // The console never uploads, so the server's storage serves it as is.
+    await expect(prepareConfig(request)).resolves.toMatchObject({
+      storage: [storage],
+    });
   });
 
   it("rejects unauthorized requests before resolving runtime config", async () => {
@@ -183,9 +182,8 @@ describe("config.server", () => {
       .spyOn(console, "error")
       .mockImplementation(() => undefined);
     resolveConsoleConfigMock.mockResolvedValue({
-      console: { port: 1422 },
       database: { name: "old-provider", models: {} },
-      storage: createTestStorageAdapter(),
+      storage: [createTestStorageAdapter()],
     });
 
     const { prepareConfig } = await import("./config.server");

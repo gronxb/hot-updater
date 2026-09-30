@@ -97,6 +97,7 @@ describe("init choices", () => {
       dependencies: ["@hot-updater/react-native"],
       devDependencies: expect.arrayContaining([
         "@hot-updater/bare",
+        "@hot-updater/server",
         "@hot-updater/aws",
       ]),
     });

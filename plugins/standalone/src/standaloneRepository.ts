@@ -37,6 +37,7 @@ export const standaloneRepository = ({
   const http = createStandaloneHttp(config);
   return Object.freeze({
     name: "standalone-repository",
+    url: http.buildUrl(""),
     core: createStandaloneCoreApi(config),
     fetchAdmin: (path: string) =>
       fetch(http.buildUrl(path), {

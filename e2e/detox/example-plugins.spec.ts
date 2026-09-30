@@ -1,23 +1,41 @@
+import { readFile } from "node:fs/promises";
 import path from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { loadHotUpdaterPlugins } from "../../packages/cli-tools/src/hotUpdaterPlugins.ts";
+import { getConfigScaffold as aws } from "../../plugins/aws/iac/templates";
+import { getConfigScaffold as cloudflare } from "../../plugins/cloudflare/iac/configTemplate";
+import { getConfigScaffold as firebase } from "../../plugins/firebase/iac/configTemplate";
+import { getConfigScaffold as supabase } from "../../plugins/supabase/iac/configTemplate";
 
 const exampleDir = path.resolve(import.meta.dirname, "../../examples/v0.85.0");
 
-describe("example app server plugins", () => {
-  it("lists the managed servers' plugins, so managed profiles read Insights in process", async () => {
-    // Given: a managed profile's config has a direct database adapter, and
-    // managed servers serve no admin routes to fall back on.
-    const plugins = (await loadHotUpdaterPlugins(exampleDir)) as
-      | readonly { readonly id: string }[]
-      | undefined;
+describe("example app managed servers", () => {
+  it.each([
+    ["cloudflare", cloudflare("bare")],
+    ["supabase", supabase("bare")],
+    ["firebase", firebase("bare")],
+    // The aws profile signs in through AWS SSO.
+    ["aws", aws("bare", { mode: "sso", profile: "hot-updater" })],
+  ])(
+    "defines the %s profile's server as init does, so init redeploys it and the controller reads Insights in process",
+    async (provider, scaffold) => {
+      const definition = await readFile(
+        path.join(exampleDir, "servers", `${provider}.ts`),
+        "utf8",
+      );
 
-    // Then: the controller assembles Insights and API keys over that database.
-    expect(plugins?.map((plugin) => plugin.id)).toEqual([
-      "insights",
-      "apiKeys",
-    ]);
+      expect(definition).toBe(`${scaffold.definition.text}\n`);
+      expect(definition).toContain(
+        `import { createHotUpdater } from "@hot-updater/server";`,
+      );
+      expect(definition).toMatch(/\n {2}plugins,\n/u);
+    },
+  );
+
+  it("points the committed config at the Cloudflare profile's server", async () => {
+    await expect(
+      readFile(path.join(exampleDir, "hot-updater.config.ts"), "utf8"),
+    ).resolves.toContain('server: "./servers/cloudflare.ts",');
   });
 });

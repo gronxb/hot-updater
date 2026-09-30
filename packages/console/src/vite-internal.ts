@@ -70,7 +70,7 @@ const createConsoleModulesPlugin = (mode: ConsoleModuleMode): Plugin => {
         );
         configFile = resolveFromRoot(
           root,
-          mode.options.config ?? "hot-updater.config.ts",
+          mode.options.config ?? "console.config.ts",
         );
 
         writeFileIfChanged(
@@ -128,19 +128,21 @@ const createConsoleModulesPlugin = (mode: ConsoleModuleMode): Plugin => {
 
       if (id === resolvedVirtualConfigModuleId) {
         if (mode.type === "local") {
+          // The server hot-updater.config.ts points at, as the CLI loads it.
           return [
-            'import { loadConfig, loadHotUpdaterPlugins } from "@hot-updater/cli-tools";',
+            'import { importServerModule, loadConfig } from "@hot-updater/cli-tools";',
             "export default async () => {",
-            "  const [config, plugins] = await Promise.all([",
-            "    loadConfig(null),",
-            "    loadHotUpdaterPlugins(),",
-            "  ]);",
-            "  return {",
-            "    console: { gitUrl: config.console.gitUrl },",
-            "    database: config.database,",
-            "    storage: config.storage,",
-            "    ...(plugins === undefined ? {} : { plugins }),",
-            "  };",
+            "  const config = await loadConfig(null);",
+            "  if (config.server === undefined) {",
+            "    throw new Error(",
+            '      "Set server in hot-updater.config.ts: the path to your server definition, or standaloneRepository(...).",',
+            "    );",
+            "  }",
+            "  const server =",
+            '    typeof config.server === "string"',
+            "      ? (await importServerModule(config.server)).hotUpdater",
+            "      : config.server;",
+            "  return { server, gitUrl: config.console.gitUrl };",
             "};",
           ].join("\n");
         }

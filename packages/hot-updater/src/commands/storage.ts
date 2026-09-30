@@ -441,11 +441,10 @@ export async function handleStoragePrune(options: StoragePruneOptions = {}) {
 
   const server = await loadServer(await loadConfig(null));
   const database = server.database;
-  const loadedStorageAdapter = uploadStorageOf(server);
-  assertStorageOperations(loadedStorageAdapter, ["get"]);
-  const storageAdapter = loadedStorageAdapter;
 
   try {
+    const storageAdapter = uploadStorageOf(server);
+    assertStorageOperations(storageAdapter, ["get"]);
     const listObjects = storageAdapter.listObjects;
     if (!listObjects) {
       throw new Error(

@@ -3,12 +3,15 @@ import {
   encodeChannelKey,
 } from "@hot-updater/core";
 import {
+  type ConfiguredDatabase,
   ReleaseCatalogMutationError,
   type ReleaseCatalogRow,
 } from "@hot-updater/plugin-core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { mockCli, mockPrintBanner } = vi.hoisted(() => ({
+import { testServer } from "../utils/testServer";
+
+const { mockCli, mockLoadServer, mockPrintBanner } = vi.hoisted(() => ({
   mockCli: {
     loadConfig: vi.fn(),
     p: {
@@ -20,6 +23,7 @@ const { mockCli, mockPrintBanner } = vi.hoisted(() => ({
       },
     },
   },
+  mockLoadServer: vi.fn(),
   mockPrintBanner: vi.fn(),
 }));
 
@@ -32,6 +36,13 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => {
     p: mockCli.p,
   };
 });
+
+vi.mock("@/utils/loadServer", async () => ({
+  ...(await vi.importActual<typeof import("../utils/loadServer")>(
+    "../utils/loadServer",
+  )),
+  loadServer: mockLoadServer,
+}));
 
 vi.mock("../utils/printBanner", () => ({
   printBanner: mockPrintBanner,
@@ -101,7 +112,10 @@ describe("catalog commands", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    mockCli.loadConfig.mockResolvedValue({ database });
+    mockCli.loadConfig.mockResolvedValue({});
+    mockLoadServer.mockResolvedValue(
+      testServer({ database: database as unknown as ConfiguredDatabase }),
+    );
     core.getReleaseCatalogRow.mockResolvedValue(null);
     core.listReleaseCatalogs.mockResolvedValue([]);
     core.preflightReleaseCatalogRebuild.mockReset();

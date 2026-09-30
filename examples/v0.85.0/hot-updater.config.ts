@@ -1,7 +1,6 @@
 import { existsSync } from "node:fs";
 
 import { bare } from "@hot-updater/bare";
-import { d1Database, r2Storage } from "@hot-updater/cloudflare";
 import { defineConfig } from "hot-updater";
 
 const envFilePath =
@@ -41,19 +40,8 @@ export default defineConfig({
   },
 
   build: bare({ enableHermes: true, resetCache: false }),
-  storage: r2Storage({
-    bucketName: process.env.HOT_UPDATER_CLOUDFLARE_R2_BUCKET_NAME!,
-    accountId: process.env.HOT_UPDATER_CLOUDFLARE_ACCOUNT_ID!,
-    credentials: {
-      accessKeyId: process.env.HOT_UPDATER_CLOUDFLARE_R2_ACCESS_KEY_ID!,
-      secretAccessKey: process.env.HOT_UPDATER_CLOUDFLARE_R2_SECRET_ACCESS_KEY!,
-    },
-  }),
-  database: d1Database({
-    databaseId: process.env.HOT_UPDATER_CLOUDFLARE_D1_DATABASE_ID!,
-    accountId: process.env.HOT_UPDATER_CLOUDFLARE_ACCOUNT_ID!,
-    cloudflareApiToken: process.env.HOT_UPDATER_CLOUDFLARE_API_TOKEN!,
-  }),
+  // Each managed E2E profile points at its provider's definition in servers/.
+  server: "./servers/cloudflare.ts",
   fingerprint: {
     debug: true,
   },

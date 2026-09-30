@@ -22,8 +22,10 @@ describe("standaloneRepository", () => {
       "fetchAdmin",
       "name",
       "storage",
+      "url",
     ]);
     expect(repository.name).toBe("standalone-repository");
+    expect(repository.url).toBe(BASE_URL);
     expect(repository.core.deploy).toBeTypeOf("function");
     expect(repository.storage).toEqual(storage);
     expect(Object.isFrozen(repository)).toBe(true);

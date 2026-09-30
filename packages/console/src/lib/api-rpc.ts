@@ -160,7 +160,7 @@ export const getConfig = createServerFn()
   .handler(async () => {
     try {
       const { config } = await prepare();
-      return { console: config.console };
+      return { console: { gitUrl: config.gitUrl } };
     } catch (error) {
       console.error("Error during config retrieval:", error);
       throw error;
@@ -345,11 +345,11 @@ export const deleteBundle = createServerFn({ method: "POST" })
     try {
       const { deleteBundle: deleteBundleWithStorage } =
         await import("./server/deleteBundle");
-      const { core, storageAdapter } = await prepare();
+      const { core, storage } = await prepare();
 
       await deleteBundleWithStorage(data, {
         core,
-        storageAdapter,
+        storage,
         waitForStorageCleanup: false,
       });
 
@@ -367,11 +367,11 @@ export const deleteBundles = createServerFn({ method: "POST" })
     try {
       const { deleteBundles: deleteBundlesWithStorage } =
         await import("./server/deleteBundle");
-      const { core, storageAdapter } = await prepare();
+      const { core, storage } = await prepare();
 
       const result = await deleteBundlesWithStorage(data, {
         core,
-        storageAdapter,
+        storage,
         waitForStorageCleanup: false,
       });
 

@@ -84,8 +84,30 @@ describe("hosted console Vite modules", () => {
   });
 });
 
+describe("hosted console defaults", () => {
+  it("reads console.config.ts and console.auth.ts beside hot-updater.config.ts, which the CLI reads", () => {
+    const root = createTemporaryDirectory();
+    const plugin = createHostedConsolePlugins({})[0] as Plugin;
+    const config = plugin.config as (
+      config: UserConfig,
+      environment: ConfigEnv,
+    ) => UserConfig | undefined;
+    config({ root }, { command: "build", mode: "production" });
+    const resolveId = plugin.resolveId as (id: string) => string | undefined;
+    const load = plugin.load as (id: string) => string | undefined;
+    const context = { addWatchFile() {} };
+
+    expect(
+      load.call(context, resolveId("virtual:hot-updater-console/config")!),
+    ).toContain(JSON.stringify(path.join(root, "console.config.ts")));
+    expect(
+      load.call(context, resolveId("virtual:hot-updater-console/auth")!),
+    ).toContain(JSON.stringify(path.join(root, "console.auth.ts")));
+  });
+});
+
 describe("local console Vite modules", () => {
-  it("loads Console config without accessing the app signer", () => {
+  it("loads the server hot-updater.config.ts points at, without accessing the app signer", () => {
     const plugin = createLocalConsoleModulesPlugin();
     const resolveId = plugin.resolveId as (id: string) => string | undefined;
     const load = plugin.load as (id: string) => string | undefined;
@@ -93,8 +115,12 @@ describe("local console Vite modules", () => {
 
     const source = load(configId as string);
 
-    expect(source).toContain("database: config.database");
-    expect(source).toContain("storage: config.storage");
+    expect(source).toContain(
+      "(await importServerModule(config.server)).hotUpdater",
+    );
+    expect(source).toContain(
+      "return { server, gitUrl: config.console.gitUrl };",
+    );
     expect(source).not.toContain("config.signing");
     expect(source).not.toContain("privateKeyPath");
     expect(source).not.toContain("getPublicKey");

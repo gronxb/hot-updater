@@ -2,13 +2,17 @@ import {
   bundleToPatchRows,
   bundleToRow,
   type Bundle,
+  type ConfiguredDatabase,
   type StorageObject,
 } from "@hot-updater/plugin-core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { testServer } from "../utils/testServer";
+
 const {
   mockCli,
   mockDatabase,
+  mockLoadServer,
   mockPrintBanner,
   mockStorageNode,
   mockStorageAdapter,
@@ -49,6 +53,7 @@ const {
   return {
     mockCli,
     mockDatabase,
+    mockLoadServer: vi.fn(),
     mockPrintBanner: vi.fn(),
     mockStorageNode,
     mockStorageAdapter,
@@ -64,6 +69,13 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => {
     p: mockCli.p,
   };
 });
+
+vi.mock("@/utils/loadServer", async () => ({
+  ...(await vi.importActual<typeof import("../utils/loadServer")>(
+    "../utils/loadServer",
+  )),
+  loadServer: mockLoadServer,
+}));
 
 vi.mock("@/utils/printBanner", () => ({
   printBanner: mockPrintBanner,
@@ -131,6 +143,7 @@ describe("handleStoragePrune", () => {
   const now = new Date("2026-08-13T00:00:00.000Z");
   const old = new Date(now.getTime() - 2 * 24 * 60 * 60 * 1000);
   const young = new Date(now.getTime() - 60 * 60 * 1000);
+  const database = mockDatabase as unknown as ConfiguredDatabase;
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -138,10 +151,10 @@ describe("handleStoragePrune", () => {
     vi.setSystemTime(now);
     mockDatabase.name = "mock-database";
 
-    mockCli.loadConfig.mockResolvedValue({
-      database: mockDatabase,
-      storage: mockStorageAdapter,
-    });
+    mockCli.loadConfig.mockResolvedValue({});
+    mockLoadServer.mockResolvedValue(
+      testServer({ database, storage: [mockStorageAdapter] }),
+    );
     // Core's bundle pages, as rows, from the bundles `bundlePages` answers.
     mockDatabase.core.listBundles.mockImplementation(async (input: unknown) =>
       ((await mockDatabase.bundlePages(input)) as readonly Bundle[]).map(
@@ -393,6 +406,7 @@ describe("handleStoragePrune", () => {
       handleStoragePrune({ dryRun: true, yes: true }),
     ).rejects.toThrow("--dry-run cannot be used with --yes");
     expect(mockCli.loadConfig).not.toHaveBeenCalled();
+    expect(mockLoadServer).not.toHaveBeenCalled();
     expect(mockStorageNode.deleteObjects).not.toHaveBeenCalled();
   });
 
@@ -604,14 +618,18 @@ describe("handleStoragePrune", () => {
   });
 
   it("reports when the configured storage adapter cannot enumerate objects", async () => {
-    mockCli.loadConfig.mockResolvedValue({
-      database: mockDatabase,
-      storage: {
-        ...mockStorageAdapter,
-        name: "unsupportedStorage",
-        listObjects: undefined,
-      },
-    });
+    mockLoadServer.mockResolvedValue(
+      testServer({
+        database,
+        storage: [
+          {
+            ...mockStorageAdapter,
+            name: "unsupportedStorage",
+            listObjects: undefined,
+          },
+        ],
+      }),
+    );
     const { handleStoragePrune } = await import("./storage");
 
     await expect(handleStoragePrune()).rejects.toThrow(

@@ -3,10 +3,12 @@ import { stripVTControlCharacters } from "node:util";
 import type { Bundle, ReleaseRow } from "@hot-updater/plugin-core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { testServer } from "../utils/testServer";
 import { createDatabaseHarness } from "./database.testFixtures";
 
-const { loadConfig, log } = vi.hoisted(() => ({
+const { loadConfig, loadServer, log } = vi.hoisted(() => ({
   loadConfig: vi.fn(),
+  loadServer: vi.fn(),
   log: {
     error: vi.fn(),
     info: vi.fn(),
@@ -24,6 +26,13 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
     isCancel: vi.fn(() => false),
     log,
   },
+}));
+
+vi.mock("@/utils/loadServer", async () => ({
+  ...(await vi.importActual<typeof import("../utils/loadServer")>(
+    "../utils/loadServer",
+  )),
+  loadServer,
 }));
 
 vi.mock("../utils/printBanner", () => ({ printBanner: vi.fn() }));
@@ -68,7 +77,10 @@ describe("Artifact commands", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     databaseHarness.reset();
-    loadConfig.mockResolvedValue({ database: databaseHarness.database });
+    loadConfig.mockResolvedValue({});
+    loadServer.mockResolvedValue(
+      testServer({ database: databaseHarness.database }),
+    );
   });
 
   afterEach(() => {

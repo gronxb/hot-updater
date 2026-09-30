@@ -31,6 +31,7 @@ const { mockCli, mockServer, mockStorageAdapter } = vi.hoisted(() => {
     mockStorageAdapter,
   };
 });
+const { mockLoadServer } = vi.hoisted(() => ({ mockLoadServer: vi.fn() }));
 
 vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@hot-updater/cli-tools")>()),
@@ -46,10 +47,18 @@ vi.mock("@/prompts/getPlatform", () => ({
   getPlatform: vi.fn(),
 }));
 
+vi.mock("@/utils/loadServer", async () => ({
+  ...(await vi.importActual<typeof import("../utils/loadServer")>(
+    "../utils/loadServer",
+  )),
+  loadServer: mockLoadServer,
+}));
+
 vi.mock("@/utils/printBanner", () => ({
   printBanner: vi.fn(),
 }));
 
+import { testServer } from "../utils/testServer";
 import { createDatabaseHarness } from "./database.testFixtures";
 import { createPatch } from "./patch";
 
@@ -64,10 +73,13 @@ describe("createPatch", () => {
     mockServer.createBundleDiff.mockResolvedValue({
       id: "target-bundle",
     });
-    mockCli.loadConfig.mockResolvedValue({
-      database: databaseHarness.database,
-      storage: mockStorageAdapter,
-    });
+    mockCli.loadConfig.mockResolvedValue({});
+    mockLoadServer.mockResolvedValue(
+      testServer({
+        database: databaseHarness.database,
+        storage: [mockStorageAdapter],
+      }),
+    );
   });
 
   it("creates a manual patch artifact and prints a summary", async () => {

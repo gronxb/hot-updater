@@ -43,10 +43,10 @@ export const createPatch = async (options: PatchOptions) => {
     await loadConfig({ channel: options.channel, platform }),
   );
   const database = server.database;
-  const storageAdapter = uploadStorageOf(server);
-  assertStorageOperations(storageAdapter, ["get", "put", "delete"]);
 
   try {
+    const storageAdapter = uploadStorageOf(server);
+    assertStorageOperations(storageAdapter, ["get", "put", "delete"]);
     p.note(
       [
         ui.kv("Channel", ui.channel(options.channel)),

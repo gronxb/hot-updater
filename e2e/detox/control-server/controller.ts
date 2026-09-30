@@ -21,6 +21,7 @@ import type { Bundle } from "../../../packages/core/src/types.ts";
 import {
   createDatabaseCoreApi,
   createDatabasePluginApis,
+  serverDefinitionOf,
 } from "../../../packages/server/dist/db/index.mjs";
 import {
   createInsightsModel,
@@ -1182,8 +1183,7 @@ async function waitForFile(filePath: string, attempts = 360) {
   throw new Error(`Timed out waiting for ${filePath}`);
 }
 
-/** The example's configured database: core over it, and the plugins its server runs. */
-/** The example's database from its config, core on it, and the plugins its server runs. */
+/** The server the example's config points at: its database, core on it, and the plugins it runs. */
 type ConfiguredServer = {
   readonly core: HotUpdaterCoreApi;
   readonly database: ConfiguredDatabase;
@@ -1193,30 +1193,40 @@ type ConfiguredServer = {
 async function withConfiguredDatabase<T>(
   callback: (configured: ConfiguredServer) => Promise<T>,
 ): Promise<T> {
-  const { loadConfig, loadHotUpdaterPlugins } =
+  const { importServerModule, loadConfig } =
     (await import("../../../packages/cli-tools/dist/index.mjs")) as {
+      importServerModule: (path: string) => Promise<{ hotUpdater: unknown }>;
       loadConfig: (options: null) => Promise<{
-        database: ConfiguredDatabase;
+        server?: string | ConfiguredDatabase;
       }>;
-      loadHotUpdaterPlugins: () => Promise<readonly unknown[] | undefined>;
     };
   const originalCwd = process.cwd();
 
   try {
     process.chdir(fixtureSession.exampleDir);
     return await withHotUpdaterControlEnv(async () => {
-      const [config, plugins] = await Promise.all([
-        loadConfig(null),
-        loadHotUpdaterPlugins(),
-      ]);
+      const { server } = await loadConfig(null);
+      if (server === undefined) {
+        throw new Error("The example's hot-updater.config.ts sets no server.");
+      }
+      // A server definition's database and plugins, or a self-hosted
+      // server's admin API, whose plugins it runs itself.
+      const definition =
+        typeof server === "string"
+          ? serverDefinitionOf((await importServerModule(server)).hotUpdater)
+          : undefined;
+      if (typeof server === "string" && definition === undefined) {
+        throw new Error(`${server} does not export a server definition.`);
+      }
+      const database = definition?.database ?? (server as ConfiguredDatabase);
       try {
         return await callback({
-          core: createDatabaseCoreApi(config.database),
-          database: config.database,
-          plugins,
+          core: createDatabaseCoreApi(database),
+          database,
+          plugins: definition?.plugins,
         });
       } finally {
-        await config.database.dispose?.();
+        await database.dispose?.();
       }
     });
   } finally {

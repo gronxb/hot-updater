@@ -53,6 +53,8 @@ export interface EngineDatabase {
  */
 export interface RemoteServer {
   readonly name: string;
+  /** The server's admin API, which identifies the server. */
+  readonly url: string;
   /** Core's reads and typed operations over the server's admin API. */
   readonly core: HotUpdaterCoreApi;
   /** A GET on the server's admin handler, for admin routes core does not cover. */

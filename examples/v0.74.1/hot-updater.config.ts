@@ -23,20 +23,24 @@ export default defineConfig({
   },
 
   build: bare({ enableHermes: true }),
-  storage: s3Storage({
-    region: "auto",
-    endpoint: process.env.R2_ENDPOINT,
-    credentials: {
-      accessKeyId: process.env.R2_ACCESS_KEY_ID!,
-      secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
-    },
-    bucketName: process.env.R2_BUCKET_NAME!,
-  }),
-  database: standaloneRepository({
+  // A self-hosted server (examples-server/hono-mongodb), through its admin API:
+  // it lists its own plugins, and the CLI uploads bundles to this storage.
+  server: standaloneRepository({
     baseUrl: "http://localhost:3006/hot-updater/admin",
     commonHeaders: {
       Authorization: `Bearer ${adminToken}`,
     },
+    storage: [
+      s3Storage({
+        region: "auto",
+        endpoint: process.env.R2_ENDPOINT,
+        credentials: {
+          accessKeyId: process.env.R2_ACCESS_KEY_ID!,
+          secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
+        },
+        bucketName: process.env.R2_BUCKET_NAME!,
+      }),
+    ],
   }),
   fingerprint: {
     debug: true,

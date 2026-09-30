@@ -1186,15 +1186,15 @@ export const deploy = async (options: DeployOptions): Promise<void> => {
   // self-hosted server each platform's config reaches.
   const servers = new Set(
     platformConfigs.map(({ config }) =>
-      typeof config.server === "string" ? config.server : config.server?.name,
+      typeof config.server === "string" ? config.server : config.server?.url,
     ),
   );
   const server = await loadServer(firstPlatformConfig.config);
   const database = server.database;
-  const storageAdapter = uploadStorageOf(server);
   const core = createDatabaseCoreApi(database);
 
   const deployPlatforms = async (
+    storageAdapter: StorageAdapter,
     persistDeployment: (input: DeploymentWrite) => Promise<void>,
   ): Promise<DeployPlatformResult[]> => {
     const preparedResults: DeployPlatformResult[] = [];
@@ -1228,6 +1228,7 @@ export const deploy = async (options: DeployOptions): Promise<void> => {
     if (servers.size > 1) {
       throw new MultiPlatformDatabaseBoundaryError();
     }
+    const storageAdapter = uploadStorageOf(server);
     const rolloutPercentage = normalizeRolloutPercentage(options.rollout);
     // The schema fence (and a self-hosted server's admin protocol) is
     // checked before anything is built or uploaded.
@@ -1250,13 +1251,14 @@ export const deploy = async (options: DeployOptions): Promise<void> => {
     if (platforms.length > 1) {
       const committed = await prepareAndCommitBundles({
         core,
-        prepare: deployPlatforms,
+        prepare: (persistDeployment) =>
+          deployPlatforms(storageAdapter, persistDeployment),
       });
       preparedResults = committed.results;
       commitResults = committed.commitResults;
     } else {
       const committed: ReleaseCatalogMutationResult[] = [];
-      preparedResults = await deployPlatforms(async (input) => {
+      preparedResults = await deployPlatforms(storageAdapter, async (input) => {
         committed.push(await commitDeployment({ core, ...input }));
       });
       commitResults = committed;
