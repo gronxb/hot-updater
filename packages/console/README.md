@@ -143,19 +143,21 @@ Use one pagination cursor at a time.
 
 ## 🎯 Configuration
 
-The checked-in [demo configuration](hot-updater.config.ts) seeds sample bundles
-and releases through `createDatabaseCoreApi(database.withoutLatency()).deploy`.
-For an empty local mock console, use this `hot-updater.config.ts`:
+The console reads the server that [hot-updater.config.ts](hot-updater.config.ts)
+points at with `server`. The checked-in [demo server](hotUpdater.ts) seeds
+sample bundles and releases through
+`createDatabaseCoreApi(database.withoutLatency()).deploy`. For an empty local
+mock console, define the server like this and point `server` at it:
 
 ```typescript
 import { mockDatabase, mockStorage } from "@hot-updater/mock";
+import { createHotUpdater } from "@hot-updater/server";
 
-export default {
-  storage: mockStorage({}),
-  database: mockDatabase({
-    latency: { min: 500, max: 700 },
-  }),
-};
+export const hotUpdater = createHotUpdater({
+  database: mockDatabase({ latency: { min: 500, max: 700 } }),
+  storage: [mockStorage({})],
+  clientAccess: "public",
+});
 ```
 
 Mock data is held in memory and resets when the configuration is reloaded.
@@ -206,8 +208,9 @@ The console uses Tailwind CSS v4 with oklch color space for accessible colors. T
 
 ### Hot Updater Config
 
-- Ensure `hot-updater.config.ts` is at package root
-- Verify the storage and database adapters are correctly initialized
+- Ensure `hot-updater.config.ts` is at package root and its `server` points at
+  the server definition
+- Verify the definition's storage and database adapters are correctly initialized
 
 ## 📝 License
 

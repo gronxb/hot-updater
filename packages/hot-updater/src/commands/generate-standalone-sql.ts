@@ -1,7 +1,7 @@
 import { access, mkdir, writeFile } from "fs/promises";
 import path from "path";
 
-import { HOT_UPDATER_PLUGINS_PATH, p } from "@hot-updater/cli-tools";
+import { p } from "@hot-updater/cli-tools";
 import { Kysely, MysqlDialect, PostgresDialect, SqliteDialect } from "kysely";
 import {
   formatDialect,
@@ -121,9 +121,9 @@ const getProvider = async (
 };
 
 /**
- * The plugins whose tables the SQL adds to core's: those of the server config
- * `configPath` names, else of the project's first plugin list, found as
- * plugin commands find theirs. None without a list, which it says.
+ * The plugins whose tables the SQL adds to core's: those of the server
+ * definition `configPath` names, else of the one plugin commands find. None
+ * without a definition, which it says.
  */
 const findServerPlugins = async (
   configPath: string | undefined,
@@ -140,7 +140,7 @@ const findServerPlugins = async (
   }
   if (found === undefined) {
     p.log.info(
-      `No server config or ${HOT_UPDATER_PLUGINS_PATH} found, so the SQL holds core's tables only.`,
+      "No server definition found, so the SQL holds core's tables only.",
     );
     return [];
   }

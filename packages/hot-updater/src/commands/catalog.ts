@@ -5,6 +5,8 @@ import type {
 } from "@hot-updater/plugin-core";
 import { createDatabaseCoreApi } from "@hot-updater/server/db";
 
+import { loadServer } from "@/utils/loadServer";
+
 import { ui } from "../utils/cli-ui";
 import { printBanner } from "../utils/printBanner";
 
@@ -71,8 +73,8 @@ export const handleCatalogPreflight = async (
   options: CatalogCommandOptions,
 ) => {
   if (!options.json) printBanner();
-  const config = await loadConfig(null);
-  const database = config.database;
+  const server = await loadServer(await loadConfig(null));
+  const database = server.database;
   try {
     const core = createDatabaseCoreApi(database);
     const scopes = await catalogScopeKeys(core, scopeKeys);
@@ -109,7 +111,7 @@ export const handleCatalogPreflight = async (
           ),
     );
   } finally {
-    await safeDispose(database);
+    await safeDispose(server);
   }
 };
 
@@ -118,8 +120,8 @@ export const handleCatalogRebuild = async (
   options: CatalogCommandOptions,
 ) => {
   if (!options.json) printBanner();
-  const config = await loadConfig(null);
-  const database = config.database;
+  const server = await loadServer(await loadConfig(null));
+  const database = server.database;
   try {
     const core = createDatabaseCoreApi(database);
     const scopes = await catalogScopeKeys(core, scopeKeys);
@@ -178,6 +180,6 @@ export const handleCatalogRebuild = async (
           ),
     );
   } finally {
-    await safeDispose(database);
+    await safeDispose(server);
   }
 };

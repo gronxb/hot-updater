@@ -5,10 +5,11 @@ region and existing deployment. Create missing S3, DynamoDB, IAM, Lambda@Edge an
 CloudFront resources as required by SETUP.md. Record returned IDs and ARNs instead
 of asking the user to prepare every resource first.
 
-The supplied app config uses `fromNodeProviderChain()`. Prefer an existing role,
-session, shared profile or SSO login. Set only applicable values in the app's
-ignored .env.hotupdater; never copy the complete example with empty optional
-credential values into an otherwise working credential environment.
+The supplied server definition, app/hotUpdater.ts, uses
+`fromNodeProviderChain()`. Prefer an existing role, session, shared profile or
+SSO login. Set only applicable values in the app's ignored .env.hotupdater;
+never copy the complete example with empty optional credential values into an
+otherwise working credential environment.
 
 | Variable | Purpose and when needed | Where to obtain it |
 | --- | --- | --- |

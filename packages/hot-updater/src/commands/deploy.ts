@@ -18,6 +18,7 @@ import type {
   HotUpdaterCoreApi,
   Platform,
   ReleaseCatalogMutationResult,
+  StorageAdapter,
   StorageAdapterWith,
 } from "@hot-updater/plugin-core";
 import {
@@ -58,6 +59,7 @@ import {
 import { getBundleZipTargets } from "@/utils/getBundleZipTargets";
 import { getFileHashFromFile } from "@/utils/getFileHash";
 import { appendToProjectRootGitignore, getLatestGitCommit } from "@/utils/git";
+import { loadServer, uploadStorageOf } from "@/utils/loadServer";
 import { printBanner } from "@/utils/printBanner";
 import { validateSigningConfig } from "@/utils/signing/validateSigningConfig";
 import { getDefaultTargetAppVersion } from "@/utils/version/getDefaultTargetAppVersion";
@@ -87,7 +89,7 @@ class MultiPlatformDatabaseBoundaryError extends Error {
 
   constructor() {
     super(
-      "Deploying multiple platforms requires a shared database configuration.",
+      "Deploying multiple platforms requires one server: hot-updater.config.ts points the platforms at different ones.",
     );
   }
 }
@@ -630,11 +632,14 @@ const deployPlatform = async ({
   platform,
   platformIndex,
   platformCount,
+  storageAdapter,
 }: {
   config: DeployConfig;
   core: HotUpdaterCoreApi;
   database: ConfiguredDatabase;
   deferAutoPatches: boolean;
+  /** Where bundles are uploaded: the server's first storage. */
+  storageAdapter: StorageAdapter;
   options: DeployOptions;
   persistDeployment: (input: DeploymentWrite) => Promise<void>;
   platform: Platform;
@@ -849,7 +854,6 @@ const deployPlatform = async ({
     p.note(deploymentContext, deploymentTitle);
   }
 
-  const storageAdapter = config.storage;
   assertStorageOperations(storageAdapter, ["put", "get", "exists", "delete"]);
 
   try {
@@ -1178,13 +1182,19 @@ export const deploy = async (options: DeployOptions): Promise<void> => {
   if (!firstPlatformConfig) {
     return;
   }
-  const databases = [
-    ...new Set(platformConfigs.map(({ config }) => config.database)),
-  ];
-  const database = firstPlatformConfig.config.database;
+  // Every platform deploys to one server: the same definition, or the
+  // self-hosted server each platform's config reaches.
+  const servers = new Set(
+    platformConfigs.map(({ config }) =>
+      typeof config.server === "string" ? config.server : config.server?.url,
+    ),
+  );
+  const server = await loadServer(firstPlatformConfig.config);
+  const database = server.database;
   const core = createDatabaseCoreApi(database);
 
   const deployPlatforms = async (
+    storageAdapter: StorageAdapter,
     persistDeployment: (input: DeploymentWrite) => Promise<void>,
   ): Promise<DeployPlatformResult[]> => {
     const preparedResults: DeployPlatformResult[] = [];
@@ -1202,6 +1212,7 @@ export const deploy = async (options: DeployOptions): Promise<void> => {
         platform,
         platformCount: platforms.length,
         platformIndex,
+        storageAdapter,
       });
 
       if (!result) {
@@ -1214,9 +1225,10 @@ export const deploy = async (options: DeployOptions): Promise<void> => {
   };
 
   try {
-    if (databases.length > 1) {
+    if (servers.size > 1) {
       throw new MultiPlatformDatabaseBoundaryError();
     }
+    const storageAdapter = uploadStorageOf(server);
     const rolloutPercentage = normalizeRolloutPercentage(options.rollout);
     // The schema fence (and a self-hosted server's admin protocol) is
     // checked before anything is built or uploaded.
@@ -1239,13 +1251,14 @@ export const deploy = async (options: DeployOptions): Promise<void> => {
     if (platforms.length > 1) {
       const committed = await prepareAndCommitBundles({
         core,
-        prepare: deployPlatforms,
+        prepare: (persistDeployment) =>
+          deployPlatforms(storageAdapter, persistDeployment),
       });
       preparedResults = committed.results;
       commitResults = committed.commitResults;
     } else {
       const committed: ReleaseCatalogMutationResult[] = [];
-      preparedResults = await deployPlatforms(async (input) => {
+      preparedResults = await deployPlatforms(storageAdapter, async (input) => {
         committed.push(await commitDeployment({ core, ...input }));
       });
       commitResults = committed;
@@ -1292,6 +1305,6 @@ export const deploy = async (options: DeployOptions): Promise<void> => {
       throw error;
     }
   } finally {
-    await Promise.all(databases.map((database) => database.dispose?.()));
+    await server.dispose();
   }
 };

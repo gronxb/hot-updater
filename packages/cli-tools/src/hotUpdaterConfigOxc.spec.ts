@@ -30,6 +30,10 @@ const createSupabaseScaffold = () =>
   supabaseServiceRoleKey: process.env.HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY!,
 })`,
     },
+    plugins: {
+      imports: [{ pkg: "@hot-updater/supabase", named: ["plugins"] }],
+      configString: "plugins",
+    },
   });
 
 afterEach(async () => {
@@ -103,7 +107,7 @@ export default defineConfig({
       "utf-8",
     );
 
-    // When provider-managed fields are merged
+    // When init points it at the server definition
     const result = await writeHotUpdaterConfig(
       createSupabaseScaffold(),
       configPath,
@@ -118,5 +122,7 @@ export default defineConfig({
     expect(updatedConfig).toContain("satisfies Record<string, boolean>");
     expect(updatedConfig).toContain("// user-owned export note");
     expect(updatedConfig).toContain("custom: customTool(customOptions)");
+    expect(updatedConfig).toContain('server: "./hotUpdater.ts"');
+    expect(updatedConfig).not.toContain("supabaseStorage");
   });
 });

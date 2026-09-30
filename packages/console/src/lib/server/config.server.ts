@@ -1,62 +1,27 @@
-import {
-  assertStorageOperations,
-  type HotUpdaterCoreApi,
-  type StorageAdapterWith,
-} from "@hot-updater/plugin-core";
+import type { HotUpdaterCoreApi } from "@hot-updater/plugin-core";
 import { createDatabaseCoreApi } from "@hot-updater/server/db";
 import { getRequest } from "@tanstack/react-start/server";
 
-import type { HotUpdaterConsoleConfig } from "../../index";
 import { requireConsoleAccess } from "./auth.server";
-import { resolveConsoleConfig } from "./console-runtime.server";
+import {
+  resolveConsoleConfig,
+  type ResolvedConsoleConfig,
+} from "./console-runtime.server";
 import type { ConsoleRuntime } from "./runtime.server";
-
-type ResolvedConsoleConfig = HotUpdaterConsoleConfig & {
-  readonly console: NonNullable<HotUpdaterConsoleConfig["console"]>;
-};
 
 let configPromise: Promise<ResolvedConsoleConfig> | null = null;
 let core: HotUpdaterCoreApi | null = null;
 let runtime: ConsoleRuntime | null = null;
-let storageAdapterPromise: Promise<
-  StorageAdapterWith<"get" | "put" | "exists" | "delete">
-> | null = null;
 
 const loadCachedConfig = async (request: Request) => {
   if (!configPromise) {
-    configPromise = resolveConsoleConfig(request)
-      .then((config) => ({
-        ...config,
-        console: config.console ?? {},
-      }))
-      .catch((error) => {
-        configPromise = null;
-        throw error;
-      });
+    configPromise = resolveConsoleConfig(request).catch((error) => {
+      configPromise = null;
+      throw error;
+    });
   }
 
   return configPromise;
-};
-
-const loadCachedStorageAdapter = async (config: ResolvedConsoleConfig) => {
-  if (!storageAdapterPromise) {
-    storageAdapterPromise = Promise.resolve(config.storage)
-      .then((storageAdapter) => {
-        assertStorageOperations(storageAdapter, [
-          "get",
-          "put",
-          "exists",
-          "delete",
-        ]);
-        return storageAdapter;
-      })
-      .catch((error) => {
-        storageAdapterPromise = null;
-        throw error;
-      });
-  }
-
-  return storageAdapterPromise;
 };
 
 export const prepareConfig = async (request: Request = getRequest()) => {
@@ -74,9 +39,8 @@ export const prepareConfig = async (request: Request = getRequest()) => {
       runtime = createConsoleRuntime(config);
     }
 
-    const storageAdapter = await loadCachedStorageAdapter(config);
-
-    return { config, core, runtime, storageAdapter };
+    // Each bundle file is read and deleted with its protocol's storage.
+    return { config, core, runtime, storage: config.storage };
   } catch (error) {
     if (
       !(

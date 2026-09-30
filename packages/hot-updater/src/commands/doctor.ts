@@ -9,6 +9,7 @@ import {
   p,
   readPackageUp,
 } from "@hot-updater/cli-tools";
+import type { ClientPluginSpec } from "@hot-updater/server/db";
 import { merge } from "es-toolkit";
 import fg from "fast-glob";
 import {
@@ -26,6 +27,10 @@ import {
   type SigningConfigIssue,
   validateSigningConfig,
 } from "../utils/signing/validateSigningConfig";
+import {
+  findMissingClientPlugins,
+  readServerClientPlugins,
+} from "./doctor/clientPlugins";
 import {
   hasVerificationOptions,
   verifyInfrastructure,
@@ -76,6 +81,8 @@ interface NativeCheckIssue {
     | "MISSING_FINGERPRINT_JSON"
     | "MISSING_FINGERPRINT_HASH"
     | "FINGERPRINT_HASH_MISMATCH"
+    | "MISSING_CLIENT_PLUGIN"
+    | "CLIENT_PLUGINS_UNCHECKED"
     | SigningConfigIssue["code"];
   message: string;
   resolution: string;
@@ -661,6 +668,46 @@ async function checkNativeStatus({
 }
 
 /**
+ * A warning for each client plugin a server plugin needs that the app does
+ * not add to `HotUpdater.init({ plugins })`.
+ */
+async function checkClientPlugins({
+  cwd,
+}: {
+  cwd: string;
+}): Promise<NativeCheckIssue[]> {
+  const config = await loadConfig(null);
+  if (config.server === undefined) return [];
+  let missing: readonly ClientPluginSpec[];
+  try {
+    missing = await findMissingClientPlugins({
+      clientPlugins: await readServerClientPlugins(config),
+      cwd,
+    });
+  } catch (error) {
+    return [
+      {
+        type: "warning",
+        platform: "project",
+        code: "CLIENT_PLUGINS_UNCHECKED",
+        message: `Could not read the server's plugins to check the app's client plugins: ${error instanceof Error ? error.message : String(error)}`,
+        resolution:
+          "Check that server in hot-updater.config.ts loads, then rerun doctor.",
+        fixability: "blocked",
+      },
+    ];
+  }
+  return missing.map(({ module, name }) => ({
+    type: "warning",
+    platform: "project",
+    code: "MISSING_CLIENT_PLUGIN",
+    message: `The server runs a plugin whose client plugin ${name} the app does not add.`,
+    resolution: `Import { ${name} } from "${module}" and pass ${name}() to HotUpdater.init({ plugins }).`,
+    fixability: "auto",
+  }));
+}
+
+/**
  * Performs health check on Hot Updater installation
  * @param options - Doctor check options
  * @returns true if everything is healthy, or DoctorResult with details if there are issues
@@ -763,6 +810,14 @@ export async function doctor(
 
     if (hasReactNativePackage) {
       details.native = await checkNativeStatus({ cwd });
+      const clientPluginIssues = await checkClientPlugins({ cwd });
+      if (clientPluginIssues.length > 0) {
+        details.native = {
+          updateStrategy: (await loadConfig(null)).updateStrategy,
+          ...details.native,
+          issues: [...(details.native?.issues ?? []), ...clientPluginIssues],
+        };
+      }
     }
 
     // Add version mismatches if any

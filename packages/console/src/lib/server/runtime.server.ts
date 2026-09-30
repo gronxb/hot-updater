@@ -1,6 +1,6 @@
 import {
   type ConfiguredDatabase,
-  isRemoteDatabase,
+  isRemoteServer,
 } from "@hot-updater/plugin-core";
 import {
   createDatabasePluginApis,
@@ -91,7 +91,7 @@ export const createConsoleRuntime = (config: {
   readonly plugins?: readonly unknown[];
 }): ConsoleRuntime => {
   const { database } = config;
-  if (isRemoteDatabase(database)) {
+  if (isRemoteServer(database)) {
     const { fetchAdmin } = database;
     // The server's assembly refuses a plugin that takes a reserved id
     // without the mark, so its /version ids name Hot Updater's own plugins.

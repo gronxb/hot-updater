@@ -1,18 +1,8 @@
 import path from "node:path";
 
 import type { CommandUnknownOpts } from "@commander-js/extra-typings";
+import { loadConfig, p } from "@hot-updater/cli-tools";
 import {
-  HOT_UPDATER_PLUGINS_PATH,
-  loadConfig,
-  loadHotUpdaterPlugins,
-  p,
-} from "@hot-updater/cli-tools";
-import {
-  type ConfiguredDatabase,
-  isRemoteDatabase,
-} from "@hot-updater/plugin-core";
-import {
-  createDatabasePluginApis,
   pluginCommandsOf,
   serverPluginsOf,
   type PluginCommandEntry,
@@ -23,6 +13,7 @@ import type {
 } from "@hot-updater/server/plugins";
 
 import { ui } from "../utils/cli-ui";
+import { loadServerDefinition } from "../utils/loadServer";
 import { printBanner } from "../utils/printBanner";
 import {
   findDefaultConfigPaths,
@@ -36,15 +27,8 @@ import {
 export const PLUGIN_COMMANDS_GROUP = "Plugin commands:";
 
 /** How plugin commands appear, when no plugin list is found. */
-export const PLUGIN_COMMANDS_HINT = `Plugin commands: none found. Server plugins add commands through ${HOT_UPDATER_PLUGINS_PATH} or a server config such as src/hotUpdater.ts.`;
-
-type OpenedDatabase =
-  | {
-      readonly remote: false;
-      /** Each plugin's API, by plugin id. */
-      readonly apis: Readonly<Record<string, unknown>>;
-    }
-  | { readonly remote: true };
+export const PLUGIN_COMMANDS_HINT =
+  "Plugin commands: none found. Server plugins add commands through the server definition that server in hot-updater.config.ts points at, or one the command names, such as src/hotUpdater.ts.";
 
 /** A project's plugin list, and how its commands reach the database. */
 interface PluginSource {
@@ -53,7 +37,8 @@ interface PluginSource {
   readonly plugins: readonly unknown[];
   /** The server config's absolute path, when the list comes from one. */
   readonly configPath?: string;
-  open(): Promise<OpenedDatabase>;
+  /** Each plugin's API, by plugin id, over the server's database. */
+  open(): Promise<Readonly<Record<string, unknown>>>;
   dispose(): Promise<void>;
 }
 
@@ -77,34 +62,32 @@ const serverConfigSource = (
   from: path.relative(cwd, loaded.absoluteConfigPath),
   plugins: serverPluginsOf(loaded.hotUpdater),
   configPath: loaded.absoluteConfigPath,
-  open: async () => ({ remote: false, apis: loaded.hotUpdater.api ?? {} }),
+  open: async () => loaded.hotUpdater.api ?? {},
   dispose: loaded.dispose,
 });
 
-/** `hotUpdater.plugins.ts`, over the database `hot-updater.config.ts` names. */
-const pluginsFileSource = (plugins: readonly unknown[]): PluginSource => {
-  let database: ConfiguredDatabase | undefined;
+/** The server definition hot-updater.config.ts points at with `server`. */
+const configuredServerSource = async (
+  server: string,
+  cwd: string,
+): Promise<PluginSource> => {
+  const loaded = await loadServerDefinition(server);
   return {
-    from: HOT_UPDATER_PLUGINS_PATH,
-    plugins,
-    open: async () => {
-      const opened = (await loadConfig(null)).database;
-      database = opened;
-      return isRemoteDatabase(opened)
-        ? { remote: true }
-        : { remote: false, apis: createDatabasePluginApis(opened, plugins) };
-    },
-    dispose: async () => {
-      await database?.dispose?.();
-    },
+    from: path.relative(cwd, loaded.path),
+    plugins: loaded.plugins,
+    configPath: loaded.path,
+    open: async () =>
+      (loaded.hotUpdater as { readonly api?: Record<string, unknown> }).api ??
+      {},
+    dispose: loaded.dispose,
   };
 };
 
 /**
- * The project's plugin lists, in order: a server config file among `args`,
- * `hotUpdater.plugins.ts`, then the default server configs, each loaded
- * only once the one before it is passed over. A default config that fails
- * to load is reported in `failures` and skipped.
+ * The project's plugin lists, in order: a server definition among `args`,
+ * the one hot-updater.config.ts points at, then the default server modules,
+ * each loaded only once the one before it is passed over. A default module
+ * that fails to load is reported in `failures` and skipped.
  */
 async function* findPluginSources(
   args: readonly string[],
@@ -114,15 +97,26 @@ async function* findPluginSources(
   const named = args.find(
     (arg) => !arg.startsWith("-") && isConfigFile(arg, cwd),
   );
+  const seen = new Set<string>();
   if (named !== undefined) {
-    yield serverConfigSource(await loadHotUpdater(named, { cwd }), cwd);
+    const source = serverConfigSource(
+      await loadHotUpdater(named, { cwd }),
+      cwd,
+    );
+    seen.add(source.configPath!);
+    yield source;
   }
-  const plugins = await loadHotUpdaterPlugins(cwd);
-  if (plugins !== undefined) yield pluginsFileSource(plugins);
+  // The definition the config names fails loudly, unlike a default guess.
+  // A self-hosted server's plugins' commands need the definition itself.
+  // One already found is not loaded again: the process shares its module,
+  // and so its database.
+  const { server } = await loadConfig(null);
+  if (typeof server === "string" && !seen.has(server)) {
+    seen.add(server);
+    yield await configuredServerSource(server, cwd);
+  }
   for (const configPath of findDefaultConfigPaths(cwd)) {
-    if (named !== undefined && path.resolve(cwd, named) === configPath) {
-      continue;
-    }
+    if (seen.has(configPath)) continue;
     let loaded: LoadHotUpdaterResult | undefined;
     try {
       loaded = await importHotUpdater(configPath);
@@ -143,9 +137,9 @@ export interface FoundPluginList {
 
 /**
  * The project's first plugin list, as plugin commands look for theirs: a
- * server config file among `args`, `hotUpdater.plugins.ts`, then the default
- * server configs. Undefined when the project has none; a default config that
- * fails to load is reported in `failures`.
+ * server definition among `args`, the one hot-updater.config.ts points at,
+ * then the default server modules. Undefined when the project has none; one
+ * that fails to load is reported in `failures`.
  */
 export const findPluginList = async (
   args: readonly string[],
@@ -198,7 +192,7 @@ interface PluginRun {
 
 /** Runs a plugin command, then disposes the source it ran over. */
 const runPluginCommand = async (run: PluginRun, cwd: string) => {
-  const { command, plugin, usage, args, options } = run;
+  const { command, plugin, args, options } = run;
   let source = run.source;
   try {
     if (
@@ -212,20 +206,8 @@ const runPluginCommand = async (run: PluginRun, cwd: string) => {
       );
     }
     if (options["json"] !== true) printBanner();
-    const database = await source.open();
-    if (database.remote) {
-      const withPath = [
-        usage,
-        ...(command.arguments ?? []).map(({ name, required }) =>
-          required === false ? `[${name}]` : `<${name}>`,
-        ),
-        "<path>",
-      ].join(" ");
-      throw new Error(
-        `${usage} needs a database the CLI opens itself, but hot-updater.config.ts reaches a self-hosted server through its admin API. Pass the config that exports your server's hotUpdater: ${withPath}.`,
-      );
-    }
-    const api = database.apis[plugin];
+    const apis = await source.open();
+    const api = apis[plugin];
     if (api === undefined) {
       throw new Error(`${source.from} does not run the plugin "${plugin}".`);
     }

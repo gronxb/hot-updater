@@ -73,7 +73,10 @@ describe("deleteBundle", () => {
       delete: deleteFromStorage,
     });
 
-    await deleteBundle({ bundleId: baseBundle.id }, { core, storageAdapter });
+    await deleteBundle(
+      { bundleId: baseBundle.id },
+      { core, storage: [storageAdapter] },
+    );
 
     expect(core.getBundle).toHaveBeenCalledWith(baseBundle.id);
     expect(core.deleteBundles).toHaveBeenCalledOnce();
@@ -101,7 +104,7 @@ describe("deleteBundle", () => {
 
     await deleteBundles(
       { bundleIds: [baseBundle.id, secondBundle.id] },
-      { core, storageAdapter },
+      { core, storage: [storageAdapter] },
     );
 
     expect(core.getBundle).toHaveBeenCalledTimes(2);
@@ -125,7 +128,7 @@ describe("deleteBundle", () => {
     await expect(
       deleteBundles(
         { bundleIds: [baseBundle.id, "missing-bundle"] },
-        { core, storageAdapter },
+        { core, storage: [storageAdapter] },
       ),
     ).resolves.toEqual({
       deletedBundleIds: [baseBundle.id],
@@ -145,7 +148,7 @@ describe("deleteBundle", () => {
 
     await deleteBundles(
       { bundleIds: [baseBundle.id, baseBundle.id] },
-      { core, storageAdapter },
+      { core, storage: [storageAdapter] },
     );
 
     expect(core.getBundle).toHaveBeenCalledOnce();
@@ -164,7 +167,10 @@ describe("deleteBundle", () => {
       delete: deleteFromStorage,
     });
 
-    await deleteBundle({ bundleId: baseBundle.id }, { core, storageAdapter });
+    await deleteBundle(
+      { bundleId: baseBundle.id },
+      { core, storage: [storageAdapter] },
+    );
 
     expect(core.deleteBundles).toHaveBeenCalledOnce();
     expect(deleteFromStorage).not.toHaveBeenCalled();
@@ -181,7 +187,10 @@ describe("deleteBundle", () => {
       delete: deleteFromStorage,
     });
 
-    await deleteBundle({ bundleId: baseBundle.id }, { core, storageAdapter });
+    await deleteBundle(
+      { bundleId: baseBundle.id },
+      { core, storage: [storageAdapter] },
+    );
 
     expect(deleteFromStorage).toHaveBeenCalledWith({ storageUri });
   });
@@ -194,7 +203,10 @@ describe("deleteBundle", () => {
     const storageAdapter = createStorageAdapter("s3");
 
     await expect(
-      deleteBundle({ bundleId: baseBundle.id }, { core, storageAdapter }),
+      deleteBundle(
+        { bundleId: baseBundle.id },
+        { core, storage: [storageAdapter] },
+      ),
     ).rejects.toThrow("No storage adapter for protocol: r2");
 
     expect(core.deleteBundles).not.toHaveBeenCalled();
@@ -214,7 +226,10 @@ describe("deleteBundle", () => {
       .mockImplementation(() => undefined);
 
     await expect(
-      deleteBundle({ bundleId: baseBundle.id }, { core, storageAdapter }),
+      deleteBundle(
+        { bundleId: baseBundle.id },
+        { core, storage: [storageAdapter] },
+      ),
     ).resolves.toBeUndefined();
 
     expect(core.deleteBundles).toHaveBeenCalledOnce();
@@ -239,7 +254,7 @@ describe("deleteBundle", () => {
     await expect(
       deleteBundle(
         { bundleId: baseBundle.id },
-        { core, storageAdapter, waitForStorageCleanup: false },
+        { core, storage: [storageAdapter], waitForStorageCleanup: false },
       ),
     ).resolves.toBeUndefined();
 
@@ -267,7 +282,7 @@ describe("deleteBundle", () => {
 
     await deleteBundle(
       { bundleId: bundleWithManifest.id },
-      { core, storageAdapter },
+      { core, storage: [storageAdapter] },
     );
 
     expect(core.getBundle).toHaveBeenCalledOnce();
@@ -295,7 +310,10 @@ describe("deleteBundle", () => {
     const storageAdapter = createStorageAdapter("s3");
 
     await expect(
-      deleteBundle({ bundleId: baseBundle.id }, { core, storageAdapter }),
+      deleteBundle(
+        { bundleId: baseBundle.id },
+        { core, storage: [storageAdapter] },
+      ),
     ).rejects.toThrow("No storage adapter for protocol: r2");
 
     expect(core.deleteBundles).not.toHaveBeenCalled();
@@ -309,7 +327,10 @@ describe("deleteBundle", () => {
     const storageAdapter = createStorageAdapter("s3");
 
     await expect(
-      deleteBundle({ bundleId: baseBundle.id }, { core, storageAdapter }),
+      deleteBundle(
+        { bundleId: baseBundle.id },
+        { core, storage: [storageAdapter] },
+      ),
     ).rejects.toThrow("referenced by releases");
 
     expect(storageAdapter.delete).not.toHaveBeenCalled();

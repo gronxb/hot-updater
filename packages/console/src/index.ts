@@ -1,5 +1,5 @@
-import type { ConfigInput, ConfiguredDatabase } from "@hot-updater/plugin-core";
-import type { AnyHotUpdaterPlugin } from "@hot-updater/server/plugins";
+import type { RemoteServer } from "@hot-updater/plugin-core";
+import type { HotUpdaterAPI } from "@hot-updater/server";
 
 export type ConsoleAuthProvider = "google" | "github";
 
@@ -20,19 +20,19 @@ export type ConsoleAuthAdapter = Readonly<{
   getProviders(request: Request): Promise<readonly ConsoleAuthProvider[]>;
 }>;
 
-export type HotUpdaterConsoleConfig = Readonly<
-  Omit<Pick<ConfigInput, "console" | "database" | "storage">, "database"> & {
-    database: ConfiguredDatabase;
-    /**
-     * The plugins your server runs, such as `[insights(), apiKeys()]`. The
-     * console runs them over `database` to read Insights and manage API
-     * keys, and shows only the features of the plugins listed. A
-     * `standaloneRepository` database needs none: the console reads its
-     * server's plugins from the admin `/version`.
-     */
-    plugins?: readonly AnyHotUpdaterPlugin[];
-  }
->;
+export type HotUpdaterConsoleConfig = Readonly<{
+  /**
+   * The server the console manages: your server definition, the
+   * `hotUpdater` that `createHotUpdater({ database, storage, plugins })`
+   * returns, or `standaloneRepository(...)`, which reaches a self-hosted
+   * server through its admin API. The console shows the built-in features
+   * of the plugins the server runs: the definition's, or those its admin
+   * `/version` lists.
+   */
+  server: HotUpdaterAPI | RemoteServer;
+  /** The Git repository whose commits the console links bundles to. */
+  gitUrl?: string;
+}>;
 
 export type HotUpdaterConsoleConfigSource =
   | HotUpdaterConsoleConfig

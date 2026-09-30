@@ -4,155 +4,40 @@ import {
   type BuildType,
   ConfigBuilder,
   type ProviderConfig,
-} from "./ConfigBuilder"; // Adjust the import path as necessary
+} from "./ConfigBuilder";
 
-const getAwsConfigTemplate = (
-  build: BuildType,
-  {
-    sessionToken,
-  }: {
-    sessionToken?: boolean;
-  },
-) => {
-  const storageConfig: ProviderConfig = {
-    imports: [{ pkg: "@hot-updater/aws", named: ["s3Storage"] }],
-    configString: "s3Storage(commonOptions)",
-  };
-  const databaseConfig: ProviderConfig = {
-    imports: [{ pkg: "@hot-updater/aws", named: ["dynamoDB"] }],
-    configString: `dynamoDB({
-    ...commonOptions,
-    cloudfrontDistributionId: process.env.HOT_UPDATER_CLOUDFRONT_DISTRIBUTION_ID!,
-  })`,
-  };
-
-  let intermediate = "";
-
-  if (sessionToken) {
-    intermediate = `
-const commonOptions = {
-  bucketName: process.env.HOT_UPDATER_S3_BUCKET_NAME!,
-  region: process.env.HOT_UPDATER_S3_REGION!,
-  credentials: {
-    accessKeyId: process.env.HOT_UPDATER_S3_ACCESS_KEY_ID!,
-    secretAccessKey: process.env.HOT_UPDATER_S3_SECRET_ACCESS_KEY!,
-    // This token may expire. For permanent use, it's recommended to use a key with S3FullAccess and CloudFrontFullAccess permission and remove this field.
-    sessionToken: process.env.HOT_UPDATER_S3_SESSION_TOKEN!,
-  },
-};`.trim();
-  } else {
-    intermediate = `
-const commonOptions = {
-  bucketName: process.env.HOT_UPDATER_S3_BUCKET_NAME!,
-  region: process.env.HOT_UPDATER_S3_REGION!,
-  credentials: {
-    accessKeyId: process.env.HOT_UPDATER_S3_ACCESS_KEY_ID!,
-    secretAccessKey: process.env.HOT_UPDATER_S3_SECRET_ACCESS_KEY!,
-  },
-};`.trim();
-  }
-
-  return new ConfigBuilder()
-    .setBuildType(build)
-    .setStorage(storageConfig)
-    .setDatabase(databaseConfig)
-    .setIntermediateCode(intermediate)
-    .getResult();
-};
-
-const getSupabaseConfigTemplate = (build: BuildType) => {
-  const storageConfig: ProviderConfig = {
-    imports: [{ pkg: "@hot-updater/supabase", named: ["supabaseStorage"] }],
-    configString: `supabaseStorage({
-    supabaseUrl: process.env.HOT_UPDATER_SUPABASE_URL!,
-    supabaseServiceRoleKey: process.env.HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY!,
-    bucketName: process.env.HOT_UPDATER_SUPABASE_BUCKET_NAME!,
-  })`,
-  };
-  const databaseConfig: ProviderConfig = {
-    imports: [{ pkg: "@hot-updater/supabase", named: ["supabaseDatabase"] }],
-    configString: `supabaseDatabase({
-    supabaseUrl: process.env.HOT_UPDATER_SUPABASE_URL!,
-    supabaseServiceRoleKey: process.env.HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY!,
-  })`,
-  };
-
-  return new ConfigBuilder()
-    .setBuildType(build)
-    .setStorage(storageConfig)
-    .setDatabase(databaseConfig)
-    .getResult();
-};
-
-const getCloudflareConfigTemplate = (build: BuildType) => {
-  const storageConfig: ProviderConfig = {
-    imports: [{ pkg: "@hot-updater/cloudflare", named: ["r2Storage"] }],
-    configString: `r2Storage({
+const cloudflareStorage: ProviderConfig = {
+  imports: [{ pkg: "@hot-updater/cloudflare", named: ["r2Storage"] }],
+  configString: `r2Storage({
     bucketName: process.env.HOT_UPDATER_CLOUDFLARE_R2_BUCKET_NAME!,
     accountId: process.env.HOT_UPDATER_CLOUDFLARE_ACCOUNT_ID!,
-    credentials: {
-      accessKeyId: process.env.HOT_UPDATER_CLOUDFLARE_R2_ACCESS_KEY_ID!,
-      secretAccessKey: process.env.HOT_UPDATER_CLOUDFLARE_R2_SECRET_ACCESS_KEY!,
-    },
   })`,
-  };
-  const databaseConfig: ProviderConfig = {
-    imports: [{ pkg: "@hot-updater/cloudflare", named: ["d1Database"] }],
-    configString: `d1Database({
+};
+const cloudflareDatabase: ProviderConfig = {
+  imports: [{ pkg: "@hot-updater/cloudflare", named: ["d1Database"] }],
+  configString: `d1Database({
     databaseId: process.env.HOT_UPDATER_CLOUDFLARE_D1_DATABASE_ID!,
-    accountId: process.env.HOT_UPDATER_CLOUDFLARE_ACCOUNT_ID!,
-    cloudflareApiToken: process.env.HOT_UPDATER_CLOUDFLARE_API_TOKEN!,
   })`,
-  };
-
-  return new ConfigBuilder()
-    .setBuildType(build)
-    .setStorage(storageConfig)
-    .setDatabase(databaseConfig)
-    .getResult();
+};
+const cloudflarePlugins: ProviderConfig = {
+  imports: [{ pkg: "@hot-updater/cloudflare", named: ["plugins"] }],
+  configString: "plugins",
 };
 
-const getFirebaseConfigTemplate = (build: BuildType) => {
-  const storageConfig: ProviderConfig = {
-    imports: [{ pkg: "@hot-updater/firebase", named: ["firebaseStorage"] }],
-    configString: `firebaseStorage({
-    projectId: process.env.HOT_UPDATER_FIREBASE_PROJECT_ID!,
-    storageBucket: process.env.HOT_UPDATER_FIREBASE_STORAGE_BUCKET!,
-    credential,
-  })`,
-  };
-  const databaseConfig: ProviderConfig = {
-    imports: [{ pkg: "@hot-updater/firebase", named: ["firebaseDatabase"] }],
-    configString: `firebaseDatabase({
-    projectId: process.env.HOT_UPDATER_FIREBASE_PROJECT_ID!,
-    credential,
-  })`,
-  };
-
-  const intermediate = `
-// https://firebase.google.com/docs/admin/setup?hl=en#initialize_the_sdk_in_non-google_environments
-// Check your .env.hotupdater file and add the credentials
-// Set the GOOGLE_APPLICATION_CREDENTIALS environment variable to your credentials file path
-// Example: GOOGLE_APPLICATION_CREDENTIALS=./firebase-adminsdk-credentials.json
-const credential = applicationDefault();`.trim();
-
-  return new ConfigBuilder()
+const cloudflare = (build: BuildType) =>
+  new ConfigBuilder()
     .setBuildType(build)
-    .setStorage(storageConfig)
-    .setDatabase(databaseConfig)
-    .addImport({ pkg: "firebase-admin/app", named: ["applicationDefault"] })
-    .setIntermediateCode(intermediate)
-    .getResult();
-};
+    .setStorage(cloudflareStorage)
+    .setDatabase(cloudflareDatabase)
+    .setPlugins(cloudflarePlugins)
+    .getScaffold();
 
 describe("ConfigBuilder", () => {
-  it("should build an AWS S3 config with session token", () => {
-    const result = getAwsConfigTemplate("bare", {
-      sessionToken: true,
-    });
+  it("writes hot-updater.config.ts with the build and a pointer to the server definition", () => {
+    const scaffold = cloudflare("bare");
 
-    const expectedConfig = `import { dynamoDB, s3Storage } from "@hot-updater/aws";
-import { bare } from "@hot-updater/bare";
+    expect(scaffold.server).toBe("./hotUpdater.ts");
+    expect(scaffold.text).toBe(`import { bare } from "@hot-updater/bare";
 import { defineConfig } from "hot-updater";
 import { existsSync } from "node:fs";
 
@@ -160,197 +45,99 @@ if (existsSync(".env.hotupdater")) {
   process.loadEnvFile(".env.hotupdater");
 }
 
-const commonOptions = {
-  bucketName: process.env.HOT_UPDATER_S3_BUCKET_NAME!,
-  region: process.env.HOT_UPDATER_S3_REGION!,
-  credentials: {
-    accessKeyId: process.env.HOT_UPDATER_S3_ACCESS_KEY_ID!,
-    secretAccessKey: process.env.HOT_UPDATER_S3_SECRET_ACCESS_KEY!,
-    // This token may expire. For permanent use, it's recommended to use a key with S3FullAccess and CloudFrontFullAccess permission and remove this field.
-    sessionToken: process.env.HOT_UPDATER_S3_SESSION_TOKEN!,
-  },
-};
-
 export default defineConfig({
   build: bare({ enableHermes: true }),
-  storage: s3Storage(commonOptions),
-  database: dynamoDB({
-    ...commonOptions,
-    cloudfrontDistributionId: process.env.HOT_UPDATER_CLOUDFRONT_DISTRIBUTION_ID!,
-  }),
+  server: "./hotUpdater.ts",
   updateStrategy: "appVersion", // or "fingerprint"
-});`;
-
-    expect(result).toBe(expectedConfig);
+});`);
   });
 
-  it("should build an AWS S3 config without session token", () => {
-    const result = getAwsConfigTemplate("bare", {
-      sessionToken: false,
-    });
+  it.each([
+    ["rock", 'import { rock } from "@hot-updater/rock";', "build: rock(),"],
+    ["expo", 'import { expo } from "@hot-updater/expo";', "build: expo(),"],
+  ] as const)(
+    "imports the %s build adapter",
+    (build, importLine, buildLine) => {
+      const { text } = cloudflare(build);
 
-    const expectedConfig = `import { dynamoDB, s3Storage } from "@hot-updater/aws";
-import { bare } from "@hot-updater/bare";
-import { defineConfig } from "hot-updater";
-import { existsSync } from "node:fs";
-
-if (existsSync(".env.hotupdater")) {
-  process.loadEnvFile(".env.hotupdater");
-}
-
-const commonOptions = {
-  bucketName: process.env.HOT_UPDATER_S3_BUCKET_NAME!,
-  region: process.env.HOT_UPDATER_S3_REGION!,
-  credentials: {
-    accessKeyId: process.env.HOT_UPDATER_S3_ACCESS_KEY_ID!,
-    secretAccessKey: process.env.HOT_UPDATER_S3_SECRET_ACCESS_KEY!,
-  },
-};
-
-export default defineConfig({
-  build: bare({ enableHermes: true }),
-  storage: s3Storage(commonOptions),
-  database: dynamoDB({
-    ...commonOptions,
-    cloudfrontDistributionId: process.env.HOT_UPDATER_CLOUDFRONT_DISTRIBUTION_ID!,
-  }),
-  updateStrategy: "appVersion", // or "fingerprint"
-});`;
-
-    expect(result).toBe(expectedConfig);
-  });
-
-  it("should build a Supabase config", () => {
-    const result = getSupabaseConfigTemplate("bare");
-
-    const expectedConfig = `import { bare } from "@hot-updater/bare";
-import { supabaseDatabase, supabaseStorage } from "@hot-updater/supabase";
-import { defineConfig } from "hot-updater";
-import { existsSync } from "node:fs";
-
-if (existsSync(".env.hotupdater")) {
-  process.loadEnvFile(".env.hotupdater");
-}
-
-
-export default defineConfig({
-  build: bare({ enableHermes: true }),
-  storage: supabaseStorage({
-    supabaseUrl: process.env.HOT_UPDATER_SUPABASE_URL!,
-    supabaseServiceRoleKey: process.env.HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY!,
-    bucketName: process.env.HOT_UPDATER_SUPABASE_BUCKET_NAME!,
-  }),
-  database: supabaseDatabase({
-    supabaseUrl: process.env.HOT_UPDATER_SUPABASE_URL!,
-    supabaseServiceRoleKey: process.env.HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY!,
-  }),
-  updateStrategy: "appVersion", // or "fingerprint"
-});`;
-
-    expect(result).toBe(expectedConfig);
-  });
-
-  it("should build a Cloudflare config", () => {
-    const result = getCloudflareConfigTemplate("bare");
-
-    const expectedConfig = `import { bare } from "@hot-updater/bare";
-import { d1Database, r2Storage } from "@hot-updater/cloudflare";
-import { defineConfig } from "hot-updater";
-import { existsSync } from "node:fs";
-
-if (existsSync(".env.hotupdater")) {
-  process.loadEnvFile(".env.hotupdater");
-}
-
-
-export default defineConfig({
-  build: bare({ enableHermes: true }),
-  storage: r2Storage({
-    bucketName: process.env.HOT_UPDATER_CLOUDFLARE_R2_BUCKET_NAME!,
-    accountId: process.env.HOT_UPDATER_CLOUDFLARE_ACCOUNT_ID!,
-    credentials: {
-      accessKeyId: process.env.HOT_UPDATER_CLOUDFLARE_R2_ACCESS_KEY_ID!,
-      secretAccessKey: process.env.HOT_UPDATER_CLOUDFLARE_R2_SECRET_ACCESS_KEY!,
+      expect(text).toContain(importLine);
+      expect(text).toContain(buildLine);
+      expect(text).not.toContain("@hot-updater/cloudflare");
     },
-  }),
+  );
+
+  it("writes the server definition with the provider's database, storage, and plugins", () => {
+    expect(cloudflare("bare").definition.text)
+      .toBe(`import { d1Database, plugins, r2Storage } from "@hot-updater/cloudflare";
+import { createHotUpdater } from "@hot-updater/server";
+
+/**
+ * The Hot Updater server: its database, storage, and plugins.
+ * hot-updater.config.ts points the CLI and the console here.
+ */
+export const hotUpdater = createHotUpdater({
   database: d1Database({
     databaseId: process.env.HOT_UPDATER_CLOUDFLARE_D1_DATABASE_ID!,
-    accountId: process.env.HOT_UPDATER_CLOUDFLARE_ACCOUNT_ID!,
-    cloudflareApiToken: process.env.HOT_UPDATER_CLOUDFLARE_API_TOKEN!,
   }),
-  updateStrategy: "appVersion", // or "fingerprint"
-});`;
-
-    expect(result).toBe(expectedConfig);
+  storage: [
+    r2Storage({
+      bucketName: process.env.HOT_UPDATER_CLOUDFLARE_R2_BUCKET_NAME!,
+      accountId: process.env.HOT_UPDATER_CLOUDFLARE_ACCOUNT_ID!,
+    }),
+  ],
+  plugins,
+});`);
   });
 
-  it("should build a Cloudflare config", () => {
-    const result = getCloudflareConfigTemplate("rock");
+  it("puts helpers and their imports in the server definition", () => {
+    const scaffold = new ConfigBuilder()
+      .setBuildType("bare")
+      .setStorage({
+        imports: [{ pkg: "@hot-updater/aws", named: ["s3Storage"] }],
+        configString: "s3Storage(awsOptions)",
+      })
+      .setDatabase({
+        imports: [{ pkg: "@hot-updater/aws", named: ["dynamoDB"] }],
+        configString: "dynamoDB(awsOptions)",
+      })
+      .setPlugins({
+        imports: [{ pkg: "@hot-updater/aws", named: ["plugins"] }],
+        configString: "[...plugins]",
+      })
+      .addImport({ pkg: "@aws-sdk/credential-providers", named: ["fromIni"] })
+      .setIntermediateCode(
+        "const awsOptions = { credentials: fromIni({ profile: 'dev' }) };",
+      )
+      .getScaffold();
 
-    const expectedConfig = `import { d1Database, r2Storage } from "@hot-updater/cloudflare";
-import { rock } from "@hot-updater/rock";
-import { defineConfig } from "hot-updater";
-import { existsSync } from "node:fs";
+    expect(scaffold.text).not.toContain("awsOptions");
+    expect(scaffold.definition.text)
+      .toBe(`import { dynamoDB, plugins, s3Storage } from "@hot-updater/aws";
+import { createHotUpdater } from "@hot-updater/server";
+import { fromIni } from "@aws-sdk/credential-providers";
 
-if (existsSync(".env.hotupdater")) {
-  process.loadEnvFile(".env.hotupdater");
-}
+const awsOptions = { credentials: fromIni({ profile: 'dev' }) };
 
-
-export default defineConfig({
-  build: rock(),
-  storage: r2Storage({
-    bucketName: process.env.HOT_UPDATER_CLOUDFLARE_R2_BUCKET_NAME!,
-    accountId: process.env.HOT_UPDATER_CLOUDFLARE_ACCOUNT_ID!,
-    credentials: {
-      accessKeyId: process.env.HOT_UPDATER_CLOUDFLARE_R2_ACCESS_KEY_ID!,
-      secretAccessKey: process.env.HOT_UPDATER_CLOUDFLARE_R2_SECRET_ACCESS_KEY!,
-    },
-  }),
-  database: d1Database({
-    databaseId: process.env.HOT_UPDATER_CLOUDFLARE_D1_DATABASE_ID!,
-    accountId: process.env.HOT_UPDATER_CLOUDFLARE_ACCOUNT_ID!,
-    cloudflareApiToken: process.env.HOT_UPDATER_CLOUDFLARE_API_TOKEN!,
-  }),
-  updateStrategy: "appVersion", // or "fingerprint"
-});`;
-
-    expect(result).toBe(expectedConfig);
+/**
+ * The Hot Updater server: its database, storage, and plugins.
+ * hot-updater.config.ts points the CLI and the console here.
+ */
+export const hotUpdater = createHotUpdater({
+  database: dynamoDB(awsOptions),
+  storage: [
+    s3Storage(awsOptions),
+  ],
+  plugins: [...plugins],
+});`);
   });
 
-  it("should build a Firebase config", () => {
-    const result = getFirebaseConfigTemplate("bare");
-
-    const expectedConfig = `import { bare } from "@hot-updater/bare";
-import { firebaseDatabase, firebaseStorage } from "@hot-updater/firebase";
-import { applicationDefault } from "firebase-admin/app";
-import { defineConfig } from "hot-updater";
-import { existsSync } from "node:fs";
-
-if (existsSync(".env.hotupdater")) {
-  process.loadEnvFile(".env.hotupdater");
-}
-
-// https://firebase.google.com/docs/admin/setup?hl=en#initialize_the_sdk_in_non-google_environments
-// Check your .env.hotupdater file and add the credentials
-// Set the GOOGLE_APPLICATION_CREDENTIALS environment variable to your credentials file path
-// Example: GOOGLE_APPLICATION_CREDENTIALS=./firebase-adminsdk-credentials.json
-const credential = applicationDefault();
-
-export default defineConfig({
-  build: bare({ enableHermes: true }),
-  storage: firebaseStorage({
-    projectId: process.env.HOT_UPDATER_FIREBASE_PROJECT_ID!,
-    storageBucket: process.env.HOT_UPDATER_FIREBASE_STORAGE_BUCKET!,
-    credential,
-  }),
-  database: firebaseDatabase({
-    projectId: process.env.HOT_UPDATER_FIREBASE_PROJECT_ID!,
-    credential,
-  }),
-  updateStrategy: "appVersion", // or "fingerprint"
-});`;
-
-    expect(result).toBe(expectedConfig);
+  it("needs the server's plugins", () => {
+    expect(() =>
+      new ConfigBuilder()
+        .setBuildType("bare")
+        .setStorage(cloudflareStorage)
+        .setDatabase(cloudflareDatabase)
+        .getScaffold(),
+    ).toThrow("Plugins config must be set using .setPlugins()");
   });
 });

@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { loadHotUpdater } from "./load-hot-updater";
 
 const mockCli = vi.hoisted(() => ({
+  loadConfig: vi.fn(async (): Promise<{ server?: string }> => ({})),
   log: {
     error: vi.fn(),
     info: vi.fn(),
@@ -15,6 +16,7 @@ const mockCli = vi.hoisted(() => ({
 }));
 
 vi.mock("@hot-updater/cli-tools", () => ({
+  loadConfig: mockCli.loadConfig,
   p: {
     log: mockCli.log,
   },
@@ -154,20 +156,58 @@ describe("loadHotUpdater", () => {
     }
   });
 
-  it("accepts root runtime configs without direct database tooling methods", async () => {
+  it("loads a server definition the command names without running hot-updater.config.ts", async () => {
     const projectDir = await mkdtemp(
-      path.join(tmpdir(), "hot-updater-root-runtime-config-"),
+      path.join(tmpdir(), "hot-updater-named-server-"),
     );
     await writeFile(
-      path.join(projectDir, "hot-updater.config.ts"),
+      path.join(projectDir, "hotUpdater.ts"),
+      [
+        "export const hotUpdater = {",
+        "  adapterName: process.env.HOT_UPDATER_TEST_ADAPTER,",
+        "};",
+      ].join("\n"),
+      "utf-8",
+    );
+    await writeFile(
+      path.join(projectDir, ".env.hotupdater"),
+      "HOT_UPDATER_TEST_ADAPTER=kysely\n",
+      "utf-8",
+    );
+    mockCli.loadConfig.mockRejectedValueOnce(
+      new Error("HOT_UPDATER_ADMIN_TOKEN is required."),
+    );
+
+    try {
+      const loaded = await loadHotUpdater("hotUpdater.ts", { cwd: projectDir });
+      expect(loaded.adapterName).toBe("kysely");
+      expect(mockCli.loadConfig).not.toHaveBeenCalled();
+    } finally {
+      delete process.env["HOT_UPDATER_TEST_ADAPTER"];
+      mockCli.loadConfig.mockReset();
+      mockCli.loadConfig.mockResolvedValue({});
+      await rm(projectDir, { recursive: true, force: true });
+    }
+  });
+
+  it("loads the server definition hot-updater.config.ts points at", async () => {
+    const projectDir = await mkdtemp(
+      path.join(tmpdir(), "hot-updater-configured-server-"),
+    );
+    const definitionPath = path.join(projectDir, "server", "hotUpdater.ts");
+    await mkdir(path.dirname(definitionPath), { recursive: true });
+    await writeFile(
+      definitionPath,
       ["export const hotUpdater = {", '  adapterName: "kysely",', "};"].join(
         "\n",
       ),
       "utf-8",
     );
+    mockCli.loadConfig.mockResolvedValueOnce({ server: definitionPath });
 
     try {
       const loaded = await loadHotUpdater("", { cwd: projectDir });
+      expect(loaded.absoluteConfigPath).toBe(definitionPath);
       expect(loaded.adapterName).toBe("kysely");
       expect("createMigrator" in loaded.hotUpdater).toBe(false);
       expect("generateSchema" in loaded.hotUpdater).toBe(false);

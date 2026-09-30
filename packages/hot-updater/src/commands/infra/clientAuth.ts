@@ -30,14 +30,14 @@ export interface AgentInstructionsContext {
   readonly clientPlugins: readonly InfraClientPlugin[];
 }
 
-/** Saves and registers the app's credential; beside the scaffold's app config. */
+/**
+ * Saves and registers the app's credential; beside the scaffold's server
+ * definition, whose database and plugins it uses.
+ */
 export const CLIENT_CREDENTIAL_SCRIPT = "provision-client-credential.mjs";
 
 /** Where the script keeps the credential it generated, before registering it. */
 export const CLIENT_CREDENTIAL_FILE = "client-credential.local";
-
-/** The script's database config, named for its build like hot-updater.config. */
-export const CLIENT_CREDENTIAL_CONFIG = "database.config";
 
 const TOKENS = {
   "{{CREDENTIAL_LABEL}}": "label",

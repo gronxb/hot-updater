@@ -1,4 +1,4 @@
-import type { RemoteDatabase } from "@hot-updater/plugin-core";
+import type { RemoteServer } from "@hot-updater/plugin-core";
 import type { ApiKeyManagementAPI } from "@hot-updater/server/plugins/api-keys";
 import {
   createInsightsModel,
@@ -14,7 +14,7 @@ import {
 } from "./adminInsights";
 
 /** A GET on a self-hosted server's admin handler. */
-export type FetchAdmin = RemoteDatabase["fetchAdmin"];
+export type FetchAdmin = RemoteServer["fetchAdmin"];
 
 /**
  * What serves one console feature: `local` builds it from the API of the

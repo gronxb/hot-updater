@@ -130,8 +130,10 @@ describe("activity the console does not serve", () => {
       createConsoleRuntime({
         database: {
           name: "standalone-repository",
+          url: "https://updates.example.com/hot-updater/admin",
           core: {} as HotUpdaterCoreApi,
           fetchAdmin: async () => Response.json({ plugins: ["insights"] }),
+          storage: [],
         },
       }),
       "reaches a self-hosted server",

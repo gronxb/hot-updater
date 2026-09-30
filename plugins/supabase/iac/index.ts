@@ -5,7 +5,7 @@ import path from "path";
 import {
   confirmInitInputPersistence,
   copyDirToTmp,
-  generateHotUpdaterPlugins,
+  assertManagedServerDefinition,
   getHotUpdaterInitInputEnv,
   getInitProviderEnvVars,
   getInitProviderTextPromptValues,
@@ -20,6 +20,7 @@ import {
   transformEnv,
   transformTemplate,
   writeHotUpdaterConfig,
+  writeHotUpdaterFiles,
 } from "@hot-updater/cli-tools";
 import {
   clientPluginsOf,
@@ -925,6 +926,8 @@ const runInitWithoutCliMetadata = async ({
   build,
   envFile,
 }: RunInitOptions) => {
+  const scaffold = getConfigScaffold(build);
+  await assertManagedServerDefinition(scaffold, process.cwd());
   const nonInteractive = envFile !== undefined;
   const initEnvSources = await readHotUpdaterInitEnv(process.cwd(), envFile);
   const { inputEnv, managedEnv } = initEnvSources;
@@ -1151,26 +1154,12 @@ const runInitWithoutCliMetadata = async ({
 
   await removeTmpDir();
 
-  const configWriteResult = await writeHotUpdaterConfig(
-    getConfigScaffold(build),
-  );
-  await assertSkippedConfigDoesNotUseLegacySupabaseKey(configWriteResult);
-
   p.log.success("Generated '.env.hotupdater' file with Supabase settings.");
-  if (configWriteResult.status === "created") {
-    p.log.success(
-      "Generated 'hot-updater.config.ts' file with Supabase settings.",
-    );
-  } else if (configWriteResult.status === "merged") {
-    p.log.success(
-      "Updated 'hot-updater.config.ts' file with Supabase settings.",
-    );
-  } else {
-    p.log.warn(
-      `Kept existing 'hot-updater.config.ts' unchanged: ${configWriteResult.reason}`,
-    );
-  }
-  await generateHotUpdaterPlugins("@hot-updater/supabase");
+  const files = await writeHotUpdaterFiles(scaffold, {
+    cwd: process.cwd(),
+    settings: "Supabase",
+  });
+  await assertSkippedConfigDoesNotUseLegacySupabaseKey(files.config);
 
   printAppSetup({
     baseURL: getSupabaseFunctionUrl({ functionName, projectId: project.id }),

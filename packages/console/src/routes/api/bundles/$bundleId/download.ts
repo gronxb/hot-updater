@@ -6,8 +6,8 @@ export const Route = createFileRoute("/api/bundles/$bundleId/download")({
       GET: async ({ params, request }) => {
         const { prepareConfig } = await import("@/lib/server/config.server");
         const { downloadBundle } = await import("@/lib/server/downloadBundle");
-        const { core, storageAdapter } = await prepareConfig(request);
-        return downloadBundle(params.bundleId, { core, storageAdapter });
+        const { core, storage } = await prepareConfig(request);
+        return downloadBundle(params.bundleId, { core, storage });
       },
     },
   },

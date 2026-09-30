@@ -4,10 +4,8 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 import {
-  HOT_UPDATER_PLUGINS_PATH,
-  renderHotUpdaterPlugins,
-  renderImportStatements,
   resolvePackageVersion,
+  SERVER_DEFINITION_PATH,
   transformEnv,
 } from "@hot-updater/cli-tools";
 import { HOT_UPDATER_INFRASTRUCTURE_GENERATION } from "@hot-updater/server";
@@ -15,7 +13,6 @@ import { clientAuthOf, clientPluginsOf } from "@hot-updater/server/db";
 import { build as buildHelper } from "tsdown";
 
 import {
-  CLIENT_CREDENTIAL_CONFIG,
   CLIENT_CREDENTIAL_SCRIPT,
   renderAgentInstructions,
 } from "../src/commands/infra/clientAuth.ts";
@@ -126,56 +123,51 @@ for (const provider of providers) {
       provider === "aws" ? "templates.ts" : "configTemplate.ts",
     ),
   );
+  const scaffoldOf = (build) =>
+    provider === "aws"
+      ? templateModule.getConfigScaffold(build, {
+          mode: "local",
+          profile: null,
+        })
+      : templateModule.getConfigScaffold(build);
   for (const build of builds) {
-    const config =
-      provider === "aws"
-        ? templateModule.getConfigScaffold(build, {
-            mode: "local",
-            profile: null,
-          })
-        : templateModule.getConfigScaffold(build);
     await save(
       path.join(output, "app", `hot-updater.config.${build}.ts`),
-      `${config.text}\n`,
-    );
-    const imports = config.imports
-      .filter(
-        ({ pkg }) => pkg !== "hot-updater" && pkg !== `@hot-updater/${build}`,
-      )
-      .map((info) => ({
-        ...info,
-        named: info.named?.filter((name) => name !== config.storage.callee),
-      }));
-    // Firestore has no migration tooling, so the credential script writes the
-    // schema settings of core and the deployed server's plugins first.
-    const migrate =
-      provider === "firebase"
-        ? `\n/** Writes the schema settings of core and \`plugins\`, which the database checks before its first read. */\nexport const migrate = (\n  plugins: Parameters<typeof migrateFirebaseDatabase>[1],\n) =>\n  ${config.database.initializer.replace(/^firebaseDatabase\(/, "migrateFirebaseDatabase(").replace(/\)$/u, ", plugins)")};\n`
-        : "";
-    const keyImports =
-      provider === "firebase"
-        ? imports.map((info) =>
-            info.pkg === "@hot-updater/firebase"
-              ? {
-                  ...info,
-                  named: [...(info.named ?? []), "migrateFirebaseDatabase"],
-                }
-              : info,
-          )
-        : imports;
-    await save(
-      path.join(output, "app", `${CLIENT_CREDENTIAL_CONFIG}.${build}.ts`),
-      `${renderImportStatements(keyImports)}\n\nif (existsSync(".env.hotupdater")) {
-  process.loadEnvFile(".env.hotupdater");
-}\n\n${config.helperStatements.map(({ code }) => code).join("\n\n")}\n\nexport const database = ${config.database.initializer};\n${migrate}`,
+      `${scaffoldOf(build).text}\n`,
     );
   }
-  // The plugin list init generates beside the config; the prebuilt server
-  // imports the same list.
+  // Every build's config points at the server definition init writes, which
+  // holds no build: the database, storage, and plugins the provider's
+  // prebuilt server runs.
+  const { definition } = scaffoldOf(builds[0]);
   await save(
-    path.join(output, "app", HOT_UPDATER_PLUGINS_PATH),
-    renderHotUpdaterPlugins(`@hot-updater/${provider}`),
+    path.join(output, "app", SERVER_DEFINITION_PATH),
+    `${definition.text}\n`,
   );
+  if (provider === "firebase") {
+    // Firestore has no migration tooling, so the credential script runs the
+    // migrator of the server definition it loaded: core's settings and those
+    // of the definition's plugins, over the definition's own database.
+    await save(
+      path.join(output, "app/migrate.ts"),
+      `import { createMigrator } from "@hot-updater/server/db";
+
+/**
+ * Writes the schema settings of core and the plugins \`hotUpdater\` runs,
+ * which its database checks before its first read.
+ */
+export const migrate = async (
+  hotUpdater: Parameters<typeof createMigrator>[0],
+) => {
+  const result = await createMigrator(hotUpdater).migrateToLatest({
+    mode: "from-schema",
+    updateSettings: true,
+  });
+  await result.execute();
+};
+`,
+    );
+  }
   await cp(
     path.join(packageRoot, "agent", CLIENT_CREDENTIAL_SCRIPT),
     path.join(output, "app", CLIENT_CREDENTIAL_SCRIPT),

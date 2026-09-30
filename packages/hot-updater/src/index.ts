@@ -669,7 +669,10 @@ const dbCommand = program
 dbCommand
   .command("migrate")
   .description("Run database migration (creates tables directly in database)")
-  .argument("[configPath]", "path to the config file that exports hotUpdater")
+  .argument(
+    "[configPath]",
+    "path to the server definition that exports hotUpdater (default: server in hot-updater.config.ts)",
+  )
   .option("-y, --yes", "skip confirmation prompt", false)
   .action(async (configPath: string | undefined, options: { yes: boolean }) => {
     await migrate({ configPath: configPath || "", skipConfirm: options.yes });
@@ -681,13 +684,13 @@ dbCommand
   .description("Generate SQL migration file (does not execute)")
   .argument(
     "[configPath]",
-    "path to the config file that exports hotUpdater (optional with --sql)",
+    "path to the server definition that exports hotUpdater (default: server in hot-updater.config.ts; optional with --sql)",
   )
   .argument("[outputDir]", "output directory (default: hot-updater_migrations)")
   .option("-y, --yes", "skip confirmation prompt", false)
   .option(
     "--sql [provider]",
-    "generate a standalone SQL file of core's tables and the server's plugins' tables, from the config, hotUpdater.plugins.ts, or a default server config when one is found. Optional provider: postgresql, mysql, sqlite (default: interactive selection)",
+    "generate a standalone SQL file of core's tables and the server's plugins' tables, from the server definition when one is found. Optional provider: postgresql, mysql, sqlite (default: interactive selection)",
   )
   .action(
     async (

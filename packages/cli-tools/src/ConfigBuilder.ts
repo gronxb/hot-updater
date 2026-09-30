@@ -1,5 +1,3 @@
-// types.ts (or place in the same file initially)
-
 export type BuildType = "bare" | "rock" | "expo";
 
 export type ImportInfo = {
@@ -12,15 +10,6 @@ export type ImportInfo = {
 export type ProviderConfig = {
   imports: ImportInfo[]; // Imports required specifically by this provider part
   configString: string; // The JS code string for storage: ..., database: ...
-};
-
-export type ConfigBuilderScaffold = {
-  imports: ImportInfo[];
-  buildConfigString: string;
-  storageConfigString: string;
-  databaseConfigString: string;
-  intermediateCode: string;
-  text: string;
 };
 
 const normalizeImportInfos = (imports: ImportInfo[]) => {
@@ -108,86 +97,59 @@ export const renderImportStatements = (imports: ImportInfo[]) => {
   return importLines.join("\n");
 };
 
-// Builder Interface
-export interface IConfigBuilder {
-  /** Sets the build type ('bare' or 'rock' or 'expo') and adds necessary build imports. */
-  setBuildType(buildType: BuildType): this;
+/** The server definition file init writes, and the `server` path that points at it. */
+export const SERVER_DEFINITION_PATH = "hotUpdater.ts";
+export const SERVER_DEFINITION_POINTER = `./${SERVER_DEFINITION_PATH}`;
 
-  /** Sets the storage configuration and adds its required imports. */
-  setStorage(storageConfig: ProviderConfig): this;
+/** What the server definition file holds, apart from hot-updater.config.ts. */
+export type ServerDefinitionScaffold = {
+  imports: ImportInfo[];
+  storageConfigString: string;
+  databaseConfigString: string;
+  pluginsConfigString: string;
+  intermediateCode: string;
+  text: string;
+};
 
-  /** Sets the database configuration and adds its required imports. */
-  setDatabase(databaseConfig: ProviderConfig): this;
+export type ConfigBuilderScaffold = {
+  /** hot-updater.config.ts's imports. */
+  imports: ImportInfo[];
+  buildConfigString: string;
+  /** The `server` path hot-updater.config.ts points at. */
+  server: string;
+  /** hot-updater.config.ts. */
+  text: string;
+  /** The server definition `server` points at. */
+  definition: ServerDefinitionScaffold;
+};
 
-  /** Sets the intermediate code block to be placed between imports and defineConfig. */
-  setIntermediateCode(code: string): this;
+/** Indents every line after the first, so a multi-line value nests. */
+const indentFollowingLines = (text: string, spaces: number) =>
+  text.replaceAll("\n", `\n${" ".repeat(spaces)}`);
 
-  /** Assembles and returns the final configuration string. */
-  getResult(): string;
-}
-
-export class ConfigBuilder implements IConfigBuilder {
+/**
+ * Renders the two files init writes: hot-updater.config.ts, which holds the
+ * deploy settings and points at the server definition, and the server
+ * definition, which holds the database, storage, and plugins.
+ */
+export class ConfigBuilder {
   private buildType: BuildType | null = null;
   private storageInfo: ProviderConfig | null = null;
   private databaseInfo: ProviderConfig | null = null;
+  private pluginsInfo: ProviderConfig | null = null;
   private intermediateCode = "";
+  private readonly configImports: ImportInfo[] = [
+    { pkg: "hot-updater", named: ["defineConfig"] },
+    { pkg: "node:fs", named: ["existsSync"] },
+  ];
+  private readonly definitionImports: ImportInfo[] = [
+    { pkg: "@hot-updater/server", named: ["createHotUpdater"] },
+  ];
 
-  // Internal state to collect and deduplicate imports
-  private collectedImports: Map<
-    string,
-    { named: Set<string>; defaultOrNamespace?: string; sideEffect?: boolean }
-  > = new Map();
-
-  constructor() {
-    // Add common imports needed by almost all configurations by default
-    this.addImport({ pkg: "hot-updater", named: ["defineConfig"] });
-    this.addImport({ pkg: "node:fs", named: ["existsSync"] });
-  }
-
+  /** Adds an import to the server definition, such as a credentials helper's. */
   public addImport(info: ImportInfo): this {
-    const pkg = info.pkg;
-    const existing = this.collectedImports.get(pkg);
-
-    if (existing) {
-      // Merge named imports
-      if (info.named) {
-        for (const n of info.named) {
-          existing.named.add(n);
-        }
-      }
-      // Update default/namespace or sideEffect if not already set
-      if (info.defaultOrNamespace && !existing.defaultOrNamespace) {
-        existing.defaultOrNamespace = info.defaultOrNamespace;
-      }
-      if (info.sideEffect && !existing.sideEffect) {
-        existing.sideEffect = true; // Mark as side-effect if any part needs it
-      }
-    } else {
-      // Add new entry
-      this.collectedImports.set(pkg, {
-        named: new Set(info.named ?? []),
-        defaultOrNamespace: info.defaultOrNamespace,
-        sideEffect: info.sideEffect ?? false,
-      });
-    }
+    this.definitionImports.push(info);
     return this;
-  }
-
-  private addImports(imports: ImportInfo[]): void {
-    for (const imp of imports) {
-      this.addImport(imp);
-    }
-  }
-
-  private getImportInfos(): ImportInfo[] {
-    return normalizeImportInfos(
-      Array.from(this.collectedImports.entries()).map(([pkg, info]) => ({
-        pkg,
-        named: Array.from(info.named),
-        defaultOrNamespace: info.defaultOrNamespace,
-        sideEffect: info.sideEffect ?? false,
-      })),
-    );
   }
 
   private generateBuildConfigString(): string {
@@ -201,98 +163,107 @@ export class ConfigBuilder implements IConfigBuilder {
       case "expo":
         return "expo()";
       default:
-        // Should be caught by type system, but good practice
         throw new Error(`Invalid build type: ${this.buildType}`);
     }
   }
 
-  // --- Public Builder Methods ---
-
+  /** Sets the build type ('bare', 'rock', or 'expo') and its import. */
   setBuildType(buildType: BuildType): this {
-    if (this.buildType) {
-      // Handle resetting/changing build type if needed, e.g., remove old build import
-      // For simplicity now, assume it's set once. Error if called multiple times?
-      console.warn(
-        "Build type is being set multiple times. Overwriting previous value.",
-      );
-    }
     this.buildType = buildType;
-    this.addImport({ pkg: `@hot-updater/${buildType}`, named: [buildType] });
+    this.configImports.push({
+      pkg: `@hot-updater/${buildType}`,
+      named: [buildType],
+    });
     return this;
   }
 
+  /** Sets the server's storage and its imports. */
   setStorage(storageConfig: ProviderConfig): this {
     this.storageInfo = storageConfig;
-    this.addImports(storageConfig.imports);
-    // Auto-add the modular firebase-admin credential import if firebase is used
-    if (storageConfig.imports.some((imp) => imp.pkg.includes("firebase"))) {
-      this.addImport({
-        pkg: "firebase-admin/app",
-        named: ["applicationDefault"],
-      });
-    }
+    this.definitionImports.push(...storageConfig.imports);
     return this;
   }
 
+  /** Sets the server's database and its imports. */
   setDatabase(databaseConfig: ProviderConfig): this {
     this.databaseInfo = databaseConfig;
-    this.addImports(databaseConfig.imports);
-    // Auto-add the modular firebase-admin credential import if firebase is used
-    if (databaseConfig.imports.some((imp) => imp.pkg.includes("firebase"))) {
-      this.addImport({
-        pkg: "firebase-admin/app",
-        named: ["applicationDefault"],
-      });
-    }
+    this.definitionImports.push(...databaseConfig.imports);
     return this;
   }
 
+  /** Sets the server's plugins, such as a provider package's `plugins`. */
+  setPlugins(pluginsConfig: ProviderConfig): this {
+    this.pluginsInfo = pluginsConfig;
+    this.definitionImports.push(...pluginsConfig.imports);
+    return this;
+  }
+
+  /** Sets the code between the server definition's imports and the server. */
   setIntermediateCode(code: string): this {
-    // Trim whitespace but preserve newlines within the code
     this.intermediateCode = code.trim();
     return this;
   }
 
   getScaffold(): ConfigBuilderScaffold {
-    // Validate required parts are set
     if (!this.buildType)
       throw new Error("Build type must be set using .setBuildType()");
     if (!this.storageInfo)
       throw new Error("Storage config must be set using .setStorage()");
     if (!this.databaseInfo)
       throw new Error("Database config must be set using .setDatabase()");
+    if (!this.pluginsInfo)
+      throw new Error("Plugins config must be set using .setPlugins()");
 
-    const imports = this.getImportInfos();
-    const importStatements = renderImportStatements(imports);
+    const imports = normalizeImportInfos(this.configImports);
     const buildConfigString = this.generateBuildConfigString();
-
-    // Assemble the final string
     const text = `
-${importStatements}
+${renderImportStatements(imports)}
 
 if (existsSync(".env.hotupdater")) {
   process.loadEnvFile(".env.hotupdater");
 }
 
-${this.intermediateCode ? `${this.intermediateCode}\n` : ""}
 export default defineConfig({
   build: ${buildConfigString},
-  storage: ${this.storageInfo.configString},
-  database: ${this.databaseInfo.configString},
+  server: ${JSON.stringify(SERVER_DEFINITION_POINTER)},
   updateStrategy: "appVersion", // or "fingerprint"
 });
-`.trim(); // Ensure trailing newline
+`.trim();
+
+    const definitionImports = normalizeImportInfos(this.definitionImports);
+    const definitionText = `
+${renderImportStatements(definitionImports)}
+
+${this.intermediateCode ? `${this.intermediateCode}\n\n` : ""}/**
+ * The Hot Updater server: its database, storage, and plugins.
+ * hot-updater.config.ts points the CLI and the console here.
+ */
+export const hotUpdater = createHotUpdater({
+  database: ${this.databaseInfo.configString},
+  storage: [
+    ${indentFollowingLines(this.storageInfo.configString, 2)},
+  ],
+  ${this.pluginsInfo.configString === "plugins" ? "plugins" : `plugins: ${this.pluginsInfo.configString}`},
+});
+`.trim();
 
     return {
       imports,
       buildConfigString,
-      storageConfigString: this.storageInfo.configString,
-      databaseConfigString: this.databaseInfo.configString,
-      intermediateCode: this.intermediateCode,
+      server: SERVER_DEFINITION_POINTER,
       text,
+      definition: {
+        imports: definitionImports,
+        storageConfigString: this.storageInfo.configString,
+        databaseConfigString: this.databaseInfo.configString,
+        pluginsConfigString: this.pluginsInfo.configString,
+        intermediateCode: this.intermediateCode,
+        text: definitionText,
+      },
     };
   }
 
+  /** hot-updater.config.ts's text. */
   getResult(): string {
     return this.getScaffold().text;
   }

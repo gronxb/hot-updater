@@ -1,9 +1,6 @@
 // @vitest-environment node
 
-import type {
-  HotUpdaterCoreApi,
-  RemoteDatabase,
-} from "@hot-updater/plugin-core";
+import type { HotUpdaterCoreApi, RemoteServer } from "@hot-updater/plugin-core";
 import { createMemoryAdapter } from "@hot-updater/plugin-core/internal";
 import { createDatabasePluginApis } from "@hot-updater/server/db";
 import { apiKeys } from "@hot-updater/server/plugins/api-keys";
@@ -22,11 +19,13 @@ const engineDatabase = () => ({
 });
 
 const remoteDatabase = (
-  fetchAdmin: RemoteDatabase["fetchAdmin"],
-): RemoteDatabase => ({
+  fetchAdmin: RemoteServer["fetchAdmin"],
+): RemoteServer => ({
   name: "standalone-repository",
+  url: "https://updates.example.com/hot-updater/admin",
   core: {} as HotUpdaterCoreApi,
   fetchAdmin,
+  storage: [],
 });
 
 /** A self-hosted server's admin handler: its `/version`, and empty Insights pages. */

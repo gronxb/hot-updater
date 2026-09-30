@@ -2,6 +2,7 @@ import fs from "fs";
 import path from "path";
 
 import {
+  assertManagedServerDefinition,
   confirmInitInputPersistence,
   getHotUpdaterInitInputEnv,
   getInitProviderEnvVars,
@@ -37,6 +38,7 @@ import {
 } from "../src/firebaseDatabase";
 import { FIREBASE_V1_FUNCTION_NAME } from "../src/firebaseInfrastructureNames";
 import { plugins } from "../src/plugins";
+import { getConfigScaffold } from "./configTemplate";
 import { inputFirebaseApplicationCredentials } from "./firebaseApplicationCredentials";
 import {
   assertFirebaseFunctionCanInitialize,
@@ -441,6 +443,7 @@ const checkIfGcloudCliInstalled = async () => {
 };
 
 export const runInit = async ({ build, envFile }: RunInitOptions) => {
+  await assertManagedServerDefinition(getConfigScaffold(build), process.cwd());
   const nonInteractive = envFile !== undefined;
   const initEnvSources = await readHotUpdaterInitEnv(process.cwd(), envFile);
   const { managedEnv } = initEnvSources;

@@ -58,6 +58,7 @@ const { mockBuildAdapter, mockCli, mockServer, mockStorageAdapter } =
       mockStorageAdapter,
     };
   });
+const { mockLoadServer } = vi.hoisted(() => ({ mockLoadServer: vi.fn() }));
 
 vi.mock("@hot-updater/cli-tools", async (importOriginal) => {
   const actual =
@@ -202,6 +203,13 @@ vi.mock("@/utils/git", () => ({
   getLatestGitCommit: vi.fn(),
 }));
 
+vi.mock("@/utils/loadServer", async () => ({
+  ...(await vi.importActual<typeof import("../utils/loadServer")>(
+    "../utils/loadServer",
+  )),
+  loadServer: mockLoadServer,
+}));
+
 vi.mock("@/utils/printBanner", () => ({
   printBanner: vi.fn(),
 }));
@@ -252,6 +260,7 @@ import { validateSigningConfig } from "@/utils/signing/validateSigningConfig";
 import { getDefaultTargetAppVersion } from "@/utils/version/getDefaultTargetAppVersion";
 import { getNativeAppVersion } from "@/utils/version/getNativeAppVersion";
 
+import { testServer } from "../utils/testServer";
 import { getConsolePort, openConsole } from "./console";
 import {
   deploy,
@@ -406,15 +415,16 @@ describe("deploy rollout wiring", () => {
 
     mockCli.loadConfig.mockResolvedValue({
       build: async () => mockBuildAdapter,
-      database: harnessDatabase,
       fingerprint: {},
       patch: {
         enabled: true,
         maxBaseBundles: 3,
       },
-      storage: mockStorageAdapter,
       updateStrategy: "appVersion",
     });
+    mockLoadServer.mockResolvedValue(
+      testServer({ database: harnessDatabase, storage: [mockStorageAdapter] }),
+    );
 
     vi.mocked(validateSigningConfig).mockResolvedValue({
       isValid: true,
@@ -703,17 +713,9 @@ describe("deploy rollout wiring", () => {
       ...harnessDatabase,
       core: { ...databaseHarness.core, deploy: deployCall },
     };
-    mockCli.loadConfig.mockResolvedValue({
-      build: async () => mockBuildAdapter,
-      database: refusingDatabase,
-      fingerprint: {},
-      patch: {
-        enabled: true,
-        maxBaseBundles: 3,
-      },
-      storage: mockStorageAdapter,
-      updateStrategy: "appVersion",
-    });
+    mockLoadServer.mockResolvedValue(
+      testServer({ database: refusingDatabase, storage: [mockStorageAdapter] }),
+    );
     mockBuildAdapter.build.mockImplementation(async ({ platform }) => ({
       buildPath: "/mock/build",
       bundleId: platform === "ios" ? "bundle-ios" : "bundle-android",
@@ -736,24 +738,15 @@ describe("deploy rollout wiring", () => {
     expect(refusingDatabase.dispose).toHaveBeenCalledOnce();
   });
 
-  it("rejects distinct platform databases before building and cleans both up", async () => {
-    const iosDatabase: EngineDatabase = {
-      ...harnessDatabase,
-      dispose: vi.fn(async (): Promise<void> => {}),
-    };
-    const androidDatabase: EngineDatabase = {
-      ...harnessDatabase,
-      dispose: vi.fn(async (): Promise<void> => {}),
-    };
+  it("rejects platforms pointed at different servers before building and disposes the one it loaded", async () => {
     mockCli.loadConfig.mockImplementation(async ({ platform }) => ({
       build: async () => mockBuildAdapter,
-      database: platform === "ios" ? iosDatabase : androidDatabase,
       fingerprint: {},
       patch: {
         enabled: true,
         maxBaseBundles: 3,
       },
-      storage: mockStorageAdapter,
+      server: `/project/${platform}/hotUpdater.ts`,
       updateStrategy: "appVersion",
     }));
 
@@ -765,12 +758,15 @@ describe("deploy rollout wiring", () => {
     });
 
     await expect(deployment).rejects.toThrow(
-      "Deploying multiple platforms requires a shared database configuration.",
+      "Deploying multiple platforms requires one server: hot-updater.config.ts points the platforms at different ones.",
+    );
+    expect(mockLoadServer).toHaveBeenCalledOnce();
+    expect(mockLoadServer).toHaveBeenCalledWith(
+      expect.objectContaining({ server: "/project/ios/hotUpdater.ts" }),
     );
     expect(mockBuildAdapter.build).not.toHaveBeenCalled();
     expect(mockStorageAdapter.put).not.toHaveBeenCalled();
-    expect(iosDatabase.dispose).toHaveBeenCalledOnce();
-    expect(androidDatabase.dispose).toHaveBeenCalledOnce();
+    expect(databaseHarness.dispose).toHaveBeenCalledOnce();
   });
 
   it("deploys a single platform in one core call, after the schema check", async () => {
@@ -832,17 +828,9 @@ describe("deploy rollout wiring", () => {
         },
       },
     };
-    mockCli.loadConfig.mockResolvedValue({
-      build: async () => mockBuildAdapter,
-      database: failingDatabase,
-      fingerprint: {},
-      patch: {
-        enabled: true,
-        maxBaseBundles: 3,
-      },
-      storage: mockStorageAdapter,
-      updateStrategy: "appVersion",
-    });
+    mockLoadServer.mockResolvedValue(
+      testServer({ database: failingDatabase, storage: [mockStorageAdapter] }),
+    );
     mockBuildAdapter.build.mockImplementation(async ({ platform }) => ({
       buildPath: "/mock/build",
       bundleId: platform === "ios" ? "bundle-ios" : "bundle-android",
@@ -875,17 +863,9 @@ describe("deploy rollout wiring", () => {
         },
       },
     };
-    mockCli.loadConfig.mockResolvedValue({
-      build: async () => mockBuildAdapter,
-      database: retryingDatabase,
-      fingerprint: {},
-      patch: {
-        enabled: true,
-        maxBaseBundles: 3,
-      },
-      storage: mockStorageAdapter,
-      updateStrategy: "appVersion",
-    });
+    mockLoadServer.mockResolvedValue(
+      testServer({ database: retryingDatabase, storage: [mockStorageAdapter] }),
+    );
     mockBuildAdapter.build.mockImplementation(async ({ platform }) => ({
       buildPath: "/mock/build",
       bundleId: platform === "ios" ? "bundle-ios" : "bundle-android",
@@ -1137,13 +1117,11 @@ describe("deploy rollout wiring", () => {
     mockCli.loadConfig.mockResolvedValue({
       build: async () => mockBuildAdapter,
       cacheDir: "node_modules/.hot-updater",
-      database: harnessDatabase,
       fingerprint: {},
       patch: {
         enabled: true,
         maxBaseBundles: 3,
       },
-      storage: mockStorageAdapter,
       updateStrategy: "appVersion",
     });
     vi.mocked(getBundleZipTargets).mockResolvedValue([
@@ -1300,14 +1278,12 @@ describe("deploy rollout wiring", () => {
   it("does not create a nested spinner when signing is enabled", async () => {
     mockCli.loadConfig.mockResolvedValue({
       build: async () => mockBuildAdapter,
-      database: harnessDatabase,
       fingerprint: {},
       patch: {
         enabled: true,
         maxBaseBundles: 3,
       },
       signing: mockSigningAdapter,
-      storage: mockStorageAdapter,
       updateStrategy: "appVersion",
     });
     mockBuildAdapter.build.mockResolvedValue({
@@ -1364,11 +1340,9 @@ describe("deploy rollout wiring", () => {
     mockBuildAdapter.nativeBuild = { getBundleSigningPublicKey };
     mockCli.loadConfig.mockResolvedValue({
       build: async () => mockBuildAdapter,
-      database: harnessDatabase,
       fingerprint: {},
       patch: { enabled: true, maxBaseBundles: 3 },
       signing: mockSigningAdapter,
-      storage: mockStorageAdapter,
       updateStrategy: "appVersion",
     });
     mockCli.prepareBundleSigning.mockResolvedValue({
@@ -1396,14 +1370,12 @@ describe("deploy rollout wiring", () => {
   it("fails before build or upload when the signing provider cannot be prepared", async () => {
     mockCli.loadConfig.mockResolvedValue({
       build: async () => mockBuildAdapter,
-      database: harnessDatabase,
       fingerprint: {},
       patch: {
         enabled: true,
         maxBaseBundles: 3,
       },
       signing: mockSigningAdapter,
-      storage: mockStorageAdapter,
       updateStrategy: "appVersion",
     });
     mockCli.prepareBundleSigning.mockRejectedValue(
@@ -1430,13 +1402,11 @@ describe("deploy rollout wiring", () => {
   it("creates automatic partial update paths when patch generation is enabled", async () => {
     mockCli.loadConfig.mockResolvedValue({
       build: async () => mockBuildAdapter,
-      database: harnessDatabase,
       fingerprint: {},
       patch: {
         enabled: true,
         maxBaseBundles: 2,
       },
-      storage: mockStorageAdapter,
       updateStrategy: "appVersion",
     });
     await mockGetBundlesWithFixtures([
@@ -1491,13 +1461,11 @@ describe("deploy rollout wiring", () => {
   it("creates an automatic patch when target app versions are semver-compatible but not exact", async () => {
     mockCli.loadConfig.mockResolvedValue({
       build: async () => mockBuildAdapter,
-      database: harnessDatabase,
       fingerprint: {},
       patch: {
         enabled: true,
         maxBaseBundles: 1,
       },
-      storage: mockStorageAdapter,
       updateStrategy: "appVersion",
     });
     await mockGetBundlesWithFixtures([
@@ -1533,13 +1501,11 @@ describe("deploy rollout wiring", () => {
   it("does not create an automatic patch when a prerelease target is outside the base range", async () => {
     mockCli.loadConfig.mockResolvedValue({
       build: async () => mockBuildAdapter,
-      database: harnessDatabase,
       fingerprint: {},
       patch: {
         enabled: true,
         maxBaseBundles: 1,
       },
-      storage: mockStorageAdapter,
       updateStrategy: "appVersion",
     });
     await mockGetBundlesWithFixtures([
@@ -1563,13 +1529,11 @@ describe("deploy rollout wiring", () => {
   it("creates automatic patches for a target spanning several minor lines", async () => {
     mockCli.loadConfig.mockResolvedValue({
       build: async () => mockBuildAdapter,
-      database: harnessDatabase,
       fingerprint: {},
       patch: {
         enabled: true,
         maxBaseBundles: 2,
       },
-      storage: mockStorageAdapter,
       updateStrategy: "appVersion",
     });
     await mockGetBundlesWithFixtures([
@@ -1604,13 +1568,11 @@ describe("deploy rollout wiring", () => {
   it("finds automatic patch bases by fingerprint", async () => {
     mockCli.loadConfig.mockResolvedValue({
       build: async () => mockBuildAdapter,
-      database: harnessDatabase,
       fingerprint: {},
       patch: {
         enabled: true,
         maxBaseBundles: 3,
       },
-      storage: mockStorageAdapter,
       updateStrategy: "fingerprint",
     });
     await mockGetBundlesWithFixtures([
@@ -1663,13 +1625,11 @@ describe("deploy rollout wiring", () => {
   it("scans past incompatible appVersion patch bases to find an older compatible base", async () => {
     mockCli.loadConfig.mockResolvedValue({
       build: async () => mockBuildAdapter,
-      database: harnessDatabase,
       fingerprint: {},
       patch: {
         enabled: true,
         maxBaseBundles: 1,
       },
-      storage: mockStorageAdapter,
       updateStrategy: "appVersion",
     });
     await mockGetBundlesWithFixtures([
@@ -1709,13 +1669,11 @@ describe("deploy rollout wiring", () => {
   it("keeps deploy successful when automatic patch generation fails", async () => {
     mockCli.loadConfig.mockResolvedValue({
       build: async () => mockBuildAdapter,
-      database: harnessDatabase,
       fingerprint: {},
       patch: {
         enabled: true,
         maxBaseBundles: 1,
       },
-      storage: mockStorageAdapter,
       updateStrategy: "appVersion",
     });
     await mockGetBundlesWithFixtures([

@@ -19,45 +19,68 @@ const SECRET = "client-credential.local";
 let root: string;
 
 /**
- * The script beside a fake `@hot-updater/server/db` whose clientAuth plugin
- * is named in hotUpdater.plugins.ts, as the scaffold's app/ directory holds it.
+ * The script beside hotUpdater.ts, a server definition over a fake
+ * `@hot-updater/server` whose plugins are names, and Firestore's migrate.ts
+ * when `migration` is set, as the scaffold's app/ directory holds them.
  */
 const scaffold = async (options: {
   readonly plugins: string;
-  readonly config?: string;
+  /** The definition's database expression, evaluated when it loads. */
+  readonly database?: string;
+  /** Replaces the definition module. */
+  readonly definition?: string;
+  readonly migration?: string;
 }) => {
   await cp(
     path.resolve(import.meta.dirname, "../../../agent", SCRIPT),
     path.join(root, SCRIPT),
   );
   await writeFile(
-    path.join(root, "database.config.ts"),
-    options.config ?? "export const database = {};\n",
+    path.join(root, "hotUpdater.ts"),
+    options.definition ??
+      `import { createHotUpdater } from "@hot-updater/server";
+export const hotUpdater = createHotUpdater({
+  database: ${options.database ?? "{}"},
+  plugins: ${options.plugins},
+});
+`,
   );
-  await writeFile(
-    path.join(root, "hotUpdater.plugins.ts"),
-    `export const plugins = ${options.plugins};\n`,
-  );
+  if (options.migration !== undefined) {
+    await writeFile(path.join(root, "migrate.ts"), options.migration);
+  }
   const moduleRoot = path.join(root, "node_modules/@hot-updater/server");
   await mkdir(moduleRoot, { recursive: true });
   await writeFile(
     path.join(moduleRoot, "package.json"),
-    JSON.stringify({ type: "module", exports: { "./db": "./db.mjs" } }),
+    JSON.stringify({
+      type: "module",
+      exports: { ".": "./index.mjs", "./db": "./db.mjs" },
+    }),
+  );
+  // A server that keeps its options, which serverDefinitionOf reads back.
+  await writeFile(
+    path.join(moduleRoot, "index.mjs"),
+    `export const definition = Symbol("definition");
+export const createHotUpdater = (options) => ({ [definition]: options });
+`,
   );
   // The server's credential helpers, over a plugin list of names.
   await writeFile(
     path.join(moduleRoot, "db.mjs"),
     `
 import { appendFileSync, readFileSync, writeFileSync } from "node:fs";
+import { definition } from "./index.mjs";
+export const serverDefinitionOf = (value) => value?.[definition];
 const credential = { label: "API key", header: "x-api-key", env: "HOT_UPDATER_API_KEY" };
 export const clientAuthOf = (plugins) =>
   plugins.includes("apiKeys") ? { plugin: "apiKeys", varyHeaders: ["x-api-key"], credential } : undefined;
 export const generateClientCredential = () => "generated-credential";
-export const provisionClientCredential = async (_database, _plugins, { env }) => {
+export const provisionClientCredential = async (database, _plugins, { env }) => {
   appendFileSync("calls", "provision\\n");
   const value = env.HOT_UPDATER_API_KEY;
   if (readFileSync("${SECRET}", "utf8") !== value) throw new Error("Credential was not saved before registration");
   writeFileSync("registered", value);
+  writeFileSync("database", JSON.stringify(database));
   if (process.env.FAIL_AFTER_REGISTRATION) throw new Error("Registration response lost");
   return { ...credential, value };
 };
@@ -124,13 +147,49 @@ it("reuses the credential the environment holds", async () => {
   );
 });
 
-it("runs the config's migration for the server's plugins before registering the credential", async () => {
+it("loads .env.hotupdater before the server definition, which reads it", async () => {
   await scaffold({
     plugins: '["apiKeys"]',
-    config: `import { appendFileSync } from "node:fs";
-export const database = {};
-export const migrate = async (plugins) =>
-  appendFileSync("calls", \`migrate \${JSON.stringify(plugins)}\\n\`);
+    database: "{ target: process.env.HOT_UPDATER_TEST_TARGET }",
+  });
+  await writeFile(
+    path.join(root, ".env.hotupdater"),
+    "HOT_UPDATER_TEST_TARGET=selected-target\n",
+  );
+
+  const result = run();
+
+  expect(result.status, result.stderr).toBe(0);
+  expect(await readFile(path.join(root, "database"), "utf8")).toBe(
+    '{"target":"selected-target"}',
+  );
+});
+
+it("rejects a hotUpdater.ts that exports no server definition", async () => {
+  await scaffold({
+    plugins: '["apiKeys"]',
+    definition: "export const hotUpdater = {};\n",
+  });
+
+  const result = run();
+
+  expect(result.status).toBe(1);
+  expect(result.stderr).toContain(
+    "hotUpdater.ts must export `hotUpdater`, the server createHotUpdater",
+  );
+  await expect(stat(path.join(root, SECRET))).rejects.toThrow();
+});
+
+it("runs migrate.ts with the server definition before registering the credential", async () => {
+  await scaffold({
+    plugins: '["apiKeys"]',
+    migration: `import { appendFileSync } from "node:fs";
+import { serverDefinitionOf } from "@hot-updater/server/db";
+export const migrate = async (hotUpdater) =>
+  appendFileSync(
+    "calls",
+    \`migrate \${JSON.stringify(serverDefinitionOf(hotUpdater).plugins)}\\n\`,
+  );
 `,
   });
 
@@ -145,8 +204,7 @@ export const migrate = async (plugins) =>
 it("only migrates when client routes are public", async () => {
   await scaffold({
     plugins: '["insights"]',
-    config: `import { appendFileSync } from "node:fs";
-export const database = {};
+    migration: `import { appendFileSync } from "node:fs";
 export const migrate = async () => appendFileSync("calls", "migrate\\n");
 `,
   });

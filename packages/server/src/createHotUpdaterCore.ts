@@ -8,6 +8,7 @@ import {
   assemblePlugins,
   HotUpdaterConfigError,
 } from "./assembly/assemblePlugins";
+import { clientPluginsOf } from "./assembly/clientPlugins";
 import type { CoreApi } from "./core/api";
 import { toolingTargetOf } from "./db/coreDatabase";
 import type { ToolingDatabase, ToolingTarget } from "./db/types";
@@ -23,6 +24,12 @@ export type RuntimeHotUpdaterAPI<
   TPlugins extends readonly AnyHotUpdaterPlugin[] =
     readonly AnyHotUpdaterPlugin[],
 > = {
+  /**
+   * The routes a host mounts. On first access every storage adapter must
+   * serve downloads (`get` and `getDownloadUrl`), so a server fails where it
+   * mounts them, while tooling that only reads the definition, such as the
+   * CLI, can list storage that only uploads.
+   */
   readonly handlers: HotUpdaterHandlers;
   /** Core's reads and typed writes: bundles, Releases, Catalogs, and channels. */
   readonly core: CoreApi;
@@ -118,7 +125,10 @@ export type CreateHotUpdaterOptions<
 > = {
   /** A provider's database on the storage engine, such as `kyselyAdapter(...)` or `postgres(...)`. */
   readonly database: ToolingDatabase;
-  /** Storage implementations used to read provider-specific storage URIs. */
+  /**
+   * Where bundles are stored. The CLI uploads to the first; the server reads
+   * and signs the URIs of each adapter's protocol.
+   */
   readonly storage?: readonly StorageAdapter[];
   /** The plugins the server runs; at most one provides clientAuth. Defaults to none. */
   readonly plugins?: TPlugins;
@@ -166,6 +176,8 @@ export const hotUpdaterCoreMetadata = Symbol.for(
 export type HotUpdaterCoreMetadata = {
   /** The configured database, with the tooling `hot-updater db` runs. */
   readonly database: ToolingDatabase;
+  /** The configured storage, in order; the CLI uploads to the first. */
+  readonly storage: readonly StorageAdapter[];
   /** The tables and settings rows that tooling creates for this server's plugins. */
   readonly target: ToolingTarget;
   /** The plugins as configured, whose commands the CLI adds. */
@@ -195,12 +207,9 @@ export function createHotUpdater<
     }
   }
   const database = databaseOf(options.database);
-  const storageAdapters = (options.storage ?? []).map((storage) => {
-    assertStorageOperations(storage, ["get", "getDownloadUrl"]);
-    return storage;
-  });
+  const storage = options.storage ?? [];
   const { downloadStorageObject, readStorageText, resolveFileUrl } =
-    createStorageAccess(storageAdapters);
+    createStorageAccess(storage);
   const publicClients = isPublic(
     (options as { readonly clientAccess?: unknown }).clientAccess,
   );
@@ -236,14 +245,24 @@ export function createHotUpdater<
   const handlers = createHotUpdaterHandlers({
     api: { core: plugins.core },
     ...(clientPolicy === undefined ? {} : { clientPolicy }),
+    clientPlugins: clientPluginsOf(options.plugins ?? []),
     downloadStorageObject,
     endpoints: plugins.endpoints,
     plugins: Object.keys(plugins.api),
   });
+  let serving = false;
 
   const api = {
     adapterName: database.name,
-    handlers,
+    get handlers(): HotUpdaterHandlers {
+      if (!serving) {
+        for (const adapter of storage) {
+          assertStorageOperations(adapter, ["get", "getDownloadUrl"]);
+        }
+        serving = true;
+      }
+      return handlers;
+    },
     core: plugins.core,
     api: plugins.api as PluginApis<TPlugins>,
     flush: plugins.flush,
@@ -252,6 +271,7 @@ export function createHotUpdater<
     enumerable: false,
     value: {
       database,
+      storage,
       target: toolingTargetOf(options.plugins ?? []),
       plugins: options.plugins ?? [],
     } satisfies HotUpdaterCoreMetadata,

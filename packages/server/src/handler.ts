@@ -1,5 +1,6 @@
 import type { MountedEndpoint } from "./assembly/assemblePlugins";
 import { HotUpdaterConfigError } from "./assembly/assemblePlugins";
+import type { ClientPluginSpec } from "./assembly/clientPlugins";
 import { HotUpdaterSchemaMigrationRequiredError } from "./database/fence";
 import { ADMIN_ROUTES, createAdminRouteHandlers } from "./handlerAdminRoutes";
 import { HandlerBadRequestError } from "./handlerErrors";
@@ -182,6 +183,8 @@ const createDownloadStorageRouteHandler =
 
 export interface HotUpdaterHandlersOptions {
   readonly api: HandlerAPI;
+  /** The client plugins an app adds for the plugins, which the admin `/version` lists. */
+  readonly clientPlugins?: readonly ClientPluginSpec[];
   /** Absent when `clientAccess` is `"public"`. */
   readonly clientPolicy?: ClientRoutePolicy;
   readonly downloadStorageObject?: (
@@ -196,13 +199,14 @@ export interface HotUpdaterHandlersOptions {
 
 export function createHotUpdaterHandlers({
   api,
+  clientPlugins = [],
   clientPolicy,
   downloadStorageObject,
   endpoints = [],
   plugins = [],
 }: HotUpdaterHandlersOptions): HotUpdaterHandlers {
   const routeHandlers: Record<string, RouteHandler> = {
-    ...createVersionRouteHandlers(plugins),
+    ...createVersionRouteHandlers(plugins, clientPlugins),
     ...createReleaseCatalogRouteHandlers(),
     ...createAdminRouteHandlers(),
     ...(downloadStorageObject === undefined
