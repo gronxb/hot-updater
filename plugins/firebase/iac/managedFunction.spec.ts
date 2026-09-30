@@ -82,7 +82,11 @@ describe("the managed Cloud Function from a project's server definition", () => 
     const definition = path.join(project, "hotUpdater.ts");
     await fs.writeFile(definition, DEFINITION);
 
-    await buildFunctionFromDefinition({ definition, packageRoot, functionsDir });
+    await buildFunctionFromDefinition({
+      definition,
+      packageRoot,
+      functionsDir,
+    });
 
     // The function's code is one file; the entry that built it is gone.
     await expect(fs.readdir(functionsDir)).resolves.toEqual(["index.cjs"]);

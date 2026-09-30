@@ -422,7 +422,10 @@ describe.sequential("aws lambda runtime acceptance", () => {
       path.join(WORKSPACE_ROOT, "plugins/aws/runtime-acceptance-project-"),
     );
     await writeFile(path.join(definitionProjectDir, "notes.ts"), NOTES_PLUGIN);
-    await writeFile(path.join(definitionProjectDir, "hotUpdater.ts"), DEFINITION);
+    await writeFile(
+      path.join(definitionProjectDir, "hotUpdater.ts"),
+      DEFINITION,
+    );
     const { notes } = (await import(
       pathToFileURL(path.join(definitionProjectDir, "notes.ts")).href
     )) as { notes: AnyHotUpdaterPlugin };
@@ -512,7 +515,11 @@ describe.sequential("aws lambda runtime acceptance", () => {
       // ignore network cleanup failures
     }
 
-    for (const dir of [runtimeDir, definitionRuntimeDir, definitionProjectDir]) {
+    for (const dir of [
+      runtimeDir,
+      definitionRuntimeDir,
+      definitionProjectDir,
+    ]) {
       if (dir) {
         await rm(dir, { recursive: true, force: true });
       }
