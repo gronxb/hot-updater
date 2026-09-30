@@ -17,8 +17,8 @@ export type StandaloneRepository = RemoteDatabase;
 /**
  * A self-hosted server's database for the CLI and console: core's API over
  * the server's admin API protocol 2, and GETs on its admin handler for the
- * routes core does not cover, such as the Insights reads. Insights and API
- * keys belong to the server's own database and plugins.
+ * routes core does not cover, which its plugins serve. Plugins' tables belong
+ * to the server's own database.
  */
 export const standaloneRepository = (
   config: StandaloneRepositoryConfig,

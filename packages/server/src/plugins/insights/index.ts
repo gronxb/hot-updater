@@ -3,7 +3,6 @@ import { DatabasePluginInputError } from "@hot-updater/plugin-core";
 import { HotUpdaterConfigError } from "../../assembly/configError";
 import { isDatabaseBusyError } from "../../database/busy";
 import type { HotUpdaterDatabase } from "../../database/database";
-import { markBuiltIn } from "../builtIn";
 import { definePlugin, type PluginEndpoint } from "../definePlugin";
 import type { BundleEventRow } from "./eventRow";
 import { createInsightsModel } from "./model";
@@ -170,54 +169,54 @@ const retentionOf = ({ retention }: InsightsOptions): InsightsRetention => {
 };
 
 /**
- * Built-in Insights: bundle lifecycle events and update failures, each
+ * Insights: bundle lifecycle events and update failures, each
  * installation's latest event, and the counters, gauges, and sketches its
  * reads come from, each kept for its retention. It serves `POST /events` to
  * clients, and the Insights reads, update failures, and retention to admins.
  */
 export const insights = (options: InsightsOptions = {}) => {
   const retention = retentionOf(options);
-  return markBuiltIn(
-    definePlugin({
-      id: "insights",
-      // 1.2.0 adds update failures (their counters, sketches, and
-      // breakdown) and drops heads' hour-row compatibility, so a database
-      // migrates before a server serves it.
-      schemaVersion: "1.2.0",
-      schema: createInsightsSchema(retention),
-      init: ({ db, now }) => {
-        const api = createInsightsApi(db, now, retention);
-        const routes = createInsightsRouteHandlers(
-          createInsightsProvider(createInsightsModel(api)),
-        );
-        // Declared, so the plugin's type names no runtime's Response.
-        const endpoints: PluginEndpoint[] = [
-          ...INSIGHTS_ROUTES.map(({ access, method, path, handler }) => ({
-            access,
-            method,
-            path,
-            handler: (
-              request: Request,
-              params: Readonly<Record<string, string>>,
-            ) => routes[handler](params, request),
-          })),
-          failuresEndpoint(api),
-          {
-            access: "admin",
-            method: "GET",
-            path: "/retention",
-            handler: async () => Response.json(retention),
-          },
-        ];
-        return { api, endpoints };
-      },
-      // Apps report their events through the SDK's Insights client plugin.
-      cli: {
-        clientPlugin: {
-          module: "@hot-updater/react-native/plugins/insights",
-          name: "insights",
+  return definePlugin({
+    id: "insights",
+    // Keeps its tables' names: bundle_events, bundle_event_heads, insights_*.
+    namespace: false,
+    // 1.2.0 adds update failures (their counters, sketches, and
+    // breakdown) and drops heads' hour-row compatibility, so a database
+    // migrates before a server serves it.
+    schemaVersion: "1.2.0",
+    schema: createInsightsSchema(retention),
+    init: ({ db, now }) => {
+      const api = createInsightsApi(db, now, retention);
+      const routes = createInsightsRouteHandlers(
+        createInsightsProvider(createInsightsModel(api)),
+      );
+      // Declared, so the plugin's type names no runtime's Response.
+      const endpoints: PluginEndpoint[] = [
+        ...INSIGHTS_ROUTES.map(({ access, method, path, handler }) => ({
+          access,
+          method,
+          path,
+          handler: (
+            request: Request,
+            params: Readonly<Record<string, string>>,
+          ) => routes[handler](params, request),
+        })),
+        failuresEndpoint(api),
+        {
+          access: "admin",
+          method: "GET",
+          path: "/retention",
+          handler: async () => Response.json(retention),
         },
+      ];
+      return { api, endpoints };
+    },
+    // Apps report their events through the SDK's Insights client plugin.
+    cli: {
+      clientPlugin: {
+        module: "@hot-updater/react-native/plugins/insights",
+        name: "insights",
       },
-    }),
-  );
+    },
+  });
 };

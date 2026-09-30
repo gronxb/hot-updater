@@ -76,9 +76,8 @@ ingestion and plugin client routes, or explicitly set `clientAccess: "public"`.
 Insights runs as the `insights()` plugin. React Native apps report to it when
 their `HotUpdater.init` options list the
 [Insights client plugin](/docs/react-native-api/insights) in `plugins`.
-Without the server plugin, the Insights routes answer `204` with
-`x-hot-updater-insights: disabled`, and apps with the client plugin pause
-reporting for 24 hours at a time. Client API keys do not grant admin or
+Without the server plugin, the server has no Insights routes, so they answer
+`404`, and apps with the client plugin pause reporting for 24 hours at a time. Client API keys do not grant admin or
 Insights-query access. See [API keys](/docs/custom/api-key-authentication) for
 bootstrap and rotation, [Server Plugins](/docs/custom/server-plugins) to add
 your own tables and routes, and the

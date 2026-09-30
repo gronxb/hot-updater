@@ -378,6 +378,17 @@ describe("deployment artifacts", () => {
       expect(result.error).toBeUndefined();
       expect(result.status, result.stderr).toBe(0);
       expect(result.stdout.trim()).toBe("apiKeys object");
+      if (provider === "firebase") {
+        // Firestore has no migration tooling: the credential script passes
+        // the deployed server's plugins to the config's migrate.
+        const config = await readFile(configUrl, "utf8");
+        expect(config).toContain(
+          "plugins: Parameters<typeof migrateFirebaseDatabase>[1],",
+        );
+        expect(config).toMatch(
+          /migrateFirebaseDatabase\(\{[^}]*\}, plugins\);/u,
+        );
+      }
     },
   );
 

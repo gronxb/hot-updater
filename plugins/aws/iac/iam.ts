@@ -5,18 +5,21 @@ import { STS } from "@aws-sdk/client-sts";
 import { p } from "@hot-updater/cli-tools";
 import {
   aggregateBatchingModule,
-  builtInSchema,
   resolveSchema,
   SETTINGS_TABLE,
+  toolingTargetOf,
 } from "@hot-updater/server/database";
 
+import { plugins } from "../src/plugins";
+
 /**
- * The partitions the plugin's items use: each table's rows, and its index
- * items after `#`, the log and lease tables of batched aggregates included.
+ * The partitions the managed server's items use: each table's rows of core
+ * and its plugins, and its index items after `#`, the log and lease tables
+ * of batched aggregates included.
  */
 export const dynamoDBLeadingKeys = (): string[] =>
   [
-    ...builtInSchema.tables,
+    ...toolingTargetOf(plugins).schema.tables,
     ...resolveSchema([aggregateBatchingModule]).tables,
     SETTINGS_TABLE,
   ].flatMap(({ name }) => [name, `${name}#*`]);

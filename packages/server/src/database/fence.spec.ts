@@ -8,10 +8,10 @@ import {
 import { afterAll, describe, expect, it, vi } from "vitest";
 
 import {
-  builtInSettings,
+  coreSettings,
   createEngineDatabase,
-  migrateBuiltInSchema,
-} from "../db/builtInDatabase";
+  migrateCoreSchema,
+} from "../db/coreDatabase";
 import { migrateSchema, writeSchemaSettings } from "../db/schemaSettings";
 import { createHotUpdater } from "../index";
 import {
@@ -213,9 +213,9 @@ describe("a provider's fenced database on PGlite", () => {
     const error = vi.spyOn(console, "error").mockImplementation(() => {});
     expect((await channels()).status).toBe(503);
     error.mockRestore();
-    await migrateBuiltInSchema(adapter, "pglite");
+    await migrateCoreSchema(adapter, "pglite");
     await expect(
-      checkSchemaFence(adapter, "pglite", builtInSettings),
+      checkSchemaFence(adapter, "pglite", coreSettings),
     ).resolves.toBeUndefined();
     expect((await channels()).status).toBe(200);
     await expect(hotUpdater.core.listChannels()).resolves.toEqual([]);

@@ -2,8 +2,8 @@
  * What database providers and storage adapter authors build on: the storage
  * adapter contract, the SQL core and key-value helper that implement it,
  * `createEngineDatabase`, which puts an adapter behind the schema fence as a
- * provider's database, and the built-in schema and settings its migration
- * writes.
+ * provider's database, core's schema and settings, which its migration
+ * writes, and `toolingTargetOf`, which adds a list of plugins' tables.
  */
 export {
   compareTuples,
@@ -139,13 +139,15 @@ export {
 } from "./kv/kvAdapter";
 export { isMultiIndex } from "./sql/sqlSchema";
 export {
-  builtInSchema,
-  builtInSettings,
-  builtInTarget,
+  coreSchema,
+  coreSettings,
+  coreTarget,
   createEngineDatabase,
-  migrateBuiltInSchema,
+  migrateCoreSchema,
+  toolingTargetOf,
   type EngineDatabaseOptions,
-} from "../db/builtInDatabase";
+  type PluginTables,
+} from "../db/coreDatabase";
 export { migrateSchema, writeSchemaSettings } from "../db/schemaSettings";
 export {
   checkSchemaFence,

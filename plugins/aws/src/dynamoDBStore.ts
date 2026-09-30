@@ -206,8 +206,8 @@ export const createDynamoDBStore = ({
       // `pk` and `sk` are no reserved words, so the condition names them as is.
       let condition = "pk = :pk";
       // BETWEEN is inclusive, so it takes the helper's inclusive form of `lt`.
-      if (gte !== undefined && lt !== undefined)
-        condition += " AND sk BETWEEN :gte AND :lte";
+      const between = gte !== undefined && lt !== undefined;
+      if (between) condition += " AND sk BETWEEN :gte AND :lte";
       else if (gte !== undefined) condition += " AND sk >= :gte";
       else if (lt !== undefined) condition += " AND sk < :lt";
       const result = await documents
@@ -219,9 +219,7 @@ export const createDynamoDBStore = ({
             ExpressionAttributeValues: {
               ":pk": pk,
               ":gte": gte,
-              ...(gte !== undefined && lt !== undefined
-                ? { ":lte": lte ?? lt }
-                : { ":lt": lt }),
+              ...(between ? { ":lte": lte ?? lt } : { ":lt": lt }),
             },
             ScanIndexForward: order === "asc",
             ConsistentRead: true,

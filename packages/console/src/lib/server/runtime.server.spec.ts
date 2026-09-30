@@ -271,7 +271,7 @@ describe("createConsoleRuntime for a self-hosted server", () => {
     expect(fetchAdmin).toHaveBeenLastCalledWith("/installations/install%201");
   });
 
-  it("reads update failures through the admin route, and says an older server needs an upgrade", async () => {
+  it("reads update failures through the admin route, and refuses them from a server that answers 404", async () => {
     const failures = { failedUpdates: 3, failedInstallations: 2 };
     const fetchAdmin = vi.fn(async (path: string) =>
       path === "/version"
@@ -302,17 +302,14 @@ describe("createConsoleRuntime for a self-hosted server", () => {
         channel: "production",
         releaseId: "release-1",
       }),
-    ).rejects.toThrow("Upgrade @hot-updater/server on the server.");
+    ).rejects.toEqual(refused("insights", "without the insights() plugin"));
   });
 
-  it("refuses a read the server answers without content, as after it dropped insights()", async () => {
+  it("refuses a read the server answers with 404, as after it dropped insights()", async () => {
     const fetchAdmin = vi.fn(async (path: string) =>
       path === "/version"
         ? Response.json({ adminProtocol: 2, plugins: ["insights"] })
-        : new Response(null, {
-            status: 204,
-            headers: { "x-hot-updater-insights": "disabled" },
-          }),
+        : Response.json({ error: "Not found" }, { status: 404 }),
     );
     const reads = await requireFeature(
       createConsoleRuntime({ database: remoteDatabase(fetchAdmin) }),
@@ -322,17 +319,20 @@ describe("createConsoleRuntime for a self-hosted server", () => {
     await expect(reads.listEvents({ limit: 1 })).rejects.toEqual(
       refused("insights", "without the insights() plugin"),
     );
+    await expect(reads.getRetention()).rejects.toEqual(
+      refused("insights", "without the insights() plugin"),
+    );
+    await expect(
+      reads.getInstallation({ installId: "install-1" }),
+    ).resolves.toBeNull();
   });
 
-  it("reads a self-hosted server's retention, or its defaults from before it reported one", async () => {
-    const retention = vi.fn(async () =>
-      Response.json({ rawDays: 30, dailyDays: 60 }),
-    );
+  it("reads a self-hosted server's retention", async () => {
     const fetchAdmin = vi.fn(async (path: string) =>
       path === "/version"
         ? Response.json({ adminProtocol: 2, plugins: ["insights"] })
         : path === "/retention"
-          ? retention()
+          ? Response.json({ rawDays: 30, dailyDays: 60 })
           : Response.json({ data: [], nextCursor: null }),
     );
     const reads = await requireFeature(
@@ -343,13 +343,6 @@ describe("createConsoleRuntime for a self-hosted server", () => {
     await expect(reads.getRetention()).resolves.toEqual({
       rawDays: 30,
       dailyDays: 60,
-    });
-    retention.mockResolvedValueOnce(
-      Response.json({ error: "Not found" }, { status: 404 }),
-    );
-    await expect(reads.getRetention()).resolves.toEqual({
-      rawDays: 90,
-      dailyDays: 400,
     });
   });
 });

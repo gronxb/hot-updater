@@ -52,11 +52,8 @@ const sentEvents = () =>
   );
 const sentTypes = () => sentEvents().map(({ type }) => type);
 
-const disabledResponse = () =>
-  new Response(null, {
-    headers: { "x-hot-updater-insights": "disabled" },
-    status: 204,
-  });
+/** A server without Insights mounts no `/events`. */
+const disabledResponse = () => new Response(null, { status: 404 });
 
 /** Starts a JavaScript runtime with the plugin; native storage persists across launches. */
 const launch = async (
@@ -375,29 +372,20 @@ describe("insights() client plugin", () => {
   });
 
   describe("when the server runs without Insights", () => {
-    it.each([
-      {
-        label: "a 204 with x-hot-updater-insights: disabled",
-        response: disabledResponse,
-      },
-      { label: "a 404", response: () => new Response(null, { status: 404 }) },
-    ])(
-      "sends nothing more in this runtime after $label",
-      async ({ response }) => {
-        responses = [response];
-        const app = await launch();
+    it("sends nothing more in this runtime after a 404", async () => {
+      responses = [disabledResponse];
+      const app = await launch();
 
-        app.appReady(unchangedLaunch());
-        await flush();
-        app.downloaded(download);
-        await flush();
-        vi.setSystemTime(MORNING + 2 * DAY_MS);
-        app.updateError(downloadFailure());
-        await flush();
+      app.appReady(unchangedLaunch());
+      await flush();
+      app.downloaded(download);
+      await flush();
+      vi.setSystemTime(MORNING + 2 * DAY_MS);
+      app.updateError(downloadFailure());
+      await flush();
 
-        expect(sentTypes()).toEqual(["UNCHANGED"]);
-      },
-    );
+      expect(sentTypes()).toEqual(["UNCHANGED"]);
+    });
 
     it("pauses later launches for 24 hours, then probes again", async () => {
       responses = [disabledResponse];

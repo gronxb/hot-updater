@@ -1,7 +1,8 @@
 import type { EngineDatabase } from "@hot-updater/plugin-core";
 import { createMemoryAdapter } from "@hot-updater/plugin-core/internal";
-import { builtInSchema } from "@hot-updater/server/database";
+import { toolingTargetOf } from "@hot-updater/server/database";
 import { provisionClientCredential } from "@hot-updater/server/db";
+import { apiKeys } from "@hot-updater/server/plugins/api-keys";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
@@ -34,12 +35,15 @@ const createDatabase = (): EngineDatabase => ({
 
 /** The rows the apiKeys() plugin stored, digests included. */
 const storedApiKeys = (database: EngineDatabase) =>
-  database.adapter.query(builtInSchema.models.get("api_keys")!.table, {
-    index: "byCreated",
-    eq: [],
-    order: "asc",
-    limit: 10,
-  });
+  database.adapter.query(
+    toolingTargetOf([apiKeys()]).schema.models.get("api_keys")!.table,
+    {
+      index: "byCreated",
+      eq: [],
+      order: "asc",
+      limit: 10,
+    },
+  );
 
 /** What init provisions: the app's credential, through the managed server's plugins. */
 const provision = (database: EngineDatabase, existing?: string) =>
@@ -110,7 +114,7 @@ describe("AWS DynamoDB deployment preparation", () => {
     await prepareDynamoDBDeployment(input);
 
     expect(mocks.ensureTable).toHaveBeenCalledWith("hot-updater-metadata");
-    expect(mocks.migrateDynamoDB).toHaveBeenCalledWith(input);
+    expect(mocks.migrateDynamoDB).toHaveBeenCalledWith(input, plugins);
     expect(mocks.calls).toEqual(["ensureTable", "migrateDynamoDB"]);
   });
 });

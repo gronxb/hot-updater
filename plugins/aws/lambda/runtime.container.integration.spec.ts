@@ -600,17 +600,20 @@ const createHostDynamoDBClient = (endpoint: string) =>
     },
   });
 
-/** The plugin's migration creates the table and writes the schema settings it checks. */
+/** The plugin's migration creates the table and writes the schema settings the managed server checks. */
 const createDynamoDBTable = (endpoint: string) =>
-  migrateDynamoDB({
-    region: REGION,
-    endpoint,
-    credentials: {
-      accessKeyId: ACCESS_KEY_ID,
-      secretAccessKey: SECRET_ACCESS_KEY,
+  migrateDynamoDB(
+    {
+      region: REGION,
+      endpoint,
+      credentials: {
+        accessKeyId: ACCESS_KEY_ID,
+        secretAccessKey: SECRET_ACCESS_KEY,
+      },
+      tableName: DYNAMODB_TABLE_NAME,
     },
-    tableName: DYNAMODB_TABLE_NAME,
-  });
+    plugins,
+  );
 
 const clearDynamoDBTable = async (client: DynamoDBDocumentClient) => {
   const { Items = [] } = await client.send(

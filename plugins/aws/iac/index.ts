@@ -69,7 +69,7 @@ export const prepareDynamoDBDeployment = async (input: {
   const dynamodbManager = new DynamoDBManager(input.region, input.credentials);
   await dynamodbManager.ensureTable(input.tableName);
   // The plugin reads nothing until the table's schema settings exist.
-  await migrateDynamoDB(input);
+  await migrateDynamoDB(input, plugins);
 };
 
 export const runInit = async ({ build, envFile }: RunInitOptions) => {

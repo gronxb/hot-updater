@@ -18,10 +18,10 @@ import type { Bundle } from "@hot-updater/core";
 import { type HotUpdaterCoreApi, rowToBundle } from "@hot-updater/plugin-core";
 import { createHotUpdater } from "@hot-updater/server";
 import {
-  builtInSchema,
   createDatabaseEngine,
   createSqlAdapter,
   type RetryOptions,
+  toolingTargetOf,
 } from "@hot-updater/server/database";
 import {
   createDatabaseCoreApi,
@@ -53,6 +53,7 @@ import {
   stopRuntime,
   waitForHttpOk,
 } from "../../../../packages/test-utils/src/runtimeProcess";
+import { plugins } from "../../src/plugins";
 import { supabaseDatabase } from "../../src/supabaseDatabase";
 import { supabaseExecutor } from "../../src/supabaseExecutor";
 import {
@@ -248,9 +249,9 @@ describe.sequential("supabase edge runtime acceptance", () => {
     });
   };
 
-  /** Empties every data table but `keep`; the settings rows stay. */
+  /** Empties every data table but `keep`, the managed plugins' included; the settings rows stay. */
   const truncateDataTables = (keep: readonly string[] = []) => {
-    const tables = supabaseTableNames()
+    const tables = supabaseTableNames(toolingTargetOf(plugins).schema)
       .filter(
         (table) => table !== SUPABASE_SETTINGS_TABLE && !keep.includes(table),
       )
@@ -729,7 +730,7 @@ describe.sequential("supabase edge runtime acceptance", () => {
         db: createDatabaseEngine({
           adapter:
             latencyMs > 0 ? withAdapterLatency(adapter, latencyMs) : adapter,
-          schema: builtInSchema,
+          schema: toolingTargetOf([insights()]).schema,
           ...(retry === undefined ? {} : { retry }),
         }).database(module),
         // Insights never reads core.

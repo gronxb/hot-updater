@@ -196,20 +196,34 @@ const graphOf = (row: AcceptanceRow) => {
 const lineOf = (source: string, offset: number) =>
   source.slice(0, offset).split("\n").length;
 
-/** Model, table, and non-generic field names of the built-in schema. */
+/**
+ * Model, table, and non-generic field names of core's schema and of the
+ * plugins that ship with the server (Insights and API keys), which the
+ * storage layers must not name either.
+ */
 const domainNames = async () => {
-  const entry = path.join(root, "packages/server/dist/database/index.mjs");
-  if (!existsSync(entry)) throw new Error("Run `pnpm build` first");
-  const { builtInSchema } = (await import(pathToFileURL(entry).href)) as {
-    builtInSchema: {
-      models: Map<
-        string,
-        { table: { name: string; columns: readonly { name: string }[] } }
-      >;
-    };
+  const dist = (entry: string) => {
+    const file = path.join(root, "packages/server/dist", entry);
+    if (!existsSync(file)) throw new Error("Run `pnpm build` first");
+    return import(pathToFileURL(file).href);
   };
+  const [{ toolingTargetOf }, { insights }, { apiKeys }] = await Promise.all([
+    dist("database/index.mjs"),
+    dist("plugins/insights/index.mjs"),
+    dist("plugins/api-keys/index.mjs"),
+  ]);
+  const { schema } = (
+    toolingTargetOf as (plugins: readonly unknown[]) => {
+      schema: {
+        models: Map<
+          string,
+          { table: { name: string; columns: readonly { name: string }[] } }
+        >;
+      };
+    }
+  )([insights(), apiKeys()]);
   const names = new Set<string>();
-  for (const [name, model] of builtInSchema.models) {
+  for (const [name, model] of schema.models) {
     names.add(name);
     names.add(model.table.name);
     for (const column of model.table.columns) {

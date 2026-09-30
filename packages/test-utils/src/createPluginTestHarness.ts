@@ -38,6 +38,8 @@ export interface PluginTestEngine {
 interface HarnessPlugin {
   readonly id: string;
   readonly schema: object;
+  /** `false` keeps the declared table names, as `createHotUpdater` does. */
+  readonly namespace?: false;
   init(context: never): { readonly api: unknown };
 }
 
@@ -49,8 +51,6 @@ export interface PluginTestHarnessOptions {
   /** The plugin's clock; `setNow` changes it later. */
   readonly now?: () => number;
 }
-
-const builtInPlugin = Symbol.for("@hot-updater/server/built-in-plugin");
 
 /**
  * Runs one plugin the way `createHotUpdater` does, on a memory adapter in
@@ -64,7 +64,7 @@ export const createPluginTestHarness = async <TPlugin extends HarnessPlugin>(
   const module: HarnessModule = {
     id: plugin.id,
     schema: plugin.schema,
-    ...(builtInPlugin in plugin ? {} : { namespace: plugin.id }),
+    ...(plugin.namespace === false ? {} : { namespace: plugin.id }),
   };
   const schema = options.engine.resolveSchema([module]);
   await adapter.migrations?.apply(schema.tables);

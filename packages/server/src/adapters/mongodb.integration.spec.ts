@@ -17,7 +17,7 @@ import { createBundleFixture } from "../../../test-utils/src/databaseTestFixture
 import { createDatabasePluginApis } from "../assembly/databasePlugins";
 import { createInProcessCoreApi } from "../core/api";
 import { HotUpdaterSchemaMigrationRequiredError } from "../database/fence";
-import { builtInSchema } from "../db/builtInDatabase";
+import { toolingTargetOf } from "../db/coreDatabase";
 import { createHotUpdater } from "../index";
 import { createInsightsModel, insights } from "../plugins/insights";
 import { insightsTestSuite } from "../plugins/insights/testing";
@@ -101,6 +101,9 @@ setupDatabaseAdapterConformanceSuite({
   },
 });
 
+/** What the suite runs: core and the Insights plugin. */
+const suiteTarget = toolingTargetOf([insights()]);
+
 setupDatabaseTestSuite({
   createHttpClient: (options) =>
     startHttpTestServer(
@@ -120,12 +123,14 @@ setupDatabaseTestSuite({
   ],
   name: "mongoAdapter (replica set)",
   migrate: async () => {
-    const migrator = mongoAdapter({ client: suiteClient }).createMigrator!();
+    const migrator = mongoAdapter({ client: suiteClient }).createMigrator!(
+      suiteTarget,
+    );
     await (await migrator.migrateToLatest()).execute();
   },
   createDatabase: () => mongoAdapter({ client: suiteClient }),
   reset: async () => {
-    for (const table of builtInSchema.tables) {
+    for (const table of suiteTarget.schema.tables) {
       await suiteClient.db().collection(table.name).deleteMany({});
     }
   },

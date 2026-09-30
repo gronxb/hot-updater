@@ -51,7 +51,7 @@ export interface Migrator {
 
 /**
  * The tables `db migrate` and `db generate` create and the settings rows they
- * write: the built-in ones, and each third-party plugin's the server runs.
+ * write: core's, and those of each plugin the server runs.
  */
 export interface ToolingTarget {
   readonly schema: ResolvedSchema;
@@ -69,8 +69,8 @@ export type SchemaGenerator = (
 
 /**
  * What `hot-updater db generate` and `db migrate` run for a provider's
- * database, beside the database itself. Without a target they cover the
- * built-in tables.
+ * database, beside the database itself. Without a target they cover core's
+ * tables.
  */
 export interface DatabaseTooling {
   readonly provider?: ORMProvider;

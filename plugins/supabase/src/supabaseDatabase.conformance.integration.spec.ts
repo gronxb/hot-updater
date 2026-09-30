@@ -1,8 +1,5 @@
 import { PGlite } from "@electric-sql/pglite";
-import {
-  builtInTarget,
-  type PhysicalTable,
-} from "@hot-updater/server/database";
+import { coreTarget, type PhysicalTable } from "@hot-updater/server/database";
 import { setupDatabaseAdapterConformanceSuite } from "@hot-updater/test-utils";
 import { vi } from "vitest";
 
@@ -40,10 +37,10 @@ vi.mock("@supabase/supabase-js", () => ({
 const migration = (tables: readonly PhysicalTable[]): string[] =>
   supabaseSchemaStatements({
     schema: {
-      ...builtInTarget.schema,
-      tables: [...builtInTarget.schema.tables, ...tables],
+      ...coreTarget.schema,
+      tables: [...coreTarget.schema.tables, ...tables],
     },
-    settings: builtInTarget.settings,
+    settings: coreTarget.settings,
   });
 
 /**

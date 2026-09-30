@@ -33,8 +33,9 @@ try {
       await writeFile(credentialPath, credential, { flag: "wx", mode: 0o600 });
     }
   }
-  // Providers without migration tooling (Firestore) write their schema settings here.
-  await target.migrate?.();
+  // Providers without migration tooling (Firestore) write the schema settings
+  // of core and the deployed server's plugins here.
+  await target.migrate?.(plugins);
   if (clientAuth === undefined) {
     console.log("Client routes are public: there is no client credential.");
   } else {

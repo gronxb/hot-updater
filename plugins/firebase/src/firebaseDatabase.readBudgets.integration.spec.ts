@@ -1,4 +1,4 @@
-import { builtInSchema, createKvAdapter } from "@hot-updater/server/database";
+import { toolingTargetOf, createKvAdapter } from "@hot-updater/server/database";
 import {
   createMeasuredDatabase,
   targetBaseCandidateKey,
@@ -23,7 +23,7 @@ setupReadBudgetTestSuite({
   name: "key-value (Firestore emulator)",
   server: {
     createMeasuredDatabase,
-    builtInSchema,
+    toolingTargetOf,
     plugins: [insights(), apiKeys()],
     targetBaseCandidateKey,
   },

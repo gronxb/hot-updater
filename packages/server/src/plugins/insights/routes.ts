@@ -110,36 +110,6 @@ export type InsightsRouteHandler = (
   request: Request,
 ) => Promise<Response>;
 
-/** Without the insights plugin, its routes answer 204 and say Insights is off. */
-export const insightsDisabled: InsightsRouteHandler = async () =>
-  new Response(null, {
-    headers: {
-      "cache-control": "private, no-store",
-      "x-hot-updater-insights": "disabled",
-    },
-    status: 204,
-  });
-
-/** What a server without the insights plugin logs on the first event it drops. */
-export const INSIGHTS_OFF_WARNING =
-  "[hot-updater] Insights is off, so POST /events answered 204 and stored nothing. Add insights() from @hot-updater/server/plugins/insights to plugins to record app events, or set insights: false in the app's HotUpdater.init to stop sending them. This warning prints once per server.";
-
-/**
- * The client's `POST /events` without the insights plugin. It answers as
- * {@link insightsDisabled} does, so apps need no change, and warns on the
- * first event it drops, so a server that left out `insights()` says so.
- */
-export const createDroppedEventHandler = (): InsightsRouteHandler => {
-  let warned = false;
-  return (params, request) => {
-    if (!warned) {
-      warned = true;
-      console.warn(INSIGHTS_OFF_WARNING);
-    }
-    return insightsDisabled(params, request);
-  };
-};
-
 export const createInsightsRouteHandlers = (
   provider: InsightsProvider,
 ): Record<InsightsRouteName, InsightsRouteHandler> => ({

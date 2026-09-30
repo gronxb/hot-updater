@@ -34,13 +34,12 @@ export const hotUpdater = createHotUpdater({
 ```
 
 `insights()` accepts `POST /events` on the client handler and serves the
-Insights queries on the admin handler. Its tables are part of the schema that
-`hot-updater db migrate` and each provider's migration create, whichever
-plugins the server runs. Without `insights()`, those routes answer `204` with
-`x-hot-updater-insights: disabled` and the app's reports are not stored. The
-server logs one warning, on the first report it drops, that names `insights()`.
-An app with the Insights plugin then stops reporting for 24 hours at a time;
-see [when the server has Insights off](/docs/react-native-api/insights#when-the-server-has-insights-off).
+Insights queries on the admin handler. `hot-updater db migrate` creates its
+tables for a server that runs it, and the migrations of the managed Cloudflare,
+Supabase, AWS, and Firebase servers include them. Without `insights()`, the
+server has no Insights routes: they answer `404`, and the app's reports are not
+stored. An app with the Insights plugin then stops reporting for 24 hours at a
+time; see [when the server has Insights off](/docs/react-native-api/insights#when-the-server-has-insights-off).
 On the server, `insights({ retention })` sets how long the plugin keeps data;
 see [How long Insights keeps data](#how-long-insights-keeps-data).
 

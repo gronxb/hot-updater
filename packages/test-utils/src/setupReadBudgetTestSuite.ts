@@ -118,9 +118,11 @@ export interface ReadBudgetServer {
       readonly storage: ReadBudgetStorage;
     },
   ): ReadBudgetDatabase;
-  /** `builtInSchema` from `@hot-updater/server/database`: the tables to create. */
-  readonly builtInSchema: { readonly tables: readonly PhysicalTable[] };
-  /** `[insights(), apiKeys()]`, the built-in plugins whose reads have budgets. */
+  /** `toolingTargetOf` from `@hot-updater/server/database`: core's and the plugins' tables to create. */
+  toolingTargetOf(plugins: readonly unknown[]): {
+    readonly schema: { readonly tables: readonly PhysicalTable[] };
+  };
+  /** `[insights(), apiKeys()]`, the plugins whose reads have budgets. */
   readonly plugins: readonly unknown[];
   /** `targetBaseCandidateKey` from `@hot-updater/server/db`. */
   targetBaseCandidateKey(target: {
@@ -757,7 +759,8 @@ export const setupReadBudgetTestSuite = (
 
     beforeAll(async () => {
       created = await options.createAdapter({
-        tables: options.server.builtInSchema.tables,
+        tables: options.server.toolingTargetOf(options.server.plugins).schema
+          .tables,
         nativePageSize: NATIVE_PAGE_SIZE,
       });
       const { adapter } = created;

@@ -65,7 +65,7 @@ export const serverPluginsOf = (
 export const generatesSchema = (hotUpdater: HotUpdaterDBTarget): boolean =>
   getDBMetadata(hotUpdater).database.generateSchema !== undefined;
 
-/** The migrator for a server's database: its built-in tables and its plugins' tables. */
+/** The migrator for a server's database: core's tables and its plugins' tables. */
 export function createMigrator(hotUpdater: HotUpdaterDBTarget): Migrator {
   const { database, target } = getDBMetadata(hotUpdater);
   if (database.createMigrator === undefined) {

@@ -22,7 +22,7 @@ import { createInProcessCoreApi } from "../core/api";
 import { HotUpdaterSchemaMigrationRequiredError } from "../database/fence";
 import { createSqlAdapter } from "../database/sql/sqlAdapter";
 import { isMultiIndex, quoteSql } from "../database/sql/sqlSchema";
-import { builtInSchema, builtInSettings } from "../db/builtInDatabase";
+import { toolingTargetOf } from "../db/coreDatabase";
 import { generateEngineSql } from "../db/engineSql";
 import type { ToolingDatabase } from "../db/types";
 import { createHotUpdater } from "../index";
@@ -35,8 +35,11 @@ import {
 } from "./drizzle";
 import { drizzleExecutor } from "./drizzleExecutor";
 
+/** What the suites run: core and the Insights plugin. */
+const target = toolingTargetOf([insights()]);
+
 /** Every data table; the settings rows stay across tests. */
-const dataTables = builtInSchema.tables.flatMap((table) => [
+const dataTables = target.schema.tables.flatMap((table) => [
   table.name,
   ...table.indexes
     .filter((index) => isMultiIndex(table, index))
@@ -60,7 +63,7 @@ const libsqlFile = async () => {
 };
 
 const engineSql = (dialect: "postgresql" | "sqlite") =>
-  generateEngineSql(dialect, builtInSchema, builtInSettings);
+  generateEngineSql(dialect, target.schema, target.settings);
 
 const backends = {
   postgresql: async () => {

@@ -10,10 +10,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { createBundleFixture } from "../../../../test-utils/src/databaseTestFixtures";
 import { createInProcessCoreApi } from "../../core/api";
-import {
-  createEngineDatabase,
-  migrateBuiltInSchema,
-} from "../../db/builtInDatabase";
+import { createEngineDatabase, migrateCoreSchema } from "../../db/coreDatabase";
 import {
   createSqlAdapter,
   type SqlExecutor,
@@ -110,15 +107,15 @@ setupDatabaseAdapterConformanceSuite({
 describe.each([
   ["PostgreSQL", () => pgExecutor(postgres)],
   ["MySQL", () => mysqlExecutor(mariadb)],
-] as const)("the built-in schema on pooled %s", (name, executor) => {
+] as const)("core's schema on pooled %s", (name, executor) => {
   it("migrates, passes the fence, and deploys into the longest scope key", async () => {
     tests += 1;
     const adapter = createSqlAdapter({
       executor: executor(),
       tablePrefix: `f${tests}_`,
     });
-    await migrateBuiltInSchema(adapter, name);
-    await migrateBuiltInSchema(adapter, name);
+    await migrateCoreSchema(adapter, name);
+    await migrateCoreSchema(adapter, name);
     const core = createInProcessCoreApi(
       createEngineDatabase({ name, adapter }).adapter,
     );

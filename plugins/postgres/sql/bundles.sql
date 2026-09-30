@@ -34,74 +34,8 @@ CREATE UNIQUE INDEX IF NOT EXISTS "channels_name" ON "channels" ("name");
 
 CREATE TABLE IF NOT EXISTS "bundle_totals" ("platform_key" varchar(16) COLLATE "C" NOT NULL, "_shard" bigint NOT NULL, "bundles" bigint NOT NULL, "_v" bigint NOT NULL DEFAULT 0, PRIMARY KEY ("platform_key", "_shard"));
 
-CREATE TABLE IF NOT EXISTS "bundle_events" ("id" varchar(36) COLLATE "C" NOT NULL, "type" varchar(32) COLLATE "C" NOT NULL, "install_id" varchar(255) COLLATE "C" NOT NULL, "user_id" varchar(255) COLLATE "C", "from_release_id" varchar(36) COLLATE "C", "from_bundle_id" varchar(36) COLLATE "C", "to_release_id" varchar(36) COLLATE "C", "to_bundle_id" varchar(36) COLLATE "C" NOT NULL, "platform" varchar(16) COLLATE "C" NOT NULL, "app_version" text COLLATE "C" NOT NULL, "channel" text COLLATE "C" NOT NULL, "metadata" jsonb NOT NULL, "received_at_ms" bigint NOT NULL, "day" bigint, "movement_install_id" text COLLATE "C", "bundle_ref" jsonb, "_v" bigint NOT NULL DEFAULT 0, PRIMARY KEY ("id"));
-
-CREATE INDEX IF NOT EXISTS "bundle_events_recent" ON "bundle_events" ("channel", "platform", "day", "received_at_ms", "id");
-
-CREATE INDEX IF NOT EXISTS "bundle_events_movementsByInstall" ON "bundle_events" ("movement_install_id", "received_at_ms", "id");
-
-CREATE TABLE IF NOT EXISTS "bundle_events__byBundle" ("platform" varchar(16) COLLATE "C" NOT NULL, "channel" text COLLATE "C" NOT NULL, "type" varchar(32) COLLATE "C" NOT NULL, "bundle_ref" text COLLATE "C" NOT NULL, "day" bigint NOT NULL, "received_at_ms" bigint NOT NULL, "id" varchar(36) COLLATE "C" NOT NULL, PRIMARY KEY ("platform", "channel", "type", "bundle_ref", "day", "received_at_ms", "id"));
-
-CREATE INDEX IF NOT EXISTS "bundle_events_byDay" ON "bundle_events" ("day", "received_at_ms", "id");
-
-CREATE TABLE IF NOT EXISTS "bundle_event_heads" ("install_id" varchar(255) COLLATE "C" NOT NULL, "id" varchar(36) COLLATE "C" NOT NULL, "type" varchar(32) COLLATE "C" NOT NULL, "user_id" varchar(255) COLLATE "C", "from_release_id" varchar(36) COLLATE "C", "from_bundle_id" varchar(36) COLLATE "C", "to_release_id" varchar(36) COLLATE "C", "to_bundle_id" varchar(36) COLLATE "C" NOT NULL, "platform" varchar(16) COLLATE "C" NOT NULL, "app_version" text COLLATE "C" NOT NULL, "channel" text COLLATE "C" NOT NULL, "metadata" jsonb NOT NULL, "received_at_ms" bigint NOT NULL, "_v" bigint NOT NULL DEFAULT 0, PRIMARY KEY ("install_id"));
-
-CREATE INDEX IF NOT EXISTS "bundle_event_heads_byUser" ON "bundle_event_heads" ("user_id", "install_id");
-
-CREATE INDEX IF NOT EXISTS "bundle_event_heads__retention" ON "bundle_event_heads" ("received_at_ms", "install_id");
-
-CREATE TABLE IF NOT EXISTS "insights_overview" ("identity" varchar(32) COLLATE "C" NOT NULL, "bucket_start_ms" bigint NOT NULL, "_shard" bigint NOT NULL, "downloads" bigint NOT NULL, "launches" bigint NOT NULL, "failed_launches" bigint NOT NULL, "failed_updates" bigint NOT NULL, "patch_downloads" bigint NOT NULL, "patch_fallbacks" bigint NOT NULL, "_v" bigint NOT NULL DEFAULT 0, PRIMARY KEY ("identity", "bucket_start_ms", "_shard"));
-
-CREATE INDEX IF NOT EXISTS "insights_overview__retention" ON "insights_overview" ("bucket_start_ms", "identity", "_shard");
-
-CREATE TABLE IF NOT EXISTS "insights_sketches" ("identity" varchar(32) COLLATE "C" NOT NULL, "bucket_start_ms" bigint NOT NULL, "_shard" bigint NOT NULL, "launch_users" text COLLATE "C", "activity_users" text COLLATE "C", "failed_users" text COLLATE "C", "_v" bigint NOT NULL DEFAULT 0, PRIMARY KEY ("identity", "bucket_start_ms", "_shard"));
-
-CREATE INDEX IF NOT EXISTS "insights_sketches__retention" ON "insights_sketches" ("bucket_start_ms", "identity", "_shard");
-
-CREATE TABLE IF NOT EXISTS "insights_overview_daily" ("identity" varchar(32) COLLATE "C" NOT NULL, "bucket_start_ms" bigint NOT NULL, "_shard" bigint NOT NULL, "downloads" bigint NOT NULL, "launches" bigint NOT NULL, "failed_launches" bigint NOT NULL, "failed_updates" bigint NOT NULL, "patch_downloads" bigint NOT NULL, "patch_fallbacks" bigint NOT NULL, "_v" bigint NOT NULL DEFAULT 0, PRIMARY KEY ("identity", "bucket_start_ms", "_shard"));
-
-CREATE INDEX IF NOT EXISTS "insights_overview_daily__retention" ON "insights_overview_daily" ("bucket_start_ms", "identity", "_shard");
-
-CREATE TABLE IF NOT EXISTS "insights_sketches_daily" ("identity" varchar(32) COLLATE "C" NOT NULL, "bucket_start_ms" bigint NOT NULL, "_shard" bigint NOT NULL, "launch_users" text COLLATE "C", "activity_users" text COLLATE "C", "failed_users" text COLLATE "C", "_v" bigint NOT NULL DEFAULT 0, PRIMARY KEY ("identity", "bucket_start_ms", "_shard"));
-
-CREATE INDEX IF NOT EXISTS "insights_sketches_daily__retention" ON "insights_sketches_daily" ("bucket_start_ms", "identity", "_shard");
-
-CREATE TABLE IF NOT EXISTS "insights_overview_lifetime" ("identity" varchar(32) COLLATE "C" NOT NULL, "bucket_start_ms" bigint NOT NULL, "_shard" bigint NOT NULL, "downloads" bigint NOT NULL, "launches" bigint NOT NULL, "failed_launches" bigint NOT NULL, "failed_updates" bigint NOT NULL, "patch_downloads" bigint NOT NULL, "patch_fallbacks" bigint NOT NULL, "_v" bigint NOT NULL DEFAULT 0, PRIMARY KEY ("identity", "bucket_start_ms", "_shard"));
-
-CREATE TABLE IF NOT EXISTS "insights_sketches_lifetime" ("identity" varchar(32) COLLATE "C" NOT NULL, "bucket_start_ms" bigint NOT NULL, "_shard" bigint NOT NULL, "failed_users" text COLLATE "C", "_v" bigint NOT NULL DEFAULT 0, PRIMARY KEY ("identity", "bucket_start_ms", "_shard"));
-
-CREATE TABLE IF NOT EXISTS "insights_distribution" ("channel" text COLLATE "C" NOT NULL, "platform" varchar(16) COLLATE "C" NOT NULL, "app_version" text COLLATE "C" NOT NULL, "release_id" varchar(36) COLLATE "C" NOT NULL, "bucket_start_ms" bigint NOT NULL, "_shard" bigint NOT NULL, "latest_installations" bigint NOT NULL, "_v" bigint NOT NULL DEFAULT 0, PRIMARY KEY ("channel", "platform", "app_version", "release_id", "bucket_start_ms", "_shard"));
-
-CREATE INDEX IF NOT EXISTS "insights_distribution_byScope" ON "insights_distribution" ("channel", "platform", "bucket_start_ms", "app_version", "release_id", "_shard");
-
-CREATE INDEX IF NOT EXISTS "insights_distribution_byVersion" ON "insights_distribution" ("channel", "platform", "app_version", "bucket_start_ms", "release_id", "_shard");
-
-CREATE INDEX IF NOT EXISTS "insights_distribution__retention" ON "insights_distribution" ("bucket_start_ms", "channel", "platform", "app_version", "release_id", "_shard");
-
-CREATE TABLE IF NOT EXISTS "insights_latest_by_bundle" ("platform" varchar(16) COLLATE "C" NOT NULL, "channel" text COLLATE "C" NOT NULL, "bundle_field" varchar(16) COLLATE "C" NOT NULL, "bundle_id" varchar(36) COLLATE "C" NOT NULL, "type" varchar(32) COLLATE "C" NOT NULL, "bucket_start_ms" bigint NOT NULL, "_shard" bigint NOT NULL, "installations" bigint NOT NULL, "_v" bigint NOT NULL DEFAULT 0, PRIMARY KEY ("platform", "channel", "bundle_field", "bundle_id", "type", "bucket_start_ms", "_shard"));
-
-CREATE INDEX IF NOT EXISTS "insights_latest_by_bundle__retention" ON "insights_latest_by_bundle" ("bucket_start_ms", "platform", "channel", "bundle_field", "bundle_id", "type", "_shard");
-
-CREATE TABLE IF NOT EXISTS "insights_outcomes" ("platform" varchar(16) COLLATE "C" NOT NULL, "channel" text COLLATE "C" NOT NULL, "type" varchar(32) COLLATE "C" NOT NULL, "bundle_ref" varchar(41) COLLATE "C" NOT NULL, "bucket_start_ms" bigint NOT NULL, "_shard" bigint NOT NULL, "events" bigint NOT NULL, "_v" bigint NOT NULL DEFAULT 0, PRIMARY KEY ("platform", "channel", "type", "bundle_ref", "bucket_start_ms", "_shard"));
-
-CREATE INDEX IF NOT EXISTS "insights_outcomes__retention" ON "insights_outcomes" ("bucket_start_ms", "platform", "channel", "type", "bundle_ref", "_shard");
-
-CREATE TABLE IF NOT EXISTS "insights_failures" ("platform" varchar(16) COLLATE "C" NOT NULL, "channel" text COLLATE "C" NOT NULL, "bucket_start_ms" bigint NOT NULL, "release_id" varchar(36) COLLATE "C" NOT NULL, "stage" varchar(16) COLLATE "C" NOT NULL, "reason" varchar(64) COLLATE "C" NOT NULL, "detail" varchar(160) COLLATE "C" NOT NULL, "_shard" bigint NOT NULL, "events" bigint NOT NULL, "_v" bigint NOT NULL DEFAULT 0, PRIMARY KEY ("platform", "channel", "bucket_start_ms", "release_id", "stage", "reason", "detail", "_shard"));
-
-CREATE INDEX IF NOT EXISTS "insights_failures__retention" ON "insights_failures" ("bucket_start_ms", "platform", "channel", "release_id", "stage", "reason", "detail", "_shard");
-
-CREATE TABLE IF NOT EXISTS "api_keys" ("id" varchar(255) COLLATE "C" NOT NULL, "hash" varchar(64) COLLATE "C" NOT NULL, "name" varchar(64) COLLATE "C" NOT NULL, "prefix" varchar(16) COLLATE "C" NOT NULL, "role" varchar(16) COLLATE "C" NOT NULL, "created_at_ms" bigint NOT NULL, "revoked_at_ms" bigint, "_v" bigint NOT NULL DEFAULT 0, PRIMARY KEY ("id"));
-
-CREATE INDEX IF NOT EXISTS "api_keys_byCreated" ON "api_keys" ("created_at_ms", "id");
-
-CREATE UNIQUE INDEX IF NOT EXISTS "api_keys_hash" ON "api_keys" ("hash");
-
 CREATE TABLE IF NOT EXISTS "private_hot_updater_settings" ("key" varchar(255) COLLATE "C" NOT NULL, "value" varchar(255) COLLATE "C" NOT NULL, "_v" bigint NOT NULL DEFAULT 0, PRIMARY KEY ("key"));
 
 INSERT INTO "private_hot_updater_settings" ("key", "value", "_v") VALUES ('schema.engine', '1', 0) ON CONFLICT ("key") DO UPDATE SET "value" = excluded."value";
 
 INSERT INTO "private_hot_updater_settings" ("key", "value", "_v") VALUES ('schema.core', '1.0.0', 0) ON CONFLICT ("key") DO UPDATE SET "value" = excluded."value";
-
-INSERT INTO "private_hot_updater_settings" ("key", "value", "_v") VALUES ('schema.insights', '1.2.0', 0) ON CONFLICT ("key") DO UPDATE SET "value" = excluded."value";
-
-INSERT INTO "private_hot_updater_settings" ("key", "value", "_v") VALUES ('schema.apiKeys', '1.0.0', 0) ON CONFLICT ("key") DO UPDATE SET "value" = excluded."value";

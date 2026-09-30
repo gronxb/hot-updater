@@ -310,21 +310,6 @@ export const insights_failures = sqliteTable("insights_failures", {
   index("insights_failures__retention").on(table["bucket_start_ms"], table["platform"], table["channel"], table["release_id"], table["stage"], table["reason"], table["detail"], table["_shard"]),
 ]);
 
-export const api_keys = sqliteTable("api_keys", {
-  "id": column("TEXT")("id").notNull(),
-  "hash": column("TEXT")("hash").notNull(),
-  "name": column("TEXT")("name").notNull(),
-  "prefix": column("TEXT")("prefix").notNull(),
-  "role": column("TEXT")("role").notNull(),
-  "created_at_ms": column("INTEGER")("created_at_ms").notNull(),
-  "revoked_at_ms": column("INTEGER")("revoked_at_ms"),
-  "_v": column("INTEGER")("_v").notNull().default(0),
-}, (table) => [
-  primaryKey({ columns: [table["id"]] }),
-  index("api_keys_byCreated").on(table["created_at_ms"], table["id"]),
-  uniqueIndex("api_keys_hash").on(table["hash"]),
-]);
-
 export const private_hot_updater_settings = sqliteTable("private_hot_updater_settings", {
   "key": column("TEXT")("key").notNull(),
   "value": column("TEXT")("value").notNull(),

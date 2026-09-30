@@ -5,7 +5,7 @@ import {
 import { describe, expect, expectTypeOf, it, vi } from "vitest";
 
 import packageJson from "../package.json" with { type: "json" };
-import { builtInSettings } from "./db/builtInDatabase";
+import { coreSettings } from "./db/coreDatabase";
 import { createHotUpdater, HotUpdaterConfigError } from "./index";
 import type {
   ClientAccessPolicy,
@@ -132,7 +132,7 @@ describe("runtime createHotUpdater", () => {
   it("serves a fenced database once its settings are written", async () => {
     const hotUpdater = createHotUpdater({
       clientAccess: "public",
-      database: await createFencedDatabase("kysely", builtInSettings),
+      database: await createFencedDatabase("kysely", coreSettings),
     });
 
     await expect(hotUpdater.core.listChannels()).resolves.toEqual([]);

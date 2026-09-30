@@ -11,43 +11,24 @@ import {
   withSchemaFence,
   type SchemaSettings,
 } from "../database/fence";
-import { resolveSchema, type SchemaModule } from "../database/resolveSchema";
-import { apiKeys, apiKeysSchema } from "../plugins/api-keys";
-import { builtInPlugin } from "../plugins/builtIn";
-import { insights, insightsSchema } from "../plugins/insights";
+import { resolveSchema } from "../database/resolveSchema";
 import { createEngineMigrator } from "./engineMigrator";
 import { migrateSchema } from "./schemaSettings";
 import type { ToolingDatabase, ToolingTarget } from "./types";
 
-/** Core and the built-in plugins: their tables keep their names. */
-export const builtInModules: readonly SchemaModule[] = [
-  coreModule,
-  { id: "insights", schema: insightsSchema },
-  { id: "apiKeys", schema: apiKeysSchema },
-];
-
-/**
- * Core's tables and the built-in plugins' (Insights and API keys): the tables
- * every provider's tooling creates, whichever plugins a server runs.
- */
-export const builtInSchema = resolveSchema(builtInModules);
+/** Core's tables: the tables every provider's tooling creates. */
+export const coreSchema = resolveSchema([coreModule]);
 
 /** The settings rows a provider's database is fenced by. */
-export const builtInSettings: SchemaSettings = {
+export const coreSettings: SchemaSettings = {
   [ENGINE_SCHEMA_KEY]: ENGINE_SCHEMA_VERSION,
   "schema.core": HOT_UPDATER_SCHEMA_VERSION,
-  "schema.insights": insights().schemaVersion,
-  "schema.apiKeys": apiKeys().schemaVersion,
 };
 
-/** Creates the built-in tables, then writes their settings rows. */
-export const migrateBuiltInSchema = (adapter: DatabaseAdapter, name: string) =>
-  migrateSchema(adapter, name, builtInSchema.tables, builtInSettings);
-
-/** What `hot-updater db` creates for a server without third-party plugins. */
-export const builtInTarget: ToolingTarget = {
-  schema: builtInSchema,
-  settings: builtInSettings,
+/** What `hot-updater db` creates for a server without plugins. */
+export const coreTarget: ToolingTarget = {
+  schema: coreSchema,
+  settings: coreSettings,
 };
 
 /** A plugin as the tooling reads it: its id, its tables, and their version. */
@@ -55,42 +36,58 @@ export interface PluginTables {
   readonly id: string;
   readonly schemaVersion: string;
   readonly schema: Readonly<Record<string, ModelShape>>;
+  /** `false` keeps the declared table names instead of prefixing them with the id. */
+  readonly namespace?: false;
 }
 
-const addedPlugins = (plugins: readonly PluginTables[]) =>
-  plugins.filter((plugin) => !(builtInPlugin in plugin));
-
-/** Each third-party plugin's `schema.<id>` settings row. */
-export const addedSettings = (
+/** Each plugin's `schema.<id>` settings row. */
+export const pluginSettings = (
   plugins: readonly PluginTables[],
 ): SchemaSettings =>
   Object.fromEntries(
-    addedPlugins(plugins).map(({ id, schemaVersion }) => [
-      `schema.${id}`,
-      schemaVersion,
-    ]),
+    plugins.map(({ id, schemaVersion }) => [`schema.${id}`, schemaVersion]),
   );
 
+/** A plugin's schema as the engine resolves it: prefixed by its id unless it keeps its names. */
+export const pluginModule = <TSchema>({
+  id,
+  schema,
+  namespace,
+}: {
+  readonly id: string;
+  readonly schema: TSchema;
+  readonly namespace?: false;
+}) => ({
+  id,
+  schema,
+  ...(namespace === false ? {} : { namespace: id }),
+});
+
 /**
- * What `hot-updater db` creates for a server's plugins: the built-in tables,
- * then each third-party plugin's tables with its `schema.<id>` settings row.
+ * What `hot-updater db` creates for a server's plugins: core's tables, then
+ * each plugin's tables with its `schema.<id>` settings row.
  */
 export const toolingTargetOf = (
   plugins: readonly PluginTables[],
-): ToolingTarget => {
-  const settings = addedSettings(plugins);
-  if (Object.keys(settings).length === 0) return builtInTarget;
-  return {
-    schema: resolveSchema([
-      ...builtInModules,
-      ...addedPlugins(plugins).map(({ id, schema }) => ({
-        id,
-        schema,
-        namespace: id,
-      })),
-    ]),
-    settings: { ...builtInSettings, ...settings },
-  };
+): ToolingTarget =>
+  plugins.length === 0
+    ? coreTarget
+    : {
+        schema: resolveSchema([coreModule, ...plugins.map(pluginModule)]),
+        settings: { ...coreSettings, ...pluginSettings(plugins) },
+      };
+
+/**
+ * Creates core's tables and those of `plugins`, then writes their settings
+ * rows: what a provider's setup runs for the plugins its server runs.
+ */
+export const migrateCoreSchema = (
+  adapter: DatabaseAdapter,
+  name: string,
+  plugins: readonly PluginTables[] = [],
+) => {
+  const { schema, settings } = toolingTargetOf(plugins);
+  return migrateSchema(adapter, name, schema.tables, settings);
 };
 
 export interface EngineDatabaseOptions {
@@ -111,11 +108,10 @@ export interface EngineDatabaseOptions {
 
 /**
  * A provider's database on the storage engine: its adapter behind the schema
- * fence, which checks the built-in settings rows before the first read or
- * write and names `hot-updater db migrate` when they are missing or stale.
- * When the adapter creates its own tables, `hot-updater db migrate` creates
- * the built-in tables and the server's plugin tables, then writes their
- * settings rows.
+ * fence, which checks core's settings rows before the first read or write
+ * and names `hot-updater db migrate` when they are missing or stale. When the
+ * adapter creates its own tables, `hot-updater db migrate` creates core's
+ * tables and the server's plugin tables, then writes their settings rows.
  */
 export const createEngineDatabase = ({
   name,
@@ -123,8 +119,8 @@ export const createEngineDatabase = ({
   onCachedRoutesChange,
   aggregateBatching,
 }: EngineDatabaseOptions): ToolingDatabase => {
-  const fenced = withSchemaFence(adapter, name, builtInSettings);
-  const createMigrator = ({ schema, settings } = builtInTarget) =>
+  const fenced = withSchemaFence(adapter, name, coreSettings);
+  const createMigrator = ({ schema, settings } = coreTarget) =>
     createEngineMigrator({
       adapterName: name,
       adapter,

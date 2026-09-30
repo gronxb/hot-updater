@@ -6,7 +6,8 @@ import type { EngineDatabase } from "@hot-updater/plugin-core";
 import {
   createEngineDatabase,
   createKvAdapter,
-  migrateBuiltInSchema,
+  migrateCoreSchema,
+  type PluginTables,
 } from "@hot-updater/server/database";
 
 import { createUpdateRouteInvalidation } from "./cloudFrontInvalidation";
@@ -34,16 +35,19 @@ const adapterOf = ({ tableName, ...clientConfig }: DynamoDBConfig) => {
 };
 
 /**
- * Creates the table when it is missing and writes the schema settings the
- * database checks before its first read. `hot-updater init` runs it in AWS.
+ * Creates the table when it is missing and writes the schema settings of
+ * core and `plugins`, the plugins the server runs, which the database checks
+ * before its first read. `hot-updater init` runs it in AWS with the managed
+ * server's plugins.
  */
-export const migrateDynamoDB = async (config: DynamoDBConfig) => {
+export const migrateDynamoDB = (
+  config: DynamoDBConfig,
+  plugins: readonly PluginTables[] = [],
+) => {
   const { client, adapter } = adapterOf(config);
-  try {
-    await migrateBuiltInSchema(adapter, "dynamoDB");
-  } finally {
-    client.destroy();
-  }
+  return migrateCoreSchema(adapter, "dynamoDB", plugins).finally(() =>
+    client.destroy(),
+  );
 };
 
 /**

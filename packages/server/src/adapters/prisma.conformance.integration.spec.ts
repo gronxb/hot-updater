@@ -3,7 +3,7 @@ import { setupDatabaseAdapterConformanceSuite } from "@hot-updater/test-utils";
 
 import { SETTINGS_TABLE } from "../database/fence";
 import { createTableStatements } from "../database/sql/sqlSchema";
-import { builtInSettings } from "../db/builtInDatabase";
+import { coreSettings } from "../db/coreDatabase";
 import { settingsStatements } from "../db/engineSql";
 import { prismaAdapter } from "./prisma";
 import { pglitePrisma } from "./prismaTestClients";
@@ -22,7 +22,7 @@ setupDatabaseAdapterConformanceSuite({
     await client.exec(
       [
         ...createTableStatements("postgresql", [...tables, SETTINGS_TABLE]),
-        ...settingsStatements("postgresql", builtInSettings),
+        ...settingsStatements("postgresql", coreSettings),
       ].join(";\n"),
     );
     return {

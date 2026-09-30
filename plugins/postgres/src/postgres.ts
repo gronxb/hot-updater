@@ -15,8 +15,9 @@ export type PostgresConfig = PoolConfig & {
 
 /**
  * Hot Updater's database on PostgreSQL, through a `pg` pool or the given
- * Kysely dialect. Apply `sql/bundles.sql` before first use; the schema fence
- * refuses a database without its settings rows.
+ * Kysely dialect. Before first use, apply `sql/bundles.sql`, core's tables,
+ * and add the tables of the server's plugins with `hot-updater db migrate`;
+ * the schema fence refuses a database without their settings rows.
  */
 export const postgres = (config: PostgresConfig): EngineDatabase => {
   const { dialect, ...poolConfig } = config;

@@ -1,9 +1,9 @@
 import { createSqlAdapter } from "../database/sql/sqlAdapter";
 import {
-  builtInSettings,
-  builtInTarget,
+  coreSettings,
+  coreTarget,
   createEngineDatabase,
-} from "../db/builtInDatabase";
+} from "../db/coreDatabase";
 import {
   generatePrismaEngineSchema,
   prismaCollationStatements,
@@ -43,8 +43,8 @@ export const prismaAdapter = (config: PrismaConfig): ToolingDatabase => {
       adapter: createSqlAdapter({ executor }),
     }),
     provider,
-    generateSchema: ((version, _name, { schema } = builtInTarget) => {
-      if (version !== "latest" && version !== builtInSettings["schema.core"]) {
+    generateSchema: ((version, _name, { schema } = coreTarget) => {
+      if (version !== "latest" && version !== coreSettings["schema.core"]) {
         throw new Error(`Invalid version ${version}`);
       }
       return {
@@ -52,7 +52,7 @@ export const prismaAdapter = (config: PrismaConfig): ToolingDatabase => {
         path: "prisma/schema.prisma",
       };
     }) satisfies SchemaGenerator,
-    createMigrator: ({ schema, settings } = builtInTarget) => {
+    createMigrator: ({ schema, settings } = coreTarget) => {
       const collations = prismaCollationStatements(provider, schema);
       return createSettingsMigrator({
         adapterName: "prisma",

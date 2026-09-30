@@ -165,9 +165,8 @@ or reloads is lost.
 
 ### When the server has Insights off
 
-A server without the `insights()` server plugin answers `POST /events` with
-`204` and `x-hot-updater-insights: disabled`; a server without the route
-answers `404`. After either answer, the plugin sends nothing more in that
+A server without the `insights()` server plugin has no `POST /events` route
+and answers `404`. After that answer, the plugin sends nothing more in that
 JavaScript runtime, and nothing for 24 hours. Reports made during the pause
 are dropped, not sent later.
 

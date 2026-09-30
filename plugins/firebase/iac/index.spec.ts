@@ -197,6 +197,7 @@ vi.mock("./select", () => ({
 import { p, printAppSetup } from "@hot-updater/cli-tools";
 import { execa } from "execa";
 
+import { plugins } from "../src/plugins";
 import { runInit } from "./index";
 import { initFirebaseUser } from "./select";
 
@@ -308,6 +309,7 @@ describe("Firebase project creation", () => {
     // The schema settings come first, since the database reads nothing without them.
     expect(mocks.migrateFirebaseDatabase).toHaveBeenCalledWith(
       expect.objectContaining({ projectId: "existing-project" }),
+      plugins,
     );
     expect(
       mocks.migrateFirebaseDatabase.mock.invocationCallOrder[0],

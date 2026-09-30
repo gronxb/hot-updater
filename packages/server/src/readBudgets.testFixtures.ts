@@ -2,14 +2,14 @@ import type { ReadBudgetServer } from "@hot-updater/test-utils";
 
 import { createMeasuredDatabase } from "./assembly/databasePlugins";
 import { targetBaseCandidateKey } from "./core/baseCandidates";
-import { builtInSchema } from "./db/builtInDatabase";
+import { toolingTargetOf } from "./db/coreDatabase";
 import { apiKeys } from "./plugins/api-keys";
 import { insights } from "./plugins/insights";
 
 /** The server parts `setupReadBudgetTestSuite` takes, for the server's own backends. */
 export const readBudgetServer = {
   createMeasuredDatabase,
-  builtInSchema,
+  toolingTargetOf,
   plugins: [insights(), apiKeys()],
   targetBaseCandidateKey,
 } satisfies ReadBudgetServer;

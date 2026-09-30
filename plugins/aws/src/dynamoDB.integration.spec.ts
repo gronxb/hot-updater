@@ -236,7 +236,7 @@ describe("dynamoDB", () => {
     ],
     createDatabase: () => dynamoDB(config()),
     migrate: async () => {
-      await migrateDynamoDB(config());
+      await migrateDynamoDB(config(), [insights()]);
     },
     reset: clear,
     dispose: async (database) => {

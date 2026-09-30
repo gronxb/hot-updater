@@ -6,7 +6,7 @@ import {
 import { drizzle } from "drizzle-orm/pglite";
 
 import { createSqlAdapter } from "../database/sql/sqlAdapter";
-import { builtInSchema, builtInSettings } from "../db/builtInDatabase";
+import { toolingTargetOf } from "../db/coreDatabase";
 import { generateEngineSql } from "../db/engineSql";
 import { readBudgetServer } from "../readBudgets.testFixtures";
 import { drizzleExecutor } from "./drizzleExecutor";
@@ -22,9 +22,11 @@ setupReadBudgetTestSuite({
   createAdapter: async () => {
     const client = new PGlite();
     await client.exec(
-      generateEngineSql("postgresql", builtInSchema, builtInSettings).join(
-        ";\n",
-      ),
+      generateEngineSql(
+        "postgresql",
+        toolingTargetOf(readBudgetServer.plugins).schema,
+        toolingTargetOf(readBudgetServer.plugins).settings,
+      ).join(";\n"),
     );
     const reads = postgresRowsExamined(
       async (sql, params) =>

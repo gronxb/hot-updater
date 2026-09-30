@@ -51,11 +51,7 @@ export interface InsightsEventMetadata {
 export type InsightsDelivery =
   /** The server stored the event, or already had it under its id. */
   | "delivered"
-  /**
-   * The server runs without Insights: a 204 with
-   * `x-hot-updater-insights: disabled`, or a 404 from a server that no
-   * longer mounts the route.
-   */
+  /** The server runs without Insights: a 404, since it mounts no `/events`. */
   | "disabled"
   /** A 400 for an `UPDATE_FAILED` event, from a server that does not know it. */
   | "refused"
@@ -125,14 +121,7 @@ const postInsightsEvent = async (
       method: "POST",
     });
 
-    if (response.status === 204) {
-      return response.headers
-        .get("x-hot-updater-insights")
-        ?.trim()
-        .toLowerCase() === "disabled"
-        ? "disabled"
-        : "delivered";
-    }
+    if (response.status === 204) return "delivered";
     if (response.status === 404) return "disabled";
     if (response.status === 400 && event.type === "UPDATE_FAILED") {
       return "refused";

@@ -1,5 +1,5 @@
 import {
-  builtInTarget,
+  coreTarget,
   createTableStatements,
   isMultiIndex,
   SETTINGS_TABLE,
@@ -21,7 +21,7 @@ export {
 
 /** Every table the apply RPC may name: models, index tables, settings, and the write guard. */
 export const supabaseTableNames = (
-  schema: ResolvedSchema = builtInTarget.schema,
+  schema: ResolvedSchema = coreTarget.schema,
 ): string[] =>
   [
     ...schema.tables.flatMap((table) => [
@@ -132,12 +132,12 @@ $apply$`;
  * write guard, row-level security on every table (no policy, so only the
  * service role reads or writes), the apply RPC for the service role alone,
  * and the settings rows last. Every statement can run again, so a migration
- * for a server's plugin tables repeats the built-in ones.
+ * for a server's plugin tables repeats core's.
  */
 export const supabaseSchemaStatements = ({
   schema,
   settings: expected,
-}: ToolingTarget = builtInTarget): string[] => {
+}: ToolingTarget = coreTarget): string[] => {
   const engine = generateEngineSql("postgresql", schema, expected, {
     tablePrefix: SUPABASE_TABLE_PREFIX,
   });

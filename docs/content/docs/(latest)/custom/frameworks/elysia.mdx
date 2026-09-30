@@ -98,8 +98,8 @@ export default defineConfig({
 ## Handler boundaries
 
 With `insights()` in `plugins`, `handlers.client` accepts Insights events and
-`handlers.admin` serves Insights queries; without it, those routes answer `204`
-with `x-hot-updater-insights: disabled`. Apps send reports with the
+`handlers.admin` serves Insights queries; without it, the server has no such
+routes, and they answer `404`. Apps send reports with the
 [Insights client plugin](/docs/react-native-api/insights).
 [Server plugin](/docs/custom/server-plugins) endpoints mount on the same two
 handlers. The client API key protects catalog reads, artifact resolution,

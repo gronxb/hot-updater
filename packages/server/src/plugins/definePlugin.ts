@@ -19,7 +19,7 @@ export interface PluginEndpoint {
   ) => Promise<Response>;
 }
 
-/** The client-route policy a plugin provides, such as API keys. */
+/** The client-route policy a plugin provides, such as a key or token check. */
 export interface ClientAuth {
   /** Request headers the decision reads; core adds them to `Vary` on cacheable client responses. */
   readonly varyHeaders: readonly string[];
@@ -199,6 +199,13 @@ export interface HotUpdaterPlugin<
   /** Stored under the settings key `schema.<id>`. */
   readonly schemaVersion: string;
   readonly schema: TSchema;
+  /**
+   * `false` keeps the declared table names instead of prefixing them with
+   * the plugin's id. The plugin then owns collisions with core's tables and
+   * other plugins' tables, which startup checks for the plugins a server
+   * runs, and only such a plugin may take a camelCase id.
+   */
+  readonly namespace?: false;
   /** Called once at startup, synchronously. */
   init(context: PluginContext<TSchema>): TInstance;
   /** Read by the CLI only; the server never runs it. */
@@ -207,7 +214,7 @@ export interface HotUpdaterPlugin<
   readonly kind?: "Core is built in; it is not a plugin";
 }
 
-/** Declares a plugin; built-in and third-party plugins use the same contract. */
+/** Declares a plugin; Hot Updater's own plugins and third-party ones use the same contract. */
 export const definePlugin = <
   const TId extends string,
   const TSchema extends ModuleSchema,
@@ -218,6 +225,7 @@ export const definePlugin = <
   readonly provides?: TProvides;
   readonly schemaVersion: string;
   readonly schema: TSchema;
+  readonly namespace?: false;
   init(context: PluginContext<TSchema>): InstanceFor<TProvides, TInstance>;
   readonly cli?: CliFor<TProvides, NoInfer<TInstance["api"]>>;
 }): HotUpdaterPlugin<TId, TSchema, TInstance, TProvides> =>

@@ -3,6 +3,7 @@ import path from "node:path";
 
 import { PGlite } from "@electric-sql/pglite";
 import { createHotUpdater } from "@hot-updater/server";
+import { toolingTargetOf } from "@hot-updater/server/database";
 import {
   createDatabasePluginApis,
   createMigrator,
@@ -20,6 +21,7 @@ import {
 } from "@hot-updater/test-utils";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
+import { plugins } from "../src/plugins";
 import { supabaseDatabase } from "../src/supabaseDatabase";
 import { toApplyStatement } from "../src/supabaseExecutor";
 import { supabaseDatabase as supabaseToolingDatabase } from "../src/supabaseMigration";
@@ -32,6 +34,8 @@ import {
 
 const MIGRATIONS = path.resolve("plugins/supabase/supabase/migrations");
 const MIGRATION = path.join(MIGRATIONS, "20260818000000_hot-updater_1.0.0.sql");
+/** The managed server's tables: core's, and its plugins' (Insights and API keys). */
+const managed = toolingTargetOf(plugins);
 
 const state = vi.hoisted(() => ({ db: undefined as PGlite | undefined }));
 
@@ -75,14 +79,16 @@ const apply = (db: PGlite, sql: string) =>
 describe("Supabase schema", () => {
   it("checks in exactly the generated migration as the only one", async () => {
     if (process.env.HOT_UPDATER_UPDATE_SQL === "1") {
-      await fs.writeFile(MIGRATION, supabaseSchemaSql());
+      await fs.writeFile(MIGRATION, supabaseSchemaSql(managed));
     }
     const files = (await fs.readdir(MIGRATIONS)).filter((file) =>
       file.endsWith(".sql"),
     );
     expect(files).toEqual([path.basename(MIGRATION)]);
     // Regenerate with HOT_UPDATER_UPDATE_SQL=1 after the schema changes.
-    expect(await fs.readFile(MIGRATION, "utf8")).toBe(supabaseSchemaSql());
+    expect(await fs.readFile(MIGRATION, "utf8")).toBe(
+      supabaseSchemaSql(managed),
+    );
   });
 
   it("creates namespaced tables with row-level security beside a v0 schema it leaves alone", async () => {
@@ -97,7 +103,7 @@ describe("Supabase schema", () => {
       name.startsWith("hot_updater_v1_"),
     );
     expect(ours.map(({ name }) => name)).toEqual(
-      supabaseTableNames().toSorted(),
+      supabaseTableNames(managed.schema).toSorted(),
     );
     expect(ours.every(({ secured }) => secured)).toBe(true);
     await expect(
@@ -271,7 +277,7 @@ describe("supabaseDatabase over the apply RPC", () => {
         supabaseServiceRoleKey: "service-role-key",
       }),
     reset: async () => {
-      const tables = supabaseTableNames()
+      const tables = supabaseTableNames(managed.schema)
         .filter((table) => table !== SUPABASE_SETTINGS_TABLE)
         .map((table) => `public."${table}"`);
       await state.db!.exec(`TRUNCATE ${tables.join(", ")} CASCADE`);

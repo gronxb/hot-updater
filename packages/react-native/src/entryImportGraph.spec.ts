@@ -58,7 +58,7 @@ describe("@hot-updater/react-native root entry", () => {
   it("sends no Insights request", () => {
     const insightsCode = graph.filter((file) => {
       const source = readFileSync(join(sourceRoot, file), "utf8");
-      return /["'`/]events["'`]|x-hot-updater-insights/.test(source);
+      return /["'`/]events["'`]/.test(source);
     });
     expect(insightsCode).toEqual([]);
   });

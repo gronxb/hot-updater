@@ -1,5 +1,5 @@
 import {
-  builtInSettings,
+  coreSettings,
   createTableStatements,
   isMultiIndex,
   type PhysicalTable,
@@ -42,7 +42,7 @@ setupDatabaseAdapterConformanceSuite({
     await env.DB.batch(
       [
         ...createTableStatements("sqlite", created),
-        ...settingsStatements("sqlite", builtInSettings),
+        ...settingsStatements("sqlite", coreSettings),
       ].map((sql) => env.DB.prepare(sql)),
     );
     return {

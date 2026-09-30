@@ -1,6 +1,6 @@
 import {
-  builtInSettings,
-  builtInTarget,
+  coreSettings,
+  coreTarget,
   type SqlStatement,
 } from "@hot-updater/server/database";
 import type { SchemaGenerator, ToolingDatabase } from "@hot-updater/server/db";
@@ -65,8 +65,8 @@ export const d1Database = (config: D1DatabaseConfig): ToolingDatabase => {
       query: async (statement) => (await execute([statement]))[0]!,
       batch: execute,
     }),
-    generateSchema: ((version, _name, target = builtInTarget) => {
-      if (version !== "latest" && version !== builtInSettings["schema.core"]) {
+    generateSchema: ((version, _name, target = coreTarget) => {
+      if (version !== "latest" && version !== coreSettings["schema.core"]) {
         throw new Error(`Invalid version ${version}`);
       }
       // Wrangler applies migrations in the order of their leading numbers.

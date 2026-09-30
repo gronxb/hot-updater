@@ -1,5 +1,5 @@
 import {
-  builtInTarget,
+  coreTarget,
   createTableStatements,
   WRITE_GUARD_TABLE,
 } from "@hot-updater/server/database";
@@ -7,13 +7,13 @@ import { generateEngineSql, type ToolingTarget } from "@hot-updater/server/db";
 
 /**
  * D1's schema: the guard table batch writes need, then the shared SQL
- * schema, settings last. Every statement can run again, so a migration for a
- * server's plugin tables repeats the built-in ones.
+ * schema of core and the target's plugins, settings last. Every statement can
+ * run again, so a migration for a server's plugin tables repeats core's.
  */
 export const d1SchemaStatements = ({
   schema,
   settings,
-}: ToolingTarget = builtInTarget): string[] => [
+}: ToolingTarget = coreTarget): string[] => [
   ...createTableStatements("sqlite", [WRITE_GUARD_TABLE]),
   ...generateEngineSql("sqlite", schema, settings),
 ];

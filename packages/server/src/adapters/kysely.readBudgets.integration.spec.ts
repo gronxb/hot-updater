@@ -13,7 +13,8 @@ import { kyselyExecutor } from "./kyselyExecutor";
 
 /**
  * `kyselyAdapter`'s composition without its schema fence: the SQL core over
- * the Kysely executor on PGlite, on the tables its migrator creates.
+ * the Kysely executor on PGlite, on the tables its migrator creates for core
+ * and the plugins the suite measures.
  */
 setupReadBudgetTestSuite({
   name: "kysely (PGlite)",
@@ -21,8 +22,9 @@ setupReadBudgetTestSuite({
   createAdapter: async () => {
     const client = new PGlite();
     const db = new Kysely<object>({ dialect: new PGliteDialect(client) });
+    const target = readBudgetServer.toolingTargetOf(readBudgetServer.plugins);
     const migrator = kyselyAdapter({ db, provider: "postgresql" })
-      .createMigrator!();
+      .createMigrator!(target);
     await (await migrator.migrateToLatest()).execute();
     const reads = postgresRowsExamined(
       async (sql, params) =>

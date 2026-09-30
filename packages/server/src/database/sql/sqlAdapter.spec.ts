@@ -10,7 +10,7 @@ import {
 } from "@hot-updater/test-utils";
 import { afterAll, describe, expect, it } from "vitest";
 
-import { builtInSchema } from "../../db/builtInDatabase";
+import { coreSchema } from "../../db/coreDatabase";
 import {
   classifySqlError,
   createSqlAdapter,
@@ -147,9 +147,9 @@ describe("sql core", () => {
     expect(() => createTableStatements("mysql", [catalogs(false)])).toThrow(
       "catalogs key needs 8192 bytes on MySQL, over its 3072",
     );
-    // every table the façade spans fits
+    // every core table fits; the plugins' tables are checked beside them
     expect(() =>
-      createTableStatements("mysql", builtInSchema.tables),
+      createTableStatements("mysql", coreSchema.tables),
     ).not.toThrow();
   });
 

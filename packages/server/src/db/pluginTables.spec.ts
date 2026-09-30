@@ -10,13 +10,18 @@ import { prismaAdapter } from "../adapters/prisma";
 import { createHotUpdater } from "../createHotUpdaterCore";
 import { HotUpdaterSchemaMigrationRequiredError } from "../database/fence";
 import { defineTable } from "../database/schema";
-import { definePlugin } from "../plugins/definePlugin";
+import { createTableStatements } from "../database/sql/sqlAdapter";
+import { apiKeys } from "../plugins/api-keys";
+import {
+  type AnyHotUpdaterPlugin,
+  definePlugin,
+} from "../plugins/definePlugin";
 import { insights } from "../plugins/insights";
 import {
-  builtInTarget,
+  coreTarget,
   createEngineDatabase,
   toolingTargetOf,
-} from "./builtInDatabase";
+} from "./coreDatabase";
 import { createMigrator, generateSchema } from "./index";
 
 const notes = definePlugin({
@@ -56,21 +61,33 @@ const migrate = async (hotUpdater: { readonly adapterName: string }) => {
 const memoryDatabase = () =>
   createEngineDatabase({ name: "memory", adapter: createMemoryAdapter() });
 
-describe("third-party plugin tables in db tooling", () => {
-  it("adds each third-party plugin's namespaced tables and settings row to the built-in ones", () => {
-    expect(toolingTargetOf([insights()])).toBe(builtInTarget);
+describe("plugin tables in db tooling", () => {
+  it("adds each plugin's tables and settings row to core's, prefixed by its id unless it keeps its names", () => {
+    expect(toolingTargetOf([])).toBe(coreTarget);
     const target = toolingTargetOf([insights(), notes]);
-    expect(target.schema.tables.map(({ name }) => name)).toEqual([
-      ...builtInTarget.schema.tables.map(({ name }) => name),
-      "notes_notes",
-    ]);
+    const names = target.schema.tables.map(({ name }) => name);
+    expect(names.slice(0, coreTarget.schema.tables.length)).toEqual(
+      coreTarget.schema.tables.map(({ name }) => name),
+    );
+    expect(names).toContain("bundle_events");
+    expect(names.at(-1)).toBe("notes_notes");
     expect(target.settings).toEqual({
-      ...builtInTarget.settings,
+      ...coreTarget.settings,
+      "schema.insights": insights().schemaVersion,
       "schema.notes": "2",
     });
   });
 
-  it("migrates an engine database's built-in and plugin tables with its adapter", async () => {
+  it("fits Hot Updater's own plugins' tables within MySQL's key limit", () => {
+    expect(() =>
+      createTableStatements(
+        "mysql",
+        toolingTargetOf([insights(), apiKeys()]).schema.tables,
+      ),
+    ).not.toThrow();
+  });
+
+  it("migrates an engine database's core and plugin tables with its adapter", async () => {
     const hotUpdater = createHotUpdater({
       database: memoryDatabase(),
       plugins: [notes],
@@ -180,7 +197,7 @@ describe("third-party plugin tables in db tooling", () => {
     ).toContain("model notes_notes {");
   });
 
-  it("rejects a third-party plugin that takes a built-in plugin's id or table", () => {
+  it("checks a plugin's id and tables against core and the other plugins the server runs", () => {
     const named = definePlugin({
       id: "insights",
       schemaVersion: "1",
@@ -197,22 +214,35 @@ describe("third-party plugin tables in db tooling", () => {
       },
       init: () => ({ api: {} }),
     });
+    const unprefixed = definePlugin({
+      id: "shadowCore",
+      namespace: false,
+      schemaVersion: "1",
+      schema: {
+        channels: defineTable({ id: { type: "string" } }, { key: ["id"] }),
+      },
+      init: () => ({ api: {} }),
+    });
+    const start = (plugins: readonly AnyHotUpdaterPlugin[]) => () =>
+      createHotUpdater({
+        database: memoryDatabase(),
+        plugins,
+        ...(plugins.some(({ provides }) => provides?.clientAuth)
+          ? {}
+          : { clientAccess: "public" }),
+      } as Parameters<typeof createHotUpdater>[0]);
 
-    expect(() =>
-      createHotUpdater({
-        database: memoryDatabase(),
-        plugins: [named],
-        clientAccess: "public",
-      }),
-    ).toThrow(`Plugin "insights" uses a built-in plugin's id.`);
-    expect(() =>
-      createHotUpdater({
-        database: memoryDatabase(),
-        plugins: [tabled],
-        clientAccess: "public",
-      }),
-    ).toThrow(
-      'api.keys: table "api_keys" is also declared by apiKeys.api_keys',
+    // Only the plugins a server runs get tables, so these fit on their own.
+    expect(start([named])).not.toThrow();
+    expect(start([tabled])).not.toThrow();
+    expect(start([named, insights()])).toThrow(
+      'Plugin "insights" is registered twice.',
+    );
+    expect(start([tabled, apiKeys()])).toThrow(
+      'apiKeys.api_keys: table "api_keys" is also declared by api.keys',
+    );
+    expect(start([unprefixed])).toThrow(
+      'shadowCore.channels: table "channels" is also declared by core.channels',
     );
   });
 });

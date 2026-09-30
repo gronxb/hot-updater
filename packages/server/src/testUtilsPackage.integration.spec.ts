@@ -103,9 +103,10 @@ it("runs the complete contract from the published test-utils package", async () 
             createInsightsModel(createDatabasePluginApis(database, [insights()]).insights),
         })],
         createDatabase: () => database,
+        // Core's tables and those of the plugins the server runs.
         migrate: async () => {
           const migration = await createMigrator(createHotUpdater({
-            database, clientAccess: "public",
+            database, plugins: [insights()], clientAccess: "public",
           })).migrateToLatest({ mode: "from-schema", updateSettings: true });
           await migration.execute();
         },

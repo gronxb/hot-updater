@@ -44,6 +44,7 @@ import {
   migrateFirebaseDatabase,
 } from "../../src/firebaseDatabase";
 import { FIREBASE_V1_COLLECTION } from "../../src/firebaseInfrastructureNames";
+import { plugins } from "../../src/plugins";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -253,7 +254,7 @@ exec node "${path.join(firebaseFunctionsPackagePath, "lib/bin/firebase-functions
     };
 
     const database = firebaseDatabase({ ...adminOptions });
-    await migrateFirebaseDatabase({ ...adminOptions });
+    await migrateFirebaseDatabase({ ...adminOptions }, plugins);
     const pluginApis = createDatabasePluginApis(database, [
       insights(),
       apiKeys(),
