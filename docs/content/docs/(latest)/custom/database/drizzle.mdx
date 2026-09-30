@@ -106,8 +106,8 @@ npx hot-updater db generate src/hotUpdater.ts --yes
 
 This command writes `hot-updater-schema.ts` at the project root: every table,
 key and index, with each column typed exactly as Hot Updater's SQL schema
-declares it, and no foreign keys. The tables include those of the server's
-[third-party plugins](/docs/custom/server-plugins#create-the-plugins-tables).
+declares it, and no foreign keys. The tables are core's and those of the
+server's [plugins](/docs/custom/server-plugins#create-the-plugins-tables).
 
 Point Drizzle Kit at the generated file and the same SQLite database. If your
 config already lists schema files, add `./hot-updater-schema.ts` to its
@@ -142,7 +142,7 @@ and its handlers answer 503. A running server checks again on its next
 request. Run all three commands again after upgrading Hot Updater.
 
 <Callout>
-  Need to generate SQL without config? See [SQL
+  Need plain SQL without a database connection? See [SQL
   Export](/docs/custom/database/sql-export) for standalone SQL generation with
   the `--sql` flag.
 </Callout>

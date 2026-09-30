@@ -17,7 +17,7 @@ engine that core uses. `init` returns:
 Beside `init`, an optional `cli` adds [commands to the `hot-updater`
 CLI](#add-cli-commands); the server never runs it.
 
-The built-in [`insights()`](/docs/guides/insights) and
+Hot Updater's own [`insights()`](/docs/guides/insights) and
 [`apiKeys()`](/docs/custom/api-key-authentication) plugins use the same
 contract, and their sources in the repository's `packages/server/src/plugins`
 are worked references: Insights has derived and multi-valued fields, sharded
@@ -118,6 +118,11 @@ The server prefixes a plugin's tables with its id: this schema stores
 `feedback_threads`, `feedback_messages`, and `feedback_totals`. Model and
 field names start with a lowercase letter and use lowercase letters, digits,
 and `_`; index names start with a letter and use letters, digits, and `_`.
+
+A plugin that sets `namespace: false` keeps its declared table names instead,
+as `insights()` and `apiKeys()` do for `bundle_events` and `api_keys`. It then
+owns collisions: startup refuses a table name that core or another plugin the
+server runs already takes.
 
 ### Tables
 
@@ -455,6 +460,9 @@ export const feedback = () =>
 - `id` names the plugin's API and prefixes its tables. A plugin id uses
   lowercase letters, digits, and `_`, starting with a letter; `core` is
   reserved, and each id appears once per server.
+- `namespace: false`, optional, keeps the table names as `schema` declares
+  them, without the id prefix. Only such a plugin's id may also use uppercase
+  letters, as `apiKeys` does.
 - `schemaVersion` is a string that names the version of `schema`; see
   [Create the plugin's tables](#create-the-plugins-tables).
 - `init` runs once, synchronously, when `createHotUpdater` starts. It returns
@@ -470,7 +478,7 @@ disagrees with `provides`, an invalid endpoint, or colliding routes.
 
 ## Register the plugin
 
-Add the plugin to `plugins` next to the built-in ones:
+Add the plugin to `plugins` next to Hot Updater's own:
 
 ```ts title="src/hotUpdater.ts (excerpt)"
 import { createHotUpdater } from "@hot-updater/server";
@@ -806,12 +814,12 @@ from different modules, fail with `HotUpdaterConfigError` at startup.
 ## Create the plugin's tables
 
 `hot-updater db migrate` and `hot-updater db generate` read the server's
-`plugins`. Besides core's tables and the built-in plugins' tables, which every
-database has whichever plugins the server runs, they create each third-party
-plugin's tables under its id, such as `feedback_threads`, and write its
-settings row last: `schema.feedback`, holding the plugin's `schemaVersion`.
-Until that row matches, the schema fence answers 503 for every request, as it
-does for the built-in rows, and names the missing setting.
+`plugins`. Besides core's tables, which every database has, they create the
+tables of each plugin the server runs, such as `feedback_threads`, and write
+its settings row last: `schema.feedback`, holding the plugin's
+`schemaVersion`. Until that row matches, the schema fence answers 503 for
+every request, as it does for core's rows, and names the missing setting. A
+plugin the server does not run has no tables.
 
 Run them with the file that exports the server's `hotUpdater`:
 
@@ -844,9 +852,9 @@ especially for a unique index: the setting alone does not enforce uniqueness.
 PostgreSQL and SQLite SQL migrations can create missing indexes separately;
 Drizzle and Prisma require applying the updated schema with their own tools.
 
-A third-party plugin cannot take a built-in name: `insights` as an id, or a
-table that resolves to a built-in one, such as an `api` plugin's `keys` table
-(`api_keys`), fails at startup.
+A plugin's tables need to be free of core's and of those of the other plugins
+the server runs: beside `apiKeys()`, an `api` plugin's `keys` table
+(`api_keys`) fails at startup.
 
 ## Test with the plugin harness
 

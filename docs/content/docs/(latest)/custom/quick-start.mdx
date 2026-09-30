@@ -107,8 +107,8 @@ export const hotUpdater = createHotUpdater({
   downloads stay public. It stores each key's SHA-256 digest in the database.
 - `insights()` records the reports that React Native apps send with the
   [Insights client plugin](/docs/react-native-api/insights) and serves the
-  Insights reads on the admin handler. Without it, the Insights routes answer
-  `204` with `x-hot-updater-insights: disabled`.
+  Insights reads on the admin handler. Without it, the server has no Insights
+  routes, and they answer `404`.
 
 Admin routes used by the CLI `standaloneRepository` live on a separate handler;
 mount that handler only behind framework authentication.

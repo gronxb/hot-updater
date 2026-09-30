@@ -28,12 +28,13 @@ linked to that project:
 npx supabase db push
 ```
 
-The migration creates Hot Updater's tables under the `hot_updater_v1_` prefix,
-with row-level security on every table, the write guard table, and the
+The migration creates the tables of core and of the managed Edge Function's
+plugins, Insights and API keys, under the `hot_updater_v1_` prefix, with
+row-level security on every table, the write guard table, and the
 `hot_updater_v1_apply` function, then writes the schema settings rows last.
 
-An Edge Function that runs
-[third-party plugins](/docs/custom/server-plugins#create-the-plugins-tables)
+An Edge Function that runs other
+[plugins](/docs/custom/server-plugins#create-the-plugins-tables)
 also needs their tables, and the apply function must be allowed to reach them.
 `hot-updater db generate` writes a migration that does both to
 `supabase/migrations/<timestamp>_hot-updater.sql`; apply it with
@@ -44,8 +45,8 @@ also needs their tables, and the apply function must be allowed to reach them.
 ## Schema settings
 
 Before its first read or write, the database checks the settings rows
-`schema.engine`, `schema.core`, `schema.insights` and `schema.apiKeys` in one
-batch read. While one is missing or different, or PostgREST cannot find the
+`schema.engine`, `schema.core`, and `schema.<id>` for each plugin the server
+runs, such as `schema.insights` and `schema.apiKeys`, in one batch read. While one is missing or different, or PostgREST cannot find the
 apply function, it throws `HotUpdaterSchemaMigrationRequiredError`, and the
 server's handlers answer 503. A running server checks again on its next
 request, so it recovers once the migration has run.

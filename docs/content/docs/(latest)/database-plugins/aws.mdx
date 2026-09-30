@@ -51,13 +51,17 @@ aws dynamodb update-time-to-live \
   --time-to-live-specification Enabled=true,AttributeName=_ttl
 ```
 
-Then write the schema settings with `migrateDynamoDB`, which takes the same
-configuration as `dynamoDB`:
+Then write the schema settings with `migrateDynamoDB`. It takes the same
+configuration as `dynamoDB`, and the plugins the server runs, such as
+`plugins` from `@hot-updater/aws`: the managed server's Insights and API keys.
 
 ```typescript
-import { migrateDynamoDB } from "@hot-updater/aws";
+import { migrateDynamoDB, plugins } from "@hot-updater/aws";
 
-await migrateDynamoDB({ tableName: "hot-updater", region: "us-east-1" });
+await migrateDynamoDB(
+  { tableName: "hot-updater", region: "us-east-1" },
+  plugins,
+);
 ```
 
 When the table is missing, `migrateDynamoDB` also creates it, on demand and
@@ -68,14 +72,15 @@ with the AWS CLI instead, use `dynamodb/schema-settings.json` from
 [Infrastructure Templates](/docs/guides/infrastructure-templates).
 
 `hot-updater db migrate`, run with the file that exports a server's
-`hotUpdater`, does the same, and also writes the settings items of the
-server's [third-party plugins](/docs/custom/server-plugins#create-the-plugins-tables).
-Their tables are key prefixes in the same table, so they need nothing else.
+`hotUpdater`, does the same for the server's
+[plugins](/docs/custom/server-plugins#create-the-plugins-tables). Their tables
+are key prefixes in the same table, so they need nothing else.
 
 ## Schema settings
 
-The settings are four items under the partition `private_hot_updater_settings`:
-`schema.engine`, `schema.core`, `schema.insights` and `schema.apiKeys`. Before
+The settings are items under the partition `private_hot_updater_settings`:
+`schema.engine`, `schema.core`, and one `schema.<id>` for each plugin the
+server runs, such as `schema.insights` and `schema.apiKeys`. Before
 its first read or write, the database checks them in one batch read. While one
 is missing or different, it throws `HotUpdaterSchemaMigrationRequiredError`,
 which names the setting, and the server's handlers answer 503. A running

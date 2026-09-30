@@ -239,7 +239,7 @@ before anything is sent. Return `true` when the backend has no limit.
 
 `migrations.apply(tables)` creates each table with its indexes. A table that
 exists keeps its rows, so running it twice changes nothing. Only the migration
-tooling calls it: `migrateBuiltInSchema` and `hot-updater db migrate`. Leave it
+tooling calls it: `migrateCoreSchema` and `hot-updater db migrate`. Leave it
 out when other tooling creates the tables, as Supabase's migrations do for its
 RPC, which runs no DDL.
 
@@ -275,7 +275,8 @@ import type { EngineDatabase } from "@hot-updater/plugin-core";
 import {
   createEngineDatabase,
   createSqlAdapter,
-  migrateBuiltInSchema,
+  migrateCoreSchema,
+  type PluginTables,
   type SqlConnection,
   type SqlExecutor,
 } from "@hot-updater/server/database";
@@ -321,13 +322,20 @@ export const myDatabase = (config: PoolConfig): EngineDatabase => {
   };
 };
 
-/** Creates the tables, then writes the settings rows the schema fence checks. */
-export const migrateMyDatabase = async (config: PoolConfig) => {
+/**
+ * Creates the tables of core and `plugins`, the plugins the server runs, then
+ * writes the settings rows the schema fence checks.
+ */
+export const migrateMyDatabase = async (
+  config: PoolConfig,
+  plugins: readonly PluginTables[] = [],
+) => {
   const pool = new pg.Pool(config);
   try {
-    await migrateBuiltInSchema(
+    await migrateCoreSchema(
       createSqlAdapter({ executor: myExecutor(pool) }),
       "myDatabase",
+      plugins,
     );
   } finally {
     await pool.end();
@@ -484,9 +492,11 @@ export const hotUpdater = createHotUpdater({
 ## Create the schema
 
 Migrations write settings rows to `private_hot_updater_settings` last, after
-every table exists: `schema.engine` (`"1"`) and one row per module,
-`schema.core`, `schema.insights` and `schema.apiKeys` (`"1.0.0"`). Before a
-process's first read or write, the schema fence reads them in one batch. A
+every table exists: `schema.engine` (`"1"`), `schema.core` (`"1.0.0"`), and
+`schema.<id>` for each plugin the server runs, holding its `schemaVersion`,
+such as `schema.insights` and `schema.apiKeys`. Before a process's first read
+or write, the schema fence reads core's rows in one batch, and a server reads
+its plugins' rows in another. A
 missing or different row throws `HotUpdaterSchemaMigrationRequiredError`,
 which names the setting, and the server's handlers answer 503. A read that
 fails because the settings table is missing counts as a missing row when the
@@ -495,35 +505,38 @@ error says so: PostgreSQL `42P01` or `42703`, MySQL `ER_NO_SUCH_TABLE` or
 such as a refused connection, is thrown as it is.
 
 Export a migration with your factory, as `migrateMyDatabase` does.
-`migrateBuiltInSchema(adapter, name)` passes core's and the built-in plugins'
-tables to `adapter.migrations.apply`, then writes the settings rows. Running it
-again changes nothing. Run it from a script, a deploy job or your provider's
-setup command, as `migrateDynamoDB` and
-`migrateFirebaseDatabase` do for their providers.
+`migrateCoreSchema(adapter, name, plugins)` passes core's tables and those of
+`plugins` to `adapter.migrations.apply`, then writes their settings rows.
+Running it again changes nothing. Run it from a script, a deploy job or your
+provider's setup command with the plugins the server runs, as
+`migrateDynamoDB` and `migrateFirebaseDatabase` do for their providers.
 
 `hot-updater db migrate` runs the same migration from the file that exports the
-server's `hotUpdater`, and adds the tables and settings rows of the server's
-third-party plugins; see
+server's `hotUpdater`, with the server's `plugins`; see
 [Server Plugins](/docs/custom/server-plugins#create-the-plugins-tables). It
 refuses a database whose adapter has no `migrations`.
 
 A SQL provider can check in its schema instead.
-`generateEngineSql(dialect, builtInSchema, builtInSettings, { tablePrefix })`
-from `@hot-updater/server/db` returns the statements: tables and indexes, then
-the settings rows. The `postgres` and D1 providers generate their checked-in
-SQL this way, and a test fails when a file differs from the generator. Add
+`generateEngineSql(dialect, schema, settings, { tablePrefix })` from
+`@hot-updater/server/db` returns the statements: tables and indexes, then the
+settings rows. Pass `coreSchema` and `coreSettings` from
+`@hot-updater/server/database` for core alone, or the `schema` and `settings`
+of `toolingTargetOf(plugins)` for core and those plugins. The `postgres`
+provider generates its checked-in SQL for core, and D1 for core and the
+managed Worker's plugins; a test fails when a file differs from the
+generator. Add
 `createTableStatements(dialect, [WRITE_GUARD_TABLE], tablePrefix)` when the
 executor has `batch`. Use the same `tablePrefix` for schema generation, the
 write guard table, and `createSqlAdapter`. When other tooling creates the
 tables,
-`writeSchemaSettings(adapter, name, builtInSettings)` writes only the settings
+`writeSchemaSettings(adapter, name, settings)` writes only the settings
 rows.
 
 A provider whose schema is applied as migration files adds
 `generateSchema(version, name, target)` to its database, as `supabaseDatabase`
 and the REST `d1Database` do. `hot-updater db generate` calls it with
-`"latest"` and the server's `target`, `{ schema, settings }` (`builtInTarget`
-from `@hot-updater/server/database` without third-party plugins), and writes
+`"latest"` and the server's `target`, `{ schema, settings }`: its
+`toolingTargetOf(plugins)`, or `coreTarget` without plugins. It writes
 the returned `code` to its relative `path`. When the adapter also has
 `migrations`, as D1's does, `hot-updater db migrate` applies the same schema
 directly; without them, as with Supabase, it points to `db generate`.
@@ -536,7 +549,7 @@ runs. Register all three:
 | Suite                                  | Runs                                                                                             | Against                                  |
 | -------------------------------------- | ------------------------------------------------------------------------------------------------ | ---------------------------------------- |
 | `setupDatabaseAdapterConformanceSuite` | the contract on this page, case by case                                                          | your adapter, on three test tables       |
-| `setupReadBudgetTestSuite`             | what each read of core and the built-in plugins costs                                            | your adapter, on the built-in tables     |
+| `setupReadBudgetTestSuite`             | what each read of core and the plugins it measures costs                                         | your adapter, on their tables            |
 | `setupDatabaseTestSuite`               | core, Bundles, the Release Catalog contract and Insights, through the admin and client HTTP APIs | your database, behind `createHotUpdater` |
 
 The examples expect `TEST_DATABASE_URL` to name an empty PostgreSQL database.
@@ -609,7 +622,10 @@ since an insert there is 3 items and a transaction takes 100.
 ### Read budgets
 
 ```ts title="myDatabase.readBudgets.spec.ts"
-import { builtInSchema, createSqlAdapter } from "@hot-updater/server/database";
+import {
+  createSqlAdapter,
+  toolingTargetOf,
+} from "@hot-updater/server/database";
 import {
   createMeasuredDatabase,
   targetBaseCandidateKey,
@@ -633,7 +649,7 @@ setupReadBudgetTestSuite({
   name: "myDatabase",
   server: {
     createMeasuredDatabase,
-    builtInSchema,
+    toolingTargetOf,
     plugins: [insights(), apiKeys()],
     targetBaseCandidateKey,
   },
@@ -671,7 +687,7 @@ one patch read.
 
 | `createAdapter` result | Meaning                                                                                                                                                                                                       |
 | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `adapter`              | Your adapter over newly created, empty `tables`: core's and the built-in plugins'                                                                                                                             |
+| `adapter`              | Your adapter over newly created, empty `tables`: core's and those of `server.plugins`                                                                                                                         |
 | `cleanup`              | Runs after the suite                                                                                                                                                                                          |
 | `examined`             | SQL backends: the rows the database examined. `postgresRowsExamined(query)` and `mysqlRowsExamined(query)` explain each read the wrapped executor runs, so a read that scans more rows than it returns fails. |
 | `indexCopies`          | `true` when index reads return row copies without `_v`, as `createKvAdapter` does; a transaction then reads the rows it guards again                                                                          |
@@ -680,7 +696,7 @@ one patch read.
 
 ```ts title="myDatabase.spec.ts"
 import { createHotUpdater } from "@hot-updater/server";
-import { builtInSchema } from "@hot-updater/server/database";
+import { toolingTargetOf } from "@hot-updater/server/database";
 import { createDatabasePluginApis } from "@hot-updater/server/db";
 import {
   createInsightsModel,
@@ -698,14 +714,18 @@ import { tableNames } from "./testTables";
 
 const config = { connectionString: process.env.TEST_DATABASE_URL };
 const pool = new pg.Pool(config);
+/** The plugins the suite's server runs, whose tables the migration adds. */
+const plugins = [insights()];
 
 setupDatabaseTestSuite({
   name: "myDatabase",
-  migrate: () => migrateMyDatabase(config),
+  migrate: () => migrateMyDatabase(config, plugins),
   createDatabase: () => myDatabase(config),
   // Every table but the settings, which the schema fence checks.
   reset: async () => {
-    await pool.query(`TRUNCATE ${tableNames(builtInSchema.tables)}`);
+    await pool.query(
+      `TRUNCATE ${tableNames(toolingTargetOf(plugins).schema.tables)}`,
+    );
   },
   dispose: async (database) => {
     await database.dispose?.();
@@ -713,11 +733,8 @@ setupDatabaseTestSuite({
   },
   createHttpClient: (options) =>
     startHttpTestServer(
-      createHotUpdater({
-        ...options,
-        plugins: [insights()],
-        clientAccess: "public",
-      }).handlers,
+      createHotUpdater({ ...options, plugins, clientAccess: "public" })
+        .handlers,
     ),
   plugins: [
     insightsTestSuite({

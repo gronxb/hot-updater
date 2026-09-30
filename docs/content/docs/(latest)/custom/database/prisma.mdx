@@ -98,7 +98,7 @@ npx hot-updater db generate src/hotUpdater.ts --yes
 This command creates `prisma/schema.prisma` when it is missing or merges the
 Hot Updater models into the existing schema, between the
 `BEGIN HOT-UPDATER MODELS` and `END HOT-UPDATER MODELS` comments. The models
-include the tables of the server's [third-party plugins](/docs/custom/server-plugins#create-the-plugins-tables). The models
+cover core's tables and those of the server's [plugins](/docs/custom/server-plugins#create-the-plugins-tables). The models
 have keys and named indexes and no relations. Fields whose column starts with
 an underscore get a `hu` prefix and map back to the column, such as `hu_v` to
 `_v`. On MySQL, ASCII key columns are `VarBinary`, which keeps every key within
@@ -106,7 +106,7 @@ InnoDB's limit. Keep the generated models instead of replacing them with a
 handwritten schema.
 
 <Callout>
-  Need to generate SQL without config? See [SQL
+  Need plain SQL without a database connection? See [SQL
   Export](/docs/custom/database/sql-export) for standalone SQL generation with
   the `--sql` flag.
 </Callout>

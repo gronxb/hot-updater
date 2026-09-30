@@ -57,8 +57,8 @@ the credential header.
 ## Bootstrap a self-hosted client
 
 Apply the [chosen adapter's schema](/docs/custom/overview#database-adapters)
-first. The built-in schema includes the `api_keys` table, whichever plugins the
-server runs. Kysely and MongoDB create it with `hot-updater db migrate`;
+first. A server that runs `apiKeys()` has its `api_keys` table in the schema.
+Kysely and MongoDB create it with `hot-updater db migrate`;
 Drizzle and Prisma apply it with their own schema tools, then run
 `hot-updater db migrate` to write the settings rows. Then create a key through
 the `apiKeys()` plugin of the same server configuration:

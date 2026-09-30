@@ -7,7 +7,7 @@ version: "v0.22.0"
 
 ## Overview
 
-Export Hot Updater table schemas as plain SQL files without requiring a config file. Use this when you need standalone SQL for manual database setup.
+Export Hot Updater table schemas as plain SQL files without connecting to a database. Use this when you need standalone SQL for manual database setup.
 
 <Callout>
 For ORM-specific schema generation (Drizzle, Prisma, Kysely), see the respective adapter documentation pages.
@@ -44,15 +44,31 @@ npx hot-updater db generate --sql mysql
 npx hot-updater db generate --sql sqlite
 ```
 
+## Plugins' tables
+
+The SQL holds core's tables and those of the
+[plugins](/docs/custom/server-plugins#create-the-plugins-tables) your server
+runs, such as `insights()` and `apiKeys()`. The command finds the plugin list
+as plugin commands do: in the server config you name, then in
+`hotUpdater.plugins.ts`, then in a default server config such as
+`src/hotUpdater.ts`:
+
+```bash
+npx hot-updater db generate src/hotUpdater.ts --sql postgresql
+```
+
+It names the file it read the plugins from. Without one, it says so and
+generates core's tables only.
+
 ## Output
 
-The command generates one file, `hot-updater.sql`. It reads no server file,
-so it is the SQL that `hot-updater db migrate` applies with the Kysely adapter
-for a server without [third-party plugins](/docs/custom/server-plugins#create-the-plugins-tables):
+The command generates one file, `hot-updater.sql`: the SQL that
+`hot-updater db migrate` applies with the Kysely adapter for the same plugins.
 
-- Hot Updater's tables and indexes in your dialect's syntax, with binary
-  string collation and no database foreign keys
-- The settings table and its schema settings rows, written last
+- The tables and indexes of core and the plugins in your dialect's syntax,
+  with binary string collation and no database foreign keys
+- The settings table and its schema settings rows, `schema.engine`,
+  `schema.core`, and one per plugin, written last
 
 Apply the whole file to a new, empty database. The server checks the settings
 rows before its first read or write, and its handlers answer 503 until they

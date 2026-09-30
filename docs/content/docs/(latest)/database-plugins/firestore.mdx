@@ -57,25 +57,30 @@ their expiry. Declare it too if you set `collection`.
 Then write the schema settings the database checks before its first read:
 
 ```typescript
-import { migrateFirebaseDatabase } from '@hot-updater/firebase';
+import { migrateFirebaseDatabase, plugins } from '@hot-updater/firebase';
 import { applicationDefault } from 'firebase-admin/app';
 
-await migrateFirebaseDatabase({
-  projectId: 'your-project-id',
-  credential: applicationDefault(),
-});
+await migrateFirebaseDatabase(
+  {
+    projectId: 'your-project-id',
+    credential: applicationDefault(),
+  },
+  plugins,
+);
 ```
 
-`migrateFirebaseDatabase` takes the same configuration as `firebaseDatabase`.
-`hot-updater init` and the managed setup's key script both run it.
-`hot-updater db migrate`, run with the file that exports a server's
-`hotUpdater`, writes the same settings, and those of the server's
-[third-party plugins](/docs/custom/server-plugins#create-the-plugins-tables),
+`migrateFirebaseDatabase` takes the same configuration as `firebaseDatabase`,
+and the plugins the server runs: here `plugins` from `@hot-updater/firebase`,
+the managed server's Insights and API keys. `hot-updater init` and the managed
+setup's key script both run it. `hot-updater db migrate`, run with the file
+that exports a server's `hotUpdater`, writes the same settings for the
+server's [plugins](/docs/custom/server-plugins#create-the-plugins-tables),
 whose tables need no collection or index of their own.
 
 ## Schema settings
 
-The settings are the rows `schema.engine`, `schema.core`, `schema.insights` and
+The settings are the rows `schema.engine`, `schema.core`, and one
+`schema.<id>` for each plugin the server runs, such as `schema.insights` and
 `schema.apiKeys`. Before its first read or write, the database checks them in
 one batch read. While one is missing or different, it throws
 `HotUpdaterSchemaMigrationRequiredError`, which names the setting, and the
