@@ -719,10 +719,13 @@ export const deviceTokens = () =>
     },
     init: ({ db }) => ({
       api: {
-        add: async (token: string) => {
+        /** Stores a token's digest unless it is stored already. */
+        register: async (token: string) => {
           const hash = await sha256(token);
           await db.transaction(async (tx) => {
-            tx.create("tokens", { hash });
+            if ((await tx.findOne("tokens", { hash })) === null) {
+              tx.create("tokens", { hash });
+            }
           });
         },
       },
@@ -796,8 +799,9 @@ cli: {
 },
 ```
 
-Two plugins that name one export from different modules fail with
-`HotUpdaterConfigError`.
+The name is an identifier the app can import: not a reserved word, `App`, or
+`HotUpdater`. A malformed client plugin, or two plugins that name one export
+from different modules, fail with `HotUpdaterConfigError` at startup.
 
 ## Create the plugin's tables
 
