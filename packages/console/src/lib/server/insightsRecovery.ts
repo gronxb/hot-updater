@@ -1,4 +1,4 @@
-import type { InsightsModel } from "@hot-updater/plugin-core";
+import type { InsightsModel } from "@hot-updater/server/plugins/insights";
 
 import {
   insightsPeriodEnd,

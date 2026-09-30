@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  addInsightsDistinct,
-  countInsightsDistinct,
-  emptyInsightsDistinct,
-  getInsightsDistinctRegister,
-  mergeInsightsDistinct,
-} from "./insightsDistinctSummary";
+  addDistinct,
+  countDistinct,
+  emptyDistinct,
+  distinctRegister,
+  mergeDistinct,
+} from "./distinct";
 
 /** mulberry32: a seeded generator, so the sampled identities never change. */
 const seeded = (seed: number) => () => {
@@ -24,30 +24,28 @@ const randomInstallId = (next: () => number) => {
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-4${hex.slice(13, 16)}-a${hex.slice(17, 20)}-${hex.slice(20)}`;
 };
 
-describe("Insights distinct summaries", () => {
+describe("distinct sketches", () => {
   it("merges overlapping installation populations without summing duplicates", () => {
-    let first = emptyInsightsDistinct();
-    let second = emptyInsightsDistinct();
+    let first = emptyDistinct();
+    let second = emptyDistinct();
     for (let index = 0; index < 5_000; index += 1) {
-      first = addInsightsDistinct(first, `installation-${index}`);
+      first = addDistinct(first, `installation-${index}`);
     }
     for (let index = 2_500; index < 7_500; index += 1) {
-      second = addInsightsDistinct(second, `installation-${index}`);
+      second = addDistinct(second, `installation-${index}`);
     }
 
-    const estimate = countInsightsDistinct(
-      mergeInsightsDistinct([first, second]),
-    );
+    const estimate = countDistinct(mergeDistinct([first, second]));
     expect(Math.abs(estimate - 7_500) / 7_500).toBeLessThan(0.08);
   });
 
   it("keeps repeated observations and empty summaries stable", () => {
-    const empty = emptyInsightsDistinct();
-    const once = addInsightsDistinct(empty, "installation-a");
-    const repeated = addInsightsDistinct(once, "installation-a");
-    expect(countInsightsDistinct(empty)).toBe(0);
+    const empty = emptyDistinct();
+    const once = addDistinct(empty, "installation-a");
+    const repeated = addDistinct(once, "installation-a");
+    expect(countDistinct(empty)).toBe(0);
     expect(repeated).toBe(once);
-    expect(countInsightsDistinct(repeated)).toBe(1);
+    expect(countDistinct(repeated)).toBe(1);
   });
 
   it("estimates 1k to 50k installations within a few percent", () => {
@@ -60,18 +58,16 @@ describe("Insights distinct summaries", () => {
     const squaredErrors = sizes.map(() => 0);
     for (let trial = 0; trial < trials; trial += 1) {
       const next = seeded(trial + 1);
-      // Registers are set directly: addInsightsDistinct re-encodes the whole
+      // Registers are set directly: addDistinct re-encodes the whole
       // summary for each identity, which 50k identities make slow.
-      const registers = [...emptyInsightsDistinct()];
+      const registers = [...emptyDistinct()];
       let added = 0;
       sizes.forEach((size, position) => {
         for (; added < size; added += 1) {
-          const { index, character } = getInsightsDistinctRegister(
-            randomInstallId(next),
-          );
+          const { index, character } = distinctRegister(randomInstallId(next));
           if (character > registers[index]!) registers[index] = character;
         }
-        const estimate = countInsightsDistinct(registers.join(""));
+        const estimate = countDistinct(registers.join(""));
         squaredErrors[position]! += ((estimate - size) / size) ** 2;
       });
     }

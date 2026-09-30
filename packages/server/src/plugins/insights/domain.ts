@@ -1,3 +1,5 @@
+import type { InsightsScope } from "./modelTypes";
+
 /**
  * The body of `POST /events`. Fields the server does not know are ignored, so
  * a newer client's report still records on an older server.
@@ -85,11 +87,6 @@ export type CursorPage<T> = {
 
 export type EventCursorPage<T extends EventHistoryRow> = CursorPage<T> & {
   readonly beforeReceivedAtMs: number;
-};
-
-export type InsightsScope = {
-  readonly platform: "ios" | "android";
-  readonly channel: string;
 };
 
 export type InsightsBundleSelection = InsightsScope & {

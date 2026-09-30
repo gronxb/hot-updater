@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { API_KEY_HEADER_NAME, createHotUpdater } from "./index";
-import { apiKeys } from "./plugins/api-keys";
-import { insights } from "./plugins/insights";
-import { createRuntimeDatabase } from "./runtime.testFixtures";
+import { createHotUpdater } from "../../index";
+import { createRuntimeDatabase } from "../../runtime.testFixtures";
+import { insights } from "../insights";
+import { API_KEY_HEADER_NAME, apiKeys } from "./index";
 
 const API_KEY = "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE";
 const updateUrl =

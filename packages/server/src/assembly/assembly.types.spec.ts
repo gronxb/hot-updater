@@ -89,13 +89,13 @@ describe("createHotUpdater types", () => {
     });
   });
 
-  it("names apiKeys() where a clientAccess object from before 1.0 is written", () => {
+  it("says what replaced a clientAccess object from before 1.0 where it is written", () => {
     expectTypeOf<ClientAccessPolicy>().toEqualTypeOf<
       "public" | RemovedClientAccess
     >();
     expectTypeOf<
       RemovedClientAccess["type"]
-    >().toEqualTypeOf<'clientAccess objects were removed in 1.0: set clientAccess: "public", or add apiKeys() from @hot-updater/server/plugins/api-keys to plugins'>();
+    >().toEqualTypeOf<'clientAccess objects were removed in 1.0: set clientAccess: "public", or add a plugin that provides clientAuth'>();
     typeOnly((database) => {
       // @ts-expect-error clientAccess objects were removed in 1.0.
       createHotUpdater({ database, clientAccess: { type: "public" } });

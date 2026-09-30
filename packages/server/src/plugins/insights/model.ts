@@ -1,7 +1,6 @@
-import type { InsightsModel } from "@hot-updater/plugin-core";
-import { createValidatedInsightsModel } from "@hot-updater/plugin-core/internal";
-
+import { createValidatedInsightsModel } from "./contract";
 import type { InsightsApi } from "./index";
+import type { InsightsModel } from "./modelTypes";
 
 /**
  * The plugin's API as `InsightsModel`, validated at its boundary: what the

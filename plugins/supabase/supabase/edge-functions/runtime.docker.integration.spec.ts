@@ -15,11 +15,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { resolvePackageVersion, transformEnv } from "@hot-updater/cli-tools";
 import type { Bundle } from "@hot-updater/core";
-import {
-  type BundleEventRow,
-  type HotUpdaterCoreApi,
-  rowToBundle,
-} from "@hot-updater/plugin-core";
+import { type HotUpdaterCoreApi, rowToBundle } from "@hot-updater/plugin-core";
 import { createHotUpdater } from "@hot-updater/server";
 import {
   builtInSchema,
@@ -37,6 +33,7 @@ import {
   createInsightsModel,
   insights,
   insightsSchema,
+  type BundleEventRow,
 } from "@hot-updater/server/plugins/insights";
 import {
   runContentionHarness,

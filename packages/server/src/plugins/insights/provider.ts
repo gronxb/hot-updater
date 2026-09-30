@@ -1,24 +1,23 @@
-import {
-  compareInsightsText,
-  isInsightsMovementEvent,
-  isUUIDv7,
-  type InsightsBundleEventFilter,
-  type BundleEventRow,
-  type InsightsEventCursor,
-  type InsightsEventFilter,
-  type InsightsModel,
-} from "@hot-updater/plugin-core";
+import { isUUIDv7 } from "@hot-updater/plugin-core";
 
+import { compareInsightsText, isInsightsMovementEvent } from "./contract";
 import type {
   ActiveInstallationWindow,
   InsightsBundleSelection,
-  InsightsScope,
   EventHistoryRow,
   InstallationHistoryRow,
   InstallationRow,
 } from "./domain";
 import { InsightsBadRequestError } from "./errors";
 import { createBundleEventRow } from "./eventInput";
+import type { BundleEventRow } from "./eventRow";
+import type {
+  InsightsBundleEventFilter,
+  InsightsEventCursor,
+  InsightsEventFilter,
+  InsightsModel,
+  InsightsScope,
+} from "./modelTypes";
 import type {
   InsightsEventPageInput,
   InsightsInstallationEventPageInput,

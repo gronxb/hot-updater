@@ -1,8 +1,4 @@
-import type {
-  EngineDatabase,
-  InsightsModel,
-  StoragePlugin,
-} from "@hot-updater/plugin-core";
+import type { EngineDatabase, StoragePlugin } from "@hot-updater/plugin-core";
 import { afterEach, beforeEach, describe } from "vitest";
 
 import {
@@ -11,6 +7,7 @@ import {
 } from "./databaseTestRunner";
 import type { HttpTestServer } from "./httpTestClient";
 import { registerInsightsModelTests } from "./insightsModelTests";
+import type { InsightsModel } from "./insightsTypes";
 import { createReleaseCatalogTestStorage } from "./releaseCatalogHttpFixtures";
 import { setupBundleMethodsTestSuite } from "./setupBundleMethodsTestSuite";
 import { setupCoreAdminTestSuite } from "./setupCoreAdminTestSuite";

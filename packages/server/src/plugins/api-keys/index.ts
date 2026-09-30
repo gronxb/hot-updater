@@ -1,3 +1,5 @@
+import { markBuiltIn } from "../builtIn";
+import { definePlugin } from "../definePlugin";
 import {
   API_KEY_HEADER_NAME,
   authenticateApiKey,
@@ -5,13 +7,17 @@ import {
   normalizeApiKeyHeaderName,
   provisionApiKey,
   registerApiKey,
-} from "../../apiKeys";
-import { markBuiltIn } from "../builtIn";
-import { definePlugin } from "../definePlugin";
+} from "./apiKeys";
 import { createApiKeyModel } from "./model";
 import { apiKeysSchema } from "./schema";
 
-export { createApiKeyModel } from "./model";
+export {
+  API_KEY_HEADER_NAME,
+  type ApiKeyManagementAPI,
+  type ApiKeyMetadata,
+  type CreatedApiKey,
+} from "./apiKeys";
+export { createApiKeyModel, type ApiKeyModel, type ApiKeyRow } from "./model";
 export { apiKeysSchema, type ApiKeysSchema } from "./schema";
 
 export interface ApiKeysOptions {

@@ -11,12 +11,12 @@ import type {
   RouteHandler,
 } from "./handlerTypes";
 import { createVersionRouteHandlers } from "./handlerVersionRoutes";
+import { addRoute, createRouter, findRoute } from "./internalRouter";
 import {
   createDroppedEventHandler,
   INSIGHTS_ROUTES,
   insightsDisabled,
-} from "./insights/routes";
-import { addRoute, createRouter, findRoute } from "./internalRouter";
+} from "./plugins/insights/routes";
 
 export type {
   HandlerAPI,

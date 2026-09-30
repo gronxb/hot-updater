@@ -1,8 +1,8 @@
 import type {
   InsightsEventPageInput,
   InsightsProvider,
-} from "@hot-updater/server";
-import type { InsightsDeletion } from "@hot-updater/server/plugins/insights";
+  InsightsDeletion,
+} from "@hot-updater/server/plugins/insights";
 
 import { ConsoleFeatureUnavailableError } from "../console-features";
 import {

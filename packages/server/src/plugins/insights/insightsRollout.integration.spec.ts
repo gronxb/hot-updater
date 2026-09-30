@@ -1,7 +1,6 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import type { BundleEventRow } from "@hot-updater/plugin-core";
 import {
   runContentionHarness,
   withAdapterLatency,
@@ -17,6 +16,7 @@ import { resolveSchema } from "../../database/resolveSchema";
 import { createSqlAdapter } from "../../database/sql/sqlAdapter";
 import { pgExecutor } from "../../database/sql/sqlTestExecutors";
 import type { CoreReader } from "../definePlugin";
+import type { BundleEventRow } from "./eventRow";
 import { insights, insightsSchema } from "./index";
 
 assertDockerComposeAvailable(

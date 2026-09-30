@@ -4,14 +4,14 @@ import {
 } from "@hot-updater/plugin-core/internal";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { builtInSettings } from "../db/builtInDatabase";
-import { createHotUpdater } from "../index";
-import { insights } from "../plugins/insights";
+import { builtInSettings } from "../../db/builtInDatabase";
+import { createHotUpdater } from "../../index";
 import {
   createFencedDatabase,
   createRuntimeDatabase,
-} from "../runtime.testFixtures";
+} from "../../runtime.testFixtures";
 import { EVENT_BODY_MAX_BYTES } from "./eventInput";
+import { insights } from "./index";
 
 /** A server with the Insights plugin on an empty in-memory database. */
 const start = () =>

@@ -18,11 +18,23 @@ const promote = vi.fn();
 const update = vi.fn();
 const recovery = vi.fn();
 
-vi.mock("@/components/features/bundles/BundleInsightsSummary", () => ({
+vi.mock("@/components/features/insights/ReleaseActivity", () => ({
   BundleInsightsSummary: (props: unknown) => {
     recovery(props);
     return <div>Activity · 24 hours</div>;
   },
+  releaseActivityColumn: { Cell: () => null },
+}));
+
+let insightsAnalytics = true;
+
+vi.mock("@/lib/console-features-api", () => ({
+  useConsoleFeatures: () => ({
+    data: {
+      features: { insights: true, insightsAnalytics, apiKeys: true },
+      remote: false,
+    },
+  }),
 }));
 
 const release = {
@@ -117,6 +129,8 @@ describe("ReleaseEditorSheet", () => {
   afterEach(cleanup);
 
   beforeEach(() => {
+    insightsAnalytics = true;
+    recovery.mockReset();
     releaseValue = release;
     preflight.mockReset();
     preflight.mockResolvedValue({});
@@ -299,6 +313,22 @@ describe("ReleaseEditorSheet", () => {
       ).toBeDefined();
     },
   );
+
+  it("leaves release activity out where the console does not read it", () => {
+    insightsAnalytics = false;
+    render(
+      <ReleaseEditorSheet
+        channels={[{ id: "channel-1", name: "production" }]}
+        onOpenChange={vi.fn()}
+        open
+        releaseId={release.id}
+      />,
+    );
+
+    expect(screen.queryByText("Activity · 24 hours")).toBeNull();
+    expect(recovery).not.toHaveBeenCalled();
+    expect(screen.getByText("Delivery settings")).toBeDefined();
+  });
 
   it("restores the main Console cohort preview for gradual rollout", () => {
     releaseValue = { ...release, rollout_cohort_count: 100 };

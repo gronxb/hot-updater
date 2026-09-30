@@ -1,21 +1,6 @@
-import type {
-  BundleEventRow,
-  InsightsCountEventsInput,
-  InsightsCountLatestEventsInput,
-  InsightsFindLatestEventsInput,
-  InsightsGetAppUsageInput,
-  InsightsGetReleaseActivityInput,
-  InsightsListEventsInput,
-} from "@hot-updater/plugin-core";
-
 import { HotUpdaterConfigError } from "../../assembly/configError";
+import { isDatabaseBusyError } from "../../database/busy";
 import type { HotUpdaterDatabase } from "../../database/database";
-import { isDatabaseBusyError } from "../../insights/errors";
-import { createInsightsProvider } from "../../insights/provider";
-import {
-  createInsightsRouteHandlers,
-  INSIGHTS_ROUTES,
-} from "../../insights/routes";
 import { markBuiltIn } from "../builtIn";
 import { definePlugin, type PluginEndpoint } from "../definePlugin";
 import {
@@ -24,7 +9,17 @@ import {
   type InsightsDeletion,
   type InsightsDeletionOptions,
 } from "./deletion";
+import type { BundleEventRow } from "./eventRow";
 import { createInsightsModel } from "./model";
+import type {
+  InsightsCountEventsInput,
+  InsightsCountLatestEventsInput,
+  InsightsFindLatestEventsInput,
+  InsightsGetAppUsageInput,
+  InsightsGetReleaseActivityInput,
+  InsightsListEventsInput,
+} from "./modelTypes";
+import { createInsightsProvider } from "./provider";
 import {
   countEvents,
   countLatestEvents,
@@ -34,6 +29,7 @@ import {
   listEvents,
 } from "./reads";
 import { recordEvent } from "./recordEvent";
+import { createInsightsRouteHandlers, INSIGHTS_ROUTES } from "./routes";
 import {
   createInsightsSchema,
   DAILY_RETENTION_DAYS,
@@ -43,7 +39,15 @@ import {
 } from "./schema";
 
 export type { InsightsDeletion, InsightsDeletionOptions } from "./deletion";
+export type * from "./domain";
+export type {
+  BundleEventRow,
+  BundleEventRowBase,
+  DatabaseBundleEventMetadata,
+} from "./eventRow";
 export { createInsightsModel } from "./model";
+export type * from "./modelTypes";
+export { createInsightsProvider } from "./provider";
 export { insightsIdentity, type InsightsIdentityParts } from "./recordEvent";
 export {
   createInsightsSchema,
@@ -52,6 +56,7 @@ export {
   type InsightsRetention,
   type InsightsSchema,
 } from "./schema";
+export type * from "./types";
 
 const createInsightsApi = (
   db: HotUpdaterDatabase<InsightsSchema>,

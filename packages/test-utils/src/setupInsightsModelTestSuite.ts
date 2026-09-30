@@ -1,10 +1,9 @@
-import type { InsightsModel } from "@hot-updater/plugin-core";
-
 import {
   setupDatabaseTestRunner,
   type DatabaseTestLifecycle,
 } from "./databaseTestRunner";
 import { registerInsightsModelTests } from "./insightsModelTests";
+import type { InsightsModel } from "./insightsTypes";
 
 /**
  * The Insights report contract on one database: pass the Insights plugin's

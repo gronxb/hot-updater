@@ -19,8 +19,8 @@ import { BundleIdDisplay } from "@/components/BundleIdDisplay";
 import { ChannelBadge } from "@/components/ChannelBadge";
 import { EnabledStatusIcon } from "@/components/EnabledStatusIcon";
 import { BundleChildrenPanel } from "@/components/features/bundles/BundleChildrenPanel";
-import { BundleMovementSummary } from "@/components/features/bundles/BundleInsightsSummary";
 import { ChannelManagementDialog } from "@/components/features/channels/ChannelManagementDialog";
+import { useReleaseColumns } from "@/components/features/FeatureSlots";
 import { ReleaseEditorSheet } from "@/components/features/releases/ReleaseEditorSheet";
 import { ReleaseStateBadge } from "@/components/features/releases/ReleaseStateBadge";
 import { HashValueDisplay } from "@/components/HashValueDisplay";
@@ -55,8 +55,6 @@ import {
   useChannelsQuery,
   useReleasesQuery,
 } from "@/lib/api";
-import { useBundleActivityQuery } from "@/lib/bundle-activity";
-import { useConsoleFeature } from "@/lib/console-features-api";
 import type { ReleaseListRow } from "@/lib/server/releaseReachability";
 import { cn } from "@/lib/utils";
 
@@ -417,7 +415,7 @@ function BundlesPage() {
   const patchCountsByBundleId = patchCountsQuery.data ?? {};
   const nextCursor = releasesQuery.data?.next;
   const previousCursor = releasesQuery.data?.previous;
-  const activityInputs = releases.flatMap((release) => {
+  const slotReleases = releases.flatMap((release) => {
     const channel = channels.find(
       (item) => item.id === release.channel_id,
     )?.name;
@@ -425,13 +423,9 @@ function BundlesPage() {
       ? [{ releaseId: release.id, platform: release.platform, channel }]
       : [];
   });
-  const activity = useConsoleFeature("insightsAnalytics");
-  const activityQuery = useBundleActivityQuery(activityInputs, activity);
-  // The Insights column shows only where the console reads release activity.
-  const columnCount = activity ? 11 : 10;
-  const activityInputsByRelease = new Map(
-    activityInputs.map((input) => [input.releaseId, input]),
-  );
+  // Features add columns, such as release activity where the console reads it.
+  const featureColumns = useReleaseColumns();
+  const columnCount = 10 + featureColumns.length;
   const channelNames = new Map(
     channels.map((channel) => [channel.id, channel.name]),
   );
@@ -591,22 +585,22 @@ function BundlesPage() {
                                     : "—"}
                               </dd>
                             </div>
-                            {activity ? (
-                              <div className="col-span-2 rounded-md bg-muted/40 p-3">
+                            {featureColumns.map(({ Cell, feature, label }) => (
+                              <div
+                                className="col-span-2 rounded-md bg-muted/40 p-3"
+                                key={feature}
+                              >
                                 <dt className="mb-2 text-muted-foreground">
-                                  Insights
+                                  {label}
                                 </dt>
                                 <dd>
-                                  <BundleMovementSummary
-                                    input={activityInputsByRelease.get(
-                                      release.id,
-                                    )}
-                                    report={activityQuery.data?.[release.id]}
-                                    loading={activityQuery.isFetching}
+                                  <Cell
+                                    releaseId={release.id}
+                                    releases={slotReleases}
                                   />
                                 </dd>
                               </div>
-                            ) : null}
+                            ))}
                             <div className="col-span-2 flex flex-wrap items-center gap-2 rounded-md bg-muted/40 p-3">
                               <ReleaseStateBadge release={release} />
                               {release.should_force_update ? (
@@ -667,7 +661,9 @@ function BundlesPage() {
                     <TableHead>Enabled</TableHead>
                     <TableHead>Force update</TableHead>
                     <TableHead>Rollout</TableHead>
-                    {activity ? <TableHead>Insights</TableHead> : null}
+                    {featureColumns.map(({ feature, label }) => (
+                      <TableHead key={feature}>{label}</TableHead>
+                    ))}
                     <TableHead>Message</TableHead>
                     <TableHead>Created</TableHead>
                   </TableRow>
@@ -833,17 +829,14 @@ function BundlesPage() {
                                   percentage={release.rollout_cohort_count / 10}
                                 />
                               </TableCell>
-                              {activity ? (
-                                <TableCell>
-                                  <BundleMovementSummary
-                                    input={activityInputsByRelease.get(
-                                      release.id,
-                                    )}
-                                    report={activityQuery.data?.[release.id]}
-                                    loading={activityQuery.isFetching}
+                              {featureColumns.map(({ Cell, feature }) => (
+                                <TableCell key={feature}>
+                                  <Cell
+                                    releaseId={release.id}
+                                    releases={slotReleases}
                                   />
                                 </TableCell>
-                              ) : null}
+                              ))}
                               <TableCell
                                 className="text-sm text-muted-foreground"
                                 title={release.message ?? undefined}

@@ -1,8 +1,4 @@
-import {
-  createUUIDv7,
-  isUUIDv7,
-  type BundleEventRow,
-} from "@hot-updater/plugin-core";
+import { createUUIDv7, isUUIDv7 } from "@hot-updater/plugin-core";
 
 import type {
   CreateBundleEventRequest,
@@ -12,6 +8,7 @@ import {
   InsightsBadRequestError,
   InsightsPayloadTooLargeError,
 } from "./errors";
+import type { BundleEventRow } from "./eventRow";
 
 const MAX_EVENT_STRING_LENGTH = 1_024;
 const MAX_IDENTITY_LENGTH = 255;

@@ -32,8 +32,8 @@ import { formatDays } from "@/lib/insights-retention";
 import { DEFAULT_EVENT_RANGE, eventRangeBounds } from "@/lib/insights-view";
 
 import {
-  getInsightsScrollRestorationKey,
   type InsightsPaginationState,
+  installationsScrollRestorationKey,
   validateInstallationsSearch,
 } from "./-installations-search";
 
@@ -54,6 +54,7 @@ export const Route = createFileRoute("/installations")({
     requireConsoleFeature(context.queryClient, "insights"),
   notFoundComponent: ConsoleFeatureUnavailable,
   component: InstallationsPage,
+  staticData: { scrollRestorationKey: installationsScrollRestorationKey },
   validateSearch: validateInstallationsSearch,
 });
 
@@ -171,7 +172,7 @@ function InstallationsPage() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const scrollEntry = useElementScrollRestoration({
     id: scrollRestorationId,
-    getKey: getInsightsScrollRestorationKey,
+    getKey: installationsScrollRestorationKey,
   });
   useLayoutEffect(() => {
     if (!hasLookup && !events.isLoading && scrollRef.current) {

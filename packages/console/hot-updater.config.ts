@@ -2,12 +2,14 @@ import { createHash } from "node:crypto";
 
 import type { Bundle, Release } from "@hot-updater/core";
 import { mockDatabase, mockStorage } from "@hot-updater/mock";
-import type { BundleEventRow } from "@hot-updater/plugin-core";
 import {
   createDatabaseCoreApi,
   createDatabasePluginApis,
 } from "@hot-updater/server/db";
-import { insights } from "@hot-updater/server/plugins/insights";
+import {
+  insights,
+  type BundleEventRow,
+} from "@hot-updater/server/plugins/insights";
 
 type DemoReleaseFields = Pick<
   Release,

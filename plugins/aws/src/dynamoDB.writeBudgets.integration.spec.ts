@@ -1,10 +1,7 @@
 import { appendFileSync } from "node:fs";
 
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
-import type {
-  AggregateBatching,
-  BundleEventRow,
-} from "@hot-updater/plugin-core";
+import type { AggregateBatching } from "@hot-updater/plugin-core";
 import {
   aggregateBatchingModule,
   createDatabaseEngine,
@@ -13,7 +10,11 @@ import {
 } from "@hot-updater/server/database";
 import { createDatabasePluginApis } from "@hot-updater/server/db";
 import type { CoreReader } from "@hot-updater/server/plugins";
-import { insights, insightsSchema } from "@hot-updater/server/plugins/insights";
+import {
+  insights,
+  insightsSchema,
+  type BundleEventRow,
+} from "@hot-updater/server/plugins/insights";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import {

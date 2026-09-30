@@ -1,28 +1,28 @@
+import { DatabasePluginInputError } from "@hot-updater/plugin-core";
 import {
-  DatabasePluginInputError,
-  type BundleEventRow,
-  type InsightsBundleEventFilter,
-  type InsightsCountEventsInput,
-  type InsightsCountLatestEventsInput,
-  type InsightsFindLatestEventsInput,
-  type InsightsGetAppUsageInput,
-  type InsightsGetAppUsageResult,
-  type InsightsGetReleaseActivityInput,
-  type InsightsGetReleaseActivityResult,
-  type InsightsListEventsInput,
-  type InsightsCoverage,
-  type InsightsTimeRange,
-  type ReleaseActivityMetrics,
-  type ReleaseReference,
-} from "@hot-updater/plugin-core";
-import {
-  countInsightsDistinct,
-  mergeInsightsDistinct,
+  countDistinct,
+  mergeDistinct,
 } from "@hot-updater/plugin-core/internal";
 
 import type { HotUpdaterDatabase } from "../../database/database";
 import type { Page } from "../../database/engineReads";
-import { EVENT_LIST_RANGE_MS } from "../../insights/provider";
+import type { BundleEventRow } from "./eventRow";
+import type {
+  InsightsBundleEventFilter,
+  InsightsCountEventsInput,
+  InsightsCountLatestEventsInput,
+  InsightsFindLatestEventsInput,
+  InsightsGetAppUsageInput,
+  InsightsGetAppUsageResult,
+  InsightsGetReleaseActivityInput,
+  InsightsGetReleaseActivityResult,
+  InsightsListEventsInput,
+  InsightsCoverage,
+  InsightsTimeRange,
+  ReleaseActivityMetrics,
+  ReleaseReference,
+} from "./modelTypes";
+import { EVENT_LIST_RANGE_MS } from "./provider";
 import {
   bundlePairKey,
   insightsIdentity,
@@ -547,8 +547,8 @@ const rangedMetrics = async (
     downloads: total("downloads"),
     launches: total("launches"),
     failedLaunches: total("failed_launches"),
-    uniqueUsers: countInsightsDistinct(
-      mergeInsightsDistinct(sketches.map((row) => row[users.field])),
+    uniqueUsers: countDistinct(
+      mergeDistinct(sketches.map((row) => row[users.field])),
     ),
     series: [...series]
       .sort(([left], [right]) => left - right)
@@ -711,8 +711,8 @@ export const getAppUsage = async (
   ) {
     points.push({
       startMs: start,
-      installations: countInsightsDistinct(
-        mergeInsightsDistinct(
+      installations: countDistinct(
+        mergeDistinct(
           usage
             .filter(
               (row) =>
@@ -746,8 +746,8 @@ export const getAppUsage = async (
   const sortedVersions = byInstallations(versions);
   return {
     coverage: coverageOf(timeRange.start, kept[days ? "day" : "hour"]),
-    activeInstallations: countInsightsDistinct(
-      mergeInsightsDistinct(usage.map((row) => row.activity_users)),
+    activeInstallations: countDistinct(
+      mergeDistinct(usage.map((row) => row.activity_users)),
     ),
     points,
     appVersions: sortedVersions.map(({ name }) => name),

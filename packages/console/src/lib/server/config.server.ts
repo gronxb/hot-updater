@@ -68,7 +68,7 @@ export const prepareConfig = async (request: Request = getRequest()) => {
     // over a self-hosted server's admin API.
     core ??= createDatabaseCoreApi(config.database);
 
-    // Insights and API keys: the features of the plugins the server runs.
+    // The console's features: those of the plugins the server runs.
     if (!runtime) {
       const { createConsoleRuntime } = await import("./runtime.server");
       runtime = createConsoleRuntime(config);

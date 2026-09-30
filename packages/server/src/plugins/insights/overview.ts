@@ -1,4 +1,4 @@
-import type { BundleEventRow } from "./types/internal";
+import type { BundleEventRow } from "./eventRow";
 
 export type InsightsOverviewIdentity = {
   readonly scopeKind: "release" | "channel" | "usage" | "distribution";

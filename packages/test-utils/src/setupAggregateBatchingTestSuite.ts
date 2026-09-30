@@ -1,7 +1,7 @@
 import type { AggregateBatching } from "@hot-updater/plugin-core";
 import {
-  addInsightsDistinct,
-  countInsightsDistinct,
+  addDistinct,
+  countDistinct,
   createMemoryAdapter,
   type DatabaseAdapter,
   type PhysicalTable,
@@ -160,7 +160,7 @@ const open = (db: Database, step: number) => {
       );
     }
     tx.aggregate("opens", { day }, { opens: 1 }, { shardBy: id });
-    const users = addInsightsDistinct(null, id);
+    const users = addDistinct(null, id);
     tx.aggregate("users", { day }, { users }, { shardBy: id });
   });
 };
@@ -181,7 +181,7 @@ const snapshot = async (db: Database) => {
     opens: opens.rows,
     users: users.rows.map((row) => ({
       day: row.day,
-      users: countInsightsDistinct(row.users as string),
+      users: countDistinct(row.users as string),
     })),
   };
 };

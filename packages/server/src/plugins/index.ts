@@ -3,6 +3,11 @@
  * tables and aggregates here and receive a typed database handle in `init`.
  */
 export {
+  addDistinct,
+  countDistinct,
+  mergeDistinct,
+} from "@hot-updater/plugin-core/internal";
+export {
   definePlugin,
   type AnyHotUpdaterPlugin,
   type ClientAuth,
@@ -51,6 +56,7 @@ export {
   DatabaseTransactionError,
   type ConstraintReason,
 } from "../database/errors";
+export { isDatabaseBusyError } from "../database/busy";
 export { DatabaseQueryError } from "../database/engineReads";
 export { DatabaseCursorError } from "../database/cursor";
 export { HotUpdaterConfigError } from "../assembly/assemblePlugins";

@@ -7,9 +7,9 @@ import type {
   BundleActivityReport,
 } from "@/lib/bundle-activity";
 import { useBundleActivityQuery } from "@/lib/bundle-activity";
-import { useConsoleFeature } from "@/lib/console-features-api";
 
-import { InsightsInfo } from "../insights/InsightsInfo";
+import type { ReleaseColumn } from "../FeatureSlots";
+import { InsightsInfo } from "./InsightsInfo";
 
 const crashRate = (report: BundleActivityReport): string => {
   const attempts = report.activeDays + report.failedLaunches;
@@ -75,15 +75,13 @@ export function BundleMovementSummary({
   );
 }
 
-/** The bundle detail's Insights card; absent where the console does not read release activity. */
+/** The bundle detail's Insights card, a section of the release editor. */
 export function BundleInsightsSummary({
   input,
 }: {
   readonly input: BundleActivityInput;
 }) {
-  const activity = useConsoleFeature("insightsAnalytics");
-  const query = useBundleActivityQuery([input], activity);
-  if (!activity) return null;
+  const query = useBundleActivityQuery([input]);
   return (
     <Card>
       <CardHeader className="px-4 pt-4 pb-3">
@@ -99,3 +97,30 @@ export function BundleInsightsSummary({
     </Card>
   );
 }
+
+/**
+ * One release's activity in the Bundles page's Insights column. Every cell
+ * asks for the page's releases under one query key, so the page makes one
+ * request.
+ */
+function ReleaseActivityCell({
+  releaseId,
+  releases,
+}: {
+  readonly releaseId: string;
+  readonly releases: readonly BundleActivityInput[];
+}) {
+  const query = useBundleActivityQuery(releases);
+  return (
+    <BundleMovementSummary
+      input={releases.find((release) => release.releaseId === releaseId)}
+      loading={query.isFetching}
+      report={query.data?.[releaseId]}
+    />
+  );
+}
+
+/** The Bundles page's Insights column: each release's downloads, active days, and crashes. */
+export const releaseActivityColumn: ReleaseColumn = {
+  Cell: ReleaseActivityCell,
+};

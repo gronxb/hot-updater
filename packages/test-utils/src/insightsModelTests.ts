@@ -1,13 +1,13 @@
-import {
-  type BundleEventRow,
-  type InsightsBundleEventFilter,
-  type InsightsModel,
-} from "@hot-updater/plugin-core";
 import { describe, expect, it } from "vitest";
 
 import { createBundleEventRowFixture } from "./databaseTestFixtures";
 import type { DatabaseTestState } from "./databaseTestRunner";
 import { expectInsightsIndex } from "./expectInsightsIndex";
+import type {
+  BundleEventRow,
+  InsightsBundleEventFilter,
+  InsightsModel,
+} from "./insightsTypes";
 
 const record = (model: InsightsModel, event: BundleEventRow) =>
   model.recordEvent({ event });

@@ -1,10 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  DatabaseConflictError,
-  DatabaseTransactionError,
-} from "../database/errors";
-import { isDatabaseBusyError } from "./errors";
+import { isDatabaseBusyError } from "./busy";
+import { DatabaseConflictError, DatabaseTransactionError } from "./errors";
 
 const failure = (message: string, fields: object) =>
   Object.assign(new Error(message), fields);

@@ -1,12 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { createValidatedInsightsModel } from "./insightsContract";
+import { createValidatedInsightsModel } from "./contract";
+import type { BundleEventRow } from "./eventRow";
 import type {
-  BundleEventRow,
   InsightsFindLatestEventsInput,
   InsightsListEventsInput,
   InsightsModel,
-} from "./types";
+} from "./modelTypes";
 
 const event: BundleEventRow = {
   id: "00000000-0000-7000-8000-000000000001",

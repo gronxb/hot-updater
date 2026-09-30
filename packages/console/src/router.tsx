@@ -4,7 +4,7 @@ import { setupRouterSsrQueryIntegration } from "@tanstack/react-router-ssr-query
 // Import the route tree selected by the local or hosted Vite integration.
 import { routeTree } from "virtual:hot-updater-console/route-tree";
 
-import { getInsightsScrollRestorationKey } from "./routes/-installations-search";
+import { routeScrollRestorationKey } from "./lib/scroll-restoration";
 
 // Create a new router instance
 export const getRouter = () => {
@@ -14,7 +14,8 @@ export const getRouter = () => {
     context: { queryClient },
 
     scrollRestoration: true,
-    getScrollRestorationKey: getInsightsScrollRestorationKey,
+    getScrollRestorationKey: (location): string =>
+      routeScrollRestorationKey(router, location),
     defaultPreloadStaleTime: 0,
   });
 

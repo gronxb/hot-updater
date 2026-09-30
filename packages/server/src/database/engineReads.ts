@@ -6,7 +6,7 @@ import {
   indexOrderColumns,
   indexOrderTuple,
   isKeyValue,
-  mergeInsightsDistinct,
+  mergeDistinct,
   type QueryBound,
   type StoredRow,
 } from "@hot-updater/plugin-core/internal";
@@ -287,7 +287,7 @@ export const createEngineReads = ({
           );
         }
         for (const metric of definition.distinct) {
-          row[metric] = mergeInsightsDistinct(
+          row[metric] = mergeDistinct(
             shards.map((shard) => shard[metric] as string | null),
           );
         }
