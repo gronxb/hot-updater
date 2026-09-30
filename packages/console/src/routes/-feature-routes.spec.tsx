@@ -33,7 +33,6 @@ const servedBy = (features: Partial<ConsoleFeatures>) => {
     features: {
       insights: false,
       insightsAnalytics: false,
-      insightsDeletion: false,
       apiKeys: false,
       ...features,
     },

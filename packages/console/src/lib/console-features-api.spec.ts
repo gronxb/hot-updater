@@ -19,7 +19,6 @@ const featureSet = (
   features: {
     insights: false,
     insightsAnalytics: false,
-    insightsDeletion: false,
     apiKeys: false,
     ...features,
   },

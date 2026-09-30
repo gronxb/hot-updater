@@ -9,13 +9,11 @@ import {
 
 import type { ConsoleFeature } from "../console-features";
 import {
-  type ConsoleInsightsDeletion,
   type ConsoleInsightsReads,
-  createAdminInsightsDeletion,
   createAdminInsightsReads,
 } from "./adminInsights";
 
-/** A request to a self-hosted server's admin handler. */
+/** A GET on a self-hosted server's admin handler. */
 export type FetchAdmin = RemoteDatabase["fetchAdmin"];
 
 /**
@@ -44,10 +42,6 @@ export const consoleFeatureApis = {
   }),
   insightsAnalytics: featureApi({
     local: (api: InsightsApi): InsightsModel => createInsightsModel(api),
-  }),
-  insightsDeletion: featureApi({
-    local: (api: InsightsApi): ConsoleInsightsDeletion => api,
-    remote: createAdminInsightsDeletion,
   }),
   apiKeys: featureApi({
     local: (api: ApiKeyManagementAPI) => api,

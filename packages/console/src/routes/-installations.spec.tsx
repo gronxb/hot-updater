@@ -45,10 +45,6 @@ vi.mock("@/lib/console-features-api", async (importOriginal) => ({
 }));
 
 vi.mock("@/lib/insights-api", () => ({
-  useDeleteInsightsDataMutation: () => ({
-    isPending: false,
-    mutateAsync: vi.fn(),
-  }),
   useInsightsEventsQuery: mocks.events,
   useInsightsInstallationEventsQuery: mocks.history,
   useInsightsInstallationQuery: mocks.installation,

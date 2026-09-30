@@ -30,7 +30,6 @@ import type {
   InsightsViewPage,
 } from "@/lib/insights-view";
 
-import { DeleteInsightsDataDialog } from "./DeleteInsightsDataDialog";
 import {
   EventBundleTransition,
   EventTimestamp,
@@ -56,11 +55,9 @@ const getLastKnownBundleId = (
       : event.toBundleId;
 
 export function InstallationHistoryCard({
-  canDelete = false,
   error,
   history,
   isLoading,
-  onDeleted,
   onNext,
   onPrevious,
   onRefresh,
@@ -69,13 +66,9 @@ export function InstallationHistoryCard({
   selectedEvent,
   selectedInstallId,
 }: {
-  /** Whether the console deletes Insights data here. */
-  readonly canDelete?: boolean;
   readonly error: unknown;
   readonly history: InsightsViewPage<InsightsEventRow> | undefined;
   readonly isLoading: boolean;
-  /** After the installation's or its user's data is deleted. */
-  readonly onDeleted?: () => void;
   readonly onRefresh?: () => void;
   readonly onNext: () => void;
   readonly onPrevious: () => void;
@@ -122,29 +115,17 @@ export function InstallationHistoryCard({
               </CardDescription>
             ) : null}
           </div>
-          {selectedInstallId !== undefined ? (
-            <div className="flex flex-wrap items-center gap-2">
-              {onRefresh ? (
-                <Button
-                  className="h-11 lg:h-8"
-                  size="lg"
-                  variant="outline"
-                  onClick={onRefresh}
-                  disabled={isLoading}
-                >
-                  <RefreshCw aria-hidden="true" data-icon="inline-start" />
-                  Refresh
-                </Button>
-              ) : null}
-              {canDelete ? (
-                <DeleteInsightsDataDialog
-                  installId={selectedInstallId}
-                  userId={selectedEvent?.userId ?? null}
-                  onDeleted={onDeleted}
-                  retention={retention}
-                />
-              ) : null}
-            </div>
+          {onRefresh && selectedInstallId !== undefined ? (
+            <Button
+              className="h-11 lg:h-8"
+              size="lg"
+              variant="outline"
+              onClick={onRefresh}
+              disabled={isLoading}
+            >
+              <RefreshCw aria-hidden="true" data-icon="inline-start" />
+              Refresh
+            </Button>
           ) : null}
         </div>
       </CardHeader>

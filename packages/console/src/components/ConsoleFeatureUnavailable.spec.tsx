@@ -15,7 +15,6 @@ vi.mock("@/lib/console-features-api", async (importOriginal) => ({
       features: {
         insights: false,
         insightsAnalytics: false,
-        insightsDeletion: false,
         apiKeys: false,
       },
       remote: mocks.remote,

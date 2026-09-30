@@ -13,8 +13,6 @@ export const consoleFeatures = {
   insights: { plugin: "insights", label: "Insights", remote: true },
   /** App usage, distribution, and release activity, read from the database. */
   insightsAnalytics: { plugin: "insights", label: "Insights", remote: false },
-  /** Deleting an installation's or a user's Insights data, which the admin API serves too. */
-  insightsDeletion: { plugin: "insights", label: "Insights", remote: true },
   /** API key management: `apiKeys()` mounts no admin routes to manage them. */
   apiKeys: { plugin: "apiKeys", label: "API keys", remote: false },
 } as const satisfies Readonly<
