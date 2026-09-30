@@ -170,8 +170,12 @@ to the existing HotUpdater.init or HotUpdater.wrap call.
 Send the saved client {{CREDENTIAL_LABEL}} in its {{CREDENTIAL_HEADER}} request
 header.
 <!-- end -->
-Preserve the project's update strategy and update UX. If integration is missing,
-follow the matching version's [app setup](https://hot-updater.dev/docs/get-started/app-setup#configure-the-update-client)
+<!-- if clientPlugins -->
+Add {{CLIENT_PLUGIN_LIST}} to its `plugins` once, so the app works with the
+server's plugins.
+<!-- end -->
+Preserve the project's update strategy, update UX and other plugins. If
+integration is missing, follow the matching version's [app setup](https://hot-updater.dev/docs/get-started/app-setup#configure-the-update-client)
 and [native setup](https://hot-updater.dev/docs/get-started/app-setup#native-code-setup)
 to add initialization and an actual update-check entry point using the
 project's conventions. Inspect the final JS code as well as native
@@ -267,12 +271,14 @@ separate validation result.
 
     ```ts
     import { HotUpdater } from "@hot-updater/react-native";
+    {{CLIENT_PLUGIN_IMPORTS}}
 
     HotUpdater.init({
       baseURL: "<verified-base-url>",
       requestHeaders: {
         "{{CREDENTIAL_HEADER}}": "<registered-client-credential>",
       },
+      plugins: [{{CLIENT_PLUGINS}}],
     });
     ```
 <!-- else -->
@@ -283,18 +289,25 @@ separate validation result.
 
     ```ts
     import { HotUpdater } from "@hot-updater/react-native";
+    {{CLIENT_PLUGIN_IMPORTS}}
 
     HotUpdater.init({
       baseURL: "<verified-base-url>",
+      plugins: [{{CLIENT_PLUGINS}}],
     });
     ```
 <!-- end -->
 
     Explain that this belongs at module scope and that init does not check for
-    updates. Show the next check call with the app's actual strategy, for example
+    updates.
+<!-- if clientPlugins -->
+    Without its client plugins, the app sends the server's plugins nothing.
+<!-- end -->
+    Show the next check call with the app's actual strategy, for example
     `HotUpdater.checkForUpdate({ updateStrategy: "appVersion" })` or
     `HotUpdater.checkForUpdate({ updateStrategy: "fingerprint" })`.
-    Preserve existing initialization options; do not add init alongside wrap.
+    Preserve existing initialization options and plugins; do not add init
+    alongside wrap.
     Include this handoff for infrastructure-only setup too, with app integration
     and native OTA checks identified as remaining work. If registration or
     verification is blocked, report that blocker instead of a completed setup.

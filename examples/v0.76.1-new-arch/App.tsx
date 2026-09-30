@@ -6,6 +6,7 @@
  */
 
 import { HotUpdater, useHotUpdaterStore } from "@hot-updater/react-native";
+import { insights } from "@hot-updater/react-native/plugins/insights";
 import React, { useEffect, useState } from "react";
 import { Button, Image, Modal, SafeAreaView, Text, View } from "react-native";
 
@@ -90,6 +91,7 @@ export default HotUpdater.wrap({
   // Replace with your public update server URL.
   baseURL: "https://your-project.supabase.co/functions/v1/update-server",
   updateStrategy: "appVersion", // or "fingerprint"
+  plugins: [insights()],
   fallbackComponent: ({ progress, status }) => (
     <Modal transparent visible={true}>
       <View

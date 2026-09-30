@@ -235,7 +235,8 @@ or fingerprint target match the test updates. Have the agent record:
 - Disabling the test update restores the expected baseline on the next update
   check and reload; record the affected update IDs.
 - A controlled startup failure in the test channel recovers to a working bundle.
-- Insights reports the expected application and recovery outcomes when enabled.
+- With the Insights plugin in the app, Insights reports the expected
+  application and recovery outcomes.
 
 Keep server deployment, native launch, OTA application and store release as
 separate verification results. A successful upload with rollout 0 does not
@@ -272,7 +273,7 @@ server code or plugins, update these boundaries before connecting a v1 app:
 | `storages`, `storagePlugins` | `storage: [storagePlugin]` in `createHotUpdater`. |
 | Database/storage `() => plugin` thunks | Pass database and storage objects directly to `createHotUpdater` and `defineConfig`. Built-in provider factories already return those objects. |
 | `features.clientAccessKeys` | `apiKeys()` from `@hot-updater/server/plugins/api-keys` in `plugins`. It requires `x-api-key`, or the `headerName` you pass. For public client routes, set `clientAccess: "public"` instead. |
-| `features`, `features.bundles`, `features.updateCheck`, server Insights flags and `queryAccess` | Mount the handler surfaces explicitly. `insights()` from `@hot-updater/server/plugins/insights` in `plugins` serves Insights; without it, the Insights routes answer `204` with `x-hot-updater-insights: disabled`. Apps opt out of reporting with `insights: false`. |
+| `features`, `features.bundles`, `features.updateCheck`, server Insights flags and `queryAccess` | Mount the handler surfaces explicitly. `insights()` from `@hot-updater/server/plugins/insights` in `plugins` serves Insights; without it, the Insights routes answer `204` with `x-hot-updater-insights: disabled`. Apps report with the `insights()` client plugin from `@hot-updater/react-native/plugins/insights`. |
 | Server `basePath` | Let the framework own the mount path and use that client root as the app's `baseURL`. |
 | `authorityId`, server `cwd`, runtime request-context parameters | Remove these settings. Catalog identity is automatic; capture credentials, SDK clients and runtime bindings when constructing plugins. Handlers take one `Request`. |
 | `standaloneRepository.baseUrl` pointing at a shared client root | Use the exact admin root, such as `https://example.com/hot-updater/admin`. Remove custom `routes`: the repository speaks the admin API's protocol 2. |
@@ -386,8 +387,12 @@ Update `onNotifyAppReady` and direct `notifyAppReady()` consumers for the
 `STABLE` becomes `UNCHANGED`, applied transitions return `UPDATE_APPLIED`, and
 recovery uses `fromBundleId`/`toBundleId` instead of `crashedBundleId`. Optional
 `fromReleaseId`/`toReleaseId` carry selection identities. Handle each status
-before reading transition fields. Lifecycle reporting is enabled by default
-for both initialization APIs; set `insights: false` to opt out.
+before reading transition fields.
+
+To report to Insights, add the
+[Insights client plugin](/docs/react-native-api/insights) to `plugins` in
+`HotUpdater.init` or `HotUpdater.wrap`. An app without it sends no Insights
+reports.
 
 The positional `updateBundle(bundleId, fileUrl)` overload is removed. Prefer
 `updateInfo.updateBundle()` from `checkForUpdate`, which resolves the selected

@@ -20,6 +20,7 @@ import {
   writeHotUpdaterConfig,
 } from "@hot-updater/cli-tools";
 import {
+  clientPluginsOf,
   provisionClientCredential,
   type ProvisionedClientCredential,
 } from "@hot-updater/server/db";
@@ -737,6 +738,7 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
         }
       : {}),
     ...(credential === undefined ? {} : { credential }),
+    clientPlugins: clientPluginsOf(plugins),
   });
 
   p.log.message(

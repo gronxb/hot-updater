@@ -11,9 +11,11 @@ let coreSources = [
     "FileManagerService.swift",
     "HashUtils.swift",
     "HotUpdaterConfig.swift",
+    "KeyValueStorageService.swift",
     "NotificationExtension.swift",
     "ReleaseCatalogCacheService.swift",
     "SignatureVerifier.swift",
+    "UpdateFailure.swift",
     "URLSessionDownloadService.swift",
     "VersionedPreferencesService.swift",
 ]

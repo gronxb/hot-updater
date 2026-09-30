@@ -88,10 +88,10 @@ before applying the numbers to another deployment.
 Moving installation-specific selection to the device makes the read path
 cheaper, but operators still need to know what devices actually did.
 
-Insights reporting is enabled by default in the app. After the app is ready,
-it reports its outcome to the server. Reporting is best-effort: a reporting
-failure never blocks startup or triggers a rollback. Set `insights: false` to
-opt out.
+Apps report with the `insights()` client plugin. After the app is ready, it
+reports its outcome to the server, a launch at most once a day. Reporting is
+best-effort: a reporting failure never blocks startup or triggers a rollback.
+An app without the plugin sends nothing.
 
 The Console answers three kinds of questions:
 
@@ -101,7 +101,7 @@ The Console answers three kinds of questions:
 - Adoption: How is the latest reported Bundle distribution changing among
   reporting installations? Did installations report `UPDATE_APPLIED` or move
   away from a Bundle with `RECOVERED`?
-- Diagnosis: Search by installation ID, user ID, or username, then inspect
+- Diagnosis: Search by installation ID or user ID, then inspect
   the last reported Bundle and recorded apply or recovery history.
 
 These numbers are operational evidence, not a claim about every installed copy

@@ -5,3 +5,8 @@
 # Redirect root docs to introduction
 /docs /docs/get-started/introduction 302
 /docs/v0 /docs/v0/get-started/introduction 302
+
+# setUser moved to the Insights client plugin
+/docs/react-native-api/setUser /docs/react-native-api/insights 301
+/docs/react-native-api/setUser.md /docs/react-native-api/insights.md 301
+/api/markdown/react-native-api/setUser.md /api/markdown/react-native-api/insights.md 301

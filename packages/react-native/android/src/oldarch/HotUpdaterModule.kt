@@ -178,7 +178,7 @@ class HotUpdaterModule internal constructor(
             try {
                 val bundleId = params.getString("bundleId")
                 if (bundleId == null || bundleId.isEmpty()) {
-                    promise.reject("MISSING_BUNDLE_ID", "Missing or empty 'bundleId'")
+                    promise.rejectUpdateBundle(HotUpdaterException.missingBundleId())
                     return@launch
                 }
 
@@ -186,13 +186,15 @@ class HotUpdaterModule internal constructor(
                 val manifestFileHash = params.getString("manifestFileHash")
                 val assets = parseAssets(params)
                 if (manifestUrl.isNullOrEmpty() || manifestFileHash.isNullOrEmpty() || assets == null) {
-                    promise.reject("INVALID_MANIFEST", "Manifest URL, hash, and assets are required")
+                    promise.rejectUpdateBundle(HotUpdaterException.invalidManifestParams())
                     return@launch
                 }
                 try {
                     java.net.URL(manifestUrl)
                 } catch (e: java.net.MalformedURLException) {
-                    promise.reject("INVALID_FILE_URL", "Invalid 'manifestUrl' provided: $manifestUrl")
+                    promise.rejectUpdateBundle(
+                        HotUpdaterException.invalidFileUrl("manifestUrl", manifestUrl, UpdateFailureResource.MANIFEST),
+                    )
                     return@launch
                 }
                 val channel = params.getString("channel")
@@ -206,7 +208,9 @@ class HotUpdaterModule internal constructor(
                     try {
                         java.net.URL(archiveUrl)
                     } catch (e: java.net.MalformedURLException) {
-                        promise.reject("INVALID_FILE_URL", "Invalid 'archiveUrl' provided: $archiveUrl")
+                        promise.rejectUpdateBundle(
+                            HotUpdaterException.invalidFileUrl("archiveUrl", archiveUrl, UpdateFailureResource.ARCHIVE),
+                        )
                         return@launch
                     }
                 }
@@ -214,62 +218,65 @@ class HotUpdaterModule internal constructor(
 
                 val impl = getInstance()
 
-                impl.updateBundle(
-                    bundleId,
-                    manifestUrl,
-                    manifestFileHash,
-                    assets,
-                    channel,
-                    selection,
-                    archiveUrl,
-                ) { progress ->
-                    // Post to Main thread for React Native event emission
-                    Handler(Looper.getMainLooper()).post {
-                        try {
-                            val progressParams =
-                                Arguments.createMap().apply {
-                                    putDouble("progress", progress.progress)
-                                    putString("artifactType", progress.artifactType)
-                                    progress.details?.let { details ->
-                                        val files = Arguments.createArray()
-                                        details.files.forEach { file ->
-                                            files.pushMap(
+                val result =
+                    impl.updateBundle(
+                        bundleId,
+                        manifestUrl,
+                        manifestFileHash,
+                        assets,
+                        channel,
+                        selection,
+                        archiveUrl,
+                    ) { progress ->
+                        // Post to Main thread for React Native event emission
+                        Handler(Looper.getMainLooper()).post {
+                            try {
+                                val progressParams =
+                                    Arguments.createMap().apply {
+                                        putDouble("progress", progress.progress)
+                                        putString("artifactType", progress.artifactType)
+                                        progress.details?.let { details ->
+                                            val files = Arguments.createArray()
+                                            details.files.forEach { file ->
+                                                files.pushMap(
+                                                    Arguments.createMap().apply {
+                                                        putString("path", file.path)
+                                                        putString("downloadPath", file.downloadPath)
+                                                        putString("status", file.status)
+                                                        putDouble("progress", file.progress)
+                                                        putInt("order", file.order)
+                                                        file.downloadedBytes?.let { putDouble("downloadedBytes", it.toDouble()) }
+                                                        file.totalBytes?.let { putDouble("totalBytes", it.toDouble()) }
+                                                    },
+                                                )
+                                            }
+
+                                            putMap(
+                                                "details",
                                                 Arguments.createMap().apply {
-                                                    putString("path", file.path)
-                                                    putString("downloadPath", file.downloadPath)
-                                                    putString("status", file.status)
-                                                    putDouble("progress", file.progress)
-                                                    putInt("order", file.order)
-                                                    file.downloadedBytes?.let { putDouble("downloadedBytes", it.toDouble()) }
-                                                    file.totalBytes?.let { putDouble("totalBytes", it.toDouble()) }
+                                                    putInt("totalFilesCount", details.totalFilesCount)
+                                                    putInt("completedFilesCount", details.completedFilesCount)
+                                                    putArray("files", files)
                                                 },
                                             )
                                         }
-
-                                        putMap(
-                                            "details",
-                                            Arguments.createMap().apply {
-                                                putInt("totalFilesCount", details.totalFilesCount)
-                                                putInt("completedFilesCount", details.completedFilesCount)
-                                                putArray("files", files)
-                                            },
-                                        )
                                     }
-                                }
 
-                            this@HotUpdaterModule
-                                .mReactApplicationContext
-                                .getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
-                                ?.emit("onProgress", progressParams)
-                        } catch (e: Exception) {
-                            Log.w("HotUpdater", "Failed to emit progress (bridge may be unavailable): ${e.message}")
+                                this@HotUpdaterModule
+                                    .mReactApplicationContext
+                                    .getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
+                                    ?.emit("onProgress", progressParams)
+                            } catch (e: Exception) {
+                                Log.w("HotUpdater", "Failed to emit progress (bridge may be unavailable): ${e.message}")
+                            }
                         }
                     }
-                }
-                promise.resolve(true)
+                promise.resolve(result.toWritableMap())
             } catch (e: HotUpdaterException) {
-                promise.reject(e.code, e.message)
+                promise.rejectUpdateBundle(e)
             } catch (e: Exception) {
+                // Not an update failure (a stale Release selection, for example),
+                // so the rejection carries no classification.
                 promise.reject("UNKNOWN_ERROR", e.message ?: "An unknown error occurred")
             }
         }
@@ -434,17 +441,14 @@ class HotUpdaterModule internal constructor(
     override fun getInstallId(): String = getInstance().getInstallId()
 
     @ReactMethod(isBlockingSynchronousMethod = true)
-    override fun getUserId(): String? = getInstance().getUserId()
-
-    @ReactMethod(isBlockingSynchronousMethod = true)
-    override fun getUsername(): String? = getInstance().getUsername()
+    override fun getStorageItem(key: String): String? = getInstance().getStorageItem(key)
 
     @ReactMethod
-    override fun setUser(
-        userId: String?,
-        username: String?,
+    override fun setStorageItem(
+        key: String,
+        value: String?,
     ) {
-        getInstance().setUser(userId, username)
+        getInstance().setStorageItem(key, value)
     }
 
     @ReactMethod

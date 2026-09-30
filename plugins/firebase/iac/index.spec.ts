@@ -354,6 +354,13 @@ describe("Firebase project creation", () => {
         env: "HOT_UPDATER_API_KEY",
         value: API_KEY,
       },
+      // The managed server runs insights(), so the app reports to it.
+      clientPlugins: [
+        {
+          module: "@hot-updater/react-native/plugins/insights",
+          name: "insights",
+        },
+      ],
     });
   });
 

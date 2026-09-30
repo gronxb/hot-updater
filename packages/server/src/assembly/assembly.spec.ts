@@ -338,14 +338,14 @@ describe("createHotUpdater with plugins", () => {
           plugins: [{ ...valid, cli: { hooks: [] } }],
           clientAccess: "public",
         },
-        'Plugin "valid" cli may only hold commands (an array) and clientCredential.',
+        'Plugin "valid" cli may only hold commands (an array), clientCredential, and clientPlugin.',
       ],
       [
         {
           plugins: [{ ...valid, cli: { commands: {} } }],
           clientAccess: "public",
         },
-        'Plugin "valid" cli may only hold commands (an array) and clientCredential.',
+        'Plugin "valid" cli may only hold commands (an array), clientCredential, and clientPlugin.',
       ],
       [
         {

@@ -264,7 +264,8 @@ lacks its schema settings, every route that reaches it answers `503`.
 With the `insights()` plugin, the admin handler also serves `GET /overview`,
 `/events`, `/installations`, `/installations/:installId` and
 `/installations/:installId/events`. Without it, each answers `204` with
-`x-hot-updater-insights: disabled`.
+`x-hot-updater-insights: disabled`. These routes read the reports that apps
+send with the [Insights client plugin](/docs/react-native-api/insights).
 
 `insights()` also serves `GET /retention`, which answers how long it keeps
 data as `{ "rawDays": 90, "dailyDays": 400 }`, and two routes that delete

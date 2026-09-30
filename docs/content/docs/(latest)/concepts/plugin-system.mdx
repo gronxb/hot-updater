@@ -107,3 +107,13 @@ APIs, routes and client authentication. The built-in `insights()` plugin
 records Insights reports, and `apiKeys()` protects client routes; managed
 providers run both. To write one for a custom server, see
 [Server Plugins](/docs/custom/server-plugins).
+
+## Client plugins
+
+Client plugins run in the React Native app. They observe launches, update
+checks, downloads, and update failures, and can send requests to the update
+server with the app's base URL and headers. Pass them to `plugins` in
+`HotUpdater.init` or `HotUpdater.wrap`. The built-in
+[Insights plugin](/docs/react-native-api/insights) reports to the server's
+`insights()` plugin. To write one, see
+[Client Plugins](/docs/react-native-api/client-plugins).

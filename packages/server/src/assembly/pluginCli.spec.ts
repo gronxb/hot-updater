@@ -3,8 +3,10 @@ import { describe, expect, it } from "vitest";
 
 import { apiKeys } from "../plugins/api-keys";
 import { definePlugin } from "../plugins/definePlugin";
+import { insights } from "../plugins/insights";
 import {
   clientAuthOf,
+  clientPluginsOf,
   generateClientCredential,
   pluginCommandsOf,
   provisionClientCredential,
@@ -193,5 +195,57 @@ describe("provisionClientCredential", () => {
       name: "Init again",
     });
     expect(again?.value).toBe(created!.value);
+  });
+});
+
+describe("clientPluginsOf", () => {
+  const withClientPlugin = (id: string, clientPlugin: unknown) =>
+    ({
+      id,
+      schemaVersion: "1",
+      schema: {},
+      init: () => ({ api: {} }),
+      cli: { clientPlugin },
+    }) as never;
+
+  it("lists each client plugin once, in plugin order", () => {
+    expect(clientPluginsOf([notes, apiKeys()])).toEqual([]);
+    expect(
+      clientPluginsOf([
+        withClientPlugin("feedback", { module: "feedback-rn", name: "fb" }),
+        insights(),
+        apiKeys(),
+        withClientPlugin("again", { module: "feedback-rn", name: "fb" }),
+      ]),
+    ).toEqual([
+      { module: "feedback-rn", name: "fb" },
+      {
+        module: "@hot-updater/react-native/plugins/insights",
+        name: "insights",
+      },
+    ]);
+  });
+
+  it.each([
+    [{ module: "", name: "fb" }],
+    [{ module: "feedback-rn", name: "fb()" }],
+    ["feedback-rn"],
+  ])("refuses a client plugin without a module and export (%j)", (value) => {
+    expect(() =>
+      clientPluginsOf([withClientPlugin("feedback", value)]),
+    ).toThrow(
+      'Plugin "feedback" cli.clientPlugin needs a module and the name of its export.',
+    );
+  });
+
+  it("refuses two client plugins with one name from different modules", () => {
+    expect(() =>
+      clientPluginsOf([
+        withClientPlugin("a", { module: "a-rn", name: "fb" }),
+        withClientPlugin("b", { module: "b-rn", name: "fb" }),
+      ]),
+    ).toThrow(
+      'Plugin "b" names the client plugin "fb" from b-rn, but another plugin names it from a-rn.',
+    );
   });
 });

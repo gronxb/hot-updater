@@ -61,7 +61,7 @@ const PLUGIN_KEYS = new Set([
   "init",
   "cli",
 ]);
-const CLI_KEYS = new Set(["commands", "clientCredential"]);
+const CLI_KEYS = new Set(["commands", "clientCredential", "clientPlugin"]);
 const INSTANCE_KEYS = new Set(["api", "endpoints", "clientAuth"]);
 const METHODS = new Set(["GET", "POST", "PUT", "PATCH", "DELETE"]);
 const BUILT_IN_ID = /^[a-z][A-Za-z0-9]*$/u;
@@ -118,7 +118,7 @@ const checkPlugin = (value: unknown, at: string): PluginShape => {
       (cli.commands !== undefined && !Array.isArray(cli.commands))
     ) {
       fail(
-        `Plugin "${plugin.id}" cli may only hold commands (an array) and clientCredential.`,
+        `Plugin "${plugin.id}" cli may only hold commands (an array), clientCredential, and clientPlugin.`,
       );
     }
     if (

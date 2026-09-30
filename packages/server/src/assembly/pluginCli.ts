@@ -37,17 +37,27 @@ export interface ProvisionedClientCredential extends ClientCredentialSpec {
   readonly value: string;
 }
 
+/** A client plugin an app adds to `HotUpdater.init`'s `plugins`. */
+export interface ClientPluginSpec {
+  /** The module that exports it. */
+  readonly module: string;
+  /** The export, which the app calls with no arguments. */
+  readonly name: string;
+}
+
 interface PluginLike {
   readonly id?: unknown;
   readonly provides?: { readonly clientAuth?: unknown };
   readonly cli?: {
     readonly commands?: unknown;
     readonly clientCredential?: unknown;
+    readonly clientPlugin?: unknown;
   };
 }
 
 const COMMAND_NAME = /^[a-z][a-z0-9]*(-[a-z0-9]+)*$/u;
 const ARGUMENT_NAME = /^[A-Za-z][A-Za-z0-9]*$/u;
+const EXPORT_NAME = /^[A-Za-z_$][\w$]*$/u;
 // The CLI appends the server config's path to every command that runs.
 const RESERVED_ARGUMENT = "configPath";
 
@@ -243,4 +253,40 @@ export const provisionClientCredential = async (
     { ...(existing ? { existing } : {}), name: input.name },
   );
   return { label, header: header.toLowerCase(), env, value };
+};
+
+/**
+ * The client plugins an app adds for the plugins, each once, in plugin
+ * order: what init prints in `HotUpdater.init`'s `plugins`.
+ */
+export const clientPluginsOf = (
+  plugins: readonly unknown[],
+): readonly ClientPluginSpec[] => {
+  const found: ClientPluginSpec[] = [];
+  for (const plugin of pluginsOf(plugins)) {
+    const value = plugin.cli?.clientPlugin;
+    if (value === undefined) continue;
+    const id = String(plugin.id);
+    if (
+      !isRecord(value) ||
+      typeof value.module !== "string" ||
+      value.module === "" ||
+      typeof value.name !== "string" ||
+      !EXPORT_NAME.test(value.name)
+    ) {
+      return fail(
+        `Plugin "${id}" cli.clientPlugin needs a module and the name of its export.`,
+      );
+    }
+    const { module, name } = value as unknown as ClientPluginSpec;
+    const named = found.find((entry) => entry.name === name);
+    if (named === undefined) {
+      found.push({ module, name });
+    } else if (named.module !== module) {
+      fail(
+        `Plugin "${id}" names the client plugin "${name}" from ${module}, but another plugin names it from ${named.module}.`,
+      );
+    }
+  }
+  return found;
 };

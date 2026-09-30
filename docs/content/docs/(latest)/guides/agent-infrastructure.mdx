@@ -250,12 +250,14 @@ like the final output of `hot-updater init`:
 
 ```ts
 import { HotUpdater } from "@hot-updater/react-native";
+import { insights } from "@hot-updater/react-native/plugins/insights";
 
 HotUpdater.init({
   baseURL: "https://your-deployed-update-server",
   requestHeaders: {
     "x-api-key": "<your-registered-client-api-key>",
   },
+  plugins: [insights()],
 });
 ```
 
@@ -263,7 +265,8 @@ The agent replaces these example values with the verified base URL, including
 any Function path, and the actual client key it registered or reused. It shows
 the client key itself, rather than a masked value or a path to its saved file.
 Provider tokens, service-role keys, admin credentials and signing keys remain
-private.
+private. The deployed server runs `insights()`, so the snippet includes the
+[Insights plugin](/docs/react-native-api/insights) that reports to it.
 
 Place initialization at module scope. `HotUpdater.init` does not start an update
 check; the agent also shows `HotUpdater.checkForUpdate` with your app's

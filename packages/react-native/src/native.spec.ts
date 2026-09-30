@@ -12,8 +12,7 @@ const nativeModuleMock = vi.hoisted(() => {
     getBundleId: vi.fn<() => string | null>(() => "bundle-id"),
     getCohort: vi.fn<() => string>(() => "123"),
     getInstallId: vi.fn<() => string>(() => "install-id"),
-    getUserId: vi.fn<() => string | null>(() => null),
-    getUsername: vi.fn<() => string | null>(() => null),
+    getStorageItem: vi.fn<(key: string) => string | null>(() => null),
     getManifest,
     getCrashHistory,
     getConstants: vi.fn(() => ({
@@ -27,7 +26,7 @@ const nativeModuleMock = vi.hoisted(() => {
     reload: vi.fn(),
     resetChannel: vi.fn(),
     setCohort: vi.fn(),
-    setUser: vi.fn(),
+    setStorageItem: vi.fn<(key: string, value: string | null) => void>(),
     setBundleURL: vi.fn(),
     switchChannel: vi.fn(),
     updateBundle: vi.fn(),
@@ -88,7 +87,9 @@ describe("notifyAppReady", () => {
     });
     nativeModuleMock.resetChannel.mockReset();
     nativeModuleMock.setCohort.mockReset();
-    nativeModuleMock.setUser.mockReset();
+    nativeModuleMock.getStorageItem.mockReset();
+    nativeModuleMock.getStorageItem.mockReturnValue(null);
+    nativeModuleMock.setStorageItem.mockReset();
     nativeModuleMock.updateBundle.mockReset();
   });
 
@@ -247,9 +248,12 @@ describe("notifyAppReady", () => {
       toBundleId: "bundle-122",
     });
     expect(readNotifyAppReady()).toEqual({
-      insightsEvent: {
+      previousProcessExit: null,
+      transition: {
         fromBundleId: "bundle-123",
+        fromReleaseId: null,
         toBundleId: "bundle-122",
+        toReleaseId: null,
         type: "RECOVERED",
         updateStrategy: "appVersion",
       },
@@ -274,13 +278,14 @@ describe("notifyAppReady", () => {
 
     expect(notifyAppReady()).toEqual({ status: "UNCHANGED" });
     expect(readNotifyAppReady()).toEqual({
-      insightsEvent: null,
+      previousProcessExit: null,
+      transition: null,
       pending: false,
       result: { status: "UNCHANGED" },
     });
   });
 
-  it("returns UNCHANGED when automatic insights metadata is incomplete", async () => {
+  it("returns UNCHANGED when an applied launch report has no bundle ids", async () => {
     nativeModuleMock.notifyAppReady.mockReturnValue({
       status: "UPDATE_APPLIED",
     });
@@ -289,7 +294,8 @@ describe("notifyAppReady", () => {
 
     expect(notifyAppReady()).toEqual({ status: "UNCHANGED" });
     expect(readNotifyAppReady()).toEqual({
-      insightsEvent: null,
+      previousProcessExit: null,
+      transition: null,
       pending: false,
       result: { status: "UNCHANGED" },
     });
@@ -302,7 +308,8 @@ describe("notifyAppReady", () => {
 
     expect(notifyAppReady()).toEqual({ status: "UNCHANGED" });
     expect(readNotifyAppReady()).toEqual({
-      insightsEvent: null,
+      previousProcessExit: null,
+      transition: null,
       pending: false,
       result: { status: "UNCHANGED" },
     });
@@ -315,7 +322,8 @@ describe("notifyAppReady", () => {
 
     expect(notifyAppReady()).toEqual({ status: "UNCHANGED" });
     expect(readNotifyAppReady()).toEqual({
-      insightsEvent: null,
+      previousProcessExit: null,
+      transition: null,
       pending: true,
       result: { status: "UNCHANGED" },
     });
@@ -698,6 +706,49 @@ describe("notifyAppReady", () => {
     });
   });
 
+  it("resolves how native delivered a staged bundle", async () => {
+    nativeModuleMock.getBundleId.mockReturnValue("bundle-123");
+    nativeModuleMock.updateBundle.mockResolvedValue({
+      delivery: "patch",
+      patchFallback: true,
+    });
+    const { stageBundle, updateBundle } = await import("./native");
+    const params = {
+      assets: {},
+      bundleId: "bundle-789",
+      manifestFileHash: "sig:manifest",
+      manifestUrl: "https://example.com/manifest.json",
+      status: "UPDATE" as const,
+    };
+
+    await expect(stageBundle(params)).resolves.toEqual({
+      delivery: "patch",
+      patchFallback: true,
+    });
+    // Native still reports bundle-123, so the same bundle downloads again.
+    await expect(updateBundle(params)).resolves.toBe(true);
+    nativeModuleMock.getBundleId.mockReturnValue("bundle-789");
+    // Now native reports it: this runtime already staged it.
+    await expect(stageBundle(params)).resolves.toBeNull();
+    expect(nativeModuleMock.updateBundle).toHaveBeenCalledTimes(2);
+  });
+
+  it("passes on why the previous process exited from the launch report", async () => {
+    nativeModuleMock.notifyAppReady.mockReturnValue({
+      previousProcessExit: "LOW_MEMORY",
+      status: "UNCHANGED",
+    });
+
+    const { readNotifyAppReady } = await import("./native");
+
+    expect(readNotifyAppReady()).toEqual({
+      previousProcessExit: "LOW_MEMORY",
+      transition: null,
+      pending: false,
+      result: { status: "UNCHANGED" },
+    });
+  });
+
   it("invalidates cached bundle getters after resetChannel succeeds", async () => {
     nativeModuleMock.getConstants.mockReturnValue({
       APP_VERSION: null,
@@ -857,74 +908,49 @@ describe("notifyAppReady", () => {
     }
   });
 
-  it("passes nullable user identity through to native", async () => {
-    const { setUser } = await import("./native");
-
-    setUser({ userId: "user-123", username: "alice" });
-    setUser({ userId: 42, username: "bob" });
-    setUser({});
-    setUser(null);
-
-    expect(nativeModuleMock.setUser).toHaveBeenNthCalledWith(
-      1,
-      "user-123",
-      "alice",
+  it("reads and writes the native key-value store", async () => {
+    nativeModuleMock.getStorageItem.mockImplementation((key) =>
+      key === "plugins/example/state" ? "stored" : null,
     );
-    expect(nativeModuleMock.setUser).toHaveBeenNthCalledWith(2, "42", "bob");
-    expect(nativeModuleMock.setUser).toHaveBeenNthCalledWith(3, null, null);
-    expect(nativeModuleMock.setUser).toHaveBeenNthCalledWith(4, null, null);
+    const { getStorageItem, setStorageItem } = await import("./native");
+
+    expect(getStorageItem("plugins/example/state")).toBe("stored");
+    expect(getStorageItem("plugins/example/missing")).toBeNull();
+    setStorageItem("plugins/example/state", "next");
+    setStorageItem("plugins/example/state", null);
+
+    expect(nativeModuleMock.setStorageItem).toHaveBeenNthCalledWith(
+      1,
+      "plugins/example/state",
+      "next",
+    );
+    expect(nativeModuleMock.setStorageItem).toHaveBeenNthCalledWith(
+      2,
+      "plugins/example/state",
+      null,
+    );
   });
 
-  it("reads persisted user identity from native when available", async () => {
-    nativeModuleMock.getUserId.mockReturnValue("user-123");
-    nativeModuleMock.getUsername.mockReturnValue("alice");
+  it.each(["getStorageItem", "setStorageItem"] as const)(
+    "throws when native SDK does not expose %s",
+    async (name) => {
+      const nativeModule = nativeModuleMock as Record<string, unknown>;
+      const original = nativeModule[name];
+      nativeModule[name] = undefined;
 
-    const { getPersistedUserIdentity } = await import("./native");
+      try {
+        const { getStorageItem, setStorageItem } = await import("./native");
 
-    expect(getPersistedUserIdentity()).toEqual({
-      userId: "user-123",
-      username: "alice",
-    });
-  });
-
-  it("throws when native SDK does not expose persisted user identity getters", async () => {
-    const nativeModule = nativeModuleMock as typeof nativeModuleMock & {
-      getUserId?: typeof nativeModuleMock.getUserId;
-      getUsername?: typeof nativeModuleMock.getUsername;
-    };
-    const originalGetUserId = nativeModule.getUserId;
-    nativeModule.getUserId = null as unknown as Mock<() => string | null>;
-
-    try {
-      const { getPersistedUserIdentity } = await import("./native");
-
-      expect(() => getPersistedUserIdentity()).toThrow(
-        "Native module is missing 'getUserId()' or 'getUsername()'",
-      );
-    } finally {
-      nativeModule.getUserId = originalGetUserId;
-    }
-  });
-
-  it("throws when native SDK does not expose setUser", async () => {
-    const nativeModule = nativeModuleMock as typeof nativeModuleMock & {
-      setUser?: typeof nativeModuleMock.setUser;
-    };
-    const originalSetUser = nativeModule.setUser;
-    nativeModule.setUser = null as unknown as Mock<
-      (userId: string | null, username: string | null) => void
-    >;
-
-    try {
-      const { setUser } = await import("./native");
-
-      expect(() => setUser({ userId: "user-123" })).toThrow(
-        "Native module is missing 'setUser()'",
-      );
-    } finally {
-      nativeModule.setUser = originalSetUser;
-    }
-  });
+        expect(() =>
+          name === "getStorageItem"
+            ? getStorageItem("key")
+            : setStorageItem("key", "value"),
+        ).toThrow(`Native module is missing '${name}()'`);
+      } finally {
+        nativeModule[name] = original;
+      }
+    },
+  );
 
   it("returns the cohort reported by native", async () => {
     nativeModuleMock.getCohort.mockReturnValue("qa-group");

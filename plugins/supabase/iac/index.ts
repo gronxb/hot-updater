@@ -22,6 +22,7 @@ import {
   writeHotUpdaterConfig,
 } from "@hot-updater/cli-tools";
 import {
+  clientPluginsOf,
   provisionClientCredential,
   type ProvisionedClientCredential,
 } from "@hot-updater/server/db";
@@ -1174,6 +1175,7 @@ const runInitWithoutCliMetadata = async ({
   printAppSetup({
     baseURL: getSupabaseFunctionUrl({ functionName, projectId: project.id }),
     ...(credential === undefined ? {} : { credential }),
+    clientPlugins: clientPluginsOf(plugins),
   });
   reportSupabaseOriginCatalogReady();
 

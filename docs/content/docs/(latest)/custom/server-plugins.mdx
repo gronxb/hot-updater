@@ -780,6 +780,25 @@ cli: {
 `provision` registers `existing` idempotently, or creates a credential, and
 returns it. `clientCredential` needs `provides: { clientAuth: true }`.
 
+## Name the app's client plugin
+
+A plugin that needs code in the app names that client plugin in
+`cli.clientPlugin`. `insights()` names the SDK's `insights()` client plugin,
+which sends it the app's events. Managed init adds it to the `HotUpdater.init`
+it prints, and the agent scaffold asks for it:
+
+```ts
+cli: {
+  clientPlugin: {
+    module: "@acme/hot-updater-feedback/client", // the module that exports it
+    name: "feedback", // the export, which the app calls as feedback()
+  },
+},
+```
+
+Two plugins that name one export from different modules fail with
+`HotUpdaterConfigError`.
+
 ## Create the plugin's tables
 
 `hot-updater db migrate` and `hot-updater db generate` read the server's

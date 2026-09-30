@@ -14,11 +14,13 @@ export {
 } from "../assembly/databasePlugins";
 export {
   clientAuthOf,
+  clientPluginsOf,
   generateClientCredential,
   pluginCommandsOf,
   provisionClientCredential,
   type ClientAuthSpec,
   type ClientCredentialSpec,
+  type ClientPluginSpec,
   type PluginCommandEntry,
   type ProvisionedClientCredential,
 } from "../assembly/pluginCli";

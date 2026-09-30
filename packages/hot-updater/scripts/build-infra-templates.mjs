@@ -11,7 +11,7 @@ import {
   transformEnv,
 } from "@hot-updater/cli-tools";
 import { HOT_UPDATER_INFRASTRUCTURE_GENERATION } from "@hot-updater/server";
-import { clientAuthOf } from "@hot-updater/server/db";
+import { clientAuthOf, clientPluginsOf } from "@hot-updater/server/db";
 import { build as buildHelper } from "tsdown";
 
 import {
@@ -99,9 +99,11 @@ for (const provider of providers) {
   const output = path.join(outputRoot, provider);
   await mkdir(output, { recursive: true });
   // The plugins the provider's prebuilt server runs set its client-route
-  // policy: what the scaffold provisions, documents, and checks.
+  // policy, which the scaffold provisions, documents, and checks, and name
+  // the client plugins an app adds.
   const { plugins } = await moduleAt(path.join(root, "src/plugins.ts"));
   const clientAuth = clientAuthOf(plugins) ?? null;
+  const clientPlugins = clientPluginsOf(plugins);
   await cp(path.join(root, "agent"), output, { recursive: true });
   for (const [source, file] of [
     ...(await readdir(output))
@@ -111,7 +113,10 @@ for (const provider of providers) {
   ]) {
     await save(
       path.join(output, file),
-      renderAgentInstructions(await readFile(source, "utf8"), clientAuth),
+      renderAgentInstructions(await readFile(source, "utf8"), {
+        clientAuth,
+        clientPlugins,
+      }),
     );
   }
   const templateModule = await moduleAt(
@@ -434,6 +439,7 @@ for (const provider of providers) {
     serverVersion: versions["@hot-updater/server"],
     infrastructureGeneration: HOT_UPDATER_INFRASTRUCTURE_GENERATION,
     clientAuth,
+    clientPlugins,
     packages: Object.fromEntries(
       Object.entries(appPackages).filter(
         ([name]) =>

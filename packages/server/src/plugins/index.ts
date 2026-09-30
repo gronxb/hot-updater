@@ -13,6 +13,7 @@ export {
   type PluginApis,
   type PluginCli,
   type PluginClientCredential,
+  type PluginClientPlugin,
   type PluginCommand,
   type PluginCommandArgument,
   type PluginCommandContext,

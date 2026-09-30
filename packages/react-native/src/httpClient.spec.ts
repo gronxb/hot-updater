@@ -1,22 +1,14 @@
-import {
-  isUUIDv7,
-  type ArtifactInfo,
-  type ReleaseCatalog,
-} from "@hot-updater/core";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { ArtifactInfo, ReleaseCatalog } from "@hot-updater/core";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { FetchJSONResponseError } from "./fetchJSON";
-import { createHttpClient, type InsightsEventParams } from "./httpClient";
+import { createHttpClient } from "./httpClient";
+import { InvalidUpdateResponseError } from "./updateError";
 
-const mocks = vi.hoisted(() => {
-  Reflect.set(globalThis, "HotUpdater", {
-    SDK_VERSION: "test-sdk-version",
-  });
-  return {
-    fetchCatalog: vi.fn(),
-    fetchJSON: vi.fn(),
-  };
-});
+const mocks = vi.hoisted(() => ({
+  fetchCatalog: vi.fn(),
+  fetchJSON: vi.fn(),
+}));
 
 vi.mock("./releaseCatalogCache", () => ({
   fetchReleaseCatalogWithCache: mocks.fetchCatalog,
@@ -193,221 +185,32 @@ describe("private HotUpdater HTTP client", () => {
     ).rejects.toThrow("does not support artifact protocol 1");
   });
 
+  it.each([
+    { label: "a legacy response", response: { fileUrl: "/storage/a.zip" } },
+    {
+      label: "an invalid absolute URL",
+      response: {
+        ...artifact,
+        manifestUrl: "https://",
+      },
+    },
+  ])("marks $label as an invalid update response", async ({ response }) => {
+    mocks.fetchJSON.mockResolvedValue(response);
+    const session = await createHttpClient(
+      "https://updates.example.com",
+    ).createSession();
+
+    await expect(
+      session.resolveArtifact({
+        currentBundleId: "current",
+        targetBundleId: "target",
+      }),
+    ).rejects.toBeInstanceOf(InvalidUpdateResponseError);
+  });
+
   it("requires a functional baseURL to resolve to a non-empty string", async () => {
     await expect(createHttpClient(() => "").createSession()).rejects.toThrow(
       "baseURL function must return a non-empty string",
     );
-  });
-});
-
-const unchangedEvent: InsightsEventParams = {
-  appVersion: "1.0.0",
-  channel: "production",
-  cohort: "123",
-  fingerprintHash: null,
-  fromBundleId: null,
-  installId: "install-id",
-  platform: "ios",
-  toBundleId: "bundle-id",
-  type: "UNCHANGED",
-  updateStrategy: null,
-};
-
-/** Answers each POST /events with the next response, then 204. */
-const stubEventsEndpoint = (...responses: (number | Response | Error)[]) => {
-  const fetchMock = vi.fn<typeof fetch>(async () => {
-    const next = responses.shift() ?? 204;
-    if (next instanceof Error) throw next;
-    return typeof next === "number"
-      ? new Response(null, { status: next })
-      : next;
-  });
-  vi.stubGlobal("fetch", fetchMock);
-  const sentEvents = () =>
-    fetchMock.mock.calls.map(
-      ([, request]) =>
-        JSON.parse(String(request?.body)) as {
-          eventId: string;
-          type: string;
-        },
-    );
-  return { fetchMock, sentEvents };
-};
-
-describe("Insights event delivery", () => {
-  beforeEach(() => {
-    vi.useFakeTimers();
-    // No jitter: the first retry waits exactly 1 s and the second 2 s.
-    vi.spyOn(Math, "random").mockReturnValue(0.5);
-  });
-
-  afterEach(() => {
-    vi.useRealTimers();
-    vi.unstubAllGlobals();
-    vi.restoreAllMocks();
-  });
-
-  const createSession = () =>
-    createHttpClient("https://updates.example.com").createSession();
-
-  it("retries a 503 in the background under the same UUIDv7 eventId", async () => {
-    const { fetchMock, sentEvents } = stubEventsEndpoint(503, 204);
-    const session = await createSession();
-
-    // Settles after the failed first attempt, without waiting for the retry.
-    await session.sendInsightsEvent(unchangedEvent);
-    expect(fetchMock).toHaveBeenCalledOnce();
-
-    await vi.advanceTimersByTimeAsync(1_000);
-    expect(fetchMock).toHaveBeenCalledTimes(2);
-    const [first, second] = sentEvents();
-    expect(isUUIDv7(first?.eventId)).toBe(true);
-    expect(second?.eventId).toBe(first?.eventId);
-  });
-
-  it("waits for a 429's Retry-After before the next attempt", async () => {
-    const { fetchMock } = stubEventsEndpoint(
-      new Response(null, { headers: { "Retry-After": "7" }, status: 429 }),
-    );
-    const session = await createSession();
-
-    await session.sendInsightsEvent(unchangedEvent);
-    await vi.advanceTimersByTimeAsync(6_999);
-    expect(fetchMock).toHaveBeenCalledOnce();
-    await vi.advanceTimersByTimeAsync(1);
-    expect(fetchMock).toHaveBeenCalledTimes(2);
-  });
-
-  it("caps a server's Retry-After at 30 seconds", async () => {
-    const { fetchMock } = stubEventsEndpoint(
-      new Response(null, { headers: { "Retry-After": "3600" }, status: 503 }),
-    );
-    const session = await createSession();
-
-    await session.sendInsightsEvent(unchangedEvent);
-    await vi.advanceTimersByTimeAsync(29_999);
-    expect(fetchMock).toHaveBeenCalledOnce();
-    await vi.advanceTimersByTimeAsync(1);
-    expect(fetchMock).toHaveBeenCalledTimes(2);
-  });
-
-  it("does not retry a 400", async () => {
-    const { fetchMock } = stubEventsEndpoint(400);
-    const session = await createSession();
-
-    await expect(session.sendInsightsEvent(unchangedEvent)).rejects.toThrow(
-      "Expected HTTP 204 from /events, received 400",
-    );
-    await vi.runAllTimersAsync();
-    expect(fetchMock).toHaveBeenCalledOnce();
-  });
-
-  it("stops after three attempts and warns once", async () => {
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    const { fetchMock } = stubEventsEndpoint(
-      500,
-      new Error("network unavailable"),
-      503,
-    );
-    const session = await createSession();
-
-    await session.sendInsightsEvent(unchangedEvent);
-    await vi.runAllTimersAsync();
-
-    expect(fetchMock).toHaveBeenCalledTimes(3);
-    expect(warn).toHaveBeenCalledExactlyOnceWith(
-      "[HotUpdater] Insights UNCHANGED event was not delivered:",
-      expect.objectContaining({
-        message: "Expected HTTP 204 from /events, received 503",
-      }),
-    );
-  });
-
-  it("gives each attempt its own timeout", async () => {
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    const fetchMock = vi.fn<typeof fetch>(
-      (_input, request) =>
-        new Promise((_resolve, reject) => {
-          request?.signal?.addEventListener("abort", () => {
-            reject(Object.assign(new Error("aborted"), { name: "AbortError" }));
-          });
-        }),
-    );
-    vi.stubGlobal("fetch", fetchMock);
-    const session = await createSession();
-
-    const sent = session.sendInsightsEvent({
-      ...unchangedEvent,
-      requestTimeout: 2_000,
-    });
-    await vi.advanceTimersByTimeAsync(2_000);
-    await sent;
-    // The second attempt starts after a 1 s backoff and gets a full 2 s.
-    await vi.advanceTimersByTimeAsync(1_000);
-    expect(fetchMock).toHaveBeenCalledTimes(2);
-    const secondSignal = fetchMock.mock.calls[1]?.[1]?.signal;
-    await vi.advanceTimersByTimeAsync(1_999);
-    expect(secondSignal?.aborted).toBe(false);
-    await vi.advanceTimersByTimeAsync(1);
-    expect(secondSignal?.aborted).toBe(true);
-    await vi.runAllTimersAsync();
-
-    expect(fetchMock).toHaveBeenCalledTimes(3);
-    expect(warn).toHaveBeenCalledExactlyOnceWith(
-      "[HotUpdater] Insights UNCHANGED event was not delivered:",
-      expect.objectContaining({ message: "Request timed out" }),
-    );
-  });
-
-  it("sends a later event after an earlier event's retries without holding its caller", async () => {
-    const { fetchMock, sentEvents } = stubEventsEndpoint(503);
-    const session = await createSession();
-
-    await session.sendInsightsEvent(unchangedEvent);
-    await session.sendInsightsEvent({
-      ...unchangedEvent,
-      fromBundleId: "bundle-id",
-      toBundleId: "next-bundle-id",
-      type: "UPDATE_DOWNLOADED",
-      updateStrategy: "appVersion",
-    });
-    expect(fetchMock).toHaveBeenCalledOnce();
-
-    await vi.runAllTimersAsync();
-    const [first, retry, later] = sentEvents();
-    expect([first?.type, retry?.type, later?.type]).toEqual([
-      "UNCHANGED",
-      "UNCHANGED",
-      "UPDATE_DOWNLOADED",
-    ]);
-    expect(retry?.eventId).toBe(first?.eventId);
-    expect(later?.eventId).not.toBe(first?.eventId);
-  });
-
-  it("keeps sending events after one fails outside its requests", async () => {
-    vi.spyOn(console, "warn").mockImplementation(() => {
-      throw new Error("console unavailable");
-    });
-    const { fetchMock, sentEvents } = stubEventsEndpoint(500, 500, 500);
-    const session = await createSession();
-
-    await session.sendInsightsEvent(unchangedEvent);
-    await vi.runAllTimersAsync();
-    expect(fetchMock).toHaveBeenCalledTimes(3);
-
-    // A queue left rejected would never send this event or settle its caller.
-    await session.sendInsightsEvent({
-      ...unchangedEvent,
-      fromBundleId: "bundle-id",
-      toBundleId: "next-bundle-id",
-      type: "UPDATE_DOWNLOADED",
-      updateStrategy: "appVersion",
-    });
-    expect(sentEvents().map(({ type }) => type)).toEqual([
-      "UNCHANGED",
-      "UNCHANGED",
-      "UNCHANGED",
-      "UPDATE_DOWNLOADED",
-    ]);
   });
 });

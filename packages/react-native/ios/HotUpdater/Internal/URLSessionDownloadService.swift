@@ -23,9 +23,65 @@ protocol DownloadService {
 }
 
 
-enum DownloadError: Error {
+enum DownloadError: Error, Equatable {
     case incompleteDownload(expected: Int64, actual: Int64)
     case invalidContentLength
+    /// The server answered with a status outside 200-299. `originCode` is the
+    /// `<Code>` of a storage origin's XML error body, when it has one.
+    case httpStatus(Int, originCode: String? = nil)
+
+    /// How much of an error body is searched for a storage origin's code.
+    static let maximumErrorBodyPrefixByteCount = 4 * 1024
+    private static let maximumOriginCodeLength = 64
+
+    /// The failure for an HTTP response outside 200-299, or nil for a
+    /// successful or non-HTTP response. `body` is the saved response body.
+    static func httpStatusError(for response: URLResponse?, body: URL?) -> DownloadError? {
+        guard let httpResponse = response as? HTTPURLResponse,
+              !(200..<300).contains(httpResponse.statusCode) else {
+            return nil
+        }
+        let originCode = body.flatMap { body -> String? in
+            guard let handle = try? FileHandle(forReadingFrom: body) else {
+                return nil
+            }
+            defer { try? handle.close() }
+            let prefix = try? FileUtilities.readUpToCount(
+                from: handle,
+                count: maximumErrorBodyPrefixByteCount
+            )
+            return prefix.flatMap { storageOriginErrorCode(in: $0) }
+        }
+        return .httpStatus(httpResponse.statusCode, originCode: originCode)
+    }
+
+    /// The `<Code>` of an S3, R2, or GCS style `<Error>` document in the
+    /// first 4 KB of `body`, such as "AccessDenied". Nothing else from the
+    /// body is kept, and a code must be 1-64 characters of [A-Za-z0-9._-].
+    static func storageOriginErrorCode(in body: Data) -> String? {
+        let text = String(decoding: body.prefix(maximumErrorBodyPrefixByteCount), as: UTF8.self)
+        guard let errorElement = text.range(of: "<Error"),
+              let codeStart = text.range(of: "<Code>", range: errorElement.upperBound..<text.endIndex),
+              let codeEnd = text.range(of: "</Code>", range: codeStart.upperBound..<text.endIndex) else {
+            return nil
+        }
+        let code = text[codeStart.upperBound..<codeEnd.lowerBound]
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard (1...maximumOriginCodeLength).contains(code.unicodeScalars.count),
+              code.unicodeScalars.allSatisfy(isOriginCodeCharacter) else {
+            return nil
+        }
+        return code
+    }
+
+    private static func isOriginCodeCharacter(_ scalar: Unicode.Scalar) -> Bool {
+        switch scalar {
+        case "A"..."Z", "a"..."z", "0"..."9", ".", "_", "-":
+            return true
+        default:
+            return false
+        }
+    }
 }
 
 class URLSessionDownloadService: NSObject, DownloadService {
@@ -104,6 +160,14 @@ extension URLSessionDownloadService: URLSessionDownloadDelegate {
 
         guard let destination = destination else {
             completion?(.failure(NSError(domain: "HotUpdaterError", code: 1, userInfo: [NSLocalizedDescriptionKey: "Destination path not found"])))
+            return
+        }
+
+        // URLSession saves error bodies too, so reject them before they reach verification.
+        if let httpError = DownloadError.httpStatusError(for: downloadTask.response, body: location) {
+            NSLog("[DownloadService] Download failed: \(httpError)")
+            try? FileManager.default.removeItem(at: location)
+            completion?(.failure(httpError))
             return
         }
 

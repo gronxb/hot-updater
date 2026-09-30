@@ -39,6 +39,32 @@ describe("renderAppSetup", () => {
       'HotUpdater.init({\n  baseURL: "https://example.com",\n});',
     );
     expect(source).not.toContain("requestHeaders");
+    expect(source).not.toContain("plugins");
+  });
+
+  it("imports and adds the client plugins the server's plugins ask for", () => {
+    const source = renderAppSetup({
+      baseURL: "https://example.com",
+      credential,
+      clientPlugins: [
+        {
+          module: "@hot-updater/react-native/plugins/insights",
+          name: "insights",
+        },
+        { module: "feedback-rn", name: "feedback" },
+      ],
+    });
+
+    expect(source).toContain(
+      [
+        'import { HotUpdater } from "@hot-updater/react-native";',
+        'import { insights } from "@hot-updater/react-native/plugins/insights";',
+        'import { feedback } from "feedback-rn";',
+      ].join("\n"),
+    );
+    expect(source).toContain(
+      '    "x-api-key": "key\\"with-quote",\n  },\n  plugins: [insights(), feedback()],\n});',
+    );
   });
 });
 

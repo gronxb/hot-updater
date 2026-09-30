@@ -23,6 +23,7 @@ import {
   CLIENT_CREDENTIAL_FILE,
   CLIENT_CREDENTIAL_SCRIPT,
   type InfraClientAuth,
+  type InfraClientPlugin,
 } from "./clientAuth";
 
 const require = createRequire(import.meta.url);
@@ -45,6 +46,8 @@ export interface InfraTemplate {
   infrastructureGeneration: number;
   /** The client-route policy of the plugins the server runs. */
   clientAuth: InfraClientAuth;
+  /** The client plugins an app adds for the plugins the server runs. */
+  clientPlugins: InfraClientPlugin[];
   packages: Record<string, string>;
   requiredInputs: Record<string, string | null>;
   upgradeRequirements: string[];

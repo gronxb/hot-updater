@@ -157,12 +157,25 @@ export interface PluginClientCredential<Api = unknown> {
   ): Promise<string>;
 }
 
+/**
+ * A client plugin an app adds to `HotUpdater.init`'s `plugins` to work with
+ * the server plugin. Init prints it in the app code, and the agent scaffold
+ * asks for it.
+ */
+export interface PluginClientPlugin {
+  /** The module that exports it, such as `@hot-updater/react-native/plugins/insights`. */
+  readonly module: string;
+  /** The export, which the app calls with no arguments, such as `insights`. */
+  readonly name: string;
+}
+
 /** What a plugin adds to the `hot-updater` CLI. */
 export interface PluginCli<Api = unknown> {
   /** Commands the CLI finds in the project's plugins. */
   readonly commands?: readonly PluginCommand<Api>[];
   /** Needs provides: { clientAuth: true }. */
   readonly clientCredential?: PluginClientCredential<Api>;
+  readonly clientPlugin?: PluginClientPlugin;
 }
 
 /** CLI additions whose `clientCredential` matches what the plugin declares it provides. */

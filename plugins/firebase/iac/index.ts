@@ -18,6 +18,7 @@ import {
   transformEnv,
 } from "@hot-updater/cli-tools";
 import {
+  clientPluginsOf,
   provisionClientCredential,
   type ProvisionedClientCredential,
 } from "@hot-updater/server/db";
@@ -418,6 +419,7 @@ const printTemplate = async (
     printAppSetup({
       baseURL: functionUrl,
       ...(credential === undefined ? {} : { credential }),
+      clientPlugins: clientPluginsOf(plugins),
     });
   } catch (error) {
     if (error instanceof ExecaError) {

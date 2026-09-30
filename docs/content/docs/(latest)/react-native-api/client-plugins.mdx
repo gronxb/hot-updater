@@ -1,0 +1,375 @@
+---
+title: "Client Plugins"
+description: "Observe launches, update checks, downloads, and update failures in the app, and send data to your server, with `defineClientPlugin`."
+icon: Plug
+---
+
+## What a client plugin does
+
+A client plugin runs in the app next to the SDK. It is told about the launch
+outcome, each update check, each staged download, and each failed check,
+download, or install. It can send requests to your update server with the
+app's base URL and headers, and keep small values on the device. The built-in
+[Insights plugin](/docs/react-native-api/insights) uses the same contract;
+[server plugins](/docs/custom/server-plugins) extend the server side.
+
+Pass plugins to `plugins` in [`HotUpdater.init`](/docs/react-native-api/init)
+or [`HotUpdater.wrap`](/docs/react-native-api/wrap):
+
+```tsx title="App.tsx (excerpt)"
+HotUpdater.init({
+  baseURL: "<your-update-server-url>",
+  plugins: [insights(), launchLogger()], // [!code ++]
+});
+```
+
+## Define a plugin
+
+`defineClientPlugin` from `@hot-updater/react-native` takes an `id` and a
+`setup` function, and returns the plugin with its types:
+
+```ts title="src/launchLogger.ts"
+import { defineClientPlugin } from "@hot-updater/react-native";
+
+export const launchLogger = () =>
+  defineClientPlugin({
+    id: "launch-logger",
+    setup(context) {
+      return {
+        onAppReady(result) {
+          console.log(`Launch on ${context.platform}:`, result.status);
+        },
+      };
+    },
+  });
+```
+
+- `id` is a non-empty string, unique among the app's plugins; `init` and
+  `wrap` throw when two plugins share one. It also scopes the plugin's
+  [storage](#store-values-on-the-device).
+- `setup(context)` runs once per plugin object, when `init` or `wrap` first
+  receives it, and returns the plugin's hooks, or nothing. Passing the same
+  object to a later `init` or `wrap` keeps its hooks; a plugin left out of a
+  later call stops receiving events.
+- A plugin object can carry its own methods, as `insights()` does with
+  `setUser`.
+
+## Hooks
+
+| Hook                       | Called                                                                   |
+| -------------------------- | ------------------------------------------------------------------------ |
+| `onAppReady(result)`       | Once per JavaScript runtime, after native launch verification finishes. |
+| `onUpdateCheck(result)`    | After each update check, and after a same-bundle Release adoption commits. |
+| `onBundleDownloaded(info)` | After the SDK downloads, verifies, and stages a new bundle.              |
+| `onUpdateError(error)`     | When an update check, download, or install fails.                        |
+
+Hooks for checks, downloads, and failures always arrive after the
+`onAppReady` of their JavaScript runtime, so a plugin sees the launch first. A
+check that finds nothing calls `onUpdateCheck`; a check that fails calls
+`onUpdateError` instead. `@hot-updater/react-native` exports the event types
+`AppReadyResult`, `UpdateCheckResult`, `BundleDownloadedInfo`, and
+`UpdateError`.
+
+### `onAppReady`
+
+```ts
+type AppReadyResult = (
+  | {
+      status: "UNCHANGED";
+      channel: string;
+      bundleId: string; // The running bundle.
+      releaseId: string | null; // The Release it was selected as.
+    }
+  | {
+      status: "UPDATE_APPLIED" | "RECOVERED";
+      channel: string;
+      fromBundleId: string;
+      fromReleaseId: string | null;
+      toBundleId: string;
+      toReleaseId: string | null;
+      updateStrategy: "fingerprint" | "appVersion";
+    }
+) & {
+  previousProcessExit: string | null;
+};
+```
+
+`UPDATE_APPLIED` means a staged update became active at this launch.
+`RECOVERED` means native crash recovery rolled a failed update back:
+`fromBundleId` is the failed bundle and `toBundleId` the one restored.
+
+`previousProcessExit` says why the app's previous main process exited, on
+Android 11 and later: the `ApplicationExitInfo` reason without its `REASON_`
+prefix, such as `CRASH`, `CRASH_NATIVE`, `ANR`, `LOW_MEMORY`, or
+`USER_REQUESTED`. It tells a crash from the system or the user closing the
+app. It is `null` on iOS and older Android.
+
+### `onUpdateCheck`
+
+```ts
+type UpdateCheckResult =
+  | {
+      status: "UNCHANGED";
+      channel: string;
+      bundleId: string;
+      releaseId: string | null; // After the check.
+      previousReleaseId: string | null; // Before the check.
+    }
+  | {
+      status: "UPDATE_AVAILABLE";
+      channel: string;
+      fromBundleId: string;
+      fromReleaseId: string | null;
+      toBundleId: string;
+      toReleaseId: string | null;
+      transitionKind:
+        | "INSTALL"
+        | "ADOPT_RELEASE"
+        | "USE_EMBEDDED"
+        | "USE_BUILTIN";
+      updateStatus: "UPDATE" | "ROLLBACK";
+      shouldForceUpdate: boolean;
+      updateStrategy: "fingerprint" | "appVersion";
+    };
+```
+
+`UNCHANGED` means the app keeps its bundle. `releaseId` differs from
+`previousReleaseId` after the app adopts a newer Release of the running
+bundle.
+
+### `onBundleDownloaded`
+
+```ts
+interface BundleDownloadedInfo {
+  channel: string;
+  fromBundleId: string;
+  fromReleaseId: string | null;
+  toBundleId: string;
+  toReleaseId: string | null;
+  updateStrategy: "fingerprint" | "appVersion";
+  delivery: "patch" | "manifest" | "archive";
+  patchFallback: boolean;
+}
+```
+
+The staged bundle becomes active the next time the app starts. `delivery`
+says how it arrived: `patch` when a bsdiff patch produced a file, `manifest`
+when only the changed files were downloaded, and `archive` for the full
+archive. `patchFallback` is `true` when a patch was tried but the file or the
+archive was downloaded instead.
+
+### `onUpdateError`
+
+```ts
+interface UpdateError {
+  stage: "check" | "download" | "install";
+  reason: UpdateErrorReason; // Listed below.
+  resource?: "catalog" | "artifact" | "manifest" | "file" | "patch" | "archive";
+  httpStatus?: number;
+  originCode?: string;
+  transport?: "timeout" | "dns" | "tls" | "connection" | "offline" | "cancelled";
+  previousProcessExit?: string;
+  targetBundleId?: string; // Absent for the check stage.
+  targetReleaseId?: string;
+  channel: string;
+  bundleId: string; // The running bundle.
+  releaseId: string | null;
+  updateStrategy: "fingerprint" | "appVersion";
+  cause: unknown; // The error the SDK caught.
+}
+```
+
+| Field                 | Values                                                                                                                                                                 |
+| --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `stage`               | `check`: the Release Catalog request. `download`: transferring and verifying the update's files. `install`: patching, extracting, and moving them into place.          |
+| `reason`              | `network`, `http`, `invalid_response`, `hash_mismatch`, `signature`, `patch`, `extract`, `storage`, or `unknown`.                                                       |
+| `resource`            | What the SDK was fetching or applying, when it knows: `catalog`, `artifact`, `manifest`, `file`, `patch`, or `archive`.                                                 |
+| `httpStatus`          | The response status of an `http` failure.                                                                                                                              |
+| `originCode`          | The storage origin's XML error `<Code>` when an `http` failure's body names one, such as `AccessDenied`, `NoSuchKey`, or `ExpiredToken`. It tells an expired signed URL from a missing file. |
+| `transport`           | Why no response arrived, for a `network` failure, when the SDK knows: `timeout`, `dns`, `tls`, `connection`, `offline`, or `cancelled`.                                |
+| `previousProcessExit` | Android 11 and later: why the previous main process exited, as in `onAppReady`.                                                                                        |
+
+The app also receives the error: `checkForUpdate` passes it to `onError`, and
+`updateBundle` rejects with it.
+
+These are not update failures and do not call `onUpdateError`:
+
+- A catalog request answered with `404` and `x-hot-updater-catalog: none`,
+  which the server sends for a scope with no Release yet. The check finds no
+  update: `onUpdateCheck` receives `UNCHANGED`, and `checkForUpdate` returns
+  `null` without calling `onError`. Any other `404` from the catalog route is
+  a check failure with `reason: "http"` and `resource: "catalog"`.
+- A download of a bundle in the device's crash history. `updateBundle` still
+  rejects with `BUNDLE_IN_CRASHED_HISTORY`.
+- A selection that a newer check replaced before it was staged.
+
+## Error handling
+
+Hooks observe the update flow and cannot delay or change it:
+
+- The SDK calls a hook without waiting for it and ignores what it returns. An
+  `async` hook runs in the background.
+- A hook that throws or rejects, or a `setup` that throws, is passed to the
+  `onError` of `init` or `wrap` as an `Error` whose `cause` is the thrown
+  value, or logged with `console.warn` when there is no `onError`. The update
+  continues, and a plugin whose `setup` threw gets no hooks.
+
+Errors from a plugin's own methods, such as a failed request, reach whoever
+called them.
+
+## The context
+
+`setup` receives the plugin's context:
+
+| Member                   | Description                                                                                                         |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------- |
+| `fetch(path, init?)`     | Requests a path relative to `baseURL`; see [send requests](#send-requests-to-your-server).                          |
+| `installId`              | The installation ID that [`getInstallId`](/docs/react-native-api/getInstallId) returns.                             |
+| `platform`               | `"ios"` or `"android"`.                                                                                             |
+| `appVersion`             | The native app version, or `null` when the build has none.                                                          |
+| `sdkVersion`             | The version of `@hot-updater/react-native`.                                                                         |
+| `isDebugBuild`           | `true` in a debug build, where `__DEV__` is `true`.                                                                 |
+| `getBundleId()`          | The bundle native reports as current. This is an artifact ID, not the update ID that `HotUpdater.getBundleId()` returns. |
+| `getChannel()`           | The effective channel.                                                                                              |
+| `getCohort()`            | The rollout cohort.                                                                                                 |
+| `getFingerprintHash()`   | The native fingerprint, or `null`.                                                                                  |
+| `storage`                | The plugin's [storage](#store-values-on-the-device).                                                                |
+| `now()`                  | The current time in milliseconds since the epoch.                                                                   |
+
+Decide in `setup` whether the plugin runs in debug builds. The Insights
+plugin, for example, sends nothing when `isDebugBuild` is `true` unless it is
+created with `debug: true`.
+
+### Send requests to your server
+
+`context.fetch(path, init)` takes a path relative to the configured `baseURL`
+and a standard `RequestInit`. It resolves a `baseURL` function on each call,
+sends the configured `requestHeaders`, with headers from the `RequestInit`
+taking precedence, and rejects with `Request timed out` once the configured
+`requestTimeout` passes, 5000 ms by default. An absolute URL rejects with a
+`TypeError`. A plugin gets its context in `setup`, so a plugin method called
+before `HotUpdater.init` or `wrap` has no `fetch` yet.
+
+A route for the plugin lives in a [server plugin](/docs/custom/server-plugins)
+on the same server. On `handlers.client`, it sits behind the same client-route
+policy as update checks, such as the `apiKeys()` key that `requestHeaders`
+already sends.
+
+### Store values on the device
+
+`context.storage` is the plugin's persistent key-value store:
+
+```ts
+const lastLaunch = context.storage.get("lastLaunch"); // string | null
+context.storage.set("lastLaunch", String(context.now()));
+context.storage.set("lastLaunch", null); // Removes the key.
+```
+
+- `get` and `set` are synchronous, and a read returns the latest write.
+- Keys are non-empty strings, scoped to the plugin's `id`, so plugins never
+  read each other's values.
+- Values are strings of at most 64 KB. Other values throw.
+- Native keeps the store across launches and updates, outside device backups:
+  in Application Support on iOS and the no-backup files directory on Android.
+  Uninstalling the app clears it.
+
+## Example: send feedback with the running bundle
+
+This plugin pairs with the `feedback()`
+[server plugin example](/docs/custom/server-plugins#write-the-plugin), whose
+`POST /feedback` route opens a thread. It sends the running bundle and
+installation with each thread, and mentions the latest update failure:
+
+```ts title="src/feedback.ts"
+import {
+  defineClientPlugin,
+  type HotUpdaterClientContext,
+} from "@hot-updater/react-native";
+
+export const feedback = () => {
+  let context: HotUpdaterClientContext | null = null;
+
+  return defineClientPlugin({
+    id: "feedback",
+    setup(pluginContext) {
+      context = pluginContext;
+      return {
+        onUpdateError(error) {
+          pluginContext.storage.set(
+            "lastUpdateError",
+            `${error.stage}: ${error.reason}`,
+          );
+        },
+      };
+    },
+    /** Opens a feedback thread and returns its ID. */
+    async open(title: string, body: string): Promise<string> {
+      if (context === null) {
+        throw new Error("Call HotUpdater.init before sending feedback.");
+      }
+      const lastUpdateError = context.storage.get("lastUpdateError");
+      const response = await context.fetch("feedback", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          clientRef: `${context.installId}-${context.now()}`,
+          bundleId: context.getBundleId(),
+          installId: context.installId,
+          title,
+          body:
+            lastUpdateError === null
+              ? body
+              : `${body}\n\nLast update error: ${lastUpdateError}`,
+        }),
+      });
+      if (response.status !== 201) {
+        throw new Error(`Feedback was not sent: HTTP ${response.status}`);
+      }
+      const { id } = (await response.json()) as { id: string };
+      return id;
+    },
+  });
+};
+```
+
+Register it, and call its method from your UI:
+
+```tsx title="App.tsx"
+import { HotUpdater } from "@hot-updater/react-native";
+import { Button } from "react-native";
+
+import { feedback } from "./src/feedback";
+
+const appFeedback = feedback();
+
+HotUpdater.init({
+  baseURL: "<your-update-server-url>",
+  requestHeaders: {
+    "x-api-key": "<your-api-key>",
+  },
+  plugins: [appFeedback],
+});
+
+export default function App() {
+  return (
+    <Button
+      title="Report a problem"
+      onPress={() => {
+        appFeedback
+          .open("Problem report", "The screen stays blank after the update.")
+          .then((id) => console.log("Feedback thread:", id))
+          .catch((error: unknown) => console.warn(error));
+      }}
+    />
+  );
+}
+```
+
+The request uses the app's `baseURL` and `x-api-key`, so the thread reaches
+the same server that serves the app's updates.
+
+## Related
+
+- [Insights Plugin](/docs/react-native-api/insights)
+- [Server Plugins](/docs/custom/server-plugins)
+- [`HotUpdater.init`](/docs/react-native-api/init)

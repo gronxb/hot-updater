@@ -16,6 +16,7 @@ import {
 } from "@hot-updater/cli-tools";
 import {
   clientAuthOf,
+  clientPluginsOf,
   provisionClientCredential,
   type ProvisionedClientCredential,
 } from "@hot-updater/server/db";
@@ -442,6 +443,7 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
   printAppSetup({
     baseURL: `https://${distributionDomain}`,
     ...(credential === undefined ? {} : { credential }),
+    clientPlugins: clientPluginsOf(plugins),
   });
   p.log.message(
     `Next step: ${link("https://hot-updater.dev/docs/managed/aws#step-4-changeenv-file-optional")}`,

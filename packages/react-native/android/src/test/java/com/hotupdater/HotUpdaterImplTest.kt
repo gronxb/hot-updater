@@ -3,9 +3,15 @@ package com.hotupdater
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Rule
 import org.junit.Test
+import org.junit.rules.TemporaryFolder
+import java.io.File
 
 class HotUpdaterImplTest {
+    @get:Rule
+    val temporaryFolder = TemporaryFolder()
+
     @Test
     fun `getBundleId returns built in while native launch selection is missing`() {
         val impl =
@@ -126,20 +132,22 @@ class HotUpdaterImplTest {
     }
 
     @Test
-    fun `getInstallId and setUser delegate to bundle storage`() {
-        val storage = FakeBundleStorageService(bundleId = null)
+    fun `install id and storage items come from their no backup stores`() {
+        val identityFile = File(temporaryFolder.root, "hot-updater/install-identity.json")
+        val storageFile = File(temporaryFolder.root, "hot-updater/storage.json")
         val impl = allocateWithoutConstructor<HotUpdaterImpl>()
-        setField(impl, "bundleStorage", storage)
+        setField(impl, "installIdentity", InstallIdentityService(identityFile))
+        setField(impl, "keyValueStorage", KeyValueStorageService(storageFile))
 
-        assertEquals("test-install-id", impl.getInstallId())
+        val installId = impl.getInstallId()
+        assertEquals(installId, InstallationIdentity.loadFromFile(identityFile)?.installId)
 
-        impl.setUser("user-123", "alice")
-        assertEquals("user-123", storage.lastUserId)
-        assertEquals("alice", storage.lastUsername)
+        impl.setStorageItem("plugins/insights/queue", "[]")
+        assertEquals("[]", impl.getStorageItem("plugins/insights/queue"))
+        assertEquals("[]", KeyValueStorageService(storageFile).getItem("plugins/insights/queue"))
 
-        impl.setUser(null, null)
-        assertNull(storage.lastUserId)
-        assertNull(storage.lastUsername)
+        impl.setStorageItem("plugins/insights/queue", null)
+        assertNull(impl.getStorageItem("plugins/insights/queue"))
     }
 
     private fun createImpl(
@@ -198,8 +206,6 @@ class HotUpdaterImplTest {
         private val launchedBundleBaseURLs: Map<String, String> = emptyMap(),
     ) : BundleStorageService {
         var lastCompletedBundleId: String? = null
-        var lastUserId: String? = null
-        var lastUsername: String? = null
 
         override fun setBundleURL(localPath: String?): Boolean = true
 
@@ -221,27 +227,13 @@ class HotUpdaterImplTest {
             assets: Map<String, ChangedAssetDescriptor>,
             archiveUrl: String?,
             progressCallback: (UpdateProgressPayload) -> Unit,
-        ) = Unit
+        ) = UpdateBundleResult(BundleDelivery.MANIFEST, patchFallback = false)
 
         override fun markLaunchCompleted(currentBundleId: String?) {
             lastCompletedBundleId = currentBundleId
         }
 
         override fun notifyAppReady(): Map<String, Any?> = mapOf("status" to "UNCHANGED")
-
-        override fun getInstallId(): String = "test-install-id"
-
-        override fun getUserId(): String? = lastUserId
-
-        override fun getUsername(): String? = lastUsername
-
-        override fun setUser(
-            userId: String?,
-            username: String?,
-        ) {
-            lastUserId = userId
-            lastUsername = username
-        }
 
         override fun getCrashHistory(): CrashedHistory = CrashedHistory()
 

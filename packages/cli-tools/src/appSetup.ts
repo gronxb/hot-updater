@@ -9,20 +9,36 @@ export interface AppClientCredential {
   readonly value: string;
 }
 
+/** A client plugin the server's plugins ask an app to add. */
+export interface AppClientPlugin {
+  /** The module that exports it. */
+  readonly module: string;
+  /** The export, which the app calls with no arguments. */
+  readonly name: string;
+}
+
+interface AppSetup {
+  readonly credential?: AppClientCredential;
+  readonly clientPlugins?: readonly AppClientPlugin[];
+}
+
 /**
- * The App.tsx code init prints: `HotUpdater.init` with the server's URL
- * and, when the server takes a client credential, the header that carries it.
+ * The App.tsx code init prints: `HotUpdater.init` with the server's URL,
+ * the header that carries the client credential when the server takes one,
+ * and the client plugins the server's plugins ask for.
  */
 export const renderAppSetup = ({
   baseURL,
   credential,
-}: {
-  readonly baseURL: string;
-  readonly credential?: AppClientCredential;
-}): string =>
+  clientPlugins = [],
+}: AppSetup & { readonly baseURL: string }): string =>
   [
     "// Add this to your App.tsx",
     'import { HotUpdater } from "@hot-updater/react-native";',
+    ...clientPlugins.map(
+      ({ module, name }) =>
+        `import { ${name} } from ${JSON.stringify(module)};`,
+    ),
     "",
     "function App() {",
     "  return null; // Replace with your app root.",
@@ -37,6 +53,11 @@ export const renderAppSetup = ({
           `    ${JSON.stringify(credential.header)}: ${JSON.stringify(credential.value)},`,
           "  },",
         ]),
+    ...(clientPlugins.length === 0
+      ? []
+      : [
+          `  plugins: [${clientPlugins.map(({ name }) => `${name}()`).join(", ")}],`,
+        ]),
     "});",
     "",
     '// Call HotUpdater.checkForUpdate({ updateStrategy: "appVersion" })',
@@ -47,19 +68,10 @@ export const renderAppSetup = ({
 /** Prints the App.tsx code, when the URL is known, and the app's credential. */
 export const printAppSetup = ({
   baseURL,
-  credential,
-}: {
-  readonly baseURL?: string;
-  readonly credential?: AppClientCredential;
-}): void => {
-  if (baseURL !== undefined) {
-    p.note(
-      renderAppSetup({
-        baseURL,
-        ...(credential === undefined ? {} : { credential }),
-      }),
-    );
-  }
+  ...setup
+}: AppSetup & { readonly baseURL?: string }): void => {
+  if (baseURL !== undefined) p.note(renderAppSetup({ baseURL, ...setup }));
+  const { credential } = setup;
   if (credential !== undefined) {
     p.note(credential.value, credential.label);
     p.log.message(

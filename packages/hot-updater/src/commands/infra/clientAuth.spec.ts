@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { renderAgentInstructions, type InfraClientAuth } from "./clientAuth";
+import {
+  renderAgentInstructions,
+  type InfraClientAuth,
+  type InfraClientPlugin,
+} from "./clientAuth";
 
 const apiKey: InfraClientAuth = {
   plugin: "apiKeys",
@@ -10,6 +14,11 @@ const apiKey: InfraClientAuth = {
     header: "x-api-key",
     env: "HOT_UPDATER_API_KEY",
   },
+};
+
+const insights: InfraClientPlugin = {
+  module: "@hot-updater/react-native/plugins/insights",
+  name: "insights",
 };
 
 const text = [
@@ -22,9 +31,26 @@ const text = [
   "Verify it.",
 ].join("\n");
 
+const app = [
+  "<!-- if clientPlugins -->",
+  "Add {{CLIENT_PLUGIN_LIST}} once.",
+  "<!-- end -->",
+  "```ts",
+  'import { HotUpdater } from "@hot-updater/react-native";',
+  "{{CLIENT_PLUGIN_IMPORTS}}",
+  "",
+  "HotUpdater.init({",
+  '  baseURL: "<verified-base-url>",',
+  "  plugins: [{{CLIENT_PLUGINS}}],",
+  "});",
+  "```",
+].join("\n");
+
 describe("renderAgentInstructions", () => {
   it("keeps the credential steps when the server takes one", () => {
-    expect(renderAgentInstructions(text, apiKey)).toBe(
+    expect(
+      renderAgentInstructions(text, { clientAuth: apiKey, clientPlugins: [] }),
+    ).toBe(
       [
         "Deploy the server.",
         "Send the API key in `x-api-key` from HOT_UPDATER_API_KEY.",
@@ -34,20 +60,66 @@ describe("renderAgentInstructions", () => {
   });
 
   it("keeps the public steps when client routes are public", () => {
-    expect(renderAgentInstructions(text, null)).toBe(
+    expect(
+      renderAgentInstructions(text, { clientAuth: null, clientPlugins: [] }),
+    ).toBe(
       ["Deploy the server.", "Client routes are public.", "Verify it."].join(
         "\n",
       ),
     );
   });
 
+  it("names and adds the client plugins the server's plugins ask for", () => {
+    const feedback = { module: "feedback-rn", name: "feedback" };
+    expect(
+      renderAgentInstructions(app, {
+        clientAuth: null,
+        clientPlugins: [insights, feedback],
+      }),
+    ).toBe(
+      [
+        "Add `insights()` from `@hot-updater/react-native/plugins/insights`, `feedback()` from `feedback-rn` once.",
+        "```ts",
+        'import { HotUpdater } from "@hot-updater/react-native";',
+        'import { insights } from "@hot-updater/react-native/plugins/insights";',
+        'import { feedback } from "feedback-rn";',
+        "",
+        "HotUpdater.init({",
+        '  baseURL: "<verified-base-url>",',
+        "  plugins: [insights(), feedback()],",
+        "});",
+        "```",
+      ].join("\n"),
+    );
+  });
+
+  it("leaves out the client plugin lines when there are none", () => {
+    expect(
+      renderAgentInstructions(app, { clientAuth: null, clientPlugins: [] }),
+    ).toBe(
+      [
+        "```ts",
+        'import { HotUpdater } from "@hot-updater/react-native";',
+        "",
+        "HotUpdater.init({",
+        '  baseURL: "<verified-base-url>",',
+        "});",
+        "```",
+      ].join("\n"),
+    );
+  });
+
   it.each([
     ["{{CREDENTIAL_ENV}}", "{{CREDENTIAL_ENV}} appears outside"],
-    ["<!-- if credential -->\n<!-- if credential -->", "Nested"],
+    ["{{CLIENT_PLUGIN_LIST}}", "{{CLIENT_PLUGIN_LIST}} appears outside"],
+    ["<!-- if credential -->\n<!-- if clientPlugins -->", "Nested"],
+    ["<!-- if server -->", 'Unknown condition "server"'],
     ["<!-- else -->", "Unexpected else"],
     ["<!-- end -->", "Unexpected end"],
     ["<!-- if credential -->", "Unclosed"],
   ])("refuses malformed instructions: %s", (source, message) => {
-    expect(() => renderAgentInstructions(source, null)).toThrow(message);
+    expect(() =>
+      renderAgentInstructions(source, { clientAuth: null, clientPlugins: [] }),
+    ).toThrow(message);
   });
 });
