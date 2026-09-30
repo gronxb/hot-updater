@@ -4,9 +4,18 @@ import path from "node:path";
 
 import { build, type Plugin } from "esbuild";
 
+import { InitError } from "./initOptions";
+
 export interface BundleServerOptions {
-  /** The entry module, inside the project so its imports resolve there. */
+  /** The entry module, which imports the server definition. */
   readonly input: string;
+  /** The server definition the entry imports, named in messages. */
+  readonly definition: string;
+  /**
+   * The project's directory: paths in the bundle and in its messages are
+   * relative to it, so none of the machine's paths are deployed.
+   */
+  readonly projectRoot?: string;
   readonly outfile: string;
   readonly format: "esm" | "cjs";
   /** `neutral` for runtimes that are not Node, such as Deno. */
@@ -33,11 +42,25 @@ export interface BundledServer {
   readonly bytes: number;
 }
 
+const escapeRegExp = (value: string) =>
+  value.replace(/[.*+?^${}()|[\]\\/]/g, "\\$&");
+
+/** Built-ins that also answer without `node:`, such as `fs`. */
+const unprefixedBuiltins = builtinModules.filter(
+  (name) => !name.startsWith("node:"),
+);
+/** Built-ins only with `node:`, such as `node:sqlite`: bare `sqlite` is an npm package. */
+const prefixedBuiltins = builtinModules
+  .filter((name) => name.startsWith("node:"))
+  .map((name) => name.slice("node:".length));
+
 // esbuild runs filters as Go regular expressions, which take no flags.
 const BUILTIN = new RegExp(
-  `^(node:)?(${builtinModules
-    .map((name) => name.replace(/^node:/, "").replaceAll("/", "\\/"))
-    .join("|")})(\\/.*)?$`,
+  `^(?:node:(?:${[...unprefixedBuiltins, ...prefixedBuiltins]
+    .map(escapeRegExp)
+    .join("|")})|(?:${unprefixedBuiltins
+    .map(escapeRegExp)
+    .join("|")}))(?:\\/.*)?$`,
 );
 
 /** Node's built-in modules, left as `node:` imports, which Deno resolves. */
@@ -90,11 +113,17 @@ const packageRootOf = async (
   return root;
 };
 
+/** A refusal that already says what to do. */
+class BundleRefusal extends Error {}
+
 /**
  * Two copies of the server in one bundle would split its classes, so an
  * error one throws would fail the other's `instanceof` checks.
  */
-const assertOneServer = async (files: readonly string[]) => {
+const assertOneServer = async (
+  files: readonly string[],
+  projectRoot: string,
+) => {
   const roots = new Map<string, string | null>();
   const servers = new Map<string, string>();
   for (const file of files) {
@@ -107,13 +136,26 @@ const assertOneServer = async (files: readonly string[]) => {
   }
   if (servers.size > 1) {
     const found = [...servers]
-      .map(([root, version]) => `${version} (${root})`)
+      .map(
+        ([root, version]) =>
+          `${version} (${path.relative(projectRoot, root) || "."})`,
+      )
       .join(" and ");
-    throw new Error(
+    throw new BundleRefusal(
       `it would include two copies of @hot-updater/server: ${found}. Install the version your provider package uses, so the plugins run on the same server.`,
     );
   }
 };
+
+/**
+ * A module scope `require` for a runtime that is not Node, so a CommonJS
+ * dependency can require a built-in such as `node:crypto`: esbuild's shim
+ * uses it. workerd leaves `import.meta.url` undefined.
+ */
+const MODULE_REQUIRE = [
+  'import { createRequire as __hotUpdaterCreateRequire } from "node:module";',
+  'const require = __hotUpdaterCreateRequire(import.meta.url ?? "file:///server.js");',
+].join("\n");
 
 /**
  * Bundles a managed server with the project's plugins into one file. The
@@ -122,6 +164,8 @@ const assertOneServer = async (files: readonly string[]) => {
  */
 export const bundleServer = async ({
   input,
+  definition,
+  projectRoot = process.cwd(),
   outfile,
   format,
   platform,
@@ -132,7 +176,17 @@ export const bundleServer = async ({
   banner,
   target,
 }: BundleServerOptions): Promise<BundledServer> => {
-  const workingDirectory = path.dirname(input);
+  // esbuild reports real paths, such as macOS's /private/var for /var.
+  const workingDirectory = await fs.realpath(projectRoot);
+  const shown =
+    path.relative(
+      workingDirectory,
+      await fs.realpath(definition).catch(() => definition),
+    ) || definition;
+  const preamble = [
+    ...(platform === "neutral" && format === "esm" ? [MODULE_REQUIRE] : []),
+    ...(banner === undefined ? [] : [banner]),
+  ].join("\n");
   try {
     const { metafile } = await build({
       absWorkingDir: workingDirectory,
@@ -154,7 +208,7 @@ export const bundleServer = async ({
           }
         : {}),
       ...(define === undefined ? {} : { define: { ...define } }),
-      ...(banner === undefined ? {} : { banner: { js: banner } }),
+      ...(preamble === "" ? {} : { banner: { js: preamble } }),
       metafile: true,
       logLevel: "silent",
     });
@@ -162,12 +216,18 @@ export const bundleServer = async ({
       Object.keys(metafile.inputs)
         .filter((file) => !file.includes(":"))
         .map((file) => path.resolve(workingDirectory, file)),
+      workingDirectory,
     );
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    throw new Error(`Could not build ${target} with ${input}: ${message}`, {
-      cause: error,
-    });
+    throw new InitError(
+      `Could not bundle ${shown} into ${target}: ${message}${
+        error instanceof BundleRefusal
+          ? ""
+          : " Fix the server definition, or host the server yourself."
+      }`,
+      { cause: error },
+    );
   }
   return { bytes: (await fs.stat(outfile)).size };
 };

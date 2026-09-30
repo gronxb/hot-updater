@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { type BuildType, ConfigBuilder } from "./ConfigBuilder";
 import {
   createHotUpdaterConfigScaffoldFromBuilder,
-  importManagedServerDefinition,
+  loadManagedServerDefinition,
   readManagedServerDefinition,
   readServerDefinitionStatus,
   replacingServerDefinitions,
@@ -15,6 +15,7 @@ import {
   writeHotUpdaterFiles,
   writeServerDefinition,
 } from "./hotUpdaterConfig";
+import { InitError } from "./initOptions";
 import { p } from "./prompts";
 
 const tempDirs: string[] = [];
@@ -572,28 +573,75 @@ describe("switching managed providers", () => {
   });
 });
 
-describe("importManagedServerDefinition", () => {
-  it("loads the definition after .env.hotupdater, which it reads as it loads", async () => {
+describe("loadManagedServerDefinition", () => {
+  it("loads the definition with the settings init writes, and gives the process its own back", async () => {
     const cwd = await createTempDir();
     const definitionPath = path.join(cwd, "hotUpdater.ts");
     await fs.writeFile(
       path.join(cwd, ".env.hotupdater"),
-      "HOT_UPDATER_MANAGED_SPEC_BUCKET=bundles\n",
+      "HOT_UPDATER_MANAGED_SPEC_BUCKET=from-file\nHOT_UPDATER_MANAGED_SPEC_PROJECT=from-file\nHOT_UPDATER_MANAGED_SPEC_KEY=placeholder\n",
     );
     await fs.writeFile(
       definitionPath,
-      "export const hotUpdater = { bucket: process.env.HOT_UPDATER_MANAGED_SPEC_BUCKET };\n",
+      "export const hotUpdater = { bucket: process.env.HOT_UPDATER_MANAGED_SPEC_BUCKET, project: process.env.HOT_UPDATER_MANAGED_SPEC_PROJECT, key: process.env.HOT_UPDATER_MANAGED_SPEC_KEY };\n",
     );
+    // A stale value in the shell loses to what init writes.
+    process.env["HOT_UPDATER_MANAGED_SPEC_PROJECT"] = "from-shell";
 
     try {
-      const loaded = await importManagedServerDefinition(
-        { path: definitionPath, edited: true },
-        cwd,
+      await expect(
+        loadManagedServerDefinition(
+          { path: definitionPath, edited: true },
+          (hotUpdater) => hotUpdater,
+          {
+            cwd,
+            env: {
+              HOT_UPDATER_MANAGED_SPEC_BUCKET: "about-to-write",
+              HOT_UPDATER_MANAGED_SPEC_KEY: undefined,
+            },
+          },
+        ),
+      ).resolves.toEqual({
+        bucket: "about-to-write",
+        project: "from-file",
+        key: undefined,
+      });
+      expect(process.env["HOT_UPDATER_MANAGED_SPEC_PROJECT"]).toBe(
+        "from-shell",
       );
-
-      expect(loaded.hotUpdater).toEqual({ bucket: "bundles" });
+      expect(process.env["HOT_UPDATER_MANAGED_SPEC_BUCKET"]).toBeUndefined();
+      expect(process.env["HOT_UPDATER_MANAGED_SPEC_KEY"]).toBeUndefined();
     } finally {
-      delete process.env["HOT_UPDATER_MANAGED_SPEC_BUCKET"];
+      delete process.env["HOT_UPDATER_MANAGED_SPEC_PROJECT"];
     }
+  });
+
+  it("names the definition and says what to do when it cannot load or run", async () => {
+    const cwd = await createTempDir();
+    const definitionPath = path.join(cwd, "hotUpdater.ts");
+    await fs.writeFile(
+      definitionPath,
+      'import { plugins } from "@hot-updater/not-installed";\nexport const hotUpdater = plugins;\n',
+    );
+
+    const missing = loadManagedServerDefinition(
+      { path: definitionPath, edited: true },
+      (hotUpdater) => hotUpdater,
+      { cwd },
+    );
+    await expect(missing).rejects.toBeInstanceOf(InitError);
+    await expect(missing).rejects.toThrow(
+      /^Could not load hotUpdater\.ts: .*@hot-updater\/not-installed.* Install the packages it imports in this project, then rerun init\.$/su,
+    );
+
+    await fs.writeFile(definitionPath, "export const hotUpdater = {};\n");
+    const refused = loadManagedServerDefinition(
+      { path: path.join(cwd, "server.ts"), edited: true },
+      () => {
+        throw new Error("The managed Test server runs on testDatabase.");
+      },
+      { cwd },
+    );
+    await expect(refused).rejects.toBeInstanceOf(InitError);
   });
 });

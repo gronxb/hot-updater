@@ -1,6 +1,7 @@
 import { existsSync } from "fs";
 import fs from "fs/promises";
 import path from "path";
+import { parseEnv } from "util";
 
 import {
   parseSync,
@@ -1041,18 +1042,68 @@ export const readManagedServerDefinition = async (
   return { path: definitionPath, edited };
 };
 
+const messageOf = (error: unknown) =>
+  error instanceof Error ? error.message : String(error);
+
+/** Whether `error` is a module the definition imports that is not installed. */
+const isMissingModule = (error: unknown) =>
+  /Cannot find (?:module|package)|ERR_MODULE_NOT_FOUND/u.test(
+    `${(error as { code?: unknown })?.code ?? ""} ${messageOf(error)}`,
+  );
+
 /**
- * Loads the server definition a managed init deploys, once
- * `.env.hotupdater` holds what it reads: the file hot-updater.config.ts
- * loads before the CLI reads the definition.
+ * Loads the server definition a managed init deploys, with the settings
+ * `.env.hotupdater` holds and then `env`, the ones init is about to write
+ * (`undefined` unsets one), which the definition reads as it loads, and
+ * returns what `check` makes of the server it exports. The process's own
+ * environment comes back afterwards, so init's clients keep their settings.
+ * A failure names the definition and says what to do.
  */
-export const importManagedServerDefinition = async (
+export const loadManagedServerDefinition = async <T>(
   definition: ManagedServerDefinition,
-  cwd: string = process.cwd(),
-): Promise<ServerModule> => {
+  check: (hotUpdater: unknown) => T,
+  {
+    cwd = process.cwd(),
+    env = {},
+  }: {
+    readonly cwd?: string;
+    readonly env?: Readonly<Record<string, string | undefined>>;
+  } = {},
+): Promise<T> => {
+  const shown = path.relative(cwd, definition.path) || definition.path;
+  const saved = { ...process.env };
   const envFile = path.join(cwd, ".env.hotupdater");
-  if (existsSync(envFile)) {
-    process.loadEnvFile(envFile);
+  try {
+    // What init writes wins over what the shell had.
+    if (existsSync(envFile)) {
+      Object.assign(process.env, parseEnv(await fs.readFile(envFile, "utf-8")));
+    }
+    for (const [key, value] of Object.entries(env)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+    let loaded: ServerModule;
+    try {
+      loaded = await importServerModule(definition.path);
+    } catch (error) {
+      throw new InitError(
+        `Could not load ${shown}: ${messageOf(error)} ${
+          isMissingModule(error)
+            ? "Install the packages it imports in this project, then rerun init."
+            : "Fix it, then rerun init."
+        }`,
+        { cause: error },
+      );
+    }
+    try {
+      return check(loaded.hotUpdater);
+    } catch (error) {
+      throw new InitError(`${shown}: ${messageOf(error)}`, { cause: error });
+    }
+  } finally {
+    for (const key of Object.keys(process.env)) {
+      if (!Object.hasOwn(saved, key)) delete process.env[key];
+    }
+    Object.assign(process.env, saved);
   }
-  return importServerModule(definition.path);
 };

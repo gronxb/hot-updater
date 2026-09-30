@@ -1,10 +1,12 @@
 import fs from "fs/promises";
 import os from "os";
 import path from "path";
+import { pathToFileURL } from "url";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { bundleServer } from "./bundleServer";
+import { InitError } from "./initOptions";
 
 let root: string;
 
@@ -53,6 +55,8 @@ describe("bundleServer", () => {
 
     const { bytes } = await bundleServer({
       input: path.join(root, "entry.ts"),
+      definition: path.join(root, "entry.ts"),
+      projectRoot: root,
       outfile,
       format: "cjs",
       platform: "node",
@@ -75,6 +79,8 @@ describe("bundleServer", () => {
 
     await bundleServer({
       input: path.join(root, "entry.ts"),
+      definition: path.join(root, "entry.ts"),
+      projectRoot: root,
       outfile,
       format: "esm",
       platform: "neutral",
@@ -98,6 +104,8 @@ describe("bundleServer", () => {
 
     await bundleServer({
       input: path.join(root, "entry.ts"),
+      definition: path.join(root, "entry.ts"),
+      projectRoot: root,
       outfile,
       format: "esm",
       platform: "neutral",
@@ -123,16 +131,18 @@ describe("bundleServer", () => {
 
     await bundleServer({
       input: path.join(root, "entry.ts"),
+      definition: path.join(root, "entry.ts"),
+      projectRoot: root,
       outfile: path.join(root, "out/index.mjs"),
       format: "esm",
       platform: "neutral",
       define: { "HotUpdater.BUCKET_NAME": JSON.stringify("bundles") },
-      banner: "const process = globalThis.process ?? { env: {} };",
+      banner: "globalThis.process ??= { env: {} };",
       target: "a test server",
     });
 
     const code = await fs.readFile(path.join(root, "out/index.mjs"), "utf-8");
-    expect(code.startsWith("const process = globalThis.process")).toBe(true);
+    expect(code).toContain("globalThis.process ??= { env: {} };");
     expect(code).toContain('"bundles"');
     expect(code).not.toContain("HotUpdater.BUCKET_NAME");
   });
@@ -156,13 +166,117 @@ describe("bundleServer", () => {
     await expect(
       bundleServer({
         input: path.join(root, "entry.ts"),
+        definition: path.join(root, "entry.ts"),
+        projectRoot: root,
         outfile: path.join(root, "out/index.cjs"),
         format: "cjs",
         platform: "node",
         target: "a test server",
       }),
     ).rejects.toThrow(
-      /Could not build a test server with .*entry\.ts: it would include two copies of @hot-updater\/server: 1\.0\.0 \(.*\) and 0\.9\.0 \(.*\)\./u,
+      "Could not bundle entry.ts into a test server: it would include two copies of @hot-updater/server: 1.0.0 (node_modules/@hot-updater/server) and 0.9.0 (node_modules/plugin-x/node_modules/@hot-updater/server). Install the version your provider package uses, so the plugins run on the same server.",
     );
+  });
+
+  it("keeps the machine's paths out of the bundle, and names the definition when it fails", async () => {
+    await write(
+      "entry.ts",
+      'import { notes } from "./server/notes";\nexport const plugins = [notes];\n',
+    );
+    const outfile = path.join(root, "out/index.cjs");
+
+    await bundleServer({
+      input: path.join(root, "entry.ts"),
+      definition: path.join(root, "entry.ts"),
+      projectRoot: root,
+      outfile,
+      format: "cjs",
+      platform: "node",
+      target: "a test server",
+    });
+
+    const code = await fs.readFile(outfile, "utf-8");
+    expect(code).toContain("// server/notes.ts");
+    expect(code).not.toContain(root);
+    expect(code).not.toContain(os.homedir());
+
+    await write(
+      "broken.ts",
+      'import { gone } from "@acme/missing";\nexport default gone;\n',
+    );
+    const failure = bundleServer({
+      input: path.join(root, "broken.ts"),
+      definition: path.join(root, "broken.ts"),
+      projectRoot: root,
+      outfile,
+      format: "cjs",
+      platform: "node",
+      target: "a test server",
+    });
+    await expect(failure).rejects.toBeInstanceOf(InitError);
+    await expect(failure).rejects.toThrow(
+      /^Could not bundle broken\.ts into a test server: .*@acme\/missing/su,
+    );
+  });
+
+  it("bundles an npm package named like a built-in that Node only has behind node:", async () => {
+    await pkg(
+      "node_modules/sqlite",
+      "sqlite",
+      "export const open = () => 'the npm sqlite';\n",
+    );
+    await write(
+      "entry.ts",
+      'import { open } from "sqlite";\nimport { DatabaseSync } from "node:sqlite";\nexport const both = [open(), DatabaseSync];\n',
+    );
+    const outfile = path.join(root, "out/index.mjs");
+
+    await bundleServer({
+      input: path.join(root, "entry.ts"),
+      definition: path.join(root, "entry.ts"),
+      projectRoot: root,
+      outfile,
+      format: "esm",
+      platform: "neutral",
+      target: "a test server",
+    });
+
+    const code = await fs.readFile(outfile, "utf-8");
+    expect(code).toContain("the npm sqlite");
+    expect(code).toMatch(/from "node:sqlite"/u);
+  });
+
+  it("lets a CommonJS dependency require a built-in on a runtime that is not Node", async () => {
+    await pkg(
+      "node_modules/cjs-hash",
+      "cjs-hash",
+      'const crypto = require("node:crypto");\nconst EventEmitter = require("events");\nexports.hash = (text) => crypto.createHash("sha256").update(text).digest("hex").slice(0, 8);\nexports.emits = () => typeof new EventEmitter().on === "function";\n',
+    );
+    // A module that imports process itself, beside the definition's banner.
+    await write(
+      "server/env.ts",
+      'import process from "node:process";\nexport const mode = process.env.HOT_UPDATER_BUNDLE_SPEC ?? "unset";\n',
+    );
+    await write(
+      "entry.ts",
+      'import { hash, emits } from "cjs-hash";\nimport { mode } from "./server/env";\nexport const result = { hash: hash("x"), emits: emits(), mode };\n',
+    );
+    const outfile = path.join(root, "out/index.mjs");
+
+    await bundleServer({
+      input: path.join(root, "entry.ts"),
+      definition: path.join(root, "entry.ts"),
+      projectRoot: root,
+      outfile,
+      format: "esm",
+      platform: "neutral",
+      banner: "globalThis.process ??= { env: {} };",
+      target: "a test server",
+    });
+
+    const { result } = (await import(pathToFileURL(outfile).href)) as {
+      result: unknown;
+    };
+    expect(result).toEqual({ hash: "2d711642", emits: true, mode: "unset" });
   });
 });
