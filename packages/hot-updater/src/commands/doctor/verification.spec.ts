@@ -271,7 +271,13 @@ describe("doctor infrastructure completion", () => {
         return Response.json({ error: "Unauthorized" }, { status: 401 });
       return Response.json(
         { error: "Not found" },
-        { status: 404, headers: { "cache-control": "private, no-store" } },
+        {
+          status: 404,
+          headers: {
+            "cache-control": "public, max-age=0, s-maxage=5",
+            "x-hot-updater-catalog": "none",
+          },
+        },
       );
     });
     return {

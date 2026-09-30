@@ -82,9 +82,9 @@ credential privately from the variable the scaffold's `clientAuth` names
 `infrastructure` reruns scaffold checks, rejects unresolved deployment records,
 and verifies `/version` against the scaffold target. It checks the same Release
 Catalog URL without a credential (401) and with the saved one (valid catalog
-200 or the exact private, non-cacheable empty-catalog 404); when the scaffolded
-server's client routes are public, it checks only that the catalog answers
-without a credential. An arbitrary 404 is a failure.
+200 or the empty-catalog 404 marked `x-hot-updater-catalog: none`); when the
+scaffolded server's client routes are public, it checks only that the catalog
+answers without a credential. A 404 without that mark is a failure.
 An agent-written `verifiedSteps` entry never replaces a live check.
 
 Both scopes return `details.verification` with `schemaVersion: 1`, `scope`,
