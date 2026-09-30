@@ -58,6 +58,13 @@ it. Each guide builds one and tests it:
 | Signing adapter  | `BundleSigningAdapter` from `@hot-updater/plugin-core`: `getPublicKey` and `sign` | [Remote Signing](/docs/guides/signing/remote) describes the service protocol |
 | Build adapter    | A function from `{ cwd }` to a `BuildAdapter` from `@hot-updater/plugin-core`     | The [official build adapters](https://github.com/gronxb/hot-updater/tree/next/plugins) are the reference |
 
+The server and the SDK re-export these authoring APIs from the layers below
+them: `@hot-updater/plugin-core/server-plugin` holds `definePlugin`, the schema
+DSL, the typed database handle, and the errors, and `@hot-updater/core` holds
+the client plugin contract. Hot Updater's own plugin packages import the layers,
+because the server and the SDK depend on those packages. Your plugin imports the
+entries in the table, which name the same functions and classes.
+
 Then package it for npm with Hot Updater as a peer dependency; see
 [Test and publish](/docs/plugins/publish).
 
@@ -181,12 +188,25 @@ records Insights reports, and `apiKeys()` protects client routes. Managed
 providers run both. To write one for a custom server, see
 [Create a server plugin](/docs/custom/server-plugins).
 
+Hot Updater's own plugins are packages built the same way:
+`@hot-updater/plugin-insights` and `@hot-updater/plugin-api-keys`.
+`@hot-updater/server/plugins/insights` and `@hot-updater/server/plugins/api-keys`
+re-export them, so a server installs nothing more. Each package has an entry
+per side, the layout a plugin you publish follows; see
+[Ship both sides from one package](/docs/plugins/publish#ship-both-sides-from-one-package).
+
+The Console has built-in screens for these official features, and shows each
+one only when the server runs its plugin. It has no UI extension API: a plugin
+extends the server, the CLI, and the app, and its data reaches people through
+its API, its routes, and its commands.
+
 ## Client plugins
 
 Client plugins run in the React Native app. They observe launches, update
 checks, downloads, and update failures, and can send requests to the update
 server with the app's base URL and headers. Pass them to `plugins` in
-`HotUpdater.init` or `HotUpdater.wrap`. The built-in
+`HotUpdater.init` or `HotUpdater.wrap`. The
 [Insights plugin](/docs/react-native-api/insights) reports to the server's
-`insights()` plugin. To write one, see
+`insights()` plugin; it is `@hot-updater/plugin-insights/client`, which
+`@hot-updater/react-native/plugins/insights` re-exports. To write one, see
 [Create a client plugin](/docs/react-native-api/client-plugins).

@@ -13,7 +13,9 @@ and while operating a rollout.
 
 Reporting has two parts: the `insights()` server plugin stores reports, and the
 [Insights client plugin](/docs/react-native-api/insights) sends them from the
-app.
+app. Both come from `@hot-updater/plugin-insights`, which `@hot-updater/server`
+and `@hot-updater/react-native` depend on and re-export, so there is nothing
+extra to install.
 
 ## Turn on the server plugin
 

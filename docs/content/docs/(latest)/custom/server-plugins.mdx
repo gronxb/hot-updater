@@ -982,5 +982,8 @@ The memory database has no schema fence and needs no migration.
 Export the factory, such as `feedback()`, and its API types from your package,
 and list `@hot-updater/server` in `peerDependencies`: the plugin then catches
 the error classes the project's engine throws. Give the plugin an `id` and
-route paths that name your package, since both must be unique on a server. See
-[Test and publish a plugin](/docs/plugins/publish).
+route paths that name your package, since both must be unique on a server. A
+plugin with a client side ships it from the same package, from a `./client`
+entry beside `./server`, as `@hot-updater/plugin-insights` does; see
+[Ship both sides from one package](/docs/plugins/publish#ship-both-sides-from-one-package)
+and [Test and publish a plugin](/docs/plugins/publish).

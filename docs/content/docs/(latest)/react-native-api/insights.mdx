@@ -7,7 +7,8 @@ icon: Activity
 ## Add the plugin
 
 `insights()` is a [client plugin](/docs/react-native-api/client-plugins) that
-ships with `@hot-updater/react-native`. Create it once, at module scope, and
+`@hot-updater/react-native` re-exports from `@hot-updater/plugin-insights`, so
+there is nothing extra to install. Create it once, at module scope, and
 pass it to `plugins` in [`HotUpdater.init`](/docs/react-native-api/init) or
 [`HotUpdater.wrap`](/docs/react-native-api/wrap):
 

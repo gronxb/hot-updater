@@ -462,6 +462,14 @@ The options set up the server and the device:
 rejects two with one id, as `init` does. Before you publish, also run the
 plugin in a release build of an app against a server with its routes.
 
+## Publish the plugin
+
+Export the factory, such as `feedback()`, from your package and list
+`@hot-updater/react-native` in `peerDependencies`. A plugin that pairs with a
+server plugin ships from the same package, from a `./client` entry beside
+`./server`, as `@hot-updater/plugin-insights` does; see
+[Ship both sides from one package](/docs/plugins/publish#ship-both-sides-from-one-package).
+
 ## Related
 
 - [Insights Plugin](/docs/react-native-api/insights)
