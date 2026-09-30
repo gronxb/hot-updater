@@ -6,9 +6,13 @@ import { AppUsage } from "@/components/features/insights/AppUsage";
 import { InsightsControls } from "@/components/features/insights/InsightsControls";
 import { InsightsOverview } from "@/components/features/insights/InsightsOverview";
 import { InsightsPageHeader } from "@/components/features/insights/InsightsPageHeader";
+import { UpdateFailures } from "@/components/features/insights/UpdateFailures";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { requireConsoleFeature } from "@/lib/console-features-api";
-import { useInsightsRetention } from "@/lib/insights-api";
+import {
+  useInsightsRetention,
+  useUpdateFailuresQuery,
+} from "@/lib/insights-api";
 import { getRecoveryReportRpc } from "@/lib/insights-recovery-rpc";
 import { validateInsightsSearch } from "@/lib/insights-search";
 import type { AppUsageScope, UsageWindow } from "@/lib/insights-usage";
@@ -53,6 +57,7 @@ function InsightsPage() {
     queryFn: () => getRecoveryReportRpc({ data: bundleInput }),
     staleTime: 30_000,
   });
+  const failuresQuery = useUpdateFailuresQuery(bundleInput);
   return (
     <div className="flex h-svh min-h-0 flex-col">
       <InsightsPageHeader view="overview" overviewSearch={search} />
@@ -108,6 +113,10 @@ function InsightsPage() {
               })
             }
             onRefresh={() => void bundleQuery.refetch()}
+          />
+          <UpdateFailures
+            query={failuresQuery}
+            onRefresh={() => void failuresQuery.refetch()}
           />
         </div>
       </div>

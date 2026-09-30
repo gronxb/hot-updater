@@ -244,7 +244,7 @@ function InstallationsPage() {
           ) : null}
           {!hasLookup ? (
             <EventHistoryCard
-              description={`Downloads, applies, and recoveries, newest first, kept for ${formatDays(retention.rawDays)}. A launch without an update counts in App usage and in its installation's latest report.`}
+              description={`Downloads, applies, recoveries, and update failures, newest first, kept for ${formatDays(retention.rawDays)}. A launch without an update counts in App usage and in its installation's latest report.`}
               error={events.error}
               eventsLocation={{
                 eventsBefore,

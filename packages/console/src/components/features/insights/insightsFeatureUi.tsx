@@ -4,10 +4,15 @@ import { ChartNoAxesCombined } from "lucide-react";
 import type { ConsoleFeatureUiRegistry } from "../FeatureSlots";
 import {
   BundleInsightsSummary,
+  ReleaseFailuresSection,
   releaseActivityColumn,
 } from "./ReleaseActivity";
 
-/** What the Insights features add: their navigation item, and release activity on the Bundles page and in the release editor. */
+/**
+ * What the Insights features add: their navigation item, release activity on
+ * the Bundles page and in the release editor, and a release's download
+ * failures in the release editor, which a self-hosted server serves too.
+ */
 export const insightsFeatureUi = {
   insights: {
     navigation: {
@@ -21,6 +26,7 @@ export const insightsFeatureUi = {
           <Link to="/installations" onClick={onClick} />
         ),
     },
+    releaseSection: ({ release }) => <ReleaseFailuresSection input={release} />,
   },
   insightsAnalytics: {
     releaseColumn: releaseActivityColumn,

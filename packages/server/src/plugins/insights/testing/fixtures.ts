@@ -13,7 +13,6 @@ export const createBundleEventRowFixture = (
   install_id: `install-${suffix}`,
   user_id: null,
   metadata: {
-    username: null,
     cohort: "0",
     update_strategy: "appVersion",
     fingerprint_hash: null,

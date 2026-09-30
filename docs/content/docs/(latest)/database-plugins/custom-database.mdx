@@ -485,7 +485,8 @@ export const hotUpdater = createHotUpdater({
 
 Migrations write settings rows to `private_hot_updater_settings` last, after
 every table exists: `schema.engine` (`"1"`) and one row per module,
-`schema.core`, `schema.insights` and `schema.apiKeys` (`"1.0.0"`). Before a
+`schema.core` and `schema.apiKeys` (`"1.0.0"`), and `schema.insights`
+(`"1.2.0"`). Before a
 process's first read or write, the schema fence reads them in one batch. A
 missing or different row throws `HotUpdaterSchemaMigrationRequiredError`,
 which names the setting, and the server's handlers answer 503. A read that

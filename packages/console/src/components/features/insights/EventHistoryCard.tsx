@@ -89,12 +89,12 @@ function EventIdentity({
             eventsBack: previous.insightsPagination?.eventsBack,
           },
         })}
-        aria-label={`View history for ${event.userId ?? event.username ?? "anonymous installation"} (${event.installId})`}
+        aria-label={`View history for ${event.userId ?? "anonymous installation"} (${event.installId})`}
       >
         <span
           className={touch ? "min-w-0 text-left wrap-anywhere" : "truncate"}
         >
-          {event.userId ?? event.username ?? "Anonymous installation"}
+          {event.userId ?? "Anonymous installation"}
         </span>
         <ArrowUpRight aria-hidden="true" data-icon="inline-end" />
       </Link>
@@ -260,7 +260,7 @@ export function EventHistoryCard({
                             />
                           </TableCell>
                           <TableCell>
-                            <EventTypeDetails type={event.type} />
+                            <EventTypeDetails event={event} />
                           </TableCell>
                           <TableCell>
                             <EventIdentity

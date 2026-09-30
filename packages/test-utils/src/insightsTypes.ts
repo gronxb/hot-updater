@@ -17,11 +17,46 @@ export type BundleEventRow = {
   readonly app_version: string;
   readonly channel: string;
   readonly metadata: DatabaseJsonObject & {
-    readonly username: string | null;
     readonly cohort: string;
     readonly update_strategy: "fingerprint" | "appVersion" | null;
     readonly fingerprint_hash: string | null;
     readonly sdk_version: string | null;
+    /** `UPDATE_FAILED`: where and why the update failed, and what else the client knew. */
+    readonly failure?: DatabaseJsonObject & {
+      readonly stage: "check" | "download" | "install" | "unknown";
+      readonly reason:
+        | "network"
+        | "http"
+        | "invalid_response"
+        | "hash_mismatch"
+        | "signature"
+        | "patch"
+        | "extract"
+        | "storage"
+        | "unknown";
+      readonly resource?:
+        | "catalog"
+        | "artifact"
+        | "manifest"
+        | "file"
+        | "patch"
+        | "archive"
+        | "unknown";
+      readonly http_status?: number;
+      readonly transport?:
+        | "timeout"
+        | "dns"
+        | "tls"
+        | "connection"
+        | "offline"
+        | "cancelled"
+        | "unknown";
+      readonly origin_code?: string;
+      readonly previous_process_exit?: string;
+    };
+    readonly delivery?: "patch" | "manifest" | "archive" | "unknown";
+    readonly patch_fallback?: boolean;
+    readonly previous_process_exit?: string;
   };
   readonly received_at_ms: number;
 } & (
@@ -30,6 +65,7 @@ export type BundleEventRow = {
       readonly type: "UPDATE_APPLIED" | "RECOVERED";
       readonly from_bundle_id: string;
     }
+  | { readonly type: "UPDATE_FAILED"; readonly from_bundle_id: string }
   | { readonly type: "UNCHANGED"; readonly from_bundle_id: null }
 );
 
@@ -51,7 +87,7 @@ export type InsightsBundleEventFilter = InsightsScope &
   (
     | { readonly type: "RECOVERED"; readonly fromBundleId: string }
     | {
-        readonly type: "UPDATE_DOWNLOADED" | "UPDATE_APPLIED";
+        readonly type: "UPDATE_DOWNLOADED" | "UPDATE_APPLIED" | "UPDATE_FAILED";
         readonly toBundleId: string;
       }
   );

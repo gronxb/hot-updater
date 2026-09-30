@@ -1,6 +1,7 @@
 import { createUUIDv7, isUUIDv7 } from "@hot-updater/plugin-core";
 
 import type {
+  BundleEventFailureInput,
   CreateBundleEventRequest,
   CreateBundleEventRequestBase,
 } from "./domain";
@@ -70,6 +71,81 @@ function readEventId(
   return value;
 }
 
+/** One value of an open set: any other value reads as `unknown`. */
+const oneOf = <const T extends string>(
+  values: readonly T[],
+  value: unknown,
+): T | "unknown" => (values.includes(value as T) ? (value as T) : "unknown");
+
+const STAGES = ["check", "download", "install"] as const;
+const REASONS = [
+  "network",
+  "http",
+  "invalid_response",
+  "hash_mismatch",
+  "signature",
+  "patch",
+  "extract",
+  "storage",
+] as const;
+const RESOURCES = [
+  "catalog",
+  "artifact",
+  "manifest",
+  "file",
+  "patch",
+  "archive",
+] as const;
+const TRANSPORTS = [
+  "timeout",
+  "dns",
+  "tls",
+  "connection",
+  "offline",
+  "cancelled",
+] as const;
+const DELIVERIES = ["patch", "manifest", "archive"] as const;
+
+/** A storage error code or an Android exit reason: letters, digits, and `._-`. */
+const CODE = /^[A-Za-z0-9._-]{1,64}$/;
+const readCode = (value: unknown): string | undefined =>
+  typeof value === "string" && CODE.test(value) ? value : undefined;
+
+const readMetadata = (
+  payload: Readonly<Record<string, unknown>>,
+): Readonly<Record<string, unknown>> =>
+  isRecord(payload.metadata) ? payload.metadata : {};
+
+/**
+ * What an UPDATE_FAILED report says failed. It never refuses the report: an
+ * unknown value of a set reads as `unknown`, a missing or malformed failure
+ * as an unknown stage and reason, and a malformed optional field is left out,
+ * as is a null one.
+ */
+function readFailure(value: unknown): BundleEventFailureInput {
+  const failure = isRecord(value) ? value : {};
+  const httpStatus = failure.httpStatus;
+  const originCode = readCode(failure.originCode);
+  const previousProcessExit = readCode(failure.previousProcessExit);
+  return {
+    stage: oneOf(STAGES, failure.stage),
+    reason: oneOf(REASONS, failure.reason),
+    ...(failure.resource == null
+      ? {}
+      : { resource: oneOf(RESOURCES, failure.resource) }),
+    ...(Number.isSafeInteger(httpStatus) &&
+    (httpStatus as number) >= 100 &&
+    (httpStatus as number) <= 599
+      ? { httpStatus: httpStatus as number }
+      : {}),
+    ...(failure.transport == null
+      ? {}
+      : { transport: oneOf(TRANSPORTS, failure.transport) }),
+    ...(originCode === undefined ? {} : { originCode }),
+    ...(previousProcessExit === undefined ? {} : { previousProcessExit }),
+  };
+}
+
 async function readBoundedText(request: Request): Promise<string> {
   const contentLength = request.headers.get("content-length");
   const declaredByteLength = Number(contentLength);
@@ -128,9 +204,6 @@ function requireEvent(payload: unknown): CreateBundleEventRequest {
     ...(payload.userId === undefined
       ? {}
       : { userId: requireIdentityField(payload, "userId") }),
-    ...(payload.username === undefined
-      ? {}
-      : { username: requireStringField(payload, "username") }),
     platform,
     appVersion: requireStringField(payload, "appVersion"),
     channel: requireStringField(payload, "channel"),
@@ -144,23 +217,51 @@ function requireEvent(payload: unknown): CreateBundleEventRequest {
     toReleaseId: requireNullableStringField(payload, "toReleaseId"),
   };
   const type = requireStringField(payload, "type");
+  const movement = () => {
+    const updateStrategy = requireStringField(payload, "updateStrategy");
+    if (updateStrategy !== "fingerprint" && updateStrategy !== "appVersion") {
+      throw new InsightsBadRequestError("Invalid event field: updateStrategy");
+    }
+    return {
+      ...base,
+      fromBundleId: requireStringField(payload, "fromBundleId"),
+      updateStrategy,
+    } as const;
+  };
+  const metadata = readMetadata(payload);
   switch (type) {
-    case "UPDATE_DOWNLOADED":
-    case "UPDATE_APPLIED":
-    case "RECOVERED": {
-      const updateStrategy = requireStringField(payload, "updateStrategy");
-      if (updateStrategy !== "fingerprint" && updateStrategy !== "appVersion") {
-        throw new InsightsBadRequestError(
-          "Invalid event field: updateStrategy",
-        );
-      }
+    case "UPDATE_DOWNLOADED": {
+      const delivery = metadata.delivery;
+      const read = {
+        ...(delivery == null ? {} : { delivery: oneOf(DELIVERIES, delivery) }),
+        ...(metadata.patchFallback === true
+          ? { patchFallback: true as const }
+          : {}),
+      };
       return {
-        ...base,
+        ...movement(),
         type,
-        fromBundleId: requireStringField(payload, "fromBundleId"),
-        updateStrategy,
+        ...(Object.keys(read).length === 0 ? {} : { metadata: read }),
       };
     }
+    case "UPDATE_APPLIED":
+      return { ...movement(), type };
+    case "RECOVERED": {
+      const previousProcessExit = readCode(metadata.previousProcessExit);
+      return {
+        ...movement(),
+        type,
+        ...(previousProcessExit === undefined
+          ? {}
+          : { metadata: { previousProcessExit } }),
+      };
+    }
+    case "UPDATE_FAILED":
+      return {
+        ...movement(),
+        type,
+        metadata: { failure: readFailure(metadata.failure) },
+      };
     case "UNCHANGED":
       if (payload.fromBundleId !== null || payload.updateStrategy !== null) {
         throw new InsightsBadRequestError("Invalid unchanged event shape");
@@ -199,20 +300,82 @@ export function createBundleEventRow(
     to_bundle_id: input.toBundleId,
     to_release_id: input.toReleaseId,
     user_id: input.userId ?? null,
-    metadata: {
-      cohort: input.cohort,
-      fingerprint_hash: input.fingerprintHash,
-      sdk_version: input.sdkVersion ?? null,
-      username: input.username ?? null,
-      update_strategy: input.updateStrategy,
-    },
+  };
+  const metadata = {
+    cohort: input.cohort,
+    fingerprint_hash: input.fingerprintHash,
+    sdk_version: input.sdkVersion ?? null,
+    update_strategy: input.updateStrategy,
   };
   switch (input.type) {
-    case "UPDATE_DOWNLOADED":
+    case "UPDATE_DOWNLOADED": {
+      const { delivery, patchFallback } = input.metadata ?? {};
+      return {
+        ...base,
+        from_bundle_id: input.fromBundleId,
+        type: input.type,
+        metadata: {
+          ...metadata,
+          ...(delivery === undefined ? {} : { delivery }),
+          ...(patchFallback ? { patch_fallback: true } : {}),
+        },
+      };
+    }
     case "UPDATE_APPLIED":
-    case "RECOVERED":
-      return { ...base, from_bundle_id: input.fromBundleId, type: input.type };
+      return {
+        ...base,
+        from_bundle_id: input.fromBundleId,
+        type: input.type,
+        metadata,
+      };
+    case "RECOVERED": {
+      const exit = input.metadata?.previousProcessExit;
+      return {
+        ...base,
+        from_bundle_id: input.fromBundleId,
+        type: input.type,
+        metadata: {
+          ...metadata,
+          ...(exit === undefined ? {} : { previous_process_exit: exit }),
+        },
+      };
+    }
+    case "UPDATE_FAILED": {
+      const { failure } = input.metadata;
+      return {
+        ...base,
+        from_bundle_id: input.fromBundleId,
+        type: input.type,
+        metadata: {
+          ...metadata,
+          failure: {
+            stage: failure.stage,
+            reason: failure.reason,
+            ...(failure.resource === undefined
+              ? {}
+              : { resource: failure.resource }),
+            ...(failure.httpStatus === undefined
+              ? {}
+              : { http_status: failure.httpStatus }),
+            ...(failure.transport === undefined
+              ? {}
+              : { transport: failure.transport }),
+            ...(failure.originCode === undefined
+              ? {}
+              : { origin_code: failure.originCode }),
+            ...(failure.previousProcessExit === undefined
+              ? {}
+              : { previous_process_exit: failure.previousProcessExit }),
+          },
+        },
+      };
+    }
     case "UNCHANGED":
-      return { ...base, from_bundle_id: null, type: input.type };
+      return {
+        ...base,
+        from_bundle_id: null,
+        type: input.type,
+        metadata,
+      };
   }
 }

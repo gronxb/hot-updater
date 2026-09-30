@@ -10,7 +10,7 @@ import type {
 } from "./domain";
 import { InsightsBadRequestError } from "./errors";
 import { createBundleEventRow } from "./eventInput";
-import type { BundleEventRow } from "./eventRow";
+import type { BundleEventFailure, BundleEventRow } from "./eventRow";
 import type {
   InsightsBundleEventFilter,
   InsightsEventCursor,
@@ -169,6 +169,8 @@ const bundleFilter = (
       return { ...scope, type: "UPDATE_APPLIED", toBundleId: bundleId };
     case "recovered":
       return { ...scope, type: "RECOVERED", fromBundleId: bundleId };
+    case "failed":
+      return { ...scope, type: "UPDATE_FAILED", toBundleId: bundleId };
     default:
       throw new InsightsBadRequestError("Invalid Insights outcome.");
   }
@@ -316,6 +318,41 @@ const assertEventRows = (
   }
 };
 
+/** An `UPDATE_FAILED` row's failure, as the event lists show it. */
+const toFailure = (
+  failure: BundleEventFailure,
+): NonNullable<EventHistoryRow["failure"]> => ({
+  stage: failure.stage,
+  reason: failure.reason,
+  ...(failure.resource === undefined ? {} : { resource: failure.resource }),
+  ...(failure.http_status === undefined
+    ? {}
+    : { httpStatus: failure.http_status }),
+  ...(failure.transport === undefined ? {} : { transport: failure.transport }),
+  ...(failure.origin_code === undefined
+    ? {}
+    : { originCode: failure.origin_code }),
+  ...(failure.previous_process_exit === undefined
+    ? {}
+    : { previousProcessExit: failure.previous_process_exit }),
+});
+
+/** What a row's metadata adds for its type: a failure, a delivery, an exit reason. */
+const eventDetails = ({ type, metadata }: BundleEventRow) => ({
+  ...(type === "UPDATE_FAILED" && metadata.failure !== undefined
+    ? { failure: toFailure(metadata.failure) }
+    : {}),
+  ...(type === "UPDATE_DOWNLOADED" && metadata.delivery !== undefined
+    ? { delivery: metadata.delivery }
+    : {}),
+  ...(type === "UPDATE_DOWNLOADED" && metadata.patch_fallback === true
+    ? { patchFallback: true as const }
+    : {}),
+  ...(type === "RECOVERED" && metadata.previous_process_exit !== undefined
+    ? { previousProcessExit: metadata.previous_process_exit }
+    : {}),
+});
+
 const toEventHistoryRow = (row: BundleEventRow): EventHistoryRow => ({
   appVersion: row.app_version,
   channel: row.channel,
@@ -328,7 +365,7 @@ const toEventHistoryRow = (row: BundleEventRow): EventHistoryRow => ({
   toBundleId: row.to_bundle_id,
   type: row.type,
   userId: row.user_id,
-  username: row.metadata.username,
+  ...eventDetails(row),
 });
 
 const toInstallationRow = (row: BundleEventRow): InstallationRow => ({
@@ -344,7 +381,6 @@ const toInstallationRow = (row: BundleEventRow): InstallationRow => ({
   platform: row.platform,
   receivedAtMs: row.received_at_ms,
   userId: row.user_id,
-  username: row.metadata.username,
 });
 
 interface EventBounds {
@@ -623,6 +659,7 @@ export const createInsightsProvider = (
         downloadedReports,
         appliedReports,
         recoveredReports,
+        failedReports,
       ] = await Promise.all([
         reporting,
         measure(
@@ -646,6 +683,7 @@ export const createInsightsProvider = (
         countOutcome("downloaded"),
         countOutcome("applied"),
         countOutcome("recovered"),
+        countOutcome("failed"),
       ]);
       return {
         ...scope,
@@ -659,6 +697,7 @@ export const createInsightsProvider = (
           downloadedReports,
           appliedReports,
           recoveredReports,
+          failedReports,
         },
       };
     },

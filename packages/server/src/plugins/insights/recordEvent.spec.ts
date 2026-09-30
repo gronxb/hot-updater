@@ -22,7 +22,6 @@ import {
   type InsightsIdentityParts,
   type InsightsSchema,
 } from "./index";
-import { bundlePairKey, COUNTED_BY_DAY, PAIR_FIELD } from "./recordEvent";
 import { DAILY_EVENTS } from "./schema";
 
 const HOUR = 3_600_000;
@@ -51,7 +50,6 @@ const event = (
     app_version: "1.0.0",
     channel: "production",
     metadata: {
-      username: null,
       cohort: "1",
       update_strategy: "appVersion",
       fingerprint_hash: null,
@@ -70,6 +68,23 @@ const unchanged = (
     from_release_id: null,
     from_bundle_id: null,
     metadata: { ...event(n).metadata, update_strategy: null },
+    ...overrides,
+  } as Partial<BundleEventRow>);
+
+/** An update failure from install-2, which runs bundle-2 and targets bundle-3. */
+const failure = (
+  n: number,
+  failed: Record<string, unknown>,
+  overrides: Partial<BundleEventRow> = {},
+): BundleEventRow =>
+  event(n, {
+    type: "UPDATE_FAILED",
+    install_id: "install-2",
+    from_release_id: "release-2",
+    from_bundle_id: "bundle-2",
+    to_release_id: "release-3",
+    to_bundle_id: "bundle-3",
+    metadata: { ...event(n).metadata, failure: failed },
     ...overrides,
   } as Partial<BundleEventRow>);
 
@@ -184,6 +199,30 @@ describe.each(backends)("insights recordEvent on %s", (_name, adapter) => {
           limit: 100,
         })
       ).rows;
+    /** Update failures and recovery exits by what failed, which the breakdown reads. */
+    const failures = async () =>
+      (
+        await db.findAggregates("insights_failures", {
+          index: "byScope",
+          where: { platform: "ios", channel: "production" },
+          limit: 100,
+        })
+      ).rows;
+    const failedUsers = async (
+      key: string,
+      bucket: number,
+      period: "hour" | "day" | "lifetime" = "hour",
+    ) =>
+      countDistinct(
+        (
+          await db.findAggregates(
+            period === "lifetime"
+              ? "insights_sketches_lifetime"
+              : sketches[period],
+            at(key, bucket),
+          )
+        ).rows[0]?.failed_users,
+      );
     return {
       ...harness,
       db,
@@ -193,6 +232,8 @@ describe.each(backends)("insights recordEvent on %s", (_name, adapter) => {
       byBundle,
       outcomes,
       everyEvent,
+      failures,
+      failedUsers,
     };
   };
 
@@ -218,7 +259,7 @@ describe.each(backends)("insights recordEvent on %s", (_name, adapter) => {
     });
     await expect(
       db.findOne("bundle_event_heads", { install_id: "install-1" }),
-    ).resolves.toEqual({ ...event(1), current_release_id: COUNTED_BY_DAY });
+    ).resolves.toEqual(event(1));
     // Gauges count the head in the UTC day of its event.
     await expect(distribution()).resolves.toEqual([
       {
@@ -372,7 +413,6 @@ describe.each(backends)("insights recordEvent on %s", (_name, adapter) => {
       id: uuid(2),
       user_id: null,
       type: "UPDATE_DOWNLOADED",
-      current_release_id: COUNTED_BY_DAY,
     });
     // A download leaves the installation on release-2, in the same UTC day.
     await expect(distribution()).resolves.toMatchObject([
@@ -427,7 +467,7 @@ describe.each(backends)("insights recordEvent on %s", (_name, adapter) => {
     );
     await expect(
       db.findOne("bundle_event_heads", { install_id: "install-1" }),
-    ).resolves.toEqual({ ...unchanged(1), current_release_id: COUNTED_BY_DAY });
+    ).resolves.toEqual(unchanged(1));
     await expect(outcomes("UNCHANGED", "to:bundle-2")).resolves.toEqual([]);
     await expect(everyEvent()).resolves.toEqual([]);
     await expect(
@@ -527,75 +567,244 @@ describe.each(backends)("insights recordEvent on %s", (_name, adapter) => {
     await expect(launches(day(T + DAY))).resolves.toBe(1);
   });
 
-  it("takes a head recorded while gauges counted hours out of its hour rows", async () => {
-    const { api, db, distribution, byBundle } = await setup();
-    // As an earlier release recorded it: the head names its current release,
-    // and its gauges count it in the hour of its event.
-    await db.transaction(async (tx) => {
-      tx.create("bundle_event_heads", {
-        ...event(1),
-        current_release_id: "release-2",
-      });
-      const shardBy = "install-1";
-      tx.aggregate(
-        "insights_distribution",
-        {
-          channel: "production",
-          platform: "ios",
-          app_version: "1.0.0",
-          release_id: "release-2",
-          bucket_start_ms: hour(T),
-        },
-        { latest_installations: 1 },
-        { shardBy },
-      );
-      for (const [field, bundleId] of [
-        ["from_bundle_id", "bundle-1"],
-        ["to_bundle_id", "bundle-2"],
-        [PAIR_FIELD, bundlePairKey("bundle-1", "bundle-2")],
-      ] as const) {
-        tx.aggregate(
-          "insights_latest_by_bundle",
-          {
-            platform: "ios",
-            channel: "production",
-            bundle_field: field,
-            bundle_id: bundleId,
-            type: "UPDATE_APPLIED",
-            bucket_start_ms: hour(T),
-          },
-          { installations: 1 },
-          { shardBy },
-        );
-      }
+  it("records an update failure for its target release and channel, and moves no head", async () => {
+    const {
+      api,
+      db,
+      overview,
+      sketch,
+      outcomes,
+      everyEvent,
+      failures,
+      failedUsers,
+    } = await setup();
+    await api.recordEvent(event(1, { install_id: "install-2" }));
+    const failed = {
+      stage: "download",
+      reason: "http",
+      resource: "artifact",
+      http_status: 403,
+      origin_code: "AccessDenied",
+    };
+    await api.recordEvent(failure(2, failed));
+
+    await expect(
+      db.findOne("bundle_events", { id: uuid(2) }),
+    ).resolves.toMatchObject({
+      movement_install_id: "install-2",
+      bundle_ref: ["to:bundle-3"],
     });
+    await expect(
+      db.findOne("bundle_event_heads", { install_id: "install-2" }),
+    ).resolves.toMatchObject({ id: uuid(1), type: "UPDATE_APPLIED" });
+    await expect(
+      outcomes("UPDATE_FAILED", "to:bundle-3"),
+    ).resolves.toMatchObject([{ bucket_start_ms: hour(T), events: 1 }]);
+    await expect(everyEvent()).resolves.toMatchObject([{ events: 2 }]);
+    await expect(
+      api.listEvents({
+        filter: { kind: "installationMovement", installId: "install-2" },
+        beforeReceivedAtMs: T + HOUR,
+        limit: 10,
+      }),
+    ).resolves.toMatchObject([{ id: uuid(2) }, { id: uuid(1) }]);
 
-    await api.recordEvent(unchanged(2, { received_at_ms: T + DAY }));
-
-    await expect(distribution()).resolves.toEqual([
+    const release = {
+      scopeKind: "release",
+      releaseKind: "specific",
+      releaseId: "release-3",
+    } as const;
+    // Only the lifetime row counts the failure: windowed reads sum the
+    // breakdown's hourly rows.
+    await expect(
+      overview(identity({ ...release, periodKind: "lifetime" }), 0, "lifetime"),
+    ).resolves.toMatchObject({ failed_updates: 1, launches: 0 });
+    await expect(
+      overview(identity({ ...release, periodKind: "hour" }), hour(T)),
+    ).resolves.toBeUndefined();
+    for (const [periodKind, bucket] of [
+      ["hour", hour(T)],
+      ["lifetime", 0],
+    ] as const) {
+      await expect(
+        failedUsers(
+          identity({ ...release, scopeKind: "failure", periodKind }),
+          bucket,
+          periodKind,
+        ),
+      ).resolves.toBe(1);
+    }
+    for (const [periodKind, bucket] of [
+      ["hour", hour(T)],
+      ["day", day(T)],
+    ] as const) {
+      // A failure is no launch, and no counter: the channel's launch is the
+      // apply's.
+      await expect(
+        overview(identity({ periodKind }), bucket, periodKind),
+      ).resolves.toMatchObject({ failed_updates: 0, launches: 1 });
+      await expect(
+        failedUsers(
+          identity({ scopeKind: "failure", periodKind }),
+          bucket,
+          periodKind,
+        ),
+      ).resolves.toBe(1);
+      // Nor activity: install-2 counts once, from its apply.
+      const usage = await sketch(
+        identity({ scopeKind: "usage", periodKind }),
+        bucket,
+        periodKind,
+      );
+      expect(countDistinct(usage!.activity_users)).toBe(1);
+    }
+    await expect(failures()).resolves.toEqual([
       {
-        channel: "production",
         platform: "ios",
-        app_version: "1.0.0",
-        release_id: "release-2",
-        bucket_start_ms: day(T + DAY),
-        latest_installations: 1,
+        channel: "production",
+        bucket_start_ms: hour(T),
+        release_id: "release-3",
+        stage: "download",
+        reason: "http",
+        detail: JSON.stringify(["artifact", 403, "AccessDenied", null]),
+        events: 1,
       },
     ]);
+  });
+
+  it("counts a failed check for its channel only, and in no bundle list", async () => {
+    const { api, db, overview, outcomes, everyEvent, failures, failedUsers } =
+      await setup();
+    await api.recordEvent(
+      failure(
+        1,
+        { stage: "check", reason: "invalid_response", resource: "catalog" },
+        { to_release_id: null, to_bundle_id: "bundle-2" },
+      ),
+    );
+
     await expect(
-      byBundle("to_bundle_id", "bundle-2", "UPDATE_APPLIED"),
+      db.findOne("bundle_events", { id: uuid(1) }),
+    ).resolves.toMatchObject({
+      movement_install_id: "install-2",
+      bundle_ref: [],
+    });
+    await expect(
+      db.findOne("bundle_event_heads", { install_id: "install-2" }),
+    ).resolves.toBeNull();
+    await expect(outcomes("UPDATE_FAILED", "to:bundle-2")).resolves.toEqual([]);
+    await expect(everyEvent()).resolves.toMatchObject([{ events: 1 }]);
+    const scope = { platform: "ios", channel: "production" } as const;
+    await expect(
+      api.listEvents({
+        filter: {
+          kind: "bundle",
+          ...scope,
+          type: "UPDATE_FAILED",
+          toBundleId: "bundle-2",
+        },
+        sinceMs: day(T),
+        beforeReceivedAtMs: T + HOUR,
+        limit: 10,
+      }),
     ).resolves.toEqual([]);
     await expect(
-      byBundle("to_bundle_id", "bundle-2", "UNCHANGED"),
-    ).resolves.toMatchObject([
-      { bucket_start_ms: day(T + DAY), installations: 1 },
+      api.listEvents({
+        filter: { kind: "all" },
+        sinceMs: day(T),
+        beforeReceivedAtMs: T + HOUR,
+        limit: 10,
+      }),
+    ).resolves.toMatchObject([{ id: uuid(1) }]);
+    for (const [periodKind, bucket] of [
+      ["hour", hour(T)],
+      ["day", day(T)],
+    ] as const) {
+      await expect(
+        overview(identity({ periodKind }), bucket, periodKind),
+      ).resolves.toBeUndefined();
+      await expect(
+        failedUsers(
+          identity({ scopeKind: "check", periodKind }),
+          bucket,
+          periodKind,
+        ),
+      ).resolves.toBe(1);
+      await expect(
+        failedUsers(
+          identity({ scopeKind: "failure", periodKind }),
+          bucket,
+          periodKind,
+        ),
+      ).resolves.toBe(0);
+    }
+    await expect(failures()).resolves.toMatchObject([
+      {
+        release_id: "",
+        stage: "check",
+        reason: "invalid_response",
+        detail: JSON.stringify(["catalog", null, null, null]),
+        events: 1,
+      },
     ]);
+  });
+
+  it("counts a download a patch delivered, and one that fell back from a patch", async () => {
+    const { api, overview } = await setup();
+    const download = (n: number, metadata: Record<string, unknown>) =>
+      event(n, {
+        type: "UPDATE_DOWNLOADED",
+        install_id: `install-${n}`,
+        metadata: { ...event(n).metadata, ...metadata },
+      } as Partial<BundleEventRow>);
+    await api.recordEvent(download(1, { delivery: "patch" }));
+    await api.recordEvent(
+      download(2, { delivery: "archive", patch_fallback: true }),
+    );
+    await api.recordEvent(download(3, { delivery: "manifest" }));
+
+    const counted = { downloads: 3, patch_downloads: 1, patch_fallbacks: 1 };
+    const release = {
+      scopeKind: "release",
+      releaseKind: "specific",
+      releaseId: "release-2",
+    } as const;
     await expect(
-      db.findOne("bundle_event_heads", { install_id: "install-1" }),
-    ).resolves.toMatchObject({
-      id: uuid(2),
-      current_release_id: COUNTED_BY_DAY,
-    });
+      overview(identity({ ...release, periodKind: "hour" }), hour(T)),
+    ).resolves.toMatchObject(counted);
+    await expect(
+      overview(identity({ ...release, periodKind: "lifetime" }), 0, "lifetime"),
+    ).resolves.toMatchObject(counted);
+    await expect(
+      overview(identity({ periodKind: "day" }), day(T), "day"),
+    ).resolves.toMatchObject(counted);
+  });
+
+  it("keeps a recovery's exit reason in the breakdown of the release that failed to launch", async () => {
+    const { api, failures } = await setup();
+    await api.recordEvent(
+      event(1, {
+        type: "RECOVERED",
+        metadata: { ...event(1).metadata, previous_process_exit: "CRASH" },
+      } as Partial<BundleEventRow>),
+    );
+    // A recovery without one, as on iOS, has no row.
+    await api.recordEvent(
+      event(2, { type: "RECOVERED", install_id: "install-2" }),
+    );
+
+    await expect(failures()).resolves.toEqual([
+      {
+        platform: "ios",
+        channel: "production",
+        bucket_start_ms: hour(T),
+        release_id: "release-1",
+        stage: "launch",
+        reason: "CRASH",
+        detail: "",
+        events: 1,
+      },
+    ]);
   });
 
   it("reads the event and head in one round, gauge and sketch rows in a second, and writes once", async () => {

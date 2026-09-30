@@ -1,5 +1,6 @@
 import { DatabasePluginInputError } from "@hot-updater/plugin-core";
 import {
+  compareUtf8,
   countDistinct,
   mergeDistinct,
 } from "@hot-updater/plugin-core/internal";
@@ -421,12 +422,16 @@ interface CounterRow {
   readonly downloads: number;
   readonly launches: number;
   readonly failed_launches: number;
+  readonly failed_updates: number;
+  readonly patch_downloads: number;
+  readonly patch_fallbacks: number;
 }
 
 interface SketchRow {
   readonly bucket_start_ms: number;
   readonly launch_users: string | null;
   readonly activity_users: string | null;
+  readonly failed_users: string | null;
 }
 
 /** The hourly and daily aggregates of counters, and of sketches. */
@@ -757,5 +762,276 @@ export const getAppUsage = async (
       ({ installations }) => installations > 0,
     ),
     measuredAtMs: at,
+  };
+};
+
+export interface InsightsUpdateFailuresInput {
+  readonly platform: "ios" | "android";
+  readonly channel: string;
+  /** A release's failures; without it, the channel's, which need a time range. */
+  readonly releaseId?: string;
+  /** Without it, a release's failures since its first report. */
+  readonly timeRange?: InsightsTimeRange;
+}
+
+/** Update failures of one stage and reason, and what else their clients knew. */
+export interface InsightsFailureBreakdown {
+  readonly stage: string;
+  readonly reason: string;
+  readonly events: number;
+  /** By resource, HTTP status, origin code, and transport, most first. */
+  readonly details: readonly {
+    readonly resource: string | null;
+    readonly httpStatus: number | null;
+    readonly originCode: string | null;
+    readonly transport: string | null;
+    readonly events: number;
+  }[];
+}
+
+export interface InsightsUpdateFailures {
+  readonly coverage: InsightsCoverage;
+  readonly measuredAtMs: number;
+  /** Update failures other than failed checks: each client reports one at most once a UTC day. */
+  readonly failedUpdates: number;
+  /** Installations with such a failure, estimated. */
+  readonly failedInstallations: number;
+  /** Download reports: each installation reports a bundle's download once. */
+  readonly downloads: number;
+  /** Downloads a patch delivered, and those that fell back from a patch to files or the archive. */
+  readonly patchDownloads: number;
+  readonly patchFallbacks: number;
+  /** A channel's failed update checks, installations with one, and its active installations, estimated. */
+  readonly checks?: {
+    readonly failures: number;
+    readonly failedInstallations: number;
+    readonly activeInstallations: number;
+  };
+  /** Over a time range: failures by stage and reason, most first. */
+  readonly breakdown?: readonly InsightsFailureBreakdown[];
+  /**
+   * Over a time range: failed launches, and the recoveries whose crashed
+   * process exited for a reason Android 11+ reported, by reason, most first.
+   */
+  readonly recoveries?: {
+    readonly failedLaunches: number;
+    readonly byExitReason: readonly {
+      readonly exitReason: string;
+      readonly events: number;
+    }[];
+  };
+}
+
+/** The longest period the failures read covers: the console's longest, 30 days. */
+export const UPDATE_FAILURES_RANGE_MS = 30 * DAY_MS;
+
+const isRange = (range: InsightsTimeRange | undefined) =>
+  range === undefined ||
+  (Number.isSafeInteger(range.start) &&
+    Number.isSafeInteger(range.end) &&
+    range.start >= 0 &&
+    range.start < range.end &&
+    range.end - range.start <= UPDATE_FAILURES_RANGE_MS);
+
+const isText = (value: unknown, maxLength: number) =>
+  typeof value === "string" && value.length > 0 && value.length <= maxLength;
+
+const failed = (...rows: readonly (readonly SketchRow[])[]) =>
+  countDistinct(mergeDistinct(rows.flat().map((row) => row.failed_users)));
+
+/** Entries of a count map, most first, then in key order. */
+const mostFirst = <T>(counts: Map<string, { value: T; events: number }>) =>
+  [...counts]
+    .sort(
+      ([leftKey, left], [rightKey, right]) =>
+        right.events - left.events || compareUtf8(leftKey, rightKey),
+    )
+    .map(([, entry]) => entry);
+
+/** Failure rows as their breakdown, and recovery rows as exit reasons. */
+const breakdownOf = (
+  rows: readonly {
+    readonly stage: string;
+    readonly reason: string;
+    readonly detail: string;
+    readonly events: number;
+  }[],
+) => {
+  const failures = new Map<
+    string,
+    {
+      value: { stage: string; reason: string };
+      events: number;
+      details: Map<string, { value: string; events: number }>;
+    }
+  >();
+  const exits = new Map<string, { value: string; events: number }>();
+  for (const { stage, reason, detail, events } of rows) {
+    if (events <= 0) continue;
+    if (stage === "launch") {
+      const exit = exits.get(reason) ?? { value: reason, events: 0 };
+      exit.events += events;
+      exits.set(reason, exit);
+      continue;
+    }
+    const key = JSON.stringify([stage, reason]);
+    const entry = failures.get(key) ?? {
+      value: { stage, reason },
+      events: 0,
+      details: new Map(),
+    };
+    entry.events += events;
+    const known = entry.details.get(detail) ?? { value: detail, events: 0 };
+    known.events += events;
+    entry.details.set(detail, known);
+    failures.set(key, entry);
+  }
+  return {
+    breakdown: mostFirst(failures).map(({ value, events }) => {
+      const { details } = failures.get(
+        JSON.stringify([value.stage, value.reason]),
+      )!;
+      return {
+        ...value,
+        events,
+        details: mostFirst(details).map(({ value: detail, events }) => {
+          const [resource, httpStatus, originCode, transport] = JSON.parse(
+            detail,
+          ) as [string | null, number | null, string | null, string | null];
+          return { resource, httpStatus, originCode, transport, events };
+        }),
+      };
+    }),
+    byExitReason: mostFirst(exits).map(({ value, events }) => ({
+      exitReason: value,
+      events,
+    })),
+  };
+};
+
+/**
+ * A release's or a channel's update failures. Since a release's first
+ * report: its lifetime counters and failed installations. Over a time range
+ * of at most 30 days: failures, failed checks, the breakdown by stage,
+ * reason, and detail, and recoveries by exit reason, all summed from the
+ * breakdown's hourly rows; downloads and failed launches from the counters;
+ * failed installations from their sketches. A release reads hourly rows, a
+ * channel daily rows past 48 hours like its activity; the breakdown's rows
+ * are hourly, so its coverage is the raw period's.
+ */
+export const getUpdateFailures = async (
+  db: Db,
+  input: InsightsUpdateFailuresInput,
+  now: () => number,
+  retention: InsightsRetention,
+): Promise<InsightsUpdateFailures> => {
+  const { platform, channel, releaseId, timeRange } = input;
+  if (
+    (platform !== "ios" && platform !== "android") ||
+    !isText(channel, 1_024) ||
+    (releaseId !== undefined && !isText(releaseId, 36)) ||
+    !isRange(timeRange) ||
+    (releaseId === undefined && timeRange === undefined)
+  ) {
+    throw new DatabasePluginInputError("invalid-query");
+  }
+  const at = now();
+  const kept = retained(at, retention);
+  const channelParts: Parts = {
+    ...usageParts(channel, platform),
+    scopeKind: "channel",
+  };
+  const parts =
+    releaseId === undefined
+      ? channelParts
+      : releaseParts({ releaseId, platform, channel });
+  const failure: Parts = { ...parts, scopeKind: "failure" };
+  if (timeRange === undefined) {
+    const where = (from: Parts) => ({
+      identity: insightsIdentity({ ...from, periodKind: "lifetime" }),
+    });
+    const [counters, sketches] = await Promise.all([
+      db.findAggregates("insights_overview_lifetime", {
+        index: "window",
+        where: where(parts),
+        range: { gte: 0, lte: 0 },
+        limit: PAGE,
+      }),
+      db.findAggregates("insights_sketches_lifetime", {
+        index: "window",
+        where: where(failure),
+        range: { gte: 0, lte: 0 },
+        limit: PAGE,
+      }),
+    ]);
+    const lifetime = counters.rows[0];
+    return {
+      coverage: { kind: "complete", sinceMs: 0 },
+      measuredAtMs: at,
+      failedUpdates: lifetime?.failed_updates ?? 0,
+      failedInstallations: countDistinct(
+        mergeDistinct(sketches.rows.map((row) => row.failed_users)),
+      ),
+      downloads: lifetime?.downloads ?? 0,
+      patchDownloads: lifetime?.patch_downloads ?? 0,
+      patchFallbacks: lifetime?.patch_fallbacks ?? 0,
+    };
+  }
+  const days = releaseId === undefined;
+  const window = [timeRange, days, kept.hour] as const;
+  const [counters, failures, checks, active, rows] = await Promise.all([
+    counterRows(db, parts, ...window),
+    sketchRows(db, failure, ...window),
+    days
+      ? sketchRows(db, { ...channelParts, scopeKind: "check" }, ...window)
+      : [],
+    days ? sketchRows(db, usageParts(channel, platform), ...window) : [],
+    drain((page) =>
+      db.findAggregates("insights_failures", {
+        index: "byScope",
+        where: { platform, channel },
+        range: { gte: timeRange.start, lt: timeRange.end },
+        limit: PAGE,
+        ...page,
+      }),
+    ),
+  ]);
+  const total = (field: Exclude<keyof CounterRow, "bucket_start_ms">) =>
+    counters.reduce((sum, row) => sum + row[field], 0);
+  const scoped =
+    releaseId === undefined
+      ? rows
+      : rows.filter((row) => row.release_id === releaseId);
+  // The breakdown's hourly rows hold every failure of the window, so its
+  // counts are summed from them rather than kept twice.
+  const failuresAt = (counted: (stage: string) => boolean) =>
+    scoped.reduce(
+      (sum, row) => sum + (counted(row.stage) ? Math.max(0, row.events) : 0),
+      0,
+    );
+  const { breakdown, byExitReason } = breakdownOf(scoped);
+  return {
+    coverage: coverageOf(timeRange.start, kept.hour),
+    measuredAtMs: at,
+    failedUpdates: failuresAt(
+      (stage) => stage !== "check" && stage !== "launch",
+    ),
+    failedInstallations: failed(failures),
+    downloads: total("downloads"),
+    patchDownloads: total("patch_downloads"),
+    patchFallbacks: total("patch_fallbacks"),
+    ...(days
+      ? {
+          checks: {
+            failures: failuresAt((stage) => stage === "check"),
+            failedInstallations: failed(checks),
+            activeInstallations: countDistinct(
+              mergeDistinct(active.map((row) => row.activity_users)),
+            ),
+          },
+        }
+      : {}),
+    breakdown,
+    recoveries: { failedLaunches: total("failed_launches"), byExitReason },
   };
 };
