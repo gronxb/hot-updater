@@ -10,7 +10,7 @@ import type {
   ConfiguredDatabase,
   HotUpdaterCoreApi,
   StorageObject,
-  StoragePluginWith,
+  StorageAdapterWith,
 } from "@hot-updater/plugin-core";
 import {
   assertStorageOperations,
@@ -237,7 +237,7 @@ async function loadAllBundles(core: HotUpdaterCoreApi) {
 
 async function readManifest(
   bundle: Bundle,
-  storagePlugin: StoragePluginWith<"get">,
+  storageAdapter: StorageAdapterWith<"get">,
 ): Promise<BundleManifest> {
   const manifestStorageUri = getManifestStorageUri(bundle);
   if (!manifestStorageUri) {
@@ -257,12 +257,12 @@ async function readManifest(
     }
     manifestText = await response.text();
   } else {
-    if (protocol !== storagePlugin.protocol) {
-      throw new Error(`No storage plugin for protocol: ${protocol}`);
+    if (protocol !== storageAdapter.protocol) {
+      throw new Error(`No storage adapter for protocol: ${protocol}`);
     }
 
     try {
-      const { response } = await storagePlugin.get({
+      const { response } = await storageAdapter.get({
         storageUri: manifestStorageUri,
       });
       if (!response) {
@@ -298,7 +298,7 @@ async function readManifest(
 
 async function collectReferencedAssetUris(
   bundles: readonly Bundle[],
-  storagePlugin: StoragePluginWith<"get">,
+  storageAdapter: StorageAdapterWith<"get">,
 ) {
   const bundlesWithSharedAssets = bundles.filter((bundle) => {
     const assetBaseStorageUri = getAssetBaseStorageUri(bundle);
@@ -307,9 +307,9 @@ async function collectReferencedAssetUris(
     }
 
     const protocol = new URL(assetBaseStorageUri).protocol.replace(":", "");
-    if (protocol !== storagePlugin.protocol) {
+    if (protocol !== storageAdapter.protocol) {
       throw new Error(
-        `Cannot prune shared assets: bundle ${bundle.id} uses ${protocol} asset storage, but the configured storage plugin uses ${storagePlugin.protocol}.`,
+        `Cannot prune shared assets: bundle ${bundle.id} uses ${protocol} asset storage, but the configured storage adapter uses ${storageAdapter.protocol}.`,
       );
     }
     return true;
@@ -325,7 +325,7 @@ async function collectReferencedAssetUris(
     MANIFEST_READ_CONCURRENCY,
     async (bundle) => {
       const assetBaseStorageUri = getAssetBaseStorageUri(bundle)!;
-      const manifest = await readManifest(bundle, storagePlugin);
+      const manifest = await readManifest(bundle, storageAdapter);
 
       for (const [assetPath, asset] of Object.entries(manifest.assets)) {
         const downloadPath = getManifestAssetDownloadPath(assetPath);
@@ -415,7 +415,7 @@ async function safeDispose(database: ConfiguredDatabase) {
     await database.dispose?.();
   } catch (error) {
     p.log.warn(
-      `Database plugin dispose failed: ${error instanceof Error ? error.message : String(error)}`,
+      `Database adapter dispose failed: ${error instanceof Error ? error.message : String(error)}`,
     );
   }
 }
@@ -437,21 +437,21 @@ export async function handleStoragePrune(options: StoragePruneOptions = {}) {
 
   const config = await loadConfig(null);
   const database = config.database;
-  const loadedStoragePlugin = config.storage;
-  assertStorageOperations(loadedStoragePlugin, ["get"]);
-  const storagePlugin = loadedStoragePlugin;
+  const loadedStorageAdapter = config.storage;
+  assertStorageOperations(loadedStorageAdapter, ["get"]);
+  const storageAdapter = loadedStorageAdapter;
 
   try {
-    const listObjects = storagePlugin.listObjects;
+    const listObjects = storageAdapter.listObjects;
     if (!listObjects) {
       throw new Error(
-        `Storage plugin "${storagePlugin.name}" does not support storage prune.`,
+        `Storage adapter "${storageAdapter.name}" does not support storage prune.`,
       );
     }
-    const deleteObjects = storagePlugin.deleteObjects;
+    const deleteObjects = storageAdapter.deleteObjects;
     if (options.yes && !deleteObjects) {
       throw new Error(
-        `Storage plugin "${storagePlugin.name}" does not support exact object deletion.`,
+        `Storage adapter "${storageAdapter.name}" does not support exact object deletion.`,
       );
     }
     if (options.yes) {
@@ -471,7 +471,7 @@ export async function handleStoragePrune(options: StoragePruneOptions = {}) {
     const bundleStorageReferences = collectBundleStorageReferences(bundles);
     const { manifestCount, referencedUris } = await collectReferencedAssetUris(
       bundles,
-      storagePlugin,
+      storageAdapter,
     );
     const objects = await listObjects();
     const unreferenced = getPruneCandidates({
@@ -494,7 +494,7 @@ export async function handleStoragePrune(options: StoragePruneOptions = {}) {
       const refreshedBundleStorageReferences =
         collectBundleStorageReferences(refreshedBundles);
       const { referencedUris: refreshedReferencedUris } =
-        await collectReferencedAssetUris(refreshedBundles, storagePlugin);
+        await collectReferencedAssetUris(refreshedBundles, storageAdapter);
       candidates = getPruneCandidates({
         bundleStorageReferences: refreshedBundleStorageReferences,
         liveBundleIds: refreshedBundleIds,
@@ -518,7 +518,7 @@ export async function handleStoragePrune(options: StoragePruneOptions = {}) {
       ui.block(
         "Storage prune",
         [
-          ui.kv("Storage", storagePlugin.name),
+          ui.kv("Storage", storageAdapter.name),
           ui.kv("Bundles", bundles.length),
           ui.kv("Manifests", manifestCount),
           ui.kv("Objects", objects.length),

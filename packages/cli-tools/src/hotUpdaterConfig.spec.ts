@@ -274,7 +274,7 @@ export default defineConfig({
     await expect(fs.readFile(configPath, "utf-8")).resolves.toBe(updatedConfig);
   });
 
-  it("updates build plugin only when the selected build changes", async () => {
+  it("updates build adapter only when the selected build changes", async () => {
     const tempDir = await fs.mkdtemp(
       path.join(os.tmpdir(), "hot-updater-config-build-switch-"),
     );

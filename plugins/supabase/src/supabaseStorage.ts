@@ -1,9 +1,9 @@
 import {
   createStorageKeyBuilder,
-  createStoragePlugin,
+  createStorageAdapter,
   createStorageUri,
   parseStorageUri,
-  type StoragePluginWith,
+  type StorageAdapterWith,
 } from "@hot-updater/plugin-core";
 import { createClient } from "@supabase/supabase-js";
 
@@ -44,7 +44,7 @@ export type SupabaseStorageConfig = SupabaseServiceRoleConfig & {
 
 export const supabaseStorage = (
   config: SupabaseStorageConfig,
-): StoragePluginWith<
+): StorageAdapterWith<
   "put" | "get" | "getDownloadUrl" | "exists" | "delete"
 > => {
   const supabase = createClient(
@@ -70,7 +70,7 @@ export const supabaseStorage = (
     return parsed;
   };
 
-  return createStoragePlugin({
+  return createStorageAdapter({
     name: "supabaseStorage",
     protocol: "supabase-storage",
     async put({ key, body, contentLength, contentType }) {

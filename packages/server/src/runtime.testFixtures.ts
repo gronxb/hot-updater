@@ -1,10 +1,10 @@
 import type { Bundle } from "@hot-updater/core";
 import type {
   EngineDatabase,
-  StoragePlugin,
-  StoragePluginWith,
+  StorageAdapter,
+  StorageAdapterWith,
 } from "@hot-updater/plugin-core";
-import { createStoragePlugin } from "@hot-updater/plugin-core";
+import { createStorageAdapter } from "@hot-updater/plugin-core";
 import { createMemoryAdapter } from "@hot-updater/plugin-core/internal";
 
 import type { SchemaSettings } from "./database/fence";
@@ -23,10 +23,10 @@ export const runtimeBundle: Bundle = {
 };
 
 export const createRuntimeStorage = (
-  get: NonNullable<StoragePlugin["get"]> = async () => ({ response: null }),
-  getDownloadUrl?: StoragePlugin["getDownloadUrl"],
-): StoragePluginWith<"get"> =>
-  createStoragePlugin({
+  get: NonNullable<StorageAdapter["get"]> = async () => ({ response: null }),
+  getDownloadUrl?: StorageAdapter["getDownloadUrl"],
+): StorageAdapterWith<"get"> =>
+  createStorageAdapter({
     name: "testStorage",
     protocol: "s3",
     get,

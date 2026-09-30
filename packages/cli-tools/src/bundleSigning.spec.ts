@@ -3,7 +3,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-import type { BundleSigningPlugin } from "@hot-updater/plugin-core";
+import type { BundleSigningAdapter } from "@hot-updater/plugin-core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -75,7 +75,7 @@ describe("prepareBundleSigning", () => {
       name: "test-provider",
       getPublicKey: vi.fn(async () => ({ publicKey })),
       sign,
-    } satisfies BundleSigningPlugin;
+    } satisfies BundleSigningAdapter;
     const session = await prepareBundleSigning(provider, { cwd: dir });
     const fileHash = "ab".repeat(32);
 
@@ -109,7 +109,7 @@ describe("prepareBundleSigning", () => {
       name: "pkcs1-provider",
       getPublicKey: async () => ({ publicKey: pkcs1PublicKey }),
       sign: async () => ({ signature: new Uint8Array([1]) }),
-    } satisfies BundleSigningPlugin;
+    } satisfies BundleSigningAdapter;
 
     await expect(prepareBundleSigning(provider, { cwd: dir })).rejects.toThrow(
       "Failed to resolve the bundle signing provider public key.",
@@ -129,7 +129,7 @@ describe("prepareBundleSigning", () => {
       sign: async ({ message }) => ({
         signature: crypto.sign("RSA-SHA256", message, weakKeyPair.privateKey),
       }),
-    } satisfies BundleSigningPlugin;
+    } satisfies BundleSigningAdapter;
 
     await expect(prepareBundleSigning(provider, { cwd: dir })).rejects.toThrow(
       "Failed to resolve the bundle signing provider public key.",
@@ -143,7 +143,7 @@ describe("prepareBundleSigning", () => {
       name: "invalid-signature",
       getPublicKey: async () => ({ publicKey }),
       sign: vi.fn(async () => ({ signature: new Uint8Array([1, 2, 3]) })),
-    } satisfies BundleSigningPlugin;
+    } satisfies BundleSigningAdapter;
     const session = await prepareBundleSigning(provider, { cwd: dir });
 
     await expect(session?.signFileHash("not-a-hash")).rejects.toThrow(
@@ -162,7 +162,7 @@ describe("prepareBundleSigning", () => {
         throw new Error("PRIVATE KEY CANARY");
       },
       sign: async () => ({ signature: new Uint8Array([1]) }),
-    } satisfies BundleSigningPlugin;
+    } satisfies BundleSigningAdapter;
 
     let error: unknown;
     try {
@@ -187,7 +187,7 @@ describe("prepareBundleSigning", () => {
       sign: async () => {
         throw new Error("PRIVATE KEY CANARY");
       },
-    } satisfies BundleSigningPlugin;
+    } satisfies BundleSigningAdapter;
     const session = await prepareBundleSigning(provider, { cwd: dir });
 
     await expect(session?.signFileHash("ab".repeat(32))).rejects.toThrow(

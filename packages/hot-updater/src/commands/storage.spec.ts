@@ -11,7 +11,7 @@ const {
   mockDatabase,
   mockPrintBanner,
   mockStorageNode,
-  mockStoragePlugin,
+  mockStorageAdapter,
 } = vi.hoisted(() => {
   const mockDatabase = {
     /** The bundles each core page holds, in order. */
@@ -28,7 +28,7 @@ const {
     listObjects: vi.fn(),
     put: vi.fn(),
   };
-  const mockStoragePlugin = {
+  const mockStorageAdapter = {
     ...mockStorageNode,
     name: "s3Storage",
     protocol: "s3",
@@ -51,7 +51,7 @@ const {
     mockDatabase,
     mockPrintBanner: vi.fn(),
     mockStorageNode,
-    mockStoragePlugin,
+    mockStorageAdapter,
   };
 });
 
@@ -140,7 +140,7 @@ describe("handleStoragePrune", () => {
 
     mockCli.loadConfig.mockResolvedValue({
       database: mockDatabase,
-      storage: mockStoragePlugin,
+      storage: mockStorageAdapter,
     });
     // Core's bundle pages, as rows, from the bundles `bundlePages` answers.
     mockDatabase.core.listBundles.mockImplementation(async (input: unknown) =>
@@ -603,11 +603,11 @@ describe("handleStoragePrune", () => {
     expect(mockDatabase.dispose).toHaveBeenCalledOnce();
   });
 
-  it("reports when the configured storage plugin cannot enumerate objects", async () => {
+  it("reports when the configured storage adapter cannot enumerate objects", async () => {
     mockCli.loadConfig.mockResolvedValue({
       database: mockDatabase,
       storage: {
-        ...mockStoragePlugin,
+        ...mockStorageAdapter,
         name: "unsupportedStorage",
         listObjects: undefined,
       },
@@ -615,7 +615,7 @@ describe("handleStoragePrune", () => {
     const { handleStoragePrune } = await import("./storage");
 
     await expect(handleStoragePrune()).rejects.toThrow(
-      'Storage plugin "unsupportedStorage" does not support storage prune.',
+      'Storage adapter "unsupportedStorage" does not support storage prune.',
     );
 
     expect(mockStorageNode.get).not.toHaveBeenCalled();

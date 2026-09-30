@@ -3,7 +3,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 
 import type {
-  BundleSigningPlugin,
+  BundleSigningAdapter,
   LocalSigningConfig,
   SigningConfig,
 } from "@hot-updater/plugin-core";
@@ -28,9 +28,9 @@ const loadPrivateKey = async (privateKeyPath: string): Promise<KeyObject> => {
   }
 };
 
-export const createLocalSigningPlugin = ({
+export const createLocalSigningAdapter = ({
   privateKeyPath,
-}: Extract<LocalSigningConfig, { enabled: true }>): BundleSigningPlugin => {
+}: Extract<LocalSigningConfig, { enabled: true }>): BundleSigningAdapter => {
   const privateKeys = new Map<string, Promise<KeyObject>>();
   const getPrivateKey = (cwd = process.cwd()) => {
     const resolvedPath = resolvePath(cwd, privateKeyPath);
@@ -72,13 +72,13 @@ export const createLocalSigningPlugin = ({
 
 const invalidSigningConfig = () =>
   new Error(
-    "Bundle signing must be a local key config or signing plugin. Omit signing to disable it.",
+    "Bundle signing must be a local key config or signing adapter. Omit signing to disable it.",
   );
 
 export const normalizeSigningConfig = (
   signing: SigningConfig | undefined,
 ):
-  | BundleSigningPlugin
+  | BundleSigningAdapter
   | Extract<LocalSigningConfig, { enabled: true }>
   | undefined => {
   if (signing === undefined) return undefined;
@@ -93,7 +93,7 @@ export const normalizeSigningConfig = (
   );
   if ((hasPrivateKeyPath || hasEnabled) && hasPluginMembers) {
     throw new Error(
-      "Bundle signing config cannot combine local signing fields with signing plugin fields.",
+      "Bundle signing config cannot combine local signing fields with signing adapter fields.",
     );
   }
 
@@ -128,5 +128,5 @@ export const normalizeSigningConfig = (
     throw invalidSigningConfig();
   }
 
-  return signing as BundleSigningPlugin;
+  return signing as BundleSigningAdapter;
 };

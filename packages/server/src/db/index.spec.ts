@@ -1,7 +1,7 @@
 import { PGlite } from "@electric-sql/pglite";
 import type { Bundle } from "@hot-updater/core";
 import { NIL_UUID } from "@hot-updater/core";
-import { createStoragePlugin } from "@hot-updater/plugin-core";
+import { createStorageAdapter } from "@hot-updater/plugin-core";
 import { Kysely } from "kysely";
 import { PGliteDialect } from "kysely-pglite-dialect";
 import {
@@ -33,11 +33,11 @@ const createHotUpdater = (
     clientAccess: "public",
   });
 
-function createTestStoragePlugin(
+function createTestStorageAdapter(
   protocol: string,
   readText: (storageUri: string) => Promise<string | null> = async () => null,
 ) {
-  return createStoragePlugin({
+  return createStorageAdapter({
     name: `${protocol}TestStorage`,
     protocol,
     async get({ storageUri }) {
@@ -80,10 +80,10 @@ describe("server/db hotUpdater (PGlite + Kysely)", async () => {
       provider: "postgresql",
     }),
     storage: [
-      createTestStoragePlugin("s3", readStoredText),
-      createTestStoragePlugin("r2", readStoredText),
-      createTestStoragePlugin("supabase-storage", readStoredText),
-      createTestStoragePlugin("gs", readStoredText),
+      createTestStorageAdapter("s3", readStoredText),
+      createTestStorageAdapter("r2", readStoredText),
+      createTestStorageAdapter("supabase-storage", readStoredText),
+      createTestStorageAdapter("gs", readStoredText),
     ],
   });
   it("uses the default generated schema artifact path for Drizzle", () => {
@@ -374,7 +374,7 @@ describe("server/db hotUpdater (PGlite + Kysely)", async () => {
     });
   });
 
-  describe("getArtifactInfo with storage plugins", () => {
+  describe("getArtifactInfo with storage adapters", () => {
     beforeEach(() => {
       // Fix time for deterministic signed URLs
       vi.useFakeTimers();

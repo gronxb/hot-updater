@@ -20,7 +20,7 @@ export {
   type DatabasePluginInputErrorCode,
 } from "./databaseErrors";
 export * from "./createStorageKeyBuilder";
-export * from "./createStoragePlugin";
+export * from "./createStorageAdapter";
 export { isDatabaseMetadataObject } from "./databaseJsonValue";
 export * from "./databaseRows";
 export * from "./filterCompatibleAppVersions";

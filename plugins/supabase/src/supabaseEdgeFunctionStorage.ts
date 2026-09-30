@@ -1,4 +1,4 @@
-import type { StoragePluginWith } from "@hot-updater/plugin-core";
+import type { StorageAdapterWith } from "@hot-updater/plugin-core";
 
 import { supabaseStorage } from "./supabaseStorage";
 
@@ -12,5 +12,5 @@ export interface SupabaseEdgeFunctionStorageConfig {
 
 export const supabaseEdgeFunctionStorage = (
   config: SupabaseEdgeFunctionStorageConfig,
-): StoragePluginWith<"put" | "get" | "getDownloadUrl" | "exists" | "delete"> =>
+): StorageAdapterWith<"put" | "get" | "getDownloadUrl" | "exists" | "delete"> =>
   supabaseStorage(config);

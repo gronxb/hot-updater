@@ -28,6 +28,6 @@ export class DatabasePluginInputError extends Error {
   readonly name = "DatabasePluginInputError";
 
   constructor(readonly code: DatabasePluginInputErrorCode) {
-    super(`Invalid database plugin input: ${code}`);
+    super(`Invalid database adapter input: ${code}`);
   }
 }

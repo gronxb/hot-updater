@@ -1,6 +1,6 @@
 import { createPublicKey, verify } from "node:crypto";
 
-import type { BundleSigningPlugin } from "@hot-updater/plugin-core";
+import type { BundleSigningAdapter } from "@hot-updater/plugin-core";
 
 const SIGNING_ALGORITHM = "RSASSA_PKCS1_V1_5_SHA_256" as const;
 
@@ -166,7 +166,7 @@ export const awsKmsSigning = ({
   endpoint,
   keyId,
   region,
-}: AwsKmsSigningOptions): BundleSigningPlugin => {
+}: AwsKmsSigningOptions): BundleSigningAdapter => {
   if (!keyId.trim()) {
     throw new Error("AWS KMS signing key ID is required.");
   }

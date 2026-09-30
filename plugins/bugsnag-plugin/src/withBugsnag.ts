@@ -1,7 +1,7 @@
 import fs from "fs";
 import path from "path";
 
-import type { BasePluginArgs, BuildPlugin } from "@hot-updater/plugin-core";
+import type { BuildAdapterArgs, BuildAdapter } from "@hot-updater/plugin-core";
 import { execa } from "execa";
 
 const ensureFilePath = (
@@ -44,8 +44,11 @@ interface WithBugsnagConfig {
 }
 
 export const withBugsnag =
-  (buildFn: (args: BasePluginArgs) => BuildPlugin, config: WithBugsnagConfig) =>
-  (args: BasePluginArgs): BuildPlugin => {
+  (
+    buildFn: (args: BuildAdapterArgs) => BuildAdapter,
+    config: WithBugsnagConfig,
+  ) =>
+  (args: BuildAdapterArgs): BuildAdapter => {
     const context = buildFn(args);
     return {
       ...context,
@@ -87,13 +90,13 @@ export const withBugsnag =
 
         if (!javascriptBundlePath || !javascriptBundleSourcemapPath) {
           throw new Error(
-            "Sourcemap or original bundle not found. Please enable sourcemap in your build plugin. e.g build: bare({ sourcemap: true })",
+            "Sourcemap or original bundle not found. Please enable sourcemap in your build adapter. e.g build: bare({ sourcemap: true })",
           );
         }
 
         if (!!hermesBundlePath !== !!hermesBundleSourcemapPath) {
           throw new Error(
-            "Hermes bundle or sourcemap not found. Please enable Hermes in your build plugin. e.g build: bare({ hermes: true })",
+            "Hermes bundle or sourcemap not found. Please enable Hermes in your build adapter. e.g build: bare({ hermes: true })",
           );
         }
 

@@ -1,6 +1,6 @@
 // @vitest-environment node
 
-import { createStoragePlugin } from "@hot-updater/plugin-core";
+import { createStorageAdapter } from "@hot-updater/plugin-core";
 import { createMemoryAdapter } from "@hot-updater/plugin-core/internal";
 import { apiKeys } from "@hot-updater/server/plugins/api-keys";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -27,8 +27,8 @@ const createTestDatabase = (name: string) => ({
   adapter: createMemoryAdapter(),
 });
 
-function createTestStoragePlugin() {
-  return createStoragePlugin({
+function createTestStorageAdapter() {
+  return createStorageAdapter({
     name: "storage",
     protocol: "s3",
     put: vi.fn(),
@@ -54,13 +54,13 @@ beforeEach(() => {
 describe("config.server", () => {
   it("caches the loaded config and reuses core and the runtime", async () => {
     const database = createTestDatabase("db");
-    const storagePlugin = createTestStoragePlugin();
+    const storageAdapter = createTestStorageAdapter();
 
     resolveConsoleConfigMock.mockResolvedValue({
       console: { port: 1422 },
       database,
       plugins: [apiKeys()],
-      storage: storagePlugin,
+      storage: storageAdapter,
     });
 
     const { isConfigLoaded, prepareConfig } = await import("./config.server");
@@ -81,8 +81,8 @@ describe("config.server", () => {
       apiKeys: true,
     });
     await expect(first.core.listChannels()).resolves.toEqual([]);
-    expect(first.storagePlugin).toBe(storagePlugin);
-    expect(second.storagePlugin).toBe(storagePlugin);
+    expect(first.storageAdapter).toBe(storageAdapter);
+    expect(second.storageAdapter).toBe(storageAdapter);
     expect(isConfigLoaded()).toBe(true);
   });
 
@@ -93,7 +93,7 @@ describe("config.server", () => {
     resolveConsoleConfigMock.mockResolvedValue({
       console: {},
       database: { name: "standalone-repository", core: {}, fetchAdmin },
-      storage: createTestStoragePlugin(),
+      storage: createTestStorageAdapter(),
     });
 
     const { prepareConfig } = await import("./config.server");
@@ -113,7 +113,7 @@ describe("config.server", () => {
 
   it("resets the cached config promise after an initialization failure", async () => {
     const database = createTestDatabase("db");
-    const storagePlugin = createTestStoragePlugin();
+    const storageAdapter = createTestStorageAdapter();
     const consoleErrorSpy = vi
       .spyOn(console, "error")
       .mockImplementation(() => undefined);
@@ -123,7 +123,7 @@ describe("config.server", () => {
       .mockResolvedValueOnce({
         console: { port: 1422 },
         database,
-        storage: storagePlugin,
+        storage: storageAdapter,
       });
 
     const { prepareConfig } = await import("./config.server");
@@ -134,13 +134,13 @@ describe("config.server", () => {
 
     expect(resolveConsoleConfigMock).toHaveBeenCalledTimes(2);
     expect(recovered.config.database).toBe(database);
-    expect(recovered.storagePlugin).toBe(storagePlugin);
+    expect(recovered.storageAdapter).toBe(storageAdapter);
     expect(consoleErrorSpy).toHaveBeenCalledTimes(1);
   });
 
   it("reports a missing console storage capability", async () => {
     const database = createTestDatabase("db");
-    const storage = createStoragePlugin({
+    const storage = createStorageAdapter({
       name: "runtimeOnlyStorage",
       protocol: "s3",
       get: vi.fn(async () => ({ response: null })),
@@ -158,7 +158,7 @@ describe("config.server", () => {
     const { prepareConfig } = await import("./config.server");
 
     await expect(prepareConfig(request)).rejects.toThrow(
-      'Storage plugin "runtimeOnlyStorage" does not implement put.',
+      'Storage adapter "runtimeOnlyStorage" does not implement put.',
     );
     expect(consoleErrorSpy).toHaveBeenCalledOnce();
   });
@@ -185,7 +185,7 @@ describe("config.server", () => {
     resolveConsoleConfigMock.mockResolvedValue({
       console: { port: 1422 },
       database: { name: "old-provider", models: {} },
-      storage: createTestStoragePlugin(),
+      storage: createTestStorageAdapter(),
     });
 
     const { prepareConfig } = await import("./config.server");

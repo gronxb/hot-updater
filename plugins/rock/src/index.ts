@@ -3,9 +3,9 @@ import path from "path";
 
 import { log } from "@hot-updater/cli-tools";
 import type {
-  BasePluginArgs,
-  BuildPlugin,
-  BuildPluginConfig,
+  BuildAdapterArgs,
+  BuildAdapter,
+  BuildAdapterConfig,
 } from "@hot-updater/plugin-core";
 import { ExecaError, execa } from "execa";
 import { uuidv7 } from "uuidv7";
@@ -69,7 +69,7 @@ const runBundle = async ({
   };
 };
 
-export interface RockPluginConfig extends BuildPluginConfig {
+export interface RockPluginConfig extends BuildAdapterConfig {
   /**
    * @default "index.js"
    * The entry file to bundle.
@@ -97,7 +97,7 @@ export const rock =
       hermes: true,
     },
   ) =>
-  ({ cwd }: BasePluginArgs): BuildPlugin => {
+  ({ cwd }: BuildAdapterArgs): BuildAdapter => {
     const {
       outDir = "dist",
       sourcemap = false,

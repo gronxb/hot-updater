@@ -151,7 +151,7 @@ Additional route and handler changes:
   `toNodeHandler(hotUpdater.handlers.admin)`, rather than the whole Hot Updater
   object.
 - Runtime bindings and credentials must be captured when constructing the
-  database or storage plugin; handlers no longer accept a provider-specific
+  database or storage adapter; handlers no longer accept a provider-specific
   request context as a second argument.
 - `/version` reports the v1 infrastructure generation. Use `hot-updater doctor`
   against the generated public base URL before shipping the native build.
@@ -261,12 +261,12 @@ value to `HotUpdater.init` through the `x-api-key` request header.
 
 ## Configuration and server composition
 
-CLI configuration now receives direct plugin objects:
+CLI configuration now receives direct adapter objects:
 
 ```ts
 export default defineConfig({
   build: bare(),
-  storage: storagePlugin,
+  storage: storageAdapter,
   database: bundleRepository,
   updateStrategy: "appVersion",
 });
@@ -275,7 +275,7 @@ export default defineConfig({
 The old `() => plugin` factory thunk is no longer the configuration contract.
 Built-in provider call sites usually retain the source form
 `storage: providerStorage(options)` because provider factories now return the
-plugin object directly.
+adapter object directly.
 
 `createHotUpdater` changes from the v0 runtime-profile API to:
 
@@ -283,14 +283,14 @@ plugin object directly.
 createHotUpdater({
   database,
   clientAccess: { type: "api-key" },
-  storage: [storagePlugin],
+  storage: [storageAdapter],
 });
 ```
 
 The returned object exposes in-process API key management through
 `hotUpdater.apiKeys.create`, `hotUpdater.apiKeys.list`, and
 `hotUpdater.apiKeys.revoke`. These operations use the configured direct
-database plugin and are not HTTP routes on either handler.
+database adapter and are not HTTP routes on either handler.
 
 The following v0 options are removed or renamed:
 
@@ -336,7 +336,7 @@ Expo config plugin's peer dependencies. Runtime imports remain in
 `@hot-updater/react-native`; only the `app.json` or `app.config.js` plugin entry
 moves.
 
-## Database plugin contract and schema
+## Database adapter contract and schema
 
 The aggregate Bundle database API is replaced by a fixed official-domain
 contract:
@@ -380,12 +380,13 @@ This breaks custom database providers in the following ways:
 `createBlobDatabasePlugin` is removed. Object storage cannot satisfy the atomic
 Release/Catalog contract.
 
-## Storage plugin contract
+## Storage adapter contract
 
-Profiled storage plugins are replaced by one runtime-independent object API:
+Profiled storage plugins are replaced by storage adapters with one
+runtime-independent object API:
 
 ```ts
-createStoragePlugin({
+createStorageAdapter({
   name,
   protocol,
   put,
@@ -400,6 +401,11 @@ Breaking details for custom storage providers:
 
 - `createNodeStoragePlugin`, `createRuntimeStoragePlugin`, and
   `createUniversalStoragePlugin` are removed.
+- The slots a config fills are adapters: `StoragePlugin` is `StorageAdapter`,
+  `createStoragePlugin` is `createStorageAdapter`, `StoragePluginWith` is
+  `StorageAdapterWith`, `BuildPlugin` is `BuildAdapter`, `BasePluginArgs` is
+  `BuildAdapterArgs`, and `BundleSigningPlugin` is `BundleSigningAdapter`.
+  Provider factories such as `s3Storage()` and `bare()` keep their names.
 - `supportedProtocol`, `profiles.node`, `profiles.runtime`, lifecycle hooks,
   runtime contexts, and local file paths are removed from the core boundary.
 - Every single-object operation takes one object and returns one object. `put`
@@ -473,7 +479,7 @@ is removed. Pass the complete parameter object or call
 | `@hot-updater/js`                | `verifyJwtSignedUrl`, `withJwtSignedUrl`                                      | Use provider-owned download URL handling or the server storage handler            |
 | `@hot-updater/js`                | `getUpdateInfo`                                                               | Release Catalog selection on the device and Release disable for rollback          |
 | `@hot-updater/postgres`          | `getUpdateInfo`                                                               | Release Catalog compilation and exact Catalog reads                               |
-| `@hot-updater/plugin-core`       | `createBlobDatabasePlugin` and profiled storage helpers                       | Fixed database models and flat storage plugins described above                    |
+| `@hot-updater/plugin-core`       | `createBlobDatabasePlugin` and profiled storage helpers                       | Fixed database models and flat storage adapters described above                   |
 | `@hot-updater/plugin-core`       | `createRequestUpdateBundleResolver`, `getRequestUpdateBundleSeeds`            | `createRequestBundleResolver` for request-scoped Bundle reads                     |
 
 `s3Storage` also stops creating S3 presigned download URLs implicitly. A server

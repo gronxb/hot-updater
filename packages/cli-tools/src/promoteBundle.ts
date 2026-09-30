@@ -15,7 +15,7 @@ import {
   type ManifestArchive,
   stripBundleArtifactMetadata,
 } from "@hot-updater/core";
-import type { Bundle, StoragePluginWith } from "@hot-updater/plugin-core";
+import type { Bundle, StorageAdapterWith } from "@hot-updater/plugin-core";
 import {
   createBundleStorageKey,
   createStorageRootUriWithPath,
@@ -35,7 +35,7 @@ import {
   writeStorageResponseFile,
 } from "./storageFiles";
 
-type PromoteStoragePlugin = StoragePluginWith<
+type PromoteStorageAdapter = StorageAdapterWith<
   "get" | "put" | "exists" | "delete"
 >;
 
@@ -285,13 +285,13 @@ function resolveExtractedPath(rootDir: string, entryName: string) {
 
 async function downloadStorageObject(
   storageUri: string,
-  storagePlugin: PromoteStoragePlugin | null,
+  storageAdapter: PromoteStorageAdapter | null,
   outputPath: string,
 ) {
   const protocol = new URL(storageUri).protocol.replace(":", "");
 
-  if (storagePlugin?.protocol === protocol) {
-    await writeStorageFile(storagePlugin, storageUri, outputPath);
+  if (storageAdapter?.protocol === protocol) {
+    await writeStorageFile(storageAdapter, storageUri, outputPath);
     return;
   }
 
@@ -300,7 +300,7 @@ async function downloadStorageObject(
     return;
   }
 
-  throw new Error(`No storage plugin for protocol: ${protocol}`);
+  throw new Error(`No storage adapter for protocol: ${protocol}`);
 }
 
 async function downloadFromUrl(fileUrl: string, filePath: string) {
@@ -318,13 +318,13 @@ async function downloadManifestAssets({
   bundle,
   manifest,
   outputDir,
-  storagePlugin,
+  storageAdapter,
   workDir,
 }: {
   bundle: Bundle;
   manifest: BundleManifest;
   outputDir: string;
-  storagePlugin: PromoteStoragePlugin;
+  storageAdapter: PromoteStorageAdapter;
   workDir: string;
 }) {
   const assetPaths = Object.keys(manifest.assets ?? {}).sort((left, right) =>
@@ -351,7 +351,7 @@ async function downloadManifestAssets({
         `downloads/${downloadPath}`,
       );
       await fs.mkdir(path.dirname(transferPath), { recursive: true });
-      await downloadStorageObject(storageUri, storagePlugin, transferPath);
+      await downloadStorageObject(storageUri, storageAdapter, transferPath);
 
       if (asset.downloadFileHash) {
         const actualDownloadHash = await getFileHash(transferPath);
@@ -383,12 +383,12 @@ export async function createCopiedBundleArtifacts({
   bundle,
   config,
   nextBundleId,
-  storagePlugin,
+  storageAdapter,
 }: {
   bundle: Bundle;
   config: ConfigResponse;
   nextBundleId: string;
-  storagePlugin: PromoteStoragePlugin;
+  storageAdapter: PromoteStorageAdapter;
 }) {
   const workDir = await fs.mkdtemp(
     path.join(os.tmpdir(), "hot-updater-console-promote-"),
@@ -403,7 +403,7 @@ export async function createCopiedBundleArtifacts({
   try {
     await downloadStorageObject(
       bundle.manifestStorageUri,
-      storagePlugin,
+      storageAdapter,
       sourceManifestPath,
     );
     const actualManifestHash = await getFileHash(sourceManifestPath);
@@ -438,7 +438,7 @@ export async function createCopiedBundleArtifacts({
       bundle,
       manifest,
       outputDir: extractDir,
-      storagePlugin,
+      storageAdapter,
       workDir,
     });
     manifest.bundleId = nextBundleId;
@@ -506,13 +506,13 @@ export async function createCopiedBundleArtifacts({
       : manifestHash;
 
     const archiveUpload = await putStorageFile(
-      storagePlugin,
+      storageAdapter,
       createBundleStorageKey(nextBundleId),
       archivePath,
     );
     uploadedStorageUris.push(archiveUpload.storageUri);
     const manifestUpload = await putStorageFile(
-      storagePlugin,
+      storageAdapter,
       createBundleStorageKey(nextBundleId),
       manifestPath,
     );
@@ -531,10 +531,10 @@ export async function createCopiedBundleArtifacts({
         fileHash: assetUploadTarget.fileHash,
       });
 
-      const { exists } = await storagePlugin.exists({ storageUri });
+      const { exists } = await storageAdapter.exists({ storageUri });
       if (!exists) {
         await putStorageFile(
-          storagePlugin,
+          storageAdapter,
           getRelativeStorageDir(assetUploadTarget.storagePath)
             ? `assets/${getRelativeStorageDir(assetUploadTarget.storagePath)}`
             : "assets",
@@ -556,7 +556,7 @@ export async function createCopiedBundleArtifacts({
       uploadedStorageUris,
     };
   } catch (error) {
-    await deleteUploadedCopy(storagePlugin, uploadedStorageUris);
+    await deleteUploadedCopy(storageAdapter, uploadedStorageUris);
     throw error;
   } finally {
     await fs.rm(workDir, { recursive: true, force: true });
@@ -564,7 +564,7 @@ export async function createCopiedBundleArtifacts({
 }
 
 async function deleteUploadedCopy(
-  storagePlugin: PromoteStoragePlugin,
+  storageAdapter: PromoteStorageAdapter,
   storageUris: string[],
 ) {
   if (storageUris.length === 0) {
@@ -574,10 +574,10 @@ async function deleteUploadedCopy(
   for (const storageUri of new Set(storageUris)) {
     try {
       const protocol = new URL(storageUri).protocol.replace(":", "");
-      if (storagePlugin.protocol === protocol) {
-        await storagePlugin.delete({ storageUri });
+      if (storageAdapter.protocol === protocol) {
+        await storageAdapter.delete({ storageUri });
       } else if (protocol !== "http" && protocol !== "https") {
-        throw new Error(`No storage plugin for protocol: ${protocol}`);
+        throw new Error(`No storage adapter for protocol: ${protocol}`);
       }
     } catch (error) {
       console.error("Failed to delete uploaded bundle copy:", error);

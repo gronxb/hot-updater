@@ -584,9 +584,9 @@ async function checkNativeStatus({
 
   if (!hasNativeDirectories) {
     const config = await loadConfig(null);
-    const buildPlugin = await config.build({ cwd });
+    const buildAdapter = await config.build({ cwd });
     const getNativeSigningPublicKey =
-      buildPlugin.nativeBuild?.getBundleSigningPublicKey;
+      buildAdapter.nativeBuild?.getBundleSigningPublicKey;
     if (!getNativeSigningPublicKey) return undefined;
 
     const [nativeSigningPublicKey, expectedSigningPublicKey] =

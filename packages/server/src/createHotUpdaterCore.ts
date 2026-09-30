@@ -1,6 +1,6 @@
 import {
   assertStorageOperations,
-  type StoragePlugin,
+  type StorageAdapter,
 } from "@hot-updater/plugin-core";
 import type { DatabaseAdapter } from "@hot-updater/plugin-core/internal";
 
@@ -119,7 +119,7 @@ export type CreateHotUpdaterOptions<
   /** A provider's database on the storage engine, such as `kyselyAdapter(...)` or `postgres(...)`. */
   readonly database: ToolingDatabase;
   /** Storage implementations used to read provider-specific storage URIs. */
-  readonly storage?: readonly StoragePlugin[];
+  readonly storage?: readonly StorageAdapter[];
   /** The plugins the server runs; at most one provides clientAuth. Defaults to none. */
   readonly plugins?: TPlugins;
 } & ClientAccessRule<TPlugins>;
@@ -195,12 +195,12 @@ export function createHotUpdater<
     }
   }
   const database = databaseOf(options.database);
-  const storagePlugins = (options.storage ?? []).map((storage) => {
+  const storageAdapters = (options.storage ?? []).map((storage) => {
     assertStorageOperations(storage, ["get", "getDownloadUrl"]);
     return storage;
   });
   const { downloadStorageObject, readStorageText, resolveFileUrl } =
-    createStorageAccess(storagePlugins);
+    createStorageAccess(storageAdapters);
   const publicClients = isPublic(
     (options as { readonly clientAccess?: unknown }).clientAccess,
   );
