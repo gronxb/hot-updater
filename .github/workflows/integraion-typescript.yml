@@ -6,8 +6,14 @@ on:
 
 name: Integration
 
+# The build, the unit tests (two shards), and the integration tests run as
+# parallel jobs. The integration files run in the groups of
+# scripts/ci/integration-groups.mjs, one job each; only the firebase group
+# installs Java 21 for the Firebase emulators. `integration` passes when every
+# other job does.
 jobs:
-  integration:
+  build:
+    name: Build, type check, and lint
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744
@@ -21,7 +27,7 @@ jobs:
       - name: Setup mise
         uses: jdx/mise-action@dba19683ed58901619b14f395a24841710cb4925
         with:
-          install_args: "bun deno java@temurin-21"
+          install_args: "bun deno"
       - run: pnpm install
       - name: Build
         run: pnpm build
@@ -31,7 +37,90 @@ jobs:
 
       - name: OXC check
         run: pnpm lint
+      - name: Check integration groups
+        run: node scripts/ci/check-integration-groups.mjs
+
+  unit:
+    name: Unit test (${{ matrix.shard }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: ["1/2", "2/2"]
+    steps:
+      - uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744
+      - name: Setup pnpm
+        uses: pnpm/action-setup@eae0cfeb286e66ffb5155f1a79b90583a127a68b
+      - name: Setup Node.js
+        uses: actions/setup-node@3235b876344d2a9aa001b8d1453c930bba69e610
+        with:
+          node-version-file: .node-version
+          cache: "pnpm"
+      - name: Setup mise
+        uses: jdx/mise-action@dba19683ed58901619b14f395a24841710cb4925
+        with:
+          install_args: "bun deno"
+      - run: pnpm install
+      - name: Build
+        run: pnpm build
       - name: Unit test
-        run: pnpm test
+        run: pnpm test --shard=${{ matrix.shard }}
+
+  plan:
+    name: Plan test groups
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.groups.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744
+      - name: Setup Node.js
+        uses: actions/setup-node@3235b876344d2a9aa001b8d1453c930bba69e610
+        with:
+          node-version-file: .node-version
+      - id: groups
+        name: List integration groups
+        run: echo "matrix=$(node scripts/ci/integration-groups.mjs)" >> "$GITHUB_OUTPUT"
+
+  group:
+    name: Test group (${{ matrix.group }})
+    needs: plan
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    env:
+      HOT_UPDATER_INTEGRATION_GROUP: ${{ matrix.group }}
+    steps:
+      - uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744
+      - name: Setup pnpm
+        uses: pnpm/action-setup@eae0cfeb286e66ffb5155f1a79b90583a127a68b
+      - name: Setup Node.js
+        uses: actions/setup-node@3235b876344d2a9aa001b8d1453c930bba69e610
+        with:
+          node-version-file: .node-version
+          cache: "pnpm"
+      - name: Setup mise
+        uses: jdx/mise-action@dba19683ed58901619b14f395a24841710cb4925
+        with:
+          install_args: ${{ matrix.java && 'bun deno java@temurin-21' || 'bun deno' }}
+      - run: pnpm install
+      - name: Build
+        run: pnpm build
       - name: Integration test
+        if: ${{ !matrix.java }}
+        run: pnpm test:integration
+      - name: Integration test (Java 21)
+        if: ${{ matrix.java }}
         run: mise exec java@temurin-21 -- pnpm test:integration
+
+  integration:
+    if: ${{ always() }}
+    needs: [build, unit, plan, group]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require every job to pass
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+        run: |
+          jq -r 'to_entries[] | "\(.key): \(.value.result)"' <<< "$RESULTS"
+          jq -e 'all(.[]; .result == "success")' <<< "$RESULTS" > /dev/null
