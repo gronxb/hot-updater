@@ -88,6 +88,10 @@ export const myStorage = ({
   downloadUrlSigningKey,
 }: MyStorageOptions) => {
   const objectKey = createStorageKeyBuilder(basePath);
+  const signDownloadUrl =
+    downloadUrlSigningKey === undefined
+      ? undefined
+      : createStorageDownloadUrl(downloadUrlSigningKey);
   const keyOf = (storageUri: string) => {
     const parsed = parseStorageUri(storageUri, PROTOCOL);
     if (parsed.bucket !== bucket) {
@@ -134,9 +138,14 @@ export const myStorage = ({
       return { deleted: true };
     },
 
-    ...(downloadUrlSigningKey === undefined
+    ...(signDownloadUrl === undefined
       ? {}
-      : { getDownloadUrl: createStorageDownloadUrl(downloadUrlSigningKey) }),
+      : {
+          async getDownloadUrl({ storageUri }: { storageUri: string }) {
+            keyOf(storageUri);
+            return signDownloadUrl({ storageUri });
+          },
+        }),
   });
 };
 ```
@@ -163,7 +172,8 @@ export const myStorage = ({
 - `createStorageKeyBuilder(basePath)` joins the base path and a key, and
   rejects `.`, `..`, and `\` segments.
 - `parseStorageUri(uri, protocol)` checks the scheme and decodes the key.
-  Check the bucket too, so an adapter never reads another bucket's URI.
+  Check the bucket too, in every operation that takes a URI, `getDownloadUrl`
+  included, so an adapter never reads or signs another bucket's URI.
 
 Each operation receives one input object and returns one result object, so the
 contract can add fields without changing positions.
@@ -357,10 +367,16 @@ describe("myStorage", () => {
     });
   });
 
-  it("refuses a URI of another bucket", async () => {
+  it("refuses a URI of another bucket or protocol", async () => {
     await expect(
       storage.get({ storageUri: "my-storage://other/ota/a.txt" }),
     ).rejects.toThrow('Expected bucket "bundles"');
+    await expect(
+      storage.getDownloadUrl!({ storageUri: "my-storage://other/ota/a.txt" }),
+    ).rejects.toThrow('Expected bucket "bundles"');
+    await expect(
+      storage.getDownloadUrl!({ storageUri: "s3://bundles/ota/a.txt" }),
+    ).rejects.toThrow("Invalid storage URI protocol");
   });
 });
 ```
