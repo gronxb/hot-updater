@@ -6,13 +6,16 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { type BuildType, ConfigBuilder } from "./ConfigBuilder";
 import {
-  assertManagedServerDefinition,
   createHotUpdaterConfigScaffoldFromBuilder,
+  loadManagedServerDefinition,
+  readManagedServerDefinition,
   readServerDefinitionStatus,
+  replacingServerDefinitions,
   writeHotUpdaterConfig,
   writeHotUpdaterFiles,
   writeServerDefinition,
 } from "./hotUpdaterConfig";
+import { InitError } from "./initOptions";
 import { p } from "./prompts";
 
 const tempDirs: string[] = [];
@@ -46,6 +49,29 @@ const createSupabaseScaffold = (build: BuildType) =>
       })
       .setPlugins({
         imports: [{ pkg: "@hot-updater/supabase", named: ["plugins"] }],
+        configString: "plugins",
+      }),
+  );
+
+/** The definition another managed provider's init writes. */
+const createCloudflareScaffold = (build: BuildType) =>
+  createHotUpdaterConfigScaffoldFromBuilder(
+    new ConfigBuilder()
+      .setBuildType(build)
+      .setStorage({
+        imports: [{ pkg: "@hot-updater/cloudflare", named: ["r2Storage"] }],
+        configString: `r2Storage({
+    bucketName: process.env.HOT_UPDATER_CLOUDFLARE_R2_BUCKET_NAME!,
+  })`,
+      })
+      .setDatabase({
+        imports: [{ pkg: "@hot-updater/cloudflare", named: ["d1Database"] }],
+        configString: `d1Database({
+    databaseId: process.env.HOT_UPDATER_CLOUDFLARE_D1_DATABASE_ID!,
+  })`,
+      })
+      .setPlugins({
+        imports: [{ pkg: "@hot-updater/cloudflare", named: ["plugins"] }],
         configString: "plugins",
       }),
   );
@@ -450,19 +476,24 @@ export const plugins = [insights()];
   });
 });
 
-describe("assertManagedServerDefinition", () => {
-  it("allows a definition init wrote, or none, and refuses one the project edited", async () => {
+describe("readManagedServerDefinition", () => {
+  it("names the definition a managed init deploys, and whether the project edited it", async () => {
     const cwd = await createTempDir();
     const scaffold = createSupabaseScaffold("bare");
     const definitionPath = path.join(cwd, "hotUpdater.ts");
 
-    await expect(
-      assertManagedServerDefinition(scaffold, cwd),
-    ).resolves.toBeUndefined();
+    // None yet, or the one init writes: the provider's prebuilt server runs.
+    await expect(readManagedServerDefinition(scaffold, cwd)).resolves.toEqual({
+      path: definitionPath,
+      edited: false,
+    });
     await fs.writeFile(definitionPath, `${scaffold.definition.text}\n`);
-    await expect(
-      assertManagedServerDefinition(scaffold, cwd),
-    ).resolves.toBeUndefined();
+    await expect(readManagedServerDefinition(scaffold, cwd)).resolves.toEqual({
+      path: definitionPath,
+      edited: false,
+    });
+
+    // The project's own plugins: init bundles the definition.
     await fs.writeFile(
       definitionPath,
       scaffold.definition.text.replace(
@@ -470,8 +501,147 @@ describe("assertManagedServerDefinition", () => {
         "  plugins: [...plugins, notes()],\n",
       ),
     );
-    await expect(assertManagedServerDefinition(scaffold, cwd)).rejects.toThrow(
-      "hotUpdater.ts differs from the server definition init writes",
+    await expect(readManagedServerDefinition(scaffold, cwd)).resolves.toEqual({
+      path: definitionPath,
+      edited: true,
+    });
+
+    // The one the config points at.
+    await fs.writeFile(
+      path.join(cwd, "hot-updater.config.ts"),
+      `import { defineConfig } from "hot-updater";
+
+export default defineConfig({
+  server: "./servers/supabase.ts",
+});
+`,
     );
+    await expect(readManagedServerDefinition(scaffold, cwd)).resolves.toEqual({
+      path: path.join(cwd, "servers/supabase.ts"),
+      edited: false,
+    });
+  });
+});
+
+describe("switching managed providers", () => {
+  it("replaces the definition another provider's init wrote", async () => {
+    const cwd = await createTempDir();
+    vi.spyOn(p.log, "success").mockImplementation(() => undefined);
+    const definitionPath = path.join(cwd, "hotUpdater.ts");
+    const cloudflare = createCloudflareScaffold("bare");
+    await fs.writeFile(definitionPath, `${cloudflare.definition.text}\n`);
+    const supabase = replacingServerDefinitions(
+      createSupabaseScaffold("bare"),
+      [cloudflare.definition.text],
+    );
+
+    // Not the project's own: the provider's prebuilt server runs.
+    await expect(readManagedServerDefinition(supabase, cwd)).resolves.toEqual({
+      path: definitionPath,
+      edited: false,
+    });
+    await expect(
+      writeHotUpdaterFiles(supabase, { cwd, settings: "Supabase" }),
+    ).resolves.toMatchObject({ definition: { status: "updated" } });
+    await expect(fs.readFile(definitionPath, "utf-8")).resolves.toBe(
+      `${supabase.definition.text}\n`,
+    );
+  });
+
+  it("refuses a definition the project wrote for another provider before init touches anything", async () => {
+    const cwd = await createTempDir();
+    const definitionPath = path.join(cwd, "hotUpdater.ts");
+    const cloudflare = createCloudflareScaffold("bare");
+    await fs.writeFile(
+      definitionPath,
+      cloudflare.definition.text.replace(
+        "  plugins,\n",
+        "  plugins: [...plugins, notes()],\n",
+      ),
+    );
+
+    await expect(
+      readManagedServerDefinition(
+        replacingServerDefinitions(createSupabaseScaffold("bare"), [
+          cloudflare.definition.text,
+        ]),
+        cwd,
+      ),
+    ).rejects.toThrow(
+      "hotUpdater.ts defines a cloudflare server: it imports @hot-updater/cloudflare. To deploy it, run `hot-updater init --provider cloudflare`. To deploy the managed supabase server, give hotUpdater.ts the database and storage of @hot-updater/supabase, or remove it and rerun init, which writes one.",
+    );
+  });
+});
+
+describe("loadManagedServerDefinition", () => {
+  it("loads the definition with the settings init writes, and gives the process its own back", async () => {
+    const cwd = await createTempDir();
+    const definitionPath = path.join(cwd, "hotUpdater.ts");
+    await fs.writeFile(
+      path.join(cwd, ".env.hotupdater"),
+      "HOT_UPDATER_MANAGED_SPEC_BUCKET=from-file\nHOT_UPDATER_MANAGED_SPEC_PROJECT=from-file\nHOT_UPDATER_MANAGED_SPEC_KEY=placeholder\n",
+    );
+    await fs.writeFile(
+      definitionPath,
+      "export const hotUpdater = { bucket: process.env.HOT_UPDATER_MANAGED_SPEC_BUCKET, project: process.env.HOT_UPDATER_MANAGED_SPEC_PROJECT, key: process.env.HOT_UPDATER_MANAGED_SPEC_KEY };\n",
+    );
+    // A stale value in the shell loses to what init writes.
+    process.env["HOT_UPDATER_MANAGED_SPEC_PROJECT"] = "from-shell";
+
+    try {
+      await expect(
+        loadManagedServerDefinition(
+          { path: definitionPath, edited: true },
+          (hotUpdater) => hotUpdater,
+          {
+            cwd,
+            env: {
+              HOT_UPDATER_MANAGED_SPEC_BUCKET: "about-to-write",
+              HOT_UPDATER_MANAGED_SPEC_KEY: undefined,
+            },
+          },
+        ),
+      ).resolves.toEqual({
+        bucket: "about-to-write",
+        project: "from-file",
+        key: undefined,
+      });
+      expect(process.env["HOT_UPDATER_MANAGED_SPEC_PROJECT"]).toBe(
+        "from-shell",
+      );
+      expect(process.env["HOT_UPDATER_MANAGED_SPEC_BUCKET"]).toBeUndefined();
+      expect(process.env["HOT_UPDATER_MANAGED_SPEC_KEY"]).toBeUndefined();
+    } finally {
+      delete process.env["HOT_UPDATER_MANAGED_SPEC_PROJECT"];
+    }
+  });
+
+  it("names the definition and says what to do when it cannot load or run", async () => {
+    const cwd = await createTempDir();
+    const definitionPath = path.join(cwd, "hotUpdater.ts");
+    await fs.writeFile(
+      definitionPath,
+      'import { plugins } from "@hot-updater/not-installed";\nexport const hotUpdater = plugins;\n',
+    );
+
+    const missing = loadManagedServerDefinition(
+      { path: definitionPath, edited: true },
+      (hotUpdater) => hotUpdater,
+      { cwd },
+    );
+    await expect(missing).rejects.toBeInstanceOf(InitError);
+    await expect(missing).rejects.toThrow(
+      /^Could not load hotUpdater\.ts: .*@hot-updater\/not-installed.* Install the packages it imports in this project, then rerun init\.$/su,
+    );
+
+    await fs.writeFile(definitionPath, "export const hotUpdater = {};\n");
+    const refused = loadManagedServerDefinition(
+      { path: path.join(cwd, "server.ts"), edited: true },
+      () => {
+        throw new Error("The managed Test server runs on testDatabase.");
+      },
+      { cwd },
+    );
+    await expect(refused).rejects.toBeInstanceOf(InitError);
   });
 });

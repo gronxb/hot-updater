@@ -57,14 +57,22 @@ vi.mock("@supabase/supabase-js", () => ({
   }),
 }));
 
-/** A Supabase-like database: its three roles, the migration, and the service role's grants. */
-const createDatabase = async (before = "") => {
+/**
+ * A Supabase-like database: its three roles, the package's migration, the
+ * migration init writes for the managed server's plugins (none with
+ * `plugins: false`), and the service role's grants.
+ */
+const createDatabase = async (
+  before = "",
+  { plugins: migratePlugins = true } = {},
+) => {
   const db = new PGlite();
   await db.exec(
     "CREATE ROLE anon; CREATE ROLE authenticated; CREATE ROLE service_role BYPASSRLS;",
   );
   if (before) await db.exec(before);
   await db.exec(await fs.readFile(MIGRATION, "utf8"));
+  if (migratePlugins) await db.exec(supabaseSchemaSql(managed));
   await db.exec(
     "GRANT ALL ON ALL TABLES IN SCHEMA public TO service_role; SET ROLE service_role;",
   );
@@ -77,18 +85,34 @@ const apply = (db: PGlite, sql: string) =>
   ]);
 
 describe("Supabase schema", () => {
-  it("checks in exactly the generated migration as the only one", async () => {
+  it("checks in exactly the generated migration of core's tables as the only one", async () => {
     if (process.env.HOT_UPDATER_UPDATE_SQL === "1") {
-      await fs.writeFile(MIGRATION, supabaseSchemaSql(managed));
+      await fs.writeFile(MIGRATION, supabaseSchemaSql());
     }
     const files = (await fs.readdir(MIGRATIONS)).filter((file) =>
       file.endsWith(".sql"),
     );
     expect(files).toEqual([path.basename(MIGRATION)]);
     // Regenerate with HOT_UPDATER_UPDATE_SQL=1 after the schema changes.
-    expect(await fs.readFile(MIGRATION, "utf8")).toBe(
-      supabaseSchemaSql(managed),
+    expect(await fs.readFile(MIGRATION, "utf8")).toBe(supabaseSchemaSql());
+  });
+
+  it("leaves the plugins' tables to the migration init writes for the plugins the server runs", async () => {
+    const db = await createDatabase("", { plugins: false });
+    const tables = await db.query<{ name: string }>(
+      "SELECT tablename AS name FROM pg_tables WHERE schemaname = 'public' ORDER BY tablename",
     );
+    expect(tables.rows.map(({ name }) => name)).toEqual(
+      supabaseTableNames(toolingTargetOf([]).schema).toSorted(),
+    );
+    const settings = await db.query<{ key: string }>(
+      `SELECT key FROM public."${SUPABASE_SETTINGS_TABLE}" ORDER BY key`,
+    );
+    expect(settings.rows.map(({ key }) => key)).toEqual([
+      "schema.core",
+      "schema.engine",
+    ]);
+    await db.close();
   });
 
   it("creates namespaced tables with row-level security beside a v0 schema it leaves alone", async () => {

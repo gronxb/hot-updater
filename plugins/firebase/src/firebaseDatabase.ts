@@ -1,4 +1,5 @@
 import type { EngineDatabase } from "@hot-updater/plugin-core";
+import { withAdapterResource } from "@hot-updater/plugin-core/internal";
 import {
   createEngineDatabase,
   createKvAdapter,
@@ -54,8 +55,11 @@ export const migrateFirebaseDatabase = (
 export const firebaseDatabase = (
   config: FirebaseDatabaseConfig,
 ): EngineDatabase =>
-  createEngineDatabase({
-    name: "firebaseDatabase",
-    adapter: adapterOf(config),
-    aggregateBatching: config.aggregateBatching ?? {},
-  });
+  withAdapterResource(
+    createEngineDatabase({
+      name: "firebaseDatabase",
+      adapter: adapterOf(config),
+      aggregateBatching: config.aggregateBatching ?? {},
+    }),
+    { projectId: config.projectId },
+  );

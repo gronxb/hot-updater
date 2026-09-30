@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { createHmac } from "node:crypto";
+import { createHash, createHmac } from "node:crypto";
 import {
   access,
   mkdir,
@@ -27,7 +27,10 @@ import {
   createDatabaseCoreApi,
   createDatabasePluginApis,
 } from "@hot-updater/server/db";
-import type { CoreReader } from "@hot-updater/server/plugins";
+import type {
+  AnyHotUpdaterPlugin,
+  CoreReader,
+} from "@hot-updater/server/plugins";
 import { apiKeys } from "@hot-updater/server/plugins/api-keys";
 import {
   createInsightsModel,
@@ -53,12 +56,16 @@ import {
   stopRuntime,
   waitForHttpOk,
 } from "../../../../packages/test-utils/src/runtimeProcess";
+import { getConfigScaffold } from "../../iac/configTemplate";
+import { stageEdgeFunction } from "../../iac/index";
+import { writePluginMigration } from "../../iac/managedEdgeFunction";
 import { plugins } from "../../src/plugins";
 import { supabaseDatabase } from "../../src/supabaseDatabase";
 import { supabaseExecutor } from "../../src/supabaseExecutor";
 import {
   SUPABASE_SETTINGS_TABLE,
   SUPABASE_TABLE_PREFIX,
+  supabaseSchemaSql,
   supabaseTableNames,
 } from "../../src/supabaseSchema";
 
@@ -856,7 +863,195 @@ describe.sequential("supabase edge runtime acceptance", () => {
       error: "Not found",
     });
   });
+
+  it("runs the function init stages from a project's server definition, with its plugin and a CommonJS dependency", async () => {
+    if (!runtimeRoot) {
+      throw new Error("The runtime root was not created.");
+    }
+    // The project: the definition init writes, with a plugin of its own
+    // whose CommonJS dependency requires a Node.js built-in.
+    const project = path.join(runtimeRoot, "project");
+    await mkdir(path.join(project, "node_modules", "cjs-digest"), {
+      recursive: true,
+    });
+    await writeFile(
+      path.join(project, "node_modules", "cjs-digest", "package.json"),
+      JSON.stringify({ name: "cjs-digest", main: "index.js" }),
+    );
+    await writeFile(
+      path.join(project, "node_modules", "cjs-digest", "index.js"),
+      `const crypto = require("node:crypto");
+exports.digest = (text) => crypto.createHash("sha256").update(text).digest("hex");
+`,
+    );
+    await writeFile(path.join(project, "notes.ts"), NOTES_PLUGIN);
+    await writeFile(
+      path.join(project, "hotUpdater.ts"),
+      getConfigScaffold("bare")
+        .definition.text.replace(
+          'import { createHotUpdater } from "@hot-updater/server";',
+          'import { createHotUpdater } from "@hot-updater/server";\n\nimport { notes } from "./notes";',
+        )
+        .replace("  plugins,\n", "  plugins: [...plugins, notes],\n"),
+    );
+    const { notes } = (await import(
+      pathToFileURL(path.join(project, "notes.ts")).href
+    )) as { notes: AnyHotUpdaterPlugin };
+
+    // What init deploys: the staged function, with its import map, and the
+    // migration of the plugins' tables, which the database gets first.
+    const workdir = path.join(runtimeRoot, "staged");
+    await stageEdgeFunction({
+      bucketName: BUCKET_NAME,
+      definition: path.join(project, "hotUpdater.ts"),
+      functionName: DEFINITION_FUNCTION_NAME,
+      projectRoot: project,
+      workdir,
+    });
+    await mkdir(path.join(workdir, "supabase", "migrations"), {
+      recursive: true,
+    });
+    await writePluginMigration(workdir, [...plugins, notes]);
+    const [migration] = await readdir(
+      path.join(workdir, "supabase", "migrations"),
+    );
+    runDatabaseSql(
+      await readFile(
+        path.join(workdir, "supabase", "migrations", migration!),
+        "utf-8",
+      ),
+    );
+
+    const functionDir = path.join(
+      workdir,
+      "supabase",
+      "functions",
+      DEFINITION_FUNCTION_NAME,
+    );
+    const port = await findOpenPort();
+    const runtime = spawnRuntime({
+      command: "docker",
+      args: [
+        "run",
+        "--rm",
+        "--network",
+        `${composeProjectName}_default`,
+        "--add-host",
+        "host.docker.internal:host-gateway",
+        "-p",
+        `127.0.0.1:${port}:8000`,
+        "-e",
+        `SUPABASE_URL=http://host.docker.internal:${gatewayPort}`,
+        "-e",
+        `SUPABASE_SERVICE_ROLE_KEY=${SERVICE_ROLE_KEY}`,
+        "-e",
+        "DENO_DIR=/deno-dir",
+        "-v",
+        `${runtimeRoot}:${runtimeRoot}:ro`,
+        "-v",
+        `${DENO_CACHE_VOLUME}:/deno-dir`,
+        "-w",
+        functionDir,
+        DENO_DOCKER_IMAGE,
+        "run",
+        "--no-lock",
+        "--config",
+        path.join(functionDir, "deno.json"),
+        "--allow-env",
+        "--allow-net",
+        "--allow-read",
+        "--allow-sys",
+        path.join(functionDir, "index.ts"),
+      ],
+      cwd: WORKSPACE_ROOT,
+    });
+    try {
+      const base = `http://127.0.0.1:${port}/${DEFINITION_FUNCTION_NAME}`;
+      await waitForHttpOk({
+        url: `${base}/ping`,
+        child: runtime.child,
+        logs: runtime.logs,
+        timeoutMs: 90_000,
+      });
+
+      expect((await fetch(`${base}/notes/welcome`)).status).toBe(401);
+      const headers = { "x-api-key": API_KEY };
+      const written = await fetch(`${base}/notes/welcome`, {
+        method: "POST",
+        headers: { ...headers, "content-type": "application/json" },
+        body: JSON.stringify({ text: "hello" }),
+      });
+      expect(written.status).toBe(201);
+      const note = await fetch(`${base}/notes/welcome`, { headers });
+      expect(note.status).toBe(200);
+      await expect(note.json()).resolves.toEqual({
+        text: "hello",
+        digest: createHash("sha256").update("hello").digest("hex"),
+      });
+      // Core's routes, on the function's own service role.
+      const bundle = runtimeBundle("00000000-0000-0000-0000-000000000009");
+      await uploadBundleObject(supabaseAdmin, bundle.id);
+      await deployToProduction(core, bundle);
+      const catalog = await fetch(
+        `${base}/release-catalogs/app-version/ios/cHJvZHVjdGlvbg/1.0.0`,
+        { headers },
+      );
+      expect(catalog.status).toBe(200);
+      await expect(catalog.json()).resolves.toMatchObject({
+        releases: [{ bundleId: bundle.id }],
+      });
+    } finally {
+      await stopRuntime(runtime.child);
+    }
+  }, 240_000);
 });
+
+/** The function init stages from a project's server definition. */
+const DEFINITION_FUNCTION_NAME = "hot-updater-plugins";
+
+/** A plugin of the project's own, with a table, which the app reads and writes. */
+const NOTES_PLUGIN = `import { definePlugin, defineTable } from "@hot-updater/server/plugins";
+import { digest } from "cjs-digest";
+
+export const notes = definePlugin({
+  id: "notes",
+  schemaVersion: "1",
+  schema: {
+    notes: defineTable(
+      { id: { type: "string", maxLength: 64 }, text: { type: "string" } },
+      { key: ["id"] },
+    ),
+  },
+  init: ({ db }) => ({
+    api: {},
+    endpoints: [
+      {
+        method: "POST",
+        path: "/notes/:id",
+        access: "client",
+        handler: async (request, params) => {
+          const { text } = (await request.json()) as { text: string };
+          await db.transaction(async (tx) => {
+            tx.create("notes", { id: params.id!, text });
+          });
+          return new Response(null, { status: 201 });
+        },
+      },
+      {
+        method: "GET",
+        path: "/notes/:id",
+        access: "client",
+        handler: async (_request, params) => {
+          const note = await db.findOne("notes", { id: params.id! });
+          return note === null
+            ? Response.json({ error: "Not found" }, { status: 404 })
+            : Response.json({ text: note.text, digest: digest(note.text) });
+        },
+      },
+    ],
+  }),
+});
+`;
 
 function base64UrlEncode(value: string | Buffer) {
   return Buffer.from(value)
@@ -1023,6 +1218,9 @@ const loadSupabaseInitSql = async (storageRepoPath: string) => {
       return contents.replaceAll("%%BUCKET_NAME%%", BUCKET_NAME);
     }),
   );
+  // The package's migration holds core's tables; init migrates the managed
+  // server's plugins after it.
+  migrations.push(supabaseSchemaSql(toolingTargetOf(plugins)));
 
   return `
 CREATE EXTENSION IF NOT EXISTS pgcrypto;

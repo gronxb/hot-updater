@@ -21,10 +21,11 @@ import {
 import { printBanner } from "@/utils/printBanner";
 
 import {
-  type InitProvider,
   INIT_PROVIDER_NAMES,
   INIT_PROVIDER_PACKAGES,
+  type InitProvider,
   isInitProvider,
+  otherServerDefinitionsOf,
 } from "./initProviders";
 
 const INIT_BUILD_ENV_KEY = "HOT_UPDATER_INIT_BUILD";
@@ -241,6 +242,7 @@ export const init = async (options: InitOptions = {}) => {
   const runInitOptions = {
     build,
     envFile: options.envFile,
+    otherServerDefinitions: otherServerDefinitionsOf(provider),
   } satisfies RunInitOptions;
   try {
     const providerModule = await providerPackage.load();

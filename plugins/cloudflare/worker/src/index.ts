@@ -1,37 +1,18 @@
 import { createHotUpdater } from "@hot-updater/server";
-import { env } from "cloudflare:workers";
-import { Hono } from "hono";
 
-import { d1Database, plugins, r2Storage } from "../../src/worker";
-
-export type CloudflareWorkerEnv = {
-  DB: {
-    batch: D1Database["batch"];
-    prepare: D1Database["prepare"];
-  };
-  BUCKET: R2Bucket;
-  BUCKET_NAME: string;
-  STORAGE_DOWNLOAD_URL_SIGNING_KEY: string;
-};
-
-export const HOT_UPDATER_BASE_PATH = "/";
-
-const hotUpdater = createHotUpdater({
-  database: d1Database(env.DB),
+import {
+  d1Database,
   plugins,
-  storage: [
-    r2Storage({
-      bucket: env.BUCKET,
-      bucketName: env.BUCKET_NAME,
-      downloadUrlSigningKey: env.STORAGE_DOWNLOAD_URL_SIGNING_KEY,
-    }),
-  ],
-});
+  r2Storage,
+  serveManagedWorker,
+} from "../../src/worker/managed";
 
-const app = new Hono<{ Bindings: CloudflareWorkerEnv }>();
+export {
+  type CloudflareWorkerEnv,
+  HOT_UPDATER_BASE_PATH,
+} from "../../src/worker/managed";
 
-app.mount(HOT_UPDATER_BASE_PATH, (request: Request) =>
-  hotUpdater.handlers.client(request),
+/** The prebuilt Worker: the server definition init writes, on the Worker's bindings. */
+export default serveManagedWorker(
+  createHotUpdater({ database: d1Database(), storage: [r2Storage()], plugins }),
 );
-
-export default app;

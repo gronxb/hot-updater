@@ -107,6 +107,21 @@ describe("published agent infrastructure commands", () => {
           "app/provision-client-credential.mjs",
           "app/verify-server.mjs",
         ]);
+        // A migration tool applies the package's migration, which holds
+        // core's tables, then the one for the prebuilt server's plugins.
+        const pluginMigration = Object.keys(manifest.files).find((file) =>
+          /migrations\/[^/]+_hot-updater_plugins\.sql$/u.test(file),
+        );
+        if (provider === "cloudflare" || provider === "supabase") {
+          const sql = await readFile(
+            path.join(result.data.output, pluginMigration!),
+            "utf8",
+          );
+          expect(sql).toContain("schema.insights");
+          expect(sql).toContain("schema.apiKeys");
+        } else {
+          expect(pluginMigration).toBeUndefined();
+        }
         const appFile = (file: string) =>
           readFile(path.join(result.data.output, "app", file), "utf8");
         const config = await appFile("hot-updater.config.ts");

@@ -36,3 +36,11 @@ export const getConfigScaffold = (
       }),
   );
 };
+
+/**
+ * The server definitions this provider's init writes, whatever the build,
+ * which another provider's init replaces when it finds one unedited.
+ */
+export const serverDefinitions = (): readonly string[] => [
+  getConfigScaffold("bare").definition.text,
+];

@@ -71,6 +71,7 @@ import {
 import { inferPatchAssetPathFromStorageUri } from "./patch-storage-path.ts";
 import { resetProviderAfterReady } from "./provider-reset-retry.ts";
 import { buildReleaseCatalogUrl } from "./release-catalog-url.ts";
+import { checkSamplePlugin } from "./sample-plugin-check.ts";
 import {
   readE2eScreenStateSnapshot,
   resetE2eScreenState,
@@ -1246,7 +1247,14 @@ function readInsightsModel({
   plugins,
 }: ConfiguredServer): InsightsModel | null {
   try {
-    const api = createDatabasePluginApis(database, plugins ?? []);
+    // Insights alone, so the server's other plugins, whose tables a redeploy
+    // creates, never gate what the verification reads.
+    const api = createDatabasePluginApis(
+      database,
+      (plugins ?? []).filter(
+        (plugin) => (plugin as { readonly id?: unknown }).id === "insights",
+      ),
+    );
     return api.insights === undefined
       ? null
       : createInsightsModel(
@@ -1256,6 +1264,33 @@ function readInsightsModel({
     // A self-hosted server's database is read over its admin API.
     return null;
   }
+}
+
+/**
+ * Proves the deployed server runs the example's own plugin: a note written
+ * on the server's database through the plugin is what the server's client
+ * endpoint answers to the app's credential.
+ */
+async function verifyConfiguredServerPlugins() {
+  return withConfiguredDatabase(({ database, plugins }) =>
+    checkSamplePlugin({
+      plugins,
+      write: (samplePlugins, id, text) =>
+        (
+          createDatabasePluginApis(database, samplePlugins) as {
+            readonly sample: {
+              write(id: string, text: string): Promise<void>;
+            };
+          }
+        ).sample.write(id, text),
+      get: (path) =>
+        fetch(`${getControllerReachableAppBaseUrl()}${path}`, {
+          headers: getHotUpdaterClientRequestHeaders(),
+        }),
+      id: `e2e-${fixtureSession.platform}-${randomUUID()}`,
+      wait: () => sleep(E2E_POLL_INTERVAL_MS),
+    }),
+  );
 }
 
 async function verifyConfiguredConsoleInsights(args: { sinceMs: number }) {
@@ -7022,6 +7057,10 @@ export async function handleWriteSummary(args: {
 
 export async function handleCleanup() {
   return cleanup();
+}
+
+export async function handleVerifyServerPlugins() {
+  return verifyConfiguredServerPlugins();
 }
 
 export async function handleVerifyConsoleInsights(args: { sinceMs: number }) {

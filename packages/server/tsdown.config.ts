@@ -10,6 +10,7 @@ export default defineConfig([
       "./src/node.ts",
       "./src/db/index.ts",
       "./src/diff.ts",
+      "./src/internal.ts",
       "./src/database/index.ts",
       "./src/plugins/index.ts",
       "./src/plugins/insights/index.ts",

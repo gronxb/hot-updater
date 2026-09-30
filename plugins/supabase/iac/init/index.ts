@@ -1,6 +1,7 @@
 import type { InitProviderDefinition } from "@hot-updater/cli-tools";
 
 import { SUPABASE_V1_FUNCTION_NAME } from "../../src/supabaseInfrastructureNames";
+import { serverDefinitions } from "../configTemplate";
 
 export const SUPABASE_DATABASE_PASSWORD_PROJECT_ID_ENV_KEY =
   "HOT_UPDATER_SUPABASE_DB_PASSWORD_PROJECT_ID";
@@ -41,6 +42,7 @@ export const isSupabaseFunctionName = (
 
 export const initProvider = {
   label: "Supabase",
+  serverDefinitions,
   inputs: {
     projectId: {
       envKey: "HOT_UPDATER_SUPABASE_PROJECT_ID",

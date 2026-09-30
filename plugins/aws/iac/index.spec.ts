@@ -111,7 +111,7 @@ describe("AWS DynamoDB deployment preparation", () => {
       region: "ap-northeast-2",
       tableName: "hot-updater-metadata",
     };
-    await prepareDynamoDBDeployment(input);
+    await prepareDynamoDBDeployment(input, plugins);
 
     expect(mocks.ensureTable).toHaveBeenCalledWith("hot-updater-metadata");
     expect(mocks.migrateDynamoDB).toHaveBeenCalledWith(input, plugins);

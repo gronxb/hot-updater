@@ -1,6 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { buildDistributionConfig } from "./cloudfrontDistributionConfig";
+import {
+  buildDistributionConfig,
+  MANAGED_ALL_VIEWER_EXCEPT_HOST_HEADER_POLICY_ID,
+  MANAGED_CACHING_DISABLED_POLICY_ID,
+} from "./cloudfrontDistributionConfig";
 
 const mockCloudFront = vi.hoisted(() => ({
   listOriginAccessControls: vi.fn(),
@@ -9,9 +13,13 @@ const mockCloudFront = vi.hoisted(() => ({
   getCachePolicy: vi.fn(),
   createCachePolicy: vi.fn(),
   updateCachePolicy: vi.fn(),
+  deleteCachePolicy: vi.fn(),
   listOriginRequestPolicies: vi.fn(),
+  getOriginRequestPolicy: vi.fn(),
   createOriginRequestPolicy: vi.fn(),
+  deleteOriginRequestPolicy: vi.fn(),
   listDistributions: vi.fn(),
+  getDistribution: vi.fn(),
   getDistributionConfig: vi.fn(),
   updateDistribution: vi.fn(),
   createInvalidation: vi.fn(),
@@ -49,6 +57,8 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => {
 import { CloudFrontManager } from "./cloudfront";
 
 describe("CloudFrontManager", () => {
+  const cachePolicies = new Map<string, { Name?: string }>();
+  const originRequestPolicies = new Map<string, { Name?: string }>();
   const mockFetch = vi.fn<typeof fetch>();
   const existingDistributionConfig = buildDistributionConfig({
     bucketName: "hot-updater-storage",
@@ -126,67 +136,198 @@ describe("CloudFrontManager", () => {
     });
     mockCloudFront.updateDistribution.mockResolvedValue({});
     mockCloudFront.createInvalidation.mockResolvedValue({});
-    mockCloudFront.getCachePolicy.mockResolvedValue({
-      ETag: "cache-policy-etag",
-    });
-    mockCloudFront.createCachePolicy.mockResolvedValue({
-      CachePolicy: { Id: "release-catalog-cache-policy-id" },
-    });
-    mockCloudFront.updateCachePolicy.mockResolvedValue({});
-    mockCloudFront.listOriginRequestPolicies.mockResolvedValue({
-      OriginRequestPolicyList: {
-        Items: [
-          {
-            OriginRequestPolicy: {
-              Id: "origin-request-policy-id",
-              OriginRequestPolicyConfig: {
-                Name: "HotUpdaterManagedApiOriginRequestV2",
-              },
-            },
-          },
-        ],
+    // The account's custom policies, which every deployment in it shares.
+    cachePolicies.clear();
+    originRequestPolicies.clear();
+    mockCloudFront.listCachePolicies.mockImplementation(async () => ({
+      CachePolicyList: {
+        Items: [...cachePolicies].map(([Id, CachePolicyConfig]) => ({
+          CachePolicy: { Id, CachePolicyConfig },
+        })),
       },
-    });
+    }));
+    mockCloudFront.createCachePolicy.mockImplementation(
+      async ({ CachePolicyConfig }) => {
+        const Id = `cache-policy-${cachePolicies.size + 1}`;
+        cachePolicies.set(Id, CachePolicyConfig);
+        return { CachePolicy: { Id } };
+      },
+    );
+    mockCloudFront.listOriginRequestPolicies.mockImplementation(async () => ({
+      OriginRequestPolicyList: {
+        Items: [...originRequestPolicies].map(
+          ([Id, OriginRequestPolicyConfig]) => ({
+            OriginRequestPolicy: { Id, OriginRequestPolicyConfig },
+          }),
+        ),
+      },
+    }));
+    mockCloudFront.createOriginRequestPolicy.mockImplementation(
+      async ({ OriginRequestPolicyConfig }) => {
+        const Id = `origin-request-policy-${originRequestPolicies.size + 1}`;
+        originRequestPolicies.set(Id, OriginRequestPolicyConfig);
+        return { OriginRequestPolicy: { Id } };
+      },
+    );
   });
 
   afterEach(() => {
     vi.unstubAllGlobals();
   });
 
-  it("paginates and updates an existing cache policy before reuse", async () => {
-    mockCloudFront.listCachePolicies.mockResolvedValueOnce({
-      CachePolicyList: {
-        Items: [
-          {
-            CachePolicy: {
-              Id: "shared-cache-policy-id",
-              CachePolicyConfig: {
-                Name: "HotUpdaterOriginCacheControlV2",
-              },
-            },
-          },
-        ],
-      },
-    });
-    mockCloudFront.listCachePolicies.mockResolvedValueOnce({
-      CachePolicyList: {
-        Items: [
-          {
-            CachePolicy: {
-              Id: "release-catalog-cache-policy-id",
-              CachePolicyConfig: {
-                Name: "HotUpdaterReleaseCatalogV1",
-              },
-            },
-          },
-        ],
-      },
-    });
-
+  it("creates the policies a deployment needs once, and reuses them as they are", async () => {
     const manager = new CloudFrontManager("ap-northeast-2", {
       accessKeyId: "test-access-key",
       secretAccessKey: "test-secret-key",
     });
+    const deploy = () =>
+      manager.createOrUpdateDistribution({
+        keyGroupId: "new-key-group-id",
+        bucketName: "hot-updater-storage",
+        clientHeaders: ["x-api-key"],
+        functionArn:
+          "arn:aws:lambda:us-east-1:123456789012:function:hot-updater:2",
+        pluginPaths: ["/events", "/notes/*"],
+      });
+
+    await deploy();
+    await deploy();
+
+    // The shared and Release catalog cache policies, and the origin request
+    // policy: created once, never changed.
+    expect(mockCloudFront.createCachePolicy).toHaveBeenCalledTimes(2);
+    expect(mockCloudFront.createOriginRequestPolicy).toHaveBeenCalledTimes(1);
+    expect(mockCloudFront.updateCachePolicy).not.toHaveBeenCalled();
+    expect(mockCloudFront.getCachePolicy).not.toHaveBeenCalled();
+    const [sharedId, catalogId] = [...cachePolicies.keys()];
+    const [originRequestId] = [...originRequestPolicies.keys()];
+    expect(mockCloudFront.updateDistribution).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        Id: "dist-id",
+        IfMatch: "etag-value",
+        DistributionConfig: expect.objectContaining({
+          DefaultCacheBehavior: expect.objectContaining({
+            CachePolicyId: sharedId,
+          }),
+          CacheBehaviors: expect.objectContaining({
+            Items: expect.arrayContaining([
+              expect.objectContaining({
+                PathPattern: "/artifacts/*",
+                CachePolicyId: sharedId,
+                OriginRequestPolicyId: originRequestId,
+                LambdaFunctionAssociations: expect.objectContaining({
+                  Items: expect.arrayContaining([
+                    expect.objectContaining({ EventType: "origin-request" }),
+                  ]),
+                }),
+              }),
+              expect.objectContaining({
+                PathPattern: "/version",
+                CachePolicyId: sharedId,
+                OriginRequestPolicyId: originRequestId,
+              }),
+              expect.objectContaining({
+                PathPattern: "/release-catalogs/*",
+                CachePolicyId: catalogId,
+                OriginRequestPolicyId: originRequestId,
+              }),
+              // The plugins' endpoints pass through uncached.
+              expect.objectContaining({
+                PathPattern: "/events",
+                CachePolicyId: MANAGED_CACHING_DISABLED_POLICY_ID,
+                OriginRequestPolicyId:
+                  MANAGED_ALL_VIEWER_EXCEPT_HOST_HEADER_POLICY_ID,
+              }),
+              expect.objectContaining({
+                PathPattern: "/notes/*",
+                CachePolicyId: MANAGED_CACHING_DISABLED_POLICY_ID,
+                OriginRequestPolicyId:
+                  MANAGED_ALL_VIEWER_EXCEPT_HOST_HEADER_POLICY_ID,
+              }),
+            ]),
+          }),
+        }),
+      }),
+    );
+    expect(mockCloudFront.createInvalidation).toHaveBeenLastCalledWith({
+      DistributionId: "dist-id",
+      InvalidationBatch: {
+        CallerReference: expect.any(String),
+        Paths: {
+          Quantity: 5,
+          Items: [
+            "/artifacts/*",
+            "/version",
+            "/release-catalogs/*",
+            "/events",
+            "/notes/*",
+          ],
+        },
+      },
+    });
+  });
+
+  it("gives a deployment whose server reads other client headers policies of its own, and leaves the other deployment's as they are", async () => {
+    const manager = new CloudFrontManager("ap-northeast-2", {
+      accessKeyId: "test-access-key",
+      secretAccessKey: "test-secret-key",
+    });
+    const deploy = (clientHeaders: readonly string[]) =>
+      manager.createOrUpdateDistribution({
+        keyGroupId: "new-key-group-id",
+        bucketName: "hot-updater-storage",
+        clientHeaders,
+        functionArn:
+          "arn:aws:lambda:us-east-1:123456789012:function:hot-updater:2",
+      });
+
+    // Production keeps API keys; staging's definition dropped apiKeys().
+    await deploy(["x-api-key"]);
+    const production = structuredClone([
+      ...cachePolicies,
+      ...originRequestPolicies,
+    ]);
+    await deploy([]);
+    await deploy(["x-api-key"]);
+
+    expect(cachePolicies.size).toBe(4);
+    expect(originRequestPolicies.size).toBe(2);
+    expect(
+      new Set([...cachePolicies.values()].map(({ Name }) => Name)).size,
+    ).toBe(4);
+    // Production's policies, and what they forward, never changed.
+    for (const [id, config] of production) {
+      expect(cachePolicies.get(id) ?? originRequestPolicies.get(id)).toEqual(
+        config,
+      );
+    }
+    expect(mockCloudFront.updateCachePolicy).not.toHaveBeenCalled();
+    expect(JSON.stringify(production)).toContain("x-api-key");
+  });
+
+  it("uses the policies another init created first when both create them at once", async () => {
+    const manager = new CloudFrontManager("ap-northeast-2", {
+      accessKeyId: "test-access-key",
+      secretAccessKey: "test-secret-key",
+    });
+    // Another init with the same client headers creates each policy
+    // between this init's list and its create.
+    mockCloudFront.createCachePolicy.mockImplementation(
+      async ({ CachePolicyConfig }) => {
+        cachePolicies.set(`other-${cachePolicies.size + 1}`, CachePolicyConfig);
+        throw Object.assign(new Error("already exists"), {
+          name: "CachePolicyAlreadyExists",
+        });
+      },
+    );
+    mockCloudFront.createOriginRequestPolicy.mockImplementation(
+      async ({ OriginRequestPolicyConfig }) => {
+        originRequestPolicies.set("other-origin", OriginRequestPolicyConfig);
+        throw Object.assign(new Error("already exists"), {
+          name: "OriginRequestPolicyAlreadyExists",
+        });
+      },
+    );
 
     await manager.createOrUpdateDistribution({
       keyGroupId: "new-key-group-id",
@@ -196,80 +337,261 @@ describe("CloudFrontManager", () => {
         "arn:aws:lambda:us-east-1:123456789012:function:hot-updater:2",
     });
 
-    expect(mockCloudFront.listCachePolicies).toHaveBeenNthCalledWith(1, {
-      Type: "custom",
-    });
-    expect(mockCloudFront.createCachePolicy).not.toHaveBeenCalled();
-    expect(mockCloudFront.getCachePolicy).toHaveBeenCalledWith({
-      Id: "shared-cache-policy-id",
-    });
-    expect(mockCloudFront.updateCachePolicy).toHaveBeenCalledWith(
+    const [sharedId, catalogId] = [...cachePolicies.keys()];
+    expect(sharedId).toMatch(/^other-/u);
+    expect(mockCloudFront.updateDistribution).toHaveBeenLastCalledWith(
       expect.objectContaining({
-        Id: "shared-cache-policy-id",
-        IfMatch: "cache-policy-etag",
-        CachePolicyConfig: expect.objectContaining({
-          ParametersInCacheKeyAndForwardedToOrigin: expect.objectContaining({
-            HeadersConfig: {
-              HeaderBehavior: "whitelist",
-              Headers: { Quantity: 1, Items: ["x-api-key"] },
-            },
-          }),
-        }),
-      }),
-    );
-
-    expect(mockCloudFront.updateDistribution).toHaveBeenCalledWith(
-      expect.objectContaining({
-        Id: "dist-id",
-        IfMatch: "etag-value",
         DistributionConfig: expect.objectContaining({
           DefaultCacheBehavior: expect.objectContaining({
-            CachePolicyId: "shared-cache-policy-id",
+            CachePolicyId: sharedId,
           }),
           CacheBehaviors: expect.objectContaining({
             Items: expect.arrayContaining([
               expect.objectContaining({
-                PathPattern: "/events",
-                CachePolicyId: "shared-cache-policy-id",
-                OriginRequestPolicyId: "origin-request-policy-id",
-              }),
-              expect.objectContaining({
-                PathPattern: "/artifacts/*",
-                CachePolicyId: "shared-cache-policy-id",
-                OriginRequestPolicyId: "origin-request-policy-id",
-                LambdaFunctionAssociations: expect.objectContaining({
-                  Items: expect.arrayContaining([
-                    expect.objectContaining({
-                      EventType: "origin-request",
-                    }),
-                  ]),
-                }),
-              }),
-              expect.objectContaining({
-                PathPattern: "/version",
-                CachePolicyId: "shared-cache-policy-id",
-                OriginRequestPolicyId: "origin-request-policy-id",
-              }),
-              expect.objectContaining({
                 PathPattern: "/release-catalogs/*",
-                CachePolicyId: "release-catalog-cache-policy-id",
-                OriginRequestPolicyId: "origin-request-policy-id",
+                CachePolicyId: catalogId,
+                OriginRequestPolicyId: "other-origin",
               }),
             ]),
           }),
         }),
       }),
     );
-    expect(mockCloudFront.createInvalidation).toHaveBeenCalledWith({
-      DistributionId: "dist-id",
-      InvalidationBatch: {
-        CallerReference: expect.any(String),
-        Paths: {
-          Quantity: 4,
-          Items: ["/events", "/artifacts/*", "/version", "/release-catalogs/*"],
+  });
+
+  it("makes a policy again and retries once when another deployment's init deleted it before the update", async () => {
+    const manager = new CloudFrontManager("ap-northeast-2", {
+      accessKeyId: "test-access-key",
+      secretAccessKey: "test-secret-key",
+    });
+    // Between this init's list and its update, another deployment's init
+    // deletes the shared cache policy, which it found unused.
+    mockCloudFront.updateDistribution.mockImplementationOnce(
+      async ({ DistributionConfig }) => {
+        cachePolicies.delete(
+          DistributionConfig.DefaultCacheBehavior.CachePolicyId,
+        );
+        throw Object.assign(new Error("gone"), { name: "NoSuchCachePolicy" });
+      },
+    );
+
+    await manager.createOrUpdateDistribution({
+      keyGroupId: "new-key-group-id",
+      bucketName: "hot-updater-storage",
+      clientHeaders: ["x-api-key"],
+      functionArn:
+        "arn:aws:lambda:us-east-1:123456789012:function:hot-updater:2",
+    });
+
+    expect(mockCloudFront.createCachePolicy).toHaveBeenCalledTimes(3);
+    expect(mockCloudFront.getDistributionConfig).toHaveBeenCalledTimes(2);
+    expect(mockCloudFront.updateDistribution).toHaveBeenCalledTimes(2);
+    const [first, second] = mockCloudFront.updateDistribution.mock.calls.map(
+      ([input]) => input.DistributionConfig.DefaultCacheBehavior.CachePolicyId,
+    );
+    expect(second).not.toBe(first);
+    expect(cachePolicies.has(second)).toBe(true);
+  });
+
+  it("deletes Hot Updater's policies no distribution uses, and keeps those in use, just made, or not its own", async () => {
+    const manager = new CloudFrontManager("ap-northeast-2", {
+      accessKeyId: "test-access-key",
+      secretAccessKey: "test-secret-key",
+    });
+    const old = new Date("2026-09-01T00:00:00Z");
+    const policy = (Name: string, LastModifiedTime: Date) => ({
+      config: { Name },
+      LastModifiedTime,
+    });
+    // The account's policies: rc.20's, which this distribution uses before
+    // the update, one another distribution uses, a retired one, one another
+    // init just made, and one that isn't Hot Updater's.
+    const accountCachePolicies = new Map([
+      [
+        "existing-shared-cache-policy-id",
+        policy("HotUpdaterOriginCacheControlV2", old),
+      ],
+      [
+        "existing-release-catalog-cache-policy-id",
+        policy("HotUpdaterReleaseCatalogV1", old),
+      ],
+      ["other-cache-policy", policy("HotUpdaterOriginCacheControlV2-a", old)],
+      ["retired-cache-policy", policy("HotUpdaterReleaseCatalogV1-b", old)],
+      [
+        "recent-cache-policy",
+        policy("HotUpdaterReleaseCatalogV1-c", new Date()),
+      ],
+      ["user-cache-policy", policy("MyCachePolicy", old)],
+    ]);
+    const accountOriginRequestPolicies = new Map([
+      [
+        "existing-origin-request-policy-id",
+        policy("HotUpdaterManagedApiOriginRequestV2", old),
+      ],
+    ]);
+    const distributions = new Map<string, unknown>([
+      ["dist-id", existingDistributionConfig],
+      [
+        "other-dist-id",
+        { DefaultCacheBehavior: { CachePolicyId: "other-cache-policy" } },
+      ],
+    ]);
+    const inUse = (id: string) =>
+      [...distributions.values()].some((config) =>
+        JSON.stringify(config).includes(`"${id}"`),
+      );
+    mockCloudFront.listCachePolicies.mockImplementation(async () => ({
+      CachePolicyList: {
+        Items: [...accountCachePolicies].map(
+          ([Id, { config, LastModifiedTime }]) => ({
+            CachePolicy: { Id, LastModifiedTime, CachePolicyConfig: config },
+          }),
+        ),
+      },
+    }));
+    mockCloudFront.createCachePolicy.mockImplementation(
+      async ({ CachePolicyConfig }) => {
+        const Id = `new-cache-policy-${accountCachePolicies.size}`;
+        accountCachePolicies.set(Id, {
+          config: CachePolicyConfig,
+          LastModifiedTime: new Date(),
+        });
+        return { CachePolicy: { Id } };
+      },
+    );
+    mockCloudFront.listOriginRequestPolicies.mockImplementation(async () => ({
+      OriginRequestPolicyList: {
+        Items: [...accountOriginRequestPolicies].map(
+          ([Id, { config, LastModifiedTime }]) => ({
+            OriginRequestPolicy: {
+              Id,
+              LastModifiedTime,
+              OriginRequestPolicyConfig: config,
+            },
+          }),
+        ),
+      },
+    }));
+    mockCloudFront.createOriginRequestPolicy.mockImplementation(
+      async ({ OriginRequestPolicyConfig }) => {
+        const Id = "new-origin-request-policy";
+        accountOriginRequestPolicies.set(Id, {
+          config: OriginRequestPolicyConfig,
+          LastModifiedTime: new Date(),
+        });
+        return { OriginRequestPolicy: { Id } };
+      },
+    );
+    mockCloudFront.updateDistribution.mockImplementation(
+      async ({ Id, DistributionConfig }) => {
+        distributions.set(Id, DistributionConfig);
+        return {};
+      },
+    );
+    mockCloudFront.getCachePolicy.mockImplementation(async ({ Id }) => ({
+      ETag: `etag-${Id}`,
+    }));
+    mockCloudFront.getOriginRequestPolicy.mockImplementation(
+      async ({ Id }) => ({
+        ETag: `etag-${Id}`,
+      }),
+    );
+    // CloudFront refuses to delete a policy a distribution uses.
+    mockCloudFront.deleteCachePolicy.mockImplementation(async ({ Id }) => {
+      if (inUse(Id)) {
+        throw Object.assign(new Error("in use"), { name: "CachePolicyInUse" });
+      }
+      accountCachePolicies.delete(Id);
+      return {};
+    });
+    mockCloudFront.deleteOriginRequestPolicy.mockImplementation(
+      async ({ Id }) => {
+        if (inUse(Id)) {
+          throw Object.assign(new Error("in use"), {
+            name: "OriginRequestPolicyInUse",
+          });
+        }
+        accountOriginRequestPolicies.delete(Id);
+        return {};
+      },
+    );
+
+    await manager.createOrUpdateDistribution({
+      keyGroupId: "new-key-group-id",
+      bucketName: "hot-updater-storage",
+      clientHeaders: ["x-api-key"],
+      functionArn:
+        "arn:aws:lambda:us-east-1:123456789012:function:hot-updater:2",
+    });
+
+    expect([...accountCachePolicies.keys()].sort()).toEqual(
+      [
+        "new-cache-policy-6",
+        "new-cache-policy-7",
+        "other-cache-policy",
+        "recent-cache-policy",
+        "user-cache-policy",
+      ].sort(),
+    );
+    expect([...accountOriginRequestPolicies.keys()]).toEqual([
+      "new-origin-request-policy",
+    ]);
+    expect(mockCloudFront.deleteCachePolicy).toHaveBeenCalledWith({
+      Id: "retired-cache-policy",
+      IfMatch: "etag-retired-cache-policy",
+    });
+    // Another distribution's policy was tried, and CloudFront kept it.
+    expect(mockCloudFront.deleteCachePolicy).toHaveBeenCalledWith(
+      expect.objectContaining({ Id: "other-cache-policy" }),
+    );
+    expect(mockPrompt.log.warn).not.toHaveBeenCalled();
+  });
+
+  it("reads whether the distribution deployed, and the function versions its behaviors run", async () => {
+    const manager = new CloudFrontManager("ap-northeast-2", {
+      accessKeyId: "test-access-key",
+      secretAccessKey: "test-secret-key",
+    });
+    const association = (arn: string) => ({
+      LambdaFunctionAssociations: {
+        Items: [{ EventType: "origin-request", LambdaFunctionARN: arn }],
+      },
+    });
+    mockCloudFront.getDistribution.mockResolvedValueOnce({
+      Distribution: {
+        Status: "InProgress",
+        DistributionConfig: {
+          DefaultCacheBehavior: association(
+            "arn:aws:lambda:us-east-1:123456789012:function:hot-updater-edge:3",
+          ),
+          CacheBehaviors: {
+            Items: [
+              association(
+                "arn:aws:lambda:us-east-1:123456789012:function:hot-updater-edge:3",
+              ),
+              association(
+                "arn:aws:lambda:us-east-1:123456789012:function:hot-updater-edge:2",
+              ),
+              association(
+                "arn:aws:lambda:us-east-1:123456789012:function:someone-else:9",
+              ),
+              {},
+            ],
+          },
         },
       },
     });
+
+    await expect(
+      manager.edgeDeploymentOf("dist-id", "hot-updater-edge"),
+    ).resolves.toEqual({ deployed: false, versions: ["3", "2"] });
+
+    mockCloudFront.getDistribution.mockRejectedValueOnce(
+      Object.assign(new Error("gone"), { name: "NoSuchDistribution" }),
+    );
+    await expect(
+      manager.edgeDeploymentOf("dist-id", "hot-updater-edge"),
+    ).resolves.toBeUndefined();
   });
 
   it("persists a selected distribution before updating it", async () => {

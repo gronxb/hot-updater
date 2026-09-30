@@ -6,6 +6,8 @@ import {
 import { createHotUpdater } from "@hot-updater/server";
 import { applicationDefault } from "firebase-admin/app";
 
+import { sample } from "./samplePlugin";
+
 // https://firebase.google.com/docs/admin/setup?hl=en#initialize_the_sdk_in_non-google_environments
 // Reuse working application-default credentials (ADC).
 // Only when a credential file is needed, set its private local path in .env.hotupdater:
@@ -28,5 +30,5 @@ export const hotUpdater = createHotUpdater({
       credential,
     }),
   ],
-  plugins,
+  plugins: [...plugins, sample()],
 });

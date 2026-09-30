@@ -40,6 +40,10 @@
       "import": "./dist/diff.mjs",
       "require": "./dist/diff.cjs"
     },
+    "./internal": {
+      "import": "./dist/internal.mjs",
+      "require": "./dist/internal.cjs"
+    },
     "./node": {
       "import": "./dist/node.mjs",
       "require": "./dist/node.cjs"

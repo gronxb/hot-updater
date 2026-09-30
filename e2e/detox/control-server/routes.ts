@@ -34,6 +34,7 @@ import {
   handleSeedCrashHistory,
   handleSeedLegacyMetadata,
   handleVerifyConsoleInsights,
+  handleVerifyServerPlugins,
   handleWaitForCrashRecovery,
   handleWaitForMetadata,
   handleWriteSummary,
@@ -83,6 +84,10 @@ app.get("/e2e/runtime-config", (c) => {
 
 app.post("/e2e/screen-state", async (c) => {
   return c.json(handlePatchE2eScreenState(await c.req.json()));
+});
+
+app.post("/e2e/verify-server-plugins", async (c) => {
+  return c.json(await handleVerifyServerPlugins());
 });
 
 app.post("/e2e/verify-console-insights", async (c) => {
@@ -265,10 +270,7 @@ app.post("/e2e/assert-bundle-artifact-transfers", async (c) => {
 
 app.post("/e2e/jobs/deploy-bundle", async (c) => {
   const payload = (await c.req.json()) as {
-    bundleProfile?:
-      | "default"
-      | "multiAssetReplacement"
-      | "sizeAwareLargeDiff";
+    bundleProfile?: "default" | "multiAssetReplacement" | "sizeAwareLargeDiff";
     channel?: string;
     disabled?: boolean;
     diffBaseBundleId?: string;
@@ -556,7 +558,9 @@ app.post("/e2e/assert-first-ota-uses-built-in-manifest", async (c) => {
     return c.json({ error: "bundleId is required" }, 400);
   }
 
-  return c.json(await handleAssertFirstOtaUsesBuiltInManifest(payload.bundleId));
+  return c.json(
+    await handleAssertFirstOtaUsesBuiltInManifest(payload.bundleId),
+  );
 });
 
 app.post("/e2e/reset-remote-bundles", async (c) => {

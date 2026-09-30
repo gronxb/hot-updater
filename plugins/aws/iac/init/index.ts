@@ -1,5 +1,7 @@
 import type { InitProviderDefinition } from "@hot-updater/cli-tools";
 
+import { serverDefinitions } from "../templates";
+
 export const AWS_AUTH_MODES = [
   "local-session",
   "shared-profile",
@@ -64,6 +66,7 @@ export const isAwsRegionValue = (
 
 export const initProvider = {
   label: "AWS + Lambda@Edge",
+  serverDefinitions,
   inputs: {
     dynamodbTableName: {
       envKey: "HOT_UPDATER_DYNAMODB_TABLE_NAME",
