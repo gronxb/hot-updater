@@ -22,8 +22,8 @@ for the migration steps.
 ## Configure the update client
 
 Use `HotUpdater.init()` and a custom update flow so your app chooses when to
-check, download and restart. Initialization configures the client and reports
-native startup results; it does **not** check for or download an update.
+check, download and restart. Initialization configures the client and handles
+native startup verification; it does **not** check for or download an update.
 
 Initialize at the top level of your app entry module, outside the React
 component. The SDK handles native launch verification internally.
@@ -152,8 +152,25 @@ pipelines too. A missing URL or key must not silently disable initialization.
 
 ### Reporting and custom update timing
 
-[Insights](/docs/guides/insights) is enabled by default for `HotUpdater.init()`.
-Set `insights: false` in its configuration to opt out. Native readiness and
+To report launches and updates to [Insights](/docs/guides/insights), add the
+[Insights plugin](/docs/react-native-api/insights) to `plugins`:
+
+```tsx title="App.tsx (excerpt)"
+import { insights } from "@hot-updater/react-native/plugins/insights"; // [!code ++]
+
+HotUpdater.init({
+  baseURL: "https://your-update-server-url",
+  requestHeaders: {
+    "x-api-key": "<your-registered-client-api-key>",
+  },
+  onError: reportUpdateError,
+  plugins: [insights()], // [!code ++]
+});
+```
+
+The managed servers record these reports; a custom server needs the
+[`insights()` server plugin](/docs/guides/insights#turn-on-the-server-plugin).
+Without the client plugin, the app sends no reports. Native readiness and
 received server reports are separate checks; confirm both after your first OTA.
 
 Use the [update store](/docs/react-native-api/useHotUpdaterStore) to render

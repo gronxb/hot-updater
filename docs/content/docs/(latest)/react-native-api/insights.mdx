@@ -1,0 +1,240 @@
+---
+title: "Insights Plugin"
+description: "Report launches, downloads, applies, recoveries, and update failures to your server's Insights with the built-in `insights()` client plugin."
+icon: Activity
+---
+
+## Add the plugin
+
+`insights()` is a [client plugin](/docs/react-native-api/client-plugins) that
+ships with `@hot-updater/react-native`. Create it once, at module scope, and
+pass it to `plugins` in [`HotUpdater.init`](/docs/react-native-api/init) or
+[`HotUpdater.wrap`](/docs/react-native-api/wrap):
+
+```ts title="src/analytics.ts"
+import { insights } from "@hot-updater/react-native/plugins/insights";
+
+export const analytics = insights();
+```
+
+```tsx title="App.tsx"
+import { HotUpdater } from "@hot-updater/react-native";
+
+import { analytics } from "./src/analytics";
+
+HotUpdater.init({
+  baseURL: "<your-update-server-url>",
+  requestHeaders: {
+    "x-api-key": "<your-api-key>",
+  },
+  plugins: [analytics], // [!code ++]
+});
+```
+
+The plugin sends each report to `POST /events` under `baseURL`, with the
+`requestHeaders` and `requestTimeout` of `init` or `wrap`. The server stores
+reports when it runs the `insights()`
+[server plugin](/docs/guides/insights#turn-on-the-server-plugin); the managed
+AWS, Cloudflare, Firebase, and Supabase servers run it. See the
+[Insights guide](/docs/guides/insights) to verify reporting and read the
+Console.
+
+## Options
+
+| Option  | Type      | Default | Description                                                  |
+| ------- | --------- | ------- | ------------------------------------------------------------ |
+| `debug` | `boolean` | `false` | Also report from debug builds, where `__DEV__` is `true`.    |
+
+A debug build sends nothing by default, so development sessions stay out of
+production Insights. To test reporting from one, create the plugin with
+`insights({ debug: true })`. The option has no effect in a release build.
+
+## Set the user
+
+Attach your app's ID for the signed-in user to later reports:
+
+```ts
+import { analytics } from "./analytics";
+
+// After sign-in, or when the app restores a session:
+analytics.setUser({ userId: "user-123" });
+
+// On sign-out:
+analytics.setUser(null);
+```
+
+`setUser` stores the ID on the device, and every later report carries it as
+`userId` until `setUser(null)` clears it. A number becomes a string, and
+surrounding whitespace is trimmed; an empty ID clears the user. The call sends
+nothing by itself and works before `HotUpdater.init`, so a session restored at
+startup can be attached to the first report. A new user counts as a change for
+[launch reports](#launch-reports). The
+[installation ID](/docs/react-native-api/getInstallId) stays the same.
+
+In the Console, **Insights → All events** searches by user ID or installation
+ID. Choose an ID that fits your data policy; see
+[Security](/docs/policy/security#insights-data).
+
+## What it reports
+
+| Report              | Sent when                                                                                                                  |
+| ------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `UNCHANGED`         | The app launched without applying or recovering an update, or an update check found nothing to install.                    |
+| `UPDATE_DOWNLOADED` | The SDK downloaded, verified, and staged a bundle. The app runs the previous bundle until it restarts.                      |
+| `UPDATE_APPLIED`    | A staged update became active at launch.                                                                                   |
+| `RECOVERED`         | Native crash recovery rolled back a failed update at launch.                                                               |
+| `UPDATE_FAILED`     | An update check, download, or install failed.                                                                              |
+
+A same-bundle Release adoption, which needs no download, is also reported as
+`UNCHANGED`, with the Release it replaced as `fromReleaseId`.
+
+`init` and `wrap` report the launch once native launch verification finishes.
+In the `wrap` flow, it goes out before the result of the startup check.
+Reports of checks, downloads, and failures always follow the launch report of
+their JavaScript runtime.
+
+Downloads, applies, and recoveries are always sent, unless reporting is
+[paused](#when-the-server-has-insights-off). Launch reports and failures
+follow the rules below.
+
+### Launch reports
+
+An installation sends `UNCHANGED` at most once per UTC day. A later launch or
+update check on the same UTC day sends nothing, unless the channel, app
+version, bundle, Release, or user ID changed since the day's last report, or a
+download or failure report reached the server since then.
+
+An `UPDATE_APPLIED` or `RECOVERED` report counts as that day's report for the
+bundle it started. After a download, the same JavaScript runtime sends no
+`UNCHANGED`, so the server keeps showing the update as waiting to apply. A
+launch report the server did not store, such as one that failed its retries,
+is sent again at the next launch or check.
+
+The server applies the same rule, so Console launch counts are daily active
+installations. See [how the server counts reports](/docs/guides/insights#what-the-app-reports).
+
+### Update failures
+
+`UPDATE_FAILED` says where and why an update failed. It carries the
+[`onUpdateError`](/docs/react-native-api/client-plugins#onupdateerror) details
+the SDK knows:
+
+| Detail                | Values                                                                                                             |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `stage`               | `check`: the Release Catalog request. `download`: transferring and verifying files. `install`: patching, extracting, and moving them into place. |
+| `reason`              | `network`, `http`, `invalid_response`, `hash_mismatch`, `signature`, `patch`, `extract`, `storage`, or `unknown`.   |
+| `resource`            | `catalog`, `artifact`, `manifest`, `file`, `patch`, or `archive`.                                                  |
+| `httpStatus`          | The response status of an `http` failure.                                                                          |
+| `originCode`          | The storage origin's error code of an `http` failure, such as `AccessDenied`, `NoSuchKey`, or `ExpiredToken`.      |
+| `transport`           | Why no response arrived: `timeout`, `dns`, `tls`, `connection`, `offline`, or `cancelled`.                        |
+| `previousProcessExit` | Android 11 and later: why the previous main process exited, such as `CRASH` or `LOW_MEMORY`.                      |
+
+- An installation reports each combination of stage, reason, and target
+  bundle at most once per UTC day.
+- The report's `eventId` is derived from the installation, the UTC day, and
+  that combination, so a server that stores reports by ID keeps a repeated
+  failure once.
+- A check that failed with a network error is not reported: the device was
+  most likely offline.
+- A failure still waiting to be sent, or being retried, is dropped once the
+  same runtime reports `UPDATE_DOWNLOADED` or `UPDATE_APPLIED` for the same
+  target bundle.
+- A server that does not accept `UPDATE_FAILED` answers `400`. The plugin
+  skips that failure for the rest of the UTC day, without a retry or a
+  warning.
+
+A check that finds no Release for its scope, a bundle in the device's crash
+history, and a selection that a newer check replaced are
+[not update failures](/docs/react-native-api/client-plugins#onupdateerror), so
+the plugin reports none of them.
+
+## Delivery
+
+Reporting never delays startup or an update, and it does not trigger
+rollback. A report that fails with a network error, a timeout, `429`, or a
+`5xx` is retried in the background: up to three attempts in all, about 1
+second and then 2 seconds apart, or after the server's `Retry-After` (at most
+30 seconds). Each attempt has its own `requestTimeout`, and every attempt
+carries the same `eventId`, a UUIDv7, so the server counts a retried report
+once. A report refused with another status, such as `400`, is not retried.
+
+Reports leave one at a time in the order the app made them, so a retry never
+lands after a later report. The plugin logs a warning when a report cannot be
+delivered. Retries live in memory: a report still pending when the app closes
+or reloads is lost.
+
+### When the server has Insights off
+
+A server without the `insights()` server plugin answers `POST /events` with
+`204` and `x-hot-updater-insights: disabled`; a server without the route
+answers `404`. After either answer, the plugin sends nothing more in that
+JavaScript runtime, and nothing for 24 hours. Reports made during the pause
+are dropped, not sent later.
+
+After 24 hours, the plugin sends its next report. Once the server stores a
+report, reporting continues as usual. If you turn on `insights()` later,
+installations resume reporting within a day without an app update.
+
+## Report format
+
+Each report is one JSON body. This failed download shows every top-level
+field:
+
+```json
+{
+  "eventId": "01929f4e-2b7c-7a51-9d3e-5c1f0a6b8e21",
+  "type": "UPDATE_FAILED",
+  "installId": "5f1c2a9e-7b3d-4c8e-a1f0-2d6b9e4c7a13",
+  "userId": "user-123",
+  "platform": "ios",
+  "appVersion": "1.4.0",
+  "channel": "production",
+  "cohort": "412",
+  "fingerprintHash": null,
+  "sdkVersion": "1.0.0",
+  "fromBundleId": "01929e11-6c2d-7f40-b8a5-3e7d1c9f0a42",
+  "fromReleaseId": "01929e11-7a90-7c3e-9f21-8b4d2e6a1c57",
+  "toBundleId": "01929f2a-1d5e-7b8c-a3f6-4c9e2b7d0f18",
+  "toReleaseId": "01929f2a-2e71-7d4a-8c05-6f1b3a9e2d64",
+  "updateStrategy": "appVersion",
+  "metadata": {
+    "failure": {
+      "stage": "download",
+      "reason": "http",
+      "resource": "file",
+      "httpStatus": 403,
+      "originCode": "ExpiredToken"
+    }
+  }
+}
+```
+
+| Field                           | Value                                                                                                                                                                  |
+| ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `userId`                        | The ID from `setUser`; absent without one.                                                                                                                             |
+| `fromBundleId`, `fromReleaseId` | The bundle and Release the app ran before the transition; for `UPDATE_FAILED`, the ones it runs. For `UNCHANGED`, `fromBundleId` is `null`, and `fromReleaseId` is the Release a same-bundle adoption replaced, or `null`. |
+| `toBundleId`, `toReleaseId`     | The bundle and Release the transition moved to; for `UNCHANGED`, the ones the app runs; for `UPDATE_FAILED`, the update's target, or the running bundle for a failed check. `toReleaseId` is `null` without a Release. |
+| `updateStrategy`                | `appVersion` or `fingerprint`; `null` for `UNCHANGED`.                                                                                                                 |
+| `metadata`                      | Details by report type, described below; absent for `UNCHANGED` and `UPDATE_APPLIED`.                                                                                 |
+
+| Report              | `metadata`                                                                                                                                                  |
+| ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `UPDATE_DOWNLOADED` | `delivery`: `patch`, `manifest`, or `archive`, as in [`onBundleDownloaded`](/docs/react-native-api/client-plugins#onbundledownloaded); `patchFallback: true` when a patch was tried but a file or the archive was downloaded instead. |
+| `RECOVERED`         | `previousProcessExit` when native knows why the previous process exited.                                                                                    |
+| `UPDATE_FAILED`     | `failure`: `stage` and `reason`, plus `resource`, `httpStatus`, `originCode`, `transport`, and `previousProcessExit` when known.                              |
+
+See [how the server accepts reports](/docs/guides/insights#how-the-server-accepts-reports)
+for its size limit and status codes.
+
+## Turn reporting off
+
+Leave `insights()` out of `plugins`. The app then sends no Insights requests;
+native launch verification and crash recovery still run. Reports the server
+already stored stay there.
+
+## Related
+
+- [Insights guide](/docs/guides/insights)
+- [Client Plugins](/docs/react-native-api/client-plugins)
+- [`getInstallId`](/docs/react-native-api/getInstallId)
+- [Security](/docs/policy/security#insights-data)

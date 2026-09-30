@@ -18,11 +18,23 @@
         "default": "./lib/commonjs/index.js"
       }
     },
+    "./plugins/insights": {
+      "source": "./src/plugins/insights/index.ts",
+      "import": {
+        "types": "./lib/typescript/module/plugins/insights/index.d.ts",
+        "default": "./lib/module/plugins/insights/index.js"
+      },
+      "require": {
+        "types": "./lib/typescript/commonjs/plugins/insights/index.d.ts",
+        "default": "./lib/commonjs/plugins/insights/index.js"
+      }
+    },
     "./package.json": "./package.json"
   },
   "files": [
     "src",
     "lib",
+    "plugins",
     "android",
     "ios",
     "cpp",

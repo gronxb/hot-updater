@@ -40,7 +40,8 @@ HotUpdater.init({
 
 For the automatic update flow, put the same callback in `HotUpdater.wrap`.
 Use one configuration API per app. You do not need a separate
-`notifyAppReady()` call to enable lifecycle handling or Insights.
+`notifyAppReady()` call to enable lifecycle handling or the
+[Insights plugin](/docs/react-native-api/insights).
 
 ## Return value
 
@@ -97,12 +98,12 @@ if (result.status === "RECOVERED") {
 ```
 
 A direct call reads local state. It does not complete launch verification,
-reload the app, or send an Insights event. Before native verification finishes,
+reload the app, or call plugin hooks. Before native verification finishes,
 a direct read can return `UNCHANGED`; use `onNotifyAppReady` for the completed
 launch result.
 
-The callback reports native state even with `insights: false`. It is not an
-acknowledgment that the server received a report. See
+The callback reports native state with or without the Insights plugin. It is
+not an acknowledgment that the server received a report. See
 [Insights verification](/docs/guides/insights#verify-reporting) to confirm
 server receipt, and [automatic rollback](/docs/concepts/automatic-rollback)
 for recovery behavior.

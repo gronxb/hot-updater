@@ -73,11 +73,12 @@ ingestion and plugin client routes, or explicitly set `clientAccess: "public"`.
 | `handlers.client` | Public `/version`; Release Catalogs, artifacts, `POST /events` and plugin client routes follow the client policy; signed storage-download routes are available when the storage provider supports them. |
 | `handlers.admin`  | Bundle, Release, catalog and Channel routes, Insights queries and plugin admin routes. Your framework authenticates every request before mounting this handler.                                         |
 
-Insights runs as the `insights()` plugin. React Native clients report lifecycle
-events by default. To opt out, set `insights: false` in your existing
-`HotUpdater.init` options, retaining `baseURL` and client-key `requestHeaders`.
-Without the plugin, the Insights routes answer `204` with
-`x-hot-updater-insights: disabled`. Client API keys do not grant admin or
+Insights runs as the `insights()` plugin. React Native apps report to it when
+their `HotUpdater.init` options list the
+[Insights client plugin](/docs/react-native-api/insights) in `plugins`.
+Without the server plugin, the Insights routes answer `204` with
+`x-hot-updater-insights: disabled`, and apps with the client plugin pause
+reporting for 24 hours at a time. Client API keys do not grant admin or
 Insights-query access. See [API keys](/docs/custom/api-key-authentication) for
 bootstrap and rotation, [Server Plugins](/docs/custom/server-plugins) to add
 your own tables and routes, and the

@@ -123,6 +123,7 @@ const assertSkippedConfigDoesNotUseLegacySupabaseKey = async (
 
 const SOURCE_TEMPLATE = `// add this to your App.tsx
 import { HotUpdater } from "@hot-updater/react-native";
+import { insights } from "@hot-updater/react-native/plugins/insights";
 
 function App() {
   return null; // Replace with your app root
@@ -133,6 +134,7 @@ HotUpdater.init({
   requestHeaders: {
     "x-api-key": %%apiKey%%,
   },
+  plugins: [insights()],
 });
 
 // Call HotUpdater.checkForUpdate({ updateStrategy: "appVersion" })

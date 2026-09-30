@@ -1588,12 +1588,32 @@ async function clearIosLocalBundleState() {
     force: true,
     recursive: true,
   });
+  // The install id and client plugin storage, such as the Insights plugin's
+  // daily launch report and pause, live outside backups in Application
+  // Support. Clearing them starts each scenario as a new installation, as
+  // `pm clear` does on Android; the Release Catalog cache beside them stays.
+  const noBackupDir = path.join(
+    appDataDir,
+    "Library/Application Support/HotUpdater",
+  );
+  const noBackupEntries = await fsPromises
+    .readdir(noBackupDir)
+    .catch((): string[] => []);
+  for (const entry of noBackupEntries) {
+    if (entry === "ReleaseCatalogCache") continue;
+    await fsPromises.rm(path.join(noBackupDir, entry), {
+      force: true,
+      recursive: true,
+    });
+  }
 
   const stalePaths = [
     path.join(documentsDir, "bundle-store", "metadata.json"),
     path.join(documentsDir, "bundle-store"),
     path.join(documentsDir, "bundle-temp"),
     path.join(documentsDir, "bundle-manifest-temp"),
+    path.join(noBackupDir, "storage.json"),
+    path.join(noBackupDir, "install-identity.json"),
   ];
   for (const stalePath of stalePaths) {
     if (fs.existsSync(stalePath)) {
@@ -1604,6 +1624,7 @@ async function clearIosLocalBundleState() {
   fixtureSession.storePath = null;
   logDetoxFixture("ios local bundle state reset", {
     documentsDir,
+    noBackupDir,
   });
 }
 

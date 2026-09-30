@@ -30,6 +30,11 @@ describe("AWS managed config scaffold", () => {
     expect(source).toContain('baseURL: "https://example.cloudfront.net"');
     expect(source).toContain('"x-api-key": "api-key"');
     expect(source).toContain("HotUpdater.init({");
+    // The managed server runs insights(), so the app reports to it.
+    expect(source).toContain(
+      'import { insights } from "@hot-updater/react-native/plugins/insights";',
+    );
+    expect(source).toContain("plugins: [insights()],");
     expect(source).toContain("HotUpdater.checkForUpdate");
     expect(source).not.toContain("HotUpdater.wrap");
     expect(source).toContain("return null; // Replace with your app root.");

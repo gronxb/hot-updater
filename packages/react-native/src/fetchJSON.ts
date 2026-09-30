@@ -1,13 +1,6 @@
-export class FetchJSONResponseError extends Error {
-  constructor(
-    readonly status: number,
-    statusText: string,
-  ) {
-    super(
-      `Request failed with HTTP ${status}${statusText ? ` ${statusText}` : ""}`,
-    );
-  }
-}
+import { UpdateHttpError } from "./updateError";
+
+export class FetchJSONResponseError extends UpdateHttpError {}
 
 export const fetchJSON = async <T>({
   url,

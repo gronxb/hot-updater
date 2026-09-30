@@ -34,12 +34,19 @@ jest.mock("@hot-updater/react-native", () => ({
     resetChannel: jest.fn(() => Promise.resolve(true)),
     setCohort: jest.fn(),
     setReloadBehavior: jest.fn(),
-    setUser: jest.fn(),
     wrap: jest.fn(() => (Component) => Component),
   },
   useHotUpdaterStore: jest.fn((selector = (state) => state) =>
     selector(defaultState),
   ),
+}));
+
+jest.mock("@hot-updater/react-native/plugins/insights", () => ({
+  insights: jest.fn(() => ({
+    id: "insights",
+    setup: jest.fn(),
+    setUser: jest.fn(),
+  })),
 }));
 
 jest.mock("react-native-bootsplash", () => ({

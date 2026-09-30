@@ -479,21 +479,17 @@ data class LaunchReport(
         }
 }
 
+/**
+ * The persisted install id. See [InstallIdentityService].
+ */
 data class InstallationIdentity(
     val installId: String,
-    val userId: String? = null,
-    val username: String? = null,
 ) {
     companion object {
         private const val TAG = "InstallationIdentity"
-        const val IDENTITY_FILENAME = "identity.json"
+        const val IDENTITY_FILENAME = "install-identity.json"
 
-        fun fromJson(json: JSONObject): InstallationIdentity =
-            InstallationIdentity(
-                installId = json.getString("installId"),
-                userId = json.optNullableString("userId"),
-                username = json.optNullableString("username"),
-            )
+        fun fromJson(json: JSONObject): InstallationIdentity = InstallationIdentity(installId = json.getString("installId"))
 
         fun loadFromFile(file: File): InstallationIdentity? =
             try {
@@ -511,8 +507,6 @@ data class InstallationIdentity(
     fun toJson(): JSONObject =
         JSONObject().apply {
             put("installId", installId)
-            put("userId", userId ?: JSONObject.NULL)
-            put("username", username ?: JSONObject.NULL)
         }
 
     fun saveToFile(file: File): Boolean =

@@ -5,9 +5,8 @@
  * @format
  */
 
-import { 
-  useHotUpda rStore,
-} from "@hot-updater/react-native";
+import { HotUpdater, useHotUpdaterStore } from "@hot-updater/react-native";
+import { insights } from "@hot-updater/react-native/plugins/insights";
 import React, { useEffect, useState } from "react";
 import { Button, Image, Modal, SafeAreaView, Text, View } from "react-native";
 
@@ -92,6 +91,7 @@ function App(): React.JSX.Element {
 export default HotUpdater.wrap({
   baseURL: "http://localhost:3006/hot-updater",
   updateStrategy: "appVersion",
+  plugins: [insights()],
   fallbackComponent: ({ progress, status }) => (
     <Modal transparent visible={true}>
       <View

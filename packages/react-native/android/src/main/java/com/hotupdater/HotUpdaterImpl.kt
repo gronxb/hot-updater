@@ -18,6 +18,8 @@ class HotUpdaterImpl {
     private val preferences: PreferencesService
     private val recoveryManager: HotUpdaterRecoveryManager
     private val releaseCatalogCache: ReleaseCatalogCacheService
+    private val installIdentity: InstallIdentityService
+    private val keyValueStorage: KeyValueStorageService
     private var currentLaunchSelection: LaunchSelection? = null
 
     /**
@@ -36,6 +38,9 @@ class HotUpdaterImpl {
             ReleaseCatalogCacheService(
                 File(this.context.noBackupFilesDir, "hot-updater-release-catalog-cache"),
             )
+        this.installIdentity = InstallIdentityService.create(this.context)
+        this.keyValueStorage = KeyValueStorageService.create(this.context)
+        PreviousProcessExit.initialize(this.context)
     }
 
     /**
@@ -272,6 +277,7 @@ class HotUpdaterImpl {
      * @param manifestFileHash Hash or signature used to verify the target manifest
      * @param assets Complete target asset descriptor map
      * @param progressCallback Callback for download progress updates
+     * @return how the staged bundle arrived
      * @throws HotUpdaterException if the update fails
      */
     suspend fun updateBundle(
@@ -283,18 +289,19 @@ class HotUpdaterImpl {
         selection: PersistedSelection? = null,
         archiveUrl: String? = null,
         progressCallback: (UpdateProgressPayload) -> Unit,
-    ) {
+    ): UpdateBundleResult {
         if (selection != null && !bundleStorage.stageReleaseSelection(selection)) {
-            throw IllegalStateException("Release catalog selection is stale")
+            throw StaleReleaseSelectionException()
         }
-        bundleStorage.updateBundle(
-            bundleId,
-            manifestUrl,
-            manifestFileHash,
-            assets,
-            archiveUrl,
-            progressCallback,
-        )
+        val result =
+            bundleStorage.updateBundle(
+                bundleId,
+                manifestUrl,
+                manifestFileHash,
+                assets,
+                archiveUrl,
+                progressCallback,
+            )
 
         if (!channel.isNullOrEmpty()) {
             if (channel == getDefaultChannel()) {
@@ -303,6 +310,7 @@ class HotUpdaterImpl {
                 preferences.setItem(CHANNEL_STORAGE_KEY, channel)
             }
         }
+        return result
     }
 
     /**
@@ -371,7 +379,15 @@ class HotUpdaterImpl {
         }
     }
 
-    fun notifyAppReady(): Map<String, Any?> = bundleStorage.notifyAppReady()
+    /**
+     * The launch report for this process, with `previousProcessExit` when
+     * Android reports why the previous main process exited.
+     */
+    fun notifyAppReady(): Map<String, Any?> {
+        val report = bundleStorage.notifyAppReady()
+        val previousProcessExit = PreviousProcessExit.get() ?: return report
+        return report + ("previousProcessExit" to previousProcessExit)
+    }
 
     fun acceptReleaseCatalog(
         catalogId: String,
@@ -420,17 +436,17 @@ class HotUpdaterImpl {
 
     suspend fun commitReleaseSelection(selection: PersistedSelection): Boolean = bundleStorage.commitReleaseSelection(selection)
 
-    fun getInstallId(): String = bundleStorage.getInstallId()
+    fun getInstallId(): String = installIdentity.getInstallId()
 
-    fun getUserId(): String? = bundleStorage.getUserId()
+    /** Reads a value from the client plugins' key-value store. */
+    fun getStorageItem(key: String): String? = keyValueStorage.getItem(key)
 
-    fun getUsername(): String? = bundleStorage.getUsername()
-
-    fun setUser(
-        userId: String?,
-        username: String?,
+    /** Writes a value to the client plugins' key-value store; null removes the key. */
+    fun setStorageItem(
+        key: String,
+        value: String?,
     ) {
-        bundleStorage.setUser(userId, username)
+        keyValueStorage.setItem(key, value)
     }
 
     /**

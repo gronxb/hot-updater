@@ -74,7 +74,10 @@ class HotUpdaterSessionState {
   private readonly defaultChannel: string;
   private currentChannel: string;
   private cachedCohort: string | undefined;
-  private readonly inflightUpdates = new Map<string, Promise<boolean>>();
+  private readonly inflightUpdates = new Map<
+    string,
+    Promise<BundleDelivery | null>
+  >();
   private lastInstalledBundleId: string | null = null;
   private readonly activeBundleSnapshotCache = new Map<
     ActiveBundleSnapshotCacheKey,
@@ -103,11 +106,16 @@ class HotUpdaterSessionState {
     return this.lastInstalledBundleId === bundleId;
   }
 
-  getInflightUpdate(bundleId: string): Promise<boolean> | undefined {
+  getInflightUpdate(
+    bundleId: string,
+  ): Promise<BundleDelivery | null> | undefined {
     return this.inflightUpdates.get(bundleId);
   }
 
-  trackInflightUpdate(bundleId: string, promise: Promise<boolean>) {
+  trackInflightUpdate(
+    bundleId: string,
+    promise: Promise<BundleDelivery | null>,
+  ) {
     this.inflightUpdates.set(bundleId, promise);
   }
 
@@ -417,14 +425,40 @@ export const commitReleaseSelection = async (input: {
   return ok;
 };
 
+/** How native delivered a staged bundle. */
+export type BundleDelivery = {
+  /**
+   * "patch" when a bsdiff patch produced a file, "manifest" when only the
+   * changed files were downloaded, "archive" for the full archive.
+   */
+  readonly delivery: "patch" | "manifest" | "archive";
+  /** A patch was tried, but the file or the archive was downloaded instead. */
+  readonly patchFallback: boolean;
+};
+
+const readBundleDelivery = (value: unknown): BundleDelivery | null => {
+  if (typeof value !== "object" || value === null) return null;
+  const { delivery, patchFallback } = value as Record<string, unknown>;
+  if (
+    delivery !== "patch" &&
+    delivery !== "manifest" &&
+    delivery !== "archive"
+  ) {
+    return null;
+  }
+  return { delivery, patchFallback: patchFallback === true };
+};
+
 /**
- * Downloads files and applies them to the app.
+ * Stages a bundle for the next launch. Resolves with how native delivered
+ * it, or with null when this runtime had already staged it and nothing was
+ * downloaded; rejects when the download or install fails.
  *
- * @param {UpdateParams} params - Parameters object required for bundle update
- * @returns {Promise<boolean>} Resolves with true if download was successful
  * @throws {Error} Rejects with error.code from HotUpdaterErrorCode enum and error.message
  */
-export async function updateBundle(params: UpdateParams): Promise<boolean> {
+export async function stageBundle(
+  params: UpdateParams,
+): Promise<BundleDelivery | null> {
   const updateBundleId = params.bundleId;
   const status = params.status;
   const currentBundleId = status === "UPDATE" ? getFreshBundleId() : undefined;
@@ -437,7 +471,7 @@ export async function updateBundle(params: UpdateParams): Promise<boolean> {
     sessionState.hasInstalledBundle(updateBundleId) &&
     currentBundleId === updateBundleId
   ) {
-    return true;
+    return null;
   }
 
   const shouldSkipCurrentBundleIdCheck =
@@ -466,7 +500,7 @@ export async function updateBundle(params: UpdateParams): Promise<boolean> {
   const promise = (async () => {
     try {
       const selection = params.selection;
-      const ok = await HotUpdaterNative.updateBundle({
+      const staged = await HotUpdaterNative.updateBundle({
         bundleId: updateBundleId,
         channel: targetChannel,
         assets: targetAssets as Record<string, ArtifactAsset>,
@@ -475,10 +509,8 @@ export async function updateBundle(params: UpdateParams): Promise<boolean> {
         ...(params.archiveUrl ? { archiveUrl: params.archiveUrl } : {}),
         ...(selection === undefined ? {} : { selection }),
       });
-      if (ok) {
-        sessionState.markBundleInstalled(updateBundleId, targetChannel);
-      }
-      return ok;
+      sessionState.markBundleInstalled(updateBundleId, targetChannel);
+      return readBundleDelivery(staged);
     } finally {
       sessionState.clearInflightUpdate(updateBundleId);
     }
@@ -486,6 +518,18 @@ export async function updateBundle(params: UpdateParams): Promise<boolean> {
 
   sessionState.trackInflightUpdate(updateBundleId, promise);
   return promise;
+}
+
+/**
+ * Downloads files and applies them to the app.
+ *
+ * @param {UpdateParams} params - Parameters object required for bundle update
+ * @returns {Promise<boolean>} Resolves with true if download was successful
+ * @throws {Error} Rejects with error.code from HotUpdaterErrorCode enum and error.message
+ */
+export async function updateBundle(params: UpdateParams): Promise<boolean> {
+  await stageBundle(params);
+  return true;
 }
 
 /**
@@ -693,64 +737,31 @@ export const getInstallId = (): string => {
   return nativeModule.getInstallId();
 };
 
-export type PersistedUserIdentity = {
-  userId?: string;
-  username?: string;
-};
-
-export const getPersistedUserIdentity = (): PersistedUserIdentity => {
-  const nativeModule = HotUpdaterNative as typeof HotUpdaterNative & {
-    getUserId?: () => string | null;
-    getUsername?: () => string | null;
-  };
-
-  if (
-    typeof nativeModule.getUserId !== "function" ||
-    typeof nativeModule.getUsername !== "function"
-  ) {
+const requireStorageNativeMethod = <T extends (...args: any[]) => any>(
+  name: "getStorageItem" | "setStorageItem",
+): T => {
+  const method = (HotUpdaterNative as unknown as Record<string, unknown>)[name];
+  if (typeof method !== "function") {
     throw new Error(
-      "[HotUpdater] Native module is missing 'getUserId()' or 'getUsername()'. This JS bundle requires a newer native @hot-updater/react-native SDK. Rebuild and release a new app version before delivering this OTA update.",
+      `[HotUpdater] Native module is missing '${name}()'. This JS bundle requires a newer native @hot-updater/react-native SDK. Rebuild and release a new app version before delivering this OTA update.`,
     );
   }
-
-  const userId = nativeModule.getUserId();
-  const username = nativeModule.getUsername();
-
-  return {
-    ...(userId != null ? { userId } : {}),
-    ...(username != null ? { username } : {}),
-  };
+  return method.bind(HotUpdaterNative) as T;
 };
 
-export type SetUserParams = {
-  userId?: string | number | null;
-  username?: string | null;
+/** Reads a value from the SDK's native key-value store. */
+export const getStorageItem = (key: string): string | null => {
+  const value =
+    requireStorageNativeMethod<(key: string) => unknown>("getStorageItem")(key);
+  return typeof value === "string" ? value : null;
 };
 
-export function setUser(params: SetUserParams): void;
-export function setUser(params: null): void;
-export function setUser(params: SetUserParams | null): void {
-  const nativeModule = HotUpdaterNative as typeof HotUpdaterNative & {
-    setUser?: (userId: string | null, username: string | null) => void;
-  };
-
-  if (typeof nativeModule.setUser !== "function") {
-    throw new Error(
-      "[HotUpdater] Native module is missing 'setUser()'. This JS bundle requires a newer native @hot-updater/react-native SDK. Rebuild and release a new app version before delivering this OTA update.",
-    );
-  }
-
-  if (params === null) {
-    nativeModule.setUser(null, null);
-    return;
-  }
-
-  const normalizedUserId =
-    params.userId === null || params.userId === undefined
-      ? null
-      : String(params.userId);
-  nativeModule.setUser(normalizedUserId, params.username ?? null);
-}
+/** Writes a value to the SDK's native key-value store; null removes it. */
+export const setStorageItem = (key: string, value: string | null): void => {
+  requireStorageNativeMethod<(key: string, value: string | null) => void>(
+    "setStorageItem",
+  )(key, value);
+};
 
 /**
  * Result returned by notifyAppReady()
@@ -772,18 +783,20 @@ export type NotifyAppReadyResult =
       toReleaseId?: string;
     };
 
-export type NotifyAppReadyInsightsEvent = {
+/** An update applied or recovered at this launch, as native persisted it. */
+export type LaunchTransition = {
   type: "UPDATE_APPLIED" | "RECOVERED";
   fromBundleId: string;
   toBundleId: string;
-  fromReleaseId?: string | null;
-  toReleaseId?: string | null;
+  fromReleaseId: string | null;
+  toReleaseId: string | null;
   updateStrategy: PersistedUpdateStrategy;
 };
 
 type RawNotifyAppReadyResult = {
   status?: string;
   crashedBundleId?: string;
+  previousProcessExit?: string;
   fromReleaseId?: string;
   fromBundleId?: string;
   toReleaseId?: string;
@@ -880,9 +893,9 @@ const getNotifyAppReadyTransition = (
   return null;
 };
 
-const getNotifyAppReadyInsightsEvent = (
+const getLaunchTransition = (
   result: RawNotifyAppReadyResult,
-): NotifyAppReadyInsightsEvent | null => {
+): LaunchTransition | null => {
   const transition = getNotifyAppReadyTransition(result);
 
   if (!transition || !isPersistedUpdateStrategy(result.updateStrategy)) {
@@ -893,12 +906,8 @@ const getNotifyAppReadyInsightsEvent = (
     type: transition.status,
     fromBundleId: transition.fromBundleId,
     toBundleId: transition.toBundleId,
-    ...(transition.fromReleaseId === null
-      ? {}
-      : { fromReleaseId: transition.fromReleaseId }),
-    ...(transition.toReleaseId === null
-      ? {}
-      : { toReleaseId: transition.toReleaseId }),
+    fromReleaseId: transition.fromReleaseId,
+    toReleaseId: transition.toReleaseId,
     updateStrategy: result.updateStrategy,
   };
 };
@@ -927,14 +936,21 @@ const normalizeNotifyAppReadyResult = (
 
 export const readNotifyAppReady = (): {
   result: NotifyAppReadyResult;
-  insightsEvent: NotifyAppReadyInsightsEvent | null;
+  transition: LaunchTransition | null;
+  /** Android 11+: why the previous main process exited, when native knows. */
+  previousProcessExit: string | null;
   pending: boolean;
 } => {
   const rawResult = readRawNotifyAppReadyResult();
+  const { previousProcessExit } = rawResult;
 
   return {
     result: normalizeNotifyAppReadyResult(rawResult),
-    insightsEvent: getNotifyAppReadyInsightsEvent(rawResult),
+    transition: getLaunchTransition(rawResult),
+    previousProcessExit:
+      typeof previousProcessExit === "string" && previousProcessExit !== ""
+        ? previousProcessExit
+        : null,
     pending: rawResult.status === "PENDING",
   };
 };

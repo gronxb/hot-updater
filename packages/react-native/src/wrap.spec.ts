@@ -4,9 +4,11 @@ import { cleanup, render, waitFor } from "@testing-library/react";
 import { createElement, type ComponentType } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { createNotifyReadResult } from "./appReady.test-utils";
+import type { HotUpdaterClientPlugin } from "./clientPlugin";
 import type {
   ActiveUpdateState,
-  NotifyAppReadyInsightsEvent,
+  LaunchTransition,
   NotifyAppReadyResult,
 } from "./native";
 import type { HotUpdaterOptions } from "./wrap";
@@ -17,41 +19,30 @@ vi.mock("react-native", () => ({
   },
 }));
 
-const createNotifyReadResult = (
-  result: NotifyAppReadyResult = { status: "UNCHANGED" },
-  insightsEvent: NotifyAppReadyInsightsEvent | null = null,
-  pending = false,
-): {
-  insightsEvent: NotifyAppReadyInsightsEvent | null;
-  pending: boolean;
-  result: NotifyAppReadyResult;
-} => ({
-  insightsEvent,
-  pending,
-  result,
+const mocks = vi.hoisted(() => {
+  Reflect.set(globalThis, "HotUpdater", { SDK_VERSION: "test-sdk-version" });
+  return {
+    addListener: vi.fn(() => () => {}),
+    checkForUpdate: vi.fn(),
+    getAppVersion: vi.fn(() => "1.0.0"),
+    getBundleId: vi.fn(() => "bundle-id"),
+    getUpdateId: vi.fn(() => "release-id"),
+    getChannel: vi.fn(() => "production"),
+    getActiveUpdateState: vi.fn<() => ActiveUpdateState>(),
+    getCohort: vi.fn(() => "123"),
+    getFingerprintHash: vi.fn(() => "fingerprint-hash"),
+    getInstallId: vi.fn(() => "install-id"),
+    readNotifyAppReady: vi.fn<
+      () => {
+        transition: LaunchTransition | null;
+        previousProcessExit: string | null;
+        pending: boolean;
+        result: NotifyAppReadyResult;
+      }
+    >(() => createNotifyReadResult()),
+    reload: vi.fn(),
+  };
 });
-
-const mocks = vi.hoisted(() => ({
-  addListener: vi.fn(() => () => {}),
-  checkForUpdate: vi.fn(),
-  getAppVersion: vi.fn(() => "1.0.0"),
-  getBundleId: vi.fn(() => "bundle-id"),
-  getUpdateId: vi.fn(() => "release-id"),
-  getChannel: vi.fn(() => "production"),
-  getActiveUpdateState: vi.fn<() => ActiveUpdateState>(),
-  getCohort: vi.fn(() => "123"),
-  getFingerprintHash: vi.fn(() => "fingerprint-hash"),
-  getInstallId: vi.fn(() => "install-id"),
-  getPersistedUserIdentity: vi.fn(() => ({})),
-  readNotifyAppReady: vi.fn<
-    () => {
-      insightsEvent: NotifyAppReadyInsightsEvent | null;
-      pending: boolean;
-      result: NotifyAppReadyResult;
-    }
-  >(() => createNotifyReadResult()),
-  reload: vi.fn(),
-}));
 
 vi.mock("./checkForUpdate", () => ({
   checkForUpdate: mocks.checkForUpdate,
@@ -67,23 +58,29 @@ vi.mock("./native", () => ({
   getCohort: mocks.getCohort,
   getFingerprintHash: mocks.getFingerprintHash,
   getInstallId: mocks.getInstallId,
-  getPersistedUserIdentity: mocks.getPersistedUserIdentity,
   readNotifyAppReady: mocks.readNotifyAppReady,
   reload: mocks.reload,
 }));
 
-const createClient = (
-  sendInsightsEvent = vi.fn().mockResolvedValue(undefined),
-) => ({
+const createClient = () => ({
   client: {
     createSession: vi.fn(async () => ({
       fetchReleaseCatalog: vi.fn(),
       resolveArtifact: vi.fn(),
-      sendInsightsEvent,
     })),
   },
-  sendInsightsEvent,
 });
+
+const configureRecorder = async () => {
+  const { configurePlugins } = await import("./pluginHost");
+  const onAppReady = vi.fn();
+  const plugin: HotUpdaterClientPlugin = {
+    id: "recorder",
+    setup: () => ({ onAppReady }),
+  };
+  configurePlugins([plugin], { baseURL: "https://updates.example.com" });
+  return onAppReady;
+};
 
 describe("HotUpdater wrap initialization", () => {
   beforeEach(() => {
@@ -98,7 +95,6 @@ describe("HotUpdater wrap initialization", () => {
     mocks.checkForUpdate.mockResolvedValue(null);
     mocks.addListener.mockReturnValue(() => {});
     mocks.getAppVersion.mockReturnValue("1.0.0");
-    mocks.getPersistedUserIdentity.mockReturnValue({});
     mocks.getBundleId.mockReturnValue("bundle-id");
     mocks.getUpdateId.mockReturnValue("release-id");
     mocks.getChannel.mockReturnValue("production");
@@ -115,8 +111,44 @@ describe("HotUpdater wrap initialization", () => {
 
   afterEach(cleanup);
 
-  it("does not report No change while an optional download is in progress", async () => {
-    const { client, sendInsightsEvent } = createClient();
+  it("reports the console ID when up to date and the launch to plugins", async () => {
+    const onAppReady = await configureRecorder();
+    const onUpdateProcessCompleted = vi.fn();
+    const { client } = createClient();
+    const { wrap } = await import("./wrap");
+    const WrappedComponent = wrap({
+      client,
+      onUpdateProcessCompleted,
+      updateStrategy: "appVersion",
+    })(() => null);
+
+    render(createElement(WrappedComponent));
+
+    await waitFor(() =>
+      expect(onUpdateProcessCompleted).toHaveBeenCalledWith({
+        id: "release-id",
+        message: null,
+        shouldForceUpdate: false,
+        status: "UP_TO_DATE",
+      }),
+    );
+    expect(onAppReady).toHaveBeenCalledExactlyOnceWith({
+      status: "UNCHANGED",
+      channel: "production",
+      bundleId: "bundle-id",
+      releaseId: null,
+      previousProcessExit: null,
+    });
+    expect(mocks.checkForUpdate).toHaveBeenCalledWith({
+      client,
+      onError: undefined,
+      requestHeaders: undefined,
+      requestTimeout: undefined,
+      updateStrategy: "appVersion",
+    });
+  });
+
+  it("completes an optional update while its download continues", async () => {
     let complete!: (success: boolean) => void;
     const download = vi.fn(
       () =>
@@ -134,47 +166,21 @@ describe("HotUpdater wrap initialization", () => {
     const { wrap } = await import("./wrap");
     const onUpdateProcessCompleted = vi.fn();
     const Wrapped = wrap({
-      client,
-      insights: true,
+      client: createClient().client,
       updateStrategy: "appVersion",
       onUpdateProcessCompleted,
     })(() => null);
+
     render(createElement(Wrapped));
+
     await waitFor(() => expect(download).toHaveBeenCalledOnce());
-    expect(onUpdateProcessCompleted).toHaveBeenCalledOnce();
-    expect(sendInsightsEvent).not.toHaveBeenCalled();
+    expect(onUpdateProcessCompleted).toHaveBeenCalledExactlyOnceWith({
+      id: "next",
+      message: null,
+      shouldForceUpdate: false,
+      status: "UPDATE",
+    });
     complete(true);
-  });
-
-  it("reports the console ID when up to date while retaining file IDs in insights", async () => {
-    const onUpdateProcessCompleted = vi.fn();
-    const { client, sendInsightsEvent } = createClient();
-    const { wrap } = await import("./wrap");
-    const WrappedComponent = wrap({
-      insights: true,
-      client,
-      onUpdateProcessCompleted,
-      updateStrategy: "appVersion",
-    })(() => null);
-
-    render(createElement(WrappedComponent));
-
-    await waitFor(() =>
-      expect(onUpdateProcessCompleted).toHaveBeenCalledWith({
-        id: "release-id",
-        message: null,
-        shouldForceUpdate: false,
-        status: "UP_TO_DATE",
-      }),
-    );
-    await waitFor(() =>
-      expect(sendInsightsEvent).toHaveBeenCalledWith(
-        expect.objectContaining({
-          toBundleId: "bundle-id",
-          type: "UNCHANGED",
-        }),
-      ),
-    );
   });
 
   it("returns void from init and defers notifyAppReady to the next frame", async () => {
@@ -187,8 +193,9 @@ describe("HotUpdater wrap initialization", () => {
       },
     );
     vi.stubGlobal("requestAnimationFrame", requestAnimationFrame);
+    const onAppReady = await configureRecorder();
 
-    const { client, sendInsightsEvent } = createClient();
+    const { client } = createClient();
     const { init } = await import("./wrap");
 
     const result = init({
@@ -201,214 +208,13 @@ describe("HotUpdater wrap initialization", () => {
 
     expect(result).toBeUndefined();
     expect(mocks.readNotifyAppReady).not.toHaveBeenCalled();
-    expect(sendInsightsEvent).not.toHaveBeenCalled();
-
+    expect(onAppReady).not.toHaveBeenCalled();
     expect(requestAnimationFrame).toHaveBeenCalled();
 
     await vi.runOnlyPendingTimersAsync();
 
     expect(mocks.readNotifyAppReady).toHaveBeenCalledWith();
-    expect(sendInsightsEvent).not.toHaveBeenCalled();
-  });
-
-  it("waits for native launch verification before sending insights", async () => {
-    vi.useFakeTimers();
-
-    vi.stubGlobal(
-      "requestAnimationFrame",
-      vi.fn((callback: (timestamp: number) => void) => {
-        setTimeout(() => callback(0), 0);
-        return 1;
-      }),
-    );
-
-    mocks.readNotifyAppReady
-      .mockReturnValueOnce(createNotifyReadResult(undefined, null, true))
-      .mockReturnValueOnce(
-        createNotifyReadResult(
-          {
-            fromBundleId: "bundle-a",
-            status: "UPDATE_APPLIED",
-            toBundleId: "bundle-b",
-          },
-          {
-            fromBundleId: "bundle-a",
-            toBundleId: "bundle-b",
-            type: "UPDATE_APPLIED",
-            updateStrategy: "appVersion",
-          },
-        ),
-      );
-
-    const { client, sendInsightsEvent } = createClient();
-    const { init } = await import("./wrap");
-
-    init({ insights: true, client });
-
-    await vi.runAllTimersAsync();
-
-    expect(mocks.readNotifyAppReady).toHaveBeenCalledTimes(2);
-    expect(sendInsightsEvent).toHaveBeenCalledTimes(1);
-  });
-
-  it("sends automatic insights only from init when enabled", async () => {
-    vi.useFakeTimers();
-
-    vi.stubGlobal(
-      "requestAnimationFrame",
-      vi.fn((callback: (timestamp: number) => void) => {
-        setTimeout(() => callback(0), 0);
-        return 1;
-      }),
-    );
-
-    mocks.readNotifyAppReady.mockReturnValue(
-      createNotifyReadResult(
-        {
-          fromBundleId: "bundle-a",
-          status: "UPDATE_APPLIED",
-          toBundleId: "bundle-b",
-        },
-        {
-          fromBundleId: "bundle-a",
-          toBundleId: "bundle-b",
-          type: "UPDATE_APPLIED",
-          updateStrategy: "fingerprint",
-        },
-      ),
-    );
-
-    mocks.getPersistedUserIdentity.mockReturnValue({
-      userId: "user-123",
-      username: "alice",
-    });
-
-    const { client, sendInsightsEvent } = createClient();
-    const { init } = await import("./wrap");
-
-    init({
-      insights: true,
-      requestHeaders: {
-        Authorization: "Bearer token",
-      },
-      requestTimeout: 1000,
-      client,
-    });
-
-    await vi.runOnlyPendingTimersAsync();
-
-    expect(sendInsightsEvent).toHaveBeenCalledWith({
-      appVersion: "1.0.0",
-      channel: "production",
-      cohort: "123",
-      fingerprintHash: "fingerprint-hash",
-      fromBundleId: "bundle-a",
-      fromReleaseId: null,
-      installId: "install-id",
-      platform: "ios",
-      requestHeaders: {
-        Authorization: "Bearer token",
-      },
-      requestTimeout: 1000,
-      toBundleId: "bundle-b",
-      toReleaseId: null,
-      type: "UPDATE_APPLIED",
-      updateStrategy: "fingerprint",
-      userId: "user-123",
-      username: "alice",
-    });
-  });
-
-  it("guards automatic insights to a single delivery attempt per runtime", async () => {
-    vi.useFakeTimers();
-
-    vi.stubGlobal(
-      "requestAnimationFrame",
-      vi.fn((callback: (timestamp: number) => void) => {
-        setTimeout(() => callback(0), 0);
-        return 1;
-      }),
-    );
-
-    mocks.readNotifyAppReady.mockReturnValue(
-      createNotifyReadResult(
-        {
-          fromBundleId: "bundle-a",
-          status: "RECOVERED",
-          toBundleId: "bundle-b",
-        },
-        {
-          fromBundleId: "bundle-a",
-          toBundleId: "bundle-b",
-          type: "RECOVERED",
-          updateStrategy: "appVersion",
-        },
-      ),
-    );
-
-    const { client, sendInsightsEvent } = createClient();
-    const { init } = await import("./wrap");
-
-    init({ insights: true, client });
-    init({ insights: true, client });
-
-    await vi.runOnlyPendingTimersAsync();
-
-    expect(sendInsightsEvent).toHaveBeenCalledTimes(1);
-  });
-
-  it("warns without interrupting app readiness when insights transport fails", async () => {
-    vi.useFakeTimers();
-
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    const error = new Error("Expected HTTP 204 from /events, received 404");
-    const onError = vi.fn();
-    const onNotifyAppReady = vi.fn();
-    vi.stubGlobal(
-      "requestAnimationFrame",
-      vi.fn((callback: (timestamp: number) => void) => {
-        setTimeout(() => callback(0), 0);
-        return 1;
-      }),
-    );
-    mocks.readNotifyAppReady.mockReturnValue(
-      createNotifyReadResult(
-        {
-          fromBundleId: "bundle-a",
-          status: "UPDATE_APPLIED",
-          toBundleId: "bundle-b",
-        },
-        {
-          fromBundleId: "bundle-a",
-          toBundleId: "bundle-b",
-          type: "UPDATE_APPLIED",
-          updateStrategy: "appVersion",
-        },
-      ),
-    );
-    const { client } = createClient(vi.fn().mockRejectedValue(error));
-    const { init } = await import("./wrap");
-
-    init({
-      insights: true,
-      onError,
-      onNotifyAppReady,
-      client,
-    });
-
-    await vi.runOnlyPendingTimersAsync();
-
-    expect(onError).not.toHaveBeenCalled();
-    expect(warn).toHaveBeenCalledWith(
-      "[HotUpdater] Automatic notifyAppReady insights failed:",
-      error,
-    );
-    expect(onNotifyAppReady).toHaveBeenCalledWith({
-      fromBundleId: "bundle-a",
-      status: "UPDATE_APPLIED",
-      toBundleId: "bundle-b",
-    });
-    warn.mockRestore();
+    expect(onAppReady).toHaveBeenCalledOnce();
   });
 
   it("does not accept a manual wrap HOC", async () => {
@@ -440,6 +246,17 @@ describe("HotUpdater wrap initialization", () => {
       updateStrategy: "appVersion",
     } satisfies HotUpdaterOptions;
 
+    const assertRemovedOptionStaysRejected = () => {
+      const withInsights: HotUpdaterOptions = {
+        baseURL: "https://updates.example.com",
+        updateStrategy: "appVersion",
+        // @ts-expect-error Insights is the insights() plugin, not an option.
+        insights: true,
+      };
+      void withInsights;
+    };
+
+    expect(assertRemovedOptionStaysRejected).toBeTypeOf("function");
     expect(autoOptions.updateStrategy).toBe("appVersion");
   });
 });
