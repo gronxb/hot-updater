@@ -1,9 +1,10 @@
 import {
-  createStorageKeyBuilder,
   createStorageAdapter,
+  createStorageKeyBuilder,
   createStorageUri,
   parseStorageUri,
   type StorageAdapterWith,
+  withAdapterResource,
 } from "@hot-updater/plugin-core";
 import {
   getApp,
@@ -42,7 +43,7 @@ export const firebaseStorage = (
     return parsed;
   };
 
-  return createStorageAdapter({
+  const adapter = createStorageAdapter({
     name: "firebaseStorage",
     protocol: "gs",
     async put({ key, body, contentType }) {
@@ -117,5 +118,9 @@ export const firebaseStorage = (
       await bucket.file(key).delete({ ignoreNotFound: true });
       return { deleted: true };
     },
+  });
+  return withAdapterResource(adapter, {
+    projectId: config.projectId,
+    storageBucket: config.storageBucket,
   });
 };

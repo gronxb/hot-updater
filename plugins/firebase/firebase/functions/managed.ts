@@ -84,9 +84,13 @@ export const serveManagedFunction = (hotUpdater: {
       const honoResponse = await app.fetch(request);
       res.status(honoResponse.status);
       for (const [key, value] of honoResponse.headers.entries()) {
-        res.setHeader(key, value);
+        if (key !== "set-cookie") res.setHeader(key, value);
       }
-      res.send(await honoResponse.text());
+      // Each cookie its own header, which a joined value would merge.
+      const cookies = honoResponse.headers.getSetCookie();
+      if (cookies.length > 0) res.setHeader("set-cookie", cookies);
+      // The bytes as they are: a plugin may answer with binary data.
+      res.send(Buffer.from(await honoResponse.arrayBuffer()));
     },
   );
 

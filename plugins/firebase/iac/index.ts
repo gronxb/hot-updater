@@ -6,10 +6,11 @@ import {
   getHotUpdaterInitInputEnv,
   getInitProviderEnvVars,
   HOT_UPDATER_SERVER_PACKAGE_VERSION_ENV,
-  importManagedServerDefinition,
   InitError,
   link,
+  loadManagedServerDefinition,
   makeEnv,
+  type ManagedServerDefinition,
   p,
   printAppSetup,
   readHotUpdaterInitEnv,
@@ -449,6 +450,69 @@ const checkIfGcloudCliInstalled = async () => {
   }
 };
 
+/**
+ * The plugins of the project's edited server definition, which it checks
+ * runs on the project and bucket init set up, bundled into `functionsDir`
+ * in place of the prebuilt function. The Firebase apps the definition
+ * starts as it loads are deleted, so init's own clients keep its
+ * credentials and project.
+ */
+const loadEditedDefinition = async ({
+  applicationCredentials,
+  definition,
+  functionsDir,
+  projectId,
+  storageBucket,
+}: {
+  readonly applicationCredentials: string | undefined;
+  readonly definition: ManagedServerDefinition;
+  readonly functionsDir: string;
+  readonly projectId: string;
+  readonly storageBucket: string;
+}): Promise<readonly AnyHotUpdaterPlugin[]> => {
+  const appsBefore = new Set(getApps());
+  let serverPlugins: readonly AnyHotUpdaterPlugin[];
+  try {
+    serverPlugins = await loadManagedServerDefinition(
+      definition,
+      (hotUpdater) =>
+        managedServerDefinitionOf(hotUpdater, {
+          provider: "Firebase",
+          database: "firebaseDatabase",
+          storage: "gs",
+          resources: {
+            database: { projectId },
+            storage: { projectId, storageBucket },
+          },
+        }).plugins,
+      {
+        env: {
+          [FIREBASE_INIT_PROVIDER.inputs.projectId.envKey]: projectId,
+          HOT_UPDATER_FIREBASE_STORAGE_BUCKET: storageBucket,
+          // Without a key file, application-default credentials, never the
+          // placeholder .env.hotupdater may hold.
+          GOOGLE_APPLICATION_CREDENTIALS: applicationCredentials || undefined,
+        },
+      },
+    );
+  } finally {
+    await Promise.all(
+      getApps()
+        .filter((app) => !appsBefore.has(app))
+        .map((app) => deleteApp(app)),
+    );
+  }
+  await buildFunctionFromDefinition({
+    definition: definition.path,
+    packageRoot: path.dirname(
+      require.resolve("@hot-updater/firebase/package.json"),
+    ),
+    projectRoot: process.cwd(),
+    functionsDir,
+  });
+  return serverPlugins;
+};
+
 export const runInit = async ({
   build,
   envFile,
@@ -504,6 +568,21 @@ export const runInit = async ({
       return cliEnv;
     },
   );
+
+  // The server the function runs: the package's, or the project's edited
+  // definition, read with the settings init writes. It is checked and
+  // bundled in place of the prebuilt function before init changes the
+  // project.
+  const serverPlugins =
+    definition.edited && initializeVariable.status === "ready"
+      ? await loadEditedDefinition({
+          applicationCredentials,
+          definition,
+          functionsDir,
+          projectId: initializeVariable.projectId,
+          storageBucket: initializeVariable.storageBucket,
+        })
+      : plugins;
 
   if (initializeVariable.status === "ready") {
     await assertFirebaseInfrastructureCanInitialize({
@@ -564,26 +643,6 @@ export const runInit = async ({
         FIREBASE_INIT_PROVIDER.inputs.applicationCredentials.envKey
       ],
   });
-  const existingApps = new Set(getApps());
-  // The server the function runs: the package's, or the project's edited
-  // definition, which reads what .env.hotupdater now holds. Its function is
-  // bundled in place of the prebuilt one before anything is deployed.
-  const serverPlugins = definition.edited
-    ? managedServerDefinitionOf(
-        (await importManagedServerDefinition(definition, process.cwd()))
-          .hotUpdater,
-        { provider: "Firebase", database: "firebaseDatabase", storage: "gs" },
-      ).plugins
-    : plugins;
-  if (definition.edited) {
-    await buildFunctionFromDefinition({
-      definition: definition.path,
-      packageRoot: path.dirname(
-        require.resolve("@hot-updater/firebase/package.json"),
-      ),
-      functionsDir,
-    });
-  }
   const functionsCode = transformEnv(functionsIndexPath, {
     REGION: currentRegion,
   });
@@ -620,6 +679,7 @@ export const runInit = async ({
   ]);
 
   await deployFirestore(tmpDir, nonInteractive, cliEnv);
+  const existingApps = new Set(getApps());
   const credential = applicationCredentials
     ? cert(
         JSON.parse(await fs.promises.readFile(applicationCredentials, "utf-8")),

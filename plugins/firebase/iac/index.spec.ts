@@ -194,12 +194,77 @@ vi.mock("./select", () => ({
   setEnv: vi.fn(),
 }));
 
-import { p, printAppSetup } from "@hot-updater/cli-tools";
+import { InitError, p, printAppSetup } from "@hot-updater/cli-tools";
 import { execa } from "execa";
+import { deleteApp, getApps } from "firebase-admin/app";
 
 import { plugins } from "../src/plugins";
+import { getConfigScaffold } from "./configTemplate";
 import { runInit } from "./index";
 import { initFirebaseUser } from "./select";
+
+const packageRoot = path.resolve(import.meta.dirname, "..");
+
+/**
+ * A project whose hotUpdater.ts is the one init writes with `edit` applied,
+ * where the definition's packages resolve, as init's working directory.
+ */
+const editedProject = async (edit: (text: string) => string) => {
+  const project = await fs.mkdtemp(path.join(os.tmpdir(), "hot-updater-fb-"));
+  await fs.writeFile(
+    path.join(project, "package.json"),
+    JSON.stringify({ name: "app" }),
+  );
+  await fs.mkdir(path.join(project, "node_modules", "@hot-updater"), {
+    recursive: true,
+  });
+  for (const [name, target] of [
+    ["@hot-updater/firebase", packageRoot],
+    [
+      "@hot-updater/server",
+      path.join(packageRoot, "node_modules", "@hot-updater", "server"),
+    ],
+    [
+      "firebase-admin",
+      path.join(packageRoot, "node_modules", "firebase-admin"),
+    ],
+  ] as const) {
+    await fs.symlink(target, path.join(project, "node_modules", name));
+  }
+  // A placeholder a skipped credentials prompt leaves, and a stale project.
+  await fs.writeFile(
+    path.join(project, ".env.hotupdater"),
+    "GOOGLE_APPLICATION_CREDENTIALS=your-credentials.json\nHOT_UPDATER_FIREBASE_PROJECT_ID=stale-project\n",
+  );
+  await fs.writeFile(
+    path.join(project, "hotUpdater.ts"),
+    edit(getConfigScaffold("bare").definition.text),
+  );
+  vi.spyOn(process, "cwd").mockReturnValue(project);
+  return project;
+};
+
+/** The definition init writes, with a plugin of the project's own. */
+const withNotes = (text: string) =>
+  text
+    .replace(
+      'import { createHotUpdater } from "@hot-updater/server";',
+      `import { createHotUpdater } from "@hot-updater/server";
+import { definePlugin, defineTable } from "@hot-updater/server/plugins";
+
+const notes = definePlugin({
+  id: "notes",
+  schemaVersion: "1",
+  schema: {
+    notes: defineTable(
+      { id: { type: "string" }, text: { type: "string" } },
+      { key: ["id"] },
+    ),
+  },
+  init: () => ({ api: {} }),
+});`,
+    )
+    .replace("  plugins,\n", "  plugins: [...plugins, notes],\n");
 
 const API_KEY = "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE";
 
@@ -439,5 +504,89 @@ describe("Firebase project creation", () => {
 
     expect(mocks.assertFunction).not.toHaveBeenCalled();
     expect(mocks.provisionClientCredential).not.toHaveBeenCalled();
+  });
+
+  describe("with the project's edited server definition", () => {
+    let project: string | undefined;
+
+    beforeEach(() => {
+      mocks.existingProject = true;
+      mocks.existingEnv = {
+        HOT_UPDATER_FIREBASE_PROJECT_ID: "existing-project",
+        HOT_UPDATER_FIREBASE_REGION: "asia-northeast3",
+      };
+    });
+
+    afterEach(async () => {
+      vi.restoreAllMocks();
+      if (project !== undefined) {
+        await fs.rm(project, { recursive: true, force: true });
+        project = undefined;
+      }
+    });
+
+    it("refuses a definition on another bucket before it changes the project", async () => {
+      project = await editedProject((text) =>
+        withNotes(text).replace(
+          "storageBucket: process.env.HOT_UPDATER_FIREBASE_STORAGE_BUCKET!",
+          'storageBucket: "other-bucket"',
+        ),
+      );
+
+      const initialization = runInit({ build: "bare" });
+
+      await expect(initialization).rejects.toBeInstanceOf(InitError);
+      await expect(initialization).rejects.toThrow(
+        "hotUpdater.ts: The managed Firebase server runs on storageBucket existing-project.firebasestorage.app, which its setup made, but the server definition's firebaseStorage has storageBucket other-bucket",
+      );
+      // Not even the Cloud Functions API is enabled.
+      expect(execa).not.toHaveBeenCalledWith(
+        "gcloud",
+        expect.arrayContaining(["services", "enable"]),
+        expect.anything(),
+      );
+      expect(mocks.migrateFirebaseDatabase).not.toHaveBeenCalled();
+    });
+
+    it("deploys the bundled definition, gives its plugins their schema and the credential, and leaves init's own Firebase app and environment alone", async () => {
+      project = await editedProject(withNotes);
+      // The app the definition's import starts, which init must not reuse.
+      const definitionApp = { name: "[DEFAULT]" };
+      vi.mocked(getApps)
+        .mockReturnValueOnce([])
+        .mockReturnValueOnce([definitionApp as never])
+        .mockReturnValue([]);
+
+      await runInit({ build: "bare" });
+
+      expect(deleteApp).toHaveBeenCalledWith(definitionApp);
+      // The placeholder and the stale project never reach init's clients.
+      expect(process.env["GOOGLE_APPLICATION_CREDENTIALS"]).toBeUndefined();
+      expect(process.env["HOT_UPDATER_FIREBASE_PROJECT_ID"]).toBeUndefined();
+      const bundle = await fs.readFile(
+        path.join(mocks.functionsDir, "index.cjs"),
+        "utf-8",
+      );
+      expect(bundle).toContain('"notes"');
+      expect(bundle).toContain('"asia-northeast3"');
+      const [config, migrated] = mocks.migrateFirebaseDatabase.mock.calls[0]!;
+      expect(config).toMatchObject({ projectId: "existing-project" });
+      expect((migrated as { id: string }[]).map(({ id }) => id)).toEqual([
+        "insights",
+        "apiKeys",
+        "notes",
+      ]);
+      const [, provisioned] = mocks.provisionClientCredential.mock.calls[0]!;
+      expect(provisioned).toBe(migrated);
+      expect(execa).toHaveBeenCalledWith(
+        "npx",
+        expect.arrayContaining([
+          "deploy",
+          "--only",
+          "functions:hot-updater-v1",
+        ]),
+        expect.anything(),
+      );
+    });
   });
 });

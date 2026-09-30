@@ -15,11 +15,14 @@ import { bundleServer } from "@hot-updater/cli-tools";
 export const buildFunctionFromDefinition = async ({
   definition,
   packageRoot,
+  projectRoot = process.cwd(),
   functionsDir,
 }: {
   /** The server definition's absolute path. */
   definition: string;
   packageRoot: string;
+  /** The project's directory, which the bundle's paths are relative to. */
+  projectRoot?: string;
   functionsDir: string;
 }) => {
   const runtime = path.join(packageRoot, "dist", "managed.mjs");
@@ -28,15 +31,18 @@ export const buildFunctionFromDefinition = async ({
     entry,
     [
       `import { serveManagedFunction } from ${JSON.stringify(runtime)};`,
-      `import { hotUpdater } from ${JSON.stringify(definition)};`,
+      `import * as definition from ${JSON.stringify(definition)};`,
       "",
-      "export const hot = serveManagedFunction(hotUpdater);",
+      // The export the CLI reads: `hotUpdater`, or the default export.
+      "export const hot = serveManagedFunction(definition.hotUpdater ?? definition.default);",
       "",
     ].join("\n"),
   );
   try {
     return await bundleServer({
       input: entry,
+      definition,
+      projectRoot,
       outfile: path.join(functionsDir, "index.cjs"),
       format: "cjs",
       platform: "node",
