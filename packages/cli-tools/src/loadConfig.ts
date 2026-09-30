@@ -140,7 +140,7 @@ const resolveServer = (
   }
   if (isRemoteServer(server)) return server;
   throw new Error(
-    "server in hot-updater.config must be the path to your server definition, such as \"./src/hotUpdater.ts\", or standaloneRepository(...).",
+    'server in hot-updater.config must be the path to your server definition, such as "./src/hotUpdater.ts", or standaloneRepository(...).',
   );
 };
 
@@ -203,10 +203,7 @@ export const loadConfig = async (
     getDefaultConfig(),
   );
   const signing = normalizeSigningConfig(mergedConfig.signing);
-  const resolvedServer = resolveServer(
-    config?.server ?? server,
-    sources[0],
-  );
+  const resolvedServer = resolveServer(config?.server ?? server, sources[0]);
   return {
     ...mergedConfig,
     ...(resolvedServer === undefined ? {} : { server: resolvedServer }),
