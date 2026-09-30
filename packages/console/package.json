@@ -99,7 +99,7 @@
     "web-vitals": "^5.1.0"
   },
   "description": "React Native OTA solution for self-hosted",
-  "license": "MIT",
+  "license": "SEE LICENSE IN LICENSE",
   "repository": "https://github.com/gronxb/hot-updater",
   "author": "gronxb <gron1gh1@gmail.com> (https://github.com/gronxb)",
   "bugs": {
