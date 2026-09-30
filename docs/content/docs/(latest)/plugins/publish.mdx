@@ -102,15 +102,17 @@ run your tests against each new minor version.
 
 ## Test it
 
-| Package          | Test with                                                                                                                                                                                                                                                  |
-| ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Storage adapter  | `setupStorageAdapterTestSuite` from `@hot-updater/test-utils`, the suite every official storage adapter runs, over a fake client and a real bucket; see [Test the adapter](/docs/storage-adapters/custom-storage#test-the-adapter)                         |
-| Database adapter | `setupDatabaseAdapterConformanceSuite`, `setupReadBudgetTestSuite`, and `setupDatabaseTestSuite` from `@hot-updater/test-utils`, the suites every official database runs; see [Test the adapter](/docs/database-adapters/custom-database#test-the-adapter) |
-| Server plugin    | `createPluginTestHarness` from `@hot-updater/test-utils`, and `createHotUpdater` on a memory database for endpoints; see [Test with the plugin harness](/docs/custom/server-plugins#test-with-the-plugin-harness)                                          |
-| Client plugin    | Call the hooks `setup` returns with a context you build in the test, and run the plugin in a release build of an app against a server with its routes                                                                                                      |
+| Package          | Test with                                                                                                                                                                                                                                                                   |
+| ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Storage adapter  | `setupStorageAdapterTestSuite` from `@hot-updater/test-utils`, the suite every official storage adapter runs, over a fake client and a real bucket; see [Test the adapter](/docs/storage-adapters/custom-storage#test-the-adapter)                                          |
+| Database adapter | `setupDatabaseAdapterConformanceSuite`, `setupReadBudgetTestSuite`, and `setupDatabaseTestSuite` from `@hot-updater/test-utils`, the suites every official database runs; see [Test the adapter](/docs/database-adapters/custom-database#test-the-adapter)                  |
+| Server plugin    | `createPluginTestHarness` from `@hot-updater/test-utils`, and `createHotUpdater` on a memory database for endpoints; see [Test with the plugin harness](/docs/custom/server-plugins#test-with-the-plugin-harness)                                                           |
+| Client plugin    | `setupClientPlugin` and `setupClientPlugins` from `@hot-updater/test-utils/react-native`, in plain Node under Vitest or Jest; see [Test the plugin](/docs/react-native-api/client-plugins#test-the-plugin). Then a release build of an app against a server with its routes |
 
 Add `@hot-updater/test-utils` to `devDependencies` with `vitest` 4, which it
-takes as a peer dependency.
+takes as a peer dependency. Its `@hot-updater/test-utils/react-native` entry
+also needs `@hot-updater/react-native`, an optional peer dependency, and runs
+under Jest as well.
 
 Before a release, install the packed tarball (`npm pack`) in a project and run
 the commands that use the package: `hot-updater deploy` for a storage adapter,

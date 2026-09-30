@@ -29,6 +29,17 @@
         "default": "./lib/commonjs/plugins/insights/index.js"
       }
     },
+    "./client-plugin": {
+      "source": "./src/client-plugin.ts",
+      "import": {
+        "types": "./lib/typescript/module/client-plugin.d.ts",
+        "default": "./lib/module/client-plugin.js"
+      },
+      "require": {
+        "types": "./lib/typescript/commonjs/client-plugin.d.ts",
+        "default": "./lib/commonjs/client-plugin.js"
+      }
+    },
     "./plugin-host": {
       "source": "./src/plugin-host.ts",
       "import": {
@@ -45,6 +56,7 @@
   "files": [
     "src",
     "lib",
+    "client-plugin",
     "plugins",
     "android",
     "ios",

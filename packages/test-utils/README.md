@@ -1,8 +1,8 @@
 # @hot-updater/test-utils
 
-Vitest suites for Hot Updater storage adapters, database adapters, providers,
-plugins and servers. The official adapters, providers and example servers run
-these same suites.
+Test suites and helpers for Hot Updater storage adapters, database adapters,
+providers, server plugins, client plugins and servers. The official adapters,
+providers, plugins and example servers run these same suites.
 
 ```bash
 pnpm add -D @hot-updater/test-utils @hot-updater/server vitest
@@ -118,8 +118,44 @@ skips the cases of the others.
 - Server processes can import `createReleaseCatalogTestStorage` from
   `@hot-updater/test-utils/node` to install the suites' storage fixtures.
 
+## Client plugins
+
+`@hot-updater/test-utils/react-native` runs client plugins the way the app
+does. `setupClientPlugin(plugin, options)` and
+`setupClientPlugins(plugins, options)` set plugins up as `HotUpdater.init`
+does, on the plugin host of `@hot-updater/react-native`, against an in-memory
+device and a server the test answers. The entry loads neither React Native nor
+Vitest, so plugin specs run in plain Node under Vitest or Jest when the
+plugin imports `defineClientPlugin` from
+`@hot-updater/react-native/client-plugin`; the SDK's root entry loads React
+Native. `@hot-updater/react-native` is an optional peer dependency that only
+this entry needs.
+
+```ts
+import { setupClientPlugin } from "@hot-updater/test-utils/react-native";
+
+const runtime = setupClientPlugin(myPlugin(), {
+  requestHeaders: { "x-api-key": "client-key" },
+});
+
+runtime.hooks.onAppReady(launch);
+await runtime.settled();
+
+expect(runtime.requests[0]?.json()).toEqual(expectedEvent);
+expect(runtime.errors).toEqual([]);
+```
+
+`hooks` calls each hook as the SDK does, without waiting for it, and
+`settled()` waits for what the hooks started. `requests` records what plugins
+sent with `context.fetch`, and the `respond` option answers each request,
+`204 No Content` by default. `errors` holds what the SDK reports to `onError`.
+`storage` is the device's plugin storage: pass it to the next setup to start
+the plugins again on the same device, or seed one with `createTestStorage()`.
+
 See the
-[storage adapter guide](https://hot-updater.dev/docs/storage-adapters/custom-storage#test-the-adapter)
+[storage adapter guide](https://hot-updater.dev/docs/storage-adapters/custom-storage#test-the-adapter),
+the
+[database adapter guide](https://hot-updater.dev/docs/database-adapters/custom-database),
 and the
-[database adapter guide](https://hot-updater.dev/docs/database-adapters/custom-database)
-for the contracts and complete specs for each suite.
+[client plugin guide](https://hot-updater.dev/docs/react-native-api/client-plugins#test-the-plugin)
+for the contracts and complete specs.

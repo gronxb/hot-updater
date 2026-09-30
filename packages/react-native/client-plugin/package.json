@@ -1,0 +1,8 @@
+{
+  "name": "@hot-updater/react-native/client-plugin",
+  "private": true,
+  "source": "../src/client-plugin.ts",
+  "main": "../lib/commonjs/client-plugin.js",
+  "module": "../lib/module/client-plugin.js",
+  "types": "../lib/typescript/commonjs/client-plugin.d.ts"
+}

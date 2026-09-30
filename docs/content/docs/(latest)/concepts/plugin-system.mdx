@@ -54,7 +54,7 @@ it. Each guide builds one and tests it:
 | Storage adapter  | `createStorageAdapter` from `@hot-updater/plugin-core`                            | [Create a storage adapter](/docs/storage-adapters/custom-storage)   |
 | Database adapter | `createSqlAdapter`, `createKvAdapter`, or a `DatabaseAdapter`, wrapped by `createEngineDatabase` from `@hot-updater/server/database` | [Create a database adapter](/docs/database-adapters/custom-database) |
 | Server plugin    | `definePlugin` from `@hot-updater/server/plugins`                                 | [Create a server plugin](/docs/custom/server-plugins)               |
-| Client plugin    | `defineClientPlugin` from `@hot-updater/react-native`                             | [Create a client plugin](/docs/react-native-api/client-plugins)     |
+| Client plugin    | `defineClientPlugin` from `@hot-updater/react-native/client-plugin`               | [Create a client plugin](/docs/react-native-api/client-plugins)     |
 | Signing adapter  | `BundleSigningAdapter` from `@hot-updater/plugin-core`: `getPublicKey` and `sign` | [Remote Signing](/docs/guides/signing/remote) describes the service protocol |
 | Build adapter    | A function from `{ cwd }` to a `BuildAdapter` from `@hot-updater/plugin-core`     | The [official build adapters](https://github.com/gronxb/hot-updater/tree/next/plugins) are the reference |
 

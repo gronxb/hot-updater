@@ -84,3 +84,53 @@ describe("@hot-updater/react-native/plugin-host entry", () => {
     expect(reactNativeImports).toEqual([]);
   });
 });
+
+describe("@hot-updater/react-native/client-plugin entry", () => {
+  const entry = join(sourceRoot, "client-plugin.ts");
+  const graph = [...collectGraph(entry)].map((file) =>
+    relative(sourceRoot, file),
+  );
+
+  it("loads the plugin contract without React Native or the native module", () => {
+    expect(graph.sort()).toEqual(["client-plugin.ts", "clientPlugin.ts"]);
+    const reactNativeImports = graph.filter((file) =>
+      /\bfrom\s*["']react-native["']/.test(
+        readFileSync(join(sourceRoot, file), "utf8"),
+      ),
+    );
+    expect(reactNativeImports).toEqual([]);
+  });
+
+  it("exports every plugin name the root entry still exports for the app", () => {
+    const rootNames = /export\s*\{([^}]*)\}\s*from\s*["']\.\/clientPlugin["']/
+      .exec(readFileSync(join(sourceRoot, "index.ts"), "utf8"))?.[1]
+      ?.split(",")
+      .map((name) => name.trim().replace(/^type\s+/, ""))
+      .filter((name) => name.length > 0);
+    const contractNames = [
+      ...readFileSync(join(sourceRoot, "clientPlugin.ts"), "utf8").matchAll(
+        /^export\s+(?:const|function|type|interface)\s+(\w+)/gm,
+      ),
+    ].map((match) => match[1]);
+
+    expect(rootNames).toEqual([
+      "defineClientPlugin",
+      "AppReadyResult",
+      "BundleDownloadedInfo",
+      "HotUpdaterClientContext",
+      "HotUpdaterClientHooks",
+      "HotUpdaterClientPlugin",
+      "HotUpdaterClientStorage",
+      "ReleaseTransitionKind",
+      "UpdateCheckResult",
+      "UpdateError",
+      "UpdateErrorReason",
+      "UpdateErrorStage",
+      "UpdateStrategy",
+    ]);
+    expect(readFileSync(entry, "utf8")).toContain(
+      'export * from "./clientPlugin";',
+    );
+    expect(contractNames).toEqual(expect.arrayContaining(rootNames ?? []));
+  });
+});
