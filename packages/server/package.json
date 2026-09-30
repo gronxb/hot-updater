@@ -1,6 +1,6 @@
 {
   "name": "@hot-updater/server",
-  "version": "1.0.0-rc.18",
+  "version": "1.0.0-rc.20",
   "type": "module",
   "description": "React Native OTA solution for self-hosted",
   "sideEffects": false,
@@ -66,7 +66,7 @@
     "src",
     "package.json"
   ],
-  "license": "MIT",
+  "license": "SEE LICENSE IN LICENSE",
   "scripts": {
     "build": "tsdown",
     "test:type": "tsc --noEmit"

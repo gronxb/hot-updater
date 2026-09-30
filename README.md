@@ -225,3 +225,9 @@ export default defineConfig({
   }),
 });
 ```
+
+## License
+
+Hot Updater is released under the [MIT License](./LICENSE), with one addition for the server and the Console. `@hot-updater/server` and `@hot-updater/console` use the MIT License with a hosted service attribution condition ([server](./packages/server/LICENSE), [Console](./packages/console/LICENSE)). If you offer either of them, or a service built on them, as a hosted service that other people use to update their own apps, you must show "Powered by hot-updater" with a link where that service's users can see it. The Console's sidebar already shows it. Running them for your own apps, or for apps you build for clients, needs no notice.
+
+The "hot-updater" name and logo are covered by the [trademark policy](./TRADEMARK.md).

@@ -1,0 +1,32 @@
+MIT License with Hosted Service Attribution
+
+Copyright (c) 2023 Sungyu Kang
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+Hosted service attribution. If you make the Software, a modified version of
+it, or a service built on it available to third parties as a hosted or managed
+service, that is, a service that third parties use to deliver updates to their
+own apps, you must display the notice "Powered by hot-updater" with a link to
+https://hot-updater.dev or https://github.com/gronxb/hot-updater where the
+users of that service can reasonably see it, such as the service's dashboard,
+the footer of its website, or its about page. The Software's sidebar displays
+this notice, and keeping it in place satisfies this condition. This condition
+does not apply when you run the Software only for your own apps, or for apps
+that you build or operate for your clients.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
