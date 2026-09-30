@@ -21,8 +21,16 @@ vi.mock("@/lib/bundle-activity", () => ({
   useBundleActivityQuery: mocks.activity,
 }));
 vi.mock("@/lib/console-features-api", () => ({
-  useConsoleFeature: (feature: string) =>
-    feature === "insightsAnalytics" && mocks.insightsAnalytics,
+  useConsoleFeatures: () => ({
+    data: {
+      features: {
+        insights: true,
+        insightsAnalytics: mocks.insightsAnalytics,
+        apiKeys: true,
+      },
+      remote: false,
+    },
+  }),
 }));
 
 vi.mock("@tanstack/react-router", () => ({
@@ -142,16 +150,13 @@ describe("BundlesPage", () => {
       expect(within(summary).getByText("Active days 789")).toBeDefined();
       expect(within(summary).getByText(/Known crashes 2/)).toBeDefined();
       expect(within(summary).getByText(/0\.25%/)).toBeDefined();
-      expect(mocks.activity).toHaveBeenCalledWith(
-        [
-          {
-            platform: "ios",
-            channel: "e2e-job-20260812132427-qy22fi-android-s2-production",
-            releaseId: "release-1",
-          },
-        ],
-        true,
-      );
+      expect(mocks.activity).toHaveBeenCalledWith([
+        {
+          platform: "ios",
+          channel: "e2e-job-20260812132427-qy22fi-android-s2-production",
+          releaseId: "release-1",
+        },
+      ]);
     },
   );
   it.each([false, true])(
@@ -166,7 +171,7 @@ describe("BundlesPage", () => {
       expect(
         screen.queryByLabelText("Release insights unavailable"),
       ).toBeNull();
-      expect(mocks.activity).toHaveBeenCalledWith(expect.any(Array), false);
+      expect(mocks.activity).not.toHaveBeenCalled();
       expect(screen.getByText("release-1")).toBeDefined();
       if (!mobile) {
         expect(screen.getAllByRole("columnheader")).toHaveLength(10);

@@ -3,10 +3,13 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createHotUpdater } from "../createHotUpdaterCore";
 import { type HotUpdaterHandlers, listHotUpdaterRoutes } from "../handler";
-import { INSIGHTS_OFF_WARNING, INSIGHTS_ROUTES } from "../insights/routes";
 import { apiKeys } from "../plugins/api-keys";
 import { definePlugin } from "../plugins/definePlugin";
 import { insights } from "../plugins/insights";
+import {
+  INSIGHTS_OFF_WARNING,
+  INSIGHTS_ROUTES,
+} from "../plugins/insights/routes";
 import { HotUpdaterConfigError } from "./assemblePlugins";
 
 const database = () => ({ name: "memory", adapter: createMemoryAdapter() });

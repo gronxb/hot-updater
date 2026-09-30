@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { insightsOverviewDeltas } from "./insightsOverview";
-import type { BundleEventRow } from "./types";
+import type { BundleEventRow } from "./eventRow";
+import { insightsOverviewDeltas } from "./overview";
 
 const event = (type: BundleEventRow["type"]): BundleEventRow =>
   ({

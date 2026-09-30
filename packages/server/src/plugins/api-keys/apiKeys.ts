@@ -1,4 +1,4 @@
-import type { ApiKeyModel, ApiKeyRow } from "@hot-updater/plugin-core";
+import type { ApiKeyModel, ApiKeyRow } from "./model";
 
 export const API_KEY_HEADER_NAME = "x-api-key";
 

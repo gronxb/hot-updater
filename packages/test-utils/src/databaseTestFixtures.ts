@@ -3,7 +3,6 @@ import type {
   BundlePatchRow,
   BundleRow,
   ChannelRow,
-  ApiKeyRow,
   ReleaseRow,
 } from "@hot-updater/plugin-core";
 
@@ -76,19 +75,6 @@ export const createReleaseRowFixture = (
   revision: 1,
   created_at_ms: Number(suffix),
   updated_at_ms: Number(suffix),
-});
-
-export const createApiKeyRowFixture = (
-  suffix: string,
-  createdAtMs: number,
-): ApiKeyRow => ({
-  id: `api-key-${suffix}`,
-  hash: `hash-${suffix}`,
-  name: `API key ${suffix}`,
-  prefix: suffix.padStart(6, "0").slice(0, 6),
-  role: "client",
-  created_at_ms: createdAtMs,
-  revoked_at_ms: null,
 });
 
 export const createBundleFixture = (

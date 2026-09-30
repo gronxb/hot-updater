@@ -1,4 +1,3 @@
-import type { BundleEventRow } from "@hot-updater/plugin-core";
 import {
   aggregateBatchingModule,
   builtInSchema,
@@ -9,7 +8,11 @@ import {
   type RetryOptions,
 } from "@hot-updater/server/database";
 import type { CoreReader } from "@hot-updater/server/plugins";
-import { insights, insightsSchema } from "@hot-updater/server/plugins/insights";
+import {
+  insights,
+  insightsSchema,
+  type BundleEventRow,
+} from "@hot-updater/server/plugins/insights";
 import {
   runContentionHarness,
   withAdapterLatency,

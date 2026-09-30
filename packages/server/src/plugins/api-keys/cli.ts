@@ -1,9 +1,9 @@
+import type { PluginCli, PluginCommandUi } from "../definePlugin";
 import type {
   ApiKeyManagementAPI,
   ApiKeyMetadata,
   CreatedApiKey,
-} from "../../apiKeys";
-import type { PluginCli, PluginCommandUi } from "../definePlugin";
+} from "./apiKeys";
 
 /** The part of the apiKeys() API the CLI uses. */
 export interface ApiKeysCliApi extends ApiKeyManagementAPI {

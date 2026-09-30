@@ -12,10 +12,14 @@ import {
 describe("consoleFeatures", () => {
   it("maps each feature to a built-in plugin, and only event reads and deletion to a self-hosted server", () => {
     expect(consoleFeatures).toEqual({
-      insights: { plugin: "insights", remote: true },
-      insightsAnalytics: { plugin: "insights", remote: false },
-      insightsDeletion: { plugin: "insights", remote: true },
-      apiKeys: { plugin: "apiKeys", remote: false },
+      insights: { plugin: "insights", label: "Insights", remote: true },
+      insightsAnalytics: {
+        plugin: "insights",
+        label: "Insights",
+        remote: false,
+      },
+      insightsDeletion: { plugin: "insights", label: "Insights", remote: true },
+      apiKeys: { plugin: "apiKeys", label: "API keys", remote: false },
     });
   });
 });

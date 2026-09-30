@@ -1,4 +1,4 @@
-import type { InsightsProvider } from "../../packages/server/src/insights/types.ts";
+import type { InsightsProvider } from "../../packages/server/src/plugins/insights/types.ts";
 import type { ConsoleInsightsQaClient } from "./console-insights-qa.ts";
 
 export const createConsoleInsightsProviderClient = (

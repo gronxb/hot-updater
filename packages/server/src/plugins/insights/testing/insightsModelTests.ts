@@ -1,10 +1,7 @@
-import {
-  type BundleEventRow,
-  type InsightsBundleEventFilter,
-  type InsightsModel,
-} from "@hot-updater/plugin-core";
 import { describe, expect, it } from "vitest";
 
+import type { BundleEventRow } from "../eventRow";
+import type { InsightsBundleEventFilter, InsightsModel } from "../modelTypes";
 import { expectInsightsIndex } from "./expectInsightsIndex";
 import { createBundleEventRowFixture } from "./fixtures";
 import type { DatabaseTestState } from "./types";

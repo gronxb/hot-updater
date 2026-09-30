@@ -3,31 +3,7 @@ export type {
   ReleaseCatalogRowUpdate,
   ReleaseRowUpdate,
 } from "./databaseOperations";
-export type {
-  InsightsModel,
-  InsightsEventCursor,
-  InsightsScope,
-  InsightsBundleEventFilter,
-  InsightsEventFilter,
-  InsightsRecordEventInput,
-  InsightsListEventsInput,
-  InsightsFindLatestEventsInput,
-  InsightsCountLatestEventsInput,
-  InsightsCountEventsInput,
-  InsightsCoverage,
-  InsightsGetAppUsageInput,
-  InsightsGetAppUsageResult,
-  InsightsGetReleaseActivityInput,
-  InsightsGetReleaseActivityResult,
-  InsightsTimeRange,
-  ReleaseActivityMetrics,
-  ReleaseReference,
-} from "./insights";
-export type {
-  ApiKeyModel,
-  ChannelDeleteResult,
-  ChannelInsertResult,
-} from "./models";
+export type { ChannelDeleteResult, ChannelInsertResult } from "./models";
 export {
   isRemoteDatabase,
   type AggregateBatching,
@@ -36,14 +12,10 @@ export {
   type RemoteDatabase,
 } from "./databaseConfig";
 export type {
-  BundleEventRow,
-  BundleEventRowBase,
   BundlePatchRow,
   BundleRow,
   ChannelRow,
-  ApiKeyRow,
   DatabaseBundleMetadata,
-  DatabaseBundleEventMetadata,
   DatabaseJsonObject,
   DatabaseJsonValue,
   ReleaseCatalogRow,

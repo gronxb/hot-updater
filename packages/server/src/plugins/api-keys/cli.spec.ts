@@ -1,9 +1,9 @@
 import { createMemoryAdapter } from "@hot-updater/plugin-core/internal";
 import { describe, expect, it, vi } from "vitest";
 
-import type { ApiKeyMetadata } from "../../apiKeys";
 import { createDatabasePluginApis } from "../../assembly/databasePlugins";
 import type { PluginCommand, PluginCommandUi } from "../definePlugin";
+import type { ApiKeyMetadata } from "./apiKeys";
 import { type ApiKeysCliApi, apiKeysCli } from "./cli";
 import { apiKeys } from "./index";
 

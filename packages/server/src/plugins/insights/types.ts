@@ -1,7 +1,6 @@
 import type {
   ReportingOverview,
   InsightsBundleSelection,
-  InsightsScope,
   ActiveInstallationWindow,
   CreateBundleEventRequest,
   CursorPage,
@@ -10,6 +9,7 @@ import type {
   InstallationHistoryRow,
   InstallationRow,
 } from "./domain";
+import type { InsightsScope } from "./modelTypes";
 
 export type InsightsEventPageInput = {
   readonly beforeReceivedAtMs?: number;

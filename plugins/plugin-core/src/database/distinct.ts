@@ -1,3 +1,8 @@
+/**
+ * HyperLogLog sketches, the storage engine's `distinct` aggregate metric: a
+ * sketch is 1,024 registers stored as a 1,024-character string, so adding a
+ * value, merging sketches, and counting one never need the values back.
+ */
 const PRECISION = 10;
 const REGISTER_COUNT = 1 << PRECISION;
 const MAX_RANK = 64 - PRECISION + 1;
@@ -16,13 +21,13 @@ const OFFSET = 33;
 const decode = (summary: string | null | undefined): Uint8Array => {
   if (!summary) return new Uint8Array(REGISTER_COUNT);
   if (summary.length !== REGISTER_COUNT) {
-    throw new Error("Invalid Insights distinct summary");
+    throw new Error("Invalid distinct sketch");
   }
   const registers = new Uint8Array(REGISTER_COUNT);
   for (let index = 0; index < REGISTER_COUNT; index += 1) {
     const value = summary.charCodeAt(index) - OFFSET;
     if (!Number.isInteger(value) || value < 0 || value > MAX_RANK) {
-      throw new Error("Invalid Insights distinct summary");
+      throw new Error("Invalid distinct sketch");
     }
     registers[index] = value;
   }
@@ -34,7 +39,7 @@ const encode = (registers: Uint8Array): string =>
     "",
   );
 
-export const getInsightsDistinctRegister = (identity: string) => {
+export const distinctRegister = (identity: string) => {
   const value = hash(identity);
   const index = Number(value & BigInt(REGISTER_COUNT - 1));
   let remainder = value >> BigInt(PRECISION);
@@ -46,17 +51,19 @@ export const getInsightsDistinctRegister = (identity: string) => {
   return { index, rank, character: String.fromCharCode(rank + OFFSET) };
 };
 
-export const addInsightsDistinct = (
+/** The sketch with `identity` added; a missing sketch is the empty one. */
+export const addDistinct = (
   summary: string | null | undefined,
   identity: string,
 ): string => {
   const registers = decode(summary);
-  const { index, rank } = getInsightsDistinctRegister(identity);
+  const { index, rank } = distinctRegister(identity);
   registers[index] = Math.max(registers[index]!, rank);
   return encode(registers);
 };
 
-export const mergeInsightsDistinct = (
+/** The union of sketches, register by register. */
+export const mergeDistinct = (
   summaries: readonly (string | null | undefined)[],
 ): string => {
   const merged = new Uint8Array(REGISTER_COUNT);
@@ -69,9 +76,8 @@ export const mergeInsightsDistinct = (
   return encode(merged);
 };
 
-export const countInsightsDistinct = (
-  summary: string | null | undefined,
-): number => {
+/** The estimated number of distinct values a sketch holds. */
+export const countDistinct = (summary: string | null | undefined): number => {
   const registers = decode(summary);
   let inverseSum = 0;
   let empty = 0;
@@ -92,5 +98,6 @@ export const countInsightsDistinct = (
   return Math.max(0, Math.round(estimate));
 };
 
-export const emptyInsightsDistinct = (): string =>
+/** A sketch that holds no value. */
+export const emptyDistinct = (): string =>
   encode(new Uint8Array(REGISTER_COUNT));

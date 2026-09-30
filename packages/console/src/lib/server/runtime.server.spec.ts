@@ -1,14 +1,16 @@
 // @vitest-environment node
 
 import type {
-  BundleEventRow,
   HotUpdaterCoreApi,
   RemoteDatabase,
 } from "@hot-updater/plugin-core";
 import { createMemoryAdapter } from "@hot-updater/plugin-core/internal";
 import { createDatabasePluginApis } from "@hot-updater/server/db";
 import { apiKeys } from "@hot-updater/server/plugins/api-keys";
-import { insights } from "@hot-updater/server/plugins/insights";
+import {
+  insights,
+  type BundleEventRow,
+} from "@hot-updater/server/plugins/insights";
 import { describe, expect, it, vi } from "vitest";
 
 import { ConsoleFeatureUnavailableError } from "../console-features";

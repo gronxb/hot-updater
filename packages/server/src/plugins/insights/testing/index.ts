@@ -1,6 +1,6 @@
-import type { InsightsModel } from "@hot-updater/plugin-core";
 import { describe } from "vitest";
 
+import type { InsightsModel } from "../modelTypes";
 import { registerInsightsModelTests } from "./insightsModelTests";
 import { setupInsightsHttpTestSuite } from "./setupInsightsHttpTestSuite";
 import type { HttpTestClient } from "./types";

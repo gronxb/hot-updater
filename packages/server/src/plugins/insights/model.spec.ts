@@ -1,5 +1,4 @@
 import { PGlite } from "@electric-sql/pglite";
-import type { InsightsModel } from "@hot-updater/plugin-core";
 import {
   createMemoryAdapter,
   type DatabaseAdapter,
@@ -11,6 +10,7 @@ import * as engine from "../../database";
 import { createSqlAdapter } from "../../database/sql/sqlAdapter";
 import { pgliteExecutor } from "../../database/sql/sqlTestExecutors";
 import { createInsightsModel, insights } from "./index";
+import type { InsightsModel } from "./modelTypes";
 import { setupInsightsModelTestSuite } from "./testing";
 
 /** The plugin's model on a fresh adapter per test, behind one stable model. */

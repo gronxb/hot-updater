@@ -187,11 +187,11 @@ change lands on a random shard. The hash maps a value to a shard by the count,
 so choose `shards` before data exists: a new count sends later changes for the
 same value to another shard row.
 
-A sketch value is a 1,024-character register string. The helpers that build
-(`addInsightsDistinct`) and count (`countInsightsDistinct`) sketches are
-exported only from `@hot-updater/plugin-core/internal`, the internal entry
-Insights uses. With `shardBy` set to the counted value, a repeated value merges
-into an unchanged sketch and the engine skips the write.
+A sketch value is a 1,024-character register string. `addDistinct` adds a
+value to a sketch, `mergeDistinct` merges sketches, and `countDistinct`
+estimates how many values a sketch holds; all three come from
+`@hot-updater/server/plugins`. With `shardBy` set to the counted value, a
+repeated value merges into an unchanged sketch and the engine skips the write.
 
 `batched: true` lets a database that bills each write (DynamoDB and
 Firestore, by default) apply the aggregate's changes after their transaction

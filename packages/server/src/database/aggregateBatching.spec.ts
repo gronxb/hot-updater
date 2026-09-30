@@ -1,7 +1,7 @@
 import type { AggregateBatching } from "@hot-updater/plugin-core";
 import {
-  addInsightsDistinct,
-  countInsightsDistinct,
+  addDistinct,
+  countDistinct,
   createMemoryAdapter,
   type DatabaseAdapter,
   type WriteOp,
@@ -75,7 +75,7 @@ const batched = resolveSchema([module, aggregateBatchingModule]);
 const table = (name: string) => batched.models.get(name)!.table;
 const LOG_TABLES = Array.from({ length: 8 }, (_, at) => `aggregate_log_${at}`);
 
-const sketchOf = (id: string) => addInsightsDistinct(null, id);
+const sketchOf = (id: string) => addDistinct(null, id);
 
 interface Setup {
   readonly batching?: AggregateBatching;
@@ -169,7 +169,7 @@ const snapshot = async (db: Db) => {
     opens: days.rows,
     users: sketches.rows.map((row) => ({
       day: row.day,
-      users: countInsightsDistinct(row.users),
+      users: countDistinct(row.users),
     })),
     totals: scopes.rows,
   };

@@ -1,7 +1,7 @@
+import { isDatabaseBusyError } from "../../database/busy";
 import {
   InsightsBadRequestError,
   InsightsPayloadTooLargeError,
-  isDatabaseBusyError,
 } from "./errors";
 import { parseBundleEventRequest } from "./eventInput";
 import {

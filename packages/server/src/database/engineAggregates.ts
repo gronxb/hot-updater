@@ -4,7 +4,7 @@ import {
   type DatabaseKeyValue,
   DATABASE_VERSION_COLUMN,
   isKeyValue,
-  mergeInsightsDistinct,
+  mergeDistinct,
   type StoredRow,
   type WriteOp,
 } from "@hot-updater/plugin-core/internal";
@@ -75,10 +75,7 @@ export const recordAggregate = (
   changes.set(id, change);
   for (const [metric, value] of Object.entries(values)) {
     if (distinct.includes(metric) && typeof value === "string") {
-      change.sketches[metric] = mergeInsightsDistinct([
-        change.sketches[metric],
-        value,
-      ]);
+      change.sketches[metric] = mergeDistinct([change.sketches[metric], value]);
     } else if (
       (counters.includes(metric) || gauges.includes(metric)) &&
       Number.isSafeInteger(value)
@@ -122,10 +119,7 @@ const rewrite = (
     set[metric] = Number(base[metric] ?? 0) + delta;
   }
   for (const [metric, sketch] of Object.entries(sketches)) {
-    set[metric] = mergeInsightsDistinct([
-      base[metric] as string | null,
-      sketch,
-    ]);
+    set[metric] = mergeDistinct([base[metric] as string | null, sketch]);
   }
   // A merge that changes nothing (a sketch already counting its value) is not written.
   if (

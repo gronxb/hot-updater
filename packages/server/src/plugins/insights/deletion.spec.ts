@@ -1,6 +1,5 @@
 import { DatabaseSync } from "node:sqlite";
 
-import type { BundleEventRow } from "@hot-updater/plugin-core";
 import {
   createMemoryAdapter,
   type DatabaseAdapter,
@@ -15,6 +14,7 @@ import { createMemoryKeyValueStore } from "../../database/kv/kvTestStore";
 import { createSqlAdapter } from "../../database/sql/sqlAdapter";
 import { sqliteExecutor } from "../../database/sql/sqlTestExecutors";
 import { createHotUpdater } from "../../index";
+import type { BundleEventRow } from "./eventRow";
 import { insights, insightsIdentity, type InsightsSchema } from "./index";
 
 const DAY = 86_400_000;

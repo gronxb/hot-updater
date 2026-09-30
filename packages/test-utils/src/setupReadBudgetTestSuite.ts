@@ -5,18 +5,7 @@ import {
   type Bundle,
   type ReleaseCatalog,
 } from "@hot-updater/core";
-import type {
-  BundleEventRow,
-  HotUpdaterCoreApi,
-  InsightsCountEventsInput,
-  InsightsCountLatestEventsInput,
-  InsightsFindLatestEventsInput,
-  InsightsGetAppUsageInput,
-  InsightsGetAppUsageResult,
-  InsightsGetReleaseActivityInput,
-  InsightsGetReleaseActivityResult,
-  InsightsListEventsInput,
-} from "@hot-updater/plugin-core";
+import type { HotUpdaterCoreApi } from "@hot-updater/plugin-core";
 import type {
   DatabaseAdapter,
   DatabaseReadCount,
@@ -25,6 +14,17 @@ import type {
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { createBundleFixture } from "./databaseTestFixtures";
+import type {
+  BundleEventRow,
+  InsightsCountEventsInput,
+  InsightsCountLatestEventsInput,
+  InsightsFindLatestEventsInput,
+  InsightsGetAppUsageInput,
+  InsightsGetAppUsageResult,
+  InsightsGetReleaseActivityInput,
+  InsightsGetReleaseActivityResult,
+  InsightsListEventsInput,
+} from "./insightsTypes";
 import type { RowsExamined } from "./sqlRowsExamined";
 
 /** Core's API with the client routes' reads, which the public API leaves out. */

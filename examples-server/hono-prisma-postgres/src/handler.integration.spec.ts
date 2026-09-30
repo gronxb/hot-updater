@@ -2,10 +2,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 
 import type { Bundle } from "@hot-updater/core";
-import {
-  ReleaseManagementError,
-  type BundleEventRow,
-} from "@hot-updater/plugin-core";
+import { ReleaseManagementError } from "@hot-updater/plugin-core";
 import { prismaAdapter } from "@hot-updater/server/adapters/prisma";
 import {
   createDatabaseCoreApi,
@@ -14,6 +11,7 @@ import {
 import {
   createInsightsModel,
   insights as insightsPlugin,
+  type BundleEventRow,
 } from "@hot-updater/server/plugins/insights";
 import {
   createHttpTestClient,
@@ -240,9 +238,10 @@ describe("Hot Updater Handler Integration Tests (Hono + Prisma + PostgreSQL)", (
 
   it("keeps every concurrent Insights event and the newest installation head", async () => {
     const insights = createInsightsModel(
-      createDatabasePluginApis(prismaAdapter({ prisma, provider: "postgresql" }), [
-        insightsPlugin(),
-      ]).insights,
+      createDatabasePluginApis(
+        prismaAdapter({ prisma, provider: "postgresql" }),
+        [insightsPlugin()],
+      ).insights,
     );
     const installId = "prisma-concurrent-insights";
     const now = Date.now();

@@ -1,4 +1,4 @@
-import type { BundleEventRow } from "@hot-updater/plugin-core";
+import type { BundleEventRow } from "../eventRow";
 
 const fixtureId = (suffix: string): string =>
   `00000000-0000-7000-8000-${suffix.padStart(12, "0")}`;

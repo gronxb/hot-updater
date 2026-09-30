@@ -10,11 +10,7 @@ import {
   EmptyTitle,
 } from "@/components/ui/empty";
 import { SidebarTrigger } from "@/components/ui/sidebar";
-import {
-  type ConsolePlugin,
-  consoleFeatures,
-  unavailableReason,
-} from "@/lib/console-features";
+import { consoleFeatures, unavailableReason } from "@/lib/console-features";
 import {
   notFoundFeature,
   useConsoleFeatures,
@@ -22,11 +18,6 @@ import {
 
 export const CONSOLE_DEPLOYMENT_GUIDE_URL =
   "https://hot-updater.dev/docs/guides/console-deployment";
-
-const pluginLabels: Readonly<Record<ConsolePlugin, string>> = {
-  insights: "Insights",
-  apiKeys: "API keys",
-};
 
 /**
  * A feature route's not-found state: the plugin to add, or, for a feature a
@@ -41,8 +32,7 @@ export function ConsoleFeatureUnavailable({
   const remote = useConsoleFeatures().data?.remote === true;
   if (feature === undefined) return <NotFoundPage />;
 
-  const { plugin } = consoleFeatures[feature];
-  const label = pluginLabels[plugin];
+  const { label, plugin } = consoleFeatures[feature];
   const pluginCall = <code className="font-mono">{`${plugin}()`}</code>;
   return (
     <div className="flex h-svh min-h-0 flex-col">
@@ -58,8 +48,8 @@ export function ConsoleFeatureUnavailable({
                 <EmptyTitle>Needs the server's database</EmptyTitle>
                 <EmptyDescription>
                   This console reaches a self-hosted server through its admin
-                  API, which serves Insights events and installations only.
-                  Configure the console with the database the server uses.
+                  API, which does not serve this page. Configure the console
+                  with the database the server uses.
                 </EmptyDescription>
               </>
             ) : (

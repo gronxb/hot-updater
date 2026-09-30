@@ -1,6 +1,6 @@
-import type { InsightsModel } from "@hot-updater/plugin-core";
 import { afterAll, beforeAll, beforeEach, describe } from "vitest";
 
+import type { InsightsModel } from "../modelTypes";
 import { registerInsightsModelTests } from "./insightsModelTests";
 import type { DatabaseTestLifecycle } from "./types";
 

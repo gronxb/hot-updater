@@ -1,15 +1,9 @@
 import { Link, useRouterState } from "@tanstack/react-router";
-import {
-  ChartNoAxesCombined,
-  KeyRound,
-  LogOut,
-  Moon,
-  Package,
-  Sun,
-} from "lucide-react";
+import { LogOut, Moon, Package, Sun } from "lucide-react";
 import { type ReactElement, type ReactNode, useState } from "react";
 import { toast } from "sonner";
 
+import { useFeatureUi } from "@/components/features/FeatureSlots";
 import { HotUpdaterLogo } from "@/components/HotUpdaterLogo";
 import { useTheme } from "@/components/ThemeProvider";
 import {
@@ -25,14 +19,10 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from "@/components/ui/sidebar";
-import type { ConsoleFeature } from "@/lib/console-features";
-import { useConsoleFeatures } from "@/lib/console-features-api";
 
 type NavigationItem = {
   readonly label: string;
   readonly icon: ReactNode;
-  /** The feature the item needs; it shows only while that feature is on. */
-  readonly feature?: ConsoleFeature;
   readonly active: boolean;
   readonly link: ReactElement;
 };
@@ -41,7 +31,7 @@ export function AppSidebar({ canSignOut = false }: { canSignOut?: boolean }) {
   const { setOpenMobile } = useSidebar();
   const closeMobileSidebar = () => setOpenMobile(false);
   const [signingOut, setSigningOut] = useState(false);
-  const features = useConsoleFeatures().data?.features;
+  const featureUi = useFeatureUi();
   const { theme, setTheme } = useTheme();
   const routerState = useRouterState();
   const currentPath = routerState.location.pathname;
@@ -68,28 +58,19 @@ export function AppSidebar({ canSignOut = false }: { canSignOut?: boolean }) {
         />
       ),
     },
-    {
-      label: "Insights",
-      icon: <ChartNoAxesCombined />,
-      feature: "insights",
-      active:
-        currentPath === "/insights" ||
-        currentPath === "/insights/distribution" ||
-        currentPath === "/installations",
-      // A self-hosted server's admin API serves events, not the overview.
-      link: features?.insightsAnalytics ? (
-        <Link to="/insights" onClick={closeMobileSidebar} />
-      ) : (
-        <Link to="/installations" onClick={closeMobileSidebar} />
-      ),
-    },
-    {
-      label: "API keys",
-      icon: <KeyRound />,
-      feature: "apiKeys",
-      active: currentPath === "/api-keys",
-      link: <Link to="/api-keys" onClick={closeMobileSidebar} />,
-    },
+    // Each feature that is on adds its item, as the feature registry lists it.
+    ...featureUi.flatMap(({ features, label, navigation }) =>
+      navigation === undefined
+        ? []
+        : [
+            {
+              label,
+              icon: navigation.icon,
+              active: navigation.paths.includes(currentPath),
+              link: navigation.link({ features, onClick: closeMobileSidebar }),
+            },
+          ],
+    ),
   ];
 
   const signOut = async () => {
@@ -143,23 +124,18 @@ export function AppSidebar({ canSignOut = false }: { canSignOut?: boolean }) {
           <SidebarGroupLabel>Navigation</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {navigation
-                .filter(
-                  ({ feature }) =>
-                    feature === undefined || features?.[feature] === true,
-                )
-                .map((item) => (
-                  <SidebarMenuItem key={item.label}>
-                    <SidebarMenuButton
-                      isActive={item.active}
-                      render={item.link}
-                      tooltip={item.label}
-                    >
-                      {item.icon}
-                      <span>{item.label}</span>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                ))}
+              {navigation.map((item) => (
+                <SidebarMenuItem key={item.label}>
+                  <SidebarMenuButton
+                    isActive={item.active}
+                    render={item.link}
+                    tooltip={item.label}
+                  >
+                    {item.icon}
+                    <span>{item.label}</span>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              ))}
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
