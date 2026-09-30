@@ -40,7 +40,7 @@ aws dynamodb create-table \
     AttributeName=sk,KeyType=RANGE
 ```
 
-Turn on its TTL for `_ttl`. The plugin writes `_ttl`, in epoch seconds, on
+Turn on its TTL for `_ttl`. The adapter writes `_ttl`, in epoch seconds, on
 every item of a row with [retention](/docs/custom/server-plugins#retention),
 such as Insights events and rollups, and DynamoDB deletes expired items
 without write cost:

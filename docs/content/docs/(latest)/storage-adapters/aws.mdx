@@ -20,7 +20,7 @@ npm install @hot-updater/aws
 
 For a complete provider deployment, follow the [AWS setup](/docs/managed/aws#step-2-configure-aws).
 For an existing bucket or a custom server, use the storage configuration below;
-you do not need to provision the provider's database and server to use this plugin.
+you do not need to provision the provider's database and server to use this adapter.
 
 ## Configuration
 
@@ -82,9 +82,9 @@ For example, `s3://my-bucket/releases/1.0.0/bundle%20ios.zip` is stored in the
 
 `s3Storage` implements streaming upload, streaming Web-response reads,
 existence checks, and exact deletion. Download URL generation requires either
-`downloadUrlSigningKey` or a `getDownloadUrl` implementation; the plugin does
+`downloadUrlSigningKey` or a `getDownloadUrl` implementation; the adapter does
 not implicitly generate S3 presigned URLs. CLI-only storage does not need this
-capability. For a self-hosted server, set `downloadUrlSigningKey` so the plugin
+capability. For a self-hosted server, set `downloadUrlSigningKey` so the adapter
 returns a signed URL handled by the same server.
 
 For CloudFront delivery, pass `cloudFrontDownloadUrl(...)` as `getDownloadUrl`:

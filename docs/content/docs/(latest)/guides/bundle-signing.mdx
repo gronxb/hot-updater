@@ -58,7 +58,7 @@ explicit opt-in:
 5. Release the native app, then begin signed OTA deployments.
 
 Local signing derives its public identity from the private key. Signing
-plugins resolve it with `getPublicKey()` and produce signatures with `sign()`.
+adapters resolve it with `getPublicKey()` and produce signatures with `sign()`.
 Local, AWS KMS, Google Cloud KMS, and remote signing configs do not accept
 `publicKeyPath`; that option belongs to the Expo app config plugin.
 
