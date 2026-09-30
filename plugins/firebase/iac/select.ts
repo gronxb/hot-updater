@@ -1,6 +1,6 @@
 import {
-  type BuildType,
   getInitProviderTextPromptValues,
+  type HotUpdaterConfigScaffold,
   link,
   makeEnv,
   MissingInitInputsError,
@@ -9,7 +9,6 @@ import {
 } from "@hot-updater/cli-tools";
 import { ExecaError, execa } from "execa";
 
-import { getConfigScaffold } from "./configTemplate";
 import type { FirebaseCliEnv } from "./firebaseInitInputs";
 import {
   initProvider as FIREBASE_INIT_PROVIDER,
@@ -20,13 +19,14 @@ export const setEnv = async ({
   applicationCredentials,
   projectId,
   storageBucket,
-  build,
+  scaffold,
   region,
 }: {
   applicationCredentials?: string;
   projectId: string;
   storageBucket: string;
-  build: BuildType;
+  /** The config and server definition init writes. */
+  scaffold: HotUpdaterConfigScaffold;
   region: string;
 }) => {
   await makeEnv(
@@ -51,7 +51,7 @@ export const setEnv = async ({
   p.log.success("Firebase credentials have been successfully configured.");
 
   try {
-    await writeHotUpdaterFiles(getConfigScaffold(build), {
+    await writeHotUpdaterFiles(scaffold, {
       cwd: process.cwd(),
       settings: "Firebase",
     });

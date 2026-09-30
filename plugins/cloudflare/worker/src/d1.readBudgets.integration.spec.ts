@@ -11,6 +11,7 @@ import { inject } from "vitest";
 // From source: the package root also loads Node-only helpers workerd lacks.
 import { setupReadBudgetTestSuite } from "../../../../packages/test-utils/src/setupReadBudgetTestSuite";
 import type { RowsExamined } from "../../../../packages/test-utils/src/sqlRowsExamined";
+import { d1SchemaSql } from "../../src/d1Schema";
 import { d1Database, type D1Like } from "../../src/worker";
 
 /**
@@ -58,27 +59,32 @@ const rowsRead = (database: D1Database) => {
   return { binding, examined };
 };
 
+const plugins = [insights(), apiKeys()];
+
 /**
  * The worker's `d1Database` on the D1 binding. Its schema fence reads the
- * settings rows the migration writes once, while the suite seeds.
+ * settings rows the migrations write once, while the suite seeds: the
+ * package's, with core's tables, and the one init writes for the plugins.
  */
 setupReadBudgetTestSuite({
   name: "d1 (workerd)",
   server: {
     createMeasuredDatabase,
     toolingTargetOf,
-    plugins: [insights(), apiKeys()],
+    plugins,
     targetBaseCandidateKey,
   },
   createAdapter: async () => {
     const [migration] = inject("d1Migrations");
-    // `exec` runs one statement per line, and a comment line is not one.
-    await env.DB.exec(
-      migration!.sql
-        .split("\n")
-        .filter((line) => line.trim() !== "" && !line.startsWith("--"))
-        .join("\n"),
-    );
+    for (const sql of [migration!.sql, d1SchemaSql(toolingTargetOf(plugins))]) {
+      // `exec` runs one statement per line, and a comment line is not one.
+      await env.DB.exec(
+        sql
+          .split("\n")
+          .filter((line) => line.trim() !== "" && !line.startsWith("--"))
+          .join("\n"),
+      );
+    }
     const { binding, examined } = rowsRead(env.DB);
     return { adapter: d1Database(binding).adapter, examined };
   },

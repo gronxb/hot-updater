@@ -9,6 +9,7 @@ import {
   transformEnv,
 } from "@hot-updater/cli-tools";
 import { HOT_UPDATER_INFRASTRUCTURE_GENERATION } from "@hot-updater/server";
+import { toolingTargetOf } from "@hot-updater/server/database";
 import { clientAuthOf, clientPluginsOf } from "@hot-updater/server/db";
 import { build as buildHelper } from "tsdown";
 
@@ -189,6 +190,13 @@ export const migrate = async (
       path.join(output, "worker/migrations"),
       { recursive: true },
     );
+    // The package's migration holds core's tables; the prebuilt Worker's
+    // plugins need theirs after it, as init migrates them.
+    const { d1SchemaSql } = await moduleAt(path.join(root, "src/d1Schema.ts"));
+    await save(
+      path.join(output, "worker/migrations/0002_hot-updater_plugins.sql"),
+      d1SchemaSql(toolingTargetOf(plugins)),
+    );
     const config = await json(path.join(root, "worker/wrangler.json"));
     config.name = placeholder("WORKER_NAME");
     config.account_id = placeholder("ACCOUNT_ID");
@@ -225,7 +233,7 @@ export const migrate = async (
         FUNCTION_NAME: "hot-updater-v1",
       }),
     );
-    const { resolveEdgeFunctionDenoConfig } = await moduleAt(
+    const { resolveEdgeFunctionDenoConfig, supabaseSchemaSql } = await moduleAt(
       path.join(root, "dist/iac/index.mjs"),
     );
     await save(
@@ -236,6 +244,15 @@ export const migrate = async (
       path.join(root, "supabase/migrations"),
       path.join(output, "supabase/migrations"),
       { recursive: true },
+    );
+    // The package's migration holds core's tables; the prebuilt function's
+    // plugins need theirs after it, as init migrates them.
+    await save(
+      path.join(
+        output,
+        "supabase/migrations/20260818000001_hot-updater_plugins.sql",
+      ),
+      supabaseSchemaSql(toolingTargetOf(plugins)),
     );
     await save(
       path.join(output, "supabase/config.toml"),

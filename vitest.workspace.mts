@@ -92,7 +92,8 @@ export default defineConfig({
             include: integrationInclude,
             exclude: [
               ...rootExclude,
-              "plugins/cloudflare/**/*.integration.spec.ts",
+              // integration:cloudflare runs these in workerd.
+              "plugins/cloudflare/worker/**/*.integration.spec.ts",
               "packages/bsdiff/tests/runtime/*.manual.*",
             ],
             fileParallelism: false,

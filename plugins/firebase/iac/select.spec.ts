@@ -47,6 +47,7 @@ vi.mock("@hot-updater/cli-tools", async () => {
   };
 });
 
+import { getConfigScaffold } from "./configTemplate";
 import { createFirebaseProject, initFirebaseUser, setEnv } from "./select";
 
 describe("setEnv", () => {
@@ -54,7 +55,7 @@ describe("setEnv", () => {
     await setEnv({
       projectId: "demo-project",
       storageBucket: "demo-bucket",
-      build: "bare",
+      scaffold: getConfigScaffold("bare"),
       region: "asia-northeast3",
     });
 

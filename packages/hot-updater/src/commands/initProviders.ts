@@ -58,3 +58,22 @@ export const isInitProvider = (
 export const INIT_PROVIDER_NAMES = Object.keys(INIT_PROVIDER_PACKAGES).filter(
   isInitProvider,
 );
+
+/**
+ * The server definitions the other providers' inits write, which
+ * `provider`'s init replaces when it finds one unedited. The CLI inlines
+ * every provider's init entry, so they are here whichever provider packages
+ * the project installed. One that fails to render is left out, and init then
+ * refuses that definition from its imports instead.
+ */
+export const otherServerDefinitionsOf = (provider: InitProvider): string[] =>
+  INIT_PROVIDER_NAMES.filter((name) => name !== provider).flatMap((name) => {
+    try {
+      return [
+        ...(INIT_PROVIDER_PACKAGES[name].definition.serverDefinitions?.() ??
+          []),
+      ];
+    } catch {
+      return [];
+    }
+  });

@@ -2,24 +2,31 @@ import {
   colors,
   confirmInitInputPersistence,
   ensureInstallPackages,
-  assertManagedServerDefinition,
   getHotUpdaterInitInputEnv,
   getInitProviderEnvVars,
   getInitProviderTextPromptValues,
   link,
+  loadManagedServerDefinition,
   makeEnv,
   p,
   printAppSetup,
   readHotUpdaterInitEnv,
+  readManagedServerDefinition,
+  replacingServerDefinitions,
   type RunInitOptions,
   writeHotUpdaterFiles,
 } from "@hot-updater/cli-tools";
+import type { PluginTables } from "@hot-updater/server/database";
 import {
   clientAuthOf,
   clientPluginsOf,
   provisionClientCredential,
   type ProvisionedClientCredential,
 } from "@hot-updater/server/db";
+import {
+  clientEndpointsOf,
+  managedServerDefinitionOf,
+} from "@hot-updater/server/internal";
 import { execa } from "execa";
 
 import { dynamoDB, migrateDynamoDB } from "../src/dynamoDB";
@@ -35,10 +42,11 @@ import {
   resolveAwsInitInputs,
 } from "./awsInitInputs";
 import { CloudFrontManager } from "./cloudfront";
+import { pluginCacheBehaviorPaths } from "./cloudfrontDistributionConfig";
 import { DynamoDBManager } from "./dynamodb";
 import { IAMManager } from "./iam";
 import { initProvider as AWS_INIT_PROVIDER } from "./init/index";
-import { LambdaEdgeDeployer } from "./lambdaEdge";
+import { LambdaEdgeDeployer, stageLambda } from "./lambdaEdge";
 import { type AwsRegion, regionLocationMap } from "./regionLocationMap";
 import { S3Manager } from "./s3";
 import { SSMKeyPairManager } from "./ssm";
@@ -57,22 +65,30 @@ const isAwsRegion = (value: string | undefined): value is AwsRegion => {
   return value !== undefined && Object.hasOwn(regionLocationMap, value);
 };
 
-export const prepareDynamoDBDeployment = async (input: {
-  readonly credentials: {
-    readonly accessKeyId: string;
-    readonly secretAccessKey: string;
-    readonly sessionToken?: string;
-  };
-  readonly region: string;
-  readonly tableName: string;
-}): Promise<void> => {
+export const prepareDynamoDBDeployment = async (
+  input: {
+    readonly credentials: {
+      readonly accessKeyId: string;
+      readonly secretAccessKey: string;
+      readonly sessionToken?: string;
+    };
+    readonly region: string;
+    readonly tableName: string;
+  },
+  /** The plugins the server runs, whose tables and settings are created too. */
+  serverPlugins: readonly PluginTables[],
+): Promise<void> => {
   const dynamodbManager = new DynamoDBManager(input.region, input.credentials);
   await dynamodbManager.ensureTable(input.tableName);
   // The plugin reads nothing until the table's schema settings exist.
-  await migrateDynamoDB(input, plugins);
+  await migrateDynamoDB(input, serverPlugins);
 };
 
-export const runInit = async ({ build, envFile }: RunInitOptions) => {
+export const runInit = async ({
+  build,
+  envFile,
+  otherServerDefinitions,
+}: RunInitOptions) => {
   const nonInteractive = envFile !== undefined;
   const initEnvSources = await readHotUpdaterInitEnv(process.cwd(), envFile);
   const { managedEnv } = initEnvSources;
@@ -110,8 +126,11 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
 
   const { awsProfile, configAuthMode, credentials, mode } =
     await resolveAwsAuth(providerEnv, nonInteractive);
-  const scaffold = getConfigScaffold(build, configAuthMode);
-  await assertManagedServerDefinition(scaffold, process.cwd());
+  const scaffold = replacingServerDefinitions(
+    getConfigScaffold(build, configAuthMode),
+    otherServerDefinitions,
+  );
+  const definition = await readManagedServerDefinition(scaffold, process.cwd());
   const resolvedAuthInputs = {
     ...savedInputs,
     accessKeyId:
@@ -324,17 +343,53 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
       : {}),
   });
 
+  // The server the function runs: the package's, or the project's edited
+  // definition, which reads what .env.hotupdater now holds. It is checked and
+  // its function bundled before init changes any resource. CloudFront sends
+  // the paths of its plugins' client endpoints to the function.
+  const server = definition.edited
+    ? await loadManagedServerDefinition(definition, (hotUpdater) => {
+        const loaded = managedServerDefinitionOf(hotUpdater, {
+          provider: "AWS",
+          database: "dynamoDB",
+          storage: "s3",
+          resources: {
+            database: {
+              region: bucketRegion,
+              tableName: resolvedDynamoDBTableName,
+            },
+            storage: { bucketName },
+          },
+        });
+        return {
+          plugins: loaded.plugins,
+          pluginPaths: pluginCacheBehaviorPaths(loaded.clientEndpoints),
+        };
+      })
+    : {
+        plugins,
+        pluginPaths: pluginCacheBehaviorPaths(clientEndpointsOf(plugins)),
+      };
+  const serverPlugins = server.plugins;
+  const { pluginPaths } = server;
+  const definitionLambda = definition.edited
+    ? await stageLambda(definition.path)
+    : undefined;
+
   if (resourceInputs.bucketSelection === createKey) {
     await s3Manager.createBucket(bucketName, bucketRegion);
   }
 
   p.log.info(`Selected S3 Bucket: ${bucketName} (${bucketRegion})`);
 
-  await prepareDynamoDBDeployment({
-    credentials,
-    region: bucketRegion,
-    tableName: resolvedDynamoDBTableName,
-  });
+  await prepareDynamoDBDeployment(
+    {
+      credentials,
+      region: bucketRegion,
+      tableName: resolvedDynamoDBTableName,
+    },
+    serverPlugins,
+  );
   const databasePlugin = dynamoDB({
     credentials,
     region: bucketRegion,
@@ -343,10 +398,14 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
   // The app's credential, through the managed server's plugins, on the table they read.
   let credential: ProvisionedClientCredential | undefined;
   try {
-    credential = await provisionClientCredential(databasePlugin, plugins, {
-      env: providerEnv,
-      name: "AWS init",
-    });
+    credential = await provisionClientCredential(
+      databasePlugin,
+      serverPlugins,
+      {
+        env: providerEnv,
+        name: "AWS init",
+      },
+    );
     if (credential !== undefined) {
       await makeEnv({ [credential.env]: credential.value });
     }
@@ -365,6 +424,15 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
     dynamodbTableName: resolvedDynamoDBTableName,
     lambdaName,
     ssmParameterName,
+    plugins: serverPlugins,
+    // The function versions the distribution may still run keep their
+    // access until it deploys the one init records.
+    edge: selectedDistribution?.Id
+      ? await cloudFrontManager.edgeDeploymentOf(
+          selectedDistribution.Id,
+          lambdaName,
+        )
+      : undefined,
   });
 
   const ssmKeyPairManager = new SSMKeyPairManager(bucketRegion, credentials);
@@ -388,6 +456,7 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
       ssmParameterName: ssmParameterName,
       ssmRegion: bucketRegion,
     },
+    definitionLambda ?? (await stageLambda(undefined)),
   );
 
   // Create or update CloudFront distribution
@@ -395,9 +464,10 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
     await cloudFrontManager.createOrUpdateDistribution({
       keyGroupId,
       bucketName,
-      clientHeaders: clientAuthOf(plugins)?.varyHeaders ?? [],
+      clientHeaders: clientAuthOf(serverPlugins)?.varyHeaders ?? [],
       distribution: selectedDistribution,
       functionArn,
+      pluginPaths,
     });
 
   // Update S3 bucket policy (allow CloudFront access)
@@ -408,6 +478,24 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
     distributionId,
     accountId,
   });
+
+  // The version the distribution now runs: the next init drops the access it
+  // keeps for the versions before once the distribution deploys it. Without
+  // the record, it keeps them, so a failure here only delays that.
+  try {
+    await iamManager.recordDeployedVersion({
+      dynamodbTableName: resolvedDynamoDBTableName,
+      functionArn,
+      lambdaName,
+      plugins: serverPlugins,
+    });
+  } catch (error) {
+    p.log.warn(
+      `Could not record the deployed Lambda@Edge version in its role's policy, so the next init keeps the access of the versions before it: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+  }
 
   await makeEnv({
     [AWS_INIT_PROVIDER.inputs.distributionId.envKey]: distributionId,
@@ -434,7 +522,7 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
   printAppSetup({
     baseURL: `https://${distributionDomain}`,
     ...(credential === undefined ? {} : { credential }),
-    clientPlugins: clientPluginsOf(plugins),
+    clientPlugins: clientPluginsOf(serverPlugins),
   });
   p.log.message(
     `Next step: ${link(

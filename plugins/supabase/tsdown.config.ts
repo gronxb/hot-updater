@@ -9,6 +9,15 @@ export default defineConfig([
     failOnWarn: true,
   },
   {
+    // What `@hot-updater/supabase` is when init bundles a project's server
+    // definition into the managed Edge Function.
+    entry: ["src/managed.ts"],
+    format: ["esm"],
+    outDir: "dist",
+    dts: false,
+    failOnWarn: true,
+  },
+  {
     entry: ["iac/init/index.ts"],
     format: ["esm", "cjs"],
     dts: true,

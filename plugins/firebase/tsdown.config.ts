@@ -35,6 +35,18 @@ export default defineConfig([
     failOnWarn: true,
   },
   {
+    // What `@hot-updater/firebase` is when init bundles a project's server
+    // definition into the managed Cloud Function.
+    entry: { managed: "firebase/functions/managed.ts" },
+    format: ["esm"],
+    outDir: "dist",
+    dts: false,
+    deps: {
+      neverBundle: ["firebase-functions", "firebase-admin"],
+    },
+    failOnWarn: true,
+  },
+  {
     entry: ["iac/init/index.ts"],
     format: ["esm", "cjs"],
     dts: true,

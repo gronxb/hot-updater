@@ -1,4 +1,5 @@
 import fs from "fs/promises";
+import os from "os";
 import path from "path";
 
 import { Lambda } from "@aws-sdk/client-lambda";
@@ -6,11 +7,81 @@ import {
   copyDirToTmp,
   createZip,
   getCwd,
+  InitError,
   p,
   transformEnv,
 } from "@hot-updater/cli-tools";
 
+import { buildLambdaFromDefinition } from "./managedLambda";
+
 const LAMBDA_MEMORY_SIZE = 256;
+/** Lambda@Edge's limit on an origin-request function's zipped code. */
+export const LAMBDA_EDGE_MAX_ZIP_BYTES = 50 * 1024 * 1024;
+
+const megabytes = (bytes: number) => `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+
+/**
+ * Zips `dir` to `outfile`, refusing code Lambda@Edge would reject;
+ * `definition` names the server definition it was bundled from.
+ */
+const zipLambda = async (dir: string, outfile: string, definition?: string) => {
+  await createZip({ outfile, targetDir: dir });
+  const { size } = await fs.stat(outfile);
+  if (size > LAMBDA_EDGE_MAX_ZIP_BYTES) {
+    throw new InitError(
+      `${definition === undefined ? "The Lambda@Edge function" : `${definition} bundles into a Lambda@Edge function that`} zips to ${megabytes(size)}, over Lambda@Edge's ${megabytes(LAMBDA_EDGE_MAX_ZIP_BYTES)} limit for origin-request functions. Remove large dependencies from its plugins, or host the server yourself.`,
+    );
+  }
+};
+
+/** The function's code, staged in a temporary directory. */
+export interface StagedLambda {
+  readonly dir: string;
+  readonly remove: () => Promise<void>;
+}
+
+/**
+ * Stages the function's code: the prebuilt function, or the project's
+ * server definition bundled with the function's runtime module. A
+ * definition that cannot be bundled, or whose code zips past Lambda@Edge's
+ * limit, fails here, before init changes any resource.
+ */
+export const stageLambda = async (
+  definition: string | undefined,
+): Promise<StagedLambda> => {
+  if (definition === undefined) {
+    const { tmpDir, removeTmpDir } = await copyDirToTmp(
+      path.dirname(require.resolve("@hot-updater/aws/lambda")),
+    );
+    return { dir: tmpDir, remove: removeTmpDir };
+  }
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "hot-updater-lambda-"));
+  const remove = () => fs.rm(dir, { recursive: true, force: true });
+  try {
+    await buildLambdaFromDefinition({
+      definition,
+      packageRoot: path.dirname(
+        require.resolve("@hot-updater/aws/package.json"),
+      ),
+      projectRoot: getCwd(),
+      lambdaDir: dir,
+    });
+    const zip = `${dir}.zip`;
+    try {
+      await zipLambda(
+        dir,
+        zip,
+        path.relative(getCwd(), definition) || definition,
+      );
+    } finally {
+      await fs.rm(zip, { force: true });
+    }
+    return { dir, remove };
+  } catch (error) {
+    await remove();
+    throw error;
+  }
+};
 const LAMBDA_TIMEOUT_SECONDS = 10;
 const LAMBDA_ROLE_PROPAGATION_MAX_ATTEMPTS = 10;
 const LAMBDA_ROLE_PROPAGATION_RETRY_DELAY_MS = 2000;
@@ -84,6 +155,7 @@ export class LambdaEdgeDeployer {
     }
   }
 
+  /** Deploys `staged`, which it removes, with the resources init set up. */
   async deploy(
     lambdaRoleArn: string,
     lambdaName: string,
@@ -95,15 +167,12 @@ export class LambdaEdgeDeployer {
       ssmParameterName: string;
       ssmRegion: string;
     },
+    staged: StagedLambda,
   ): Promise<{ lambdaName: string; functionArn: string }> {
     const cwd = getCwd();
 
-    const lambdaPath = require.resolve("@hot-updater/aws/lambda");
-    const lambdaDir = path.dirname(lambdaPath);
-    const { tmpDir, removeTmpDir } = await copyDirToTmp(lambdaDir);
-
     // Transform Lambda code with CloudFront key pair details and SSM config
-    const indexPath = path.join(tmpDir, "index.cjs");
+    const indexPath = path.join(staged.dir, "index.cjs");
     const code = transformEnv(indexPath, {
       CLOUDFRONT_KEY_PAIR_ID: config.publicKeyId,
       DYNAMODB_REGION: config.dynamodbRegion,
@@ -129,11 +198,11 @@ export class LambdaEdgeDeployer {
         title: "Compressing Lambda code to zip",
         task: async () => {
           try {
-            await createZip({ outfile: zipFilePath, targetDir: tmpDir });
+            await zipLambda(staged.dir, zipFilePath);
             return "Compressed Lambda code to zip";
-          } catch {
+          } catch (error) {
             throw new Error(
-              "Failed to create zip archive of Lambda function code",
+              `Failed to create zip archive of Lambda function code: ${error instanceof Error ? error.message : String(error)}`,
             );
           }
         },
@@ -198,7 +267,7 @@ export class LambdaEdgeDeployer {
             }
             return `Updated Lambda "${lambdaName}" function`;
           } finally {
-            void removeTmpDir();
+            void staged.remove();
             void fs.rm(zipFilePath, { force: true });
           }
         },

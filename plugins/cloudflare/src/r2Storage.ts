@@ -1,4 +1,5 @@
 import type { StorageAdapterWith } from "@hot-updater/plugin-core";
+import { withAdapterResource } from "@hot-updater/plugin-core/internal";
 
 import { createR2S3Storage, type R2S3StorageConfig } from "./r2S3Storage";
 
@@ -14,5 +15,8 @@ export const r2Storage = (
     );
   }
 
-  return createR2S3Storage(config);
+  return withAdapterResource(createR2S3Storage(config), {
+    accountId: config.accountId,
+    bucketName: config.bucketName,
+  });
 };

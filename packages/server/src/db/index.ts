@@ -1,16 +1,9 @@
-import type { StorageAdapter } from "@hot-updater/plugin-core";
-
 import {
   getHotUpdaterCoreMetadata,
   type RuntimeHotUpdaterAPI,
 } from "../createHotUpdaterCore";
 import type { AnyHotUpdaterPlugin } from "../plugins/definePlugin";
-import {
-  type Migrator,
-  type SchemaGenerator,
-  type ToolingDatabase,
-  type ToolingTarget,
-} from "./types";
+import { type Migrator, type SchemaGenerator } from "./types";
 
 export { createDatabaseCoreApi, type CoreApi } from "../core/api";
 export {
@@ -47,6 +40,11 @@ export type {
 } from "./types";
 export { HotUpdaterSchemaMigrationRequiredError } from "../database/fence";
 export { HOT_UPDATER_SERVER_VERSION } from "../version";
+export {
+  type ClientEndpoint,
+  serverDefinitionOf,
+  type ServerDefinition,
+} from "./serverDefinition";
 
 export type HotUpdaterDBTarget = {
   readonly adapterName: string;
@@ -62,33 +60,6 @@ const getDBMetadata = (hotUpdater: HotUpdaterDBTarget) => {
     );
   }
   return metadata;
-};
-
-/**
- * What tooling reads from a server definition, the `hotUpdater` a module
- * exports: the database, storage, and plugins as configured, and the tables
- * and settings rows they need.
- */
-export interface ServerDefinition {
-  readonly database: ToolingDatabase;
-  /** In order; the CLI uploads to the first. */
-  readonly storage: readonly StorageAdapter[];
-  readonly plugins: readonly AnyHotUpdaterPlugin[];
-  readonly target: ToolingTarget;
-}
-
-/**
- * The parts of `value` when it is a server definition, one
- * `createHotUpdater` returned; undefined otherwise.
- */
-export const serverDefinitionOf = (
-  value: unknown,
-): ServerDefinition | undefined => {
-  if (typeof value !== "object" || value === null) return undefined;
-  const metadata = getHotUpdaterCoreMetadata(value as RuntimeHotUpdaterAPI);
-  if (metadata === undefined) return undefined;
-  const { database, storage, plugins, target } = metadata;
-  return { database, storage, plugins, target };
 };
 
 /** A server's plugins as configured, whose commands the CLI adds. */

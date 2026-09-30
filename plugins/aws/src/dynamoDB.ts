@@ -3,6 +3,7 @@ import {
   type DynamoDBClientConfig,
 } from "@aws-sdk/client-dynamodb";
 import type { EngineDatabase } from "@hot-updater/plugin-core";
+import { withAdapterResource } from "@hot-updater/plugin-core/internal";
 import {
   createEngineDatabase,
   createKvAdapter,
@@ -58,7 +59,7 @@ export const migrateDynamoDB = (
 export const dynamoDB = (config: DynamoDBConfig): EngineDatabase => {
   const { client, adapter } = adapterOf(config);
   const cloudFront = createUpdateRouteInvalidation(config);
-  return {
+  const database: EngineDatabase = {
     ...createEngineDatabase({
       name: "dynamoDB",
       adapter,
@@ -71,4 +72,8 @@ export const dynamoDB = (config: DynamoDBConfig): EngineDatabase => {
       cloudFront?.destroy();
     },
   };
+  return withAdapterResource(database, {
+    region: typeof config.region === "string" ? config.region : undefined,
+    tableName: config.tableName,
+  });
 };

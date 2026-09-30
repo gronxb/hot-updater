@@ -58,6 +58,7 @@ vi.mock("@hot-updater/supabase/iac", () => ({
 }));
 
 import { init } from "./init";
+import { otherServerDefinitionsOf } from "./initProviders";
 
 describe("init choices", () => {
   beforeEach(() => {
@@ -118,6 +119,7 @@ describe("init choices", () => {
     expect(mocks.runAwsInit).toHaveBeenCalledWith({
       build: "bare",
       envFile: undefined,
+      otherServerDefinitions: otherServerDefinitionsOf("aws"),
     });
   });
 
@@ -143,6 +145,7 @@ describe("init choices", () => {
     expect(mocks.runAwsInit).toHaveBeenCalledWith({
       build: "bare",
       envFile: undefined,
+      otherServerDefinitions: otherServerDefinitionsOf("aws"),
     });
   });
 
@@ -192,6 +195,7 @@ describe("init choices", () => {
     expect(mocks.runSupabaseInit).toHaveBeenCalledWith({
       build: "bare",
       envFile: "init.env",
+      otherServerDefinitions: otherServerDefinitionsOf("supabase"),
     });
   });
 
@@ -241,6 +245,7 @@ describe("init choices", () => {
     expect(mocks.runAwsInit).toHaveBeenCalledWith({
       build: "expo",
       envFile: ".env.hotupdater",
+      otherServerDefinitions: otherServerDefinitionsOf("aws"),
     });
   });
 
