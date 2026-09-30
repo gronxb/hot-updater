@@ -25,4 +25,4 @@
 "hot-updater": patch
 ---
 
-Every package now shares one release candidate version. `hot-updater` and the `@hot-updater/*` packages are released together as a fixed group, as on `main`, so an app, its server, and the console can pin the same version.
+Every package now shares one release candidate version: `hot-updater` and every `@hot-updater/*` package move to the same version, so an app, its server, and the console can pin one version.
