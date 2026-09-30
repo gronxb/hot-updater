@@ -26,10 +26,9 @@ Storage and database adapters and server plugins run on a
 and Firebase servers are prebuilt with their provider's adapters and
 `plugins` list, so a user of one moves to a custom server to add yours. A
 client plugin runs in any app, but routes it calls on the update server need
-a server plugin on that server. Ship a feature that spans both as two
-factories, such as `feedback()` for the server and `feedback()` for the app,
-from separate entries of one package, such as `@acme/hot-updater-feedback` and
-`@acme/hot-updater-feedback/client`. The server plugin names the client one in
+a server plugin on that server. Ship a feature that spans both from
+[one package with an entry per side](#ship-both-sides-from-one-package), as
+Hot Updater's own Insights does. The server plugin names the client one in
 [`cli.clientPlugin`](/docs/custom/server-plugins#name-the-apps-client-plugin).
 
 ## Package it
@@ -77,17 +76,79 @@ from separate entries of one package, such as `@acme/hot-updater-feedback` and
   binding in a Worker, add an entry per runtime that exports the same
   factory name, as `@hot-updater/cloudflare/worker` does.
 
+## Ship both sides from one package
+
+A feature with a server plugin and a client plugin ships both from one
+package, with an entry per side. Hot Updater's own
+`@hot-updater/plugin-insights` has `./server` and `./client`, which
+`@hot-updater/server/plugins/insights` and
+`@hot-updater/react-native/plugins/insights` re-export:
+
+```json title="package.json"
+{
+  "name": "@acme/hot-updater-feedback",
+  "version": "1.0.0",
+  "type": "module",
+  "exports": {
+    "./server": {
+      "types": "./dist/server/index.d.ts",
+      "import": "./dist/server/index.js"
+    },
+    "./client": {
+      "types": "./dist/client/index.d.ts",
+      "import": "./dist/client/index.js",
+      "require": "./dist/client/index.cjs"
+    }
+  },
+  "files": ["dist", "client"],
+  "keywords": ["hot-updater", "hot-updater-plugin"],
+  "peerDependencies": {
+    "@hot-updater/react-native": "^1.0.0",
+    "@hot-updater/server": "^1.0.0"
+  },
+  "peerDependenciesMeta": {
+    "@hot-updater/react-native": { "optional": true },
+    "@hot-updater/server": { "optional": true }
+  }
+}
+```
+
+```json title="client/package.json"
+{
+  "name": "@acme/hot-updater-feedback/client",
+  "private": true,
+  "main": "../dist/client/index.cjs",
+  "module": "../dist/client/index.js",
+  "types": "../dist/client/index.d.ts"
+}
+```
+
+- The server entry imports `definePlugin` from `@hot-updater/server/plugins`,
+  and the client entry imports `defineClientPlugin` from
+  `@hot-updater/react-native/client-plugin`. Neither imports the other side,
+  so the app never bundles server code.
+- Both peer dependencies are optional: a server project installs
+  `@hot-updater/server`, and an app installs `@hot-updater/react-native`.
+- `client/package.json` lets Metro resolvers that ignore `exports` find the
+  client entry. Name only files the package publishes in it: Metro takes the
+  first of its `resolverMainFields` the file has and does not fall back, so a
+  `source` field that points at unpublished source breaks apps that list it.
+- Build the client entry as CommonJS too: Jest loads it with `require` in an
+  app's tests.
+- Test each side with its helper; see [Test it](#test-it).
+
 ## Declare Hot Updater as a peer dependency
 
 List the Hot Updater packages your package imports in `peerDependencies`, and
 in `devDependencies` for your own tests:
 
-| Package                            | `peerDependencies`          |
-| ---------------------------------- | --------------------------- |
-| Storage, build, or signing adapter | `@hot-updater/plugin-core`  |
-| Database adapter                   | `@hot-updater/server`       |
-| Server plugin                      | `@hot-updater/server`       |
-| Client plugin                      | `@hot-updater/react-native` |
+| Package                                 | `peerDependencies`                                                   |
+| --------------------------------------- | -------------------------------------------------------------------- |
+| Storage, build, or signing adapter      | `@hot-updater/plugin-core`                                           |
+| Database adapter                        | `@hot-updater/server`                                                |
+| Server plugin                           | `@hot-updater/server`                                                |
+| Client plugin                           | `@hot-updater/react-native`                                          |
+| Server and client plugin in one package | `@hot-updater/server` and `@hot-updater/react-native`, both optional |
 
 A peer dependency makes your package use the project's copy of each package,
 the one its CLI, server, and Console use. A second copy breaks at runtime,
