@@ -709,7 +709,7 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
 
   p.log.message(
     `Next step: ${link(
-      "https://hot-updater.dev/docs/managed/firebase#step-3-generated-configurations",
+      "https://hot-updater.dev/docs/managed/firebase#step-3-add-hotupdater-to-your-project",
     )}`,
   );
   if (!applicationCredentials) {
