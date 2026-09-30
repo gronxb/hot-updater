@@ -258,7 +258,7 @@ const runBundle = async ({
   };
 };
 
-export interface BarePluginConfig extends BuildAdapterConfig {
+export interface BareAdapterConfig extends BuildAdapterConfig {
   /**
    * @default "index.js"
    * The entry file to bundle.
@@ -284,7 +284,7 @@ export interface BarePluginConfig extends BuildAdapterConfig {
 }
 
 export const bare =
-  (config: BarePluginConfig) =>
+  (config: BareAdapterConfig) =>
   ({ cwd }: BuildAdapterArgs): BuildAdapter => {
     const {
       outDir = "dist",

@@ -15,9 +15,9 @@ export type {
 } from "./coreApi";
 export {
   DatabaseBundleNotFoundError,
-  DatabasePluginInputError,
+  DatabaseAdapterInputError,
   DatabaseRowReferencedError,
-  type DatabasePluginInputErrorCode,
+  type DatabaseAdapterInputErrorCode,
 } from "./databaseErrors";
 export * from "./createStorageKeyBuilder";
 export * from "./createStorageAdapter";

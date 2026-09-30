@@ -69,7 +69,7 @@ const runBundle = async ({
   };
 };
 
-export interface RockPluginConfig extends BuildAdapterConfig {
+export interface RockAdapterConfig extends BuildAdapterConfig {
   /**
    * @default "index.js"
    * The entry file to bundle.
@@ -90,7 +90,7 @@ export interface RockPluginConfig extends BuildAdapterConfig {
 
 export const rock =
   (
-    config: RockPluginConfig = {
+    config: RockAdapterConfig = {
       outDir: "dist",
       sourcemap: false,
       entryFile: "index.js",

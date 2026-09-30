@@ -168,7 +168,7 @@ const runBundle = async ({
   };
 };
 
-export interface ExpoPluginConfig extends BuildAdapterConfig {
+export interface ExpoAdapterConfig extends BuildAdapterConfig {
   /**
    * @default false
    * Whether to generate sourcemap for the bundle.
@@ -182,7 +182,7 @@ export interface ExpoPluginConfig extends BuildAdapterConfig {
 }
 
 export const expo =
-  (config: ExpoPluginConfig = { outDir: "dist", sourcemap: false }) =>
+  (config: ExpoAdapterConfig = { outDir: "dist", sourcemap: false }) =>
   ({ cwd }: BuildAdapterArgs): BuildAdapter => {
     const { outDir = "dist", sourcemap = false, resetCache = true } = config;
     return {
