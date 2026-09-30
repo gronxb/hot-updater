@@ -247,7 +247,7 @@ describe("ReleaseEditorSheet", () => {
       screen.getByRole("heading", { name: "Delivery settings" }),
     ).toBeDefined();
     expect(screen.getAllByText("Target app version").length).toBeGreaterThan(0);
-    expect(screen.getByText("Bundle hash")).toBeDefined();
+    expect(screen.getByText("Manifest hash")).toBeDefined();
     expect(screen.getByText("patch-base-file").closest("details")?.open).toBe(
       false,
     );

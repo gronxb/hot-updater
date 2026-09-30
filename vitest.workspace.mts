@@ -67,14 +67,21 @@ export default defineConfig({
         },
       }),
       defineProject({
+        resolve: {
+          tsconfigPaths: true,
+        },
         test: {
           name: "unit:console",
           environment: "jsdom",
           include: [
             "packages/console/**/*.spec.ts",
+            "packages/console/**/*.spec.tsx",
             "packages/console/**/*.test.ts",
+            "packages/console/**/*.test.tsx",
           ],
           exclude: [...commonExclude, "**/*.integration.spec.ts"],
+          hookTimeout: 60000,
+          testTimeout: 60000,
         },
       }),
       ...selectIntegrationProjects(integrationGroup, [
