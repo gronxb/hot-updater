@@ -1,0 +1,12 @@
+{
+  "title": "Storage Adapters",
+  "description": "Store bundle artifacts and serve their downloads.",
+  "icon": "HardDrive",
+  "pages": [
+    "supabase",
+    "cloudflare",
+    "aws",
+    "firebase",
+    "standalone"
+  ]
+}

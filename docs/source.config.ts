@@ -27,9 +27,6 @@ export const docs = defineDocs({
     postprocess: {
       includeProcessedMarkdown: true,
     },
-    schema: type({
-      "version?": "string",
-    }),
   },
 });
 

@@ -1,6 +1,6 @@
 {
-  "title": "Signing providers",
-  "description": "Choose the signer used by the deploy command.",
+  "title": "Signing Adapters",
+  "description": "Sign bundle artifacts with a local key, a KMS, or a remote service.",
   "icon": "KeyRound",
   "pages": [
     "local",

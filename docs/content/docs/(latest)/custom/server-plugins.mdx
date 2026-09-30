@@ -1,5 +1,5 @@
 ---
-title: "Server Plugins"
+title: "Create a server plugin"
 description: Add tables, aggregates, APIs, routes, and client authentication to a self-hosted server with definePlugin.
 icon: Plug
 ---
@@ -829,7 +829,7 @@ npx hot-updater db migrate src/hotUpdater.ts
 
 | Database | The plugin's tables |
 | --- | --- |
-| Kysely, `postgres`, MongoDB, a [custom adapter](/docs/database-plugins/custom-database) | `db migrate` creates them. With Kysely, `db generate` writes the SQL for review first. |
+| Kysely, `postgres`, MongoDB, a [custom adapter](/docs/database-adapters/custom-database) | `db migrate` creates them. With Kysely, `db generate` writes the SQL for review first. |
 | Drizzle, Prisma | `db generate` adds them to the schema file. Apply it with Drizzle Kit or Prisma, then run `db migrate` for the settings rows. |
 | D1 | `db generate` writes a D1 migration to `migrations`; apply it with `wrangler d1 migrations apply`. `db migrate` applies the same schema through the Cloudflare API. |
 | Supabase | `db generate` writes a migration to `supabase/migrations` that also lets the apply RPC reach the tables; apply it with `supabase db push`. |
@@ -931,7 +931,7 @@ describe("feedback", () => {
   and rows) and what the adapter read (`adapter`: batch point reads, keys,
   queries, and rows), so a test can hold an API to its read budget.
 - The `now` option sets the plugin's clock, and `setNow` changes it later.
-- The `adapter` option runs the plugin on another storage adapter, such as a
+- The `adapter` option runs the plugin on another database adapter, such as a
   SQL database, after creating the plugin's tables there.
 - The harness passes an empty `core`. Test an API that reads core through
   `createHotUpdater`.
@@ -973,3 +973,11 @@ it("serves POST /feedback on the client handler", async () => {
 ```
 
 The memory database has no schema fence and needs no migration.
+
+## Publish the plugin
+
+Export the factory, such as `feedback()`, and its API types from your package,
+and list `@hot-updater/server` in `peerDependencies`: the plugin then catches
+the error classes the project's engine throws. Give the plugin an `id` and
+route paths that name your package, since both must be unique on a server. See
+[Test and publish a plugin](/docs/plugins/publish).

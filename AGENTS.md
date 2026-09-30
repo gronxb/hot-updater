@@ -3,10 +3,10 @@
 ## Project Structure & Modules
 
 - `packages/`: Core libraries (e.g., `core`, `hot-updater`, `react-native`, `console`).
-- `plugins/`: Provider/build plugins (e.g., `aws`, `cloudflare`, `supabase`, `expo`, `repack`).
+- `plugins/`: Provider adapters, build adapters, and integration plugins (e.g., `aws`, `cloudflare`, `supabase`, `firebase`, `bare`, `expo`, `rock`, `sentry-plugin`).
 - `examples/`: React Native example apps by version (e.g., `v0.77.0`, `v0.85.0`).
 - `docs/`: Documentation site sources.
-- `scripts/`: Local tooling (e.g., `build-dev.mjs`).
+- `scripts/`: Local tooling (e.g., `bench.mjs`, `changeset-minor.mjs`).
 
 ## Build, Test, and Dev Commands
 
@@ -60,8 +60,8 @@
 
 ## Documentation
 
-- Write and maintain all PRDs in English, including requirements, decisions,
-  acceptance criteria, and status updates.
+- Keep PRDs, plans, audits, and measurement records out of the repository.
+  The docs site describes shipped behavior only.
 - Latest-version documentation describes current behavior. Keep v0/v1
   comparisons and transition instructions in `guides/upgrade-to-v1.mdx`.
   Preserve literal resource names, API paths, and protocol identifiers.
@@ -78,7 +78,7 @@
   local/provider credential storage and verify access without exposing values.
 - Keep every generated environment variable documented in the provider's
   `agent/ENVIRONMENT.md`, including its purpose, required/conditional status and
-  source. Distinguish local plugin credentials, interactive-init inputs and server
+  source. Distinguish local adapter credentials, interactive-init inputs and server
   settings. Optional fields are not prerequisites for agent setup.
 
 ## Testing Guidelines

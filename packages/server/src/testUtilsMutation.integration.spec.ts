@@ -16,7 +16,7 @@ import { expect, it } from "vitest";
 const exec = promisify(execFile);
 const packageDirectory = path.resolve(import.meta.dirname, "..");
 
-// These are deliberately broken providers: a storage adapter, the Insights
+// These are deliberately broken providers: a database adapter, the Insights
 // model, or the served answers. Each must fail its behavioral scenario, not
 // merely fail to import or initialize the suite.
 const mutations = [

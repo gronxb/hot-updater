@@ -175,7 +175,7 @@ export interface KvAdapterOptions {
 }
 
 /**
- * The storage adapter over a key-value store. A row is one item at
+ * The database adapter over a key-value store. A row is one item at
  * `pk = <table>`, `sk = enc(key)`; each index not in key order adds an item
  * per entry at `pk = <table>#<index>#enc(eq)`, `sk = enc(order)`, and each
  * unique entry one item at `sk = "#"`, written only where no other row holds

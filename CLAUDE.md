@@ -8,17 +8,21 @@ Hot Updater is a self-hostable OTA (Over-The-Air) update solution for React Nati
 
 ## Key Architecture
 
-### Plugin System
-The system is built around three plugin types:
-- **Build Plugins**: Handle bundling (Metro, Re.Pack, Expo) - located in `plugins/expo/`, `plugins/bare/`, `plugins/repack/`, `plugins/rock/`
-- **Storage Plugins**: Handle bundle storage (AWS S3, Cloudflare R2, Supabase Storage, Firebase Storage) - located in `plugins/aws/`, `plugins/cloudflare/`, `plugins/supabase/`, `plugins/firebase/`, `plugins/standalone/`
-- **Database Plugins**: Handle metadata storage (PostgreSQL, Cloudflare D1, Supabase Database) - uses same plugin directories as storage
+### Adapters and Plugins
+An adapter fills one slot of a config (`build`, `storage`, `database`, `signing`); a plugin is an entry of a `plugins` list. `plugins/plugin-core/` holds the shared contracts (`BuildAdapter`, `StorageAdapter`, `BundleSigningAdapter`), and the docs' overview (`docs/content/docs/(latest)/concepts/plugin-system.mdx`) describes how to write each one:
+- **Build Adapters**: Handle bundling (Metro, Expo, Rock) - located in `plugins/bare/`, `plugins/expo/`, `plugins/rock/`
+- **Storage Adapters**: Handle bundle storage (AWS S3, Cloudflare R2, Supabase Storage, Firebase Storage) - located in `plugins/aws/`, `plugins/cloudflare/`, `plugins/supabase/`, `plugins/firebase/`, `plugins/standalone/`
+- **Database Adapters**: Handle metadata storage on one storage engine (Cloudflare D1, Supabase, DynamoDB, Firestore, PostgreSQL) - use the same directories as storage; the Kysely, Drizzle, Prisma, and MongoDB adapters live in `packages/server/src/adapters/`
+- **Signing Adapters**: Sign bundle artifacts (local PEM, remote, AWS KMS, Google Cloud KMS) - `hot-updater/signing`
+- **Integration Plugins**: Wrap a build adapter to upload source maps (Sentry, Datadog, BugSnag) - `plugins/*-plugin/`
+- **Server Plugins**: Add tables, APIs, routes, and client auth to `createHotUpdater` with `definePlugin` - the built-in `insights()` and `apiKeys()` live in `packages/server/src/plugins/`
+- **Client Plugins**: Run in the React Native app with `defineClientPlugin` - the built-in `insights()` lives in `packages/react-native/src/plugins/insights/`
 
 ### Core Packages
 - `packages/core/`: Core types and utilities
 - `packages/hot-updater/`: CLI tool and main commands
 - `packages/react-native/`: React Native library for client-side integration
-- `packages/console/`: Web-based management console built with Solid/Vite
+- `packages/console/`: Web-based management console built with React and TanStack Start
 - `packages/android-helper/`: Android native build utilities and device management
 - `packages/apple-helper/`: iOS/macOS native build utilities and device management
 
@@ -28,7 +32,7 @@ When working on helper packages, reference these external projects:
 - **Apple Helper**: Reference `~/Desktop/rnef/packages/platform-apple-helpers` (can be referred to as "rnef" or "rock" in prompts)
 
 ### Configuration
-Projects use `hot-updater.config.ts` files that define build, storage, and database plugins using the `defineConfig()` function.
+Projects use `hot-updater.config.ts` files that define build, storage, and database adapters using the `defineConfig()` function.
 
 ## Common Commands
 
@@ -122,7 +126,7 @@ pnpm build && pnpm test:type && pnpm lint && pnpm test
 ### Project Structure
 - Monorepo with `packages/` (core functionality) and `plugins/` (provider integrations)
 - Examples in `examples/` showing different React Native versions and configurations
-- Documentation site in `docs/` using RSPress
+- Documentation site in `docs/` using Waku and Fumadocs; see `docs/README.md`
 
 ### Native Modules
 The React Native package includes native iOS (Swift) and Android (Kotlin) implementations with support for both old and new React Native architectures.

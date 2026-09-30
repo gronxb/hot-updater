@@ -1,5 +1,5 @@
 /**
- * Rows a SQL database examined for the reads a storage adapter made: what
+ * Rows a SQL database examined for the reads a database adapter made: what
  * read-budget suites compare with the rows the adapter read.
  */
 export interface RowsExamined {

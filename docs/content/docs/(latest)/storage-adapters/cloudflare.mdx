@@ -1,0 +1,112 @@
+---
+title: "Cloudflare R2 Storage"
+description: Store your Hot Updater bundles in Cloudflare R2.
+icon: cloudflare
+---
+
+## Installation
+
+```package-install
+npm install @hot-updater/cloudflare
+```
+
+## Setup
+
+For a complete provider deployment, follow the [Cloudflare setup](/docs/managed/cloudflare#step-2-configure-cloudflare).
+For an existing bucket or a custom server, use the storage configuration below;
+you do not need to provision the provider's database and server to use this adapter.
+
+Create R2 S3-compatible credentials from the Cloudflare R2 API token page or
+follow the [Cloudflare R2 API token guide](https://developers.cloudflare.com/r2/api/tokens/).
+
+## Configuration
+
+```typescript
+import type { S3ClientConfig } from "@aws-sdk/client-s3";
+
+interface R2S3StorageConfig extends S3ClientConfig {
+  accountId: string;
+  bucketName: string;
+  credentials: NonNullable<S3ClientConfig["credentials"]>;
+  basePath?: string;
+  downloadUrlSigningKey?: string;
+}
+```
+
+`r2Storage` requires S3-compatible credentials for its Node.js/CLI transport.
+It accepts the AWS SDK's `endpoint` option and defaults to
+`https://<account-id>.r2.cloudflarestorage.com`. For a bucket restricted to a
+jurisdiction, set its corresponding endpoint; for example,
+`endpoint: "https://<account-id>.eu.r2.cloudflarestorage.com"` for an EU
+bucket. See Cloudflare's [jurisdiction-specific endpoints](https://developers.cloudflare.com/r2/api/tokens/)
+for EU, FedRAMP, and US buckets.
+
+## Usage
+
+```typescript title="hot-updater.config.ts"
+import { r2Storage } from "@hot-updater/cloudflare"; // [!code ++]
+import { defineConfig } from "hot-updater";
+
+export default defineConfig({
+  storage: r2Storage({ // [!code ++]
+    accountId: process.env.CLOUDFLARE_ACCOUNT_ID!, // [!code ++]
+    bucketName: "my-r2-bucket", // [!code ++]
+    credentials: { // [!code ++]
+      accessKeyId: process.env.R2_ACCESS_KEY_ID!, // [!code ++]
+      secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!, // [!code ++]
+    }, // [!code ++]
+  }), // [!code ++]
+  // ... other config
+});
+```
+
+## Runtime usage
+
+The root `r2Storage` adapter implements upload, read, existence-check, and
+exact-delete operations. When the same adapter is passed to a self-hosted
+`createHotUpdater` server, also provide `downloadUrlSigningKey`; it enables
+the signed download location required by the server while `get` reads the
+stored object.
+
+### Cloudflare Worker bindings
+
+Inside a Worker, import `r2Storage` from `@hot-updater/cloudflare/worker` and
+capture the native R2 binding when constructing the adapter:
+
+```typescript title="src/hotUpdater.ts"
+import { d1Database, r2Storage } from "@hot-updater/cloudflare/worker"; // [!code ++]
+import { createHotUpdater } from "@hot-updater/server";
+import { apiKeys } from "@hot-updater/server/plugins/api-keys";
+import { insights } from "@hot-updater/server/plugins/insights";
+import { env } from "cloudflare:workers";
+
+export const hotUpdater = createHotUpdater({
+  database: d1Database(env.DB),
+  plugins: [insights(), apiKeys()],
+  storage: [
+    r2Storage({
+      bucket: env.BUCKET, // [!code ++]
+      bucketName: env.BUCKET_NAME, // [!code ++]
+      downloadUrlSigningKey: env.STORAGE_DOWNLOAD_URL_SIGNING_KEY, // [!code ++]
+    }),
+  ],
+});
+```
+
+Configure `DB` and `BUCKET` as D1 and R2 bindings, set `BUCKET_NAME` to the
+actual bound bucket name, and store `STORAGE_DOWNLOAD_URL_SIGNING_KEY` as a
+Worker secret. The Worker uses its R2 binding for object access; S3-compatible
+access keys belong to the CLI configuration above. Use the same bucket and
+optional `basePath` in both configurations.
+
+Mount `hotUpdater.handlers.client` through your
+[server framework](/docs/custom/overview#server-frameworks). It serves the
+signed storage-download URLs as well as the update protocol. Bindings are
+already captured by the adapters; invoke a handler with only the `Request`.
+
+## Protocol
+
+`r2://bucket/encoded/key`
+
+For example, `r2://updates/releases/1.0.0/bundle%20ios.zip` is stored in the
+`storageUri` field. Keys retain their slash hierarchy and encode each segment.

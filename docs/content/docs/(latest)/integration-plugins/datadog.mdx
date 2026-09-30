@@ -12,7 +12,7 @@ import { Tabs, Tab } from 'fumadocs-ui/components/tabs';
 - Auth Token: Generate a token from your Datadog dashboard. This must be defined as the environment variable `DATADOG_API_KEY`.
 - Datadog site: specify the site for the API key with `DATADOG_SITE` (e.g., `DATADOG_SITE=datadoghq.eu`).
 - Complete the [Datadog React Native SDK setup](https://docs.datadoghq.com/real_user_monitoring/application_monitoring/react_native/setup/) and verify a test error reaches Datadog.
-- Install the build plugin:
+- Install the plugin:
 
 ```package-install
 npm install @hot-updater/datadog-plugin @datadog/datadog-ci --save-dev
@@ -62,9 +62,9 @@ resulting version or configure
 for your build pipeline. `withDatadog` uploads files; it does not inject Debug IDs
 or set the runtime SDK version.
 
-## Step 1: Wrap your build plugin
+## Step 1: Wrap your build adapter
 
-Use `withDatadog()` to wrap any compatible build plugin such as bare.
+Use `withDatadog()` to wrap any compatible build adapter such as bare.
 
 <Tabs items={['Bare', 'Expo', 'Rock']}>
   <Tab value="Bare">

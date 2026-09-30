@@ -16,9 +16,7 @@ import { validateDocumentation } from "./validate-docs";
 interface LLMsTxtPluginOptions {
   baseUrl: string;
   contentDir?: string;
-  generateIndex?: boolean;
   outputDir?: string;
-  urlPrefix?: string;
 }
 
 export function llmsIndex(documentation: Documentation, baseUrl: string) {
@@ -55,17 +53,13 @@ export async function generateDocumentationFiles(
   const {
     baseUrl,
     contentDir = "content/docs",
-    generateIndex = true,
     outputDir = "dist/public",
-    urlPrefix,
   } = options;
-  const documentation = readDocumentation(contentDir, urlPrefix);
+  const documentation = readDocumentation(contentDir);
   const pages = orderedPages(documentation);
-  if (generateIndex) {
-    const issues = validateDocumentation(documentation, "public");
-    if (issues.length > 0)
-      throw new Error(`Documentation validation failed:\n${issues.join("\n")}`);
-  }
+  const issues = validateDocumentation(documentation, "public");
+  if (issues.length > 0)
+    throw new Error(`Documentation validation failed:\n${issues.join("\n")}`);
   await mkdir(outputDir, { recursive: true });
   async function write(urlPath: string, content: string) {
     const outputPath = join(outputDir, urlPath.replace(/^\//, ""));
@@ -73,23 +67,19 @@ export async function generateDocumentationFiles(
     await writeFile(outputPath, content, "utf8");
   }
   await Promise.all([
-    ...(generateIndex
-      ? [
-          write("llms.txt", llmsIndex(documentation, baseUrl)),
-          write(
-            "llms-full.txt",
-            pages.map((page) => pageMarkdown(page, baseUrl)).join("\n\n"),
-          ),
-        ]
-      : []),
+    write("llms.txt", llmsIndex(documentation, baseUrl)),
+    write(
+      "llms-full.txt",
+      pages.map((page) => pageMarkdown(page, baseUrl)).join("\n\n"),
+    ),
     ...documentation.source.getPages().flatMap((page) => {
       const markdown = pageMarkdown(page, baseUrl);
       const paths = new Set([
         `${page.url}.md`,
         page.url.replace(/^\/docs\//, "/api/markdown/") + ".md",
         // Keep previously published filename-based Markdown aliases working.
-        `/docs/${[urlPrefix, page.path.replace(/\.mdx?$/, "")].filter(Boolean).join("/")}.md`,
-        `/api/markdown/${[urlPrefix, page.path.replace(/\.mdx?$/, "")].filter(Boolean).join("/")}.md`,
+        `/docs/${page.path.replace(/\.mdx?$/, "")}.md`,
+        `/api/markdown/${page.path.replace(/\.mdx?$/, "")}.md`,
       ]);
       return [...paths].map((url) => write(url, markdown));
     }),

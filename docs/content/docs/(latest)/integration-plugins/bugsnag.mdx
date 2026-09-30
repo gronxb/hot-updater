@@ -11,15 +11,15 @@ import { Tabs, Tab } from 'fumadocs-ui/components/tabs';
 - BugSnag Account: Sign up here if you don't have one.
 - API Key: Copy the API key of your project from your BugSnag dashboard.
 - Complete the [BugSnag React Native setup](https://docs.bugsnag.com/platforms/react-native/react-native/manual-setup/), including the `@bugsnag/react-native` runtime package, iOS pods, and native API-key configuration and initialization. Verify that your app reports a test error before adding OTA sourcemap uploads.
-- Install the build plugin:
+- Install the plugin:
 
 ```package-install
 npm install @hot-updater/bugsnag-plugin @bugsnag/cli --save-dev
 ```
 
-## Step 1: Wrap your build plugin
+## Step 1: Wrap your build adapter
 
-Use `withBugsnag()` to wrap any compatible build plugin such as bare.
+Use `withBugsnag()` to wrap any compatible build adapter such as bare.
 
 <Tabs items={['Bare', 'Expo', 'Rock']}>
   <Tab value="Bare">

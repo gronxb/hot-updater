@@ -1,16 +1,78 @@
 ---
-title: "Plugin System"
-description: "Hot Updater uses a flexible plugin system that lets you customize how bundles are built, stored, and managed to fit your infrastructure."
+title: "Adapters and Plugins"
+description: "The adapters that build, sign, store, and hold updates, the plugins that extend the server and the app, and how to write your own."
 icon: Puzzle
 ---
 
-import { Tabs, Tab } from "fumadocs-ui/components/tabs";
+## Adapters and plugins
 
-## Build plugin
+Hot Updater talks to bundlers, cloud services, and databases through two kinds
+of objects:
 
-Build plugins generate JavaScript bundles when you run `hot-updater deploy`.
+- An **adapter** fills one slot of a configuration: the `build`, `storage`,
+  `database`, or `signing` of `hot-updater.config.ts`, and the `database` and
+  `storage` of the server's `createHotUpdater`. A configuration has one adapter
+  per slot.
+- A **plugin** is one entry of a list: the `plugins` of `createHotUpdater` or of
+  the app's `HotUpdater.init`, or an integration that wraps a build adapter. A
+  configuration can have any number.
 
-### Supported plugins
+Both are plain objects that a factory function returns, such as
+`s3Storage(options)` or `insights()`. Official adapters and plugins use the
+same contracts as the ones you write, and there is no registry: install the
+package and pass the object in.
+
+| Kind                                   | What it does                                                                        | Runs in                        | Official                                                                            | Write one                                                           |
+| -------------------------------------- | ----------------------------------------------------------------------------------- | ------------------------------ | ----------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
+| [Build adapter](#build-adapter)        | Bundles the app's JavaScript for `hot-updater deploy`                               | CLI                            | [Bare](/docs/build-adapters/bare), [Expo](/docs/build-adapters/expo), [Rock](/docs/build-adapters/rock) | `BuildAdapter` from `@hot-updater/plugin-core`                      |
+| [Storage adapter](#storage-adapter)    | Stores bundle artifacts and resolves their download URLs                            | CLI, Console, server           | Supabase, Cloudflare R2, AWS S3, Firebase, Standalone                               | [Create a storage adapter](/docs/storage-adapters/custom-storage)   |
+| [Database adapter](#database-adapter)  | Stores Bundles, Releases, Release Catalogs, Channels, and server plugins' tables    | CLI, Console, server           | Supabase, Cloudflare D1, DynamoDB, Firestore, Kysely, Drizzle, Prisma, MongoDB | [Create a database adapter](/docs/database-adapters/custom-database) |
+| [Signing adapter](#signing-adapter)    | Signs artifact hashes during deploy                                                 | CLI                            | [Local PEM](/docs/guides/signing/local), [AWS KMS](/docs/guides/signing/aws-kms), [Google Cloud KMS](/docs/guides/signing/google-cloud-kms), [remote](/docs/guides/signing/remote) | `BundleSigningAdapter` from `@hot-updater/plugin-core`              |
+| [Server plugin](#server-plugins)       | Adds tables, APIs, routes, CLI commands, and client authentication to the update server | Server; the CLI creates tables | [`insights()`](/docs/guides/insights), [`apiKeys()`](/docs/custom/api-key-authentication) | [Create a server plugin](/docs/custom/server-plugins)               |
+| [Client plugin](#client-plugins)       | Observes launches, update checks, downloads, and failures in the app, and calls the server | React Native app               | [Insights](/docs/react-native-api/insights)                                         | [Create a client plugin](/docs/react-native-api/client-plugins)     |
+| [Integration plugin](#integration-plugins) | Uploads source maps for the bundles a build adapter makes                       | CLI                            | [Sentry](/docs/integration-plugins/sentry), [Datadog](/docs/integration-plugins/datadog), [BugSnag](/docs/integration-plugins/bugsnag) | A function that wraps a build adapter                               |
+
+The managed Cloudflare, Supabase, AWS, and Firebase servers are prebuilt with
+their provider's storage and database adapters and server plugins. Other
+adapters and server plugins run on a [custom server](/docs/custom/overview).
+Client plugins run in any app.
+
+A feature can ship both halves, as Insights does: a server plugin that stores
+data and serves routes, and a client plugin that calls those routes with the
+app's base URL and headers. The server plugin names its client plugin in
+[`cli.clientPlugin`](/docs/custom/server-plugins#name-the-apps-client-plugin),
+which managed init and the agent scaffold use to add it to the app's
+`HotUpdater.init`.
+
+## Write your own
+
+Pick the contract for the slot or the list, and write a factory that returns
+it. Each guide builds one and tests it:
+
+| Kind             | Contract                                                                          | Guide                                                               |
+| ---------------- | --------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
+| Storage adapter  | `createStorageAdapter` from `@hot-updater/plugin-core`                            | [Create a storage adapter](/docs/storage-adapters/custom-storage)   |
+| Database adapter | `createSqlAdapter`, `createKvAdapter`, or a `DatabaseAdapter`, wrapped by `createEngineDatabase` from `@hot-updater/server/database` | [Create a database adapter](/docs/database-adapters/custom-database) |
+| Server plugin    | `definePlugin` from `@hot-updater/server/plugins`                                 | [Create a server plugin](/docs/custom/server-plugins)               |
+| Client plugin    | `defineClientPlugin` from `@hot-updater/react-native`                             | [Create a client plugin](/docs/react-native-api/client-plugins)     |
+| Signing adapter  | `BundleSigningAdapter` from `@hot-updater/plugin-core`: `getPublicKey` and `sign` | [Remote Signing](/docs/guides/signing/remote) describes the service protocol |
+| Build adapter    | A function from `{ cwd }` to a `BuildAdapter` from `@hot-updater/plugin-core`     | The [official build adapters](https://github.com/gronxb/hot-updater/tree/next/plugins) are the reference |
+
+Then package it for npm with Hot Updater as a peer dependency; see
+[Test and publish](/docs/plugins/publish).
+
+## Community adapters and plugins
+
+Community adapters and plugins are npm packages that use the contracts above.
+Search npm for the `hot-updater-adapter` and `hot-updater-plugin` keywords to
+find them. Hot Updater does not review or maintain them: read a package's
+source and its tested Hot Updater versions before you install it. To list
+yours here, open a pull request in the
+[Hot Updater repository](https://github.com/gronxb/hot-updater).
+
+## Build adapter
+
+Build adapters generate JavaScript bundles when you run `hot-updater deploy`.
 
 - `@hot-updater/bare`: Runs the project's configured bundler through the
   React Native CLI `bundle` command.
@@ -18,19 +80,65 @@ Build plugins generate JavaScript bundles when you run `hot-updater deploy`.
   [Rock CLI](https://github.com/callstack/rock) `bundle` command.
 - `@hot-updater/expo`: Executes the bundle command through Expo.
 
-## Bundle signing
+## Storage adapter
 
-Signing plugins authenticate immutable OTA artifact content during
+Storage adapters upload generated bundles to your chosen provider during
+`hot-updater deploy`, and the server resolves the URLs devices download them
+from.
+
+Storage adapters expose one flat, runtime-independent byte contract. CLI and
+server consumers validate only the operations they need. Provider packages can
+export the same adapter name from runtime-specific subpaths; for example,
+`@hot-updater/cloudflare` uses S3-compatible credentials while
+`@hot-updater/cloudflare/worker` captures an R2 binding.
+
+- `@hot-updater/supabase`: Stores bundles in Supabase with `supabaseStorage`.
+- `@hot-updater/cloudflare`: Provides deploy-time `r2Storage` and Worker runtime storage for Cloudflare R2.
+- `@hot-updater/aws`: Stores bundles in AWS S3 with `s3Storage`.
+- `@hot-updater/firebase`: Stores bundles in Firebase Storage with `firebaseStorage`.
+- `@hot-updater/standalone`: Sends storage operations to your own HTTP service
+  with `standaloneStorage`.
+
+To write one, see [Create a storage adapter](/docs/storage-adapters/custom-storage).
+
+## Database adapter
+
+Database adapters persist immutable artifact metadata, Release policy,
+compiled Catalogs and Channels, and the tables of the server plugins a server
+runs, such as Insights and API keys. Deploy and administrative operations
+commit changes atomically. The server uses the same database for Catalog
+reads, artifact resolution and its plugins; the device selects an update from
+the returned Catalog.
+
+Core and server plugins declare their tables and run their reads and
+transactions on one storage engine, so a database adapter only stores rows and
+reads index ranges on its backend.
+
+- `@hot-updater/supabase`: Stores metadata in Supabase with `supabaseDatabase`.
+- `@hot-updater/aws`: Provides `dynamoDB` for metadata.
+- `@hot-updater/cloudflare`: Stores metadata in Cloudflare D1 with `d1Database`.
+- `@hot-updater/firebase`: Stores update metadata in Firebase Firestore with `firebaseDatabase`.
+- `@hot-updater/standalone`: Reaches a self-hosted server's database through
+  its admin API with `standaloneRepository`.
+- [Kysely](/docs/custom/database/kysely), [Drizzle](/docs/custom/database/drizzle),
+  [Prisma](/docs/custom/database/prisma), and
+  [MongoDB](/docs/custom/database/mongodb) connect an existing database to a
+  custom server.
+
+To run on another backend, see
+[Create a database adapter](/docs/database-adapters/custom-database).
+
+## Signing adapter
+
+Signing adapters authenticate immutable OTA artifact content during
 `hot-updater deploy`. They resolve the provider public key and sign the 32 raw
 bytes decoded from each SHA-256 artifact hash. The deploy command verifies
 every returned RSA-SHA256 signature before upload and checks that the signer
 identity matches the native app trust anchor.
 
-Signing is independent of the storage and database plugins. Omit `signing` or
+Signing is independent of the storage and database adapters. Omit `signing` or
 set local `enabled: false` for unsigned deployments; Hot Updater never falls
 back from an enabled signer to an unsigned deployment.
-
-### Supported options
 
 - Built-in local signing: Use `enabled: true` and `privateKeyPath`. Signing
   is never enabled automatically.
@@ -48,49 +156,12 @@ signer is used for deployment.
 See [Bundle Signing](/docs/guides/bundle-signing) for custody differences,
 provider setup, native trust-anchor rollout, and rotation guidance.
 
-## Storage plugin
-
-Storage plugins upload generated bundles to your chosen provider during `hot-updater deploy`.
-
-Storage plugins expose one flat, runtime-independent byte contract. CLI and
-server consumers validate only the operations they need. Provider packages can
-export the same plugin name from runtime-specific subpaths; for example,
-`@hot-updater/cloudflare` uses S3-compatible credentials while
-`@hot-updater/cloudflare/worker` captures an R2 binding.
-
-### Supported plugins
-
-- `@hot-updater/supabase`: Stores bundles in Supabase with `supabaseStorage`.
-- `@hot-updater/cloudflare`: Provides deploy-time `r2Storage` and Worker runtime storage for Cloudflare R2.
-- `@hot-updater/aws`: Stores bundles in AWS S3 with `s3Storage`.
-- `@hot-updater/firebase`: Stores bundles in Firebase Storage with `firebaseStorage`.
-
-## Database plugin
-
-Database plugins persist immutable artifact metadata, Release policy, compiled
-Catalogs and Channels, and the tables of the server plugins a server runs,
-such as Insights and API keys. Deploy and administrative operations commit
-changes atomically. The server uses the same provider for Catalog reads,
-artifact resolution and its plugins; the device selects an update from the
-returned Catalog.
-
-Use [custom-server adapters](/docs/custom/overview#database-adapters) to connect
-an existing ORM or database. To run on a new backend, write a
-[custom database adapter](/docs/database-plugins/custom-database).
-
-### Supported plugins
-
-- `@hot-updater/supabase`: Stores metadata in Supabase with `supabaseDatabase`.
-- `@hot-updater/aws`: Provides `dynamoDB` for metadata.
-- `@hot-updater/cloudflare`: Stores metadata in Cloudflare D1 with `d1Database`.
-- `@hot-updater/firebase`: Stores update metadata in Firebase Firestore with `firebaseDatabase`.
-
 ## Integration plugins
 
 Integration plugins connect bundle builds to error-monitoring services. They
-compose with your selected build plugin to upload source maps and associate
-them with the deployed update. The app's monitoring SDK must use matching
-identifiers for readable stack traces.
+wrap your selected build adapter to upload source maps and associate them with
+the deployed update. The app's monitoring SDK must use matching identifiers
+for readable stack traces.
 
 - [Sentry](/docs/integration-plugins/sentry): `withSentry`.
 - [Datadog](/docs/integration-plugins/datadog): `withDatadog`.
@@ -108,7 +179,7 @@ APIs, routes and client authentication. Core has none of their tables or
 routes: a server has Insights only when it runs the `insights()` plugin, which
 records Insights reports, and `apiKeys()` protects client routes. Managed
 providers run both. To write one for a custom server, see
-[Server Plugins](/docs/custom/server-plugins).
+[Create a server plugin](/docs/custom/server-plugins).
 
 ## Client plugins
 
@@ -118,4 +189,4 @@ server with the app's base URL and headers. Pass them to `plugins` in
 `HotUpdater.init` or `HotUpdater.wrap`. The built-in
 [Insights plugin](/docs/react-native-api/insights) reports to the server's
 `insights()` plugin. To write one, see
-[Client Plugins](/docs/react-native-api/client-plugins).
+[Create a client plugin](/docs/react-native-api/client-plugins).
