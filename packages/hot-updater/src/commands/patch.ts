@@ -6,6 +6,7 @@ import {
 import { createBundleDiff } from "@hot-updater/server/diff";
 
 import { getPlatform } from "@/prompts/getPlatform";
+import { loadServer, uploadStorageOf } from "@/utils/loadServer";
 import { printBanner } from "@/utils/printBanner";
 
 import { ui } from "../utils/cli-ui";
@@ -38,9 +39,11 @@ export const createPatch = async (options: PatchOptions) => {
     return;
   }
 
-  const config = await loadConfig({ channel: options.channel, platform });
-  const database = config.database;
-  const storageAdapter = config.storage;
+  const server = await loadServer(
+    await loadConfig({ channel: options.channel, platform }),
+  );
+  const database = server.database;
+  const storageAdapter = uploadStorageOf(server);
   assertStorageOperations(storageAdapter, ["get", "put", "delete"]);
 
   try {
@@ -73,6 +76,6 @@ export const createPatch = async (options: PatchOptions) => {
     console.error(error);
     process.exit(1);
   } finally {
-    await database.dispose?.();
+    await server.dispose();
   }
 };

@@ -1,7 +1,8 @@
 import { loadConfig, p } from "@hot-updater/cli-tools";
-import type { ConfiguredDatabase, ReleaseRow } from "@hot-updater/plugin-core";
+import type { ReleaseRow } from "@hot-updater/plugin-core";
 import { createDatabaseCoreApi } from "@hot-updater/server/db";
 
+import { type LoadedServer, loadServer } from "@/utils/loadServer";
 import { printBanner } from "@/utils/printBanner";
 
 import { ui } from "../utils/cli-ui";
@@ -15,9 +16,9 @@ export interface PromoteOptions {
   readonly yes?: boolean;
 }
 
-const safeDispose = async (database: ConfiguredDatabase): Promise<void> => {
+const safeDispose = async (server: LoadedServer): Promise<void> => {
   try {
-    await database.dispose?.();
+    await server.dispose();
   } catch (error) {
     p.log.warn(
       `Database cleanup failed: ${(error as Error)?.message ?? String(error)}`,
@@ -58,8 +59,8 @@ export const handlePromote = async (
     process.exit(1);
   }
   const action = options.action ?? "copy";
-  const config = await loadConfig(null);
-  const database = config.database;
+  const server = await loadServer(await loadConfig(null));
+  const database = server.database;
   try {
     const core = createDatabaseCoreApi(database);
     const [source, channels] = await Promise.all([
@@ -108,6 +109,6 @@ export const handlePromote = async (
     );
     p.log.info(ui.kv("ID", ui.id(promoted.id)));
   } finally {
-    await safeDispose(database);
+    await safeDispose(server);
   }
 };

@@ -7,7 +7,6 @@ import {
 } from "@hot-updater/core";
 import type {
   Bundle,
-  ConfiguredDatabase,
   HotUpdaterCoreApi,
   StorageObject,
   StorageAdapterWith,
@@ -21,6 +20,11 @@ import {
 } from "@hot-updater/plugin-core";
 import { createDatabaseCoreApi } from "@hot-updater/server/db";
 
+import {
+  type LoadedServer,
+  loadServer,
+  uploadStorageOf,
+} from "@/utils/loadServer";
 import { printBanner } from "@/utils/printBanner";
 
 import { ui } from "../utils/cli-ui";
@@ -410,9 +414,9 @@ function getPruneCandidates({
   return candidates;
 }
 
-async function safeDispose(database: ConfiguredDatabase) {
+async function safeDispose(server: LoadedServer) {
   try {
-    await database.dispose?.();
+    await server.dispose();
   } catch (error) {
     p.log.warn(
       `Database adapter dispose failed: ${error instanceof Error ? error.message : String(error)}`,
@@ -435,9 +439,9 @@ export async function handleStoragePrune(options: StoragePruneOptions = {}) {
     );
   }
 
-  const config = await loadConfig(null);
-  const database = config.database;
-  const loadedStorageAdapter = config.storage;
+  const server = await loadServer(await loadConfig(null));
+  const database = server.database;
+  const loadedStorageAdapter = uploadStorageOf(server);
   assertStorageOperations(loadedStorageAdapter, ["get"]);
   const storageAdapter = loadedStorageAdapter;
 
@@ -555,6 +559,6 @@ export async function handleStoragePrune(options: StoragePruneOptions = {}) {
       `Pruned ${candidates.length} objects (${formatBytes(candidateBytes)}).`,
     );
   } finally {
-    await safeDispose(database);
+    await safeDispose(server);
   }
 }

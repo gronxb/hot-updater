@@ -3,12 +3,13 @@ import { setTimeout as sleep } from "timers/promises";
 import { loadConfig, p } from "@hot-updater/cli-tools";
 import type {
   Bundle,
-  ConfiguredDatabase,
   HotUpdaterCoreApi,
   ReleaseRow,
 } from "@hot-updater/plugin-core";
 import { rowToBundle } from "@hot-updater/plugin-core";
 import { createDatabaseCoreApi } from "@hot-updater/server/db";
+
+import { type LoadedServer, loadServer } from "@/utils/loadServer";
 
 import { ui } from "../utils/cli-ui";
 import { printBanner } from "../utils/printBanner";
@@ -115,9 +116,9 @@ const refuseNonInteractiveMutation = (action: string): never => {
   process.exit(1);
 };
 
-const safeDispose = async (database: ConfiguredDatabase): Promise<void> => {
+const safeDispose = async (server: LoadedServer): Promise<void> => {
   try {
-    await database.dispose?.();
+    await server.dispose();
   } catch (err) {
     p.log.warn(
       `Database adapter dispose failed (cleanup-only, original error preserved): ${
@@ -139,8 +140,8 @@ export const handleArtifactDelete = async (
     process.exit(1);
   }
 
-  const config = await loadConfig(null);
-  const database = config.database;
+  const server = await loadServer(await loadConfig(null));
+  const database = server.database;
   try {
     const core = createDatabaseCoreApi(database);
     const details = await Promise.all(ids.map((id) => core.getBundle(id)));
@@ -234,7 +235,7 @@ export const handleArtifactDelete = async (
       "Storage objects are unchanged. Preview cleanup with hot-updater storage prune --dry-run.",
     );
   } finally {
-    await safeDispose(database);
+    await safeDispose(server);
   }
 };
 

@@ -1,7 +1,7 @@
 import { existsSync, statSync } from "fs";
 import path from "path";
 
-import { p } from "@hot-updater/cli-tools";
+import { loadConfig, p } from "@hot-updater/cli-tools";
 import { createJiti } from "jiti";
 
 import { ui } from "../../utils/cli-ui";
@@ -33,8 +33,8 @@ const SUPPORTED_CONFIG_EXTENSIONS = [
   "mjs",
 ] as const;
 
+/** Where a server-only project keeps its server definition, when no config points at one. */
 const DEFAULT_CONFIG_BASENAMES = [
-  "hot-updater.config",
   path.join("src", "hotUpdater"),
   path.join("src", "db"),
 ] as const;
@@ -99,10 +99,26 @@ export const importHotUpdater = async (
   };
 };
 
-const resolveConfigPath = (configPath: string, cwd: string) => {
+/**
+ * The server definition to load: the path given, else the one `server` in
+ * hot-updater.config.ts points at, else a server-only project's default.
+ * Loading hot-updater.config.ts first also loads the environment it loads,
+ * which the definition reads.
+ */
+const resolveConfigPath = async (configPath: string, cwd: string) => {
+  const { server } = await loadConfig(null);
   const trimmedConfigPath = configPath.trim();
   if (trimmedConfigPath) {
     return path.resolve(cwd, trimmedConfigPath);
+  }
+  if (typeof server === "string") {
+    return server;
+  }
+  if (server !== undefined) {
+    p.log.error(
+      "hot-updater.config.ts reaches a self-hosted server through its admin API. Run this where the server's definition is, or pass its path.",
+    );
+    process.exit(1);
   }
 
   const defaultConfigPath = findDefaultConfigPath(cwd);
@@ -110,7 +126,9 @@ const resolveConfigPath = (configPath: string, cwd: string) => {
     return defaultConfigPath;
   }
 
-  p.log.error("Could not find a Hot Updater config file.");
+  p.log.error(
+    "Could not find a server definition: set server in hot-updater.config.ts, or pass its path.",
+  );
   p.log.message(
     ui.block("Examples", [
       ui.kv("Generate", ui.command("hot-updater db generate src/db.ts")),
@@ -128,7 +146,7 @@ export async function loadHotUpdater(
   configPath: string,
   options: LoadHotUpdaterOptions = {},
 ): Promise<LoadHotUpdaterResult> {
-  const absoluteConfigPath = resolveConfigPath(
+  const absoluteConfigPath = await resolveConfigPath(
     configPath,
     options.cwd ?? process.cwd(),
   );

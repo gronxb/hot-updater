@@ -7,6 +7,8 @@ import type {
 } from "@hot-updater/plugin-core";
 import { createDatabaseCoreApi } from "@hot-updater/server/db";
 
+import { loadServer } from "@/utils/loadServer";
+
 import { ui } from "../utils/cli-ui";
 import { printBanner } from "../utils/printBanner";
 
@@ -202,8 +204,8 @@ const listReleases = async (
 
 export const handleReleaseList = async (options: ReleaseListOptions = {}) => {
   if (!options.json) printBanner();
-  const config = await loadConfig(null);
-  const database = config.database;
+  const server = await loadServer(await loadConfig(null));
+  const database = server.database;
   try {
     const core = createDatabaseCoreApi(database);
     const channels = await channelNames(core);
@@ -221,7 +223,7 @@ export const handleReleaseList = async (options: ReleaseListOptions = {}) => {
         : releaseTable(releases, channels),
     );
   } finally {
-    await safeDispose(database);
+    await safeDispose(server);
   }
 };
 
@@ -230,8 +232,8 @@ export const handleReleaseShow = async (
   options: { readonly json?: boolean } = {},
 ) => {
   if (!options.json) printBanner();
-  const config = await loadConfig(null);
-  const database = config.database;
+  const server = await loadServer(await loadConfig(null));
+  const database = server.database;
   try {
     const core = createDatabaseCoreApi(database);
     const [release, channels] = await Promise.all([
@@ -251,7 +253,7 @@ export const handleReleaseShow = async (
           ),
     );
   } finally {
-    await safeDispose(database);
+    await safeDispose(server);
   }
 };
 
@@ -293,8 +295,8 @@ export const handleReleaseUpdate = async (
   }
   if (!options.json) printBanner();
   await confirmMutation("Update this bundle?", options.yes);
-  const config = await loadConfig(null);
-  const database = config.database;
+  const server = await loadServer(await loadConfig(null));
+  const database = server.database;
   try {
     const result = await createDatabaseCoreApi(database).updateReleasePolicy({
       ...(options.expectedRevision === undefined
@@ -312,7 +314,7 @@ export const handleReleaseUpdate = async (
           ]),
     );
   } finally {
-    await safeDispose(database);
+    await safeDispose(server);
   }
 };
 
@@ -326,8 +328,8 @@ export const handleReleaseEnablement = async (
   },
 ) => {
   if (!options.json) printBanner();
-  const config = await loadConfig(null);
-  const database = config.database;
+  const server = await loadServer(await loadConfig(null));
+  const database = server.database;
   try {
     const core = createDatabaseCoreApi(database);
     let expectedRevision = options.expectedRevision;
@@ -387,7 +389,7 @@ export const handleReleaseEnablement = async (
           ]),
     );
   } finally {
-    await safeDispose(database);
+    await safeDispose(server);
   }
 };
 
@@ -395,8 +397,8 @@ export const handleReleasePreflight = async (
   releaseId: string,
   options: ReleaseUpdateOptions,
 ) => {
-  const config = await loadConfig(null);
-  const database = config.database;
+  const server = await loadServer(await loadConfig(null));
+  const database = server.database;
   try {
     const result = await createDatabaseCoreApi(database).preflightReleasePolicy(
       {
@@ -427,7 +429,7 @@ export const handleReleasePreflight = async (
           ]),
     );
   } finally {
-    await safeDispose(database);
+    await safeDispose(server);
   }
 };
 
@@ -444,8 +446,8 @@ export const handleReleaseDelete = async (
     `Permanently delete disabled bundle ${releaseId}?`,
     options.yes,
   );
-  const config = await loadConfig(null);
-  const database = config.database;
+  const server = await loadServer(await loadConfig(null));
+  const database = server.database;
   try {
     const result = await createDatabaseCoreApi(database).deleteRelease({
       ...(options.expectedRevision === undefined
@@ -459,6 +461,6 @@ export const handleReleaseDelete = async (
         : ui.block("Bundle deleted", [ui.kv("ID", ui.id(releaseId))]),
     );
   } finally {
-    await safeDispose(database);
+    await safeDispose(server);
   }
 };
