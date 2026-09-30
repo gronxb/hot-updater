@@ -1,8 +1,7 @@
 import { DatabaseSync } from "node:sqlite";
 
-import type { BundleEventRow } from "@hot-updater/plugin-core";
 import {
-  countInsightsDistinct,
+  countDistinct,
   createMemoryAdapter,
   type DatabaseAdapter,
   type WriteOp,
@@ -16,6 +15,7 @@ import { createKvAdapter } from "../../database/kv/kvAdapter";
 import { createMemoryKeyValueStore } from "../../database/kv/kvTestStore";
 import { createSqlAdapter } from "../../database/sql/sqlAdapter";
 import { sqliteExecutor } from "../../database/sql/sqlTestExecutors";
+import type { BundleEventRow } from "./eventRow";
 import {
   insights,
   insightsIdentity,
@@ -263,7 +263,7 @@ describe.each(backends)("insights recordEvent on %s", (_name, adapter) => {
       identity({ ...release, releaseId: "release-2", periodKind: "hour" }),
       hour(T),
     );
-    expect(countInsightsDistinct(releaseHour!.launch_users)).toBe(1);
+    expect(countDistinct(releaseHour!.launch_users)).toBe(1);
     for (const [periodKind, bucket] of [
       ["hour", hour(T)],
       ["day", T - (T % DAY)],
@@ -286,7 +286,7 @@ describe.each(backends)("insights recordEvent on %s", (_name, adapter) => {
           bucket,
           periodKind,
         );
-        expect(countInsightsDistinct(usage!.activity_users)).toBe(1);
+        expect(countDistinct(usage!.activity_users)).toBe(1);
         // Every platform's usage merges the platforms' rows on read.
         await expect(
           sketch(

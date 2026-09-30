@@ -1,4 +1,37 @@
-import type { BundleEventRow } from "./databaseRows";
+import type { DatabaseJsonObject } from "@hot-updater/plugin-core";
+
+/**
+ * The Insights plugin's row and model types, which its suites here exercise.
+ * They mirror `@hot-updater/server/plugins/insights`, which test-utils cannot
+ * import: the server's own tests import test-utils.
+ */
+
+export type BundleEventRow = {
+  readonly id: string;
+  readonly install_id: string;
+  readonly user_id: string | null;
+  readonly from_release_id: string | null;
+  readonly to_release_id: string | null;
+  readonly to_bundle_id: string;
+  readonly platform: "ios" | "android";
+  readonly app_version: string;
+  readonly channel: string;
+  readonly metadata: DatabaseJsonObject & {
+    readonly username: string | null;
+    readonly cohort: string;
+    readonly update_strategy: "fingerprint" | "appVersion" | null;
+    readonly fingerprint_hash: string | null;
+    readonly sdk_version: string | null;
+  };
+  readonly received_at_ms: number;
+} & (
+  | { readonly type: "UPDATE_DOWNLOADED"; readonly from_bundle_id: string }
+  | {
+      readonly type: "UPDATE_APPLIED" | "RECOVERED";
+      readonly from_bundle_id: string;
+    }
+  | { readonly type: "UNCHANGED"; readonly from_bundle_id: null }
+);
 
 export interface InsightsEventCursor {
   readonly receivedAtMs: number;

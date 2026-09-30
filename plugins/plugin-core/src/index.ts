@@ -21,17 +21,10 @@ export {
 } from "./databaseErrors";
 export * from "./createStorageKeyBuilder";
 export * from "./createStoragePlugin";
-export {
-  isDatabaseMetadataObject,
-  isDatabaseBundleEventMetadata,
-} from "./databaseJsonValue";
+export { isDatabaseMetadataObject } from "./databaseJsonValue";
 export * from "./databaseRows";
 export * from "./filterCompatibleAppVersions";
 export * from "./generateMinBundleId";
-export {
-  compareInsightsText,
-  isInsightsMovementEvent,
-} from "./insightsContract";
 export * from "./parseStorageUri";
 export * from "./releaseCatalogCompiler";
 export * from "./releaseManagement";

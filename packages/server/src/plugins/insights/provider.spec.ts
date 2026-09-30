@@ -1,7 +1,8 @@
-import type { BundleEventRow, InsightsModel } from "@hot-updater/plugin-core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { InsightsBadRequestError } from "./errors";
+import type { BundleEventRow } from "./eventRow";
+import type { InsightsModel } from "./modelTypes";
 import { createInsightsProvider } from "./provider";
 
 const eventId = (index: number) =>

@@ -1,9 +1,9 @@
 import type {
   ActiveInstallationWindow,
   InsightsBundleSelection,
-  InsightsScope,
 } from "./domain";
 import { InsightsBadRequestError } from "./errors";
+import type { InsightsScope } from "./modelTypes";
 import type {
   InsightsEventPageInput,
   InsightsUserInstallationPageInput,

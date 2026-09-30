@@ -1,4 +1,4 @@
-import type { InsightsCoverage } from "@hot-updater/plugin-core";
+import type { InsightsCoverage } from "@hot-updater/server/plugins/insights";
 
 import type { InsightsWindow } from "./insights-rpc";
 

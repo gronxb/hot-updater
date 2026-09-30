@@ -1,18 +1,17 @@
-import type { BundleEventRow } from "@hot-updater/plugin-core";
-import {
-  addInsightsDistinct,
-  assertBundleEventRow,
-  compareUtf8,
-  insightsKey,
-  insightsOverviewDeltas,
-  insightsOverviewId,
-  type InsightsOverviewIdentity,
-} from "@hot-updater/plugin-core/internal";
+import { addDistinct, compareUtf8 } from "@hot-updater/plugin-core/internal";
 
 import type {
   HotUpdaterDatabase,
   HotUpdaterTransaction,
 } from "../../database/database";
+import { assertBundleEventRow } from "./contract";
+import type { BundleEventRow } from "./eventRow";
+import {
+  insightsKey,
+  insightsOverviewDeltas,
+  insightsOverviewId,
+  type InsightsOverviewIdentity,
+} from "./overview";
 import { DAILY_EVENTS, DAY_MS, HOUR_MS, type InsightsSchema } from "./schema";
 
 /** The head columns `countHead` and `repeatsHead` read. */
@@ -207,11 +206,11 @@ const countEvent = (
       const sketches = {
         ...(delta.launchIdentity === undefined || parts.scopeKind === "channel"
           ? {}
-          : { launch_users: addInsightsDistinct(null, delta.launchIdentity) }),
+          : { launch_users: addDistinct(null, delta.launchIdentity) }),
         ...(delta.activityIdentity === undefined
           ? {}
           : {
-              activity_users: addInsightsDistinct(null, delta.activityIdentity),
+              activity_users: addDistinct(null, delta.activityIdentity),
             }),
       };
       if (models.sketches !== undefined && Object.keys(sketches).length > 0) {

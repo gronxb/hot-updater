@@ -1,6 +1,5 @@
 import {
   type ConfiguredDatabase,
-  type InsightsModel,
   isRemoteDatabase,
 } from "@hot-updater/plugin-core";
 import {
@@ -11,6 +10,7 @@ import { createDatabasePluginApis } from "@hot-updater/server/db";
 import {
   createInsightsModel,
   type InsightsApi,
+  type InsightsModel,
 } from "@hot-updater/server/plugins/insights";
 
 import {

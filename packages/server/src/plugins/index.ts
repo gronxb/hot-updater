@@ -3,6 +3,11 @@
  * tables and aggregates here and receive a typed database handle in `init`.
  */
 export {
+  addDistinct,
+  countDistinct,
+  mergeDistinct,
+} from "@hot-updater/plugin-core/internal";
+export {
   definePlugin,
   type AnyHotUpdaterPlugin,
   type ClientAuth,

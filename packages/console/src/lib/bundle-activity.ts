@@ -14,7 +14,7 @@ export type BundleActivityReport = {
   readonly activeDays: number;
   readonly failedLaunches: number;
   readonly measuredAtMs: number;
-  readonly coverage: import("@hot-updater/plugin-core").InsightsCoverage;
+  readonly coverage: import("@hot-updater/server/plugins/insights").InsightsCoverage;
 };
 
 /** Release activity for bundle rows; off when Insights is off or the database is not read here. */

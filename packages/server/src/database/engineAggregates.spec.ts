@@ -1,6 +1,6 @@
 import {
-  addInsightsDistinct,
-  countInsightsDistinct,
+  addDistinct,
+  countDistinct,
   createMemoryAdapter,
   type DatabaseAdapter,
   type WriteOp,
@@ -119,10 +119,7 @@ const failOnce = (failedOp: number) => {
 };
 
 const sketchOf = (...ids: string[]) =>
-  ids.reduce<string | null>(
-    (sketch, id) => addInsightsDistinct(sketch, id),
-    null,
-  )!;
+  ids.reduce<string | null>((sketch, id) => addDistinct(sketch, id), null)!;
 
 describe("engine aggregates", () => {
   it("keeps shards on a stable FNV-1a hash", () => {
@@ -322,7 +319,7 @@ describe("engine aggregates", () => {
       limit: 64,
     });
     expect(rows).toHaveLength(1);
-    expect(countInsightsDistinct(rows[0]!.users)).toBe(5);
+    expect(countDistinct(rows[0]!.users)).toBe(5);
   });
 
   it("writes nothing when a merge leaves the stored row unchanged", async () => {

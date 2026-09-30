@@ -1,16 +1,6 @@
-import type {
-  BundleEventRow,
-  InsightsCountEventsInput,
-  InsightsCountLatestEventsInput,
-  InsightsFindLatestEventsInput,
-  InsightsGetAppUsageInput,
-  InsightsGetReleaseActivityInput,
-  InsightsListEventsInput,
-} from "@hot-updater/plugin-core";
-
 import { HotUpdaterConfigError } from "../../assembly/configError";
-import type { HotUpdaterDatabase } from "../../database/database";
 import { isDatabaseBusyError } from "../../database/busy";
+import type { HotUpdaterDatabase } from "../../database/database";
 import { markBuiltIn } from "../builtIn";
 import { definePlugin, type PluginEndpoint } from "../definePlugin";
 import {
@@ -19,7 +9,16 @@ import {
   type InsightsDeletion,
   type InsightsDeletionOptions,
 } from "./deletion";
+import type { BundleEventRow } from "./eventRow";
 import { createInsightsModel } from "./model";
+import type {
+  InsightsCountEventsInput,
+  InsightsCountLatestEventsInput,
+  InsightsFindLatestEventsInput,
+  InsightsGetAppUsageInput,
+  InsightsGetReleaseActivityInput,
+  InsightsListEventsInput,
+} from "./modelTypes";
 import { createInsightsProvider } from "./provider";
 import {
   countEvents,
@@ -41,7 +40,13 @@ import {
 
 export type { InsightsDeletion, InsightsDeletionOptions } from "./deletion";
 export type * from "./domain";
+export type {
+  BundleEventRow,
+  BundleEventRowBase,
+  DatabaseBundleEventMetadata,
+} from "./eventRow";
 export { createInsightsModel } from "./model";
+export type * from "./modelTypes";
 export { createInsightsProvider } from "./provider";
 export { insightsIdentity, type InsightsIdentityParts } from "./recordEvent";
 export {

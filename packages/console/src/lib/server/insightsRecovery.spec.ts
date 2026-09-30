@@ -1,6 +1,6 @@
-// @vitest-environment node
-import type { InsightsModel } from "@hot-updater/plugin-core";
 import { createInsightsProvider } from "@hot-updater/server";
+// @vitest-environment node
+import type { InsightsModel } from "@hot-updater/server/plugins/insights";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { getRecoveryReport } from "./insightsRecovery";

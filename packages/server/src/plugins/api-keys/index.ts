@@ -17,7 +17,7 @@ export {
   type ApiKeyMetadata,
   type CreatedApiKey,
 } from "./apiKeys";
-export { createApiKeyModel } from "./model";
+export { createApiKeyModel, type ApiKeyModel, type ApiKeyRow } from "./model";
 export { apiKeysSchema, type ApiKeysSchema } from "./schema";
 
 export interface ApiKeysOptions {

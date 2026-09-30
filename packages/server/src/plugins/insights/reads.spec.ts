@@ -1,16 +1,16 @@
-import type { BundleEventRow } from "@hot-updater/plugin-core";
 import {
-  addInsightsDistinct,
-  countInsightsDistinct,
+  addDistinct,
+  countDistinct,
   createMemoryAdapter,
   type DatabaseAdapter,
-  mergeInsightsDistinct,
+  mergeDistinct,
 } from "@hot-updater/plugin-core/internal";
 import { createPluginTestHarness } from "@hot-updater/test-utils";
 import { describe, expect, it } from "vitest";
 
 import * as engine from "../../database";
 import { InsightsBadRequestError } from "./errors";
+import type { BundleEventRow } from "./eventRow";
 import { createInsightsModel, insights } from "./index";
 import { createInsightsProvider } from "./provider";
 import type { InsightsEventPageInput } from "./types";
@@ -51,9 +51,7 @@ const event = (
 
 /** The HLL estimate for these installs, as the stored sketches merge to. */
 const distinct = (installs: readonly string[]) =>
-  countInsightsDistinct(
-    mergeInsightsDistinct(installs.map((id) => addInsightsDistinct(null, id))),
-  );
+  countDistinct(mergeDistinct(installs.map((id) => addDistinct(null, id))));
 const installs = Array.from({ length: 24 }, (_, n) => `install-${n + 1}`);
 
 /** Rows each table returned, and the point reads it served. */

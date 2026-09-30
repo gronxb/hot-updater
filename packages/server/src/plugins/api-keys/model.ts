@@ -1,8 +1,27 @@
-import type { ApiKeyModel, ApiKeyRow } from "@hot-updater/plugin-core";
-
 import type { HotUpdaterDatabase } from "../../database/database";
 import { DatabaseConstraintError } from "../../database/errors";
 import type { ApiKeysSchema } from "./schema";
+
+export interface ApiKeyRow {
+  readonly id: string;
+  readonly hash: string;
+  readonly name: string;
+  readonly prefix: string;
+  readonly role: "client";
+  readonly created_at_ms: number;
+  readonly revoked_at_ms: number | null;
+}
+
+/** The api-keys plugin's storage: key rows by id and by hash. */
+export interface ApiKeyModel {
+  create(row: ApiKeyRow): Promise<"created" | "existing">;
+  findByHash(hash: string): Promise<ApiKeyRow | null>;
+  list(): Promise<readonly ApiKeyRow[]>;
+  revoke(input: {
+    readonly id: string;
+    readonly revokedAtMs: number;
+  }): Promise<ApiKeyRow | null>;
+}
 
 const toRow = (row: Readonly<Record<string, unknown>>): ApiKeyRow =>
   ({
