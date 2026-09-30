@@ -25,11 +25,11 @@ HotUpdater.init({
 
 ## Define a plugin
 
-`defineClientPlugin` from `@hot-updater/react-native` takes an `id` and a
-`setup` function, and returns the plugin with its types:
+`defineClientPlugin` from `@hot-updater/react-native/client-plugin` takes an
+`id` and a `setup` function, and returns the plugin with its types:
 
 ```ts title="src/launchLogger.ts"
-import { defineClientPlugin } from "@hot-updater/react-native";
+import { defineClientPlugin } from "@hot-updater/react-native/client-plugin";
 
 export const launchLogger = () =>
   defineClientPlugin({
@@ -53,6 +53,11 @@ export const launchLogger = () =>
   later call stops receiving events.
 - A plugin object can carry its own methods, as `insights()` does with
   `setUser`.
+- Import `defineClientPlugin` and the plugin types from
+  `@hot-updater/react-native/client-plugin`. That entry loads neither React
+  Native nor the native module, so the plugin's [tests](#test-the-plugin) run
+  in plain Node. The app imports `HotUpdater` from `@hot-updater/react-native`,
+  which exports the same names.
 
 ## Hooks
 
@@ -284,7 +289,7 @@ installation with each thread, and mentions the latest update failure:
 import {
   defineClientPlugin,
   type HotUpdaterClientContext,
-} from "@hot-updater/react-native";
+} from "@hot-updater/react-native/client-plugin";
 
 export const feedback = () => {
   let context: HotUpdaterClientContext | null = null;
@@ -367,6 +372,95 @@ export default function App() {
 
 The request uses the app's `baseURL` and `x-api-key`, so the thread reaches
 the same server that serves the app's updates.
+
+## Test the plugin
+
+`setupClientPlugin` from `@hot-updater/test-utils/react-native` sets a plugin
+up the way `HotUpdater.init` does, on the same plugin host the app runs,
+against an in-memory device and a server your test answers. It loads neither
+React Native nor a test runner, so a spec runs in plain Node under Vitest or
+Jest when the plugin imports only `@hot-updater/react-native/client-plugin`:
+
+```package-install
+npm install @hot-updater/test-utils vitest --save-dev
+```
+
+This spec checks that the feedback plugin above sends the running bundle and
+the last update failure:
+
+```ts title="src/feedback.spec.ts"
+import { setupClientPlugin } from "@hot-updater/test-utils/react-native";
+import { expect, it } from "vitest";
+
+import { feedback } from "./feedback";
+
+const bundleId = "0199a0c3-6f6e-7c3a-9a3e-1b2c3d4e5f60";
+
+it("sends the running bundle and the last update failure", async () => {
+  const plugin = feedback();
+  const runtime = setupClientPlugin(plugin, {
+    bundleId,
+    requestHeaders: { "x-api-key": "test-key" },
+    respond: () =>
+      new Response(JSON.stringify({ id: "thread-1" }), { status: 201 }),
+  });
+
+  runtime.hooks.onUpdateError({
+    stage: "download",
+    reason: "http",
+    httpStatus: 403,
+    channel: "production",
+    bundleId,
+    releaseId: null,
+    updateStrategy: "appVersion",
+    cause: new Error("Forbidden"),
+  });
+  await runtime.settled();
+
+  await expect(plugin.open("Problem report", "Blank screen")).resolves.toBe(
+    "thread-1",
+  );
+  const [request] = runtime.requests;
+  expect(request?.path).toBe("/feedback");
+  expect(request?.headers["x-api-key"]).toBe("test-key");
+  expect(request?.json()).toMatchObject({
+    bundleId,
+    body: "Blank screen\n\nLast update error: download: http",
+  });
+  expect(runtime.errors).toEqual([]);
+});
+```
+
+The runtime it returns:
+
+| Member          | Meaning                                                                                                                                                           |
+| --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `hooks`         | `onAppReady`, `onUpdateCheck`, `onBundleDownloaded`, and `onUpdateError`. A call returns without waiting for the hook, as in the app.                             |
+| `settled()`     | Waits for the hooks called so far and the requests they started. It does not run timers; advance fake timers to reach a retry or a delay.                         |
+| `requests`      | Each `context.fetch` as the server receives it: `url`, `path` after `baseURL`, `method`, lowercase `headers` with `requestHeaders` applied, `body`, and `json()`. |
+| `errors`        | What the SDK reports to `onError`: each `setup` or hook that threw or rejected, with the plugin's error as `cause`.                                               |
+| `storage`       | The device's plugin storage, scoped by plugin id, with values up to 64 KB.                                                                                        |
+| `listens(name)` | Whether any plugin returned that hook from `setup`.                                                                                                               |
+
+The options set up the server and the device:
+
+- `respond(request)` answers each request, with `204 No Content` by default.
+  A throw or a rejection fails the request the way a network error does, and a
+  response slower than `requestTimeout` fails with `Request timed out`.
+- `baseURL`, `requestHeaders`, and `requestTimeout` are the ones `init` takes.
+- The device's values have fixed defaults: `installId`, `platform` (`ios`),
+  `appVersion` (`1.0.0`), `sdkVersion`, `isDebugBuild` (`false`), `bundleId`,
+  `channel` (`production`), `cohort` (`1`), `fingerprintHash` (`null`), and
+  `now` (`Date.now`, so fake timers move it). `installId`, `appVersion`,
+  `bundleId`, `channel`, `cohort`, and `fingerprintHash` also take a function,
+  which the SDK reads each time it needs the value.
+- `storage` takes an earlier runtime's `storage`, to set the plugin up again on
+  the same device as a relaunch does, or one you seed from
+  `createTestStorage()`.
+
+`setupClientPlugins(plugins, options)` sets several plugins up together and
+rejects two with one id, as `init` does. Before you publish, also run the
+plugin in a release build of an app against a server with its routes.
 
 ## Related
 
