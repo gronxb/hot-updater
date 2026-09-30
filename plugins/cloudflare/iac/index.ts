@@ -1,22 +1,20 @@
 import crypto from "crypto";
-import fs from "fs/promises";
 import path from "path";
 
 import {
   confirmInitInputPersistence,
   copyDirToTmp,
-  importManagedServerDefinition,
   getHotUpdaterInitInputEnv,
   getInitProviderEnvVars,
   getInitProviderTextPromptValues,
   getCwd,
   link,
+  loadManagedServerDefinition,
   makeEnv,
   p,
   printAppSetup,
   readHotUpdaterInitEnv,
   type RunInitOptions,
-  transformTemplate,
   readManagedServerDefinition,
   replacingServerDefinitions,
   writeHotUpdaterFiles,
@@ -60,8 +58,48 @@ import { getConfigScaffold } from "./configTemplate";
 import { initProvider as CLOUDFLARE_INIT_PROVIDER } from "./init/index";
 import {
   buildWorkerFromDefinition,
-  writePluginMigration,
+  prepareWorkerDeployment,
 } from "./managedWorker";
+
+/** The Worker's code, staged in the project's `.hot-updater` directory. */
+interface StagedWorker {
+  readonly workerRoot: string;
+  /** The entry wrangler deploys when it is not the prebuilt Worker's. */
+  readonly main: string | undefined;
+  readonly remove: () => Promise<void>;
+}
+
+/**
+ * Stages the Worker's code: the prebuilt Worker, and the project's server
+ * definition bundled with the Worker's runtime module when the project
+ * edited it. A definition that cannot be bundled fails here, before init
+ * changes any resource.
+ */
+const stageWorker = async (
+  definition: string | undefined,
+): Promise<StagedWorker> => {
+  const cwd = getCwd();
+  const packageRoot = path.dirname(
+    require.resolve("@hot-updater/cloudflare/package.json", { paths: [cwd] }),
+  );
+  const { tmpDir, removeTmpDir } = await copyDirToTmp(packageRoot);
+  const workerRoot = path.join(tmpDir, "worker");
+  try {
+    const main =
+      definition === undefined
+        ? undefined
+        : await buildWorkerFromDefinition({
+            definition,
+            packageRoot,
+            projectRoot: cwd,
+            workerRoot,
+          });
+    return { workerRoot, main, remove: removeTmpDir };
+  } catch (error) {
+    await removeTmpDir();
+    throw error;
+  }
+};
 
 const deployWorker = async (
   apiToken: string,
@@ -70,71 +108,34 @@ const deployWorker = async (
     credentialSource,
     d1DatabaseId,
     d1DatabaseName,
-    definition,
     nonInteractive,
     plugins: serverPlugins,
     r2BucketName,
+    staged,
     workerName,
   }: {
     credentialSource: CloudflareCredentialSource;
     d1DatabaseId: string;
     d1DatabaseName: string;
-    /** The project's server definition, when it edited it; otherwise the prebuilt Worker runs. */
-    definition: string | undefined;
     nonInteractive: boolean;
     /** The plugins the Worker runs, whose tables the migration creates. */
     plugins: readonly unknown[];
     r2BucketName: string;
+    /** From `stageWorker`. */
+    staged: StagedWorker;
     workerName: string;
   },
 ) => {
-  const cwd = getCwd();
-  const cloudflarePackagePath = require.resolve(
-    "@hot-updater/cloudflare/package.json",
-    {
-      paths: [cwd],
-    },
-  );
-  const cloudflarePackageRoot = path.dirname(cloudflarePackagePath);
-  const { tmpDir, removeTmpDir } = await copyDirToTmp(cloudflarePackageRoot);
-  const workerRoot = path.join(tmpDir, "worker");
+  const { workerRoot } = staged;
 
   try {
-    const wranglerConfig = JSON.parse(
-      await fs.readFile(path.join(workerRoot, "wrangler.json"), "utf-8"),
-    );
-
-    wranglerConfig.d1_databases = [
-      {
-        binding: "DB",
-        database_id: d1DatabaseId,
-        database_name: d1DatabaseName,
-      },
-    ];
-
-    wranglerConfig.r2_buckets = [
-      {
-        binding: "BUCKET",
-        bucket_name: r2BucketName,
-      },
-    ];
-
-    wranglerConfig.vars = {
-      BUCKET_NAME: r2BucketName,
-    };
-
-    if (definition !== undefined) {
-      wranglerConfig.main = await buildWorkerFromDefinition({
-        definition,
-        packageRoot: cloudflarePackageRoot,
-        workerRoot,
-      });
-    }
-
-    await fs.writeFile(
-      path.join(workerRoot, "wrangler.json"),
-      JSON.stringify(wranglerConfig, null, 2),
-    );
+    await prepareWorkerDeployment(workerRoot, {
+      d1DatabaseId,
+      d1DatabaseName,
+      main: staged.main,
+      plugins: serverPlugins,
+      r2BucketName,
+    });
 
     const wrangler = await createWrangler({
       stdio: "inherit",
@@ -144,23 +145,6 @@ const deployWorker = async (
       nonInteractive,
     });
 
-    const migrationPath = await path.join(workerRoot, "migrations");
-    const migrationFiles = await fs.readdir(migrationPath);
-    for (const file of migrationFiles) {
-      if (file.endsWith(".sql")) {
-        const filePath = path.join(migrationPath, file);
-        const content = await fs.readFile(filePath, "utf-8");
-        await fs.writeFile(
-          filePath,
-          transformTemplate(content, {
-            BUCKET_NAME: r2BucketName,
-          }),
-        );
-      }
-    }
-
-    // The package's migration holds core's tables; this one the plugins'.
-    await writePluginMigration(workerRoot, serverPlugins);
     await wrangler("d1", "migrations", "apply", d1DatabaseName, "--remote");
 
     await wrangler("deploy", "--name", workerName);
@@ -189,8 +173,6 @@ const deployWorker = async (
       throw toCloudflareDeploymentError(error, credentialSource);
     }
     throw new Error(String(error));
-  } finally {
-    await removeTmpDir();
   }
 };
 
@@ -640,99 +622,118 @@ export const runInit = async ({
     }),
   });
 
-  if (createBucket) {
-    const newR2 = await runCloudflareApiRequest({
-      request: () =>
-        cf.r2.buckets.create({
-          account_id: accountId,
-          name: selectedBucketName,
-        }),
-      source: infrastructureCredentialSource,
-    });
-    if (!newR2.name) {
-      throw new Error("Failed to create new R2 Bucket");
-    }
-    p.log.info(`Created R2: ${newR2.name}`);
-    const domains = await runCloudflareApiRequest({
-      request: () =>
-        cf.r2.buckets.domains.managed.list(selectedBucketName, {
-          account_id: accountId,
-        }),
-      source: infrastructureCredentialSource,
-    });
-    managedDomainEnabled = domains.enabled;
-  } else {
-    p.log.info(`Selected R2: ${selectedBucketName}`);
-  }
-
-  if (managedDomainEnabled === undefined) {
-    throw new Error("Failed to resolve the R2 managed domain state.");
-  }
-  if (
-    shouldUpdateR2ManagedDomain({
-      isPrivate,
-      managedDomainEnabled,
-    })
-  ) {
-    await p.tasks([
-      {
-        title: `Making R2 bucket ${isPrivate ? "private" : "public"}...`,
-        task: async () => {
-          await runCloudflareApiRequest({
-            request: () =>
-              cf.r2.buckets.domains.managed.update(selectedBucketName, {
-                account_id: accountId,
-                enabled: !isPrivate,
-              }),
-            source: infrastructureCredentialSource,
-          });
-        },
-      },
-    ]);
-  }
-
-  if (createD1Database) {
-    const newD1 = await runCloudflareApiRequest({
-      request: () =>
-        cf.d1.database.create({
-          account_id: accountId,
-          name: d1DatabaseName,
-        }),
-      source: infrastructureCredentialSource,
-    });
-    if (!newD1.uuid || !newD1.name) {
-      throw new Error("Failed to create the requested D1 Database");
-    }
-    selectedD1DatabaseId = newD1.uuid;
-    d1DatabaseName = newD1.name;
-    p.log.info(`Created D1 Database: ${newD1.name} (${newD1.uuid})`);
-  }
-  if (!selectedD1DatabaseId) {
-    throw new Error("Failed to resolve the D1 Database");
-  }
-  await makeEnv({
-    [CLOUDFLARE_INIT_PROVIDER.inputs.d1DatabaseId.envKey]: selectedD1DatabaseId,
-    [CLOUDFLARE_INIT_PROVIDER.inputs.d1DatabaseName.envKey]: d1DatabaseName,
-  });
-
   // The plugins the Worker runs: the package's, or those of the project's
-  // edited definition, which reads what .env.hotupdater now holds.
+  // edited definition, which reads what .env.hotupdater now holds. It is
+  // checked and bundled before init creates a bucket or a database.
   const serverPlugins = definition.edited
-    ? managedServerDefinitionOf(
-        (await importManagedServerDefinition(definition, cwd)).hotUpdater,
-        { provider: "Cloudflare", database: "d1Database", storage: "r2" },
-      ).plugins
+    ? await loadManagedServerDefinition(
+        definition,
+        (hotUpdater) =>
+          managedServerDefinitionOf(hotUpdater, {
+            provider: "Cloudflare",
+            database: "d1Database",
+            storage: "r2",
+            resources: {
+              database: { accountId, databaseId: selectedD1DatabaseId },
+              storage: { accountId, bucketName: selectedBucketName },
+            },
+          }).plugins,
+        { cwd },
+      )
     : plugins;
-  await deployWorker(infrastructureApiToken, accountId, {
-    credentialSource: infrastructureCredentialSource,
-    d1DatabaseId: selectedD1DatabaseId,
-    d1DatabaseName,
-    definition: definition.edited ? definition.path : undefined,
-    nonInteractive,
-    plugins: serverPlugins,
-    r2BucketName: selectedBucketName,
-    workerName,
-  });
+  const staged = await stageWorker(
+    definition.edited ? definition.path : undefined,
+  );
+  try {
+    if (createBucket) {
+      const newR2 = await runCloudflareApiRequest({
+        request: () =>
+          cf.r2.buckets.create({
+            account_id: accountId,
+            name: selectedBucketName,
+          }),
+        source: infrastructureCredentialSource,
+      });
+      if (!newR2.name) {
+        throw new Error("Failed to create new R2 Bucket");
+      }
+      p.log.info(`Created R2: ${newR2.name}`);
+      const domains = await runCloudflareApiRequest({
+        request: () =>
+          cf.r2.buckets.domains.managed.list(selectedBucketName, {
+            account_id: accountId,
+          }),
+        source: infrastructureCredentialSource,
+      });
+      managedDomainEnabled = domains.enabled;
+    } else {
+      p.log.info(`Selected R2: ${selectedBucketName}`);
+    }
+
+    if (managedDomainEnabled === undefined) {
+      throw new Error("Failed to resolve the R2 managed domain state.");
+    }
+    if (
+      shouldUpdateR2ManagedDomain({
+        isPrivate,
+        managedDomainEnabled,
+      })
+    ) {
+      await p.tasks([
+        {
+          title: `Making R2 bucket ${isPrivate ? "private" : "public"}...`,
+          task: async () => {
+            await runCloudflareApiRequest({
+              request: () =>
+                cf.r2.buckets.domains.managed.update(selectedBucketName, {
+                  account_id: accountId,
+                  enabled: !isPrivate,
+                }),
+              source: infrastructureCredentialSource,
+            });
+          },
+        },
+      ]);
+    }
+
+    if (createD1Database) {
+      const newD1 = await runCloudflareApiRequest({
+        request: () =>
+          cf.d1.database.create({
+            account_id: accountId,
+            name: d1DatabaseName,
+          }),
+        source: infrastructureCredentialSource,
+      });
+      if (!newD1.uuid || !newD1.name) {
+        throw new Error("Failed to create the requested D1 Database");
+      }
+      selectedD1DatabaseId = newD1.uuid;
+      d1DatabaseName = newD1.name;
+      p.log.info(`Created D1 Database: ${newD1.name} (${newD1.uuid})`);
+    }
+    if (!selectedD1DatabaseId) {
+      throw new Error("Failed to resolve the D1 Database");
+    }
+    await makeEnv({
+      [CLOUDFLARE_INIT_PROVIDER.inputs.d1DatabaseId.envKey]:
+        selectedD1DatabaseId,
+      [CLOUDFLARE_INIT_PROVIDER.inputs.d1DatabaseName.envKey]: d1DatabaseName,
+    });
+
+    await deployWorker(infrastructureApiToken, accountId, {
+      credentialSource: infrastructureCredentialSource,
+      d1DatabaseId: selectedD1DatabaseId,
+      d1DatabaseName,
+      nonInteractive,
+      plugins: serverPlugins,
+      r2BucketName: selectedBucketName,
+      staged,
+      workerName,
+    });
+  } finally {
+    await staged.remove();
+  }
 
   const database = d1Database({
     accountId,

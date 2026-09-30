@@ -2,6 +2,7 @@ import fs from "fs/promises";
 import os from "os";
 import path from "path";
 
+import { InitError } from "@hot-updater/cli-tools";
 import { definePlugin, defineTable } from "@hot-updater/server/plugins";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
@@ -97,7 +98,12 @@ describe("the managed Worker from a project's server definition", () => {
     const workerRoot = path.join(project, ".hot-updater", "worker");
 
     await expect(
-      buildWorkerFromDefinition({ definition, packageRoot, workerRoot }),
+      buildWorkerFromDefinition({
+        definition,
+        packageRoot,
+        projectRoot: project,
+        workerRoot,
+      }),
     ).resolves.toBe("./dist/managed.js");
 
     const code = await fs.readFile(
@@ -106,9 +112,74 @@ describe("the managed Worker from a project's server definition", () => {
     );
     expect(code).toContain("sample notes plugin");
     expect(code).toMatch(/from "cloudflare:workers"/u);
+    // A CommonJS dependency can require a built-in on workerd.
+    expect(
+      code.startsWith(
+        'import { createRequire as __hotUpdaterCreateRequire } from "node:module";',
+      ),
+    ).toBe(true);
     // The CLI's clients for D1's REST API and R2's S3 API stay out.
     expect(code).not.toContain("api.cloudflare.com");
     expect(code).not.toContain("S3Client");
+    // None of the machine's paths are deployed, and the entry that built it
+    // is gone.
+    expect(code).not.toContain(project);
+    expect(code).not.toContain(await fs.realpath(project));
+    expect(code).not.toContain(os.homedir());
+    await expect(
+      fs.access(path.join(workerRoot, "managed.ts")),
+    ).rejects.toThrow();
+  });
+
+  it("offers the definition every export of @hot-updater/cloudflare", async () => {
+    const names = Object.keys(await import("@hot-updater/cloudflare")).sort();
+    const definition = path.join(project, "hotUpdater.ts");
+    await fs.writeFile(
+      definition,
+      `import { ${names.join(", ")} } from "@hot-updater/cloudflare";
+import { createHotUpdater } from "@hot-updater/server";
+
+export const imported = [${names.join(", ")}];
+export default createHotUpdater({
+  database: d1Database({ databaseId: "the CLI's" }),
+  storage: [r2Storage({ bucketName: "the CLI's" })],
+  plugins,
+});
+`,
+    );
+    const workerRoot = path.join(project, ".hot-updater", "worker");
+
+    await buildWorkerFromDefinition({
+      definition,
+      packageRoot,
+      projectRoot: project,
+      workerRoot,
+    });
+
+    // d1Migration is internal: the runtime module has no D1 REST client.
+    expect(names).not.toContain("d1Migration");
+    expect(names).toEqual(
+      expect.arrayContaining(["d1Database", "plugins", "r2Storage"]),
+    );
+  });
+
+  it("names the definition when it cannot be bundled", async () => {
+    const definition = path.join(project, "hotUpdater.ts");
+    await fs.writeFile(
+      definition,
+      `import { notes } from "@acme/missing-plugin";\nexport const hotUpdater = notes;\n`,
+    );
+
+    const failure = buildWorkerFromDefinition({
+      definition,
+      packageRoot,
+      projectRoot: project,
+      workerRoot: path.join(project, ".hot-updater", "worker"),
+    });
+    await expect(failure).rejects.toBeInstanceOf(InitError);
+    await expect(failure).rejects.toThrow(
+      /^Could not bundle hotUpdater\.ts into the Cloudflare Worker: .*Could not resolve "@acme\/missing-plugin"/su,
+    );
   });
 
   it("migrates the plugins' tables and settings rows after the package's migration", async () => {
