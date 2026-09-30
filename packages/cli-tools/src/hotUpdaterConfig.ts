@@ -364,19 +364,27 @@ const removePropertyEdit = (
   return { start, end, text: "" };
 };
 
+/** Build adapter packages, whose imports a kept build still needs. */
+const BUILD_IMPORT_PACKAGES = new Set(
+  [...KNOWN_BUILD_CALLEES].map((callee) => `@hot-updater/${callee}`),
+);
+
 /**
  * The config object with the scaffold's `build`, its `server` unless the
  * config already points somewhere, and without the settings that moved to
- * the server definition; null when `build` is dynamic.
+ * the server definition. A build that is not a plain build adapter, such
+ * as `withSentry(bare())`, stays the project's (`keptBuild`); null when
+ * `build` is no call.
  */
 const updateManagedObject = (
   existing: ManagedConfigObject,
   next: ManagedConfigObject,
-) => {
+): { readonly text: string; readonly keptBuild: boolean } | null => {
   const objectStart = existing.objectExpression.start;
   const objectText = getNodeText(existing.source, existing.objectExpression);
   const edits: TextEdit[] = [];
   const missingPropertyTexts: string[] = [];
+  let keptBuild = false;
 
   const existingBuild = findManagedProperty(existing.objectExpression, "build");
   const nextBuild = findManagedProperty(next.objectExpression, "build");
@@ -389,10 +397,9 @@ const updateManagedObject = (
       if (!existingCallee || !nextCallee) {
         return null;
       }
-      if (existingCallee !== nextCallee) {
-        if (!KNOWN_BUILD_CALLEES.has(existingCallee)) {
-          return null;
-        }
+      if (!KNOWN_BUILD_CALLEES.has(existingCallee)) {
+        keptBuild = true;
+      } else if (existingCallee !== nextCallee) {
         edits.push({
           start: existingBuild.value.start - objectStart,
           end: existingBuild.value.end - objectStart,
@@ -423,11 +430,14 @@ const updateManagedObject = (
   const remainingProperties =
     existing.objectExpression.properties.length -
     edits.filter((edit) => edit.text === "").length;
-  return appendMissingProperties(
-    applyTextEdits(objectText, edits),
-    missingPropertyTexts,
-    remainingProperties > 0,
-  );
+  return {
+    text: appendMissingProperties(
+      applyTextEdits(objectText, edits),
+      missingPropertyTexts,
+      remainingProperties > 0,
+    ),
+    keptBuild,
+  };
 };
 
 /** The string literal `server` of a config object, if it sets one. */
@@ -455,13 +465,20 @@ const getManagedHelperName = (statement: TopLevelStatement) => {
 const rebuildImportBlock = (
   source: ConfigSource,
   scaffold: HotUpdaterConfigScaffold,
+  { keptBuild }: { readonly keptBuild: boolean },
 ): TextEdit => {
-  // Keep environment-loading imports under the existing config's control.
-  const imports = scaffold.imports.map((info) =>
-    info.pkg === "node:fs"
-      ? { ...info, named: info.named?.filter((name) => name !== "existsSync") }
-      : info,
-  );
+  // Keep environment-loading imports under the existing config's control,
+  // and a kept build's adapter import with it.
+  const imports = scaffold.imports
+    .filter((info) => !(keptBuild && BUILD_IMPORT_PACKAGES.has(info.pkg)))
+    .map((info) =>
+      info.pkg === "node:fs"
+        ? {
+            ...info,
+            named: info.named?.filter((name) => name !== "existsSync"),
+          }
+        : info,
+    );
   const importDeclarations = source.program.body.filter(
     (statement) => statement.type === "ImportDeclaration",
   );
@@ -477,7 +494,9 @@ const rebuildImportBlock = (
 
   const preservedImportTexts = importDeclarations
     .filter(
-      (declaration) => !MANAGED_IMPORT_PACKAGES.has(declaration.source.value),
+      (declaration) =>
+        !MANAGED_IMPORT_PACKAGES.has(declaration.source.value) ||
+        (keptBuild && BUILD_IMPORT_PACKAGES.has(declaration.source.value)),
     )
     .map((declaration) =>
       source.text
@@ -561,7 +580,7 @@ const mergeHotUpdaterConfigText = (
     };
   }
 
-  const nextObjectText = updateManagedObject(
+  const nextObject = updateManagedObject(
     {
       objectExpression: existingConfig.objectExpression,
       source: existingSource,
@@ -571,7 +590,7 @@ const mergeHotUpdaterConfigText = (
       source: nextSource,
     },
   );
-  if (!nextObjectText) {
+  if (!nextObject) {
     return {
       reason:
         "Existing config uses a dynamic build expression that cannot be merged safely.",
@@ -603,10 +622,12 @@ const mergeHotUpdaterConfigText = (
       {
         start: existingConfig.objectExpression.start,
         end: existingConfig.objectExpression.end,
-        text: nextObjectText,
+        text: nextObject.text,
       },
       rebuildManagedBody(existingSource, managedBodyEnd),
-      rebuildImportBlock(existingSource, scaffold),
+      rebuildImportBlock(existingSource, scaffold, {
+        keptBuild: nextObject.keptBuild,
+      }),
     ]),
     ...(server === undefined ? {} : { server }),
   };
@@ -846,17 +867,32 @@ export const resolveServerDefinitionPath = async (
       scaffold.server,
   );
 
+/** Where an older init wrote a managed server's plugins, which the definition holds now. */
+const PLUGINS_FILE_PATH = "hotUpdater.plugins.ts";
+
+/**
+ * Whether `text` is the plugins file an older init wrote: comments and a
+ * re-export of a provider package's `plugins`, which the definition imports.
+ */
+const isGeneratedPluginsFile = (text: string) =>
+  /^export\{plugins\}from(["'])@hot-updater\/[\w-]+\1;?$/u.test(
+    text.replace(/^\s*\/\/.*$/gmu, "").replace(/\s+/gu, ""),
+  );
+
 /**
  * Writes hot-updater.config.ts and the server definition it points at, and
  * says what it did. `settings` names the provider in messages, such as
- * "Supabase".
+ * "Supabase". The plugins file an older init wrote is removed; one the
+ * project wrote is named, since nothing reads it.
  */
 export const writeHotUpdaterFiles = async (
   scaffold: HotUpdaterConfigScaffold,
   { cwd = process.cwd(), settings }: { cwd?: string; settings: string },
 ): Promise<{
   readonly config: WriteHotUpdaterConfigResult;
-  readonly definition?: WriteServerDefinitionResult;
+  readonly definition: WriteServerDefinitionResult;
+  /** What became of hotUpdater.plugins.ts, when there was one. */
+  readonly pluginsFile?: "removed" | "kept";
 }> => {
   const config = await writeHotUpdaterConfig(
     scaffold,
@@ -871,15 +907,22 @@ export const writeHotUpdaterFiles = async (
       `Updated '${HOT_UPDATER_CONFIG_PATH}' file with ${settings} settings.`,
     );
   } else {
+    const text = await readTextFile(path.join(cwd, HOT_UPDATER_CONFIG_PATH));
+    const moved = MOVED_PROPERTY_NAMES.filter((name) =>
+      new RegExp(`\\b${name}\\s*:`, "u").test(text ?? ""),
+    );
     p.log.warn(
-      `Kept existing '${HOT_UPDATER_CONFIG_PATH}' unchanged: ${config.reason} Point its server at your server definition.`,
+      [
+        `Kept existing '${HOT_UPDATER_CONFIG_PATH}' unchanged: ${config.reason}`,
+        `Add \`server: ${JSON.stringify(scaffold.server)},\` to its config${moved.length > 0 ? `, and remove ${moved.join(", ")}: the server definition holds them` : ""}.`,
+      ].join(" "),
     );
   }
-  if (config.server === undefined) return { config };
 
+  // The definition is written wherever the config points, or where it will.
   const definition = await writeServerDefinition(
     scaffold,
-    path.resolve(cwd, config.server),
+    path.resolve(cwd, config.server ?? scaffold.server),
   );
   const shown = path.relative(cwd, definition.path);
   if (definition.status === "created") {
@@ -891,7 +934,21 @@ export const writeHotUpdaterFiles = async (
   } else if (definition.status === "kept") {
     p.log.info(`Kept '${shown}': the project's own server definition.`);
   }
-  return { config, definition };
+
+  const pluginsPath = path.join(cwd, PLUGINS_FILE_PATH);
+  const pluginsText = await readTextFile(pluginsPath);
+  if (pluginsText === null) return { config, definition };
+  if (isGeneratedPluginsFile(pluginsText)) {
+    await fs.rm(pluginsPath);
+    p.log.success(
+      `Removed '${PLUGINS_FILE_PATH}': '${shown}' lists the server's plugins.`,
+    );
+    return { config, definition, pluginsFile: "removed" };
+  }
+  p.log.warn(
+    `Nothing reads '${pluginsPath}' anymore: move its plugins into the plugins of '${shown}', then delete it.`,
+  );
+  return { config, definition, pluginsFile: "kept" };
 };
 
 /**
