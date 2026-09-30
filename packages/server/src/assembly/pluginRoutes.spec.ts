@@ -25,7 +25,6 @@ const event = {
   type: "UNCHANGED",
   updateStrategy: null,
   userId: "user-1",
-  username: "Jane",
   sdkVersion: "2.0.0",
 } as const;
 

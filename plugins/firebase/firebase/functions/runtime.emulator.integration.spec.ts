@@ -369,8 +369,7 @@ exec node "${path.join(firebaseFunctionsPackagePath, "lib/bin/firebase-functions
   it("preserves JSON event bodies through the Functions entrypoint", async () => {
     const event = {
       installId: "functions-json-body",
-      userId: "runtime-acceptance",
-      username: "다운로드 확인",
+      userId: "다운로드 확인",
       platform: "ios",
       appVersion: "1.0.0",
       channel: "production",
@@ -392,7 +391,7 @@ exec node "${path.join(firebaseFunctionsPackagePath, "lib/bin/firebase-functions
       await expect(
         insightsReads.getInstallation({ installId: event.installId }),
       ).resolves.toMatchObject({
-        username: event.username,
+        userId: event.userId,
         latestStatus: type,
         lastKnownBundleId:
           type === "UPDATE_DOWNLOADED" ? event.fromBundleId : event.toBundleId,

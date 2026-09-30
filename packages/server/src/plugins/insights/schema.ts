@@ -32,12 +32,26 @@ const bucketRetention = (days: number): BucketRetention => ({
   days,
 });
 
-const MOVEMENTS = new Set(["UPDATE_DOWNLOADED", "UPDATE_APPLIED", "RECOVERED"]);
+const MOVEMENTS = new Set([
+  "UPDATE_DOWNLOADED",
+  "UPDATE_APPLIED",
+  "RECOVERED",
+  "UPDATE_FAILED",
+]);
+
+/** A failed update check: it names no target bundle, so no bundle list shows it. */
+export const isFailedCheck = (row: {
+  readonly type: string;
+  readonly metadata: unknown;
+}): boolean =>
+  row.type === "UPDATE_FAILED" &&
+  (row.metadata as { failure?: { stage?: unknown } } | null)?.failure?.stage ===
+    "check";
 
 /**
- * Downloads, applies, and recoveries, whole. An UNCHANGED report counts as a
- * launch and moves its installation's head, but no list shows it, so no row
- * keeps it.
+ * Downloads, applies, recoveries, and update failures, whole. An UNCHANGED
+ * report counts as a launch and moves its installation's head, but no list
+ * shows it, so no row keeps it.
  */
 const bundleEvents = (days: number) =>
   defineTable(
@@ -69,15 +83,21 @@ const bundleEvents = (days: number) =>
           type: "string",
           compute: (row) => (MOVEMENTS.has(row.type) ? row.install_id : null),
         },
-        /** The bundle a bundle filter matches: `from:<bundle>` for RECOVERED, else `to:<bundle>`. */
+        /**
+         * The bundle a bundle filter matches: `from:<bundle>` for RECOVERED,
+         * none for a failed check, else `to:<bundle>`.
+         */
         bundle_ref: {
           type: "string",
           multi: true,
-          compute: (row) => [
-            row.type === "RECOVERED" && row.from_bundle_id !== null
-              ? `from:${row.from_bundle_id}`
-              : `to:${row.to_bundle_id}`,
-          ],
+          compute: (row) =>
+            isFailedCheck(row)
+              ? []
+              : [
+                  row.type === "RECOVERED" && row.from_bundle_id !== null
+                    ? `from:${row.from_bundle_id}`
+                    : `to:${row.to_bundle_id}`,
+                ],
         },
       },
       indexes: {
@@ -103,7 +123,8 @@ const bundleEvents = (days: number) =>
 
 /**
  * Each installation's latest event, whole, so reading it is one point read.
- * `current_release_id` says where its gauges count it (`COUNTED_BY_DAY`).
+ * Its gauges count it in the UTC day of that event. An update failure moves
+ * nothing, so no head holds one.
  */
 const bundleEventHeads = (days: number) =>
   defineTable(
@@ -121,7 +142,6 @@ const bundleEventHeads = (days: number) =>
       channel: { type: "string" },
       metadata: { type: "json" },
       received_at_ms: { type: "integer" },
-      current_release_id: { type: "string", maxLength: 36, required: false },
     },
     {
       key: ["install_id"],
@@ -155,33 +175,98 @@ const identityFields = {
 } as const;
 const window = { eq: ["identity"], sort: ["bucket_start_ms"] } as const;
 
-/** Counters of one period kind: hourly, daily, or lifetime at bucket 0. */
+/**
+ * Counters of one period kind: hourly, daily, or lifetime at bucket 0. A
+ * release or channel row counts downloads, launches, and failed launches,
+ * and downloads a patch delivered and those that fell back from one. A
+ * release's lifetime row counts its failed updates (`failed_updates`), since
+ * no breakdown row outlives the raw period; windowed reads sum
+ * `insights_failures` instead.
+ */
 const counters = (retention?: BucketRetention) =>
   defineAggregate(identityFields, {
     key: ["identity", "bucket_start_ms"],
-    counters: ["downloads", "launches", "failed_launches"],
+    counters: [
+      "downloads",
+      "launches",
+      "failed_launches",
+      "failed_updates",
+      "patch_downloads",
+      "patch_fallbacks",
+    ],
     shards: COUNTER_SHARDS,
     batched: true,
     indexes: { window },
     ...(retention === undefined ? {} : { retention }),
   });
 
-/** Unique-installation sketches of one period kind. */
+/**
+ * Unique-installation sketches of one period kind. Rows of a failure
+ * identity (`failure` and `check` scopes) keep only `failed_users`, so a
+ * release's launch rows never grow by a failure's registers.
+ */
 const sketches = (retention: BucketRetention) =>
   defineAggregate(identityFields, {
     key: ["identity", "bucket_start_ms"],
-    distinct: ["launch_users", "activity_users"],
+    distinct: ["launch_users", "activity_users", "failed_users"],
     shards: SKETCH_SHARDS,
     batched: true,
     indexes: { window },
     retention,
   });
 
+/** Installations whose update to a release failed, since its first failure: kept, at bucket 0. */
+const lifetimeSketches = () =>
+  defineAggregate(identityFields, {
+    key: ["identity", "bucket_start_ms"],
+    distinct: ["failed_users"],
+    shards: SKETCH_SHARDS,
+    batched: true,
+    indexes: { window },
+  });
+
 /**
- * Installations counted in the UTC day of their latest event; heads recorded
- * while gauges counted hours stay in the hour of theirs until they move.
- * Either lies inside the event's UTC day, so reads sum whole UTC days.
+ * Update failures by what failed, and recoveries by why the crashed process
+ * exited, a row an hour. `release_id` is the failed update's target release,
+ * or empty for a failed check or an unknown target, and the recovered
+ * release for a recovery. A failure's `stage` and `reason` say where and why
+ * it failed, and `detail` what else the client knew, as the JSON array
+ * `[resource, httpStatus, originCode, transport]`. A recovery's stage is
+ * `launch` and its reason the exit reason, with an empty detail. Every index
+ * is in key order, so its counters stay blind increments.
  */
+const insightsFailures = (retention: BucketRetention) =>
+  defineAggregate(
+    {
+      platform: { type: "string", maxLength: 16 },
+      channel: { type: "string" },
+      bucket_start_ms: { type: "integer" },
+      release_id: { type: "string", maxLength: 36 },
+      stage: { type: "string", maxLength: 16 },
+      reason: { type: "string", maxLength: 64 },
+      detail: { type: "string", maxLength: 160 },
+    },
+    {
+      key: [
+        "platform",
+        "channel",
+        "bucket_start_ms",
+        "release_id",
+        "stage",
+        "reason",
+        "detail",
+      ],
+      counters: ["events"],
+      shards: COUNTER_SHARDS,
+      batched: true,
+      indexes: {
+        byScope: { eq: ["platform", "channel"], sort: ["bucket_start_ms"] },
+      },
+      retention,
+    },
+  );
+
+/** Installations counted in the UTC day of their latest event, so reads sum whole UTC days. */
 const insightsDistribution = (retention: BucketRetention) =>
   defineAggregate(
     {
@@ -248,9 +333,9 @@ const insightsLatestByBundle = (retention: BucketRetention) =>
 
 /**
  * Stored events by outcome and the bundle a bundle filter matches, a row an
- * hour; and every stored event, a row a UTC day (`DAILY_EVENTS`). Bundle
- * counts sum the hourly rows, and event lists read either to skip days
- * without events.
+ * hour, which a failed check has none of; and every stored event, a row a UTC
+ * day (`DAILY_EVENTS`). Bundle counts sum the hourly rows, and event lists
+ * read either to skip days without events.
  */
 const insightsOutcomes = (retention: BucketRetention) =>
   defineAggregate(
@@ -309,11 +394,13 @@ export const createInsightsSchema = ({
     /** Daily counters and sketches: the daily period. */
     insights_overview_daily: counters(daily),
     insights_sketches_daily: sketches(daily),
-    /** A release's counters since its first event: kept. */
+    /** A release's counters since its first event, and its failed installations: kept. */
     insights_overview_lifetime: counters(),
+    insights_sketches_lifetime: lifetimeSketches(),
     insights_distribution: insightsDistribution(daily),
     insights_latest_by_bundle: insightsLatestByBundle(daily),
     insights_outcomes: insightsOutcomes(hourly),
+    insights_failures: insightsFailures(hourly),
   } as const;
 };
 

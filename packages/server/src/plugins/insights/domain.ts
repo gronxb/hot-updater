@@ -1,4 +1,27 @@
+import type {
+  BundleEventFailure,
+  BundleEventFailureReason,
+  BundleEventFailureStage,
+  DatabaseBundleEventMetadata,
+} from "./eventRow";
 import type { InsightsScope } from "./modelTypes";
+
+/**
+ * Where an update failed and why, as a report carries it. Unknown values of
+ * its sets read as `unknown`, so a newer client's failure still counts.
+ */
+export type BundleEventFailureInput = {
+  readonly stage: BundleEventFailureStage;
+  readonly reason: BundleEventFailureReason;
+  readonly resource?: NonNullable<BundleEventFailure["resource"]>;
+  /** The response status of an `http` failure. */
+  readonly httpStatus?: number;
+  readonly transport?: NonNullable<BundleEventFailure["transport"]>;
+  /** The storage origin's error code, such as `ExpiredToken`. */
+  readonly originCode?: string;
+  /** Android's `ApplicationExitInfo` reason for the process before this one. */
+  readonly previousProcessExit?: string;
+};
 
 /**
  * The body of `POST /events`. Fields the server does not know are ignored, so
@@ -16,7 +39,6 @@ export type CreateBundleEventRequestBase = {
   readonly installId: string;
   readonly toBundleId: string;
   readonly userId?: string;
-  readonly username?: string;
   readonly platform: "ios" | "android";
   readonly appVersion: string;
   readonly channel: string;
@@ -27,11 +49,38 @@ export type CreateBundleEventRequestBase = {
   readonly toReleaseId: string | null;
 };
 
+type Movement = CreateBundleEventRequestBase & {
+  readonly fromBundleId: string;
+  readonly updateStrategy: "fingerprint" | "appVersion";
+};
+
 export type CreateBundleEventRequest =
-  | (CreateBundleEventRequestBase & {
-      readonly type: "UPDATE_DOWNLOADED" | "UPDATE_APPLIED" | "RECOVERED";
-      readonly fromBundleId: string;
-      readonly updateStrategy: "fingerprint" | "appVersion";
+  | (Movement & {
+      readonly type: "UPDATE_DOWNLOADED";
+      readonly metadata?: {
+        /** How the bundle arrived. */
+        readonly delivery?: NonNullable<
+          DatabaseBundleEventMetadata["delivery"]
+        >;
+        /** A patch was tried, and the files or the archive came instead. */
+        readonly patchFallback?: true;
+      };
+    })
+  | (Movement & { readonly type: "UPDATE_APPLIED" })
+  | (Movement & {
+      readonly type: "RECOVERED";
+      readonly metadata?: {
+        /** Android's `ApplicationExitInfo` reason for the crashed process. */
+        readonly previousProcessExit?: string;
+      };
+    })
+  | (Movement & {
+      /**
+       * An update check, download, or install that failed: `fromBundleId`
+       * runs, and `toBundleId` is the target (for a check, the running bundle).
+       */
+      readonly type: "UPDATE_FAILED";
+      readonly metadata: { readonly failure: BundleEventFailureInput };
     })
   | (CreateBundleEventRequestBase & {
       readonly type: "UNCHANGED";
@@ -48,26 +97,37 @@ export type EventHistoryRow = {
     | "UPDATE_DOWNLOADED"
     | "UPDATE_APPLIED"
     | "RECOVERED"
+    | "UPDATE_FAILED"
     | "UNCHANGED";
   readonly fromBundleId: string | null;
   readonly toBundleId: string;
-  readonly username: string | null;
   readonly userId: string | null;
   readonly platform: "ios" | "android";
   readonly appVersion: string;
   readonly channel: string;
   readonly cohort: string;
   readonly receivedAtMs: number;
+  /** `UPDATE_FAILED`: where the update failed and why. */
+  readonly failure?: BundleEventFailureInput;
+  /** `UPDATE_DOWNLOADED`: how the bundle arrived, when the client said. */
+  readonly delivery?: NonNullable<DatabaseBundleEventMetadata["delivery"]>;
+  /** `UPDATE_DOWNLOADED`: a patch failed, and the files or the archive came instead. */
+  readonly patchFallback?: true;
+  /** `RECOVERED`: Android's reason the crashed process exited. */
+  readonly previousProcessExit?: string;
 };
 
 export type InstallationHistoryRow = EventHistoryRow & {
-  readonly type: "UPDATE_DOWNLOADED" | "UPDATE_APPLIED" | "RECOVERED";
+  readonly type:
+    | "UPDATE_DOWNLOADED"
+    | "UPDATE_APPLIED"
+    | "RECOVERED"
+    | "UPDATE_FAILED";
   readonly fromBundleId: string;
 };
 
 export type InstallationRow = {
   readonly installId: string;
-  readonly username: string | null;
   readonly userId: string | null;
   readonly lastKnownBundleId: string;
   readonly pendingBundleId: string | null;
@@ -91,7 +151,8 @@ export type EventCursorPage<T extends EventHistoryRow> = CursorPage<T> & {
 
 export type InsightsBundleSelection = InsightsScope & {
   readonly bundleId: string;
-  readonly outcome: "downloaded" | "applied" | "recovered";
+  /** `failed`: update failures that targeted the bundle. */
+  readonly outcome: "downloaded" | "applied" | "recovered" | "failed";
 };
 
 export type InsightsCountMeasurement = {
@@ -110,5 +171,6 @@ export type ReportingOverview = InsightsScope & {
     readonly downloadedReports: InsightsCountMeasurement;
     readonly appliedReports: InsightsCountMeasurement;
     readonly recoveredReports: InsightsCountMeasurement;
+    readonly failedReports: InsightsCountMeasurement;
   };
 };

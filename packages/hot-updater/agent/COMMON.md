@@ -217,11 +217,12 @@ separate validation result.
     packaged target serverVersion/infrastructureGeneration,
 <!-- if credential -->
     then checks the identical catalog URL without a credential (401) and with
-    the saved {{CREDENTIAL_LABEL}} (valid catalog 200 or the exact private,
-    no-store empty-catalog 404).
+    the saved {{CREDENTIAL_LABEL}} (valid catalog 200 or the empty-catalog 404
+    marked x-hot-updater-catalog: none).
 <!-- else -->
     then checks the catalog URL without a credential, since client routes are
-    public (valid catalog 200 or the exact private, no-store empty-catalog 404).
+    public (valid catalog 200 or the empty-catalog 404 marked
+    x-hot-updater-catalog: none).
 <!-- end -->
     An arbitrary 404 and the public /version response alone are not success.
     Record target URL, the sanitized checks and checkedAt; only now set

@@ -18,7 +18,7 @@ export type InsightsBundleEventFilter = InsightsScope &
   (
     | { readonly type: "RECOVERED"; readonly fromBundleId: string }
     | {
-        readonly type: "UPDATE_DOWNLOADED" | "UPDATE_APPLIED";
+        readonly type: "UPDATE_DOWNLOADED" | "UPDATE_APPLIED" | "UPDATE_FAILED";
         readonly toBundleId: string;
       }
   );

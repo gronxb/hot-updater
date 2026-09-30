@@ -163,7 +163,9 @@ Release Catalog, such as a deploy or a Release policy change, invalidates
 Writes that change no Catalog, such as Insights events or API keys, invalidate
 nothing. Override `apiBasePath` only when a custom deployment mounts the
 catalog routes elsewhere. A failed invalidation logs a warning, and the write
-still succeeds.
+still succeeds. The invalidation also clears the cached `404` of a scope that
+had no catalog yet, which CloudFront otherwise keeps for its error caching
+minimum TTL, ten seconds by default.
 Set `shouldWaitForInvalidation: true` when a deployment or E2E flow must wait
 for CloudFront propagation; it waits up to five minutes.
 

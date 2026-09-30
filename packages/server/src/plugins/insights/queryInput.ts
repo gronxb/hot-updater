@@ -87,7 +87,8 @@ export const parseEventPageInput = (
     if (
       outcome !== "downloaded" &&
       outcome !== "applied" &&
-      outcome !== "recovered"
+      outcome !== "recovered" &&
+      outcome !== "failed"
     ) {
       throw new InsightsBadRequestError("Invalid 'outcome' query parameter.");
     }

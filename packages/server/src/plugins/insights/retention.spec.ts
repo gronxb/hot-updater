@@ -33,9 +33,11 @@ describe("insights retention", () => {
       insights_overview_daily: 400,
       insights_sketches_daily: 400,
       insights_overview_lifetime: null,
+      insights_sketches_lifetime: null,
       insights_distribution: 400,
       insights_latest_by_bundle: 400,
       insights_outcomes: 90,
+      insights_failures: 90,
     });
   });
 

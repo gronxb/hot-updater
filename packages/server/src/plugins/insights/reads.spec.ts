@@ -39,7 +39,6 @@ const event = (
     app_version: "1.0.0",
     channel: "production",
     metadata: {
-      username: null,
       cohort: "1",
       update_strategy: "appVersion",
       fingerprint_hash: null,
@@ -368,6 +367,278 @@ describe("insights read budgets", () => {
       "insights_distribution",
       "insights_sketches_daily",
     ]);
+  });
+});
+
+describe("insights update failures", () => {
+  const setup = async () => {
+    const meter = metered(createMemoryAdapter());
+    const harness = await createPluginTestHarness(insights(), {
+      engine,
+      adapter: meter.adapter,
+      now: () => T0 + 30 * DAY,
+    });
+    const record = (
+      n: number,
+      install: number,
+      at: number,
+      overrides: Partial<BundleEventRow>,
+      metadata: Record<string, unknown> = {},
+    ) =>
+      harness.api.recordEvent(
+        event(n, {
+          install_id: `install-${install}`,
+          received_at_ms: at,
+          ...overrides,
+          metadata: { ...event(n).metadata, ...metadata },
+        } as Partial<BundleEventRow>),
+      );
+    const fail = (
+      n: number,
+      install: number,
+      at: number,
+      failure: Record<string, unknown>,
+    ) =>
+      record(
+        n,
+        install,
+        at,
+        failure.stage === "check"
+          ? {
+              type: "UPDATE_FAILED",
+              to_release_id: null,
+              to_bundle_id: "bundle-a",
+            }
+          : { type: "UPDATE_FAILED" },
+        { failure },
+      );
+    const denied = { stage: "download", reason: "http", http_status: 403 };
+    // install-1 fails to download release-b on two days, install-2 once with
+    // another origin code, install-3 on the network, install-4 installing.
+    await fail(1, 1, T0 + HOUR, { ...denied, origin_code: "AccessDenied" });
+    await fail(2, 1, T0 + DAY + HOUR, {
+      ...denied,
+      origin_code: "AccessDenied",
+    });
+    await fail(3, 2, T0 + 2 * HOUR, { ...denied, origin_code: "ExpiredToken" });
+    await fail(4, 3, T0 + 3 * HOUR, {
+      stage: "download",
+      reason: "network",
+      transport: "timeout",
+    });
+    await fail(5, 4, T0 + 4 * HOUR, {
+      stage: "install",
+      reason: "hash_mismatch",
+    });
+    // install-8's update check fails: its channel's, no release's.
+    await fail(6, 8, T0 + 5 * HOUR, { stage: "check", reason: "http" });
+    // Three downloads: two by patch, one that fell back from a patch.
+    for (const [n, install, metadata] of [
+      [7, 5, { delivery: "patch" }],
+      [8, 6, { delivery: "patch" }],
+      [9, 7, { delivery: "archive", patch_fallback: true }],
+    ] as const) {
+      await record(
+        n,
+        install,
+        T0 + 6 * HOUR,
+        { type: "UPDATE_DOWNLOADED" },
+        metadata,
+      );
+    }
+    // Two recoveries from release-b, one with an exit reason.
+    const recovered = {
+      type: "RECOVERED",
+      from_release_id: "release-b",
+      from_bundle_id: "bundle-b",
+      to_release_id: "release-a",
+      to_bundle_id: "bundle-a",
+    } as const;
+    await record(10, 9, T0 + 7 * HOUR, recovered, {
+      previous_process_exit: "CRASH",
+    });
+    await record(11, 10, T0 + 7 * HOUR, recovered);
+    const read = async <T>(call: () => Promise<T>) => {
+      meter.rows.clear();
+      const measured = await harness.measureReads(call);
+      return {
+        ...measured,
+        tables: Object.keys(Object.fromEntries(meter.rows)),
+      };
+    };
+    return { api: harness.api, read };
+  };
+  const scope = { platform: "ios", channel: "production" } as const;
+
+  it("reads a release's failures, installations, and breakdown over a window from aggregates only", async () => {
+    const { api, read } = await setup();
+    const failures = await read(() =>
+      api.getUpdateFailures({
+        ...scope,
+        releaseId: "release-b",
+        timeRange: { start: T0, end: T0 + 2 * DAY },
+      }),
+    );
+    expect(failures.result).toEqual({
+      coverage: { kind: "complete", sinceMs: 0 },
+      measuredAtMs: T0 + 30 * DAY,
+      failedUpdates: 5,
+      failedInstallations: distinct([
+        "install-1",
+        "install-2",
+        "install-3",
+        "install-4",
+      ]),
+      downloads: 3,
+      patchDownloads: 2,
+      patchFallbacks: 1,
+      breakdown: [
+        {
+          stage: "download",
+          reason: "http",
+          events: 3,
+          details: [
+            {
+              resource: null,
+              httpStatus: 403,
+              originCode: "AccessDenied",
+              transport: null,
+              events: 2,
+            },
+            {
+              resource: null,
+              httpStatus: 403,
+              originCode: "ExpiredToken",
+              transport: null,
+              events: 1,
+            },
+          ],
+        },
+        {
+          stage: "download",
+          reason: "network",
+          events: 1,
+          details: [
+            {
+              resource: null,
+              httpStatus: null,
+              originCode: null,
+              transport: "timeout",
+              events: 1,
+            },
+          ],
+        },
+        {
+          stage: "install",
+          reason: "hash_mismatch",
+          events: 1,
+          details: [
+            {
+              resource: null,
+              httpStatus: null,
+              originCode: null,
+              transport: null,
+              events: 1,
+            },
+          ],
+        },
+      ],
+      recoveries: {
+        failedLaunches: 2,
+        byExitReason: [{ exitReason: "CRASH", events: 1 }],
+      },
+    });
+    expect(failures.tables.toSorted()).toEqual([
+      "insights_failures",
+      "insights_overview",
+      "insights_sketches",
+    ]);
+  });
+
+  it("reads a channel's failed checks against its active installations, from daily rows past 48 hours", async () => {
+    const { api, read } = await setup();
+    const failures = await read(() =>
+      api.getUpdateFailures({
+        ...scope,
+        timeRange: { start: T0, end: T0 + 3 * DAY },
+      }),
+    );
+    expect(failures.result).toMatchObject({
+      failedUpdates: 5,
+      failedInstallations: distinct([
+        "install-1",
+        "install-2",
+        "install-3",
+        "install-4",
+      ]),
+      downloads: 3,
+      // A failure is no activity: the downloads' and recoveries' installations.
+      checks: {
+        failures: 1,
+        failedInstallations: distinct(["install-8"]),
+        activeInstallations: distinct([
+          "install-5",
+          "install-6",
+          "install-7",
+          "install-9",
+          "install-10",
+        ]),
+      },
+      recoveries: { failedLaunches: 2 },
+    });
+    expect(
+      failures.result.breakdown!.map(({ stage, reason, events }) => [
+        stage,
+        reason,
+        events,
+      ]),
+    ).toEqual([
+      ["download", "http", 3],
+      ["check", "http", 1],
+      ["download", "network", 1],
+      ["install", "hash_mismatch", 1],
+    ]);
+    expect(failures.tables.toSorted()).toEqual([
+      "insights_failures",
+      "insights_overview_daily",
+      "insights_sketches_daily",
+    ]);
+  });
+
+  it("reads a release's failures since its first from the kept rows, and needs a range of at most 30 days for a channel", async () => {
+    const { api, read } = await setup();
+    const lifetime = await read(() =>
+      api.getUpdateFailures({ ...scope, releaseId: "release-b" }),
+    );
+    expect(lifetime.result).toEqual({
+      coverage: { kind: "complete", sinceMs: 0 },
+      measuredAtMs: T0 + 30 * DAY,
+      failedUpdates: 5,
+      failedInstallations: distinct([
+        "install-1",
+        "install-2",
+        "install-3",
+        "install-4",
+      ]),
+      downloads: 3,
+      patchDownloads: 2,
+      patchFallbacks: 1,
+    });
+    expect(lifetime.tables.toSorted()).toEqual([
+      "insights_overview_lifetime",
+      "insights_sketches_lifetime",
+    ]);
+    for (const invalid of [
+      scope,
+      { ...scope, platform: "web" },
+      { ...scope, releaseId: "release-b", timeRange: { start: 10, end: 10 } },
+      // Longer than the console's longest period, 30 days.
+      { ...scope, timeRange: { start: T0, end: T0 + 30 * DAY + 1 } },
+    ]) {
+      await expect(
+        api.getUpdateFailures(invalid as never),
+      ).rejects.toMatchObject({ code: "invalid-query" });
+    }
   });
 });
 

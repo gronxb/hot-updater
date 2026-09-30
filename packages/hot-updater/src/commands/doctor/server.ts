@@ -230,19 +230,16 @@ export async function verifyServer(
       authenticated.response.headers.get("content-type") ?? "";
     const empty = authenticated.response.status === 404;
     if (empty) {
-      const cacheControl = authenticated.response.headers
-        .get("cache-control")
-        ?.toLowerCase()
-        .split(",")
-        .map((directive) => directive.trim());
+      // A scope with no catalog yet answers a cacheable 404 that the server
+      // marks; a 404 without the mark is a wrong URL, not an empty catalog.
       requireCheck(
         /^application\/json(?:;|$)/i.test(contentType) &&
           isObject(catalog) &&
           Object.keys(catalog).length === 1 &&
           catalog["error"] === "Not found" &&
-          cacheControl?.includes("private") &&
-          cacheControl.includes("no-store"),
-        "HTTP 404 must be the private, non-cacheable empty-catalog response.",
+          authenticated.response.headers.get("x-hot-updater-catalog") ===
+            "none",
+        "HTTP 404 must be the empty-catalog response marked x-hot-updater-catalog: none.",
       );
     } else {
       requireCheck(

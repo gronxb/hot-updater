@@ -17,7 +17,6 @@ const row: InsightsInstallationViewRow = {
   platform: "ios",
   receivedAtMs: Date.UTC(2026, 6, 18),
   userId: "user-1",
-  username: null,
 };
 
 describe("InstallationMatchesCard", () => {

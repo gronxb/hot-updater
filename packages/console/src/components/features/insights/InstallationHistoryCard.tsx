@@ -40,17 +40,16 @@ import { EventHistoryList } from "./EventHistoryList";
 import { InsightsErrorAlert } from "./InsightsErrorAlert";
 import { InsightsPagination } from "./InsightsPagination";
 
-const getUserLabel = (event: {
-  readonly username: string | null;
-  readonly userId: string | null;
-}) => event.userId ?? event.username ?? "—";
+const getUserLabel = (event: { readonly userId: string | null }) =>
+  event.userId ?? "—";
 
+/** A download or a failed update leaves the installation on the bundle it ran. */
 const getLastKnownBundleId = (
   event: InsightsEventRow | InsightsInstallationViewRow,
 ) =>
   "lastKnownBundleId" in event
     ? event.lastKnownBundleId
-    : event.type === "UPDATE_DOWNLOADED"
+    : event.type === "UPDATE_DOWNLOADED" || event.type === "UPDATE_FAILED"
       ? event.fromBundleId
       : event.toBundleId;
 
@@ -109,9 +108,10 @@ export function InstallationHistoryCard({
             </CardTitle>
             {selectedInstallId !== undefined ? (
               <CardDescription>
-                Bundle changes are kept for {formatDays(retention.rawDays)}; the
-                latest report, for {formatDays(retention.dailyDays)} after the
-                installation last reports.
+                Bundle changes and update failures are kept for{" "}
+                {formatDays(retention.rawDays)}; the latest report, for{" "}
+                {formatDays(retention.dailyDays)} after the installation last
+                reports.
               </CardDescription>
             ) : null}
           </div>
@@ -234,7 +234,7 @@ export function InstallationHistoryCard({
                           />
                         </TableCell>
                         <TableCell>
-                          <EventTypeDetails type={event.type} />
+                          <EventTypeDetails event={event} />
                         </TableCell>
                         <TableCell className="whitespace-normal text-xs">
                           <div className="flex flex-col gap-2">

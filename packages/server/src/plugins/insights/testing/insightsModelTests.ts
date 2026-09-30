@@ -772,5 +772,89 @@ export const registerInsightsModelTests = (
         [recovered],
       );
     });
+
+    it("lists an update failure where its target's list and installation history read it, and a failed check in no bundle list, moving no latest event", async () => {
+      const model = state.getDatabase();
+      const applied = createMovementEvent(
+        "721",
+        100,
+        "UPDATE_APPLIED",
+        "install-failing",
+      );
+      const failure = (
+        suffix: string,
+        receivedAtMs: number,
+        failed: Record<string, string | number>,
+      ): BundleEventRow => ({
+        ...applied,
+        id: createBundleEventRowFixture(suffix, 0).id,
+        type: "UPDATE_FAILED",
+        from_bundle_id: applied.to_bundle_id,
+        to_bundle_id:
+          failed.stage === "check"
+            ? applied.to_bundle_id
+            : createBundleEventRowFixture("729", 0).to_bundle_id,
+        metadata: {
+          ...applied.metadata,
+          failure: failed as { stage: "check"; reason: "http" },
+        },
+        received_at_ms: receivedAtMs,
+      });
+      const download = failure("722", 200, {
+        stage: "download",
+        reason: "http",
+        http_status: 403,
+        origin_code: "AccessDenied",
+      });
+      const check = failure("723", 300, { stage: "check", reason: "http" });
+      for (const event of [applied, download, check]) {
+        await record(model, event);
+      }
+
+      await expect(
+        model.findLatestEvents({ installId: "install-failing" }),
+      ).resolves.toEqual([applied]);
+      await expectInsightsIndex(
+        () =>
+          model.listEvents({
+            filter: {
+              kind: "installationMovement",
+              installId: "install-failing",
+            },
+            beforeReceivedAtMs: 301,
+            limit: 10,
+          }),
+        [check, download, applied],
+      );
+      await expectInsightsIndex(
+        () =>
+          model.listEvents({
+            filter: { kind: "all" },
+            beforeReceivedAtMs: 301,
+            limit: 10,
+          }),
+        [check, download, applied],
+      );
+      const scope = { platform: "ios", channel: "production" } as const;
+      for (const [toBundleId, listed] of [
+        [download.to_bundle_id, [download]],
+        // A failed check names the running bundle, which it did not target.
+        [check.to_bundle_id, []],
+      ] as const) {
+        const filter = { ...scope, type: "UPDATE_FAILED", toBundleId } as const;
+        await expectInsightsIndex(
+          () =>
+            model.listEvents({
+              filter: { kind: "bundle", ...filter },
+              beforeReceivedAtMs: 301,
+              limit: 10,
+            }),
+          listed,
+        );
+        await expect(
+          model.countEvents({ filter, sinceMs: 0, beforeReceivedAtMs: 301 }),
+        ).resolves.toBe(listed.length);
+      }
+    });
   });
 };

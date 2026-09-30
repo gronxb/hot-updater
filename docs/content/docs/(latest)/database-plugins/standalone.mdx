@@ -265,6 +265,12 @@ With the `insights()` plugin, the admin handler also serves `GET /overview`,
 and each answers `404`. These routes read the reports that apps
 send with the [Insights client plugin](/docs/react-native-api/insights).
 
+`GET /failures?platform=ios&channel=production&releaseId=<id>` answers a
+release's update failures since its first report; add `start` and `end`, in
+epoch milliseconds, for a period of at most 30 days, which a channel without
+`releaseId` needs. It answers `400` for a channel without them or for a longer
+period. See [Update failures](/docs/guides/insights#update-failures).
+
 `insights()` also serves `GET /retention`, which answers how long it keeps
 data as `{ "rawDays": 90, "dailyDays": 400 }`.
 

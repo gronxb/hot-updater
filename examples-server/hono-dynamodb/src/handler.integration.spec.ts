@@ -239,7 +239,10 @@ describe("Hot Updater Handler Integration Tests (Hono + DynamoDB)", () => {
 
     expect(unauthorized.status).toBe(401);
     expect(authorized.status).toBe(404);
-    expect(authorized.headers.get("cache-control")).toBe("private, no-store");
+    expect(authorized.headers.get("cache-control")).toBe(
+      "public, max-age=0, s-maxage=5",
+    );
+    expect(authorized.headers.get("x-hot-updater-catalog")).toBe("none");
     await expect(authorized.json()).resolves.toEqual({ error: "Not found" });
   });
 

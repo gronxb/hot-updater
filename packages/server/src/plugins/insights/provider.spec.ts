@@ -35,7 +35,6 @@ const eventRow = (
     fingerprint_hash: null,
     sdk_version: "2.0.0",
     update_strategy: "appVersion",
-    username: "Jane",
   },
 
   from_bundle_id: "bundle-before",
@@ -442,7 +441,8 @@ describe("createInsightsProvider", () => {
     fixture.countEvents
       .mockResolvedValueOnce(7)
       .mockResolvedValueOnce(5)
-      .mockResolvedValueOnce(3);
+      .mockResolvedValueOnce(3)
+      .mockResolvedValueOnce(2);
     const provider = createInsightsProvider(fixture.model);
     const scope = { platform: "ios", channel: "production" } as const;
     const result = await provider.getReportingOverview({
@@ -469,6 +469,7 @@ describe("createInsightsProvider", () => {
     expect(result.bundle?.downloadedReports.count).toBe(7);
     expect(result.bundle?.appliedReports.count).toBe(5);
     expect(result.bundle?.recoveredReports.count).toBe(3);
+    expect(result.bundle?.failedReports.count).toBe(2);
     // UNCHANGED reports are kept as no events, so no count or list names them.
     expect(result.bundle).not.toHaveProperty("unchangedReports");
     expect(
@@ -477,6 +478,7 @@ describe("createInsightsProvider", () => {
       { ...scope, type: "UPDATE_DOWNLOADED", toBundleId: "B" },
       { ...scope, type: "UPDATE_APPLIED", toBundleId: "B" },
       { ...scope, type: "RECOVERED", fromBundleId: "B" },
+      { ...scope, type: "UPDATE_FAILED", toBundleId: "B" },
     ]);
     expect(() =>
       provider.listEvents({
