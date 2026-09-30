@@ -161,8 +161,8 @@ HOT_UPDATER_AWS_PROFILE=your-profile-name
 ```
 
 If you choose the current AWS CLI/default session mode, no extra credential env
-variables are written. The generated config uses the AWS SDK default provider
-chain directly.
+variables are written. The generated definition, `hotUpdater.ts`, uses the AWS
+SDK default provider chain directly.
 
 If you choose account/access-key mode and consent to persistence, the generated
 env file also includes:
@@ -309,42 +309,60 @@ database a distinct `basePath` before using prune.
 
 ## Generated configuration and operations
 
-Init generates `hot-updater.config.ts` with your AWS configuration.
+Init writes two files: `hot-updater.config.ts`, with the deploy settings and
+`server`, and `hotUpdater.ts`, the server definition with your AWS database and
+storage and the managed Lambda@Edge function's plugins. The CLI and the Console
+read the definition; `plugins` is the managed server's list, `insights()` and
+`apiKeys()`, from `@hot-updater/aws`. Rerunning init keeps an existing `server`
+and your definition.
 
-If you choose **current AWS CLI/default session**, the generated config uses the
-AWS SDK default provider chain instead of embedding access keys:
+If you choose **current AWS CLI/default session**, the definition uses the AWS
+SDK default provider chain instead of embedding access keys:
 
 ```ts title="hot-updater.config.ts"
-import { existsSync } from "node:fs";
 import { bare } from "@hot-updater/bare";
-import { fromNodeProviderChain } from "@aws-sdk/credential-providers";
-import { dynamoDB, s3Storage } from "@hot-updater/aws";
 import { defineConfig } from "hot-updater";
+import { existsSync } from "node:fs";
 
 if (existsSync(".env.hotupdater")) {
   process.loadEnvFile(".env.hotupdater");
 }
+
+export default defineConfig({
+  build: bare({ enableHermes: true }),
+  server: "./hotUpdater.ts",
+  updateStrategy: "appVersion", // or "fingerprint"
+});
+```
+
+```ts title="hotUpdater.ts"
+import { fromNodeProviderChain } from "@aws-sdk/credential-providers";
+import { dynamoDB, plugins, s3Storage } from "@hot-updater/aws";
+import { createHotUpdater } from "@hot-updater/server";
 
 const awsOptions = {
   region: process.env.HOT_UPDATER_S3_REGION!,
   credentials: fromNodeProviderChain(),
 };
 
-const storageOptions = {
-  ...awsOptions,
-  bucketName: process.env.HOT_UPDATER_S3_BUCKET_NAME!,
-};
-
-export default defineConfig({
-  build: bare({ enableHermes: true }),
-  updateStrategy: "appVersion",
-  storage: s3Storage(storageOptions),
+/**
+ * The Hot Updater server: its database, storage, and plugins.
+ * hot-updater.config.ts points the CLI and the console here.
+ */
+export const hotUpdater = createHotUpdater({
   database: dynamoDB({
     ...awsOptions,
     tableName: process.env.HOT_UPDATER_DYNAMODB_TABLE_NAME!,
-    // prettier-ignore
-    cloudfrontDistributionId: process.env.HOT_UPDATER_CLOUDFRONT_DISTRIBUTION_ID!,
+    cloudfrontDistributionId:
+      process.env.HOT_UPDATER_CLOUDFRONT_DISTRIBUTION_ID!,
   }),
+  storage: [
+    s3Storage({
+      ...awsOptions,
+      bucketName: process.env.HOT_UPDATER_S3_BUCKET_NAME!,
+    }),
+  ],
+  plugins,
 });
 ```
 

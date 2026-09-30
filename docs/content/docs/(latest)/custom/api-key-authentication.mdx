@@ -129,14 +129,15 @@ npx hot-updater api-key revoke <api-key-id> src/hotUpdater.ts
 `list` accepts `--json`, and `revoke` asks for confirmation unless you pass
 `-y`.
 
-The config path is optional: without it, the CLI looks for `apiKeys()` in
-`hotUpdater.plugins.ts`, over the database in `hot-updater.config.ts`, and then
-in `src/hotUpdater.ts` or `src/db.ts`. The commands need a direct database; a
-`standaloneRepository` configuration reaches only the server's admin API,
-which has no API key management routes, so pass the server's config instead.
+The path is optional: without it, the CLI looks for `apiKeys()` in the server
+definition that `server` in `hot-updater.config.ts` points at, and then in
+`src/hotUpdater.ts` or `src/db.ts`. The commands need the definition; with
+`server: standaloneRepository(...)`, the CLI reaches only the server's admin
+API, which has no API key management routes, so name the definition's path
+instead.
 
-The Console manages keys through the same plugin when its configuration lists
-`apiKeys()` in `plugins` over a direct database.
+The Console manages keys through the same plugin when its `server` is a server
+definition that runs `apiKeys()`.
 
 The plugin's API is also available in process:
 
@@ -158,8 +159,8 @@ AWS, Cloudflare, Firebase, and Supabase run `apiKeys()` in their managed
 servers and export that plugin list as `plugins`. Their init registers an
 existing `HOT_UPDATER_API_KEY` or creates one through it, then stores the
 plaintext only in the local environment file. Afterwards, `hot-updater api-key`
-in the app directory manages the same keys through the plugin list that init
-writes to `hotUpdater.plugins.ts`.
+in the app directory manages the same keys through the server definition that
+init writes to `hotUpdater.ts`.
 
 ## Rotate an API key
 

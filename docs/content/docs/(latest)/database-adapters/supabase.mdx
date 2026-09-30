@@ -85,24 +85,24 @@ interface SupabaseDatabaseConfig {
 
 ## Usage
 
-These CLI examples load the `HOT_UPDATER_SUPABASE_*` variables written to
-`.env.hotupdater` by managed setup. Keep that file's existing values.
+These examples read the `HOT_UPDATER_SUPABASE_*` variables that managed setup
+writes to `.env.hotupdater`, which `hot-updater.config.ts` loads before the CLI
+imports the server definition. Keep that file's existing values.
 
-```typescript title="hot-updater.config.ts"
-import { existsSync } from "node:fs";
+Set the adapter as `database` in your
+[server definition](/docs/custom/quick-start#define-the-server), which `server`
+in `hot-updater.config.ts` points at:
+
+```typescript title="hotUpdater.ts (excerpt)"
+import { createHotUpdater } from "@hot-updater/server";
 import { supabaseDatabase } from "@hot-updater/supabase"; // [!code ++]
-import { defineConfig } from "hot-updater";
 
-if (existsSync(".env.hotupdater")) {
-  process.loadEnvFile(".env.hotupdater");
-}
-
-export default defineConfig({
+export const hotUpdater = createHotUpdater({
   database: supabaseDatabase({ // [!code ++]
     supabaseUrl: process.env.HOT_UPDATER_SUPABASE_URL!, // [!code ++]
     supabaseServiceRoleKey: process.env.HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY!, // [!code ++]
   }), // [!code ++]
-  // ... other config
+  // ... storage and plugins
 });
 ```
 
@@ -134,27 +134,34 @@ the `x-api-key` header. The managed Edge Function runs the same list, which
 
 ## Complete example
 
-Combined storage and database:
+The server definition `hot-updater init` writes for managed Supabase, with
+Storage and the Postgres database; `plugins` is the managed server's list:
 
-```typescript
-import { existsSync } from "node:fs";
-import { supabaseStorage, supabaseDatabase } from "@hot-updater/supabase";
-import { defineConfig } from "hot-updater";
+```typescript title="hotUpdater.ts"
+import { createHotUpdater } from "@hot-updater/server";
+import {
+  plugins,
+  supabaseDatabase,
+  supabaseStorage,
+} from "@hot-updater/supabase";
 
-if (existsSync(".env.hotupdater")) {
-  process.loadEnvFile(".env.hotupdater");
-}
-
-export default defineConfig({
-  storage: supabaseStorage({
-    supabaseUrl: process.env.HOT_UPDATER_SUPABASE_URL!,
-    supabaseServiceRoleKey: process.env.HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY!,
-    bucketName: process.env.HOT_UPDATER_SUPABASE_BUCKET_NAME!,
-  }),
+/**
+ * The Hot Updater server: its database, storage, and plugins.
+ * hot-updater.config.ts points the CLI and the console here.
+ */
+export const hotUpdater = createHotUpdater({
   database: supabaseDatabase({
     supabaseUrl: process.env.HOT_UPDATER_SUPABASE_URL!,
     supabaseServiceRoleKey: process.env.HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY!,
   }),
-  // ... other config
+  storage: [
+    supabaseStorage({
+      supabaseUrl: process.env.HOT_UPDATER_SUPABASE_URL!,
+      supabaseServiceRoleKey:
+        process.env.HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY!,
+      bucketName: process.env.HOT_UPDATER_SUPABASE_BUCKET_NAME!,
+    }),
+  ],
+  plugins,
 });
 ```

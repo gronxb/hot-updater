@@ -171,49 +171,60 @@ for CloudFront propagation; it waits up to five minutes.
 
 ## Usage
 
-```typescript title="hot-updater.config.ts"
-import { dynamoDB } from "@hot-updater/aws"; // [!code ++]
-import { defineConfig } from "hot-updater";
+Set the adapter as `database` in your
+[server definition](/docs/custom/quick-start#define-the-server), which `server`
+in `hot-updater.config.ts` points at:
 
-export default defineConfig({
+```typescript title="hotUpdater.ts (excerpt)"
+import { dynamoDB } from "@hot-updater/aws"; // [!code ++]
+import { createHotUpdater } from "@hot-updater/server";
+
+export const hotUpdater = createHotUpdater({
   database: dynamoDB({ // [!code ++]
     tableName: "hot-updater", // [!code ++]
     region: "us-east-1", // [!code ++]
     credentials: { // [!code ++]
-      accessKeyId: process.env.AWS_ACCESS_KEY_ID, // [!code ++]
-      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY, // [!code ++]
+      accessKeyId: process.env.AWS_ACCESS_KEY_ID!, // [!code ++]
+      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!, // [!code ++]
     }, // [!code ++]
   }), // [!code ++]
+  // ... storage and plugins
 });
 ```
 
 ## Complete example
 
-This example combines storage and database with your existing build adapter:
+This is the server definition `hot-updater init` writes for managed AWS with the
+current AWS CLI session; `plugins` is the managed server's list:
 
-```typescript
-import { dynamoDB, s3Storage } from "@hot-updater/aws";
-import { defineConfig } from "hot-updater";
-import { build } from "./build";
+```typescript title="hotUpdater.ts"
+import { fromNodeProviderChain } from "@aws-sdk/credential-providers";
+import { dynamoDB, plugins, s3Storage } from "@hot-updater/aws";
+import { createHotUpdater } from "@hot-updater/server";
 
-const credentials = {
-  accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-  secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+const awsOptions = {
+  region: process.env.HOT_UPDATER_S3_REGION!,
+  credentials: fromNodeProviderChain(),
 };
 
-export default defineConfig({
-  build,
-  updateStrategy: "appVersion",
-  storage: s3Storage({
-    region: "us-east-1",
-    credentials,
-    bucketName: "my-bundles-bucket",
-  }),
+/**
+ * The Hot Updater server: its database, storage, and plugins.
+ * hot-updater.config.ts points the CLI and the console here.
+ */
+export const hotUpdater = createHotUpdater({
   database: dynamoDB({
-    tableName: "hot-updater",
-    region: "us-east-1",
-    credentials,
+    ...awsOptions,
+    tableName: process.env.HOT_UPDATER_DYNAMODB_TABLE_NAME!,
+    cloudfrontDistributionId:
+      process.env.HOT_UPDATER_CLOUDFRONT_DISTRIBUTION_ID!,
   }),
+  storage: [
+    s3Storage({
+      ...awsOptions,
+      bucketName: process.env.HOT_UPDATER_S3_BUCKET_NAME!,
+    }),
+  ],
+  plugins,
 });
 ```
 

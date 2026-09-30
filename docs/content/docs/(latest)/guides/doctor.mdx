@@ -13,6 +13,7 @@ work:
 
 - All Hot Updater packages use compatible versions
 - React Native native files are connected to Hot Updater
+- The app adds the client plugins that the server's plugins need
 - Your deployed infrastructure server is not outdated
 
 Run it during setup, after upgrading Hot Updater, or when OTA updates behave
@@ -128,6 +129,23 @@ For fingerprint projects, fix missing or stale native fingerprint settings with:
 npx hot-updater fingerprint create
 ```
 
+## Check client plugins
+
+A server plugin can name the client plugin an app adds for it, as `insights()`
+names the [Insights client plugin](/docs/react-native-api/insights). `doctor`
+reads the server's plugins, from the server definition that `server` in
+`hot-updater.config.ts` points at, or from the admin `/version` when `server` is
+`standaloneRepository`. It then warns `MISSING_CLIENT_PLUGIN` for each client
+plugin that no source file in the project imports:
+
+```text
+The server runs a plugin whose client plugin insights the app does not add.
+```
+
+Import it from the module the warning names and pass it to
+`HotUpdater.init({ plugins })`. When `doctor` cannot read the server's plugins,
+it warns `CLIENT_PLUGINS_UNCHECKED` with the reason.
+
 ## AI Agent Iteration
 
 `doctor --json` returns structured issues that an agent can use without parsing
@@ -215,7 +233,7 @@ result alone does not.
 
 Use Catalog preflight when the deployed server is reachable but its compiled
 delivery policy needs inspection. Run it from the workspace containing your
-`hot-updater.config.ts`; it uses that configuration's database connection.
+`hot-updater.config.ts`; it uses the server that `server` points at.
 
 ```bash
 npx hot-updater db catalog preflight --json

@@ -60,26 +60,28 @@ FIREBASE_STORAGE_BUCKET=your-bucket-name
 
 ## Usage
 
-```typescript title="hot-updater.config.ts"
-import { existsSync } from "node:fs";
-import { firebaseStorage } from "@hot-updater/firebase"; // [!code ++]
-import { applicationDefault } from "firebase-admin/app";
-import { defineConfig } from "hot-updater";
+Add the adapter to `storage` in your
+[server definition](/docs/custom/quick-start#define-the-server), which `server`
+in `hot-updater.config.ts` points at. The CLI uploads to the first adapter, and
+the server resolves downloads with it:
 
-if (existsSync(".env.hotupdater")) {
-  process.loadEnvFile(".env.hotupdater");
-}
+```typescript title="hotUpdater.ts (excerpt)"
+import { firebaseStorage } from "@hot-updater/firebase"; // [!code ++]
+import { createHotUpdater } from "@hot-updater/server";
+import { applicationDefault } from "firebase-admin/app";
 
 // Reuse the environment's application-default credentials.
 const credential = applicationDefault();
 
-export default defineConfig({
-  storage: firebaseStorage({ // [!code ++]
-    projectId: process.env.FIREBASE_PROJECT_ID, // [!code ++]
-    storageBucket: process.env.FIREBASE_STORAGE_BUCKET!, // [!code ++]
-    credential, // [!code ++]
-  }), // [!code ++]
-  // ... other config
+export const hotUpdater = createHotUpdater({
+  // ... database and plugins
+  storage: [ // [!code ++]
+    firebaseStorage({ // [!code ++]
+      projectId: process.env.FIREBASE_PROJECT_ID!, // [!code ++]
+      storageBucket: process.env.FIREBASE_STORAGE_BUCKET!, // [!code ++]
+      credential, // [!code ++]
+    }), // [!code ++]
+  ], // [!code ++]
 });
 ```
 

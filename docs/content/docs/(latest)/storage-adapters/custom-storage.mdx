@@ -203,25 +203,11 @@ key in the server's environment, and use the same key on every server instance.
 
 ## Register the adapter
 
-The CLI takes one storage adapter as `storage`. This excerpt shows only that
-field of a complete `hot-updater.config.ts`:
-
-```ts title="hot-updater.config.ts (storage excerpt)"
-import { createBucketClient } from "./src/bucketClient";
-import { myStorage } from "./src/myStorage";
-
-const storage = myStorage({
-  client: createBucketClient(process.env.BUCKET_TOKEN!),
-  bucket: "bundles",
-  basePath: "ota",
-});
-```
-
-Assign this value to `storage` next to the configuration's `build`,
-`database`, and `updateStrategy`.
-
-The server takes a list, so it can read Bundles that different adapters stored.
-Configure the same bucket and base path as the CLI:
+Add the adapter to `storage` in the
+[server definition](/docs/custom/quick-start#define-the-server). The server,
+the CLI, and the Console read that one list: the CLI uploads to the first
+adapter, and the server answers each stored URI with the adapter of its
+protocol, so it can read Bundles that different adapters stored.
 
 ```ts title="src/hotUpdater.ts (excerpt)"
 export const hotUpdater = createHotUpdater({
@@ -238,8 +224,15 @@ export const hotUpdater = createHotUpdater({
 });
 ```
 
-`createHotUpdater` rejects an adapter without `get` or `getDownloadUrl`, and two
-adapters with one protocol. To answer a URI, Hot Updater:
+When `hot-updater.config.ts` reaches a self-hosted server with
+`server: standaloneRepository(...)`, list the same adapter, with the same
+bucket and base path, in its `storage`; see
+[CLI Configuration](/docs/custom/cli-configuration#reach-a-self-hosted-server).
+
+`createHotUpdater` refuses two adapters with one protocol. Its handlers need
+`get` and `getDownloadUrl` from the adapter that owns a URI and check them when
+they first use it, so an upload-only adapter serves the CLI and the Console but
+not the app. To answer a URI, Hot Updater:
 
 1. uses the registered adapter whose `protocol` matches the URI's scheme;
 2. uses an `http` or `https` URI directly when no adapter owns its scheme;

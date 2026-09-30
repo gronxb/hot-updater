@@ -283,19 +283,8 @@ database also carries the migration that `hot-updater db migrate` runs.
 | `onCachedRoutesChange` | A CDN purge for the cacheable client routes. Core calls it after a committed write that changes a Release Catalog, so the adapter never names a table. `dynamoDB` invalidates CloudFront here. |
 | `aggregateBatching`    | For a backend that bills each write: apply the changes of aggregates declared `batched` after their transaction commits, merged into one write per row. `{ mode?: "log" \| "memory", windowMs? }`; absent or `false` writes them in each transaction. `dynamoDB` and `firebaseDatabase` pass `{}`, the log mode. |
 
-Pass the database to the CLI and the server. Partial configuration:
-
-```ts title="hot-updater.config.ts"
-import { defineConfig } from "hot-updater";
-
-import { myDatabase } from "./myDatabase";
-
-export default defineConfig({
-  // build: ...,
-  // storage: ...,
-  database: myDatabase({ connectionString: process.env.DATABASE_URL }),
-});
-```
+Set it as `database` in the server definition, the one module the server, the
+CLI, and the Console read:
 
 ```ts title="server.ts"
 import { createHotUpdater } from "@hot-updater/server";
@@ -308,6 +297,18 @@ export const hotUpdater = createHotUpdater({
   database: myDatabase({ connectionString: process.env.DATABASE_URL }),
   // storage: [...],
   plugins: [insights(), apiKeys()],
+});
+```
+
+Point `hot-updater.config.ts` at it:
+
+```ts title="hot-updater.config.ts"
+import { defineConfig } from "hot-updater";
+
+export default defineConfig({
+  // build: ...,
+  // updateStrategy: ...,
+  server: "./server.ts",
 });
 ```
 

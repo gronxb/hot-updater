@@ -8,18 +8,18 @@ icon: PackageCheck
 
 An adapter or a plugin is an npm package that exports a factory, such as
 `myStorage(options)`, which returns the object. Hot Updater has no registry or
-allowlist: a project installs the package and passes the object to
-`hot-updater.config.ts`, `createHotUpdater`, or `HotUpdater.init`, as it does
-with the official ones.
+allowlist: a project installs the package and passes the object to the server
+definition's `createHotUpdater`, to `hot-updater.config.ts`, or to
+`HotUpdater.init`, as it does with the official ones.
 
-| Package                                                     | Its users pass it to                                                              |
-| ----------------------------------------------------------- | --------------------------------------------------------------------------------- |
-| [Storage adapter](/docs/storage-adapters/custom-storage)    | `storage` in `hot-updater.config.ts`, and the server's `storage` list             |
-| [Database adapter](/docs/database-adapters/custom-database) | `database` in `hot-updater.config.ts`, `createHotUpdater`, and a deployed Console |
-| Build adapter                                               | `build` in `hot-updater.config.ts`                                                |
-| Signing adapter                                             | `signing` in `hot-updater.config.ts`                                              |
-| [Server plugin](/docs/custom/server-plugins)                | `plugins` in `createHotUpdater`, where the CLI also finds its tables and commands |
-| [Client plugin](/docs/react-native-api/client-plugins)      | `plugins` in `HotUpdater.init` or `HotUpdater.wrap`, in the app                   |
+| Package                                                     | Its users pass it to                                                                 |
+| ----------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| [Storage adapter](/docs/storage-adapters/custom-storage)    | `storage` in the server definition, or in `standaloneRepository`                     |
+| [Database adapter](/docs/database-adapters/custom-database) | `database` in the server definition, which the CLI and the Console read too          |
+| Build adapter                                               | `build` in `hot-updater.config.ts`                                                   |
+| Signing adapter                                             | `signing` in `hot-updater.config.ts`                                                 |
+| [Server plugin](/docs/custom/server-plugins)                | `plugins` in the server definition, where the CLI also finds its tables and commands |
+| [Client plugin](/docs/react-native-api/client-plugins)      | `plugins` in `HotUpdater.init` or `HotUpdater.wrap`, in the app                      |
 
 Storage and database adapters and server plugins run on a
 [custom server](/docs/custom/overview). The managed Cloudflare, Supabase, AWS,

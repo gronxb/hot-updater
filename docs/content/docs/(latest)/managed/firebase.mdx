@@ -114,8 +114,8 @@ The project, region, and canonical bucket are persisted for deterministic reruns
 When no credential-file path is supplied, init can write the active placeholder
 `GOOGLE_APPLICATION_CREDENTIALS=your-credentials.json`. If you use existing
 application-default credentials (ADC), remove or comment out that line before
-running deploy or any command that loads `hot-updater.config.ts`; otherwise the
-Admin SDK tries to load the nonexistent file. Keep a credential-file assignment
+running deploy or any command that loads the server definition, `hotUpdater.ts`;
+otherwise the Admin SDK tries to load the nonexistent file. Keep a credential-file assignment
 only when it points to your intended private local file.
 
 ```
@@ -180,7 +180,12 @@ credentials stay in the deploy environment.
 
 ## Generated configuration and operations
 
-Init generates `hot-updater.config.ts` with your Firebase configuration.
+Init writes two files: `hot-updater.config.ts`, with the deploy settings and
+`server`, and `hotUpdater.ts`, the server definition with your Firebase database
+and storage and the managed Function's plugins. The CLI and the Console read the
+definition; `plugins` is the managed server's list, `insights()` and
+`apiKeys()`, from `@hot-updater/firebase`. Rerunning init keeps an existing
+`server` and your definition.
 
 `.env.hotupdater` contains provider settings and an optional credential-file path.
 Reuse working application-default credentials first. Set `GOOGLE_APPLICATION_CREDENTIALS`
@@ -199,15 +204,29 @@ HOT_UPDATER_API_KEY=your-api-key
 ```
 
 ```ts title="hot-updater.config.ts"
-import { existsSync } from "node:fs";
 import { bare } from "@hot-updater/bare";
-import { firebaseStorage, firebaseDatabase } from "@hot-updater/firebase";
-import { applicationDefault } from "firebase-admin/app";
 import { defineConfig } from "hot-updater";
+import { existsSync } from "node:fs";
 
 if (existsSync(".env.hotupdater")) {
   process.loadEnvFile(".env.hotupdater");
 }
+
+export default defineConfig({
+  build: bare({ enableHermes: true }),
+  server: "./hotUpdater.ts",
+  updateStrategy: "appVersion", // or "fingerprint"
+});
+```
+
+```ts title="hotUpdater.ts"
+import {
+  firebaseDatabase,
+  firebaseStorage,
+  plugins,
+} from "@hot-updater/firebase";
+import { createHotUpdater } from "@hot-updater/server";
+import { applicationDefault } from "firebase-admin/app";
 
 // https://firebase.google.com/docs/admin/setup?hl=en#initialize_the_sdk_in_non-google_environments
 // Reuse working application-default credentials (ADC).
@@ -215,20 +234,23 @@ if (existsSync(".env.hotupdater")) {
 // GOOGLE_APPLICATION_CREDENTIALS=./firebase-adminsdk-credentials.json
 const credential = applicationDefault();
 
-export default defineConfig({
-  build: bare({
-    enableHermes: true,
-  }),
-  updateStrategy: "appVersion",
-  storage: firebaseStorage({
-    projectId: process.env.HOT_UPDATER_FIREBASE_PROJECT_ID!,
-    storageBucket: process.env.HOT_UPDATER_FIREBASE_STORAGE_BUCKET!,
-    credential,
-  }),
+/**
+ * The Hot Updater server: its database, storage, and plugins.
+ * hot-updater.config.ts points the CLI and the console here.
+ */
+export const hotUpdater = createHotUpdater({
   database: firebaseDatabase({
     projectId: process.env.HOT_UPDATER_FIREBASE_PROJECT_ID!,
     credential,
   }),
+  storage: [
+    firebaseStorage({
+      projectId: process.env.HOT_UPDATER_FIREBASE_PROJECT_ID!,
+      storageBucket: process.env.HOT_UPDATER_FIREBASE_STORAGE_BUCKET!,
+      credential,
+    }),
+  ],
+  plugins,
 });
 ```
 

@@ -87,29 +87,25 @@ interface D1DatabaseConfig {
 
 ## Usage
 
-These CLI examples load the `HOT_UPDATER_CLOUDFLARE_*` variables written to
-`.env.hotupdater` by managed setup. Keep that file's existing values.
+These examples read the `HOT_UPDATER_CLOUDFLARE_*` variables that managed setup
+writes to `.env.hotupdater`, which `hot-updater.config.ts` loads before the CLI
+imports the server definition. Keep that file's existing values.
 
-```typescript title="hot-updater.config.ts"
-import { existsSync } from "node:fs";
+Set the adapter as `database` in your
+[server definition](/docs/custom/quick-start#define-the-server), which `server`
+in `hot-updater.config.ts` points at:
+
+```typescript title="hotUpdater.ts (excerpt)"
 import { d1Database } from "@hot-updater/cloudflare"; // [!code ++]
-import { defineConfig } from "hot-updater";
-import { build } from "./build";
-import { storage } from "./storage";
+import { createHotUpdater } from "@hot-updater/server";
 
-if (existsSync(".env.hotupdater")) {
-  process.loadEnvFile(".env.hotupdater");
-}
-
-export default defineConfig({
-  build,
+export const hotUpdater = createHotUpdater({
   database: d1Database({ // [!code ++]
     databaseId: process.env.HOT_UPDATER_CLOUDFLARE_D1_DATABASE_ID!, // [!code ++]
     accountId: process.env.HOT_UPDATER_CLOUDFLARE_ACCOUNT_ID!, // [!code ++]
     cloudflareApiToken: process.env.HOT_UPDATER_CLOUDFLARE_API_TOKEN!, // [!code ++]
   }), // [!code ++]
-  storage,
-  updateStrategy: "appVersion",
+  // ... storage and plugins
 });
 ```
 
@@ -144,34 +140,35 @@ within D1's query limit for one invocation.
 
 ## Complete example
 
-Combined R2 storage and D1 database. `r2Storage` records the `r2://` locations
-that the managed Worker resolves:
+The server definition `hot-updater init` writes for managed Cloudflare, with R2
+storage and the D1 database. `r2Storage` records the `r2://` locations that the
+managed Worker resolves, and `plugins` is the managed server's list:
 
-```typescript
-import { existsSync } from "node:fs";
-import { d1Database, r2Storage } from "@hot-updater/cloudflare";
-import { defineConfig } from "hot-updater";
-import { build } from "./build";
+```typescript title="hotUpdater.ts"
+import { d1Database, plugins, r2Storage } from "@hot-updater/cloudflare";
+import { createHotUpdater } from "@hot-updater/server";
 
-if (existsSync(".env.hotupdater")) {
-  process.loadEnvFile(".env.hotupdater");
-}
-
-export default defineConfig({
-  build,
-  storage: r2Storage({
-    accountId: process.env.HOT_UPDATER_CLOUDFLARE_ACCOUNT_ID!,
-    credentials: {
-      accessKeyId: process.env.HOT_UPDATER_CLOUDFLARE_R2_ACCESS_KEY_ID!,
-      secretAccessKey: process.env.HOT_UPDATER_CLOUDFLARE_R2_SECRET_ACCESS_KEY!,
-    },
-    bucketName: process.env.HOT_UPDATER_CLOUDFLARE_R2_BUCKET_NAME!,
-  }),
+/**
+ * The Hot Updater server: its database, storage, and plugins.
+ * hot-updater.config.ts points the CLI and the console here.
+ */
+export const hotUpdater = createHotUpdater({
   database: d1Database({
     databaseId: process.env.HOT_UPDATER_CLOUDFLARE_D1_DATABASE_ID!,
     accountId: process.env.HOT_UPDATER_CLOUDFLARE_ACCOUNT_ID!,
     cloudflareApiToken: process.env.HOT_UPDATER_CLOUDFLARE_API_TOKEN!,
   }),
-  updateStrategy: "appVersion",
+  storage: [
+    r2Storage({
+      bucketName: process.env.HOT_UPDATER_CLOUDFLARE_R2_BUCKET_NAME!,
+      accountId: process.env.HOT_UPDATER_CLOUDFLARE_ACCOUNT_ID!,
+      credentials: {
+        accessKeyId: process.env.HOT_UPDATER_CLOUDFLARE_R2_ACCESS_KEY_ID!,
+        secretAccessKey:
+          process.env.HOT_UPDATER_CLOUDFLARE_R2_SECRET_ACCESS_KEY!,
+      },
+    }),
+  ],
+  plugins,
 });
 ```

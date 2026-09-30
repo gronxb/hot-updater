@@ -172,13 +172,17 @@ credentials stay in the deploy environment.
 
 ## Generated configuration and operations
 
-Init generates `hot-updater.config.ts` with your Supabase configuration.
+Init writes two files: `hot-updater.config.ts`, with the deploy settings and
+`server`, and `hotUpdater.ts`, the server definition with your Supabase database
+and storage and the managed Edge Function's plugins. The CLI and the Console
+read the definition; `plugins` is the managed server's list, `insights()` and
+`apiKeys()`, from `@hot-updater/supabase`. Rerunning init keeps an existing
+`server` and your definition.
 
 ```ts title="hot-updater.config.ts"
-import { existsSync } from "node:fs";
 import { bare } from "@hot-updater/bare";
-import { supabaseDatabase, supabaseStorage } from "@hot-updater/supabase";
 import { defineConfig } from "hot-updater";
+import { existsSync } from "node:fs";
 
 if (existsSync(".env.hotupdater")) {
   process.loadEnvFile(".env.hotupdater");
@@ -186,16 +190,37 @@ if (existsSync(".env.hotupdater")) {
 
 export default defineConfig({
   build: bare({ enableHermes: true }),
-  updateStrategy: "appVersion",
-  storage: supabaseStorage({
-    supabaseUrl: process.env.HOT_UPDATER_SUPABASE_URL!,
-    supabaseServiceRoleKey: process.env.HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY!,
-    bucketName: process.env.HOT_UPDATER_SUPABASE_BUCKET_NAME!,
-  }),
+  server: "./hotUpdater.ts",
+  updateStrategy: "appVersion", // or "fingerprint"
+});
+```
+
+```ts title="hotUpdater.ts"
+import { createHotUpdater } from "@hot-updater/server";
+import {
+  plugins,
+  supabaseDatabase,
+  supabaseStorage,
+} from "@hot-updater/supabase";
+
+/**
+ * The Hot Updater server: its database, storage, and plugins.
+ * hot-updater.config.ts points the CLI and the console here.
+ */
+export const hotUpdater = createHotUpdater({
   database: supabaseDatabase({
     supabaseUrl: process.env.HOT_UPDATER_SUPABASE_URL!,
     supabaseServiceRoleKey: process.env.HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY!,
   }),
+  storage: [
+    supabaseStorage({
+      supabaseUrl: process.env.HOT_UPDATER_SUPABASE_URL!,
+      supabaseServiceRoleKey:
+        process.env.HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY!,
+      bucketName: process.env.HOT_UPDATER_SUPABASE_BUCKET_NAME!,
+    }),
+  ],
+  plugins,
 });
 ```
 

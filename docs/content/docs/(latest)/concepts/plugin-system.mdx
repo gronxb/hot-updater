@@ -9,10 +9,10 @@ icon: Puzzle
 Hot Updater talks to bundlers, cloud services, and databases through two kinds
 of objects:
 
-- An **adapter** fills one slot of a configuration: the `build`, `storage`,
-  `database`, or `signing` of `hot-updater.config.ts`, and the `database` and
-  `storage` of the server's `createHotUpdater`. A configuration has one adapter
-  per slot.
+- An **adapter** fills one slot of a configuration: the `database` and
+  `storage` of the server's `createHotUpdater`, or the `build` and `signing` of
+  `hot-updater.config.ts`. A configuration has one adapter per slot; `storage`
+  takes a list so the server can read Bundles that different adapters stored.
 - A **plugin** is one entry of a list: the `plugins` of `createHotUpdater` or of
   the app's `HotUpdater.init`, or an integration that wraps a build adapter. A
   configuration can have any number.
@@ -21,6 +21,19 @@ Both are plain objects that a factory function returns, such as
 `s3Storage(options)` or `insights()`. Official adapters and plugins use the
 same contracts as the ones you write, and there is no registry: install the
 package and pass the object in.
+
+Adapters and plugins are configured in two places:
+
+- The **server definition**, a module that exports
+  `hotUpdater = createHotUpdater({ database, storage, plugins })`. The server,
+  the CLI, the Console, and managed init all read it; `hot-updater.config.ts`
+  holds the deploy settings and points at it with
+  [`server`](/docs/custom/cli-configuration).
+- The app's **`HotUpdater.init({ plugins })`**, for client plugins.
+
+No adapter or plugin is listed twice. A CLI or Console that reaches a
+self-hosted server through `standaloneRepository` reads the server's plugins
+from its admin API.
 
 | Kind                                   | What it does                                                                        | Runs in                        | Official                                                                            | Write one                                                           |
 | -------------------------------------- | ----------------------------------------------------------------------------------- | ------------------------------ | ----------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
@@ -125,8 +138,9 @@ reads index ranges on its backend.
 - `@hot-updater/aws`: Provides `dynamoDB` for metadata.
 - `@hot-updater/cloudflare`: Stores metadata in Cloudflare D1 with `d1Database`.
 - `@hot-updater/firebase`: Stores update metadata in Firebase Firestore with `firebaseDatabase`.
-- `@hot-updater/standalone`: Reaches a self-hosted server's database through
-  its admin API with `standaloneRepository`.
+- `@hot-updater/standalone`: `standaloneRepository` reaches a self-hosted
+  server's database through its admin API, as the `server` of
+  `hot-updater.config.ts` or of the Console's configuration.
 - [Kysely](/docs/custom/database/kysely), [Drizzle](/docs/custom/database/drizzle),
   [Prisma](/docs/custom/database/prisma), and
   [MongoDB](/docs/custom/database/mongodb) connect an existing database to a

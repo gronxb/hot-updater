@@ -63,9 +63,12 @@ export const db = new Kysely<object>({
 });
 ```
 
-## Hot Updater configuration
+## Define the server
 
-Create the Hot Updater instance with your database adapter, storage adapter (see [Storage adapters](/docs/custom/overview#storage-adapters)), and server plugins.
+The server definition is the module that exports `hotUpdater`, the server
+`createHotUpdater` returns with its database adapter, storage adapters (see
+[Storage adapters](/docs/custom/overview#storage-adapters)), and server
+plugins. The server, the CLI, and the Console all read this one module.
 
 ```typescript title="src/hotUpdater.ts"
 import { existsSync } from "node:fs";
@@ -215,9 +218,11 @@ The server runs at `http://localhost:3000/hot-updater`.
 
 Configure your Hot Updater CLI to connect to this self-hosted server.
 
-Create this configuration in the React Native project. Its `.env.hotupdater`
-must contain the same `R2_*` storage values and `HOT_UPDATER_ADMIN_TOKEN` as the
-server, and must also be excluded from Git.
+Create this configuration in the React Native project. Its `server` reaches
+the server through its admin handler, with the same storage as the server's
+definition. Its `.env.hotupdater` must contain the same `R2_*` storage values
+and `HOT_UPDATER_ADMIN_TOKEN` as the server, and must also be excluded from
+Git.
 
 ```typescript title="hot-updater.config.ts"
 import { existsSync } from "node:fs";
@@ -237,29 +242,35 @@ if (!adminToken) {
 
 export default defineConfig({
   build: bare({ enableHermes: true }),
-  storage: s3Storage({
-    region: "auto",
-    endpoint: process.env.R2_ENDPOINT,
-    credentials: {
-      accessKeyId: process.env.R2_ACCESS_KEY_ID!,
-      secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
-    },
-    bucketName: process.env.R2_BUCKET_NAME!,
-  }),
-  database: standaloneRepository({
+  updateStrategy: "appVersion",
+  server: standaloneRepository({
     baseUrl: "http://localhost:3000/hot-updater/admin",
     commonHeaders: {
       Authorization: `Bearer ${adminToken}`,
     },
+    storage: [
+      s3Storage({
+        region: "auto",
+        endpoint: process.env.R2_ENDPOINT,
+        credentials: {
+          accessKeyId: process.env.R2_ACCESS_KEY_ID!,
+          secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
+        },
+        bucketName: process.env.R2_BUCKET_NAME!,
+      }),
+    ],
   }),
-  updateStrategy: "appVersion",
 });
 ```
 
 <Callout type="warn">
-  The CLI `storage` plugin must match one entry in the server's
-  `createHotUpdater({storage})` array. Both use `s3Storage` here.
+  `storage` must match the server's `createHotUpdater({ storage })`: both use
+  `s3Storage` on the same bucket here. The CLI uploads to the first adapter.
 </Callout>
+
+If the React Native project can import the server's module, such as in a
+monorepo, set `server: "./src/hotUpdater.ts"` instead; see
+[CLI Configuration](/docs/custom/cli-configuration).
 
 ## React Native setup
 

@@ -220,12 +220,12 @@ does not prove that the update failed.
 Use [the local or deployed Console](/docs/guides/console). Where it reads
 Insights depends on its database configuration:
 
-- With a direct database, it runs `insights()` over that database, as the
-  server does. `hot-updater console` loads the plugins that the project's
-  `hotUpdater.plugins.ts` exports as `plugins`; `hot-updater init` writes that
-  file for managed providers. A deployed Console takes `plugins` in its
-  [configuration](/docs/guides/console-deployment#add-your-plugins). Without
-  `insights()` there, the console hides Insights.
+- With a server definition, it runs `insights()` over the definition's
+  database, as the server does. `hot-updater console` loads the definition that
+  `server` in `hot-updater.config.ts` points at, and a deployed Console takes it
+  as `server` in its
+  [configuration](/docs/guides/console-deployment#point-at-your-server).
+  Without `insights()` in the definition's plugins, the console hides Insights.
 - With `standaloneRepository`, it reads Insights events, installations, and
   update failures from the server's admin handler, and hides Insights when the
   server's admin `/version` does not list `insights()`. App usage, Release
@@ -381,8 +381,7 @@ milliseconds, for a period of at most 30 days, which a channel without
 | An installation's latest report | 13 months after the installation last reports |
 | Lifetime counters and failed installations per Release ID (Bundles list and detail) | Kept |
 
-Set the periods on the plugin, in `hotUpdater.plugins.ts` and wherever the
-server builds its plugins:
+Set the periods on the plugin, in the server definition:
 
 ```ts
 insights({ retention: { rawDays: 30, dailyDays: 400 } });

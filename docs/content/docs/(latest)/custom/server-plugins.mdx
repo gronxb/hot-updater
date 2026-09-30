@@ -637,9 +637,10 @@ handler, built in or from another plugin, stops startup with
 
 `cli.commands` adds commands to the `hot-updater` CLI. A command either groups
 subcommands in `commands` or has `run(context)`, which runs over a database the
-CLI opens itself, with the plugin's API as `context.api`. A command refuses a
-`standaloneRepository` config, so pass the server config that exports your
-`hotUpdater` instead.
+CLI opens itself, with the plugin's API as `context.api`. It needs the server
+definition that exports your `hotUpdater`: with
+`server: standaloneRepository(...)`, name the definition's path on the command
+line.
 
 ```ts title="src/feedback/index.ts (excerpt)"
 definePlugin({
@@ -673,7 +674,7 @@ definePlugin({
 ```
 
 - `arguments` are positional; `args` holds them by `name`. Every command that
-  runs also takes the server config's path as its last, optional argument.
+  runs also takes a server definition's path as its last, optional argument.
 - `options` use the CLI's flag syntax, and `options` holds them by camel-cased
   long flag. `required: true` fails the command without one.
 - `ui` prints in the CLI's style: `message`, `info`, and `warn` write lines,
@@ -686,11 +687,10 @@ definePlugin({
 The CLI looks for a plugin command only when it has no core command of that
 name, in the project's plugin lists, in this order:
 
-1. a server config the command line names, such as
+1. a server definition the command line names, such as
    `hot-updater feedback close <id> src/hotUpdater.ts`;
-2. `hotUpdater.plugins.ts`, over the database in `hot-updater.config.ts`;
-3. `hot-updater.config.ts`, `src/hotUpdater.ts`, or `src/db.ts`, when it
-   exports a `hotUpdater`.
+2. the server definition that `server` in `hot-updater.config.ts` points at;
+3. `src/hotUpdater.ts` or `src/db.ts`, when it exports a `hotUpdater`.
 
 `hot-updater --help` lists the commands of the first list it finds under
 **Plugin commands**, each marked with its plugin's id. Two plugins that add

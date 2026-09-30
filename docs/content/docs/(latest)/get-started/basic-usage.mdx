@@ -51,7 +51,8 @@ Review the setup result:
 
 | Output | What to verify |
 | --- | --- |
-| `hot-updater.config.ts` | Selected build, storage, database and update strategy |
+| `hot-updater.config.ts` | Selected build and update strategy, and `server` pointing at `hotUpdater.ts` |
+| `hotUpdater.ts` | The server definition: the selected database and storage, and the managed server's plugins |
 | `.env.hotupdater` | Local provider settings and registered `HOT_UPDATER_API_KEY`, kept private and ignored |
 | Update server base URL | The actual deployed endpoint, including a provider base path when required |
 | Remote resources | The selected account/project, database and storage match the local config |

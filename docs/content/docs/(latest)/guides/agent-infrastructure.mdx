@@ -44,7 +44,7 @@ selections, it writes the scaffold and returns its absolute paths:
 | Output | Purpose |
 | --- | --- |
 | Provider deployment files | Server runtime, migrations, bindings, indexes and deployment configuration |
-| `app/` | App configuration templates, client-key provisioning and server verification helpers |
+| `app/` | `hot-updater.config.ts`, the server definition `hotUpdater.ts` it points at, client-key provisioning and server verification helpers |
 | `env.example` and `ENVIRONMENT.md` | Variable names, purposes, required or conditional status, and where to obtain values |
 | `COMMON.md` and `SETUP.md` | Project discovery, secure access, provider setup, verification and retry instructions |
 | `manifest.json` and `deployment.json` | Target versions/file hashes and a record for pending actions and verified outcomes |
@@ -115,8 +115,9 @@ the complete upgrade path.
 | AWS | Lambda bundle and dependencies, CloudFront specifications, DynamoDB/IAM JSON inputs and SSM references |
 | Firebase | Built Functions project, dependencies, Firebase config, Firestore indexes |
 
-The `app/` directory contains local configuration templates and a client API-key
-helper. `env.example` lists local provider settings; `ENVIRONMENT.md` explains
+The `app/` directory contains the app's `hot-updater.config.ts`, which points at
+the server definition `hotUpdater.ts` beside it (plus `migrate.ts` for
+Firestore), and a client API-key helper. `env.example` lists local provider settings; `ENVIRONMENT.md` explains
 each variable's purpose, when it is needed and where to obtain it. The JSON
 `environment` field points to that guide. The agent merges applicable settings into
 your app's existing configuration and prepares credentials for future CLI deploys.
