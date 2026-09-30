@@ -5,7 +5,7 @@ import path from "path";
 import {
   confirmInitInputPersistence,
   copyDirToTmp,
-  assertManagedServerDefinition,
+  importManagedServerDefinition,
   getHotUpdaterInitInputEnv,
   getInitProviderEnvVars,
   getInitProviderTextPromptValues,
@@ -19,11 +19,13 @@ import {
   resolvePackageVersion,
   transformEnv,
   transformTemplate,
+  readManagedServerDefinition,
   writeHotUpdaterConfig,
   writeHotUpdaterFiles,
 } from "@hot-updater/cli-tools";
 import {
   clientPluginsOf,
+  managedServerDefinitionOf,
   provisionClientCredential,
   type ProvisionedClientCredential,
 } from "@hot-updater/server/db";
@@ -38,6 +40,10 @@ import {
   isSupabaseFunctionName,
   SUPABASE_DATABASE_PASSWORD_PROJECT_ID_ENV_KEY,
 } from "./init/index";
+import {
+  stageEdgeFunctionFromDefinition,
+  writePluginMigration,
+} from "./managedEdgeFunction";
 import { type SupabaseApi, supabaseApi } from "./supabaseApi";
 import { getSupabaseCliEnv } from "./supabaseAuthentication";
 import { preserveSupabaseBucketPrivacy } from "./supabaseBucketPrivacy";
@@ -141,11 +147,23 @@ export const reportSupabaseOriginCatalogReady = () => {
   p.log.info("Catalog checks still invoke the Supabase Edge Function.");
 };
 
+/**
+ * Resolves packages as `searchFrom`'s package does, so a package's own
+ * dependencies are found beside it, as pnpm installs them.
+ */
+const requireFrom = (searchFrom: string | undefined) =>
+  searchFrom === undefined
+    ? require
+    : createRequire(path.join(searchFrom, "package.json"));
+
 const resolvePackageExportPath = async (
   packageName: string,
   exportName: string,
+  searchFrom?: string,
 ) => {
-  const packageJsonPath = require.resolve(`${packageName}/package.json`);
+  const packageJsonPath = requireFrom(searchFrom).resolve(
+    `${packageName}/package.json`,
+  );
   const packageJson = JSON.parse(
     await fs.readFile(packageJsonPath, "utf-8"),
   ) as {
@@ -269,14 +287,23 @@ const prepareVendoredPackageImport = async ({
   targetDir,
   packageName,
   exportName,
+  searchFrom,
 }: {
   targetDir: string;
   packageName: string;
   exportName: string;
+  /** The root of the package that imports it; @hot-updater/supabase's when absent. */
+  searchFrom?: string;
 }) => {
-  const packageJsonPath = require.resolve(`${packageName}/package.json`);
+  const packageJsonPath = requireFrom(searchFrom).resolve(
+    `${packageName}/package.json`,
+  );
   const packageRoot = path.dirname(packageJsonPath);
-  const exportPath = await resolvePackageExportPath(packageName, exportName);
+  const exportPath = await resolvePackageExportPath(
+    packageName,
+    exportName,
+    searchFrom,
+  );
   const relativeExportPath = path
     .relative(packageRoot, exportPath)
     .split(path.sep);
@@ -324,6 +351,16 @@ const resolveBareSpecifierImportTarget = async (
   return `npm:${specifier}@${version}`;
 };
 
+/** A vendored import of one of Hot Updater's packages, by its specifier. */
+const workspaceImport = (importSpecifier: string) => {
+  const [scope, name, ...subpath] = importSpecifier.split("/");
+  return {
+    importSpecifier,
+    packageName: `${scope}/${name}`,
+    exportName: subpath.length === 0 ? "." : `./${subpath.join("/")}`,
+  };
+};
+
 const buildEdgeFunctionImports = async (targetDir: string) => {
   const imports: Record<string, string> = {};
   const vendoredWorkspacePackages = new Map<
@@ -335,10 +372,12 @@ const buildEdgeFunctionImports = async (targetDir: string) => {
     importSpecifier,
     packageName,
     exportName,
+    searchFrom,
   }: {
     importSpecifier: string;
     packageName: string;
     exportName: string;
+    searchFrom?: string;
   }) => {
     const visitKey = `${packageName}:${exportName}`;
     const existingPackage = vendoredWorkspacePackages.get(visitKey);
@@ -350,6 +389,7 @@ const buildEdgeFunctionImports = async (targetDir: string) => {
       targetDir,
       packageName,
       exportName,
+      searchFrom,
     });
     vendoredWorkspacePackages.set(visitKey, vendoredPackage);
 
@@ -365,11 +405,9 @@ const buildEdgeFunctionImports = async (targetDir: string) => {
       }
 
       if (nestedSpecifier.startsWith(WORKSPACE_PACKAGE_PREFIX)) {
-        const [scope, name, ...subpath] = nestedSpecifier.split("/");
         await addWorkspacePackage({
-          importSpecifier: nestedSpecifier,
-          packageName: `${scope}/${name}`,
-          exportName: subpath.length === 0 ? "." : `./${subpath.join("/")}`,
+          ...workspaceImport(nestedSpecifier),
+          searchFrom: vendoredPackage.packageRoot,
         });
         continue;
       }
@@ -383,7 +421,7 @@ const buildEdgeFunctionImports = async (targetDir: string) => {
     return vendoredPackage;
   };
 
-  await addWorkspacePackage({
+  const serverPackage = await addWorkspacePackage({
     importSpecifier: "@hot-updater/server",
     packageName: "@hot-updater/server",
     exportName: ".",
@@ -401,6 +439,17 @@ const buildEdgeFunctionImports = async (targetDir: string) => {
     );
     for (const specifier of edgeFunctionSpecifiers) {
       if (imports[specifier]) {
+        continue;
+      }
+      // Such as `@hot-updater/server/plugins`, which a server definition's
+      // bundle leaves to the packages the function's server depends on.
+      if (specifier.startsWith(WORKSPACE_PACKAGE_PREFIX)) {
+        await addWorkspacePackage({
+          ...workspaceImport(specifier),
+          searchFrom: specifier.startsWith("@hot-updater/supabase")
+            ? supabasePackage.packageRoot
+            : serverPackage.packageRoot,
+        });
         continue;
       }
       imports[specifier] = await resolveBareSpecifierImportTarget(
@@ -687,20 +736,22 @@ export const createSelectedBucket = async (
   return { id: bucket.id, name: bucket.name };
 };
 
-const deployEdgeFunction = async (
-  accessToken: string | undefined,
-  workdir: string,
-  projectId: string,
-  functionName: string,
-  bucketName: string,
-) => {
-  const edgeFunctionsLibPath = path.join(workdir, "supabase", "edge-functions");
-  const edgeFunctionsCodePath = path.join(edgeFunctionsLibPath, "index.ts");
-  const edgeFunctionsCode = transformEnv(edgeFunctionsCodePath, {
-    BUCKET_NAME: bucketName,
-    FUNCTION_NAME: functionName,
-  });
-
+/**
+ * Writes the Edge Function to `workdir`'s `supabase/functions`: the
+ * prebuilt template, or the project's edited server definition bundled with
+ * the function's runtime module, and the import map of what it vendors.
+ */
+const stageEdgeFunction = async ({
+  bucketName,
+  definition,
+  functionName,
+  workdir,
+}: {
+  readonly bucketName: string;
+  readonly definition: string | undefined;
+  readonly functionName: string;
+  readonly workdir: string;
+}) => {
   if (!isSupabaseFunctionName(functionName)) {
     throw new Error("Invalid Supabase Edge Function name.");
   }
@@ -712,14 +763,38 @@ const deployEdgeFunction = async (
     );
   }
   await fs.mkdir(targetDir, { recursive: true });
-  const targetPath = path.join(targetDir, "index.ts");
-  await fs.writeFile(targetPath, edgeFunctionsCode);
+  if (definition === undefined) {
+    await fs.writeFile(
+      path.join(targetDir, "index.ts"),
+      transformEnv(
+        path.join(workdir, "supabase", "edge-functions", "index.ts"),
+        { BUCKET_NAME: bucketName, FUNCTION_NAME: functionName },
+      ),
+    );
+  } else {
+    await stageEdgeFunctionFromDefinition({
+      bucketName,
+      definition,
+      functionDir: targetDir,
+      functionName,
+      packageRoot: path.dirname(
+        require.resolve("@hot-updater/supabase/package.json"),
+      ),
+    });
+  }
   const denoConfig = await resolveEdgeFunctionDenoConfig(targetDir);
   await fs.writeFile(
     path.join(targetDir, "deno.json"),
     `${JSON.stringify(denoConfig, null, 2)}\n`,
   );
+};
 
+const deployEdgeFunction = async (
+  accessToken: string | undefined,
+  workdir: string,
+  projectId: string,
+  functionName: string,
+) => {
   await p.tasks([
     {
       title: "Supabase edge function deploy. This may take a few minutes.",
@@ -927,7 +1002,7 @@ const runInitWithoutCliMetadata = async ({
   envFile,
 }: RunInitOptions) => {
   const scaffold = getConfigScaffold(build);
-  await assertManagedServerDefinition(scaffold, process.cwd());
+  const definition = await readManagedServerDefinition(scaffold, process.cwd());
   const nonInteractive = envFile !== undefined;
   const initEnvSources = await readHotUpdaterInitEnv(process.cwd(), envFile);
   const { inputEnv, managedEnv } = initEnvSources;
@@ -1093,6 +1168,19 @@ const runInitWithoutCliMetadata = async ({
     [SUPABASE_INIT_PROVIDER.inputs.bucketName.envKey]: bucket.name,
     HOT_UPDATER_SUPABASE_URL: `https://${project.id}.supabase.co`,
   });
+  // The plugins the Edge Function runs: the package's, or those of the
+  // project's edited definition, which reads what .env.hotupdater now holds.
+  const serverPlugins = definition.edited
+    ? managedServerDefinitionOf(
+        (await importManagedServerDefinition(definition, process.cwd()))
+          .hotUpdater,
+        {
+          provider: "Supabase",
+          database: "supabaseDatabase",
+          storage: "supabase-storage",
+        },
+      ).plugins
+    : plugins;
   const scaffoldLibPath = path.dirname(
     path.resolve(require.resolve("@hot-updater/supabase/scaffold")),
   );
@@ -1117,6 +1205,16 @@ const runInitWithoutCliMetadata = async ({
     }
   }
 
+  // The function first, so a definition it cannot bundle fails before the
+  // database changes; then the migration of the plugins it runs.
+  await stageEdgeFunction({
+    bucketName: bucket.name,
+    definition: definition.edited ? definition.path : undefined,
+    functionName,
+    workdir: tmpDir,
+  });
+  await writePluginMigration(tmpDir, serverPlugins);
+
   await linkSupabase(tmpDir, {
     accessToken,
     projectId: project.id,
@@ -1134,23 +1232,21 @@ const runInitWithoutCliMetadata = async ({
   // The app's credential, through the managed server's plugins, on the tables they read.
   let credential: ProvisionedClientCredential | undefined;
   try {
-    credential = await provisionClientCredential(databasePlugin, plugins, {
-      env: initInputEnv,
-      name: "Supabase init",
-    });
+    credential = await provisionClientCredential(
+      databasePlugin,
+      serverPlugins,
+      {
+        env: initInputEnv,
+        name: "Supabase init",
+      },
+    );
     if (credential !== undefined) {
       await makeEnv({ [credential.env]: credential.value });
     }
   } finally {
     await databasePlugin.dispose?.();
   }
-  await deployEdgeFunction(
-    accessToken,
-    tmpDir,
-    project.id,
-    functionName,
-    bucket.name,
-  );
+  await deployEdgeFunction(accessToken, tmpDir, project.id, functionName);
 
   await removeTmpDir();
 
@@ -1164,7 +1260,7 @@ const runInitWithoutCliMetadata = async ({
   printAppSetup({
     baseURL: getSupabaseFunctionUrl({ functionName, projectId: project.id }),
     ...(credential === undefined ? {} : { credential }),
-    clientPlugins: clientPluginsOf(plugins),
+    clientPlugins: clientPluginsOf(serverPlugins),
   });
   reportSupabaseOriginCatalogReady();
 
@@ -1180,3 +1276,7 @@ export const runInit = (options: RunInitOptions): Promise<void> =>
   withSupabaseCliMetadataCleanup(process.cwd(), () =>
     runInitWithoutCliMetadata(options),
   );
+
+// The migration the infrastructure scaffold ships for the prebuilt
+// function's plugins, after the package's own.
+export { supabaseSchemaSql } from "../src/supabaseSchema";

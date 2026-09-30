@@ -59,6 +59,7 @@ import { supabaseExecutor } from "../../src/supabaseExecutor";
 import {
   SUPABASE_SETTINGS_TABLE,
   SUPABASE_TABLE_PREFIX,
+  supabaseSchemaSql,
   supabaseTableNames,
 } from "../../src/supabaseSchema";
 
@@ -1023,6 +1024,9 @@ const loadSupabaseInitSql = async (storageRepoPath: string) => {
       return contents.replaceAll("%%BUCKET_NAME%%", BUCKET_NAME);
     }),
   );
+  // The package's migration holds core's tables; init migrates the managed
+  // server's plugins after it.
+  migrations.push(supabaseSchemaSql(toolingTargetOf(plugins)));
 
   return `
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
