@@ -22,6 +22,16 @@
         "default": "./dist/node.cjs"
       }
     },
+    "./react-native": {
+      "import": {
+        "types": "./dist/react-native.d.mts",
+        "default": "./dist/react-native.mjs"
+      },
+      "require": {
+        "types": "./dist/react-native.d.cts",
+        "default": "./dist/react-native.cjs"
+      }
+    },
     "./package.json": "./package.json"
   },
   "files": [
@@ -38,13 +48,20 @@
   "peerDependencies": {
     "@hot-updater/core": "workspace:^",
     "@hot-updater/plugin-core": "workspace:^",
+    "@hot-updater/react-native": "workspace:^",
     "execa": "*",
     "vitest": "^4.0.0"
+  },
+  "peerDependenciesMeta": {
+    "@hot-updater/react-native": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@hot-updater/core": "workspace:*",
     "@hot-updater/js": "workspace:*",
     "@hot-updater/plugin-core": "workspace:*",
+    "@hot-updater/react-native": "workspace:*",
     "@types/node": "catalog:",
     "execa": "catalog:tools",
     "@typescript/native": "npm:typescript@7.0.2",

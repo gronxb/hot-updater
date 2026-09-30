@@ -29,6 +29,17 @@
         "default": "./lib/commonjs/plugins/insights/index.js"
       }
     },
+    "./plugin-host": {
+      "source": "./src/plugin-host.ts",
+      "import": {
+        "types": "./lib/typescript/module/plugin-host.d.ts",
+        "default": "./lib/module/plugin-host.js"
+      },
+      "require": {
+        "types": "./lib/typescript/commonjs/plugin-host.d.ts",
+        "default": "./lib/commonjs/plugin-host.js"
+      }
+    },
     "./package.json": "./package.json"
   },
   "files": [
@@ -120,6 +131,7 @@
     "react-native": "*"
   },
   "devDependencies": {
+    "@hot-updater/test-utils": "workspace:*",
     "@react-native-community/cli": "18.0.0",
     "@testing-library/dom": "10.4.1",
     "@testing-library/react": "16.3.2",
@@ -141,5 +153,10 @@
     "@hot-updater/core": "workspace:*",
     "@hot-updater/plugin-core": "workspace:*",
     "use-sync-external-store": "1.5.0"
+  },
+  "nx": {
+    "implicitDependencies": [
+      "!@hot-updater/test-utils"
+    ]
   }
 }
