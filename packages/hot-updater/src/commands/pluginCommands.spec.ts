@@ -312,6 +312,26 @@ describe("registerPluginCommands", () => {
     expect(named.dispose).toHaveBeenCalledOnce();
   });
 
+  it("does not load the definition the config points at again after the command line names it", async () => {
+    configuredServer([counter()]);
+    const named = serverConfig("hotUpdater.ts", []);
+    vi.mocked(isConfigFile).mockImplementation(
+      (value) => value === "hotUpdater.ts",
+    );
+    vi.mocked(loadHotUpdater).mockResolvedValue(named);
+    const created = program();
+    const written = output(created);
+    const args = argv("counter", "show", "total", "hotUpdater.ts");
+    await registerPluginCommands(created, args, cwd);
+
+    expect(() => created.parse(args)).toThrow();
+    expect(written.err).toContain("error: unknown command 'counter'");
+    // The process shares the module, so closing a second copy would close
+    // the database of the one the command line named.
+    expect(loadServerDefinition).not.toHaveBeenCalled();
+    expect(named.dispose).not.toHaveBeenCalled();
+  });
+
   it("finds no plugin commands through a standaloneRepository config, and says how to name a definition", async () => {
     const fetchAdmin = vi.fn(async () => new Response("41"));
     cli.loadConfig.mockResolvedValue({

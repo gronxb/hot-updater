@@ -1226,7 +1226,10 @@ async function withConfiguredDatabase<T>(
           plugins: definition?.plugins,
         });
       } finally {
-        await database.dispose?.();
+        // The definition's module is loaded once per process, so every call
+        // shares its database, which stays open for the next one. A
+        // self-hosted server's admin client is this config load's own.
+        if (definition === undefined) await database.dispose?.();
       }
     });
   } finally {

@@ -66,16 +66,11 @@ const serverConfigSource = (
   dispose: loaded.dispose,
 });
 
-/**
- * The server hot-updater.config.ts points at with `server`: its definition,
- * or none when it reaches a self-hosted server through its admin API, whose
- * plugins' commands need the definition itself.
- */
+/** The server definition hot-updater.config.ts points at with `server`. */
 const configuredServerSource = async (
+  server: string,
   cwd: string,
-): Promise<PluginSource | undefined> => {
-  const { server } = await loadConfig(null);
-  if (typeof server !== "string") return undefined;
+): Promise<PluginSource> => {
   const loaded = await loadServerDefinition(server);
   return {
     from: path.relative(cwd, loaded.path),
@@ -112,14 +107,13 @@ async function* findPluginSources(
     yield source;
   }
   // The definition the config names fails loudly, unlike a default guess.
-  const configured = await configuredServerSource(cwd);
-  if (configured !== undefined) {
-    if (seen.has(configured.configPath!)) {
-      await configured.dispose();
-    } else {
-      seen.add(configured.configPath!);
-      yield configured;
-    }
+  // A self-hosted server's plugins' commands need the definition itself.
+  // One already found is not loaded again: the process shares its module,
+  // and so its database.
+  const { server } = await loadConfig(null);
+  if (typeof server === "string" && !seen.has(server)) {
+    seen.add(server);
+    yield await configuredServerSource(server, cwd);
   }
   for (const configPath of findDefaultConfigPaths(cwd)) {
     if (seen.has(configPath)) continue;
