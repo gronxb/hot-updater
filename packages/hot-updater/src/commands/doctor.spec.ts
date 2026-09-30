@@ -5,10 +5,11 @@ import path from "path";
 
 import { getCwd, loadConfig, readPackageUp } from "@hot-updater/cli-tools";
 import { HOT_UPDATER_SERVER_VERSION } from "@hot-updater/server";
+import { insights } from "@hot-updater/server/plugins/insights";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { packageJsonData } from "../packageJson";
-import { createDatabaseHarness } from "./database.testFixtures";
+import { loadServer } from "../utils/loadServer";
 import {
   areVersionsCompatible,
   checkInfrastructureStatus,
@@ -24,6 +25,8 @@ import {
 import { getRequiredUpdateTarget } from "./doctorInfrastructureTargets";
 
 vi.mock("../packageJson", () => ({ packageJsonData: { version: "1.0.0" } }));
+
+vi.mock("../utils/loadServer", () => ({ loadServer: vi.fn() }));
 
 vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
   getBundleSigningPublicKey: (
@@ -51,7 +54,6 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
 const mockGetCwd = getCwd as ReturnType<typeof vi.fn>;
 const mockLoadConfig = loadConfig as ReturnType<typeof vi.fn>;
 const mockReadPackageUp = readPackageUp as ReturnType<typeof vi.fn>;
-const doctorDatabaseHarness = createDatabaseHarness();
 
 const createConfig = (overrides: Record<string, unknown> = {}) => ({
   build: async () => ({
@@ -67,7 +69,6 @@ const createConfig = (overrides: Record<string, unknown> = {}) => ({
       androidManifestPaths: [],
     },
   },
-  database: doctorDatabaseHarness.database,
   ...overrides,
 });
 
@@ -893,6 +894,53 @@ describe("doctor", () => {
             fixability: "blocked",
             commands: ["hot-updater agent infra setup", "hot-updater init"],
           },
+        },
+      },
+    });
+  });
+
+  it("warns about a client plugin the server's plugins need that the app does not add", async () => {
+    const cwd = await createTempProject();
+    tempProjects.push(cwd);
+    mockGetCwd.mockReturnValue(cwd);
+    mockReadPackageUp.mockResolvedValue({
+      packageJson: {
+        dependencies: {
+          "hot-updater": "0.31.0",
+          "@hot-updater/react-native": "0.31.0",
+        },
+      },
+      path: path.join(cwd, "package.json"),
+    });
+    mockLoadConfig.mockResolvedValue(
+      createConfig({ server: path.join(cwd, "hotUpdater.ts") }),
+    );
+    vi.mocked(loadServer).mockResolvedValue({
+      kind: "definition",
+      plugins: [insights()],
+      dispose: async () => {},
+    } as never);
+    await writeFile(
+      path.join(cwd, "src/App.tsx"),
+      'import { HotUpdater } from "@hot-updater/react-native";\n',
+    );
+
+    const result = await doctor();
+
+    expect(result).toMatchObject({
+      success: true,
+      details: {
+        native: {
+          issues: [
+            {
+              type: "warning",
+              platform: "project",
+              code: "MISSING_CLIENT_PLUGIN",
+              resolution:
+                'Import { insights } from "@hot-updater/react-native/plugins/insights" and pass insights() to HotUpdater.init({ plugins }).',
+              fixability: "auto",
+            },
+          ],
         },
       },
     });
