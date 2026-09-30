@@ -5,7 +5,6 @@ import path from "path";
 import {
   confirmInitInputPersistence,
   copyDirToTmp,
-  formatApiKeyNote,
   generateHotUpdaterPlugins,
   getHotUpdaterInitInputEnv,
   getInitProviderEnvVars,
@@ -14,12 +13,16 @@ import {
   link,
   makeEnv,
   p,
+  printAppSetup,
   readHotUpdaterInitEnv,
   type RunInitOptions,
   transformTemplate,
   writeHotUpdaterConfig,
 } from "@hot-updater/cli-tools";
-import { createDatabasePluginApis } from "@hot-updater/server/db";
+import {
+  provisionClientCredential,
+  type ProvisionedClientCredential,
+} from "@hot-updater/server/db";
 import { Cloudflare } from "cloudflare";
 
 import { d1Database } from "../src/d1Database";
@@ -51,24 +54,6 @@ import {
 import { inputCloudflareInitSecrets } from "./cloudflareInitSecrets";
 import { getConfigScaffold } from "./configTemplate";
 import { initProvider as CLOUDFLARE_INIT_PROVIDER } from "./init/index";
-
-const SOURCE_TEMPLATE = `// add this to your App.tsx
-import { HotUpdater } from "@hot-updater/react-native";
-
-function App() {
-  return null; // Replace with your app root
-}
-
-HotUpdater.init({
-  baseURL: "%%source%%",
-  requestHeaders: {
-    "x-api-key": %%apiKey%%,
-  },
-});
-
-// Call HotUpdater.checkForUpdate({ updateStrategy: "appVersion" })
-// when your app is ready to check.
-export default App;`;
 
 const deployWorker = async (
   apiToken: string,
@@ -711,16 +696,16 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
     cloudflareApiToken: apiToken,
     databaseId: selectedD1DatabaseId,
   });
-  let apiKey: string;
+  // The app's credential, through the managed server's plugins, on the tables they read.
+  let credential: ProvisionedClientCredential | undefined;
   try {
-    apiKey = // The managed server's apiKeys() plugin, on the tables it reads.
-      (
-        await createDatabasePluginApis(database, plugins).apiKeys.provision({
-          existingApiKey: initInputEnv.HOT_UPDATER_API_KEY,
-          name: "Cloudflare init",
-        })
-      ).apiKey;
-    await makeEnv({ HOT_UPDATER_API_KEY: apiKey });
+    credential = await provisionClientCredential(database, plugins, {
+      env: initInputEnv,
+      name: "Cloudflare init",
+    });
+    if (credential !== undefined) {
+      await makeEnv({ [credential.env]: credential.value });
+    }
   } finally {
     await database.dispose?.();
   }
@@ -745,16 +730,14 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
   }
   await generateHotUpdaterPlugins("@hot-updater/cloudflare");
 
-  if (subdomains.subdomain) {
-    p.note(
-      transformTemplate(SOURCE_TEMPLATE, {
-        apiKey: JSON.stringify(apiKey),
-        source: `https://${workerName}.${subdomains.subdomain}.workers.dev`,
-      }),
-    );
-  }
-  p.note(formatApiKeyNote(apiKey), "API Key");
-  p.log.message("Store this API key separately in a secure place.");
+  printAppSetup({
+    ...(subdomains.subdomain
+      ? {
+          baseURL: `https://${workerName}.${subdomains.subdomain}.workers.dev`,
+        }
+      : {}),
+    ...(credential === undefined ? {} : { credential }),
+  });
 
   p.log.message(
     `Next step: ${link(

@@ -257,7 +257,7 @@ describe("doctor infrastructure completion", () => {
   const setup = async () => {
     const scaffold = await prepare();
     await writeFile(
-      path.join(scaffold.output, "app/api-key.local"),
+      path.join(scaffold.output, "app/client-credential.local"),
       "private-client-key",
     );
     const manifest = await readJson(scaffold.manifest);
@@ -309,7 +309,7 @@ describe("doctor infrastructure completion", () => {
       if (missing === "URL") options.serverBaseUrl = "";
       if (missing === "channel") options.channel = "";
       if (missing === "key")
-        await rm(path.join(scaffold.output, "app/api-key.local"));
+        await rm(path.join(scaffold.output, "app/client-credential.local"));
       const result = await verifyInfrastructure(options);
       expect(successful(result.checks)).toBe(false);
       expect(result.checks).toContainEqual(

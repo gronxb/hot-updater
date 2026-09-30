@@ -5,9 +5,9 @@ import {
   applyDistributionConfigOverrides,
   buildDistributionConfig,
   buildDistributionConfigOverrides,
-  HOT_UPDATER_ORIGIN_REQUEST_POLICY_CONFIG,
-  HOT_UPDATER_RELEASE_CATALOG_CACHE_POLICY_CONFIG,
-  HOT_UPDATER_SHARED_CACHE_POLICY_CONFIG,
+  buildOriginRequestPolicyConfig,
+  buildReleaseCatalogCachePolicyConfig,
+  buildSharedCachePolicyConfig,
 } from "./cloudfrontDistributionConfig";
 
 const baseOptions = {
@@ -23,7 +23,7 @@ const baseOptions = {
 
 describe("buildDistributionConfigOverrides", () => {
   it("defines a shared cache policy that does not forward viewer headers", () => {
-    expect(HOT_UPDATER_SHARED_CACHE_POLICY_CONFIG).toMatchObject({
+    expect(buildSharedCachePolicyConfig(["x-api-key"])).toMatchObject({
       DefaultTTL: 0,
       MaxTTL: 31_536_000,
       MinTTL: 0,
@@ -38,8 +38,8 @@ describe("buildDistributionConfigOverrides", () => {
     });
   });
 
-  it("forwards content type and the API key to Lambda", () => {
-    expect(HOT_UPDATER_ORIGIN_REQUEST_POLICY_CONFIG).toMatchObject({
+  it("forwards content type and the client-route headers to Lambda", () => {
+    expect(buildOriginRequestPolicyConfig(["x-api-key"])).toMatchObject({
       HeadersConfig: {
         HeaderBehavior: "whitelist",
         Headers: {
@@ -50,8 +50,8 @@ describe("buildDistributionConfigOverrides", () => {
     });
   });
 
-  it("isolates Release catalogs only by API key and content encoding", () => {
-    expect(HOT_UPDATER_RELEASE_CATALOG_CACHE_POLICY_CONFIG).toMatchObject({
+  it("isolates Release catalogs only by the client credential and content encoding", () => {
+    expect(buildReleaseCatalogCachePolicyConfig(["x-api-key"])).toMatchObject({
       DefaultTTL: 0,
       MaxTTL: 5,
       MinTTL: 0,
@@ -65,6 +65,21 @@ describe("buildDistributionConfigOverrides", () => {
         CookiesConfig: { CookieBehavior: "none" },
         QueryStringsConfig: { QueryStringBehavior: "none" },
       },
+    });
+  });
+
+  it("keys caches on no header when client routes are public", () => {
+    for (const config of [
+      buildSharedCachePolicyConfig([]),
+      buildReleaseCatalogCachePolicyConfig([]),
+    ]) {
+      expect(
+        config.ParametersInCacheKeyAndForwardedToOrigin?.HeadersConfig,
+      ).toEqual({ HeaderBehavior: "none" });
+    }
+    expect(buildOriginRequestPolicyConfig([]).HeadersConfig).toEqual({
+      HeaderBehavior: "whitelist",
+      Headers: { Quantity: 1, Items: ["content-type"] },
     });
   });
 

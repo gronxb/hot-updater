@@ -8,6 +8,6 @@ export interface InfrastructureUpdate {
 export const INFRASTRUCTURE_UPDATES = [
   {
     version: "1.0.0",
-    note: "Release Catalog, Release Insights, and storage engine infrastructure generation",
+    note: "Release Catalog, manifest artifact protocol v1, and storage engine infrastructure generation",
   },
 ] as const satisfies readonly [InfrastructureUpdate, ...InfrastructureUpdate[]];

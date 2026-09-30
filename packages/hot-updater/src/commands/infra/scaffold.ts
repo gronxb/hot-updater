@@ -18,6 +18,12 @@ import type { BuildType } from "@hot-updater/cli-tools";
 
 import { ui } from "../../utils/cli-ui";
 import { type InitProvider, INIT_PROVIDER_PACKAGES } from "../initProviders";
+import {
+  CLIENT_CREDENTIAL_CONFIG,
+  CLIENT_CREDENTIAL_FILE,
+  CLIENT_CREDENTIAL_SCRIPT,
+  type InfraClientAuth,
+} from "./clientAuth";
 
 const require = createRequire(import.meta.url);
 export const INFRA_BUILDS = ["bare", "rock", "expo"] as const;
@@ -37,6 +43,8 @@ export interface InfraTemplate {
   providerVersion: string;
   serverVersion: string;
   infrastructureGeneration: number;
+  /** The client-route policy of the plugins the server runs. */
+  clientAuth: InfraClientAuth;
   packages: Record<string, string>;
   requiredInputs: Record<string, string | null>;
   upgradeRequirements: string[];
@@ -57,9 +65,11 @@ const EXTRA_INPUT_HELP: Record<string, string> = {
     "Local server-side service-role or secret key; never put it in chat or the app",
   HOT_UPDATER_FIREBASE_STORAGE_BUCKET:
     "Provider-reported default Storage bucket name; do not guess its suffix",
-  HOT_UPDATER_API_KEY:
-    "Client x-api-key; reuse the existing key or provision it after schema setup",
 };
+
+/** The environment guidance for the credential an app sends to client routes. */
+const credentialHelp = ({ credential }: NonNullable<InfraClientAuth>) =>
+  `Client ${credential.label} sent in ${credential.header}; reuse the existing one or run app/${CLIENT_CREDENTIAL_SCRIPT} after schema setup`;
 
 const listFiles = async (root: string, relative = ""): Promise<string[]> => {
   const files: string[] = [];
@@ -230,7 +240,10 @@ export async function scaffoldInfra(
     await cp(source, staging, { recursive: true });
     if (forAgent) {
       for (const choice of INFRA_BUILDS) {
-        for (const basename of ["hot-updater.config", "api-key.config"]) {
+        for (const basename of [
+          "hot-updater.config",
+          CLIENT_CREDENTIAL_CONFIG,
+        ]) {
           const file = path.join(staging, "app", `${basename}.${choice}.ts`);
           if (choice === build)
             await rename(file, path.join(staging, "app", `${basename}.ts`));
@@ -244,7 +257,7 @@ export async function scaffoldInfra(
     await rm(path.join(staging, "template.json"));
     await writeFile(
       path.join(staging, ".gitignore"),
-      "node_modules/\n.env*\n!env.example\napi-key.local\n*.pem\n*.zip\n*.secret\n",
+      `node_modules/\n.env*\n!env.example\n${CLIENT_CREDENTIAL_FILE}\n*.pem\n*.zip\n*.secret\n`,
     );
     if (forAgent) {
       const configText = await readFile(
@@ -254,17 +267,23 @@ export async function scaffoldInfra(
       const inputs = Object.values(
         INIT_PROVIDER_PACKAGES[provider].definition.inputs,
       );
+      const { clientAuth } = template;
       const keys = new Set([
         ...inputs.map(({ envKey }) => envKey),
         ...[...configText.matchAll(/process\.env\.([A-Z_0-9]+)/g)].map(
           (match) => match[1]!,
         ),
-        "HOT_UPDATER_API_KEY",
+        ...(clientAuth === null ? [] : [clientAuth.credential.env]),
       ]);
       const envExample = [...keys]
         .map((key) => {
           const input = inputs.find(({ envKey }) => envKey === key);
-          const help = input?.help ?? EXTRA_INPUT_HELP[key];
+          const help =
+            input?.help ??
+            EXTRA_INPUT_HELP[key] ??
+            (clientAuth !== null && key === clientAuth.credential.env
+              ? credentialHelp(clientAuth)
+              : undefined);
           if (!help)
             throw new Error(`Missing environment guidance for ${key}.`);
           return `# ${help}\n${key}=\n`;

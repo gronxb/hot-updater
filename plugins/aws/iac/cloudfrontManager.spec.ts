@@ -191,6 +191,7 @@ describe("CloudFrontManager", () => {
     await manager.createOrUpdateDistribution({
       keyGroupId: "new-key-group-id",
       bucketName: "hot-updater-storage",
+      clientHeaders: ["x-api-key"],
       functionArn:
         "arn:aws:lambda:us-east-1:123456789012:function:hot-updater:2",
     });
@@ -330,6 +331,7 @@ describe("CloudFrontManager", () => {
       manager.createOrUpdateDistribution({
         keyGroupId: "new-key-group-id",
         bucketName: "hot-updater-storage",
+        clientHeaders: ["x-api-key"],
         functionArn:
           "arn:aws:lambda:us-east-1:123456789012:function:hot-updater:2",
       }),

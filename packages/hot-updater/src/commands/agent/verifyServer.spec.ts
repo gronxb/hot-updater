@@ -8,6 +8,7 @@ import type { ReleaseCatalog } from "@hot-updater/core";
 import { describe, expect, it, onTestFinished, vi } from "vitest";
 
 import { verifyServer } from "../doctor/server";
+import type { InfraClientAuth } from "../infra/clientAuth";
 
 vi.mock("../../../../react-native/src/catalogCacheNative", () => ({
   readNativeReleaseCatalogCache: async () => null,
@@ -28,6 +29,15 @@ const { fetchReleaseCatalogWithCache } = await vi.importActual<{
 );
 
 const apiKey = "private-client-key-never-print";
+const clientAuth: InfraClientAuth = {
+  plugin: "apiKeys",
+  varyHeaders: ["x-api-key"],
+  credential: {
+    label: "API key",
+    header: "x-api-key",
+    env: "HOT_UPDATER_API_KEY",
+  },
+};
 const serverVersion = "1.0.0-rc.2";
 const channel = "preview/한글";
 const channelKey = Buffer.from(channel).toString("base64url");
@@ -81,6 +91,8 @@ const createFixture = async (
     localKey?: string;
     environmentKey?: string;
     hangAuthenticated?: boolean;
+    /** The scaffolded server's policy; null for public client routes. */
+    clientAuth?: InfraClientAuth;
   } = {},
 ) => {
   const root = await mkdtemp(path.join(os.tmpdir(), "hot-updater-probe-"));
@@ -133,14 +145,22 @@ const createFixture = async (
   );
   await writeFile(
     path.join(root, "scaffold/manifest.json"),
-    JSON.stringify({ serverVersion, infrastructureGeneration: 1 }),
+    JSON.stringify({
+      serverVersion,
+      infrastructureGeneration: 1,
+      clientAuth:
+        options.clientAuth === undefined ? clientAuth : options.clientAuth,
+    }),
   );
   await writeFile(
     path.join(root, ".env.hotupdater"),
     `HOT_UPDATER_API_KEY=${options.environmentKey ?? apiKey}\n`,
   );
   if (options.localKey !== undefined) {
-    await writeFile(path.join(app, "api-key.local"), options.localKey);
+    await writeFile(
+      path.join(app, "client-credential.local"),
+      options.localKey,
+    );
   }
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   const address = server.address();
@@ -208,6 +228,7 @@ describe("agent server verification", () => {
       appVersion: "1.0.0",
       serverVersion,
       infrastructureGeneration: 1,
+      clientAuth,
     });
     expect(result.status).toBe("verified");
     expect(process.env["HOT_UPDATER_API_KEY"]).toBeUndefined();
@@ -245,6 +266,56 @@ describe("agent server verification", () => {
       { path: catalogPath, key: apiKey },
     ]);
     expect(result.stdout + result.stderr).not.toContain(apiKey);
+  });
+
+  it("verifies a public server's catalog without a credential", async () => {
+    const { root, run, requests } = await createFixture({
+      clientAuth: null,
+      anonymous: emptyCatalog,
+    });
+    await rm(path.join(root, ".env.hotupdater"));
+    const result = await run();
+    expect(result.code, result.stdout + result.stderr).toBe(0);
+    expect(JSON.parse(result.stdout)).toEqual({
+      status: "verified",
+      checks: {
+        version: "matches-manifest",
+        anonymousCatalog: "public",
+        authenticatedCatalog: 404,
+        catalog: "empty",
+      },
+    });
+    expect(requests.map(({ key }) => key)).toEqual([undefined, undefined]);
+  });
+
+  it("sends the credential in the header the server's policy names", async () => {
+    const { root, baseUrl } = await createFixture();
+    const custom: InfraClientAuth = {
+      ...clientAuth!,
+      credential: { ...clientAuth!.credential, header: "x-client-key" },
+    };
+    const seen: (string | null)[] = [];
+    const result = await verifyServer({
+      cwd: root,
+      infraDir: path.join(root, "scaffold"),
+      baseUrl,
+      platform: "ios",
+      channel,
+      appVersion: "1.0.0",
+      serverVersion,
+      infrastructureGeneration: 1,
+      clientAuth: custom,
+      fetch: async (url, init) => {
+        const headers = new Headers(init?.headers);
+        seen.push(headers.get("x-client-key"));
+        return fetch(url, {
+          ...init,
+          headers: headers.has("x-client-key") ? { "x-api-key": apiKey } : {},
+        });
+      },
+    });
+    expect(result.status).toBe("verified");
+    expect(seen).toEqual([null, null, apiKey]);
   });
 
   it("verifies a populated fingerprint catalog using the persisted local key", async () => {

@@ -1,5 +1,6 @@
 import path from "node:path";
 
+import { CLIENT_CREDENTIAL_FILE } from "../infra/clientAuth";
 import { type DoctorCheck, isObject } from "./checks";
 import { checkScaffold, readScaffoldFile } from "./scaffold";
 import { verifyServer } from "./server";
@@ -66,10 +67,12 @@ export async function verifyInfrastructure(
   }
   const infraDir = path.resolve(options.cwd, options.infraDir);
   let manifest;
+  let clientAuth;
   try {
     const scaffold = await checkScaffold(infraDir);
     checks.push(...scaffold.checks);
     manifest = scaffold.manifest;
+    clientAuth = scaffold.clientAuth;
   } catch {
     checks.push({
       code: "INFRA_TEMPLATE_UNAVAILABLE",
@@ -134,7 +137,11 @@ export async function verifyInfrastructure(
     "INFRA_ANONYMOUS_CATALOG",
     "INFRA_AUTHENTICATED_CATALOG",
   ] as const;
-  if (!manifest || checks.some((check) => check.status !== "pass")) {
+  if (
+    !manifest ||
+    clientAuth === undefined ||
+    checks.some((check) => check.status !== "pass")
+  ) {
     checks.push(
       ...codes.map(
         (code): DoctorCheck => ({
@@ -154,6 +161,7 @@ export async function verifyInfrastructure(
     baseUrl: options.serverBaseUrl,
     serverVersion: manifest.serverVersion,
     infrastructureGeneration: manifest.infrastructureGeneration,
+    clientAuth,
   });
   const failedAt =
     probe.status === "failed" ? stages.indexOf(probe.check) : stages.length;
@@ -162,7 +170,10 @@ export async function verifyInfrastructure(
       checks.push({
         code,
         status: "pass",
-        message: `${stages[index]} verified.`,
+        message:
+          stages[index] === "anonymous-catalog" && clientAuth === null
+            ? "Client routes are public, so the catalog takes no credential."
+            : `${stages[index]} verified.`,
       });
     } else if (index === failedAt && probe.status === "failed") {
       checks.push({
@@ -172,8 +183,8 @@ export async function verifyInfrastructure(
         fixability: "blocked",
         resolution:
           index === 0
-            ? "Provide --server-base-url, --platform, --channel and exactly one of --app-version/--fingerprint. Store the client key in the local environment or scaffold app/api-key.local."
-            : "Inspect the selected deployment, routing and client-key registration, then rerun the same doctor command.",
+            ? `Provide --server-base-url, --platform, --channel and exactly one of --app-version/--fingerprint.${clientAuth === null ? "" : ` Store the client ${clientAuth.credential.label} in ${clientAuth.credential.env} or scaffold app/${CLIENT_CREDENTIAL_FILE}.`}`
+            : `Inspect the selected deployment and routing${clientAuth === null ? "" : ` and the client ${clientAuth.credential.label}'s registration`}, then rerun the same doctor command.`,
       });
     } else {
       checks.push({
