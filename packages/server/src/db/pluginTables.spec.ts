@@ -10,6 +10,7 @@ import { prismaAdapter } from "../adapters/prisma";
 import { createHotUpdater } from "../createHotUpdaterCore";
 import { HotUpdaterSchemaMigrationRequiredError } from "../database/fence";
 import { defineTable } from "../database/schema";
+import { createTableStatements } from "../database/sql/sqlAdapter";
 import { apiKeys } from "../plugins/api-keys";
 import {
   type AnyHotUpdaterPlugin,
@@ -75,6 +76,15 @@ describe("plugin tables in db tooling", () => {
       "schema.insights": insights().schemaVersion,
       "schema.notes": "2",
     });
+  });
+
+  it("fits Hot Updater's own plugins' tables within MySQL's key limit", () => {
+    expect(() =>
+      createTableStatements(
+        "mysql",
+        toolingTargetOf([insights(), apiKeys()]).schema.tables,
+      ),
+    ).not.toThrow();
   });
 
   it("migrates an engine database's core and plugin tables with its adapter", async () => {
