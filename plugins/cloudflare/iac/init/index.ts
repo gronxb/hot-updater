@@ -1,7 +1,10 @@
 import type { InitProviderDefinition } from "@hot-updater/cli-tools";
 
+import { serverDefinitions } from "../configTemplate";
+
 export const initProvider = {
   label: "Cloudflare D1 + R2 + Worker",
+  serverDefinitions,
   inputs: {
     accountId: {
       envKey: "HOT_UPDATER_CLOUDFLARE_ACCOUNT_ID",

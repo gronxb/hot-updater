@@ -14,6 +14,7 @@ import {
   printAppSetup,
   readHotUpdaterInitEnv,
   readManagedServerDefinition,
+  replacingServerDefinitions,
   resolveHotUpdaterServerVersion,
   resolvePackageVersion,
   type RunInitOptions,
@@ -448,11 +449,16 @@ const checkIfGcloudCliInstalled = async () => {
   }
 };
 
-export const runInit = async ({ build, envFile }: RunInitOptions) => {
-  const definition = await readManagedServerDefinition(
+export const runInit = async ({
+  build,
+  envFile,
+  otherServerDefinitions,
+}: RunInitOptions) => {
+  const scaffold = replacingServerDefinitions(
     getConfigScaffold(build),
-    process.cwd(),
+    otherServerDefinitions,
   );
+  const definition = await readManagedServerDefinition(scaffold, process.cwd());
   const nonInteractive = envFile !== undefined;
   const initEnvSources = await readHotUpdaterInitEnv(process.cwd(), envFile);
   const { managedEnv } = initEnvSources;
@@ -551,7 +557,7 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
   await setEnv({
     projectId: initializeVariable.projectId,
     storageBucket: initializeVariable.storageBucket,
-    build,
+    scaffold,
     region: currentRegion,
     applicationCredentials:
       persistedInputs[

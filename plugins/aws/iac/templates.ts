@@ -123,3 +123,13 @@ export const getConfigTemplate = (
   build: BuildType,
   authMode: AwsConfigScaffoldAuthMode,
 ) => getConfigScaffold(build, authMode).text;
+
+/**
+ * The server definitions this provider's init writes, one per credential
+ * mode, whatever the build, which another provider's init replaces when it
+ * finds one unedited.
+ */
+export const serverDefinitions = (): readonly string[] =>
+  AUTH_MODES.map(
+    (authMode) => renderConfigScaffold("bare", authMode).definition.text,
+  );

@@ -10,6 +10,7 @@ import {
   importManagedServerDefinition,
   readManagedServerDefinition,
   readServerDefinitionStatus,
+  replacingServerDefinitions,
   writeHotUpdaterConfig,
   writeHotUpdaterFiles,
   writeServerDefinition,
@@ -47,6 +48,29 @@ const createSupabaseScaffold = (build: BuildType) =>
       })
       .setPlugins({
         imports: [{ pkg: "@hot-updater/supabase", named: ["plugins"] }],
+        configString: "plugins",
+      }),
+  );
+
+/** The definition another managed provider's init writes. */
+const createCloudflareScaffold = (build: BuildType) =>
+  createHotUpdaterConfigScaffoldFromBuilder(
+    new ConfigBuilder()
+      .setBuildType(build)
+      .setStorage({
+        imports: [{ pkg: "@hot-updater/cloudflare", named: ["r2Storage"] }],
+        configString: `r2Storage({
+    bucketName: process.env.HOT_UPDATER_CLOUDFLARE_R2_BUCKET_NAME!,
+  })`,
+      })
+      .setDatabase({
+        imports: [{ pkg: "@hot-updater/cloudflare", named: ["d1Database"] }],
+        configString: `d1Database({
+    databaseId: process.env.HOT_UPDATER_CLOUDFLARE_D1_DATABASE_ID!,
+  })`,
+      })
+      .setPlugins({
+        imports: [{ pkg: "@hot-updater/cloudflare", named: ["plugins"] }],
         configString: "plugins",
       }),
   );
@@ -495,6 +519,56 @@ export default defineConfig({
       path: path.join(cwd, "servers/supabase.ts"),
       edited: false,
     });
+  });
+});
+
+describe("switching managed providers", () => {
+  it("replaces the definition another provider's init wrote", async () => {
+    const cwd = await createTempDir();
+    vi.spyOn(p.log, "success").mockImplementation(() => undefined);
+    const definitionPath = path.join(cwd, "hotUpdater.ts");
+    const cloudflare = createCloudflareScaffold("bare");
+    await fs.writeFile(definitionPath, `${cloudflare.definition.text}\n`);
+    const supabase = replacingServerDefinitions(
+      createSupabaseScaffold("bare"),
+      [cloudflare.definition.text],
+    );
+
+    // Not the project's own: the provider's prebuilt server runs.
+    await expect(readManagedServerDefinition(supabase, cwd)).resolves.toEqual({
+      path: definitionPath,
+      edited: false,
+    });
+    await expect(
+      writeHotUpdaterFiles(supabase, { cwd, settings: "Supabase" }),
+    ).resolves.toMatchObject({ definition: { status: "updated" } });
+    await expect(fs.readFile(definitionPath, "utf-8")).resolves.toBe(
+      `${supabase.definition.text}\n`,
+    );
+  });
+
+  it("refuses a definition the project wrote for another provider before init touches anything", async () => {
+    const cwd = await createTempDir();
+    const definitionPath = path.join(cwd, "hotUpdater.ts");
+    const cloudflare = createCloudflareScaffold("bare");
+    await fs.writeFile(
+      definitionPath,
+      cloudflare.definition.text.replace(
+        "  plugins,\n",
+        "  plugins: [...plugins, notes()],\n",
+      ),
+    );
+
+    await expect(
+      readManagedServerDefinition(
+        replacingServerDefinitions(createSupabaseScaffold("bare"), [
+          cloudflare.definition.text,
+        ]),
+        cwd,
+      ),
+    ).rejects.toThrow(
+      "hotUpdater.ts defines a cloudflare server: it imports @hot-updater/cloudflare. To deploy it, run `hot-updater init --provider cloudflare`. To deploy the managed supabase server, give hotUpdater.ts the database and storage of @hot-updater/supabase, or remove it and rerun init, which writes one.",
+    );
   });
 });
 

@@ -21,6 +21,7 @@ import {
   type ProviderConfig,
   renderImportStatements,
 } from "./ConfigBuilder";
+import { InitError } from "./initOptions";
 import { p } from "./prompts";
 import { importServerModule, type ServerModule } from "./serverModule";
 
@@ -963,19 +964,81 @@ export interface ManagedServerDefinition {
 }
 
 /**
+ * `scaffold`, replacing `definitions` too: those the other providers' inits
+ * write, which a project switching providers finds unedited.
+ */
+export const replacingServerDefinitions = (
+  scaffold: HotUpdaterConfigScaffold,
+  definitions: readonly string[] = [],
+): HotUpdaterConfigScaffold => ({
+  ...scaffold,
+  definition: {
+    ...scaffold.definition,
+    replaces: [...(scaffold.definition.replaces ?? []), ...definitions],
+  },
+});
+
+/** The packages whose database and storage a managed server runs on. */
+const MANAGED_PROVIDER_PACKAGES = [
+  "@hot-updater/aws",
+  "@hot-updater/cloudflare",
+  "@hot-updater/firebase",
+  "@hot-updater/supabase",
+];
+
+/**
+ * Refuses a definition written for another managed provider, from the
+ * packages it imports, before init touches a resource.
+ */
+const assertDefinitionProvider = (
+  scaffold: HotUpdaterConfigScaffold,
+  definitionPath: string,
+  text: string,
+  cwd: string,
+) => {
+  const provider = scaffold.definition.imports.find(({ pkg }) =>
+    MANAGED_PROVIDER_PACKAGES.includes(pkg),
+  )?.pkg;
+  const source = parseConfigSource(text);
+  if (provider === undefined || source === null) return;
+  const imported = new Set(
+    source.program.body.flatMap((statement) =>
+      statement.type === "ImportDeclaration" ? [statement.source.value] : [],
+    ),
+  );
+  const other = MANAGED_PROVIDER_PACKAGES.find(
+    (pkg) => pkg !== provider && imported.has(pkg),
+  );
+  if (other === undefined || imported.has(provider)) return;
+  const name = (pkg: string) => pkg.slice("@hot-updater/".length);
+  const shown = path.relative(cwd, definitionPath);
+  throw new InitError(
+    `${shown} defines a ${name(other)} server: it imports ${other}. To deploy it, run \`hot-updater init --provider ${name(other)}\`. To deploy the managed ${name(provider)} server, give ${shown} the database and storage of ${provider}, or remove it and rerun init, which writes one.`,
+  );
+};
+
+/**
  * The server definition a managed init deploys: the one an existing
- * hot-updater.config.ts points at, or the one it writes.
+ * hot-updater.config.ts points at, or the one it writes. A definition
+ * written for another managed provider is refused, unless it is one that
+ * provider's init wrote, which `scaffold` replaces.
  */
 export const readManagedServerDefinition = async (
   scaffold: HotUpdaterConfigScaffold,
   cwd: string = process.cwd(),
 ): Promise<ManagedServerDefinition> => {
   const definitionPath = await resolveServerDefinitionPath(scaffold, cwd);
-  return {
-    path: definitionPath,
-    edited:
-      (await readServerDefinitionStatus(scaffold, definitionPath)) === "edited",
-  };
+  const edited =
+    (await readServerDefinitionStatus(scaffold, definitionPath)) === "edited";
+  if (edited) {
+    assertDefinitionProvider(
+      scaffold,
+      definitionPath,
+      (await readTextFile(definitionPath)) ?? "",
+      cwd,
+    );
+  }
+  return { path: definitionPath, edited };
 };
 
 /**

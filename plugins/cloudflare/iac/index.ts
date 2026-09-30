@@ -18,6 +18,7 @@ import {
   type RunInitOptions,
   transformTemplate,
   readManagedServerDefinition,
+  replacingServerDefinitions,
   writeHotUpdaterFiles,
 } from "@hot-updater/cli-tools";
 import {
@@ -193,9 +194,16 @@ const deployWorker = async (
   }
 };
 
-export const runInit = async ({ build, envFile }: RunInitOptions) => {
+export const runInit = async ({
+  build,
+  envFile,
+  otherServerDefinitions,
+}: RunInitOptions) => {
   const cwd = getCwd();
-  const scaffold = getConfigScaffold(build);
+  const scaffold = replacingServerDefinitions(
+    getConfigScaffold(build),
+    otherServerDefinitions,
+  );
   const definition = await readManagedServerDefinition(scaffold, cwd);
   const nonInteractive = envFile !== undefined;
   const initEnvSources = await readHotUpdaterInitEnv(cwd, envFile);

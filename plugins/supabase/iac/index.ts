@@ -20,6 +20,7 @@ import {
   transformEnv,
   transformTemplate,
   readManagedServerDefinition,
+  replacingServerDefinitions,
   writeHotUpdaterConfig,
   writeHotUpdaterFiles,
 } from "@hot-updater/cli-tools";
@@ -1000,8 +1001,12 @@ export const withSupabaseCliMetadataCleanup = async <Result>(
 const runInitWithoutCliMetadata = async ({
   build,
   envFile,
+  otherServerDefinitions,
 }: RunInitOptions) => {
-  const scaffold = getConfigScaffold(build);
+  const scaffold = replacingServerDefinitions(
+    getConfigScaffold(build),
+    otherServerDefinitions,
+  );
   const definition = await readManagedServerDefinition(scaffold, process.cwd());
   const nonInteractive = envFile !== undefined;
   const initEnvSources = await readHotUpdaterInitEnv(process.cwd(), envFile);

@@ -12,6 +12,7 @@ import {
   printAppSetup,
   readHotUpdaterInitEnv,
   readManagedServerDefinition,
+  replacingServerDefinitions,
   type RunInitOptions,
   writeHotUpdaterFiles,
 } from "@hot-updater/cli-tools";
@@ -80,7 +81,11 @@ export const prepareDynamoDBDeployment = async (
   await migrateDynamoDB(input, serverPlugins);
 };
 
-export const runInit = async ({ build, envFile }: RunInitOptions) => {
+export const runInit = async ({
+  build,
+  envFile,
+  otherServerDefinitions,
+}: RunInitOptions) => {
   const nonInteractive = envFile !== undefined;
   const initEnvSources = await readHotUpdaterInitEnv(process.cwd(), envFile);
   const { managedEnv } = initEnvSources;
@@ -118,7 +123,10 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
 
   const { awsProfile, configAuthMode, credentials, mode } =
     await resolveAwsAuth(providerEnv, nonInteractive);
-  const scaffold = getConfigScaffold(build, configAuthMode);
+  const scaffold = replacingServerDefinitions(
+    getConfigScaffold(build, configAuthMode),
+    otherServerDefinitions,
+  );
   const definition = await readManagedServerDefinition(scaffold, process.cwd());
   const resolvedAuthInputs = {
     ...savedInputs,
