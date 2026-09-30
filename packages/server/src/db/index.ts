@@ -46,6 +46,7 @@ export {
   type ServerDefinition,
 } from "./serverDefinition";
 export {
+  clientEndpointsOf,
   managedServerDefinitionOf,
   type ManagedServer,
 } from "../assembly/managedServer";

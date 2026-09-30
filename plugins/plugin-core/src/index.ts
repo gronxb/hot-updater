@@ -1,3 +1,4 @@
+export * from "./adapterResource";
 export * from "./bundleStorageLayout";
 export * from "./assetStorageLayout";
 export * from "./contentAddressedAssets";
