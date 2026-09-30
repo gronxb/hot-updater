@@ -33,7 +33,7 @@ vi.mock("@aws-sdk/client-sts", () => ({
 import { definePlugin, defineTable } from "@hot-updater/server/plugins";
 
 import { plugins } from "../src/plugins";
-import { dynamoDBLeadingKeys, IAMManager } from "./iam";
+import { dynamoDBLeadingKeys, type EdgeDeployment, IAMManager } from "./iam";
 
 describe("IAMManager DynamoDB access", () => {
   beforeEach(() => {
@@ -245,38 +245,167 @@ describe("IAMManager DynamoDB access", () => {
     expect(keys).not.toContain("bundle_events");
   });
 
-  it("keeps the access of the deployment it replaces until the next init, while the edges still run it", async () => {
+  /**
+   * One init's role step for `serverPlugins`, while the distribution is at
+   * `edge`, and, when its deploy succeeds, the version the distribution now
+   * runs.
+   */
+  const initWith = async (
+    manager: IAMManager,
+    serverPlugins: typeof plugins | readonly [],
+    edge: EdgeDeployment | undefined,
+    deployed?: string,
+  ) => {
+    await manager.createOrSelectRole({
+      bucketName: "hot-updater-storage",
+      dynamodbTableName: "hot-updater-metadata",
+      lambdaName: "hot-updater-edge",
+      ssmParameterName: "/hot-updater/hot-updater-storage/keypair",
+      plugins: serverPlugins,
+      edge,
+    });
+    if (deployed !== undefined) {
+      await manager.recordDeployedVersion({
+        dynamodbTableName: "hot-updater-metadata",
+        functionArn: `arn:aws:lambda:us-east-1:123456789012:function:hot-updater-edge:${deployed}`,
+        lambdaName: "hot-updater-edge",
+        plugins: serverPlugins,
+      });
+    }
+  };
+  const deployedOn = (version: string): EdgeDeployment => ({
+    deployed: true,
+    versions: [version],
+  });
+  const rollingOutTo = (version: string): EdgeDeployment => ({
+    deployed: false,
+    versions: [version],
+  });
+
+  it("keeps the access of the versions the edges may run until the distribution deploys the one it recorded", async () => {
     const manager = new IAMManager("ap-northeast-2", {
       accessKeyId: "test-access-key",
       secretAccessKey: "test-secret-key",
     });
-    const deploy = (serverPlugins: typeof plugins | readonly []) =>
-      manager.createOrSelectRole({
-        bucketName: "hot-updater-storage",
-        dynamodbTableName: "hot-updater-metadata",
-        lambdaName: "hot-updater-edge",
-        ssmParameterName: "/hot-updater/hot-updater-storage/keypair",
-        plugins: serverPlugins,
-      });
 
-    await deploy(plugins);
+    await initWith(manager, plugins, undefined, "1");
     const withApiKeys = dynamoDBStatements();
-    // The definition drops insights() and apiKeys().
-    await deploy([]);
+    // The deploy recorded the version it runs on.
+    expect(Object.keys(withApiKeys)).toEqual([
+      "HotUpdaterReadV1",
+      "HotUpdaterWriteV1",
+    ]);
 
+    // The definition drops insights() and apiKeys().
+    await initWith(manager, [], deployedOn("1"), "2");
     const rollingOut = dynamoDBStatements();
-    expect(rollingOut["HotUpdaterRead"]?.keys).not.toContain("api_keys");
+    expect(rollingOut["HotUpdaterReadV2"]?.keys).not.toContain("api_keys");
     expect(rollingOut["HotUpdaterPreviousRead"]).toEqual(
-      withApiKeys["HotUpdaterRead"],
+      withApiKeys["HotUpdaterReadV1"],
     );
     expect(rollingOut["HotUpdaterPreviousWrite"]).toEqual(
-      withApiKeys["HotUpdaterWrite"],
+      withApiKeys["HotUpdaterWriteV1"],
     );
 
-    await deploy([]);
+    // Still rolling out: version 1 may serve.
+    await initWith(manager, [], rollingOutTo("2"), "2");
+    expect(dynamoDBStatements()["HotUpdaterPreviousRead"]?.keys).toEqual(
+      expect.arrayContaining(["api_keys", "api_keys#*"]),
+    );
+
+    // Deployed on version 2, whose access is all the edges need.
+    await initWith(manager, [], deployedOn("2"), "2");
+    expect(Object.keys(dynamoDBStatements())).toEqual([
+      "HotUpdaterReadV2",
+      "HotUpdaterWriteV2",
+    ]);
+  });
+
+  it("keeps the running version's access through an init that failed after writing the policy, and its retry", async () => {
+    const manager = new IAMManager("ap-northeast-2", {
+      accessKeyId: "test-access-key",
+      secretAccessKey: "test-secret-key",
+    });
+    await initWith(manager, plugins, undefined, "1");
+    const withApiKeys = dynamoDBStatements();
+
+    // The init that drops apiKeys() fails at the Lambda deploy or the
+    // CloudFront update: version 1 keeps serving, and nothing is recorded.
+    await initWith(manager, [], deployedOn("1"));
+    expect(dynamoDBStatements()["HotUpdaterPreviousRead"]).toEqual(
+      withApiKeys["HotUpdaterReadV1"],
+    );
+
+    // The retry reads its own access as the policy's current one, which no
+    // deploy recorded, so version 1's stays.
+    await initWith(manager, [], deployedOn("1"));
+    const retried = dynamoDBStatements();
+    expect(retried["HotUpdaterRead"]?.keys).not.toContain("api_keys");
+    expect(retried["HotUpdaterPreviousRead"]?.keys).toEqual(
+      expect.arrayContaining(withApiKeys["HotUpdaterReadV1"]!.keys),
+    );
+    expect(retried["HotUpdaterPreviousWrite"]?.keys).toEqual(
+      expect.arrayContaining(withApiKeys["HotUpdaterWriteV1"]!.keys),
+    );
+
+    // The retry's deploy succeeds, and once the distribution deploys it,
+    // the next init drops version 1's access.
+    await initWith(manager, [], deployedOn("1"), "2");
+    expect(dynamoDBStatements()["HotUpdaterPreviousRead"]?.keys).toContain(
+      "api_keys",
+    );
+    await initWith(manager, [], deployedOn("2"));
     expect(Object.keys(dynamoDBStatements())).toEqual([
       "HotUpdaterRead",
       "HotUpdaterWrite",
+    ]);
+  });
+
+  it("keeps every access while two inits share one propagation window", async () => {
+    const manager = new IAMManager("ap-northeast-2", {
+      accessKeyId: "test-access-key",
+      secretAccessKey: "test-secret-key",
+    });
+    await initWith(manager, plugins, undefined, "1");
+    const withApiKeys = dynamoDBStatements();
+    await initWith(manager, [], deployedOn("1"), "2");
+
+    // The next init starts while the edges still move from version 1 to 2.
+    await initWith(manager, [], rollingOutTo("2"), "3");
+    const statements = dynamoDBStatements();
+    expect(statements["HotUpdaterPreviousRead"]?.keys).toEqual(
+      expect.arrayContaining(withApiKeys["HotUpdaterReadV1"]!.keys),
+    );
+    // A distribution that runs another version than the recorded one, or
+    // none, keeps it too.
+    await initWith(manager, [], deployedOn("2"));
+    expect(dynamoDBStatements()["HotUpdaterPreviousRead"]?.keys).toContain(
+      "api_keys",
+    );
+  });
+
+  it("records nothing when another init wrote the policy after this one", async () => {
+    const manager = new IAMManager("ap-northeast-2", {
+      accessKeyId: "test-access-key",
+      secretAccessKey: "test-secret-key",
+    });
+    await initWith(manager, plugins, undefined, "1");
+    await initWith(manager, [], deployedOn("1"));
+
+    // This init deployed plugins, but the policy now holds the other's.
+    await manager.recordDeployedVersion({
+      dynamodbTableName: "hot-updater-metadata",
+      functionArn:
+        "arn:aws:lambda:us-east-1:123456789012:function:hot-updater-edge:2",
+      lambdaName: "hot-updater-edge",
+      plugins,
+    });
+
+    expect(Object.keys(dynamoDBStatements())).toEqual([
+      "HotUpdaterRead",
+      "HotUpdaterWrite",
+      "HotUpdaterPreviousRead",
+      "HotUpdaterPreviousWrite",
     ]);
   });
 

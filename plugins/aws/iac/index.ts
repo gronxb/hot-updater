@@ -425,6 +425,14 @@ export const runInit = async ({
     lambdaName,
     ssmParameterName,
     plugins: serverPlugins,
+    // The function versions the distribution may still run keep their
+    // access until it deploys the one init records.
+    edge: selectedDistribution?.Id
+      ? await cloudFrontManager.edgeDeploymentOf(
+          selectedDistribution.Id,
+          lambdaName,
+        )
+      : undefined,
   });
 
   const ssmKeyPairManager = new SSMKeyPairManager(bucketRegion, credentials);
@@ -461,6 +469,12 @@ export const runInit = async ({
       functionArn,
       pluginPaths,
     });
+  await iamManager.recordDeployedVersion({
+    dynamodbTableName: resolvedDynamoDBTableName,
+    functionArn,
+    lambdaName,
+    plugins: serverPlugins,
+  });
 
   // Update S3 bucket policy (allow CloudFront access)
   const accountId = functionArn.split(":")[4];

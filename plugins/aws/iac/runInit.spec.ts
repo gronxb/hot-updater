@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   createOrSelectRole: vi.fn(),
   createOrUpdateDistribution: vi.fn(),
   deploy: vi.fn(),
+  edgeDeploymentOf: vi.fn(),
   ensureTable: vi.fn(),
   getOrCreateKeyGroup: vi.fn(),
   getOrCreateKeyPair: vi.fn(),
@@ -23,6 +24,7 @@ const mocks = vi.hoisted(() => ({
   migrateDynamoDB: vi.fn(),
   printAppSetup: vi.fn(),
   provisionClientCredential: vi.fn(),
+  recordDeployedVersion: vi.fn(),
   selectDistribution: vi.fn(),
   updateBucketPolicy: vi.fn(),
 }));
@@ -65,7 +67,10 @@ vi.mock("../src/dynamoDB", () => ({
 vi.mock("./iam", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./iam")>()),
   IAMManager: vi.fn(function IAMManager() {
-    return { createOrSelectRole: mocks.createOrSelectRole };
+    return {
+      createOrSelectRole: mocks.createOrSelectRole,
+      recordDeployedVersion: mocks.recordDeployedVersion,
+    };
   }),
 }));
 
@@ -79,6 +84,7 @@ vi.mock("./cloudfront", () => ({
   CloudFrontManager: vi.fn(function CloudFrontManager() {
     return {
       createOrUpdateDistribution: mocks.createOrUpdateDistribution,
+      edgeDeploymentOf: mocks.edgeDeploymentOf,
       getOrCreateKeyGroup: mocks.getOrCreateKeyGroup,
       selectDistribution: mocks.selectDistribution,
     };
@@ -221,6 +227,10 @@ beforeEach(() => {
     DomainName: "d111111abcdef8.cloudfront.net",
     Id: "dist-id",
   });
+  mocks.edgeDeploymentOf.mockResolvedValue({
+    deployed: true,
+    versions: ["2"],
+  });
   mocks.createOrSelectRole.mockResolvedValue(
     "arn:aws:iam::123456789012:role/hot-updater-edge",
   );
@@ -325,8 +335,29 @@ describe("AWS init with the project's server definition", () => {
       migrated,
       expect.anything(),
     );
+    // The role keeps the access of the version the distribution runs, and
+    // records the one it deployed once the distribution runs it.
+    expect(mocks.edgeDeploymentOf).toHaveBeenCalledWith(
+      "dist-id",
+      "hot-updater-edge",
+    );
     expect(mocks.createOrSelectRole).toHaveBeenCalledWith(
-      expect.objectContaining({ plugins: migrated }),
+      expect.objectContaining({
+        plugins: migrated,
+        edge: { deployed: true, versions: ["2"] },
+      }),
+    );
+    expect(mocks.recordDeployedVersion).toHaveBeenCalledWith({
+      dynamodbTableName: "hot-updater-metadata",
+      functionArn:
+        "arn:aws:lambda:us-east-1:123456789012:function:hot-updater-edge:3",
+      lambdaName: "hot-updater-edge",
+      plugins: migrated,
+    });
+    expect(
+      mocks.recordDeployedVersion.mock.invocationCallOrder[0],
+    ).toBeGreaterThan(
+      mocks.createOrUpdateDistribution.mock.invocationCallOrder[0]!,
     );
     expect(mocks.createOrUpdateDistribution).toHaveBeenCalledWith(
       expect.objectContaining({

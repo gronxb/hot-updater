@@ -76,9 +76,10 @@ const statementsOf = (
   prefix: string,
   tableArn: string,
   access: DynamoDBAccess,
+  version?: string,
 ) => [
   {
-    Sid: `${prefix}Read`,
+    Sid: `${prefix}Read${version === undefined ? "" : `V${version}`}`,
     Action: READ_ACTIONS,
     Condition: {
       "ForAllValues:StringLike": { "dynamodb:LeadingKeys": [...access.read] },
@@ -87,7 +88,7 @@ const statementsOf = (
     Resource: [tableArn],
   },
   {
-    Sid: `${prefix}Write`,
+    Sid: `${prefix}Write${version === undefined ? "" : `V${version}`}`,
     Action: WRITE_ACTIONS,
     Condition: {
       "ForAllValues:StringLike": { "dynamodb:LeadingKeys": [...access.write] },
@@ -97,17 +98,30 @@ const statementsOf = (
   },
 ];
 
-const sameAccess = (left: DynamoDBAccess, right: DynamoDBAccess) =>
-  [left.read, left.write].every(
-    (keys, at) =>
-      JSON.stringify([...keys].sort()) ===
-      JSON.stringify([...[right.read, right.write][at]!].sort()),
-  );
+/** Whether `access` gives every partition `other` does. */
+const covers = (access: DynamoDBAccess, other: DynamoDBAccess) =>
+  other.read.every((key) => access.read.includes(key)) &&
+  other.write.every((key) => access.write.includes(key));
+
+const unionOf = (
+  left: DynamoDBAccess,
+  right: DynamoDBAccess,
+): DynamoDBAccess => ({
+  read: [...new Set([...left.read, ...right.read])],
+  write: [...new Set([...left.write, ...right.write])],
+});
+
+/** The access the function needs to run `plugins`. */
+const accessOf = (plugins: readonly PluginTables[]): DynamoDBAccess => ({
+  read: dynamoDBLeadingKeys(plugins),
+  write: dynamoDBWriteLeadingKeys(plugins),
+});
 
 /**
- * The function's DynamoDB access: `plugins`' partitions, and while a deploy
- * rolls out, `previous`, the deployment it replaces, whose version the edges
- * keep running for minutes. The next deploy drops `previous`.
+ * The function's DynamoDB access: `plugins`' partitions, and `previous`,
+ * the access of the versions the edges may still run, while a deploy rolls
+ * out. `version` records the function version the distribution was updated
+ * to with this access, once init has done so.
  */
 export const buildDynamoDBPolicy = (
   region: string,
@@ -115,17 +129,15 @@ export const buildDynamoDBPolicy = (
   tableName: string,
   plugins: readonly PluginTables[] = packagePlugins,
   previous?: DynamoDBAccess,
+  version?: string,
 ) => {
   const tableArn = `arn:aws:dynamodb:${region}:${accountId}:table/${tableName}`;
-  const current = {
-    read: dynamoDBLeadingKeys(plugins),
-    write: dynamoDBWriteLeadingKeys(plugins),
-  };
+  const current = accessOf(plugins);
   return {
     Version: "2012-10-17",
     Statement: [
-      ...statementsOf("HotUpdater", tableArn, current),
-      ...(previous === undefined || sameAccess(previous, current)
+      ...statementsOf("HotUpdater", tableArn, current, version),
+      ...(previous === undefined || covers(current, previous)
         ? []
         : statementsOf("HotUpdaterPrevious", tableArn, previous)),
     ],
@@ -138,14 +150,26 @@ type PolicyStatement = {
   readonly Condition?: Record<string, Record<string, string | string[]>>;
 };
 
+/** What the function's DynamoDB policy gives it, as init last wrote it. */
+export interface DynamoDBPolicyState {
+  /** The access of the version init deployed last, or was deploying. */
+  readonly current: DynamoDBAccess;
+  /**
+   * The function version the distribution was updated to with `current`,
+   * which init records once the update succeeds.
+   */
+  readonly version?: string;
+  /** The access kept for the versions the edges may still run. */
+  readonly previous?: DynamoDBAccess;
+}
+
 /**
- * The access a policy document gives its current deployment, read back so
- * the next deploy keeps it while it rolls out. A policy from before the
- * split has one statement for both.
+ * The state of a policy document. A policy from before the read and write
+ * split has one statement for both, which its deployment still needs.
  */
-export const dynamoDBAccessOf = (
+export const dynamoDBPolicyStateOf = (
   document: string,
-): DynamoDBAccess | undefined => {
+): DynamoDBPolicyState | undefined => {
   const { Statement = [] } = JSON.parse(document) as {
     readonly Statement?: readonly PolicyStatement[];
   };
@@ -156,11 +180,65 @@ export const dynamoDBAccessOf = (
       ];
     return keys === undefined ? undefined : [keys].flat();
   };
-  const read = keysOf(Statement.find(({ Sid }) => Sid === "HotUpdaterRead"));
-  const write = keysOf(Statement.find(({ Sid }) => Sid === "HotUpdaterWrite"));
-  if (read !== undefined && write !== undefined) return { read, write };
-  const legacy = keysOf(Statement.find(({ Sid }) => Sid === undefined));
-  return legacy === undefined ? undefined : { read: legacy, write: legacy };
+  const statementOf = (pattern: RegExp) =>
+    Statement.find(({ Sid }) => Sid !== undefined && pattern.test(Sid));
+  const read = statementOf(/^HotUpdaterRead(?:V\d+)?$/u);
+  const write = statementOf(/^HotUpdaterWrite(?:V\d+)?$/u);
+  const readKeys = keysOf(read);
+  const writeKeys = keysOf(write);
+  if (readKeys === undefined || writeKeys === undefined) {
+    const legacy = keysOf(Statement.find(({ Sid }) => Sid === undefined));
+    return legacy === undefined
+      ? undefined
+      : { current: { read: legacy, write: legacy } };
+  }
+  const readVersion = /V(\d+)$/u.exec(read!.Sid!)?.[1];
+  const writeVersion = /V(\d+)$/u.exec(write!.Sid!)?.[1];
+  const previousRead = keysOf(statementOf(/^HotUpdaterPreviousRead$/u));
+  const previousWrite = keysOf(statementOf(/^HotUpdaterPreviousWrite$/u));
+  return {
+    current: { read: readKeys, write: writeKeys },
+    ...(readVersion !== undefined && readVersion === writeVersion
+      ? { version: readVersion }
+      : {}),
+    ...(previousRead === undefined || previousWrite === undefined
+      ? {}
+      : { previous: { read: previousRead, write: previousWrite } }),
+  };
+};
+
+/**
+ * Where the distribution stands with the function: whether its last update
+ * finished deploying to the edges, and the function versions its behaviors
+ * run.
+ */
+export interface EdgeDeployment {
+  readonly deployed: boolean;
+  readonly versions: readonly string[];
+}
+
+/**
+ * The access an init keeps for the versions the edges may still run. Once
+ * the distribution reports Deployed on the one version `state.current` was
+ * recorded for, that is all it runs, so its access is enough. Until then,
+ * the init keeps everything the policy gives, so an init that failed after
+ * writing the policy, or two inits in one propagation window, never take
+ * access from a version still serving.
+ */
+export const retainedDynamoDBAccess = (
+  state: DynamoDBPolicyState | undefined,
+  edge: EdgeDeployment | undefined,
+): DynamoDBAccess | undefined => {
+  if (state === undefined) return undefined;
+  const settled =
+    state.version !== undefined &&
+    edge !== undefined &&
+    edge.deployed &&
+    edge.versions.length > 0 &&
+    edge.versions.every((version) => version === state.version);
+  return settled || state.previous === undefined
+    ? state.current
+    : unionOf(state.current, state.previous);
 };
 
 export const buildS3Policy = (bucketName: string) => {
@@ -214,6 +292,13 @@ export const LAMBDA_EDGE_TRUST_POLICY = {
 
 const DYNAMODB_POLICY_NAME = "HotUpdaterDynamoDBReadAccess";
 
+/** The function's execution role, one per Lambda installation. */
+const roleNameOf = (lambdaName: string) =>
+  `hot-updater-edge-${createHash("sha256")
+    .update(lambdaName)
+    .digest("hex")
+    .slice(0, 16)}`;
+
 export class IAMManager {
   private region: string;
   private credentials: { accessKeyId: string; secretAccessKey: string };
@@ -251,11 +336,11 @@ export class IAMManager {
     }
   }
 
-  /** The access the role gives the deployment it has now, if any. */
-  private async readDynamoDBAccess(
+  /** The state of the role's DynamoDB policy, if it has one. */
+  private async readDynamoDBPolicyState(
     iamClient: IAM,
     roleName: string,
-  ): Promise<DynamoDBAccess | undefined> {
+  ): Promise<DynamoDBPolicyState | undefined> {
     try {
       const { PolicyDocument } = await iamClient.getRolePolicy({
         PolicyName: DYNAMODB_POLICY_NAME,
@@ -263,7 +348,7 @@ export class IAMManager {
       });
       return PolicyDocument === undefined
         ? undefined
-        : dynamoDBAccessOf(decodeURIComponent(PolicyDocument));
+        : dynamoDBPolicyStateOf(decodeURIComponent(PolicyDocument));
     } catch (error) {
       if (error instanceof Error && error.name === "NoSuchEntityException") {
         return undefined;
@@ -278,10 +363,14 @@ export class IAMManager {
     accountId: string,
     tableName: string,
     plugins: readonly PluginTables[],
+    edge: EdgeDeployment | undefined,
   ): Promise<void> {
-    // The edges run the deployment it replaces until the distribution
-    // deploys, so its access stays until the next init.
-    const previous = await this.readDynamoDBAccess(iamClient, roleName);
+    // The edges may still run the versions before this one, until the
+    // distribution deploys it: their access stays.
+    const previous = retainedDynamoDBAccess(
+      await this.readDynamoDBPolicyState(iamClient, roleName),
+      edge,
+    );
     await iamClient.putRolePolicy({
       PolicyDocument: JSON.stringify(
         buildDynamoDBPolicy(
@@ -290,6 +379,51 @@ export class IAMManager {
           tableName,
           plugins,
           previous,
+        ),
+      ),
+      PolicyName: DYNAMODB_POLICY_NAME,
+      RoleName: roleName,
+    });
+  }
+
+  /**
+   * Records that the distribution now runs `functionArn`'s version with the
+   * access init wrote for `plugins`, so a later init can drop the access it
+   * kept for the versions before, once the distribution deploys it. If
+   * another init wrote the policy since, it records nothing, and the next
+   * init keeps every access the policy gives.
+   */
+  async recordDeployedVersion(options: {
+    readonly dynamodbTableName: string;
+    readonly functionArn: string;
+    readonly lambdaName: string;
+    readonly plugins: readonly PluginTables[];
+  }): Promise<void> {
+    const iamClient = new IAM({
+      region: this.region,
+      credentials: this.credentials,
+    });
+    const roleName = roleNameOf(options.lambdaName);
+    const state = await this.readDynamoDBPolicyState(iamClient, roleName);
+    const current = accessOf(options.plugins);
+    if (
+      state === undefined ||
+      !covers(state.current, current) ||
+      !covers(current, state.current)
+    ) {
+      return;
+    }
+    const [, , , , accountId, , , version] = options.functionArn.split(":");
+    if (accountId === undefined || version === undefined) return;
+    await iamClient.putRolePolicy({
+      PolicyDocument: JSON.stringify(
+        buildDynamoDBPolicy(
+          this.region,
+          accountId,
+          options.dynamodbTableName,
+          options.plugins,
+          state.previous,
+          version,
         ),
       ),
       PolicyName: DYNAMODB_POLICY_NAME,
@@ -331,6 +465,8 @@ export class IAMManager {
     readonly ssmParameterName: string;
     /** The plugins the function runs, whose tables it may read and write. */
     readonly plugins: readonly PluginTables[];
+    /** The distribution the function runs behind, if it exists yet. */
+    readonly edge?: EdgeDeployment;
   }): Promise<string> {
     const iamClient = new IAM({
       region: this.region,
@@ -349,11 +485,7 @@ export class IAMManager {
     }
 
     const assumeRolePolicyDocument = JSON.stringify(LAMBDA_EDGE_TRUST_POLICY);
-    const installationId = createHash("sha256")
-      .update(options.lambdaName)
-      .digest("hex")
-      .slice(0, 16);
-    const roleName = `hot-updater-edge-${installationId}`;
+    const roleName = roleNameOf(options.lambdaName);
 
     try {
       const { Role: existingRole } = await iamClient.getRole({
@@ -374,6 +506,7 @@ export class IAMManager {
           accountId,
           options.dynamodbTableName,
           options.plugins,
+          options.edge,
         );
         p.log.info(
           `Using existing IAM role: ${roleName} (${existingRole.Arn})`,
@@ -416,6 +549,7 @@ export class IAMManager {
           accountId,
           options.dynamodbTableName,
           options.plugins,
+          options.edge,
         );
         p.log.info(`Added DynamoDB read policy to ${roleName}`);
 

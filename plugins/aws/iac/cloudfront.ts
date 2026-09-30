@@ -23,12 +23,22 @@ import {
   collectPaginatedCloudFrontList,
   findInPaginatedCloudFrontList,
 } from "./cloudfrontPagination";
+import type { EdgeDeployment } from "./iam";
 import type { AwsRegion } from "./regionLocationMap";
 
 export type CloudFrontDistribution = {
   readonly DomainName: string;
   readonly Id: string;
 };
+
+/**
+ * Hot Updater's policies modified this recently may be another init's,
+ * which it is about to attach to its distribution.
+ */
+const POLICY_CLEANUP_MIN_AGE_MS = 60 * 60 * 1000;
+
+const isNamed = (error: unknown, ...names: readonly string[]) =>
+  error instanceof Error && names.includes(error.name);
 
 export class CloudFrontManager {
   private region: AwsRegion;
@@ -54,64 +64,224 @@ export class CloudFrontManager {
     cloudfrontClient: CloudFront,
     config: CachePolicyConfig,
   ): Promise<string> {
-    const existingPolicy = await findInPaginatedCloudFrontList({
-      listPage: async (marker) => {
-        const listPoliciesResponse = await cloudfrontClient.listCachePolicies({
-          Type: "custom",
-          ...(marker ? { Marker: marker } : {}),
-        });
+    const find = async () =>
+      (
+        await findInPaginatedCloudFrontList({
+          listPage: async (marker) => {
+            const listPoliciesResponse =
+              await cloudfrontClient.listCachePolicies({
+                Type: "custom",
+                ...(marker ? { Marker: marker } : {}),
+              });
 
-        return {
-          items: listPoliciesResponse.CachePolicyList?.Items ?? [],
-          nextMarker: listPoliciesResponse.CachePolicyList?.NextMarker,
-        };
-      },
-      matches: (policy) =>
-        policy.CachePolicy?.CachePolicyConfig?.Name === config.Name,
-    });
-    const existingPolicyId = existingPolicy?.CachePolicy?.Id;
+            return {
+              items: listPoliciesResponse.CachePolicyList?.Items ?? [],
+              nextMarker: listPoliciesResponse.CachePolicyList?.NextMarker,
+            };
+          },
+          matches: (policy) =>
+            policy.CachePolicy?.CachePolicyConfig?.Name === config.Name,
+        })
+      )?.CachePolicy?.Id;
     // The name holds the content, and other deployments in the account may
     // use the policy: an existing one is used as it is.
+    const existingPolicyId = await find();
     if (existingPolicyId) return existingPolicyId;
 
-    const createPolicyResponse = await cloudfrontClient.createCachePolicy({
-      CachePolicyConfig: config,
-    });
-    const cachePolicyId = createPolicyResponse.CachePolicy?.Id;
-    if (!cachePolicyId) {
-      throw new Error("Failed to create shared cache policy");
+    try {
+      const createPolicyResponse = await cloudfrontClient.createCachePolicy({
+        CachePolicyConfig: config,
+      });
+      const cachePolicyId = createPolicyResponse.CachePolicy?.Id;
+      if (!cachePolicyId) {
+        throw new Error("Failed to create shared cache policy");
+      }
+      return cachePolicyId;
+    } catch (error) {
+      // Another init with the same settings created it first.
+      if (isNamed(error, "CachePolicyAlreadyExists")) {
+        const createdPolicyId = await find();
+        if (createdPolicyId) return createdPolicyId;
+      }
+      throw error;
     }
-    return cachePolicyId;
   }
 
   private async getOrCreateOriginRequestPolicy(
     cloudfrontClient: CloudFront,
     config: OriginRequestPolicyConfig,
   ): Promise<string> {
-    const existingPolicy = await findInPaginatedCloudFrontList({
-      listPage: async (marker) => {
-        const response = await cloudfrontClient.listOriginRequestPolicies({
-          Type: "custom",
-          ...(marker ? { Marker: marker } : {}),
-        });
-        return {
-          items: response.OriginRequestPolicyList?.Items ?? [],
-          nextMarker: response.OriginRequestPolicyList?.NextMarker,
-        };
-      },
-      matches: (policy) =>
-        policy.OriginRequestPolicy?.OriginRequestPolicyConfig?.Name ===
-        config.Name,
-    });
-    const existingPolicyId = existingPolicy?.OriginRequestPolicy?.Id;
+    const find = async () =>
+      (
+        await findInPaginatedCloudFrontList({
+          listPage: async (marker) => {
+            const response = await cloudfrontClient.listOriginRequestPolicies({
+              Type: "custom",
+              ...(marker ? { Marker: marker } : {}),
+            });
+            return {
+              items: response.OriginRequestPolicyList?.Items ?? [],
+              nextMarker: response.OriginRequestPolicyList?.NextMarker,
+            };
+          },
+          matches: (policy) =>
+            policy.OriginRequestPolicy?.OriginRequestPolicyConfig?.Name ===
+            config.Name,
+        })
+      )?.OriginRequestPolicy?.Id;
+    const existingPolicyId = await find();
     if (existingPolicyId) return existingPolicyId;
 
-    const response = await cloudfrontClient.createOriginRequestPolicy({
-      OriginRequestPolicyConfig: config,
+    try {
+      const response = await cloudfrontClient.createOriginRequestPolicy({
+        OriginRequestPolicyConfig: config,
+      });
+      const policyId = response.OriginRequestPolicy?.Id;
+      if (!policyId) throw new Error("Failed to create origin request policy");
+      return policyId;
+    } catch (error) {
+      // Another init with the same settings created it first.
+      if (isNamed(error, "OriginRequestPolicyAlreadyExists")) {
+        const createdPolicyId = await find();
+        if (createdPolicyId) return createdPolicyId;
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Deletes Hot Updater's cache and origin request policies that no
+   * distribution uses, such as rc.20's and those of settings no deployment
+   * has anymore, since an account holds 20 of each. It is best-effort and
+   * never fails init: CloudFront refuses to delete a policy a distribution
+   * uses, and a policy modified within the hour stays, since it may be
+   * another init's, about to be attached.
+   */
+  private async deleteUnusedPolicies(
+    cloudfrontClient: CloudFront,
+    used: ReadonlySet<string>,
+  ): Promise<void> {
+    const now = Date.now();
+    const isUnused = (
+      id: string | undefined,
+      name: string | undefined,
+      lastModified: Date | undefined,
+    ): id is string =>
+      id !== undefined &&
+      !used.has(id) &&
+      name?.startsWith("HotUpdater") === true &&
+      lastModified !== undefined &&
+      now - lastModified.getTime() >= POLICY_CLEANUP_MIN_AGE_MS;
+    const deleteQuietly = async (
+      name: string | undefined,
+      remove: () => Promise<unknown>,
+      expected: readonly string[],
+    ) => {
+      try {
+        await remove();
+        p.log.info(`Deleted unused CloudFront policy: ${name}`);
+      } catch (error) {
+        if (isNamed(error, ...expected, "PreconditionFailed")) return;
+        p.log.warn(
+          `Could not delete unused CloudFront policy ${name}: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+      }
+    };
+    try {
+      const cachePolicies = await collectPaginatedCloudFrontList({
+        listPage: async (marker) => {
+          const response = await cloudfrontClient.listCachePolicies({
+            Type: "custom",
+            ...(marker ? { Marker: marker } : {}),
+          });
+          return {
+            items: response.CachePolicyList?.Items ?? [],
+            nextMarker: response.CachePolicyList?.NextMarker,
+          };
+        },
+      });
+      for (const { CachePolicy: policy } of cachePolicies) {
+        const id = policy?.Id;
+        const name = policy?.CachePolicyConfig?.Name;
+        if (!isUnused(id, name, policy?.LastModifiedTime)) continue;
+        await deleteQuietly(name, async () => {
+          const { ETag } = await cloudfrontClient.getCachePolicy({ Id: id });
+          await cloudfrontClient.deleteCachePolicy({ Id: id, IfMatch: ETag });
+        }, ["CachePolicyInUse", "NoSuchCachePolicy"]);
+      }
+      const originRequestPolicies = await collectPaginatedCloudFrontList({
+        listPage: async (marker) => {
+          const response = await cloudfrontClient.listOriginRequestPolicies({
+            Type: "custom",
+            ...(marker ? { Marker: marker } : {}),
+          });
+          return {
+            items: response.OriginRequestPolicyList?.Items ?? [],
+            nextMarker: response.OriginRequestPolicyList?.NextMarker,
+          };
+        },
+      });
+      for (const { OriginRequestPolicy: policy } of originRequestPolicies) {
+        const id = policy?.Id;
+        const name = policy?.OriginRequestPolicyConfig?.Name;
+        if (!isUnused(id, name, policy?.LastModifiedTime)) continue;
+        await deleteQuietly(name, async () => {
+          const { ETag } = await cloudfrontClient.getOriginRequestPolicy({
+            Id: id,
+          });
+          await cloudfrontClient.deleteOriginRequestPolicy({
+            Id: id,
+            IfMatch: ETag,
+          });
+        }, ["OriginRequestPolicyInUse", "NoSuchOriginRequestPolicy"]);
+      }
+    } catch (error) {
+      p.log.warn(
+        `Could not list CloudFront policies to delete unused ones: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
+  }
+
+  /**
+   * Where `distributionId` stands with the function named `functionName`:
+   * whether its last update finished deploying, and the function versions
+   * its behaviors run. Undefined when the distribution is gone.
+   */
+  async edgeDeploymentOf(
+    distributionId: string,
+    functionName: string,
+  ): Promise<EdgeDeployment | undefined> {
+    const cloudfrontClient = new CloudFront({
+      region: this.region,
+      credentials: this.credentials,
     });
-    const policyId = response.OriginRequestPolicy?.Id;
-    if (!policyId) throw new Error("Failed to create origin request policy");
-    return policyId;
+    try {
+      const { Distribution } = await cloudfrontClient.getDistribution({
+        Id: distributionId,
+      });
+      const config = Distribution?.DistributionConfig;
+      const versions = [
+        config?.DefaultCacheBehavior,
+        ...(config?.CacheBehaviors?.Items ?? []),
+      ]
+        .flatMap(
+          (behavior) => behavior?.LambdaFunctionAssociations?.Items ?? [],
+        )
+        .map(({ LambdaFunctionARN }) => LambdaFunctionARN?.split(":") ?? [])
+        .filter((parts) => parts[6] === functionName && parts[7] !== undefined)
+        .map((parts) => parts[7]!);
+      return {
+        deployed: Distribution?.Status === "Deployed",
+        versions: [...new Set(versions)],
+      };
+    } catch (error) {
+      if (isNamed(error, "NoSuchDistribution")) return undefined;
+      throw error;
+    }
   }
 
   async getOrCreateKeyGroup(publicKey: string): Promise<{
@@ -302,6 +472,14 @@ export class CloudFrontManager {
         p.log.success(
           "CloudFront distribution updated with new Lambda function ARN.",
         );
+        await this.deleteUnusedPolicies(
+          cloudfrontClient,
+          new Set([
+            sharedCachePolicyId,
+            releaseCatalogCachePolicyId,
+            originRequestPolicyId,
+          ]),
+        );
         await cloudfrontClient.createInvalidation({
           DistributionId: selectedDistribution.Id,
           InvalidationBatch: {
@@ -359,6 +537,14 @@ export class CloudFrontManager {
       await makeEnv({
         HOT_UPDATER_CLOUDFRONT_DISTRIBUTION_ID: distributionId,
       });
+      await this.deleteUnusedPolicies(
+        cloudfrontClient,
+        new Set([
+          sharedCachePolicyId,
+          releaseCatalogCachePolicyId,
+          originRequestPolicyId,
+        ]),
+      );
       p.log.success(
         `Created new CloudFront distribution. Distribution ID: ${distributionId}`,
       );
