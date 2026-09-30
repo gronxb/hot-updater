@@ -3,11 +3,11 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-import type { BundleSigningPlugin } from "@hot-updater/plugin-core";
+import type { BundleSigningAdapter } from "@hot-updater/plugin-core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
-  createLocalSigningPlugin,
+  createLocalSigningAdapter,
   normalizeSigningConfig,
 } from "./localBundleSigning";
 
@@ -28,12 +28,12 @@ afterEach(async () => {
 });
 
 describe("normalizeSigningConfig", () => {
-  it("keeps an explicit signing plugin unchanged", () => {
+  it("keeps an explicit signing adapter unchanged", () => {
     const plugin = {
       name: "test-signer",
       getPublicKey: vi.fn(),
       sign: vi.fn(),
-    } satisfies BundleSigningPlugin;
+    } satisfies BundleSigningAdapter;
 
     expect(normalizeSigningConfig(plugin)).toBe(plugin);
     expect(plugin.getPublicKey).not.toHaveBeenCalled();
@@ -59,7 +59,7 @@ describe("normalizeSigningConfig", () => {
     ).toBeUndefined();
     expect(() =>
       normalizeSigningConfig({ privateKeyPath: "/missing/key.pem" } as never),
-    ).toThrow("must be a local key config or signing plugin");
+    ).toThrow("must be a local key config or signing adapter");
   });
 
   it("signs with the private key only on use", async () => {
@@ -72,7 +72,7 @@ describe("normalizeSigningConfig", () => {
     await fs.mkdir(path.join(cwd, "keys"));
     await fs.writeFile(path.join(cwd, "keys/private-key.pem"), privateKey);
 
-    const signing = createLocalSigningPlugin({
+    const signing = createLocalSigningAdapter({
       enabled: true,
       privateKeyPath: "./keys/private-key.pem",
     });
@@ -113,7 +113,7 @@ describe("normalizeSigningConfig", () => {
 
   it("redacts local private key read failures", async () => {
     const cwd = await createTempDir();
-    const signing = createLocalSigningPlugin({
+    const signing = createLocalSigningAdapter({
       enabled: true,
       privateKeyPath: "private-key-canary.pem",
     });
@@ -134,7 +134,7 @@ describe("normalizeSigningConfig", () => {
       publicKeyEncoding: { format: "pem", type: "spki" },
     });
     await fs.writeFile(path.join(cwd, "private-key.pem"), privateKey);
-    const signing = createLocalSigningPlugin({
+    const signing = createLocalSigningAdapter({
       enabled: true,
       privateKeyPath: "private-key.pem",
     });

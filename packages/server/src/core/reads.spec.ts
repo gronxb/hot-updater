@@ -7,7 +7,7 @@ import {
   compileReleaseCatalog,
   releaseRowToRelease,
   type ReleaseRow,
-  type StoragePluginWith,
+  type StorageAdapterWith,
 } from "@hot-updater/plugin-core";
 import { createMemoryAdapter } from "@hot-updater/plugin-core/internal";
 import { createReleaseCatalogTestStorage } from "@hot-updater/test-utils";
@@ -82,7 +82,7 @@ const setup = async () => {
     tx.aggregate("bundle_totals", { platform_key: "ios" }, { bundles: 2 });
   });
   const { readStorageText, resolveFileUrl } = createStorageAccess([
-    createReleaseCatalogTestStorage() as StoragePluginWith<"get">,
+    createReleaseCatalogTestStorage() as StorageAdapterWith<"get">,
   ]);
   return {
     engine,

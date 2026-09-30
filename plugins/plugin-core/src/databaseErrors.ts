@@ -16,7 +16,7 @@ export class DatabaseRowReferencedError extends Error {
   }
 }
 
-export type DatabasePluginInputErrorCode =
+export type DatabaseAdapterInputErrorCode =
   | "invalid-data"
   | "invalid-field"
   | "invalid-pagination"
@@ -24,10 +24,10 @@ export type DatabasePluginInputErrorCode =
   | "invalid-result";
 
 /** Input a database operation refuses before touching storage. */
-export class DatabasePluginInputError extends Error {
-  readonly name = "DatabasePluginInputError";
+export class DatabaseAdapterInputError extends Error {
+  readonly name = "DatabaseAdapterInputError";
 
-  constructor(readonly code: DatabasePluginInputErrorCode) {
-    super(`Invalid database plugin input: ${code}`);
+  constructor(readonly code: DatabaseAdapterInputErrorCode) {
+    super(`Invalid database adapter input: ${code}`);
   }
 }

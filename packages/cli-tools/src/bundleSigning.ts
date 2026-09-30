@@ -6,7 +6,7 @@ import type { SigningConfig } from "@hot-updater/plugin-core";
 
 import { getCwd } from "./cwd.js";
 import {
-  createLocalSigningPlugin,
+  createLocalSigningAdapter,
   normalizeSigningConfig,
 } from "./localBundleSigning.js";
 
@@ -67,7 +67,7 @@ export const readBundleSigningPublicKeyFile = async (
 };
 
 const getProviderPublicKey = async (
-  provider: ReturnType<typeof createLocalSigningPlugin>,
+  provider: ReturnType<typeof createLocalSigningAdapter>,
   cwd: string,
 ) => {
   try {
@@ -142,7 +142,7 @@ const createMemoizedSigner = ({
 };
 
 const preparePluginSigning = async (
-  signing: ReturnType<typeof createLocalSigningPlugin>,
+  signing: ReturnType<typeof createLocalSigningAdapter>,
   cwd: string,
 ): Promise<BundleSigningSession> => {
   const providerPublicKey = await getProviderPublicKey(signing, cwd);
@@ -171,7 +171,9 @@ export const prepareBundleSigning = async (
 
   const cwd = options.cwd ?? getCwd();
   return preparePluginSigning(
-    "enabled" in normalized ? createLocalSigningPlugin(normalized) : normalized,
+    "enabled" in normalized
+      ? createLocalSigningAdapter(normalized)
+      : normalized,
     cwd,
   );
 };
@@ -185,6 +187,8 @@ export const getBundleSigningPublicKey = async (
   if (!normalized) return null;
   const cwd = options.cwd ?? getCwd();
   const provider =
-    "enabled" in normalized ? createLocalSigningPlugin(normalized) : normalized;
+    "enabled" in normalized
+      ? createLocalSigningAdapter(normalized)
+      : normalized;
   return exportPublicKey(await getProviderPublicKey(provider, cwd));
 };

@@ -1,7 +1,7 @@
 import type {
   DeployReleasePolicy,
   EngineDatabase,
-  StoragePlugin,
+  StorageAdapter,
 } from "@hot-updater/plugin-core";
 import { createHotUpdater } from "@hot-updater/server";
 import { isMultiIndex, toolingTargetOf } from "@hot-updater/server/database";
@@ -128,7 +128,7 @@ const reset = async (): Promise<void> => {
  */
 const serve = (options: {
   readonly database: EngineDatabase;
-  readonly storage?: readonly StoragePlugin[];
+  readonly storage?: readonly StorageAdapter[];
 }) =>
   createHotUpdater({
     ...options,

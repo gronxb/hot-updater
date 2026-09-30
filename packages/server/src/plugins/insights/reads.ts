@@ -1,4 +1,4 @@
-import { DatabasePluginInputError } from "@hot-updater/plugin-core";
+import { DatabaseAdapterInputError } from "@hot-updater/plugin-core";
 import {
   compareUtf8,
   countDistinct,
@@ -189,7 +189,7 @@ export const listEvents = async (
     return page.rows.map(toEvent);
   }
   if (input.beforeReceivedAtMs - since > EVENT_LIST_RANGE_MS) {
-    throw new DatabasePluginInputError("invalid-query");
+    throw new DatabaseAdapterInputError("invalid-query");
   }
   const rows: BundleEventRow[] = [];
   const bottom = dayFloor(since);
@@ -316,7 +316,7 @@ export const countLatestEvents = async (
 ): Promise<number> => {
   const { platform, channel, sinceMs: start } = input;
   if (start % DAY_MS !== 0) {
-    throw new DatabasePluginInputError("invalid-query");
+    throw new DatabaseAdapterInputError("invalid-query");
   }
   const predicates = latestPredicates(input.bundle);
   let total = 0;
@@ -933,7 +933,7 @@ export const getUpdateFailures = async (
     !isRange(timeRange) ||
     (releaseId === undefined && timeRange === undefined)
   ) {
-    throw new DatabasePluginInputError("invalid-query");
+    throw new DatabaseAdapterInputError("invalid-query");
   }
   const at = now();
   const kept = retained(at, retention);

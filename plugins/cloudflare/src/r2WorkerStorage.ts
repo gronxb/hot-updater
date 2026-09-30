@@ -1,10 +1,10 @@
 import {
   createStorageKeyBuilder,
   createStorageDownloadUrl,
-  createStoragePlugin,
+  createStorageAdapter,
   createStorageUri,
   parseStorageUri,
-  type StoragePluginWith,
+  type StorageAdapterWith,
 } from "@hot-updater/plugin-core";
 
 export interface CloudflareWorkerStorageConfig {
@@ -16,7 +16,7 @@ export interface CloudflareWorkerStorageConfig {
 
 export const r2WorkerStorage = (
   config: CloudflareWorkerStorageConfig,
-): StoragePluginWith<
+): StorageAdapterWith<
   "put" | "get" | "getDownloadUrl" | "exists" | "delete"
 > => {
   const getStorageKey = createStorageKeyBuilder(config.basePath);
@@ -32,7 +32,7 @@ export const r2WorkerStorage = (
     return parsed;
   };
 
-  return createStoragePlugin({
+  return createStorageAdapter({
     name: "r2Storage",
     protocol: "r2",
     async put({ key, body, contentLength, contentType }) {

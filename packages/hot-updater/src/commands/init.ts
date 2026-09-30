@@ -29,13 +29,13 @@ import {
 
 const INIT_BUILD_ENV_KEY = "HOT_UPDATER_INIT_BUILD";
 const INIT_PROVIDER_ENV_KEY = "HOT_UPDATER_INIT_PROVIDER";
-const BUILD_PLUGIN_KEYS = ["bare", "rock", "expo"] as const;
+const BUILD_ADAPTER_KEYS = ["bare", "rock", "expo"] as const;
 
 const REQUIRED_PACKAGES = {
   dependencies: ["@hot-updater/react-native"],
 };
 
-interface BuildPluginChoice {
+interface BuildAdapterChoice {
   name: BuildType;
   label: string;
   hint?: string;
@@ -43,7 +43,7 @@ interface BuildPluginChoice {
   devDependencies: string[];
 }
 
-const BUILD_PLUGINS: Record<"bare" | "rock" | "expo", BuildPluginChoice> = {
+const BUILD_ADAPTERS: Record<"bare" | "rock" | "expo", BuildAdapterChoice> = {
   bare: {
     name: "bare",
     label: "Bare",
@@ -66,23 +66,23 @@ const BUILD_PLUGINS: Record<"bare" | "rock" | "expo", BuildPluginChoice> = {
   },
 };
 
-type BuildPluginKey = keyof typeof BUILD_PLUGINS;
+type BuildAdapterKey = keyof typeof BUILD_ADAPTERS;
 
 export interface InitOptions {
-  readonly build?: BuildPluginKey;
+  readonly build?: BuildAdapterKey;
   readonly envFile?: string;
   readonly provider?: InitProvider;
 }
 
-const isBuildPluginKey = (
+const isBuildAdapterKey = (
   value: string | undefined,
-): value is BuildPluginKey => {
-  return value !== undefined && Object.keys(BUILD_PLUGINS).includes(value);
+): value is BuildAdapterKey => {
+  return value !== undefined && Object.keys(BUILD_ADAPTERS).includes(value);
 };
 
 const collectInitChoices = async (
   options: InitOptions,
-): Promise<{ build: BuildPluginKey; provider: InitProvider }> => {
+): Promise<{ build: BuildAdapterKey; provider: InitProvider }> => {
   const { env: existingEnv } = await readHotUpdaterInitEnv(
     process.cwd(),
     options.envFile,
@@ -93,7 +93,7 @@ const collectInitChoices = async (
     INIT_PROVIDER_ENV_KEY,
   );
   const build =
-    options.build ?? (isBuildPluginKey(savedBuild) ? savedBuild : null);
+    options.build ?? (isBuildAdapterKey(savedBuild) ? savedBuild : null);
   const provider =
     options.provider ?? (isInitProvider(savedProvider) ? savedProvider : null);
 
@@ -128,12 +128,12 @@ const collectInitChoices = async (
       build: () =>
         build
           ? Promise.resolve(build)
-          : p.select<BuildPluginKey>({
-              message: "Select a build plugin",
-              options: BUILD_PLUGIN_KEYS.map((value) => ({
+          : p.select<BuildAdapterKey>({
+              message: "Select a build adapter",
+              options: BUILD_ADAPTER_KEYS.map((value) => ({
                 value,
-                label: BUILD_PLUGINS[value].label,
-                hint: BUILD_PLUGINS[value].hint,
+                label: BUILD_ADAPTERS[value].label,
+                hint: BUILD_ADAPTERS[value].hint,
               })),
             }),
       provider: () =>
@@ -203,7 +203,7 @@ export const init = async (options: InitOptions = {}) => {
     p.log.info(".gitignore has been modified to include hot-updater entries");
   }
 
-  const buildPluginPackage = BUILD_PLUGINS[choices.build];
+  const buildAdapterPackage = BUILD_ADAPTERS[choices.build];
   const provider = choices.provider;
   const providerPackage = INIT_PROVIDER_PACKAGES[provider];
 
@@ -215,11 +215,11 @@ export const init = async (options: InitOptions = {}) => {
   try {
     await ensureInstallPackages({
       dependencies: [
-        ...buildPluginPackage.dependencies,
+        ...buildAdapterPackage.dependencies,
         ...REQUIRED_PACKAGES.dependencies,
       ],
       devDependencies: [
-        ...buildPluginPackage.devDependencies,
+        ...buildAdapterPackage.devDependencies,
         ...providerPackage.devDependencies,
         providerPackage.packageName,
       ],
@@ -234,7 +234,7 @@ export const init = async (options: InitOptions = {}) => {
     process.exit(1);
   }
 
-  const build = buildPluginPackage.name;
+  const build = buildAdapterPackage.name;
   const runInitOptions = {
     build,
     envFile: options.envFile,

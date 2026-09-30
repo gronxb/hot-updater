@@ -345,11 +345,11 @@ export const deleteBundle = createServerFn({ method: "POST" })
     try {
       const { deleteBundle: deleteBundleWithStorage } =
         await import("./server/deleteBundle");
-      const { core, storagePlugin } = await prepare();
+      const { core, storageAdapter } = await prepare();
 
       await deleteBundleWithStorage(data, {
         core,
-        storagePlugin,
+        storageAdapter,
         waitForStorageCleanup: false,
       });
 
@@ -367,11 +367,11 @@ export const deleteBundles = createServerFn({ method: "POST" })
     try {
       const { deleteBundles: deleteBundlesWithStorage } =
         await import("./server/deleteBundle");
-      const { core, storagePlugin } = await prepare();
+      const { core, storageAdapter } = await prepare();
 
       const result = await deleteBundlesWithStorage(data, {
         core,
-        storagePlugin,
+        storageAdapter,
         waitForStorageCleanup: false,
       });
 

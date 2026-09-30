@@ -1,6 +1,6 @@
 import { createHash, createPublicKey, verify } from "node:crypto";
 
-import type { BundleSigningPlugin } from "@hot-updater/plugin-core";
+import type { BundleSigningAdapter } from "@hot-updater/plugin-core";
 
 const KEY_VERSION_PATTERN =
   /^projects\/[^/]+\/locations\/[^/]+\/keyRings\/[^/]+\/cryptoKeys\/[^/]+\/cryptoKeyVersions\/[1-9]\d*$/u;
@@ -150,7 +150,7 @@ const loadPublicKey = async (
 /** Creates a bundle signer backed by a version-pinned Google Cloud KMS key. */
 export const googleCloudKmsSigning = ({
   keyVersion,
-}: GoogleCloudKmsSigningOptions): BundleSigningPlugin => {
+}: GoogleCloudKmsSigningOptions): BundleSigningAdapter => {
   if (!KEY_VERSION_PATTERN.test(keyVersion)) {
     throw new Error(
       "Google Cloud KMS signing requires a version-pinned key resource name.",

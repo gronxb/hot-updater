@@ -1,4 +1,4 @@
-import { createStoragePlugin } from "@hot-updater/plugin-core";
+import { createStorageAdapter } from "@hot-updater/plugin-core";
 import { describe, expect, it, vi } from "vitest";
 
 import { downloadBundle } from "./downloadBundle";
@@ -30,7 +30,7 @@ describe("downloadBundle", () => {
         headers: { "content-type": "application/json" },
       }),
     }));
-    const storagePlugin = createStoragePlugin({
+    const storageAdapter = createStorageAdapter({
       name: "r2Storage",
       protocol: "r2",
       get,
@@ -38,7 +38,7 @@ describe("downloadBundle", () => {
 
     const response = await downloadBundle("bundle-id", {
       core: createCore("r2://updates/bundle/manifest.json"),
-      storagePlugin,
+      storageAdapter,
     });
 
     expect(get).toHaveBeenCalledWith({
@@ -54,7 +54,7 @@ describe("downloadBundle", () => {
   it("uses an owning https plugin before redirecting", async () => {
     const storageUri = "https://cdn.example.com/private/bundle.zip";
     const get = vi.fn(async () => ({ response: new Response("private") }));
-    const storagePlugin = createStoragePlugin({
+    const storageAdapter = createStorageAdapter({
       name: "privateHttpsStorage",
       protocol: "https",
       get,
@@ -62,7 +62,7 @@ describe("downloadBundle", () => {
 
     const response = await downloadBundle("bundle-id", {
       core: createCore(storageUri),
-      storagePlugin,
+      storageAdapter,
     });
 
     expect(response.status).toBe(200);

@@ -3,11 +3,11 @@ import { brotliCompressSync } from "node:zlib";
 import type {
   Bundle,
   EngineDatabase,
-  StoragePlugin,
-  StoragePluginWith,
+  StorageAdapter,
+  StorageAdapterWith,
 } from "@hot-updater/plugin-core";
 import {
-  createStoragePlugin as createCoreStoragePlugin,
+  createStorageAdapter as createCoreStorageAdapter,
   rowToBundle,
 } from "@hot-updater/plugin-core";
 import { createMemoryAdapter } from "@hot-updater/plugin-core/internal";
@@ -62,14 +62,14 @@ const storedBundle = async (database: EngineDatabase, id: string) => {
   return detail === null ? null : rowToBundle(detail.bundle, detail.patches);
 };
 
-const createStoragePlugin = (
-  put: NonNullable<StoragePlugin["put"]>,
+const createStorageAdapter = (
+  put: NonNullable<StorageAdapter["put"]>,
   options: {
-    get?: NonNullable<StoragePlugin["get"]>;
+    get?: NonNullable<StorageAdapter["get"]>;
     protocol?: string;
   } = {},
-): StoragePluginWith<"get" | "put" | "delete"> =>
-  createCoreStoragePlugin({
+): StorageAdapterWith<"get" | "put" | "delete"> =>
+  createCoreStorageAdapter({
     name: "mockStorage",
     protocol: options.protocol ?? "s3",
     async delete({ storageUri }) {
@@ -99,7 +99,7 @@ describe("createBundleDiff", () => {
     const baseDownloadFileHash = "a".repeat(64);
     const targetDownloadFileHash = "b".repeat(64);
     const database = await createDatabase([baseBundle, targetBundle]);
-    const upload = vi.fn<NonNullable<StoragePlugin["put"]>>(
+    const upload = vi.fn<NonNullable<StorageAdapter["put"]>>(
       async ({ key, body, contentLength }) => {
         const bytes = new Uint8Array(await new Response(body).arrayBuffer());
         expect(bytes).toEqual(new Uint8Array([1, 2, 3, 4]));
@@ -171,7 +171,7 @@ describe("createBundleDiff", () => {
         },
         {
           database,
-          storagePlugin: createStoragePlugin(upload),
+          storageAdapter: createStorageAdapter(upload),
         },
       );
 
@@ -205,7 +205,7 @@ describe("createBundleDiff", () => {
     const baseBundle = createBundle("00000000-0000-0000-0000-000000000001");
     const targetBundle = createBundle("00000000-0000-0000-0000-000000000002");
     const database = await createDatabase([baseBundle, targetBundle]);
-    const upload = vi.fn<NonNullable<StoragePlugin["put"]>>(
+    const upload = vi.fn<NonNullable<StorageAdapter["put"]>>(
       async ({ key }) => ({
         storageUri: `s3://test-bucket/${key}`,
       }),
@@ -261,7 +261,7 @@ describe("createBundleDiff", () => {
           },
           {
             database,
-            storagePlugin: createStoragePlugin(upload),
+            storageAdapter: createStorageAdapter(upload),
           },
         ),
       ).rejects.toThrow("Expected exactly one Hermes bundle asset in manifest");
@@ -271,7 +271,7 @@ describe("createBundleDiff", () => {
     }
   });
 
-  it("uses a matching HTTPS storage plugin before direct fetch", async () => {
+  it("uses a matching HTTPS storage adapter before direct fetch", async () => {
     const baseBundle = createBundle("00000000-0000-0000-0000-000000000001", {
       assetBaseStorageUri: "https://storage.example.com/releases/assets",
       manifestStorageUri:
@@ -307,7 +307,7 @@ describe("createBundleDiff", () => {
         new Uint8Array([1, 9, 3]),
       ],
     ]);
-    const get = vi.fn<NonNullable<StoragePlugin["get"]>>(
+    const get = vi.fn<NonNullable<StorageAdapter["get"]>>(
       async ({ storageUri }) => ({
         response: responses.has(storageUri)
           ? new Response(responses.get(storageUri))
@@ -316,7 +316,7 @@ describe("createBundleDiff", () => {
     );
     const directFetch = vi.fn<typeof fetch>();
     vi.stubGlobal("fetch", directFetch);
-    const upload = vi.fn<NonNullable<StoragePlugin["put"]>>(
+    const upload = vi.fn<NonNullable<StorageAdapter["put"]>>(
       async ({ key }) => ({
         storageUri: `https://storage.example.com/${key}`,
       }),
@@ -327,7 +327,7 @@ describe("createBundleDiff", () => {
         { baseBundleId: baseBundle.id, bundleId: targetBundle.id },
         {
           database,
-          storagePlugin: createStoragePlugin(upload, {
+          storageAdapter: createStorageAdapter(upload, {
             get,
             protocol: "https",
           }),
@@ -369,7 +369,7 @@ describe("createBundleDiff", () => {
       secondaryBaseBundle,
       targetBundle,
     ]);
-    const upload = vi.fn<NonNullable<StoragePlugin["put"]>>(
+    const upload = vi.fn<NonNullable<StorageAdapter["put"]>>(
       async ({ key }) => ({
         storageUri: `s3://test-bucket/${key}`,
       }),
@@ -434,7 +434,7 @@ describe("createBundleDiff", () => {
         },
         {
           database,
-          storagePlugin: createStoragePlugin(upload),
+          storageAdapter: createStorageAdapter(upload),
         },
         {
           makePrimary: false,

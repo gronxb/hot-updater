@@ -7,7 +7,7 @@ import {
   type Bundle,
   type HotUpdaterCoreApi,
   rowToBundle,
-  type StoragePluginWith,
+  type StorageAdapterWith,
 } from "@hot-updater/plugin-core";
 
 interface DeleteBundleInput {
@@ -20,17 +20,17 @@ interface DeleteBundlesInput {
 
 interface DeleteBundleDependencies {
   core: Pick<HotUpdaterCoreApi, "getBundle" | "deleteBundles">;
-  storagePlugin: StoragePluginWith<"delete">;
+  storageAdapter: StorageAdapterWith<"delete">;
   waitForStorageCleanup?: boolean;
 }
 
 function resolveStorageUriForDeletion(
   storageUri: string,
-  storagePlugin: StoragePluginWith<"delete">,
+  storageAdapter: StorageAdapterWith<"delete">,
 ) {
   const protocol = new URL(storageUri).protocol.replace(":", "");
 
-  if (storagePlugin.protocol === protocol) {
+  if (storageAdapter.protocol === protocol) {
     return storageUri;
   }
 
@@ -38,19 +38,19 @@ function resolveStorageUriForDeletion(
     return null;
   }
 
-  throw new Error(`No storage plugin for protocol: ${protocol}`);
+  throw new Error(`No storage adapter for protocol: ${protocol}`);
 }
 
 async function cleanupBundleStorage(
   bundle: Bundle,
-  storagePlugin: StoragePluginWith<"delete">,
+  storageAdapter: StorageAdapterWith<"delete">,
 ) {
   const cleanupUris = new Set<string>();
   const addCleanupUri = (storageUri: string | undefined) => {
     if (!storageUri) return;
     const resolvedStorageUri = resolveStorageUriForDeletion(
       storageUri,
-      storagePlugin,
+      storageAdapter,
     );
     if (resolvedStorageUri) cleanupUris.add(resolvedStorageUri);
   };
@@ -63,7 +63,7 @@ async function cleanupBundleStorage(
 
   for (const storageUri of cleanupUris) {
     try {
-      await storagePlugin.delete({ storageUri });
+      await storageAdapter.delete({ storageUri });
     } catch (error) {
       console.error("Failed to delete bundle from storage:", error);
     }
@@ -74,7 +74,7 @@ export async function deleteBundles(
   { bundleIds }: DeleteBundlesInput,
   {
     core,
-    storagePlugin,
+    storageAdapter,
     waitForStorageCleanup = true,
   }: DeleteBundleDependencies,
 ) {
@@ -96,7 +96,7 @@ export async function deleteBundles(
       ...getBundlePatches(bundle).map((patch) => patch.patchStorageUri),
     ].filter((value): value is string => Boolean(value));
     for (const candidate of cleanupCandidates) {
-      resolveStorageUriForDeletion(candidate, storagePlugin);
+      resolveStorageUriForDeletion(candidate, storageAdapter);
     }
   }
 
@@ -107,7 +107,7 @@ export async function deleteBundles(
 
   const cleanupStorage = async () => {
     for (const bundle of bundles) {
-      await cleanupBundleStorage(bundle, storagePlugin);
+      await cleanupBundleStorage(bundle, storageAdapter);
     }
   };
 

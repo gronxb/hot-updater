@@ -13,7 +13,7 @@ export const infraBootstrap = (operation: AgentInfraOperation) =>
     `# Hot Updater agent infrastructure ${operation}`,
     "",
     "Generate deployment templates and instructions, then apply them using your available provider MCP, CLI/API, or browser tools.",
-    "Discover the target app in the workspace, package manager, build plugin, existing config and previous deployment record. Query available provider access and resources. Infer choices from this evidence; ask only when the target remains ambiguous or required access is unavailable.",
+    "Discover the target app in the workspace, package manager, build adapter, existing config and previous deployment record. Query available provider access and resources. Infer choices from this evidence; ask only when the target remains ambiguous or required access is unavailable.",
     `Before remote changes, arrange Node 22.18+ or Node 24+ for app/${CLIENT_CREDENTIAL_SCRIPT}, which imports TypeScript; the CLI itself supports Node 20.19+. Check local package-manager tooling.`,
     `Providers: ${INIT_PROVIDER_NAMES.join(", ")}. Builds: ${INFRA_BUILDS.join(", ")}.`,
     "",

@@ -2,10 +2,10 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   assertStorageOperations,
-  createStoragePlugin,
-} from "./createStoragePlugin";
+  createStorageAdapter,
+} from "./createStorageAdapter";
 
-describe("createStoragePlugin", () => {
+describe("createStorageAdapter", () => {
   it("exposes the configured one-depth runtime-independent contract", () => {
     const put = vi.fn();
     const get = vi.fn();
@@ -13,7 +13,7 @@ describe("createStoragePlugin", () => {
     const exists = vi.fn();
     const deleteObject = vi.fn();
 
-    const plugin = createStoragePlugin({
+    const plugin = createStorageAdapter({
       name: "testStorage",
       protocol: "test",
       put,
@@ -40,7 +40,7 @@ describe("createStoragePlugin", () => {
   });
 
   it("keeps capabilities optional without adding throwing placeholders", () => {
-    const storage = createStoragePlugin({
+    const storage = createStorageAdapter({
       name: "cliOnlyStorage",
       protocol: "test",
       put: vi.fn(),
@@ -57,7 +57,7 @@ describe("createStoragePlugin", () => {
   });
 
   it("uses a streaming Web Response for runtime-independent reads", async () => {
-    const storage = createStoragePlugin({
+    const storage = createStorageAdapter({
       name: "streamingStorage",
       protocol: "test",
       get: async (_input: { storageUri: string }) => ({
@@ -76,14 +76,14 @@ describe("createStoragePlugin", () => {
   });
 
   it("reports the exact capability missing from a consumer boundary", () => {
-    const storage = createStoragePlugin({
+    const storage = createStorageAdapter({
       name: "cliOnlyStorage",
       protocol: "test",
       put: vi.fn(),
     });
 
     expect(() => assertStorageOperations(storage, ["put", "get"])).toThrow(
-      'Storage plugin "cliOnlyStorage" does not implement get.',
+      'Storage adapter "cliOnlyStorage" does not implement get.',
     );
   });
 });

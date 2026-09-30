@@ -5,7 +5,7 @@ import { brotliCompressSync, brotliDecompressSync } from "node:zlib";
 
 import type { Bundle } from "@hot-updater/plugin-core";
 import {
-  createStoragePlugin,
+  createStorageAdapter,
   getManifestAssetStoragePath,
 } from "@hot-updater/plugin-core";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -42,7 +42,7 @@ const sourceBundle = (manifestBytes: Uint8Array): Bundle => ({
 
 const createStorageFixture = (sourceObjects: Map<string, Uint8Array>) => {
   const uploaded = new Map<string, Buffer>();
-  const plugin = createStoragePlugin({
+  const plugin = createStorageAdapter({
     name: "mock-storage",
     protocol: "s3",
     get: vi.fn(async ({ storageUri }) => ({
@@ -127,7 +127,7 @@ describe("createCopiedBundleArtifacts", () => {
       bundle: sourceBundle(manifestBytes),
       config: {} as ConfigResponse,
       nextBundleId: "copy",
-      storagePlugin: plugin,
+      storageAdapter: plugin,
     });
 
     expect(result.bundle).toMatchObject({
@@ -222,7 +222,7 @@ describe("createCopiedBundleArtifacts", () => {
       bundle: source,
       config,
       nextBundleId: "signed-copy",
-      storagePlugin: plugin,
+      storageAdapter: plugin,
     });
 
     const copiedManifestBytes = uploaded.get(
@@ -274,7 +274,7 @@ describe("createCopiedBundleArtifacts", () => {
           },
         } as unknown as ConfigResponse,
         nextBundleId: "copy",
-        storagePlugin: plugin,
+        storageAdapter: plugin,
       }),
     ).rejects.toThrow("Source manifest signature verification failed.");
     expect(plugin.put).not.toHaveBeenCalled();
@@ -303,7 +303,7 @@ describe("createCopiedBundleArtifacts", () => {
         bundle: sourceBundle(manifestBytes),
         config: {} as ConfigResponse,
         nextBundleId: "copy",
-        storagePlugin: plugin,
+        storageAdapter: plugin,
       }),
     ).rejects.toThrow("Manifest file hash mismatch for index.js");
     expect(plugin.put).not.toHaveBeenCalled();

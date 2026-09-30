@@ -1,4 +1,4 @@
-import type { BundleSigningPlugin } from "./types";
+import type { BundleSigningAdapter } from "./types";
 
 export const REMOTE_BUNDLE_SIGNING_PATH = "/_hot-updater/signing";
 export const REMOTE_BUNDLE_SIGNING_PROTOCOL_VERSION = 1 as const;
@@ -318,7 +318,7 @@ export const remoteSigning = ({
   endpoint,
   fetch: fetchImplementation = globalThis.fetch,
   signingToken,
-}: RemoteSigningOptions): BundleSigningPlugin => {
+}: RemoteSigningOptions): BundleSigningAdapter => {
   if (typeof fetchImplementation !== "function") {
     throw new Error("Remote bundle signing requires fetch.");
   }

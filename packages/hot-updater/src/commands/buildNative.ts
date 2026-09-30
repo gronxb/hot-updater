@@ -30,7 +30,7 @@ const buildNativeInternal = async ({
     preparedConfig;
 
   const cwd = getCwd();
-  const buildPlugin = await config.build({ cwd });
+  const buildAdapter = await config.build({ cwd });
 
   const platformName = platform === "android" ? "Android" : "iOS";
   const builder =
@@ -49,17 +49,21 @@ const buildNativeInternal = async ({
       ui.line([
         "Building",
         ui.platform(platformName),
-        ui.muted(buildPlugin.name),
+        ui.muted(buildAdapter.name),
       ]),
     );
     await createNativeBuild({
       platform,
       builder,
-      buildPlugin,
+      buildAdapter,
       outputPath,
     });
     p.log.success(
-      ui.line(["Built", ui.platform(platformName), ui.muted(buildPlugin.name)]),
+      ui.line([
+        "Built",
+        ui.platform(platformName),
+        ui.muted(buildAdapter.name),
+      ]),
     );
   } catch (e) {
     catchError(e);

@@ -4,9 +4,9 @@ import path from "path";
 import { compileHermes } from "@hot-updater/bare";
 import { log, readBundleSigningPublicKeyFile } from "@hot-updater/cli-tools";
 import type {
-  BasePluginArgs,
-  BuildPlugin,
-  BuildPluginConfig,
+  BuildAdapterArgs,
+  BuildAdapter,
+  BuildAdapterConfig,
 } from "@hot-updater/plugin-core";
 import { ExecaError, execa } from "execa";
 import { uuidv7 } from "uuidv7";
@@ -168,7 +168,7 @@ const runBundle = async ({
   };
 };
 
-export interface ExpoPluginConfig extends BuildPluginConfig {
+export interface ExpoAdapterConfig extends BuildAdapterConfig {
   /**
    * @default false
    * Whether to generate sourcemap for the bundle.
@@ -182,8 +182,8 @@ export interface ExpoPluginConfig extends BuildPluginConfig {
 }
 
 export const expo =
-  (config: ExpoPluginConfig = { outDir: "dist", sourcemap: false }) =>
-  ({ cwd }: BasePluginArgs): BuildPlugin => {
+  (config: ExpoAdapterConfig = { outDir: "dist", sourcemap: false }) =>
+  ({ cwd }: BuildAdapterArgs): BuildAdapter => {
     const { outDir = "dist", sourcemap = false, resetCache = true } = config;
     return {
       nativeBuild: {

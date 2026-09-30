@@ -5,15 +5,15 @@ export type { Bundle, Platform } from "@hot-updater/core";
 export * from "./utils";
 export * from "./public";
 
-export interface BasePluginArgs {
+export interface BuildAdapterArgs {
   cwd: string;
 }
 
-export interface BuildPluginConfig {
+export interface BuildAdapterConfig {
   outDir?: string;
 }
 
-export interface BuildPlugin {
+export interface BuildAdapter {
   nativeBuild?: {
     /** Resolves the public key embedded by the native build configuration. */
     getBundleSigningPublicKey?: () => Promise<{
@@ -264,7 +264,7 @@ export interface StorageDeleteResult {
 }
 
 export interface StorageObject {
-  /** Object key relative to the storage plugin's configured base path. */
+  /** Object key relative to the storage adapter's configured base path. */
   readonly key: string;
   readonly storageUri: string;
   readonly size: number;
@@ -288,7 +288,7 @@ export interface StorageGetDownloadUrlResult {
  * SDK clients, platform bindings, credentials, and local file I/O belong to
  * provider implementations and consumers, never to this interface.
  */
-export interface StoragePlugin {
+export interface StorageAdapter {
   readonly name: string;
   /**
    * Protocol this plugin resolves and stores in database storage URIs.
@@ -314,7 +314,7 @@ export interface StoragePlugin {
   readonly deleteObjects?: (keys: readonly string[]) => Promise<void>;
 }
 
-export interface BundleSigningPlugin {
+export interface BundleSigningAdapter {
   readonly name: string;
   /** Returns the RSA public key used by this provider in SPKI PEM format. */
   readonly getPublicKey: (input?: {
@@ -345,8 +345,8 @@ export type LocalSigningConfig =
       readonly privateKeyPath?: string;
     };
 
-/** Local config or signing plugin. Signing is disabled when omitted. */
-export type SigningConfig = BundleSigningPlugin | LocalSigningConfig;
+/** Local config or signing adapter. Signing is disabled when omitted. */
+export type SigningConfig = BundleSigningAdapter | LocalSigningConfig;
 
 /**
  * Extra fingerprint sources.
@@ -459,8 +459,8 @@ export type ConfigInput = {
    * ```
    */
   signing?: SigningConfig;
-  build: (args: BasePluginArgs) => Promise<BuildPlugin> | BuildPlugin;
-  storage: StoragePlugin;
+  build: (args: BuildAdapterArgs) => Promise<BuildAdapter> | BuildAdapter;
+  storage: StorageAdapter;
   /** A provider's database, or `standaloneRepository` for a self-hosted server. */
   database: import("./databaseConfig").ConfiguredDatabase;
 };

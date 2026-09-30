@@ -5,7 +5,7 @@ import * as signingApi from "./signing";
 const { awsKmsSigning, googleCloudKmsSigning, remoteSigning } = signingApi;
 
 describe("signing exports", () => {
-  it("exposes only the supported signing plugins", () => {
+  it("exposes only the supported signing adapters", () => {
     expect(Object.keys(signingApi).sort()).toEqual([
       "awsKmsSigning",
       "googleCloudKmsSigning",

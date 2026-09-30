@@ -120,7 +120,7 @@ const safeDispose = async (database: ConfiguredDatabase): Promise<void> => {
     await database.dispose?.();
   } catch (err) {
     p.log.warn(
-      `Database plugin dispose failed (cleanup-only, original error preserved): ${
+      `Database adapter dispose failed (cleanup-only, original error preserved): ${
         (err as Error)?.message ?? String(err)
       }`,
     );

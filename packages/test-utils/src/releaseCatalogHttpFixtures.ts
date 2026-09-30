@@ -1,5 +1,5 @@
 import type { ArtifactInfo } from "@hot-updater/core";
-import type { BundleRow, StoragePlugin } from "@hot-updater/plugin-core";
+import type { BundleRow, StorageAdapter } from "@hot-updater/plugin-core";
 
 import { createBundleRowFixture } from "./databaseTestFixtures";
 
@@ -57,7 +57,7 @@ export const RELEASE_CATALOG_STORAGE_FIXTURES: Readonly<
 );
 
 /** Storage boundary shared by provider and separately spawned server tests. */
-export const createReleaseCatalogTestStorage = (): StoragePlugin => ({
+export const createReleaseCatalogTestStorage = (): StorageAdapter => ({
   name: "catalog-test-storage",
   protocol: "storage",
   async get({ storageUri }) {

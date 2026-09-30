@@ -9,10 +9,10 @@ import { Upload } from "@aws-sdk/lib-storage";
 import {
   createStorageKeyBuilder,
   createStorageDownloadUrl,
-  createStoragePlugin,
+  createStorageAdapter,
   createStorageUri,
   parseStorageUri,
-  type StoragePluginWith,
+  type StorageAdapterWith,
 } from "@hot-updater/plugin-core";
 
 export interface R2S3StorageConfig extends S3ClientConfig {
@@ -43,7 +43,7 @@ const isObjectNotFoundError = (error: unknown) => {
 
 export const createR2S3Storage = (
   config: R2S3StorageConfig,
-): StoragePluginWith<"put" | "get" | "exists" | "delete"> => {
+): StorageAdapterWith<"put" | "get" | "exists" | "delete"> => {
   const {
     accountId,
     basePath,
@@ -75,7 +75,7 @@ export const createR2S3Storage = (
     return parsed;
   };
 
-  return createStoragePlugin({
+  return createStorageAdapter({
     name: "r2Storage",
     protocol: "r2",
     async put({ key, body, contentLength, contentType }) {
