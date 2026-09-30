@@ -19,7 +19,7 @@ Cloudflare tooling. An agent can discover or create these resources within
 your setup request. Keep credentials in ignored local configuration.
 
 The examples use Bare for the React Native build. For Expo or Rock, install
-and use the [matching build plugin](/docs/get-started/installation) in that
+and use the [matching build adapter](/docs/get-started/installation) in that
 project before running Hot Updater commands.
 
 ## Installation
@@ -65,7 +65,7 @@ export const db = new Kysely<object>({
 
 ## Hot Updater configuration
 
-Create the Hot Updater instance with your database adapter, storage plugin (see [Storage Plugins](/docs/custom/overview#storage-plugins)), and server plugins.
+Create the Hot Updater instance with your database adapter, storage adapter (see [Storage adapters](/docs/custom/overview#storage-adapters)), and server plugins.
 
 ```typescript title="src/hotUpdater.ts"
 import { existsSync } from "node:fs";

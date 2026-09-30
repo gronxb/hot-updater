@@ -90,5 +90,5 @@ device end-to-end responsibilities.
   `@hot-updater/test-utils/node` to install the suites' storage fixtures.
 
 See the
-[custom database adapter guide](https://hot-updater.dev/docs/database-plugins/custom-database)
+[custom database adapter guide](https://hot-updater.dev/docs/database-adapters/custom-database)
 for the adapter contract and complete specs for each suite.

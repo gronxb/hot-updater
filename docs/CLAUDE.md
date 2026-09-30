@@ -57,8 +57,10 @@ Prefer `HotUpdater.init` with `checkForUpdate`, the returned `updateBundle`
 helper and deliberate reload timing in onboarding and general examples. `init`
 does not check or apply an update by itself. Keep `wrap` as the optional
 automatic startup flow and retain its focused API reference. Preserve separate
-managed/custom hosting and build/storage/database/integration plugin groups,
-and keep plugin authoring guides in the Create a Plugin group.
+managed/custom hosting, the build/storage/database/signing adapter groups and
+the integration plugin group. Call what fills one config slot an adapter and
+what a `plugins` list holds a plugin, and keep authoring guides in the Create
+an Adapter and Create a Plugin groups.
 
 - Show complete imports for runnable examples. Label partial configuration
   snippets; retain existing storage/database settings when changing one option.

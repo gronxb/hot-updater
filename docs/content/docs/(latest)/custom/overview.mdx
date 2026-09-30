@@ -22,12 +22,12 @@ backend, use the matching integration below and keep its established tooling.
 | `createHotUpdater`      | Server project                     | Compile Release Catalogs and serve client and admin handlers using a direct database provider. |
 | Database adapter        | Server project                     | Persist canonical rows, prepare the schema and commit changes atomically.                      |
 | Server plugins          | Server project                     | Add Insights, API keys, or your own tables, APIs and routes to `createHotUpdater`.             |
-| Storage plugin          | Deploy job and server              | Upload artifacts and resolve their stored locations for downloads.                             |
+| Storage adapter          | Deploy job and server              | Upload artifacts and resolve their stored locations for downloads.                             |
 
-Pass database and storage plugin objects directly to `createHotUpdater` and
+Pass database and storage adapter objects directly to `createHotUpdater` and
 `defineConfig`. Provider factories such as `dynamoDB(options)` return those
 objects. Capture SDK clients, bindings and credentials when constructing each
-plugin; handlers take only a Web `Request`.
+adapter; handlers take only a Web `Request`.
 
 The mobile app uses the client base URL and a client API key. The CLI connects
 to the separately protected admin base URL. The admin token and provider
@@ -80,25 +80,25 @@ Without the server plugin, the server has no Insights routes, so they answer
 Insights-query access. See [API keys](/docs/custom/api-key-authentication) for
 bootstrap and rotation, [Server Plugins](/docs/custom/server-plugins) to add
 your own tables and routes, and the
-[repository server contract](/docs/database-plugins/standalone#server-contract)
+[repository server contract](/docs/database-adapters/standalone#server-contract)
 for the HTTP operations used by the CLI.
 
-## Storage plugins
+## Storage adapters
 
-Use a storage plugin in the CLI and the matching runtime implementation in the
+Use a storage adapter in the CLI and the matching runtime implementation in the
 server's `storage` array. The URI scheme and bucket/key configuration must agree.
 For example, an `s3Storage` deploy configuration needs an `s3Storage` server entry;
 using R2 infrastructure alone does not make `s3://` and `r2://` interchangeable.
 
 A server may retain multiple storage providers when old and new bundles coexist,
-but register at most one plugin per URI scheme. Stored URIs use
-`protocol://bucket/encoded/slash/key`. The matching plugin owns reads, download
+but register at most one adapter per URI scheme. Stored URIs use
+`protocol://bucket/encoded/slash/key`. The matching adapter owns reads, download
 URLs and exact deletion; an unowned HTTP(S) URI can be used directly.
 
-Use [S3](/docs/storage-plugins/aws), [R2](/docs/storage-plugins/cloudflare),
-[Supabase Storage](/docs/storage-plugins/supabase) or
-[Firebase Storage](/docs/storage-plugins/firebase). Custom implementations follow
-the [storage contract](/docs/storage-plugins/custom-storage). Install packages
+Use [S3](/docs/storage-adapters/aws), [R2](/docs/storage-adapters/cloudflare),
+[Supabase Storage](/docs/storage-adapters/supabase) or
+[Firebase Storage](/docs/storage-adapters/firebase). Custom implementations follow
+the [storage contract](/docs/storage-adapters/custom-storage). Install packages
 used by the deployed server as runtime dependencies.
 
 ## CLI configuration

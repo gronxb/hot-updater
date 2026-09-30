@@ -30,7 +30,7 @@ managed remote init flow does not require a local container runtime.
 
 Complete [Install packages](/docs/get-started/installation) in the React
 Native project before running init or an agent scaffold. Install the CLI, React
-Native SDK, and the build plugin that matches your app, then install this provider:
+Native SDK, and the build adapter that matches your app, then install this provider:
 
 ```package-install
 npm install @hot-updater/supabase --save-dev
@@ -72,7 +72,7 @@ npx hot-updater init
 <Accordions type="single">
   <Accordion title="Interactive Setup Steps">
 
-1. Choose a build plugin for your project, such as Bare for React Native CLI projects.
+1. Choose a build adapter for your project, such as Bare for React Native CLI projects.
 2. Select Supabase as the provider for handling updates.
 
 The initializer then prompts you to:
@@ -159,7 +159,7 @@ After provisioning, record these outputs for [Set up your app](/docs/get-started
 
 Use the actual URL returned by deployment. Configure the SDK and native bundle
 loader through [Set up your app](/docs/get-started/app-setup), using the selected
-build plugin and the same update strategy as `hot-updater.config.ts`. Only the
+build adapter and the same update strategy as `hot-updater.config.ts`. Only the
 client API key belongs in the mobile app's build-time configuration; provider
 credentials stay in the deploy environment.
 
@@ -234,7 +234,7 @@ presented as shared-CDN hit metrics.
 
 Follow the Expo path in [Set up your app](/docs/get-started/app-setup). It applies
 the config plugin and generates the native integration. For DOM components,
-continue with [Expo DOM components](/docs/build-plugins/expo#expo-dom-components-use-dom).
+continue with [Expo DOM components](/docs/build-adapters/expo#expo-dom-components-use-dom).
 
 ## Step 5: Add native code
 

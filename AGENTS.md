@@ -3,7 +3,7 @@
 ## Project Structure & Modules
 
 - `packages/`: Core libraries (e.g., `core`, `hot-updater`, `react-native`, `console`).
-- `plugins/`: Provider/build plugins (e.g., `aws`, `cloudflare`, `supabase`, `firebase`, `bare`, `expo`, `rock`).
+- `plugins/`: Provider adapters, build adapters, and integration plugins (e.g., `aws`, `cloudflare`, `supabase`, `firebase`, `bare`, `expo`, `rock`, `sentry-plugin`).
 - `examples/`: React Native example apps by version (e.g., `v0.77.0`, `v0.85.0`).
 - `docs/`: Documentation site sources.
 - `scripts/`: Local tooling (e.g., `bench.mjs`, `changeset-minor.mjs`).
@@ -78,7 +78,7 @@
   local/provider credential storage and verify access without exposing values.
 - Keep every generated environment variable documented in the provider's
   `agent/ENVIRONMENT.md`, including its purpose, required/conditional status and
-  source. Distinguish local plugin credentials, interactive-init inputs and server
+  source. Distinguish local adapter credentials, interactive-init inputs and server
   settings. Optional fields are not prerequisites for agent setup.
 
 ## Testing Guidelines

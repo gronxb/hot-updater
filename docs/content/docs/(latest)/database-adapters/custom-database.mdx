@@ -1,24 +1,24 @@
 ---
-title: "Create a database plugin"
-description: Run Hot Updater's database on your backend with a SQL executor, a key-value store, or a storage adapter, and test it with the published suites.
+title: "Create a database adapter"
+description: Run Hot Updater's database on your backend with a SQL executor, a key-value store, or a DatabaseAdapter, and test it with the published suites.
 icon: DatabaseZap
 ---
 
-## When to write a database plugin
+## When to write a database adapter
 
 Every Hot Updater database runs on one storage engine. Core (Bundles,
 Releases, Release Catalogs and Channels) and server plugins such as
 `insights()` and `apiKeys()` declare tables and indexes, and the engine turns
-their reads and transactions into a few calls on a storage adapter. The adapter
+their reads and transactions into a few calls on an adapter. The adapter
 stores rows and reads index ranges with its backend's native features. It knows
-nothing about Bundles, Releases or plugins, so a database plugin is small: the
+nothing about Bundles, Releases or plugins, so a database adapter is small: the
 `postgres` provider is about 30 lines.
 
-Write one when no existing plugin reaches your backend. Database plugins
-cover [Supabase](/docs/database-plugins/supabase),
-[Cloudflare D1](/docs/database-plugins/cloudflare),
-[Firestore](/docs/database-plugins/firestore) and
-[DynamoDB](/docs/database-plugins/aws), and a
+Write one when no existing adapter reaches your backend. Database adapters
+cover [Supabase](/docs/database-adapters/supabase),
+[Cloudflare D1](/docs/database-adapters/cloudflare),
+[Firestore](/docs/database-adapters/firestore) and
+[DynamoDB](/docs/database-adapters/aws), and a
 [custom server](/docs/custom/overview#database-adapters) can use Kysely,
 Drizzle, Prisma or MongoDB.
 
@@ -28,7 +28,7 @@ Drizzle, Prisma or MongoDB.
    and `createHotUpdater` take.
 3. [Create the schema](#create-the-schema) with a migration.
 4. [Test the adapter](#test-the-adapter) with the suites every official
-   database runs, then [publish it](#publish-the-plugin).
+   database runs, then [publish it](#publish-the-adapter).
 
 ## Install
 
@@ -48,7 +48,7 @@ your own driver in its place.
 createHotUpdater, CLI, console
   core and plugins     tables, indexes, typed reads and transactions
   storage engine       guards, retries, references, aggregates, schema fence
-  storage adapter      get, query, write, fits
+  database adapter     get, query, write, fits
   your backend
 ```
 
@@ -56,7 +56,7 @@ A provider's factory returns an `EngineDatabase`, `{ name, adapter, dispose? }`.
 `hot-updater.config.ts`, the console and `createHotUpdater` all take it as
 `database`. The engine keeps references, cascades, counters and retries itself
 and expresses them as a few guarded ops, so an adapter implements none of
-them. The [database adapter contract](/docs/database-plugins/adapter-contract)
+them. The [database adapter contract](/docs/database-adapters/adapter-contract)
 defines those ops.
 
 ## Choose how to build it
@@ -236,7 +236,7 @@ interface KeyValueStore {
   does not exist, or has `_v` equal to `v`) sees the state before the write.
   Return `failedOp` for an op whose condition failed and `retry` for a
   transient conflict, as an adapter's
-  [`write`](/docs/database-plugins/adapter-contract#writes-and-guards) does.
+  [`write`](/docs/database-adapters/adapter-contract#writes-and-guards) does.
 - If the store throws when its table is missing, give that error
   `code: "42P01"`, as the DynamoDB store does, so the schema fence reports a
   missing schema.
@@ -259,7 +259,7 @@ are complete implementations. Wrap the adapter as in `myDatabase`, with
 A backend with its own transactions and secondary indexes can implement
 `DatabaseAdapter` directly: keep each table's rows by key, create each index
 as declared, and read an index range in `indexOrderColumns` order. The
-[database adapter contract](/docs/database-plugins/adapter-contract) lists
+[database adapter contract](/docs/database-adapters/adapter-contract) lists
 every rule, and `createMemoryAdapter()` implements them all as the reference.
 The
 [MongoDB adapter](https://github.com/gronxb/hot-updater/blob/next/packages/server/src/adapters/mongodbAdapter.ts)
@@ -280,7 +280,7 @@ database also carries the migration that `hot-updater db migrate` runs.
 | Option                 | Meaning                                                                                                                                                                                        |
 | ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `name`                 | Names the database in messages; `createHotUpdater` reports it as `adapterName`                                                                                                                 |
-| `adapter`              | The storage adapter                                                                                                                                                                            |
+| `adapter`              | The `DatabaseAdapter`                                                                                                                                                                            |
 | `onCachedRoutesChange` | A CDN purge for the cacheable client routes. Core calls it after a committed write that changes a Release Catalog, so the adapter never names a table. `dynamoDB` invalidates CloudFront here. |
 | `aggregateBatching`    | For a backend that bills each write: apply the changes of aggregates declared `batched` after their transaction commits, merged into one write per row. `{ mode?: "log" \| "memory", windowMs? }`; absent or `false` writes them in each transaction. `dynamoDB` and `firebaseDatabase` pass `{}`, the log mode. |
 
@@ -371,7 +371,7 @@ runs. Register all three:
 
 | Suite                                  | Runs                                                                                             | Against                                  |
 | -------------------------------------- | ------------------------------------------------------------------------------------------------ | ---------------------------------------- |
-| `setupDatabaseAdapterConformanceSuite` | the [adapter contract](/docs/database-plugins/adapter-contract), case by case                   | your adapter, on three test tables       |
+| `setupDatabaseAdapterConformanceSuite` | the [adapter contract](/docs/database-adapters/adapter-contract), case by case                   | your adapter, on three test tables       |
 | `setupReadBudgetTestSuite`             | what each read of core and the plugins it measures costs                                         | your adapter, on their tables            |
 | `setupDatabaseTestSuite`               | core, Bundles, the Release Catalog contract and Insights, through the admin and client HTTP APIs | your database, behind `createHotUpdater` |
 
@@ -620,11 +620,11 @@ Start the server on a disposable database, with
 `storage`. That entry does not load Vitest, so a separate server process can
 import it. Add `clientHeaders` when the server's client routes need a key.
 
-## Publish the plugin
+## Publish the adapter
 
 Publish the factory and its migration from one package, as `dynamoDB` and
 `migrateDynamoDB` ship together. List `@hot-updater/server` and
-`@hot-updater/plugin-core` in `peerDependencies`, so the plugin runs on the
+`@hot-updater/plugin-core` in `peerDependencies`, so the adapter runs on the
 project's copy of the engine, and keep the three suites in your CI. See
-[Test and publish a plugin](/docs/plugins/publish) for the package layout,
+[Test and publish](/docs/plugins/publish) for the package layout,
 naming, and what to document.

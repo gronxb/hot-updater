@@ -17,33 +17,43 @@ the branch.
 
 ## Content ownership
 
-The sidebar starts with onboarding, custom update flows and concepts, followed
-by the independent **Self Hosting (Managed)** and **Self Hosting (Custom)**
-groups. Delivery, operation and security have their own groups. The **Plugins**
-section starts with the Plugin System overview, keeps **Build Plugins**,
-**Storage Plugins**, **Database Plugins** and **Integration Plugins** directly
-visible, and ends with **Create a Plugin**, which owns the storage, database,
-server and client plugin guides, the database adapter contract, and packaging.
+The sidebar starts with **Start here** and **Concepts**, followed by the
+independent **Self Hosting (Managed)** and **Self Hosting (Custom)** groups.
+Delivery, operation and security have their own groups. Start here stays short:
+the introduction, the agent path, the manual path (a group of its steps:
+Choose infrastructure, Install packages, Connect your app), Test an OTA update,
+and the v0 migration. Workflows such as Control update timing belong to their
+Workflows group. The **Adapters
+and Plugins** section starts with its overview: an adapter fills one slot of a
+config (build, storage, database, signing), and a plugin is an entry of a
+`plugins` list (server, client) or an integration that wraps a build adapter.
+It keeps **Build Adapters**, **Storage Adapters**, **Database Adapters**,
+**Signing Adapters** and **Integration Plugins** directly visible, then
+**Create an Adapter** (storage and database guides and the database adapter
+contract), **Create a Plugin** (server and client guides), and **Test and
+publish**.
 **React Native API** is the reference section. Existing URLs stay stable; a sidebar
 group need not be the physical directory containing its pages.
 
 - Start here routes readers to agent or manual setup. Installation owns package
   selection; App Setup owns shared runtime/native integration; Test an OTA
   update owns release-build verification. Provider recipes link to those tasks.
+  Control update timing, the app-side half of delivering an update, follows
+  Deploy in Deliver updates.
 - Use `init + checkForUpdate` as the default app flow; the app controls download
   and restart timing. `wrap` remains the optional automatic startup integration.
 - Infrastructure recipes own provider-specific resources, configuration and
   verified endpoint/client-key outputs. Custom CLI setup owns the connection
-  task; plugin references own configuration and transport contracts.
+  task; adapter references own configuration and transport contracts.
 - Operating guides own deployment, diagnosis and reporting workflows. Console
   links to the Insights guide; signing recipes link to shared native-key rollout
   and rotation instructions.
-- Symbol and plugin references stay individually addressable. Link to a tutorial
+- Symbol, adapter and plugin references stay individually addressable. Link to a tutorial
   instead of repeating it in every method or provider page.
-- Plugin authoring pages teach one plugin kind each with an example that
-  type-checks against the current packages, and link to Test and publish a
-  plugin for packaging. The Plugin System page owns the list of plugin kinds,
-  official plugins and community plugins.
+- Authoring pages teach one adapter or plugin kind each with an example that
+  type-checks against the current packages, and link to Test and publish for
+  packaging. The Adapters and Plugins overview owns the list of kinds, the
+  official ones and community packages.
 
 ## Navigation and links
 

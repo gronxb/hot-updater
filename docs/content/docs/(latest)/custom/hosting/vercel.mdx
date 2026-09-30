@@ -19,7 +19,7 @@ Install required dependencies.
 npm install @hot-updater/server hono
 ```
 
-Install your chosen storage plugin separately (e.g., `@hot-updater/aws`, `@hot-updater/supabase`, `@hot-updater/firebase`).
+Install your chosen storage adapter separately (e.g., `@hot-updater/aws`, `@hot-updater/supabase`, `@hot-updater/firebase`).
 
 Install Drizzle ORM with PostgreSQL driver.
 
@@ -208,7 +208,7 @@ Your Hot Updater server will be available at `https://your-project.vercel.app/ho
 
 [Connect the React Native project's CLI](/docs/custom/cli-configuration) to the
 verified deployment URL with `/hot-updater/admin` as its base path. Keep the
-admin token in the deploy environment and match the server's storage plugin
+admin token in the deploy environment and match the server's storage adapter
 and bucket configuration.
 
 For the mobile app, use the client root ending in `/hot-updater` and its client

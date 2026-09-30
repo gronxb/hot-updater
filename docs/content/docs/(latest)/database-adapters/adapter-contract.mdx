@@ -1,17 +1,17 @@
 ---
 title: "Database adapter contract"
-description: The storage adapter a database plugin implements, with the rules for tables, values, reads, guarded writes, write limits, retention, and migrations.
+description: The DatabaseAdapter interface every database adapter implements, with the rules for tables, values, reads, guarded writes, write limits, retention, and migrations.
 icon: FileCode
 ---
 
 ## The interface
 
-A database plugin gives Hot Updater's storage engine a `DatabaseAdapter` from
-`@hot-updater/server/database`. The engine sends it point reads, index ranges,
-and guarded writes, and keeps Releases, references, counters, and retries
-itself. `createSqlAdapter` and `createKvAdapter` implement this contract for
+Every database adapter hands Hot Updater's storage engine an object that
+implements `DatabaseAdapter` from `@hot-updater/server/database`. The engine
+sends it point reads, index ranges, and guarded writes, and keeps Releases,
+references, counters, and retries itself. `createSqlAdapter` and `createKvAdapter` implement this contract for
 SQL databases and key-value stores; see
-[Create a database plugin](/docs/database-plugins/custom-database) for which
+[Create a database adapter](/docs/database-adapters/custom-database) for which
 one fits your backend. This page is the contract that every adapter follows.
 
 ```ts
@@ -232,4 +232,4 @@ fails reads that return rows for other keys, rows outside the range or out of
 order, or more than `limit` rows, and writes that touch a row twice or that
 `fits` refuses. `setupDatabaseAdapterConformanceSuite` from
 `@hot-updater/test-utils` checks the rules case by case; see
-[Adapter conformance](/docs/database-plugins/custom-database#adapter-conformance).
+[Adapter conformance](/docs/database-adapters/custom-database#adapter-conformance).

@@ -4,6 +4,7 @@
   "icon": "Send",
   "pages": [
     "../guides/deploy",
+    "../guides/custom-update",
     "../guides/channel-management",
     "../guides/runtime-channel-switch",
     "../guides/rollout-cohorts",

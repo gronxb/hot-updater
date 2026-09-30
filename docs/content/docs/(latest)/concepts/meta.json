@@ -5,6 +5,6 @@
   "pages": [
     "how-it-works",
     "automatic-rollback",
-    "../database-plugins/release-catalog-contract"
+    "release-catalog-contract"
   ]
 }

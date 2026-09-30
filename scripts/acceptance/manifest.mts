@@ -1,7 +1,7 @@
 /**
  * The acceptance manifest (PRD "Final acceptance"): one row per
  * implementation, with the files S1, S2, S6, and S7 measure, the suites S3
- * and S4 read, and the e2e profiles S5 reads.
+ * and S4 read, and the e2e profiles that cover it.
  */
 
 export interface AcceptanceSuite {
@@ -31,7 +31,7 @@ export interface AcceptanceRow {
   readonly suites: readonly AcceptanceSuite[];
   /** Whether the backend caps one atomic write, so S3's over-limit case runs. */
   readonly writeLimit: boolean;
-  /** S5: `hot-updater-agent` profiles; none is N/A. */
+  /** The `hot-updater-agent` profiles that cover the row; none is N/A. */
   readonly profiles: readonly string[];
   /** How the backend's native reads relate to the logical rows S4 budgets. */
   readonly multiplier: string;

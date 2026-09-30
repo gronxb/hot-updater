@@ -168,7 +168,7 @@ EXPERIMENTAL=1 npx hot-updater run:ios -s simulatorDebug -d "iPhone 15"
 
 ## Artifact storage
 
-Artifacts from `build:android` and `build:ios` default to `.hot-updater/output/build/<platform>/<scheme>`. The directory is recreated on every build, so point `-o` to a temporary path if you need to keep older artifacts. Copying happens after build plugin hooks complete. The `run:*` commands do not copy persistent artifacts or invoke build plugin hooks.
+Artifacts from `build:android` and `build:ios` default to `.hot-updater/output/build/<platform>/<scheme>`. The directory is recreated on every build, so point `-o` to a temporary path if you need to keep older artifacts. Copying happens after build adapter hooks complete. The `run:*` commands do not copy persistent artifacts or invoke build adapter hooks.
 
 ## Fingerprint and version awareness
 

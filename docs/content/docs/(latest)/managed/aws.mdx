@@ -71,7 +71,7 @@ AccessDenied: User: arn:aws:sts::***:assumed-role/***/*** is not authorized to p
 
 Complete [Install packages](/docs/get-started/installation) in the React
 Native project before running init or an agent scaffold. Install the CLI, React
-Native SDK, and the build plugin that matches your app, then install this provider:
+Native SDK, and the build adapter that matches your app, then install this provider:
 
 ```package-install
 npm install @hot-updater/aws --save-dev
@@ -112,7 +112,7 @@ npx hot-updater init
 <Accordions type="single">
   <Accordion title="Interactive Setup Steps">
 
-1. Choose a build plugin for your project, such as Bare for React Native CLI projects.
+1. Choose a build adapter for your project, such as Bare for React Native CLI projects.
 2. Select AWS + Lambda@Edge as the provider for handling updates.
 3. Select current AWS CLI/default session, a shared AWS profile, account access keys, or an AWS SSO profile
 4. Provide a profile name for shared-profile or SSO mode, or credentials for account/access-key mode
@@ -187,7 +187,7 @@ See [Security](/docs/policy/security#plugin-token-protection).
 
 Managed AWS init does not create or enable a signing key. The
 [built-in local config](/docs/guides/bundle-signing#local-private-key) works
-without a signing plugin. For non-exportable key custody, use the
+without a signing adapter. For non-exportable key custody, use the
 [AWS KMS signer](/docs/guides/bundle-signing#hardened-aws-kms) from
 `hot-updater/signing`; signing is independent of storage and database choice.
 Embed the chosen public key in a native release before deploying signed
@@ -207,7 +207,7 @@ After provisioning, record these outputs for [Set up your app](/docs/get-started
 
 Use the actual URL returned by deployment. Configure the SDK and native bundle
 loader through [Set up your app](/docs/get-started/app-setup), using the selected
-build plugin and the same update strategy as `hot-updater.config.ts`. Only the
+build adapter and the same update strategy as `hot-updater.config.ts`. Only the
 client API key belongs in the mobile app's build-time configuration; provider
 credentials stay in the deploy environment.
 
@@ -302,7 +302,7 @@ Init checks the selected distribution's `/version` response before writing env
 files or changing AWS resources. Incompatible infrastructure is rejected before
 any mutation.
 
-Without `basePath`, a storage plugin treats the whole bucket as owned by its
+Without `basePath`, a storage adapter treats the whole bucket as owned by its
 configured database. Do not run `hot-updater storage prune --yes` while the
 bucket is also used by another active Hot Updater database. Give each active
 database a distinct `basePath` before using prune.
@@ -378,7 +378,7 @@ HOT_UPDATER_S3_SECRET_ACCESS_KEY=your-secret-access-key
 
 Follow the Expo path in [Set up your app](/docs/get-started/app-setup). It applies
 the config plugin and generates the native integration. For DOM components,
-continue with [Expo DOM components](/docs/build-plugins/expo#expo-dom-components-use-dom).
+continue with [Expo DOM components](/docs/build-adapters/expo#expo-dom-components-use-dom).
 
 ## Step 5: Add native code
 

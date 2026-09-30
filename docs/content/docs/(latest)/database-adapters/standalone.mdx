@@ -36,8 +36,8 @@ if (!adminToken) {
 }
 
 export default defineConfig({
-  build, // Your existing build plugin
-  storage, // Your existing storage plugin
+  build, // Your existing build adapter
+  storage, // Your existing storage adapter
   database: standaloneRepository({ // [!code ++]
     baseUrl: "http://localhost:3000/hot-updater/admin", // [!code ++]
     commonHeaders: { // [!code ++]
@@ -51,8 +51,8 @@ export default defineConfig({
 ## Remote storage adapter
 
 For CLI uploads through a separate HTTP storage service, use
-[`standaloneStorage`](/docs/storage-plugins/standalone). Its configuration and
-service contract belong to Storage Plugins; the repository below manages
+[`standaloneStorage`](/docs/storage-adapters/standalone). Its configuration and
+service contract belong to Storage Adapters; the repository below manages
 database rows through the admin API.
 
 ## Configuration

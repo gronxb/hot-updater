@@ -5,7 +5,6 @@
   "pages": [
     "../policy/security",
     "../guides/bundle-signing",
-    "../guides/signing",
     "../custom/api-key-authentication"
   ]
 }

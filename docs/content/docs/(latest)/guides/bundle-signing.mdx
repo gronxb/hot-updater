@@ -51,7 +51,7 @@ explicit opt-in:
    its exact identifier or immutable version when the provider supports one.
 2. Export its SPKI public key to `keys/public-key.pem` and commit that file as
    the native app's trust anchor.
-3. Enable the built-in local config or add the matching signing plugin to
+3. Enable the built-in local config or add the matching signing adapter to
    `hot-updater.config.ts`.
 4. Run `npx hot-updater keys export-public` for bare projects. For Expo, set
    `publicKeyPath` in the `@hot-updater/expo` app plugin and run prebuild.
@@ -243,8 +243,8 @@ inside the trusted signing environment.
 | -------------------------------------- | --------------------- | ----------------------------- |
 | Omitted or local `enabled: false`       | Not present           | Normal unsigned updates       |
 | Omitted or local `enabled: false`       | Present               | Updates rejected              |
-| Local `enabled: true` or signing plugin | Present and matching  | Signed updates verified       |
-| Local `enabled: true` or signing plugin | Missing or mismatched | Deployment or update rejected |
+| Local `enabled: true` or signing adapter | Present and matching  | Signed updates verified       |
+| Local `enabled: true` or signing adapter | Missing or mismatched | Deployment or update rejected |
 
 Config and native files must match. Hot Updater fails closed rather than
 installing an unsigned or unverifiable update.

@@ -44,7 +44,7 @@ export default defineConfig({
 
 ```
 
-With a direct database plugin, `hot-updater console` also runs the
+With a direct database adapter, `hot-updater console` also runs the
 [server plugins](/docs/custom/server-plugins) that `hotUpdater.plugins.ts`, next
 to `hot-updater.config.ts`, exports as `plugins`: `insights()` for the Insights
 pages and `apiKeys()` for API key management. `hot-updater init` writes this
@@ -74,7 +74,7 @@ npx hot-updater console
 ## Security model
 
 The CLI Console binds to loopback and loads the configured database and storage
-plugins on its server. With a direct database plugin, it does not call the Hot
+plugins on its server. With a direct database adapter, it does not call the Hot
 Updater HTTP handlers at all.
 
 When the configured database is `standaloneRepository`, point its `baseUrl` at
@@ -89,7 +89,7 @@ authenticates browser users, while the framework middleware in front of
 admin API. Through the standalone repository, the Console reads the server's
 Insights overview, events, installations, and update failures from the admin
 handler. App usage, Release health, bundle activity, and API key management
-need a direct database plugin.
+need a direct database adapter.
 
 Use Bundle commands for automation and CI scripts:
 

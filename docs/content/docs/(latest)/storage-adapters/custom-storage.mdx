@@ -1,21 +1,21 @@
 ---
-title: "Create a storage plugin"
-description: Store bundle artifacts on any object store with createStoragePlugin, serve their downloads, and test the plugin.
+title: "Create a storage adapter"
+description: Store bundle artifacts on any object store with createStorageAdapter, serve their downloads, and test the adapter.
 icon: HardDrive
 ---
 
-## What a storage plugin does
+## What a storage adapter does
 
-A storage plugin keeps the files that `hot-updater deploy` uploads, such as
+A storage adapter keeps the files that `hot-updater deploy` uploads, such as
 manifests, assets, archives, and patches, and resolves the URLs devices
 download them from. It is one object: a `name`, the URI `protocol` it owns,
 and the operations its consumers call. The CLI, the Console, and the server
 use the same object, so the operations take plain inputs and Web streams. The
-factory that creates the plugin captures SDK clients, bindings, and
+factory that creates the adapter captures SDK clients, bindings, and
 credentials.
 
 Each consumer checks the operations it needs, and fails with
-`Storage plugin "<name>" does not implement <operation>.` when one is missing:
+`Storage adapter "<name>" does not implement <operation>.` when one is missing:
 
 | Consumer                        | Operations                                             |
 | ------------------------------- | ------------------------------------------------------ |
@@ -26,7 +26,7 @@ Each consumer checks the operations it needs, and fails with
 | Console                         | `get`, `put`, `exists`, `delete`                       |
 | `createHotUpdater({ storage })` | `get`, `getDownloadUrl`                                |
 
-A plugin for general use implements `put`, `get`, `getDownloadUrl`, `exists`,
+An adapter for general use implements `put`, `get`, `getDownloadUrl`, `exists`,
 and `delete`. `listObjects` and `deleteObjects` add
 [storage cleanup](#support-storage-cleanup).
 
@@ -36,25 +36,25 @@ and `delete`. `listObjects` and `deleteObjects` add
 npm install @hot-updater/plugin-core
 ```
 
-`@hot-updater/plugin-core` exports `createStoragePlugin`, the storage types,
-and the URI and download helpers used below. A plugin you publish lists it in
-`peerDependencies`; see [Test and publish a plugin](/docs/plugins/publish).
+`@hot-updater/plugin-core` exports `createStorageAdapter`, the storage types,
+and the URI and download helpers used below. An adapter you publish lists it in
+`peerDependencies`; see [Test and publish](/docs/plugins/publish).
 
-## Write the plugin
+## Write the adapter
 
-This plugin stores objects through a `BucketClient`, the calls it needs from
+This adapter stores objects through a `BucketClient`, the calls it needs from
 your provider's SDK. Replace it with your SDK's client:
 
 ```ts title="src/myStorage.ts"
 import {
   createStorageDownloadUrl,
   createStorageKeyBuilder,
-  createStoragePlugin,
+  createStorageAdapter,
   createStorageUri,
   parseStorageUri,
 } from "@hot-updater/plugin-core";
 
-/** The calls the plugin makes to your provider's SDK. */
+/** The calls the adapter makes to your provider's SDK. */
 export interface BucketClient {
   upload(
     key: string,
@@ -96,7 +96,7 @@ export const myStorage = ({
     return parsed.key;
   };
 
-  return createStoragePlugin({
+  return createStorageAdapter({
     name: "myStorage",
     protocol: PROTOCOL,
 
@@ -141,18 +141,18 @@ export const myStorage = ({
 };
 ```
 
-- `protocol` is the scheme of every URI the plugin stores, such as `s3` or
+- `protocol` is the scheme of every URI the adapter stores, such as `s3` or
   `r2`. The database keeps those URIs, so the protocol cannot change once
-  Bundles use it, and a server registers one plugin per protocol. Choose one
+  Bundles use it, and a server registers one adapter per protocol. Choose one
   that names your provider.
-- `put` receives a key relative to the plugin's base path, such as
+- `put` receives a key relative to the adapter's base path, such as
   `bundles/<bundle-id>/manifest.json` or `assets/sha256/ab/<hash>.png`, and a
   one-shot `ReadableStream`. Consume or cancel the stream before the promise
   settles. `contentLength` is set when the consumer knows the size.
 - `put` returns the URI of that key below the base path, from
   `createStorageUri`. Deploy and the server derive the URIs of related objects
   from it, such as the archive next to a manifest and the shared `assets/`
-  folder, and pass them to `get` and `exists`, so a plugin must store every
+  folder, and pass them to `get` and `exists`, so an adapter must store every
   key at the same place relative to its base path.
 - `get` returns a `Response` whose body streams the object, or `null` when it
   does not exist. Consumers pipe the body without buffering it.
@@ -163,7 +163,7 @@ export const myStorage = ({
 - `createStorageKeyBuilder(basePath)` joins the base path and a key, and
   rejects `.`, `..`, and `\` segments.
 - `parseStorageUri(uri, protocol)` checks the scheme and decodes the key.
-  Check the bucket too, so a plugin never reads another bucket's URI.
+  Check the bucket too, so an adapter never reads another bucket's URI.
 
 Each operation receives one input object and returns one result object, so the
 contract can add fields without changing positions.
@@ -188,9 +188,9 @@ of these:
 Only the server needs `getDownloadUrl`, and with it the signing key. Keep the
 key in the server's environment, and use the same key on every server instance.
 
-## Register the plugin
+## Register the adapter
 
-The CLI takes one storage plugin as `storage`. This excerpt shows only that
+The CLI takes one storage adapter as `storage`. This excerpt shows only that
 field of a complete `hot-updater.config.ts`:
 
 ```ts title="hot-updater.config.ts (storage excerpt)"
@@ -207,7 +207,7 @@ const storage = myStorage({
 Assign this value to `storage` next to the configuration's `build`,
 `database`, and `updateStrategy`.
 
-The server takes a list, so it can read Bundles that different plugins stored.
+The server takes a list, so it can read Bundles that different adapters stored.
 Configure the same bucket and base path as the CLI:
 
 ```ts title="src/hotUpdater.ts (excerpt)"
@@ -225,19 +225,19 @@ export const hotUpdater = createHotUpdater({
 });
 ```
 
-`createHotUpdater` rejects a plugin without `get` or `getDownloadUrl`, and two
-plugins with one protocol. To answer a URI, Hot Updater:
+`createHotUpdater` rejects an adapter without `get` or `getDownloadUrl`, and two
+adapters with one protocol. To answer a URI, Hot Updater:
 
-1. uses the registered plugin whose `protocol` matches the URI's scheme;
-2. uses an `http` or `https` URI directly when no plugin owns its scheme;
+1. uses the registered adapter whose `protocol` matches the URI's scheme;
+2. uses an `http` or `https` URI directly when no adapter owns its scheme;
 3. otherwise reports the scheme as unsupported.
 
-A plugin that owns `http` or `https` takes precedence, so a provider can apply
+An adapter that owns `http` or `https` takes precedence, so a provider can apply
 authorization to those URIs as well.
 
 ## Provide runtime-specific entries
 
-A provider can create the same plugin in different ways for different
+A provider can create the same adapter in different ways for different
 runtimes, and export each from its own entry. `@hot-updater/cloudflare`
 exports `r2Storage` over S3-compatible credentials for the CLI, and
 `@hot-updater/cloudflare/worker` exports an `r2Storage` over a Worker's R2
@@ -268,12 +268,12 @@ that no Bundle references. It needs two more operations:
 - `deleteObjects(keys)` deletes exactly the keys it receives, relative to the
   base path.
 
-Without them, `storage prune` reports that the plugin does not support it.
+Without them, `storage prune` reports that the adapter does not support it.
 Prefix or bucket deletion is outside the contract.
 
-## Test the plugin
+## Test the adapter
 
-Test the plugin against a fake of your SDK's client, and against a real bucket
+Test the adapter against a fake of your SDK's client, and against a real bucket
 before you publish it. This Vitest spec keeps objects in memory:
 
 ```ts title="src/myStorage.spec.ts"
@@ -366,13 +366,13 @@ describe("myStorage", () => {
 ```
 
 Then deploy through it: point a test app's `hot-updater.config.ts` at the
-plugin, run `hot-updater deploy`, and [test an OTA update](/docs/get-started/test-ota)
-against a server that registers the same plugin.
+adapter, run `hot-updater deploy`, and [test an OTA update](/docs/get-started/test-ota)
+against a server that registers the same adapter.
 
 ## Storage contract
 
 ```ts
-interface StoragePlugin {
+interface StorageAdapter {
   readonly name: string;
   readonly protocol: string;
 
@@ -404,8 +404,8 @@ interface StoragePlugin {
 }
 ```
 
-`createStoragePlugin` returns the object it receives, typed with the
-operations it has. `StoragePluginWith<"get" | "put">` names a plugin that has
+`createStorageAdapter` returns the object it receives, typed with the
+operations it has. `StorageAdapterWith<"get" | "put">` names an adapter that has
 those operations.
 
 ### Storage URI format
@@ -443,4 +443,4 @@ normalizing to another object.
 The contract carries Web streams and responses, not paths. The CLI opens a
 local file as a stream, passes its size as `contentLength`, and hands the
 stream to `put` without reading the file into memory. Keep file-system
-operations out of a plugin.
+operations out of an adapter.

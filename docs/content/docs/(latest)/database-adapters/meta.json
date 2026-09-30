@@ -1,0 +1,19 @@
+{
+  "title": "Database Adapters",
+  "description": "Store Bundles, Releases, catalogs, channels, and server plugins' tables.",
+  "icon": "Database",
+  "pages": [
+    "supabase",
+    "cloudflare",
+    "aws",
+    "firestore",
+    "---Your own database---",
+    "../custom/database/kysely",
+    "../custom/database/drizzle",
+    "../custom/database/prisma",
+    "../custom/database/mongodb",
+    "../custom/database/sql-export",
+    "---A self-hosted server---",
+    "standalone"
+  ]
+}

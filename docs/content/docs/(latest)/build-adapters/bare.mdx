@@ -1,6 +1,6 @@
 ---
-title: "Bare (CLI) Plugin"
-description: Build plugin for non-Expo projects that runs the project's configured bundler through the React Native CLI bundle command.
+title: "Bare (CLI) Adapter"
+description: Build adapter for non-Expo projects that runs the project's configured bundler through the React Native CLI bundle command.
 icon: react
 ---
 
@@ -13,7 +13,7 @@ npm install @hot-updater/bare --save-dev
 ## Configuration
 
 ```typescript
-interface BarePluginConfig {
+interface BareAdapterConfig {
   outDir?: string;           // Output directory (default: "dist")
   entryFile?: string;        // Entry file (default: "index.js")
   sourcemap?: boolean;       // Generate sourcemaps (default: false)

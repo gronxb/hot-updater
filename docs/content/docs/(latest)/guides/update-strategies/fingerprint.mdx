@@ -106,8 +106,8 @@ same file in both lists.
   and Expo app-config fields. Do not assume a native dependency, build setting,
   config plugin, or app-config change is covered without checking its sources.
   Include the relevant stable text inputs explicitly when they are excluded.
-- The bare build plugin adds no replacement sources for app-owned native files.
-  Build plugins may add their own sources, but this does not make the native
+- The bare build adapter adds no replacement sources for app-owned native files.
+  Build adapters may add their own sources, but this does not make the native
   trees fully tracked.
 - Scope globs to app-owned source directories; avoid blanket `ios/**/*` or
   `android/**/*` inputs that include Pods, generated files, and build outputs.

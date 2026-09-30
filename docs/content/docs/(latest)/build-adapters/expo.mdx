@@ -1,6 +1,6 @@
 ---
-title: "Expo Plugin"
-description: Build and config plugin for Expo projects. Bundles your app and configures native projects through Expo Prebuild.
+title: "Expo Adapter"
+description: Build adapter and config plugin for Expo projects. Bundles your app and configures native projects through Expo Prebuild.
 icon: expo
 ---
 
@@ -14,7 +14,7 @@ npm install @hot-updater/expo --save-dev
 ## Configuration
 
 ```typescript
-interface ExpoPluginConfig {
+interface ExpoAdapterConfig {
   outDir?: string;      // Output directory (default: "dist")
   sourcemap?: boolean;  // Generate sourcemaps (default: false)
   resetCache?: boolean; // Reset Metro cache before bundling (default: true)

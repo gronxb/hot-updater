@@ -66,10 +66,10 @@ export default defineConfig({
 
 ### Cloudflare R2
 
-Use [`r2Storage`](/docs/storage-plugins/cloudflare) for R2, including the
+Use [`r2Storage`](/docs/storage-adapters/cloudflare) for R2, including the
 managed Cloudflare Worker. It records `r2://` locations that the Worker can
 resolve. `s3Storage` always records `s3://` locations, even with an R2 endpoint,
-so it requires a server that registers an `s3` storage plugin.
+so it requires a server that registers an `s3` storage adapter.
 
 ## Protocol
 
