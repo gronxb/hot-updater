@@ -233,10 +233,8 @@ through `TransactWriteItems` at twice the cost, and logs one warning. Every
 item's partition key is a table name, or a table name followed by `#` for its
 index items, so a `dynamodb:LeadingKeys` condition can scope the role to Hot
 Updater's items. The managed setup's policy lists them, including
-`aggregate_log_0` to `aggregate_log_7` and `aggregate_lease`; rerun
-`hot-updater init` to update the policy of an earlier setup.
-`migrateDynamoDB` also needs `DescribeTable`, and `CreateTable` when it creates
-the table.
+`aggregate_log_0` to `aggregate_log_7` and `aggregate_lease`. `migrateDynamoDB`
+also needs `DescribeTable`, and `CreateTable` when it creates the table.
 
 ## Transaction limits
 
