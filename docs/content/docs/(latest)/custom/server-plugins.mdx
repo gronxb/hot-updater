@@ -458,8 +458,11 @@ export const feedback = () =>
 ```
 
 - `id` names the plugin's API and prefixes its tables. A plugin id uses
-  lowercase letters, digits, and `_`, starting with a letter; `core` is
-  reserved, and each id appears once per server.
+  lowercase letters, digits, and `_`, starting with a letter, and each id
+  appears once per server. `core` is reserved. `insights` and `apiKeys`
+  belong to Hot Updater's `insights()` and `apiKeys()`: any other plugin that
+  takes one, even a copy such as `{ ...insights() }`, stops the server or the
+  CLI with `HotUpdaterConfigError`.
 - `namespace: false`, optional, keeps the table names as `schema` declares
   them, without the id prefix. Only such a plugin's id may also use uppercase
   letters, as `apiKeys` does.

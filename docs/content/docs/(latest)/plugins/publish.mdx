@@ -82,12 +82,12 @@ from separate entries of one package, such as `@acme/hot-updater-feedback` and
 List the Hot Updater packages your package imports in `peerDependencies`, and
 in `devDependencies` for your own tests:
 
-| Package                               | `peerDependencies`                                   |
-| ------------------------------------- | ---------------------------------------------------- |
-| Storage, build, or signing adapter    | `@hot-updater/plugin-core`                           |
-| Database adapter                      | `@hot-updater/server` and `@hot-updater/plugin-core` |
-| Server plugin                         | `@hot-updater/server`                                |
-| Client plugin                         | `@hot-updater/react-native`                          |
+| Package                            | `peerDependencies`          |
+| ---------------------------------- | --------------------------- |
+| Storage, build, or signing adapter | `@hot-updater/plugin-core`  |
+| Database adapter                   | `@hot-updater/server`       |
+| Server plugin                      | `@hot-updater/server`       |
+| Client plugin                      | `@hot-updater/react-native` |
 
 A peer dependency makes your package use the project's copy of each package,
 the one its CLI, server, and Console use. A second copy breaks at runtime,
@@ -127,7 +127,8 @@ Choose them once:
   registers one storage adapter per protocol. Changing it orphans the stored
   Bundles.
 - **Server plugin `id`.** It prefixes the plugin's tables and names its API,
-  `hotUpdater.api.<id>`, and each id appears once per server. Prefer an id
+  `hotUpdater.api.<id>`, and each id appears once per server. `core`,
+  `insights`, and `apiKeys` are reserved for Hot Updater. Prefer an id
   that names your package, such as `acme_feedback`, over a generic one such
   as `feedback`. Keep the prefix: with `namespace: false` the declared table
   names must stay clear of core's and every other plugin's.
