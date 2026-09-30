@@ -108,7 +108,7 @@ report that repeats the installation's latest report on the same UTC day, with
 the same channel, platform, app version, bundle, Release, and user, records
 nothing. An `UNCHANGED` report updates the installation's latest report and the
 launch metrics, but the server keeps no event row for it, so event lists show
-only downloads, applies, and recoveries.
+downloads, applies, recoveries, and update failures.
 
 Reporting is best effort and does not trigger rollback. A report that fails
 with a network error, a timeout, `429`, or a `5xx` is retried in the
@@ -225,17 +225,19 @@ Insights depends on its database configuration:
   file for managed providers. A deployed Console takes `plugins` in its
   [configuration](/docs/guides/console-deployment#add-your-plugins). Without
   `insights()` there, the console hides Insights.
-- With `standaloneRepository`, it reads Insights events and installations from
-  the server's admin handler, and hides Insights when the server's admin
-  `/version` does not list `insights()`. App usage, Release health, and bundle
-  activity need a direct database configuration.
+- With `standaloneRepository`, it reads Insights events, installations, and
+  update failures from the server's admin handler, and hides Insights when the
+  server's admin `/version` does not list `insights()`. App usage, Release
+  health, and bundle activity need a direct database configuration.
 
 The Bundles list and detail show lifetime **Downloads**, **Active days**, and
 **Known crashes** for each Release ID. These count received download reports,
 each installation once for each UTC day it launched the release, and failed OTA
 launch reports. Known crashes are launch failures that triggered recovery.
 Their rate is known crashes divided by active days plus known crashes. Select
-the summary to open Release health for that ID.
+the summary to open Release health for that ID. The bundle detail also shows
+**Download failures** since the release's first report, with their rate; see
+[Update failures](#update-failures).
 
 Insights opens on the `production` channel. **App usage** starts with
 **All platforms** and a 24-hour period; **Release health** starts with **iOS**
@@ -286,7 +288,8 @@ chart shows daily active installations and failed launches. These period
 totals are separate from the lifetime counters in the Bundles list and detail.
 
 Open **All events** in the header, or **Event history** on Release health, to
-browse downloads, applies, and recoveries from newest to oldest, 20 per page.
+browse downloads, applies, recoveries, and update failures from newest to
+oldest, 20 per page.
 The Console starts with **7d**; select **30d** or **90d** for older reports.
 Paging stops at the start of the selected range. A launch without an update is
 not listed: it counts in App usage and Release health and shows as its
@@ -314,17 +317,66 @@ installations are estimates from HyperLogLog sketches, typically within about
 3%, and show with **≈**. Report counts, active days, and distributions are
 exact.
 
+## Update failures
+
+An app reports `UPDATE_FAILED` when an update check, download, or install
+fails. Its `metadata.failure` says where (`stage`: `check`, `download`, or
+`install`) and why (`reason`: `network`, `http`, `invalid_response`,
+`hash_mismatch`, `signature`, `patch`, `extract`, `storage`, or `unknown`), and
+what else the client knew: the `resource` it was fetching, the `httpStatus`,
+the storage origin's `originCode` (such as `ExpiredToken`), and the network
+`transport` failure (such as `timeout`). A download report can say how the
+bundle arrived (`delivery`: `patch`, `manifest`, or `archive`) and whether a
+patch fell back (`patchFallback`), and a recovery on Android 11 and later why
+the crashed process exited (`previousProcessExit`, such as `CRASH` or `ANR`).
+
+The server never refuses a failure for what it cannot read: a value it does not
+know reads as `unknown`, a missing or malformed `failure` counts as an unknown
+stage and reason, and a malformed optional field is left out. It refuses only
+a report without its identity, bundles, or a valid event ID. A failure changes
+nothing an installation runs, so it is no launch and does not replace the
+installation's latest report. Event lists and installation history show it with
+its stage and reason. A failed check names the running bundle instead of a
+target, so it counts for its channel and appears in no bundle's list.
+
+In the Console, **Update failures** follows Release health's channel, platform,
+Release ID, and period:
+
+- **Failed updates** counts failed downloads and installs. A client reports a
+  failure at most once a UTC day for each stage, reason, and target bundle.
+- **Failed installations** estimates the distinct installations with such a
+  failure, and **Failure rate** divides them by themselves plus the download
+  reports: each installation reports a bundle's download once.
+- **Patch fallback rate** is the share of downloads that tried a patch and
+  fell back to the changed files or the full archive.
+- Without a Release ID, **Failed checks** counts failed update checks, and
+  **Check failure rate** divides the installations with one by the channel's
+  active installations. A check a device could not send while offline is not
+  reported.
+- **Failures by stage and reason** lists each stage and reason with its share;
+  expand one to see its HTTP statuses, origin codes, transports, and resources.
+- **Recoveries by exit reason** splits failed launches by the reasons Android
+  reported; **Not reported** covers iOS and older Android.
+
+The bundle detail's **Download failures** counts the release's failed
+downloads and installs since its first report, with the same rate. On a
+self-hosted server, the admin route
+`GET /failures?platform=ios&channel=production&releaseId=<id>` answers a
+release's failures since its first report; add `start` and `end`, in epoch
+milliseconds, for a period, which a channel without `releaseId` needs. The
+server API is `hotUpdater.api.insights.getUpdateFailures(input)`.
+
 ## How long Insights keeps data
 
 `insights()` keeps each kind of data for a period, then deletes it:
 
 | Data | Kept by default |
 | --- | --- |
-| Downloads, applies, and recoveries (raw events) | 90 days |
-| Hourly totals and unique-installation sketches | 90 days |
+| Downloads, applies, recoveries, and update failures (raw events) | 90 days |
+| Hourly totals, unique-installation sketches, and the update failure breakdown | 90 days |
 | Daily totals, sketches, and latest-report distributions | 13 months (400 days) |
 | An installation's latest report | 13 months after the installation last reports |
-| Lifetime counters per Release ID (Bundles list and detail) | Kept |
+| Lifetime counters and failed installations per Release ID (Bundles list and detail) | Kept |
 
 Set the periods on the plugin, in `hotUpdater.plugins.ts` and wherever the
 server builds its plugins:
@@ -412,12 +464,16 @@ when its totals are written in that transaction, as with
 | `UPDATE_DOWNLOADED` | 19 | 42 |
 | `UPDATE_APPLIED` | 26 | 54 |
 | `RECOVERED` | 30 | 66 |
+| `UPDATE_FAILED` for a download or install | 17 | 42 |
+| `UPDATE_FAILED` for an update check | 11 | 26 |
 
 A first launch the day after an apply or a recovery takes 21 items and 52 WRU,
-since it also moves the update's latest-report rows. Up to five items of a
-report are HyperLogLog sketches of about 1 KB, at 4 WRU apiece; every other
-item takes 2. A download, apply, or recovery stores its event with its index
-copies; a launch stores none. Latest-report gauges count each installation in
+since it also moves the update's latest-report rows. A recovery that carries
+Android's exit reason writes one item more, and a download's patch counters
+share the items that count it. An update failure moves no latest-report rows.
+Up to five items of a report are HyperLogLog sketches of about 1 KB, at 4 WRU
+apiece; every other item takes 2. A download, apply, recovery, or update
+failure stores its event with its index copies; a launch stores none. Latest-report gauges count each installation in
 the UTC day of its latest report, so they move only when that day or the
 installation's bundle changes. An installation that launches every day
 without updating sends one report and costs about 48 WRU a day, however often

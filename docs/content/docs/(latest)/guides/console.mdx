@@ -87,8 +87,8 @@ authenticates browser users, while the framework middleware in front of
 `handlers.admin` authenticates Console-to-server requests. The Console's own
 `/api/*` routes belong to the Console application and are not the Hot Updater
 admin API. Through the standalone repository, the Console reads the server's
-Insights overview, events, and installations from the admin handler, and
-deletes Insights data through it. App usage,
+Insights overview, events, installations, and update failures from the admin
+handler, and deletes Insights data through it. App usage,
 Release health, bundle activity, and API key management need a direct database
 plugin.
 
@@ -151,8 +151,9 @@ stored objects and shared assets.
 ## Insights
 
 The Bundles list and detail show lifetime **Downloads**, **Known launches**,
-and **Known crashes**, with a crash rate. Open Insights to inspect release
-health for a selected period, reporting installations, and event history.
+and **Known crashes**, with a crash rate, and the detail shows **Download
+failures** with their rate. Open Insights to inspect release health and update
+failures for a selected period, reporting installations, and event history.
 Events are kept for 90 days and daily totals for 13 months. On an
 installation's history, **Delete data** deletes that installation's Insights
 data, or every installation of its user, after a confirmation.
