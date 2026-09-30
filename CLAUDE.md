@@ -15,8 +15,8 @@ An adapter fills one slot of a config (`build`, `storage`, `database`, `signing`
 - **Database Adapters**: Handle metadata storage on one storage engine (Cloudflare D1, Supabase, DynamoDB, Firestore, PostgreSQL) - use the same directories as storage; the Kysely, Drizzle, Prisma, and MongoDB adapters live in `packages/server/src/adapters/`
 - **Signing Adapters**: Sign bundle artifacts (local PEM, remote, AWS KMS, Google Cloud KMS) - `hot-updater/signing`
 - **Integration Plugins**: Wrap a build adapter to upload source maps (Sentry, Datadog, BugSnag) - `plugins/*-plugin/`
-- **Server Plugins**: Add tables, APIs, routes, and client auth to `createHotUpdater` with `definePlugin` - the built-in `insights()` and `apiKeys()` live in `packages/server/src/plugins/`
-- **Client Plugins**: Run in the React Native app with `defineClientPlugin` - the built-in `insights()` lives in `packages/react-native/src/plugins/insights/`
+- **Server Plugins**: Add tables, APIs, routes, and client auth to `createHotUpdater` with `definePlugin`, whose authoring API lives in `plugins/plugin-core/src/serverPlugin/` (`@hot-updater/plugin-core/server-plugin`, re-exported by `@hot-updater/server/plugins`) - the official `insights()` and `apiKeys()` are the packages `plugins/insights/` (`@hot-updater/plugin-insights`) and `plugins/api-keys/` (`@hot-updater/plugin-api-keys`), re-exported by `@hot-updater/server/plugins/*`
+- **Client Plugins**: Run in the React Native app with `defineClientPlugin`, whose contract lives in `packages/core/src/clientPlugin.ts` (re-exported by `@hot-updater/react-native/client-plugin`) - the official `insights()` client is `plugins/insights/src/client/`, re-exported by `@hot-updater/react-native/plugins/insights`
 
 ### Core Packages
 - `packages/core/`: Core types and utilities

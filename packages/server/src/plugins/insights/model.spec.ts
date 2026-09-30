@@ -9,8 +9,7 @@ import { afterAll } from "vitest";
 import * as engine from "../../database";
 import { createSqlAdapter } from "../../database/sql/sqlAdapter";
 import { pgliteExecutor } from "../../database/sql/sqlTestExecutors";
-import { createInsightsModel, insights } from "./index";
-import type { InsightsModel } from "./modelTypes";
+import { createInsightsModel, insights, type InsightsModel } from "./index";
 import { setupInsightsModelTestSuite } from "./testing";
 
 /** The plugin's model on a fresh adapter per test, behind one stable model. */

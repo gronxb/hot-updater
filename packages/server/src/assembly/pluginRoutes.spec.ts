@@ -1,4 +1,5 @@
 import { createMemoryAdapter } from "@hot-updater/plugin-core/internal";
+import { INSIGHTS_ROUTES } from "@hot-updater/plugin-insights/internal";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createHotUpdater } from "../createHotUpdaterCore";
@@ -6,7 +7,6 @@ import { type HotUpdaterHandlers, listHotUpdaterRoutes } from "../handler";
 import { apiKeys } from "../plugins/api-keys";
 import { definePlugin } from "../plugins/definePlugin";
 import { insights } from "../plugins/insights";
-import { INSIGHTS_ROUTES } from "../plugins/insights/routes";
 import { HotUpdaterConfigError } from "./assemblePlugins";
 
 const database = () => ({ name: "memory", adapter: createMemoryAdapter() });

@@ -1,4 +1,5 @@
-import { isDatabaseBusyError } from "../../database/busy";
+import { isDatabaseBusyError } from "@hot-updater/plugin-core/server-plugin";
+
 import {
   InsightsBadRequestError,
   InsightsPayloadTooLargeError,

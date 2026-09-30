@@ -5,15 +5,18 @@ import {
   type DatabaseAdapter,
   mergeDistinct,
 } from "@hot-updater/plugin-core/internal";
+import { InsightsBadRequestError } from "@hot-updater/plugin-insights/internal";
 import { createPluginTestHarness } from "@hot-updater/test-utils";
 import { describe, expect, it } from "vitest";
 
 import * as engine from "../../database";
-import { InsightsBadRequestError } from "./errors";
-import type { BundleEventRow } from "./eventRow";
-import { createInsightsModel, insights } from "./index";
-import { createInsightsProvider } from "./provider";
-import type { InsightsEventPageInput } from "./types";
+import {
+  createInsightsModel,
+  insights,
+  type BundleEventRow,
+  createInsightsProvider,
+  type InsightsEventPageInput,
+} from "./index";
 
 const HOUR = 3_600_000;
 const DAY = 86_400_000;

@@ -1,5 +1,8 @@
-import type { HotUpdaterDatabase } from "../../database/database";
-import { DatabaseConstraintError } from "../../database/errors";
+import {
+  type HotUpdaterDatabase,
+  DatabaseConstraintError,
+} from "@hot-updater/plugin-core/server-plugin";
+
 import type { ApiKeysSchema } from "./schema";
 
 export interface ApiKeyRow {

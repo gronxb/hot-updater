@@ -1,10 +1,4 @@
-import { createMemoryAdapter } from "@hot-updater/plugin-core/internal";
-import { describe, expect, it } from "vitest";
-
-import { createDatabaseEngine } from "../../database/database";
-import { resolveSchema } from "../../database/resolveSchema";
 import {
-  API_KEY_HEADER_NAME,
   authenticateApiKey,
   createApiKey,
   createApiKeyManagement,
@@ -12,8 +6,13 @@ import {
   normalizeApiKeyHeaderName,
   provisionApiKey,
   registerApiKey,
-} from "./apiKeys";
-import { apiKeysSchema, createApiKeyModel } from "./index";
+} from "@hot-updater/plugin-api-keys/internal";
+import { createMemoryAdapter } from "@hot-updater/plugin-core/internal";
+import { describe, expect, it } from "vitest";
+
+import { createDatabaseEngine } from "../../database/database";
+import { resolveSchema } from "../../database/resolveSchema";
+import { apiKeysSchema, createApiKeyModel, API_KEY_HEADER_NAME } from "./index";
 
 /** The api-keys plugin's table model on an empty in-memory database. */
 const createModel = () => {

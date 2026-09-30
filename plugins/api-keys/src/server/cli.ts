@@ -1,4 +1,8 @@
-import type { PluginCli, PluginCommandUi } from "../definePlugin";
+import type {
+  PluginCli,
+  PluginCommandUi,
+} from "@hot-updater/plugin-core/server-plugin";
+
 import type {
   ApiKeyManagementAPI,
   ApiKeyMetadata,

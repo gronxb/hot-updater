@@ -2,10 +2,9 @@ import {
   type DatabaseKey,
   isKeyValue,
 } from "@hot-updater/plugin-core/internal";
+import { DatabaseCursorError } from "@hot-updater/plugin-core/server-plugin";
 
-export class DatabaseCursorError extends Error {
-  readonly name = "DatabaseCursorError";
-}
+export { DatabaseCursorError };
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();

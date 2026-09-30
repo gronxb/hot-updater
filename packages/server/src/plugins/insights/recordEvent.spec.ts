@@ -6,6 +6,7 @@ import {
   type DatabaseAdapter,
   type WriteOp,
 } from "@hot-updater/plugin-core/internal";
+import { DAILY_EVENTS } from "@hot-updater/plugin-insights/internal";
 import { createPluginTestHarness } from "@hot-updater/test-utils";
 import { describe, expect, it } from "vitest";
 
@@ -15,14 +16,13 @@ import { createKvAdapter } from "../../database/kv/kvAdapter";
 import { createMemoryKeyValueStore } from "../../database/kv/kvTestStore";
 import { createSqlAdapter } from "../../database/sql/sqlAdapter";
 import { sqliteExecutor } from "../../database/sql/sqlTestExecutors";
-import type { BundleEventRow } from "./eventRow";
 import {
   insights,
   insightsIdentity,
   type InsightsIdentityParts,
   type InsightsSchema,
+  type BundleEventRow,
 } from "./index";
-import { DAILY_EVENTS } from "./schema";
 
 const HOUR = 3_600_000;
 const DAY = 86_400_000;

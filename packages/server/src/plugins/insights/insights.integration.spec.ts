@@ -2,6 +2,7 @@ import {
   createMemoryAdapter,
   type DatabaseAdapter,
 } from "@hot-updater/plugin-core/internal";
+import { EVENT_BODY_MAX_BYTES } from "@hot-updater/plugin-insights/internal";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { toolingTargetOf } from "../../db/coreDatabase";
@@ -10,7 +11,6 @@ import {
   createFencedDatabase,
   createRuntimeDatabase,
 } from "../../runtime.testFixtures";
-import { EVENT_BODY_MAX_BYTES } from "./eventInput";
 import { insights } from "./index";
 
 /** A server with the Insights plugin on an empty in-memory database. */

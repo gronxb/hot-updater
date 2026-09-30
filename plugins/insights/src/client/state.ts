@@ -1,4 +1,4 @@
-import type { HotUpdaterClientStorage } from "../../clientPlugin";
+import type { HotUpdaterClientStorage } from "@hot-updater/core";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 /** A day's failure keys kept, so a failing app cannot grow its storage. */

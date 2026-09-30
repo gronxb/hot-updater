@@ -1,0 +1,8 @@
+{
+  "name": "@hot-updater/plugin-insights/client",
+  "private": true,
+  "source": "../src/client/index.ts",
+  "main": "../dist/client/index.cjs",
+  "module": "../dist/client/index.mjs",
+  "types": "../dist/client/index.d.cts"
+}
