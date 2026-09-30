@@ -20,13 +20,18 @@ See the [Self-Hosting (Custom) Guide](/docs/custom/overview) for complete server
 
 ## Installation
 
+Install it with your storage adapter's package, such as `@hot-updater/aws`:
+
 ```package-install
-npm install @hot-updater/standalone --save-dev
+npm install @hot-updater/standalone @hot-updater/aws --save-dev
 ```
 
 ## Usage
 
-Configure your CLI to connect to your self-hosted server:
+Configure your CLI to connect to your self-hosted server. `storage` lists the
+server's storage adapters, here the
+[quick start](/docs/custom/quick-start#define-the-server)'s R2 bucket through
+`s3Storage`:
 
 ```typescript title="hot-updater.config.ts (excerpt)"
 import { s3Storage } from "@hot-updater/aws";
@@ -46,7 +51,17 @@ export default defineConfig({
     commonHeaders: { // [!code ++]
       Authorization: `Bearer ${adminToken}`, // [!code ++]
     }, // [!code ++]
-    storage: [s3Storage({ /* the server's bucket */ })], // [!code ++]
+    storage: [ // [!code ++]
+      s3Storage({ // [!code ++]
+        region: "auto", // [!code ++]
+        endpoint: process.env.R2_ENDPOINT, // [!code ++]
+        credentials: { // [!code ++]
+          accessKeyId: process.env.R2_ACCESS_KEY_ID!, // [!code ++]
+          secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!, // [!code ++]
+        }, // [!code ++]
+        bucketName: process.env.R2_BUCKET_NAME!, // [!code ++]
+      }), // [!code ++]
+    ], // [!code ++]
   }), // [!code ++]
 });
 ```

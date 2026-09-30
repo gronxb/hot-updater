@@ -56,9 +56,10 @@ Hono, SQLite and R2 example, or use the
 and host that fit your stack.
 
 A custom server requires schema setup, an explicit client access policy and
-protected admin routes. Its CLI connection uses `standaloneRepository`; the
-server itself uses a direct database provider. Storage and database can be
-selected independently through the [plugin system](/docs/concepts/plugin-system).
+protected admin routes. The CLI points `server` at its server definition when
+the app project can import that module, or reaches its admin API with
+`standaloneRepository`. Storage and database adapters can be selected
+independently; see [Adapters and Plugins](/docs/concepts/plugin-system).
 
 ## Add operations after the first update
 

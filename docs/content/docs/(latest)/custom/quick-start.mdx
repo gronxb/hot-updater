@@ -269,8 +269,12 @@ export default defineConfig({
 </Callout>
 
 If the React Native project can import the server's module, such as in a
-monorepo, set `server: "./src/hotUpdater.ts"` instead; see
-[CLI Configuration](/docs/custom/cli-configuration).
+monorepo with the server in a sibling folder, set
+`server: "../server/src/hotUpdater.ts"` instead. That path is relative to
+`hot-updater.config.ts`, but the definition's `./data/database.db` and
+`.env.hotupdater` are relative to the working directory, so a command run from
+the React Native project opens other files. Resolve them against the module's
+own folder first; see [CLI Configuration](/docs/custom/cli-configuration).
 
 ## React Native setup
 

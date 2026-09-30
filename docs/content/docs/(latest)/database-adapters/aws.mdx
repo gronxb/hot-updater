@@ -8,13 +8,13 @@ icon: aws
 ## Installation
 
 ```package-install
-npm install @hot-updater/aws --save-dev
+npm install @hot-updater/server @hot-updater/aws --save-dev
 ```
 
 For a custom server, install the runtime dependency in the server project:
 
 ```package-install
-npm install @hot-updater/aws
+npm install @hot-updater/server @hot-updater/aws
 ```
 
 ## Create the table
@@ -71,10 +71,9 @@ with the AWS CLI instead, use `dynamodb/schema-settings.json` from
 `hot-updater infra scaffold --provider aws`; see
 [Infrastructure Templates](/docs/guides/infrastructure-templates).
 
-`hot-updater db migrate`, run with the file that exports a server's
-`hotUpdater`, does the same for the server's
-[plugins](/docs/custom/server-plugins#create-the-plugins-tables). Their tables
-are key prefixes in the same table, so they need nothing else.
+`hot-updater db migrate`, which loads the server definition, does the same for
+the server's [plugins](/docs/custom/server-plugins#create-the-plugins-tables).
+Their tables are key prefixes in the same table, so they need nothing else.
 
 ## Schema settings
 
@@ -94,7 +93,7 @@ with the `hot-updater-update-index` secondary index.
 ## How the table is used
 
 `dynamoDB(config)` returns an engine database, `{ name, adapter, dispose }`,
-which `defineConfig` and `createHotUpdater` both accept. Its adapter is the
+which `createHotUpdater` accepts in the server definition. Its adapter is the
 key-value helper over the table, behind the schema settings check:
 
 - Each row is one item whose `pk` is its table's name. Each index a row belongs
@@ -198,9 +197,9 @@ This is the server definition `hot-updater init` writes for managed AWS with the
 current AWS CLI session; `plugins` is the managed server's list:
 
 ```typescript title="hotUpdater.ts"
-import { fromNodeProviderChain } from "@aws-sdk/credential-providers";
 import { dynamoDB, plugins, s3Storage } from "@hot-updater/aws";
 import { createHotUpdater } from "@hot-updater/server";
+import { fromNodeProviderChain } from "@aws-sdk/credential-providers";
 
 const awsOptions = {
   region: process.env.HOT_UPDATER_S3_REGION!,
@@ -215,8 +214,7 @@ export const hotUpdater = createHotUpdater({
   database: dynamoDB({
     ...awsOptions,
     tableName: process.env.HOT_UPDATER_DYNAMODB_TABLE_NAME!,
-    cloudfrontDistributionId:
-      process.env.HOT_UPDATER_CLOUDFRONT_DISTRIBUTION_ID!,
+    cloudfrontDistributionId: process.env.HOT_UPDATER_CLOUDFRONT_DISTRIBUTION_ID!,
   }),
   storage: [
     s3Storage({

@@ -58,9 +58,11 @@ Each command commits independently. If Android fails, the successful iOS
 update remains published. Keep the channel, rollout, and other delivery options
 consistent across both commands when they should share the same policy.
 
-Omitting `-p` requests both platforms but can fail with
-`Deploying multiple platforms requires a shared database configuration.` even
-when both platforms use the same backend. Use the explicit sequence above.
+Omitting `-p` deploys both platforms in one command, to the one server that
+`hot-updater.config.ts` names in `server`. When a config function returns a
+different `server` for each platform, it stops with
+`Deploying multiple platforms requires one server: hot-updater.config.ts points the platforms at different ones.`
+Deploy those platforms one at a time with `-p`, as above.
 
 With `-p`, the archive is written directly to
 `<bundle-output-path>/bundle.tar.br`. The commands above therefore produce

@@ -152,7 +152,7 @@ After provisioning, record these outputs for [Set up your app](/docs/get-started
 | Client base URL | `https://<your-worker-name>.<your-subdomain>.workers.dev` |
 | Client request header | `x-api-key` |
 | Client API key | The saved `HOT_UPDATER_API_KEY` in your ignored `.env.hotupdater` |
-| Deploy configuration | `hot-updater.config.ts` and the selected provider resources |
+| Deploy configuration | `hot-updater.config.ts`, the server definition `hotUpdater.ts`, and the selected provider resources |
 
 Use the actual URL returned by deployment. Configure the SDK and native bundle
 loader through [Set up your app](/docs/get-started/app-setup), using the selected
@@ -221,8 +221,7 @@ export const hotUpdater = createHotUpdater({
       accountId: process.env.HOT_UPDATER_CLOUDFLARE_ACCOUNT_ID!,
       credentials: {
         accessKeyId: process.env.HOT_UPDATER_CLOUDFLARE_R2_ACCESS_KEY_ID!,
-        secretAccessKey:
-          process.env.HOT_UPDATER_CLOUDFLARE_R2_SECRET_ACCESS_KEY!,
+        secretAccessKey: process.env.HOT_UPDATER_CLOUDFLARE_R2_SECRET_ACCESS_KEY!,
       },
     }),
   ],

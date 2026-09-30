@@ -73,7 +73,8 @@ HOT_UPDATER_ADMIN_TOKEN=your-secret-auth-token
 ```
 
 Point the CLI at the admin handler with the auth token and the server's storage
-adapters; see [CLI Configuration](/docs/custom/cli-configuration):
+adapters, here the quick start's R2 bucket; see
+[CLI Configuration](/docs/custom/cli-configuration):
 
 ```typescript title="hot-updater.config.ts (excerpt)"
 import { s3Storage } from "@hot-updater/aws";
@@ -92,7 +93,17 @@ export default defineConfig({
     commonHeaders: { // [!code ++]
       Authorization: `Bearer ${adminToken}`, // [!code ++]
     }, // [!code ++]
-    storage: [s3Storage({ /* the server's bucket */ })], // [!code ++]
+    storage: [ // [!code ++]
+      s3Storage({ // [!code ++]
+        region: "auto", // [!code ++]
+        endpoint: process.env.R2_ENDPOINT, // [!code ++]
+        credentials: { // [!code ++]
+          accessKeyId: process.env.R2_ACCESS_KEY_ID!, // [!code ++]
+          secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!, // [!code ++]
+        }, // [!code ++]
+        bucketName: process.env.R2_BUCKET_NAME!, // [!code ++]
+      }), // [!code ++]
+    ], // [!code ++]
   }), // [!code ++]
 });
 ```

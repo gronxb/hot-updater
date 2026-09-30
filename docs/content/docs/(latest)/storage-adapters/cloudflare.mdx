@@ -7,7 +7,7 @@ icon: cloudflare
 ## Installation
 
 ```package-install
-npm install @hot-updater/cloudflare
+npm install @hot-updater/server @hot-updater/cloudflare
 ```
 
 ## Setup
@@ -45,8 +45,10 @@ for EU, FedRAMP, and US buckets.
 
 Add the adapter to `storage` in your
 [server definition](/docs/custom/quick-start#define-the-server), which `server`
-in `hot-updater.config.ts` points at. The CLI uploads to the first adapter, and
-the server resolves downloads with it:
+in `hot-updater.config.ts` points at. The CLI uploads to the first adapter.
+This one uploads and reads for the CLI and the Console; a server that mounts
+`hotUpdater.handlers` also needs `downloadUrlSigningKey`, as
+[Runtime usage](#runtime-usage) explains:
 
 ```typescript title="hotUpdater.ts (excerpt)"
 import { r2Storage } from "@hot-updater/cloudflare"; // [!code ++]
@@ -73,7 +75,8 @@ The root `r2Storage` adapter implements upload, read, existence-check, and
 exact-delete operations. When the same adapter is passed to a self-hosted
 `createHotUpdater` server, also provide `downloadUrlSigningKey`; it enables
 the signed download location required by the server while `get` reads the
-stored object.
+stored object. Without it, the adapter has no `getDownloadUrl`, and the first
+read of `hotUpdater.handlers` throws.
 
 ### Cloudflare Worker bindings
 

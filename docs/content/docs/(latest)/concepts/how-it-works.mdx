@@ -29,7 +29,9 @@ deploy → ID → bundle show/update/enable/disable/delete/promote
 - **Client** selects a compatible Bundle from that catalog using its local
   state, rollout cohort, and target cohorts.
 
-Storage and Database are configured using plugins in `hot-updater.config.ts`.
+Storage and Database are adapters in the server definition, which
+`hot-updater.config.ts` points at; see
+[Adapters and Plugins](/docs/concepts/plugin-system).
 Start with [agent setup](/docs/guides/ai-agents) or
 [manual setup](/docs/get-started/basic-usage), then
 [verify an OTA update](/docs/get-started/test-ota).

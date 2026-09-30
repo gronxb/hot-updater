@@ -8,7 +8,7 @@ icon: firebase
 ## Installation
 
 ```package-install
-npm install @hot-updater/firebase firebase-admin --save-dev
+npm install @hot-updater/server @hot-updater/firebase firebase-admin --save-dev
 ```
 
 For a deployed server, install these packages as runtime dependencies instead
@@ -72,10 +72,10 @@ await migrateFirebaseDatabase(
 `migrateFirebaseDatabase` takes the same configuration as `firebaseDatabase`,
 and the plugins the server runs: here `plugins` from `@hot-updater/firebase`,
 the managed server's Insights and API keys. `hot-updater init` and the managed
-setup's key script both run it. `hot-updater db migrate`, run with the file
-that exports a server's `hotUpdater`, writes the same settings for the
-server's [plugins](/docs/custom/server-plugins#create-the-plugins-tables),
-whose tables need no collection or index of their own.
+setup's key script both run it. `hot-updater db migrate`, which loads the
+server definition, writes the same settings for the server's
+[plugins](/docs/custom/server-plugins#create-the-plugins-tables), whose tables
+need no collection or index of their own.
 
 ## Schema settings
 
@@ -91,9 +91,9 @@ request, so it recovers without a restart once the settings exist.
 ## How the collection is used
 
 `firebaseDatabase(config)` returns an engine database,
-`{ name, adapter, dispose }`, which `defineConfig` and `createHotUpdater` both
-accept. Its adapter is the
-key-value helper over the collection, behind the schema settings check:
+`{ name, adapter, dispose }`, which `createHotUpdater` accepts in the server
+definition. Its adapter is the key-value helper over the collection, behind the
+schema settings check:
 
 - Each document's id is a hash of its `pk` and `sk`. Maps and arrays are stored
   as JSON text, since Firestore has no nested arrays and does not keep map key
@@ -176,11 +176,7 @@ The server definition `hot-updater init` writes for managed Firebase, with Cloud
 Storage and Firestore; `plugins` is the managed server's list:
 
 ```typescript title="hotUpdater.ts"
-import {
-  firebaseDatabase,
-  firebaseStorage,
-  plugins,
-} from "@hot-updater/firebase";
+import { firebaseDatabase, firebaseStorage, plugins } from "@hot-updater/firebase";
 import { createHotUpdater } from "@hot-updater/server";
 import { applicationDefault } from "firebase-admin/app";
 

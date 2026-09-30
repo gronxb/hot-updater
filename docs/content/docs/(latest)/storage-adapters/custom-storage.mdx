@@ -17,14 +17,14 @@ credentials.
 Each consumer checks the operations it needs, and fails with
 `Storage adapter "<name>" does not implement <operation>.` when one is missing:
 
-| Consumer                        | Operations                                             |
-| ------------------------------- | ------------------------------------------------------ |
-| `hot-updater deploy`            | `put`, `get`, `exists`, `delete`                       |
-| `hot-updater patch`             | `get`, `put`, `delete`                                 |
-| `hot-updater bundle promote`    | None; it reuses the stored artifact                    |
-| `hot-updater storage prune`     | `get`, `listObjects`, and `deleteObjects` with `--yes` |
-| Console                         | `get`, `put`, `exists`, `delete`                       |
-| `createHotUpdater({ storage })` | `get`, `getDownloadUrl`                                |
+| Consumer                           | Operations                                             |
+| ---------------------------------- | ------------------------------------------------------ |
+| `hot-updater deploy`               | `put`, `get`, `exists`, `delete`                       |
+| `hot-updater patch`                | `get`, `put`, `delete`                                 |
+| `hot-updater bundle promote`       | None; it reuses the stored artifact                    |
+| `hot-updater storage prune`        | `get`, `listObjects`, and `deleteObjects` with `--yes` |
+| Console                            | `get`, `put`, `exists`, `delete`                       |
+| The server's `hotUpdater.handlers` | `get`, `getDownloadUrl`, from every adapter            |
 
 An adapter for general use implements `put`, `get`, `getDownloadUrl`, `exists`,
 and `delete`. `listObjects` and `deleteObjects` add
@@ -229,10 +229,12 @@ When `hot-updater.config.ts` reaches a self-hosted server with
 bucket and base path, in its `storage`; see
 [CLI Configuration](/docs/custom/cli-configuration#reach-a-self-hosted-server).
 
-`createHotUpdater` refuses two adapters with one protocol. Its handlers need
-`get` and `getDownloadUrl` from the adapter that owns a URI and check them when
-they first use it, so an upload-only adapter serves the CLI and the Console but
-not the app. To answer a URI, Hot Updater:
+`createHotUpdater` refuses two adapters with one protocol. The first read of
+`hotUpdater.handlers` checks that every adapter in `storage` implements `get`
+and `getDownloadUrl`, so a server that mounts the handlers throws there when
+one of them is upload-only. A definition that only the CLI and the Console load,
+such as a managed provider's, can list an upload-only adapter. To answer a URI,
+Hot Updater:
 
 1. uses the registered adapter whose `protocol` matches the URI's scheme;
 2. uses an `http` or `https` URI directly when no adapter owns its scheme;
@@ -386,9 +388,10 @@ function that deletes every object below a prefix. The
 [`s3Storage` spec](https://github.com/gronxb/hot-updater/blob/next/plugins/aws/src/s3Storage.integration.spec.ts)
 runs the suite this way on LocalStack.
 
-Then deploy through it: point a test app's `hot-updater.config.ts` at the
-adapter, run `hot-updater deploy`, and [test an OTA update](/docs/get-started/test-ota)
-against a server that registers the same adapter.
+Then deploy through it: list the adapter in a test server's definition, point
+a test app's `hot-updater.config.ts` at that definition with `server`, run
+`hot-updater deploy`, and [test an OTA update](/docs/get-started/test-ota)
+against that server.
 
 ## Storage contract
 

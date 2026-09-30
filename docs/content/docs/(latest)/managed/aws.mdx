@@ -203,7 +203,7 @@ After provisioning, record these outputs for [Set up your app](/docs/get-started
 | Client base URL | `https://<your-cloudfront-distribution-url>` |
 | Client request header | `x-api-key` |
 | Client API key | The saved `HOT_UPDATER_API_KEY` in your ignored `.env.hotupdater` |
-| Deploy configuration | `hot-updater.config.ts` and the selected provider resources |
+| Deploy configuration | `hot-updater.config.ts`, the server definition `hotUpdater.ts`, and the selected provider resources |
 
 Use the actual URL returned by deployment. Configure the SDK and native bundle
 loader through [Set up your app](/docs/get-started/app-setup), using the selected
@@ -345,9 +345,9 @@ export default defineConfig({
 ```
 
 ```ts title="hotUpdater.ts"
-import { fromNodeProviderChain } from "@aws-sdk/credential-providers";
 import { dynamoDB, plugins, s3Storage } from "@hot-updater/aws";
 import { createHotUpdater } from "@hot-updater/server";
+import { fromNodeProviderChain } from "@aws-sdk/credential-providers";
 
 const awsOptions = {
   region: process.env.HOT_UPDATER_S3_REGION!,
@@ -362,8 +362,7 @@ export const hotUpdater = createHotUpdater({
   database: dynamoDB({
     ...awsOptions,
     tableName: process.env.HOT_UPDATER_DYNAMODB_TABLE_NAME!,
-    cloudfrontDistributionId:
-      process.env.HOT_UPDATER_CLOUDFRONT_DISTRIBUTION_ID!,
+    cloudfrontDistributionId: process.env.HOT_UPDATER_CLOUDFRONT_DISTRIBUTION_ID!,
   }),
   storage: [
     s3Storage({
@@ -376,9 +375,12 @@ export const hotUpdater = createHotUpdater({
 ```
 
 If you choose **shared AWS profile**, `fromNodeProviderChain()` is replaced with
-`fromIni({ profile: process.env.HOT_UPDATER_AWS_PROFILE! })`. SSO uses
-`fromSSO({ profile: process.env.HOT_UPDATER_AWS_PROFILE! })`; only
-account/access-key mode emits a literal access-key credential block.
+`fromIni({ profile: process.env.HOT_UPDATER_AWS_PROFILE! })` from the same
+package. SSO uses `fromSSO({ profile: process.env.HOT_UPDATER_AWS_PROFILE! })`
+from `@aws-sdk/credential-provider-sso`. Init installs the package the
+definition imports as a dev dependency: `@aws-sdk/credential-providers` for the
+default session and shared profile, `@aws-sdk/credential-provider-sso` for SSO.
+Only account/access-key mode emits a literal access-key credential block.
 
 ### Replace account access keys (optional)
 

@@ -22,18 +22,26 @@ Both are plain objects that a factory function returns, such as
 same contracts as the ones you write, and there is no registry: install the
 package and pass the object in.
 
-Adapters and plugins are configured in two places:
+Plugins are configured in exactly two places:
 
 - The **server definition**, a module that exports
-  `hotUpdater = createHotUpdater({ database, storage, plugins })`. The server,
-  the CLI, the Console, and managed init all read it; `hot-updater.config.ts`
-  holds the deploy settings and points at it with
-  [`server`](/docs/custom/cli-configuration).
+  `hotUpdater = createHotUpdater({ database, storage, plugins })`, for server
+  plugins, beside the server's database and storage adapters. The server, the
+  CLI, the Console, and managed init all read it.
 - The app's **`HotUpdater.init({ plugins })`**, for client plugins.
 
-No adapter or plugin is listed twice. A CLI or Console that reaches a
+`hot-updater.config.ts` holds the deploy settings, with the build and signing
+adapters, and points at the server definition with
+[`server`](/docs/custom/cli-configuration). A CLI or Console that reaches a
 self-hosted server through `standaloneRepository` reads the server's plugins
-from its admin API.
+from its admin API, and lists the server's storage adapters again for its own
+uploads and reads.
+
+Some setups need a second definition: a Console deployed apart from the server,
+or a Cloudflare Worker server, whose CLI loads a Node definition. Keep the
+second one a copy: import the same plugins from one shared module, or copy the
+server's definition unchanged. Change plugins only in the server's own
+definition, and update the copy with it.
 
 | Kind                                   | What it does                                                                        | Runs in                        | Official                                                                            | Write one                                                           |
 | -------------------------------------- | ----------------------------------------------------------------------------------- | ------------------------------ | ----------------------------------------------------------------------------------- | ------------------------------------------------------------------- |

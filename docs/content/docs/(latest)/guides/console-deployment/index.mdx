@@ -69,18 +69,31 @@ export default defineConsoleConfig({
 `server` is the [server definition](/docs/custom/quick-start#define-the-server):
 the same database, storage, and plugins your backend runs, such as the
 `hotUpdater.ts` that `hot-updater init` wrote for a managed provider. A console
-deployed apart from that server repeats its definition, because it is another
-deployment with its own credentials for the same database and bucket. Read them
-from the console host's runtime environment variables, and leave mobile build
-adapters and signing private keys in the app project.
+deployed apart from that server carries a copy of the server's definition,
+unchanged: it is another deployment, with its own credentials for the same
+database and bucket. Read them from the console host's runtime environment
+variables, and leave mobile build adapters and signing private keys in the app
+project. Change plugins only in the server's own definition, redeploy the
+server, then update the console's copy.
+
+Install `@hot-updater/server` and the packages of your
+[database adapter](/docs/concepts/plugin-system#database-adapter) and
+[storage adapter](/docs/concepts/plugin-system#storage-adapter), such as
+`@hot-updater/aws` for the example above, in the console repository:
+`console.config.ts` imports them.
+
+```package-install
+npm install @hot-updater/server @hot-updater/aws
+```
 
 The console shows the built-in features of the plugins the server runs:
 Insights with `insights()`, and API keys with `apiKeys()`. It hides each one
 when the server does not run its plugin.
 
-To manage a self-hosted server without repeating its definition, point the
+To manage a self-hosted server without a copy of its definition, point the
 console at the server's admin handler: set `server` to `standaloneRepository`
-with the server's storage.
+with the server's storage, and install `@hot-updater/standalone` and your
+storage adapter's package.
 
 ```ts title="console.config.ts"
 import { s3Storage } from "@hot-updater/aws";
@@ -170,7 +183,7 @@ For another host, select its preset from [Nitro's deployment catalog](https://ni
 ## Verify the deployment
 
 1. Open the HTTPS URL: sign-in should appear before any management data.
-2. Sign in with an allowlisted account: check Bundles and Insights. If Insights is missing from the navigation, add `insights()` to the `plugins` of the server definition in `console.config.ts`, or, with `standaloneRepository`, to the server's own definition.
+2. Sign in with an allowlisted account: check Bundles and Insights. If Insights is missing from the navigation, the server doesn't run `insights()`: add it to the `plugins` of the server's own definition and redeploy the server, then update the copy in `console.config.ts`. With `standaloneRepository`, the console shows Insights once the redeployed server runs it.
 3. Download a bundle, then sign out: management data should no longer be accessible.
 
 </Step>
@@ -197,7 +210,7 @@ Copy `.env.example` to `.env`, fill in OAuth and backend values, and use `BETTER
 npm run dev
 ```
 
-Use Node-compatible plugins. For native bindings, use the [Worker preview](/docs/guides/console-deployment/cloudflare#local-preview).
+Use adapters that run in Node. For native bindings, use the [Worker preview](/docs/guides/console-deployment/cloudflare#local-preview).
 
 </Accordion>
 <Accordion title="Sign-in troubleshooting">

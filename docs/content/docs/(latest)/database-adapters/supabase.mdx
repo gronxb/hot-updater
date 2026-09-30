@@ -7,7 +7,7 @@ icon: supabase
 ## Installation
 
 ```package-install
-npm install @hot-updater/supabase --save-dev
+npm install @hot-updater/server @hot-updater/supabase --save-dev
 ```
 
 ## Setup
@@ -58,7 +58,7 @@ Updater schema.
 ## How the database is reached
 
 `supabaseDatabase(config)` returns an engine database, `{ name, adapter }`,
-which `defineConfig` and `createHotUpdater` both accept. Its adapter is Hot
+which `createHotUpdater` accepts in the server definition. Its adapter is Hot
 Updater's shared SQL core for PostgreSQL, behind the schema settings check.
 
 Every read and write calls one function with the service role key:
@@ -139,11 +139,7 @@ Storage and the Postgres database; `plugins` is the managed server's list:
 
 ```typescript title="hotUpdater.ts"
 import { createHotUpdater } from "@hot-updater/server";
-import {
-  plugins,
-  supabaseDatabase,
-  supabaseStorage,
-} from "@hot-updater/supabase";
+import { plugins, supabaseDatabase, supabaseStorage } from "@hot-updater/supabase";
 
 /**
  * The Hot Updater server: its database, storage, and plugins.
@@ -157,8 +153,7 @@ export const hotUpdater = createHotUpdater({
   storage: [
     supabaseStorage({
       supabaseUrl: process.env.HOT_UPDATER_SUPABASE_URL!,
-      supabaseServiceRoleKey:
-        process.env.HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY!,
+      supabaseServiceRoleKey: process.env.HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY!,
       bucketName: process.env.HOT_UPDATER_SUPABASE_BUCKET_NAME!,
     }),
   ],

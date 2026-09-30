@@ -21,7 +21,13 @@ cp examples/cloudflare/wrangler.jsonc wrangler.jsonc
 
 The template builds the server definition from the Worker's bindings for each
 request, with `d1Database`, `r2Storage`, and `plugins` from
-`@hot-updater/cloudflare/worker`, and includes Wrangler.
+`@hot-updater/cloudflare/worker`. Install the packages it imports:
+
+```package-install
+npm install @hot-updater/server @hot-updater/cloudflare
+```
+
+Then sign in to Wrangler, which the console repository includes:
 
 ```package-install
 npx wrangler login

@@ -218,7 +218,7 @@ does not prove that the update failed.
 ## Read the Console
 
 Use [the local or deployed Console](/docs/guides/console). Where it reads
-Insights depends on its database configuration:
+Insights depends on its `server`:
 
 - With a server definition, it runs `insights()` over the definition's
   database, as the server does. `hot-updater console` loads the definition that
@@ -229,7 +229,7 @@ Insights depends on its database configuration:
 - With `standaloneRepository`, it reads Insights events, installations, and
   update failures from the server's admin handler, and hides Insights when the
   server's admin `/version` does not list `insights()`. App usage, Release
-  health, and bundle activity need a direct database configuration.
+  health, and bundle activity need a server definition.
 
 The Bundles list and detail show lifetime **Downloads**, **Active days**, and
 **Known crashes** for each Release ID. These count received download reports,

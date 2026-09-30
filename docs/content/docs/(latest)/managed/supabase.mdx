@@ -155,7 +155,7 @@ After provisioning, record these outputs for [Set up your app](/docs/get-started
 | Client base URL | `https://<project-ref>.supabase.co/functions/v1/<function-name>` |
 | Client request header | `x-api-key` |
 | Client API key | The saved `HOT_UPDATER_API_KEY` in your ignored `.env.hotupdater` |
-| Deploy configuration | `hot-updater.config.ts` and the selected provider resources |
+| Deploy configuration | `hot-updater.config.ts`, the server definition `hotUpdater.ts`, and the selected provider resources |
 
 Use the actual URL returned by deployment. Configure the SDK and native bundle
 loader through [Set up your app](/docs/get-started/app-setup), using the selected
@@ -206,11 +206,7 @@ export default defineConfig({
 
 ```ts title="hotUpdater.ts"
 import { createHotUpdater } from "@hot-updater/server";
-import {
-  plugins,
-  supabaseDatabase,
-  supabaseStorage,
-} from "@hot-updater/supabase";
+import { plugins, supabaseDatabase, supabaseStorage } from "@hot-updater/supabase";
 
 /**
  * The Hot Updater server: its database, storage, and plugins.
@@ -224,8 +220,7 @@ export const hotUpdater = createHotUpdater({
   storage: [
     supabaseStorage({
       supabaseUrl: process.env.HOT_UPDATER_SUPABASE_URL!,
-      supabaseServiceRoleKey:
-        process.env.HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY!,
+      supabaseServiceRoleKey: process.env.HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY!,
       bucketName: process.env.HOT_UPDATER_SUPABASE_BUCKET_NAME!,
     }),
   ],
