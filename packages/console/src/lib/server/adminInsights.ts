@@ -4,10 +4,7 @@ import type {
 } from "@hot-updater/server/plugins/insights";
 
 import { ConsoleFeatureUnavailableError } from "../console-features";
-import {
-  DEFAULT_INSIGHTS_RETENTION,
-  type InsightsRetentionDays,
-} from "../insights-retention";
+import type { InsightsRetentionDays } from "../insights-retention";
 
 /** The Insights reads the console pages use, and how long rows are kept. */
 export type ConsoleInsightsReads = Omit<
@@ -65,21 +62,16 @@ export const createAdminInsightsReads = (
 ): ConsoleInsightsReads => {
   const read = async <T>(path: string): Promise<T | null> => {
     const response = await fetchAdmin(path);
-    // These routes answer with no content only on a server without
-    // insights(), one restarted without it after the console read its plugins.
-    if (response.status === 204) {
-      throw new ConsoleFeatureUnavailableError("insights", { remote: true });
-    }
     if (response.status === 404) return null;
     if (!response.ok) throw await errorOf(response, path);
     return (await response.json()) as T;
   };
+  // A route no plugin serves answers 404: the server runs without insights(),
+  // as after a restart without it once the console read its plugins.
   const required = async <T>(path: string): Promise<T> => {
     const value = await read<T>(path);
     if (value === null) {
-      throw new Error(
-        `The server has no Insights route ${path.split("?")[0]}. Upgrade @hot-updater/server on the server.`,
-      );
+      throw new ConsoleFeatureUnavailableError("insights", { remote: true });
     }
     return value;
   };
@@ -112,9 +104,6 @@ export const createAdminInsightsReads = (
       read(`/installations/${encodeURIComponent(installId)}`),
     pageInstallationsByCurrentUserId: ({ userId, cursor, limit }) =>
       required(withQuery("/installations", { userId, cursor, limit })),
-    // A server from before configurable retention keeps the defaults.
-    getRetention: async () =>
-      (await read<InsightsRetentionDays>("/retention")) ??
-      DEFAULT_INSIGHTS_RETENTION,
+    getRetention: () => required("/retention"),
   };
 };

@@ -107,8 +107,8 @@ export const createConsoleRuntime = (config: {
   return {
     remote: false,
     features: async () => features,
-    // Assembly refuses a third-party plugin with a built-in plugin's id, so
-    // each id holds the API the feature's factory expects.
+    // A feature reads the plugin with its plugin's id, taken to be Hot
+    // Updater's own, as a self-hosted server's /version list is.
     apis: featureApis((feature) => {
       const pluginApi = api[consoleFeatures[feature].plugin];
       return pluginApi === undefined

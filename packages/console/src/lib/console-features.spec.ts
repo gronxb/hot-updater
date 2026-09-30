@@ -10,7 +10,7 @@ import {
 } from "./console-features";
 
 describe("consoleFeatures", () => {
-  it("maps each feature to a built-in plugin, and only event reads to a self-hosted server", () => {
+  it("maps each feature to a Hot Updater plugin, and only event reads to a self-hosted server", () => {
     expect(consoleFeatures).toEqual({
       insights: { plugin: "insights", label: "Insights", remote: true },
       insightsAnalytics: {
