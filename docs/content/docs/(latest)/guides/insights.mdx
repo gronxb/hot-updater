@@ -300,7 +300,11 @@ is set; selecting an ID limits it to reports attributed to that release. Every
 overview period ends with the current UTC hour, so a report counts as soon as
 the server records it, and a chart's last interval is still filling. The Console reads
 hourly and daily totals that the server updates as it records each report; it
-does not scan raw events. DAU, WAU, MAU, active users per interval, and active
+does not scan raw events. On DynamoDB and Firestore, the server updates these
+totals in batches (see [What Insights writes](#what-insights-writes)), and a
+read applies pending batches first. A Console that cannot write to the database,
+such as one with read-only credentials, shows totals that can leave out up to
+one batching window of the latest reports, a minute by default. DAU, WAU, MAU, active users per interval, and active
 installations are estimates from HyperLogLog sketches, typically within about
 3%, and show with **≈**. Report counts, active days, and distributions are
 exact.
@@ -311,7 +315,9 @@ Most reports are launches. The Insights plugin sends an installation's launch
 at most once a UTC day while nothing changes, and the server writes for an
 installation's launches once a UTC day. Each report the server records is one
 transaction. On DynamoDB, where a transactional write costs 2 write request
-units (WRU) per KB of each item, one installation's reports cost:
+units (WRU) per KB of each item, one installation's reports cost the following
+when its totals are written in that transaction, as with
+`aggregateBatching: false`:
 
 | Report | Items | WRU |
 | --- | --- | --- |
@@ -334,6 +340,29 @@ it launches: 10,000 such installations write about 480,000 WRU a day. On
 Firestore each item is one document write; SQL databases keep indexes
 themselves, so they write fewer rows.
 
-The managed AWS table caps writes at 100 WRU per second, about two first
+DynamoDB and Firestore batch the totals by default. A report's transaction
+writes its own items and one compressed log item of under 1 KB (2 WRU). A
+compaction then applies many reports' totals together, one write for each total.
+It runs after a report once a minute has passed since the last one, or before a
+read. It then deletes the log items with `BatchWriteItem`, at 1 WRU each. A
+long-lived server can set `aggregateBatching: { mode: "memory" }` to keep totals
+in the process and write them every 15 seconds, with no log items. A crash
+there loses up to one window; call `hotUpdater.flush()` before the process
+exits. On DynamoDB Local, in 60 seconds of returning installations' first
+launches of the day, with one report in ten a download or an apply:
+
+| Reports per second | WRU per report, transactional | Log (default) | Memory |
+| --- | --- | --- | --- |
+| 1 | 49.6 | 11.1 | 12.7 |
+| 10 | 46.4 | 8.4 | 5.8 |
+| 100 | 39.7 | 8.2 | 5.1 |
+
+Each report's own items take 5 WRU of these. The rest is its totals, which fall
+from 35–45 WRU to about 3 WRU in log mode at 10 or more reports per second.
+See [DynamoDB](/docs/database-plugins/aws#batched-insights-totals) and
+[Firestore](/docs/database-plugins/firestore#batched-insights-totals).
+
+The managed AWS table caps writes at 100 WRU per second. With batching, that is
+about 12 reports per second; with totals in each transaction, about two first
 launches of a day per second. A report the table throttles answers `503`, and
 the plugin sends it again.

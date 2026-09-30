@@ -364,7 +364,9 @@ export const countLatestEvents = async (
       }
     }
   }
-  return total;
+  // Batched gauges sum signed shard rows, which a lost change can leave
+  // below zero: an installation count never is.
+  return Math.max(0, total);
 };
 
 /** Periods covering [start, end): whole UTC days when `days` and the window is over 48 hours, hours elsewhere. */
@@ -589,9 +591,15 @@ export const getReleaseActivity = async (
   };
 };
 
+/**
+ * Entries with installations, most first. Batched gauges sum signed shard
+ * rows, so a version or platform everyone left can read 0, and is left out.
+ */
 const byInstallations = (values: Map<string, number>) =>
   [...values]
-    .map(([name, installations]) => ({ name, installations }))
+    .flatMap(([name, installations]) =>
+      installations > 0 ? [{ name, installations }] : [],
+    )
     .sort(
       (left, right) =>
         right.installations - left.installations ||
@@ -699,7 +707,9 @@ export const getAppUsage = async (
     appVersions: sortedVersions.map(({ name }) => name),
     versions: sortedVersions,
     platforms: byInstallations(platforms),
-    bundleDistribution: [...bundles.values()],
+    bundleDistribution: [...bundles.values()].filter(
+      ({ installations }) => installations > 0,
+    ),
     measuredAtMs: now(),
   };
 };

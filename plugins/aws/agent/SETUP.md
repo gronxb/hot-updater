@@ -71,7 +71,9 @@ init. reference/ is additional context, not executable provisioning code.
   - Verify/record: roleName/roleArn; both lambda.amazonaws.com and
     edgelambda.amazonaws.com can assume it; resource ARNs match this installation.
     The DynamoDB leading-key condition lists each table name and `<table>#*`,
-    as iam/dynamodb-policy.json does; a policy with other leading keys denies
+    as iam/dynamodb-policy.json does, including `aggregate_log_0` to
+    `aggregate_log_7` and `aggregate_lease` for batched Insights totals, and
+    the policy allows BatchWriteItem; a policy with other leading keys denies
     the storage engine's reads and writes.
   - Retry: retrieve role/policies and allow propagation; reuse the selected role.
 

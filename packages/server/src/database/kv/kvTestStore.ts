@@ -84,6 +84,15 @@ export const createMemoryKeyValueStore = (
       partitions = next;
       return { ok: true };
     },
+    async deleteConsumed(keys) {
+      const next = new Map(partitions);
+      for (const { pk, sk } of keys) {
+        const items = new Map(next.get(pk));
+        items.delete(sk);
+        next.set(pk, items);
+      }
+      partitions = next;
+    },
     async dispose() {
       partitions = new Map();
     },

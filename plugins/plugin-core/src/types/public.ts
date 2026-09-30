@@ -30,6 +30,7 @@ export type {
 } from "./models";
 export {
   isRemoteDatabase,
+  type AggregateBatching,
   type ConfiguredDatabase,
   type EngineDatabase,
   type RemoteDatabase,

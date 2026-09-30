@@ -17,17 +17,20 @@ export interface DynamoDBConfig extends DynamoDBClientConfig {
   readonly cloudfrontDistributionId?: string;
   readonly shouldWaitForInvalidation?: boolean;
   readonly tableName: string;
+  /**
+   * DynamoDB bills each item a write touches, so Insights' aggregates are
+   * batched: through log rows a compaction merges (the default), or
+   * `{ mode: "memory" }` on a long-lived server. `false` commits them with
+   * each event.
+   */
+  readonly aggregateBatching?: EngineDatabase["aggregateBatching"] | false;
 }
 
-/** The DynamoDB client ignores the CloudFront settings in its config. */
+/** The DynamoDB client ignores the CloudFront and batching settings. */
 const adapterOf = ({ tableName, ...clientConfig }: DynamoDBConfig) => {
   const client = new DynamoDBClient(clientConfig);
-  return {
-    client,
-    adapter: createKvAdapter({
-      store: createDynamoDBStore({ client, tableName }),
-    }),
-  };
+  const store = createDynamoDBStore({ client, tableName });
+  return { client, adapter: createKvAdapter({ store }) };
 };
 
 /**
@@ -56,6 +59,7 @@ export const dynamoDB = (config: DynamoDBConfig): EngineDatabase => {
       name: "dynamoDB",
       adapter,
       onCachedRoutesChange: cloudFront?.invalidate,
+      aggregateBatching: config.aggregateBatching ?? {},
     }),
     async dispose() {
       await adapter.dispose?.();

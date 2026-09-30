@@ -1,8 +1,10 @@
+import type { AggregateBatching } from "@hot-updater/plugin-core";
 import type { DatabaseAdapter } from "@hot-updater/plugin-core/internal";
 
 import { createCoreApi, type CoreApi } from "../core/api";
 import { createCoreReads, type CoreStorage } from "../core/reads";
 import { coreModule } from "../core/schema";
+import { aggregateBatchingModule } from "../database/aggregateBatching";
 import { createDatabaseEngine } from "../database/database";
 import type { ReadMeasurement } from "../database/engine";
 import { fencedName, withSchemaFence } from "../database/fence";
@@ -39,6 +41,8 @@ export interface AssembledPlugins {
   readonly measureReads?: <T>(
     read: () => Promise<T>,
   ) => Promise<ReadMeasurement<T>>;
+  /** Applies batched aggregate changes still pending. */
+  readonly flush: () => Promise<void>;
 }
 
 interface PluginShape {
@@ -178,6 +182,7 @@ export const assemblePlugins = (
     storage = { resolveFileUrl: async () => null },
     verify = false,
     onCachedRoutesChange,
+    batching,
   }: {
     readonly now?: () => number;
     readonly storage?: CoreStorage;
@@ -185,6 +190,8 @@ export const assemblePlugins = (
     readonly verify?: boolean;
     /** The database's CDN purge, which core calls after a catalog write. */
     readonly onCachedRoutesChange?: () => Promise<void>;
+    /** The database's aggregate batching, which adds its log tables. */
+    readonly batching?: AggregateBatching;
   } = {},
 ): AssembledPlugins => {
   if (!Array.isArray(value))
@@ -222,8 +229,13 @@ export const assemblePlugins = (
       name === undefined || added.length === 0
         ? adapter
         : withSchemaFence(adapter, name, addedSettings(plugins)),
-    schema: resolveSchema([coreModule, ...modules]),
+    schema: resolveSchema([
+      coreModule,
+      ...modules,
+      ...(batching === undefined ? [] : [aggregateBatchingModule]),
+    ]),
     verify,
+    ...(batching === undefined ? {} : { batching, now }),
   });
   const coreDatabase = engine.database(coreModule);
   const core = createCoreApi(coreDatabase, storage, {
@@ -265,5 +277,6 @@ export const assemblePlugins = (
     endpoints,
     ...(clientAuth === undefined ? {} : { clientAuth }),
     ...(verify ? { measureReads: engine.measureReads } : {}),
+    flush: engine.flush,
   };
 };

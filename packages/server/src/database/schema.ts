@@ -133,6 +133,12 @@ export interface AggregateDefinition<
   readonly gauges: readonly TMetric[];
   readonly distinct: readonly TSketch[];
   readonly indexes: TIndexes;
+  /**
+   * On a database that batches aggregates, changes apply after their
+   * transaction commits, in one write per row with other transactions'
+   * changes, so reads may lag them. Elsewhere they commit with it.
+   */
+  readonly batched?: true;
 }
 
 export const defineAggregate = <
@@ -151,6 +157,7 @@ export const defineAggregate = <
     readonly shards?: number;
     readonly indexes?: TIndexes &
       CheckIndexes<TIndexes, keyof TFields & string>;
+    readonly batched?: true;
   },
 ): AggregateDefinition<TFields, TMetric, TIndexes, TSketch, TKey> => ({
   kind: "aggregate",
@@ -161,6 +168,7 @@ export const defineAggregate = <
   distinct: options.distinct ?? [],
   shards: options.shards ?? 1,
   indexes: options.indexes ?? ({} as TIndexes),
+  ...(options.batched ? { batched: true } : {}),
 });
 
 export type ModelDefinition = TableDefinition | AggregateDefinition;

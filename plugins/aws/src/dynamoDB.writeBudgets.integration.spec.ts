@@ -1,8 +1,19 @@
+import { appendFileSync } from "node:fs";
+
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
-import type { BundleEventRow } from "@hot-updater/plugin-core";
-import { createKvAdapter } from "@hot-updater/server/database";
+import type {
+  AggregateBatching,
+  BundleEventRow,
+} from "@hot-updater/plugin-core";
+import {
+  aggregateBatchingModule,
+  createDatabaseEngine,
+  createKvAdapter,
+  resolveSchema,
+} from "@hot-updater/server/database";
 import { createDatabasePluginApis } from "@hot-updater/server/db";
-import { insights } from "@hot-updater/server/plugins/insights";
+import type { CoreReader } from "@hot-updater/server/plugins";
+import { insights, insightsSchema } from "@hot-updater/server/plugins/insights";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import {
@@ -325,4 +336,244 @@ describe("Insights write budgets on DynamoDB Local", () => {
       );
     }
   });
+});
+
+/**
+ * Batched aggregates (PRD decision 59 (5)): the aggregate write units an
+ * event costs, transactional against batched, over 60 simulated seconds at a
+ * steady rate. Each event is a returning installation's first launch of the
+ * UTC day, or one in 20 a download and one in 20 an apply, across ios and
+ * android. Log mode compacts on its 60-second window; memory mode flushes
+ * every 15 simulated seconds, as its timer would. With
+ * HOT_UPDATER_WRITE_BUDGET_RATES=1 it measures 1, 10, and 100 events a second,
+ * appending one JSON line per run to HOT_UPDATER_WRITE_BUDGET_OUT when set
+ * (plans/evidence/insights-batched-aggregates.md); otherwise 10.
+ */
+const BATCHED_RATES =
+  process.env.HOT_UPDATER_WRITE_BUDGET_RATES === "1" ? [1, 10, 100] : [10];
+const BATCHED_SECONDS = 60;
+const MEMORY_WINDOW_MS = 15_000;
+
+type Mode = "transaction" | "log" | "memory";
+
+interface BatchItem {
+  readonly DeleteRequest?: { readonly Key: Record<string, unknown> };
+}
+
+/** Where an item lands: an aggregate row, the batching log or lease, or an event's own rows. */
+const partitionOf = (item: TransactItem) => {
+  const pk = String(
+    (item.Put?.Item ?? item.Update?.Key ?? item.Delete?.Key)?.pk ??
+      item.ConditionCheck?.Key.pk,
+  );
+  if (pk.startsWith("aggregate_log_")) return "log";
+  if (pk.startsWith("aggregate_lease")) return "lease";
+  return pk.startsWith("insights_") ? "aggregate" : "event";
+};
+
+const populationEvent = (
+  n: number,
+  install: number,
+  receivedAt: number,
+  type: BundleEventRow["type"],
+): BundleEventRow => {
+  const moving = type !== "UNCHANGED";
+  return {
+    id: `01900000-0000-7000-8000-${String(n).padStart(12, "0")}`,
+    install_id: `install-${install}`,
+    user_id: `user-${install}`,
+    platform: install % 2 === 0 ? "ios" : "android",
+    app_version: "1.0.0",
+    channel: "production",
+    received_at_ms: receivedAt,
+    type,
+    from_release_id: moving ? RELEASES.a : null,
+    from_bundle_id: moving ? BUNDLES.a : null,
+    to_release_id: moving ? RELEASES.b : RELEASES.a,
+    to_bundle_id: moving ? BUNDLES.b : BUNDLES.a,
+    metadata: {
+      username: "Alex",
+      cohort: "1",
+      fingerprint_hash: null,
+      sdk_version: "1.0.0",
+      update_strategy: moving ? "appVersion" : null,
+    },
+  } as BundleEventRow;
+};
+
+/**
+ * Write units a run costs: the events' own rows, and everything their
+ * aggregates cost, which is the log rows the events write plus each flush:
+ * a compaction (its lease, group writes, and deletes) or a memory flush.
+ */
+const measureBatching = async (mode: Mode, rate: number) => {
+  const client = new DynamoDBClient(local.config);
+  const logBytes = new Map<string, number>();
+  const cost = {
+    event: 0,
+    aggregate: 0,
+    aggregateItems: 0,
+    logPuts: 0,
+    leaseWrites: 0,
+    memoryFlushes: 0,
+  };
+  let metering = false;
+  client.middlewareStack.add(
+    (next, context) => async (args) => {
+      if (metering && context.commandName === "TransactWriteItemsCommand") {
+        const { TransactItems = [] } = args.input as {
+          TransactItems?: readonly TransactItem[];
+        };
+        const kinds = TransactItems.map(partitionOf);
+        // A compaction takes and releases the lease in writes of their own.
+        if (kinds.every((kind) => kind === "lease")) cost.leaseWrites += 1;
+        for (const item of TransactItems) {
+          const bytes = transactItemBytes(item);
+          const kind = partitionOf(item);
+          const key = item.Put?.Item ?? item.Delete?.Key;
+          const id = key && `${key.pk}|${key.sk}`;
+          if (kind === "log" && item.Put && id) logBytes.set(id, bytes);
+          const units = writeUnits(
+            kind === "log" && item.Delete && id
+              ? (logBytes.get(id) ?? bytes)
+              : bytes,
+          );
+          if (kind === "log" && kinds.includes("event")) cost.logPuts += units;
+          if (kind === "event") cost.event += units;
+          else
+            [cost.aggregate, cost.aggregateItems] = [
+              cost.aggregate + units,
+              cost.aggregateItems + 1,
+            ];
+        }
+      }
+      if (metering && context.commandName === "BatchWriteItemCommand") {
+        // Plain deletes of applied log rows: 1 write unit per KB each.
+        const { RequestItems = {} } = args.input as {
+          RequestItems?: Record<string, readonly BatchItem[]>;
+        };
+        for (const { DeleteRequest } of Object.values(RequestItems).flat()) {
+          const { pk, sk } = DeleteRequest!.Key;
+          const bytes = logBytes.get(`${pk}|${sk}`) ?? 1;
+          cost.aggregate += Math.max(1, Math.ceil(bytes / 1024));
+          cost.aggregateItems += 1;
+        }
+      }
+      return next(args);
+    },
+    { step: "initialize", name: "batchingMeter" },
+  );
+  const tableName = local.tableName();
+  const store = createDynamoDBStore({ client, tableName });
+  await store.migrations!.apply();
+  const adapter = createKvAdapter({ store });
+  const module = { id: "insights", schema: insightsSchema } as const;
+  const schema = resolveSchema([module, aggregateBatchingModule]);
+  let clock = D0 + 9 * HOUR;
+  const now = () => clock;
+  const apiOf = (batching?: AggregateBatching) => {
+    const engine = createDatabaseEngine({
+      adapter,
+      schema,
+      ...(batching === undefined ? {} : { batching, now }),
+    });
+    const { api } = insights().init({
+      db: engine.database(module),
+      // Insights never reads core.
+      core: {} as CoreReader,
+      now,
+    });
+    return { api, flush: engine.flush };
+  };
+  const count = rate * BATCHED_SECONDS;
+  // Every installation launched the day before; that is not measured.
+  const seed = apiOf();
+  for (let at = 0; at < count; at += 16) {
+    await Promise.all(
+      Array.from({ length: Math.min(16, count - at) }, (_, n) =>
+        seed.api.recordEvent(
+          populationEvent(at + n, at + n, D0 + 9 * HOUR + at + n, "UNCHANGED"),
+        ),
+      ),
+    );
+  }
+  const run = apiOf(
+    mode === "transaction"
+      ? undefined
+      : mode === "log"
+        ? { mode }
+        : // Flushed below at each simulated window, not on its timer.
+          { mode, windowMs: 3_600_000 },
+  );
+  metering = true;
+  const start = D0 + DAY + 10 * HOUR;
+  for (let n = 0; n < count; n += 1) {
+    const at = start + Math.floor((n * 1000) / rate);
+    const window = (ms: number) => Math.floor((ms - start) / MEMORY_WINDOW_MS);
+    if (mode === "memory" && n > 0 && window(at) > window(clock)) {
+      const before = cost.aggregate;
+      await run.flush();
+      if (cost.aggregate > before) cost.memoryFlushes += 1;
+    }
+    clock = at;
+    const type =
+      n % 20 === 0
+        ? "UPDATE_DOWNLOADED"
+        : n % 20 === 1
+          ? "UPDATE_APPLIED"
+          : "UNCHANGED";
+    await run.api.recordEvent(populationEvent(count + n, n, clock, type));
+  }
+  clock = start + BATCHED_SECONDS * 1000;
+  const before = cost.aggregate;
+  await run.flush();
+  if (mode === "memory" && cost.aggregate > before) cost.memoryFlushes += 1;
+  metering = false;
+  client.destroy();
+  await local.dropTable(tableName);
+  const flushes = mode === "log" ? cost.leaseWrites / 2 : cost.memoryFlushes;
+  return {
+    mode,
+    rate,
+    events: count,
+    eventWru: cost.event / count,
+    aggregateWru: cost.aggregate / count,
+    aggregateItems: cost.aggregateItems / count,
+    flushes,
+    wruPerFlush: flushes && (cost.aggregate - cost.logPuts) / flushes,
+  };
+};
+
+describe("Insights write budgets with batched aggregates on DynamoDB Local", () => {
+  it("cuts an event's aggregate write units at least tenfold at 10 events a second and above", async () => {
+    const rows = [];
+    for (const rate of BATCHED_RATES) {
+      const runs = [];
+      for (const mode of ["transaction", "log", "memory"] as const) {
+        const row = await measureBatching(mode, rate);
+        runs.push(row);
+        if (process.env.HOT_UPDATER_WRITE_BUDGET_OUT) {
+          appendFileSync(
+            process.env.HOT_UPDATER_WRITE_BUDGET_OUT,
+            `${JSON.stringify(row)}\n`,
+          );
+        }
+      }
+      rows.push(...runs);
+      const [transaction, log, memory] = runs as [
+        (typeof runs)[number],
+        (typeof runs)[number],
+        (typeof runs)[number],
+      ];
+      if (rate < 10) continue;
+      expect(log.aggregateWru * 10, `log at ${rate}/s`).toBeLessThanOrEqual(
+        transaction.aggregateWru,
+      );
+      expect(
+        memory.aggregateWru * 10,
+        `memory at ${rate}/s`,
+      ).toBeLessThanOrEqual(transaction.aggregateWru);
+    }
+    console.table(rows);
+  }, 1_800_000);
 });
