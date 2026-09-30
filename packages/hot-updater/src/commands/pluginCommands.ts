@@ -189,8 +189,15 @@ const runPluginCommand = async (run: PluginRun, cwd: string) => {
     if (options["json"] !== true) printBanner();
     const database = await source.open();
     if (database.remote) {
+      const withPath = [
+        usage,
+        ...(command.arguments ?? []).map(({ name, required }) =>
+          required === false ? `[${name}]` : `<${name}>`,
+        ),
+        "<path>",
+      ].join(" ");
       throw new Error(
-        `${usage} needs a database the CLI opens itself, but hot-updater.config.ts reaches a self-hosted server through its admin API. Pass the config that exports your server's hotUpdater: ${usage} <path>.`,
+        `${usage} needs a database the CLI opens itself, but hot-updater.config.ts reaches a self-hosted server through its admin API. Pass the config that exports your server's hotUpdater: ${withPath}.`,
       );
     }
     const api = database.apis[plugin];

@@ -354,6 +354,15 @@ describe("createHotUpdater with plugins", () => {
         },
         'Plugin "valid" adds cli.clientCredential without declaring provides: { clientAuth: true }.',
       ],
+      [
+        {
+          plugins: [
+            { ...valid, cli: { clientPlugin: { module: "", name: "x" } } },
+          ],
+          clientAccess: "public",
+        },
+        'Plugin "valid" cli.clientPlugin needs a module and an export name the app can import',
+      ],
     ];
     for (const [options, message] of cases) {
       const run = startup(options);

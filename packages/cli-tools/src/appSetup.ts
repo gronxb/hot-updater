@@ -69,7 +69,11 @@ export const renderAppSetup = ({
 export const printAppSetup = ({
   baseURL,
   ...setup
-}: AppSetup & { readonly baseURL?: string }): void => {
+}: AppSetup & {
+  readonly baseURL?: string;
+  /** Required, so each init passes its server plugins' client plugins. */
+  readonly clientPlugins: readonly AppClientPlugin[];
+}): void => {
   if (baseURL !== undefined) p.note(renderAppSetup({ baseURL, ...setup }));
   const { credential } = setup;
   if (credential !== undefined) {

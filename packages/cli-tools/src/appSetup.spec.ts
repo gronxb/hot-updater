@@ -74,7 +74,11 @@ describe("printAppSetup", () => {
   });
 
   it("prints the code and the credential", () => {
-    printAppSetup({ baseURL: "https://example.com", credential });
+    printAppSetup({
+      baseURL: "https://example.com",
+      credential,
+      clientPlugins: [],
+    });
 
     expect(prompts.note).toHaveBeenNthCalledWith(
       1,
@@ -91,12 +95,12 @@ describe("printAppSetup", () => {
   });
 
   it("prints only the credential without a URL, and only the code without a credential", () => {
-    printAppSetup({ credential });
+    printAppSetup({ credential, clientPlugins: [] });
     expect(prompts.note).toHaveBeenCalledOnce();
     expect(prompts.note).toHaveBeenCalledWith(credential.value, "API key");
 
     vi.clearAllMocks();
-    printAppSetup({ baseURL: "https://example.com" });
+    printAppSetup({ baseURL: "https://example.com", clientPlugins: [] });
     expect(prompts.note).toHaveBeenCalledOnce();
     expect(prompts.message).not.toHaveBeenCalled();
   });
