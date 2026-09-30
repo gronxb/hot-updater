@@ -8,6 +8,7 @@ import {
   S3Client,
 } from "@aws-sdk/client-s3";
 import { migrateDynamoDB, plugins } from "@hot-updater/aws";
+import { createStorageAdapter } from "@hot-updater/plugin-core";
 import { standaloneRepository } from "@hot-updater/standalone";
 import {
   createHttpTestClient,
@@ -252,6 +253,8 @@ describe("Hot Updater Handler Integration Tests (Hono + DynamoDB)", () => {
       commonHeaders: {
         Authorization: `Bearer ${TEST_ADMIN_AUTH_TOKEN}`,
       },
+      // Where the CLI would upload; this spec deploys metadata only.
+      storage: [createStorageAdapter({ name: "s3Storage", protocol: "s3" })],
     });
     const bundleId = "hono-dynamodb-update-target-app-version";
 
