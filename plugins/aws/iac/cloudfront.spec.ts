@@ -608,4 +608,49 @@ describe("pluginCacheBehaviorPaths", () => {
       },
     });
   });
+
+  it("stops sending a path to the function when the server no longer serves it", () => {
+    const behaviorFor = (pathPattern: string, functionArn: string) =>
+      buildDistributionConfigOverrides({
+        ...baseOptions,
+        functionArn,
+        pluginPaths: [pathPattern],
+      }).CacheBehaviors.Items!.find(
+        (behavior) => behavior.PathPattern === pathPattern,
+      )!;
+    const existingDistributionConfig: DistributionConfig = {
+      ...buildDistributionConfig(baseOptions),
+      CacheBehaviors: {
+        Quantity: 2,
+        Items: [
+          // A plugin the previous deploy ran, on an older version of the function.
+          behaviorFor(
+            "/old-plugin/*",
+            "arn:aws:lambda:us-east-1:123456789012:function:hot-updater:3",
+          ),
+          // Another function's route.
+          behaviorFor(
+            "/other/*",
+            "arn:aws:lambda:us-east-1:123456789012:function:other-edge:2",
+          ),
+        ],
+      },
+    };
+
+    const updatedConfig = applyDistributionConfigOverrides(
+      existingDistributionConfig,
+      buildDistributionConfigOverrides({
+        ...baseOptions,
+        pluginPaths: ["/notes/*"],
+      }),
+    );
+
+    const paths = updatedConfig.CacheBehaviors?.Items?.map(
+      ({ PathPattern }) => PathPattern,
+    );
+    expect(paths).toContain("/notes/*");
+    expect(paths).toContain("/other/*");
+    expect(paths).not.toContain("/old-plugin/*");
+    expect(updatedConfig.CacheBehaviors?.Quantity).toBe(paths?.length);
+  });
 });

@@ -464,6 +464,13 @@ export const buildDistributionConfigOverrides = (options: {
   },
 });
 
+/** The functions a behavior sends requests to, whichever version it names. */
+const functionsOf = (behavior: CacheBehavior) =>
+  (behavior.LambdaFunctionAssociations?.Items ?? []).map(
+    ({ LambdaFunctionARN = "" }) =>
+      LambdaFunctionARN.split(":").slice(0, 7).join(":"),
+  );
+
 export const applyDistributionConfigOverrides = (
   distributionConfig: DistributionConfig,
   overrides: DistributionConfigOverrides,
@@ -490,8 +497,18 @@ export const applyDistributionConfigOverrides = (
     distributionConfig.Origins?.Items ?? [],
     overrides.Origins.Items ?? [],
   );
+  // A path the managed function served that this deploy no longer routes,
+  // such as a removed plugin's endpoint, stops reaching its old version.
+  const managedFunctions = new Set(cacheBehaviorOverrides.flatMap(functionsOf));
+  const routedPaths = new Set(
+    cacheBehaviorOverrides.map(({ PathPattern }) => PathPattern),
+  );
   const cacheBehaviors = mergeCacheBehaviors(
-    distributionConfig.CacheBehaviors?.Items ?? [],
+    (distributionConfig.CacheBehaviors?.Items ?? []).filter(
+      (behavior) =>
+        routedPaths.has(behavior.PathPattern) ||
+        !functionsOf(behavior).some((name) => managedFunctions.has(name)),
+    ),
     cacheBehaviorOverrides,
   );
   return sanitizeDistributionConfig({
