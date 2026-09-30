@@ -169,6 +169,15 @@ export function AppSidebar({ canSignOut = false }: { canSignOut?: boolean }) {
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
+        {/* The Console's license asks a hosted service to keep this notice. */}
+        <a
+          href="https://hot-updater.dev"
+          target="_blank"
+          rel="noreferrer"
+          className="px-2 pb-1 text-[11px] text-sidebar-foreground/60 hover:text-sidebar-foreground group-data-[collapsible=icon]:hidden"
+        >
+          Powered by hot-updater
+        </a>
       </SidebarFooter>
     </Sidebar>
   );

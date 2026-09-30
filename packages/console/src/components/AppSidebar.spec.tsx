@@ -210,6 +210,15 @@ describe("AppSidebar navigation", () => {
     },
   );
 
+  it("credits hot-updater with a link, as the Console's license asks", () => {
+    render(<AppSidebar />);
+    const credit = screen.getByRole("link", {
+      name: "Powered by hot-updater",
+    });
+    expect(credit.getAttribute("href")).toBe("https://hot-updater.dev");
+    expect(credit.getAttribute("rel")).toBe("noreferrer");
+  });
+
   it("links API keys to their page", () => {
     features = { ...allOff, apiKeys: true };
     render(<AppSidebar />);
