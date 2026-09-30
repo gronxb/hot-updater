@@ -11,12 +11,21 @@ export type RecoveryInput = {
 
 export type RecoveryReport = {
   readonly downloads: number;
-  readonly uniqueUsers: number;
-  readonly launches: number;
+  /**
+   * Distinct installations that reported in the scope and period, or that
+   * launched the release; estimated.
+   */
+  readonly activeInstallations: number;
+  /**
+   * Installation-days: each installation once for each UTC day it launched,
+   * and once more on a day an update applied or recovered.
+   */
+  readonly activeDays: number;
   readonly failedLaunches: number;
   readonly points: readonly {
     readonly startMs: number;
-    readonly launches: number;
+    /** That UTC day's daily active installations. */
+    readonly dailyActiveInstallations: number;
     readonly failedLaunches: number;
   }[];
   readonly startMs: number;

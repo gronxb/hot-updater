@@ -90,10 +90,17 @@ The client reports these outcomes:
 
 | Outcome | Meaning |
 | --- | --- |
-| `UNCHANGED` | No download or apply was reported at that point. This also reports a successful same-artifact Release adoption, which requires neither. |
+| `UNCHANGED` | A launch with no download or apply to report. This also reports a successful same-artifact Release adoption, which requires neither. |
 | `UPDATE_DOWNLOADED` | The SDK verified and staged the bundle. The current runtime still runs the previous bundle until restart/reload. |
 | `UPDATE_APPLIED` | Native app-ready state reports that an OTA transition became active. |
 | `RECOVERED` | Native app-ready state reports recovery from a failed update. |
+
+The server counts an installation's `UNCHANGED` reports once a UTC day. A
+report that repeats the installation's latest report on the same UTC day, with
+the same channel, platform, app version, bundle, Release, and user, records
+nothing. An `UNCHANGED` report updates the installation's latest report and the
+launch metrics, but the server keeps no event row for it, so event lists show
+only downloads, applies, and recoveries.
 
 Automatic startup reporting sends one report per JavaScript runtime. The automatic `wrap` flow defers `UNCHANGED` until its update check finds no update. A successful download reports `UPDATE_DOWNLOADED` instead. Custom flows using `init` may report `UNCHANGED` at startup followed by a download later. Repeated reports of the same pending selection are deduplicated within the runtime. Selecting a different pending bundle and then returning to an earlier one reports both changes.
 
@@ -173,9 +180,11 @@ in [Security](/docs/policy/security).
    and valid client key. Use a release build, or set
    `insights: { debug: true }` in a debug build. Copy its `getInstallId()`
    value.
-2. Open the Console's **Insights → All events** and find that installation.
-   Confirm the report's app version, channel, and platform. An `UNCHANGED`
-   report is enough to verify startup reporting before the first OTA.
+2. In the Console's **Insights → All events**, search for that installation
+   ID and open it. Its latest report shows the app version, channel, and
+   platform. An `UNCHANGED` report is enough to verify startup reporting
+   before the first OTA; it appears as the installation's latest report, not
+   in the event list.
 3. Deploy and apply a test update using the
    [OTA verification workflow](/docs/get-started/test-ota). Confirm the changed
    UI after the runtime restarts, then inspect its `UPDATE_APPLIED` event and
@@ -210,12 +219,12 @@ Insights depends on its database configuration:
   `/version` does not list `insights()`. App usage, Release health, and bundle
   activity need a direct database configuration.
 
-The Bundles list and detail show lifetime **Downloads**, **Known launches**,
-and **Known crashes** for each Release ID. These count received download,
-successful launch, and failed OTA launch reports; repeated launches from one
-installation can increase the totals. Known crashes are launch failures that
-triggered recovery. Their rate is known crashes divided by known launches plus
-known crashes. Select the summary to open Release health for that ID.
+The Bundles list and detail show lifetime **Downloads**, **Active days**, and
+**Known crashes** for each Release ID. These count received download reports,
+each installation once for each UTC day it launched the release, and failed OTA
+launch reports. Known crashes are launch failures that triggered recovery.
+Their rate is known crashes divided by active days plus known crashes. Select
+the summary to open Release health for that ID.
 
 Insights opens on the `production` channel. **App usage** starts with
 **All platforms** and a 24-hour period; **Release health** starts with **iOS**
@@ -236,8 +245,10 @@ see its definition.
 The usage chart counts unique reporting installations in each interval: hourly
 for 24h, every six hours for 7d, and daily for 30d. The period total deduplicates
 installations across intervals, so it is not the sum of the chart points.
-Distributions count each installation once, using its latest matching report's
-app version and platform within the selected period.
+Distributions count each installation once, using the app version and platform
+of its latest matching report. The server counts latest reports by UTC day, so a
+distribution covers every UTC day the period touches, from 00:00 UTC of its
+first day; the Console shows that date.
 
 Select an app version in **Distribution**, or choose **View distribution**, to
 see its bundle IDs, platforms, active installation counts, and share within each
@@ -248,19 +259,24 @@ Period and filter selections survive navigation back to the overview.
 
 ![Bundle distribution by app version with sample data](/docs/console/insights-distribution.png)
 
-**Release health** shows **Unique users**, **Launches**, **Failed launches**,
-and **Crash rate** for the selected channel, health platform, and period.
-Leave **Release ID** empty to include the whole scope, or enter one ID to
-inspect that release. **Unique users** estimates distinct installations with a
-successful launch report. **Crash rate** is reported OTA launch failures
-divided by successful plus failed launches in the same scope and period. The
-chart shows daily launches and failed launches. These period totals are
-separate from the lifetime counters in the Bundles list and detail.
+**Release health** shows **Active installations**, **Active days**, **Failed
+launches**, and **Crash rate** for the selected channel, health platform, and
+period. Leave **Release ID** empty to include the whole scope, or enter one ID
+to inspect that release. **Active installations** estimates the distinct
+installations that reported in the scope, or that launched the selected
+release. Launches count as daily active installations: **Active days** count
+each installation once for each UTC day it launched, and once more on a day an
+update applies or recovers. **Crash rate** is reported OTA launch failures
+divided by active days plus failed launches in the same scope and period. The
+chart shows daily active installations and failed launches. These period
+totals are separate from the lifetime counters in the Bundles list and detail.
 
 Open **All events** in the header, or **Event history** on Release health, to
-browse reports from newest to oldest, 20 per page. The Console starts with
-**7d**; select **30d** or **90d** for older reports. Paging stops at the start
-of the selected range.
+browse downloads, applies, and recoveries from newest to oldest, 20 per page.
+The Console starts with **7d**; select **30d** or **90d** for older reports.
+Paging stops at the start of the selected range. A launch without an update is
+not listed: it counts in App usage and Release health and shows as its
+installation's latest report.
 
 Like other analytics tools, event lists show raw reports only inside a time
 range of at most 90 days: the admin `GET /events` route takes `sinceMs` and
@@ -275,6 +291,39 @@ is set; selecting an ID limits it to reports attributed to that release. Every
 overview period ends with the current UTC hour, so a report counts as soon as
 the server records it, and a chart's last interval is still filling. The Console reads
 hourly and daily totals that the server updates as it records each report; it
-does not scan raw events. DAU, WAU, MAU, active users per interval, and unique
-users are estimates from HyperLogLog sketches, typically within about 3%, and
-show with **≈**. Report and launch counts and distributions are exact.
+does not scan raw events. DAU, WAU, MAU, active users per interval, and active
+installations are estimates from HyperLogLog sketches, typically within about
+3%, and show with **≈**. Report counts, active days, and distributions are
+exact.
+
+## What Insights writes
+
+Most reports are launches, and the server writes for an installation's
+launches once a UTC day. Each report the server records is one transaction. On
+DynamoDB, where a transactional write costs 2 write request units (WRU) per KB
+of each item, one installation's reports cost:
+
+| Report | Items | WRU |
+| --- | --- | --- |
+| First launch of a new installation | 15 | 40 |
+| A later launch the same UTC day, on the same bundle | 0 | 0 |
+| First launch of a later UTC day | 19 | 48 |
+| `UPDATE_DOWNLOADED` | 19 | 42 |
+| `UPDATE_APPLIED` | 26 | 54 |
+| `RECOVERED` | 30 | 66 |
+
+A first launch the day after an apply or a recovery takes 21 items and 52 WRU,
+since it also moves the update's latest-report rows. Up to five items of a
+report are HyperLogLog sketches of about 1 KB, at 4 WRU apiece; every other
+item takes 2. A download, apply, or recovery stores its event with its index
+copies; a launch stores none. Latest-report gauges count each installation in
+the UTC day of its latest report, so they move only when that day or the
+installation's bundle changes. An installation that launches every day
+without updating costs about 48 WRU a day, however often it launches: 10,000
+such installations write about 480,000 WRU a day. On Firestore each item is
+one document write; SQL databases keep indexes themselves, so they write fewer
+rows.
+
+The managed AWS table caps writes at 100 WRU per second, about two first
+launches of a day per second. A report the table throttles answers `503`, and
+the SDK sends it again.

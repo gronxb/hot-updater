@@ -12,7 +12,7 @@ import { useConsoleFeature } from "@/lib/console-features-api";
 import { InsightsInfo } from "../insights/InsightsInfo";
 
 const crashRate = (report: BundleActivityReport): string => {
-  const attempts = report.launches + report.failedLaunches;
+  const attempts = report.activeDays + report.failedLaunches;
   return attempts === 0
     ? "—"
     : `${((report.failedLaunches / attempts) * 100).toFixed(2)}%`;
@@ -37,7 +37,7 @@ export function BundleMovementSummary({
   const metrics = (
     <span className="flex min-w-[220px] flex-wrap items-baseline gap-x-3 gap-y-1 text-sm">
       <span>Downloads {report.downloads.toLocaleString()}</span>
-      <span>Known launches {report.launches.toLocaleString()}</span>
+      <span>Active days {report.activeDays.toLocaleString()}</span>
       <span>
         Known crashes {report.failedLaunches.toLocaleString()} (
         {crashRate(report)})
@@ -66,8 +66,10 @@ export function BundleMovementSummary({
         metrics
       )}
       <InsightsInfo label="About release insight metrics">
-        Known crashes are reported OTA launch failures that triggered recovery.
-        The rate is known crashes divided by known launches plus known crashes.
+        Active days count each installation once for each UTC day it launched
+        this release. Known crashes are reported OTA launch failures that
+        triggered recovery. The rate is known crashes divided by active days
+        plus known crashes.
       </InsightsInfo>
     </span>
   );

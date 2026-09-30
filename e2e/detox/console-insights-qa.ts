@@ -177,30 +177,39 @@ export const verifyConsoleInsights = async (
       "The app did not report a current E2E Insights event.",
     );
   }
+  // The server keeps downloads, applies, and recoveries as events. An
+  // UNCHANGED report is a launch: it moves its installation's latest report,
+  // at most once a UTC day, and no list or event count holds it.
+  const storedEvents = observedEvents.filter(
+    (observed) => observed.type !== "UNCHANGED",
+  );
 
   let matchedObserved: ObservedInsightsEvent | undefined;
-  const event = await readCursorPagesUntil(
-    (cursor) => client.listEvents({ cursor, limit: PAGE_LIMIT }),
-    (row) => {
-      matchedObserved = observedEvents.find(
-        (observed) =>
-          row.receivedAtMs >= (options.sinceMs ?? 0) &&
-          sameEvent(row, observed),
-      );
-      return matchedObserved !== undefined;
-    },
-    (rows) =>
-      options.sinceMs !== undefined &&
-      rows.some((row) => row.receivedAtMs < options.sinceMs!),
-  );
-  if (!event || !matchedObserved) {
+  const event =
+    storedEvents.length === 0
+      ? undefined
+      : await readCursorPagesUntil(
+          (cursor) => client.listEvents({ cursor, limit: PAGE_LIMIT }),
+          (row) => {
+            matchedObserved = storedEvents.find(
+              (observed) =>
+                row.receivedAtMs >= (options.sinceMs ?? 0) &&
+                sameEvent(row, observed),
+            );
+            return matchedObserved !== undefined;
+          },
+          (rows) =>
+            options.sinceMs !== undefined &&
+            rows.some((row) => row.receivedAtMs < options.sinceMs!),
+        );
+  if (storedEvents.length > 0 && (!event || !matchedObserved)) {
     throw new ConsoleInsightsQaError(
       "event-not-found",
       "No current E2E event was returned by the filter-free Insights history.",
     );
   }
 
-  const observed = matchedObserved;
+  const observed = matchedObserved ?? observedEvents[0]!;
   const [installation, userInstallation] = await Promise.all([
     client.getInstallation({ installId: observed.installId }),
     readCursorPagesUntil(
@@ -214,7 +223,7 @@ export const verifyConsoleInsights = async (
     ),
   ]);
   const movement =
-    event.type === "UNCHANGED"
+    event === undefined
       ? undefined
       : await readCursorPagesUntil(
           (cursor) =>
@@ -233,7 +242,10 @@ export const verifyConsoleInsights = async (
     installation?.installId !== observed.installId ||
     installation.userId !== observed.userId ||
     userInstallation === undefined ||
-    (event.type !== "UNCHANGED" && movement === undefined)
+    (event !== undefined && movement === undefined) ||
+    // Only launches: the latest report names the bundle the app runs.
+    (event === undefined &&
+      installation.lastKnownBundleId !== observed.toBundleId)
   ) {
     throw new ConsoleInsightsQaError(
       "inconsistent-data",
@@ -270,7 +282,7 @@ export const verifyConsoleInsights = async (
   ]);
   const outcomePages = new Map<string, EventCursorPage>();
   const outcomeEvidence = [];
-  for (const observedOutcome of observedEvents) {
+  for (const observedOutcome of storedEvents) {
     const bundleId =
       observedOutcome.type === "RECOVERED"
         ? observedOutcome.fromBundleId!
@@ -278,11 +290,9 @@ export const verifyConsoleInsights = async (
     const outcome =
       observedOutcome.type === "RECOVERED"
         ? "recovered"
-        : observedOutcome.type === "UNCHANGED"
-          ? "unchanged"
-          : observedOutcome.type === "UPDATE_DOWNLOADED"
-            ? "downloaded"
-            : "applied";
+        : observedOutcome.type === "UPDATE_DOWNLOADED"
+          ? "downloaded"
+          : "applied";
     const bundle: InsightsBundleSelection = {
       bundleId,
       channel: observedOutcome.channel,
@@ -341,8 +351,8 @@ export const verifyConsoleInsights = async (
     reportingInstallations: overview.reportingInstallations.count,
     selectedBundleInstallations: overview.bundle.reportingInstallations.count,
     outcomes: outcomeEvidence,
-    eventId: event.id,
-    eventType: event.type,
+    eventId: event?.id ?? null,
+    eventType: event?.type ?? observed.type,
     installId: observed.installId,
     userId: observed.userId,
   };

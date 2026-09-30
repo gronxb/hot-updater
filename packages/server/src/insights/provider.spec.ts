@@ -408,7 +408,7 @@ describe("createInsightsProvider", () => {
     expect(fixture.countEvents).not.toHaveBeenCalled();
   });
 
-  it("counts whole hours that end with the current one", async () => {
+  it("counts from the UTC day the window reaches into to the end of the current hour", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-08-12T10:25:00.000Z"));
     const fixture = createModel();
@@ -421,15 +421,15 @@ describe("createInsightsProvider", () => {
       channel: "production",
     });
 
-    const end = Date.parse("2026-08-12T11:00:00.000Z");
+    const start = Date.parse("2026-08-11T00:00:00.000Z");
     expect(overview).toMatchObject({
-      beforeReceivedAtMs: end,
-      sinceMs: end - 24 * 60 * 60 * 1_000,
+      beforeReceivedAtMs: Date.parse("2026-08-12T11:00:00.000Z"),
+      sinceMs: start,
     });
     expect(fixture.countLatestEvents).toHaveBeenCalledWith({
       platform: "ios",
       channel: "production",
-      sinceMs: end - 24 * 60 * 60 * 1_000,
+      sinceMs: start,
     });
   });
 
@@ -441,8 +441,7 @@ describe("createInsightsProvider", () => {
     fixture.countEvents
       .mockResolvedValueOnce(7)
       .mockResolvedValueOnce(5)
-      .mockResolvedValueOnce(3)
-      .mockResolvedValueOnce(1);
+      .mockResolvedValueOnce(3);
     const provider = createInsightsProvider(fixture.model);
     const scope = { platform: "ios", channel: "production" } as const;
     const result = await provider.getReportingOverview({
@@ -469,15 +468,24 @@ describe("createInsightsProvider", () => {
     expect(result.bundle?.downloadedReports.count).toBe(7);
     expect(result.bundle?.appliedReports.count).toBe(5);
     expect(result.bundle?.recoveredReports.count).toBe(3);
-    expect(result.bundle?.unchangedReports.count).toBe(1);
+    // UNCHANGED reports are kept as no events, so no count or list names them.
+    expect(result.bundle).not.toHaveProperty("unchangedReports");
     expect(
       fixture.countEvents.mock.calls.map(([input]) => input.filter),
     ).toEqual([
       { ...scope, type: "UPDATE_DOWNLOADED", toBundleId: "B" },
       { ...scope, type: "UPDATE_APPLIED", toBundleId: "B" },
       { ...scope, type: "RECOVERED", fromBundleId: "B" },
-      { ...scope, type: "UNCHANGED", toBundleId: "B" },
     ]);
+    expect(() =>
+      provider.listEvents({
+        bundle: {
+          ...scope,
+          bundleId: "B",
+          outcome: "unchanged" as "applied",
+        },
+      }),
+    ).toThrow(InsightsBadRequestError);
     await provider.listEvents({
       bundle: { ...scope, bundleId: "B", outcome: "recovered" },
       sinceMs: result.sinceMs,

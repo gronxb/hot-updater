@@ -9,6 +9,7 @@ const result = {
   coverage: { kind: "complete" as const, sinceMs: 0 },
   data: [
     {
+      // The model's field names; the report renames them.
       metrics: {
         downloads: 4,
         launches: 9,
@@ -39,9 +40,10 @@ describe("release health aggregate query", () => {
     });
     expect(report).toMatchObject({
       downloads: 4,
-      launches: 9,
+      activeDays: 9,
       failedLaunches: 1,
-      uniqueUsers: 7,
+      activeInstallations: 7,
+      points: [{ startMs: 0, dailyActiveInstallations: 9, failedLaunches: 1 }],
     });
   });
 
@@ -95,8 +97,10 @@ describe("release health aggregate query", () => {
       channel: "production",
       window: "24h",
     });
+    // Release health counters keep whole hours, so the period stays a rolling
+    // 24 hours; the overview starts with the UTC day that period reaches into.
     expect(report).toMatchObject({
-      startMs: overview.sinceMs,
+      startMs: 25 * 3_600_000,
       endMs: overview.beforeReceivedAtMs,
     });
   });

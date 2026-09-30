@@ -105,7 +105,7 @@ describe("createHotUpdater Insights", () => {
     ).toBe(400);
   });
 
-  it("persists an event and serves the lean Insights views", async () => {
+  it("keeps an UNCHANGED report as the installation's latest event, not a listed event, and serves the lean Insights views", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-08-12T00:00:00.000Z"));
     const receivedAtMs = Date.now();
@@ -138,25 +138,20 @@ describe("createHotUpdater Insights", () => {
         type: "UNCHANGED",
       }),
     );
+    // A launch without an update is no event of its own.
     expect(events.status).toBe(200);
-    await expect(events.json()).resolves.toMatchObject({
-      data: [
-        {
-          id: expect.any(String),
-          installId: "install-1",
-          receivedAtMs,
-          type: "UNCHANGED",
-          userId: "user-1",
-          username: "Jane",
-        },
-      ],
+    await expect(events.json()).resolves.toEqual({
+      beforeReceivedAtMs: expect.any(Number),
+      data: [],
       nextCursor: null,
     });
     expect(installation.status).toBe(200);
     await expect(installation.json()).resolves.toMatchObject({
       installId: "install-1",
       latestStatus: "UNCHANGED",
+      receivedAtMs,
       userId: "user-1",
+      username: "Jane",
     });
     expect(matches.status).toBe(200);
     await expect(matches.json()).resolves.toMatchObject({
@@ -164,13 +159,12 @@ describe("createHotUpdater Insights", () => {
       nextCursor: null,
     });
     expect(active.status).toBe(200);
-    // Whole hours, ending with the current one.
-    const end = Date.parse("2026-08-12T01:00:00.000Z");
+    // Ending with the current hour, from the UTC day the window reaches into.
     await expect(active.json()).resolves.toEqual({
       platform: "ios",
       channel: "production",
-      sinceMs: end - 24 * 60 * 60 * 1_000,
-      beforeReceivedAtMs: end,
+      sinceMs: Date.parse("2026-08-11T00:00:00.000Z"),
+      beforeReceivedAtMs: Date.parse("2026-08-12T01:00:00.000Z"),
       reportingInstallations: { count: 1, measuredAtMs: Date.now() },
       window: "24h",
     });
@@ -220,16 +214,21 @@ describe("createHotUpdater Insights", () => {
       ),
     );
     expect(overview.status).toBe(200);
-    await expect(overview.json()).resolves.toMatchObject({
+    // install-2's UNCHANGED report counts it among the bundle's latest
+    // events, and in no event count.
+    await expect(overview.json()).resolves.toEqual({
+      platform: "ios",
+      channel: "production",
+      window: "24h",
       sinceMs: 0,
       beforeReceivedAtMs: 60 * 60 * 1_000,
-      reportingInstallations: { count: 2 },
+      reportingInstallations: { count: 2, measuredAtMs: 500 },
       bundle: {
         bundleId: "B",
-        reportingInstallations: { count: 1 },
-        appliedReports: { count: 1 },
-        recoveredReports: { count: 1 },
-        unchangedReports: { count: 1 },
+        reportingInstallations: { count: 1, measuredAtMs: 500 },
+        downloadedReports: { count: 0, measuredAtMs: 500 },
+        appliedReports: { count: 1, measuredAtMs: 500 },
+        recoveredReports: { count: 1, measuredAtMs: 500 },
       },
     });
     const drilldown = await hotUpdater.handlers.admin(
@@ -264,6 +263,8 @@ describe("createHotUpdater Insights", () => {
     "/overview?platform=ios&channel=production&platform=android",
     "/events?bundleId=B",
     "/events?platform=ios&channel=production&bundleId=B&outcome=UNCHANGED",
+    // UNCHANGED reports are kept as no events, so no list holds them.
+    "/events?platform=ios&channel=production&bundleId=B&outcome=unchanged",
     "/events?sinceMs=20&beforeReceivedAtMs=10",
     // 90 days and 1 ms, longer than a bundle list covers.
     "/events?platform=ios&channel=production&bundleId=B&outcome=applied&sinceMs=0&beforeReceivedAtMs=7776000001",
@@ -504,7 +505,13 @@ describe("createHotUpdater Insights", () => {
   it("counts a retried report once under its client event ID, whichever installation repeats it", async () => {
     const hotUpdater = start();
     const eventId = "01987a6e-4c00-7abc-8def-0123456789ab";
-    const report = { ...event, eventId };
+    const applied = {
+      ...event,
+      type: "UPDATE_APPLIED",
+      fromBundleId: "bundle-0",
+      updateStrategy: "appVersion",
+    } as const;
+    const report = { ...applied, eventId };
     const counts = async () => {
       const overview = await hotUpdater.handlers.admin(
         new Request(
@@ -513,9 +520,9 @@ describe("createHotUpdater Insights", () => {
       );
       return (
         (await overview.json()) as {
-          readonly bundle: { readonly unchangedReports: { count: number } };
+          readonly bundle: { readonly appliedReports: { count: number } };
         }
-      ).bundle.unchangedReports.count;
+      ).bundle.appliedReports.count;
     };
 
     for (let attempt = 0; attempt < 2; attempt += 1) {
@@ -553,10 +560,48 @@ describe("createHotUpdater Insights", () => {
     // Without an ID the server creates one, so each report counts.
     for (let attempt = 0; attempt < 2; attempt += 1) {
       expect(
-        (await hotUpdater.handlers.client(eventRequest(event))).status,
+        (await hotUpdater.handlers.client(eventRequest(applied))).status,
       ).toBe(204);
     }
     await expect(counts()).resolves.toBe(3);
+  });
+
+  it("counts an installation's UNCHANGED reports once a UTC day, retried or repeated", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-12T10:00:00.000Z"));
+    const hotUpdater = start();
+    const append = vi.spyOn(hotUpdater.api.insights, "recordEvent");
+    const launches = async () => {
+      const {
+        data: [activity],
+      } = await hotUpdater.api.insights.getReleaseActivity({
+        scope: { platform: "ios", channel: "production" },
+        timeRange: {
+          start: Date.parse("2026-08-12T00:00:00.000Z"),
+          end: Date.parse("2026-08-14T00:00:00.000Z"),
+        },
+      });
+      return activity!.metrics.launches;
+    };
+    const report = {
+      ...event,
+      eventId: "01987a6e-4c00-7abc-8def-0123456789ab",
+    };
+
+    // A retry, then relaunches later that day, with and without an ID.
+    for (const body of [report, report, event, event]) {
+      expect(
+        (await hotUpdater.handlers.client(eventRequest(body))).status,
+      ).toBe(204);
+      vi.advanceTimersByTime(60 * 60 * 1_000);
+    }
+    expect(append).toHaveBeenCalledTimes(4);
+    await expect(launches()).resolves.toBe(1);
+
+    // The next UTC day counts the installation again.
+    vi.setSystemTime(new Date("2026-08-13T09:00:00.000Z"));
+    expect((await hotUpdater.handlers.client(eventRequest())).status).toBe(204);
+    await expect(launches()).resolves.toBe(2);
   });
 
   it.each([

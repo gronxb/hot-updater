@@ -10,12 +10,15 @@ export interface InsightsScope {
   readonly channel: string;
 }
 
-/** Raw event predicates; recovery is attributed to the source bundle. */
+/**
+ * Raw event predicates; recovery is attributed to the source bundle. An
+ * UNCHANGED report is kept as no event, so no filter names it.
+ */
 export type InsightsBundleEventFilter = InsightsScope &
   (
     | { readonly type: "RECOVERED"; readonly fromBundleId: string }
     | {
-        readonly type: "UPDATE_DOWNLOADED" | "UPDATE_APPLIED" | "UNCHANGED";
+        readonly type: "UPDATE_DOWNLOADED" | "UPDATE_APPLIED";
         readonly toBundleId: string;
       }
   );
@@ -49,6 +52,7 @@ export type InsightsFindLatestEventsInput =
     };
 
 export interface InsightsCountLatestEventsInput extends InsightsScope {
+  /** A UTC day's start: latest events are counted by the day they fall in. */
   readonly sinceMs: number;
   /** Optional OR of one or two fixed predicates; count a matching event once. */
   readonly bundle?: readonly {

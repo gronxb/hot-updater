@@ -564,12 +564,10 @@ describe.sequential("aws lambda runtime acceptance", () => {
       error: "Not found",
     });
 
+    // An UNCHANGED report is the installation's latest event, not a listed one.
     await expect(
-      seedHotUpdater.api.insights.listEvents({
-        filter: { kind: "all" },
-        sinceMs: Date.now() - 24 * 60 * 60 * 1_000,
-        beforeReceivedAtMs: Date.now() + 1_000,
-        limit: 10,
+      seedHotUpdater.api.insights.findLatestEvents({
+        installId: "aws-runtime-installation",
       }),
     ).resolves.toEqual([
       expect.objectContaining({

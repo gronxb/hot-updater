@@ -34,12 +34,19 @@ export async function getRecoveryReport(
         },
   );
   const metrics = result.data[0]?.metrics;
+  // The launches counter counts each installation once per UTC day it
+  // launched, so it reads as active days, and per day as daily active
+  // installations.
   return {
     downloads: metrics?.downloads ?? 0,
-    uniqueUsers: metrics?.uniqueUsers ?? 0,
-    launches: metrics?.launches ?? 0,
+    activeInstallations: metrics?.uniqueUsers ?? 0,
+    activeDays: metrics?.launches ?? 0,
     failedLaunches: metrics?.failedLaunches ?? 0,
-    points: metrics?.series ?? [],
+    points: (metrics?.series ?? []).map((point) => ({
+      startMs: point.startMs,
+      dailyActiveInstallations: point.launches,
+      failedLaunches: point.failedLaunches,
+    })),
     startMs: start,
     endMs: end,
     measuredAtMs: result.measuredAtMs,

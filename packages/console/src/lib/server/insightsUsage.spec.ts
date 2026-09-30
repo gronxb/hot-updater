@@ -91,9 +91,31 @@ describe("App usage aggregate query", () => {
       channel: "production",
       window: "24h",
     });
+    // The usage sketches keep a rolling 24 hours; latest reports, as the
+    // overview counts them, cover the UTC days those hours touch.
     expect(report).toMatchObject({
-      sinceMs: overview.sinceMs,
+      sinceMs: 25 * 3_600_000,
+      distributionSinceMs: overview.sinceMs,
       beforeReceivedAtMs: overview.beforeReceivedAtMs,
     });
+  });
+
+  it("starts the distribution with the UTC day that contains the period's start", async () => {
+    const getAppUsage = vi.fn(async () => aggregate);
+    const report = await getAppUsageReport(
+      { getAppUsage } as unknown as InsightsModel,
+      { platform: "all", channel: "production", window: "24h" },
+      Date.parse("2026-08-12T10:25:00Z"),
+    );
+    expect(getAppUsage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        timeRange: {
+          start: Date.parse("2026-08-11T11:00:00Z"),
+          end: Date.parse("2026-08-12T11:00:00Z"),
+        },
+      }),
+    );
+    expect(report.sinceMs).toBe(Date.parse("2026-08-11T11:00:00Z"));
+    expect(report.distributionSinceMs).toBe(Date.parse("2026-08-11T00:00:00Z"));
   });
 });

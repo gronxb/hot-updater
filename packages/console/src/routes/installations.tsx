@@ -240,6 +240,7 @@ function InstallationsPage() {
           ) : null}
           {!hasLookup ? (
             <EventHistoryCard
+              description="Downloads, applies, and recoveries, newest first. A launch without an update counts in App usage and in its installation's latest report."
               error={events.error}
               eventsLocation={{
                 eventsBefore,

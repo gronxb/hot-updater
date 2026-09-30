@@ -84,7 +84,7 @@ describe("Detox Insights HTTP client", () => {
     },
   );
 
-  it("traces all three bundle outcomes while recovery moves the latest installation to its destination", async () => {
+  it("traces the stored bundle outcomes while recovery moves the latest installation to its destination", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-09-05T00:00:00Z"));
     try {
@@ -170,14 +170,14 @@ describe("Detox Insights HTTP client", () => {
         observedEvents,
         sinceMs,
       });
+      // The relaunches repeat each move's latest report the same UTC day, so
+      // they record nothing, and no event list or count holds them.
       expect(evidence).toMatchObject({
         reportingInstallations: 1,
         selectedBundleInstallations: 1,
-        eventType: "UNCHANGED",
+        eventType: "RECOVERED",
         outcomes: [
-          { bundleId: "bundle-a", count: 1, outcome: "unchanged" },
           { bundleId: "bundle-b", count: 1, outcome: "recovered" },
-          { bundleId: "bundle-b", count: 1, outcome: "unchanged" },
           { bundleId: "bundle-b", count: 1, outcome: "applied" },
         ],
       });
@@ -191,8 +191,8 @@ describe("Detox Insights HTTP client", () => {
         reportingInstallations: { count: 0 },
         appliedReports: { count: 1 },
         recoveredReports: { count: 1 },
-        unchangedReports: { count: 1 },
       });
+      expect(source.bundle).not.toHaveProperty("unchangedReports");
       const destination = await client.getReportingOverview({
         platform: "ios",
         channel: "production",
@@ -203,7 +203,6 @@ describe("Detox Insights HTTP client", () => {
         reportingInstallations: { count: 1 },
         appliedReports: { count: 0 },
         recoveredReports: { count: 0 },
-        unchangedReports: { count: 1 },
       });
       await expect(
         client.listEvents({

@@ -108,17 +108,14 @@ describe("insights latest events by bundle", () => {
         types: ["UNCHANGED", "UPDATE_APPLIED", "RECOVERED"],
       },
     ] as const;
-    // Whole hours from gauges, then a partial hour from heads.
-    for (const sinceMs of [T0, T0 + 1]) {
-      await expect(
-        harness.api.countLatestEvents({
-          platform: "ios",
-          channel: "production",
-          sinceMs,
-          bundle,
-        }),
-      ).resolves.toBe(4);
-    }
+    await expect(
+      harness.api.countLatestEvents({
+        platform: "ios",
+        channel: "production",
+        sinceMs: T0,
+        bundle,
+      }),
+    ).resolves.toBe(4);
   });
 
   it("counts a head once when a from and a to predicate of one type both match it", async () => {
@@ -152,29 +149,48 @@ describe("insights latest events by bundle", () => {
         sinceMs,
         bundle,
       });
-    // Whole hours from gauges, then a partial hour from heads.
-    for (const sinceMs of [T0, T0 + 1]) {
-      // From A or to B: A→B, A→C, D→B, and B→B. The gauges alone say 5,
-      // counting A→B under both predicates.
-      await expect(
-        count(
-          [
-            { field: "from_bundle_id", value: "A", types },
-            { field: "to_bundle_id", value: "B", types },
-          ],
-          sinceMs,
-        ),
-      ).resolves.toBe(4);
-      // B→B matches from B and to B through one pair: A→B, D→B, B→B.
-      await expect(
-        count(
-          [
-            { field: "from_bundle_id", value: "B", types },
-            { field: "to_bundle_id", value: "B", types },
-          ],
-          sinceMs,
-        ),
-      ).resolves.toBe(3);
+    // From A or to B: A→B, A→C, D→B, and B→B. The gauges alone say 5,
+    // counting A→B under both predicates.
+    await expect(
+      count(
+        [
+          { field: "from_bundle_id", value: "A", types },
+          { field: "to_bundle_id", value: "B", types },
+        ],
+        T0,
+      ),
+    ).resolves.toBe(4);
+    // B→B matches from B and to B through one pair: A→B, D→B, B→B.
+    await expect(
+      count(
+        [
+          { field: "from_bundle_id", value: "B", types },
+          { field: "to_bundle_id", value: "B", types },
+        ],
+        T0,
+      ),
+    ).resolves.toBe(3);
+  });
+
+  it("counts whole UTC days only, and rejects a start inside one", async () => {
+    const harness = await setup();
+    await harness.api.recordEvent(event(1, { received_at_ms: halfPast }));
+    await harness.api.recordEvent(
+      event(2, { received_at_ms: T0 + DAY + HOUR }),
+    );
+    const since = (sinceMs: number) =>
+      harness.api.countLatestEvents({
+        platform: "ios",
+        channel: "production",
+        sinceMs,
+      });
+    await expect(since(T0)).resolves.toBe(2);
+    await expect(since(T0 + DAY)).resolves.toBe(1);
+    await expect(since(T0 + 2 * DAY)).resolves.toBe(0);
+    for (const sinceMs of [T0 + 1, T0 + HOUR]) {
+      await expect(since(sinceMs)).rejects.toMatchObject({
+        code: "invalid-query",
+      });
     }
   });
 });
@@ -241,7 +257,7 @@ describe("insights read budgets", () => {
     expect(user.tables).toEqual({ bundle_event_heads: 3 });
   });
 
-  it("counts whole-hour windows from aggregates alone", async () => {
+  it("counts whole hours and whole UTC days from aggregates alone", async () => {
     const { api, read } = await setup();
     const counted = await read(() =>
       api.countEvents({
@@ -262,11 +278,11 @@ describe("insights read budgets", () => {
       api.countLatestEvents({
         platform: "ios",
         channel: "production",
-        sinceMs: T0 + HOUR,
+        sinceMs: T0 + DAY,
       }),
     );
-    // installs 6–24, plus install-1, whose head moved to day 2
-    expect(latest.result).toBe(20);
+    // install-1, whose head moved to day 2
+    expect(latest.result).toBe(1);
     expect(Object.keys(latest.tables)).toEqual(["insights_distribution"]);
 
     const byBundle = await read(() =>

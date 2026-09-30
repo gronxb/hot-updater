@@ -148,6 +148,12 @@ describe("InstallationsPage", () => {
       screen.getByRole("tab", { name: "Last 7 days", selected: true }),
     ).toBeDefined();
     expect(screen.getByRole("heading", { name: "All events" })).toBeDefined();
+    expect(
+      screen.getByText(
+        "Downloads, applies, and recoveries, newest first. A launch without an update counts in App usage and in its installation's latest report.",
+      ),
+    ).toBeDefined();
+    // Reports stored before launches stopped being events still show.
     for (const label of ["No change", "Update applied", "Recovered"]) {
       expect(screen.getAllByText(label).length).toBeGreaterThan(0);
     }

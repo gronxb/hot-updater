@@ -64,6 +64,7 @@ import { Route } from "./insights_.distribution";
 const report: AppUsageReport = {
   activeInstallations: 24,
   sinceMs: 0,
+  distributionSinceMs: 0,
   beforeReceivedAtMs: 7_200_000,
   intervalMs: 3_600_000,
   truncated: false,
@@ -171,6 +172,24 @@ describe("Distribution details", () => {
     );
     expect(await screen.findByText("Partial history")).toBeDefined();
     expect(screen.getByText("≥24")).toBeDefined();
+  });
+  it("counts each installation by its latest report since the period's first UTC day", async () => {
+    mocks.usage.mockResolvedValue({
+      ...report,
+      sinceMs: Date.UTC(2026, 8, 29, 11),
+      distributionSinceMs: Date.UTC(2026, 8, 29),
+    });
+    renderPage();
+    await screen.findByRole("list", { name: "Bundle distribution" });
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "How bundle distribution is counted",
+      }),
+    );
+    expect((await screen.findByRole("tooltip")).textContent).toContain(
+      "Each installation counts once by its latest matching report since Sep 29, 00:00 UTC. Latest reports are counted by UTC day.",
+    );
   });
   it("drops malformed URL values without losing independent periods or version text", () => {
     expect(

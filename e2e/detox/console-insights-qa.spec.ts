@@ -50,7 +50,6 @@ const createClient = (): ConsoleInsightsQaClient => ({
       appliedReports: { count: 1, measuredAtMs: event.receivedAtMs + 1 },
       downloadedReports: { count: 0, measuredAtMs: event.receivedAtMs + 1 },
       recoveredReports: { count: 0, measuredAtMs: event.receivedAtMs + 1 },
-      unchangedReports: { count: 0, measuredAtMs: event.receivedAtMs + 1 },
     },
   })),
   getInstallation: vi.fn(async () => ({
@@ -288,38 +287,37 @@ describe("console insights E2E QA", () => {
     ).rejects.toMatchObject({ code: "inconsistent-data" });
   });
 
-  it("verifies an unchanged report without inventing a movement", async () => {
-    // Given: the app reports activity without changing its bundle.
+  it("verifies a launch without an update through its installation's latest report", async () => {
+    // Given: the app reports a launch without changing its bundle, which the
+    // server keeps as the installation's latest report, not as an event.
     const client = createClient();
     const unchanged = {
       ...observedTransition,
       fromBundleId: null,
       type: "UNCHANGED" as const,
     };
-    vi.mocked(client.listEvents).mockResolvedValue({
-      ...emptyEventPage,
-      data: [{ ...event, fromBundleId: null, type: "UNCHANGED" }],
-    });
 
-    // When / Then: ingestion and current state are checked, while the
-    // transition-only movement endpoint is intentionally not queried.
-    const overview = await client.getReportingOverview({
+    // When / Then: the installation and its bundle's latest-event count are
+    // checked; no event list, drill-down, or movement is queried.
+    await expect(
+      verifyConsoleInsights(client, { observedEvents: [unchanged] }),
+    ).resolves.toEqual({
+      reportingInstallations: 1,
+      selectedBundleInstallations: 1,
+      outcomes: [],
+      eventId: null,
+      eventType: "UNCHANGED",
+      installId: unchanged.installId,
+      userId: unchanged.userId,
+    });
+    expect(client.listEvents).not.toHaveBeenCalled();
+    expect(client.listInstallationEvents).not.toHaveBeenCalled();
+    expect(client.getReportingOverview).toHaveBeenCalledWith({
       bundleId,
       channel: event.channel,
       platform: event.platform,
       window: "24h",
     });
-    vi.mocked(client.getReportingOverview).mockResolvedValue({
-      ...overview,
-      bundle: {
-        ...overview.bundle!,
-        unchangedReports: { count: 1, measuredAtMs: event.receivedAtMs + 1 },
-      },
-    });
-    await expect(
-      verifyConsoleInsights(client, { observedEvents: [unchanged] }),
-    ).resolves.toMatchObject({ eventType: "UNCHANGED" });
-    expect(client.listInstallationEvents).not.toHaveBeenCalled();
   });
 
   it("fails when the filter-free history has no current app event", async () => {
@@ -335,39 +333,38 @@ describe("console insights E2E QA", () => {
     );
   });
 
-  it("verifies same-file selection as no change without a bundle movement", async () => {
+  it("fails when a launch's installation names another bundle", async () => {
     const client = createClient();
     const unchangedSelection = {
       ...observedTransition,
       fromBundleId: null,
+      toBundleId: "00000000-0000-7000-8000-000000000002",
       type: "UNCHANGED" as const,
     };
-    vi.mocked(client.listEvents).mockResolvedValue({
-      ...emptyEventPage,
-      data: [{ ...event, fromBundleId: null, type: "UNCHANGED" }],
-    });
-    const overview = await client.getReportingOverview({
-      bundleId,
-      channel: event.channel,
-      platform: event.platform,
-      window: "24h",
-    });
-    vi.mocked(client.getReportingOverview).mockResolvedValue({
-      ...overview,
-      bundle: {
-        ...overview.bundle!,
-        appliedReports: { count: 0, measuredAtMs: event.receivedAtMs + 1 },
-        unchangedReports: { count: 1, measuredAtMs: event.receivedAtMs + 1 },
-      },
-    });
 
     await expect(
       verifyConsoleInsights(client, { observedEvents: [unchangedSelection] }),
+    ).rejects.toMatchObject({ code: "inconsistent-data" });
+  });
+
+  it("checks an update's outcome, and no outcome of the launches reported after it", async () => {
+    const client = createClient();
+    const relaunch = {
+      ...observedTransition,
+      fromBundleId: null,
+      observedAtMs: observedTransition.observedAtMs + 1,
+      type: "UNCHANGED" as const,
+    };
+
+    await expect(
+      verifyConsoleInsights(client, {
+        observedEvents: [observedTransition, relaunch],
+      }),
     ).resolves.toMatchObject({
-      eventType: "UNCHANGED",
-      outcomes: [{ bundleId, count: 1, outcome: "unchanged" }],
+      eventId: event.id,
+      eventType: "UPDATE_APPLIED",
+      outcomes: [{ bundleId, count: 1, eventId: event.id, outcome: "applied" }],
     });
-    expect(client.listInstallationEvents).not.toHaveBeenCalled();
   });
 
   it("fails when the outcome count or its drill-down omits an accepted report", async () => {

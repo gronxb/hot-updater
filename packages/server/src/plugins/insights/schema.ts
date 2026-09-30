@@ -5,6 +5,11 @@ export const DAY_MS = 86_400_000;
 
 const MOVEMENTS = new Set(["UPDATE_DOWNLOADED", "UPDATE_APPLIED", "RECOVERED"]);
 
+/**
+ * Downloads, applies, and recoveries, whole. An UNCHANGED report counts as a
+ * launch and moves its installation's head, but no list shows it, so no row
+ * keeps it.
+ */
 const bundleEvents = defineTable(
   {
     id: { type: "string", maxLength: 36 },
@@ -61,7 +66,10 @@ const bundleEvents = defineTable(
   },
 );
 
-/** Each installation's latest event, whole, so reading it is one point read. */
+/**
+ * Each installation's latest event, whole, so reading it is one point read.
+ * `current_release_id` says where its gauges count it (`COUNTED_BY_DAY`).
+ */
 const bundleEventHeads = defineTable(
   {
     install_id: { type: "string", maxLength: 255 },
@@ -119,7 +127,11 @@ const insightsSketches = defineAggregate(identityFields, {
   indexes: { window },
 });
 
-/** Installations counted in the hour of their latest event. */
+/**
+ * Installations counted in the UTC day of their latest event; heads recorded
+ * while gauges counted hours stay in the hour of theirs until they move.
+ * Either lies inside the event's UTC day, so reads sum whole UTC days.
+ */
 const insightsDistribution = defineAggregate(
   {
     channel: { type: "string" },
@@ -148,7 +160,7 @@ const insightsDistribution = defineAggregate(
   },
 );
 
-/** Latest events by the bundle they came from or went to. */
+/** Latest events by the bundle they came from or went to, bucketed like the distribution. */
 const insightsLatestByBundle = defineAggregate(
   {
     platform: { type: "string", maxLength: 16 },
@@ -179,9 +191,10 @@ const insightsLatestByBundle = defineAggregate(
 );
 
 /**
- * Events by outcome and the bundle a bundle filter matches, a row an hour;
- * and every event, a row a UTC day (`DAILY_EVENTS`). Bundle counts sum the
- * hourly rows, and event lists read either to skip days without events.
+ * Stored events by outcome and the bundle a bundle filter matches, a row an
+ * hour; and every stored event, a row a UTC day (`DAILY_EVENTS`). Bundle
+ * counts sum the hourly rows, and event lists read either to skip days
+ * without events.
  */
 const insightsOutcomes = defineAggregate(
   {
@@ -205,9 +218,9 @@ const insightsOutcomes = defineAggregate(
 );
 
 /**
- * The `insights_outcomes` identity that counts every event, for the global
- * event list. Its bucket is a UTC day, not an hour. Every event's platform
- * is ios or android, so no outcome row of a bundle filter shares it.
+ * The `insights_outcomes` identity that counts every stored event, for the
+ * global event list. Its bucket is a UTC day, not an hour. Every event's
+ * platform is ios or android, so no outcome row of a bundle filter shares it.
  */
 export const DAILY_EVENTS = {
   platform: "*",

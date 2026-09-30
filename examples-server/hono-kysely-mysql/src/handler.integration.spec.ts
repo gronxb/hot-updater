@@ -193,8 +193,11 @@ describe("Hot Updater Handler Integration Tests (Hono + MySQL)", () => {
   it("counts overlapping bundle predicates once, including nullable sources and moved installations", async () => {
     const { kysely } = await import("./db.js");
     const insights = insightsModelOf(kysely);
+    // Latest events count by UTC day: these land on day 1, the too-old
+    // installation's on day 0.
+    const day = 86_400_000;
     const overlap = {
-      ...createBundleEventRowFixture("9820", 100),
+      ...createBundleEventRowFixture("9820", day + 100),
       channel: "mysql-count-test",
     };
     const nullable = {
@@ -245,13 +248,13 @@ describe("Hot Updater Handler Integration Tests (Hono + MySQL)", () => {
         ...neither,
         id: createBundleEventRowFixture("9827", 200).id,
         install_id: superseded.install_id,
-        received_at_ms: 200,
+        received_at_ms: day + 200,
       },
       {
         ...moved,
         id: createBundleEventRowFixture("9828", 200).id,
         channel: "mysql-count-elsewhere",
-        received_at_ms: 200,
+        received_at_ms: day + 200,
       },
     ]) {
       await insights.recordEvent({ event });
@@ -259,7 +262,7 @@ describe("Hot Updater Handler Integration Tests (Hono + MySQL)", () => {
     const scope = {
       platform: overlap.platform,
       channel: overlap.channel,
-      sinceMs: 100,
+      sinceMs: day,
     };
     const from = {
       field: "from_bundle_id" as const,

@@ -297,51 +297,19 @@ const latestPredicates = (
   ];
 };
 
-/** Heads whose latest event falls in [sinceMs, end), a partial hour: those events' installs, then their heads. */
-const countPartialHeads = async (
-  db: Db,
-  input: InsightsCountLatestEventsInput,
-  predicates: readonly Predicate[] | undefined,
-  end: number,
-) => {
-  const events = await drain((page) =>
-    db.findMany("bundle_events", {
-      index: "recent",
-      where: {
-        channel: input.channel,
-        platform: input.platform,
-        day: dayFloor(input.sinceMs),
-      },
-      range: { gte: input.sinceMs, lt: end },
-      limit: PAGE,
-      ...page,
-    }),
-  );
-  const ids = new Set(events.map(({ id }) => id));
-  const heads = await Promise.all(
-    [...new Set(events.map(({ install_id }) => install_id))].map((install) =>
-      db.findOne("bundle_event_heads", { install_id: install }),
-    ),
-  );
-  return heads.filter(
-    (head) =>
-      head !== null &&
-      ids.has(head.id) &&
-      (predicates === undefined ||
-        predicates.some(
-          ({ field, value, type }) =>
-            head[field] === value && head.type === type,
-        )),
-  ).length;
-};
-
-/** Latest events at or after `sinceMs`: whole hours from gauges, the first partial hour from heads. */
+/**
+ * Latest events at or after `sinceMs`, a UTC day's start: the gauges count
+ * each installation in the UTC day of its latest event, so they answer whole
+ * days only, and a later start is rejected rather than rounded.
+ */
 export const countLatestEvents = async (
   db: Db,
   input: InsightsCountLatestEventsInput,
 ): Promise<number> => {
-  const { platform, channel, sinceMs } = input;
-  const start = hourCeil(sinceMs);
+  const { platform, channel, sinceMs: start } = input;
+  if (start % DAY_MS !== 0) {
+    throw new DatabasePluginInputError("invalid-query");
+  }
   const predicates = latestPredicates(input.bundle);
   let total = 0;
   if (predicates === undefined) {
@@ -396,9 +364,7 @@ export const countLatestEvents = async (
       }
     }
   }
-  return sinceMs < start
-    ? total + (await countPartialHeads(db, input, predicates, start))
-    : total;
+  return total;
 };
 
 /** Periods covering [start, end): whole UTC days when `days` and the window is over 48 hours, hours elsewhere. */
@@ -510,16 +476,23 @@ const lifetimeMetrics = async (
   };
 };
 
+/** Where unique users come from: the sketch rows of one identity, and their field. */
+interface UserSketches {
+  readonly parts: Parts;
+  readonly field: "launch_users" | "activity_users";
+}
+
 /** Counters, unique users, and a per-UTC-day series over a window. */
 const rangedMetrics = async (
   db: Db,
   parts: Parts,
+  users: UserSketches,
   range: InsightsTimeRange,
   days: boolean,
 ): Promise<ReleaseActivityMetrics> => {
   const [counters, sketches] = await Promise.all([
     counterRows(db, parts, range, days),
-    sketchRows(db, parts, range, days),
+    sketchRows(db, users.parts, range, days),
   ]);
   const series = new Map<
     number,
@@ -539,13 +512,28 @@ const rangedMetrics = async (
     launches: total("launches"),
     failedLaunches: total("failed_launches"),
     uniqueUsers: countInsightsDistinct(
-      mergeInsightsDistinct(sketches.map((row) => row.launch_users)),
+      mergeInsightsDistinct(sketches.map((row) => row[users.field])),
     ),
     series: [...series]
       .sort(([left], [right]) => left - right)
       .map(([startMs, point]) => ({ startMs, ...point })),
   };
 };
+
+/** A channel and platform's usage rows, of every app version or of one. */
+const usageParts = (
+  channel: string,
+  platform: "ios" | "android",
+  appVersion?: string,
+): Parts => ({
+  scopeKind: "usage",
+  releaseKind: "all",
+  releaseId: "",
+  channel,
+  platform,
+  appVersionKind: appVersion === undefined ? "all" : "specific",
+  appVersion: appVersion ?? "",
+});
 
 export const getReleaseActivity = async (
   db: Db,
@@ -557,6 +545,8 @@ export const getReleaseActivity = async (
       ? [
           {
             scope: input.scope,
+            // A channel's unique users are its active installations: its
+            // usage rows count every installation that reported.
             metrics: await rangedMetrics(
               db,
               {
@@ -567,6 +557,10 @@ export const getReleaseActivity = async (
                 platform: input.scope.platform,
                 appVersionKind: "all",
                 appVersion: "",
+              },
+              {
+                parts: usageParts(input.scope.channel, input.scope.platform),
+                field: "activity_users",
               },
               input.timeRange,
               true,
@@ -582,6 +576,7 @@ export const getReleaseActivity = async (
                 : await rangedMetrics(
                     db,
                     releaseParts(release),
+                    { parts: releaseParts(release), field: "launch_users" },
                     input.timeRange,
                     false,
                   ),
@@ -609,31 +604,34 @@ export const getAppUsage = async (
   now: () => number,
 ): Promise<InsightsGetAppUsageResult> => {
   const { timeRange, intervalMs } = input;
-  const usage = await sketchRows(
-    db,
-    {
-      scopeKind: "usage",
-      releaseKind: "all",
-      releaseId: "",
-      channel: input.channel,
-      platform: input.platform,
-      appVersionKind: input.appVersion === undefined ? "all" : "specific",
-      appVersion: input.appVersion ?? "",
-    },
-    timeRange,
-    intervalMs % DAY_MS === 0 && timeRange.start % DAY_MS === 0,
-  );
+  const reported =
+    input.platform === "all" ? (["ios", "android"] as const) : [input.platform];
+  // Every platform's usage is the ios and android sketches merged: each
+  // installation reports one platform, so the union counts it once.
+  const usage = (
+    await Promise.all(
+      reported.map((platform) =>
+        sketchRows(
+          db,
+          usageParts(input.channel, platform, input.appVersion),
+          timeRange,
+          intervalMs % DAY_MS === 0 && timeRange.start % DAY_MS === 0,
+        ),
+      ),
+    )
+  ).flat();
+  // Gauges count each installation in the UTC day of its latest event, so
+  // the distribution covers every UTC day the window touches.
+  const range = { gte: dayFloor(timeRange.start), lt: timeRange.end };
   const distribution = [];
-  for (const platform of input.platform === "all"
-    ? (["ios", "android"] as const)
-    : [input.platform]) {
+  for (const platform of reported) {
     distribution.push(
       ...(await drain((page) =>
         input.appVersion === undefined
           ? db.findAggregates("insights_distribution", {
               index: "byScope",
               where: { channel: input.channel, platform },
-              range: { gte: timeRange.start, lt: timeRange.end },
+              range,
               limit: PAGE,
               ...page,
             })
@@ -644,7 +642,7 @@ export const getAppUsage = async (
                 platform,
                 app_version: input.appVersion,
               },
-              range: { gte: timeRange.start, lt: timeRange.end },
+              range,
               limit: PAGE,
               ...page,
             }),
