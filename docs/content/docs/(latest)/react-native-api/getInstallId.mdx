@@ -1,6 +1,6 @@
 ---
 title: "getInstallId"
-description: "Read the persisted identifier used for this installation's Insights reports."
+description: "Read the random identifier of this app installation that Insights reports carry."
 icon: Fingerprint
 ---
 
@@ -22,19 +22,23 @@ console.log("Hot Updater installation:", installId);
 getInstallId(): string
 ```
 
-The getter is synchronous. It returns the locally persisted installation ID,
-creating one if needed, without making a network request. It remains stable
-across runtime restarts while that local identity is retained.
+The getter is synchronous and makes no network request. It returns a random ID
+that native creates once per installation of the app. Native keeps it outside
+device backups, so restoring a backup onto another device does not copy it.
+The ID stays the same across launches and OTA updates; reinstalling the app
+creates a new one.
 
 This identifies an app installation, not a person. Multiple installations for
-one user have separate IDs and count separately in Insights. Calling
-[`setUser`](/docs/react-native-api/setUser), including `setUser(null)`, does not
-change the installation ID.
+one user have separate IDs and count separately in Insights. The Insights
+plugin's [`setUser`](/docs/react-native-api/insights#set-the-user), including
+`setUser(null)`, does not change the installation ID. Client plugins read the
+same ID as `context.installId`.
 
 In the Console, open **Insights → All events** and search for this ID to inspect
-received reports. An ID only appears there after the server receives a report.
+received reports. An ID only appears there after the server receives a report
+from the [Insights plugin](/docs/react-native-api/insights).
 
 ## Related
 
-- [`setUser`](/docs/react-native-api/setUser)
+- [Insights Plugin](/docs/react-native-api/insights)
 - [Insights](/docs/guides/insights)

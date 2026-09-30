@@ -148,9 +148,11 @@ command or generated files alone do not prove that a remote step is complete.
 ## App integration
 
 When the requested setup includes app integration, connect the verified base URL
-and saved client key to the existing HotUpdater.init or HotUpdater.wrap call.
-Preserve the project's update strategy and update UX. If integration is missing,
-follow the matching version's [app setup](https://hot-updater.dev/docs/get-started/app-setup#configure-the-update-client)
+and saved client key to the existing HotUpdater.init or HotUpdater.wrap call,
+and add `insights()` from `@hot-updater/react-native/plugins/insights` to its
+`plugins` once, so the app reports to the server's Insights. Preserve the
+project's update strategy, update UX and other plugins. If integration is
+missing, follow the matching version's [app setup](https://hot-updater.dev/docs/get-started/app-setup#configure-the-update-client)
 and [native setup](https://hot-updater.dev/docs/get-started/app-setup#native-code-setup)
 to add initialization, x-api-key headers, and an actual update-check entry point
 using the project's conventions. Inspect the final JS code as well as native
@@ -229,20 +231,26 @@ separate validation result.
 
     ```ts
     import { HotUpdater } from "@hot-updater/react-native";
+    import { insights } from "@hot-updater/react-native/plugins/insights";
 
     HotUpdater.init({
       baseURL: "<verified-base-url>",
       requestHeaders: {
         "x-api-key": "<registered-client-api-key>",
       },
+      plugins: [insights()],
     });
     ```
 
     Explain that this belongs at module scope and that init does not check for
-    updates. Show the next check call with the app's actual strategy, for example
+    updates. The deployed server runs insights(); the insights() client plugin
+    sends the app's launch, download and update-result reports to it, and an app
+    without it sends none. Show the next check call with the app's actual
+    strategy, for example
     `HotUpdater.checkForUpdate({ updateStrategy: "appVersion" })` or
     `HotUpdater.checkForUpdate({ updateStrategy: "fingerprint" })`.
-    Preserve existing initialization options; do not add init alongside wrap.
+    Preserve existing initialization options and plugins; do not add init
+    alongside wrap.
     Include this handoff for infrastructure-only setup too, with app integration
     and native OTA checks identified as remaining work. If registration or
     verification is blocked, report that blocker instead of a completed setup.

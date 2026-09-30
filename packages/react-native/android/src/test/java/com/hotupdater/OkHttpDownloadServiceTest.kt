@@ -1,8 +1,10 @@
 package com.hotupdater
 
 import kotlinx.coroutines.runBlocking
+import okhttp3.ResponseBody.Companion.toResponseBody
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -47,8 +49,94 @@ class OkHttpDownloadServiceTest {
             }
         }
 
+    @Test
+    fun `downloadFile reports a non-2xx response with its status and origin error code`() =
+        runBlocking {
+            val errorBody =
+                "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n" +
+                    "<Error><Code>NoSuchKey</Code><Message>The specified key does not exist.</Message>" +
+                    "<Key>bundles/secret/manifest.json</Key></Error>"
+            val server = ChunkedResponseServer(errorBody.toByteArray(), statusLine = "404 Not Found")
+
+            try {
+                val destination = File(temporaryFolder.newFolder("http-error"), "manifest.json")
+
+                val result =
+                    OkHttpDownloadService().downloadFile(
+                        fileUrl = URL("http://127.0.0.1:${server.port}/manifest.json"),
+                        destination = destination,
+                        progressCallback = {},
+                    )
+
+                val error = (result as DownloadResult.Error).exception
+                assertTrue("Expected HttpStatusException, got $error", error is HttpStatusException)
+                assertEquals(404, (error as HttpStatusException).statusCode)
+                assertEquals("NoSuchKey", error.originCode)
+                assertEquals("HTTP error 404: Not Found", error.message)
+                assertFalse(destination.exists())
+            } finally {
+                server.close()
+            }
+        }
+
+    @Test
+    fun `origin error codes come only from an XML Error Code of safe characters`() {
+        val cases =
+            mapOf(
+                "<Error><Code>AccessDenied</Code><Message>Access Denied</Message></Error>" to "AccessDenied",
+                "<?xml version='1.0' encoding='UTF-8'?><Error><Code>SignatureDoesNotMatch</Code></Error>" to "SignatureDoesNotMatch",
+                "<Error xmlns=\"urn:storage\">\n  <Message>first</Message>\n  <Code> ExpiredToken </Code>\n</Error>" to "ExpiredToken",
+                "<Error><Code>Rate.Limit_Exceeded-2</Code></Error>" to "Rate.Limit_Exceeded-2",
+                "<Error><Code>${"A".repeat(64)}</Code></Error>" to "A".repeat(64),
+                "<Error><Code>${"A".repeat(65)}</Code></Error>" to null,
+                "<Error><Code>Access Denied</Code></Error>" to null,
+                "<Error><Code>bundles/secret.json</Code></Error>" to null,
+                "<Error><Code></Code></Error>" to null,
+                "<Error><Message>No code</Message></Error><Code>Outside</Code>" to null,
+                "<Response><Code>NotAnError</Code></Response>" to null,
+                "Not Found" to null,
+            )
+
+        cases.forEach { (body, expected) -> assertEquals(body, expected, parseOriginErrorCode(body)) }
+    }
+
+    @Test
+    fun `origin error codes are read from the first 4 KB of the body only`() {
+        val limit = MAX_ORIGIN_ERROR_BODY_BYTES.toInt()
+        val code = "<Error><Code>AccessDenied</Code>"
+        val endsAtLimit = " ".repeat(limit - code.length) + code + "</Error>"
+        val closesPastLimit = " ".repeat(limit - code.length + 1) + code + "</Error>"
+
+        assertEquals("AccessDenied", readOriginErrorCode(endsAtLimit.toResponseBody()))
+        assertNull(readOriginErrorCode(closesPastLimit.toResponseBody()))
+        assertNull(readOriginErrorCode(null))
+    }
+
+    @Test
+    fun `downloadFile reports a destination it cannot write as a local storage failure`() =
+        runBlocking {
+            val server = ChunkedResponseServer("bundle-content".toByteArray())
+
+            try {
+                val notADirectory = temporaryFolder.newFile("not-a-directory")
+
+                val result =
+                    OkHttpDownloadService().downloadFile(
+                        fileUrl = URL("http://127.0.0.1:${server.port}/bundle"),
+                        destination = File(notADirectory, "index.android.bundle"),
+                        progressCallback = {},
+                    )
+
+                val error = (result as DownloadResult.Error).exception
+                assertTrue("Expected LocalStorageException, got $error", error is LocalStorageException)
+            } finally {
+                server.close()
+            }
+        }
+
     private class ChunkedResponseServer(
         private val payload: ByteArray,
+        private val statusLine: String = "200 OK",
     ) : AutoCloseable {
         private val serverSocket = ServerSocket(0, 1, InetAddress.getByName("127.0.0.1"))
         private val worker =
@@ -66,7 +154,7 @@ class OkHttpDownloadServiceTest {
             client.getOutputStream().use { output ->
                 output.write(
                     (
-                        "HTTP/1.1 200 OK\r\n" +
+                        "HTTP/1.1 $statusLine\r\n" +
                             "Content-Type: application/octet-stream\r\n" +
                             "Transfer-Encoding: chunked\r\n" +
                             "Connection: close\r\n" +

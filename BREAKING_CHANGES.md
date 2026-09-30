@@ -136,9 +136,10 @@ Additional route and handler changes:
   while mounting `handlers.client` exposes the complete client protocol.
   Insights ingestion is always available on the client handler and queries
   are always available on the admin handler, so the server-side Insights flag
-  and `queryAccess` are removed. React Native reporting is enabled by default
-  in both `HotUpdater.init` and `HotUpdater.wrap`; set `insights: false` to
-  send no events. Client authentication moves to the
+  and `queryAccess` are removed. React Native reports only with the
+  `insights()` client plugin from `@hot-updater/react-native/plugins/insights`
+  in `plugins` of `HotUpdater.init` or `HotUpdater.wrap`; an app without it
+  sends no events. Client authentication moves to the
   required top-level `clientAccess` policy.
 - `standaloneRepository.baseUrl` now identifies the exact admin root, such as
   `https://example.com/hot-updater/admin`. Its default and fixed request paths
@@ -295,8 +296,8 @@ The following v0 options are removed or renamed:
 
 - `storages` and deprecated `storagePlugins` become `storage`.
 - Insights ingestion and query routes are always available. React Native
-  clients send automatic events by default from both `HotUpdater.init` and
-  `HotUpdater.wrap`. Set `insights: false` to send no events.
+  clients send events only with the `insights()` client plugin in `plugins` of
+  `HotUpdater.init` or `HotUpdater.wrap`.
 - `features.clientAccessKeys: true` becomes
   `clientAccess: { type: "api-key" }`. API-key mode reads `x-api-key` by
   default. Set `headerName` to use another valid HTTP header; clients must send
@@ -448,9 +449,10 @@ toBundleId, ... }`.
 - `onNotifyAppReady` consumers and direct `HotUpdater.notifyAppReady()` callers
   must handle the new discriminated union.
 
-App-ready transition and Bundle adoption reporting use the configured
-`baseURL` and are enabled by default for both `HotUpdater.init` and
-`HotUpdater.wrap`. Set `insights: false` to send nothing. The server routes
+App-ready transition and Bundle adoption reporting comes from the
+`insights()` client plugin in `@hot-updater/react-native/plugins/insights`,
+passed in `plugins` of `HotUpdater.init` or `HotUpdater.wrap`. It uses the
+configured `baseURL`, and an app without it sends nothing. The server routes
 and backing model remain available regardless.
 
 The deprecated positional `HotUpdater.updateBundle(bundleId, fileUrl)` overload

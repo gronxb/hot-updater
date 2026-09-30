@@ -1,9 +1,9 @@
 import React, { useEffect, useState } from "react";
 
+import { handleNotifyAppReady } from "./appReady";
 import { checkForUpdate } from "./checkForUpdate";
 import { useEventCallback } from "./hooks/useEventCallback";
 import { getUpdateId, reload } from "./native";
-import { handleNotifyAppReady, reportNoChange } from "./notifyAppReadyInsights";
 import { useHotUpdaterStore } from "./store";
 import type {
   HotUpdaterFallbackComponentProps,
@@ -81,12 +81,8 @@ export function wrap(
         try {
           setUpdateStatus("CHECK_FOR_UPDATE");
 
-          const readiness = handleNotifyAppReady({
-            ...restOptions,
-            reportUnchanged: false,
-          });
+          const readiness = handleNotifyAppReady(restOptions);
           const updateInfo = await checkForUpdate({
-            insights: restOptions.insights,
             client: restOptions.client,
             updateStrategy: restOptions.updateStrategy,
             requestHeaders: restOptions.requestHeaders,
@@ -94,12 +90,10 @@ export function wrap(
             onError: restOptions.onError,
           });
 
-          const launch = await readiness;
+          await readiness;
           setMessage(updateInfo?.message ?? null);
 
           if (!updateInfo) {
-            if (launch?.status === "UNCHANGED")
-              void reportNoChange(restOptions);
             restOptions.onUpdateProcessCompleted?.({
               status: "UP_TO_DATE",
               shouldForceUpdate: false,

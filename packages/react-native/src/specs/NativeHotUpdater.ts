@@ -34,7 +34,11 @@ export interface Spec extends TurboModule {
    * Downloads and applies a bundle update.
    *
    * @param params - Update bundle parameters
-   * @returns Promise that resolves to true if successful
+   * @returns Promise that resolves, once the bundle is staged, to how it
+   *   arrived: `{ delivery, patchFallback }`. `delivery` is "patch" when a
+   *   bsdiff patch produced a file, "manifest" when only changed files were
+   *   downloaded, or "archive" for the full archive; `patchFallback` is true
+   *   when a patch was tried but the file or archive was downloaded instead.
    * @throws {HotUpdaterErrorCode} Rejects with one of the following error codes:
    *
    *   Parameter validation:
@@ -59,8 +63,20 @@ export interface Spec extends TurboModule {
    *
    *   Note: iOS normalizes rare signature/storage errors to SIGNATURE_VERIFICATION_FAILED
    *   or UNKNOWN_ERROR to keep the JS error surface small.
+   *
+   *   A rejection from the download or install also carries `userInfo`
+   *   `{ stage, reason, resource?, httpStatus?, transport?, originCode? }`:
+   *   `stage` is "download" (transfer and verification) or "install" (patch,
+   *   extract, move into place); `reason` is one of "network", "http",
+   *   "invalid_response", "hash_mismatch", "signature", "patch", "extract",
+   *   "storage", or "unknown"; `resource` is what was being fetched or
+   *   applied: "manifest", "file", "patch", or "archive". `httpStatus` is
+   *   present when `reason` is "http", with `originCode`, the storage
+   *   origin's XML error `<Code>` when the body names one. `transport` is
+   *   present when no response arrived: "timeout", "dns", "tls",
+   *   "connection", "offline", or "cancelled".
    */
-  updateBundle(params: UpdateBundleParams): Promise<boolean>;
+  updateBundle(params: UpdateBundleParams): Promise<UnsafeObject>;
 
   /** Accepts and durably advances the catalog high-water for a scope. */
   acceptReleaseCatalog(params: UnsafeObject): boolean;
@@ -98,6 +114,13 @@ export interface Spec extends TurboModule {
     toBundleId?: string;
     updateStrategy?: "fingerprint" | "appVersion";
     crashedBundleId?: string;
+    /**
+     * Android 11+: why the app's previous main process exited, the
+     * `ApplicationExitInfo` reason without its `REASON_` prefix (for
+     * example "CRASH", "ANR", "LOW_MEMORY", "USER_REQUESTED"), read once
+     * when the process starts. Absent on iOS and older Android.
+     */
+    previousProcessExit?: string;
   };
 
   /**
@@ -164,24 +187,22 @@ export interface Spec extends TurboModule {
   getCohort: () => string;
 
   /**
-   * Gets the persisted install id for this app installation.
+   * Gets the install id: a random id native creates once per app
+   * installation and keeps out of device backups.
    */
   getInstallId: () => string;
 
   /**
-   * Gets the persisted nullable user id associated with this installation.
+   * Reads a value from the SDK's persistent key-value store, which native
+   * keeps out of device backups. Returns null when the key has no value.
    */
-  getUserId: () => string | null;
+  getStorageItem: (key: string) => string | null;
 
   /**
-   * Gets the persisted nullable username associated with this installation.
+   * Writes a value to the SDK's persistent key-value store; null removes the
+   * key.
    */
-  getUsername: () => string | null;
-
-  /**
-   * Persists nullable user identity fields associated with this installation.
-   */
-  setUser: (userId: string | null, username: string | null) => void;
+  setStorageItem: (key: string, value: string | null) => void;
 
   // EventEmitter
   addListener(eventName: string): void;

@@ -778,7 +778,6 @@ describe("Detox scenario contract", () => {
         "@hot-updater/react-native": {
           HotUpdater: {
             init: () => {},
-            setUser: () => {},
             getAppVersion: () => "1.0.0",
             getBundleId: () => updateId,
             getChannel: () => "production",
@@ -790,6 +789,13 @@ describe("Detox scenario contract", () => {
             getMinBundleId: () => minBundleId,
             isChannelSwitched: () => false,
           },
+        },
+        "@hot-updater/react-native/plugins/insights": {
+          insights: () => ({
+            id: "insights",
+            setup: () => {},
+            setUser: () => {},
+          }),
         },
         "react-native": {},
         valtio: { proxy: (value: unknown) => value },
@@ -1017,9 +1023,18 @@ describe("Detox scenario contract", () => {
 
     expect(exampleAppSource).toContain("./src/e2eApp");
     expect(e2eRuntimeSource).toContain("../e2eRuntimeConfig");
-    expect(e2eRuntimeSource).toContain("insights: true");
-    expect(e2eRuntimeSource).toContain('userId: "detox-e2e"');
-    expect(e2eRuntimeSource).toContain('username: "hot-updater-e2e"');
+    // Console Insights QA needs the Insights client plugin and finds the
+    // installation by this user ID.
+    expect(e2eRuntimeSource).toContain(
+      'import { insights } from "@hot-updater/react-native/plugins/insights";',
+    );
+    expect(e2eRuntimeSource).toContain("plugins: [analytics],");
+    expect(e2eRuntimeSource).toContain(
+      'analytics.setUser({ userId: "detox-e2e" });',
+    );
+    expect(e2eRuntimeSource).not.toContain("insights: true");
+    expect(e2eRuntimeSource).not.toContain("HotUpdater.setUser");
+    expect(e2eRuntimeSource).not.toContain("username");
     expect(exampleAppSource).not.toContain("react-native-launch-arguments");
     expect(exampleAppSource).not.toContain('from "@env"');
     expect(runtimeConfigSource).toContain("react-native-launch-arguments");
@@ -1724,6 +1739,26 @@ describe("Detox scenario contract", () => {
 
     expect(clearIosBody).toContain("fixtureSession.storePath = null");
     expect(clearIosBody).toContain("ios local bundle state reset");
+  });
+
+  it("starts each iOS scenario with a new install id and empty plugin storage", async () => {
+    // Given: iOS keeps the install id and client plugin storage in Application
+    // Support, and the Insights plugin skips a same-day launch it already
+    // reported. Android's `pm clear` resets both.
+    const controllerSource = await fs.readFile(
+      detoxControlServerControllerPath,
+      "utf8",
+    );
+    const clearIosBody = controllerSource.slice(
+      controllerSource.indexOf("async function clearIosLocalBundleState"),
+      controllerSource.indexOf("function ensureAndroidFilesDir"),
+    );
+
+    // Then: the local reset clears that directory except the Release Catalog
+    // cache, and fails when the plugin storage survives.
+    expect(clearIosBody).toContain('"Library/Application Support/HotUpdater"');
+    expect(clearIosBody).toContain('entry === "ReleaseCatalogCache"');
+    expect(clearIosBody).toContain('path.join(noBackupDir, "storage.json")');
   });
 
   it("keeps launch status assertions on dedicated screens", async () => {

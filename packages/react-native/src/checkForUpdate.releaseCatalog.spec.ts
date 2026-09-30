@@ -7,7 +7,9 @@ import {
 } from "@hot-updater/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import type { HotUpdaterClientHooks } from "./clientPlugin";
 import type { HotUpdaterHttpClient } from "./httpClient";
+import { InvalidUpdateResponseError, UpdateHttpError } from "./updateError";
 
 const MINIMUM_RELEASE_ID = "00000000-0000-7000-8000-000000000001";
 const RELEASE_ID = "00000000-0000-7000-8000-000000000002";
@@ -23,31 +25,38 @@ const SCOPE_KEY = createReleaseCatalogScopeKey({
   strategy: "APP_VERSION",
 });
 
-const mocks = vi.hoisted(() => ({
-  addListener: vi.fn(() => () => {}),
-  acceptReleaseCatalog: vi.fn(() => true),
-  commitReleaseSelection: vi.fn(async () => true),
-  getActiveUpdateState: vi.fn(() => ({
-    activeSelection: null as PersistedSelectionReceipt | null,
-    highestSeenCatalogs: {},
-    stableSelection: null as PersistedSelectionReceipt | null,
-    verificationPending: false,
-  })),
-  getAppVersion: vi.fn(() => "1.2"),
-  getBundleId: vi.fn(() => CURRENT_BUNDLE_ID),
-  getChannel: vi.fn(() => CHANNEL),
-  getCohort: vi.fn(() => "123"),
-  getCrashHistory: vi.fn(() => []),
-  getDefaultChannel: vi.fn(() => CHANNEL),
-  getFingerprintHash: vi.fn(() => null),
-  getInstallId: vi.fn(() => "install-id"),
-  getMinBundleId: vi.fn(() => MINIMUM_RELEASE_ID),
-  getPersistedUserIdentity: vi.fn(() => ({})),
-  isChannelSwitched: vi.fn(() => false),
-  isReleaseSelectionCurrent: vi.fn(() => true),
-  resetChannel: vi.fn(),
-  updateBundle: vi.fn(async () => true),
-}));
+const mocks = vi.hoisted(() => {
+  Reflect.set(globalThis, "HotUpdater", { SDK_VERSION: "test-sdk-version" });
+  return {
+    addListener: vi.fn(() => () => {}),
+    acceptReleaseCatalog: vi.fn(() => true),
+    commitReleaseSelection: vi.fn(async () => true),
+    getActiveUpdateState: vi.fn(() => ({
+      activeSelection: null as PersistedSelectionReceipt | null,
+      highestSeenCatalogs: {},
+      stableSelection: null as PersistedSelectionReceipt | null,
+      verificationPending: false,
+    })),
+    getAppVersion: vi.fn(() => "1.2"),
+    getBundleId: vi.fn(() => CURRENT_BUNDLE_ID),
+    getChannel: vi.fn(() => CHANNEL),
+    getCohort: vi.fn(() => "123"),
+    getCrashHistory: vi.fn(() => []),
+    getDefaultChannel: vi.fn(() => CHANNEL),
+    getFingerprintHash: vi.fn(() => null),
+    getInstallId: vi.fn(() => "install-id"),
+    getMinBundleId: vi.fn(() => MINIMUM_RELEASE_ID),
+    isChannelSwitched: vi.fn(() => false),
+    isReleaseSelectionCurrent: vi.fn(() => true),
+    resetChannel: vi.fn(),
+    stageBundle: vi.fn(
+      async (): Promise<{
+        delivery: "patch" | "manifest" | "archive";
+        patchFallback: boolean;
+      } | null> => ({ delivery: "manifest", patchFallback: false }),
+    ),
+  };
+});
 
 vi.mock("react-native", () => ({ Platform: { OS: "ios" } }));
 
@@ -86,16 +95,47 @@ const createClient = (catalog = createCatalog()) => {
     archiveUrl: "https://updates.example.com/bundle.tar.br",
   };
   const resolveArtifact = vi.fn(async () => artifact);
-  const sendInsightsEvent = vi.fn(async () => undefined);
   const session = {
     fetchReleaseCatalog,
     resolveArtifact,
-    sendInsightsEvent,
   };
   const client: HotUpdaterHttpClient = {
     createSession: vi.fn(async () => session),
   };
-  return { client, fetchReleaseCatalog, resolveArtifact, sendInsightsEvent };
+  return { client, fetchReleaseCatalog, resolveArtifact };
+};
+
+type PluginEvent = {
+  [K in keyof HotUpdaterClientHooks]-?: [
+    K,
+    Parameters<NonNullable<HotUpdaterClientHooks[K]>>[0],
+  ];
+}[keyof HotUpdaterClientHooks];
+
+/** Records what checks report to plugins, in order. */
+const recordPluginEvents = async () => {
+  const { configurePlugins } = await import("./pluginHost");
+  const events: PluginEvent[] = [];
+  configurePlugins(
+    [
+      {
+        id: "recorder",
+        setup: () => ({
+          onUpdateCheck: (result) => {
+            events.push(["onUpdateCheck", result]);
+          },
+          onBundleDownloaded: (info) => {
+            events.push(["onBundleDownloaded", info]);
+          },
+          onUpdateError: (error) => {
+            events.push(["onUpdateError", error]);
+          },
+        }),
+      },
+    ],
+    { baseURL: "https://updates.example.com" },
+  );
+  return events;
 };
 
 describe("checkForUpdate Release catalog protocol", () => {
@@ -112,59 +152,84 @@ describe("checkForUpdate Release catalog protocol", () => {
     });
     mocks.isReleaseSelectionCurrent.mockReturnValue(true);
     mocks.commitReleaseSelection.mockResolvedValue(true);
-    mocks.updateBundle.mockResolvedValue(true);
+    mocks.stageBundle.mockResolvedValue({
+      delivery: "manifest",
+      patchFallback: false,
+    });
   });
 
-  it("reports an optional download only after staging, without treating the target as running", async () => {
+  it("reports the check, then the download only after staging", async () => {
     const { checkForUpdate } = await import("./checkForUpdate");
-    const { client, sendInsightsEvent } = createClient();
-    let complete!: (success: boolean) => void;
-    mocks.updateBundle.mockImplementationOnce(
+    const events = await recordPluginEvents();
+    const { client } = createClient();
+    let complete!: (delivery: {
+      delivery: "patch" | "manifest" | "archive";
+      patchFallback: boolean;
+    }) => void;
+    mocks.stageBundle.mockImplementationOnce(
       () =>
-        new Promise<boolean>((resolve) => {
+        new Promise((resolve) => {
           complete = resolve;
         }),
     );
     const update = await checkForUpdate({
       client,
-      insights: true,
       updateStrategy: "appVersion",
     });
     expect(update?.shouldForceUpdate).toBe(false);
+    expect(events).toEqual([
+      [
+        "onUpdateCheck",
+        {
+          status: "UPDATE_AVAILABLE",
+          channel: CHANNEL,
+          fromBundleId: CURRENT_BUNDLE_ID,
+          fromReleaseId: null,
+          toBundleId: TARGET_BUNDLE_ID,
+          toReleaseId: RELEASE_ID,
+          transitionKind: "INSTALL",
+          updateStatus: "UPDATE",
+          shouldForceUpdate: false,
+          updateStrategy: "appVersion",
+        },
+      ],
+    ]);
     const pending = update!.updateBundle();
-    await vi.waitFor(() => expect(mocks.updateBundle).toHaveBeenCalledOnce());
-    expect(sendInsightsEvent).not.toHaveBeenCalled();
-    complete(true);
+    await vi.waitFor(() => expect(mocks.stageBundle).toHaveBeenCalledOnce());
+    expect(events).toHaveLength(1);
+    complete({ delivery: "patch", patchFallback: true });
     await expect(pending).resolves.toBe(true);
-    expect(sendInsightsEvent).toHaveBeenCalledExactlyOnceWith(
-      expect.objectContaining({
-        type: "UPDATE_DOWNLOADED",
+    expect(events[1]).toEqual([
+      "onBundleDownloaded",
+      {
+        channel: CHANNEL,
         fromBundleId: CURRENT_BUNDLE_ID,
-        toBundleId: TARGET_BUNDLE_ID,
         fromReleaseId: null,
+        toBundleId: TARGET_BUNDLE_ID,
         toReleaseId: RELEASE_ID,
         updateStrategy: "appVersion",
-      }),
-    );
-    await update!.updateBundle();
-    expect(sendInsightsEvent).toHaveBeenCalledOnce();
+        delivery: "patch",
+        patchFallback: true,
+      },
+    ]);
   });
 
-  it.each([false, "failure"])(
-    "does not report a download when staging returns %s",
+  it.each(["nothing new", "failure"])(
+    "does not report a download when staging brings %s",
     async (result) => {
       const { checkForUpdate } = await import("./checkForUpdate");
-      const { client, sendInsightsEvent } = createClient();
-      if (result === false) mocks.updateBundle.mockResolvedValueOnce(false);
+      const events = await recordPluginEvents();
+      const { client } = createClient();
+      if (result === "nothing new")
+        mocks.stageBundle.mockResolvedValueOnce(null);
       else
-        mocks.updateBundle.mockRejectedValueOnce(new Error("download failed"));
+        mocks.stageBundle.mockRejectedValueOnce(new Error("download failed"));
       const update = await checkForUpdate({
         client,
-        insights: true,
         updateStrategy: "appVersion",
       });
       await update!.updateBundle().catch(() => false);
-      expect(sendInsightsEvent).not.toHaveBeenCalled();
+      expect(events.map(([name]) => name)).not.toContain("onBundleDownloaded");
     },
   );
 
@@ -201,7 +266,7 @@ describe("checkForUpdate Release catalog protocol", () => {
       requestTimeout: undefined,
       targetBundleId: TARGET_BUNDLE_ID,
     });
-    expect(mocks.updateBundle).toHaveBeenCalledWith(
+    expect(mocks.stageBundle).toHaveBeenCalledWith(
       expect.objectContaining({
         bundleId: TARGET_BUNDLE_ID,
         archiveUrl: "https://updates.example.com/bundle.tar.br",
@@ -242,8 +307,8 @@ describe("checkForUpdate Release catalog protocol", () => {
         },
       ],
     });
-    const { client, resolveArtifact, sendInsightsEvent } =
-      createClient(forceCatalog);
+    const events = await recordPluginEvents();
+    const { client, resolveArtifact } = createClient(forceCatalog);
 
     const result = await checkForUpdate({
       client,
@@ -257,8 +322,8 @@ describe("checkForUpdate Release catalog protocol", () => {
     });
     await expect(result?.updateBundle()).resolves.toBe(true);
     expect(resolveArtifact).not.toHaveBeenCalled();
-    expect(mocks.updateBundle).not.toHaveBeenCalled();
-    expect(sendInsightsEvent).not.toHaveBeenCalled();
+    expect(mocks.stageBundle).not.toHaveBeenCalled();
+    expect(events.map(([name]) => name)).not.toContain("onBundleDownloaded");
     expect(mocks.commitReleaseSelection).toHaveBeenCalledWith({
       guard: expect.objectContaining({ generation: 2, scopeKey: SCOPE_KEY }),
       selection: expect.objectContaining({
@@ -268,7 +333,7 @@ describe("checkForUpdate Release catalog protocol", () => {
     });
   });
 
-  it("reports same-file selection as UNCHANGED with the selected release identity", async () => {
+  it("reports a same-file adoption as UNCHANGED with the adopted Release", async () => {
     const active: PersistedSelectionReceipt = {
       catalogId: CATALOG_ID,
       bundleId: TARGET_BUNDLE_ID,
@@ -288,25 +353,25 @@ describe("checkForUpdate Release catalog protocol", () => {
       verificationPending: false,
     });
     const { checkForUpdate } = await import("./checkForUpdate");
-    const { client, sendInsightsEvent } = createClient();
+    const events = await recordPluginEvents();
+    const { client } = createClient();
 
     const result = await checkForUpdate({
-      insights: true,
       client,
       updateStrategy: "appVersion",
     });
     await result?.updateBundle();
 
-    expect(sendInsightsEvent).toHaveBeenCalledWith(
-      expect.objectContaining({
-        fromBundleId: null,
-        updateStrategy: null,
-        fromReleaseId: MINIMUM_RELEASE_ID,
-        toBundleId: TARGET_BUNDLE_ID,
-        toReleaseId: RELEASE_ID,
-        type: "UNCHANGED",
-      }),
-    );
+    expect(events.at(-1)).toEqual([
+      "onUpdateCheck",
+      {
+        status: "UNCHANGED",
+        channel: CHANNEL,
+        bundleId: TARGET_BUNDLE_ID,
+        releaseId: RELEASE_ID,
+        previousReleaseId: MINIMUM_RELEASE_ID,
+      },
+    ]);
   });
 
   it("selects a lower-id Release when explicitly switching scopes", async () => {
@@ -385,7 +450,7 @@ describe("checkForUpdate Release catalog protocol", () => {
     });
     await expect(result?.updateBundle()).resolves.toBe(true);
     expect(resolveArtifact).not.toHaveBeenCalled();
-    expect(mocks.updateBundle).not.toHaveBeenCalled();
+    expect(mocks.stageBundle).not.toHaveBeenCalled();
     expect(mocks.commitReleaseSelection).toHaveBeenCalledWith({
       guard: expect.objectContaining({
         catalogHash: CATALOG_HASH,
@@ -416,7 +481,7 @@ describe("checkForUpdate Release catalog protocol", () => {
     await expect(result?.updateBundle()).rejects.toBeInstanceOf(
       StaleReleaseCatalogError,
     );
-    expect(mocks.updateBundle).not.toHaveBeenCalled();
+    expect(mocks.stageBundle).not.toHaveBeenCalled();
   });
 
   it("installs an older enabled Release as a forced rollback", async () => {
@@ -466,7 +531,7 @@ describe("checkForUpdate Release catalog protocol", () => {
       transitionKind: "INSTALL",
     });
     await expect(result?.updateBundle()).resolves.toBe(true);
-    expect(mocks.updateBundle).toHaveBeenCalledWith(
+    expect(mocks.stageBundle).toHaveBeenCalledWith(
       expect.objectContaining({
         bundleId: TARGET_BUNDLE_ID,
         status: "ROLLBACK",
@@ -573,7 +638,7 @@ describe("checkForUpdate Release catalog protocol", () => {
         }),
       );
       expect(resolveArtifact).not.toHaveBeenCalled();
-      expect(mocks.updateBundle).not.toHaveBeenCalled();
+      expect(mocks.stageBundle).not.toHaveBeenCalled();
     },
   );
 
@@ -629,7 +694,7 @@ describe("checkForUpdate Release catalog protocol", () => {
     );
     expect(mocks.acceptReleaseCatalog).not.toHaveBeenCalled();
     expect(mocks.commitReleaseSelection).not.toHaveBeenCalled();
-    expect(mocks.updateBundle).not.toHaveBeenCalled();
+    expect(mocks.stageBundle).not.toHaveBeenCalled();
   });
 
   it("rejects an unexpected Catalog identity before accepting catalog state", async () => {
@@ -668,5 +733,234 @@ describe("checkForUpdate Release catalog protocol", () => {
       }),
     );
     expect(mocks.acceptReleaseCatalog).not.toHaveBeenCalled();
+  });
+  it("reports a check that found nothing to install as UNCHANGED", async () => {
+    mocks.getBundleId.mockReturnValueOnce(MINIMUM_RELEASE_ID);
+    const { checkForUpdate } = await import("./checkForUpdate");
+    const events = await recordPluginEvents();
+    const { client } = createClient(
+      createCatalog({ releases: [], rollbackReleases: [] }),
+    );
+
+    await expect(
+      checkForUpdate({ client, updateStrategy: "appVersion" }),
+    ).resolves.toBeNull();
+
+    expect(events).toEqual([
+      [
+        "onUpdateCheck",
+        {
+          status: "UNCHANGED",
+          channel: CHANNEL,
+          bundleId: MINIMUM_RELEASE_ID,
+          releaseId: null,
+          previousReleaseId: null,
+        },
+      ],
+    ]);
+  });
+
+  it("treats a scope without a catalog as no update, not a failure", async () => {
+    const onError = vi.fn();
+    const { checkForUpdate } = await import("./checkForUpdate");
+    const events = await recordPluginEvents();
+    const { client, fetchReleaseCatalog } = createClient();
+    fetchReleaseCatalog.mockResolvedValueOnce(null as never);
+
+    await expect(
+      checkForUpdate({ client, onError, updateStrategy: "appVersion" }),
+    ).resolves.toBeNull();
+
+    expect(onError).not.toHaveBeenCalled();
+    expect(mocks.acceptReleaseCatalog).not.toHaveBeenCalled();
+    expect(events).toEqual([
+      [
+        "onUpdateCheck",
+        expect.objectContaining({ status: "UNCHANGED", channel: CHANNEL }),
+      ],
+    ]);
+  });
+
+  it.each([
+    {
+      label: "an HTTP status",
+      error: () => new UpdateHttpError(503, "Service Unavailable"),
+      expected: { reason: "http", httpStatus: 503 },
+    },
+    {
+      label: "no response",
+      error: () => new TypeError("Network request failed"),
+      expected: { reason: "network" },
+    },
+    {
+      label: "a 404 without the no-catalog mark",
+      error: () => new UpdateHttpError(404, "Not Found"),
+      expected: { reason: "http", httpStatus: 404 },
+    },
+    {
+      label: "a timeout",
+      error: () => new Error("Request timed out"),
+      expected: { reason: "network", transport: "timeout" },
+    },
+    {
+      label: "an invalid catalog",
+      error: () =>
+        new InvalidUpdateResponseError("Received an invalid Release catalog"),
+      expected: { reason: "invalid_response" },
+    },
+  ])("reports a check failed by $label", async ({ error, expected }) => {
+    const { checkForUpdate } = await import("./checkForUpdate");
+    const events = await recordPluginEvents();
+    const { client, fetchReleaseCatalog } = createClient();
+    const cause = error();
+    fetchReleaseCatalog.mockRejectedValueOnce(cause);
+
+    await expect(
+      checkForUpdate({ client, updateStrategy: "appVersion" }),
+    ).resolves.toBeNull();
+
+    expect(events).toEqual([
+      [
+        "onUpdateError",
+        {
+          stage: "check",
+          resource: "catalog",
+          ...expected,
+          channel: CHANNEL,
+          bundleId: CURRENT_BUNDLE_ID,
+          releaseId: null,
+          updateStrategy: "appVersion",
+          cause,
+        },
+      ],
+    ]);
+  });
+
+  it.each([
+    {
+      label: "an artifact request answered 500",
+      fail: (resolveArtifact: ReturnType<typeof vi.fn>) =>
+        resolveArtifact.mockRejectedValueOnce(
+          new UpdateHttpError(500, "Internal Server Error"),
+        ),
+      expected: {
+        stage: "download",
+        reason: "http",
+        resource: "artifact",
+        httpStatus: 500,
+      },
+    },
+    {
+      label: "native extraction",
+      fail: () =>
+        mocks.stageBundle.mockRejectedValueOnce(
+          Object.assign(new Error("Failed to extract archive"), {
+            code: "UNKNOWN_ERROR",
+            userInfo: { reason: "extract", stage: "install" },
+          }),
+        ),
+      expected: { stage: "install", reason: "extract" },
+    },
+    {
+      label: "a native HTTP status",
+      fail: () =>
+        mocks.stageBundle.mockRejectedValueOnce(
+          Object.assign(new Error("Failed to download bundle"), {
+            code: "DOWNLOAD_FAILED",
+            userInfo: {
+              httpStatus: 403,
+              originCode: "ExpiredToken",
+              reason: "http",
+              resource: "archive",
+              stage: "download",
+            },
+          }),
+        ),
+      expected: {
+        stage: "download",
+        reason: "http",
+        resource: "archive",
+        httpStatus: 403,
+        originCode: "ExpiredToken",
+      },
+    },
+    {
+      label: "a native connection loss",
+      fail: () =>
+        mocks.stageBundle.mockRejectedValueOnce(
+          Object.assign(new Error("The network connection was lost."), {
+            code: "DOWNLOAD_FAILED",
+            userInfo: {
+              reason: "network",
+              resource: "file",
+              stage: "download",
+              transport: "connection",
+            },
+          }),
+        ),
+      expected: {
+        stage: "download",
+        reason: "network",
+        resource: "file",
+        transport: "connection",
+      },
+    },
+  ])(
+    "reports an install failed by $label and rethrows it",
+    async ({ fail, expected }) => {
+      const { checkForUpdate } = await import("./checkForUpdate");
+      const events = await recordPluginEvents();
+      const { client, resolveArtifact } = createClient();
+      fail(resolveArtifact);
+      const result = await checkForUpdate({
+        client,
+        updateStrategy: "appVersion",
+      });
+
+      await expect(result!.updateBundle()).rejects.toThrow();
+
+      expect(events.filter(([name]) => name === "onUpdateError")).toEqual([
+        [
+          "onUpdateError",
+          expect.objectContaining({
+            ...expected,
+            channel: CHANNEL,
+            bundleId: CURRENT_BUNDLE_ID,
+            targetBundleId: TARGET_BUNDLE_ID,
+            targetReleaseId: RELEASE_ID,
+            updateStrategy: "appVersion",
+          }),
+        ],
+      ]);
+    },
+  );
+
+  it.each([
+    {
+      label: "a native rejection without a failure class",
+      fail: () =>
+        mocks.stageBundle.mockRejectedValueOnce(
+          Object.assign(new Error("Release catalog selection is stale"), {
+            code: "UNKNOWN_ERROR",
+          }),
+        ),
+    },
+    {
+      label: "a selection that became stale",
+      fail: () => mocks.isReleaseSelectionCurrent.mockReturnValueOnce(false),
+    },
+  ])("does not report $label as an update failure", async ({ fail }) => {
+    const { checkForUpdate } = await import("./checkForUpdate");
+    const events = await recordPluginEvents();
+    const { client } = createClient();
+    const result = await checkForUpdate({
+      client,
+      updateStrategy: "appVersion",
+    });
+    fail();
+
+    await expect(result!.updateBundle()).rejects.toThrow();
+
+    expect(events.map(([name]) => name)).toEqual(["onUpdateCheck"]);
   });
 });

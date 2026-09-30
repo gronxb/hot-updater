@@ -62,13 +62,11 @@ abstract class HotUpdaterSpec internal constructor(
 
     abstract fun getInstallId(): String
 
-    abstract fun getUserId(): String?
+    abstract fun getStorageItem(key: String): String?
 
-    abstract fun getUsername(): String?
-
-    abstract fun setUser(
-        userId: String?,
-        username: String?,
+    abstract fun setStorageItem(
+        key: String,
+        value: String?,
     )
 
     abstract fun resetChannel(promise: Promise)

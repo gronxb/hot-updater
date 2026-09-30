@@ -40,24 +40,30 @@ React Native app. When the server runs the `apiKeys()` plugin, send only the
 API key, in `x-api-key` as shown above or in the plugin's configured
 `headerName`.
 
-Automatic app-ready transition and Bundle adoption Insights are enabled by
-default. Set `insights: false` to send no Insights events, for example when
-the server runs without the `insights()` plugin. The server records them when
-it runs `insights()`; without it, the events route answers 204 and stores
-nothing, so the app needs no change, and the server logs a warning on the
-first event it drops. See
-[Insights](/docs/guides/insights) for report contents, optional user identity,
-and verification.
+To report launches, downloads, and update results to
+[Insights](/docs/guides/insights), add the
+[Insights plugin](/docs/react-native-api/insights) to `plugins`:
 
-Debug builds, where `__DEV__` is `true`, send no Insights events unless you
-set `insights: { debug: true }`, so development sessions stay out of
-production Insights. In a release build, `{ debug: true }` behaves like
-`true`. A report that fails with a network error, timeout, `429`, or `5xx` is
-retried in the background without delaying startup; see
-[Insights](/docs/guides/insights#configure-reporting).
+```tsx
+import { HotUpdater } from "@hot-updater/react-native";
+import { insights } from "@hot-updater/react-native/plugins/insights"; // [!code ++]
+
+HotUpdater.init({
+  baseURL: "<your-update-server-url>",
+  requestHeaders: {
+    "x-api-key": "<your-api-key>",
+  },
+  plugins: [insights()], // [!code ++]
+});
+```
+
+Without it, the app sends no Insights reports. `plugins` takes any
+[client plugin](/docs/react-native-api/client-plugins); plugin ids must be
+unique, and `init` throws when two plugins share one.
 
 `baseURL` can also be resolved at runtime. The function may return a string or
-a promise, and Hot Updater calls it before each update check.
+a promise, and Hot Updater calls it before each update check and plugin
+request.
 
 ```tsx
 HotUpdater.init({
@@ -97,14 +103,14 @@ async function prepareUpdate() {
 
 ## Configuration reference
 
-| Option             | Type                                          | Required | Description                                                                                    |
-| ------------------ | --------------------------------------------- | -------- | ---------------------------------------------------------------------------------------------- |
-| `baseURL`          | `string \| (() => string \| Promise<string>)` | Yes      | Your client handler URL or runtime URL function                                                |
-| `insights`         | `boolean \| { debug?: boolean }`              | No       | Send app-ready and Bundle adoption events (default: true; debug builds need `{ debug: true }`) |
-| `requestHeaders`   | `Record<string, string>`                      | No       | Shared headers used by update checks and app-ready notifications                               |
-| `requestTimeout`   | `number`                                      | No       | Request timeout in milliseconds (default: 5000)                                                |
-| `onNotifyAppReady` | `(result: NotifyAppReadyResult) => void`      | No       | Callback invoked after native launch verification finishes                                     |
-| `onError`          | `(error) => void`                             | No       | Default error handler for initialization and update checks                                     |
+| Option             | Type                                          | Required | Description                                                                          |
+| ------------------ | --------------------------------------------- | -------- | ------------------------------------------------------------------------------------ |
+| `baseURL`          | `string \| (() => string \| Promise<string>)` | Yes      | Your client handler URL or runtime URL function                                      |
+| `plugins`          | `HotUpdaterClientPlugin[]`                    | No       | [Client plugins](/docs/react-native-api/client-plugins), such as `insights()`        |
+| `requestHeaders`   | `Record<string, string>`                      | No       | Shared headers used by update checks and plugin requests                             |
+| `requestTimeout`   | `number`                                      | No       | Request timeout in milliseconds (default: 5000)                                      |
+| `onNotifyAppReady` | `(result: NotifyAppReadyResult) => void`      | No       | Callback invoked after native launch verification finishes                           |
+| `onError`          | `(error) => void`                             | No       | Default error handler for initialization, update checks, and plugin errors           |
 
 `baseURL` is the only React Native transport configuration. A GraphQL, RPC,
 or other custom backend must expose the Hot Updater HTTP protocol through an

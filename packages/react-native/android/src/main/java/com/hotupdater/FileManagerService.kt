@@ -2,6 +2,51 @@ package com.hotupdater
 
 import android.content.Context
 import java.io.File
+import java.io.FileOutputStream
+import java.io.IOException
+import java.io.OutputStream
+
+/**
+ * An I/O failure writing to local storage, as opposed to a failure reading or
+ * decoding the data being written.
+ */
+class LocalStorageException(
+    cause: IOException,
+) : IOException(cause.message, cause)
+
+/**
+ * An output stream to a local file whose I/O failures, including opening the
+ * file, surface as [LocalStorageException].
+ */
+internal class LocalStorageOutputStream private constructor(
+    private val output: OutputStream,
+) : OutputStream() {
+    companion object {
+        fun open(file: File): LocalStorageOutputStream = LocalStorageOutputStream(storageOperation { FileOutputStream(file) })
+    }
+
+    override fun write(byte: Int) = storageOperation { output.write(byte) }
+
+    override fun write(
+        buffer: ByteArray,
+        offset: Int,
+        length: Int,
+    ) = storageOperation { output.write(buffer, offset, length) }
+
+    override fun flush() = storageOperation { output.flush() }
+
+    override fun close() = storageOperation { output.close() }
+}
+
+/** Runs a local file operation, reporting its I/O failure as [LocalStorageException]. */
+internal inline fun <T> storageOperation(block: () -> T): T =
+    try {
+        block()
+    } catch (error: LocalStorageException) {
+        throw error
+    } catch (error: IOException) {
+        throw LocalStorageException(error)
+    }
 
 /**
  * Interface for file system operations

@@ -17,7 +17,8 @@ createHotUpdater({
 behind framework authentication, or call the Insights provider from an
 authenticated server surface, as the Console does. API keys authorize client
 requests and ingestion, not admin queries. React Native sends lifecycle reports
-by default; `HotUpdater.init({ insights: false })` opts out.
+through the `insights()` client plugin
+(`@hot-updater/react-native/plugins/insights`); an app without it sends none.
 
 ## Where Insights runs
 
@@ -156,7 +157,7 @@ pending fields are not duplicated there.
 DynamoDB and Firestore retain their native full latest-event copies for responses;
 DynamoDB also maintains compact count items in the existing table. These are
 private access paths, not additional public database models or author-facing
-helpers. Event `username`, `cohort`, `update_strategy`,
+helpers. Event `cohort`, `update_strategy`,
 `fingerprint_hash`, and `sdk_version` live in typed `metadata`, using the existing
 Bundle JSON conventions. SDK request and Console response formats are unchanged.
 

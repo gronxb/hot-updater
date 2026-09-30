@@ -29,6 +29,47 @@ class IncompleteDownloadException(
 ) : IOException("Download incomplete: received $actualSize bytes, expected $expectedSize bytes")
 
 /**
+ * The server answered with a non-2xx status. [originCode] is the storage
+ * origin's XML error `<Code>` (S3, R2, or GCS style) when the body names one.
+ */
+class HttpStatusException(
+    val statusCode: Int,
+    statusMessage: String,
+    val originCode: String? = null,
+) : Exception("HTTP error $statusCode: $statusMessage")
+
+/** How much of an error body is read to find a storage origin's error code. */
+internal const val MAX_ORIGIN_ERROR_BODY_BYTES = 4 * 1024L
+
+private val ORIGIN_ERROR_CODE = Regex("<Error(?:\\s[^>]*)?>(?:(?!</Error>).)*?<Code>([^<]*)</Code>", RegexOption.DOT_MATCHES_ALL)
+private val ORIGIN_CODE_VALUE = Regex("[A-Za-z0-9._-]{1,64}")
+
+/**
+ * Reads the `<Code>` of a storage origin's XML error, as in
+ * `<Error><Code>AccessDenied</Code>...`, from at most the first 4 KB of
+ * [body]. Only a 1 to 64 character code of letters, digits, `.`, `_`, and `-`
+ * is kept, so no key, resource, or message text is ever returned.
+ */
+internal fun readOriginErrorCode(body: ResponseBody?): String? =
+    try {
+        body?.source()?.let { source ->
+            source.request(MAX_ORIGIN_ERROR_BODY_BYTES)
+            val prefix = source.buffer.readByteArray(minOf(source.buffer.size, MAX_ORIGIN_ERROR_BODY_BYTES))
+            parseOriginErrorCode(String(prefix, Charsets.UTF_8))
+        }
+    } catch (_: Exception) {
+        null
+    }
+
+internal fun parseOriginErrorCode(body: String): String? =
+    ORIGIN_ERROR_CODE
+        .find(body)
+        ?.groupValues
+        ?.get(1)
+        ?.trim()
+        ?.takeIf { ORIGIN_CODE_VALUE.matches(it) }
+
+/**
  * Result wrapper for download operations
  */
 sealed class DownloadResult {
@@ -231,10 +272,10 @@ class OkHttpDownloadService : DownloadService {
             }
 
             if (!response.isSuccessful) {
-                val errorMsg = "HTTP error ${response.code}: ${response.message}"
-                Log.d(TAG, errorMsg)
+                val error = HttpStatusException(response.code, response.message, readOriginErrorCode(response.body))
+                Log.d(TAG, "HTTP error ${response.code}: ${response.message}")
                 response.close()
-                return@withContext DownloadResult.Error(Exception(errorMsg))
+                return@withContext DownloadResult.Error(error)
             }
 
             val body = response.body
@@ -261,9 +302,10 @@ class OkHttpDownloadService : DownloadService {
                         progressCallback.invoke(progress)
                     }
 
-                // Write to file
+                // Write to file. A local write failure surfaces as LocalStorageException,
+                // so it is not mistaken for a network failure.
                 progressBody.source().use { source ->
-                    destination.outputStream().use { output ->
+                    LocalStorageOutputStream.open(destination).use { output ->
                         val buffer = ByteArray(8 * 1024)
                         var bytesRead: Int
 

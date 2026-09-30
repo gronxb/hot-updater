@@ -20,9 +20,8 @@ vi.mock("./checkForUpdate", () => ({
   checkForUpdate: mocks.checkForUpdate,
 }));
 
-vi.mock("./notifyAppReadyInsights", () => ({
+vi.mock("./appReady", () => ({
   handleNotifyAppReady: vi.fn().mockResolvedValue({ status: "UNCHANGED" }),
-  reportNoChange: vi.fn(),
 }));
 
 vi.mock("./native", () => ({

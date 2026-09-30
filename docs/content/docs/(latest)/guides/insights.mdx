@@ -1,15 +1,19 @@
 ---
 title: "Insights"
-description: "Configure app reporting, verify update adoption, and diagnose a reporting installation."
+description: "Add app reporting, verify update adoption, and diagnose a reporting installation."
 icon: ChartNoAxesCombined
 ---
 
 ## Monitor app activity
 
 Insights shows activity received from app installations: the last reported
-update, completed downloads waiting to apply, successful applications, and recoveries. Use it after
-[verifying your first OTA](/docs/get-started/test-ota) and while operating a
-rollout.
+update, completed downloads waiting to apply, successful applications, and
+recoveries. Use it after [verifying your first OTA](/docs/get-started/test-ota)
+and while operating a rollout.
+
+Reporting has two parts: the `insights()` server plugin stores reports, and the
+[Insights client plugin](/docs/react-native-api/insights) sends them from the
+app.
 
 ## Turn on the server plugin
 
@@ -35,58 +39,49 @@ Insights queries on the admin handler. Its tables are part of the schema that
 plugins the server runs. Without `insights()`, those routes answer `204` with
 `x-hot-updater-insights: disabled` and the app's reports are not stored. The
 server logs one warning, on the first report it drops, that names `insights()`.
-To run without Insights on purpose, also set `insights: false` in
-`HotUpdater.init`, so apps stop sending reports.
+An app with the Insights plugin then stops reporting for 24 hours at a time;
+see [when the server has Insights off](/docs/react-native-api/insights#when-the-server-has-insights-off).
 
-## Configure reporting
+<span id="configure-reporting" />
 
-[`HotUpdater.init`](/docs/react-native-api/init) enables Insights by default.
-The optional automatic [`wrap`](/docs/react-native-api/wrap) flow uses the same
-reporting default.
-Configure the client handler URL and the client API key from your infrastructure
-setup. Reporting runs after the app-ready state is available:
+## Add the client plugin
+
+Pass `insights()` from `@hot-updater/react-native/plugins/insights` to
+`plugins` in [`HotUpdater.init`](/docs/react-native-api/init). Configure the
+client handler URL and the client API key from your infrastructure setup:
 
 ```tsx title="App.tsx"
 import { HotUpdater } from "@hot-updater/react-native";
+import { insights } from "@hot-updater/react-native/plugins/insights"; // [!code ++]
 
 HotUpdater.init({
   baseURL: "<your-update-server-url>",
   requestHeaders: {
     "x-api-key": "<client-api-key>",
   },
-  // [!code ++:3]
-  onNotifyAppReady: (result) => {
-    console.log("App-ready state:", result.status);
-  },
+  plugins: [insights()], // [!code ++]
 });
 ```
 
 Call `init` once at the top level of your app's entry module. It configures
-reporting without
-starting an update check; use [custom update flows](/docs/guides/custom-update)
-to check, download, and apply updates at your chosen time. Use one configuration
-API per app. If your custom server intentionally uses
-`clientAccess: "public"` instead of `apiKeys()`, omit the
-client-key header. See [API key authentication](/docs/custom/api-key-authentication).
+reporting without starting an update check; use
+[custom update flows](/docs/guides/custom-update) to check, download, and apply
+updates at your chosen time. The optional automatic
+[`wrap`](/docs/react-native-api/wrap) flow takes the same `plugins` option. Use
+one configuration API per app. If your custom server intentionally uses
+`clientAccess: "public"` instead of `apiKeys()`, omit the client-key header.
+See [API key authentication](/docs/custom/api-key-authentication).
 
-Set `insights: false` in your `init` or `wrap` options to disable client reporting.
-Native app-ready handling and crash recovery still run, and the server's
-Insights routes are unchanged. This setting does not delete reports already
-stored.
+An app without the plugin sends no Insights reports. Native launch
+verification and crash recovery run either way. Debug builds, where `__DEV__`
+is `true`, send nothing unless you create the plugin with
+`insights({ debug: true })`, so development sessions stay out of production
+Insights. The [plugin reference](/docs/react-native-api/insights) covers its
+options, `setUser`, and the report format.
 
-Debug builds, where `__DEV__` is `true`, send no reports by default, so
-development sessions do not mix into production Insights. To test reporting
-from a debug build, opt in; in a release build, `{ debug: true }` behaves like
-`true`:
+## What the app reports
 
-```tsx
-HotUpdater.init({
-  baseURL: "<your-update-server-url>",
-  insights: { debug: true }, // [!code ++]
-});
-```
-
-The client reports these outcomes:
+The plugin reports these outcomes:
 
 | Outcome | Meaning |
 | --- | --- |
@@ -94,6 +89,17 @@ The client reports these outcomes:
 | `UPDATE_DOWNLOADED` | The SDK verified and staged the bundle. The current runtime still runs the previous bundle until restart/reload. |
 | `UPDATE_APPLIED` | Native app-ready state reports that an OTA transition became active. |
 | `RECOVERED` | Native app-ready state reports recovery from a failed update. |
+| `UPDATE_FAILED` | An update check, download, or install failed, with its stage and reason. A server that does not accept this type answers `400`, and the plugin skips it. |
+
+The plugin sends `UNCHANGED` at most once a UTC day per installation. A later
+launch or update check that day sends nothing, unless the channel, app
+version, bundle, Release, or user ID changed, or a download or failure report
+reached the server in between. Downloads, applies, and recoveries are not
+limited this way. Each update failure, by stage, reason, and target bundle, is
+reported at most once a UTC day, and a check that failed because the device was
+offline is not reported. See
+[what the plugin reports](/docs/react-native-api/insights#what-it-reports) for
+the exact rules.
 
 The server counts an installation's `UNCHANGED` reports once a UTC day. A
 report that repeats the installation's latest report on the same UTC day, with
@@ -102,21 +108,17 @@ nothing. An `UNCHANGED` report updates the installation's latest report and the
 launch metrics, but the server keeps no event row for it, so event lists show
 only downloads, applies, and recoveries.
 
-Automatic startup reporting sends one report per JavaScript runtime. The automatic `wrap` flow defers `UNCHANGED` until its update check finds no update. A successful download reports `UPDATE_DOWNLOADED` instead. Custom flows using `init` may report `UNCHANGED` at startup followed by a download later. Repeated reports of the same pending selection are deduplicated within the runtime. Selecting a different pending bundle and then returning to an earlier one reports both changes.
-
 Reporting is best effort and does not trigger rollback. A report that fails
 with a network error, a timeout, `429`, or a `5xx` is retried in the
-background, so a retry never delays app startup or an update: up to three
-attempts in all, about 1 second and then 2 seconds apart, or after the
-server's `Retry-After` (at most 30 seconds). Each attempt has its own
-`requestTimeout`, and every attempt carries the same client `eventId`, a
-UUIDv7, so the server counts a retried report once. A report refused with
-another status, such as `400`, is not retried. Reports leave one at a time in
-the order the app made them, so a retry never lands after a later report. The
-SDK logs a warning when it drops a report. Retries live in memory: a report
-still pending when the app closes or reloads is lost. `onNotifyAppReady`
-receives local native state; it is not confirmation that the server received
-an event.
+background, so a retry never delays app startup or an update. Every attempt
+carries the same client `eventId`, so the server counts a retried report once;
+see [delivery](/docs/react-native-api/insights#delivery) for the timing.
+`onNotifyAppReady` receives local native state; it is not confirmation that
+the server received an event.
+
+When the server answers that Insights is off, the plugin sends nothing more in
+that JavaScript runtime and nothing for 24 hours, then sends its next report.
+After you turn on `insights()`, installations resume reporting within a day.
 
 The Console summarizes these reports in **App usage** and **Release health**.
 Use an installation's event history to check whether a reported download was
@@ -145,41 +147,42 @@ creates the ID, and a retry counts as another report.
 ## Identify an installation
 
 Read [`HotUpdater.getInstallId()`](/docs/react-native-api/getInstallId) in a
-support log or debug screen. This stable local ID identifies one installation;
-it is independent of the signed-in user.
+support log or debug screen. This random ID identifies one installation; it is
+independent of the signed-in user.
 
-Optionally attach your application's user ID and display name with
-[`HotUpdater.setUser()`](/docs/react-native-api/setUser):
+Optionally attach your application's user ID with the plugin's
+[`setUser`](/docs/react-native-api/insights#set-the-user). Keep the plugin
+object that you pass to `plugins`, then call it from your sign-in flow:
 
-```tsx
-HotUpdater.setUser({ userId: "user-123", username: "Alex" });
+```ts
+// `analytics` is the insights() plugin passed to HotUpdater.init.
+analytics.setUser({ userId: "user-123" });
 
-// On logout, clear the identity attached to future reports.
-HotUpdater.setUser(null);
+// On logout, clear the user attached to later reports.
+analytics.setUser(null);
 ```
 
 These calls illustrate separate login and logout actions. `setUser` persists
-local identity for future reports; it does not send an event immediately. Set
-identity before startup reporting if the first report must include it. Each
-call replaces both fields, so omitting a field clears its previous value.
+the ID on the device for later reports; it does not send a report by itself. It
+works before `HotUpdater.init`, so the first report of a restored session can
+carry it.
 
 In **Insights → All events**, search by **User ID or installation ID**, then
 select an installation to inspect its latest report and apply/recovery history.
-The username supplies display context. Multiple installations associated with
-one user remain separate records.
+Multiple installations associated with one user remain separate records.
 
 Reports include installation ID, platform, app version, channel, cohort,
-fingerprint when present, and Bundle/Release transition identifiers. They also
-include the user ID and username you configured. Keep these optional fields
-consistent with your app's data policy and protect server access as described
-in [Security](/docs/policy/security).
+fingerprint when present, SDK version, and Bundle/Release transition
+identifiers. They also include the user ID you set. Keep it consistent with
+your app's data policy and protect server access as described in
+[Security](/docs/policy/security).
 
 ## Verify reporting
 
-1. Launch a native build configured with the SDK, reachable client handler,
-   and valid client key. Use a release build, or set
-   `insights: { debug: true }` in a debug build. Copy its `getInstallId()`
-   value.
+1. Launch a native build configured with the SDK, the Insights plugin, a
+   reachable client handler, and a valid client key. Use a release build, or
+   create the plugin with `insights({ debug: true })` in a debug build. Copy
+   its `getInstallId()` value.
 2. In the Console's **Insights → All events**, search for that installation
    ID and open it. Its latest report shows the app version, channel, and
    platform. An `UNCHANGED` report is enough to verify startup reporting
@@ -190,18 +193,24 @@ in [Security](/docs/policy/security).
    UI after the runtime restarts, then inspect its `UPDATE_APPLIED` event and
    reported update ID.
 
+Only the first launch of a UTC day reports while nothing changes. Relaunching
+the same build later that day sends nothing, so look up the installation by
+its ID instead of waiting for another launch report.
+
 [`getBundleId()`](/docs/react-native-api/getBundleId) and
 [`getActiveUpdateState()`](/docs/react-native-api/getActiveUpdateState) can
 reflect a staged selection before its code is running. A selected ID alone is
 not an applied-update check. Combine the running app's visible change with the
 app-ready outcome and the server's received report.
 
-If an expected report is absent, check that reporting is enabled (a debug
-build also needs `insights: { debug: true }`), the app reached readiness, the
-server runs `insights()`, and the handler URL and client header match the
-deployed server. Inspect app logs for Insights warnings.
-Server availability and filters affect what the Console can show; a missing
-report does not prove that the update failed.
+If an expected report is absent, check that the app passes the Insights plugin
+to `init` or `wrap` (a debug build also needs `insights({ debug: true })`), the
+app reached readiness, the server runs `insights()`, and the handler URL and
+client header match the deployed server. Inspect app logs for Insights
+warnings. An app that reported to a server without `insights()` waits up to 24
+hours before it reports again; reinstall it to test right away. Server
+availability and filters affect what the Console can show; a missing report
+does not prove that the update failed.
 
 ## Read the Console
 
@@ -298,10 +307,11 @@ exact.
 
 ## What Insights writes
 
-Most reports are launches, and the server writes for an installation's
-launches once a UTC day. Each report the server records is one transaction. On
-DynamoDB, where a transactional write costs 2 write request units (WRU) per KB
-of each item, one installation's reports cost:
+Most reports are launches. The Insights plugin sends an installation's launch
+at most once a UTC day while nothing changes, and the server writes for an
+installation's launches once a UTC day. Each report the server records is one
+transaction. On DynamoDB, where a transactional write costs 2 write request
+units (WRU) per KB of each item, one installation's reports cost:
 
 | Report | Items | WRU |
 | --- | --- | --- |
@@ -319,11 +329,11 @@ item takes 2. A download, apply, or recovery stores its event with its index
 copies; a launch stores none. Latest-report gauges count each installation in
 the UTC day of its latest report, so they move only when that day or the
 installation's bundle changes. An installation that launches every day
-without updating costs about 48 WRU a day, however often it launches: 10,000
-such installations write about 480,000 WRU a day. On Firestore each item is
-one document write; SQL databases keep indexes themselves, so they write fewer
-rows.
+without updating sends one report and costs about 48 WRU a day, however often
+it launches: 10,000 such installations write about 480,000 WRU a day. On
+Firestore each item is one document write; SQL databases keep indexes
+themselves, so they write fewer rows.
 
 The managed AWS table caps writes at 100 WRU per second, about two first
 launches of a day per second. A report the table throttles answers `503`, and
-the SDK sends it again.
+the plugin sends it again.

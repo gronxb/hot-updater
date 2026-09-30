@@ -660,19 +660,14 @@ RCT_EXPORT_MODULE();
     return [impl getInstallId];
 }
 
-- (NSString * _Nullable)getUserId {
+- (NSString * _Nullable)getStorageItem:(NSString *)key {
     HotUpdaterImpl *impl = [HotUpdater sharedImpl];
-    return [impl getUserId];
+    return [impl getStorageItem:key];
 }
 
-- (NSString * _Nullable)getUsername {
+- (void)setStorageItem:(NSString *)key value:(NSString * _Nullable)value {
     HotUpdaterImpl *impl = [HotUpdater sharedImpl];
-    return [impl getUsername];
-}
-
-- (void)setUser:(NSString * _Nullable)userId username:(NSString * _Nullable)username {
-    HotUpdaterImpl *impl = [HotUpdater sharedImpl];
-    [impl setUser:userId username:username];
+    [impl setStorageItem:key value:value];
 }
 
 - (NSString * _Nullable)getBaseURL {
@@ -830,19 +825,14 @@ RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(getInstallId) {
     return [impl getInstallId];
 }
 
-RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(getUserId) {
+RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(getStorageItem:(NSString *)key) {
     HotUpdaterImpl *impl = [HotUpdater sharedImpl];
-    return [impl getUserId];
+    return [impl getStorageItem:key];
 }
 
-RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(getUsername) {
+RCT_EXPORT_METHOD(setStorageItem:(NSString *)key value:(NSString * _Nullable)value) {
     HotUpdaterImpl *impl = [HotUpdater sharedImpl];
-    return [impl getUsername];
-}
-
-RCT_EXPORT_METHOD(setUser:(NSString * _Nullable)userId username:(NSString * _Nullable)username) {
-    HotUpdaterImpl *impl = [HotUpdater sharedImpl];
-    [impl setUser:userId username:username];
+    [impl setStorageItem:key value:value];
 }
 
 RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(getBaseURL) {

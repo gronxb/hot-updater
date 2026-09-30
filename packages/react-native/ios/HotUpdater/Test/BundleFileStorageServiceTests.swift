@@ -47,8 +47,42 @@ struct BundleFileStorageServiceTests {
                     patchFileHash: failure == "invalid-format" ? try #require(sha256(invalidPatch, in: root)) : String(repeating: "0", count: 64),
                     patchUrl: patchURL))])
         #expect(result.failureError == nil)
+        #expect((try? result.get()) == UpdateDelivery(method: .manifest, patchFallback: true))
         #expect(downloads.requestedURLs == [manifestURL, patchURL, fileURL])
         #expect(try Data(contentsOf: root.appendingPathComponent("bundle-store/target/index.ios.bundle")) == targetBytes)
+    }
+
+    @Test
+    func patchForAnotherBaseIsNotAFallback() throws {
+        let root = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(root) }
+        let baseBytes = Data("previous verified hermes".utf8)
+        let targetBytes = Data("new verified hermes".utf8)
+        let baseHash = try #require(sha256(baseBytes, in: root))
+        let targetHash = try #require(sha256(targetBytes, in: root))
+        let base = try createBundleDirectory(documentsDirectory: root, bundleId: "base")
+        try baseBytes.write(to: base.appendingPathComponent("index.ios.bundle"))
+        try makeManifestData(bundleId: "base", assets: ["index.ios.bundle": baseHash])
+            .write(to: base.appendingPathComponent("manifest.json"))
+        try writeMetadata(documentsDirectory: root,
+            BundleMetadata(isolationKey: testIsolationKey, stagingBundleId: "base"))
+        let preferences = InMemoryPreferencesService()
+        try preferences.setItem(base.appendingPathComponent("index.ios.bundle").path, forKey: "HotUpdaterBundleURL")
+        let manifest = try makeManifestData(bundleId: "target", assets: ["index.ios.bundle": targetHash])
+        let manifestURL = URL(string: "https://example.com/manifest.json")!
+        let fileURL = URL(string: "https://example.com/index.ios.bundle")!
+        let patchURL = URL(string: "https://example.com/bundle.bsdiff")!
+        let downloads = MappingDownloadService(contents: [manifestURL: manifest, fileURL: targetBytes])
+        let service = makeStorageService(documentsDirectory: root, preferences: preferences,
+            downloadService: downloads, builtInAssetResolver: MappingBuiltInAssetResolver(contents: [:]))
+        // The patch was built against a bundle this device does not run.
+        let result = updateBundle(service, bundleId: "target", manifestURL: manifestURL,
+            manifestHash: try #require(sha256(manifest, in: root)),
+            assets: ["index.ios.bundle": ChangedAssetDescriptor(fileUrl: fileURL, fileHash: targetHash,
+                patch: BsdiffPatchDescriptor(algorithm: "bsdiff", baseBundleId: "other-base", baseFileHash: baseHash,
+                    patchFileHash: String(repeating: "0", count: 64), patchUrl: patchURL))])
+        #expect((try? result.get()) == UpdateDelivery(method: .manifest, patchFallback: false))
+        #expect(downloads.requestedURLs == [manifestURL, fileURL])
     }
 
     @Test(arguments: ["before-rename", "complete", "corrupt"])
@@ -121,6 +155,9 @@ struct BundleFileStorageServiceTests {
         let nextProcess = makeStorageService(documentsDirectory: root, preferences: preferences)
         let launch = nextProcess.prepareLaunch(bundle: .main, pendingRecovery: nil)
         #expect(result.failureError != nil, "A17: activation metadata persistence failure must not be success")
+        #expect(updateFailure(of: result) == .storage)
+        #expect(updateFailure(of: result)?.resource == nil)
+        #expect(baseErrorCode(of: result) == "UNKNOWN_ERROR")
         #expect(launch.launchedBundleId != "target", "Failed install must not activate an untracked target")
     }
 
@@ -460,24 +497,53 @@ struct BundleFileStorageServiceTests {
     }
 
     @Test
-    func setUserPersistsAndClearsTheUserEnvelope() throws {
+    func installIdLivesOutsideBackupsAndIgnoresBundleStoreCopy() throws {
         let workingDirectory = try makeWorkingDirectory()
         defer {
             cleanupWorkingDirectory(workingDirectory)
         }
-
-        let service = makeStorageService(documentsDirectory: workingDirectory)
-        service.setUser(userId: " user-123 ", username: " alice ")
-
-        let userIdentityURL = workingDirectory
+        // An earlier release kept the id in the backed-up bundle store.
+        let bundleStoreCopy = workingDirectory
             .appendingPathComponent("bundle-store", isDirectory: true)
-            .appendingPathComponent(UserIdentity.userIdentityFilename)
-        let storedIdentity = try #require(UserIdentity.load(from: userIdentityURL))
-        #expect(storedIdentity.userId == "user-123")
-        #expect(storedIdentity.username == "alice")
+            .appendingPathComponent(InstallIdentity.installIdentityFilename)
+        try FileManager.default.createDirectory(
+            at: bundleStoreCopy.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try Data(#"{"installId":"bundle-store-id"}"#.utf8).write(to: bundleStoreCopy)
 
-        service.setUser(userId: nil, username: "  ")
-        #expect(FileManager.default.fileExists(atPath: userIdentityURL.path) == false)
+        let installId = makeStorageService(documentsDirectory: workingDirectory).getInstallId()
+
+        #expect(!installId.isEmpty)
+        #expect(installId != "bundle-store-id")
+        let directory = noBackupDirectory(documentsDirectory: workingDirectory)
+        let identityFile = directory.appendingPathComponent(InstallIdentity.installIdentityFilename)
+        #expect(InstallIdentity.load(from: identityFile)?.installId == installId)
+        #expect(isExcludedFromBackup(directory))
+        // The file keeps its own flag, not only the one it inherits.
+        try setExcludedFromBackup(directory, false)
+        #expect(isExcludedFromBackup(identityFile))
+        #expect(makeStorageService(documentsDirectory: workingDirectory).getInstallId() == installId)
+        #expect(try Data(contentsOf: bundleStoreCopy) == Data(#"{"installId":"bundle-store-id"}"#.utf8))
+    }
+
+    @Test
+    func prepareLaunchCreatesTheInstallIdOnce() throws {
+        let workingDirectory = try makeWorkingDirectory()
+        defer {
+            cleanupWorkingDirectory(workingDirectory)
+        }
+        let identityFile = noBackupDirectory(documentsDirectory: workingDirectory)
+            .appendingPathComponent(InstallIdentity.installIdentityFilename)
+
+        _ = makeStorageService(documentsDirectory: workingDirectory)
+            .prepareLaunch(bundle: .main, pendingRecovery: nil)
+        let createdId = try #require(InstallIdentity.load(from: identityFile)?.installId)
+        _ = makeStorageService(documentsDirectory: workingDirectory)
+            .prepareLaunch(bundle: .main, pendingRecovery: nil)
+
+        #expect(InstallIdentity.load(from: identityFile)?.installId == createdId)
+        #expect(makeStorageService(documentsDirectory: workingDirectory).getInstallId() == createdId)
     }
 
     @Test
@@ -1028,6 +1094,7 @@ struct BundleFileStorageServiceTests {
         let result = updateBundle(service, bundleId: "target", manifestURL: manifestURL,
             manifestHash: try #require(sha256(manifest, in: root)), assets: descriptors)
         #expect(result.failureError != nil, "inconsistent descriptor maps must fail closed")
+        #expect(updateFailure(of: result) == UpdateFailure.invalidResponse.with(resource: .manifest))
         #expect(loadMetadata(documentsDirectory: root)?.stagingBundleId == nil)
     }
 
@@ -1051,6 +1118,7 @@ struct BundleFileStorageServiceTests {
             manifestHash: try #require(sha256(manifest, in: root)),
             assets: ["index.ios.bundle": ChangedAssetDescriptor(fileUrl: fileURL, fileHash: hash)])
         #expect(result.failureError == nil, "reuse completed staging bytes after rechecking their target hash")
+        #expect((try? result.get()) == UpdateDelivery(method: .manifest, patchFallback: false))
         #expect(downloads.requestedURLs == [manifestURL])
     }
 
@@ -1124,6 +1192,7 @@ struct BundleFileStorageServiceTests {
             manifestHash: try #require(sha256(manifest, in: root)),
             assets: ["index.ios.bundle": ChangedAssetDescriptor(fileUrl: fileURL, fileHash: hash)])
         #expect(result.failureError == nil)
+        #expect((try? result.get()) == UpdateDelivery(method: .manifest, patchFallback: false))
         #expect(try Data(contentsOf: root.appendingPathComponent("bundle-store/target/index.ios.bundle")) == bytes)
     }
     @Test
@@ -1187,7 +1256,7 @@ struct BundleFileStorageServiceTests {
             builtInAssetResolver: MappingBuiltInAssetResolver(contents: [:])
         )
         let completed = DispatchSemaphore(value: 0)
-        var result: Result<Bool, Error> = .failure(BundleStorageError.unknown(nil))
+        var result: Result<UpdateDelivery, Error> = .failure(BundleStorageError.unknown(nil))
         var payloads: [UpdateProgressPayload] = []
         service.updateBundle(
             bundleId: "target",
@@ -1205,6 +1274,7 @@ struct BundleFileStorageServiceTests {
         )
         #expect(completed.wait(timeout: .now() + 5) == .success)
         if case .failure(let error) = result { Issue.record("archive install failed: \(error)") }
+        #expect((try? result.get()) == UpdateDelivery(method: .archive, patchFallback: false))
         #expect(downloads.requestedURLs == [manifestURL, archiveURL])
         let installed = root.appendingPathComponent("bundle-store/target")
         for (path, data) in files {
@@ -1446,6 +1516,8 @@ struct BundleFileStorageServiceTests {
             ]
         )
         if case .failure(let error) = result { Issue.record("fallback failed: \(error)") }
+        // A failed archive attempt falls back to changed files.
+        #expect((try? result.get()) == UpdateDelivery(method: .manifest, patchFallback: false))
         #expect(downloads.requestedURLs.first == manifestURL)
         #expect(downloads.requestedURLs.dropFirst().first == archiveURL)
         #expect(downloads.requestedURLs.filter { $0 == archiveURL }.count == 1)
@@ -1579,6 +1651,8 @@ struct BundleFileStorageServiceTests {
             })
         )
         #expect(result.failureError != nil)
+        #expect(updateFailure(of: result) == UpdateFailure.storage.with(resource: .archive))
+        #expect(baseErrorCode(of: result) == "MOVE_OPERATION_FAILED")
         #expect(downloads.requestedURLs == [manifestURL, archiveURL])
         #expect(try Data(contentsOf: stableSentinel) == Data("stable".utf8))
     }
@@ -1793,7 +1867,315 @@ struct BundleFileStorageServiceTests {
             ]
         )
         #expect(result.failureError != nil)
+        // The downloaded file does not have the manifest's byteSize.
+        #expect(updateFailure(of: result) == UpdateFailure.hashMismatch.with(resource: .file))
         #expect(downloads.requestedURLs.contains(archiveURL) == false)
+    }
+
+    @Test(arguments: ["http", "offline", "incomplete"])
+    func classifiesManifestTransferFailures(kind: String) throws {
+        let root = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(root) }
+        let manifestURL = URL(string: "https://example.com/manifest.json")!
+        let fileURL = URL(string: "https://example.com/index.ios.bundle")!
+        let transferError: Error
+        let expected: (failure: UpdateFailure, code: String)
+        switch kind {
+        case "http":
+            transferError = DownloadError.httpStatus(404, originCode: "NoSuchKey")
+            expected = (.http(status: 404, originCode: "NoSuchKey"), "DOWNLOAD_FAILED")
+        case "offline":
+            transferError = URLError(.notConnectedToInternet)
+            expected = (.network(transport: .offline), "DOWNLOAD_FAILED")
+        default:
+            // A response arrived, so the failure names no transport.
+            transferError = DownloadError.incompleteDownload(expected: 100, actual: 40)
+            expected = (.network, "INCOMPLETE_DOWNLOAD")
+        }
+        let service = makeStorageService(documentsDirectory: root,
+            downloadService: MappingDownloadService(contents: [:], failures: [manifestURL: transferError]))
+        let result = updateBundle(service, bundleId: "target", manifestURL: manifestURL,
+            manifestHash: String(repeating: "0", count: 64),
+            assets: ["index.ios.bundle": ChangedAssetDescriptor(fileUrl: fileURL, fileHash: String(repeating: "0", count: 64))])
+        #expect(updateFailure(of: result) == expected.failure.with(resource: .manifest))
+        #expect(baseErrorCode(of: result) == expected.code)
+    }
+
+    @Test(arguments: ["manifest-hash", "manifest-json", "manifest-bundle-id", "descriptor-set", "missing-bundle-file"])
+    func classifiesInvalidUpdateContent(kind: String) throws {
+        let root = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(root) }
+        let bytes = Data("target hermes".utf8)
+        let hash = try #require(sha256(bytes, in: root))
+        // Without a platform bundle file, the staged bundle cannot launch.
+        let assetPath = kind == "missing-bundle-file" ? "assets/image.png" : "index.ios.bundle"
+        let manifest = kind == "manifest-json"
+            ? Data("not json".utf8)
+            : try makeManifestData(bundleId: kind == "manifest-bundle-id" ? "other" : "target", assets: [assetPath: hash])
+        let manifestURL = URL(string: "https://example.com/manifest.json")!
+        let fileURL = URL(string: "https://example.com/\(assetPath)")!
+        let service = makeStorageService(documentsDirectory: root,
+            downloadService: MappingDownloadService(contents: [manifestURL: manifest, fileURL: bytes]),
+            builtInAssetResolver: MappingBuiltInAssetResolver(contents: [:]))
+        var descriptors = [assetPath: ChangedAssetDescriptor(fileUrl: fileURL, fileHash: hash)]
+        if kind == "descriptor-set" {
+            descriptors["assets/extra.png"] = ChangedAssetDescriptor(fileUrl: fileURL, fileHash: hash)
+        }
+        let result = updateBundle(service, bundleId: "target", manifestURL: manifestURL,
+            manifestHash: kind == "manifest-hash" ? String(repeating: "0", count: 64) : try #require(sha256(manifest, in: root)),
+            assets: descriptors)
+        switch kind {
+        case "manifest-hash":
+            #expect(updateFailure(of: result) == UpdateFailure.hashMismatch.with(resource: .manifest))
+            #expect(baseErrorCode(of: result) == "SIGNATURE_VERIFICATION_FAILED")
+        case "manifest-json":
+            #expect(updateFailure(of: result) == UpdateFailure.invalidResponse.with(resource: .manifest))
+            #expect(result.failureError.map { UpdateFailureError.unwrap($0) is CocoaError } == true)
+        default:
+            #expect(updateFailure(of: result) == UpdateFailure.invalidResponse.with(resource: .manifest))
+            #expect(baseErrorCode(of: result) == "INVALID_BUNDLE")
+        }
+        #expect(loadMetadata(documentsDirectory: root)?.stagingBundleId == nil)
+    }
+
+    @Test(arguments: ["hash", "network", "http", "brotli"])
+    func classifiesAssetFailures(kind: String) throws {
+        let root = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(root) }
+        let bytes = Data("target hermes".utf8)
+        let hash = try #require(sha256(bytes, in: root))
+        let manifest = try makeManifestData(bundleId: "target", assets: ["index.ios.bundle": hash])
+        let manifestURL = URL(string: "https://example.com/manifest.json")!
+        let fileURL = URL(string: "https://example.com/index.ios.bundle")!
+        var contents = [manifestURL: manifest]
+        var failures: [URL: Error] = [:]
+        let expected: (failure: UpdateFailure, code: String)
+        switch kind {
+        case "hash":
+            contents[fileURL] = Data("corrupted bytes".utf8)
+            expected = (.hashMismatch, "SIGNATURE_VERIFICATION_FAILED")
+        case "network":
+            failures[fileURL] = URLError(.networkConnectionLost)
+            expected = (.network(transport: .connection), "DOWNLOAD_FAILED")
+        case "http":
+            failures[fileURL] = DownloadError.httpStatus(503)
+            expected = (.http(status: 503), "DOWNLOAD_FAILED")
+        default:
+            // Brotli cannot decode these bytes into the expected file.
+            contents[fileURL] = Data("corrupted bytes".utf8)
+            expected = (.extract, "UNKNOWN_ERROR")
+        }
+        let service = makeStorageService(documentsDirectory: root,
+            downloadService: MappingDownloadService(contents: contents, failures: failures),
+            builtInAssetResolver: MappingBuiltInAssetResolver(contents: [:]))
+        let result = updateBundle(service, bundleId: "target", manifestURL: manifestURL,
+            manifestHash: try #require(sha256(manifest, in: root)),
+            assets: ["index.ios.bundle": ChangedAssetDescriptor(fileUrl: fileURL, fileHash: hash,
+                fileCompression: kind == "brotli" ? "br" : nil)])
+        #expect(updateFailure(of: result) == expected.failure.with(resource: .file))
+        #expect((baseErrorCode(of: result) ?? "UNKNOWN_ERROR") == expected.code)
+    }
+
+    @Test
+    func classifiesPatchedOutputThatFailsVerification() throws {
+        let root = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(root) }
+        let baseBytes = Data("console.log(\"base bundle\");\n".utf8)
+        let targetBytes = Data("console.log(\"patched bundle\");\n".utf8)
+        let patchBytes = try #require(Data(base64Encoded: bsdiffPatchFixtureBase64))
+        let baseHash = try #require(sha256(baseBytes, in: root))
+        let targetHash = try #require(sha256(targetBytes, in: root))
+        let base = try createBundleDirectory(documentsDirectory: root, bundleId: "base")
+        try baseBytes.write(to: base.appendingPathComponent("index.ios.bundle"))
+        try makeManifestData(bundleId: "base", assets: ["index.ios.bundle": baseHash])
+            .write(to: base.appendingPathComponent("manifest.json"))
+        try writeMetadata(documentsDirectory: root,
+            BundleMetadata(isolationKey: testIsolationKey, stagingBundleId: "base"))
+        let preferences = InMemoryPreferencesService()
+        try preferences.setItem(base.appendingPathComponent("index.ios.bundle").path, forKey: "HotUpdaterBundleURL")
+        // The patch reproduces the target hash, but the manifest expects another size.
+        let manifest = try JSONSerialization.data(withJSONObject: [
+            "bundleId": "target",
+            "assets": ["index.ios.bundle": ["fileHash": targetHash, "byteSize": targetBytes.count + 1]],
+        ])
+        let manifestURL = URL(string: "https://example.com/manifest.json")!
+        let fileURL = URL(string: "https://example.com/index.ios.bundle")!
+        let patchURL = URL(string: "https://example.com/index.ios.bundle.bsdiff")!
+        let downloads = MappingDownloadService(contents: [manifestURL: manifest, patchURL: patchBytes, fileURL: targetBytes])
+        let service = makeStorageService(documentsDirectory: root, preferences: preferences,
+            downloadService: downloads, builtInAssetResolver: MappingBuiltInAssetResolver(contents: [:]))
+        let result = updateBundle(service, bundleId: "target", manifestURL: manifestURL,
+            manifestHash: try #require(sha256(manifest, in: root)),
+            assets: ["index.ios.bundle": ChangedAssetDescriptor(fileUrl: fileURL, fileHash: targetHash,
+                patch: BsdiffPatchDescriptor(algorithm: "bsdiff", baseBundleId: "base", baseFileHash: baseHash,
+                    patchFileHash: try #require(sha256(patchBytes, in: root)), patchUrl: patchURL))])
+        #expect(updateFailure(of: result) == UpdateFailure.patch.with(resource: .patch))
+        #expect(baseErrorCode(of: result) == "SIGNATURE_VERIFICATION_FAILED")
+        #expect(downloads.requestedURLs == [manifestURL, patchURL])
+    }
+
+    @Test
+    func reportsPatchDelivery() throws {
+        let root = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(root) }
+        let fixture = try makePatchFixture(in: root)
+        let downloads = MappingDownloadService(contents: [
+            fixture.manifestURL: fixture.manifest,
+            fixture.patchURL: fixture.patch,
+            fixture.fileURL: fixture.target,
+        ])
+        let service = makeStorageService(documentsDirectory: root, preferences: fixture.preferences,
+            downloadService: downloads, builtInAssetResolver: MappingBuiltInAssetResolver(contents: [:]))
+
+        let result = updateBundle(service, bundleId: "target", manifestURL: fixture.manifestURL,
+            manifestHash: fixture.manifestHash, assets: fixture.assets)
+
+        #expect((try? result.get()) == UpdateDelivery(method: .patch, patchFallback: false))
+        #expect(downloads.requestedURLs == [fixture.manifestURL, fixture.patchURL])
+        #expect(try Data(contentsOf: root.appendingPathComponent("bundle-store/target/index.ios.bundle"))
+            == fixture.target)
+    }
+
+    @Test
+    func reportsPatchDeliveryWithFallbackForAnotherFile() throws {
+        let root = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(root) }
+        let baseImage = Data("base image".utf8)
+        let targetImage = Data("target image".utf8)
+        let imagePath = "assets/image.png"
+        let fixture = try makePatchFixture(in: root, extraBaseFiles: [imagePath: baseImage],
+            extraTargetFiles: [imagePath: targetImage])
+        let imageURL = URL(string: "https://example.com/assets/image.png")!
+        let missingPatchURL = URL(string: "https://example.com/assets/image.png.bsdiff")!
+        var assets = fixture.assets
+        // The image's patch cannot be downloaded, so its full file is.
+        assets[imagePath] = ChangedAssetDescriptor(fileUrl: imageURL,
+            fileHash: try #require(sha256(targetImage, in: root)),
+            patch: BsdiffPatchDescriptor(algorithm: "bsdiff", baseBundleId: "base",
+                baseFileHash: try #require(sha256(baseImage, in: root)),
+                patchFileHash: String(repeating: "0", count: 64), patchUrl: missingPatchURL))
+        let downloads = MappingDownloadService(contents: [
+            fixture.manifestURL: fixture.manifest,
+            fixture.patchURL: fixture.patch,
+            fixture.fileURL: fixture.target,
+            imageURL: targetImage,
+        ])
+        let service = makeStorageService(documentsDirectory: root, preferences: fixture.preferences,
+            downloadService: downloads, builtInAssetResolver: MappingBuiltInAssetResolver(contents: [:]))
+
+        let result = updateBundle(service, bundleId: "target", manifestURL: fixture.manifestURL,
+            manifestHash: fixture.manifestHash, assets: assets)
+
+        #expect((try? result.get()) == UpdateDelivery(method: .patch, patchFallback: true))
+        #expect(Set(downloads.requestedURLs) == [fixture.manifestURL, fixture.patchURL, missingPatchURL, imageURL])
+        #expect(!downloads.requestedURLs.contains(fixture.fileURL))
+    }
+
+    @Test
+    func archiveChosenOverOfferedPatchesIsNotAPatchFallback() throws {
+        let root = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(root) }
+        let files = [
+            "index.ios.bundle": Data("archive bundle".utf8),
+            "assets/image.png": Data("archive image".utf8),
+        ]
+        let tar = try makeTar(files: files)
+        let archive = try brotliCompress(tar)
+        let manifest = try makeArchiveManifestData(
+            bundleId: "target",
+            files: files,
+            archiveHash: try #require(sha256(archive, in: root)),
+            archiveByteSize: archive.count,
+            tarByteSize: tar.count,
+            originalDownloadByteSize: 4096
+        )
+        let manifestURL = URL(string: "https://example.com/manifest.json")!
+        let archiveURL = URL(string: "https://example.com/bundle.tar.br")!
+        let downloads = MappingDownloadService(contents: [manifestURL: manifest, archiveURL: archive])
+        let service = makeStorageService(documentsDirectory: root, downloadService: downloads,
+            builtInAssetResolver: MappingBuiltInAssetResolver(contents: [:]))
+        // The archive is smaller than either patch, so no patch is tried.
+        let result = updateBundle(service, bundleId: "target", manifestURL: manifestURL,
+            manifestHash: try #require(sha256(manifest, in: root)), archiveURL: archiveURL,
+            assets: Dictionary(uniqueKeysWithValues: try files.map { path, data in
+                (path, ChangedAssetDescriptor(
+                    fileUrl: URL(string: "https://example.com/files/\(path)")!,
+                    fileHash: try #require(sha256(data, in: root)),
+                    patch: BsdiffPatchDescriptor(algorithm: "bsdiff", baseBundleId: "base",
+                        baseFileHash: String(repeating: "0", count: 64),
+                        patchFileHash: String(repeating: "1", count: 64),
+                        patchUrl: URL(string: "https://example.com/patches/\(path)")!,
+                        byteSize: 4096)
+                ))
+            }))
+
+        #expect((try? result.get()) == UpdateDelivery(method: .archive, patchFallback: false))
+        #expect(downloads.requestedURLs == [manifestURL, archiveURL])
+    }
+
+    @Test
+    func deliveryDictionaryIsWhatUpdateBundleResolves() {
+        let dictionary = UpdateDelivery(method: .patch, patchFallback: true).dictionary
+        #expect(dictionary["delivery"] as? String == "patch")
+        let patchFallback = dictionary["patchFallback"] as AnyObject
+        #expect(patchFallback as? Bool == true)
+        // React Native reads a boolean NSNumber as a JS boolean.
+        #expect(CFGetTypeID(patchFallback) == CFBooleanGetTypeID())
+        #expect(JSONSerialization.isValidJSONObject(dictionary))
+        #expect(UpdateDelivery(method: .manifest, patchFallback: false).dictionary["delivery"] as? String == "manifest")
+        #expect(UpdateDelivery(method: .archive, patchFallback: false).dictionary["delivery"] as? String == "archive")
+    }
+
+    @Test
+    func crashedBundleRejectionIsNotClassified() throws {
+        let root = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(root) }
+        var history = CrashedHistory()
+        history.addEntry("target")
+        #expect(history.save(to: root
+            .appendingPathComponent("bundle-store", isDirectory: true)
+            .appendingPathComponent(CrashedHistory.crashedHistoryFilename)))
+        let service = makeStorageService(documentsDirectory: root)
+        let result = updateBundle(service, bundleId: "target",
+            manifestURL: URL(string: "https://example.com/manifest.json")!,
+            manifestHash: String(repeating: "0", count: 64), assets: [:])
+        let error = try #require(result.failureError)
+        #expect(!(error is UpdateFailureError))
+        #expect(baseErrorCode(of: result) == "BUNDLE_IN_CRASHED_HISTORY")
+        #expect(UpdateFailureError.rejectionError(for: error).userInfo[UpdateFailure.stageKey] == nil)
+    }
+
+    @Test
+    func staleSelectionAtActivationIsNotClassified() throws {
+        let root = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(root) }
+        let bytes = Data("target hermes".utf8)
+        let hash = try #require(sha256(bytes, in: root))
+        let manifest = try makeManifestData(bundleId: "target", assets: ["index.ios.bundle": hash])
+        let manifestURL = URL(string: "https://example.com/manifest.json")!
+        let fileURL = URL(string: "https://example.com/index.ios.bundle")!
+        let service = makeStorageService(documentsDirectory: root,
+            downloadService: MappingDownloadService(contents: [manifestURL: manifest, fileURL: bytes]),
+            builtInAssetResolver: MappingBuiltInAssetResolver(contents: [:]))
+        #expect(service.acceptReleaseCatalog(catalogId: "project-a", scopeKey: "scope-production",
+            generation: 1, catalogHash: "hash-1", channel: "production", selectionContextHash: "context-1"))
+        #expect(service.stageReleaseSelection(releaseSelection(releaseId: "release-one", bundleId: "target",
+            generation: 1, catalogHash: "hash-1", selectionContextHash: "context-1")))
+        // A newer catalog arrives while the bundle downloads.
+        #expect(service.acceptReleaseCatalog(catalogId: "project-a", scopeKey: "scope-production",
+            generation: 2, catalogHash: "hash-2", channel: "production", selectionContextHash: "context-2"))
+
+        let result = updateBundle(service, bundleId: "target", manifestURL: manifestURL,
+            manifestHash: try #require(sha256(manifest, in: root)),
+            assets: ["index.ios.bundle": ChangedAssetDescriptor(fileUrl: fileURL, fileHash: hash)])
+        let error = try #require(result.failureError)
+        #expect(!(error is UpdateFailureError))
+        let rejection = UpdateFailureError.rejectionError(for: error)
+        #expect(rejection.userInfo[UpdateFailure.stageKey] == nil)
+        #expect(rejection.userInfo[UpdateFailure.reasonKey] == nil)
+        #expect((rejection.userInfo[NSUnderlyingErrorKey] as? NSError)?.localizedDescription
+            == "Release catalog selection is stale")
+        #expect(loadMetadata(documentsDirectory: root)?.stagingBundleId == nil)
     }
 
     @Test
@@ -2043,6 +2425,19 @@ private class TestFileSystemService: FileSystemService {
     func documentsPath() -> String {
         documentsDirectory.path
     }
+
+    func applicationSupportPath() -> String {
+        applicationSupportDirectory(documentsDirectory: documentsDirectory).path
+    }
+}
+
+private func applicationSupportDirectory(documentsDirectory: URL) -> URL {
+    documentsDirectory.appendingPathComponent("ApplicationSupport", isDirectory: true)
+}
+
+private func noBackupDirectory(documentsDirectory: URL) -> URL {
+    applicationSupportDirectory(documentsDirectory: documentsDirectory)
+        .appendingPathComponent(NoBackupStorage.directoryName, isDirectory: true)
 }
 
 private final class FailingArchivePromotionFileSystemService:
@@ -2125,11 +2520,13 @@ private final class UnusedDownloadService: DownloadService {
 
 private final class MappingDownloadService: DownloadService {
     private let contents: [URL: Data]
+    private let failures: [URL: Error]
     private let lock = NSLock()
     private var urls: [URL] = []
 
-    init(contents: [URL: Data]) {
+    init(contents: [URL: Data], failures: [URL: Error] = [:]) {
         self.contents = contents
+        self.failures = failures
     }
 
     var requestedURLs: [URL] {
@@ -2148,6 +2545,10 @@ private final class MappingDownloadService: DownloadService {
         lock.lock()
         urls.append(url)
         lock.unlock()
+        if let failure = failures[url] {
+            completion(.failure(failure))
+            return nil
+        }
         guard let data = contents[url] else {
             completion(.failure(NSError(
                 domain: "MappingDownloadService",
@@ -2390,9 +2791,9 @@ private func updateBundle(
     manifestHash: String,
     archiveURL: URL? = nil,
     assets: [String: ChangedAssetDescriptor]
-) -> Result<Bool, Error> {
+) -> Result<UpdateDelivery, Error> {
     let completed = DispatchSemaphore(value: 0)
-    var result: Result<Bool, Error> = .failure(BundleStorageError.unknown(nil))
+    var result: Result<UpdateDelivery, Error> = .failure(BundleStorageError.unknown(nil))
     service.updateBundle(
         bundleId: bundleId,
         manifestUrl: manifestURL,
@@ -2412,6 +2813,79 @@ private func updateBundle(
         ))
     }
     return result
+}
+
+private struct PatchFixture {
+    let preferences: InMemoryPreferencesService
+    let manifest: Data
+    let manifestHash: String
+    let manifestURL = URL(string: "https://example.com/manifest.json")!
+    let fileURL = URL(string: "https://example.com/index.ios.bundle")!
+    let patchURL = URL(string: "https://example.com/index.ios.bundle.bsdiff")!
+    let patch: Data
+    let target: Data
+    let assets: [String: ChangedAssetDescriptor]
+}
+
+/// A running "base" bundle and a "target" whose bundle file has a working patch.
+private func makePatchFixture(
+    in root: URL,
+    extraBaseFiles: [String: Data] = [:],
+    extraTargetFiles: [String: Data] = [:]
+) throws -> PatchFixture {
+    let baseBytes = Data("console.log(\"base bundle\");\n".utf8)
+    let targetBytes = Data("console.log(\"patched bundle\");\n".utf8)
+    let patchBytes = try #require(Data(base64Encoded: bsdiffPatchFixtureBase64))
+    let baseHash = try #require(sha256(baseBytes, in: root))
+    let targetHash = try #require(sha256(targetBytes, in: root))
+    let base = try createBundleDirectory(documentsDirectory: root, bundleId: "base")
+    var baseHashes = ["index.ios.bundle": baseHash]
+    try baseBytes.write(to: base.appendingPathComponent("index.ios.bundle"))
+    for (path, data) in extraBaseFiles {
+        let file = base.appendingPathComponent(path)
+        try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try data.write(to: file)
+        let hash = try #require(sha256(data, in: root))
+        baseHashes[path] = hash
+    }
+    try makeManifestData(bundleId: "base", assets: baseHashes)
+        .write(to: base.appendingPathComponent("manifest.json"))
+    try writeMetadata(documentsDirectory: root,
+        BundleMetadata(isolationKey: testIsolationKey, stagingBundleId: "base"))
+    let preferences = InMemoryPreferencesService()
+    try preferences.setItem(base.appendingPathComponent("index.ios.bundle").path, forKey: "HotUpdaterBundleURL")
+
+    var targetHashes = ["index.ios.bundle": targetHash]
+    for (path, data) in extraTargetFiles {
+        let hash = try #require(sha256(data, in: root))
+        targetHashes[path] = hash
+    }
+    let manifest = try makeManifestData(bundleId: "target", assets: targetHashes)
+    let patchURL = URL(string: "https://example.com/index.ios.bundle.bsdiff")!
+    return PatchFixture(
+        preferences: preferences,
+        manifest: manifest,
+        manifestHash: try #require(sha256(manifest, in: root)),
+        patch: patchBytes,
+        target: targetBytes,
+        assets: ["index.ios.bundle": ChangedAssetDescriptor(
+            fileUrl: URL(string: "https://example.com/index.ios.bundle")!,
+            fileHash: targetHash,
+            patch: BsdiffPatchDescriptor(algorithm: "bsdiff", baseBundleId: "base", baseFileHash: baseHash,
+                patchFileHash: try #require(sha256(patchBytes, in: root)), patchUrl: patchURL)
+        )]
+    )
+}
+
+private func updateFailure(of result: Result<UpdateDelivery, Error>) -> UpdateFailure? {
+    (result.failureError as? UpdateFailureError)?.failure
+}
+
+/// The code `normalizeErrorCode` starts from; classification must not change it.
+private func baseErrorCode(of result: Result<UpdateDelivery, Error>) -> String? {
+    result.failureError.flatMap {
+        (UpdateFailureError.unwrap($0) as? BundleStorageError)?.errorCodeString
+    }
 }
 private final class DelayedAuditDownloadService: DownloadService {
     private let contents: [URL: Data]

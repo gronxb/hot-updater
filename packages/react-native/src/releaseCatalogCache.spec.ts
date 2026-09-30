@@ -199,6 +199,28 @@ describe("Release Catalog persistent cache", () => {
     },
   );
 
+  it("reads a 404 the server marks x-hot-updater-catalog: none as no catalog", async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(
+      new Response(null, {
+        headers: { "x-hot-updater-catalog": "none" },
+        status: 404,
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(fetchReleaseCatalogWithCache(input())).resolves.toBeNull();
+    expect(nativeMocks.write).not.toHaveBeenCalled();
+  });
+
+  it("throws the HTTP status of any other 404", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValueOnce(response(404)));
+
+    await expect(fetchReleaseCatalogWithCache(input())).rejects.toMatchObject({
+      name: "UpdateHttpError",
+      status: 404,
+    });
+  });
+
   it("does not use cached data as a fallback on network failure", async () => {
     const fetchMock = vi
       .fn()

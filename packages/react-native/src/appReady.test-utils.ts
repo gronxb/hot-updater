@@ -1,20 +1,20 @@
 import { vi } from "vitest";
 
-import type {
-  NotifyAppReadyInsightsEvent,
-  NotifyAppReadyResult,
-} from "./native";
+import type { LaunchTransition, NotifyAppReadyResult } from "./native";
 
 export const createNotifyReadResult = (
   result: NotifyAppReadyResult = { status: "UNCHANGED" },
-  insightsEvent: NotifyAppReadyInsightsEvent | null = null,
+  transition: LaunchTransition | null = null,
   pending = false,
+  previousProcessExit: string | null = null,
 ): {
-  insightsEvent: NotifyAppReadyInsightsEvent | null;
+  transition: LaunchTransition | null;
+  previousProcessExit: string | null;
   pending: boolean;
   result: NotifyAppReadyResult;
 } => ({
-  insightsEvent,
+  transition,
+  previousProcessExit,
   pending,
   result,
 });

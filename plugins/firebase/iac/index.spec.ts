@@ -337,6 +337,9 @@ describe("Firebase project creation", () => {
       expect.stringContaining(`"x-api-key": "${API_KEY}"`),
     );
     expect(p.note).toHaveBeenCalledWith(
+      expect.stringContaining("plugins: [insights()],"),
+    );
+    expect(p.note).toHaveBeenCalledWith(
       expect.stringContaining("HotUpdater.checkForUpdate"),
     );
     expect(p.note).toHaveBeenCalledWith(API_KEY, "API Key");

@@ -52,7 +52,7 @@ to specify the desired app behavior and outcome.
 | Provision infrastructure | Actual resource identifiers, deployed base URL, passing scaffold/infrastructure doctor results and remaining checks outside their scope |
 | Connect the app | Top-level init, explicit check/download/reload flow, native loading, client key, matching strategy/channel and signing key when enabled |
 | Test OTA | Release app launch, visible JavaScript and asset changes after application, matching deployment ID and rollback result |
-| Observe and hand off | Ready-to-copy HotUpdater.init configuration with the verified base URL and registered client x-api-key; received Insights when enabled; remaining store/native release steps and any specific blockers |
+| Observe and hand off | Ready-to-copy HotUpdater.init configuration with the verified base URL, registered client x-api-key and Insights plugin; received Insights reports when the app runs that plugin; remaining store/native release steps and any specific blockers |
 
 The agent uses [doctor's scoped checks](/docs/guides/doctor#verify-infrastructure-scaffolding)
 as completion gates: `scaffold` after filling deployment inputs, then
@@ -80,8 +80,9 @@ If the agent cannot build or interact with the native app, it should complete
 available setup work and identify the exact remaining device check.
 
 After infrastructure verification, the agent finishes like `hot-updater init`:
-it shows a `HotUpdater.init(...)` snippet with your deployed `baseURL` and the
-actual client API key it issued or reused in `requestHeaders["x-api-key"]`.
+it shows a `HotUpdater.init(...)` snippet with your deployed `baseURL`, the
+actual client API key it issued or reused in `requestHeaders["x-api-key"]`,
+and the [Insights plugin](/docs/react-native-api/insights) in `plugins`.
 This handoff also applies to infrastructure-only setup. See the
 [completion example](/docs/guides/agent-infrastructure#verify-completion).
 

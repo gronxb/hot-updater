@@ -3,6 +3,7 @@ import type {
   PersistedSelectionReceipt,
 } from "@hot-updater/core";
 import { HotUpdater } from "@hot-updater/react-native";
+import { insights } from "@hot-updater/react-native/plugins/insights";
 import { TurboModuleRegistry, type TurboModule } from "react-native";
 import { proxy } from "valtio";
 
@@ -53,13 +54,12 @@ type UpdateProgressDetails = {
   }[];
 };
 
-HotUpdater.setUser({
-  userId: "detox-e2e",
-  username: "hot-updater-e2e",
-});
+// Console Insights QA looks installations up by this user ID.
+const analytics = insights();
+analytics.setUser({ userId: "detox-e2e" });
 
 HotUpdater.init({
-  insights: true,
+  plugins: [analytics],
   baseURL: resolveHotUpdaterBaseURL,
   requestHeaders: HOT_UPDATER_API_KEY
     ? { "x-api-key": HOT_UPDATER_API_KEY }

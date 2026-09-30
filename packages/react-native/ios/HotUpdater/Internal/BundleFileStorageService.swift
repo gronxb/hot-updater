@@ -164,6 +164,34 @@ public struct UpdateProgressPayload {
     }
 }
 
+/// How a staged bundle arrived. `updateBundle` resolves with `dictionary`.
+public struct UpdateDelivery: Equatable {
+    public enum Method: String {
+        /// A bsdiff patch produced at least one file.
+        case patch
+        /// Only changed files were downloaded, possibly none.
+        case manifest
+        /// The full tar.br archive was downloaded.
+        case archive
+    }
+
+    public let method: Method
+    /// A file's patch was tried, but the full file was downloaded instead.
+    public let patchFallback: Bool
+
+    public init(method: Method, patchFallback: Bool) {
+        self.method = method
+        self.patchFallback = patchFallback
+    }
+
+    public var dictionary: [String: Any] {
+        [
+            "delivery": method.rawValue,
+            "patchFallback": patchFallback,
+        ]
+    }
+}
+
 public enum BundleStorageError: Error, CustomNSError {
     case directoryCreationFailed
     case downloadFailed(Error)
@@ -257,7 +285,7 @@ public protocol BundleStorageService {
     func prepareLaunch(bundle: Bundle, pendingRecovery: PendingCrashRecovery?) -> LaunchSelection
 
     // Bundle update
-    func updateBundle(bundleId: String, manifestUrl: URL, manifestFileHash: String, archiveUrl: URL?, assets: [String: ChangedAssetDescriptor], progressHandler: @escaping (UpdateProgressPayload) -> Void, completion: @escaping (Result<Bool, Error>) -> Void)
+    func updateBundle(bundleId: String, manifestUrl: URL, manifestFileHash: String, archiveUrl: URL?, assets: [String: ChangedAssetDescriptor], progressHandler: @escaping (UpdateProgressPayload) -> Void, completion: @escaping (Result<UpdateDelivery, Error>) -> Void)
     func stageReleaseSelection(_ selection: PersistedSelection) -> Bool
     func acceptReleaseCatalog(catalogId: String, scopeKey: String, generation: Int64, catalogHash: String, channel: String, selectionContextHash: String) -> Bool
     func getActiveUpdateState() -> [String: Any]
@@ -270,10 +298,7 @@ public protocol BundleStorageService {
     func getCrashHistory() -> CrashedHistory
     func clearCrashHistory() -> Bool
     func getInstallId() -> String
-    func getUserId() -> String?
-    func getUsername() -> String?
-    func setUser(userId: String?, username: String?)
-    
+
     /**
      * Gets the base URL for the current active bundle directory
      * @return Base URL string (e.g., "file:///data/.../bundle-store/abc123") or empty string
@@ -354,25 +379,15 @@ class BundleFileStorageService: BundleStorageService {
     private let releaseStateLock = NSRecursiveLock()
     private var pendingInstallSelections: [String: PersistedSelection] = [:]
 
+    private let installIdentityLock = NSLock()
     private var currentInstallIdentity: InstallIdentity?
-    private var currentUserIdentity: UserIdentity?
 
     private let protectedBundleStoreEntries: Set<String> = [
         BundleMetadata.metadataFilename,
         CrashedHistory.crashedHistoryFilename,
         LaunchReport.launchReportFilename,
-        InstallIdentity.installIdentityFilename,
-        UserIdentity.userIdentityFilename,
         "builtin-index-v1.json",
     ]
-
-    private func normalizeIdentityValue(_ value: String?) -> String? {
-        guard let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !trimmed.isEmpty else {
-            return nil
-        }
-        return trimmed
-    }
 
     private func createDiffProgressFiles(
         changedAssets: [String: ChangedAssetDescriptor]
@@ -773,18 +788,9 @@ class BundleFileStorageService: BundleStorageService {
         return URL(fileURLWithPath: storeDir).appendingPathComponent(LaunchReport.launchReportFilename)
     }
 
-    private func installIdentityFileURL() -> URL? {
-        guard case .success(let storeDir) = bundleStoreDir() else {
-            return nil
-        }
-        return URL(fileURLWithPath: storeDir).appendingPathComponent(InstallIdentity.installIdentityFilename)
-    }
-
-    private func userIdentityFileURL() -> URL? {
-        guard case .success(let storeDir) = bundleStoreDir() else {
-            return nil
-        }
-        return URL(fileURLWithPath: storeDir).appendingPathComponent(UserIdentity.userIdentityFilename)
+    private func installIdentityFileURL() -> URL {
+        NoBackupStorage.directory(in: fileSystem)
+            .appendingPathComponent(InstallIdentity.installIdentityFilename)
     }
 
     // MARK: - Metadata Operations
@@ -833,52 +839,26 @@ class BundleFileStorageService: BundleStorageService {
         _ = report.save(to: file)
     }
 
-    private func loadInstallIdentity() -> InstallIdentity? {
+    /// Loads the install identity, creating it once when its file is missing.
+    @discardableResult
+    private func loadOrCreateInstallIdentity() -> InstallIdentity {
+        installIdentityLock.lock()
+        defer { installIdentityLock.unlock() }
+
         if let currentInstallIdentity {
             return currentInstallIdentity
         }
-        guard let file = installIdentityFileURL(),
-              let identity = InstallIdentity.load(from: file) else {
-            return nil
+        let file = installIdentityFileURL()
+        if let identity = InstallIdentity.load(from: file) {
+            currentInstallIdentity = identity
+            return identity
         }
+
+        let identity = InstallIdentity()
+        // Keep the new id for this process even when it cannot be saved.
         currentInstallIdentity = identity
+        _ = identity.save(to: file)
         return identity
-    }
-
-    private func saveInstallIdentity(_ identity: InstallIdentity) -> Bool {
-        currentInstallIdentity = identity
-        guard let file = installIdentityFileURL() else {
-            return false
-        }
-        return identity.save(to: file)
-    }
-
-    private func loadUserIdentity() -> UserIdentity? {
-        if let currentUserIdentity {
-            return currentUserIdentity
-        }
-        guard let file = userIdentityFileURL(),
-              let identity = UserIdentity.load(from: file) else {
-            return nil
-        }
-        currentUserIdentity = identity
-        return identity
-    }
-
-    private func saveUserIdentity(_ identity: UserIdentity?) -> Bool {
-        currentUserIdentity = identity
-        guard let file = userIdentityFileURL() else {
-            return false
-        }
-
-        guard let identity else {
-            if FileManager.default.fileExists(atPath: file.path) {
-                try? FileManager.default.removeItem(at: file)
-            }
-            return true
-        }
-
-        return identity.save(to: file)
     }
 
     private func resolveBuiltInBundleId() -> String? {
@@ -1960,10 +1940,7 @@ class BundleFileStorageService: BundleStorageService {
     func prepareLaunch(bundle: Bundle, pendingRecovery: PendingCrashRecovery?) -> LaunchSelection {
         builtInAssetResolver.use(bundle: bundle)
         saveLaunchReport(nil)
-        if loadInstallIdentity() == nil {
-            let identity = InstallIdentity()
-            _ = saveInstallIdentity(identity)
-        }
+        loadOrCreateInstallIdentity()
         applyPendingRecoveryIfNeeded(pendingRecovery)
         // Only a new storage instance consumes an unfinished launch. Repeated bundle
         // lookups or bridge reloads in this process must not reject its own launch.
@@ -1993,7 +1970,7 @@ class BundleFileStorageService: BundleStorageService {
      * @param progressHandler Callback for download and extraction progress (0.0 to 1.0)
      * @param completion Callback with result of the operation
      */
-    func updateBundle(bundleId: String, manifestUrl: URL, manifestFileHash: String, archiveUrl: URL? = nil, assets: [String: ChangedAssetDescriptor], progressHandler: @escaping (UpdateProgressPayload) -> Void, completion: @escaping (Result<Bool, Error>) -> Void) {
+    func updateBundle(bundleId: String, manifestUrl: URL, manifestFileHash: String, archiveUrl: URL? = nil, assets: [String: ChangedAssetDescriptor], progressHandler: @escaping (UpdateProgressPayload) -> Void, completion: @escaping (Result<UpdateDelivery, Error>) -> Void) {
         // Check if bundle is in crashed history
         let crashedHistory = loadCrashedHistory()
         if crashedHistory.contains(bundleId) {
@@ -2005,7 +1982,10 @@ class BundleFileStorageService: BundleStorageService {
         fileOperationQueue.async(flags: .barrier) {
             let storeDirResult = self.bundleStoreDir()
             guard case .success(let storeDir) = storeDirResult else {
-                completion(.failure(storeDirResult.failureError ?? BundleStorageError.unknown(nil)))
+                completion(.failure(UpdateFailureError.classifying(
+                    storeDirResult.failureError ?? BundleStorageError.unknown(nil),
+                    during: .storage
+                )))
                 return
             }
             self.updateBundleFromManifest(
@@ -2021,6 +2001,14 @@ class BundleFileStorageService: BundleStorageService {
         }
     }
 
+    /// How the per-file install produced one file.
+    private enum AssetInstallOutcome {
+        case patched
+        /// `patchFallback` is true when a patch for the running bundle was
+        /// offered but the original file was downloaded instead.
+        case downloaded(patchFallback: Bool)
+    }
+
     private func downloadManifestAsset(
         assetPath: String,
         expectedAsset: ParsedManifestAsset,
@@ -2031,7 +2019,7 @@ class BundleFileStorageService: BundleStorageService {
         tempDirectory: String,
         progressFile: UpdateProgressPayload.DiffProgressFileSnapshot,
         progressHandler: @escaping (UpdateProgressPayload) -> Void
-    ) throws {
+    ) throws -> AssetInstallOutcome {
         let expectedHash = expectedAsset.fileHash
         var diffFiles = [progressFile]
         let patched = applyPatchAssetIfPossible(
@@ -2046,7 +2034,10 @@ class BundleFileStorageService: BundleStorageService {
             progressHandler: progressHandler
         )
         if patched {
-            try verifyManifestAssetFile(atPath: destinationPath, asset: expectedAsset)
+            // The patch produced these bytes, so a mismatch is a patch failure.
+            try UpdateFailureError.during(.patch, resource: .patch) {
+                try verifyManifestAssetFile(atPath: destinationPath, asset: expectedAsset)
+            }
             updateDiffProgressFile(
                 files: &diffFiles,
                 assetPath: assetPath,
@@ -2060,7 +2051,7 @@ class BundleFileStorageService: BundleStorageService {
                     : "downloading",
                 files: diffFiles
             )
-            return
+            return .patched
         }
 
         guard let changedAssetFileUrl = changedAsset.fileUrl else {
@@ -2075,10 +2066,14 @@ class BundleFileStorageService: BundleStorageService {
                 phase: "downloading",
                 files: diffFiles
             )
-            throw BundleStorageError.downloadFailed(
-                NSError(domain: "HotUpdater", code: 0, userInfo: [
-                    NSLocalizedDescriptionKey: "Changed asset fileUrl missing and patch could not be applied: \(assetPath)"
-                ])
+            // With no original file to fall back to, the patch decides the install.
+            throw UpdateFailureError(
+                underlying: BundleStorageError.downloadFailed(
+                    NSError(domain: "HotUpdater", code: 0, userInfo: [
+                        NSLocalizedDescriptionKey: "Changed asset fileUrl missing and patch could not be applied: \(assetPath)"
+                    ])
+                ),
+                failure: UpdateFailure.patch.with(resource: .patch)
             )
         }
 
@@ -2119,15 +2114,23 @@ class BundleFileStorageService: BundleStorageService {
         ) {
         case .success(let downloadedFileURL):
             do {
-                try materializeDownloadedAsset(
-                    downloadedPath: downloadedFileURL.path,
-                    destinationPath: destinationPath,
-                    changedAsset: changedAsset
-                )
-                try verifyManifestAssetFile(
-                    atPath: destinationPath,
-                    asset: expectedAsset
-                )
+                try UpdateFailureError.during(.extraction, resource: .file) {
+                    try materializeDownloadedAsset(
+                        downloadedPath: downloadedFileURL.path,
+                        destinationPath: destinationPath,
+                        changedAsset: changedAsset
+                    )
+                }
+                // Compressed files are checked after decoding, so their
+                // mismatch is an extraction failure.
+                let verificationPhase: UpdatePhase =
+                    changedAsset.fileCompression == "br" ? .extraction : .verification
+                try UpdateFailureError.during(verificationPhase, resource: .file) {
+                    try verifyManifestAssetFile(
+                        atPath: destinationPath,
+                        asset: expectedAsset
+                    )
+                }
             } catch {
                 updateDiffProgressFile(
                     files: &diffFiles,
@@ -2155,6 +2158,12 @@ class BundleFileStorageService: BundleStorageService {
                     : "downloading",
                 files: diffFiles
             )
+            // A patch for the running bundle was offered, but the original
+            // file came instead; a patch for another base was never tried.
+            let patchWasTried = changedAsset.patch.map {
+                $0.algorithm == "bsdiff" && $0.baseBundleId == currentBundleId
+            } ?? false
+            return .downloaded(patchFallback: patchWasTried)
         case .failure(let error):
             let lastKnownProgress = diffFiles.first(where: { $0.path == assetPath })?.progress ?? 0
             updateDiffProgressFile(
@@ -2168,11 +2177,14 @@ class BundleFileStorageService: BundleStorageService {
                 phase: "downloading",
                 files: diffFiles
             )
+            let transferError: Error
             if let downloadError = error as? DownloadError,
                case .incompleteDownload(let expected, let actual) = downloadError {
-                throw BundleStorageError.incompleteDownload(expected: expected, actual: actual)
+                transferError = BundleStorageError.incompleteDownload(expected: expected, actual: actual)
+            } else {
+                transferError = BundleStorageError.downloadFailed(error)
             }
-            throw BundleStorageError.downloadFailed(error)
+            throw UpdateFailureError.classifying(transferError, during: .transfer, resource: .file)
         }
     }
 
@@ -2254,14 +2266,19 @@ class BundleFileStorageService: BundleStorageService {
                 fileURL: URL(fileURLWithPath: compressedPath),
                 expectedHash: archive.downloadFileHash
               ) else {
-            throw BundleStorageError.invalidBundle
+            throw UpdateFailureError(
+                underlying: BundleStorageError.invalidBundle,
+                failure: .hashMismatch
+            )
         }
 
-        try BrotliFileDecompressor.decompress(
-            from: compressedPath,
-            to: tarPath,
-            expectedOutputByteSize: archive.tarByteSize
-        )
+        try UpdateFailureError.during(.extraction) {
+            try BrotliFileDecompressor.decompress(
+                from: compressedPath,
+                to: tarPath,
+                expectedOutputByteSize: archive.tarByteSize
+            )
+        }
 
         let expectedFiles = try targetManifest.assets.reduce(
             into: [String: Int64](),
@@ -2272,17 +2289,19 @@ class BundleFileStorageService: BundleStorageService {
                 result[entry.key] = byteSize
             }
         )
-        try TarArchiveExtractor.extract(
-            from: tarPath,
-            to: extractedDirectory,
-            expectedFiles: expectedFiles
-        )
-        for (path, asset) in targetManifest.assets {
-            let extractedPath = try FileUtilities.fileURL(
-                for: path,
-                destinationRoot: extractedDirectory
-            ).path
-            try verifyManifestAssetFile(atPath: extractedPath, asset: asset)
+        try UpdateFailureError.during(.extraction) {
+            try TarArchiveExtractor.extract(
+                from: tarPath,
+                to: extractedDirectory,
+                expectedFiles: expectedFiles
+            )
+            for (path, asset) in targetManifest.assets {
+                let extractedPath = try FileUtilities.fileURL(
+                    for: path,
+                    destinationRoot: extractedDirectory
+                ).path
+                try verifyManifestAssetFile(atPath: extractedPath, asset: asset)
+            }
         }
 
         try promoteVerifiedArchiveDirectory(
@@ -2380,8 +2399,7 @@ class BundleFileStorageService: BundleStorageService {
         defer { releaseStateLock.unlock() }
         let currentMetadata = loadMetadataOrNull() ?? createInitialMetadata()
         guard let updatedMetadata = prepareMetadataForNewStagingBundle(currentMetadata, bundleId: bundleId) else {
-            throw BundleStorageError.unknown(NSError(domain: "HotUpdater", code: 0,
-                userInfo: [NSLocalizedDescriptionKey: "Release catalog selection is stale"]))
+            throw BundleStorageError.unknown(StaleReleaseSelectionError())
         }
         let finalBundlePath = try resolveBundlePathAfterMove(
             bundlePathInStaging, from: stagingDirectory, to: finalDirectory
@@ -2400,8 +2418,11 @@ class BundleFileStorageService: BundleStorageService {
             // Metadata is the durable activation point. Launch never uses an
             // untracked preference if this write fails or the process terminates.
             guard saveMetadata(updatedMetadata) else {
-                throw BundleStorageError.unknown(NSError(domain: "HotUpdater", code: 0,
-                    userInfo: [NSLocalizedDescriptionKey: "Failed to persist bundle activation metadata"]))
+                throw UpdateFailureError(
+                    underlying: BundleStorageError.unknown(NSError(domain: "HotUpdater", code: 0,
+                        userInfo: [NSLocalizedDescriptionKey: "Failed to persist bundle activation metadata"])),
+                    failure: .storage
+                )
             }
         } catch {
             let installError = error
@@ -2425,17 +2446,23 @@ class BundleFileStorageService: BundleStorageService {
         changedAssets: [String: ChangedAssetDescriptor],
         storeDir: String,
         progressHandler: @escaping (UpdateProgressPayload) -> Void,
-        completion: @escaping (Result<Bool, Error>) -> Void
+        completion: @escaping (Result<UpdateDelivery, Error>) -> Void
     ) {
         let tempDirResult = tempDir()
         guard case .success(let tempDirectory) = tempDirResult else {
-            completion(.failure(tempDirResult.failureError ?? BundleStorageError.unknown(nil)))
+            completion(.failure(UpdateFailureError.classifying(
+                tempDirResult.failureError ?? BundleStorageError.unknown(nil),
+                during: .storage
+            )))
             return
         }
 
         try? self.fileSystem.removeItem(atPath: tempDirectory)
         guard self.fileSystem.createDirectory(atPath: tempDirectory) else {
-            completion(.failure(BundleStorageError.directoryCreationFailed))
+            completion(.failure(UpdateFailureError.classifying(
+                BundleStorageError.directoryCreationFailed,
+                during: .storage
+            )))
             return
         }
 
@@ -2447,9 +2474,14 @@ class BundleFileStorageService: BundleStorageService {
         let tmpDir = (storeDir as NSString).appendingPathComponent("\(bundleId).tmp")
         let realDir = (storeDir as NSString).appendingPathComponent(bundleId)
         var diffFiles: [UpdateProgressPayload.DiffProgressFileSnapshot] = []
+        // The running step classifies the errors whose type does not.
+        var failurePhase = UpdatePhase.storage
+        var failureResource: UpdateFailureResource?
 
         do {
             try recoverInterruptedPromotion(finalDirectory: realDir)
+            failurePhase = .transfer
+            failureResource = .manifest
             self.emitDiffProgress(
                 progressHandler: progressHandler,
                 phase: "manifest",
@@ -2478,6 +2510,7 @@ class BundleFileStorageService: BundleStorageService {
                 throw BundleStorageError.downloadFailed(error)
             }
 
+            failurePhase = .verification
             let manifestVerificationResult = SignatureVerifier.verifyBundle(
                 fileURL: URL(fileURLWithPath: tempManifestPath),
                 fileHash: manifestFileHash
@@ -2489,6 +2522,7 @@ class BundleFileStorageService: BundleStorageService {
                 throw BundleStorageError.unknown(nil)
             }
 
+            failurePhase = .manifest
             guard let manifestData = try? Data(contentsOf: URL(fileURLWithPath: tempManifestPath)),
                   let manifestJson = try JSONSerialization.jsonObject(with: manifestData) as? [String: Any],
                   let targetManifest = parseBundleManifest(from: manifestJson),
@@ -2511,6 +2545,9 @@ class BundleFileStorageService: BundleStorageService {
                 _ = try FileUtilities.fileURL(for: path, destinationRoot: tmpDir)
             }
 
+            // Downloads, patches, and extraction below classify their own errors.
+            failurePhase = .storage
+            failureResource = nil
             guard self.fileSystem.createDirectory(atPath: tmpDir) else {
                 throw BundleStorageError.directoryCreationFailed
             }
@@ -2554,13 +2591,19 @@ class BundleFileStorageService: BundleStorageService {
                 }
                 if reused { continue }
                 if builtInAssetResolver.copyIfMatches(assetPath: assetPath, expectedHash: expectedAsset.fileHash, destination: destinationPath) {
-                    try verifyManifestAssetFile(atPath: destinationPath, asset: expectedAsset)
+                    try UpdateFailureError.during(.verification, resource: .file) {
+                        try verifyManifestAssetFile(atPath: destinationPath, asset: expectedAsset)
+                    }
                     continue
                 }
                 downloads[assetPath] = changedAssets[assetPath]
             }
 
             var archiveInstalled = false
+            var patchedFiles = false
+            // The archive is chosen before any patch is tried, so only the
+            // per-file install can fall back from a patch.
+            var patchFallbacks = false
             if shouldUseArchive(
                 archive: targetManifest.archive,
                 archiveUrl: archiveUrl,
@@ -2568,14 +2611,16 @@ class BundleFileStorageService: BundleStorageService {
                 assets: targetManifest.assets
             ), let archive = targetManifest.archive, let archiveUrl {
                 do {
-                    diffFiles = try installArchive(
-                        archive: archive,
-                        archiveUrl: archiveUrl,
-                        targetManifest: targetManifest,
-                        preparedDirectory: tmpDir,
-                        tempDirectory: tempDirectory,
-                        progressHandler: progressHandler
-                    )
+                    diffFiles = try UpdateFailureError.during(.storage, resource: .archive) {
+                        try installArchive(
+                            archive: archive,
+                            archiveUrl: archiveUrl,
+                            targetManifest: targetManifest,
+                            preparedDirectory: tmpDir,
+                            tempDirectory: tempDirectory,
+                            progressHandler: progressHandler
+                        )
+                    }
                     archiveInstalled = true
                 } catch {
                     NSLog("[BundleStorage] tar.br optimization failed; falling back to individual files: \(error.localizedDescription)")
@@ -2592,6 +2637,7 @@ class BundleFileStorageService: BundleStorageService {
                 let workers = OperationQueue()
                 workers.maxConcurrentOperationCount = 4
                 var installError: Error?
+                var installOutcomes: [AssetInstallOutcome] = []
                 for progressFile in diffFiles {
                     let assetPath = progressFile.path
                     let expectedAsset = targetManifest.assets[assetPath]!
@@ -2606,7 +2652,7 @@ class BundleFileStorageService: BundleStorageService {
                         if shouldSkip { return }
                         do {
                             guard self.fileSystem.createDirectory(atPath: workerTemp) else { throw BundleStorageError.directoryCreationFailed }
-                            try self.downloadManifestAsset(
+                            let outcome = try self.downloadManifestAsset(
                                 assetPath: assetPath, expectedAsset: expectedAsset, changedAsset: descriptor,
                                 currentBundleId: currentBundleId, currentBundleDir: currentBundleDir,
                                 destinationPath: destinationPath, tempDirectory: workerTemp, progressFile: progressFile,
@@ -2620,6 +2666,9 @@ class BundleFileStorageService: BundleStorageService {
                                     self.emitDiffProgress(progressHandler: progressHandler, phase: "downloading", files: diffFiles)
                                 }
                             )
+                            progressLock.lock()
+                            installOutcomes.append(outcome)
+                            progressLock.unlock()
                         } catch {
                             progressLock.lock()
                             if installError == nil { installError = error }
@@ -2630,6 +2679,14 @@ class BundleFileStorageService: BundleStorageService {
                 // Join all workers before cleaning scratch files, even after a failure.
                 workers.waitUntilAllOperationsAreFinished()
                 if let installError { throw installError }
+                for outcome in installOutcomes {
+                    switch outcome {
+                    case .patched:
+                        patchedFiles = true
+                    case .downloaded(let patchFallback):
+                        patchFallbacks = patchFallbacks || patchFallback
+                    }
+                }
             }
 
             self.emitDiffProgress(
@@ -2644,7 +2701,11 @@ class BundleFileStorageService: BundleStorageService {
             switch self.findBundleFile(in: tmpDir, expectedBundleId: bundleId) {
             case .success(let maybeBundlePath):
                 guard let bundlePathInTmp = maybeBundlePath else {
-                    throw BundleStorageError.invalidBundle
+                    // The manifest does not name exactly one platform bundle file.
+                    throw UpdateFailureError(
+                        underlying: BundleStorageError.invalidBundle,
+                        failure: UpdateFailure.invalidResponse.with(resource: .manifest)
+                    )
                 }
 
                 let updatedMetadata = try promoteStagedBundle(
@@ -2666,7 +2727,9 @@ class BundleFileStorageService: BundleStorageService {
                         files: diffFiles
                     )
                 ))
-                completion(.success(true))
+                let delivery: UpdateDelivery.Method =
+                    archiveInstalled ? .archive : (patchedFiles ? .patch : .manifest)
+                completion(.success(UpdateDelivery(method: delivery, patchFallback: patchFallbacks)))
             case .failure(let error):
                 throw error
             }
@@ -2674,7 +2737,11 @@ class BundleFileStorageService: BundleStorageService {
             NSLog("[BundleStorage] Manifest-driven install failed: \(error.localizedDescription).")
             // Preserve staging for a hash-checked retry. Never trust its presence alone.
             self.cleanupTemporaryFiles([tempDirectory])
-            completion(.failure(error))
+            completion(.failure(UpdateFailureError.classifying(
+                error,
+                during: failurePhase,
+                resource: failureResource
+            )))
         }
     }
 
@@ -2756,34 +2823,7 @@ class BundleFileStorageService: BundleStorageService {
     }
 
     func getInstallId() -> String {
-        if let installId = loadInstallIdentity()?.installId {
-            return installId
-        }
-
-        let identity = InstallIdentity()
-        guard saveInstallIdentity(identity) else {
-            return identity.installId
-        }
-        return identity.installId
-    }
-
-    func getUserId() -> String? {
-        loadUserIdentity()?.userId
-    }
-
-    func getUsername() -> String? {
-        loadUserIdentity()?.username
-    }
-
-    func setUser(userId: String?, username: String?) {
-        let normalizedUserId = normalizeIdentityValue(userId)
-        let normalizedUsername = normalizeIdentityValue(username)
-        let identity = UserIdentity(userId: normalizedUserId, username: normalizedUsername)
-        if identity.isEmpty {
-            _ = saveUserIdentity(nil)
-            return
-        }
-        _ = saveUserIdentity(identity)
+        loadOrCreateInstallIdentity().installId
     }
 
     /**

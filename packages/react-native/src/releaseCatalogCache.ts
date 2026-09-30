@@ -8,6 +8,8 @@ import {
   type ReleaseCatalog,
 } from "@hot-updater/core";
 
+import { InvalidUpdateResponseError, UpdateHttpError } from "./updateError";
+
 const CACHE_FORMAT_VERSION = "1";
 const MAX_ETAG_BYTES = 1024;
 export const MAX_RELEASE_CATALOG_WIRE_BYTES =
@@ -290,16 +292,25 @@ const consumeSuccessfulResponse = async (
   response: Response,
   input: FetchReleaseCatalogInput,
   partition: string,
-): Promise<ReleaseCatalog> => {
+): Promise<ReleaseCatalog | null> => {
+  // The server marks the 404 of a scope that has no catalog yet: no update,
+  // not a failure. Any other 404 is a wrong baseURL or route.
+  if (
+    response.status === 404 &&
+    response.headers.get("x-hot-updater-catalog")?.trim().toLowerCase() ===
+      "none"
+  ) {
+    return null;
+  }
   if (response.status !== 200) {
-    throw new Error(response.statusText);
+    throw new UpdateHttpError(response.status, response.statusText);
   }
 
   const body = await response.text();
   const catalog = parseValidatedCatalog(body, input.expectedScope);
   if (catalog === null) {
     await removeNativeReleaseCatalogCache(partition);
-    throw new Error("Received an invalid Release catalog");
+    throw new InvalidUpdateResponseError("Received an invalid Release catalog");
   }
 
   const etag = response.headers.get("etag");
@@ -323,9 +334,13 @@ const consumeSuccessfulResponse = async (
   return catalog;
 };
 
+/**
+ * Fetches a scope's catalog, or null when the server answers that the scope
+ * has none (a 404 with `x-hot-updater-catalog: none`).
+ */
 export const fetchReleaseCatalogWithCache = async (
   input: FetchReleaseCatalogInput,
-): Promise<ReleaseCatalog> => {
+): Promise<ReleaseCatalog | null> => {
   const partition = createReleaseCatalogCachePartition(input);
   const cached = await readValidatedCache(partition, input.expectedScope);
   const response = await fetchCatalogResponse(input, cached?.etag);

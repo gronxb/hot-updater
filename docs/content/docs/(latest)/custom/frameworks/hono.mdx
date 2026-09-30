@@ -93,11 +93,12 @@ export default defineConfig({
 
 With `insights()` in `plugins`, `handlers.client` accepts Insights events and
 `handlers.admin` serves Insights queries; without it, those routes answer `204`
-with `x-hot-updater-insights: disabled`. Client reporting is on by default and
-can be disabled in the mobile SDK. [Server plugin](/docs/custom/server-plugins)
-endpoints mount on the same two handlers. The client API key protects catalog
-reads, artifact resolution, Insights ingestion, and plugin client routes; it
-does not protect or authorize the admin handler.
+with `x-hot-updater-insights: disabled`. Apps send reports with the
+[Insights client plugin](/docs/react-native-api/insights).
+[Server plugin](/docs/custom/server-plugins) endpoints mount on the same two
+handlers. The client API key protects catalog reads, artifact resolution,
+Insights ingestion, and plugin client routes; it does not protect or authorize
+the admin handler.
 
 See the [shared handler boundary](/docs/custom/overview#runtime-policy) for route
 groups and the [repository server contract](/docs/database-plugins/standalone#server-contract)

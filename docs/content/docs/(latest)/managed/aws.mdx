@@ -231,7 +231,11 @@ dedicated CloudFront behavior whose cache key contains the canonical path,
 Authorization, cookies, query strings, and installation state. A cold origin
 fill performs one exact DynamoDB catalog read; a warm CloudFront hit skips both
 Lambda@Edge and DynamoDB. Each authenticated Insights report invokes
-Lambda@Edge. A report the server records is one DynamoDB transaction of 15 to
+Lambda@Edge. Apps send reports only with the
+[Insights client plugin](/docs/react-native-api/insights): at most one launch
+report a UTC day per installation while nothing changes, plus downloads,
+applies, recoveries, and update failures. An app without the plugin sends
+none. A report the server records is one DynamoDB transaction of 15 to
 30 items, 40 to 66 write request units: the installation's latest-report row,
 the aggregate counters, sketches, and gauges it changes, and, for a download,
 apply, or recovery, the event with its index copies. A launch that repeats the

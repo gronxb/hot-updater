@@ -14,11 +14,16 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
 import java.io.File
+import java.io.IOException
+import java.net.ConnectException
+import java.net.SocketTimeoutException
 import java.net.URL
+import java.net.UnknownHostException
 import java.util.Base64
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicInteger
+import javax.net.ssl.SSLHandshakeException
 
 class BundleFileStorageServiceTest {
     @get:Rule
@@ -349,59 +354,6 @@ class BundleFileStorageServiceTest {
                 "updateStrategy" to "appVersion",
             ),
             service.notifyAppReady(),
-        )
-    }
-
-    @Test
-    fun `install identity persists across service instances and user clear keeps install id`() {
-        val rootDir = temporaryFolder.newFolder("install-identity")
-        val firstService = createService(rootDir)
-
-        val firstInstallId = firstService.getInstallId()
-        assertTrue(firstInstallId.isNotBlank())
-
-        firstService.setUser("user-123", "alice")
-        assertEquals(
-            InstallationIdentity(
-                installId = firstInstallId,
-                userId = "user-123",
-                username = "alice",
-            ),
-            loadInstallationIdentity(rootDir),
-        )
-
-        val restartedService = createService(rootDir)
-        assertEquals(firstInstallId, restartedService.getInstallId())
-
-        restartedService.setUser(null, null)
-        assertEquals(
-            InstallationIdentity(
-                installId = firstInstallId,
-                userId = null,
-                username = null,
-            ),
-            loadInstallationIdentity(rootDir),
-        )
-    }
-
-    @Test
-    fun `user update keeps cached install id when persisted identity becomes unreadable`() {
-        val rootDir = temporaryFolder.newFolder("install-identity-corruption")
-        val service = createService(rootDir)
-        val installId = service.getInstallId()
-        val identityFile = File(bundleStoreDir(rootDir), InstallationIdentity.IDENTITY_FILENAME)
-        identityFile.writeText("{")
-
-        service.setUser("user-123", "alice")
-
-        assertEquals(installId, service.getInstallId())
-        assertEquals(
-            InstallationIdentity(
-                installId = installId,
-                userId = "user-123",
-                username = "alice",
-            ),
-            loadInstallationIdentity(rootDir),
         )
     }
 
@@ -841,7 +793,11 @@ class BundleFileStorageServiceTest {
                     ) {}
                 }
 
-            assertTrue(result.isFailure)
+            assertUpdateFailure(
+                result.exceptionOrNull(),
+                "MOVE_OPERATION_FAILED",
+                UpdateFailure.install(UpdateFailureReason.STORAGE),
+            )
             assertEquals("old", oldBundleFile.readText())
             assertFalse(File(bundleStoreDir(root), "target.install-backup").exists())
             assertEquals(oldBundleFile.absolutePath, preferences.getItem("HotUpdaterBundleURL"))
@@ -891,7 +847,11 @@ class BundleFileStorageServiceTest {
                     ) {}
                 }
 
-            assertTrue(result.isFailure)
+            assertUpdateFailure(
+                result.exceptionOrNull(),
+                "UNKNOWN_ERROR",
+                UpdateFailure.install(UpdateFailureReason.STORAGE),
+            )
             assertEquals("old", oldBundleFile.readText())
             assertFalse(File(bundleStoreDir(root), "target.install-backup").exists())
             assertEquals(oldBundleFile.absolutePath, preferences.getItem("HotUpdaterBundleURL"))
@@ -951,7 +911,11 @@ class BundleFileStorageServiceTest {
                     ) {}
                 }
 
-            assertTrue(result.isFailure)
+            assertUpdateFailure(
+                result.exceptionOrNull(),
+                "UNKNOWN_ERROR",
+                UpdateFailure.install(UpdateFailureReason.STORAGE),
+            )
             assertEquals(0, metadataWrites)
             assertEquals("old", oldBundleFile.readText())
             assertEquals(oldBundleFile.absolutePath, preferences.getItem("HotUpdaterBundleURL"))
@@ -1493,6 +1457,423 @@ class BundleFileStorageServiceTest {
             }
         }
 
+    @Test
+    fun `download failures of the manifest or a file report network http or storage`() =
+        runBlocking {
+            val network = UpdateFailure.download(UpdateFailureReason.NETWORK)
+            val cases =
+                listOf(
+                    Triple(HttpStatusException(404, "Not Found"), "DOWNLOAD_FAILED", UpdateFailure.http(404)),
+                    Triple(
+                        HttpStatusException(403, "Forbidden", originCode = "AccessDenied"),
+                        "DOWNLOAD_FAILED",
+                        UpdateFailure.http(403, originCode = "AccessDenied"),
+                    ),
+                    Triple(
+                        UnknownHostException("example.com"),
+                        "DOWNLOAD_FAILED",
+                        network.copy(transport = UpdateFailureTransport.DNS),
+                    ),
+                    Triple(
+                        SocketTimeoutException("timeout"),
+                        "DOWNLOAD_FAILED",
+                        network.copy(transport = UpdateFailureTransport.TIMEOUT),
+                    ),
+                    Triple(
+                        ConnectException("Connection refused"),
+                        "DOWNLOAD_FAILED",
+                        network.copy(transport = UpdateFailureTransport.CONNECTION),
+                    ),
+                    Triple(
+                        SSLHandshakeException("Chain validation failed"),
+                        "DOWNLOAD_FAILED",
+                        network.copy(transport = UpdateFailureTransport.TLS),
+                    ),
+                    Triple(IncompleteDownloadException(expectedSize = 10, actualSize = 4), "INCOMPLETE_DOWNLOAD", network),
+                    Triple(
+                        LocalStorageException(IOException("No space left on device")),
+                        "DOWNLOAD_FAILED",
+                        UpdateFailure.install(UpdateFailureReason.STORAGE),
+                    ),
+                )
+            val resources = mapOf(MANIFEST_URL to UpdateFailureResource.MANIFEST, BUNDLE_URL to UpdateFailureResource.FILE)
+
+            cases.forEachIndexed { index, (error, code, failure) ->
+                resources.forEach { (failingUrl, resource) ->
+                    val root = temporaryFolder.newFolder("download-failure-$index-${resource.value}")
+                    val result = runOneFileUpdate(root, failures = mapOf(failingUrl to error))
+
+                    assertUpdateFailure(result, code, failure.copy(resource = resource))
+                    assertNull(loadMetadata(root)?.stagingBundleId)
+                }
+            }
+        }
+
+    @Test
+    fun `verification failures report hash mismatch signature or invalid response`() =
+        runBlocking {
+            val hashMismatch = UpdateFailure.download(UpdateFailureReason.HASH_MISMATCH)
+            val hashMismatchRoot = temporaryFolder.newFolder("manifest-hash-mismatch")
+            assertUpdateFailure(
+                runOneFileUpdate(hashMismatchRoot, manifestFileHash = sha256(hashMismatchRoot, "another manifest")),
+                "SIGNATURE_VERIFICATION_FAILED",
+                hashMismatch.copy(resource = UpdateFailureResource.MANIFEST),
+            )
+
+            assertUpdateFailure(
+                runOneFileUpdate(temporaryFolder.newFolder("file-hash-mismatch"), servedFile = "tampered".toByteArray()),
+                "SIGNATURE_VERIFICATION_FAILED",
+                hashMismatch.copy(resource = UpdateFailureResource.FILE),
+            )
+
+            HotUpdaterConfig.publicKey = "configured-public-key"
+            try {
+                assertUpdateFailure(
+                    runOneFileUpdate(temporaryFolder.newFolder("unsigned-with-public-key")),
+                    "SIGNATURE_VERIFICATION_FAILED",
+                    UpdateFailure.download(UpdateFailureReason.SIGNATURE).copy(resource = UpdateFailureResource.MANIFEST),
+                )
+            } finally {
+                HotUpdaterConfig.publicKey = null
+            }
+
+            val invalidManifest =
+                UpdateFailure.download(UpdateFailureReason.INVALID_RESPONSE).copy(resource = UpdateFailureResource.MANIFEST)
+            val otherBundleRoot = temporaryFolder.newFolder("manifest-for-other-bundle")
+            assertUpdateFailure(
+                runOneFileUpdate(
+                    otherBundleRoot,
+                    manifest = manifestJson("other-bundle", mapOf("index.android.bundle" to sha256(otherBundleRoot, BUNDLE_CONTENT))),
+                ),
+                "INVALID_BUNDLE",
+                invalidManifest,
+            )
+            assertUpdateFailure(
+                runOneFileUpdate(temporaryFolder.newFolder("unparsable-manifest"), manifest = "not json"),
+                "INVALID_BUNDLE",
+                invalidManifest,
+            )
+            assertUpdateFailure(
+                runOneFileUpdate(temporaryFolder.newFolder("missing-platform-bundle"), assetPath = "assets/image.png"),
+                "INVALID_BUNDLE",
+                invalidManifest,
+            )
+            val malformedUrlRoot = temporaryFolder.newFolder("malformed-file-url")
+            assertUpdateFailure(
+                runOneFileUpdate(
+                    malformedUrlRoot,
+                    descriptor = ChangedAssetDescriptor("not a url", sha256(malformedUrlRoot, BUNDLE_CONTENT)),
+                ),
+                "UNKNOWN_ERROR",
+                invalidManifest.copy(resource = UpdateFailureResource.FILE),
+            )
+        }
+
+    @Test
+    fun `install failures report extract or storage`() =
+        runBlocking {
+            val brotliRoot = temporaryFolder.newFolder("corrupt-brotli-file")
+            val truncatedBrotli = Base64.getDecoder().decode(TarBrArchiveExtractorTest.VALID).let { it.copyOf(it.size / 2) }
+            assertUpdateFailure(
+                runOneFileUpdate(
+                    brotliRoot,
+                    descriptor = ChangedAssetDescriptor(BUNDLE_URL, sha256(brotliRoot, BUNDLE_CONTENT), fileCompression = "br"),
+                    servedFile = truncatedBrotli,
+                ),
+                "DOWNLOAD_FAILED",
+                UpdateFailure.install(UpdateFailureReason.EXTRACT).copy(resource = UpdateFailureResource.FILE),
+            )
+
+            val stagingRoot = temporaryFolder.newFolder("staging-directory-blocked")
+            File(bundleStoreDir(stagingRoot), "target.tmp").writeText("a file where the staging directory belongs")
+            assertUpdateFailure(
+                runOneFileUpdate(stagingRoot),
+                "DIRECTORY_CREATION_FAILED",
+                UpdateFailure.install(UpdateFailureReason.STORAGE),
+            )
+        }
+
+    @Test
+    fun `unanticipated failures report unknown in the stage they happened in`() =
+        runBlocking {
+            val downloadRoot = temporaryFolder.newFolder("unknown-download-failure")
+            val downloadResult =
+                runCatching {
+                    createService(downloadRoot).updateBundle("target", MANIFEST_URL, "hash", emptyMap()) {}
+                }.exceptionOrNull()
+            assertUpdateFailure(
+                downloadResult,
+                "UNKNOWN_ERROR",
+                UpdateFailure.download(UpdateFailureReason.UNKNOWN).copy(resource = UpdateFailureResource.MANIFEST),
+            )
+            assertEquals("downloadFile should not be called in these tests", downloadResult?.message)
+
+            val installResult =
+                runOneFileUpdate(
+                    temporaryFolder.newFolder("unknown-install-failure"),
+                    directoryRenamer = { source, destination ->
+                        if (source.name == "target.tmp") throw SecurityException("Promotion denied")
+                        source.renameTo(destination)
+                    },
+                )
+            assertUpdateFailure(installResult, "UNKNOWN_ERROR", UpdateFailure.install(UpdateFailureReason.UNKNOWN))
+            assertEquals("Promotion denied", installResult?.message)
+        }
+
+    @Test
+    fun `a bundle built from changed files reports manifest delivery`() =
+        runBlocking {
+            val root = temporaryFolder.newFolder("manifest-delivery")
+            val hash = sha256(root, BUNDLE_CONTENT)
+            val manifest = manifestJson("target", mapOf("index.android.bundle" to hash))
+            val downloads =
+                BinaryMappingDownloadService(mapOf(MANIFEST_URL to manifest.toByteArray(), BUNDLE_URL to BUNDLE_CONTENT.toByteArray()))
+            val service = createService(root, downloadService = downloads, builtInAssetResolver = MappingBuiltInAssetResolver(emptyMap()))
+            val assets = mapOf("index.android.bundle" to ChangedAssetDescriptor(BUNDLE_URL, hash))
+
+            val downloaded = service.updateBundle("target", MANIFEST_URL, sha256(root, manifest), assets) {}
+            // Installing it again reuses the staged file, so nothing is downloaded.
+            val reused = service.updateBundle("target", MANIFEST_URL, sha256(root, manifest), assets) {}
+
+            assertEquals(UpdateBundleResult(BundleDelivery.MANIFEST, patchFallback = false), downloaded)
+            assertEquals(UpdateBundleResult(BundleDelivery.MANIFEST, patchFallback = false), reused)
+            assertEquals(1, downloads.calls.count { it == BUNDLE_URL })
+        }
+
+    @Test
+    fun `a bundle installed from the archive reports archive delivery`() =
+        runBlocking {
+            val root = temporaryFolder.newFolder("archive-delivery")
+            val archiveBytes = Base64.getDecoder().decode(TarBrArchiveExtractorTest.VALID)
+            val contents = mapOf("assets/image.png" to "image", "index.android.bundle" to "bundle")
+            val hashes = contents.mapValues { sha256(root, it.value) }
+            val manifest =
+                manifestJson(
+                    bundleId = "target",
+                    assets = hashes,
+                    byteSizes = contents.mapValues { it.value.length.toLong() },
+                    downloadByteSizes = mapOf("assets/image.png" to 50, "index.android.bundle" to 55),
+                    archive = archiveJson(root, archiveBytes, tarByteSize = 3072),
+                )
+            val downloads =
+                BinaryMappingDownloadService(mapOf(MANIFEST_URL to manifest.toByteArray(), ARCHIVE_URL to archiveBytes))
+
+            val result =
+                createService(root, downloadService = downloads, builtInAssetResolver = MappingBuiltInAssetResolver(emptyMap()))
+                    .updateBundle(
+                        bundleId = "target",
+                        manifestUrl = MANIFEST_URL,
+                        manifestFileHash = sha256(root, manifest),
+                        assets = hashes.mapValues { (path, hash) -> ChangedAssetDescriptor("https://example.com/$path", hash) },
+                        archiveUrl = ARCHIVE_URL,
+                        progressCallback = {},
+                    )
+
+            assertEquals(UpdateBundleResult(BundleDelivery.ARCHIVE, patchFallback = false), result)
+            assertEquals(listOf(MANIFEST_URL, ARCHIVE_URL), downloads.calls)
+        }
+
+    @Test
+    fun `a file produced by a patch reports patch delivery`() =
+        runBlocking {
+            val patchUpdate = PatchUpdate(temporaryFolder.newFolder("patch-delivery"))
+
+            val result = patchUpdate.run(servedPatch = patchUpdate.patchBytes)
+
+            assertEquals(UpdateBundleResult(BundleDelivery.PATCH, patchFallback = false), result.getOrThrow())
+            assertEquals(listOf(MANIFEST_URL, PATCH_URL), patchUpdate.downloads.calls)
+            assertEquals(PATCHED_CONTENT, File(bundleStoreDir(patchUpdate.root), "target/index.android.bundle").readText())
+        }
+
+    @Test
+    fun `a patch that cannot produce its file falls back to the file`() =
+        runBlocking {
+            val corruptPatch = PatchUpdate(temporaryFolder.newFolder("patch-fallback-corrupt"))
+            assertEquals(
+                UpdateBundleResult(BundleDelivery.MANIFEST, patchFallback = true),
+                corruptPatch.run(servedPatch = "not a bsdiff patch".toByteArray()).getOrThrow(),
+            )
+            assertEquals(listOf(MANIFEST_URL, PATCH_URL, BUNDLE_URL), corruptPatch.downloads.calls)
+
+            val unreachablePatch = PatchUpdate(temporaryFolder.newFolder("patch-fallback-http"))
+            assertEquals(
+                UpdateBundleResult(BundleDelivery.MANIFEST, patchFallback = true),
+                unreachablePatch.run(servedPatch = null).getOrThrow(),
+            )
+
+            val corruptBase = PatchUpdate(temporaryFolder.newFolder("patch-fallback-base"))
+            File(bundleStoreDir(corruptBase.root), "base-bundle/index.android.bundle").writeText("corrupt base")
+            assertEquals(
+                UpdateBundleResult(BundleDelivery.MANIFEST, patchFallback = true),
+                corruptBase.run(servedPatch = corruptBase.patchBytes).getOrThrow(),
+            )
+            assertFalse(corruptBase.downloads.calls.contains(PATCH_URL))
+
+            // A patch for a bundle other than the running one is never attempted.
+            val otherBase = PatchUpdate(temporaryFolder.newFolder("patch-for-other-base"))
+            assertEquals(
+                UpdateBundleResult(BundleDelivery.MANIFEST, patchFallback = false),
+                otherBase.run(servedPatch = otherBase.patchBytes, patchBaseBundleId = "other-bundle").getOrThrow(),
+            )
+            assertEquals(listOf(MANIFEST_URL, BUNDLE_URL), otherBase.downloads.calls)
+        }
+
+    /**
+     * Bundle "target" whose index.android.bundle can be produced by a bsdiff
+     * patch against the running bundle "base-bundle", or downloaded whole.
+     */
+    private inner class PatchUpdate(
+        val root: File,
+    ) {
+        val patchBytes: ByteArray = Base64.getDecoder().decode(BsdiffPatchTest.BSDIFF_PATCH_FIXTURE_BASE64)
+        private val preferences = InMemoryPreferencesService()
+        lateinit var downloads: BinaryMappingDownloadService
+
+        init {
+            val base = createBundleDir(root, "base-bundle")
+            val baseFile = writeFile(base, "index.android.bundle", BASE_CONTENT)
+            File(base, "manifest.json").writeText(
+                manifestJson("base-bundle", mapOf("index.android.bundle" to sha256(root, BASE_CONTENT))),
+            )
+            writeMetadata(root, BundleMetadata(isolationKey = TEST_ISOLATION_KEY, stagingBundleId = "base-bundle"))
+            preferences.setItem("HotUpdaterBundleURL", baseFile.absolutePath)
+        }
+
+        /** Serves [servedPatch] with its hash, or a 404 for the patch when it is null. */
+        suspend fun run(
+            servedPatch: ByteArray?,
+            patchBaseBundleId: String = "base-bundle",
+        ): Result<UpdateBundleResult> {
+            val targetHash = sha256(root, PATCHED_CONTENT)
+            val manifest = manifestJson("target", mapOf("index.android.bundle" to targetHash))
+            downloads =
+                BinaryMappingDownloadService(
+                    buildMap {
+                        put(MANIFEST_URL, manifest.toByteArray())
+                        put(BUNDLE_URL, PATCHED_CONTENT.toByteArray())
+                        servedPatch?.let { put(PATCH_URL, it) }
+                    },
+                    failures = if (servedPatch == null) mapOf(PATCH_URL to HttpStatusException(404, "Not Found")) else emptyMap(),
+                )
+            val service =
+                createService(
+                    root,
+                    preferences = preferences,
+                    downloadService = downloads,
+                    builtInAssetResolver = MappingBuiltInAssetResolver(emptyMap()),
+                )
+            val descriptor =
+                ChangedAssetDescriptor(
+                    fileUrl = BUNDLE_URL,
+                    fileHash = targetHash,
+                    patch =
+                        BsdiffPatchDescriptor(
+                            algorithm = "bsdiff",
+                            baseBundleId = patchBaseBundleId,
+                            baseFileHash = sha256(root, BASE_CONTENT),
+                            patchFileHash = sha256(root, servedPatch ?: ByteArray(0)),
+                            patchUrl = PATCH_URL,
+                        ),
+                )
+            return runCatching {
+                service.updateBundle("target", MANIFEST_URL, sha256(root, manifest), mapOf("index.android.bundle" to descriptor)) {}
+            }
+        }
+    }
+
+    @Test
+    fun `rejections that are not update failures carry no classification`() =
+        runBlocking {
+            val crashedRoot = temporaryFolder.newFolder("crashed-bundle")
+            assertTrue(
+                CrashedHistory(mutableListOf(CrashedBundleEntry(bundleId = "target", crashedAt = 1)))
+                    .saveToFile(File(bundleStoreDir(crashedRoot), CrashedHistory.CRASHED_HISTORY_FILENAME)),
+            )
+            assertUpdateFailure(
+                runOneFileUpdate(crashedRoot),
+                "BUNDLE_IN_CRASHED_HISTORY",
+                null,
+            )
+
+            val staleRoot = temporaryFolder.newFolder("stale-selection")
+            val hash = sha256(staleRoot, BUNDLE_CONTENT)
+            val manifest = manifestJson("target", mapOf("index.android.bundle" to hash))
+            val served =
+                BinaryMappingDownloadService(
+                    mapOf(MANIFEST_URL to manifest.toByteArray(), BUNDLE_URL to BUNDLE_CONTENT.toByteArray()),
+                )
+            lateinit var service: BundleFileStorageService
+            val downloads =
+                object : DownloadService {
+                    override suspend fun downloadFile(
+                        fileUrl: URL,
+                        destination: File,
+                        fileSizeCallback: ((Long) -> Unit)?,
+                        progressCallback: (DownloadProgress) -> Unit,
+                    ): DownloadResult {
+                        if (fileUrl.toString() == BUNDLE_URL) {
+                            // A newer catalog is accepted while the selected bundle downloads.
+                            service.acceptReleaseCatalog("project-a", "scope-production", 2, "hash-2", "production", "context-2")
+                        }
+                        return served.downloadFile(fileUrl, destination, fileSizeCallback, progressCallback)
+                    }
+                }
+            service = createService(staleRoot, downloadService = downloads, builtInAssetResolver = MappingBuiltInAssetResolver(emptyMap()))
+            assertTrue(service.acceptReleaseCatalog("project-a", "scope-production", 1, "hash-1", "production", "context-1"))
+            assertTrue(service.stageReleaseSelection(releaseSelection("release-one", "target", 1, "hash-1", "context-1")))
+
+            val staleResult =
+                runCatching {
+                    service.updateBundle(
+                        "target",
+                        MANIFEST_URL,
+                        sha256(staleRoot, manifest),
+                        mapOf("index.android.bundle" to ChangedAssetDescriptor(BUNDLE_URL, hash)),
+                    ) {}
+                }.exceptionOrNull()
+
+            assertTrue("Expected a stale selection, got $staleResult", staleResult is StaleReleaseSelectionException)
+            assertNull(loadMetadata(staleRoot)?.stagingBundleId)
+        }
+
+    /** Installs bundle "target" with one file, returning the failure, if any. */
+    private suspend fun runOneFileUpdate(
+        root: File,
+        assetPath: String = "index.android.bundle",
+        manifest: String = manifestJson("target", mapOf(assetPath to sha256(root, BUNDLE_CONTENT))),
+        manifestFileHash: String = sha256(root, manifest),
+        descriptor: ChangedAssetDescriptor = ChangedAssetDescriptor(BUNDLE_URL, sha256(root, BUNDLE_CONTENT)),
+        servedFile: ByteArray = BUNDLE_CONTENT.toByteArray(),
+        failures: Map<String, Exception> = emptyMap(),
+        directoryRenamer: (File, File) -> Boolean = { source, destination -> source.renameTo(destination) },
+    ): Throwable? {
+        val service =
+            createService(
+                root,
+                downloadService =
+                    BinaryMappingDownloadService(
+                        mapOf(MANIFEST_URL to manifest.toByteArray(), BUNDLE_URL to servedFile),
+                        failures,
+                    ),
+                builtInAssetResolver = MappingBuiltInAssetResolver(emptyMap()),
+                directoryRenamer = directoryRenamer,
+            )
+        return runCatching {
+            service.updateBundle("target", MANIFEST_URL, manifestFileHash, mapOf(assetPath to descriptor)) {}
+        }.exceptionOrNull()
+    }
+
+    private fun assertUpdateFailure(
+        error: Throwable?,
+        code: String,
+        failure: UpdateFailure?,
+    ) {
+        assertTrue("Expected HotUpdaterException, got $error", error is HotUpdaterException)
+        val updateError = error as HotUpdaterException
+        assertEquals(code, updateError.code)
+        assertEquals(failure, updateError.failure)
+    }
+
     private fun createService(
         rootDir: File,
         preferences: InMemoryPreferencesService = InMemoryPreferencesService(),
@@ -1584,11 +1965,6 @@ class BundleFileStorageServiceTest {
         BundleMetadata.loadFromFile(
             File(bundleStoreDir(rootDir), BundleMetadata.METADATA_FILENAME),
             TEST_ISOLATION_KEY,
-        )
-
-    private fun loadInstallationIdentity(rootDir: File): InstallationIdentity? =
-        InstallationIdentity.loadFromFile(
-            File(bundleStoreDir(rootDir), InstallationIdentity.IDENTITY_FILENAME),
         )
 
     private fun writeFile(
@@ -1727,6 +2103,7 @@ class BundleFileStorageServiceTest {
 
     private class BinaryMappingDownloadService(
         private val contents: Map<String, ByteArray>,
+        private val failures: Map<String, Exception> = emptyMap(),
     ) : DownloadService {
         val calls = CopyOnWriteArrayList<String>()
 
@@ -1751,6 +2128,7 @@ class BundleFileStorageServiceTest {
             progressCallback: (DownloadProgress) -> Unit,
         ): DownloadResult {
             calls += fileUrl.toString()
+            failures[fileUrl.toString()]?.let { return DownloadResult.Error(it) }
             val bytes = contents[fileUrl.toString()] ?: return DownloadResult.Error(IllegalArgumentException("Unexpected URL: $fileUrl"))
             destination.parentFile?.mkdirs()
             destination.writeBytes(bytes)
@@ -1847,5 +2225,12 @@ class BundleFileStorageServiceTest {
         private const val TEST_ISOLATION_KEY = "test-isolation-key"
         private const val MANIFEST_URL = "https://example.com/manifest.json"
         private const val ARCHIVE_URL = "https://example.com/bundle.tar.br"
+        private const val BUNDLE_URL = "https://example.com/index.android.bundle"
+        private const val BUNDLE_CONTENT = "bundle"
+        private const val PATCH_URL = "https://example.com/index.android.bundle.bsdiff"
+
+        // The base and output of BsdiffPatchTest.BSDIFF_PATCH_FIXTURE_BASE64.
+        private const val BASE_CONTENT = "console.log(\"base bundle\");\n"
+        private const val PATCHED_CONTENT = "console.log(\"patched bundle\");\n"
     }
 }
