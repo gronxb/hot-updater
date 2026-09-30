@@ -59,6 +59,21 @@ interface ReadBudgetInsights {
   getAppUsage(
     input: InsightsGetAppUsageInput,
   ): Promise<InsightsGetAppUsageResult>;
+  getUpdateFailures(input: {
+    readonly platform: "ios" | "android";
+    readonly channel: string;
+    readonly releaseId?: string;
+    readonly timeRange?: { readonly start: number; readonly end: number };
+  }): Promise<{
+    readonly failedUpdates: number;
+    readonly failedInstallations: number;
+    readonly checks?: { readonly failures: number };
+    readonly breakdown?: readonly {
+      readonly stage: string;
+      readonly reason: string;
+      readonly events: number;
+    }[];
+  }>;
 }
 
 interface ReadBudgetApiKeys {
@@ -180,7 +195,6 @@ const eventOf = (
     app_version: "1.0.0",
     channel: "production",
     metadata: {
-      username: null,
       cohort: "1",
       update_strategy: "appVersion",
       fingerprint_hash: null,
@@ -189,6 +203,27 @@ const eventOf = (
     received_at_ms: T0 + n * 10 * 60_000,
     ...overrides,
   }) as BundleEventRow;
+
+/**
+ * Update failures on day 3, after every other windowed read's range: installs
+ * 3 and 5 fail to download release-b, and install 7's update check fails.
+ */
+const failureOf = (n: number, install: number, check = false) =>
+  eventOf(200 + n, {
+    type: "UPDATE_FAILED",
+    install_id: `install-${install}`,
+    from_release_id: "release-a",
+    from_bundle_id: "bundle-a",
+    to_release_id: check ? null : "release-b",
+    to_bundle_id: check ? "bundle-a" : "bundle-b",
+    metadata: {
+      ...eventOf(0).metadata,
+      failure: check
+        ? { stage: "check", reason: "http", http_status: 500 }
+        : { stage: "download", reason: "http", http_status: 403 },
+    },
+    received_at_ms: T0 + 3 * DAY + n * 10 * 60_000,
+  } as Partial<BundleEventRow>);
 
 /**
  * History event `n` of the day before T0, three an hour, on its own release
@@ -285,6 +320,9 @@ const seed = async (database: ReadBudgetDatabase, server: ReadBudgetServer) => {
   for (let n = 1; n <= 72; n += 1) {
     await api.insights.recordEvent(historyOf(n));
   }
+  await api.insights.recordEvent(failureOf(1, 3));
+  await api.insights.recordEvent(failureOf(2, 5));
+  await api.insights.recordEvent(failureOf(3, 7, true));
   const channel = (name: string) =>
     core.findChannelByName(name).then((found) => found!);
   const productionId = (await channel("production")).id;
@@ -595,6 +633,67 @@ const READ_BUDGETS: readonly ReadBudget[] = [
     engine: { calls: 4, rows: 4 },
     check: ({ versions }) =>
       expect(versions).toEqual([{ name: "1.0.0", installations: 24 }]),
+  }),
+  budget({
+    api: "update failures of a release over a window: buckets × shards, all used",
+    // Day 3's hour 0: release-b's counters and failure sketches on the 2
+    // shards of installs 3 and 5, and the channel's 2 breakdown rows, the
+    // check's on 1 shard; the release keeps the download's.
+    read: ({ insights }) =>
+      insights.getUpdateFailures({
+        platform: "ios",
+        channel: "production",
+        releaseId: "release-b",
+        timeRange: { start: T0 + 3 * DAY, end: T0 + 4 * DAY },
+      }),
+    adapter: reads(0, 0, 3, 7),
+    engine: { calls: 3, rows: 4 },
+    check: (failures) => {
+      expect(failures).toMatchObject({ failedUpdates: 2 });
+      expect(failures.breakdown).toEqual([
+        {
+          stage: "download",
+          reason: "http",
+          events: 2,
+          details: [expect.anything()],
+        },
+      ]);
+    },
+  }),
+  budget({
+    api: "update failures of a channel over a window: buckets × shards, all used",
+    // Day 3's hour 0: the channel's counters on 3 shards, its failure and
+    // check sketches on 2 and 1, no usage rows, and its 2 breakdown rows.
+    read: ({ insights }) =>
+      insights.getUpdateFailures({
+        platform: "ios",
+        channel: "production",
+        timeRange: { start: T0 + 3 * DAY, end: T0 + 4 * DAY },
+      }),
+    adapter: reads(0, 0, 5, 9),
+    engine: { calls: 5, rows: 5 },
+    check: (failures) =>
+      expect(failures).toMatchObject({
+        failedUpdates: 2,
+        checks: { failures: 1 },
+      }),
+  }),
+  budget({
+    api: "update failures of a release since its first: two kept rows × shards, all used",
+    // The lifetime counters on all 8 shards, and the failure sketch on 2.
+    read: ({ insights }) =>
+      insights.getUpdateFailures({
+        platform: "ios",
+        channel: "production",
+        releaseId: "release-b",
+      }),
+    adapter: reads(0, 0, 2, 10),
+    engine: { calls: 2, rows: 2 },
+    check: (failures) =>
+      expect(failures).toMatchObject({
+        failedUpdates: 2,
+        failedInstallations: 2,
+      }),
   }),
   budget({
     api: "catalog compile: the scope's enabled releases, all used",

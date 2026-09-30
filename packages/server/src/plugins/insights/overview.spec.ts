@@ -17,7 +17,6 @@ const event = (type: BundleEventRow["type"]): BundleEventRow =>
     app_version: "1.0.0",
     channel: "production",
     metadata: {
-      username: null,
       cohort: "default",
       update_strategy: null,
       fingerprint_hash: null,

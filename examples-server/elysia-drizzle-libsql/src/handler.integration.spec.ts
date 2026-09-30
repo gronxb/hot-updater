@@ -125,7 +125,6 @@ describe("Hot Updater Handler Integration Tests (Elysia)", () => {
       app_version: "1.0.0",
       channel: "production",
       metadata: {
-        username: null,
         cohort: "0",
         update_strategy: "appVersion" as const,
         fingerprint_hash: null,

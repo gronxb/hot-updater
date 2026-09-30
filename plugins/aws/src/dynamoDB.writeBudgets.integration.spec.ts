@@ -128,9 +128,17 @@ const eventOf = (
   movement:
     | { readonly type: "UNCHANGED"; readonly bundle: "a" | "b" }
     | {
-        readonly type: "UPDATE_DOWNLOADED" | "UPDATE_APPLIED" | "RECOVERED";
+        readonly type:
+          | "UPDATE_DOWNLOADED"
+          | "UPDATE_APPLIED"
+          | "RECOVERED"
+          | "UPDATE_FAILED";
         readonly from: "a" | "b";
         readonly to: "a" | "b";
+        /** What the event's metadata adds: a delivery, a failure, an exit reason. */
+        readonly metadata?: Record<string, unknown>;
+        /** A failed check targets no release. */
+        readonly check?: true;
       },
 ): BundleEventRow => {
   sequence += 1;
@@ -144,7 +152,6 @@ const eventOf = (
     received_at_ms: receivedAt,
   } as const;
   const metadata = {
-    username: "Alex",
     cohort: "1",
     fingerprint_hash: null,
     sdk_version: "1.0.0",
@@ -165,9 +172,13 @@ const eventOf = (
           type: movement.type,
           from_release_id: RELEASES[movement.from],
           from_bundle_id: BUNDLES[movement.from],
-          to_release_id: RELEASES[movement.to],
+          to_release_id: movement.check ? null : RELEASES[movement.to],
           to_bundle_id: BUNDLES[movement.to],
-          metadata: { ...metadata, update_strategy: "appVersion" },
+          metadata: {
+            ...metadata,
+            update_strategy: "appVersion",
+            ...movement.metadata,
+          },
         }
   ) as BundleEventRow;
 };
@@ -177,7 +188,9 @@ const eventOf = (
  * (PRD decision 59): a first launch, a relaunch in the same hour and in the
  * next, a download and its apply two hours later, a recovery the hour after,
  * a relaunch the hour after that, and a launch on each of the next two UTC
- * days: an installation's day once it only launches.
+ * days: an installation's day once it only launches. Between them, a failed
+ * download and a failed update check, which move no head; and last, a
+ * recovery that carries Android's exit reason.
  */
 const SCENARIO = [
   {
@@ -211,6 +224,8 @@ const SCENARIO = [
         type: "UPDATE_DOWNLOADED",
         from: "a",
         to: "b",
+        // A patch delivered it: its counters go in the rows downloads use.
+        metadata: { delivery: "patch" },
       }),
   },
   {
@@ -240,6 +255,37 @@ const SCENARIO = [
       }),
   },
   {
+    name: "UPDATE_FAILED",
+    event: () =>
+      eventOf(D0 + 14 * HOUR + 35 * 60_000, {
+        type: "UPDATE_FAILED",
+        from: "a",
+        to: "b",
+        metadata: {
+          failure: {
+            stage: "download",
+            reason: "http",
+            resource: "artifact",
+            http_status: 403,
+            origin_code: "AccessDenied",
+          },
+        },
+      }),
+  },
+  {
+    name: "UPDATE_FAILED (check)",
+    event: () =>
+      eventOf(D0 + 15 * HOUR + 5 * 60_000, {
+        type: "UPDATE_FAILED",
+        from: "a",
+        to: "a",
+        check: true,
+        metadata: {
+          failure: { stage: "check", reason: "http", http_status: 500 },
+        },
+      }),
+  },
+  {
     name: "Next-day launch",
     event: () =>
       eventOf(D0 + DAY + 9 * HOUR + 5 * 60_000, {
@@ -253,6 +299,17 @@ const SCENARIO = [
       eventOf(D0 + 2 * DAY + 9 * HOUR + 5 * 60_000, {
         type: "UNCHANGED",
         bundle: "a",
+      }),
+  },
+  {
+    name: "RECOVERED with an exit reason",
+    event: () =>
+      eventOf(D0 + 2 * DAY + 10 * HOUR + 5 * 60_000, {
+        type: "RECOVERED",
+        from: "b",
+        to: "a",
+        // Android 11+: one breakdown row more.
+        metadata: { previous_process_exit: "CRASH" },
       }),
   },
 ] as const;
@@ -272,8 +329,11 @@ const BUDGETS: Readonly<
   UPDATE_APPLIED: { items: 26, wru: 54 },
   RECOVERED: { items: 30, wru: 66 },
   "Relaunch after the recovery": { items: 0, wru: 0 },
+  UPDATE_FAILED: { items: 17, wru: 42 },
+  "UPDATE_FAILED (check)": { items: 11, wru: 26 },
   "Next-day launch": { items: 21, wru: 52 },
   "Launch the day after": { items: 19, wru: 48 },
+  "RECOVERED with an exit reason": { items: 23, wru: 52 },
 };
 
 let local: DynamoDBLocal;
@@ -393,7 +453,6 @@ const populationEvent = (
     to_release_id: moving ? RELEASES.b : RELEASES.a,
     to_bundle_id: moving ? BUNDLES.b : BUNDLES.a,
     metadata: {
-      username: "Alex",
       cohort: "1",
       fingerprint_hash: null,
       sdk_version: "1.0.0",

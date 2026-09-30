@@ -45,7 +45,6 @@ export const setupInsightsHttpTestSuite = (options: {
         type: "UNCHANGED",
         updateStrategy: null,
         userId,
-        username: "Jane",
         sdkVersion: "2.0.0",
       };
 
@@ -163,6 +162,62 @@ export const setupInsightsHttpTestSuite = (options: {
       for (const installId of installs) {
         await expectInsightsIndex(history(installId), 0);
       }
+    });
+
+    it("records an update failure in installation history and the failures read", async () => {
+      const client = options.getClient();
+      const installId = `install-${crypto.randomUUID()}`;
+      const channel = `insights-${crypto.randomUUID()}`;
+      const releaseId = "00000000-0000-7000-8000-0000000000b2";
+      const reported = await client.client(
+        "/events",
+        jsonRequest("POST", {
+          appVersion: "1.0.0",
+          channel,
+          cohort: "default",
+          fingerprintHash: null,
+          fromBundleId: "00000000-0000-7000-8000-000000000001",
+          fromReleaseId: null,
+          installId,
+          platform: "ios",
+          toBundleId: "00000000-0000-7000-8000-000000000002",
+          toReleaseId: releaseId,
+          type: "UPDATE_FAILED",
+          updateStrategy: "appVersion",
+          metadata: {
+            failure: { stage: "download", reason: "http", httpStatus: 403 },
+          },
+        }),
+      );
+      expect(reported.status).toBe(204);
+      await reported.text();
+
+      await expectInsightsIndex(async () => {
+        const page = await client.admin(
+          `/installations/${encodeURIComponent(installId)}/events?limit=10`,
+        );
+        return (
+          (await page.json()) as {
+            readonly data: readonly { type: string; failure?: unknown }[];
+          }
+        ).data.map(({ type, failure }) => ({ type, failure }));
+      }, [
+        {
+          type: "UPDATE_FAILED",
+          failure: { stage: "download", reason: "http", httpStatus: 403 },
+        },
+      ]);
+      const now = Date.now();
+      await expectInsightsIndex(async () => {
+        const failures = await client.admin(
+          `/failures?platform=ios&channel=${encodeURIComponent(channel)}&releaseId=${releaseId}&start=${now - 86_400_000}&end=${now + 3_600_000}`,
+        );
+        const body = (await failures.json()) as {
+          readonly failedUpdates: number;
+          readonly failedInstallations: number;
+        };
+        return [body.failedUpdates, body.failedInstallations];
+      }, [1, 1]);
     });
 
     it("refuses a malformed event", async () => {

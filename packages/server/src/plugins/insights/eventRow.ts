@@ -5,13 +5,66 @@ import {
 } from "@hot-updater/plugin-core";
 import { isDatabaseJsonObject } from "@hot-updater/plugin-core/internal";
 
+/** Where an update failed, and what failed; open sets, `unknown` for any other value. */
+export type BundleEventFailureStage =
+  | "check"
+  | "download"
+  | "install"
+  | "unknown";
+export type BundleEventFailureReason =
+  | "network"
+  | "http"
+  | "invalid_response"
+  | "hash_mismatch"
+  | "signature"
+  | "patch"
+  | "extract"
+  | "storage"
+  | "unknown";
+
+/** An `UPDATE_FAILED` report's failure, as stored. */
+export type BundleEventFailure = DatabaseJsonObject & {
+  readonly stage: BundleEventFailureStage;
+  readonly reason: BundleEventFailureReason;
+  /** What the client was fetching or writing. */
+  readonly resource?:
+    | "catalog"
+    | "artifact"
+    | "manifest"
+    | "file"
+    | "patch"
+    | "archive"
+    | "unknown";
+  readonly http_status?: number;
+  /** How the connection failed, when it did. */
+  readonly transport?:
+    | "timeout"
+    | "dns"
+    | "tls"
+    | "connection"
+    | "offline"
+    | "cancelled"
+    | "unknown";
+  /** The storage origin's error code, such as `ExpiredToken`. */
+  readonly origin_code?: string;
+  /** Android's `ApplicationExitInfo` reason for the process before this one. */
+  readonly previous_process_exit?: string;
+};
+
 /** Ancillary report data; queryable identity and lifecycle fields stay on the row. */
 export type DatabaseBundleEventMetadata = DatabaseJsonObject & {
-  readonly username: string | null;
   readonly cohort: string;
   readonly update_strategy: "fingerprint" | "appVersion" | null;
   readonly fingerprint_hash: string | null;
   readonly sdk_version: string | null;
+  /** `UPDATE_FAILED`: what failed. */
+  readonly failure?: BundleEventFailure;
+  /** `UPDATE_DOWNLOADED`: how the bundle arrived. */
+  readonly delivery?: "patch" | "manifest" | "archive" | "unknown";
+  /** `UPDATE_DOWNLOADED`: a patch failed and the full files came instead. */
+  readonly patch_fallback?: boolean;
+  /** `RECOVERED`: Android's `ApplicationExitInfo` reason for the crashed process. */
+  readonly previous_process_exit?: string;
 };
 
 export type BundleEventRowBase = {
@@ -35,21 +88,45 @@ export type BundleEventRow = BundleEventRowBase &
         readonly type: "UPDATE_APPLIED" | "RECOVERED";
         readonly from_bundle_id: string;
       }
+    /** An update that failed: `from` is the running bundle, `to` the target (for a check, the running bundle). */
+    | { readonly type: "UPDATE_FAILED"; readonly from_bundle_id: string }
     | { readonly type: "UNCHANGED"; readonly from_bundle_id: null }
   );
+
+const isOptional = (
+  value: Readonly<Record<string, unknown>>,
+  key: string,
+  valid: (field: unknown) => boolean,
+) => !Object.hasOwn(value, key) || valid(value[key]);
+
+const isString = (value: unknown) => typeof value === "string";
+
+/** An `UPDATE_FAILED` report's stored failure: a stage and a reason, and what else the client knew. */
+const isDatabaseBundleEventFailure = (value: unknown): boolean =>
+  isDatabaseJsonObject(value) &&
+  isString(value.stage) &&
+  isString(value.reason) &&
+  isOptional(value, "resource", isString) &&
+  isOptional(value, "http_status", (status) => Number.isSafeInteger(status)) &&
+  isOptional(value, "transport", isString) &&
+  isOptional(value, "origin_code", isString) &&
+  isOptional(value, "previous_process_exit", isString);
 
 export const isDatabaseBundleEventMetadata = (
   value: unknown,
 ): value is DatabaseBundleEventMetadata =>
   isDatabaseJsonObject(value) &&
-  (value.username === null || typeof value.username === "string") &&
   typeof value.cohort === "string" &&
   (value.update_strategy === null ||
     value.update_strategy === "fingerprint" ||
     value.update_strategy === "appVersion") &&
   (value.fingerprint_hash === null ||
     typeof value.fingerprint_hash === "string") &&
-  (value.sdk_version === null || typeof value.sdk_version === "string");
+  (value.sdk_version === null || typeof value.sdk_version === "string") &&
+  isOptional(value, "failure", isDatabaseBundleEventFailure) &&
+  isOptional(value, "delivery", isString) &&
+  isOptional(value, "patch_fallback", (flag) => typeof flag === "boolean") &&
+  isOptional(value, "previous_process_exit", isString);
 
 export const isRecord = (
   value: unknown,
@@ -71,6 +148,7 @@ const BUNDLE_EVENT_FIELDS: Readonly<
     value === "UPDATE_DOWNLOADED" ||
     value === "UPDATE_APPLIED" ||
     value === "RECOVERED" ||
+    value === "UPDATE_FAILED" ||
     value === "UNCHANGED",
   install_id: isIdentity,
   user_id: (value) => value === null || isIdentity(value),
@@ -90,16 +168,20 @@ const updateStrategyOf = (row: Readonly<Record<string, unknown>>) =>
   isRecord(row.metadata) ? row.metadata.update_strategy : undefined;
 
 /**
- * A movement names the bundle it left and how the device updates; an
- * unchanged report names neither.
+ * A movement, or a failed update, names the bundle it left and how the
+ * device updates, and a failed update says what failed; an unchanged report
+ * names neither.
  */
 const hasEventInvariants = (row: Readonly<Record<string, unknown>>) =>
   ((row.type === "UPDATE_DOWNLOADED" ||
     row.type === "UPDATE_APPLIED" ||
-    row.type === "RECOVERED") &&
+    row.type === "RECOVERED" ||
+    row.type === "UPDATE_FAILED") &&
     typeof row.from_bundle_id === "string" &&
     (updateStrategyOf(row) === "fingerprint" ||
-      updateStrategyOf(row) === "appVersion")) ||
+      updateStrategyOf(row) === "appVersion") &&
+    (row.type !== "UPDATE_FAILED" ||
+      (isRecord(row.metadata) && isRecord(row.metadata.failure)))) ||
   (row.type === "UNCHANGED" &&
     row.from_bundle_id === null &&
     updateStrategyOf(row) === null);
