@@ -21,7 +21,8 @@ try {
   );
   if (
     typeof manifest.serverVersion !== "string" ||
-    !Number.isInteger(manifest.infrastructureGeneration)
+    !Number.isInteger(manifest.infrastructureGeneration) ||
+    manifest.clientAuth === undefined
   )
     throw new Error("Invalid manifest");
   const result = await verifyServer({
@@ -34,6 +35,7 @@ try {
     fingerprint: values.fingerprint,
     serverVersion: manifest.serverVersion,
     infrastructureGeneration: manifest.infrastructureGeneration,
+    clientAuth: manifest.clientAuth,
   });
   console.log(JSON.stringify(result));
   if (result.status !== "verified") process.exitCode = 1;

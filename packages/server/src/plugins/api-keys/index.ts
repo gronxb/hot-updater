@@ -8,6 +8,7 @@ import {
   provisionApiKey,
   registerApiKey,
 } from "./apiKeys";
+import { apiKeysCli } from "./cli";
 import { createApiKeyModel } from "./model";
 import { apiKeysSchema } from "./schema";
 
@@ -67,6 +68,7 @@ export const apiKeys = (options: ApiKeysOptions = {}) => {
           },
         };
       },
+      cli: apiKeysCli(headerName),
     }),
   );
 };

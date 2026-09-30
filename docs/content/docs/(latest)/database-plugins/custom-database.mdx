@@ -686,6 +686,7 @@ import {
   createInsightsModel,
   insights,
 } from "@hot-updater/server/plugins/insights";
+import { insightsTestSuite } from "@hot-updater/server/plugins/insights/testing";
 import {
   setupDatabaseTestSuite,
   startHttpTestServer,
@@ -718,10 +719,14 @@ setupDatabaseTestSuite({
         clientAccess: "public",
       }).handlers,
     ),
-  createInsightsModel: (database) =>
-    createInsightsModel(
-      createDatabasePluginApis(database, [insights()]).insights,
-    ),
+  plugins: [
+    insightsTestSuite({
+      createModel: (database) =>
+        createInsightsModel(
+          createDatabasePluginApis(database, [insights()]).insights,
+        ),
+    }),
+  ],
 });
 ```
 
@@ -731,12 +736,12 @@ setupDatabaseTestSuite({
 | `createDatabase`      | Your database, as your factory returns it                                                                                                                                                                      |
 | `reset`               | Empties every data table before each test and keeps the settings rows                                                                                                                                          |
 | `dispose`             | Closes the database after the suite                                                                                                                                                                            |
-| `createHttpClient`    | Serves the handlers of `createHotUpdater({ database, storage, plugins: [insights()], clientAccess: "public" })`: `startHttpTestServer` on loopback in Node, or `createHandlerHttpTestClient` in a Workers pool |
-| `createInsightsModel` | Optional. Also runs the Insights report contract in process, on the plugin's tables                                                                                                                            |
+| `createHttpClient`    | Serves the handlers of `createHotUpdater({ database, storage, plugins, clientAccess: "public" })` with the plugins whose suites `plugins` lists: `startHttpTestServer` on loopback in Node, or `createHandlerHttpTestClient` in a Workers pool |
+| `plugins`             | Optional. Server plugins' suites to run too, such as `insightsTestSuite()` from `@hot-updater/server/plugins/insights/testing`: the Insights routes, and with `createModel` its report contract in process |
 
 The suite sends real requests to the admin API and the client routes. It runs
-core's operations, the Bundle admin API, the Release Catalog contract and the
-Insights routes. The Release Catalog scenarios pass each catalog they receive
+core's operations, the Bundle admin API, the Release Catalog contract, and each
+listed plugin's suite. The Release Catalog scenarios pass each catalog they receive
 to the production client selector and carry a simulated device from its
 built-in bundle to OTA A, OTA B, back to A, and back to built-in. Other
 scenarios cover deleted Releases, the native minimum, cohort changes and

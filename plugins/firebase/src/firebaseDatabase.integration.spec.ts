@@ -12,6 +12,7 @@ import {
   createInsightsModel,
   insights,
 } from "@hot-updater/server/plugins/insights";
+import { insightsTestSuite } from "@hot-updater/server/plugins/insights/testing";
 import {
   setupDatabaseAdapterConformanceSuite,
   setupDatabaseTestSuite,
@@ -71,10 +72,14 @@ describe("firebaseDatabase", () => {
           clientAccess: "public",
         }).handlers,
       ),
-    createInsightsModel: (database) =>
-      createInsightsModel(
-        createDatabasePluginApis(database, [insights()]).insights,
-      ),
+    plugins: [
+      insightsTestSuite({
+        createModel: (database) =>
+          createInsightsModel(
+            createDatabasePluginApis(database, [insights()]).insights,
+          ),
+      }),
+    ],
     createDatabase: () => firebaseDatabase(config),
     migrate: () => migrateFirebaseDatabase(config),
     reset: clearData,

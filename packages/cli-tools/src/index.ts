@@ -1,5 +1,5 @@
 export * from "./BuildLogger";
-export * from "./apiKeyNote";
+export * from "./appSetup";
 export * from "./banner";
 export * from "./bundleSigning";
 export * from "./ConfigBuilder";

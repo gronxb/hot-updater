@@ -15,6 +15,7 @@ import { isMultiIndex, quoteSql } from "../database/sql/sqlSchema";
 import { builtInSchema } from "../db/builtInDatabase";
 import { createHotUpdater } from "../index";
 import { createInsightsModel, insights } from "../plugins/insights";
+import { insightsTestSuite } from "../plugins/insights/testing";
 import { prismaAdapter } from "./prisma";
 import { mysqlPrisma, prismaPushSql } from "./prismaTestClients";
 
@@ -93,10 +94,14 @@ setupDatabaseTestSuite({
         clientAccess: "public",
       }).handlers,
     ),
-  createInsightsModel: (database) =>
-    createInsightsModel(
-      createDatabasePluginApis(database, [insights()]).insights,
-    ),
+  plugins: [
+    insightsTestSuite({
+      createModel: (database) =>
+        createInsightsModel(
+          createDatabasePluginApis(database, [insights()]).insights,
+        ),
+    }),
+  ],
   name: "prismaAdapter (MySQL, Prisma's tables)",
   migrate: () => undefined,
   createDatabase: () =>

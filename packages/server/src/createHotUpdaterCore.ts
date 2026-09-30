@@ -168,6 +168,8 @@ export type HotUpdaterCoreMetadata = {
   readonly database: ToolingDatabase;
   /** The tables and settings rows that tooling creates for this server's plugins. */
   readonly target: ToolingTarget;
+  /** The plugins as configured, whose commands the CLI adds. */
+  readonly plugins: readonly AnyHotUpdaterPlugin[];
 };
 
 export function getHotUpdaterCoreMetadata(
@@ -251,6 +253,7 @@ export function createHotUpdater<
     value: {
       database,
       target: toolingTargetOf(options.plugins ?? []),
+      plugins: options.plugins ?? [],
     } satisfies HotUpdaterCoreMetadata,
   });
   return api;

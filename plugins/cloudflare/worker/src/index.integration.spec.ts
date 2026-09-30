@@ -1,9 +1,9 @@
 import type { Bundle } from "@hot-updater/core";
 import { createHotUpdater } from "@hot-updater/server";
+import { createBundleEventRowFixture } from "@hot-updater/server/plugins/insights/testing";
 import { env } from "cloudflare:test";
 import { beforeAll, beforeEach, describe, expect, inject, it } from "vitest";
 
-import { createBundleEventRowFixture } from "../../../../packages/test-utils/src/databaseTestFixtures";
 import { d1Database, plugins } from "../../src/worker";
 import worker, { HOT_UPDATER_BASE_PATH } from "./index";
 

@@ -20,7 +20,7 @@ For terminal setup, use [Set up manually](/docs/get-started/basic-usage).
 
 ## Before provisioning
 
-The CLI requires Node 20.19+. The generated client-key helper imports TypeScript
+The CLI requires Node 20.19+. The generated client credential helper imports TypeScript
 and requires Node 22.18+ or Node 24+. Have the agent check this before creating
 remote resources; the helper can use a separate runtime from your app.
 
@@ -136,9 +136,10 @@ saves actual resource IDs and dated verification evidence in `verifiedSteps`.
 The agent maintains this record; the CLI does not execute or enforce it.
 Generating a manifest does not mean the target server version has been deployed.
 
-Keep real credentials and key files private. The supplied key helper persists
-the client key before registration and reuses it after an interrupted request.
-Use only the client API key in the app's `x-api-key` header.
+Keep real credentials and key files private. The supplied credential helper
+persists the client credential before registration and reuses it after an
+interrupted request. Use only that client credential in the app's request
+header, `x-api-key` for the managed servers' `apiKeys()`.
 
 ### Provide access securely
 

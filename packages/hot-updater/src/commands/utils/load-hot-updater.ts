@@ -2,7 +2,6 @@ import { existsSync, statSync } from "fs";
 import path from "path";
 
 import { p } from "@hot-updater/cli-tools";
-import type { ApiKeyManagementAPI } from "@hot-updater/server/plugins/api-keys";
 import { createJiti } from "jiti";
 
 import { ui } from "../../utils/cli-ui";
@@ -12,15 +11,10 @@ import {
   resolveGeneratedSchemaPlaceholderPath,
 } from "./generated-schema-placeholder";
 
-export type {
-  ApiKeyManagementAPI,
-  ApiKeyMetadata,
-} from "@hot-updater/server/plugins/api-keys";
-
 export interface HotUpdaterInstance {
   adapterName: string;
-  /** Plugin APIs by plugin id; `apiKeys` when `plugins` holds `apiKeys()`. */
-  api?: { readonly apiKeys?: ApiKeyManagementAPI };
+  /** Each configured plugin's API, by plugin id. */
+  api?: Readonly<Record<string, unknown>>;
 }
 
 export interface LoadHotUpdaterResult {
@@ -50,17 +44,59 @@ interface LoadHotUpdaterOptions {
   allowGeneratedSchemaPlaceholder?: boolean;
 }
 
-const findDefaultConfigPath = (cwd: string) => {
-  for (const basename of DEFAULT_CONFIG_BASENAMES) {
-    for (const ext of SUPPORTED_CONFIG_EXTENSIONS) {
-      const candidate = path.resolve(cwd, `${basename}.${ext}`);
-      if (existsSync(candidate)) {
-        return candidate;
-      }
-    }
-  }
+/** The default config paths that exist, in the order the loader tries them. */
+export const findDefaultConfigPaths = (cwd: string): string[] =>
+  DEFAULT_CONFIG_BASENAMES.flatMap((basename) =>
+    SUPPORTED_CONFIG_EXTENSIONS.map((ext) =>
+      path.resolve(cwd, `${basename}.${ext}`),
+    ),
+  ).filter((candidate) => existsSync(candidate));
 
-  return null;
+const findDefaultConfigPath = (cwd: string) =>
+  findDefaultConfigPaths(cwd)[0] ?? null;
+
+/** Whether `value` names a file the loader can import, such as `src/hotUpdater.ts`. */
+export const isConfigFile = (value: string, cwd: string): boolean => {
+  if (!SUPPORTED_CONFIG_EXTENSIONS.some((ext) => value.endsWith(`.${ext}`))) {
+    return false;
+  }
+  const candidate = path.resolve(cwd, value);
+  return existsSync(candidate) && statSync(candidate).isFile();
+};
+
+const isHotUpdaterInstance = (value: unknown): value is HotUpdaterInstance =>
+  typeof value === "object" &&
+  value !== null &&
+  typeof (value as { adapterName?: unknown }).adapterName === "string";
+
+const closeDatabaseOf =
+  (configExports: Record<string, unknown>) => async (): Promise<void> => {
+    const closeDatabase = configExports["closeDatabase"];
+    if (typeof closeDatabase === "function") {
+      await closeDatabase();
+    }
+  };
+
+/**
+ * The hotUpdater instance a config file exports, or undefined when it
+ * exports none, such as a `defineConfig` file. An import error throws.
+ */
+export const importHotUpdater = async (
+  absoluteConfigPath: string,
+): Promise<LoadHotUpdaterResult | undefined> => {
+  const jiti = createJiti(import.meta.url, { interopDefault: true });
+  const configExports = (await jiti.import(absoluteConfigPath)) as Record<
+    string,
+    unknown
+  >;
+  const hotUpdater = configExports["hotUpdater"] ?? configExports["default"];
+  if (!isHotUpdaterInstance(hotUpdater)) return undefined;
+  return {
+    hotUpdater,
+    adapterName: hotUpdater.adapterName,
+    absoluteConfigPath,
+    dispose: closeDatabaseOf(configExports),
+  };
 };
 
 const resolveConfigPath = (configPath: string, cwd: string) => {
@@ -171,13 +207,11 @@ export async function loadHotUpdater(
       'Could not find "hotUpdater" export in the config file.\n\n' +
         "Your config file should export a hotUpdater instance:\n\n" +
         "  import { createHotUpdater } from '@hot-updater/server';\n" +
-        "  import { kyselyAdapter } from '@hot-updater/server/adapters/kysely';\n" +
-        "  import { apiKeys } from '@hot-updater/server/plugins/api-keys';\n" +
-        "  import { insights } from '@hot-updater/server/plugins/insights';\n\n" +
+        "  import { kyselyAdapter } from '@hot-updater/server/adapters/kysely';\n\n" +
         "  export const hotUpdater = createHotUpdater({\n" +
         "    database: kyselyAdapter({ db: kysely, provider: 'postgresql' }),\n" +
-        "    plugins: [insights(), apiKeys()],\n" +
         "    storage: [...],\n" +
+        "    plugins: [...],\n" +
         "  });",
     );
     await exitAfterPlaceholderCleanup();
@@ -214,10 +248,7 @@ export async function loadHotUpdater(
     absoluteConfigPath,
     dispose: async () => {
       try {
-        const closeDatabase = configExports["closeDatabase"];
-        if (typeof closeDatabase === "function") {
-          await closeDatabase();
-        }
+        await closeDatabaseOf(configExports)();
       } finally {
         await removeGeneratedSchemaPlaceholder(generatedSchemaPlaceholderPath);
       }

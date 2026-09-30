@@ -142,6 +142,54 @@ describe("createHotUpdater types", () => {
     });
   });
 
+  it("types CLI commands by the plugin's API and gates clientCredential on clientAuth", () => {
+    definePlugin({
+      id: "counter",
+      schemaVersion: "1",
+      schema: {},
+      init: () => ({ api: { count: () => 1 } }),
+      cli: {
+        commands: [
+          {
+            name: "count",
+            description: "Count",
+            async run({ api, ui }) {
+              expectTypeOf(api.count()).toEqualTypeOf<1>();
+              ui.print(String(api.count()));
+            },
+          },
+        ],
+        // @ts-expect-error Declare provides: { clientAuth: true } to add clientCredential.
+        clientCredential: {
+          label: "Key",
+          header: "x-key",
+          env: "KEY",
+          generate: () => "key",
+          provision: async () => "key",
+        },
+      },
+    });
+    definePlugin({
+      id: "keyed",
+      provides: { clientAuth: true },
+      schemaVersion: "1",
+      schema: {},
+      init: () => ({
+        api: { issue: async () => "key" },
+        clientAuth: { varyHeaders: ["x-key"], authenticate: async () => true },
+      }),
+      cli: {
+        clientCredential: {
+          label: "Key",
+          header: "x-key",
+          env: "KEY",
+          generate: () => "key",
+          provision: (api) => api.issue(),
+        },
+      },
+    });
+  });
+
   it("types each plugin's API by id", () => {
     type Api = ReturnType<
       typeof createHotUpdater<readonly [typeof keys, typeof notes]>

@@ -151,9 +151,8 @@ HOT_UPDATER_API_KEY=your-api-key
 Managed init reuses `HOT_UPDATER_API_KEY` when supplied or creates an API key,
 registers it in DynamoDB, and persists the plaintext value locally. Send this
 API key in the app's `x-api-key` request header. It does not authorize
-management or Insights-query routes. Do not run `hot-updater api-key create`
-for a managed installation; that command bootstraps direct self-hosted
-`createHotUpdater` configurations.
+management or Insights-query routes. To list, add, or revoke keys later, run
+`hot-updater api-key` from the app directory.
 
 If you choose a shared AWS profile or SSO, the generated env file also includes:
 

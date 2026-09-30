@@ -1,6 +1,7 @@
 import type { EngineDatabase } from "@hot-updater/plugin-core";
 import { createMemoryAdapter } from "@hot-updater/plugin-core/internal";
 import { builtInSchema } from "@hot-updater/server/database";
+import { provisionClientCredential } from "@hot-updater/server/db";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
@@ -20,7 +21,8 @@ vi.mock("../src/dynamoDB", () => ({
   migrateDynamoDB: mocks.migrateDynamoDB,
 }));
 
-import { prepareDynamoDBApiKey, prepareDynamoDBDeployment } from "./index";
+import { plugins } from "../src/plugins";
+import { prepareDynamoDBDeployment } from "./index";
 
 const EXISTING_API_KEY = "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE";
 
@@ -39,16 +41,25 @@ const storedApiKeys = (database: EngineDatabase) =>
     limit: 10,
   });
 
-describe("AWS DynamoDB API key preparation", () => {
+/** What init provisions: the app's credential, through the managed server's plugins. */
+const provision = (database: EngineDatabase, existing?: string) =>
+  provisionClientCredential(database, plugins, {
+    env: existing === undefined ? {} : { HOT_UPDATER_API_KEY: existing },
+    name: "AWS init",
+  });
+
+describe("AWS client credential provisioning", () => {
   it("registers the existing app key without persisting the raw value", async () => {
     const database = createDatabase();
 
-    const apiKey = await prepareDynamoDBApiKey({
-      database,
-      existingApiKey: EXISTING_API_KEY,
-    });
+    const credential = await provision(database, EXISTING_API_KEY);
 
-    expect(apiKey).toBe(EXISTING_API_KEY);
+    expect(credential).toMatchObject({
+      label: "API key",
+      header: "x-api-key",
+      env: "HOT_UPDATER_API_KEY",
+      value: EXISTING_API_KEY,
+    });
     const stored = await storedApiKeys(database);
     expect(stored).toEqual([
       expect.objectContaining({ name: "AWS init", prefix: "AQEBAQ" }),
@@ -59,7 +70,7 @@ describe("AWS DynamoDB API key preparation", () => {
   it("creates a canonical app key when the environment has none", async () => {
     const database = createDatabase();
 
-    const apiKey = await prepareDynamoDBApiKey({ database });
+    const apiKey = (await provision(database))!.value;
 
     expect(apiKey).toMatch(/^[A-Za-z0-9_-]{43}$/u);
     const stored = await storedApiKeys(database);

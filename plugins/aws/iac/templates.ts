@@ -122,23 +122,3 @@ export const getConfigTemplate = (
   build: BuildType,
   authMode: AwsConfigScaffoldAuthMode,
 ) => getConfigScaffold(build, authMode).text;
-
-export const SOURCE_TEMPLATE = `// Add this to your App.tsx
-import { HotUpdater } from "@hot-updater/react-native";
-import { insights } from "@hot-updater/react-native/plugins/insights";
-
-function App() {
-  return null; // Replace with your app root.
-}
-
-HotUpdater.init({
-  baseURL: %%source%%,
-  requestHeaders: {
-    "x-api-key": %%apiKey%%,
-  },
-  plugins: [insights()],
-});
-
-// Call HotUpdater.checkForUpdate({ updateStrategy: "appVersion" })
-// when your app is ready to check.
-export default App;`;

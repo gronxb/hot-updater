@@ -213,6 +213,13 @@ export const insights = (options: InsightsOptions = {}) => {
           ],
         };
       },
+      // Apps report their events through the SDK's Insights client plugin.
+      cli: {
+        clientPlugin: {
+          module: "@hot-updater/react-native/plugins/insights",
+          name: "insights",
+        },
+      },
     }),
   );
 };

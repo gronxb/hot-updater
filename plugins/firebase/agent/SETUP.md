@@ -45,7 +45,7 @@ supply this CLI. Do this before remote provisioning.
     deletes rows past their tables' retention. Record the target/index readiness.
   - Retry: inspect current indexes and wait for building ones; do not remove/recreate them.
 
-- [ ] **fb.database-key — Write the schema settings and register the client key**
+- [ ] **fb.database-credential — Write the schema settings and register the client credential**
   - Requires: fb.indexes. Complete this before Function deployment, as init does.
   - Run: with working local ADC/service-account access, inspect the selected
     project's hot_updater_v1 collection before running the helper. Read the
@@ -55,20 +55,31 @@ supply this CLI. Do this before remote provisioning.
     on any other value, a populated namespace without the marker, or an unknown
     layout; preserve the data and settings for investigation. The helper does
     not enforce this unsupported-engine check and can overwrite the marker.
-    Then follow COMMON.md's Local CLI and client API key steps. A Firebase
+    Then follow COMMON.md's Local CLI and client credential steps. A Firebase
     CLI/MCP login alone may not authenticate the Admin SDK.
-    Run app/provision-api-key.mjs from the app directory. It first
-    runs app/api-key.config.ts's `migrate`, which writes the schema settings the
+    Run app/provision-client-credential.mjs from the app directory. It first
+    runs app/database.config.ts's `migrate`, which writes the schema settings the
     database checks before its first read (the database answers 503 until they
-    exist), then registers the key.
-  - Verify/record: helper succeeds against the chosen project and the key is
-    persisted privately. The settings are documents with
+    exist),
+<!-- if credential -->
+    then registers the client {{CREDENTIAL_LABEL}}.
+  - Verify/record: helper succeeds against the chosen project and the
+    {{CREDENTIAL_LABEL}} is persisted privately. The settings are documents with
     `pk = private_hot_updater_settings` in hot_updater_v1; do not create them by hand.
   - Retry: repeat the compatibility preflight, then rerun the helper with the
-    saved key. Never edit settings to bypass a failed check or rotate the key.
+    saved {{CREDENTIAL_LABEL}}. Never edit settings to bypass a failed check or
+    rotate the {{CREDENTIAL_LABEL}}.
+<!-- else -->
+    and registers no client credential, since client routes are public.
+  - Verify/record: helper succeeds against the chosen project. The settings are
+    documents with `pk = private_hot_updater_settings` in hot_updater_v1; do not
+    create them by hand.
+  - Retry: repeat the compatibility preflight, then rerun the helper. Never edit
+    settings to bypass a failed check.
+<!-- end -->
 
 - [ ] **fb.function — Deploy the server**
-  - Requires: fb.database-key.
+  - Requires: fb.database-credential.
   - Run: fill project ID in firebase/.firebaserc and region in functions/index.cjs.
     Install pinned functions/package.json dependencies. From firebase/ deploy only
     `npx firebase deploy --only functions:hot-updater-v1 --project <project-id>`.

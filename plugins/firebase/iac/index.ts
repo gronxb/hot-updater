@@ -3,7 +3,6 @@ import path from "path";
 
 import {
   confirmInitInputPersistence,
-  formatApiKeyNote,
   getHotUpdaterInitInputEnv,
   getInitProviderEnvVars,
   HOT_UPDATER_SERVER_PACKAGE_VERSION_ENV,
@@ -11,14 +10,18 @@ import {
   link,
   makeEnv,
   p,
+  printAppSetup,
   readHotUpdaterInitEnv,
   resolveHotUpdaterServerVersion,
   resolvePackageVersion,
   type RunInitOptions,
   transformEnv,
-  transformTemplate,
 } from "@hot-updater/cli-tools";
-import { createDatabasePluginApis } from "@hot-updater/server/db";
+import {
+  clientPluginsOf,
+  provisionClientCredential,
+  type ProvisionedClientCredential,
+} from "@hot-updater/server/db";
 import { isEqual, sortBy, uniqWith } from "es-toolkit";
 import { ExecaError, execa } from "execa";
 import {
@@ -49,26 +52,6 @@ import { resolveFirebaseRegion } from "./firebaseRegion";
 import { initProvider as FIREBASE_INIT_PROVIDER } from "./init/index";
 import { prepareFirebaseTemplate } from "./prepareTemplate";
 import { createFirebaseProject, initFirebaseUser, setEnv } from "./select";
-
-const SOURCE_TEMPLATE = `// add this to your App.tsx
-import { HotUpdater } from "@hot-updater/react-native";
-import { insights } from "@hot-updater/react-native/plugins/insights";
-
-function App() {
-  return null; // Replace with your app root
-}
-
-HotUpdater.init({
-  baseURL: "%%source%%",
-  requestHeaders: {
-    "x-api-key": %%apiKey%%,
-  },
-  plugins: [insights()],
-});
-
-// Call HotUpdater.checkForUpdate({ updateStrategy: "appVersion" })
-// when your app is ready to check.
-export default App;`;
 
 const getFirebaseRuntimePackageInfo = () => {
   const firebasePackageRoot = path.dirname(
@@ -401,7 +384,7 @@ const deployFunctions = async (
 };
 
 const printTemplate = async (
-  apiKey: string,
+  credential: ProvisionedClientCredential | undefined,
   projectId: string,
   region: string,
   cliEnv?: FirebaseCliEnv,
@@ -433,14 +416,11 @@ const printTemplate = async (
       );
     }
 
-    p.note(
-      transformTemplate(SOURCE_TEMPLATE, {
-        apiKey: JSON.stringify(apiKey),
-        source: functionUrl,
-      }),
-    );
-    p.note(formatApiKeyNote(apiKey), "API Key");
-    p.log.message("Store this API key separately in a secure place.");
+    printAppSetup({
+      baseURL: functionUrl,
+      ...(credential === undefined ? {} : { credential }),
+      clientPlugins: clientPluginsOf(plugins),
+    });
   } catch (error) {
     if (error instanceof ExecaError) {
       p.log.error(error.stderr || error.stdout || error.message);
@@ -613,18 +593,18 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
     projectId: initializeVariable.projectId,
   };
   const database = firebaseDatabase(databaseConfig);
-  let apiKey: string;
+  let clientCredential: ProvisionedClientCredential | undefined;
   try {
     // The database reads nothing until the schema settings exist.
     await migrateFirebaseDatabase(databaseConfig);
-    apiKey = // The managed server's apiKeys() plugin, on the tables it reads.
-      (
-        await createDatabasePluginApis(database, plugins).apiKeys.provision({
-          existingApiKey: initInputEnv.HOT_UPDATER_API_KEY,
-          name: "Firebase init",
-        })
-      ).apiKey;
-    await makeEnv({ HOT_UPDATER_API_KEY: apiKey });
+    // The app's credential, through the managed server's plugins, on the tables they read.
+    clientCredential = await provisionClientCredential(database, plugins, {
+      env: initInputEnv,
+      name: "Firebase init",
+    });
+    if (clientCredential !== undefined) {
+      await makeEnv({ [clientCredential.env]: clientCredential.value });
+    }
   } finally {
     await database.dispose?.();
     await Promise.all(
@@ -720,7 +700,7 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
     process.exit(1);
   }
   await printTemplate(
-    apiKey,
+    clientCredential,
     initializeVariable.projectId,
     currentRegion,
     cliEnv,

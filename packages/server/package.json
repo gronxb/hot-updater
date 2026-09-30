@@ -56,7 +56,10 @@
       "import": "./dist/plugins/insights/index.mjs",
       "require": "./dist/plugins/insights/index.cjs"
     },
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    "./plugins/insights/testing": {
+      "import": "./dist/plugins/insights/testing/index.mjs"
+    }
   },
   "files": [
     "dist",
@@ -84,7 +87,8 @@
     "@prisma/client": "*",
     "drizzle-orm": "*",
     "kysely": "*",
-    "mongodb": "*"
+    "mongodb": "*",
+    "vitest": "^4.0.0"
   },
   "peerDependenciesMeta": {
     "@prisma/client": {
@@ -97,6 +101,9 @@
       "optional": true
     },
     "mongodb": {
+      "optional": true
+    },
+    "vitest": {
       "optional": true
     }
   },

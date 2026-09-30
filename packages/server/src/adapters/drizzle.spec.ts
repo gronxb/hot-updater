@@ -27,6 +27,7 @@ import { generateEngineSql } from "../db/engineSql";
 import type { ToolingDatabase } from "../db/types";
 import { createHotUpdater } from "../index";
 import { createInsightsModel, insights } from "../plugins/insights";
+import { insightsTestSuite } from "../plugins/insights/testing";
 import {
   drizzleAdapter,
   DrizzleTransactionUnsupportedError,
@@ -94,10 +95,14 @@ for (const provider of ["postgresql", "sqlite"] as const) {
           clientAccess: "public",
         }).handlers,
       ),
-    createInsightsModel: (database) =>
-      createInsightsModel(
-        createDatabasePluginApis(database, [insights()]).insights,
-      ),
+    plugins: [
+      insightsTestSuite({
+        createModel: (database) =>
+          createInsightsModel(
+            createDatabasePluginApis(database, [insights()]).insights,
+          ),
+      }),
+    ],
     name: `drizzleAdapter (${provider})`,
     migrate: async () => {
       backend = await backends[provider]();

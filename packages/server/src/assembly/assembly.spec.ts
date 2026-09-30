@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import { createBundleFixture } from "../../../test-utils/src/databaseTestFixtures";
 import { createHotUpdater } from "../createHotUpdaterCore";
 import { defineTable } from "../database/schema";
+import { serverPluginsOf } from "../db";
 import { listHotUpdaterRoutes } from "../handler";
 import { definePlugin } from "../plugins/definePlugin";
 import { HotUpdaterConfigError } from "./assemblePlugins";
@@ -66,6 +67,23 @@ const startup = (options: Record<string, unknown>) => () =>
   createHotUpdater({ database: database(), ...options } as never);
 
 describe("createHotUpdater with plugins", () => {
+  it("keeps the configured plugins, with their CLI additions, for the CLI", () => {
+    const withCommands = {
+      ...notes,
+      cli: {
+        commands: [
+          { name: "notes", description: "Manage notes", run: async () => {} },
+        ],
+      },
+    };
+    const hotUpdater = createHotUpdater({
+      database: database(),
+      plugins: [withCommands],
+      clientAccess: "public",
+    });
+    expect(serverPluginsOf(hotUpdater)).toEqual([withCommands]);
+  });
+
   it("gives each plugin its own tables on the engine and exposes its API by id", async () => {
     const hotUpdater = createHotUpdater({
       database: database(),
@@ -314,6 +332,27 @@ describe("createHotUpdater with plugins", () => {
       [
         { plugins: [{ ...valid, id: "Valid" }], clientAccess: "public" },
         "plugins[0] needs an id matching ^[a-z][a-z0-9_]*$.",
+      ],
+      [
+        {
+          plugins: [{ ...valid, cli: { hooks: [] } }],
+          clientAccess: "public",
+        },
+        'Plugin "valid" cli may only hold commands (an array), clientCredential, and clientPlugin.',
+      ],
+      [
+        {
+          plugins: [{ ...valid, cli: { commands: {} } }],
+          clientAccess: "public",
+        },
+        'Plugin "valid" cli may only hold commands (an array), clientCredential, and clientPlugin.',
+      ],
+      [
+        {
+          plugins: [{ ...valid, cli: { clientCredential: {} } }],
+          clientAccess: "public",
+        },
+        'Plugin "valid" adds cli.clientCredential without declaring provides: { clientAuth: true }.',
       ],
     ];
     for (const [options, message] of cases) {

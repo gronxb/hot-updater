@@ -1638,9 +1638,6 @@ importers:
       jiti:
         specifier: 2.6.1
         version: 2.6.1
-      oxc-parser:
-        specifier: 0.141.0
-        version: 0.141.0
     devDependencies:
       '@aws-sdk/client-kms':
         specifier: 3.1066.0
@@ -1808,6 +1805,9 @@ importers:
       verkit:
         specifier: 'catalog:'
         version: 0.4.0
+      vitest:
+        specifier: ^4.0.0
+        version: 4.1.4(@opentelemetry/api@1.9.1)(@types/node@20.19.43)(jsdom@29.1.1(@noble/hashes@2.2.0))(msw@2.14.6(@types/node@20.19.43)(typescript@7.0.2))(vite@8.0.14(@types/node@20.19.43)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.48.0)(tsx@4.22.4)(yaml@2.9.0))
     devDependencies:
       '@electric-sql/pglite':
         specifier: catalog:db

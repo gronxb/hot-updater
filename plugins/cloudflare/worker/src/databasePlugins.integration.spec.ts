@@ -10,6 +10,10 @@ import {
   insights,
 } from "@hot-updater/server/plugins/insights";
 import {
+  createBundleEventRowFixture,
+  insightsTestSuite,
+} from "@hot-updater/server/plugins/insights/testing";
+import {
   createHandlerHttpTestClient,
   setupDatabaseTestSuite,
 } from "@hot-updater/test-utils";
@@ -26,7 +30,6 @@ import {
 } from "vitest";
 
 import {
-  createBundleEventRowFixture,
   createBundleFixture,
   createBundleRowFixture,
 } from "../../../../packages/test-utils/src/databaseTestFixtures";
@@ -144,8 +147,12 @@ const release = (channel: string, enabled: boolean): DeployReleasePolicy => ({
 setupDatabaseTestSuite({
   createHttpClient: (options) =>
     createHandlerHttpTestClient(serve(options).handlers),
-  createInsightsModel: (database) =>
-    createInsightsModel(serve({ database }).api.insights),
+  plugins: [
+    insightsTestSuite({
+      createModel: (database: EngineDatabase) =>
+        createInsightsModel(serve({ database }).api.insights),
+    }),
+  ],
   name: "cloudflare d1 http",
   migrate: async () => {
     state.db = env.DB;
@@ -164,8 +171,12 @@ setupDatabaseTestSuite({
 setupDatabaseTestSuite({
   createHttpClient: (options) =>
     createHandlerHttpTestClient(serve(options).handlers),
-  createInsightsModel: (database) =>
-    createInsightsModel(serve({ database }).api.insights),
+  plugins: [
+    insightsTestSuite({
+      createModel: (database: EngineDatabase) =>
+        createInsightsModel(serve({ database }).api.insights),
+    }),
+  ],
   name: "cloudflare worker d1",
   migrate: () => undefined,
   createDatabase: () => d1RuntimeDatabase(env.DB),

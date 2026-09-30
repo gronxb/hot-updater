@@ -7,6 +7,7 @@ import {
 import { createDatabasePluginApis } from "./assembly/databasePlugins";
 import { createHotUpdater } from "./index";
 import { createInsightsModel, insights } from "./plugins/insights";
+import { insightsTestSuite } from "./plugins/insights/testing";
 
 let adapter = createMemoryAdapter();
 
@@ -32,8 +33,12 @@ setupDatabaseTestSuite({
         clientAccess: "public",
       }).handlers,
     ),
-  createInsightsModel: (database) =>
-    createInsightsModel(
-      createDatabasePluginApis(database, [insights()]).insights,
-    ),
+  plugins: [
+    insightsTestSuite({
+      createModel: (database) =>
+        createInsightsModel(
+          createDatabasePluginApis(database, [insights()]).insights,
+        ),
+    }),
+  ],
 });

@@ -1,6 +1,10 @@
 import crypto from "crypto";
 
-import { CloudFront } from "@aws-sdk/client-cloudfront";
+import {
+  type CachePolicyConfig,
+  CloudFront,
+  type OriginRequestPolicyConfig,
+} from "@aws-sdk/client-cloudfront";
 import { makeEnv, MissingInitInputsError, p } from "@hot-updater/cli-tools";
 import { delay } from "es-toolkit";
 
@@ -9,11 +13,11 @@ import {
   applyDistributionConfigOverrides,
   buildDistributionConfig,
   buildDistributionConfigOverrides,
+  buildOriginRequestPolicyConfig,
+  buildReleaseCatalogCachePolicyConfig,
+  buildSharedCachePolicyConfig,
   HOT_UPDATER_CACHE_BEHAVIOR_PATHS,
-  HOT_UPDATER_ORIGIN_REQUEST_POLICY_CONFIG,
   HOT_UPDATER_RELEASE_CATALOG_BEHAVIOR_PATHS,
-  HOT_UPDATER_RELEASE_CATALOG_CACHE_POLICY_CONFIG,
-  HOT_UPDATER_SHARED_CACHE_POLICY_CONFIG,
 } from "./cloudfrontDistributionConfig";
 import {
   collectPaginatedCloudFrontList,
@@ -48,7 +52,7 @@ export class CloudFrontManager {
 
   private async getOrCreateCachePolicy(
     cloudfrontClient: CloudFront,
-    config: typeof HOT_UPDATER_SHARED_CACHE_POLICY_CONFIG,
+    config: CachePolicyConfig,
   ): Promise<string> {
     const existingPolicy = await findInPaginatedCloudFrontList({
       listPage: async (marker) => {
@@ -94,6 +98,7 @@ export class CloudFrontManager {
 
   private async getOrCreateOriginRequestPolicy(
     cloudfrontClient: CloudFront,
+    config: OriginRequestPolicyConfig,
   ): Promise<string> {
     const existingPolicy = await findInPaginatedCloudFrontList({
       listPage: async (marker) => {
@@ -108,13 +113,13 @@ export class CloudFrontManager {
       },
       matches: (policy) =>
         policy.OriginRequestPolicy?.OriginRequestPolicyConfig?.Name ===
-        HOT_UPDATER_ORIGIN_REQUEST_POLICY_CONFIG.Name,
+        config.Name,
     });
     const existingPolicyId = existingPolicy?.OriginRequestPolicy?.Id;
     if (existingPolicyId) return existingPolicyId;
 
     const response = await cloudfrontClient.createOriginRequestPolicy({
-      OriginRequestPolicyConfig: HOT_UPDATER_ORIGIN_REQUEST_POLICY_CONFIG,
+      OriginRequestPolicyConfig: config,
     });
     const policyId = response.OriginRequestPolicy?.Id;
     if (!policyId) throw new Error("Failed to create origin request policy");
@@ -186,6 +191,8 @@ export class CloudFrontManager {
     keyGroupId: string;
     bucketName: string;
     functionArn: string;
+    /** The headers the server's client-route policy reads; none when client routes are public. */
+    clientHeaders: readonly string[];
     distribution?: CloudFrontDistribution | null;
     distributionId?: string;
     nonInteractive?: boolean;
@@ -247,13 +254,16 @@ export class CloudFrontManager {
       ] = await Promise.all([
         this.getOrCreateCachePolicy(
           cloudfrontClient,
-          HOT_UPDATER_SHARED_CACHE_POLICY_CONFIG,
+          buildSharedCachePolicyConfig(options.clientHeaders),
         ),
         this.getOrCreateCachePolicy(
           cloudfrontClient,
-          HOT_UPDATER_RELEASE_CATALOG_CACHE_POLICY_CONFIG,
+          buildReleaseCatalogCachePolicyConfig(options.clientHeaders),
         ),
-        this.getOrCreateOriginRequestPolicy(cloudfrontClient),
+        this.getOrCreateOriginRequestPolicy(
+          cloudfrontClient,
+          buildOriginRequestPolicyConfig(options.clientHeaders),
+        ),
       ]);
     } catch (error) {
       throw new Error(

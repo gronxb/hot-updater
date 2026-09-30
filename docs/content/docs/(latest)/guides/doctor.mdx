@@ -73,14 +73,18 @@ npx hot-updater doctor --scope infrastructure --infra-dir ./infra --json \
 ```
 
 For fingerprint projects, replace `--app-version` with `--fingerprint`. Provide
-all target inputs explicitly. The client key is read privately from
-`HOT_UPDATER_API_KEY`, the app directory's `.env.hotupdater`, or scaffold
-`app/api-key.local`. Conflicting saved keys block verification.
+all target inputs explicitly. When the scaffolded server's plugins protect
+client routes, as the managed servers' `apiKeys()` does, doctor reads the client
+credential privately from the variable the scaffold's `clientAuth` names
+(`HOT_UPDATER_API_KEY`), the app directory's `.env.hotupdater`, or scaffold
+`app/client-credential.local`. Conflicting saved credentials block verification.
 
 `infrastructure` reruns scaffold checks, rejects unresolved deployment records,
 and verifies `/version` against the scaffold target. It checks the same Release
-Catalog URL without a key (401) and with the saved key (valid catalog 200 or the
-exact private, non-cacheable empty-catalog 404). An arbitrary 404 is a failure.
+Catalog URL without a credential (401) and with the saved one (valid catalog
+200 or the exact private, non-cacheable empty-catalog 404); when the scaffolded
+server's client routes are public, it checks only that the catalog answers
+without a credential. An arbitrary 404 is a failure.
 An agent-written `verifiedSteps` entry never replaces a live check.
 
 Both scopes return `details.verification` with `schemaVersion: 1`, `scope`,

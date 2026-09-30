@@ -2,6 +2,11 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { parseEnv } from "node:util";
 
+import {
+  CLIENT_CREDENTIAL_FILE,
+  type InfraClientAuth,
+} from "../infra/clientAuth";
+
 class VerificationError extends Error {}
 
 const requireCheck: (
@@ -55,6 +60,8 @@ export interface ServerVerificationOptions {
   fingerprint?: string;
   serverVersion: string;
   infrastructureGeneration: number;
+  /** The scaffolded server's client-route policy; null when its client routes are public. */
+  clientAuth: InfraClientAuth;
   fetch?: typeof fetch;
 }
 
@@ -63,7 +70,8 @@ export type ServerVerification =
       status: "verified";
       checks: {
         version: "matches-manifest";
-        anonymousCatalog: 401;
+        /** 401, or "public" when the server takes no client credential. */
+        anonymousCatalog: 401 | "public";
         authenticatedCatalog: number;
         catalog: "empty" | "available";
       };
@@ -81,9 +89,13 @@ export type ServerVerification =
 export async function verifyServer(
   options: ServerVerificationOptions,
 ): Promise<ServerVerification> {
-  const request = async (url: URL, apiKey?: string) => {
+  const { clientAuth } = options;
+  const request = async (url: URL, credential?: string) => {
     const response = await (options.fetch ?? fetch)(url, {
-      headers: apiKey ? { "x-api-key": apiKey } : {},
+      headers:
+        credential && clientAuth
+          ? { [clientAuth.credential.header]: credential }
+          : {},
       redirect: "error",
       signal: AbortSignal.timeout(10_000),
     });
@@ -141,23 +153,29 @@ export async function verifyServer(
       throw error;
     });
     const environment = parseEnv(environmentText.replace(/^\uFEFF/, ""));
-    const localKey = await readFile(
-      path.join(options.infraDir, "app/api-key.local"),
-      "utf8",
-    ).catch((error) => {
-      if (error.code === "ENOENT") return "";
-      throw error;
-    });
-    const savedKey = localKey.trim();
-    const environmentKey = (
-      process.env["HOT_UPDATER_API_KEY"] ?? environment["HOT_UPDATER_API_KEY"]
-    )?.trim();
-    requireCheck(
-      !savedKey || !environmentKey || savedKey === environmentKey,
-      "Saved client keys differ. Resolve the target key before verification.",
-    );
-    const apiKey = environmentKey || savedKey;
-    requireCheck(apiKey, "Store the client key locally before verification.");
+    let credential: string | undefined;
+    if (clientAuth) {
+      const { env, label } = clientAuth.credential;
+      const saved = (
+        await readFile(
+          path.join(options.infraDir, "app", CLIENT_CREDENTIAL_FILE),
+          "utf8",
+        ).catch((error) => {
+          if (error.code === "ENOENT") return "";
+          throw error;
+        })
+      ).trim();
+      const fromEnvironment = (process.env[env] ?? environment[env])?.trim();
+      requireCheck(
+        !saved || !fromEnvironment || saved === fromEnvironment,
+        `Saved client ${label}s differ. Resolve the target ${label} before verification.`,
+      );
+      credential = fromEnvironment || saved;
+      requireCheck(
+        credential,
+        `Store the client ${label} locally before verification.`,
+      );
+    }
     const strategy = values["app-version"] ? "app-version" : "fingerprint";
     const target = values["app-version"] || values.fingerprint;
     requireCheck(isText(target), "An update target is required.");
@@ -196,14 +214,17 @@ export async function verifyServer(
     );
 
     check = "anonymous-catalog";
-    const anonymous = await request(catalogUrl);
-    requireCheck(
-      anonymous.response.status === 401,
-      "The catalog must reject a request without the client key with HTTP 401.",
-    );
+    if (clientAuth) {
+      const anonymous = await request(catalogUrl);
+      requireCheck(
+        anonymous.response.status === 401,
+        `The catalog must reject a request without the client ${clientAuth.credential.label} with HTTP 401.`,
+      );
+    }
 
     check = "authenticated-catalog";
-    const authenticated = await request(catalogUrl, apiKey);
+    // Public client routes answer the catalog without a credential.
+    const authenticated = await request(catalogUrl, credential);
     const catalog = parseJson(authenticated.body);
     const contentType =
       authenticated.response.headers.get("content-type") ?? "";
@@ -254,14 +275,16 @@ export async function verifyServer(
                 : [],
             ),
           ).size <= 512,
-        "The authenticated request must return a valid release catalog for the requested scope.",
+        clientAuth
+          ? "The authenticated request must return a valid release catalog for the requested scope."
+          : "The request must return a valid release catalog for the requested scope.",
       );
     }
     return {
       status: "verified",
       checks: {
         version: "matches-manifest",
-        anonymousCatalog: 401,
+        anonymousCatalog: clientAuth ? 401 : "public",
         authenticatedCatalog: authenticated.response.status,
         catalog: empty ? "empty" : "available",
       },

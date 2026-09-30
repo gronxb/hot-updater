@@ -2,13 +2,10 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-import {
-  transformTemplate,
-  writeHotUpdaterConfig,
-} from "@hot-updater/cli-tools";
+import { writeHotUpdaterConfig } from "@hot-updater/cli-tools";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { getConfigScaffold, SOURCE_TEMPLATE } from "./templates";
+import { getConfigScaffold } from "./templates";
 
 const tempDirs: string[] = [];
 
@@ -21,27 +18,6 @@ afterEach(async () => {
 });
 
 describe("AWS managed config scaffold", () => {
-  it("renders only client-owned network options in the app bootstrap", () => {
-    const source = transformTemplate(SOURCE_TEMPLATE, {
-      apiKey: JSON.stringify("api-key"),
-      source: JSON.stringify("https://example.cloudfront.net"),
-    });
-
-    expect(source).toContain('baseURL: "https://example.cloudfront.net"');
-    expect(source).toContain('"x-api-key": "api-key"');
-    expect(source).toContain("HotUpdater.init({");
-    // The managed server runs insights(), so the app reports to it.
-    expect(source).toContain(
-      'import { insights } from "@hot-updater/react-native/plugins/insights";',
-    );
-    expect(source).toContain("plugins: [insights()],");
-    expect(source).toContain("HotUpdater.checkForUpdate");
-    expect(source).not.toContain("HotUpdater.wrap");
-    expect(source).toContain("return null; // Replace with your app root.");
-    expect(source).not.toContain("catalogId");
-    expect(source).not.toContain("YourApp");
-  });
-
   it("renders DynamoDB as the managed metadata database", () => {
     const scaffold = getConfigScaffold("bare", {
       mode: "local",

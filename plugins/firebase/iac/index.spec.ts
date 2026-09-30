@@ -13,9 +13,20 @@ const mocks = vi.hoisted(() => ({
   assertFunction: vi.fn(),
   assertInfrastructure: vi.fn(),
   migrateFirebaseDatabase: vi.fn(),
-  provisionApiKey: vi.fn(async () => ({
-    apiKey: "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE",
-  })),
+  provisionClientCredential: vi.fn(
+    async (
+      _database: unknown,
+      _plugins: unknown,
+      input: { readonly env: Readonly<Record<string, string | undefined>> },
+    ) => ({
+      label: "API key",
+      header: "x-api-key",
+      env: "HOT_UPDATER_API_KEY",
+      value:
+        input.env["HOT_UPDATER_API_KEY"] ??
+        "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE",
+    }),
+  ),
   serviceEnableError: undefined as Error | undefined,
   tmpDir: "",
 }));
@@ -26,10 +37,8 @@ vi.mock("@hot-updater/server/db", async () => {
   );
   return {
     ...actual,
-    // The managed server's apiKeys() plugin, over the mocked database.
-    createDatabasePluginApis: vi.fn(() => ({
-      apiKeys: { provision: mocks.provisionApiKey },
-    })),
+    // The managed server's plugins, over the mocked database.
+    provisionClientCredential: mocks.provisionClientCredential,
   };
 });
 
@@ -120,6 +129,7 @@ vi.mock("@hot-updater/cli-tools", async () => {
       mocks.events.push("persist");
       return "";
     }),
+    printAppSetup: vi.fn(),
     p: {
       ...actual.p,
       log: {
@@ -184,7 +194,7 @@ vi.mock("./select", () => ({
   setEnv: vi.fn(),
 }));
 
-import { p } from "@hot-updater/cli-tools";
+import { p, printAppSetup } from "@hot-updater/cli-tools";
 import { execa } from "execa";
 
 import { runInit } from "./index";
@@ -288,8 +298,12 @@ describe("Firebase project creation", () => {
         },
       },
     );
-    expect(mocks.provisionApiKey).toHaveBeenCalledWith(
-      expect.objectContaining({ existingApiKey: API_KEY }),
+    expect(mocks.provisionClientCredential).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.objectContaining({
+        env: expect.objectContaining({ HOT_UPDATER_API_KEY: API_KEY }),
+      }),
     );
     // The schema settings come first, since the database reads nothing without them.
     expect(mocks.migrateFirebaseDatabase).toHaveBeenCalledWith(
@@ -297,7 +311,9 @@ describe("Firebase project creation", () => {
     );
     expect(
       mocks.migrateFirebaseDatabase.mock.invocationCallOrder[0],
-    ).toBeLessThan(mocks.provisionApiKey.mock.invocationCallOrder[0]!);
+    ).toBeLessThan(
+      mocks.provisionClientCredential.mock.invocationCallOrder[0]!,
+    );
     expect(execa).toHaveBeenCalledWith(
       "npx",
       expect.arrayContaining([
@@ -330,22 +346,22 @@ describe("Firebase project creation", () => {
     expect(p.log.message).toHaveBeenCalledWith(
       "Next step: Change GOOGLE_APPLICATION_CREDENTIALS=your-credentials.json in .env.hotupdater",
     );
-    expect(p.note).toHaveBeenCalledWith(
-      expect.stringContaining("return null; // Replace with your app root"),
-    );
-    expect(p.note).toHaveBeenCalledWith(
-      expect.stringContaining(`"x-api-key": "${API_KEY}"`),
-    );
-    expect(p.note).toHaveBeenCalledWith(
-      expect.stringContaining("plugins: [insights()],"),
-    );
-    expect(p.note).toHaveBeenCalledWith(
-      expect.stringContaining("HotUpdater.checkForUpdate"),
-    );
-    expect(p.note).toHaveBeenCalledWith(API_KEY, "API Key");
-    expect(p.log.message).toHaveBeenCalledWith(
-      "Store this API key separately in a secure place.",
-    );
+    expect(printAppSetup).toHaveBeenCalledWith({
+      baseURL: "https://hot-updater.example.com",
+      credential: {
+        label: "API key",
+        header: "x-api-key",
+        env: "HOT_UPDATER_API_KEY",
+        value: API_KEY,
+      },
+      // The managed server runs insights(), so the app reports to it.
+      clientPlugins: [
+        {
+          module: "@hot-updater/react-native/plugins/insights",
+          name: "insights",
+        },
+      ],
+    });
   });
 
   it("blocks an existing v0 project before deployment", async () => {
@@ -408,7 +424,7 @@ describe("Firebase project creation", () => {
         expect.objectContaining({ id: "hot-updater-v1" }),
       ]),
     });
-    expect(mocks.provisionApiKey).not.toHaveBeenCalled();
+    expect(mocks.provisionClientCredential).not.toHaveBeenCalled();
   });
 
   it("reports an actionable error when Firebase still cannot list functions", async () => {
@@ -420,6 +436,6 @@ describe("Firebase project creation", () => {
     );
 
     expect(mocks.assertFunction).not.toHaveBeenCalled();
-    expect(mocks.provisionApiKey).not.toHaveBeenCalled();
+    expect(mocks.provisionClientCredential).not.toHaveBeenCalled();
   });
 });

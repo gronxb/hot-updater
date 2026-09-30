@@ -9,10 +9,7 @@ import { Kysely, SqliteDialect } from "kysely";
 import { PGliteDialect } from "kysely-pglite-dialect";
 import { describe, expect, it } from "vitest";
 
-import {
-  createBundleEventRowFixture,
-  createBundleFixture,
-} from "../../../test-utils/src/databaseTestFixtures";
+import { createBundleFixture } from "../../../test-utils/src/databaseTestFixtures";
 import { createDatabasePluginApis } from "../assembly/databasePlugins";
 import { createInProcessCoreApi } from "../core/api";
 import { DatabaseConstraintError } from "../database/errors";
@@ -22,6 +19,10 @@ import { builtInSchema } from "../db/builtInDatabase";
 import type { ToolingDatabase } from "../db/types";
 import { createHotUpdater } from "../index";
 import { createInsightsModel, insights } from "../plugins/insights";
+import {
+  createBundleEventRowFixture,
+  insightsTestSuite,
+} from "../plugins/insights/testing";
 import { kyselyAdapter, type SQLProvider } from "./kysely";
 
 /** Every data table the migration creates; the settings rows stay. */
@@ -98,7 +99,7 @@ for (const provider of ["postgresql", "sqlite"] as const) {
           clientAccess: "public",
         }).handlers,
       ),
-    createInsightsModel: insightsOf,
+    plugins: [insightsTestSuite({ createModel: insightsOf })],
     name: `kyselyAdapter (${provider})`,
     migrate: async () => {
       backend = backends[provider]();

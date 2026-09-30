@@ -2,6 +2,7 @@ import {
   getHotUpdaterCoreMetadata,
   type RuntimeHotUpdaterAPI,
 } from "../createHotUpdaterCore";
+import type { AnyHotUpdaterPlugin } from "../plugins/definePlugin";
 import { type Migrator, type SchemaGenerator } from "./types";
 
 export { createDatabaseCoreApi, type CoreApi } from "../core/api";
@@ -11,6 +12,18 @@ export {
   type MeasuredDatabase,
   type MeasuredDatabaseOptions,
 } from "../assembly/databasePlugins";
+export {
+  clientAuthOf,
+  clientPluginsOf,
+  generateClientCredential,
+  pluginCommandsOf,
+  provisionClientCredential,
+  type ClientAuthSpec,
+  type ClientCredentialSpec,
+  type ClientPluginSpec,
+  type PluginCommandEntry,
+  type ProvisionedClientCredential,
+} from "../assembly/pluginCli";
 export { targetBaseCandidateKey } from "../core/baseCandidates";
 export {
   generateEngineSql,
@@ -42,6 +55,11 @@ const getDBMetadata = (hotUpdater: HotUpdaterDBTarget) => {
   }
   return metadata;
 };
+
+/** A server's plugins as configured, whose commands the CLI adds. */
+export const serverPluginsOf = (
+  hotUpdater: HotUpdaterDBTarget,
+): readonly AnyHotUpdaterPlugin[] => getDBMetadata(hotUpdater).plugins;
 
 /** Whether `hot-updater db generate` writes schema files for a server's database. */
 export const generatesSchema = (hotUpdater: HotUpdaterDBTarget): boolean =>

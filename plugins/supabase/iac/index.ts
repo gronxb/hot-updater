@@ -13,6 +13,7 @@ import {
   makeEnv,
   MissingInitInputsError,
   p,
+  printAppSetup,
   readHotUpdaterInitEnv,
   type RunInitOptions,
   resolvePackageVersion,
@@ -20,7 +21,11 @@ import {
   transformTemplate,
   writeHotUpdaterConfig,
 } from "@hot-updater/cli-tools";
-import { createDatabasePluginApis } from "@hot-updater/server/db";
+import {
+  clientPluginsOf,
+  provisionClientCredential,
+  type ProvisionedClientCredential,
+} from "@hot-updater/server/db";
 import { delay } from "es-toolkit";
 import { ExecaError, execa } from "execa";
 
@@ -121,48 +126,18 @@ const assertSkippedConfigDoesNotUseLegacySupabaseKey = async (
   process.exit(1);
 };
 
-const SOURCE_TEMPLATE = `// add this to your App.tsx
-import { HotUpdater } from "@hot-updater/react-native";
-import { insights } from "@hot-updater/react-native/plugins/insights";
-
-function App() {
-  return null; // Replace with your app root
-}
-
-HotUpdater.init({
-  baseURL: "%%source%%",
-  requestHeaders: {
-    "x-api-key": %%apiKey%%,
-  },
-  plugins: [insights()],
-});
-
-// Call HotUpdater.checkForUpdate({ updateStrategy: "appVersion" })
-// when your app is ready to check.
-export default App;`;
-
-export const getSupabaseReactNativeSource = ({
-  apiKey,
+/** The Edge Function URL an app sets as its baseURL. */
+export const getSupabaseFunctionUrl = ({
   functionName,
   projectId,
 }: {
-  readonly apiKey: string;
   readonly functionName: string;
   readonly projectId: string;
-}): string =>
-  transformTemplate(SOURCE_TEMPLATE, {
-    apiKey: JSON.stringify(apiKey),
-    source: `https://${projectId}.supabase.co/functions/v1/${functionName}`,
-  });
+}): string => `https://${projectId}.supabase.co/functions/v1/${functionName}`;
 
 export const reportSupabaseOriginCatalogReady = () => {
   p.log.success("Release catalog endpoint is ready in origin-only mode.");
   p.log.info("Catalog checks still invoke the Supabase Edge Function.");
-};
-
-export const reportSupabaseApiKey = (apiKey: string) => {
-  p.note(apiKey, "API Key");
-  p.log.message("Store this API key separately in a secure place.");
 };
 
 const resolvePackageExportPath = async (
@@ -1153,19 +1128,16 @@ const runInitWithoutCliMetadata = async ({
     supabaseServiceRoleKey: projectAccess.serviceRoleApiKey,
     supabaseUrl: `https://${project.id}.supabase.co`,
   });
-  let apiKey: string;
+  // The app's credential, through the managed server's plugins, on the tables they read.
+  let credential: ProvisionedClientCredential | undefined;
   try {
-    apiKey = // The managed server's apiKeys() plugin, on the tables it reads.
-      (
-        await createDatabasePluginApis(
-          databasePlugin,
-          plugins,
-        ).apiKeys.provision({
-          existingApiKey: initInputEnv.HOT_UPDATER_API_KEY,
-          name: "Supabase init",
-        })
-      ).apiKey;
-    await makeEnv({ HOT_UPDATER_API_KEY: apiKey });
+    credential = await provisionClientCredential(databasePlugin, plugins, {
+      env: initInputEnv,
+      name: "Supabase init",
+    });
+    if (credential !== undefined) {
+      await makeEnv({ [credential.env]: credential.value });
+    }
   } finally {
     await databasePlugin.dispose?.();
   }
@@ -1200,14 +1172,11 @@ const runInitWithoutCliMetadata = async ({
   }
   await generateHotUpdaterPlugins("@hot-updater/supabase");
 
-  p.note(
-    getSupabaseReactNativeSource({
-      apiKey,
-      functionName,
-      projectId: project.id,
-    }),
-  );
-  reportSupabaseApiKey(apiKey);
+  printAppSetup({
+    baseURL: getSupabaseFunctionUrl({ functionName, projectId: project.id }),
+    ...(credential === undefined ? {} : { credential }),
+    clientPlugins: clientPluginsOf(plugins),
+  });
   reportSupabaseOriginCatalogReady();
 
   p.log.message(

@@ -2,7 +2,6 @@ import {
   colors,
   confirmInitInputPersistence,
   ensureInstallPackages,
-  formatApiKeyNote,
   generateHotUpdaterPlugins,
   getHotUpdaterInitInputEnv,
   getInitProviderEnvVars,
@@ -10,12 +9,17 @@ import {
   link,
   makeEnv,
   p,
+  printAppSetup,
   readHotUpdaterInitEnv,
   type RunInitOptions,
-  transformTemplate,
   writeHotUpdaterConfig,
 } from "@hot-updater/cli-tools";
-import { createDatabasePluginApis } from "@hot-updater/server/db";
+import {
+  clientAuthOf,
+  clientPluginsOf,
+  provisionClientCredential,
+  type ProvisionedClientCredential,
+} from "@hot-updater/server/db";
 import { execa } from "execa";
 
 import { dynamoDB, migrateDynamoDB } from "../src/dynamoDB";
@@ -38,7 +42,7 @@ import { LambdaEdgeDeployer } from "./lambdaEdge";
 import { type AwsRegion, regionLocationMap } from "./regionLocationMap";
 import { S3Manager } from "./s3";
 import { SSMKeyPairManager } from "./ssm";
-import { getConfigScaffold, SOURCE_TEMPLATE } from "./templates";
+import { getConfigScaffold } from "./templates";
 
 const checkIfAwsCliInstalled = async () => {
   try {
@@ -66,21 +70,6 @@ export const prepareDynamoDBDeployment = async (input: {
   await dynamodbManager.ensureTable(input.tableName);
   // The plugin reads nothing until the table's schema settings exist.
   await migrateDynamoDB(input);
-};
-
-/** The app's client key, through the managed server's apiKeys() plugin, on the table it reads. */
-export const prepareDynamoDBApiKey = async (input: {
-  readonly database: unknown;
-  readonly existingApiKey?: string;
-}): Promise<string> => {
-  const created = await createDatabasePluginApis(
-    input.database,
-    plugins,
-  ).apiKeys.provision({
-    existingApiKey: input.existingApiKey,
-    name: "AWS init",
-  });
-  return created.apiKey;
 };
 
 export const runInit = async ({ build, envFile }: RunInitOptions) => {
@@ -349,13 +338,16 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
     region: bucketRegion,
     tableName: resolvedDynamoDBTableName,
   });
-  let apiKey: string;
+  // The app's credential, through the managed server's plugins, on the table they read.
+  let credential: ProvisionedClientCredential | undefined;
   try {
-    apiKey = await prepareDynamoDBApiKey({
-      database: databasePlugin,
-      existingApiKey: providerEnv.HOT_UPDATER_API_KEY,
+    credential = await provisionClientCredential(databasePlugin, plugins, {
+      env: providerEnv,
+      name: "AWS init",
     });
-    await makeEnv({ HOT_UPDATER_API_KEY: apiKey });
+    if (credential !== undefined) {
+      await makeEnv({ [credential.env]: credential.value });
+    }
   } finally {
     await databasePlugin.dispose?.();
   }
@@ -401,6 +393,7 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
     await cloudFrontManager.createOrUpdateDistribution({
       keyGroupId,
       bucketName,
+      clientHeaders: clientAuthOf(plugins)?.varyHeaders ?? [],
       distribution: selectedDistribution,
       functionArn,
     });
@@ -446,16 +439,12 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
   }
   await generateHotUpdaterPlugins("@hot-updater/aws");
 
-  // Provide API URL for client use (using CloudFront domain)
-  const sourceUrl = `https://${distributionDomain}`;
-  p.note(
-    transformTemplate(SOURCE_TEMPLATE, {
-      apiKey: JSON.stringify(apiKey),
-      source: JSON.stringify(sourceUrl),
-    }),
-  );
-  p.note(formatApiKeyNote(apiKey), "API Key");
-  p.log.message("Store this API key separately in a secure place.");
+  // The app's server URL is the CloudFront domain.
+  printAppSetup({
+    baseURL: `https://${distributionDomain}`,
+    ...(credential === undefined ? {} : { credential }),
+    clientPlugins: clientPluginsOf(plugins),
+  });
   p.log.message(
     `Next step: ${link("https://hot-updater.dev/docs/managed/aws#step-4-changeenv-file-optional")}`,
   );

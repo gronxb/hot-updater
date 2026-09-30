@@ -1,12 +1,10 @@
 import { createHotUpdater } from "@hot-updater/server";
 import { insights } from "@hot-updater/server/plugins/insights";
+import { createBundleEventRowFixture } from "@hot-updater/server/plugins/insights/testing";
 import { env } from "cloudflare:test";
 import { expect, inject, it } from "vitest";
 
-import {
-  createBundleEventRowFixture,
-  createBundleFixture,
-} from "../../../../packages/test-utils/src/databaseTestFixtures";
+import { createBundleFixture } from "../../../../packages/test-utils/src/databaseTestFixtures";
 import { d1Database } from "../../src/worker";
 
 it("reads only through declared indexes on D1, never a full scan or a sort", async () => {

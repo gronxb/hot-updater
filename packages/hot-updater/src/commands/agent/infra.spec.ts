@@ -119,7 +119,26 @@ describe("published agent infrastructure commands", () => {
         );
         for (const [, key] of config.matchAll(/process\.env\.([A-Z_0-9]+)/g))
           expect(variables).toContain(key);
-        expect(variables).toContain("HOT_UPDATER_API_KEY");
+        // The managed server runs apiKeys(), which sets its client-route policy.
+        expect(manifest.clientAuth).toEqual({
+          plugin: "apiKeys",
+          varyHeaders: ["x-api-key"],
+          credential: {
+            label: "API key",
+            header: "x-api-key",
+            env: "HOT_UPDATER_API_KEY",
+          },
+        });
+        expect(variables).toContain(manifest.clientAuth.credential.env);
+        for (const file of Object.keys(manifest.files).filter((name) =>
+          name.endsWith(".md"),
+        )) {
+          const text = await readFile(
+            path.join(result.data.output, file),
+            "utf8",
+          );
+          expect(text, file).not.toMatch(/\{\{CREDENTIAL_|<!-- (if|else|end)/u);
+        }
         for (const key of variables) {
           const row = environment
             .split("\n")
@@ -298,7 +317,7 @@ describe("published agent infrastructure commands", () => {
 
 describe("deployment artifacts", () => {
   it.each(providers)(
-    "loads the generated %s key config without a build plugin or storage credentials",
+    "loads the generated %s database config without a build plugin or storage credentials",
     async (provider) => {
       const scaffold = run(
         "setup",
@@ -325,7 +344,7 @@ describe("deployment artifacts", () => {
         );
       }
       const configUrl = pathToFileURL(
-        path.join(scaffold.output, "app/api-key.config.ts"),
+        path.join(scaffold.output, "app/database.config.ts"),
       );
       const pluginsUrl = pathToFileURL(
         path.join(scaffold.output, "app/hotUpdater.plugins.ts"),
@@ -335,8 +354,8 @@ describe("deployment artifacts", () => {
         [
           "--input-type=module",
           "--eval",
-          // provision-api-key.mjs's path: the server's apiKeys() plugin over the key config's database.
-          `const { database } = await import(${JSON.stringify(configUrl.href)}); const { plugins } = await import(${JSON.stringify(pluginsUrl.href)}); const { createDatabasePluginApis } = await import("@hot-updater/server/db"); console.log(typeof createDatabasePluginApis(database, plugins).apiKeys.provision); await database.dispose?.();`,
+          // provision-client-credential.mjs's path: the clientAuth plugin over the config's database.
+          `const { database } = await import(${JSON.stringify(configUrl.href)}); const { plugins } = await import(${JSON.stringify(pluginsUrl.href)}); const { clientAuthOf, createDatabasePluginApis } = await import("@hot-updater/server/db"); const { plugin } = clientAuthOf(plugins); console.log(plugin, typeof createDatabasePluginApis(database, plugins)[plugin]); await database.dispose?.();`,
         ],
         {
           cwd,
@@ -358,7 +377,7 @@ describe("deployment artifacts", () => {
       );
       expect(result.error).toBeUndefined();
       expect(result.status, result.stderr).toBe(0);
-      expect(result.stdout.trim()).toBe("function");
+      expect(result.stdout.trim()).toBe("apiKeys object");
     },
   );
 

@@ -6,10 +6,30 @@ import type {
   OriginRequestPolicyConfig,
 } from "@aws-sdk/client-cloudfront";
 
+/**
+ * The request headers a cache key holds: those the server's client-route
+ * policy reads, so responses to different credentials never share an entry.
+ */
+const headersConfig = (
+  clientHeaders: readonly string[],
+): NonNullable<
+  NonNullable<
+    CachePolicyConfig["ParametersInCacheKeyAndForwardedToOrigin"]
+  >["HeadersConfig"]
+> =>
+  clientHeaders.length === 0
+    ? { HeaderBehavior: "none" }
+    : {
+        HeaderBehavior: "whitelist",
+        Headers: { Quantity: clientHeaders.length, Items: [...clientHeaders] },
+      };
+
 // We intentionally avoid the AWS-managed UseOriginCacheControlHeaders policy here.
 // That managed policy forwards the viewer Host header and all cookies to the origin,
-// which breaks S3 origins and bloats the cache key beyond the API key.
-export const HOT_UPDATER_SHARED_CACHE_POLICY_CONFIG: CachePolicyConfig = {
+// which breaks S3 origins and bloats the cache key beyond the client-route headers.
+export const buildSharedCachePolicyConfig = (
+  clientHeaders: readonly string[],
+): CachePolicyConfig => ({
   Name: "HotUpdaterOriginCacheControlV2",
   Comment:
     "Honor origin Cache-Control without forwarding viewer Host/cookies/query strings",
@@ -19,13 +39,7 @@ export const HOT_UPDATER_SHARED_CACHE_POLICY_CONFIG: CachePolicyConfig = {
   ParametersInCacheKeyAndForwardedToOrigin: {
     EnableAcceptEncodingBrotli: true,
     EnableAcceptEncodingGzip: true,
-    HeadersConfig: {
-      HeaderBehavior: "whitelist",
-      Headers: {
-        Quantity: 1,
-        Items: ["x-api-key"],
-      },
-    },
+    HeadersConfig: headersConfig(clientHeaders),
     CookiesConfig: {
       CookieBehavior: "none",
     },
@@ -33,44 +47,42 @@ export const HOT_UPDATER_SHARED_CACHE_POLICY_CONFIG: CachePolicyConfig = {
       QueryStringBehavior: "none",
     },
   },
-};
+});
 
-export const HOT_UPDATER_RELEASE_CATALOG_CACHE_POLICY_CONFIG: CachePolicyConfig =
-  {
-    Name: "HotUpdaterReleaseCatalogV1",
-    Comment: "Cache Release catalogs by canonical path, API key, and encoding",
-    DefaultTTL: 0,
-    MaxTTL: 5,
-    MinTTL: 0,
-    ParametersInCacheKeyAndForwardedToOrigin: {
-      EnableAcceptEncodingBrotli: true,
-      EnableAcceptEncodingGzip: true,
-      HeadersConfig: {
-        HeaderBehavior: "whitelist",
-        Headers: {
-          Quantity: 1,
-          Items: ["x-api-key"],
-        },
-      },
-      CookiesConfig: { CookieBehavior: "none" },
-      QueryStringsConfig: { QueryStringBehavior: "none" },
-    },
-  };
-
-export const HOT_UPDATER_ORIGIN_REQUEST_POLICY_CONFIG: OriginRequestPolicyConfig =
-  {
-    Name: "HotUpdaterManagedApiOriginRequestV2",
-    Comment: "Forward managed API bodies, query strings, and the API key",
-    HeadersConfig: {
-      HeaderBehavior: "whitelist",
-      Headers: {
-        Quantity: 2,
-        Items: ["content-type", "x-api-key"],
-      },
-    },
+export const buildReleaseCatalogCachePolicyConfig = (
+  clientHeaders: readonly string[],
+): CachePolicyConfig => ({
+  Name: "HotUpdaterReleaseCatalogV1",
+  Comment:
+    "Cache Release catalogs by canonical path, client credential, and encoding",
+  DefaultTTL: 0,
+  MaxTTL: 5,
+  MinTTL: 0,
+  ParametersInCacheKeyAndForwardedToOrigin: {
+    EnableAcceptEncodingBrotli: true,
+    EnableAcceptEncodingGzip: true,
+    HeadersConfig: headersConfig(clientHeaders),
     CookiesConfig: { CookieBehavior: "none" },
-    QueryStringsConfig: { QueryStringBehavior: "all" },
-  };
+    QueryStringsConfig: { QueryStringBehavior: "none" },
+  },
+});
+
+export const buildOriginRequestPolicyConfig = (
+  clientHeaders: readonly string[],
+): OriginRequestPolicyConfig => ({
+  Name: "HotUpdaterManagedApiOriginRequestV2",
+  Comment:
+    "Forward managed API bodies, query strings, and the client credential",
+  HeadersConfig: {
+    HeaderBehavior: "whitelist",
+    Headers: {
+      Quantity: clientHeaders.length + 1,
+      Items: ["content-type", ...clientHeaders],
+    },
+  },
+  CookiesConfig: { CookieBehavior: "none" },
+  QueryStringsConfig: { QueryStringBehavior: "all" },
+});
 
 export type DistributionConfigOverrides = {
   Origins: NonNullable<DistributionConfig["Origins"]>;

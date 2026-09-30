@@ -19,8 +19,10 @@ Register three suites against a disposable test database:
   plugins costs at the adapter, using `createMeasuredDatabase` from
   `@hot-updater/server/db`. `postgresRowsExamined` and `mysqlRowsExamined` also
   count the rows a SQL database examined.
-- `setupDatabaseTestSuite` runs core, Bundles, the Release Catalog contract and
-  Insights through the admin and client HTTP APIs of `createHotUpdater`.
+- `setupDatabaseTestSuite` runs core, Bundles and the Release Catalog contract
+  through the admin and client HTTP APIs of `createHotUpdater`, then the suites
+  of the server plugins listed in `plugins`, such as the Insights plugin's
+  `insightsTestSuite()` from `@hot-updater/server/plugins/insights/testing`.
 
 Connect your database's lifecycle and the real server:
 
@@ -31,6 +33,7 @@ import {
   createInsightsModel,
   insights,
 } from "@hot-updater/server/plugins/insights";
+import { insightsTestSuite } from "@hot-updater/server/plugins/insights/testing";
 import {
   setupDatabaseTestSuite,
   startHttpTestServer,
@@ -57,10 +60,15 @@ setupDatabaseTestSuite({
         clientAccess: "public",
       }).handlers,
     ),
-  createInsightsModel: (database) =>
-    createInsightsModel(
-      createDatabasePluginApis(database, [insights()]).insights,
-    ),
+  // The server above runs insights(), so its suite runs too.
+  plugins: [
+    insightsTestSuite({
+      createModel: (database) =>
+        createInsightsModel(
+          createDatabasePluginApis(database, [insights()]).insights,
+        ),
+    }),
+  ],
 });
 ```
 

@@ -51,18 +51,25 @@ init. reference/ is additional context, not executable provisioning code.
     its schema or settings to make it pass.
   - Retry: describe the same table/backups/TTL/items; write only what is missing.
 
-- [ ] **aws.client-key — Initialize local access and the client key**
+- [ ] **aws.client-credential — Initialize local access and the client credential**
   - Requires: aws.database. Run this before Lambda deployment, as init does.
-  - Run: follow COMMON.md's Local CLI and client API key steps with the selected
-    table/region and standard AWS credential chain. At this stage leave
+  - Run: follow COMMON.md's Local CLI and client credential steps with the
+    selected table/region and standard AWS credential chain. At this stage leave
     HOT_UPDATER_CLOUDFRONT_DISTRIBUTION_ID unset if no distribution exists yet;
-    it is not needed for key registration. ENVIRONMENT.md explains the inputs.
-  - Verify/record: the supplied helper registers/reuses the saved key in the
-    selected table. Record its private file path, never its contents.
-  - Retry: inspect local access and reuse the same key; do not recreate the table.
+    it is not needed for credential registration. ENVIRONMENT.md explains the inputs.
+<!-- if credential -->
+  - Verify/record: the supplied helper registers/reuses the saved client
+    {{CREDENTIAL_LABEL}} in the selected table. Record its private file path,
+    never its contents.
+  - Retry: inspect local access and reuse the same {{CREDENTIAL_LABEL}}; do not
+    recreate the table.
+<!-- else -->
+  - Verify/record: the local config loads against the selected table.
+  - Retry: inspect local access; do not recreate the table.
+<!-- end -->
 
 - [ ] **aws.iam — Prepare the Lambda execution role**
-  - Requires: aws.client-key. Fill account/region/table/bucket/SSM placeholders in iam/.
+  - Requires: aws.client-credential. Fill account/region/table/bucket/SSM placeholders in iam/.
   - Run: select an installation-specific role and inspect its trust/policies.
     For a new role use `aws iam create-role --role-name <role-name> --assume-role-policy-document file://iam/trust-policy.json`.
     Attach `arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole` if missing. Apply the documents with
@@ -96,7 +103,7 @@ init. reference/ is additional context, not executable provisioning code.
   - Retry: inspect SSM/public-key/group state and reuse the saved pair and IDs.
 
 - [ ] **aws.lambda — Publish the server**
-  - Requires: aws.database, aws.client-key, aws.iam and aws.signing.
+  - Requires: aws.database, aws.client-credential, aws.iam and aws.signing.
   - Run: fill lambda/index.cjs resource inputs, including the public key ID
     (not key group), regional DynamoDB/SSM inputs and bucket. Lambda@Edge uses
     these code inputs, not ordinary environment variables. Install the pinned
@@ -126,7 +133,8 @@ init. reference/ is additional context, not executable provisioning code.
   - Verify/record: oacId, cachePolicyId, catalogCachePolicyId, originRequestPolicyId,
     distributionId, distributionCallerReference and baseUrl. Wait for Deployed;
     verify the selected S3 origin, Lambda version, signed default artifact behavior
-    and API-key-aware API/catalog policies before marking this step complete.
+    and the API/catalog policies, whose cache keys hold the server's client-route
+    headers, before marking this step complete.
   - Retry: query saved IDs/names/CallerReference and current ETag. Do not generate
     a new CallerReference, distribution, policy or key group merely to retry.
 

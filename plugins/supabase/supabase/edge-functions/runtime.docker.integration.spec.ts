@@ -35,6 +35,7 @@ import {
   insightsSchema,
   type BundleEventRow,
 } from "@hot-updater/server/plugins/insights";
+import { insightsTestSuite } from "@hot-updater/server/plugins/insights/testing";
 import {
   runContentionHarness,
   setupDatabaseTestSuite,
@@ -453,10 +454,14 @@ describe.sequential("supabase edge runtime acceptance", () => {
           clientAccess: "public",
         }).handlers,
       ),
-    createInsightsModel: (database) =>
-      createInsightsModel(
-        createDatabasePluginApis(database, [insights()]).insights,
-      ),
+    plugins: [
+      insightsTestSuite({
+        createModel: (database) =>
+          createInsightsModel(
+            createDatabasePluginApis(database, [insights()]).insights,
+          ),
+      }),
+    ],
   });
 
   it("returns one canonical Channel row under concurrent inserts", async () => {

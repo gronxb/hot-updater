@@ -11,8 +11,14 @@ import {
   transformEnv,
 } from "@hot-updater/cli-tools";
 import { HOT_UPDATER_INFRASTRUCTURE_GENERATION } from "@hot-updater/server";
+import { clientAuthOf, clientPluginsOf } from "@hot-updater/server/db";
 import { build as buildHelper } from "tsdown";
 
+import {
+  CLIENT_CREDENTIAL_CONFIG,
+  CLIENT_CREDENTIAL_SCRIPT,
+  renderAgentInstructions,
+} from "../src/commands/infra/clientAuth.ts";
 import {
   readInfrastructureUpgradeFiles,
   renderInfrastructureUpgradeIndex,
@@ -92,11 +98,27 @@ for (const provider of providers) {
   const root = pluginRoot(provider);
   const output = path.join(outputRoot, provider);
   await mkdir(output, { recursive: true });
+  // The plugins the provider's prebuilt server runs set its client-route
+  // policy, which the scaffold provisions, documents, and checks, and name
+  // the client plugins an app adds.
+  const { plugins } = await moduleAt(path.join(root, "src/plugins.ts"));
+  const clientAuth = clientAuthOf(plugins) ?? null;
+  const clientPlugins = clientPluginsOf(plugins);
   await cp(path.join(root, "agent"), output, { recursive: true });
-  await cp(
-    path.join(packageRoot, "agent/COMMON.md"),
-    path.join(output, "COMMON.md"),
-  );
+  for (const [source, file] of [
+    ...(await readdir(output))
+      .filter((name) => name.endsWith(".md"))
+      .map((name) => [path.join(output, name), name]),
+    [path.join(packageRoot, "agent/COMMON.md"), "COMMON.md"],
+  ]) {
+    await save(
+      path.join(output, file),
+      renderAgentInstructions(await readFile(source, "utf8"), {
+        clientAuth,
+        clientPlugins,
+      }),
+    );
+  }
   const templateModule = await moduleAt(
     path.join(
       root,
@@ -124,7 +146,7 @@ for (const provider of providers) {
         ...info,
         named: info.named?.filter((name) => name !== config.storage.callee),
       }));
-    // Firestore has no migration tooling, so its key script writes the schema settings first.
+    // Firestore has no migration tooling, so the credential script writes the schema settings first.
     const migrate =
       provider === "firebase"
         ? `\n/** Writes the schema settings the database checks before its first read. */\nexport const migrate = () =>\n  ${config.database.initializer.replace(/^firebaseDatabase\(/, "migrateFirebaseDatabase(")};\n`
@@ -141,7 +163,7 @@ for (const provider of providers) {
           )
         : imports;
     await save(
-      path.join(output, "app", `api-key.config.${build}.ts`),
+      path.join(output, "app", `${CLIENT_CREDENTIAL_CONFIG}.${build}.ts`),
       `${renderImportStatements(keyImports)}\n\nif (existsSync(".env.hotupdater")) {
   process.loadEnvFile(".env.hotupdater");
 }\n\n${config.helperStatements.map(({ code }) => code).join("\n\n")}\n\nexport const database = ${config.database.initializer};\n${migrate}`,
@@ -154,8 +176,8 @@ for (const provider of providers) {
     renderHotUpdaterPlugins(`@hot-updater/${provider}`),
   );
   await cp(
-    path.join(packageRoot, "agent/provision-api-key.mjs"),
-    path.join(output, "app/provision-api-key.mjs"),
+    path.join(packageRoot, "agent", CLIENT_CREDENTIAL_SCRIPT),
+    path.join(output, "app", CLIENT_CREDENTIAL_SCRIPT),
   );
 
   await cp(
@@ -271,16 +293,18 @@ for (const provider of providers) {
     });
     distribution.CallerReference = placeholder("CALLER_REFERENCE");
     await save(path.join(output, "cloudfront/distribution.json"), distribution);
+    // Caches key on the headers the server's client-route policy reads.
+    const clientHeaders = clientAuth?.varyHeaders ?? [];
     await save(path.join(output, "cloudfront/cache-policy.json"), {
-      CachePolicyConfig: cloudfront.HOT_UPDATER_SHARED_CACHE_POLICY_CONFIG,
+      CachePolicyConfig: cloudfront.buildSharedCachePolicyConfig(clientHeaders),
     });
     await save(path.join(output, "cloudfront/catalog-cache-policy.json"), {
       CachePolicyConfig:
-        cloudfront.HOT_UPDATER_RELEASE_CATALOG_CACHE_POLICY_CONFIG,
+        cloudfront.buildReleaseCatalogCachePolicyConfig(clientHeaders),
     });
     await save(path.join(output, "cloudfront/origin-request-policy.json"), {
       OriginRequestPolicyConfig:
-        cloudfront.HOT_UPDATER_ORIGIN_REQUEST_POLICY_CONFIG,
+        cloudfront.buildOriginRequestPolicyConfig(clientHeaders),
     });
     const awsInputs = await moduleAt(path.join(root, "dist/iac/index.mjs"));
     await save(
@@ -414,6 +438,8 @@ for (const provider of providers) {
     providerVersion,
     serverVersion: versions["@hot-updater/server"],
     infrastructureGeneration: HOT_UPDATER_INFRASTRUCTURE_GENERATION,
+    clientAuth,
+    clientPlugins,
     packages: Object.fromEntries(
       Object.entries(appPackages).filter(
         ([name]) =>

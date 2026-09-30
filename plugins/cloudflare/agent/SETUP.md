@@ -64,14 +64,21 @@ Record observations in deployment.json as described in COMMON.md.
     local reference only; artifact download is checked by common.report when available.
   - Retry: reuse the same saved secret and inspect remote state; do not rotate it.
 
-- [ ] **cf.client-key — Prepare local access and register the client key**
+- [ ] **cf.client-credential — Prepare local access and register the client credential**
   - Requires: cf.schema and cf.signing.
-  - Run: complete COMMON.md's Local CLI and client API key steps. ENVIRONMENT.md
-    explains the local D1 API and R2 S3 credentials. Run the supplied key helper
-    from the app directory; do not use a provider token as the client key.
-  - Verify/record: helper registration succeeds with the saved/reused key and
-    local config points to the selected D1/R2. Record only the private key path.
-  - Retry: reuse the persisted key and resources; inspect access errors.
+  - Run: complete COMMON.md's Local CLI and client credential steps.
+    ENVIRONMENT.md explains the local D1 API and R2 S3 credentials. Run the
+    supplied credential helper from the app directory.
+<!-- if credential -->
+    Do not use a provider token as the client {{CREDENTIAL_LABEL}}.
+  - Verify/record: helper registration succeeds with the saved/reused
+    {{CREDENTIAL_LABEL}} and local config points to the selected D1/R2. Record
+    only its private file path.
+  - Retry: reuse the persisted {{CREDENTIAL_LABEL}} and resources; inspect access errors.
+<!-- else -->
+  - Verify/record: local config points to the selected D1/R2.
+  - Retry: reuse the resources; inspect access errors.
+<!-- end -->
 
 - [ ] **cf.complete — Verify and report**
   - Requires: all preceding steps.

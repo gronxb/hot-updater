@@ -119,8 +119,8 @@ HOT_UPDATER_CLOUDFLARE_R2_SECRET_ACCESS_KEY=your-r2-secret-access-key
 
 Managed init reuses `HOT_UPDATER_API_KEY` when supplied or creates an API key,
 registers it in D1, and persists the plaintext value locally. Send this API key
-in the app's `x-api-key` request header. Do not run
-`hot-updater api-key create` for a managed installation.
+in the app's `x-api-key` request header. To list, add, or revoke
+keys later, run `hot-updater api-key` from the app directory.
 
 <Callout type="warn">
 

@@ -59,7 +59,9 @@ const PLUGIN_KEYS = new Set([
   "schemaVersion",
   "schema",
   "init",
+  "cli",
 ]);
+const CLI_KEYS = new Set(["commands", "clientCredential", "clientPlugin"]);
 const INSTANCE_KEYS = new Set(["api", "endpoints", "clientAuth"]);
 const METHODS = new Set(["GET", "POST", "PUT", "PATCH", "DELETE"]);
 const BUILT_IN_ID = /^[a-z][A-Za-z0-9]*$/u;
@@ -106,6 +108,27 @@ const checkPlugin = (value: unknown, at: string): PluginShape => {
     fail(
       `Plugin "${plugin.id}" may only declare provides: { clientAuth: true }.`,
     );
+  }
+  // The CLI checks each command when it registers them.
+  const cli = value.cli;
+  if (cli !== undefined) {
+    if (
+      !isRecord(cli) ||
+      Object.keys(cli).some((key) => !CLI_KEYS.has(key)) ||
+      (cli.commands !== undefined && !Array.isArray(cli.commands))
+    ) {
+      fail(
+        `Plugin "${plugin.id}" cli may only hold commands (an array), clientCredential, and clientPlugin.`,
+      );
+    }
+    if (
+      (cli as Record<string, unknown>).clientCredential !== undefined &&
+      plugin.provides?.clientAuth !== true
+    ) {
+      fail(
+        `Plugin "${plugin.id}" adds cli.clientCredential without declaring provides: { clientAuth: true }.`,
+      );
+    }
   }
   return plugin;
 };
