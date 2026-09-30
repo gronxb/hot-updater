@@ -1,86 +1,18 @@
 import { createHotUpdater } from "@hot-updater/server";
-import type { CloudFrontRequestHandler } from "aws-lambda";
-import { Hono } from "hono";
-import type { Callback, CloudFrontRequest } from "hono/lambda-edge";
-import { handle } from "hono/lambda-edge";
 
-import { cloudFrontDownloadUrl } from "../src/cloudFrontDownloadUrl";
-import { dynamoDB } from "../src/dynamoDB";
-import { plugins } from "../src/plugins";
-import { s3Storage } from "../src/s3Storage";
+import { dynamoDB, plugins, s3Storage, serveManagedLambda } from "./managed";
 
-declare global {
-  var HotUpdater: {
-    CLOUDFRONT_KEY_PAIR_ID: string;
-    DYNAMODB_REGION: string;
-    DYNAMODB_TABLE_NAME: string;
-    SSM_PARAMETER_NAME: string;
-    SSM_REGION: string;
-    S3_BUCKET_NAME: string;
-  };
-}
+export { HOT_UPDATER_BASE_PATH } from "./managed";
 
-export const HOT_UPDATER_BASE_PATH = "/";
-
-const CLOUDFRONT_KEY_PAIR_ID = HotUpdater.CLOUDFRONT_KEY_PAIR_ID;
-const DYNAMODB_REGION = HotUpdater.DYNAMODB_REGION;
-const DYNAMODB_TABLE_NAME = HotUpdater.DYNAMODB_TABLE_NAME;
-const SSM_PARAMETER_NAME = HotUpdater.SSM_PARAMETER_NAME;
-const SSM_REGION = HotUpdater.SSM_REGION;
-const S3_BUCKET_NAME = HotUpdater.S3_BUCKET_NAME;
-
-type Bindings = {
-  callback: Callback;
-  request: CloudFrontRequest;
-  config: {
-    distributionDomainName: string;
-  };
-};
-
-const database = dynamoDB({
-  region: DYNAMODB_REGION,
-  tableName: DYNAMODB_TABLE_NAME,
-});
-
-const hotUpdaterByDistribution = new Map<
-  string,
-  ReturnType<typeof createHotUpdater>
->();
-
-const getHotUpdater = (distributionDomainName: string) => {
-  const cached = hotUpdaterByDistribution.get(distributionDomainName);
-  if (cached) return cached;
-
-  const hotUpdater = createHotUpdater({
-    database,
+/**
+ * The prebuilt function: the package's server, on the table and bucket init
+ * set up. A project that edits its server definition gets the same runtime
+ * module around its own.
+ */
+export const handler = serveManagedLambda(
+  createHotUpdater({
+    database: dynamoDB(),
+    storage: [s3Storage()],
     plugins,
-    storage: [
-      s3Storage({
-        bucketName: S3_BUCKET_NAME,
-        region: SSM_REGION,
-        getDownloadUrl: cloudFrontDownloadUrl({
-          keyPairId: CLOUDFRONT_KEY_PAIR_ID,
-          ssmRegion: SSM_REGION,
-          ssmParameterName: SSM_PARAMETER_NAME,
-          publicBaseUrl: `https://${distributionDomainName}`,
-        }),
-      }),
-    ],
-  });
-  hotUpdaterByDistribution.set(distributionDomainName, hotUpdater);
-  return hotUpdater;
-};
-
-const app = new Hono<{ Bindings: Bindings }>();
-
-app.mount(
-  HOT_UPDATER_BASE_PATH,
-  async (request: Request, distributionDomainName: string) => {
-    return getHotUpdater(distributionDomainName).handlers.client(request);
-  },
-  {
-    optionHandler: (c) => [c.env.config.distributionDomainName],
-  },
+  }),
 );
-
-export const handler = handle(app) as CloudFrontRequestHandler;

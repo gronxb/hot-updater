@@ -25,7 +25,10 @@ vi.mock("@aws-sdk/client-sts", () => ({
   }),
 }));
 
-import { IAMManager } from "./iam";
+import { definePlugin, defineTable } from "@hot-updater/server/plugins";
+
+import { plugins } from "../src/plugins";
+import { dynamoDBLeadingKeys, IAMManager } from "./iam";
 
 describe("IAMManager DynamoDB access", () => {
   beforeEach(() => {
@@ -59,6 +62,7 @@ describe("IAMManager DynamoDB access", () => {
       dynamodbTableName: "hot-updater-metadata",
       lambdaName: "hot-updater-edge",
       ssmParameterName: "/hot-updater/hot-updater-storage/keypair",
+      plugins,
     });
 
     // Then
@@ -180,16 +184,42 @@ describe("IAMManager DynamoDB access", () => {
       dynamodbTableName: "first-table",
       lambdaName: "first-edge",
       ssmParameterName: "/hot-updater/first-bucket/keypair",
+      plugins,
     });
     await manager.createOrSelectRole({
       bucketName: "second-bucket",
       dynamodbTableName: "second-table",
       lambdaName: "second-edge",
       ssmParameterName: "/hot-updater/second-bucket/keypair",
+      plugins,
     });
 
     // Then
     const roleNames = mocks.getRole.mock.calls.map(([input]) => input.RoleName);
     expect(new Set(roleNames).size).toBe(2);
+  });
+
+  it("reaches the tables of the plugins the server definition lists, and no others", () => {
+    const notes = definePlugin({
+      id: "notes",
+      schemaVersion: "1",
+      schema: {
+        notes: defineTable(
+          { id: { type: "string", maxLength: 64 }, body: { type: "string" } },
+          { key: ["id"] },
+        ),
+      },
+      init: () => ({ api: {} }),
+    });
+
+    const keys = dynamoDBLeadingKeys([notes]);
+
+    // A plugin's tables are named after it.
+    expect(keys).toEqual(
+      expect.arrayContaining(["notes_notes", "notes_notes#*"]),
+    );
+    expect(keys).toEqual(expect.arrayContaining(["bundles", "bundles#*"]));
+    expect(keys).not.toContain("api_keys");
+    expect(keys).not.toContain("bundle_events");
   });
 });

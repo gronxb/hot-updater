@@ -193,6 +193,8 @@ export class CloudFrontManager {
     functionArn: string;
     /** The headers the server's client-route policy reads; none when client routes are public. */
     clientHeaders: readonly string[];
+    /** From `pluginCacheBehaviorPaths`: the plugins' client endpoints, sent to the function. */
+    pluginPaths?: readonly string[];
     distribution?: CloudFrontDistribution | null;
     distributionId?: string;
     nonInteractive?: boolean;
@@ -282,6 +284,7 @@ export class CloudFrontManager {
       originRequestPolicyId,
       releaseCatalogCachePolicyId,
       sharedCachePolicyId,
+      pluginPaths: options.pluginPaths ?? [],
     });
 
     if (selectedDistribution) {
@@ -318,10 +321,12 @@ export class CloudFrontManager {
             Paths: {
               Quantity:
                 HOT_UPDATER_CACHE_BEHAVIOR_PATHS.length +
-                HOT_UPDATER_RELEASE_CATALOG_BEHAVIOR_PATHS.length,
+                HOT_UPDATER_RELEASE_CATALOG_BEHAVIOR_PATHS.length +
+                (options.pluginPaths?.length ?? 0),
               Items: [
                 ...HOT_UPDATER_CACHE_BEHAVIOR_PATHS,
                 ...HOT_UPDATER_RELEASE_CATALOG_BEHAVIOR_PATHS,
+                ...(options.pluginPaths ?? []),
               ],
             },
           },
@@ -349,6 +354,7 @@ export class CloudFrontManager {
       originRequestPolicyId,
       releaseCatalogCachePolicyId,
       sharedCachePolicyId,
+      pluginPaths: options.pluginPaths ?? [],
     });
 
     try {

@@ -8,6 +8,7 @@ import {
   buildOriginRequestPolicyConfig,
   buildReleaseCatalogCachePolicyConfig,
   buildSharedCachePolicyConfig,
+  pluginCacheBehaviorPaths,
 } from "./cloudfrontDistributionConfig";
 
 const baseOptions = {
@@ -552,5 +553,59 @@ describe("buildDistributionConfigOverrides", () => {
       "/artifacts/*",
       "/version",
     ]);
+  });
+});
+
+describe("pluginCacheBehaviorPaths", () => {
+  it("sends each plugin client endpoint to the function, up to its first parameter", () => {
+    expect(
+      pluginCacheBehaviorPaths([
+        // Insights' endpoint is the managed server's own.
+        { plugin: "insights", path: "/events" },
+        { plugin: "notes", path: "/notes/:id" },
+        { plugin: "notes", path: "/notes/:id/comments" },
+        { plugin: "notes", path: "/notes-feed" },
+        { plugin: "notes", path: "/release-catalogs/notes/:id" },
+      ]),
+    ).toEqual(["/notes/*", "/notes-feed"]);
+  });
+
+  it("refuses an endpoint where CloudFront serves bundles from S3", () => {
+    for (const path of ["/bundles/:id", "/assets/notes", "/:id"]) {
+      expect(() =>
+        pluginCacheBehaviorPaths([{ plugin: "notes", path }]),
+      ).toThrow(
+        `Plugin "notes" serves ${path}, but the managed AWS server's CloudFront distribution serves bundles from S3 there.`,
+      );
+    }
+  });
+
+  it("adds a behavior for each path, with the function on origin requests", () => {
+    const overrides = buildDistributionConfigOverrides({
+      ...baseOptions,
+      pluginPaths: ["/notes/*"],
+    });
+
+    expect(overrides.CacheBehaviors.Quantity).toBe(
+      overrides.CacheBehaviors.Items?.length,
+    );
+    expect(
+      overrides.CacheBehaviors.Items?.find(
+        (behavior) => behavior.PathPattern === "/notes/*",
+      ),
+    ).toMatchObject({
+      AllowedMethods: { Quantity: 7 },
+      CachePolicyId: baseOptions.sharedCachePolicyId,
+      OriginRequestPolicyId: baseOptions.originRequestPolicyId,
+      LambdaFunctionAssociations: {
+        Quantity: 1,
+        Items: [
+          {
+            EventType: "origin-request",
+            LambdaFunctionARN: baseOptions.functionArn,
+          },
+        ],
+      },
+    });
   });
 });

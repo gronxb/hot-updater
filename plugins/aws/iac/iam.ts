@@ -5,19 +5,22 @@ import { STS } from "@aws-sdk/client-sts";
 import { p } from "@hot-updater/cli-tools";
 import {
   aggregateBatchingModule,
+  type PluginTables,
   resolveSchema,
   SETTINGS_TABLE,
   toolingTargetOf,
 } from "@hot-updater/server/database";
 
-import { plugins } from "../src/plugins";
+import { plugins as packagePlugins } from "../src/plugins";
 
 /**
  * The partitions the managed server's items use: each table's rows of core
- * and its plugins, and its index items after `#`, the log and lease tables
- * of batched aggregates included.
+ * and `plugins`, the plugins the server runs, and its index items after
+ * `#`, the log and lease tables of batched aggregates included.
  */
-export const dynamoDBLeadingKeys = (): string[] =>
+export const dynamoDBLeadingKeys = (
+  plugins: readonly PluginTables[] = packagePlugins,
+): string[] =>
   [
     ...toolingTargetOf(plugins).schema.tables,
     ...resolveSchema([aggregateBatchingModule]).tables,
@@ -28,6 +31,7 @@ export const buildDynamoDBPolicy = (
   region: string,
   accountId: string,
   tableName: string,
+  plugins: readonly PluginTables[] = packagePlugins,
 ) => {
   const tableArn = `arn:aws:dynamodb:${region}:${accountId}:table/${tableName}`;
   return {
@@ -50,7 +54,7 @@ export const buildDynamoDBPolicy = (
         ],
         Condition: {
           "ForAllValues:StringLike": {
-            "dynamodb:LeadingKeys": dynamoDBLeadingKeys(),
+            "dynamodb:LeadingKeys": dynamoDBLeadingKeys(plugins),
           },
         },
         Effect: "Allow",
@@ -151,10 +155,11 @@ export class IAMManager {
     roleName: string,
     accountId: string,
     tableName: string,
+    plugins: readonly PluginTables[],
   ): Promise<void> {
     await iamClient.putRolePolicy({
       PolicyDocument: JSON.stringify(
-        buildDynamoDBPolicy(this.region, accountId, tableName),
+        buildDynamoDBPolicy(this.region, accountId, tableName, plugins),
       ),
       PolicyName: "HotUpdaterDynamoDBReadAccess",
       RoleName: roleName,
@@ -193,6 +198,8 @@ export class IAMManager {
     readonly dynamodbTableName: string;
     readonly lambdaName: string;
     readonly ssmParameterName: string;
+    /** The plugins the function runs, whose tables it may read and write. */
+    readonly plugins: readonly PluginTables[];
   }): Promise<string> {
     const iamClient = new IAM({
       region: this.region,
@@ -235,6 +242,7 @@ export class IAMManager {
           roleName,
           accountId,
           options.dynamodbTableName,
+          options.plugins,
         );
         p.log.info(
           `Using existing IAM role: ${roleName} (${existingRole.Arn})`,
@@ -276,6 +284,7 @@ export class IAMManager {
           roleName,
           accountId,
           options.dynamodbTableName,
+          options.plugins,
         );
         p.log.info(`Added DynamoDB read policy to ${roleName}`);
 

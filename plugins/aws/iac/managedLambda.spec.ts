@@ -1,0 +1,127 @@
+import fs from "fs/promises";
+import { createRequire } from "module";
+import os from "os";
+import path from "path";
+
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+
+import { buildLambdaFromDefinition } from "./managedLambda";
+
+const packageRoot = path.resolve(import.meta.dirname, "..");
+
+/** A project's server definition, as init writes it, with a plugin of its own. */
+const DEFINITION = `import { dynamoDB, plugins, s3Storage } from "@hot-updater/aws";
+import { createHotUpdater } from "@hot-updater/server";
+import { definePlugin, defineTable } from "@hot-updater/server/plugins";
+
+const notes = definePlugin({
+  id: "notes",
+  schemaVersion: "1",
+  schema: {
+    notes: defineTable(
+      { id: { type: "string" }, text: { type: "string" } },
+      { key: ["id"] },
+    ),
+  },
+  init: () => ({
+    api: {},
+    endpoints: [
+      {
+        method: "GET",
+        path: "/notes/:id",
+        access: "client",
+        handler: async () => Response.json({ from: "sample notes plugin" }),
+      },
+    ],
+  }),
+});
+
+const awsOptions = {
+  region: process.env.HOT_UPDATER_S3_REGION!,
+  credentials: {
+    accessKeyId: process.env.HOT_UPDATER_S3_ACCESS_KEY_ID!,
+    secretAccessKey: process.env.HOT_UPDATER_S3_SECRET_ACCESS_KEY!,
+  },
+};
+
+export const hotUpdater = createHotUpdater({
+  database: dynamoDB({
+    ...awsOptions,
+    tableName: process.env.HOT_UPDATER_DYNAMODB_TABLE_NAME!,
+  }),
+  storage: [
+    s3Storage({
+      ...awsOptions,
+      bucketName: process.env.HOT_UPDATER_S3_BUCKET_NAME!,
+    }),
+  ],
+  plugins: [...plugins, notes],
+});
+`;
+
+let project: string;
+let lambdaDir: string;
+
+beforeEach(async () => {
+  project = await fs.mkdtemp(path.join(os.tmpdir(), "hot-updater-lambda-"));
+  // The project's dependencies, such as the server its plugin is written against.
+  await fs.symlink(
+    path.join(packageRoot, "node_modules"),
+    path.join(project, "node_modules"),
+  );
+  lambdaDir = path.join(project, "lambda");
+  await fs.mkdir(lambdaDir);
+});
+
+afterEach(async () => {
+  await fs.rm(project, { recursive: true, force: true });
+});
+
+describe("the managed Lambda@Edge function from a project's server definition", () => {
+  it("bundles the definition on the table and bucket init set up, with the project's plugin", async () => {
+    const definition = path.join(project, "hotUpdater.ts");
+    await fs.writeFile(definition, DEFINITION);
+
+    await buildLambdaFromDefinition({ definition, packageRoot, lambdaDir });
+
+    // The function's code is one file; the entry that built it is gone.
+    await expect(fs.readdir(lambdaDir)).resolves.toEqual(["index.cjs"]);
+    const code = await fs.readFile(path.join(lambdaDir, "index.cjs"), "utf-8");
+    expect(code).toContain("sample notes plugin");
+    // Init replaces these with the table, bucket, and key pair it set up.
+    expect(code).toContain("HotUpdater.DYNAMODB_TABLE_NAME");
+    expect(code).toContain("HotUpdater.CLOUDFRONT_KEY_PAIR_ID");
+    // The Lambda runtime provides the AWS SDK; everything else is inside.
+    expect(code).toMatch(/require\("@aws-sdk\/client-dynamodb"\)/u);
+    expect(code).not.toMatch(/require\("@hot-updater\//u);
+
+    // It loads as the function does, and exports its handler.
+    globalThis.HotUpdater = {
+      CLOUDFRONT_KEY_PAIR_ID: "KTEST",
+      DYNAMODB_REGION: "us-east-1",
+      DYNAMODB_TABLE_NAME: "hot-updater-metadata",
+      SSM_PARAMETER_NAME: "/hot-updater/test",
+      SSM_REGION: "us-east-1",
+      S3_BUCKET_NAME: "hot-updater-bundles",
+    };
+    const loaded = createRequire(import.meta.url)(
+      path.join(lambdaDir, "index.cjs"),
+    ) as { handler?: unknown };
+    expect(typeof loaded.handler).toBe("function");
+  });
+
+  it("names the function when the definition cannot be bundled", async () => {
+    const definition = path.join(project, "hotUpdater.ts");
+    await fs.writeFile(
+      definition,
+      `import { notes } from "@acme/missing-plugin";\nexport const hotUpdater = notes;\n`,
+    );
+
+    await expect(
+      buildLambdaFromDefinition({ definition, packageRoot, lambdaDir }),
+    ).rejects.toThrow(
+      `Could not build the AWS Lambda@Edge function with ${path.join(lambdaDir, "managed.ts")}`,
+    );
+    await expect(fs.readdir(lambdaDir)).resolves.toEqual([]);
+  });
+});

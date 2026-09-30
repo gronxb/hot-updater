@@ -30,6 +30,15 @@ export default defineConfig([
     },
   },
   {
+    // What `@hot-updater/aws` is when init bundles a project's server
+    // definition into the managed Lambda@Edge function.
+    entry: { managed: "lambda/managed.ts" },
+    format: ["esm"],
+    outDir: "dist",
+    dts: false,
+    failOnWarn: true,
+  },
+  {
     entry: ["iac/init/index.ts"],
     format: ["esm", "cjs"],
     dts: true,

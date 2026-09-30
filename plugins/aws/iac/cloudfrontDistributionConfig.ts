@@ -137,6 +137,59 @@ export const HOT_UPDATER_RELEASE_CATALOG_BEHAVIOR_PATHS = [
   "/release-catalogs/*",
 ] as const;
 
+/** The bucket's prefixes, which the default behavior serves from S3. */
+const STORAGE_PATH_SEGMENTS = new Set(["bundles", "assets"]);
+
+/** Whether a request to `pattern` already goes where one of `patterns` sends it. */
+const isCoveredBy = (patterns: readonly string[], pattern: string) =>
+  patterns.some(
+    (candidate) =>
+      candidate === pattern ||
+      (candidate.endsWith("/*") && pattern.startsWith(candidate.slice(0, -1))),
+  );
+
+/**
+ * The path patterns that send the plugins' client endpoints to the
+ * Lambda@Edge function, beyond the managed server's own: each endpoint's
+ * path up to its first parameter, then `*`. A path under the bucket's
+ * `bundles` or `assets`, or one that would take every path, is refused,
+ * since CloudFront serves the bundles from S3 there.
+ */
+export const pluginCacheBehaviorPaths = (
+  endpoints: readonly { readonly plugin: string; readonly path: string }[],
+): string[] => {
+  const paths: string[] = [];
+  for (const { plugin, path } of endpoints) {
+    const segments = (path.startsWith("/") ? path : `/${path}`).split("/");
+    const parameter = segments.findIndex(
+      (segment) => segment.startsWith(":") || segment.includes("*"),
+    );
+    const pattern =
+      parameter === -1
+        ? segments.join("/")
+        : `${segments.slice(0, parameter).join("/")}/*`;
+    if (
+      isCoveredBy(
+        [
+          ...HOT_UPDATER_RELEASE_CATALOG_BEHAVIOR_PATHS,
+          ...HOT_UPDATER_CACHE_BEHAVIOR_PATHS,
+          ...paths,
+        ],
+        pattern,
+      )
+    ) {
+      continue;
+    }
+    if (pattern === "/*" || STORAGE_PATH_SEGMENTS.has(segments[1] ?? "")) {
+      throw new Error(
+        `Plugin "${plugin}" serves ${path}, but the managed AWS server's CloudFront distribution serves bundles from S3 there. Move the plugin's endpoint, or host the server yourself.`,
+      );
+    }
+    paths.push(pattern);
+  }
+  return paths;
+};
+
 const omitLegacyCacheFields = <
   T extends {
     ForwardedValues?: unknown;
@@ -362,6 +415,8 @@ export const buildDistributionConfigOverrides = (options: {
   originRequestPolicyId: string;
   releaseCatalogCachePolicyId: string;
   sharedCachePolicyId: string;
+  /** From `pluginCacheBehaviorPaths`: the plugins' client endpoints. */
+  pluginPaths?: readonly string[];
 }): DistributionConfigOverrides => ({
   Origins: {
     Quantity: 1,
@@ -381,7 +436,8 @@ export const buildDistributionConfigOverrides = (options: {
   CacheBehaviors: {
     Quantity:
       HOT_UPDATER_RELEASE_CATALOG_BEHAVIOR_PATHS.length +
-      HOT_UPDATER_CACHE_BEHAVIOR_PATHS.length,
+      HOT_UPDATER_CACHE_BEHAVIOR_PATHS.length +
+      (options.pluginPaths?.length ?? 0),
     Items: [
       ...HOT_UPDATER_RELEASE_CATALOG_BEHAVIOR_PATHS.map((pathPattern) =>
         buildCacheBehavior({
@@ -392,7 +448,10 @@ export const buildDistributionConfigOverrides = (options: {
           sharedCachePolicyId: options.releaseCatalogCachePolicyId,
         }),
       ),
-      ...HOT_UPDATER_CACHE_BEHAVIOR_PATHS.map((pathPattern) =>
+      ...[
+        ...HOT_UPDATER_CACHE_BEHAVIOR_PATHS,
+        ...(options.pluginPaths ?? []),
+      ].map((pathPattern) =>
         buildCacheBehavior({
           bucketName: options.bucketName,
           functionArn: options.functionArn,
@@ -452,16 +511,9 @@ export const applyDistributionConfigOverrides = (
   });
 };
 
-export const buildDistributionConfig = (options: {
-  bucketName: string;
-  bucketDomain: string;
-  functionArn: string;
-  keyGroupId: string;
-  oacId: string;
-  originRequestPolicyId: string;
-  releaseCatalogCachePolicyId: string;
-  sharedCachePolicyId: string;
-}): DistributionConfig =>
+export const buildDistributionConfig = (
+  options: Parameters<typeof buildDistributionConfigOverrides>[0],
+): DistributionConfig =>
   sanitizeDistributionConfig({
     CallerReference: new Date().toISOString(),
     Comment: "Hot Updater CloudFront distribution",
