@@ -84,18 +84,19 @@ the device selects its update from the catalog.
 | Answer                                                                        | Status and headers                                                                                                                                                                                                                        |
 | ----------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | The scope's catalog                                                           | `200` with `cache-control: public, max-age=0, s-maxage=5`, an `etag`, and `vary: Accept-Encoding` plus the header of the plugin that provides client auth, such as `x-api-key` for `apiKeys()`. A matching `If-None-Match` answers `304`. |
-| No catalog for the scope                                                      | `404`                                                                                                                                                                                                                                     |
+| No catalog for the scope                                                      | `404` with `x-hot-updater-catalog: none` and the catalog's `cache-control`, so a shared cache also answers a scope with no catalog yet. Clients read it as no update. |
 | An app version in a form other than its canonical one                         | `400`                                                                                                                                                                                                                                     |
 | A missing or invalid client key                                               | `401`                                                                                                                                                                                                                                     |
 | Client auth that cannot read its keys, or a database the schema fence refuses | `503`                                                                                                                                                                                                                                     |
 | An artifact                                                                   | `200`                                                                                                                                                                                                                                     |
 
-Every answer other than a catalog and its `304` is `private, no-store`. A
-shared cache in front of the client routes keys a catalog by host, path,
-`Accept-Encoding` and the client-auth header, never by installation state. A
-database can purge those copies: core calls its `onCachedRoutesChange`, which
-[`createEngineDatabase` takes](/docs/database-plugins/custom-database#wrap-it-as-a-database),
-after each committed write that changes a catalog.
+Every answer other than a catalog, its `304`, and a scope's missing catalog is
+`private, no-store`. A shared cache in front of the client routes keys a
+catalog by host, path, `Accept-Encoding` and the client-auth header, never by
+installation state. A database can purge those copies: core calls its
+`onCachedRoutesChange`, which [`createEngineDatabase`
+takes](/docs/database-plugins/custom-database#wrap-it-as-a-database), after
+each committed write that changes a catalog.
 
 A GraphQL, RPC or other transport needs an HTTP adapter or proxy that serves
 these routes with the same answers.

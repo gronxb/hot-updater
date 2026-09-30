@@ -10,6 +10,10 @@ const ARTIFACT_CONTENT_TYPE =
   "application/vnd.hot-updater.artifact+json; version=1";
 const ORIGIN_CACHE_TTL_MS = 5_000;
 const ORIGIN_CACHE_MAX_ENTRIES = 128;
+/** Marks the 404 of a scope that has no catalog. */
+const NO_CATALOG_HEADER = "x-hot-updater-catalog";
+/** A shared cache keeps a catalog, or a scope's lack of one, five seconds. */
+const CATALOG_CACHE_CONTROL = "public, max-age=0, s-maxage=5";
 
 const privateNotFound = (): Response =>
   Response.json(
@@ -17,6 +21,26 @@ const privateNotFound = (): Response =>
     {
       status: 404,
       headers: { "cache-control": "private, no-store" },
+    },
+  );
+
+/**
+ * A scope with no catalog yet, such as a store version before its first
+ * OTA release: cached like a catalog, so its update checks don't all reach
+ * the origin, and it holds nothing an API key protects. The header tells it
+ * apart from a 404 for a wrong URL: clients read it as "no update", and
+ * doctor as a live catalog route.
+ */
+const missingCatalog = (): Response =>
+  Response.json(
+    { error: "Not found" },
+    {
+      status: 404,
+      headers: {
+        "cache-control": CATALOG_CACHE_CONTROL,
+        vary: "Accept-Encoding",
+        [NO_CATALOG_HEADER]: "none",
+      },
     },
   );
 
@@ -34,11 +58,11 @@ const catalogResponse = async (
   catalog: ReleaseCatalog | null,
   request: Request,
 ): Promise<Response> => {
-  if (catalog === null) return privateNotFound();
+  if (catalog === null) return missingCatalog();
   const body = JSON.stringify(catalog);
   const etag = `"sha256:${await responseHash(body)}"`;
   const headers = {
-    "cache-control": "public, max-age=0, s-maxage=5",
+    "cache-control": CATALOG_CACHE_CONTROL,
     "content-type": CATALOG_CONTENT_TYPE,
     etag,
     vary: "Accept-Encoding",

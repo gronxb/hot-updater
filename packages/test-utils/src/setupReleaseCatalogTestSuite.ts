@@ -325,12 +325,13 @@ export const setupReleaseCatalogTestSuite = (options: {
           expect((await request(otherPath)).status).toBe(404);
         });
 
-        it("returns an uncached 404 for an unknown scope", async () => {
+        it("caches an unknown scope's 404 like a catalog", async () => {
           const response = await request(catalogPath());
           expect(response.status).toBe(404);
           expect(response.headers.get("cache-control")).toBe(
-            "private, no-store",
+            "public, max-age=0, s-maxage=5",
           );
+          expect(response.headers.get("x-hot-updater-catalog")).toBe("none");
           await publish("121");
           expect((await readCatalog()).releases).toHaveLength(1);
         });
