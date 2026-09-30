@@ -65,11 +65,11 @@ describe("pluginCommandsOf", () => {
     [[{ name: "notes", run }], "and a description"],
     [
       [{ name: "notes", description: "x" }],
-      "needs either subcommands or run/runRemote, not both",
+      "needs either subcommands or run, not both",
     ],
     [
       [{ name: "notes", description: "x", run, commands: [] }],
-      "needs either subcommands or run/runRemote, not both",
+      "needs either subcommands or run, not both",
     ],
     [[{ name: "notes", description: "x", commands: [] }], "at least one"],
     [

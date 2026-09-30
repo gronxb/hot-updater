@@ -93,14 +93,6 @@ const counter = (state = { count: 3 }) =>
                 api.reset();
               },
             },
-            {
-              name: "remote",
-              description: "Ask the server",
-              async run() {},
-              async runRemote({ fetchAdmin, ui }) {
-                ui.print(await (await fetchAdmin("/counter")).text());
-              },
-            },
           ],
         },
       ],
@@ -296,7 +288,7 @@ describe("registerPluginCommands", () => {
     expect(named.dispose).toHaveBeenCalledOnce();
   });
 
-  it("refuses a standaloneRepository config for a command without runRemote", async () => {
+  it("refuses a standaloneRepository config", async () => {
     cli.loadHotUpdaterPlugins.mockResolvedValue([counter()]);
     const fetchAdmin = vi.fn(async () => new Response("41"));
     cli.loadConfig.mockResolvedValue({
@@ -314,13 +306,8 @@ describe("registerPluginCommands", () => {
         "hot-updater counter show needs a database the CLI opens itself",
       ),
     );
-
-    const remote = program();
-    const remoteArgs = argv("counter", "remote");
-    await registerPluginCommands(remote, remoteArgs, cwd);
-    await remote.parseAsync(remoteArgs);
-    expect(fetchAdmin).toHaveBeenCalledWith("/counter");
-    expect(lines).toEqual(["41"]);
+    expect(fetchAdmin).not.toHaveBeenCalled();
+    expect(lines).toEqual([]);
   });
 
   it("confirms before an irreversible step", async () => {

@@ -10,7 +10,6 @@ import {
 import {
   type ConfiguredDatabase,
   isRemoteDatabase,
-  type RemoteDatabase,
 } from "@hot-updater/plugin-core";
 import {
   createDatabasePluginApis,
@@ -45,10 +44,7 @@ type OpenedDatabase =
       /** Each plugin's API, by plugin id. */
       readonly apis: Readonly<Record<string, unknown>>;
     }
-  | {
-      readonly remote: true;
-      readonly fetchAdmin: RemoteDatabase["fetchAdmin"];
-    };
+  | { readonly remote: true };
 
 /** A project's plugin list, and how its commands reach the database. */
 interface PluginSource {
@@ -95,7 +91,7 @@ const pluginsFileSource = (plugins: readonly unknown[]): PluginSource => {
       const opened = (await loadConfig(null)).database;
       database = opened;
       return isRemoteDatabase(opened)
-        ? { remote: true, fetchAdmin: opened.fetchAdmin }
+        ? { remote: true }
         : { remote: false, apis: createDatabasePluginApis(opened, plugins) };
     },
     dispose: async () => {
@@ -193,29 +189,16 @@ const runPluginCommand = async (run: PluginRun, cwd: string) => {
     if (options["json"] !== true) printBanner();
     const database = await source.open();
     if (database.remote) {
-      if (command.runRemote === undefined) {
-        throw new Error(
-          `${usage} needs a database the CLI opens itself, but hot-updater.config.ts reaches a self-hosted server through its admin API. Pass the config that exports your server's hotUpdater: ${usage} <path>.`,
-        );
-      }
-      await command.runRemote({
-        args,
-        options,
-        ui: pluginUi,
-        fetchAdmin: database.fetchAdmin,
-      });
-      return;
+      throw new Error(
+        `${usage} needs a database the CLI opens itself, but hot-updater.config.ts reaches a self-hosted server through its admin API. Pass the config that exports your server's hotUpdater: ${usage} <path>.`,
+      );
     }
     const api = database.apis[plugin];
     if (api === undefined) {
       throw new Error(`${source.from} does not run the plugin "${plugin}".`);
     }
-    if (command.run === undefined) {
-      throw new Error(
-        `${usage} reaches a self-hosted server through its admin API: set standaloneRepository as the database in hot-updater.config.ts.`,
-      );
-    }
-    await command.run({ api, args, options, ui: pluginUi });
+    // pluginCommandsOf checks that every command without subcommands runs.
+    await command.run?.({ api, args, options, ui: pluginUi });
   } catch (error) {
     if (error instanceof CommandExit) {
       if (error.message) p.log.error(error.message);

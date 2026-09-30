@@ -23,7 +23,6 @@ export {
   type PluginEndpointMethod,
   type PluginInstance,
   type PluginProvides,
-  type PluginRemoteCommandContext,
   type PluginTableColumn,
 } from "./definePlugin";
 export {

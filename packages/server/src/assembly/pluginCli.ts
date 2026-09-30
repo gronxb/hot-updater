@@ -80,11 +80,11 @@ const checkCommand = (
     );
   }
   const command = value as unknown as PluginCommand;
-  const runs =
-    typeof command.run === "function" ||
-    typeof command.runRemote === "function";
-  if (runs === (command.commands !== undefined)) {
-    fail(`${at} needs either subcommands or run/runRemote, not both.`);
+  if (
+    (typeof command.run === "function") ===
+    (command.commands !== undefined)
+  ) {
+    fail(`${at} needs either subcommands or run, not both.`);
   }
   const names = new Set<string>();
   for (const argument of command.arguments ?? []) {

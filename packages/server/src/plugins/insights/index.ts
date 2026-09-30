@@ -18,7 +18,6 @@ import {
 } from "../../insights/routes";
 import { markBuiltIn } from "../builtIn";
 import { definePlugin, type PluginEndpoint } from "../definePlugin";
-import { insightsCli } from "./cli";
 import {
   deleteInstallation,
   deleteUser,
@@ -209,7 +208,6 @@ export const insights = (options: InsightsOptions = {}) => {
           ],
         };
       },
-      cli: insightsCli,
     }),
   );
 };

@@ -1,5 +1,3 @@
-import type { RemoteDatabase } from "@hot-updater/plugin-core";
-
 import type { CoreReads } from "../core/reads";
 import type { HotUpdaterDatabase } from "../database/database";
 import type { ModuleSchema } from "../database/schema";
@@ -111,33 +109,22 @@ export interface PluginCommandUi {
   confirm(message: string): Promise<void>;
 }
 
-interface PluginCommandInput {
+/** A plugin command run over a database the CLI opens itself. */
+export interface PluginCommandContext<Api = unknown> {
+  /** The plugin's API over that database, assembled as the server assembles it. */
+  readonly api: Api;
   /** Positional arguments by name. */
   readonly args: Readonly<Record<string, string | undefined>>;
-  /** Options by camel-cased long flag: `installId` for `--install-id`. */
+  /** Options by camel-cased long flag: `dryRun` for `--dry-run`. */
   readonly options: Readonly<Record<string, unknown>>;
   readonly ui: PluginCommandUi;
 }
 
-/** A plugin command run over a database the CLI opens itself. */
-export interface PluginCommandContext<
-  Api = unknown,
-> extends PluginCommandInput {
-  /** The plugin's API over that database, assembled as the server assembles it. */
-  readonly api: Api;
-}
-
-/** A plugin command run against a self-hosted server that `standaloneRepository` reaches. */
-export interface PluginRemoteCommandContext extends PluginCommandInput {
-  readonly fetchAdmin: RemoteDatabase["fetchAdmin"];
-}
-
 /**
- * A `hot-updater` command a plugin adds. It groups `commands`, or runs:
- * `run` over a database the CLI opens itself, and `runRemote` through a
- * self-hosted server's admin API; without `runRemote` the command refuses a
- * `standaloneRepository` config. A command that runs also takes the server
- * config's path as its last, optional argument.
+ * A `hot-updater` command a plugin adds. It groups `commands`, or runs `run`
+ * over a database the CLI opens itself, so it refuses a `standaloneRepository`
+ * config. A command that runs also takes the server config's path as its
+ * last, optional argument.
  */
 export interface PluginCommand<Api = unknown> {
   /** Lowercase words joined by hyphens, such as `api-key`. */
@@ -147,7 +134,6 @@ export interface PluginCommand<Api = unknown> {
   readonly options?: readonly PluginCommandOption[];
   readonly commands?: readonly PluginCommand<Api>[];
   run?(context: PluginCommandContext<Api>): Promise<void>;
-  runRemote?(context: PluginRemoteCommandContext): Promise<void>;
 }
 
 /**

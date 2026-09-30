@@ -376,12 +376,6 @@ kept.
   choose **Delete data** in **Installation history**. Turn on **Every
   installation of this user** to delete the user's data. The Console asks for
   confirmation, and offers deletion only when the server runs `insights()`.
-- **CLI**: `npx hot-updater insights delete --install-id <id>`, or
-  `--user-id <id>`, repeats the deletion until nothing is left, after a
-  confirmation that `-y` skips; `--json` prints the counts. `insights()` adds
-  the command: over a direct database the CLI runs it through the plugin, and
-  with `standaloneRepository` through the admin routes below, which needs the
-  project's `hotUpdater.plugins.ts` to list `insights()`.
 - **Admin API**: `DELETE /installations/:installId` and
   `DELETE /installations?userId=<id>` delete a bounded batch and answer
   `{ "deleted": { "installations": 1, "events": 42 }, "complete": true }`.

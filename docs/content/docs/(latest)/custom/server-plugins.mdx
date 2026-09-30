@@ -624,14 +624,11 @@ handler, built in or from another plugin, stops startup with
 
 ## Add CLI commands
 
-`cli.commands` adds commands to the `hot-updater` CLI, which runs them with the
-plugin's API. A command either groups subcommands in `commands` or runs:
-
-- `run(context)` runs over a database the CLI opens itself, with the plugin's
-  API as `context.api`.
-- `runRemote(context)` runs against a self-hosted server that
-  `standaloneRepository` reaches, with its admin API as `context.fetchAdmin`.
-  Without it, the command refuses a `standaloneRepository` config.
+`cli.commands` adds commands to the `hot-updater` CLI. A command either groups
+subcommands in `commands` or has `run(context)`, which runs over a database the
+CLI opens itself, with the plugin's API as `context.api`. A command refuses a
+`standaloneRepository` config, so pass the server config that exports your
+`hotUpdater` instead.
 
 ```ts title="src/feedback/index.ts (excerpt)"
 definePlugin({
@@ -685,10 +682,9 @@ name, in the project's plugin lists, in this order:
    exports a `hotUpdater`.
 
 `hot-updater --help` lists the commands of the first list it finds under
-**Plugin commands**, each marked with its plugin's id. A
-`standaloneRepository` config reaches its plugins' commands only through
-`hotUpdater.plugins.ts`. Two plugins that add the same command, or a command
-without a name, description, or way to run, fail with `HotUpdaterConfigError`.
+**Plugin commands**, each marked with its plugin's id. Two plugins that add
+the same command, or a command without a name, description, or way to run,
+fail with `HotUpdaterConfigError`.
 
 ## Provide client authentication
 
