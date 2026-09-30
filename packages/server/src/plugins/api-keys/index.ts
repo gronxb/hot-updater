@@ -8,6 +8,7 @@ import {
 } from "../../apiKeys";
 import { markBuiltIn } from "../builtIn";
 import { definePlugin } from "../definePlugin";
+import { apiKeysCli } from "./cli";
 import { createApiKeyModel } from "./model";
 import { apiKeysSchema } from "./schema";
 
@@ -61,6 +62,7 @@ export const apiKeys = (options: ApiKeysOptions = {}) => {
           },
         };
       },
+      cli: apiKeysCli(headerName),
     }),
   );
 };

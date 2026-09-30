@@ -75,8 +75,9 @@ export const generateHotUpdaterPlugins = async (
 
 /**
  * The plugins a project's `hotUpdater.plugins.ts` exports, which its server
- * runs; undefined when the project has no such file. The console assembles
- * them in process to read Insights and API keys as the server would.
+ * runs; undefined when the project has no such file. The console and the CLI
+ * assemble them in process as the server does, for the features and commands
+ * the plugins add.
  */
 export const loadHotUpdaterPlugins = async (
   cwd: string = getCwd(),

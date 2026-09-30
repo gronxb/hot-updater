@@ -36,16 +36,12 @@ import { init } from "@/commands/init";
 import { initHelp } from "@/commands/initHelp";
 import { INIT_PROVIDER_NAMES } from "@/commands/initProviders";
 import { type PatchOptions, createPatch } from "@/commands/patch";
+import { registerPluginCommands } from "@/commands/pluginCommands";
 import { runAndroidNative, runIosNative } from "@/commands/runNative";
 import { version } from "@/packageJson";
 import { ensureNoConflicts } from "@/utils/conflictDetection";
 import { printBanner } from "@/utils/printBanner";
 
-import {
-  handleApiKeyCreate,
-  handleApiKeyList,
-  handleApiKeyRevoke,
-} from "./commands/apiKey";
 import { handleArtifactDelete } from "./commands/artifact";
 import {
   handleBundleDelete,
@@ -243,37 +239,6 @@ channelCommand
   )
   .argument("<channel>", "the channel to set")
   .action(handleSetChannel);
-
-const apiKeyCommand = program.command("api-key").description("Manage API keys");
-
-apiKeyCommand
-  .command("create")
-  .description("Create an API key")
-  .argument("[configPath]", "path to the config file that exports hotUpdater")
-  .requiredOption("--name <name>", "name used to identify the API key")
-  .action((configPath: string | undefined, options: { name: string }) =>
-    handleApiKeyCreate(options.name, { configPath }),
-  );
-
-apiKeyCommand
-  .command("list")
-  .description("List API keys")
-  .argument("[configPath]", "path to the config file that exports hotUpdater")
-  .option("--json", "output API key metadata as JSON")
-  .action((configPath: string | undefined, options: { json?: boolean }) =>
-    handleApiKeyList({ ...options, configPath }),
-  );
-
-apiKeyCommand
-  .command("revoke")
-  .description("Revoke an API key")
-  .argument("<id>", "API key id")
-  .argument("[configPath]", "path to the config file that exports hotUpdater")
-  .option("-y, --yes", "skip confirmation prompt")
-  .action(
-    (id: string, configPath: string | undefined, options: { yes?: boolean }) =>
-      handleApiKeyRevoke(id, { ...options, configPath }),
-  );
 
 const bundleCommand = program.command("bundle").description("Manage bundles");
 
@@ -868,5 +833,7 @@ program.hook("preAction", (_command, actionCommand) => {
     return;
   ensureNoConflicts();
 });
+
+await registerPluginCommands(program, process.argv);
 
 program.parse(process.argv);

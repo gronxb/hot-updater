@@ -67,8 +67,10 @@ the `apiKeys()` plugin of the same server configuration:
 npx hot-updater api-key create src/hotUpdater.ts --name "Mobile app"
 ```
 
-The command loads the file's `hotUpdater` export and refuses a configuration
-without `apiKeys()` in `plugins`. It prints the plaintext API key exactly once.
+`apiKeys()` adds the `hot-updater api-key` commands to the CLI, which finds
+them in the file's `hotUpdater` export; without `apiKeys()` in its `plugins`,
+the CLI has no `api-key` command. The command prints the plaintext API key
+exactly once.
 Store it in your existing React Native build-time configuration without
 committing it to source, and send it using `x-api-key`. The server's
 `.env.hotupdater` file is not loaded into the React Native app automatically.
@@ -121,10 +123,14 @@ npx hot-updater api-key revoke <api-key-id> src/hotUpdater.ts
 `list` accepts `--json`, and `revoke` asks for confirmation unless you pass
 `-y`.
 
+The config path is optional: without it, the CLI looks for `apiKeys()` in
+`hotUpdater.plugins.ts`, over the database in `hot-updater.config.ts`, and then
+in `src/hotUpdater.ts` or `src/db.ts`. The commands need a direct database; a
+`standaloneRepository` configuration reaches only the server's admin API,
+which has no API key management routes, so pass the server's config instead.
+
 The Console manages keys through the same plugin when its configuration lists
-`apiKeys()` in `plugins` over a direct database. A `standaloneRepository`
-configuration reaches only the server's admin API, which has no API key
-management routes.
+`apiKeys()` in `plugins` over a direct database.
 
 The plugin's API is also available in process:
 
@@ -145,9 +151,9 @@ management routes to `handlers.client` or `handlers.admin`.
 AWS, Cloudflare, Firebase, and Supabase run `apiKeys()` in their managed
 servers and export that plugin list as `plugins`. Their init registers an
 existing `HOT_UPDATER_API_KEY` or creates one through it, then stores the
-plaintext only in the local environment file. Managed users do not run
-`hot-updater api-key create`; that command bootstraps self-hosted
-`createHotUpdater` configurations.
+plaintext only in the local environment file. Afterwards, `hot-updater api-key`
+in the app directory manages the same keys through the plugin list that init
+writes to `hotUpdater.plugins.ts`.
 
 ## Rotate an API key
 

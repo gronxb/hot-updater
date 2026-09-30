@@ -122,8 +122,8 @@ HOT_UPDATER_SUPABASE_REGION=your-region
 
 Managed init reuses `HOT_UPDATER_API_KEY` when supplied or creates an API key,
 registers it in Postgres, and persists the plaintext value locally. Send this
-API key in the app's `x-api-key` request header. Do not run
-`hot-updater api-key create` for a managed installation.
+API key in the app's `x-api-key` request header. To list, add, or revoke
+keys later, run `hot-updater api-key` from the app directory.
 
 <Callout type="warn">
 

@@ -14,6 +14,9 @@ engine that core uses. `init` returns:
 - optional HTTP endpoints on `handlers.client` or `handlers.admin`;
 - optionally the client-route policy, `clientAuth`.
 
+Beside `init`, an optional `cli` adds [commands to the `hot-updater`
+CLI](#add-cli-commands); the server never runs it.
+
 The built-in [`insights()`](/docs/guides/insights) and
 [`apiKeys()`](/docs/custom/api-key-authentication) plugins use the same
 contract, and their sources in the repository's `packages/server/src/plugins`
@@ -570,6 +573,74 @@ A route with the same method and path shape as another route on the same
 handler, built in or from another plugin, stops startup with
 `HotUpdaterConfigError`.
 
+## Add CLI commands
+
+`cli.commands` adds commands to the `hot-updater` CLI, which runs them with the
+plugin's API. A command either groups subcommands in `commands` or runs:
+
+- `run(context)` runs over a database the CLI opens itself, with the plugin's
+  API as `context.api`.
+- `runRemote(context)` runs against a self-hosted server that
+  `standaloneRepository` reaches, with its admin API as `context.fetchAdmin`.
+  Without it, the command refuses a `standaloneRepository` config.
+
+```ts title="src/feedback/index.ts (excerpt)"
+definePlugin({
+  id: "feedback",
+  schemaVersion: "1",
+  schema: feedbackSchema,
+  init: ({ db, core, now }) => ({ api, endpoints }),
+  cli: {
+    commands: [
+      {
+        name: "feedback",
+        description: "Manage feedback threads",
+        commands: [
+          {
+            name: "close",
+            description: "Close a feedback thread",
+            arguments: [{ name: "id", description: "thread ID" }],
+            options: [{ flags: "-y, --yes", description: "skip confirmation" }],
+            async run({ api, args, options, ui }) {
+              const id = String(args["id"]);
+              if (!options["yes"]) await ui.confirm(`Close thread ${id}?`);
+              if (!(await api.close(id))) throw new Error("No such thread.");
+              ui.message(ui.block("Thread closed", [ui.kv("ID", ui.id(id))]));
+            },
+          },
+        ],
+      },
+    ],
+  },
+});
+```
+
+- `arguments` are positional; `args` holds them by `name`. Every command that
+  runs also takes the server config's path as its last, optional argument.
+- `options` use the CLI's flag syntax, and `options` holds them by camel-cased
+  long flag. `required: true` fails the command without one.
+- `ui` prints in the CLI's style: `message`, `info`, and `warn` write lines,
+  `block`, `kv`, and `table` format them, and `print` writes raw output such as
+  JSON. The CLI skips its banner when `--json` is set. `confirm` returns once
+  the user agrees; declining ends the command, and a non-interactive shell
+  fails it, asking for `-y`.
+- A thrown error prints its message and exits with status 1.
+
+The CLI looks for a plugin command only when it has no core command of that
+name, in the project's plugin lists, in this order:
+
+1. a server config the command line names, such as
+   `hot-updater feedback close <id> src/hotUpdater.ts`;
+2. `hotUpdater.plugins.ts`, over the database in `hot-updater.config.ts`;
+3. `hot-updater.config.ts`, `src/hotUpdater.ts`, or `src/db.ts`, when it
+   exports a `hotUpdater`.
+
+`hot-updater --help` lists the commands of the first list it finds under
+**Plugin commands**, each marked with its plugin's id. A
+`standaloneRepository` config reaches its plugins' commands only through
+`hotUpdater.plugins.ts`. Two plugins that add the same command, or a command
+without a name, description, or way to run, fail with `HotUpdaterConfigError`.
+
 ## Provide client authentication
 
 A plugin that decides who may use client routes declares
@@ -639,6 +710,30 @@ export const deviceTokens = () =>
 
 `apiKeys()` works this way, with a unique `hash` field and one read per
 request.
+
+The plugin can also tell tooling about the credential an app sends, in
+`cli.clientCredential`. Managed init provisions it and prints the app's
+`requestHeaders`, the agent scaffold stores it, and `hot-updater doctor`
+checks it:
+
+```ts
+cli: {
+  clientCredential: {
+    label: "device token", // its name in output
+    header: "x-device-token", // one of clientAuth's varyHeaders
+    env: "HOT_UPDATER_DEVICE_TOKEN", // where init stores it
+    generate: () => crypto.randomUUID(), // saved before it is registered
+    provision: async (api, { existing }) => {
+      const token = existing ?? crypto.randomUUID();
+      await api.register(token); // stores it unless it is stored already
+      return token;
+    },
+  },
+},
+```
+
+`provision` registers `existing` idempotently, or creates a credential, and
+returns it. `clientCredential` needs `provides: { clientAuth: true }`.
 
 ## Create the plugin's tables
 
