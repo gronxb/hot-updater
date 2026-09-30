@@ -281,7 +281,9 @@ export const rows: readonly AcceptanceRow[] = [
     ],
     // CloudFront invalidation is the AWS deployment's CDN, not storage.
     shared: [...SERVER_SHARED, "plugins/aws/src/cloudFrontInvalidation.ts"],
-    budget: 300,
+    // Retention's TTL writes and the batching log's deleteConsumed both land
+    // in the store (decision 64).
+    budget: 310,
     atomicity: "`TransactWriteItems` + conditions",
     suites: [
       conformance(
@@ -420,8 +422,9 @@ export const rows: readonly AcceptanceRow[] = [
   {
     name: "Aggregate batching",
     // What batches aggregates declared `batched`: the log rows and their
-    // compaction, the memory buffer, and the flush they share.
-    // It wraps the engine, a row of its own, through `createDatabaseEngine`.
+    // compaction, the memory buffer, and the flush they share (decisions 62
+    // and 64). It wraps the engine, a row of its own, through
+    // `createDatabaseEngine`.
     entries: ["packages/server/src/database/aggregateBatching.ts"],
     shared: [
       "packages/server/src/database/engine*.ts",
