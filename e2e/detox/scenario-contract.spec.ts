@@ -84,6 +84,14 @@ const runtimeConfigPath = path.join(
   repoDir,
   "examples/v0.85.0/src/e2eRuntimeConfig.ts",
 );
+const androidDownloadServicePath = path.join(
+  repoDir,
+  "packages/react-native/android/src/main/java/com/hotupdater/OkHttpDownloadService.kt",
+);
+const iosDownloadServicePath = path.join(
+  repoDir,
+  "packages/react-native/ios/HotUpdater/Internal/URLSessionDownloadService.swift",
+);
 const defaultDetoxScenarioNames = [
   "startup-hang-recovery",
   "release-ota-recovery",
@@ -375,6 +383,41 @@ describe("Detox scenario contract", () => {
         "assert artifact race transport",
       ),
     ).toEqual({ artifactRequests: 1, catalogRequests: 1 });
+  });
+
+  it("fails every native attempt of the first download before the retry", async () => {
+    // Given: native downloads try a failed request again up to a fixed number
+    // of attempts, the same on Android and iOS.
+    const [androidSource, iosSource] = await Promise.all([
+      fs.readFile(androidDownloadServicePath, "utf8"),
+      fs.readFile(iosDownloadServicePath, "utf8"),
+    ]);
+    const attempts = Number(
+      /const val MAX_ATTEMPTS = (\d+)/.exec(androidSource)?.[1],
+    );
+    expect(attempts).toBeGreaterThan(0);
+    expect(
+      Number(/static let maximumAttempts = (\d+)/.exec(iosSource)?.[1]),
+    ).toBe(attempts);
+
+    // When / Then: the scenario injects one failure per attempt, so the first
+    // install fails and the manual retry of the same generation finds none.
+    expect(
+      await controlStepBody(
+        "failed-download-same-generation-retry",
+        "fail every attempt of the first download",
+      ),
+    ).toEqual({ artifactFailures: attempts, reset: true });
+    expect(
+      await controlStepBody(
+        "failed-download-same-generation-retry",
+        "assert retry transport",
+      ),
+    ).toEqual({
+      artifactFailuresRemaining: 0,
+      artifactRequests: 2,
+      catalogRequests: 2,
+    });
   });
 
   it("uses Detox-owned scenario lookup in the runner", async () => {
