@@ -192,7 +192,7 @@ describe("agent documentation", () => {
       orderedPages(documentation).map((page) => page.url),
     );
     expect(index).not.toContain("(latest)");
-    expect(index).toContain("/docs/guides/native-build.md");
+    expect(index).toContain("/docs/guides/bundle-diffing.md");
     expect(orderedPages(documentation)[0]?.url).toBe(
       "/docs/get-started/introduction",
     );

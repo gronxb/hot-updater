@@ -33,14 +33,13 @@ Drizzle, Prisma or MongoDB.
 ## Install
 
 ```package-install
-npm install @hot-updater/server @hot-updater/plugin-core
+npm install @hot-updater/server
 npm install @hot-updater/test-utils vitest --save-dev
 ```
 
-`@hot-updater/server/database` exports the adapter contract and the helpers
-that implement it, and `@hot-updater/plugin-core` exports the `EngineDatabase`
-type that a provider returns. The examples run PostgreSQL through `pg`; use
-your own driver in its place.
+`@hot-updater/server/database` exports the adapter contract, the helpers that
+implement it, and the `EngineDatabase` type that a provider returns. The
+examples run PostgreSQL through `pg`; use your own driver in its place.
 
 ## How the pieces fit
 
@@ -87,10 +86,10 @@ interface SqlExecutor {
 A complete provider over `pg`:
 
 ```ts title="myDatabase.ts"
-import type { EngineDatabase } from "@hot-updater/plugin-core";
 import {
   createEngineDatabase,
   createSqlAdapter,
+  type EngineDatabase,
   migrateCoreSchema,
   type PluginTables,
   type SqlConnection,
@@ -623,8 +622,8 @@ import it. Add `clientHeaders` when the server's client routes need a key.
 ## Publish the adapter
 
 Publish the factory and its migration from one package, as `dynamoDB` and
-`migrateDynamoDB` ship together. List `@hot-updater/server` and
-`@hot-updater/plugin-core` in `peerDependencies`, so the adapter runs on the
-project's copy of the engine, and keep the three suites in your CI. See
+`migrateDynamoDB` ship together. List `@hot-updater/server` in
+`peerDependencies`, so the adapter runs on the project's copy of the engine,
+and keep the three suites in your CI. See
 [Test and publish](/docs/plugins/publish) for the package layout,
 naming, and what to document.

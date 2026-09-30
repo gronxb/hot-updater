@@ -46,7 +46,7 @@
 /docs/v0/guides/custom-update /docs/guides/custom-update 301
 /docs/v0/guides/deploy /docs/guides/deploy 301
 /docs/v0/guides/doctor /docs/guides/doctor 301
-/docs/v0/guides/native-build /docs/guides/native-build 301
+/docs/v0/guides/native-build /docs 301
 /docs/v0/guides/rollout-cohorts /docs/guides/rollout-cohorts 301
 /docs/v0/guides/runtime-channel-switch /docs/guides/runtime-channel-switch 301
 /docs/v0/guides/simulator-test /docs 301
@@ -97,6 +97,9 @@
 /api/markdown/build-plugins/* /api/markdown/build-adapters/:splat 301
 /api/markdown/storage-plugins/* /api/markdown/storage-adapters/:splat 301
 /api/markdown/database-plugins/* /api/markdown/database-adapters/:splat 301
+
+# Native Build (alpha) is not ready, so its page is removed
+/docs/guides/native-build /docs 301
 
 # Artifact Compression merged into Bundle Diffing
 /docs/guides/compression /docs/guides/bundle-diffing 301
