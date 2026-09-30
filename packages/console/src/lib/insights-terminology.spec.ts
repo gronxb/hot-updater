@@ -50,7 +50,7 @@ describe("insights static guards", () => {
       ...[
         "README.md",
         "docs/content/docs/(latest)/guides/console.mdx",
-        "docs/content/docs/(latest)/database-plugins/custom-database.mdx",
+        "docs/content/docs/(latest)/database-adapters/custom-database.mdx",
         "docs/content/docs/(latest)/react-native-api/init.mdx",
       ].map((file) => resolve(repositoryRoot, file)),
     ];

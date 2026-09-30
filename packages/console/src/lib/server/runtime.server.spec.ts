@@ -68,6 +68,17 @@ const refused = (feature: string, message: string) =>
   });
 
 describe("createConsoleRuntime over the database", () => {
+  it("refuses a plugin that takes a feature's id without being Hot Updater's own", () => {
+    const spoof = {
+      ...insights(),
+      init: () => ({ api: { listEvents: async () => [] } }),
+    };
+
+    expect(() =>
+      createConsoleRuntime({ database: engineDatabase(), plugins: [spoof] }),
+    ).toThrow("which is reserved for Hot Updater's insights() plugin");
+  });
+
   it("serves the features of the plugins it runs, as the server does", async () => {
     const database = engineDatabase();
     const runtime = createConsoleRuntime({

@@ -4,6 +4,7 @@ import type {
   PluginClientCredential,
   PluginCommand,
 } from "../plugins/definePlugin";
+import { checkReservedId } from "../plugins/official";
 import { assemblePlugins, HotUpdaterConfigError } from "./assemblePlugins";
 import { createDatabasePluginApis } from "./databasePlugins";
 
@@ -60,10 +61,14 @@ const fail = (message: string): never => {
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
-const pluginsOf = (value: unknown): readonly PluginLike[] =>
-  Array.isArray(value)
-    ? value.filter(isRecord)
-    : fail("plugins must be an array of plugins.");
+const pluginsOf = (value: unknown): readonly PluginLike[] => {
+  if (!Array.isArray(value))
+    return fail("plugins must be an array of plugins.");
+  value.forEach((plugin, position) =>
+    checkReservedId(plugin, `plugins[${position}]`),
+  );
+  return value.filter(isRecord);
+};
 
 const checkCommand = (
   plugin: string,

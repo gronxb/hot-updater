@@ -1,6 +1,6 @@
 ---
 title: "Cloudflare Provider"
-description: "This guide walks you through setting up `hot-updater` with Cloudflare in a React Native project. You'll configure the environment, install required packages, and initialize Cloudflare for seamless updates."
+description: "Deploy Hot Updater on Cloudflare with D1, R2, and a Worker, then connect your app."
 icon: cloudflare
 ---
 
@@ -27,7 +27,7 @@ resources through its available provider tools.
 
 Complete [Install packages](/docs/get-started/installation) in the React
 Native project before running init or an agent scaffold. Install the CLI, React
-Native SDK, and the build plugin that matches your app, then install this provider:
+Native SDK, and the build adapter that matches your app, then install this provider:
 
 ```package-install
 npm install @hot-updater/cloudflare --save-dev
@@ -69,7 +69,7 @@ npx hot-updater init
 <Accordions type="single">
   <Accordion title="Interactive Setup Steps">
 
-1. Choose a build plugin for your project, such as Bare for React Native CLI projects.
+1. Choose a build adapter for your project, such as Bare for React Native CLI projects.
 2. Select Cloudflare as the provider for handling updates.
 
 The initializer then prompts you to:
@@ -156,7 +156,7 @@ After provisioning, record these outputs for [Set up your app](/docs/get-started
 
 Use the actual URL returned by deployment. Configure the SDK and native bundle
 loader through [Set up your app](/docs/get-started/app-setup), using the selected
-build plugin and the same update strategy as `hot-updater.config.ts`. Only the
+build adapter and the same update strategy as `hot-updater.config.ts`. Only the
 client API key belongs in the mobile app's build-time configuration; provider
 credentials stay in the deploy environment.
 
@@ -231,7 +231,7 @@ Before reusing a populated database:
      --command "SELECT name FROM d1_migrations ORDER BY id;"
    ```
 
-   The [schema settings](/docs/database-plugins/cloudflare#schema-settings) must
+   The [schema settings](/docs/database-adapters/cloudflare#schema-settings) must
    match the installed schema. A recorded migration name alone does not prove
    compatibility, and init will not rerun an already-recorded migration.
 3. Reuse only a verified compatible database. If its schema or migration history
@@ -259,7 +259,7 @@ do not prove that Worker and D1 execution were skipped.
 
 Follow the Expo path in [Set up your app](/docs/get-started/app-setup). It applies
 the config plugin and generates the native integration. For DOM components,
-continue with [Expo DOM components](/docs/build-plugins/expo#expo-dom-components-use-dom).
+continue with [Expo DOM components](/docs/build-adapters/expo#expo-dom-components-use-dom).
 
 ## Step 5: Add native code
 
@@ -309,4 +309,4 @@ prerequisite explicitly instead of marking an untested installation complete.
 The console can run on **Cloudflare Workers, Vercel, Netlify, or Docker/Node**.
 Workers uses native D1/R2 bindings; Node hosts use D1 API and R2 S3 credentials.
 See the [console hosting matrix](/docs/guides/console-deployment#choose-a-host)
-and [Cloudflare from Node](/docs/database-plugins/cloudflare).
+and [Cloudflare from Node](/docs/database-adapters/cloudflare).

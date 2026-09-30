@@ -34,7 +34,7 @@ Remove `compressStrategy` and `HOT_UPDATER_BUNDLE_MODE` from v1 configuration.
 The updater chooses between individual manifest files and one `tar.br` bulk
 download after checking local reuse. ZIP and gzip OTA archives are not supported.
 `updateStrategy` still selects app-version or fingerprint compatibility; it is
-unrelated to compression. See [Artifact Compression](/docs/guides/compression).
+unrelated to compression. See [Per-file or archive](/docs/guides/bundle-diffing#per-file-or-archive).
 
 ## Ask your agent to migrate
 
@@ -318,7 +318,7 @@ Persistent Channel management uses the authenticated admin root's
 
 ### Database and storage implementations
 
-A custom database provider implements a storage adapter: batched `get`,
+A custom database provider implements a database adapter: batched `get`,
 index-range `query`, atomic `write` of guarded operations and `fits`. Build it
 on the SQL core (`createSqlAdapter`), the key-value helper (`createKvAdapter`)
 or the contract directly, and return it with
@@ -328,7 +328,7 @@ on the storage engine above it and compile Release Catalogs there. This
 replaces the factory/double-curried contract and top-level `getBundleById`,
 `getBundles`, `getChannels`, `getUpdateInfo`, `commitBundle` and `onUnmount`.
 Provider query DSLs and provider-owned update selection are not extension
-points. See [Custom Database Adapter](/docs/database-plugins/custom-database),
+points. See [Custom Database Adapter](/docs/database-adapters/custom-database),
 and [Server Plugins](/docs/custom/server-plugins) for features beyond core.
 
 `LegacyBundle` is removed. Delivery fields (`channel`, `enabled`,
@@ -339,14 +339,14 @@ several Releases may reuse one artifact. Channels are persistent identities
 referenced by `channel_id`. Represent patches only through `Bundle.patches`,
 not `patchBaseBundleId`, `patchBaseFileHash`, `patchFileHash` or `patchStorageUri`.
 
-Storage providers implement the flat `createStoragePlugin` object contract.
+Storage adapters implement the flat `createStorageAdapter` object contract.
 Replace `supportedProtocol` with `protocol`; remove `profiles.node`,
 `profiles.runtime`, lifecycle hooks, runtime contexts and local-file-path
 inputs. Each operation accepts and returns an object. `put` consumes a one-shot
 Web stream; `get` returns `{ response }`, `getDownloadUrl` returns `{ url }`,
 `exists` returns `{ exists }`, and single-object deletion returns
 `{ deleted: true }`. Use `createStorageUri`/`parseStorageUri` and the
-[storage contract](/docs/storage-plugins/custom-storage), including optional
+[storage contract](/docs/storage-adapters/custom-storage), including optional
 explicit-key pruning. Fresh v1 assets use content hashes; do not rely on the
 v0 mutable per-Bundle asset layout or its cleanup fallback.
 
@@ -356,13 +356,13 @@ v0 mutable per-Bundle asset layout or its cleanup fallback.
 | --- | --- |
 | `@hot-updater/aws`: `s3Database` | `dynamoDB`; S3 stores artifacts. |
 | `@hot-updater/aws`: `s3LambdaEdgeStorage` | `s3Storage`. |
-| `@hot-updater/aws`: `withCloudFrontSignedUrl` | `s3Storage({ getDownloadUrl: cloudFrontDownloadUrl(...) })`; see [S3 download URLs](/docs/storage-plugins/aws). |
-| `@hot-updater/cloudflare/worker`: context-derived database/storage | `d1Database(binding)` and `r2Storage({ bucket, bucketName, downloadUrlSigningKey })` with native bindings; see [Worker storage](/docs/storage-plugins/cloudflare). |
+| `@hot-updater/aws`: `withCloudFrontSignedUrl` | `s3Storage({ getDownloadUrl: cloudFrontDownloadUrl(...) })`; see [S3 download URLs](/docs/storage-adapters/aws). |
+| `@hot-updater/cloudflare/worker`: context-derived database/storage | `d1Database(binding)` and `r2Storage({ bucket, bucketName, downloadUrlSigningKey })` with native bindings; see [Worker storage](/docs/storage-adapters/cloudflare). |
 | `@hot-updater/cloudflare/worker`: `verifyJwtSignedUrl` | The server storage-download handler. |
 | `@hot-updater/supabase`: root `supabaseEdgeFunctionDatabase` and `supabaseEdgeFunctionStorage` | `supabaseDatabase` and `supabaseStorage` from `@hot-updater/supabase/edge`. |
 | `@hot-updater/js`: `verifyJwtSignedUrl`, `withJwtSignedUrl` | Provider-owned download URL handling or the server storage handler. |
 | `@hot-updater/js`, `@hot-updater/postgres`: `getUpdateInfo` | Release Catalog compilation and exact reads, then device selection; disable the public Bundle for rollback. |
-| `@hot-updater/plugin-core`: `createBlobDatabasePlugin` | A storage adapter over a store with atomic conditional writes, such as `createKvAdapter({ store })`, returned with `createEngineDatabase`. Plain object storage cannot provide those writes. |
+| `@hot-updater/plugin-core`: `createBlobDatabasePlugin` | A database adapter over a store with atomic conditional writes, such as `createKvAdapter({ store })`, returned with `createEngineDatabase`. Plain object storage cannot provide those writes. |
 | `@hot-updater/plugin-core`: `createNodeStoragePlugin`, `createRuntimeStoragePlugin`, `createUniversalStoragePlugin` | `createStoragePlugin` with flat operations. |
 | `@hot-updater/plugin-core`: `createRequestUpdateBundleResolver`, `getRequestUpdateBundleSeeds` | None: core resolves an artifact with one batch read of both Bundles and one read of their patch. |
 

@@ -21,7 +21,7 @@ npx hot-updater infra scaffold --provider aws
 npx hot-updater infra scaffold --provider firebase
 ```
 
-Only `--provider` is required. No React Native app, build plugin, credentials,
+Only `--provider` is required. No React Native app, build adapter, credentials,
 provider package installation or AI agent is needed to extract the files. The
 command does not authenticate, create resources or deploy.
 
@@ -122,5 +122,5 @@ contract. Passing these scopes does not certify a native OTA update.
 
 [`hot-updater agent infra setup` and `upgrade`](/docs/guides/agent-infrastructure)
 reuse this extractor. They add provider instructions, app config templates for
-the selected build plugin, client-key and server verification helpers, and a deployment record for
+the selected build adapter, client-key and server verification helpers, and a deployment record for
 resuming work. The server deployment files are shared across all three commands.

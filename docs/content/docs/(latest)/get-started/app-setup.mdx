@@ -1,6 +1,6 @@
 ---
 title: "Connect your app"
-description: "Configure the authenticated update client, build plugin and native bundle loading before testing an OTA update."
+description: "Configure the authenticated update client, build adapter and native bundle loading before testing an OTA update."
 icon: Smartphone
 ---
 
@@ -187,12 +187,12 @@ Do not initialize with both APIs.
 ## Build configuration
 
 Setup configures bundling through the `build` field in `hot-updater.config.ts`.
-Keep the selected build plugin alongside your existing storage and database settings.
+Keep the selected build adapter alongside your existing storage and database settings.
 
 <Tabs items={['Bare (React Native CLI)', 'Rock', 'Expo']}>
   <Tab value="Bare (React Native CLI)">
 
-Use the Bare build plugin for standard React Native CLI projects:
+Use the Bare build adapter for standard React Native CLI projects:
 
 ```ts title="hot-updater.config.ts"
 import { bare } from "@hot-updater/bare"; // [!code ++]
@@ -211,7 +211,7 @@ No additional Babel plugin setup is required.
   </Tab>
   <Tab value="Rock">
 
-Use the Rock build plugin for Rock projects:
+Use the Rock build adapter for Rock projects:
 
 ```ts title="hot-updater.config.ts"
 import { rock } from "@hot-updater/rock"; // [!code ++]
@@ -228,7 +228,7 @@ No additional Babel plugin setup is required.
   </Tab>
   <Tab value="Expo">
 
-Use the Expo build plugin in `hot-updater.config.ts`:
+Use the Expo build adapter in `hot-updater.config.ts`:
 
 ```ts title="hot-updater.config.ts"
 import { expo } from "@hot-updater/expo"; // [!code ++]
@@ -270,7 +270,7 @@ npx expo prebuild
 
 <Callout type="info">
   If you use Expo DOM components (`use dom`), see [Expo DOM Components (`use
-  dom`)](/docs/build-plugins/expo#expo-dom-components-use-dom) for the
+  dom`)](/docs/build-adapters/expo#expo-dom-components-use-dom) for the
   additional Babel plugin setup.
 </Callout>
 

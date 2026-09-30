@@ -408,7 +408,9 @@ describe("Insights write budgets on DynamoDB Local", () => {
  * every 15 simulated seconds, as its timer would. With
  * HOT_UPDATER_WRITE_BUDGET_RATES=1 it measures 1, 10, and 100 events a second,
  * appending one JSON line per run to HOT_UPDATER_WRITE_BUDGET_OUT when set
- * (plans/evidence/insights-batched-aggregates.md); otherwise 10.
+ * (recorded at
+ * https://github.com/gronxb/hot-updater/blob/c08ebf3f657fa8de51c35a8c8ea29966ba54f828/plans/evidence/insights-batched-aggregates.md);
+ * otherwise 10.
  */
 const BATCHED_RATES =
   process.env.HOT_UPDATER_WRITE_BUDGET_RATES === "1" ? [1, 10, 100] : [10];

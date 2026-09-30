@@ -1,6 +1,7 @@
 ---
 title: "Vercel"
 description: "Deploy the Nitro console with Vercel Node functions."
+icon: vercel
 ---
 
 import { Step, Steps } from "fumadocs-ui/components/steps";
@@ -57,7 +58,7 @@ npx vercel deploy --prod
 Open the production URL and follow [Verify the deployment](/docs/guides/console-deployment#verify-the-deployment).
 
 Use **Download manifest** in a bundle's details and verify `manifest.json`.
-The console streams the manifest through the function when a storage plugin
+The console streams the manifest through the function when a storage adapter
 handles its URI; otherwise, public HTTP(S) manifest URLs redirect to storage.
 [Vercel's payload and execution limits](https://vercel.com/docs/functions/limitations)
 apply to responses streamed through the function. This action does not download

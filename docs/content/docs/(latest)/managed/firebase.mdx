@@ -1,6 +1,6 @@
 ---
 title: "Firebase Provider"
-description: "This guide walks you through setting up `hot-updater` with Firebase in a React Native project. You'll configure the environment, install required packages, and initialize Firebase for seamless updates."
+description: "Deploy Hot Updater on Firebase with Firestore, Cloud Storage, and Cloud Functions, then connect your app."
 icon: firebase
 ---
 
@@ -28,7 +28,7 @@ resources through its available provider tools.
 
 Complete [Install packages](/docs/get-started/installation) in the React
 Native project before running init or an agent scaffold. Install the CLI, React
-Native SDK, and the build plugin that matches your app, then install this provider:
+Native SDK, and the build adapter that matches your app, then install this provider:
 
 ```package-install
 npm install @hot-updater/firebase --save-dev
@@ -69,7 +69,7 @@ npx hot-updater init
 <Accordions type="single">
   <Accordion title="Interactive Setup Steps">
 
-1. Choose a build plugin for your project, such as Bare for React Native CLI projects.
+1. Choose a build adapter for your project, such as Bare for React Native CLI projects.
 2. Select Firebase as the provider for handling updates.
 
 The initializer then prompts you to:
@@ -147,7 +147,7 @@ See [Security](/docs/policy/security#plugin-token-protection).
 
 Managed Firebase init does not create or enable a signing key. The
 [built-in local config](/docs/guides/bundle-signing#local-private-key) works
-without a signing plugin. For non-exportable key custody, use the
+without a signing adapter. For non-exportable key custody, use the
 [Google Cloud KMS signer](/docs/guides/bundle-signing#hardened-google-cloud-kms)
 from `hot-updater/signing`; signing is independent of storage and database
 choice. Embed the chosen public key in a native release before deploying
@@ -167,7 +167,7 @@ After provisioning, record these outputs for [Set up your app](/docs/get-started
 
 Use the actual URL returned by deployment. Configure the SDK and native bundle
 loader through [Set up your app](/docs/get-started/app-setup), using the selected
-build plugin and the same update strategy as `hot-updater.config.ts`. Only the
+build adapter and the same update strategy as `hot-updater.config.ts`. Only the
 client API key belongs in the mobile app's build-time configuration; provider
 credentials stay in the deploy environment.
 
@@ -250,7 +250,7 @@ short in-process cache, but every device request invokes the Function.
 
 Follow the Expo path in [Set up your app](/docs/get-started/app-setup). It applies
 the config plugin and generates the native integration. For DOM components,
-continue with [Expo DOM components](/docs/build-plugins/expo#expo-dom-components-use-dom).
+continue with [Expo DOM components](/docs/build-adapters/expo#expo-dom-components-use-dom).
 
 ## Step 5: Add native code
 

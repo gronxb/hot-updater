@@ -4,12 +4,13 @@
   "icon": "Send",
   "pages": [
     "../guides/deploy",
+    "../guides/custom-update",
     "../guides/channel-management",
     "../guides/runtime-channel-switch",
     "../guides/rollout-cohorts",
     "../guides/update-strategies",
     "../guides/bundle-diffing",
-    "../guides/compression",
-    "../guides/native-build"
+    "../guides/native-build",
+    "../policy/app-review"
   ]
 }

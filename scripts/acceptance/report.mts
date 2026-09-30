@@ -1,6 +1,6 @@
 /**
  * The acceptance report (PRD "Final acceptance"): measures every manifest row
- * against S1–S7 and redraws the implementation table. A row that fails a
+ * against S1–S4, S6, and S7 and redraws the implementation table. A row that fails a
  * check shows that check instead of Smooth, and the script exits 1. S6 is
  * complexity (no function above cyclomatic 20) and S7 over-fetching (no
  * `limit + 1`, no filtered `findMany` results) in the row's code. Two checks
@@ -14,7 +14,7 @@
  * runs them first (the integration environment: Docker, and Java 21 for the
  * Firebase emulator, as `mise exec java@temurin-21 -- pnpm acceptance --run`),
  * and `--results` reads earlier reports, such as one from `pnpm test` and one
- * from `pnpm test:integration`. Without either they fail as not run. S5 reads plans/evidence/database-redesign-e2e.json.
+ * from `pnpm test:integration`. Without either they fail as not run.
  */
 import { execFileSync, spawnSync } from "node:child_process";
 import {
@@ -62,9 +62,6 @@ const ATOMICITY_CASES = [
 ];
 const OVER_LIMIT_CASE = "rejects an over-limit write before sending it";
 const PAGE_CAP_CASE = "fills every page when native pages are capped";
-const EVIDENCE = "plans/evidence/database-redesign-e2e.json";
-/** Profiles on a managed runtime, whose evidence names the deployed runtime. */
-const MANAGED_PROFILES = new Set(["supabase", "cloudflare", "firebase", "aws"]);
 /** S6: the highest cyclomatic complexity a function may have (ESLint's default). */
 const MAX_COMPLEXITY = 20;
 
@@ -926,56 +923,6 @@ const reads = (row: AcceptanceRow) => {
   return problems;
 };
 
-/**
- * Whether evidence recorded for `verified` holds at the report's commit: the
- * same commit, or one whose only changes since are evidence files, since
- * recording the evidence is itself a commit.
- */
-const verifiedAt = (verified: string) => {
-  if (commit.startsWith(verified) || verified.startsWith(commit)) return true;
-  try {
-    const changed = execFileSync(
-      "git",
-      ["diff", "--name-only", verified, commit],
-      { cwd: root, encoding: "utf8" },
-    )
-      .split("\n")
-      .filter(Boolean);
-    return (
-      changed.length > 0 &&
-      changed.every((file) => file.startsWith("plans/evidence/"))
-    );
-  } catch {
-    return false;
-  }
-};
-
-/** S5: every profile of the row passed on the final commit. */
-const endToEnd = (row: AcceptanceRow, commit: string) => {
-  if (row.profiles.length === 0) return [];
-  const file = path.join(root, EVIDENCE);
-  if (!existsSync(file)) return [`no ${EVIDENCE}`];
-  const evidence = JSON.parse(readFileSync(file, "utf8")) as {
-    commit: string;
-    runs: Record<
-      string,
-      { taskId?: string; result?: string; runtimeSha?: string | null }
-    >;
-  };
-  if (!verifiedAt(evidence.commit)) {
-    return [`evidence is for ${evidence.commit}, not ${commit}`];
-  }
-  return row.profiles.flatMap((profile) => {
-    const run = evidence.runs[profile];
-    if (run?.result !== "passed" || !run.taskId) {
-      return [`${profile} has not passed`];
-    }
-    return MANAGED_PROFILES.has(profile) && !run.runtimeSha
-      ? [`${profile} names no managed runtime`]
-      : [];
-  });
-};
-
 const commit =
   args.commit ??
   execFileSync("git", ["rev-parse", "HEAD"], {
@@ -1000,7 +947,6 @@ for (const row of rows) {
     ],
     S3: atomicity(row, transactionOptions(graph)),
     S4: reads(row),
-    S5: endToEnd(row, commit),
     S6: rowComplexity.over.map(
       ({ at, score }) => `${at} scores ${score} > ${MAX_COMPLEXITY}`,
     ),

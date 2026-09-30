@@ -269,7 +269,7 @@ const brandIcons: Record<string, () => ReactElement> = {
   ),
 };
 
-type DocsPageData = PageData & DocData & DocMethods & { version?: string };
+type DocsPageData = PageData & DocData & DocMethods;
 
 export const source = loader({
   source: (

@@ -17,6 +17,7 @@ import type {
   PluginEndpoint,
   PluginInstance,
 } from "../plugins/definePlugin";
+import { checkReservedId } from "../plugins/official";
 import { clientPluginsOf } from "./clientPlugins";
 import { HotUpdaterConfigError } from "./configError";
 
@@ -91,6 +92,7 @@ const checkPlugin = (value: unknown, at: string): PluginShape => {
   if (plugin.id === coreModule.id) {
     fail(`${at} uses the id "core", which is core's own.`);
   }
+  checkReservedId(value, at);
   if (
     typeof plugin.schemaVersion !== "string" ||
     !isRecord(plugin.schema) ||
@@ -194,7 +196,7 @@ const checkInstance = (plugin: PluginShape, instance: unknown) => {
 
 /**
  * Checks every plugin, runs each `init` once against one engine over the
- * database's storage adapter, and collects APIs, endpoints, and clientAuth.
+ * database's adapter, and collects APIs, endpoints, and clientAuth.
  * Core's reads run on the same engine, so plugins read core through `ctx.core`.
  */
 export const assemblePlugins = (

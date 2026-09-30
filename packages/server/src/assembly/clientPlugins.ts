@@ -1,3 +1,4 @@
+import { checkReservedId } from "../plugins/official";
 import { HotUpdaterConfigError } from "./configError";
 
 /** A client plugin an app adds to `HotUpdater.init`'s `plugins`. */
@@ -82,6 +83,9 @@ export const clientPluginsOf = (
     throw new HotUpdaterConfigError("plugins must be an array of plugins.");
   }
   const found: ClientPluginSpec[] = [];
+  plugins.forEach((plugin, position) =>
+    checkReservedId(plugin, `plugins[${position}]`),
+  );
   for (const plugin of plugins) {
     if (!isRecord(plugin) || !isRecord(plugin.cli)) continue;
     const value = plugin.cli.clientPlugin;

@@ -10,7 +10,6 @@ import defaultMdxComponents from "fumadocs-ui/mdx";
 import type { ComponentProps } from "react";
 import type { PageProps } from "waku/router";
 
-import { VersionTag } from "@/components/version-tag";
 import { source } from "@/lib/source";
 
 const githubBaseUrl =
@@ -53,7 +52,6 @@ export default function DocPage({ slugs }: PageProps<"/docs/[...slugs]">) {
         <ViewOptionsPopover githubUrl={githubUrl} markdownUrl={markdownUrl} />
       </div>
       <DocsTitle>{page.data.title}</DocsTitle>
-      <VersionTag version={page.data?.version} />
       <DocsDescription>{page.data.description}</DocsDescription>
       <DocsBody>
         <MDX components={components} />

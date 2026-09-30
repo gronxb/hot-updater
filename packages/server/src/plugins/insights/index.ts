@@ -4,6 +4,7 @@ import { HotUpdaterConfigError } from "../../assembly/configError";
 import { isDatabaseBusyError } from "../../database/busy";
 import type { HotUpdaterDatabase } from "../../database/database";
 import { definePlugin, type PluginEndpoint } from "../definePlugin";
+import { markOfficial } from "../official";
 import type { BundleEventRow } from "./eventRow";
 import { createInsightsModel } from "./model";
 import type {
@@ -176,7 +177,7 @@ const retentionOf = ({ retention }: InsightsOptions): InsightsRetention => {
  */
 export const insights = (options: InsightsOptions = {}) => {
   const retention = retentionOf(options);
-  return definePlugin({
+  const plugin = definePlugin({
     id: "insights",
     // Keeps its tables' names: bundle_events, bundle_event_heads, insights_*.
     namespace: false,
@@ -219,4 +220,6 @@ export const insights = (options: InsightsOptions = {}) => {
       },
     },
   });
+  // Only this factory may take the id; tooling and the console tell it by the mark.
+  return markOfficial(plugin);
 };

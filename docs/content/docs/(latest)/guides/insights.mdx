@@ -474,8 +474,8 @@ launches of the day, with one report in ten a download or an apply:
 
 Each report's own items take 5 WRU of these. The rest is its totals, which fall
 from 35–45 WRU to about 3 WRU in log mode at 10 or more reports per second.
-See [DynamoDB](/docs/database-plugins/aws#batched-insights-totals) and
-[Firestore](/docs/database-plugins/firestore#batched-insights-totals).
+See [DynamoDB](/docs/database-adapters/aws#batched-insights-totals) and
+[Firestore](/docs/database-adapters/firestore#batched-insights-totals).
 
 The managed AWS table caps writes at 100 WRU per second. With batching, that is
 about 12 reports per second; with totals in each transaction, about two first
