@@ -371,6 +371,25 @@ describe("registerPluginCommands", () => {
     }
   });
 
+  it("leaves out a plugin command that a core command shadows", async () => {
+    const shadowing = definePlugin({
+      id: "shadow",
+      schemaVersion: "1",
+      schema: {},
+      init: () => ({ api: {} }),
+      cli: {
+        commands: [{ name: "bundle", description: "Shadowed", async run() {} }],
+      },
+    });
+    cli.loadHotUpdaterPlugins.mockResolvedValue([counter(), shadowing]);
+    const created = program();
+    await registerPluginCommands(created, argv("--help"), cwd);
+
+    const help = created.helpInformation();
+    expect(help).toMatch(/counter\s+Read the counter \(counter\)/u);
+    expect(help).not.toContain("Shadowed");
+  });
+
   it("keeps help working when the plugin list fails to load", async () => {
     cli.loadHotUpdaterPlugins.mockRejectedValue(
       new Error("hotUpdater.plugins.ts must export plugins"),

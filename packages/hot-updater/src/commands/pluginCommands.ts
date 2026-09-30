@@ -290,6 +290,12 @@ const addCommand = (
   return added;
 };
 
+const isCoreCommand = (program: CommandUnknownOpts, name: string) =>
+  name === "help" ||
+  program.commands.some(
+    (command) => command.name() === name || command.aliases().includes(name),
+  );
+
 /** Adds a source's plugin commands under the help group, each marked with its plugin. */
 const addPluginCommands = (
   program: CommandUnknownOpts,
@@ -308,12 +314,6 @@ const addPluginCommands = (
     ).helpGroup(PLUGIN_COMMANDS_GROUP);
   }
 };
-
-const isCoreCommand = (program: CommandUnknownOpts, name: string) =>
-  name === "help" ||
-  program.commands.some(
-    (command) => command.name() === name || command.aliases().includes(name),
-  );
 
 const listCommands = (
   from: string,
@@ -363,7 +363,10 @@ export async function registerPluginCommands(
       cwd,
       failures,
     )) {
-      const entries = pluginCommandsOf(source.plugins);
+      // A plugin command named like a core command is never reachable.
+      const entries = pluginCommandsOf(source.plugins).filter(
+        ({ command }) => !isCoreCommand(program, command.name),
+      );
       if (
         name !== undefined &&
         entries.some(({ command }) => command.name === name)
