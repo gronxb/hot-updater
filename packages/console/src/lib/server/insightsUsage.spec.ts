@@ -118,4 +118,29 @@ describe("App usage aggregate query", () => {
     expect(report.sinceMs).toBe(Date.parse("2026-08-11T11:00:00Z"));
     expect(report.distributionSinceMs).toBe(Date.parse("2026-08-11T00:00:00Z"));
   });
+
+  it("reads 12 months as 52 weeks of whole UTC days, ending with today's", async () => {
+    const getAppUsage = vi.fn(async () => aggregate);
+    const report = await getAppUsageReport(
+      { getAppUsage } as unknown as InsightsModel,
+      { platform: "all", channel: "production", window: "12m" },
+      Date.parse("2026-08-12T10:25:00Z"),
+    );
+    // Day-aligned, so the server reads the daily counts it keeps 13 months.
+    expect(getAppUsage).toHaveBeenCalledWith({
+      platform: "all",
+      channel: "production",
+      timeRange: {
+        start: Date.parse("2025-08-14T00:00:00Z"),
+        end: Date.parse("2026-08-12T11:00:00Z"),
+      },
+      intervalMs: 7 * 86_400_000,
+    });
+    expect(report).toMatchObject({
+      sinceMs: Date.parse("2025-08-14T00:00:00Z"),
+      distributionSinceMs: Date.parse("2025-08-14T00:00:00Z"),
+      intervalMs: 7 * 86_400_000,
+      truncated: false,
+    });
+  });
 });

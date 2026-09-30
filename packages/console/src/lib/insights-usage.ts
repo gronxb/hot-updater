@@ -1,10 +1,8 @@
-import type { InsightsWindow } from "./insights-api";
-
 export type AppUsageInput = {
   readonly platform: "all" | "ios" | "android";
   readonly channel: string;
   readonly appVersion?: string;
-  readonly window: InsightsWindow;
+  readonly window: UsageWindow;
 };
 export type AppUsageScope = Omit<AppUsageInput, "window">;
 
@@ -46,7 +44,14 @@ export const usageMetrics = {
   "24h": { label: "DAU", period: "24 hours", interval: "hour" },
   "7d": { label: "WAU", period: "7 days", interval: "6 hours" },
   "30d": { label: "MAU", period: "30 days", interval: "day" },
+  "12m": { label: "YAU", period: "12 months", interval: "week" },
 } as const;
+
+/**
+ * An App usage period. Hourly counts are kept 90 days, so the 12-month
+ * period counts whole UTC days, from the daily counts kept 13 months.
+ */
+export type UsageWindow = keyof typeof usageMetrics;
 
 export function readAppUsageInput(input: AppUsageInput): AppUsageInput {
   if (

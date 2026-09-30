@@ -10,10 +10,11 @@ import {
 } from "./console-features";
 
 describe("consoleFeatures", () => {
-  it("maps each feature to a built-in plugin, and only event reads to a self-hosted server", () => {
+  it("maps each feature to a built-in plugin, and only event reads and deletion to a self-hosted server", () => {
     expect(consoleFeatures).toEqual({
       insights: { plugin: "insights", remote: true },
       insightsAnalytics: { plugin: "insights", remote: false },
+      insightsDeletion: { plugin: "insights", remote: true },
       apiKeys: { plugin: "apiKeys", remote: false },
     });
   });
@@ -23,15 +24,22 @@ describe("resolveConsoleFeatures", () => {
   it("turns on each feature whose plugin the database config runs", () => {
     expect(
       resolveConsoleFeatures(["insights", "apiKeys"], { remote: false }),
-    ).toEqual({ insights: true, insightsAnalytics: true, apiKeys: true });
+    ).toEqual({
+      insights: true,
+      insightsAnalytics: true,
+      insightsDeletion: true,
+      apiKeys: true,
+    });
     expect(resolveConsoleFeatures(["insights"], { remote: false })).toEqual({
       insights: true,
       insightsAnalytics: true,
+      insightsDeletion: true,
       apiKeys: false,
     });
     expect(resolveConsoleFeatures(["apiKeys"], { remote: false })).toEqual({
       insights: false,
       insightsAnalytics: false,
+      insightsDeletion: false,
       apiKeys: true,
     });
   });
@@ -39,16 +47,27 @@ describe("resolveConsoleFeatures", () => {
   it("serves only what a self-hosted server's admin API does", () => {
     expect(
       resolveConsoleFeatures(["apiKeys", "insights"], { remote: true }),
-    ).toEqual({ insights: true, insightsAnalytics: false, apiKeys: false });
+    ).toEqual({
+      insights: true,
+      insightsAnalytics: false,
+      insightsDeletion: true,
+      apiKeys: false,
+    });
     expect(resolveConsoleFeatures(["apiKeys"], { remote: true })).toEqual({
       insights: false,
       insightsAnalytics: false,
+      insightsDeletion: false,
       apiKeys: false,
     });
   });
 
   it("turns nothing on for no plugins, or for plugins no feature needs", () => {
-    const none = { insights: false, insightsAnalytics: false, apiKeys: false };
+    const none = {
+      insights: false,
+      insightsAnalytics: false,
+      insightsDeletion: false,
+      apiKeys: false,
+    };
 
     expect(resolveConsoleFeatures([], { remote: false })).toEqual(none);
     expect(resolveConsoleFeatures(["notes"], { remote: false })).toEqual(none);

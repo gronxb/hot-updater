@@ -6,7 +6,7 @@ import { ConsoleFeatureUnavailable } from "@/components/ConsoleFeatureUnavailabl
 import { InsightsErrorAlert } from "@/components/features/insights/InsightsErrorAlert";
 import { InsightsInfo } from "@/components/features/insights/InsightsInfo";
 import { InsightsPageHeader } from "@/components/features/insights/InsightsPageHeader";
-import { InsightsPeriodSelector } from "@/components/features/insights/InsightsPeriodSelector";
+import { UsagePeriodSelector } from "@/components/features/insights/InsightsPeriodSelector";
 import { PlatformIcon } from "@/components/PlatformIcon";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -36,6 +36,8 @@ import {
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { requireConsoleFeature } from "@/lib/console-features-api";
+import { useInsightsRetention } from "@/lib/insights-api";
+import { keepsTwelveMonths } from "@/lib/insights-retention";
 import {
   validateDistributionSearch,
   validateInsightsSearch,
@@ -58,6 +60,7 @@ export const Route = createFileRoute("/insights_/distribution")({
 
 function DistributionPage() {
   const search = Route.useSearch();
+  const retention = useInsightsRetention();
   const navigate = Route.useNavigate();
   const input = {
     platform: search.platform ?? "all",
@@ -111,7 +114,8 @@ function DistributionPage() {
               Distribution
             </h2>
             <div className="flex items-center gap-3">
-              <InsightsPeriodSelector
+              <UsagePeriodSelector
+                twelveMonths={keepsTwelveMonths(retention)}
                 window={input.window}
                 onWindowChange={(window) => changeSearch({ window })}
               />

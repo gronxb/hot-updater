@@ -170,6 +170,25 @@ export const createMemoryAdapter = (
       state = draft;
       return { ok: true };
     },
+    async prune(table, before, limit) {
+      const column = table.retention?.column ?? "";
+      /** Oldest first; the key breaks a tie. */
+      const order = (row: StoredRow) => [
+        row[column] as number,
+        ...rowKey(table, row),
+      ];
+      const doomed = [...rowsOf(table)]
+        .filter(([, row]) => {
+          const time = row[column];
+          return typeof time === "number" && time <= before;
+        })
+        .sort(([, left], [, right]) => compareTuples(order(left), order(right)))
+        .slice(0, limit);
+      const rows = new Map(rowsOf(table));
+      for (const [id] of doomed) rows.delete(id);
+      state = new Map(state).set(prefix + table.name, rows);
+      return doomed.length;
+    },
     migrations: {
       async apply(tables) {
         const next = new Map(state);

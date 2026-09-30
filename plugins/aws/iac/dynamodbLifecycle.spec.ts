@@ -4,11 +4,13 @@ const mocks = vi.hoisted(() => ({
   createTable: vi.fn(),
   describeContinuousBackups: vi.fn(),
   describeTable: vi.fn(),
+  describeTimeToLive: vi.fn(),
   getItem: vi.fn(),
   putItem: vi.fn(),
   query: vi.fn(),
   updateItem: vi.fn(),
   updateContinuousBackups: vi.fn(),
+  updateTimeToLive: vi.fn(),
   waitUntilTableExists: vi.fn(),
 }));
 
@@ -18,11 +20,13 @@ vi.mock("@aws-sdk/client-dynamodb", () => ({
       createTable: mocks.createTable,
       describeContinuousBackups: mocks.describeContinuousBackups,
       describeTable: mocks.describeTable,
+      describeTimeToLive: mocks.describeTimeToLive,
       getItem: mocks.getItem,
       putItem: mocks.putItem,
       query: mocks.query,
       updateItem: mocks.updateItem,
       updateContinuousBackups: mocks.updateContinuousBackups,
+      updateTimeToLive: mocks.updateTimeToLive,
     };
   }),
   waitUntilTableExists: mocks.waitUntilTableExists,
@@ -66,6 +70,13 @@ describe("DynamoDB lifecycle reconciliation", () => {
       },
     });
     mocks.updateContinuousBackups.mockResolvedValue({});
+    mocks.describeTimeToLive.mockResolvedValue({
+      TimeToLiveDescription: {
+        AttributeName: "_ttl",
+        TimeToLiveStatus: "ENABLED",
+      },
+    });
+    mocks.updateTimeToLive.mockResolvedValue({});
     mocks.getItem.mockResolvedValue({});
     mocks.putItem.mockResolvedValue({});
     mocks.query.mockResolvedValue({ Items: [] });

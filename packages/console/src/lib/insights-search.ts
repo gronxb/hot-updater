@@ -1,5 +1,5 @@
 import type { InsightsWindow } from "./insights-api";
-import type { AppUsageScope } from "./insights-usage";
+import type { AppUsageScope, UsageWindow } from "./insights-usage";
 
 const readText = (value: unknown) =>
   typeof value === "string" && value.trim().length > 0 && value.length <= 1024
@@ -7,12 +7,14 @@ const readText = (value: unknown) =>
     : undefined;
 const readWindow = (value: unknown): InsightsWindow | undefined =>
   value === "24h" || value === "7d" || value === "30d" ? value : undefined;
+const readUsageWindow = (value: unknown): UsageWindow | undefined =>
+  value === "12m" ? value : readWindow(value);
 
 export type InsightsSearch = {
   platform?: AppUsageScope["platform"];
   channel?: string;
   appVersion?: string;
-  window?: InsightsWindow;
+  window?: UsageWindow;
   bundleWindow?: InsightsWindow;
   healthPlatform?: "ios" | "android";
   healthChannel?: string;
@@ -31,7 +33,7 @@ export function validateInsightsSearch(
         : undefined,
     channel: readText(search.channel),
     appVersion: readText(search.appVersion),
-    window: readWindow(search.window),
+    window: readUsageWindow(search.window),
     bundleWindow: readWindow(search.bundleWindow),
     healthPlatform:
       search.healthPlatform === "ios" || search.healthPlatform === "android"

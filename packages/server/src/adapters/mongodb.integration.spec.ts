@@ -1,7 +1,9 @@
 import net from "node:net";
 import path from "node:path";
 
+import type { PhysicalTable } from "@hot-updater/plugin-core/internal";
 import {
+  conformanceExpiring,
   setupDatabaseAdapterConformanceSuite,
   setupDatabaseTestSuite,
   startHttpTestServer,
@@ -85,6 +87,7 @@ let tests = 0;
 setupDatabaseAdapterConformanceSuite({
   name: "mongodb (replica set)",
   maxOps: 50,
+  retention: "ttl",
   createAdapter: async ({ tables, nativePageSize }) => {
     tests += 1;
     const adapter = createMongoAdapter({
@@ -127,6 +130,84 @@ setupDatabaseTestSuite({
     }
   },
   dispose: () => undefined,
+});
+
+describe("mongoAdapter retention", () => {
+  it("stamps each row with retention with _expireAt, which a TTL index deletes by", async () => {
+    const client = await connect("retention");
+    const adapter = createMongoAdapter({ client });
+    const counted: PhysicalTable = {
+      name: "counted",
+      columns: [
+        { name: "bucket", type: "integer", nullable: false },
+        { name: "hits", type: "integer", nullable: false },
+        { name: "_v", type: "integer", nullable: false },
+      ],
+      key: ["bucket"],
+      indexes: [],
+      retention: { column: "bucket", ms: 1_000 },
+    };
+    await adapter.migrations!.apply([conformanceExpiring, counted]);
+    const expireAt = async (table: string, _id: unknown) =>
+      (
+        await client
+          .db()
+          .collection(table)
+          .findOne({ _id } as never)
+      )?._expireAt;
+    const row = (id: string, at: number | null) => ({
+      id,
+      grp: "g",
+      at,
+      tags: ["t"],
+      _v: 0,
+    });
+
+    expect(
+      await adapter.write([
+        { type: "insert", table: conformanceExpiring, row: row("a", 5_000) },
+        { type: "insert", table: conformanceExpiring, row: row("b", null) },
+        {
+          type: "increment",
+          table: counted,
+          key: [7_000],
+          by: { hits: 1 },
+          init: { bucket: 7_000, hits: 0, _v: 0 },
+        },
+      ]),
+    ).toEqual({ ok: true });
+    expect(await expireAt(conformanceExpiring.name, "a")).toEqual(
+      new Date(6_000),
+    );
+    expect(await expireAt(conformanceExpiring.name, "b")).toBeNull();
+    expect(await expireAt(counted.name, 7_000)).toEqual(new Date(8_000));
+
+    // A patch that moves the retention column moves the expiry with it.
+    await adapter.write([
+      {
+        type: "patch",
+        table: conformanceExpiring,
+        key: ["a"],
+        set: { at: 9_000 },
+        guard: { v: 0 },
+        previous: row("a", 5_000),
+      },
+    ]);
+    expect(await expireAt(conformanceExpiring.name, "a")).toEqual(
+      new Date(10_000),
+    );
+    const [found] = await adapter.get(conformanceExpiring, [["a"]]);
+    expect(found).not.toHaveProperty("_expireAt");
+    expect(
+      await client.db().collection(conformanceExpiring.name).indexes(),
+    ).toContainEqual(
+      expect.objectContaining({
+        name: "_expireAt",
+        key: { _expireAt: 1 },
+        expireAfterSeconds: 0,
+      }),
+    );
+  });
 });
 
 describe("mongoAdapter migrations", () => {

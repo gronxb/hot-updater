@@ -105,13 +105,7 @@ export const createTransactions = ({
   readonly retry?: RetryOptions | undefined;
 }) => {
   const { attempts = 8, baseDelayMs = 5, maxDelayMs = 250, onRetry } = retry;
-  const modelOf = (name: string, kind: "table" | "aggregate" = "table") => {
-    const model = schema.models.get(name);
-    if (model?.definition.kind !== kind) {
-      throw new DatabaseQueryError(`Unknown ${kind} ${name}.`);
-    }
-    return model;
-  };
+  const { modelOf } = reads;
 
   /**
    * A key-value index copy has no `_v`. A transaction guards what it reads,

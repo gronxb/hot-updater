@@ -246,8 +246,9 @@ with no secondary index. These are capacity units, not event counts: event
 throughput depends on the transactional item, index-copy, and aggregate writes.
 The cap is a cost guardrail and can throttle bursts; protect production
 distributions with AWS WAF rate-based rules and configure AWS Budgets for a
-monthly spending threshold. The AWS adapter does not delete Insights data
-automatically. Event history is keyset-paginated. Reporting overview windows
+monthly spending threshold. The table's TTL on `_ttl`, which init turns on,
+deletes Insights data past its retention without write cost. Event history is
+keyset-paginated. Reporting overview windows
 start at the UTC day they reach into and end with the current hour. They read
 maintained installation-distribution, latest-by-bundle, and outcome
 aggregates, never raw events or installation heads. Latest-installation counts

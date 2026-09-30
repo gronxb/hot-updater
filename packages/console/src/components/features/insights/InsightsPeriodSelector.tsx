@@ -1,6 +1,6 @@
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { InsightsWindow } from "@/lib/insights-api";
-import { usageMetrics } from "@/lib/insights-usage";
+import { usageMetrics, type UsageWindow } from "@/lib/insights-usage";
 
 /** A segmented control over fixed periods, each shown by its short value. */
 export function PeriodSelector<TPeriod extends string>({
@@ -45,6 +45,9 @@ const reportingPeriods = (["24h", "7d", "30d"] as const).map((value) => ({
   value,
   name: usageMetrics[value].period,
 }));
+const usagePeriods = (Object.keys(usageMetrics) as UsageWindow[]).map(
+  (value) => ({ value, name: usageMetrics[value].period }),
+);
 
 export function InsightsPeriodSelector({
   window,
@@ -59,6 +62,28 @@ export function InsightsPeriodSelector({
       onPeriodChange={onWindowChange}
       period={window}
       periods={reportingPeriods}
+    />
+  );
+}
+
+/** App usage's periods: the reporting periods, and 12 months where daily totals cover it. */
+export function UsagePeriodSelector({
+  window,
+  onWindowChange,
+  twelveMonths = true,
+}: {
+  readonly window: UsageWindow;
+  readonly onWindowChange: (window: UsageWindow) => void;
+  readonly twelveMonths?: boolean;
+}) {
+  return (
+    <PeriodSelector
+      label="Reporting period"
+      onPeriodChange={onWindowChange}
+      period={window}
+      periods={usagePeriods.filter(
+        ({ value }) => twelveMonths || value !== "12m",
+      )}
     />
   );
 }

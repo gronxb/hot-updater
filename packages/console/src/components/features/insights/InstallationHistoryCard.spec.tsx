@@ -5,6 +5,13 @@ import type { InsightsEventRow } from "@/lib/insights-view";
 
 import { InstallationHistoryCard } from "./InstallationHistoryCard";
 
+vi.mock("@/lib/insights-api", () => ({
+  useDeleteInsightsDataMutation: () => ({
+    isPending: false,
+    mutateAsync: vi.fn(),
+  }),
+}));
+
 const event: InsightsEventRow = {
   appVersion: "1.2.3",
   channel: "production",
@@ -103,5 +110,27 @@ describe("InstallationHistoryCard", () => {
       (screen.getByRole("button", { name: "Next" }) as HTMLButtonElement)
         .disabled,
     ).toBe(true);
+  });
+
+  it("offers deletion only where the console deletes Insights data", () => {
+    const card = (canDelete: boolean) => (
+      <InstallationHistoryCard
+        canDelete={canDelete}
+        error={null}
+        history={{ data: [event], nextCursor: null }}
+        isLoading={false}
+        onNext={vi.fn()}
+        onPrevious={vi.fn()}
+        pageNumber={1}
+        selectedEvent={event}
+        selectedInstallId="install-1"
+      />
+    );
+    const { rerender } = render(card(false));
+    expect(screen.queryByRole("button", { name: "Delete data" })).toBeNull();
+    expect(screen.getByText(/kept for 90 days/)).toBeDefined();
+
+    rerender(card(true));
+    expect(screen.getByRole("button", { name: "Delete data" })).toBeDefined();
   });
 });

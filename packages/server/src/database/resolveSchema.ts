@@ -13,6 +13,7 @@ import type {
   SchemaShape,
   TableShape,
 } from "./definitions";
+import { physicalRetention, retentionProblems } from "./retention";
 
 export const SHARD_COLUMN = "_shard";
 export const MAX_SHARDS = 64;
@@ -240,6 +241,7 @@ const problemsOf = (
   }
   if (definition.kind === "table") tableProblems(definition, add, table);
   else aggregateProblems(definition, add);
+  for (const problem of retentionProblems(module.schema, model)) add(problem);
   return problems;
 };
 
@@ -355,6 +357,7 @@ export const resolveSchema = (
               ? [...definition.key, SHARD_COLUMN]
               : [...definition.key],
           indexes: indexesOf(definition),
+          ...physicalRetention(definition),
         },
         references: references.filter(({ table }) => table === name),
         referencedBy,

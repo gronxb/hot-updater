@@ -15,6 +15,7 @@ export {
   DatabaseAdapterContractError,
   DatabaseSchemaError,
   DatabaseValueError,
+  expiresAt,
   indexOrderColumns,
   normalizeStoredRow,
   normalizeStoredValue,
@@ -31,6 +32,7 @@ export {
   type PhysicalColumn,
   type PhysicalColumnType,
   type PhysicalIndex,
+  type PhysicalRetention,
   type PhysicalTable,
   type QueryBound,
   type QueryRequest,
@@ -67,6 +69,7 @@ export {
   type ModelDefinition,
   type ModuleSchema,
   type ReferenceAction,
+  type RetentionDefinition,
   type RowOf,
   type TableDefinition,
 } from "./schema";

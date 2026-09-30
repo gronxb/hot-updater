@@ -317,7 +317,9 @@ describe("insights read budgets", () => {
       launches: 25,
       failedLaunches: 0,
     });
-    expect(Object.keys(lifetime.tables)).toEqual(["insights_overview"]);
+    expect(Object.keys(lifetime.tables)).toEqual([
+      "insights_overview_lifetime",
+    ]);
 
     const scope = await read(() =>
       api.getReleaseActivity({
@@ -333,9 +335,10 @@ describe("insights read budgets", () => {
         { startMs: T0 + 2 * DAY, launches: 1, failedLaunches: 0 },
       ],
     });
+    // Whole UTC days: the daily rollups alone.
     expect(Object.keys(scope.tables).toSorted()).toEqual([
-      "insights_overview",
-      "insights_sketches",
+      "insights_overview_daily",
+      "insights_sketches_daily",
     ]);
 
     const usage = await read(() =>
@@ -365,7 +368,7 @@ describe("insights read budgets", () => {
     });
     expect(Object.keys(usage.tables).toSorted()).toEqual([
       "insights_distribution",
-      "insights_sketches",
+      "insights_sketches_daily",
     ]);
   });
 });

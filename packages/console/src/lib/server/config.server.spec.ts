@@ -78,6 +78,7 @@ describe("config.server", () => {
     await expect(first.runtime.features()).resolves.toEqual({
       insights: false,
       insightsAnalytics: false,
+      insightsDeletion: false,
       apiKeys: true,
     });
     await expect(first.core.listChannels()).resolves.toEqual([]);
@@ -104,6 +105,7 @@ describe("config.server", () => {
     await expect(runtime.features()).resolves.toEqual({
       insights: true,
       insightsAnalytics: false,
+      insightsDeletion: true,
       apiKeys: false,
     });
     await (await prepareConfig(request)).runtime.features();

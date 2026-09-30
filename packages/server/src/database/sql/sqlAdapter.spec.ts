@@ -4,6 +4,7 @@ import { PGlite } from "@electric-sql/pglite";
 import type { PhysicalTable } from "@hot-updater/plugin-core/internal";
 import {
   conformanceCounters,
+  conformanceExpiring,
   conformanceItems,
   setupDatabaseAdapterConformanceSuite,
 } from "@hot-updater/test-utils";
@@ -18,6 +19,7 @@ import {
   type SqlStatement,
   WRITE_GUARD_TABLE,
 } from "./sqlAdapter";
+import { pruneStatements } from "./sqlSchema";
 import {
   pgliteBatchExecutor,
   pgliteExecutor,
@@ -235,6 +237,92 @@ describe("sql core", () => {
       'INSERT INTO "conformance_counters" ("scope", "shard", "hits", "_v") VALUES ($1, $2, $3, $4) ON CONFLICT ("scope", "shard") DO UPDATE SET "hits" = "conformance_counters"."hits" + $5, "_v" = "conformance_counters"."_v" + $6',
     ]);
   });
+
+  it("indexes a retention column that no index or key already leads with", () => {
+    const index = (table: PhysicalTable) =>
+      createTableStatements("postgresql", [table]).filter((statement) =>
+        statement.includes("__retention"),
+      );
+    expect(index(conformanceExpiring)).toEqual([
+      'CREATE INDEX IF NOT EXISTS "conformance_expiring__retention" ON "conformance_expiring" ("at", "id")',
+    ]);
+    // An index or a key that starts with the column serves a prune already.
+    const led = (retention: PhysicalTable["retention"]) =>
+      index({ ...conformanceCounters, retention });
+    expect(led({ column: "scope", ms: 1 })).toEqual([]);
+    expect(
+      index({
+        ...conformanceExpiring,
+        indexes: [{ name: "byAt", eq: ["at"], sort: [] }],
+      }),
+    ).toEqual([]);
+    expect(led({ column: "hits", ms: 1 })).toEqual([
+      'CREATE INDEX IF NOT EXISTS "conformance_counters__retention" ON "conformance_counters" ("hits", "scope", "shard")',
+    ]);
+  });
+
+  it("walks expired rows in the order of the index that leads with the retention column", () => {
+    const events: PhysicalTable = {
+      ...conformanceExpiring,
+      columns: [
+        ...conformanceExpiring.columns,
+        { name: "received", type: "integer", nullable: false },
+      ],
+      indexes: [{ name: "byAt", eq: ["at"], sort: ["received"] }],
+    };
+    const [postgres] = pruneStatements("postgresql", events, "", 10).map(
+      (render) => render(() => "$1"),
+    );
+    expect(postgres).toBe(
+      'DELETE FROM "conformance_expiring" WHERE "conformance_expiring"."at" <= $1 AND ("conformance_expiring"."at", "conformance_expiring"."received", "conformance_expiring"."id") <= (SELECT b."at", b."received", b."id" FROM (SELECT i."at", i."received", i."id" FROM "conformance_expiring" i WHERE i."at" <= $1 ORDER BY i."at" ASC, i."received" ASC, i."id" ASC LIMIT 10) b ORDER BY b."at" DESC, b."received" DESC, b."id" DESC LIMIT 1)',
+    );
+    const [entries, rows] = pruneStatements(
+      "mysql",
+      conformanceExpiring,
+      "",
+      10,
+    ).map((render) => render(() => "?"));
+    expect(entries).toBe(
+      "DELETE e FROM `conformance_expiring__byTag` e JOIN (SELECT i.`at`, i.`id` FROM `conformance_expiring` i WHERE i.`at` <= ? ORDER BY i.`at` ASC, i.`id` ASC LIMIT 10) d ON e.`id` = d.`id`",
+    );
+    expect(rows).toBe(
+      "DELETE FROM `conformance_expiring` WHERE `at` <= ? ORDER BY `at`, `id` LIMIT 10",
+    );
+  });
+
+  it.each(["PGlite", "SQLite"] as const)(
+    "prunes expired rows with their index table entries on %s",
+    async (engine) => {
+      const sqlite = engine === "SQLite" ? new DatabaseSync(":memory:") : null;
+      tests += 1;
+      const executor = sqlite ? sqliteExecutor(sqlite) : pgliteExecutor(pglite);
+      const prefix = sqlite ? "" : `t${tests}_`;
+      const adapter = createSqlAdapter({ executor, tablePrefix: prefix });
+      await adapter.migrations!.apply([conformanceExpiring]);
+      await adapter.write(
+        [5, 10, 20, null].map((at, position) => ({
+          type: "insert",
+          table: conformanceExpiring,
+          row: { id: `r${position}`, grp: "g", at, tags: ["a", "b"], _v: 0 },
+        })),
+      );
+      const count = async (name: string) =>
+        Number(
+          (
+            await executor.execute({
+              sql: `SELECT COUNT(*) AS n FROM "${prefix}${name}"`,
+              params: [],
+            })
+          ).rows[0]!.n,
+        );
+
+      expect(await adapter.prune!(conformanceExpiring, 10, 500)).toBe(2);
+      expect(await count("conformance_expiring")).toBe(2);
+      // Each row had two tag entries; the pruned rows' went with them.
+      expect(await count("conformance_expiring__byTag")).toBe(4);
+      sqlite?.close();
+    },
+  );
 
   it("classifies constraint and transient driver errors", () => {
     const withCode = (fields: Record<string, unknown>) =>

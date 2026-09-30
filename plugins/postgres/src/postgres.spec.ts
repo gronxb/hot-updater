@@ -117,7 +117,7 @@ describe("postgres plugin schema", () => {
         { key: "schema.apiKeys", value: "1.0.0" },
         { key: "schema.core", value: "1.0.0" },
         { key: "schema.engine", value: "1" },
-        { key: "schema.insights", value: "1.0.0" },
+        { key: "schema.insights", value: "1.1.0" },
       ]);
     } finally {
       await database.dispose?.();

@@ -1,0 +1,7 @@
+---
+"@hot-updater/server": patch
+"@hot-updater/plugin-core": patch
+"@hot-updater/test-utils": patch
+---
+
+Tables and aggregates can expire their rows, with no scheduler. `defineTable` and `defineAggregate` take `retention: { field, days }`, where `field` is an integer field of epoch milliseconds and a row expires `days` after it; a model with retention takes part in no reference or rooted index. The days are a runtime value, so a plugin may take them as an option: the tables and indexes are the same for any period. DynamoDB and Firestore delete expired rows with their native TTL: the key-value helper stamps each row's items and index copies with their expiry, kept as `_ttl` and `expireAt`. MongoDB stamps `_expireAt`, a Date, under a TTL index. On PostgreSQL, MySQL, SQLite, D1, and Supabase, the adapter implements the optional `DatabaseAdapter.prune(table, before, limit)` over an index that leads with the field, which `hot-updater db generate` and `db migrate` create when the table has none, and the server prunes during writes: the write that takes the lease row in the settings table first deletes up to 500 expired rows a table, and other servers skip. The next pass is due in an hour, or in a minute while a pass still found a full batch. The adapter conformance suite takes `retention: "prune"` or `"ttl"` and checks either, and the read-budget suite expects recording an Insights event to read its 7 rows in 4 batch gets.

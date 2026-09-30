@@ -20,7 +20,7 @@ const engineDatabase = () => ({
 });
 
 const remoteDatabase = (
-  fetchAdmin: (path: string) => Promise<Response>,
+  fetchAdmin: RemoteDatabase["fetchAdmin"],
 ): RemoteDatabase => ({
   name: "standalone-repository",
   core: {} as HotUpdaterCoreApi,
@@ -78,6 +78,7 @@ describe("createConsoleRuntime over the database", () => {
     await expect(runtime.features()).resolves.toEqual({
       insights: true,
       insightsAnalytics: true,
+      insightsDeletion: true,
       apiKeys: true,
     });
     const model = await requireFeature(runtime, "insightsAnalytics");
@@ -99,6 +100,40 @@ describe("createConsoleRuntime over the database", () => {
     ]);
   });
 
+  it("deletes an installation's Insights data through the plugin's API", async () => {
+    const runtime = createConsoleRuntime({
+      database: engineDatabase(),
+      plugins: [insights()],
+    });
+    const model = await requireFeature(runtime, "insightsAnalytics");
+    await model.recordEvent({
+      event: event("01900000-0000-7000-8000-000000000001"),
+    });
+
+    const deletion = await requireFeature(runtime, "insightsDeletion");
+    await expect(deletion.deleteUser("user-1")).resolves.toEqual({
+      deleted: { installations: 1, events: 1 },
+      complete: true,
+    });
+    const reads = await requireFeature(runtime, "insights");
+    await expect(
+      reads.getInstallation({ installId: "install-1" }),
+    ).resolves.toBeNull();
+  });
+
+  it("reports how long the plugin keeps rows", async () => {
+    const runtime = createConsoleRuntime({
+      database: engineDatabase(),
+      plugins: [insights({ retention: { rawDays: 30, dailyDays: 60 } })],
+    });
+
+    const reads = await requireFeature(runtime, "insights");
+    await expect(reads.getRetention()).resolves.toEqual({
+      rawDays: 30,
+      dailyDays: 60,
+    });
+  });
+
   it("refuses the features of a plugin that is not listed", async () => {
     const runtime = createConsoleRuntime({
       database: engineDatabase(),
@@ -108,6 +143,7 @@ describe("createConsoleRuntime over the database", () => {
     await expect(runtime.features()).resolves.toEqual({
       insights: false,
       insightsAnalytics: false,
+      insightsDeletion: false,
       apiKeys: true,
     });
     await expect(requireFeature(runtime, "insights")).rejects.toEqual(
@@ -125,6 +161,7 @@ describe("createConsoleRuntime over the database", () => {
     await expect(runtime.features()).resolves.toEqual({
       insights: false,
       insightsAnalytics: false,
+      insightsDeletion: false,
       apiKeys: false,
     });
     await expect(requireFeature(runtime, "apiKeys")).rejects.toEqual(
@@ -145,6 +182,7 @@ describe("createConsoleRuntime for a self-hosted server", () => {
     await expect(runtime.features()).resolves.toEqual({
       insights: true,
       insightsAnalytics: false,
+      insightsDeletion: true,
       apiKeys: false,
     });
     await runtime.features();
@@ -171,6 +209,7 @@ describe("createConsoleRuntime for a self-hosted server", () => {
     await expect(runtime.features()).resolves.toEqual({
       insights: false,
       insightsAnalytics: false,
+      insightsDeletion: false,
       apiKeys: false,
     });
     await expect(requireFeature(runtime, "insights")).rejects.toEqual(
@@ -246,5 +285,81 @@ describe("createConsoleRuntime for a self-hosted server", () => {
     await expect(reads.listEvents({ limit: 1 })).rejects.toEqual(
       refused("insights", "without the insights() plugin"),
     );
+  });
+
+  it("deletes Insights data through the admin DELETE routes", async () => {
+    const fetchAdmin = vi.fn(
+      async (path: string, init?: { readonly method?: string }) =>
+        path === "/version"
+          ? Response.json({ adminProtocol: 2, plugins: ["insights"] })
+          : init?.method === "DELETE"
+            ? Response.json({
+                deleted: { installations: 1, events: 3 },
+                complete: true,
+              })
+            : Response.json({ error: "Not found" }, { status: 404 }),
+    );
+    const deletion = await requireFeature(
+      createConsoleRuntime({ database: remoteDatabase(fetchAdmin) }),
+      "insightsDeletion",
+    );
+
+    await expect(deletion.deleteInstallation("install/1")).resolves.toEqual({
+      deleted: { installations: 1, events: 3 },
+      complete: true,
+    });
+    expect(fetchAdmin).toHaveBeenLastCalledWith("/installations/install%2F1", {
+      method: "DELETE",
+    });
+    await deletion.deleteUser("user 1");
+    expect(fetchAdmin).toHaveBeenLastCalledWith(
+      "/installations?userId=user+1",
+      { method: "DELETE" },
+    );
+  });
+
+  it("says a server without the DELETE routes needs an upgrade", async () => {
+    const fetchAdmin = vi.fn(async (path: string) =>
+      path === "/version"
+        ? Response.json({ adminProtocol: 2, plugins: ["insights"] })
+        : Response.json({ error: "Not found" }, { status: 404 }),
+    );
+    const deletion = await requireFeature(
+      createConsoleRuntime({ database: remoteDatabase(fetchAdmin) }),
+      "insightsDeletion",
+    );
+
+    await expect(deletion.deleteInstallation("install-1")).rejects.toThrow(
+      "Upgrade @hot-updater/server on the server.",
+    );
+  });
+
+  it("reads a self-hosted server's retention, or its defaults from before it reported one", async () => {
+    const retention = vi.fn(async () =>
+      Response.json({ rawDays: 30, dailyDays: 60 }),
+    );
+    const fetchAdmin = vi.fn(async (path: string) =>
+      path === "/version"
+        ? Response.json({ adminProtocol: 2, plugins: ["insights"] })
+        : path === "/retention"
+          ? retention()
+          : Response.json({ data: [], nextCursor: null }),
+    );
+    const reads = await requireFeature(
+      createConsoleRuntime({ database: remoteDatabase(fetchAdmin) }),
+      "insights",
+    );
+
+    await expect(reads.getRetention()).resolves.toEqual({
+      rawDays: 30,
+      dailyDays: 60,
+    });
+    retention.mockResolvedValueOnce(
+      Response.json({ error: "Not found" }, { status: 404 }),
+    );
+    await expect(reads.getRetention()).resolves.toEqual({
+      rawDays: 90,
+      dailyDays: 400,
+    });
   });
 });

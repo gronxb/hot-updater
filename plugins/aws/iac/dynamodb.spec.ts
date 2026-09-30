@@ -5,7 +5,9 @@ const mocks = vi.hoisted(() => ({
   createTable: vi.fn(),
   describeContinuousBackups: vi.fn(),
   describeTable: vi.fn(),
+  describeTimeToLive: vi.fn(),
   updateContinuousBackups: vi.fn(),
+  updateTimeToLive: vi.fn(),
   waitUntilTableExists: vi.fn(),
 }));
 
@@ -15,7 +17,9 @@ vi.mock("@aws-sdk/client-dynamodb", () => ({
       createTable: mocks.createTable,
       describeContinuousBackups: mocks.describeContinuousBackups,
       describeTable: mocks.describeTable,
+      describeTimeToLive: mocks.describeTimeToLive,
       updateContinuousBackups: mocks.updateContinuousBackups,
+      updateTimeToLive: mocks.updateTimeToLive,
     };
   }),
   waitUntilTableExists: mocks.waitUntilTableExists,
@@ -52,6 +56,10 @@ describe("DynamoDBManager", () => {
       },
     });
     mocks.updateContinuousBackups.mockResolvedValue({});
+    mocks.describeTimeToLive.mockResolvedValue({
+      TimeToLiveDescription: { TimeToLiveStatus: "DISABLED" },
+    });
+    mocks.updateTimeToLive.mockResolvedValue({});
   });
 
   it("creates an on-demand metadata table with no secondary index", async () => {
@@ -92,6 +100,40 @@ describe("DynamoDBManager", () => {
       },
       TableName: "hot-updater-metadata",
     });
+    expect(mocks.updateTimeToLive).toHaveBeenCalledWith({
+      TableName: "hot-updater-metadata",
+      TimeToLiveSpecification: { AttributeName: "_ttl", Enabled: true },
+    });
+  });
+
+  it("turns on TTL for an existing table once, and refuses TTL on another attribute", async () => {
+    mocks.describeTable.mockResolvedValue({ Table: compatibleTable });
+    const manager = new DynamoDBManager("ap-northeast-2", {
+      accessKeyId: "test-access-key",
+      secretAccessKey: "test-secret-key",
+    });
+
+    await manager.ensureTable("hot-updater-metadata");
+    expect(mocks.updateTimeToLive).toHaveBeenCalledTimes(1);
+
+    mocks.describeTimeToLive.mockResolvedValue({
+      TimeToLiveDescription: {
+        AttributeName: "_ttl",
+        TimeToLiveStatus: "ENABLED",
+      },
+    });
+    await manager.ensureTable("hot-updater-metadata");
+    expect(mocks.updateTimeToLive).toHaveBeenCalledTimes(1);
+
+    mocks.describeTimeToLive.mockResolvedValue({
+      TimeToLiveDescription: {
+        AttributeName: "expires",
+        TimeToLiveStatus: "ENABLED",
+      },
+    });
+    await expect(manager.ensureTable("hot-updater-metadata")).rejects.toThrow(
+      'has TTL on "expires", but Hot Updater expires rows by "_ttl"',
+    );
   });
 
   it("reuses a table with the managed key schema", async () => {

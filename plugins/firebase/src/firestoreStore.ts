@@ -9,6 +9,7 @@ import type {
 import {
   FieldPath,
   FieldValue,
+  Timestamp,
   type DocumentData,
   type DocumentSnapshot,
   type Firestore,
@@ -49,12 +50,25 @@ const decode = (value: unknown) =>
     ? JSON.parse(String((value as { json: unknown }).json))
     : value;
 
-const toDocument = (key: KvKey, row: StoredRow): DocumentData => ({
+/**
+ * The collection's TTL field: a timestamp beside `pk` and `sk` on every item
+ * of a row that expires, which Firestore's TTL policy deletes.
+ */
+export const FIRESTORE_TTL_FIELD = "expireAt";
+
+const toDocument = (
+  key: KvKey,
+  row: StoredRow,
+  expiresAt?: number,
+): DocumentData => ({
   pk: key.pk,
   sk: key.sk,
   row: Object.fromEntries(
     Object.entries(row).map(([name, value]) => [name, encode(value)]),
   ),
+  ...(expiresAt === undefined
+    ? {}
+    : { [FIRESTORE_TTL_FIELD]: Timestamp.fromMillis(expiresAt) }),
 });
 
 const toRow = (data: DocumentData): StoredRow =>
@@ -185,7 +199,10 @@ export const createFirestoreStore = ({
             for (const [position, op] of ops.entries()) {
               const document = reference(op.key);
               if (op.type === "put") {
-                transaction.set(document, toDocument(op.key, op.value));
+                transaction.set(
+                  document,
+                  toDocument(op.key, op.value, op.expiresAt),
+                );
               } else if (op.type === "delete") {
                 transaction.delete(document);
               } else if (op.type === "add") {
@@ -197,7 +214,7 @@ export const createFirestoreStore = ({
                   }
                   transaction.set(
                     document,
-                    toDocument(op.key, created as StoredRow),
+                    toDocument(op.key, created as StoredRow, op.expiresAt),
                   );
                 } else {
                   // `by` always holds `_v`; field paths keep column names literal.
@@ -205,6 +222,14 @@ export const createFirestoreStore = ({
                     [string, number],
                     ...[string, number][],
                   ];
+                  // A document from before its table's retention gains the expiry.
+                  const ttl =
+                    op.expiresAt === undefined
+                      ? []
+                      : [
+                          FIRESTORE_TTL_FIELD,
+                          Timestamp.fromMillis(op.expiresAt),
+                        ];
                   transaction.update(
                     document,
                     new FieldPath("row", name),
@@ -213,6 +238,7 @@ export const createFirestoreStore = ({
                       new FieldPath("row", other),
                       FieldValue.increment(by),
                     ]),
+                    ...ttl,
                   );
                 }
               }

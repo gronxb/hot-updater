@@ -136,6 +136,8 @@ const rewrite = (
   }
   const row = { ...base, ...set };
   if (gauges.some((gauge) => Number(row[gauge]) < 0)) {
+    // Retention deleted the row whose gauges this change takes back.
+    if (current === null && table.retention) return undefined;
     throw new NegativeGaugeError(`${table.name}: a gauge went below 0.`);
   }
   const zero =

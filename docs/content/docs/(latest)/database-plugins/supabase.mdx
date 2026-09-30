@@ -67,6 +67,11 @@ atomically. The function runs as `SECURITY INVOKER` with a fixed
 core's statement shapes on Hot Updater's tables, and every value arrives in
 its `jsonb` parameter, never in the SQL text.
 
+Rows past their tables' [retention](/docs/custom/server-plugins#retention),
+such as Insights events and rollups, need no schedule or `pg_cron`. The Edge
+Function request whose write takes the hourly lease first deletes a bounded
+batch of them through the apply RPC.
+
 ## Configuration
 
 ```typescript

@@ -1,5 +1,8 @@
 import { createHotUpdater } from "@hot-updater/server";
-import { createKvAdapter } from "@hot-updater/server/database";
+import {
+  createKvAdapter,
+  type PhysicalTable,
+} from "@hot-updater/server/database";
 import {
   createDatabaseCoreApi,
   createDatabasePluginApis,
@@ -19,7 +22,7 @@ import { describe, expect, it } from "vitest";
 
 import { createFirestoreTestDatabase } from "../test-utils/createFirestoreTestDatabase";
 import { firebaseDatabase, migrateFirebaseDatabase } from "./firebaseDatabase";
-import { createFirestoreStore } from "./firestoreStore";
+import { createFirestoreStore, FIRESTORE_TTL_FIELD } from "./firestoreStore";
 
 const PROJECT_ID = "firebase-database-test";
 const config = {
@@ -34,6 +37,8 @@ setupDatabaseAdapterConformanceSuite({
   name: "key-value (Firestore emulator)",
   // A conformance insert is 3 items and a transaction takes 500 writes: 166 fit, 167 do not.
   maxOps: 166,
+  // Firestore's TTL policy deletes expired items, by their `expireAt`.
+  retention: "ttl",
   createAdapter: async ({ nativePageSize }) => {
     const collection = `conformance_${process.pid}_${(collections += 1)}`;
     return {
@@ -79,5 +84,64 @@ describe("firebaseDatabase", () => {
     migrate: () => migrateFirebaseDatabase(config),
     reset: clearData,
     dispose: () => undefined,
+  });
+});
+
+describe("Firestore TTL", () => {
+  /** Rows expire a day after `at`, with one index copy each. */
+  const expiring: PhysicalTable = {
+    name: "expiring",
+    columns: [
+      { name: "id", type: "string", nullable: false },
+      { name: "grp", type: "string", nullable: false },
+      { name: "at", type: "integer", nullable: false },
+      { name: "hits", type: "integer", nullable: false },
+      { name: "_v", type: "integer", nullable: false },
+    ],
+    key: ["id"],
+    indexes: [{ name: "byGroup", eq: ["grp"], sort: ["at"] }],
+    retention: { column: "at", ms: 86_400_000 },
+  };
+
+  it("stamps expireAt on every document of an expiring row, and on a counter it creates or adds to", async () => {
+    const collection = `ttl_${process.pid}`;
+    const adapter = createKvAdapter({
+      store: createFirestoreStore({ firestore, collection }),
+    });
+    const expiries = async () =>
+      (await firestore.collection(collection).get()).docs.map((document) =>
+        document.get(FIRESTORE_TTL_FIELD)?.toMillis(),
+      );
+    try {
+      await adapter.write([
+        {
+          type: "insert",
+          table: expiring,
+          row: { id: "a", grp: "g", at: 1_000, hits: 0, _v: 0 },
+        },
+      ]);
+      // The row and its index copy.
+      expect(await expiries()).toEqual([86_401_000, 86_401_000]);
+
+      await clearCollection(collection);
+      const counters = { ...expiring, name: "counters", indexes: [] };
+      const add = () =>
+        adapter.write([
+          {
+            type: "increment",
+            table: counters,
+            key: ["c"],
+            by: { hits: 1 },
+            init: { id: "c", grp: "g", at: 2_000, hits: 0, _v: 0 },
+          },
+        ]);
+      await add();
+      await add();
+      expect(await expiries()).toEqual([86_402_000]);
+      const [row] = await adapter.get(counters, [["c"]]);
+      expect(row).toMatchObject({ hits: 2, _v: 2 });
+    } finally {
+      await clearCollection(collection);
+    }
   });
 });

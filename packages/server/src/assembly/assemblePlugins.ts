@@ -7,12 +7,13 @@ import { coreModule } from "../core/schema";
 import { aggregateBatchingModule } from "../database/aggregateBatching";
 import { createDatabaseEngine } from "../database/database";
 import type { ReadMeasurement } from "../database/engine";
-import { fencedName, withSchemaFence } from "../database/fence";
+import { fencedName, SETTINGS_TABLE, withSchemaFence } from "../database/fence";
 import {
   resolveSchema,
   validateSchema,
   type SchemaModule,
 } from "../database/resolveSchema";
+import { pruneDuringWrites } from "../database/retention";
 import type { ModuleSchema } from "../database/schema";
 import { addedSettings, builtInModules } from "../db/builtInDatabase";
 import { builtInPlugin } from "../plugins/builtIn";
@@ -21,11 +22,9 @@ import type {
   PluginEndpoint,
   PluginInstance,
 } from "../plugins/definePlugin";
+import { HotUpdaterConfigError } from "./configError";
 
-/** A misconfigured `createHotUpdater` call, reported at startup. */
-export class HotUpdaterConfigError extends Error {
-  readonly name = "HotUpdaterConfigError";
-}
+export { HotUpdaterConfigError };
 
 export interface MountedEndpoint extends PluginEndpoint {
   readonly plugin: string;
@@ -247,16 +246,25 @@ export const assemblePlugins = (
   }
   // A fenced database also waits for each third-party plugin's settings row.
   const name = fencedName(adapter);
+  const fenced =
+    name === undefined || added.length === 0
+      ? adapter
+      : withSchemaFence(adapter, name, addedSettings(plugins));
+  const schema = resolveSchema([
+    coreModule,
+    ...modules,
+    ...(batching === undefined ? [] : [aggregateBatchingModule]),
+  ]);
+  // Writes prune expired rows, except where verify measures what each API
+  // reads and writes.
   const engine = createDatabaseEngine({
-    adapter:
-      name === undefined || added.length === 0
-        ? adapter
-        : withSchemaFence(adapter, name, addedSettings(plugins)),
-    schema: resolveSchema([
-      coreModule,
-      ...modules,
-      ...(batching === undefined ? [] : [aggregateBatchingModule]),
-    ]),
+    adapter: verify
+      ? fenced
+      : pruneDuringWrites(fenced, schema.tables, {
+          leaseTable: SETTINGS_TABLE,
+          now,
+        }),
+    schema,
     verify,
     ...(batching === undefined ? {} : { batching, now }),
   });

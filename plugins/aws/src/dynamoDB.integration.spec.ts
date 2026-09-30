@@ -1,11 +1,18 @@
-import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
+import {
+  DescribeTimeToLiveCommand,
+  DynamoDBClient,
+} from "@aws-sdk/client-dynamodb";
 import {
   BatchWriteCommand,
   DynamoDBDocumentClient,
   ScanCommand,
 } from "@aws-sdk/lib-dynamodb";
 import { createHotUpdater } from "@hot-updater/server";
-import { createKvAdapter, SETTINGS_TABLE } from "@hot-updater/server/database";
+import {
+  createKvAdapter,
+  type PhysicalTable,
+  SETTINGS_TABLE,
+} from "@hot-updater/server/database";
 import {
   createDatabaseCoreApi,
   createDatabasePluginApis,
@@ -28,7 +35,7 @@ import {
   type DynamoDBLocal,
   startDynamoDBLocal,
 } from "./dynamoDB.integration-fixture";
-import { createDynamoDBStore } from "./dynamoDBStore";
+import { createDynamoDBStore, DYNAMODB_TTL_ATTRIBUTE } from "./dynamoDBStore";
 
 let local: DynamoDBLocal;
 beforeAll(async () => {
@@ -42,6 +49,8 @@ setupDatabaseAdapterConformanceSuite({
   name: "key-value (DynamoDB Local)",
   // 34 conformance inserts are 102 items, over DynamoDB's 100 per transaction.
   maxOps: 33,
+  // DynamoDB deletes expired items itself, by their `_ttl`.
+  retention: "ttl",
   createAdapter: async ({ nativePageSize }) => {
     const tableName = local.tableName();
     const store = createDynamoDBStore({
@@ -101,6 +110,59 @@ describe("dynamoDB store", () => {
       );
       expect(itemsRead).toBe(2);
     }
+    client.destroy();
+    await local.dropTable(tableName);
+  });
+});
+
+describe("dynamoDB TTL", () => {
+  it("turns on TTL for `_ttl` and stamps it on every item of an expiring row", async () => {
+    const client = new DynamoDBClient(local.config);
+    const tableName = local.tableName();
+    const store = createDynamoDBStore({ client, tableName });
+    await store.migrations!.apply();
+    // A second migration leaves the enabled TTL as it is.
+    await store.migrations!.apply();
+    const { TimeToLiveDescription } = await client.send(
+      new DescribeTimeToLiveCommand({ TableName: tableName }),
+    );
+    expect(TimeToLiveDescription).toMatchObject({
+      AttributeName: DYNAMODB_TTL_ATTRIBUTE,
+      TimeToLiveStatus: expect.stringMatching(/^ENABL/u),
+    });
+
+    const expiring: PhysicalTable = {
+      name: "expiring",
+      columns: [
+        { name: "id", type: "string", nullable: false },
+        { name: "grp", type: "string", nullable: false },
+        { name: "at", type: "integer", nullable: false },
+        { name: "_v", type: "integer", nullable: false },
+      ],
+      key: ["id"],
+      indexes: [{ name: "byGroup", eq: ["grp"], sort: ["at"] }],
+      retention: { column: "at", ms: 86_400_000 },
+    };
+    const adapter = createKvAdapter({ store });
+    await adapter.write([
+      {
+        type: "insert",
+        table: expiring,
+        row: { id: "a", grp: "g", at: 1_000, _v: 0 },
+      },
+    ]);
+
+    const { Items = [] } = await DynamoDBDocumentClient.from(client).send(
+      new ScanCommand({ TableName: tableName }),
+    );
+    const stamped = Items.filter((item) => item.pk !== SETTINGS_TABLE.name);
+    // The row and its index copy, in epoch seconds, rounded up.
+    expect(stamped.map((item) => item[DYNAMODB_TTL_ATTRIBUTE])).toEqual([
+      86_401, 86_401,
+    ]);
+    expect(await adapter.get(expiring, [["a"]])).toEqual([
+      { id: "a", grp: "g", at: 1_000, _v: 0 },
+    ]);
     client.destroy();
     await local.dropTable(tableName);
   });
