@@ -71,6 +71,7 @@ export {
   type TableDefinition,
 } from "./schema";
 export { DatabaseCursorError } from "./cursor";
+export { aggregateBatchingModule } from "./aggregateBatching";
 export {
   createEngine,
   type DatabaseEngineOptions,

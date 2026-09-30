@@ -150,6 +150,17 @@ export interface DatabaseAdapter {
     request: QueryRequest,
   ): Promise<readonly StoredRow[]>;
   write(ops: readonly WriteOp[]): Promise<WriteResult>;
+  /**
+   * Deletes rows, as read, with their index entries: best effort, without
+   * guards, and not atomically. It is for rows the caller has already
+   * recorded as consumed, so deleting one twice, or one already gone, is
+   * harmless. A backend that bills transactional deletes more implements it
+   * with its plain batch delete; without it, callers delete through `write`.
+   */
+  deleteConsumed?(
+    table: PhysicalTable,
+    rows: readonly StoredRow[],
+  ): Promise<void>;
   /** Called only by `@hot-updater/server/db` tooling. */
   readonly migrations?: {
     apply(tables: readonly PhysicalTable[]): Promise<void>;

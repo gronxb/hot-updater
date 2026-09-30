@@ -30,6 +30,13 @@ export type RuntimeHotUpdaterAPI<
   readonly api: PluginApis<TPlugins>;
   /** The database's name, which `hot-updater db` commands read. */
   readonly adapterName: string;
+  /**
+   * Applies aggregate changes the database batches that are still pending:
+   * this process's buffer, and the log rows no compaction has merged yet.
+   * A long-lived server with `aggregateBatching: { mode: "memory" }` calls
+   * it before it exits.
+   */
+  readonly flush: () => Promise<void>;
 };
 
 export type HotUpdaterAPI = RuntimeHotUpdaterAPI;
@@ -212,6 +219,9 @@ export function createHotUpdater<
     ...(database.onCachedRoutesChange === undefined
       ? {}
       : { onCachedRoutesChange: () => database.onCachedRoutesChange!() }),
+    ...(database.aggregateBatching === undefined
+      ? {}
+      : { batching: database.aggregateBatching }),
   });
   const clientAuth = plugins.clientAuth;
   if (clientAuth !== undefined && publicClients) {
@@ -246,6 +256,7 @@ export function createHotUpdater<
     handlers,
     core: plugins.core,
     api: plugins.api as PluginApis<TPlugins>,
+    flush: plugins.flush,
   };
   Object.defineProperty(api, hotUpdaterCoreMetadata, {
     enumerable: false,

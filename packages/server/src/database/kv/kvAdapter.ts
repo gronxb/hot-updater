@@ -91,6 +91,8 @@ export interface KeyValueStore {
   ): Promise<{ readonly items: readonly KvItem[]; readonly more: boolean }>;
   /** Applies every op or none; `failedOp` names an op whose condition failed. */
   write(ops: readonly KvOp[]): Promise<WriteResult>;
+  /** Deletes items with no condition and not atomically, a batch at a time. */
+  deleteConsumed?(keys: readonly KvKey[]): Promise<void>;
   /** Prepares the store, such as its one table, for `db migrate`. */
   readonly migrations?: { apply(): Promise<void> };
   dispose?(): Promise<void>;
@@ -443,6 +445,19 @@ export const createKvAdapter = ({
         ? { ok: false, failedOp: items[result.failedOp]!.origin }
         : result;
     },
+    ...(store.deleteConsumed === undefined
+      ? {}
+      : {
+          deleteConsumed: (table, rows) => {
+            const layout = layoutOf(table);
+            return store.deleteConsumed!(
+              rows.flatMap((row) => [
+                rowItem(layout, rowKey(table, row)),
+                ...[...itemsOf(layout, row).values()].map(({ key }) => key),
+              ]),
+            );
+          },
+        }),
     // Tables need no items of their own; the store prepares itself, if at all.
     migrations: { apply: async () => store.migrations?.apply() },
     ...(store.dispose === undefined ? {} : { dispose: () => store.dispose!() }),

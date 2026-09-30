@@ -3,14 +3,23 @@ import { createHash } from "node:crypto";
 import { IAM } from "@aws-sdk/client-iam";
 import { STS } from "@aws-sdk/client-sts";
 import { p } from "@hot-updater/cli-tools";
-import { builtInSchema, SETTINGS_TABLE } from "@hot-updater/server/database";
+import {
+  aggregateBatchingModule,
+  builtInSchema,
+  resolveSchema,
+  SETTINGS_TABLE,
+} from "@hot-updater/server/database";
 
-/** The partitions the plugin's items use: each table's rows, and its index items after `#`. */
+/**
+ * The partitions the plugin's items use: each table's rows, and its index
+ * items after `#`, the log and lease tables of batched aggregates included.
+ */
 export const dynamoDBLeadingKeys = (): string[] =>
-  [...builtInSchema.tables, SETTINGS_TABLE].flatMap(({ name }) => [
-    name,
-    `${name}#*`,
-  ]);
+  [
+    ...builtInSchema.tables,
+    ...resolveSchema([aggregateBatchingModule]).tables,
+    SETTINGS_TABLE,
+  ].flatMap(({ name }) => [name, `${name}#*`]);
 
 export const buildDynamoDBPolicy = (
   region: string,
@@ -22,9 +31,12 @@ export const buildDynamoDBPolicy = (
     Version: "2012-10-17",
     Statement: [
       {
-        // The key-value store reads with BatchGetItem and Query, and writes with TransactWriteItems.
+        // The key-value store reads with BatchGetItem and Query, writes with
+        // TransactWriteItems, and deletes consumed aggregate log rows with
+        // BatchWriteItem.
         Action: [
           "dynamodb:BatchGetItem",
+          "dynamodb:BatchWriteItem",
           "dynamodb:ConditionCheckItem",
           "dynamodb:DeleteItem",
           "dynamodb:GetItem",

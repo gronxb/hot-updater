@@ -1,9 +1,11 @@
 import type { BundleEventRow } from "@hot-updater/plugin-core";
 import {
+  aggregateBatchingModule,
   builtInSchema,
   createDatabaseEngine,
   createKvAdapter,
   migrateBuiltInSchema,
+  resolveSchema,
   type RetryOptions,
 } from "@hot-updater/server/database";
 import type { CoreReader } from "@hot-updater/server/plugins";
@@ -124,5 +126,83 @@ describe("Insights rollout gate on DynamoDB Local", () => {
     expect(report.errors).toEqual({});
     expect(report.committed).toBe(INSTALLS);
     if (ENFORCE_RETRIED_BOUND) expect(retried).toBeLessThanOrEqual(0.1);
+  }, 600_000);
+
+  it(`records the same ${INSTALLS} moves with batched aggregates, compacting every second, and counts every move once`, async () => {
+    const adapter = createKvAdapter({
+      store: createDynamoDBStore({
+        client: local.client,
+        tableName: local.tableName(),
+      }),
+    });
+    await migrateBuiltInSchema(adapter, "dynamoDB");
+    const module = { id: "insights", schema: insightsSchema } as const;
+    const schema = resolveSchema([module, aggregateBatchingModule]);
+    const retries = { rerun: 0, resend: 0, retriedTransactions: 0 };
+    // The seed commits its aggregates transactionally, as a table does
+    // before it batches; the rollout batches them in log mode.
+    const seeded = createDatabaseEngine({
+      adapter,
+      schema,
+      retry: { attempts: 64, baseDelayMs: 1, maxDelayMs: 20 },
+    });
+    const engine = createDatabaseEngine({
+      adapter: withAdapterLatency(adapter, LATENCY_MS),
+      schema,
+      batching: { mode: "log", windowMs: 1_000 },
+      retry: {
+        onRetry: (kind, attempt) => {
+          retries[kind] += 1;
+          if (attempt === 1) retries.retriedTransactions += 1;
+        },
+      },
+    });
+    const apiOf = (database: typeof engine) =>
+      insights().init({
+        db: database.database(module),
+        // Insights never reads core.
+        core: {} as CoreReader,
+        now: Date.now,
+      }).api;
+
+    const start = Date.now() - 2 * 3_600_000;
+    const seed = await runContentionHarness({
+      transactions: INSTALLS,
+      ratePerSecond: 5000,
+      concurrency: 4,
+      run: (install) =>
+        apiOf(seeded).recordEvent(move(install, install, "a", start + install)),
+    });
+    expect(seed.errors).toEqual({});
+    const rollout = apiOf(engine);
+    const report = await runContentionHarness({
+      transactions: INSTALLS,
+      ratePerSecond: RATE_PER_SECOND,
+      concurrency: WRITERS,
+      run: (install) =>
+        rollout.recordEvent(move(INSTALLS + install, install, "b", Date.now())),
+    });
+    await engine.flush();
+    const retried = retries.retriedTransactions / INSTALLS;
+    console.info(
+      "dynamodb-rollout-gate-batched",
+      JSON.stringify({ ...report, ...retries, retried }),
+    );
+    expect(report.errors).toEqual({});
+    expect(report.committed).toBe(INSTALLS);
+    // An event's transaction writes no aggregate row, so moves of distinct
+    // installations never conflict.
+    if (ENFORCE_RETRIED_BOUND) expect(retried).toBeLessThanOrEqual(0.01);
+    const latest = (bundle: string) =>
+      rollout.countLatestEvents({
+        platform: "ios",
+        channel: "production",
+        sinceMs: start - (start % 86_400_000),
+        bundle: [
+          { field: "to_bundle_id", value: bundle, types: ["UPDATE_APPLIED"] },
+        ],
+      });
+    expect(await latest("bundle-b")).toBe(INSTALLS);
+    expect(await latest("bundle-a")).toBe(0);
   }, 600_000);
 });

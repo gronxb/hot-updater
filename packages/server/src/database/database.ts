@@ -1,9 +1,11 @@
+import type { AggregateBatching } from "@hot-updater/plugin-core";
 import {
   DATABASE_VERSION_COLUMN,
   type DatabaseKeyValue,
   type StoredRow,
 } from "@hot-updater/plugin-core/internal";
 
+import { createAggregateBatches } from "./aggregateBatching";
 import { createEngine, type DatabaseEngineOptions } from "./engine";
 import type { Page, ReadInput } from "./engineReads";
 import {
@@ -264,9 +266,31 @@ export interface HotUpdaterDatabase<S extends ModuleSchema> {
 }
 
 /** The engine plus `database(module)`, which hands a module its typed handle. */
-export const createDatabaseEngine = (options: DatabaseEngineOptions) => {
+export const createDatabaseEngine = ({
+  batching,
+  now = Date.now,
+  ...options
+}: DatabaseEngineOptions & {
+  /**
+   * Batches changes to aggregates declared `batched`; the schema must
+   * include `aggregateBatchingModule`.
+   */
+  readonly batching?: AggregateBatching;
+  /** The clock batching times its flushes and compactions by. */
+  readonly now?: () => number;
+}) => {
   const engine = createEngine(options);
   const { reads } = engine;
+  const batches =
+    batching &&
+    createAggregateBatches({
+      engine,
+      adapter: options.adapter,
+      schema: options.schema,
+      batching,
+      now,
+    });
+  const transaction = batches?.transaction ?? engine.transaction;
   const outside =
     <A extends unknown[], T>(read: (...args: A) => T) =>
     (...args: A): T => {
@@ -287,6 +311,13 @@ export const createDatabaseEngine = (options: DatabaseEngineOptions) => {
   };
   return {
     ...engine,
+    /** Applies batched aggregate changes still pending: this process's buffer and the log. */
+    flush: async () => {
+      await batches?.flush();
+    },
+    dispose: async () => {
+      await batches?.dispose();
+    },
     database<S extends ModuleSchema>(
       module: SchemaModule & { readonly schema: S },
     ): HotUpdaterDatabase<S> {
@@ -307,14 +338,14 @@ export const createDatabaseEngine = (options: DatabaseEngineOptions) => {
           (model, input) =>
             barePage(reads.findMany(name(model), input as ReadInput)) as never,
         ),
-        findAggregates: outside(
-          (model, input) =>
-            barePage(
-              reads.findAggregates(name(model), input as ReadInput),
-            ) as never,
-        ),
+        findAggregates: outside(async (model, input) => {
+          await batches?.beforeRead(name(model));
+          return (await barePage(
+            reads.findAggregates(name(model), input as ReadInput),
+          )) as never;
+        }),
         transaction: (fn) =>
-          engine.transaction((tx: TransactionEngine) =>
+          transaction((tx: TransactionEngine) =>
             fn({
               findOne: (model, lookup) =>
                 tx.findOne(name(model), lookup as never) as never,

@@ -49,7 +49,7 @@ describe("runtime createHotUpdater", () => {
       CreateHotUpdaterOptions["clientAccess"]
     >().toEqualTypeOf<ClientAccessPolicy>();
     expectTypeOf<keyof RuntimeHotUpdaterAPI>().toEqualTypeOf<
-      "adapterName" | "api" | "core" | "handlers"
+      "adapterName" | "api" | "core" | "flush" | "handlers"
     >();
   });
 
@@ -74,6 +74,7 @@ describe("runtime createHotUpdater", () => {
       "adapterName",
       "api",
       "core",
+      "flush",
       "handlers",
     ]);
     expect(hotUpdater).not.toHaveProperty("authorityId");

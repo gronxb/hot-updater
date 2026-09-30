@@ -269,11 +269,13 @@ const repeatsHead = (event: BundleEventRow, head: Head) =>
 /**
  * Records one event in one transaction: one batch read of the event and its
  * installation's head, one of the gauge and sketch rows it changes, then one
- * write. A stored event's id changes nothing when repeated, whichever
- * installation sends it, and neither does the id of the installation's head.
- * An UNCHANGED report that repeats its head on the same UTC day writes
- * nothing at all. An older event still counts in its own hour but never
- * replaces the head.
+ * write. On a database that batches aggregates (DynamoDB, Firestore), the
+ * write holds the event's rows and one log row instead, and a compaction
+ * reads and writes the aggregate rows. A stored event's id changes nothing
+ * when repeated, whichever installation sends it, and neither does the id
+ * of the installation's head. An UNCHANGED report that repeats its head on
+ * the same UTC day writes nothing at all. An older event still counts in its
+ * own hour but never replaces the head.
  */
 export const recordEvent = (
   db: HotUpdaterDatabase<InsightsSchema>,
