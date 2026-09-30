@@ -77,7 +77,7 @@ export const createCoreApi = (
 export type CoreApi = ReturnType<typeof createCoreApi>;
 
 /**
- * Core's API in process, on a database's storage adapter: how the CLI reads
+ * Core's API in process, on a database's adapter: how the CLI reads
  * and writes a database that runs on the storage engine.
  */
 export const createInProcessCoreApi = (
@@ -102,7 +102,7 @@ const isAdapter = (value: unknown): value is DatabaseAdapter =>
     (method) => typeof value[method] === "function",
   );
 
-/** The storage adapter a configured database runs on, if it is on the engine. */
+/** The adapter a configured database runs on, if it is on the engine. */
 export const engineAdapterOf = (
   database: unknown,
 ): DatabaseAdapter | undefined =>
@@ -118,7 +118,7 @@ export const OFF_ENGINE_DATABASE =
 /**
  * Core's API for a configured database, as the CLI uses it: a self-hosted
  * server's admin API when the database is `standaloneRepository`, or the
- * database's own storage adapter, in process.
+ * database's own adapter, in process.
  */
 export const createDatabaseCoreApi = (
   database: unknown,

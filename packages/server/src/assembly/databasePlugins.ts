@@ -66,7 +66,7 @@ export interface MeasuredDatabase<TApi = Readonly<Record<string, unknown>>> {
 }
 
 /**
- * Core and the plugins over a storage adapter, assembled as
+ * Core and the plugins over a database adapter, assembled as
  * `createHotUpdater` assembles them but on an engine in verify mode, with
  * that engine's `measureReads`: what read-budget suites measure. The adapter
  * runs as given, without the schema fence.

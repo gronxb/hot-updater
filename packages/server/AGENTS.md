@@ -21,8 +21,8 @@ Keep the `@hot-updater/server` subpaths semantically strict:
   - DB helpers may consume the root runtime instance through runtime-neutral
     package-internal metadata, but they must not depend on Node HTTP interop.
 - `@hot-updater/server/database` is the public storage engine entry for
-  database providers and storage adapter authors.
-  - Export the storage adapter contract, `createSqlAdapter`,
+  database providers and database adapter authors.
+  - Export the database adapter contract, `createSqlAdapter`,
     `createKvAdapter`, `createEngineDatabase`, core's schema and settings,
     `toolingTargetOf` for core with a server's plugins, and the migration
     helpers that providers call.

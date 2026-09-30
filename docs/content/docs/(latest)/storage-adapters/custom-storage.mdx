@@ -34,11 +34,14 @@ and `delete`. `listObjects` and `deleteObjects` add
 
 ```package-install
 npm install @hot-updater/plugin-core
+npm install @hot-updater/test-utils vitest --save-dev
 ```
 
 `@hot-updater/plugin-core` exports `createStorageAdapter`, the storage types,
 and the URI and download helpers used below. An adapter you publish lists it in
 `peerDependencies`; see [Test and publish](/docs/plugins/publish).
+`@hot-updater/test-utils` runs the storage contract against your adapter; see
+[Test the adapter](#test-the-adapter).
 
 ## Write the adapter
 
@@ -283,11 +286,14 @@ Prefix or bucket deletion is outside the contract.
 
 ## Test the adapter
 
-Test the adapter against a fake of your SDK's client, and against a real bucket
-before you publish it. This Vitest spec keeps objects in memory:
+`setupStorageAdapterTestSuite` from `@hot-updater/test-utils` runs the
+[storage contract](#storage-contract) that deploy, patch, the Console, the
+server, and `storage prune` rely on. Every official storage adapter runs it.
+Run it over a fake of your SDK's client first. This spec keeps objects in
+memory:
 
 ```ts title="src/myStorage.spec.ts"
-import { describe, expect, it } from "vitest";
+import { setupStorageAdapterTestSuite } from "@hot-updater/test-utils";
 
 import { type BucketClient, myStorage } from "./myStorage";
 
@@ -320,66 +326,72 @@ const memoryBucket = (): BucketClient => {
   };
 };
 
-describe("myStorage", () => {
-  const storage = myStorage({
-    client: memoryBucket(),
-    bucket: "bundles",
+setupStorageAdapterTestSuite({
+  name: "myStorage",
+  createStorage: async () => ({
+    storage: myStorage({
+      client: memoryBucket(),
+      bucket: "bundles",
+      basePath: "ota",
+      downloadUrlSigningKey: "test-signing-key",
+    }),
     basePath: "ota",
-    downloadUrlSigningKey: "test-signing-key",
-  });
-
-  it("stores an object under a canonical URI and reads it back", async () => {
-    const { storageUri } = await storage.put({
-      key: "releases/1.0.0/bundle ios#1.zip",
-      body: new Blob(["hello"]).stream(),
-      contentLength: 5,
-      contentType: "application/zip",
-    });
-    expect(storageUri).toBe(
-      "my-storage://bundles/ota/releases/1.0.0/bundle%20ios%231.zip",
-    );
-    await expect(storage.exists({ storageUri })).resolves.toEqual({
-      exists: true,
-    });
-    const { response } = await storage.get({ storageUri });
-    await expect(response?.text()).resolves.toBe("hello");
-    const { url } = await storage.getDownloadUrl!({ storageUri });
-    expect(url.startsWith("/storage/")).toBe(true);
-  });
-
-  it("deletes exactly one object, and deleting it again succeeds", async () => {
-    const { storageUri } = await storage.put({
-      key: "a.txt",
-      body: new Blob(["a"]).stream(),
-      contentType: "text/plain",
-    });
-    await expect(storage.delete({ storageUri })).resolves.toEqual({
-      deleted: true,
-    });
-    await expect(storage.delete({ storageUri })).resolves.toEqual({
-      deleted: true,
-    });
-    await expect(storage.exists({ storageUri })).resolves.toEqual({
-      exists: false,
-    });
-    await expect(storage.get({ storageUri })).resolves.toEqual({
-      response: null,
-    });
-  });
-
-  it("refuses a URI of another bucket or protocol", async () => {
-    await expect(
-      storage.get({ storageUri: "my-storage://other/ota/a.txt" }),
-    ).rejects.toThrow('Expected bucket "bundles"');
-    await expect(
-      storage.getDownloadUrl!({ storageUri: "my-storage://other/ota/a.txt" }),
-    ).rejects.toThrow('Expected bucket "bundles"');
-    await expect(
-      storage.getDownloadUrl!({ storageUri: "s3://bundles/ota/a.txt" }),
-    ).rejects.toThrow("Invalid storage URI protocol");
-  });
+  }),
+  operations: ["put", "get", "getDownloadUrl", "exists", "delete"],
 });
 ```
+
+| Option          | Meaning                                                                                                                                                                                                                                              |
+| --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `name`          | Names the suite                                                                                                                                                                                                                                      |
+| `createStorage` | Returns `{ storage, basePath?, cleanup? }` over an empty bucket or base path, for each case; `cleanup` runs after the case. With `basePath`, every URI `put` returns must have the key `<basePath>/<key>`.                                           |
+| `operations`    | The operations the adapter implements. The suite fails when one of them, `put`, or `get` is missing, and skips the cases of the others. Add `listObjects` and `deleteObjects` when the adapter [supports storage cleanup](#support-storage-cleanup). |
+
+The cases cover the name and protocol; bodies of known, unknown, and zero
+length, each read to the end before `put` resolves; concurrent puts; the
+canonical URI of each key below the base path, with spaces, `#`, `%`, `@`, `+`,
+and Unicode; the archive and asset URIs that deploy derives from a manifest's
+URI; replacing an object; a failed upload that leaves no object; `null` for a
+missing object or a folder; a `delete` that removes exactly one object and
+succeeds again; a URI of another bucket or protocol, which every operation
+rejects; download URLs that are `http(s)` or the same `/storage/` path on every
+call; keys that `listObjects` returns relative to the base path, with a prefix
+as a folder; and `deleteObjects` deleting exactly the keys it receives.
+
+Before you publish, run the suite against a real bucket or your provider's
+emulator too. Give each case a base path of its own, and delete what it stored:
+
+```ts title="src/myStorage.integration.spec.ts"
+import { setupStorageAdapterTestSuite } from "@hot-updater/test-utils";
+
+import { myStorage } from "./myStorage";
+import { deleteBelow, testBucketClient } from "./testBucket";
+
+const client = testBucketClient();
+
+setupStorageAdapterTestSuite({
+  name: "myStorage (test bucket)",
+  createStorage: async () => {
+    const basePath = `conformance/${crypto.randomUUID()}`;
+    return {
+      storage: myStorage({
+        client,
+        bucket: "hot-updater-test",
+        basePath,
+        downloadUrlSigningKey: "test-signing-key",
+      }),
+      basePath,
+      cleanup: () => deleteBelow(basePath),
+    };
+  },
+  operations: ["put", "get", "getDownloadUrl", "exists", "delete"],
+});
+```
+
+`./testBucket` is your own module: your SDK's client for a test bucket, and a
+function that deletes every object below a prefix. The
+[`s3Storage` spec](https://github.com/gronxb/hot-updater/blob/next/plugins/aws/src/s3Storage.integration.spec.ts)
+runs the suite this way on LocalStack.
 
 Then deploy through it: point a test app's `hot-updater.config.ts` at the
 adapter, run `hot-updater deploy`, and [test an OTA update](/docs/get-started/test-ota)

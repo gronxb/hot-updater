@@ -43,7 +43,7 @@ pnpm test # Uses @cloudflare/vitest-pool-workers
 
 ## Key Components
 
-### Storage Adapter Contract
+### Database Adapter Contract
 
 - `src/database`: the `DatabaseAdapter` contract, `createMemoryAdapter()`,
   `verifyAdapter()`, value helpers, and the distinct-count sketches of

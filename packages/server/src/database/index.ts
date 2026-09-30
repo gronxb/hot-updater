@@ -1,9 +1,10 @@
 /**
- * What database providers and storage adapter authors build on: the storage
- * adapter contract, the SQL core and key-value helper that implement it,
- * `createEngineDatabase`, which puts an adapter behind the schema fence as a
- * provider's database, core's schema and settings, which its migration
- * writes, and `toolingTargetOf`, which adds a list of plugins' tables.
+ * What database providers and database adapter authors build on: the
+ * database adapter contract, the SQL core and key-value helper that
+ * implement it, `createEngineDatabase`, which puts an adapter behind the
+ * schema fence as a provider's database, core's schema and settings, which
+ * its migration writes, and `toolingTargetOf`, which adds a list of plugins'
+ * tables.
  */
 export {
   compareTuples,

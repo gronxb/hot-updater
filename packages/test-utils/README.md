@@ -1,7 +1,8 @@
 # @hot-updater/test-utils
 
-Vitest suites for Hot Updater database adapters, providers and servers. The
-official providers and example servers run these same suites.
+Vitest suites for Hot Updater storage adapters, database adapters, providers,
+plugins and servers. The official adapters, providers and example servers run
+these same suites.
 
 ```bash
 pnpm add -D @hot-updater/test-utils @hot-updater/server vitest
@@ -11,7 +12,7 @@ pnpm add -D @hot-updater/test-utils @hot-updater/server vitest
 
 Register three suites against a disposable test database:
 
-- `setupDatabaseAdapterConformanceSuite` runs the storage adapter contract case
+- `setupDatabaseAdapterConformanceSuite` runs the database adapter contract case
   by case: value round-trips, ordering, guards, all-or-nothing writes, unique
   and multi-valued indexes, paging under capped native pages, and concurrent
   writers.
@@ -80,6 +81,34 @@ client selector and keep a simulated device's state across updates, rollbacks
 and the built-in fallback. Native download, activation and restart remain
 device end-to-end responsibilities.
 
+## Storage adapters
+
+`setupStorageAdapterTestSuite` runs the storage adapter contract that deploy,
+patch, the Console, the server and `storage prune` rely on: the canonical URI
+of each key below the base path, streamed bodies, failed uploads that leave no
+object, exact deletes, URIs of another bucket or protocol, download URLs, and
+listing. A storage adapter's specs don't need `@hot-updater/server`.
+
+```ts
+import { setupStorageAdapterTestSuite } from "@hot-updater/test-utils";
+
+import { myStorage } from "./myStorage";
+
+setupStorageAdapterTestSuite({
+  name: "myStorage",
+  createStorage: async () => ({
+    storage: myStorage({ bucket: "bundles", basePath: "ota" }),
+    basePath: "ota",
+  }),
+  operations: ["put", "get", "getDownloadUrl", "exists", "delete"],
+});
+```
+
+`createStorage` returns the adapter over an empty bucket or base path for each
+case, and the `cleanup` it may return runs after the case. `operations` lists
+what the adapter implements: the suite fails when one of them is missing and
+skips the cases of the others.
+
 ## Plugins and servers
 
 - `createPluginTestHarness` runs one server plugin the way `createHotUpdater`
@@ -90,5 +119,7 @@ device end-to-end responsibilities.
   `@hot-updater/test-utils/node` to install the suites' storage fixtures.
 
 See the
-[custom database adapter guide](https://hot-updater.dev/docs/database-adapters/custom-database)
-for the adapter contract and complete specs for each suite.
+[storage adapter guide](https://hot-updater.dev/docs/storage-adapters/custom-storage#test-the-adapter)
+and the
+[database adapter guide](https://hot-updater.dev/docs/database-adapters/custom-database)
+for the contracts and complete specs for each suite.
