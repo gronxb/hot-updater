@@ -7,40 +7,39 @@ icon: supabase
 ## Installation
 
 ```package-install
-npm install @hot-updater/supabase --save-dev
+npm install @hot-updater/server @hot-updater/supabase --save-dev
 ```
 
 ## Setup
 
 Set up the backend with an [AI agent or the interactive
 CLI](/docs/managed/supabase#step-2-configure-supabase), then use the
-configuration below. Managed setup applies the migration for you.
+configuration below. Managed setup applies the migrations for you: the
+package's migration of core's tables, then one that init writes for the plugins
+the server runs.
 
 The settings below connect to an initialized database; they do not create its
 tables or RPC function, and `hot-updater db migrate` does not run for
-Supabase. To prepare a project yourself, copy
-`20260818000000_hot-updater_1.0.0.sql` from the installed
-`@hot-updater/supabase` package's `supabase/migrations` directory into your
-project's `supabase/migrations` directory, then apply it with the Supabase CLI
-linked to that project:
+Supabase. To prepare a project yourself, run `hot-updater db generate` with a
+server definition that passes the server's
+[plugins](/docs/custom/server-plugins#create-the-plugins-tables) to
+`createHotUpdater` with `supabaseDatabase` from `@hot-updater/supabase`. It
+writes `supabase/migrations/<timestamp>_hot-updater.sql`; apply it with the
+Supabase CLI linked to that project:
 
 ```bash
+npx hot-updater db generate src/hotUpdater.ts
 npx supabase db push
 ```
 
-The migration creates the tables of core and of the managed Edge Function's
-plugins, Insights and API keys, under the `hot_updater_v1_` prefix, with
-row-level security on every table, the write guard table, and the
-`hot_updater_v1_apply` function, then writes the schema settings rows last.
-
-An Edge Function that runs other
-[plugins](/docs/custom/server-plugins#create-the-plugins-tables)
-also needs their tables, and the apply function must be allowed to reach them.
-`hot-updater db generate` writes a migration that does both to
-`supabase/migrations/<timestamp>_hot-updater.sql`; apply it with
-`npx supabase db push`. It reads a Node module that passes the function's
-`plugins` to `createHotUpdater` with `supabaseDatabase` from
-`@hot-updater/supabase`.
+The migration creates the tables of core and of those plugins under the
+`hot_updater_v1_` prefix, with row-level security on every table, the write
+guard table, and the `hot_updater_v1_apply` function allowed to reach them,
+then writes the schema settings rows last. Every statement can run again, so
+generate and push again after you add a plugin; a plugin you remove keeps its
+tables. The package's `supabase/migrations/20260818000000_hot-updater_1.0.0.sql`
+holds core's tables alone, without the settings rows of Insights or API keys
+that a server running them checks.
 
 ## Schema settings
 
@@ -58,7 +57,7 @@ Updater schema.
 ## How the database is reached
 
 `supabaseDatabase(config)` returns an engine database, `{ name, adapter }`,
-which `defineConfig` and `createHotUpdater` both accept. Its adapter is Hot
+which `createHotUpdater` accepts in the server definition. Its adapter is Hot
 Updater's shared SQL core for PostgreSQL, behind the schema settings check.
 
 Every read and write calls one function with the service role key:
@@ -85,24 +84,24 @@ interface SupabaseDatabaseConfig {
 
 ## Usage
 
-These CLI examples load the `HOT_UPDATER_SUPABASE_*` variables written to
-`.env.hotupdater` by managed setup. Keep that file's existing values.
+These examples read the `HOT_UPDATER_SUPABASE_*` variables that managed setup
+writes to `.env.hotupdater`, which `hot-updater.config.ts` loads before the CLI
+imports the server definition. Keep that file's existing values.
 
-```typescript title="hot-updater.config.ts"
-import { existsSync } from "node:fs";
+Set the adapter as `database` in your
+[server definition](/docs/custom/quick-start#define-the-server), which `server`
+in `hot-updater.config.ts` points at:
+
+```typescript title="hotUpdater.ts (excerpt)"
+import { createHotUpdater } from "@hot-updater/server";
 import { supabaseDatabase } from "@hot-updater/supabase"; // [!code ++]
-import { defineConfig } from "hot-updater";
 
-if (existsSync(".env.hotupdater")) {
-  process.loadEnvFile(".env.hotupdater");
-}
-
-export default defineConfig({
+export const hotUpdater = createHotUpdater({
   database: supabaseDatabase({ // [!code ++]
     supabaseUrl: process.env.HOT_UPDATER_SUPABASE_URL!, // [!code ++]
     supabaseServiceRoleKey: process.env.HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY!, // [!code ++]
   }), // [!code ++]
-  // ... other config
+  // ... storage and plugins
 });
 ```
 
@@ -129,32 +128,35 @@ export const hotUpdater = createHotUpdater({
 ```
 
 `insights()` records app events, and `apiKeys()` protects client routes with
-the `x-api-key` header. The managed Edge Function runs the same list, which
+the `x-api-key` header. The managed Edge Function's default list is the same, which
 `@hot-updater/supabase/edge` exports as `plugins`.
 
 ## Complete example
 
-Combined storage and database:
+The server definition `hot-updater init` writes for managed Supabase, with
+Storage and the Postgres database. `plugins` is the provider's default list,
+which you can [edit](/docs/managed/server-plugins):
 
-```typescript
-import { existsSync } from "node:fs";
-import { supabaseStorage, supabaseDatabase } from "@hot-updater/supabase";
-import { defineConfig } from "hot-updater";
+```typescript title="hotUpdater.ts"
+import { createHotUpdater } from "@hot-updater/server";
+import { plugins, supabaseDatabase, supabaseStorage } from "@hot-updater/supabase";
 
-if (existsSync(".env.hotupdater")) {
-  process.loadEnvFile(".env.hotupdater");
-}
-
-export default defineConfig({
-  storage: supabaseStorage({
-    supabaseUrl: process.env.HOT_UPDATER_SUPABASE_URL!,
-    supabaseServiceRoleKey: process.env.HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY!,
-    bucketName: process.env.HOT_UPDATER_SUPABASE_BUCKET_NAME!,
-  }),
+/**
+ * The Hot Updater server: its database, storage, and plugins.
+ * hot-updater.config.ts points the CLI and the console here.
+ */
+export const hotUpdater = createHotUpdater({
   database: supabaseDatabase({
     supabaseUrl: process.env.HOT_UPDATER_SUPABASE_URL!,
     supabaseServiceRoleKey: process.env.HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY!,
   }),
-  // ... other config
+  storage: [
+    supabaseStorage({
+      supabaseUrl: process.env.HOT_UPDATER_SUPABASE_URL!,
+      supabaseServiceRoleKey: process.env.HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY!,
+      bucketName: process.env.HOT_UPDATER_SUPABASE_BUCKET_NAME!,
+    }),
+  ],
+  plugins,
 });
 ```

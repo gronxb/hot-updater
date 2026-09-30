@@ -152,7 +152,7 @@ After provisioning, record these outputs for [Set up your app](/docs/get-started
 | Client base URL | `https://<your-worker-name>.<your-subdomain>.workers.dev` |
 | Client request header | `x-api-key` |
 | Client API key | The saved `HOT_UPDATER_API_KEY` in your ignored `.env.hotupdater` |
-| Deploy configuration | `hot-updater.config.ts` and the selected provider resources |
+| Deploy configuration | `hot-updater.config.ts`, the server definition `hotUpdater.ts`, and the selected provider resources |
 
 Use the actual URL returned by deployment. Configure the SDK and native bundle
 loader through [Set up your app](/docs/get-started/app-setup), using the selected
@@ -161,21 +161,37 @@ client API key belongs in the mobile app's build-time configuration; provider
 credentials stay in the deploy environment.
 
 <Callout type="info">
-  The managed Cloudflare runtime exposes `/version` publicly. OTA update checks
-  and Insights ingestion require `x-api-key: $HOT_UPDATER_API_KEY`. Internally,
-  it enables Insights and mounts only `handlers.client`. Admin routes,
+  The managed Cloudflare runtime exposes `/version` publicly and mounts only
+  `handlers.client`, whatever the server definition lists. With the default
+  plugins, `insights()` and `apiKeys()`, OTA update checks and Insights
+  ingestion require `x-api-key: $HOT_UPDATER_API_KEY`. Admin routes,
   including Insights queries, are not mounted on the public worker URL.
 </Callout>
 
 ## Generated configuration and operations
 
-Init generates `hot-updater.config.ts` with your Cloudflare configuration.
+Init writes two files: `hot-updater.config.ts`, with the deploy settings and
+`server`, and `hotUpdater.ts`, the server definition with your Cloudflare
+database and storage and the plugins the managed Worker runs. The CLI and the
+Console read the definition. `plugins` starts as the provider's list,
+`insights()` and `apiKeys()`, from `@hot-updater/cloudflare`. To add a plugin or
+drop one, edit it and rerun init; see
+[Server Plugins](/docs/managed/server-plugins).
+
+On a rerun, init keeps an existing `server` and a wrapped build such as
+`withSentry(bare())`, and removes `database`, `storage`, and `plugins` from the
+config, since the definition holds them. It keeps a server definition you edited
+and bundles it into the managed Worker, after checking that its database and
+storage are the provider's, on the resources init set up. When it cannot edit
+`hot-updater.config.ts`, such as a config that a function returns, it leaves the
+file unchanged and prints the `server: "./hotUpdater.ts",` line to add and the
+keys to remove. It removes a `hotUpdater.plugins.ts` that an older init wrote,
+and names one you wrote, since nothing reads it anymore.
 
 ```ts title="hot-updater.config.ts"
-import { existsSync } from "node:fs";
 import { bare } from "@hot-updater/bare";
-import { d1Database, r2Storage } from "@hot-updater/cloudflare";
 import { defineConfig } from "hot-updater";
+import { existsSync } from "node:fs";
 
 if (existsSync(".env.hotupdater")) {
   process.loadEnvFile(".env.hotupdater");
@@ -183,20 +199,36 @@ if (existsSync(".env.hotupdater")) {
 
 export default defineConfig({
   build: bare({ enableHermes: true }),
-  updateStrategy: "appVersion",
-  storage: r2Storage({
-    bucketName: process.env.HOT_UPDATER_CLOUDFLARE_R2_BUCKET_NAME!,
-    accountId: process.env.HOT_UPDATER_CLOUDFLARE_ACCOUNT_ID!,
-    credentials: {
-      accessKeyId: process.env.HOT_UPDATER_CLOUDFLARE_R2_ACCESS_KEY_ID!,
-      secretAccessKey: process.env.HOT_UPDATER_CLOUDFLARE_R2_SECRET_ACCESS_KEY!,
-    },
-  }),
+  server: "./hotUpdater.ts",
+  updateStrategy: "appVersion", // or "fingerprint"
+});
+```
+
+```ts title="hotUpdater.ts"
+import { d1Database, plugins, r2Storage } from "@hot-updater/cloudflare";
+import { createHotUpdater } from "@hot-updater/server";
+
+/**
+ * The Hot Updater server: its database, storage, and plugins.
+ * hot-updater.config.ts points the CLI and the console here.
+ */
+export const hotUpdater = createHotUpdater({
   database: d1Database({
     databaseId: process.env.HOT_UPDATER_CLOUDFLARE_D1_DATABASE_ID!,
     accountId: process.env.HOT_UPDATER_CLOUDFLARE_ACCOUNT_ID!,
     cloudflareApiToken: process.env.HOT_UPDATER_CLOUDFLARE_API_TOKEN!,
   }),
+  storage: [
+    r2Storage({
+      bucketName: process.env.HOT_UPDATER_CLOUDFLARE_R2_BUCKET_NAME!,
+      accountId: process.env.HOT_UPDATER_CLOUDFLARE_ACCOUNT_ID!,
+      credentials: {
+        accessKeyId: process.env.HOT_UPDATER_CLOUDFLARE_R2_ACCESS_KEY_ID!,
+        secretAccessKey: process.env.HOT_UPDATER_CLOUDFLARE_R2_SECRET_ACCESS_KEY!,
+      },
+    }),
+  ],
+  plugins,
 });
 ```
 
@@ -221,8 +253,10 @@ Before reusing a populated database:
    ```
 
 2. Compare the Hot Updater definitions with the installed package's
-   `node_modules/@hot-updater/cloudflare/worker/migrations/0001_hot-updater_1.0.0.sql`.
-   If the settings and migration-history tables exist, inspect them too:
+   `node_modules/@hot-updater/cloudflare/sql/bundles.sql`, the schema of core
+   and of the default plugins, Insights and API keys. For a server definition
+   with other plugins, `hot-updater db generate` writes its schema. If the
+   settings and migration-history tables exist, inspect them too:
 
    ```bash
    npx wrangler d1 execute <database-name> --remote \

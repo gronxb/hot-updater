@@ -1,14 +1,55 @@
 ---
 title: "CLI Configuration"
-description: Configure your Hot Updater CLI to connect to your self-hosted server.
+description: Point the Hot Updater CLI at your server, through its server definition or its admin API.
 icon: Settings
 ---
 
 ## Overview
 
-Your CLI configuration (`hot-updater.config.ts`) connects your React Native project to your self-hosted Hot Updater server. This file defines how bundles are built, stored, and tracked.
+`hot-updater.config.ts` holds your React Native project's deploy settings, such
+as the build adapter, the update strategy, and signing, and `server`, which
+tells the CLI where the server's database, storage, and plugins are. The CLI
+never lists them itself:
 
-## Basic configuration
+- `server: "./src/hotUpdater.ts"` points at the
+  [server definition](/docs/custom/quick-start#define-the-server), the module
+  that exports `hotUpdater` from
+  `createHotUpdater({ database, storage, plugins })`. The CLI opens the same
+  database, uploads to the first storage, and adds the plugins' commands. Use it
+  when the React Native project can import that module, such as in a monorepo.
+- `server: standaloneRepository({ baseUrl, commonHeaders, storage })` reaches
+  a self-hosted server through its admin API. Use it when the server's code
+  lives elsewhere.
+
+A `database`, `storage`, or `plugins` key in `hot-updater.config.ts` stops the
+CLI with a message that asks you to move it into the server definition.
+
+## Point at the server definition
+
+```typescript title="hot-updater.config.ts"
+import { bare } from "@hot-updater/bare";
+import { defineConfig } from "hot-updater";
+
+export default defineConfig({
+  build: bare({ enableHermes: true }),
+  updateStrategy: "appVersion",
+  server: "./src/hotUpdater.ts", // [!code ++]
+});
+```
+
+- The path is relative to `hot-updater.config.ts`. The module exports
+  `hotUpdater`, or a default export, and can export `closeDatabase`, which the
+  CLI calls when a command finishes, such as to end a connection pool.
+- The CLI loads the module only for the commands that need the server:
+  `deploy`, `patch`, the `bundle` commands, `db`, `storage prune`, `console`,
+  the plugins' commands, and `doctor`.
+- Load the server's environment before the definition reads it, such as with
+  `process.loadEnvFile(".env.hotupdater")` at the top of
+  `hot-updater.config.ts`. A command that names the definition's path, such as
+  `hot-updater db migrate src/hotUpdater.ts`, loads `.env.hotupdater` itself
+  without running `hot-updater.config.ts`.
+
+## Reach a self-hosted server
 
 Install the CLI dependencies in your React Native project:
 
@@ -22,8 +63,9 @@ and `HOT_UPDATER_ADMIN_TOKEN`, and add it to `.gitignore`. Then create
 
 ```typescript title="hot-updater.config.ts"
 import { existsSync } from "node:fs";
-import { bare } from "@hot-updater/bare";
+
 import { s3Storage } from "@hot-updater/aws";
+import { bare } from "@hot-updater/bare";
 import { standaloneRepository } from "@hot-updater/standalone"; // [!code ++]
 import { defineConfig } from "hot-updater";
 
@@ -38,33 +80,32 @@ if (!adminToken) {
 
 export default defineConfig({
   build: bare({ enableHermes: true }),
-  storage: s3Storage({
-    region: "auto",
-    endpoint: process.env.R2_ENDPOINT,
-    credentials: {
-      accessKeyId: process.env.R2_ACCESS_KEY_ID!,
-      secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
-    },
-    bucketName: process.env.R2_BUCKET_NAME!,
-  }),
-  database: standaloneRepository({ // [!code ++]
+  updateStrategy: "appVersion",
+  server: standaloneRepository({ // [!code ++]
     baseUrl: "http://localhost:3000/hot-updater/admin", // [!code ++]
     commonHeaders: { // [!code ++]
       Authorization: `Bearer ${adminToken}`, // [!code ++]
     }, // [!code ++]
+    storage: [ // [!code ++]
+      s3Storage({ // [!code ++]
+        region: "auto", // [!code ++]
+        endpoint: process.env.R2_ENDPOINT, // [!code ++]
+        credentials: { // [!code ++]
+          accessKeyId: process.env.R2_ACCESS_KEY_ID!, // [!code ++]
+          secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!, // [!code ++]
+        }, // [!code ++]
+        bucketName: process.env.R2_BUCKET_NAME!, // [!code ++]
+      }), // [!code ++]
+    ], // [!code ++]
   }), // [!code ++]
-  updateStrategy: "appVersion",
 });
 ```
 
 <Callout type="warn">
-The CLI `storage` plugin must match one entry in the server's
-`createHotUpdater({ storage })` array.
-
-If the CLI uses `s3Storage`, the server must also use `s3Storage`.
-
-Both sides need the same plugin type and URI configuration to encode and decode
-the hierarchical `protocol://bucket/encoded/slash/key` storage URIs correctly.
+`storage` must match the server's `createHotUpdater({ storage })`: the same
+adapter, configured with the same bucket and URI settings, so both sides encode
+and decode the hierarchical `protocol://bucket/encoded/slash/key` storage URIs
+the same way. The CLI uploads to the first adapter.
 
 </Callout>
 
@@ -73,21 +114,23 @@ the hierarchical `protocol://bucket/encoded/slash/key` storage URIs correctly.
 `baseUrl` is the exact root where the server mounts `handlers.admin`.
 `commonHeaders` must match the authentication middleware on that mount. Keep
 these values in the CLI's environment; the mobile app connects to the client
-root with its own API key.
+root with its own API key. `storage` lists the adapters of the server's bundle
+storage: the CLI uploads to the first, and the Console reads and deletes a
+bundle's files with the adapter of their protocol.
 
-`standaloneRepository` takes only these two options. Its routes are the
-server's admin API, so they cannot be remapped. See the
+The routes are the server's admin API, so they cannot be remapped. See the
 [Standalone Repository reference](/docs/database-adapters/standalone#configuration)
 for alternate authentication headers.
 
 ## Server plugins
 
 With `standaloneRepository`, the [server plugins](/docs/custom/server-plugins)
-run only on the server. The Console reads the server's Insights overview,
-events, and installations from its admin handler; App usage, bundle activity,
-and API key management need a direct database configuration. To manage API
-keys, run `hot-updater api-key` in the server project with the file that
-creates `hotUpdater`, as in
+run only on the server, and the CLI and the Console read which ones from the
+admin `/version` route; nothing lists them again. The Console reads the server's
+Insights overview, events, and installations from its admin handler; App usage,
+bundle activity, and API key management need the server definition. A plugin's
+commands, such as `hot-updater api-key`, also need the definition: run them in
+the server project, or name its path as the command's last argument, as in
 [Manage API keys](/docs/custom/api-key-authentication#manage-api-keys).
 
 ## API endpoints
@@ -106,12 +149,12 @@ npx hot-updater bundle list
 ```
 
 A successful list, including an empty list for a new installation, verifies
-the configured admin URL and credentials. A `401` means the CLI header and
-server middleware do not agree. A `503` means the server's database is not
-ready; if it needs migrations, run `hot-updater db migrate` where the server's
-database is configured. A message to upgrade `@hot-updater/server` means the
-server does not speak the admin API protocol this CLI needs. A successful list
-does not verify the mobile client path.
+the configured server. With `standaloneRepository`, a `401` means the CLI header
+and server middleware do not agree. A `503` means the server's database is not
+ready; if it needs migrations, run `hot-updater db migrate` where the server
+definition is. A message to upgrade `@hot-updater/server` means the server does
+not speak the admin API protocol this CLI needs. A successful list does not
+verify the mobile client path.
 
 Then [set up your app](/docs/get-started/app-setup) with the client URL and API
 key, and [test an OTA update](/docs/get-started/test-ota) in a release build.

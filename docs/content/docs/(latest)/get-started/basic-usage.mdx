@@ -51,7 +51,8 @@ Review the setup result:
 
 | Output | What to verify |
 | --- | --- |
-| `hot-updater.config.ts` | Selected build, storage, database and update strategy |
+| `hot-updater.config.ts` | Selected build and update strategy, and `server` pointing at `hotUpdater.ts` |
+| `hotUpdater.ts` | The server definition: the selected database and storage, and the managed server's plugins |
 | `.env.hotupdater` | Local provider settings and registered `HOT_UPDATER_API_KEY`, kept private and ignored |
 | Update server base URL | The actual deployed endpoint, including a provider base path when required |
 | Remote resources | The selected account/project, database and storage match the local config |
@@ -60,9 +61,16 @@ The server URL and **client** API key connect the app to the server.
 `.env.hotupdater` is not automatically loaded into the mobile app. Provider,
 service-role and admin credentials remain in the CLI/server environment.
 
-Re-running `init` with another provider preserves unrelated config, prior
-provider variables and existing infrastructure. Keep old resources until
-installed binaries no longer depend on them.
+<a id="switch-providers" />
+
+Re-running `init` with another provider replaces the `hotUpdater.ts` that the
+previous provider's init wrote with its own. A `hotUpdater.ts` you edited for
+the previous provider is refused before init touches a resource: deploy it with
+`hot-updater init --provider <previous provider>`, give it the new provider's
+database and storage, or remove it and rerun init, which writes one. Init keeps
+unrelated config, the previous provider's variables in `.env.hotupdater`, and
+its infrastructure. Keep old resources until installed binaries no longer
+depend on them.
 
 <a id="step-4-wrap-your-application" />
 

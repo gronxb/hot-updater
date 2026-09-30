@@ -7,7 +7,7 @@ icon: supabase
 ## Installation
 
 ```package-install
-npm install @hot-updater/supabase --save-dev
+npm install @hot-updater/server @hot-updater/supabase --save-dev
 ```
 
 ## Setup
@@ -30,18 +30,25 @@ interface SupabaseStorageConfig {
 
 ## Usage
 
-```typescript title="hot-updater.config.ts"
-import { supabaseStorage } from "@hot-updater/supabase"; // [!code ++]
-import { defineConfig } from "hot-updater";
+Add the adapter to `storage` in your
+[server definition](/docs/custom/quick-start#define-the-server), which `server`
+in `hot-updater.config.ts` points at. The CLI uploads to the first adapter, and
+the server resolves downloads with it:
 
-export default defineConfig({
-  storage: supabaseStorage({ // [!code ++]
-    supabaseUrl: process.env.SUPABASE_URL, // [!code ++]
-    supabaseServiceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY, // [!code ++]
-    bucketName: "hot-updater-bundles", // [!code ++]
-    basePath: "bundles", // Optional // [!code ++]
-  }), // [!code ++]
-  // ... other config
+```typescript title="hotUpdater.ts (excerpt)"
+import { supabaseStorage } from "@hot-updater/supabase"; // [!code ++]
+import { createHotUpdater } from "@hot-updater/server";
+
+export const hotUpdater = createHotUpdater({
+  // ... database and plugins
+  storage: [ // [!code ++]
+    supabaseStorage({ // [!code ++]
+      supabaseUrl: process.env.SUPABASE_URL!, // [!code ++]
+      supabaseServiceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY!, // [!code ++]
+      bucketName: "hot-updater-bundles", // [!code ++]
+      basePath: "bundles", // Optional // [!code ++]
+    }), // [!code ++]
+  ], // [!code ++]
 });
 ```
 

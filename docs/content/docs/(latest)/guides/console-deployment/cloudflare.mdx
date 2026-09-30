@@ -15,11 +15,19 @@ Complete [Basics](/docs/guides/console-deployment) first. This guide uses native
 ## Copy the Worker example
 
 ```bash
-cp examples/cloudflare/hot-updater.config.ts.example hot-updater.config.ts
+cp examples/cloudflare/console.config.ts.example console.config.ts
 cp examples/cloudflare/wrangler.jsonc wrangler.jsonc
 ```
 
-The template already includes the Cloudflare plugin and Wrangler.
+The template builds the server definition from the Worker's bindings for each
+request, with `d1Database`, `r2Storage`, and `plugins` from
+`@hot-updater/cloudflare/worker`. Install the packages it imports:
+
+```package-install
+npm install @hot-updater/server @hot-updater/cloudflare
+```
+
+Then sign in to Wrangler, which the console repository includes:
 
 ```package-install
 npx wrangler login
@@ -109,13 +117,17 @@ cp examples/cloudflare/.dev.vars.example .dev.vars
 
 ```package-install
 npm run build:cloudflare
-npx wrangler d1 execute DB --local --file node_modules/@hot-updater/cloudflare/worker/migrations/0001_hot-updater_1.0.0.sql
+npx wrangler d1 execute DB --local --file node_modules/@hot-updater/cloudflare/sql/bundles.sql
 npm run preview:cloudflare
 ```
 
 Run these commands from the console checkout root. The SQL file ships with
-`@hot-updater/cloudflare` and initializes the schema in the local `DB` binding
-used by preview. Repeat initialization if you clear the local Wrangler state.
+`@hot-updater/cloudflare` and initializes the local `DB` binding that preview
+uses with the tables of core and of the default plugins, Insights and API keys.
+For a server with other plugins, apply the migration that
+[`hot-updater db generate`](/docs/database-adapters/cloudflare#setup) writes
+for its definition instead. Repeat initialization if you clear the local
+Wrangler state.
 
 Register the localhost OAuth callback. Preview uses separate local D1/R2 data
 by default; it does not copy production bundles or reports. See
@@ -139,7 +151,7 @@ Rollback restores Worker code/configuration, not D1 or R2 data.
 | Symptom | Check |
 | --- | --- |
 | Bindings unavailable | Build and run the Worker preset, not Vite's Node server |
-| Insights missing from the navigation | `plugins` in `hot-updater.config.ts` includes `insights()`, such as `plugins` from `@hot-updater/cloudflare/worker` |
+| Insights missing from the navigation | The server definition in `console.config.ts` runs `insights()`, such as `plugins` from `@hot-updater/cloudflare/worker` |
 | Empty Insights | Correct D1 binding; local preview uses separate data |
 | Bucket mismatch | `BUCKET_NAME`, the R2 binding, and stored bundle URI use the same bucket |
 | Stale bindings | Edit root config, rebuild, and deploy the generated output |

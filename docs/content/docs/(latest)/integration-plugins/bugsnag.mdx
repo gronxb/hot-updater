@@ -99,6 +99,10 @@ export default defineConfig({
 
 </Tabs>
 
+With a [managed provider](/docs/get-started/choose-provider#set-up-a-provider-preset),
+`hot-updater init` keeps this wrapped build when it updates
+`hot-updater.config.ts`, and adds `server` beside it.
+
 <Callout title="Automatic Upload">
 `withBugsnag()` uploads all generated sourcemaps to BugSnag during `hot-updater deploy`. Each upload is identified by a `codeBundleId`, which defaults to the bundle id hot-updater generates for the deploy.
 </Callout>
