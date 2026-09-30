@@ -10,17 +10,19 @@ import {
   type QueryBound,
   type StoredRow,
 } from "@hot-updater/plugin-core/internal";
+import {
+  DatabaseQueryError,
+  type Page,
+} from "@hot-updater/plugin-core/server-plugin";
 
 import { cursorScope, decodeCursor, encodeCursor } from "./cursor";
+
+export { DatabaseQueryError, type Page };
 import {
   type ResolvedModel,
   type ResolvedSchema,
   SHARD_COLUMN,
 } from "./resolveSchema";
-
-export class DatabaseQueryError extends Error {
-  readonly name = "DatabaseQueryError";
-}
 
 /** A value of the index's first order field, or a prefix of its order tuple. */
 export type RangeValue = DatabaseKeyValue | readonly DatabaseKeyValue[];
@@ -41,12 +43,6 @@ export interface ReadInput {
   readonly order?: "asc" | "desc";
   readonly limit: number;
   readonly cursor?: string;
-}
-
-export interface Page<TRow> {
-  readonly rows: readonly TRow[];
-  /** Present only after a full page. */
-  readonly next?: string;
 }
 
 export interface EngineReadCount {

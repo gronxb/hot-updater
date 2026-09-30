@@ -51,6 +51,17 @@ pnpm test # Uses @cloudflare/vitest-pool-workers
   adapter authors through `@hot-updater/server/database` (the sketches to
   plugin authors through `@hot-updater/server/plugins`)
 
+### Server Plugin Authoring API
+
+- `src/serverPlugin`: `definePlugin` and its CLI types, the schema DSL, the
+  typed database handle, the explicit `CoreReads` interface, and the errors
+  plugins handle, exported from `./server-plugin` and re-exported by
+  `@hot-updater/server/plugins`. It sits below the server so the official
+  plugin packages (`plugins/insights`, `plugins/api-keys`) depend on it
+  without a cycle. The official plugin brand (`markOfficial`,
+  `isOfficialPlugin`, `checkReservedId`) and the schema shapes the server
+  resolves are exported from `./internal`.
+
 ### Utility Functions
 
 - `calculatePagination()`: Pagination calculation helper

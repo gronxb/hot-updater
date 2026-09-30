@@ -16,6 +16,10 @@
       "import": "./dist/internal.mjs",
       "require": "./dist/internal.cjs"
     },
+    "./server-plugin": {
+      "import": "./dist/server-plugin.mjs",
+      "require": "./dist/server-plugin.cjs"
+    },
     "./package.json": "./package.json"
   },
   "files": [

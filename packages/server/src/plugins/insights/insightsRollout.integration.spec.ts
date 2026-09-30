@@ -16,8 +16,7 @@ import { resolveSchema } from "../../database/resolveSchema";
 import { createSqlAdapter } from "../../database/sql/sqlAdapter";
 import { pgExecutor } from "../../database/sql/sqlTestExecutors";
 import type { CoreReader } from "../definePlugin";
-import type { BundleEventRow } from "./eventRow";
-import { insights, insightsSchema } from "./index";
+import { insights, insightsSchema, type BundleEventRow } from "./index";
 
 assertDockerComposeAvailable(
   "The Insights rollout gate needs Docker Compose and a running Docker daemon.",

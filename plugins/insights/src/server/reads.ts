@@ -4,9 +4,11 @@ import {
   countDistinct,
   mergeDistinct,
 } from "@hot-updater/plugin-core/internal";
+import type {
+  HotUpdaterDatabase,
+  Page,
+} from "@hot-updater/plugin-core/server-plugin";
 
-import type { HotUpdaterDatabase } from "../../database/database";
-import type { Page } from "../../database/engineReads";
 import type { BundleEventRow } from "./eventRow";
 import type {
   InsightsBundleEventFilter,

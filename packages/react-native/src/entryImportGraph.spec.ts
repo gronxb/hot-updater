@@ -102,16 +102,19 @@ describe("@hot-updater/react-native/client-plugin entry", () => {
   });
 
   it("exports every plugin name the root entry still exports for the app", () => {
-    const rootNames = /export\s*\{([^}]*)\}\s*from\s*["']\.\/clientPlugin["']/
-      .exec(readFileSync(join(sourceRoot, "index.ts"), "utf8"))?.[1]
-      ?.split(",")
-      .map((name) => name.trim().replace(/^type\s+/, ""))
-      .filter((name) => name.length > 0);
-    const contractNames = [
-      ...readFileSync(join(sourceRoot, "clientPlugin.ts"), "utf8").matchAll(
-        /^export\s+(?:const|function|type|interface)\s+(\w+)/gm,
-      ),
-    ].map((match) => match[1]);
+    /** The names a file re-exports from `specifier`, without `type`. */
+    const reexported = (file: string, specifier: string) => {
+      const block = new RegExp(
+        `export\\s*\\{([^}]*)\\}\\s*from\\s*["']${specifier}["']`,
+      ).exec(readFileSync(join(sourceRoot, file), "utf8"))?.[1];
+      return (block ?? "")
+        .split(",")
+        .map((name) => name.trim().replace(/^type\s+/, ""))
+        .filter((name) => name.length > 0);
+    };
+    const rootNames = reexported("index.ts", "\\./clientPlugin");
+    // The contract lives in @hot-updater/core, which loads no React Native.
+    const contractNames = reexported("clientPlugin.ts", "@hot-updater/core");
 
     expect(rootNames).toEqual([
       "defineClientPlugin",

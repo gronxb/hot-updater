@@ -22,7 +22,7 @@ through the `insights()` client plugin
 
 ## Where Insights runs
 
-The plugin (`packages/server/src/plugins/insights`) declares its tables and
+The plugin (`@hot-updater/plugin-insights`, in `plugins/insights`) declares its tables and
 aggregates, and the storage engine runs them on every database adapter, so a
 custom database implements the adapter contract, not Insights methods. Its API,
 validated at the boundary as `InsightsModel` from `@hot-updater/plugin-core`,

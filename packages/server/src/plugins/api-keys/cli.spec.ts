@@ -1,11 +1,13 @@
+import {
+  type ApiKeysCliApi,
+  apiKeysCli,
+} from "@hot-updater/plugin-api-keys/internal";
 import { createMemoryAdapter } from "@hot-updater/plugin-core/internal";
 import { describe, expect, it, vi } from "vitest";
 
 import { createDatabasePluginApis } from "../../assembly/databasePlugins";
 import type { PluginCommand, PluginCommandUi } from "../definePlugin";
-import type { ApiKeyMetadata } from "./apiKeys";
-import { type ApiKeysCliApi, apiKeysCli } from "./cli";
-import { apiKeys } from "./index";
+import { apiKeys, type ApiKeyMetadata } from "./index";
 
 /** A UI that keeps what the command writes, unstyled. */
 const createUi = () => {

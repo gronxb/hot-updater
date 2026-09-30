@@ -10,20 +10,9 @@ import {
   type CompiledReleaseCatalog,
   type ReleaseCatalogRow,
 } from "@hot-updater/plugin-core";
+import type { ReleaseCatalogRequest } from "@hot-updater/plugin-core/server-plugin";
 
-export type ReleaseCatalogRequest =
-  | {
-      readonly strategy: "APP_VERSION";
-      readonly platform: "ios" | "android";
-      readonly channelKey: string;
-      readonly appVersion: string;
-    }
-  | {
-      readonly strategy: "FINGERPRINT";
-      readonly platform: "ios" | "android";
-      readonly channelKey: string;
-      readonly fingerprintHash: string;
-    };
+export type { ReleaseCatalogRequest };
 
 /** A stored catalog payload, checked against its strategy's shape. */
 export const parseCompiledCatalog = (

@@ -15,6 +15,7 @@ import {
   type ReleaseFilter,
   type ReleaseRow,
 } from "@hot-updater/plugin-core";
+import type { CoreReads } from "@hot-updater/plugin-core/server-plugin";
 
 import type { HotUpdaterDatabase, ReadRow } from "../database/database";
 import type { Page } from "../database/engineReads";
@@ -28,6 +29,7 @@ import { baseBundleIdsOf, parseBaseCandidateKey } from "./baseCandidates";
 import type { CoreSchema } from "./schema";
 
 export type CoreDatabase = HotUpdaterDatabase<CoreSchema>;
+export type { CoreReads };
 export type { BundleDetail, KeysetInput, ReleaseFilter };
 
 const PAGE = 500;
@@ -120,7 +122,10 @@ export interface CoreStorage {
 }
 
 /** Core's reads, each through one declared index or key. */
-export const createCoreReads = (db: CoreDatabase, storage: CoreStorage) => {
+export const createCoreReads = (
+  db: CoreDatabase,
+  storage: CoreStorage,
+): CoreReads => {
   /** A bundle row's patches, exactly as many as its reference counter holds. */
   const detail = async (
     row: ReadRow<CoreSchema["bundles"]>,
@@ -413,5 +418,3 @@ export const createCoreReads = (db: CoreDatabase, storage: CoreStorage) => {
     },
   };
 };
-
-export type CoreReads = ReturnType<typeof createCoreReads>;
