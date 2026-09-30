@@ -31,7 +31,7 @@ export const standaloneRepository = ({
 }: StandaloneServerConfig): StandaloneRepository => {
   if (!Array.isArray(storage) || storage.length === 0) {
     throw new TypeError(
-      "standaloneRepository needs storage: the adapters for the server's bundle storage, where the CLI uploads to the first.",
+      "standaloneRepository needs storage: the adapters for the server's bundle storage, where the CLI uploads to the first. In hot-updater.config.ts, that is `server: standaloneRepository({ baseUrl, storage: [s3Storage(...)] })`, in place of `database` and `storage`.",
     );
   }
   const http = createStandaloneHttp(config);

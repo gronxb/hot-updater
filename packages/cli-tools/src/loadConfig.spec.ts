@@ -144,6 +144,19 @@ describe("loadConfig", () => {
     },
   );
 
+  it("names every setting the server definition holds in one refusal", async () => {
+    await writeProjectFile(
+      projectRoot,
+      "hot-updater.config.ts",
+      "export default { storage: {}, database: {}, plugins: [] };\n",
+    );
+
+    const { loadConfig } = await import("./loadConfig");
+    await expect(loadConfig(null)).rejects.toThrow(
+      "Remove database, storage, plugins from hot-updater.config:",
+    );
+  });
+
   it("refuses a server that is neither a path nor a remote server", async () => {
     await writeProjectFile(
       projectRoot,

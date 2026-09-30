@@ -156,6 +156,40 @@ describe("loadHotUpdater", () => {
     }
   });
 
+  it("loads a server definition the command names without running hot-updater.config.ts", async () => {
+    const projectDir = await mkdtemp(
+      path.join(tmpdir(), "hot-updater-named-server-"),
+    );
+    await writeFile(
+      path.join(projectDir, "hotUpdater.ts"),
+      [
+        "export const hotUpdater = {",
+        "  adapterName: process.env.HOT_UPDATER_TEST_ADAPTER,",
+        "};",
+      ].join("\n"),
+      "utf-8",
+    );
+    await writeFile(
+      path.join(projectDir, ".env.hotupdater"),
+      "HOT_UPDATER_TEST_ADAPTER=kysely\n",
+      "utf-8",
+    );
+    mockCli.loadConfig.mockRejectedValueOnce(
+      new Error("HOT_UPDATER_ADMIN_TOKEN is required."),
+    );
+
+    try {
+      const loaded = await loadHotUpdater("hotUpdater.ts", { cwd: projectDir });
+      expect(loaded.adapterName).toBe("kysely");
+      expect(mockCli.loadConfig).not.toHaveBeenCalled();
+    } finally {
+      delete process.env["HOT_UPDATER_TEST_ADAPTER"];
+      mockCli.loadConfig.mockReset();
+      mockCli.loadConfig.mockResolvedValue({});
+      await rm(projectDir, { recursive: true, force: true });
+    }
+  });
+
   it("loads the server definition hot-updater.config.ts points at", async () => {
     const projectDir = await mkdtemp(
       path.join(tmpdir(), "hot-updater-configured-server-"),

@@ -102,15 +102,20 @@ export const importHotUpdater = async (
 /**
  * The server definition to load: the path given, else the one `server` in
  * hot-updater.config.ts points at, else a server-only project's default.
- * Loading hot-updater.config.ts first also loads the environment it loads,
- * which the definition reads.
+ * A path given loads `.env.hotupdater`, which a definition init wrote reads,
+ * without running hot-updater.config.ts; otherwise the config loads the
+ * environment it loads.
  */
 const resolveConfigPath = async (configPath: string, cwd: string) => {
-  const { server } = await loadConfig(null);
   const trimmedConfigPath = configPath.trim();
   if (trimmedConfigPath) {
+    const envFile = path.join(cwd, ".env.hotupdater");
+    if (existsSync(envFile)) {
+      process.loadEnvFile(envFile);
+    }
     return path.resolve(cwd, trimmedConfigPath);
   }
+  const { server } = await loadConfig(null);
   if (typeof server === "string") {
     return server;
   }

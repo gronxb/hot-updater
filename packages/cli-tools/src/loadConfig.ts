@@ -176,12 +176,13 @@ export const loadConfig = async (
     getConfigLoaderOptions(options),
   );
 
-  for (const key of ["database", "storage", "plugins"]) {
-    if (config && Object.hasOwn(config, key)) {
-      throw new Error(
-        `Remove ${key} from hot-updater.config: the server definition holds the database, storage, and plugins. Export \`hotUpdater = createHotUpdater({ database, storage, plugins })\` from a module and set \`server\` to its path, or set \`server\` to standaloneRepository({ baseUrl, storage }).`,
-      );
-    }
+  const moved = ["database", "storage", "plugins"].filter(
+    (key) => config && Object.hasOwn(config, key),
+  );
+  if (moved.length > 0) {
+    throw new Error(
+      `Remove ${moved.join(", ")} from hot-updater.config: the server definition holds the database, storage, and plugins. Export \`hotUpdater = createHotUpdater({ database, storage, plugins })\` from a module and set \`server\` to its path, or set \`server\` to standaloneRepository({ baseUrl, storage }).`,
+    );
   }
 
   for (const key of ["authorityId", "catalogId"]) {

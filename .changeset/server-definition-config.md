@@ -19,7 +19,7 @@ export default defineConfig({ server: "./src/hotUpdater.ts", build: bare(), upda
 - The CLI uploads bundles to the definition's first storage; each storage reads the URIs of its protocol.
 - For a self-hosted server the CLI reaches through its admin API, `server` is `standaloneRepository({ baseUrl, commonHeaders, storage })`. `storage` is where the CLI uploads bundles, and the server lists its own plugins on its admin `/version`.
 - `database`, `storage`, and `plugins` in `hot-updater.config.ts` are refused with a message that names `server`, and `hotUpdater.plugins.ts` is no longer read.
-- `hot-updater db migrate` and `db generate` default to the definition `server` points at; plugin commands find their plugins there too, or in a definition the command line names.
+- `hot-updater db migrate` and `db generate` default to the definition `server` points at. Given a path, they load `.env.hotupdater` and skip `hot-updater.config.ts`. Plugin commands find their plugins in the definition `server` points at, or in one the command line names.
 - In `@hot-updater/plugin-core`, `RemoteServer` (with `url` and `storage`) and `isRemoteServer` replace `RemoteDatabase` and `isRemoteDatabase`, and `ConfigInput` has `server` in place of `database` and `storage`.
 - `@hot-updater/cli-tools` adds `importServerModule`, which loads a server definition as the CLI and the console do, and renders a server definition beside the config for init.
-- The agent infrastructure scaffold ships `app/hotUpdater.ts`, the server definition, in place of `app/database.config.ts` and `app/hotUpdater.plugins.ts`; its credential script reads the database and plugins there.
+- The agent infrastructure scaffold ships `app/hotUpdater.ts`, the server definition, in place of `app/database.config.ts` and `app/hotUpdater.plugins.ts`. Its credential script reads the database and plugins there, and Firestore's `app/migrate.ts` runs the definition's migrator.
