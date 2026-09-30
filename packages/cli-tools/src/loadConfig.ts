@@ -2,11 +2,11 @@ import path from "path";
 
 import type {
   ConfigInput,
-  EngineDatabase,
   Platform,
+  RemoteServer,
   RequiredDeep,
 } from "@hot-updater/plugin-core";
-import { createStorageAdapter } from "@hot-updater/plugin-core";
+import { isRemoteServer } from "@hot-updater/plugin-core";
 import { merge } from "es-toolkit";
 import fg from "fast-glob";
 import { type LoadConfigOptions, loadConfig as loadUnconfig } from "unconfig";
@@ -18,35 +18,6 @@ export type HotUpdaterConfigOptions = {
   platform: Platform;
   channel: string;
 } | null;
-
-const missingDatabaseError = async (): Promise<never> => {
-  throw new Error("database is required");
-};
-
-/** The default until the config names a database: every read and write refuses. */
-const missingDatabase: EngineDatabase = {
-  name: "missingDatabase",
-  adapter: {
-    id: "missing",
-    fits: () => true,
-    get: missingDatabaseError,
-    query: missingDatabaseError,
-    write: missingDatabaseError,
-  },
-};
-
-const missingStorageError = async (): Promise<never> => {
-  throw new Error("storage adapter is required");
-};
-
-const missingStorage = createStorageAdapter({
-  name: "missingStorage",
-  protocol: "missing",
-  put: missingStorageError,
-  get: missingStorageError,
-  exists: missingStorageError,
-  delete: missingStorageError,
-});
 
 const getDefaultPlatformConfig = (): ConfigInput["platform"] => {
   // Find actual Info.plist files in the ios directory
@@ -103,7 +74,7 @@ const getDefaultPlatformConfig = (): ConfigInput["platform"] => {
   };
 };
 
-const getDefaultConfig = (): ConfigInput => {
+const getDefaultConfig = (): Omit<ConfigInput, "server"> => {
   return {
     cacheDir: path.join("node_modules", ".hot-updater"),
     updateStrategy: "appVersion",
@@ -122,35 +93,55 @@ const getDefaultConfig = (): ConfigInput => {
     build: () => {
       throw new Error("build adapter is required");
     },
-    storage: missingStorage,
-    database: missingDatabase,
   };
 };
 
 export type ConfigResponse = RequiredDeep<
-  Omit<ConfigInput, "database" | "signing" | "storage">
-> &
-  Pick<ConfigInput, "database" | "storage"> & {
-    signing?: ReturnType<typeof normalizeSigningConfig>;
-  };
+  Omit<ConfigInput, "server" | "signing">
+> & {
+  /**
+   * The absolute path of the server definition, or the self-hosted server
+   * the CLI reaches through its admin API; absent when the config names
+   * none.
+   */
+  server?: string | RemoteServer;
+  signing?: ReturnType<typeof normalizeSigningConfig>;
+};
 
-const mergeConfigSources = (
-  ...sources: Array<ConfigInput | null | undefined>
-) => {
-  const mergedConfig = sources.reduceRight<ConfigInput>(
+type ConfigSource = Partial<ConfigInput> | null | undefined;
+
+const mergeConfigSources = (...sources: ConfigSource[]) => {
+  const mergedConfig = sources.reduceRight<Partial<ConfigInput>>(
     (mergedConfig, source) => merge(mergedConfig, source ?? {}),
-    {} as ConfigInput,
+    {},
   );
 
-  const database = sources.find((source) => source?.database)?.database;
   const signing = sources.find((source) => source?.signing)?.signing;
-  const storage = sources.find((source) => source?.storage)?.storage;
   return {
     ...mergedConfig,
-    ...(database ? { database } : {}),
     ...(signing ? { signing } : {}),
-    ...(storage ? { storage } : {}),
   };
+};
+
+/**
+ * The config's `server`: a path, resolved against the config file's
+ * directory, or a remote server, which is taken whole.
+ */
+const resolveServer = (
+  server: unknown,
+  configFile: string | undefined,
+): string | RemoteServer | undefined => {
+  if (server === undefined) return undefined;
+  if (typeof server === "string" && server.trim() !== "") {
+    return path.resolve(
+      configFile === undefined ? getCwd() : path.dirname(configFile),
+      server,
+    );
+  }
+  if (isRemoteServer(server)) return server;
+  throw new Error(
+    "server in hot-updater.config must be the path to your server definition, such as \"./src/hotUpdater.ts\", or standaloneRepository(...).",
+  );
 };
 
 const getConfigLoaderOptions = (
@@ -181,9 +172,17 @@ const getConfigLoaderOptions = (
 export const loadConfig = async (
   options: HotUpdaterConfigOptions,
 ): Promise<ConfigResponse> => {
-  const { config } = await loadUnconfig<ConfigInput>(
+  const { config, sources } = await loadUnconfig<ConfigInput>(
     getConfigLoaderOptions(options),
   );
+
+  for (const key of ["database", "storage", "plugins"]) {
+    if (config && Object.hasOwn(config, key)) {
+      throw new Error(
+        `Remove ${key} from hot-updater.config: the server definition holds the database, storage, and plugins. Export \`hotUpdater = createHotUpdater({ database, storage, plugins })\` from a module and set \`server\` to its path, or set \`server\` to standaloneRepository({ baseUrl, storage }).`,
+      );
+    }
+  }
 
   for (const key of ["authorityId", "catalogId"]) {
     if (config && Object.hasOwn(config, key)) {
@@ -199,10 +198,18 @@ export const loadConfig = async (
     );
   }
 
-  const mergedConfig = mergeConfigSources(config, getDefaultConfig());
+  const { server, ...mergedConfig } = mergeConfigSources(
+    config,
+    getDefaultConfig(),
+  );
   const signing = normalizeSigningConfig(mergedConfig.signing);
+  const resolvedServer = resolveServer(
+    config?.server ?? server,
+    sources[0],
+  );
   return {
     ...mergedConfig,
+    ...(resolvedServer === undefined ? {} : { server: resolvedServer }),
     signing,
   } as ConfigResponse;
 };

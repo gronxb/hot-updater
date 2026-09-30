@@ -6,7 +6,9 @@ import type {
   BundleSigningAdapter,
   ConfigInput,
   LocalSigningConfig,
+  RemoteServer,
 } from "@hot-updater/plugin-core";
+import { createStorageAdapter } from "@hot-updater/plugin-core";
 import {
   afterEach,
   beforeEach,
@@ -38,15 +40,11 @@ describe("ConfigResponse", () => {
       | undefined
     >();
 
-    expectTypeOf<ConfigResponse["storage"]["getDownloadUrl"]>().toEqualTypeOf<
-      ConfigInput["storage"]["getDownloadUrl"]
+    expectTypeOf<ConfigResponse["server"]>().toEqualTypeOf<
+      string | RemoteServer | undefined
     >();
-    expectTypeOf<ConfigResponse["database"]["dispose"]>().toEqualTypeOf<
-      ConfigInput["database"]["dispose"]
-    >();
-    expect(Reflect.has({} as ConfigResponse["database"], "queries")).toBe(
-      false,
-    );
+    expectTypeOf<ConfigInput>().not.toHaveProperty("database");
+    expectTypeOf<ConfigInput>().not.toHaveProperty("storage");
   });
 });
 
@@ -88,7 +86,75 @@ describe("loadConfig", () => {
     expect(config.platform.android.androidManifestPaths).toEqual([]);
     expect(config.platform.ios.infoPlistPaths).toEqual([]);
     expect(config.console.port).toBe(1422);
-    expect(typeof config.database).toBe("object");
+    expect(config.server).toBeUndefined();
+  });
+
+  it("resolves server against the config file's directory", async () => {
+    await writeProjectFile(
+      projectRoot,
+      "hot-updater.config.ts",
+      'export default { server: "./src/hotUpdater.ts" };\n',
+    );
+
+    const { loadConfig } = await import("./loadConfig");
+    const config = await loadConfig(null);
+
+    expect(config.server).toBe(path.join(projectRoot, "src", "hotUpdater.ts"));
+  });
+
+  it("takes a remote server whole", async () => {
+    const remote = Object.freeze({
+      name: "standalone-repository",
+      core: {},
+      fetchAdmin: async () => new Response(),
+      storage: Object.freeze([
+        createStorageAdapter({ name: "s3", protocol: "s3" }),
+      ]),
+    });
+    Reflect.set(globalThis, "__HOT_UPDATER_TEST_REMOTE_SERVER__", remote);
+    await writeProjectFile(
+      projectRoot,
+      "hot-updater.config.ts",
+      "export default { server: globalThis.__HOT_UPDATER_TEST_REMOTE_SERVER__ };\n",
+    );
+
+    try {
+      const { loadConfig } = await import("./loadConfig");
+      const config = await loadConfig(null);
+
+      expect(config.server).toBe(remote);
+    } finally {
+      Reflect.deleteProperty(globalThis, "__HOT_UPDATER_TEST_REMOTE_SERVER__");
+    }
+  });
+
+  it.each(["database", "storage", "plugins"])(
+    "refuses %s, which the server definition holds",
+    async (key) => {
+      await writeProjectFile(
+        projectRoot,
+        "hot-updater.config.ts",
+        `export default { ${key}: {} };\n`,
+      );
+
+      const { loadConfig } = await import("./loadConfig");
+      await expect(loadConfig(null)).rejects.toThrow(
+        `Remove ${key} from hot-updater.config: the server definition holds the database, storage, and plugins.`,
+      );
+    },
+  );
+
+  it("refuses a server that is neither a path nor a remote server", async () => {
+    await writeProjectFile(
+      projectRoot,
+      "hot-updater.config.ts",
+      "export default { server: { baseUrl: 'https://example.com' } };\n",
+    );
+
+    const { loadConfig } = await import("./loadConfig");
+    await expect(loadConfig(null)).rejects.toThrow(
+      "server in hot-updater.config must be the path to your server definition",
+    );
   });
 
   it.each(["authorityId", "catalogId"])(

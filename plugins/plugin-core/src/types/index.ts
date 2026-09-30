@@ -460,9 +460,19 @@ export type ConfigInput = {
    */
   signing?: SigningConfig;
   build: (args: BuildAdapterArgs) => Promise<BuildAdapter> | BuildAdapter;
-  storage: StorageAdapter;
-  /** A provider's database, or `standaloneRepository` for a self-hosted server. */
-  database: import("./databaseConfig").ConfiguredDatabase;
+  /**
+   * Where the server is, whose database, storage, and plugins the CLI uses.
+   *
+   * A path, relative to this file, to the module that defines the server:
+   * `export const hotUpdater = createHotUpdater({ database, storage, plugins })`.
+   * The CLI loads it only for the commands that need the server.
+   *
+   * Or `standaloneRepository(...)`, for a self-hosted server the CLI reaches
+   * through its admin API, with the storage the CLI uploads to.
+   *
+   * @example "./src/hotUpdater.ts"
+   */
+  server: string | import("./databaseConfig").RemoteServer;
 };
 
 export interface NativeBuildOptions {

@@ -1396,6 +1396,9 @@ importers:
       '@hot-updater/plugin-core':
         specifier: workspace:*
         version: link:../../plugins/plugin-core
+      jiti:
+        specifier: 2.6.1
+        version: 2.6.1
       oxc-parser:
         specifier: 0.141.0
         version: 0.141.0

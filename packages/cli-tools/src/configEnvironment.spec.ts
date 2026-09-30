@@ -46,6 +46,10 @@ const createProject = async () => {
       imports: [{ pkg: "@hot-updater/supabase", named: ["supabaseDatabase"] }],
       configString: "supabaseDatabase({})",
     },
+    plugins: {
+      imports: [{ pkg: "@hot-updater/supabase", named: ["plugins"] }],
+      configString: "plugins",
+    },
   });
   const configPath = path.join(cwd, "hot-updater.config.ts");
   const run = async (token?: string) => {
@@ -61,7 +65,8 @@ const createProject = async () => {
       [
         "--input-type=module",
         "-e",
-        'import config from "./config.mjs"; console.log(config.storage.token);',
+        // The server definition reads what the config loaded.
+        'await import("./config.mjs"); console.log(process.env.HOT_UPDATER_TEST_ENV_TOKEN);',
       ],
       { cwd, env, encoding: "utf-8", stdio: ["ignore", "pipe", "pipe"] },
     ).trim();
