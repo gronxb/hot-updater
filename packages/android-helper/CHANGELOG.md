@@ -1,5 +1,19 @@
 # @hot-updater/android-helper
 
+## 1.0.0-rc.17
+
+### Patch Changes
+
+- Updated dependencies [e696e69]
+- Updated dependencies [9cd555b]
+- Updated dependencies [9cd555b]
+- Updated dependencies [9cd555b]
+- Updated dependencies [1ddd5fc]
+- Updated dependencies [9a6715f]
+- Updated dependencies [530cca5]
+  - @hot-updater/plugin-core@1.0.0-rc.17
+  - @hot-updater/cli-tools@1.0.0-rc.17
+
 ## 1.0.0-rc.16
 
 ### Patch Changes

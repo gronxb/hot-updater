@@ -1,5 +1,29 @@
 # @hot-updater/expo
 
+## 1.0.0-rc.17
+
+### Patch Changes
+
+- Updated dependencies [e696e69]
+- Updated dependencies [e696e69]
+- Updated dependencies [9574287]
+- Updated dependencies [a084eda]
+- Updated dependencies [9cd555b]
+- Updated dependencies [9cd555b]
+- Updated dependencies [9cd555b]
+- Updated dependencies [d7f1688]
+- Updated dependencies [1ddd5fc]
+- Updated dependencies [14188a7]
+- Updated dependencies [9cd555b]
+- Updated dependencies [9a6715f]
+- Updated dependencies [530cca5]
+- Updated dependencies [9cd555b]
+- Updated dependencies [530cca5]
+  - @hot-updater/plugin-core@1.0.0-rc.17
+  - hot-updater@1.0.0-rc.20
+  - @hot-updater/cli-tools@1.0.0-rc.17
+  - @hot-updater/bare@1.0.0-rc.17
+
 ## 1.0.0-rc.16
 
 ### Patch Changes

@@ -1,5 +1,35 @@
 # @hot-updater/console
 
+## 1.0.0-rc.20
+
+### Patch Changes
+
+- 1ddd5fc: Insights counts launches as daily active installations. Release health shows **Active installations** and **Active days** and charts daily active installations, and each bundle's summary shows **Active days** instead of known launches. The App usage distribution names the UTC day it starts on, since latest reports are counted by UTC day, and **All events** says that launches without an update are not listed.
+- 9a6715f: Each console feature registers what serves it and what it shows: its server API, over the plugin's API or a self-hosted server's admin API, its navigation item, and the columns and sections it adds to the Bundles page and the release editor. Release activity is one of these, shown only where the console reads it, as before. The page for a feature that a self-hosted server's admin API does not serve says so without naming Insights.
+- a084eda: When a self-hosted server answers an Insights read with `404`, `/retention` included, the console shows that the server runs without `insights()`. An installation the server has no reports from still shows as not found.
+- 530cca5: App usage adds a **12m** period, **YAU**, that counts 52 weeks of whole UTC days from the daily totals. The console reads how long the server keeps Insights data, from a self-hosted server's admin API too, with the defaults for a server that does not report it: event lists offer ranges within the raw period, **12m** shows where daily totals cover it, and event lists, installation history, and App usage say how long data is kept.
+- 959ba94: Validate server function input with `validator()` instead of the deprecated `inputValidator()`, so building the console no longer prints a deprecation warning for each function. `@tanstack/react-start` now needs 1.168.25 or later, the first release with `validator()`.
+- b317d49: Insights adds **Update failures** under Release health, for its channel, platform, Release ID, and period: failed updates and the failure rate of update attempts, failed installations, the patch fallback rate, a channel's failed checks and their rate against its active installations, failures by stage and reason with their HTTP statuses, origin codes, transports, and resources, and recoveries by exit reason. The bundle detail shows **Download failures** since the release's first report, with their rate, including through `standaloneRepository`. Event lists and installation history show update failures with their stage and reason, how a download arrived, and why a crashed process exited. Installations show their user ID only.
+- Updated dependencies [e696e69]
+- Updated dependencies [e696e69]
+- Updated dependencies [9574287]
+- Updated dependencies [9cd555b]
+- Updated dependencies [9cd555b]
+- Updated dependencies [9cd555b]
+- Updated dependencies [1ddd5fc]
+- Updated dependencies [9cd555b]
+- Updated dependencies [530cca5]
+- Updated dependencies [b317d49]
+- Updated dependencies [9cd555b]
+- Updated dependencies [9a6715f]
+- Updated dependencies [9a6715f]
+- Updated dependencies [a084eda]
+- Updated dependencies [530cca5]
+- Updated dependencies [b317d49]
+  - @hot-updater/plugin-core@1.0.0-rc.17
+  - @hot-updater/server@1.0.0-rc.18
+  - @hot-updater/cli-tools@1.0.0-rc.17
+
 ## 1.0.0-rc.19
 
 ### Patch Changes

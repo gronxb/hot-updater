@@ -1,5 +1,72 @@
 # hot-updater
 
+## 1.0.0-rc.20
+
+### Minor Changes
+
+- 9cd555b: The plugin that provides `clientAuth` describes the credential an app sends in `cli.clientCredential`: its label, header, environment variable, and how to generate and provision it. `@hot-updater/server/db` exports `clientAuthOf`, `generateClientCredential`, and `provisionClientCredential`, which read it from a plugin list.
+
+  Managed init provisions the app's credential through the provider's plugins and prints `HotUpdater.init` with that credential's header, or with no `requestHeaders` when client routes are public; `@hot-updater/cli-tools` exports `renderAppSetup` and `printAppSetup` for it. AWS CloudFront cache and origin-request policies key on the client-route policy's `varyHeaders` instead of a fixed `x-api-key`.
+
+  Agent and infrastructure scaffolds record the server's `clientAuth` in `manifest.json` and render their instructions from it. The helper is `app/provision-client-credential.mjs` with `app/database.config.ts`, and it saves `app/client-credential.local`. `hot-updater doctor` reads the credential's header and variable from the scaffold, and skips the 401 check when client routes are public.
+
+- 9cd555b: A server plugin names the client plugin an app adds to `HotUpdater.init`'s `plugins` in `cli.clientPlugin`, as `{ module, name }`; `insights()` names `insights` from `@hot-updater/react-native/plugins/insights`. `createHotUpdater` checks them at startup: each names an export the app can import, not a reserved word, `App`, or `HotUpdater`, and no two plugins name one export from different modules. `@hot-updater/server/db` exports `clientPluginsOf`, which reads them from a plugin list. Managed init passes them to `printAppSetup`, which imports them and adds them to `plugins`, and agent scaffolds record them in `manifest.json` and render the app code in their instructions from them.
+- 9cd555b: Server plugins add their own `hot-updater` commands through a `cli` field on `definePlugin`. A command runs `run` with the plugin's API over a database the CLI opens itself; with a `standaloneRepository` config, it asks for the server config that exports `hotUpdater`. The CLI looks for plugin commands only when it has no core command of that name: in a server config the command line names, then `hotUpdater.plugins.ts` over the database in `hot-updater.config.ts`, then `hot-updater.config.ts`, `src/hotUpdater.ts`, or `src/db.ts`. `hot-updater --help` and the unknown-command error list them under **Plugin commands**, marked with their plugin's id.
+
+  `hot-updater api-key create|list|revoke` now comes from `apiKeys()`, with the same arguments and options, and also runs in managed projects through `hotUpdater.plugins.ts`. `@hot-updater/server/db` exports `serverPluginsOf` and `pluginCommandsOf` for tooling.
+
+- 9cd555b: Remove the `hot-updater codemod` command and its `client-access` codemod. It only moved `clientAccess` objects from earlier release candidates to plugins, and release candidates keep no compatibility with each other: recreate the RC database, and update the server, app, and console together.
+
+### Patch Changes
+
+- e696e69: The 1.0.0 infrastructure upgrade notes that `hot-updater infra scaffold` writes, and the AWS agent setup, list the DynamoDB policy's batched Insights log partitions, `aggregate_log_0` to `aggregate_log_7` and `aggregate_lease`, and its `BatchWriteItem` permission. The IAM policy changed: rerun `hot-updater init`, and recreate release candidate data if needed. The notes' Insights check reads overview summaries through the Console or the admin API on DynamoDB and Firestore, since a read applies pending batches first.
+- 9574287: Cache a scope's missing Release Catalog like a catalog. The `404` for a scope with no catalog yet, such as a store version before its first OTA release, now uses the catalog's `public, max-age=0, s-maxage=5` and is marked `x-hot-updater-catalog: none`, so a shared cache absorbs those update checks instead of passing each one to the origin. Other `404`s stay `private, no-store` and unmarked. `hot-updater doctor` and the agent server check accept the marked `404` as an empty catalog and still reject an unmarked one.
+- a084eda: `hot-updater db generate --sql` writes core's tables and those of the server's plugins, which it finds as plugin commands find theirs: in the server config the first argument names, in `hotUpdater.plugins.ts`, or in a default server config. It names the file it read them from; without one, it says so and writes core's tables only. The agent scaffold's Firestore `database.config.ts` exports `migrate(plugins)`, which `provision-client-credential.mjs` runs with the plugins `hotUpdater.plugins.ts` lists.
+- d7f1688: The `HotUpdater.init` snippet that managed `init` prints now adds the Insights client plugin, `plugins: [insights()]` from `@hot-updater/react-native/plugins/insights`, since an app reports to Insights only with it. The CLI's agent setup instructions add the same plugin.
+- 14188a7: Update packaged infrastructure instructions for the stable release, remove
+  release-candidate migration procedures, and correct provider verification order
+  and schema prerequisites.
+- 530cca5: Each provider deletes rows past their table's retention with no scheduler. DynamoDB deletes items by Time to Live on `_ttl`: `migrateDynamoDB`, `hot-updater db migrate`, and the managed AWS setup turn it on, and `hot-updater infra scaffold` writes `dynamodb/enable-ttl.json`. Firestore deletes documents by a TTL policy on `expireAt`, declared in `firestore.indexes.json`. Cloudflare D1 and Supabase delete them during writes, in bounded batches, within D1's query limit for one Worker invocation and through Supabase's apply RPC. The D1 and Supabase schemas add the Insights daily and lifetime tables and the indexes pruning walks. A deployment from a 1.0.0 release candidate recreates its database and updates the server, app, and console together.
+- Updated dependencies [e696e69]
+- Updated dependencies [e696e69]
+- Updated dependencies [e696e69]
+- Updated dependencies [e696e69]
+- Updated dependencies [e696e69]
+- Updated dependencies [9574287]
+- Updated dependencies [9cd555b]
+- Updated dependencies [9cd555b]
+- Updated dependencies [9cd555b]
+- Updated dependencies [1ddd5fc]
+- Updated dependencies [9a6715f]
+- Updated dependencies [a084eda]
+- Updated dependencies [530cca5]
+- Updated dependencies [959ba94]
+- Updated dependencies [b317d49]
+- Updated dependencies [d7f1688]
+- Updated dependencies [1ddd5fc]
+- Updated dependencies [9cd555b]
+- Updated dependencies [530cca5]
+- Updated dependencies [b317d49]
+- Updated dependencies [9cd555b]
+- Updated dependencies [9a6715f]
+- Updated dependencies [a084eda]
+- Updated dependencies [530cca5]
+- Updated dependencies [b317d49]
+- Updated dependencies [9a6715f]
+- Updated dependencies [a084eda]
+- Updated dependencies [530cca5]
+- Updated dependencies [b317d49]
+  - @hot-updater/aws@1.0.0-rc.18
+  - @hot-updater/firebase@1.0.0-rc.18
+  - @hot-updater/plugin-core@1.0.0-rc.17
+  - @hot-updater/server@1.0.0-rc.18
+  - @hot-updater/cli-tools@1.0.0-rc.17
+  - @hot-updater/cloudflare@1.0.0-rc.18
+  - @hot-updater/supabase@1.0.0-rc.18
+  - @hot-updater/console@1.0.0-rc.20
+  - @hot-updater/android-helper@1.0.0-rc.17
+  - @hot-updater/apple-helper@1.0.0-rc.17
+
 ## 1.0.0-rc.19
 
 ### Patch Changes
