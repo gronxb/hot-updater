@@ -26,7 +26,6 @@ vi.mock("@/lib/insights-api", () => {
   const installation = {
     installId: "install-1",
     userId: "user-1",
-    username: null,
     appVersion: "1.5.0",
     channel: "production",
     platform: "ios",

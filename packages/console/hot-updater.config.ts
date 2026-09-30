@@ -708,11 +708,29 @@ const downloadDemo = {
     update_strategy: "appVersion" as const,
     fingerprint_hash: null,
     sdk_version: "1.0.0-rc",
-    username: "Download demo",
   },
 
   user_id: "download-demo",
 };
+
+/** An update failure of the download demo's target, from its own installation. */
+const failedDownload = (
+  suffix: string,
+  installId: string,
+  minute: number,
+  failure: Record<string, string | number>,
+): BundleEventRow =>
+  ({
+    ...downloadDemo,
+    id: `019f635e-f${suffix}-7000-8000-000000000${suffix}`,
+    type: "UPDATE_FAILED",
+    install_id: installId,
+    ...(failure.stage === "check"
+      ? { to_release_id: null, to_bundle_id: downloadDemo.from_bundle_id }
+      : {}),
+    metadata: { ...downloadDemo.metadata, failure },
+    received_at_ms: Date.UTC(2026, 6, 18, 9, minute),
+  }) as BundleEventRow;
 
 const bundleEvents: readonly BundleEventRow[] = [
   {
@@ -720,6 +738,7 @@ const bundleEvents: readonly BundleEventRow[] = [
     id: "019f635e-d001-7000-8000-000000000001",
     type: "UPDATE_DOWNLOADED",
     install_id: "demo-download-pending",
+    metadata: { ...downloadDemo.metadata, delivery: "patch" },
     received_at_ms: Date.UTC(2026, 6, 18, 9, 50),
   },
   {
@@ -727,8 +746,37 @@ const bundleEvents: readonly BundleEventRow[] = [
     id: "019f635e-d002-7000-8000-000000000002",
     type: "UPDATE_DOWNLOADED",
     install_id: "demo-download-applied",
+    metadata: {
+      ...downloadDemo.metadata,
+      delivery: "archive",
+      patch_fallback: true,
+    },
     received_at_ms: Date.UTC(2026, 6, 18, 9, 55),
   },
+  failedDownload("001", "demo-download-expired", 40, {
+    stage: "download",
+    reason: "http",
+    resource: "artifact",
+    http_status: 403,
+    origin_code: "ExpiredToken",
+  }),
+  failedDownload("002", "demo-download-offline", 42, {
+    stage: "download",
+    reason: "network",
+    resource: "manifest",
+    transport: "timeout",
+  }),
+  failedDownload("003", "demo-install-corrupt", 44, {
+    stage: "install",
+    reason: "hash_mismatch",
+    resource: "file",
+  }),
+  failedDownload("004", "demo-check-failed", 46, {
+    stage: "check",
+    reason: "http",
+    resource: "catalog",
+    http_status: 500,
+  }),
   {
     ...downloadDemo,
     id: "019f635e-d003-7000-8000-000000000003",
@@ -742,7 +790,6 @@ const bundleEvents: readonly BundleEventRow[] = [
     install_id: "019f635d-0001-7000-8000-000000000001",
     user_id: "detox-e2e",
     metadata: {
-      username: "hot-updater-e2e",
       cohort: "staff-ios",
       update_strategy: "appVersion",
       fingerprint_hash: null,
@@ -764,7 +811,6 @@ const bundleEvents: readonly BundleEventRow[] = [
     install_id: "019f635d-0001-7000-8000-000000000001",
     user_id: "detox-e2e",
     metadata: {
-      username: "hot-updater-e2e",
       cohort: "staff-ios",
       update_strategy: "appVersion",
       fingerprint_hash: null,
@@ -786,7 +832,6 @@ const bundleEvents: readonly BundleEventRow[] = [
     install_id: "019f635d-0002-7000-8000-000000000002",
     user_id: "detox-e2e-beta",
     metadata: {
-      username: "hot-updater-e2e-beta",
       cohort: "default",
       update_strategy: "appVersion",
       fingerprint_hash: null,
@@ -808,7 +853,6 @@ const bundleEvents: readonly BundleEventRow[] = [
     install_id: "019f635d-0002-7000-8000-000000000002",
     user_id: "detox-e2e-beta",
     metadata: {
-      username: "hot-updater-e2e-beta",
       cohort: "default",
       update_strategy: "appVersion",
       fingerprint_hash: null,
@@ -972,7 +1016,6 @@ const bundleEvents: readonly BundleEventRow[] = [
         install_id: `019f635d-${installSuffix}-7000-8000-00000000${installSuffix}`,
         user_id: userId,
         metadata: {
-          username: userId,
           cohort: "default",
           fingerprint_hash: null,
           sdk_version: "0.37.0",

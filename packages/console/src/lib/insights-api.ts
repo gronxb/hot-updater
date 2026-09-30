@@ -7,6 +7,11 @@ import {
   type InsightsDeletionTarget,
 } from "./insights-deletion-rpc";
 import {
+  readUpdateFailuresInput,
+  type UpdateFailuresInput,
+} from "./insights-failures";
+import { getUpdateFailuresRpc } from "./insights-failures-rpc";
+import {
   DEFAULT_INSIGHTS_RETENTION,
   type InsightsRetentionDays,
 } from "./insights-retention";
@@ -105,6 +110,20 @@ export const useInsightsInstallationEventsQuery = (
     queryKey: queryKeys.installationEvents(input),
     queryFn: () => listInsightsInstallationEventsRpc({ data: input }),
     enabled: enabled && input.installId.length > 0,
+    refetchOnWindowFocus: true,
+    staleTime: STALE_TIME_MS,
+  });
+
+/** A release's or a channel's update failures; lifetime for a release without a window. */
+export const useUpdateFailuresQuery = (
+  input: UpdateFailuresInput,
+  enabled = true,
+) =>
+  useQuery({
+    queryKey: ["insights", "update-failures", input],
+    queryFn: () =>
+      getUpdateFailuresRpc({ data: readUpdateFailuresInput(input) }),
+    enabled,
     refetchOnWindowFocus: true,
     staleTime: STALE_TIME_MS,
   });

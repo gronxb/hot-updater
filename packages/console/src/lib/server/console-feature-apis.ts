@@ -39,6 +39,7 @@ export const consoleFeatureApis = {
     local: (api: InsightsApi): ConsoleInsightsReads => ({
       ...createInsightsProvider(createInsightsModel(api)),
       getRetention: async () => api.retention,
+      getUpdateFailures: api.getUpdateFailures,
     }),
     remote: createAdminInsightsReads,
   }),

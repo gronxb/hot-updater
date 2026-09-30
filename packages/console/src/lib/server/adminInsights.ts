@@ -2,6 +2,8 @@ import type {
   InsightsEventPageInput,
   InsightsProvider,
   InsightsDeletion,
+  InsightsUpdateFailures,
+  InsightsUpdateFailuresInput,
 } from "@hot-updater/server/plugins/insights";
 
 import { ConsoleFeatureUnavailableError } from "../console-features";
@@ -10,12 +12,15 @@ import {
   type InsightsRetentionDays,
 } from "../insights-retention";
 
-/** The Insights reads the console pages use, and how long rows are kept. */
+/** The Insights reads the console pages use, update failures, and how long rows are kept. */
 export type ConsoleInsightsReads = Omit<
   InsightsProvider,
   "appendBundleEvent"
 > & {
   getRetention(): Promise<InsightsRetentionDays>;
+  getUpdateFailures(
+    input: InsightsUpdateFailuresInput,
+  ): Promise<InsightsUpdateFailures>;
 };
 
 /**
@@ -125,6 +130,16 @@ export const createAdminInsightsReads = (
       read(`/installations/${encodeURIComponent(installId)}`),
     pageInstallationsByCurrentUserId: ({ userId, cursor, limit }) =>
       required(withQuery("/installations", { userId, cursor, limit })),
+    getUpdateFailures: ({ platform, channel, releaseId, timeRange }) =>
+      required(
+        withQuery("/failures", {
+          platform,
+          channel,
+          releaseId,
+          start: timeRange?.start,
+          end: timeRange?.end,
+        }),
+      ),
     // A server from before configurable retention keeps the defaults.
     getRetention: async () =>
       (await read<InsightsRetentionDays>("/retention")) ??

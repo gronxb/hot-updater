@@ -15,6 +15,7 @@ export const outcomeLabels = {
   downloaded: "Downloaded reports",
   applied: "Applied reports",
   recovered: "Recovered-from reports",
+  failed: "Failed update reports",
 } as const;
 
 const DAY_MS = 86_400_000;

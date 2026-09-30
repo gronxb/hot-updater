@@ -71,7 +71,6 @@ const installation = {
   platform: "ios" as const,
   receivedAtMs: 100,
   userId: "user-1",
-  username: "ada",
 };
 
 describe("Insights reads without insights()", () => {

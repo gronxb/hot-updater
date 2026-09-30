@@ -51,7 +51,6 @@ const event = (id: string): BundleEventRow =>
     app_version: "1.0.0",
     channel: "production",
     metadata: {
-      username: null,
       cohort: "1",
       update_strategy: "appVersion",
       fingerprint_hash: null,
@@ -121,6 +120,34 @@ describe("createConsoleRuntime over the database", () => {
     await expect(
       reads.getInstallation({ installId: "install-1" }),
     ).resolves.toBeNull();
+  });
+
+  it("reads a release's update failures through the plugin's API", async () => {
+    const runtime = createConsoleRuntime({
+      database: engineDatabase(),
+      plugins: [insights()],
+    });
+    const model = await requireFeature(runtime, "insightsAnalytics");
+    const failed = event("01900000-0000-7000-8000-000000000002");
+    await model.recordEvent({
+      event: {
+        ...failed,
+        type: "UPDATE_FAILED",
+        metadata: {
+          ...failed.metadata,
+          failure: { stage: "download", reason: "hash_mismatch" },
+        },
+      } as BundleEventRow,
+    });
+
+    const reads = await requireFeature(runtime, "insights");
+    await expect(
+      reads.getUpdateFailures({
+        platform: "ios",
+        channel: "production",
+        releaseId: "release-1",
+      }),
+    ).resolves.toMatchObject({ failedUpdates: 1, failedInstallations: 1 });
   });
 
   it("reports how long the plugin keeps rows", async () => {
@@ -268,6 +295,40 @@ describe("createConsoleRuntime for a self-hosted server", () => {
       reads.getInstallation({ installId: "install 1" }),
     ).resolves.toEqual({ installId: "install-1" });
     expect(fetchAdmin).toHaveBeenLastCalledWith("/installations/install%201");
+  });
+
+  it("reads update failures through the admin route, and says an older server needs an upgrade", async () => {
+    const failures = { failedUpdates: 3, failedInstallations: 2 };
+    const fetchAdmin = vi.fn(async (path: string) =>
+      path === "/version"
+        ? Response.json({ adminProtocol: 2, plugins: ["insights"] })
+        : path.startsWith("/failures?platform=android")
+          ? new Response(null, { status: 404 })
+          : Response.json(failures),
+    );
+    const reads = await requireFeature(
+      createConsoleRuntime({ database: remoteDatabase(fetchAdmin) }),
+      "insights",
+    );
+
+    await expect(
+      reads.getUpdateFailures({
+        platform: "ios",
+        channel: "production",
+        releaseId: "release-1",
+        timeRange: { start: 10, end: 20 },
+      }),
+    ).resolves.toEqual(failures);
+    expect(fetchAdmin).toHaveBeenLastCalledWith(
+      "/failures?platform=ios&channel=production&releaseId=release-1&start=10&end=20",
+    );
+    await expect(
+      reads.getUpdateFailures({
+        platform: "android",
+        channel: "production",
+        releaseId: "release-1",
+      }),
+    ).rejects.toThrow("Upgrade @hot-updater/server on the server.");
   });
 
   it("refuses a read the server answers without content, as after it dropped insights()", async () => {

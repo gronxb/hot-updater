@@ -7,6 +7,9 @@ import type {
   BundleActivityReport,
 } from "@/lib/bundle-activity";
 import { useBundleActivityQuery } from "@/lib/bundle-activity";
+import { useConsoleFeature } from "@/lib/console-features-api";
+import { useUpdateFailuresQuery } from "@/lib/insights-api";
+import { failureRate, formatRate } from "@/lib/insights-failures";
 
 import type { ReleaseColumn } from "../FeatureSlots";
 import { InsightsInfo } from "./InsightsInfo";
@@ -75,7 +78,41 @@ export function BundleMovementSummary({
   );
 }
 
-/** The bundle detail's Insights card, a section of the release editor. */
+/** The release's failed downloads and installs since its first report, and their rate. */
+export function BundleDownloadFailures({
+  input,
+}: {
+  readonly input: BundleActivityInput;
+}) {
+  const query = useUpdateFailuresQuery({
+    platform: input.platform,
+    channel: input.channel,
+    releaseId: input.releaseId,
+  });
+  const report = query.data;
+  return (
+    <span className="flex items-center gap-1 text-sm">
+      {report ? (
+        <span>
+          Download failures {report.failedUpdates.toLocaleString()} (
+          {formatRate(failureRate(report))})
+        </span>
+      ) : query.isPending ? (
+        <Skeleton aria-label="Loading download failures" className="h-4 w-40" />
+      ) : (
+        <span aria-label="Download failures unavailable">—</span>
+      )}
+      <InsightsInfo label="About download failures">
+        Reported failures to download or install this release, since its first
+        report; each client reports one at most once a UTC day. The rate is
+        installations with a failure divided by those plus download reports, and
+        its installations are estimated.
+      </InsightsInfo>
+    </span>
+  );
+}
+
+/** The bundle detail's Insights card, a section of the release editor: activity and download failures. */
 export function BundleInsightsSummary({
   input,
 }: {
@@ -87,12 +124,37 @@ export function BundleInsightsSummary({
       <CardHeader className="px-4 pt-4 pb-3">
         <CardTitle className="text-sm font-medium">Insights</CardTitle>
       </CardHeader>
-      <CardContent className="px-4 pb-4">
+      <CardContent className="flex flex-col gap-2 px-4 pb-4">
         <BundleMovementSummary
           input={input}
           loading={query.isFetching}
           report={query.data?.[input.releaseId]}
         />
+        <BundleDownloadFailures input={input} />
+      </CardContent>
+    </Card>
+  );
+}
+
+/**
+ * The release editor's Insights card where the console reads no release
+ * activity, as through a self-hosted server's admin API: download failures
+ * alone. With release activity, its card shows them.
+ */
+export function ReleaseFailuresSection({
+  input,
+}: {
+  readonly input: BundleActivityInput;
+}) {
+  const activity = useConsoleFeature("insightsAnalytics");
+  if (activity) return null;
+  return (
+    <Card>
+      <CardHeader className="px-4 pt-4 pb-3">
+        <CardTitle className="text-sm font-medium">Insights</CardTitle>
+      </CardHeader>
+      <CardContent className="px-4 pb-4">
+        <BundleDownloadFailures input={input} />
       </CardContent>
     </Card>
   );
