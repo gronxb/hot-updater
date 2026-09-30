@@ -262,8 +262,10 @@ compatibility bridge between them.
 
 ## Update custom server and provider integrations
 
-Managed users should apply their provider's v1 scaffold. If you maintain custom
-server code or plugins, update these boundaries before connecting a v1 app:
+Managed users should apply their provider's v1 scaffold, which writes the server
+definition, `hotUpdater.ts`, and points `server` in `hot-updater.config.ts` at
+it. If you maintain custom server code or plugins, update these boundaries
+before connecting a v1 app:
 
 | v0 surface | v1 replacement |
 | --- | --- |

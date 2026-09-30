@@ -45,7 +45,9 @@ export default defineConfig({
   the plugins' commands, and `doctor`.
 - Load the server's environment before the definition reads it, such as with
   `process.loadEnvFile(".env.hotupdater")` at the top of
-  `hot-updater.config.ts`.
+  `hot-updater.config.ts`. A command that names the definition's path, such as
+  `hot-updater db migrate src/hotUpdater.ts`, loads `.env.hotupdater` itself
+  without running `hot-updater.config.ts`.
 
 ## Reach a self-hosted server
 
