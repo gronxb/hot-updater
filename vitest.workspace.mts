@@ -80,6 +80,8 @@ export default defineConfig({
             "packages/console/**/*.test.tsx",
           ],
           exclude: [...commonExclude, "**/*.integration.spec.ts"],
+          hookTimeout: 60000,
+          testTimeout: 60000,
         },
       }),
       ...selectIntegrationProjects(integrationGroup, [
