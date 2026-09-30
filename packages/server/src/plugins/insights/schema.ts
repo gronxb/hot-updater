@@ -101,6 +101,10 @@ const bundleEventHeads = defineTable(
  * on DynamoDB Local retried 2–24% at 16, almost all on gauge rows, and 1–5%
  * with gauges at 32. Sketches stay at 16: each shard row carries 2 KB of
  * registers that every read merges.
+ *
+ * Every Insights aggregate is `batched`: on DynamoDB and Firestore, which
+ * bill each write, an event's changes apply after it commits, merged with
+ * other events' into one write per row, on one shard per writer.
  */
 const COUNTER_SHARDS = 8;
 const GAUGE_SHARDS = 32;
@@ -117,6 +121,7 @@ const insightsOverview = defineAggregate(identityFields, {
   key: ["identity", "bucket_start_ms"],
   counters: ["downloads", "launches", "failed_launches"],
   shards: COUNTER_SHARDS,
+  batched: true,
   indexes: { window },
 });
 
@@ -124,6 +129,7 @@ const insightsSketches = defineAggregate(identityFields, {
   key: ["identity", "bucket_start_ms"],
   distinct: ["launch_users", "activity_users"],
   shards: SKETCH_SHARDS,
+  batched: true,
   indexes: { window },
 });
 
@@ -150,6 +156,7 @@ const insightsDistribution = defineAggregate(
     ],
     gauges: ["latest_installations"],
     shards: GAUGE_SHARDS,
+    batched: true,
     indexes: {
       byScope: { eq: ["channel", "platform"], sort: ["bucket_start_ms"] },
       byVersion: {
@@ -181,6 +188,7 @@ const insightsLatestByBundle = defineAggregate(
     ],
     gauges: ["installations"],
     shards: GAUGE_SHARDS,
+    batched: true,
     indexes: {
       byBundle: {
         eq: ["platform", "channel", "bundle_field", "bundle_id", "type"],
@@ -208,6 +216,7 @@ const insightsOutcomes = defineAggregate(
     key: ["platform", "channel", "type", "bundle_ref", "bucket_start_ms"],
     counters: ["events"],
     shards: COUNTER_SHARDS,
+    batched: true,
     indexes: {
       byRef: {
         eq: ["platform", "channel", "type", "bundle_ref"],

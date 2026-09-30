@@ -1,3 +1,4 @@
+import type { EngineDatabase } from "@hot-updater/plugin-core";
 import type { DatabaseAdapter } from "@hot-updater/plugin-core/internal";
 
 import {
@@ -40,7 +41,12 @@ export function createDatabasePluginApis(
 ): Readonly<Record<string, unknown>> {
   const adapter = engineAdapterOf(database);
   if (adapter === undefined) throw new Error(OFF_ENGINE_DATABASE);
-  return assemblePlugins(plugins, adapter, options).api;
+  // Batched aggregates compact before they are read, as on the server.
+  const { aggregateBatching } = database as Partial<EngineDatabase>;
+  return assemblePlugins(plugins, adapter, {
+    ...options,
+    ...(aggregateBatching === undefined ? {} : { batching: aggregateBatching }),
+  }).api;
 }
 
 export interface MeasuredDatabaseOptions {

@@ -1,3 +1,4 @@
+import type { AggregateBatching } from "@hot-updater/plugin-core";
 import type { DatabaseAdapter } from "@hot-updater/plugin-core/internal";
 
 import { coreModule, HOT_UPDATER_SCHEMA_VERSION } from "../core/schema";
@@ -101,6 +102,11 @@ export interface EngineDatabaseOptions {
    * knows which of its tables they read.
    */
   readonly onCachedRoutesChange?: () => Promise<void>;
+  /**
+   * Batches aggregates declared `batched`, for stores that bill each write;
+   * `false` or absent commits them with each transaction.
+   */
+  readonly aggregateBatching?: AggregateBatching | false;
 }
 
 /**
@@ -115,6 +121,7 @@ export const createEngineDatabase = ({
   name,
   adapter,
   onCachedRoutesChange,
+  aggregateBatching,
 }: EngineDatabaseOptions): ToolingDatabase => {
   const fenced = withSchemaFence(adapter, name, builtInSettings);
   const createMigrator = ({ schema, settings } = builtInTarget) =>
@@ -141,6 +148,7 @@ export const createEngineDatabase = ({
     name,
     adapter: fenced,
     ...(onCachedRoutesChange === undefined ? {} : { onCachedRoutesChange }),
+    ...(aggregateBatching ? { aggregateBatching } : {}),
     ...(adapter.dispose === undefined
       ? {}
       : { dispose: () => adapter.dispose!() }),

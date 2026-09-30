@@ -76,6 +76,7 @@ describe("IAMManager DynamoDB access", () => {
       {
         Action: [
           "dynamodb:BatchGetItem",
+          "dynamodb:BatchWriteItem",
           "dynamodb:ConditionCheckItem",
           "dynamodb:DeleteItem",
           "dynamodb:GetItem",
@@ -115,6 +116,12 @@ describe("IAMManager DynamoDB access", () => {
               "insights_outcomes#*",
               "api_keys",
               "api_keys#*",
+              ...[0, 1, 2, 3, 4, 5, 6, 7].flatMap((shard) => [
+                `aggregate_log_${shard}`,
+                `aggregate_log_${shard}#*`,
+              ]),
+              "aggregate_lease",
+              "aggregate_lease#*",
               "private_hot_updater_settings",
               "private_hot_updater_settings#*",
             ],

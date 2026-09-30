@@ -125,6 +125,23 @@ describe("createKvAdapter", () => {
     expect(store.items()).toBe(0);
   });
 
+  it("deletes consumed rows with their index items only where the store can, without conditions", async () => {
+    const store = createMemoryKeyValueStore();
+    const adapter = createKvAdapter({ store });
+    const rows = [item("a", { label: "L", tags: ["x"] }), item("b")];
+    await adapter.write(
+      rows.map((row) => ({ type: "insert", table: conformanceItems, row })),
+    );
+    expect(store.items()).toBeGreaterThan(2);
+    // A row already gone is no error.
+    await adapter.deleteConsumed!(conformanceItems, [...rows, item("c")]);
+    expect(store.items()).toBe(0);
+    const { deleteConsumed: _, ...plain } = store;
+    expect(createKvAdapter({ store: plain })).not.toHaveProperty(
+      "deleteConsumed",
+    );
+  });
+
   it("answers a unique read with the index copy, without `_v`, in one read", async () => {
     const { store, calls } = recorded(createMemoryKeyValueStore());
     const adapter = createKvAdapter({ store });
