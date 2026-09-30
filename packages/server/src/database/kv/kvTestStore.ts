@@ -19,8 +19,13 @@ export interface MemoryKeyValueStoreOptions {
  */
 export const createMemoryKeyValueStore = (
   options: MemoryKeyValueStoreOptions = {},
-): KeyValueStore & { readonly items: () => number } => {
+): KeyValueStore & {
+  readonly items: () => number;
+  /** Each item's expiry, as a store's native TTL would hold it, by `[pk, sk]` JSON. */
+  readonly expiries: () => ReadonlyMap<string, number>;
+} => {
   let partitions = new Map<string, Map<string, StoredRow>>();
+  let expiries = new Map<string, number>();
   const read = (key: KvKey) => partitions.get(key.pk)?.get(key.sk) ?? null;
   const holds = (key: KvKey, condition: KvCondition | undefined) => {
     if (condition === undefined) return true;
@@ -34,6 +39,7 @@ export const createMemoryKeyValueStore = (
     limits: options.limits ?? { items: 100, bytes: 4_000_000 },
     items: () =>
       [...partitions.values()].reduce((sum, items) => sum + items.size, 0),
+    expiries: () => expiries,
     async get(keys) {
       return keys.map((key) => structuredClone(read(key)));
     },
@@ -63,15 +69,24 @@ export const createMemoryKeyValueStore = (
       const failed = ops.findIndex((op) => !holds(op.key, op.condition));
       if (failed !== -1) return { ok: false, failedOp: failed };
       const next = new Map(partitions);
+      const stamped = new Map(expiries);
       for (const op of ops) {
         if (op.type === "check") continue;
         const items = new Map(next.get(op.key.pk));
         next.set(op.key.pk, items);
+        const id = JSON.stringify([op.key.pk, op.key.sk]);
         if (op.type === "delete") {
           items.delete(op.key.sk);
+          stamped.delete(id);
         } else if (op.type === "put") {
           items.set(op.key.sk, structuredClone(op.value));
+          // A put replaces the whole item, and any expiry it had.
+          if (op.expiresAt === undefined) stamped.delete(id);
+          else stamped.set(id, op.expiresAt);
         } else {
+          if (!items.has(op.key.sk) && op.expiresAt !== undefined) {
+            stamped.set(id, op.expiresAt);
+          }
           const item: Record<string, unknown> = structuredClone(
             items.get(op.key.sk) ?? op.init ?? {},
           );
@@ -82,6 +97,7 @@ export const createMemoryKeyValueStore = (
         }
       }
       partitions = next;
+      expiries = stamped;
       return { ok: true };
     },
     async deleteConsumed(keys) {
@@ -90,11 +106,13 @@ export const createMemoryKeyValueStore = (
         const items = new Map(next.get(pk));
         items.delete(sk);
         next.set(pk, items);
+        expiries.delete(JSON.stringify([pk, sk]));
       }
       partitions = next;
     },
     async dispose() {
       partitions = new Map();
+      expiries = new Map();
     },
   };
 };

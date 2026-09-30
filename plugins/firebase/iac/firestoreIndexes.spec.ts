@@ -40,6 +40,12 @@ describe("firebase firestore index template", () => {
         fieldPath: "row",
         indexes: [],
       },
+      {
+        collectionGroup: FIREBASE_V1_COLLECTION,
+        fieldPath: "expireAt",
+        ttl: true,
+        indexes: [],
+      },
     ]);
   });
 });

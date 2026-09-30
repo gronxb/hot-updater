@@ -92,8 +92,11 @@ export const PAIR_FIELD = "from_to";
 export const bundlePairKey = (from: string, to: string): string =>
   insightsKey(`${from.length}:${from}${to.length}:${to}`);
 
-/** Moves a head's gauges: the distribution row, one row per bundle it references, and its pair. */
-const countHead = (
+/**
+ * Moves a head's gauges: the distribution row, one row per bundle it
+ * references, and its pair. Deleting an installation takes it back with -1.
+ */
+export const countHead = (
   tx: HotUpdaterTransaction<InsightsSchema>,
   head: Head,
   delta: 1 | -1,
@@ -147,6 +150,19 @@ const countHead = (
 };
 
 /**
+ * Where each period's rows go, each with its retention: hours for 90 days,
+ * days for 13 months, and a release's lifetime counters kept.
+ */
+const PERIOD_MODELS = {
+  hour: { counters: "insights_overview", sketches: "insights_sketches" },
+  day: {
+    counters: "insights_overview_daily",
+    sketches: "insights_sketches_daily",
+  },
+  lifetime: { counters: "insights_overview_lifetime", sketches: undefined },
+} as const;
+
+/**
  * Counters and sketches for one event: release, channel, and usage rows, with
  * day rollups for channel and usage. Usage rows are written for the event's
  * platform only, since a read for every platform merges the ios and android
@@ -169,6 +185,7 @@ const countEvent = (
           ] as const)
         : ([[parts.periodKind, bucketStartMs]] as const);
     for (const [periodKind, bucket] of periods) {
+      const models = PERIOD_MODELS[periodKind as keyof typeof PERIOD_MODELS];
       const key = {
         identity: insightsIdentity({ ...parts, periodKind }),
         bucket_start_ms: bucket,
@@ -185,7 +202,7 @@ const countEvent = (
         ].filter(([, value]) => value !== 0),
       );
       if (Object.keys(counters).length > 0) {
-        tx.aggregate("insights_overview", key, counters, { shardBy });
+        tx.aggregate(models.counters, key, counters, { shardBy });
       }
       const sketches = {
         ...(delta.launchIdentity === undefined || parts.scopeKind === "channel"
@@ -197,8 +214,8 @@ const countEvent = (
               activity_users: addInsightsDistinct(null, delta.activityIdentity),
             }),
       };
-      if (Object.keys(sketches).length > 0) {
-        tx.aggregate("insights_sketches", key, sketches, { shardBy });
+      if (models.sketches !== undefined && Object.keys(sketches).length > 0) {
+        tx.aggregate(models.sketches, key, sketches, { shardBy });
       }
     }
   }

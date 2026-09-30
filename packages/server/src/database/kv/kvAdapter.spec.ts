@@ -9,9 +9,10 @@ import {
 import { conformanceCounters, conformanceItems } from "@hot-updater/test-utils";
 import { describe, expect, it } from "vitest";
 
+import { aggregateBatchingModule } from "../aggregateBatching";
 import { createDatabaseEngine } from "../database";
 import { resolveSchema } from "../resolveSchema";
-import { defineTable } from "../schema";
+import { defineAggregate, defineTable } from "../schema";
 import {
   createKvAdapter,
   encodeKvKey,
@@ -322,6 +323,115 @@ describe("createKvAdapter", () => {
         },
       ]),
     ).toEqual({ ok: false, failedOp: 1 });
+  });
+
+  it("stamps a row's expiry on its row item and every index and unique item", async () => {
+    const store = createMemoryKeyValueStore();
+    const adapter = createKvAdapter({ store });
+    const expiring: PhysicalTable = {
+      ...conformanceItems,
+      retention: { column: "score", ms: 1_000 },
+    };
+    const row = item("a", { score: 5, label: "L", tags: ["x", "y"] });
+    const stamps = () => [...new Set(store.expiries().values())];
+
+    await adapter.write([{ type: "insert", table: expiring, row }]);
+    expect(store.expiries().size).toBe(6);
+    expect(stamps()).toEqual([1_005]);
+
+    // Moving the retention column moves every item's expiry with it.
+    await adapter.write([
+      {
+        type: "patch",
+        table: expiring,
+        key: ["a"],
+        set: { score: 7 },
+        guard: { v: 0 },
+        previous: row,
+      },
+    ]);
+    expect(store.expiries().size).toBe(6);
+    expect(stamps()).toEqual([1_007]);
+
+    // A table that keeps its rows stamps nothing; nor does a null time.
+    await adapter.write([
+      { type: "insert", table: conformanceItems, row: item("kept") },
+      {
+        type: "insert",
+        table: {
+          ...expiring,
+          name: "never",
+          retention: { column: "ratio", ms: 1 },
+        },
+        row: item("never"),
+      },
+    ]);
+    expect(stamps()).toEqual([1_007]);
+    expect(store.expiries().size).toBe(6);
+  });
+
+  it("stamps a counter row it creates, and leaves an existing one's expiry", async () => {
+    const store = createMemoryKeyValueStore();
+    const adapter = createKvAdapter({ store });
+    const counters: PhysicalTable = {
+      ...conformanceCounters,
+      retention: { column: "shard", ms: 10 },
+    };
+    const add = (by: number) =>
+      adapter.write([
+        {
+          type: "increment",
+          table: counters,
+          key: ["c", 3],
+          by: { hits: by },
+          init: { scope: "c", shard: 3, hits: 0, _v: 0 },
+        },
+      ]);
+
+    await add(1);
+    await add(1);
+
+    expect([...store.expiries().values()]).toEqual([13]);
+    expect(await adapter.get(counters, [["c", 3]])).toEqual([
+      { scope: "c", shard: 3, hits: 2, _v: 2 },
+    ]);
+  });
+
+  it("stamps the rows a batched aggregate's compaction writes, and no log row", async () => {
+    const DAY = 86_400_000;
+    const store = createMemoryKeyValueStore();
+    const hits = defineAggregate(
+      { day: { type: "integer" } },
+      {
+        key: ["day"],
+        counters: ["hits"],
+        shards: 2,
+        batched: true,
+        indexes: { all: { eq: [], sort: ["day"] } },
+        retention: { field: "day", days: 1 },
+      },
+    );
+    const module = { id: "stats", schema: { hits } } as const;
+    const engine = createDatabaseEngine({
+      adapter: createKvAdapter({ store }),
+      schema: resolveSchema([module, aggregateBatchingModule]),
+      batching: { mode: "log", windowMs: 60_000 },
+      now: () => 10 * DAY,
+    });
+    const db = engine.database(module);
+
+    await db.transaction(async (tx) => {
+      tx.aggregate("hits", { day: DAY }, { hits: 1 }, { shardBy: "a" });
+    });
+    await engine.flush();
+
+    // The shard row expires a day after its day; the log rows it came from
+    // are gone, and the lease row never expires.
+    expect(new Set(store.expiries().values())).toEqual(new Set([2 * DAY]));
+    expect(
+      (await db.findAggregates("hits", { index: "all", where: {}, limit: 10 }))
+        .rows,
+    ).toEqual([{ day: DAY, hits: 1 }]);
   });
 });
 

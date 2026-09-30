@@ -12,13 +12,16 @@ import {
 import {
   builtInSchema,
   builtInSettings,
+  createKvAdapter,
   encodeKvKey,
+  type PhysicalTable,
   SETTINGS_TABLE,
   type WriteOp,
 } from "@hot-updater/server/database";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { type DynamoDBConfig, dynamoDB } from "./dynamoDB";
+import { createDynamoDBStore, DYNAMODB_TTL_ATTRIBUTE } from "./dynamoDBStore";
 
 const TABLE_NAME = "hot-updater-metadata";
 const DISTRIBUTION_ID = "distribution-id";
@@ -155,5 +158,94 @@ describe("dynamoDB CloudFront invalidation", () => {
 
     expect(destroyDynamoDB).toHaveBeenCalledTimes(1);
     expect(destroyCloudFront).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("dynamoDB TTL", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  /** A table whose rows expire a day after `at`, with one index copy. */
+  const expiring: PhysicalTable = {
+    name: "expiring",
+    columns: [
+      { name: "id", type: "string", nullable: false },
+      { name: "grp", type: "string", nullable: false },
+      { name: "at", type: "integer", nullable: false },
+      { name: "hits", type: "integer", nullable: false },
+      { name: "_v", type: "integer", nullable: false },
+    ],
+    key: ["id"],
+    indexes: [{ name: "byGroup", eq: ["grp"], sort: ["at"] }],
+    retention: { column: "at", ms: 86_400_000 },
+  };
+
+  const createAdapter = () =>
+    createKvAdapter({
+      store: createDynamoDBStore({
+        client: new DynamoDBClient({ region: "us-east-1" }),
+        tableName: TABLE_NAME,
+      }),
+    });
+
+  it("puts the expiry, in epoch seconds, on the row item and its index copy", async () => {
+    const send = vi
+      .spyOn(DynamoDBDocumentClient.prototype, "send")
+      .mockResolvedValue({} as never);
+    const adapter = createAdapter();
+
+    await adapter.write([
+      {
+        type: "insert",
+        table: expiring,
+        row: { id: "a", grp: "g", at: 1_500, hits: 0, _v: 0 },
+      },
+      {
+        type: "increment",
+        table: { ...expiring, name: "counts", indexes: [] },
+        key: ["c"],
+        by: { hits: 1 },
+        init: { id: "c", grp: "g", at: 2_000, hits: 0, _v: 0 },
+      },
+    ]);
+
+    const [command] = send.mock.calls[0]!;
+    const items = (command as TransactWriteCommand).input.TransactItems!;
+    const puts = items.flatMap((item) => (item.Put ? [item.Put.Item!] : []));
+    expect(puts).toHaveLength(2);
+    // 1,500 ms plus a day, rounded up to a whole second.
+    for (const put of puts) {
+      expect(put[DYNAMODB_TTL_ATTRIBUTE]).toBe(86_402);
+    }
+    const update = items.find((item) => item.Update)!.Update!;
+    expect(update.UpdateExpression).toContain("if_not_exists");
+    expect(Object.values(update.ExpressionAttributeNames!)).toContain(
+      DYNAMODB_TTL_ATTRIBUTE,
+    );
+    expect(Object.values(update.ExpressionAttributeValues!)).toContain(86_402);
+  });
+
+  it("reads a row without its TTL attribute", async () => {
+    vi.spyOn(DynamoDBDocumentClient.prototype, "send").mockResolvedValue({
+      Responses: {
+        [TABLE_NAME]: [
+          {
+            pk: "expiring",
+            sk: encodeKvKey(["a"]),
+            id: "a",
+            grp: "g",
+            at: 1_500,
+            hits: 0,
+            _v: 0,
+            [DYNAMODB_TTL_ATTRIBUTE]: 86_402,
+          },
+        ],
+      },
+    } as never);
+
+    const [row] = await createAdapter().get(expiring, [["a"]]);
+
+    expect(row).toEqual({ id: "a", grp: "g", at: 1_500, hits: 0, _v: 0 });
   });
 });

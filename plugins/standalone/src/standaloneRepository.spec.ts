@@ -51,6 +51,32 @@ describe("standaloneRepository", () => {
     expect(url).toBe(`${BASE_URL}/events?limit=1`);
   });
 
+  it("sends a plugin's admin DELETE with its method and body, and the repository's headers", async () => {
+    let request: Request | undefined;
+    server.use(
+      http.delete(`${BASE_URL}/installations/install-1`, async (info) => {
+        request = info.request;
+        return HttpResponse.json({ deleted: { installations: 1, events: 2 } });
+      }),
+    );
+
+    const response = await standaloneRepository({
+      baseUrl: BASE_URL,
+      commonHeaders: { Authorization: "Bearer token" },
+    }).fetchAdmin("/installations/install-1", {
+      method: "DELETE",
+      body: "{}",
+    });
+
+    await expect(response.json()).resolves.toEqual({
+      deleted: { installations: 1, events: 2 },
+    });
+    expect(request?.method).toBe("DELETE");
+    expect(request?.headers.get("authorization")).toBe("Bearer token");
+    expect(request?.headers.get("cache-control")).toBeNull();
+    await expect(request?.text()).resolves.toBe("{}");
+  });
+
   it("reads the plugins the server runs from its admin /version, fresh each time", async () => {
     let cacheControl: string | null = null;
     server.use(

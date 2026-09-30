@@ -27,6 +27,7 @@ export {
   type IndexDefinition,
   type ModuleSchema,
   type ReferenceAction,
+  type RetentionDefinition,
   type TableDefinition,
 } from "../database/schema";
 export type {

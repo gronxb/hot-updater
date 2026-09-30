@@ -54,6 +54,13 @@ export interface PhysicalIndex {
   readonly unique?: true;
 }
 
+/** How long a table's rows live: `ms` past the epoch milliseconds in `column`. */
+export interface PhysicalRetention {
+  /** An integer column; a row whose value is null never expires. */
+  readonly column: string;
+  readonly ms: number;
+}
+
 export interface PhysicalTable {
   /** The logical name; each adapter applies its own table prefix. */
   readonly name: string;
@@ -61,6 +68,12 @@ export interface PhysicalTable {
   /** Primary-key columns, in order. */
   readonly key: readonly string[];
   readonly indexes: readonly PhysicalIndex[];
+  /**
+   * Rows expire at {@link expiresAt}. A backend with a native TTL stamps it
+   * on every item the row has, its index copies included, and deletes them
+   * itself; any other adapter implements `prune`, which the engine calls.
+   */
+  readonly retention?: PhysicalRetention;
 }
 
 export interface QueryBound {
@@ -161,6 +174,14 @@ export interface DatabaseAdapter {
     table: PhysicalTable,
     rows: readonly StoredRow[],
   ): Promise<void>;
+  /**
+   * Deletes up to `limit` rows of a table with retention whose retention
+   * column is at or below `before`, oldest first (ties in any order), with
+   * their index entries, rechecking the column as it deletes, so a row a
+   * concurrent write moved past `before` stays. Resolves to the number
+   * deleted. A backend that expires rows natively leaves it out.
+   */
+  prune?(table: PhysicalTable, before: number, limit: number): Promise<number>;
   /** Called only by `@hot-updater/server/db` tooling. */
   readonly migrations?: {
     apply(tables: readonly PhysicalTable[]): Promise<void>;
@@ -211,6 +232,18 @@ export const indexOrderColumns = (
     (column) => !index.sort.includes(column) && !index.eq.includes(column),
   ),
 ];
+
+/**
+ * When a row of a table with retention expires, in epoch milliseconds, or
+ * undefined when the table keeps its rows or the row's time is null.
+ */
+export const expiresAt = (
+  table: PhysicalTable,
+  row: StoredRow,
+): number | undefined => {
+  const time = table.retention && row[table.retention.column];
+  return typeof time === "number" ? time + table.retention!.ms : undefined;
+};
 
 /** The primary key of a row, in key-column order. */
 export const rowKey = (table: PhysicalTable, row: StoredRow): DatabaseKey =>

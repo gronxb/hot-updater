@@ -37,7 +37,12 @@ describe("getConsoleFeaturesRpc", () => {
     });
 
     await expect(getConsoleFeaturesRpc()).resolves.toEqual({
-      features: { insights: true, insightsAnalytics: true, apiKeys: false },
+      features: {
+        insights: true,
+        insightsAnalytics: true,
+        insightsDeletion: true,
+        apiKeys: false,
+      },
       remote: false,
     });
   });
@@ -55,7 +60,12 @@ describe("getConsoleFeaturesRpc", () => {
     });
 
     await expect(getConsoleFeaturesRpc()).resolves.toEqual({
-      features: { insights: true, insightsAnalytics: false, apiKeys: false },
+      features: {
+        insights: true,
+        insightsAnalytics: false,
+        insightsDeletion: true,
+        apiKeys: false,
+      },
       remote: true,
     });
   });

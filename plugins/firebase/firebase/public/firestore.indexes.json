@@ -34,6 +34,12 @@
       "collectionGroup": "hot_updater_v1",
       "fieldPath": "row",
       "indexes": []
+    },
+    {
+      "collectionGroup": "hot_updater_v1",
+      "fieldPath": "expireAt",
+      "ttl": true,
+      "indexes": []
     }
   ]
 }

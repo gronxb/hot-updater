@@ -3,6 +3,7 @@ import { createHotUpdater } from "@hot-updater/server";
 import { env } from "cloudflare:test";
 import { beforeAll, beforeEach, describe, expect, inject, it } from "vitest";
 
+import { createBundleEventRowFixture } from "../../../../packages/test-utils/src/databaseTestFixtures";
 import { d1Database, plugins } from "../../src/worker";
 import worker, { HOT_UPDATER_BASE_PATH } from "./index";
 
@@ -131,5 +132,51 @@ describe.sequential("cloudflare worker runtime acceptance", () => {
     await expect(response.json()).resolves.toEqual({
       error: "Not found",
     });
+  });
+
+  it("deletes rows past their retention after a write, with no cron trigger", async () => {
+    const day = 86_400_000;
+    const expired = createBundleEventRowFixture("9701", Date.now() - 100 * day);
+    await createSeedServer().api.insights.recordEvent(expired);
+    // The seed servers' writes hold the hourly lease; release it.
+    await env.DB.prepare(
+      "DELETE FROM private_hot_updater_settings WHERE key = 'retention.nextPassAt'",
+    ).run();
+
+    const reported = await worker.fetch(
+      new Request(`${PUBLIC_BASE_URL}/events`, {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-api-key": API_KEY },
+        body: JSON.stringify({
+          appVersion: "1.0",
+          channel: "production",
+          cohort: "default",
+          fingerprintHash: null,
+          fromBundleId: null,
+          fromReleaseId: null,
+          installId: "install-9702",
+          platform: "ios",
+          toBundleId: "00000000-0000-7000-8000-000000009702",
+          toReleaseId: null,
+          type: "UNCHANGED",
+          updateStrategy: null,
+        }),
+      }),
+      env,
+    );
+    expect(reported.status).toBe(204);
+
+    const ids = async (table: string, column: string) =>
+      (
+        await env.DB.prepare(
+          `SELECT ${column} AS id FROM ${table} ORDER BY ${column}`,
+        ).all<{ id: string }>()
+      ).results.map(({ id }) => id);
+    // Events are kept 90 days; an installation's latest event, 13 months.
+    await expect(ids("bundle_events", "id")).resolves.not.toContain(expired.id);
+    await expect(ids("bundle_event_heads", "install_id")).resolves.toEqual([
+      expired.install_id,
+      "install-9702",
+    ]);
   });
 });

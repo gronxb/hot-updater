@@ -101,6 +101,29 @@ describe("EventHistoryCard", () => {
     expect(screen.queryByRole("button", { name: /^Show the last/ })).toBeNull();
   });
 
+  it("offers no range longer than the server keeps raw events", () => {
+    renderCard({
+      history: { data: [], nextCursor: null },
+      onRangeChange: vi.fn(),
+      range: "7d",
+      rawDays: 30,
+    });
+
+    const ranges = within(screen.getByRole("tablist", { name: "Time range" }));
+    expect(
+      ranges.getAllByRole("tab").map((tab) => tab.getAttribute("aria-label")),
+    ).toEqual(["Last 24 hours", "Last 7 days", "Last 30 days"]);
+    cleanup();
+
+    renderCard({
+      history: { data: [], nextCursor: null },
+      onRangeChange: vi.fn(),
+      range: "7d",
+      rawDays: 7,
+    });
+    expect(screen.queryByRole("button", { name: /^Show the last/ })).toBeNull();
+  });
+
   it("says the range start is reached on the last page", () => {
     const onRangeChange = vi.fn();
     renderCard({ onRangeChange, pageNumber: 2, range: "24h" });

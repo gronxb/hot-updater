@@ -164,6 +164,7 @@ export const bundle_event_heads = pgTable("bundle_event_heads", {
 }, (table) => [
   primaryKey({ columns: [table["install_id"]] }),
   index("bundle_event_heads_byUser").on(table["user_id"], table["install_id"]),
+  index("bundle_event_heads__retention").on(table["received_at_ms"], table["install_id"]),
 ]);
 
 export const insights_overview = pgTable("insights_overview", {
@@ -176,6 +177,7 @@ export const insights_overview = pgTable("insights_overview", {
   "_v": column("bigint")("_v").notNull().default(0),
 }, (table) => [
   primaryKey({ columns: [table["identity"], table["bucket_start_ms"], table["_shard"]] }),
+  index("insights_overview__retention").on(table["bucket_start_ms"], table["identity"], table["_shard"]),
 ]);
 
 export const insights_sketches = pgTable("insights_sketches", {
@@ -184,6 +186,44 @@ export const insights_sketches = pgTable("insights_sketches", {
   "_shard": column("bigint")("_shard").notNull(),
   "launch_users": column("text COLLATE \"C\"")("launch_users"),
   "activity_users": column("text COLLATE \"C\"")("activity_users"),
+  "_v": column("bigint")("_v").notNull().default(0),
+}, (table) => [
+  primaryKey({ columns: [table["identity"], table["bucket_start_ms"], table["_shard"]] }),
+  index("insights_sketches__retention").on(table["bucket_start_ms"], table["identity"], table["_shard"]),
+]);
+
+export const insights_overview_daily = pgTable("insights_overview_daily", {
+  "identity": column("varchar(32) COLLATE \"C\"")("identity").notNull(),
+  "bucket_start_ms": column("bigint")("bucket_start_ms").notNull(),
+  "_shard": column("bigint")("_shard").notNull(),
+  "downloads": column("bigint")("downloads").notNull(),
+  "launches": column("bigint")("launches").notNull(),
+  "failed_launches": column("bigint")("failed_launches").notNull(),
+  "_v": column("bigint")("_v").notNull().default(0),
+}, (table) => [
+  primaryKey({ columns: [table["identity"], table["bucket_start_ms"], table["_shard"]] }),
+  index("insights_overview_daily__retention").on(table["bucket_start_ms"], table["identity"], table["_shard"]),
+]);
+
+export const insights_sketches_daily = pgTable("insights_sketches_daily", {
+  "identity": column("varchar(32) COLLATE \"C\"")("identity").notNull(),
+  "bucket_start_ms": column("bigint")("bucket_start_ms").notNull(),
+  "_shard": column("bigint")("_shard").notNull(),
+  "launch_users": column("text COLLATE \"C\"")("launch_users"),
+  "activity_users": column("text COLLATE \"C\"")("activity_users"),
+  "_v": column("bigint")("_v").notNull().default(0),
+}, (table) => [
+  primaryKey({ columns: [table["identity"], table["bucket_start_ms"], table["_shard"]] }),
+  index("insights_sketches_daily__retention").on(table["bucket_start_ms"], table["identity"], table["_shard"]),
+]);
+
+export const insights_overview_lifetime = pgTable("insights_overview_lifetime", {
+  "identity": column("varchar(32) COLLATE \"C\"")("identity").notNull(),
+  "bucket_start_ms": column("bigint")("bucket_start_ms").notNull(),
+  "_shard": column("bigint")("_shard").notNull(),
+  "downloads": column("bigint")("downloads").notNull(),
+  "launches": column("bigint")("launches").notNull(),
+  "failed_launches": column("bigint")("failed_launches").notNull(),
   "_v": column("bigint")("_v").notNull().default(0),
 }, (table) => [
   primaryKey({ columns: [table["identity"], table["bucket_start_ms"], table["_shard"]] }),
@@ -202,6 +242,7 @@ export const insights_distribution = pgTable("insights_distribution", {
   primaryKey({ columns: [table["channel"], table["platform"], table["app_version"], table["release_id"], table["bucket_start_ms"], table["_shard"]] }),
   index("insights_distribution_byScope").on(table["channel"], table["platform"], table["bucket_start_ms"], table["app_version"], table["release_id"], table["_shard"]),
   index("insights_distribution_byVersion").on(table["channel"], table["platform"], table["app_version"], table["bucket_start_ms"], table["release_id"], table["_shard"]),
+  index("insights_distribution__retention").on(table["bucket_start_ms"], table["channel"], table["platform"], table["app_version"], table["release_id"], table["_shard"]),
 ]);
 
 export const insights_latest_by_bundle = pgTable("insights_latest_by_bundle", {
@@ -216,6 +257,7 @@ export const insights_latest_by_bundle = pgTable("insights_latest_by_bundle", {
   "_v": column("bigint")("_v").notNull().default(0),
 }, (table) => [
   primaryKey({ columns: [table["platform"], table["channel"], table["bundle_field"], table["bundle_id"], table["type"], table["bucket_start_ms"], table["_shard"]] }),
+  index("insights_latest_by_bundle__retention").on(table["bucket_start_ms"], table["platform"], table["channel"], table["bundle_field"], table["bundle_id"], table["type"], table["_shard"]),
 ]);
 
 export const insights_outcomes = pgTable("insights_outcomes", {
@@ -229,6 +271,7 @@ export const insights_outcomes = pgTable("insights_outcomes", {
   "_v": column("bigint")("_v").notNull().default(0),
 }, (table) => [
   primaryKey({ columns: [table["platform"], table["channel"], table["type"], table["bundle_ref"], table["bucket_start_ms"], table["_shard"]] }),
+  index("insights_outcomes__retention").on(table["bucket_start_ms"], table["platform"], table["channel"], table["type"], table["bundle_ref"], table["_shard"]),
 ]);
 
 export const api_keys = pgTable("api_keys", {

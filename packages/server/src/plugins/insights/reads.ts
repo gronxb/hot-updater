@@ -10,6 +10,7 @@ import {
   type InsightsGetReleaseActivityInput,
   type InsightsGetReleaseActivityResult,
   type InsightsListEventsInput,
+  type InsightsCoverage,
   type InsightsTimeRange,
   type ReleaseActivityMetrics,
   type ReleaseReference,
@@ -28,7 +29,13 @@ import {
   PAIR_FIELD,
   type InsightsIdentityParts,
 } from "./recordEvent";
-import { DAILY_EVENTS, DAY_MS, HOUR_MS, type InsightsSchema } from "./schema";
+import {
+  DAILY_EVENTS,
+  DAY_MS,
+  HOUR_MS,
+  type InsightsRetention,
+  type InsightsSchema,
+} from "./schema";
 
 type Db = HotUpdaterDatabase<InsightsSchema>;
 type Parts = Omit<InsightsIdentityParts, "periodKind">;
@@ -369,10 +376,35 @@ export const countLatestEvents = async (
   return Math.max(0, total);
 };
 
-/** Periods covering [start, end): whole UTC days when `days` and the window is over 48 hours, hours elsewhere. */
-const periodsOf = (range: InsightsTimeRange, days: boolean) => {
-  const { start, end } = range;
-  if (!days || end - start <= 2 * DAY_MS) {
+/** The oldest whole hour and UTC day that hourly and daily rows still hold. */
+const retained = (now: number, { rawDays, dailyDays }: InsightsRetention) => ({
+  hour: hourCeil(now - rawDays * DAY_MS),
+  day: dayCeil(now - dailyDays * DAY_MS),
+});
+
+/**
+ * Whether the rows a window reads still hold all of it; an older start is
+ * partial from `oldest`, the first bucket its rows keep.
+ */
+const coverageOf = (
+  start: number | undefined,
+  oldest: number,
+): InsightsCoverage =>
+  start === undefined || start >= oldest
+    ? { kind: "complete", sinceMs: 0 }
+    : { kind: "partial", sinceMs: oldest };
+
+/**
+ * Periods covering [start, end): whole UTC days when `days` and the window is
+ * over 48 hours, hours elsewhere. Hourly rows start at `hour`, the raw
+ * period ago, so with `days` an edge older than that reads its whole UTC day
+ * from the daily rows.
+ */
+const periodsOf = (range: InsightsTimeRange, days: boolean, hour: number) => {
+  const start =
+    days && range.start < hour ? dayFloor(range.start) : range.start;
+  const end = days && range.end < hour ? dayCeil(range.end) : range.end;
+  if (!days || (end - start <= 2 * DAY_MS && start >= hour)) {
     return [{ periodKind: "hour" as const, start, end }];
   }
   const first = Math.min(end, dayCeil(start));
@@ -397,23 +429,34 @@ interface SketchRow {
   readonly activity_users: string | null;
 }
 
-/** Every overview or sketch row of one identity over [start, end), mixing day and hour periods. */
+/** The hourly and daily aggregates of counters, and of sketches. */
+const COUNTERS = {
+  hour: "insights_overview",
+  day: "insights_overview_daily",
+} as const;
+const SKETCHES = {
+  hour: "insights_sketches",
+  day: "insights_sketches_daily",
+} as const;
+
+/** Every counter or sketch row of one identity over [start, end), mixing day and hour periods. */
 const windowRows = async (
   db: Db,
-  model: "insights_overview" | "insights_sketches",
+  models: typeof COUNTERS | typeof SKETCHES,
   parts: Parts,
   range: InsightsTimeRange,
   days: boolean,
+  hour: number,
 ): Promise<readonly object[]> => {
   const rows: object[] = [];
-  for (const period of periodsOf(range, days)) {
+  for (const period of periodsOf(range, days, hour)) {
     const identity = insightsIdentity({
       ...parts,
       periodKind: period.periodKind,
     });
     rows.push(
       ...(await drain((page) =>
-        db.findAggregates(model, {
+        db.findAggregates(models[period.periodKind], {
           index: "window",
           where: { identity },
           range: { gte: period.start, lt: period.end },
@@ -426,23 +469,13 @@ const windowRows = async (
   return rows;
 };
 
-const counterRows = (...args: [Db, Parts, InsightsTimeRange, boolean]) =>
-  windowRows(
-    args[0],
-    "insights_overview",
-    args[1],
-    args[2],
-    args[3],
-  ) as Promise<readonly CounterRow[]>;
+type WindowArgs = [Db, Parts, InsightsTimeRange, boolean, number];
 
-const sketchRows = (...args: [Db, Parts, InsightsTimeRange, boolean]) =>
-  windowRows(
-    args[0],
-    "insights_sketches",
-    args[1],
-    args[2],
-    args[3],
-  ) as Promise<readonly SketchRow[]>;
+const counterRows = (...[db, ...args]: WindowArgs) =>
+  windowRows(db, COUNTERS, ...args) as Promise<readonly CounterRow[]>;
+
+const sketchRows = (...[db, ...args]: WindowArgs) =>
+  windowRows(db, SKETCHES, ...args) as Promise<readonly SketchRow[]>;
 
 const releaseParts = (release: ReleaseReference): Parts => ({
   scopeKind: "release",
@@ -464,7 +497,7 @@ const lifetimeMetrics = async (
     periodKind: "lifetime",
   });
   const [lifetime] = (
-    await db.findAggregates("insights_overview", {
+    await db.findAggregates("insights_overview_lifetime", {
       index: "window",
       where: { identity },
       range: { gte: 0, lte: 0 },
@@ -491,10 +524,11 @@ const rangedMetrics = async (
   users: UserSketches,
   range: InsightsTimeRange,
   days: boolean,
+  hour: number,
 ): Promise<ReleaseActivityMetrics> => {
   const [counters, sketches] = await Promise.all([
-    counterRows(db, parts, range, days),
-    sketchRows(db, users.parts, range, days),
+    counterRows(db, parts, range, days, hour),
+    sketchRows(db, users.parts, range, days, hour),
   ]);
   const series = new Map<
     number,
@@ -541,7 +575,10 @@ export const getReleaseActivity = async (
   db: Db,
   input: InsightsGetReleaseActivityInput,
   now: () => number,
+  retention: InsightsRetention,
 ): Promise<InsightsGetReleaseActivityResult> => {
+  const at = now();
+  const kept = retained(at, retention);
   const data =
     input.scope !== undefined
       ? [
@@ -566,6 +603,7 @@ export const getReleaseActivity = async (
               },
               input.timeRange,
               true,
+              kept.hour,
             ),
           },
         ]
@@ -581,13 +619,16 @@ export const getReleaseActivity = async (
                     { parts: releaseParts(release), field: "launch_users" },
                     input.timeRange,
                     false,
+                    kept.hour,
                   ),
           })),
         );
+  // A channel reads daily rows past the raw period; a release, hourly rows.
+  const oldest = kept[input.scope === undefined ? "hour" : "day"];
   return {
-    coverage: { kind: "complete", sinceMs: 0 },
+    coverage: coverageOf(input.timeRange?.start, oldest),
     data,
-    measuredAtMs: now(),
+    measuredAtMs: at,
   };
 };
 
@@ -610,8 +651,12 @@ export const getAppUsage = async (
   db: Db,
   input: InsightsGetAppUsageInput,
   now: () => number,
+  retention: InsightsRetention,
 ): Promise<InsightsGetAppUsageResult> => {
   const { timeRange, intervalMs } = input;
+  const at = now();
+  const kept = retained(at, retention);
+  const days = intervalMs % DAY_MS === 0 && timeRange.start % DAY_MS === 0;
   const reported =
     input.platform === "all" ? (["ios", "android"] as const) : [input.platform];
   // Every platform's usage is the ios and android sketches merged: each
@@ -623,7 +668,8 @@ export const getAppUsage = async (
           db,
           usageParts(input.channel, platform, input.appVersion),
           timeRange,
-          intervalMs % DAY_MS === 0 && timeRange.start % DAY_MS === 0,
+          days,
+          kept.hour,
         ),
       ),
     )
@@ -699,7 +745,7 @@ export const getAppUsage = async (
   }
   const sortedVersions = byInstallations(versions);
   return {
-    coverage: { kind: "complete", sinceMs: 0 },
+    coverage: coverageOf(timeRange.start, kept[days ? "day" : "hour"]),
     activeInstallations: countInsightsDistinct(
       mergeInsightsDistinct(usage.map((row) => row.activity_users)),
     ),
@@ -710,6 +756,6 @@ export const getAppUsage = async (
     bundleDistribution: [...bundles.values()].filter(
       ({ installations }) => installations > 0,
     ),
-    measuredAtMs: now(),
+    measuredAtMs: at,
   };
 };

@@ -118,8 +118,8 @@ and `_`; index names start with a letter and use letters, digits, and `_`.
 
 ### Tables
 
-`defineTable(fields, { key, derived?, indexes? })` declares a table. Each field
-has a `type` and these options:
+`defineTable(fields, { key, derived?, indexes?, retention? })` declares a
+table. Each field has a `type` and these options:
 
 | Option | Meaning |
 | --- | --- |
@@ -161,7 +161,7 @@ the column `_refs_<child table>_<field>`, which reads return, for example
 
 ### Aggregates
 
-`defineAggregate(identity, { key, counters?, gauges?, distinct?, shards?, indexes?, batched? })`
+`defineAggregate(identity, { key, counters?, gauges?, distinct?, shards?, indexes?, batched?, retention? })`
 declares rows of metrics keyed by their identity fields. `key` lists every
 identity field in declaration order. Each metric is one of:
 
@@ -200,11 +200,50 @@ still sum the shards. Declare it on metrics that can lag a transaction, such
 as analytics, and not on counts a later transaction reads to decide what to
 write. Other databases write batched aggregates in the transaction.
 
+### Retention
+
+`retention: { field, days }` makes a table's or an aggregate's rows expire
+`days` after the time in `field`, an integer field of epoch milliseconds: a
+declared or derived field of a table, or an identity field of an aggregate,
+such as a bucket's start. A row whose `field` is null never expires. Insights
+keeps raw events and hourly rows for 90 days this way, and daily rows for
+13 months, by default; `insights({ retention: { rawDays, dailyDays } })`
+changes them. The days are a runtime value: the tables and indexes are the
+same for any period, so a plugin may take them as an option.
+
+```ts
+const events = defineTable(
+  { id: { type: "string", maxLength: 36 }, at: { type: "integer" } },
+  { key: ["id"], retention: { field: "at", days: 90 } },
+);
+```
+
+Each backend deletes expired rows with its cheapest mechanism, with no
+scheduler:
+
+| Backend | How expired rows go |
+| --- | --- |
+| DynamoDB | Every item of the row, its index copies included, carries `_ttl` (epoch seconds), and the table's TTL deletes them at no write cost, usually within two days of expiry. |
+| Firestore | Every document of the row carries `expireAt`, and the collection's TTL policy deletes them, usually within a day of expiry. |
+| MongoDB | Every document of the row carries `_expireAt`, a Date, and the collection's TTL index deletes it, usually within a minute of expiry. |
+| PostgreSQL, MySQL, SQLite, D1, Supabase | During writes: the write that takes the hourly lease in the settings table first deletes up to 500 expired rows a table, oldest first, in one or two statements over an index that starts with the retention field (the adapter creates one when none does). Other servers skip; while a pass still finds a full batch, the next one runs a minute later. |
+
+Until then an expired row may still be read, so a read that must not return
+one bounds its range to the retention window. Deleting an expired row skips
+cascades and reference counters, so a model with retention takes part in no
+reference and roots no index. On an aggregate with retention written in its
+transaction, a gauge change that would take a row retention already deleted
+below zero is dropped: a value counted in an expired bucket may leave it after
+the bucket is gone. A batched aggregate's signed shard rows expire with their
+bucket.
+
 Startup resolves every schema and throws `DatabaseSchemaError` with every
 problem it finds: invalid names, optional or `json` key fields, an undeclared
 root or reference target, a cascade without its index, sketches mixed with
-other metrics, or a shard count out of range. An index that names an
-undeclared field also fails to type-check.
+other metrics, a shard count out of range, or retention on a field that is
+not an integer, over less than a whole day, or on a model in a reference or
+rooted index. An index that names an undeclared field also fails to
+type-check.
 
 ## Write the plugin
 

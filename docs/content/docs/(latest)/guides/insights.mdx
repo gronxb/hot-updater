@@ -41,6 +41,8 @@ plugins the server runs. Without `insights()`, those routes answer `204` with
 server logs one warning, on the first report it drops, that names `insights()`.
 An app with the Insights plugin then stops reporting for 24 hours at a time;
 see [when the server has Insights off](/docs/react-native-api/insights#when-the-server-has-insights-off).
+On the server, `insights({ retention })` sets how long the plugin keeps data;
+see [How long Insights keeps data](#how-long-insights-keeps-data).
 
 <span id="configure-reporting" />
 
@@ -237,22 +239,25 @@ the summary to open Release health for that ID.
 
 Insights opens on the `production` channel. **App usage** starts with
 **All platforms** and a 24-hour period; **Release health** starts with **iOS**
-and **7d**. Each card has its own **24h**, **7d**, or **30d** period selector.
+and **7d**. Each card has its own **24h**, **7d**, or **30d** period selector,
+and App usage also offers **12m**.
 
 Choose a **Channel** for both cards. **Usage platform** and **App version**
 filter App usage; **Health platform** and the optional **Release ID** filter
 Release health. Choose **Apply filters** to update the reports.
 
 App usage shows one metric for the selected period: **DAU** for the last 24
-hours, **WAU** for the last 7 days, or **MAU** for the last 30 days. Each counts
-unique app installations with at least one matching activity report in that
-rolling window. Multiple installations belonging to the same person count
+hours, **WAU** for the last 7 days, **MAU** for the last 30 days, or **YAU** for
+the last 12 months. Each counts unique app installations with at least one
+matching activity report in that window. The 24h, 7d, and 30d windows roll by
+the hour; 12m covers 52 weeks of whole UTC days, ending with today, because
+hourly totals are kept for 90 days and daily totals for 13 months. Multiple installations belonging to the same person count
 separately. All event types count, including **No change**, as do reports
 without a known bundle ID. Hover over, focus, or tap the metric's info icon to
 see its definition.
 
 The usage chart counts unique reporting installations in each interval: hourly
-for 24h, every six hours for 7d, and daily for 30d. The period total deduplicates
+for 24h, every six hours for 7d, daily for 30d, and weekly for 12m. The period total deduplicates
 installations across intervals, so it is not the sum of the chart points.
 Distributions count each installation once, using the app version and platform
 of its latest matching report. The server counts latest reports by UTC day, so a
@@ -308,6 +313,86 @@ one batching window of the latest reports, a minute by default. DAU, WAU, MAU, a
 installations are estimates from HyperLogLog sketches, typically within about
 3%, and show with **≈**. Report counts, active days, and distributions are
 exact.
+
+## How long Insights keeps data
+
+`insights()` keeps each kind of data for a period, then deletes it:
+
+| Data | Kept by default |
+| --- | --- |
+| Downloads, applies, and recoveries (raw events) | 90 days |
+| Hourly totals and unique-installation sketches | 90 days |
+| Daily totals, sketches, and latest-report distributions | 13 months (400 days) |
+| An installation's latest report | 13 months after the installation last reports |
+| Lifetime counters per Release ID (Bundles list and detail) | Kept |
+
+Set the periods on the plugin, in `hotUpdater.plugins.ts` and wherever the
+server builds its plugins:
+
+```ts
+insights({ retention: { rawDays: 30, dailyDays: 400 } });
+```
+
+`rawDays` covers raw events and hourly totals; `dailyDays` covers daily
+totals, distributions, and latest reports. Each is a whole number of days, at
+least 1, and `dailyDays` is at least `rawDays`; lifetime counters are always
+kept. A changed period applies at the next pruning pass on SQL databases. On
+DynamoDB, Firestore, and MongoDB, which stamp each row's expiry as they write
+it, rows already written keep theirs, and later writes take the new period.
+
+Periods follow from what reads them. Event lists cover at most the raw
+period, and overview periods up to 30 days read hourly totals. The 12m App
+usage period reads daily totals. A read that reaches past what is kept says
+so: the Console shows **Partial history** and marks totals as a lower bound.
+An installation that stops reporting leaves the distributions when its latest
+report expires. The Console reads the server's periods, including a
+self-hosted server's through its admin API.
+
+No scheduler is needed: expired data leaves by native TTL or during writes.
+
+- **DynamoDB** deletes expired items with Time to Live on `_ttl`, at no write
+  cost, usually within a few days of expiry. `hot-updater db migrate` and the
+  managed AWS setup turn TTL on for the table.
+- **Firestore** deletes expired documents with a TTL policy on `expireAt`,
+  usually within 24 hours of expiry. The managed Firebase setup deploys the
+  policy with `firestore.indexes.json`.
+- **MongoDB** deletes expired documents with a TTL index on `_expireAt`,
+  usually within a minute of expiry. `hot-updater db migrate` creates it.
+- **PostgreSQL, MySQL, SQLite, Cloudflare D1, and Supabase** delete expired
+  rows during writes. The write that takes the hourly lease in the settings
+  table first deletes up to 500 expired rows a table, oldest first; other
+  servers skip. While a pass still finds a full batch, the next one runs a
+  minute later.
+
+Reads never depend on deletion: expired rows that remain are outside every
+period the Console reads.
+
+## Delete an installation's or a user's data
+
+Deleting an installation removes its downloads, applies, and recoveries, and
+its latest report, which also leaves the distributions. Deleting a user
+removes the data of every installation whose latest report names that user ID.
+An installation whose latest report names another user keeps its events, even
+those it reported under the deleted user: delete it by its install ID, or let
+its events age out with the raw period.
+
+Totals and unique-installation sketches hold no identifiers and stay: a sketch
+keeps 1,024 small numbers derived from hashed installation IDs, never an ID or
+a whole hash. They age out with the periods above, and lifetime counters are
+kept.
+
+- **Console**: search for the install ID or user ID, open the installation, and
+  choose **Delete data** in **Installation history**. Turn on **Every
+  installation of this user** to delete the user's data. The Console asks for
+  confirmation, and offers deletion only when the server runs `insights()`.
+- **Admin API**: `DELETE /installations/:installId` and
+  `DELETE /installations?userId=<id>` delete a bounded batch and answer
+  `{ "deleted": { "installations": 1, "events": 42 }, "complete": true }`.
+  Repeat the request while `complete` is `false`. A busy database answers
+  `503` with `Retry-After`.
+- **Server API**: `hotUpdater.api.insights.deleteInstallation(installId)` and
+  `hotUpdater.api.insights.deleteUser(userId)` answer the same way and take an
+  optional `{ limit }` of rows per call.
 
 ## What Insights writes
 

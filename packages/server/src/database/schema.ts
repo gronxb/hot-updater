@@ -16,6 +16,17 @@ export type {
   ReferenceAction,
 } from "./definitions";
 
+/**
+ * How long a model keeps its rows: `days` past the epoch milliseconds in
+ * `field`, an integer field (a table's derived one too, where null keeps
+ * the row). Expired rows are deleted without cascades, so a model with
+ * retention is in no reference and no rooted index.
+ */
+export interface RetentionDefinition<TField extends string = string> {
+  readonly field: TField;
+  readonly days: number;
+}
+
 export type FieldValue<TType extends FieldType> = TType extends "string"
   ? string
   : TType extends "integer" | "number"
@@ -63,6 +74,17 @@ export type DerivedFields<
 
 type Indexes = Readonly<Record<string, IndexDefinition>>;
 
+/** The integer fields, declared or derived, that retention can count from. */
+type IntegerFields<TFields extends Fields, TDerived extends DerivedTypes> =
+  | {
+      [K in keyof TFields]: TFields[K] extends { readonly type: "integer" }
+        ? K
+        : never;
+    }[keyof TFields]
+  | {
+      [K in keyof TDerived]: TDerived[K] extends "integer" ? K : never;
+    }[keyof TDerived];
+
 type MissingFields<TIndex, TNames extends string> = TIndex extends {
   readonly eq: readonly (infer TEq)[];
   readonly sort: readonly (infer TSort)[];
@@ -109,6 +131,10 @@ export const defineTable = <
     readonly derived?: DerivedFields<TFields, TDerived>;
     readonly indexes?: TIndexes &
       CheckIndexes<TIndexes, (keyof TFields | keyof TDerived) & string>;
+    /** Rows expire `days` after the epoch milliseconds in `field`. */
+    readonly retention?: RetentionDefinition<
+      IntegerFields<TFields, TDerived> & string
+    >;
   },
 ): TableDefinition<TFields, TDerived, TIndexes, TKey> => ({
   kind: "table",
@@ -116,6 +142,7 @@ export const defineTable = <
   key: options.key,
   derived: options.derived ?? ({} as DerivedFields<TFields, TDerived>),
   indexes: options.indexes ?? ({} as TIndexes),
+  ...(options.retention === undefined ? {} : { retention: options.retention }),
 });
 
 export interface AggregateDefinition<
@@ -158,6 +185,14 @@ export const defineAggregate = <
     readonly indexes?: TIndexes &
       CheckIndexes<TIndexes, keyof TFields & string>;
     readonly batched?: true;
+    /**
+     * Rows expire `days` after the epoch milliseconds in `field`, an
+     * identity field such as a bucket's start; a change to a row already
+     * past it is dropped, so a late gauge decrement never goes below zero.
+     */
+    readonly retention?: RetentionDefinition<
+      IntegerFields<TFields, {}> & string
+    >;
   },
 ): AggregateDefinition<TFields, TMetric, TIndexes, TSketch, TKey> => ({
   kind: "aggregate",
@@ -169,6 +204,7 @@ export const defineAggregate = <
   shards: options.shards ?? 1,
   indexes: options.indexes ?? ({} as TIndexes),
   ...(options.batched ? { batched: true } : {}),
+  ...(options.retention === undefined ? {} : { retention: options.retention }),
 });
 
 export type ModelDefinition = TableDefinition | AggregateDefinition;

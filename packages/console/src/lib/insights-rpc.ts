@@ -73,6 +73,11 @@ export const getInsightsInstallationRpc = createServerFn({ method: "GET" })
   .validator(readInstallId)
   .handler(async ({ data }) => (await insightsReads()).getInstallation(data));
 
+/** How long the server's `insights()` keeps rows. */
+export const getInsightsRetentionRpc = createServerFn({ method: "GET" })
+  .middleware([consoleAccess])
+  .handler(async () => (await insightsReads()).getRetention());
+
 export const findInsightsInstallationsRpc = createServerFn({ method: "GET" })
   .middleware([consoleAccess])
   .validator(readInstallationPage)

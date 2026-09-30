@@ -116,10 +116,26 @@ describe.each(backends)("insights recordEvent on %s", (_name, adapter) => {
       range: { gte: bucket, lte: bucket },
       limit: 100,
     });
-    const overview = async (key: string, bucket: number) =>
-      (await db.findAggregates("insights_overview", at(key, bucket))).rows[0];
-    const sketch = async (key: string, bucket: number) =>
-      (await db.findAggregates("insights_sketches", at(key, bucket))).rows[0];
+    /** Each period's rows live in an aggregate of their own, with its retention. */
+    const counters = {
+      hour: "insights_overview",
+      day: "insights_overview_daily",
+      lifetime: "insights_overview_lifetime",
+    } as const;
+    const sketches = {
+      hour: "insights_sketches",
+      day: "insights_sketches_daily",
+    } as const;
+    const overview = async (
+      key: string,
+      bucket: number,
+      period: keyof typeof counters = "hour",
+    ) => (await db.findAggregates(counters[period], at(key, bucket))).rows[0];
+    const sketch = async (
+      key: string,
+      bucket: number,
+      period: keyof typeof sketches = "hour",
+    ) => (await db.findAggregates(sketches[period], at(key, bucket))).rows[0];
     const distribution = async () =>
       (
         await db.findAggregates("insights_distribution", {
@@ -240,6 +256,7 @@ describe.each(backends)("insights recordEvent on %s", (_name, adapter) => {
           periodKind: "lifetime",
         }),
         0,
+        "lifetime",
       ),
     ).resolves.toMatchObject(counters);
     const releaseHour = await sketch(
@@ -252,11 +269,11 @@ describe.each(backends)("insights recordEvent on %s", (_name, adapter) => {
       ["day", T - (T % DAY)],
     ] as const) {
       await expect(
-        overview(identity({ periodKind }), bucket),
+        overview(identity({ periodKind }), bucket, periodKind),
       ).resolves.toMatchObject(counters);
       // A channel's active installations come from its usage rows.
       await expect(
-        sketch(identity({ periodKind }), bucket),
+        sketch(identity({ periodKind }), bucket, periodKind),
       ).resolves.toBeUndefined();
       for (const appVersionKind of ["specific", "all"] as const) {
         const usage = await sketch(
@@ -267,6 +284,7 @@ describe.each(backends)("insights recordEvent on %s", (_name, adapter) => {
             periodKind,
           }),
           bucket,
+          periodKind,
         );
         expect(countInsightsDistinct(usage!.activity_users)).toBe(1);
         // Every platform's usage merges the platforms' rows on read.
@@ -280,6 +298,7 @@ describe.each(backends)("insights recordEvent on %s", (_name, adapter) => {
               periodKind,
             }),
             bucket,
+            periodKind,
           ),
         ).resolves.toBeUndefined();
       }
@@ -412,7 +431,7 @@ describe.each(backends)("insights recordEvent on %s", (_name, adapter) => {
     await expect(outcomes("UNCHANGED", "to:bundle-2")).resolves.toEqual([]);
     await expect(everyEvent()).resolves.toEqual([]);
     await expect(
-      overview(identity({ periodKind: "day" }), day(T)),
+      overview(identity({ periodKind: "day" }), day(T), "day"),
     ).resolves.toMatchObject({ launches: 1 });
     await expect(
       byBundle("to_bundle_id", "bundle-2", "UNCHANGED"),
@@ -446,7 +465,7 @@ describe.each(backends)("insights recordEvent on %s", (_name, adapter) => {
       db.findOne("bundle_event_heads", { install_id: "install-1" }),
     ).resolves.toMatchObject({ id: uuid(1), type: "UPDATE_APPLIED" });
     await expect(
-      overview(identity({ periodKind: "day" }), day(T)),
+      overview(identity({ periodKind: "day" }), day(T), "day"),
     ).resolves.toMatchObject({ launches: 1 });
 
     // An UNCHANGED report keeps no event row, so a retry that lands the next
@@ -456,7 +475,7 @@ describe.each(backends)("insights recordEvent on %s", (_name, adapter) => {
     await api.recordEvent(unchanged(4, { received_at_ms: T + 2 * DAY }));
     expect(calls).toEqual([]);
     await expect(
-      overview(identity({ periodKind: "day" }), day(T + 2 * DAY)),
+      overview(identity({ periodKind: "day" }), day(T + 2 * DAY), "day"),
     ).resolves.toBeUndefined();
   });
 
@@ -465,7 +484,8 @@ describe.each(backends)("insights recordEvent on %s", (_name, adapter) => {
     const head = () =>
       db.findOne("bundle_event_heads", { install_id: "install-1" });
     const launches = async (bucket: number) =>
-      (await overview(identity({ periodKind: "day" }), bucket))?.launches;
+      (await overview(identity({ periodKind: "day" }), bucket, "day"))
+        ?.launches;
 
     await api.recordEvent(unchanged(1));
     await api.recordEvent(unchanged(2, { user_id: "user-2" }));
@@ -598,6 +618,7 @@ describe.each(backends)("insights recordEvent on %s", (_name, adapter) => {
       "get bundle_events",
       "get bundle_event_heads",
       "get insights_sketches",
+      "get insights_sketches_daily",
       "get insights_distribution",
       "get insights_latest_by_bundle",
       "write",

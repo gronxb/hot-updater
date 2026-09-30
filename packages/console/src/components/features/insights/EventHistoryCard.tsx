@@ -46,10 +46,12 @@ type EventsLocationState = {
   readonly eventsRange?: EventRange;
 };
 
-const rangePeriods = EVENT_RANGES.map((value) => ({
-  value,
-  name: `Last ${eventRanges[value].period}`,
-}));
+/** The ranges within the days raw events are kept, the shortest always. */
+const rangesWithin = (days: number) =>
+  EVENT_RANGES.filter(
+    (value, position) =>
+      position === 0 || eventRanges[value].durationMs <= days * 86_400_000,
+  );
 
 function EventIdentity({
   event,
@@ -119,6 +121,7 @@ export function EventHistoryCard({
   onRefresh,
   pageNumber,
   range,
+  rawDays = 90,
   title = "All events",
 }: {
   readonly children?: ReactNode;
@@ -137,11 +140,15 @@ export function EventHistoryCard({
   readonly pageNumber: number;
   /** The time range the list reads, named by its empty and end states. */
   readonly range?: EventRange;
+  /** How long the server keeps raw events: the longest range offered. */
+  readonly rawDays?: number;
   readonly title?: string;
 }) {
   const dateTimeFormat = useInsightsTimeFormat();
   const hasPrevious = pageNumber > 1;
-  const wider = range === undefined ? undefined : widerEventRange(range);
+  const ranges = rangesWithin(rawDays);
+  const next = range === undefined ? undefined : widerEventRange(range);
+  const wider = next !== undefined && ranges.includes(next) ? next : undefined;
   const widen =
     wider !== undefined && onRangeChange ? (
       <Button
@@ -168,7 +175,10 @@ export function EventHistoryCard({
                   label="Time range"
                   onPeriodChange={onRangeChange}
                   period={range}
-                  periods={rangePeriods}
+                  periods={ranges.map((value) => ({
+                    value,
+                    name: `Last ${eventRanges[value].period}`,
+                  }))}
                 />
               ) : null}
               <Button

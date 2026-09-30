@@ -294,6 +294,12 @@ for (const provider of providers) {
       awsInputs.buildDynamoDBBackupInput(placeholder("DYNAMODB_TABLE_NAME")),
     );
     await save(
+      path.join(output, "dynamodb/enable-ttl.json"),
+      awsInputs.buildDynamoDBTimeToLiveInput(
+        placeholder("DYNAMODB_TABLE_NAME"),
+      ),
+    );
+    await save(
       path.join(output, "dynamodb/schema-settings.json"),
       awsInputs.buildDynamoDBSchemaSettingsInput(
         placeholder("DYNAMODB_TABLE_NAME"),
