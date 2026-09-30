@@ -32,7 +32,6 @@
     "getCrashHistory",
     "clearCrashHistory",
     "---Plugins---",
-    "insights",
-    "client-plugins"
+    "insights"
   ]
 }

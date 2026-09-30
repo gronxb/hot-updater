@@ -6,7 +6,6 @@
     "../policy/security",
     "../guides/bundle-signing",
     "../guides/signing",
-    "../custom/api-key-authentication",
-    "../policy/app-review"
+    "../custom/api-key-authentication"
   ]
 }

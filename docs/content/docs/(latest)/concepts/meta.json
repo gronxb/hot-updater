@@ -1,9 +1,10 @@
 {
   "title": "Concepts",
-  "description": "Understand the update lifecycle and plugin architecture.",
+  "description": "Understand the update lifecycle, automatic rollback, and the Release Catalog contract.",
   "icon": "BookOpen",
   "pages": [
     "how-it-works",
-    "plugin-system"
+    "automatic-rollback",
+    "../database-plugins/release-catalog-contract"
   ]
 }

@@ -7,7 +7,6 @@
     "../guides/insights",
     "../guides/console-deployment",
     "../guides/doctor",
-    "../concepts/automatic-rollback",
     "../guides/storage-cleanup"
   ]
 }

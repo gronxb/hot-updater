@@ -6,8 +6,9 @@ guide; do not duplicate its page inventory here.
 
 ## Scope and structure
 
-- Current documentation lives in `content/docs/(latest)` and is served at
-  `/docs/...`. Leave `content/docs/v0` unchanged unless explicitly requested.
+- Documentation lives in `content/docs/(latest)` and is served at `/docs/...`.
+  Only the current version is kept: no archived versions, and no PRDs, plans,
+  audits or measurement records in the repository.
 - Treat latest content as the stable release. Keep v0/v1 comparisons and
   transition steps in `guides/upgrade-to-v1.mdx`; omit release-candidate
   setup and migration procedures.
@@ -56,7 +57,8 @@ Prefer `HotUpdater.init` with `checkForUpdate`, the returned `updateBundle`
 helper and deliberate reload timing in onboarding and general examples. `init`
 does not check or apply an update by itself. Keep `wrap` as the optional
 automatic startup flow and retain its focused API reference. Preserve separate
-managed/custom hosting and build/storage/database/integration plugin groups.
+managed/custom hosting and build/storage/database/integration plugin groups,
+and keep plugin authoring guides in the Create a Plugin group.
 
 - Show complete imports for runnable examples. Label partial configuration
   snippets; retain existing storage/database settings when changing one option.

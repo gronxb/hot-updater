@@ -1,11 +1,7 @@
 {
-  "title": "v1.0",
-  "description": "Current Hot Updater documentation",
-  "icon": "Book",
-  "root": true,
-  "pagesIndex": "[v1.0](/docs/get-started/introduction)",
   "pages": [
     "get-started",
+    "concepts",
     "---Hosting---",
     "managed",
     "custom",
@@ -13,12 +9,14 @@
     "deliver-updates",
     "operate",
     "security",
-    "concepts",
-    "---Reference---",
-    "react-native-api",
+    "---Plugins---",
+    "concepts/plugin-system",
     "build-plugins",
     "storage-plugins",
     "database-plugins",
-    "integration-plugins"
+    "integration-plugins",
+    "plugins",
+    "---Reference---",
+    "react-native-api"
   ]
 }

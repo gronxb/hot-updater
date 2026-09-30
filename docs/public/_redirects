@@ -4,7 +4,10 @@
 
 # Redirect root docs to introduction
 /docs /docs/get-started/introduction 302
-/docs/v0 /docs/v0/get-started/introduction 302
+
+# The v0 archive was removed; its pages share paths with the current docs
+/docs/v0 /docs/get-started/introduction 301
+/docs/v0/* /docs/:splat 301
 
 # setUser moved to the Insights client plugin
 /docs/react-native-api/setUser /docs/react-native-api/insights 301

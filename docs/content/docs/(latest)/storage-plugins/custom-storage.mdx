@@ -1,83 +1,377 @@
 ---
-title: "Custom Storage Plugin"
-description: Create a runtime-independent storage plugin for any provider
-icon: Hammer
+title: "Create a storage plugin"
+description: Store bundle artifacts on any object store with createStoragePlugin, serve their downloads, and test the plugin.
+icon: HardDrive
 ---
 
-## Installation
+## What a storage plugin does
+
+A storage plugin keeps the files that `hot-updater deploy` uploads, such as
+manifests, assets, archives, and patches, and resolves the URLs devices
+download them from. It is one object: a `name`, the URI `protocol` it owns,
+and the operations its consumers call. The CLI, the Console, and the server
+use the same object, so the operations take plain inputs and Web streams. The
+factory that creates the plugin captures SDK clients, bindings, and
+credentials.
+
+Each consumer checks the operations it needs, and fails with
+`Storage plugin "<name>" does not implement <operation>.` when one is missing:
+
+| Consumer                        | Operations                                             |
+| ------------------------------- | ------------------------------------------------------ |
+| `hot-updater deploy`            | `put`, `get`, `exists`, `delete`                       |
+| `hot-updater patch`             | `get`, `put`, `delete`                                 |
+| `hot-updater bundle promote`    | None; it reuses the stored artifact                    |
+| `hot-updater storage prune`     | `get`, `listObjects`, and `deleteObjects` with `--yes` |
+| Console                         | `get`, `put`, `exists`, `delete`                       |
+| `createHotUpdater({ storage })` | `get`, `getDownloadUrl`                                |
+
+A plugin for general use implements `put`, `get`, `getDownloadUrl`, `exists`,
+and `delete`. `listObjects` and `deleteObjects` add
+[storage cleanup](#support-storage-cleanup).
+
+## Install
 
 ```package-install
 npm install @hot-updater/plugin-core
 ```
 
-## Contract
+`@hot-updater/plugin-core` exports `createStoragePlugin`, the storage types,
+and the URI and download helpers used below. A plugin you publish lists it in
+`peerDependencies`; see [Test and publish a plugin](/docs/plugins/publish).
 
-`createStoragePlugin` defines one flat, runtime-independent contract. The core
-interface does not know about local file paths, Node.js, Workers, provider SDKs,
-bindings, credentials, or request context. A provider captures those details
-when it creates the plugin.
+## Write the plugin
 
-```typescript
+This plugin stores objects through a `BucketClient`, the calls it needs from
+your provider's SDK. Replace it with your SDK's client:
+
+```ts title="src/myStorage.ts"
 import {
+  createStorageDownloadUrl,
+  createStorageKeyBuilder,
   createStoragePlugin,
   createStorageUri,
   parseStorageUri,
 } from "@hot-updater/plugin-core";
 
-export const customStorage = createStoragePlugin({
-  name: "customStorage",
-  protocol: "custom",
+/** The calls the plugin makes to your provider's SDK. */
+export interface BucketClient {
+  upload(
+    key: string,
+    body: ReadableStream<Uint8Array>,
+    options: { contentType: string; contentLength?: number },
+  ): Promise<void>;
+  download(key: string): Promise<{
+    body: ReadableStream<Uint8Array>;
+    contentType: string;
+    size: number;
+  } | null>;
+  exists(key: string): Promise<boolean>;
+  remove(key: string): Promise<void>;
+}
 
-  async put({ key, body, contentLength, contentType }) {
-    await client.put({
-      bucket: "bundle-bucket",
-      key,
-      body,
-      contentLength,
-      contentType,
-    });
-    return {
-      storageUri: createStorageUri({
-        protocol: "custom",
-        bucket: "bundle-bucket",
-        key,
-      }),
-    };
-  },
+export interface MyStorageOptions {
+  client: BucketClient;
+  bucket: string;
+  /** A folder inside the bucket for Hot Updater's objects. */
+  basePath?: string;
+  /** Signs download URLs that the Hot Updater server answers itself. */
+  downloadUrlSigningKey?: string;
+}
 
-  async get({ storageUri }) {
-    const { bucket, key } = parseStorageUri(storageUri, "custom");
-    const object = await client.get({ bucket, key });
-    return {
-      response:
-        object === null
-          ? null
-          : new Response(object.body, {
-              headers: { "content-type": object.contentType },
-            }),
-    };
-  },
+const PROTOCOL = "my-storage";
 
-  async getDownloadUrl({ storageUri }) {
-    return { url: await client.createDownloadUrl(storageUri) };
-  },
+export const myStorage = ({
+  client,
+  bucket,
+  basePath,
+  downloadUrlSigningKey,
+}: MyStorageOptions) => {
+  const objectKey = createStorageKeyBuilder(basePath);
+  const keyOf = (storageUri: string) => {
+    const parsed = parseStorageUri(storageUri, PROTOCOL);
+    if (parsed.bucket !== bucket) {
+      throw new Error(`Expected bucket "${bucket}", got "${parsed.bucket}".`);
+    }
+    return parsed.key;
+  };
 
-  async exists({ storageUri }) {
-    const { bucket, key } = parseStorageUri(storageUri, "custom");
-    return { exists: await client.exists({ bucket, key }) };
-  },
+  return createStoragePlugin({
+    name: "myStorage",
+    protocol: PROTOCOL,
 
-  async delete({ storageUri }) {
-    const { bucket, key } = parseStorageUri(storageUri, "custom");
-    await client.delete({ bucket, key });
-    return { deleted: true };
-  },
+    async put({ key, body, contentLength, contentType }) {
+      const storedKey = objectKey(key);
+      await client.upload(storedKey, body, { contentType, contentLength });
+      return {
+        storageUri: createStorageUri({
+          protocol: PROTOCOL,
+          bucket,
+          key: storedKey,
+        }),
+      };
+    },
+
+    async get({ storageUri }) {
+      const object = await client.download(keyOf(storageUri));
+      if (object === null) return { response: null };
+      return {
+        response: new Response(object.body, {
+          headers: {
+            "content-type": object.contentType,
+            "content-length": String(object.size),
+          },
+        }),
+      };
+    },
+
+    async exists({ storageUri }) {
+      return { exists: await client.exists(keyOf(storageUri)) };
+    },
+
+    async delete({ storageUri }) {
+      await client.remove(keyOf(storageUri));
+      return { deleted: true };
+    },
+
+    ...(downloadUrlSigningKey === undefined
+      ? {}
+      : { getDownloadUrl: createStorageDownloadUrl(downloadUrlSigningKey) }),
+  });
+};
+```
+
+- `protocol` is the scheme of every URI the plugin stores, such as `s3` or
+  `r2`. The database keeps those URIs, so the protocol cannot change once
+  Bundles use it, and a server registers one plugin per protocol. Choose one
+  that names your provider.
+- `put` receives a key relative to the plugin's base path, such as
+  `bundles/<bundle-id>/manifest.json` or `assets/sha256/ab/<hash>.png`, and a
+  one-shot `ReadableStream`. Consume or cancel the stream before the promise
+  settles. `contentLength` is set when the consumer knows the size.
+- `put` returns the URI of that key below the base path, from
+  `createStorageUri`. Deploy and the server derive the URIs of related objects
+  from it, such as the archive next to a manifest and the shared `assets/`
+  folder, and pass them to `get` and `exists`, so a plugin must store every
+  key at the same place relative to its base path.
+- `get` returns a `Response` whose body streams the object, or `null` when it
+  does not exist. Consumers pipe the body without buffering it.
+- `exists` tells deploy whether it can reuse an object. Return `true` only
+  when a device could download it.
+- `delete` removes exactly one object and returns `{ deleted: true }`, also
+  when the object is already gone, so a retried cleanup succeeds.
+- `createStorageKeyBuilder(basePath)` joins the base path and a key, and
+  rejects `.`, `..`, and `\` segments.
+- `parseStorageUri(uri, protocol)` checks the scheme and decodes the key.
+  Check the bucket too, so a plugin never reads another bucket's URI.
+
+Each operation receives one input object and returns one result object, so the
+contract can add fields without changing positions.
+
+## Serve downloads
+
+`getDownloadUrl({ storageUri })` returns the URL a device downloads an object
+from. The server calls it for every artifact in an update response. Return one
+of these:
+
+- **A URL your provider serves.** A public or CDN URL, or one your provider
+  signs, such as an S3 presigned URL. It must be `http` or `https`.
+- **A download path the server answers.** `createStorageDownloadUrl(signingKey)`
+  returns a `getDownloadUrl` that signs the URI with HMAC-SHA256 and returns
+  `/storage/<uri>/<signature>`. The server's client handler checks the
+  signature and streams the object through `get`. Use it for a private bucket
+  your provider cannot sign URLs for. The app resolves the path against its
+  `baseURL`. The signature does not expire and the route skips client
+  authentication: like a public URL, it only keeps other objects' paths from
+  being guessed.
+
+Only the server needs `getDownloadUrl`, and with it the signing key. Keep the
+key in the server's environment, and use the same key on every server instance.
+
+## Register the plugin
+
+The CLI takes one storage plugin as `storage`. This excerpt shows only that
+field of a complete `hot-updater.config.ts`:
+
+```ts title="hot-updater.config.ts (storage excerpt)"
+import { createBucketClient } from "./src/bucketClient";
+import { myStorage } from "./src/myStorage";
+
+const storage = myStorage({
+  client: createBucketClient(process.env.BUCKET_TOKEN!),
+  bucket: "bundles",
+  basePath: "ota",
 });
 ```
 
-The core object operations are:
+Assign this value to `storage` next to the configuration's `build`,
+`database`, and `updateStrategy`.
 
-```typescript
+The server takes a list, so it can read Bundles that different plugins stored.
+Configure the same bucket and base path as the CLI:
+
+```ts title="src/hotUpdater.ts (excerpt)"
+export const hotUpdater = createHotUpdater({
+  database, // Your provider's database.
+  storage: [
+    myStorage({
+      client: createBucketClient(process.env.BUCKET_TOKEN!),
+      bucket: "bundles",
+      basePath: "ota",
+      downloadUrlSigningKey: process.env.STORAGE_DOWNLOAD_URL_SIGNING_KEY!,
+    }),
+  ],
+  plugins: [insights(), apiKeys()],
+});
+```
+
+`createHotUpdater` rejects a plugin without `get` or `getDownloadUrl`, and two
+plugins with one protocol. To answer a URI, Hot Updater:
+
+1. uses the registered plugin whose `protocol` matches the URI's scheme;
+2. uses an `http` or `https` URI directly when no plugin owns its scheme;
+3. otherwise reports the scheme as unsupported.
+
+A plugin that owns `http` or `https` takes precedence, so a provider can apply
+authorization to those URIs as well.
+
+## Provide runtime-specific entries
+
+A provider can create the same plugin in different ways for different
+runtimes, and export each from its own entry. `@hot-updater/cloudflare`
+exports `r2Storage` over S3-compatible credentials for the CLI, and
+`@hot-updater/cloudflare/worker` exports an `r2Storage` over a Worker's R2
+binding. Both use the `r2` protocol and the same key layout, so each reads
+the URIs the other stores:
+
+```json title="package.json (excerpt)"
+{
+  "exports": {
+    ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" },
+    "./worker": {
+      "types": "./dist/worker.d.ts",
+      "import": "./dist/worker.js"
+    }
+  }
+}
+```
+
+## Support storage cleanup
+
+[`hot-updater storage prune`](/docs/guides/storage-cleanup) removes objects
+that no Bundle references. It needs two more operations:
+
+- `listObjects(prefix?)` lists the objects below an optional prefix, relative
+  to the base path. Each `StorageObject` has `key`, `storageUri`, `size`, and
+  an optional `lastModifiedAt`. Pruning keeps objects without a modification
+  time.
+- `deleteObjects(keys)` deletes exactly the keys it receives, relative to the
+  base path.
+
+Without them, `storage prune` reports that the plugin does not support it.
+Prefix or bucket deletion is outside the contract.
+
+## Test the plugin
+
+Test the plugin against a fake of your SDK's client, and against a real bucket
+before you publish it. This Vitest spec keeps objects in memory:
+
+```ts title="src/myStorage.spec.ts"
+import { describe, expect, it } from "vitest";
+
+import { type BucketClient, myStorage } from "./myStorage";
+
+/** Keeps objects in memory in place of the provider. */
+const memoryBucket = (): BucketClient => {
+  const objects = new Map<
+    string,
+    { bytes: ArrayBuffer; contentType: string }
+  >();
+  return {
+    async upload(key, body, { contentType }) {
+      const bytes = await new Response(body).arrayBuffer();
+      objects.set(key, { bytes, contentType });
+    },
+    async download(key) {
+      const object = objects.get(key);
+      if (object === undefined) return null;
+      return {
+        body: new Blob([object.bytes]).stream(),
+        contentType: object.contentType,
+        size: object.bytes.byteLength,
+      };
+    },
+    async exists(key) {
+      return objects.has(key);
+    },
+    async remove(key) {
+      objects.delete(key);
+    },
+  };
+};
+
+describe("myStorage", () => {
+  const storage = myStorage({
+    client: memoryBucket(),
+    bucket: "bundles",
+    basePath: "ota",
+    downloadUrlSigningKey: "test-signing-key",
+  });
+
+  it("stores an object under a canonical URI and reads it back", async () => {
+    const { storageUri } = await storage.put({
+      key: "releases/1.0.0/bundle ios#1.zip",
+      body: new Blob(["hello"]).stream(),
+      contentLength: 5,
+      contentType: "application/zip",
+    });
+    expect(storageUri).toBe(
+      "my-storage://bundles/ota/releases/1.0.0/bundle%20ios%231.zip",
+    );
+    await expect(storage.exists({ storageUri })).resolves.toEqual({
+      exists: true,
+    });
+    const { response } = await storage.get({ storageUri });
+    await expect(response?.text()).resolves.toBe("hello");
+    const { url } = await storage.getDownloadUrl!({ storageUri });
+    expect(url.startsWith("/storage/")).toBe(true);
+  });
+
+  it("deletes exactly one object, and deleting it again succeeds", async () => {
+    const { storageUri } = await storage.put({
+      key: "a.txt",
+      body: new Blob(["a"]).stream(),
+      contentType: "text/plain",
+    });
+    await expect(storage.delete({ storageUri })).resolves.toEqual({
+      deleted: true,
+    });
+    await expect(storage.delete({ storageUri })).resolves.toEqual({
+      deleted: true,
+    });
+    await expect(storage.exists({ storageUri })).resolves.toEqual({
+      exists: false,
+    });
+    await expect(storage.get({ storageUri })).resolves.toEqual({
+      response: null,
+    });
+  });
+
+  it("refuses a URI of another bucket", async () => {
+    await expect(
+      storage.get({ storageUri: "my-storage://other/ota/a.txt" }),
+    ).rejects.toThrow('Expected bucket "bundles"');
+  });
+});
+```
+
+Then deploy through it: point a test app's `hot-updater.config.ts` at the
+plugin, run `hot-updater deploy`, and [test an OTA update](/docs/get-started/test-ota)
+against a server that registers the same plugin.
+
+## Storage contract
+
+```ts
 interface StoragePlugin {
   readonly name: string;
   readonly protocol: string;
@@ -104,115 +398,49 @@ interface StoragePlugin {
   readonly delete?: (input: {
     readonly storageUri: string;
   }) => Promise<{ readonly deleted: true }>;
+
+  readonly listObjects?: (prefix?: string) => Promise<StorageObject[]>;
+  readonly deleteObjects?: (keys: readonly string[]) => Promise<void>;
 }
 ```
 
-## Storage URI format
+`createStoragePlugin` returns the object it receives, typed with the
+operations it has. `StoragePluginWith<"get" | "put">` names a plugin that has
+those operations.
 
-Persisted storage locations are canonical hierarchical identities:
+### Storage URI format
+
+A stored location is a hierarchical URI:
 
 ```text
 protocol://bucket/encoded/slash/key
 ```
 
-The bucket is the URI host. The key is a slash-delimited hierarchy; each key
-segment is encoded independently so `/` remains a path separator while spaces,
-Unicode, `#`, `?`, and percent characters round-trip safely. Do not concatenate
-a URI by hand. Providers should create and parse it with the shared helpers:
+The bucket is the URI host. Each key segment is encoded on its own, so `/`
+separates segments while spaces, Unicode, `#`, `?`, and `%` round-trip. Create
+and parse URIs with the helpers instead of joining strings:
 
-```typescript
+```ts
 const storageUri = createStorageUri({
-  protocol: "custom",
-  bucket: "bundle-bucket",
+  protocol: "my-storage",
+  bucket: "bundles",
   key: "releases/1.0.0/bundle ios#1.zip",
 });
-// custom://bundle-bucket/releases/1.0.0/bundle%20ios%231.zip
+// my-storage://bundles/releases/1.0.0/bundle%20ios%231.zip
 
-const parsed = parseStorageUri(storageUri, "custom");
-// { protocol: "custom", bucket: "bundle-bucket",
+const parsed = parseStorageUri(storageUri, "my-storage");
+// { protocol: "my-storage", bucket: "bundles",
 //   key: "releases/1.0.0/bundle ios#1.zip" }
 ```
 
-Empty key segments, `.` and `..` segments, query strings, and fragments are not
-valid storage locations. The helpers reject them instead of normalizing to a
-different object key.
+A protocol starts with a lowercase letter and uses lowercase letters, digits,
+`+`, `.`, and `-`. Empty, `.`, and `..` key segments, query strings, and
+fragments are not valid locations; the helpers reject them instead of
+normalizing to another object.
 
-Operations are optional because a runtime-specific implementation may support
-only the capabilities its consumer needs. Hot Updater validates required
-operations at each boundary and reports the missing operation by name.
-Each core object operation receives one input object and returns one result
-object so new fields can be added without introducing positional parameters or
-changing the result shape.
+### File-system consumers
 
-| Consumer                                          | Required operations                |
-| ------------------------------------------------- | ---------------------------------- |
-| `hot-updater deploy`                              | `put`, `get`, `exists`, `delete`   |
-| `hot-updater patch`                               | `get`, `put`, `delete`             |
-| `hot-updater bundle promote`                      | None; reuses the existing artifact |
-| Console server mutations                          | `get`, `put`, `exists`, `delete`    |
-| `createHotUpdater({ storage })` registration       | `get`, `getDownloadUrl`            |
-
-Every storage plugin registered with `createHotUpdater` must provide both
-`get` and `getDownloadUrl`, including plugins that deliver artifacts through a
-CDN. The server reads stored manifests with `get` and resolves artifact URLs
-with `getDownloadUrl`.
-
-`delete` always targets exactly one object and returns `{ deleted: true }` once
-that object is absent. Deleting an already-missing object has the same result,
-which makes retrying cleanup safe. Prefix or bucket cleanup is an administrative
-provider operation and is intentionally outside this contract.
-
-To support [storage pruning](/docs/guides/storage-cleanup), a plugin can also
-implement the optional `listObjects(prefix?)` and `deleteObjects(keys)`
-management operations. Listed `StorageObject` values include `key`,
-`storageUri`, `size` and an optional `lastModifiedAt`; keys and the list prefix
-are relative to the configured storage base path. Delete only the exact keys
-supplied by the caller. Pruning protects objects without a modification time.
-These capabilities stay on the same plugin object and do not change the
-single-object contract above.
-
-`put.body` is a one-shot Web stream. A provider must consume or cancel it before
-the returned promise settles. `contentLength` is supplied when the consumer
-knows it, but remains optional for runtime streams without a known length.
-`get.response` is also stream-capable: consumers can pipe `response.body`
-without buffering the whole object. A `null` response means the object does not
-exist.
-
-At runtime, Hot Updater resolves a URI in this order:
-
-1. Use the registered storage plugin whose `protocol` matches the URI scheme.
-2. If no plugin owns the scheme and it is `http` or `https`, use the direct URL.
-3. Otherwise report the scheme as unsupported.
-
-Plugin ownership also takes precedence for `http` and `https`. This lets a
-provider apply authorization or private reads without the consumer bypassing it
-with a direct fetch or redirect. Register at most one plugin for each scheme;
-duplicate owners are rejected because routing would be ambiguous.
-
-## Configuration and runtime implementations
-
-Pass plugin objects directly; there is no plugin factory thunk or runtime
-profile. This excerpt shows only the storage value used by a complete
-`hot-updater.config.ts`:
-
-```typescript title="hot-updater.config.ts (storage excerpt)"
-import { customStorage } from "./customStorage";
-
-const storage = customStorage;
-```
-
-Assign this value to the required `storage` field alongside the configuration's
-`build`, `database`, and `updateStrategy` fields.
-
-`getDownloadUrl` is the storage plugin's public URL boundary. A provider can
-return its CDN URL, a provider-signed URL, or a signed URL handled by the same
-server. The contract exposes only the resulting URL; the delivery mechanism is
-an implementation detail.
-
-## File-system consumers
-
-The core contract carries Web streams and responses, not paths. CLI code opens
-a local file stream, supplies its known size as `contentLength`, and passes the
-stream to `put` without reading the complete file into memory. A file-system
-consumer can likewise pipe the body returned by `get` to a local file. Provider
-plugins should not add file-system operations back to the public contract.
+The contract carries Web streams and responses, not paths. The CLI opens a
+local file as a stream, passes its size as `contentLength`, and hands the
+stream to `put` without reading the file into memory. Keep file-system
+operations out of a plugin.

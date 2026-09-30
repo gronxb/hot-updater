@@ -5,10 +5,8 @@
   "pages": [
     "supabase",
     "cloudflare",
-    "firestore",
     "aws",
-    "standalone",
-    "release-catalog-contract",
-    "custom-database"
+    "firestore",
+    "standalone"
   ]
 }

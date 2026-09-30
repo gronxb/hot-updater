@@ -5,9 +5,8 @@
   "pages": [
     "supabase",
     "cloudflare",
-    "firebase",
     "aws",
-    "standalone",
-    "custom-storage"
+    "firebase",
+    "standalone"
   ]
 }

@@ -1,30 +1,31 @@
 # Hot Updater documentation
 
-The Waku/Fumadocs site serves current documentation from
-`content/docs/(latest)` at `/docs/...`. Archived v0 content lives in
-`content/docs/v0` at `/docs/v0/...`. Change latest content for current behavior;
-keep v0-to-v1 transition instructions in `guides/upgrade-to-v1.mdx` and preserve
-historical release/architecture records. Current guides describe the stable
-release; do not include release-candidate setup or migration procedures.
-Use “Hot Updater” without a major-version
-label in general setup and agent workflows. The version selector uses `v1.0` and
-`v0.36`. Reserve “v1” for v0 migration guidance; keep literal resource names, API
-paths and protocol identifiers.
+The Waku/Fumadocs site serves the current documentation, and only the current
+documentation, from `content/docs/(latest)` at `/docs/...`. There is no
+archived version and no version selector; `/docs/v0/*` redirects to the same
+path in the current docs. Change content for current behavior and keep
+v0-to-v1 transition instructions in `guides/upgrade-to-v1.mdx`. Current guides
+describe the stable release; do not include release-candidate setup or
+migration procedures. Use “Hot Updater” without a major-version label in
+general setup and agent workflows. Reserve “v1” for v0 migration guidance; keep
+literal resource names, API paths and protocol identifiers.
 
-Keep PRDs and planning records under `architecture/` in the repository only.
-They are excluded from site pages, search, and generated LLM documentation.
-Describe shipped behavior in `content/docs` without publishing or linking these
-PRDs from user-facing pages.
+Do not commit PRDs, plans, audits, measurements or other working notes to the
+repository. Describe shipped behavior in `content/docs`; link to a
+commit-pinned GitHub URL when a page must cite a record that is no longer on
+the branch.
 
 ## Content ownership
 
-The sidebar starts with onboarding and custom update flows, followed by the
-independent **Self Hosting (Managed)** and **Self Hosting (Custom)** groups.
-Delivery, operation, security and concepts have their own groups. **React Native
-API**, **Build Plugins**, **Storage Plugins**, **Database Plugins** and
-**Integration Plugins** remain directly visible, independently searchable
-references. Existing URLs stay stable; a sidebar group need not be the physical
-directory containing its pages.
+The sidebar starts with onboarding, custom update flows and concepts, followed
+by the independent **Self Hosting (Managed)** and **Self Hosting (Custom)**
+groups. Delivery, operation and security have their own groups. The **Plugins**
+section starts with the Plugin System overview, keeps **Build Plugins**,
+**Storage Plugins**, **Database Plugins** and **Integration Plugins** directly
+visible, and ends with **Create a Plugin**, which owns the storage, database,
+server and client plugin guides, the database adapter contract, and packaging.
+**React Native API** is the reference section. Existing URLs stay stable; a sidebar
+group need not be the physical directory containing its pages.
 
 - Start here routes readers to agent or manual setup. Installation owns package
   selection; App Setup owns shared runtime/native integration; Test an OTA
@@ -39,12 +40,10 @@ directory containing its pages.
   and rotation instructions.
 - Symbol and plugin references stay individually addressable. Link to a tutorial
   instead of repeating it in every method or provider page.
-
-The [PRD](../plans/docs-v1-onboarding/prd.md),
-[86-page audit](../plans/docs-v1-onboarding/page-inventory.md), and
-[decision record](../plans/docs-v1-onboarding/decisions.md) explain the structure.
-The [v1 change coverage](../plans/docs-v1-onboarding/breaking-changes-coverage.md)
-maps the release's contract changes to current guides and migration instructions.
+- Plugin authoring pages teach one plugin kind each with an example that
+  type-checks against the current packages, and link to Test and publish a
+  plugin for packaging. The Plugin System page owns the list of plugin kinds,
+  official plugins and community plugins.
 
 ## Navigation and links
 
@@ -61,9 +60,8 @@ verify fragments after moving or renaming headings.
 ## Agent-readable output
 
 Production builds generate `/llms.txt`, `/llms-full.txt`, `/docs/<path>.md` and
-`/api/markdown/<path>.md`. The default index/full files contain latest content;
-v0 Markdown is generated separately. The LLM index follows the Fumadocs page
-tree used for human navigation. Tab and accordion labels remain readable so
+`/api/markdown/<path>.md` from the current content. The LLM index follows the
+Fumadocs page tree used for human navigation. Tab and accordion labels remain readable so
 agents can distinguish alternative procedures. Fenced code must survive
 serialization without losing imports or JSX.
 

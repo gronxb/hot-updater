@@ -1,26 +1,34 @@
 ---
-title: "Custom Database Adapter"
-description: Write a storage adapter that runs Hot Updater's database on your backend, and test it with the published suites.
-icon: Hammer
+title: "Create a database plugin"
+description: Run Hot Updater's database on your backend with a SQL executor, a key-value store, or a storage adapter, and test it with the published suites.
+icon: DatabaseZap
 ---
 
-## When to write an adapter
+## When to write a database plugin
 
 Every Hot Updater database runs on one storage engine. Core (Bundles,
 Releases, Release Catalogs and Channels) and server plugins such as
 `insights()` and `apiKeys()` declare tables and indexes, and the engine turns
 their reads and transactions into a few calls on a storage adapter. The adapter
 stores rows and reads index ranges with its backend's native features. It knows
-nothing about Bundles, Releases or plugins.
+nothing about Bundles, Releases or plugins, so a database plugin is small: the
+`postgres` provider is about 30 lines.
 
-Write an adapter when no existing one reaches your backend. Database plugins
+Write one when no existing plugin reaches your backend. Database plugins
 cover [Supabase](/docs/database-plugins/supabase),
 [Cloudflare D1](/docs/database-plugins/cloudflare),
 [Firestore](/docs/database-plugins/firestore) and
 [DynamoDB](/docs/database-plugins/aws), and a
 [custom server](/docs/custom/overview#database-adapters) can use Kysely,
-Drizzle, Prisma or MongoDB. A database that speaks PostgreSQL, MySQL or SQLite
-needs only a SQL executor.
+Drizzle, Prisma or MongoDB.
+
+1. [Choose how to build it](#choose-how-to-build-it): a database that speaks
+   PostgreSQL, MySQL or SQLite needs only a SQL executor.
+2. [Wrap it as a database](#wrap-it-as-a-database) that the CLI, the Console
+   and `createHotUpdater` take.
+3. [Create the schema](#create-the-schema) with a migration.
+4. [Test the adapter](#test-the-adapter) with the suites every official
+   database runs, then [publish it](#publish-the-plugin).
 
 ## Install
 
@@ -31,9 +39,8 @@ npm install @hot-updater/test-utils vitest --save-dev
 
 `@hot-updater/server/database` exports the adapter contract and the helpers
 that implement it, and `@hot-updater/plugin-core` exports the `EngineDatabase`
-type that a provider returns. Keep the three Hot Updater packages on the same
-version. The examples run PostgreSQL through `pg`; use your own driver in its
-place.
+type that a provider returns. The examples run PostgreSQL through `pg`; use
+your own driver in its place.
 
 ## How the pieces fit
 
@@ -48,200 +55,9 @@ createHotUpdater, CLI, console
 A provider's factory returns an `EngineDatabase`, `{ name, adapter, dispose? }`.
 `hot-updater.config.ts`, the console and `createHotUpdater` all take it as
 `database`. The engine keeps references, cascades, counters and retries itself
-and expresses them as the ops below, so an adapter implements none of them.
-
-## The adapter contract
-
-```ts
-interface DatabaseAdapter {
-  /** Names the adapter in messages, such as "sql:postgresql". */
-  readonly id: string;
-  /** Whether the ops commit atomically in one write. */
-  fits(ops: readonly WriteOp[]): boolean;
-  /** A strongly consistent batch point read, in the order of `keys`. */
-  get(
-    table: PhysicalTable,
-    keys: readonly DatabaseKey[],
-  ): Promise<readonly (StoredRow | null)[]>;
-  /** One index range, up to `request.limit` rows. */
-  query(
-    table: PhysicalTable,
-    request: QueryRequest,
-  ): Promise<readonly StoredRow[]>;
-  /** Applies every op or none. */
-  write(ops: readonly WriteOp[]): Promise<WriteResult>;
-  /**
-   * Deletes up to `limit` expired rows of a table with retention, oldest
-   * first; left out where the backend expires rows natively.
-   */
-  prune?(table: PhysicalTable, before: number, limit: number): Promise<number>;
-  /** Creates tables; only the migration helpers call it. */
-  readonly migrations?: {
-    apply(tables: readonly PhysicalTable[]): Promise<void>;
-  };
-  dispose?(): Promise<void>;
-}
-```
-
-### Tables and values
-
-Each call names a `PhysicalTable`: its columns, its primary key (a list of
-columns) and its indexes. The table name is logical, and an adapter may add
-its own prefix.
-
-```ts
-interface PhysicalTable {
-  readonly name: string;
-  readonly columns: readonly PhysicalColumn[];
-  readonly key: readonly string[];
-  readonly indexes: readonly PhysicalIndex[];
-  /** Rows expire `ms` after the epoch milliseconds in `column`. */
-  readonly retention?: { readonly column: string; readonly ms: number };
-}
-
-interface PhysicalIndex {
-  readonly name: string;
-  readonly eq: readonly string[];
-  readonly sort: readonly string[];
-  readonly unique?: true;
-}
-```
-
-| Column field | Meaning                                                                                                     |
-| ------------ | ----------------------------------------------------------------------------------------------------------- |
-| `type`       | `string`, `integer` (safe integers), `number` (finite numbers), `boolean`, or `json` (any JSON value)       |
-| `nullable`   | Whether the column holds `null`                                                                             |
-| `maxLength`  | Strings: the longest value in UTF-16 code units; unbounded text when absent                                 |
-| `ascii`      | Strings: ASCII only, so a backend that limits index size (MySQL) can store it in single bytes               |
-| `default`    | A whole number the backend stores when a write leaves the column out; the engine's own columns default to 0 |
-| `multi`      | An array of 1–16 values of `type`, indexable in `eq` only                                                   |
-
-Every table has `_v`, the row version that guards writes. Key and index values
-are strings, numbers or booleans. Rows come back exactly as written: empty,
-long and non-ASCII strings, integers up to `Number.MAX_SAFE_INTEGER`, arrays in
-their order, and nested JSON. `normalizeStoredRow(table, raw, { jsonText })`
-converts what drivers return (int8 as text, `BigInt`, decimals, SQLite 0 and 1,
-JSON as text) to stored values.
-
-### Retention
-
-A table with `retention` expires a row `ms` after the time in its `column`
-(`expiresAt(table, row)`); a null time never expires. An adapter maps it to
-its backend's cheapest mechanism, one of two:
-
-- **A native TTL.** Stamp the expiry on every item the row writes, index
-  copies and unique entries included, and let the backend delete them.
-  Leave `prune` out. The key-value helper passes `expiresAt` on each `KvOp`
-  it puts or creates, and a `KeyValueStore` maps it: DynamoDB to `_ttl` in
-  epoch seconds, Firestore to an `expireAt` timestamp. The MongoDB adapter
-  stamps `_expireAt`, a Date, under a TTL index.
-- **`prune(table, before, limit)`.** Delete up to `limit` rows whose
-  retention column is at or below `before`, oldest first (ties in any
-  order), with their index entries, and resolve to how many went. Recheck the
-  column as you delete, so a row a concurrent write moved past `before`
-  stays. Walk an index that starts with the column, so a prune reads only
-  the rows it deletes: the SQL core uses the first index or key that starts
-  with it and otherwise creates `<table>__retention` on the column and the
-  key. The server calls it during writes, with no scheduler: the write that
-  takes the lease row in the settings table first runs one pass of up to
-  500 rows a table, due hourly, or a minute later while a pass found a full
-  batch.
-
-The engine never deletes an expired row itself, and until the backend does
-a read may still return one. The conformance suite checks `prune` unless
-you pass `retention: "ttl"`.
-
-### Point reads
-
-`get(table, keys)` reads rows by primary key, strongly consistently, in one
-batch. It returns one entry per key in the order of `keys`, with `null` for a
-key that has no row. An empty `keys` returns no rows.
-
-### Index reads
-
-```ts
-interface QueryRequest {
-  readonly index: string;
-  /** One value for each `eq` column of the index, in order. */
-  readonly eq: readonly DatabaseKeyValue[];
-  readonly lower?: QueryBound;
-  readonly upper?: QueryBound;
-  readonly order: "asc" | "desc";
-  /** 1–500 rows. */
-  readonly limit: number;
-}
-
-interface QueryBound {
-  /** A prefix of the index's order columns. */
-  readonly values: readonly DatabaseKeyValue[];
-  readonly inclusive: boolean;
-}
-```
-
-- An index orders rows by its `sort` columns, then by the key columns that
-  neither `eq` nor `sort` names. `indexOrderColumns(table, index)` returns
-  them. Bounds compare a prefix of that tuple, and the engine pages by passing
-  the last row's tuple as an exclusive bound.
-- Strings order by UTF-8 bytes, with no collation: `B` sorts before `a`, and
-  `a ` after `a`. Numbers order numerically, and `false` before `true`.
-- A row with `null` in an index column is not in that index. A multi-valued
-  `eq` column indexes the row under each of its values.
-- A unique index holds at most one row for each `eq` tuple.
-- Return `limit` rows unless the range ends first. When the backend reads in
-  native pages, keep reading them: a result shorter than `limit` means the
-  range has ended. The test suites pass `nativePageSize` to your adapter
-  factory to cap native pages at two rows and check that every page still
-  fills.
-
-### Writes and guards
-
-A write is a list of ops, applied atomically:
-
-| Op          | Applies when                                                                     | Effect                                                                         |
-| ----------- | -------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
-| `insert`    | no row has the key                                                               | writes `row`, `_v` included                                                    |
-| `patch`     | the row's `_v` is `guard.v`                                                      | writes the columns in `set`, and sets `_v` to `guard.v + 1`                    |
-| `delete`    | the row's `_v` is `guard.v`                                                      | deletes the row                                                                |
-| `increment` | the row exists or `init` is given, and its `_v` is `guard.v` when a guard is set | creates a missing row from `init`, then adds `by` to its columns and 1 to `_v` |
-| `check`     | the row's `_v` is `guard.v`                                                      | writes nothing, but conflicts with any concurrent write to the row             |
-
-A write has at most one op per row, and every guard is checked against the
-rows as they were before the write. An insert or patch fails when it would give
-a unique index a second row with the same values. The engine sends deletes
-first, so a later op in the same write can take a unique value that a delete
-frees. `patch` and `delete` carry `previous`, the row as the engine read it,
-for adapters that keep their own index entries.
-
-`write` resolves to one of three results, and throws only when it cannot tell
-whether the write committed:
-
-| Result                       | When                                                                                                         | The engine                                                                                                                                                              |
-| ---------------------------- | ------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `{ ok: true }`               | every op applied                                                                                             | returns                                                                                                                                                                 |
-| `{ ok: false, failedOp }`    | the op at position `failedOp` failed its guard or a unique index, and nothing applied                        | reads that row again: it reports `DatabaseConstraintError` (`exists`, `unique` or `not_found`) when the current state confirms it, and otherwise reruns the transaction |
-| `{ ok: false, retry: true }` | a transient failure: a deadlock, serialization failure, lock timeout, busy database, or transaction conflict | sends the write again after a backoff                                                                                                                                   |
-| thrown error                 | the outcome is unknown, such as a connection lost during commit                                              | reports `DatabaseAmbiguousCommitError` and never sends the write again                                                                                                  |
-
-A `check` guards a row that the transaction read and does not change, so two
-transactions cannot each change what the other read. The SQL core locks the
-row with `SELECT … FOR UPDATE`; on SQLite, `BEGIN IMMEDIATE` locks the whole
-database. The MongoDB adapter increments a field on the row, so a concurrent
-transaction on it conflicts.
-
-### Write limits
-
-`fits(ops)` says whether the ops fit in one atomic write of the backend: its
-limits on ops, items or bytes. The engine asks before every write and refuses
-a transaction that does not fit with `DatabaseConstraintError` `too_large`,
-before anything is sent. Return `true` when the backend has no limit.
-
-### Migrations
-
-`migrations.apply(tables)` creates each table with its indexes. A table that
-exists keeps its rows, so running it twice changes nothing. Only the migration
-tooling calls it: `migrateCoreSchema` and `hot-updater db migrate`. Leave it
-out when other tooling creates the tables, as Supabase's migrations do for its
-RPC, which runs no DDL.
+and expresses them as a few guarded ops, so an adapter implements none of
+them. The [database adapter contract](/docs/database-plugins/adapter-contract)
+defines those ops.
 
 ## Choose how to build it
 
@@ -402,6 +218,8 @@ interface KeyValueStore {
   ): Promise<{ readonly items: readonly KvItem[]; readonly more: boolean }>;
   /** Applies every op or none. */
   write(ops: readonly KvOp[]): Promise<WriteResult>;
+  /** Deletes items with no condition and not atomically, a batch at a time. */
+  deleteConsumed?(keys: readonly KvKey[]): Promise<void>;
   /** Prepares the store, such as creating its table. */
   readonly migrations?: { apply(): Promise<void> };
   dispose?(): Promise<void>;
@@ -417,7 +235,8 @@ interface KeyValueStore {
   creates a missing item from `init`. Every op's `condition` (the item exists,
   does not exist, or has `_v` equal to `v`) sees the state before the write.
   Return `failedOp` for an op whose condition failed and `retry` for a
-  transient conflict, as an adapter does.
+  transient conflict, as an adapter's
+  [`write`](/docs/database-plugins/adapter-contract#writes-and-guards) does.
 - If the store throws when its table is missing, give that error
   `code: "42P01"`, as the DynamoDB store does, so the schema fence reports a
   missing schema.
@@ -433,13 +252,16 @@ and the
 are complete implementations. Wrap the adapter as in `myDatabase`, with
 `createKvAdapter({ store })` in place of `createSqlAdapter`.
 
-### The contract directly
+<a id="the-adapter-contract" />
+
+### The adapter contract directly
 
 A backend with its own transactions and secondary indexes can implement
 `DatabaseAdapter` directly: keep each table's rows by key, create each index
-as declared, and read an index range in `indexOrderColumns` order.
-`createMemoryAdapter()` implements every rule on this page and is the
-reference. The
+as declared, and read an index range in `indexOrderColumns` order. The
+[database adapter contract](/docs/database-plugins/adapter-contract) lists
+every rule, and `createMemoryAdapter()` implements them all as the reference.
+The
 [MongoDB adapter](https://github.com/gronxb/hot-updater/blob/next/packages/server/src/adapters/mongodbAdapter.ts)
 is a production one: a collection per table keyed by `_id`, guards as
 conditional updates, and one transaction per write. While you develop, wrap
@@ -460,6 +282,7 @@ database also carries the migration that `hot-updater db migrate` runs.
 | `name`                 | Names the database in messages; `createHotUpdater` reports it as `adapterName`                                                                                                                 |
 | `adapter`              | The storage adapter                                                                                                                                                                            |
 | `onCachedRoutesChange` | A CDN purge for the cacheable client routes. Core calls it after a committed write that changes a Release Catalog, so the adapter never names a table. `dynamoDB` invalidates CloudFront here. |
+| `aggregateBatching`    | For a backend that bills each write: apply the changes of aggregates declared `batched` after their transaction commits, merged into one write per row. `{ mode?: "log" \| "memory", windowMs? }`; absent or `false` writes them in each transaction. `dynamoDB` and `firebaseDatabase` pass `{}`, the log mode. |
 
 Pass the database to the CLI and the server. Partial configuration:
 
@@ -548,7 +371,7 @@ runs. Register all three:
 
 | Suite                                  | Runs                                                                                             | Against                                  |
 | -------------------------------------- | ------------------------------------------------------------------------------------------------ | ---------------------------------------- |
-| `setupDatabaseAdapterConformanceSuite` | the contract on this page, case by case                                                          | your adapter, on three test tables       |
+| `setupDatabaseAdapterConformanceSuite` | the [adapter contract](/docs/database-plugins/adapter-contract), case by case                   | your adapter, on three test tables       |
 | `setupReadBudgetTestSuite`             | what each read of core and the plugins it measures costs                                         | your adapter, on their tables            |
 | `setupDatabaseTestSuite`               | core, Bundles, the Release Catalog contract and Insights, through the admin and client HTTP APIs | your database, behind `createHotUpdater` |
 
@@ -607,6 +430,7 @@ setupDatabaseAdapterConformanceSuite({
 | `createAdapter` | Returns `{ adapter, cleanup? }` over newly created, empty `tables`, for each case; `cleanup` runs after the case. One case passes `nativePageSize: 2`: fetch at most that many rows per native page. A backend without native pages ignores it. |
 | `maxOps`        | The most ops one write accepts. The suite then checks that `fits` refuses one more op and that nothing is written. Omit it when the backend has no limit.                                                                                       |
 | `writers`       | Concurrent writers in the contention cases (default 32)                                                                                                                                                                                         |
+| `retention`     | How the backend deletes rows past a table's retention: `"prune"` (default) checks the adapter's `prune`, and `"ttl"` checks the expiry the adapter stamps on every item instead.                                                               |
 
 The cases cover value round-trips, point reads in key order, each op's guard,
 all-or-nothing writes with a failure at every position, unique indexes and the
@@ -795,3 +619,12 @@ Start the server on a disposable database, with
 `createReleaseCatalogTestStorage()` from `@hot-updater/test-utils/node` in its
 `storage`. That entry does not load Vitest, so a separate server process can
 import it. Add `clientHeaders` when the server's client routes need a key.
+
+## Publish the plugin
+
+Publish the factory and its migration from one package, as `dynamoDB` and
+`migrateDynamoDB` ship together. List `@hot-updater/server` and
+`@hot-updater/plugin-core` in `peerDependencies`, so the plugin runs on the
+project's copy of the engine, and keep the three suites in your CI. See
+[Test and publish a plugin](/docs/plugins/publish) for the package layout,
+naming, and what to document.

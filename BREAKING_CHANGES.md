@@ -496,7 +496,7 @@ transport callbacks, or management write shapes. Those boundaries are fresh in
 v1.
 
 The detailed on-device retention rules are in the
-[v1 compatibility inventory](./docs/release-catalog-v1-compatibility.md).
+[v1 compatibility inventory](https://github.com/gronxb/hot-updater/blob/530cca5dd70615eaa34988f4796cdcc2d9f5c9f2/docs/release-catalog-v1-compatibility.md).
 
 ## Migration checklist
 

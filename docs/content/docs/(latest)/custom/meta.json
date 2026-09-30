@@ -8,7 +8,6 @@
     "database",
     "frameworks",
     "cli-configuration",
-    "hosting",
-    "server-plugins"
+    "hosting"
   ]
 }

@@ -1,0 +1,13 @@
+{
+  "title": "Create a Plugin",
+  "description": "Write, test, and publish storage, database, server, and client plugins.",
+  "icon": "Hammer",
+  "pages": [
+    "../storage-plugins/custom-storage",
+    "../database-plugins/custom-database",
+    "../database-plugins/adapter-contract",
+    "../custom/server-plugins",
+    "../react-native-api/client-plugins",
+    "publish"
+  ]
+}
