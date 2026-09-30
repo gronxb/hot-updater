@@ -1,9 +1,9 @@
 import {
   createStorageKeyBuilder,
-  createStoragePlugin,
+  createStorageAdapter,
   createStorageUri,
   parseStorageUri,
-  type StoragePluginWith,
+  type StorageAdapterWith,
 } from "@hot-updater/plugin-core";
 import {
   getApp,
@@ -25,7 +25,7 @@ export interface FirebaseStorageConfig extends AppOptions {
 
 export const firebaseStorage = (
   config: FirebaseStorageConfig,
-): StoragePluginWith<
+): StorageAdapterWith<
   "put" | "get" | "getDownloadUrl" | "exists" | "delete"
 > => {
   const app = getApps().length ? getApp() : initializeApp(config);
@@ -42,7 +42,7 @@ export const firebaseStorage = (
     return parsed;
   };
 
-  return createStoragePlugin({
+  return createStorageAdapter({
     name: "firebaseStorage",
     protocol: "gs",
     async put({ key, body, contentType }) {

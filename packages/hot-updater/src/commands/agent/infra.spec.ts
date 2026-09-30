@@ -317,7 +317,7 @@ describe("published agent infrastructure commands", () => {
 
 describe("deployment artifacts", () => {
   it.each(providers)(
-    "loads the generated %s database config without a build plugin or storage credentials",
+    "loads the generated %s database config without a build adapter or storage credentials",
     async (provider) => {
       const scaffold = run(
         "setup",

@@ -1,5 +1,5 @@
 import {
-  DatabasePluginInputError,
+  DatabaseAdapterInputError,
   type DatabaseJsonObject,
   type Platform,
 } from "@hot-updater/plugin-core";
@@ -192,18 +192,18 @@ const hasEventInvariants = (row: Readonly<Record<string, unknown>>) =>
  * `invalid-data` for anything else.
  */
 export const validateBundleEventFields = (row: unknown): void => {
-  if (!isRecord(row)) throw new DatabasePluginInputError("invalid-data");
+  if (!isRecord(row)) throw new DatabaseAdapterInputError("invalid-data");
   for (const field of Object.keys(row)) {
     if (!Object.hasOwn(BUNDLE_EVENT_FIELDS, field)) {
-      throw new DatabasePluginInputError("invalid-field");
+      throw new DatabaseAdapterInputError("invalid-field");
     }
   }
   for (const [field, valid] of Object.entries(BUNDLE_EVENT_FIELDS)) {
     if (!Object.hasOwn(row, field) || !valid(row[field])) {
-      throw new DatabasePluginInputError("invalid-data");
+      throw new DatabaseAdapterInputError("invalid-data");
     }
   }
   if (!hasEventInvariants(row)) {
-    throw new DatabasePluginInputError("invalid-data");
+    throw new DatabaseAdapterInputError("invalid-data");
   }
 };

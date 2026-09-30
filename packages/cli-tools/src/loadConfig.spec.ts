@@ -3,7 +3,7 @@ import os from "os";
 import path from "path";
 
 import type {
-  BundleSigningPlugin,
+  BundleSigningAdapter,
   ConfigInput,
   LocalSigningConfig,
 } from "@hot-updater/plugin-core";
@@ -33,7 +33,7 @@ describe("ConfigResponse", () => {
     }>();
     expectTypeOf<ConfigResponse["console"]["port"]>().toEqualTypeOf<number>();
     expectTypeOf<ConfigResponse["signing"]>().toEqualTypeOf<
-      | BundleSigningPlugin
+      | BundleSigningAdapter
       | Extract<LocalSigningConfig, { enabled: true }>
       | undefined
     >();
@@ -247,7 +247,7 @@ describe("loadConfig", () => {
     const { loadConfig } = await import("./loadConfig");
 
     await expect(loadConfig(null)).rejects.toThrow(
-      "Bundle signing must be a local key config or signing plugin",
+      "Bundle signing must be a local key config or signing adapter",
     );
   });
 

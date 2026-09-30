@@ -40,8 +40,8 @@ export const createPatch = async (options: PatchOptions) => {
 
   const config = await loadConfig({ channel: options.channel, platform });
   const database = config.database;
-  const storagePlugin = config.storage;
-  assertStorageOperations(storagePlugin, ["get", "put", "delete"]);
+  const storageAdapter = config.storage;
+  assertStorageOperations(storageAdapter, ["get", "put", "delete"]);
 
   try {
     p.note(
@@ -61,7 +61,7 @@ export const createPatch = async (options: PatchOptions) => {
       },
       {
         database,
-        storagePlugin,
+        storageAdapter,
       },
       {
         makePrimary: true,

@@ -1,6 +1,6 @@
 import {
   createStorageDownloadPath,
-  createStoragePlugin,
+  createStorageAdapter,
 } from "@hot-updater/plugin-core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -15,7 +15,7 @@ describe("createStorageAccess", () => {
     const get = vi.fn(
       async (_storageUri: string) => new Response("manifest text"),
     );
-    const storage = createStoragePlugin({
+    const storage = createStorageAdapter({
       name: "r2Storage",
       protocol: "r2",
       get: async (input) => ({ response: await get(input.storageUri) }),
@@ -53,7 +53,7 @@ describe("createStorageAccess", () => {
     const get = vi.fn(
       async () => ({ response: new Response("owned manifest") }) as const,
     );
-    const storage = createStoragePlugin({
+    const storage = createStorageAdapter({
       name: "standaloneStorage",
       protocol: "https",
       get,
@@ -70,7 +70,7 @@ describe("createStorageAccess", () => {
     const getDownloadUrl = vi.fn(async () => ({
       url: "https://cdn.example.com/bundle.zip",
     }));
-    const storage = createStoragePlugin({
+    const storage = createStorageAdapter({
       name: "standaloneStorage",
       protocol: "https",
       get: async () => ({ response: null }),
@@ -86,7 +86,7 @@ describe("createStorageAccess", () => {
   });
 
   it("creates and serves a runtime-neutral delivery URL", async () => {
-    const storage = createStoragePlugin({
+    const storage = createStorageAdapter({
       name: "r2Storage",
       protocol: "r2",
       get: vi.fn(
@@ -119,7 +119,7 @@ describe("createStorageAccess", () => {
     const resolveUrl = vi.fn(async () => ({
       url: "https://cdn.example.com/bundle.zip",
     }));
-    const storage = createStoragePlugin({
+    const storage = createStorageAdapter({
       name: "s3Storage",
       protocol: "s3",
       get: async () => ({ response: null }),
@@ -134,19 +134,19 @@ describe("createStorageAccess", () => {
   });
 
   it("rejects ambiguous storage protocol ownership", () => {
-    const first = createStoragePlugin({
+    const first = createStorageAdapter({
       name: "firstR2Storage",
       protocol: "r2",
       get: async () => ({ response: null }),
     });
-    const second = createStoragePlugin({
+    const second = createStorageAdapter({
       name: "secondR2Storage",
       protocol: "r2",
       get: async () => ({ response: null }),
     });
 
     expect(() => createStorageAccess([first, second])).toThrow(
-      "Multiple storage plugins handle protocol: r2",
+      "Multiple storage adapters handle protocol: r2",
     );
   });
 });

@@ -1,4 +1,4 @@
-import type { EngineDatabase, StoragePlugin } from "@hot-updater/plugin-core";
+import type { EngineDatabase, StorageAdapter } from "@hot-updater/plugin-core";
 import { afterEach, beforeEach, describe } from "vitest";
 
 import {
@@ -36,7 +36,7 @@ export type DatabaseTestSuiteOptions<
    */
   readonly createHttpClient: (options: {
     readonly database: TDatabase;
-    readonly storage: readonly StoragePlugin[];
+    readonly storage: readonly StorageAdapter[];
   }) => HttpTestServer | Promise<HttpTestServer>;
   /** The suites of the server plugins the provider opts in to test. */
   readonly plugins?: readonly DatabasePluginTestSuite<TDatabase>[];

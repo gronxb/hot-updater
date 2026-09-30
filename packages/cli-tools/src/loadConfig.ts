@@ -6,7 +6,7 @@ import type {
   Platform,
   RequiredDeep,
 } from "@hot-updater/plugin-core";
-import { createStoragePlugin } from "@hot-updater/plugin-core";
+import { createStorageAdapter } from "@hot-updater/plugin-core";
 import { merge } from "es-toolkit";
 import fg from "fast-glob";
 import { type LoadConfigOptions, loadConfig as loadUnconfig } from "unconfig";
@@ -36,10 +36,10 @@ const missingDatabase: EngineDatabase = {
 };
 
 const missingStorageError = async (): Promise<never> => {
-  throw new Error("storage plugin is required");
+  throw new Error("storage adapter is required");
 };
 
-const missingStorage = createStoragePlugin({
+const missingStorage = createStorageAdapter({
   name: "missingStorage",
   protocol: "missing",
   put: missingStorageError,
@@ -120,7 +120,7 @@ const getDefaultConfig = (): ConfigInput => {
     platform: getDefaultPlatformConfig(),
     nativeBuild: { android: {}, ios: {} },
     build: () => {
-      throw new Error("build plugin is required");
+      throw new Error("build adapter is required");
     },
     storage: missingStorage,
     database: missingDatabase,

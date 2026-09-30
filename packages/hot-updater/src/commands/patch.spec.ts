@@ -2,8 +2,8 @@ import { stripVTControlCharacters } from "node:util";
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { mockCli, mockServer, mockStoragePlugin } = vi.hoisted(() => {
-  const mockStoragePlugin = {
+const { mockCli, mockServer, mockStorageAdapter } = vi.hoisted(() => {
+  const mockStorageAdapter = {
     delete: vi.fn(),
     get: vi.fn(),
     name: "mock-storage",
@@ -28,7 +28,7 @@ const { mockCli, mockServer, mockStoragePlugin } = vi.hoisted(() => {
   return {
     mockCli,
     mockServer,
-    mockStoragePlugin,
+    mockStorageAdapter,
   };
 });
 
@@ -66,7 +66,7 @@ describe("createPatch", () => {
     });
     mockCli.loadConfig.mockResolvedValue({
       database: databaseHarness.database,
-      storage: mockStoragePlugin,
+      storage: mockStorageAdapter,
     });
   });
 
@@ -97,7 +97,7 @@ describe("createPatch", () => {
       },
       {
         database: databaseHarness.database,
-        storagePlugin: mockStoragePlugin,
+        storageAdapter: mockStorageAdapter,
       },
       {
         makePrimary: true,

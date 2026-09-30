@@ -1,7 +1,7 @@
 import {
   assertStorageOperations,
   type HotUpdaterCoreApi,
-  type StoragePluginWith,
+  type StorageAdapterWith,
 } from "@hot-updater/plugin-core";
 import { createDatabaseCoreApi } from "@hot-updater/server/db";
 import { getRequest } from "@tanstack/react-start/server";
@@ -18,8 +18,8 @@ type ResolvedConsoleConfig = HotUpdaterConsoleConfig & {
 let configPromise: Promise<ResolvedConsoleConfig> | null = null;
 let core: HotUpdaterCoreApi | null = null;
 let runtime: ConsoleRuntime | null = null;
-let storagePluginPromise: Promise<
-  StoragePluginWith<"get" | "put" | "exists" | "delete">
+let storageAdapterPromise: Promise<
+  StorageAdapterWith<"get" | "put" | "exists" | "delete">
 > | null = null;
 
 const loadCachedConfig = async (request: Request) => {
@@ -38,25 +38,25 @@ const loadCachedConfig = async (request: Request) => {
   return configPromise;
 };
 
-const loadCachedStoragePlugin = async (config: ResolvedConsoleConfig) => {
-  if (!storagePluginPromise) {
-    storagePluginPromise = Promise.resolve(config.storage)
-      .then((storagePlugin) => {
-        assertStorageOperations(storagePlugin, [
+const loadCachedStorageAdapter = async (config: ResolvedConsoleConfig) => {
+  if (!storageAdapterPromise) {
+    storageAdapterPromise = Promise.resolve(config.storage)
+      .then((storageAdapter) => {
+        assertStorageOperations(storageAdapter, [
           "get",
           "put",
           "exists",
           "delete",
         ]);
-        return storagePlugin;
+        return storageAdapter;
       })
       .catch((error) => {
-        storagePluginPromise = null;
+        storageAdapterPromise = null;
         throw error;
       });
   }
 
-  return storagePluginPromise;
+  return storageAdapterPromise;
 };
 
 export const prepareConfig = async (request: Request = getRequest()) => {
@@ -74,9 +74,9 @@ export const prepareConfig = async (request: Request = getRequest()) => {
       runtime = createConsoleRuntime(config);
     }
 
-    const storagePlugin = await loadCachedStoragePlugin(config);
+    const storageAdapter = await loadCachedStorageAdapter(config);
 
-    return { config, core, runtime, storagePlugin };
+    return { config, core, runtime, storageAdapter };
   } catch (error) {
     if (
       !(

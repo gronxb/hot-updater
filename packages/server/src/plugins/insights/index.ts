@@ -1,4 +1,4 @@
-import { DatabasePluginInputError } from "@hot-updater/plugin-core";
+import { DatabaseAdapterInputError } from "@hot-updater/plugin-core";
 
 import { HotUpdaterConfigError } from "../../assembly/configError";
 import { isDatabaseBusyError } from "../../database/busy";
@@ -102,7 +102,7 @@ const readFailuresQuery = (url: URL): InsightsUpdateFailuresInput => {
     (platform !== "ios" && platform !== "android") ||
     (start === undefined) !== (end === undefined)
   ) {
-    throw new DatabasePluginInputError("invalid-query");
+    throw new DatabaseAdapterInputError("invalid-query");
   }
   return {
     platform,
@@ -128,7 +128,7 @@ const failuresEndpoint = (api: InsightsApi): PluginEndpoint => ({
         { headers: { "cache-control": "private, no-store" } },
       );
     } catch (error) {
-      if (error instanceof DatabasePluginInputError) {
+      if (error instanceof DatabaseAdapterInputError) {
         return Response.json(
           {
             error:

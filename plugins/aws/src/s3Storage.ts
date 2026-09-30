@@ -11,12 +11,12 @@ import { Upload } from "@aws-sdk/lib-storage";
 import {
   createStorageDownloadUrl,
   createStorageKeyBuilder,
-  createStoragePlugin,
+  createStorageAdapter,
   createStorageUri,
   parseStorageUri,
   type StorageObject,
-  type StoragePlugin,
-  type StoragePluginWith,
+  type StorageAdapter,
+  type StorageAdapterWith,
 } from "@hot-updater/plugin-core";
 
 import { applyS3RuntimeAwsConfig } from "./runtimeAwsConfig";
@@ -26,13 +26,13 @@ export interface S3StorageConfig extends S3ClientConfig {
   /** Base path where bundles will be stored in the bucket. */
   basePath?: string;
   downloadUrlSigningKey?: string;
-  getDownloadUrl?: StoragePlugin["getDownloadUrl"];
+  getDownloadUrl?: StorageAdapter["getDownloadUrl"];
 }
 
 export type S3StorageConfigWithDownloadUrl = S3StorageConfig &
   (
     | { downloadUrlSigningKey: string }
-    | { getDownloadUrl: NonNullable<StoragePlugin["getDownloadUrl"]> }
+    | { getDownloadUrl: NonNullable<StorageAdapter["getDownloadUrl"]> }
   );
 
 type S3StorageOperations =
@@ -49,13 +49,13 @@ const isObjectNotFoundError = (error: unknown) =>
 
 export function s3Storage(
   config: S3StorageConfigWithDownloadUrl,
-): StoragePluginWith<S3StorageOperations | "getDownloadUrl">;
+): StorageAdapterWith<S3StorageOperations | "getDownloadUrl">;
 export function s3Storage(
   config: S3StorageConfig,
-): StoragePluginWith<S3StorageOperations>;
+): StorageAdapterWith<S3StorageOperations>;
 export function s3Storage(
   config: S3StorageConfig,
-): StoragePluginWith<S3StorageOperations> {
+): StorageAdapterWith<S3StorageOperations> {
   const {
     bucketName,
     basePath,
@@ -99,7 +99,7 @@ export function s3Storage(
     return parsed;
   };
 
-  return createStoragePlugin({
+  return createStorageAdapter({
     name: "s3Storage",
     protocol: "s3",
     async listObjects(prefix) {

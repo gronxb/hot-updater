@@ -1,16 +1,16 @@
 import type {
   HotUpdaterCoreApi,
-  StoragePluginWith,
+  StorageAdapterWith,
 } from "@hot-updater/plugin-core";
 
 interface DownloadBundleDependencies {
   readonly core: Pick<HotUpdaterCoreApi, "getBundle">;
-  readonly storagePlugin?: StoragePluginWith<"get">;
+  readonly storageAdapter?: StorageAdapterWith<"get">;
 }
 
 export const downloadBundle = async (
   bundleId: string,
-  { core, storagePlugin }: DownloadBundleDependencies,
+  { core, storageAdapter }: DownloadBundleDependencies,
 ): Promise<Response> => {
   const detail = await core.getBundle(bundleId);
   if (!detail) return new Response("Bundle not found", { status: 404 });
@@ -18,8 +18,8 @@ export const downloadBundle = async (
   const storageUri = detail.bundle.manifest_storage_uri;
 
   const protocol = new URL(storageUri).protocol.replace(":", "");
-  if (storagePlugin?.protocol === protocol) {
-    const { response } = await storagePlugin.get({ storageUri });
+  if (storageAdapter?.protocol === protocol) {
+    const { response } = await storageAdapter.get({ storageUri });
     if (!response)
       return new Response("Storage object not found", { status: 404 });
 
@@ -34,7 +34,7 @@ export const downloadBundle = async (
   }
 
   if (protocol !== "http" && protocol !== "https") {
-    return new Response(`No storage plugin for protocol: ${protocol}`, {
+    return new Response(`No storage adapter for protocol: ${protocol}`, {
       status: 503,
     });
   }

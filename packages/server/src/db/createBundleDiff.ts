@@ -13,7 +13,7 @@ import {
 import type {
   Bundle,
   ConfiguredDatabase,
-  StoragePluginWith,
+  StorageAdapterWith,
 } from "@hot-updater/plugin-core";
 import {
   createBundleStorageKey,
@@ -45,7 +45,7 @@ export interface CreateBundleDiffInput {
 export interface CreateBundleDiffDependencies {
   /** The config's database: a provider's, or `standaloneRepository`. */
   database: ConfiguredDatabase;
-  storagePlugin: StoragePluginWith<"get" | "put" | "delete"> | null;
+  storageAdapter: StorageAdapterWith<"get" | "put" | "delete"> | null;
 }
 
 export interface CreateBundleDiffOptions {
@@ -110,21 +110,21 @@ async function downloadFromUrl(url: string) {
 
 async function downloadStorageBytes(
   storageUri: string,
-  storagePlugin: StoragePluginWith<"get" | "put" | "delete"> | null,
+  storageAdapter: StorageAdapterWith<"get" | "put" | "delete"> | null,
 ) {
   const protocol = new URL(storageUri).protocol.replace(":", "");
 
-  if (!storagePlugin || storagePlugin.protocol !== protocol) {
+  if (!storageAdapter || storageAdapter.protocol !== protocol) {
     if (protocol === "http" || protocol === "https") {
       return downloadFromUrl(storageUri);
     }
-    if (!storagePlugin) {
-      throw new Error("Storage plugin is not configured");
+    if (!storageAdapter) {
+      throw new Error("Storage adapter is not configured");
     }
-    throw new Error(`No storage plugin for protocol: ${protocol}`);
+    throw new Error(`No storage adapter for protocol: ${protocol}`);
   }
 
-  const { response } = await storagePlugin.get({ storageUri });
+  const { response } = await storageAdapter.get({ storageUri });
   if (response === null) {
     throw new Error(`Storage object not found: ${storageUri}`);
   }
@@ -133,7 +133,7 @@ async function downloadStorageBytes(
 
 async function fetchManifest(
   bundle: Bundle,
-  storagePlugin: StoragePluginWith<"get" | "put" | "delete"> | null,
+  storageAdapter: StorageAdapterWith<"get" | "put" | "delete"> | null,
 ): Promise<BundleManifest> {
   const manifestStorageUri = getManifestStorageUri(bundle);
   if (!manifestStorageUri) {
@@ -142,7 +142,7 @@ async function fetchManifest(
 
   const manifestBytes = await downloadStorageBytes(
     manifestStorageUri,
-    storagePlugin,
+    storageAdapter,
   );
 
   const payload: unknown = JSON.parse(new TextDecoder().decode(manifestBytes));
@@ -174,7 +174,7 @@ async function fetchAssetBytes(
   bundle: Bundle,
   assetPath: string,
   manifest: BundleManifest,
-  storagePlugin: StoragePluginWith<"get" | "put" | "delete"> | null,
+  storageAdapter: StorageAdapterWith<"get" | "put" | "delete"> | null,
 ) {
   const assetBaseStorageUri = getAssetBaseStorageUri(bundle);
   if (!assetBaseStorageUri) {
@@ -198,7 +198,7 @@ async function fetchAssetBytes(
     try {
       compressedBytes = await downloadStorageBytes(
         compressedAssetStorageUri,
-        storagePlugin,
+        storageAdapter,
       );
     } catch (error) {
       if (!(error instanceof Error)) throw error;
@@ -215,7 +215,7 @@ async function fetchAssetBytes(
     assetPath,
     fileHash: asset.fileHash,
   });
-  return downloadStorageBytes(assetStorageUri, storagePlugin);
+  return downloadStorageBytes(assetStorageUri, storageAdapter);
 }
 
 function buildNextPatchState({
@@ -244,8 +244,8 @@ export async function createBundleDiff(
 ) {
   const core = createDatabaseCoreApi(deps.database);
 
-  if (!deps.storagePlugin) {
-    throw new Error("Storage plugin is not configured");
+  if (!deps.storageAdapter) {
+    throw new Error("Storage adapter is not configured");
   }
 
   if (baseBundleId === bundleId) {
@@ -271,8 +271,8 @@ export async function createBundleDiff(
   }
 
   const [baseManifest, targetManifest] = await Promise.all([
-    fetchManifest(baseBundle, deps.storagePlugin),
-    fetchManifest(targetBundle, deps.storagePlugin),
+    fetchManifest(baseBundle, deps.storageAdapter),
+    fetchManifest(targetBundle, deps.storageAdapter),
   ]);
 
   const baseAssetPath = resolveHbcAssetPath(baseManifest);
@@ -298,13 +298,13 @@ export async function createBundleDiff(
       baseBundle,
       baseAssetPath,
       baseManifest,
-      deps.storagePlugin,
+      deps.storageAdapter,
     ),
     fetchAssetBytes(
       targetBundle,
       targetAssetPath,
       targetManifest,
-      deps.storagePlugin,
+      deps.storageAdapter,
     ),
   ]);
 
@@ -324,7 +324,7 @@ export async function createBundleDiff(
     getRelativeStorageDir(targetAssetPath),
     patchFilename,
   );
-  const patchUpload = await deps.storagePlugin.put({
+  const patchUpload = await deps.storageAdapter.put({
     key: uploadKey,
     body: new ReadableStream<Uint8Array>({
       start(controller) {
@@ -359,7 +359,7 @@ export async function createBundleDiff(
     previousPatch?.patchStorageUri &&
     previousPatch.patchStorageUri !== patchUpload.storageUri
   ) {
-    await deps.storagePlugin
+    await deps.storageAdapter
       .delete({ storageUri: previousPatch.patchStorageUri })
       .catch(() => {
         return;

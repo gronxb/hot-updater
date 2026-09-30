@@ -8,7 +8,7 @@ const exampleDir = path.resolve(import.meta.dirname, "../../examples/v0.85.0");
 
 describe("example app server plugins", () => {
   it("lists the managed servers' plugins, so managed profiles read Insights in process", async () => {
-    // Given: a managed profile's config has a direct database plugin, and
+    // Given: a managed profile's config has a direct database adapter, and
     // managed servers serve no admin routes to fall back on.
     const plugins = (await loadHotUpdaterPlugins(exampleDir)) as
       | readonly { readonly id: string }[]

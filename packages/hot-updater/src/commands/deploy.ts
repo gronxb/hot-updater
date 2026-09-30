@@ -18,7 +18,7 @@ import type {
   HotUpdaterCoreApi,
   Platform,
   ReleaseCatalogMutationResult,
-  StoragePluginWith,
+  StorageAdapterWith,
 } from "@hot-updater/plugin-core";
 import {
   assertStorageOperations,
@@ -72,7 +72,7 @@ import {
   prepareAndCommitBundles,
 } from "./deployTransaction";
 
-type DeployStoragePlugin = StoragePluginWith<
+type DeployStorageAdapter = StorageAdapterWith<
   "put" | "get" | "exists" | "delete"
 >;
 
@@ -226,7 +226,7 @@ const createAutoPatches = async ({
   database,
   maxBaseBundles,
   platform,
-  storagePlugin,
+  storageAdapter,
   target,
 }: {
   bundleId: string;
@@ -235,7 +235,7 @@ const createAutoPatches = async ({
   database: ConfiguredDatabase;
   maxBaseBundles: number;
   platform: Platform;
-  storagePlugin: DeployStoragePlugin;
+  storageAdapter: DeployStorageAdapter;
   target: {
     appVersion: string | null;
     fingerprintHash: string | null;
@@ -261,7 +261,7 @@ const createAutoPatches = async ({
         },
         {
           database,
-          storagePlugin,
+          storageAdapter,
         },
         {
           makePrimary: createdCount === 0,
@@ -658,17 +658,17 @@ const deployPlatform = async ({
     ? normalizePatchMaxBaseBundles(config.patch.maxBaseBundles)
     : 0;
 
-  const [buildPlugin, signingSession] = await Promise.all([
+  const [buildAdapter, signingSession] = await Promise.all([
     config.build({ cwd }),
     prepareBundleSigning(config.signing, { cwd }),
   ]);
   const getNativeSigningPublicKey =
-    buildPlugin.nativeBuild?.getBundleSigningPublicKey;
+    buildAdapter.nativeBuild?.getBundleSigningPublicKey;
   const nativeSigningPublicKey = getNativeSigningPublicKey
     ? await getNativeSigningPublicKey()
     : undefined;
   const nativeFingerprintExtraSources =
-    (await buildPlugin.nativeBuild?.getFingerprintExtraSources?.()) ?? [];
+    (await buildAdapter.nativeBuild?.getFingerprintExtraSources?.()) ?? [];
   const fingerprintConfig = {
     ...config.fingerprint,
     extraSources: appendFingerprintExtraSources(
@@ -849,8 +849,8 @@ const deployPlatform = async ({
     p.note(deploymentContext, deploymentTitle);
   }
 
-  const storagePlugin = config.storage;
-  assertStorageOperations(storagePlugin, ["put", "get", "exists", "delete"]);
+  const storageAdapter = config.storage;
+  assertStorageOperations(storageAdapter, ["put", "get", "exists", "delete"]);
 
   try {
     const taskRef: {
@@ -875,9 +875,9 @@ const deployPlatform = async ({
 
     await p.tasks([
       {
-        title: `📦 Building Bundle (${platformName} • ${buildPlugin.name})`,
+        title: `📦 Building Bundle (${platformName} • ${buildAdapter.name})`,
         task: async () => {
-          taskRef.buildResult = await buildPlugin.build({
+          taskRef.buildResult = await buildAdapter.build({
             platform: platform,
           });
 
@@ -935,7 +935,7 @@ const deployPlatform = async ({
             manifestFileHash = createSignedFileHash(signature);
           }
 
-          return `✅ Build Complete (${buildPlugin.name})`;
+          return `✅ Build Complete (${buildAdapter.name})`;
         },
       },
     ]);
@@ -953,7 +953,7 @@ const deployPlatform = async ({
 
     await p.tasks([
       {
-        title: `📦 Uploading to Storage (${platformName} • ${storagePlugin.name})`,
+        title: `📦 Uploading to Storage (${platformName} • ${storageAdapter.name})`,
         task: async (message = () => {}) => {
           if (!bundleId) {
             throw new Error("Build did not return an artifact ID");
@@ -980,14 +980,14 @@ const deployPlatform = async ({
 
             updateUploadProgress();
             await putStorageFile(
-              storagePlugin,
+              storageAdapter,
               createBundleStorageKey(bundleId),
               taskRef.archivePath,
             );
             uploadedStepCount += 1;
             updateUploadProgress();
             const manifestUpload = await putStorageFile(
-              storagePlugin,
+              storageAdapter,
               createBundleStorageKey(bundleId),
               taskRef.manifestPath,
             );
@@ -1017,11 +1017,11 @@ const deployPlatform = async ({
                   .filter(Boolean)
                   .join("/");
 
-                if ((await storagePlugin.exists({ storageUri })).exists) {
+                if ((await storageAdapter.exists({ storageUri })).exists) {
                   skippedUploadCount += 1;
                 } else {
                   await putStorageFile(
-                    storagePlugin,
+                    storageAdapter,
                     uploadKey,
                     uploadSourcePath,
                   );
@@ -1036,7 +1036,7 @@ const deployPlatform = async ({
             }
             throw new Error("Failed to upload bundle to storage");
           }
-          return `✅ Upload Complete (${storagePlugin.name}) • 100%`;
+          return `✅ Upload Complete (${storageAdapter.name}) • 100%`;
         },
       },
       {
@@ -1111,7 +1111,7 @@ const deployPlatform = async ({
                   database,
                   maxBaseBundles: maxPatchBaseBundles,
                   platform,
-                  storagePlugin,
+                  storageAdapter,
                   target,
                 });
               } catch (error) {

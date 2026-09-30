@@ -1,6 +1,6 @@
 import {
   parseStorageDownloadPath,
-  type StoragePluginWith,
+  type StorageAdapterWith,
 } from "@hot-updater/plugin-core";
 
 const assertRemoteUrl = (value: string) => {
@@ -39,20 +39,20 @@ const tokensEqual = (left: string, right: string) => {
 };
 
 export const createStorageAccess = (
-  storagePlugins: StoragePluginWith<"get">[],
+  storageAdapters: StorageAdapterWith<"get">[],
 ) => {
   const protocols = new Set<string>();
-  for (const storage of storagePlugins) {
+  for (const storage of storageAdapters) {
     if (protocols.has(storage.protocol)) {
       throw new Error(
-        `Multiple storage plugins handle protocol: ${storage.protocol}`,
+        `Multiple storage adapters handle protocol: ${storage.protocol}`,
       );
     }
     protocols.add(storage.protocol);
   }
 
   const findStorage = (protocol: string) =>
-    storagePlugins.find((item) => item.protocol === protocol);
+    storageAdapters.find((item) => item.protocol === protocol);
 
   const readStorageResponse = async (
     storageUri: string,
@@ -66,7 +66,7 @@ export const createStorageAccess = (
       return response.ok ? response : null;
     }
 
-    throw new Error(`No storage plugin for protocol: ${protocol}`);
+    throw new Error(`No storage adapter for protocol: ${protocol}`);
   };
 
   const resolveFileUrl = async (
@@ -78,11 +78,11 @@ export const createStorageAccess = (
     const storage = findStorage(protocol);
     if (!storage) {
       if (isRemoteUrlProtocol(protocol)) return storageUri;
-      throw new Error(`No storage plugin for protocol: ${protocol}`);
+      throw new Error(`No storage adapter for protocol: ${protocol}`);
     }
     if (!storage.getDownloadUrl) {
       throw new Error(
-        `Storage plugin "${storage.name}" does not implement getDownloadUrl.`,
+        `Storage adapter "${storage.name}" does not implement getDownloadUrl.`,
       );
     }
     const { url: downloadUrl } = await storage.getDownloadUrl({ storageUri });
@@ -101,7 +101,7 @@ export const createStorageAccess = (
     return response?.text() ?? null;
   };
 
-  const downloadStorageObject = storagePlugins.some(
+  const downloadStorageObject = storageAdapters.some(
     (storage) => storage.getDownloadUrl !== undefined,
   )
     ? async (
@@ -111,7 +111,7 @@ export const createStorageAccess = (
         const requestedPath = `/storage/${storageUriToken}/${encodedSignature}`;
         const requested = parseStorageDownloadPath(requestedPath);
         if (!requested) return null;
-        let storage: StoragePluginWith<"get"> | undefined;
+        let storage: StorageAdapterWith<"get"> | undefined;
         try {
           storage = findStorage(getStorageProtocol(requested.storageUri));
         } catch {

@@ -2,7 +2,7 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 
-import type { BasePluginArgs, BuildPlugin } from "@hot-updater/plugin-core";
+import type { BuildAdapterArgs, BuildAdapter } from "@hot-updater/plugin-core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
@@ -22,7 +22,7 @@ describe("withBugsnag", () => {
 
   const createBuildFn =
     () =>
-    (_: BasePluginArgs): BuildPlugin => ({
+    (_: BuildAdapterArgs): BuildAdapter => ({
       build: async () => ({
         buildPath,
         bundleId: BUNDLE_ID,

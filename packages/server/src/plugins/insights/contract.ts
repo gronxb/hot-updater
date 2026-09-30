@@ -1,4 +1,4 @@
-import { DatabasePluginInputError, isUUIDv7 } from "@hot-updater/plugin-core";
+import { DatabaseAdapterInputError, isUUIDv7 } from "@hot-updater/plugin-core";
 
 import {
   type BundleEventRow,
@@ -91,10 +91,10 @@ const validateRow = (
         ...(isRecord(row.metadata) ? Object.values(row.metadata) : []),
       ].some((value) => typeof value === "string" && !isWellFormedText(value))
     ) {
-      throw new DatabasePluginInputError("invalid-data");
+      throw new DatabaseAdapterInputError("invalid-data");
     }
   } catch (error) {
-    if (result) throw new DatabasePluginInputError("invalid-result");
+    if (result) throw new DatabaseAdapterInputError("invalid-result");
     throw error;
   }
 };
@@ -136,10 +136,10 @@ export const matchesInsightsEventFilter = (
 };
 
 const invalidQuery = (): never => {
-  throw new DatabasePluginInputError("invalid-query");
+  throw new DatabaseAdapterInputError("invalid-query");
 };
 const invalidResult = (): never => {
-  throw new DatabasePluginInputError("invalid-result");
+  throw new DatabaseAdapterInputError("invalid-result");
 };
 const validateCount = (count: number): number =>
   isTimestamp(count) ? count : invalidResult();
@@ -176,7 +176,7 @@ export const createValidatedInsightsModel = (
 ): InsightsModel => ({
   async recordEvent(input) {
     if (!isRecord(input) || !hasOnlyKeys(input, ["event"])) {
-      throw new DatabasePluginInputError("invalid-data");
+      throw new DatabaseAdapterInputError("invalid-data");
     }
     validateRow("bundle_events", input.event);
     await model.recordEvent(input);

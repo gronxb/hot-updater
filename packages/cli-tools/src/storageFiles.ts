@@ -6,7 +6,7 @@ import { pipeline } from "node:stream/promises";
 
 import {
   getContentType,
-  type StoragePluginWith,
+  type StorageAdapterWith,
   type StoragePutResult,
 } from "@hot-updater/plugin-core";
 
@@ -19,7 +19,7 @@ export const getStorageFileByteSize = async (filePath: string) => {
 };
 
 export const putStorageFile = async (
-  storage: StoragePluginWith<"put">,
+  storage: StorageAdapterWith<"put">,
   key: string,
   filePath: string,
 ): Promise<StoragePutResult & { byteSize: number }> => {
@@ -40,7 +40,7 @@ export const putStorageFile = async (
 };
 
 export const writeStorageFile = async (
-  storage: StoragePluginWith<"get">,
+  storage: StorageAdapterWith<"get">,
   storageUri: string,
   filePath: string,
 ): Promise<void> => {

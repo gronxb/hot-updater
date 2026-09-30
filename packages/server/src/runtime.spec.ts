@@ -1,5 +1,5 @@
 import {
-  createStoragePlugin,
+  createStorageAdapter,
   type ConfigInput,
 } from "@hot-updater/plugin-core";
 import { describe, expect, expectTypeOf, it, vi } from "vitest";
@@ -54,7 +54,7 @@ describe("runtime createHotUpdater", () => {
   });
 
   it("runs on an engine database without exposing its tooling", () => {
-    const storage = createStoragePlugin({
+    const storage = createStorageAdapter({
       name: "contextlessTestStorage",
       protocol: "s3",
       get: async () => ({ response: null }),
@@ -141,7 +141,7 @@ describe("runtime createHotUpdater", () => {
   it.each(["s3", "https"])(
     "rejects registered %s storage without getDownloadUrl",
     (protocol) => {
-      const storage = createStoragePlugin({
+      const storage = createStorageAdapter({
         name: "deployOnlyStorage",
         protocol,
         get: async () => ({ response: null }),
@@ -154,7 +154,7 @@ describe("runtime createHotUpdater", () => {
           storage: [storage],
         }),
       ).toThrow(
-        'Storage plugin "deployOnlyStorage" does not implement getDownloadUrl.',
+        'Storage adapter "deployOnlyStorage" does not implement getDownloadUrl.',
       );
     },
   );

@@ -4,9 +4,9 @@ import path from "path";
 
 import { log } from "@hot-updater/cli-tools";
 import type {
-  BasePluginArgs,
-  BuildPlugin,
-  BuildPluginConfig,
+  BuildAdapterArgs,
+  BuildAdapter,
+  BuildAdapterConfig,
 } from "@hot-updater/plugin-core";
 import { ExecaError, execa } from "execa";
 import { uuidv7 } from "uuidv7";
@@ -258,7 +258,7 @@ const runBundle = async ({
   };
 };
 
-export interface BarePluginConfig extends BuildPluginConfig {
+export interface BareAdapterConfig extends BuildAdapterConfig {
   /**
    * @default "index.js"
    * The entry file to bundle.
@@ -284,8 +284,8 @@ export interface BarePluginConfig extends BuildPluginConfig {
 }
 
 export const bare =
-  (config: BarePluginConfig) =>
-  ({ cwd }: BasePluginArgs): BuildPlugin => {
+  (config: BareAdapterConfig) =>
+  ({ cwd }: BuildAdapterArgs): BuildAdapter => {
     const {
       outDir = "dist",
       sourcemap = false,

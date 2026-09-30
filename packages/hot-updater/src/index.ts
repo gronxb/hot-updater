@@ -149,7 +149,7 @@ for (const operation of ["setup", "upgrade"] as const) {
       ),
     )
     .addOption(
-      new Option("--build <plugin>", "app build plugin").choices([
+      new Option("--build <adapter>", "app build adapter").choices([
         "bare",
         "rock",
         "expo",
@@ -174,8 +174,8 @@ program
   )
   .addOption(
     new Option(
-      "--build <plugin>",
-      "build plugin to use; skips the prompt",
+      "--build <adapter>",
+      "build adapter to use; skips the prompt",
     ).choices(["bare", "rock", "expo"]),
   )
   .option(
@@ -465,7 +465,7 @@ Examples:
 Only unreferenced bundle objects and shared assets are eligible.
 Protection uses object modification time, not time since bundle deletion.
 Deletion requires exclusive storage access; stop deploy and patch first.
-Object listing and deletion require a capable Storage plugin such as s3Storage.
+Object listing and deletion require a capable Storage adapter such as s3Storage.
 `,
   )
   .action(

@@ -2,7 +2,7 @@ import fs from "fs";
 import path from "path";
 
 import { getCwd } from "@hot-updater/cli-tools";
-import type { BasePluginArgs, BuildPlugin } from "@hot-updater/plugin-core";
+import type { BuildAdapterArgs, BuildAdapter } from "@hot-updater/plugin-core";
 import type { SentryCliOptions } from "@sentry/cli";
 import SentryCli from "@sentry/cli";
 
@@ -49,8 +49,11 @@ const ensureFilePath = (files: string[], bsaePath: string, suffix: string) => {
 };
 
 export const withSentry =
-  (buildFn: (args: BasePluginArgs) => BuildPlugin, config: SentryCliOptions) =>
-  (args: BasePluginArgs): BuildPlugin => {
+  (
+    buildFn: (args: BuildAdapterArgs) => BuildAdapter,
+    config: SentryCliOptions,
+  ) =>
+  (args: BuildAdapterArgs): BuildAdapter => {
     const context = buildFn(args);
     return {
       ...context,
@@ -72,7 +75,7 @@ export const withSentry =
 
         if (!bundleMapFile || !bundleFile) {
           throw new Error(
-            "Source map not found. Please enable sourcemap in your build plugin. e.g build: bare({ sourcemap: true })",
+            "Source map not found. Please enable sourcemap in your build adapter. e.g build: bare({ sourcemap: true })",
           );
         }
 

@@ -1,5 +1,5 @@
 import {
-  createStoragePlugin,
+  createStorageAdapter,
   parseStorageUri,
   type StorageDeleteInput,
   type StorageExistsInput,
@@ -89,7 +89,7 @@ export const standaloneStorage = (config: StandaloneStorageConfig) => {
     return response;
   };
 
-  return createStoragePlugin({
+  return createStorageAdapter({
     name: "standaloneStorage",
     protocol: config.protocol,
     async put({ key, body, contentType, contentLength }) {
