@@ -1181,7 +1181,7 @@ const runInitWithoutCliMetadata = async ({
 
   p.log.message(
     `Next step: ${link(
-      "https://hot-updater.dev/docs/managed/supabase#step-4-add-hotupdater-to-your-project",
+      "https://hot-updater.dev/docs/managed/supabase#step-3-add-hotupdater-to-your-project",
     )}`,
   );
   p.log.success("Done! 🎉");
