@@ -3,7 +3,7 @@
  * an in-memory device and a server the test answers.
  *
  * ```ts
- * import { setupClientPlugin } from "@hot-updater/react-native/testing";
+ * import { setupClientPlugin } from "@hot-updater/test-utils/react-native";
  *
  * const runtime = setupClientPlugin(myPlugin());
  * runtime.hooks.onAppReady(launch);
@@ -11,27 +11,29 @@
  * expect(runtime.requests[0]?.json()).toEqual(expectedEvent);
  * ```
  *
- * It sets plugins up with the SDK's own plugin host, so they get the same
- * context and rules as in an app: unique ids, `setup` once per runtime,
- * storage scoped to the plugin's id with values up to 64 KB, `fetch` relative
- * to `baseURL` with `requestHeaders` and `requestTimeout`, and hooks the SDK
- * never waits for, whose throws and rejections are reported, not raised.
+ * It sets plugins up with the plugin host of `@hot-updater/react-native`,
+ * the same code the app runs, so they get the same context and rules:
+ * unique ids, `setup` once per runtime, storage scoped to the plugin's id
+ * with values up to 64 KB, `fetch` relative to `baseURL` with
+ * `requestHeaders` and `requestTimeout`, and hooks the SDK never waits for,
+ * whose throws and rejections are reported, not raised. It imports neither
+ * React Native nor a test runner, so it works under Vitest and Jest.
  */
-import { resolveBaseURL } from "./baseURL";
 import type {
   AppReadyResult,
   BundleDownloadedInfo,
+  HotUpdaterBaseURL,
   HotUpdaterClientPlugin,
   UpdateCheckResult,
   UpdateError,
-} from "./clientPlugin";
+} from "@hot-updater/react-native";
 import {
   createPluginHost,
   type PluginHookName,
   type PluginHookPayload,
   pluginStorageKey,
-} from "./createPluginHost";
-import type { HotUpdaterBaseURL } from "./types";
+  resolveBaseURL,
+} from "@hot-updater/react-native/plugin-host";
 
 /** A value the test fixes, or reads each time a plugin asks for it. */
 type TestValue<T> = T | (() => T);

@@ -31,6 +31,28 @@ describe("@hot-updater/test-utils package", () => {
     });
   });
 
+  it("advertises the client plugin helper in both module formats, for Vitest and Jest", () => {
+    expect(packageJson.exports["./react-native"]).toEqual({
+      import: {
+        types: "./dist/react-native.d.mts",
+        default: "./dist/react-native.mjs",
+      },
+      require: {
+        types: "./dist/react-native.d.cts",
+        default: "./dist/react-native.cjs",
+      },
+    });
+  });
+
+  it("asks for the React Native SDK only from projects that test client plugins", () => {
+    expect(packageJson.peerDependencies["@hot-updater/react-native"]).toBe(
+      "workspace:^",
+    );
+    expect(packageJson.peerDependenciesMeta).toEqual({
+      "@hot-updater/react-native": { optional: true },
+    });
+  });
+
   it("publishes only built artifacts and package metadata", () => {
     expect(packageJson.files).toEqual(["dist", "package.json"]);
   });

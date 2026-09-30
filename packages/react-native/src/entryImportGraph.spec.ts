@@ -55,8 +55,8 @@ describe("@hot-updater/react-native root entry", () => {
     expect(graph.filter((file) => file.startsWith("plugins/"))).toEqual([]);
   });
 
-  it("bundles no test helper", () => {
-    expect(graph).not.toContain("testing.ts");
+  it("bundles not the plugin host entry, which only test-utils imports", () => {
+    expect(graph).not.toContain("plugin-host.ts");
   });
 
   it("sends no Insights request", () => {
@@ -68,12 +68,12 @@ describe("@hot-updater/react-native root entry", () => {
   });
 });
 
-describe("@hot-updater/react-native/testing entry", () => {
-  const graph = [...collectGraph(join(sourceRoot, "testing.ts"))].map((file) =>
-    relative(sourceRoot, file),
+describe("@hot-updater/react-native/plugin-host entry", () => {
+  const graph = [...collectGraph(join(sourceRoot, "plugin-host.ts"))].map(
+    (file) => relative(sourceRoot, file),
   );
 
-  it("runs the SDK's plugin host without React Native or the native module", () => {
+  it("loads the app's plugin host without React Native or the native module", () => {
     expect(graph).toContain("createPluginHost.ts");
     expect(graph).not.toContain("native.ts");
     const reactNativeImports = graph.filter((file) =>

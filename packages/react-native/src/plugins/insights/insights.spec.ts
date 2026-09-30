@@ -1,4 +1,10 @@
 import { isUUIDv7 } from "@hot-updater/core";
+import {
+  type ClientPluginTestRequest,
+  type ClientPluginTestStorage,
+  createTestStorage,
+  setupClientPlugin,
+} from "@hot-updater/test-utils/react-native";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type {
@@ -6,12 +12,6 @@ import type {
   BundleDownloadedInfo,
   UpdateError,
 } from "../../clientPlugin";
-import {
-  type ClientPluginTestRequest,
-  type ClientPluginTestStorage,
-  createTestStorage,
-  setupClientPlugin,
-} from "../../testing";
 import { insights, type InsightsOptions, type InsightsUser } from "./index";
 import type { InsightsEventBody } from "./sender";
 

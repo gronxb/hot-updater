@@ -1,16 +1,21 @@
+import type {
+  AppReadyResult,
+  HotUpdaterClientContext,
+  HotUpdaterClientPlugin,
+  UpdateError,
+} from "@hot-updater/react-native";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import {
-  type AppReadyResult,
-  defineClientPlugin,
-  type HotUpdaterClientContext,
-  type UpdateError,
-} from "./clientPlugin";
 import {
   createTestStorage,
   setupClientPlugin,
   setupClientPlugins,
-} from "./testing";
+} from "./react-native";
+
+/** The SDK's `defineClientPlugin`, without loading React Native. */
+const defineClientPlugin = <const P extends HotUpdaterClientPlugin>(
+  plugin: P,
+): P => plugin;
 
 const launch: AppReadyResult = {
   status: "UNCHANGED",

@@ -22,7 +22,7 @@ export interface PluginHostConfig {
 
 /**
  * What plugins read from the app and the device. The SDK backs it with the
- * native module; `@hot-updater/react-native/testing` backs it with fakes.
+ * native module; `@hot-updater/test-utils/react-native` backs it with fakes.
  */
 export interface PluginHostEnvironment {
   fetch(url: string, init: RequestInit): Promise<Response>;
@@ -62,8 +62,8 @@ export interface PluginHost {
   ): PluginHookPayload<K> | null;
   /**
    * Calls a hook on every plugin that listens, without waiting for any. It
-   * returns when each asynchronous hook settles, for observers such as the
-   * testing helper; the SDK ignores it.
+   * returns when each asynchronous hook settles, for observers such as
+   * `@hot-updater/test-utils`; the SDK ignores it.
    */
   dispatchPluginHook<K extends PluginHookName>(
     name: K,
