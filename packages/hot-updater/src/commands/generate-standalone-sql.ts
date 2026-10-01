@@ -12,7 +12,7 @@ import {
 } from "sql-formatter";
 
 import { ui } from "../utils/cli-ui";
-import { findPluginList } from "./pluginCommands";
+import { findPluginList } from "./utils/load-hot-updater";
 
 const SUPPORTED_PROVIDERS = ["postgresql", "mysql", "sqlite"] as const;
 type SupportedProvider = (typeof SUPPORTED_PROVIDERS)[number];
@@ -123,8 +123,8 @@ const getProvider = async (
 
 /**
  * The plugins whose tables the SQL adds to core's: those of the server
- * definition `configPath` names, else of the one plugin commands find. None
- * without a definition, which it says.
+ * definition `configPath` names, else the project's plugin list. None
+ * without one, which it says.
  */
 const findServerPlugins = async (
   configPath: string | undefined,
@@ -141,7 +141,7 @@ const findServerPlugins = async (
   }
   if (found === undefined) {
     p.log.info(
-      "No server definition found, so the SQL holds core's tables only.",
+      "No server definition or plugins in hot-updater.config.ts found, so the SQL holds core's tables only.",
     );
     return [];
   }
@@ -182,7 +182,8 @@ export async function generateStandaloneSQL(options: {
       provider: dbType,
     });
 
-    // The definition that lists the plugins checked them as it started.
+    // The server checks its plugins as it starts; the SQL only adds their
+    // tables.
     const migrator = adapter.createMigrator!(toolingTargetOf(plugins));
     const result = await migrator.migrateToLatest({
       mode: "from-schema",

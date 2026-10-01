@@ -94,8 +94,8 @@ describe("published agent infrastructure commands", () => {
           const content = await readFile(path.join(result.data.output, file));
           expect(createHash("sha256").update(content).digest("hex")).toBe(hash);
         }
-        // The config the app merges, the server definition it points at, and
-        // the credential script with Firestore's migration.
+        // The config the app merges, the credential script with the server
+        // definition it provisions over, and Firestore's migration.
         expect(
           Object.keys(manifest.files)
             .filter((file) => file.startsWith("app/"))
@@ -108,36 +108,48 @@ describe("published agent infrastructure commands", () => {
           "app/verify-server.mjs",
         ]);
         // A migration tool applies the package's migration, which holds
-        // core's tables, then the one for the prebuilt server's plugins.
-        const pluginMigration = Object.keys(manifest.files).find((file) =>
-          /migrations\/[^/]+_hot-updater_plugins\.sql$/u.test(file),
+        // core's tables and those of the prebuilt server's plugins.
+        const migrations = Object.keys(manifest.files).filter((file) =>
+          /migrations\/[^/]+\.sql$/u.test(file),
         );
         if (provider === "cloudflare" || provider === "supabase") {
+          expect(migrations).toHaveLength(1);
           const sql = await readFile(
-            path.join(result.data.output, pluginMigration!),
+            path.join(result.data.output, migrations[0]!),
             "utf8",
           );
           expect(sql).toContain("schema.insights");
           expect(sql).toContain("schema.apiKeys");
         } else {
-          expect(pluginMigration).toBeUndefined();
+          expect(migrations).toEqual([]);
         }
         const appFile = (file: string) =>
           readFile(path.join(result.data.output, "app", file), "utf8");
+        const providerImport = new RegExp(
+          `^import \\{[^}]*\\bplugins\\b[^}]*\\} from "@hot-updater/${provider}";$`,
+          "mu",
+        );
+        // The deployed server's storage, database, and plugins, and no
+        // server code.
         const config = await appFile("hot-updater.config.ts");
         expect(config).toContain(`@hot-updater/${build}`);
-        expect(config).toContain('server: "./hotUpdater.ts"');
-        // The database, storage, and plugins the deployed server runs.
+        expect(config).toMatch(providerImport);
+        expect(config).toMatch(/^ {2}storage: \w+\(/mu);
+        expect(config).toMatch(/^ {2}database: \w+\(/mu);
+        expect(config).toMatch(/^ {2}plugins,$/mu);
+        expect(config).not.toMatch(
+          /\bserver:|hotUpdater\.ts|@hot-updater\/server/u,
+        );
+        // The credential helper's definition: the same database, storage,
+        // and plugins, without the build or the environment file, which
+        // the script loads first.
         const definition = await appFile("hotUpdater.ts");
         expect(definition).toContain(
           "export const hotUpdater = createHotUpdater({",
         );
-        expect(definition).toMatch(
-          new RegExp(
-            `^import \\{[^}]*\\bplugins\\b[^}]*\\} from "@hot-updater/${provider}";$`,
-            "mu",
-          ),
-        );
+        expect(definition).toMatch(providerImport);
+        expect(definition).not.toContain(`@hot-updater/${build}`);
+        expect(definition).not.toContain("process.loadEnvFile");
         const sources = [
           config,
           definition,

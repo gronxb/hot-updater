@@ -77,7 +77,7 @@ describe("createPatch", () => {
     mockLoadServer.mockResolvedValue(
       testServer({
         database: databaseHarness.database,
-        storage: [mockStorageAdapter],
+        storage: mockStorageAdapter,
       }),
     );
   });

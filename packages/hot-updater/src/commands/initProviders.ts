@@ -139,29 +139,3 @@ export const loadInitProvider = async (
   if (!isWholeInit(entry)) throw noInitError(packageName);
   return entry;
 };
-
-/**
- * The server definitions the other providers' inits write, which
- * `provider`'s init replaces when it finds one unedited. They come from the
- * other provider packages the project has installed, as it does right after
- * switching providers. A provider whose package isn't installed, or whose
- * definitions fail to render, is left out, and init then refuses that
- * definition from its imports instead.
- */
-export const otherServerDefinitionsOf = async (
-  provider: InitProvider,
-): Promise<string[]> =>
-  (
-    await Promise.all(
-      INIT_PROVIDER_NAMES.filter((name) => name !== provider).map(
-        async (name) => {
-          try {
-            const { initProvider } = await INIT_PROVIDER_PACKAGES[name].load();
-            return [...(initProvider.serverDefinitions?.() ?? [])];
-          } catch {
-            return [];
-          }
-        },
-      ),
-    )
-  ).flat();

@@ -72,11 +72,8 @@ vi.mock("@hot-updater/cli-tools", () => ({
 
 vi.mock("./utils/load-hot-updater", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./utils/load-hot-updater")>()),
-  loadHotUpdater: vi.fn(),
-}));
-
-vi.mock("./pluginCommands", () => ({
   findPluginList: mockPlugins.findPluginList,
+  loadHotUpdater: vi.fn(),
 }));
 
 /** A server definition on a database named `name`; the tooling it reaches is mocked. */
@@ -164,7 +161,7 @@ describe("generate command", () => {
         [],
       );
       expect(mockCli.log.info).toHaveBeenCalledWith(
-        "No server definition found, so the SQL holds core's tables only.",
+        "No server definition or plugins in hot-updater.config.ts found, so the SQL holds core's tables only.",
       );
       expect(sql).toMatch(/CREATE TABLE IF NOT EXISTS `?bundles`?/u);
       expect(sql).toContain("private_hot_updater_settings");

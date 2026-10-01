@@ -19,7 +19,7 @@ const errorMessage = (error: unknown): string =>
   error instanceof Error ? error.message : String(error);
 
 const unreachable =
-  "Check that server in hot-updater.config.ts loads and its database is reachable from here, then rerun doctor.";
+  "Check that database in hot-updater.config.ts is reachable from here, then rerun doctor.";
 
 /** The status when the catalogs could not be read at all, such as when the server does not load. */
 export const releaseCatalogsUnchecked = (

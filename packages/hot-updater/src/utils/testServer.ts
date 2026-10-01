@@ -1,63 +1,36 @@
-import {
-  type AnyHotUpdaterPlugin,
-  type ConfiguredDatabase,
-  type HotUpdaterCoreApi,
-  isRemoteServer,
-  type StorageAdapter,
+import { assembleServer } from "@hot-updater/cli-tools";
+import type {
+  AnyHotUpdaterPlugin,
+  ConfiguredDatabase,
+  HotUpdaterCoreApi,
+  StorageAdapter,
 } from "@hot-updater/plugin-core";
-import { createHotUpdater } from "@hot-updater/server";
 
 import type { LoadedServer } from "./loadServer";
 
 /**
- * A server as `loadServer` returns it, over `database` and `storage`, for
- * specs that mock `loadServer`. Its core is the server definition's over the
- * database, or `database.core` when the database has one, such as a
- * self-hosted server's or a harness's that spies on calls. Disposing it
- * disposes the database.
+ * A server as `loadServer` returns it, assembled over `database`,
+ * `storage`, and `plugins`, for specs that mock `loadServer`. Its core is
+ * the assembled one, or `database.core` when the database has one, such as
+ * a harness's that spies on calls. Disposing it disposes the database.
  */
 export const testServer = ({
   database,
-  storage = [],
+  storage,
   plugins = [],
 }: {
   readonly database:
     | ConfiguredDatabase
     | (ConfiguredDatabase & { readonly core: HotUpdaterCoreApi });
-  readonly storage?: readonly StorageAdapter[];
+  readonly storage?: StorageAdapter;
   readonly plugins?: readonly AnyHotUpdaterPlugin[];
 }): LoadedServer => {
-  const definition =
-    isRemoteServer(database) || "core" in database
-      ? undefined
-      : createHotUpdater({
-          database,
-          storage,
-          plugins,
-          ...(plugins.some(({ provides }) => provides?.clientAuth)
-            ? {}
-            : { clientAccess: "public" }),
-        } as Parameters<typeof createHotUpdater>[0]);
-  const core =
-    definition?.core ?? (database as { readonly core: HotUpdaterCoreApi }).core;
+  const server = assembleServer({ database, storage, plugins });
   return {
-    kind: "definition",
-    path: "/project/hotUpdater.ts",
-    definition: {
-      database,
-      storage,
-      plugins,
-      clientPlugins: definition?.clientPlugins ?? [],
-      clientEndpoints: definition?.clientEndpoints ?? [],
-      core,
-      api: definition?.api ?? {},
-    },
-    plugins,
-    database,
-    core,
-    storage,
+    ...server,
+    core: "core" in database ? database.core : server.core,
     dispose: async () => {
       await database.dispose?.();
     },
-  } as unknown as LoadedServer;
+  };
 };

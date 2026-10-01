@@ -8,6 +8,7 @@ import {
   type ServerDefinition,
   serverDefinitionOf,
 } from "@hot-updater/cli-tools";
+import type { AnyHotUpdaterPlugin } from "@hot-updater/plugin-core";
 import { createJiti } from "jiti";
 
 import { ui } from "../../utils/cli-ui";
@@ -34,7 +35,7 @@ const SUPPORTED_CONFIG_EXTENSIONS = [
   "mjs",
 ] as const;
 
-/** Where a server-only project keeps its server definition, when no config points at one. */
+/** Where a server project keeps its server definition, when no path is given. */
 const DEFAULT_CONFIG_BASENAMES = [
   path.join("src", "hotUpdater"),
   path.join("src", "db"),
@@ -96,13 +97,12 @@ export const importHotUpdater = async (
 };
 
 /**
- * The server definition to load: the path given, else the one `server` in
- * hot-updater.config.ts points at, else a server-only project's default.
- * A path given loads `.env.hotupdater`, which a definition init wrote reads,
- * without running hot-updater.config.ts; otherwise the config loads the
- * environment it loads.
+ * The server definition to load: the path given, else a server project's
+ * default, `src/hotUpdater.*` or `src/db.*`. A path given loads
+ * `.env.hotupdater`, which the definition may read, without running
+ * hot-updater.config.ts.
  */
-const resolveConfigPath = async (configPath: string, cwd: string) => {
+const resolveConfigPath = (configPath: string, cwd: string) => {
   const trimmedConfigPath = configPath.trim();
   if (trimmedConfigPath) {
     const envFile = path.join(cwd, ".env.hotupdater");
@@ -111,16 +111,6 @@ const resolveConfigPath = async (configPath: string, cwd: string) => {
     }
     return path.resolve(cwd, trimmedConfigPath);
   }
-  const { server } = await loadConfig(null);
-  if (typeof server === "string") {
-    return server;
-  }
-  if (server !== undefined) {
-    p.log.error(
-      "hot-updater.config.ts reaches a self-hosted server through its admin API. Run this where the server's definition is, or pass its path.",
-    );
-    process.exit(1);
-  }
 
   const defaultConfigPath = findDefaultConfigPath(cwd);
   if (defaultConfigPath) {
@@ -128,7 +118,7 @@ const resolveConfigPath = async (configPath: string, cwd: string) => {
   }
 
   p.log.error(
-    "Could not find a server definition: set server in hot-updater.config.ts, or pass its path.",
+    "Could not find a server definition: pass its path, or keep it in src/hotUpdater.ts or src/db.ts.",
   );
   p.log.message(
     ui.block("Examples", [
@@ -147,7 +137,7 @@ export async function loadHotUpdater(
   configPath: string,
   options: LoadHotUpdaterOptions = {},
 ): Promise<LoadHotUpdaterResult> {
-  const absoluteConfigPath = await resolveConfigPath(
+  const absoluteConfigPath = resolveConfigPath(
     configPath,
     options.cwd ?? process.cwd(),
   );
@@ -260,6 +250,61 @@ export async function loadHotUpdater(
     },
   };
 }
+
+/** A project's plugin list, and the file it comes from. */
+export interface FoundPluginList {
+  /** The file that lists the plugins, for messages. */
+  readonly from: string;
+  readonly plugins: readonly AnyHotUpdaterPlugin[];
+}
+
+const messageOf = (error: unknown) =>
+  error instanceof Error ? error.message : String(error);
+
+/**
+ * The project's plugin list, in order: the server definition `args` names,
+ * then `plugins` in hot-updater.config.ts when it lists any, then the first
+ * of `src/hotUpdater.*` and `src/db.*` that exports a server definition.
+ * Undefined when the project has none; a default that fails to load is
+ * reported in `failures` and skipped.
+ */
+export const findPluginList = async (
+  args: readonly string[],
+  cwd: string,
+  failures: string[] = [],
+): Promise<FoundPluginList | undefined> => {
+  const named = args.find(
+    (arg) => !arg.startsWith("-") && isConfigFile(arg, cwd),
+  );
+  if (named !== undefined) {
+    const loaded = await loadHotUpdater(named, { cwd });
+    await loaded.dispose();
+    return {
+      from: path.relative(cwd, loaded.absoluteConfigPath),
+      plugins: loaded.hotUpdater.plugins,
+    };
+  }
+  // Loading the config opens its database, which this does not read.
+  const { database, plugins } = await loadConfig(null);
+  await database?.dispose?.();
+  if (plugins.length > 0) return { from: "hot-updater.config.ts", plugins };
+  for (const configPath of findDefaultConfigPaths(cwd)) {
+    let loaded: LoadHotUpdaterResult | undefined;
+    try {
+      loaded = await importHotUpdater(configPath);
+    } catch (error) {
+      failures.push(`${path.relative(cwd, configPath)}: ${messageOf(error)}`);
+      continue;
+    }
+    if (loaded === undefined) continue;
+    await loaded.dispose();
+    return {
+      from: path.relative(cwd, configPath),
+      plugins: loaded.hotUpdater.plugins,
+    };
+  }
+  return undefined;
+};
 
 const reportConfigImportError = (importError: unknown): never => {
   const errorMessage =

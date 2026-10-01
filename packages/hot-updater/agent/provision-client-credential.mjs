@@ -1,8 +1,8 @@
 import { existsSync } from "node:fs";
 import { readFile, writeFile } from "node:fs/promises";
 
-// The server definition reads process.env when it loads, so the settings go
-// first; a static import would load it before them.
+// The credential helper's server definition reads process.env when it loads,
+// so the settings go first; a static import would load it before them.
 if (existsSync(".env.hotupdater")) {
   process.loadEnvFile(".env.hotupdater");
 }
@@ -15,7 +15,7 @@ if (
   typeof hotUpdater.api !== "object"
 ) {
   throw new Error(
-    "hotUpdater.ts must export `hotUpdater`, the server createHotUpdater from @hot-updater/server returns.",
+    "app/hotUpdater.ts, the credential helper's server definition, must export `hotUpdater`: the server createHotUpdater from @hot-updater/server returns.",
   );
 }
 const { api, clientAuth, database, plugins } = hotUpdater;

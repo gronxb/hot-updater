@@ -15,16 +15,30 @@ beforeEach(async () => {
     path.join(project, "package.json"),
     JSON.stringify({ name: "app", private: true }),
   );
-  // Loading the server definition fails, so a command that loads it fails.
-  await fs.writeFile(
-    path.join(project, "hotUpdater.ts"),
-    'throw new Error("The server definition was loaded.");\n',
-  );
+  // A database that refuses every call, and a plugin that refuses to start:
+  // a command that reads the database or assembles the server fails.
   await fs.writeFile(
     path.join(project, "hot-updater.config.ts"),
     [
+      "const refuse = () => {",
+      '  throw new Error("The database was read.");',
+      "};",
+      "",
       "export default {",
-      '  server: "./hotUpdater.ts",',
+      "  database: {",
+      '    name: "refusing",',
+      '    adapter: { id: "refusing", fits: refuse, get: refuse, query: refuse, write: refuse },',
+      "  },",
+      "  plugins: [",
+      "    {",
+      '      id: "refusing",',
+      '      schemaVersion: "1",',
+      "      schema: {},",
+      "      init: () => {",
+      '        throw new Error("The server was assembled.");',
+      "      },",
+      "    },",
+      "  ],",
       '  updateStrategy: "fingerprint",',
       "  build: () => ({",
       '    name: "test",',
@@ -52,7 +66,7 @@ afterEach(async () => {
   await fs.rm(project, { recursive: true, force: true });
 });
 
-describe("commands that never load the server definition", () => {
+describe("commands that never assemble the server", () => {
   it("sets and reads the channel", async () => {
     await expect(setChannel("ios", "beta")).resolves.toMatchObject({
       paths: [expect.stringContaining("Info.plist")],

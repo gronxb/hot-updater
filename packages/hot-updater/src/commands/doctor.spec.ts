@@ -3,17 +3,22 @@ import crypto from "node:crypto";
 import os from "os";
 import path from "path";
 
-import { getCwd, loadConfig, p, readPackageUp } from "@hot-updater/cli-tools";
-import { createMemoryAdapter } from "@hot-updater/plugin-core";
 import {
-  createHotUpdater,
-  HOT_UPDATER_SERVER_VERSION,
-} from "@hot-updater/server";
+  assembleServer,
+  getCwd,
+  loadConfig,
+  p,
+  readPackageUp,
+} from "@hot-updater/cli-tools";
+import {
+  type ConfiguredDatabase,
+  createMemoryAdapter,
+} from "@hot-updater/plugin-core";
+import { HOT_UPDATER_SERVER_VERSION } from "@hot-updater/server";
 import { insights } from "@hot-updater/server/plugins/insights";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { packageJsonData } from "../packageJson";
-import { loadServer } from "../utils/loadServer";
 import {
   areVersionsCompatible,
   checkInfrastructureStatus,
@@ -33,8 +38,6 @@ import { getRequiredUpdateTarget } from "./doctorInfrastructureTargets";
 
 vi.mock("../packageJson", () => ({ packageJsonData: { version: "1.0.0" } }));
 
-vi.mock("../utils/loadServer", () => ({ loadServer: vi.fn() }));
-
 // Computing a fingerprint hashes the whole project; doctor/fingerprint.spec
 // covers the comparison itself.
 vi.mock("./doctor/fingerprint", () => ({
@@ -53,6 +56,10 @@ vi.mock("./doctor/fix", () => ({
 }));
 
 vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
+  // The server doctor reads is assembled from the config as the CLI does.
+  assembleServer: (
+    await importOriginal<typeof import("@hot-updater/cli-tools")>()
+  ).assembleServer,
   colors: (await importOriginal<typeof import("@hot-updater/cli-tools")>())
     .colors,
   getBundleSigningPublicKey: (
@@ -927,7 +934,76 @@ describe("doctor", () => {
     });
   });
 
-  it("warns about a client plugin the server's plugins need that the app does not add", async () => {
+  it.each<[string, () => ConfiguredDatabase]>([
+    [
+      "the server's database",
+      () => ({ name: "memory", adapter: createMemoryAdapter() }),
+    ],
+    [
+      "standaloneRepository",
+      () => ({
+        name: "standalone",
+        // A self-hosted server's admin API, which doctor reads no plugins from.
+        core: assembleServer({
+          database: { name: "memory", adapter: createMemoryAdapter() },
+        }).core,
+        fetchAdmin: vi.fn(async () => {
+          throw new Error("doctor fetched the admin API");
+        }),
+      }),
+    ],
+  ])(
+    "warns about a client plugin the config's plugins need that the app does not add, over %s",
+    async (_database, database) => {
+      const cwd = await createTempProject();
+      tempProjects.push(cwd);
+      mockGetCwd.mockReturnValue(cwd);
+      mockReadPackageUp.mockResolvedValue({
+        packageJson: {
+          dependencies: {
+            "hot-updater": "0.31.0",
+            "@hot-updater/react-native": "0.31.0",
+          },
+        },
+        path: path.join(cwd, "package.json"),
+      });
+      const configured = database();
+      mockLoadConfig.mockResolvedValue(
+        createConfig({ database: configured, plugins: [insights()] }),
+      );
+      await writeFile(
+        path.join(cwd, "src/App.tsx"),
+        'import { HotUpdater } from "@hot-updater/react-native";\n',
+      );
+
+      const result = await doctor();
+
+      expect(result).toMatchObject({
+        success: true,
+        details: {
+          native: {
+            issues: [
+              {
+                type: "warning",
+                platform: "project",
+                code: "MISSING_CLIENT_PLUGIN",
+                message:
+                  "The server runs a plugin whose client plugin insights the app does not add.",
+                resolution:
+                  'Import { insights } from "@hot-updater/react-native" and pass insights() to HotUpdater.init({ plugins }).',
+                fixability: "auto",
+              },
+            ],
+          },
+        },
+      });
+      if ("fetchAdmin" in configured) {
+        expect(configured.fetchAdmin).not.toHaveBeenCalled();
+      }
+    },
+  );
+
+  it("warns that it could not check client plugins when the config's plugins do not assemble", async () => {
     const cwd = await createTempProject();
     tempProjects.push(cwd);
     mockGetCwd.mockReturnValue(cwd);
@@ -941,20 +1017,10 @@ describe("doctor", () => {
       path: path.join(cwd, "package.json"),
     });
     mockLoadConfig.mockResolvedValue(
-      createConfig({ server: path.join(cwd, "hotUpdater.ts") }),
-    );
-    vi.mocked(loadServer).mockResolvedValue({
-      kind: "definition",
-      definition: createHotUpdater({
+      createConfig({
         database: { name: "memory", adapter: createMemoryAdapter() },
-        plugins: [insights()],
-        clientAccess: "public",
+        plugins: [insights(), insights()],
       }),
-      dispose: async () => {},
-    } as never);
-    await writeFile(
-      path.join(cwd, "src/App.tsx"),
-      'import { HotUpdater } from "@hot-updater/react-native";\n',
     );
 
     const result = await doctor();
@@ -967,10 +1033,13 @@ describe("doctor", () => {
             {
               type: "warning",
               platform: "project",
-              code: "MISSING_CLIENT_PLUGIN",
+              code: "CLIENT_PLUGINS_UNCHECKED",
+              message: expect.stringContaining(
+                "Could not read the plugins in hot-updater.config.ts to check the app's client plugins:",
+              ),
               resolution:
-                'Import { insights } from "@hot-updater/react-native" and pass insights() to HotUpdater.init({ plugins }).',
-              fixability: "auto",
+                "Check that plugins in hot-updater.config.ts load, then rerun doctor.",
+              fixability: "blocked",
             },
           ],
         },

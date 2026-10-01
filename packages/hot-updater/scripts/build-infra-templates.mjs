@@ -4,16 +4,14 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 import {
+  assembleServer,
   clientAuthOf,
+  renderImportStatements,
   resolvePackageVersion,
-  SERVER_DEFINITION_PATH,
   transformEnv,
 } from "@hot-updater/cli-tools";
-import {
-  createHotUpdater,
-  HOT_UPDATER_INFRASTRUCTURE_GENERATION,
-} from "@hot-updater/server";
-import { createMemoryAdapter, toolingTargetOf } from "@hot-updater/plugin-core";
+import { HOT_UPDATER_INFRASTRUCTURE_GENERATION } from "@hot-updater/server";
+import { createMemoryAdapter } from "@hot-updater/plugin-core";
 import { build as buildHelper } from "tsdown";
 
 import {
@@ -46,6 +44,44 @@ const save = async (file, value) => {
 const pluginRoot = (provider) => path.join(repoRoot, "plugins", provider);
 const moduleAt = (file) => import(pathToFileURL(file).href);
 const placeholder = (name) => `__HOT_UPDATER_${name}__`;
+/** Indents every line after the first, so a multi-line value nests. */
+const indentFollowingLines = (text, spaces) =>
+  text.replaceAll("\n", `\n${" ".repeat(spaces)}`);
+/**
+ * The credential helper's server definition, which stays in the scaffold:
+ * the config scaffold's database, storage, and plugins, without its build or
+ * deploy settings. provision-client-credential.mjs loads .env.hotupdater
+ * before it.
+ */
+const renderCredentialDefinition = (scaffold, build) => {
+  const imports = [
+    ...scaffold.imports.filter(
+      ({ pkg }) =>
+        pkg !== "hot-updater" &&
+        pkg !== "node:fs" &&
+        pkg !== `@hot-updater/${build}`,
+    ),
+    { pkg: "@hot-updater/server", named: ["createHotUpdater"] },
+  ];
+  const helpers = scaffold.helperStatements.map(({ code }) => code.trim());
+  const plugins = scaffold.plugins.initializer;
+  return `${renderImportStatements(imports)}
+
+${helpers.map((code) => `${code}\n\n`).join("")}/**
+ * The deployed server's database, storage, and plugins, on which
+ * provision-client-credential.mjs registers the app's client credential.
+ * It stays in the scaffold: the app's hot-updater.config.ts lists the same
+ * database, storage, and plugins.
+ */
+export const hotUpdater = createHotUpdater({
+  database: ${scaffold.database.initializer},
+  storage: [
+    ${indentFollowingLines(scaffold.storage.initializer, 2)},
+  ],
+  ${plugins === "plugins" ? "plugins" : `plugins: ${plugins}`},
+});
+`;
+};
 const versions = {};
 for (const directory of [
   "packages/hot-updater",
@@ -105,13 +141,10 @@ for (const provider of providers) {
   // policy, which the scaffold provisions, documents, and checks, and name
   // the client plugins an app adds.
   const { plugins } = await moduleAt(path.join(root, "src/plugins.ts"));
-  // The prebuilt server's definition, on a database it never reads here.
-  const prebuilt = createHotUpdater({
+  // The prebuilt server's plugins, on a database nothing reads here.
+  const prebuilt = assembleServer({
     database: { name: "memory", adapter: createMemoryAdapter() },
     plugins,
-    ...(plugins.some(({ provides }) => provides?.clientAuth)
-      ? {}
-      : { clientAccess: "public" }),
   });
   const clientAuth = clientAuthOf(prebuilt) ?? null;
   const { clientPlugins } = prebuilt;
@@ -150,13 +183,11 @@ for (const provider of providers) {
       `${scaffoldOf(build).text}\n`,
     );
   }
-  // Every build's config points at the server definition init writes, which
-  // holds no build: the database, storage, and plugins the provider's
-  // prebuilt server runs.
-  const { definition } = scaffoldOf(builds[0]);
+  // The credential helper's definition holds no build, so one serves every
+  // build's config.
   await save(
-    path.join(output, "app", SERVER_DEFINITION_PATH),
-    `${definition.text}\n`,
+    path.join(output, "app/hotUpdater.ts"),
+    renderCredentialDefinition(scaffoldOf(builds[0]), builds[0]),
   );
   if (provider === "firebase") {
     // Firestore has no migration tooling, so the credential script runs the
@@ -204,13 +235,6 @@ export const migrate = async ({ database, plugins }: HotUpdaterAPI) => {
       path.join(output, "worker/migrations"),
       { recursive: true },
     );
-    // The package's migration holds core's tables; the prebuilt Worker's
-    // plugins need theirs after it, as init migrates them.
-    const { d1SchemaSql } = await moduleAt(path.join(root, "src/d1Schema.ts"));
-    await save(
-      path.join(output, "worker/migrations/0002_hot-updater_plugins.sql"),
-      d1SchemaSql(toolingTargetOf(plugins)),
-    );
     const config = await json(path.join(root, "worker/wrangler.json"));
     config.name = placeholder("WORKER_NAME");
     config.account_id = placeholder("ACCOUNT_ID");
@@ -247,7 +271,7 @@ export const migrate = async ({ database, plugins }: HotUpdaterAPI) => {
         FUNCTION_NAME: "hot-updater-v1",
       }),
     );
-    const { resolveEdgeFunctionDenoConfig, supabaseSchemaSql } = await moduleAt(
+    const { resolveEdgeFunctionDenoConfig } = await moduleAt(
       path.join(root, "dist/init/index.mjs"),
     );
     await save(
@@ -258,15 +282,6 @@ export const migrate = async ({ database, plugins }: HotUpdaterAPI) => {
       path.join(root, "supabase/migrations"),
       path.join(output, "supabase/migrations"),
       { recursive: true },
-    );
-    // The package's migration holds core's tables; the prebuilt function's
-    // plugins need theirs after it, as init migrates them.
-    await save(
-      path.join(
-        output,
-        "supabase/migrations/20260818000001_hot-updater_plugins.sql",
-      ),
-      supabaseSchemaSql(toolingTargetOf(plugins)),
     );
     await save(
       path.join(output, "supabase/config.toml"),

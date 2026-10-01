@@ -33,12 +33,16 @@ import { init } from "@/commands/init";
 import { initHelp } from "@/commands/initHelp";
 import { INIT_PROVIDER_NAMES } from "@/commands/initProviders";
 import { type PatchOptions, createPatch } from "@/commands/patch";
-import { registerPluginCommands } from "@/commands/pluginCommands";
 import { runAndroidNative, runIosNative } from "@/commands/runNative";
 import { version } from "@/packageJson";
 import { ensureNoConflicts } from "@/utils/conflictDetection";
 import { printBanner } from "@/utils/printBanner";
 
+import {
+  handleApiKeyCreate,
+  handleApiKeyList,
+  handleApiKeyRevoke,
+} from "./commands/apiKey";
 import {
   handleBundleDelete,
   handleBundleEnablement,
@@ -217,6 +221,40 @@ program
   )
   .argument("<channel>", "the channel to set")
   .action(handleSetChannel);
+
+const SERVER_PATH_HELP =
+  "path to the server definition that exports hotUpdater (default: database and plugins in hot-updater.config.ts, else src/hotUpdater.ts or src/db.ts)";
+
+const apiKeyCommand = program.command("api-key").description("Manage API keys");
+
+apiKeyCommand
+  .command("create")
+  .description("Create an API key")
+  .requiredOption("--name <name>", "name used to identify the API key")
+  .argument("[serverPath]", SERVER_PATH_HELP)
+  .action((serverPath: string | undefined, options: { name: string }) =>
+    handleApiKeyCreate(options.name, { serverPath }),
+  );
+
+apiKeyCommand
+  .command("list")
+  .description("List API keys")
+  .option("--json", "output API key metadata as JSON")
+  .argument("[serverPath]", SERVER_PATH_HELP)
+  .action((serverPath: string | undefined, options: { json?: boolean }) =>
+    handleApiKeyList({ ...options, serverPath }),
+  );
+
+apiKeyCommand
+  .command("revoke")
+  .description("Revoke an API key")
+  .argument("<id>", "API key id")
+  .argument("[serverPath]", SERVER_PATH_HELP)
+  .option("-y, --yes", "skip confirmation prompt")
+  .action(
+    (id: string, serverPath: string | undefined, options: { yes?: boolean }) =>
+      handleApiKeyRevoke(id, { ...options, serverPath }),
+  );
 
 const bundleCommand = program.command("bundle").description("Manage bundles");
 
@@ -592,7 +630,7 @@ dbCommand
   .description("Run database migration (creates tables directly in database)")
   .argument(
     "[configPath]",
-    "path to the server definition that exports hotUpdater (default: server in hot-updater.config.ts)",
+    "path to the server definition that exports hotUpdater (default: src/hotUpdater.ts or src/db.ts)",
   )
   .option("-y, --yes", "skip confirmation prompt", false)
   .action(async (configPath: string | undefined, options: { yes: boolean }) => {
@@ -605,13 +643,13 @@ dbCommand
   .description("Generate SQL migration file (does not execute)")
   .argument(
     "[configPath]",
-    "path to the server definition that exports hotUpdater (default: server in hot-updater.config.ts; optional with --sql)",
+    "path to the server definition that exports hotUpdater (default: src/hotUpdater.ts or src/db.ts; optional with --sql)",
   )
   .argument("[outputDir]", "output directory (default: hot-updater_migrations)")
   .option("-y, --yes", "skip confirmation prompt", false)
   .option(
     "--sql [provider]",
-    "generate a standalone SQL file of core's tables and the server's plugins' tables, from the server definition when one is found. Optional provider: postgresql, mysql, sqlite (default: interactive selection)",
+    "generate a standalone SQL file of core's tables and the server's plugins' tables, from the server definition or the plugins in hot-updater.config.ts when found. Optional provider: postgresql, mysql, sqlite (default: interactive selection)",
   )
   .action(
     async (
@@ -711,7 +749,5 @@ program.hook("preAction", (_command, actionCommand) => {
     return;
   ensureNoConflicts();
 });
-
-await registerPluginCommands(program, process.argv);
 
 program.parse(process.argv);

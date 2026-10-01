@@ -56,7 +56,7 @@ import {
 import { getBundleZipTargets } from "@/utils/getBundleZipTargets";
 import { getFileHashFromFile } from "@/utils/getFileHash";
 import { appendToProjectRootGitignore, getLatestGitCommit } from "@/utils/git";
-import { loadServer, uploadStorageOf } from "@/utils/loadServer";
+import { loadServer, requireStorage } from "@/utils/loadServer";
 import { printBanner } from "@/utils/printBanner";
 import { validateSigningConfig } from "@/utils/signing/validateSigningConfig";
 import { getDefaultTargetAppVersion } from "@/utils/version/getDefaultTargetAppVersion";
@@ -86,7 +86,7 @@ class MultiPlatformDatabaseBoundaryError extends Error {
 
   constructor() {
     super(
-      "Deploying multiple platforms requires one server: hot-updater.config.ts points the platforms at different ones.",
+      "Deploying multiple platforms requires a shared database configuration.",
     );
   }
 }
@@ -633,7 +633,7 @@ const deployPlatform = async ({
   core: HotUpdaterCoreApi;
   database: ConfiguredDatabase;
   deferAutoPatches: boolean;
-  /** Where bundles are uploaded: the server's first storage. */
+  /** Where bundles are uploaded: the config's storage. */
   storageAdapter: StorageAdapter;
   options: DeployOptions;
   persistDeployment: (input: DeploymentWrite) => Promise<void>;
@@ -1176,13 +1176,16 @@ export const deploy = async (options: DeployOptions): Promise<void> => {
   if (!firstPlatformConfig) {
     return;
   }
-  // Every platform deploys to one server: the same definition, or the
-  // self-hosted server each platform's config reaches.
-  const servers = new Set(
-    platformConfigs.map(({ config }) =>
-      typeof config.server === "string" ? config.server : config.server?.url,
-    ),
+  // Every platform deploys through one server, assembled from the first
+  // platform's config, so the configs must share one database. The ones a
+  // refused deploy leaves unused are closed.
+  const databases = new Set(
+    platformConfigs.map(({ config }) => config.database),
   );
+  if (databases.size > 1) {
+    await Promise.all([...databases].map((database) => database?.dispose?.()));
+    throw new MultiPlatformDatabaseBoundaryError();
+  }
   const server = await loadServer(firstPlatformConfig.config);
   const database = server.database;
   const core = server.core;
@@ -1219,10 +1222,7 @@ export const deploy = async (options: DeployOptions): Promise<void> => {
   };
 
   try {
-    if (servers.size > 1) {
-      throw new MultiPlatformDatabaseBoundaryError();
-    }
-    const storageAdapter = uploadStorageOf(server);
+    const storageAdapter = requireStorage(server);
     const rolloutPercentage = normalizeRolloutPercentage(options.rollout);
     // The schema fence (and a self-hosted server's admin protocol) is
     // checked before anything is built or uploaded.

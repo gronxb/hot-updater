@@ -50,7 +50,7 @@ const written = (
 const serverCore = async (context: DoctorContext) => {
   const server = await context.server();
   if (server === null)
-    throw new Error("hot-updater.config.ts names no server.");
+    throw new Error("hot-updater.config.ts names no database.");
   return server.core;
 };
 

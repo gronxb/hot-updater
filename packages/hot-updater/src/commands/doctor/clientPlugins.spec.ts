@@ -2,17 +2,9 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-import { createMemoryAdapter } from "@hot-updater/plugin-core";
-import { createHotUpdater } from "@hot-updater/server";
-import { insights } from "@hot-updater/server/plugins/insights";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { LoadedServer } from "../../utils/loadServer";
-import {
-  findMissingClientPlugins,
-  importsClientPlugin,
-  readServerClientPlugins,
-} from "./clientPlugins";
+import { findMissingClientPlugins, importsClientPlugin } from "./clientPlugins";
 
 const INSIGHTS = {
   module: "@hot-updater/react-native",
@@ -79,40 +71,5 @@ describe("findMissingClientPlugins", () => {
     await expect(
       findMissingClientPlugins({ clientPlugins: [INSIGHTS], cwd: without }),
     ).resolves.toEqual([INSIGHTS]);
-  });
-});
-
-describe("readServerClientPlugins", () => {
-  it("reads the client plugins of the server definition's plugins, leaving the server open", async () => {
-    const dispose = vi.fn(async () => {});
-    const server = {
-      kind: "definition",
-      definition: createHotUpdater({
-        database: { name: "memory", adapter: createMemoryAdapter() },
-        plugins: [insights()],
-        clientAccess: "public",
-      }),
-      dispose,
-    } as unknown as LoadedServer;
-
-    await expect(readServerClientPlugins(server)).resolves.toEqual([INSIGHTS]);
-    // The doctor run that loaded the server closes it once, after every check.
-    expect(dispose).not.toHaveBeenCalled();
-  });
-
-  it("reads the client plugins a self-hosted server lists on its admin /version", async () => {
-    const fetchAdmin = vi.fn(async () =>
-      Response.json({ plugins: ["insights"], clientPlugins: [INSIGHTS] }),
-    );
-    const dispose = vi.fn(async () => {});
-    const server = {
-      kind: "remote",
-      server: { fetchAdmin },
-      dispose,
-    } as unknown as LoadedServer;
-
-    await expect(readServerClientPlugins(server)).resolves.toEqual([INSIGHTS]);
-    expect(fetchAdmin).toHaveBeenCalledWith("/version");
-    expect(dispose).not.toHaveBeenCalled();
   });
 });

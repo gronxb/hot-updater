@@ -238,8 +238,12 @@ import type {
   Deployment,
   EngineDatabase,
   HotUpdaterCoreApi,
+  Platform,
 } from "@hot-updater/plugin-core";
-import { createStorageUri } from "@hot-updater/plugin-core";
+import {
+  createMemoryAdapter,
+  createStorageUri,
+} from "@hot-updater/plugin-core";
 import isPortReachable from "is-port-reachable";
 import open from "open";
 
@@ -415,15 +419,17 @@ describe("deploy rollout wiring", () => {
 
     mockCli.loadConfig.mockResolvedValue({
       build: async () => mockBuildAdapter,
+      database: harnessDatabase,
       fingerprint: {},
       patch: {
         enabled: true,
         maxBaseBundles: 3,
       },
+      storage: mockStorageAdapter,
       updateStrategy: "appVersion",
     });
     mockLoadServer.mockResolvedValue(
-      testServer({ database: harnessDatabase, storage: [mockStorageAdapter] }),
+      testServer({ database: harnessDatabase, storage: mockStorageAdapter }),
     );
 
     vi.mocked(validateSigningConfig).mockResolvedValue({
@@ -646,6 +652,11 @@ describe("deploy rollout wiring", () => {
     });
 
     expect(printBanner).toHaveBeenCalledTimes(1);
+    // One server, from the first platform's config, for both platforms.
+    expect(mockLoadServer).toHaveBeenCalledOnce();
+    expect(mockLoadServer).toHaveBeenCalledWith(
+      expect.objectContaining({ database: harnessDatabase }),
+    );
     expect(mockBuildAdapter.build.mock.calls).toEqual([
       [{ platform: "ios" }],
       [{ platform: "android" }],
@@ -714,7 +725,7 @@ describe("deploy rollout wiring", () => {
       core: { ...databaseHarness.core, deploy: deployCall },
     };
     mockLoadServer.mockResolvedValue(
-      testServer({ database: refusingDatabase, storage: [mockStorageAdapter] }),
+      testServer({ database: refusingDatabase, storage: mockStorageAdapter }),
     );
     mockBuildAdapter.build.mockImplementation(async ({ platform }) => ({
       buildPath: "/mock/build",
@@ -738,17 +749,32 @@ describe("deploy rollout wiring", () => {
     expect(refusingDatabase.dispose).toHaveBeenCalledOnce();
   });
 
-  it("rejects platforms pointed at different servers before building and disposes the one it loaded", async () => {
-    mockCli.loadConfig.mockImplementation(async ({ platform }) => ({
-      build: async () => mockBuildAdapter,
-      fingerprint: {},
-      patch: {
-        enabled: true,
-        maxBaseBundles: 3,
+  it("rejects platforms whose configs name different databases before building, and closes them", async () => {
+    const databases = {
+      ios: {
+        name: "ios-database",
+        adapter: createMemoryAdapter(),
+        dispose: vi.fn(async () => {}),
       },
-      server: `/project/${platform}/hotUpdater.ts`,
-      updateStrategy: "appVersion",
-    }));
+      android: {
+        name: "android-database",
+        adapter: createMemoryAdapter(),
+        dispose: vi.fn(async () => {}),
+      },
+    } satisfies Record<Platform, EngineDatabase>;
+    mockCli.loadConfig.mockImplementation(
+      async ({ platform }: { platform: Platform }) => ({
+        build: async () => mockBuildAdapter,
+        database: databases[platform],
+        fingerprint: {},
+        patch: {
+          enabled: true,
+          maxBaseBundles: 3,
+        },
+        storage: mockStorageAdapter,
+        updateStrategy: "appVersion",
+      }),
+    );
 
     const deployment = deploy({
       channel: "production",
@@ -758,14 +784,31 @@ describe("deploy rollout wiring", () => {
     });
 
     await expect(deployment).rejects.toThrow(
-      "Deploying multiple platforms requires one server: hot-updater.config.ts points the platforms at different ones.",
+      "Deploying multiple platforms requires a shared database configuration.",
     );
-    expect(mockLoadServer).toHaveBeenCalledOnce();
-    expect(mockLoadServer).toHaveBeenCalledWith(
-      expect.objectContaining({ server: "/project/ios/hotUpdater.ts" }),
-    );
+    expect(mockLoadServer).not.toHaveBeenCalled();
     expect(mockBuildAdapter.build).not.toHaveBeenCalled();
     expect(mockStorageAdapter.put).not.toHaveBeenCalled();
+    expect(databases.ios.dispose).toHaveBeenCalledOnce();
+    expect(databases.android.dispose).toHaveBeenCalledOnce();
+  });
+
+  it("stops before building when the config names no storage, and closes the database", async () => {
+    mockLoadServer.mockResolvedValue(testServer({ database: harnessDatabase }));
+
+    await expect(
+      deploy({
+        channel: "production",
+        forceUpdate: false,
+        interactive: false,
+        platform: "ios",
+        targetAppVersion: "1.0.x",
+      }),
+    ).rejects.toThrow(
+      "Set storage in hot-updater.config.ts: where the CLI uploads bundles, such as r2Storage(...).",
+    );
+    expect(mockBuildAdapter.build).not.toHaveBeenCalled();
+    expect(databaseHarness.deploy).not.toHaveBeenCalled();
     expect(databaseHarness.dispose).toHaveBeenCalledOnce();
   });
 
@@ -829,7 +872,7 @@ describe("deploy rollout wiring", () => {
       },
     };
     mockLoadServer.mockResolvedValue(
-      testServer({ database: failingDatabase, storage: [mockStorageAdapter] }),
+      testServer({ database: failingDatabase, storage: mockStorageAdapter }),
     );
     mockBuildAdapter.build.mockImplementation(async ({ platform }) => ({
       buildPath: "/mock/build",
@@ -864,7 +907,7 @@ describe("deploy rollout wiring", () => {
       },
     };
     mockLoadServer.mockResolvedValue(
-      testServer({ database: retryingDatabase, storage: [mockStorageAdapter] }),
+      testServer({ database: retryingDatabase, storage: mockStorageAdapter }),
     );
     mockBuildAdapter.build.mockImplementation(async ({ platform }) => ({
       buildPath: "/mock/build",

@@ -3,8 +3,6 @@ import fs from "node:fs/promises";
 import type { PluginClientPlugin } from "@hot-updater/plugin-core";
 import fg from "fast-glob";
 
-import type { LoadedServer } from "../../utils/loadServer";
-
 /** Files that hold no app code of the project's own. */
 const NOT_APP_CODE = [
   "**/node_modules/**",
@@ -15,30 +13,6 @@ const NOT_APP_CODE = [
   "**/.hot-updater/**",
   "**/*.d.ts",
 ];
-
-const isClientPlugin = (value: unknown): value is PluginClientPlugin =>
-  typeof value === "object" &&
-  value !== null &&
-  typeof (value as { module?: unknown }).module === "string" &&
-  typeof (value as { name?: unknown }).name === "string";
-
-/**
- * The client plugins the server's plugins need: from its definition, or
- * from the admin `/version` of a self-hosted server `standaloneRepository`
- * reaches. The caller owns `server` and closes it.
- */
-export const readServerClientPlugins = async (
-  server: LoadedServer,
-): Promise<readonly PluginClientPlugin[]> => {
-  if (server.kind === "definition") return server.definition.clientPlugins;
-  const response = await server.server.fetchAdmin("/version");
-  if (!response.ok) {
-    throw new Error(`The server answered /version with ${response.status}.`);
-  }
-  const listed = ((await response.json()) as { clientPlugins?: unknown })
-    .clientPlugins;
-  return Array.isArray(listed) ? listed.filter(isClientPlugin) : [];
-};
 
 const escapeRegExp = (text: string) =>
   text.replace(/[.*+?^${}()|[\]\\/]/gu, "\\$&");

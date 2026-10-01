@@ -30,10 +30,7 @@ import {
   validateSigningConfig,
 } from "../utils/signing/validateSigningConfig";
 import { getNativeAppVersion } from "../utils/version/getNativeAppVersion";
-import {
-  findMissingClientPlugins,
-  readServerClientPlugins,
-} from "./doctor/clientPlugins";
+import { findMissingClientPlugins } from "./doctor/clientPlugins";
 import { createDoctorContext, type DoctorContext } from "./doctor/context";
 import { checkFingerprintJson } from "./doctor/fingerprint";
 import { applyDoctorFixes } from "./doctor/fix";
@@ -710,7 +707,7 @@ async function checkNativeStatus({
 
 /**
  * The server's release catalogs and artifact records, when
- * hot-updater.config.ts names a server.
+ * hot-updater.config.ts names a database.
  */
 async function checkServer(context: DoctorContext): Promise<{
   releaseCatalogs?: ReleaseCatalogStatus;
@@ -727,7 +724,8 @@ async function checkServer(context: DoctorContext): Promise<{
 
 /**
  * A warning for each client plugin a server plugin needs that the app does
- * not add to `HotUpdater.init({ plugins })`.
+ * not add to `HotUpdater.init({ plugins })`: the plugins
+ * hot-updater.config.ts lists, as the server runs them.
  */
 async function checkClientPlugins({
   cwd,
@@ -741,7 +739,7 @@ async function checkClientPlugins({
     const server = await context.server();
     if (server === null) return [];
     missing = await findMissingClientPlugins({
-      clientPlugins: await readServerClientPlugins(server),
+      clientPlugins: server.clientPlugins,
       cwd,
     });
   } catch (error) {
@@ -750,9 +748,9 @@ async function checkClientPlugins({
         type: "warning",
         platform: "project",
         code: "CLIENT_PLUGINS_UNCHECKED",
-        message: `Could not read the server's plugins to check the app's client plugins: ${error instanceof Error ? error.message : String(error)}`,
+        message: `Could not read the plugins in hot-updater.config.ts to check the app's client plugins: ${error instanceof Error ? error.message : String(error)}`,
         resolution:
-          "Check that server in hot-updater.config.ts loads, then rerun doctor.",
+          "Check that plugins in hot-updater.config.ts load, then rerun doctor.",
         fixability: "blocked",
       },
     ];
