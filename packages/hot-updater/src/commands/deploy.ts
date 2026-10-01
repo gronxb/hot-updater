@@ -8,7 +8,8 @@ import {
   getCwd,
   getStorageFileByteSize,
   HotUpdateDirUtil,
-  loadConfig,
+  type loadConfig,
+  loadPlatformConfigs,
   p,
   prepareBundleSigning,
   putStorageFile,
@@ -87,6 +88,16 @@ class MultiPlatformDatabaseBoundaryError extends Error {
   constructor() {
     super(
       "Deploying multiple platforms requires a shared database configuration.",
+    );
+  }
+}
+
+class MultiPlatformStorageBoundaryError extends Error {
+  override readonly name = "MultiPlatformStorageBoundaryError";
+
+  constructor() {
+    super(
+      "Deploying multiple platforms requires a shared storage configuration.",
     );
   }
 }
@@ -1166,12 +1177,11 @@ export const deploy = async (options: DeployOptions): Promise<void> => {
   if (!platforms) {
     return;
   }
-  const platformConfigs = await Promise.all(
-    platforms.map(async (platform) => ({
-      config: await loadConfig({ channel: options.channel, platform }),
-      platform,
-    })),
-  );
+  // One load of the config file: a config object gives every platform the
+  // same adapters, which the checks below compare.
+  const platformConfigs = await loadPlatformConfigs(platforms, {
+    channel: options.channel,
+  });
   const firstPlatformConfig = platformConfigs[0];
   if (!firstPlatformConfig) {
     return;
@@ -1185,6 +1195,11 @@ export const deploy = async (options: DeployOptions): Promise<void> => {
   if (databases.size > 1) {
     await Promise.all([...databases].map((database) => database?.dispose?.()));
     throw new MultiPlatformDatabaseBoundaryError();
+  }
+  // Every platform uploads to that server's storage, so they share it too.
+  if (new Set(platformConfigs.map(({ config }) => config.storage)).size > 1) {
+    await Promise.all([...databases].map((database) => database?.dispose?.()));
+    throw new MultiPlatformStorageBoundaryError();
   }
   const server = await loadServer(firstPlatformConfig.config);
   const database = server.database;

@@ -1031,6 +1031,33 @@ const mergeHotUpdaterConfigText = (
     };
   }
 
+  // A name the project imports from elsewhere, such as its own `plugins`
+  // list, can't also take the scaffold's import of that name.
+  const scaffoldNames = new Map(
+    scaffold.imports.flatMap((info) =>
+      (info.named ?? []).map(
+        (name) => [name.split(/\s+as\s+/).at(-1)!, info.pkg] as const,
+      ),
+    ),
+  );
+  for (const declaration of importDeclarationsOf(existingSource)) {
+    const pkg = declaration.source.value;
+    if (
+      MANAGED_IMPORT_PACKAGES.has(pkg) &&
+      !(nextObject.keptBuild && BUILD_IMPORT_PACKAGES.has(pkg))
+    ) {
+      continue;
+    }
+    for (const specifier of declaration.specifiers) {
+      const scaffoldPackage = scaffoldNames.get(specifier.local.name);
+      if (scaffoldPackage !== undefined && scaffoldPackage !== pkg) {
+        return {
+          reason: `The import of ${specifier.local.name} from "${pkg}" takes the name init imports from "${scaffoldPackage}".`,
+        };
+      }
+    }
+  }
+
   const objectEdit: TextEdit = {
     start: existingConfig.objectExpression.start,
     end: existingConfig.objectExpression.end,

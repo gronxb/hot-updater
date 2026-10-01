@@ -86,6 +86,18 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => {
     getCwd: mockCli.getCwd,
     getStorageFileByteSize: mockCli.getStorageFileByteSize,
     loadConfig: mockCli.loadConfig,
+    // The command loads the config once for its platforms; each platform's
+    // config comes from the loadConfig mock.
+    loadPlatformConfigs: async (
+      platforms: readonly string[],
+      { channel }: { channel: string },
+    ) =>
+      Promise.all(
+        platforms.map(async (platform) => ({
+          platform,
+          config: await mockCli.loadConfig({ channel, platform }),
+        })),
+      ),
     p: mockCli.p,
     prepareBundleSigning: mockCli.prepareBundleSigning,
     putStorageFile: async (
@@ -791,6 +803,45 @@ describe("deploy rollout wiring", () => {
     expect(mockStorageAdapter.put).not.toHaveBeenCalled();
     expect(databases.ios.dispose).toHaveBeenCalledOnce();
     expect(databases.android.dispose).toHaveBeenCalledOnce();
+  });
+
+  it("refuses platforms that upload to different storage before building, and closes the database", async () => {
+    const database = {
+      name: "shared-database",
+      adapter: createMemoryAdapter(),
+      dispose: vi.fn(async () => {}),
+    } satisfies EngineDatabase;
+    const storages = {
+      ios: { ...mockStorageAdapter, name: "ios-storage" },
+      android: { ...mockStorageAdapter, name: "android-storage" },
+    };
+    mockCli.loadConfig.mockImplementation(
+      async ({ platform }: { platform: Platform }) => ({
+        build: async () => mockBuildAdapter,
+        database,
+        fingerprint: {},
+        patch: {
+          enabled: true,
+          maxBaseBundles: 3,
+        },
+        storage: storages[platform],
+        updateStrategy: "appVersion",
+      }),
+    );
+
+    const deployment = deploy({
+      channel: "production",
+      forceUpdate: false,
+      interactive: false,
+      targetAppVersion: "1.0.x",
+    });
+
+    await expect(deployment).rejects.toThrow(
+      "Deploying multiple platforms requires a shared storage configuration.",
+    );
+    expect(mockLoadServer).not.toHaveBeenCalled();
+    expect(mockBuildAdapter.build).not.toHaveBeenCalled();
+    expect(database.dispose).toHaveBeenCalledOnce();
   });
 
   it("stops before building when the config names no storage, and closes the database", async () => {

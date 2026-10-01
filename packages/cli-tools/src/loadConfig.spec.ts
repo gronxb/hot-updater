@@ -198,6 +198,61 @@ describe("loadConfig", () => {
     ]);
   });
 
+  it("loads the file once for several platforms, so a config object gives them the same adapters", async () => {
+    await writeProjectFile(
+      projectRoot,
+      "hot-updater.config.ts",
+      [
+        "globalThis.__HOT_UPDATER_TEST_LOADS__ = (globalThis.__HOT_UPDATER_TEST_LOADS__ ?? 0) + 1;",
+        "export default {",
+        "  database: { name: 'memory', adapter: {} },",
+        "  storage: { name: 'r2Storage', protocol: 'r2' },",
+        "  plugins: [],",
+        "};",
+        "",
+      ].join("\n"),
+    );
+
+    try {
+      const { loadPlatformConfigs } = await import("./loadConfig");
+      const [ios, android] = await loadPlatformConfigs(["ios", "android"], {
+        channel: "production",
+      });
+
+      expect(Reflect.get(globalThis, "__HOT_UPDATER_TEST_LOADS__")).toBe(1);
+      expect(ios!.platform).toBe("ios");
+      expect(android!.platform).toBe("android");
+      expect(android!.config.database).toBe(ios!.config.database);
+      expect(android!.config.storage).toBe(ios!.config.storage);
+      expect(android!.config.plugins).toBe(ios!.config.plugins);
+    } finally {
+      Reflect.deleteProperty(globalThis, "__HOT_UPDATER_TEST_LOADS__");
+    }
+  });
+
+  it("calls a config function once per platform, whose adapters are that platform's own", async () => {
+    await writeProjectFile(
+      projectRoot,
+      "hot-updater.config.ts",
+      [
+        "export default ({ platform, channel }) => ({",
+        "  database: { name: `memory-${platform}-${channel}`, adapter: {} },",
+        "  storage: { name: 'r2Storage', protocol: 'r2' },",
+        "});",
+        "",
+      ].join("\n"),
+    );
+
+    const { loadPlatformConfigs } = await import("./loadConfig");
+    const [ios, android] = await loadPlatformConfigs(["ios", "android"], {
+      channel: "beta",
+    });
+
+    expect(ios!.config.database?.name).toBe("memory-ios-beta");
+    expect(android!.config.database?.name).toBe("memory-android-beta");
+    expect(android!.config.storage).not.toBe(ios!.config.storage);
+  });
+
   it("passes null context through to function configs", async () => {
     await writeProjectFile(
       projectRoot,

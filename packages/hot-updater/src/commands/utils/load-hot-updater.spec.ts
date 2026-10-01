@@ -237,6 +237,31 @@ describe("loadHotUpdater", () => {
     }
   });
 
+  it("closes the definition's database when its module exports no closeDatabase", async () => {
+    const projectDir = await mkdtemp(
+      path.join(tmpdir(), "hot-updater-dispose-server-"),
+    );
+    await writeFile(
+      path.join(projectDir, "hotUpdater.ts"),
+      definitionSource(
+        '"kysely"',
+        "dispose: async () => { globalThis.__HOT_UPDATER_TEST_DISPOSED__ = true; }",
+      ),
+      "utf-8",
+    );
+
+    try {
+      const loaded = await loadHotUpdater("hotUpdater.ts", { cwd: projectDir });
+      await loaded.dispose();
+      expect(Reflect.get(globalThis, "__HOT_UPDATER_TEST_DISPOSED__")).toBe(
+        true,
+      );
+    } finally {
+      Reflect.deleteProperty(globalThis, "__HOT_UPDATER_TEST_DISPOSED__");
+      await rm(projectDir, { recursive: true, force: true });
+    }
+  });
+
   it("names the paths to pass or create when it finds no server definition", async () => {
     const projectDir = await mkdtemp(
       path.join(tmpdir(), "hot-updater-no-server-"),

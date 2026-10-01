@@ -133,9 +133,12 @@ const mergeConfigSources = (...sources: ConfigSource[]) => {
   };
 };
 
-const getConfigLoaderOptions = (
-  options: HotUpdaterConfigOptions,
-): LoadConfigOptions<ConfigInput> => {
+/** What hot-updater.config exports: the config, or a function of the platform and channel that returns it. */
+type ConfigFileExport =
+  | ConfigInput
+  | ((options: HotUpdaterConfigOptions) => ConfigInput | Promise<ConfigInput>);
+
+const getConfigLoaderOptions = (): LoadConfigOptions<ConfigFileExport> => {
   const cwd = getCwd();
 
   return {
@@ -146,25 +149,54 @@ const getConfigLoaderOptions = (
       {
         files: "hot-updater.config",
         extensions: ["js", "cjs", "ts", "cts", "mjs", "mts"],
-        rewrite: async (config: unknown) => {
-          return typeof config === "function"
-            ? (config as (options: HotUpdaterConfigOptions) => ConfigInput)(
-                options,
-              )
-            : (config as ConfigInput);
-        },
       },
     ],
   };
 };
 
+/** Each load runs the config file again, which creates its adapters again. */
+const loadConfigFile = async (): Promise<ConfigFileExport | undefined> => {
+  const { config } = await loadUnconfig<ConfigFileExport>(
+    getConfigLoaderOptions(),
+  );
+  return config;
+};
+
+const configFor = async (
+  source: ConfigFileExport | undefined,
+  options: HotUpdaterConfigOptions,
+): Promise<ConfigInput | undefined> =>
+  typeof source === "function" ? await source(options) : source;
+
 export const loadConfig = async (
   options: HotUpdaterConfigOptions,
-): Promise<ConfigResponse> => {
-  const { config } = await loadUnconfig<ConfigInput>(
-    getConfigLoaderOptions(options),
-  );
+): Promise<ConfigResponse> =>
+  resolveConfig(await configFor(await loadConfigFile(), options));
 
+/**
+ * hot-updater.config for each of `platforms`, with the file loaded once. A
+ * config object gives every platform the same database, storage, and
+ * plugins; a config function runs once per platform, so the adapters it
+ * creates are that platform's own.
+ */
+export const loadPlatformConfigs = async <TPlatform extends Platform>(
+  platforms: readonly TPlatform[],
+  { channel }: { readonly channel: string },
+): Promise<
+  { readonly platform: TPlatform; readonly config: ConfigResponse }[]
+> => {
+  const source = await loadConfigFile();
+  const configs: { platform: TPlatform; config: ConfigResponse }[] = [];
+  for (const platform of platforms) {
+    configs.push({
+      platform,
+      config: resolveConfig(await configFor(source, { channel, platform })),
+    });
+  }
+  return configs;
+};
+
+const resolveConfig = (config: ConfigInput | undefined): ConfigResponse => {
   for (const key of ["authorityId", "catalogId"]) {
     if (config && Object.hasOwn(config, key)) {
       throw new Error(

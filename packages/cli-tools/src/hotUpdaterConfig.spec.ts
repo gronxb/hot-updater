@@ -629,6 +629,27 @@ describe("writeHotUpdaterConfig imports", () => {
     );
   });
 
+  it("keeps the config and says what to change when the project's own import takes a name init imports", async () => {
+    const configPath = path.join(
+      await createTempDir(),
+      "hot-updater.config.ts",
+    );
+    const existing = FIREBASE_CERT_CONFIG.replace(
+      'import { firebaseDatabase, firebaseStorage, plugins } from "@hot-updater/firebase";',
+      'import { firebaseDatabase, firebaseStorage } from "@hot-updater/firebase";\nimport { plugins } from "./serverPlugins";',
+    );
+    await fs.writeFile(configPath, existing);
+    vi.spyOn(p.log, "warn").mockImplementation(() => {});
+
+    const result = await writeHotUpdaterConfig(
+      createFirebaseScaffold("bare"),
+      configPath,
+    );
+
+    expect(result.status).not.toBe("merged");
+    expect(await fs.readFile(configPath, "utf-8")).toBe(existing);
+  });
+
   it("drops a managed package's import once the rebuilt config no longer uses it", async () => {
     const configPath = path.join(
       await createTempDir(),

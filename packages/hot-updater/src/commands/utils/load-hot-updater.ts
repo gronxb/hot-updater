@@ -66,12 +66,22 @@ export const isConfigFile = (value: string, cwd: string): boolean => {
   return existsSync(candidate) && statSync(candidate).isFile();
 };
 
+/**
+ * Closes what the server definition opened: its module's `closeDatabase`
+ * export when it has one, else its database's own `dispose`.
+ */
 const closeDatabaseOf =
-  (configExports: Record<string, unknown>) => async (): Promise<void> => {
+  (
+    configExports: Record<string, unknown>,
+    hotUpdater: { readonly database: { dispose?(): Promise<void> } },
+  ) =>
+  async (): Promise<void> => {
     const closeDatabase = configExports["closeDatabase"];
     if (typeof closeDatabase === "function") {
       await closeDatabase();
+      return;
     }
+    await hotUpdater.database.dispose?.();
   };
 
 /**
@@ -92,7 +102,7 @@ export const importHotUpdater = async (
     hotUpdater,
     adapterName: hotUpdater.database.name,
     absoluteConfigPath,
-    dispose: closeDatabaseOf(configExports),
+    dispose: closeDatabaseOf(configExports, hotUpdater),
   };
 };
 
@@ -243,7 +253,7 @@ export async function loadHotUpdater(
     absoluteConfigPath,
     dispose: async () => {
       try {
-        await closeDatabaseOf(configExports)();
+        await closeDatabaseOf(configExports, hotUpdater)();
       } finally {
         await removeGeneratedSchemaPlaceholder(generatedSchemaPlaceholderPath);
       }
