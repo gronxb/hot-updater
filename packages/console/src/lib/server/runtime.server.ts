@@ -2,10 +2,6 @@ import {
   type ConfiguredDatabase,
   isRemoteServer,
 } from "@hot-updater/plugin-core";
-import {
-  createDatabasePluginApis,
-  isOfficialPlugin,
-} from "@hot-updater/server/db";
 
 import {
   type ConsoleFeature,
@@ -33,6 +29,17 @@ export interface ConsoleRuntime {
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null;
+
+/**
+ * Whether one of Hot Updater's own factories made `plugin`: the brand they
+ * set under a registered symbol, read here with a copy of the key so the
+ * console imports no package's internals. Assembly refuses any other plugin
+ * that takes one of their ids, so features key on it.
+ */
+const isOfficialPlugin = (plugin: unknown): boolean =>
+  isRecord(plugin) &&
+  Reflect.get(plugin, Symbol.for("@hot-updater/server/official-plugin")) ===
+    true;
 
 /** The ids of the plugins a self-hosted server lists on its admin `/version`. */
 const readServerPlugins = async (
@@ -83,12 +90,13 @@ const featureApis = (
  * - a self-hosted server (`standaloneRepository`) runs its plugins and lists
  *   them on its admin `/version`; the console serves what that server's admin
  *   API serves, and nothing that needs the database;
- * - otherwise the console assembles `plugins` over the database, as the
- *   server does, and serves the features of the plugins it assembled.
+ * - otherwise the server definition runs `plugins` over its database, and
+ *   the console serves their features through `api`, the definition's.
  */
 export const createConsoleRuntime = (config: {
   readonly database: ConfiguredDatabase;
   readonly plugins?: readonly unknown[];
+  readonly api?: Readonly<Record<string, unknown>>;
 }): ConsoleRuntime => {
   const { database } = config;
   if (isRemoteServer(database)) {
@@ -108,7 +116,7 @@ export const createConsoleRuntime = (config: {
     };
   }
   const plugins = config.plugins ?? [];
-  const api = createDatabasePluginApis(database, plugins);
+  const api = config.api ?? {};
   // A feature's plugin is Hot Updater's own, which alone may take its id:
   // assembly refuses any other, and features key on the factory's mark.
   const official = new Set(

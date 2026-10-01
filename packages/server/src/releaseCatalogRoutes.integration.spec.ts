@@ -2,7 +2,6 @@ import type { EngineDatabase } from "@hot-updater/plugin-core";
 import { encodeChannelKey } from "@hot-updater/protocol";
 import { describe, expect, it, vi } from "vitest";
 
-import { createDatabaseCoreApi } from "./core/api";
 import { createHotUpdater } from "./index";
 import { apiKeys } from "./plugins/api-keys";
 import { createRuntimeDatabase } from "./runtime.testFixtures";
@@ -15,7 +14,7 @@ const scopeKey = `v1:app-version:ios:${channelKey}`;
 /** A database with one deployed release in production's app-version scope. */
 const createCatalogDatabase = async () => {
   const database = createRuntimeDatabase();
-  await createDatabaseCoreApi(database).deploy([
+  await createHotUpdater({ database, clientAccess: "public" }).core.deploy([
     {
       bundle: {
         assetBaseStorageUri: "storage://assets",
@@ -50,8 +49,10 @@ const countCatalogReads = (database: EngineDatabase) => {
 describe("Release catalog routes", () => {
   it("serves persisted Catalog identity without configuration and keeps it across server restarts", async () => {
     const database = await createCatalogDatabase();
-    const storedCatalog =
-      await createDatabaseCoreApi(database).getReleaseCatalogRow(scopeKey);
+    const storedCatalog = await createHotUpdater({
+      database,
+      clientAccess: "public",
+    }).core.getReleaseCatalogRow(scopeKey);
     const catalogReads = countCatalogReads(database);
     const hotUpdater = createHotUpdater({
       database,

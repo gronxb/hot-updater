@@ -139,7 +139,7 @@ const configuredServer = (
     return {
       kind: "definition",
       path: file,
-      hotUpdater,
+      definition: hotUpdater,
       plugins,
       dispose,
     } as unknown as Awaited<ReturnType<typeof loadServerDefinition>>;

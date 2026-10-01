@@ -2,6 +2,8 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
+import { createMemoryAdapter } from "@hot-updater/plugin-core";
+import { createHotUpdater } from "@hot-updater/server";
 import { insights } from "@hot-updater/server/plugins/insights";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -87,7 +89,11 @@ describe("readServerClientPlugins", () => {
     const dispose = vi.fn(async () => {});
     vi.mocked(loadServer).mockResolvedValue({
       kind: "definition",
-      plugins: [insights()],
+      definition: createHotUpdater({
+        database: { name: "memory", adapter: createMemoryAdapter() },
+        plugins: [insights()],
+        clientAccess: "public",
+      }),
       dispose,
     } as never);
 

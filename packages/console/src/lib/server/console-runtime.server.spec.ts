@@ -30,24 +30,27 @@ describe("Console config resolution", () => {
     async (sourceType) => {
       const database = { name: "memory", adapter: createMemoryAdapter() };
       const plugins = [insights()];
-      const config = {
-        server: createHotUpdater({
-          database,
-          storage: [storage],
-          plugins,
-          clientAccess: "public",
-        }),
-        gitUrl: "https://github.com/example/app",
-      };
-      const source = vi.fn(async () => config);
-      configModule.source = sourceType === "object" ? config : source;
-
-      await expect(resolveConsoleConfig(request)).resolves.toEqual({
-        gitUrl: "https://github.com/example/app",
+      const server = createHotUpdater({
         database,
         storage: [storage],
         plugins,
+        clientAccess: "public",
       });
+      const config = { server, gitUrl: "https://github.com/example/app" };
+      const source = vi.fn(async () => config);
+      configModule.source = sourceType === "object" ? config : source;
+
+      const resolved = await resolveConsoleConfig(request);
+      expect(resolved).toEqual({
+        gitUrl: "https://github.com/example/app",
+        database,
+        core: server.core,
+        storage: [storage],
+        plugins,
+        api: server.api,
+      });
+      // The console writes through the definition's core, as the server does.
+      expect(resolved.core).toBe(server.core);
       if (sourceType === "callback") {
         expect(source).toHaveBeenCalledWith(request);
       }
@@ -66,16 +69,24 @@ describe("Console config resolution", () => {
 
     await expect(resolveConsoleConfig(request)).resolves.toEqual({
       database: server,
+      core: server.core,
       storage: [storage],
     });
     expect(server.fetchAdmin).not.toHaveBeenCalled();
   });
 
-  it("refuses a server that is neither", async () => {
-    configModule.source = { server: { adapterName: "memory" } as never };
-
+  it("refuses a server that is neither, and one from an older @hot-updater/server", async () => {
+    configModule.source = { server: {} as never };
     await expect(resolveConsoleConfig(request)).rejects.toThrow(
       "The console's server must be your server definition",
+    );
+
+    // What createHotUpdater returned before its definition had public properties.
+    configModule.source = {
+      server: { handlers: {}, core: {}, api: {} } as never,
+    };
+    await expect(resolveConsoleConfig(request)).rejects.toThrow(
+      "Upgrade @hot-updater/server to the version of @hot-updater/console.",
     );
   });
 });

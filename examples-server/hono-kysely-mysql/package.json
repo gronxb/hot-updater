@@ -26,6 +26,7 @@
     "mysql2": "catalog:db"
   },
   "devDependencies": {
+    "@hot-updater/plugin-core": "workspace:*",
     "@hot-updater/test-utils": "workspace:*",
     "@types/node": "^20.11.17",
     "execa": "catalog:tools",

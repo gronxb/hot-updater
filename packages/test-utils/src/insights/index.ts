@@ -1,3 +1,4 @@
+import type { EngineDatabase } from "@hot-updater/plugin-core";
 import type { InsightsModel } from "@hot-updater/plugin-insights/server";
 import { describe } from "vitest";
 
@@ -14,10 +15,10 @@ export { setupInsightsModelTestSuite } from "./setupInsightsModelTestSuite";
  * The Insights plugin's tests, for `setupDatabaseTestSuite`'s `plugins`: its
  * HTTP routes on the provider's server, which must run `insights()`, and
  * with `createModel` its report contract on the provider's database, such as
- * `(database) => createInsightsModel(createDatabasePluginApis(database,
- * [insights()]).insights)`.
+ * `(database) => createInsightsModel(createHotUpdater({ database, plugins:
+ * [insights()], clientAccess: "public" }).api.insights)`.
  */
-export const insightsTestSuite = <TDatabase = unknown>(
+export const insightsTestSuite = <TDatabase = EngineDatabase>(
   options: {
     readonly createModel?: (database: TDatabase) => InsightsModel;
   } = {},

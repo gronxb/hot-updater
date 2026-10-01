@@ -15,11 +15,17 @@
   the one it uses.
 - `@hot-updater/server/plugins/insights` and
   `@hot-updater/server/plugins/api-keys` re-export the built-in plugins.
-- `@hot-updater/server/db`, `@hot-updater/server/diff`, and
-  `@hot-updater/server/internal` hold tooling for Hot Updater's own CLI, Console
-  and providers until it moves out of the server; add nothing to them.
-- `scripts/ci/check-package-boundaries.mjs` pins this list. A new subpath needs
-  a deliberate change there.
+- Nothing else: no tooling entry. `scripts/ci/check-package-boundaries.mjs`
+  pins this list, and a new subpath needs a deliberate change there.
+
+## The definition tooling reads
+
+What `createHotUpdater` returns is the server definition. Tooling (the CLI,
+the Console, managed init) reads it only through its public, read-only,
+documented properties: `core`, `api`, `database`, `storage`, `plugins`,
+`clientPlugins`, `clientEndpoints`, and `clientAuth`. Keep each one documented
+where it is declared, and add a property rather than a hidden symbol or a
+tooling entry when tooling needs more.
 
 ## What lives elsewhere
 
@@ -31,13 +37,16 @@
 - Test suites, fixtures, and measured databases are in
   `@hot-updater/test-utils`, which the server's own specs use as a
   devDependency.
+- The CLI and IaC tooling over a definition (plugin commands, client
+  credentials, a managed server's checks, `db` migrators) is in
+  `@hot-updater/cli-tools`; bundle diffs are in the `hot-updater` CLI.
 
 ## CLI And Documentation Expectations
 
 - CLI config examples should import `createHotUpdater` from
   `@hot-updater/server`.
-- CLI database commands should derive migration/schema capability through
-  `@hot-updater/server/db` helpers, not through public DB methods on the root
-  instance.
+- CLI database commands derive migration and schema capability from the
+  definition's `database` through `@hot-updater/cli-tools`, not through
+  methods on the root instance.
 - Express, Connect, or other Node framework examples import `toNodeHandler`
   from `@hot-updater/server`.

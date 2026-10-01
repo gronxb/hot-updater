@@ -555,6 +555,28 @@ describe("aggregate batching", () => {
     ).resolves.toEqual({ rows: [{ day: 1, opens: 4, failures: 0 }] });
   });
 
+  it("never keeps a process alive for a pending memory flush", async () => {
+    const timers: ReturnType<typeof setTimeout>[] = [];
+    const start = globalThis.setTimeout;
+    vi.spyOn(globalThis, "setTimeout").mockImplementation(((
+      ...args: Parameters<typeof setTimeout>
+    ) => {
+      const timer = start(...args);
+      timers.push(timer);
+      return timer;
+    }) as typeof setTimeout);
+    const { db, engine } = await setup({
+      batching: { mode: "memory", windowMs: 60_000 },
+    });
+
+    await open(db, "i1", "A");
+    vi.mocked(globalThis.setTimeout).mockRestore();
+
+    expect(timers).not.toEqual([]);
+    expect(timers.every((timer) => !timer.hasRef())).toBe(true);
+    await engine.dispose();
+  });
+
   it("keeps changes a memory flush could not write for the next flush", async () => {
     let failing = true;
     const { db, engine, memory } = await setup({

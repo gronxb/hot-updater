@@ -1,12 +1,12 @@
 import { mkdir, readdir, readFile, writeFile } from "fs/promises";
 import path from "path";
 
-import { p } from "@hot-updater/cli-tools";
 import {
   createMigrator as createHotUpdaterMigrator,
   generateSchema as generateHotUpdaterSchema,
   generatesSchema,
-} from "@hot-updater/server/db";
+  p,
+} from "@hot-updater/cli-tools";
 import {
   formatDialect,
   mysql as mysqlDialect,

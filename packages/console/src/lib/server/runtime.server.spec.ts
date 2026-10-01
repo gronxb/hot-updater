@@ -1,8 +1,13 @@
 // @vitest-environment node
 
-import type { HotUpdaterCoreApi, RemoteServer } from "@hot-updater/plugin-core";
+import type {
+  AnyHotUpdaterPlugin,
+  EngineDatabase,
+  HotUpdaterCoreApi,
+  RemoteServer,
+} from "@hot-updater/plugin-core";
 import { createMemoryAdapter } from "@hot-updater/plugin-core";
-import { createDatabasePluginApis } from "@hot-updater/server/db";
+import { createHotUpdater } from "@hot-updater/server";
 import { apiKeys } from "@hot-updater/server/plugins/api-keys";
 import {
   insights,
@@ -12,6 +17,23 @@ import { describe, expect, it, vi } from "vitest";
 
 import { ConsoleFeatureUnavailableError } from "../console-features";
 import { createConsoleRuntime, requireFeature } from "./runtime.server";
+
+/** The console over a server definition that runs `plugins` on `database`. */
+const definitionRuntime = (
+  database: EngineDatabase,
+  plugins: readonly AnyHotUpdaterPlugin[] = [],
+) =>
+  createConsoleRuntime({
+    database,
+    plugins,
+    api: createHotUpdater({
+      database,
+      plugins,
+      ...(plugins.some(({ provides }) => provides?.clientAuth)
+        ? {}
+        : { clientAccess: "public" }),
+    } as Parameters<typeof createHotUpdater>[0]).api,
+  });
 
 const engineDatabase = () => ({
   name: "memory",
@@ -73,17 +95,14 @@ describe("createConsoleRuntime over the database", () => {
       init: () => ({ api: { listEvents: async () => [] } }),
     };
 
-    expect(() =>
-      createConsoleRuntime({ database: engineDatabase(), plugins: [spoof] }),
-    ).toThrow("which is reserved for Hot Updater's insights() plugin");
+    expect(() => definitionRuntime(engineDatabase(), [spoof as never])).toThrow(
+      "which is reserved for Hot Updater's insights() plugin",
+    );
   });
 
   it("serves the features of the plugins it runs, as the server does", async () => {
     const database = engineDatabase();
-    const runtime = createConsoleRuntime({
-      database,
-      plugins: [insights(), apiKeys()],
-    });
+    const runtime = definitionRuntime(database, [insights(), apiKeys()]);
 
     expect(runtime.remote).toBe(false);
     await expect(runtime.features()).resolves.toEqual({
@@ -104,17 +123,14 @@ describe("createConsoleRuntime over the database", () => {
     const created = await keys.create({ name: "Console" });
     // The server's own tables: the server's apiKeys() plugin sees the same key.
     await expect(
-      createDatabasePluginApis(database, [apiKeys()]).apiKeys.list(),
+      createHotUpdater({ database, plugins: [apiKeys()] }).api.apiKeys.list(),
     ).resolves.toEqual([
       expect.objectContaining({ id: created.record.id, name: "Console" }),
     ]);
   });
 
   it("reads a release's update failures through the plugin's API", async () => {
-    const runtime = createConsoleRuntime({
-      database: engineDatabase(),
-      plugins: [insights()],
-    });
+    const runtime = definitionRuntime(engineDatabase(), [insights()]);
     const model = await requireFeature(runtime, "insightsAnalytics");
     const failed = event("01900000-0000-7000-8000-000000000002");
     await model.recordEvent({
@@ -139,10 +155,9 @@ describe("createConsoleRuntime over the database", () => {
   });
 
   it("reports how long the plugin keeps rows", async () => {
-    const runtime = createConsoleRuntime({
-      database: engineDatabase(),
-      plugins: [insights({ retention: { rawDays: 30, dailyDays: 60 } })],
-    });
+    const runtime = definitionRuntime(engineDatabase(), [
+      insights({ retention: { rawDays: 30, dailyDays: 60 } }),
+    ]);
 
     const reads = await requireFeature(runtime, "insights");
     await expect(reads.getRetention()).resolves.toEqual({
@@ -152,10 +167,7 @@ describe("createConsoleRuntime over the database", () => {
   });
 
   it("refuses the features of a plugin that is not listed", async () => {
-    const runtime = createConsoleRuntime({
-      database: engineDatabase(),
-      plugins: [apiKeys()],
-    });
+    const runtime = definitionRuntime(engineDatabase(), [apiKeys()]);
 
     await expect(runtime.features()).resolves.toEqual({
       insights: false,
@@ -172,7 +184,7 @@ describe("createConsoleRuntime over the database", () => {
   });
 
   it("serves no feature without plugins", async () => {
-    const runtime = createConsoleRuntime({ database: engineDatabase() });
+    const runtime = definitionRuntime(engineDatabase());
 
     await expect(runtime.features()).resolves.toEqual({
       insights: false,

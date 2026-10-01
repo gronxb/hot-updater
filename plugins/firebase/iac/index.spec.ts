@@ -15,8 +15,7 @@ const mocks = vi.hoisted(() => ({
   migrateFirebaseDatabase: vi.fn(),
   provisionClientCredential: vi.fn(
     async (
-      _database: unknown,
-      _plugins: unknown,
+      _server: unknown,
       input: { readonly env: Readonly<Record<string, string | undefined>> },
     ) => ({
       label: "API key",
@@ -31,21 +30,18 @@ const mocks = vi.hoisted(() => ({
   tmpDir: "",
 }));
 
-vi.mock("@hot-updater/server/db", async () => {
-  const actual = await vi.importActual<typeof import("@hot-updater/server/db")>(
-    "@hot-updater/server/db",
-  );
+vi.mock("../src/firebaseDatabase", async () => {
+  const { createMemoryAdapter } = await vi.importActual<
+    typeof import("@hot-updater/plugin-core")
+  >("@hot-updater/plugin-core");
   return {
-    ...actual,
-    // The managed server's plugins, over the mocked database.
-    provisionClientCredential: mocks.provisionClientCredential,
+    firebaseDatabase: vi.fn(() => ({
+      name: "firebaseDatabase",
+      adapter: createMemoryAdapter(),
+    })),
+    migrateFirebaseDatabase: mocks.migrateFirebaseDatabase,
   };
 });
-
-vi.mock("../src/firebaseDatabase", () => ({
-  firebaseDatabase: vi.fn(() => ({ name: "firebaseDatabase", adapter: {} })),
-  migrateFirebaseDatabase: mocks.migrateFirebaseDatabase,
-}));
 
 vi.mock("firebase-admin/app", async () => {
   const actual =
@@ -116,6 +112,8 @@ vi.mock("@hot-updater/cli-tools", async () => {
   );
   return {
     ...actual,
+    // The managed server's plugins, over the mocked database.
+    provisionClientCredential: mocks.provisionClientCredential,
     confirmInitInputPersistence: vi.fn(async () => {
       mocks.events.push("consent");
       return true;
@@ -370,7 +368,6 @@ describe("Firebase project creation", () => {
     );
     expect(mocks.provisionClientCredential).toHaveBeenCalledWith(
       expect.anything(),
-      expect.anything(),
       expect.objectContaining({
         env: expect.objectContaining({ HOT_UPDATER_API_KEY: API_KEY }),
       }),
@@ -580,8 +577,8 @@ describe("Firebase project creation", () => {
         "apiKeys",
         "notes",
       ]);
-      const [, provisioned] = mocks.provisionClientCredential.mock.calls[0]!;
-      expect(provisioned).toBe(migrated);
+      const [server] = mocks.provisionClientCredential.mock.calls[0]!;
+      expect((server as { plugins: unknown }).plugins).toBe(migrated);
       expect(execa).toHaveBeenCalledWith(
         "npx",
         expect.arrayContaining([

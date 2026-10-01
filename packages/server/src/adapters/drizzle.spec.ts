@@ -27,8 +27,7 @@ import { drizzle as pglite } from "drizzle-orm/pglite";
 import { SQLiteSyncDialect } from "drizzle-orm/sqlite-core";
 import { afterAll, describe, expect, it } from "vitest";
 
-import { createDatabasePluginApis } from "../assembly/databasePlugins";
-import { createInProcessCoreApi } from "../core/api";
+import { createInProcessCoreApi } from "../core/inProcess.testFixtures";
 import { createHotUpdater } from "../index";
 import { createInsightsModel, insights } from "../plugins/insights";
 import {
@@ -105,7 +104,11 @@ for (const provider of ["postgresql", "sqlite"] as const) {
       insightsTestSuite({
         createModel: (database) =>
           createInsightsModel(
-            createDatabasePluginApis(database, [insights()]).insights,
+            createHotUpdater({
+              database,
+              plugins: [insights()],
+              clientAccess: "public",
+            }).api.insights,
           ),
       }),
     ],

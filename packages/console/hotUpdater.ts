@@ -3,10 +3,6 @@ import { createHash } from "node:crypto";
 import { mockDatabase, mockStorage } from "@hot-updater/mock";
 import type { Bundle, Release } from "@hot-updater/protocol";
 import { createHotUpdater } from "@hot-updater/server";
-import {
-  createDatabaseCoreApi,
-  createDatabasePluginApis,
-} from "@hot-updater/server/db";
 import { apiKeys } from "@hot-updater/server/plugins/api-keys";
 import {
   insights,
@@ -660,9 +656,14 @@ const database = mockDatabase({ latency: { min: 150, max: 320 } });
 // The plugins whose features the console shows; the seed writes through
 // the same ones the server runs.
 const plugins = [insights(), apiKeys()] as const;
-// Seeding skips the delay the console sees.
-const seed = database.withoutLatency();
-const core = createDatabaseCoreApi(seed);
+// Seeding writes through the same server over the data without the delay
+// the console sees.
+const seeding = createHotUpdater({
+  database: database.withoutLatency(),
+  storage: [mockStorage({})],
+  plugins,
+});
+const { core } = seeding;
 // Oldest first, one deploy each, so a patch's base is stored before it.
 const releaseIdByBundle = new Map<string, string>();
 for (const deployment of [...bundles].sort((left, right) =>
@@ -1058,7 +1059,7 @@ const adjustedBundleEvents = bundleEvents.map((event) => ({
   received_at_ms: event.received_at_ms + receiptOffsetMs,
 }));
 
-const insightsApi = createDatabasePluginApis(seed, plugins).insights;
+const insightsApi = seeding.api.insights;
 for (const event of adjustedBundleEvents) {
   await insightsApi.recordEvent(event);
 }

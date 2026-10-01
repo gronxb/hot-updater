@@ -1,7 +1,7 @@
 // @ts-check
 /**
  * Checks the package boundaries CLAUDE.md states, from each workspace
- * package's package.json and sources:
+ * package's package.json and sources, and the E2E harness's sources:
  *
  * - @hot-updater/server exports its root, the built-in adapters and the
  *   built-in plugins, and nothing else;
@@ -31,8 +31,9 @@ import ts from "typescript";
 const root = path.resolve(import.meta.dirname, "../..");
 
 /**
- * Server's exports. PR 2 of the subpath boundary removes `./db`, `./diff`
- * and `./internal`, which tooling still reads.
+ * Server's exports: its root, the built-in adapters, and the built-in
+ * plugins. Tooling reads a server through the definition's public
+ * properties, not an entry of its own.
  */
 const SERVER_EXPORTS = [
   ".",
@@ -40,21 +41,21 @@ const SERVER_EXPORTS = [
   "./adapters/kysely",
   "./adapters/mongodb",
   "./adapters/prisma",
-  "./db",
-  "./diff",
-  "./internal",
   "./plugins/api-keys",
   "./plugins/insights",
   "./package.json",
 ];
-/** Exports a package keeps until the PR that removes them. */
-const PENDING_INTERNAL = new Set(["@hot-updater/server ./internal"]);
 
 /**
  * Sources whose import() computes its specifier: each loads a file by path,
  * which no import of a package names, and a new one needs a deliberate entry.
  */
 const COMPUTED_IMPORTS = new Map([
+  ["e2e/detox/contracts.spec.ts", "loads e2e's own control server"],
+  [
+    "e2e/detox/published.ts",
+    "imports a package's published entry as the example app installs it",
+  ],
   ["packages/cli-tools/src/bundleServer.spec.ts", "runs the bundle it wrote"],
   [
     "packages/hot-updater/agent/provision-client-credential.mjs",
@@ -170,7 +171,7 @@ const TEST_EXPORT =
 // No internal or test exports, in any workspace package.
 for (const pkg of packages) {
   for (const key of exportKeys(pkg)) {
-    if (/internal/i.test(key) && !PENDING_INTERNAL.has(`${pkg.name} ${key}`)) {
+    if (/internal/i.test(key)) {
       fail(
         "no-internal-exports",
         `${pkg.name} exports ${key}; another package uses only its public exports, and whatever else stays private to the package.`,
@@ -423,8 +424,17 @@ const importsOf = (/** @type {string} */ file, /** @type {string} */ text) => {
 /** @type {Map<string, Set<string>>} */
 const importers = new Map();
 
+/**
+ * Sources outside any package that reach the packages as an app does: the
+ * E2E harness, which imports their published entries.
+ */
+const OUTSIDE = [
+  { name: "e2e", dir: path.join(root, "e2e"), json: {}, published: false },
+];
+
 // Imports name published exports, and stay inside their own package.
-for (const pkg of packages) {
+for (const pkg of [...packages, ...OUTSIDE]) {
+  if (!existsSync(pkg.dir)) continue;
   for (const file of sources(pkg.dir)) {
     const text = readFileSync(file, "utf8");
     if (!/@hot-updater\/|\.\.\/|\bimport\s*\(/.test(text)) continue;
@@ -461,7 +471,7 @@ for (const pkg of packages) {
         );
         continue;
       }
-      if (target !== pkg) {
+      if (target !== pkg && !OUTSIDE.includes(pkg)) {
         const key = `${target.name} ${subpath}`;
         if (!importers.has(key)) importers.set(key, new Set());
         importers.get(key)?.add(pkg.name);

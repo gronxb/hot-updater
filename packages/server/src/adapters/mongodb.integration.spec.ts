@@ -19,8 +19,7 @@ import { execa } from "execa";
 import { MongoClient } from "mongodb";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { createDatabasePluginApis } from "../assembly/databasePlugins";
-import { createInProcessCoreApi } from "../core/api";
+import { createInProcessCoreApi } from "../core/inProcess.testFixtures";
 import { createHotUpdater } from "../index";
 import { createInsightsModel, insights } from "../plugins/insights";
 import { mongoAdapter } from "./mongodb";
@@ -119,7 +118,11 @@ setupDatabaseTestSuite({
     insightsTestSuite({
       createModel: (database) =>
         createInsightsModel(
-          createDatabasePluginApis(database, [insights()]).insights,
+          createHotUpdater({
+            database,
+            plugins: [insights()],
+            clientAccess: "public",
+          }).api.insights,
         ),
     }),
   ],

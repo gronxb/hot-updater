@@ -31,8 +31,6 @@ import {
   isContentAddressedAssetFileHash,
   targetBaseCandidateKey,
 } from "@hot-updater/plugin-core";
-import { createDatabaseCoreApi } from "@hot-updater/server/db";
-import { createBundleDiff } from "@hot-updater/server/diff";
 import isPortReachable from "is-port-reachable";
 import open from "open";
 import { normalizeRange } from "verkit";
@@ -44,6 +42,7 @@ import {
   type Manifest,
   writeBundleManifestFile,
 } from "@/utils/bundleManifest";
+import { createBundleDiff } from "@/utils/createBundleDiff";
 import {
   appendFingerprintExtraSources,
   isFingerprintEquals,
@@ -223,7 +222,6 @@ const createAutoPatches = async ({
   bundleId,
   channel,
   core,
-  database,
   maxBaseBundles,
   platform,
   storageAdapter,
@@ -232,7 +230,6 @@ const createAutoPatches = async ({
   bundleId: string;
   channel: string;
   core: HotUpdaterCoreApi;
-  database: ConfiguredDatabase;
   maxBaseBundles: number;
   platform: Platform;
   storageAdapter: DeployStorageAdapter;
@@ -260,7 +257,7 @@ const createAutoPatches = async ({
           bundleId,
         },
         {
-          database,
+          core,
           storageAdapter,
         },
         {
@@ -1110,7 +1107,6 @@ const deployPlatform = async ({
                   bundleId: confirmedBundleId,
                   channel,
                   core,
-                  database,
                   maxBaseBundles: maxPatchBaseBundles,
                   platform,
                   storageAdapter,
@@ -1189,7 +1185,7 @@ export const deploy = async (options: DeployOptions): Promise<void> => {
   );
   const server = await loadServer(firstPlatformConfig.config);
   const database = server.database;
-  const core = createDatabaseCoreApi(database);
+  const core = server.core;
 
   const deployPlatforms = async (
     storageAdapter: StorageAdapter,

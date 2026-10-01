@@ -4,7 +4,11 @@ import os from "os";
 import path from "path";
 
 import { getCwd, loadConfig, readPackageUp } from "@hot-updater/cli-tools";
-import { HOT_UPDATER_SERVER_VERSION } from "@hot-updater/server";
+import { createMemoryAdapter } from "@hot-updater/plugin-core";
+import {
+  createHotUpdater,
+  HOT_UPDATER_SERVER_VERSION,
+} from "@hot-updater/server";
 import { insights } from "@hot-updater/server/plugins/insights";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -917,7 +921,11 @@ describe("doctor", () => {
     );
     vi.mocked(loadServer).mockResolvedValue({
       kind: "definition",
-      plugins: [insights()],
+      definition: createHotUpdater({
+        database: { name: "memory", adapter: createMemoryAdapter() },
+        plugins: [insights()],
+        clientAccess: "public",
+      }),
       dispose: async () => {},
     } as never);
     await writeFile(

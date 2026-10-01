@@ -85,7 +85,7 @@ it("runs the complete contract from the published test-utils package", async () 
       import { PGliteDialect } from "kysely-pglite-dialect";
       import { createHotUpdater } from "@hot-updater/server";
       import { kyselyAdapter } from "@hot-updater/server/adapters/kysely";
-      import { createDatabasePluginApis, createMigrator } from "@hot-updater/server/db";
+      import { toolingTargetOf } from "@hot-updater/plugin-core";
       import { createInsightsModel, insights } from "@hot-updater/server/plugins/insights";
       import { insightsTestSuite } from "@hot-updater/test-utils";
       import { setupDatabaseTestSuite, startHttpTestServer } from "@hot-updater/test-utils";
@@ -100,14 +100,16 @@ it("runs the complete contract from the published test-utils package", async () 
         }).handlers),
         plugins: [insightsTestSuite({
           createModel: (database) =>
-            createInsightsModel(createDatabasePluginApis(database, [insights()]).insights),
+            createInsightsModel(createHotUpdater({
+              database, plugins: [insights()], clientAccess: "public",
+            }).api.insights),
         })],
         createDatabase: () => database,
         // Core's tables and those of the plugins the server runs.
         migrate: async () => {
-          const migration = await createMigrator(createHotUpdater({
-            database, plugins: [insights()], clientAccess: "public",
-          })).migrateToLatest({ mode: "from-schema", updateSettings: true });
+          const migration = await database
+            .createMigrator!(toolingTargetOf([insights()]))
+            .migrateToLatest({ mode: "from-schema", updateSettings: true });
           await migration.execute();
         },
         reset: async () => {

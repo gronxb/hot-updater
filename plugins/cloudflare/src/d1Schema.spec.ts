@@ -6,7 +6,7 @@ import {
   toolingTargetOf,
   HotUpdaterSchemaMigrationRequiredError,
 } from "@hot-updater/plugin-core";
-import { createDatabaseCoreApi } from "@hot-updater/server/db";
+import { createHotUpdater } from "@hot-updater/server";
 import { createBundleFixture } from "@hot-updater/test-utils";
 import { describe, expect, it } from "vitest";
 
@@ -70,7 +70,10 @@ describe("d1 schema", () => {
 
   it("serves once the schema is applied, writing each change as one batch", async () => {
     const db = new DatabaseSync(":memory:");
-    const core = createDatabaseCoreApi(sqliteD1(db));
+    const core = createHotUpdater({
+      database: sqliteD1(db),
+      clientAccess: "public",
+    }).core;
     await expect(core.listChannels()).rejects.toBeInstanceOf(
       HotUpdaterSchemaMigrationRequiredError,
     );

@@ -2,6 +2,7 @@ import fs from "fs";
 import path from "path";
 
 import {
+  clientAuthOf,
   confirmInitInputPersistence,
   getHotUpdaterInitInputEnv,
   getInitProviderEnvVars,
@@ -11,8 +12,11 @@ import {
   loadManagedServerDefinition,
   makeEnv,
   type ManagedServerDefinition,
+  managedServerDefinitionOf,
   p,
   printAppSetup,
+  provisionClientCredential,
+  type ProvisionedClientCredential,
   readHotUpdaterInitEnv,
   readManagedServerDefinition,
   replacingServerDefinitions,
@@ -21,13 +25,11 @@ import {
   type RunInitOptions,
   transformEnv,
 } from "@hot-updater/cli-tools";
-import type { AnyHotUpdaterPlugin } from "@hot-updater/plugin-core";
-import {
-  clientPluginsOf,
-  provisionClientCredential,
-  type ProvisionedClientCredential,
-} from "@hot-updater/server/db";
-import { managedServerDefinitionOf } from "@hot-updater/server/internal";
+import type {
+  AnyHotUpdaterPlugin,
+  PluginClientPlugin,
+} from "@hot-updater/plugin-core";
+import { createHotUpdater } from "@hot-updater/server";
 import { isEqual, sortBy, uniqWith } from "es-toolkit";
 import { ExecaError, execa } from "execa";
 import {
@@ -395,8 +397,8 @@ const printTemplate = async (
   credential: ProvisionedClientCredential | undefined,
   projectId: string,
   region: string,
-  /** The plugins the function runs, whose client plugins the app adds. */
-  serverPlugins: readonly AnyHotUpdaterPlugin[],
+  /** The client plugins the app adds for the plugins the function runs. */
+  clientPlugins: readonly PluginClientPlugin[],
   cliEnv?: FirebaseCliEnv,
 ) => {
   try {
@@ -429,7 +431,7 @@ const printTemplate = async (
     printAppSetup({
       baseURL: functionUrl,
       ...(credential === undefined ? {} : { credential }),
-      clientPlugins: clientPluginsOf(serverPlugins),
+      clientPlugins,
     });
   } catch (error) {
     if (error instanceof ExecaError) {
@@ -475,8 +477,8 @@ const loadEditedDefinition = async ({
   try {
     serverPlugins = await loadManagedServerDefinition(
       definition,
-      (hotUpdater) =>
-        managedServerDefinitionOf(hotUpdater, {
+      (hotUpdater) => {
+        const loaded = managedServerDefinitionOf(hotUpdater, {
           provider: "Firebase",
           database: "firebaseDatabase",
           storage: "gs",
@@ -484,7 +486,11 @@ const loadEditedDefinition = async ({
             database: { projectId },
             storage: { projectId, storageBucket },
           },
-        }).plugins,
+        });
+        // A clientAuth plugin must give init the credential an app sends.
+        clientAuthOf(loaded);
+        return loaded.plugins;
+      },
       {
         env: {
           [FIREBASE_INIT_PROVIDER.inputs.projectId.envKey]: projectId,
@@ -690,19 +696,24 @@ export const runInit = async ({
     projectId: initializeVariable.projectId,
   };
   const database = firebaseDatabase(databaseConfig);
+  // The managed server's plugins over the database init set up, which
+  // creating it neither reads nor writes.
+  const managedServer = createHotUpdater({
+    database,
+    plugins: serverPlugins,
+    ...(serverPlugins.some(({ provides }) => provides?.clientAuth)
+      ? {}
+      : { clientAccess: "public" }),
+  } as Parameters<typeof createHotUpdater>[0]);
   let clientCredential: ProvisionedClientCredential | undefined;
   try {
     // The database reads nothing until the schema settings exist.
     await migrateFirebaseDatabase(databaseConfig, serverPlugins);
     // The app's credential, through the managed server's plugins, on the tables they read.
-    clientCredential = await provisionClientCredential(
-      database,
-      serverPlugins,
-      {
-        env: initInputEnv,
-        name: "Firebase init",
-      },
-    );
+    clientCredential = await provisionClientCredential(managedServer, {
+      env: initInputEnv,
+      name: "Firebase init",
+    });
     if (clientCredential !== undefined) {
       await makeEnv({ [clientCredential.env]: clientCredential.value });
     }
@@ -804,7 +815,7 @@ export const runInit = async ({
     clientCredential,
     initializeVariable.projectId,
     currentRegion,
-    serverPlugins,
+    managedServer.clientPlugins,
     cliEnv,
   );
   await removeTmpDir();

@@ -1,7 +1,7 @@
 import { createMemoryAdapter } from "@hot-updater/plugin-core";
 import type { Bundle } from "@hot-updater/protocol";
 
-import { createInProcessCoreApi } from "./core/api";
+import { createInProcessCoreApi } from "./core/inProcess.testFixtures";
 import { createHotUpdaterHandlers, type HandlerAPI } from "./handler";
 
 export const testBundle: Bundle = {

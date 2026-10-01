@@ -1,5 +1,6 @@
 import { DatabaseSync } from "node:sqlite";
 
+import { createMigrator, generateSchema } from "@hot-updater/cli-tools";
 import type { DeployReleasePolicy } from "@hot-updater/plugin-core";
 import {
   DatabaseConstraintError,
@@ -7,11 +8,6 @@ import {
   defineTable,
 } from "@hot-updater/plugin-core";
 import { createHotUpdater } from "@hot-updater/server";
-import {
-  createDatabaseCoreApi,
-  createMigrator,
-  generateSchema,
-} from "@hot-updater/server/db";
 import { createBundleFixture } from "@hot-updater/test-utils";
 import { createD1TestDatabase } from "@hot-updater/test-utils/node";
 import { beforeEach, expect, it, vi } from "vitest";
@@ -58,7 +54,9 @@ const config = {
 };
 
 /** Core's API over the REST database, as the CLI and console run it. */
-const core = () => createDatabaseCoreApi(d1Database(config));
+const core = () =>
+  createHotUpdater({ database: d1Database(config), clientAccess: "public" })
+    .core;
 
 /** A plugin with one table. */
 const notes = definePlugin({
@@ -168,8 +166,9 @@ it("generates a wrangler migration with a server's plugin tables", async () => {
   const hotUpdater = server();
   const migration = generateSchema(hotUpdater, "latest");
   expect(migration.path).toMatch(/^migrations\/\d{14}_hot-updater\.sql$/u);
+  // The fence names the plugin and how to create its tables.
   await expect(hotUpdater.api.notes.read("n1")).rejects.toThrow(
-    '"schema.notes" for d1Database is missing',
+    'The tables of plugin "notes" are not migrated on d1Database: schema setting "schema.notes" is missing; expected "1". Run `hot-updater db migrate`',
   );
 
   state.database!.db.exec(migration.code);

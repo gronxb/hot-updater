@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 
 import type { ConfigResponse } from "@hot-updater/cli-tools";
-import { type ClientPluginSpec, clientPluginsOf } from "@hot-updater/server/db";
+import type { PluginClientPlugin } from "@hot-updater/plugin-core";
 import fg from "fast-glob";
 
 import { loadServer } from "../../utils/loadServer";
@@ -17,7 +17,7 @@ const NOT_APP_CODE = [
   "**/*.d.ts",
 ];
 
-const isClientPluginSpec = (value: unknown): value is ClientPluginSpec =>
+const isClientPlugin = (value: unknown): value is PluginClientPlugin =>
   typeof value === "object" &&
   value !== null &&
   typeof (value as { module?: unknown }).module === "string" &&
@@ -30,17 +30,17 @@ const isClientPluginSpec = (value: unknown): value is ClientPluginSpec =>
  */
 export const readServerClientPlugins = async (
   config: Pick<ConfigResponse, "server">,
-): Promise<readonly ClientPluginSpec[]> => {
+): Promise<readonly PluginClientPlugin[]> => {
   const server = await loadServer(config);
   try {
-    if (server.kind === "definition") return clientPluginsOf(server.plugins);
+    if (server.kind === "definition") return server.definition.clientPlugins;
     const response = await server.server.fetchAdmin("/version");
     if (!response.ok) {
       throw new Error(`The server answered /version with ${response.status}.`);
     }
     const listed = ((await response.json()) as { clientPlugins?: unknown })
       .clientPlugins;
-    return Array.isArray(listed) ? listed.filter(isClientPluginSpec) : [];
+    return Array.isArray(listed) ? listed.filter(isClientPlugin) : [];
   } finally {
     await server.dispose();
   }
@@ -52,7 +52,7 @@ const escapeRegExp = (text: string) =>
 /** Whether `source` imports the client plugin as a value: `name`, or all of `module`. */
 export const importsClientPlugin = (
   source: string,
-  { module, name }: ClientPluginSpec,
+  { module, name }: PluginClientPlugin,
 ): boolean => {
   const from = `\\s*from\\s*["']${escapeRegExp(module)}["']`;
   if (new RegExp(`import\\s+\\*\\s+as\\s+[\\w$]+${from}`, "u").test(source)) {
@@ -77,9 +77,9 @@ export const findMissingClientPlugins = async ({
   clientPlugins,
   cwd,
 }: {
-  readonly clientPlugins: readonly ClientPluginSpec[];
+  readonly clientPlugins: readonly PluginClientPlugin[];
   readonly cwd: string;
-}): Promise<ClientPluginSpec[]> => {
+}): Promise<PluginClientPlugin[]> => {
   if (clientPlugins.length === 0) return [];
   const files = await fg("**/*.{ts,tsx,js,jsx,mjs,cjs}", {
     absolute: true,

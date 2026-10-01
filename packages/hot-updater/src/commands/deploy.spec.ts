@@ -104,7 +104,7 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => {
   };
 });
 
-vi.mock("@hot-updater/server/diff", () => ({
+vi.mock("@/utils/createBundleDiff", () => ({
   createBundleDiff: mockServer.createBundleDiff,
 }));
 
@@ -1435,7 +1435,7 @@ describe("deploy rollout wiring", () => {
         bundleId: DEPLOY_BUNDLE_ID,
       },
       {
-        database: harnessDatabase,
+        core: harnessDatabase.core,
         storageAdapter: mockStorageAdapter,
       },
       {
@@ -1449,7 +1449,7 @@ describe("deploy rollout wiring", () => {
         bundleId: DEPLOY_BUNDLE_ID,
       },
       {
-        database: harnessDatabase,
+        core: harnessDatabase.core,
         storageAdapter: mockStorageAdapter,
       },
       {
@@ -1489,7 +1489,7 @@ describe("deploy rollout wiring", () => {
         bundleId: DEPLOY_BUNDLE_ID,
       },
       {
-        database: harnessDatabase,
+        core: harnessDatabase.core,
         storageAdapter: mockStorageAdapter,
       },
       {
@@ -1613,7 +1613,7 @@ describe("deploy rollout wiring", () => {
         bundleId: DEPLOY_BUNDLE_ID,
       },
       {
-        database: harnessDatabase,
+        core: harnessDatabase.core,
         storageAdapter: mockStorageAdapter,
       },
       {
@@ -1657,7 +1657,7 @@ describe("deploy rollout wiring", () => {
         bundleId: DEPLOY_BUNDLE_ID,
       },
       {
-        database: harnessDatabase,
+        core: harnessDatabase.core,
         storageAdapter: mockStorageAdapter,
       },
       {

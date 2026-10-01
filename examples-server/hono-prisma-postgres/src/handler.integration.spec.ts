@@ -3,11 +3,8 @@ import { fileURLToPath } from "url";
 
 import { ReleaseManagementError } from "@hot-updater/plugin-core";
 import type { Bundle } from "@hot-updater/protocol";
+import { createHotUpdater } from "@hot-updater/server";
 import { prismaAdapter } from "@hot-updater/server/adapters/prisma";
-import {
-  createDatabaseCoreApi,
-  createDatabasePluginApis,
-} from "@hot-updater/server/db";
 import {
   createInsightsModel,
   insights as insightsPlugin,
@@ -238,10 +235,11 @@ describe("Hot Updater Handler Integration Tests (Hono + Prisma + PostgreSQL)", (
 
   it("keeps every concurrent Insights event and the newest installation head", async () => {
     const insights = createInsightsModel(
-      createDatabasePluginApis(
-        prismaAdapter({ prisma, provider: "postgresql" }),
-        [insightsPlugin()],
-      ).insights,
+      createHotUpdater({
+        database: prismaAdapter({ prisma, provider: "postgresql" }),
+        plugins: [insightsPlugin()],
+        clientAccess: "public",
+      }).api.insights,
     );
     const installId = "prisma-concurrent-insights";
     const now = Date.now();
@@ -278,9 +276,10 @@ describe("Hot Updater Handler Integration Tests (Hono + Prisma + PostgreSQL)", (
   });
 
   it("lets exactly one of two concurrent policy changes at one revision win", async () => {
-    const core = createDatabaseCoreApi(
-      prismaAdapter({ prisma, provider: "postgresql" }),
-    );
+    const core = createHotUpdater({
+      database: prismaAdapter({ prisma, provider: "postgresql" }),
+      clientAccess: "public",
+    }).core;
     const [deployed] = await core.deploy([
       {
         bundle: bundleOf("0198a5b0-0000-7000-8000-000000000001"),
@@ -321,9 +320,10 @@ describe("Hot Updater Handler Integration Tests (Hono + Prisma + PostgreSQL)", (
   });
 
   it("rolls back patch cleanup when bundle deletion fails", async () => {
-    const core = createDatabaseCoreApi(
-      prismaAdapter({ prisma, provider: "postgresql" }),
-    );
+    const core = createHotUpdater({
+      database: prismaAdapter({ prisma, provider: "postgresql" }),
+      clientAccess: "public",
+    }).core;
     const baseId = "5d8b5ebf-8008-4ab8-9fb5-79af0ec766c3";
     const targetId = "5e08db65-e31d-4de3-a795-8492327c30d8";
     // Both bundles stored with no release, the target with its patch.

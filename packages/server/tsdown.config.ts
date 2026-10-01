@@ -4,9 +4,6 @@ export default defineConfig([
   {
     entry: [
       "./src/index.ts",
-      "./src/db/index.ts",
-      "./src/diff.ts",
-      "./src/internal.ts",
       "./src/plugins/insights/index.ts",
       "./src/plugins/api-keys/index.ts",
       "./src/adapters/kysely.ts",

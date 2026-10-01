@@ -103,6 +103,8 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => {
   return {
     ...actual,
     confirmInitInputPersistence: mocks.confirmInitInputPersistence,
+    // The managed server's plugins, over the D1 database init set up.
+    provisionClientCredential: mocks.provisionClientCredential,
     writeHotUpdaterFiles: vi.fn(),
     makeEnv: mocks.makeEnv,
     printAppSetup: mocks.printAppSetup,
@@ -131,11 +133,6 @@ vi.mock("./getWranglerLoginAuthToken", () => ({
 
 vi.mock("../src/utils/createWrangler", () => ({
   createWrangler: mocks.createWrangler,
-}));
-
-vi.mock("@hot-updater/server/db", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@hot-updater/server/db")>()),
-  provisionClientCredential: mocks.provisionClientCredential,
 }));
 
 import fs from "node:fs/promises";
@@ -745,10 +742,11 @@ describe("Cloudflare init discovery", () => {
       // The package's plugins and the project's get their tables.
       expect(deployed.migrations).toContain('"notes_notes"');
       expect(deployed.migrations).toContain("'schema.insights'");
-      const [, serverPlugins] =
-        mocks.provisionClientCredential.mock.calls[0] ?? [];
+      const [server] = mocks.provisionClientCredential.mock.calls[0] ?? [];
       expect(
-        (serverPlugins as readonly { id: string }[]).map(({ id }) => id),
+        (server as { plugins: readonly { id: string }[] }).plugins.map(
+          ({ id }) => id,
+        ),
       ).toEqual(["insights", "apiKeys", "notes"]);
       expect(mocks.printAppSetup).toHaveBeenCalledWith(
         expect.objectContaining({

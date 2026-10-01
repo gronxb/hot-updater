@@ -3,6 +3,7 @@ import { createRequire } from "node:module";
 import path from "path";
 
 import {
+  clientAuthOf,
   confirmInitInputPersistence,
   copyDirToTmp,
   getHotUpdaterInitInputEnv,
@@ -11,10 +12,13 @@ import {
   link,
   loadManagedServerDefinition,
   makeEnv,
+  managedServerDefinitionOf,
   MissingInitInputsError,
   moduleSpecifiersOf,
   p,
   printAppSetup,
+  provisionClientCredential,
+  type ProvisionedClientCredential,
   readHotUpdaterInitEnv,
   type RunInitOptions,
   resolvePackageVersion,
@@ -25,12 +29,8 @@ import {
   writeHotUpdaterConfig,
   writeHotUpdaterFiles,
 } from "@hot-updater/cli-tools";
-import {
-  clientPluginsOf,
-  provisionClientCredential,
-  type ProvisionedClientCredential,
-} from "@hot-updater/server/db";
-import { managedServerDefinitionOf } from "@hot-updater/server/internal";
+import type { PluginClientPlugin } from "@hot-updater/plugin-core";
+import { createHotUpdater } from "@hot-updater/server";
 import { delay } from "es-toolkit";
 import { ExecaError, execa } from "execa";
 
@@ -1127,8 +1127,8 @@ const runInitWithoutCliMetadata = async ({
   const serverPlugins = definition.edited
     ? await loadManagedServerDefinition(
         definition,
-        (hotUpdater) =>
-          managedServerDefinitionOf(hotUpdater, {
+        (hotUpdater) => {
+          const loaded = managedServerDefinitionOf(hotUpdater, {
             provider: "Supabase",
             database: "supabaseDatabase",
             storage: "supabase-storage",
@@ -1136,7 +1136,11 @@ const runInitWithoutCliMetadata = async ({
               database: { supabaseUrl },
               storage: { supabaseUrl, bucketName: bucketSelection.name },
             },
-          }).plugins,
+          });
+          // A clientAuth plugin must give init the credential an app sends.
+          clientAuthOf(loaded);
+          return loaded.plugins;
+        },
         {
           // A project init creates next has no URL or key yet: the
           // definition loads with stand-ins, and its project is not
@@ -1160,6 +1164,7 @@ const runInitWithoutCliMetadata = async ({
     "supabase",
   );
   let credential: ProvisionedClientCredential | undefined;
+  let clientPlugins: readonly PluginClientPlugin[] = [];
   try {
     await stageEdgeFunction({
       bucketName: bucketSelection.name,
@@ -1258,16 +1263,22 @@ const runInitWithoutCliMetadata = async ({
       supabaseServiceRoleKey: projectAccess.serviceRoleApiKey,
       supabaseUrl: `https://${project.id}.supabase.co`,
     });
+    // The managed server's plugins over the project's database, which
+    // creating it neither reads nor writes.
+    const managedServer = createHotUpdater({
+      database: databasePlugin,
+      plugins: serverPlugins,
+      ...(serverPlugins.some(({ provides }) => provides?.clientAuth)
+        ? {}
+        : { clientAccess: "public" }),
+    } as Parameters<typeof createHotUpdater>[0]);
+    ({ clientPlugins } = managedServer);
     // The app's credential, through the managed server's plugins, on the tables they read.
     try {
-      credential = await provisionClientCredential(
-        databasePlugin,
-        serverPlugins,
-        {
-          env: initInputEnv,
-          name: "Supabase init",
-        },
-      );
+      credential = await provisionClientCredential(managedServer, {
+        env: initInputEnv,
+        name: "Supabase init",
+      });
       if (credential !== undefined) {
         await makeEnv({ [credential.env]: credential.value });
       }
@@ -1289,7 +1300,7 @@ const runInitWithoutCliMetadata = async ({
   printAppSetup({
     baseURL: getSupabaseFunctionUrl({ functionName, projectId: project.id }),
     ...(credential === undefined ? {} : { credential }),
-    clientPlugins: clientPluginsOf(serverPlugins),
+    clientPlugins,
   });
   reportSupabaseOriginCatalogReady();
 

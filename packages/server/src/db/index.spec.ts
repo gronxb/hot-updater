@@ -25,7 +25,7 @@ import {
   createHotUpdater as createRuntimeHotUpdater,
   type CreateHotUpdaterOptions,
 } from "../index";
-import { createMigrator, generateSchema } from "./index";
+import { createMigrator, generateSchema } from "../tooling.testFixtures";
 
 const createHotUpdater = (
   options: Omit<CreateHotUpdaterOptions, "clientAccess">,

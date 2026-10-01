@@ -10,7 +10,8 @@ import {
 import { createBundleFixture } from "@hot-updater/test-utils";
 import { describe, expect, it } from "vitest";
 
-import { createDatabaseCoreApi, createInProcessCoreApi } from "./api";
+import { createHotUpdater } from "../createHotUpdaterCore";
+import { createInProcessCoreApi } from "./inProcess.testFixtures";
 
 const setup = () => {
   let clock = 1_000;
@@ -398,12 +399,15 @@ describe("cached client routes", () => {
 
   it("takes the purge from a configured database", async () => {
     let purges = 0;
-    const core = createDatabaseCoreApi({
-      name: "memory",
-      adapter: createMemoryAdapter(),
-      onCachedRoutesChange: async () => {
-        purges += 1;
+    const { core } = createHotUpdater({
+      database: {
+        name: "memory",
+        adapter: createMemoryAdapter(),
+        onCachedRoutesChange: async () => {
+          purges += 1;
+        },
       },
+      clientAccess: "public",
     });
 
     await core.deploy([deployment(createBundleFixture("731"))]);

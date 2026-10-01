@@ -39,7 +39,7 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
   p: mockCli.p,
 }));
 
-vi.mock("@hot-updater/server/diff", () => ({
+vi.mock("@/utils/createBundleDiff", () => ({
   createBundleDiff: mockServer.createBundleDiff,
 }));
 
@@ -108,7 +108,7 @@ describe("createPatch", () => {
         bundleId: "target-bundle",
       },
       {
-        database: databaseHarness.database,
+        core: databaseHarness.database.core,
         storageAdapter: mockStorageAdapter,
       },
       {

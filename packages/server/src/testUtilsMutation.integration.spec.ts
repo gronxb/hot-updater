@@ -111,7 +111,6 @@ it("rejects broken providers while the unmodified provider passes the public sui
         `
         import { createHotUpdater } from "@hot-updater/server";
         import { createMemoryAdapter } from "@hot-updater/plugin-core";
-        import { createDatabasePluginApis } from "@hot-updater/server/db";
         import { createInsightsModel, insights } from "@hot-updater/server/plugins/insights";
         import { insightsTestSuite } from "@hot-updater/test-utils";
         import { setupDatabaseTestSuite, startHttpTestServer } from "@hot-updater/test-utils";
@@ -125,7 +124,9 @@ it("rejects broken providers while the unmodified provider passes the public sui
           write: ops => original.write(ops),
         };
         let insightsModel = database =>
-          createInsightsModel(createDatabasePluginApis(database, [insights()]).insights);
+          createInsightsModel(createHotUpdater({
+            database, plugins: [insights()], clientAccess: "public",
+          }).api.insights);
         ${variant.implementation}
         setupDatabaseTestSuite({
           name: ${JSON.stringify(variant.name)},

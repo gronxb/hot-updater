@@ -59,10 +59,19 @@ vi.mock("./dynamodb", async (importOriginal) => ({
   }),
 }));
 
-vi.mock("../src/dynamoDB", () => ({
-  dynamoDB: vi.fn(() => ({ name: "dynamoDB", dispose: vi.fn() })),
-  migrateDynamoDB: mocks.migrateDynamoDB,
-}));
+vi.mock("../src/dynamoDB", async () => {
+  const { createMemoryAdapter } = await vi.importActual<
+    typeof import("@hot-updater/plugin-core")
+  >("@hot-updater/plugin-core");
+  return {
+    dynamoDB: vi.fn(() => ({
+      name: "dynamoDB",
+      adapter: createMemoryAdapter(),
+      dispose: vi.fn(),
+    })),
+    migrateDynamoDB: mocks.migrateDynamoDB,
+  };
+});
 
 vi.mock("./iam", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./iam")>()),
@@ -103,16 +112,13 @@ vi.mock("./lambdaEdge", async (importOriginal) => ({
   }),
 }));
 
-vi.mock("@hot-updater/server/db", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@hot-updater/server/db")>()),
-  provisionClientCredential: mocks.provisionClientCredential,
-}));
-
 vi.mock("@hot-updater/cli-tools", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("@hot-updater/cli-tools")>();
   return {
     ...actual,
+    // The managed server's plugins, over the mocked database.
+    provisionClientCredential: mocks.provisionClientCredential,
     confirmInitInputPersistence: vi.fn(async () => false),
     ensureInstallPackages: vi.fn(),
     makeEnv: vi.fn(),
@@ -352,8 +358,7 @@ describe("AWS init with the project's server definition", () => {
       "notes",
     ]);
     expect(mocks.provisionClientCredential).toHaveBeenCalledWith(
-      expect.anything(),
-      migrated,
+      expect.objectContaining({ plugins: migrated }),
       expect.anything(),
     );
     // The role keeps the access of the version the distribution runs, and

@@ -22,7 +22,7 @@ import {
   definePlugin,
 } from "../plugins/definePlugin";
 import { insights } from "../plugins/insights";
-import { createMigrator, generateSchema } from "./index";
+import { createMigrator, generateSchema } from "../tooling.testFixtures";
 
 const notes = definePlugin({
   id: "notes",
@@ -49,7 +49,7 @@ const notes = definePlugin({
 });
 
 /** `hot-updater db migrate`: the migrator for the server's tables, run. */
-const migrate = async (hotUpdater: { readonly adapterName: string }) => {
+const migrate = async (hotUpdater: Parameters<typeof createMigrator>[0]) => {
   const result = await createMigrator(hotUpdater).migrateToLatest({
     mode: "from-schema",
     updateSettings: true,
@@ -121,8 +121,9 @@ describe("plugin tables in db tooling", () => {
       plugins: [notes],
       clientAccess: "public",
     });
+    // It names the plugin and how to create its tables on this database.
     await expect(hotUpdater.api.notes.read("n1")).rejects.toThrow(
-      'Hot Updater schema setting "schema.notes" for memory is missing; expected "2". Run `hot-updater db migrate`.',
+      'The tables of plugin "notes" are not migrated on memory: schema setting "schema.notes" is missing; expected "2". Run `hot-updater db migrate`; on a managed server, rerun `hot-updater init` for its provider, which deploys the server with these plugins and creates their tables.',
     );
     await expect(hotUpdater.core.listChannels()).rejects.toBeInstanceOf(
       HotUpdaterSchemaMigrationRequiredError,

@@ -11,10 +11,6 @@ import {
 } from "@hot-updater/plugin-core";
 import { createHotUpdater } from "@hot-updater/server";
 import {
-  createDatabaseCoreApi,
-  createDatabasePluginApis,
-} from "@hot-updater/server/db";
-import {
   createInsightsModel,
   insights,
 } from "@hot-updater/server/plugins/insights";
@@ -72,7 +68,11 @@ setupDatabaseTestSuite({
     insightsTestSuite({
       createModel: (database) =>
         createInsightsModel(
-          createDatabasePluginApis(database, [insights()]).insights,
+          createHotUpdater({
+            database,
+            plugins: [insights()],
+            clientAccess: "public",
+          }).api.insights,
         ),
     }),
   ],
@@ -113,7 +113,7 @@ describe("postgres plugin schema", () => {
   it("refuses a database without the schema settings, then serves once they exist", async () => {
     const pglite = new PGlite();
     const database = postgres({ dialect: new PGliteDialect(pglite) });
-    const core = createDatabaseCoreApi(database);
+    const core = createHotUpdater({ database, clientAccess: "public" }).core;
     try {
       await expect(core.listChannels()).rejects.toBeInstanceOf(
         HotUpdaterSchemaMigrationRequiredError,

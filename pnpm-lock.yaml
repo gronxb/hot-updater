@@ -526,6 +526,9 @@ importers:
         specifier: catalog:db
         version: 3.19.1(@types/node@20.19.43)
     devDependencies:
+      '@hot-updater/plugin-core':
+        specifier: workspace:*
+        version: link:../../plugins/plugin-core
       '@hot-updater/test-utils':
         specifier: workspace:*
         version: link:../../packages/test-utils
@@ -1638,6 +1641,9 @@ importers:
       '@hot-updater/apple-helper':
         specifier: workspace:*
         version: link:../apple-helper
+      '@hot-updater/bsdiff':
+        specifier: workspace:*
+        version: link:../bsdiff
       '@hot-updater/cli-tools':
         specifier: workspace:*
         version: link:../cli-tools
@@ -1817,9 +1823,6 @@ importers:
 
   packages/server:
     dependencies:
-      '@hot-updater/bsdiff':
-        specifier: workspace:*
-        version: link:../bsdiff
       '@hot-updater/plugin-api-keys':
         specifier: workspace:*
         version: link:../../plugins/api-keys

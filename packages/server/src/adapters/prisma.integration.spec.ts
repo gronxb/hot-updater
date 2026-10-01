@@ -16,7 +16,6 @@ import { execa } from "execa";
 import mysql from "mysql2/promise";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { createDatabasePluginApis } from "../assembly/databasePlugins";
 import { createHotUpdater } from "../index";
 import { createInsightsModel, insights } from "../plugins/insights";
 import { prismaAdapter } from "./prisma";
@@ -104,7 +103,11 @@ setupDatabaseTestSuite({
     insightsTestSuite({
       createModel: (database) =>
         createInsightsModel(
-          createDatabasePluginApis(database, [insights()]).insights,
+          createHotUpdater({
+            database,
+            plugins: [insights()],
+            clientAccess: "public",
+          }).api.insights,
         ),
     }),
   ],

@@ -1,7 +1,12 @@
 // @vitest-environment node
 
-import type { HotUpdaterCoreApi } from "@hot-updater/plugin-core";
+import type {
+  AnyHotUpdaterPlugin,
+  EngineDatabase,
+  HotUpdaterCoreApi,
+} from "@hot-updater/plugin-core";
 import { createMemoryAdapter } from "@hot-updater/plugin-core";
+import { createHotUpdater } from "@hot-updater/server";
 import { insights } from "@hot-updater/server/plugins/insights";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -42,6 +47,23 @@ import {
   getRecoveryReportRpc,
 } from "./insights-recovery-rpc";
 
+/** The console over a server definition that runs `plugins` on `database`. */
+const definitionRuntime = (
+  database: EngineDatabase,
+  plugins: readonly AnyHotUpdaterPlugin[] = [],
+) =>
+  createConsoleRuntime({
+    database,
+    plugins,
+    api: createHotUpdater({
+      database,
+      plugins,
+      ...(plugins.some(({ provides }) => provides?.clientAuth)
+        ? {}
+        : { clientAccess: "public" }),
+    } as Parameters<typeof createHotUpdater>[0]).api,
+  });
+
 const memoryDatabase = () => ({
   name: "memory",
   adapter: createMemoryAdapter(),
@@ -49,10 +71,7 @@ const memoryDatabase = () => ({
 
 /** A console that runs insights() over its database, and the model it reads. */
 const withInsights = async () => {
-  const runtime = createConsoleRuntime({
-    database: memoryDatabase(),
-    plugins: [insights()],
-  });
+  const runtime = definitionRuntime(memoryDatabase(), [insights()]);
   mocks.prepare.mockResolvedValue({ runtime });
   return requireFeature(runtime, "insightsAnalytics");
 };
@@ -122,7 +141,7 @@ describe("activity the console does not serve", () => {
   it.each([
     [
       "without insights()",
-      createConsoleRuntime({ database: memoryDatabase() }),
+      definitionRuntime(memoryDatabase()),
       "without the insights() plugin",
     ],
     [

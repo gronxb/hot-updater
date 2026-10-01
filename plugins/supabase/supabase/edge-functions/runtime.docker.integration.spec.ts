@@ -25,10 +25,6 @@ import {
 import type { AnyHotUpdaterPlugin, CoreReader } from "@hot-updater/plugin-core";
 import type { Bundle } from "@hot-updater/protocol";
 import { createHotUpdater } from "@hot-updater/server";
-import {
-  createDatabaseCoreApi,
-  createDatabasePluginApis,
-} from "@hot-updater/server/db";
 import { apiKeys } from "@hot-updater/server/plugins/api-keys";
 import {
   createInsightsModel,
@@ -222,7 +218,7 @@ describe.sequential("supabase edge runtime acceptance", () => {
 
   /** Registers the API key the edge function's client routes accept. */
   const registerRuntimeApiKey = () =>
-    createDatabasePluginApis(database, [apiKeys()]).apiKeys.register({
+    createHotUpdater({ database, plugins: [apiKeys()] }).api.apiKeys.register({
       apiKey: API_KEY,
       name: "Runtime acceptance",
     });
@@ -355,7 +351,7 @@ describe.sequential("supabase edge runtime acceptance", () => {
       supabaseServiceRoleKey: SERVICE_ROLE_KEY,
     });
     await registerRuntimeApiKey();
-    core = createDatabaseCoreApi(database);
+    core = createHotUpdater({ database, clientAccess: "public" }).core;
 
     edgeRuntime = spawnRuntime({
       command: "docker",
@@ -462,19 +458,24 @@ describe.sequential("supabase edge runtime acceptance", () => {
       insightsTestSuite({
         createModel: (database) =>
           createInsightsModel(
-            createDatabasePluginApis(database, [insights()]).insights,
+            createHotUpdater({
+              database,
+              plugins: [insights()],
+              clientAccess: "public",
+            }).api.insights,
           ),
       }),
     ],
   });
 
   it("returns one canonical Channel row under concurrent inserts", async () => {
-    const core = createDatabaseCoreApi(
-      supabaseDatabase({
+    const core = createHotUpdater({
+      database: supabaseDatabase({
         supabaseUrl: gatewayBaseUrl,
         supabaseServiceRoleKey: SERVICE_ROLE_KEY,
       }),
-    );
+      clientAccess: "public",
+    }).core;
     const channelName = "concurrent-channel";
     const results = await Promise.all([
       core.ensureChannel(channelName),

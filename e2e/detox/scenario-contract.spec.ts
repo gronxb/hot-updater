@@ -685,13 +685,12 @@ describe("Detox scenario contract", () => {
   });
 
   it("resolves deployed console IDs to files and keeps artifact cleanup independent of Releases", async () => {
-    const { createDatabaseHarness } =
-      await import("../../packages/hot-updater/src/commands/database.testFixtures.ts");
-    const { commitDeployment } =
-      await import("../../packages/hot-updater/src/commands/deployTransaction.ts");
-    const { rowToBundle } =
-      await import("../../plugins/plugin-core/dist/index.mjs");
-    const harness = createDatabaseHarness();
+    const { createMemoryCore } = await import("./memory-core.ts");
+    const { importPublished } = await import("./published.ts");
+    const { rowToBundle } = await importPublished<
+      typeof import("@hot-updater/plugin-core")
+    >("@hot-updater/plugin-core");
+    const harness = createMemoryCore();
     const base = {
       assetBaseStorageUri: "storage://assets",
       gitCommitHash: null,
@@ -720,8 +719,7 @@ describe("Detox scenario contract", () => {
       base,
       { ...base, id: "android-file", platform: "android" },
     ]);
-    const { release } = await commitDeployment({
-      core: harness.core,
+    const { release } = await harness.deploy({
       bundle: file,
       release: {
         channel: "production",

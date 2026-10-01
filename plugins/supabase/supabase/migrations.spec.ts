@@ -2,17 +2,13 @@ import fs from "node:fs/promises";
 import path from "node:path";
 
 import { PGlite } from "@electric-sql/pglite";
+import { createMigrator, generateSchema } from "@hot-updater/cli-tools";
 import {
   toolingTargetOf,
   definePlugin,
   defineTable,
 } from "@hot-updater/plugin-core";
 import { createHotUpdater } from "@hot-updater/server";
-import {
-  createDatabasePluginApis,
-  createMigrator,
-  generateSchema,
-} from "@hot-updater/server/db";
 import {
   createInsightsModel,
   insights,
@@ -235,8 +231,9 @@ describe("Supabase schema", () => {
     const db = await createDatabase();
     state.db = db;
     try {
+      // Its tables come from migration files, which the fix names.
       await expect(hotUpdater.api.notes.read("n1")).rejects.toThrow(
-        '"schema.notes" for supabaseDatabase is missing',
+        'The tables of plugin "notes" are not migrated on supabaseDatabase: schema setting "schema.notes" is missing; expected "1". Run `hot-updater db generate` and apply the file it writes',
       );
       await db.exec(
         `RESET ROLE; ${migration.code} GRANT ALL ON ALL TABLES IN SCHEMA public TO service_role; SET ROLE service_role;`,
@@ -292,7 +289,11 @@ describe("supabaseDatabase over the apply RPC", () => {
       insightsTestSuite({
         createModel: (database) =>
           createInsightsModel(
-            createDatabasePluginApis(database, [insights()]).insights,
+            createHotUpdater({
+              database,
+              plugins: [insights()],
+              clientAccess: "public",
+            }).api.insights,
           ),
       }),
     ],

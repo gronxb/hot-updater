@@ -37,7 +37,6 @@ Connect your database's lifecycle and the real server:
 
 ```ts
 import { createHotUpdater } from "@hot-updater/server";
-import { createDatabasePluginApis } from "@hot-updater/server/db";
 import {
   createInsightsModel,
   insights,
@@ -73,9 +72,14 @@ setupDatabaseTestSuite({
   // The server above runs insights(), so its suite runs too.
   plugins: [
     insightsTestSuite({
+      // The plugin's API on the database, as a server running it assembles it.
       createModel: (database) =>
         createInsightsModel(
-          createDatabasePluginApis(database, [insights()]).insights,
+          createHotUpdater({
+            database,
+            plugins: [insights()],
+            clientAccess: "public",
+          }).api.insights,
         ),
     }),
   ],

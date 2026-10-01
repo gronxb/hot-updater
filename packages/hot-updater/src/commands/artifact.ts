@@ -7,7 +7,6 @@ import type {
   ReleaseRow,
 } from "@hot-updater/plugin-core";
 import { rowToBundle } from "@hot-updater/plugin-core";
-import { createDatabaseCoreApi } from "@hot-updater/server/db";
 
 import { type LoadedServer, loadServer } from "@/utils/loadServer";
 
@@ -141,9 +140,8 @@ export const handleArtifactDelete = async (
   }
 
   const server = await loadServer(await loadConfig(null));
-  const database = server.database;
   try {
-    const core = createDatabaseCoreApi(database);
+    const core = server.core;
     const details = await Promise.all(ids.map((id) => core.getBundle(id)));
     const matchedById = new Map(
       details.flatMap((detail) =>

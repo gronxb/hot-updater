@@ -7,7 +7,7 @@ import {
   createEngine,
   createKvAdapter,
 } from "@hot-updater/plugin-core";
-import { createDatabasePluginApis } from "@hot-updater/server/db";
+import { createHotUpdater } from "@hot-updater/server";
 import {
   insights,
   type BundleEventRow,
@@ -361,9 +361,11 @@ describe("Insights write budgets on DynamoDB Local", () => {
     const tableName = local.tableName();
     const store = createDynamoDBStore({ client, tableName });
     await store.migrations!.apply();
-    const api = createDatabasePluginApis(createKvAdapter({ store }), [
-      insights(),
-    ]).insights;
+    const api = createHotUpdater({
+      database: { name: "dynamoDB", adapter: createKvAdapter({ store }) },
+      plugins: [insights()],
+      clientAccess: "public",
+    }).api.insights;
 
     const measured: Record<string, Measured> = {};
     for (const step of SCENARIO) {

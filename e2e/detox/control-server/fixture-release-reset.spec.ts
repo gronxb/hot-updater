@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 
-import { createDatabaseHarness } from "../../../packages/hot-updater/src/commands/database.testFixtures.ts";
-import { commitDeployment } from "../../../packages/hot-updater/src/commands/deployTransaction.ts";
-import type { Bundle } from "../../../plugins/plugin-core/dist/index.mjs";
+import type { Bundle } from "@hot-updater/plugin-core";
+
+import { createMemoryCore } from "../memory-core.ts";
 import { resetFixtureReleases } from "./fixture-release-reset.ts";
 
 const artifact = (
@@ -20,7 +20,7 @@ const artifact = (
 
 describe("Detox fixture Release reset", () => {
   it("clears only the current platform and namespace while preserving shared artifacts and patches", async () => {
-    const harness = createDatabaseHarness();
+    const harness = createMemoryCore();
     const { core } = harness;
     const namespace = "e2e-current-job-ios-s1";
     const base = artifact(1);
@@ -28,8 +28,7 @@ describe("Detox fixture Release reset", () => {
     await harness.setBundles([orphan]);
     const deploy = async (bundle: Bundle, channel: string, enabled = true) =>
       (
-        await commitDeployment({
-          core: harness.core,
+        await harness.deploy({
           bundle,
           release: {
             channel,
@@ -116,7 +115,7 @@ describe("Detox fixture Release reset", () => {
   it.each([null, "", " \t"])(
     "rejects missing namespace %j before accessing the provider",
     async (namespace) => {
-      const harness = createDatabaseHarness();
+      const harness = createMemoryCore();
 
       await expect(
         resetFixtureReleases({
@@ -126,7 +125,7 @@ describe("Detox fixture Release reset", () => {
         }),
       ).rejects.toThrow("HOT_UPDATER_E2E_CHANNEL_NAMESPACE");
 
-      expect(harness.read).not.toHaveBeenCalled();
+      expect(harness.reads()).toBe(0);
     },
   );
 });

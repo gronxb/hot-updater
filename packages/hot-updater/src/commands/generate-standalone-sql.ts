@@ -2,6 +2,7 @@ import { access, mkdir, writeFile } from "fs/promises";
 import path from "path";
 
 import { p } from "@hot-updater/cli-tools";
+import type { AnyHotUpdaterPlugin } from "@hot-updater/plugin-core";
 import { Kysely, MysqlDialect, PostgresDialect, SqliteDialect } from "kysely";
 import {
   formatDialect,
@@ -128,7 +129,7 @@ const getProvider = async (
 const findServerPlugins = async (
   configPath: string | undefined,
   cwd: string,
-): Promise<readonly unknown[]> => {
+): Promise<readonly AnyHotUpdaterPlugin[]> => {
   const failures: string[] = [];
   const found = await findPluginList(
     configPath === undefined ? [] : [configPath],
@@ -171,13 +172,8 @@ export async function generateStandaloneSQL(options: {
     s.start("Generating SQL from database schema");
 
     const db = new Kysely<object>({ dialect: createDialect(dbType) });
-    const [
-      { toolingTargetOf },
-      { createDatabasePluginApis },
-      { kyselyAdapter },
-    ] = await Promise.all([
+    const [{ toolingTargetOf }, { kyselyAdapter }] = await Promise.all([
       import("@hot-updater/plugin-core"),
-      import("@hot-updater/server/db"),
       import("@hot-updater/server/adapters/kysely"),
     ]);
 
@@ -186,11 +182,8 @@ export async function generateStandaloneSQL(options: {
       provider: dbType,
     });
 
-    // Checks the plugins as a server starting with them does.
-    createDatabasePluginApis(adapter, plugins);
-    const migrator = adapter.createMigrator!(
-      toolingTargetOf(plugins as Parameters<typeof toolingTargetOf>[0]),
-    );
+    // The definition that lists the plugins checked them as it started.
+    const migrator = adapter.createMigrator!(toolingTargetOf(plugins));
     const result = await migrator.migrateToLatest({
       mode: "from-schema",
       updateSettings: false,

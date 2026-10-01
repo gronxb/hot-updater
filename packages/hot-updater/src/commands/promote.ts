@@ -1,6 +1,5 @@
 import { loadConfig, p } from "@hot-updater/cli-tools";
 import type { ReleaseRow } from "@hot-updater/plugin-core";
-import { createDatabaseCoreApi } from "@hot-updater/server/db";
 
 import { type LoadedServer, loadServer } from "@/utils/loadServer";
 import { printBanner } from "@/utils/printBanner";
@@ -60,9 +59,8 @@ export const handlePromote = async (
   }
   const action = options.action ?? "copy";
   const server = await loadServer(await loadConfig(null));
-  const database = server.database;
   try {
-    const core = createDatabaseCoreApi(database);
+    const core = server.core;
     const [source, channels] = await Promise.all([
       core.getRelease(sourceReleaseId),
       core.listChannels(),

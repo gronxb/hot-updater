@@ -1,6 +1,6 @@
 import { DatabaseSync } from "node:sqlite";
 
-import { createDatabaseCoreApi } from "@hot-updater/server/db";
+import { createHotUpdater } from "@hot-updater/server";
 import {
   createBundleFixture,
   createBundleRowFixture,
@@ -17,8 +17,8 @@ it("reads through the binding's statements and writes each change as one batch",
     d1SchemaStatements(),
   );
   const calls = { all: 0, batch: 0 };
-  const core = createDatabaseCoreApi(
-    d1Database({
+  const core = createHotUpdater({
+    database: d1Database({
       prepare: (sql) => ({
         bind: (...params) => ({
           sql,
@@ -39,7 +39,8 @@ it("reads through the binding's statements and writes each change as one batch",
         );
       },
     }),
-  );
+    clientAccess: "public",
+  }).core;
   const bundle = createBundleFixture("1");
   await core.ensureChannel("production");
   await core.deploy([

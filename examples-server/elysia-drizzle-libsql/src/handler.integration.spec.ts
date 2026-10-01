@@ -2,8 +2,8 @@ import fs from "fs/promises";
 import path from "path";
 import { fileURLToPath } from "url";
 
+import { createHotUpdater } from "@hot-updater/server";
 import { drizzleAdapter } from "@hot-updater/server/adapters/drizzle";
-import { createDatabasePluginApis } from "@hot-updater/server/db";
 import {
   createInsightsModel,
   insights as insightsPlugin,
@@ -107,10 +107,11 @@ describe("Hot Updater Handler Integration Tests (Elysia)", () => {
   it("rolls back a lazy Insights event whose head update fails, then records the retry", async () => {
     const { db, client } = await import("./drizzle.js");
     const insights = createInsightsModel(
-      createDatabasePluginApis(
-        drizzleAdapter({ db: async () => db, provider: "sqlite" }),
-        [insightsPlugin()],
-      ).insights,
+      createHotUpdater({
+        database: drizzleAdapter({ db: async () => db, provider: "sqlite" }),
+        plugins: [insightsPlugin()],
+        clientAccess: "public",
+      }).api.insights,
     );
     const previous = {
       id: "00000000-0000-7000-8000-000000009880",

@@ -2,9 +2,7 @@ import { spawnSync } from "node:child_process";
 
 import { describe, expect, it, vi } from "vitest";
 
-import { createMemoryAdapter } from "../../plugins/plugin-core/src/index.ts";
-import { createHotUpdater } from "../../packages/server/src/index.ts";
-import { insights } from "../../packages/server/src/plugins/insights/index.ts";
+import { importPublished } from "./published.ts";
 import {
   readObservedInsightsEvent,
   verifyConsoleInsights,
@@ -14,6 +12,16 @@ import {
   ConsoleInsightsHttpError,
   createConsoleInsightsHttpClient,
 } from "./insights-http-client.ts";
+
+const { createMemoryAdapter } = await importPublished<
+  typeof import("@hot-updater/plugin-core")
+>("@hot-updater/plugin-core");
+const { createHotUpdater } = await importPublished<
+  typeof import("@hot-updater/server")
+>("@hot-updater/server");
+const { insights } = await importPublished<
+  typeof import("@hot-updater/server/plugins/insights")
+>("@hot-updater/server/plugins/insights");
 
 describe("Detox Insights HTTP client", () => {
   it("loads under the Node strip-types mode used by the Detox control server", () => {

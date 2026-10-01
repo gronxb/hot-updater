@@ -49,6 +49,35 @@ export default defineConfig({
   `hot-updater db migrate src/hotUpdater.ts`, loads `.env.hotupdater` itself
   without running `hot-updater.config.ts`.
 
+### What the CLI reads from the definition
+
+The CLI and the Console read the server through the public, read-only
+properties of the object `createHotUpdater` returns:
+
+| Property          | What it holds                                                                                          | What reads it                                         |
+| ----------------- | ------------------------------------------------------------------------------------------------------ | ----------------------------------------------------- |
+| `core`            | Core's reads and writes: bundles, Releases, Release Catalogs, and channels                             | `deploy`, `patch`, the `bundle` commands, the Console |
+| `api`             | Each plugin's API by plugin id                                                                         | The plugins' commands, the Console's plugin features  |
+| `database`        | The database as configured, with its tooling                                                           | `db generate`, `db migrate`                           |
+| `storage`         | The storage as configured, in order                                                                    | Uploads go to the first; the Console reads by protocol |
+| `plugins`         | The plugins as configured                                                                              | The plugins' commands, `db` tooling                   |
+| `clientPlugins`   | The client plugins the app adds to `HotUpdater.init`                                                   | `init`, `doctor`                                      |
+| `clientEndpoints` | The plugins' endpoints on `handlers.client`                                                            | Managed init, which routes them through the CDN       |
+| `clientAuth`      | The plugin that guards client routes and the headers its decision reads; absent when routes are public | Managed init, which keys the CDN cache on the headers |
+
+Commands write through `core`, the path the server's own writes take:
+
+- A plugin whose migration has not run stops a command before it reads or
+  writes. The error names the plugin and the fix: `hot-updater db migrate`, or
+  `hot-updater db generate` for a database migrated from files; on a managed
+  server, rerun `hot-updater init`.
+- When a retention pass is due, a write first deletes expired rows of plugins'
+  tables, such as Insights' events. The server and the CLI share one lease,
+  due every hour, or every minute while a backlog remains. A pass deletes at
+  most 500 rows a table, and a pass that fails, such as for credentials that
+  cannot delete, only logs a warning; the write goes ahead.
+- A write that changes a Release Catalog purges the CDN once, as before.
+
 ## Reach a self-hosted server
 
 Install the CLI dependencies in your React Native project:

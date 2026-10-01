@@ -4,6 +4,7 @@ import {
   createStorageAdapter,
   createMemoryAdapter,
 } from "@hot-updater/plugin-core";
+import { createHotUpdater } from "@hot-updater/server";
 import { apiKeys } from "@hot-updater/server/plugins/api-keys";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -57,10 +58,18 @@ describe("config.server", () => {
   it("caches the loaded config and reuses core and the runtime", async () => {
     const database = createTestDatabase("db");
     const storageAdapter = createTestStorageAdapter();
+    const plugins = [apiKeys()];
+    const server = createHotUpdater({
+      database,
+      storage: [storageAdapter],
+      plugins,
+    });
 
     resolveConsoleConfigMock.mockResolvedValue({
       database,
-      plugins: [apiKeys()],
+      core: server.core,
+      plugins,
+      api: server.api,
       storage: [storageAdapter],
     });
 
@@ -73,7 +82,9 @@ describe("config.server", () => {
 
     expect(requireConsoleAccessMock).toHaveBeenCalledTimes(2);
     expect(resolveConsoleConfigMock).toHaveBeenCalledTimes(1);
-    expect(first.core).toBe(second.core);
+    // The definition's core: the console writes on the server's own path.
+    expect(first.core).toBe(server.core);
+    expect(second.core).toBe(server.core);
     expect(first.config.database).toBe(database);
     expect(second.runtime).toBe(first.runtime);
     await expect(first.runtime.features()).resolves.toEqual({
@@ -179,20 +190,29 @@ describe("config.server", () => {
     expect(consoleErrorSpy).not.toHaveBeenCalled();
   });
 
-  it("refuses a database that is not on the storage engine", async () => {
+  it("reports a server it cannot read, and reads it again on the next request", async () => {
     const consoleErrorSpy = vi
       .spyOn(console, "error")
       .mockImplementation(() => undefined);
-    resolveConsoleConfigMock.mockResolvedValue({
-      database: { name: "old-provider", models: {} },
-      storage: [createTestStorageAdapter()],
-    });
+    resolveConsoleConfigMock.mockRejectedValueOnce(
+      new Error(
+        "The console's server comes from an older @hot-updater/server. Upgrade @hot-updater/server to the version of @hot-updater/console.",
+      ),
+    );
 
     const { prepareConfig } = await import("./config.server");
 
     await expect(prepareConfig(request)).rejects.toThrow(
-      "Upgrade its provider package to 1.0.",
+      "Upgrade @hot-updater/server to the version of @hot-updater/console.",
     );
     expect(consoleErrorSpy).toHaveBeenCalledOnce();
+    resolveConsoleConfigMock.mockResolvedValue({
+      database: createTestDatabase("db"),
+      core: {},
+      storage: [],
+    });
+    await expect(prepareConfig(request)).resolves.toMatchObject({
+      storage: [],
+    });
   });
 });

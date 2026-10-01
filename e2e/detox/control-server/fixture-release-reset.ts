@@ -1,4 +1,4 @@
-import type { HotUpdaterCoreApi } from "../../../plugins/plugin-core/dist/index.mjs";
+import type { HotUpdaterCoreApi } from "@hot-updater/plugin-core";
 
 const PAGE = 500;
 

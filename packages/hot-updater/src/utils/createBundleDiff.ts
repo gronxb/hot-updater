@@ -6,7 +6,7 @@ import { brotliDecompress } from "node:zlib";
 import { hdiff } from "@hot-updater/bsdiff";
 import type {
   Bundle,
-  ConfiguredDatabase,
+  HotUpdaterCoreApi,
   StorageAdapterWith,
 } from "@hot-updater/plugin-core";
 import {
@@ -21,8 +21,6 @@ import {
   getBundlePatches,
   getManifestStorageUri,
 } from "@hot-updater/protocol";
-
-import { createDatabaseCoreApi } from "../core/api";
 
 type BundleManifest = {
   bundleId: string;
@@ -43,8 +41,8 @@ export interface CreateBundleDiffInput {
 }
 
 export interface CreateBundleDiffDependencies {
-  /** The config's database: a provider's, or `standaloneRepository`. */
-  database: ConfiguredDatabase;
+  /** Core's API: the server definition's, or a self-hosted server's admin API. */
+  core: Pick<HotUpdaterCoreApi, "getBundle" | "updateBundle">;
   storageAdapter: StorageAdapterWith<"get" | "put" | "delete"> | null;
 }
 
@@ -158,7 +156,8 @@ function resolveHbcAssetPath(manifest: BundleManifest) {
     .sort((left, right) => left.localeCompare(right))
     .filter((candidate) => HBC_ASSET_PATH_RE.test(candidate));
 
-  if (candidates.length === 0) {
+  const [candidate] = candidates;
+  if (candidate === undefined) {
     throw new Error("No Hermes bundle asset found in manifest");
   }
   if (candidates.length > 1) {
@@ -167,7 +166,7 @@ function resolveHbcAssetPath(manifest: BundleManifest) {
     );
   }
 
-  return candidates[0];
+  return candidate;
 }
 
 async function fetchAssetBytes(
@@ -242,7 +241,7 @@ export async function createBundleDiff(
   deps: CreateBundleDiffDependencies,
   options: CreateBundleDiffOptions = {},
 ) {
-  const core = createDatabaseCoreApi(deps.database);
+  const { core } = deps;
 
   if (!deps.storageAdapter) {
     throw new Error("Storage adapter is not configured");

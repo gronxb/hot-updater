@@ -22,6 +22,7 @@ export * from "./initProvider";
 export * from "./initOptions";
 export * from "./LogWriter";
 export * from "./loadConfig";
+export * from "./serverDefinition";
 export * from "./serverModule";
 export * from "./log";
 export * from "./makeEnv";

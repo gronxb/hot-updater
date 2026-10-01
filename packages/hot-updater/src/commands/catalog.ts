@@ -3,7 +3,6 @@ import type {
   HotUpdaterCoreApi,
   ReleaseCatalogRow,
 } from "@hot-updater/plugin-core";
-import { createDatabaseCoreApi } from "@hot-updater/server/db";
 
 import { loadServer } from "@/utils/loadServer";
 
@@ -74,9 +73,8 @@ export const handleCatalogPreflight = async (
 ) => {
   if (!options.json) printBanner();
   const server = await loadServer(await loadConfig(null));
-  const database = server.database;
   try {
-    const core = createDatabaseCoreApi(database);
+    const core = server.core;
     const scopes = await catalogScopeKeys(core, scopeKeys);
     const results = await Promise.all(
       scopes.map(async (scopeKey) => {
@@ -121,9 +119,8 @@ export const handleCatalogRebuild = async (
 ) => {
   if (!options.json) printBanner();
   const server = await loadServer(await loadConfig(null));
-  const database = server.database;
   try {
-    const core = createDatabaseCoreApi(database);
+    const core = server.core;
     const scopes = await catalogScopeKeys(core, scopeKeys);
     const preflight = await Promise.all(
       scopes.map(async (scopeKey) => ({
