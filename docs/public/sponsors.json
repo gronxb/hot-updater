@@ -15,17 +15,17 @@
       "weight": 0.476
     },
     {
-      "login": "claudesortwell",
-      "avatarUrl": "https://avatars.githubusercontent.com/u/41422239?u=62aa6ed5b4084595175b5fdc42d2edb5598e914b&v=4",
-      "name": "Claude",
-      "url": "https://github.com/claudesortwell",
-      "weight": 0.238
-    },
-    {
       "login": "Davescat",
       "avatarUrl": "https://avatars.githubusercontent.com/u/47789084?u=011ae9b93ad68924bf2bce311eb102bd6337e00b&v=4",
       "name": "Davide Catalano",
       "url": "https://github.com/Davescat",
+      "weight": 0.262
+    },
+    {
+      "login": "claudesortwell",
+      "avatarUrl": "https://avatars.githubusercontent.com/u/41422239?u=62aa6ed5b4084595175b5fdc42d2edb5598e914b&v=4",
+      "name": "Claude",
+      "url": "https://github.com/claudesortwell",
       "weight": 0.238
     },
     {
@@ -141,5 +141,5 @@
       "weight": 0.005
     }
   ],
-  "updatedAt": "2026-09-23T03:31:17Z"
+  "updatedAt": "2026-10-01T04:23:31Z"
 }
