@@ -36,8 +36,7 @@ Removed from `@hot-updater/server`. All of these shipped in rc.18:
 Over a direct database, the CLI and the console run `createHotUpdater` with the database, storage, and plugins in their config. They write through its `core`, the same path the server's own writes take, and call plugins through its `api`:
 
 - **Missing plugin migrations.** A command stops before it reads or writes if a plugin's migration has not run. `HotUpdaterSchemaMigrationRequiredError` lists every missing or stale settings row in `settings` and names their plugins in `plugins`. Its message gives the fix for the database:
-  - `hot-updater db migrate`;
-  - `hot-updater db generate`, for a database migrated from files;
+  - `hot-updater db migrate`, or `hot-updater db generate` for a database migrated from files, run in the server's project: the `db` commands load the server file and don't read `hot-updater.config.ts`;
   - on a managed server, rerunning `hot-updater init --provider <provider>`.
 - **Expired rows on SQL databases.** When a retention pass is due, a write first deletes expired rows from plugins' tables:
   - The server and the CLI share one lease.

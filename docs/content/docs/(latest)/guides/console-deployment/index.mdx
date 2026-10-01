@@ -113,9 +113,10 @@ export default defineConsoleConfig({
 });
 ```
 
-With `insights()` in `plugins`, the console reads Insights events and
-installations from the server's admin handler. App usage, bundle activity, and
-API keys need the server's database adapter as `database`.
+With `insights()` in `plugins`, the console reads the server's Insights
+overview, events, installations, update failures, and retention periods from
+its admin handler. App usage, bundle activity, and API keys need the server's
+database adapter as `database`.
 `defineConsoleConfig` also takes a function of the request that returns the
 configuration, for hosts that pass their bindings with each request, as the
 Cloudflare Worker example does.

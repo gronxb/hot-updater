@@ -91,7 +91,8 @@ or drops one. The CLI and the Console learn the server's plugins from it:
 - [`hot-updater doctor`](/docs/guides/doctor#check-client-plugins) checks that
   the app adds the client plugins they name.
 - The Console shows the features of the official plugins listed: through
-  `standaloneRepository`, Insights events and installations.
+  `standaloneRepository`, the server's Insights overview, events,
+  installations, update failures, and retention periods.
 - [`hot-updater api-key`](/docs/custom/api-key-authentication#manage-api-keys)
   manages keys through `apiKeys()`, over the server's database adapter.
 
@@ -105,10 +106,13 @@ adapter instead, such as `kyselyAdapter(...)`. The CLI then assembles core over
 through it, the path the server's own writes take:
 
 - A plugin whose migration has not run stops a command before it reads or
-  writes. The error names the plugin and the fix: `hot-updater db migrate`, or
-  `hot-updater db generate` for a database migrated from files; on a managed
-  server, rerun `hot-updater init --provider <provider>`. A plugin the server
-  doesn't run has no settings row, so listing one stops these commands too.
+  writes. The error names the plugin and the fix. For a self-hosted server,
+  run `hot-updater db migrate`, or `hot-updater db generate` for a database
+  migrated from files, in the server's project: the `db` commands load the
+  server file, such as `src/hotUpdater.ts`, and don't read
+  `hot-updater.config.ts`. For a managed server, rerun
+  `hot-updater init --provider <provider>`. A plugin the server doesn't run
+  has no settings row, so listing one stops these commands too.
 - When a retention pass is due, a write first deletes expired rows of plugins'
   tables, such as Insights' events. The server and the CLI share one lease,
   due every hour, or every minute while a backlog remains. A pass deletes at
@@ -133,8 +137,9 @@ for alternate authentication headers.
 
 With `standaloneRepository`, the [server plugins](/docs/custom/server-plugins)
 run only on the server. The Console reads the server's Insights overview,
-events, and installations from its admin handler; App usage, bundle activity,
-and API key management need the server's database adapter as `database`. To
+events, installations, update failures, and retention periods from its admin
+handler; App usage, bundle activity, and API key management need the server's
+database adapter as `database`. To
 manage API keys, run `hot-updater api-key` in the server project with the path
 of the file that creates `hotUpdater`, as in
 [Manage API keys](/docs/custom/api-key-authentication#manage-api-keys).

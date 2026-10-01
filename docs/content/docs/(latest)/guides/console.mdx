@@ -48,8 +48,9 @@ The console shows the built-in pages of the
 [server plugins](/docs/custom/server-plugins) that `plugins` lists: the Insights
 pages with `insights()`, and API key management with `apiKeys()`. With a direct
 database adapter, it runs them over that database, as the server does; through
-`standaloneRepository`, it shows Insights events and installations only, as
-[Security model](#security-model) describes.
+`standaloneRepository`, it reads the server's Insights overview, events,
+installations, update failures, and retention periods from the admin handler,
+as [Security model](#security-model) describes.
 `hot-updater init` writes the managed provider's `plugins` there. Without
 them, the console shows neither Insights nor API keys. A deployed console takes
 the same list as
@@ -83,9 +84,9 @@ authenticates browser users, while the framework middleware in front of
 `handlers.admin` authenticates Console-to-server requests. The Console's own
 `/api/*` routes belong to the Console application and are not the Hot Updater
 admin API. Through the standalone repository, the Console reads the server's
-Insights overview, events, installations, and update failures from the admin
-handler. App usage, Release health, bundle activity, and API key management
-need a direct database adapter.
+Insights overview, events, installations, update failures, and retention
+periods from the admin handler. App usage, Release health, bundle activity,
+and API key management need a direct database adapter.
 
 Use Bundle commands for automation and CI scripts:
 

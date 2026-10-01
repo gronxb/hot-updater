@@ -62,7 +62,7 @@ const listed = (items: readonly string[]) =>
 
 /** How to create plugins' tables when the fence was given no fix. */
 const PLUGIN_TABLES_FIX =
-  "Run `hot-updater db migrate`. A managed server runs only its provider's plugins, and rerunning `hot-updater init --provider <provider>` applies the provider's migrations.";
+  "Run `hot-updater db migrate`. A managed server runs only its provider's plugins, and rerunning `hot-updater init --provider <provider>` applies the provider's migrations. Run `hot-updater db` commands in the server's project: they load the server file named on the command line, or src/hotUpdater.* or src/db.*, and don't read hot-updater.config.ts.";
 
 const pluginsMessage = (
   adapterName: string,

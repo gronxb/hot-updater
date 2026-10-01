@@ -44,7 +44,7 @@ selections, it writes the scaffold and returns its absolute paths:
 | Output | Purpose |
 | --- | --- |
 | Provider deployment files | Server runtime, migrations, bindings, indexes and deployment configuration |
-| `app/` | App configuration templates, client-key provisioning and server verification helpers |
+| `app/` | The selected build's app configuration, client-key provisioning and server verification helpers |
 | `env.example` and `ENVIRONMENT.md` | Variable names, purposes, required or conditional status, and where to obtain values |
 | `COMMON.md` and `SETUP.md` | Project discovery, secure access, provider setup, verification and retry instructions |
 | `manifest.json` and `deployment.json` | Target versions/file hashes and a record for pending actions and verified outcomes |
@@ -115,10 +115,10 @@ the complete upgrade path.
 | AWS | Lambda bundle and dependencies, CloudFront specifications, DynamoDB/IAM JSON inputs and SSM references |
 | Firebase | Built Functions project, dependencies, Firebase config, Firestore indexes |
 
-The `app/` directory contains a `hot-updater.config.ts` template for each
-build adapter, with the provider's storage, database and `plugins`, and a
-client API-key helper. The helper provisions the key through `hotUpdater.ts`
-beside it (plus `migrate.ts` for Firestore), which stays in the scaffold.
+The `app/` directory contains `hot-updater.config.ts` for the selected
+`--build`, with the provider's storage, database and `plugins`, and a client
+API-key helper. The helper provisions the key through `hotUpdater.ts` beside
+it (plus `migrate.ts` for Firestore), which stays in the scaffold.
 `env.example` lists local provider settings; `ENVIRONMENT.md` explains
 each variable's purpose, when it is needed and where to obtain it. The JSON
 `environment` field points to that guide. The agent merges the config's

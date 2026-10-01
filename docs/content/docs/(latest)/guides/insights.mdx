@@ -227,9 +227,10 @@ it reads Insights depends on its `database`:
 
 - With a direct database, it runs `insights()` over that database, as the
   server does.
-- With `standaloneRepository`, it reads Insights events, installations, and
-  update failures from the server's admin handler. App usage, Release health,
-  and bundle activity need a direct database configuration.
+- With `standaloneRepository`, it reads the Insights overview, events,
+  installations, update failures, and retention periods from the server's
+  admin handler. App usage, Release health, and bundle activity need a direct
+  database configuration.
 
 The Bundles list and detail show lifetime **Downloads**, **Active days**, and
 **Known crashes** for each Release ID. These count received download reports,
@@ -381,8 +382,15 @@ milliseconds, for a period of at most 30 days, which a channel without
 | An installation's latest report | 13 months after the installation last reports |
 | Lifetime counters and failed installations per Release ID (Bundles list and detail) | Kept |
 
-Set the periods on the plugin, in the server's `createHotUpdater` and in
-`hot-updater.config.ts`:
+A managed server runs the official plugins with their default settings,
+retention included. In a managed project, keep `plugins` in
+`hot-updater.config.ts` as init writes it, the provider package's list:
+plugins with other settings there would make the CLI prune with settings the
+server doesn't use.
+
+On a self-hosted server, set the periods on the plugin in the server's
+`createHotUpdater`, and give the plugin the same settings in
+`hot-updater.config.ts`, so the CLI prunes as the server does:
 
 ```ts
 insights({ retention: { rawDays: 30, dailyDays: 400 } });

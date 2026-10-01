@@ -11,8 +11,12 @@ icon: cloudflare
 npm install @hot-updater/cloudflare --save-dev
 ```
 
-For a Worker or other deployed server, install `@hot-updater/cloudflare` as a
-runtime dependency instead of a development dependency.
+For a Worker or other custom server, install the runtime dependencies in the
+server project:
+
+```package-install
+npm install @hot-updater/server @hot-updater/cloudflare
+```
 
 ## Setup
 

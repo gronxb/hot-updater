@@ -305,9 +305,9 @@ opt-in; there is no built-in admin authenticator.
 
 <Callout type="warn">
   Through `standaloneRepository`, the Console manages Bundles, Releases and
-  Channels, and reads the server's Insights overview, events and
-  installations. It cannot show usage or Release activity, and it does not
-  manage the server's API keys; manage them with
+  Channels, and reads the server's Insights overview, events, installations,
+  update failures and retention periods. It cannot show usage or Release
+  activity, and it does not manage the server's API keys; manage them with
   [`hot-updater api-key`](/docs/custom/api-key-authentication) against the
   server's `createHotUpdater` module. A hosted Console must protect its browser
   session separately and keep the admin bearer token in server-side

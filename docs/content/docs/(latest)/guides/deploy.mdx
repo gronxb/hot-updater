@@ -58,16 +58,39 @@ Each command commits independently. If Android fails, the successful iOS
 update remains published. Keep the channel, rollout, and other delivery options
 consistent across both commands when they should share the same policy.
 
-Omitting `-p` requests both platforms but can fail with
-`Deploying multiple platforms requires a shared database configuration.` even
-when both platforms use the same backend. Use the explicit sequence above.
+Omitting `-p` deploys both platforms in one command. It builds and uploads
+each platform, then commits both in one database transaction, so neither is
+published unless both succeed.
+
+That command loads `hot-updater.config.ts` once for both platforms. A config
+object gives them the same `database` and `storage`. A config that exports a
+function runs it once for each platform, so create its adapters outside the
+function and return the same ones. Otherwise deploy stops before it builds,
+with `Deploying multiple platforms requires a shared database configuration.`
+or `Deploying multiple platforms requires a shared storage configuration.`
+
+```ts title="hot-updater.config.ts (excerpt)"
+// Created once, outside the function, so both platforms get the same adapters.
+const storage = s3Storage({ /* ... */ });
+const database = standaloneRepository({ /* ... */ });
+
+// options is { platform, channel }, or null for a command without a platform.
+export default defineConfig((options) => ({
+  build: bare({ enableHermes: true }),
+  storage,
+  database,
+  plugins: [insights(), apiKeys()],
+  // ... settings that depend on options?.platform or options?.channel
+}));
+```
 
 With `-p`, the archive is written directly to
 `<bundle-output-path>/bundle.tar.br`. The commands above therefore produce
 `.hot-updater/output/deploy/ios/bundle.tar.br` and
-`.hot-updater/output/deploy/android/bundle.tar.br`. The manifest and unarchived
-files remain in the build adapter's output directory, which is configured
-separately.
+`.hot-updater/output/deploy/android/bundle.tar.br`. Without `-p`, each
+platform's archive is written to `<bundle-output-path>/<platform>/bundle.tar.br`.
+The manifest and unarchived files remain in the build adapter's output
+directory, which is configured separately.
 
 ### Deployment Result
 
