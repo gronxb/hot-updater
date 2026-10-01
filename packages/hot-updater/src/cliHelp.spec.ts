@@ -5,12 +5,19 @@ import { describe, expect, it } from "vitest";
 
 const cliPath = path.resolve(__dirname, "../dist/index.mjs");
 
-const help = (...command: string[]): string => {
-  const result = spawnSync(process.execPath, [cliPath, ...command, "--help"], {
+/** Runs the CLI without a TTY, as an agent or CI does. */
+const run = (...args: string[]) => {
+  const result = spawnSync(process.execPath, [cliPath, ...args], {
     encoding: "utf-8",
+    env: { ...process.env, EXPERIMENTAL: "" },
     timeout: 10_000,
   });
   expect(result.error).toBeUndefined();
+  return result;
+};
+
+const help = (...command: string[]): string => {
+  const result = run(...command, "--help");
   expect(result.status).toBe(0);
   return result.stdout;
 };
@@ -31,7 +38,7 @@ describe("CLI bundle mental model", () => {
     expect(removedCommand.stderr).toContain("unknown command 'release'");
   });
 
-  it.each(["show", "update", "preflight", "enable", "disable", "delete"])(
+  it.each(["show", "update", "enable", "disable", "delete"])(
     "uses the console ID for bundle %s",
     (command) => {
       const output = help("bundle", command);
@@ -69,42 +76,68 @@ describe("CLI bundle mental model", () => {
     expect(output).toContain("the source ID shown in the console");
   });
 
-  it.each([["bundle", "artifact", "delete"], ["patch"]])(
-    "labels the advanced artifact IDs in %s %s help",
-    (...command) => {
-      const output = help(...command);
-      expect(output).toMatch(/artifact ID.*Advanced diagnostics/);
-      expect(output).toMatch(/<artifact-ids?(?:\.\.\.)?>/);
-    },
-  );
+  it("labels the advanced artifact IDs in patch help", () => {
+    const output = help("patch");
+    expect(output).toMatch(/artifact ID.*Advanced diagnostics/);
+    expect(output).toMatch(/<artifact-id>/);
+  });
 
-  it("uses canonical artifact flags for patch and hides bundle-named aliases", () => {
+  it("takes only the artifact flags for patch, with no bundle-named aliases", () => {
     const output = help("patch");
     expect(output).toContain("-b, --artifact-id <artifact-id>");
     expect(output).toContain("--base-artifact-id <artifact-id>");
     expect(output).not.toContain("--bundle-id");
     expect(output).not.toContain("--base-bundle-id");
 
-    const conflict = spawnSync(
-      process.execPath,
-      [
-        cliPath,
-        "patch",
-        "--artifact-id",
-        "artifact-a",
-        "--bundle-id",
-        "artifact-b",
-        "--base-artifact-id",
-        "artifact-base",
-        "--platform",
-        "ios",
-      ],
-      { encoding: "utf-8", timeout: 10_000 },
+    const alias = run(
+      "patch",
+      "--artifact-id",
+      "artifact-a",
+      "--base-artifact-id",
+      "artifact-base",
+      "--bundle-id",
+      "artifact-a",
     );
-    expect(conflict.error).toBeUndefined();
-    expect(conflict.status).toBe(1);
-    expect(`${conflict.stdout}\n${conflict.stderr}`).toContain(
-      "Provide only one value for --artifact-id.",
-    );
+    expect(alias.status).toBe(1);
+    expect(alias.stderr).toContain("unknown option '--bundle-id'");
+  });
+
+  it("previews a bundle update with --dry-run", () => {
+    expect(help("bundle", "update")).toContain("--dry-run");
+  });
+});
+
+describe("CLI commands", () => {
+  it.each([
+    [["app-version"], "app-version"],
+    [["bundle", "preflight", "id"], "preflight"],
+    [["bundle", "artifact", "delete", "id"], "artifact"],
+  ])("removes %j", (command, unknown) => {
+    const removed = run(...command);
+    expect(removed.status).toBe(1);
+    expect(removed.stderr).toContain(`unknown command '${unknown}'`);
+  });
+
+  it.each(["channel", "fingerprint"])(
+    "shows help for bare %s, whose check moved into doctor",
+    (command) => {
+      const bare = run(command);
+      expect(bare.stdout + bare.stderr).toContain(
+        `Usage: hot-updater ${command}`,
+      );
+      expect(bare.stdout + bare.stderr).toMatch(/^\s+(set|create)\b/m);
+    },
+  );
+
+  it("repairs with doctor --fix", () => {
+    expect(help("doctor")).toContain("--fix");
+  });
+
+  it("reads the configured signing key in keys export-public, with no --input", () => {
+    expect(help("keys", "export-public")).not.toContain("--input");
+  });
+
+  it("hides build:android unless EXPERIMENTAL is set", () => {
+    expect(help()).not.toMatch(/^\s+build:android\b/m);
   });
 });

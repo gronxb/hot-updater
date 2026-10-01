@@ -23,14 +23,25 @@ import { packageJsonData } from "../packageJson";
 import { ui } from "../utils/cli-ui";
 import { AndroidConfigParser } from "../utils/configParser/androidParser";
 import { IosConfigParser } from "../utils/configParser/iosParser";
+import type { FingerprintResult } from "../utils/fingerprint/common";
+import { showFingerprintChanges } from "../utils/fingerprint/diff";
 import {
   type SigningConfigIssue,
   validateSigningConfig,
 } from "../utils/signing/validateSigningConfig";
+import { getNativeAppVersion } from "../utils/version/getNativeAppVersion";
 import {
   findMissingClientPlugins,
   readServerClientPlugins,
 } from "./doctor/clientPlugins";
+import { checkFingerprintJson } from "./doctor/fingerprint";
+import { applyDoctorFixes } from "./doctor/fix";
+import {
+  type DoctorFix,
+  fixesWroteNativeFiles,
+  type NativeCheckIssue,
+  type NativePlatform,
+} from "./doctor/issues";
 import {
   hasVerificationOptions,
   verifyInfrastructure,
@@ -65,35 +76,11 @@ interface VersionMismatch {
   expectedVersion: string;
 }
 
-type DoctorFixability = "auto" | "command" | "blocked";
-type NativePlatform = "ios" | "android";
-type NativeIssueType = "error" | "warning";
-
-interface NativeCheckIssue {
-  type: NativeIssueType;
-  platform: NativePlatform | "project";
-  code:
-    | "NATIVE_FILES_NOT_FOUND"
-    | "APP_DELEGATE_NOT_FOUND"
-    | "MAIN_APPLICATION_NOT_FOUND"
-    | "MISSING_IOS_BUNDLE_PROVIDER"
-    | "MISSING_ANDROID_BUNDLE_PROVIDER"
-    | "MISSING_FINGERPRINT_JSON"
-    | "MISSING_FINGERPRINT_HASH"
-    | "FINGERPRINT_HASH_MISMATCH"
-    | "MISSING_CLIENT_PLUGIN"
-    | "CLIENT_PLUGINS_UNCHECKED"
-    | SigningConfigIssue["code"];
-  message: string;
-  resolution: string;
-  fixability: DoctorFixability;
-  commands?: string[];
-  paths?: string[];
-}
-
 interface NativePlatformStatus {
   detected: boolean;
   files: string[];
+  /** The version the native project builds: what the app reports. */
+  appVersion?: string;
   channel?: string;
   fingerprintHash?: string;
   bundleProviderConfigured?: boolean;
@@ -108,12 +95,14 @@ interface NativeStatus {
 }
 
 interface LocalFingerprint {
-  ios?: { hash?: string } | null;
-  android?: { hash?: string } | null;
+  ios?: FingerprintResult | null;
+  android?: FingerprintResult | null;
 }
 
 interface DoctorDetails {
   verification?: DoctorVerification;
+  /** What `--fix` repaired, with every file it wrote; checks ran again after it. */
+  fixes?: DoctorFix[];
   // Version related
   hotUpdaterVersion?: string;
   versionMismatches?: VersionMismatch[];
@@ -139,11 +128,14 @@ interface DoctorOptions extends VerificationOptions {
   cwd?: string;
   serverBaseUrl?: string;
   fetch?: typeof fetch;
+  /** Runs every repair doctor can do itself, then checks again. */
+  fix?: boolean;
 }
 
 interface HandleDoctorOptions extends VerificationOptions {
   serverBaseUrl?: string;
   json?: boolean;
+  fix?: boolean;
 }
 
 const FINGERPRINT_RECOVERY_COMMANDS = [
@@ -284,6 +276,17 @@ const findFirstMatchingFile = async ({
   return null;
 };
 
+/** The version the native project builds, or null when it cannot be read. */
+const readNativeAppVersion = async (
+  platform: NativePlatform,
+): Promise<string | null> => {
+  try {
+    return await getNativeAppVersion(platform);
+  } catch {
+    return null;
+  }
+};
+
 const readLocalFingerprintFile = async (cwd: string) => {
   const fingerprintJsonPath = path.join(cwd, "fingerprint.json");
   try {
@@ -412,10 +415,12 @@ const checkIosNativeStatus = async ({
     }
   }
 
+  const appVersion = await readNativeAppVersion("ios");
   return {
     status: {
       detected: true,
       files: [...files, ...appDelegateFiles],
+      ...(appVersion === null ? {} : { appVersion }),
       channel: channel.value ?? undefined,
       fingerprintHash: fingerprintHash?.value ?? undefined,
       bundleProviderConfigured,
@@ -542,10 +547,12 @@ const checkAndroidNativeStatus = async ({
     }
   }
 
+  const appVersion = await readNativeAppVersion("android");
   return {
     status: {
       detected: true,
       files: [...files, ...mainApplicationFiles],
+      ...(appVersion === null ? {} : { appVersion }),
       channel: channel.value ?? undefined,
       fingerprintHash: fingerprintHash?.value ?? undefined,
       bundleProviderConfigured,
@@ -607,9 +614,21 @@ async function checkNativeStatus({
       expectedPublicKey: expectedSigningPublicKey ?? undefined,
       nativePublicKey: nativeSigningPublicKey?.publicKey ?? null,
     });
+    const localFingerprint =
+      config.updateStrategy === "fingerprint"
+        ? await readLocalFingerprintFile(cwd)
+        : null;
     return {
       updateStrategy: config.updateStrategy,
-      issues: signing.issues.map(toNativeIssue),
+      ...(localFingerprint
+        ? { fingerprintJsonPath: localFingerprint.path }
+        : {}),
+      issues: [
+        ...signing.issues.map(toNativeIssue),
+        ...(localFingerprint
+          ? await checkFingerprintJson(localFingerprint.value)
+          : []),
+      ],
     };
   }
 
@@ -644,6 +663,10 @@ async function checkNativeStatus({
     ...android.issues,
     ...signing.issues.map(toNativeIssue),
   ];
+
+  if (requireFingerprint && localFingerprint) {
+    issues.push(...(await checkFingerprintJson(localFingerprint.value)));
+  }
 
   if (requireFingerprint && !localFingerprint) {
     issues.push({
@@ -707,13 +730,9 @@ async function checkClientPlugins({
   }));
 }
 
-/**
- * Performs health check on Hot Updater installation
- * @param options - Doctor check options
- * @returns true if everything is healthy, or DoctorResult with details if there are issues
- */
-export async function doctor(
-  options: DoctorOptions = {},
+/** Runs every check once: true when there is nothing to report. */
+async function checkProject(
+  options: DoctorOptions,
 ): Promise<true | DoctorResult> {
   try {
     const { cwd = getCwd(), serverBaseUrl, fetch: fetchImpl } = options;
@@ -875,6 +894,31 @@ const normalizeDoctorResult = (result: true | DoctorResult): DoctorResult => {
   return result;
 };
 
+/**
+ * Performs health check on Hot Updater installation
+ * @param options - Doctor check options
+ * @returns true if everything is healthy, or DoctorResult with details if there are issues
+ */
+export async function doctor(
+  options: DoctorOptions = {},
+): Promise<true | DoctorResult> {
+  const result = await checkProject(options);
+  if (!options.fix || hasVerificationOptions(options)) return result;
+
+  // --fix runs the repairs the first checks call for, then checks again,
+  // so the result describes the project after them.
+  const before = normalizeDoctorResult(result);
+  if (before.error !== undefined) return before;
+  const fixes = await applyDoctorFixes(before.details?.native?.issues ?? [], {
+    cwd: options.cwd ?? getCwd(),
+  });
+  const after =
+    fixes.length === 0
+      ? before
+      : normalizeDoctorResult(await checkProject(options));
+  return { ...after, details: { ...after.details, fixes } };
+}
+
 const promptServerBaseUrl = async () => {
   if (!process.stdin.isTTY || !process.stdout.isTTY) {
     return undefined;
@@ -906,14 +950,49 @@ const promptServerBaseUrl = async () => {
   return trimmed ? trimmed : undefined;
 };
 
+const FIX_DESCRIPTIONS: Record<DoctorFix["repair"], string> = {
+  fingerprint: "Recreate fingerprint.json and the native fingerprint hashes",
+  "public-key": "Write the configured public key into the native files",
+  "orphan-public-key": "Remove the public key from the native files",
+};
+
+const REBUILD_NATIVE_APP =
+  "Rebuild the native app: doctor --fix changed its native files.";
+
+/** What `--fix` did: each repair, every file it wrote, or why it did not. */
+const printFixes = (fixes: readonly DoctorFix[]) => {
+  if (fixes.length === 0) {
+    p.log.info("--fix found nothing it can repair.");
+    return;
+  }
+  for (const fix of fixes) {
+    const description = FIX_DESCRIPTIONS[fix.repair];
+    if (fix.status === "applied") {
+      p.log.success(`Fixed: ${description}.`);
+      p.log.message(
+        ui.block(
+          "Wrote",
+          fix.wrote.map((file) => ui.kv("Path", ui.path(file))),
+        ),
+      );
+      if (fix.note) p.log.warn(fix.note);
+    } else if (fix.status === "skipped") {
+      p.log.warn(`Skipped: ${description}. ${fix.note ?? ""}`.trim());
+    } else {
+      p.log.error(`Failed: ${description}. ${fix.note ?? ""}`.trim());
+    }
+  }
+};
+
 export const handleDoctor = async ({
   serverBaseUrl,
   json = false,
+  fix = false,
   ...verificationOptions
 }: HandleDoctorOptions = {}) => {
   if (json) {
     const result = normalizeDoctorResult(
-      await doctor({ serverBaseUrl, ...verificationOptions }),
+      await doctor({ serverBaseUrl, fix, ...verificationOptions }),
     );
     console.log(JSON.stringify(result, null, 2));
     if (!result.success) {
@@ -929,6 +1008,7 @@ export const handleDoctor = async ({
     : (serverBaseUrl ?? (await promptServerBaseUrl()));
   const result = await doctor({
     serverBaseUrl: resolvedServerBaseUrl,
+    fix,
     ...verificationOptions,
   });
 
@@ -949,6 +1029,8 @@ export const handleDoctor = async ({
   // Handle issues with details
   const { details } = result;
   let shouldExitWithFailure = !result.success;
+
+  if (details?.fixes) printFixes(details.fixes);
 
   if (details?.verification) {
     const { scope, checks, notChecked } = details.verification;
@@ -1039,6 +1121,9 @@ export const handleDoctor = async ({
             : ui.status(false),
         ),
       );
+      if (native.ios.appVersion) {
+        lines.push(ui.kv("iOS app version", ui.version(native.ios.appVersion)));
+      }
       if (native.ios.channel) {
         lines.push(ui.kv("iOS channel", ui.channel(native.ios.channel)));
       }
@@ -1053,6 +1138,11 @@ export const handleDoctor = async ({
             : ui.status(false),
         ),
       );
+      if (native.android.appVersion) {
+        lines.push(
+          ui.kv("Android app version", ui.version(native.android.appVersion)),
+        );
+      }
       if (native.android.channel) {
         lines.push(
           ui.kv("Android channel", ui.channel(native.android.channel)),
@@ -1069,6 +1159,12 @@ export const handleDoctor = async ({
       } else {
         p.log.warn(message);
       }
+      if (issue.changes) {
+        showFingerprintChanges(
+          issue.changes,
+          issue.platform === "ios" ? "iOS" : "Android",
+        );
+      }
       p.log.info(issue.resolution);
     }
   }
@@ -1084,10 +1180,13 @@ export const handleDoctor = async ({
     }
   }
 
+  // Whenever --fix wrote native files, the last line says to rebuild.
+  const rebuildNativeApp = fixesWroteNativeFiles(details?.fixes ?? []);
   if (shouldExitWithFailure) {
+    if (rebuildNativeApp) p.log.warn(REBUILD_NATIVE_APP);
     process.exit(1);
   }
 
   p.log.success("All checks passed.");
-  p.outro("Doctor complete.");
+  p.outro(rebuildNativeApp ? REBUILD_NATIVE_APP : "Doctor complete.");
 };

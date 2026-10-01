@@ -55,6 +55,7 @@ export async function resetFixtureReleases({
       if (releases.length < PAGE) break;
     }
   }
-  // Artifacts can be shared by Releases and patch bases outside this fixture.
+  // Core deletes an artifact with the last release on it, and the patches
+  // built on it with it; an artifact another release uses stays.
   return { channels, clearedReleaseIds };
 }

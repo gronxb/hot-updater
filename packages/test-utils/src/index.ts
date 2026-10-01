@@ -12,6 +12,7 @@ export * from "./runContentionHarness";
 export * from "./createMeasuredDatabase";
 export * from "./createPluginTestHarness";
 export * from "./databaseTestFixtures";
+export * from "./storeBundles";
 export * from "./insights";
 export * from "./kvTestStore";
 export * from "./setupReleaseCatalogTestSuite";

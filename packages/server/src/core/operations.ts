@@ -380,13 +380,24 @@ export const createCoreOperations = (
             `Disable Release "${release.id}" before hard deletion.`,
           );
         }
-        return mutationResult(
+        // Read before the delete: the counter then still includes this release.
+        const bundle =
+          release.bundle_id === null
+            ? null
+            : await tx.findOne("bundles", { id: release.bundle_id });
+        const result = mutationResult(
           await changeRelease(tx, {
             scope,
             change: { operation: "delete", id: release.id },
             updatedAtMs: now(),
           }),
         );
+        // The artifact goes with the last release on it, and the patches built
+        // on it go with it. Its stored files stay until `storage prune`.
+        if (bundle !== null && (bundle._refs_releases_bundle_id ?? 0) <= 1) {
+          await deleteBundle(tx, bundle);
+        }
+        return result;
       }),
 
     promoteRelease: (input) =>

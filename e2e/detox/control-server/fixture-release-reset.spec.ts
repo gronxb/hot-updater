@@ -19,7 +19,7 @@ const artifact = (
 });
 
 describe("Detox fixture Release reset", () => {
-  it("clears only the current platform and namespace while preserving shared artifacts and patches", async () => {
+  it("clears only the current platform and namespace, deleting the artifacts only its releases used and keeping shared artifacts and their patches", async () => {
     const harness = createMemoryCore();
     const { core } = harness;
     const namespace = "e2e-current-job-ios-s1";
@@ -95,7 +95,10 @@ describe("Detox fixture Release reset", () => {
 
     expect(result.clearedReleaseIds.sort()).toEqual(ownIds.sort());
     expect(await harness.releases()).toEqual(retainedReleases);
-    expect(await harness.bundles()).toEqual(artifactsBefore);
+    // artifact(3) goes with ownBeta, the last release on it.
+    expect(await harness.bundles()).toEqual(
+      artifactsBefore.filter(({ id }) => id !== artifact(3).id),
+    );
     expect(await core.listChannels()).toEqual(channelsBefore);
     expect(await patchesOf(artifactsBefore.map(({ id }) => id))).toEqual(
       patchesBefore,

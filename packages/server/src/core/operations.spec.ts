@@ -285,7 +285,7 @@ describe("core operations", () => {
     });
   });
 
-  it("updates a bundle and replaces its patches, and deletes bundles no release uses", async () => {
+  it("updates a bundle and replaces its patches, and refuses to delete a bundle a release uses", async () => {
     const { core } = setup();
     const base = createBundleFixture("661");
     const target = createBundleFixture("662");
@@ -310,14 +310,53 @@ describe("core operations", () => {
     await expect(core.deleteBundles([base.id])).rejects.toBeInstanceOf(
       DatabaseRowReferencedError,
     );
+    await expect(
+      core.getRelease(baseRelease!.release!.id),
+    ).resolves.toMatchObject({ bundle_id: base.id });
+  });
+
+  it("deletes an artifact with the last release on it, and the patches built on it", async () => {
+    const { core } = setup();
+    const base = createBundleFixture("671");
+    const target = createBundleFixture("672");
+    const [baseRelease] = await core.deploy([deployment(base)]);
+    await core.deploy([deployment(target)]);
+    await core.updateBundle(target.id, { patches: [patchFrom(target, base)] });
     const releaseId = baseRelease!.release!.id;
     await core.updateReleasePolicy({ releaseId, patch: { enabled: false } });
+
     await core.deleteRelease({ releaseId });
-    await core.deleteBundles([base.id, "missing"]);
+
     await expect(core.getBundle(base.id)).resolves.toBeNull();
     await expect(core.getBundle(target.id)).resolves.toMatchObject({
       patches: [],
     });
+    await expect(
+      core.deleteBundles([base.id, "missing"]),
+    ).resolves.toBeUndefined();
+  });
+
+  it("keeps an artifact while another release still uses it", async () => {
+    const { core } = setup();
+    const bundle = createBundleFixture("681");
+    const [deployed] = await core.deploy([deployment(bundle)]);
+    const source = deployed!.release!;
+    const promoted = await core.promoteRelease({
+      releaseId: source.id,
+      targetChannel: "beta",
+    });
+    const copy = promoted.target.release!;
+    for (const releaseId of [source.id, copy.id]) {
+      await core.updateReleasePolicy({ releaseId, patch: { enabled: false } });
+    }
+
+    await core.deleteRelease({ releaseId: source.id });
+    await expect(core.getBundle(bundle.id)).resolves.toMatchObject({
+      bundle: { id: bundle.id },
+    });
+
+    await core.deleteRelease({ releaseId: copy.id });
+    await expect(core.getBundle(bundle.id)).resolves.toBeNull();
   });
 });
 

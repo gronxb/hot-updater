@@ -5,7 +5,8 @@ export type ExpoFingerprint = typeof import("@expo/fingerprint");
 const PACKAGE_NAME = "@expo/fingerprint";
 const MISSING_DEPENDENCY_ERROR_NAME = "MissingFingerprintDependencyError";
 
-const getInstallCommand = () => {
+/** The command that installs `@expo/fingerprint` with the project's package manager. */
+export const getFingerprintDependencyInstallCommand = () => {
   switch (getPackageManager()) {
     case "pnpm":
       return `pnpm add -D ${PACKAGE_NAME}`;
@@ -25,7 +26,7 @@ export class MissingFingerprintDependencyError extends Error {
         `${PACKAGE_NAME} is required for fingerprint commands but is not installed.`,
         "",
         `Install it in your app project, then re-run this command:`,
-        `  ${getInstallCommand()}`,
+        `  ${getFingerprintDependencyInstallCommand()}`,
       ].join("\n"),
     );
     this.name = MISSING_DEPENDENCY_ERROR_NAME;

@@ -185,9 +185,75 @@ describe("Bundle commands", () => {
       expect(rendered).not.toMatch(/Release ID|Scope|Generation/);
     }
     await expect(databaseHarness.core.getRelease(id)).resolves.toBeNull();
+    // The artifact went with its last bundle, and the message says so
+    // without its Advanced diagnostics ID.
     await expect(
       databaseHarness.core.getBundle(seeded.bundle.id),
-    ).resolves.not.toBeNull();
+    ).resolves.toBeNull();
+    const deleted = stripVTControlCharacters(
+      String(log.info.mock.calls.at(-1)?.[0]),
+    );
+    expect(deleted).toContain("artifact record was deleted too");
+    expect(deleted).toContain("hot-updater storage prune");
+    expect(deleted).not.toContain(seeded.bundle.id);
+  });
+
+  it("validates an update with --dry-run, without saving or asking", async () => {
+    Object.defineProperty(process.stdin, "isTTY", {
+      configurable: true,
+      value: false,
+    });
+    const seeded = deployment("01900000-0000-7000-8000-000000000003");
+    const { release } = await commitDeployment({
+      core: databaseHarness.core,
+      ...seeded,
+    });
+    const output = vi.spyOn(console, "log").mockImplementation(() => {});
+    const { handleReleaseUpdate } = await import("./release");
+
+    await handleReleaseUpdate(release!.id, {
+      dryRun: true,
+      json: true,
+      rolloutCohortCount: 900,
+    });
+
+    expect(confirm).not.toHaveBeenCalled();
+    expect(JSON.parse(String(output.mock.calls.at(-1)?.[0]))).toMatchObject({
+      expectedReleaseRevision: 1,
+      release: { rollout_cohort_count: 900 },
+    });
+    await expect(
+      databaseHarness.core.getRelease(release!.id),
+    ).resolves.toMatchObject({ revision: 1, rollout_cohort_count: 500 });
+  });
+
+  it("keeps an artifact another bundle uses, and reports the deleted one in JSON", async () => {
+    const seeded = deployment("01900000-0000-7000-8000-000000000002");
+    const { release } = await commitDeployment({
+      core: databaseHarness.core,
+      ...seeded,
+    });
+    const copy = (
+      await databaseHarness.core.promoteRelease({
+        releaseId: release!.id,
+        targetChannel: "beta",
+      })
+    ).target.release!;
+    const output = vi.spyOn(console, "log").mockImplementation(() => {});
+    const { handleReleaseDelete, handleReleaseEnablement } =
+      await import("./release");
+
+    for (const id of [release!.id, copy.id]) {
+      await handleReleaseEnablement(id, false, { json: true, yes: true });
+    }
+    await handleReleaseDelete(release!.id, { json: true, yes: true });
+    await handleReleaseDelete(copy.id, { json: true, yes: true });
+
+    const [first, second] = output.mock.calls
+      .slice(-2)
+      .map(([rendered]) => JSON.parse(String(rendered)));
+    expect(first).toMatchObject({ deletedArtifactId: null });
+    expect(second).toMatchObject({ deletedArtifactId: seeded.bundle.id });
   });
 
   it("previews device-dependent fallback and warns for the sole enabled bundle", async () => {
