@@ -57,9 +57,7 @@ export function ConsoleFeatureUnavailable({
                 <EmptyTitle>{label} not installed</EmptyTitle>
                 <EmptyDescription>
                   Add {pluginCall} to <code className="font-mono">plugins</code>{" "}
-                  {remote
-                    ? "where you create the server."
-                    : "where you create the server and in the console config."}
+                  where you create the server and in the console config.
                 </EmptyDescription>
               </>
             )}

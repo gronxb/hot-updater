@@ -4,7 +4,7 @@ import type {
   AnyHotUpdaterPlugin,
   EngineDatabase,
   HotUpdaterCoreApi,
-  RemoteServer,
+  RemoteDatabase,
 } from "@hot-updater/plugin-core";
 import { createMemoryAdapter } from "@hot-updater/plugin-core";
 import { createHotUpdater } from "@hot-updater/server";
@@ -18,8 +18,8 @@ import { describe, expect, it, vi } from "vitest";
 import { ConsoleFeatureUnavailableError } from "../console-features";
 import { createConsoleRuntime, requireFeature } from "./runtime.server";
 
-/** The console over a server definition that runs `plugins` on `database`. */
-const definitionRuntime = (
+/** The console over `database`, running `plugins` as the server does. */
+const databaseRuntime = (
   database: EngineDatabase,
   plugins: readonly AnyHotUpdaterPlugin[] = [],
 ) =>
@@ -41,22 +41,12 @@ const engineDatabase = () => ({
 });
 
 const remoteDatabase = (
-  fetchAdmin: RemoteServer["fetchAdmin"],
-): RemoteServer => ({
+  fetchAdmin: RemoteDatabase["fetchAdmin"],
+): RemoteDatabase => ({
   name: "standalone-repository",
-  url: "https://updates.example.com/hot-updater/admin",
   core: {} as HotUpdaterCoreApi,
   fetchAdmin,
-  storage: [],
 });
-
-/** A self-hosted server's admin handler: its `/version`, and empty Insights pages. */
-const adminServer = (version: Record<string, unknown>) =>
-  vi.fn(async (path: string) =>
-    path === "/version"
-      ? Response.json({ adminProtocol: 2, ...version })
-      : Response.json({ data: [], nextCursor: null }),
-  );
 
 const event = (id: string): BundleEventRow =>
   ({
@@ -95,14 +85,14 @@ describe("createConsoleRuntime over the database", () => {
       init: () => ({ api: { listEvents: async () => [] } }),
     };
 
-    expect(() => definitionRuntime(engineDatabase(), [spoof as never])).toThrow(
+    expect(() => databaseRuntime(engineDatabase(), [spoof as never])).toThrow(
       "which is reserved for Hot Updater's insights() plugin",
     );
   });
 
   it("serves the features of the plugins it runs, as the server does", async () => {
     const database = engineDatabase();
-    const runtime = definitionRuntime(database, [insights(), apiKeys()]);
+    const runtime = databaseRuntime(database, [insights(), apiKeys()]);
 
     expect(runtime.remote).toBe(false);
     await expect(runtime.features()).resolves.toEqual({
@@ -130,7 +120,7 @@ describe("createConsoleRuntime over the database", () => {
   });
 
   it("reads a release's update failures through the plugin's API", async () => {
-    const runtime = definitionRuntime(engineDatabase(), [insights()]);
+    const runtime = databaseRuntime(engineDatabase(), [insights()]);
     const model = await requireFeature(runtime, "insightsAnalytics");
     const failed = event("01900000-0000-7000-8000-000000000002");
     await model.recordEvent({
@@ -155,7 +145,7 @@ describe("createConsoleRuntime over the database", () => {
   });
 
   it("reports how long the plugin keeps rows", async () => {
-    const runtime = definitionRuntime(engineDatabase(), [
+    const runtime = databaseRuntime(engineDatabase(), [
       insights({ retention: { rawDays: 30, dailyDays: 60 } }),
     ]);
 
@@ -167,7 +157,7 @@ describe("createConsoleRuntime over the database", () => {
   });
 
   it("refuses the features of a plugin that is not listed", async () => {
-    const runtime = definitionRuntime(engineDatabase(), [apiKeys()]);
+    const runtime = databaseRuntime(engineDatabase(), [apiKeys()]);
 
     await expect(runtime.features()).resolves.toEqual({
       insights: false,
@@ -184,7 +174,7 @@ describe("createConsoleRuntime over the database", () => {
   });
 
   it("serves no feature without plugins", async () => {
-    const runtime = definitionRuntime(engineDatabase());
+    const runtime = databaseRuntime(engineDatabase());
 
     await expect(runtime.features()).resolves.toEqual({
       insights: false,
@@ -198,25 +188,26 @@ describe("createConsoleRuntime over the database", () => {
 });
 
 describe("createConsoleRuntime for a self-hosted server", () => {
-  it("reads the plugins from the admin /version once, and serves only what the admin API does", async () => {
-    const fetchAdmin = adminServer({ plugins: ["apiKeys", "insights"] });
+  it("takes the features from the config's plugins without asking the server, and serves only what its admin API does", async () => {
+    const fetchAdmin = vi.fn(async (_path: string) =>
+      Response.json({ data: [], nextCursor: null }),
+    );
     const runtime = createConsoleRuntime({
       database: remoteDatabase(fetchAdmin),
+      plugins: [insights(), apiKeys()],
     });
 
     expect(runtime.remote).toBe(true);
-    expect(fetchAdmin).not.toHaveBeenCalled();
     await expect(runtime.features()).resolves.toEqual({
       insights: true,
       insightsAnalytics: false,
       apiKeys: false,
     });
-    await runtime.features();
+    expect(fetchAdmin).not.toHaveBeenCalled();
     const reads = await requireFeature(runtime, "insights");
     await reads.listEvents({ limit: 1 });
-    expect(
-      fetchAdmin.mock.calls.filter(([path]) => path === "/version"),
-    ).toHaveLength(1);
+    // Only the read reaches the server.
+    expect(fetchAdmin.mock.calls).toEqual([["/events?limit=1"]]);
     await expect(requireFeature(runtime, "insightsAnalytics")).rejects.toEqual(
       refused("insightsAnalytics", "reaches a self-hosted server"),
     );
@@ -225,52 +216,40 @@ describe("createConsoleRuntime for a self-hosted server", () => {
     );
   });
 
-  it("serves no feature from a server whose /version lists no plugins", async () => {
-    // A server from before the admin /version listed its plugins.
-    const fetchAdmin = adminServer({ infrastructureGeneration: 1 });
-    const runtime = createConsoleRuntime({
-      database: remoteDatabase(fetchAdmin),
-    });
+  it("serves no feature without its plugin in the config, nor for another plugin that takes its id", async () => {
+    const fetchAdmin = vi.fn<RemoteDatabase["fetchAdmin"]>();
+    // insights() without its factory's mark, which the server's assembly
+    // refuses under that id.
+    const spoof = { ...insights() };
 
-    await expect(runtime.features()).resolves.toEqual({
-      insights: false,
-      insightsAnalytics: false,
-      apiKeys: false,
-    });
-    await expect(requireFeature(runtime, "insights")).rejects.toEqual(
-      refused("insights", "without the insights() plugin"),
-    );
-    expect(fetchAdmin).toHaveBeenCalledTimes(1);
-  });
-
-  it("asks again after a failed /version read, instead of keeping the failure", async () => {
-    const fetchAdmin = vi
-      .fn(adminServer({ plugins: ["insights"] }))
-      .mockResolvedValueOnce(new Response("Bad gateway", { status: 502 }));
-    const runtime = createConsoleRuntime({
-      database: remoteDatabase(fetchAdmin),
-    });
-
-    await expect(runtime.features()).rejects.toThrow(
-      "The server answered /version with 502.",
-    );
-    await expect(runtime.features()).resolves.toMatchObject({
-      insights: true,
-    });
-    await runtime.features();
-    expect(fetchAdmin).toHaveBeenCalledTimes(2);
+    for (const plugins of [[], [spoof]]) {
+      const runtime = createConsoleRuntime({
+        database: remoteDatabase(fetchAdmin),
+        plugins,
+      });
+      await expect(runtime.features()).resolves.toEqual({
+        insights: false,
+        insightsAnalytics: false,
+        apiKeys: false,
+      });
+      await expect(requireFeature(runtime, "insights")).rejects.toEqual(
+        refused("insights", "without the insights() plugin"),
+      );
+    }
+    expect(fetchAdmin).not.toHaveBeenCalled();
   });
 
   it("reads Insights through the admin routes", async () => {
     const fetchAdmin = vi.fn(async (path: string) =>
-      path === "/version"
-        ? Response.json({ adminProtocol: 2, plugins: ["insights"] })
-        : path.startsWith("/installations/")
-          ? Response.json({ installId: "install-1" })
-          : Response.json({ data: [], nextCursor: null }),
+      path.startsWith("/installations/")
+        ? Response.json({ installId: "install-1" })
+        : Response.json({ data: [], nextCursor: null }),
     );
     const reads = await requireFeature(
-      createConsoleRuntime({ database: remoteDatabase(fetchAdmin) }),
+      createConsoleRuntime({
+        database: remoteDatabase(fetchAdmin),
+        plugins: [insights()],
+      }),
       "insights",
     );
 
@@ -296,14 +275,15 @@ describe("createConsoleRuntime for a self-hosted server", () => {
   it("reads update failures through the admin route, and refuses them from a server that answers 404", async () => {
     const failures = { failedUpdates: 3, failedInstallations: 2 };
     const fetchAdmin = vi.fn(async (path: string) =>
-      path === "/version"
-        ? Response.json({ adminProtocol: 2, plugins: ["insights"] })
-        : path.startsWith("/failures?platform=android")
-          ? new Response(null, { status: 404 })
-          : Response.json(failures),
+      path.startsWith("/failures?platform=android")
+        ? new Response(null, { status: 404 })
+        : Response.json(failures),
     );
     const reads = await requireFeature(
-      createConsoleRuntime({ database: remoteDatabase(fetchAdmin) }),
+      createConsoleRuntime({
+        database: remoteDatabase(fetchAdmin),
+        plugins: [insights()],
+      }),
       "insights",
     );
 
@@ -328,13 +308,14 @@ describe("createConsoleRuntime for a self-hosted server", () => {
   });
 
   it("refuses a read the server answers with 404, as after it dropped insights()", async () => {
-    const fetchAdmin = vi.fn(async (path: string) =>
-      path === "/version"
-        ? Response.json({ adminProtocol: 2, plugins: ["insights"] })
-        : Response.json({ error: "Not found" }, { status: 404 }),
+    const fetchAdmin = vi.fn(async () =>
+      Response.json({ error: "Not found" }, { status: 404 }),
     );
     const reads = await requireFeature(
-      createConsoleRuntime({ database: remoteDatabase(fetchAdmin) }),
+      createConsoleRuntime({
+        database: remoteDatabase(fetchAdmin),
+        plugins: [insights()],
+      }),
       "insights",
     );
 
@@ -351,14 +332,15 @@ describe("createConsoleRuntime for a self-hosted server", () => {
 
   it("reads a self-hosted server's retention", async () => {
     const fetchAdmin = vi.fn(async (path: string) =>
-      path === "/version"
-        ? Response.json({ adminProtocol: 2, plugins: ["insights"] })
-        : path === "/retention"
-          ? Response.json({ rawDays: 30, dailyDays: 60 })
-          : Response.json({ data: [], nextCursor: null }),
+      path === "/retention"
+        ? Response.json({ rawDays: 30, dailyDays: 60 })
+        : Response.json({ data: [], nextCursor: null }),
     );
     const reads = await requireFeature(
-      createConsoleRuntime({ database: remoteDatabase(fetchAdmin) }),
+      createConsoleRuntime({
+        database: remoteDatabase(fetchAdmin),
+        plugins: [insights()],
+      }),
       "insights",
     );
 

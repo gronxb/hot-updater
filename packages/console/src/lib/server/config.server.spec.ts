@@ -6,6 +6,7 @@ import {
 } from "@hot-updater/plugin-core";
 import { createHotUpdater } from "@hot-updater/server";
 import { apiKeys } from "@hot-updater/server/plugins/api-keys";
+import { insights } from "@hot-updater/server/plugins/insights";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const { requireConsoleAccessMock, resolveConsoleConfigMock } = vi.hoisted(
@@ -82,7 +83,7 @@ describe("config.server", () => {
 
     expect(requireConsoleAccessMock).toHaveBeenCalledTimes(2);
     expect(resolveConsoleConfigMock).toHaveBeenCalledTimes(1);
-    // The definition's core: the console writes on the server's own path.
+    // The core assembled as the server's: the console writes on its path.
     expect(first.core).toBe(server.core);
     expect(second.core).toBe(server.core);
     expect(first.config.database).toBe(database);
@@ -98,35 +99,27 @@ describe("config.server", () => {
     expect(isConfigLoaded()).toBe(true);
   });
 
-  it("reads a self-hosted server's plugins once, when the features are first asked for", async () => {
-    const fetchAdmin = vi.fn(async () =>
-      Response.json({ adminProtocol: 2, plugins: ["insights"] }),
-    );
-    const storage = [createTestStorageAdapter()];
+  it("takes a self-hosted server's features from the plugins the config lists, without asking the server", async () => {
+    const fetchAdmin = vi.fn();
+    const core = {};
     resolveConsoleConfigMock.mockResolvedValue({
-      database: {
-        name: "standalone-repository",
-        url: "https://updates.example.com/hot-updater/admin",
-        core: {},
-        fetchAdmin,
-        storage,
-      },
-      storage,
+      database: { name: "standalone-repository", core, fetchAdmin },
+      core,
+      storage: [createTestStorageAdapter()],
+      plugins: [insights()],
     });
 
     const { prepareConfig } = await import("./config.server");
     const { runtime } = await prepareConfig(request);
 
     expect(runtime.remote).toBe(true);
-    expect(fetchAdmin).not.toHaveBeenCalled();
     await expect(runtime.features()).resolves.toEqual({
       insights: true,
       insightsAnalytics: false,
       apiKeys: false,
     });
-    await (await prepareConfig(request)).runtime.features();
-    expect(fetchAdmin).toHaveBeenCalledOnce();
-    expect(fetchAdmin).toHaveBeenCalledWith("/version");
+    expect((await prepareConfig(request)).runtime).toBe(runtime);
+    expect(fetchAdmin).not.toHaveBeenCalled();
   });
 
   it("resets the cached config promise after an initialization failure", async () => {
@@ -141,6 +134,7 @@ describe("config.server", () => {
       .mockResolvedValueOnce({
         database,
         storage: [storageAdapter],
+        plugins: [],
       });
 
     const { prepareConfig } = await import("./config.server");
@@ -165,6 +159,7 @@ describe("config.server", () => {
     resolveConsoleConfigMock.mockResolvedValue({
       database,
       storage: [storage],
+      plugins: [],
     });
 
     const { prepareConfig } = await import("./config.server");
@@ -188,31 +183,5 @@ describe("config.server", () => {
 
     expect(resolveConsoleConfigMock).not.toHaveBeenCalled();
     expect(consoleErrorSpy).not.toHaveBeenCalled();
-  });
-
-  it("reports a server it cannot read, and reads it again on the next request", async () => {
-    const consoleErrorSpy = vi
-      .spyOn(console, "error")
-      .mockImplementation(() => undefined);
-    resolveConsoleConfigMock.mockRejectedValueOnce(
-      new Error(
-        "The console's server comes from an older @hot-updater/server. Upgrade @hot-updater/server to the version of @hot-updater/console.",
-      ),
-    );
-
-    const { prepareConfig } = await import("./config.server");
-
-    await expect(prepareConfig(request)).rejects.toThrow(
-      "Upgrade @hot-updater/server to the version of @hot-updater/console.",
-    );
-    expect(consoleErrorSpy).toHaveBeenCalledOnce();
-    resolveConsoleConfigMock.mockResolvedValue({
-      database: createTestDatabase("db"),
-      core: {},
-      storage: [],
-    });
-    await expect(prepareConfig(request)).resolves.toMatchObject({
-      storage: [],
-    });
   });
 });

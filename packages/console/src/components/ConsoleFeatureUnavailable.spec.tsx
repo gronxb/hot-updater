@@ -55,12 +55,12 @@ describe("ConsoleFeatureUnavailable", () => {
     expect(description()).toContain("Add apiKeys() to plugins");
   });
 
-  it("points a self-hosted server's console at the server's plugins", () => {
+  it("names the console config on a self-hosted server's console too, whose features come from its plugins", () => {
     mocks.remote = true;
     render(<ConsoleFeatureUnavailable data={{ feature: "insights" }} />);
 
     expect(description()).toBe(
-      "Add insights() to plugins where you create the server.",
+      "Add insights() to plugins where you create the server and in the console config.",
     );
   });
 

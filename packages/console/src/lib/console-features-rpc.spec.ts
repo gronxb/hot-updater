@@ -7,6 +7,7 @@ import type {
 } from "@hot-updater/plugin-core";
 import { createMemoryAdapter } from "@hot-updater/plugin-core";
 import { createHotUpdater } from "@hot-updater/server";
+import { apiKeys } from "@hot-updater/server/plugins/api-keys";
 import { insights } from "@hot-updater/server/plugins/insights";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -30,8 +31,8 @@ vi.mock("./server/config.server", () => ({ prepareConfig: mocks.prepare }));
 
 import { getConsoleFeaturesRpc } from "./console-features-rpc";
 
-/** The console over a server definition that runs `plugins` on `database`. */
-const definitionRuntime = (
+/** The console over `database`, running `plugins` as the server does. */
+const databaseRuntime = (
   database: EngineDatabase,
   plugins: readonly AnyHotUpdaterPlugin[] = [],
 ) =>
@@ -52,7 +53,7 @@ afterEach(() => vi.resetAllMocks());
 describe("getConsoleFeaturesRpc", () => {
   it("reports the features of the plugins the console runs over the database", async () => {
     mocks.prepare.mockResolvedValue({
-      runtime: definitionRuntime(
+      runtime: databaseRuntime(
         { name: "memory", adapter: createMemoryAdapter() },
         [insights()],
       ),
@@ -68,17 +69,15 @@ describe("getConsoleFeaturesRpc", () => {
     });
   });
 
-  it("reports what a self-hosted server's admin API serves of its plugins", async () => {
+  it("reports what a self-hosted server's admin API serves of the plugins the config lists", async () => {
     mocks.prepare.mockResolvedValue({
       runtime: createConsoleRuntime({
         database: {
           name: "standalone-repository",
-          url: "https://updates.example.com/hot-updater/admin",
           core: {} as HotUpdaterCoreApi,
-          fetchAdmin: async () =>
-            Response.json({ plugins: ["apiKeys", "insights"] }),
-          storage: [],
+          fetchAdmin: vi.fn(),
         },
+        plugins: [apiKeys(), insights()],
       }),
     });
 
