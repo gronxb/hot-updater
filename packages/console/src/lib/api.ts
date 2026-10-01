@@ -2,13 +2,7 @@ import type {
   ReleaseFilter,
   ReleasePolicyPatch,
 } from "@hot-updater/plugin-core";
-import {
-  type QueryClient,
-  type QueryKey,
-  useMutation,
-  useQuery,
-  useQueryClient,
-} from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import {
   createChannel as createChannelApi,
@@ -74,13 +68,6 @@ export type ReleaseFilters = {
   /** Releases newer than this id: the previous page. */
   afterReleaseId?: string;
   limit?: number;
-};
-
-const invalidateInBackground = (
-  queryClient: QueryClient,
-  queryKey: QueryKey,
-) => {
-  void queryClient.invalidateQueries({ queryKey }).catch(() => undefined);
 };
 
 // Query Hooks
