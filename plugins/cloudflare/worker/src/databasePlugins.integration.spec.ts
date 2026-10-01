@@ -294,7 +294,7 @@ describe.each([
     });
   });
 
-  it("deletes a channel once its last Release is deleted", async () => {
+  it("deletes a channel once its last Release is deleted, and the artifact with that Release", async () => {
     const { core } = serve({ database: createDatabase() });
     const channel = await core.ensureChannel("retired");
     const bundle = createBundleFixture("903");
@@ -308,9 +308,7 @@ describe.each([
       deleted: true,
     });
     await expect(core.getRelease(releaseId)).resolves.toBeNull();
-    await expect(core.getBundle(bundle.id)).resolves.toMatchObject({
-      bundle: createBundleRowFixture("903"),
-    });
+    await expect(core.getBundle(bundle.id)).resolves.toBeNull();
     await expect(core.listChannels()).resolves.toEqual([]);
   });
 });

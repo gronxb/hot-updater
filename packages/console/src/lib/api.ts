@@ -2,19 +2,11 @@ import type {
   ReleaseFilter,
   ReleasePolicyPatch,
 } from "@hot-updater/plugin-core";
-import {
-  type QueryClient,
-  type QueryKey,
-  useMutation,
-  useQuery,
-  useQueryClient,
-} from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import {
   createChannel as createChannelApi,
   deleteChannel as deleteChannelApi,
-  deleteBundle as deleteBundleApi,
-  deleteBundles as deleteBundlesApi,
   deleteRelease as deleteReleaseApi,
   getBundle,
   getBundleChildCounts,
@@ -39,8 +31,6 @@ type BundleFilters = {
   /** Bundles newer than this id: the previous page. */
   before?: string;
 };
-
-type BundlesQueryData = Awaited<ReturnType<typeof getBundles>>;
 
 const bundleListQueryKey = ["bundles"] as const;
 const releaseListQueryKey = ["releases"] as const;
@@ -78,42 +68,6 @@ export type ReleaseFilters = {
   /** Releases newer than this id: the previous page. */
   afterReleaseId?: string;
   limit?: number;
-};
-
-function removeBundleFromQueryData(
-  data: BundlesQueryData | undefined,
-  bundleId: string,
-) {
-  if (!data) {
-    return data;
-  }
-
-  return {
-    ...data,
-    data: data.data.filter((bundle) => bundle.id !== bundleId),
-  };
-}
-
-function removeBundlesFromQueryData(
-  data: BundlesQueryData | undefined,
-  bundleIds: readonly string[],
-) {
-  if (!data) {
-    return data;
-  }
-
-  const bundleIdSet = new Set(bundleIds);
-  return {
-    ...data,
-    data: data.data.filter((bundle) => !bundleIdSet.has(bundle.id)),
-  };
-}
-
-const invalidateInBackground = (
-  queryClient: QueryClient,
-  queryKey: QueryKey,
-) => {
-  void queryClient.invalidateQueries({ queryKey }).catch(() => undefined);
 };
 
 // Query Hooks
@@ -231,48 +185,6 @@ export function useDeleteChannelMutation() {
   });
 }
 
-export function useDeleteBundleMutation() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: (params: { bundleId: string }) =>
-      deleteBundleApi({ data: params }),
-    onSuccess: (_, vars) => {
-      queryClient.removeQueries({ queryKey: queryKeys.bundle(vars.bundleId) });
-      queryClient.setQueriesData(
-        { queryKey: queryKeys.bundles.all },
-        (data: BundlesQueryData | undefined) =>
-          removeBundleFromQueryData(data, vars.bundleId),
-      );
-
-      invalidateInBackground(queryClient, queryKeys.bundles.all);
-      invalidateInBackground(queryClient, queryKeys.bundleChildren.all);
-    },
-  });
-}
-
-export function useDeleteBundlesMutation() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: (params: { bundleIds: string[] }) =>
-      deleteBundlesApi({ data: params }),
-    onSuccess: (_, vars) => {
-      for (const bundleId of vars.bundleIds) {
-        queryClient.removeQueries({ queryKey: queryKeys.bundle(bundleId) });
-      }
-      queryClient.setQueriesData(
-        { queryKey: queryKeys.bundles.all },
-        (data: BundlesQueryData | undefined) =>
-          removeBundlesFromQueryData(data, vars.bundleIds),
-      );
-
-      invalidateInBackground(queryClient, queryKeys.bundles.all);
-      invalidateInBackground(queryClient, queryKeys.bundleChildren.all);
-    },
-  });
-}
-
 export function useUpdateReleaseMutation() {
   const queryClient = useQueryClient();
   return useMutation({
@@ -313,10 +225,17 @@ export function useDeleteReleaseMutation() {
       queryClient.removeQueries({
         queryKey: queryKeys.release(input.releaseId),
       });
+      // Core deletes the artifact with its last release, and the patches
+      // built on it, so the bundle reads can change too.
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: queryKeys.releases.all }),
         queryClient.invalidateQueries({ queryKey: ["release-catalog"] }),
         queryClient.invalidateQueries({ queryKey: queryKeys.channels }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.bundles.all }),
+        queryClient.invalidateQueries({ queryKey: ["bundle"] }),
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.bundleChildren.all,
+        }),
       ]);
     },
   });

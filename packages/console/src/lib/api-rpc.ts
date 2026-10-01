@@ -34,14 +34,6 @@ type GetBundleChildCountsInput = {
   bundleIds: string[];
 };
 
-type DeleteBundleInput = {
-  bundleId: string;
-};
-
-type DeleteBundlesInput = {
-  bundleIds: string[];
-};
-
 type GetReleasesInput = {
   /** One of the filter sets the release indexes serve. */
   filter?: ReleaseFilter;
@@ -333,51 +325,6 @@ export const getBundleChildCounts = createServerFn({ method: "GET" })
       return await readBundleChildCounts(core, data.bundleIds);
     } catch (error) {
       console.error("Error during bundle child count retrieval:", error);
-      throw error;
-    }
-  });
-
-// DELETE /api/bundles/:bundleId
-export const deleteBundle = createServerFn({ method: "POST" })
-  .middleware([consoleAccess])
-  .validator((input: DeleteBundleInput) => input)
-  .handler(async ({ data }) => {
-    try {
-      const { deleteBundle: deleteBundleWithStorage } =
-        await import("./server/deleteBundle");
-      const { core, storage } = await prepare();
-
-      await deleteBundleWithStorage(data, {
-        core,
-        storage,
-        waitForStorageCleanup: false,
-      });
-
-      return { success: true };
-    } catch (error) {
-      console.error("Error during bundle deletion:", error);
-      throw error;
-    }
-  });
-
-export const deleteBundles = createServerFn({ method: "POST" })
-  .middleware([consoleAccess])
-  .validator((input: DeleteBundlesInput) => input)
-  .handler(async ({ data }) => {
-    try {
-      const { deleteBundles: deleteBundlesWithStorage } =
-        await import("./server/deleteBundle");
-      const { core, storage } = await prepare();
-
-      const result = await deleteBundlesWithStorage(data, {
-        core,
-        storage,
-        waitForStorageCleanup: false,
-      });
-
-      return { success: true, ...result };
-    } catch (error) {
-      console.error("Error during bundle deletion:", error);
       throw error;
     }
   });

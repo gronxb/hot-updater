@@ -684,7 +684,7 @@ describe("Detox scenario contract", () => {
     );
   });
 
-  it("resolves deployed console IDs to files and keeps artifact cleanup independent of Releases", async () => {
+  it("resolves deployed console IDs to files, and deletes a file with its last Release", async () => {
     const { createMemoryCore } = await import("./memory-core.ts");
     const { importPublished } = await import("./published.ts");
     const { rowToBundle } = await importPublished<
@@ -793,14 +793,7 @@ describe("Detox scenario contract", () => {
       platform: "ios",
       limit: 100,
     });
-    expect(files.map(({ bundle }) => bundle.id).sort()).toEqual([
-      base.id,
-      file.id,
-    ]);
-    await expect(
-      controller.fetchProviderBundleById(file.id),
-    ).resolves.toMatchObject(file);
-    await harness.core.deleteBundles([file.id]);
+    expect(files.map(({ bundle }) => bundle.id)).toEqual([base.id]);
     await expect(controller.fetchProviderBundleById(file.id)).rejects.toThrow(
       "bundle not found",
     );

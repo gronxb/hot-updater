@@ -3,6 +3,12 @@ import path from "node:path";
 import { parseEnv } from "node:util";
 
 import {
+  type ExpectedReleaseCatalogScope,
+  MAX_RELEASE_CATALOG_WIRE_BYTES,
+  parseReleaseCatalog,
+} from "@hot-updater/protocol";
+
+import {
   CLIENT_CREDENTIAL_FILE,
   type InfraClientAuth,
 } from "../infra/clientAuth";
@@ -19,13 +25,6 @@ const isObject = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === "object" && !Array.isArray(value);
 const isText = (value: unknown): value is string =>
   typeof value === "string" && value.length > 0;
-// Match the native client's releaseCatalogCache.ts wire validation.
-const maxCatalogWireBytes = 2 * 256 * 1024 + 4 * 1024;
-const isUuidV7 = (value: unknown) =>
-  typeof value === "string" &&
-  /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(
-    value,
-  );
 
 const parseJson = (body: string): unknown => {
   try {
@@ -34,21 +33,6 @@ const parseJson = (body: string): unknown => {
     throw new VerificationError("Server did not return valid JSON.");
   }
 };
-
-const isDescriptor = (value: unknown) =>
-  isObject(value) &&
-  isUuidV7(value["releaseId"]) &&
-  ((value["kind"] === "BUNDLE" && typeof value["bundleId"] === "string") ||
-    (value["kind"] === "EMBEDDED" && value["bundleId"] === null)) &&
-  Number.isSafeInteger(value["rolloutCohortCount"]) &&
-  typeof value["rolloutCohortCount"] === "number" &&
-  value["rolloutCohortCount"] >= 0 &&
-  value["rolloutCohortCount"] <= 1000 &&
-  Array.isArray(value["targetCohorts"]) &&
-  value["targetCohorts"].length <= 100 &&
-  value["targetCohorts"].every((cohort) => typeof cohort === "string") &&
-  typeof value["shouldForceUpdate"] === "boolean" &&
-  (value["message"] === null || typeof value["message"] === "string");
 
 export interface ServerVerificationOptions {
   cwd: string;
@@ -105,7 +89,7 @@ export async function verifyServer(
     for await (const chunk of response.body ?? []) {
       size += chunk.byteLength;
       requireCheck(
-        size <= maxCatalogWireBytes,
+        size <= MAX_RELEASE_CATALOG_WIRE_BYTES,
         "Server response exceeds the probe limit.",
       );
       body += decoder.decode(chunk, { stream: true });
@@ -189,9 +173,15 @@ export async function verifyServer(
       "Use the app's canonical channel and version or fingerprint as the catalog target.",
     );
     const channelKey = Buffer.from(values.channel).toString("base64url");
-    const scopeKey = `v1:${strategy}:${values.platform}:${channelKey}${
-      strategy === "fingerprint" ? `:${target}` : ""
-    }`;
+    const expectedScope: ExpectedReleaseCatalogScope =
+      strategy === "fingerprint"
+        ? {
+            channelKey,
+            platform: values.platform,
+            strategy: "FINGERPRINT",
+            fingerprintHash: target,
+          }
+        : { channelKey, platform: values.platform, strategy: "APP_VERSION" };
     const routeUrl = (route: string) => {
       const url = new URL(baseUrl);
       url.pathname = `${url.pathname.replace(/\/+$/, "")}/${route}`;
@@ -242,36 +232,14 @@ export async function verifyServer(
         "HTTP 404 must be the empty-catalog response marked x-hot-updater-catalog: none.",
       );
     } else {
+      // The device's update client accepts a catalog through the same
+      // protocol check.
       requireCheck(
         authenticated.response.status === 200 &&
           /^application\/vnd\.hot-updater\.release-catalog\+json;\s*version=1(?:;|$)/i.test(
             contentType,
           ) &&
-          isObject(catalog) &&
-          catalog["schemaVersion"] === 1 &&
-          isText(catalog["catalogId"]) &&
-          typeof catalog["catalogHash"] === "string" &&
-          /^sha256:[0-9a-f]{64}$/.test(catalog["catalogHash"]) &&
-          catalog["scopeKey"] === scopeKey &&
-          Number.isSafeInteger(catalog["generation"]) &&
-          typeof catalog["generation"] === "number" &&
-          catalog["generation"] >= 1 &&
-          catalog["fallbackPolicy"] === "BUILTIN_IF_ACTIVE_INELIGIBLE" &&
-          Array.isArray(catalog["releases"]) &&
-          catalog["releases"].every(isDescriptor) &&
-          (catalog["rollbackReleases"] === undefined ||
-            (Array.isArray(catalog["rollbackReleases"]) &&
-              catalog["rollbackReleases"].every(isDescriptor))) &&
-          new Set(
-            [
-              ...catalog["releases"],
-              ...(catalog["rollbackReleases"] ?? []),
-            ].flatMap((release) =>
-              isObject(release) && Array.isArray(release["targetCohorts"])
-                ? release["targetCohorts"]
-                : [],
-            ),
-          ).size <= 512,
+          parseReleaseCatalog(authenticated.body, expectedScope) !== null,
         clientAuth
           ? "The authenticated request must return a valid release catalog for the requested scope."
           : "The request must return a valid release catalog for the requested scope.",

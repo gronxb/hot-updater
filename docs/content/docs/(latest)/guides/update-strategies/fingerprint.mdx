@@ -120,8 +120,9 @@ same file in both lists.
   `extraSources`, then generate a new fingerprint and rebuild the native app.
 
 Before relying on this boundary, temporarily edit an app-owned Swift or Kotlin
-file and run `npx hot-updater fingerprint`. Confirm that the intended platform's
-hash changes, then restore the edit. Repeat for your other compatibility inputs.
+file and run `npx hot-updater doctor`. Confirm that it reports
+`FINGERPRINT_JSON_STALE` for the intended platform and lists the edited file,
+then restore the edit. Repeat for your other compatibility inputs.
 A matching fingerprint only proves those selected inputs are unchanged; it does
 not prove that JavaScript is compatible with an untracked native change.
 
@@ -178,10 +179,13 @@ the second platform when the first deployment fails.
 After changing a tracked native input, check whether the fingerprint changed:
 
 ```package-install
-npx hot-updater fingerprint
+npx hot-updater doctor
 ```
 
-If there's a mismatch, create a new fingerprint:
+Doctor compares `fingerprint.json` with the project's fingerprint now. When
+they differ, it reports `FINGERPRINT_JSON_STALE` and lists the sources that
+changed. Create a new fingerprint then, or run `doctor --fix`, which does the
+same:
 
 ```package-install
 npx hot-updater fingerprint create

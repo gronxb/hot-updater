@@ -13,6 +13,7 @@ import {
 import {
   createHttpTestClient,
   setupReleaseCatalogTestSuite,
+  storeBundles,
 } from "@hot-updater/test-utils";
 import { setupBundleMethodsTestSuite } from "@hot-updater/test-utils";
 import {
@@ -320,14 +321,12 @@ describe("Hot Updater Handler Integration Tests (Hono + Prisma + PostgreSQL)", (
   });
 
   it("rolls back patch cleanup when bundle deletion fails", async () => {
-    const core = createHotUpdater({
-      database: prismaAdapter({ prisma, provider: "postgresql" }),
-      clientAccess: "public",
-    }).core;
+    const database = prismaAdapter({ prisma, provider: "postgresql" });
+    const core = createHotUpdater({ database, clientAccess: "public" }).core;
     const baseId = "5d8b5ebf-8008-4ab8-9fb5-79af0ec766c3";
     const targetId = "5e08db65-e31d-4de3-a795-8492327c30d8";
     // Both bundles stored with no release, the target with its patch.
-    for (const bundle of [
+    await storeBundles(database, [
       bundleOf(baseId),
       {
         ...bundleOf(targetId),
@@ -341,12 +340,7 @@ describe("Hot Updater Handler Integration Tests (Hono + Prisma + PostgreSQL)", (
           },
         ],
       },
-    ]) {
-      const [deployed] = await core.deploy([
-        { bundle, release: policyOf("prisma-rollback", false) },
-      ]);
-      await core.deleteRelease({ releaseId: deployed!.release!.id });
-    }
+    ]);
 
     await prisma.$executeRawUnsafe(`
             CREATE FUNCTION fail_prisma_bundle_delete() RETURNS trigger AS $$

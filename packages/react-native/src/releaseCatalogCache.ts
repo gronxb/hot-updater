@@ -1,10 +1,8 @@
 import {
-  MAX_TARGET_COHORTS_PER_RELEASE,
-  MAX_COMPILED_CATALOG_BYTES,
-  MAX_DISTINCT_TARGET_COHORTS_PER_SCOPE,
-  NUMERIC_COHORT_SIZE,
-  isUUIDv7,
-  parseReleaseCatalogScopeKey,
+  type ExpectedReleaseCatalogScope,
+  getUtf8ByteLength,
+  MAX_RELEASE_CATALOG_WIRE_BYTES,
+  parseReleaseCatalog,
   type ReleaseCatalog,
 } from "@hot-updater/protocol";
 
@@ -12,8 +10,6 @@ import { InvalidUpdateResponseError, UpdateHttpError } from "./updateError";
 
 const CACHE_FORMAT_VERSION = "1";
 const MAX_ETAG_BYTES = 1024;
-export const MAX_RELEASE_CATALOG_WIRE_BYTES =
-  MAX_COMPILED_CATALOG_BYTES * 2 + 4 * 1024;
 export const MAX_RELEASE_CATALOG_CACHE_ENTRY_BYTES =
   MAX_RELEASE_CATALOG_WIRE_BYTES + MAX_ETAG_BYTES + 3;
 
@@ -48,137 +44,12 @@ let lastParsedCache:
     })
   | null = null;
 
-export type ExpectedReleaseCatalogScope = {
-  readonly channelKey: string;
-  readonly platform: "ios" | "android";
-} & (
-  | {
-      readonly strategy: "APP_VERSION";
-      readonly fingerprintHash?: never;
-    }
-  | {
-      readonly strategy: "FINGERPRINT";
-      readonly fingerprintHash: string;
-    }
-);
-
 type FetchReleaseCatalogInput = {
   readonly baseURL: string;
   readonly expectedScope: ExpectedReleaseCatalogScope;
   readonly requestHeaders?: Record<string, string>;
   readonly requestTimeout?: number;
   readonly url: string;
-};
-
-const getUtf8ByteLength = (value: string): number => {
-  let bytes = 0;
-  for (let index = 0; index < value.length; index += 1) {
-    const code = value.charCodeAt(index);
-    if (code <= 0x7f) {
-      bytes += 1;
-    } else if (code <= 0x7ff) {
-      bytes += 2;
-    } else if (
-      code >= 0xd800 &&
-      code <= 0xdbff &&
-      index + 1 < value.length &&
-      value.charCodeAt(index + 1) >= 0xdc00 &&
-      value.charCodeAt(index + 1) <= 0xdfff
-    ) {
-      bytes += 4;
-      index += 1;
-    } else {
-      bytes += 3;
-    }
-  }
-  return bytes;
-};
-
-const isStringArray = (value: unknown): value is readonly string[] =>
-  Array.isArray(value) && value.every((entry) => typeof entry === "string");
-
-const isValidReleaseDescriptor = (value: unknown): boolean => {
-  if (value === null || typeof value !== "object") return false;
-  const descriptor = value as Record<string, unknown>;
-
-  return (
-    isUUIDv7(descriptor.releaseId) &&
-    (descriptor.kind === "BUNDLE" || descriptor.kind === "EMBEDDED") &&
-    ((descriptor.kind === "BUNDLE" &&
-      typeof descriptor.bundleId === "string") ||
-      (descriptor.kind === "EMBEDDED" && descriptor.bundleId === null)) &&
-    Number.isSafeInteger(descriptor.rolloutCohortCount) &&
-    (descriptor.rolloutCohortCount as number) >= 0 &&
-    (descriptor.rolloutCohortCount as number) <= NUMERIC_COHORT_SIZE &&
-    isStringArray(descriptor.targetCohorts) &&
-    descriptor.targetCohorts.length <= MAX_TARGET_COHORTS_PER_RELEASE &&
-    typeof descriptor.shouldForceUpdate === "boolean" &&
-    (descriptor.message === null || typeof descriptor.message === "string")
-  );
-};
-
-export const hasExpectedReleaseCatalogScope = (
-  catalog: ReleaseCatalog,
-  expected: ExpectedReleaseCatalogScope,
-): boolean => {
-  try {
-    const parsed = parseReleaseCatalogScopeKey(catalog.scopeKey);
-    return (
-      parsed.channelKey === expected.channelKey &&
-      parsed.platform === expected.platform &&
-      parsed.strategy === expected.strategy &&
-      (parsed.strategy === "APP_VERSION" ||
-        (expected.strategy === "FINGERPRINT" &&
-          parsed.fingerprintHash === expected.fingerprintHash))
-    );
-  } catch {
-    return false;
-  }
-};
-
-const parseValidatedCatalog = (
-  value: string,
-  expectedScope: ExpectedReleaseCatalogScope,
-): ReleaseCatalog | null => {
-  if (getUtf8ByteLength(value) > MAX_RELEASE_CATALOG_WIRE_BYTES) return null;
-
-  try {
-    const catalog = JSON.parse(value) as Partial<ReleaseCatalog>;
-    if (
-      catalog.schemaVersion !== 1 ||
-      typeof catalog.catalogId !== "string" ||
-      catalog.catalogId.length === 0 ||
-      typeof catalog.scopeKey !== "string" ||
-      !Number.isSafeInteger(catalog.generation) ||
-      (catalog.generation ?? 0) < 1 ||
-      typeof catalog.catalogHash !== "string" ||
-      !/^sha256:[0-9a-f]{64}$/.test(catalog.catalogHash) ||
-      catalog.fallbackPolicy !== "BUILTIN_IF_ACTIVE_INELIGIBLE" ||
-      !Array.isArray(catalog.releases) ||
-      !catalog.releases.every(isValidReleaseDescriptor) ||
-      (catalog.rollbackReleases !== undefined &&
-        (!Array.isArray(catalog.rollbackReleases) ||
-          !catalog.rollbackReleases.every(isValidReleaseDescriptor)))
-    ) {
-      return null;
-    }
-    if (
-      !hasExpectedReleaseCatalogScope(catalog as ReleaseCatalog, expectedScope)
-    ) {
-      return null;
-    }
-    const distinctTargetCohorts = new Set(
-      [...catalog.releases, ...(catalog.rollbackReleases ?? [])].flatMap(
-        (release) => release.targetCohorts,
-      ),
-    );
-    if (distinctTargetCohorts.size > MAX_DISTINCT_TARGET_COHORTS_PER_SCOPE) {
-      return null;
-    }
-    return catalog as ReleaseCatalog;
-  } catch {
-    return null;
-  }
 };
 
 const isValidETag = (value: string | null): value is string =>
@@ -216,7 +87,7 @@ const parseCache = (
   const etag = value.slice(versionEnd + 1, etagEnd);
   const body = value.slice(etagEnd + 1);
   if (!isValidETag(etag)) return null;
-  const catalog = parseValidatedCatalog(body, expectedScope);
+  const catalog = parseReleaseCatalog(body, expectedScope);
   if (catalog === null) return null;
   const parsed = { catalog, etag, partition, serialized: value };
   lastParsedCache = parsed;
@@ -307,7 +178,7 @@ const consumeSuccessfulResponse = async (
   }
 
   const body = await response.text();
-  const catalog = parseValidatedCatalog(body, input.expectedScope);
+  const catalog = parseReleaseCatalog(body, input.expectedScope);
   if (catalog === null) {
     await removeNativeReleaseCatalogCache(partition);
     throw new InvalidUpdateResponseError("Received an invalid Release catalog");

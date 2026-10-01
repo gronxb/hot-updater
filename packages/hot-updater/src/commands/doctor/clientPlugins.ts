@@ -1,10 +1,9 @@
 import fs from "node:fs/promises";
 
-import type { ConfigResponse } from "@hot-updater/cli-tools";
 import type { PluginClientPlugin } from "@hot-updater/plugin-core";
 import fg from "fast-glob";
 
-import { loadServer } from "../../utils/loadServer";
+import type { LoadedServer } from "../../utils/loadServer";
 
 /** Files that hold no app code of the project's own. */
 const NOT_APP_CODE = [
@@ -26,24 +25,19 @@ const isClientPlugin = (value: unknown): value is PluginClientPlugin =>
 /**
  * The client plugins the server's plugins need: from its definition, or
  * from the admin `/version` of a self-hosted server `standaloneRepository`
- * reaches.
+ * reaches. The caller owns `server` and closes it.
  */
 export const readServerClientPlugins = async (
-  config: Pick<ConfigResponse, "server">,
+  server: LoadedServer,
 ): Promise<readonly PluginClientPlugin[]> => {
-  const server = await loadServer(config);
-  try {
-    if (server.kind === "definition") return server.definition.clientPlugins;
-    const response = await server.server.fetchAdmin("/version");
-    if (!response.ok) {
-      throw new Error(`The server answered /version with ${response.status}.`);
-    }
-    const listed = ((await response.json()) as { clientPlugins?: unknown })
-      .clientPlugins;
-    return Array.isArray(listed) ? listed.filter(isClientPlugin) : [];
-  } finally {
-    await server.dispose();
+  if (server.kind === "definition") return server.definition.clientPlugins;
+  const response = await server.server.fetchAdmin("/version");
+  if (!response.ok) {
+    throw new Error(`The server answered /version with ${response.status}.`);
   }
+  const listed = ((await response.json()) as { clientPlugins?: unknown })
+    .clientPlugins;
+  return Array.isArray(listed) ? listed.filter(isClientPlugin) : [];
 };
 
 const escapeRegExp = (text: string) =>

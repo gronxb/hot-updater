@@ -11,6 +11,7 @@ import {
 import {
   createHttpTestClient,
   setupReleaseCatalogTestSuite,
+  storeBundles,
 } from "@hot-updater/test-utils";
 import { setupBundleMethodsTestSuite } from "@hot-updater/test-utils";
 import {
@@ -408,22 +409,10 @@ describe("Hot Updater Handler Integration Tests (Hono + MySQL)", () => {
       const channel = await core.ensureChannel("production");
       await expect(core.ensureChannel("production")).resolves.toEqual(channel);
       // Both bundles stored with no release, so the owner may be deleted.
-      for (const id of [baseId, ownerId]) {
-        const [deployed] = await core.deploy([
-          {
-            bundle: createBundle(id),
-            release: {
-              channel: "production",
-              enabled: false,
-              fingerprintHash: null,
-              message: null,
-              shouldForceUpdate: false,
-              targetAppVersion: "*",
-            },
-          },
-        ]);
-        await core.deleteRelease({ releaseId: deployed!.release!.id });
-      }
+      await storeBundles(writerDatabase, [
+        createBundle(baseId),
+        createBundle(ownerId),
+      ]);
       await sql`select get_lock(${gate}, 5)`.execute(control);
       await admin.query(
         `create trigger \`${database}\`.pause_patch_insert before insert on \`${database}\`.bundle_patches for each row set @hot_updater_patch_gate = get_lock('${gate}', 10)`,

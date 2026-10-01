@@ -3,25 +3,23 @@ import fs from "node:fs/promises";
 import path from "node:path";
 
 import {
+  type ConfigResponse,
   getBundleSigningPublicKey,
   getCwd,
   loadConfig,
   p,
 } from "@hot-updater/cli-tools";
 
-import { AndroidConfigParser } from "@/utils/configParser/androidParser";
-import { IosConfigParser } from "@/utils/configParser/iosParser";
-import { warnIfExpoCNG } from "@/utils/expoDetection";
-import { appendToProjectRootGitignore } from "@/utils/git";
+import { ui } from "../utils/cli-ui";
+import { AndroidConfigParser } from "../utils/configParser/androidParser";
+import { IosConfigParser } from "../utils/configParser/iosParser";
+import { warnIfExpoCNG } from "../utils/expoDetection";
+import { appendToProjectRootGitignore } from "../utils/git";
 import {
   generateKeyPair,
   getPrivateKeyGitignorePath,
-  getPublicKeyFromPrivate,
-  loadPrivateKey,
   saveKeyPair,
-} from "@/utils/signing";
-
-import { ui } from "../utils/cli-ui";
+} from "../utils/signing";
 
 export const ANDROID_KEY = "hot_updater_public_key";
 export const IOS_KEY = "HOT_UPDATER_PUBLIC_KEY";
@@ -143,13 +141,12 @@ export const keysGenerate = async (options: KeysGenerateOptions = {}) => {
 };
 
 export interface KeysExportPublicOptions {
-  input?: string;
   output?: string;
   printOnly?: boolean;
   yes?: boolean;
 }
 
-interface WriteResult {
+export interface WriteResult {
   platform: "android" | "ios";
   paths: string[];
   success: boolean;
@@ -212,6 +209,37 @@ async function writePublicKeyToIos(
   }
 }
 
+/**
+ * Writes the public key into each platform's native files that exist: what
+ * `keys export-public --yes` writes, without its output.
+ */
+export const writePublicKeyToNativeFiles = async (
+  publicKeyPEM: string,
+  config: Pick<ConfigResponse, "platform">,
+): Promise<WriteResult[]> => {
+  const androidManifestPaths =
+    config.platform.android.androidManifestPaths ?? [];
+  const [androidExists, iosExists] = await Promise.all([
+    new AndroidConfigParser(androidManifestPaths).exists(),
+    new IosConfigParser(config.platform.ios.infoPlistPaths).exists(),
+  ]);
+  const results: WriteResult[] = [];
+  if (androidExists) {
+    results.push(
+      await writePublicKeyToAndroid(publicKeyPEM.trim(), androidManifestPaths),
+    );
+  }
+  if (iosExists) {
+    results.push(
+      await writePublicKeyToIos(
+        publicKeyPEM.trim(),
+        config.platform.ios.infoPlistPaths,
+      ),
+    );
+  }
+  return results;
+};
+
 function printPublicKeyInstructions(publicKeyPEM: string): void {
   console.log("");
   console.log(ui.title("Public key"));
@@ -244,10 +272,9 @@ const formatNativeTarget = (
  * Use --output to write an Expo trust-anchor file, or --print-only to display
  * the key without modifying files.
  *
- * The public key is read from the configured signing source unless --input
- * provides a private key path explicitly.
+ * The public key is read from the configured signing source.
  *
- * Usage: npx hot-updater keys export-public [--input ./keys/private-key.pem] [--output ./keys/public-key.pem] [--print-only] [--yes]
+ * Usage: npx hot-updater keys export-public [--output ./keys/public-key.pem] [--print-only] [--yes]
  */
 export const keysExportPublic = async (
   options: KeysExportPublicOptions = {},
@@ -256,23 +283,14 @@ export const keysExportPublic = async (
 
   const config = await loadConfig(null);
   try {
-    let publicKeyPEM: string;
-    if (options.input) {
-      const privateKeyPath = path.isAbsolute(options.input)
-        ? options.input
-        : path.join(cwd, options.input);
-      publicKeyPEM = getPublicKeyFromPrivate(
-        await loadPrivateKey(privateKeyPath),
-      );
-    } else if (config.signing) {
-      publicKeyPEM = (await getBundleSigningPublicKey(config.signing, {
-        cwd,
-      }))!;
-    } else {
+    if (!config.signing) {
       throw new Error(
-        "Bundle signing is not configured. Pass --input or configure signing first.",
+        "Bundle signing is not configured. Configure signing in hot-updater.config.ts first.",
       );
     }
+    const publicKeyPEM = (await getBundleSigningPublicKey(config.signing, {
+      cwd,
+    }))!;
 
     if (options.output && options.printOnly) {
       throw new Error("--output and --print-only cannot be combined.");
@@ -374,24 +392,7 @@ export const keysExportPublic = async (
     }
 
     // Perform writes
-    const results: WriteResult[] = [];
-
-    if (androidExists) {
-      results.push(
-        await writePublicKeyToAndroid(
-          publicKeyPEM.trim(),
-          androidManifestPaths,
-        ),
-      );
-    }
-    if (iosExists) {
-      results.push(
-        await writePublicKeyToIos(
-          publicKeyPEM.trim(),
-          config.platform.ios.infoPlistPaths,
-        ),
-      );
-    }
+    const results = await writePublicKeyToNativeFiles(publicKeyPEM, config);
 
     for (const result of results) {
       if (result.success) {
@@ -426,7 +427,7 @@ export interface KeysRemoveOptions {
   yes?: boolean;
 }
 
-interface RemoveResult {
+export interface RemoveResult {
   platform: "android" | "ios";
   paths: string[];
   success: boolean;
@@ -523,6 +524,23 @@ async function removePublicKeyFromIos(
 }
 
 /**
+ * Removes the public key from each platform's native files that hold one:
+ * what `keys remove --yes` removes, without its output. A platform without
+ * a key has no result.
+ */
+export const removePublicKeyFromNativeFiles = async (
+  config: Pick<ConfigResponse, "platform">,
+): Promise<RemoveResult[]> => {
+  const results = [
+    await removePublicKeyFromIos(config.platform.ios.infoPlistPaths),
+    await removePublicKeyFromAndroid(
+      config.platform.android.androidManifestPaths ?? [],
+    ),
+  ];
+  return results.filter((result) => result.found || !result.success);
+};
+
+/**
  * Remove public keys from native configuration files.
  * Automatically detects and removes keys from both iOS and Android.
  *
@@ -596,16 +614,7 @@ export const keysRemove = async (options: KeysRemoveOptions = {}) => {
   }
 
   // Perform removal
-  const results: RemoveResult[] = [];
-
-  if (iosKey.value) {
-    results.push(
-      await removePublicKeyFromIos(config.platform.ios.infoPlistPaths),
-    );
-  }
-  if (androidKey.value) {
-    results.push(await removePublicKeyFromAndroid(androidManifestPaths));
-  }
+  const results = await removePublicKeyFromNativeFiles(config);
 
   for (const result of results) {
     if (result.success && result.found) {

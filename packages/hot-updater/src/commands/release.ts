@@ -25,6 +25,8 @@ export interface ReleaseListOptions {
 export interface ReleaseUpdateOptions {
   readonly clearMessage?: boolean;
   readonly clearTargetCohorts?: boolean;
+  /** Validates the update and shows the projected catalog without saving. */
+  readonly dryRun?: boolean;
   readonly expectedRevision?: number;
   readonly forceUpdate?: boolean;
   readonly json?: boolean;
@@ -127,6 +129,29 @@ const releaseDisablePreview = (
       "previous compatible enabled bundle or BUILTIN (device-dependent)",
     ),
   ]);
+
+/** A dry run's result: the catalog the update would compile, against its limit. */
+const printUpdatePreview = (
+  result: Awaited<ReturnType<HotUpdaterCoreApi["preflightReleasePolicy"]>>,
+  options: ReleaseUpdateOptions,
+) => {
+  console.log(
+    options.json
+      ? JSON.stringify(result, null, 2)
+      : ui.block("Bundle update dry run (not saved)", [
+          ui.kv("Current bytes", String(result.currentCatalog?.byte_size ?? 0)),
+          ui.kv("Projected bytes", String(result.diagnostics.byteSize)),
+          ui.kv("Maximum bytes", String(256 * 1024)),
+          ui.kv("Descriptors", String(result.diagnostics.descriptorCount)),
+          ui.kv("Intervals", String(result.diagnostics.segmentCount)),
+          ui.kv(
+            "Named cohorts",
+            String(result.diagnostics.distinctTargetCohortCount),
+          ),
+          ui.kv("Next generation", String(result.catalog.generation)),
+        ]),
+  );
+};
 
 const confirmMutation = async (
   message: string,
@@ -291,16 +316,24 @@ export const handleReleaseUpdate = async (
     process.exit(1);
   }
   if (!options.json) printBanner();
-  await confirmMutation("Update this bundle?", options.yes);
+  // A dry run saves nothing, so it needs no confirmation.
+  if (!options.dryRun)
+    await confirmMutation("Update this bundle?", options.yes);
   const server = await loadServer(await loadConfig(null));
   try {
-    const result = await server.core.updateReleasePolicy({
+    const core = server.core;
+    const target = {
       ...(options.expectedRevision === undefined
         ? {}
         : { expectedRevision: options.expectedRevision }),
       patch,
       releaseId,
-    });
+    };
+    if (options.dryRun) {
+      printUpdatePreview(await core.preflightReleasePolicy(target), options);
+      return;
+    }
+    const result = await core.updateReleasePolicy(target);
     console.log(
       options.json
         ? JSON.stringify(result, null, 2)
@@ -388,43 +421,6 @@ export const handleReleaseEnablement = async (
   }
 };
 
-export const handleReleasePreflight = async (
-  releaseId: string,
-  options: ReleaseUpdateOptions,
-) => {
-  const server = await loadServer(await loadConfig(null));
-  try {
-    const result = await server.core.preflightReleasePolicy({
-      ...(options.expectedRevision === undefined
-        ? {}
-        : { expectedRevision: options.expectedRevision }),
-      patch: createPolicyPatch(options),
-      releaseId,
-    });
-    console.log(
-      options.json
-        ? JSON.stringify(result, null, 2)
-        : ui.block("Bundle update preflight", [
-            ui.kv(
-              "Current bytes",
-              String(result.currentCatalog?.byte_size ?? 0),
-            ),
-            ui.kv("Projected bytes", String(result.diagnostics.byteSize)),
-            ui.kv("Maximum bytes", String(256 * 1024)),
-            ui.kv("Descriptors", String(result.diagnostics.descriptorCount)),
-            ui.kv("Intervals", String(result.diagnostics.segmentCount)),
-            ui.kv(
-              "Named cohorts",
-              String(result.diagnostics.distinctTargetCohortCount),
-            ),
-            ui.kv("Next generation", String(result.catalog.generation)),
-          ]),
-    );
-  } finally {
-    await safeDispose(server);
-  }
-};
-
 export const handleReleaseDelete = async (
   releaseId: string,
   options: {
@@ -440,17 +436,29 @@ export const handleReleaseDelete = async (
   );
   const server = await loadServer(await loadConfig(null));
   try {
-    const result = await server.core.deleteRelease({
+    const core = server.core;
+    // Core deletes the artifact with the last bundle on it.
+    const artifactId = (await core.getRelease(releaseId))?.bundle_id ?? null;
+    const result = await core.deleteRelease({
       ...(options.expectedRevision === undefined
         ? {}
         : { expectedRevision: options.expectedRevision }),
       releaseId,
     });
-    console.log(
-      options.json
-        ? JSON.stringify(result, null, 2)
-        : ui.block("Bundle deleted", [ui.kv("ID", ui.id(releaseId))]),
-    );
+    const deletedArtifactId =
+      artifactId !== null && (await core.getBundle(artifactId)) === null
+        ? artifactId
+        : null;
+    if (options.json) {
+      console.log(JSON.stringify({ ...result, deletedArtifactId }, null, 2));
+      return;
+    }
+    console.log(ui.block("Bundle deleted", [ui.kv("ID", ui.id(releaseId))]));
+    if (deletedArtifactId !== null) {
+      p.log.info(
+        "No other bundle used its files, so their artifact record was deleted too. The stored files stay until `hot-updater storage prune` deletes them.",
+      );
+    }
   } finally {
     await safeDispose(server);
   }
