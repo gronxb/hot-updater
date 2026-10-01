@@ -18,7 +18,6 @@ import {
   type StorageAdapterWith,
   type StorageObject,
 } from "@hot-updater/plugin-core";
-import { withAdapterResource } from "@hot-updater/plugin-core/internal";
 
 import { applyS3RuntimeAwsConfig } from "./runtimeAwsConfig";
 
@@ -253,5 +252,5 @@ export function s3Storage(
       return { deleted: true };
     },
   });
-  return withAdapterResource(adapter, { bucketName });
+  return Object.assign(adapter, { resource: { bucketName } });
 }

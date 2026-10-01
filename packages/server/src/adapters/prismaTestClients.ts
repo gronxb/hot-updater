@@ -7,9 +7,9 @@ import type { DatabaseSync, SqliteValue } from "node:sqlite";
 import { promisify } from "node:util";
 
 import type { PGlite, Transaction } from "@electric-sql/pglite";
+import type { ToolingTarget } from "@hot-updater/plugin-core";
 import type { Pool as MysqlPool, PoolConnection } from "mysql2/promise";
 
-import type { ToolingTarget } from "../db/types";
 import { prismaAdapter, type PrismaProvider } from "./prisma";
 import type {
   PrismaRawClient,

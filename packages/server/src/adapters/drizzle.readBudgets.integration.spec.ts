@@ -1,14 +1,17 @@
 import { PGlite } from "@electric-sql/pglite";
 import {
+  createSqlAdapter,
+  toolingTargetOf,
+  generateEngineSql,
+} from "@hot-updater/plugin-core";
+import {
   postgresRowsExamined,
   setupReadBudgetTestSuite,
 } from "@hot-updater/test-utils";
 import { drizzle } from "drizzle-orm/pglite";
 
-import { createSqlAdapter } from "../database/sql/sqlAdapter";
-import { toolingTargetOf } from "../db/coreDatabase";
-import { generateEngineSql } from "../db/engineSql";
-import { readBudgetServer } from "../readBudgets.testFixtures";
+import { apiKeys } from "../plugins/api-keys";
+import { insights } from "../plugins/insights";
 import { drizzleExecutor } from "./drizzleExecutor";
 
 /**
@@ -18,14 +21,13 @@ import { drizzleExecutor } from "./drizzleExecutor";
  */
 setupReadBudgetTestSuite({
   name: "drizzle (PGlite)",
-  server: readBudgetServer,
   createAdapter: async () => {
     const client = new PGlite();
     await client.exec(
       generateEngineSql(
         "postgresql",
-        toolingTargetOf(readBudgetServer.plugins).schema,
-        toolingTargetOf(readBudgetServer.plugins).settings,
+        toolingTargetOf([insights(), apiKeys()]).schema,
+        toolingTargetOf([insights(), apiKeys()]).settings,
       ).join(";\n"),
     );
     const reads = postgresRowsExamined(

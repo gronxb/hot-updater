@@ -11,9 +11,7 @@ describe("Firebase Functions build configuration", () => {
     expect(functionsConfig?.deps?.alwaysBundle).toEqual(
       expect.arrayContaining([
         "@hot-updater/plugin-core",
-        "@hot-updater/plugin-core/internal",
         "@hot-updater/server",
-        "@hot-updater/server/database",
         "@hot-updater/server/plugins/api-keys",
         "@hot-updater/server/plugins/insights",
       ]),

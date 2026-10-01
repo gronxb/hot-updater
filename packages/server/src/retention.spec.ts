@@ -1,7 +1,7 @@
+import { definePlugin, defineTable } from "@hot-updater/plugin-core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createHotUpdater } from "./index";
-import { definePlugin, defineTable } from "./plugins";
 import { createRuntimeDatabase } from "./runtime.testFixtures";
 
 const DAY = 86_400_000;

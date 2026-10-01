@@ -1,5 +1,4 @@
 import { definePlugin } from "@hot-updater/plugin-core";
-import { markOfficial } from "@hot-updater/plugin-core/internal";
 
 import {
   API_KEY_HEADER_NAME,
@@ -11,6 +10,7 @@ import {
 } from "./apiKeys";
 import { apiKeysCli } from "./cli";
 import { createApiKeyModel } from "./model";
+import { markOfficial } from "./official";
 import { apiKeysSchema } from "./schema";
 
 export {

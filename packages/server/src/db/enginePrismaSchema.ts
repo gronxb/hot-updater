@@ -1,11 +1,11 @@
-import { SETTINGS_TABLE } from "../database/fence";
-import type { ResolvedSchema } from "../database/resolveSchema";
 import {
+  SETTINGS_TABLE,
   quoteSql,
   sqlTableShapes,
   type SqlColumnShape,
   type SqlTableShape,
-} from "../database/sql/sqlSchema";
+} from "@hot-updater/plugin-core";
+import type { ResolvedSchema } from "@hot-updater/plugin-core";
 
 export type PrismaProvider = "postgresql" | "mysql" | "sqlite";
 

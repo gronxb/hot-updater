@@ -620,6 +620,14 @@ same engine, each through a declared index or key. Plugins never write core.
 `after` is the last key of the previous page. Call `core` outside
 transactions.
 
+`findBaseBundleIds` takes a base-candidate key: the Release Catalog scope a
+new bundle's devices update from and, for an app version, its normalized
+range. `targetBaseCandidateKey({ channel, platform, fingerprintHash,
+appVersion })` from `@hot-updater/plugin-core` makes one, as the CLI's deploy
+does, and `parseBaseCandidateKey(key)` reads the scope and range back, or
+returns `null` for any other string. The two are one format: make keys only
+with the first and read them only with the second.
+
 ## Serve endpoints
 
 An endpoint is `{ method, path, access, handler }`:
@@ -909,13 +917,14 @@ with your plugin and the packages it imports, into the provider's runtime; see
 
 ## Test with the plugin harness
 
-`createPluginTestHarness` from `@hot-updater/test-utils` runs one plugin the way
-`createHotUpdater` does, on a fresh memory adapter in verify mode, which checks
-every adapter call:
+`createPluginTestHarness` from `@hot-updater/test-utils` runs one plugin on
+`createEngine` from `@hot-updater/plugin-core`, the storage engine
+`createHotUpdater` runs plugins on, over a fresh memory adapter wrapped in
+`verifyAdapter`, which checks every adapter call, and in `meterReads`, which
+measures what each call reads:
 
 ```ts title="src/feedback/feedback.spec.ts"
 import type { HotUpdaterDatabase } from "@hot-updater/plugin-core";
-import * as engine from "@hot-updater/server/database";
 import { createPluginTestHarness } from "@hot-updater/test-utils";
 import { describe, expect, it } from "vitest";
 
@@ -933,7 +942,6 @@ const thread = {
 describe("feedback", () => {
   it("opens one thread per clientRef and reads its messages in one query", async () => {
     const harness = await createPluginTestHarness(feedback(), {
-      engine,
       now: () => 1_000,
     });
     const id = await harness.api.open(thread);
@@ -958,7 +966,7 @@ describe("feedback", () => {
   });
 
   it("drops a closed thread from the open list and deletes its messages with it", async () => {
-    const harness = await createPluginTestHarness(feedback(), { engine });
+    const harness = await createPluginTestHarness(feedback());
     const db = harness.db as HotUpdaterDatabase<FeedbackSchema>;
     const id = await harness.api.open(thread);
 
@@ -973,8 +981,6 @@ describe("feedback", () => {
 });
 ```
 
-- `engine` is the `@hot-updater/server/database` module, which keeps
-  `@hot-updater/test-utils` free of a server dependency.
 - The harness returns `api`, the plugin's `instance` (with its `endpoints`),
   `db` (cast it to `HotUpdaterDatabase` of the schema), the physical `tables`,
   and the `adapter`.
@@ -982,6 +988,8 @@ describe("feedback", () => {
   and rows) and what the adapter read (`adapter`: batch point reads, keys,
   queries, and rows), so a test can hold an API to its read budget.
 - The `now` option sets the plugin's clock, and `setNow` changes it later.
+- No retention pass runs, so a call's reads and writes are its own and rows
+  stay past their retention.
 - The `adapter` option runs the plugin on another database adapter, such as a
   SQL database, after creating the plugin's tables there.
 - The harness passes an empty `core`. Test an API that reads core through
@@ -992,7 +1000,7 @@ database:
 
 ```ts title="src/feedback/endpoints.spec.ts"
 import { createHotUpdater } from "@hot-updater/server";
-import { createMemoryAdapter } from "@hot-updater/server/database";
+import { createMemoryAdapter } from "@hot-updater/plugin-core";
 import { expect, it } from "vitest";
 
 import { feedback } from "./index";

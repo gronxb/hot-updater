@@ -1,4 +1,5 @@
 import { PGlite } from "@electric-sql/pglite";
+import { createSqlAdapter, toolingTargetOf } from "@hot-updater/plugin-core";
 import {
   postgresRowsExamined,
   setupReadBudgetTestSuite,
@@ -6,8 +7,8 @@ import {
 import { Kysely } from "kysely";
 import { PGliteDialect } from "kysely-pglite-dialect";
 
-import { createSqlAdapter } from "../database/sql/sqlAdapter";
-import { readBudgetServer } from "../readBudgets.testFixtures";
+import { apiKeys } from "../plugins/api-keys";
+import { insights } from "../plugins/insights";
 import { kyselyAdapter } from "./kysely";
 import { kyselyExecutor } from "./kyselyExecutor";
 
@@ -18,11 +19,10 @@ import { kyselyExecutor } from "./kyselyExecutor";
  */
 setupReadBudgetTestSuite({
   name: "kysely (PGlite)",
-  server: readBudgetServer,
   createAdapter: async () => {
     const client = new PGlite();
     const db = new Kysely<object>({ dialect: new PGliteDialect(client) });
-    const target = readBudgetServer.toolingTargetOf(readBudgetServer.plugins);
+    const target = toolingTargetOf([insights(), apiKeys()]);
     const migrator = kyselyAdapter({ db, provider: "postgresql" })
       .createMigrator!(target);
     await (await migrator.migrateToLatest()).execute();

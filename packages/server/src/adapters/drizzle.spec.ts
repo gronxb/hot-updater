@@ -6,9 +6,20 @@ import { pathToFileURL } from "node:url";
 
 import { PGlite } from "@electric-sql/pglite";
 import {
+  HotUpdaterSchemaMigrationRequiredError,
+  createSqlAdapter,
+  isMultiIndex,
+  toolingTargetOf,
+  generateEngineSql,
+  quoteSql,
+} from "@hot-updater/plugin-core";
+import type { ToolingDatabase } from "@hot-updater/plugin-core";
+import {
   setupDatabaseTestSuite,
   startHttpTestServer,
+  insightsTestSuite,
 } from "@hot-updater/test-utils";
+import { createBundleFixture } from "@hot-updater/test-utils";
 import { createClient } from "@libsql/client";
 import type { SQL } from "drizzle-orm";
 import { drizzle as libsql } from "drizzle-orm/libsql";
@@ -16,18 +27,10 @@ import { drizzle as pglite } from "drizzle-orm/pglite";
 import { SQLiteSyncDialect } from "drizzle-orm/sqlite-core";
 import { afterAll, describe, expect, it } from "vitest";
 
-import { createBundleFixture } from "../../../test-utils/src/databaseTestFixtures";
 import { createDatabasePluginApis } from "../assembly/databasePlugins";
 import { createInProcessCoreApi } from "../core/api";
-import { HotUpdaterSchemaMigrationRequiredError } from "../database/fence";
-import { createSqlAdapter } from "../database/sql/sqlAdapter";
-import { isMultiIndex, quoteSql } from "../database/sql/sqlSchema";
-import { toolingTargetOf } from "../db/coreDatabase";
-import { generateEngineSql } from "../db/engineSql";
-import type { ToolingDatabase } from "../db/types";
 import { createHotUpdater } from "../index";
 import { createInsightsModel, insights } from "../plugins/insights";
-import { insightsTestSuite } from "../plugins/insights/testing";
 import {
   drizzleAdapter,
   DrizzleTransactionUnsupportedError,

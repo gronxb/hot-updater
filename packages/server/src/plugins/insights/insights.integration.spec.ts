@@ -1,17 +1,19 @@
 import {
+  toolingTargetOf,
   createMemoryAdapter,
   type DatabaseAdapter,
-} from "@hot-updater/plugin-core/internal";
-import { EVENT_BODY_MAX_BYTES } from "@hot-updater/plugin-insights/internal";
+} from "@hot-updater/plugin-core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { toolingTargetOf } from "../../db/coreDatabase";
 import { createHotUpdater } from "../../index";
 import {
   createFencedDatabase,
   createRuntimeDatabase,
 } from "../../runtime.testFixtures";
 import { insights } from "./index";
+
+/** The largest event body Insights' client route takes: 16 KiB. */
+const EVENT_BODY_MAX_BYTES = 16 * 1_024;
 
 /** A server with the Insights plugin on an empty in-memory database. */
 const start = () =>

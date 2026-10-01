@@ -17,7 +17,11 @@ export class DatabaseValueError extends Error {
   readonly name = "DatabaseValueError";
 }
 
-/** Compares strings in UTF-8 byte order, which is Unicode code point order. */
+/**
+ * Compares strings in UTF-8 byte order, which is Unicode code point order:
+ * the order the engine sorts string keys in. A plugin that merges rows from
+ * several reads, as Insights does, keeps that order with it.
+ */
 export const compareUtf8 = (left: string, right: string): number => {
   let leftIndex = 0;
   let rightIndex = 0;
@@ -203,6 +207,7 @@ const toScalar = (column: PhysicalColumn, raw: unknown): DatabaseValue => {
   }
 };
 
+/** `normalizeStoredRow`'s options. */
 export interface NormalizeOptions {
   /** The backend returns JSON and multi-valued columns as text. */
   readonly jsonText: boolean;

@@ -1,5 +1,5 @@
 import { PGlite } from "@electric-sql/pglite";
-import { coreTarget, type PhysicalTable } from "@hot-updater/server/database";
+import { coreTarget, type PhysicalTable } from "@hot-updater/plugin-core";
 import { setupDatabaseAdapterConformanceSuite } from "@hot-updater/test-utils";
 import { vi } from "vitest";
 

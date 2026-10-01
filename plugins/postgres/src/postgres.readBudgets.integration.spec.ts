@@ -2,16 +2,12 @@ import fs from "node:fs/promises";
 import path from "node:path";
 
 import { PGlite } from "@electric-sql/pglite";
-import { kyselyExecutor } from "@hot-updater/server/adapters/kysely";
 import {
   toolingTargetOf,
   createSqlAdapter,
-} from "@hot-updater/server/database";
-import {
-  createMeasuredDatabase,
   generateEngineSql,
-  targetBaseCandidateKey,
-} from "@hot-updater/server/db";
+} from "@hot-updater/plugin-core";
+import { kyselyExecutor } from "@hot-updater/server/adapters/kysely";
 import { apiKeys } from "@hot-updater/server/plugins/api-keys";
 import { insights } from "@hot-updater/server/plugins/insights";
 import {
@@ -30,12 +26,6 @@ const plugins = [insights(), apiKeys()];
  */
 setupReadBudgetTestSuite({
   name: "postgres (PGlite)",
-  server: {
-    createMeasuredDatabase,
-    toolingTargetOf,
-    plugins,
-    targetBaseCandidateKey,
-  },
   createAdapter: async () => {
     const client = new PGlite();
     await client.exec(

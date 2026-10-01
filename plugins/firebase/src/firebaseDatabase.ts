@@ -1,11 +1,10 @@
 import type { EngineDatabase } from "@hot-updater/plugin-core";
-import { withAdapterResource } from "@hot-updater/plugin-core/internal";
 import {
   createEngineDatabase,
   createKvAdapter,
   migrateCoreSchema,
   type PluginTables,
-} from "@hot-updater/server/database";
+} from "@hot-updater/plugin-core";
 import {
   getApp,
   getApps,
@@ -55,11 +54,11 @@ export const migrateFirebaseDatabase = (
 export const firebaseDatabase = (
   config: FirebaseDatabaseConfig,
 ): EngineDatabase =>
-  withAdapterResource(
+  Object.assign(
     createEngineDatabase({
       name: "firebaseDatabase",
       adapter: adapterOf(config),
       aggregateBatching: config.aggregateBatching ?? {},
     }),
-    { projectId: config.projectId },
+    { resource: { projectId: config.projectId } },
   );

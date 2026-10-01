@@ -1,7 +1,7 @@
 // @vitest-environment node
 
 import type { HotUpdaterCoreApi, RemoteServer } from "@hot-updater/plugin-core";
-import { createMemoryAdapter } from "@hot-updater/plugin-core/internal";
+import { createMemoryAdapter } from "@hot-updater/plugin-core";
 import { createDatabasePluginApis } from "@hot-updater/server/db";
 import { apiKeys } from "@hot-updater/server/plugins/api-keys";
 import {

@@ -2,14 +2,14 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { DatabaseSync, type SqliteValue } from "node:sqlite";
 
-import { toolingTargetOf } from "@hot-updater/server/database";
 import {
-  createDatabaseCoreApi,
+  toolingTargetOf,
   HotUpdaterSchemaMigrationRequiredError,
-} from "@hot-updater/server/db";
+} from "@hot-updater/plugin-core";
+import { createDatabaseCoreApi } from "@hot-updater/server/db";
+import { createBundleFixture } from "@hot-updater/test-utils";
 import { describe, expect, it } from "vitest";
 
-import { createBundleFixture } from "../../../packages/test-utils/src/databaseTestFixtures";
 import { createD1Database } from "./d1Executor";
 import { d1SchemaSql, d1SchemaStatements } from "./d1Schema";
 import { plugins } from "./plugins";

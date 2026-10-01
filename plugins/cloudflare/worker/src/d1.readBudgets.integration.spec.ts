@@ -1,16 +1,11 @@
-import { toolingTargetOf } from "@hot-updater/server/database";
-import {
-  createMeasuredDatabase,
-  targetBaseCandidateKey,
-} from "@hot-updater/server/db";
+import { toolingTargetOf } from "@hot-updater/plugin-core";
 import { apiKeys } from "@hot-updater/server/plugins/api-keys";
 import { insights } from "@hot-updater/server/plugins/insights";
+import { setupReadBudgetTestSuite } from "@hot-updater/test-utils";
+import type { RowsExamined } from "@hot-updater/test-utils";
 import { env } from "cloudflare:test";
 import { inject } from "vitest";
 
-// From source: the package root also loads Node-only helpers workerd lacks.
-import { setupReadBudgetTestSuite } from "../../../../packages/test-utils/src/setupReadBudgetTestSuite";
-import type { RowsExamined } from "../../../../packages/test-utils/src/sqlRowsExamined";
 import { d1SchemaSql } from "../../src/d1Schema";
 import { d1Database, type D1Like } from "../../src/worker";
 
@@ -68,12 +63,6 @@ const plugins = [insights(), apiKeys()];
  */
 setupReadBudgetTestSuite({
   name: "d1 (workerd)",
-  server: {
-    createMeasuredDatabase,
-    toolingTargetOf,
-    plugins,
-    targetBaseCandidateKey,
-  },
   createAdapter: async () => {
     const [migration] = inject("d1Migrations");
     for (const sql of [migration!.sql, d1SchemaSql(toolingTargetOf(plugins))]) {

@@ -1,11 +1,11 @@
 import {
   createStorageAdapter,
   type ConfigInput,
+  coreSettings,
 } from "@hot-updater/plugin-core";
 import { describe, expect, expectTypeOf, it, vi } from "vitest";
 
 import packageJson from "../package.json" with { type: "json" };
-import { coreSettings } from "./db/coreDatabase";
 import { createHotUpdater, HotUpdaterConfigError } from "./index";
 import type {
   ClientAccessPolicy,

@@ -65,6 +65,12 @@ export const isDatabaseJsonValue = (
   return validate(value);
 };
 
+/**
+ * Whether `value` is a plain object of JSON values a store keeps as they
+ * are: no cycles, accessors, non-finite numbers, or class instances. A
+ * plugin checks a `json` field's value with it before it writes, as
+ * Insights does for an event's metadata.
+ */
 export const isDatabaseJsonObject = (
   value: unknown,
 ): value is DatabaseJsonObject =>

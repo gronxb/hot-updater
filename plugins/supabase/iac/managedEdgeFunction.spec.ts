@@ -3,7 +3,7 @@ import os from "os";
 import path from "path";
 
 import { InitError } from "@hot-updater/cli-tools";
-import { definePlugin, defineTable } from "@hot-updater/server/plugins";
+import { definePlugin, defineTable } from "@hot-updater/plugin-core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { plugins } from "../src/plugins";
@@ -18,7 +18,7 @@ const repositoryRoot = path.resolve(packageRoot, "../..");
 
 /** A project's server definition, as init writes it, with a plugin of its own. */
 const DEFINITION = `import { createHotUpdater } from "@hot-updater/server";
-import { definePlugin, defineTable } from "@hot-updater/server/plugins";
+import { definePlugin, defineTable } from "@hot-updater/plugin-core";
 import {
   plugins,
   supabaseDatabase,
@@ -148,7 +148,7 @@ describe("the managed Edge Function from a project's server definition", () => {
     expect(code).not.toContain("HotUpdater.BUCKET_NAME");
     // The function's import map vendors the server it runs on.
     expect(code).toMatch(/from\s*"@hot-updater\/server"/u);
-    expect(code).toMatch(/from\s*"@hot-updater\/server\/plugins"/u);
+    expect(code).toMatch(/from\s*"@hot-updater\/plugin-core"/u);
     expect(code).toMatch(/from\s*"@supabase\/supabase-js"/u);
     // None of the machine's paths are deployed: not the project's, the
     // repository's its packages come from, or the home directory, not even
@@ -167,13 +167,11 @@ describe("the managed Edge Function from a project's server definition", () => {
     // server, such as the plugin API the project's plugin is written with,
     // from the packages the function's server depends on.
     const { imports } = await resolveEdgeFunctionDenoConfig(functionDir);
-    expect(imports["@hot-updater/server/plugins"]).toMatch(
-      /^\.\/.*server.*plugins.*\.m?js$/u,
+    expect(imports["@hot-updater/plugin-core"]).toMatch(
+      /^\.\/.*plugin-core.*\.m?js$/u,
     );
     await expect(
-      fs.access(
-        path.join(functionDir, imports["@hot-updater/server/plugins"]!),
-      ),
+      fs.access(path.join(functionDir, imports["@hot-updater/plugin-core"]!)),
     ).resolves.toBeUndefined();
   });
 

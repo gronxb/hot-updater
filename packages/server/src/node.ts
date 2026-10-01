@@ -28,7 +28,7 @@ export { HOT_UPDATER_INFRASTRUCTURE_GENERATION } from "./handlerVersionRoutes";
  *
  * @example
  * ```typescript
- * import { toNodeHandler } from "@hot-updater/server/node";
+ * import { toNodeHandler } from "@hot-updater/server";
  * import express from "express";
  *
  * const app = express();

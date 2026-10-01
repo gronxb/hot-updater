@@ -2,10 +2,7 @@ import fs from "fs/promises";
 import path from "path";
 
 import { bundleServer } from "@hot-updater/cli-tools";
-import {
-  type PluginTables,
-  toolingTargetOf,
-} from "@hot-updater/server/database";
+import { type PluginTables, toolingTargetOf } from "@hot-updater/plugin-core";
 
 import { supabaseMigration } from "../src/supabaseMigration";
 

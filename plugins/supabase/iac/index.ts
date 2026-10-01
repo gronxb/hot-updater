@@ -433,7 +433,7 @@ const buildEdgeFunctionImports = async (targetDir: string) => {
       if (imports[specifier]) {
         continue;
       }
-      // Such as `@hot-updater/server/plugins`, which a server definition's
+      // Such as `@hot-updater/plugin-core`, which a server definition's
       // bundle leaves to the packages the function's server depends on.
       if (specifier.startsWith(WORKSPACE_PACKAGE_PREFIX)) {
         await addWorkspacePackage({

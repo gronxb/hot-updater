@@ -2,7 +2,7 @@ import type { EngineDatabase } from "@hot-updater/plugin-core";
 import {
   createEngineDatabase,
   createSqlAdapter,
-} from "@hot-updater/server/database";
+} from "@hot-updater/plugin-core";
 import { createClient } from "@supabase/supabase-js";
 
 import {

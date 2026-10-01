@@ -46,6 +46,7 @@
     "sql",
     "supabase",
     "!supabase/.temp",
+    "!**/*.spec.ts",
     "package.json"
   ],
   "scripts": {

@@ -2,22 +2,25 @@ import fs from "node:fs/promises";
 import path from "node:path";
 
 import { PGlite } from "@electric-sql/pglite";
+import {
+  toolingTargetOf,
+  definePlugin,
+  defineTable,
+} from "@hot-updater/plugin-core";
 import { createHotUpdater } from "@hot-updater/server";
-import { toolingTargetOf } from "@hot-updater/server/database";
 import {
   createDatabasePluginApis,
   createMigrator,
   generateSchema,
 } from "@hot-updater/server/db";
-import { definePlugin, defineTable } from "@hot-updater/server/plugins";
 import {
   createInsightsModel,
   insights,
 } from "@hot-updater/server/plugins/insights";
-import { insightsTestSuite } from "@hot-updater/server/plugins/insights/testing";
 import {
   setupDatabaseTestSuite,
   startHttpTestServer,
+  insightsTestSuite,
 } from "@hot-updater/test-utils";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 

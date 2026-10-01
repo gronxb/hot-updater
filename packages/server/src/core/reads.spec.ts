@@ -3,26 +3,28 @@ import {
   releaseRowToRelease,
   type ReleaseRow,
   type StorageAdapterWith,
+  createEngine,
+  createMemoryAdapter,
+  meterReads,
+  type ReadMeasurement,
+  targetBaseCandidateKey,
+  verifyAdapter,
 } from "@hot-updater/plugin-core";
-import { createMemoryAdapter } from "@hot-updater/plugin-core/internal";
 import {
   createReleaseCatalogScopeKey,
   encodeChannelKey,
   NIL_UUID,
 } from "@hot-updater/protocol";
 import { createReleaseCatalogTestStorage } from "@hot-updater/test-utils";
-import { describe, expect, it } from "vitest";
-
 import {
   createBundlePatchRowFixture,
   createBundleRowFixture,
   createReleaseRowFixture,
-} from "../../../test-utils/src/databaseTestFixtures";
-import { createDatabaseEngine } from "../database/database";
-import type { ReadMeasurement } from "../database/engine";
-import { resolveSchema } from "../database/resolveSchema";
+} from "@hot-updater/test-utils";
+import { describe, expect, it } from "vitest";
+
 import { createStorageAccess } from "../storageAccess";
-import { coreModule, createCoreReads, targetBaseCandidateKey } from "./index";
+import { createCoreReads } from "./index";
 
 const fixtureMissingId = "01900000-0000-7000-8000-00000000ffff";
 const channel = { id: "channel-production", name: "production" };
@@ -47,12 +49,11 @@ const release: ReleaseRow = {
 };
 
 const setup = async () => {
-  const engine = createDatabaseEngine({
-    adapter: createMemoryAdapter(),
-    schema: resolveSchema([coreModule]),
-    verify: true,
+  const database = meterReads({
+    name: "memory",
+    adapter: verifyAdapter(createMemoryAdapter()),
   });
-  const db = engine.database(coreModule);
+  const db = createEngine(database).core;
   const compilation = await compileReleaseCatalog({
     strategy: "APP_VERSION",
     releases: [releaseRowToRelease(release)],
@@ -85,15 +86,15 @@ const setup = async () => {
     createReleaseCatalogTestStorage() as StorageAdapterWith<"get">,
   ]);
   return {
-    engine,
+    database,
     reads: createCoreReads(db, { readStorageText, resolveFileUrl }),
   };
 };
 
 describe("core reads", () => {
   it("answers an update check with one point read of the scope's catalog", async () => {
-    const { engine, reads } = await setup();
-    const measured = await engine.measureReads(() =>
+    const { database, reads } = await setup();
+    const measured = await database.measureReads(() =>
       reads.getReleaseCatalog({
         strategy: "APP_VERSION",
         platform: "ios",
@@ -119,8 +120,8 @@ describe("core reads", () => {
   });
 
   it("resolves an artifact with one batch read of both bundles and one unique read of their patch", async () => {
-    const { engine, reads } = await setup();
-    const measured = await engine.measureReads(() =>
+    const { database, reads } = await setup();
+    const measured = await database.measureReads(() =>
       reads.getArtifactInfo(target.id, base.id, 1),
     );
     expect(measured.adapter).toEqual({ gets: 1, keys: 2, queries: 1, rows: 1 });
@@ -130,7 +131,7 @@ describe("core reads", () => {
       manifestFileHash: target.manifest_file_hash,
     });
 
-    const full = await engine.measureReads(() =>
+    const full = await database.measureReads(() =>
       reads.getArtifactInfo(target.id, NIL_UUID, 1),
     );
     expect(full.adapter).toEqual({ gets: 1, keys: 1, queries: 0, rows: 0 });
@@ -140,7 +141,7 @@ describe("core reads", () => {
   });
 
   it("keeps each read-budget API within its budget at both boundaries", async () => {
-    const { engine, reads } = await setup();
+    const { database, reads } = await setup();
     const targetDetail = { bundle: target, patches: [patch], childCount: 0 };
     const baseDetail = { bundle: base, patches: [], childCount: 1 };
     const budgets: {
@@ -204,7 +205,7 @@ describe("core reads", () => {
       },
     ];
     for (const budget of budgets) {
-      const measured = await engine.measureReads(budget.read);
+      const measured = await database.measureReads(budget.read);
       expect({ api: budget.api, ...measured }, budget.api).toEqual({
         api: budget.api,
         result: budget.result,
@@ -268,14 +269,14 @@ describe("core reads", () => {
   });
 
   it("finds auto-patch bases in one point read of the scope's catalog", async () => {
-    const { engine, reads } = await setup();
+    const { database, reads } = await setup();
     const key = targetBaseCandidateKey({
       channel: channel.name,
       platform: "ios",
       fingerprintHash: null,
       appVersion: "1.0.x",
     })!;
-    const found = await engine.measureReads(() =>
+    const found = await database.measureReads(() =>
       reads.findBaseBundleIds(key, fixtureMissingId, 3),
     );
     expect(found.result).toEqual([target.id]);

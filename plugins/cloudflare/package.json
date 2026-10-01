@@ -48,6 +48,8 @@
     "worker/migrations",
     "worker/src",
     "worker/wrangler.json",
+    "!**/*.spec.ts",
+    "!worker/src/testWorker.ts",
     "package.json"
   ],
   "scripts": {

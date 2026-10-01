@@ -39,7 +39,7 @@ const withNotes = (text: string) =>
     .replace(
       'import { createHotUpdater } from "@hot-updater/server";',
       `import { createHotUpdater } from "@hot-updater/server";
-import { definePlugin } from "@hot-updater/server/plugins";
+import { definePlugin } from "@hot-updater/plugin-core";
 
 const notes = definePlugin({
   id: "notes",
@@ -78,6 +78,10 @@ const project = async (text: string) => {
   await fs.symlink(
     path.join(packageRoot, "node_modules", "@hot-updater", "server"),
     path.join(root, "node_modules", "@hot-updater", "server"),
+  );
+  await fs.symlink(
+    path.join(packageRoot, "node_modules", "@hot-updater", "plugin-core"),
+    path.join(root, "node_modules", "@hot-updater", "plugin-core"),
   );
   const definition = path.join(root, "hotUpdater.ts");
   await fs.writeFile(definition, text);

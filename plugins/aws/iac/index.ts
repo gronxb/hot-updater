@@ -16,7 +16,7 @@ import {
   type RunInitOptions,
   writeHotUpdaterFiles,
 } from "@hot-updater/cli-tools";
-import type { PluginTables } from "@hot-updater/server/database";
+import type { PluginTables } from "@hot-updater/plugin-core";
 import {
   clientAuthOf,
   clientPluginsOf,

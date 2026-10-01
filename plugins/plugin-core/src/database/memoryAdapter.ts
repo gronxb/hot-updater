@@ -15,12 +15,10 @@ import {
   matchesQuery,
 } from "./values";
 
+/** `createMemoryAdapter`'s options. */
 export interface MemoryAdapterOptions {
+  /** Prefixes every table's name, so several servers can share one store. */
   readonly tablePrefix?: string;
-  /** Test-only: the most ops `fits()` accepts. */
-  readonly maxOps?: number;
-  /** Test-only: rows per internal page, so `query` has to loop pages. */
-  readonly nativePageSize?: number;
 }
 
 type Rows = Map<string, StoredRow>;
@@ -121,7 +119,7 @@ export const createMemoryAdapter = (
 
   return {
     id: "memory",
-    fits: (ops) => ops.length <= (options.maxOps ?? Number.POSITIVE_INFINITY),
+    fits: () => true,
     async get(table, keys) {
       const rows = rowsOf(table);
       return keys.map((key) => {
@@ -142,17 +140,7 @@ export const createMemoryAdapter = (
               indexOrderTuple(table, index, right),
             ),
         );
-      const pageSize = options.nativePageSize ?? request.limit;
-      const rows: StoredRow[] = [];
-      while (rows.length < request.limit) {
-        const page = ordered.slice(
-          rows.length,
-          rows.length + Math.min(pageSize, request.limit - rows.length),
-        );
-        if (page.length === 0) break;
-        rows.push(...page);
-      }
-      return rows.map((row) => structuredClone(row));
+      return ordered.slice(0, request.limit).map((row) => structuredClone(row));
     },
     async write(ops) {
       const draft = new Map(state);

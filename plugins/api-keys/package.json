@@ -4,10 +4,6 @@
   "version": "1.0.0-rc.20",
   "description": "Hot Updater's API keys plugin: protects client routes with API keys and manages them",
   "exports": {
-    "./internal": {
-      "import": "./dist/internal.mjs",
-      "require": "./dist/internal.cjs"
-    },
     "./server": {
       "import": "./dist/server/index.mjs",
       "require": "./dist/server/index.cjs"
@@ -34,7 +30,8 @@
   },
   "devDependencies": {
     "@hot-updater/plugin-core": "workspace:*",
-    "@types/node": "catalog:"
+    "@types/node": "catalog:",
+    "vitest": "catalog:"
   },
   "peerDependencies": {
     "@hot-updater/plugin-core": "workspace:^"

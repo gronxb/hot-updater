@@ -15,15 +15,15 @@ import {
   type ReleasePolicyPatch,
   type ReleaseRow,
   type ReleaseTarget,
+  DatabaseConstraintError,
+  DatabaseRowReferencedError,
 } from "@hot-updater/plugin-core";
-import { DatabaseRowReferencedError } from "@hot-updater/plugin-core/internal";
 import {
   createReleaseCatalogScopeKey,
   decodeChannelKey,
   encodeChannelKey,
 } from "@hot-updater/protocol";
 
-import { DatabaseConstraintError } from "../database/errors";
 import { toBundleRow, toReleaseRow, type CoreDatabase } from "./reads";
 import {
   changeRelease,

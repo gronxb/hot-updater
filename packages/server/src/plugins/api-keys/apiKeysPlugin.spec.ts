@@ -1,7 +1,7 @@
 import {
   createMemoryAdapter,
   type DatabaseAdapter,
-} from "@hot-updater/plugin-core/internal";
+} from "@hot-updater/plugin-core";
 import { describe, expect, it } from "vitest";
 
 import { createHotUpdater } from "../../createHotUpdaterCore";

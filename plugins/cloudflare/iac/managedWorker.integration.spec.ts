@@ -35,7 +35,7 @@ const BUCKET_NAME = "bundles";
 const BUNDLE_ID = "00000000-0000-0000-0000-000000000001";
 
 /** A plugin of the project's own, with a table, which the app reads and writes. */
-const NOTES_PLUGIN = `import { definePlugin, defineTable } from "@hot-updater/server/plugins";
+const NOTES_PLUGIN = `import { definePlugin, defineTable } from "@hot-updater/plugin-core";
 import { digest } from "cjs-digest";
 
 export const notes = definePlugin({
@@ -356,6 +356,10 @@ exports.digest = (text) => crypto.createHash("sha256").update(text).digest("hex"
     await fs.symlink(
       path.join(packageRoot, "node_modules", "@hot-updater", "server"),
       path.join(project, "node_modules", "@hot-updater", "server"),
+    );
+    await fs.symlink(
+      path.join(packageRoot, "node_modules", "@hot-updater", "plugin-core"),
+      path.join(project, "node_modules", "@hot-updater", "plugin-core"),
     );
 
     // The database as rc.20's init left it: its migration, an app's API

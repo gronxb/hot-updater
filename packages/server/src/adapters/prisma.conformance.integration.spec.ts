@@ -1,10 +1,14 @@
 import { PGlite } from "@electric-sql/pglite";
+import {
+  coreSettings,
+  createSqlAdapter,
+  createTableStatements,
+  SETTINGS_TABLE,
+  writeSchemaSettings,
+} from "@hot-updater/plugin-core";
 import { setupDatabaseAdapterConformanceSuite } from "@hot-updater/test-utils";
+import { pgliteExecutor } from "@hot-updater/test-utils/node";
 
-import { SETTINGS_TABLE } from "../database/fence";
-import { createTableStatements } from "../database/sql/sqlSchema";
-import { coreSettings } from "../db/coreDatabase";
-import { settingsStatements } from "../db/engineSql";
 import { prismaAdapter } from "./prisma";
 import { pglitePrisma } from "./prismaTestClients";
 
@@ -20,10 +24,14 @@ setupDatabaseAdapterConformanceSuite({
   createAdapter: async ({ tables }) => {
     const client = new PGlite();
     await client.exec(
-      [
-        ...createTableStatements("postgresql", [...tables, SETTINGS_TABLE]),
-        ...settingsStatements("postgresql", coreSettings),
-      ].join(";\n"),
+      createTableStatements("postgresql", [...tables, SETTINGS_TABLE]).join(
+        ";\n",
+      ),
+    );
+    await writeSchemaSettings(
+      createSqlAdapter({ executor: pgliteExecutor(client) }),
+      "pglite",
+      coreSettings,
     );
     return {
       adapter: prismaAdapter({

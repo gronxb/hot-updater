@@ -3,8 +3,8 @@ import {
   isRemoteServer,
   type StorageAdapter,
 } from "@hot-updater/plugin-core";
+import type { AnyHotUpdaterPlugin } from "@hot-updater/plugin-core";
 import { serverDefinitionOf } from "@hot-updater/server/db";
-import type { AnyHotUpdaterPlugin } from "@hot-updater/server/plugins";
 
 import type {
   ConsoleAuthAdapter,

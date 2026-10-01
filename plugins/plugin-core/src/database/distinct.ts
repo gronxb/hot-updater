@@ -51,7 +51,10 @@ export const distinctRegister = (identity: string) => {
   return { index, rank, character: String.fromCharCode(rank + OFFSET) };
 };
 
-/** The sketch with `identity` added; a missing sketch is the empty one. */
+/**
+ * The sketch with `identity` added; a missing sketch is the empty one. A
+ * plugin passes it as a `distinct` column's change to `tx.aggregate`.
+ */
 export const addDistinct = (
   summary: string | null | undefined,
   identity: string,
@@ -62,7 +65,10 @@ export const addDistinct = (
   return encode(registers);
 };
 
-/** The union of sketches, register by register. */
+/**
+ * The union of sketches, register by register: how a plugin combines a
+ * `distinct` column across the aggregate rows it reads.
+ */
 export const mergeDistinct = (
   summaries: readonly (string | null | undefined)[],
 ): string => {
@@ -76,7 +82,10 @@ export const mergeDistinct = (
   return encode(merged);
 };
 
-/** The estimated number of distinct values a sketch holds. */
+/**
+ * The estimated number of distinct values a sketch holds: how a plugin
+ * reads a `distinct` column.
+ */
 export const countDistinct = (summary: string | null | undefined): number => {
   const registers = decode(summary);
   let inverseSum = 0;

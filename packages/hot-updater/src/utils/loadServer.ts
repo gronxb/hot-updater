@@ -7,12 +7,12 @@ import type {
   ConfiguredDatabase,
   RemoteServer,
   StorageAdapter,
+  AnyHotUpdaterPlugin,
 } from "@hot-updater/plugin-core";
 import {
   type ServerDefinition,
   serverDefinitionOf,
 } from "@hot-updater/server/db";
-import type { AnyHotUpdaterPlugin } from "@hot-updater/server/plugins";
 
 /** The server hot-updater.config.ts points at, as the CLI uses it. */
 export type LoadedServer = {

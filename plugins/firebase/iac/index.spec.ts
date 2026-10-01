@@ -225,6 +225,10 @@ const editedProject = async (edit: (text: string) => string) => {
       path.join(packageRoot, "node_modules", "@hot-updater", "server"),
     ],
     [
+      "@hot-updater/plugin-core",
+      path.join(packageRoot, "node_modules", "@hot-updater", "plugin-core"),
+    ],
+    [
       "firebase-admin",
       path.join(packageRoot, "node_modules", "firebase-admin"),
     ],
@@ -250,7 +254,7 @@ const withNotes = (text: string) =>
     .replace(
       'import { createHotUpdater } from "@hot-updater/server";',
       `import { createHotUpdater } from "@hot-updater/server";
-import { definePlugin, defineTable } from "@hot-updater/server/plugins";
+import { definePlugin, defineTable } from "@hot-updater/plugin-core";
 
 const notes = definePlugin({
   id: "notes",

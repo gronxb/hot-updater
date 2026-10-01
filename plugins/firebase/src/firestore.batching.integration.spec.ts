@@ -1,4 +1,4 @@
-import * as engine from "@hot-updater/server/database";
+import { createKvAdapter } from "@hot-updater/plugin-core";
 import { setupAggregateBatchingTestSuite } from "@hot-updater/test-utils";
 
 import { createFirestoreTestDatabase } from "../test-utils/createFirestoreTestDatabase";
@@ -11,11 +11,10 @@ const { firestore, clearCollection } = createFirestoreTestDatabase(
 /** `firebaseDatabase()`'s batching in the Firestore emulator, a collection per case. */
 setupAggregateBatchingTestSuite({
   name: "key-value (Firestore emulator)",
-  engine,
   createAdapter: async () => {
     const collection = `batching_${process.pid}_${crypto.randomUUID().slice(0, 8)}`;
     return {
-      adapter: engine.createKvAdapter({
+      adapter: createKvAdapter({
         store: createFirestoreStore({ firestore, collection }),
       }),
       cleanup: () => clearCollection(collection),

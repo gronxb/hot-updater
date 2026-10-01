@@ -54,5 +54,10 @@
     "msw": "^2.7.0",
     "verkit": "catalog:",
     "vitest": "catalog:"
+  },
+  "nx": {
+    "implicitDependencies": [
+      "!@hot-updater/test-utils"
+    ]
   }
 }

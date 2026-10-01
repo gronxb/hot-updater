@@ -1,9 +1,10 @@
 import {
   type DatabaseAdapter,
-  type DatabaseKey,
   DatabaseAdapterContractError,
-  indexOrderTuple,
+  type DatabaseKey,
+  type DatabaseKeyValue,
   findPhysicalIndex,
+  indexOrderColumns,
   type PhysicalTable,
   type QueryRequest,
   type StoredRow,
@@ -11,7 +12,7 @@ import {
   verifyAdapter,
   type WriteOp,
   type WriteResult,
-} from "@hot-updater/plugin-core/internal";
+} from "@hot-updater/plugin-core";
 import { afterEach, describe, expect, it } from "vitest";
 
 export interface DatabaseAdapterConformanceContext {
@@ -508,11 +509,10 @@ export const setupDatabaseAdapterConformanceSuite = (
               ? {}
               : {
                   [order === "asc" ? "lower" : "upper"]: {
-                    values: indexOrderTuple(
+                    values: indexOrderColumns(
                       conformanceItems,
                       findPhysicalIndex(conformanceItems, "byGroup"),
-                      last,
-                    ),
+                    ).map((column) => last[column] as DatabaseKeyValue),
                     inclusive: false,
                   },
                 };

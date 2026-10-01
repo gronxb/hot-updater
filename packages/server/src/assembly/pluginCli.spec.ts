@@ -1,4 +1,4 @@
-import { createMemoryAdapter } from "@hot-updater/plugin-core/internal";
+import { createMemoryAdapter } from "@hot-updater/plugin-core";
 import { describe, expect, it } from "vitest";
 
 import { apiKeys } from "../plugins/api-keys";

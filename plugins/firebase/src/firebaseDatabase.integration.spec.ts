@@ -1,22 +1,22 @@
-import { createHotUpdater } from "@hot-updater/server";
 import {
   createKvAdapter,
   type PhysicalTable,
-} from "@hot-updater/server/database";
+  HotUpdaterSchemaMigrationRequiredError,
+} from "@hot-updater/plugin-core";
+import { createHotUpdater } from "@hot-updater/server";
 import {
   createDatabaseCoreApi,
   createDatabasePluginApis,
-  HotUpdaterSchemaMigrationRequiredError,
 } from "@hot-updater/server/db";
 import {
   createInsightsModel,
   insights,
 } from "@hot-updater/server/plugins/insights";
-import { insightsTestSuite } from "@hot-updater/server/plugins/insights/testing";
 import {
   setupDatabaseAdapterConformanceSuite,
   setupDatabaseTestSuite,
   startHttpTestServer,
+  insightsTestSuite,
 } from "@hot-updater/test-utils";
 import { describe, expect, it } from "vitest";
 

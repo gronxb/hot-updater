@@ -9,7 +9,6 @@ import { execa } from "execa";
 import { MongoClient } from "mongodb";
 import { afterAll, beforeAll } from "vitest";
 
-import { readBudgetServer } from "../readBudgets.testFixtures";
 import { createMongoAdapter } from "./mongodbAdapter";
 
 assertDockerComposeAvailable(
@@ -52,7 +51,6 @@ afterAll(async () => {
  */
 setupReadBudgetTestSuite({
   name: "mongodb (replica set)",
-  server: readBudgetServer,
   createAdapter: async ({ tables, nativePageSize }) => {
     const adapter = createMongoAdapter({ client, batchSize: nativePageSize });
     await adapter.migrations!.apply(tables);

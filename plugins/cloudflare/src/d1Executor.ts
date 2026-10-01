@@ -4,8 +4,8 @@ import {
   type SqlExecutor,
   type SqlResult,
   type SqlStatement,
-} from "@hot-updater/server/database";
-import type { ToolingDatabase } from "@hot-updater/server/db";
+} from "@hot-updater/plugin-core";
+import type { ToolingDatabase } from "@hot-updater/plugin-core";
 
 /** A D1 result, from the binding or the REST API. */
 export interface D1ResultLike {

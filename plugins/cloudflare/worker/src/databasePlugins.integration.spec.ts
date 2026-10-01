@@ -3,19 +3,21 @@ import type {
   EngineDatabase,
   StorageAdapter,
 } from "@hot-updater/plugin-core";
+import { isMultiIndex, toolingTargetOf } from "@hot-updater/plugin-core";
 import { createHotUpdater } from "@hot-updater/server";
-import { isMultiIndex, toolingTargetOf } from "@hot-updater/server/database";
 import {
   createInsightsModel,
   insights,
 } from "@hot-updater/server/plugins/insights";
 import {
-  createBundleEventRowFixture,
-  insightsTestSuite,
-} from "@hot-updater/server/plugins/insights/testing";
-import {
   createHandlerHttpTestClient,
   setupDatabaseTestSuite,
+  createBundleEventRowFixture,
+  insightsTestSuite,
+} from "@hot-updater/test-utils";
+import {
+  createBundleFixture,
+  createBundleRowFixture,
 } from "@hot-updater/test-utils";
 import { env } from "cloudflare:test";
 import {
@@ -29,10 +31,6 @@ import {
   vi,
 } from "vitest";
 
-import {
-  createBundleFixture,
-  createBundleRowFixture,
-} from "../../../../packages/test-utils/src/databaseTestFixtures";
 import { d1Database } from "../../src/d1Database";
 import { plugins } from "../../src/plugins";
 import { d1Database as d1RuntimeDatabase } from "../../src/worker";

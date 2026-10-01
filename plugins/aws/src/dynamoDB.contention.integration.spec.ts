@@ -1,16 +1,13 @@
 import {
-  aggregateBatchingModule,
-  createDatabaseEngine,
+  type CoreReader,
+  createEngine,
   createKvAdapter,
+  type Engine,
   migrateCoreSchema,
-  resolveSchema,
   type RetryOptions,
-  toolingTargetOf,
-} from "@hot-updater/server/database";
-import type { CoreReader } from "@hot-updater/server/plugins";
+} from "@hot-updater/plugin-core";
 import {
   insights,
-  insightsSchema,
   type BundleEventRow,
 } from "@hot-updater/server/plugins/insights";
 import {
@@ -90,15 +87,18 @@ describe("Insights rollout gate on DynamoDB Local", () => {
       }),
     });
     await migrateCoreSchema(adapter, "dynamoDB", [insights()]);
-    const module = { id: "insights", schema: insightsSchema } as const;
+    const plugin = insights();
     const apiOf = (latencyMs: number, retry?: RetryOptions) =>
-      insights().init({
-        db: createDatabaseEngine({
-          adapter:
-            latencyMs > 0 ? withAdapterLatency(adapter, latencyMs) : adapter,
-          schema: toolingTargetOf([insights()]).schema,
-          ...(retry === undefined ? {} : { retry }),
-        }).database(module),
+      plugin.init({
+        db: createEngine(
+          {
+            name: "dynamoDB",
+            adapter:
+              latencyMs > 0 ? withAdapterLatency(adapter, latencyMs) : adapter,
+            ...(retry === undefined ? {} : { retry }),
+          },
+          { plugins: [plugin] },
+        ).database(plugin),
         // Insights never reads core.
         core: {} as CoreReader,
         now: Date.now,
@@ -150,30 +150,35 @@ describe("Insights rollout gate on DynamoDB Local", () => {
       }),
     });
     await migrateCoreSchema(adapter, "dynamoDB", [insights()]);
-    const module = { id: "insights", schema: insightsSchema } as const;
-    const schema = resolveSchema([module, aggregateBatchingModule]);
+    const plugin = insights();
     const retries = { rerun: 0, resend: 0, retriedTransactions: 0 };
     // The seed commits its aggregates transactionally, as a table does
     // before it batches; the rollout batches them in log mode.
-    const seeded = createDatabaseEngine({
-      adapter,
-      schema,
-      retry: { attempts: 64, baseDelayMs: 1, maxDelayMs: 20 },
-    });
-    const engine = createDatabaseEngine({
-      adapter: withAdapterLatency(adapter, LATENCY_MS),
-      schema,
-      batching: { mode: "log", windowMs: 1_000 },
-      retry: {
-        onRetry: (kind, attempt) => {
-          retries[kind] += 1;
-          if (attempt === 1) retries.retriedTransactions += 1;
+    const seeded = createEngine(
+      {
+        name: "dynamoDB",
+        adapter,
+        retry: { attempts: 64, baseDelayMs: 1, maxDelayMs: 20 },
+      },
+      { plugins: [plugin] },
+    );
+    const engine = createEngine(
+      {
+        name: "dynamoDB",
+        adapter: withAdapterLatency(adapter, LATENCY_MS),
+        aggregateBatching: { mode: "log", windowMs: 1_000 },
+        retry: {
+          onRetry: (kind, attempt) => {
+            retries[kind] += 1;
+            if (attempt === 1) retries.retriedTransactions += 1;
+          },
         },
       },
-    });
-    const apiOf = (database: typeof engine) =>
-      insights().init({
-        db: database.database(module),
+      { plugins: [plugin] },
+    );
+    const apiOf = (database: Engine) =>
+      plugin.init({
+        db: database.database(plugin),
         // Insights never reads core.
         core: {} as CoreReader,
         now: Date.now,

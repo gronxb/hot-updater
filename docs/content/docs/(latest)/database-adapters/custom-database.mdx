@@ -33,13 +33,16 @@ Drizzle, Prisma or MongoDB.
 ## Install
 
 ```package-install
-npm install @hot-updater/server
-npm install @hot-updater/test-utils vitest --save-dev
+npm install @hot-updater/plugin-core
+npm install @hot-updater/server @hot-updater/test-utils vitest --save-dev
 ```
 
-`@hot-updater/server/database` exports the adapter contract, the helpers that
-implement it, and the `EngineDatabase` type that a provider returns. The
-examples run PostgreSQL through `pg`; use your own driver in its place.
+`@hot-updater/plugin-core` exports the adapter contract, the helpers that
+implement it, and the `EngineDatabase` type that a provider returns. A
+published adapter lists it in `peerDependencies`, so the server and the
+adapter share one copy. The tests run the adapter behind
+`@hot-updater/server`. The examples run PostgreSQL through `pg`; use your own
+driver in its place.
 
 ## How the pieces fit
 
@@ -95,7 +98,7 @@ import {
   type PluginTables,
   type SqlConnection,
   type SqlExecutor,
-} from "@hot-updater/server/database";
+} from "@hot-updater/plugin-core";
 import pg, { type PoolClient, type PoolConfig } from "pg";
 
 /** Runs the SQL core's statements on a pool; a transaction holds one client. */
@@ -269,6 +272,39 @@ your adapter in `verifyAdapter(adapter)`. It fails reads that return rows for
 other keys, rows outside the range or out of order, or more than `limit` rows,
 and writes that touch a row twice or that `fits` refuses.
 
+### Document-store adapters
+
+An adapter over a document store, which is neither SQL nor key-value, reads
+the physical schema through four names from `@hot-updater/plugin-core`, as
+the MongoDB adapter does:
+
+| Name                      | What it gives the adapter                                                                                        |
+| ------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `rowKey(table, row)`      | A row's primary key, in key-column order: what `get` takes for it, and how the adapter addresses the document     |
+| `findPhysicalIndex(table, name)` | The index a query names, or a `DatabaseSchemaError`                                                        |
+| `findPhysicalColumn(table, name)` | A column and its type, or a `DatabaseSchemaError`                                                         |
+| `DATABASE_VERSION_COLUMN` | `"_v"`, the version every stored row carries, which a guarded write compares and bumps                           |
+
+### Adapters over an ORM
+
+An adapter over an ORM's database, as the Kysely, Drizzle, and Prisma adapters
+are, runs core's SQL through `createSqlAdapter` and gives its database a
+migrator from `@hot-updater/plugin-core`, which its `createMigrator` returns:
+
+- `createEngineSqlMigrator({ executor, adapterName, schema, settings,
+  tablePrefix })` when Hot Updater creates the tables: it applies the
+  generated SQL schema when a settings row is missing or different, as
+  `kyselyAdapter`'s does.
+- `createSettingsMigrator({ executor, adapterName, settings, applyTables,
+  fixups })` when the ORM applies the DDL itself, as Drizzle's and Prisma's
+  do: `fixups` sets what the ORM cannot declare, then it writes the settings
+  rows. `applyTables` says how the ORM creates the tables, for the error when
+  they are missing.
+
+Both refuse a database from before the storage engine. The ORM's own schema
+generator renders each table from `sqlTableShapes` and quotes names with
+`quoteSql`; see [Create the schema](#create-the-schema).
+
 ## Wrap it as a database
 
 `createEngineDatabase({ name, adapter })` returns the `EngineDatabase` a
@@ -283,6 +319,8 @@ database also carries the migration that `hot-updater db migrate` runs.
 | `adapter`              | The `DatabaseAdapter`                                                                                                                                                                            |
 | `onCachedRoutesChange` | A CDN purge for the cacheable client routes. Core calls it after a committed write that changes a Release Catalog, so the adapter never names a table. `dynamoDB` invalidates CloudFront here. |
 | `aggregateBatching`    | For a backend that bills each write: apply the changes of aggregates declared `batched` after their transaction commits, merged into one write per row. `{ mode?: "log" \| "memory", windowMs? }`; absent or `false` writes them in each transaction. `dynamoDB` and `firebaseDatabase` pass `{}`, the log mode. |
+| `retry`                | Optional. How a transaction that conflicts with another write runs again: `{ attempts?, baseDelayMs?, maxDelayMs?, onRetry? }`, 8 attempts 5 ms apart at first, doubling to at most 250 ms. A store many writers contend on, such as DynamoDB under a burst of events, can take more attempts; `onRetry(kind, attempt)` observes each rerun, such as for a metric. |
+| `readSettings`         | Optional. How `hot-updater db migrate` reads the stored settings rows, by key, when an earlier version of the adapter stored them elsewhere; the MongoDB adapter reads its pre-engine rows this way. By default the migrator reads them through the adapter. |
 
 Set it as `database` in the server definition, the one module the server, the
 CLI, and the Console read:
@@ -313,6 +351,47 @@ export default defineConfig({
 });
 ```
 
+## Measure what each call reads
+
+`meterReads(database)` from `@hot-updater/plugin-core` meters any database on
+the storage engine, yours or a provider's, so you can see what each server
+call costs a store that bills by read. Pass the metered database to
+`createHotUpdater`, then run a call through `measureReads`:
+
+```ts title="measure.ts"
+import { meterReads } from "@hot-updater/plugin-core";
+import { createHotUpdater } from "@hot-updater/server";
+
+import { myDatabase } from "./myDatabase";
+
+const database = meterReads(
+  myDatabase({ connectionString: process.env.DATABASE_URL }),
+);
+const hotUpdater = createHotUpdater({ database, clientAccess: "public" });
+
+const { result, adapter, engine } = await database.measureReads(() =>
+  hotUpdater.core.listBundles({ limit: 20 }),
+);
+```
+
+`adapter` counts what your adapter returned: `get` calls and the keys they
+asked for, and `query` calls and the rows they returned. `engine` counts the
+reads core or a plugin made and the rows they got back, where an aggregate row
+counts once however many shard rows the adapter read. Aggregate batching's
+reads count too: a compaction or a flush that runs during the call, including
+a memory-mode timer flush that lands in it, since a store bills those like any
+other read. A process's first schema-fence read and its retention passes
+belong to no call and are not counted. Every engine on the database reports to
+the same meter.
+
+`createEngine(database, { plugins })` runs that storage engine without a
+server: `engine.core` holds core's tables and `engine.database(plugin)` a
+plugin's, behind the plugins' settings rows on a fenced database, as
+`createHotUpdater` runs them. Tooling and tests use it to run a plugin's
+tables on your database, and `createPluginTestHarness` from
+`@hot-updater/test-utils` is built on it. Wrap the adapter in `verifyAdapter`
+to check every call against the contract as it runs.
+
 ## Create the schema
 
 Migrations write settings rows to `private_hot_updater_settings` last, after
@@ -342,9 +421,9 @@ refuses a database whose adapter has no `migrations`.
 
 A SQL provider can check in its schema instead.
 `generateEngineSql(dialect, schema, settings, { tablePrefix })` from
-`@hot-updater/server/db` returns the statements: tables and indexes, then the
-settings rows. Pass `coreSchema` and `coreSettings` from
-`@hot-updater/server/database` for core alone, or the `schema` and `settings`
+`@hot-updater/plugin-core` returns the statements: tables and indexes, then
+the settings rows, in `SETTINGS_TABLE`. Pass `coreSchema` and `coreSettings`
+for core alone, or the `schema` and `settings`
 of `toolingTargetOf(plugins)` for core and those plugins. The `postgres`
 provider generates its checked-in SQL for core, and D1 its first Worker
 migration for core and `sql/bundles.sql` for core and the managed Worker's
@@ -354,7 +433,9 @@ executor has `batch`. Use the same `tablePrefix` for schema generation, the
 write guard table, and `createSqlAdapter`. When other tooling creates the
 tables,
 `writeSchemaSettings(adapter, name, settings)` writes only the settings
-rows.
+rows; that tooling creates `SETTINGS_TABLE` with the rest, and an ORM's schema
+generator renders each table from `sqlTableShapes` and quotes names with
+`quoteSql`.
 
 A provider whose schema is applied as migration files adds
 `generateSchema(version, name, target)` to its database, as `supabaseDatabase`
@@ -381,7 +462,7 @@ Each suite creates its own tables, and the specs drop or empty them through
 this helper:
 
 ```ts title="testTables.ts"
-import { isMultiIndex, type PhysicalTable } from "@hot-updater/server/database";
+import { isMultiIndex, type PhysicalTable } from "@hot-updater/plugin-core";
 
 /** The quoted tables the SQL core creates for `tables`, index tables included. */
 export const tableNames = (tables: readonly PhysicalTable[], prefix = "") =>
@@ -399,7 +480,7 @@ export const tableNames = (tables: readonly PhysicalTable[], prefix = "") =>
 ### Adapter conformance
 
 ```ts title="myDatabase.conformance.spec.ts"
-import { createSqlAdapter } from "@hot-updater/server/database";
+import { createSqlAdapter } from "@hot-updater/plugin-core";
 import { setupDatabaseAdapterConformanceSuite } from "@hot-updater/test-utils";
 import pg from "pg";
 import { afterAll } from "vitest";
@@ -447,16 +528,7 @@ since an insert there is 3 items and a transaction takes 100.
 ### Read budgets
 
 ```ts title="myDatabase.readBudgets.spec.ts"
-import {
-  createSqlAdapter,
-  toolingTargetOf,
-} from "@hot-updater/server/database";
-import {
-  createMeasuredDatabase,
-  targetBaseCandidateKey,
-} from "@hot-updater/server/db";
-import { apiKeys } from "@hot-updater/server/plugins/api-keys";
-import { insights } from "@hot-updater/server/plugins/insights";
+import { createSqlAdapter } from "@hot-updater/plugin-core";
 import {
   postgresRowsExamined,
   setupReadBudgetTestSuite,
@@ -472,12 +544,6 @@ afterAll(() => pool.end());
 
 setupReadBudgetTestSuite({
   name: "myDatabase",
-  server: {
-    createMeasuredDatabase,
-    toolingTargetOf,
-    plugins: [insights(), apiKeys()],
-    targetBaseCandidateKey,
-  },
   createAdapter: async ({ tables }) => {
     // Each read is explained on one session of the pool.
     const session = await pool.connect();
@@ -501,10 +567,13 @@ setupReadBudgetTestSuite({
 });
 ```
 
-`createMeasuredDatabase(adapter, plugins, options)` from
-`@hot-updater/server/db` assembles core and the plugins as `createHotUpdater`
-does, on an engine that checks every adapter call, without the schema fence.
-The suite seeds Bundles, Releases, Channels, an API key and Insights events,
+The suite runs core and the server's `insights()` and `apiKeys()` on
+`createMeasuredDatabase(adapter, plugins, { now, storage })` from
+`@hot-updater/test-utils`: `createHotUpdater` over
+`meterReads({ name, adapter: verifyAdapter(adapter) })`, so every adapter call
+is checked and measured, without the schema fence. `now` is the plugins'
+clock. It loads `@hot-updater/server`, which your project installs for the
+tests. The suite seeds Bundles, Releases, Channels, an API key and Insights events,
 caps native pages at two rows, and checks each API's reads exactly, at the
 adapter and at the engine. For example, the update check is one point read of
 a catalog row, and artifact resolution is one batch read of two Bundles plus
@@ -512,7 +581,7 @@ one patch read.
 
 | `createAdapter` result | Meaning                                                                                                                                                                                                       |
 | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `adapter`              | Your adapter over newly created, empty `tables`: core's and those of `server.plugins`                                                                                                                         |
+| `adapter`              | Your adapter over newly created, empty `tables`: core's, those of `insights()` and `apiKeys()`, and `SETTINGS_TABLE`, where retention passes keep their lease                                                 |
 | `cleanup`              | Runs after the suite                                                                                                                                                                                          |
 | `examined`             | SQL backends: the rows the database examined. `postgresRowsExamined(query)` and `mysqlRowsExamined(query)` explain each read the wrapped executor runs, so a read that scans more rows than it returns fails. |
 | `indexCopies`          | `true` when index reads return row copies without `_v`, as `createKvAdapter` does; a transaction then reads the rows it guards again                                                                          |
@@ -520,15 +589,15 @@ one patch read.
 ### The server over HTTP
 
 ```ts title="myDatabase.spec.ts"
+import { toolingTargetOf } from "@hot-updater/plugin-core";
 import { createHotUpdater } from "@hot-updater/server";
-import { toolingTargetOf } from "@hot-updater/server/database";
 import { createDatabasePluginApis } from "@hot-updater/server/db";
 import {
   createInsightsModel,
   insights,
 } from "@hot-updater/server/plugins/insights";
-import { insightsTestSuite } from "@hot-updater/server/plugins/insights/testing";
 import {
+  insightsTestSuite,
   setupDatabaseTestSuite,
   startHttpTestServer,
 } from "@hot-updater/test-utils";
@@ -579,7 +648,7 @@ setupDatabaseTestSuite({
 | `reset`               | Empties every data table before each test and keeps the settings rows                                                                                                                                          |
 | `dispose`             | Closes the database after the suite                                                                                                                                                                            |
 | `createHttpClient`    | Serves the handlers of `createHotUpdater({ database, storage, plugins, clientAccess: "public" })` with the plugins whose suites `plugins` lists: `startHttpTestServer` on loopback in Node, or `createHandlerHttpTestClient` in a Workers pool |
-| `plugins`             | Optional. Server plugins' suites to run too, such as `insightsTestSuite()` from `@hot-updater/server/plugins/insights/testing`: the Insights routes, and with `createModel` its report contract in process |
+| `plugins`             | Optional. Server plugins' suites to run too, such as `insightsTestSuite()` from `@hot-updater/test-utils`: the Insights routes, and with `createModel` its report contract in process |
 
 The suite sends real requests to the admin API and the client routes. It runs
 core's operations, the Bundle admin API, the Release Catalog contract, and each

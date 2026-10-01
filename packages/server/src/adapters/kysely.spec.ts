@@ -2,27 +2,29 @@ import { DatabaseSync, type SqliteValue } from "node:sqlite";
 
 import { PGlite } from "@electric-sql/pglite";
 import {
+  DatabaseConstraintError,
+  HotUpdaterSchemaMigrationRequiredError,
+  isMultiIndex,
+  coreSchema,
+  toolingTargetOf,
+  quoteSql,
+} from "@hot-updater/plugin-core";
+import type { ToolingDatabase } from "@hot-updater/plugin-core";
+import {
   setupDatabaseTestSuite,
   startHttpTestServer,
+  createBundleEventRowFixture,
+  insightsTestSuite,
 } from "@hot-updater/test-utils";
+import { createBundleFixture } from "@hot-updater/test-utils";
 import { Kysely, SqliteDialect } from "kysely";
 import { PGliteDialect } from "kysely-pglite-dialect";
 import { describe, expect, it } from "vitest";
 
-import { createBundleFixture } from "../../../test-utils/src/databaseTestFixtures";
 import { createDatabasePluginApis } from "../assembly/databasePlugins";
 import { createInProcessCoreApi } from "../core/api";
-import { DatabaseConstraintError } from "../database/errors";
-import { HotUpdaterSchemaMigrationRequiredError } from "../database/fence";
-import { isMultiIndex, quoteSql } from "../database/sql/sqlSchema";
-import { coreSchema, toolingTargetOf } from "../db/coreDatabase";
-import type { ToolingDatabase } from "../db/types";
 import { createHotUpdater } from "../index";
 import { createInsightsModel, insights } from "../plugins/insights";
-import {
-  createBundleEventRowFixture,
-  insightsTestSuite,
-} from "../plugins/insights/testing";
 import { kyselyAdapter, type SQLProvider } from "./kysely";
 
 /** What the suites run: core and the Insights plugin. */

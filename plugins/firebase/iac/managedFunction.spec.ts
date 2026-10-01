@@ -18,7 +18,7 @@ const DEFINITION = `import {
   plugins,
 } from "@hot-updater/firebase";
 import { createHotUpdater } from "@hot-updater/server";
-import { definePlugin, defineTable } from "@hot-updater/server/plugins";
+import { definePlugin, defineTable } from "@hot-updater/plugin-core";
 import { applicationDefault } from "firebase-admin/app";
 
 const notes = definePlugin({
@@ -64,7 +64,7 @@ export const hotUpdater = createHotUpdater({
 /** A definition whose plugin answers with bytes and two cookies. */
 const BINARY_DEFINITION = `import { firebaseDatabase, firebaseStorage } from "@hot-updater/firebase";
 import { createHotUpdater } from "@hot-updater/server";
-import { definePlugin } from "@hot-updater/server/plugins";
+import { definePlugin } from "@hot-updater/plugin-core";
 
 const bytes = definePlugin({
   id: "bytes",

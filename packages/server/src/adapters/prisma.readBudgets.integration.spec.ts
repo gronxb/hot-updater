@@ -1,17 +1,18 @@
 import { PGlite } from "@electric-sql/pglite";
+import { createSqlAdapter, toolingTargetOf } from "@hot-updater/plugin-core";
 import {
   postgresRowsExamined,
   setupReadBudgetTestSuite,
 } from "@hot-updater/test-utils";
 
-import { createSqlAdapter } from "../database/sql/sqlAdapter";
-import { readBudgetServer } from "../readBudgets.testFixtures";
+import { apiKeys } from "../plugins/api-keys";
+import { insights } from "../plugins/insights";
 import { prismaAdapter } from "./prisma";
 import { prismaExecutor } from "./prismaExecutor";
 import { pglitePrisma, prismaPushSql } from "./prismaTestClients";
 
 /** Core's tables and those of the plugins the suite measures. */
-const target = readBudgetServer.toolingTargetOf(readBudgetServer.plugins);
+const target = toolingTargetOf([insights(), apiKeys()]);
 
 /**
  * `prismaAdapter`'s composition without its schema fence: the SQL core over
@@ -20,7 +21,6 @@ const target = readBudgetServer.toolingTargetOf(readBudgetServer.plugins);
  */
 setupReadBudgetTestSuite({
   name: "prisma (PGlite)",
-  server: readBudgetServer,
   createAdapter: async () => {
     const client = new PGlite();
     await client.exec(await prismaPushSql("postgresql", target));

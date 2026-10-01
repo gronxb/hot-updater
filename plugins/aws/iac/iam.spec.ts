@@ -31,7 +31,7 @@ vi.mock("@aws-sdk/client-sts", () => ({
 }));
 
 import { InitError } from "@hot-updater/cli-tools";
-import { definePlugin, defineTable } from "@hot-updater/server/plugins";
+import { definePlugin, defineTable } from "@hot-updater/plugin-core";
 
 import { plugins } from "../src/plugins";
 import { dynamoDBLeadingKeys, type EdgeDeployment, IAMManager } from "./iam";

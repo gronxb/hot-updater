@@ -1,14 +1,12 @@
-import type {
-  EngineDatabase,
-  HotUpdaterCoreApi,
+import {
+  createEngine,
+  type DatabaseAdapter,
+  type EngineDatabase,
+  type HotUpdaterCoreApi,
 } from "@hot-updater/plugin-core";
-import type { DatabaseAdapter } from "@hot-updater/plugin-core/internal";
 
-import { createDatabaseEngine } from "../database/database";
-import { resolveSchema } from "../database/resolveSchema";
 import { createCoreOperations } from "./operations";
 import { createCoreReads, type CoreDatabase, type CoreStorage } from "./reads";
-import { coreModule } from "./schema";
 
 export interface CoreApiOptions {
   readonly now?: () => number;
@@ -85,10 +83,7 @@ export const createInProcessCoreApi = (
   options: CoreApiOptions = {},
 ): CoreApi =>
   createCoreApi(
-    createDatabaseEngine({
-      adapter,
-      schema: resolveSchema([coreModule]),
-    }).database(coreModule),
+    createEngine({ name: "in-process", adapter }).core,
     { resolveFileUrl: async () => null },
     options,
   );

@@ -1,4 +1,4 @@
-import { SETTINGS_TABLE } from "@hot-updater/server/database";
+import { SETTINGS_TABLE } from "@hot-updater/plugin-core";
 
 export const SUPABASE_V1_FUNCTION_NAME = "hot-updater-v1";
 

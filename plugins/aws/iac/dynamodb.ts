@@ -14,7 +14,7 @@ import {
   encodeKvKey,
   SETTINGS_TABLE,
   toolingTargetOf,
-} from "@hot-updater/server/database";
+} from "@hot-updater/plugin-core";
 
 import { DYNAMODB_TTL_ATTRIBUTE } from "../src/dynamoDBStore";
 import { plugins } from "../src/plugins";

@@ -35,6 +35,7 @@ jobs:
       - name: TypeScript type check
         run: pnpm test:type
 
+      # Formatting, lint rules, and the package boundaries.
       - name: OXC check
         run: pnpm lint
       - name: Check integration groups

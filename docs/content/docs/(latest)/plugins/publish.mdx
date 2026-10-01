@@ -144,13 +144,13 @@ re-export:
 List the Hot Updater packages your package imports in `peerDependencies`, and
 in `devDependencies` for your own tests:
 
-| Package                                 | `peerDependencies`                                                       |
-| --------------------------------------- | ------------------------------------------------------------------------ |
-| Storage, build, or signing adapter      | `@hot-updater/plugin-core`                                               |
-| Database adapter                        | `@hot-updater/server`, whose `@hot-updater/server/database` it builds on |
-| Server plugin                           | `@hot-updater/plugin-core`                                               |
-| Client plugin                           | `@hot-updater/protocol`                                                  |
-| Server and client plugin in one package | `@hot-updater/plugin-core` and `@hot-updater/protocol`, both optional    |
+| Package                                 | `peerDependencies`                                                    |
+| --------------------------------------- | --------------------------------------------------------------------- |
+| Storage, build, or signing adapter      | `@hot-updater/plugin-core`                                            |
+| Database adapter                        | `@hot-updater/plugin-core`                                            |
+| Server plugin                           | `@hot-updater/plugin-core`                                            |
+| Client plugin                           | `@hot-updater/protocol`                                               |
+| Server and client plugin in one package | `@hot-updater/plugin-core` and `@hot-updater/protocol`, both optional |
 
 A peer dependency makes your package use the project's copy of each package, the
 one its CLI, server, and Console use. A project gets `@hot-updater/plugin-core`
@@ -159,7 +159,7 @@ through `@hot-updater/server` and `@hot-updater/protocol` through
 those copies. A second copy breaks at runtime, because Hot Updater checks its
 errors with `instanceof`. A server plugin that catches `DatabaseConstraintError`
 from its own copy misses the one the project's engine throws, and a database
-adapter built on its own copy of `@hot-updater/server/database` makes the server
+adapter built on its own copy of `@hot-updater/plugin-core` makes the server
 answer a missing schema with 500 instead of 503.
 
 Set the range to the major version you test against, such as `^1.0.0`, and
@@ -175,7 +175,9 @@ run your tests against each new minor version.
 | Client plugin    | `setupClientPlugin` and `setupClientPlugins` from `@hot-updater/test-utils/react-native`, in plain Node under Vitest or Jest; see [Test the plugin](/docs/react-native-api/client-plugins#test-the-plugin). Then a release build of an app against a server with its routes |
 
 Add `@hot-updater/test-utils` to `devDependencies` with `vitest` 4, which it
-takes as a peer dependency. Its `@hot-updater/test-utils/react-native` entry
+takes as a peer dependency. Its database suites run your adapter behind
+`@hot-updater/server`, so a database adapter adds that to `devDependencies`
+too. Its `@hot-updater/test-utils/react-native` entry
 runs client plugins on the plugin host from `@hot-updater/protocol`, so it
 needs no React Native, and runs under Jest as well.
 

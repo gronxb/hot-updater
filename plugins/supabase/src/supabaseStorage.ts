@@ -5,7 +5,6 @@ import {
   parseStorageUri,
   type StorageAdapterWith,
 } from "@hot-updater/plugin-core";
-import { withAdapterResource } from "@hot-updater/plugin-core/internal";
 import { createClient } from "@supabase/supabase-js";
 
 import {
@@ -125,8 +124,10 @@ export const supabaseStorage = (
       return { deleted: true };
     },
   });
-  return withAdapterResource(adapter, {
-    supabaseUrl: config.supabaseUrl?.replace(/\/+$/u, ""),
-    bucketName: config.bucketName,
+  return Object.assign(adapter, {
+    resource: {
+      supabaseUrl: config.supabaseUrl?.replace(/\/+$/u, ""),
+      bucketName: config.bucketName,
+    },
   });
 };

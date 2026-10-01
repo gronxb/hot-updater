@@ -27,18 +27,18 @@ import {
   insights,
   type InsightsProvider,
 } from "@hot-updater/server/plugins/insights";
-import { getApps, initializeApp } from "firebase-admin/app";
-import { getFirestore } from "firebase-admin/firestore";
-import { getStorage } from "firebase-admin/storage";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-
 import {
   assertCommandAvailable,
   findOpenPort,
   spawnRuntime,
   stopRuntime,
   waitForHttpOk,
-} from "../../../../packages/test-utils/src/runtimeProcess";
+} from "@hot-updater/test-utils/node";
+import { getApps, initializeApp } from "firebase-admin/app";
+import { getFirestore } from "firebase-admin/firestore";
+import { getStorage } from "firebase-admin/storage";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+
 import {
   firebaseDatabase,
   migrateFirebaseDatabase,

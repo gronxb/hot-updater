@@ -1,7 +1,8 @@
-import { setupDatabaseAdapterConformanceSuite } from "@hot-updater/test-utils";
-
-import { createKvAdapter } from "./kvAdapter";
-import { createMemoryKeyValueStore } from "./kvTestStore";
+import { createKvAdapter } from "@hot-updater/plugin-core";
+import {
+  setupDatabaseAdapterConformanceSuite,
+  createMemoryKeyValueStore,
+} from "@hot-updater/test-utils";
 
 setupDatabaseAdapterConformanceSuite({
   name: "key-value (in-memory store)",

@@ -1,7 +1,7 @@
 // @vitest-environment node
 
 import type { HotUpdaterCoreApi } from "@hot-updater/plugin-core";
-import { createMemoryAdapter } from "@hot-updater/plugin-core/internal";
+import { createMemoryAdapter } from "@hot-updater/plugin-core";
 import { apiKeys } from "@hot-updater/server/plugins/api-keys";
 import { insights } from "@hot-updater/server/plugins/insights";
 import { afterEach, describe, expect, it, vi } from "vitest";

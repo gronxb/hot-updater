@@ -38,7 +38,7 @@ it("reads the plugins of the server definition hot-updater.config.ts points at",
     path.join(cwd, "hotUpdater.ts"),
     [
       'import { createHotUpdater } from "@hot-updater/server";',
-      'import { createMemoryAdapter } from "@hot-updater/plugin-core/internal";',
+      'import { createMemoryAdapter } from "@hot-updater/plugin-core";',
       "",
       "export const hotUpdater = createHotUpdater({",
       '  database: { name: "memory", adapter: createMemoryAdapter() },',

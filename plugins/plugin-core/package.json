@@ -12,10 +12,6 @@
       "import": "./dist/index.mjs",
       "require": "./dist/index.cjs"
     },
-    "./internal": {
-      "import": "./dist/internal.mjs",
-      "require": "./dist/internal.cjs"
-    },
     "./package.json": "./package.json"
   },
   "files": [
@@ -53,9 +49,16 @@
     "verkit": "catalog:"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "catalog:db",
+    "@hot-updater/test-utils": "workspace:*",
     "@types/node": "catalog:",
     "@typescript/native": "npm:typescript@7.0.2",
     "typescript": "npm:@typescript/typescript6@6.0.2"
+  },
+  "nx": {
+    "implicitDependencies": [
+      "!@hot-updater/test-utils"
+    ]
   },
   "inlinedDependencies": {
     "verkit": "0.4.0"

@@ -14,40 +14,34 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { resolvePackageVersion, transformEnv } from "@hot-updater/cli-tools";
-import { type HotUpdaterCoreApi, rowToBundle } from "@hot-updater/plugin-core";
+import {
+  type HotUpdaterCoreApi,
+  rowToBundle,
+  createSqlAdapter,
+  toolingTargetOf,
+  type RetryOptions,
+  createEngine,
+} from "@hot-updater/plugin-core";
+import type { AnyHotUpdaterPlugin, CoreReader } from "@hot-updater/plugin-core";
 import type { Bundle } from "@hot-updater/protocol";
 import { createHotUpdater } from "@hot-updater/server";
-import {
-  createDatabaseEngine,
-  createSqlAdapter,
-  type RetryOptions,
-  toolingTargetOf,
-} from "@hot-updater/server/database";
 import {
   createDatabaseCoreApi,
   createDatabasePluginApis,
 } from "@hot-updater/server/db";
-import type {
-  AnyHotUpdaterPlugin,
-  CoreReader,
-} from "@hot-updater/server/plugins";
 import { apiKeys } from "@hot-updater/server/plugins/api-keys";
 import {
   createInsightsModel,
   insights,
-  insightsSchema,
   type BundleEventRow,
 } from "@hot-updater/server/plugins/insights";
-import { insightsTestSuite } from "@hot-updater/server/plugins/insights/testing";
 import {
   runContentionHarness,
   setupDatabaseTestSuite,
   startHttpTestServer,
   withAdapterLatency,
+  insightsTestSuite,
 } from "@hot-updater/test-utils";
-import { createClient } from "@supabase/supabase-js";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-
 import {
   assertDockerComposeAvailable,
   findOpenPort,
@@ -55,7 +49,10 @@ import {
   spawnRuntime,
   stopRuntime,
   waitForHttpOk,
-} from "../../../../packages/test-utils/src/runtimeProcess";
+} from "@hot-updater/test-utils/node";
+import { createClient } from "@supabase/supabase-js";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+
 import { getConfigScaffold } from "../../iac/configTemplate";
 import { stageEdgeFunction } from "../../iac/index";
 import { writePluginMigration } from "../../iac/managedEdgeFunction";
@@ -731,15 +728,18 @@ describe.sequential("supabase edge runtime acceptance", () => {
       ),
       tablePrefix: SUPABASE_TABLE_PREFIX,
     });
-    const module = { id: "insights", schema: insightsSchema } as const;
+    const plugin = insights();
     const apiOf = (latencyMs: number, retry?: RetryOptions) =>
-      insights().init({
-        db: createDatabaseEngine({
-          adapter:
-            latencyMs > 0 ? withAdapterLatency(adapter, latencyMs) : adapter,
-          schema: toolingTargetOf([insights()]).schema,
-          ...(retry === undefined ? {} : { retry }),
-        }).database(module),
+      plugin.init({
+        db: createEngine(
+          {
+            name: "supabaseDatabase",
+            adapter:
+              latencyMs > 0 ? withAdapterLatency(adapter, latencyMs) : adapter,
+            ...(retry === undefined ? {} : { retry }),
+          },
+          { plugins: [plugin] },
+        ).database(plugin),
         // Insights never reads core.
         core: {} as CoreReader,
         now: Date.now,
@@ -1010,7 +1010,7 @@ exports.digest = (text) => crypto.createHash("sha256").update(text).digest("hex"
 const DEFINITION_FUNCTION_NAME = "hot-updater-plugins";
 
 /** A plugin of the project's own, with a table, which the app reads and writes. */
-const NOTES_PLUGIN = `import { definePlugin, defineTable } from "@hot-updater/server/plugins";
+const NOTES_PLUGIN = `import { definePlugin, defineTable } from "@hot-updater/plugin-core";
 import { digest } from "cjs-digest";
 
 export const notes = definePlugin({

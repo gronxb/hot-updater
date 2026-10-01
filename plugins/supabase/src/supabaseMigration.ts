@@ -1,10 +1,9 @@
-import { withAdapterResource } from "@hot-updater/plugin-core/internal";
-import { coreSettings, coreTarget } from "@hot-updater/server/database";
+import { coreSettings, coreTarget } from "@hot-updater/plugin-core";
 import type {
   SchemaGenerator,
   ToolingDatabase,
   ToolingTarget,
-} from "@hot-updater/server/db";
+} from "@hot-updater/plugin-core";
 
 import {
   supabaseDatabase as engineDatabase,
@@ -35,7 +34,7 @@ export const supabaseMigration = (target: ToolingTarget = coreTarget) => {
 export const supabaseDatabase = (
   config: SupabaseDatabaseConfig,
 ): ToolingDatabase =>
-  withAdapterResource(
+  Object.assign(
     {
       ...engineDatabase(config),
       generateSchema: ((version, _name, target = coreTarget) => {
@@ -45,5 +44,5 @@ export const supabaseDatabase = (
         return supabaseMigration(target);
       }) satisfies SchemaGenerator,
     },
-    { supabaseUrl: config.supabaseUrl?.replace(/\/+$/u, "") },
+    { resource: { supabaseUrl: config.supabaseUrl?.replace(/\/+$/u, "") } },
   );

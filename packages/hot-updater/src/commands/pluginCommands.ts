@@ -2,15 +2,12 @@ import path from "node:path";
 
 import type { CommandUnknownOpts } from "@commander-js/extra-typings";
 import { loadConfig, p } from "@hot-updater/cli-tools";
+import type { PluginCommand, PluginCommandUi } from "@hot-updater/plugin-core";
 import {
   pluginCommandsOf,
   serverPluginsOf,
   type PluginCommandEntry,
 } from "@hot-updater/server/db";
-import type {
-  PluginCommand,
-  PluginCommandUi,
-} from "@hot-updater/server/plugins";
 
 import { ui } from "../utils/cli-ui";
 import { loadServerDefinition } from "../utils/loadServer";

@@ -1,11 +1,8 @@
-import { createMemoryAdapter } from "@hot-updater/plugin-core/internal";
+import { createEngine, createMemoryAdapter } from "@hot-updater/plugin-core";
 import { NIL_UUID, type Bundle } from "@hot-updater/protocol";
 import { describe, expect, it, vi } from "vitest";
 
 import { createCoreApi } from "../core/api";
-import { coreModule } from "../core/schema";
-import { createDatabaseEngine } from "../database/database";
-import { resolveSchema } from "../database/resolveSchema";
 import { resolveManifestArtifacts } from "./updateArtifacts";
 
 const CURRENT_ID = "00000000-0000-0000-0000-000000000101";
@@ -183,10 +180,7 @@ describe("core's artifact resolution", () => {
       },
     });
     const core = createCoreApi(
-      createDatabaseEngine({
-        adapter: createMemoryAdapter(),
-        schema: resolveSchema([coreModule]),
-      }).database(coreModule),
+      createEngine({ name: "memory", adapter: createMemoryAdapter() }).core,
       {
         ...(readManifest
           ? {

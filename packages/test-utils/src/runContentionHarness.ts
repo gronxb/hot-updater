@@ -1,4 +1,4 @@
-import type { DatabaseAdapter } from "@hot-updater/plugin-core/internal";
+import type { DatabaseAdapter } from "@hot-updater/plugin-core";
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 

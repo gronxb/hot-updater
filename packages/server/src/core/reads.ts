@@ -9,6 +9,13 @@ import {
   type ReleaseFilter,
   type ReleaseRow,
   type CoreReads,
+  parseBaseCandidateKey,
+} from "@hot-updater/plugin-core";
+import type {
+  HotUpdaterDatabase,
+  ReadRow,
+  Page,
+  CoreSchema,
 } from "@hot-updater/plugin-core";
 import {
   ARTIFACT_PROTOCOL_VERSION,
@@ -17,16 +24,13 @@ import {
   type ReleaseCatalog,
 } from "@hot-updater/protocol";
 
-import type { HotUpdaterDatabase, ReadRow } from "../database/database";
-import type { Page } from "../database/engineReads";
 import {
   projectReleaseCatalogRow,
   releaseCatalogScopeKeyOf,
   type ReleaseCatalogRequest,
 } from "../db/releaseCatalog";
 import { resolveManifestArtifacts } from "../db/updateArtifacts";
-import { baseBundleIdsOf, parseBaseCandidateKey } from "./baseCandidates";
-import type { CoreSchema } from "./schema";
+import { baseBundleIdsOf } from "./baseCandidates";
 
 export type CoreDatabase = HotUpdaterDatabase<CoreSchema>;
 export type { CoreReads };

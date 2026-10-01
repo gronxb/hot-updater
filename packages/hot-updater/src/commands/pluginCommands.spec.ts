@@ -1,9 +1,8 @@
 import path from "node:path";
 
 import { Command } from "@commander-js/extra-typings";
-import { createMemoryAdapter } from "@hot-updater/plugin-core/internal";
+import { definePlugin, createMemoryAdapter } from "@hot-updater/plugin-core";
 import { createHotUpdater } from "@hot-updater/server";
-import { definePlugin } from "@hot-updater/server/plugins";
 import { apiKeys } from "@hot-updater/server/plugins/api-keys";
 import { insights } from "@hot-updater/server/plugins/insights";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";

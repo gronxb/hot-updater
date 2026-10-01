@@ -2,8 +2,9 @@ import {
   coreTarget,
   createTableStatements,
   WRITE_GUARD_TABLE,
-} from "@hot-updater/server/database";
-import { generateEngineSql, type ToolingTarget } from "@hot-updater/server/db";
+  generateEngineSql,
+  type ToolingTarget,
+} from "@hot-updater/plugin-core";
 
 /**
  * D1's schema: the guard table batch writes need, then the shared SQL

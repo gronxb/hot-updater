@@ -1,9 +1,9 @@
 import {
   DatabaseAdapterInputError,
   type DatabaseJsonObject,
+  isDatabaseJsonObject,
   type Platform,
 } from "@hot-updater/plugin-core";
-import { isDatabaseJsonObject } from "@hot-updater/plugin-core/internal";
 
 /** Where an update failed, and what failed; open sets, `unknown` for any other value. */
 export type BundleEventFailureStage =

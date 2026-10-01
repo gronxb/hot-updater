@@ -2,22 +2,29 @@ import { DatabaseSync } from "node:sqlite";
 
 import { PGlite } from "@electric-sql/pglite";
 import {
+  createSqlAdapter,
+  createTableStatements,
+  HotUpdaterSchemaMigrationRequiredError,
+  isMultiIndex,
+  type PhysicalTable,
+  quoteSql,
+  SETTINGS_TABLE,
+  type ToolingDatabase,
+  toolingTargetOf,
+  type WriteOp,
+} from "@hot-updater/plugin-core";
+import {
   setupDatabaseTestSuite,
   startHttpTestServer,
+  insightsTestSuite,
 } from "@hot-updater/test-utils";
+import { createBundleFixture } from "@hot-updater/test-utils";
 import { describe, expect, it } from "vitest";
 
-import { createBundleFixture } from "../../../test-utils/src/databaseTestFixtures";
 import { createDatabasePluginApis } from "../assembly/databasePlugins";
 import { createInProcessCoreApi } from "../core/api";
-import { HotUpdaterSchemaMigrationRequiredError } from "../database/fence";
-import { classifySqlError } from "../database/sql/sqlAdapter";
-import { isMultiIndex, quoteSql } from "../database/sql/sqlSchema";
-import { toolingTargetOf } from "../db/coreDatabase";
-import type { ToolingDatabase } from "../db/types";
 import { createHotUpdater } from "../index";
 import { createInsightsModel, insights } from "../plugins/insights";
-import { insightsTestSuite } from "../plugins/insights/testing";
 import { prismaAdapter } from "./prisma";
 import {
   prismaExecutor,
@@ -188,29 +195,51 @@ describe("prismaAdapter schema", () => {
 });
 
 describe("prismaExecutor", () => {
-  it("carries the database's code from Prisma's error, so the SQL core can classify it", async () => {
+  /** A table of ids, as the SQL core creates and writes it. */
+  const ids: PhysicalTable = {
+    name: "t",
+    columns: [
+      { name: "id", type: "string", nullable: false, maxLength: 36 },
+      { name: "_v", type: "integer", nullable: false, default: 0 },
+    ],
+    key: ["id"],
+    indexes: [],
+  };
+  const insert: readonly WriteOp[] = [
+    { type: "insert", table: ids, row: { id: "a", _v: 0 } },
+  ];
+
+  it("carries the database's code from Prisma's error, so the SQL core reads a duplicate as a failed op", async () => {
     const db = new PGlite();
-    await db.exec("CREATE TABLE t (id text PRIMARY KEY)");
+    await db.exec(createTableStatements("postgresql", [ids]).join(";\n"));
     const executor = prismaExecutor(pglitePrisma(db), "postgresql");
-    const insert = { sql: "INSERT INTO t (id) VALUES ($1)", params: ["a"] };
-    await executor.execute(insert);
-    const error = await executor
-      .execute(insert)
-      .catch((caught: unknown) => caught);
-    expect(error).toMatchObject({ code: "23505", cause: { code: "P2010" } });
-    expect(classifySqlError(error)).toBe("constraint");
+    const row = { sql: 'INSERT INTO "t" ("id") VALUES ($1)', params: ["b"] };
+    await executor.execute(row);
+    await expect(executor.execute(row)).rejects.toMatchObject({
+      code: "23505",
+      cause: { code: "P2010" },
+    });
+    const adapter = createSqlAdapter({ executor });
+    await expect(adapter.write(insert)).resolves.toEqual({ ok: true });
+    await expect(adapter.write(insert)).resolves.toEqual({
+      ok: false,
+      failedOp: 0,
+    });
     await db.close();
 
     const sqlite = new DatabaseSync(":memory:");
-    sqlite.exec("CREATE TABLE t (id TEXT PRIMARY KEY)");
-    const sqliteExecutor = prismaExecutor(sqlitePrisma(sqlite), "sqlite");
-    const row = { sql: "INSERT INTO t (id) VALUES (?)", params: ["a"] };
-    await sqliteExecutor.execute(row);
-    expect(
-      classifySqlError(
-        await sqliteExecutor.execute(row).catch((caught: unknown) => caught),
-      ),
-    ).toBe("constraint");
+    // A SQLite transaction takes its write lock on the settings table.
+    for (const sql of createTableStatements("sqlite", [ids, SETTINGS_TABLE])) {
+      sqlite.exec(sql);
+    }
+    const onSqlite = createSqlAdapter({
+      executor: prismaExecutor(sqlitePrisma(sqlite), "sqlite"),
+    });
+    await expect(onSqlite.write(insert)).resolves.toEqual({ ok: true });
+    await expect(onSqlite.write(insert)).resolves.toEqual({
+      ok: false,
+      failedOp: 0,
+    });
   });
 
   it("retries a transaction Prisma reports as a write conflict", async () => {
@@ -224,10 +253,13 @@ describe("prismaExecutor", () => {
         throw conflict;
       },
     } satisfies PrismaTransactionalClient;
-    const error = await prismaExecutor(client, "postgresql")
-      .transaction(async () => undefined)
-      .catch((caught: unknown) => caught);
-    expect(classifySqlError(error)).toBe("retry");
+    const adapter = createSqlAdapter({
+      executor: prismaExecutor(client, "postgresql"),
+    });
+    await expect(adapter.write(insert)).resolves.toEqual({
+      ok: false,
+      retry: true,
+    });
   });
 
   it("takes SQLite's write lock with a transaction's first statement, and reads bytes as text", async () => {

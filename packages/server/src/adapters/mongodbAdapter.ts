@@ -2,18 +2,18 @@ import {
   type DatabaseAdapter,
   type DatabaseKey,
   type DatabaseKeyValue,
-  DATABASE_VERSION_COLUMN as V,
-  findPhysicalColumn,
-  findPhysicalIndex,
   indexOrderColumns,
   normalizeStoredRow,
   type PhysicalIndex,
   type PhysicalTable,
   type QueryBound,
-  rowKey,
   type StoredRow,
   type WriteOp,
-} from "@hot-updater/plugin-core/internal";
+  DATABASE_VERSION_COLUMN as V,
+  findPhysicalColumn,
+  findPhysicalIndex,
+  rowKey,
+} from "@hot-updater/plugin-core";
 import {
   type ClientSession,
   type Document,

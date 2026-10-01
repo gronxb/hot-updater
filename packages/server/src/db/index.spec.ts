@@ -1,5 +1,8 @@
 import { PGlite } from "@electric-sql/pglite";
-import { createStorageAdapter } from "@hot-updater/plugin-core";
+import {
+  createStorageAdapter,
+  HotUpdaterSchemaMigrationRequiredError,
+} from "@hot-updater/plugin-core";
 import type { Bundle } from "@hot-updater/protocol";
 import { NIL_UUID } from "@hot-updater/protocol";
 import { Kysely } from "kysely";
@@ -18,7 +21,6 @@ import {
 import { drizzleAdapter } from "../adapters/drizzle";
 import { kyselyAdapter } from "../adapters/kysely";
 import { prismaAdapter } from "../adapters/prisma";
-import { HotUpdaterSchemaMigrationRequiredError } from "../database/fence";
 import {
   createHotUpdater as createRuntimeHotUpdater,
   type CreateHotUpdaterOptions,

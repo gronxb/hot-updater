@@ -4,28 +4,29 @@ import {
   type BundleRow,
   type ReleaseCatalogScope,
   type ReleaseRow,
+  coreSchema,
+  createEngine,
+  createMemoryAdapter,
+  meterReads,
+  targetBaseCandidateKey,
+  verifyAdapter,
 } from "@hot-updater/plugin-core";
-import { createMemoryAdapter } from "@hot-updater/plugin-core/internal";
 import {
   createReleaseCatalogScopeKey,
   encodeChannelKey,
 } from "@hot-updater/protocol";
-import { describe, expect, it } from "vitest";
-
 import {
   createBundlePatchRowFixture,
   createBundleRowFixture,
-} from "../../../test-utils/src/databaseTestFixtures";
-import { createDatabaseEngine } from "../database/database";
-import { resolveSchema } from "../database/resolveSchema";
+} from "@hot-updater/test-utils";
+import { describe, expect, it } from "vitest";
+
 import {
   changeReleases,
-  coreModule,
   createCoreReads,
   insertBundle,
   insertChannel,
   rebuildCatalog,
-  targetBaseCandidateKey,
   type ReleaseChangeInput,
 } from "./index";
 
@@ -74,14 +75,17 @@ const deploy = (bundle: BundleRow): ReleaseChangeInput => ({
 
 const setup = async () => {
   const adapter = createMemoryAdapter();
-  const schema = resolveSchema([coreModule]);
-  const engine = createDatabaseEngine({ adapter, schema, verify: true });
-  const db = engine.database(coreModule);
+  const schema = coreSchema;
+  const database = meterReads({
+    name: "memory",
+    adapter: verifyAdapter(adapter),
+  });
+  const db = createEngine(database).core;
   await insertChannel(db, channel);
   return {
     adapter,
     schema,
-    engine,
+    database,
     db,
     reads: createCoreReads(db, { resolveFileUrl: async () => null }),
   };
@@ -258,7 +262,7 @@ describe("release changes rooted at the catalog", () => {
   });
 
   it("reads only the scope's enabled releases and its latest id, all of them used", async () => {
-    const { engine, db } = await setup();
+    const { database, db } = await setup();
     const bundles = Array.from({ length: 5 }, (_, n) =>
       createBundleRowFixture(String(551 + n)),
     );
@@ -276,7 +280,7 @@ describe("release changes rooted at the catalog", () => {
         },
       ]);
     }
-    const measured = await engine.measureReads(() =>
+    const measured = await database.measureReads(() =>
       changeReleases(db, [deploy(createBundleRowFixture("556"))]),
     );
     // three enabled releases for the compile, one row for the latest id

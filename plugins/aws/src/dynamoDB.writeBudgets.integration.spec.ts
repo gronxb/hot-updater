@@ -1,18 +1,15 @@
 import { appendFileSync } from "node:fs";
 
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
-import type { AggregateBatching } from "@hot-updater/plugin-core";
 import {
-  aggregateBatchingModule,
-  createDatabaseEngine,
+  type AggregateBatching,
+  type CoreReader,
+  createEngine,
   createKvAdapter,
-  resolveSchema,
-} from "@hot-updater/server/database";
+} from "@hot-updater/plugin-core";
 import { createDatabasePluginApis } from "@hot-updater/server/db";
-import type { CoreReader } from "@hot-updater/server/plugins";
 import {
   insights,
-  insightsSchema,
   type BundleEventRow,
 } from "@hot-updater/server/plugins/insights";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -529,18 +526,20 @@ const measureBatching = async (mode: Mode, rate: number) => {
   const store = createDynamoDBStore({ client, tableName });
   await store.migrations!.apply();
   const adapter = createKvAdapter({ store });
-  const module = { id: "insights", schema: insightsSchema } as const;
-  const schema = resolveSchema([module, aggregateBatchingModule]);
+  const plugin = insights();
   let clock = D0 + 9 * HOUR;
   const now = () => clock;
   const apiOf = (batching?: AggregateBatching) => {
-    const engine = createDatabaseEngine({
-      adapter,
-      schema,
-      ...(batching === undefined ? {} : { batching, now }),
-    });
-    const { api } = insights().init({
-      db: engine.database(module),
+    const engine = createEngine(
+      {
+        name: "dynamoDB",
+        adapter,
+        ...(batching === undefined ? {} : { aggregateBatching: batching }),
+      },
+      { plugins: [plugin], now },
+    );
+    const { api } = plugin.init({
+      db: engine.database(plugin),
       // Insights never reads core.
       core: {} as CoreReader,
       now,

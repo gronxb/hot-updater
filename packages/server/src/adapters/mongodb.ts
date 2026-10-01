@@ -1,9 +1,10 @@
+import {
+  createEngineDatabase,
+  SETTINGS_TABLE,
+  type ToolingDatabase,
+} from "@hot-updater/plugin-core";
 import type { MongoClient } from "mongodb";
 
-import { SETTINGS_TABLE } from "../database/fence";
-import { coreTarget, createEngineDatabase } from "../db/coreDatabase";
-import { createEngineMigrator } from "../db/engineMigrator";
-import type { ToolingDatabase } from "../db/types";
 import { createMongoAdapter } from "./mongodbAdapter";
 
 export { MongoTransactionUnsupportedError } from "./mongodbAdapter";
@@ -28,18 +29,11 @@ const readSettings = (client: MongoClient) => async () => {
  * fenced by the schema settings. `db migrate` creates the collections and
  * indexes, then writes the settings.
  */
-export const mongoAdapter = (config: MongoDBConfig): ToolingDatabase => {
-  const adapter = createMongoAdapter({ client: config.client });
-  return {
-    ...createEngineDatabase({ name: "mongodb", adapter }),
-    provider: "mongodb",
-    createMigrator: ({ schema, settings } = coreTarget) =>
-      createEngineMigrator({
-        adapterName: "mongodb",
-        adapter,
-        schema,
-        settings,
-        readSettings: readSettings(config.client),
-      }),
-  };
-};
+export const mongoAdapter = (config: MongoDBConfig): ToolingDatabase => ({
+  ...createEngineDatabase({
+    name: "mongodb",
+    adapter: createMongoAdapter({ client: config.client }),
+    readSettings: readSettings(config.client),
+  }),
+  provider: "mongodb",
+});

@@ -1,11 +1,13 @@
 import { PGlite } from "@electric-sql/pglite";
 import {
   coreSettings,
+  createSqlAdapter,
   createTableStatements,
   SETTINGS_TABLE,
-} from "@hot-updater/server/database";
-import { settingsStatements } from "@hot-updater/server/db";
+  writeSchemaSettings,
+} from "@hot-updater/plugin-core";
 import { setupDatabaseAdapterConformanceSuite } from "@hot-updater/test-utils";
+import { pgliteExecutor } from "@hot-updater/test-utils/node";
 import { PGliteDialect } from "kysely-pglite-dialect";
 
 import { postgres } from "./postgres";
@@ -21,10 +23,14 @@ setupDatabaseAdapterConformanceSuite({
   createAdapter: async ({ tables }) => {
     const client = new PGlite();
     await client.exec(
-      [
-        ...createTableStatements("postgresql", [...tables, SETTINGS_TABLE]),
-        ...settingsStatements("postgresql", coreSettings),
-      ].join(";\n"),
+      createTableStatements("postgresql", [...tables, SETTINGS_TABLE]).join(
+        ";\n",
+      ),
+    );
+    await writeSchemaSettings(
+      createSqlAdapter({ executor: pgliteExecutor(client) }),
+      "pglite",
+      coreSettings,
     );
     const database = postgres({ dialect: new PGliteDialect(client) });
     return {

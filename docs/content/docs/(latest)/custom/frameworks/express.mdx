@@ -36,7 +36,7 @@ token, parses JSON, and uses Express mount-local middleware:
 
 ```typescript title="src/index.ts"
 import express from "express";
-import { toNodeHandler } from "@hot-updater/server/node"; // [!code ++]
+import { toNodeHandler } from "@hot-updater/server"; // [!code ++]
 import { hotUpdater } from "./hotUpdater"; // [!code ++]
 
 const adminToken = process.env.HOT_UPDATER_ADMIN_TOKEN;

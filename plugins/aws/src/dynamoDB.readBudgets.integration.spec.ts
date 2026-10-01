@@ -1,10 +1,4 @@
-import { toolingTargetOf, createKvAdapter } from "@hot-updater/server/database";
-import {
-  createMeasuredDatabase,
-  targetBaseCandidateKey,
-} from "@hot-updater/server/db";
-import { apiKeys } from "@hot-updater/server/plugins/api-keys";
-import { insights } from "@hot-updater/server/plugins/insights";
+import { createKvAdapter } from "@hot-updater/plugin-core";
 import { setupReadBudgetTestSuite } from "@hot-updater/test-utils";
 import { afterAll, beforeAll } from "vitest";
 
@@ -28,12 +22,6 @@ afterAll(async () => {
  */
 setupReadBudgetTestSuite({
   name: "key-value (DynamoDB Local)",
-  server: {
-    createMeasuredDatabase,
-    toolingTargetOf,
-    plugins: [insights(), apiKeys()],
-    targetBaseCandidateKey,
-  },
   createAdapter: async ({ nativePageSize }) => {
     const tableName = local.tableName();
     const store = createDynamoDBStore({

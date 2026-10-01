@@ -2,47 +2,42 @@
 
 ## Public Entry Boundaries
 
-Keep the `@hot-updater/server` subpaths semantically strict:
+`@hot-updater/server` is the runtime host. Keep its entries strict:
 
-- `@hot-updater/server` is the default runtime-agnostic server entry.
-  - Export `createHotUpdater` and Web `Request`/`Response` runtime APIs here.
+- `@hot-updater/server` is the runtime-agnostic server entry.
+  - Export `createHotUpdater`, its types, the handlers, and `toNodeHandler`
+    for Node frameworks.
   - Do not expose public `createMigrator` or `generateSchema` methods on the
     root runtime API.
   - Do not require Node.js request/response types from the root entry.
-- `@hot-updater/server/node` is only for Node HTTP interop.
-  - Export `toNodeHandler` and directly related Node handler types only.
-  - Do not export `createHotUpdater`.
-  - Do not export DB tooling such as migration, schema, or bundle diff APIs.
-- `@hot-updater/server/db` is the home for DB tooling.
-  - Export migration/schema helpers such as `createMigrator(hotUpdater)` and
-    `generateSchema(hotUpdater, version, name?)`.
-  - Export DB tooling types, schema-readiness errors, and bundle diff helpers
-    from this subpath.
-  - DB helpers may consume the root runtime instance through runtime-neutral
-    package-internal metadata, but they must not depend on Node HTTP interop.
-- `@hot-updater/server/database` is the public storage engine entry for
-  database providers and database adapter authors.
-  - Export the database adapter contract, `createSqlAdapter`,
-    `createKvAdapter`, `createEngineDatabase`, core's schema and settings,
-    `toolingTargetOf` for core with a server's plugins, and the migration
-    helpers that providers call.
-  - `createPluginTestHarness` from `@hot-updater/test-utils` takes this module
-    as its `engine`.
-- `@hot-updater/server/runtime` should not exist.
-  - If a change reintroduces this subpath, stop and re-check the API direction.
-  - Use `@hot-updater/server` as the runtime-agnostic entry instead.
-- Existing `@hot-updater/server/adapters/*` subpaths remain adapter-specific
-  provider entries.
+- `@hot-updater/server/adapters/*` holds the built-in database adapters
+  (Kysely, Drizzle, Prisma, MongoDB), each its own entry so a server loads only
+  the one it uses.
+- `@hot-updater/server/plugins/insights` and
+  `@hot-updater/server/plugins/api-keys` re-export the built-in plugins.
+- `@hot-updater/server/db`, `@hot-updater/server/diff`, and
+  `@hot-updater/server/internal` hold tooling for Hot Updater's own CLI, Console
+  and providers until it moves out of the server; add nothing to them.
+- `scripts/ci/check-package-boundaries.mjs` pins this list. A new subpath needs
+  a deliberate change there.
+
+## What lives elsewhere
+
+- The storage engine, the database adapter kit, and core's schema are in
+  `@hot-updater/plugin-core`. The server runs them through its public API,
+  `createEngine` above all, and imports nothing else from it.
+- Plugin authoring (`definePlugin`, the schema DSL, the database handle) is in
+  `@hot-updater/plugin-core`.
+- Test suites, fixtures, and measured databases are in
+  `@hot-updater/test-utils`, which the server's own specs use as a
+  devDependency.
 
 ## CLI And Documentation Expectations
 
 - CLI config examples should import `createHotUpdater` from
   `@hot-updater/server`.
 - CLI database commands should derive migration/schema capability through
-  `@hot-updater/server/db` helpers, not through `/node` and not through public
-  DB methods on the root instance.
-- Express, Connect, or other Node framework examples may import
-  `toNodeHandler` from `@hot-updater/server/node`, but should keep the
-  `hotUpdater` instance itself created from `@hot-updater/server`.
-- Release notes and changesets must not say DB tooling moved to
-  `@hot-updater/server/node`; it belongs under `@hot-updater/server/db`.
+  `@hot-updater/server/db` helpers, not through public DB methods on the root
+  instance.
+- Express, Connect, or other Node framework examples import `toNodeHandler`
+  from `@hot-updater/server`.

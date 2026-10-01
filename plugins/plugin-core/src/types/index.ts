@@ -1,5 +1,7 @@
 import type { Bundle, Platform } from "@hot-updater/protocol";
 
+import type { AdapterResource } from "../adapterResource";
+
 export type { Bundle, Platform } from "@hot-updater/protocol";
 
 export * from "./utils";
@@ -312,6 +314,12 @@ export interface StorageAdapter {
   readonly listObjects?: (prefix?: string) => Promise<StorageObject[]>;
   /** Deletes only the exact base-path-relative keys supplied by the caller. */
   readonly deleteObjects?: (keys: readonly string[]) => Promise<void>;
+  /**
+   * The provider resource this storage reaches, as its factory was given
+   * it, such as `{ bucketName: "hot-updater-storage" }`. A managed server's
+   * setup compares it with the bucket it set up.
+   */
+  readonly resource?: AdapterResource;
 }
 
 export interface BundleSigningAdapter {

@@ -2,14 +2,18 @@ import type {
   EngineDatabase,
   StorageAdapter,
   StorageAdapterWith,
+  SchemaSettings,
 } from "@hot-updater/plugin-core";
-import { createStorageAdapter } from "@hot-updater/plugin-core";
-import { createMemoryAdapter } from "@hot-updater/plugin-core/internal";
+import {
+  createEngineDatabase,
+  createMemoryAdapter,
+  createStorageAdapter,
+  SETTINGS_TABLE,
+  toolingTargetOf,
+  writeSchemaSettings,
+} from "@hot-updater/plugin-core";
 import type { Bundle } from "@hot-updater/protocol";
 
-import type { SchemaSettings } from "./database/fence";
-import { createEngineDatabase, toolingTargetOf } from "./db/coreDatabase";
-import { migrateSchema } from "./db/schemaSettings";
 import { apiKeys } from "./plugins/api-keys";
 import { insights } from "./plugins/insights";
 
@@ -54,7 +58,8 @@ export const createFencedDatabase = async (
 ): Promise<EngineDatabase> => {
   const adapter = createMemoryAdapter();
   if (settings !== undefined) {
-    await migrateSchema(adapter, name, runtimeTables, settings);
+    await adapter.migrations!.apply([...runtimeTables, SETTINGS_TABLE]);
+    await writeSchemaSettings(adapter, name, settings);
   }
   return createEngineDatabase({ name, adapter });
 };

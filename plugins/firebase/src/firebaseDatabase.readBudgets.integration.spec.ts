@@ -1,10 +1,4 @@
-import { toolingTargetOf, createKvAdapter } from "@hot-updater/server/database";
-import {
-  createMeasuredDatabase,
-  targetBaseCandidateKey,
-} from "@hot-updater/server/db";
-import { apiKeys } from "@hot-updater/server/plugins/api-keys";
-import { insights } from "@hot-updater/server/plugins/insights";
+import { createKvAdapter } from "@hot-updater/plugin-core";
 import { setupReadBudgetTestSuite } from "@hot-updater/test-utils";
 
 import { createFirestoreTestDatabase } from "../test-utils/createFirestoreTestDatabase";
@@ -21,12 +15,6 @@ const { firestore, clearCollection } = createFirestoreTestDatabase(
  */
 setupReadBudgetTestSuite({
   name: "key-value (Firestore emulator)",
-  server: {
-    createMeasuredDatabase,
-    toolingTargetOf,
-    plugins: [insights(), apiKeys()],
-    targetBaseCandidateKey,
-  },
   createAdapter: async ({ nativePageSize }) => {
     const collection = `read_budgets_${process.pid}`;
     await clearCollection(collection);

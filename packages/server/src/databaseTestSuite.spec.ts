@@ -1,13 +1,13 @@
-import { createMemoryAdapter } from "@hot-updater/plugin-core/internal";
+import { createMemoryAdapter } from "@hot-updater/plugin-core";
 import {
   setupDatabaseTestSuite,
   startHttpTestServer,
+  insightsTestSuite,
 } from "@hot-updater/test-utils";
 
 import { createDatabasePluginApis } from "./assembly/databasePlugins";
 import { createHotUpdater } from "./index";
 import { createInsightsModel, insights } from "./plugins/insights";
-import { insightsTestSuite } from "./plugins/insights/testing";
 
 let adapter = createMemoryAdapter();
 

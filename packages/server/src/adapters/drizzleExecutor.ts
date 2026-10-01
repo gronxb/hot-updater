@@ -1,12 +1,11 @@
-import { sql, type SQL } from "drizzle-orm";
-
 import type {
   SqlConnection,
   SqlDialect,
   SqlExecutor,
   SqlResult,
   SqlStatement,
-} from "../database/sql/sqlAdapter";
+} from "@hot-updater/plugin-core";
+import { sql, type SQL } from "drizzle-orm";
 
 /** The members of a Drizzle database or transaction the executor uses. */
 interface DrizzleRunner {

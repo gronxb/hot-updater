@@ -1,18 +1,12 @@
 import { defineConfig } from "tsdown";
 
-/** The Insights plugin's tests import Vitest, which is ESM-only. */
-const INSIGHTS_TESTING = "./plugins/insights/testing";
-
 export default defineConfig([
   {
     entry: [
       "./src/index.ts",
-      "./src/node.ts",
       "./src/db/index.ts",
       "./src/diff.ts",
       "./src/internal.ts",
-      "./src/database/index.ts",
-      "./src/plugins/index.ts",
       "./src/plugins/insights/index.ts",
       "./src/plugins/api-keys/index.ts",
       "./src/adapters/kysely.ts",
@@ -32,23 +26,7 @@ export default defineConfig([
       ],
     },
     unbundle: true,
-    exports: {
-      customExports: (exports) => ({
-        ...exports,
-        [INSIGHTS_TESTING]: {
-          import: "./dist/plugins/insights/testing/index.mjs",
-        },
-      }),
-    },
-    failOnWarn: true,
-  },
-  {
-    entry: ["./src/plugins/insights/testing/index.ts"],
-    format: ["esm"],
-    outDir: "dist/plugins/insights/testing",
-    clean: false,
-    dts: true,
-    unbundle: true,
+    exports: true,
     failOnWarn: true,
   },
 ]);

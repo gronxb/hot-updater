@@ -2,11 +2,12 @@ import {
   coreTarget,
   createTableStatements,
   isMultiIndex,
-  SETTINGS_TABLE,
   WRITE_GUARD_TABLE,
+  generateEngineSql,
+  type ToolingTarget,
+  SETTINGS_TABLE,
   type ResolvedSchema,
-} from "@hot-updater/server/database";
-import { generateEngineSql, type ToolingTarget } from "@hot-updater/server/db";
+} from "@hot-updater/plugin-core";
 
 import {
   SUPABASE_APPLY_FUNCTION,

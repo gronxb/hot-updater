@@ -1,16 +1,16 @@
-import type { HotUpdaterCoreApi } from "@hot-updater/plugin-core";
-import { createMemoryAdapter } from "@hot-updater/plugin-core/internal";
+import {
+  type BaseCandidateTarget,
+  createMemoryAdapter,
+  type HotUpdaterCoreApi,
+  parseBaseCandidateKey,
+  targetBaseCandidateKey,
+} from "@hot-updater/plugin-core";
 import type { Bundle } from "@hot-updater/protocol";
+import { createBundleFixture } from "@hot-updater/test-utils";
 import { normalizeRange, rangesIntersect } from "verkit";
 import { describe, expect, it } from "vitest";
 
-import { createBundleFixture } from "../../../test-utils/src/databaseTestFixtures";
 import { createInProcessCoreApi } from "./api";
-import {
-  parseBaseCandidateKey,
-  targetBaseCandidateKey,
-  type BaseCandidateTarget,
-} from "./baseCandidates";
 
 type Target = Pick<BaseCandidateTarget, "appVersion" | "fingerprintHash">;
 

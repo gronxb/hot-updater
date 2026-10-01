@@ -1,8 +1,4 @@
 export {
-  targetBaseCandidateKey,
-  type BaseCandidateTarget,
-} from "./baseCandidates";
-export {
   createCoreApi,
   createDatabaseCoreApi,
   createInProcessCoreApi,
@@ -30,12 +26,7 @@ export {
   type KeysetInput,
   type ReleaseFilter,
 } from "./reads";
-export {
-  coreModule,
-  coreSchema,
-  HOT_UPDATER_SCHEMA_VERSION,
-  type CoreSchema,
-} from "./schema";
+export { coreSchema, type CoreSchema } from "@hot-updater/plugin-core";
 export {
   deleteChannel,
   insertBundle,
