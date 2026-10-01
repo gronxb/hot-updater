@@ -1,12 +1,13 @@
 import path from "path";
 
 import type {
+  AnyHotUpdaterPlugin,
   ConfigInput,
+  ConfiguredDatabase,
   Platform,
-  RemoteServer,
   RequiredDeep,
+  StorageAdapter,
 } from "@hot-updater/plugin-core";
-import { isRemoteServer } from "@hot-updater/plugin-core";
 import { merge } from "es-toolkit";
 import fg from "fast-glob";
 import { type LoadConfigOptions, loadConfig as loadUnconfig } from "unconfig";
@@ -74,7 +75,7 @@ const getDefaultPlatformConfig = (): ConfigInput["platform"] => {
   };
 };
 
-const getDefaultConfig = (): Omit<ConfigInput, "server"> => {
+const getDefaultConfig = (): Omit<ConfigInput, "database" | "storage"> => {
   return {
     cacheDir: path.join("node_modules", ".hot-updater"),
     updateStrategy: "appVersion",
@@ -93,18 +94,19 @@ const getDefaultConfig = (): Omit<ConfigInput, "server"> => {
     build: () => {
       throw new Error("build adapter is required");
     },
+    plugins: [],
   };
 };
 
 export type ConfigResponse = RequiredDeep<
-  Omit<ConfigInput, "server" | "signing">
+  Omit<ConfigInput, "database" | "storage" | "plugins" | "signing">
 > & {
-  /**
-   * The absolute path of the server definition, or the self-hosted server
-   * the CLI reaches through its admin API; absent when the config names
-   * none.
-   */
-  server?: string | RemoteServer;
+  /** The server's database, or `standaloneRepository(...)`; absent when the config names none. */
+  database?: ConfiguredDatabase;
+  /** Where the CLI uploads bundles; absent when the config names none. */
+  storage?: StorageAdapter;
+  /** The plugins the server runs; none when the config lists none. */
+  plugins: readonly AnyHotUpdaterPlugin[];
   signing?: ReturnType<typeof normalizeSigningConfig>;
 };
 
@@ -116,37 +118,27 @@ const mergeConfigSources = (...sources: ConfigSource[]) => {
     {},
   );
 
+  // Taken whole, as the config made them: a deep merge copies objects
+  // without their symbol keys, such as the brand on Hot Updater's own plugins.
+  const database = sources.find((source) => source?.database)?.database;
+  const plugins = sources.find((source) => source?.plugins)?.plugins;
   const signing = sources.find((source) => source?.signing)?.signing;
+  const storage = sources.find((source) => source?.storage)?.storage;
   return {
     ...mergedConfig,
+    ...(database ? { database } : {}),
+    ...(plugins ? { plugins } : {}),
     ...(signing ? { signing } : {}),
+    ...(storage ? { storage } : {}),
   };
 };
 
-/**
- * The config's `server`: a path, resolved against the config file's
- * directory, or a remote server, which is taken whole.
- */
-const resolveServer = (
-  server: unknown,
-  configFile: string | undefined,
-): string | RemoteServer | undefined => {
-  if (server === undefined) return undefined;
-  if (typeof server === "string" && server.trim() !== "") {
-    return path.resolve(
-      configFile === undefined ? getCwd() : path.dirname(configFile),
-      server,
-    );
-  }
-  if (isRemoteServer(server)) return server;
-  throw new Error(
-    'server in hot-updater.config must be the path to your server definition, such as "./src/hotUpdater.ts", or standaloneRepository(...).',
-  );
-};
+/** What hot-updater.config exports: the config, or a function of the platform and channel that returns it. */
+type ConfigFileExport =
+  | ConfigInput
+  | ((options: HotUpdaterConfigOptions) => ConfigInput | Promise<ConfigInput>);
 
-const getConfigLoaderOptions = (
-  options: HotUpdaterConfigOptions,
-): LoadConfigOptions<ConfigInput> => {
+const getConfigLoaderOptions = (): LoadConfigOptions<ConfigFileExport> => {
   const cwd = getCwd();
 
   return {
@@ -157,34 +149,54 @@ const getConfigLoaderOptions = (
       {
         files: "hot-updater.config",
         extensions: ["js", "cjs", "ts", "cts", "mjs", "mts"],
-        rewrite: async (config: unknown) => {
-          return typeof config === "function"
-            ? (config as (options: HotUpdaterConfigOptions) => ConfigInput)(
-                options,
-              )
-            : (config as ConfigInput);
-        },
       },
     ],
   };
 };
 
+/** Each load runs the config file again, which creates its adapters again. */
+const loadConfigFile = async (): Promise<ConfigFileExport | undefined> => {
+  const { config } = await loadUnconfig<ConfigFileExport>(
+    getConfigLoaderOptions(),
+  );
+  return config;
+};
+
+const configFor = async (
+  source: ConfigFileExport | undefined,
+  options: HotUpdaterConfigOptions,
+): Promise<ConfigInput | undefined> =>
+  typeof source === "function" ? await source(options) : source;
+
 export const loadConfig = async (
   options: HotUpdaterConfigOptions,
-): Promise<ConfigResponse> => {
-  const { config, sources } = await loadUnconfig<ConfigInput>(
-    getConfigLoaderOptions(options),
-  );
+): Promise<ConfigResponse> =>
+  resolveConfig(await configFor(await loadConfigFile(), options));
 
-  const moved = ["database", "storage", "plugins"].filter(
-    (key) => config && Object.hasOwn(config, key),
-  );
-  if (moved.length > 0) {
-    throw new Error(
-      `Remove ${moved.join(", ")} from hot-updater.config: the server definition holds the database, storage, and plugins. Export \`hotUpdater = createHotUpdater({ database, storage, plugins })\` from a module and set \`server\` to its path, or set \`server\` to standaloneRepository({ baseUrl, storage }).`,
-    );
+/**
+ * hot-updater.config for each of `platforms`, with the file loaded once. A
+ * config object gives every platform the same database, storage, and
+ * plugins; a config function runs once per platform, so the adapters it
+ * creates are that platform's own.
+ */
+export const loadPlatformConfigs = async <TPlatform extends Platform>(
+  platforms: readonly TPlatform[],
+  { channel }: { readonly channel: string },
+): Promise<
+  { readonly platform: TPlatform; readonly config: ConfigResponse }[]
+> => {
+  const source = await loadConfigFile();
+  const configs: { platform: TPlatform; config: ConfigResponse }[] = [];
+  for (const platform of platforms) {
+    configs.push({
+      platform,
+      config: resolveConfig(await configFor(source, { channel, platform })),
+    });
   }
+  return configs;
+};
 
+const resolveConfig = (config: ConfigInput | undefined): ConfigResponse => {
   for (const key of ["authorityId", "catalogId"]) {
     if (config && Object.hasOwn(config, key)) {
       throw new Error(
@@ -199,15 +211,10 @@ export const loadConfig = async (
     );
   }
 
-  const { server, ...mergedConfig } = mergeConfigSources(
-    config,
-    getDefaultConfig(),
-  );
+  const mergedConfig = mergeConfigSources(config, getDefaultConfig());
   const signing = normalizeSigningConfig(mergedConfig.signing);
-  const resolvedServer = resolveServer(config?.server ?? server, sources[0]);
   return {
     ...mergedConfig,
-    ...(resolvedServer === undefined ? {} : { server: resolvedServer }),
     signing,
   } as ConfigResponse;
 };

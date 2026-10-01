@@ -109,7 +109,8 @@ once the migration has run.
 After the schema is applied, [create the client API key](/docs/custom/api-key-authentication#bootstrap-a-self-hosted-client)
 using this same direct server configuration. Then
 [connect the React Native project's CLI](/docs/custom/cli-configuration) to the
-protected admin mount. Its storage configuration must match a server entry.
+protected admin mount. Its storage configuration must match a server entry,
+and its `plugins` must list the server's plugins.
 
 ## API endpoints
 

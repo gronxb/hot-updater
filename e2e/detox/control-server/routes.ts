@@ -34,7 +34,6 @@ import {
   handleSeedCrashHistory,
   handleSeedLegacyMetadata,
   handleVerifyConsoleInsights,
-  handleVerifyServerPlugins,
   handleWaitForCrashRecovery,
   handleWaitForMetadata,
   handleWriteSummary,
@@ -84,10 +83,6 @@ app.get("/e2e/runtime-config", (c) => {
 
 app.post("/e2e/screen-state", async (c) => {
   return c.json(handlePatchE2eScreenState(await c.req.json()));
-});
-
-app.post("/e2e/verify-server-plugins", async (c) => {
-  return c.json(await handleVerifyServerPlugins());
 });
 
 app.post("/e2e/verify-console-insights", async (c) => {

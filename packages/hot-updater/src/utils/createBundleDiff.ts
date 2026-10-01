@@ -41,7 +41,7 @@ export interface CreateBundleDiffInput {
 }
 
 export interface CreateBundleDiffDependencies {
-  /** Core's API: the server definition's, or a self-hosted server's admin API. */
+  /** Core's API: assembled over the config's database, or a self-hosted server's admin API. */
   core: Pick<HotUpdaterCoreApi, "getBundle" | "updateBundle">;
   storageAdapter: StorageAdapterWith<"get" | "put" | "delete"> | null;
 }

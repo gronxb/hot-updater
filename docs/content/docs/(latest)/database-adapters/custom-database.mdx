@@ -55,12 +55,11 @@ createHotUpdater, CLI, console
 ```
 
 A provider's factory returns an `EngineDatabase`, `{ name, adapter, dispose? }`.
-`createHotUpdater` takes it as `database` in the server definition, which the
-server, the CLI, and the Console load. The engine keeps references, cascades,
-counters and retries itself and expresses them as a few guarded ops, so an
-adapter implements none of them. The
-[database adapter contract](/docs/database-adapters/adapter-contract) defines
-those ops.
+`hot-updater.config.ts`, the console and `createHotUpdater` all take it as
+`database`. The engine keeps references, cascades, counters and retries itself
+and expresses them as a few guarded ops, so an adapter implements none of
+them. The [database adapter contract](/docs/database-adapters/adapter-contract)
+defines those ops.
 
 ## Choose how to build it
 
@@ -322,8 +321,23 @@ database also carries the migration that `hot-updater db migrate` runs.
 | `retry`                | Optional. How a transaction that conflicts with another write runs again: `{ attempts?, baseDelayMs?, maxDelayMs?, onRetry? }`, 8 attempts 5 ms apart at first, doubling to at most 250 ms. A store many writers contend on, such as DynamoDB under a burst of events, can take more attempts; `onRetry(kind, attempt)` observes each rerun, such as for a metric. |
 | `readSettings`         | Optional. How `hot-updater db migrate` reads the stored settings rows, by key, when an earlier version of the adapter stored them elsewhere; the MongoDB adapter reads its pre-engine rows this way. By default the migrator reads them through the adapter. |
 
-Set it as `database` in the server definition, the one module the server, the
-CLI, and the Console read:
+Pass the database to the CLI and the server, with the same plugins. Partial
+configuration:
+
+```ts title="hot-updater.config.ts"
+import { apiKeys } from "@hot-updater/server/plugins/api-keys";
+import { insights } from "@hot-updater/server/plugins/insights";
+import { defineConfig } from "hot-updater";
+
+import { myDatabase } from "./myDatabase";
+
+export default defineConfig({
+  // build: ...,
+  // storage: ...,
+  database: myDatabase({ connectionString: process.env.DATABASE_URL }),
+  plugins: [insights(), apiKeys()],
+});
+```
 
 ```ts title="server.ts"
 import { createHotUpdater } from "@hot-updater/server";
@@ -336,18 +350,6 @@ export const hotUpdater = createHotUpdater({
   database: myDatabase({ connectionString: process.env.DATABASE_URL }),
   // storage: [...],
   plugins: [insights(), apiKeys()],
-});
-```
-
-Point `hot-updater.config.ts` at it:
-
-```ts title="hot-updater.config.ts"
-import { defineConfig } from "hot-updater";
-
-export default defineConfig({
-  // build: ...,
-  // updateStrategy: ...,
-  server: "./server.ts",
 });
 ```
 
@@ -414,8 +416,8 @@ Running it again changes nothing. Run it from a script, a deploy job or your
 provider's setup command with the plugins the server runs, as
 `migrateDynamoDB` and `migrateFirebaseDatabase` do for their providers.
 
-`hot-updater db migrate` runs the same migration from the server definition,
-with the server's `plugins`; see
+`hot-updater db migrate` runs the same migration from the file that exports the
+server's `hotUpdater`, with the server's `plugins`; see
 [Server Plugins](/docs/custom/server-plugins#create-the-plugins-tables). It
 refuses a database whose adapter has no `migrations`.
 
@@ -425,9 +427,9 @@ A SQL provider can check in its schema instead.
 the settings rows, in `SETTINGS_TABLE`. Pass `coreSchema` and `coreSettings`
 for core alone, or the `schema` and `settings`
 of `toolingTargetOf(plugins)` for core and those plugins. The `postgres`
-provider generates its checked-in SQL for core, and D1 its first Worker
-migration for core and `sql/bundles.sql` for core and the managed Worker's
-default plugins; a test fails when a file differs from the generator. Add
+provider generates its checked-in SQL for core, and D1 its Worker migration
+and `sql/bundles.sql` for core and the managed Worker's plugins; a test fails
+when a file differs from the generator. Add
 `createTableStatements(dialect, [WRITE_GUARD_TABLE], tablePrefix)` when the
 executor has `batch`. Use the same `tablePrefix` for schema generation, the
 write guard table, and `createSqlAdapter`. When other tooling creates the

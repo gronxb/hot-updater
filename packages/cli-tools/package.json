@@ -49,8 +49,7 @@
   "dependencies": {
     "@hot-updater/protocol": "workspace:*",
     "@hot-updater/plugin-core": "workspace:*",
-    "esbuild": "catalog:tools",
-    "jiti": "2.6.1",
+    "@hot-updater/server": "workspace:*",
     "oxc-parser": "0.141.0",
     "oxc-transform": "0.141.0",
     "unconfig": "7.5.0"

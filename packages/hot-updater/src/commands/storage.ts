@@ -22,7 +22,7 @@ import {
 import {
   type LoadedServer,
   loadServer,
-  uploadStorageOf,
+  requireStorage,
 } from "@/utils/loadServer";
 import { printBanner } from "@/utils/printBanner";
 
@@ -441,7 +441,7 @@ export async function handleStoragePrune(options: StoragePruneOptions = {}) {
   const server = await loadServer(await loadConfig(null));
 
   try {
-    const storageAdapter = uploadStorageOf(server);
+    const storageAdapter = requireStorage(server);
     assertStorageOperations(storageAdapter, ["get"]);
     const listObjects = storageAdapter.listObjects;
     if (!listObjects) {

@@ -58,7 +58,7 @@ describe("admin routes on core", () => {
     });
   });
 
-  it("lists the plugins the server runs, sorted, for a console", async () => {
+  it("lists the plugins the server runs, sorted", async () => {
     const handler = createHotUpdaterHandlers({
       api: createApi(),
       plugins: ["insights", "apiKeys"],

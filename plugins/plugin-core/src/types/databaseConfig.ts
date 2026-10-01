@@ -1,8 +1,6 @@
-import type { AdapterResource } from "../adapterResource";
 import type { HotUpdaterCoreApi } from "../coreApi";
 import type { DatabaseAdapter } from "../database/adapter";
 import type { RetryOptions } from "../engine/database/engineTransaction";
-import type { StorageAdapter } from "./index";
 
 /**
  * How changes to aggregates declared `batched` reach their rows: after the
@@ -52,41 +50,24 @@ export interface EngineDatabase {
    * take more attempts; `onRetry` observes each rerun.
    */
   readonly retry?: RetryOptions;
-  /**
-   * The provider resource this database reaches, as its factory was given
-   * it, such as `{ tableName: "hot-updater" }`. A managed server's setup
-   * compares it with the resource it set up.
-   */
-  readonly resource?: AdapterResource;
   dispose?(): Promise<void>;
 }
 
-/**
- * A self-hosted server the CLI and the console reach through its admin API,
- * such as `standaloneRepository(...)`, with the storage they use beside it.
- */
-export interface RemoteServer {
+/** A self-hosted server's database, reached through its admin API. */
+export interface RemoteDatabase {
   readonly name: string;
-  /** The server's admin API, which identifies the server. */
-  readonly url: string;
   /** Core's reads and typed operations over the server's admin API. */
   readonly core: HotUpdaterCoreApi;
   /** A GET on the server's admin handler, for admin routes core does not cover. */
   readonly fetchAdmin: (path: string) => Promise<Response>;
-  /**
-   * Where the server's bundles are stored: the CLI uploads to the first, and
-   * the console reads and deletes each bundle's files with the adapter of
-   * their protocol.
-   */
-  readonly storage: readonly StorageAdapter[];
   dispose?(): Promise<void>;
 }
 
-/** The database a server uses: one the CLI opens itself, or a self-hosted server's admin API. */
-export type ConfiguredDatabase = EngineDatabase | RemoteServer;
+/** The database a config names: one the CLI opens itself, or a self-hosted server's. */
+export type ConfiguredDatabase = EngineDatabase | RemoteDatabase;
 
-/** Whether a database is a self-hosted server reached through its admin API. */
-export const isRemoteServer = (value: unknown): value is RemoteServer =>
+/** Whether a configured database is a self-hosted server's. */
+export const isRemoteDatabase = (value: unknown): value is RemoteDatabase =>
   typeof value === "object" &&
   value !== null &&
   "core" in value &&

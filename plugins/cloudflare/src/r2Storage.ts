@@ -14,10 +14,5 @@ export const r2Storage = (
     );
   }
 
-  return Object.assign(createR2S3Storage(config), {
-    resource: {
-      accountId: config.accountId,
-      bucketName: config.bucketName,
-    },
-  });
+  return createR2S3Storage(config);
 };

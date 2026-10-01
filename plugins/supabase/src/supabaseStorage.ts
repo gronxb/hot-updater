@@ -70,7 +70,7 @@ export const supabaseStorage = (
     return parsed;
   };
 
-  const adapter = createStorageAdapter({
+  return createStorageAdapter({
     name: "supabaseStorage",
     protocol: "supabase-storage",
     async put({ key, body, contentLength, contentType }) {
@@ -122,12 +122,6 @@ export const supabaseStorage = (
         throw new Error(`Failed to delete storage object: ${error.message}`);
       }
       return { deleted: true };
-    },
-  });
-  return Object.assign(adapter, {
-    resource: {
-      supabaseUrl: config.supabaseUrl?.replace(/\/+$/u, ""),
-      bucketName: config.bucketName,
     },
   });
 };

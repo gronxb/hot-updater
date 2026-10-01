@@ -59,7 +59,9 @@ supply this CLI. Do this before remote provisioning.
     CLI/MCP login alone may not authenticate the Admin SDK.
     Run app/provision-client-credential.mjs from the app directory with
     HOT_UPDATER_FIREBASE_STORAGE_BUCKET set to the bucket fb.services recorded:
-    the helper loads app/hotUpdater.ts, whose storage needs it. It first runs
+    the helper loads app/hotUpdater.ts, the credential helper's server
+    definition, whose storage needs it. app/hotUpdater.ts stays in the
+    scaffold and is never copied into the app. The helper first runs
     app/migrate.ts to write the schema settings of core and the plugins
     app/hotUpdater.ts runs, which the database checks before its first read
     (the database answers 503 until they exist),

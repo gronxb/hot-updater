@@ -21,8 +21,7 @@ npm install @hot-updater/standalone @hot-updater/bare --save-dev
 The server that serves mobile updates needs its own runtime storage adapter
 with `get` and `getDownloadUrl`, configured for the same stored objects.
 `standaloneStorage` has no `getDownloadUrl`, so it cannot serve a server's
-downloads: list it where the CLI uploads, in the `storage` of
-`standaloneRepository`.
+downloads: use it as the CLI's `storage`, where the CLI uploads.
 
 ## Configuration
 
@@ -56,28 +55,27 @@ if (!adminToken || !storageToken) {
 
 export default defineConfig({
   build: bare({ enableHermes: true }),
-  updateStrategy: "appVersion",
-  server: standaloneRepository({
+  database: standaloneRepository({
     baseUrl: "https://api.example.com/hot-updater/admin",
     commonHeaders: {
       Authorization: `Bearer ${adminToken}`,
     },
-    storage: [
-      standaloneStorage({ // [!code ++]
-        baseUrl: "https://storage.example.com/hot-updater", // [!code ++]
-        protocol: "s3", // [!code ++]
-        commonHeaders: { // [!code ++]
-          Authorization: `Bearer ${storageToken}`, // [!code ++]
-        }, // [!code ++]
-      }), // [!code ++]
-    ],
   }),
+  storage: standaloneStorage({ // [!code ++]
+    baseUrl: "https://storage.example.com/hot-updater", // [!code ++]
+    protocol: "s3", // [!code ++]
+    commonHeaders: { // [!code ++]
+      Authorization: `Bearer ${storageToken}`, // [!code ++]
+    }, // [!code ++]
+  }), // [!code ++]
+  updateStrategy: "appVersion",
 });
 ```
 
-The [Standalone Repository](/docs/database-adapters/standalone) is the separate
-admin connection to the server; `standaloneStorage` only carries the CLI's
-uploads beside it.
+The [Standalone Repository](/docs/database-adapters/standalone) configures the
+separate database/admin connection. The storage adapter can also be combined
+with another database adapter. List the server's plugins in `plugins` as well;
+see [CLI Configuration](/docs/custom/cli-configuration#mirror-the-server).
 
 `commonHeaders` applies to every storage request. Optional `routes.put`,
 `routes.get`, `routes.exists` and `routes.delete` callbacks can return

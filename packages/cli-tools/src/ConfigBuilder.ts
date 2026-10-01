@@ -97,13 +97,9 @@ export const renderImportStatements = (imports: ImportInfo[]) => {
   return importLines.join("\n");
 };
 
-/** The server definition file init writes, and the `server` path that points at it. */
-export const SERVER_DEFINITION_PATH = "hotUpdater.ts";
-export const SERVER_DEFINITION_POINTER = `./${SERVER_DEFINITION_PATH}`;
-
-/** What the server definition file holds, apart from hot-updater.config.ts. */
-export type ServerDefinitionScaffold = {
+export type ConfigBuilderScaffold = {
   imports: ImportInfo[];
+  buildConfigString: string;
   storageConfigString: string;
   databaseConfigString: string;
   pluginsConfigString: string;
@@ -111,26 +107,9 @@ export type ServerDefinitionScaffold = {
   text: string;
 };
 
-export type ConfigBuilderScaffold = {
-  /** hot-updater.config.ts's imports. */
-  imports: ImportInfo[];
-  buildConfigString: string;
-  /** The `server` path hot-updater.config.ts points at. */
-  server: string;
-  /** hot-updater.config.ts. */
-  text: string;
-  /** The server definition `server` points at. */
-  definition: ServerDefinitionScaffold;
-};
-
-/** Indents every line after the first, so a multi-line value nests. */
-const indentFollowingLines = (text: string, spaces: number) =>
-  text.replaceAll("\n", `\n${" ".repeat(spaces)}`);
-
 /**
- * Renders the two files init writes: hot-updater.config.ts, which holds the
- * deploy settings and points at the server definition, and the server
- * definition, which holds the database, storage, and plugins.
+ * Renders the hot-updater.config.ts init writes: the build, the server's
+ * storage, database, and plugins, and the deploy settings.
  */
 export class ConfigBuilder {
   private buildType: BuildType | null = null;
@@ -138,17 +117,14 @@ export class ConfigBuilder {
   private databaseInfo: ProviderConfig | null = null;
   private pluginsInfo: ProviderConfig | null = null;
   private intermediateCode = "";
-  private readonly configImports: ImportInfo[] = [
+  private readonly imports: ImportInfo[] = [
     { pkg: "hot-updater", named: ["defineConfig"] },
     { pkg: "node:fs", named: ["existsSync"] },
   ];
-  private readonly definitionImports: ImportInfo[] = [
-    { pkg: "@hot-updater/server", named: ["createHotUpdater"] },
-  ];
 
-  /** Adds an import to the server definition, such as a credentials helper's. */
+  /** Adds an import, such as a credentials helper's. */
   public addImport(info: ImportInfo): this {
-    this.definitionImports.push(info);
+    this.imports.push(info);
     return this;
   }
 
@@ -170,35 +146,35 @@ export class ConfigBuilder {
   /** Sets the build type ('bare', 'rock', or 'expo') and its import. */
   setBuildType(buildType: BuildType): this {
     this.buildType = buildType;
-    this.configImports.push({
+    this.imports.push({
       pkg: `@hot-updater/${buildType}`,
       named: [buildType],
     });
     return this;
   }
 
-  /** Sets the server's storage and its imports. */
+  /** Sets the storage the CLI uploads to, which the server lists, and its imports. */
   setStorage(storageConfig: ProviderConfig): this {
     this.storageInfo = storageConfig;
-    this.definitionImports.push(...storageConfig.imports);
+    this.imports.push(...storageConfig.imports);
     return this;
   }
 
   /** Sets the server's database and its imports. */
   setDatabase(databaseConfig: ProviderConfig): this {
     this.databaseInfo = databaseConfig;
-    this.definitionImports.push(...databaseConfig.imports);
+    this.imports.push(...databaseConfig.imports);
     return this;
   }
 
-  /** Sets the server's plugins, such as a provider package's `plugins`. */
+  /** Sets the plugins the server runs, such as a provider package's `plugins`. */
   setPlugins(pluginsConfig: ProviderConfig): this {
     this.pluginsInfo = pluginsConfig;
-    this.definitionImports.push(...pluginsConfig.imports);
+    this.imports.push(...pluginsConfig.imports);
     return this;
   }
 
-  /** Sets the code between the server definition's imports and the server. */
+  /** Sets the code between the environment loading and the config, such as a credentials helper. */
   setIntermediateCode(code: string): this {
     this.intermediateCode = code.trim();
     return this;
@@ -214,8 +190,9 @@ export class ConfigBuilder {
     if (!this.pluginsInfo)
       throw new Error("Plugins config must be set using .setPlugins()");
 
-    const imports = normalizeImportInfos(this.configImports);
+    const imports = normalizeImportInfos(this.imports);
     const buildConfigString = this.generateBuildConfigString();
+    const plugins = this.pluginsInfo.configString;
     const text = `
 ${renderImportStatements(imports)}
 
@@ -223,43 +200,23 @@ if (existsSync(".env.hotupdater")) {
   process.loadEnvFile(".env.hotupdater");
 }
 
-export default defineConfig({
+${this.intermediateCode ? `${this.intermediateCode}\n\n` : ""}export default defineConfig({
   build: ${buildConfigString},
-  server: ${JSON.stringify(SERVER_DEFINITION_POINTER)},
-  updateStrategy: "appVersion", // or "fingerprint"
-});
-`.trim();
-
-    const definitionImports = normalizeImportInfos(this.definitionImports);
-    const definitionText = `
-${renderImportStatements(definitionImports)}
-
-${this.intermediateCode ? `${this.intermediateCode}\n\n` : ""}/**
- * The Hot Updater server: its database, storage, and plugins.
- * hot-updater.config.ts points the CLI and the console here.
- */
-export const hotUpdater = createHotUpdater({
+  storage: ${this.storageInfo.configString},
   database: ${this.databaseInfo.configString},
-  storage: [
-    ${indentFollowingLines(this.storageInfo.configString, 2)},
-  ],
-  ${this.pluginsInfo.configString === "plugins" ? "plugins" : `plugins: ${this.pluginsInfo.configString}`},
+  ${plugins === "plugins" ? "plugins" : `plugins: ${plugins}`},
+  updateStrategy: "appVersion", // or "fingerprint"
 });
 `.trim();
 
     return {
       imports,
       buildConfigString,
-      server: SERVER_DEFINITION_POINTER,
+      storageConfigString: this.storageInfo.configString,
+      databaseConfigString: this.databaseInfo.configString,
+      pluginsConfigString: plugins,
+      intermediateCode: this.intermediateCode,
       text,
-      definition: {
-        imports: definitionImports,
-        storageConfigString: this.storageInfo.configString,
-        databaseConfigString: this.databaseInfo.configString,
-        pluginsConfigString: this.pluginsInfo.configString,
-        intermediateCode: this.intermediateCode,
-        text: definitionText,
-      },
     };
   }
 

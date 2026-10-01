@@ -65,7 +65,6 @@ import { init } from "./init";
 import {
   INIT_PROVIDER_PACKAGES,
   type InitProviderModule,
-  otherServerDefinitionsOf,
 } from "./initProviders";
 
 const { version } = packageJsonData;
@@ -108,10 +107,13 @@ describe("init choices", () => {
       dependencies: ["@hot-updater/react-native"],
       devDependencies: expect.arrayContaining([
         "@hot-updater/bare",
-        "@hot-updater/server",
         "@hot-updater/aws",
       ]),
     });
+    // The config init writes imports the provider package only.
+    expect(
+      mocks.ensureInstallPackages.mock.calls[0]?.[0].devDependencies,
+    ).not.toContain("@hot-updater/server");
     expect(
       mocks.ensureInstallPackages.mock.calls[0]?.[0].devDependencies,
     ).not.toContain("dotenv");
@@ -129,7 +131,6 @@ describe("init choices", () => {
     expect(mocks.runAwsInit).toHaveBeenCalledWith({
       build: "bare",
       envFile: undefined,
-      otherServerDefinitions: await otherServerDefinitionsOf("aws"),
     });
   });
 
@@ -155,7 +156,6 @@ describe("init choices", () => {
     expect(mocks.runAwsInit).toHaveBeenCalledWith({
       build: "bare",
       envFile: undefined,
-      otherServerDefinitions: await otherServerDefinitionsOf("aws"),
     });
   });
 
@@ -229,7 +229,6 @@ describe("init choices", () => {
     expect(mocks.runSupabaseInit).toHaveBeenCalledWith({
       build: "bare",
       envFile: "init.env",
-      otherServerDefinitions: await otherServerDefinitionsOf("supabase"),
     });
   });
 
@@ -279,7 +278,6 @@ describe("init choices", () => {
     expect(mocks.runAwsInit).toHaveBeenCalledWith({
       build: "expo",
       envFile: ".env.hotupdater",
-      otherServerDefinitions: await otherServerDefinitionsOf("aws"),
     });
   });
 

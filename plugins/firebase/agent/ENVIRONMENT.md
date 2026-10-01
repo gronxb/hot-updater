@@ -6,7 +6,7 @@ with authorized provider tools. Ask only for unresolved project selection,
 authentication or prerequisites that require the user's involvement.
 
 Use env.example as a reference and set only applicable values in the app's ignored
-.env.hotupdater. The supplied plugins use Firebase Admin's application-default
+.env.hotupdater. The supplied adapters use Firebase Admin's application-default
 credentials. An authenticated Firebase CLI or MCP session does not necessarily
 provide credentials to the local Admin SDK.
 
@@ -14,7 +14,7 @@ provide credentials to the local Admin SDK.
 | --- | --- | --- |
 | `HOT_UPDATER_FIREBASE_PROJECT_ID` | Required by the local database/storage configuration and client credential helper. | Query/create the project and record its actual ID, not its display name. |
 | `HOT_UPDATER_FIREBASE_REGION` | Function deployment region; recorded for init reuse. | Read the existing function's region or use the established project deployment preference for a new function. |
-| `HOT_UPDATER_FIREBASE_STORAGE_BUCKET` | Required by the server definition's storage, which the CLI and the client credential helper load. | Query the project's canonical default Storage bucket. Enable Storage if needed and record the returned name; do not guess its suffix. |
+| `HOT_UPDATER_FIREBASE_STORAGE_BUCKET` | Required by the supplied local storage config and by app/hotUpdater.ts, the credential helper's server definition, which stays in the scaffold and is never copied into the app. | Query the project's canonical default Storage bucket. Enable Storage if needed and record the returned name; do not guess its suffix. |
 | `GOOGLE_APPLICATION_CREDENTIALS` | Conditional local path to a private credential file used by application-default credentials. Leave unset when a working application-default identity is already available. | Prefer the environment's existing identity or application-default login. If a credential file is required, configure it privately and set its path, never paste its JSON into chat. |
 <!-- if credential -->
 | `{{CREDENTIAL_ENV}}` | The client {{CREDENTIAL_LABEL}}, sent in `{{CREDENTIAL_HEADER}}`; required after the namespace is ready. | Reuse the saved one or run app/provision-client-credential.mjs. Keep client-credential.local private and stable on retries; do not use an Admin SDK credential as this {{CREDENTIAL_LABEL}}. |

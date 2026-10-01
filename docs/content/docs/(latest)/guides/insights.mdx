@@ -21,9 +21,9 @@ extra to install.
 
 The server records reports through the `insights()`
 [server plugin](/docs/custom/server-plugins). The managed AWS, Cloudflare,
-Firebase, and Supabase servers run it unless the project
-[drops it](/docs/managed/server-plugins#drop-insights-or-api-keys). A custom
-server lists it in `createHotUpdater`:
+Firebase, and Supabase servers run it. A custom server lists it in
+`createHotUpdater`, and the app's `hot-updater.config.ts` lists it in `plugins`
+too:
 
 ```ts title="src/hotUpdater.ts (excerpt)"
 import { createHotUpdater } from "@hot-updater/server";
@@ -38,11 +38,11 @@ export const hotUpdater = createHotUpdater({
 
 `insights()` accepts `POST /events` on the client handler and serves the
 Insights queries on the admin handler. `hot-updater db migrate` creates its
-tables for a server that runs it, and a managed server's init creates them when
-its definition lists `insights()`. A server that stops running it keeps its
-tables and rows. Without `insights()`, the server has no Insights routes: they
-answer `404`, and the app's reports are not stored. An app with the Insights
-plugin then stops reporting for 24 hours at a time; see
+tables for a server that runs it, and the migrations of the managed Cloudflare,
+Supabase, AWS, and Firebase servers include them. Without `insights()`, the
+server has no Insights routes: they answer `404`, and the app's reports are not
+stored. An app with the Insights plugin then stops reporting for 24 hours at a
+time; see
 [when the server has Insights off](/docs/react-native-api/insights#when-the-server-has-insights-off).
 On the server, `insights({ retention })` sets how long the plugin keeps data;
 see [How long Insights keeps data](#how-long-insights-keeps-data).
@@ -219,19 +219,18 @@ does not prove that the update failed.
 
 ## Read the Console
 
-Use [the local or deployed Console](/docs/guides/console). Where it reads
-Insights depends on its `server`:
+Use [the local or deployed Console](/docs/guides/console). It shows Insights
+when its configuration lists `insights()` in `plugins`, as the server runs it:
+`hot-updater console` reads `hot-updater.config.ts`, and a deployed Console its
+[configuration](/docs/guides/console-deployment#connect-your-backend). Where
+it reads Insights depends on its `database`:
 
-- With a server definition, it runs `insights()` over the definition's
-  database, as the server does. `hot-updater console` loads the definition that
-  `server` in `hot-updater.config.ts` points at, and a deployed Console takes it
-  as `server` in its
-  [configuration](/docs/guides/console-deployment#point-at-your-server).
-  Without `insights()` in the definition's plugins, the console hides Insights.
-- With `standaloneRepository`, it reads Insights events, installations, and
-  update failures from the server's admin handler, and hides Insights when the
-  server's admin `/version` does not list `insights()`. App usage, Release
-  health, and bundle activity need a server definition.
+- With a direct database, it runs `insights()` over that database, as the
+  server does.
+- With `standaloneRepository`, it reads the Insights overview, events,
+  installations, update failures, and retention periods from the server's
+  admin handler. App usage, Release health, and bundle activity need a direct
+  database configuration.
 
 The Bundles list and detail show lifetime **Downloads**, **Active days**, and
 **Known crashes** for each Release ID. These count received download reports,
@@ -383,7 +382,15 @@ milliseconds, for a period of at most 30 days, which a channel without
 | An installation's latest report | 13 months after the installation last reports |
 | Lifetime counters and failed installations per Release ID (Bundles list and detail) | Kept |
 
-Set the periods on the plugin, in the server definition:
+A managed server runs the official plugins with their default settings,
+retention included. In a managed project, keep `plugins` in
+`hot-updater.config.ts` as init writes it, the provider package's list:
+plugins with other settings there would make the CLI prune with settings the
+server doesn't use.
+
+On a self-hosted server, set the periods on the plugin in the server's
+`createHotUpdater`, and give the plugin the same settings in
+`hot-updater.config.ts`, so the CLI prunes as the server does:
 
 ```ts
 insights({ retention: { rawDays: 30, dailyDays: 400 } });

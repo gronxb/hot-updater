@@ -1,5 +1,8 @@
-import type { RemoteServer } from "@hot-updater/plugin-core";
-import type { HotUpdaterAPI } from "@hot-updater/server";
+import type {
+  AnyHotUpdaterPlugin,
+  ConfiguredDatabase,
+  StorageAdapter,
+} from "@hot-updater/plugin-core";
 
 export type ConsoleAuthProvider = "google" | "github";
 
@@ -22,16 +25,25 @@ export type ConsoleAuthAdapter = Readonly<{
 
 export type HotUpdaterConsoleConfig = Readonly<{
   /**
-   * The server the console manages: your server definition, the
-   * `hotUpdater` that `createHotUpdater({ database, storage, plugins })`
-   * returns, or `standaloneRepository(...)`, which reaches a self-hosted
-   * server through its admin API. The console shows the built-in features
-   * of the plugins the server runs: the definition's, or those its admin
-   * `/version` lists.
+   * The database your server runs on, such as `dynamoDB(...)`, or
+   * `standaloneRepository(...)`, which reaches a self-hosted server through
+   * its admin API.
    */
-  server: HotUpdaterAPI | RemoteServer;
-  /** The Git repository whose commits the console links bundles to. */
-  gitUrl?: string;
+  database: ConfiguredDatabase;
+  /** The storage your server lists; the console reads bundle files with it. */
+  storage: StorageAdapter;
+  /**
+   * The plugins your server runs, such as the `plugins` a managed provider
+   * package exports or `[insights(), apiKeys()]`. The console runs them over
+   * `database` as the server does, and shows only the built-in features of
+   * the plugins listed. With `standaloneRepository`, they run on the server,
+   * and the console shows the features its admin API serves.
+   */
+  plugins?: readonly AnyHotUpdaterPlugin[];
+  console?: {
+    /** The Git repository whose commits the console links bundles to. */
+    gitUrl?: string;
+  };
 }>;
 
 export type HotUpdaterConsoleConfigSource =

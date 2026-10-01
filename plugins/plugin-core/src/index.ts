@@ -52,17 +52,11 @@ export {
   type PluginCli,
   type PluginClientCredential,
   type PluginClientPlugin,
-  type PluginCommand,
-  type PluginCommandArgument,
-  type PluginCommandContext,
-  type PluginCommandOption,
-  type PluginCommandUi,
   type PluginContext,
   type PluginEndpoint,
   type PluginEndpointMethod,
   type PluginInstance,
   type PluginProvides,
-  type PluginTableColumn,
 } from "./serverPlugin/definePlugin";
 export {
   defineAggregate,
@@ -123,7 +117,6 @@ export { HotUpdaterConfigError } from "./serverPlugin/configError";
 // name is here because the custom-database docs teach it or because an
 // adapter, a provider's tooling, or a plugin outside this package needs it;
 // its JSDoc says which.
-export type { AdapterResource } from "./adapterResource";
 export {
   type BaseCandidateQuery,
   type BaseCandidateTarget,

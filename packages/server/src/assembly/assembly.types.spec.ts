@@ -142,23 +142,23 @@ describe("createHotUpdater types", () => {
     });
   });
 
-  it("types CLI commands by the plugin's API and gates clientCredential on clientAuth", () => {
+  it("types clientCredential by the plugin's API, gates it on clientAuth, and takes no commands", () => {
     definePlugin({
       id: "counter",
       schemaVersion: "1",
       schema: {},
       init: () => ({ api: { count: () => 1 } }),
       cli: {
-        commands: [
-          {
-            name: "count",
-            description: "Count",
-            async run({ api, ui }) {
-              expectTypeOf(api.count()).toEqualTypeOf<1>();
-              ui.print(String(api.count()));
-            },
-          },
-        ],
+        // @ts-expect-error Plugins add no CLI commands.
+        commands: [],
+      },
+    });
+    definePlugin({
+      id: "counter",
+      schemaVersion: "1",
+      schema: {},
+      init: () => ({ api: { count: () => 1 } }),
+      cli: {
         // @ts-expect-error Declare provides: { clientAuth: true } to add clientCredential.
         clientCredential: {
           label: "Key",

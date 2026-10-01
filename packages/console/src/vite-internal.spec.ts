@@ -107,7 +107,7 @@ describe("hosted console defaults", () => {
 });
 
 describe("local console Vite modules", () => {
-  it("loads the server hot-updater.config.ts points at, without accessing the app signer", () => {
+  it("loads hot-updater.config.ts's database, storage, and plugins, without accessing the app signer", () => {
     const plugin = createLocalConsoleModulesPlugin();
     const resolveId = plugin.resolveId as (id: string) => string | undefined;
     const load = plugin.load as (id: string) => string | undefined;
@@ -115,12 +115,18 @@ describe("local console Vite modules", () => {
 
     const source = load(configId as string);
 
+    expect(source).toContain("const config = await loadConfig(null);");
+    expect(source).toContain("database: config.database,");
+    expect(source).toContain("storage: config.storage,");
+    expect(source).toContain("plugins: config.plugins,");
+    expect(source).toContain("console: { gitUrl: config.console.gitUrl },");
     expect(source).toContain(
-      "(await importServerModule(config.server)).hotUpdater",
+      "Set database in hot-updater.config.ts: the database your server runs on",
     );
     expect(source).toContain(
-      "return { server, gitUrl: config.console.gitUrl };",
+      "Set storage in hot-updater.config.ts: where your server stores bundles",
     );
+    expect(source).not.toContain("config.server");
     expect(source).not.toContain("config.signing");
     expect(source).not.toContain("privateKeyPath");
     expect(source).not.toContain("getPublicKey");

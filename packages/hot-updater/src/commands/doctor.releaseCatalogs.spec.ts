@@ -28,7 +28,8 @@ const serverProject = () => {
     path: "/project/package.json",
   } as never);
   vi.mocked(loadConfig).mockResolvedValue({
-    server: "/project/hotUpdater.ts",
+    database: harness.database,
+    plugins: [],
   } as never);
   vi.mocked(loadServer).mockImplementation(async () =>
     testServer({ database: harness.database }),
@@ -105,8 +106,8 @@ describe("doctor's release catalog check", () => {
     serverProject();
   });
 
-  it("skips the check when hot-updater.config.ts names no server", async () => {
-    vi.mocked(loadConfig).mockResolvedValue({} as never);
+  it("skips the check when hot-updater.config.ts names no database", async () => {
+    vi.mocked(loadConfig).mockResolvedValue({ plugins: [] } as never);
 
     await expect(doctor()).resolves.toBe(true);
     expect(loadServer).not.toHaveBeenCalled();
@@ -127,7 +128,8 @@ describe("doctor's release catalog check", () => {
               type: "warning",
               code: "RELEASE_CATALOGS_UNCHECKED",
               message: expect.stringContaining("ECONNREFUSED"),
-              resolution: expect.stringContaining("server"),
+              resolution:
+                "Check that database in hot-updater.config.ts is reachable from here, then rerun doctor.",
               fixability: "blocked",
             },
           ],

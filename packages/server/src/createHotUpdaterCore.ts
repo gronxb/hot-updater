@@ -77,15 +77,9 @@ export type RuntimeHotUpdaterAPI<
    * closes it (`dispose`).
    */
   readonly database: ToolingDatabase;
-  /**
-   * The storage as configured, in order, as a frozen copy: the CLI uploads
-   * bundles to the first.
-   */
+  /** The storage as configured, in order, as a frozen copy. */
   readonly storage: readonly StorageAdapter[];
-  /**
-   * The plugins as configured, as a frozen copy. The CLI adds their
-   * commands, and tooling creates their tables.
-   */
+  /** The plugins as configured, as a frozen copy, whose tables tooling creates. */
   readonly plugins: TPlugins;
   /**
    * The client plugins an app adds to `HotUpdater.init`'s `plugins` for
@@ -181,8 +175,8 @@ export type CreateHotUpdaterOptions<
   /** A provider's database on the storage engine, such as `kyselyAdapter(...)` or `postgres(...)`. */
   readonly database: ToolingDatabase;
   /**
-   * Where bundles are stored. The CLI uploads to the first; the server reads
-   * and signs the URIs of each adapter's protocol.
+   * Where bundles are stored: the server reads and signs the URIs of each
+   * adapter's protocol.
    */
   readonly storage?: readonly StorageAdapter[];
   /** The plugins the server runs; at most one provides clientAuth. Defaults to none. */
@@ -276,7 +270,6 @@ export function createHotUpdater<
   const handlers = createHotUpdaterHandlers({
     api: { core: plugins.core },
     ...(clientPolicy === undefined ? {} : { clientPolicy }),
-    clientPlugins,
     downloadStorageObject,
     endpoints: plugins.endpoints,
     plugins: Object.keys(plugins.api),

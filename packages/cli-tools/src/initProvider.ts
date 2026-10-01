@@ -39,12 +39,6 @@ export type InitProviderDefinition<
 > = {
   readonly inputs: TInputs;
   readonly label: string;
-  /**
-   * Every server definition this provider's init writes, such as one per
-   * credential mode, so another provider's init replaces one it finds
-   * unedited.
-   */
-  readonly serverDefinitions?: () => readonly string[];
 };
 
 export const defineInitProvider = <

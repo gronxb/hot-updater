@@ -1,8 +1,8 @@
 /**
- * The console's features and the server plugin each one needs. The server is
- * the source of truth: the console serves a feature only when the server runs
- * its plugin, and against a self-hosted server (`standaloneRepository`) only
- * the features its admin API serves (`remote`); the rest read the database.
+ * The console's features and the server plugin each one needs. The console
+ * serves a feature only when its config lists the plugin, as the server runs
+ * it, and against a self-hosted server (`standaloneRepository`) only the
+ * features its admin API serves (`remote`); the rest read the database.
  * Navigation, route guards, and server functions all read this registry. Its
  * other halves, keyed by the same features, hold what serves each feature on
  * the server (`server/console-feature-apis.ts`) and what each adds to pages
@@ -41,7 +41,7 @@ export type ConsoleFeatureSet = {
 
 const featureIds = Object.keys(consoleFeatures) as ConsoleFeature[];
 
-/** The features on for the plugins a server runs, from where the console reads them. */
+/** The features on for the plugins the console's config lists, from where the console reads them. */
 export const resolveConsoleFeatures = (
   plugins: readonly string[],
   { remote }: { readonly remote: boolean },

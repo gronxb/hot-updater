@@ -3,12 +3,13 @@ import os from "os";
 import path from "path";
 
 import type {
+  AnyHotUpdaterPlugin,
   BundleSigningAdapter,
   ConfigInput,
+  ConfiguredDatabase,
   LocalSigningConfig,
-  RemoteServer,
+  StorageAdapter,
 } from "@hot-updater/plugin-core";
-import { createStorageAdapter } from "@hot-updater/plugin-core";
 import {
   afterEach,
   beforeEach,
@@ -40,11 +41,16 @@ describe("ConfigResponse", () => {
       | undefined
     >();
 
-    expectTypeOf<ConfigResponse["server"]>().toEqualTypeOf<
-      string | RemoteServer | undefined
+    expectTypeOf<ConfigResponse["database"]>().toEqualTypeOf<
+      ConfiguredDatabase | undefined
     >();
-    expectTypeOf<ConfigInput>().not.toHaveProperty("database");
-    expectTypeOf<ConfigInput>().not.toHaveProperty("storage");
+    expectTypeOf<ConfigResponse["storage"]>().toEqualTypeOf<
+      StorageAdapter | undefined
+    >();
+    expectTypeOf<ConfigResponse["plugins"]>().toEqualTypeOf<
+      readonly AnyHotUpdaterPlugin[]
+    >();
+    expectTypeOf<ConfigInput>().not.toHaveProperty("server");
   });
 });
 
@@ -86,88 +92,48 @@ describe("loadConfig", () => {
     expect(config.platform.android.androidManifestPaths).toEqual([]);
     expect(config.platform.ios.infoPlistPaths).toEqual([]);
     expect(config.console.port).toBe(1422);
-    expect(config.server).toBeUndefined();
+    // No placeholder: commands that need them say what to set.
+    expect(config.database).toBeUndefined();
+    expect(config.storage).toBeUndefined();
+    expect(config.plugins).toEqual([]);
   });
 
-  it("resolves server against the config file's directory", async () => {
-    await writeProjectFile(
-      projectRoot,
-      "hot-updater.config.ts",
-      'export default { server: "./src/hotUpdater.ts" };\n',
-    );
-
-    const { loadConfig } = await import("./loadConfig");
-    const config = await loadConfig(null);
-
-    expect(config.server).toBe(path.join(projectRoot, "src", "hotUpdater.ts"));
-  });
-
-  it("takes a remote server whole", async () => {
-    const remote = Object.freeze({
-      name: "standalone-repository",
-      core: {},
-      fetchAdmin: async () => new Response(),
-      storage: Object.freeze([
-        createStorageAdapter({ name: "s3", protocol: "s3" }),
-      ]),
+  it("takes the database, storage, and plugins whole, as the config made them", async () => {
+    const official = Symbol.for("@hot-updater/server/official-plugin");
+    const plugin = Object.freeze({
+      id: "insights",
+      schemaVersion: "1",
+      schema: {},
+      init: () => ({ api: {} }),
+      [official]: true,
     });
-    Reflect.set(globalThis, "__HOT_UPDATER_TEST_REMOTE_SERVER__", remote);
+    const settings = {
+      database: Object.freeze({
+        name: "standalone-repository",
+        core: {},
+        fetchAdmin: async () => new Response(),
+      }),
+      storage: Object.freeze({ name: "s3Storage", protocol: "s3" }),
+      plugins: Object.freeze([plugin]),
+    };
+    Reflect.set(globalThis, "__HOT_UPDATER_TEST_SETTINGS__", settings);
     await writeProjectFile(
       projectRoot,
       "hot-updater.config.ts",
-      "export default { server: globalThis.__HOT_UPDATER_TEST_REMOTE_SERVER__ };\n",
+      "export default { ...globalThis.__HOT_UPDATER_TEST_SETTINGS__ };\n",
     );
 
     try {
       const { loadConfig } = await import("./loadConfig");
       const config = await loadConfig(null);
 
-      expect(config.server).toBe(remote);
+      expect(config.database).toBe(settings.database);
+      expect(config.storage).toBe(settings.storage);
+      expect(config.plugins).toBe(settings.plugins);
+      expect(Reflect.get(config.plugins[0]!, official)).toBe(true);
     } finally {
-      Reflect.deleteProperty(globalThis, "__HOT_UPDATER_TEST_REMOTE_SERVER__");
+      Reflect.deleteProperty(globalThis, "__HOT_UPDATER_TEST_SETTINGS__");
     }
-  });
-
-  it.each(["database", "storage", "plugins"])(
-    "refuses %s, which the server definition holds",
-    async (key) => {
-      await writeProjectFile(
-        projectRoot,
-        "hot-updater.config.ts",
-        `export default { ${key}: {} };\n`,
-      );
-
-      const { loadConfig } = await import("./loadConfig");
-      await expect(loadConfig(null)).rejects.toThrow(
-        `Remove ${key} from hot-updater.config: the server definition holds the database, storage, and plugins.`,
-      );
-    },
-  );
-
-  it("names every setting the server definition holds in one refusal", async () => {
-    await writeProjectFile(
-      projectRoot,
-      "hot-updater.config.ts",
-      "export default { storage: {}, database: {}, plugins: [] };\n",
-    );
-
-    const { loadConfig } = await import("./loadConfig");
-    await expect(loadConfig(null)).rejects.toThrow(
-      "Remove database, storage, plugins from hot-updater.config:",
-    );
-  });
-
-  it("refuses a server that is neither a path nor a remote server", async () => {
-    await writeProjectFile(
-      projectRoot,
-      "hot-updater.config.ts",
-      "export default { server: { baseUrl: 'https://example.com' } };\n",
-    );
-
-    const { loadConfig } = await import("./loadConfig");
-    await expect(loadConfig(null)).rejects.toThrow(
-      "server in hot-updater.config must be the path to your server definition",
-    );
   });
 
   it.each(["authorityId", "catalogId"])(
@@ -230,6 +196,61 @@ describe("loadConfig", () => {
     expect(config.platform.android.androidManifestPaths).toEqual([
       path.join("android", "app", "src", "main", "AndroidManifest.xml"),
     ]);
+  });
+
+  it("loads the file once for several platforms, so a config object gives them the same adapters", async () => {
+    await writeProjectFile(
+      projectRoot,
+      "hot-updater.config.ts",
+      [
+        "globalThis.__HOT_UPDATER_TEST_LOADS__ = (globalThis.__HOT_UPDATER_TEST_LOADS__ ?? 0) + 1;",
+        "export default {",
+        "  database: { name: 'memory', adapter: {} },",
+        "  storage: { name: 'r2Storage', protocol: 'r2' },",
+        "  plugins: [],",
+        "};",
+        "",
+      ].join("\n"),
+    );
+
+    try {
+      const { loadPlatformConfigs } = await import("./loadConfig");
+      const [ios, android] = await loadPlatformConfigs(["ios", "android"], {
+        channel: "production",
+      });
+
+      expect(Reflect.get(globalThis, "__HOT_UPDATER_TEST_LOADS__")).toBe(1);
+      expect(ios!.platform).toBe("ios");
+      expect(android!.platform).toBe("android");
+      expect(android!.config.database).toBe(ios!.config.database);
+      expect(android!.config.storage).toBe(ios!.config.storage);
+      expect(android!.config.plugins).toBe(ios!.config.plugins);
+    } finally {
+      Reflect.deleteProperty(globalThis, "__HOT_UPDATER_TEST_LOADS__");
+    }
+  });
+
+  it("calls a config function once per platform, whose adapters are that platform's own", async () => {
+    await writeProjectFile(
+      projectRoot,
+      "hot-updater.config.ts",
+      [
+        "export default ({ platform, channel }) => ({",
+        "  database: { name: `memory-${platform}-${channel}`, adapter: {} },",
+        "  storage: { name: 'r2Storage', protocol: 'r2' },",
+        "});",
+        "",
+      ].join("\n"),
+    );
+
+    const { loadPlatformConfigs } = await import("./loadConfig");
+    const [ios, android] = await loadPlatformConfigs(["ios", "android"], {
+      channel: "beta",
+    });
+
+    expect(ios!.config.database?.name).toBe("memory-ios-beta");
+    expect(android!.config.database?.name).toBe("memory-android-beta");
+    expect(android!.config.storage).not.toBe(ios!.config.storage);
   });
 
   it("passes null context through to function configs", async () => {

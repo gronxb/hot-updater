@@ -128,21 +128,28 @@ const createConsoleModulesPlugin = (mode: ConsoleModuleMode): Plugin => {
 
       if (id === resolvedVirtualConfigModuleId) {
         if (mode.type === "local") {
-          // The server hot-updater.config.ts points at, as the CLI loads it.
+          // hot-updater.config.ts's database, storage, and plugins, as the
+          // CLI loads them.
           return [
-            'import { importServerModule, loadConfig } from "@hot-updater/cli-tools";',
+            'import { loadConfig } from "@hot-updater/cli-tools";',
             "export default async () => {",
             "  const config = await loadConfig(null);",
-            "  if (config.server === undefined) {",
+            "  if (config.database === undefined) {",
             "    throw new Error(",
-            '      "Set server in hot-updater.config.ts: the path to your server definition, or standaloneRepository(...).",',
+            '      "Set database in hot-updater.config.ts: the database your server runs on, such as d1Database(...), or standaloneRepository({ baseUrl }) to reach a self-hosted server through its admin API.",',
             "    );",
             "  }",
-            "  const server =",
-            '    typeof config.server === "string"',
-            "      ? (await importServerModule(config.server)).hotUpdater",
-            "      : config.server;",
-            "  return { server, gitUrl: config.console.gitUrl };",
+            "  if (config.storage === undefined) {",
+            "    throw new Error(",
+            '      "Set storage in hot-updater.config.ts: where your server stores bundles, which the console reads, such as r2Storage(...).",',
+            "    );",
+            "  }",
+            "  return {",
+            "    database: config.database,",
+            "    storage: config.storage,",
+            "    plugins: config.plugins,",
+            "    console: { gitUrl: config.console.gitUrl },",
+            "  };",
             "};",
           ].join("\n");
         }

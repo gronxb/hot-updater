@@ -42,7 +42,7 @@ export const firebaseStorage = (
     return parsed;
   };
 
-  const adapter = createStorageAdapter({
+  return createStorageAdapter({
     name: "firebaseStorage",
     protocol: "gs",
     async put({ key, body, contentType }) {
@@ -116,12 +116,6 @@ export const firebaseStorage = (
       const { key } = parseAndValidate(storageUri);
       await bucket.file(key).delete({ ignoreNotFound: true });
       return { deleted: true };
-    },
-  });
-  return Object.assign(adapter, {
-    resource: {
-      projectId: config.projectId,
-      storageBucket: config.storageBucket,
     },
   });
 };

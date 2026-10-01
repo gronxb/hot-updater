@@ -22,6 +22,7 @@
     "@hot-updater/aws": "workspace:*",
     "@hot-updater/bare": "workspace:*",
     "@hot-updater/react-native": "workspace:*",
+    "@hot-updater/server": "workspace:*",
     "@hot-updater/standalone": "workspace:*",
     "@hot-updater/supabase": "workspace:*",
     "@react-native-community/cli-platform-android": "13.6.9",

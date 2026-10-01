@@ -171,7 +171,7 @@ it("loads .env.hotupdater before the server definition, which reads it", async (
   );
 });
 
-it("rejects a hotUpdater.ts that exports no server definition", async () => {
+it("rejects an app/hotUpdater.ts that exports no server definition", async () => {
   await scaffold({
     plugins: '["apiKeys"]',
     definition: "export const hotUpdater = {};\n",
@@ -181,7 +181,7 @@ it("rejects a hotUpdater.ts that exports no server definition", async () => {
 
   expect(result.status).toBe(1);
   expect(result.stderr).toContain(
-    "hotUpdater.ts must export `hotUpdater`, the server createHotUpdater",
+    "app/hotUpdater.ts, the credential helper's server definition, must export `hotUpdater`: the server createHotUpdater from @hot-updater/server returns.",
   );
   await expect(stat(path.join(root, SECRET))).rejects.toThrow();
 });

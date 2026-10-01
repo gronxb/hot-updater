@@ -144,4 +144,26 @@ describe("CLI commands", () => {
   it("hides build:android unless EXPERIMENTAL is set", () => {
     expect(help()).not.toMatch(/^\s+build:android\b/m);
   });
+
+  it("manages API keys with the core api-key command, and groups no plugin commands", () => {
+    const output = help();
+    expect(output).toMatch(/^\s+api-key\s+Manage API keys$/m);
+    expect(output).not.toContain("Plugin commands");
+
+    const apiKey = help("api-key");
+    expect(apiKey).toMatch(/^\s+create \[options\] \[serverPath\]/m);
+    expect(apiKey).toMatch(/^\s+list \[options\] \[serverPath\]/m);
+    expect(apiKey).toMatch(/^\s+revoke \[options\] <id> \[serverPath\]/m);
+    expect(help("api-key", "create")).toContain("--name <name>");
+    expect(help("api-key", "list")).toContain("--json");
+    expect(help("api-key", "revoke")).toContain("-y, --yes");
+  });
+
+  it("requires a name to create an API key", () => {
+    const missing = run("api-key", "create");
+    expect(missing.status).toBe(1);
+    expect(missing.stderr).toContain(
+      "required option '--name <name>' not specified",
+    );
+  });
 });

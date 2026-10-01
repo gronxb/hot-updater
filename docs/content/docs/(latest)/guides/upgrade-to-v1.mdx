@@ -262,10 +262,8 @@ compatibility bridge between them.
 
 ## Update custom server and provider integrations
 
-Managed users should apply their provider's v1 scaffold, which writes the server
-definition, `hotUpdater.ts`, and points `server` in `hot-updater.config.ts` at
-it. If you maintain custom server code or plugins, update these boundaries
-before connecting a v1 app:
+Managed users should apply their provider's v1 scaffold. If you maintain custom
+server code or plugins, update these boundaries before connecting a v1 app:
 
 | v0 surface | v1 replacement |
 | --- | --- |
@@ -273,8 +271,7 @@ before connecting a v1 app:
 | `toNodeHandler(hotUpdater)` | Pass the individual handler, such as `toNodeHandler(hotUpdater.handlers.admin)`. |
 | Instance methods such as `getBundleById`, `getBundles`, `insertBundle`, `updateBundleById`, `deleteBundleById` and `getChannels` | `hotUpdater.core` reads and typed operations, such as `getBundle`, `listBundles`, `deploy`, `updateBundle`, `deleteBundles` and `listChannels`. |
 | `storages`, `storagePlugins` | `storage: [storagePlugin]` in `createHotUpdater`. |
-| Database/storage `() => plugin` thunks | Pass database and storage objects directly to `createHotUpdater`. Built-in provider factories already return those objects. |
-| `storage` and `database` in `hot-updater.config.ts` | Move them into the server definition, a module that exports `hotUpdater = createHotUpdater({ database, storage, plugins })`, and set `server` in `hot-updater.config.ts` to its path, such as `"./src/hotUpdater.ts"`. For a self-hosted server the CLI reaches over its admin API, set `server: standaloneRepository({ baseUrl, commonHeaders, storage })`. The CLI refuses a config that still lists `database`, `storage`, or `plugins`. |
+| Database/storage `() => plugin` thunks | Pass database and storage objects directly to `createHotUpdater` and `defineConfig`. Built-in provider factories already return those objects. List the server's plugins in `plugins` of both. |
 | `features.clientAccessKeys` | `apiKeys()` from `@hot-updater/server/plugins/api-keys` in `plugins`. It requires `x-api-key`, or the `headerName` you pass. For public client routes, set `clientAccess: "public"` instead. |
 | `features`, `features.bundles`, `features.updateCheck`, server Insights flags and `queryAccess` | Mount the handler surfaces explicitly. `insights()` from `@hot-updater/server/plugins/insights` in `plugins` serves Insights; without it, the server has no Insights routes, which answer `404`. Apps report with the `insights()` client plugin from `@hot-updater/react-native`. |
 | Server `basePath` | Let the framework own the mount path and use that client root as the app's `baseURL`. |

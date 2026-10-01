@@ -1,5 +1,4 @@
 import { PGlite } from "@electric-sql/pglite";
-import { createStorageAdapter } from "@hot-updater/plugin-core";
 import type { Bundle } from "@hot-updater/protocol";
 import { NIL_UUID } from "@hot-updater/protocol";
 import { standaloneRepository } from "@hot-updater/standalone";
@@ -14,9 +13,6 @@ import { kyselyAdapter } from "./adapters/kysely";
 import { createHotUpdater, type RuntimeHotUpdaterAPI } from "./index";
 import { insights } from "./plugins/insights";
 import { createMigrator } from "./tooling.testFixtures";
-
-/** The storage beside the server; these specs upload nothing. */
-const storage = [createStorageAdapter({ name: "s3Storage", protocol: "s3" })];
 
 const db = new PGlite();
 const kysely = new Kysely<object>({ dialect: new PGliteDialect(db) });
@@ -91,8 +87,7 @@ const createTestBundle = (overrides?: Partial<Bundle>): Bundle => ({
 
 describe("Standalone core API over admin API protocol 2", () => {
   const core = () =>
-    standaloneRepository({ baseUrl: `${baseUrl}/hot-updater/admin`, storage })
-      .core;
+    standaloneRepository({ baseUrl: `${baseUrl}/hot-updater/admin` }).core;
   const deployment = (bundle: Bundle, channel = "production") => ({
     bundle,
     release: {
@@ -269,7 +264,6 @@ describe("Standalone core API over admin API protocol 2", () => {
     await expect(
       standaloneRepository({
         baseUrl: `${baseUrl}/old-server`,
-        storage,
       }).core.listChannels(),
     ).rejects.toThrow("speaks admin API protocol 1, and this CLI needs 2");
 
@@ -299,25 +293,20 @@ describe("Insights through a self-hosted server's admin API", () => {
   it("reads events with the repository's headers, and a server without insights() serves no Insights route", async () => {
     const on = standaloneRepository({
       baseUrl: `${baseUrl}/hot-updater/admin`,
-      storage,
     });
     const onResponse = await on.fetchAdmin("/events?limit=1");
     expect(onResponse.status).toBe(200);
     await expect(onResponse.json()).resolves.toMatchObject({ data: [] });
 
-    const off = standaloneRepository({
-      baseUrl: `${baseUrl}${offPath}/admin`,
-      storage,
-    });
+    const off = standaloneRepository({ baseUrl: `${baseUrl}${offPath}/admin` });
     const offResponse = await off.fetchAdmin("/events?limit=1");
     expect(offResponse.status).toBe(404);
   });
 
-  it("lists the plugins each server runs on its admin /version, as the console reads them", async () => {
+  it("lists the plugins each server runs on its admin /version", async () => {
     const plugins = async (adminUrl: string) => {
       const response = await standaloneRepository({
         baseUrl: adminUrl,
-        storage,
       }).fetchAdmin("/version");
       return ((await response.json()) as { plugins: unknown }).plugins;
     };

@@ -66,12 +66,12 @@ Drizzle and Prisma apply it with their own schema tools, then run
 the `apiKeys()` plugin of the same server configuration:
 
 ```bash
-npx hot-updater api-key create src/hotUpdater.ts --name "Mobile app"
+npx hot-updater api-key create --name "Mobile app" src/hotUpdater.ts
 ```
 
-`apiKeys()` adds the `hot-updater api-key` commands to the CLI, which finds
-them in the file's `hotUpdater` export; without `apiKeys()` in its `plugins`,
-the CLI has no `api-key` command. The command prints the plaintext API key
+`hot-updater api-key` loads the file's `hotUpdater` export and creates the key
+through its `apiKeys()` plugin; a server without `apiKeys()` in its `plugins`
+stops the command with an error. The command prints the plaintext API key
 exactly once.
 Store it in your existing React Native build-time configuration without
 committing it to source, and send it using `x-api-key`. The server's
@@ -129,15 +129,16 @@ npx hot-updater api-key revoke <api-key-id> src/hotUpdater.ts
 `list` accepts `--json`, and `revoke` asks for confirmation unless you pass
 `-y`.
 
-The path is optional: without it, the CLI looks for `apiKeys()` in the server
-definition that `server` in `hot-updater.config.ts` points at, and then in
-`src/hotUpdater.ts` or `src/db.ts`. The commands need the definition; with
-`server: standaloneRepository(...)`, the CLI reaches only the server's admin
-API, which has no API key management routes, so name the definition's path
-instead.
+The path is optional. Without it, the CLI uses `database` and `plugins` in
+`hot-updater.config.ts` when the config sets `database`, and otherwise
+`src/hotUpdater.ts` or `src/db.ts`. The config's `plugins` must list
+`apiKeys()`, as the server's do. The commands need the server's database
+adapter: with `database: standaloneRepository(...)`, the CLI reaches only the
+server's admin API, which has no API key management routes, so run them in the
+server project with the path of the file that creates `hotUpdater`.
 
-The Console manages keys through the same plugin when its `server` is a server
-definition that runs `apiKeys()`.
+The Console manages keys through the same plugin when its configuration lists
+`apiKeys()` in `plugins` over the server's database adapter.
 
 The plugin's API is also available in process:
 
@@ -156,13 +157,11 @@ without digests. `register` stores a known plaintext key idempotently, and
 management routes to `handlers.client` or `handlers.admin`.
 
 AWS, Cloudflare, Firebase, and Supabase run `apiKeys()` in their managed
-servers by default and export that plugin list as `plugins`. Their init
-registers an existing `HOT_UPDATER_API_KEY` or creates one through it, then
-stores the plaintext only in the local environment file. Afterwards,
-`hot-updater api-key` in the app directory manages the same keys through the
-server definition that init writes to `hotUpdater.ts`. A managed project that
-[drops `apiKeys()`](/docs/managed/server-plugins#drop-insights-or-api-keys)
-sets `clientAccess: "public"`, and init then provisions no key.
+servers and export that plugin list as `plugins`. Their init registers an
+existing `HOT_UPDATER_API_KEY` or creates one through it, then stores the
+plaintext only in the local environment file. Afterwards, `hot-updater api-key`
+in the app directory manages the same keys through the `database` and `plugins`
+that init writes to `hot-updater.config.ts`.
 
 ## Rotate an API key
 

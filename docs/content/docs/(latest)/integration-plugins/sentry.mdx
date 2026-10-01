@@ -163,8 +163,8 @@ export default defineConfig({
 </Tabs>
 
 With a [managed provider](/docs/get-started/choose-provider#set-up-a-provider-preset),
-`hot-updater init` keeps this wrapped build when it updates
-`hot-updater.config.ts`, and adds `server` beside it.
+`hot-updater init` keeps this wrapped build when it updates the storage,
+database, and plugins in `hot-updater.config.ts`.
 
 <Callout title="Automatic Upload">
 `withSentry()` uploads one bundle and its sourcemap during `hot-updater deploy`,

@@ -11,7 +11,6 @@ const lambdaMocks = vi.hoisted(() => ({
 const fileMocks = vi.hoisted(() => ({
   readFile: vi.fn(),
   rm: vi.fn(),
-  stat: vi.fn(),
   writeFile: vi.fn(),
 }));
 const transformEnvMock = vi.hoisted(() => vi.fn(() => "transformed-code"));
@@ -33,7 +32,6 @@ vi.mock("@hot-updater/cli-tools", () => ({
   })),
   createZip: vi.fn(async () => undefined),
   getCwd: vi.fn(() => "/tmp"),
-  InitError: class InitError extends Error {},
   p: {
     log: { error: vi.fn(), info: vi.fn() },
     tasks: vi.fn(
@@ -51,20 +49,13 @@ vi.mock("@hot-updater/cli-tools", () => ({
   transformEnv: transformEnvMock,
 }));
 
-import { LAMBDA_EDGE_MAX_ZIP_BYTES, LambdaEdgeDeployer } from "./lambdaEdge";
-
-/** The function's code, staged where the deployer reads it. */
-const staged = () => ({
-  dir: "/tmp/hot-updater-lambda",
-  remove: vi.fn(async () => undefined),
-});
+import { LambdaEdgeDeployer } from "./lambdaEdge";
 
 describe("LambdaEdgeDeployer", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     fileMocks.readFile.mockResolvedValue(Buffer.from("lambda"));
     fileMocks.rm.mockResolvedValue(undefined);
-    fileMocks.stat.mockResolvedValue({ size: 1024 });
     fileMocks.writeFile.mockResolvedValue(undefined);
     lambdaMocks.createFunction.mockRejectedValue(
       Object.assign(new Error("exists"), {
@@ -103,7 +94,6 @@ describe("LambdaEdgeDeployer", () => {
         ssmParameterName: "/hot-updater/hot-updater-storage/keypair",
         ssmRegion: "ap-northeast-2",
       },
-      staged(),
     );
 
     // Then
@@ -162,7 +152,6 @@ describe("LambdaEdgeDeployer", () => {
         ssmParameterName: "/hot-updater/hot-updater-storage/keypair",
         ssmRegion: "ap-northeast-2",
       },
-      staged(),
     );
 
     // Then
@@ -211,7 +200,6 @@ describe("LambdaEdgeDeployer", () => {
         ssmParameterName: "/hot-updater/hot-updater-storage/keypair",
         ssmRegion: "ap-northeast-2",
       },
-      staged(),
     );
     await vi.runAllTimersAsync();
 
@@ -224,36 +212,5 @@ describe("LambdaEdgeDeployer", () => {
     expect(lambdaMocks.createFunction).toHaveBeenCalledTimes(2);
     expect(lambdaMocks.updateFunctionCode).not.toHaveBeenCalled();
     vi.useRealTimers();
-  });
-
-  it("refuses code that zips past Lambda@Edge's limit", async () => {
-    // Given
-    fileMocks.stat.mockResolvedValue({ size: LAMBDA_EDGE_MAX_ZIP_BYTES + 1 });
-    const deployer = new LambdaEdgeDeployer({
-      accessKeyId: "test-access-key",
-      secretAccessKey: "test-secret-key",
-    });
-
-    // When
-    const deployment = deployer.deploy(
-      "arn:aws:iam::123456789012:role/hot-updater-edge",
-      "hot-updater-edge",
-      {
-        bucketName: "hot-updater-storage",
-        dynamodbRegion: "ap-northeast-2",
-        dynamodbTableName: "hot-updater-metadata",
-        publicKeyId: "public-key-id",
-        ssmParameterName: "/hot-updater/hot-updater-storage/keypair",
-        ssmRegion: "ap-northeast-2",
-      },
-      staged(),
-    );
-
-    // Then
-    await expect(deployment).rejects.toThrow(
-      "The Lambda@Edge function zips to 50.0 MB, over Lambda@Edge's 50.0 MB limit for origin-request functions.",
-    );
-    expect(lambdaMocks.createFunction).not.toHaveBeenCalled();
-    expect(lambdaMocks.updateFunctionCode).not.toHaveBeenCalled();
   });
 });

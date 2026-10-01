@@ -1,10 +1,18 @@
 // @vitest-environment node
 
 import {
-  createStorageAdapter,
+  createEngineDatabase,
   createMemoryAdapter,
+  createStorageAdapter,
+  type EngineDatabase,
+  type HotUpdaterCoreApi,
+  HotUpdaterConfigError,
+  HotUpdaterSchemaMigrationRequiredError,
+  migrateCoreSchema,
+  type RemoteDatabase,
 } from "@hot-updater/plugin-core";
 import { createHotUpdater } from "@hot-updater/server";
+import { apiKeys } from "@hot-updater/server/plugins/api-keys";
 import { insights } from "@hot-updater/server/plugins/insights";
 import { describe, expect, it, vi } from "vitest";
 
@@ -22,71 +30,136 @@ vi.mock("virtual:hot-updater-console/config", () => ({
 }));
 
 const request = new Request("https://console.example.com/");
+// Storage the console only reads bundle files with: assembling needs no more.
 const storage = createStorageAdapter({ name: "s3Storage", protocol: "s3" });
+
+const memory = (): EngineDatabase => ({
+  name: "memory",
+  adapter: createMemoryAdapter(),
+});
 
 describe("Console config resolution", () => {
   it.each(["object", "callback"])(
-    "reads a %s config's server definition: its database, storage, and plugins",
+    "assembles a %s config's database, storage, and plugins as the server does",
     async (sourceType) => {
-      const database = { name: "memory", adapter: createMemoryAdapter() };
-      const plugins = [insights()];
-      const server = createHotUpdater({
+      const database = memory();
+      const plugins = [insights(), apiKeys()];
+      const config = {
         database,
-        storage: [storage],
+        storage,
         plugins,
-        clientAccess: "public",
-      });
-      const config = { server, gitUrl: "https://github.com/example/app" };
+        console: { gitUrl: "https://github.com/example/app" },
+      };
       const source = vi.fn(async () => config);
       configModule.source = sourceType === "object" ? config : source;
 
       const resolved = await resolveConsoleConfig(request);
-      expect(resolved).toEqual({
+
+      expect(resolved).toMatchObject({
         gitUrl: "https://github.com/example/app",
         database,
-        core: server.core,
         storage: [storage],
         plugins,
-        api: server.api,
       });
-      // The console writes through the definition's core, as the server does.
-      expect(resolved.core).toBe(server.core);
+      expect(Object.keys(resolved.api ?? {}).sort()).toEqual([
+        "apiKeys",
+        "insights",
+      ]);
+      // The console writes through core over the server's own tables.
+      await resolved.core.ensureChannel("production");
+      await expect(
+        createHotUpdater({ database, plugins }).core.listChannels(),
+      ).resolves.toMatchObject([{ name: "production" }]);
       if (sourceType === "callback") {
         expect(source).toHaveBeenCalledWith(request);
       }
     },
   );
 
-  it("reaches a self-hosted server through standaloneRepository, whose plugins its /version lists", async () => {
-    const server = {
-      name: "standalone-repository",
-      url: "https://updates.example.com/hot-updater/admin",
-      core: {} as never,
-      fetchAdmin: vi.fn(),
-      storage: [storage],
-    };
-    configModule.source = { server };
+  it("runs no plugins when the config lists none", async () => {
+    configModule.source = { database: memory(), storage };
 
-    await expect(resolveConsoleConfig(request)).resolves.toEqual({
-      database: server,
-      core: server.core,
-      storage: [storage],
-    });
-    expect(server.fetchAdmin).not.toHaveBeenCalled();
+    const resolved = await resolveConsoleConfig(request);
+
+    expect(resolved.plugins).toEqual([]);
+    expect(resolved.api).toEqual({});
+    expect(resolved).not.toHaveProperty("gitUrl");
   });
 
-  it("refuses a server that is neither, and one from an older @hot-updater/server", async () => {
-    configModule.source = { server: {} as never };
-    await expect(resolveConsoleConfig(request)).rejects.toThrow(
-      "The console's server must be your server definition",
+  it("refuses the plugins the server refuses", async () => {
+    configModule.source = {
+      database: memory(),
+      storage,
+      plugins: [{ id: "notes" } as never],
+    };
+    await expect(resolveConsoleConfig(request)).rejects.toBeInstanceOf(
+      HotUpdaterConfigError,
     );
 
-    // What createHotUpdater returned before its definition had public properties.
+    // insights() without its factory's mark.
     configModule.source = {
-      server: { handlers: {}, core: {}, api: {} } as never,
+      database: memory(),
+      storage,
+      plugins: [{ ...insights() }],
     };
     await expect(resolveConsoleConfig(request)).rejects.toThrow(
-      "Upgrade @hot-updater/server to the version of @hot-updater/console.",
+      "which is reserved for Hot Updater's insights() plugin",
     );
+  });
+
+  it("stops core until each listed plugin's tables are migrated, as the server does", async () => {
+    const adapter = createMemoryAdapter();
+    // Core's tables only, as before the config listed insights().
+    await migrateCoreSchema(adapter, "memory");
+    configModule.source = {
+      database: createEngineDatabase({ name: "memory", adapter }),
+      storage,
+      plugins: [insights()],
+    };
+
+    const { core } = await resolveConsoleConfig(request);
+
+    const refused = core.ensureChannel("production");
+    await expect(refused).rejects.toBeInstanceOf(
+      HotUpdaterSchemaMigrationRequiredError,
+    );
+    await expect(refused).rejects.toMatchObject({ plugins: ["insights"] });
+    await migrateCoreSchema(adapter, "memory", [insights()]);
+    await expect(core.ensureChannel("production")).resolves.toMatchObject({
+      name: "production",
+    });
+  });
+
+  it("takes core from standaloneRepository, whose server runs the plugins", async () => {
+    const database: RemoteDatabase = {
+      name: "standalone-repository",
+      core: {} as HotUpdaterCoreApi,
+      fetchAdmin: vi.fn(),
+    };
+    const plugins = [insights()];
+    configModule.source = { database, storage, plugins };
+
+    await expect(resolveConsoleConfig(request)).resolves.toEqual({
+      database,
+      core: database.core,
+      storage: [storage],
+      plugins,
+    });
+    expect(database.fetchAdmin).not.toHaveBeenCalled();
+  });
+
+  it("refuses over standaloneRepository the plugins the server refuses", async () => {
+    const database: RemoteDatabase = {
+      name: "standalone-repository",
+      core: {} as HotUpdaterCoreApi,
+      fetchAdmin: vi.fn(),
+    };
+    // insights() without its factory's mark.
+    configModule.source = { database, storage, plugins: [{ ...insights() }] };
+
+    await expect(resolveConsoleConfig(request)).rejects.toThrow(
+      "which is reserved for Hot Updater's insights() plugin",
+    );
+    expect(database.fetchAdmin).not.toHaveBeenCalled();
   });
 });

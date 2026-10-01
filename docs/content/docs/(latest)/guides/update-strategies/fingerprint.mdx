@@ -58,8 +58,8 @@ export default defineConfig({
 
 ### Include App-Owned Native Inputs
 
-Keep your existing build, storage, and database settings, and add platform-scoped
-native inputs. This example is a starting point for a bare project; replace
+Keep your existing build, storage, database, and plugins settings, and add
+platform-scoped native inputs. This example is a starting point for a bare project; replace
 `YourApp` and extend the file list for your native modules and build settings:
 
 ```typescript title="hot-updater.config.ts (partial)"
@@ -85,7 +85,7 @@ export default defineConfig({
     },
     debug: true,
   },
-  // Keep your existing build, server, and other settings.
+  // Keep your existing build, storage, database, and plugins configuration.
 });
 ```
 

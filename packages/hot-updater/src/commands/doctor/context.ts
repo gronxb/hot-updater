@@ -7,13 +7,13 @@ type Fingerprints = Awaited<ReturnType<typeof generateFingerprints>>;
 
 /**
  * What one doctor run shares between its checks, its repairs, and the
- * checks after them. The server is loaded once and closed once: its module
- * loads once per process, so closing it before a later check would leave
+ * checks after them. The server is loaded once and closed once: the config
+ * opens its database once, so closing it before a later check would leave
  * that check a closed database.
  */
 export interface DoctorContext {
   readonly cwd: string;
-  /** The server hot-updater.config.ts points at; null when it names none. */
+  /** The server hot-updater.config.ts describes; null when it names no database. */
   server(): Promise<LoadedServer | null>;
   /**
    * The project's fingerprints, computed once: a repair writes only
@@ -31,7 +31,7 @@ export const createDoctorContext = (cwd: string): DoctorContext => {
     cwd,
     server: () =>
       (server ??= loadConfig(null).then((config) =>
-        config.server === undefined ? null : loadServer(config),
+        config.database === undefined ? null : loadServer(config),
       )),
     fingerprints: () => (fingerprints ??= generateFingerprints()),
     dispose: async () => {

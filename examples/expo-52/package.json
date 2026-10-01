@@ -15,7 +15,6 @@
     "@babel/runtime": "^7.25.2",
     "@hot-updater/react-native": "workspace:*",
     "@hot-updater/expo": "workspace:*",
-    "@hot-updater/server": "workspace:*",
     "@hot-updater/supabase": "workspace:*",
     "@types/react": "~18.3.12",
     "expo": "~52.0.49",

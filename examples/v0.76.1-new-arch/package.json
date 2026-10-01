@@ -16,7 +16,6 @@
     "@babel/runtime": "^7.25.0",
     "@hot-updater/bare": "workspace:*",
     "@hot-updater/react-native": "workspace:*",
-    "@hot-updater/server": "workspace:*",
     "@hot-updater/supabase": "workspace:*",
     "@react-native-community/cli": "15.1.3",
     "@react-native-community/cli-platform-android": "15.1.3",

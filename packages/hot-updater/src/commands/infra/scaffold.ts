@@ -294,8 +294,8 @@ export async function scaffoldInfra(
       `node_modules/\n.env*\n!env.example\n${CLIENT_CREDENTIAL_FILE}\n*.pem\n*.zip\n*.secret\n`,
     );
     if (forAgent) {
-      // Every variable the app's TypeScript reads: the config, the server
-      // definition it points at, and Firestore's migration.
+      // Every variable the app's TypeScript reads: the config, the
+      // credential helper's server definition, and Firestore's migration.
       const appSources = await Promise.all(
         (await readdir(appDir))
           .filter((file) => file.endsWith(".ts"))

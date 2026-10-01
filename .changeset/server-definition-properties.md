@@ -30,27 +30,24 @@ Removed from `@hot-updater/server`. All of these shipped in rc.18:
   - `HotUpdaterDBTarget`, with no replacement: tooling takes the definition.
   - `HOT_UPDATER_SERVER_VERSION`. Import it from the root.
   - `HotUpdaterSchemaMigrationRequiredError`, `generateEngineSql`, `DatabaseTooling`, `Migrator`, `SchemaGenerator`, `ToolingDatabase`, and `ToolingTarget`. Import them from `@hot-updater/plugin-core`.
-  - `clientAuthOf`, `generateClientCredential`, `provisionClientCredential`, `pluginCommandsOf`, `createMigrator`, `generateSchema`, `generatesSchema`, `ClientAuthSpec`, `ClientCredentialSpec`, `PluginCommandEntry`, and `ProvisionedClientCredential`. Import them from `@hot-updater/cli-tools`, where each takes a definition.
+  - `clientAuthOf`, `generateClientCredential`, `provisionClientCredential`, `createMigrator`, `generateSchema`, `generatesSchema`, `ClientAuthSpec`, `ClientCredentialSpec`, and `ProvisionedClientCredential`. Import them from `@hot-updater/cli-tools`, where each takes a definition.
 - From `@hot-updater/server/diff`: `createBundleDiff`, `CreateBundleDiffDependencies`, `CreateBundleDiffInput`, and `CreateBundleDiffOptions`. There is no public replacement: the `hot-updater` CLI creates bundle diffs itself, and `@hot-updater/server` no longer depends on `@hot-updater/bsdiff`.
 
-The CLI and the console write through the definition's `core`, the same path the server's own writes take, and call plugins through its `api`:
+Over a direct database, the CLI and the console run `createHotUpdater` with the database, storage, and plugins in their config. They write through its `core`, the same path the server's own writes take, and call plugins through its `api`:
 
 - **Missing plugin migrations.** A command stops before it reads or writes if a plugin's migration has not run. `HotUpdaterSchemaMigrationRequiredError` lists every missing or stale settings row in `settings` and names their plugins in `plugins`. Its message gives the fix for the database:
-  - `hot-updater db migrate`;
-  - `hot-updater db generate`, for a database migrated from files;
+  - `hot-updater db migrate`, or `hot-updater db generate` for a database migrated from files, run in the server's project: the `db` commands load the server file and don't read `hot-updater.config.ts`;
   - on a managed server, rerunning `hot-updater init --provider <provider>`.
 - **Expired rows on SQL databases.** When a retention pass is due, a write first deletes expired rows from plugins' tables:
   - The server and the CLI share one lease.
   - A pass deletes at most 500 rows from each table.
   - A failed pass, for example one whose credentials cannot delete, logs a warning and the write goes ahead. The pass is due again at once, so the next writer that can delete, such as the server, runs it. The process whose pass failed tries again in a minute.
 - **Key-value databases** (DynamoDB, Firestore) expire rows themselves, so their writes delete nothing.
-- **Storage.** Core resolves file URLs through the definition's storage. A definition whose storage only uploads can still write, and its `core.getArtifactInfo` returns `null`, because it can neither read nor sign a file.
+- **Storage.** Core resolves file URLs through the server's storage. A server over storage that only uploads, as the CLI's is, can still write, and its `core.getArtifactInfo` returns `null`, because it can neither read nor sign a file.
 
 Other changes:
 
-- **`@hot-updater/cli-tools`** adds `serverDefinitionOf`, `isServerDefinition`, and `managedServerDefinitionOf`, which read a definition. Tooling refuses a definition from an older `@hot-updater/server` and says to upgrade it.
+- **`@hot-updater/cli-tools`** adds `serverDefinitionOf` and `isServerDefinition`, which read a definition. Tooling refuses a definition from an older `@hot-updater/server` and says to upgrade it.
 - **Insights test suite.** `insightsTestSuite`'s `createModel` receives the database as an `EngineDatabase`.
-- **Managed init:**
-  - It reads the client endpoints, headers, client plugins, and credential of the plugins it deploys from a definition over the database it set up.
-  - It refuses an edited definition whose clientAuth plugin gives no credential, before changing any resource.
-  - The agent infrastructure scaffolds read the definition's properties. Firebase's `migrate.ts` imports `toolingTargetOf` from `@hot-updater/plugin-core`, which its app now lists. The scaffolds' `provision-client-credential.mjs` refuses a clientAuth plugin whose `cli.clientCredential` lacks a label, header, env, `generate`, or `provision`.
+- **Managed init** reads the client headers, client plugins, and credential of the provider's plugins from a server it assembles over the database it set up.
+- **Agent infrastructure scaffolds.** `provision-client-credential.mjs` reads the properties of the scaffold's `app/hotUpdater.ts`, and refuses a clientAuth plugin whose `cli.clientCredential` lacks a label, header, env, `generate`, or `provision`. Firebase's `migrate.ts` imports `toolingTargetOf` from `@hot-updater/plugin-core`, which its app now lists.

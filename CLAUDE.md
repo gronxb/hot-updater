@@ -56,7 +56,11 @@ Every export belongs to exactly one package. `scripts/ci/check-package-boundarie
   - No package has an `/internal` entry or a deep import. Every cross-package import uses the other package's public API.
   - A shared convention is implemented in each package and documented here, not imported. An example is the official-plugin brand key `Symbol.for("@hot-updater/server/official-plugin")`.
 - Subpaths are the exception. Add one only to isolate something optional (an adapter's dependency, a built-in plugin, a runtime build), never as a back door.
+- `@hot-updater/cli-tools` depends on `@hot-updater/server` for `assembleServer({ database, storage, plugins })`, which runs `createHotUpdater` over a config's database, storage, and plugins for the CLI, the providers' `./init`, the agent scaffold build, and the E2E controller.
+  - The Console keeps its own small copy of that assembly: a hosted Console must never load cli-tools, whose native bindings (oxc-parser, oxc-transform) and unconfig don't belong in it.
 - A CLI command exists only for a user workflow. Checks belong in `hot-updater doctor`, which repairs what it can with `--fix`.
+  - Plugins add no CLI commands. `PluginCli` holds only `clientCredential` and `clientPlugin`, the metadata init, doctor, and the agent scaffold read.
+  - `hot-updater api-key create|list|revoke` is a built-in command over the config's `database` and `plugins`, or the server file a server project passes as its last argument.
 
 ### Reference Projects
 When working on helper packages, reference these external projects:
@@ -64,7 +68,12 @@ When working on helper packages, reference these external projects:
 - **Apple Helper**: Reference `~/Desktop/rnef/packages/platform-apple-helpers` (can be referred to as "rnef" or "rock" in prompts)
 
 ### Configuration
-Projects use `hot-updater.config.ts` (`defineConfig()`) for deploy settings, the build and signing adapters and the update strategy, and point its `server` at a server definition, `createHotUpdater({ database, storage, plugins })`, which the server, the CLI, the Console, and managed init all read. Plugins are configured in exactly two places: that definition and the app's `HotUpdater.init({ plugins })`.
+Projects use `hot-updater.config.ts` (`defineConfig()`) for `build`, `storage`, `database`, and `plugins`, plus the deploy settings (`updateStrategy`, `signing`, `fingerprint`, `patch`, `platform`, `nativeBuild`, `console`, `cacheDir`). The config mirrors the server and never names server code:
+- `storage` is the one adapter the CLI uploads with, one of the server's `createHotUpdater({ storage })` list;
+- `database` is the server's database adapter, or `standaloneRepository({ baseUrl, commonHeaders })` to reach a self-hosted server's admin API;
+- `plugins` lists the server plugins the server runs. Over a direct database, the CLI assembles core over `database` and `plugins` as `createHotUpdater` does, so the schema fence and retention pruning apply to its writes.
+
+Plugins are configured in three places: the server's `createHotUpdater({ plugins })`, `plugins` in `hot-updater.config.ts`, and the app's `HotUpdater.init({ plugins })`. A managed project uses two, the config and the app: its prebuilt server runs only the official `insights()` and `apiKeys()`, which the provider package exports as `plugins` and init writes into the config. A self-hosted app installs `@hot-updater/server` as a devDependency to import the official plugins. The Console's `defineConsoleConfig({ database, storage, plugins, console })` mirrors the server the same way. No config file calls `createHotUpdater`: servers do, and tooling calls it internally over a config's database, storage, and plugins (cli-tools `assembleServer` and the Console's own copy).
 
 ## Common Commands
 
@@ -124,6 +133,13 @@ npx hot-updater fingerprint create
 
 # Set the native default channel
 npx hot-updater channel set <channel>
+
+# Manage client API keys through apiKeys(): the config's, or a server file's
+npx hot-updater api-key create --name <name>
+npx hot-updater api-key list src/hotUpdater.ts
+
+# Migrate a server's database (in the server project)
+npx hot-updater db migrate src/hotUpdater.ts
 ```
 
 ## Development Notes

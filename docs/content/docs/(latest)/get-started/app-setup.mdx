@@ -188,8 +188,8 @@ Do not initialize with both APIs.
 ## Build configuration
 
 Setup configures bundling through the `build` field in `hot-updater.config.ts`.
-Keep the selected build adapter alongside `server`, which points at your server
-definition.
+Keep the selected build adapter alongside your existing storage, database and
+plugins settings.
 
 <Tabs items={['Bare (React Native CLI)', 'Rock', 'Expo']}>
   <Tab value="Bare (React Native CLI)">
@@ -204,7 +204,7 @@ export default defineConfig({
   build: bare({ // [!code ++:3]
     enableHermes: true,
   }),
-  // ... server and updateStrategy
+  // ... storage, database, plugins, and updateStrategy
 });
 ```
 
@@ -221,7 +221,7 @@ import { defineConfig } from "hot-updater";
 
 export default defineConfig({
   build: rock(), // [!code ++]
-  // ... server and updateStrategy
+  // ... storage, database, plugins, and updateStrategy
 });
 ```
 
@@ -238,7 +238,7 @@ import { defineConfig } from "hot-updater";
 
 export default defineConfig({
   build: expo(), // [!code ++]
-  // ... server and updateStrategy
+  // ... storage, database, plugins, and updateStrategy
 });
 ```
 

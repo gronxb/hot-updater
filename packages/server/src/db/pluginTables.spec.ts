@@ -123,7 +123,7 @@ describe("plugin tables in db tooling", () => {
     });
     // It names the plugin and how to create its tables on this database.
     await expect(hotUpdater.api.notes.read("n1")).rejects.toThrow(
-      'The tables of plugin "notes" are not migrated on memory: schema setting "schema.notes" is missing; expected "2". Run `hot-updater db migrate`; on a managed server, rerun `hot-updater init --provider <provider>`, which deploys the server with these plugins and creates their tables.',
+      `The tables of plugin "notes" are not migrated on memory: schema setting "schema.notes" is missing; expected "2". Run \`hot-updater db migrate\`. A managed server runs only its provider's plugins, and rerunning \`hot-updater init --provider <provider>\` applies the provider's migrations.`,
     );
     await expect(hotUpdater.core.listChannels()).rejects.toBeInstanceOf(
       HotUpdaterSchemaMigrationRequiredError,

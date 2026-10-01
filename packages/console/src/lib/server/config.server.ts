@@ -28,11 +28,11 @@ export const prepareConfig = async (request: Request = getRequest()) => {
     await requireConsoleAccess(request);
     const config = await loadCachedConfig(request);
 
-    // Bundles, releases, catalogs, and channels: the definition's core, on
-    // the server's own path, or a self-hosted server's admin API.
+    // Bundles, releases, catalogs, and channels: core assembled as the
+    // server's, on the server's own path, or a self-hosted server's admin API.
     core ??= config.core;
 
-    // The console's features: those of the plugins the server runs.
+    // The console's features: those of the plugins its config lists.
     if (!runtime) {
       const { createConsoleRuntime } = await import("./runtime.server");
       runtime = createConsoleRuntime(config);

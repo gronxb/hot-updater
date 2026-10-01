@@ -1,12 +1,13 @@
 import { createHash } from "node:crypto";
 
+import { assembleServer } from "@hot-updater/cli-tools";
 import { mockDatabase, mockStorage } from "@hot-updater/mock";
 import type { Bundle, Release } from "@hot-updater/protocol";
-import { createHotUpdater } from "@hot-updater/server";
 import { apiKeys } from "@hot-updater/server/plugins/api-keys";
 import {
   insights,
   type BundleEventRow,
+  type InsightsApi,
 } from "@hot-updater/server/plugins/insights";
 
 type DemoReleaseFields = Pick<
@@ -652,15 +653,20 @@ const bundles: DemoDeployment[] = [
   iosProdCoreBase,
 ];
 
-const database = mockDatabase({ latency: { min: 150, max: 320 } });
-// The plugins whose features the console shows; the seed writes through
-// the same ones the server runs.
-const plugins = [insights(), apiKeys()] as const;
-// Seeding writes through the same server over the data without the delay
-// the console sees.
-const seeding = createHotUpdater({
+/**
+ * The demo console's database: in memory, seeded below, and as slow to
+ * answer as a real one. hot-updater.config.ts lists it.
+ */
+export const database = mockDatabase({ latency: { min: 150, max: 320 } });
+/** The demo's storage; the seed uploads no bundle files to it. */
+export const storage = mockStorage({});
+/** The plugins whose features the console shows; the seed writes through them too. */
+export const plugins = [insights(), apiKeys()];
+// Seeding writes through core and the plugins, assembled as the console
+// assembles them, over the same data without the delay the console sees.
+const seeding = assembleServer({
   database: database.withoutLatency(),
-  storage: [mockStorage({})],
+  storage,
   plugins,
 });
 const { core } = seeding;
@@ -1059,17 +1065,7 @@ const adjustedBundleEvents = bundleEvents.map((event) => ({
   received_at_ms: event.received_at_ms + receiptOffsetMs,
 }));
 
-const insightsApi = seeding.api.insights;
+const insightsApi = seeding.api.insights as InsightsApi;
 for (const event of adjustedBundleEvents) {
   await insightsApi.recordEvent(event);
 }
-
-/**
- * The demo console's server: a seeded mock database, with the plugins whose
- * features the console shows. hot-updater.config.ts points here.
- */
-export const hotUpdater = createHotUpdater({
-  database,
-  storage: [mockStorage({})],
-  plugins,
-});

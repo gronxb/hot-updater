@@ -15,7 +15,7 @@ import {
   type D1ResultLike,
   toSqlResult,
 } from "./d1Executor";
-import { d1Migration } from "./d1Migration";
+import { d1SchemaSql } from "./d1Schema";
 
 export { D1ExecutionError } from "./d1Executor";
 
@@ -63,7 +63,7 @@ export const d1Database = (config: D1DatabaseConfig): ToolingDatabase => {
     if (results.length !== statements.length) throw new D1ExecutionError();
     return results;
   };
-  const database: ToolingDatabase = {
+  return {
     ...createD1Database({
       query: async (statement) => (await execute([statement]))[0]!,
       batch: execute,
@@ -72,13 +72,15 @@ export const d1Database = (config: D1DatabaseConfig): ToolingDatabase => {
       if (version !== "latest" && version !== coreSettings["schema.core"]) {
         throw new Error(`Invalid version ${version}`);
       }
-      return d1Migration(target);
+      // Wrangler applies migrations in the order of their leading numbers.
+      const timestamp = new Date()
+        .toISOString()
+        .replace(/\D/g, "")
+        .slice(0, 14);
+      return {
+        code: d1SchemaSql(target),
+        path: `migrations/${timestamp}_hot-updater.sql`,
+      };
     }) satisfies SchemaGenerator,
   };
-  return Object.assign(database, {
-    resource: {
-      accountId: config.accountId,
-      databaseId: config.databaseId,
-    },
-  });
 };

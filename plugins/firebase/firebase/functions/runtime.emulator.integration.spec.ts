@@ -17,11 +17,9 @@ import { transformEnv } from "@hot-updater/cli-tools";
 import type { HotUpdaterCoreApi } from "@hot-updater/plugin-core";
 import type { Bundle } from "@hot-updater/protocol";
 import { createHotUpdater } from "@hot-updater/server";
-import { apiKeys } from "@hot-updater/server/plugins/api-keys";
 import {
   createInsightsModel,
   createInsightsProvider,
-  insights,
   type InsightsProvider,
 } from "@hot-updater/server/plugins/insights";
 import {
@@ -252,17 +250,16 @@ exec node "${path.join(firebaseFunctionsPackagePath, "lib/bin/firebase-functions
 
     const database = firebaseDatabase({ ...adminOptions });
     await migrateFirebaseDatabase({ ...adminOptions }, plugins);
-    const pluginApis = createHotUpdater({
-      database,
-      plugins: [insights(), apiKeys()],
-    }).api;
-    await pluginApis.apiKeys.register({
+    // The server the function runs, on the emulator's project: the API key
+    // it authenticates with, and core's writes as the managed config makes them.
+    const server = createHotUpdater({ database, plugins });
+    await server.api.apiKeys.register({
       apiKey: API_KEY,
       name: "Runtime acceptance",
     });
-    core = createHotUpdater({ database, clientAccess: "public" }).core;
+    core = server.core;
     insightsReads = createInsightsProvider(
-      createInsightsModel(pluginApis.insights),
+      createInsightsModel(server.api.insights),
     );
 
     functionsRuntime = spawnRuntime({

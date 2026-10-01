@@ -47,8 +47,8 @@ import {
   getRecoveryReportRpc,
 } from "./insights-recovery-rpc";
 
-/** The console over a server definition that runs `plugins` on `database`. */
-const definitionRuntime = (
+/** The console over `database`, running `plugins` as the server does. */
+const databaseRuntime = (
   database: EngineDatabase,
   plugins: readonly AnyHotUpdaterPlugin[] = [],
 ) =>
@@ -71,7 +71,7 @@ const memoryDatabase = () => ({
 
 /** A console that runs insights() over its database, and the model it reads. */
 const withInsights = async () => {
-  const runtime = definitionRuntime(memoryDatabase(), [insights()]);
+  const runtime = databaseRuntime(memoryDatabase(), [insights()]);
   mocks.prepare.mockResolvedValue({ runtime });
   return requireFeature(runtime, "insightsAnalytics");
 };
@@ -141,7 +141,7 @@ describe("activity the console does not serve", () => {
   it.each([
     [
       "without insights()",
-      definitionRuntime(memoryDatabase()),
+      databaseRuntime(memoryDatabase()),
       "without the insights() plugin",
     ],
     [
@@ -149,11 +149,10 @@ describe("activity the console does not serve", () => {
       createConsoleRuntime({
         database: {
           name: "standalone-repository",
-          url: "https://updates.example.com/hot-updater/admin",
           core: {} as HotUpdaterCoreApi,
-          fetchAdmin: async () => Response.json({ plugins: ["insights"] }),
-          storage: [],
+          fetchAdmin: vi.fn(),
         },
+        plugins: [insights()],
       }),
       "reaches a self-hosted server",
     ],

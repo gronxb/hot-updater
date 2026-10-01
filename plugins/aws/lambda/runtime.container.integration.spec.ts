@@ -1,7 +1,7 @@
 import { generateKeyPairSync } from "node:crypto";
 import { access, cp, mkdtemp, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import {
@@ -10,7 +10,6 @@ import {
   HeadBucketCommand,
   ListBucketsCommand,
   ListObjectsV2Command,
-  PutObjectCommand,
   S3Client,
 } from "@aws-sdk/client-s3";
 import { PutParameterCommand, SSMClient } from "@aws-sdk/client-ssm";
@@ -20,7 +19,6 @@ import {
   ScanCommand,
 } from "@aws-sdk/lib-dynamodb";
 import { transformEnv } from "@hot-updater/cli-tools";
-import type { AnyHotUpdaterPlugin } from "@hot-updater/plugin-core";
 import { SETTINGS_TABLE } from "@hot-updater/plugin-core";
 import type { Bundle } from "@hot-updater/protocol";
 import {
@@ -37,7 +35,6 @@ import {
 } from "@hot-updater/test-utils/node";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
-import { buildLambdaFromDefinition } from "../iac/managedLambda";
 import { cloudFrontDownloadUrl } from "../src/cloudFrontDownloadUrl";
 import { dynamoDB, migrateDynamoDB } from "../src/dynamoDB";
 import { plugins } from "../src/plugins";
@@ -64,70 +61,7 @@ const REQUIRED_BUILD_ARTIFACTS = [
     command: "pnpm --filter @hot-updater/aws build",
     path: path.join(WORKSPACE_ROOT, "plugins/aws/dist/lambda/index.cjs"),
   },
-  {
-    command: "pnpm --filter @hot-updater/aws build",
-    path: path.join(WORKSPACE_ROOT, "plugins/aws/dist/managed.mjs"),
-  },
 ] as const;
-
-/** A third-party plugin a project adds to its server definition. */
-const NOTES_PLUGIN = `import { definePlugin, defineTable } from "@hot-updater/plugin-core";
-
-export const notes = definePlugin({
-  id: "notes",
-  schemaVersion: "1",
-  schema: {
-    notes: defineTable(
-      { id: { type: "string", maxLength: 64 }, text: { type: "string" } },
-      { key: ["id"] },
-    ),
-  },
-  init: ({ db }) => ({
-    api: {
-      add: (id: string, text: string) =>
-        db.transaction(async (tx) => {
-          tx.create("notes", { id, text });
-        }),
-    },
-    endpoints: [
-      {
-        method: "GET",
-        path: "/notes/:id",
-        access: "client",
-        handler: async (_request, params) => {
-          const note = await db.findOne("notes", { id: params.id! });
-          return note === null
-            ? Response.json({ error: "Not found" }, { status: 404 })
-            : Response.json({ text: note.text });
-        },
-      },
-    ],
-  }),
-});
-`;
-
-/**
- * The project's server definition, as the managed function runs it: it
- * passes the CLI's settings, which the function's runtime module ignores
- * for the table and bucket init set up.
- */
-const DEFINITION = `import { fromNodeProviderChain } from "@aws-sdk/credential-providers";
-import { dynamoDB, plugins, s3Storage } from "@hot-updater/aws";
-import { createHotUpdater } from "@hot-updater/server";
-
-import { notes } from "./notes";
-
-const awsOptions = {
-  region: "the CLI's",
-  credentials: fromNodeProviderChain(),
-};
-
-export const hotUpdater = createHotUpdater({
-  database: dynamoDB({ ...awsOptions, tableName: "the CLI's" }),
-  storage: [s3Storage({ ...awsOptions, bucketName: "the CLI's" })],
-  plugins: [...plugins, notes],
-});
-`;
 
 assertDockerDaemonAvailable(
   "aws lambda runtime acceptance requires a running Docker daemon.",
@@ -294,11 +228,6 @@ describe.sequential("aws lambda runtime acceptance", () => {
   let localstackRuntime: ReturnType<typeof spawnRuntime> | undefined;
   let lambdaRuntime: ReturnType<typeof spawnRuntime> | undefined;
   let runtimeDir: string | undefined;
-  let definitionLambdaPort = 0;
-  let definitionLambdaRuntime: ReturnType<typeof spawnRuntime> | undefined;
-  let definitionProjectDir: string | undefined;
-  let definitionRuntimeDir: string | undefined;
-  let notesApi: { add(id: string, text: string): Promise<void> };
   let localstackEndpoint = "";
   let database: ReturnType<typeof dynamoDB>;
   let rawApiKey = "";
@@ -423,70 +352,7 @@ describe.sequential("aws lambda runtime acceptance", () => {
       child: lambdaRuntime.child,
       logs: lambdaRuntime.logs,
     });
-
-    // The function init bundles from a project's edited server definition.
-    definitionProjectDir = await mkdtemp(
-      path.join(WORKSPACE_ROOT, "plugins/aws/runtime-acceptance-project-"),
-    );
-    await writeFile(path.join(definitionProjectDir, "notes.ts"), NOTES_PLUGIN);
-    await writeFile(
-      path.join(definitionProjectDir, "hotUpdater.ts"),
-      DEFINITION,
-    );
-    const { notes } = (await import(
-      pathToFileURL(path.join(definitionProjectDir, "notes.ts")).href
-    )) as { notes: AnyHotUpdaterPlugin };
-    // What init migrates: the tables and settings rows of the plugins it lists.
-    await migrateDynamoDB(
-      {
-        region: REGION,
-        endpoint: localstackEndpoint,
-        credentials: {
-          accessKeyId: ACCESS_KEY_ID,
-          secretAccessKey: SECRET_ACCESS_KEY,
-        },
-        tableName: DYNAMODB_TABLE_NAME,
-      },
-      [...plugins, notes],
-    );
-    notesApi = (
-      createHotUpdater({
-        database,
-        plugins: [...plugins, notes],
-      }).api as unknown as { notes: typeof notesApi }
-    ).notes;
-    definitionRuntimeDir = await mkdtemp(
-      path.join(WORKSPACE_ROOT, "plugins/aws/runtime-acceptance-"),
-    );
-    await buildLambdaFromDefinition({
-      definition: path.join(definitionProjectDir, "hotUpdater.ts"),
-      packageRoot: path.join(WORKSPACE_ROOT, "plugins/aws"),
-      projectRoot: definitionProjectDir,
-      lambdaDir: definitionRuntimeDir,
-    });
-    await writeFile(
-      path.join(definitionRuntimeDir, "index.cjs"),
-      transformEnv(path.join(definitionRuntimeDir, "index.cjs"), {
-        CLOUDFRONT_KEY_PAIR_ID,
-        DYNAMODB_REGION: REGION,
-        DYNAMODB_TABLE_NAME,
-        SSM_PARAMETER_NAME,
-        SSM_REGION: REGION,
-        S3_BUCKET_NAME,
-      }),
-    );
-    definitionLambdaPort = await findOpenPort();
-    definitionLambdaRuntime = spawnLambdaRuntime({
-      dockerNetworkName,
-      lambdaPort: definitionLambdaPort,
-      runtimeDir: definitionRuntimeDir,
-    });
-    await waitForLambdaReady({
-      port: definitionLambdaPort,
-      child: definitionLambdaRuntime.child,
-      logs: definitionLambdaRuntime.logs,
-    });
-  }, 240_000);
+  }, 180_000);
 
   beforeEach(async () => {
     await Promise.all([
@@ -505,10 +371,6 @@ describe.sequential("aws lambda runtime acceptance", () => {
       await stopRuntime(lambdaRuntime.child);
     }
 
-    if (definitionLambdaRuntime) {
-      await stopRuntime(definitionLambdaRuntime.child);
-    }
-
     if (localstackRuntime) {
       await stopRuntime(localstackRuntime.child);
     }
@@ -523,14 +385,8 @@ describe.sequential("aws lambda runtime acceptance", () => {
       // ignore network cleanup failures
     }
 
-    for (const dir of [
-      runtimeDir,
-      definitionRuntimeDir,
-      definitionProjectDir,
-    ]) {
-      if (dir) {
-        await rm(dir, { recursive: true, force: true });
-      }
+    if (runtimeDir) {
+      await rm(runtimeDir, { recursive: true, force: true });
     }
 
     if (previousAwsEndpointUrl === undefined) {
@@ -719,132 +575,6 @@ describe.sequential("aws lambda runtime acceptance", () => {
         type: "UNCHANGED",
       }),
     ]);
-  });
-
-  it("serves a project's server definition, with its own plugin, from the function init bundles", async () => {
-    await notesApi.add("welcome", "hello from DynamoDB");
-
-    const unauthorized = await invokeLambda(
-      definitionLambdaPort,
-      createCloudFrontEvent({ path: "/notes/welcome", headers: new Headers() }),
-    );
-    expect(((await unauthorized.json()) as { status?: string }).status).toBe(
-      "401",
-    );
-
-    const response = await invokeLambda(
-      definitionLambdaPort,
-      createCloudFrontEvent({
-        path: "/notes/welcome",
-        headers: new Headers({ "x-api-key": rawApiKey }),
-      }),
-    );
-    const payload = (await response.json()) as {
-      body?: string;
-      status?: string;
-    };
-    expect(payload.status).toBe("200");
-    await expect(readLambdaJson(payload)).resolves.toEqual({
-      text: "hello from DynamoDB",
-    });
-
-    // The official plugins still run beside it.
-    const reported = await invokeLambda(
-      definitionLambdaPort,
-      createCloudFrontEvent({
-        path: "/events",
-        headers: new Headers({
-          "content-type": "application/json",
-          "x-api-key": rawApiKey,
-        }),
-        method: "POST",
-        body: JSON.stringify({
-          type: "UNCHANGED",
-          installId: "aws-definition-installation",
-          toBundleId: "00000000-0000-0000-0000-000000000001",
-          platform: "ios",
-          appVersion: "1.0.0",
-          channel: "production",
-          cohort: "default",
-          fingerprintHash: null,
-          fromBundleId: null,
-          fromReleaseId: null,
-          toReleaseId: null,
-          updateStrategy: null,
-        }),
-      }),
-    );
-    expect(((await reported.json()) as { status?: string }).status).toBe("204");
-  });
-
-  it("signs the download URLs a project's definition serves for the request's distribution", async () => {
-    const bundle = toRuntimeBundle({
-      id: "00000000-0000-0000-0000-000000000002",
-      platform: "ios",
-      gitCommitHash: null,
-      manifestStorageUri: "storage://unused/manifest.json",
-      manifestFileHash: "manifest-hash",
-      assetBaseStorageUri: "storage://assets",
-    });
-    await s3Client.send(
-      new PutObjectCommand({
-        Bucket: S3_BUCKET_NAME,
-        Key: `bundles/${bundle.id}/manifest.json`,
-        Body: JSON.stringify({
-          bundleId: bundle.id,
-          assets: {
-            "index.ios.bundle": {
-              fileHash: "target-hbc-hash",
-              downloadFileHash: "a".repeat(64),
-              downloadByteSize: 1_000,
-            },
-          },
-        }),
-        ContentType: "application/json",
-      }),
-    );
-    await seedHotUpdater.core.deploy([
-      {
-        bundle,
-        release: {
-          channel: "production",
-          enabled: true,
-          fingerprintHash: null,
-          message: "signed",
-          shouldForceUpdate: false,
-          targetAppVersion: "1.0",
-        },
-      },
-    ]);
-
-    const response = await invokeLambda(
-      definitionLambdaPort,
-      createCloudFrontEvent({
-        path: `/artifacts/v1/${bundle.id}/from/00000000-0000-0000-0000-000000000000`,
-        headers: new Headers({ "x-api-key": rawApiKey }),
-      }),
-    );
-    const payload = (await response.json()) as {
-      body?: string;
-      status?: string;
-    };
-    expect(payload.status).toBe("200");
-    const artifacts = (await readLambdaJson(payload)) as {
-      manifestUrl?: string;
-      assets?: Record<string, { file?: { url?: string } }>;
-    };
-
-    // Signed with the key pair in SSM, for the distribution the request came through.
-    const manifestUrl = new URL(artifacts.manifestUrl!);
-    expect(manifestUrl.origin).toBe(PUBLIC_BASE_URL);
-    expect(manifestUrl.pathname).toBe(`/bundles/${bundle.id}/manifest.json`);
-    expect(manifestUrl.searchParams.get("Key-Pair-Id")).toBe(
-      CLOUDFRONT_KEY_PAIR_ID,
-    );
-    expect(manifestUrl.searchParams.get("Signature")).toBeTruthy();
-    expect(
-      new URL(artifacts.assets!["index.ios.bundle"]!.file!.url!).origin,
-    ).toBe(PUBLIC_BASE_URL);
   });
 });
 

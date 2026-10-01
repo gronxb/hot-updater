@@ -1,6 +1,7 @@
 import type { Bundle, Platform } from "@hot-updater/protocol";
 
-import type { AdapterResource } from "../adapterResource";
+import type { AnyHotUpdaterPlugin } from "../serverPlugin/definePlugin";
+import type { ConfiguredDatabase } from "./databaseConfig";
 
 export type { Bundle, Platform } from "@hot-updater/protocol";
 
@@ -314,12 +315,6 @@ export interface StorageAdapter {
   readonly listObjects?: (prefix?: string) => Promise<StorageObject[]>;
   /** Deletes only the exact base-path-relative keys supplied by the caller. */
   readonly deleteObjects?: (keys: readonly string[]) => Promise<void>;
-  /**
-   * The provider resource this storage reaches, as its factory was given
-   * it, such as `{ bucketName: "hot-updater-storage" }`. A managed server's
-   * setup compares it with the bucket it set up.
-   */
-  readonly resource?: AdapterResource;
 }
 
 export interface BundleSigningAdapter {
@@ -468,19 +463,20 @@ export type ConfigInput = {
    */
   signing?: SigningConfig;
   build: (args: BuildAdapterArgs) => Promise<BuildAdapter> | BuildAdapter;
+  /** Where the CLI uploads bundles: the same adapter the server lists in its storage. */
+  storage: StorageAdapter;
   /**
-   * Where the server is, whose database, storage, and plugins the CLI uses.
-   *
-   * A path, relative to this file, to the module that defines the server:
-   * `export const hotUpdater = createHotUpdater({ database, storage, plugins })`.
-   * The CLI loads it only for the commands that need the server.
-   *
-   * Or `standaloneRepository(...)`, for a self-hosted server the CLI reaches
-   * through its admin API, with the storage the CLI uploads to.
-   *
-   * @example "./src/hotUpdater.ts"
+   * The server's database, which the CLI opens itself, or
+   * `standaloneRepository(...)`, which reaches a self-hosted server through
+   * its admin API.
    */
-  server: string | import("./databaseConfig").RemoteServer;
+  database: ConfiguredDatabase;
+  /**
+   * The plugins the server runs, as its definition lists them. Over the
+   * server's database the CLI runs them as the server does; with
+   * `standaloneRepository`, they run on the server.
+   */
+  plugins?: readonly AnyHotUpdaterPlugin[];
 };
 
 export interface NativeBuildOptions {

@@ -6,12 +6,12 @@ icon: Server
 
 ## Overview
 
-Set `standaloneRepository` as the `server` in `hot-updater.config.ts` and
-`defineConsoleConfig` when the CLI and the Console reach a self-hosted server
-through its admin handler instead of importing its server definition. It does
-not open the database itself: the server runs each change on its own database.
-It carries the server's storage adapters, which the CLI uploads with, and reads
-the server's plugins from the admin `/version`.
+Configure `standaloneRepository` as the `database` in `hot-updater.config.ts`
+or in a deployed Console's configuration when your metadata lives behind a
+self-hosted server. It does not open the database itself: it calls the
+server's admin handler, and the server runs each change on its own database.
+List the server's plugins beside it in `plugins`, so the CLI and the Console
+know which ones the server runs.
 
 <Callout type="info">
 See the [Self-Hosting (Custom) Guide](/docs/custom/overview) for complete server implementation instructions using `@hot-updater/server` with database adapters (Drizzle, Prisma, Kysely, MongoDB) and frameworks (Hono, Express, Elysia).
@@ -20,21 +20,20 @@ See the [Self-Hosting (Custom) Guide](/docs/custom/overview) for complete server
 
 ## Installation
 
-Install it with your storage adapter's package, such as `@hot-updater/aws`:
+Install it with `@hot-updater/server`, which provides the official plugins
+that `plugins` lists:
 
 ```package-install
-npm install @hot-updater/standalone @hot-updater/aws --save-dev
+npm install @hot-updater/standalone @hot-updater/server --save-dev
 ```
 
 ## Usage
 
-Configure your CLI to connect to your self-hosted server. `storage` lists the
-server's storage adapters, here the
-[quick start](/docs/custom/quick-start#define-the-server)'s R2 bucket through
-`s3Storage`:
+Configure your CLI to connect to your self-hosted server:
 
 ```typescript title="hot-updater.config.ts (excerpt)"
-import { s3Storage } from "@hot-updater/aws";
+import { apiKeys } from "@hot-updater/server/plugins/api-keys"; // [!code ++]
+import { insights } from "@hot-updater/server/plugins/insights"; // [!code ++]
 import { standaloneRepository } from "@hot-updater/standalone"; // [!code ++]
 import { defineConfig } from "hot-updater";
 
@@ -45,65 +44,53 @@ if (!adminToken) {
 
 export default defineConfig({
   build, // Your existing build adapter
-  updateStrategy: "appVersion",
-  server: standaloneRepository({ // [!code ++]
+  storage, // Your existing storage adapter
+  database: standaloneRepository({ // [!code ++]
     baseUrl: "http://localhost:3000/hot-updater/admin", // [!code ++]
     commonHeaders: { // [!code ++]
       Authorization: `Bearer ${adminToken}`, // [!code ++]
     }, // [!code ++]
-    storage: [ // [!code ++]
-      s3Storage({ // [!code ++]
-        region: "auto", // [!code ++]
-        endpoint: process.env.R2_ENDPOINT, // [!code ++]
-        credentials: { // [!code ++]
-          accessKeyId: process.env.R2_ACCESS_KEY_ID!, // [!code ++]
-          secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!, // [!code ++]
-        }, // [!code ++]
-        bucketName: process.env.R2_BUCKET_NAME!, // [!code ++]
-      }), // [!code ++]
-    ], // [!code ++]
   }), // [!code ++]
+  plugins: [insights(), apiKeys()], // The plugins the server runs // [!code ++]
+  updateStrategy: "appVersion",
 });
 ```
 
 ## Remote storage adapter
 
-For CLI uploads through a separate HTTP storage service, list
-[`standaloneStorage`](/docs/storage-adapters/standalone) in `storage`. Its
-configuration and service contract belong to Storage Adapters; the repository
-below manages database rows through the admin API.
+For CLI uploads through a separate HTTP storage service, use
+[`standaloneStorage`](/docs/storage-adapters/standalone). Its configuration and
+service contract belong to Storage Adapters; the repository below manages
+database rows through the admin API.
 
 ## Configuration
 
 `standaloneRepository` accepts the following options:
 
 ```typescript
-interface StandaloneServerConfig {
+interface StandaloneRepositoryConfig {
   baseUrl: string; // Exact root where handlers.admin is mounted
   commonHeaders?: Record<string, string>; // Sent with every admin request
-  storage: StorageAdapter[]; // The server's storage; the CLI uploads to the first
 }
 ```
 
-Every admin path is fixed relative to `baseUrl`. `storage` lists the adapters of
-the server's bundle storage, configured as in its `createHotUpdater`: the CLI
-uploads to the first, and the Console reads and deletes a bundle's files with
-the adapter of their protocol. The repository is
-`{ name, url, core, fetchAdmin, storage }`:
+Every admin path is fixed relative to `baseUrl`. The repository is
+`{ name, core, fetchAdmin }`:
 
 - `core` is core's API for Bundles, Releases, Release Catalogs and Channels,
   sent over the admin API. The CLI's commands and the Console use it.
 - `fetchAdmin(path)` sends a GET to the admin handler with the same headers.
-  The Console reads the server's plugins and Insights through it.
+  The Console reads the server's Insights through it.
 
 Before its first request, `core` reads `GET /version` from the admin handler.
 A server that reports an `adminProtocol` below 2, or none, fails with a
 message to upgrade `@hot-updater/server` on the server. When the server
 answers 503 because its database lacks its schema settings, the CLI says to
-run `hot-updater db migrate` where the server definition is.
+run `hot-updater db migrate` where the server's database is configured.
 
-`standaloneRepository` belongs only in the `server` of `hot-updater.config.ts`
-and `defineConsoleConfig`. `createHotUpdater` needs the server's own database.
+`standaloneRepository` belongs only in `hot-updater.config.ts` and Console
+configuration. `createHotUpdater` needs the server's own database and throws
+`HotUpdaterConfigError` when given this repository.
 
 ### Secure example
 
@@ -113,12 +100,11 @@ if (!adminToken) {
   throw new Error("HOT_UPDATER_ADMIN_TOKEN is required");
 }
 
-server: standaloneRepository({
+database: standaloneRepository({
   baseUrl: "http://localhost:3000/hot-updater/admin",
   commonHeaders: { // [!code ++]
     Authorization: `Bearer ${adminToken}`, // [!code ++]
   }, // [!code ++]
-  storage,
 });
 ```
 
@@ -129,12 +115,11 @@ the server setup.
 ### Alternate authentication
 
 ```typescript title="hot-updater.config.ts"
-server: standaloneRepository({
+database: standaloneRepository({
   baseUrl: process.env.HOT_UPDATER_ADMIN_URL!,
   commonHeaders: {
     "X-Internal-Service-Key": process.env.INTERNAL_SERVICE_KEY!, // [!code ++]
   },
-  storage,
 });
 ```
 
@@ -152,24 +137,15 @@ paths are relative to `baseUrl`, and every response carries
 
 ### Version
 
-`GET /version` reports the protocol, the ids of the plugins the server runs,
-sorted, and the client plugins those plugins name for the app. The Console
-shows only the features of the plugins listed, and none when `plugins` is
-missing. `hot-updater doctor` warns when the app does not add a client plugin
-listed in `clientPlugins`:
+`GET /version` reports the protocol and the ids of the plugins the server
+runs, sorted:
 
 ```json
 {
   "adminProtocol": 2,
   "infrastructureGeneration": 1,
   "version": "1.0.0",
-  "plugins": ["apiKeys", "insights"],
-  "clientPlugins": [
-    {
-      "module": "@hot-updater/react-native",
-      "name": "insights"
-    }
-  ]
+  "plugins": ["apiKeys", "insights"]
 }
 ```
 
@@ -329,9 +305,9 @@ opt-in; there is no built-in admin authenticator.
 
 <Callout type="warn">
   Through `standaloneRepository`, the Console manages Bundles, Releases and
-  Channels, and reads the server's Insights overview, events and
-  installations. It cannot show usage or Release activity, and it does not
-  manage the server's API keys; manage them with
+  Channels, and reads the server's Insights overview, events, installations,
+  update failures and retention periods. It cannot show usage or Release
+  activity, and it does not manage the server's API keys; manage them with
   [`hot-updater api-key`](/docs/custom/api-key-authentication) against the
   server's `createHotUpdater` module. A hosted Console must protect its browser
   session separately and keep the admin bearer token in server-side

@@ -1,11 +1,9 @@
 import {
-  type AdapterResource,
   type AnyHotUpdaterPlugin,
   type HotUpdaterCoreApi,
   type Migrator,
   type PluginClientCredential,
   type PluginClientPlugin,
-  type PluginCommand,
   type SchemaGenerator,
   type StorageAdapter,
   type ToolingDatabase,
@@ -29,7 +27,7 @@ export interface ServerClientEndpoint {
 export interface ServerDefinition {
   /** The database as configured, with the tooling `hot-updater db` runs. */
   readonly database: ToolingDatabase;
-  /** The storage as configured, in order: the CLI uploads to the first. */
+  /** The storage as configured, in order. */
   readonly storage: readonly StorageAdapter[];
   readonly plugins: readonly AnyHotUpdaterPlugin[];
   /** The client plugins an app adds for the plugins: what init prints. */
@@ -89,188 +87,12 @@ export const serverDefinitionOf = (
   );
 };
 
-/** A managed server: where it runs, and the database and storage it runs on. */
-export interface ManagedServer {
-  /** For messages, such as "Cloudflare". */
-  readonly provider: string;
-  /** The name its database reports, such as `d1Database`. */
-  readonly database: string;
-  /** The protocol of its storage's URIs, such as `r2`. */
-  readonly storage: string;
-  /**
-   * The resources the managed server runs on, as its setup made them. The
-   * definition's adapters must reach the same, or the CLI would read and
-   * write others than the server does.
-   */
-  readonly resources?: {
-    readonly database?: AdapterResource;
-    readonly storage?: AdapterResource;
-  };
-}
-
-/** Refuses an adapter that reaches a resource other than the managed server's. */
-const assertSameResource = (
-  provider: string,
-  adapter: { readonly name: string; readonly resource?: AdapterResource },
-  expected: AdapterResource | undefined,
-) => {
-  const actual = adapter.resource;
-  for (const [key, value] of Object.entries(expected ?? {})) {
-    const found = actual?.[key];
-    if (value === undefined || found === undefined || found === value) {
-      continue;
-    }
-    throw new ServerDefinitionError(
-      `The managed ${provider} server runs on ${key} ${value}, which its setup made, but the server definition's ${adapter.name} has ${key} ${found}, so the CLI would read and write another one. Give it ${value}, as .env.hotupdater holds it, or host the server yourself.`,
-    );
-  }
-};
-
-/**
- * The project's server definition, as a managed server runs it. The managed
- * runtime serves the definition on its own database and storage, so the
- * definition's must be the provider's, on the resources its setup made; its
- * plugins are the project's, including none of Hot Updater's own.
- */
-export const managedServerDefinitionOf = (
-  hotUpdater: unknown,
-  { provider, database, storage, resources }: ManagedServer,
-): ServerDefinition => {
-  const definition = serverDefinitionOf(hotUpdater);
-  if (definition.database.name !== database) {
-    throw new ServerDefinitionError(
-      `The managed ${provider} server runs on ${database}, but the server definition's database is ${definition.database.name}. Use ${database}, or host the server yourself.`,
-    );
-  }
-  const others = definition.storage.filter(
-    (adapter) => adapter.protocol !== storage,
-  );
-  if (definition.storage.length === 0 || others.length > 0) {
-    throw new ServerDefinitionError(
-      `The managed ${provider} server stores bundles in its ${storage} storage, but the server definition's storage is ${definition.storage.map((adapter) => adapter.name).join(", ") || "empty"}. List only the provider's storage, or host the server yourself.`,
-    );
-  }
-  assertSameResource(provider, definition.database, resources?.database);
-  for (const adapter of definition.storage) {
-    assertSameResource(provider, adapter, resources?.storage);
-  }
-  return definition;
-};
-
-/** A top-level command a plugin adds to `hot-updater`. */
-export interface PluginCommandEntry {
-  /** The id of the plugin that adds it. */
-  readonly plugin: string;
-  readonly command: PluginCommand;
-}
-
-const COMMAND_NAME = /^[a-z][a-z0-9]*(-[a-z0-9]+)*$/u;
-const ARGUMENT_NAME = /^[A-Za-z][A-Za-z0-9]*$/u;
-// The CLI appends the server config's path to every command that runs.
-const RESERVED_ARGUMENT = "configPath";
-
 const fail = (message: string): never => {
   throw new ServerDefinitionError(message);
 };
 
 const isObject = (value: unknown): value is Record<string, unknown> =>
   isRecord(value) && !Array.isArray(value);
-
-const checkCommand = (
-  plugin: string,
-  value: unknown,
-  path: readonly string[],
-): PluginCommand => {
-  const at = `Plugin "${plugin}" command "${[...path, isObject(value) ? String(value.name) : "?"].join(" ")}"`;
-  if (
-    !isObject(value) ||
-    typeof value.name !== "string" ||
-    !COMMAND_NAME.test(value.name) ||
-    typeof value.description !== "string"
-  ) {
-    return fail(
-      `${at} needs a name of lowercase words joined by hyphens and a description.`,
-    );
-  }
-  const command = value as unknown as PluginCommand;
-  if (
-    (typeof command.run === "function") ===
-    (command.commands !== undefined)
-  ) {
-    fail(`${at} needs either subcommands or run, not both.`);
-  }
-  const names = new Set<string>();
-  for (const argument of command.arguments ?? []) {
-    if (
-      !isObject(argument) ||
-      typeof argument.name !== "string" ||
-      !ARGUMENT_NAME.test(argument.name) ||
-      argument.name === RESERVED_ARGUMENT ||
-      names.has(argument.name) ||
-      typeof argument.description !== "string"
-    ) {
-      fail(
-        `${at} has an argument that needs a unique camelCase name other than "${RESERVED_ARGUMENT}" and a description.`,
-      );
-    }
-    names.add(argument.name);
-  }
-  for (const option of command.options ?? []) {
-    if (
-      !isObject(option) ||
-      typeof option.flags !== "string" ||
-      !option.flags.includes("--") ||
-      typeof option.description !== "string"
-    ) {
-      fail(`${at} has an option that needs --flags and a description.`);
-    }
-  }
-  if (command.commands !== undefined) {
-    if (!Array.isArray(command.commands) || command.commands.length === 0) {
-      fail(`${at} needs at least one subcommand.`);
-    }
-    const subcommands = new Set<string>();
-    for (const subcommand of command.commands) {
-      const checked = checkCommand(plugin, subcommand, [...path, command.name]);
-      if (subcommands.has(checked.name)) {
-        fail(`${at} has two subcommands named "${checked.name}".`);
-      }
-      subcommands.add(checked.name);
-    }
-  }
-  return command;
-};
-
-/**
- * The top-level commands a definition's plugins add, each checked. Two
- * plugins may not add the same command.
- */
-export const pluginCommandsOf = ({
-  plugins,
-}: Pick<ServerDefinition, "plugins">): readonly PluginCommandEntry[] => {
-  const entries: PluginCommandEntry[] = [];
-  for (const plugin of plugins) {
-    const commands = plugin.cli?.commands;
-    if (commands === undefined) continue;
-    const id = String(plugin.id);
-    if (!Array.isArray(commands)) {
-      fail(`Plugin "${id}" cli.commands must be an array.`);
-    }
-    for (const value of commands as unknown[]) {
-      const command = checkCommand(id, value, []);
-      const taken = entries.find(
-        (entry) => entry.command.name === command.name,
-      );
-      if (taken !== undefined) {
-        fail(
-          `Plugins "${taken.plugin}" and "${id}" both add the command "${command.name}"; keep one.`,
-        );
-      }
-      entries.push({ plugin: id, command });
-    }
-  }
-  return entries;
-};
 
 /** The credential an app sends to client routes. */
 export interface ClientCredentialSpec {

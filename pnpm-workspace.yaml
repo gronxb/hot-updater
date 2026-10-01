@@ -59,7 +59,6 @@ catalogs:
     "@supabase/supabase-js": 2.76.1
   tools:
     "@clack/prompts": 1.7.0
-    esbuild: 0.28.1
     "execa": 9.5.2
     tsdown: 0.22.14
 

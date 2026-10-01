@@ -36,8 +36,7 @@ Record observations in deployment.json as described in COMMON.md.
   - Requires: cf.storage and cf.database.
   - Run: install worker/package.json dependencies in worker/. Fill wrangler.json's
     account, Worker name, D1 ID/name and R2 bucket. Keep DB/BUCKET bindings,
-    BUCKET_NAME, cache settings and compatibility date. Replace %%BUCKET_NAME%%
-    in worker/migrations using the verified bucket name with SQL-safe escaping.
+    BUCKET_NAME, cache settings and compatibility date.
     Inspect history, then from worker/ run
     `npx wrangler d1 migrations apply <database-name> --remote`.
     MCP SQL operations must preserve migration names/history as well.

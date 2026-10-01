@@ -1,7 +1,6 @@
 import {
   type AnyHotUpdaterPlugin,
   createMemoryAdapter,
-  createStorageAdapter,
   definePlugin,
   type HotUpdaterCoreApi,
   type ToolingDatabase,
@@ -15,14 +14,10 @@ import {
   generateSchema,
   generatesSchema,
   isServerDefinition,
-  managedServerDefinitionOf,
-  pluginCommandsOf,
   provisionClientCredential,
   type ServerDefinition,
   serverDefinitionOf,
 } from "./serverDefinition";
-
-const run = async () => {};
 
 /** A server definition as `createHotUpdater` returns one, through the properties tooling reads. */
 const definitionOf = (
@@ -38,37 +33,11 @@ const definitionOf = (
   ...overrides,
 });
 
-const withCommands = (id: string, commands: readonly unknown[]) =>
-  ({
-    id,
-    schemaVersion: "1",
-    schema: {},
-    init: () => ({ api: {} }),
-    cli: { commands },
-  }) as unknown as AnyHotUpdaterPlugin;
-
 const notes = definePlugin({
   id: "notes",
   schemaVersion: "1",
   schema: {},
   init: () => ({ api: { count: () => 0 } }),
-  cli: {
-    commands: [
-      {
-        name: "notes",
-        description: "Manage notes",
-        commands: [
-          {
-            name: "count",
-            description: "Count notes",
-            async run({ api, ui }) {
-              ui.print(String(api.count()));
-            },
-          },
-        ],
-      },
-    ],
-  },
 });
 
 const provision = vi.fn(
@@ -87,7 +56,6 @@ const keys = definePlugin({
     clientAuth: { varyHeaders: ["X-Key"], authenticate: async () => true },
   }),
   cli: {
-    commands: [{ name: "key", description: "Manage keys", run }],
     clientCredential: {
       label: "API key",
       header: "X-Key",
@@ -124,93 +92,6 @@ describe("serverDefinitionOf", () => {
       serverDefinitionOf({ adapterName: "kysely", handlers: {} }),
     ).toThrow(
       "exports a hotUpdater from an older @hot-updater/server. Upgrade @hot-updater/server to the version of hot-updater.",
-    );
-  });
-});
-
-describe("pluginCommandsOf", () => {
-  it("lists each plugin's top-level commands with its plugin", () => {
-    const entries = pluginCommandsOf(definitionOf({ plugins: [notes, keys] }));
-
-    expect(
-      entries.map(({ plugin, command }) => [plugin, command.name]),
-    ).toEqual([
-      ["notes", "notes"],
-      ["keys", "key"],
-    ]);
-    expect(pluginCommandsOf(definitionOf())).toEqual([]);
-  });
-
-  it.each([
-    [
-      [{ name: "Notes", description: "x", run }],
-      'command "Notes" needs a name of lowercase words joined by hyphens',
-    ],
-    [[{ name: "notes", run }], "and a description"],
-    [
-      [{ name: "notes", description: "x" }],
-      "needs either subcommands or run, not both",
-    ],
-    [
-      [{ name: "notes", description: "x", run, commands: [] }],
-      "needs either subcommands or run, not both",
-    ],
-    [[{ name: "notes", description: "x", commands: [] }], "at least one"],
-    [
-      [
-        {
-          name: "notes",
-          description: "x",
-          commands: [
-            { name: "add", description: "x", run },
-            { name: "add", description: "y", run },
-          ],
-        },
-      ],
-      'has two subcommands named "add"',
-    ],
-    [
-      [
-        {
-          name: "notes",
-          description: "x",
-          arguments: [{ name: "configPath", description: "x" }],
-          run,
-        },
-      ],
-      'other than "configPath"',
-    ],
-    [
-      [
-        {
-          name: "notes",
-          description: "x",
-          options: [{ flags: "-y", description: "x" }],
-          run,
-        },
-      ],
-      "needs --flags and a description",
-    ],
-  ])("refuses a malformed command (%#)", (commands, message) => {
-    expect(() =>
-      pluginCommandsOf(
-        definitionOf({ plugins: [withCommands("notes", commands)] }),
-      ),
-    ).toThrow(message);
-  });
-
-  it("refuses two plugins that add the same command", () => {
-    expect(() =>
-      pluginCommandsOf(
-        definitionOf({
-          plugins: [
-            notes,
-            withCommands("other", [{ name: "notes", description: "x", run }]),
-          ],
-        }),
-      ),
-    ).toThrow(
-      'Plugins "notes" and "other" both add the command "notes"; keep one.',
     );
   });
 });
@@ -332,70 +213,6 @@ describe("database tooling", () => {
     expect(generatesSchema(tooling({}))).toBe(false);
     expect(() => generateSchema(tooling({}), "latest")).toThrow(
       "has no schema generator; run `hot-updater db migrate` instead.",
-    );
-  });
-});
-
-describe("managedServerDefinitionOf", () => {
-  const cloudflare = {
-    provider: "Cloudflare",
-    database: "d1Database",
-    storage: "r2",
-    resources: { database: { databaseId: "d1-id" } },
-  } as const;
-  const r2 = createStorageAdapter({ name: "r2Storage", protocol: "r2" });
-  const d1 = (resource?: Record<string, string>) => ({
-    name: "d1Database",
-    adapter: createMemoryAdapter(),
-    ...(resource === undefined ? {} : { resource }),
-  });
-
-  it("gives back a definition on the managed server's database, storage, and resources", () => {
-    const definition = definitionOf({
-      database: d1({ databaseId: "d1-id" }),
-      storage: [r2],
-      plugins: [notes],
-    });
-
-    expect(managedServerDefinitionOf(definition, cloudflare)).toBe(definition);
-  });
-
-  it("refuses a database, storage, or resource the managed server does not run on", () => {
-    expect(() =>
-      managedServerDefinitionOf(
-        definitionOf({
-          database: { ...d1(), name: "postgres" },
-          storage: [r2],
-        }),
-        cloudflare,
-      ),
-    ).toThrow(
-      "The managed Cloudflare server runs on d1Database, but the server definition's database is postgres.",
-    );
-    expect(() =>
-      managedServerDefinitionOf(
-        definitionOf({
-          database: d1(),
-          storage: [
-            r2,
-            createStorageAdapter({ name: "s3Storage", protocol: "s3" }),
-          ],
-        }),
-        cloudflare,
-      ),
-    ).toThrow(
-      "stores bundles in its r2 storage, but the server definition's storage is r2Storage, s3Storage.",
-    );
-    expect(() =>
-      managedServerDefinitionOf(
-        definitionOf({ database: d1({ databaseId: "other" }), storage: [r2] }),
-        cloudflare,
-      ),
-    ).toThrow(
-      "The managed Cloudflare server runs on databaseId d1-id, which its setup made, but the server definition's d1Database has databaseId other",
-    );
-    expect(() => managedServerDefinitionOf({}, cloudflare)).toThrow(
-      "The server definition must export hotUpdater",
     );
   });
 });

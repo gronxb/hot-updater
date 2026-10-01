@@ -2,34 +2,25 @@ import fs from "fs";
 import path from "path";
 
 import {
-  clientAuthOf,
+  assembleServer,
   confirmInitInputPersistence,
   getHotUpdaterInitInputEnv,
   getInitProviderEnvVars,
   HOT_UPDATER_SERVER_PACKAGE_VERSION_ENV,
   InitError,
   link,
-  loadManagedServerDefinition,
   makeEnv,
-  type ManagedServerDefinition,
-  managedServerDefinitionOf,
   p,
   printAppSetup,
   provisionClientCredential,
   type ProvisionedClientCredential,
   readHotUpdaterInitEnv,
-  readManagedServerDefinition,
-  replacingServerDefinitions,
   resolveHotUpdaterServerVersion,
   resolvePackageVersion,
   type RunInitOptions,
   transformEnv,
 } from "@hot-updater/cli-tools";
-import type {
-  AnyHotUpdaterPlugin,
-  PluginClientPlugin,
-} from "@hot-updater/plugin-core";
-import { createHotUpdater } from "@hot-updater/server";
+import type { PluginClientPlugin } from "@hot-updater/plugin-core";
 import { isEqual, sortBy, uniqWith } from "es-toolkit";
 import { ExecaError, execa } from "execa";
 import {
@@ -45,7 +36,6 @@ import {
 } from "../src/firebaseDatabase";
 import { FIREBASE_V1_FUNCTION_NAME } from "../src/firebaseInfrastructureNames";
 import { plugins } from "../src/plugins";
-import { getConfigScaffold } from "./configTemplate";
 import { inputFirebaseApplicationCredentials } from "./firebaseApplicationCredentials";
 import {
   assertFirebaseFunctionCanInitialize,
@@ -59,7 +49,6 @@ import {
 } from "./firebaseInitInputs";
 import { resolveFirebaseRegion } from "./firebaseRegion";
 import { initProvider as FIREBASE_INIT_PROVIDER } from "./init/index";
-import { buildFunctionFromDefinition } from "./managedFunction";
 import { prepareFirebaseTemplate } from "./prepareTemplate";
 import { createFirebaseProject, initFirebaseUser, setEnv } from "./select";
 
@@ -452,83 +441,7 @@ const checkIfGcloudCliInstalled = async () => {
   }
 };
 
-/**
- * The plugins of the project's edited server definition, which it checks
- * runs on the project and bucket init set up, bundled into `functionsDir`
- * in place of the prebuilt function. The Firebase apps the definition
- * starts as it loads are deleted, so init's own clients keep its
- * credentials and project.
- */
-const loadEditedDefinition = async ({
-  applicationCredentials,
-  definition,
-  functionsDir,
-  projectId,
-  storageBucket,
-}: {
-  readonly applicationCredentials: string | undefined;
-  readonly definition: ManagedServerDefinition;
-  readonly functionsDir: string;
-  readonly projectId: string;
-  readonly storageBucket: string;
-}): Promise<readonly AnyHotUpdaterPlugin[]> => {
-  const appsBefore = new Set(getApps());
-  let serverPlugins: readonly AnyHotUpdaterPlugin[];
-  try {
-    serverPlugins = await loadManagedServerDefinition(
-      definition,
-      (hotUpdater) => {
-        const loaded = managedServerDefinitionOf(hotUpdater, {
-          provider: "Firebase",
-          database: "firebaseDatabase",
-          storage: "gs",
-          resources: {
-            database: { projectId },
-            storage: { projectId, storageBucket },
-          },
-        });
-        // A clientAuth plugin must give init the credential an app sends.
-        clientAuthOf(loaded);
-        return loaded.plugins;
-      },
-      {
-        env: {
-          [FIREBASE_INIT_PROVIDER.inputs.projectId.envKey]: projectId,
-          HOT_UPDATER_FIREBASE_STORAGE_BUCKET: storageBucket,
-          // Without a key file, application-default credentials, never the
-          // placeholder .env.hotupdater may hold.
-          GOOGLE_APPLICATION_CREDENTIALS: applicationCredentials || undefined,
-        },
-      },
-    );
-  } finally {
-    await Promise.all(
-      getApps()
-        .filter((app) => !appsBefore.has(app))
-        .map((app) => deleteApp(app)),
-    );
-  }
-  await buildFunctionFromDefinition({
-    definition: definition.path,
-    packageRoot: path.dirname(
-      require.resolve("@hot-updater/firebase/package.json"),
-    ),
-    projectRoot: process.cwd(),
-    functionsDir,
-  });
-  return serverPlugins;
-};
-
-export const runInit = async ({
-  build,
-  envFile,
-  otherServerDefinitions,
-}: RunInitOptions) => {
-  const scaffold = replacingServerDefinitions(
-    getConfigScaffold(build),
-    otherServerDefinitions,
-  );
-  const definition = await readManagedServerDefinition(scaffold, process.cwd());
+export const runInit = async ({ build, envFile }: RunInitOptions) => {
   const nonInteractive = envFile !== undefined;
   const initEnvSources = await readHotUpdaterInitEnv(process.cwd(), envFile);
   const { managedEnv } = initEnvSources;
@@ -574,21 +487,6 @@ export const runInit = async ({
       return cliEnv;
     },
   );
-
-  // The server the function runs: the package's, or the project's edited
-  // definition, read with the settings init writes. It is checked and
-  // bundled in place of the prebuilt function before init changes the
-  // project.
-  const serverPlugins =
-    definition.edited && initializeVariable.status === "ready"
-      ? await loadEditedDefinition({
-          applicationCredentials,
-          definition,
-          functionsDir,
-          projectId: initializeVariable.projectId,
-          storageBucket: initializeVariable.storageBucket,
-        })
-      : plugins;
 
   if (initializeVariable.status === "ready") {
     await assertFirebaseInfrastructureCanInitialize({
@@ -639,20 +537,20 @@ export const runInit = async ({
     await removeTmpDir();
     return;
   }
+  const functionsCode = transformEnv(functionsIndexPath, {
+    REGION: currentRegion,
+  });
+  await fs.promises.writeFile(functionsIndexPath, functionsCode);
   await setEnv({
     projectId: initializeVariable.projectId,
     storageBucket: initializeVariable.storageBucket,
-    scaffold,
+    build,
     region: currentRegion,
     applicationCredentials:
       persistedInputs[
         FIREBASE_INIT_PROVIDER.inputs.applicationCredentials.envKey
       ],
   });
-  const functionsCode = transformEnv(functionsIndexPath, {
-    REGION: currentRegion,
-  });
-  await fs.promises.writeFile(functionsIndexPath, functionsCode);
 
   if (
     runtimePackageInfo.serverPackageVersion !==
@@ -685,32 +583,26 @@ export const runInit = async ({
   ]);
 
   await deployFirestore(tmpDir, nonInteractive, cliEnv);
-  const existingApps = new Set(getApps());
   const credential = applicationCredentials
     ? cert(
         JSON.parse(await fs.promises.readFile(applicationCredentials, "utf-8")),
       )
     : applicationDefault();
+  const existingApps = new Set(getApps());
   const databaseConfig = {
     credential,
     projectId: initializeVariable.projectId,
   };
   const database = firebaseDatabase(databaseConfig);
   // The managed server's plugins over the database init set up, which
-  // creating it neither reads nor writes.
-  const managedServer = createHotUpdater({
-    database,
-    plugins: serverPlugins,
-    ...(serverPlugins.some(({ provides }) => provides?.clientAuth)
-      ? {}
-      : { clientAccess: "public" }),
-  } as Parameters<typeof createHotUpdater>[0]);
+  // assembling it neither reads nor writes.
+  const server = assembleServer({ database, plugins });
   let clientCredential: ProvisionedClientCredential | undefined;
   try {
     // The database reads nothing until the schema settings exist.
-    await migrateFirebaseDatabase(databaseConfig, managedServer.plugins);
+    await migrateFirebaseDatabase(databaseConfig, plugins);
     // The app's credential, through the managed server's plugins, on the tables they read.
-    clientCredential = await provisionClientCredential(managedServer, {
+    clientCredential = await provisionClientCredential(server, {
       env: initInputEnv,
       name: "Firebase init",
     });
@@ -815,7 +707,7 @@ export const runInit = async ({
     clientCredential,
     initializeVariable.projectId,
     currentRegion,
-    managedServer.clientPlugins,
+    server.clientPlugins,
     cliEnv,
   );
   await removeTmpDir();
@@ -833,6 +725,5 @@ export const runInit = async ({
   p.log.success("Done! 🎉");
 };
 
-// What init asks for and checks before `runInit`, and the server definitions
-// it writes.
+// What init asks for and checks before `runInit`.
 export { initProvider } from "./init/index";

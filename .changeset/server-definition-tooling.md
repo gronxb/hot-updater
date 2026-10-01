@@ -2,4 +2,4 @@
 "@hot-updater/server": minor
 ---
 
-A server checks that its storage serves downloads (`get` and `getDownloadUrl`) where it first reads `hotUpdater.handlers`, so the CLI and the console can load a definition whose storage only uploads. The admin `/version` also lists `clientPlugins`, the client plugins an app adds for the server's plugins, which `hot-updater doctor` checks.
+A server checks that its storage serves downloads (`get` and `getDownloadUrl`) where it first reads `hotUpdater.handlers`, so the CLI and the console can run `createHotUpdater` over the storage in their config, which only uploads.

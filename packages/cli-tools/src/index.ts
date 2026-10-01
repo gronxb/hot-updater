@@ -1,8 +1,8 @@
 export * from "./BuildLogger";
 export * from "./appSetup";
+export * from "./assembleServer";
 export * from "./banner";
 export * from "./bundleSigning";
-export * from "./bundleServer";
 export * from "./ConfigBuilder";
 export * from "./colors";
 export * from "./copyDirToTmp";
@@ -23,7 +23,6 @@ export * from "./initOptions";
 export * from "./LogWriter";
 export * from "./loadConfig";
 export * from "./serverDefinition";
-export * from "./serverModule";
 export * from "./log";
 export * from "./makeEnv";
 export * from "./moduleSpecifiers";

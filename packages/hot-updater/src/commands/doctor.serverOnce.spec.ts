@@ -2,11 +2,19 @@ import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-import { getCwd, loadConfig, readPackageUp } from "@hot-updater/cli-tools";
+import {
+  assembleServer,
+  getCwd,
+  loadConfig,
+  readPackageUp,
+} from "@hot-updater/cli-tools";
 import { createEngine } from "@hot-updater/plugin-core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { ClosingServerState } from "./__fixtures__/closingServer";
+import {
+  type ClosingDatabaseState,
+  createClosingDatabase,
+} from "./__fixtures__/closingDatabase";
 import { doctor } from "./doctor";
 
 vi.mock("../packageJson", () => ({ packageJsonData: { version: "1.0.0" } }));
@@ -19,16 +27,15 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
   readPackageUp: vi.fn(),
 }));
 
-const SERVER = path.join(import.meta.dirname, "__fixtures__/closingServer.ts");
-
-const server = (): ClosingServerState =>
-  (globalThis as { __closingServer?: ClosingServerState }).__closingServer!;
-
 let app: string;
+let closing: ReturnType<typeof createClosingDatabase>;
+let state: ClosingDatabaseState;
 
 beforeEach(async () => {
   vi.clearAllMocks();
   app = await mkdtemp(path.join(os.tmpdir(), "hot-updater-doctor-server-"));
+  closing = createClosingDatabase();
+  state = closing.state;
   vi.mocked(getCwd).mockReturnValue(app);
   vi.mocked(readPackageUp).mockResolvedValue({
     packageJson: {
@@ -40,7 +47,8 @@ beforeEach(async () => {
     path: path.join(app, "package.json"),
   } as never);
   vi.mocked(loadConfig).mockResolvedValue({
-    server: SERVER,
+    database: closing.database,
+    plugins: [],
     updateStrategy: "appVersion",
     platform: {
       ios: { infoPlistPaths: [] },
@@ -48,14 +56,6 @@ beforeEach(async () => {
     },
     build: async () => ({}),
   } as never);
-  const loaded = (globalThis as { __closingServer?: ClosingServerState })
-    .__closingServer;
-  if (loaded) {
-    // The module stays loaded for the process: reopen its database.
-    loaded.closed = false;
-    loaded.closes = 0;
-    loaded.callsAfterClose = 0;
-  }
 });
 
 afterEach(async () => {
@@ -73,15 +73,15 @@ describe("doctor's server", () => {
         artifacts: { unreferenced: [], issues: [] },
       },
     });
-    expect(server().callsAfterClose).toBe(0);
-    expect(server().closes).toBe(1);
+    expect(state.callsAfterClose).toBe(0);
+    expect(state.closes).toBe(1);
   });
 
   it("stays open through --fix and the checks after it", async () => {
-    // Seed a stale catalog in the module's own database.
-    await doctor();
-    server().closed = false;
-    const [deployed] = await server().hotUpdater.core.deploy([
+    // Seed a stale catalog in the configured database.
+    const [deployed] = await assembleServer({
+      database: closing.database,
+    }).core.deploy([
       {
         bundle: {
           assetBaseStorageUri: "storage://assets",
@@ -103,7 +103,7 @@ describe("doctor's server", () => {
       },
     ]);
     const scopeKey = deployed!.release!.scope_key;
-    const engine = createEngine(server().database);
+    const engine = createEngine(closing.database);
     await engine.core.transaction(async (tx) => {
       const row = await tx.findOne("release_catalogs", {
         scope_key: scopeKey,
@@ -113,7 +113,6 @@ describe("doctor's server", () => {
       });
     });
     await engine.dispose();
-    server().closes = 0;
 
     const result = await doctor({ fix: true });
 
@@ -124,7 +123,7 @@ describe("doctor's server", () => {
         releaseCatalogs: { scopes: [{ scopeKey, state: "verified" }] },
       },
     });
-    expect(server().callsAfterClose).toBe(0);
-    expect(server().closes).toBe(1);
+    expect(state.callsAfterClose).toBe(0);
+    expect(state.closes).toBe(1);
   });
 });

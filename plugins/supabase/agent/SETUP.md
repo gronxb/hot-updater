@@ -33,7 +33,6 @@ connection, CLI/API or browser can handle missing account-level prerequisites.
     that marker is missing or unsupported, or recorded migrations disagree with
     the actual schema. Preserve the namespace and history for investigation.
     For a fresh namespace or a verified compatible installation, fill
-    %%BUCKET_NAME%% in supabase/migrations with SQL-safe escaping and
     the project ID in config.toml. Preserve original migration filenames.
     With local CLI access, use private session/environment credentials and run
     these commands from the scaffold root, one at a time:

@@ -71,10 +71,4 @@ describe("HotUpdater Detox scenarios", () => {
       await app.verifyConsoleInsights(insightsStartedAtMs);
     });
   }
-
-  // The example's managed servers run a plugin of the example's own.
-  it("serves the example's own plugin from the deployed server", async () => {
-    const app = new DetoxAppDriver(controlClient, bootstrapResult);
-    await app.verifyServerPlugins();
-  });
 });

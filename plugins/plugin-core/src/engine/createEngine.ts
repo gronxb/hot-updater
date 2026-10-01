@@ -57,12 +57,14 @@ const pluginTablesFix = (database: EngineDatabase) => {
   const { createMigrator, generateSchema } = database as EngineDatabase &
     DatabaseTooling;
   const managed =
-    "rerun `hot-updater init --provider <provider>`, which deploys the server with these plugins and creates their tables.";
+    "A managed server runs only its provider's plugins, and rerunning `hot-updater init --provider <provider>` applies the provider's migrations.";
+  const serverProject =
+    "Run `hot-updater db` commands in the server's project: they load the server file named on the command line, or src/hotUpdater.* or src/db.*, and don't read hot-updater.config.ts.";
   return createMigrator !== undefined
-    ? `Run \`hot-updater db migrate\`; on a managed server, ${managed}`
+    ? `Run \`hot-updater db migrate\`. ${managed} ${serverProject}`
     : generateSchema !== undefined
-      ? `Run \`hot-updater db generate\` and apply the file it writes; on a managed server, ${managed}`
-      : `On a managed server, ${managed}`;
+      ? `Run \`hot-updater db generate\` and apply the file it writes. ${managed} ${serverProject}`
+      : managed;
 };
 
 /**

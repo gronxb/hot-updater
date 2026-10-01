@@ -1,7 +1,5 @@
-import { existsSync } from "fs";
 import fs from "fs/promises";
 import path from "path";
-import { parseEnv } from "util";
 
 import {
   parseSync,
@@ -13,6 +11,8 @@ import {
   type ObjectPropertyKind,
   type Program,
   type Span,
+  type VariableDeclaration,
+  type VariableDeclarator,
 } from "oxc-parser";
 
 import {
@@ -22,77 +22,62 @@ import {
   type ProviderConfig,
   renderImportStatements,
 } from "./ConfigBuilder";
-import { InitError } from "./initOptions";
 import { p } from "./prompts";
-import { importServerModule, type ServerModule } from "./serverModule";
+
+export type ManagedHelperStrategy =
+  | "merge-object"
+  | "preserve-existing"
+  | "replace";
+
+export type ManagedHelperStatement = {
+  name: string;
+  code: string;
+  strategy: ManagedHelperStrategy;
+  replaceIncompatibleProperties?: string[];
+};
 
 export type CreateHotUpdaterConfigScaffoldOptions = {
   build: BuildType;
   storage: ProviderConfig;
   database: ProviderConfig;
   plugins: ProviderConfig;
-  /** Imports the server definition's intermediate code needs. */
   extraImports?: ImportInfo[];
-  /** Code between the server definition's imports and the server, such as a credentials helper. */
-  intermediateCode?: string;
+  helperStatements?: ManagedHelperStatement[];
   updateStrategy?: "appVersion" | "fingerprint";
 };
 
 export type CreateHotUpdaterConfigScaffoldFromBuilderOptions = {
+  helperStatements?: ManagedHelperStatement[];
   updateStrategy?: "appVersion" | "fingerprint";
 };
 
 export type HotUpdaterConfigScaffold = {
-  /** hot-updater.config.ts. */
   text: string;
   imports: ImportInfo[];
   build: {
     initializer: string;
     callee: string;
   };
-  /** The `server` path hot-updater.config.ts points at. */
-  server: string;
-  updateStrategy: string;
-  /** The server definition `server` points at. */
-  definition: {
-    text: string;
-    imports: ImportInfo[];
-    storage: {
-      initializer: string;
-      callee: string;
-    };
-    database: {
-      initializer: string;
-      callee: string;
-    };
-    intermediateCode: string;
-    /**
-     * Definitions init wrote before for this provider, such as with other
-     * credentials, which this one replaces rather than keeps.
-     */
-    replaces?: readonly string[];
+  storage: {
+    initializer: string;
+    callee: string;
   };
+  database: {
+    initializer: string;
+    callee: string;
+  };
+  /** The plugins the server runs, such as a provider package's `plugins`. */
+  plugins: {
+    initializer: string;
+  };
+  helperStatements: ManagedHelperStatement[];
+  updateStrategy: string;
 };
 
 export type WriteHotUpdaterConfigResult = {
   status: "created" | "merged" | "skipped";
   path: string;
   reason?: string;
-  /**
-   * The `server` path the written file points at, when it is a string
-   * literal: the scaffold's, or one the file already set.
-   */
-  server?: string;
-};
-
-export type WriteServerDefinitionResult = {
-  /**
-   * `updated` when it replaced one init wrote before, and `kept` when the
-   * file already defines another server: the project's own, which init
-   * never overwrites.
-   */
-  status: "created" | "updated" | "unchanged" | "kept";
-  path: string;
 };
 
 const HOT_UPDATER_CONFIG_PATH = "hot-updater.config.ts";
@@ -111,30 +96,55 @@ const MANAGED_IMPORT_PACKAGES = new Set([
   "@hot-updater/rock",
   "@hot-updater/supabase",
 ]);
-/**
- * Helpers older configs declared for storage and database, which moved to
- * the server definition.
- */
-const MOVED_HELPER_NAMES = new Set([
+const MANAGED_HELPER_NAMES = new Set([
   "awsOptions",
   "commonOptions",
   "credential",
   "storageOptions",
 ]);
-/** Properties older configs set, which moved to the server definition. */
-const MOVED_PROPERTY_NAMES = ["storage", "database", "plugins"] as const;
 const KNOWN_BUILD_CALLEES = new Set(["bare", "expo", "rock"]);
+/** Build adapter packages, whose imports a kept build still needs. */
+const BUILD_IMPORT_PACKAGES = new Set(
+  [...KNOWN_BUILD_CALLEES].map((callee) => `@hot-updater/${callee}`),
+);
 
 type ConfigSource = {
   readonly program: Program;
   readonly text: string;
 };
 
+type ImportDeclarationNode = Extract<
+  Program["body"][number],
+  { type: "ImportDeclaration" }
+>;
+
+const importDeclarationsOf = (source: ConfigSource) =>
+  source.program.body.filter(
+    (statement): statement is ImportDeclarationNode =>
+      statement.type === "ImportDeclaration",
+  );
+
 type TopLevelStatement = Program["body"][number];
 
 type ConfigObject = {
   readonly exportDeclaration: ExportDefaultDeclaration;
   readonly objectExpression: ObjectExpression;
+};
+
+type ParsedVariableStatement = {
+  readonly source: ConfigSource;
+  readonly statement: VariableDeclaration;
+  readonly declaration: VariableDeclarator;
+};
+
+type CallSource = {
+  readonly callExpression: CallExpression;
+  readonly source: ConfigSource;
+};
+
+type ObjectSource = {
+  readonly objectExpression: ObjectExpression;
+  readonly source: ConfigSource;
 };
 
 type ManagedConfigObject = {
@@ -192,6 +202,33 @@ const getStatementText = (source: ConfigSource, statement: TopLevelStatement) =>
   source.text
     .slice(getTopLevelFullStart(source, statement), statement.end)
     .trim();
+
+const parseVariableStatement = (
+  text: string,
+): ParsedVariableStatement | null => {
+  const source = parseConfigSource(text);
+  if (!source) {
+    return null;
+  }
+
+  const statement = source.program.body.find(
+    (candidate) => candidate.type === "VariableDeclaration",
+  );
+  if (statement?.type !== "VariableDeclaration") {
+    return null;
+  }
+
+  const declaration = statement.declarations[0];
+  if (declaration?.id.type !== "Identifier" || !declaration.init) {
+    return null;
+  }
+
+  return {
+    source,
+    statement,
+    declaration,
+  };
+};
 
 const getConfigObjectExpression = (
   argument: CallExpression["arguments"][number] | undefined,
@@ -261,19 +298,13 @@ const getObjectPropertyName = (property: ObjectPropertyKind): string | null => {
   return null;
 };
 
-const hasTrailingComma = (text: string) => {
-  const closeBraceIndex = text.lastIndexOf("}");
-  if (closeBraceIndex === -1) {
-    return false;
-  }
-
-  let index = closeBraceIndex - 1;
-  while (index >= 0 && /\s/.test(text[index] ?? "")) {
-    index -= 1;
-  }
-
-  return (text[index] ?? "") === ",";
-};
+const isDataProperty = (
+  property: ObjectPropertyKind,
+): property is ObjectProperty =>
+  property.type === "Property" &&
+  property.kind === "init" &&
+  !property.method &&
+  !property.shorthand;
 
 const dedentBlock = (text: string) => {
   const lines = text.replace(/\s+$/, "").split("\n");
@@ -291,35 +322,231 @@ const indentBlock = (text: string, indent: string) =>
     .map((line) => `${indent}${line}`)
     .join("\n");
 
-const appendMissingProperties = (
-  objectText: string,
+const lineStartOf = (text: string, position: number) =>
+  text.lastIndexOf("\n", position - 1) + 1;
+
+/** The indentation of the line `position` is on. */
+const lineIndentAt = (text: string, position: number) =>
+  /^[ \t]*/.exec(text.slice(lineStartOf(text, position)))?.[0] ?? "";
+
+/** Whether `node` is the first thing on its line. */
+const startsLine = (text: string, node: Span) =>
+  /^[ \t]*$/.test(text.slice(lineStartOf(text, node.start), node.start));
+
+/**
+ * A property's text with the indentation of its line, so that a property
+ * spanning lines dedents and indents as one block.
+ */
+const getPropertyBlockText = (source: ConfigSource, property: Span) =>
+  source.text.slice(
+    startsLine(source.text, property)
+      ? lineStartOf(source.text, property.start)
+      : property.start,
+    property.end,
+  );
+
+/**
+ * The edits, relative to `object`'s start, that add `propertyTexts` after its
+ * last property: each on a line of its own, after that property's comma and
+ * whatever comment shares its line, or after it on the line of a one-line
+ * object.
+ */
+const appendPropertiesEdits = (
+  source: ConfigSource,
+  object: ObjectExpression,
   propertyTexts: readonly string[],
-  hasExistingProperties: boolean,
-) => {
+): TextEdit[] => {
   if (propertyTexts.length === 0) {
-    return objectText;
+    return [];
   }
 
-  const closingBraceMatch = /\n([ \t]*)\}$/.exec(objectText);
-  const closingIndent = closingBraceMatch?.[1] ?? "";
-  const childIndent =
-    objectText.match(/\n([ \t]+)[^\s]/)?.[1] ?? `${closingIndent}  `;
-  const formattedProperties = propertyTexts
-    .map((propertyText) => indentBlock(propertyText, childIndent))
-    .join(",\n");
-  const closeBraceIndex = objectText.lastIndexOf("}");
-  if (closeBraceIndex === -1) {
-    return objectText;
+  const { text } = source;
+  const closeBrace = object.end - 1;
+  const relative = (position: number) => position - object.start;
+  const closingIndent = lineIndentAt(text, closeBrace);
+  const last = object.properties.at(-1);
+  if (!last) {
+    const childIndent = `${closingIndent}  `;
+    return [
+      {
+        start: relative(object.start + 1),
+        end: relative(closeBrace),
+        text: `\n${propertyTexts
+          .map((propertyText) => indentBlock(propertyText, childIndent))
+          .join(",\n")},\n${closingIndent}`,
+      },
+    ];
   }
 
-  const prefix = hasExistingProperties
-    ? hasTrailingComma(objectText)
-      ? "\n"
-      : ",\n"
-    : "\n";
-  const suffix = `,\n${closingIndent}`;
+  const comma = /^\s*,/.exec(text.slice(last.end, closeBrace));
+  const afterLast = last.end + (comma?.[0].length ?? 0);
+  const lineEnd = text.indexOf("\n", afterLast);
+  if (!startsLine(text, last) || lineEnd === -1 || lineEnd > closeBrace) {
+    return [
+      {
+        start: relative(afterLast),
+        end: relative(afterLast),
+        text: `${comma ? " " : ", "}${propertyTexts
+          .map((propertyText) => dedentBlock(propertyText))
+          .join(", ")}`,
+      },
+    ];
+  }
 
-  return `${objectText.slice(0, closeBraceIndex)}${prefix}${formattedProperties}${suffix}${objectText.slice(closeBraceIndex)}`;
+  const childIndent = lineIndentAt(text, last.start);
+  return [
+    ...(comma
+      ? []
+      : [{ start: relative(last.end), end: relative(last.end), text: "," }]),
+    {
+      start: relative(lineEnd),
+      end: relative(lineEnd),
+      text: `\n${propertyTexts
+        .map((propertyText) => indentBlock(propertyText, childIndent))
+        .join(",\n")},`,
+    },
+  ];
+};
+
+const mergeObjectLiteralText = (
+  existingObject: ObjectSource,
+  newObject: ObjectSource,
+  replaceIncompatibleProperties: readonly string[] = [],
+): string | null => {
+  const existingText = getNodeText(
+    existingObject.source,
+    existingObject.objectExpression,
+  );
+  const existingPropertyNames = new Set<string>();
+  const existingSpreadTexts = new Set<string>();
+  const edits: TextEdit[] = [];
+
+  for (const property of existingObject.objectExpression.properties) {
+    if (property.type === "SpreadElement") {
+      existingSpreadTexts.add(
+        getNodeText(existingObject.source, property.argument).trim(),
+      );
+      continue;
+    }
+
+    const propertyName = getObjectPropertyName(property);
+    if (!propertyName) {
+      continue;
+    }
+
+    existingPropertyNames.add(propertyName);
+    const nextProperty = newObject.objectExpression.properties.find(
+      (candidate) => getObjectPropertyName(candidate) === propertyName,
+    );
+    if (
+      !nextProperty ||
+      !isDataProperty(property) ||
+      !isDataProperty(nextProperty)
+    ) {
+      continue;
+    }
+
+    const existingCallee = getCallCallee(property.value);
+    const nextCallee = getCallCallee(nextProperty.value);
+    const hasIncompatibleValue =
+      (existingCallee !== null &&
+        nextCallee !== null &&
+        existingCallee !== nextCallee) ||
+      (property.value.type === "ObjectExpression") !==
+        (nextProperty.value.type === "ObjectExpression");
+    if (
+      replaceIncompatibleProperties.includes(propertyName) &&
+      hasIncompatibleValue
+    ) {
+      edits.push({
+        start: property.value.start - existingObject.objectExpression.start,
+        end: property.value.end - existingObject.objectExpression.start,
+        text: getNodeText(newObject.source, nextProperty.value),
+      });
+      continue;
+    }
+
+    if (
+      property.value.type === "ObjectExpression" &&
+      nextProperty.value.type === "ObjectExpression"
+    ) {
+      const mergedValue = mergeObjectLiteralText(
+        {
+          objectExpression: property.value,
+          source: existingObject.source,
+        },
+        {
+          objectExpression: nextProperty.value,
+          source: newObject.source,
+        },
+        replaceIncompatibleProperties,
+      );
+      if (!mergedValue) {
+        return null;
+      }
+
+      edits.push({
+        start: property.value.start - existingObject.objectExpression.start,
+        end: property.value.end - existingObject.objectExpression.start,
+        text: mergedValue,
+      });
+    }
+  }
+
+  const missingPropertyTexts = newObject.objectExpression.properties
+    .filter((property) => {
+      if (property.type === "SpreadElement") {
+        return !existingSpreadTexts.has(
+          getNodeText(newObject.source, property.argument).trim(),
+        );
+      }
+
+      const propertyName = getObjectPropertyName(property);
+      return propertyName ? !existingPropertyNames.has(propertyName) : false;
+    })
+    .map((property) => getPropertyBlockText(newObject.source, property));
+
+  return applyTextEdits(existingText, [
+    ...edits,
+    ...appendPropertiesEdits(
+      existingObject.source,
+      existingObject.objectExpression,
+      missingPropertyTexts,
+    ),
+  ]);
+};
+
+const buildMergedCallInitializer = (existing: CallSource, next: CallSource) => {
+  const [existingArgument] = existing.callExpression.arguments;
+  const [nextArgument] = next.callExpression.arguments;
+
+  if (
+    existing.callExpression.arguments.length === 1 &&
+    next.callExpression.arguments.length === 1 &&
+    existingArgument?.type === "ObjectExpression" &&
+    nextArgument?.type === "ObjectExpression"
+  ) {
+    const mergedObjectLiteral = mergeObjectLiteralText(
+      {
+        objectExpression: existingArgument,
+        source: existing.source,
+      },
+      {
+        objectExpression: nextArgument,
+        source: next.source,
+      },
+    );
+    if (!mergedObjectLiteral) {
+      return null;
+    }
+
+    return `${getNodeText(
+      existing.source,
+      existing.callExpression.callee,
+    )}(${mergedObjectLiteral})`;
+  }
+
+  return getNodeText(existing.source, existing.callExpression);
 };
 
 const findManagedProperty = (
@@ -338,6 +565,21 @@ const findManagedProperty = (
   return property?.type === "Property" ? property : null;
 };
 
+/** The `plugins` property, written either way: `plugins: [...]` or `plugins`. */
+const findPluginsProperty = (
+  objectExpression: ObjectExpression,
+): ObjectProperty | null => {
+  const property = objectExpression.properties.find(
+    (candidate) =>
+      candidate.type === "Property" &&
+      candidate.kind === "init" &&
+      !candidate.method &&
+      getObjectPropertyName(candidate) === "plugins",
+  );
+
+  return property?.type === "Property" ? property : null;
+};
+
 const getCallCallee = (expression: Expression) => {
   if (
     expression.type !== "CallExpression" ||
@@ -349,35 +591,64 @@ const getCallCallee = (expression: Expression) => {
   return expression.callee.name;
 };
 
-/**
- * The removal of `property` from the object `objectText` starts at
- * `objectStart`, with its trailing comma and its line's indentation.
- */
-const removePropertyEdit = (
-  objectText: string,
-  objectStart: number,
-  property: ObjectPropertyKind,
-): TextEdit => {
-  let start = property.start - objectStart;
-  let end = property.end - objectStart;
-  const trailingComma = /^\s*,[ \t]*\n?/.exec(objectText.slice(end));
-  if (trailingComma) end += trailingComma[0].length;
-  const indentation = /\n([ \t]*)$/.exec(objectText.slice(0, start));
-  if (indentation) start -= indentation[1]!.length;
-  return { start, end, text: "" };
+const mergeHelperStatement = (
+  existingStatementText: string,
+  helper: ManagedHelperStatement,
+) => {
+  if (helper.strategy === "preserve-existing") {
+    return existingStatementText;
+  }
+
+  if (helper.strategy === "replace") {
+    return helper.code.trim();
+  }
+
+  const existingStatement = parseVariableStatement(existingStatementText);
+  const nextStatement = parseVariableStatement(helper.code);
+  if (!existingStatement || !nextStatement) {
+    return null;
+  }
+
+  const existingInitializer = existingStatement.declaration.init;
+  const nextInitializer = nextStatement.declaration.init;
+  if (
+    existingInitializer?.type !== "ObjectExpression" ||
+    nextInitializer?.type !== "ObjectExpression"
+  ) {
+    return null;
+  }
+
+  const mergedInitializer = mergeObjectLiteralText(
+    {
+      objectExpression: existingInitializer,
+      source: existingStatement.source,
+    },
+    {
+      objectExpression: nextInitializer,
+      source: nextStatement.source,
+    },
+    helper.replaceIncompatibleProperties,
+  );
+  if (!mergedInitializer) {
+    return null;
+  }
+
+  const declarationKind =
+    existingStatement.statement.kind === "let" ||
+    existingStatement.statement.kind === "var"
+      ? existingStatement.statement.kind
+      : "const";
+
+  return `${declarationKind} ${helper.name} = ${mergedInitializer};`;
 };
 
-/** Build adapter packages, whose imports a kept build still needs. */
-const BUILD_IMPORT_PACKAGES = new Set(
-  [...KNOWN_BUILD_CALLEES].map((callee) => `@hot-updater/${callee}`),
-);
-
 /**
- * The config object with the scaffold's `build`, its `server` unless the
- * config already points somewhere, and without the settings that moved to
- * the server definition. A build that is not a plain build adapter, such
- * as `withSentry(bare())`, stays the project's (`keptBuild`); null when
- * `build` is no call.
+ * The config object with the scaffold's `build`, `storage`, `database`, and
+ * `plugins`: a call to the same adapter keeps the project's arguments and
+ * gains the scaffold's missing ones, and `plugins` is the scaffold's. A build
+ * that is not a plain build adapter, such as `withSentry(bare())`, stays the
+ * project's (`keptBuild`). Null when `build`, `storage`, or `database` is no
+ * call.
  */
 const updateManagedObject = (
   existing: ManagedConfigObject,
@@ -385,71 +656,108 @@ const updateManagedObject = (
 ): { readonly text: string; readonly keptBuild: boolean } | null => {
   const objectStart = existing.objectExpression.start;
   const objectText = getNodeText(existing.source, existing.objectExpression);
-  const edits: TextEdit[] = [];
+  const propertyEdits: TextEdit[] = [];
   const missingPropertyTexts: string[] = [];
   let keptBuild = false;
 
-  const existingBuild = findManagedProperty(existing.objectExpression, "build");
-  const nextBuild = findManagedProperty(next.objectExpression, "build");
-  if (nextBuild) {
-    if (!existingBuild) {
-      missingPropertyTexts.push(getNodeText(next.source, nextBuild));
-    } else {
-      const existingCallee = getCallCallee(existingBuild.value);
-      const nextCallee = getCallCallee(nextBuild.value);
-      if (!existingCallee || !nextCallee) {
-        return null;
-      }
+  for (const propertyName of ["build", "storage", "database"]) {
+    const existingProperty = findManagedProperty(
+      existing.objectExpression,
+      propertyName,
+    );
+    const nextProperty = findManagedProperty(
+      next.objectExpression,
+      propertyName,
+    );
+    if (!nextProperty) {
+      continue;
+    }
+
+    if (!existingProperty) {
+      missingPropertyTexts.push(
+        getPropertyBlockText(next.source, nextProperty),
+      );
+      continue;
+    }
+
+    const existingCallee = getCallCallee(existingProperty.value);
+    const nextCallee = getCallCallee(nextProperty.value);
+    if (!existingCallee || !nextCallee) {
+      return null;
+    }
+
+    let nextInitializerText = getNodeText(next.source, nextProperty.value);
+    if (propertyName === "build") {
       if (!KNOWN_BUILD_CALLEES.has(existingCallee)) {
         keptBuild = true;
-      } else if (existingCallee !== nextCallee) {
-        edits.push({
-          start: existingBuild.value.start - objectStart,
-          end: existingBuild.value.end - objectStart,
-          text: getNodeText(next.source, nextBuild.value),
-        });
+        continue;
       }
+
+      if (existingCallee === nextCallee) {
+        continue;
+      }
+    } else if (existingCallee === nextCallee) {
+      if (
+        existingProperty.value.type !== "CallExpression" ||
+        nextProperty.value.type !== "CallExpression"
+      ) {
+        return null;
+      }
+
+      const mergedInitializer = buildMergedCallInitializer(
+        {
+          callExpression: existingProperty.value,
+          source: existing.source,
+        },
+        {
+          callExpression: nextProperty.value,
+          source: next.source,
+        },
+      );
+      if (!mergedInitializer) {
+        return null;
+      }
+
+      nextInitializerText = mergedInitializer;
     }
+
+    propertyEdits.push({
+      start: existingProperty.value.start - objectStart,
+      end: existingProperty.value.end - objectStart,
+      text: nextInitializerText,
+    });
   }
 
-  const hasServer = existing.objectExpression.properties.some(
-    (property) => getObjectPropertyName(property) === "server",
-  );
-  const nextServer = findManagedProperty(next.objectExpression, "server");
-  if (!hasServer && nextServer) {
-    missingPropertyTexts.push(getNodeText(next.source, nextServer));
-  }
-
-  for (const property of existing.objectExpression.properties) {
-    const name = getObjectPropertyName(property);
-    if (
-      name !== null &&
-      (MOVED_PROPERTY_NAMES as readonly string[]).includes(name)
+  // The config lists the plugins the server runs, which the scaffold names.
+  const existingPlugins = findPluginsProperty(existing.objectExpression);
+  const nextPlugins = findPluginsProperty(next.objectExpression);
+  if (nextPlugins) {
+    const nextPluginsText = getNodeText(next.source, nextPlugins);
+    if (!existingPlugins) {
+      missingPropertyTexts.push(getPropertyBlockText(next.source, nextPlugins));
+    } else if (
+      getNodeText(existing.source, existingPlugins).replace(/\s+/gu, "") !==
+      nextPluginsText.replace(/\s+/gu, "")
     ) {
-      edits.push(removePropertyEdit(objectText, objectStart, property));
+      propertyEdits.push({
+        start: existingPlugins.start - objectStart,
+        end: existingPlugins.end - objectStart,
+        text: nextPluginsText,
+      });
     }
   }
 
-  const remainingProperties =
-    existing.objectExpression.properties.length -
-    edits.filter((edit) => edit.text === "").length;
   return {
-    text: appendMissingProperties(
-      applyTextEdits(objectText, edits),
-      missingPropertyTexts,
-      remainingProperties > 0,
-    ),
+    text: applyTextEdits(objectText, [
+      ...propertyEdits,
+      ...appendPropertiesEdits(
+        existing.source,
+        existing.objectExpression,
+        missingPropertyTexts,
+      ),
+    ]),
     keptBuild,
   };
-};
-
-/** The string literal `server` of a config object, if it sets one. */
-const findServerPointer = (objectExpression: ObjectExpression) => {
-  const server = findManagedProperty(objectExpression, "server");
-  return server?.value.type === "Literal" &&
-    typeof server.value.value === "string"
-    ? server.value.value
-    : undefined;
 };
 
 const getManagedHelperName = (statement: TopLevelStatement) => {
@@ -465,10 +773,77 @@ const getManagedHelperName = (statement: TopLevelStatement) => {
   return declaration.id.name;
 };
 
+/** Whether `text` refers to `name` as an identifier. */
+const usesIdentifier = (text: string, name: string) =>
+  new RegExp(`(?<![\\w$])${name.replace(/\$/g, "\\$")}(?![\\w$])`).test(text);
+
+/**
+ * What a managed package's existing imports bring that the rebuilt config
+ * still uses and the scaffold doesn't import, such as a project's own `cert`
+ * from firebase-admin/app beside the `credential` helper init keeps. Named
+ * value imports join the scaffold's import of that package; default,
+ * namespace, and type imports keep a declaration of their own.
+ */
+const keptManagedImports = (
+  declarations: readonly ImportDeclarationNode[],
+  scaffoldImports: readonly ImportInfo[],
+  usedText: string,
+): { readonly imports: ImportInfo[]; readonly texts: string[] } => {
+  const bound = new Set(
+    scaffoldImports.flatMap((info) => [
+      ...(info.named ?? []).map((name) => name.split(/\s+as\s+/).at(-1)!),
+      ...(info.defaultOrNamespace === undefined
+        ? []
+        : [info.defaultOrNamespace.replace(/^\*\s+as\s+/, "")]),
+    ]),
+  );
+  const imports: ImportInfo[] = [];
+  const texts: string[] = [];
+  for (const declaration of declarations) {
+    const pkg = declaration.source.value;
+    const named: string[] = [];
+    let defaultName: string | undefined;
+    let namespaceName: string | undefined;
+    for (const specifier of declaration.specifiers) {
+      const local = specifier.local.name;
+      if (bound.has(local) || !usesIdentifier(usedText, local)) continue;
+      if (specifier.type === "ImportDefaultSpecifier") {
+        defaultName = local;
+      } else if (specifier.type === "ImportNamespaceSpecifier") {
+        namespaceName = local;
+      } else {
+        const imported =
+          specifier.imported.type === "Identifier"
+            ? specifier.imported.name
+            : JSON.stringify(specifier.imported.value);
+        const name = imported === local ? local : `${imported} as ${local}`;
+        named.push(specifier.importKind === "type" ? `type ${name}` : name);
+      }
+    }
+    if (named.length === 0 && !defaultName && !namespaceName) continue;
+    if (declaration.importKind === "type") {
+      texts.push(`import type { ${named.join(", ")} } from "${pkg}";`);
+      continue;
+    }
+    if (named.length > 0) imports.push({ pkg, named });
+    if (namespaceName)
+      texts.push(`import * as ${namespaceName} from "${pkg}";`);
+    if (defaultName) texts.push(`import ${defaultName} from "${pkg}";`);
+  }
+  return { imports, texts };
+};
+
 const rebuildImportBlock = (
   source: ConfigSource,
   scaffold: HotUpdaterConfigScaffold,
-  { keptBuild }: { readonly keptBuild: boolean },
+  {
+    keptBuild,
+    usedText,
+  }: {
+    readonly keptBuild: boolean;
+    /** The rebuilt config without its imports: what decides which imports stay. */
+    readonly usedText: string;
+  },
 ): TextEdit => {
   // Keep environment-loading imports under the existing config's control,
   // and a kept build's adapter import with it.
@@ -482,9 +857,7 @@ const rebuildImportBlock = (
           }
         : info,
     );
-  const importDeclarations = source.program.body.filter(
-    (statement) => statement.type === "ImportDeclaration",
-  );
+  const importDeclarations = importDeclarationsOf(source);
   const firstImport = importDeclarations[0];
   const lastImport = importDeclarations.at(-1);
   if (!firstImport || !lastImport) {
@@ -495,19 +868,30 @@ const rebuildImportBlock = (
     };
   }
 
+  const isPreserved = (declaration: ImportDeclarationNode) =>
+    !MANAGED_IMPORT_PACKAGES.has(declaration.source.value) ||
+    (keptBuild && BUILD_IMPORT_PACKAGES.has(declaration.source.value));
   const preservedImportTexts = importDeclarations
-    .filter(
-      (declaration) =>
-        !MANAGED_IMPORT_PACKAGES.has(declaration.source.value) ||
-        (keptBuild && BUILD_IMPORT_PACKAGES.has(declaration.source.value)),
-    )
+    .filter(isPreserved)
     .map((declaration) =>
       source.text
         .slice(getTopLevelFullStart(source, declaration), declaration.end)
         .trim(),
     );
-  const managedImportText = renderImportStatements(imports);
-  const nextImportBlock = [...preservedImportTexts, managedImportText]
+  const kept = keptManagedImports(
+    importDeclarations.filter((declaration) => !isPreserved(declaration)),
+    imports,
+    usedText,
+  );
+  const managedImportText = renderImportStatements([
+    ...imports,
+    ...kept.imports,
+  ]);
+  const nextImportBlock = [
+    ...preservedImportTexts,
+    ...kept.texts,
+    managedImportText,
+  ]
     .filter(Boolean)
     .join("\n");
 
@@ -521,20 +905,47 @@ const rebuildImportBlock = (
 const rebuildManagedBody = (
   source: ConfigSource,
   exportStart: number,
-): TextEdit => {
+  scaffold: HotUpdaterConfigScaffold,
+): TextEdit | null => {
   const statementsBeforeExport = source.program.body.filter(
     (statement) =>
       statement.type !== "ImportDeclaration" && statement.start < exportStart,
   );
+  const managedHelpers = new Map(
+    scaffold.helperStatements.map((statement) => [statement.name, statement]),
+  );
+  const emittedHelpers = new Set<string>();
   const bodyStatements: string[] = [];
 
   for (const statement of statementsBeforeExport) {
     const helperName = getManagedHelperName(statement);
-    // Helpers for storage and database moved with them.
-    if (helperName && MOVED_HELPER_NAMES.has(helperName)) {
+    if (!helperName || !MANAGED_HELPER_NAMES.has(helperName)) {
+      bodyStatements.push(getStatementText(source, statement));
       continue;
     }
-    bodyStatements.push(getStatementText(source, statement));
+
+    const helper = managedHelpers.get(helperName);
+    if (!helper) {
+      // Remove helper declarations managed by the previous provider.
+      continue;
+    }
+
+    const mergedHelper = mergeHelperStatement(
+      getStatementText(source, statement),
+      helper,
+    );
+    if (!mergedHelper) {
+      return null;
+    }
+
+    emittedHelpers.add(helperName);
+    bodyStatements.push(mergedHelper);
+  }
+
+  for (const helper of scaffold.helperStatements) {
+    if (!emittedHelpers.has(helper.name)) {
+      bodyStatements.push(helper.code.trim());
+    }
   }
 
   const bodyText = bodyStatements.filter(Boolean).join("\n\n");
@@ -564,7 +975,7 @@ const applyTextEdits = (sourceText: string, edits: readonly TextEdit[]) => {
 const mergeHotUpdaterConfigText = (
   existingText: string,
   scaffold: HotUpdaterConfigScaffold,
-): ConfigTextMergeResult & { readonly server?: string } => {
+): ConfigTextMergeResult => {
   const existingSource = parseConfigSource(existingText);
   const nextSource = parseConfigSource(scaffold.text);
   if (!existingSource || !nextSource) {
@@ -596,7 +1007,7 @@ const mergeHotUpdaterConfigText = (
   if (!nextObject) {
     return {
       reason:
-        "Existing config uses a dynamic build expression that cannot be merged safely.",
+        "Existing config uses dynamic build/storage/database expressions that cannot be merged safely.",
     };
   }
 
@@ -613,26 +1024,66 @@ const mergeHotUpdaterConfigText = (
     firstTriviaContent === -1
       ? existingConfig.exportDeclaration.start
       : exportFullStart + firstTriviaContent;
-  const hasServer = existingConfig.objectExpression.properties.some(
-    (property) => getObjectPropertyName(property) === "server",
+  const bodyEdit = rebuildManagedBody(existingSource, managedBodyEnd, scaffold);
+  if (!bodyEdit) {
+    return {
+      reason: "Existing helper declarations could not be merged safely.",
+    };
+  }
+
+  // A name the project imports from elsewhere, such as its own `plugins`
+  // list, can't also take the scaffold's import of that name.
+  const scaffoldNames = new Map(
+    scaffold.imports.flatMap((info) =>
+      (info.named ?? []).map(
+        (name) => [name.split(/\s+as\s+/).at(-1)!, info.pkg] as const,
+      ),
+    ),
   );
-  const server = hasServer
-    ? findServerPointer(existingConfig.objectExpression)
-    : scaffold.server;
+  for (const declaration of importDeclarationsOf(existingSource)) {
+    const pkg = declaration.source.value;
+    if (
+      MANAGED_IMPORT_PACKAGES.has(pkg) &&
+      !(nextObject.keptBuild && BUILD_IMPORT_PACKAGES.has(pkg))
+    ) {
+      continue;
+    }
+    for (const specifier of declaration.specifiers) {
+      const scaffoldPackage = scaffoldNames.get(specifier.local.name);
+      if (scaffoldPackage !== undefined && scaffoldPackage !== pkg) {
+        return {
+          reason: `The import of ${specifier.local.name} from "${pkg}" takes the name init imports from "${scaffoldPackage}".`,
+        };
+      }
+    }
+  }
+
+  const objectEdit: TextEdit = {
+    start: existingConfig.objectExpression.start,
+    end: existingConfig.objectExpression.end,
+    text: nextObject.text,
+  };
+  // The rebuilt config with its imports blanked out, which decides the
+  // imports a managed package keeps beyond the scaffold's.
+  const usedText = applyTextEdits(existingText, [
+    objectEdit,
+    bodyEdit,
+    ...importDeclarationsOf(existingSource).map((declaration) => ({
+      start: declaration.start,
+      end: declaration.end,
+      text: "",
+    })),
+  ]);
 
   return {
     text: applyTextEdits(existingText, [
-      {
-        start: existingConfig.objectExpression.start,
-        end: existingConfig.objectExpression.end,
-        text: nextObject.text,
-      },
-      rebuildManagedBody(existingSource, managedBodyEnd),
+      objectEdit,
+      bodyEdit,
       rebuildImportBlock(existingSource, scaffold, {
         keptBuild: nextObject.keptBuild,
+        usedText,
       }),
     ]),
-    ...(server === undefined ? {} : { server }),
   };
 };
 
@@ -651,9 +1102,14 @@ export const createHotUpdaterConfigScaffold = ({
   database,
   plugins,
   extraImports = [],
-  intermediateCode = "",
+  helperStatements = [],
   updateStrategy = "appVersion",
 }: CreateHotUpdaterConfigScaffoldOptions): HotUpdaterConfigScaffold => {
+  const intermediateCode = helperStatements
+    .map((statement) => statement.code.trim())
+    .filter(Boolean)
+    .join("\n\n");
+
   const builder = new ConfigBuilder()
     .setBuildType(build)
     .setStorage(storage)
@@ -669,6 +1125,7 @@ export const createHotUpdaterConfigScaffold = ({
   }
 
   return createHotUpdaterConfigScaffoldFromBuilder(builder, {
+    helperStatements,
     updateStrategy,
   });
 };
@@ -676,6 +1133,7 @@ export const createHotUpdaterConfigScaffold = ({
 export const createHotUpdaterConfigScaffoldFromBuilder = (
   builder: ConfigBuilder,
   {
+    helperStatements = [],
     updateStrategy = "appVersion",
   }: CreateHotUpdaterConfigScaffoldFromBuilderOptions = {},
 ): HotUpdaterConfigScaffold => {
@@ -694,21 +1152,19 @@ export const createHotUpdaterConfigScaffoldFromBuilder = (
       initializer: scaffold.buildConfigString,
       callee: extractCallIdentifier(scaffold.buildConfigString),
     },
-    server: scaffold.server,
-    updateStrategy: `"${updateStrategy}"`,
-    definition: {
-      text: scaffold.definition.text,
-      imports: scaffold.definition.imports,
-      storage: {
-        initializer: scaffold.definition.storageConfigString,
-        callee: extractCallIdentifier(scaffold.definition.storageConfigString),
-      },
-      database: {
-        initializer: scaffold.definition.databaseConfigString,
-        callee: extractCallIdentifier(scaffold.definition.databaseConfigString),
-      },
-      intermediateCode: scaffold.definition.intermediateCode,
+    storage: {
+      initializer: scaffold.storageConfigString,
+      callee: extractCallIdentifier(scaffold.storageConfigString),
     },
+    database: {
+      initializer: scaffold.databaseConfigString,
+      callee: extractCallIdentifier(scaffold.databaseConfigString),
+    },
+    plugins: {
+      initializer: scaffold.pluginsConfigString,
+    },
+    helperStatements,
+    updateStrategy: `"${updateStrategy}"`,
   };
 };
 
@@ -723,9 +1179,8 @@ const readTextFile = (filePath: string) =>
 
 /**
  * Writes hot-updater.config.ts: the scaffold's when there is none, or the
- * existing config with the scaffold's `build`, a `server` unless it already
- * points somewhere, and without the settings that moved to the server
- * definition.
+ * existing config with the scaffold's build, storage, database, plugins, and
+ * helpers merged in, keeping the project's own settings.
  */
 export const writeHotUpdaterConfig = async (
   scaffold: HotUpdaterConfigScaffold,
@@ -738,7 +1193,6 @@ export const writeHotUpdaterConfig = async (
     return {
       status: "created",
       path: filePath,
-      server: scaffold.server,
     };
   }
 
@@ -755,127 +1209,40 @@ export const writeHotUpdaterConfig = async (
   return {
     status: "merged",
     path: filePath,
-    ...(mergeResult.server === undefined ? {} : { server: mergeResult.server }),
   };
 };
 
 /**
- * What a module does, apart from its formatting: its imports, sorted, and
- * the rest without whitespace, semicolons, trailing commas, or quote style,
- * so a definition a formatter rewrote still reads as the one init wrote.
+ * What a config needs for the scaffold's storage, database, and plugins:
+ * their imports, the helpers they read, and the properties themselves.
  */
-const moduleShape = (text: string): string => {
-  const source = parseConfigSource(text);
-  if (source === null) return text;
-  const imports = source.program.body.filter(
-    (statement) => statement.type === "ImportDeclaration",
+const renderServerSettings = (scaffold: HotUpdaterConfigScaffold) => {
+  const imports = scaffold.imports.filter(
+    ({ pkg }) =>
+      pkg !== "hot-updater" &&
+      pkg !== "node:fs" &&
+      !BUILD_IMPORT_PACKAGES.has(pkg),
   );
-  const importShapes = imports
-    .map((statement) => {
-      const specifiers = statement.specifiers
-        .map((specifier) =>
-          specifier.type === "ImportSpecifier"
-            ? `${specifier.importKind ?? "value"}:${getNodeText(source, specifier.imported)}:${specifier.local.name}`
-            : `${specifier.type}:${specifier.local.name}`,
-        )
-        .sort();
-      return `${statement.importKind ?? "value"} ${statement.source.value} ${specifiers.join(",")}`;
-    })
-    .sort();
-  const code = applyTextEdits(
-    text,
-    imports.map((statement) => ({
-      start: statement.start,
-      end: statement.end,
-      text: "",
-    })),
-  )
-    .replace(/\s+|;/gu, "")
-    .replace(/,([}\])])/gu, "$1")
-    .replaceAll("'", '"');
-  return [...importShapes, code].join("\n");
+  const plugins = scaffold.plugins.initializer;
+  return [
+    renderImportStatements(imports),
+    ...scaffold.helperStatements.map(({ code }) => code.trim()),
+    [
+      `  storage: ${scaffold.storage.initializer},`,
+      `  database: ${scaffold.database.initializer},`,
+      `  ${plugins === "plugins" ? "plugins" : `plugins: ${plugins}`},`,
+    ].join("\n"),
+  ]
+    .filter(Boolean)
+    .join("\n\n");
 };
 
-const sameModule = (left: string, right: string) =>
-  left.trim() === right.trim() || moduleShape(left) === moduleShape(right);
-
-/**
- * How the server definition at `filePath` compares with the scaffold's:
- * `missing`, `unchanged`, `outdated` (one init wrote before, which the
- * scaffold replaces), or `edited`, the project's own.
- */
-export const readServerDefinitionStatus = async (
-  scaffold: HotUpdaterConfigScaffold,
-  filePath: string,
-): Promise<"missing" | "unchanged" | "outdated" | "edited"> => {
-  const text = await readTextFile(filePath);
-  if (text === null) return "missing";
-  if (sameModule(text, scaffold.definition.text)) return "unchanged";
-  return (scaffold.definition.replaces ?? []).some((previous) =>
-    sameModule(text, previous),
-  )
-    ? "outdated"
-    : "edited";
-};
-
-/**
- * Writes the server definition at `filePath` when it is missing. An
- * existing one is the project's own and stays as it is.
- */
-export const writeServerDefinition = async (
-  scaffold: HotUpdaterConfigScaffold,
-  filePath: string,
-): Promise<WriteServerDefinitionResult> => {
-  const status = await readServerDefinitionStatus(scaffold, filePath);
-  if (status === "missing" || status === "outdated") {
-    await fs.mkdir(path.dirname(filePath), { recursive: true });
-    await fs.writeFile(filePath, `${scaffold.definition.text}\n`, "utf-8");
-    return {
-      status: status === "missing" ? "created" : "updated",
-      path: filePath,
-    };
-  }
-  return {
-    status: status === "unchanged" ? "unchanged" : "kept",
-    path: filePath,
-  };
-};
-
-/**
- * The string literal `server` of the config at `configPath`, or undefined
- * when there is no config, it sets no `server`, or sets one dynamically.
- */
-export const readConfiguredServer = async (
-  configPath = HOT_UPDATER_CONFIG_PATH,
-): Promise<string | undefined> => {
-  const text = await readTextFile(configPath);
-  const source = text === null ? null : parseConfigSource(text);
-  const config = source === null ? null : findDefineConfigObject(source);
-  return config === null
-    ? undefined
-    : findServerPointer(config.objectExpression);
-};
-
-/**
- * The server definition init deploys: the one an existing
- * hot-updater.config.ts points at, or the one it writes.
- */
-export const resolveServerDefinitionPath = async (
-  scaffold: HotUpdaterConfigScaffold,
-  cwd: string,
-): Promise<string> =>
-  path.resolve(
-    cwd,
-    (await readConfiguredServer(path.join(cwd, HOT_UPDATER_CONFIG_PATH))) ??
-      scaffold.server,
-  );
-
-/** Where an older init wrote a managed server's plugins, which the definition holds now. */
+/** Where an older init wrote a managed server's plugins, which the config lists now. */
 const PLUGINS_FILE_PATH = "hotUpdater.plugins.ts";
 
 /**
  * Whether `text` is the plugins file an older init wrote: comments and a
- * re-export of a provider package's `plugins`, which the definition imports.
+ * re-export of a provider package's `plugins`, which the config imports now.
  */
 const isGeneratedPluginsFile = (text: string) =>
   /^export\{plugins\}from(["'])@hot-updater\/[\w-]+\1;?$/u.test(
@@ -883,17 +1250,16 @@ const isGeneratedPluginsFile = (text: string) =>
   );
 
 /**
- * Writes hot-updater.config.ts and the server definition it points at, and
- * says what it did. `settings` names the provider in messages, such as
- * "Supabase". The plugins file an older init wrote is removed; one the
- * project wrote is named, since nothing reads it.
+ * Writes hot-updater.config.ts and says what it did. `settings` names the
+ * provider in messages, such as "Supabase". A config it cannot merge is
+ * kept, with what to add to it. The plugins file an older init wrote is
+ * removed; one the project wrote is named, since nothing reads it.
  */
 export const writeHotUpdaterFiles = async (
   scaffold: HotUpdaterConfigScaffold,
   { cwd = process.cwd(), settings }: { cwd?: string; settings: string },
 ): Promise<{
   readonly config: WriteHotUpdaterConfigResult;
-  readonly definition: WriteServerDefinitionResult;
   /** What became of hotUpdater.plugins.ts, when there was one. */
   readonly pluginsFile?: "removed" | "kept";
 }> => {
@@ -910,200 +1276,28 @@ export const writeHotUpdaterFiles = async (
       `Updated '${HOT_UPDATER_CONFIG_PATH}' file with ${settings} settings.`,
     );
   } else {
-    const text = await readTextFile(path.join(cwd, HOT_UPDATER_CONFIG_PATH));
-    const moved = MOVED_PROPERTY_NAMES.filter((name) =>
-      new RegExp(`\\b${name}\\s*:`, "u").test(text ?? ""),
-    );
     p.log.warn(
       [
         `Kept existing '${HOT_UPDATER_CONFIG_PATH}' unchanged: ${config.reason}`,
-        `Add \`server: ${JSON.stringify(scaffold.server)},\` to its config${moved.length > 0 ? `, and remove ${moved.join(", ")}: the server definition holds them` : ""}.`,
-      ].join(" "),
+        `Set storage, database, and plugins in its config, as init writes them for ${settings}:`,
+        "",
+        renderServerSettings(scaffold),
+      ].join("\n"),
     );
-  }
-
-  // The definition is written wherever the config points, or where it will.
-  const definition = await writeServerDefinition(
-    scaffold,
-    path.resolve(cwd, config.server ?? scaffold.server),
-  );
-  const shown = path.relative(cwd, definition.path);
-  if (definition.status === "created") {
-    p.log.success(
-      `Generated '${shown}': the server's database, storage, and plugins.`,
-    );
-  } else if (definition.status === "updated") {
-    p.log.success(`Updated '${shown}' with ${settings} settings.`);
-  } else if (definition.status === "kept") {
-    p.log.info(`Kept '${shown}': the project's own server definition.`);
   }
 
   const pluginsPath = path.join(cwd, PLUGINS_FILE_PATH);
   const pluginsText = await readTextFile(pluginsPath);
-  if (pluginsText === null) return { config, definition };
+  if (pluginsText === null) return { config };
   if (isGeneratedPluginsFile(pluginsText)) {
     await fs.rm(pluginsPath);
     p.log.success(
-      `Removed '${PLUGINS_FILE_PATH}': '${shown}' lists the server's plugins.`,
+      `Removed '${PLUGINS_FILE_PATH}': \`plugins\` in '${HOT_UPDATER_CONFIG_PATH}' lists the plugins the server runs.`,
     );
-    return { config, definition, pluginsFile: "removed" };
+    return { config, pluginsFile: "removed" };
   }
   p.log.warn(
-    `Nothing reads '${pluginsPath}' anymore: move its plugins into the plugins of '${shown}', then delete it.`,
+    `Nothing reads '${pluginsPath}' anymore: \`plugins\` in '${HOT_UPDATER_CONFIG_PATH}' lists the plugins the server runs. Delete it.`,
   );
-  return { config, definition, pluginsFile: "kept" };
-};
-
-/** The server definition a managed init deploys. */
-export interface ManagedServerDefinition {
-  readonly path: string;
-  /**
-   * Whether the project changed it from the one init writes, so init
-   * bundles it rather than deploying the provider's prebuilt server.
-   */
-  readonly edited: boolean;
-}
-
-/**
- * `scaffold`, replacing `definitions` too: those the other providers' inits
- * write, which a project switching providers finds unedited.
- */
-export const replacingServerDefinitions = (
-  scaffold: HotUpdaterConfigScaffold,
-  definitions: readonly string[] = [],
-): HotUpdaterConfigScaffold => ({
-  ...scaffold,
-  definition: {
-    ...scaffold.definition,
-    replaces: [...(scaffold.definition.replaces ?? []), ...definitions],
-  },
-});
-
-/** The packages whose database and storage a managed server runs on. */
-const MANAGED_PROVIDER_PACKAGES = [
-  "@hot-updater/aws",
-  "@hot-updater/cloudflare",
-  "@hot-updater/firebase",
-  "@hot-updater/supabase",
-];
-
-/**
- * Refuses a definition written for another managed provider, from the
- * packages it imports, before init touches a resource.
- */
-const assertDefinitionProvider = (
-  scaffold: HotUpdaterConfigScaffold,
-  definitionPath: string,
-  text: string,
-  cwd: string,
-) => {
-  const provider = scaffold.definition.imports.find(({ pkg }) =>
-    MANAGED_PROVIDER_PACKAGES.includes(pkg),
-  )?.pkg;
-  const source = parseConfigSource(text);
-  if (provider === undefined || source === null) return;
-  const imported = new Set(
-    source.program.body.flatMap((statement) =>
-      statement.type === "ImportDeclaration" ? [statement.source.value] : [],
-    ),
-  );
-  const other = MANAGED_PROVIDER_PACKAGES.find(
-    (pkg) => pkg !== provider && imported.has(pkg),
-  );
-  if (other === undefined || imported.has(provider)) return;
-  const name = (pkg: string) => pkg.slice("@hot-updater/".length);
-  const shown = path.relative(cwd, definitionPath);
-  throw new InitError(
-    `${shown} defines a ${name(other)} server: it imports ${other}. To deploy it, run \`hot-updater init --provider ${name(other)}\`. To deploy the managed ${name(provider)} server, give ${shown} the database and storage of ${provider}, or remove it and rerun init, which writes one.`,
-  );
-};
-
-/**
- * The server definition a managed init deploys: the one an existing
- * hot-updater.config.ts points at, or the one it writes. A definition
- * written for another managed provider is refused, unless it is one that
- * provider's init wrote, which `scaffold` replaces.
- */
-export const readManagedServerDefinition = async (
-  scaffold: HotUpdaterConfigScaffold,
-  cwd: string = process.cwd(),
-): Promise<ManagedServerDefinition> => {
-  const definitionPath = await resolveServerDefinitionPath(scaffold, cwd);
-  const edited =
-    (await readServerDefinitionStatus(scaffold, definitionPath)) === "edited";
-  if (edited) {
-    assertDefinitionProvider(
-      scaffold,
-      definitionPath,
-      (await readTextFile(definitionPath)) ?? "",
-      cwd,
-    );
-  }
-  return { path: definitionPath, edited };
-};
-
-const messageOf = (error: unknown) =>
-  error instanceof Error ? error.message : String(error);
-
-/** Whether `error` is a module the definition imports that is not installed. */
-const isMissingModule = (error: unknown) =>
-  /Cannot find (?:module|package)|ERR_MODULE_NOT_FOUND/u.test(
-    `${(error as { code?: unknown })?.code ?? ""} ${messageOf(error)}`,
-  );
-
-/**
- * Loads the server definition a managed init deploys, with the settings
- * `.env.hotupdater` holds and then `env`, the ones init is about to write
- * (`undefined` unsets one), which the definition reads as it loads, and
- * returns what `check` makes of the server it exports. The process's own
- * environment comes back afterwards, so init's clients keep their settings.
- * A failure names the definition and says what to do.
- */
-export const loadManagedServerDefinition = async <T>(
-  definition: ManagedServerDefinition,
-  check: (hotUpdater: unknown) => T,
-  {
-    cwd = process.cwd(),
-    env = {},
-  }: {
-    readonly cwd?: string;
-    readonly env?: Readonly<Record<string, string | undefined>>;
-  } = {},
-): Promise<T> => {
-  const shown = path.relative(cwd, definition.path) || definition.path;
-  const saved = { ...process.env };
-  const envFile = path.join(cwd, ".env.hotupdater");
-  try {
-    // What init writes wins over what the shell had.
-    if (existsSync(envFile)) {
-      Object.assign(process.env, parseEnv(await fs.readFile(envFile, "utf-8")));
-    }
-    for (const [key, value] of Object.entries(env)) {
-      if (value === undefined) delete process.env[key];
-      else process.env[key] = value;
-    }
-    let loaded: ServerModule;
-    try {
-      loaded = await importServerModule(definition.path);
-    } catch (error) {
-      throw new InitError(
-        `Could not load ${shown}: ${messageOf(error)} ${
-          isMissingModule(error)
-            ? "Install the packages it imports in this project, then rerun init."
-            : "Fix it, then rerun init."
-        }`,
-        { cause: error },
-      );
-    }
-    try {
-      return check(loaded.hotUpdater);
-    } catch (error) {
-      throw new InitError(`${shown}: ${messageOf(error)}`, { cause: error });
-    }
-  } finally {
-    for (const key of Object.keys(process.env)) {
-      if (!Object.hasOwn(saved, key)) delete process.env[key];
-    }
-    Object.assign(process.env, saved);
-  }
+  return { config, pluginsFile: "kept" };
 };

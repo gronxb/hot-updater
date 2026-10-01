@@ -56,86 +56,6 @@ export type InstanceFor<TProvides, TInstance> = TProvides extends {
       readonly clientAuth?: "Declare provides: { clientAuth: true } to return clientAuth";
     };
 
-/** A positional argument of a plugin command. */
-export interface PluginCommandArgument {
-  /** The key of its value in `args`. */
-  readonly name: string;
-  readonly description: string;
-  /** Defaults to true. */
-  readonly required?: boolean;
-}
-
-/** An option of a plugin command. */
-export interface PluginCommandOption {
-  /** Flags as the CLI writes them, such as `--name <name>` or `-y, --yes`. */
-  readonly flags: string;
-  readonly description: string;
-  /** The command fails without it. */
-  readonly required?: boolean;
-}
-
-export interface PluginTableColumn<TKey extends string> {
-  readonly key: TKey;
-  readonly label?: string;
-  /** Styles the padded cell. */
-  readonly format?: (value: string) => string;
-}
-
-/**
- * The CLI's output style, so plugin commands read like core ones: the
- * formatters return styled text, and the writers print it.
- */
-export interface PluginCommandUi {
-  block(heading: string, lines: readonly string[]): string;
-  kv(label: string, value: string): string;
-  table<TKey extends string>(
-    columns: readonly PluginTableColumn<TKey>[],
-    rows: readonly Readonly<Record<TKey, string>>[],
-  ): string;
-  id(value: string): string;
-  muted(value: string): string;
-  success(value: string): string;
-  danger(value: string): string;
-  warning(value: string): string;
-  message(text: string): void;
-  info(text: string): void;
-  warn(text: string): void;
-  /** Writes machine-readable output, such as JSON, to stdout. */
-  print(text: string): void;
-  /**
-   * Returns once the user agrees to `message`. Declining ends the command,
-   * and a non-interactive shell fails it, asking for `-y`.
-   */
-  confirm(message: string): Promise<void>;
-}
-
-/** A plugin command run over a database the CLI opens itself. */
-export interface PluginCommandContext<Api = unknown> {
-  /** The plugin's API over that database, assembled as the server assembles it. */
-  readonly api: Api;
-  /** Positional arguments by name. */
-  readonly args: Readonly<Record<string, string | undefined>>;
-  /** Options by camel-cased long flag: `dryRun` for `--dry-run`. */
-  readonly options: Readonly<Record<string, unknown>>;
-  readonly ui: PluginCommandUi;
-}
-
-/**
- * A `hot-updater` command a plugin adds. It groups `commands`, or runs `run`
- * over a database the CLI opens itself, so it refuses a `standaloneRepository`
- * config. A command that runs also takes the server config's path as its
- * last, optional argument.
- */
-export interface PluginCommand<Api = unknown> {
-  /** Lowercase words joined by hyphens, such as `api-key`. */
-  readonly name: string;
-  readonly description: string;
-  readonly arguments?: readonly PluginCommandArgument[];
-  readonly options?: readonly PluginCommandOption[];
-  readonly commands?: readonly PluginCommand<Api>[];
-  run?(context: PluginCommandContext<Api>): Promise<void>;
-}
-
 /**
  * The credential an app sends to client routes that the plugin's clientAuth
  * guards. Init provisions it and prints the header to send, the agent
@@ -169,10 +89,11 @@ export interface PluginClientPlugin {
   readonly name: string;
 }
 
-/** What a plugin adds to the `hot-updater` CLI. */
+/**
+ * What the CLI reads from a plugin: the credential init provisions, and the
+ * client plugin init prints and doctor checks.
+ */
 export interface PluginCli<Api = unknown> {
-  /** Commands the CLI finds in the project's plugins. */
-  readonly commands?: readonly PluginCommand<Api>[];
   /** Needs provides: { clientAuth: true }. */
   readonly clientCredential?: PluginClientCredential<Api>;
   readonly clientPlugin?: PluginClientPlugin;

@@ -8,27 +8,25 @@ icon: PackageCheck
 
 An adapter or a plugin is an npm package that exports a factory, such as
 `myStorage(options)`, which returns the object. Hot Updater has no registry or
-allowlist: a project installs the package and passes the object to the server
-definition's `createHotUpdater`, to `hot-updater.config.ts`, or to
-`HotUpdater.init`, as it does with the official ones.
+allowlist: a project installs the package and passes the object to
+`hot-updater.config.ts`, `createHotUpdater`, or `HotUpdater.init`, as it does
+with the official ones.
 
-| Package                                                     | Its users pass it to                                                                 |
-| ----------------------------------------------------------- | ------------------------------------------------------------------------------------ |
-| [Storage adapter](/docs/storage-adapters/custom-storage)    | `storage` in the server definition, or in `standaloneRepository`                     |
-| [Database adapter](/docs/database-adapters/custom-database) | `database` in the server definition, which the CLI and the Console read too          |
-| Build adapter                                               | `build` in `hot-updater.config.ts`                                                   |
-| Signing adapter                                             | `signing` in `hot-updater.config.ts`                                                 |
-| [Server plugin](/docs/custom/server-plugins)                | `plugins` in the server definition, where the CLI also finds its tables and commands |
-| [Client plugin](/docs/react-native-api/client-plugins)      | `plugins` in `HotUpdater.init` or `HotUpdater.wrap`, in the app                      |
+| Package                                                     | Its users pass it to                                                                            |
+| ----------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| [Storage adapter](/docs/storage-adapters/custom-storage)    | `storage` in `hot-updater.config.ts`, and the server's `storage` list                           |
+| [Database adapter](/docs/database-adapters/custom-database) | `database` in `hot-updater.config.ts`, `createHotUpdater`, and a deployed Console               |
+| Build adapter                                               | `build` in `hot-updater.config.ts`                                                              |
+| Signing adapter                                             | `signing` in `hot-updater.config.ts`                                                            |
+| [Server plugin](/docs/custom/server-plugins)                | `plugins` in `createHotUpdater`, where the CLI finds its tables, and in `hot-updater.config.ts` |
+| [Client plugin](/docs/react-native-api/client-plugins)      | `plugins` in `HotUpdater.init` or `HotUpdater.wrap`, in the app                                 |
 
-Storage and database adapters run on a [custom server](/docs/custom/overview);
-a managed Cloudflare, Supabase, AWS, or Firebase server runs on its provider's.
-Server plugins run on both: a user of a managed server adds yours to
-`hotUpdater.ts` and reruns init, which bundles it into the provider's runtime,
-where it works as
-[Run on a managed server](/docs/custom/server-plugins#run-on-a-managed-server)
-describes. A client plugin runs in any app, but routes it calls on the update
-server need a server plugin on that server. Ship a feature that spans both from
+Storage and database adapters and server plugins run on a
+[custom server](/docs/custom/overview). The managed Cloudflare, Supabase, AWS,
+and Firebase servers are prebuilt with their provider's adapters and
+`plugins` list, so a user of one moves to a custom server to add yours. A
+client plugin runs in any app, but routes it calls on the update server need
+a server plugin on that server. Ship a feature that spans both from
 [one package with an entry per side](#ship-both-sides-from-one-package), as
 Hot Updater's own Insights does. The server plugin names the client one in
 [`cli.clientPlugin`](/docs/custom/server-plugins#name-the-apps-client-plugin).
@@ -201,10 +199,9 @@ Choose them once:
   that names your package, such as `acme_feedback`, over a generic one such
   as `feedback`. Keep the prefix: with `namespace: false` the declared table
   names must stay clear of core's and every other plugin's.
-- **Server plugin routes and commands.** A route or CLI command that collides
-  with another plugin's stops the server or the CLI with
-  `HotUpdaterConfigError`. Start paths and command names with your plugin's
-  name, such as `/acme_feedback/threads` and `hot-updater acme-feedback`.
+- **Server plugin routes.** A route that collides with another plugin's stops
+  the server, and the CLI that lists both, with `HotUpdaterConfigError`. Start
+  paths with your plugin's name, such as `/acme_feedback/threads`.
 - **Client plugin `id`.** It scopes the values the plugin stores on the
   device, so a new id starts with an empty store, and two plugins with one id
   make `HotUpdater.init` throw.
@@ -223,9 +220,9 @@ Your README is where users learn the package. Include:
 - a partial `hot-updater.config.ts` or `createHotUpdater` configuration that
   keeps the user's other options;
 - the resources to create first, such as a bucket, a table, or a key;
-- for a server plugin, its routes, its CLI commands, its `clientAuth`, the
-  tables `hot-updater db migrate` creates, and on which managed providers it
-  runs, with where it reads its settings and secrets there;
+- for a server plugin, its routes, its `clientAuth`, the tables
+  `hot-updater db migrate` creates, and that users list it in the server's
+  `createHotUpdater` and in `hot-updater.config.ts`;
 - for a client plugin, the hooks it uses and the data it sends or stores on
   the device;
 - the Hot Updater versions you test against.

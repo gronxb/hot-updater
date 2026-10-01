@@ -123,7 +123,7 @@ src/
 ## 🔌 API Integration
 
 The console integrates with the configured Hot Updater storage and database
-plugins through TanStack Start server functions in `src/lib/api-rpc.ts`.
+adapters through TanStack Start server functions in `src/lib/api-rpc.ts`.
 Functions with input take a `{ data: input }` argument:
 
 - `getConfig()` and `getChannels()` load configuration and channels.
@@ -143,24 +143,25 @@ Use one pagination cursor at a time.
 
 ## 🎯 Configuration
 
-The console reads the server that [hot-updater.config.ts](hot-updater.config.ts)
-points at with `server`. The checked-in [demo server](hotUpdater.ts) seeds
-sample bundles and releases through the `core.deploy` of a second server
-definition over `database.withoutLatency()`. For an empty local mock console,
-define the server like this and point `server` at it:
+The console reads `database`, `storage`, and `plugins` from
+[hot-updater.config.ts](hot-updater.config.ts), as the CLI does, and runs the
+plugins over the database as the server does. The checked-in
+[demo database](demoDatabase.ts) seeds sample bundles, releases, and Insights
+events through `assembleServer` from `@hot-updater/cli-tools`, over
+`database.withoutLatency()`. For an empty local mock console, use this
+`hot-updater.config.ts`:
 
 ```typescript
 import { mockDatabase, mockStorage } from "@hot-updater/mock";
-import { createHotUpdater } from "@hot-updater/server";
 
-export const hotUpdater = createHotUpdater({
+export default {
   database: mockDatabase({ latency: { min: 500, max: 700 } }),
-  storage: [mockStorage({})],
-  clientAccess: "public",
-});
+  storage: mockStorage({}),
+};
 ```
 
-Mock data is held in memory and resets when the configuration is reloaded.
+Add `plugins`, such as `[insights(), apiKeys()]`, to show their pages. Mock
+data is held in memory and resets when the configuration is reloaded.
 
 ## 🌈 Theming
 
@@ -208,9 +209,9 @@ The console uses Tailwind CSS v4 with oklch color space for accessible colors. T
 
 ### Hot Updater Config
 
-- Ensure `hot-updater.config.ts` is at package root and its `server` points at
-  the server definition
-- Verify the definition's storage and database adapters are correctly initialized
+- Ensure `hot-updater.config.ts` is at the package root and sets `database`
+  and `storage`
+- Verify its storage and database adapters are correctly initialized
 
 ## 📝 License
 

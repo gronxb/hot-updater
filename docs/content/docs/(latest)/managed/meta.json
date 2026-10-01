@@ -7,7 +7,6 @@
     "cloudflare",
     "aws",
     "firebase",
-    "server-plugins",
     "../guides/agent-infrastructure",
     "../guides/infrastructure-templates"
   ]

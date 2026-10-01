@@ -3,6 +3,7 @@ import {
   bundleToRow,
   type Bundle,
   type ConfiguredDatabase,
+  createMemoryAdapter,
   type StorageObject,
 } from "@hot-updater/plugin-core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -143,7 +144,11 @@ describe("handleStoragePrune", () => {
   const now = new Date("2026-08-13T00:00:00.000Z");
   const old = new Date(now.getTime() - 2 * 24 * 60 * 60 * 1000);
   const young = new Date(now.getTime() - 60 * 60 * 1000);
-  const database = mockDatabase as unknown as ConfiguredDatabase;
+  // A database the server assembles over, whose core the spec stubs:
+  // testServer hands commands `database.core`.
+  const database = Object.assign(mockDatabase, {
+    adapter: createMemoryAdapter(),
+  }) as unknown as ConfiguredDatabase;
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -153,7 +158,7 @@ describe("handleStoragePrune", () => {
 
     mockCli.loadConfig.mockResolvedValue({});
     mockLoadServer.mockResolvedValue(
-      testServer({ database, storage: [mockStorageAdapter] }),
+      testServer({ database, storage: mockStorageAdapter }),
     );
     // Core's bundle pages, as rows, from the bundles `bundlePages` answers.
     mockDatabase.core.listBundles.mockImplementation(async (input: unknown) =>
@@ -621,13 +626,11 @@ describe("handleStoragePrune", () => {
     mockLoadServer.mockResolvedValue(
       testServer({
         database,
-        storage: [
-          {
-            ...mockStorageAdapter,
-            name: "unsupportedStorage",
-            listObjects: undefined,
-          },
-        ],
+        storage: {
+          ...mockStorageAdapter,
+          name: "unsupportedStorage",
+          listObjects: undefined,
+        },
       }),
     );
     const { handleStoragePrune } = await import("./storage");

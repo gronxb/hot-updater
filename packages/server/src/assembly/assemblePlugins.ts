@@ -49,7 +49,7 @@ const PLUGIN_KEYS = new Set([
   "init",
   "cli",
 ]);
-const CLI_KEYS = new Set(["commands", "clientCredential", "clientPlugin"]);
+const CLI_KEYS = new Set(["clientCredential", "clientPlugin"]);
 const INSTANCE_KEYS = new Set(["api", "endpoints", "clientAuth"]);
 const METHODS = new Set(["GET", "POST", "PUT", "PATCH", "DELETE"]);
 /** An id that prefixes table names is a SQL name; one that does not may use camelCase. */
@@ -102,16 +102,11 @@ const checkPlugin = (value: unknown, at: string): PluginShape => {
       `Plugin "${plugin.id}" may only declare provides: { clientAuth: true }.`,
     );
   }
-  // The CLI checks each command when it registers them.
   const cli = value.cli;
   if (cli !== undefined) {
-    if (
-      !isRecord(cli) ||
-      Object.keys(cli).some((key) => !CLI_KEYS.has(key)) ||
-      (cli.commands !== undefined && !Array.isArray(cli.commands))
-    ) {
+    if (!isRecord(cli) || Object.keys(cli).some((key) => !CLI_KEYS.has(key))) {
       fail(
-        `Plugin "${plugin.id}" cli may only hold commands (an array), clientCredential, and clientPlugin.`,
+        `Plugin "${plugin.id}" cli may only hold clientCredential and clientPlugin.`,
       );
     }
     if (

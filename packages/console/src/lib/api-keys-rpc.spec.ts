@@ -39,8 +39,8 @@ import {
   toApiKeyView,
 } from "./api-keys-rpc";
 
-/** The console over a server definition that runs `plugins` on `database`. */
-const definitionRuntime = (
+/** The console over `database`, running `plugins` as the server does. */
+const databaseRuntime = (
   database: EngineDatabase,
   plugins: readonly AnyHotUpdaterPlugin[] = [],
 ) =>
@@ -90,7 +90,7 @@ describe("API-key RPC output", () => {
 describe("API-key RPC access", () => {
   it("manages keys through the apiKeys() plugin the console runs", async () => {
     mocks.prepare.mockResolvedValue({
-      runtime: definitionRuntime(memoryDatabase(), [apiKeys()]),
+      runtime: databaseRuntime(memoryDatabase(), [apiKeys()]),
     });
 
     const created = await createApiKeyRpc({ data: { name: "CI" } });
@@ -103,7 +103,7 @@ describe("API-key RPC access", () => {
   it.each([
     [
       "without apiKeys()",
-      definitionRuntime(memoryDatabase(), [insights()]),
+      databaseRuntime(memoryDatabase(), [insights()]),
       "without the apiKeys() plugin",
     ],
     [
@@ -111,11 +111,10 @@ describe("API-key RPC access", () => {
       createConsoleRuntime({
         database: {
           name: "standalone-repository",
-          url: "https://updates.example.com/hot-updater/admin",
           core: {} as HotUpdaterCoreApi,
-          fetchAdmin: async () => Response.json({ plugins: ["apiKeys"] }),
-          storage: [],
+          fetchAdmin: vi.fn(),
         },
+        plugins: [apiKeys()],
       }),
       "reaches a self-hosted server",
     ],
