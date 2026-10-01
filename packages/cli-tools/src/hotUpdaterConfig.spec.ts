@@ -123,6 +123,70 @@ const createAwsScaffold = (
   });
 };
 
+const createFirebaseScaffold = (build: BuildType) => {
+  const helperStatements: ManagedHelperStatement[] = [
+    {
+      name: "credential",
+      strategy: "preserve-existing",
+      code: "const credential = applicationDefault();",
+    },
+  ];
+  const builder = new ConfigBuilder()
+    .setBuildType(build)
+    .setStorage({
+      imports: [{ pkg: "@hot-updater/firebase", named: ["firebaseStorage"] }],
+      configString: `firebaseStorage({
+    projectId: process.env.HOT_UPDATER_FIREBASE_PROJECT_ID!,
+    storageBucket: process.env.HOT_UPDATER_FIREBASE_STORAGE_BUCKET!,
+    credential,
+  })`,
+    })
+    .setDatabase({
+      imports: [{ pkg: "@hot-updater/firebase", named: ["firebaseDatabase"] }],
+      configString: `firebaseDatabase({
+    projectId: process.env.HOT_UPDATER_FIREBASE_PROJECT_ID!,
+    credential,
+  })`,
+    })
+    .setPlugins({
+      imports: [{ pkg: "@hot-updater/firebase", named: ["plugins"] }],
+      configString: "plugins",
+    })
+    .addImport({ pkg: "firebase-admin/app", named: ["applicationDefault"] })
+    .setIntermediateCode(helperStatements[0]!.code);
+  return createHotUpdaterConfigScaffoldFromBuilder(builder, {
+    helperStatements,
+  });
+};
+
+/** A Firebase config whose own credential reads a service account with cert. */
+const FIREBASE_CERT_CONFIG = `import { bare } from "@hot-updater/bare";
+import { firebaseDatabase, firebaseStorage, plugins } from "@hot-updater/firebase";
+import { cert } from "firebase-admin/app";
+import { defineConfig } from "hot-updater";
+import { existsSync } from "node:fs";
+
+if (existsSync(".env.hotupdater")) {
+  process.loadEnvFile(".env.hotupdater");
+}
+
+const credential = cert(process.env.SERVICE_ACCOUNT_PATH!);
+
+export default defineConfig({
+  build: bare({ enableHermes: true }),
+  storage: firebaseStorage({
+    projectId: process.env.HOT_UPDATER_FIREBASE_PROJECT_ID!,
+    storageBucket: process.env.HOT_UPDATER_FIREBASE_STORAGE_BUCKET!,
+    credential,
+  }),
+  database: firebaseDatabase({
+    projectId: process.env.HOT_UPDATER_FIREBASE_PROJECT_ID!,
+    credential,
+  }),
+  plugins,
+});
+`;
+
 afterEach(async () => {
   vi.restoreAllMocks();
   await Promise.all(
@@ -535,6 +599,54 @@ export default defineConfig({
     expect(result.status).toBe("skipped");
     await expect(fs.readFile(configPath, "utf-8")).resolves.toBe(
       originalConfig,
+    );
+  });
+});
+
+describe("writeHotUpdaterConfig imports", () => {
+  it("keeps a managed package's import that the project's own kept helper uses", async () => {
+    const configPath = path.join(
+      await createTempDir(),
+      "hot-updater.config.ts",
+    );
+    await fs.writeFile(configPath, FIREBASE_CERT_CONFIG);
+
+    const result = await writeHotUpdaterConfig(
+      createFirebaseScaffold("bare"),
+      configPath,
+    );
+    const updatedConfig = await fs.readFile(configPath, "utf-8");
+
+    expect(result.status).toBe("merged");
+    expect(updatedConfig).toContain(
+      "const credential = cert(process.env.SERVICE_ACCOUNT_PATH!);",
+    );
+    expect(updatedConfig).toContain(
+      'import { applicationDefault, cert } from "firebase-admin/app";',
+    );
+    expect(updatedConfig).not.toContain(
+      "const credential = applicationDefault();",
+    );
+  });
+
+  it("drops a managed package's import once the rebuilt config no longer uses it", async () => {
+    const configPath = path.join(
+      await createTempDir(),
+      "hot-updater.config.ts",
+    );
+    await fs.writeFile(configPath, FIREBASE_CERT_CONFIG);
+
+    const result = await writeHotUpdaterConfig(
+      createSupabaseScaffold("bare"),
+      configPath,
+    );
+    const updatedConfig = await fs.readFile(configPath, "utf-8");
+
+    expect(result.status).toBe("merged");
+    expect(updatedConfig).not.toContain("firebase-admin/app");
+    expect(updatedConfig).not.toContain("const credential");
+    expect(updatedConfig).toContain(
+      'import { plugins, supabaseDatabase, supabaseStorage } from "@hot-updater/supabase";',
     );
   });
 });

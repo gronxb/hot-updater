@@ -113,6 +113,17 @@ type ConfigSource = {
   readonly text: string;
 };
 
+type ImportDeclarationNode = Extract<
+  Program["body"][number],
+  { type: "ImportDeclaration" }
+>;
+
+const importDeclarationsOf = (source: ConfigSource) =>
+  source.program.body.filter(
+    (statement): statement is ImportDeclarationNode =>
+      statement.type === "ImportDeclaration",
+  );
+
 type TopLevelStatement = Program["body"][number];
 
 type ConfigObject = {
@@ -762,10 +773,77 @@ const getManagedHelperName = (statement: TopLevelStatement) => {
   return declaration.id.name;
 };
 
+/** Whether `text` refers to `name` as an identifier. */
+const usesIdentifier = (text: string, name: string) =>
+  new RegExp(`(?<![\\w$])${name.replace(/\$/g, "\\$")}(?![\\w$])`).test(text);
+
+/**
+ * What a managed package's existing imports bring that the rebuilt config
+ * still uses and the scaffold doesn't import, such as a project's own `cert`
+ * from firebase-admin/app beside the `credential` helper init keeps. Named
+ * value imports join the scaffold's import of that package; default,
+ * namespace, and type imports keep a declaration of their own.
+ */
+const keptManagedImports = (
+  declarations: readonly ImportDeclarationNode[],
+  scaffoldImports: readonly ImportInfo[],
+  usedText: string,
+): { readonly imports: ImportInfo[]; readonly texts: string[] } => {
+  const bound = new Set(
+    scaffoldImports.flatMap((info) => [
+      ...(info.named ?? []).map((name) => name.split(/\s+as\s+/).at(-1)!),
+      ...(info.defaultOrNamespace === undefined
+        ? []
+        : [info.defaultOrNamespace.replace(/^\*\s+as\s+/, "")]),
+    ]),
+  );
+  const imports: ImportInfo[] = [];
+  const texts: string[] = [];
+  for (const declaration of declarations) {
+    const pkg = declaration.source.value;
+    const named: string[] = [];
+    let defaultName: string | undefined;
+    let namespaceName: string | undefined;
+    for (const specifier of declaration.specifiers) {
+      const local = specifier.local.name;
+      if (bound.has(local) || !usesIdentifier(usedText, local)) continue;
+      if (specifier.type === "ImportDefaultSpecifier") {
+        defaultName = local;
+      } else if (specifier.type === "ImportNamespaceSpecifier") {
+        namespaceName = local;
+      } else {
+        const imported =
+          specifier.imported.type === "Identifier"
+            ? specifier.imported.name
+            : JSON.stringify(specifier.imported.value);
+        const name = imported === local ? local : `${imported} as ${local}`;
+        named.push(specifier.importKind === "type" ? `type ${name}` : name);
+      }
+    }
+    if (named.length === 0 && !defaultName && !namespaceName) continue;
+    if (declaration.importKind === "type") {
+      texts.push(`import type { ${named.join(", ")} } from "${pkg}";`);
+      continue;
+    }
+    if (named.length > 0) imports.push({ pkg, named });
+    if (namespaceName)
+      texts.push(`import * as ${namespaceName} from "${pkg}";`);
+    if (defaultName) texts.push(`import ${defaultName} from "${pkg}";`);
+  }
+  return { imports, texts };
+};
+
 const rebuildImportBlock = (
   source: ConfigSource,
   scaffold: HotUpdaterConfigScaffold,
-  { keptBuild }: { readonly keptBuild: boolean },
+  {
+    keptBuild,
+    usedText,
+  }: {
+    readonly keptBuild: boolean;
+    /** The rebuilt config without its imports: what decides which imports stay. */
+    readonly usedText: string;
+  },
 ): TextEdit => {
   // Keep environment-loading imports under the existing config's control,
   // and a kept build's adapter import with it.
@@ -779,9 +857,7 @@ const rebuildImportBlock = (
           }
         : info,
     );
-  const importDeclarations = source.program.body.filter(
-    (statement) => statement.type === "ImportDeclaration",
-  );
+  const importDeclarations = importDeclarationsOf(source);
   const firstImport = importDeclarations[0];
   const lastImport = importDeclarations.at(-1);
   if (!firstImport || !lastImport) {
@@ -792,19 +868,30 @@ const rebuildImportBlock = (
     };
   }
 
+  const isPreserved = (declaration: ImportDeclarationNode) =>
+    !MANAGED_IMPORT_PACKAGES.has(declaration.source.value) ||
+    (keptBuild && BUILD_IMPORT_PACKAGES.has(declaration.source.value));
   const preservedImportTexts = importDeclarations
-    .filter(
-      (declaration) =>
-        !MANAGED_IMPORT_PACKAGES.has(declaration.source.value) ||
-        (keptBuild && BUILD_IMPORT_PACKAGES.has(declaration.source.value)),
-    )
+    .filter(isPreserved)
     .map((declaration) =>
       source.text
         .slice(getTopLevelFullStart(source, declaration), declaration.end)
         .trim(),
     );
-  const managedImportText = renderImportStatements(imports);
-  const nextImportBlock = [...preservedImportTexts, managedImportText]
+  const kept = keptManagedImports(
+    importDeclarations.filter((declaration) => !isPreserved(declaration)),
+    imports,
+    usedText,
+  );
+  const managedImportText = renderImportStatements([
+    ...imports,
+    ...kept.imports,
+  ]);
+  const nextImportBlock = [
+    ...preservedImportTexts,
+    ...kept.texts,
+    managedImportText,
+  ]
     .filter(Boolean)
     .join("\n");
 
@@ -944,16 +1031,30 @@ const mergeHotUpdaterConfigText = (
     };
   }
 
+  const objectEdit: TextEdit = {
+    start: existingConfig.objectExpression.start,
+    end: existingConfig.objectExpression.end,
+    text: nextObject.text,
+  };
+  // The rebuilt config with its imports blanked out, which decides the
+  // imports a managed package keeps beyond the scaffold's.
+  const usedText = applyTextEdits(existingText, [
+    objectEdit,
+    bodyEdit,
+    ...importDeclarationsOf(existingSource).map((declaration) => ({
+      start: declaration.start,
+      end: declaration.end,
+      text: "",
+    })),
+  ]);
+
   return {
     text: applyTextEdits(existingText, [
-      {
-        start: existingConfig.objectExpression.start,
-        end: existingConfig.objectExpression.end,
-        text: nextObject.text,
-      },
+      objectEdit,
       bodyEdit,
       rebuildImportBlock(existingSource, scaffold, {
         keptBuild: nextObject.keptBuild,
+        usedText,
       }),
     ]),
   };
