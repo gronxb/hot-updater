@@ -5,7 +5,6 @@ import type {
   ReleasePolicyPatch,
   ReleaseRow,
 } from "@hot-updater/plugin-core";
-import { createDatabaseCoreApi } from "@hot-updater/server/db";
 
 import { loadServer } from "@/utils/loadServer";
 
@@ -205,9 +204,8 @@ const listReleases = async (
 export const handleReleaseList = async (options: ReleaseListOptions = {}) => {
   if (!options.json) printBanner();
   const server = await loadServer(await loadConfig(null));
-  const database = server.database;
   try {
-    const core = createDatabaseCoreApi(database);
+    const core = server.core;
     const channels = await channelNames(core);
     const channelId = options.channel
       ? [...channels].find(([, name]) => name === options.channel)?.[0]
@@ -233,9 +231,8 @@ export const handleReleaseShow = async (
 ) => {
   if (!options.json) printBanner();
   const server = await loadServer(await loadConfig(null));
-  const database = server.database;
   try {
-    const core = createDatabaseCoreApi(database);
+    const core = server.core;
     const [release, channels] = await Promise.all([
       core.getRelease(releaseId),
       channelNames(core),
@@ -296,9 +293,8 @@ export const handleReleaseUpdate = async (
   if (!options.json) printBanner();
   await confirmMutation("Update this bundle?", options.yes);
   const server = await loadServer(await loadConfig(null));
-  const database = server.database;
   try {
-    const result = await createDatabaseCoreApi(database).updateReleasePolicy({
+    const result = await server.core.updateReleasePolicy({
       ...(options.expectedRevision === undefined
         ? {}
         : { expectedRevision: options.expectedRevision }),
@@ -329,9 +325,8 @@ export const handleReleaseEnablement = async (
 ) => {
   if (!options.json) printBanner();
   const server = await loadServer(await loadConfig(null));
-  const database = server.database;
   try {
-    const core = createDatabaseCoreApi(database);
+    const core = server.core;
     let expectedRevision = options.expectedRevision;
     if (!enabled) {
       const release = await core.getRelease(releaseId);
@@ -398,17 +393,14 @@ export const handleReleasePreflight = async (
   options: ReleaseUpdateOptions,
 ) => {
   const server = await loadServer(await loadConfig(null));
-  const database = server.database;
   try {
-    const result = await createDatabaseCoreApi(database).preflightReleasePolicy(
-      {
-        ...(options.expectedRevision === undefined
-          ? {}
-          : { expectedRevision: options.expectedRevision }),
-        patch: createPolicyPatch(options),
-        releaseId,
-      },
-    );
+    const result = await server.core.preflightReleasePolicy({
+      ...(options.expectedRevision === undefined
+        ? {}
+        : { expectedRevision: options.expectedRevision }),
+      patch: createPolicyPatch(options),
+      releaseId,
+    });
     console.log(
       options.json
         ? JSON.stringify(result, null, 2)
@@ -447,9 +439,8 @@ export const handleReleaseDelete = async (
     options.yes,
   );
   const server = await loadServer(await loadConfig(null));
-  const database = server.database;
   try {
-    const result = await createDatabaseCoreApi(database).deleteRelease({
+    const result = await server.core.deleteRelease({
       ...(options.expectedRevision === undefined
         ? {}
         : { expectedRevision: options.expectedRevision }),

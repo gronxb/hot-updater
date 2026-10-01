@@ -15,12 +15,37 @@ const mockCli = vi.hoisted(() => ({
   },
 }));
 
-vi.mock("@hot-updater/cli-tools", () => ({
-  loadConfig: mockCli.loadConfig,
-  p: {
-    log: mockCli.log,
-  },
-}));
+vi.mock("@hot-updater/cli-tools", async (importOriginal) => {
+  // How tooling reads a definition stays real.
+  const { isServerDefinition, serverDefinitionOf } =
+    await importOriginal<typeof import("@hot-updater/cli-tools")>();
+  return {
+    isServerDefinition,
+    loadConfig: mockCli.loadConfig,
+    p: {
+      log: mockCli.log,
+    },
+    serverDefinitionOf,
+  };
+});
+
+/**
+ * A module that exports a server definition, as `createHotUpdater` returns
+ * one, on a database named by the `name` expression, with `tooling` among
+ * the database's members.
+ */
+const definitionSource = (name: string, tooling = "") =>
+  [
+    "export const hotUpdater = {",
+    `  database: { name: ${name}${tooling ? `, ${tooling}` : ""} },`,
+    "  storage: [],",
+    "  plugins: [],",
+    "  clientPlugins: [],",
+    "  clientEndpoints: [],",
+    "  core: {},",
+    "  api: {},",
+    "};",
+  ].join("\n");
 
 describe("loadHotUpdater", () => {
   afterEach(() => {
@@ -45,10 +70,10 @@ describe("loadHotUpdater", () => {
       path.join(srcDir, "db.ts"),
       [
         'import "./drizzle";',
-        "export const hotUpdater = {",
-        '  adapterName: "drizzle",',
-        "  generateSchema: () => ({ code: '', path: 'hot-updater-schema.ts' }),",
-        "};",
+        definitionSource(
+          '"drizzle"',
+          "generateSchema: () => ({ code: '', path: 'hot-updater-schema.ts' })",
+        ),
       ].join("\n"),
       "utf-8",
     );
@@ -125,10 +150,10 @@ describe("loadHotUpdater", () => {
       path.join(srcDir, "db.ts"),
       [
         'import "./drizzle";',
-        "export const hotUpdater = {",
-        '  adapterName: "drizzle",',
-        "  generateSchema: () => ({ code: '', path: 'custom-hot-updater-schema.ts' }),",
-        "};",
+        definitionSource(
+          '"drizzle"',
+          "generateSchema: () => ({ code: '', path: 'custom-hot-updater-schema.ts' })",
+        ),
       ].join("\n"),
       "utf-8",
     );
@@ -162,11 +187,7 @@ describe("loadHotUpdater", () => {
     );
     await writeFile(
       path.join(projectDir, "hotUpdater.ts"),
-      [
-        "export const hotUpdater = {",
-        "  adapterName: process.env.HOT_UPDATER_TEST_ADAPTER,",
-        "};",
-      ].join("\n"),
+      definitionSource("process.env.HOT_UPDATER_TEST_ADAPTER"),
       "utf-8",
     );
     await writeFile(
@@ -196,13 +217,7 @@ describe("loadHotUpdater", () => {
     );
     const definitionPath = path.join(projectDir, "server", "hotUpdater.ts");
     await mkdir(path.dirname(definitionPath), { recursive: true });
-    await writeFile(
-      definitionPath,
-      ["export const hotUpdater = {", '  adapterName: "kysely",', "};"].join(
-        "\n",
-      ),
-      "utf-8",
-    );
+    await writeFile(definitionPath, definitionSource('"kysely"'), "utf-8");
     mockCli.loadConfig.mockResolvedValueOnce({ server: definitionPath });
 
     try {

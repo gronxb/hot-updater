@@ -7,36 +7,17 @@ import path from "path";
 import { setTimeout as sleep } from "timers/promises";
 import { fileURLToPath } from "url";
 
-import {
-  getBundlePatch,
-  getBundlePatches,
-} from "../../../packages/protocol/src/bundleArtifacts.ts";
-import {
-  createReleaseCatalogScopeKey,
-  decodeChannelKey,
-  encodeChannelKey,
-} from "../../../packages/protocol/src/releaseCatalogScope.ts";
-import { getRolledOutNumericCohorts } from "../../../packages/protocol/src/rollout.ts";
-import type { Bundle } from "../../../packages/protocol/src/types.ts";
-import {
-  createDatabaseCoreApi,
-  createDatabasePluginApis,
-  serverDefinitionOf,
-} from "../../../packages/server/dist/db/index.mjs";
-import {
-  createInsightsModel,
-  createInsightsProvider,
-} from "../../../packages/server/dist/plugins/insights/index.mjs";
-import {
-  type InsightsModel,
-  type ConfiguredDatabase,
-  createUUIDv7After,
-  type DeployReleasePolicy,
-  type HotUpdaterCoreApi,
-  type ReleaseCatalogRow,
-  type ReleaseRow,
-  rowToBundle,
-} from "../../../plugins/plugin-core/dist/index.mjs";
+import type {
+  AnyHotUpdaterPlugin,
+  ConfiguredDatabase,
+  DeployReleasePolicy,
+  HotUpdaterCoreApi,
+  ReleaseCatalogRow,
+  ReleaseRow,
+} from "@hot-updater/plugin-core";
+import type { InsightsModel } from "@hot-updater/plugin-insights/server";
+import type { Bundle } from "@hot-updater/protocol";
+
 import {
   ConsoleInsightsQaError,
   readObservedInsightsEvent,
@@ -80,6 +61,45 @@ import {
   shouldProbeUpdateCheckVisibility,
   validateArtifactInfoVisibility,
 } from "./update-check-visibility.ts";
+import { importPublished, publishedBin } from "../published.ts";
+
+// Hot Updater's packages through the entries they publish, as the example
+// app installs them.
+const {
+  createReleaseCatalogScopeKey,
+  decodeChannelKey,
+  encodeChannelKey,
+  getBundlePatch,
+  getBundlePatches,
+  getRolledOutNumericCohorts,
+} = await importPublished<typeof import("@hot-updater/protocol")>(
+  "@hot-updater/protocol",
+);
+const { createUUIDv7After, rowToBundle } = await importPublished<
+  typeof import("@hot-updater/plugin-core")
+>("@hot-updater/plugin-core");
+const { createHotUpdater } = await importPublished<
+  typeof import("@hot-updater/server")
+>("@hot-updater/server");
+const { createInsightsModel, createInsightsProvider } = await importPublished<
+  typeof import("@hot-updater/server/plugins/insights")
+>("@hot-updater/server/plugins/insights");
+
+/**
+ * A server over `database` running `plugins`, as a definition assembles
+ * them: what the controller writes and reads in process through.
+ */
+const serverOn = (
+  database: ConfiguredDatabase,
+  plugins: readonly AnyHotUpdaterPlugin[] = [],
+) =>
+  createHotUpdater({
+    database,
+    plugins,
+    ...(plugins.some(({ provides }) => provides?.clientAuth)
+      ? {}
+      : { clientAccess: "public" }),
+  } as Parameters<typeof createHotUpdater>[0]);
 
 type Platform = "ios" | "android";
 type BundleProfile = "default" | "multiAssetReplacement" | "sizeAwareLargeDiff";
@@ -182,10 +202,8 @@ type JsonSnapshot = {
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_DIR = path.resolve(__dirname, "../../..");
-const HOT_UPDATER_CLI_PATH = path.join(
-  REPO_DIR,
-  "packages/hot-updater/dist/index.mjs",
-);
+// The CLI the example app installs, as `npx hot-updater` runs it there.
+const HOT_UPDATER_CLI_PATH = publishedBin("hot-updater");
 const COMMAND_STDIO_DRAIN_GRACE_MS = 500;
 const EXAMPLE_DIR = path.join(REPO_DIR, "examples/v0.85.0");
 const E2E_PATCH_SOURCE_FILE = path.join(
@@ -1188,19 +1206,16 @@ async function waitForFile(filePath: string, attempts = 360) {
 type ConfiguredServer = {
   readonly core: HotUpdaterCoreApi;
   readonly database: ConfiguredDatabase;
-  readonly plugins: readonly unknown[] | undefined;
+  readonly plugins: readonly AnyHotUpdaterPlugin[] | undefined;
 };
 
 async function withConfiguredDatabase<T>(
   callback: (configured: ConfiguredServer) => Promise<T>,
 ): Promise<T> {
-  const { importServerModule, loadConfig } =
-    (await import("../../../packages/cli-tools/dist/index.mjs")) as {
-      importServerModule: (path: string) => Promise<{ hotUpdater: unknown }>;
-      loadConfig: (options: null) => Promise<{
-        server?: string | ConfiguredDatabase;
-      }>;
-    };
+  const { importServerModule, loadConfig, serverDefinitionOf } =
+    await importPublished<typeof import("@hot-updater/cli-tools")>(
+      "@hot-updater/cli-tools",
+    );
   const originalCwd = process.cwd();
 
   try {
@@ -1214,15 +1229,20 @@ async function withConfiguredDatabase<T>(
       // server's admin API, whose plugins it runs itself.
       const definition =
         typeof server === "string"
-          ? serverDefinitionOf((await importServerModule(server)).hotUpdater)
+          ? serverDefinitionOf(
+              (await importServerModule(server)).hotUpdater,
+              server,
+            )
           : undefined;
-      if (typeof server === "string" && definition === undefined) {
-        throw new Error(`${server} does not export a server definition.`);
-      }
       const database = definition?.database ?? (server as ConfiguredDatabase);
       try {
         return await callback({
-          core: createDatabaseCoreApi(database),
+          // Core alone, so the plugins' tables, which a redeploy creates,
+          // never gate the fixtures the controller writes.
+          core:
+            definition === undefined
+              ? (database as { readonly core: HotUpdaterCoreApi }).core
+              : serverOn(database).core,
           database,
           plugins: definition?.plugins,
         });
@@ -1249,12 +1269,10 @@ function readInsightsModel({
   try {
     // Insights alone, so the server's other plugins, whose tables a redeploy
     // creates, never gate what the verification reads.
-    const api = createDatabasePluginApis(
+    const { api } = serverOn(
       database,
-      (plugins ?? []).filter(
-        (plugin) => (plugin as { readonly id?: unknown }).id === "insights",
-      ),
-    );
+      (plugins ?? []).filter(({ id }) => id === "insights"),
+    ) as { readonly api: Record<string, unknown> };
     return api.insights === undefined
       ? null
       : createInsightsModel(
@@ -1277,7 +1295,7 @@ async function verifyConfiguredServerPlugins() {
       plugins,
       write: (samplePlugins, id, text) =>
         (
-          createDatabasePluginApis(database, samplePlugins) as {
+          serverOn(database, samplePlugins as AnyHotUpdaterPlugin[]).api as {
             readonly sample: {
               write(id: string, text: string): Promise<void>;
             };

@@ -67,17 +67,14 @@ vi.mock("./supabaseCli", () => ({
   pushDB: mocks.pushDB,
 }));
 
-vi.mock("@hot-updater/server/db", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@hot-updater/server/db")>()),
-  provisionClientCredential: mocks.provisionClientCredential,
-}));
-
 vi.mock("@hot-updater/cli-tools", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("@hot-updater/cli-tools")>();
   return {
     ...actual,
     confirmInitInputPersistence: vi.fn(async () => false),
+    // The managed server's plugins, over the project's database.
+    provisionClientCredential: mocks.provisionClientCredential,
     makeEnv: vi.fn(),
     printAppSetup: mocks.printAppSetup,
     p: {
@@ -268,12 +265,10 @@ describe("Supabase init with the project's server definition", () => {
     // The package's migration holds core's tables; the plugins' follow it.
     expect(deployed.migrations).toContain("notes_notes");
     expect(deployed.migrations).toContain("'schema.insights'");
-    const [, provisioned] = mocks.provisionClientCredential.mock.calls[0]!;
-    expect((provisioned as { id: string }[]).map(({ id }) => id)).toEqual([
-      "insights",
-      "apiKeys",
-      "notes",
-    ]);
+    const [server] = mocks.provisionClientCredential.mock.calls[0]!;
+    expect(
+      (server as { plugins: { id: string }[] }).plugins.map(({ id }) => id),
+    ).toEqual(["insights", "apiKeys", "notes"]);
     expect(mocks.printAppSetup).toHaveBeenCalledWith(
       expect.objectContaining({
         clientPlugins: [

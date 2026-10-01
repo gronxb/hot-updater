@@ -28,18 +28,6 @@
       "import": "./dist/adapters/prisma.mjs",
       "require": "./dist/adapters/prisma.cjs"
     },
-    "./db": {
-      "import": "./dist/db/index.mjs",
-      "require": "./dist/db/index.cjs"
-    },
-    "./diff": {
-      "import": "./dist/diff.mjs",
-      "require": "./dist/diff.cjs"
-    },
-    "./internal": {
-      "import": "./dist/internal.mjs",
-      "require": "./dist/internal.cjs"
-    },
     "./plugins/api-keys": {
       "import": "./dist/plugins/api-keys/index.mjs",
       "require": "./dist/plugins/api-keys/index.cjs"
@@ -65,7 +53,6 @@
     "access": "public"
   },
   "dependencies": {
-    "@hot-updater/bsdiff": "workspace:*",
     "@hot-updater/protocol": "workspace:*",
     "@hot-updater/plugin-core": "workspace:*",
     "@hot-updater/plugin-api-keys": "workspace:*",

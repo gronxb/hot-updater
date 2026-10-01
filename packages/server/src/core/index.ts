@@ -1,9 +1,4 @@
-export {
-  createCoreApi,
-  createDatabaseCoreApi,
-  createInProcessCoreApi,
-  type CoreApi,
-} from "./api";
+export { createCoreApi, type CoreApi } from "./api";
 export { createCoreOperations } from "./operations";
 export {
   changeReleases,

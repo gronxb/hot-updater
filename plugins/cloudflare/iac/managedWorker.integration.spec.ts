@@ -6,9 +6,11 @@ import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 
-import { loadManagedServerDefinition } from "@hot-updater/cli-tools";
+import {
+  loadManagedServerDefinition,
+  managedServerDefinitionOf,
+} from "@hot-updater/cli-tools";
 import { createHotUpdater } from "@hot-updater/server";
-import { managedServerDefinitionOf } from "@hot-updater/server/internal";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { getPlatformProxy } from "wrangler";
 

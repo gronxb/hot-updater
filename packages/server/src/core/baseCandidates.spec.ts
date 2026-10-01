@@ -10,7 +10,7 @@ import { createBundleFixture } from "@hot-updater/test-utils";
 import { normalizeRange, rangesIntersect } from "verkit";
 import { describe, expect, it } from "vitest";
 
-import { createInProcessCoreApi } from "./api";
+import { createInProcessCoreApi } from "./inProcess.testFixtures";
 
 type Target = Pick<BaseCandidateTarget, "appVersion" | "fingerprintHash">;
 

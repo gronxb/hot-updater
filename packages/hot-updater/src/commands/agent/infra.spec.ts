@@ -367,7 +367,9 @@ describe("deployment artifacts", () => {
         `@hot-updater/${provider}`,
         "@hot-updater/server",
         ...(provider === "aws" ? ["@aws-sdk/credential-providers"] : []),
-        ...(provider === "firebase" ? ["firebase-admin"] : []),
+        ...(provider === "firebase"
+          ? ["firebase-admin", "@hot-updater/plugin-core"]
+          : []),
       ]) {
         const target = path.join(cwd, "node_modules", name);
         await mkdir(path.dirname(target), { recursive: true });
@@ -389,8 +391,8 @@ describe("deployment artifacts", () => {
         [
           "--input-type=module",
           "--eval",
-          // provision-client-credential.mjs's path: the clientAuth plugin over the definition's database, and Firestore's migration.
-          `const { hotUpdater } = await import(${JSON.stringify(definitionUrl.href)}); const { clientAuthOf, createDatabasePluginApis, createMigrator, serverDefinitionOf } = await import("@hot-updater/server/db"); const { database, plugins } = serverDefinitionOf(hotUpdater); const { plugin } = clientAuthOf(plugins); console.log(plugin, typeof createDatabasePluginApis(database, plugins)[plugin]); ${provider === "firebase" ? `const { migrate } = await import(${JSON.stringify(migrationUrl.href)}); console.log(typeof migrate, typeof createMigrator(hotUpdater).migrateToLatest);` : ""} await database.dispose?.();`,
+          // provision-client-credential.mjs's path: the clientAuth plugin's API on the definition's database, and Firestore's migration.
+          `const { hotUpdater } = await import(${JSON.stringify(definitionUrl.href)}); const { plugin } = hotUpdater.clientAuth; console.log(plugin, typeof hotUpdater.api[plugin]); ${provider === "firebase" ? `const { migrate } = await import(${JSON.stringify(migrationUrl.href)}); console.log(typeof migrate, typeof hotUpdater.database.createMigrator);` : ""} await hotUpdater.database.dispose?.();`,
         ],
         {
           cwd,
@@ -424,7 +426,9 @@ describe("deployment artifacts", () => {
         // the server definition to migrate.ts, which runs its migrator and
         // restates none of its database settings.
         const migration = await readFile(migrationUrl, "utf8");
-        expect(migration).toContain("createMigrator(hotUpdater)");
+        expect(migration).toContain(
+          ".createMigrator(toolingTargetOf(plugins))",
+        );
         expect(migration).not.toMatch(/firebaseDatabase|HOT_UPDATER_|env/u);
       }
     },

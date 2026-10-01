@@ -182,7 +182,7 @@ export interface DatabaseAdapter {
    * deleted. A backend that expires rows natively leaves it out.
    */
   prune?(table: PhysicalTable, before: number, limit: number): Promise<number>;
-  /** Called only by `@hot-updater/server/db` tooling. */
+  /** Called only by migration tooling, such as `hot-updater db migrate`. */
   readonly migrations?: {
     apply(tables: readonly PhysicalTable[]): Promise<void>;
   };

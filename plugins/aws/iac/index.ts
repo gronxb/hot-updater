@@ -1,4 +1,5 @@
 import {
+  clientAuthOf,
   colors,
   confirmInitInputPersistence,
   ensureInstallPackages,
@@ -8,25 +9,24 @@ import {
   link,
   loadManagedServerDefinition,
   makeEnv,
+  managedServerDefinitionOf,
   p,
   printAppSetup,
+  provisionClientCredential,
+  type ProvisionedClientCredential,
   readHotUpdaterInitEnv,
   readManagedServerDefinition,
   replacingServerDefinitions,
   type RunInitOptions,
   writeHotUpdaterFiles,
 } from "@hot-updater/cli-tools";
-import type { PluginTables } from "@hot-updater/plugin-core";
 import {
-  clientAuthOf,
-  clientPluginsOf,
-  provisionClientCredential,
-  type ProvisionedClientCredential,
-} from "@hot-updater/server/db";
-import {
-  clientEndpointsOf,
-  managedServerDefinitionOf,
-} from "@hot-updater/server/internal";
+  type AnyHotUpdaterPlugin,
+  createMemoryAdapter,
+  type EngineDatabase,
+  type PluginTables,
+} from "@hot-updater/plugin-core";
+import { createHotUpdater } from "@hot-updater/server";
 import { execa } from "execa";
 
 import { dynamoDB, migrateDynamoDB } from "../src/dynamoDB";
@@ -60,6 +60,23 @@ const checkIfAwsCliInstalled = async () => {
     return false;
   }
 };
+
+/**
+ * The managed server's plugins over `database`, as the server assembles
+ * them: what init reads their client endpoints, headers, and credential
+ * from. Creating it reads and writes nothing.
+ */
+const managedServerOver = (
+  database: EngineDatabase,
+  serverPlugins: readonly AnyHotUpdaterPlugin[],
+) =>
+  createHotUpdater({
+    database,
+    plugins: serverPlugins,
+    ...(serverPlugins.some(({ provides }) => provides?.clientAuth)
+      ? {}
+      : { clientAccess: "public" }),
+  } as Parameters<typeof createHotUpdater>[0]);
 
 const isAwsRegion = (value: string | undefined): value is AwsRegion => {
   return value !== undefined && Object.hasOwn(regionLocationMap, value);
@@ -361,6 +378,8 @@ export const runInit = async ({
             storage: { bucketName },
           },
         });
+        // A clientAuth plugin must give init the credential an app sends.
+        clientAuthOf(loaded);
         return {
           plugins: loaded.plugins,
           pluginPaths: pluginCacheBehaviorPaths(loaded.clientEndpoints),
@@ -368,7 +387,12 @@ export const runInit = async ({
       })
     : {
         plugins,
-        pluginPaths: pluginCacheBehaviorPaths(clientEndpointsOf(plugins)),
+        pluginPaths: pluginCacheBehaviorPaths(
+          managedServerOver(
+            { name: "memory", adapter: createMemoryAdapter() },
+            plugins,
+          ).clientEndpoints,
+        ),
       };
   const serverPlugins = server.plugins;
   const { pluginPaths } = server;
@@ -395,17 +419,14 @@ export const runInit = async ({
     region: bucketRegion,
     tableName: resolvedDynamoDBTableName,
   });
+  const managedServer = managedServerOver(databasePlugin, serverPlugins);
   // The app's credential, through the managed server's plugins, on the table they read.
   let credential: ProvisionedClientCredential | undefined;
   try {
-    credential = await provisionClientCredential(
-      databasePlugin,
-      serverPlugins,
-      {
-        env: providerEnv,
-        name: "AWS init",
-      },
-    );
+    credential = await provisionClientCredential(managedServer, {
+      env: providerEnv,
+      name: "AWS init",
+    });
     if (credential !== undefined) {
       await makeEnv({ [credential.env]: credential.value });
     }
@@ -464,7 +485,7 @@ export const runInit = async ({
     await cloudFrontManager.createOrUpdateDistribution({
       keyGroupId,
       bucketName,
-      clientHeaders: clientAuthOf(serverPlugins)?.varyHeaders ?? [],
+      clientHeaders: managedServer.clientAuth?.varyHeaders ?? [],
       distribution: selectedDistribution,
       functionArn,
       pluginPaths,
@@ -522,7 +543,7 @@ export const runInit = async ({
   printAppSetup({
     baseURL: `https://${distributionDomain}`,
     ...(credential === undefined ? {} : { credential }),
-    clientPlugins: clientPluginsOf(serverPlugins),
+    clientPlugins: managedServer.clientPlugins,
   });
   p.log.message(
     `Next step: ${link(

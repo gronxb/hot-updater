@@ -145,9 +145,9 @@ Use one pagination cursor at a time.
 
 The console reads the server that [hot-updater.config.ts](hot-updater.config.ts)
 points at with `server`. The checked-in [demo server](hotUpdater.ts) seeds
-sample bundles and releases through
-`createDatabaseCoreApi(database.withoutLatency()).deploy`. For an empty local
-mock console, define the server like this and point `server` at it:
+sample bundles and releases through the `core.deploy` of a second server
+definition over `database.withoutLatency()`. For an empty local mock console,
+define the server like this and point `server` at it:
 
 ```typescript
 import { mockDatabase, mockStorage } from "@hot-updater/mock";

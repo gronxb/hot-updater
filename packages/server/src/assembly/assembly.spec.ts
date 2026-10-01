@@ -3,7 +3,6 @@ import { createBundleFixture } from "@hot-updater/test-utils";
 import { describe, expect, it, vi } from "vitest";
 
 import { createHotUpdater } from "../createHotUpdaterCore";
-import { serverPluginsOf } from "../db";
 import { listHotUpdaterRoutes } from "../handler";
 import { definePlugin } from "../plugins/definePlugin";
 import { HotUpdaterConfigError } from "./assemblePlugins";
@@ -80,7 +79,7 @@ describe("createHotUpdater with plugins", () => {
       plugins: [withCommands],
       clientAccess: "public",
     });
-    expect(serverPluginsOf(hotUpdater)).toEqual([withCommands]);
+    expect(hotUpdater.plugins).toEqual([withCommands]);
   });
 
   it("gives each plugin its own tables on the engine and exposes its API by id", async () => {

@@ -10,7 +10,7 @@ import {
   createMemoryAdapter,
   type DatabaseAdapter,
 } from "@hot-updater/plugin-core";
-import { createDatabaseCoreApi } from "@hot-updater/server/db";
+import { createHotUpdater } from "@hot-updater/server";
 import { vi } from "vitest";
 
 export type DeploymentSeed = BundleDeployment;
@@ -27,9 +27,9 @@ const SEED_RELEASE = {
 
 /**
  * A database on the storage engine over a memory adapter, as a provider
- * gives the CLI, with core on it for seeding. The CLI opens core through
- * `database.core`, so a test can spy on its calls. Every read passes `read`
- * first.
+ * gives the CLI, with core on it for seeding. `testServer` hands commands
+ * `database.core` as the server's core, so a test can spy on its calls.
+ * Every read passes `read` first.
  */
 export const createDatabaseHarness = () => {
   const read = vi.fn(async (): Promise<void> => {});
@@ -48,7 +48,10 @@ export const createDatabaseHarness = () => {
     },
     write: (ops) => memory.write(ops),
   };
-  const engineCore = createDatabaseCoreApi({ name: "test-database", adapter });
+  const { core: engineCore } = createHotUpdater({
+    database: { name: "test-database", adapter },
+    clientAccess: "public",
+  });
   const deploy = vi.fn((deployments: readonly Deployment[]) =>
     engineCore.deploy(deployments),
   );

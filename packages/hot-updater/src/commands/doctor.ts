@@ -9,7 +9,7 @@ import {
   p,
   readPackageUp,
 } from "@hot-updater/cli-tools";
-import type { ClientPluginSpec } from "@hot-updater/server/db";
+import type { PluginClientPlugin } from "@hot-updater/plugin-core";
 import { merge } from "es-toolkit";
 import fg from "fast-glob";
 import {
@@ -678,7 +678,7 @@ async function checkClientPlugins({
 }): Promise<NativeCheckIssue[]> {
   const config = await loadConfig(null);
   if (config.server === undefined) return [];
-  let missing: readonly ClientPluginSpec[];
+  let missing: readonly PluginClientPlugin[];
   try {
     missing = await findMissingClientPlugins({
       clientPlugins: await readServerClientPlugins(config),

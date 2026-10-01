@@ -14,7 +14,7 @@ import { createBundleFixture } from "@hot-updater/test-utils";
 import { pgliteExecutor, sqliteExecutor } from "@hot-updater/test-utils/node";
 import { afterAll, describe, expect, it } from "vitest";
 
-import { createInProcessCoreApi } from "../core/api";
+import { createInProcessCoreApi } from "../core/inProcess.testFixtures";
 import { apiKeys } from "../plugins/api-keys";
 import { insights } from "../plugins/insights";
 

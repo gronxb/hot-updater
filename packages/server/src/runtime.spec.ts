@@ -29,14 +29,18 @@ describe("runtime createHotUpdater", () => {
     ).toThrow(`Remove ${key}`);
   });
 
-  it("publishes only the supported runtime and database subpaths", () => {
-    const packageExports = packageJson.exports;
-
-    const databaseEntry = packageExports["./db"];
-    const hasRuntimeEntry = Object.hasOwn(packageExports, "./runtime");
-
-    expect(databaseEntry).toBeDefined();
-    expect(hasRuntimeEntry).toBe(false);
+  it("publishes the runtime, the built-in adapters, and the built-in plugins, and no tooling entry", () => {
+    // Tooling reads a server through its definition's properties instead.
+    expect(Object.keys(packageJson.exports).sort()).toEqual([
+      ".",
+      "./adapters/drizzle",
+      "./adapters/kysely",
+      "./adapters/mongodb",
+      "./adapters/prisma",
+      "./package.json",
+      "./plugins/api-keys",
+      "./plugins/insights",
+    ]);
   });
 
   it("types the options and the instance without the legacy API", () => {
@@ -49,11 +53,21 @@ describe("runtime createHotUpdater", () => {
       CreateHotUpdaterOptions["clientAccess"]
     >().toEqualTypeOf<ClientAccessPolicy>();
     expectTypeOf<keyof RuntimeHotUpdaterAPI>().toEqualTypeOf<
-      "adapterName" | "api" | "core" | "flush" | "handlers"
+      | "adapterName"
+      | "api"
+      | "clientAuth"
+      | "clientEndpoints"
+      | "clientPlugins"
+      | "core"
+      | "database"
+      | "flush"
+      | "handlers"
+      | "plugins"
+      | "storage"
     >();
   });
 
-  it("runs on an engine database without exposing its tooling", () => {
+  it("runs on an engine database, which it exposes as configured rather than as methods", () => {
     const storage = createStorageAdapter({
       name: "contextlessTestStorage",
       protocol: "s3",
@@ -70,12 +84,18 @@ describe("runtime createHotUpdater", () => {
     });
 
     expect(hotUpdater.adapterName).toBe("contextlessTestDatabase");
+    // Public client routes: no clientAuth.
     expect(Object.keys(hotUpdater).sort()).toEqual([
       "adapterName",
       "api",
+      "clientEndpoints",
+      "clientPlugins",
       "core",
+      "database",
       "flush",
       "handlers",
+      "plugins",
+      "storage",
     ]);
     expect(hotUpdater).not.toHaveProperty("authorityId");
     expectTypeOf(hotUpdater).not.toHaveProperty("createMigrator");

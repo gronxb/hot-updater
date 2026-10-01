@@ -15,10 +15,6 @@ import {
 } from "@hot-updater/plugin-core";
 import { createHotUpdater } from "@hot-updater/server";
 import {
-  createDatabaseCoreApi,
-  createDatabasePluginApis,
-} from "@hot-updater/server/db";
-import {
   createInsightsModel,
   insights,
 } from "@hot-updater/server/plugins/insights";
@@ -205,7 +201,7 @@ describe("dynamoDB", () => {
   it("serves only after the migration writes the schema settings", async () => {
     const fenced = { ...local.config, tableName: local.tableName() };
     const database = dynamoDB(fenced);
-    const core = createDatabaseCoreApi(database);
+    const core = createHotUpdater({ database, clientAccess: "public" }).core;
     // No table yet: the fence reads DynamoDB's missing table as a missing schema.
     await expect(core.listChannels()).rejects.toBeInstanceOf(
       HotUpdaterSchemaMigrationRequiredError,
@@ -230,7 +226,11 @@ describe("dynamoDB", () => {
       insightsTestSuite({
         createModel: (database) =>
           createInsightsModel(
-            createDatabasePluginApis(database, [insights()]).insights,
+            createHotUpdater({
+              database,
+              plugins: [insights()],
+              clientAccess: "public",
+            }).api.insights,
           ),
       }),
     ],

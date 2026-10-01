@@ -18,6 +18,7 @@ import {
   pluginModule,
   pluginSettings,
 } from "./db/coreDatabase";
+import type { DatabaseTooling } from "./db/types";
 
 export interface EngineOptions {
   /**
@@ -47,6 +48,22 @@ export interface Engine {
   /** Stops batching's timer after a last flush. */
   dispose(): Promise<void>;
 }
+
+/**
+ * How to create plugins' tables on a database, by the tooling it offers:
+ * what the plugins' schema fence names when their settings rows are missing.
+ */
+const pluginTablesFix = (database: EngineDatabase) => {
+  const { createMigrator, generateSchema } = database as EngineDatabase &
+    DatabaseTooling;
+  const managed =
+    "rerun `hot-updater init --provider <provider>`, which deploys the server with these plugins and creates their tables.";
+  return createMigrator !== undefined
+    ? `Run \`hot-updater db migrate\`; on a managed server, ${managed}`
+    : generateSchema !== undefined
+      ? `Run \`hot-updater db generate\` and apply the file it writes; on a managed server, ${managed}`
+      : `On a managed server, ${managed}`;
+};
 
 /**
  * The storage engine over a database, as a server runs it: core's tables
@@ -83,7 +100,12 @@ export const createEngine = (
   const fenced =
     name === undefined || plugins.length === 0
       ? database.adapter
-      : withSchemaFence(database.adapter, name, pluginSettings(plugins));
+      : withSchemaFence(
+          database.adapter,
+          name,
+          pluginSettings(plugins),
+          pluginTablesFix(database),
+        );
   const batching = database.aggregateBatching;
   const schema = resolveSchema([
     coreModule,

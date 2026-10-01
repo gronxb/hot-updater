@@ -2,22 +2,26 @@ import {
   type ConfigResponse,
   importServerModule,
   loadConfig,
+  type ServerDefinition,
+  serverDefinitionOf,
 } from "@hot-updater/cli-tools";
 import type {
   ConfiguredDatabase,
+  HotUpdaterCoreApi,
   RemoteServer,
   StorageAdapter,
   AnyHotUpdaterPlugin,
 } from "@hot-updater/plugin-core";
-import {
-  type ServerDefinition,
-  serverDefinitionOf,
-} from "@hot-updater/server/db";
 
 /** The server hot-updater.config.ts points at, as the CLI uses it. */
 export type LoadedServer = {
   /** The database commands read and write: the definition's, or the remote server's admin API. */
   readonly database: ConfiguredDatabase;
+  /**
+   * Core's API, which commands read and write through: the definition's, on
+   * the server's own path, or the remote server's admin API.
+   */
+  readonly core: HotUpdaterCoreApi;
   /** Where bundles are stored, in order; the CLI uploads to the first. */
   readonly storage: readonly StorageAdapter[];
   /** Closes what the CLI opened: the module's `closeDatabase`, or the database. */
@@ -28,7 +32,6 @@ export type LoadedServer = {
       /** The server definition's absolute path. */
       readonly path: string;
       /** What `createHotUpdater` returned. */
-      readonly hotUpdater: unknown;
       readonly definition: ServerDefinition;
       readonly plugins: readonly AnyHotUpdaterPlugin[];
     }
@@ -51,19 +54,19 @@ export const loadServerDefinition = async (
   path: string,
 ): Promise<Extract<LoadedServer, { kind: "definition" }>> => {
   const module = await importServerModule(path);
-  const definition = serverDefinitionOf(module.hotUpdater);
-  if (definition === undefined) {
-    throw new ServerConfigError(
-      `${path} must export hotUpdater: the server createHotUpdater({ database, storage, plugins }) returns.`,
-    );
+  let definition: ServerDefinition;
+  try {
+    definition = serverDefinitionOf(module.hotUpdater, path);
+  } catch (error) {
+    throw new ServerConfigError((error as Error).message, { cause: error });
   }
   return {
     kind: "definition",
     path,
-    hotUpdater: module.hotUpdater,
     definition,
     plugins: definition.plugins,
     database: definition.database,
+    core: definition.core,
     storage: definition.storage,
     dispose: async () => {
       if (!(await module.closeDatabase())) {
@@ -92,6 +95,7 @@ export const loadServer = async (
     kind: "remote",
     server,
     database: server,
+    core: server.core,
     storage: server.storage,
     dispose: async () => {
       await server.dispose?.();

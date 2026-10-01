@@ -2,7 +2,7 @@
 
 import type { Bundle, HotUpdaterCoreApi } from "@hot-updater/plugin-core";
 import { createMemoryAdapter } from "@hot-updater/plugin-core";
-import { createDatabaseCoreApi } from "@hot-updater/server/db";
+import { createHotUpdater } from "@hot-updater/server";
 import { describe, expect, it, vi } from "vitest";
 
 import { getBundleChildCounts, getBundleChildren } from "./getBundleChildren";
@@ -28,6 +28,13 @@ const patchFrom = (base: Bundle) => ({
   patchStorageUri: `s3://bucket/patches/${base.id}`,
 });
 
+/** A server definition's core over an empty memory database. */
+const memoryCore = (): HotUpdaterCoreApi =>
+  createHotUpdater({
+    database: { name: "memory", adapter: createMemoryAdapter() },
+    clientAccess: "public",
+  }).core;
+
 const deploy = (core: HotUpdaterCoreApi, deployed: Bundle) =>
   core.deploy([
     {
@@ -45,7 +52,7 @@ const deploy = (core: HotUpdaterCoreApi, deployed: Bundle) =>
 
 describe("bundle children", () => {
   it("lists the bundles patched from a base, newest first", async () => {
-    const core = createDatabaseCoreApi(createMemoryAdapter());
+    const core = memoryCore();
     const base = bundle(id(1));
     const other = bundle(id(2));
     const first = bundle(id(3), [patchFrom(base)]);
@@ -65,7 +72,7 @@ describe("bundle children", () => {
   });
 
   it("counts children from each base bundle's counter", async () => {
-    const core = createDatabaseCoreApi(createMemoryAdapter());
+    const core = memoryCore();
     const base = bundle(id(1));
     const other = bundle(id(2));
     for (const deployed of [

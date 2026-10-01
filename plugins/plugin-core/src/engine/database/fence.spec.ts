@@ -77,6 +77,38 @@ describe("schema fence", () => {
     });
   });
 
+  it("lists every plugin whose settings row is missing or stale, with the fix it is given", async () => {
+    const memory = createMemoryAdapter();
+    await migrateSchema(memory, "memory", [], {
+      ...settings,
+      "schema.notes": "1",
+    });
+
+    const error = await checkSchemaFence(
+      memory,
+      "memory",
+      { "schema.insights": "2", "schema.notes": "2", "schema.keys": "1" },
+      "Run the migration.",
+    ).catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(HotUpdaterSchemaMigrationRequiredError);
+    expect(error).toMatchObject({
+      plugins: ["insights", "notes", "keys"],
+      setting: { key: "schema.insights", expected: "2", found: null },
+      message:
+        'The tables of plugins "insights", "notes" and "keys" are not migrated on memory: schema settings "schema.insights" is missing; expected "2", and "schema.notes" is "1"; expected "2", and "schema.keys" is missing; expected "1". Run the migration.',
+    });
+    // Core's settings keep their own message, which names no plugin.
+    await expect(
+      checkSchemaFence(createMemoryAdapter(), "memory", settings),
+    ).rejects.toMatchObject({
+      plugins: [],
+      message: expect.stringContaining(
+        'Hot Updater schema setting "schema.engine" for memory is missing',
+      ),
+    });
+  });
+
   it("checks before a process's first read only, and again after a failure", async () => {
     const memory = createMemoryAdapter();
     const { adapter, calls } = counted(memory);

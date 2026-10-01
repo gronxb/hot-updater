@@ -10,6 +10,7 @@ import {
 import { tmpdir } from "os";
 import path from "path";
 
+import type { ServerDefinition } from "@hot-updater/cli-tools";
 import { insights } from "@hot-updater/server/plugins/insights";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -45,7 +46,11 @@ const mockPlugins = vi.hoisted(() => ({
   findPluginList: vi.fn(),
 }));
 
+// The definition tooling `db generate` runs, from cli-tools.
 vi.mock("@hot-updater/cli-tools", () => ({
+  createMigrator: mockServer.createMigrator,
+  generateSchema: mockServer.generateSchema,
+  generatesSchema: mockServer.generatesSchema,
   colors: {
     blue: (value: string) => value,
     cyan: (value: string) => value,
@@ -70,16 +75,13 @@ vi.mock("./utils/load-hot-updater", async (importOriginal) => ({
   loadHotUpdater: vi.fn(),
 }));
 
-vi.mock("@hot-updater/server/db", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@hot-updater/server/db")>()),
-  createMigrator: mockServer.createMigrator,
-  generateSchema: mockServer.generateSchema,
-  generatesSchema: mockServer.generatesSchema,
-}));
-
 vi.mock("./pluginCommands", () => ({
   findPluginList: mockPlugins.findPluginList,
 }));
+
+/** A server definition on a database named `name`; the tooling it reaches is mocked. */
+const definitionOn = (name: string) =>
+  ({ database: { name }, plugins: [] }) as unknown as ServerDefinition;
 
 describe("generate command", () => {
   beforeEach(() => {
@@ -109,9 +111,7 @@ describe("generate command", () => {
       absoluteConfigPath: "/repo/src/db.ts",
       adapterName: "mongodb",
       dispose,
-      hotUpdater: {
-        adapterName: "mongodb",
-      },
+      hotUpdater: definitionOn("mongodb"),
     };
 
     vi.mocked(loadHotUpdater).mockResolvedValue(loadedConfig);
@@ -244,9 +244,7 @@ describe("generate command", () => {
       absoluteConfigPath: "/repo/src/db.ts",
       adapterName: "drizzle",
       dispose,
-      hotUpdater: {
-        adapterName: "drizzle",
-      },
+      hotUpdater: definitionOn("drizzle"),
     };
     mockServer.generateSchema.mockReturnValue({
       code: "export const bundles = {};",
@@ -287,9 +285,7 @@ describe("generate command", () => {
       absoluteConfigPath: "/repo/src/db.ts",
       adapterName: "supabaseDatabase",
       dispose: vi.fn(),
-      hotUpdater: {
-        adapterName: "supabaseDatabase",
-      },
+      hotUpdater: definitionOn("supabaseDatabase"),
     };
     const migrations = path.join(outputDir, "supabase", "migrations");
     mockServer.generatesSchema.mockReturnValue(true);
@@ -328,9 +324,7 @@ describe("generate command", () => {
       absoluteConfigPath: "/repo/src/db.ts",
       adapterName: "drizzle",
       dispose,
-      hotUpdater: {
-        adapterName: "drizzle",
-      },
+      hotUpdater: definitionOn("drizzle"),
     };
     mockServer.generateSchema.mockReturnValue({
       code: "export const bundles = {};",

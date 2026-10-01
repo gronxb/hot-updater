@@ -32,6 +32,11 @@ export interface SchemaSettingMismatch {
   readonly found: string | null;
 }
 
+const CORE_SCHEMA_KEY = "schema.core";
+
+const stored = ({ key, expected, found }: SchemaSettingMismatch) =>
+  `"${key}" is ${found === null ? "missing" : `"${found}"`}; expected "${expected}"`;
+
 const settingMessage = (
   adapterName: string,
   { key, expected, found }: SchemaSettingMismatch,
@@ -42,23 +47,73 @@ const settingMessage = (
       : "Run `hot-updater db migrate`."
   }`;
 
+/** The plugin a `schema.<id>` setting belongs to; undefined for core's and the engine's. */
+const pluginOf = ({ key }: SchemaSettingMismatch) =>
+  key.startsWith("schema.") &&
+  key !== ENGINE_SCHEMA_KEY &&
+  key !== CORE_SCHEMA_KEY
+    ? key.slice("schema.".length)
+    : undefined;
+
+const listed = (items: readonly string[]) =>
+  items.length < 2
+    ? items.join("")
+    : `${items.slice(0, -1).join(", ")} and ${items.at(-1)}`;
+
+/** How to create plugins' tables when the fence was given no fix. */
+const PLUGIN_TABLES_FIX =
+  "Run `hot-updater db migrate`; on a managed server, rerun `hot-updater init --provider <provider>`, which deploys the server with these plugins and creates their tables.";
+
+const pluginsMessage = (
+  adapterName: string,
+  plugins: readonly string[],
+  settings: readonly SchemaSettingMismatch[],
+  fix: string,
+) =>
+  `The tables of ${plugins.length === 1 ? "plugin" : "plugins"} ${listed(plugins.map((id) => `"${id}"`))} are not migrated on ${adapterName}: schema ${settings.length === 1 ? "setting" : "settings"} ${settings.map(stored).join(", and ")}. ${fix}`;
+
 /** The database needs `hot-updater db migrate`, or a new database; the handler answers 503. */
 export class HotUpdaterSchemaMigrationRequiredError extends Error {
+  /** Every setting the fence found missing or different; `setting` is the first. */
+  readonly settings: readonly SchemaSettingMismatch[];
+  /**
+   * The ids of the plugins whose `schema.<id>` setting is among them: the
+   * plugins whose tables a migration has yet to create or change.
+   */
+  readonly plugins: readonly string[];
+
   constructor(
     readonly adapterName: string,
     readonly currentVersion: string | undefined,
     readonly setting?: SchemaSettingMismatch,
-    options?: ErrorOptions,
+    options?: ErrorOptions & {
+      /** Every mismatch, when the fence found more than `setting`. */
+      readonly settings?: readonly SchemaSettingMismatch[];
+      /** How to create the plugins' tables on this database. */
+      readonly fix?: string;
+    },
   ) {
+    const settings =
+      options?.settings ?? (setting === undefined ? [] : [setting]);
+    const plugins = settings.flatMap((mismatch) => pluginOf(mismatch) ?? []);
     super(
-      setting !== undefined
-        ? settingMessage(adapterName, setting)
-        : currentVersion === undefined
+      setting === undefined
+        ? currentVersion === undefined
           ? `Hot Updater database schema is not initialized for ${adapterName}. Run \`hot-updater db migrate\` before using this adapter.`
-          : `Hot Updater v1 cannot migrate schema ${currentVersion} in place. Create a new empty database and run \`hot-updater db migrate\`.`,
-      options,
+          : `Hot Updater v1 cannot migrate schema ${currentVersion} in place. Create a new empty database and run \`hot-updater db migrate\`.`
+        : plugins.length > 0 && plugins.length === settings.length
+          ? pluginsMessage(
+              adapterName,
+              plugins,
+              settings,
+              options?.fix ?? PLUGIN_TABLES_FIX,
+            )
+          : settingMessage(adapterName, setting),
+      options?.cause === undefined ? undefined : { cause: options.cause },
     );
     this.name = "HotUpdaterSchemaMigrationRequiredError";
+    this.settings = settings;
+    this.plugins = plugins;
   }
 }
 
@@ -105,11 +160,16 @@ export const readSettings = (
     keys.map((key) => [key]),
   );
 
-/** Throws unless every expected setting is stored with its value: one batch read. */
+/**
+ * Throws unless every expected setting is stored with its value: one batch
+ * read. The error lists every setting missing or different; `fix` says how
+ * to create the plugins' tables on this database.
+ */
 export const checkSchemaFence = async (
   adapter: DatabaseAdapter,
   adapterName: string,
   expected: SchemaSettings,
+  fix?: string,
 ): Promise<void> => {
   const keys = Object.keys(expected);
   let rows: readonly (StoredRow | null)[];
@@ -125,16 +185,27 @@ export const checkSchemaFence = async (
       { cause },
     );
   }
-  keys.forEach((key, position) => {
+  const settings = keys.flatMap((key, position) => {
     const found = rows[position]?.value;
-    if (found !== expected[key]) {
-      throw new HotUpdaterSchemaMigrationRequiredError(adapterName, undefined, {
-        key,
-        expected: expected[key]!,
-        found: typeof found === "string" ? found : null,
-      });
-    }
+    return found === expected[key]
+      ? []
+      : [
+          {
+            key,
+            expected: expected[key]!,
+            found: typeof found === "string" ? found : null,
+          },
+        ];
   });
+  const [first] = settings;
+  if (first !== undefined) {
+    throw new HotUpdaterSchemaMigrationRequiredError(
+      adapterName,
+      undefined,
+      first,
+      { settings, ...(fix === undefined ? {} : { fix }) },
+    );
+  }
 };
 
 /** The database name a fenced adapter carries, so a server can fence its plugins' rows too. */
@@ -157,10 +228,11 @@ export const withSchemaFence = (
   adapter: DatabaseAdapter,
   adapterName: string,
   expected: SchemaSettings,
+  fix?: string,
 ): FencedAdapter => {
   let ready: Promise<void> | undefined;
   const fence = () => {
-    ready ??= checkSchemaFence(adapter, adapterName, expected).catch(
+    ready ??= checkSchemaFence(adapter, adapterName, expected, fix).catch(
       (error: unknown) => {
         ready = undefined;
         throw error;

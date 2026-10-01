@@ -1,5 +1,7 @@
-import { p } from "@hot-updater/cli-tools";
-import { createMigrator as createHotUpdaterMigrator } from "@hot-updater/server/db";
+import {
+  createMigrator as createHotUpdaterMigrator,
+  p,
+} from "@hot-updater/cli-tools";
 
 import { ui } from "../utils/cli-ui";
 import { loadHotUpdater } from "./utils/load-hot-updater";

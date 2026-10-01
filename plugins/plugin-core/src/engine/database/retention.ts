@@ -68,9 +68,11 @@ const LEASE_KEY = "retention.nextPassAt";
 /**
  * The adapter, pruning during its writes with no scheduler: once the lease
  * row in `leaseTable` is due, the write that takes it first runs one bounded
- * pass over the tables with retention, and other writers skip. The next pass is due in an hour, or in a minute while a pass still
- * found a full batch of expired rows in some table. A backend that expires
- * rows natively, or a schema without retention, gets its adapter back.
+ * pass over the tables with retention, and other writers skip. The next pass
+ * is due in an hour, or in a minute while a pass still found a full batch of
+ * expired rows in some table; a pass that fails is due again at once. A
+ * backend that expires rows natively, or a schema without retention, gets its
+ * adapter back.
  */
 export const pruneDuringWrites = (
   adapter: DatabaseAdapter,
@@ -105,8 +107,17 @@ export const pruneDuringWrites = (
     if (held === null) return;
     checkAt = at + HOUR_MS;
     const deleted: number[] = [];
-    for (const t of expiring) {
-      deleted.push(await adapter.prune!(t, at - t.retention!.ms, PASS_LIMIT));
+    try {
+      for (const t of expiring) {
+        deleted.push(await adapter.prune!(t, at - t.retention!.ms, PASS_LIMIT));
+      }
+    } catch (error) {
+      // Hands the pass back, due now, so the next writer whose credentials
+      // can delete, such as the server, runs it rather than skipping it for
+      // an hour. This process tries again in a minute.
+      checkAt = at + MINUTE_MS;
+      await lease(held, at).catch(() => null);
+      throw error;
     }
     const backlog = deleted.includes(PASS_LIMIT);
     if (backlog && (await lease(held, at + MINUTE_MS)) !== null) {

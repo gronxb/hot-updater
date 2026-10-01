@@ -2,6 +2,7 @@ import crypto from "crypto";
 import path from "path";
 
 import {
+  clientAuthOf,
   confirmInitInputPersistence,
   copyDirToTmp,
   getHotUpdaterInitInputEnv,
@@ -11,20 +12,18 @@ import {
   link,
   loadManagedServerDefinition,
   makeEnv,
+  managedServerDefinitionOf,
   p,
   printAppSetup,
+  provisionClientCredential,
+  type ProvisionedClientCredential,
   readHotUpdaterInitEnv,
   type RunInitOptions,
   readManagedServerDefinition,
   replacingServerDefinitions,
   writeHotUpdaterFiles,
 } from "@hot-updater/cli-tools";
-import {
-  clientPluginsOf,
-  provisionClientCredential,
-  type ProvisionedClientCredential,
-} from "@hot-updater/server/db";
-import { managedServerDefinitionOf } from "@hot-updater/server/internal";
+import { createHotUpdater } from "@hot-updater/server";
 import { Cloudflare } from "cloudflare";
 
 import { d1Database } from "../src/d1Database";
@@ -628,8 +627,8 @@ export const runInit = async ({
   const serverPlugins = definition.edited
     ? await loadManagedServerDefinition(
         definition,
-        (hotUpdater) =>
-          managedServerDefinitionOf(hotUpdater, {
+        (hotUpdater) => {
+          const loaded = managedServerDefinitionOf(hotUpdater, {
             provider: "Cloudflare",
             database: "d1Database",
             storage: "r2",
@@ -637,7 +636,11 @@ export const runInit = async ({
               database: { accountId, databaseId: selectedD1DatabaseId },
               storage: { accountId, bucketName: selectedBucketName },
             },
-          }).plugins,
+          });
+          // A clientAuth plugin must give init the credential an app sends.
+          clientAuthOf(loaded);
+          return loaded.plugins;
+        },
         { cwd },
       )
     : plugins;
@@ -740,10 +743,19 @@ export const runInit = async ({
     cloudflareApiToken: apiToken,
     databaseId: selectedD1DatabaseId,
   });
+  // The managed server's plugins over the database init set up, which
+  // creating it neither reads nor writes.
+  const managedServer = createHotUpdater({
+    database,
+    plugins: serverPlugins,
+    ...(serverPlugins.some(({ provides }) => provides?.clientAuth)
+      ? {}
+      : { clientAccess: "public" }),
+  } as Parameters<typeof createHotUpdater>[0]);
   // The app's credential, through the managed server's plugins, on the tables they read.
   let credential: ProvisionedClientCredential | undefined;
   try {
-    credential = await provisionClientCredential(database, serverPlugins, {
+    credential = await provisionClientCredential(managedServer, {
       env: initInputEnv,
       name: "Cloudflare init",
     });
@@ -764,7 +776,7 @@ export const runInit = async ({
         }
       : {}),
     ...(credential === undefined ? {} : { credential }),
-    clientPlugins: clientPluginsOf(serverPlugins),
+    clientPlugins: managedServer.clientPlugins,
   });
 
   p.log.message(

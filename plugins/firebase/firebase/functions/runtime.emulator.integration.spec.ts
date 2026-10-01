@@ -16,10 +16,7 @@ import { fileURLToPath } from "node:url";
 import { transformEnv } from "@hot-updater/cli-tools";
 import type { HotUpdaterCoreApi } from "@hot-updater/plugin-core";
 import type { Bundle } from "@hot-updater/protocol";
-import {
-  createDatabaseCoreApi,
-  createDatabasePluginApis,
-} from "@hot-updater/server/db";
+import { createHotUpdater } from "@hot-updater/server";
 import { apiKeys } from "@hot-updater/server/plugins/api-keys";
 import {
   createInsightsModel,
@@ -255,15 +252,15 @@ exec node "${path.join(firebaseFunctionsPackagePath, "lib/bin/firebase-functions
 
     const database = firebaseDatabase({ ...adminOptions });
     await migrateFirebaseDatabase({ ...adminOptions }, plugins);
-    const pluginApis = createDatabasePluginApis(database, [
-      insights(),
-      apiKeys(),
-    ]);
+    const pluginApis = createHotUpdater({
+      database,
+      plugins: [insights(), apiKeys()],
+    }).api;
     await pluginApis.apiKeys.register({
       apiKey: API_KEY,
       name: "Runtime acceptance",
     });
-    core = createDatabaseCoreApi(database);
+    core = createHotUpdater({ database, clientAccess: "public" }).core;
     insightsReads = createInsightsProvider(
       createInsightsModel(pluginApis.insights),
     );

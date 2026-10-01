@@ -18,7 +18,6 @@ import {
   getManifestStorageUri,
   getPatchStorageUri,
 } from "@hot-updater/protocol";
-import { createDatabaseCoreApi } from "@hot-updater/server/db";
 
 import {
   type LoadedServer,
@@ -440,7 +439,6 @@ export async function handleStoragePrune(options: StoragePruneOptions = {}) {
   }
 
   const server = await loadServer(await loadConfig(null));
-  const database = server.database;
 
   try {
     const storageAdapter = uploadStorageOf(server);
@@ -466,7 +464,7 @@ export async function handleStoragePrune(options: StoragePruneOptions = {}) {
       );
     }
 
-    const core = createDatabaseCoreApi(database);
+    const core = server.core;
     const bundles = await loadAllBundles(core);
     const liveBundleIds = new Set(
       bundles.map((bundle) => bundle.id.toLowerCase()),

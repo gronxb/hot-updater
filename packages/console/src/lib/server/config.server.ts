@@ -1,5 +1,4 @@
 import type { HotUpdaterCoreApi } from "@hot-updater/plugin-core";
-import { createDatabaseCoreApi } from "@hot-updater/server/db";
 import { getRequest } from "@tanstack/react-start/server";
 
 import { requireConsoleAccess } from "./auth.server";
@@ -29,9 +28,9 @@ export const prepareConfig = async (request: Request = getRequest()) => {
     await requireConsoleAccess(request);
     const config = await loadCachedConfig(request);
 
-    // Bundles, releases, catalogs, and channels: core's API, in process or
-    // over a self-hosted server's admin API.
-    core ??= createDatabaseCoreApi(config.database);
+    // Bundles, releases, catalogs, and channels: the definition's core, on
+    // the server's own path, or a self-hosted server's admin API.
+    core ??= config.core;
 
     // The console's features: those of the plugins the server runs.
     if (!runtime) {

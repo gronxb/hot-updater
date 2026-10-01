@@ -5,7 +5,6 @@ import {
   insightsTestSuite,
 } from "@hot-updater/test-utils";
 
-import { createDatabasePluginApis } from "./assembly/databasePlugins";
 import { createHotUpdater } from "./index";
 import { createInsightsModel, insights } from "./plugins/insights";
 
@@ -37,7 +36,11 @@ setupDatabaseTestSuite({
     insightsTestSuite({
       createModel: (database) =>
         createInsightsModel(
-          createDatabasePluginApis(database, [insights()]).insights,
+          createHotUpdater({
+            database,
+            plugins: [insights()],
+            clientAccess: "public",
+          }).api.insights,
         ),
     }),
   ],

@@ -1,13 +1,9 @@
 import path from "path";
 import { fileURLToPath } from "url";
 
+import { toolingTargetOf } from "@hot-updater/plugin-core";
 import { createHotUpdater, type HotUpdaterAPI } from "@hot-updater/server";
 import { kyselyAdapter } from "@hot-updater/server/adapters/kysely";
-import {
-  createDatabaseCoreApi,
-  createDatabasePluginApis,
-  createMigrator,
-} from "@hot-updater/server/db";
 import {
   createInsightsModel,
   insights,
@@ -402,7 +398,10 @@ describe("Hot Updater Handler Integration Tests (Hono + MySQL)", () => {
         updateSettings: true,
       });
       await migration.execute();
-      const core = createDatabaseCoreApi(writerDatabase);
+      const core = createHotUpdater({
+        database: writerDatabase,
+        clientAccess: "public",
+      }).core;
 
       const ownerId = "race-owner";
       const baseId = "race-base";
@@ -443,9 +442,10 @@ describe("Hot Updater Handler Integration Tests (Hono + MySQL)", () => {
       });
       await waitForMySQLUserLock(admin, database);
 
-      const removerCore = createDatabaseCoreApi(
-        kyselyAdapter({ db: remover, provider: "mysql" }),
-      );
+      const removerCore = createHotUpdater({
+        database: kyselyAdapter({ db: remover, provider: "mysql" }),
+        clientAccess: "public",
+      }).core;
       // The deletion commits while the patch insert waits; the patch update
       // then finds its owner gone and writes nothing.
       await removerCore.deleteBundles([ownerId]);
@@ -489,9 +489,11 @@ const createBundle = (id: string) => ({
 /** The Insights plugin's model on the example's MySQL tables. */
 const insightsModelOf = (kysely: Kysely<object>) =>
   createInsightsModel(
-    createDatabasePluginApis(kyselyAdapter({ db: kysely, provider: "mysql" }), [
-      insights(),
-    ]).insights,
+    createHotUpdater({
+      database: kyselyAdapter({ db: kysely, provider: "mysql" }),
+      plugins: [insights()],
+      clientAccess: "public",
+    }).api.insights,
   );
 
 const createBundleEventRowFixture = (suffix: string, receivedAtMs: number) => ({
@@ -557,6 +559,10 @@ async function waitForMySQLReady(
   }
   throw new Error("MySQL failed to become ready");
 }
+
+/** What `hot-updater db migrate` runs: the migrator for core's tables and the plugins'. */
+const createMigrator = ({ database, plugins }: HotUpdaterAPI) =>
+  database.createMigrator!(toolingTargetOf(plugins));
 
 const migrateCurrentSchema = async (
   hotUpdater: HotUpdaterAPI,

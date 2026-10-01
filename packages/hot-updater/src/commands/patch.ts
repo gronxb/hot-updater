@@ -3,9 +3,9 @@ import {
   assertStorageOperations,
   type Platform,
 } from "@hot-updater/plugin-core";
-import { createBundleDiff } from "@hot-updater/server/diff";
 
 import { getPlatform } from "@/prompts/getPlatform";
+import { createBundleDiff } from "@/utils/createBundleDiff";
 import { loadServer, uploadStorageOf } from "@/utils/loadServer";
 import { printBanner } from "@/utils/printBanner";
 
@@ -42,8 +42,6 @@ export const createPatch = async (options: PatchOptions) => {
   const server = await loadServer(
     await loadConfig({ channel: options.channel, platform }),
   );
-  const database = server.database;
-
   try {
     const storageAdapter = uploadStorageOf(server);
     assertStorageOperations(storageAdapter, ["get", "put", "delete"]);
@@ -63,7 +61,7 @@ export const createPatch = async (options: PatchOptions) => {
         bundleId: options.bundleId,
       },
       {
-        database,
+        core: server.core,
         storageAdapter,
       },
       {

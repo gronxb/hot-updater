@@ -1,7 +1,12 @@
 // @vitest-environment node
 
-import type { HotUpdaterCoreApi } from "@hot-updater/plugin-core";
+import type {
+  AnyHotUpdaterPlugin,
+  EngineDatabase,
+  HotUpdaterCoreApi,
+} from "@hot-updater/plugin-core";
 import { createMemoryAdapter } from "@hot-updater/plugin-core";
+import { createHotUpdater } from "@hot-updater/server";
 import { apiKeys } from "@hot-updater/server/plugins/api-keys";
 import { insights } from "@hot-updater/server/plugins/insights";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -33,6 +38,23 @@ import {
   revokeApiKeyRpc,
   toApiKeyView,
 } from "./api-keys-rpc";
+
+/** The console over a server definition that runs `plugins` on `database`. */
+const definitionRuntime = (
+  database: EngineDatabase,
+  plugins: readonly AnyHotUpdaterPlugin[] = [],
+) =>
+  createConsoleRuntime({
+    database,
+    plugins,
+    api: createHotUpdater({
+      database,
+      plugins,
+      ...(plugins.some(({ provides }) => provides?.clientAuth)
+        ? {}
+        : { clientAccess: "public" }),
+    } as Parameters<typeof createHotUpdater>[0]).api,
+  });
 
 const memoryDatabase = () => ({
   name: "memory",
@@ -68,10 +90,7 @@ describe("API-key RPC output", () => {
 describe("API-key RPC access", () => {
   it("manages keys through the apiKeys() plugin the console runs", async () => {
     mocks.prepare.mockResolvedValue({
-      runtime: createConsoleRuntime({
-        database: memoryDatabase(),
-        plugins: [apiKeys()],
-      }),
+      runtime: definitionRuntime(memoryDatabase(), [apiKeys()]),
     });
 
     const created = await createApiKeyRpc({ data: { name: "CI" } });
@@ -84,10 +103,7 @@ describe("API-key RPC access", () => {
   it.each([
     [
       "without apiKeys()",
-      createConsoleRuntime({
-        database: memoryDatabase(),
-        plugins: [insights()],
-      }),
+      definitionRuntime(memoryDatabase(), [insights()]),
       "without the apiKeys() plugin",
     ],
     [

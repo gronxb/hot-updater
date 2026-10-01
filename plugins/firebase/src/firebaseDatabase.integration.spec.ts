@@ -5,10 +5,6 @@ import {
 } from "@hot-updater/plugin-core";
 import { createHotUpdater } from "@hot-updater/server";
 import {
-  createDatabaseCoreApi,
-  createDatabasePluginApis,
-} from "@hot-updater/server/db";
-import {
   createInsightsModel,
   insights,
 } from "@hot-updater/server/plugins/insights";
@@ -53,7 +49,10 @@ setupDatabaseAdapterConformanceSuite({
 describe("firebaseDatabase", () => {
   it("serves only after the migration writes the schema settings", async () => {
     await clearCollection("hot_updater_v1");
-    const core = createDatabaseCoreApi(firebaseDatabase(config));
+    const core = createHotUpdater({
+      database: firebaseDatabase(config),
+      clientAccess: "public",
+    }).core;
     await expect(core.listChannels()).rejects.toBeInstanceOf(
       HotUpdaterSchemaMigrationRequiredError,
     );
@@ -76,7 +75,11 @@ describe("firebaseDatabase", () => {
       insightsTestSuite({
         createModel: (database) =>
           createInsightsModel(
-            createDatabasePluginApis(database, [insights()]).insights,
+            createHotUpdater({
+              database,
+              plugins: [insights()],
+              clientAccess: "public",
+            }).api.insights,
           ),
       }),
     ],

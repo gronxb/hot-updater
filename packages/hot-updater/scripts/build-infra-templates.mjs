@@ -4,13 +4,16 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 import {
+  clientAuthOf,
   resolvePackageVersion,
   SERVER_DEFINITION_PATH,
   transformEnv,
 } from "@hot-updater/cli-tools";
-import { HOT_UPDATER_INFRASTRUCTURE_GENERATION } from "@hot-updater/server";
-import { toolingTargetOf } from "@hot-updater/plugin-core";
-import { clientAuthOf, clientPluginsOf } from "@hot-updater/server/db";
+import {
+  createHotUpdater,
+  HOT_UPDATER_INFRASTRUCTURE_GENERATION,
+} from "@hot-updater/server";
+import { createMemoryAdapter, toolingTargetOf } from "@hot-updater/plugin-core";
 import { build as buildHelper } from "tsdown";
 
 import {
@@ -100,8 +103,16 @@ for (const provider of providers) {
   // policy, which the scaffold provisions, documents, and checks, and name
   // the client plugins an app adds.
   const { plugins } = await moduleAt(path.join(root, "src/plugins.ts"));
-  const clientAuth = clientAuthOf(plugins) ?? null;
-  const clientPlugins = clientPluginsOf(plugins);
+  // The prebuilt server's definition, on a database it never reads here.
+  const prebuilt = createHotUpdater({
+    database: { name: "memory", adapter: createMemoryAdapter() },
+    plugins,
+    ...(plugins.some(({ provides }) => provides?.clientAuth)
+      ? {}
+      : { clientAccess: "public" }),
+  });
+  const clientAuth = clientAuthOf(prebuilt) ?? null;
+  const { clientPlugins } = prebuilt;
   await cp(path.join(root, "agent"), output, { recursive: true });
   for (const [source, file] of [
     ...(await readdir(output))
@@ -151,19 +162,20 @@ for (const provider of providers) {
     // of the definition's plugins, over the definition's own database.
     await save(
       path.join(output, "app/migrate.ts"),
-      `import { createMigrator } from "@hot-updater/server/db";
+      `import { toolingTargetOf } from "@hot-updater/plugin-core";
+import type { HotUpdaterAPI } from "@hot-updater/server";
 
 /**
  * Writes the schema settings of core and the plugins \`hotUpdater\` runs,
  * which its database checks before its first read.
  */
-export const migrate = async (
-  hotUpdater: Parameters<typeof createMigrator>[0],
-) => {
-  const result = await createMigrator(hotUpdater).migrateToLatest({
-    mode: "from-schema",
-    updateSettings: true,
-  });
+export const migrate = async ({ database, plugins }: HotUpdaterAPI) => {
+  if (database.createMigrator === undefined) {
+    throw new Error(\`The \${database.name} database has no migrator.\`);
+  }
+  const result = await database
+    .createMigrator(toolingTargetOf(plugins))
+    .migrateToLatest({ mode: "from-schema", updateSettings: true });
   await result.execute();
 };
 `,
@@ -437,10 +449,15 @@ export const migrate = async (
       "@aws-sdk/credential-providers",
       { searchFrom: root },
     );
-  if (provider === "firebase")
+  if (provider === "firebase") {
     appPackages["firebase-admin"] = resolvePackageVersion("firebase-admin", {
       searchFrom: root,
     });
+    // migrate.ts reads the tables the definition's plugins need.
+    appPackages["@hot-updater/plugin-core"] = (
+      await json(path.join(repoRoot, "plugins/plugin-core/package.json"))
+    ).version;
+  }
   await save(path.join(output, "template.json"), {
     schemaVersion: 1,
     provider,

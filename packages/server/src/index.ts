@@ -3,6 +3,8 @@ export { createHotUpdater } from "./createHotUpdaterCore";
 export type {
   ClientAccessPolicy,
   ClientAccessRule,
+  ClientAuthProvider,
+  ClientEndpoint,
   CreateHotUpdaterOptions,
   HotUpdaterAPI,
   RuntimeHotUpdaterAPI,

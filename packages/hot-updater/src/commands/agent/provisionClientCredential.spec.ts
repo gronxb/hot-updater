@@ -52,38 +52,44 @@ export const hotUpdater = createHotUpdater({
   await mkdir(moduleRoot, { recursive: true });
   await writeFile(
     path.join(moduleRoot, "package.json"),
-    JSON.stringify({
-      type: "module",
-      exports: { ".": "./index.mjs", "./db": "./db.mjs" },
-    }),
+    JSON.stringify({ type: "module", exports: { ".": "./index.mjs" } }),
   );
-  // A server that keeps its options, which serverDefinitionOf reads back.
+  // A server whose definition exposes its options and, for a plugin list of
+  // names, plugins with apiKeys' credential contribution.
   await writeFile(
     path.join(moduleRoot, "index.mjs"),
-    `export const definition = Symbol("definition");
-export const createHotUpdater = (options) => ({ [definition]: options });
-`,
-  );
-  // The server's credential helpers, over a plugin list of names.
-  await writeFile(
-    path.join(moduleRoot, "db.mjs"),
     `
 import { appendFileSync, readFileSync, writeFileSync } from "node:fs";
-import { definition } from "./index.mjs";
-export const serverDefinitionOf = (value) => value?.[definition];
 const credential = { label: "API key", header: "x-api-key", env: "HOT_UPDATER_API_KEY" };
-export const clientAuthOf = (plugins) =>
-  plugins.includes("apiKeys") ? { plugin: "apiKeys", varyHeaders: ["x-api-key"], credential } : undefined;
-export const generateClientCredential = () => "generated-credential";
-export const provisionClientCredential = async (database, _plugins, { env }) => {
-  appendFileSync("calls", "provision\\n");
-  const value = env.HOT_UPDATER_API_KEY;
-  if (readFileSync("${SECRET}", "utf8") !== value) throw new Error("Credential was not saved before registration");
-  writeFileSync("registered", value);
-  writeFileSync("database", JSON.stringify(database));
-  if (process.env.FAIL_AFTER_REGISTRATION) throw new Error("Registration response lost");
-  return { ...credential, value };
-};
+export const createHotUpdater = ({ database, plugins }) => ({
+  database,
+  storage: [],
+  plugins: plugins.map((id) => ({
+    id,
+    cli: id !== "apiKeys" ? {} : {
+      clientCredential: {
+        ...credential,
+        generate: () => "generated-credential",
+        provision: async (api, { existing }) => {
+          appendFileSync("calls", "provision\\n");
+          if (api !== "apiKeys api") throw new Error("Provisioned through another API");
+          if (readFileSync("${SECRET}", "utf8") !== existing) throw new Error("Credential was not saved before registration");
+          writeFileSync("registered", existing);
+          writeFileSync("database", JSON.stringify(database));
+          if (process.env.FAIL_AFTER_REGISTRATION) throw new Error("Registration response lost");
+          return existing;
+        },
+      },
+    },
+  })),
+  clientPlugins: [],
+  clientEndpoints: [],
+  ...(plugins.includes("apiKeys")
+    ? { clientAuth: { plugin: "apiKeys", varyHeaders: ["x-api-key"] } }
+    : {}),
+  core: {},
+  api: Object.fromEntries(plugins.map((id) => [id, \`\${id} api\`])),
+});
 `,
   );
 };
@@ -180,15 +186,47 @@ it("rejects a hotUpdater.ts that exports no server definition", async () => {
   await expect(stat(path.join(root, SECRET))).rejects.toThrow();
 });
 
+it("refuses a clientAuth plugin whose credential contribution is incomplete, before saving one", async () => {
+  await scaffold({
+    plugins: '["apiKeys"]',
+    definition: `export const hotUpdater = {
+  database: {},
+  plugins: [
+    {
+      id: "sso",
+      cli: {
+        clientCredential: {
+          label: "token",
+          header: "authorization",
+          env: "HOT_UPDATER_SSO_TOKEN",
+          generate: () => "generated-token",
+        },
+      },
+    },
+  ],
+  clientAuth: { plugin: "sso", varyHeaders: ["authorization"] },
+  api: {},
+};
+`,
+  });
+
+  const result = run();
+
+  expect(result.status).toBe(1);
+  expect(result.stderr).toContain(
+    'Plugin "sso" provides clientAuth but no cli.clientCredential with a label, header, env, generate, and provision',
+  );
+  await expect(stat(path.join(root, SECRET))).rejects.toThrow();
+});
+
 it("runs migrate.ts with the server definition before registering the credential", async () => {
   await scaffold({
     plugins: '["apiKeys"]',
     migration: `import { appendFileSync } from "node:fs";
-import { serverDefinitionOf } from "@hot-updater/server/db";
 export const migrate = async (hotUpdater) =>
   appendFileSync(
     "calls",
-    \`migrate \${JSON.stringify(serverDefinitionOf(hotUpdater).plugins)}\\n\`,
+    \`migrate \${JSON.stringify(hotUpdater.plugins.map(({ id }) => id))}\\n\`,
   );
 `,
   });

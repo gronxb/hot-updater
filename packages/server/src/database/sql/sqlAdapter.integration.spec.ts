@@ -21,7 +21,7 @@ import mysql from "mysql2/promise";
 import pg from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { createInProcessCoreApi } from "../../core/api";
+import { createInProcessCoreApi } from "../../core/inProcess.testFixtures";
 
 assertDockerComposeAvailable(
   "SQL core integration tests need Docker Compose and a running Docker daemon.",

@@ -11,9 +11,9 @@ import { uuidv7 } from "uuidv7";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 
 import { kyselyAdapter } from "./adapters/kysely";
-import { createMigrator } from "./db";
 import { createHotUpdater, type RuntimeHotUpdaterAPI } from "./index";
 import { insights } from "./plugins/insights";
+import { createMigrator } from "./tooling.testFixtures";
 
 /** The storage beside the server; these specs upload nothing. */
 const storage = [createStorageAdapter({ name: "s3Storage", protocol: "s3" })];

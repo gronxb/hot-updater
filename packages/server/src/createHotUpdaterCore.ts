@@ -1,11 +1,10 @@
 import {
   assertStorageOperations,
+  type PluginClientPlugin,
   type StorageAdapter,
-  toolingTargetOf,
 } from "@hot-updater/plugin-core";
 import type {
   ToolingDatabase,
-  ToolingTarget,
   DatabaseAdapter,
 } from "@hot-updater/plugin-core";
 
@@ -23,6 +22,26 @@ import {
 import type { AnyHotUpdaterPlugin, PluginApis } from "./plugins/definePlugin";
 import { createStorageAccess } from "./storageAccess";
 
+/** A plugin's endpoint on `handlers.client`. */
+export interface ClientEndpoint {
+  /** The id of the plugin that adds it. */
+  readonly plugin: string;
+  readonly method: string;
+  /** Relative to the handler's mount; `:name` segments are parameters. */
+  readonly path: string;
+}
+
+/** The plugin that decides who may call client routes. */
+export interface ClientAuthProvider {
+  /** Its id. */
+  readonly plugin: string;
+  /**
+   * The request headers its decision reads, lowercase: what a cache in
+   * front of the server, such as a CDN, keys client routes on.
+   */
+  readonly varyHeaders: readonly string[];
+}
+
 export type RuntimeHotUpdaterAPI<
   TPlugins extends readonly AnyHotUpdaterPlugin[] =
     readonly AnyHotUpdaterPlugin[],
@@ -34,9 +53,14 @@ export type RuntimeHotUpdaterAPI<
    * CLI, can list storage that only uploads.
    */
   readonly handlers: HotUpdaterHandlers;
-  /** Core's reads and typed writes: bundles, Releases, Catalogs, and channels. */
+  /**
+   * Core's reads and typed writes: bundles, Releases, Catalogs, and
+   * channels. The CLI and the console write through it, so their writes
+   * take the server's path: the plugins' schema fence, pruning during
+   * writes, the storage's file URLs, and the database's CDN purge.
+   */
   readonly core: CoreApi;
-  /** Each plugin's API by plugin id. */
+  /** Each plugin's API by plugin id, which the CLI's and the console's plugin features call. */
   readonly api: PluginApis<TPlugins>;
   /** The database's name, which `hot-updater db` commands read. */
   readonly adapterName: string;
@@ -47,6 +71,34 @@ export type RuntimeHotUpdaterAPI<
    * it before it exits.
    */
   readonly flush: () => Promise<void>;
+  /**
+   * The database as configured. `hot-updater db` runs its tooling
+   * (`createMigrator`, `generateSchema`), and tooling done with the server
+   * closes it (`dispose`).
+   */
+  readonly database: ToolingDatabase;
+  /**
+   * The storage as configured, in order, as a frozen copy: the CLI uploads
+   * bundles to the first.
+   */
+  readonly storage: readonly StorageAdapter[];
+  /**
+   * The plugins as configured, as a frozen copy. The CLI adds their
+   * commands, and tooling creates their tables.
+   */
+  readonly plugins: TPlugins;
+  /**
+   * The client plugins an app adds to `HotUpdater.init`'s `plugins` for
+   * these plugins, each once, in plugin order: what init prints.
+   */
+  readonly clientPlugins: readonly PluginClientPlugin[];
+  /**
+   * The plugins' endpoints on `handlers.client`, which a host that routes
+   * by path, such as a CDN in front of the server, sends to it.
+   */
+  readonly clientEndpoints: readonly ClientEndpoint[];
+  /** The plugin that guards client routes; absent when they are public. */
+  readonly clientAuth?: ClientAuthProvider;
 };
 
 export type HotUpdaterAPI = RuntimeHotUpdaterAPI;
@@ -172,44 +224,6 @@ const isPublic = (value: unknown): boolean => {
   );
 };
 
-export const hotUpdaterCoreMetadata = Symbol.for(
-  "@hot-updater/server/core-metadata",
-);
-
-/** A plugin's endpoint on `handlers.client`. */
-export interface ClientEndpoint {
-  readonly plugin: string;
-  readonly method: string;
-  /** Relative to the handler's mount; `:name` segments are parameters. */
-  readonly path: string;
-}
-
-export type HotUpdaterCoreMetadata = {
-  /** The configured database, with the tooling `hot-updater db` runs. */
-  readonly database: ToolingDatabase;
-  /** The configured storage, in order; the CLI uploads to the first. */
-  readonly storage: readonly StorageAdapter[];
-  /** The tables and settings rows that tooling creates for this server's plugins. */
-  readonly target: ToolingTarget;
-  /** The plugins as configured, whose commands the CLI adds. */
-  readonly plugins: readonly AnyHotUpdaterPlugin[];
-  /**
-   * The plugins' endpoints on `handlers.client`, which a host that routes
-   * by path, such as a CDN in front of the server, sends to it.
-   */
-  readonly clientEndpoints: readonly ClientEndpoint[];
-};
-
-export function getHotUpdaterCoreMetadata(
-  hotUpdater: RuntimeHotUpdaterAPI,
-): HotUpdaterCoreMetadata | undefined {
-  return (
-    hotUpdater as RuntimeHotUpdaterAPI & {
-      readonly [hotUpdaterCoreMetadata]?: HotUpdaterCoreMetadata;
-    }
-  )[hotUpdaterCoreMetadata];
-}
-
 export function createHotUpdater<
   const TPlugins extends readonly AnyHotUpdaterPlugin[] = readonly [],
 >(
@@ -223,15 +237,21 @@ export function createHotUpdater<
     }
   }
   const database = databaseOf(options.database);
-  const storage = options.storage ?? [];
+  // Copies, so changing the arrays passed in can't make the definition list
+  // other storage or plugins than the ones it runs.
+  const storage = Object.freeze([...(options.storage ?? [])]);
   const { downloadStorageObject, readStorageText, resolveFileUrl } =
     createStorageAccess(storage);
   const publicClients = isPublic(
     (options as { readonly clientAccess?: unknown }).clientAccess,
   );
-  const plugins = assemblePlugins(options.plugins ?? [], database, {
+  const configured = Object.freeze([
+    ...(options.plugins ?? []),
+  ]) as unknown as TPlugins;
+  const plugins = assemblePlugins(configured, database, {
     storage: { readStorageText, resolveFileUrl },
   });
+  const clientPlugins = Object.freeze(clientPluginsOf(configured));
   const clientAuth = plugins.clientAuth;
   if (clientAuth !== undefined && publicClients) {
     throw new HotUpdaterConfigError(
@@ -243,26 +263,27 @@ export function createHotUpdater<
       'Set clientAccess to "public", or add a plugin that provides clientAuth.',
     );
   }
+  const varyHeaders = Object.freeze(
+    (clientAuth?.varyHeaders ?? []).map((header) => header.toLowerCase()),
+  );
   const clientPolicy: ClientRoutePolicy | undefined =
     clientAuth === undefined
       ? undefined
       : {
-          varyHeaders: clientAuth.varyHeaders.map((header) =>
-            header.toLowerCase(),
-          ),
+          varyHeaders,
           authenticate: (request) => clientAuth.authenticate(request.headers),
         };
   const handlers = createHotUpdaterHandlers({
     api: { core: plugins.core },
     ...(clientPolicy === undefined ? {} : { clientPolicy }),
-    clientPlugins: clientPluginsOf(options.plugins ?? []),
+    clientPlugins,
     downloadStorageObject,
     endpoints: plugins.endpoints,
     plugins: Object.keys(plugins.api),
   });
   let serving = false;
 
-  const api = {
+  return {
     adapterName: database.name,
     get handlers(): HotUpdaterHandlers {
       if (!serving) {
@@ -276,18 +297,21 @@ export function createHotUpdater<
     core: plugins.core,
     api: plugins.api as PluginApis<TPlugins>,
     flush: plugins.flush,
-  };
-  Object.defineProperty(api, hotUpdaterCoreMetadata, {
-    enumerable: false,
-    value: {
-      database,
-      storage,
-      target: toolingTargetOf(options.plugins ?? []),
-      plugins: options.plugins ?? [],
-      clientEndpoints: plugins.endpoints
+    database,
+    storage,
+    plugins: configured,
+    clientPlugins,
+    clientEndpoints: Object.freeze(
+      plugins.endpoints
         .filter((endpoint) => endpoint.access === "client")
-        .map(({ plugin, method, path }) => ({ plugin, method, path })),
-    } satisfies HotUpdaterCoreMetadata,
-  });
-  return api;
+        .map(({ plugin, method, path }) =>
+          Object.freeze({ plugin, method, path }),
+        ),
+    ),
+    ...(clientAuth === undefined
+      ? {}
+      : {
+          clientAuth: Object.freeze({ plugin: clientAuth.plugin, varyHeaders }),
+        }),
+  };
 }

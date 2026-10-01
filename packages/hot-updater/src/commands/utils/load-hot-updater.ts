@@ -1,7 +1,13 @@
 import { existsSync, statSync } from "fs";
 import path from "path";
 
-import { loadConfig, p } from "@hot-updater/cli-tools";
+import {
+  isServerDefinition,
+  loadConfig,
+  p,
+  type ServerDefinition,
+  serverDefinitionOf,
+} from "@hot-updater/cli-tools";
 import { createJiti } from "jiti";
 
 import { ui } from "../../utils/cli-ui";
@@ -11,14 +17,9 @@ import {
   resolveGeneratedSchemaPlaceholderPath,
 } from "./generated-schema-placeholder";
 
-export interface HotUpdaterInstance {
-  adapterName: string;
-  /** Each configured plugin's API, by plugin id. */
-  api?: Readonly<Record<string, unknown>>;
-}
-
 export interface LoadHotUpdaterResult {
-  hotUpdater: HotUpdaterInstance;
+  /** What `createHotUpdater` returned. */
+  hotUpdater: ServerDefinition;
   adapterName: string;
   absoluteConfigPath: string;
   dispose: () => Promise<void>;
@@ -64,11 +65,6 @@ export const isConfigFile = (value: string, cwd: string): boolean => {
   return existsSync(candidate) && statSync(candidate).isFile();
 };
 
-const isHotUpdaterInstance = (value: unknown): value is HotUpdaterInstance =>
-  typeof value === "object" &&
-  value !== null &&
-  typeof (value as { adapterName?: unknown }).adapterName === "string";
-
 const closeDatabaseOf =
   (configExports: Record<string, unknown>) => async (): Promise<void> => {
     const closeDatabase = configExports["closeDatabase"];
@@ -90,10 +86,10 @@ export const importHotUpdater = async (
     unknown
   >;
   const hotUpdater = configExports["hotUpdater"] ?? configExports["default"];
-  if (!isHotUpdaterInstance(hotUpdater)) return undefined;
+  if (!isServerDefinition(hotUpdater)) return undefined;
   return {
     hotUpdater,
-    adapterName: hotUpdater.adapterName,
+    adapterName: hotUpdater.database.name,
     absoluteConfigPath,
     dispose: closeDatabaseOf(configExports),
   };
@@ -222,10 +218,9 @@ export async function loadHotUpdater(
   const configExports = moduleExports;
 
   // Extract hotUpdater instance
-  const hotUpdater = (configExports["hotUpdater"] ||
-    configExports["default"]) as HotUpdaterInstance | undefined;
+  const exported = configExports["hotUpdater"] || configExports["default"];
 
-  if (!hotUpdater) {
+  if (!exported) {
     p.log.error(
       'Could not find "hotUpdater" export in the config file.\n\n' +
         "Your config file should export a hotUpdater instance:\n\n" +
@@ -241,33 +236,20 @@ export async function loadHotUpdater(
     throw new Error('Could not find "hotUpdater" export.');
   }
 
-  const validHotUpdater = hotUpdater;
-
-  // Verify hotUpdater is a valid object
-  if (
-    typeof validHotUpdater !== "object" ||
-    !("adapterName" in validHotUpdater)
-  ) {
+  let hotUpdater: ServerDefinition;
+  try {
+    hotUpdater = serverDefinitionOf(exported, absoluteConfigPath);
+  } catch (error) {
     p.log.error(
-      "The hotUpdater instance is not valid. " +
-        "Please ensure you're using @hot-updater/server's createHotUpdater().",
+      `${(error as Error).message} Use @hot-updater/server's createHotUpdater().`,
     );
     await exitAfterPlaceholderCleanup();
     throw new Error("The hotUpdater instance is not valid.");
   }
 
-  const adapterName = validHotUpdater.adapterName;
-  if (typeof adapterName !== "string") {
-    p.log.error(
-      "The hotUpdater instance does not have a valid adapterName property.",
-    );
-    await exitAfterPlaceholderCleanup();
-    throw new Error("The hotUpdater instance adapterName is not valid.");
-  }
-
   return {
-    hotUpdater: validHotUpdater,
-    adapterName,
+    hotUpdater,
+    adapterName: hotUpdater.database.name,
     absoluteConfigPath,
     dispose: async () => {
       try {

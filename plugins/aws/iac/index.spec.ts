@@ -1,6 +1,7 @@
+import { provisionClientCredential } from "@hot-updater/cli-tools";
 import type { EngineDatabase } from "@hot-updater/plugin-core";
 import { toolingTargetOf, createMemoryAdapter } from "@hot-updater/plugin-core";
-import { provisionClientCredential } from "@hot-updater/server/db";
+import { createHotUpdater } from "@hot-updater/server";
 import { apiKeys } from "@hot-updater/server/plugins/api-keys";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -46,7 +47,7 @@ const storedApiKeys = (database: EngineDatabase) =>
 
 /** What init provisions: the app's credential, through the managed server's plugins. */
 const provision = (database: EngineDatabase, existing?: string) =>
-  provisionClientCredential(database, plugins, {
+  provisionClientCredential(createHotUpdater({ database, plugins }), {
     env: existing === undefined ? {} : { HOT_UPDATER_API_KEY: existing },
     name: "AWS init",
   });

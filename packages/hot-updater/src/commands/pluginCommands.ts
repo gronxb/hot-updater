@@ -1,13 +1,17 @@
 import path from "node:path";
 
 import type { CommandUnknownOpts } from "@commander-js/extra-typings";
-import { loadConfig, p } from "@hot-updater/cli-tools";
-import type { PluginCommand, PluginCommandUi } from "@hot-updater/plugin-core";
 import {
+  loadConfig,
+  p,
   pluginCommandsOf,
-  serverPluginsOf,
   type PluginCommandEntry,
-} from "@hot-updater/server/db";
+} from "@hot-updater/cli-tools";
+import type {
+  AnyHotUpdaterPlugin,
+  PluginCommand,
+  PluginCommandUi,
+} from "@hot-updater/plugin-core";
 
 import { ui } from "../utils/cli-ui";
 import { loadServerDefinition } from "../utils/loadServer";
@@ -31,7 +35,7 @@ export const PLUGIN_COMMANDS_HINT =
 interface PluginSource {
   /** The file that lists the plugins, for messages. */
   readonly from: string;
-  readonly plugins: readonly unknown[];
+  readonly plugins: readonly AnyHotUpdaterPlugin[];
   /** The server config's absolute path, when the list comes from one. */
   readonly configPath?: string;
   /** Each plugin's API, by plugin id, over the server's database. */
@@ -57,9 +61,9 @@ const serverConfigSource = (
   cwd: string,
 ): PluginSource => ({
   from: path.relative(cwd, loaded.absoluteConfigPath),
-  plugins: serverPluginsOf(loaded.hotUpdater),
+  plugins: loaded.hotUpdater.plugins,
   configPath: loaded.absoluteConfigPath,
-  open: async () => loaded.hotUpdater.api ?? {},
+  open: async () => loaded.hotUpdater.api,
   dispose: loaded.dispose,
 });
 
@@ -73,9 +77,7 @@ const configuredServerSource = async (
     from: path.relative(cwd, loaded.path),
     plugins: loaded.plugins,
     configPath: loaded.path,
-    open: async () =>
-      (loaded.hotUpdater as { readonly api?: Record<string, unknown> }).api ??
-      {},
+    open: async () => loaded.definition.api,
     dispose: loaded.dispose,
   };
 };
@@ -129,7 +131,7 @@ async function* findPluginSources(
 export interface FoundPluginList {
   /** The file that lists the plugins, for messages. */
   readonly from: string;
-  readonly plugins: readonly unknown[];
+  readonly plugins: readonly AnyHotUpdaterPlugin[];
 }
 
 /**
@@ -358,7 +360,7 @@ export async function registerPluginCommands(
       failures,
     )) {
       // A plugin command named like a core command is never reachable.
-      const entries = pluginCommandsOf(source.plugins).filter(
+      const entries = pluginCommandsOf(source).filter(
         ({ command }) => !isCoreCommand(program, command.name),
       );
       if (

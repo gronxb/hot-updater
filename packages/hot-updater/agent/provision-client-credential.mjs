@@ -1,36 +1,53 @@
 import { existsSync } from "node:fs";
 import { readFile, writeFile } from "node:fs/promises";
 
-import {
-  clientAuthOf,
-  generateClientCredential,
-  provisionClientCredential,
-  serverDefinitionOf,
-} from "@hot-updater/server/db";
-
 // The server definition reads process.env when it loads, so the settings go
 // first; a static import would load it before them.
 if (existsSync(".env.hotupdater")) {
   process.loadEnvFile(".env.hotupdater");
 }
 const { hotUpdater } = await import("./hotUpdater.ts");
-const definition = serverDefinitionOf(hotUpdater);
-if (definition === undefined) {
+if (
+  typeof hotUpdater !== "object" ||
+  hotUpdater === null ||
+  typeof hotUpdater.database !== "object" ||
+  !Array.isArray(hotUpdater.plugins) ||
+  typeof hotUpdater.api !== "object"
+) {
   throw new Error(
     "hotUpdater.ts must export `hotUpdater`, the server createHotUpdater from @hot-updater/server returns.",
   );
 }
-const { database, plugins } = definition;
+const { api, clientAuth, database, plugins } = hotUpdater;
 
 const credentialPath = new URL("./client-credential.local", import.meta.url);
 // Providers without migration tooling (Firestore) ship migrate.ts.
 const migrationPath = new URL("./migrate.ts", import.meta.url);
 try {
-  // The plugin that protects the deployed server's client routes, if any.
-  const clientAuth = clientAuthOf(plugins);
+  // The plugin that protects the deployed server's client routes, if any,
+  // and the credential an app sends it.
+  const clientCredential =
+    clientAuth === undefined
+      ? undefined
+      : plugins.find(({ id }) => id === clientAuth.plugin)?.cli
+          ?.clientCredential;
+  if (
+    clientAuth !== undefined &&
+    (typeof clientCredential !== "object" ||
+      clientCredential === null ||
+      typeof clientCredential.label !== "string" ||
+      typeof clientCredential.header !== "string" ||
+      typeof clientCredential.env !== "string" ||
+      typeof clientCredential.generate !== "function" ||
+      typeof clientCredential.provision !== "function")
+  ) {
+    throw new Error(
+      `Plugin "${clientAuth.plugin}" provides clientAuth but no cli.clientCredential with a label, header, env, generate, and provision, so the app cannot get its credential.`,
+    );
+  }
   let credential;
-  if (clientAuth !== undefined) {
-    const { env, label } = clientAuth.credential;
+  if (clientCredential !== undefined) {
+    const { env, label } = clientCredential;
     credential = await readFile(credentialPath, "utf8").catch((error) => {
       if (error.code === "ENOENT") return undefined;
       throw error;
@@ -42,7 +59,7 @@ try {
       );
     }
     if (!credential) {
-      credential = existing || generateClientCredential(plugins);
+      credential = existing || clientCredential.generate();
       await writeFile(credentialPath, credential, { flag: "wx", mode: 0o600 });
     }
   }
@@ -52,16 +69,17 @@ try {
     const { migrate } = await import(migrationPath.href);
     await migrate(hotUpdater);
   }
-  if (clientAuth === undefined) {
+  if (clientCredential === undefined) {
     console.log("Client routes are public: there is no client credential.");
   } else {
-    // Registered through that plugin, on the tables the deployed server reads.
-    await provisionClientCredential(database, plugins, {
-      env: { [clientAuth.credential.env]: credential.trim() },
+    // Registered again rather than replaced, through that plugin, on the
+    // tables the deployed server reads.
+    await clientCredential.provision(api[clientAuth.plugin], {
+      existing: credential.trim(),
       name: "Agent infrastructure setup",
     });
     console.log(
-      `Client ${clientAuth.credential.label} registered. It is saved in client-credential.local.`,
+      `Client ${clientCredential.label} registered. It is saved in client-credential.local.`,
     );
   }
 } finally {

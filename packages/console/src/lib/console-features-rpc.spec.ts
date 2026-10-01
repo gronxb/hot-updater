@@ -1,7 +1,12 @@
 // @vitest-environment node
 
-import type { HotUpdaterCoreApi } from "@hot-updater/plugin-core";
+import type {
+  AnyHotUpdaterPlugin,
+  EngineDatabase,
+  HotUpdaterCoreApi,
+} from "@hot-updater/plugin-core";
 import { createMemoryAdapter } from "@hot-updater/plugin-core";
+import { createHotUpdater } from "@hot-updater/server";
 import { insights } from "@hot-updater/server/plugins/insights";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -25,15 +30,32 @@ vi.mock("./server/config.server", () => ({ prepareConfig: mocks.prepare }));
 
 import { getConsoleFeaturesRpc } from "./console-features-rpc";
 
+/** The console over a server definition that runs `plugins` on `database`. */
+const definitionRuntime = (
+  database: EngineDatabase,
+  plugins: readonly AnyHotUpdaterPlugin[] = [],
+) =>
+  createConsoleRuntime({
+    database,
+    plugins,
+    api: createHotUpdater({
+      database,
+      plugins,
+      ...(plugins.some(({ provides }) => provides?.clientAuth)
+        ? {}
+        : { clientAccess: "public" }),
+    } as Parameters<typeof createHotUpdater>[0]).api,
+  });
+
 afterEach(() => vi.resetAllMocks());
 
 describe("getConsoleFeaturesRpc", () => {
   it("reports the features of the plugins the console runs over the database", async () => {
     mocks.prepare.mockResolvedValue({
-      runtime: createConsoleRuntime({
-        database: { name: "memory", adapter: createMemoryAdapter() },
-        plugins: [insights()],
-      }),
+      runtime: definitionRuntime(
+        { name: "memory", adapter: createMemoryAdapter() },
+        [insights()],
+      ),
     });
 
     await expect(getConsoleFeaturesRpc()).resolves.toEqual({

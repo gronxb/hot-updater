@@ -1,6 +1,5 @@
 import type { EngineDatabase } from "@hot-updater/plugin-core";
 import { createHotUpdater } from "@hot-updater/server";
-import { createDatabasePluginApis } from "@hot-updater/server/db";
 import {
   createInsightsModel,
   insights,
@@ -41,7 +40,11 @@ setupDatabaseTestSuite({
     insightsTestSuite({
       createModel: (database) =>
         createInsightsModel(
-          createDatabasePluginApis(database, [insights()]).insights,
+          createHotUpdater({
+            database,
+            plugins: [insights()],
+            clientAccess: "public",
+          }).api.insights,
         ),
     }),
   ],

@@ -21,8 +21,7 @@ import { Kysely, SqliteDialect } from "kysely";
 import { PGliteDialect } from "kysely-pglite-dialect";
 import { describe, expect, it } from "vitest";
 
-import { createDatabasePluginApis } from "../assembly/databasePlugins";
-import { createInProcessCoreApi } from "../core/api";
+import { createInProcessCoreApi } from "../core/inProcess.testFixtures";
 import { createHotUpdater } from "../index";
 import { createInsightsModel, insights } from "../plugins/insights";
 import { kyselyAdapter, type SQLProvider } from "./kysely";
@@ -71,7 +70,11 @@ const migrate = async (database: ToolingDatabase) =>
 /** The Insights plugin's model over a database, on the server's tables. */
 const insightsOf = (database: ToolingDatabase) =>
   createInsightsModel(
-    createDatabasePluginApis(database, [insights()]).insights,
+    createHotUpdater({
+      database,
+      plugins: [insights()],
+      clientAccess: "public",
+    }).api.insights,
   );
 
 const backends = {
