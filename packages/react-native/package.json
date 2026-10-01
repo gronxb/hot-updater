@@ -31,6 +31,7 @@
     "!ios/build",
     "!ios/HotUpdater/Test",
     "!ios/HotUpdater/Package.swift",
+    "!android/src/test",
     "!android/build",
     "!android/gradle",
     "!android/gradlew",

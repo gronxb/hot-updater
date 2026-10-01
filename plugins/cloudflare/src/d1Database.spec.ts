@@ -1,3 +1,5 @@
+import { DatabaseSync } from "node:sqlite";
+
 import type { DeployReleasePolicy } from "@hot-updater/plugin-core";
 import {
   DatabaseConstraintError,
@@ -11,10 +13,11 @@ import {
   generateSchema,
 } from "@hot-updater/server/db";
 import { createBundleFixture } from "@hot-updater/test-utils";
+import { createD1TestDatabase } from "@hot-updater/test-utils/node";
 import { beforeEach, expect, it, vi } from "vitest";
 
 import { d1Database } from "./d1Database";
-import { createD1TestDatabase } from "./d1TestDatabase";
+import { d1SchemaStatements } from "./d1Schema";
 
 type Body = {
   readonly sql?: string;
@@ -95,7 +98,10 @@ const release: DeployReleasePolicy = {
 };
 
 beforeEach(() => {
-  state.database = createD1TestDatabase();
+  state.database = createD1TestDatabase(
+    new DatabaseSync(":memory:"),
+    d1SchemaStatements(),
+  );
   state.bodies = [];
 });
 
@@ -175,7 +181,7 @@ it("generates a wrangler migration with a server's plugin tables", async () => {
 });
 
 it("migrates an empty database's tables, write guard included, through the API", async () => {
-  state.database = createD1TestDatabase([]);
+  state.database = createD1TestDatabase(new DatabaseSync(":memory:"));
   const hotUpdater = server();
   const result = await createMigrator(hotUpdater).migrateToLatest({
     mode: "from-schema",

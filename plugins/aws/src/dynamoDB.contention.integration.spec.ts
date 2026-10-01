@@ -95,8 +95,9 @@ describe("Insights rollout gate on DynamoDB Local", () => {
             name: "dynamoDB",
             adapter:
               latencyMs > 0 ? withAdapterLatency(adapter, latencyMs) : adapter,
+            ...(retry === undefined ? {} : { retry }),
           },
-          { plugins: [plugin], ...(retry === undefined ? {} : { retry }) },
+          { plugins: [plugin] },
         ).database(plugin),
         // Insights never reads core.
         core: {} as CoreReader,
@@ -154,20 +155,18 @@ describe("Insights rollout gate on DynamoDB Local", () => {
     // The seed commits its aggregates transactionally, as a table does
     // before it batches; the rollout batches them in log mode.
     const seeded = createEngine(
-      { name: "dynamoDB", adapter },
       {
-        plugins: [plugin],
+        name: "dynamoDB",
+        adapter,
         retry: { attempts: 64, baseDelayMs: 1, maxDelayMs: 20 },
       },
+      { plugins: [plugin] },
     );
     const engine = createEngine(
       {
         name: "dynamoDB",
         adapter: withAdapterLatency(adapter, LATENCY_MS),
         aggregateBatching: { mode: "log", windowMs: 1_000 },
-      },
-      {
-        plugins: [plugin],
         retry: {
           onRetry: (kind, attempt) => {
             retries[kind] += 1;
@@ -175,6 +174,7 @@ describe("Insights rollout gate on DynamoDB Local", () => {
           },
         },
       },
+      { plugins: [plugin] },
     );
     const apiOf = (database: Engine) =>
       plugin.init({

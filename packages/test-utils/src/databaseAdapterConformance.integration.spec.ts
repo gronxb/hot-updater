@@ -5,8 +5,8 @@ import { setupDatabaseAdapterConformanceSuite } from "./setupDatabaseAdapterConf
 /** The reference adapter as `createMemoryAdapter` makes it: no write cap. */
 setupDatabaseAdapterConformanceSuite({
   name: "memory",
-  createAdapter: async ({ tables, nativePageSize }) => {
-    const adapter = createMemoryAdapter({ nativePageSize });
+  createAdapter: async ({ tables }) => {
+    const adapter = createMemoryAdapter();
     await adapter.migrations?.apply(tables);
     return { adapter };
   },

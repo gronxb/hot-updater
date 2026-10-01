@@ -620,6 +620,14 @@ same engine, each through a declared index or key. Plugins never write core.
 `after` is the last key of the previous page. Call `core` outside
 transactions.
 
+`findBaseBundleIds` takes a base-candidate key: the Release Catalog scope a
+new bundle's devices update from and, for an app version, its normalized
+range. `targetBaseCandidateKey({ channel, platform, fingerprintHash,
+appVersion })` from `@hot-updater/plugin-core` makes one, as the CLI's deploy
+does, and `parseBaseCandidateKey(key)` reads the scope and range back, or
+returns `null` for any other string. The two are one format: make keys only
+with the first and read them only with the second.
+
 ## Serve endpoints
 
 An endpoint is `{ method, path, access, handler }`:

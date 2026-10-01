@@ -1,15 +1,24 @@
-import { DatabaseSync, type SqliteValue } from "node:sqlite";
+import type { DatabaseSync, SqliteValue } from "node:sqlite";
 
-import type { D1ResultLike } from "./d1Executor";
-import { d1SchemaStatements } from "./d1Schema";
+/** What a D1 statement answers: `results` for a read, `meta.changes` for a write. */
+export interface D1TestResult {
+  readonly success: true;
+  readonly results: readonly unknown[];
+  readonly meta: { readonly changes?: number };
+}
 
-/** A D1 database over `node:sqlite`, answering as D1 does; migrated unless given other statements. */
+/**
+ * A D1 database over `node:sqlite`, answering as D1 does, after it runs
+ * `statements`, such as a provider's schema: what a D1 executor's specs
+ * run on without Cloudflare. `db` is a database the spec opens, such as
+ * `new DatabaseSync(":memory:")`.
+ */
 export const createD1TestDatabase = (
-  statements: readonly string[] = d1SchemaStatements(),
+  db: DatabaseSync,
+  statements: readonly string[] = [],
 ) => {
-  const db = new DatabaseSync(":memory:");
   for (const sql of statements) db.exec(sql);
-  const run = (sql: string, params: readonly unknown[]): D1ResultLike => {
+  const run = (sql: string, params: readonly unknown[]): D1TestResult => {
     const statement = db.prepare(sql);
     const values = params as SqliteValue[];
     return statement.columns().length > 0

@@ -1,15 +1,21 @@
+import { DatabaseSync } from "node:sqlite";
+
 import { createDatabaseCoreApi } from "@hot-updater/server/db";
 import {
   createBundleFixture,
   createBundleRowFixture,
 } from "@hot-updater/test-utils";
+import { createD1TestDatabase } from "@hot-updater/test-utils/node";
 import { expect, it } from "vitest";
 
-import { createD1TestDatabase } from "../d1TestDatabase";
+import { d1SchemaStatements } from "../d1Schema";
 import { d1Database } from "./d1Database";
 
 it("reads through the binding's statements and writes each change as one batch", async () => {
-  const database = createD1TestDatabase();
+  const database = createD1TestDatabase(
+    new DatabaseSync(":memory:"),
+    d1SchemaStatements(),
+  );
   const calls = { all: 0, batch: 0 };
   const core = createDatabaseCoreApi(
     d1Database({

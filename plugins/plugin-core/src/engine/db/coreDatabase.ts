@@ -3,6 +3,7 @@ import type { AggregateBatching } from "../../types/databaseConfig";
 import { coreModule, HOT_UPDATER_SCHEMA_VERSION } from "../core/schema";
 import { aggregateBatchingModule } from "../database/aggregateBatching";
 import type { ModelShape } from "../database/definitions";
+import type { RetryOptions } from "../database/engineTransaction";
 import {
   ENGINE_SCHEMA_KEY,
   ENGINE_SCHEMA_VERSION,
@@ -115,6 +116,12 @@ export interface EngineDatabaseOptions {
    */
   readonly aggregateBatching?: AggregateBatching | false;
   /**
+   * How a transaction that conflicts with another write runs again: more
+   * attempts for a store many writers contend on, and `onRetry` to observe
+   * each rerun. 8 attempts by default.
+   */
+  readonly retry?: RetryOptions;
+  /**
    * How `hot-updater db migrate` reads the stored settings rows, by key; by
    * default through the adapter. An adapter whose earlier versions stored
    * them elsewhere reads them itself, so the migrator refuses a database
@@ -135,6 +142,7 @@ export const createEngineDatabase = ({
   adapter,
   onCachedRoutesChange,
   aggregateBatching,
+  retry,
   readSettings: readStored,
 }: EngineDatabaseOptions): ToolingDatabase => {
   const fenced = withSchemaFence(adapter, name, coreSettings);
@@ -165,6 +173,7 @@ export const createEngineDatabase = ({
     adapter: fenced,
     ...(onCachedRoutesChange === undefined ? {} : { onCachedRoutesChange }),
     ...(aggregateBatching ? { aggregateBatching } : {}),
+    ...(retry === undefined ? {} : { retry }),
     ...(adapter.dispose === undefined
       ? {}
       : { dispose: () => adapter.dispose!() }),

@@ -123,8 +123,9 @@ describe("Insights rollout gate on PostgreSQL", () => {
           {
             name: "postgres",
             adapter: latencyMs > 0 ? withAdapterLatency(sql, latencyMs) : sql,
+            ...(retry === undefined ? {} : { retry }),
           },
-          { plugins: [plugin], ...(retry === undefined ? {} : { retry }) },
+          { plugins: [plugin] },
         ).database(plugin),
         // Insights never reads core.
         core: {} as CoreReader,

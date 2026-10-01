@@ -198,8 +198,10 @@ export const setupAggregateBatchingTestSuite = ({
         name,
         adapter,
         ...(batching === undefined ? {} : { aggregateBatching: batching }),
+        // Concurrent servers contend on one aggregate row.
+        retry: { attempts: 64 },
       },
-      { plugins: [plugin], retry: { attempts: 64 } },
+      { plugins: [plugin] },
     );
     return {
       db: engine.database(plugin) as unknown as Database,

@@ -1,10 +1,8 @@
 import { createMemoryAdapter } from "@hot-updater/plugin-core";
 import { setupReadBudgetTestSuite } from "@hot-updater/test-utils";
 
-/** The reference adapter, with the native page size the suite sets. */
+/** The reference adapter, which reads each page whole. */
 setupReadBudgetTestSuite({
   name: "memory",
-  createAdapter: async ({ nativePageSize }) => ({
-    adapter: createMemoryAdapter({ nativePageSize }),
-  }),
+  createAdapter: async () => ({ adapter: createMemoryAdapter() }),
 });

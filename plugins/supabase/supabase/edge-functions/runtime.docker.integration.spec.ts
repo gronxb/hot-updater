@@ -736,8 +736,9 @@ describe.sequential("supabase edge runtime acceptance", () => {
             name: "supabaseDatabase",
             adapter:
               latencyMs > 0 ? withAdapterLatency(adapter, latencyMs) : adapter,
+            ...(retry === undefined ? {} : { retry }),
           },
-          { plugins: [plugin], ...(retry === undefined ? {} : { retry }) },
+          { plugins: [plugin] },
         ).database(plugin),
         // Insights never reads core.
         core: {} as CoreReader,

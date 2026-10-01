@@ -1,3 +1,4 @@
+export * from "./d1TestDatabase";
 export * from "./mockReactNativeProjectRoot";
 export * from "./runtimeProcess";
 export * from "./httpTestServer";

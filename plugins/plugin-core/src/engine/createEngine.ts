@@ -5,7 +5,6 @@ import type { EngineDatabase } from "../types/databaseConfig";
 import { coreModule, type CoreSchema } from "./core/schema";
 import { aggregateBatchingModule } from "./database/aggregateBatching";
 import { createDatabaseEngine } from "./database/database";
-import type { RetryOptions } from "./database/engineTransaction";
 import { fencedName, SETTINGS_TABLE, withSchemaFence } from "./database/fence";
 import { readMeterOf } from "./database/readMeter";
 import {
@@ -29,8 +28,6 @@ export interface EngineOptions {
   readonly plugins?: readonly PluginTables[];
   /** The clock retention passes and aggregate batching run on; `Date.now` by default. */
   readonly now?: () => number;
-  /** How a transaction that conflicts runs again; `onRetry` observes each rerun. */
-  readonly retry?: RetryOptions;
 }
 
 /** Core's tables and the plugins' on one storage engine. */
@@ -62,7 +59,7 @@ export interface Engine {
  */
 export const createEngine = (
   database: EngineDatabase,
-  { plugins = [], now = Date.now, retry }: EngineOptions = {},
+  { plugins = [], now = Date.now }: EngineOptions = {},
 ): Engine => {
   const modules = new Map<string, SchemaModule>();
   for (const plugin of plugins) {
@@ -100,7 +97,7 @@ export const createEngine = (
       now,
     }),
     schema,
-    ...(retry === undefined ? {} : { retry }),
+    ...(database.retry === undefined ? {} : { retry: database.retry }),
     ...(batching === undefined ? {} : { batching, now }),
     ...(meter === undefined ? {} : { meter }),
   });

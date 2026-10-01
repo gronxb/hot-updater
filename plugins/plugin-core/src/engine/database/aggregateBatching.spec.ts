@@ -88,7 +88,12 @@ interface Setup {
 }
 
 const setup = async ({ batching, adapter, fault, maxOps }: Setup = {}) => {
-  const memory = createMemoryAdapter(maxOps === undefined ? {} : { maxOps });
+  const reference = createMemoryAdapter();
+  // A store whose writes take at most `maxOps` ops.
+  const memory: DatabaseAdapter =
+    maxOps === undefined
+      ? reference
+      : { ...reference, fits: (ops) => ops.length <= maxOps };
   const schema = batching === undefined ? plain : batched;
   if (adapter === undefined) await memory.migrations?.apply(schema.tables);
   const base = adapter ?? memory;

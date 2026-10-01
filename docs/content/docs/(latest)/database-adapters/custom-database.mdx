@@ -272,6 +272,39 @@ your adapter in `verifyAdapter(adapter)`. It fails reads that return rows for
 other keys, rows outside the range or out of order, or more than `limit` rows,
 and writes that touch a row twice or that `fits` refuses.
 
+### Document-store adapters
+
+An adapter over a document store, which is neither SQL nor key-value, reads
+the physical schema through four names from `@hot-updater/plugin-core`, as
+the MongoDB adapter does:
+
+| Name                      | What it gives the adapter                                                                                        |
+| ------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `rowKey(table, row)`      | A row's primary key, in key-column order: what `get` takes for it, and how the adapter addresses the document     |
+| `findPhysicalIndex(table, name)` | The index a query names, or a `DatabaseSchemaError`                                                        |
+| `findPhysicalColumn(table, name)` | A column and its type, or a `DatabaseSchemaError`                                                         |
+| `DATABASE_VERSION_COLUMN` | `"_v"`, the version every stored row carries, which a guarded write compares and bumps                           |
+
+### Adapters over an ORM
+
+An adapter over an ORM's database, as the Kysely, Drizzle, and Prisma adapters
+are, runs core's SQL through `createSqlAdapter` and gives its database a
+migrator from `@hot-updater/plugin-core`, which its `createMigrator` returns:
+
+- `createEngineSqlMigrator({ executor, adapterName, schema, settings,
+  tablePrefix })` when Hot Updater creates the tables: it applies the
+  generated SQL schema when a settings row is missing or different, as
+  `kyselyAdapter`'s does.
+- `createSettingsMigrator({ executor, adapterName, settings, applyTables,
+  fixups })` when the ORM applies the DDL itself, as Drizzle's and Prisma's
+  do: `fixups` sets what the ORM cannot declare, then it writes the settings
+  rows. `applyTables` says how the ORM creates the tables, for the error when
+  they are missing.
+
+Both refuse a database from before the storage engine. The ORM's own schema
+generator renders each table from `sqlTableShapes` and quotes names with
+`quoteSql`; see [Create the schema](#create-the-schema).
+
 ## Wrap it as a database
 
 `createEngineDatabase({ name, adapter })` returns the `EngineDatabase` a
@@ -286,6 +319,7 @@ database also carries the migration that `hot-updater db migrate` runs.
 | `adapter`              | The `DatabaseAdapter`                                                                                                                                                                            |
 | `onCachedRoutesChange` | A CDN purge for the cacheable client routes. Core calls it after a committed write that changes a Release Catalog, so the adapter never names a table. `dynamoDB` invalidates CloudFront here. |
 | `aggregateBatching`    | For a backend that bills each write: apply the changes of aggregates declared `batched` after their transaction commits, merged into one write per row. `{ mode?: "log" \| "memory", windowMs? }`; absent or `false` writes them in each transaction. `dynamoDB` and `firebaseDatabase` pass `{}`, the log mode. |
+| `retry`                | Optional. How a transaction that conflicts with another write runs again: `{ attempts?, baseDelayMs?, maxDelayMs?, onRetry? }`, 8 attempts 5 ms apart at first, doubling to at most 250 ms. A store many writers contend on, such as DynamoDB under a burst of events, can take more attempts; `onRetry(kind, attempt)` observes each rerun, such as for a metric. |
 | `readSettings`         | Optional. How `hot-updater db migrate` reads the stored settings rows, by key, when an earlier version of the adapter stored them elsewhere; the MongoDB adapter reads its pre-engine rows this way. By default the migrator reads them through the adapter. |
 
 Set it as `database` in the server definition, the one module the server, the
@@ -343,9 +377,12 @@ const { result, adapter, engine } = await database.measureReads(() =>
 `adapter` counts what your adapter returned: `get` calls and the keys they
 asked for, and `query` calls and the rows they returned. `engine` counts the
 reads core or a plugin made and the rows they got back, where an aggregate row
-counts once however many shard rows the adapter read. A process's first
-schema-fence read and its retention passes belong to no call and are not
-counted. Every engine on the database reports to the same meter.
+counts once however many shard rows the adapter read. Aggregate batching's
+reads count too: a compaction or a flush that runs during the call, including
+a memory-mode timer flush that lands in it, since a store bills those like any
+other read. A process's first schema-fence read and its retention passes
+belong to no call and are not counted. Every engine on the database reports to
+the same meter.
 
 `createEngine(database, { plugins })` runs that storage engine without a
 server: `engine.core` holds core's tables and `engine.database(plugin)` a

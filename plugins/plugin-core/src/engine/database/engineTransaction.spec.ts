@@ -113,14 +113,17 @@ const setup = async (
     readonly seed?: false;
   } = {},
 ) => {
-  const memory = createMemoryAdapter(
-    options.maxOps === undefined ? {} : { maxOps: options.maxOps },
-  );
+  const memory = createMemoryAdapter();
   await memory.migrations?.apply(schema.tables);
   const faults: { inject?: (ops: readonly WriteOp[]) => Fault } = {};
   const writes: (readonly WriteOp[])[] = [];
+  const { maxOps } = options;
   const adapter: DatabaseAdapter = {
     ...memory,
+    // A store whose writes take at most `maxOps` ops.
+    ...(maxOps === undefined
+      ? {}
+      : { fits: (ops: readonly WriteOp[]) => ops.length <= maxOps }),
     async write(ops) {
       writes.push(ops);
       const fault = faults.inject?.(ops);
