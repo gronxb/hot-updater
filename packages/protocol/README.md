@@ -42,5 +42,6 @@ plugin-core or the server.
 
 `src/package.spec.ts` checks that this package has no dependencies and imports
 only what its build bundles. An oxlint rule refuses `@hot-updater/plugin-core`
-and `@hot-updater/server` imports in `packages/protocol/src` and
-`packages/react-native/src`.
+and `@hot-updater/server` imports in `packages/protocol/src`,
+`packages/react-native/src`, and the Insights client in
+`plugins/insights/src/client`.

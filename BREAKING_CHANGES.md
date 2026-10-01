@@ -221,7 +221,7 @@ same public ID used by the Console and `HotUpdater.getBundleId()`.
 | Removed or changed v0 usage                          | v1 behavior                                                                           |
 | ---------------------------------------------------- | ------------------------------------------------------------------------------------- |
 | `bundle list --channel ... --target-app-version ...` | The command and filters remain; rows use the public Bundle ID.                        |
-| `bundle show/update/enable/disable <bundle-id>`      | The commands remain and accept the public Bundle ID.                                  |
+| `bundle show/update/enable/disable <bundle-id>`       | The commands remain and accept the public Bundle ID.                                  |
 | `bundle promote <bundle-id>`                         | Use `bundle promote <source-id> --target <channel>`; the target gets a new public ID. |
 | `bundle delete <bundle-ids...>`                      | Delete one disabled public Bundle at a time with `bundle delete <id>`.                |
 | `patch --bundle-id ... --base-bundle-id ...`         | Prefer `--artifact-id` and `--base-artifact-id`; old names remain deprecated aliases. |
@@ -469,6 +469,7 @@ is removed. Pass the complete parameter object or call
 
 | Package                          | Removed                                                                       | Replacement                                                                       |
 | -------------------------------- | ----------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| `@hot-updater/core`              | The package, renamed                                                          | `@hot-updater/protocol`, with the same exports                                    |
 | `@hot-updater/aws`               | `s3Database`                                                                  | `dynamoDB`; S3 remains artifact storage only                                      |
 | `@hot-updater/aws`               | `s3LambdaEdgeStorage`                                                         | `s3Storage`                                                                       |
 | `@hot-updater/aws`               | `withCloudFrontSignedUrl`                                                     | Pass `cloudFrontDownloadUrl(...)` as `s3Storage({ getDownloadUrl })`              |

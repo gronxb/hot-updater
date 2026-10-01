@@ -7,7 +7,7 @@ export default defineConfig([
     outDir: "dist",
     dts: true,
     exports: true,
-    // Zero dependencies: what core uses from verkit is bundled into dist.
+    // Zero dependencies: what protocol uses from verkit is bundled into dist.
     deps: {
       alwaysBundle: ["verkit"],
       onlyBundle: ["verkit"],

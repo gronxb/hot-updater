@@ -42,9 +42,11 @@ export * from "./uuidv7";
 export {
   definePlugin,
   type AnyHotUpdaterPlugin,
+  type CliFor,
   type ClientAuth,
   type CoreReader,
   type HotUpdaterPlugin,
+  type InstanceFor,
   type PluginApis,
   type PluginCli,
   type PluginClientCredential,
@@ -65,6 +67,7 @@ export {
   defineAggregate,
   defineTable,
   type AggregateDefinition,
+  type CheckIndex,
   type DerivedDefinition,
   type DerivedFields,
   type FieldDefinition,
@@ -110,6 +113,7 @@ export {
   DatabaseTransactionError,
   type ConstraintReason,
 } from "./serverPlugin/errors";
+export { isDatabaseBusyError } from "./serverPlugin/busy";
 // The sketches of a `distinct` aggregate metric.
 export { addDistinct, countDistinct, mergeDistinct } from "./database/distinct";
 export { HotUpdaterConfigError } from "./serverPlugin/configError";

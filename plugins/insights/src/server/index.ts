@@ -2,13 +2,11 @@ import {
   DatabaseAdapterInputError,
   definePlugin,
   HotUpdaterConfigError,
+  isDatabaseBusyError,
   type HotUpdaterDatabase,
   type PluginEndpoint,
 } from "@hot-updater/plugin-core";
-import {
-  isDatabaseBusyError,
-  markOfficial,
-} from "@hot-updater/plugin-core/internal";
+import { markOfficial } from "@hot-updater/plugin-core/internal";
 
 import type { BundleEventRow } from "./eventRow";
 import { createInsightsModel } from "./model";

@@ -1,4 +1,4 @@
-import { isDatabaseBusyError } from "@hot-updater/plugin-core/internal";
+import { isDatabaseBusyError } from "@hot-updater/plugin-core";
 
 import {
   InsightsBadRequestError,
