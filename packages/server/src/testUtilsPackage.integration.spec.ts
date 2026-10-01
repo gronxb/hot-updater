@@ -87,7 +87,7 @@ it("runs the complete contract from the published test-utils package", async () 
       import { kyselyAdapter } from "@hot-updater/server/adapters/kysely";
       import { createDatabasePluginApis, createMigrator } from "@hot-updater/server/db";
       import { createInsightsModel, insights } from "@hot-updater/server/plugins/insights";
-      import { insightsTestSuite } from "@hot-updater/server/plugins/insights/testing";
+      import { insightsTestSuite } from "@hot-updater/test-utils";
       import { setupDatabaseTestSuite, startHttpTestServer } from "@hot-updater/test-utils";
 
       const db = new PGlite();

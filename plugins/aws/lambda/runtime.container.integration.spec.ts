@@ -20,13 +20,13 @@ import {
   ScanCommand,
 } from "@aws-sdk/lib-dynamodb";
 import { transformEnv } from "@hot-updater/cli-tools";
+import type { AnyHotUpdaterPlugin } from "@hot-updater/plugin-core";
+import { SETTINGS_TABLE } from "@hot-updater/plugin-core/internal";
 import type { Bundle } from "@hot-updater/protocol";
 import {
   createHotUpdater,
   type RuntimeHotUpdaterAPI,
 } from "@hot-updater/server";
-import { SETTINGS_TABLE } from "@hot-updater/server/database";
-import type { AnyHotUpdaterPlugin } from "@hot-updater/server/plugins";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import {
@@ -71,7 +71,7 @@ const REQUIRED_BUILD_ARTIFACTS = [
 ] as const;
 
 /** A third-party plugin a project adds to its server definition. */
-const NOTES_PLUGIN = `import { definePlugin, defineTable } from "@hot-updater/server/plugins";
+const NOTES_PLUGIN = `import { definePlugin, defineTable } from "@hot-updater/plugin-core";
 
 export const notes = definePlugin({
   id: "notes",

@@ -1,4 +1,5 @@
 import { PGlite } from "@electric-sql/pglite";
+import { createSqlAdapter } from "@hot-updater/plugin-core";
 import {
   postgresRowsExamined,
   setupReadBudgetTestSuite,
@@ -6,7 +7,6 @@ import {
 import { Kysely } from "kysely";
 import { PGliteDialect } from "kysely-pglite-dialect";
 
-import { createSqlAdapter } from "../database/sql/sqlAdapter";
 import { readBudgetServer } from "../readBudgets.testFixtures";
 import { kyselyAdapter } from "./kysely";
 import { kyselyExecutor } from "./kyselyExecutor";

@@ -4,7 +4,12 @@ import {
   type ReleaseRow,
   type StorageAdapterWith,
 } from "@hot-updater/plugin-core";
-import { createMemoryAdapter } from "@hot-updater/plugin-core/internal";
+import {
+  createMemoryAdapter,
+  createDatabaseEngine,
+  resolveSchema,
+} from "@hot-updater/plugin-core/internal";
+import type { ReadMeasurement } from "@hot-updater/plugin-core/internal";
 import {
   createReleaseCatalogScopeKey,
   encodeChannelKey,
@@ -18,9 +23,6 @@ import {
   createBundleRowFixture,
   createReleaseRowFixture,
 } from "../../../test-utils/src/databaseTestFixtures";
-import { createDatabaseEngine } from "../database/database";
-import type { ReadMeasurement } from "../database/engine";
-import { resolveSchema } from "../database/resolveSchema";
 import { createStorageAccess } from "../storageAccess";
 import { coreModule, createCoreReads, targetBaseCandidateKey } from "./index";
 

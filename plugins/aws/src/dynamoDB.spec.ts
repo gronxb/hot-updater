@@ -13,11 +13,10 @@ import {
   coreSchema,
   coreSettings,
   createKvAdapter,
-  encodeKvKey,
   type PhysicalTable,
-  SETTINGS_TABLE,
   type WriteOp,
-} from "@hot-updater/server/database";
+} from "@hot-updater/plugin-core";
+import { encodeKvKey, SETTINGS_TABLE } from "@hot-updater/plugin-core/internal";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { type DynamoDBConfig, dynamoDB } from "./dynamoDB";

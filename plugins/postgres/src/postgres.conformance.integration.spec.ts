@@ -1,10 +1,9 @@
 import { PGlite } from "@electric-sql/pglite";
+import { coreSettings, createTableStatements } from "@hot-updater/plugin-core";
 import {
-  coreSettings,
-  createTableStatements,
   SETTINGS_TABLE,
-} from "@hot-updater/server/database";
-import { settingsStatements } from "@hot-updater/server/db";
+  settingsStatements,
+} from "@hot-updater/plugin-core/internal";
 import { setupDatabaseAdapterConformanceSuite } from "@hot-updater/test-utils";
 import { PGliteDialect } from "kysely-pglite-dialect";
 

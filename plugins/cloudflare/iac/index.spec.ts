@@ -211,7 +211,7 @@ const withNotes = (text: string) =>
   text
     .replace(
       'import { createHotUpdater } from "@hot-updater/server";',
-      'import { createHotUpdater } from "@hot-updater/server";\nimport { definePlugin, defineTable } from "@hot-updater/server/plugins";\n' +
+      'import { createHotUpdater } from "@hot-updater/server";\nimport { definePlugin, defineTable } from "@hot-updater/plugin-core";\n' +
         NOTES_PLUGIN,
     )
     .replace("  plugins,\n", "  plugins: [...plugins, notes],\n");

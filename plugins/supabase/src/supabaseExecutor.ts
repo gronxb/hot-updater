@@ -2,7 +2,7 @@ import type {
   SqlExecutor,
   SqlResult,
   SqlStatement,
-} from "@hot-updater/server/database";
+} from "@hot-updater/plugin-core";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { SUPABASE_APPLY_FUNCTION } from "./supabaseInfrastructureNames";

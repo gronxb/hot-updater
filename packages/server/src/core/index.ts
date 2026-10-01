@@ -32,10 +32,10 @@ export {
 } from "./reads";
 export {
   coreModule,
-  coreSchema,
   HOT_UPDATER_SCHEMA_VERSION,
   type CoreSchema,
-} from "./schema";
+} from "@hot-updater/plugin-core/internal";
+export { coreSchema } from "@hot-updater/plugin-core";
 export {
   deleteChannel,
   insertBundle,

@@ -14,7 +14,7 @@ const repositoryRoot = path.resolve(packageRoot, "../..");
 /** A project's server definition, as init writes it, with a plugin of its own. */
 const DEFINITION = `import { dynamoDB, plugins, s3Storage } from "@hot-updater/aws";
 import { createHotUpdater } from "@hot-updater/server";
-import { definePlugin, defineTable } from "@hot-updater/server/plugins";
+import { definePlugin, defineTable } from "@hot-updater/plugin-core";
 import { GetCallerIdentityCommand, STSClient } from "@aws-sdk/client-sts";
 
 const whoAmI = () => new STSClient({}).send(new GetCallerIdentityCommand({}));

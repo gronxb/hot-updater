@@ -1,10 +1,10 @@
+import { isMultiIndex, toolingTargetOf } from "@hot-updater/plugin-core";
 import { createHotUpdater } from "@hot-updater/server";
-import { isMultiIndex, toolingTargetOf } from "@hot-updater/server/database";
 import {
   createInsightsModel,
   insights,
 } from "@hot-updater/server/plugins/insights";
-import { createBundleEventRowFixture } from "@hot-updater/server/plugins/insights/testing";
+import { createBundleEventRowFixture } from "@hot-updater/test-utils";
 import { env } from "cloudflare:test";
 import { expect, inject, it } from "vitest";
 

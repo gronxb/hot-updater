@@ -34,10 +34,10 @@ import {
   createInsightsModel,
   insights,
 } from "@hot-updater/server/plugins/insights";
-import { insightsTestSuite } from "@hot-updater/server/plugins/insights/testing";
+
 import {
   setupDatabaseTestSuite,
-  startHttpTestServer,
+  startHttpTestServer, insightsTestSuite,
 } from "@hot-updater/test-utils";
 
 import { migrateMyDatabase, myDatabase } from "./myDatabase";

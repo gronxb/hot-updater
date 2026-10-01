@@ -87,15 +87,7 @@ interface SqlExecutor {
 A complete provider over `pg`:
 
 ```ts title="myDatabase.ts"
-import {
-  createEngineDatabase,
-  createSqlAdapter,
-  type EngineDatabase,
-  migrateCoreSchema,
-  type PluginTables,
-  type SqlConnection,
-  type SqlExecutor,
-} from "@hot-updater/server/database";
+import { createEngineDatabase, createSqlAdapter, type EngineDatabase, migrateCoreSchema, type PluginTables, type SqlConnection, type SqlExecutor } from "@hot-updater/plugin-core";
 import pg, { type PoolClient, type PoolConfig } from "pg";
 
 /** Runs the SQL core's statements on a pool; a transaction holds one client. */
@@ -381,7 +373,7 @@ Each suite creates its own tables, and the specs drop or empty them through
 this helper:
 
 ```ts title="testTables.ts"
-import { isMultiIndex, type PhysicalTable } from "@hot-updater/server/database";
+import { isMultiIndex, type PhysicalTable } from "@hot-updater/plugin-core";
 
 /** The quoted tables the SQL core creates for `tables`, index tables included. */
 export const tableNames = (tables: readonly PhysicalTable[], prefix = "") =>
@@ -399,7 +391,7 @@ export const tableNames = (tables: readonly PhysicalTable[], prefix = "") =>
 ### Adapter conformance
 
 ```ts title="myDatabase.conformance.spec.ts"
-import { createSqlAdapter } from "@hot-updater/server/database";
+import { createSqlAdapter } from "@hot-updater/plugin-core";
 import { setupDatabaseAdapterConformanceSuite } from "@hot-updater/test-utils";
 import pg from "pg";
 import { afterAll } from "vitest";
@@ -447,10 +439,7 @@ since an insert there is 3 items and a transaction takes 100.
 ### Read budgets
 
 ```ts title="myDatabase.readBudgets.spec.ts"
-import {
-  createSqlAdapter,
-  toolingTargetOf,
-} from "@hot-updater/server/database";
+import { createSqlAdapter, toolingTargetOf } from "@hot-updater/plugin-core";
 import {
   createMeasuredDatabase,
   targetBaseCandidateKey,
@@ -521,16 +510,16 @@ one patch read.
 
 ```ts title="myDatabase.spec.ts"
 import { createHotUpdater } from "@hot-updater/server";
-import { toolingTargetOf } from "@hot-updater/server/database";
+import { toolingTargetOf } from "@hot-updater/plugin-core";
+
 import { createDatabasePluginApis } from "@hot-updater/server/db";
 import {
   createInsightsModel,
   insights,
 } from "@hot-updater/server/plugins/insights";
-import { insightsTestSuite } from "@hot-updater/server/plugins/insights/testing";
 import {
   setupDatabaseTestSuite,
-  startHttpTestServer,
+  startHttpTestServer, insightsTestSuite,
 } from "@hot-updater/test-utils";
 import pg from "pg";
 

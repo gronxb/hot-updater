@@ -9,7 +9,7 @@ import {
   transformEnv,
 } from "@hot-updater/cli-tools";
 import { HOT_UPDATER_INFRASTRUCTURE_GENERATION } from "@hot-updater/server";
-import { toolingTargetOf } from "@hot-updater/server/database";
+import { toolingTargetOf } from "@hot-updater/plugin-core";
 import { clientAuthOf, clientPluginsOf } from "@hot-updater/server/db";
 import { build as buildHelper } from "tsdown";
 

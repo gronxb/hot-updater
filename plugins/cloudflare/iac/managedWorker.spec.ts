@@ -3,7 +3,7 @@ import os from "os";
 import path from "path";
 
 import { InitError } from "@hot-updater/cli-tools";
-import { definePlugin, defineTable } from "@hot-updater/server/plugins";
+import { definePlugin, defineTable } from "@hot-updater/plugin-core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { plugins } from "../src/plugins";
@@ -18,7 +18,7 @@ const repositoryRoot = path.resolve(packageRoot, "../..");
 /** A project's server definition, as init writes it, with a plugin of its own. */
 const DEFINITION = `import { d1Database, plugins, r2Storage } from "@hot-updater/cloudflare";
 import { createHotUpdater } from "@hot-updater/server";
-import { definePlugin, defineTable } from "@hot-updater/server/plugins";
+import { definePlugin, defineTable } from "@hot-updater/plugin-core";
 
 const notes = definePlugin({
   id: "notes",

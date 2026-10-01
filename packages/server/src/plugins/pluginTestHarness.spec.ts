@@ -1,8 +1,8 @@
+import { defineTable } from "@hot-updater/plugin-core";
+import * as engine from "@hot-updater/plugin-core/internal";
 import { createPluginTestHarness } from "@hot-updater/test-utils";
 import { describe, expect, it } from "vitest";
 
-import * as engine from "../database";
-import { defineTable } from "../database/schema";
 import { definePlugin } from "./definePlugin";
 
 const notes = definePlugin({

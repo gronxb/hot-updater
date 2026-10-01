@@ -1,12 +1,17 @@
 import net from "node:net";
 import path from "node:path";
 
+import {
+  HotUpdaterSchemaMigrationRequiredError,
+  toolingTargetOf,
+} from "@hot-updater/plugin-core";
 import type { PhysicalTable } from "@hot-updater/plugin-core/internal";
 import {
   conformanceExpiring,
   setupDatabaseAdapterConformanceSuite,
   setupDatabaseTestSuite,
   startHttpTestServer,
+  insightsTestSuite,
 } from "@hot-updater/test-utils";
 import { assertDockerComposeAvailable } from "@hot-updater/test-utils/node";
 import { execa } from "execa";
@@ -16,11 +21,8 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createBundleFixture } from "../../../test-utils/src/databaseTestFixtures";
 import { createDatabasePluginApis } from "../assembly/databasePlugins";
 import { createInProcessCoreApi } from "../core/api";
-import { HotUpdaterSchemaMigrationRequiredError } from "../database/fence";
-import { toolingTargetOf } from "../db/coreDatabase";
 import { createHotUpdater } from "../index";
 import { createInsightsModel, insights } from "../plugins/insights";
-import { insightsTestSuite } from "../plugins/insights/testing";
 import { mongoAdapter } from "./mongodb";
 import { createMongoAdapter } from "./mongodbAdapter";
 

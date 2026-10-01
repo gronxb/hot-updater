@@ -1,8 +1,8 @@
+import { toolingTargetOf } from "@hot-updater/plugin-core";
 import type { ReadBudgetServer } from "@hot-updater/test-utils";
 
 import { createMeasuredDatabase } from "./assembly/databasePlugins";
 import { targetBaseCandidateKey } from "./core/baseCandidates";
-import { toolingTargetOf } from "./db/coreDatabase";
 import { apiKeys } from "./plugins/api-keys";
 import { insights } from "./plugins/insights";
 

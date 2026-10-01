@@ -1,3 +1,4 @@
+import { defineTable } from "@hot-updater/plugin-core";
 import { describe, expectTypeOf, it } from "vitest";
 
 import {
@@ -7,7 +8,6 @@ import {
   type CreateHotUpdaterOptions,
   type RemovedClientAccess,
 } from "../createHotUpdaterCore";
-import { defineTable } from "../database/schema";
 import { definePlugin } from "../plugins/definePlugin";
 
 const keys = definePlugin({

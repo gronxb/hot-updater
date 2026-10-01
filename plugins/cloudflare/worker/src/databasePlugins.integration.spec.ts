@@ -3,19 +3,17 @@ import type {
   EngineDatabase,
   StorageAdapter,
 } from "@hot-updater/plugin-core";
+import { isMultiIndex, toolingTargetOf } from "@hot-updater/plugin-core";
 import { createHotUpdater } from "@hot-updater/server";
-import { isMultiIndex, toolingTargetOf } from "@hot-updater/server/database";
 import {
   createInsightsModel,
   insights,
 } from "@hot-updater/server/plugins/insights";
 import {
-  createBundleEventRowFixture,
-  insightsTestSuite,
-} from "@hot-updater/server/plugins/insights/testing";
-import {
   createHandlerHttpTestClient,
   setupDatabaseTestSuite,
+  createBundleEventRowFixture,
+  insightsTestSuite,
 } from "@hot-updater/test-utils";
 import { env } from "cloudflare:test";
 import {

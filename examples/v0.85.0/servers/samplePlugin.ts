@@ -1,4 +1,4 @@
-import { definePlugin, defineTable } from "@hot-updater/server/plugins";
+import { definePlugin, defineTable } from "@hot-updater/plugin-core";
 
 /**
  * A plugin of the example's own, which every managed server here runs: a

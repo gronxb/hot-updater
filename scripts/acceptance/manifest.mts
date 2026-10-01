@@ -567,7 +567,7 @@ export const domainImports = {
   packages: [
     "@hot-updater/protocol",
     "@hot-updater/server",
-    "@hot-updater/server/plugins",
+    "@hot-updater/plugin-core",
     "@hot-updater/server/plugins/*",
   ],
 };

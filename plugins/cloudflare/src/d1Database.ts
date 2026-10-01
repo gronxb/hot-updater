@@ -1,10 +1,13 @@
-import { withAdapterResource } from "@hot-updater/plugin-core/internal";
 import {
   coreSettings,
   coreTarget,
   type SqlStatement,
-} from "@hot-updater/server/database";
-import type { SchemaGenerator, ToolingDatabase } from "@hot-updater/server/db";
+} from "@hot-updater/plugin-core";
+import type {
+  SchemaGenerator,
+  ToolingDatabase,
+} from "@hot-updater/plugin-core";
+import { withAdapterResource } from "@hot-updater/plugin-core/internal";
 import Cloudflare from "cloudflare";
 
 import {

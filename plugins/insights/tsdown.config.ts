@@ -1,8 +1,5 @@
 import { defineConfig } from "tsdown";
 
-/** The Insights test suites import Vitest, which is ESM-only. */
-const TESTING = "./testing";
-
 export default defineConfig([
   {
     entry: [
@@ -14,23 +11,7 @@ export default defineConfig([
     outDir: "dist",
     dts: true,
     unbundle: true,
-    exports: {
-      customExports: (exports) => ({
-        ...exports,
-        [TESTING]: {
-          import: "./dist/server/testing/index.mjs",
-        },
-      }),
-    },
-    failOnWarn: true,
-  },
-  {
-    entry: ["./src/server/testing/index.ts"],
-    format: ["esm"],
-    outDir: "dist/server/testing",
-    clean: false,
-    dts: true,
-    unbundle: true,
+    exports: true,
     failOnWarn: true,
   },
 ]);

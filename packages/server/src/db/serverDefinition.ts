@@ -1,4 +1,8 @@
-import type { StorageAdapter } from "@hot-updater/plugin-core";
+import type {
+  StorageAdapter,
+  ToolingDatabase,
+  ToolingTarget,
+} from "@hot-updater/plugin-core";
 
 import {
   type ClientEndpoint,
@@ -6,7 +10,6 @@ import {
   type RuntimeHotUpdaterAPI,
 } from "../createHotUpdaterCore";
 import type { AnyHotUpdaterPlugin } from "../plugins/definePlugin";
-import type { ToolingDatabase, ToolingTarget } from "./types";
 
 export type { ClientEndpoint } from "../createHotUpdaterCore";
 

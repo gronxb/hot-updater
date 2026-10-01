@@ -1,10 +1,11 @@
 import { PGlite } from "@electric-sql/pglite";
+import { createTableStatements, coreSettings } from "@hot-updater/plugin-core";
+import {
+  SETTINGS_TABLE,
+  settingsStatements,
+} from "@hot-updater/plugin-core/internal";
 import { setupDatabaseAdapterConformanceSuite } from "@hot-updater/test-utils";
 
-import { SETTINGS_TABLE } from "../database/fence";
-import { createTableStatements } from "../database/sql/sqlSchema";
-import { coreSettings } from "../db/coreDatabase";
-import { settingsStatements } from "../db/engineSql";
 import { prismaAdapter } from "./prisma";
 import { pglitePrisma } from "./prismaTestClients";
 

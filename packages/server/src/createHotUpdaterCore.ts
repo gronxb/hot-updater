@@ -1,7 +1,9 @@
 import {
   assertStorageOperations,
   type StorageAdapter,
+  toolingTargetOf,
 } from "@hot-updater/plugin-core";
+import type { ToolingDatabase, ToolingTarget } from "@hot-updater/plugin-core";
 import type { DatabaseAdapter } from "@hot-updater/plugin-core/internal";
 
 import {
@@ -10,8 +12,6 @@ import {
 } from "./assembly/assemblePlugins";
 import { clientPluginsOf } from "./assembly/clientPlugins";
 import type { CoreApi } from "./core/api";
-import { toolingTargetOf } from "./db/coreDatabase";
-import type { ToolingDatabase, ToolingTarget } from "./db/types";
 import {
   type ClientRoutePolicy,
   createHotUpdaterHandlers,

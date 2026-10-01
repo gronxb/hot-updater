@@ -7,7 +7,7 @@ describe("moduleSpecifiersOf", () => {
     const formatted = [
       'import { createHotUpdater } from "@hot-updater/server";',
       'import "./side-effect.mjs";',
-      'import type { Plugin } from "@hot-updater/server/plugins";',
+      'import type { Plugin } from "@hot-updater/plugin-core";',
       'export { notes } from "./notes.mjs";',
       'export * from "@hot-updater/protocol";',
       'const lazy = () => import("./lazy.mjs");',
@@ -31,7 +31,7 @@ describe("moduleSpecifiersOf", () => {
       "./template.mjs",
     ];
     expect(moduleSpecifiersOf("formatted.ts", formatted).sort()).toEqual(
-      [...expected, "@hot-updater/server/plugins"].sort(),
+      [...expected, "@hot-updater/plugin-core"].sort(),
     );
     expect(moduleSpecifiersOf("minified.mjs", minified).sort()).toEqual(
       expected.sort(),

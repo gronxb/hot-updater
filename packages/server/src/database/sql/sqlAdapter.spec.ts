@@ -1,31 +1,32 @@
 import { DatabaseSync } from "node:sqlite";
 
 import { PGlite } from "@electric-sql/pglite";
+import {
+  coreSchema,
+  createSqlAdapter,
+  createTableStatements,
+  type SqlExecutor,
+  type SqlStatement,
+  WRITE_GUARD_TABLE,
+} from "@hot-updater/plugin-core";
 import type { PhysicalTable } from "@hot-updater/plugin-core/internal";
+import {
+  classifySqlError,
+  pruneStatements,
+} from "@hot-updater/plugin-core/internal";
 import {
   conformanceCounters,
   conformanceExpiring,
   conformanceItems,
   setupDatabaseAdapterConformanceSuite,
 } from "@hot-updater/test-utils";
-import { afterAll, describe, expect, it } from "vitest";
-
-import { coreSchema } from "../../db/coreDatabase";
-import {
-  classifySqlError,
-  createSqlAdapter,
-  createTableStatements,
-  type SqlExecutor,
-  type SqlStatement,
-  WRITE_GUARD_TABLE,
-} from "./sqlAdapter";
-import { pruneStatements } from "./sqlSchema";
 import {
   pgliteBatchExecutor,
   pgliteExecutor,
   sqliteBatchExecutor,
   sqliteExecutor,
-} from "./sqlTestExecutors";
+} from "@hot-updater/test-utils/node";
+import { afterAll, describe, expect, it } from "vitest";
 
 const pglite = new PGlite();
 afterAll(() => pglite.close());

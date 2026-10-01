@@ -1,20 +1,24 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { createSqlAdapter } from "@hot-updater/plugin-core";
+import {
+  createDatabaseEngine,
+  resolveSchema,
+} from "@hot-updater/plugin-core/internal";
+import type { RetryOptions } from "@hot-updater/plugin-core/internal";
 import {
   runContentionHarness,
   withAdapterLatency,
 } from "@hot-updater/test-utils";
-import { assertDockerComposeAvailable } from "@hot-updater/test-utils/node";
+import {
+  assertDockerComposeAvailable,
+  pgExecutor,
+} from "@hot-updater/test-utils/node";
 import { execa } from "execa";
 import pg from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { createDatabaseEngine } from "../../database/database";
-import type { RetryOptions } from "../../database/engineTransaction";
-import { resolveSchema } from "../../database/resolveSchema";
-import { createSqlAdapter } from "../../database/sql/sqlAdapter";
-import { pgExecutor } from "../../database/sql/sqlTestExecutors";
 import type { CoreReader } from "../definePlugin";
 import { insights, insightsSchema, type BundleEventRow } from "./index";
 

@@ -4,13 +4,15 @@ import { IAM } from "@aws-sdk/client-iam";
 import { STS } from "@aws-sdk/client-sts";
 import { InitError, p } from "@hot-updater/cli-tools";
 import {
-  aggregateBatchingModule,
   coreTarget,
   type PluginTables,
+  toolingTargetOf,
+} from "@hot-updater/plugin-core";
+import {
+  aggregateBatchingModule,
   resolveSchema,
   SETTINGS_TABLE,
-  toolingTargetOf,
-} from "@hot-updater/server/database";
+} from "@hot-updater/plugin-core/internal";
 
 import { plugins as packagePlugins } from "../src/plugins";
 

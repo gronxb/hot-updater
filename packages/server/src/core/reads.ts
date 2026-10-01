@@ -10,6 +10,12 @@ import {
   type ReleaseRow,
   type CoreReads,
 } from "@hot-updater/plugin-core";
+import type {
+  HotUpdaterDatabase,
+  ReadRow,
+  Page,
+} from "@hot-updater/plugin-core";
+import type { CoreSchema } from "@hot-updater/plugin-core/internal";
 import {
   ARTIFACT_PROTOCOL_VERSION,
   NIL_UUID,
@@ -17,8 +23,6 @@ import {
   type ReleaseCatalog,
 } from "@hot-updater/protocol";
 
-import type { HotUpdaterDatabase, ReadRow } from "../database/database";
-import type { Page } from "../database/engineReads";
 import {
   projectReleaseCatalogRow,
   releaseCatalogScopeKeyOf,
@@ -26,7 +30,6 @@ import {
 } from "../db/releaseCatalog";
 import { resolveManifestArtifacts } from "../db/updateArtifacts";
 import { baseBundleIdsOf, parseBaseCandidateKey } from "./baseCandidates";
-import type { CoreSchema } from "./schema";
 
 export type CoreDatabase = HotUpdaterDatabase<CoreSchema>;
 export type { CoreReads };

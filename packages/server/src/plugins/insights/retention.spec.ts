@@ -1,10 +1,12 @@
-import { createMemoryAdapter } from "@hot-updater/plugin-core/internal";
+import {
+  createMemoryAdapter,
+  resolveSchema,
+} from "@hot-updater/plugin-core/internal";
+import * as engine from "@hot-updater/plugin-core/internal";
 import { createPluginTestHarness } from "@hot-updater/test-utils";
 import { describe, expect, it } from "vitest";
 
 import { HotUpdaterConfigError } from "../../assembly/configError";
-import * as engine from "../../database";
-import { resolveSchema } from "../../database/resolveSchema";
 import { createHotUpdater } from "../../index";
 import { insights } from "./index";
 

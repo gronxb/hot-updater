@@ -1,13 +1,15 @@
 import { PGlite } from "@electric-sql/pglite";
 import {
+  createSqlAdapter,
+  toolingTargetOf,
+  generateEngineSql,
+} from "@hot-updater/plugin-core";
+import {
   postgresRowsExamined,
   setupReadBudgetTestSuite,
 } from "@hot-updater/test-utils";
 import { drizzle } from "drizzle-orm/pglite";
 
-import { createSqlAdapter } from "../database/sql/sqlAdapter";
-import { toolingTargetOf } from "../db/coreDatabase";
-import { generateEngineSql } from "../db/engineSql";
 import { readBudgetServer } from "../readBudgets.testFixtures";
 import { drizzleExecutor } from "./drizzleExecutor";
 

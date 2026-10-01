@@ -1,4 +1,4 @@
-import * as engine from "@hot-updater/server/database";
+import * as engine from "@hot-updater/plugin-core/internal";
 import { setupAggregateBatchingTestSuite } from "@hot-updater/test-utils";
 
 import { createFirestoreTestDatabase } from "../test-utils/createFirestoreTestDatabase";

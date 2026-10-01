@@ -1,5 +1,5 @@
-import { coreTarget } from "@hot-updater/server/database";
-import type { ToolingTarget } from "@hot-updater/server/db";
+import { coreTarget } from "@hot-updater/plugin-core";
+import type { ToolingTarget } from "@hot-updater/plugin-core";
 
 import { d1SchemaSql } from "./d1Schema";
 

@@ -1,6 +1,9 @@
+import {
+  toolingTargetOf,
+  definePlugin,
+  defineTable,
+} from "@hot-updater/plugin-core";
 import { createHotUpdater } from "@hot-updater/server";
-import { toolingTargetOf } from "@hot-updater/server/database";
-import { definePlugin, defineTable } from "@hot-updater/server/plugins";
 import { env } from "cloudflare:test";
 import { beforeAll, describe, expect, it } from "vitest";
 

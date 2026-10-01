@@ -7,26 +7,26 @@ import {
   DynamoDBDocumentClient,
   ScanCommand,
 } from "@aws-sdk/lib-dynamodb";
-import { createHotUpdater } from "@hot-updater/server";
 import {
   createKvAdapter,
   type PhysicalTable,
-  SETTINGS_TABLE,
-} from "@hot-updater/server/database";
+  HotUpdaterSchemaMigrationRequiredError,
+} from "@hot-updater/plugin-core";
+import { SETTINGS_TABLE } from "@hot-updater/plugin-core/internal";
+import { createHotUpdater } from "@hot-updater/server";
 import {
   createDatabaseCoreApi,
   createDatabasePluginApis,
-  HotUpdaterSchemaMigrationRequiredError,
 } from "@hot-updater/server/db";
 import {
   createInsightsModel,
   insights,
 } from "@hot-updater/server/plugins/insights";
-import { insightsTestSuite } from "@hot-updater/server/plugins/insights/testing";
 import {
   setupDatabaseAdapterConformanceSuite,
   setupDatabaseTestSuite,
   startHttpTestServer,
+  insightsTestSuite,
 } from "@hot-updater/test-utils";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 

@@ -1,4 +1,4 @@
-import { toNodeHandler } from "@hot-updater/server/node";
+import { toNodeHandler } from "@hot-updater/server";
 import cors from "cors";
 import express from "express";
 import type { Router } from "express";

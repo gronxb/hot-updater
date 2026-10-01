@@ -9,7 +9,7 @@ import {
   ENGINE_SCHEMA_VERSION,
   encodeKvKey,
   SETTINGS_TABLE,
-} from "@hot-updater/server/database";
+} from "@hot-updater/plugin-core/internal";
 import {
   applicationDefault,
   cert,

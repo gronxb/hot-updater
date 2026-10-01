@@ -14,23 +14,23 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { resolvePackageVersion, transformEnv } from "@hot-updater/cli-tools";
-import { type HotUpdaterCoreApi, rowToBundle } from "@hot-updater/plugin-core";
-import type { Bundle } from "@hot-updater/protocol";
-import { createHotUpdater } from "@hot-updater/server";
+import {
+  type HotUpdaterCoreApi,
+  rowToBundle,
+  createSqlAdapter,
+  toolingTargetOf,
+} from "@hot-updater/plugin-core";
+import type { AnyHotUpdaterPlugin, CoreReader } from "@hot-updater/plugin-core";
 import {
   createDatabaseEngine,
-  createSqlAdapter,
   type RetryOptions,
-  toolingTargetOf,
-} from "@hot-updater/server/database";
+} from "@hot-updater/plugin-core/internal";
+import type { Bundle } from "@hot-updater/protocol";
+import { createHotUpdater } from "@hot-updater/server";
 import {
   createDatabaseCoreApi,
   createDatabasePluginApis,
 } from "@hot-updater/server/db";
-import type {
-  AnyHotUpdaterPlugin,
-  CoreReader,
-} from "@hot-updater/server/plugins";
 import { apiKeys } from "@hot-updater/server/plugins/api-keys";
 import {
   createInsightsModel,
@@ -38,12 +38,12 @@ import {
   insightsSchema,
   type BundleEventRow,
 } from "@hot-updater/server/plugins/insights";
-import { insightsTestSuite } from "@hot-updater/server/plugins/insights/testing";
 import {
   runContentionHarness,
   setupDatabaseTestSuite,
   startHttpTestServer,
   withAdapterLatency,
+  insightsTestSuite,
 } from "@hot-updater/test-utils";
 import { createClient } from "@supabase/supabase-js";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
@@ -1010,7 +1010,7 @@ exports.digest = (text) => crypto.createHash("sha256").update(text).digest("hex"
 const DEFINITION_FUNCTION_NAME = "hot-updater-plugins";
 
 /** A plugin of the project's own, with a table, which the app reads and writes. */
-const NOTES_PLUGIN = `import { definePlugin, defineTable } from "@hot-updater/server/plugins";
+const NOTES_PLUGIN = `import { definePlugin, defineTable } from "@hot-updater/plugin-core";
 import { digest } from "cjs-digest";
 
 export const notes = definePlugin({

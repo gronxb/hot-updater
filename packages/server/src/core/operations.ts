@@ -15,6 +15,7 @@ import {
   type ReleasePolicyPatch,
   type ReleaseRow,
   type ReleaseTarget,
+  DatabaseConstraintError,
 } from "@hot-updater/plugin-core";
 import { DatabaseRowReferencedError } from "@hot-updater/plugin-core/internal";
 import {
@@ -23,7 +24,6 @@ import {
   encodeChannelKey,
 } from "@hot-updater/protocol";
 
-import { DatabaseConstraintError } from "../database/errors";
 import { toBundleRow, toReleaseRow, type CoreDatabase } from "./reads";
 import {
   changeRelease,

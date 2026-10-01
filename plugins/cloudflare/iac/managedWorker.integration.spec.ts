@@ -35,7 +35,7 @@ const BUCKET_NAME = "bundles";
 const BUNDLE_ID = "00000000-0000-0000-0000-000000000001";
 
 /** A plugin of the project's own, with a table, which the app reads and writes. */
-const NOTES_PLUGIN = `import { definePlugin, defineTable } from "@hot-updater/server/plugins";
+const NOTES_PLUGIN = `import { definePlugin, defineTable } from "@hot-updater/plugin-core";
 import { digest } from "cjs-digest";
 
 export const notes = definePlugin({

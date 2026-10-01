@@ -3,10 +3,12 @@ import {
   createTableStatements,
   isMultiIndex,
   type PhysicalTable,
-  SETTINGS_TABLE,
   WRITE_GUARD_TABLE,
-} from "@hot-updater/server/database";
-import { settingsStatements } from "@hot-updater/server/db";
+} from "@hot-updater/plugin-core";
+import {
+  SETTINGS_TABLE,
+  settingsStatements,
+} from "@hot-updater/plugin-core/internal";
 import { env } from "cloudflare:test";
 
 // Not the package index: it loads Node-only helpers workerd lacks.

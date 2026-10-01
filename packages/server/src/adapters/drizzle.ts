@@ -1,16 +1,17 @@
-import { createSqlAdapter } from "../database/sql/sqlAdapter";
 import {
+  createSqlAdapter,
   coreSettings,
   coreTarget,
   createEngineDatabase,
-} from "../db/coreDatabase";
-import { generateDrizzleEngineSchema } from "../db/engineDrizzleSchema";
-import { createSettingsMigrator } from "../db/settingsMigrator";
+} from "@hot-updater/plugin-core";
 import type {
-  ORMSQLProvider,
   SchemaGenerator,
   ToolingDatabase,
-} from "../db/types";
+} from "@hot-updater/plugin-core";
+import { createSettingsMigrator } from "@hot-updater/plugin-core/internal";
+import type { ORMSQLProvider } from "@hot-updater/plugin-core/internal";
+
+import { generateDrizzleEngineSchema } from "../db/engineDrizzleSchema";
 import { drizzleExecutor } from "./drizzleExecutor";
 import { checkSqlProvider } from "./sqlProviders";
 

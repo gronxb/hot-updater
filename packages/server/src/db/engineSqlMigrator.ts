@@ -1,18 +1,20 @@
-import { HOT_UPDATER_SCHEMA_VERSION } from "../core/schema";
-import type { SchemaSettings } from "../database/fence";
-import type { ResolvedSchema } from "../database/resolveSchema";
-import type { SqlExecutor } from "../database/sql/sqlAdapter";
-import { generateEngineSql, type EngineSqlOptions } from "./engineSql";
+import type { SqlExecutor, Migrator } from "@hot-updater/plugin-core";
+import { generateEngineSql } from "@hot-updater/plugin-core";
 import {
+  HOT_UPDATER_SCHEMA_VERSION,
+  type EngineSqlOptions,
   assertSupportedMigrationMode,
   getEmptyMigrationResult,
-} from "./fixedMigratorShared";
-import {
   readStoredSettings,
   refusePreEngineDatabase,
   storedSchemaVersion,
-} from "./settingsMigrator";
-import type { MigrateOptions, MigrationResult, Migrator } from "./types";
+} from "@hot-updater/plugin-core/internal";
+import type {
+  SchemaSettings,
+  ResolvedSchema,
+  MigrateOptions,
+  MigrationResult,
+} from "@hot-updater/plugin-core/internal";
 
 export interface EngineSqlMigratorOptions extends EngineSqlOptions {
   readonly adapterName: string;

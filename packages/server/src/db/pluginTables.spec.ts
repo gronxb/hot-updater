@@ -1,4 +1,12 @@
 import { PGlite } from "@electric-sql/pglite";
+import {
+  HotUpdaterSchemaMigrationRequiredError,
+  defineTable,
+  createTableStatements,
+  coreTarget,
+  createEngineDatabase,
+  toolingTargetOf,
+} from "@hot-updater/plugin-core";
 import { createMemoryAdapter } from "@hot-updater/plugin-core/internal";
 import { Kysely } from "kysely";
 import { PGliteDialect } from "kysely-pglite-dialect";
@@ -8,20 +16,12 @@ import { drizzleAdapter } from "../adapters/drizzle";
 import { kyselyAdapter } from "../adapters/kysely";
 import { prismaAdapter } from "../adapters/prisma";
 import { createHotUpdater } from "../createHotUpdaterCore";
-import { HotUpdaterSchemaMigrationRequiredError } from "../database/fence";
-import { defineTable } from "../database/schema";
-import { createTableStatements } from "../database/sql/sqlAdapter";
 import { apiKeys } from "../plugins/api-keys";
 import {
   type AnyHotUpdaterPlugin,
   definePlugin,
 } from "../plugins/definePlugin";
 import { insights } from "../plugins/insights";
-import {
-  coreTarget,
-  createEngineDatabase,
-  toolingTargetOf,
-} from "./coreDatabase";
 import { createMigrator, generateSchema } from "./index";
 
 const notes = definePlugin({

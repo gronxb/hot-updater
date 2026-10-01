@@ -2,14 +2,14 @@ import fs from "node:fs/promises";
 import path from "node:path";
 
 import { PGlite } from "@electric-sql/pglite";
-import { kyselyExecutor } from "@hot-updater/server/adapters/kysely";
 import {
   toolingTargetOf,
   createSqlAdapter,
-} from "@hot-updater/server/database";
+  generateEngineSql,
+} from "@hot-updater/plugin-core";
+import { kyselyExecutor } from "@hot-updater/server/adapters/kysely";
 import {
   createMeasuredDatabase,
-  generateEngineSql,
   targetBaseCandidateKey,
 } from "@hot-updater/server/db";
 import { apiKeys } from "@hot-updater/server/plugins/api-keys";

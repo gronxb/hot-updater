@@ -5,12 +5,13 @@ import type {
   ChannelDeleteResult,
   ChannelInsertResult,
   ChannelRow,
+  HotUpdaterTransaction,
+  TableRow,
 } from "@hot-updater/plugin-core";
+import { DatabaseConstraintError } from "@hot-updater/plugin-core";
+import type { CoreSchema } from "@hot-updater/plugin-core/internal";
 
-import type { HotUpdaterTransaction, TableRow } from "../database/database";
-import { DatabaseConstraintError } from "../database/errors";
 import { toChannelRow, type CoreDatabase } from "./reads";
-import type { CoreSchema } from "./schema";
 
 export type CoreTransaction = HotUpdaterTransaction<CoreSchema>;
 export type StoredBundle = TableRow<CoreSchema["bundles"]>;

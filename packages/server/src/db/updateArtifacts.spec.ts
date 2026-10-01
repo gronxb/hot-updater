@@ -1,11 +1,13 @@
-import { createMemoryAdapter } from "@hot-updater/plugin-core/internal";
+import {
+  createMemoryAdapter,
+  coreModule,
+  createDatabaseEngine,
+  resolveSchema,
+} from "@hot-updater/plugin-core/internal";
 import { NIL_UUID, type Bundle } from "@hot-updater/protocol";
 import { describe, expect, it, vi } from "vitest";
 
 import { createCoreApi } from "../core/api";
-import { coreModule } from "../core/schema";
-import { createDatabaseEngine } from "../database/database";
-import { resolveSchema } from "../database/resolveSchema";
 import { resolveManifestArtifacts } from "./updateArtifacts";
 
 const CURRENT_ID = "00000000-0000-0000-0000-000000000101";

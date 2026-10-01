@@ -21,13 +21,13 @@ import {
   type RunInitOptions,
   transformEnv,
 } from "@hot-updater/cli-tools";
+import type { AnyHotUpdaterPlugin } from "@hot-updater/plugin-core";
 import {
   clientPluginsOf,
   provisionClientCredential,
   type ProvisionedClientCredential,
 } from "@hot-updater/server/db";
 import { managedServerDefinitionOf } from "@hot-updater/server/internal";
-import type { AnyHotUpdaterPlugin } from "@hot-updater/server/plugins";
 import { isEqual, sortBy, uniqWith } from "es-toolkit";
 import { ExecaError, execa } from "execa";
 import {

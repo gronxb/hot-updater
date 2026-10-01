@@ -1,9 +1,13 @@
+import {
+  createSqlAdapter,
+  coreTarget,
+  createEngineDatabase,
+} from "@hot-updater/plugin-core";
+import type { ToolingDatabase } from "@hot-updater/plugin-core";
+import type { ORMSQLProvider } from "@hot-updater/plugin-core/internal";
 import type { Kysely } from "kysely";
 
-import { createSqlAdapter } from "../database/sql/sqlAdapter";
-import { coreTarget, createEngineDatabase } from "../db/coreDatabase";
 import { createEngineSqlMigrator } from "../db/engineSqlMigrator";
-import type { ORMSQLProvider, ToolingDatabase } from "../db/types";
 import { kyselyExecutor } from "./kyselyExecutor";
 import { checkSqlProvider } from "./sqlProviders";
 

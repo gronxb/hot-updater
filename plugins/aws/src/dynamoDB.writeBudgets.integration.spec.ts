@@ -1,15 +1,14 @@
 import { appendFileSync } from "node:fs";
 
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
-import type { AggregateBatching } from "@hot-updater/plugin-core";
+import type { AggregateBatching, CoreReader } from "@hot-updater/plugin-core";
+import { createKvAdapter } from "@hot-updater/plugin-core";
 import {
   aggregateBatchingModule,
   createDatabaseEngine,
-  createKvAdapter,
   resolveSchema,
-} from "@hot-updater/server/database";
+} from "@hot-updater/plugin-core/internal";
 import { createDatabasePluginApis } from "@hot-updater/server/db";
-import type { CoreReader } from "@hot-updater/server/plugins";
 import {
   insights,
   insightsSchema,

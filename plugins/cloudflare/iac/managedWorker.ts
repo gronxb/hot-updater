@@ -2,10 +2,7 @@ import fs from "fs/promises";
 import path from "path";
 
 import { bundleServer, transformTemplate } from "@hot-updater/cli-tools";
-import {
-  type PluginTables,
-  toolingTargetOf,
-} from "@hot-updater/server/database";
+import { type PluginTables, toolingTargetOf } from "@hot-updater/plugin-core";
 
 import { d1Migration } from "../src/d1Migration";
 

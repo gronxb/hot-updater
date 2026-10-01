@@ -1,10 +1,9 @@
-import { SETTINGS_TABLE } from "../database/fence";
 import type {
   SqlConnection,
   SqlDialect,
   SqlExecutor,
-} from "../database/sql/sqlAdapter";
-import { quoteSql } from "../database/sql/sqlSchema";
+} from "@hot-updater/plugin-core";
+import { SETTINGS_TABLE, quoteSql } from "@hot-updater/plugin-core/internal";
 
 /** The members of a Prisma client, or of its transaction client, the executor uses. */
 export interface PrismaRawClient {

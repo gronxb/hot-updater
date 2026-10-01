@@ -1,4 +1,4 @@
-import { toolingTargetOf } from "@hot-updater/server/database";
+import { toolingTargetOf } from "@hot-updater/plugin-core";
 import {
   createMeasuredDatabase,
   targetBaseCandidateKey,

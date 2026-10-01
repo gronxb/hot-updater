@@ -2,27 +2,26 @@ import { DatabaseSync } from "node:sqlite";
 
 import { PGlite } from "@electric-sql/pglite";
 import {
-  createMemoryAdapter,
-  type DatabaseAdapter,
-} from "@hot-updater/plugin-core/internal";
-import { afterAll, describe, expect, it, vi } from "vitest";
-
-import {
   coreSettings,
   createEngineDatabase,
   migrateCoreSchema,
-} from "../db/coreDatabase";
-import { migrateSchema, writeSchemaSettings } from "../db/schemaSettings";
-import { createHotUpdater } from "../index";
-import {
-  checkSchemaFence,
+  writeSchemaSettings,
   HotUpdaterSchemaMigrationRequiredError,
+  createSqlAdapter,
+} from "@hot-updater/plugin-core";
+import {
+  createMemoryAdapter,
+  type DatabaseAdapter,
+  migrateSchema,
+  checkSchemaFence,
   isMissingSchemaError,
   SETTINGS_TABLE,
   withSchemaFence,
-} from "./fence";
-import { createSqlAdapter } from "./sql/sqlAdapter";
-import { pgliteExecutor, sqliteExecutor } from "./sql/sqlTestExecutors";
+} from "@hot-updater/plugin-core/internal";
+import { pgliteExecutor, sqliteExecutor } from "@hot-updater/test-utils/node";
+import { afterAll, describe, expect, it, vi } from "vitest";
+
+import { createHotUpdater } from "../index";
 
 const settings = { "schema.engine": "1", "schema.core": "1.0.0" };
 

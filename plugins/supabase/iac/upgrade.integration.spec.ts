@@ -3,8 +3,8 @@ import os from "node:os";
 import path from "node:path";
 
 import { PGlite } from "@electric-sql/pglite";
+import { definePlugin, defineTable } from "@hot-updater/plugin-core";
 import { createHotUpdater } from "@hot-updater/server";
-import { definePlugin, defineTable } from "@hot-updater/server/plugins";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { plugins } from "../src/plugins";

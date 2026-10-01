@@ -1,9 +1,12 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { isMultiIndex, toolingTargetOf } from "@hot-updater/plugin-core";
+import { quoteSql } from "@hot-updater/plugin-core/internal";
 import {
   setupDatabaseTestSuite,
   startHttpTestServer,
+  insightsTestSuite,
 } from "@hot-updater/test-utils";
 import { assertDockerComposeAvailable } from "@hot-updater/test-utils/node";
 import { execa } from "execa";
@@ -11,11 +14,8 @@ import mysql from "mysql2/promise";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { createDatabasePluginApis } from "../assembly/databasePlugins";
-import { isMultiIndex, quoteSql } from "../database/sql/sqlSchema";
-import { toolingTargetOf } from "../db/coreDatabase";
 import { createHotUpdater } from "../index";
 import { createInsightsModel, insights } from "../plugins/insights";
-import { insightsTestSuite } from "../plugins/insights/testing";
 import { prismaAdapter } from "./prisma";
 import { mysqlPrisma, prismaPushSql } from "./prismaTestClients";
 

@@ -3,13 +3,13 @@ import {
   type DynamoDBClientConfig,
 } from "@aws-sdk/client-dynamodb";
 import type { EngineDatabase } from "@hot-updater/plugin-core";
-import { withAdapterResource } from "@hot-updater/plugin-core/internal";
 import {
   createEngineDatabase,
   createKvAdapter,
   migrateCoreSchema,
   type PluginTables,
-} from "@hot-updater/server/database";
+} from "@hot-updater/plugin-core";
+import { withAdapterResource } from "@hot-updater/plugin-core/internal";
 
 import { createUpdateRouteInvalidation } from "./cloudFrontInvalidation";
 import { createDynamoDBStore } from "./dynamoDBStore";

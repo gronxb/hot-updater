@@ -3,13 +3,18 @@ import type {
   StorageAdapter,
   StorageAdapterWith,
 } from "@hot-updater/plugin-core";
-import { createStorageAdapter } from "@hot-updater/plugin-core";
-import { createMemoryAdapter } from "@hot-updater/plugin-core/internal";
+import {
+  createStorageAdapter,
+  createEngineDatabase,
+  toolingTargetOf,
+} from "@hot-updater/plugin-core";
+import {
+  createMemoryAdapter,
+  migrateSchema,
+} from "@hot-updater/plugin-core/internal";
+import type { SchemaSettings } from "@hot-updater/plugin-core/internal";
 import type { Bundle } from "@hot-updater/protocol";
 
-import type { SchemaSettings } from "./database/fence";
-import { createEngineDatabase, toolingTargetOf } from "./db/coreDatabase";
-import { migrateSchema } from "./db/schemaSettings";
 import { apiKeys } from "./plugins/api-keys";
 import { insights } from "./plugins/insights";
 

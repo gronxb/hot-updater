@@ -39,7 +39,7 @@ const withNotes = (text: string) =>
     .replace(
       'import { createHotUpdater } from "@hot-updater/server";',
       `import { createHotUpdater } from "@hot-updater/server";
-import { definePlugin } from "@hot-updater/server/plugins";
+import { definePlugin } from "@hot-updater/plugin-core";
 
 const notes = definePlugin({
   id: "notes",

@@ -1,3 +1,4 @@
+import { toolingTargetOf } from "@hot-updater/plugin-core";
 import {
   createMemoryAdapter,
   type DatabaseAdapter,
@@ -5,7 +6,6 @@ import {
 import { EVENT_BODY_MAX_BYTES } from "@hot-updater/plugin-insights/internal";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { toolingTargetOf } from "../../db/coreDatabase";
 import { createHotUpdater } from "../../index";
 import {
   createFencedDatabase,

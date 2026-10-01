@@ -1,4 +1,4 @@
-import { toolingTargetOf, createKvAdapter } from "@hot-updater/server/database";
+import { toolingTargetOf, createKvAdapter } from "@hot-updater/plugin-core";
 import {
   createMeasuredDatabase,
   targetBaseCandidateKey,

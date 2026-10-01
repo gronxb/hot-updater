@@ -1,7 +1,8 @@
+import { HotUpdaterSchemaMigrationRequiredError } from "@hot-updater/plugin-core";
+
 import type { MountedEndpoint } from "./assembly/assemblePlugins";
 import { HotUpdaterConfigError } from "./assembly/assemblePlugins";
 import type { ClientPluginSpec } from "./assembly/clientPlugins";
-import { HotUpdaterSchemaMigrationRequiredError } from "./database/fence";
 import { ADMIN_ROUTES, createAdminRouteHandlers } from "./handlerAdminRoutes";
 import { HandlerBadRequestError } from "./handlerErrors";
 import { createReleaseCatalogRouteHandlers } from "./handlerReleaseCatalogRoutes";

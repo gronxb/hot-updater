@@ -37,7 +37,7 @@ export * from "./uuidv7";
 
 // The server plugin authoring API: `definePlugin`, the schema DSL, the typed
 // database handle, core's reads, and the errors a plugin handles.
-// `@hot-updater/server/plugins` re-exports it for plugin authors; Hot
+// `@hot-updater/plugin-core` re-exports it for plugin authors; Hot
 // Updater's own plugin packages import it here, below the server.
 export {
   definePlugin,
@@ -117,3 +117,71 @@ export { isDatabaseBusyError } from "./serverPlugin/busy";
 // The sketches of a `distinct` aggregate metric.
 export { addDistinct, countDistinct, mergeDistinct } from "./database/distinct";
 export { HotUpdaterConfigError } from "./serverPlugin/configError";
+
+// The database adapter kit: the adapter contract, the SQL and key-value
+// adapters, the storage engine's database, and core's schema.
+export {
+  type DatabaseAdapter,
+  type DatabaseJson,
+  type DatabaseKey,
+  type DatabaseKeyValue,
+  DatabaseSchemaError,
+  type DatabaseValue,
+  type PhysicalColumn,
+  type PhysicalColumnType,
+  type PhysicalIndex,
+  type PhysicalRetention,
+  type PhysicalTable,
+  type QueryBound,
+  type QueryRequest,
+  type StoredRow,
+  type WriteGuard,
+  type WriteOp,
+  type WriteResult,
+  expiresAt,
+  indexOrderColumns,
+} from "./database/adapter";
+export { createMemoryAdapter } from "./database/memoryAdapter";
+export { normalizeStoredRow } from "./database/values";
+export { verifyAdapter } from "./database/verifyAdapter";
+export { HotUpdaterSchemaMigrationRequiredError } from "./engine/database/fence";
+export {
+  type KeyValueStore,
+  type KvCondition,
+  type KvItem,
+  type KvKey,
+  type KvOp,
+  type KvRange,
+  createKvAdapter,
+} from "./engine/database/kv/kvAdapter";
+export {
+  type SqlConnection,
+  type SqlExecutor,
+  type SqlResult,
+  type SqlStatement,
+  WRITE_GUARD_TABLE,
+  createSqlAdapter,
+} from "./engine/database/sql/sqlAdapter";
+export {
+  type SqlDialect,
+  createTableStatements,
+  isMultiIndex,
+} from "./engine/database/sql/sqlSchema";
+export {
+  type PluginTables,
+  coreSchema,
+  coreSettings,
+  coreTarget,
+  createEngineDatabase,
+  migrateCoreSchema,
+  toolingTargetOf,
+} from "./engine/db/coreDatabase";
+export { generateEngineSql } from "./engine/db/engineSql";
+export { writeSchemaSettings } from "./engine/db/schemaSettings";
+export {
+  type DatabaseTooling,
+  type Migrator,
+  type SchemaGenerator,
+  type ToolingDatabase,
+  type ToolingTarget,
+} from "./engine/db/types";

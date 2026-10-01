@@ -1,17 +1,24 @@
-import type { AggregateBatching } from "@hot-updater/plugin-core";
-import type { DatabaseAdapter } from "@hot-updater/plugin-core/internal";
+import type { AggregateBatching, ModuleSchema } from "@hot-updater/plugin-core";
+import type {
+  DatabaseAdapter,
+  ReadMeasurement,
+} from "@hot-updater/plugin-core/internal";
+import {
+  coreModule,
+  aggregateBatchingModule,
+  createDatabaseEngine,
+  fencedName,
+  SETTINGS_TABLE,
+  withSchemaFence,
+  resolveSchema,
+  validateSchema,
+  pruneDuringWrites,
+  pluginModule,
+  pluginSettings,
+} from "@hot-updater/plugin-core/internal";
 
 import { createCoreApi, type CoreApi } from "../core/api";
 import { createCoreReads, type CoreStorage } from "../core/reads";
-import { coreModule } from "../core/schema";
-import { aggregateBatchingModule } from "../database/aggregateBatching";
-import { createDatabaseEngine } from "../database/database";
-import type { ReadMeasurement } from "../database/engine";
-import { fencedName, SETTINGS_TABLE, withSchemaFence } from "../database/fence";
-import { resolveSchema, validateSchema } from "../database/resolveSchema";
-import { pruneDuringWrites } from "../database/retention";
-import type { ModuleSchema } from "../database/schema";
-import { pluginModule, pluginSettings } from "../db/coreDatabase";
 import type {
   ClientAuth,
   PluginEndpoint,

@@ -1,13 +1,15 @@
 import {
-  aggregateBatchingModule,
-  createDatabaseEngine,
   createKvAdapter,
   migrateCoreSchema,
+  toolingTargetOf,
+} from "@hot-updater/plugin-core";
+import type { CoreReader } from "@hot-updater/plugin-core";
+import {
+  aggregateBatchingModule,
+  createDatabaseEngine,
   resolveSchema,
   type RetryOptions,
-  toolingTargetOf,
-} from "@hot-updater/server/database";
-import type { CoreReader } from "@hot-updater/server/plugins";
+} from "@hot-updater/plugin-core/internal";
 import {
   insights,
   insightsSchema,

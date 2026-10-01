@@ -1,19 +1,22 @@
 import path from "node:path";
 
+import { createSqlAdapter } from "@hot-updater/plugin-core";
 import {
   mysqlRowsExamined,
   postgresRowsExamined,
   setupReadBudgetTestSuite,
 } from "@hot-updater/test-utils";
-import { assertDockerComposeAvailable } from "@hot-updater/test-utils/node";
+import {
+  assertDockerComposeAvailable,
+  mysqlExecutor,
+  pgExecutor,
+} from "@hot-updater/test-utils/node";
 import { execa } from "execa";
 import mysql from "mysql2/promise";
 import pg from "pg";
 import { afterAll, beforeAll } from "vitest";
 
 import { readBudgetServer } from "../../readBudgets.testFixtures";
-import { createSqlAdapter } from "./sqlAdapter";
-import { mysqlExecutor, pgExecutor } from "./sqlTestExecutors";
 
 assertDockerComposeAvailable(
   "SQL core read-budget tests need Docker Compose and a running Docker daemon.",

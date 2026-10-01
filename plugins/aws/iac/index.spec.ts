@@ -1,6 +1,6 @@
 import type { EngineDatabase } from "@hot-updater/plugin-core";
+import { toolingTargetOf } from "@hot-updater/plugin-core";
 import { createMemoryAdapter } from "@hot-updater/plugin-core/internal";
-import { toolingTargetOf } from "@hot-updater/server/database";
 import { provisionClientCredential } from "@hot-updater/server/db";
 import { apiKeys } from "@hot-updater/server/plugins/api-keys";
 import { beforeEach, describe, expect, it, vi } from "vitest";

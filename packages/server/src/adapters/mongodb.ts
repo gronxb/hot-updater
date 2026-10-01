@@ -1,9 +1,11 @@
+import { coreTarget, createEngineDatabase } from "@hot-updater/plugin-core";
+import type { ToolingDatabase } from "@hot-updater/plugin-core";
+import {
+  SETTINGS_TABLE,
+  createEngineMigrator,
+} from "@hot-updater/plugin-core/internal";
 import type { MongoClient } from "mongodb";
 
-import { SETTINGS_TABLE } from "../database/fence";
-import { coreTarget, createEngineDatabase } from "../db/coreDatabase";
-import { createEngineMigrator } from "../db/engineMigrator";
-import type { ToolingDatabase } from "../db/types";
 import { createMongoAdapter } from "./mongodbAdapter";
 
 export { MongoTransactionUnsupportedError } from "./mongodbAdapter";

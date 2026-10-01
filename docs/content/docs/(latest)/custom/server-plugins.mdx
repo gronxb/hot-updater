@@ -915,7 +915,7 @@ every adapter call:
 
 ```ts title="src/feedback/feedback.spec.ts"
 import type { HotUpdaterDatabase } from "@hot-updater/plugin-core";
-import * as engine from "@hot-updater/server/database";
+import * as engine from "@hot-updater/plugin-core/internal";
 import { createPluginTestHarness } from "@hot-updater/test-utils";
 import { describe, expect, it } from "vitest";
 
@@ -992,7 +992,7 @@ database:
 
 ```ts title="src/feedback/endpoints.spec.ts"
 import { createHotUpdater } from "@hot-updater/server";
-import { createMemoryAdapter } from "@hot-updater/server/database";
+import { createMemoryAdapter } from "@hot-updater/plugin-core";
 import { expect, it } from "vitest";
 
 import { feedback } from "./index";

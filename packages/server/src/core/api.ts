@@ -3,12 +3,14 @@ import type {
   HotUpdaterCoreApi,
 } from "@hot-updater/plugin-core";
 import type { DatabaseAdapter } from "@hot-updater/plugin-core/internal";
+import {
+  createDatabaseEngine,
+  resolveSchema,
+  coreModule,
+} from "@hot-updater/plugin-core/internal";
 
-import { createDatabaseEngine } from "../database/database";
-import { resolveSchema } from "../database/resolveSchema";
 import { createCoreOperations } from "./operations";
 import { createCoreReads, type CoreDatabase, type CoreStorage } from "./reads";
-import { coreModule } from "./schema";
 
 export interface CoreApiOptions {
   readonly now?: () => number;

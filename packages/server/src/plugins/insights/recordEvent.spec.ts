@@ -1,21 +1,22 @@
 import { DatabaseSync } from "node:sqlite";
 
+import type { HotUpdaterDatabase } from "@hot-updater/plugin-core";
+import { createKvAdapter, createSqlAdapter } from "@hot-updater/plugin-core";
 import {
   countDistinct,
   createMemoryAdapter,
   type DatabaseAdapter,
   type WriteOp,
 } from "@hot-updater/plugin-core/internal";
+import * as engine from "@hot-updater/plugin-core/internal";
 import { DAILY_EVENTS } from "@hot-updater/plugin-insights/internal";
-import { createPluginTestHarness } from "@hot-updater/test-utils";
+import {
+  createPluginTestHarness,
+  createMemoryKeyValueStore,
+} from "@hot-updater/test-utils";
+import { sqliteExecutor } from "@hot-updater/test-utils/node";
 import { describe, expect, it } from "vitest";
 
-import * as engine from "../../database";
-import type { HotUpdaterDatabase } from "../../database/database";
-import { createKvAdapter } from "../../database/kv/kvAdapter";
-import { createMemoryKeyValueStore } from "../../database/kv/kvTestStore";
-import { createSqlAdapter } from "../../database/sql/sqlAdapter";
-import { sqliteExecutor } from "../../database/sql/sqlTestExecutors";
 import {
   insights,
   insightsIdentity,

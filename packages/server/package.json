@@ -28,10 +28,6 @@
       "import": "./dist/adapters/prisma.mjs",
       "require": "./dist/adapters/prisma.cjs"
     },
-    "./database": {
-      "import": "./dist/database/index.mjs",
-      "require": "./dist/database/index.cjs"
-    },
     "./db": {
       "import": "./dist/db/index.mjs",
       "require": "./dist/db/index.cjs"
@@ -44,14 +40,6 @@
       "import": "./dist/internal.mjs",
       "require": "./dist/internal.cjs"
     },
-    "./node": {
-      "import": "./dist/node.mjs",
-      "require": "./dist/node.cjs"
-    },
-    "./plugins": {
-      "import": "./dist/plugins/index.mjs",
-      "require": "./dist/plugins/index.cjs"
-    },
     "./plugins/api-keys": {
       "import": "./dist/plugins/api-keys/index.mjs",
       "require": "./dist/plugins/api-keys/index.cjs"
@@ -60,10 +48,7 @@
       "import": "./dist/plugins/insights/index.mjs",
       "require": "./dist/plugins/insights/index.cjs"
     },
-    "./package.json": "./package.json",
-    "./plugins/insights/testing": {
-      "import": "./dist/plugins/insights/testing/index.mjs"
-    }
+    "./package.json": "./package.json"
   },
   "files": [
     "dist",

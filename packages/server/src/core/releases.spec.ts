@@ -5,7 +5,11 @@ import {
   type ReleaseCatalogScope,
   type ReleaseRow,
 } from "@hot-updater/plugin-core";
-import { createMemoryAdapter } from "@hot-updater/plugin-core/internal";
+import {
+  createMemoryAdapter,
+  createDatabaseEngine,
+  resolveSchema,
+} from "@hot-updater/plugin-core/internal";
 import {
   createReleaseCatalogScopeKey,
   encodeChannelKey,
@@ -16,8 +20,6 @@ import {
   createBundlePatchRowFixture,
   createBundleRowFixture,
 } from "../../../test-utils/src/databaseTestFixtures";
-import { createDatabaseEngine } from "../database/database";
-import { resolveSchema } from "../database/resolveSchema";
 import {
   changeReleases,
   coreModule,

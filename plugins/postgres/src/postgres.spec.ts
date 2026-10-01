@@ -2,26 +2,26 @@ import fs from "node:fs/promises";
 import path from "node:path";
 
 import { PGlite } from "@electric-sql/pglite";
-import { createHotUpdater } from "@hot-updater/server";
 import {
   coreSchema,
   coreSettings,
   toolingTargetOf,
-} from "@hot-updater/server/database";
+  generateEngineSql,
+  HotUpdaterSchemaMigrationRequiredError,
+} from "@hot-updater/plugin-core";
+import { createHotUpdater } from "@hot-updater/server";
 import {
   createDatabaseCoreApi,
   createDatabasePluginApis,
-  generateEngineSql,
-  HotUpdaterSchemaMigrationRequiredError,
 } from "@hot-updater/server/db";
 import {
   createInsightsModel,
   insights,
 } from "@hot-updater/server/plugins/insights";
-import { insightsTestSuite } from "@hot-updater/server/plugins/insights/testing";
 import {
   setupDatabaseTestSuite,
   startHttpTestServer,
+  insightsTestSuite,
 } from "@hot-updater/test-utils";
 import { PGliteDialect } from "kysely-pglite-dialect";
 import { describe, expect, it } from "vitest";

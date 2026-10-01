@@ -1,5 +1,8 @@
 import type { EngineDatabase } from "@hot-updater/plugin-core";
-import type { DatabaseAdapter } from "@hot-updater/plugin-core/internal";
+import type {
+  DatabaseAdapter,
+  ReadMeasurement,
+} from "@hot-updater/plugin-core/internal";
 
 import {
   engineAdapterOf,
@@ -7,7 +10,6 @@ import {
   type CoreApi,
 } from "../core/api";
 import type { CoreStorage } from "../core/reads";
-import type { ReadMeasurement } from "../database/engine";
 import type {
   AnyHotUpdaterPlugin,
   ClientAuth,

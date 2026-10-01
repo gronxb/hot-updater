@@ -1,12 +1,15 @@
 import type { DeployReleasePolicy } from "@hot-updater/plugin-core";
+import {
+  DatabaseConstraintError,
+  definePlugin,
+  defineTable,
+} from "@hot-updater/plugin-core";
 import { createHotUpdater } from "@hot-updater/server";
-import { DatabaseConstraintError } from "@hot-updater/server/database";
 import {
   createDatabaseCoreApi,
   createMigrator,
   generateSchema,
 } from "@hot-updater/server/db";
-import { definePlugin, defineTable } from "@hot-updater/server/plugins";
 import { beforeEach, expect, it, vi } from "vitest";
 
 import { createBundleFixture } from "../../../packages/test-utils/src/databaseTestFixtures";

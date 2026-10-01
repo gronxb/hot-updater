@@ -1,10 +1,9 @@
-import { CompiledQuery, type Kysely, type QueryResult } from "kysely";
-
 import type {
   SqlConnection,
   SqlDialect,
   SqlExecutor,
-} from "../database/sql/sqlAdapter";
+} from "@hot-updater/plugin-core";
+import { CompiledQuery, type Kysely, type QueryResult } from "kysely";
 
 interface QueryRunner {
   executeQuery<R>(query: CompiledQuery<R>): Promise<QueryResult<R>>;

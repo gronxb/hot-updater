@@ -17,7 +17,7 @@ Use Node.js 20.19 or later for native environment-file loading.
 ```typescript
 import express from "express";
 import cors from "cors";
-import { toNodeHandler } from "@hot-updater/server/node";
+import { toNodeHandler } from "@hot-updater/server";
 import { hotUpdater } from "./db";
 
 const app = express();

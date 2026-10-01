@@ -1,9 +1,9 @@
 import type { EngineDatabase } from "@hot-updater/plugin-core";
-import { kyselyExecutor } from "@hot-updater/server/adapters/kysely";
 import {
   createEngineDatabase,
   createSqlAdapter,
-} from "@hot-updater/server/database";
+} from "@hot-updater/plugin-core";
+import { kyselyExecutor } from "@hot-updater/server/adapters/kysely";
 import { Kysely, PostgresDialect, type Dialect } from "kysely";
 import pg, { type PoolConfig } from "pg";
 

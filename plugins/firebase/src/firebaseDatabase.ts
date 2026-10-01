@@ -1,11 +1,11 @@
 import type { EngineDatabase } from "@hot-updater/plugin-core";
-import { withAdapterResource } from "@hot-updater/plugin-core/internal";
 import {
   createEngineDatabase,
   createKvAdapter,
   migrateCoreSchema,
   type PluginTables,
-} from "@hot-updater/server/database";
+} from "@hot-updater/plugin-core";
+import { withAdapterResource } from "@hot-updater/plugin-core/internal";
 import {
   getApp,
   getApps,

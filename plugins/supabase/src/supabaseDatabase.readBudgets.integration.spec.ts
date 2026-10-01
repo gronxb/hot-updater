@@ -1,8 +1,5 @@
 import { PGlite } from "@electric-sql/pglite";
-import {
-  toolingTargetOf,
-  createSqlAdapter,
-} from "@hot-updater/server/database";
+import { toolingTargetOf, createSqlAdapter } from "@hot-updater/plugin-core";
 import {
   createMeasuredDatabase,
   targetBaseCandidateKey,

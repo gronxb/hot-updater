@@ -5,11 +5,11 @@ import {
   type DatabaseAdapter,
   mergeDistinct,
 } from "@hot-updater/plugin-core/internal";
+import * as engine from "@hot-updater/plugin-core/internal";
 import { InsightsBadRequestError } from "@hot-updater/plugin-insights/internal";
 import { createPluginTestHarness } from "@hot-updater/test-utils";
 import { describe, expect, it } from "vitest";
 
-import * as engine from "../../database";
 import {
   createInsightsModel,
   insights,

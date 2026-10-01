@@ -1,8 +1,20 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import {
+  createEngineDatabase,
+  migrateCoreSchema,
+  createSqlAdapter,
+  type SqlExecutor,
+  WRITE_GUARD_TABLE,
+} from "@hot-updater/plugin-core";
 import { setupDatabaseAdapterConformanceSuite } from "@hot-updater/test-utils";
-import { assertDockerComposeAvailable } from "@hot-updater/test-utils/node";
+import {
+  assertDockerComposeAvailable,
+  mysqlExecutor,
+  pgBatchExecutor,
+  pgExecutor,
+} from "@hot-updater/test-utils/node";
 import { execa } from "execa";
 import mysql from "mysql2/promise";
 import pg from "pg";
@@ -10,13 +22,6 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { createBundleFixture } from "../../../../test-utils/src/databaseTestFixtures";
 import { createInProcessCoreApi } from "../../core/api";
-import { createEngineDatabase, migrateCoreSchema } from "../../db/coreDatabase";
-import {
-  createSqlAdapter,
-  type SqlExecutor,
-  WRITE_GUARD_TABLE,
-} from "./sqlAdapter";
-import { mysqlExecutor, pgBatchExecutor, pgExecutor } from "./sqlTestExecutors";
 
 assertDockerComposeAvailable(
   "SQL core integration tests need Docker Compose and a running Docker daemon.",

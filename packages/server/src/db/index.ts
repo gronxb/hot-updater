@@ -1,9 +1,25 @@
+import { type Migrator, type SchemaGenerator } from "@hot-updater/plugin-core";
+
 import {
   getHotUpdaterCoreMetadata,
   type RuntimeHotUpdaterAPI,
 } from "../createHotUpdaterCore";
 import type { AnyHotUpdaterPlugin } from "../plugins/definePlugin";
-import { type Migrator, type SchemaGenerator } from "./types";
+export {
+  generateEngineSql,
+  HotUpdaterSchemaMigrationRequiredError,
+} from "@hot-updater/plugin-core";
+export {
+  settingsStatements,
+  type EngineSqlOptions,
+} from "@hot-updater/plugin-core/internal";
+export type {
+  DatabaseTooling,
+  Migrator,
+  SchemaGenerator,
+  ToolingDatabase,
+  ToolingTarget,
+} from "@hot-updater/plugin-core";
 
 export { createDatabaseCoreApi, type CoreApi } from "../core/api";
 export {
@@ -26,19 +42,6 @@ export {
 } from "../assembly/pluginCli";
 export { targetBaseCandidateKey } from "../core/baseCandidates";
 export { isOfficialPlugin } from "../plugins/official";
-export {
-  generateEngineSql,
-  settingsStatements,
-  type EngineSqlOptions,
-} from "./engineSql";
-export type {
-  DatabaseTooling,
-  Migrator,
-  SchemaGenerator,
-  ToolingDatabase,
-  ToolingTarget,
-} from "./types";
-export { HotUpdaterSchemaMigrationRequiredError } from "../database/fence";
 export { HOT_UPDATER_SERVER_VERSION } from "../version";
 export {
   type ClientEndpoint,

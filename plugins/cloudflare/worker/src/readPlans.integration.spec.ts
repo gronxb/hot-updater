@@ -1,6 +1,6 @@
 import { createHotUpdater } from "@hot-updater/server";
 import { insights } from "@hot-updater/server/plugins/insights";
-import { createBundleEventRowFixture } from "@hot-updater/server/plugins/insights/testing";
+import { createBundleEventRowFixture } from "@hot-updater/test-utils";
 import { env } from "cloudflare:test";
 import { expect, inject, it } from "vitest";
 

@@ -1,10 +1,10 @@
-import { withAdapterResource } from "@hot-updater/plugin-core/internal";
-import { coreSettings, coreTarget } from "@hot-updater/server/database";
+import { coreSettings, coreTarget } from "@hot-updater/plugin-core";
 import type {
   SchemaGenerator,
   ToolingDatabase,
   ToolingTarget,
-} from "@hot-updater/server/db";
+} from "@hot-updater/plugin-core";
+import { withAdapterResource } from "@hot-updater/plugin-core/internal";
 
 import {
   supabaseDatabase as engineDatabase,

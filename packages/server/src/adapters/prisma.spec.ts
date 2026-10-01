@@ -2,22 +2,24 @@ import { DatabaseSync } from "node:sqlite";
 
 import { PGlite } from "@electric-sql/pglite";
 import {
+  HotUpdaterSchemaMigrationRequiredError,
+  isMultiIndex,
+  toolingTargetOf,
+} from "@hot-updater/plugin-core";
+import type { ToolingDatabase } from "@hot-updater/plugin-core";
+import { classifySqlError, quoteSql } from "@hot-updater/plugin-core/internal";
+import {
   setupDatabaseTestSuite,
   startHttpTestServer,
+  insightsTestSuite,
 } from "@hot-updater/test-utils";
 import { describe, expect, it } from "vitest";
 
 import { createBundleFixture } from "../../../test-utils/src/databaseTestFixtures";
 import { createDatabasePluginApis } from "../assembly/databasePlugins";
 import { createInProcessCoreApi } from "../core/api";
-import { HotUpdaterSchemaMigrationRequiredError } from "../database/fence";
-import { classifySqlError } from "../database/sql/sqlAdapter";
-import { isMultiIndex, quoteSql } from "../database/sql/sqlSchema";
-import { toolingTargetOf } from "../db/coreDatabase";
-import type { ToolingDatabase } from "../db/types";
 import { createHotUpdater } from "../index";
 import { createInsightsModel, insights } from "../plugins/insights";
-import { insightsTestSuite } from "../plugins/insights/testing";
 import { prismaAdapter } from "./prisma";
 import {
   prismaExecutor,

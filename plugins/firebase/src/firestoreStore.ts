@@ -5,7 +5,7 @@ import type {
   KvCondition,
   KvKey,
   StoredRow,
-} from "@hot-updater/server/database";
+} from "@hot-updater/plugin-core";
 import {
   FieldPath,
   FieldValue,

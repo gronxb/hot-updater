@@ -1,16 +1,18 @@
 import { PGlite } from "@electric-sql/pglite";
+import { createSqlAdapter } from "@hot-updater/plugin-core";
 import {
   createMemoryAdapter,
   type DatabaseAdapter,
 } from "@hot-updater/plugin-core/internal";
-import { createPluginTestHarness } from "@hot-updater/test-utils";
+import * as engine from "@hot-updater/plugin-core/internal";
+import {
+  createPluginTestHarness,
+  setupInsightsModelTestSuite,
+} from "@hot-updater/test-utils";
+import { pgliteExecutor } from "@hot-updater/test-utils/node";
 import { afterAll } from "vitest";
 
-import * as engine from "../../database";
-import { createSqlAdapter } from "../../database/sql/sqlAdapter";
-import { pgliteExecutor } from "../../database/sql/sqlTestExecutors";
 import { createInsightsModel, insights, type InsightsModel } from "./index";
-import { setupInsightsModelTestSuite } from "./testing";
 
 /** The plugin's model on a fresh adapter per test, behind one stable model. */
 const onFreshAdapter = (adapter: () => DatabaseAdapter) => {

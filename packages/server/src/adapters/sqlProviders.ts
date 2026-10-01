@@ -1,4 +1,7 @@
-import { sqlProviders, type ORMSQLProvider } from "../db/types";
+import {
+  sqlProviders,
+  type ORMSQLProvider,
+} from "@hot-updater/plugin-core/internal";
 
 /** The provider an adapter was given, when Hot Updater's SQL core runs on it. */
 export const checkSqlProvider = <TProvider extends ORMSQLProvider>(

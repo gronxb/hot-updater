@@ -1,16 +1,20 @@
-import { createSqlAdapter } from "../database/sql/sqlAdapter";
 import {
+  createSqlAdapter,
   coreSettings,
   coreTarget,
   createEngineDatabase,
-} from "../db/coreDatabase";
+} from "@hot-updater/plugin-core";
+import type {
+  SchemaGenerator,
+  ToolingDatabase,
+} from "@hot-updater/plugin-core";
+import { createSettingsMigrator } from "@hot-updater/plugin-core/internal";
+
 import {
   generatePrismaEngineSchema,
   prismaCollationStatements,
   type PrismaProvider,
 } from "../db/enginePrismaSchema";
-import { createSettingsMigrator } from "../db/settingsMigrator";
-import type { SchemaGenerator, ToolingDatabase } from "../db/types";
 import {
   prismaExecutor,
   type PrismaTransactionalClient,

@@ -1,11 +1,13 @@
 import {
-  createDatabaseEngine,
   createKvAdapter,
   migrateCoreSchema,
-  type RetryOptions,
   toolingTargetOf,
-} from "@hot-updater/server/database";
-import type { CoreReader } from "@hot-updater/server/plugins";
+} from "@hot-updater/plugin-core";
+import type { CoreReader } from "@hot-updater/plugin-core";
+import {
+  createDatabaseEngine,
+  type RetryOptions,
+} from "@hot-updater/plugin-core/internal";
 import {
   insights,
   insightsSchema,

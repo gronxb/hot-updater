@@ -1,10 +1,10 @@
 import { PGlite } from "@electric-sql/pglite";
+import { createSqlAdapter } from "@hot-updater/plugin-core";
 import {
   postgresRowsExamined,
   setupReadBudgetTestSuite,
 } from "@hot-updater/test-utils";
 
-import { createSqlAdapter } from "../database/sql/sqlAdapter";
 import { readBudgetServer } from "../readBudgets.testFixtures";
 import { prismaAdapter } from "./prisma";
 import { prismaExecutor } from "./prismaExecutor";
