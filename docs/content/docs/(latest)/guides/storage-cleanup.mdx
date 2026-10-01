@@ -27,23 +27,13 @@ Root-level `<artifact-id>/...` paths are not recognized and remain protected.
   need before pruning their unreferenced objects.
 </Callout>
 
-## Remove bundles, then artifact records
+## Remove bundles
 
 Start by listing the bundles you intend to retire:
 
 ```package-install
 npx hot-updater bundle list --channel production --platform ios --limit 100 --json
 ```
-
-Before deleting each selected bundle, save its Artifact ID from the `bundle_id`
-field in the list output or inspect it directly:
-
-```package-install
-npx hot-updater bundle show <id> --json
-```
-
-The console also shows this ID in Advanced diagnostics. These lookups are no
-longer available after the bundle record is deleted.
 
 Disable each selected bundle, then hard-delete it. Hard deletion is separate
 from operational rollback.
@@ -53,17 +43,14 @@ npx hot-updater bundle disable <id> --yes
 npx hot-updater bundle delete <id> --yes
 ```
 
-Multiple bundle IDs can reuse the same immutable artifact. After every
-referencing bundle is gone, delete the artifact record using the IDs you saved:
+Multiple bundle IDs can share one immutable artifact, such as a promoted
+bundle and its source. Deleting the last bundle that uses an artifact deletes
+the artifact's record too, with the patches built on it. `bundle delete` says
+so, and its `--json` output names the artifact in `deletedArtifactId`.
 
-```package-install
-npx hot-updater bundle artifact delete <artifact-id> <another-artifact-id> --yes
-```
-
-`bundle artifact delete` is rejected while any bundle ID still references the
-artifact and reports those IDs. A successful delete removes database records
-only. Shared assets, patch objects, and bundle files remain until a
-reference-aware prune confirms that no remaining record uses them.
+A delete removes database records only. Bundle files, patch objects, and shared
+assets remain until a reference-aware prune confirms that no remaining record
+uses them.
 
 ## Preview eligible objects
 

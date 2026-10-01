@@ -224,15 +224,15 @@ same public ID used by the Console and `HotUpdater.getBundleId()`.
 | `bundle show/update/enable/disable <bundle-id>`       | The commands remain and accept the public Bundle ID.                                  |
 | `bundle promote <bundle-id>`                         | Use `bundle promote <source-id> --target <channel>`; the target gets a new public ID. |
 | `bundle delete <bundle-ids...>`                      | Delete one disabled public Bundle at a time with `bundle delete <id>`.                |
-| `patch --bundle-id ... --base-bundle-id ...`         | Prefer `--artifact-id` and `--base-artifact-id`; old names remain deprecated aliases. |
+| `patch --bundle-id ... --base-bundle-id ...`         | Use `--artifact-id` and `--base-artifact-id`.                                         |
 | `rollback <channel> [--target <bundle-id>]`          | Disable the exact public ID with `bundle disable <id>`.                               |
-| Direct deletion of immutable bytes                   | Delete referencing public Bundles, then use Advanced `bundle artifact delete`.        |
+| Direct deletion of immutable bytes                   | Delete the public Bundles that use them; the last one deletes the artifact record.    |
 
 The top-level `rollback` command is removed. Bundle mutations now support
-revision preconditions and Catalog preflight. `bundle list --json` and
-`bundle show --json` expose raw internal v1 rows and are not schema-compatible
-with the v0 list wrapper or Bundle DTO. `db catalog preflight` and `db catalog
-rebuild` verify or repair compiled projections.
+revision preconditions, and `bundle update --dry-run` previews a policy change.
+`bundle list --json` and `bundle show --json` expose raw internal v1 rows and
+are not schema-compatible with the v0 list wrapper or Bundle DTO. `db catalog
+preflight` and `db catalog rebuild` verify or repair compiled projections.
 
 Self-hosted deployments manage API keys through the same official database
 domain used by managed init and Console:

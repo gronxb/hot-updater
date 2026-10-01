@@ -134,10 +134,11 @@ also requires exact base and target Bundle identities.
 
 ### Deployment
 
-Discover app-version or fingerprint help when needed, then deploy help. Summarize
-the advertised scope and effects before authorization. If platforms are separate
-operations, deploy and verify one at a time; if an atomic multi-platform command
-is advertised, follow that contract. Stop and inventory partial state on failure.
+Read the app version or fingerprint from `doctor --json` when needed, then
+discover deploy help. Summarize the advertised scope and effects before
+authorization. If platforms are separate operations, deploy and verify one at a
+time; if an atomic multi-platform command is advertised, follow that contract.
+Stop and inventory partial state on failure.
 
 ### Deletion and Storage Cleanup
 
@@ -160,6 +161,9 @@ the CLI cannot bind, or exclusivity/preview is untrustworthy, do not prune.
 ### Doctor
 
 Diagnose by default. Repair only when requested and exact help identifies it.
+`doctor --fix` writes every repair doctor can make itself, such as
+fingerprint.json and native files; treat it as a mutation, and report each
+file it names in `details.fixes`.
 Obtain any server URL from trusted local config or the user. Do not infer approval
 to edit setup, credentials, dependencies, infrastructure, or deployments.
 
@@ -183,7 +187,8 @@ path. Verify permissions and ignore rules without exposing secret material.
 
 - Do not run interactive initialization on the user's behalf.
 - Treat deploy, patch, policy/channel changes, rollback, promotion, database or
-  catalog work, deletion, and pruning as mutations; generated files are writes.
+  catalog work, `doctor --fix`, deletion, and pruning as mutations; generated
+  files are writes.
 - Never request secrets in chat or arguments, print environments, dump sensitive
   files, or enable credential-leaking logs. Redact tokens, DSNs, passwords,
   private keys, and provider output. If trust review would expose a secret, stop.

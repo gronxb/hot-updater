@@ -417,9 +417,9 @@ same ID shown in the Console and returned by `HotUpdater.getBundleId()`:
 | `bundle disable <bundle-id>` | `bundle disable <id>` |
 | `bundle promote <bundle-id>` | `bundle promote <source-id> --target <channel>` |
 | `bundle delete <bundle-ids...>` | Delete one disabled public Bundle at a time with `bundle delete <id>`. |
-| `patch --bundle-id ... --base-bundle-id ...` | Prefer `--artifact-id` and `--base-artifact-id`; the old names remain deprecated aliases for Artifact IDs. |
+| `patch --bundle-id ... --base-bundle-id ...` | `patch --artifact-id ... --base-artifact-id ...` with the Artifact IDs from Advanced diagnostics. |
 | top-level `rollback <channel>` | Identify the exact ID and run `bundle disable <id>`. |
-| Delete old immutable bytes directly | Delete the public bundle first, then use Advanced `bundle artifact delete <artifact-id>` and preview `storage prune`. |
+| Delete old immutable bytes directly | Delete the public bundles that use them; the last one deletes the artifact record. Then preview `storage prune`. |
 
 Deploy and promote create independent update IDs. Multiple updates can reuse
 the same files.
@@ -434,7 +434,7 @@ bundle is enabled with a 100% numeric rollout, no target cohorts, and a new
 rollout seed. Review those settings before confirming, especially when the
 source bundle had a partial or QA-only rollout.
 
-Use [`bundle preflight` and `--expected-revision`](/docs/guides/console#preview-and-protect-automated-changes)
+Use [`bundle update --dry-run` and `--expected-revision`](/docs/guides/console#preview-and-protect-automated-changes)
 before automated policy writes. Use
 [`db catalog preflight` and `rebuild`](/docs/guides/doctor#check-release-catalogs)
 to inspect and repair compiled projections; they do not migrate v0 policy.
