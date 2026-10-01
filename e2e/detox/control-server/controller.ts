@@ -61,7 +61,7 @@ import {
   shouldProbeUpdateCheckVisibility,
   validateArtifactInfoVisibility,
 } from "./update-check-visibility.ts";
-import { importPublished } from "../published.ts";
+import { importPublished, publishedBin } from "../published.ts";
 
 // Hot Updater's packages through the entries they publish, as the example
 // app installs them.
@@ -202,10 +202,8 @@ type JsonSnapshot = {
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_DIR = path.resolve(__dirname, "../../..");
-const HOT_UPDATER_CLI_PATH = path.join(
-  REPO_DIR,
-  "packages/hot-updater/dist/index.mjs",
-);
+// The CLI the example app installs, as `npx hot-updater` runs it there.
+const HOT_UPDATER_CLI_PATH = publishedBin("hot-updater");
 const COMMAND_STDIO_DRAIN_GRACE_MS = 500;
 const EXAMPLE_DIR = path.join(REPO_DIR, "examples/v0.85.0");
 const E2E_PATCH_SOURCE_FILE = path.join(

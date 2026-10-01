@@ -5,6 +5,7 @@ import {
   type DatabaseAdapter,
   type Deployment,
 } from "@hot-updater/plugin-core";
+import { NIL_UUID } from "@hot-updater/protocol";
 import { createBundleFixture } from "@hot-updater/test-utils";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -83,18 +84,19 @@ afterEach(() => {
 describe("a server definition", () => {
   it("exposes the database, storage, and plugins as configured", () => {
     const database = { name: "memory", adapter: createMemoryAdapter() };
+    const storage = [uploads];
     const plugins = [insights(), notes] as const;
 
     const hotUpdater = createHotUpdater({
       database,
-      storage: [uploads],
+      storage,
       plugins,
       clientAccess: "public",
     });
 
     expect(hotUpdater.database).toBe(database);
     expect(hotUpdater.storage).toEqual([uploads]);
-    expect(hotUpdater.plugins).toBe(plugins);
+    expect(hotUpdater.plugins).toEqual(plugins);
     // What init prints for the app, each once.
     expect(hotUpdater.clientPlugins).toEqual([
       { module: "@hot-updater/react-native", name: "insights" },
@@ -106,6 +108,17 @@ describe("a server definition", () => {
       { plugin: "notes", method: "GET", path: "/notes/:id" },
     ]);
     expect(hotUpdater.clientAuth).toBeUndefined();
+
+    // Frozen copies: changing the arrays passed in changes nothing it lists.
+    storage.push(uploads);
+    (plugins as unknown as unknown[]).pop();
+    expect(hotUpdater.storage).toEqual([uploads]);
+    expect(hotUpdater.plugins.map(({ id }) => id)).toEqual([
+      "insights",
+      "notes",
+    ]);
+    expect(Object.isFrozen(hotUpdater.storage)).toBe(true);
+    expect(Object.isFrozen(hotUpdater.plugins)).toBe(true);
   });
 
   it("names the plugin that guards client routes and the headers its decision reads, lowercase", () => {
@@ -143,7 +156,7 @@ describe("a server definition", () => {
     expect(calls).toEqual([]);
   });
 
-  it("writes through core with storage that only uploads, and refuses to serve with it", async () => {
+  it("writes through core with storage that only uploads, resolves no artifacts on it, and refuses to serve with it", async () => {
     const database = createEngineDatabase({
       name: "memory",
       adapter: createMemoryAdapter(),
@@ -174,22 +187,43 @@ describe("a server definition", () => {
     await hotUpdater.core.deleteRelease({ releaseId });
     await expect(hotUpdater.core.getRelease(releaseId)).resolves.toBeNull();
 
+    // Storage that can neither read nor sign a file gives no artifacts.
+    const stored = {
+      ...createBundleFixture("2"),
+      manifestStorageUri: "r2://bucket/bundles/2/manifest.json",
+      assetBaseStorageUri: "r2://bucket/assets",
+    };
+    await hotUpdater.core.deploy([{ ...deployment, bundle: stored }]);
+    await expect(
+      hotUpdater.core.getArtifactInfo(stored.id, NIL_UUID, 1),
+    ).resolves.toBeNull();
+
     expect(() => hotUpdater.handlers).toThrow("uploads");
   });
 
-  it("keeps a write when the retention pass before it fails", async () => {
+  it("keeps a write when the retention pass before it fails, and hands the pass to the next writer that can delete", async () => {
     const memory = createMemoryAdapter();
-    const database = createEngineDatabase({
-      name: "memory",
-      adapter: {
-        ...memory,
-        prune: async () => {
-          throw new Error("AccessDenied: no delete permission");
-        },
-      },
-    });
+    // The CLI's credentials cannot delete; the server's, on the same
+    // database, can.
     const hotUpdater = createHotUpdater({
-      database,
+      database: createEngineDatabase({
+        name: "memory",
+        adapter: {
+          ...memory,
+          prune: async () => {
+            throw new Error("AccessDenied: no delete permission");
+          },
+        },
+      }),
+      plugins: [insights()],
+      clientAccess: "public",
+    });
+    const prune = vi.fn(async () => 0);
+    const server = createHotUpdater({
+      database: createEngineDatabase({
+        name: "memory",
+        adapter: { ...memory, prune },
+      }),
       plugins: [insights()],
       clientAccess: "public",
     });
@@ -207,5 +241,11 @@ describe("a server definition", () => {
         message: "AccessDenied: no delete permission",
       }),
     );
+    // The lease is due again, so the server's next write runs the pass
+    // rather than an hour later.
+    await server.core.deploy([
+      { ...deployment, bundle: createBundleFixture("2") },
+    ]);
+    expect(prune).toHaveBeenCalled();
   });
 });

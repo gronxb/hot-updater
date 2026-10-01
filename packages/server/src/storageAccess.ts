@@ -60,11 +60,10 @@ export const createStorageAccess = (
     const protocol = getStorageProtocol(storageUri);
     const storage = findStorage(protocol);
     if (storage) {
-      if (!storage.get) {
-        throw new Error(
-          `Storage adapter "${storage.name}" does not implement get.`,
-        );
-      }
+      // Storage that only uploads, as the CLI's credentials for a managed
+      // server allow, gives no file: core then resolves no artifacts, and
+      // `handlers` refuses to serve with it.
+      if (!storage.get) return null;
       return (await storage.get({ storageUri })).response;
     }
 
@@ -87,11 +86,8 @@ export const createStorageAccess = (
       if (isRemoteUrlProtocol(protocol)) return storageUri;
       throw new Error(`No storage adapter for protocol: ${protocol}`);
     }
-    if (!storage.getDownloadUrl) {
-      throw new Error(
-        `Storage adapter "${storage.name}" does not implement getDownloadUrl.`,
-      );
-    }
+    // Nor a URL to sign.
+    if (!storage.getDownloadUrl) return null;
     const { url: downloadUrl } = await storage.getDownloadUrl({ storageUri });
     try {
       return assertRemoteUrl(downloadUrl);

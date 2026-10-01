@@ -62,7 +62,7 @@ const listed = (items: readonly string[]) =>
 
 /** How to create plugins' tables when the fence was given no fix. */
 const PLUGIN_TABLES_FIX =
-  "Run `hot-updater db migrate`; on a managed server, rerun `hot-updater init` for its provider, which deploys the server with these plugins and creates their tables.";
+  "Run `hot-updater db migrate`; on a managed server, rerun `hot-updater init --provider <provider>`, which deploys the server with these plugins and creates their tables.";
 
 const pluginsMessage = (
   adapterName: string,

@@ -77,9 +77,15 @@ export type RuntimeHotUpdaterAPI<
    * closes it (`dispose`).
    */
   readonly database: ToolingDatabase;
-  /** The storage as configured, in order: the CLI uploads bundles to the first. */
+  /**
+   * The storage as configured, in order, as a frozen copy: the CLI uploads
+   * bundles to the first.
+   */
   readonly storage: readonly StorageAdapter[];
-  /** The plugins as configured. The CLI adds their commands, and tooling creates their tables. */
+  /**
+   * The plugins as configured, as a frozen copy. The CLI adds their
+   * commands, and tooling creates their tables.
+   */
   readonly plugins: TPlugins;
   /**
    * The client plugins an app adds to `HotUpdater.init`'s `plugins` for
@@ -231,13 +237,17 @@ export function createHotUpdater<
     }
   }
   const database = databaseOf(options.database);
-  const storage = options.storage ?? [];
+  // Copies, so changing the arrays passed in can't make the definition list
+  // other storage or plugins than the ones it runs.
+  const storage = Object.freeze([...(options.storage ?? [])]);
   const { downloadStorageObject, readStorageText, resolveFileUrl } =
     createStorageAccess(storage);
   const publicClients = isPublic(
     (options as { readonly clientAccess?: unknown }).clientAccess,
   );
-  const configured = options.plugins ?? ([] as unknown as TPlugins);
+  const configured = Object.freeze([
+    ...(options.plugins ?? []),
+  ]) as unknown as TPlugins;
   const plugins = assemblePlugins(configured, database, {
     storage: { readStorageText, resolveFileUrl },
   });

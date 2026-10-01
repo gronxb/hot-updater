@@ -186,6 +186,39 @@ it("rejects a hotUpdater.ts that exports no server definition", async () => {
   await expect(stat(path.join(root, SECRET))).rejects.toThrow();
 });
 
+it("refuses a clientAuth plugin whose credential contribution is incomplete, before saving one", async () => {
+  await scaffold({
+    plugins: '["apiKeys"]',
+    definition: `export const hotUpdater = {
+  database: {},
+  plugins: [
+    {
+      id: "sso",
+      cli: {
+        clientCredential: {
+          label: "token",
+          header: "authorization",
+          env: "HOT_UPDATER_SSO_TOKEN",
+          generate: () => "generated-token",
+        },
+      },
+    },
+  ],
+  clientAuth: { plugin: "sso", varyHeaders: ["authorization"] },
+  api: {},
+};
+`,
+  });
+
+  const result = run();
+
+  expect(result.status).toBe(1);
+  expect(result.stderr).toContain(
+    'Plugin "sso" provides clientAuth but no cli.clientCredential with a label, header, env, generate, and provision',
+  );
+  await expect(stat(path.join(root, SECRET))).rejects.toThrow();
+});
+
 it("runs migrate.ts with the server definition before registering the credential", async () => {
   await scaffold({
     plugins: '["apiKeys"]',

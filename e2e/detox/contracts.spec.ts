@@ -126,6 +126,7 @@ describe("Detox E2E harness contract", () => {
       "e2e/detox/memory-core.ts",
       "e2e/detox/proxy-url-contract.spec.ts",
       "e2e/detox/pax-long-path-fixture.ts",
+      "e2e/detox/published.spec.ts",
       "e2e/detox/published.ts",
       "e2e/detox/recovery-foreground.spec.ts",
       "e2e/detox/scenario-context.spec.ts",

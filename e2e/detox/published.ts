@@ -64,3 +64,19 @@ export const importPublished = async <T = Exports>(
   }
   return (await import(pathToFileURL(path.join(dir, target)).href)) as T;
 };
+
+/**
+ * The file a package's `bin` names, from what the example app installs: the
+ * command `npx <command>` runs in the app.
+ */
+export const publishedBin = (name: string, command = name): string => {
+  const dir = packageDir(name);
+  const { bin } = JSON.parse(
+    readFileSync(path.join(dir, "package.json"), "utf8"),
+  ) as { readonly bin?: string | Readonly<Record<string, string>> };
+  const target = typeof bin === "string" ? bin : bin?.[command];
+  if (target === undefined) {
+    throw new Error(`${name} has no ${command} command.`);
+  }
+  return path.join(dir, target);
+};

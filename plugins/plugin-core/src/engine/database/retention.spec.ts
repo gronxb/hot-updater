@@ -205,6 +205,45 @@ describe("retention", () => {
     warn.mockRestore();
   });
 
+  it("hands a failed pass back, so the next writer that can delete runs it rather than an hour later", async () => {
+    const { tables } = resolveSchema([module({ events })]);
+    const memory = createMemoryAdapter();
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    let now = 100 * DAY;
+    const options = { leaseTable: lease, now: () => now };
+    // Two writers on one lease row: the CLI, whose credentials cannot
+    // delete, and the server, whose can.
+    const denied = vi.fn(async () =>
+      Promise.reject(new Error("AccessDenied: no delete permission")),
+    );
+    const cli = pruneDuringWrites(
+      { ...memory, prune: denied },
+      tables,
+      options,
+    );
+    const prune = vi.fn(async () => 0);
+    const server = pruneDuringWrites({ ...memory, prune }, tables, options);
+
+    await expect(cli.write([])).resolves.toEqual({ ok: true });
+    expect(denied).toHaveBeenCalledTimes(1);
+    expect(warn).toHaveBeenCalledTimes(1);
+    const [row] = await memory.get(lease, [["retention.nextPassAt"]]);
+    expect(row).toMatchObject({ value: String(now) });
+
+    now += 1_000;
+    await server.write([]);
+    expect(prune).toHaveBeenCalledTimes(1);
+    const [taken] = await memory.get(lease, [["retention.nextPassAt"]]);
+    expect(taken).toMatchObject({ value: String(now + 3_600_000) });
+
+    // The CLI tries again in a minute, when the server's pass holds it.
+    await cli.write([]);
+    now += 60_000;
+    await cli.write([]);
+    expect(denied).toHaveBeenCalledTimes(1);
+    warn.mockRestore();
+  });
+
   it("prunes each table with retention as of the write, and nothing else", async () => {
     const { tables } = resolveSchema([module({ events, latest, kept })]);
     const prune = vi.fn(

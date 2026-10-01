@@ -31,9 +31,18 @@ try {
       ? undefined
       : plugins.find(({ id }) => id === clientAuth.plugin)?.cli
           ?.clientCredential;
-  if (clientAuth !== undefined && clientCredential === undefined) {
+  if (
+    clientAuth !== undefined &&
+    (typeof clientCredential !== "object" ||
+      clientCredential === null ||
+      typeof clientCredential.label !== "string" ||
+      typeof clientCredential.header !== "string" ||
+      typeof clientCredential.env !== "string" ||
+      typeof clientCredential.generate !== "function" ||
+      typeof clientCredential.provision !== "function")
+  ) {
     throw new Error(
-      `Plugin "${clientAuth.plugin}" provides clientAuth but no cli.clientCredential, so the app cannot get its credential.`,
+      `Plugin "${clientAuth.plugin}" provides clientAuth but no cli.clientCredential with a label, header, env, generate, and provision, so the app cannot get its credential.`,
     );
   }
   let credential;
