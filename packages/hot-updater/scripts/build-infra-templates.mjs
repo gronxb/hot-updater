@@ -85,6 +85,8 @@ const runtimeDependencies = async (directory, provider) => {
   return dependencies;
 };
 
+// The probe runs from the app with no package of its own, so protocol's
+// release catalog check, which the device runs too, is bundled into it.
 await buildHelper({
   config: false,
   entry: { "verify-server": path.join(packageRoot, "agent/verify-server.mjs") },
@@ -92,7 +94,7 @@ await buildHelper({
   format: ["esm"],
   dts: false,
   exports: false,
-  deps: { onlyBundle: false },
+  deps: { alwaysBundle: ["@hot-updater/protocol"], onlyBundle: false },
 });
 await rm(outputRoot, { recursive: true, force: true });
 for (const provider of providers) {

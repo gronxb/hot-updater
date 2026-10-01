@@ -2,6 +2,7 @@ import {
   createReleaseCatalogScopeKey,
   encodeChannelKey,
   MAX_COMPILED_CATALOG_BYTES,
+  MAX_RELEASE_CATALOG_WIRE_BYTES,
   type ReleaseCatalog,
 } from "@hot-updater/protocol";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -10,7 +11,6 @@ import {
   createReleaseCatalogCachePartition,
   fetchReleaseCatalogWithCache,
   MAX_RELEASE_CATALOG_CACHE_ENTRY_BYTES,
-  MAX_RELEASE_CATALOG_WIRE_BYTES,
 } from "./releaseCatalogCache";
 
 const cache = vi.hoisted(() => new Map<string, string>());
