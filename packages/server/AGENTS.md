@@ -37,14 +37,16 @@ tooling entry when tooling needs more.
 - Test suites, fixtures, and measured databases are in
   `@hot-updater/test-utils`, which the server's own specs use as a
   devDependency.
-- The CLI and IaC tooling over a definition (plugin commands, client
-  credentials, a managed server's checks, `db` migrators) is in
-  `@hot-updater/cli-tools`; bundle diffs are in the `hot-updater` CLI.
+- The CLI and IaC tooling (the server the CLI assembles from
+  `hot-updater.config.ts`, client credentials, `db` migrators over a
+  definition) is in `@hot-updater/cli-tools`; bundle diffs are in the
+  `hot-updater` CLI.
 
 ## CLI And Documentation Expectations
 
-- CLI config examples should import `createHotUpdater` from
-  `@hot-updater/server`.
+- Server definition examples, such as `src/hotUpdater.ts`, import
+  `createHotUpdater` from `@hot-updater/server`. `hot-updater.config.ts`
+  never does: it lists the server's `database`, `storage`, and `plugins`.
 - CLI database commands derive migration and schema capability from the
   definition's `database` through `@hot-updater/cli-tools`, not through
   methods on the root instance.

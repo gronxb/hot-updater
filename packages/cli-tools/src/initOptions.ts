@@ -3,11 +3,6 @@ import type { BuildType } from "./ConfigBuilder";
 export type RunInitOptions = {
   readonly build: BuildType;
   readonly envFile?: string;
-  /**
-   * The server definitions the other providers' inits write: one found
-   * unedited is replaced, since the project is switching providers.
-   */
-  readonly otherServerDefinitions?: readonly string[];
 };
 
 export class InitError extends Error {

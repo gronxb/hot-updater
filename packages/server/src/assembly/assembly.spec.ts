@@ -65,21 +65,17 @@ const startup = (options: Record<string, unknown>) => () =>
   createHotUpdater({ database: database(), ...options } as never);
 
 describe("createHotUpdater with plugins", () => {
-  it("keeps the configured plugins, with their CLI additions, for the CLI", () => {
-    const withCommands = {
+  it("keeps the configured plugins, with what the CLI reads from them", () => {
+    const withClientPlugin = {
       ...notes,
-      cli: {
-        commands: [
-          { name: "notes", description: "Manage notes", run: async () => {} },
-        ],
-      },
+      cli: { clientPlugin: { module: "@acme/notes", name: "notes" } },
     };
     const hotUpdater = createHotUpdater({
       database: database(),
-      plugins: [withCommands],
+      plugins: [withClientPlugin],
       clientAccess: "public",
     });
-    expect(hotUpdater.plugins).toEqual([withCommands]);
+    expect(hotUpdater.plugins).toEqual([withClientPlugin]);
   });
 
   it("gives each plugin its own tables on the engine and exposes its API by id", async () => {
@@ -354,14 +350,15 @@ describe("createHotUpdater with plugins", () => {
           plugins: [{ ...valid, cli: { hooks: [] } }],
           clientAccess: "public",
         },
-        'Plugin "valid" cli may only hold commands (an array), clientCredential, and clientPlugin.',
+        'Plugin "valid" cli may only hold clientCredential and clientPlugin.',
       ],
       [
+        // Plugins add no CLI commands.
         {
-          plugins: [{ ...valid, cli: { commands: {} } }],
+          plugins: [{ ...valid, cli: { commands: [] } }],
           clientAccess: "public",
         },
-        'Plugin "valid" cli may only hold commands (an array), clientCredential, and clientPlugin.',
+        'Plugin "valid" cli may only hold clientCredential and clientPlugin.',
       ],
       [
         {

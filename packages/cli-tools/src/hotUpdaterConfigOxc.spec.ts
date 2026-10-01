@@ -107,7 +107,7 @@ export default defineConfig({
       "utf-8",
     );
 
-    // When init points it at the server definition
+    // When provider-managed fields are merged
     const result = await writeHotUpdaterConfig(
       createSupabaseScaffold(),
       configPath,
@@ -122,7 +122,9 @@ export default defineConfig({
     expect(updatedConfig).toContain("satisfies Record<string, boolean>");
     expect(updatedConfig).toContain("// user-owned export note");
     expect(updatedConfig).toContain("custom: customTool(customOptions)");
-    expect(updatedConfig).toContain('server: "./hotUpdater.ts"');
-    expect(updatedConfig).not.toContain("supabaseStorage");
+    expect(updatedConfig).toContain(
+      "supabaseUrl: process.env.CUSTOM_SUPABASE_URL!",
+    );
+    expect(updatedConfig).toContain("  plugins,\n});");
   });
 });

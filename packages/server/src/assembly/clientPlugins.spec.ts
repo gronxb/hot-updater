@@ -84,7 +84,6 @@ describe("Hot Updater's reserved plugin ids in a definition", () => {
       schemaVersion: "1",
       schema: {},
       init: () => ({ api: {} }),
-      cli: { commands: [] },
     };
 
     expect(() =>

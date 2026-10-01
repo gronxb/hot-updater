@@ -14,10 +14,15 @@ import {
 const createProject = async () => {
   const cwd = await mkdtemp(path.join(os.tmpdir(), "hot-updater-native-env-"));
   onTestFinished(() => rm(cwd, { recursive: true, force: true }));
+  const factories = (names: readonly string[]) =>
+    names.map((name) => `export const ${name} = (options) => options;`);
   for (const [name, exports] of Object.entries({
-    "hot-updater": ["defineConfig"],
-    "@hot-updater/bare": ["bare"],
-    "@hot-updater/supabase": ["supabaseStorage", "supabaseDatabase"],
+    "hot-updater": factories(["defineConfig"]),
+    "@hot-updater/bare": factories(["bare"]),
+    "@hot-updater/supabase": [
+      ...factories(["supabaseStorage", "supabaseDatabase"]),
+      "export const plugins = [];",
+    ],
   })) {
     const directory = path.join(cwd, "node_modules", name);
     await mkdir(directory, { recursive: true });
@@ -28,12 +33,7 @@ const createProject = async () => {
         exports: "./index.js",
       }),
     );
-    await writeFile(
-      path.join(directory, "index.js"),
-      exports
-        .map((name) => `export const ${name} = (options) => options;`)
-        .join("\n"),
-    );
+    await writeFile(path.join(directory, "index.js"), exports.join("\n"));
   }
   const scaffold = createHotUpdaterConfigScaffold({
     build: "bare",
@@ -65,8 +65,7 @@ const createProject = async () => {
       [
         "--input-type=module",
         "-e",
-        // The server definition reads what the config loaded.
-        'await import("./config.mjs"); console.log(process.env.HOT_UPDATER_TEST_ENV_TOKEN);',
+        'import config from "./config.mjs"; console.log(config.storage.token);',
       ],
       { cwd, env, encoding: "utf-8", stdio: ["ignore", "pipe", "pipe"] },
     ).trim();

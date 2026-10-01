@@ -2,7 +2,6 @@ import { HotUpdaterSchemaMigrationRequiredError } from "@hot-updater/plugin-core
 
 import type { MountedEndpoint } from "./assembly/assemblePlugins";
 import { HotUpdaterConfigError } from "./assembly/assemblePlugins";
-import type { ClientPluginSpec } from "./assembly/clientPlugins";
 import { ADMIN_ROUTES, createAdminRouteHandlers } from "./handlerAdminRoutes";
 import { HandlerBadRequestError } from "./handlerErrors";
 import { createReleaseCatalogRouteHandlers } from "./handlerReleaseCatalogRoutes";
@@ -184,8 +183,6 @@ const createDownloadStorageRouteHandler =
 
 export interface HotUpdaterHandlersOptions {
   readonly api: HandlerAPI;
-  /** The client plugins an app adds for the plugins, which the admin `/version` lists. */
-  readonly clientPlugins?: readonly ClientPluginSpec[];
   /** Absent when `clientAccess` is `"public"`. */
   readonly clientPolicy?: ClientRoutePolicy;
   readonly downloadStorageObject?: (
@@ -200,14 +197,13 @@ export interface HotUpdaterHandlersOptions {
 
 export function createHotUpdaterHandlers({
   api,
-  clientPlugins = [],
   clientPolicy,
   downloadStorageObject,
   endpoints = [],
   plugins = [],
 }: HotUpdaterHandlersOptions): HotUpdaterHandlers {
   const routeHandlers: Record<string, RouteHandler> = {
-    ...createVersionRouteHandlers(plugins, clientPlugins),
+    ...createVersionRouteHandlers(plugins),
     ...createReleaseCatalogRouteHandlers(),
     ...createAdminRouteHandlers(),
     ...(downloadStorageObject === undefined
@@ -272,7 +268,7 @@ export function createHotUpdaterHandlers({
   const adminRouter = createRouter<string>();
   const addAdminRoute = mount(adminRouter, true);
   // The admin mount also reports the protocol, so a standalone client checks
-  // it where it calls, and the plugins, so a console shows only their features.
+  // it where it calls, and the plugins the server runs.
   addAdminRoute("GET", "/version", "adminVersion");
   for (const route of ADMIN_ROUTES) {
     addAdminRoute(route.method, route.path, route.handler);

@@ -1,12 +1,13 @@
 import path from "path";
 
 import type {
+  AnyHotUpdaterPlugin,
   ConfigInput,
+  ConfiguredDatabase,
   Platform,
-  RemoteServer,
   RequiredDeep,
+  StorageAdapter,
 } from "@hot-updater/plugin-core";
-import { isRemoteServer } from "@hot-updater/plugin-core";
 import { merge } from "es-toolkit";
 import fg from "fast-glob";
 import { type LoadConfigOptions, loadConfig as loadUnconfig } from "unconfig";
@@ -74,7 +75,7 @@ const getDefaultPlatformConfig = (): ConfigInput["platform"] => {
   };
 };
 
-const getDefaultConfig = (): Omit<ConfigInput, "server"> => {
+const getDefaultConfig = (): Omit<ConfigInput, "database" | "storage"> => {
   return {
     cacheDir: path.join("node_modules", ".hot-updater"),
     updateStrategy: "appVersion",
@@ -93,18 +94,19 @@ const getDefaultConfig = (): Omit<ConfigInput, "server"> => {
     build: () => {
       throw new Error("build adapter is required");
     },
+    plugins: [],
   };
 };
 
 export type ConfigResponse = RequiredDeep<
-  Omit<ConfigInput, "server" | "signing">
+  Omit<ConfigInput, "database" | "storage" | "plugins" | "signing">
 > & {
-  /**
-   * The absolute path of the server definition, or the self-hosted server
-   * the CLI reaches through its admin API; absent when the config names
-   * none.
-   */
-  server?: string | RemoteServer;
+  /** The server's database, or `standaloneRepository(...)`; absent when the config names none. */
+  database?: ConfiguredDatabase;
+  /** Where the CLI uploads bundles; absent when the config names none. */
+  storage?: StorageAdapter;
+  /** The plugins the server runs; none when the config lists none. */
+  plugins: readonly AnyHotUpdaterPlugin[];
   signing?: ReturnType<typeof normalizeSigningConfig>;
 };
 
@@ -116,32 +118,19 @@ const mergeConfigSources = (...sources: ConfigSource[]) => {
     {},
   );
 
+  // Taken whole, as the config made them: a deep merge copies objects
+  // without their symbol keys, such as the brand on Hot Updater's own plugins.
+  const database = sources.find((source) => source?.database)?.database;
+  const plugins = sources.find((source) => source?.plugins)?.plugins;
   const signing = sources.find((source) => source?.signing)?.signing;
+  const storage = sources.find((source) => source?.storage)?.storage;
   return {
     ...mergedConfig,
+    ...(database ? { database } : {}),
+    ...(plugins ? { plugins } : {}),
     ...(signing ? { signing } : {}),
+    ...(storage ? { storage } : {}),
   };
-};
-
-/**
- * The config's `server`: a path, resolved against the config file's
- * directory, or a remote server, which is taken whole.
- */
-const resolveServer = (
-  server: unknown,
-  configFile: string | undefined,
-): string | RemoteServer | undefined => {
-  if (server === undefined) return undefined;
-  if (typeof server === "string" && server.trim() !== "") {
-    return path.resolve(
-      configFile === undefined ? getCwd() : path.dirname(configFile),
-      server,
-    );
-  }
-  if (isRemoteServer(server)) return server;
-  throw new Error(
-    'server in hot-updater.config must be the path to your server definition, such as "./src/hotUpdater.ts", or standaloneRepository(...).',
-  );
 };
 
 const getConfigLoaderOptions = (
@@ -172,18 +161,9 @@ const getConfigLoaderOptions = (
 export const loadConfig = async (
   options: HotUpdaterConfigOptions,
 ): Promise<ConfigResponse> => {
-  const { config, sources } = await loadUnconfig<ConfigInput>(
+  const { config } = await loadUnconfig<ConfigInput>(
     getConfigLoaderOptions(options),
   );
-
-  const moved = ["database", "storage", "plugins"].filter(
-    (key) => config && Object.hasOwn(config, key),
-  );
-  if (moved.length > 0) {
-    throw new Error(
-      `Remove ${moved.join(", ")} from hot-updater.config: the server definition holds the database, storage, and plugins. Export \`hotUpdater = createHotUpdater({ database, storage, plugins })\` from a module and set \`server\` to its path, or set \`server\` to standaloneRepository({ baseUrl, storage }).`,
-    );
-  }
 
   for (const key of ["authorityId", "catalogId"]) {
     if (config && Object.hasOwn(config, key)) {
@@ -199,15 +179,10 @@ export const loadConfig = async (
     );
   }
 
-  const { server, ...mergedConfig } = mergeConfigSources(
-    config,
-    getDefaultConfig(),
-  );
+  const mergedConfig = mergeConfigSources(config, getDefaultConfig());
   const signing = normalizeSigningConfig(mergedConfig.signing);
-  const resolvedServer = resolveServer(config?.server ?? server, sources[0]);
   return {
     ...mergedConfig,
-    ...(resolvedServer === undefined ? {} : { server: resolvedServer }),
     signing,
   } as ConfigResponse;
 };

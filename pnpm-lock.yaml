@@ -72,9 +72,6 @@ catalogs:
     '@clack/prompts':
       specifier: 1.7.0
       version: 1.7.0
-    esbuild:
-      specifier: 0.28.1
-      version: 0.28.1
     execa:
       specifier: 9.5.2
       version: 9.5.2
@@ -1420,12 +1417,9 @@ importers:
       '@hot-updater/protocol':
         specifier: workspace:*
         version: link:../protocol
-      esbuild:
-        specifier: catalog:tools
-        version: 0.28.1
-      jiti:
-        specifier: 2.6.1
-        version: 2.6.1
+      '@hot-updater/server':
+        specifier: workspace:*
+        version: link:../server
       oxc-parser:
         specifier: 0.141.0
         version: 0.141.0

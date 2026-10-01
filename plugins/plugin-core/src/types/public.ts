@@ -5,11 +5,11 @@ export type {
 } from "./databaseOperations";
 export type { ChannelDeleteResult, ChannelInsertResult } from "./models";
 export {
-  isRemoteServer,
+  isRemoteDatabase,
   type AggregateBatching,
   type ConfiguredDatabase,
   type EngineDatabase,
-  type RemoteServer,
+  type RemoteDatabase,
 } from "./databaseConfig";
 export type {
   BundlePatchRow,
