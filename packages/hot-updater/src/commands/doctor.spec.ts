@@ -1706,6 +1706,18 @@ describe("doctor", () => {
     });
   });
 
+  it("runs no repair in scoped verification, even when asked to fix", async () => {
+    const result = await doctor({
+      fix: true,
+      scope: "scaffold",
+      infraDir: "/missing/infra",
+    });
+
+    expect(mockApplyDoctorFixes).not.toHaveBeenCalled();
+    expect(result).toMatchObject({ details: { verification: {} } });
+    expect(result).not.toHaveProperty("details.fixes");
+  });
+
   it("reports no fixes when --fix finds nothing to repair", async () => {
     await setUpNativeProject("appVersion");
 

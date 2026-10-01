@@ -130,8 +130,11 @@ describe("CLI commands", () => {
     },
   );
 
-  it("repairs with doctor --fix", () => {
+  it("repairs with doctor --fix, which scoped verification refuses", () => {
     expect(help("doctor")).toContain("--fix");
+    const scoped = run("doctor", "--fix", "--scope", "scaffold");
+    expect(scoped.status).toBe(1);
+    expect(scoped.stderr).toContain("cannot be used with");
   });
 
   it("reads the configured signing key in keys export-public, with no --input", () => {

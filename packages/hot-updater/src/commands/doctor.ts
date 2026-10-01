@@ -933,6 +933,8 @@ export async function doctor(
   options: DoctorOptions = {},
 ): Promise<true | DoctorResult> {
   const result = await checkProject(options);
+  // Scoped verification never repairs: the CLI refuses --fix with its
+  // options, and a caller that passes both gets the verification alone.
   if (!options.fix || hasVerificationOptions(options)) return result;
 
   // --fix runs the repairs the first checks call for, then checks again,

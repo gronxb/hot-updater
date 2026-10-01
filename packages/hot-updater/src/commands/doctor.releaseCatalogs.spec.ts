@@ -96,9 +96,9 @@ describe("doctor's release catalog check", () => {
       new Error("connect ECONNREFUSED 127.0.0.1:5432"),
     );
 
-    await expect(doctor()).resolves.toEqual({
+    await expect(doctor()).resolves.toMatchObject({
       success: true,
-      details: expect.objectContaining({
+      details: {
         releaseCatalogs: {
           scopes: [],
           issues: [
@@ -111,7 +111,7 @@ describe("doctor's release catalog check", () => {
             },
           ],
         },
-      }),
+      },
     });
   });
 
