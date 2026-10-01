@@ -20,6 +20,7 @@ const mocks = vi.hoisted(() => ({
     success: vi.fn(),
     warn: vi.fn(),
   },
+  makeEnv: vi.fn(),
   printAppSetup: vi.fn(),
   provisionClientCredential: vi.fn(),
   pushDB: vi.fn(),
@@ -75,7 +76,7 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => {
     confirmInitInputPersistence: vi.fn(async () => false),
     // The managed server's plugins, over the project's database.
     provisionClientCredential: mocks.provisionClientCredential,
-    makeEnv: vi.fn(),
+    makeEnv: mocks.makeEnv,
     printAppSetup: mocks.printAppSetup,
     p: {
       ...actual.p,
@@ -96,82 +97,37 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => {
       inputEnv: {},
       managedEnv: {},
     })),
-    writeHotUpdaterFiles: vi.fn(async () => ({
-      config: { status: "created" },
-    })),
   };
 });
 
-import { InitError } from "@hot-updater/cli-tools";
-
-import { getConfigScaffold } from "./configTemplate";
 import { runInit } from "./index";
+import { inputSupabaseDeploymentInputs } from "./supabaseInitInputs";
 
-const packageRoot = path.resolve(import.meta.dirname, "..");
+const MIGRATION = "20260818000000_hot-updater_1.0.0.sql";
+const CREDENTIAL = {
+  label: "API key",
+  header: "x-api-key",
+  env: "HOT_UPDATER_API_KEY",
+  value: "the app's key",
+};
 
-/** The definition init writes, with a plugin of the project's own. */
-const withNotes = (text: string) =>
-  text
-    .replace(
-      'import { createHotUpdater } from "@hot-updater/server";',
-      `import { createHotUpdater } from "@hot-updater/server";
-import { definePlugin, defineTable } from "@hot-updater/plugin-core";
-
-const notes = definePlugin({
-  id: "notes",
-  schemaVersion: "1",
-  schema: {
-    notes: defineTable(
-      { id: { type: "string" }, text: { type: "string" } },
-      { key: ["id"] },
-    ),
-  },
-  init: () => ({
-    api: {},
-    endpoints: [
-      {
-        method: "GET",
-        path: "/notes/:id",
-        access: "client",
-        handler: async () => Response.json({ from: "the project's plugin" }),
-      },
-    ],
-  }),
-});`,
-    )
-    .replace("  plugins,\n", "  plugins: [...plugins, notes],\n");
-
-/**
- * A project whose hotUpdater.ts is the one init writes with `edit` applied,
- * where the definition's packages resolve, as init's working directory.
- */
-const project = async (edit: (text: string) => string) => {
+/** A project with no Hot Updater files, as init's working directory. */
+const project = async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "hot-updater-sb-"));
   await fs.writeFile(
     path.join(root, "package.json"),
     JSON.stringify({ name: "app" }),
-  );
-  await fs.mkdir(path.join(root, "node_modules", "@hot-updater"), {
-    recursive: true,
-  });
-  await fs.symlink(
-    packageRoot,
-    path.join(root, "node_modules", "@hot-updater", "supabase"),
-  );
-  await fs.symlink(
-    path.join(packageRoot, "node_modules", "@hot-updater", "server"),
-    path.join(root, "node_modules", "@hot-updater", "server"),
-  );
-  await fs.writeFile(
-    path.join(root, "hotUpdater.ts"),
-    edit(getConfigScaffold("bare").definition.text),
   );
   vi.spyOn(process, "cwd").mockReturnValue(root);
   return root;
 };
 
 let root: string | undefined;
-let deployed: { bundle?: string; migrations?: string } = {};
+/** What init deployed: the Edge Function, and the migrations it pushed. */
+let deployed: {
+  function?: { index: string; imports: Record<string, string> };
+  migrations?: Record<string, string>;
+} = {};
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -193,17 +149,18 @@ beforeEach(() => {
         };
       }
       if (args.includes("deploy")) {
-        const workdir = args[args.indexOf("--workdir") + 1]!;
-        deployed.bundle = await fs.readFile(
-          path.join(
-            workdir,
-            "supabase",
-            "functions",
-            "hot-updater-v1",
-            "hotUpdater.mjs",
-          ),
-          "utf-8",
+        const functionDir = path.join(
+          args[args.indexOf("--workdir") + 1]!,
+          "supabase",
+          "functions",
+          args[args.indexOf("deploy") + 1]!,
         );
+        deployed.function = {
+          index: await fs.readFile(path.join(functionDir, "index.ts"), "utf-8"),
+          imports: JSON.parse(
+            await fs.readFile(path.join(functionDir, "deno.json"), "utf-8"),
+          ).imports,
+        };
       }
       return { stdout: "" };
     },
@@ -214,15 +171,16 @@ beforeEach(() => {
   mocks.api.getInfrastructureState.mockResolvedValue("v1");
   mocks.pushDB.mockImplementation(async (workdir: string) => {
     const dir = path.join(workdir, "supabase", "migrations");
-    deployed.migrations = (
+    deployed.migrations = Object.fromEntries(
       await Promise.all(
-        (
-          await fs.readdir(dir)
-        ).map((file) => fs.readFile(path.join(dir, file), "utf-8")),
-      )
-    ).join("\n");
+        (await fs.readdir(dir)).map(async (file) => [
+          file,
+          await fs.readFile(path.join(dir, file), "utf-8"),
+        ]),
+      ),
+    );
   });
-  mocks.provisionClientCredential.mockResolvedValue(undefined);
+  mocks.provisionClientCredential.mockResolvedValue(CREDENTIAL);
 });
 
 afterEach(async () => {
@@ -233,52 +191,99 @@ afterEach(async () => {
   }
 });
 
-describe("Supabase init with the project's server definition", () => {
-  it("refuses a definition on another bucket before it changes the project", async () => {
-    root = await project((text) =>
-      withNotes(text).replace(
-        "bucketName: process.env.HOT_UPDATER_SUPABASE_BUCKET_NAME!",
-        'bucketName: "ota-prod"',
-      ),
-    );
-
-    const initialization = runInit({
-      build: "bare",
-      envFile: ".env.hotupdater",
-    });
-
-    await expect(initialization).rejects.toBeInstanceOf(InitError);
-    await expect(initialization).rejects.toThrow(
-      "hotUpdater.ts: The managed Supabase server runs on bucketName bundles, which its setup made, but the server definition's supabaseStorage has bucketName ota-prod",
-    );
-    expect(mocks.api.createBucket).not.toHaveBeenCalled();
-    expect(mocks.linkSupabase).not.toHaveBeenCalled();
-    expect(mocks.pushDB).not.toHaveBeenCalled();
-  });
-
-  it("deploys the bundled definition and gives its plugins their tables, the credential, and the app setup", async () => {
-    root = await project(withNotes);
+describe("Supabase init", () => {
+  it("deploys the prebuilt Edge Function on the bucket, with the import map of what it vendors", async () => {
+    root = await project();
 
     await runInit({ build: "bare", envFile: ".env.hotupdater" });
 
-    expect(deployed.bundle).toContain("the project's plugin");
-    // The package's migration holds core's tables; the plugins' follow it.
-    expect(deployed.migrations).toContain("notes_notes");
-    expect(deployed.migrations).toContain("'schema.insights'");
-    const [server] = mocks.provisionClientCredential.mock.calls[0]!;
+    const { index, imports } = deployed.function!;
+    expect(index).toContain('"bundles"');
+    expect(index).toContain('"hot-updater-v1"');
+    expect(index).not.toContain("HotUpdater.");
+    expect(imports).toMatchObject({
+      "@hot-updater/server": "./_hot-updater/hot-updater-server/dist/index.mjs",
+      "@hot-updater/supabase/edge":
+        "./_hot-updater/hot-updater-supabase/dist/edge.mjs",
+    });
+    // The staged function is gone.
+    await expect(fs.access(path.join(root, ".hot-updater"))).rejects.toThrow();
+  });
+
+  it("pushes the package's migration alone, which holds the managed plugins' tables", async () => {
+    root = await project();
+
+    await runInit({ build: "bare", envFile: ".env.hotupdater" });
+
+    expect(deployed.migrations).toEqual({
+      [MIGRATION]: await fs.readFile(
+        path.resolve(import.meta.dirname, "../supabase/migrations", MIGRATION),
+        "utf-8",
+      ),
+    });
+    expect(deployed.migrations![MIGRATION]).toContain("'schema.insights'");
+    expect(deployed.migrations![MIGRATION]).toContain("'schema.apiKeys'");
+  });
+
+  it("gives the app its credential and client plugins through the managed server's plugins", async () => {
+    root = await project();
+
+    await runInit({ build: "bare", envFile: ".env.hotupdater" });
+
+    const [server, input] = mocks.provisionClientCredential.mock.calls[0]!;
     expect(
       (server as { plugins: { id: string }[] }).plugins.map(({ id }) => id),
-    ).toEqual(["insights", "apiKeys", "notes"]);
-    expect(mocks.printAppSetup).toHaveBeenCalledWith(
-      expect.objectContaining({
-        clientPlugins: [
-          expect.objectContaining({
-            module: "@hot-updater/react-native",
-          }),
-        ],
-      }),
+    ).toEqual(["insights", "apiKeys"]);
+    expect((server as { api: Record<string, unknown> }).api).toHaveProperty(
+      "apiKeys",
     );
-    // The staged function is gone.
+    expect(input).toMatchObject({ name: "Supabase init" });
+    expect(mocks.makeEnv).toHaveBeenCalledWith({
+      [CREDENTIAL.env]: CREDENTIAL.value,
+    });
+    expect(mocks.printAppSetup).toHaveBeenCalledWith({
+      baseURL: "https://project-ref.supabase.co/functions/v1/hot-updater-v1",
+      credential: CREDENTIAL,
+      clientPlugins: [
+        expect.objectContaining({ module: "@hot-updater/react-native" }),
+      ],
+    });
+  });
+
+  it("writes hot-updater.config.ts with the provider's plugins, and no server code", async () => {
+    root = await project();
+
+    await runInit({ build: "bare", envFile: ".env.hotupdater" });
+
+    expect((await fs.readdir(root)).sort()).toEqual([
+      "hot-updater.config.ts",
+      "package.json",
+    ]);
+    const config = await fs.readFile(
+      path.join(root, "hot-updater.config.ts"),
+      "utf-8",
+    );
+    expect(config).toContain(
+      'import { plugins, supabaseDatabase, supabaseStorage } from "@hot-updater/supabase";',
+    );
+    expect(config).toContain("  plugins,\n");
+    expect(config).not.toContain("createHotUpdater");
+  });
+
+  it("stops before it changes the project when the function cannot be staged", async () => {
+    root = await project();
+    vi.mocked(inputSupabaseDeploymentInputs).mockResolvedValueOnce({
+      accessToken: "access-token",
+      functionName: "1-invalid",
+    });
+
+    await expect(
+      runInit({ build: "bare", envFile: ".env.hotupdater" }),
+    ).rejects.toThrow("Invalid Supabase Edge Function name.");
+    expect(mocks.makeEnv).not.toHaveBeenCalled();
+    expect(mocks.api.createBucket).not.toHaveBeenCalled();
+    expect(mocks.linkSupabase).not.toHaveBeenCalled();
+    expect(mocks.pushDB).not.toHaveBeenCalled();
     await expect(fs.access(path.join(root, ".hot-updater"))).rejects.toThrow();
   });
 });

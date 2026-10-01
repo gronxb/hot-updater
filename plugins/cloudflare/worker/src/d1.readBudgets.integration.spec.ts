@@ -1,12 +1,8 @@
-import { toolingTargetOf } from "@hot-updater/plugin-core";
-import { apiKeys } from "@hot-updater/server/plugins/api-keys";
-import { insights } from "@hot-updater/server/plugins/insights";
 import { setupReadBudgetTestSuite } from "@hot-updater/test-utils";
 import type { RowsExamined } from "@hot-updater/test-utils";
 import { env } from "cloudflare:test";
 import { inject } from "vitest";
 
-import { d1SchemaSql } from "../../src/d1Schema";
 import { d1Database, type D1Like } from "../../src/worker";
 
 /**
@@ -54,26 +50,21 @@ const rowsRead = (database: D1Database) => {
   return { binding, examined };
 };
 
-const plugins = [insights(), apiKeys()];
-
 /**
  * The worker's `d1Database` on the D1 binding. Its schema fence reads the
- * settings rows the migrations write once, while the suite seeds: the
- * package's, with core's tables, and the one init writes for the plugins.
+ * settings rows the migration writes once, while the suite seeds.
  */
 setupReadBudgetTestSuite({
   name: "d1 (workerd)",
   createAdapter: async () => {
     const [migration] = inject("d1Migrations");
-    for (const sql of [migration!.sql, d1SchemaSql(toolingTargetOf(plugins))]) {
-      // `exec` runs one statement per line, and a comment line is not one.
-      await env.DB.exec(
-        sql
-          .split("\n")
-          .filter((line) => line.trim() !== "" && !line.startsWith("--"))
-          .join("\n"),
-      );
-    }
+    // `exec` runs one statement per line, and a comment line is not one.
+    await env.DB.exec(
+      migration!.sql
+        .split("\n")
+        .filter((line) => line.trim() !== "" && !line.startsWith("--"))
+        .join("\n"),
+    );
     const { binding, examined } = rowsRead(env.DB);
     return { adapter: d1Database(binding).adapter, examined };
   },

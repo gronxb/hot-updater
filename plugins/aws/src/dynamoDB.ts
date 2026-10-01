@@ -58,7 +58,7 @@ export const migrateDynamoDB = (
 export const dynamoDB = (config: DynamoDBConfig): EngineDatabase => {
   const { client, adapter } = adapterOf(config);
   const cloudFront = createUpdateRouteInvalidation(config);
-  const database: EngineDatabase = {
+  return {
     ...createEngineDatabase({
       name: "dynamoDB",
       adapter,
@@ -71,10 +71,4 @@ export const dynamoDB = (config: DynamoDBConfig): EngineDatabase => {
       cloudFront?.destroy();
     },
   };
-  return Object.assign(database, {
-    resource: {
-      region: typeof config.region === "string" ? config.region : undefined,
-      tableName: config.tableName,
-    },
-  });
 };

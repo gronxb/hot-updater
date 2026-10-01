@@ -4,6 +4,7 @@ import {
   type HotUpdaterConfigScaffold,
   type ProviderConfig,
   type BuildType,
+  type ManagedHelperStatement,
 } from "@hot-updater/cli-tools";
 
 export const getConfigScaffold = (
@@ -25,6 +26,19 @@ export const getConfigScaffold = (
   })`,
   };
 
+  const helperStatements: ManagedHelperStatement[] = [
+    {
+      name: "credential",
+      strategy: "preserve-existing",
+      code: `
+// https://firebase.google.com/docs/admin/setup?hl=en#initialize_the_sdk_in_non-google_environments
+// Reuse working application-default credentials (ADC).
+// Only when a credential file is needed, set its private local path in .env.hotupdater:
+// GOOGLE_APPLICATION_CREDENTIALS=./firebase-adminsdk-credentials.json
+const credential = applicationDefault();`.trim(),
+    },
+  ];
+
   const builder = new ConfigBuilder()
     .setBuildType(build)
     .setStorage(storageConfig)
@@ -34,20 +48,11 @@ export const getConfigScaffold = (
       configString: "plugins",
     })
     .addImport({ pkg: "firebase-admin/app", named: ["applicationDefault"] })
-    .setIntermediateCode(`
-// https://firebase.google.com/docs/admin/setup?hl=en#initialize_the_sdk_in_non-google_environments
-// Reuse working application-default credentials (ADC).
-// Only when a credential file is needed, set its private local path in .env.hotupdater:
-// GOOGLE_APPLICATION_CREDENTIALS=./firebase-adminsdk-credentials.json
-const credential = applicationDefault();`);
+    .setIntermediateCode(
+      helperStatements.map((statement) => statement.code.trim()).join("\n\n"),
+    );
 
-  return createHotUpdaterConfigScaffoldFromBuilder(builder);
+  return createHotUpdaterConfigScaffoldFromBuilder(builder, {
+    helperStatements,
+  });
 };
-
-/**
- * The server definitions this provider's init writes, whatever the build,
- * which another provider's init replaces when it finds one unedited.
- */
-export const serverDefinitions = (): readonly string[] => [
-  getConfigScaffold("bare").definition.text,
-];

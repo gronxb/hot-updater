@@ -47,7 +47,6 @@ vi.mock("@hot-updater/cli-tools", async () => {
   };
 });
 
-import { getConfigScaffold } from "./configTemplate";
 import { createFirebaseProject, initFirebaseUser, setEnv } from "./select";
 
 describe("setEnv", () => {
@@ -55,7 +54,7 @@ describe("setEnv", () => {
     await setEnv({
       projectId: "demo-project",
       storageBucket: "demo-bucket",
-      scaffold: getConfigScaffold("bare"),
+      build: "bare",
       region: "asia-northeast3",
     });
 
@@ -78,14 +77,20 @@ describe("setEnv", () => {
     expect(vi.mocked(writeHotUpdaterFiles)).toHaveBeenCalledOnce();
     const [scaffold, options] =
       vi.mocked(writeHotUpdaterFiles).mock.calls[0] ?? [];
-    // The credential helper belongs to the server definition.
-    expect(scaffold?.text).not.toContain("applicationDefault");
-    expect(scaffold?.definition.text).toContain(
+    // The config lists the storage, database, and plugins the function runs,
+    // with the credential helper they read, and names no server code.
+    expect(scaffold?.text).toContain(
+      'import { firebaseDatabase, firebaseStorage, plugins } from "@hot-updater/firebase";\nimport { applicationDefault } from "firebase-admin/app";',
+    );
+    expect(scaffold?.text).toContain(
       "// Reuse working application-default credentials (ADC).",
     );
-    expect(scaffold?.definition.text).toContain(
-      'import { firebaseDatabase, firebaseStorage, plugins } from "@hot-updater/firebase";',
+    expect(scaffold?.text).toContain(
+      "const credential = applicationDefault();",
     );
+    expect(scaffold?.text).toContain("  plugins,\n");
+    expect(scaffold?.text).not.toContain("createHotUpdater");
+    expect(scaffold?.text).not.toContain("server:");
     expect(options).toMatchObject({ settings: "Firebase" });
   });
 });

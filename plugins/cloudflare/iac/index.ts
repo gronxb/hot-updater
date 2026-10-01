@@ -2,7 +2,7 @@ import crypto from "crypto";
 import path from "path";
 
 import {
-  clientAuthOf,
+  assembleServer,
   confirmInitInputPersistence,
   copyDirToTmp,
   getHotUpdaterInitInputEnv,
@@ -10,20 +10,15 @@ import {
   getInitProviderTextPromptValues,
   getCwd,
   link,
-  loadManagedServerDefinition,
   makeEnv,
-  managedServerDefinitionOf,
   p,
   printAppSetup,
   provisionClientCredential,
   type ProvisionedClientCredential,
   readHotUpdaterInitEnv,
   type RunInitOptions,
-  readManagedServerDefinition,
-  replacingServerDefinitions,
   writeHotUpdaterFiles,
 } from "@hot-updater/cli-tools";
-import { createHotUpdater } from "@hot-updater/server";
 import { Cloudflare } from "cloudflare";
 
 import { d1Database } from "../src/d1Database";
@@ -55,50 +50,7 @@ import {
 import { inputCloudflareInitSecrets } from "./cloudflareInitSecrets";
 import { getConfigScaffold } from "./configTemplate";
 import { initProvider as CLOUDFLARE_INIT_PROVIDER } from "./init/index";
-import {
-  buildWorkerFromDefinition,
-  prepareWorkerDeployment,
-} from "./managedWorker";
-
-/** The Worker's code, staged in the project's `.hot-updater` directory. */
-interface StagedWorker {
-  readonly workerRoot: string;
-  /** The entry wrangler deploys when it is not the prebuilt Worker's. */
-  readonly main: string | undefined;
-  readonly remove: () => Promise<void>;
-}
-
-/**
- * Stages the Worker's code: the prebuilt Worker, and the project's server
- * definition bundled with the Worker's runtime module when the project
- * edited it. A definition that cannot be bundled fails here, before init
- * changes any resource.
- */
-const stageWorker = async (
-  definition: string | undefined,
-): Promise<StagedWorker> => {
-  const cwd = getCwd();
-  const packageRoot = path.dirname(
-    require.resolve("@hot-updater/cloudflare/package.json", { paths: [cwd] }),
-  );
-  const { tmpDir, removeTmpDir } = await copyDirToTmp(packageRoot);
-  const workerRoot = path.join(tmpDir, "worker");
-  try {
-    const main =
-      definition === undefined
-        ? undefined
-        : await buildWorkerFromDefinition({
-            definition,
-            packageRoot,
-            projectRoot: cwd,
-            workerRoot,
-          });
-    return { workerRoot, main, remove: removeTmpDir };
-  } catch (error) {
-    await removeTmpDir();
-    throw error;
-  }
-};
+import { prepareWorkerDeployment } from "./managedWorker";
 
 const deployWorker = async (
   apiToken: string,
@@ -108,31 +60,32 @@ const deployWorker = async (
     d1DatabaseId,
     d1DatabaseName,
     nonInteractive,
-    plugins: serverPlugins,
     r2BucketName,
-    staged,
     workerName,
   }: {
     credentialSource: CloudflareCredentialSource;
     d1DatabaseId: string;
     d1DatabaseName: string;
     nonInteractive: boolean;
-    /** The plugins the Worker runs, whose tables the migration creates. */
-    plugins: readonly unknown[];
     r2BucketName: string;
-    /** From `stageWorker`. */
-    staged: StagedWorker;
     workerName: string;
   },
 ) => {
-  const { workerRoot } = staged;
+  const cwd = getCwd();
+  const cloudflarePackagePath = require.resolve(
+    "@hot-updater/cloudflare/package.json",
+    {
+      paths: [cwd],
+    },
+  );
+  const cloudflarePackageRoot = path.dirname(cloudflarePackagePath);
+  const { tmpDir, removeTmpDir } = await copyDirToTmp(cloudflarePackageRoot);
+  const workerRoot = path.join(tmpDir, "worker");
 
   try {
     await prepareWorkerDeployment(workerRoot, {
       d1DatabaseId,
       d1DatabaseName,
-      main: staged.main,
-      plugins: serverPlugins,
       r2BucketName,
     });
 
@@ -172,20 +125,13 @@ const deployWorker = async (
       throw toCloudflareDeploymentError(error, credentialSource);
     }
     throw new Error(String(error));
+  } finally {
+    await removeTmpDir();
   }
 };
 
-export const runInit = async ({
-  build,
-  envFile,
-  otherServerDefinitions,
-}: RunInitOptions) => {
+export const runInit = async ({ build, envFile }: RunInitOptions) => {
   const cwd = getCwd();
-  const scaffold = replacingServerDefinitions(
-    getConfigScaffold(build),
-    otherServerDefinitions,
-  );
-  const definition = await readManagedServerDefinition(scaffold, cwd);
   const nonInteractive = envFile !== undefined;
   const initEnvSources = await readHotUpdaterInitEnv(cwd, envFile);
   const { managedEnv } = initEnvSources;
@@ -621,141 +567,102 @@ export const runInit = async ({
     }),
   });
 
-  // The plugins the Worker runs: the package's, or those of the project's
-  // edited definition, which reads what .env.hotupdater now holds. It is
-  // checked and bundled before init creates a bucket or a database.
-  const serverPlugins = definition.edited
-    ? await loadManagedServerDefinition(
-        definition,
-        (hotUpdater) => {
-          const loaded = managedServerDefinitionOf(hotUpdater, {
-            provider: "Cloudflare",
-            database: "d1Database",
-            storage: "r2",
-            resources: {
-              database: { accountId, databaseId: selectedD1DatabaseId },
-              storage: { accountId, bucketName: selectedBucketName },
-            },
-          });
-          // A clientAuth plugin must give init the credential an app sends.
-          clientAuthOf(loaded);
-          return loaded.plugins;
-        },
-        { cwd },
-      )
-    : plugins;
-  const staged = await stageWorker(
-    definition.edited ? definition.path : undefined,
-  );
-  try {
-    if (createBucket) {
-      const newR2 = await runCloudflareApiRequest({
-        request: () =>
-          cf.r2.buckets.create({
-            account_id: accountId,
-            name: selectedBucketName,
-          }),
-        source: infrastructureCredentialSource,
-      });
-      if (!newR2.name) {
-        throw new Error("Failed to create new R2 Bucket");
-      }
-      p.log.info(`Created R2: ${newR2.name}`);
-      const domains = await runCloudflareApiRequest({
-        request: () =>
-          cf.r2.buckets.domains.managed.list(selectedBucketName, {
-            account_id: accountId,
-          }),
-        source: infrastructureCredentialSource,
-      });
-      managedDomainEnabled = domains.enabled;
-    } else {
-      p.log.info(`Selected R2: ${selectedBucketName}`);
-    }
-
-    if (managedDomainEnabled === undefined) {
-      throw new Error("Failed to resolve the R2 managed domain state.");
-    }
-    if (
-      shouldUpdateR2ManagedDomain({
-        isPrivate,
-        managedDomainEnabled,
-      })
-    ) {
-      await p.tasks([
-        {
-          title: `Making R2 bucket ${isPrivate ? "private" : "public"}...`,
-          task: async () => {
-            await runCloudflareApiRequest({
-              request: () =>
-                cf.r2.buckets.domains.managed.update(selectedBucketName, {
-                  account_id: accountId,
-                  enabled: !isPrivate,
-                }),
-              source: infrastructureCredentialSource,
-            });
-          },
-        },
-      ]);
-    }
-
-    if (createD1Database) {
-      const newD1 = await runCloudflareApiRequest({
-        request: () =>
-          cf.d1.database.create({
-            account_id: accountId,
-            name: d1DatabaseName,
-          }),
-        source: infrastructureCredentialSource,
-      });
-      if (!newD1.uuid || !newD1.name) {
-        throw new Error("Failed to create the requested D1 Database");
-      }
-      selectedD1DatabaseId = newD1.uuid;
-      d1DatabaseName = newD1.name;
-      p.log.info(`Created D1 Database: ${newD1.name} (${newD1.uuid})`);
-    }
-    if (!selectedD1DatabaseId) {
-      throw new Error("Failed to resolve the D1 Database");
-    }
-    await makeEnv({
-      [CLOUDFLARE_INIT_PROVIDER.inputs.d1DatabaseId.envKey]:
-        selectedD1DatabaseId,
-      [CLOUDFLARE_INIT_PROVIDER.inputs.d1DatabaseName.envKey]: d1DatabaseName,
+  if (createBucket) {
+    const newR2 = await runCloudflareApiRequest({
+      request: () =>
+        cf.r2.buckets.create({
+          account_id: accountId,
+          name: selectedBucketName,
+        }),
+      source: infrastructureCredentialSource,
     });
-
-    await deployWorker(infrastructureApiToken, accountId, {
-      credentialSource: infrastructureCredentialSource,
-      d1DatabaseId: selectedD1DatabaseId,
-      d1DatabaseName,
-      nonInteractive,
-      plugins: serverPlugins,
-      r2BucketName: selectedBucketName,
-      staged,
-      workerName,
+    if (!newR2.name) {
+      throw new Error("Failed to create new R2 Bucket");
+    }
+    p.log.info(`Created R2: ${newR2.name}`);
+    const domains = await runCloudflareApiRequest({
+      request: () =>
+        cf.r2.buckets.domains.managed.list(selectedBucketName, {
+          account_id: accountId,
+        }),
+      source: infrastructureCredentialSource,
     });
-  } finally {
-    await staged.remove();
+    managedDomainEnabled = domains.enabled;
+  } else {
+    p.log.info(`Selected R2: ${selectedBucketName}`);
   }
+
+  if (managedDomainEnabled === undefined) {
+    throw new Error("Failed to resolve the R2 managed domain state.");
+  }
+  if (
+    shouldUpdateR2ManagedDomain({
+      isPrivate,
+      managedDomainEnabled,
+    })
+  ) {
+    await p.tasks([
+      {
+        title: `Making R2 bucket ${isPrivate ? "private" : "public"}...`,
+        task: async () => {
+          await runCloudflareApiRequest({
+            request: () =>
+              cf.r2.buckets.domains.managed.update(selectedBucketName, {
+                account_id: accountId,
+                enabled: !isPrivate,
+              }),
+            source: infrastructureCredentialSource,
+          });
+        },
+      },
+    ]);
+  }
+
+  if (createD1Database) {
+    const newD1 = await runCloudflareApiRequest({
+      request: () =>
+        cf.d1.database.create({
+          account_id: accountId,
+          name: d1DatabaseName,
+        }),
+      source: infrastructureCredentialSource,
+    });
+    if (!newD1.uuid || !newD1.name) {
+      throw new Error("Failed to create the requested D1 Database");
+    }
+    selectedD1DatabaseId = newD1.uuid;
+    d1DatabaseName = newD1.name;
+    p.log.info(`Created D1 Database: ${newD1.name} (${newD1.uuid})`);
+  }
+  if (!selectedD1DatabaseId) {
+    throw new Error("Failed to resolve the D1 Database");
+  }
+  await makeEnv({
+    [CLOUDFLARE_INIT_PROVIDER.inputs.d1DatabaseId.envKey]: selectedD1DatabaseId,
+    [CLOUDFLARE_INIT_PROVIDER.inputs.d1DatabaseName.envKey]: d1DatabaseName,
+  });
+
+  await deployWorker(infrastructureApiToken, accountId, {
+    credentialSource: infrastructureCredentialSource,
+    d1DatabaseId: selectedD1DatabaseId,
+    d1DatabaseName,
+    nonInteractive,
+    r2BucketName: selectedBucketName,
+    workerName,
+  });
 
   const database = d1Database({
     accountId,
     cloudflareApiToken: apiToken,
     databaseId: selectedD1DatabaseId,
   });
-  // The managed server's plugins over the database init set up, which
-  // creating it neither reads nor writes.
-  const managedServer = createHotUpdater({
-    database,
-    plugins: serverPlugins,
-    ...(serverPlugins.some(({ provides }) => provides?.clientAuth)
-      ? {}
-      : { clientAccess: "public" }),
-  } as Parameters<typeof createHotUpdater>[0]);
+  // The managed server: the package's plugins over the database init set
+  // up, which assembling it neither reads nor writes.
+  const server = assembleServer({ database, plugins });
   // The app's credential, through the managed server's plugins, on the tables they read.
   let credential: ProvisionedClientCredential | undefined;
   try {
-    credential = await provisionClientCredential(managedServer, {
+    credential = await provisionClientCredential(server, {
       env: initInputEnv,
       name: "Cloudflare init",
     });
@@ -767,7 +674,10 @@ export const runInit = async ({
   }
 
   p.log.success("Generated '.env.hotupdater' file with Cloudflare settings.");
-  await writeHotUpdaterFiles(scaffold, { cwd, settings: "Cloudflare" });
+  await writeHotUpdaterFiles(getConfigScaffold(build), {
+    cwd,
+    settings: "Cloudflare",
+  });
 
   printAppSetup({
     ...(subdomains.subdomain
@@ -776,7 +686,7 @@ export const runInit = async ({
         }
       : {}),
     ...(credential === undefined ? {} : { credential }),
-    clientPlugins: managedServer.clientPlugins,
+    clientPlugins: server.clientPlugins,
   });
 
   p.log.message(
@@ -787,6 +697,5 @@ export const runInit = async ({
   p.log.success("Done! 🎉");
 };
 
-// What init asks for and checks before `runInit`, and the server definitions
-// it writes.
+// What init asks for and checks before `runInit`.
 export { initProvider } from "./init/index";

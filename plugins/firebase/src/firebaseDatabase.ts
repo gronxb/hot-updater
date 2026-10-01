@@ -54,11 +54,8 @@ export const migrateFirebaseDatabase = (
 export const firebaseDatabase = (
   config: FirebaseDatabaseConfig,
 ): EngineDatabase =>
-  Object.assign(
-    createEngineDatabase({
-      name: "firebaseDatabase",
-      adapter: adapterOf(config),
-      aggregateBatching: config.aggregateBatching ?? {},
-    }),
-    { resource: { projectId: config.projectId } },
-  );
+  createEngineDatabase({
+    name: "firebaseDatabase",
+    adapter: adapterOf(config),
+    aggregateBatching: config.aggregateBatching ?? {},
+  });

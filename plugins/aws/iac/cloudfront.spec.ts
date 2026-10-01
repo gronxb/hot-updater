@@ -8,9 +8,6 @@ import {
   buildOriginRequestPolicyConfig,
   buildReleaseCatalogCachePolicyConfig,
   buildSharedCachePolicyConfig,
-  MANAGED_ALL_VIEWER_EXCEPT_HOST_HEADER_POLICY_ID,
-  MANAGED_CACHING_DISABLED_POLICY_ID,
-  pluginCacheBehaviorPaths,
 } from "./cloudfrontDistributionConfig";
 
 const baseOptions = {
@@ -22,8 +19,6 @@ const baseOptions = {
   originRequestPolicyId: "origin-request-policy-id",
   releaseCatalogCachePolicyId: "release-catalog-cache-policy-id",
   sharedCachePolicyId: "shared-cache-policy-id",
-  // Insights' endpoint, as the prebuilt server's plugins give it.
-  pluginPaths: ["/events"],
 };
 
 describe("buildDistributionConfigOverrides", () => {
@@ -115,16 +110,10 @@ describe("buildDistributionConfigOverrides", () => {
 
     expect(behaviorItems.map(({ PathPattern }) => PathPattern)).toEqual([
       "/release-catalogs/*",
+      "/events",
       "/artifacts/*",
       "/version",
-      "/events",
     ]);
-    expect(
-      behaviorItems.find(({ PathPattern }) => PathPattern === "/events"),
-    ).toMatchObject({
-      CachePolicyId: MANAGED_CACHING_DISABLED_POLICY_ID,
-      OriginRequestPolicyId: MANAGED_ALL_VIEWER_EXCEPT_HOST_HEADER_POLICY_ID,
-    });
     expect(catalogBehavior.CachePolicyId).toBe(
       baseOptions.releaseCatalogCachePolicyId,
     );
@@ -427,9 +416,9 @@ describe("buildDistributionConfigOverrides", () => {
     ).toEqual([
       "/api/*",
       "/release-catalogs/*",
+      "/events",
       "/artifacts/*",
       "/version",
-      "/events",
     ]);
   });
 
@@ -486,9 +475,9 @@ describe("buildDistributionConfigOverrides", () => {
       "/custom/private/*",
       "/api/*",
       "/release-catalogs/*",
+      "/events",
       "/artifacts/*",
       "/version",
-      "/events",
     ]);
   });
 
@@ -559,111 +548,9 @@ describe("buildDistributionConfigOverrides", () => {
       "/*.js",
       "/api/*",
       "/release-catalogs/*",
+      "/events",
       "/artifacts/*",
       "/version",
-      "/events",
     ]);
-  });
-});
-
-describe("pluginCacheBehaviorPaths", () => {
-  it("sends each plugin client endpoint to the function, up to its first parameter", () => {
-    expect(
-      pluginCacheBehaviorPaths([
-        // Insights' endpoint comes from the plugins too, so a server without
-        // insights() stops sending /events to the function.
-        { plugin: "insights", path: "/events" },
-        { plugin: "notes", path: "/notes/:id" },
-        { plugin: "notes", path: "/notes/:id/comments" },
-        { plugin: "notes", path: "/notes-feed" },
-        { plugin: "notes", path: "/release-catalogs/notes/:id" },
-      ]),
-    ).toEqual(["/events", "/notes/*", "/notes-feed"]);
-  });
-
-  it("refuses an endpoint where CloudFront serves bundles from S3", () => {
-    for (const path of ["/bundles/:id", "/assets/notes", "/:id"]) {
-      expect(() =>
-        pluginCacheBehaviorPaths([{ plugin: "notes", path }]),
-      ).toThrow(
-        `Plugin "notes" serves ${path}, but the managed AWS server's CloudFront distribution serves bundles from S3 there.`,
-      );
-    }
-  });
-
-  it("adds a behavior for each path, with the function on origin requests and AWS's policies for passing requests through", () => {
-    const overrides = buildDistributionConfigOverrides({
-      ...baseOptions,
-      pluginPaths: ["/notes/*"],
-    });
-
-    expect(overrides.CacheBehaviors.Quantity).toBe(
-      overrides.CacheBehaviors.Items?.length,
-    );
-    expect(
-      overrides.CacheBehaviors.Items?.find(
-        (behavior) => behavior.PathPattern === "/notes/*",
-      ),
-    ).toMatchObject({
-      AllowedMethods: { Quantity: 7 },
-      // A plugin's endpoint answers what it likes: nothing is cached, and
-      // the function gets every header but Host, cookie, and query string.
-      CachePolicyId: MANAGED_CACHING_DISABLED_POLICY_ID,
-      OriginRequestPolicyId: MANAGED_ALL_VIEWER_EXCEPT_HOST_HEADER_POLICY_ID,
-      LambdaFunctionAssociations: {
-        Quantity: 1,
-        Items: [
-          {
-            EventType: "origin-request",
-            LambdaFunctionARN: baseOptions.functionArn,
-          },
-        ],
-      },
-    });
-  });
-
-  it("stops sending a path to the function when the server no longer serves it", () => {
-    const behaviorFor = (pathPattern: string, functionArn: string) =>
-      buildDistributionConfigOverrides({
-        ...baseOptions,
-        functionArn,
-        pluginPaths: [pathPattern],
-      }).CacheBehaviors.Items!.find(
-        (behavior) => behavior.PathPattern === pathPattern,
-      )!;
-    const existingDistributionConfig: DistributionConfig = {
-      ...buildDistributionConfig(baseOptions),
-      CacheBehaviors: {
-        Quantity: 2,
-        Items: [
-          // A plugin the previous deploy ran, on an older version of the function.
-          behaviorFor(
-            "/old-plugin/*",
-            "arn:aws:lambda:us-east-1:123456789012:function:hot-updater:3",
-          ),
-          // Another function's route.
-          behaviorFor(
-            "/other/*",
-            "arn:aws:lambda:us-east-1:123456789012:function:other-edge:2",
-          ),
-        ],
-      },
-    };
-
-    const updatedConfig = applyDistributionConfigOverrides(
-      existingDistributionConfig,
-      buildDistributionConfigOverrides({
-        ...baseOptions,
-        pluginPaths: ["/notes/*"],
-      }),
-    );
-
-    const paths = updatedConfig.CacheBehaviors?.Items?.map(
-      ({ PathPattern }) => PathPattern,
-    );
-    expect(paths).toContain("/notes/*");
-    expect(paths).toContain("/other/*");
-    expect(paths).not.toContain("/old-plugin/*");
-    expect(updatedConfig.CacheBehaviors?.Quantity).toBe(paths?.length);
   });
 });

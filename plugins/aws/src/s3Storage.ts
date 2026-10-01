@@ -111,7 +111,7 @@ export function s3Storage(
     return parsed;
   };
 
-  const adapter = createStorageAdapter({
+  return createStorageAdapter({
     name: "s3Storage",
     protocol: "s3",
     async listObjects(prefix) {
@@ -252,5 +252,4 @@ export function s3Storage(
       return { deleted: true };
     },
   });
-  return Object.assign(adapter, { resource: { bucketName } });
 }

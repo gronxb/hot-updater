@@ -23,7 +23,6 @@ import {
   collectPaginatedCloudFrontList,
   findInPaginatedCloudFrontList,
 } from "./cloudfrontPagination";
-import type { EdgeDeployment } from "./iam";
 import type { AwsRegion } from "./regionLocationMap";
 
 export type CloudFrontDistribution = {
@@ -31,14 +30,8 @@ export type CloudFrontDistribution = {
   readonly Id: string;
 };
 
-/**
- * Hot Updater's policies modified this recently may be another init's,
- * which it is about to attach to its distribution.
- */
-const POLICY_CLEANUP_MIN_AGE_MS = 60 * 60 * 1000;
-
-const isNamed = (error: unknown, ...names: readonly string[]) =>
-  error instanceof Error && names.includes(error.name);
+const isNamed = (error: unknown, name: string) =>
+  error instanceof Error && error.name === name;
 
 export class CloudFrontManager {
   private region: AwsRegion;
@@ -83,10 +76,23 @@ export class CloudFrontManager {
             policy.CachePolicy?.CachePolicyConfig?.Name === config.Name,
         })
       )?.CachePolicy?.Id;
-    // The name holds the content, and other deployments in the account may
-    // use the policy: an existing one is used as it is.
+    const update = async (policyId: string) => {
+      const currentPolicy = await cloudfrontClient.getCachePolicy({
+        Id: policyId,
+      });
+      if (!currentPolicy.ETag) {
+        throw new Error("Failed to read shared cache policy ETag");
+      }
+      await cloudfrontClient.updateCachePolicy({
+        CachePolicyConfig: config,
+        Id: policyId,
+        IfMatch: currentPolicy.ETag,
+      });
+      return policyId;
+    };
+
     const existingPolicyId = await find();
-    if (existingPolicyId) return existingPolicyId;
+    if (existingPolicyId) return update(existingPolicyId);
 
     try {
       const createPolicyResponse = await cloudfrontClient.createCachePolicy({
@@ -98,10 +104,10 @@ export class CloudFrontManager {
       }
       return cachePolicyId;
     } catch (error) {
-      // Another init with the same settings created it first.
+      // Another init created it first: it is updated like an existing one.
       if (isNamed(error, "CachePolicyAlreadyExists")) {
         const createdPolicyId = await find();
-        if (createdPolicyId) return createdPolicyId;
+        if (createdPolicyId) return update(createdPolicyId);
       }
       throw error;
     }
@@ -140,146 +146,11 @@ export class CloudFrontManager {
       if (!policyId) throw new Error("Failed to create origin request policy");
       return policyId;
     } catch (error) {
-      // Another init with the same settings created it first.
+      // Another init created it first.
       if (isNamed(error, "OriginRequestPolicyAlreadyExists")) {
         const createdPolicyId = await find();
         if (createdPolicyId) return createdPolicyId;
       }
-      throw error;
-    }
-  }
-
-  /**
-   * Deletes Hot Updater's cache and origin request policies that no
-   * distribution uses, such as rc.20's and those of settings no deployment
-   * has anymore, since an account holds 20 of each. It is best-effort and
-   * never fails init: CloudFront refuses to delete a policy a distribution
-   * uses, and a policy modified within the hour stays, since it may be
-   * another init's, about to be attached.
-   */
-  private async deleteUnusedPolicies(
-    cloudfrontClient: CloudFront,
-    used: ReadonlySet<string>,
-  ): Promise<void> {
-    const now = Date.now();
-    const isUnused = (
-      id: string | undefined,
-      name: string | undefined,
-      lastModified: Date | undefined,
-    ): id is string =>
-      id !== undefined &&
-      !used.has(id) &&
-      name?.startsWith("HotUpdater") === true &&
-      lastModified !== undefined &&
-      now - lastModified.getTime() >= POLICY_CLEANUP_MIN_AGE_MS;
-    const deleteQuietly = async (
-      name: string | undefined,
-      remove: () => Promise<unknown>,
-      expected: readonly string[],
-    ) => {
-      try {
-        await remove();
-        p.log.info(`Deleted unused CloudFront policy: ${name}`);
-      } catch (error) {
-        if (isNamed(error, ...expected, "PreconditionFailed")) return;
-        p.log.warn(
-          `Could not delete unused CloudFront policy ${name}: ${
-            error instanceof Error ? error.message : String(error)
-          }`,
-        );
-      }
-    };
-    try {
-      const cachePolicies = await collectPaginatedCloudFrontList({
-        listPage: async (marker) => {
-          const response = await cloudfrontClient.listCachePolicies({
-            Type: "custom",
-            ...(marker ? { Marker: marker } : {}),
-          });
-          return {
-            items: response.CachePolicyList?.Items ?? [],
-            nextMarker: response.CachePolicyList?.NextMarker,
-          };
-        },
-      });
-      for (const { CachePolicy: policy } of cachePolicies) {
-        const id = policy?.Id;
-        const name = policy?.CachePolicyConfig?.Name;
-        if (!isUnused(id, name, policy?.LastModifiedTime)) continue;
-        await deleteQuietly(name, async () => {
-          const { ETag } = await cloudfrontClient.getCachePolicy({ Id: id });
-          await cloudfrontClient.deleteCachePolicy({ Id: id, IfMatch: ETag });
-        }, ["CachePolicyInUse", "NoSuchCachePolicy"]);
-      }
-      const originRequestPolicies = await collectPaginatedCloudFrontList({
-        listPage: async (marker) => {
-          const response = await cloudfrontClient.listOriginRequestPolicies({
-            Type: "custom",
-            ...(marker ? { Marker: marker } : {}),
-          });
-          return {
-            items: response.OriginRequestPolicyList?.Items ?? [],
-            nextMarker: response.OriginRequestPolicyList?.NextMarker,
-          };
-        },
-      });
-      for (const { OriginRequestPolicy: policy } of originRequestPolicies) {
-        const id = policy?.Id;
-        const name = policy?.OriginRequestPolicyConfig?.Name;
-        if (!isUnused(id, name, policy?.LastModifiedTime)) continue;
-        await deleteQuietly(name, async () => {
-          const { ETag } = await cloudfrontClient.getOriginRequestPolicy({
-            Id: id,
-          });
-          await cloudfrontClient.deleteOriginRequestPolicy({
-            Id: id,
-            IfMatch: ETag,
-          });
-        }, ["OriginRequestPolicyInUse", "NoSuchOriginRequestPolicy"]);
-      }
-    } catch (error) {
-      p.log.warn(
-        `Could not list CloudFront policies to delete unused ones: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
-      );
-    }
-  }
-
-  /**
-   * Where `distributionId` stands with the function named `functionName`:
-   * whether its last update finished deploying, and the function versions
-   * its behaviors run. Undefined when the distribution is gone.
-   */
-  async edgeDeploymentOf(
-    distributionId: string,
-    functionName: string,
-  ): Promise<EdgeDeployment | undefined> {
-    const cloudfrontClient = new CloudFront({
-      region: this.region,
-      credentials: this.credentials,
-    });
-    try {
-      const { Distribution } = await cloudfrontClient.getDistribution({
-        Id: distributionId,
-      });
-      const config = Distribution?.DistributionConfig;
-      const versions = [
-        config?.DefaultCacheBehavior,
-        ...(config?.CacheBehaviors?.Items ?? []),
-      ]
-        .flatMap(
-          (behavior) => behavior?.LambdaFunctionAssociations?.Items ?? [],
-        )
-        .map(({ LambdaFunctionARN }) => LambdaFunctionARN?.split(":") ?? [])
-        .filter((parts) => parts[6] === functionName && parts[7] !== undefined)
-        .map((parts) => parts[7]!);
-      return {
-        deployed: Distribution?.Status === "Deployed",
-        versions: [...new Set(versions)],
-      };
-    } catch (error) {
-      if (isNamed(error, "NoSuchDistribution")) return undefined;
       throw error;
     }
   }
@@ -351,8 +222,6 @@ export class CloudFrontManager {
     functionArn: string;
     /** The headers the server's client-route policy reads; none when client routes are public. */
     clientHeaders: readonly string[];
-    /** From `pluginCacheBehaviorPaths`: the plugins' client endpoints, sent to the function. */
-    pluginPaths?: readonly string[];
     distribution?: CloudFrontDistribution | null;
     distributionId?: string;
     nonInteractive?: boolean;
@@ -403,73 +272,46 @@ export class CloudFrontManager {
     if (!oacId) throw new Error("Failed to get Origin Access Control ID");
 
     const bucketDomain = `${options.bucketName}.s3.${this.region}.amazonaws.com`;
-    const resolvePolicies = async () => {
-      try {
-        const [
-          sharedCachePolicyId,
-          releaseCatalogCachePolicyId,
-          originRequestPolicyId,
-        ] = await Promise.all([
-          this.getOrCreateCachePolicy(
-            cloudfrontClient,
-            buildSharedCachePolicyConfig(options.clientHeaders),
-          ),
-          this.getOrCreateCachePolicy(
-            cloudfrontClient,
-            buildReleaseCatalogCachePolicyConfig(options.clientHeaders),
-          ),
-          this.getOrCreateOriginRequestPolicy(
-            cloudfrontClient,
-            buildOriginRequestPolicyConfig(options.clientHeaders),
-          ),
-        ]);
-        return {
-          originRequestPolicyId,
-          releaseCatalogCachePolicyId,
-          sharedCachePolicyId,
-        };
-      } catch (error) {
-        throw new Error(
-          `Failed to get or create CloudFront request policies: ${
-            error instanceof Error ? error.message : String(error)
-          }`,
-        );
-      }
-    };
-    let policies = await resolvePolicies();
-    /**
-     * Runs `apply` with the policies, and once more with policies made again
-     * when a policy it named is gone: another deployment's init can delete
-     * an older policy it found unused, after this one found it.
-     */
-    const withPolicies = async <T>(
-      apply: (current: typeof policies) => Promise<T>,
-    ): Promise<T> => {
-      try {
-        return await apply(policies);
-      } catch (error) {
-        if (!isNamed(error, "NoSuchCachePolicy", "NoSuchOriginRequestPolicy")) {
-          throw error;
-        }
-        policies = await resolvePolicies();
-        return await apply(policies);
-      }
-    };
-    const configOptions = (current: typeof policies) => ({
+    let releaseCatalogCachePolicyId: string;
+    let sharedCachePolicyId: string;
+    let originRequestPolicyId: string;
+    try {
+      [
+        sharedCachePolicyId,
+        releaseCatalogCachePolicyId,
+        originRequestPolicyId,
+      ] = await Promise.all([
+        this.getOrCreateCachePolicy(
+          cloudfrontClient,
+          buildSharedCachePolicyConfig(options.clientHeaders),
+        ),
+        this.getOrCreateCachePolicy(
+          cloudfrontClient,
+          buildReleaseCatalogCachePolicyConfig(options.clientHeaders),
+        ),
+        this.getOrCreateOriginRequestPolicy(
+          cloudfrontClient,
+          buildOriginRequestPolicyConfig(options.clientHeaders),
+        ),
+      ]);
+    } catch (error) {
+      throw new Error(
+        `Failed to get or create CloudFront request policies: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
+
+    const newOverrides = buildDistributionConfigOverrides({
       bucketName: options.bucketName,
       bucketDomain,
       functionArn: options.functionArn,
       keyGroupId: options.keyGroupId,
       oacId,
-      ...current,
-      pluginPaths: options.pluginPaths ?? [],
+      originRequestPolicyId,
+      releaseCatalogCachePolicyId,
+      sharedCachePolicyId,
     });
-    const usedPolicies = () =>
-      new Set([
-        policies.sharedCachePolicyId,
-        policies.releaseCatalogCachePolicyId,
-        policies.originRequestPolicyId,
-      ]);
 
     if (selectedDistribution) {
       await makeEnv({
@@ -479,28 +321,25 @@ export class CloudFrontManager {
         `Existing CloudFront distribution selected. Distribution ID: ${selectedDistribution.Id}.`,
       );
       try {
-        await withPolicies(async (current) => {
-          const { DistributionConfig, ETag } =
-            await cloudfrontClient.getDistributionConfig({
-              Id: selectedDistribution.Id,
-            });
-          if (!DistributionConfig) {
-            throw new Error("CloudFront distribution config was not returned");
-          }
-          const finalConfig = applyDistributionConfigOverrides(
-            DistributionConfig,
-            buildDistributionConfigOverrides(configOptions(current)),
-          );
-          await cloudfrontClient.updateDistribution({
+        const { DistributionConfig, ETag } =
+          await cloudfrontClient.getDistributionConfig({
             Id: selectedDistribution.Id,
-            IfMatch: ETag,
-            DistributionConfig: finalConfig,
           });
+        if (!DistributionConfig) {
+          throw new Error("CloudFront distribution config was not returned");
+        }
+        const finalConfig = applyDistributionConfigOverrides(
+          DistributionConfig,
+          newOverrides,
+        );
+        await cloudfrontClient.updateDistribution({
+          Id: selectedDistribution.Id,
+          IfMatch: ETag,
+          DistributionConfig: finalConfig,
         });
         p.log.success(
           "CloudFront distribution updated with new Lambda function ARN.",
         );
-        await this.deleteUnusedPolicies(cloudfrontClient, usedPolicies());
         await cloudfrontClient.createInvalidation({
           DistributionId: selectedDistribution.Id,
           InvalidationBatch: {
@@ -508,12 +347,10 @@ export class CloudFrontManager {
             Paths: {
               Quantity:
                 HOT_UPDATER_CACHE_BEHAVIOR_PATHS.length +
-                HOT_UPDATER_RELEASE_CATALOG_BEHAVIOR_PATHS.length +
-                (options.pluginPaths?.length ?? 0),
+                HOT_UPDATER_RELEASE_CATALOG_BEHAVIOR_PATHS.length,
               Items: [
                 ...HOT_UPDATER_CACHE_BEHAVIOR_PATHS,
                 ...HOT_UPDATER_RELEASE_CATALOG_BEHAVIOR_PATHS,
-                ...(options.pluginPaths ?? []),
               ],
             },
           },
@@ -532,12 +369,21 @@ export class CloudFrontManager {
     }
 
     // Create a new distribution if none exists
+    const finalDistributionConfig = buildDistributionConfig({
+      bucketName: options.bucketName,
+      bucketDomain,
+      functionArn: options.functionArn,
+      keyGroupId: options.keyGroupId,
+      oacId,
+      originRequestPolicyId,
+      releaseCatalogCachePolicyId,
+      sharedCachePolicyId,
+    });
+
     try {
-      const distResp = await withPolicies((current) =>
-        cloudfrontClient.createDistribution({
-          DistributionConfig: buildDistributionConfig(configOptions(current)),
-        }),
-      );
+      const distResp = await cloudfrontClient.createDistribution({
+        DistributionConfig: finalDistributionConfig,
+      });
       if (!distResp.Distribution?.Id || !distResp.Distribution?.DomainName) {
         throw new Error(
           "Failed to create CloudFront distribution: No ID or DomainName returned",
@@ -548,7 +394,6 @@ export class CloudFrontManager {
       await makeEnv({
         HOT_UPDATER_CLOUDFRONT_DISTRIBUTION_ID: distributionId,
       });
-      await this.deleteUnusedPolicies(cloudfrontClient, usedPolicies());
       p.log.success(
         `Created new CloudFront distribution. Distribution ID: ${distributionId}`,
       );

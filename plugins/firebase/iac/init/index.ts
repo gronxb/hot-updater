@@ -1,7 +1,5 @@
 import type { InitProviderDefinition } from "@hot-updater/cli-tools";
 
-import { serverDefinitions } from "../configTemplate";
-
 export const isFirebaseRegion = (value: string | undefined): value is string =>
   value !== undefined && /^[a-z]+(?:-[a-z]+)+[0-9]+$/.test(value);
 
@@ -12,7 +10,6 @@ export const isFirebaseProjectId = (
 
 export const initProvider = {
   label: "Firebase",
-  serverDefinitions,
   inputs: {
     projectId: {
       envKey: "HOT_UPDATER_FIREBASE_PROJECT_ID",
