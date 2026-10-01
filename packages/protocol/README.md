@@ -24,8 +24,11 @@ Code moves into this package only when all three hold:
    package, such as verkit's version parsing, is bundled into `dist`.
 
 It holds the domain types, the release catalog format and its scope rules,
+the check a client runs on a fetched release catalog (`parseReleaseCatalog`),
 the rollout cohort math, bundle artifacts, the bundle id format (`uuid`), the
-client plugin contract, `canonicalizeAppVersion`, and `resolveBaseURL`. Client
+client plugin contract, `canonicalizeAppVersion`, and `resolveBaseURL`. The
+device's update client and doctor's server checks both run
+`parseReleaseCatalog`, so they accept the same catalogs. Client
 plugin authors import `defineClientPlugin` and its types from here.
 `createPluginHost` is the host the SDK runs client plugins on: a device SDK
 passes it the platform, the device's storage, and `fetch`, and

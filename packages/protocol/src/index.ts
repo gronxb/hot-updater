@@ -5,6 +5,7 @@ export * from "./clientPlugin";
 export * from "./createPluginHost";
 export * from "./releaseCatalog";
 export * from "./releaseCatalogScope";
+export * from "./releaseCatalogWire";
 export * from "./rollout";
 export * from "./types";
 export * from "./uuid";

@@ -245,13 +245,17 @@ export const setupReleaseCatalogTestSuite = (options: {
           });
         });
 
-        it("hard deletes a Release, rebuilds its Catalog, and retains Bundle bytes", async () => {
-          const current = await publish("741", { enabled: false });
+        const hardDelete = async (release: ReleaseRow) => {
           await adminJson(
-            `/releases/${current.release.id}?confirm=${current.release.id}&expectedRevision=1`,
+            `/releases/${release.id}?confirm=${release.id}&expectedRevision=${release.revision}`,
             jsonRequest("DELETE"),
           );
-          api.forget(current.release.id);
+          api.forget(release.id);
+        };
+
+        it("hard deletes a Release, rebuilds its Catalog, and deletes the artifact no other Release uses", async () => {
+          const current = await publish("741", { enabled: false });
+          await hardDelete(current.release);
           expect((await admin(`/releases/${current.release.id}`)).status).toBe(
             404,
           );
@@ -259,13 +263,38 @@ export const setupReleaseCatalogTestSuite = (options: {
             releases: [],
             rollbackReleases: [],
           });
+          // The artifact record went with its last Release; storage prune
+          // deletes its files.
+          expect(
+            (
+              await request(
+                `/artifacts/v1/${current.bundle.id}/from/${NIL_UUID}`,
+              )
+            ).status,
+          ).toBe(404);
+        });
+
+        it("keeps serving an artifact while another Release uses it", async () => {
+          const first = await publish("742", { enabled: false });
+          const second = await publish(
+            "742",
+            { bundle_id: first.bundle.id, enabled: false },
+            scope("other"),
+          );
+          await hardDelete(first.release);
           const artifact = await request(
-            `/artifacts/v1/${current.bundle.id}/from/${NIL_UUID}`,
+            `/artifacts/v1/${first.bundle.id}/from/${NIL_UUID}`,
           );
           expect(artifact.status).toBe(200);
           expect(await artifact.json()).toMatchObject({
-            manifestUrl: downloadUrl(current.bundle.manifest_storage_uri),
+            manifestUrl: downloadUrl(first.bundle.manifest_storage_uri),
           });
+
+          await hardDelete(second.release);
+          expect(
+            (await request(`/artifacts/v1/${first.bundle.id}/from/${NIL_UUID}`))
+              .status,
+          ).toBe(404);
         });
 
         it("serves enabled Releases newest first and resolves artifacts by Bundle identity", async () => {

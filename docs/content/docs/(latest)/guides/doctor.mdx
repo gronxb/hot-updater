@@ -13,8 +13,13 @@ work:
 
 - All Hot Updater packages use compatible versions
 - React Native native files are connected to Hot Updater
+- `fingerprint.json` still matches the project, for the fingerprint update
+  strategy
 - The app adds the client plugins that the server's plugins need
+- The server's release catalogs match their Releases
 - Your deployed infrastructure server is not outdated
+
+With `--fix`, doctor also [repairs](#repair-issues) what it can repair itself.
 
 Run it during setup, after upgrading Hot Updater, or when OTA updates behave
 differently after a package update. The ordinary command validates local
@@ -112,9 +117,13 @@ directories exist, `doctor` checks:
 
 - iOS `AppDelegate` uses `HotUpdater.bundleURL()`
 - Android `MainApplication` uses `HotUpdater.getJSBundleFile(...)`
-- If `updateStrategy` is `fingerprint`, `fingerprint.json` exists and native
-  fingerprint hashes match it
+- If `updateStrategy` is `fingerprint`, `fingerprint.json` exists, native
+  fingerprint hashes match it, and it matches the project's fingerprint now
 - Signing settings match native public key entries
+
+The native status also shows each platform's app version, the version the
+native project builds (`appVersion` in `details.native.ios` and
+`details.native.android`).
 
 If a required native setting is missing, run the command shown by `doctor`,
 then rebuild the native app.
@@ -123,7 +132,16 @@ then rebuild the native app.
 `HOT_UPDATER_CHANNEL` or `hot_updater_channel` exists, the command reports it as
 context only.
 
-For fingerprint projects, fix missing or stale native fingerprint settings with:
+For fingerprint projects, doctor computes the project's fingerprint as
+`fingerprint create` does, which hashes the native inputs and can take a few
+seconds. When a platform's fingerprint differs from `fingerprint.json`, doctor
+reports `FINGERPRINT_JSON_STALE` and lists the sources that changed, in
+`changes` with `--json`. When it cannot compute the fingerprint, for example
+because `@expo/fingerprint` is not installed, it reports
+`FINGERPRINT_GENERATION_FAILED` with the reason.
+
+Fix missing or stale fingerprint settings with `fingerprint create`, or with
+`doctor --fix`, which runs the same repair:
 
 ```package-install
 npx hot-updater fingerprint create
@@ -149,6 +167,47 @@ Import it from the module the warning names and pass it to
 with the reason, with `fixability` `blocked`: make `server` load, then rerun
 `doctor`.
 
+## Repair issues
+
+`--fix` runs the repairs doctor can make itself, then checks again:
+
+| Issues | Repair |
+| --- | --- |
+| `MISSING_FINGERPRINT_JSON`, `MISSING_FINGERPRINT_HASH`, `FINGERPRINT_HASH_MISMATCH`, `FINGERPRINT_JSON_STALE` | What `fingerprint create` writes, where it differs: `fingerprint.json`, and the fingerprint hash in `Info.plist` and `AndroidManifest.xml` |
+| `MISSING_PUBLIC_KEY`, `PUBLIC_KEY_MISMATCH` | What `keys export-public --yes` writes: the configured signing public key, in the native files |
+| `RELEASE_CATALOG_STALE` | Each stale scope's catalog, rebuilt from its Releases in the server's database |
+| `UNREFERENCED_ARTIFACTS` | The artifact records no Release uses, deleted from the server's database |
+
+```package-install
+npx hot-updater doctor --fix
+```
+
+`--fix` is the confirmation, so it does not ask again. It names every file,
+release catalog, and artifact record it writes, and the checks after it
+describe the project as the repairs left it. When it writes a native file, its
+output ends by asking you to rebuild the native app: an installed app keeps the
+native files it was built with. A replaced public key only reaches new builds;
+apps already installed keep the previous key and reject bundles signed with the
+configured one.
+
+`--fix` leaves an issue with more than one remedy to you, and never removes a
+public key. For `ORPHAN_PUBLIC_KEY`, remove the key with `keys remove` or enable
+signing yourself: removing it turns off signature verification in the app,
+which is wrong when signing is set up where this machine cannot see it, such as
+an environment variable only CI sets.
+
+On an Expo project whose `ios` and `android` folders `expo prebuild`
+generates, `--fix` skips the native-file repairs and says so, since the next
+prebuild would overwrite them; an Expo project outside git counts as one.
+Follow the issue's resolution there instead. Issues that need a code edit, such
+as the bundle provider or a client plugin, and infrastructure issues are not
+repaired by `--fix`.
+
+With `--json`, `details.fixes` lists each repair: its `repair`, the issue
+`codes` it repairs, a `status` of `applied`, `skipped`, or `failed`, what it
+`wrote`, whether that included a `native` file, and a `note` with the reason or
+what to know. `success` describes the project after the repairs.
+
 ## AI Agent Iteration
 
 `doctor --json` returns structured issues that an agent can use without parsing
@@ -171,7 +230,9 @@ Read `fixability` as the repair prerequisite, within the user's authorized work:
 | `blocked`  | The repair requires external context/access beyond doctor’s local fixes. |
 
 Native wiring, fingerprint creation, and native public key export/removal are
-intended to be iterated locally by an agent. Infrastructure failures are marked
+intended to be iterated locally by an agent. `doctor --fix` creates the
+fingerprint and exports the public key in one step, naming every file it
+writes; it never removes a public key. Infrastructure failures are marked
 as blocked because applying migrations or redeploying a server usually depends
 on provider credentials and environment-specific access. During a requested
 setup or upgrade, an agent with that access should follow the generated
@@ -234,42 +295,52 @@ result alone does not.
 
 ## Check Release Catalogs
 
-Use Catalog preflight when the deployed server is reachable but its compiled
-delivery policy needs inspection. Run it from the workspace containing your
-`hot-updater.config.ts`; it uses the server that `server` points at.
+When `hot-updater.config.ts` sets `server`, doctor opens that server once for
+the whole run and reads its release catalogs. It checks every scope that has a
+catalog row or a Release, comparing each catalog with a rebuild from its
+scope's Releases without writing, and reports each scope in
+`details.releaseCatalogs.scopes`:
 
-```bash
-npx hot-updater db catalog preflight --json
+- `state`: `verified`, `stale`, `missing` (Releases but no catalog row), or
+  `unchecked` (core could not compile it);
+- `generation`: the stored catalog's, or `null` without a row;
+- `byteSize` and `descriptorCount`: what its Releases compile to.
+
+Devices read the catalog, not the Releases, so a catalog that differs from its
+Releases is the error `RELEASE_CATALOG_STALE`. Rebuild the stale catalogs from
+their Releases with:
+
+```package-install
+npx hot-updater doctor --fix
 ```
 
-With no scope arguments, it inspects scopes with an existing Catalog row,
-including empty catalogs, without writing. It does not discover Release scopes
-whose Catalog row is missing. Review each result's `state` and diagnostics;
-successful command execution alone does not mean every projection is verified
-or every Release scope was inspected. Copy the relevant `scopeKey` from the
-output to inspect or repair that existing catalog:
-
-```bash
-npx hot-updater db catalog preflight "<scope-key>" --json
-npx hot-updater db catalog rebuild "<scope-key>" --yes --json
-npx hot-updater db catalog preflight "<scope-key>" --json
-```
-
-Rebuild writes compiled projections from the authoritative Release rows. Use
-`--yes` for an approved repair in a non-interactive shell, then confirm the
-scope reports `verified`. Then retry **Check and apply update** in the app and
+Then retry **Check and apply update** in the app and
 [verify that it applies](/docs/get-started/test-ota#3-apply-it-in-the-app).
 
-If an expected scope is absent from the output, compare it with the Release
-records in your database. An explicitly requested scope without a Catalog row
-fails with `Release catalog scope not found`. Restore its original Catalog row
-from backup before rebuilding or deploying; do the same if a core operation
-reports `CATALOG_IDENTITY_MISSING`. Do not invent a new identity for an existing
-Release history. These commands repair projections; they do not recover missing
-source policy or replace a native OTA delivery test.
+When doctor cannot reach the database, for example because the server's
+credentials are not available where it runs, it warns
+`RELEASE_CATALOGS_UNCHECKED` with the reason and does not fail: `success` stays
+`true` for agents that gate on it. Without `server` in the config, doctor skips
+the check.
+
+A scope with Releases but no catalog row answers devices with 404. Doctor
+reports it as the error `RELEASE_CATALOG_IDENTITY_MISSING`, and `--fix` does
+not create the row: restore it from a backup before rebuilding or deploying,
+since a new identity would not match the history devices already hold. A scope
+core cannot compile is the error `RELEASE_CATALOG_CHECK_FAILED` with the
+reason, beside what the other scopes report. These checks rebuild projections;
+they do not recover missing source policy or replace a native OTA delivery
+test.
+
+The same run lists the artifact records no Release uses. Doctor warns
+`UNREFERENCED_ARTIFACTS` with their IDs, since `storage prune` keeps the files
+of every artifact record. `--fix` deletes the records, and a later
+`storage prune` reclaims the files. When it cannot read the artifact records,
+it warns `ARTIFACTS_UNCHECKED`; like the catalog warning, it never fails the
+run.
 
 To preview a proposed change to one Bundle's policy, use
-[`bundle preflight`](/docs/guides/console#preview-and-protect-automated-changes).
+[`bundle update --dry-run`](/docs/guides/console#preview-and-protect-automated-changes).
 
 ## Update Package Versions
 
@@ -340,6 +411,7 @@ then redeploy your server and verify it with doctor.
 | ------------------------- | ------------------------------------------------------- |
 | `--server-base-url <url>` | Server base URL for version checks and scoped live catalog checks. |
 | `--json`                  | Print a machine-readable result for agents and scripts. |
+| `--fix` | Run the repairs doctor can make itself, then check again. |
 | `--scope <scope>` | Require `scaffold` or `infrastructure` verification. |
 | `--infra-dir <directory>` | Exact directory returned by infrastructure scaffolding. |
 | `--platform <platform>` | `ios` or `android` for a live catalog check. |

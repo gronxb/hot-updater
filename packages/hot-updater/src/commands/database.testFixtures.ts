@@ -11,19 +11,10 @@ import {
   type DatabaseAdapter,
 } from "@hot-updater/plugin-core";
 import { createHotUpdater } from "@hot-updater/server";
+import { storeBundles } from "@hot-updater/test-utils";
 import { vi } from "vitest";
 
 export type DeploymentSeed = BundleDeployment;
-
-/** A disabled release in a channel of its own, so a stored bundle needs one. */
-const SEED_RELEASE = {
-  channel: "seed",
-  enabled: false,
-  fingerprintHash: null,
-  message: null,
-  shouldForceUpdate: false,
-  targetAppVersion: "*",
-} as const;
 
 /**
  * A database on the storage engine over a memory adapter, as a provider
@@ -66,12 +57,7 @@ export const createDatabaseHarness = () => {
   /** Replaces the database with these bundles, each stored with no release. */
   const setBundles = async (bundles: readonly Bundle[]): Promise<void> => {
     memory = createMemoryAdapter();
-    for (const bundle of bundles) {
-      const [result] = await engineCore.deploy([
-        { bundle, release: SEED_RELEASE },
-      ]);
-      await engineCore.deleteRelease({ releaseId: result!.release!.id });
-    }
+    await storeBundles({ name: "test-database", adapter }, bundles);
   };
 
   return {

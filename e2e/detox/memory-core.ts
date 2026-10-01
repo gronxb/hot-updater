@@ -7,22 +7,18 @@ import type {
 
 import { importPublished } from "./published.ts";
 
-const { createMemoryAdapter, rowToBundle } = await importPublished<
-  typeof import("@hot-updater/plugin-core")
->("@hot-updater/plugin-core");
+const {
+  bundleToPatchRows,
+  bundleToRow,
+  createEngine,
+  createMemoryAdapter,
+  rowToBundle,
+} = await importPublished<typeof import("@hot-updater/plugin-core")>(
+  "@hot-updater/plugin-core",
+);
 const { createHotUpdater } = await importPublished<
   typeof import("@hot-updater/server")
 >("@hot-updater/server");
-
-/** A disabled release in a channel of its own, so a stored bundle needs one. */
-const SEED_RELEASE = {
-  channel: "seed",
-  enabled: false,
-  fingerprintHash: null,
-  message: null,
-  shouldForceUpdate: false,
-  targetAppVersion: "*",
-} as const;
 
 /**
  * Core on an empty database in memory, through a server definition as the
@@ -53,13 +49,31 @@ export const createMemoryCore = () => {
     /** Deploys one bundle with its release, as `hot-updater deploy` does. */
     deploy: async (deployment: BundleDeployment) =>
       (await core.deploy([deployment]))[0]!,
-    /** Stores these bundles, each without a release. */
+    /**
+     * Stores these bundles, each without a release, as test-utils'
+     * `storeBundles` does: deleting a bundle's last release deletes the
+     * bundle, so they go in through the engine. A patch's base comes first.
+     */
     setBundles: async (bundles: readonly Bundle[]): Promise<void> => {
-      for (const bundle of bundles) {
-        const [result] = await core.deploy([
-          { bundle, release: SEED_RELEASE },
-        ]);
-        await core.deleteRelease({ releaseId: result!.release!.id });
+      const engine = createEngine(database);
+      try {
+        await engine.core.transaction(async (tx) => {
+          for (const bundle of bundles) {
+            tx.create("bundles", bundleToRow(bundle));
+            for (const platformKey of [bundle.platform, "*"]) {
+              tx.aggregate(
+                "bundle_totals",
+                { platform_key: platformKey },
+                { bundles: 1 },
+              );
+            }
+            for (const row of bundleToPatchRows(bundle)) {
+              tx.create("bundle_patches", row);
+            }
+          }
+        });
+      } finally {
+        await engine.dispose();
       }
     },
     bundles: async (): Promise<Bundle[]> =>

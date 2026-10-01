@@ -107,12 +107,12 @@ with `bundle show <id> --json`. Preview the same policy change without writing:
 
 ```bash
 npx hot-updater bundle show <id> --json
-npx hot-updater bundle preflight <id> --rollout-cohort-count 500 --expected-revision <revision> --json
+npx hot-updater bundle update <id> --rollout-cohort-count 500 --expected-revision <revision> --dry-run --json
 ```
 
-Preflight compiles the proposed Catalog and checks its limits. It does not
-reserve the revision or save the change. After reviewing the result, apply the
-same options with the revision you read:
+A dry run compiles the proposed Catalog and checks its limits, without asking
+for confirmation. It does not reserve the revision or save the change. After
+reviewing the result, apply the same options with the revision you read:
 
 ```bash
 npx hot-updater bundle update <id> --rollout-cohort-count 500 --expected-revision <revision> --yes --json
@@ -123,22 +123,19 @@ another operator changes that Bundle first, the stale mutation fails. Re-read
 the Bundle and review its policy before retrying; do not remove the revision
 check just to make a retry succeed.
 
-For existing Catalog projection problems, use the separate
-[Catalog inspection and repair commands](/docs/guides/doctor#check-release-catalogs).
+For existing Catalog projection problems, run
+[`doctor`](/docs/guides/doctor#check-release-catalogs), and `doctor --fix` to
+rebuild the stale catalogs it reports.
 
 ### Advanced artifact diagnostics
 
-Artifact operations use the **Artifact ID** from Advanced diagnostics. They are
-kept outside the normal bundle workflow:
-
-```package-install
-npx hot-updater bundle artifact delete <artifact-id> --yes
-```
-
-The command refuses to delete an artifact while any bundle ID references it and
-reports those IDs. After deleting unreferenced artifact records, use the
-[Storage Cleanup](/docs/guides/storage-cleanup) workflow to preview and reclaim
-stored objects and shared assets.
+Advanced diagnostics shows each bundle's **Artifact ID**: the uploaded files the
+bundle uses. A promoted bundle shares its source's artifact. Deleting the last
+bundle that uses an artifact deletes the artifact's record too, with every
+patch to or from it, so a device running that bundle downloads its next update
+in full. `bundle delete --json` names the artifact in `deletedArtifactId`. The
+stored files stay until the [Storage Cleanup](/docs/guides/storage-cleanup)
+workflow previews and deletes them.
 
 ## Insights
 

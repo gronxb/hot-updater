@@ -4,29 +4,14 @@ import { createServer } from "node:http";
 import os from "node:os";
 import path from "node:path";
 
-import type { ReleaseCatalog } from "@hot-updater/protocol";
+import {
+  parseReleaseCatalog,
+  type ReleaseCatalog,
+} from "@hot-updater/protocol";
 import { describe, expect, it, onTestFinished, vi } from "vitest";
 
 import { verifyServer } from "../doctor/server";
 import type { InfraClientAuth } from "../infra/clientAuth";
-
-vi.mock("../../../../react-native/src/catalogCacheNative", () => ({
-  readNativeReleaseCatalogCache: async () => null,
-  writeNativeReleaseCatalogCache: async () => false,
-  removeNativeReleaseCatalogCache: async () => undefined,
-}));
-
-// Load the real parser without including React Native types in the CLI project.
-const { fetchReleaseCatalogWithCache } = await vi.importActual<{
-  fetchReleaseCatalogWithCache: (
-    input: Record<string, unknown>,
-  ) => Promise<ReleaseCatalog>;
-}>(
-  path.resolve(
-    import.meta.dirname,
-    "../../../../react-native/src/releaseCatalogCache.ts",
-  ),
-);
 
 const apiKey = "private-client-key-never-print";
 const clientAuth: InfraClientAuth = {
@@ -196,19 +181,23 @@ const createFixture = async (
       );
     });
   };
-  const verifyWithNativeClient = () =>
-    fetchReleaseCatalogWithCache({
-      baseURL: baseUrl,
-      url: `${baseUrl}release-catalogs/fingerprint/ios/${channelKey}/fingerprint-123`,
-      expectedScope: {
+  /** The catalog as the device's update client accepts it, through protocol's check. */
+  const parseOnDevice = async () =>
+    parseReleaseCatalog(
+      await (
+        await fetch(
+          `${baseUrl}release-catalogs/fingerprint/ios/${channelKey}/fingerprint-123`,
+          { headers: { "x-api-key": apiKey } },
+        )
+      ).text(),
+      {
         strategy: "FINGERPRINT",
         platform: "ios",
         channelKey,
         fingerprintHash: "fingerprint-123",
       },
-      requestHeaders: { "x-api-key": apiKey },
-    });
-  return { run, requests, root, baseUrl, verifyWithNativeClient };
+    );
+  return { run, requests, root, baseUrl, parseOnDevice };
 };
 
 describe("agent server verification", () => {
@@ -322,7 +311,7 @@ describe("agent server verification", () => {
   });
 
   it("verifies a populated fingerprint catalog using the persisted local key", async () => {
-    const { run, requests, verifyWithNativeClient } = await createFixture({
+    const { run, requests, parseOnDevice } = await createFixture({
       environmentKey: "",
       localKey: apiKey,
       authenticated: {
@@ -339,7 +328,7 @@ describe("agent server verification", () => {
       key: apiKey,
     });
     expect(result.stdout + result.stderr).not.toContain(apiKey);
-    await expect(verifyWithNativeClient()).resolves.toEqual(fingerprintCatalog);
+    await expect(parseOnDevice()).resolves.toEqual(fingerprintCatalog);
   });
 
   it.each<[string, Partial<ReleaseCatalog>]>([
@@ -392,9 +381,9 @@ describe("agent server verification", () => {
       },
     ],
   ])(
-    "rejects %s just as the native catalog parser does",
+    "rejects %s, as the device's update client does",
     async (_name, invalid) => {
-      const { run, verifyWithNativeClient } = await createFixture({
+      const { run, parseOnDevice } = await createFixture({
         authenticated: {
           status: 200,
           headers: { "content-type": catalogContentType },
@@ -404,9 +393,7 @@ describe("agent server verification", () => {
       const result = await run(["--fingerprint", "fingerprint-123"]);
       expect(result.code).toBe(1);
       expect(JSON.parse(result.stdout).check).toBe("authenticated-catalog");
-      await expect(verifyWithNativeClient()).rejects.toThrow(
-        "Received an invalid Release catalog",
-      );
+      await expect(parseOnDevice()).resolves.toBeNull();
     },
   );
 

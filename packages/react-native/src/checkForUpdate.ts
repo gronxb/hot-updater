@@ -3,6 +3,8 @@ import {
   canonicalizeAppVersion,
   createReleaseSelectionContextHash,
   encodeChannelKey,
+  type ExpectedReleaseCatalogScope,
+  hasExpectedReleaseCatalogScope,
   selectDesiredRelease,
   type PersistedSelectionReceipt,
   type ReleaseCatalog,
@@ -37,10 +39,6 @@ import {
   isChannelSwitched,
   stageBundle,
 } from "./native";
-import {
-  hasExpectedReleaseCatalogScope,
-  type ExpectedReleaseCatalogScope,
-} from "./releaseCatalogCache";
 import { hotUpdaterStore } from "./store";
 import { classifyUpdateError, InvalidUpdateResponseError } from "./updateError";
 

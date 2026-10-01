@@ -4,12 +4,13 @@ import path from "path";
 import { getCwd } from "@hot-updater/cli-tools";
 import type { Platform } from "@hot-updater/plugin-core";
 
-import { setFingerprintHash } from "../setFingerprintHash";
+import { getFingerprintHash, setFingerprintHash } from "../setFingerprintHash";
 import {
   ensureFingerprintConfig,
   type FingerprintOptions,
   type FingerprintResult,
   getOtaFingerprintOptions,
+  isFingerprintEquals,
 } from "./common";
 import { loadExpoFingerprint } from "./dependency";
 
@@ -112,6 +113,45 @@ export const createAndInjectFingerprintFiles = async ({
     fingerprint: newFingerprint,
     androidPaths,
     iosPaths,
+  };
+};
+
+/**
+ * Brings fingerprint.json and each platform's native hash to `fingerprint`,
+ * writing only what differs: what `fingerprint create` writes, without
+ * rewriting a file whose content already matches. A platform without native
+ * files is left alone. Returns what it wrote.
+ */
+export const syncFingerprintFiles = async (fingerprint: {
+  ios: FingerprintResult;
+  android: FingerprintResult;
+}): Promise<{
+  fingerprintJson: boolean;
+  iosPaths: string[];
+  androidPaths: string[];
+}> => {
+  const fingerprintJson = !isFingerprintEquals(
+    await readLocalFingerprint(),
+    fingerprint,
+  );
+  if (fingerprintJson) await createFingerprintJSON(fingerprint);
+  const written = { ios: [] as string[], android: [] as string[] };
+  for (const platform of ["ios", "android"] as const) {
+    let current: string | null;
+    try {
+      current = (await getFingerprintHash(platform)).value;
+    } catch {
+      continue;
+    }
+    if (current === fingerprint[platform].hash) continue;
+    written[platform] = (
+      await setFingerprintHash(platform, fingerprint[platform].hash)
+    ).paths;
+  }
+  return {
+    fingerprintJson,
+    iosPaths: written.ios,
+    androidPaths: written.android,
   };
 };
 
