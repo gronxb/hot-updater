@@ -12,13 +12,13 @@ You don't install it on its own. `@hot-updater/server` and
 import { insights } from "@hot-updater/server/plugins/insights";
 
 // The app
-import { insights } from "@hot-updater/react-native/plugins/insights";
+import { HotUpdater, insights } from "@hot-updater/react-native";
 ```
 
-| Entry       | Re-exported as                                  |
-| ----------- | ----------------------------------------------- |
-| `./server`  | `@hot-updater/server/plugins/insights`          |
-| `./client`  | `@hot-updater/react-native/plugins/insights`    |
-| `./testing` | `@hot-updater/server/plugins/insights/testing`  |
+| Entry       | Re-exported as                                                     |
+| ----------- | ------------------------------------------------------------------ |
+| `./server`  | `@hot-updater/server/plugins/insights`                             |
+| `./client`  | `insights` and its types from the `@hot-updater/react-native` root |
+| `./testing` | `@hot-updater/server/plugins/insights/testing`                     |
 
 See [Insights](https://hot-updater.dev/docs/guides/insights).

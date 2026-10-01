@@ -1,4 +1,4 @@
-import { isUUIDv7 } from "@hot-updater/core";
+import { isUUIDv7 } from "@hot-updater/protocol";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createUUIDv7 } from "./eventId";

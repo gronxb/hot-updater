@@ -1,15 +1,15 @@
 import {
-  getBundlePatches,
-  getManifestStorageUri,
-  getPatchStorageUri,
-} from "@hot-updater/core";
-import {
   type Bundle,
   type HotUpdaterCoreApi,
   rowToBundle,
   type StorageAdapter,
   type StorageAdapterWith,
 } from "@hot-updater/plugin-core";
+import {
+  getBundlePatches,
+  getManifestStorageUri,
+  getPatchStorageUri,
+} from "@hot-updater/protocol";
 
 interface DeleteBundleInput {
   bundleId: string;

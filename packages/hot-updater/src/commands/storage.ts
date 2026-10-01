@@ -1,10 +1,4 @@
 import { loadConfig, p } from "@hot-updater/cli-tools";
-import {
-  getAssetBaseStorageUri,
-  getBundlePatches,
-  getManifestStorageUri,
-  getPatchStorageUri,
-} from "@hot-updater/core";
 import type {
   Bundle,
   HotUpdaterCoreApi,
@@ -18,6 +12,12 @@ import {
   resolveManifestAssetStorageUri,
   rowToBundle,
 } from "@hot-updater/plugin-core";
+import {
+  getAssetBaseStorageUri,
+  getBundlePatches,
+  getManifestStorageUri,
+  getPatchStorageUri,
+} from "@hot-updater/protocol";
 import { createDatabaseCoreApi } from "@hot-updater/server/db";
 
 import {

@@ -1,7 +1,4 @@
-import {
-  defineAggregate,
-  defineTable,
-} from "@hot-updater/plugin-core/server-plugin";
+import { defineAggregate, defineTable } from "@hot-updater/plugin-core";
 
 export const HOUR_MS = 3_600_000;
 export const DAY_MS = 86_400_000;

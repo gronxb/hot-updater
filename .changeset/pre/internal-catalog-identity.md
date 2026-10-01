@@ -1,5 +1,5 @@
 ---
-"@hot-updater/core": minor
+"@hot-updater/protocol": minor
 "@hot-updater/plugin-core": minor
 "@hot-updater/server": minor
 "@hot-updater/cli-tools": minor

@@ -9,7 +9,7 @@ describe("moduleSpecifiersOf", () => {
       'import "./side-effect.mjs";',
       'import type { Plugin } from "@hot-updater/server/plugins";',
       'export { notes } from "./notes.mjs";',
-      'export * from "@hot-updater/core";',
+      'export * from "@hot-updater/protocol";',
       'const lazy = () => import("./lazy.mjs");',
       "const template = () => import(`./template.mjs`);",
       "const computed = (name: string) => import(name);",
@@ -20,13 +20,13 @@ describe("moduleSpecifiersOf", () => {
     ].join("\n");
     // esbuild leaves an import() of a computed specifier as it is.
     const minified =
-      'import{createHotUpdater as a}from"@hot-updater/server";import"./side-effect.mjs";export{notes}from"./notes.mjs";export*from"@hot-updater/core";const b=()=>import("./lazy.mjs"),t=()=>import(`./template.mjs`),c=d=>import(d),l=n=>import("dayjs/locale/"+n+".js"),s=n=>import(`./locales/${n}.mjs`),e="import(\\"./not-an-import.mjs\\")";';
+      'import{createHotUpdater as a}from"@hot-updater/server";import"./side-effect.mjs";export{notes}from"./notes.mjs";export*from"@hot-updater/protocol";const b=()=>import("./lazy.mjs"),t=()=>import(`./template.mjs`),c=d=>import(d),l=n=>import("dayjs/locale/"+n+".js"),s=n=>import(`./locales/${n}.mjs`),e="import(\\"./not-an-import.mjs\\")";';
 
     const expected = [
       "@hot-updater/server",
       "./side-effect.mjs",
       "./notes.mjs",
-      "@hot-updater/core",
+      "@hot-updater/protocol",
       "./lazy.mjs",
       "./template.mjs",
     ];

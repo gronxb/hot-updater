@@ -1,2 +1,2 @@
-export type { Bundle } from "@hot-updater/core";
+export type { Bundle } from "@hot-updater/protocol";
 export type { HotUpdaterAPI } from "../createHotUpdaterCore";

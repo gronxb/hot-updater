@@ -276,8 +276,7 @@ separate validation result.
     {{CREDENTIAL_LABEL}}.
 
     ```ts
-    import { HotUpdater } from "@hot-updater/react-native";
-    {{CLIENT_PLUGIN_IMPORTS}}
+    {{APP_IMPORTS}}
 
     HotUpdater.init({
       baseURL: "<verified-base-url>",
@@ -294,8 +293,7 @@ separate validation result.
     server's client routes are public, so the app sends no credential.
 
     ```ts
-    import { HotUpdater } from "@hot-updater/react-native";
-    {{CLIENT_PLUGIN_IMPORTS}}
+    {{APP_IMPORTS}}
 
     HotUpdater.init({
       baseURL: "<verified-base-url>",

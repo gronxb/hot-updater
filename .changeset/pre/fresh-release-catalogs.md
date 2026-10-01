@@ -3,7 +3,7 @@
 "@hot-updater/cli-tools": minor
 "@hot-updater/cloudflare": minor
 "@hot-updater/console": minor
-"@hot-updater/core": minor
+"@hot-updater/protocol": minor
 "@hot-updater/firebase": minor
 "@hot-updater/js": minor
 "@hot-updater/mock": minor

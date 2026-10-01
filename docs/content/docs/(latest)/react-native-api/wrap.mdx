@@ -31,8 +31,7 @@ wrapper-managed staging/reload. For app-controlled check and apply timing,
 follow the [`init` custom flow](/docs/guides/custom-update).
 
 ```tsx
-import { HotUpdater } from "@hot-updater/react-native"; // [!code ++]
-import { insights } from "@hot-updater/react-native/plugins/insights"; // [!code ++]
+import { HotUpdater, insights } from "@hot-updater/react-native"; // [!code ++]
 import { View, Text } from "react-native";
 
 function App() {

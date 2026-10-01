@@ -163,7 +163,7 @@ export interface PluginClientCredential<Api = unknown> {
  * asks for it.
  */
 export interface PluginClientPlugin {
-  /** The module that exports it, such as `@hot-updater/react-native/plugins/insights`. */
+  /** The module that exports it, such as `@hot-updater/react-native`, which exports `insights`. */
   readonly module: string;
   /** The export, which the app calls with no arguments, such as `insights`. */
   readonly name: string;

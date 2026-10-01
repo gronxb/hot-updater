@@ -1,5 +1,5 @@
+import { definePlugin } from "@hot-updater/plugin-core";
 import { markOfficial } from "@hot-updater/plugin-core/internal";
-import { definePlugin } from "@hot-updater/plugin-core/server-plugin";
 
 import {
   API_KEY_HEADER_NAME,

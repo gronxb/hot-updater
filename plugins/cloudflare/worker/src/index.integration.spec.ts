@@ -1,4 +1,4 @@
-import type { Bundle } from "@hot-updater/core";
+import type { Bundle } from "@hot-updater/protocol";
 import { createHotUpdater } from "@hot-updater/server";
 import { createBundleEventRowFixture } from "@hot-updater/server/plugins/insights/testing";
 import { env } from "cloudflare:test";

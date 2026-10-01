@@ -44,13 +44,14 @@ describe("@hot-updater/test-utils package", () => {
     });
   });
 
-  it("asks for the React Native SDK only from projects that test client plugins", () => {
-    expect(packageJson.peerDependencies["@hot-updater/react-native"]).toBe(
+  it("needs no React Native SDK: client plugins run on protocol's plugin host", () => {
+    expect(packageJson.peerDependencies["@hot-updater/protocol"]).toBe(
       "workspace:^",
     );
-    expect(packageJson.peerDependenciesMeta).toEqual({
-      "@hot-updater/react-native": { optional: true },
-    });
+    expect(Object.keys(packageJson.peerDependencies)).not.toContain(
+      "@hot-updater/react-native",
+    );
+    expect(Object.hasOwn(packageJson, "peerDependenciesMeta")).toBe(false);
   });
 
   it("publishes only built artifacts and package metadata", () => {

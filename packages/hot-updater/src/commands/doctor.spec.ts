@@ -407,7 +407,7 @@ describe("doctor", () => {
       packageJson: {
         dependencies: {
           "hot-updater": "^0.18.2",
-          "@hot-updater/core": "^0.18.2",
+          "@hot-updater/protocol": "^0.18.2",
           "@hot-updater/react-native": "^0.18.2",
         },
         devDependencies: {
@@ -478,7 +478,7 @@ describe("doctor", () => {
       packageJson: {
         dependencies: {
           "hot-updater": "0.18.2",
-          "@hot-updater/core": "^0.18.2",
+          "@hot-updater/protocol": "^0.18.2",
           "@hot-updater/react-native": "^0.18.2",
         },
         devDependencies: {
@@ -497,7 +497,7 @@ describe("doctor", () => {
       packageJson: {
         dependencies: {
           "hot-updater": "^0.18.2",
-          "@hot-updater/core": "0.18.2",
+          "@hot-updater/protocol": "0.18.2",
           "@hot-updater/react-native": "0.18.2",
         },
         devDependencies: {
@@ -516,7 +516,7 @@ describe("doctor", () => {
       packageJson: {
         dependencies: {
           "hot-updater": "^0.18.2",
-          "@hot-updater/core": "0.17.0",
+          "@hot-updater/protocol": "0.17.0",
           "@hot-updater/react-native": "0.17.0",
         },
         devDependencies: {
@@ -531,7 +531,7 @@ describe("doctor", () => {
       details: {
         hotUpdaterVersion: "^0.18.2",
         installedHotUpdaterPackages: [
-          "@hot-updater/core",
+          "@hot-updater/protocol",
           "@hot-updater/react-native",
         ],
         packageJsonPath: "/mock/cwd/package.json",
@@ -539,7 +539,7 @@ describe("doctor", () => {
           {
             currentVersion: "0.17.0",
             expectedVersion: "^0.18.2",
-            packageName: "@hot-updater/core",
+            packageName: "@hot-updater/protocol",
           },
           {
             currentVersion: "0.17.0",
@@ -557,7 +557,7 @@ describe("doctor", () => {
       packageJson: {
         dependencies: {
           "hot-updater": "^1.0.0",
-          "@hot-updater/core": "1.1.0",
+          "@hot-updater/protocol": "1.1.0",
           "@hot-updater/plugin-react-native": "^1.2.0",
         },
         devDependencies: {
@@ -585,7 +585,7 @@ describe("doctor", () => {
     mockReadPackageUp.mockResolvedValue({
       packageJson: {
         dependencies: {
-          "@hot-updater/core": "1.0.0",
+          "@hot-updater/protocol": "1.0.0",
         },
       },
       path: "/mock/cwd/package.json",
@@ -603,7 +603,7 @@ describe("doctor", () => {
       packageJson: {
         dependencies: {
           "hot-updater": "^1.0.0",
-          "@hot-updater/core": "2.0.0",
+          "@hot-updater/protocol": "2.0.0",
           "@hot-updater/plugin-A": "1.0.1",
         },
         devDependencies: {
@@ -620,13 +620,13 @@ describe("doctor", () => {
         hotUpdaterVersion: "^1.0.0",
         packageJsonPath: "/mock/cwd/package.json",
         installedHotUpdaterPackages: [
-          "@hot-updater/core",
+          "@hot-updater/protocol",
           "@hot-updater/plugin-A",
           "@hot-updater/plugin-B",
         ],
         versionMismatches: [
           {
-            packageName: "@hot-updater/core",
+            packageName: "@hot-updater/protocol",
             currentVersion: "2.0.0",
             expectedVersion: "^1.0.0",
           },
@@ -659,7 +659,7 @@ describe("doctor", () => {
       packageJson: {
         dependencies: {
           "hot-updater": "1.0.0",
-          "@hot-updater/core": "1.0.1",
+          "@hot-updater/protocol": "1.0.1",
         },
       },
       path: "/mock/cwd/package.json",
@@ -937,7 +937,7 @@ describe("doctor", () => {
               platform: "project",
               code: "MISSING_CLIENT_PLUGIN",
               resolution:
-                'Import { insights } from "@hot-updater/react-native/plugins/insights" and pass insights() to HotUpdater.init({ plugins }).',
+                'Import { insights } from "@hot-updater/react-native" and pass insights() to HotUpdater.init({ plugins }).',
               fixability: "auto",
             },
           ],

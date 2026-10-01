@@ -1,4 +1,4 @@
-# @hot-updater/core
+# @hot-updater/protocol
 
 ## 1.0.0-rc.15
 

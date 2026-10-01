@@ -21,4 +21,4 @@ export {
   type PluginInstance,
   type PluginProvides,
   type PluginTableColumn,
-} from "@hot-updater/plugin-core/server-plugin";
+} from "@hot-updater/plugin-core";

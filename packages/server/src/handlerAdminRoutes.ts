@@ -1,4 +1,3 @@
-import type { Bundle } from "@hot-updater/core";
 import {
   DatabaseBundleNotFoundError,
   ReleaseCatalogMutationError,
@@ -9,6 +8,7 @@ import {
   type ReleasePolicyPatch,
 } from "@hot-updater/plugin-core";
 import { DatabaseRowReferencedError } from "@hot-updater/plugin-core/internal";
+import type { Bundle } from "@hot-updater/protocol";
 
 import type { CoreApi } from "./core/api";
 import { HandlerBadRequestError } from "./handlerErrors";

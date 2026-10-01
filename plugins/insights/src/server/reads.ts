@@ -1,13 +1,11 @@
-import { DatabaseAdapterInputError } from "@hot-updater/plugin-core";
 import {
-  compareUtf8,
   countDistinct,
+  DatabaseAdapterInputError,
   mergeDistinct,
-} from "@hot-updater/plugin-core/internal";
-import type {
-  HotUpdaterDatabase,
-  Page,
-} from "@hot-updater/plugin-core/server-plugin";
+  type HotUpdaterDatabase,
+  type Page,
+} from "@hot-updater/plugin-core";
+import { compareUtf8 } from "@hot-updater/plugin-core/internal";
 
 import type { BundleEventRow } from "./eventRow";
 import type {

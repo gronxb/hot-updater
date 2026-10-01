@@ -15,7 +15,7 @@ import {
 vi.mock("../../utils/loadServer", () => ({ loadServer: vi.fn() }));
 
 const INSIGHTS = {
-  module: "@hot-updater/react-native/plugins/insights",
+  module: "@hot-updater/react-native",
   name: "insights",
 };
 
@@ -40,18 +40,19 @@ const project = async (files: Record<string, string>) => {
 
 describe("importsClientPlugin", () => {
   it.each([
-    'import { insights } from "@hot-updater/react-native/plugins/insights";',
-    "import { other, insights as withInsights } from '@hot-updater/react-native/plugins/insights'",
-    'import * as clientPlugins from "@hot-updater/react-native/plugins/insights";',
+    'import { HotUpdater, insights } from "@hot-updater/react-native";',
+    'import { insights } from "@hot-updater/react-native";',
+    "import { other, insights as withInsights } from '@hot-updater/react-native'",
+    'import * as clientPlugins from "@hot-updater/react-native";',
   ])("finds %s", (source) => {
     expect(importsClientPlugin(source, INSIGHTS)).toBe(true);
   });
 
   it.each([
-    'import type { insights } from "@hot-updater/react-native/plugins/insights";',
-    'import { type insights } from "@hot-updater/react-native/plugins/insights";',
+    'import type { insights } from "@hot-updater/react-native";',
+    'import { type insights } from "@hot-updater/react-native";',
     'import { insights } from "./insights";',
-    'import { insightsLog } from "@hot-updater/react-native/plugins/insights";',
+    'import { insightsLog } from "@hot-updater/react-native";',
   ])("does not count %s", (source) => {
     expect(importsClientPlugin(source, INSIGHTS)).toBe(false);
   });

@@ -25,11 +25,17 @@ HotUpdater.init({
 
 ## Define a plugin
 
-`defineClientPlugin` from `@hot-updater/react-native/client-plugin` takes an
-`id` and a `setup` function, and returns the plugin with its types:
+`defineClientPlugin` from `@hot-updater/protocol`, the package the app and the
+server share, takes an `id` and a `setup` function, and returns the plugin with
+its types. `@hot-updater/react-native` depends on it; install it to import it
+from your own code:
+
+```package-install
+npm install @hot-updater/protocol
+```
 
 ```ts title="src/launchLogger.ts"
-import { defineClientPlugin } from "@hot-updater/react-native/client-plugin";
+import { defineClientPlugin } from "@hot-updater/protocol";
 
 export const launchLogger = () =>
   defineClientPlugin({
@@ -54,10 +60,10 @@ export const launchLogger = () =>
 - A plugin object can carry its own methods, as `insights()` does with
   `setUser`.
 - Import `defineClientPlugin` and the plugin types from
-  `@hot-updater/react-native/client-plugin`. That entry loads neither React
-  Native nor the native module, so the plugin's [tests](#test-the-plugin) run
-  in plain Node. The app imports `HotUpdater` from `@hot-updater/react-native`,
-  which exports the same names.
+  `@hot-updater/protocol`. It loads neither React Native nor the native
+  module, so the plugin's [tests](#test-the-plugin) run in plain Node. The app
+  imports `HotUpdater` from `@hot-updater/react-native`, which also exports
+  these names.
 
 ## Hooks
 
@@ -289,7 +295,7 @@ installation with each thread, and mentions the latest update failure:
 import {
   defineClientPlugin,
   type HotUpdaterClientContext,
-} from "@hot-updater/react-native/client-plugin";
+} from "@hot-updater/protocol";
 
 export const feedback = () => {
   let context: HotUpdaterClientContext | null = null;
@@ -375,11 +381,12 @@ the same server that serves the app's updates.
 
 ## Test the plugin
 
-`setupClientPlugin` from `@hot-updater/test-utils/react-native` sets a plugin
-up the way `HotUpdater.init` does, on the same plugin host the app runs,
-against an in-memory device and a server your test answers. It loads neither
-React Native nor a test runner, so a spec runs in plain Node under Vitest or
-Jest when the plugin imports only `@hot-updater/react-native/client-plugin`:
+`setupClientPlugin` from `@hot-updater/test-utils/react-native` sets a plugin up
+the way `HotUpdater.init` does, on the plugin host the app runs,
+`createPluginHost` from `@hot-updater/protocol`, against an in-memory device and
+a server your test answers. It loads neither React Native nor a test runner, so
+a spec runs in plain Node under Vitest or Jest when the plugin imports only
+`@hot-updater/protocol`:
 
 ```package-install
 npm install @hot-updater/test-utils vitest --save-dev
@@ -465,7 +472,7 @@ plugin in a release build of an app against a server with its routes.
 ## Publish the plugin
 
 Export the factory, such as `feedback()`, from your package and list
-`@hot-updater/react-native` in `peerDependencies`. A plugin that pairs with a
+`@hot-updater/protocol` in `peerDependencies`. A plugin that pairs with a
 server plugin ships from the same package, from a `./client` entry beside
 `./server`, as `@hot-updater/plugin-insights` does; see
 [Ship both sides from one package](/docs/plugins/publish#ship-both-sides-from-one-package).

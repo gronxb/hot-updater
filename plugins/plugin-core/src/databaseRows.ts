@@ -1,11 +1,15 @@
-import type { Bundle, BundlePatchArtifact, Release } from "@hot-updater/core";
+import type {
+  Bundle,
+  BundlePatchArtifact,
+  Release,
+} from "@hot-updater/protocol";
 import {
   getAssetBaseStorageUri,
   getBundlePatches,
   getManifestFileHash,
   getManifestStorageUri,
   stripBundleArtifactMetadata,
-} from "@hot-updater/core";
+} from "@hot-updater/protocol";
 
 import { bundleMetadataToRow } from "./databaseMetadata";
 import type { BundlePatchRow, BundleRow, ReleaseRow } from "./types";

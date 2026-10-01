@@ -156,7 +156,8 @@ To report launches and updates to [Insights](/docs/guides/insights), add the
 [Insights plugin](/docs/react-native-api/insights) to `plugins`:
 
 ```tsx title="App.tsx (excerpt)"
-import { insights } from "@hot-updater/react-native/plugins/insights"; // [!code ++]
+import { HotUpdater } from "@hot-updater/react-native"; // [!code --]
+import { HotUpdater, insights } from "@hot-updater/react-native"; // [!code ++]
 
 HotUpdater.init({
   baseURL: "https://your-update-server-url",

@@ -424,7 +424,7 @@ describe("Firebase project creation", () => {
       // The managed server runs insights(), so the app reports to it.
       clientPlugins: [
         {
-          module: "@hot-updater/react-native/plugins/insights",
+          module: "@hot-updater/react-native",
           name: "insights",
         },
       ],

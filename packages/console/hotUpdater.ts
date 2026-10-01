@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 
-import type { Bundle, Release } from "@hot-updater/core";
 import { mockDatabase, mockStorage } from "@hot-updater/mock";
+import type { Bundle, Release } from "@hot-updater/protocol";
 import { createHotUpdater } from "@hot-updater/server";
 import {
   createDatabaseCoreApi,

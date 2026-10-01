@@ -1,8 +1,8 @@
+import type { Bundle } from "@hot-updater/plugin-core";
 import {
   createReleaseCatalogScopeKey,
   encodeChannelKey,
-} from "@hot-updater/core";
-import type { Bundle } from "@hot-updater/plugin-core";
+} from "@hot-updater/protocol";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { createDatabaseHarness } from "./database.testFixtures";

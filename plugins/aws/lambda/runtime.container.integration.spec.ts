@@ -20,7 +20,7 @@ import {
   ScanCommand,
 } from "@aws-sdk/lib-dynamodb";
 import { transformEnv } from "@hot-updater/cli-tools";
-import type { Bundle } from "@hot-updater/core";
+import type { Bundle } from "@hot-updater/protocol";
 import {
   createHotUpdater,
   type RuntimeHotUpdaterAPI,

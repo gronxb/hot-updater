@@ -1,7 +1,7 @@
 import {
   type HotUpdaterDatabase,
   DatabaseConstraintError,
-} from "@hot-updater/plugin-core/server-plugin";
+} from "@hot-updater/plugin-core";
 
 import type { ApiKeysSchema } from "./schema";
 

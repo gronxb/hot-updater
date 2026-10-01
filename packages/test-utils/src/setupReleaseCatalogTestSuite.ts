@@ -1,9 +1,9 @@
-import type { ArtifactInfo, ReleaseCatalog } from "@hot-updater/core";
 import type {
   BundleRow,
   ReleaseCatalogRow,
   ReleaseRow,
 } from "@hot-updater/plugin-core";
+import type { ArtifactInfo, ReleaseCatalog } from "@hot-updater/protocol";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {

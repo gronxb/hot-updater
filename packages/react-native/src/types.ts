@@ -1,4 +1,4 @@
-export type HotUpdaterBaseURL = string | (() => string | Promise<string>);
+export type { HotUpdaterBaseURL } from "@hot-updater/protocol";
 
 /**
  * Information about a signature verification failure.

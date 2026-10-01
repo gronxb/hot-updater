@@ -8,7 +8,7 @@
 "@hot-updater/cli-tools": major
 "@hot-updater/cloudflare": major
 "@hot-updater/console": major
-"@hot-updater/core": major
+"@hot-updater/protocol": major
 "@hot-updater/datadog-plugin": major
 "@hot-updater/expo": major
 "@hot-updater/firebase": major

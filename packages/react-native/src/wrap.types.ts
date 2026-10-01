@@ -29,8 +29,8 @@ export type HotUpdaterFallbackComponentProps = {
 
 interface CommonHotUpdaterOptions {
   /**
-   * Client plugins, such as `insights()` from
-   * `@hot-updater/react-native/plugins/insights`. Each plugin's `setup` runs
+   * Client plugins, such as `insights()` from `@hot-updater/react-native`.
+   * Each plugin's `setup` runs
    * once, and its hooks observe launches, update checks, downloads, and
    * update failures. Plugin ids must be unique.
    */

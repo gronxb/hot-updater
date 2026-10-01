@@ -4,7 +4,7 @@ import { createServer } from "node:http";
 import os from "node:os";
 import path from "node:path";
 
-import type { ReleaseCatalog } from "@hot-updater/core";
+import type { ReleaseCatalog } from "@hot-updater/protocol";
 import { describe, expect, it, onTestFinished, vi } from "vitest";
 
 import { verifyServer } from "../doctor/server";

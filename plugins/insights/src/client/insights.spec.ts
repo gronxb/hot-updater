@@ -3,7 +3,7 @@ import {
   type AppReadyResult,
   type BundleDownloadedInfo,
   type UpdateError,
-} from "@hot-updater/core";
+} from "@hot-updater/protocol";
 import {
   type ClientPluginTestRequest,
   type ClientPluginTestStorage,

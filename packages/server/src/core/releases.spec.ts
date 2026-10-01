@@ -1,8 +1,4 @@
 import {
-  createReleaseCatalogScopeKey,
-  encodeChannelKey,
-} from "@hot-updater/core";
-import {
   compileReleaseCatalog,
   releaseRowToRelease,
   type BundleRow,
@@ -10,6 +6,10 @@ import {
   type ReleaseRow,
 } from "@hot-updater/plugin-core";
 import { createMemoryAdapter } from "@hot-updater/plugin-core/internal";
+import {
+  createReleaseCatalogScopeKey,
+  encodeChannelKey,
+} from "@hot-updater/protocol";
 import { describe, expect, it } from "vitest";
 
 import {

@@ -1,5 +1,5 @@
-import type { Bundle } from "@hot-updater/core";
-import { stripBundleArtifactMetadata } from "@hot-updater/core";
+import type { Bundle } from "@hot-updater/protocol";
+import { stripBundleArtifactMetadata } from "@hot-updater/protocol";
 
 import { DatabaseAdapterInputError } from "./databaseErrors";
 import { isDatabaseMetadataObject } from "./databaseJsonValue";

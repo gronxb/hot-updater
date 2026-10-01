@@ -1,6 +1,6 @@
+import { createPluginHost } from "@hot-updater/protocol";
 import { Platform } from "react-native";
 
-import { createPluginHost } from "./createPluginHost";
 import {
   getAppVersion,
   getBundleId,
@@ -13,7 +13,7 @@ import {
 } from "./native";
 import { HOT_UPDATER_SDK_VERSION } from "./sdkVersion";
 
-export type { PluginHostConfig } from "./createPluginHost";
+export type { PluginHostConfig } from "@hot-updater/protocol";
 
 /** The app's plugin host: plugins read the native module and fetch the configured server. */
 export const {

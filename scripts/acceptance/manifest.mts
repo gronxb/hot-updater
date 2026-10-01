@@ -565,7 +565,7 @@ export const domainImports = {
     "packages/server/src/assembly/**",
   ],
   packages: [
-    "@hot-updater/core",
+    "@hot-updater/protocol",
     "@hot-updater/server",
     "@hot-updater/server/plugins",
     "@hot-updater/server/plugins/*",

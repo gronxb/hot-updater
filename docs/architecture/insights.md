@@ -17,8 +17,8 @@ createHotUpdater({
 behind framework authentication, or call the Insights provider from an
 authenticated server surface, as the Console does. API keys authorize client
 requests and ingestion, not admin queries. React Native sends lifecycle reports
-through the `insights()` client plugin
-(`@hot-updater/react-native/plugins/insights`); an app without it sends none.
+through the `insights()` client plugin, which `@hot-updater/react-native`
+exports; an app without it sends none.
 
 ## Where Insights runs
 

@@ -1,16 +1,16 @@
 import {
-  createReleaseCatalogScopeKey,
-  RELEASE_CATALOG_FALLBACK_POLICY,
-  RELEASE_CATALOG_SCHEMA_VERSION,
-  type ReleaseCatalog,
-} from "@hot-updater/core";
-import {
   projectCompiledCatalog,
   projectCompiledRollbackCatalog,
   type CompiledReleaseCatalog,
   type ReleaseCatalogRow,
+  type ReleaseCatalogRequest,
 } from "@hot-updater/plugin-core";
-import type { ReleaseCatalogRequest } from "@hot-updater/plugin-core/server-plugin";
+import {
+  createReleaseCatalogScopeKey,
+  RELEASE_CATALOG_FALLBACK_POLICY,
+  RELEASE_CATALOG_SCHEMA_VERSION,
+  type ReleaseCatalog,
+} from "@hot-updater/protocol";
 
 export type { ReleaseCatalogRequest };
 

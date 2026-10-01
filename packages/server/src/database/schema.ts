@@ -16,4 +16,4 @@ export {
   type RetentionDefinition,
   type RowOf,
   type TableDefinition,
-} from "@hot-updater/plugin-core/server-plugin";
+} from "@hot-updater/plugin-core";

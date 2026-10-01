@@ -1,8 +1,9 @@
-import { addDistinct, compareUtf8 } from "@hot-updater/plugin-core/internal";
-import type {
-  HotUpdaterDatabase,
-  HotUpdaterTransaction,
-} from "@hot-updater/plugin-core/server-plugin";
+import {
+  addDistinct,
+  type HotUpdaterDatabase,
+  type HotUpdaterTransaction,
+} from "@hot-updater/plugin-core";
+import { compareUtf8 } from "@hot-updater/plugin-core/internal";
 
 import { assertBundleEventRow } from "./contract";
 import type { BundleEventFailure, BundleEventRow } from "./eventRow";

@@ -1,7 +1,7 @@
 import fs from "fs/promises";
 import path from "path";
 
-import type { ManifestArchive } from "@hot-updater/core";
+import type { ManifestArchive } from "@hot-updater/protocol";
 
 import { getFileHashFromFile } from "./getFileHash";
 

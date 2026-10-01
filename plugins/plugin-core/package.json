@@ -16,10 +16,6 @@
       "import": "./dist/internal.mjs",
       "require": "./dist/internal.cjs"
     },
-    "./server-plugin": {
-      "import": "./dist/server-plugin.mjs",
-      "require": "./dist/server-plugin.cjs"
-    },
     "./package.json": "./package.json"
   },
   "files": [
@@ -51,7 +47,7 @@
     "access": "public"
   },
   "dependencies": {
-    "@hot-updater/core": "workspace:*",
+    "@hot-updater/protocol": "workspace:*",
     "es-toolkit": "^1.32.0",
     "mime": "^4.0.4",
     "verkit": "catalog:"

@@ -134,7 +134,7 @@ describe("admin /version", () => {
 
     expect(version.clientPlugins).toEqual([
       {
-        module: "@hot-updater/react-native/plugins/insights",
+        module: "@hot-updater/react-native",
         name: "insights",
       },
     ]);

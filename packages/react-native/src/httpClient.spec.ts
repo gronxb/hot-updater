@@ -1,4 +1,4 @@
-import type { ArtifactInfo, ReleaseCatalog } from "@hot-updater/core";
+import type { ArtifactInfo, ReleaseCatalog } from "@hot-updater/protocol";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { FetchJSONResponseError } from "./fetchJSON";

@@ -46,22 +46,15 @@
   "repository": "https://github.com/gronxb/hot-updater",
   "author": "gronxb <gron1gh1@gmail.com> (https://github.com/gronxb)",
   "peerDependencies": {
-    "@hot-updater/core": "workspace:^",
+    "@hot-updater/protocol": "workspace:^",
     "@hot-updater/plugin-core": "workspace:^",
-    "@hot-updater/react-native": "workspace:^",
     "execa": "*",
     "vitest": "^4.0.0"
   },
-  "peerDependenciesMeta": {
-    "@hot-updater/react-native": {
-      "optional": true
-    }
-  },
   "devDependencies": {
-    "@hot-updater/core": "workspace:*",
+    "@hot-updater/protocol": "workspace:*",
     "@hot-updater/js": "workspace:*",
     "@hot-updater/plugin-core": "workspace:*",
-    "@hot-updater/react-native": "workspace:*",
     "@types/node": "catalog:",
     "execa": "catalog:tools",
     "@typescript/native": "npm:typescript@7.0.2",

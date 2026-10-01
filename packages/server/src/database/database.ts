@@ -1,13 +1,13 @@
-import type { AggregateBatching } from "@hot-updater/plugin-core";
+import type {
+  AggregateBatching,
+  HotUpdaterDatabase,
+  ModuleSchema,
+  Page,
+} from "@hot-updater/plugin-core";
 import {
   DATABASE_VERSION_COLUMN,
   type StoredRow,
 } from "@hot-updater/plugin-core/internal";
-import type {
-  HotUpdaterDatabase,
-  ModuleSchema,
-  Page,
-} from "@hot-updater/plugin-core/server-plugin";
 
 import { createAggregateBatches } from "./aggregateBatching";
 import { createEngine, type DatabaseEngineOptions } from "./engine";
@@ -34,7 +34,7 @@ export type {
   ReadRow,
   TableRow,
   UpdateSet,
-} from "@hot-updater/plugin-core/server-plugin";
+} from "@hot-updater/plugin-core";
 
 /** The engine plus `database(module)`, which hands a module its typed handle. */
 export const createDatabaseEngine = ({

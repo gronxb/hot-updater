@@ -1,9 +1,8 @@
 import type {
   CatalogHighWater,
   PersistedSelectionReceipt,
-} from "@hot-updater/core";
-import { HotUpdater } from "@hot-updater/react-native";
-import { insights } from "@hot-updater/react-native/plugins/insights";
+} from "@hot-updater/protocol";
+import { HotUpdater, insights } from "@hot-updater/react-native";
 import { TurboModuleRegistry, type TurboModule } from "react-native";
 import { proxy } from "valtio";
 

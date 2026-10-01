@@ -1,12 +1,12 @@
-import { DatabaseAdapterInputError } from "@hot-updater/plugin-core";
-import { markOfficial } from "@hot-updater/plugin-core/internal";
 import {
+  DatabaseAdapterInputError,
+  definePlugin,
   HotUpdaterConfigError,
   isDatabaseBusyError,
   type HotUpdaterDatabase,
-  definePlugin,
   type PluginEndpoint,
-} from "@hot-updater/plugin-core/server-plugin";
+} from "@hot-updater/plugin-core";
+import { markOfficial } from "@hot-updater/plugin-core/internal";
 
 import type { BundleEventRow } from "./eventRow";
 import { createInsightsModel } from "./model";
@@ -218,7 +218,7 @@ export const insights = (options: InsightsOptions = {}) => {
     // Apps report their events through the SDK's Insights client plugin.
     cli: {
       clientPlugin: {
-        module: "@hot-updater/react-native/plugins/insights",
+        module: "@hot-updater/react-native",
         name: "insights",
       },
     },

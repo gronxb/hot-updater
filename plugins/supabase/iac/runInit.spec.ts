@@ -278,7 +278,7 @@ describe("Supabase init with the project's server definition", () => {
       expect.objectContaining({
         clientPlugins: [
           expect.objectContaining({
-            module: "@hot-updater/react-native/plugins/insights",
+            module: "@hot-updater/react-native",
           }),
         ],
       }),

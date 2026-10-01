@@ -1,10 +1,10 @@
-import type { Bundle } from "@hot-updater/core";
 import type {
   BundlePatchRow,
   BundleRow,
   ChannelRow,
   ReleaseRow,
 } from "@hot-updater/plugin-core";
+import type { Bundle } from "@hot-updater/protocol";
 
 const fixtureId = (suffix: string): string =>
   `00000000-0000-7000-8000-${suffix.padStart(12, "0")}`;

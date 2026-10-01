@@ -3,7 +3,7 @@
 "@hot-updater/cli-tools": patch
 "@hot-updater/cloudflare": patch
 "@hot-updater/console": patch
-"@hot-updater/core": patch
+"@hot-updater/protocol": patch
 "@hot-updater/firebase": patch
 "@hot-updater/plugin-core": patch
 "@hot-updater/postgres": patch

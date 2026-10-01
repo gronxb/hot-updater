@@ -2,7 +2,7 @@ import {
   createReleaseCatalogScopeKey,
   encodeChannelKey,
   type ReleaseCatalog,
-} from "@hot-updater/core";
+} from "@hot-updater/protocol";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const nativeModule = vi.hoisted(

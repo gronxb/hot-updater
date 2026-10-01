@@ -1,7 +1,7 @@
 import {
   getNumericCohortRolloutPosition,
   NUMERIC_COHORT_SIZE,
-} from "@hot-updater/core";
+} from "@hot-updater/protocol";
 import {
   cleanup,
   fireEvent,

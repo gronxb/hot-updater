@@ -1,5 +1,5 @@
-import type { ArtifactInfo } from "@hot-updater/core";
 import type { BundleRow, StorageAdapter } from "@hot-updater/plugin-core";
+import type { ArtifactInfo } from "@hot-updater/protocol";
 
 import { createBundleRowFixture } from "./databaseTestFixtures";
 

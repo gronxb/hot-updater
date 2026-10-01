@@ -17,7 +17,7 @@ const apiKey: InfraClientAuth = {
 };
 
 const insights: InfraClientPlugin = {
-  module: "@hot-updater/react-native/plugins/insights",
+  module: "@hot-updater/react-native",
   name: "insights",
 };
 
@@ -36,8 +36,7 @@ const app = [
   "Add {{CLIENT_PLUGIN_LIST}} once.",
   "<!-- end -->",
   "```ts",
-  'import { HotUpdater } from "@hot-updater/react-native";',
-  "{{CLIENT_PLUGIN_IMPORTS}}",
+  "{{APP_IMPORTS}}",
   "",
   "HotUpdater.init({",
   '  baseURL: "<verified-base-url>",',
@@ -78,10 +77,9 @@ describe("renderAgentInstructions", () => {
       }),
     ).toBe(
       [
-        "Add `insights()` from `@hot-updater/react-native/plugins/insights`, `feedback()` from `feedback-rn` once.",
+        "Add `insights()` from `@hot-updater/react-native`, `feedback()` from `feedback-rn` once.",
         "```ts",
-        'import { HotUpdater } from "@hot-updater/react-native";',
-        'import { insights } from "@hot-updater/react-native/plugins/insights";',
+        'import { HotUpdater, insights } from "@hot-updater/react-native";',
         'import { feedback } from "feedback-rn";',
         "",
         "HotUpdater.init({",

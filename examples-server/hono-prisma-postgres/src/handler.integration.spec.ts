@@ -1,8 +1,8 @@
 import path from "path";
 import { fileURLToPath } from "url";
 
-import type { Bundle } from "@hot-updater/core";
 import { ReleaseManagementError } from "@hot-updater/plugin-core";
+import type { Bundle } from "@hot-updater/protocol";
 import { prismaAdapter } from "@hot-updater/server/adapters/prisma";
 import {
   createDatabaseCoreApi,

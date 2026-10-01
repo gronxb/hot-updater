@@ -83,8 +83,8 @@ Hot Updater's own Insights does. The server plugin names the client one in
 A feature with a server plugin and a client plugin ships both from one
 package, with an entry per side. Hot Updater's own
 `@hot-updater/plugin-insights` has `./server` and `./client`, which
-`@hot-updater/server/plugins/insights` and
-`@hot-updater/react-native/plugins/insights` re-export:
+`@hot-updater/server/plugins/insights` and the `@hot-updater/react-native` root
+re-export:
 
 ```json title="package.json"
 {
@@ -105,12 +105,12 @@ package, with an entry per side. Hot Updater's own
   "files": ["dist", "client"],
   "keywords": ["hot-updater", "hot-updater-plugin"],
   "peerDependencies": {
-    "@hot-updater/react-native": "^1.0.0",
-    "@hot-updater/server": "^1.0.0"
+    "@hot-updater/plugin-core": "^1.0.0",
+    "@hot-updater/protocol": "^1.0.0"
   },
   "peerDependenciesMeta": {
-    "@hot-updater/react-native": { "optional": true },
-    "@hot-updater/server": { "optional": true }
+    "@hot-updater/plugin-core": { "optional": true },
+    "@hot-updater/protocol": { "optional": true }
   }
 }
 ```
@@ -125,12 +125,12 @@ package, with an entry per side. Hot Updater's own
 }
 ```
 
-- The server entry imports `definePlugin` from `@hot-updater/server/plugins`,
-  and the client entry imports `defineClientPlugin` from
-  `@hot-updater/react-native/client-plugin`. Neither imports the other side,
-  so the app never bundles server code.
-- Both peer dependencies are optional: a server project installs
-  `@hot-updater/server`, and an app installs `@hot-updater/react-native`.
+- The server entry imports `definePlugin` from `@hot-updater/plugin-core`, and
+  the client entry imports `defineClientPlugin` from `@hot-updater/protocol`.
+  Neither imports the other side, so the app never bundles server code.
+- Both peer dependencies are optional: a server project gets
+  `@hot-updater/plugin-core` through `@hot-updater/server`, and an app gets
+  `@hot-updater/protocol` through `@hot-updater/react-native`.
 - `client/package.json` lets Metro resolvers that ignore `exports` find the
   client entry. Name only files the package publishes in it: Metro takes the
   first of its `resolverMainFields` the file has and does not fall back, so a
@@ -144,21 +144,23 @@ package, with an entry per side. Hot Updater's own
 List the Hot Updater packages your package imports in `peerDependencies`, and
 in `devDependencies` for your own tests:
 
-| Package                                 | `peerDependencies`                                                   |
-| --------------------------------------- | -------------------------------------------------------------------- |
-| Storage, build, or signing adapter      | `@hot-updater/plugin-core`                                           |
-| Database adapter                        | `@hot-updater/server`                                                |
-| Server plugin                           | `@hot-updater/server`                                                |
-| Client plugin                           | `@hot-updater/react-native`                                          |
-| Server and client plugin in one package | `@hot-updater/server` and `@hot-updater/react-native`, both optional |
+| Package                                 | `peerDependencies`                                                       |
+| --------------------------------------- | ------------------------------------------------------------------------ |
+| Storage, build, or signing adapter      | `@hot-updater/plugin-core`                                               |
+| Database adapter                        | `@hot-updater/server`, whose `@hot-updater/server/database` it builds on |
+| Server plugin                           | `@hot-updater/plugin-core`                                               |
+| Client plugin                           | `@hot-updater/protocol`                                                  |
+| Server and client plugin in one package | `@hot-updater/plugin-core` and `@hot-updater/protocol`, both optional    |
 
-A peer dependency makes your package use the project's copy of each package,
-the one its CLI, server, and Console use. A second copy breaks at runtime,
-because Hot Updater checks its errors with `instanceof`. A server plugin that
-catches `DatabaseConstraintError` from its own copy misses the one the
-project's engine throws, and a database adapter built on its own copy of
-`@hot-updater/server/database` makes the server answer a missing schema with
-500 instead of 503.
+A peer dependency makes your package use the project's copy of each package, the
+one its CLI, server, and Console use. A project gets `@hot-updater/plugin-core`
+through `@hot-updater/server` and `@hot-updater/protocol` through
+`@hot-updater/react-native`, and npm and pnpm resolve your peer dependencies to
+those copies. A second copy breaks at runtime, because Hot Updater checks its
+errors with `instanceof`. A server plugin that catches `DatabaseConstraintError`
+from its own copy misses the one the project's engine throws, and a database
+adapter built on its own copy of `@hot-updater/server/database` makes the server
+answer a missing schema with 500 instead of 503.
 
 Set the range to the major version you test against, such as `^1.0.0`, and
 run your tests against each new minor version.
@@ -174,8 +176,8 @@ run your tests against each new minor version.
 
 Add `@hot-updater/test-utils` to `devDependencies` with `vitest` 4, which it
 takes as a peer dependency. Its `@hot-updater/test-utils/react-native` entry
-also needs `@hot-updater/react-native`, an optional peer dependency, and runs
-under Jest as well.
+runs client plugins on the plugin host from `@hot-updater/protocol`, so it
+needs no React Native, and runs under Jest as well.
 
 Before a release, install the packed tarball (`npm pack`) in a project and run
 the commands that use the package: `hot-updater deploy` for a storage adapter,

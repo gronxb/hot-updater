@@ -45,7 +45,7 @@
     "test:type": "tsc --noEmit"
   },
   "devDependencies": {
-    "@hot-updater/core": "workspace:*",
+    "@hot-updater/protocol": "workspace:*",
     "@hot-updater/mock": "workspace:*",
     "@hot-updater/test-utils": "workspace:*",
     "@types/aws-lambda": "^8.10.147",

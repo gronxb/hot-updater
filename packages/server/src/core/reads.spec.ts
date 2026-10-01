@@ -1,15 +1,15 @@
 import {
-  createReleaseCatalogScopeKey,
-  encodeChannelKey,
-  NIL_UUID,
-} from "@hot-updater/core";
-import {
   compileReleaseCatalog,
   releaseRowToRelease,
   type ReleaseRow,
   type StorageAdapterWith,
 } from "@hot-updater/plugin-core";
 import { createMemoryAdapter } from "@hot-updater/plugin-core/internal";
+import {
+  createReleaseCatalogScopeKey,
+  encodeChannelKey,
+  NIL_UUID,
+} from "@hot-updater/protocol";
 import { createReleaseCatalogTestStorage } from "@hot-updater/test-utils";
 import { describe, expect, it } from "vitest";
 

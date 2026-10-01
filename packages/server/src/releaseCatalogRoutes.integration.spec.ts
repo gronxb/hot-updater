@@ -1,5 +1,5 @@
-import { encodeChannelKey } from "@hot-updater/core";
 import type { EngineDatabase } from "@hot-updater/plugin-core";
+import { encodeChannelKey } from "@hot-updater/protocol";
 import { describe, expect, it, vi } from "vitest";
 
 import { createDatabaseCoreApi } from "./core/api";

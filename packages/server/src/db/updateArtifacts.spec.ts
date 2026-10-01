@@ -1,5 +1,5 @@
-import { NIL_UUID, type Bundle } from "@hot-updater/core";
 import { createMemoryAdapter } from "@hot-updater/plugin-core/internal";
+import { NIL_UUID, type Bundle } from "@hot-updater/protocol";
 import { describe, expect, it, vi } from "vitest";
 
 import { createCoreApi } from "../core/api";

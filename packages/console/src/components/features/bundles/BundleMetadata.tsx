@@ -1,5 +1,5 @@
-import { getPatchBaseFileHash, getPatchFileHash } from "@hot-updater/core";
 import type { Bundle, ReleaseRow } from "@hot-updater/plugin-core";
+import { getPatchBaseFileHash, getPatchFileHash } from "@hot-updater/protocol";
 import { ExternalLink } from "lucide-react";
 
 import { HashValueDisplay } from "@/components/HashValueDisplay";

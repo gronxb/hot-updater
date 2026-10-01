@@ -3,7 +3,7 @@ import type {
   HotUpdaterClientContext,
   HotUpdaterClientPlugin,
   UpdateError,
-} from "@hot-updater/react-native";
+} from "@hot-updater/protocol";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {

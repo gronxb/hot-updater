@@ -1,12 +1,12 @@
-import {
-  createReleaseCatalogScopeKey,
-  encodeChannelKey,
-  parseReleaseCatalogScopeKey,
-} from "@hot-updater/core";
 import type {
   CompiledCatalogSegment,
   ReleaseCatalogRow,
 } from "@hot-updater/plugin-core";
+import {
+  createReleaseCatalogScopeKey,
+  encodeChannelKey,
+  parseReleaseCatalogScopeKey,
+} from "@hot-updater/protocol";
 import { normalizeRange, rangesIntersect } from "verkit";
 
 import { parseCompiledCatalog } from "../db/releaseCatalog";

@@ -10,14 +10,14 @@ import { fileURLToPath } from "url";
 import {
   getBundlePatch,
   getBundlePatches,
-} from "../../../packages/core/src/bundleArtifacts.ts";
+} from "../../../packages/protocol/src/bundleArtifacts.ts";
 import {
   createReleaseCatalogScopeKey,
   decodeChannelKey,
   encodeChannelKey,
-} from "../../../packages/core/src/releaseCatalogScope.ts";
-import { getRolledOutNumericCohorts } from "../../../packages/core/src/rollout.ts";
-import type { Bundle } from "../../../packages/core/src/types.ts";
+} from "../../../packages/protocol/src/releaseCatalogScope.ts";
+import { getRolledOutNumericCohorts } from "../../../packages/protocol/src/rollout.ts";
+import type { Bundle } from "../../../packages/protocol/src/types.ts";
 import {
   createDatabaseCoreApi,
   createDatabasePluginApis,
@@ -212,7 +212,7 @@ const BARE_BUILD_CACHE_INPUT_PATHS = [
   "examples/v0.85.0/src/e2eRuntimeConfig.ts",
   "examples/v0.85.0/src/test",
   "plugins/bare",
-  "packages/core",
+  "packages/protocol",
   "packages/hot-updater/src/utils/bundleManifest.ts",
   "packages/react-native",
 ];

@@ -137,8 +137,8 @@ Additional route and handler changes:
   Insights ingestion is always available on the client handler and queries
   are always available on the admin handler, so the server-side Insights flag
   and `queryAccess` are removed. React Native reports only with the
-  `insights()` client plugin from `@hot-updater/react-native/plugins/insights`
-  in `plugins` of `HotUpdater.init` or `HotUpdater.wrap`; an app without it
+  `insights()` client plugin from `@hot-updater/react-native` in `plugins` of
+  `HotUpdater.init` or `HotUpdater.wrap`; an app without it
   sends no events. Client authentication moves to the
   required top-level `clientAccess` policy.
 - `standaloneRepository.baseUrl` now identifies the exact admin root, such as
@@ -456,8 +456,8 @@ toBundleId, ... }`.
   must handle the new discriminated union.
 
 App-ready transition and Bundle adoption reporting comes from the
-`insights()` client plugin in `@hot-updater/react-native/plugins/insights`,
-passed in `plugins` of `HotUpdater.init` or `HotUpdater.wrap`. It uses the
+`insights()` client plugin from `@hot-updater/react-native`, passed in
+`plugins` of `HotUpdater.init` or `HotUpdater.wrap`. It uses the
 configured `baseURL`, and an app without it sends nothing. The server routes
 and backing model remain available regardless.
 
@@ -469,6 +469,7 @@ is removed. Pass the complete parameter object or call
 
 | Package                          | Removed                                                                       | Replacement                                                                       |
 | -------------------------------- | ----------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| `@hot-updater/core`              | The package, renamed                                                          | `@hot-updater/protocol`, with the same exports                                    |
 | `@hot-updater/aws`               | `s3Database`                                                                  | `dynamoDB`; S3 remains artifact storage only                                      |
 | `@hot-updater/aws`               | `s3LambdaEdgeStorage`                                                         | `s3Storage`                                                                       |
 | `@hot-updater/aws`               | `withCloudFrontSignedUrl`                                                     | Pass `cloudFrontDownloadUrl(...)` as `s3Storage({ getDownloadUrl })`              |

@@ -11,7 +11,7 @@
  * expect(runtime.requests[0]?.json()).toEqual(expectedEvent);
  * ```
  *
- * It sets plugins up with the plugin host of `@hot-updater/react-native`,
+ * It sets plugins up with the plugin host from `@hot-updater/protocol`,
  * the same code the app runs, so they get the same context and rules:
  * unique ids, `setup` once per runtime, storage scoped to the plugin's id
  * with values up to 64 KB, `fetch` relative to `baseURL` with
@@ -19,21 +19,19 @@
  * whose throws and rejections are reported, not raised. It imports neither
  * React Native nor a test runner, so it works under Vitest and Jest.
  */
-import type {
-  AppReadyResult,
-  BundleDownloadedInfo,
-  HotUpdaterBaseURL,
-  HotUpdaterClientPlugin,
-  UpdateCheckResult,
-  UpdateError,
-} from "@hot-updater/react-native";
 import {
   createPluginHost,
-  type PluginHookName,
-  type PluginHookPayload,
   pluginStorageKey,
   resolveBaseURL,
-} from "@hot-updater/react-native/plugin-host";
+  type AppReadyResult,
+  type BundleDownloadedInfo,
+  type HotUpdaterBaseURL,
+  type HotUpdaterClientPlugin,
+  type PluginHookName,
+  type PluginHookPayload,
+  type UpdateCheckResult,
+  type UpdateError,
+} from "@hot-updater/protocol";
 
 /** A value the test fixes, or reads each time a plugin asks for it. */
 type TestValue<T> = T | (() => T);

@@ -755,7 +755,7 @@ describe("Cloudflare init discovery", () => {
         expect.objectContaining({
           clientPlugins: [
             expect.objectContaining({
-              module: "@hot-updater/react-native/plugins/insights",
+              module: "@hot-updater/react-native",
             }),
           ],
         }),

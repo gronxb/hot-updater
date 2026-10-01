@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 
-import { isUUIDv7 } from "@hot-updater/core";
+import { isUUIDv7 } from "@hot-updater/protocol";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createKeyedUUIDv7, createUUIDv7, sha256 } from "./eventId";

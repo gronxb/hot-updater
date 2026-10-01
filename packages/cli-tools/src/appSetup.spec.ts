@@ -47,18 +47,15 @@ describe("renderAppSetup", () => {
       baseURL: "https://example.com",
       credential,
       clientPlugins: [
-        {
-          module: "@hot-updater/react-native/plugins/insights",
-          name: "insights",
-        },
+        { module: "@hot-updater/react-native", name: "insights" },
         { module: "feedback-rn", name: "feedback" },
       ],
     });
 
+    // A built-in plugin joins HotUpdater's import from the SDK.
     expect(source).toContain(
       [
-        'import { HotUpdater } from "@hot-updater/react-native";',
-        'import { insights } from "@hot-updater/react-native/plugins/insights";',
+        'import { HotUpdater, insights } from "@hot-updater/react-native";',
         'import { feedback } from "feedback-rn";',
       ].join("\n"),
     );

@@ -47,7 +47,7 @@
     "access": "public"
   },
   "dependencies": {
-    "@hot-updater/core": "workspace:*",
+    "@hot-updater/protocol": "workspace:*",
     "@hot-updater/plugin-core": "workspace:*",
     "esbuild": "catalog:tools",
     "jiti": "2.6.1",

@@ -1,10 +1,4 @@
 import {
-  ARTIFACT_PROTOCOL_VERSION,
-  NIL_UUID,
-  type ArtifactInfo,
-  type ReleaseCatalog,
-} from "@hot-updater/core";
-import {
   rowToBundle,
   type BundleDetail,
   type BundlePatchRow,
@@ -14,8 +8,14 @@ import {
   type ReleaseCatalogRow,
   type ReleaseFilter,
   type ReleaseRow,
+  type CoreReads,
 } from "@hot-updater/plugin-core";
-import type { CoreReads } from "@hot-updater/plugin-core/server-plugin";
+import {
+  ARTIFACT_PROTOCOL_VERSION,
+  NIL_UUID,
+  type ArtifactInfo,
+  type ReleaseCatalog,
+} from "@hot-updater/protocol";
 
 import type { HotUpdaterDatabase, ReadRow } from "../database/database";
 import type { Page } from "../database/engineReads";

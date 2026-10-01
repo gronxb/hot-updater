@@ -5,8 +5,11 @@
  * @format
  */
 
-import { HotUpdater, useHotUpdaterStore } from "@hot-updater/react-native";
-import { insights } from "@hot-updater/react-native/plugins/insights";
+import {
+  HotUpdater,
+  insights,
+  useHotUpdaterStore,
+} from "@hot-updater/react-native";
 import React, { useEffect, useState } from "react";
 import {
   Alert,

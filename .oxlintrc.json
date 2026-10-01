@@ -118,6 +118,62 @@
           }
         ]
       }
+    },
+    {
+      "files": [
+        "packages/react-native/src/**",
+        "packages/protocol/src/**",
+        "plugins/insights/src/client/**"
+      ],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "paths": [
+              {
+                "name": "typescript",
+                "message": "Use OXC for source analysis; TypeScript is compiler-only."
+              },
+              {
+                "name": "@typescript/native",
+                "message": "Use OXC for source analysis; TypeScript is compiler-only."
+              },
+              {
+                "name": "@typescript/typescript6",
+                "message": "Use OXC for source analysis; TypeScript is compiler-only."
+              },
+              {
+                "name": "@hot-updater/plugin-core",
+                "message": "React Native, @hot-updater/protocol, and the Insights client run on the device and never import @hot-updater/plugin-core or @hot-updater/server, which run where the server runs. Move device-safe code they need into @hot-updater/protocol."
+              },
+              {
+                "name": "@hot-updater/server",
+                "message": "React Native, @hot-updater/protocol, and the Insights client run on the device and never import @hot-updater/plugin-core or @hot-updater/server, which run where the server runs. Move device-safe code they need into @hot-updater/protocol."
+              }
+            ],
+            "patterns": [
+              {
+                "group": [
+                  "typescript/*",
+                  "@typescript/native/*",
+                  "@typescript/typescript6/*"
+                ],
+                "message": "Use OXC for source analysis; TypeScript is compiler-only."
+              },
+              {
+                "group": [
+                  "@hot-updater/plugin-core/*",
+                  "@hot-updater/server/*",
+                  "@hot-updater/plugin-insights/server",
+                  "@hot-updater/plugin-insights/internal",
+                  "@hot-updater/plugin-insights/testing"
+                ],
+                "message": "React Native, @hot-updater/protocol, and the Insights client run on the device and never import @hot-updater/plugin-core or @hot-updater/server, which run where the server runs. Move device-safe code they need into @hot-updater/protocol."
+              }
+            ]
+          }
+        ]
+      }
     }
   ]
 }
