@@ -1934,11 +1934,10 @@ importers:
         version: 0.41.7
 
   plugins/api-keys:
-    dependencies:
+    devDependencies:
       '@hot-updater/plugin-core':
         specifier: workspace:*
         version: link:../plugin-core
-    devDependencies:
       '@types/node':
         specifier: 'catalog:'
         version: 20.19.43
@@ -2240,13 +2239,13 @@ importers:
 
   plugins/insights:
     dependencies:
-      '@hot-updater/plugin-core':
-        specifier: workspace:*
-        version: link:../plugin-core
       '@hot-updater/protocol':
         specifier: workspace:*
         version: link:../../packages/protocol
     devDependencies:
+      '@hot-updater/plugin-core':
+        specifier: workspace:*
+        version: link:../plugin-core
       '@hot-updater/test-utils':
         specifier: workspace:*
         version: link:../../packages/test-utils

@@ -32,10 +32,11 @@
     "build": "tsdown",
     "test:type": "tsc --noEmit"
   },
-  "dependencies": {
-    "@hot-updater/plugin-core": "workspace:*"
-  },
   "devDependencies": {
+    "@hot-updater/plugin-core": "workspace:*",
     "@types/node": "catalog:"
+  },
+  "peerDependencies": {
+    "@hot-updater/plugin-core": "workspace:^"
   }
 }

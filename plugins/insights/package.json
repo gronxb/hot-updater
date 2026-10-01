@@ -41,18 +41,22 @@
     "test:type": "tsc --noEmit"
   },
   "dependencies": {
-    "@hot-updater/protocol": "workspace:*",
-    "@hot-updater/plugin-core": "workspace:*"
+    "@hot-updater/protocol": "workspace:*"
   },
   "peerDependencies": {
+    "@hot-updater/plugin-core": "workspace:^",
     "vitest": "^4.0.0"
   },
   "peerDependenciesMeta": {
+    "@hot-updater/plugin-core": {
+      "optional": true
+    },
     "vitest": {
       "optional": true
     }
   },
   "devDependencies": {
+    "@hot-updater/plugin-core": "workspace:*",
     "@hot-updater/test-utils": "workspace:*",
     "@types/node": "catalog:",
     "vitest": "catalog:"

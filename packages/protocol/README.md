@@ -37,7 +37,8 @@ passes it the platform, the device's storage, and `fetch`, and
 database adapter contracts, the server plugin authoring API, and their
 helpers. It runs wherever the server runs, in Node, Workers, Deno, or Lambda,
 and depends on this package, never the reverse. The app never imports it:
-React Native imports only this package.
+React Native imports this package and the built-in Insights client, never
+plugin-core or the server.
 
 `src/package.spec.ts` checks that this package has no dependencies and imports
 only what its build bundles. An oxlint rule refuses `@hot-updater/plugin-core`

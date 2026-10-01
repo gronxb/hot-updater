@@ -5,15 +5,15 @@ contracts and their helpers, such as `createStorageAdapter`, the release
 catalog compiler, and the server plugin authoring API: `definePlugin`, the
 schema DSL, the typed database handle, and the database errors. Adapter and
 server plugin authors import it from here and list it in `peerDependencies`, as
-Hot Updater's own plugin packages depend on it.
+Hot Updater's own plugin packages do.
 
 ## Boundary with `@hot-updater/protocol`
 
 - `@hot-updater/protocol` is the device-safe, zero-dependency package for what
   crosses a boundary: the formats and pure computations the app and the server
   share, and the contracts between a host and its extensions on the device,
-  such as the client plugin contract. It is the only Hot Updater library React
-  Native imports.
+  such as the client plugin contract. React Native imports it and the built-in
+  Insights client, never plugin-core or the server.
 - `@hot-updater/plugin-core` is the kit that extends the server: the adapter
   and server plugin contracts and their helpers. It runs wherever the server
   runs, in Node, Workers, Deno, or Lambda, depends on `@hot-updater/protocol`,

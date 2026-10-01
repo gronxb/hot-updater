@@ -120,7 +120,11 @@
       }
     },
     {
-      "files": ["packages/react-native/src/**", "packages/protocol/src/**"],
+      "files": [
+        "packages/react-native/src/**",
+        "packages/protocol/src/**",
+        "plugins/insights/src/client/**"
+      ],
       "rules": {
         "no-restricted-imports": [
           "error",
@@ -140,11 +144,11 @@
               },
               {
                 "name": "@hot-updater/plugin-core",
-                "message": "React Native and @hot-updater/protocol run on the device and import only @hot-updater/protocol: @hot-updater/plugin-core and @hot-updater/server run where the server runs. Move device-safe code they need into @hot-updater/protocol."
+                "message": "React Native, @hot-updater/protocol, and the Insights client run on the device and never import @hot-updater/plugin-core or @hot-updater/server, which run where the server runs. Move device-safe code they need into @hot-updater/protocol."
               },
               {
                 "name": "@hot-updater/server",
-                "message": "React Native and @hot-updater/protocol run on the device and import only @hot-updater/protocol: @hot-updater/plugin-core and @hot-updater/server run where the server runs. Move device-safe code they need into @hot-updater/protocol."
+                "message": "React Native, @hot-updater/protocol, and the Insights client run on the device and never import @hot-updater/plugin-core or @hot-updater/server, which run where the server runs. Move device-safe code they need into @hot-updater/protocol."
               }
             ],
             "patterns": [
@@ -161,7 +165,7 @@
                   "@hot-updater/plugin-core/*",
                   "@hot-updater/server/*"
                 ],
-                "message": "React Native and @hot-updater/protocol run on the device and import only @hot-updater/protocol: @hot-updater/plugin-core and @hot-updater/server run where the server runs. Move device-safe code they need into @hot-updater/protocol."
+                "message": "React Native, @hot-updater/protocol, and the Insights client run on the device and never import @hot-updater/plugin-core or @hot-updater/server, which run where the server runs. Move device-safe code they need into @hot-updater/protocol."
               }
             ]
           }
