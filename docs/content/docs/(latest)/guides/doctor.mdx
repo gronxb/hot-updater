@@ -173,33 +173,40 @@ with the reason, with `fixability` `blocked`: make `server` load, then rerun
 
 | Issues | Repair |
 | --- | --- |
-| `MISSING_FINGERPRINT_JSON`, `MISSING_FINGERPRINT_HASH`, `FINGERPRINT_HASH_MISMATCH`, `FINGERPRINT_JSON_STALE` | What `fingerprint create` writes: `fingerprint.json`, and the fingerprint hash in `Info.plist` and `AndroidManifest.xml` |
+| `MISSING_FINGERPRINT_JSON`, `MISSING_FINGERPRINT_HASH`, `FINGERPRINT_HASH_MISMATCH`, `FINGERPRINT_JSON_STALE` | What `fingerprint create` writes, where it differs: `fingerprint.json`, and the fingerprint hash in `Info.plist` and `AndroidManifest.xml` |
 | `MISSING_PUBLIC_KEY`, `PUBLIC_KEY_MISMATCH` | What `keys export-public --yes` writes: the configured signing public key, in the native files |
-| `ORPHAN_PUBLIC_KEY` | What `keys remove --yes` removes: the public key in the native files |
 | `RELEASE_CATALOG_STALE` | Each stale scope's catalog, rebuilt from its Releases in the server's database |
+| `UNREFERENCED_ARTIFACTS` | The artifact records no Release uses, deleted from the server's database |
 
 ```package-install
 npx hot-updater doctor --fix
 ```
 
-`--fix` is the confirmation, so it does not ask again. It names every file and
-release catalog it writes, and the checks after it describe the project as the
-repairs left it.
-When it writes native files, its output ends by asking you to rebuild the
-native app: an installed app keeps the native files it was built with. A
-replaced public key only reaches new builds; apps already installed keep the
-previous key and reject bundles signed with the configured one.
+`--fix` is the confirmation, so it does not ask again. It names every file,
+release catalog, and artifact record it writes, and the checks after it
+describe the project as the repairs left it. When it writes a native file, its
+output ends by asking you to rebuild the native app: an installed app keeps the
+native files it was built with. A replaced public key only reaches new builds;
+apps already installed keep the previous key and reject bundles signed with the
+configured one.
+
+`--fix` leaves an issue with more than one remedy to you, and never removes a
+public key. For `ORPHAN_PUBLIC_KEY`, remove the key with `keys remove` or enable
+signing yourself: removing it turns off signature verification in the app,
+which is wrong when signing is set up where this machine cannot see it, such as
+an environment variable only CI sets.
 
 On an Expo project whose `ios` and `android` folders `expo prebuild`
 generates, `--fix` skips the native-file repairs and says so, since the next
-prebuild would overwrite them. Follow the issue's resolution there instead. Issues that
-need a code edit, such as the bundle provider or a client plugin, and
-infrastructure issues are not repaired by `--fix`.
+prebuild would overwrite them; an Expo project outside git counts as one.
+Follow the issue's resolution there instead. Issues that need a code edit, such
+as the bundle provider or a client plugin, and infrastructure issues are not
+repaired by `--fix`.
 
 With `--json`, `details.fixes` lists each repair: its `repair`, the issue
-`codes` it repairs, a `status` of `applied`, `skipped`, or `failed`, the files
-or catalogs it `wrote`, and a `note` with the reason or what to know. `success` describes
-the project after the repairs.
+`codes` it repairs, a `status` of `applied`, `skipped`, or `failed`, what it
+`wrote`, whether that included a `native` file, and a `note` with the reason or
+what to know. `success` describes the project after the repairs.
 
 ## AI Agent Iteration
 
@@ -223,8 +230,9 @@ Read `fixability` as the repair prerequisite, within the user's authorized work:
 | `blocked`  | The repair requires external context/access beyond doctor’s local fixes. |
 
 Native wiring, fingerprint creation, and native public key export/removal are
-intended to be iterated locally by an agent; `doctor --fix` runs the last two
-in one step and names every file it writes. Infrastructure failures are marked
+intended to be iterated locally by an agent. `doctor --fix` creates the
+fingerprint and exports the public key in one step, naming every file it
+writes; it never removes a public key. Infrastructure failures are marked
 as blocked because applying migrations or redeploying a server usually depends
 on provider credentials and environment-specific access. During a requested
 setup or upgrade, an agent with that access should follow the generated
@@ -287,13 +295,20 @@ result alone does not.
 
 ## Check Release Catalogs
 
-When `hot-updater.config.ts` sets `server`, doctor reads the server's release
-catalogs through it. It compares each scope's catalog with a rebuild from that
-scope's Releases, without writing, and reports each scope in
-`details.releaseCatalogs.scopes`: its `state` of `verified`, `stale`, or
-`missing`, its stored `generation`, and its size. Devices read the catalog, not
-the Releases, so a catalog that differs from its Releases is the error
-`RELEASE_CATALOG_STALE`. Rebuild the stale catalogs from their Releases with:
+When `hot-updater.config.ts` sets `server`, doctor opens that server once for
+the whole run and reads its release catalogs. It checks every scope that has a
+catalog row or a Release, comparing each catalog with a rebuild from its
+scope's Releases without writing, and reports each scope in
+`details.releaseCatalogs.scopes`:
+
+- `state`: `verified`, `stale`, `missing` (Releases but no catalog row), or
+  `unchecked` (core could not compile it);
+- `generation`: the stored catalog's, or `null` without a row;
+- `byteSize` and `descriptorCount`: what its Releases compile to.
+
+Devices read the catalog, not the Releases, so a catalog that differs from its
+Releases is the error `RELEASE_CATALOG_STALE`. Rebuild the stale catalogs from
+their Releases with:
 
 ```package-install
 npx hot-updater doctor --fix
@@ -308,12 +323,21 @@ credentials are not available where it runs, it warns
 `true` for agents that gate on it. Without `server` in the config, doctor skips
 the check.
 
-A scope whose catalog row has lost its identity is
-`RELEASE_CATALOG_IDENTITY_MISSING`, and `--fix` does not rebuild it. Restore the
-original catalog row from backup before rebuilding or deploying; a new identity
-would not match the history devices already hold. These checks rebuild
-projections; they do not recover missing source policy or replace a native OTA
-delivery test.
+A scope with Releases but no catalog row answers devices with 404. Doctor
+reports it as the error `RELEASE_CATALOG_IDENTITY_MISSING`, and `--fix` does
+not create the row: restore it from a backup before rebuilding or deploying,
+since a new identity would not match the history devices already hold. A scope
+core cannot compile is the error `RELEASE_CATALOG_CHECK_FAILED` with the
+reason, beside what the other scopes report. These checks rebuild projections;
+they do not recover missing source policy or replace a native OTA delivery
+test.
+
+The same run lists the artifact records no Release uses. Doctor warns
+`UNREFERENCED_ARTIFACTS` with their IDs, since `storage prune` keeps the files
+of every artifact record. `--fix` deletes the records, and a later
+`storage prune` reclaims the files. When it cannot read the artifact records,
+it warns `ARTIFACTS_UNCHECKED`; like the catalog warning, it never fails the
+run.
 
 To preview a proposed change to one Bundle's policy, use
 [`bundle update --dry-run`](/docs/guides/console#preview-and-protect-automated-changes).

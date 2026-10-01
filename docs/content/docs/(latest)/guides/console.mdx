@@ -131,9 +131,10 @@ rebuild the stale catalogs it reports.
 
 Advanced diagnostics shows each bundle's **Artifact ID**: the uploaded files the
 bundle uses. A promoted bundle shares its source's artifact. Deleting the last
-bundle that uses an artifact deletes the artifact's record too, with the
-patches built on it; `bundle delete --json` names it in `deletedArtifactId`.
-The stored files stay until the [Storage Cleanup](/docs/guides/storage-cleanup)
+bundle that uses an artifact deletes the artifact's record too, with every
+patch to or from it, so a device running that bundle downloads its next update
+in full. `bundle delete --json` names the artifact in `deletedArtifactId`. The
+stored files stay until the [Storage Cleanup](/docs/guides/storage-cleanup)
 workflow previews and deletes them.
 
 ## Insights

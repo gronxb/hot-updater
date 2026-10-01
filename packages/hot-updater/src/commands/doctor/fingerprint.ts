@@ -42,17 +42,23 @@ const generationFailed = (error: unknown): NativeCheckIssue => {
 };
 
 /**
- * Computes the project's fingerprint as `fingerprint create` would and
- * compares it with fingerprint.json: FINGERPRINT_JSON_STALE for each
+ * Compares fingerprint.json with the project's fingerprint as
+ * `fingerprint create` computes it: FINGERPRINT_JSON_STALE for each
  * platform whose hash changed, with the sources that changed.
+ * `fingerprints` gives that fingerprint; a doctor run computes it once.
  */
-export const checkFingerprintJson = async (local: {
-  readonly ios?: FingerprintResult | null;
-  readonly android?: FingerprintResult | null;
-}): Promise<NativeCheckIssue[]> => {
+export const checkFingerprintJson = async (
+  local: {
+    readonly ios?: FingerprintResult | null;
+    readonly android?: FingerprintResult | null;
+  },
+  fingerprints: () => ReturnType<
+    typeof generateFingerprints
+  > = generateFingerprints,
+): Promise<NativeCheckIssue[]> => {
   let current: Awaited<ReturnType<typeof generateFingerprints>>;
   try {
-    current = await generateFingerprints();
+    current = await fingerprints();
   } catch (error) {
     return [generationFailed(error)];
   }

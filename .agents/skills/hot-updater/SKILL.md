@@ -161,9 +161,12 @@ the CLI cannot bind, or exclusivity/preview is untrustworthy, do not prune.
 ### Doctor
 
 Diagnose by default. Repair only when requested and exact help identifies it.
-`doctor --fix` writes every repair doctor can make itself, such as
-fingerprint.json and native files; treat it as a mutation, and report each
-file it names in `details.fixes`.
+`doctor --fix` writes every repair doctor can make itself: fingerprint.json and
+native files, rebuilt release catalogs, and deleted artifact records. Treat it
+as a mutation, and report each write it names in `details.fixes`. It never
+removes a public key and leaves an issue with more than one remedy, such as
+`ORPHAN_PUBLIC_KEY`, to the user: removing a key turns off signature
+verification in the app. Do not remove one without the user's choice.
 Obtain any server URL from trusted local config or the user. Do not infer approval
 to edit setup, credentials, dependencies, infrastructure, or deployments.
 

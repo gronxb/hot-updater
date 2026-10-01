@@ -34,19 +34,18 @@ import {
   findMissingClientPlugins,
   readServerClientPlugins,
 } from "./doctor/clientPlugins";
+import { createDoctorContext, type DoctorContext } from "./doctor/context";
 import { checkFingerprintJson } from "./doctor/fingerprint";
 import { applyDoctorFixes } from "./doctor/fix";
 import {
+  type ArtifactStatus,
   type DoctorFix,
   fixesWroteNativeFiles,
   type NativeCheckIssue,
   type NativePlatform,
   type ReleaseCatalogStatus,
 } from "./doctor/issues";
-import {
-  checkReleaseCatalogs,
-  releaseCatalogsUnchecked,
-} from "./doctor/releaseCatalogs";
+import { checkServerData, releaseCatalogsUnchecked } from "./doctor/serverData";
 import {
   hasVerificationOptions,
   verifyInfrastructure,
@@ -115,6 +114,8 @@ interface DoctorDetails {
   native?: NativeStatus;
   /** The server's release catalogs, each against a rebuild from its releases. */
   releaseCatalogs?: ReleaseCatalogStatus;
+  /** The server's artifact records against the releases that use them. */
+  artifacts?: ArtifactStatus;
 
   // Package info
   packageJsonPath?: string;
@@ -596,8 +597,10 @@ const toNativeIssue = (issue: SigningConfigIssue): NativeCheckIssue => {
 
 async function checkNativeStatus({
   cwd,
+  context,
 }: {
   cwd: string;
+  context: DoctorContext;
 }): Promise<NativeStatus | undefined> {
   const hasNativeDirectories =
     fs.existsSync(path.join(cwd, "ios")) ||
@@ -633,7 +636,10 @@ async function checkNativeStatus({
       issues: [
         ...signing.issues.map(toNativeIssue),
         ...(localFingerprint
-          ? await checkFingerprintJson(localFingerprint.value)
+          ? await checkFingerprintJson(
+              localFingerprint.value,
+              context.fingerprints,
+            )
           : []),
       ],
     };
@@ -672,7 +678,12 @@ async function checkNativeStatus({
   ];
 
   if (requireFingerprint && localFingerprint) {
-    issues.push(...(await checkFingerprintJson(localFingerprint.value)));
+    issues.push(
+      ...(await checkFingerprintJson(
+        localFingerprint.value,
+        context.fingerprints,
+      )),
+    );
   }
 
   if (requireFingerprint && !localFingerprint) {
@@ -697,17 +708,21 @@ async function checkNativeStatus({
   };
 }
 
-/** The server's release catalogs, when hot-updater.config.ts names a server. */
-async function checkServerReleaseCatalogs(): Promise<
-  ReleaseCatalogStatus | undefined
-> {
+/**
+ * The server's release catalogs and artifact records, when
+ * hot-updater.config.ts names a server.
+ */
+async function checkServer(context: DoctorContext): Promise<{
+  releaseCatalogs?: ReleaseCatalogStatus;
+  artifacts?: ArtifactStatus;
+}> {
+  let server: Awaited<ReturnType<DoctorContext["server"]>>;
   try {
-    const config = await loadConfig(null);
-    if (config.server === undefined) return undefined;
-    return await checkReleaseCatalogs(config);
+    server = await context.server();
   } catch (error) {
-    return releaseCatalogsUnchecked(error);
+    return { releaseCatalogs: releaseCatalogsUnchecked(error) };
   }
+  return server === null ? {} : await checkServerData(server.core);
 }
 
 /**
@@ -716,15 +731,17 @@ async function checkServerReleaseCatalogs(): Promise<
  */
 async function checkClientPlugins({
   cwd,
+  context,
 }: {
   cwd: string;
+  context: DoctorContext;
 }): Promise<NativeCheckIssue[]> {
-  const config = await loadConfig(null);
-  if (config.server === undefined) return [];
   let missing: readonly PluginClientPlugin[];
   try {
+    const server = await context.server();
+    if (server === null) return [];
     missing = await findMissingClientPlugins({
-      clientPlugins: await readServerClientPlugins(config),
+      clientPlugins: await readServerClientPlugins(server),
       cwd,
     });
   } catch (error) {
@@ -753,6 +770,7 @@ async function checkClientPlugins({
 /** Runs every check once: true when there is nothing to report. */
 async function checkProject(
   options: DoctorOptions,
+  context: DoctorContext,
 ): Promise<true | DoctorResult> {
   try {
     const { cwd = getCwd(), serverBaseUrl, fetch: fetchImpl } = options;
@@ -848,8 +866,8 @@ async function checkProject(
     }
 
     if (hasReactNativePackage) {
-      details.native = await checkNativeStatus({ cwd });
-      const clientPluginIssues = await checkClientPlugins({ cwd });
+      details.native = await checkNativeStatus({ cwd, context });
+      const clientPluginIssues = await checkClientPlugins({ cwd, context });
       if (clientPluginIssues.length > 0) {
         details.native = {
           updateStrategy: (await loadConfig(null)).updateStrategy,
@@ -859,8 +877,9 @@ async function checkProject(
       }
     }
 
-    const releaseCatalogs = await checkServerReleaseCatalogs();
+    const { releaseCatalogs, artifacts } = await checkServer(context);
     if (releaseCatalogs) details.releaseCatalogs = releaseCatalogs;
+    if (artifacts) details.artifacts = artifacts;
 
     // Add version mismatches if any
     if (versionMismatches.length > 0) {
@@ -874,15 +893,15 @@ async function checkProject(
       details.infrastructure?.upgradeBlocked === true;
     const hasNativeIssue =
       details.native?.issues.some((issue) => issue.type === "error") === true;
-    const hasReleaseCatalogIssue =
-      details.releaseCatalogs?.issues.some(
-        (issue) => issue.type === "error",
-      ) === true;
+    const hasServerDataIssue = [
+      ...(details.releaseCatalogs?.issues ?? []),
+      ...(details.artifacts?.issues ?? []),
+    ].some((issue) => issue.type === "error");
     const hasIssues =
       versionMismatches.length > 0 ||
       hasInfrastructureIssue ||
       hasNativeIssue ||
-      hasReleaseCatalogIssue;
+      hasServerDataIssue;
     // Future: || configurationIssues.length > 0 || etc.
 
     if (hasIssues) {
@@ -899,7 +918,7 @@ async function checkProject(
       };
     }
 
-    if (details.native || details.releaseCatalogs) {
+    if (details.native || details.releaseCatalogs || details.artifacts) {
       return {
         success: true,
         details,
@@ -932,27 +951,33 @@ const normalizeDoctorResult = (result: true | DoctorResult): DoctorResult => {
 export async function doctor(
   options: DoctorOptions = {},
 ): Promise<true | DoctorResult> {
-  const result = await checkProject(options);
-  // Scoped verification never repairs: the CLI refuses --fix with its
-  // options, and a caller that passes both gets the verification alone.
-  if (!options.fix || hasVerificationOptions(options)) return result;
+  // One server and one fingerprint for the whole run, closed once at its end.
+  const context = createDoctorContext(options.cwd ?? getCwd());
+  try {
+    const result = await checkProject(options, context);
+    // Scoped verification never repairs: the CLI refuses --fix with its
+    // options, and a caller that passes both gets the verification alone.
+    if (!options.fix || hasVerificationOptions(options)) return result;
 
-  // --fix runs the repairs the first checks call for, then checks again,
-  // so the result describes the project after them.
-  const before = normalizeDoctorResult(result);
-  if (before.error !== undefined) return before;
-  const fixes = await applyDoctorFixes(
-    [
-      ...(before.details?.native?.issues ?? []),
-      ...(before.details?.releaseCatalogs?.issues ?? []),
-    ],
-    { cwd: options.cwd ?? getCwd() },
-  );
-  const after =
-    fixes.length === 0
-      ? before
-      : normalizeDoctorResult(await checkProject(options));
-  return { ...after, details: { ...after.details, fixes } };
+    // --fix runs the repairs the first checks call for, then checks again,
+    // so the result describes the project after them.
+    const before = normalizeDoctorResult(result);
+    if (before.error !== undefined) return before;
+    const fixes = await applyDoctorFixes(
+      [
+        ...(before.details?.native?.issues ?? []),
+        ...(before.details?.releaseCatalogs?.issues ?? []),
+        ...(before.details?.artifacts?.issues ?? []),
+      ],
+      context,
+    );
+    const after = fixes.some(({ status }) => status === "applied")
+      ? normalizeDoctorResult(await checkProject(options, context))
+      : before;
+    return { ...after, details: { ...after.details, fixes } };
+  } finally {
+    await context.dispose();
+  }
 }
 
 const promptServerBaseUrl = async () => {
@@ -991,6 +1016,16 @@ const FIX_DESCRIPTIONS: Record<DoctorFix["repair"], string> = {
   "public-key": "Write the configured public key into the native files",
   "orphan-public-key": "Remove the public key from the native files",
   "release-catalogs": "Rebuild the stale release catalogs from their releases",
+  "unreferenced-artifacts": "Delete the artifact records no release uses",
+};
+
+/** What each repair's writes are, in its output. */
+const WROTE_LABELS: Record<DoctorFix["repair"], string> = {
+  fingerprint: "Path",
+  "public-key": "Path",
+  "orphan-public-key": "Path",
+  "release-catalogs": "Catalog",
+  "unreferenced-artifacts": "Artifact",
 };
 
 const REBUILD_NATIVE_APP =
@@ -1010,9 +1045,9 @@ const printFixes = (fixes: readonly DoctorFix[]) => {
         ui.block(
           "Wrote",
           fix.wrote.map((written) =>
-            fix.native
+            WROTE_LABELS[fix.repair] === "Path"
               ? ui.kv("Path", ui.path(written))
-              : ui.kv("Catalog", written),
+              : ui.kv(WROTE_LABELS[fix.repair], written),
           ),
         ),
       );
@@ -1229,6 +1264,16 @@ export const handleDoctor = async ({
       }
       p.log.info(issue.resolution);
     }
+  }
+
+  for (const issue of details?.artifacts?.issues ?? []) {
+    if (issue.type === "error") {
+      p.log.error(issue.message);
+    } else {
+      p.log.warn(issue.message);
+    }
+    if (issue.artifactIds) p.log.info(issue.artifactIds.join(", "));
+    p.log.info(issue.resolution);
   }
 
   if (details?.versionMismatches && details.versionMismatches.length > 0) {

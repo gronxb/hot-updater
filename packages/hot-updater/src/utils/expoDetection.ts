@@ -7,8 +7,7 @@ import { getCwd, p } from "@hot-updater/cli-tools";
  * Checks if the project is using Expo CNG (Continuous Native Generation).
  * Returns true if expo package is installed and app.json or app.config.{js,mjs,ts,mts,cjs,cts} file exists.
  */
-export function isExpoCNG(): boolean {
-  const cwd = getCwd();
+export function isExpoCNG(cwd = getCwd()): boolean {
   if (!isExpo(cwd)) {
     return false;
   }

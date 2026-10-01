@@ -1658,6 +1658,7 @@ describe("doctor", () => {
       expect.objectContaining({
         ios: expect.objectContaining({ hash: "ios-fingerprint" }),
       }),
+      expect.any(Function),
     );
     expect(result).toMatchObject({
       success: false,

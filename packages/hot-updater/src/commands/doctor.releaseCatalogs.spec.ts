@@ -1,5 +1,6 @@
 import { loadConfig, readPackageUp } from "@hot-updater/cli-tools";
 import { createEngine } from "@hot-updater/plugin-core";
+import { storeBundles } from "@hot-updater/test-utils";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { loadServer } from "../utils/loadServer";
@@ -34,19 +35,24 @@ const serverProject = () => {
   );
 };
 
+const bundle = (index: number, platform: "ios" | "android" = "ios") => ({
+  assetBaseStorageUri: "storage://assets",
+  gitCommitHash: null,
+  id: `01900000-0000-7000-8000-${String(index).padStart(12, "0")}`,
+  manifestFileHash: `manifest-hash-${index}`,
+  manifestStorageUri: `storage://artifacts/${index}/manifest.json`,
+  metadata: {},
+  platform,
+});
+
 /** Deploys one release, whose scope gets a catalog. */
-const deploy = async () => {
+const deploy = async (
+  index = 1,
+  { platform = "ios" }: { readonly platform?: "ios" | "android" } = {},
+) => {
   const [result] = await harness.core.deploy([
     {
-      bundle: {
-        assetBaseStorageUri: "storage://assets",
-        gitCommitHash: null,
-        id: "01900000-0000-7000-8000-000000000001",
-        manifestFileHash: "manifest-hash",
-        manifestStorageUri: "storage://artifacts/1/manifest.json",
-        metadata: {},
-        platform: "ios",
-      },
+      bundle: bundle(index, platform),
       release: {
         channel: "production",
         enabled: true,
@@ -58,6 +64,21 @@ const deploy = async () => {
     },
   ]);
   return result!.release!.scope_key;
+};
+
+/** Deletes a scope's catalog row, leaving its releases. */
+const loseCatalogRow = async (scopeKey: string) => {
+  const engine = createEngine(harness.database);
+  try {
+    await engine.core.transaction(async (tx) => {
+      const row = await tx.findOne("release_catalogs", {
+        scope_key: scopeKey,
+      });
+      await tx.delete("release_catalogs", row!);
+    });
+  } finally {
+    await engine.dispose();
+  }
 };
 
 /** Makes a scope's stored catalog differ from what its releases compile to. */
@@ -187,5 +208,118 @@ describe("doctor's release catalog check", () => {
     await expect(
       harness.core.preflightReleaseCatalogRebuild(scopeKey),
     ).resolves.toMatchObject({ changed: false });
+  });
+
+  it("reports a scope core cannot compile by itself, and keeps what the other scopes found", async () => {
+    const stale = await deploy(1);
+    const broken = await deploy(2, { platform: "android" });
+    await makeStale(stale);
+    vi.mocked(loadServer).mockImplementation(async () =>
+      testServer({
+        database: {
+          ...harness.database,
+          core: {
+            ...harness.core,
+            preflightReleaseCatalogRebuild: async (scopeKey: string) => {
+              if (scopeKey === broken) throw new Error("payload is corrupt");
+              return harness.core.preflightReleaseCatalogRebuild(scopeKey);
+            },
+          },
+        } as never,
+      }),
+    );
+
+    const result = await doctor();
+
+    expect(result).toMatchObject({
+      success: false,
+      details: {
+        releaseCatalogs: {
+          scopes: expect.arrayContaining([
+            expect.objectContaining({ scopeKey: stale, state: "stale" }),
+            expect.objectContaining({ scopeKey: broken, state: "unchecked" }),
+          ]),
+          issues: expect.arrayContaining([
+            expect.objectContaining({
+              code: "RELEASE_CATALOG_STALE",
+              scopeKey: stale,
+            }),
+            expect.objectContaining({
+              type: "error",
+              code: "RELEASE_CATALOG_CHECK_FAILED",
+              scopeKey: broken,
+              message: expect.stringContaining("payload is corrupt"),
+            }),
+          ]),
+        },
+      },
+    });
+    expect(
+      (result as { details: { releaseCatalogs: { issues: unknown[] } } })
+        .details.releaseCatalogs.issues,
+    ).toHaveLength(2);
+  });
+
+  it("finds a scope whose releases have no catalog row, and leaves it to a backup restore under --fix", async () => {
+    const scopeKey = await deploy();
+    await loseCatalogRow(scopeKey);
+
+    await expect(doctor({ fix: true })).resolves.toMatchObject({
+      success: false,
+      details: {
+        fixes: [],
+        releaseCatalogs: {
+          scopes: [{ scopeKey, state: "missing", generation: null }],
+          issues: [
+            {
+              type: "error",
+              code: "RELEASE_CATALOG_IDENTITY_MISSING",
+              scopeKey,
+              fixability: "blocked",
+            },
+          ],
+        },
+      },
+    });
+  });
+
+  it("warns about artifact records no release uses, and --fix deletes them", async () => {
+    const orphan = bundle(9);
+    await deploy();
+    await storeBundles(harness.database, [orphan]);
+
+    await expect(doctor()).resolves.toMatchObject({
+      success: true,
+      details: {
+        artifacts: {
+          unreferenced: [orphan.id],
+          issues: [
+            {
+              type: "warning",
+              code: "UNREFERENCED_ARTIFACTS",
+              artifactIds: [orphan.id],
+              commands: ["npx hot-updater doctor --fix"],
+            },
+          ],
+        },
+      },
+    });
+
+    await expect(doctor({ fix: true })).resolves.toMatchObject({
+      success: true,
+      details: {
+        fixes: [
+          {
+            repair: "unreferenced-artifacts",
+            status: "applied",
+            wrote: [`artifact record ${orphan.id}`],
+            native: false,
+          },
+        ],
+        artifacts: { unreferenced: [], issues: [] },
+      },
+    });
+    await expect(harness.core.getBundle(orphan.id)).resolves.toBeNull();
+    expect(loadServer).toHaveBeenCalledTimes(2);
   });
 });

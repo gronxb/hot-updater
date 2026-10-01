@@ -7,14 +7,12 @@ import { createHotUpdater } from "@hot-updater/server";
 import { insights } from "@hot-updater/server/plugins/insights";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { loadServer } from "../../utils/loadServer";
+import type { LoadedServer } from "../../utils/loadServer";
 import {
   findMissingClientPlugins,
   importsClientPlugin,
   readServerClientPlugins,
 } from "./clientPlugins";
-
-vi.mock("../../utils/loadServer", () => ({ loadServer: vi.fn() }));
 
 const INSIGHTS = {
   module: "@hot-updater/react-native",
@@ -85,9 +83,9 @@ describe("findMissingClientPlugins", () => {
 });
 
 describe("readServerClientPlugins", () => {
-  it("reads the client plugins of the server definition's plugins", async () => {
+  it("reads the client plugins of the server definition's plugins, leaving the server open", async () => {
     const dispose = vi.fn(async () => {});
-    vi.mocked(loadServer).mockResolvedValue({
+    const server = {
       kind: "definition",
       definition: createHotUpdater({
         database: { name: "memory", adapter: createMemoryAdapter() },
@@ -95,12 +93,11 @@ describe("readServerClientPlugins", () => {
         clientAccess: "public",
       }),
       dispose,
-    } as never);
+    } as unknown as LoadedServer;
 
-    await expect(
-      readServerClientPlugins({ server: "/project/hotUpdater.ts" }),
-    ).resolves.toEqual([INSIGHTS]);
-    expect(dispose).toHaveBeenCalledOnce();
+    await expect(readServerClientPlugins(server)).resolves.toEqual([INSIGHTS]);
+    // The doctor run that loaded the server closes it once, after every check.
+    expect(dispose).not.toHaveBeenCalled();
   });
 
   it("reads the client plugins a self-hosted server lists on its admin /version", async () => {
@@ -108,16 +105,14 @@ describe("readServerClientPlugins", () => {
       Response.json({ plugins: ["insights"], clientPlugins: [INSIGHTS] }),
     );
     const dispose = vi.fn(async () => {});
-    vi.mocked(loadServer).mockResolvedValue({
+    const server = {
       kind: "remote",
       server: { fetchAdmin },
       dispose,
-    } as never);
+    } as unknown as LoadedServer;
 
-    await expect(
-      readServerClientPlugins({ server: {} as never }),
-    ).resolves.toEqual([INSIGHTS]);
+    await expect(readServerClientPlugins(server)).resolves.toEqual([INSIGHTS]);
     expect(fetchAdmin).toHaveBeenCalledWith("/version");
-    expect(dispose).toHaveBeenCalledOnce();
+    expect(dispose).not.toHaveBeenCalled();
   });
 });
