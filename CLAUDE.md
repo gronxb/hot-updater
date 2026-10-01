@@ -9,22 +9,54 @@ Hot Updater is a self-hostable OTA (Over-The-Air) update solution for React Nati
 ## Key Architecture
 
 ### Adapters and Plugins
-An adapter fills one slot of a config (`build`, `storage`, `database`, `signing`); a plugin is an entry of a `plugins` list. `plugins/plugin-core/` holds the shared contracts (`BuildAdapter`, `StorageAdapter`, `BundleSigningAdapter`), and the docs' overview (`docs/content/docs/(latest)/concepts/plugin-system.mdx`) describes how to write each one:
+An adapter fills one slot of a config (`build`, `storage`, `database`, `signing`); a plugin is an entry of a `plugins` list. `plugins/plugin-core/` (`@hot-updater/plugin-core`) is the public kit both are written against (the adapter contracts, the storage engine with its KV and SQL kits, and `definePlugin`), and the docs' overview (`docs/content/docs/(latest)/concepts/plugin-system.mdx`) describes how to write each one:
 - **Build Adapters**: Handle bundling (Metro, Expo, Rock) - located in `plugins/bare/`, `plugins/expo/`, `plugins/rock/`
 - **Storage Adapters**: Handle bundle storage (AWS S3, Cloudflare R2, Supabase Storage, Firebase Storage) - located in `plugins/aws/`, `plugins/cloudflare/`, `plugins/supabase/`, `plugins/firebase/`, `plugins/standalone/`
-- **Database Adapters**: Handle metadata storage on one storage engine (Cloudflare D1, Supabase, DynamoDB, Firestore, PostgreSQL) - use the same directories as storage; the Kysely, Drizzle, Prisma, and MongoDB adapters live in `packages/server/src/adapters/`
+- **Database Adapters**: Handle metadata storage on one storage engine (Cloudflare D1, Supabase, DynamoDB, Firestore, PostgreSQL) - use the same directories as storage and build on plugin-core's database kit; the built-in Kysely, Drizzle, Prisma, and MongoDB adapters live in `packages/server/src/adapters/` (`@hot-updater/server/adapters/*`)
 - **Signing Adapters**: Sign bundle artifacts (local PEM, remote, AWS KMS, Google Cloud KMS) - `hot-updater/signing`
 - **Integration Plugins**: Wrap a build adapter to upload source maps (Sentry, Datadog, BugSnag) - `plugins/*-plugin/`
-- **Server Plugins**: Add tables, APIs, routes, and client auth to `createHotUpdater` with `definePlugin`, whose authoring API lives in `plugins/plugin-core/src/serverPlugin/` (`@hot-updater/plugin-core/server-plugin`, re-exported by `@hot-updater/server/plugins`) - the official `insights()` and `apiKeys()` are the packages `plugins/insights/` (`@hot-updater/plugin-insights`) and `plugins/api-keys/` (`@hot-updater/plugin-api-keys`), re-exported by `@hot-updater/server/plugins/*`
-- **Client Plugins**: Run in the React Native app with `defineClientPlugin`, whose contract lives in `packages/core/src/clientPlugin.ts` (re-exported by `@hot-updater/react-native/client-plugin`) - the official `insights()` client is `plugins/insights/src/client/`, re-exported by `@hot-updater/react-native/plugins/insights`
+- **Server Plugins**: Add tables, APIs, routes, and client auth to `createHotUpdater` with `definePlugin` from `@hot-updater/plugin-core` (source in `plugins/plugin-core/src/serverPlugin/`) - the official `insights()` and `apiKeys()` are the packages `plugins/insights/` (`@hot-updater/plugin-insights`) and `plugins/api-keys/` (`@hot-updater/plugin-api-keys`), re-exported by `@hot-updater/server/plugins/insights` and `@hot-updater/server/plugins/api-keys`
+- **Client Plugins**: Run in the React Native app with `defineClientPlugin` from `@hot-updater/protocol` (`packages/protocol/src/clientPlugin.ts`, beside the reference host `createPluginHost`) - the official `insights()` client is `plugins/insights/src/client/`, exported from the root of `@hot-updater/react-native`
 
 ### Core Packages
-- `packages/core/`: Core types and utilities
+- `packages/protocol/`: `@hot-updater/protocol`, what crosses the device boundary (shared formats, pure computations, the client plugin contract and host)
+- `packages/server/`: `@hot-updater/server`, the server runtime (`createHotUpdater`) with its built-in adapters and plugins
+- `plugins/plugin-core/`: `@hot-updater/plugin-core`, the public kit for adapter and server plugin authors
+- `packages/test-utils/`: `@hot-updater/test-utils`, every test suite, fixture, and test helper
+- `packages/cli-tools/`: `@hot-updater/cli-tools`, tooling the CLI and the providers' `init` share
 - `packages/hot-updater/`: CLI tool and main commands
 - `packages/react-native/`: React Native library for client-side integration
 - `packages/console/`: Web-based management console built with React and TanStack Start
 - `packages/android-helper/`: Android native build utilities and device management
 - `packages/apple-helper/`: iOS/macOS native build utilities and device management
+
+### Package Boundaries
+Every export belongs to exactly one package. `scripts/ci/check-package-boundaries.mjs` (run by `pnpm lint`) and oxlint enforce these rules, so moving a boundary means deliberately editing them and this section.
+
+- `@hot-updater/protocol` is the device-safe, zero-dependency package for what crosses a boundary:
+  - the formats and pure computations the app and the server share, such as the release catalog format and its validation;
+  - the device-side contract between a host and its extensions: `defineClientPlugin` and the reference host `createPluginHost`.
+
+  It runs anywhere: Hermes, Node, Workers, Deno.
+- `@hot-updater/plugin-core` is the public kit for third-party adapter and server plugin authors, like `@better-auth/core` or `@nuxt/kit`.
+  - Its root holds only what the docs teach or what an adapter implements, each name with the reason in its JSDoc.
+  - It runs wherever the server runs, and the app never imports it.
+  - Official plugin packages take it as a peer, like third-party ones.
+- `@hot-updater/server` is the runtime host. Its root is `createHotUpdater`, its types, the handlers, and `toNodeHandler`.
+  - Its only subpaths are the built-in adapters (`./adapters/{kysely,drizzle,prisma,mongodb}`) and the built-in plugins (`./plugins/insights`, `./plugins/api-keys`).
+  - Tooling reads a server definition only through its public read-only properties.
+- `@hot-updater/react-native` is the app SDK. Apps import everything from its root, including the built-in `insights` client. It has no subpaths.
+  - It imports `@hot-updater/protocol` and the Insights client, never plugin-core or server.
+  - Nothing in its install closure pulls plugin-core or server.
+- `@hot-updater/test-utils` holds all test-only code: adapter and plugin test suites, fixtures, `createMeasuredDatabase`, and test stores and executors.
+  - It uses other packages' public API only.
+  - No other package ships a test export or test helper, or keeps a path or hook that exists only for test-utils.
+- Each managed provider package (`plugins/aws`, `cloudflare`, `firebase`, `supabase`) exposes one `./init` entry, which the CLI loads after installing the package, plus its runtime builds.
+- Dependencies are cut cleanly:
+  - No package has an `/internal` entry or a deep import. Every cross-package import uses the other package's public API.
+  - A shared convention is implemented in each package and documented here, not imported. An example is the official-plugin brand key `Symbol.for("@hot-updater/server/official-plugin")`.
+- Subpaths are the exception. Add one only to isolate something optional (an adapter's dependency, a built-in plugin, a runtime build), never as a back door.
+- A CLI command exists only for a user workflow. Checks belong in `hot-updater doctor`, which repairs what it can with `--fix`.
 
 ### Reference Projects
 When working on helper packages, reference these external projects:
@@ -32,7 +64,7 @@ When working on helper packages, reference these external projects:
 - **Apple Helper**: Reference `~/Desktop/rnef/packages/platform-apple-helpers` (can be referred to as "rnef" or "rock" in prompts)
 
 ### Configuration
-Projects use `hot-updater.config.ts` files that define build, storage, and database adapters using the `defineConfig()` function.
+Projects use `hot-updater.config.ts` (`defineConfig()`) for deploy settings, the build and signing adapters and the update strategy, and point its `server` at a server definition, `createHotUpdater({ database, storage, plugins })`, which the server, the CLI, the Console, and managed init all read. Plugins are configured in exactly two places: that definition and the app's `HotUpdater.init({ plugins })`.
 
 ## Common Commands
 
@@ -83,14 +115,15 @@ npx hot-updater deploy
 # Open web console
 npx hot-updater console
 
-# Check project health
+# Check project health, and repair what doctor can
 npx hot-updater doctor
+npx hot-updater doctor --fix
 
 # Generate fingerprint
-npx hot-updater fingerprint
+npx hot-updater fingerprint create
 
-# Manage channels
-npx hot-updater channel
+# Set the native default channel
+npx hot-updater channel set <channel>
 ```
 
 ## Development Notes

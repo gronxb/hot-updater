@@ -2,7 +2,7 @@
 
 ## Project Structure & Modules
 
-- `packages/`: Core libraries (e.g., `core`, `hot-updater`, `react-native`, `console`).
+- `packages/`: Core libraries (e.g., `protocol`, `server`, `hot-updater`, `react-native`, `console`, `test-utils`).
 - `plugins/`: Provider adapters, build adapters, and integration plugins (e.g., `aws`, `cloudflare`, `supabase`, `firebase`, `bare`, `expo`, `rock`, `sentry-plugin`).
 - `examples/`: React Native example apps by version (e.g., `v0.77.0`, `v0.85.0`).
 - `docs/`: Documentation site sources.
