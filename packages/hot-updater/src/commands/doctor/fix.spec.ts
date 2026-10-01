@@ -8,7 +8,8 @@ import {
   writePublicKeyToNativeFiles,
 } from "../keys";
 import { applyDoctorFixes } from "./fix";
-import { fixesWroteNativeFiles, type NativeCheckIssue } from "./issues";
+import { type DoctorIssueCode, fixesWroteNativeFiles } from "./issues";
+import { rebuildReleaseCatalogs } from "./releaseCatalogs";
 
 vi.mock("@hot-updater/cli-tools", () => ({
   getBundleSigningPublicKey: vi.fn(async () => "configured public key"),
@@ -32,9 +33,9 @@ vi.mock("../keys", () => ({
   removePublicKeyFromNativeFiles: vi.fn(),
   writePublicKeyToNativeFiles: vi.fn(),
 }));
+vi.mock("./releaseCatalogs", () => ({ rebuildReleaseCatalogs: vi.fn() }));
 
-const issues = (...codes: NativeCheckIssue["code"][]) =>
-  codes.map((code) => ({ code }));
+const issues = (...codes: DoctorIssueCode[]) => codes.map((code) => ({ code }));
 
 const IOS_PLIST = "ios/App/Info.plist";
 const ANDROID_MANIFEST = "android/app/src/main/AndroidManifest.xml";
@@ -195,5 +196,46 @@ describe("applyDoctorFixes", () => {
         { cwd: "/project" },
       ),
     ).resolves.toEqual([]);
+  });
+
+  it("rebuilds each stale release catalog, on an Expo project too, since it writes no native file", async () => {
+    vi.mocked(isExpoCNG).mockReturnValue(true);
+    vi.mocked(isProjectFileTracked).mockReturnValue(false);
+    vi.mocked(rebuildReleaseCatalogs).mockResolvedValue([
+      "release catalog v1:app-version:ios:cHJvZA, generation 4",
+    ]);
+
+    const fixes = await applyDoctorFixes(
+      [
+        {
+          code: "RELEASE_CATALOG_STALE",
+          scopeKey: "v1:app-version:ios:cHJvZA",
+        },
+        {
+          code: "RELEASE_CATALOG_STALE",
+          scopeKey: "v1:app-version:android:cHJvZA",
+        },
+        {
+          code: "RELEASE_CATALOG_IDENTITY_MISSING",
+          scopeKey: "v1:app-version:ios:YmV0YQ",
+        },
+      ],
+      { cwd: "/project" },
+    );
+
+    expect(rebuildReleaseCatalogs).toHaveBeenCalledWith(expect.anything(), [
+      "v1:app-version:ios:cHJvZA",
+      "v1:app-version:android:cHJvZA",
+    ]);
+    expect(fixes).toEqual([
+      {
+        repair: "release-catalogs",
+        codes: ["RELEASE_CATALOG_STALE"],
+        native: false,
+        status: "applied",
+        wrote: ["release catalog v1:app-version:ios:cHJvZA, generation 4"],
+      },
+    ]);
+    expect(fixesWroteNativeFiles(fixes)).toBe(false);
   });
 });

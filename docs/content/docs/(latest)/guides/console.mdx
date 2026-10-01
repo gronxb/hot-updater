@@ -123,8 +123,9 @@ another operator changes that Bundle first, the stale mutation fails. Re-read
 the Bundle and review its policy before retrying; do not remove the revision
 check just to make a retry succeed.
 
-For existing Catalog projection problems, use the separate
-[Catalog inspection and repair commands](/docs/guides/doctor#check-release-catalogs).
+For existing Catalog projection problems, run
+[`doctor`](/docs/guides/doctor#check-release-catalogs), and `doctor --fix` to
+rebuild the stale catalogs it reports.
 
 ### Advanced artifact diagnostics
 

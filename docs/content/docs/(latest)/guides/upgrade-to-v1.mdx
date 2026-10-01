@@ -436,8 +436,8 @@ source bundle had a partial or QA-only rollout.
 
 Use [`bundle update --dry-run` and `--expected-revision`](/docs/guides/console#preview-and-protect-automated-changes)
 before automated policy writes. Use
-[`db catalog preflight` and `rebuild`](/docs/guides/doctor#check-release-catalogs)
-to inspect and repair compiled projections; they do not migrate v0 policy.
+[`doctor` and `doctor --fix`](/docs/guides/doctor#check-release-catalogs)
+to check and rebuild compiled projections; they do not migrate v0 policy.
 
 ## Rollback
 

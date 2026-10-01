@@ -30,13 +30,53 @@ export interface NativeCheckIssue {
   changes?: FingerprintChanges;
 }
 
-/** A repair `doctor --fix` ran, with every file it wrote. */
+/** A finding about the server's release catalogs, by scope. */
+export interface ReleaseCatalogIssue {
+  type: "error" | "warning";
+  code:
+    | "RELEASE_CATALOG_STALE"
+    | "RELEASE_CATALOG_IDENTITY_MISSING"
+    | "RELEASE_CATALOGS_UNCHECKED";
+  /** The scope the issue is about; absent when no catalog could be read. */
+  scopeKey?: string;
+  message: string;
+  resolution: string;
+  fixability: DoctorFixability;
+  commands?: string[];
+}
+
+/** One scope's catalog against a rebuild from its releases. */
+export interface ReleaseCatalogScopeStatus {
+  scopeKey: string;
+  state: "verified" | "stale" | "missing";
+  /** The stored catalog's generation; null with no compiled projection. */
+  generation: number | null;
+  byteSize: number;
+  descriptorCount: number;
+}
+
+/** Every scope with a release catalog, checked without writing. */
+export interface ReleaseCatalogStatus {
+  scopes: ReleaseCatalogScopeStatus[];
+  issues: ReleaseCatalogIssue[];
+}
+
+/** An issue a repair can name. */
+export type DoctorIssueCode =
+  | NativeCheckIssue["code"]
+  | ReleaseCatalogIssue["code"];
+
+/** A repair `doctor --fix` ran, with everything it wrote. */
 export interface DoctorFix {
-  readonly repair: "fingerprint" | "public-key" | "orphan-public-key";
+  readonly repair:
+    | "fingerprint"
+    | "public-key"
+    | "orphan-public-key"
+    | "release-catalogs";
   /** The issue codes it repairs. */
-  readonly codes: readonly NativeCheckIssue["code"][];
+  readonly codes: readonly DoctorIssueCode[];
   readonly status: "applied" | "skipped" | "failed";
-  /** The files it wrote. */
+  /** The files, or for release catalogs the catalogs, it wrote. */
   readonly wrote: readonly string[];
   /** It writes native files, which only a native rebuild picks up. */
   readonly native: boolean;

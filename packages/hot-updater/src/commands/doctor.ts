@@ -41,7 +41,12 @@ import {
   fixesWroteNativeFiles,
   type NativeCheckIssue,
   type NativePlatform,
+  type ReleaseCatalogStatus,
 } from "./doctor/issues";
+import {
+  checkReleaseCatalogs,
+  releaseCatalogsUnchecked,
+} from "./doctor/releaseCatalogs";
 import {
   hasVerificationOptions,
   verifyInfrastructure,
@@ -108,6 +113,8 @@ interface DoctorDetails {
   versionMismatches?: VersionMismatch[];
   infrastructure?: InfrastructureStatus;
   native?: NativeStatus;
+  /** The server's release catalogs, each against a rebuild from its releases. */
+  releaseCatalogs?: ReleaseCatalogStatus;
 
   // Package info
   packageJsonPath?: string;
@@ -690,6 +697,19 @@ async function checkNativeStatus({
   };
 }
 
+/** The server's release catalogs, when hot-updater.config.ts names a server. */
+async function checkServerReleaseCatalogs(): Promise<
+  ReleaseCatalogStatus | undefined
+> {
+  try {
+    const config = await loadConfig(null);
+    if (config.server === undefined) return undefined;
+    return await checkReleaseCatalogs(config);
+  } catch (error) {
+    return releaseCatalogsUnchecked(error);
+  }
+}
+
 /**
  * A warning for each client plugin a server plugin needs that the app does
  * not add to `HotUpdater.init({ plugins })`.
@@ -839,6 +859,9 @@ async function checkProject(
       }
     }
 
+    const releaseCatalogs = await checkServerReleaseCatalogs();
+    if (releaseCatalogs) details.releaseCatalogs = releaseCatalogs;
+
     // Add version mismatches if any
     if (versionMismatches.length > 0) {
       details.versionMismatches = versionMismatches;
@@ -851,8 +874,15 @@ async function checkProject(
       details.infrastructure?.upgradeBlocked === true;
     const hasNativeIssue =
       details.native?.issues.some((issue) => issue.type === "error") === true;
+    const hasReleaseCatalogIssue =
+      details.releaseCatalogs?.issues.some(
+        (issue) => issue.type === "error",
+      ) === true;
     const hasIssues =
-      versionMismatches.length > 0 || hasInfrastructureIssue || hasNativeIssue;
+      versionMismatches.length > 0 ||
+      hasInfrastructureIssue ||
+      hasNativeIssue ||
+      hasReleaseCatalogIssue;
     // Future: || configurationIssues.length > 0 || etc.
 
     if (hasIssues) {
@@ -869,7 +899,7 @@ async function checkProject(
       };
     }
 
-    if (details.native) {
+    if (details.native || details.releaseCatalogs) {
       return {
         success: true,
         details,
@@ -909,9 +939,13 @@ export async function doctor(
   // so the result describes the project after them.
   const before = normalizeDoctorResult(result);
   if (before.error !== undefined) return before;
-  const fixes = await applyDoctorFixes(before.details?.native?.issues ?? [], {
-    cwd: options.cwd ?? getCwd(),
-  });
+  const fixes = await applyDoctorFixes(
+    [
+      ...(before.details?.native?.issues ?? []),
+      ...(before.details?.releaseCatalogs?.issues ?? []),
+    ],
+    { cwd: options.cwd ?? getCwd() },
+  );
   const after =
     fixes.length === 0
       ? before
@@ -954,6 +988,7 @@ const FIX_DESCRIPTIONS: Record<DoctorFix["repair"], string> = {
   fingerprint: "Recreate fingerprint.json and the native fingerprint hashes",
   "public-key": "Write the configured public key into the native files",
   "orphan-public-key": "Remove the public key from the native files",
+  "release-catalogs": "Rebuild the stale release catalogs from their releases",
 };
 
 const REBUILD_NATIVE_APP =
@@ -972,7 +1007,11 @@ const printFixes = (fixes: readonly DoctorFix[]) => {
       p.log.message(
         ui.block(
           "Wrote",
-          fix.wrote.map((file) => ui.kv("Path", ui.path(file))),
+          fix.wrote.map((written) =>
+            fix.native
+              ? ui.kv("Path", ui.path(written))
+              : ui.kv("Catalog", written),
+          ),
         ),
       );
       if (fix.note) p.log.warn(fix.note);
@@ -1164,6 +1203,27 @@ export const handleDoctor = async ({
           issue.changes,
           issue.platform === "ios" ? "iOS" : "Android",
         );
+      }
+      p.log.info(issue.resolution);
+    }
+  }
+
+  if (details?.releaseCatalogs) {
+    const { scopes, issues } = details.releaseCatalogs;
+    p.log.message(
+      ui.block("Release catalogs", [
+        ui.kv("Scopes", String(scopes.length)),
+        ui.kv(
+          "Verified",
+          String(scopes.filter(({ state }) => state === "verified").length),
+        ),
+      ]),
+    );
+    for (const issue of issues) {
+      if (issue.type === "error") {
+        p.log.error(issue.message);
+      } else {
+        p.log.warn(issue.message);
       }
       p.log.info(issue.resolution);
     }

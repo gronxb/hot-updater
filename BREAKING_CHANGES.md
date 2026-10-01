@@ -231,8 +231,8 @@ same public ID used by the Console and `HotUpdater.getBundleId()`.
 The top-level `rollback` command is removed. Bundle mutations now support
 revision preconditions, and `bundle update --dry-run` previews a policy change.
 `bundle list --json` and `bundle show --json` expose raw internal v1 rows and
-are not schema-compatible with the v0 list wrapper or Bundle DTO. `db catalog
-preflight` and `db catalog rebuild` verify or repair compiled projections.
+are not schema-compatible with the v0 list wrapper or Bundle DTO. `doctor`
+checks the compiled projections, and `doctor --fix` rebuilds stale ones.
 
 Self-hosted deployments manage API keys through the same official database
 domain used by managed init and Console:

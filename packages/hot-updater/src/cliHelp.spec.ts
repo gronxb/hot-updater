@@ -112,6 +112,7 @@ describe("CLI commands", () => {
     [["app-version"], "app-version"],
     [["bundle", "preflight", "id"], "preflight"],
     [["bundle", "artifact", "delete", "id"], "artifact"],
+    [["db", "catalog", "rebuild"], "catalog"],
   ])("removes %j", (command, unknown) => {
     const removed = run(...command);
     expect(removed.status).toBe(1);

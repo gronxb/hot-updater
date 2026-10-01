@@ -10,17 +10,16 @@ import {
   p,
 } from "@hot-updater/cli-tools";
 
-import { AndroidConfigParser } from "@/utils/configParser/androidParser";
-import { IosConfigParser } from "@/utils/configParser/iosParser";
-import { warnIfExpoCNG } from "@/utils/expoDetection";
-import { appendToProjectRootGitignore } from "@/utils/git";
+import { ui } from "../utils/cli-ui";
+import { AndroidConfigParser } from "../utils/configParser/androidParser";
+import { IosConfigParser } from "../utils/configParser/iosParser";
+import { warnIfExpoCNG } from "../utils/expoDetection";
+import { appendToProjectRootGitignore } from "../utils/git";
 import {
   generateKeyPair,
   getPrivateKeyGitignorePath,
   saveKeyPair,
-} from "@/utils/signing";
-
-import { ui } from "../utils/cli-ui";
+} from "../utils/signing";
 
 export const ANDROID_KEY = "hot_updater_public_key";
 export const IOS_KEY = "HOT_UPDATER_PUBLIC_KEY";

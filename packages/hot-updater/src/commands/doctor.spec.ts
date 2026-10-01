@@ -465,7 +465,7 @@ describe("doctor", () => {
     expect(logSpy).toHaveBeenCalledWith(
       JSON.stringify({ success: true }, null, 2),
     );
-    expect(mockLoadConfig).not.toHaveBeenCalled();
+    expect(p.text).not.toHaveBeenCalled();
     logSpy.mockRestore();
   });
 

@@ -11,9 +11,16 @@ import {
   removePublicKeyFromNativeFiles,
   writePublicKeyToNativeFiles,
 } from "../keys";
-import type { DoctorFix, NativeCheckIssue } from "./issues";
+import type { DoctorFix, DoctorIssueCode } from "./issues";
+import { rebuildReleaseCatalogs } from "./releaseCatalogs";
 
-type Code = NativeCheckIssue["code"];
+type Code = DoctorIssueCode;
+
+/** What a repair reads of the issues it repairs. */
+interface RepairedIssue {
+  readonly code: Code;
+  readonly scopeKey?: string;
+}
 
 /** The files a native-file repair wrote, or an error naming each platform it failed on. */
 const written = (
@@ -38,8 +45,8 @@ const REPAIRS: readonly {
   readonly repair: DoctorFix["repair"];
   readonly codes: readonly Code[];
   readonly native: boolean;
-  /** Runs the repair and returns every file it wrote. */
-  readonly run: () => Promise<string[]>;
+  /** Runs the repair for its issues and returns everything it wrote. */
+  readonly run: (issues: readonly RepairedIssue[]) => Promise<string[]>;
   /** What to know once it applied, for these issues. */
   readonly note?: (codes: readonly Code[]) => string | undefined;
 }[] = [
@@ -85,6 +92,19 @@ const REPAIRS: readonly {
     run: async () =>
       written(await removePublicKeyFromNativeFiles(await loadConfig(null))),
   },
+  {
+    // Each stale scope's catalog, rebuilt from its releases.
+    repair: "release-catalogs",
+    codes: ["RELEASE_CATALOG_STALE"],
+    native: false,
+    run: async (issues) =>
+      rebuildReleaseCatalogs(
+        await loadConfig(null),
+        issues.flatMap(({ scopeKey }) =>
+          scopeKey === undefined ? [] : [scopeKey],
+        ),
+      ),
+  },
 ];
 
 /**
@@ -103,13 +123,15 @@ const prebuildOwnsNativeFiles = (cwd: string): boolean =>
  * whose native folders prebuild generates.
  */
 export const applyDoctorFixes = async (
-  issues: readonly Pick<NativeCheckIssue, "code">[],
+  issues: readonly RepairedIssue[],
   { cwd }: { readonly cwd: string },
 ): Promise<DoctorFix[]> => {
-  const found = new Set(issues.map(({ code }) => code));
   const fixes: DoctorFix[] = [];
   for (const { repair, codes, native, run, note } of REPAIRS) {
-    const repaired = codes.filter((code) => found.has(code));
+    const matched = issues.filter(({ code }) => codes.includes(code));
+    const repaired = codes.filter((code) =>
+      matched.some((issue) => issue.code === code),
+    );
     if (repaired.length === 0) continue;
     const fix = { repair, codes: repaired, native };
     if (native && prebuildOwnsNativeFiles(cwd)) {
@@ -122,7 +144,7 @@ export const applyDoctorFixes = async (
       continue;
     }
     try {
-      const wrote = await run();
+      const wrote = await run(matched);
       const applied = note?.(repaired);
       fixes.push({
         ...fix,

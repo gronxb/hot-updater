@@ -46,10 +46,6 @@ import {
   handleBundleShow,
   handleBundleUpdate,
 } from "./commands/bundle";
-import {
-  handleCatalogPreflight,
-  handleCatalogRebuild,
-} from "./commands/catalog";
 import { handleSetChannel } from "./commands/channel";
 import { handleDoctor } from "./commands/doctor";
 import { handleCreateFingerprint } from "./commands/fingerprint";
@@ -634,31 +630,6 @@ dbCommand
       process.exit(0);
     },
   );
-
-const catalogCommand = dbCommand
-  .command("catalog")
-  .description("Verify and rebuild compiled Release catalogs");
-
-catalogCommand
-  .command("preflight")
-  .description("Verify catalog projections without writing")
-  .argument(
-    "[scope-keys...]",
-    "specific scope keys; defaults to all Release and Catalog scopes",
-  )
-  .option("--json", "output JSON")
-  .action(handleCatalogPreflight);
-
-catalogCommand
-  .command("rebuild")
-  .description("Create missing or rebuild drifted catalog projections")
-  .argument(
-    "[scope-keys...]",
-    "specific scope keys; defaults to all Release and Catalog scopes",
-  )
-  .option("--json", "output JSON")
-  .option("-y, --yes", "skip confirmation prompt")
-  .action(handleCatalogRebuild);
 
 if (process.env["EXPERIMENTAL"]) {
   program

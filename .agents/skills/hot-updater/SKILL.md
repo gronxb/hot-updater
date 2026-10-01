@@ -173,9 +173,10 @@ provider access or prove the server was upgraded.
 
 ### Database and Catalog
 
-Treat migration, schema application, record changes, and catalog rebuild as
-external mutations. When supported, preflight exact scopes, authorize the
-reported repair, mutate once, and verify. Preflight is not repair.
+Treat migration, schema application, record changes, and catalog rebuilds by
+`doctor --fix` as external mutations. Read `details.releaseCatalogs` from
+`doctor --json` first, authorize the reported repair, run it once, and verify
+with doctor again. A check is not a repair.
 
 ### Generated Files
 
