@@ -566,3 +566,7 @@ export {
   buildSsmPolicy,
   LAMBDA_EDGE_TRUST_POLICY,
 } from "./iam";
+
+// What init asks for and checks before `runInit`, and the server definitions
+// it writes.
+export { initProvider } from "./init/index";

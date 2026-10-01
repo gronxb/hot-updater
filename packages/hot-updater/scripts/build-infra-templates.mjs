@@ -246,7 +246,7 @@ export const migrate = async ({ database, plugins }: HotUpdaterAPI) => {
       }),
     );
     const { resolveEdgeFunctionDenoConfig, supabaseSchemaSql } = await moduleAt(
-      path.join(root, "dist/iac/index.mjs"),
+      path.join(root, "dist/init/index.mjs"),
     );
     await save(
       path.join(functions, "deno.json"),
@@ -328,7 +328,7 @@ export const migrate = async ({ database, plugins }: HotUpdaterAPI) => {
       OriginRequestPolicyConfig:
         cloudfront.buildOriginRequestPolicyConfig(clientHeaders),
     });
-    const awsInputs = await moduleAt(path.join(root, "dist/iac/index.mjs"));
+    const awsInputs = await moduleAt(path.join(root, "dist/init/index.mjs"));
     await save(
       path.join(output, "dynamodb/create-table.json"),
       awsInputs.buildDynamoDBCreateTableInput(
@@ -458,6 +458,19 @@ export const migrate = async ({ database, plugins }: HotUpdaterAPI) => {
       await json(path.join(repoRoot, "plugins/plugin-core/package.json"))
     ).version;
   }
+  // The inputs the provider's init reads. Scaffold and `init --help` show
+  // them before init has installed the provider package.
+  const { initProvider } = await moduleAt(
+    path.join(root, "dist/init/index.mjs"),
+  );
+  const inputs = Object.values(initProvider.inputs).map(
+    ({ envKey, help, optional, requirementHint }) => ({
+      envKey,
+      help,
+      ...(optional === undefined ? {} : { optional }),
+      ...(requirementHint === undefined ? {} : { requirementHint }),
+    }),
+  );
   await save(path.join(output, "template.json"), {
     schemaVersion: 1,
     provider,
@@ -467,6 +480,7 @@ export const migrate = async ({ database, plugins }: HotUpdaterAPI) => {
     infrastructureGeneration: HOT_UPDATER_INFRASTRUCTURE_GENERATION,
     clientAuth,
     clientPlugins,
+    inputs,
     packages: Object.fromEntries(
       Object.entries(appPackages).filter(
         ([name]) =>

@@ -24,11 +24,6 @@
       "import": "./supabase/index.ts",
       "require": "./supabase/index.ts"
     },
-    "./iac": {
-      "types": "./dist/iac/index.d.cts",
-      "import": "./dist/iac/index.mjs",
-      "require": "./dist/iac/index.cjs"
-    },
     "./package.json": "./package.json"
   },
   "license": "MIT",

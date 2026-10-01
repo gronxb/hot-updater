@@ -23,11 +23,6 @@
     },
     "./worker/config": "./worker/wrangler.json",
     "./worker/wrangler.json": "./worker/wrangler.json",
-    "./iac": {
-      "types": "./dist/iac/index.d.cts",
-      "import": "./dist/iac/index.mjs",
-      "require": "./dist/iac/index.cjs"
-    },
     "./package.json": "./package.json"
   },
   "license": "MIT",

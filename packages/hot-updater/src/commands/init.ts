@@ -85,7 +85,11 @@ const isBuildAdapterKey = (
 
 const collectInitChoices = async (
   options: InitOptions,
-): Promise<{ build: BuildAdapterKey; provider: InitProvider }> => {
+): Promise<{
+  build: BuildAdapterKey;
+  env: Readonly<Record<string, string>>;
+  provider: InitProvider;
+}> => {
   const { env: existingEnv } = await readHotUpdaterInitEnv(
     process.cwd(),
     options.envFile,
@@ -100,30 +104,19 @@ const collectInitChoices = async (
   const provider =
     options.provider ?? (isInitProvider(savedProvider) ? savedProvider : null);
 
+  // The provider's own inputs are checked once its package is installed.
   if (options.envFile !== undefined) {
-    const missingInputs = [
-      ...getMissingInitInputs({
-        [INIT_BUILD_ENV_KEY]: build ?? undefined,
-        [INIT_PROVIDER_ENV_KEY]: provider ?? undefined,
-      }),
-      ...(provider
-        ? getMissingInitProviderInputs({
-            inputs: resolveInitProviderInputs(
-              existingEnv,
-              INIT_PROVIDER_PACKAGES[provider].definition,
-            ),
-            preflightOnly: true,
-            provider: INIT_PROVIDER_PACKAGES[provider].definition,
-          })
-        : []),
-    ];
+    const missingInputs = getMissingInitInputs({
+      [INIT_BUILD_ENV_KEY]: build ?? undefined,
+      [INIT_PROVIDER_ENV_KEY]: provider ?? undefined,
+    });
     if (missingInputs.length > 0) {
-      throw new MissingInitInputsError([...new Set(missingInputs)]);
+      throw new MissingInitInputsError(missingInputs);
     }
   }
 
   if (build && provider) {
-    return { build, provider };
+    return { build, env: existingEnv, provider };
   }
 
   const choices = await p.group(
@@ -146,7 +139,7 @@ const collectInitChoices = async (
               message: "Select a provider",
               options: INIT_PROVIDER_NAMES.map((value) => ({
                 value,
-                label: INIT_PROVIDER_PACKAGES[value].definition.label,
+                label: INIT_PROVIDER_PACKAGES[value].label,
               })),
             }),
     },
@@ -155,7 +148,7 @@ const collectInitChoices = async (
     },
   );
 
-  return choices;
+  return { ...choices, env: existingEnv };
 };
 
 const handleInitError = (error: unknown): boolean => {
@@ -238,15 +231,24 @@ export const init = async (options: InitOptions = {}) => {
     process.exit(1);
   }
 
-  const build = buildAdapterPackage.name;
-  const runInitOptions = {
-    build,
-    envFile: options.envFile,
-    otherServerDefinitions: otherServerDefinitionsOf(provider),
-  } satisfies RunInitOptions;
   try {
-    const providerModule = await providerPackage.load();
-    await providerModule.runInit(runInitOptions);
+    const { initProvider, runInit } = await providerPackage.load();
+    if (options.envFile !== undefined) {
+      // Before any cloud resource changes, every missing input at once.
+      const missingInputs = getMissingInitProviderInputs({
+        inputs: resolveInitProviderInputs(choices.env, initProvider),
+        preflightOnly: true,
+        provider: initProvider,
+      });
+      if (missingInputs.length > 0) {
+        throw new MissingInitInputsError([...new Set(missingInputs)]);
+      }
+    }
+    await runInit({
+      build: buildAdapterPackage.name,
+      envFile: options.envFile,
+      otherServerDefinitions: await otherServerDefinitionsOf(provider),
+    } satisfies RunInitOptions);
   } catch (error) {
     if (handleInitError(error)) {
       return;

@@ -7,7 +7,6 @@ export default defineConfig({
     signing: "./src/signing.ts",
   },
   deps: {
-    alwaysBundle: [/^@hot-updater\/(aws|cloudflare|firebase|supabase)\/init$/],
     neverBundle: [
       "@aws-sdk/client-kms",
       "@expo/fingerprint",

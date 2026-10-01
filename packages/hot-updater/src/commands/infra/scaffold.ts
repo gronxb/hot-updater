@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
 import {
   cp,
   lstat,
@@ -17,7 +18,7 @@ import path from "node:path";
 import type { BuildType } from "@hot-updater/cli-tools";
 
 import { ui } from "../../utils/cli-ui";
-import { type InitProvider, INIT_PROVIDER_PACKAGES } from "../initProviders";
+import type { InitProvider } from "../initProviders";
 import {
   CLIENT_CREDENTIAL_FILE,
   CLIENT_CREDENTIAL_SCRIPT,
@@ -36,6 +37,14 @@ export interface InfraOptions {
   json?: boolean;
 }
 
+/** An input of a provider's init, without its validation. */
+export interface InfraTemplateInput {
+  envKey: string;
+  help: string;
+  optional?: boolean;
+  requirementHint?: string;
+}
+
 export interface InfraTemplate {
   schemaVersion: 1;
   provider: InitProvider;
@@ -47,6 +56,11 @@ export interface InfraTemplate {
   clientAuth: InfraClientAuth;
   /** The client plugins an app adds for the plugins the server runs. */
   clientPlugins: InfraClientPlugin[];
+  /**
+   * The inputs the provider's init reads, recorded when this CLI was built,
+   * since only init installs the provider package.
+   */
+  inputs: InfraTemplateInput[];
   packages: Record<string, string>;
   requiredInputs: Record<string, string | null>;
   upgradeRequirements: string[];
@@ -96,14 +110,33 @@ const statIfPresent = (target: string) =>
 const readJson = async <T>(file: string): Promise<T> =>
   JSON.parse(await readFile(file, "utf8")) as T;
 
+const infraTemplateSource = (provider: InitProvider) =>
+  path.join(
+    path.dirname(require.resolve("hot-updater/package.json")),
+    "dist/infra-templates",
+    provider,
+  );
+
 export async function readInfraTemplate(provider: InitProvider) {
-  const packageRoot = path.dirname(require.resolve("hot-updater/package.json"));
-  const source = path.join(packageRoot, "dist/infra-templates", provider);
+  const source = infraTemplateSource(provider);
   const template = await readJson<InfraTemplate>(
     path.join(source, "template.json"),
   );
   return { source, template };
 }
+
+/** The inputs `provider`'s init reads, for `init --help`. */
+export const readInfraTemplateInputs = (
+  provider: InitProvider,
+): readonly InfraTemplateInput[] =>
+  (
+    JSON.parse(
+      readFileSync(
+        path.join(infraTemplateSource(provider), "template.json"),
+        "utf8",
+      ),
+    ) as InfraTemplate
+  ).inputs;
 
 export async function getInfraFiles(
   source: string,
@@ -266,10 +299,7 @@ export async function scaffoldInfra(
           .sort()
           .map((file) => readFile(path.join(appDir, file), "utf8")),
       );
-      const inputs = Object.values(
-        INIT_PROVIDER_PACKAGES[provider].definition.inputs,
-      );
-      const { clientAuth } = template;
+      const { clientAuth, inputs } = template;
       const keys = new Set([
         ...inputs.map(({ envKey }) => envKey),
         ...appSources.flatMap((text) =>

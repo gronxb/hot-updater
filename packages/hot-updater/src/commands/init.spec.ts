@@ -49,11 +49,14 @@ vi.mock("@/utils/printBanner", () => ({
   printBanner: vi.fn(),
 }));
 
-vi.mock("@hot-updater/aws/iac", () => ({
+// Each provider's ./init, with its definition and a stand-in for its init.
+vi.mock("@hot-updater/aws/init", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@hot-updater/aws/init")>()),
   runInit: mocks.runAwsInit,
 }));
 
-vi.mock("@hot-updater/supabase/iac", () => ({
+vi.mock("@hot-updater/supabase/init", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@hot-updater/supabase/init")>()),
   runInit: mocks.runSupabaseInit,
 }));
 
@@ -119,7 +122,7 @@ describe("init choices", () => {
     expect(mocks.runAwsInit).toHaveBeenCalledWith({
       build: "bare",
       envFile: undefined,
-      otherServerDefinitions: otherServerDefinitionsOf("aws"),
+      otherServerDefinitions: await otherServerDefinitionsOf("aws"),
     });
   });
 
@@ -145,11 +148,11 @@ describe("init choices", () => {
     expect(mocks.runAwsInit).toHaveBeenCalledWith({
       build: "bare",
       envFile: undefined,
-      otherServerDefinitions: otherServerDefinitionsOf("aws"),
+      otherServerDefinitions: await otherServerDefinitionsOf("aws"),
     });
   });
 
-  it("stops before prompting when the init env file is incomplete", async () => {
+  it("stops before prompting or installing when the init env file has no build", async () => {
     // Given
     mocks.readHotUpdaterInitEnv.mockResolvedValue({
       env: {},
@@ -166,10 +169,34 @@ describe("init choices", () => {
     expect(mocks.ensureInstallPackages).not.toHaveBeenCalled();
     expect(mocks.runAwsInit).not.toHaveBeenCalled();
     expect(process.exitCode).toBe(1);
+    // The provider's inputs are checked once its package is installed.
+    expect(mocks.logError).toHaveBeenCalledWith(
+      ["Init is missing required inputs:", "- HOT_UPDATER_INIT_BUILD"].join(
+        "\n",
+      ),
+    );
+  });
+
+  it("reports every missing provider input once the provider package is installed, before its init runs", async () => {
+    // Given
+    mocks.readHotUpdaterInitEnv.mockResolvedValue({
+      env: { HOT_UPDATER_INIT_BUILD: "bare" },
+    });
+
+    // When
+    await init({ envFile: "init.env", provider: "aws" });
+
+    // Then
+    expect(mocks.group).not.toHaveBeenCalled();
+    expect(mocks.ensureInstallPackages).toHaveBeenCalledWith({
+      dependencies: ["@hot-updater/react-native"],
+      devDependencies: expect.arrayContaining(["@hot-updater/aws"]),
+    });
+    expect(mocks.runAwsInit).not.toHaveBeenCalled();
+    expect(process.exitCode).toBe(1);
     expect(mocks.logError).toHaveBeenCalledWith(
       [
         "Init is missing required inputs:",
-        "- HOT_UPDATER_INIT_BUILD",
         "- HOT_UPDATER_DYNAMODB_TABLE_NAME",
         "- HOT_UPDATER_AWS_AUTH_MODE",
         "- HOT_UPDATER_S3_BUCKET_NAME",
@@ -195,7 +222,7 @@ describe("init choices", () => {
     expect(mocks.runSupabaseInit).toHaveBeenCalledWith({
       build: "bare",
       envFile: "init.env",
-      otherServerDefinitions: otherServerDefinitionsOf("supabase"),
+      otherServerDefinitions: await otherServerDefinitionsOf("supabase"),
     });
   });
 
@@ -245,7 +272,7 @@ describe("init choices", () => {
     expect(mocks.runAwsInit).toHaveBeenCalledWith({
       build: "expo",
       envFile: ".env.hotupdater",
-      otherServerDefinitions: otherServerDefinitionsOf("aws"),
+      otherServerDefinitions: await otherServerDefinitionsOf("aws"),
     });
   });
 

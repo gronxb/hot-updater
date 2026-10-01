@@ -99,9 +99,11 @@ inputs you let it save in `.env.hotupdater`, so this redeploys without prompts:
 npx hot-updater init --from-env-file .env.hotupdater
 ```
 
-`--from-env-file` reports every missing value instead of asking for it. Pass
-`--provider` and `--build` to choose them explicitly, or leave out
-`--from-env-file` to answer prompts. A project that the
+`--from-env-file` reports missing values instead of asking for them: a missing
+build adapter or provider before init installs packages, and every missing
+provider input once it has installed the provider package, before it creates
+or changes any resource. Pass `--provider` and `--build` to choose them
+explicitly, or leave out `--from-env-file` to answer prompts. A project that the
 [agent infrastructure](#agent-infrastructure) scaffold set up has neither saved,
 so pass both:
 
