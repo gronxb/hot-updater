@@ -100,10 +100,10 @@
     "@aws-sdk/client-kms": "^3.1066.0",
     "@expo/fingerprint": "*",
     "@google-cloud/kms": "^6.0.0",
-    "@hot-updater/aws": "*",
-    "@hot-updater/cloudflare": "*",
-    "@hot-updater/firebase": "*",
-    "@hot-updater/supabase": "*"
+    "@hot-updater/aws": "workspace:^",
+    "@hot-updater/cloudflare": "workspace:^",
+    "@hot-updater/firebase": "workspace:^",
+    "@hot-updater/supabase": "workspace:^"
   },
   "peerDependenciesMeta": {
     "@aws-sdk/client-kms": {

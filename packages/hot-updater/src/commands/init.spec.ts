@@ -49,16 +49,26 @@ vi.mock("@/utils/printBanner", () => ({
   printBanner: vi.fn(),
 }));
 
-vi.mock("@hot-updater/aws/iac", () => ({
+// Each provider's ./init, with its definition and a stand-in for its init.
+vi.mock("@hot-updater/aws/init", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@hot-updater/aws/init")>()),
   runInit: mocks.runAwsInit,
 }));
 
-vi.mock("@hot-updater/supabase/iac", () => ({
+vi.mock("@hot-updater/supabase/init", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@hot-updater/supabase/init")>()),
   runInit: mocks.runSupabaseInit,
 }));
 
+import { packageJsonData } from "../packageJson";
 import { init } from "./init";
-import { otherServerDefinitionsOf } from "./initProviders";
+import {
+  INIT_PROVIDER_PACKAGES,
+  type InitProviderModule,
+  otherServerDefinitionsOf,
+} from "./initProviders";
+
+const { version } = packageJsonData;
 
 describe("init choices", () => {
   beforeEach(() => {
@@ -119,7 +129,7 @@ describe("init choices", () => {
     expect(mocks.runAwsInit).toHaveBeenCalledWith({
       build: "bare",
       envFile: undefined,
-      otherServerDefinitions: otherServerDefinitionsOf("aws"),
+      otherServerDefinitions: await otherServerDefinitionsOf("aws"),
     });
   });
 
@@ -145,11 +155,11 @@ describe("init choices", () => {
     expect(mocks.runAwsInit).toHaveBeenCalledWith({
       build: "bare",
       envFile: undefined,
-      otherServerDefinitions: otherServerDefinitionsOf("aws"),
+      otherServerDefinitions: await otherServerDefinitionsOf("aws"),
     });
   });
 
-  it("stops before prompting when the init env file is incomplete", async () => {
+  it("stops before prompting or installing when the init env file has no build", async () => {
     // Given
     mocks.readHotUpdaterInitEnv.mockResolvedValue({
       env: {},
@@ -166,10 +176,34 @@ describe("init choices", () => {
     expect(mocks.ensureInstallPackages).not.toHaveBeenCalled();
     expect(mocks.runAwsInit).not.toHaveBeenCalled();
     expect(process.exitCode).toBe(1);
+    // The provider's inputs are checked once its package is installed.
+    expect(mocks.logError).toHaveBeenCalledWith(
+      ["Init is missing required inputs:", "- HOT_UPDATER_INIT_BUILD"].join(
+        "\n",
+      ),
+    );
+  });
+
+  it("reports every missing provider input once the provider package is installed, before its init runs", async () => {
+    // Given
+    mocks.readHotUpdaterInitEnv.mockResolvedValue({
+      env: { HOT_UPDATER_INIT_BUILD: "bare" },
+    });
+
+    // When
+    await init({ envFile: "init.env", provider: "aws" });
+
+    // Then
+    expect(mocks.group).not.toHaveBeenCalled();
+    expect(mocks.ensureInstallPackages).toHaveBeenCalledWith({
+      dependencies: ["@hot-updater/react-native"],
+      devDependencies: expect.arrayContaining(["@hot-updater/aws"]),
+    });
+    expect(mocks.runAwsInit).not.toHaveBeenCalled();
+    expect(process.exitCode).toBe(1);
     expect(mocks.logError).toHaveBeenCalledWith(
       [
         "Init is missing required inputs:",
-        "- HOT_UPDATER_INIT_BUILD",
         "- HOT_UPDATER_DYNAMODB_TABLE_NAME",
         "- HOT_UPDATER_AWS_AUTH_MODE",
         "- HOT_UPDATER_S3_BUCKET_NAME",
@@ -195,7 +229,7 @@ describe("init choices", () => {
     expect(mocks.runSupabaseInit).toHaveBeenCalledWith({
       build: "bare",
       envFile: "init.env",
-      otherServerDefinitions: otherServerDefinitionsOf("supabase"),
+      otherServerDefinitions: await otherServerDefinitionsOf("supabase"),
     });
   });
 
@@ -245,8 +279,53 @@ describe("init choices", () => {
     expect(mocks.runAwsInit).toHaveBeenCalledWith({
       build: "expo",
       envFile: ".env.hotupdater",
-      otherServerDefinitions: otherServerDefinitionsOf("aws"),
+      otherServerDefinitions: await otherServerDefinitionsOf("aws"),
     });
+  });
+
+  it("stops before editing any file when the installed provider package has no init for this CLI, naming the version to install", async () => {
+    // Given: a provider package from before its one ./init entry, whose
+    // ./init has the provider's definition but no runInit.
+    mocks.readHotUpdaterInitEnv.mockResolvedValue({ env: {}, managedEnv: {} });
+    const { initProvider } = await import("@hot-updater/aws/init");
+    vi.spyOn(INIT_PROVIDER_PACKAGES.aws, "load").mockResolvedValue({
+      initProvider,
+    } as unknown as InitProviderModule);
+
+    // When
+    await init({ build: "bare", provider: "aws" });
+
+    // Then
+    expect(mocks.appendToProjectRootGitignore).not.toHaveBeenCalled();
+    expect(mocks.makeEnv).not.toHaveBeenCalled();
+    expect(mocks.ensureInstallPackages).not.toHaveBeenCalled();
+    expect(mocks.runAwsInit).not.toHaveBeenCalled();
+    expect(process.exitCode).toBe(1);
+    expect(mocks.logError).toHaveBeenCalledWith(
+      expect.stringContaining(
+        `has no init for hot-updater ${version}: its ./init exports no runInit.\nInstall @hot-updater/aws@${version} to match hot-updater ${version}, and run init again.`,
+      ),
+    );
+  });
+
+  it("stops before any resource when the provider package still fails to load once installed, naming the version to install", async () => {
+    // Given: a provider package whose peer is missing, which installing
+    // init's packages does not add.
+    mocks.readHotUpdaterInitEnv.mockResolvedValue({ env: {}, managedEnv: {} });
+    vi.spyOn(INIT_PROVIDER_PACKAGES.aws, "load").mockRejectedValue(
+      new Error("Cannot find package '@aws-sdk/client-s3'"),
+    );
+
+    // When
+    await init({ build: "bare", provider: "aws" });
+
+    // Then: init installed its packages first, which may have added the peer.
+    expect(mocks.ensureInstallPackages).toHaveBeenCalled();
+    expect(mocks.runAwsInit).not.toHaveBeenCalled();
+    expect(process.exitCode).toBe(1);
+    expect(mocks.logError).toHaveBeenCalledWith(
+      `@hot-updater/aws failed to load: Cannot find package '@aws-sdk/client-s3'\nInstall @hot-updater/aws@${version} to match hot-updater ${version}, and run init again.`,
+    );
   });
 
   it("prints actionable provider init errors without rethrowing", async () => {

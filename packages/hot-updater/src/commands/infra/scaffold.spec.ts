@@ -35,6 +35,8 @@ describe("public infrastructure scaffolding", () => {
       const scaffold = JSON.parse(result.stdout);
       const manifest = await json(scaffold.manifest);
       expect(manifest.operation).toBe("scaffold");
+      // The provider's inputs stay in the CLI's template.
+      expect(manifest).not.toHaveProperty("inputs");
       expect(manifest.build).toBeUndefined();
       expect(manifest.packages).toBeUndefined();
       expect(scaffold.deployment).toBeUndefined();

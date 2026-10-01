@@ -16,11 +16,6 @@
       "import": "./dist/init/index.mjs",
       "require": "./dist/init/index.cjs"
     },
-    "./iac": {
-      "types": "./dist/iac/index.d.cts",
-      "import": "./dist/iac/index.mjs",
-      "require": "./dist/iac/index.cjs"
-    },
     "./functions": {
       "require": "./dist/firebase/functions/index.cjs"
     },

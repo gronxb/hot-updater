@@ -439,7 +439,7 @@ describe("deployment artifacts", () => {
       pathToFileURL(
         path.resolve(
           import.meta.dirname,
-          "../../../../../plugins/aws/dist/iac/index.mjs",
+          "../../../../../plugins/aws/dist/init/index.mjs",
         ),
       ).href
     );

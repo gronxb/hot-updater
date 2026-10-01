@@ -832,3 +832,7 @@ export const runInit = async ({
   }
   p.log.success("Done! 🎉");
 };
+
+// What init asks for and checks before `runInit`, and the server definitions
+// it writes.
+export { initProvider } from "./init/index";

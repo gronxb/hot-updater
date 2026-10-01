@@ -1320,3 +1320,7 @@ export const runInit = (options: RunInitOptions): Promise<void> =>
 // The migration the infrastructure scaffold ships for the prebuilt
 // function's plugins, after the package's own.
 export { supabaseSchemaSql } from "../src/supabaseSchema";
+
+// What init asks for and checks before `runInit`, and the server definitions
+// it writes.
+export { initProvider } from "./init/index";
