@@ -24,12 +24,11 @@ storage, framework and hosting in an existing backend.
 | [AWS](/docs/managed/aws) | DynamoDB, S3, Lambda@Edge, CloudFront | You want the supplied AWS deployment and use AWS accounts and IAM. | CloudFront shared catalog cache. |
 | [Custom server](/docs/custom/overview) | Your database, storage and host | You need to use your own ORM, server framework or deployment process. | Depends on your hosting and cache configuration. |
 
-All paths use the same Release Catalog protocol and run the server plugins
-their server definition lists. A provider preset starts with Insights and API
-keys, and its project can [add or drop plugins](/docs/managed/server-plugins).
-Shared cache behavior differs by provider; a successful origin-only deployment
-does not imply a shared CDN cache hit. Each provider guide documents its
-resource, access and operating requirements.
+All paths use the same Release Catalog protocol. A provider preset runs the
+official server plugins, Insights and API keys; a custom server runs the ones
+you choose. Shared cache behavior differs by provider; a successful origin-only
+deployment does not imply a shared CDN cache hit. Each provider guide documents
+its resource, access and operating requirements.
 
 ## Set up a provider preset
 
@@ -58,10 +57,10 @@ Hono, SQLite and R2 example, or use the
 and host that fit your stack.
 
 A custom server requires schema setup, an explicit client access policy and
-protected admin routes. The CLI points `server` at its server definition when
-the app project can import that module, or reaches its admin API with
-`standaloneRepository`. Storage and database adapters can be selected
-independently; see [Adapters and Plugins](/docs/concepts/plugin-system).
+protected admin routes. Its CLI connection uses `standaloneRepository`, and
+lists the server's plugins; the server itself uses a direct database adapter.
+Storage and database adapters can be selected independently; see
+[Adapters and Plugins](/docs/concepts/plugin-system).
 
 ## Add operations after the first update
 

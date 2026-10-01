@@ -44,7 +44,7 @@ selections, it writes the scaffold and returns its absolute paths:
 | Output | Purpose |
 | --- | --- |
 | Provider deployment files | Server runtime, migrations, bindings, indexes and deployment configuration |
-| `app/` | `hot-updater.config.ts`, the server definition `hotUpdater.ts` it points at, client-key provisioning and server verification helpers |
+| `app/` | App configuration templates, client-key provisioning and server verification helpers |
 | `env.example` and `ENVIRONMENT.md` | Variable names, purposes, required or conditional status, and where to obtain values |
 | `COMMON.md` and `SETUP.md` | Project discovery, secure access, provider setup, verification and retry instructions |
 | `manifest.json` and `deployment.json` | Target versions/file hashes and a record for pending actions and verified outcomes |
@@ -115,23 +115,16 @@ the complete upgrade path.
 | AWS | Lambda bundle and dependencies, CloudFront specifications, DynamoDB/IAM JSON inputs and SSM references |
 | Firebase | Built Functions project, dependencies, Firebase config, Firestore indexes |
 
-The `app/` directory contains the app's `hot-updater.config.ts`, which points at
-the server definition `hotUpdater.ts` beside it (plus `migrate.ts` for
-Firestore), and a client API-key helper. `env.example` lists local provider settings; `ENVIRONMENT.md` explains
+The `app/` directory contains a `hot-updater.config.ts` template for each
+build adapter, with the provider's storage, database and `plugins`, and a
+client API-key helper. The helper provisions the key through `hotUpdater.ts`
+beside it (plus `migrate.ts` for Firestore), which stays in the scaffold.
+`env.example` lists local provider settings; `ENVIRONMENT.md` explains
 each variable's purpose, when it is needed and where to obtain it. The JSON
-`environment` field points to that guide. The agent merges applicable settings into
-your app's existing configuration and prepares credentials for future CLI deploys.
+`environment` field points to that guide. The agent merges the config's
+storage, database and `plugins` into your app's existing `hot-updater.config.ts`
+and prepares credentials for future CLI deploys.
 Connecting an MCP server does not automatically provide credentials to the CLI.
-
-The scaffold deploys the provider's prebuilt server, so keep `app/hotUpdater.ts`
-as it is. To run other server plugins, edit it in the app and deploy it with
-`hot-updater init`, passing `--provider` and `--build`, since the scaffold
-doesn't save them; see [Server Plugins](/docs/managed/server-plugins#redeploy).
-The
-Cloudflare and Supabase migrations are the package's migration of core's
-tables, then the prebuilt server's plugins' tables in
-`worker/migrations/0002_hot-updater_plugins.sql` or
-`supabase/migrations/20260818000001_hot-updater_plugins.sql`.
 
 The agent configures optional creation or authentication fields only when your setup needs them.
 For example, an existing Supabase project needs no new-project name or region,

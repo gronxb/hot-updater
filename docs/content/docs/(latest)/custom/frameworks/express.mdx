@@ -72,12 +72,11 @@ Set your auth token in environment variables:
 HOT_UPDATER_ADMIN_TOKEN=your-secret-auth-token
 ```
 
-Point the CLI at the admin handler with the auth token and the server's storage
-adapters, here the quick start's R2 bucket; see
+Configure the CLI to include the auth token when deploying bundles, beside
+the config's storage and plugins; see
 [CLI Configuration](/docs/custom/cli-configuration):
 
 ```typescript title="hot-updater.config.ts (excerpt)"
-import { s3Storage } from "@hot-updater/aws";
 import { standaloneRepository } from "@hot-updater/standalone"; // [!code ++]
 import { defineConfig } from "hot-updater";
 
@@ -87,23 +86,12 @@ if (!adminToken) {
 }
 
 export default defineConfig({
-  // ...
-  server: standaloneRepository({ // [!code ++]
+  // ... build, storage, plugins, and updateStrategy
+  database: standaloneRepository({ // [!code ++]
     baseUrl: "http://localhost:3000/hot-updater/admin", // [!code ++]
     commonHeaders: { // [!code ++]
       Authorization: `Bearer ${adminToken}`, // [!code ++]
     }, // [!code ++]
-    storage: [ // [!code ++]
-      s3Storage({ // [!code ++]
-        region: "auto", // [!code ++]
-        endpoint: process.env.R2_ENDPOINT, // [!code ++]
-        credentials: { // [!code ++]
-          accessKeyId: process.env.R2_ACCESS_KEY_ID!, // [!code ++]
-          secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!, // [!code ++]
-        }, // [!code ++]
-        bucketName: process.env.R2_BUCKET_NAME!, // [!code ++]
-      }), // [!code ++]
-    ], // [!code ++]
   }), // [!code ++]
 });
 ```

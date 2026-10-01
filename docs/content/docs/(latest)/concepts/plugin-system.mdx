@@ -9,39 +9,39 @@ icon: Puzzle
 Hot Updater talks to bundlers, cloud services, and databases through two kinds
 of objects:
 
-- An **adapter** fills one slot of a configuration: the `database` and
-  `storage` of the server's `createHotUpdater`, or the `build` and `signing` of
-  `hot-updater.config.ts`. A configuration has one adapter per slot; `storage`
-  takes a list so the server can read Bundles that different adapters stored.
-- A **plugin** is one entry of a list: the `plugins` of `createHotUpdater` or of
-  the app's `HotUpdater.init`, or an integration that wraps a build adapter. A
-  configuration can have any number.
+- An **adapter** fills one slot of a configuration: the `build`, `storage`,
+  `database`, or `signing` of `hot-updater.config.ts`, and the `database` and
+  `storage` of the server's `createHotUpdater`. A configuration has one adapter
+  per slot; the server's `storage` takes a list so it can read Bundles that
+  different adapters stored.
+- A **plugin** is one entry of a list: the `plugins` of `createHotUpdater`, of
+  `hot-updater.config.ts`, or of the app's `HotUpdater.init`, or an integration
+  that wraps a build adapter. A configuration can have any number.
 
 Both are plain objects that a factory function returns, such as
 `s3Storage(options)` or `insights()`. Official adapters and plugins use the
 same contracts as the ones you write, and there is no registry: install the
 package and pass the object in.
 
-Plugins are configured in exactly two places:
+Plugins are configured in three places:
 
-- The **server definition**, a module that exports
-  `hotUpdater = createHotUpdater({ database, storage, plugins })`, for server
-  plugins, beside the server's database and storage adapters. The server, the
-  CLI, the Console, and managed init all read it.
+- The server's **`createHotUpdater({ plugins })`**, for server plugins, beside
+  the server's database and storage adapters.
+- **`plugins` in [`hot-updater.config.ts`](/docs/custom/cli-configuration)**,
+  for the same server plugins. The config mirrors the server: its `storage` and
+  `database` reach the server's bucket and database, or the server's admin API
+  through `standaloneRepository`, and its `plugins` tell the CLI and the
+  Console which plugins the server runs.
 - The app's **`HotUpdater.init({ plugins })`**, for client plugins.
 
-`hot-updater.config.ts` holds the deploy settings, with the build and signing
-adapters, and points at the server definition with
-[`server`](/docs/custom/cli-configuration). A CLI or Console that reaches a
-self-hosted server through `standaloneRepository` reads the server's plugins
-from its admin API, and lists the server's storage adapters again for its own
-uploads and reads.
+A managed project lists plugins in two places: `hot-updater.config.ts`, where
+init writes the provider package's `plugins`, and the app. Its prebuilt server
+runs the same list.
 
-Some setups need a second definition: a Console deployed apart from the server,
-or a Cloudflare Worker server, whose CLI loads a Node definition. Keep the
-second one a copy: import the same plugins from one shared module, or copy the
-server's definition unchanged. Change plugins only in the server's own
-definition, and update the copy with it.
+Keep the config's list the same as the server's, and a deployed Console's
+`console.config.ts`, which mirrors the server too. When the server adds or
+drops a plugin, change each list with it, or import one list from a module
+every project can reach.
 
 | Kind                                   | What it does                                                                        | Runs in                        | Official                                                                            | Write one                                                           |
 | -------------------------------------- | ----------------------------------------------------------------------------------- | ------------------------------ | ----------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
@@ -49,22 +49,21 @@ definition, and update the copy with it.
 | [Storage adapter](#storage-adapter)    | Stores bundle artifacts and resolves their download URLs                            | CLI, Console, server           | Supabase, Cloudflare R2, AWS S3, Firebase, Standalone                               | [Create a storage adapter](/docs/storage-adapters/custom-storage)   |
 | [Database adapter](#database-adapter)  | Stores Bundles, Releases, Release Catalogs, Channels, and server plugins' tables    | CLI, Console, server           | Supabase, Cloudflare D1, DynamoDB, Firestore, Kysely, Drizzle, Prisma, MongoDB | [Create a database adapter](/docs/database-adapters/custom-database) |
 | [Signing adapter](#signing-adapter)    | Signs artifact hashes during deploy                                                 | CLI                            | [Local PEM](/docs/guides/signing/local), [AWS KMS](/docs/guides/signing/aws-kms), [Google Cloud KMS](/docs/guides/signing/google-cloud-kms), [remote](/docs/guides/signing/remote) | `BundleSigningAdapter` from `@hot-updater/plugin-core`              |
-| [Server plugin](#server-plugins)       | Adds tables, APIs, routes, CLI commands, and client authentication to the update server | Server; the CLI or managed init creates tables | [`insights()`](/docs/guides/insights), [`apiKeys()`](/docs/custom/api-key-authentication) | [Create a server plugin](/docs/custom/server-plugins)               |
+| [Server plugin](#server-plugins)       | Adds tables, APIs, routes, and client authentication to the update server           | Server; the CLI creates tables | [`insights()`](/docs/guides/insights), [`apiKeys()`](/docs/custom/api-key-authentication) | [Create a server plugin](/docs/custom/server-plugins)               |
 | [Client plugin](#client-plugins)       | Observes launches, update checks, downloads, and failures in the app, and calls the server | React Native app               | [Insights](/docs/react-native-api/insights)                                         | [Create a client plugin](/docs/react-native-api/client-plugins)     |
 | [Integration plugin](#integration-plugins) | Uploads source maps for the bundles a build adapter makes                       | CLI                            | [Sentry](/docs/integration-plugins/sentry), [Datadog](/docs/integration-plugins/datadog), [BugSnag](/docs/integration-plugins/bugsnag) | A function that wraps a build adapter                               |
 
-A managed Cloudflare, Supabase, AWS, or Firebase server runs on its provider's
-storage and database adapters, and runs the server plugins its definition
-lists: Insights and API keys by default, or the ones you
-[choose](/docs/managed/server-plugins). Other storage and database adapters run
-on a [custom server](/docs/custom/overview). Client plugins run in any app.
+The managed Cloudflare, Supabase, AWS, and Firebase servers are prebuilt with
+their provider's storage and database adapters and the official server
+plugins, Insights and API keys. Other adapters and server plugins run on a
+[custom server](/docs/custom/overview). Client plugins run in any app.
 
 A feature can ship both halves, as Insights does: a server plugin that stores
 data and serves routes, and a client plugin that calls those routes with the
 app's base URL and headers. The server plugin names its client plugin in
 [`cli.clientPlugin`](/docs/custom/server-plugins#name-the-apps-client-plugin),
 which managed init and the agent scaffold use to add it to the app's
-`HotUpdater.init`.
+`HotUpdater.init`, and which `hot-updater doctor` checks the app for.
 
 ## Write your own
 
@@ -86,7 +85,7 @@ Hot Updater's packages divide by where their code runs:
 | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
 | `@hot-updater/protocol`     | The device-safe, zero-dependency package for what crosses a boundary: the data formats and pure computations the app and the server share, and the contracts between a host and its extensions on the device, such as the client plugin contract. | The app, the server, the CLI, and client plugins         |
 | `@hot-updater/plugin-core`  | The kit that extends the server: the adapter and server plugin contracts and their helpers, and the storage engine they run on. It runs wherever the server runs, and depends on `@hot-updater/protocol`.                                       | Adapters and server plugins, including Hot Updater's own |
-| `@hot-updater/server`       | The runtime host: `createHotUpdater` and its handlers, with the built-in adapters and plugins it re-exports.                                                                                                                                      | The server definition                                    |
+| `@hot-updater/server`       | The runtime host: `createHotUpdater` and its handlers, with the built-in adapters and plugins it re-exports.                                                                                                                                      | The server, and `hot-updater.config.ts` for its plugins  |
 | `@hot-updater/react-native` | The app's SDK. It imports `@hot-updater/protocol` and the built-in Insights client, never `@hot-updater/plugin-core` or the server.                                                                                                               | The app                                                  |
 
 An adapter or a server plugin you write imports `@hot-updater/plugin-core`, and
@@ -162,7 +161,7 @@ reads index ranges on its backend.
 - `@hot-updater/cloudflare`: Stores metadata in Cloudflare D1 with `d1Database`.
 - `@hot-updater/firebase`: Stores update metadata in Firebase Firestore with `firebaseDatabase`.
 - `@hot-updater/standalone`: `standaloneRepository` reaches a self-hosted
-  server's database through its admin API, as the `server` of
+  server's database through its admin API, as the `database` of
   `hot-updater.config.ts` or of the Console's configuration.
 - [Kysely](/docs/custom/database/kysely), [Drizzle](/docs/custom/database/drizzle),
   [Prisma](/docs/custom/database/prisma), and
@@ -222,9 +221,8 @@ Server plugins extend the update server rather than the CLI. They run inside
 APIs, routes and client authentication. Core has none of their tables or routes:
 a server has Insights only when it runs the `insights()` plugin, which records
 Insights reports, and `apiKeys()` protects client routes. Managed providers run
-both unless the project
-[drops them](/docs/managed/server-plugins#drop-insights-or-api-keys). To write
-one, see [Create a server plugin](/docs/custom/server-plugins).
+both. To write one for a custom server, see
+[Create a server plugin](/docs/custom/server-plugins).
 
 Hot Updater's own plugins are packages built the same way:
 `@hot-updater/plugin-insights` and `@hot-updater/plugin-api-keys`.
@@ -234,9 +232,9 @@ per side, the layout a plugin you publish follows; see
 [Ship both sides from one package](/docs/plugins/publish#ship-both-sides-from-one-package).
 
 The Console has built-in screens for these official features, and shows each
-one only when the server runs its plugin. It has no UI extension API: a plugin
-extends the server, the CLI, and the app, and its data reaches people through
-its API, its routes, and its commands.
+one only when its configuration lists the plugin, as the server runs it. It has
+no UI extension API: a plugin extends the server and the app, and its data
+reaches people through its API and its routes.
 
 ## Client plugins
 

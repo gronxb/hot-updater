@@ -34,14 +34,15 @@ npm install @hot-updater/server @hot-updater/aws hono @hono/node-server kysely b
 npm install --save-dev hot-updater @types/better-sqlite3 tsx
 ```
 
-In your React Native project, install the client and CLI dependencies:
+In your React Native project, install the client and CLI dependencies. The CLI
+configuration imports the server's plugins from `@hot-updater/server`:
 
 ```package-install
 npm install @hot-updater/react-native
 ```
 
 ```package-install
-npm install --save-dev @hot-updater/bare @hot-updater/aws @hot-updater/standalone hot-updater
+npm install --save-dev @hot-updater/bare @hot-updater/aws @hot-updater/server @hot-updater/standalone hot-updater
 ```
 
 ## Database setup
@@ -65,10 +66,10 @@ export const db = new Kysely<object>({
 
 ## Define the server
 
-The server definition is the module that exports `hotUpdater`, the server
-`createHotUpdater` returns with its database adapter, storage adapters (see
-[Storage adapters](/docs/custom/overview#storage-adapters)), and server
-plugins. The server, the CLI, and the Console all read this one module.
+Create the Hot Updater instance with your database adapter, storage adapter
+(see [Storage adapters](/docs/custom/overview#storage-adapters)), and server
+plugins. The server mounts its handlers, and the `db` and `api-key` commands
+below load this file.
 
 ```typescript title="src/hotUpdater.ts"
 import { existsSync } from "node:fs";
@@ -195,7 +196,7 @@ Then create the API key for your mobile app through the `apiKeys()` plugin of
 the same `createHotUpdater` configuration:
 
 ```bash
-npx hot-updater api-key create src/hotUpdater.ts --name "Mobile app"
+npx hot-updater api-key create --name "Mobile app" src/hotUpdater.ts
 ```
 
 Copy the plaintext API key from the command output now. Hot Updater persists
@@ -218,16 +219,18 @@ The server runs at `http://localhost:3000/hot-updater`.
 
 Configure your Hot Updater CLI to connect to this self-hosted server.
 
-Create this configuration in the React Native project. Its `server` reaches
-the server through its admin handler, with the same storage as the server's
-definition. Its `.env.hotupdater` must contain the same `R2_*` storage values
-and `HOT_UPDATER_ADMIN_TOKEN` as the server, and must also be excluded from
-Git.
+Create this configuration in the React Native project. It mirrors the server:
+the same storage adapter, the server's admin handler through
+`standaloneRepository` as its `database`, and the server's plugins. Its
+`.env.hotupdater` must contain the same `R2_*` storage values and
+`HOT_UPDATER_ADMIN_TOKEN` as the server, and must also be excluded from Git.
 
 ```typescript title="hot-updater.config.ts"
 import { existsSync } from "node:fs";
 import { bare } from "@hot-updater/bare";
 import { s3Storage } from "@hot-updater/aws";
+import { apiKeys } from "@hot-updater/server/plugins/api-keys";
+import { insights } from "@hot-updater/server/plugins/insights";
 import { standaloneRepository } from "@hot-updater/standalone";
 import { defineConfig } from "hot-updater";
 
@@ -242,39 +245,32 @@ if (!adminToken) {
 
 export default defineConfig({
   build: bare({ enableHermes: true }),
-  updateStrategy: "appVersion",
-  server: standaloneRepository({
+  storage: s3Storage({
+    region: "auto",
+    endpoint: process.env.R2_ENDPOINT,
+    credentials: {
+      accessKeyId: process.env.R2_ACCESS_KEY_ID!,
+      secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
+    },
+    bucketName: process.env.R2_BUCKET_NAME!,
+  }),
+  database: standaloneRepository({
     baseUrl: "http://localhost:3000/hot-updater/admin",
     commonHeaders: {
       Authorization: `Bearer ${adminToken}`,
     },
-    storage: [
-      s3Storage({
-        region: "auto",
-        endpoint: process.env.R2_ENDPOINT,
-        credentials: {
-          accessKeyId: process.env.R2_ACCESS_KEY_ID!,
-          secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
-        },
-        bucketName: process.env.R2_BUCKET_NAME!,
-      }),
-    ],
   }),
+  plugins: [insights(), apiKeys()],
+  updateStrategy: "appVersion",
 });
 ```
 
 <Callout type="warn">
-  `storage` must match the server's `createHotUpdater({ storage })`: both use
-  `s3Storage` on the same bucket here. The CLI uploads to the first adapter.
+  The CLI `storage` adapter must match one entry in the server's
+  `createHotUpdater({ storage })` list, and `plugins` must list the server's
+  plugins. Both use `s3Storage`, `insights()`, and `apiKeys()` here; see
+  [CLI Configuration](/docs/custom/cli-configuration#mirror-the-server).
 </Callout>
-
-If the React Native project can import the server's module, such as in a
-monorepo with the server in a sibling folder, set
-`server: "../server/src/hotUpdater.ts"` instead. That path is relative to
-`hot-updater.config.ts`, but the definition's `./data/database.db` and
-`.env.hotupdater` are relative to the working directory, so a command run from
-the React Native project opens other files. Resolve them against the module's
-own folder first; see [CLI Configuration](/docs/custom/cli-configuration).
 
 ## React Native setup
 
@@ -315,9 +311,10 @@ export const hotUpdater = createHotUpdater({
 });
 ```
 
-Then omit `x-api-key` from React Native `requestHeaders`, and skip
-`api-key create`. This does not make the admin handler public; its framework
-authentication remains required.
+Remove `apiKeys()` from `plugins` in the React Native project's
+`hot-updater.config.ts` too. Then omit `x-api-key` from React Native
+`requestHeaders`, and skip `api-key create`. This does not make the admin
+handler public; its framework authentication remains required.
 
 ## Verify and deploy
 

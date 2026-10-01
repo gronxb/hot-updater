@@ -7,7 +7,7 @@ icon: docker
 import { Step, Steps } from "fumadocs-ui/components/steps";
 import { Accordion, Accordions } from "fumadocs-ui/components/accordion";
 
-Complete [Basics](/docs/guides/console-deployment) first, with a server definition whose adapters run in Node. You also need Docker.
+Complete [Basics](/docs/guides/console-deployment) first, with adapters that run in Node. You also need Docker.
 
 <Steps>
 <Step>
@@ -19,7 +19,7 @@ cp .env.example .env.production
 chmod 600 .env.production
 ```
 
-Fill `.env.production` with the [authentication variables](/docs/guides/console-deployment#set-up-sign-in) and the backend variables your server definition reads. Use plain `KEY=value` entries without wrapping quotes.
+Fill `.env.production` with the [authentication variables](/docs/guides/console-deployment#set-up-sign-in) and the backend variables your `console.config.ts` reads. Use plain `KEY=value` entries without wrapping quotes.
 
 Set `BETTER_AUTH_URL` to your public HTTPS origin and register its OAuth callback. For local testing, use `http://localhost:3000` and a matching callback.
 

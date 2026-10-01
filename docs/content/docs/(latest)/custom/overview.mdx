@@ -16,19 +16,20 @@ backend, use the matching integration below and keep its established tooling.
 
 ## Architecture
 
-| Part                    | Runs in                            | Responsibility                                                                                                                   |
-| ----------------------- | ---------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| Server definition       | Server project                     | Export `hotUpdater` from `createHotUpdater` with the database, storage and plugins; the server, the CLI and the Console read it. |
-| `hot-updater.config.ts` | React Native project or deploy job | Build bundles and point at the server: its definition, or `standaloneRepository` for its admin API.                              |
-| `createHotUpdater`      | Server project                     | Compile Release Catalogs and serve client and admin handlers using a direct database provider.                                   |
-| Database adapter        | Server project                     | Persist canonical rows, prepare the schema and commit changes atomically.                                                        |
-| Server plugins          | Server project                     | Add Insights, API keys, or your own tables, APIs and routes to `createHotUpdater`.                                               |
-| Storage adapter         | Deploy job and server              | Upload artifacts and resolve their stored locations for downloads.                                                               |
+| Part                    | Runs in                            | Responsibility                                                                                                         |
+| ----------------------- | ---------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `hot-updater.config.ts` | React Native project or deploy job | Build bundles, upload artifacts and send management requests through `standaloneRepository`, with the server's plugins. |
+| `createHotUpdater`      | Server project                     | Compile Release Catalogs and serve client and admin handlers using a direct database provider.                         |
+| Database adapter        | Server project                     | Persist canonical rows, prepare the schema and commit changes atomically.                                              |
+| Server plugins          | Server project                     | Add Insights, API keys, or your own tables, APIs and routes to `createHotUpdater`.                                     |
+| Storage adapter         | Deploy job and server              | Upload artifacts and resolve their stored locations for downloads.                                                     |
 
-Pass database and storage adapter objects directly to `createHotUpdater` in the
-server definition. Provider factories such as `dynamoDB(options)` return those
+Pass database and storage adapter objects directly to `createHotUpdater` and
+`defineConfig`. Provider factories such as `dynamoDB(options)` return those
 objects. Capture SDK clients, bindings and credentials when constructing each
-adapter; handlers take only a Web `Request`.
+adapter; handlers take only a Web `Request`. List the server's plugins in
+`hot-updater.config.ts` too, as in
+[CLI Configuration](/docs/custom/cli-configuration#mirror-the-server).
 
 The mobile app uses the client base URL and a client API key. The CLI connects
 to the separately protected admin base URL. The admin token and provider
@@ -105,8 +106,8 @@ used by the deployed server as runtime dependencies.
 ## CLI configuration
 
 After the server and schema are ready, [connect the React Native project's CLI](/docs/custom/cli-configuration).
-Configure the exact admin mount URL, its authentication headers and the same
-storage location used by the server.
+Configure the exact admin mount URL, its authentication headers, the same
+storage location used by the server, and the server's plugins.
 
 ## Deploy and verify
 

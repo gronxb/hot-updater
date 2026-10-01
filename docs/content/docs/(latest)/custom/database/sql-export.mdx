@@ -6,7 +6,7 @@ icon: FileText
 
 ## Overview
 
-Export Hot Updater table schemas as plain SQL files for manual database setup. The command generates the SQL without a database connection, but it loads your server definition to find its plugins.
+Export Hot Updater table schemas as plain SQL files for manual database setup. The command generates the SQL without a database connection, but it loads your server's file or `hot-updater.config.ts` to find the server's plugins.
 
 <Callout>
 For ORM-specific schema generation (Drizzle, Prisma, Kysely), see the respective adapter documentation pages.
@@ -48,8 +48,8 @@ npx hot-updater db generate --sql sqlite
 The SQL holds core's tables and those of the
 [plugins](/docs/custom/server-plugins#create-the-plugins-tables) your server
 runs, such as `insights()` and `apiKeys()`. The command finds the plugin list
-as plugin commands do: in the server definition you name, then in the one
-`server` in `hot-updater.config.ts` points at, then in `src/hotUpdater.ts` or
+in the file you name that exports the server's `hotUpdater`, then in `plugins`
+of `hot-updater.config.ts` when it lists any, then in `src/hotUpdater.ts` or
 `src/db.ts`:
 
 ```bash

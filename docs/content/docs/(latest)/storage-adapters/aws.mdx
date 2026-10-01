@@ -7,13 +7,13 @@ icon: aws
 ## Installation
 
 ```package-install
-npm install @hot-updater/server @hot-updater/aws --save-dev
+npm install @hot-updater/aws --save-dev
 ```
 
 For a custom server, install the runtime dependency in the server project:
 
 ```package-install
-npm install @hot-updater/server @hot-updater/aws
+npm install @hot-updater/aws
 ```
 
 ## Setup
@@ -47,28 +47,20 @@ other standard AWS credential sources.
 
 ### AWS S3
 
-Add the adapter to `storage` in your
-[server definition](/docs/custom/quick-start#define-the-server), which `server`
-in `hot-updater.config.ts` points at. The CLI uploads to the first adapter, and
-the server resolves downloads with it:
-
-```typescript title="hotUpdater.ts (excerpt)"
+```typescript title="hot-updater.config.ts (excerpt)"
 import { s3Storage } from "@hot-updater/aws"; // [!code ++]
-import { createHotUpdater } from "@hot-updater/server";
+import { defineConfig } from "hot-updater";
 
-export const hotUpdater = createHotUpdater({
-  // ... database and plugins
-  storage: [ // [!code ++]
-    s3Storage({ // [!code ++]
-      region: process.env.AWS_REGION!, // [!code ++]
-      credentials: { // [!code ++]
-        accessKeyId: process.env.AWS_ACCESS_KEY_ID!, // [!code ++]
-        secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!, // [!code ++]
-      }, // [!code ++]
-      bucketName: process.env.AWS_S3_BUNDLES_BUCKET!, // [!code ++]
-      downloadUrlSigningKey: process.env.HOT_UPDATER_STORAGE_DOWNLOAD_URL_KEY!, // [!code ++]
-    }), // [!code ++]
-  ], // [!code ++]
+export default defineConfig({
+  // ... build, database, plugins, and updateStrategy
+  storage: s3Storage({ // [!code ++]
+    region: "us-east-1", // [!code ++]
+    credentials: { // [!code ++]
+      accessKeyId: process.env.AWS_ACCESS_KEY_ID!, // [!code ++]
+      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!, // [!code ++]
+    }, // [!code ++]
+    bucketName: "my-hot-updater-bucket", // [!code ++]
+  }), // [!code ++]
 });
 ```
 
@@ -97,7 +89,7 @@ returns a signed URL handled by the same server.
 
 For CloudFront delivery, pass `cloudFrontDownloadUrl(...)` as `getDownloadUrl`:
 
-```typescript title="hotUpdater.ts (excerpt)"
+```typescript title="src/hotUpdater.ts (excerpt)"
 import { cloudFrontDownloadUrl, s3Storage } from "@hot-updater/aws"; // [!code ++]
 
 const storage = s3Storage({
@@ -128,3 +120,31 @@ guide to remove unreferenced bundle objects and shared assets safely.
 Use a separate `basePath` for every database or environment that shares a
 bucket. Pruning assumes that the configured database owns every object below
 its storage prefix.
+
+## Custom server usage
+
+Use `s3Storage` with `createHotUpdater` for self-hosted servers:
+
+```typescript title="src/hotUpdater.ts"
+import { s3Storage } from "@hot-updater/aws"; // [!code ++]
+import { createHotUpdater } from "@hot-updater/server";
+import { apiKeys } from "@hot-updater/server/plugins/api-keys";
+import { insights } from "@hot-updater/server/plugins/insights";
+
+const hotUpdater = createHotUpdater({
+  database,
+  plugins: [insights(), apiKeys()],
+  storage: [ // [!code ++]
+    s3Storage({ // [!code ++]
+      region: process.env.AWS_REGION!, // [!code ++]
+      credentials: { // [!code ++]
+        accessKeyId: process.env.AWS_ACCESS_KEY_ID!, // [!code ++]
+        secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!, // [!code ++]
+      }, // [!code ++]
+      bucketName: process.env.AWS_S3_BUNDLES_BUCKET!, // [!code ++]
+      downloadUrlSigningKey: process.env.HOT_UPDATER_STORAGE_DOWNLOAD_URL_KEY!, // [!code ++]
+    }), // [!code ++]
+  ], // [!code ++]
+  // ... other options
+});
+```

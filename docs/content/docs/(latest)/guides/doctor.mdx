@@ -151,11 +151,10 @@ npx hot-updater fingerprint create
 
 A server plugin can name the client plugin an app adds for it, as `insights()`
 names the [Insights client plugin](/docs/react-native-api/insights). In a
-project that installs `@hot-updater/react-native` and sets `server` in
-`hot-updater.config.ts`, `doctor` reads the server's plugins: from the server
-definition `server` points at, or from the admin `/version` when `server` is
-`standaloneRepository`. It then warns `MISSING_CLIENT_PLUGIN` for each client
-plugin that no source file in the project imports:
+project that installs `@hot-updater/react-native` and sets `database` in
+`hot-updater.config.ts`, `doctor` reads the client plugins that the server
+plugins in the config's `plugins` name. It then warns `MISSING_CLIENT_PLUGIN`
+for each client plugin that no source file in the project imports:
 
 ```text
 The server runs a plugin whose client plugin insights the app does not add.
@@ -163,9 +162,9 @@ The server runs a plugin whose client plugin insights the app does not add.
 
 Import it from the module the warning names and pass it to
 `HotUpdater.init({ plugins })`; the issue's `fixability` is `auto`. When
-`doctor` cannot read the server's plugins, it warns `CLIENT_PLUGINS_UNCHECKED`
-with the reason, with `fixability` `blocked`: make `server` load, then rerun
-`doctor`.
+`doctor` cannot load the config's `database` and `plugins`, it warns
+`CLIENT_PLUGINS_UNCHECKED` with the reason, with `fixability` `blocked`: make
+them load, then rerun `doctor`.
 
 ## Repair issues
 
@@ -295,8 +294,8 @@ result alone does not.
 
 ## Check Release Catalogs
 
-When `hot-updater.config.ts` sets `server`, doctor opens that server once for
-the whole run and reads its release catalogs. It checks every scope that has a
+When `hot-updater.config.ts` sets `database`, doctor opens it once for the
+whole run and reads its release catalogs. It checks every scope that has a
 catalog row or a Release, comparing each catalog with a rebuild from its
 scope's Releases without writing, and reports each scope in
 `details.releaseCatalogs.scopes`:
@@ -320,8 +319,8 @@ Then retry **Check and apply update** in the app and
 When doctor cannot reach the database, for example because the server's
 credentials are not available where it runs, it warns
 `RELEASE_CATALOGS_UNCHECKED` with the reason and does not fail: `success` stays
-`true` for agents that gate on it. Without `server` in the config, doctor skips
-the check.
+`true` for agents that gate on it. Without `database` in the config, doctor
+skips the check.
 
 A scope with Releases but no catalog row answers devices with 404. Doctor
 reports it as the error `RELEASE_CATALOG_IDENTITY_MISSING`, and `--fix` does

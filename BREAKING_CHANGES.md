@@ -239,11 +239,13 @@ domain used by managed init and Console:
 
 ```bash
 hot-updater db migrate src/hotUpdater.ts
-hot-updater api-key create src/hotUpdater.ts --name "Mobile app"
+hot-updater api-key create --name "Mobile app" src/hotUpdater.ts
 hot-updater api-key list src/hotUpdater.ts
 hot-updater api-key revoke <api-key-id> src/hotUpdater.ts
 ```
 
+The trailing path names the server file that creates `hotUpdater`. Without it,
+`api-key` uses `database` and `plugins` in `hot-updater.config.ts`.
 `create` prints the plaintext API key exactly once. Only its SHA-256 hash and
 non-secret metadata are persisted. The recommended self-hosted bootstrap sets
 `clientAccess: { type: "api-key" }`, applies the schema, creates the API key,

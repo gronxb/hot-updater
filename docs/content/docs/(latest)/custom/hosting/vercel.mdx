@@ -164,7 +164,7 @@ Bootstrap the Development database and create its client API key:
 ```bash
 npx vercel env run -e development -- npx drizzle-kit push
 npx vercel env run -e development -- npx hot-updater db migrate src/hotUpdater.ts
-npx vercel env run -e development -- npx hot-updater api-key create src/hotUpdater.ts --name "Development app"
+npx vercel env run -e development -- npx hot-updater api-key create --name "Development app" src/hotUpdater.ts
 ```
 
 `db migrate` writes the settings rows the server checks before its first
@@ -192,7 +192,7 @@ belong to the same database:
 ```bash
 npx vercel env run -e production -- npx drizzle-kit push
 npx vercel env run -e production -- npx hot-updater db migrate src/hotUpdater.ts
-npx vercel env run -e production -- npx hot-updater api-key create src/hotUpdater.ts --name "Production app"
+npx vercel env run -e production -- npx hot-updater api-key create --name "Production app" src/hotUpdater.ts
 ```
 
 Use this Production client key in the app that connects to the deployed server.
@@ -208,8 +208,8 @@ Your Hot Updater server will be available at `https://your-project.vercel.app/ho
 
 [Connect the React Native project's CLI](/docs/custom/cli-configuration) to the
 verified deployment URL with `/hot-updater/admin` as its base path. Keep the
-admin token in the deploy environment and match the server's storage adapter
-and bucket configuration.
+admin token in the deploy environment, match the server's storage adapter and
+bucket configuration, and list the server's plugins.
 
 For the mobile app, use the client root ending in `/hot-updater` and its client
 API key through [Set up your app](/docs/get-started/app-setup). Run

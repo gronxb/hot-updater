@@ -8,7 +8,7 @@ icon: firebase
 ## Installation
 
 ```package-install
-npm install @hot-updater/server @hot-updater/firebase firebase-admin --save-dev
+npm install @hot-updater/firebase firebase-admin --save-dev
 ```
 
 For a deployed server, install these packages as runtime dependencies instead
@@ -71,11 +71,11 @@ await migrateFirebaseDatabase(
 
 `migrateFirebaseDatabase` takes the same configuration as `firebaseDatabase`,
 and the plugins the server runs: here `plugins` from `@hot-updater/firebase`,
-Insights and API keys, the managed server's default list. `hot-updater init` and
-the managed setup's key script both run it. `hot-updater db migrate`, which
-loads the server definition, writes the same settings for the server's
-[plugins](/docs/custom/server-plugins#create-the-plugins-tables), whose tables
-need no collection or index of their own.
+the managed server's Insights and API keys. `hot-updater init` and the managed
+setup's key script both run it. `hot-updater db migrate`, run with the file
+that exports a server's `hotUpdater`, writes the same settings for the
+server's [plugins](/docs/custom/server-plugins#create-the-plugins-tables),
+whose tables need no collection or index of their own.
 
 ## Schema settings
 
@@ -91,8 +91,8 @@ request, so it recovers without a restart once the settings exist.
 ## How the collection is used
 
 `firebaseDatabase(config)` returns an engine database,
-`{ name, adapter, dispose }`, which `createHotUpdater` accepts in the server
-definition. Its adapter is the key-value helper over the collection, behind the
+`{ name, adapter, dispose }`, which `defineConfig` and `createHotUpdater` both
+accept. Its adapter is the key-value helper over the collection, behind the
 schema settings check:
 
 - Each document's id is a hash of its `pk` and `sk`. Maps and arrays are stored
@@ -149,61 +149,60 @@ FIREBASE_STORAGE_BUCKET=your-bucket-name
 
 ## Usage
 
-Set the adapter as `database` in your
-[server definition](/docs/custom/quick-start#define-the-server), which `server`
-in `hot-updater.config.ts` points at:
-
-```typescript title="hotUpdater.ts (excerpt)"
+```typescript title="hot-updater.config.ts (excerpt)"
+import { existsSync } from "node:fs";
 import { firebaseDatabase } from "@hot-updater/firebase"; // [!code ++]
-import { createHotUpdater } from "@hot-updater/server";
 import { applicationDefault } from "firebase-admin/app";
+import { defineConfig } from "hot-updater";
+
+if (existsSync(".env.hotupdater")) {
+  process.loadEnvFile(".env.hotupdater");
+}
 
 // Reuse the environment's application-default credentials.
 const credential = applicationDefault();
 
-export const hotUpdater = createHotUpdater({
+export default defineConfig({
+  // ... build, storage, plugins, and updateStrategy
   database: firebaseDatabase({ // [!code ++]
     projectId: process.env.FIREBASE_PROJECT_ID!, // [!code ++]
     credential, // [!code ++]
   }), // [!code ++]
-  // ... storage and plugins
 });
 ```
 
 ## Complete example
 
-The server definition `hot-updater init` writes for managed Firebase, with Cloud
-Storage and Firestore. `plugins` is the provider's default list, which you can
-[edit](/docs/managed/server-plugins):
+Combined storage and database, with the plugins the managed Cloud Function
+runs:
 
-```typescript title="hotUpdater.ts"
+```typescript title="hot-updater.config.ts"
+import { existsSync } from "node:fs";
+import { bare } from "@hot-updater/bare";
 import { firebaseDatabase, firebaseStorage, plugins } from "@hot-updater/firebase";
-import { createHotUpdater } from "@hot-updater/server";
 import { applicationDefault } from "firebase-admin/app";
+import { defineConfig } from "hot-updater";
 
-// https://firebase.google.com/docs/admin/setup?hl=en#initialize_the_sdk_in_non-google_environments
-// Reuse working application-default credentials (ADC).
-// Only when a credential file is needed, set its private local path in .env.hotupdater:
-// GOOGLE_APPLICATION_CREDENTIALS=./firebase-adminsdk-credentials.json
+if (existsSync(".env.hotupdater")) {
+  process.loadEnvFile(".env.hotupdater");
+}
+
+// Reuse the environment's application-default credentials.
 const credential = applicationDefault();
 
-/**
- * The Hot Updater server: its database, storage, and plugins.
- * hot-updater.config.ts points the CLI and the console here.
- */
-export const hotUpdater = createHotUpdater({
-  database: firebaseDatabase({
-    projectId: process.env.HOT_UPDATER_FIREBASE_PROJECT_ID!,
+export default defineConfig({
+  build: bare({ enableHermes: true }),
+  storage: firebaseStorage({
+    projectId: process.env.FIREBASE_PROJECT_ID!,
+    storageBucket: process.env.FIREBASE_STORAGE_BUCKET!,
     credential,
   }),
-  storage: [
-    firebaseStorage({
-      projectId: process.env.HOT_UPDATER_FIREBASE_PROJECT_ID!,
-      storageBucket: process.env.HOT_UPDATER_FIREBASE_STORAGE_BUCKET!,
-      credential,
-    }),
-  ],
+  database: firebaseDatabase({
+    projectId: process.env.FIREBASE_PROJECT_ID!,
+    credential,
+  }),
   plugins,
+  updateStrategy: "appVersion",
 });
 ```
 
@@ -229,8 +228,10 @@ export const hotUpdater = createHotUpdater({
 ```
 
 `insights()` records app events, and `apiKeys()` protects client routes with
-the `x-api-key` header. The managed Cloud Function's default list is the same, which
-`@hot-updater/firebase` exports as `plugins`.
+the `x-api-key` header. The managed Cloud Function runs the same list, which
+`@hot-updater/firebase` exports as `plugins`. List the server's plugins in
+`hot-updater.config.ts` too; see
+[CLI Configuration](/docs/custom/cli-configuration#mirror-the-server).
 
 ## Dependencies
 
