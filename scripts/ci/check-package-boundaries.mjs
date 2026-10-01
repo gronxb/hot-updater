@@ -91,13 +91,9 @@ const COMPUTED_IMPORTS = new Map([
 /**
  * Specs that import another package's private source, each with the reason
  * no public API serves it. A new one needs a deliberate entry.
+ * @type {Map<string, string>}
  */
-const PRIVATE_SOURCE_SPECS = new Map([
-  [
-    "packages/hot-updater/src/commands/agent/verifyServer.spec.ts",
-    "checks doctor against the app's own Release Catalog client, which @hot-updater/react-native keeps private; removed when release catalog validation moves to @hot-updater/protocol in the CLI cleanup PR",
-  ],
-]);
+const PRIVATE_SOURCE_SPECS = new Map();
 
 const TEST_UTILS = "@hot-updater/test-utils";
 
