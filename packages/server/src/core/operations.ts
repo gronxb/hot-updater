@@ -1,9 +1,4 @@
 import {
-  createReleaseCatalogScopeKey,
-  decodeChannelKey,
-  encodeChannelKey,
-} from "@hot-updater/core";
-import {
   bundleToPatchRows,
   bundleToRow,
   createUUIDv7After,
@@ -22,6 +17,11 @@ import {
   type ReleaseTarget,
 } from "@hot-updater/plugin-core";
 import { DatabaseRowReferencedError } from "@hot-updater/plugin-core/internal";
+import {
+  createReleaseCatalogScopeKey,
+  decodeChannelKey,
+  encodeChannelKey,
+} from "@hot-updater/protocol";
 
 import { DatabaseConstraintError } from "../database/errors";
 import { toBundleRow, toReleaseRow, type CoreDatabase } from "./reads";

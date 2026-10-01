@@ -1,11 +1,10 @@
-import { resolveBaseURL } from "./baseURL";
+import { resolveBaseURL, type HotUpdaterBaseURL } from "./baseURL";
 import type {
   HotUpdaterClientContext,
   HotUpdaterClientHooks,
   HotUpdaterClientPlugin,
   HotUpdaterClientStorage,
 } from "./clientPlugin";
-import type { HotUpdaterBaseURL } from "./types";
 
 export type PluginHookName = keyof HotUpdaterClientHooks;
 export type PluginHookPayload<K extends PluginHookName> = Parameters<
@@ -21,8 +20,9 @@ export interface PluginHostConfig {
 }
 
 /**
- * What plugins read from the app and the device. The SDK backs it with the
- * native module; `@hot-updater/test-utils/react-native` backs it with fakes.
+ * What plugins read from the app and the device. A device SDK backs it with
+ * its native module; `@hot-updater/test-utils/react-native` backs it with
+ * fakes.
  */
 export interface PluginHostEnvironment {
   fetch(url: string, init: RequestInit): Promise<Response>;

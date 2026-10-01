@@ -14,4 +14,4 @@ export {
   type UpdateErrorStage,
   type UpdateErrorTransport,
   type UpdateStrategy,
-} from "@hot-updater/core";
+} from "@hot-updater/protocol";

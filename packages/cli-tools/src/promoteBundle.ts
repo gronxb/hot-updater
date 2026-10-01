@@ -10,11 +10,6 @@ import {
   createBrotliCompress,
 } from "node:zlib";
 
-import {
-  getManifestFileHash,
-  type ManifestArchive,
-  stripBundleArtifactMetadata,
-} from "@hot-updater/core";
 import type { Bundle, StorageAdapterWith } from "@hot-updater/plugin-core";
 import {
   createBundleStorageKey,
@@ -24,6 +19,11 @@ import {
   isContentAddressedAssetFileHash,
   resolveManifestAssetStorageUri,
 } from "@hot-updater/plugin-core";
+import {
+  getManifestFileHash,
+  type ManifestArchive,
+  stripBundleArtifactMetadata,
+} from "@hot-updater/protocol";
 
 import { prepareBundleSigning } from "./bundleSigning";
 import { createTarBrTargetFiles } from "./createTarBr";

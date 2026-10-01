@@ -220,7 +220,7 @@ describe("clientPluginsOf", () => {
     ).toEqual([
       { module: "feedback-rn", name: "fb" },
       {
-        module: "@hot-updater/react-native/plugins/insights",
+        module: "@hot-updater/react-native",
         name: "insights",
       },
     ]);
@@ -265,7 +265,7 @@ describe("Hot Updater's reserved plugin ids in tooling", () => {
     expect(clientAuthOf(plugins)?.plugin).toBe("apiKeys");
     expect(clientPluginsOf(plugins)).toEqual([
       {
-        module: "@hot-updater/react-native/plugins/insights",
+        module: "@hot-updater/react-native",
         name: "insights",
       },
     ]);

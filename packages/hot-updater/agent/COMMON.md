@@ -47,15 +47,20 @@ store, then report only completion. Do not echo provider credentials or read
 entire credential files into tool output. Verify credential presence and access
 through redacted checks. Persist newly generated credentials privately before
 remote registration.
+
 <!-- if credential -->
+
 The registered client {{CREDENTIAL_LABEL}} is the only credential to include in
 the final setup handoff described in common.report. Keep provider, service-role,
 admin and signing credentials private; keep the client {{CREDENTIAL_LABEL}} out of
 logs and deployment records.
+
 <!-- else -->
+
 The server's client routes are public, so the app sends no credential. Keep
 provider, service-role, admin and signing credentials private and out of the
 final setup handoff.
+
 <!-- end -->
 
 Pause only the dependent step for missing login, access, billing activation or
@@ -86,7 +91,10 @@ command or generated files alone do not prove that a remote step is complete.
     "pendingStep": {
       "id": "cf.database",
       "action": "create",
-      "target": { "accountId": "<selected-account>", "databaseName": "<selected-name>" },
+      "target": {
+        "accountId": "<selected-account>",
+        "databaseName": "<selected-name>"
+      },
       "requestId": null
     }
   }
@@ -108,7 +116,7 @@ command or generated files alone do not prove that a remote step is complete.
   target state. Reuse IDs and keys; apply only missing changes. Preserve resources,
   data, migration history, endpoints and custom settings. Never delete/recreate
   them to clear an error. Names alone do not establish ownership.
-- Fill every __HOT_UPDATER_*__ and %%BUCKET_NAME%% placeholder in deployment
+- Fill every **HOT*UPDATER*\*** and %%BUCKET_NAME%% placeholder in deployment
   inputs, generated code and SQL with verified values, preserving string/SQL
   escaping. Run `hot-updater doctor --scope scaffold --infra-dir <scaffold-path> --json`
   against the configured deployment inputs. Repair each fail/blocked result and
@@ -147,7 +155,7 @@ command or generated files alone do not prove that a remote step is complete.
    manifest.json packages where these files can resolve them (the default
    scaffold is nested in the app). From the app directory, run
    `node <scaffold-path>/app/provision-client-credential.mjs`.
-<!-- if credential -->
+   <!-- if credential -->
    It registers the app's client {{CREDENTIAL_LABEL}} through the plugin that
    manifest.json's clientAuth names, which app/hotUpdater.ts runs, on the
    tables the deployed server reads, so keep that file beside it. The
@@ -162,23 +170,29 @@ command or generated files alone do not prove that a remote step is complete.
    Include this registered {{CREDENTIAL_LABEL}} in the final setup handoff
    below. Never substitute a provider API token, service-role key, or admin
    credential. Keep it across setup retries and server upgrades.
-<!-- else -->
+   <!-- else -->
    The server's client routes are public, so the script registers no client
    credential and the app sends none.
-<!-- end -->
+   <!-- end -->
 
 ## App integration
 
 When the requested setup includes app integration, connect the verified base URL
 to the existing HotUpdater.init or HotUpdater.wrap call.
+
 <!-- if credential -->
+
 Send the saved client {{CREDENTIAL_LABEL}} in its {{CREDENTIAL_HEADER}} request
 header.
+
 <!-- end -->
 <!-- if clientPlugins -->
+
 Add {{CLIENT_PLUGIN_LIST}} to that call's `plugins` once, so the app works with
 the server's plugins.
+
 <!-- end -->
+
 Preserve the project's update strategy, update UX and other plugins. If
 integration is missing, follow the matching version's [app setup](https://hot-updater.dev/docs/get-started/app-setup#configure-the-update-client)
 and [native setup](https://hot-updater.dev/docs/get-started/app-setup#native-code-setup)
@@ -192,49 +206,53 @@ separate validation result.
 ## Verify completion
 
 - [ ] **common.verify — Verify the live server**
-<!-- if credential -->
+  <!-- if credential -->
   - Requires: all provider setup prerequisites, a deployed public base URL,
-    manifest packages installed, and the saved client {{CREDENTIAL_LABEL}}.
-<!-- else -->
+  manifest packages installed, and the saved client {{CREDENTIAL_LABEL}}.
+  <!-- else -->
   - Requires: all provider setup prerequisites, a deployed public base URL,
-    and manifest packages installed.
-<!-- end -->
+  and manifest packages installed.
+  <!-- end -->
   - Run from the app directory whose .env.hotupdater targets this deployment.
     Resolve pendingStep from actual provider state before running this gate:
 
-    ```sh
-    hot-updater doctor --scope infrastructure --infra-dir <scaffold-path> --json --server-base-url <base-url> --platform <ios|android> --channel <channel> --app-version <app-version>
-    ```
+        ```sh
+        hot-updater doctor --scope infrastructure --infra-dir <scaffold-path> --json --server-base-url <base-url> --platform <ios|android> --channel <channel> --app-version <app-version>
+        ```
 
-    Use the actual app strategy, platform and channel; replace `--app-version`
-    with `--fingerprint <fingerprint>` for fingerprint updates. Keep the Function
-    path in the base URL where applicable.
-<!-- if credential -->
-    Doctor reads {{CREDENTIAL_ENV}} from the local environment/.env.hotupdater
-    or app/client-credential.local; it rejects conflicting values. Never put the
-    {{CREDENTIAL_LABEL}} in command arguments or probe output.
-<!-- end -->
+        Use the actual app strategy, platform and channel; replace `--app-version`
+        with `--fingerprint <fingerprint>` for fingerprint updates. Keep the Function
+        path in the base URL where applicable.
+
+    <!-- if credential -->
+
+        Doctor reads {{CREDENTIAL_ENV}} from the local environment/.env.hotupdater
+        or app/client-credential.local; it rejects conflicting values. Never put the
+        {{CREDENTIAL_LABEL}} in command arguments or probe output.
+
+    <!-- end -->
+
   - Verify/record: exit code 0, JSON `success: true`, and
     `details.verification.scope: "infrastructure"`. Every required check must
     have `status: "pass"`; missing inputs and blocked prerequisites cannot pass.
     Doctor rechecks the local scaffold and requires /version to match its
     packaged target serverVersion/infrastructureGeneration,
-<!-- if credential -->
-    then checks the identical catalog URL without a credential (401) and with
-    the saved {{CREDENTIAL_LABEL}} (valid catalog 200 or the empty-catalog 404
-    marked x-hot-updater-catalog: none).
-<!-- else -->
-    then checks the catalog URL without a credential, since client routes are
-    public (valid catalog 200 or the empty-catalog 404 marked
-    x-hot-updater-catalog: none).
-<!-- end -->
-    An arbitrary 404 and the public /version response alone are not success.
-    Record target URL, the sanitized checks and checkedAt; only now set
-    deployedServerVersion. Doctor does not update deployment.json itself and does
-    not accept verifiedSteps as proof. Read `details.verification.notChecked`:
-    resource bindings/migrations, local storage access, artifact downloads and
-    app/native OTA still require their separate checklist checks. An infrastructure
-    scope pass certifies the reported scaffold and server protocol checks only.
+    <!-- if credential -->
+        then checks the identical catalog URL without a credential (401) and with
+        the saved {{CREDENTIAL_LABEL}} (valid catalog 200 or the empty-catalog 404
+        marked x-hot-updater-catalog: none).
+    <!-- else -->
+        then checks the catalog URL without a credential, since client routes are
+        public (valid catalog 200 or the empty-catalog 404 marked
+        x-hot-updater-catalog: none).
+    <!-- end -->
+        An arbitrary 404 and the public /version response alone are not success.
+        Record target URL, the sanitized checks and checkedAt; only now set
+        deployedServerVersion. Doctor does not update deployment.json itself and does
+        not accept verifiedSteps as proof. Read `details.verification.notChecked`:
+        resource bindings/migrations, local storage access, artifact downloads and
+        app/native OTA still require their separate checklist checks. An infrastructure
+        scope pass certifies the reported scaffold and server protocol checks only.
   - Retry: use the failed check to inspect provider readiness, routes, logs,
     credentials or schema; preserve resources and credentials. Wait for propagation
     where appropriate, then run the same doctor command again.
@@ -266,57 +284,64 @@ separate validation result.
     compatibility. A native release OTA check is a separate result.
   - For setup, finish with a ready-to-copy client configuration, like the final
     output of hot-updater init.
-<!-- if credential -->
-    Read only the saved client {{CREDENTIAL_LABEL}}, not the entire environment
-    file. Replace both placeholders below with the actual base URL and
-    registered client {{CREDENTIAL_LABEL}} that passed common.verify, escaping
-    them as JavaScript strings. Preserve any Function path in the base URL; do
-    not append a catalog or update-check route. Do not return masked values,
-    environment variable names or a file path instead of the client
-    {{CREDENTIAL_LABEL}}.
+    <!-- if credential -->
 
-    ```ts
-    import { HotUpdater } from "@hot-updater/react-native";
-    {{CLIENT_PLUGIN_IMPORTS}}
+        Read only the saved client {{CREDENTIAL_LABEL}}, not the entire environment
+        file. Replace both placeholders below with the actual base URL and
+        registered client {{CREDENTIAL_LABEL}} that passed common.verify, escaping
+        them as JavaScript strings. Preserve any Function path in the base URL; do
+        not append a catalog or update-check route. Do not return masked values,
+        environment variable names or a file path instead of the client
+        {{CREDENTIAL_LABEL}}.
 
-    HotUpdater.init({
-      baseURL: "<verified-base-url>",
-      requestHeaders: {
-        "{{CREDENTIAL_HEADER}}": "<registered-client-credential>",
-      },
-      plugins: [{{CLIENT_PLUGINS}}],
-    });
-    ```
-<!-- else -->
-    Replace the placeholder below with the actual base URL that passed
-    common.verify, escaping it as a JavaScript string. Preserve any Function
-    path in the base URL; do not append a catalog or update-check route. The
-    server's client routes are public, so the app sends no credential.
+        ```ts
+        {{APP_IMPORTS}}
 
-    ```ts
-    import { HotUpdater } from "@hot-updater/react-native";
-    {{CLIENT_PLUGIN_IMPORTS}}
+        HotUpdater.init({
+          baseURL: "<verified-base-url>",
+          requestHeaders: {
+            "{{CREDENTIAL_HEADER}}": "<registered-client-credential>",
+          },
+          plugins: [{{CLIENT_PLUGINS}}],
+        });
+        ```
 
-    HotUpdater.init({
-      baseURL: "<verified-base-url>",
-      plugins: [{{CLIENT_PLUGINS}}],
-    });
-    ```
-<!-- end -->
+    <!-- else -->
 
-    Explain that this belongs at module scope and that init does not check for
-    updates.
-<!-- if clientPlugins -->
-    Without its client plugins, the app sends the server's plugins nothing.
-<!-- end -->
-    Show the next check call with the app's actual strategy, for example
-    `HotUpdater.checkForUpdate({ updateStrategy: "appVersion" })` or
-    `HotUpdater.checkForUpdate({ updateStrategy: "fingerprint" })`.
-    Preserve existing initialization options and plugins; do not add init
-    alongside wrap.
-    Include this handoff for infrastructure-only setup too, with app integration
-    and native OTA checks identified as remaining work. If registration or
-    verification is blocked, report that blocker instead of a completed setup.
+        Replace the placeholder below with the actual base URL that passed
+        common.verify, escaping it as a JavaScript string. Preserve any Function
+        path in the base URL; do not append a catalog or update-check route. The
+        server's client routes are public, so the app sends no credential.
+
+        ```ts
+        {{APP_IMPORTS}}
+
+        HotUpdater.init({
+          baseURL: "<verified-base-url>",
+          plugins: [{{CLIENT_PLUGINS}}],
+        });
+        ```
+
+    <!-- end -->
+
+        Explain that this belongs at module scope and that init does not check for
+        updates.
+
+    <!-- if clientPlugins -->
+
+        Without its client plugins, the app sends the server's plugins nothing.
+
+    <!-- end -->
+
+        Show the next check call with the app's actual strategy, for example
+        `HotUpdater.checkForUpdate({ updateStrategy: "appVersion" })` or
+        `HotUpdater.checkForUpdate({ updateStrategy: "fingerprint" })`.
+        Preserve existing initialization options and plugins; do not add init
+        alongside wrap.
+        Include this handoff for infrastructure-only setup too, with app integration
+        and native OTA checks identified as remaining work. If registration or
+        verification is blocked, report that blocker instead of a completed setup.
+
   - Verify/record: report created/reused resources, applied local configuration,
     server/catalog checks, artifact checks performed or unavailable, app integration
     completed or out of scope, and any blocker. Do not claim native OTA success

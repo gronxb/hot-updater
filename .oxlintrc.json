@@ -118,6 +118,55 @@
           }
         ]
       }
+    },
+    {
+      "files": ["packages/react-native/src/**", "packages/protocol/src/**"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "paths": [
+              {
+                "name": "typescript",
+                "message": "Use OXC for source analysis; TypeScript is compiler-only."
+              },
+              {
+                "name": "@typescript/native",
+                "message": "Use OXC for source analysis; TypeScript is compiler-only."
+              },
+              {
+                "name": "@typescript/typescript6",
+                "message": "Use OXC for source analysis; TypeScript is compiler-only."
+              },
+              {
+                "name": "@hot-updater/plugin-core",
+                "message": "React Native and @hot-updater/protocol run on the device and import only @hot-updater/protocol: @hot-updater/plugin-core and @hot-updater/server run where the server runs. Move device-safe code they need into @hot-updater/protocol."
+              },
+              {
+                "name": "@hot-updater/server",
+                "message": "React Native and @hot-updater/protocol run on the device and import only @hot-updater/protocol: @hot-updater/plugin-core and @hot-updater/server run where the server runs. Move device-safe code they need into @hot-updater/protocol."
+              }
+            ],
+            "patterns": [
+              {
+                "group": [
+                  "typescript/*",
+                  "@typescript/native/*",
+                  "@typescript/typescript6/*"
+                ],
+                "message": "Use OXC for source analysis; TypeScript is compiler-only."
+              },
+              {
+                "group": [
+                  "@hot-updater/plugin-core/*",
+                  "@hot-updater/server/*"
+                ],
+                "message": "React Native and @hot-updater/protocol run on the device and import only @hot-updater/protocol: @hot-updater/plugin-core and @hot-updater/server run where the server runs. Move device-safe code they need into @hot-updater/protocol."
+              }
+            ]
+          }
+        ]
+      }
     }
   ]
 }

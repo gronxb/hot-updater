@@ -1,4 +1,3 @@
-import type { Bundle } from "@hot-updater/core";
 import type {
   EngineDatabase,
   StorageAdapter,
@@ -6,6 +5,7 @@ import type {
 } from "@hot-updater/plugin-core";
 import { createStorageAdapter } from "@hot-updater/plugin-core";
 import { createMemoryAdapter } from "@hot-updater/plugin-core/internal";
+import type { Bundle } from "@hot-updater/protocol";
 
 import type { SchemaSettings } from "./database/fence";
 import { createEngineDatabase, toolingTargetOf } from "./db/coreDatabase";

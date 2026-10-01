@@ -1,10 +1,10 @@
+import type { BundleRow, ReleaseRow } from "@hot-updater/plugin-core";
 import {
   NIL_UUID,
   selectDesiredRelease,
   type ReleaseCatalog,
   type ReleaseSelectionInput,
-} from "@hot-updater/core";
-import type { BundleRow, ReleaseRow } from "@hot-updater/plugin-core";
+} from "@hot-updater/protocol";
 import { describe, expect, it } from "vitest";
 
 import { createBundleRowFixture } from "./databaseTestFixtures";

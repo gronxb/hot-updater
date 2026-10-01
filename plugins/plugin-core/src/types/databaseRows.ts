@@ -1,4 +1,4 @@
-import type { Platform } from "@hot-updater/core";
+import type { Platform } from "@hot-updater/protocol";
 
 export type DatabaseJsonValue =
   | boolean

@@ -18,46 +18,11 @@
         "default": "./lib/commonjs/index.js"
       }
     },
-    "./plugins/insights": {
-      "source": "./src/plugins/insights/index.ts",
-      "import": {
-        "types": "./lib/typescript/module/plugins/insights/index.d.ts",
-        "default": "./lib/module/plugins/insights/index.js"
-      },
-      "require": {
-        "types": "./lib/typescript/commonjs/plugins/insights/index.d.ts",
-        "default": "./lib/commonjs/plugins/insights/index.js"
-      }
-    },
-    "./client-plugin": {
-      "source": "./src/client-plugin.ts",
-      "import": {
-        "types": "./lib/typescript/module/client-plugin.d.ts",
-        "default": "./lib/module/client-plugin.js"
-      },
-      "require": {
-        "types": "./lib/typescript/commonjs/client-plugin.d.ts",
-        "default": "./lib/commonjs/client-plugin.js"
-      }
-    },
-    "./plugin-host": {
-      "source": "./src/plugin-host.ts",
-      "import": {
-        "types": "./lib/typescript/module/plugin-host.d.ts",
-        "default": "./lib/module/plugin-host.js"
-      },
-      "require": {
-        "types": "./lib/typescript/commonjs/plugin-host.d.ts",
-        "default": "./lib/commonjs/plugin-host.js"
-      }
-    },
     "./package.json": "./package.json"
   },
   "files": [
     "src",
     "lib",
-    "client-plugin",
-    "plugins",
     "android",
     "ios",
     "cpp",
@@ -161,8 +126,7 @@
     "typescript": "npm:@typescript/typescript6@^6.0.2"
   },
   "dependencies": {
-    "@hot-updater/core": "workspace:*",
-    "@hot-updater/plugin-core": "workspace:*",
+    "@hot-updater/protocol": "workspace:*",
     "@hot-updater/plugin-insights": "workspace:*",
     "use-sync-external-store": "1.5.0"
   }

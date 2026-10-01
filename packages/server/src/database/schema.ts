@@ -2,7 +2,6 @@ export {
   defineAggregate,
   defineTable,
   type AggregateDefinition,
-  type CheckIndex,
   type DerivedDefinition,
   type DerivedFields,
   type FieldDefinition,
@@ -16,4 +15,5 @@ export {
   type RetentionDefinition,
   type RowOf,
   type TableDefinition,
-} from "@hot-updater/plugin-core/server-plugin";
+} from "@hot-updater/plugin-core";
+export type { CheckIndex } from "@hot-updater/plugin-core/internal";

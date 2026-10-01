@@ -1,4 +1,4 @@
-import type { HotUpdaterClientContext } from "@hot-updater/core";
+import type { HotUpdaterClientContext } from "@hot-updater/protocol";
 
 export type InsightsEventType =
   | "UNCHANGED"

@@ -1,11 +1,9 @@
 export {
   definePlugin,
   type AnyHotUpdaterPlugin,
-  type CliFor,
   type ClientAuth,
   type CoreReader,
   type HotUpdaterPlugin,
-  type InstanceFor,
   type PluginApis,
   type PluginCli,
   type PluginClientCredential,
@@ -21,4 +19,5 @@ export {
   type PluginInstance,
   type PluginProvides,
   type PluginTableColumn,
-} from "@hot-updater/plugin-core/server-plugin";
+} from "@hot-updater/plugin-core";
+export type { CliFor, InstanceFor } from "@hot-updater/plugin-core/internal";

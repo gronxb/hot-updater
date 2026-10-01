@@ -8,7 +8,7 @@
 "@hot-updater/cli-tools": patch
 "@hot-updater/cloudflare": patch
 "@hot-updater/console": patch
-"@hot-updater/core": patch
+"@hot-updater/protocol": patch
 "@hot-updater/datadog-plugin": patch
 "@hot-updater/expo": patch
 "@hot-updater/firebase": patch

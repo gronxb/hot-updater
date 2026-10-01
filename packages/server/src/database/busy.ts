@@ -1,1 +1,1 @@
-export { isDatabaseBusyError } from "@hot-updater/plugin-core/server-plugin";
+export { isDatabaseBusyError } from "@hot-updater/plugin-core/internal";

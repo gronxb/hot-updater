@@ -31,7 +31,7 @@
     "execa": "catalog:tools",
     "@hot-updater/cli-tools": "workspace:*",
     "@hot-updater/plugin-core": "workspace:*",
-    "@hot-updater/core": "workspace:*"
+    "@hot-updater/protocol": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "catalog:"

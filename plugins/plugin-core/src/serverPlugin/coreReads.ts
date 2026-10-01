@@ -1,4 +1,4 @@
-import type { ArtifactInfo, ReleaseCatalog } from "@hot-updater/core";
+import type { ArtifactInfo, ReleaseCatalog } from "@hot-updater/protocol";
 
 import type { BundleDetail, KeysetInput, ReleaseFilter } from "../coreApi";
 import type {

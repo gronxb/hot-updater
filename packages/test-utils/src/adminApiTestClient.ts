@@ -1,4 +1,3 @@
-import type { Bundle } from "@hot-updater/core";
 import type {
   BundleRow,
   ChannelRow,
@@ -6,6 +5,7 @@ import type {
   ReleaseCatalogMutationResult,
   ReleaseRow,
 } from "@hot-updater/plugin-core";
+import type { Bundle } from "@hot-updater/protocol";
 import { expect } from "vitest";
 
 import type { HttpTestClient, HttpTestRequestInit } from "./httpTestClient";

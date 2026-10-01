@@ -1126,13 +1126,12 @@ describe("resolveEdgeFunctionDenoConfig", () => {
           "./_hot-updater/hot-updater-server/dist/plugins/insights/index.mjs",
         "@hot-updater/supabase/edge":
           "./_hot-updater/hot-updater-supabase/dist/edge.mjs",
-        "@hot-updater/core": "./_hot-updater/hot-updater-core/dist/index.mjs",
+        "@hot-updater/protocol":
+          "./_hot-updater/hot-updater-protocol/dist/index.mjs",
         "@hot-updater/plugin-core":
           "./_hot-updater/hot-updater-plugin-core/dist/index.mjs",
         "@hot-updater/plugin-core/internal":
           "./_hot-updater/hot-updater-plugin-core/dist/internal.mjs",
-        "@hot-updater/plugin-core/server-plugin":
-          "./_hot-updater/hot-updater-plugin-core/dist/server-plugin.mjs",
         "@hot-updater/plugin-insights/server":
           "./_hot-updater/hot-updater-plugin-insights/dist/server/index.mjs",
         "@hot-updater/plugin-api-keys/server":

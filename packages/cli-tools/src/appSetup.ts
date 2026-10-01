@@ -22,6 +22,32 @@ interface AppSetup {
   readonly clientPlugins?: readonly AppClientPlugin[];
 }
 
+/** The SDK, which exports `HotUpdater` and built-in client plugins such as `insights`. */
+const SDK_MODULE = "@hot-updater/react-native";
+
+/**
+ * The app's import lines for `HotUpdater` and `clientPlugins`: one line per
+ * module, the SDK's first, so a built-in plugin joins `HotUpdater`'s import.
+ * The agent scaffold renders the same lines in hot-updater's
+ * `commands/infra/clientAuth.ts`, which imports no package.
+ */
+export const renderAppImports = (
+  clientPlugins: readonly AppClientPlugin[],
+): string[] => {
+  const namesByModule = new Map<string, string[]>([
+    [SDK_MODULE, ["HotUpdater"]],
+  ]);
+  for (const { module, name } of clientPlugins) {
+    const names = namesByModule.get(module) ?? [];
+    if (!names.includes(name)) names.push(name);
+    namesByModule.set(module, names);
+  }
+  return [...namesByModule].map(
+    ([module, names]) =>
+      `import { ${names.join(", ")} } from ${JSON.stringify(module)};`,
+  );
+};
+
 /**
  * The App.tsx code init prints: `HotUpdater.init` with the server's URL,
  * the header that carries the client credential when the server takes one,
@@ -34,11 +60,7 @@ export const renderAppSetup = ({
 }: AppSetup & { readonly baseURL: string }): string =>
   [
     "// Add this to your App.tsx",
-    'import { HotUpdater } from "@hot-updater/react-native";',
-    ...clientPlugins.map(
-      ({ module, name }) =>
-        `import { ${name} } from ${JSON.stringify(module)};`,
-    ),
+    ...renderAppImports(clientPlugins),
     "",
     "function App() {",
     "  return null; // Replace with your app root.",

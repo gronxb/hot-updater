@@ -4,7 +4,7 @@ import {
   type ArtifactInfo,
   type PersistedSelectionReceipt,
   type ReleaseCatalog,
-} from "@hot-updater/core";
+} from "@hot-updater/protocol";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { HotUpdaterClientHooks } from "./clientPlugin";

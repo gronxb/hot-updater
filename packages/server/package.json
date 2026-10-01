@@ -82,7 +82,7 @@
   },
   "dependencies": {
     "@hot-updater/bsdiff": "workspace:*",
-    "@hot-updater/core": "workspace:*",
+    "@hot-updater/protocol": "workspace:*",
     "@hot-updater/plugin-core": "workspace:*",
     "@hot-updater/plugin-api-keys": "workspace:*",
     "@hot-updater/plugin-insights": "workspace:*",

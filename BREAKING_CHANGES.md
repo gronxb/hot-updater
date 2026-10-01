@@ -137,8 +137,8 @@ Additional route and handler changes:
   Insights ingestion is always available on the client handler and queries
   are always available on the admin handler, so the server-side Insights flag
   and `queryAccess` are removed. React Native reports only with the
-  `insights()` client plugin from `@hot-updater/react-native/plugins/insights`
-  in `plugins` of `HotUpdater.init` or `HotUpdater.wrap`; an app without it
+  `insights()` client plugin from `@hot-updater/react-native` in `plugins` of
+  `HotUpdater.init` or `HotUpdater.wrap`; an app without it
   sends no events. Client authentication moves to the
   required top-level `clientAccess` policy.
 - `standaloneRepository.baseUrl` now identifies the exact admin root, such as
@@ -221,7 +221,7 @@ same public ID used by the Console and `HotUpdater.getBundleId()`.
 | Removed or changed v0 usage                          | v1 behavior                                                                           |
 | ---------------------------------------------------- | ------------------------------------------------------------------------------------- |
 | `bundle list --channel ... --target-app-version ...` | The command and filters remain; rows use the public Bundle ID.                        |
-| `bundle show/update/enable/disable <bundle-id>`       | The commands remain and accept the public Bundle ID.                                  |
+| `bundle show/update/enable/disable <bundle-id>`      | The commands remain and accept the public Bundle ID.                                  |
 | `bundle promote <bundle-id>`                         | Use `bundle promote <source-id> --target <channel>`; the target gets a new public ID. |
 | `bundle delete <bundle-ids...>`                      | Delete one disabled public Bundle at a time with `bundle delete <id>`.                |
 | `patch --bundle-id ... --base-bundle-id ...`         | Prefer `--artifact-id` and `--base-artifact-id`; old names remain deprecated aliases. |
@@ -456,8 +456,8 @@ toBundleId, ... }`.
   must handle the new discriminated union.
 
 App-ready transition and Bundle adoption reporting comes from the
-`insights()` client plugin in `@hot-updater/react-native/plugins/insights`,
-passed in `plugins` of `HotUpdater.init` or `HotUpdater.wrap`. It uses the
+`insights()` client plugin from `@hot-updater/react-native`, passed in
+`plugins` of `HotUpdater.init` or `HotUpdater.wrap`. It uses the
 configured `baseURL`, and an app without it sends nothing. The server routes
 and backing model remain available regardless.
 

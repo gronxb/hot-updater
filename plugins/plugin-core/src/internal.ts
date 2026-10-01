@@ -23,3 +23,10 @@ export {
   isOfficialPlugin,
   markOfficial,
 } from "./serverPlugin/official";
+
+// The conditional types `definePlugin` and `defineTable` check their input
+// with, which authors never name, and the test Hot Updater's own routes use
+// to answer 503 while the database is busy.
+export type { CliFor, InstanceFor } from "./serverPlugin/definePlugin";
+export type { CheckIndex } from "./serverPlugin/schema";
+export { isDatabaseBusyError } from "./serverPlugin/busy";

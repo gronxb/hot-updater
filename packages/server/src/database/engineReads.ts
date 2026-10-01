@@ -1,3 +1,4 @@
+import { DatabaseQueryError, type Page } from "@hot-updater/plugin-core";
 import {
   type DatabaseAdapter,
   type DatabaseKey,
@@ -10,10 +11,6 @@ import {
   type QueryBound,
   type StoredRow,
 } from "@hot-updater/plugin-core/internal";
-import {
-  DatabaseQueryError,
-  type Page,
-} from "@hot-updater/plugin-core/server-plugin";
 
 import { cursorScope, decodeCursor, encodeCursor } from "./cursor";
 

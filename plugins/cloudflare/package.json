@@ -60,7 +60,7 @@
     "@aws-sdk/client-s3": "catalog:aws",
     "@aws-sdk/lib-storage": "3.1008.0",
     "@hot-updater/cli-tools": "workspace:*",
-    "@hot-updater/core": "workspace:*",
+    "@hot-updater/protocol": "workspace:*",
     "@hot-updater/plugin-core": "workspace:*",
     "@hot-updater/server": "workspace:*",
     "cloudflare": "4.2.0",

@@ -1,12 +1,12 @@
 import {
   authorizeReleaseTransition,
+  canonicalizeAppVersion,
   createReleaseSelectionContextHash,
   encodeChannelKey,
   selectDesiredRelease,
   type PersistedSelectionReceipt,
   type ReleaseCatalog,
-} from "@hot-updater/core";
-import { canonicalizeAppVersion } from "@hot-updater/plugin-core";
+} from "@hot-updater/protocol";
 import { Platform } from "react-native";
 
 import {

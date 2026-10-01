@@ -45,8 +45,7 @@ To report launches, downloads, and update results to
 [Insights plugin](/docs/react-native-api/insights) to `plugins`:
 
 ```tsx
-import { HotUpdater } from "@hot-updater/react-native";
-import { insights } from "@hot-updater/react-native/plugins/insights"; // [!code ++]
+import { HotUpdater, insights } from "@hot-updater/react-native"; // [!code ++]
 
 HotUpdater.init({
   baseURL: "<your-update-server-url>",

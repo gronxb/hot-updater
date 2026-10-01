@@ -6,7 +6,7 @@ import {
   type HotUpdaterClientPlugin,
   type UpdateCheckResult,
   type UpdateError,
-} from "@hot-updater/core";
+} from "@hot-updater/protocol";
 
 import { createKeyedUUIDv7, createUUIDv7 } from "./eventId";
 import {
@@ -85,8 +85,7 @@ const normalizeUserId = (user: InsightsUser | null): string | null => {
  *
  * @example
  * ```ts
- * import { HotUpdater } from "@hot-updater/react-native";
- * import { insights } from "@hot-updater/react-native/plugins/insights";
+ * import { HotUpdater, insights } from "@hot-updater/react-native";
  *
  * const analytics = insights();
  * HotUpdater.init({ baseURL, plugins: [analytics] });

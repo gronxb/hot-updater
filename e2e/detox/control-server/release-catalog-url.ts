@@ -1,4 +1,4 @@
-import { encodeChannelKey } from "../../../packages/core/src/releaseCatalogScope.ts";
+import { encodeChannelKey } from "../../../packages/protocol/src/releaseCatalogScope.ts";
 import { canonicalizeAppVersion } from "../../../plugins/plugin-core/src/releaseCatalogCompiler.ts";
 
 type ReleaseCatalogUrlBaseInput = {

@@ -1,6 +1,6 @@
-import { isUUIDv7 } from "@hot-updater/core";
+import { isUUIDv7 } from "@hot-updater/protocol";
 
-export { isUUIDv7 } from "@hot-updater/core";
+export { isUUIDv7 } from "@hot-updater/protocol";
 
 export const extractTimestampFromUUIDv7 = (uuid: string) => {
   if (!isUUIDv7(uuid)) {

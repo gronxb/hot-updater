@@ -1,4 +1,4 @@
-import { defineTable } from "@hot-updater/plugin-core/server-plugin";
+import { defineTable } from "@hot-updater/plugin-core";
 
 /** v1's `api_keys` columns; the plaintext key is never stored, only its SHA-256 digest. */
 export const apiKeysSchema = {

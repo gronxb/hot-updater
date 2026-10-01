@@ -14,8 +14,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { transformEnv } from "@hot-updater/cli-tools";
-import type { Bundle } from "@hot-updater/core";
 import type { HotUpdaterCoreApi } from "@hot-updater/plugin-core";
+import type { Bundle } from "@hot-updater/protocol";
 import {
   createDatabaseCoreApi,
   createDatabasePluginApis,

@@ -123,13 +123,11 @@ skips the cases of the others.
 `@hot-updater/test-utils/react-native` runs client plugins the way the app
 does. `setupClientPlugin(plugin, options)` and
 `setupClientPlugins(plugins, options)` set plugins up as `HotUpdater.init`
-does, on the plugin host of `@hot-updater/react-native`, against an in-memory
-device and a server the test answers. The entry loads neither React Native nor
-Vitest, so plugin specs run in plain Node under Vitest or Jest when the
-plugin imports `defineClientPlugin` from
-`@hot-updater/react-native/client-plugin`; the SDK's root entry loads React
-Native. `@hot-updater/react-native` is an optional peer dependency that only
-this entry needs.
+does, on the plugin host from `@hot-updater/protocol`, the one the SDK runs,
+against an in-memory device and a server the test answers. The entry loads
+neither React Native nor Vitest, so plugin specs run in plain Node under
+Vitest or Jest when the plugin imports `defineClientPlugin` from
+`@hot-updater/protocol`; the SDK's root entry loads React Native.
 
 ```ts
 import { setupClientPlugin } from "@hot-updater/test-utils/react-native";

@@ -6,7 +6,7 @@ import { Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { constants, createBrotliCompress } from "node:zlib";
 
-import type { ManifestArchive } from "@hot-updater/core";
+import type { ManifestArchive } from "@hot-updater/protocol";
 import * as tar from "tar";
 
 /** Build the one supported bulk transport from the exact manifest file set. */

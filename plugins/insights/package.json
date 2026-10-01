@@ -41,7 +41,7 @@
     "test:type": "tsc --noEmit"
   },
   "dependencies": {
-    "@hot-updater/core": "workspace:*",
+    "@hot-updater/protocol": "workspace:*",
     "@hot-updater/plugin-core": "workspace:*"
   },
   "peerDependencies": {

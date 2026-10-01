@@ -1,16 +1,16 @@
-import {
-  createReleaseCatalogScopeKey,
-  encodeChannelKey,
-  type ArtifactInfo,
-  type Bundle,
-  type ReleaseCatalog,
-} from "@hot-updater/core";
 import type { HotUpdaterCoreApi } from "@hot-updater/plugin-core";
 import type {
   DatabaseAdapter,
   DatabaseReadCount,
   PhysicalTable,
 } from "@hot-updater/plugin-core/internal";
+import {
+  createReleaseCatalogScopeKey,
+  encodeChannelKey,
+  type ArtifactInfo,
+  type Bundle,
+  type ReleaseCatalog,
+} from "@hot-updater/protocol";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { createBundleFixture } from "./databaseTestFixtures";

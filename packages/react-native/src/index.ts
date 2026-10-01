@@ -59,6 +59,13 @@ export {
   type UpdateErrorStage,
   type UpdateStrategy,
 } from "./clientPlugin";
+// The built-in Insights client plugin, for HotUpdater.init({ plugins }).
+export {
+  insights,
+  type InsightsOptions,
+  type InsightsPlugin,
+  type InsightsUser,
+} from "@hot-updater/plugin-insights/client";
 export type {
   CustomReloadHandler,
   HotUpdaterEvent,

@@ -4,7 +4,7 @@ export type {
   FieldType,
   IndexDefinition,
   ReferenceAction,
-} from "@hot-updater/plugin-core/server-plugin";
+} from "@hot-updater/plugin-core";
 export type {
   AggregateShape,
   DerivedShape,

@@ -6,7 +6,7 @@ import {
   isUUIDv7,
   parseReleaseCatalogScopeKey,
   type ReleaseCatalog,
-} from "@hot-updater/core";
+} from "@hot-updater/protocol";
 
 import { InvalidUpdateResponseError, UpdateHttpError } from "./updateError";
 

@@ -1,4 +1,4 @@
-import type { ReleaseCatalog } from "@hot-updater/core";
+import type { ReleaseCatalog } from "@hot-updater/protocol";
 import { Hono } from "hono";
 import { describe, expect, it, vi } from "vitest";
 

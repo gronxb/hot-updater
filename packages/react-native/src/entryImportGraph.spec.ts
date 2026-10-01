@@ -50,16 +50,15 @@ describe("@hot-updater/react-native root entry", () => {
     relative(sourceRoot, file),
   );
 
-  it("bundles no plugin, since Metro does not tree-shake", () => {
+  it("runs plugins on the host and exports the built-in Insights client", () => {
+    // Metro does not tree-shake, so every app bundles the Insights client.
     expect(graph).toContain("pluginHost.ts");
-    expect(graph.filter((file) => file.startsWith("plugins/"))).toEqual([]);
+    expect(readFileSync(join(sourceRoot, "index.ts"), "utf8")).toContain(
+      'from "@hot-updater/plugin-insights/client";',
+    );
   });
 
-  it("bundles not the plugin host entry, which only test-utils imports", () => {
-    expect(graph).not.toContain("plugin-host.ts");
-  });
-
-  it("sends no Insights request", () => {
+  it("sends no Insights request outside the Insights plugin", () => {
     const insightsCode = graph.filter((file) => {
       const source = readFileSync(join(sourceRoot, file), "utf8");
       return /["'`/]events["'`]/.test(source);
@@ -68,40 +67,10 @@ describe("@hot-updater/react-native root entry", () => {
   });
 });
 
-describe("@hot-updater/react-native/plugin-host entry", () => {
-  const graph = [...collectGraph(join(sourceRoot, "plugin-host.ts"))].map(
-    (file) => relative(sourceRoot, file),
-  );
-
-  it("loads the app's plugin host without React Native or the native module", () => {
-    expect(graph).toContain("createPluginHost.ts");
-    expect(graph).not.toContain("native.ts");
-    const reactNativeImports = graph.filter((file) =>
-      /\bfrom\s*["']react-native["']/.test(
-        readFileSync(join(sourceRoot, file), "utf8"),
-      ),
-    );
-    expect(reactNativeImports).toEqual([]);
-  });
-});
-
-describe("@hot-updater/react-native/client-plugin entry", () => {
-  const entry = join(sourceRoot, "client-plugin.ts");
-  const graph = [...collectGraph(entry)].map((file) =>
-    relative(sourceRoot, file),
-  );
-
-  it("loads the plugin contract without React Native or the native module", () => {
-    expect(graph.sort()).toEqual(["client-plugin.ts", "clientPlugin.ts"]);
-    const reactNativeImports = graph.filter((file) =>
-      /\bfrom\s*["']react-native["']/.test(
-        readFileSync(join(sourceRoot, file), "utf8"),
-      ),
-    );
-    expect(reactNativeImports).toEqual([]);
-  });
-
-  it("exports every plugin name the root entry still exports for the app", () => {
+// Client plugins import the contract from @hot-updater/protocol; the root
+// entry re-exports its names for app code.
+describe("the client plugin names of the root entry", () => {
+  it("are names @hot-updater/protocol exports", () => {
     /** The names a file re-exports from `specifier`, without `type`. */
     const reexported = (file: string, specifier: string) => {
       const block = new RegExp(
@@ -113,8 +82,11 @@ describe("@hot-updater/react-native/client-plugin entry", () => {
         .filter((name) => name.length > 0);
     };
     const rootNames = reexported("index.ts", "\\./clientPlugin");
-    // The contract lives in @hot-updater/core, which loads no React Native.
-    const contractNames = reexported("clientPlugin.ts", "@hot-updater/core");
+    // The contract lives in @hot-updater/protocol, which loads no React Native.
+    const contractNames = reexported(
+      "clientPlugin.ts",
+      "@hot-updater/protocol",
+    );
 
     expect(rootNames).toEqual([
       "defineClientPlugin",
@@ -131,9 +103,6 @@ describe("@hot-updater/react-native/client-plugin entry", () => {
       "UpdateErrorStage",
       "UpdateStrategy",
     ]);
-    expect(readFileSync(entry, "utf8")).toContain(
-      'export * from "./clientPlugin";',
-    );
     expect(contractNames).toEqual(expect.arrayContaining(rootNames ?? []));
   });
 });

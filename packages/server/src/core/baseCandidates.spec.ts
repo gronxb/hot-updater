@@ -1,6 +1,6 @@
-import type { Bundle } from "@hot-updater/core";
 import type { HotUpdaterCoreApi } from "@hot-updater/plugin-core";
 import { createMemoryAdapter } from "@hot-updater/plugin-core/internal";
+import type { Bundle } from "@hot-updater/protocol";
 import { normalizeRange, rangesIntersect } from "verkit";
 import { describe, expect, it } from "vitest";
 

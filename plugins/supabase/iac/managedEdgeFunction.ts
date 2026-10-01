@@ -18,7 +18,7 @@ const DEFINITION_MODULE = "hotUpdater.mjs";
  * imports, so the definition runs on the function's own server.
  */
 const EXTERNAL = [
-  "@hot-updater/core",
+  "@hot-updater/protocol",
   "@hot-updater/plugin-core",
   "@hot-updater/plugin-insights",
   "@hot-updater/plugin-api-keys",

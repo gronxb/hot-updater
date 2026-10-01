@@ -832,8 +832,6 @@ describe("Detox scenario contract", () => {
             getMinBundleId: () => minBundleId,
             isChannelSwitched: () => false,
           },
-        },
-        "@hot-updater/react-native/plugins/insights": {
           insights: () => ({
             id: "insights",
             setup: () => {},
@@ -1069,7 +1067,7 @@ describe("Detox scenario contract", () => {
     // Console Insights QA needs the Insights client plugin and finds the
     // installation by this user ID.
     expect(e2eRuntimeSource).toContain(
-      'import { insights } from "@hot-updater/react-native/plugins/insights";',
+      'import { HotUpdater, insights } from "@hot-updater/react-native";',
     );
     expect(e2eRuntimeSource).toContain("plugins: [analytics],");
     expect(e2eRuntimeSource).toContain(
@@ -2288,8 +2286,7 @@ describe("Detox scenario contract", () => {
       const byteAssertionIndex = calls.findIndex(
         (call) =>
           call.kind === "control" &&
-          call.stage ===
-            `assert size-aware ${phase} manifest selection`,
+          call.stage === `assert size-aware ${phase} manifest selection`,
       );
       const proxyResetIndex = calls.findIndex(
         (call) =>
@@ -2831,7 +2828,9 @@ describe("Detox scenario contract", () => {
       "utf8",
     );
     const manifestAssertionBody = controllerSource.slice(
-      controllerSource.indexOf("async function assertFirstOtaUsesBuiltInManifest"),
+      controllerSource.indexOf(
+        "async function assertFirstOtaUsesBuiltInManifest",
+      ),
       controllerSource.indexOf("async function assertCrashHistory"),
     );
 

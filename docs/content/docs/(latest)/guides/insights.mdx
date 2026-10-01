@@ -51,13 +51,12 @@ see [How long Insights keeps data](#how-long-insights-keeps-data).
 
 ## Add the client plugin
 
-Pass `insights()` from `@hot-updater/react-native/plugins/insights` to
-`plugins` in [`HotUpdater.init`](/docs/react-native-api/init). Configure the
-client handler URL and the client API key from your infrastructure setup:
+Pass `insights()` from `@hot-updater/react-native` to `plugins` in
+[`HotUpdater.init`](/docs/react-native-api/init). Configure the client handler
+URL and the client API key from your infrastructure setup:
 
 ```tsx title="App.tsx"
-import { HotUpdater } from "@hot-updater/react-native";
-import { insights } from "@hot-updater/react-native/plugins/insights"; // [!code ++]
+import { HotUpdater, insights } from "@hot-updater/react-native"; // [!code ++]
 
 HotUpdater.init({
   baseURL: "<your-update-server-url>",

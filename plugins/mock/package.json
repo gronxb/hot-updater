@@ -32,7 +32,7 @@
     "test:run": "vitest run"
   },
   "dependencies": {
-    "@hot-updater/core": "workspace:*",
+    "@hot-updater/protocol": "workspace:*",
     "@hot-updater/plugin-core": "workspace:*"
   },
   "devDependencies": {

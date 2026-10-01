@@ -1,5 +1,5 @@
-import { encodeChannelKey } from "@hot-updater/core";
 import { createMemoryAdapter } from "@hot-updater/plugin-core/internal";
+import { encodeChannelKey } from "@hot-updater/protocol";
 import { bench, describe } from "vitest";
 
 import { createHotUpdater } from "../index";

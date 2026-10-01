@@ -6,7 +6,7 @@ import {
   normalizeCohortValue,
   type UpdateStatus,
   type PersistedSelectionReceipt,
-} from "@hot-updater/core";
+} from "@hot-updater/protocol";
 import { NativeEventEmitter, Platform } from "react-native";
 
 import { HotUpdaterErrorCode, isHotUpdaterError } from "./error";

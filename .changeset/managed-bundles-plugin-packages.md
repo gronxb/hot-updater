@@ -3,4 +3,4 @@
 "@hot-updater/firebase": patch
 ---
 
-The managed AWS Lambda and Firebase Functions bundles include `@hot-updater/plugin-core/server-plugin` and the Insights and API keys plugin packages, which `@hot-updater/server` now imports.
+The managed AWS Lambda and Firebase Functions bundles include the Insights and API keys plugin packages, which `@hot-updater/server` now imports.

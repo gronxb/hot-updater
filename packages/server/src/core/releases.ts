@@ -1,8 +1,4 @@
 import {
-  createReleaseCatalogScopeKey,
-  encodeChannelKey,
-} from "@hot-updater/core";
-import {
   compileReleaseCatalog,
   createUUIDv7,
   createUUIDv7After,
@@ -17,6 +13,10 @@ import {
   type ReleaseRow,
   type ReleaseRowUpdate,
 } from "@hot-updater/plugin-core";
+import {
+  createReleaseCatalogScopeKey,
+  encodeChannelKey,
+} from "@hot-updater/protocol";
 
 import { toCatalogRow, toReleaseRow, type CoreDatabase } from "./reads";
 import { insertBundle, type CoreTransaction } from "./writes";

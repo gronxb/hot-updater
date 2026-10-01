@@ -75,17 +75,25 @@ it. Each guide builds one and tests it:
 | ---------------- | --------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
 | Storage adapter  | `createStorageAdapter` from `@hot-updater/plugin-core`                            | [Create a storage adapter](/docs/storage-adapters/custom-storage)   |
 | Database adapter | `createSqlAdapter`, `createKvAdapter`, or a `DatabaseAdapter`, wrapped by `createEngineDatabase` from `@hot-updater/server/database` | [Create a database adapter](/docs/database-adapters/custom-database) |
-| Server plugin    | `definePlugin` from `@hot-updater/server/plugins`                                 | [Create a server plugin](/docs/custom/server-plugins)               |
-| Client plugin    | `defineClientPlugin` from `@hot-updater/react-native/client-plugin`               | [Create a client plugin](/docs/react-native-api/client-plugins)     |
+| Server plugin    | `definePlugin` from `@hot-updater/plugin-core`                                    | [Create a server plugin](/docs/custom/server-plugins)               |
+| Client plugin    | `defineClientPlugin` from `@hot-updater/protocol`                                 | [Create a client plugin](/docs/react-native-api/client-plugins)     |
 | Signing adapter  | `BundleSigningAdapter` from `@hot-updater/plugin-core`: `getPublicKey` and `sign` | [Remote Signing](/docs/guides/signing/remote) describes the service protocol |
 | Build adapter    | A function from `{ cwd }` to a `BuildAdapter` from `@hot-updater/plugin-core`     | The [official build adapters](https://github.com/gronxb/hot-updater/tree/next/plugins) are the reference |
 
-The server and the SDK re-export these authoring APIs from the layers below
-them: `@hot-updater/plugin-core/server-plugin` holds `definePlugin`, the schema
-DSL, the typed database handle, and the errors, and `@hot-updater/core` holds
-the client plugin contract. Hot Updater's own plugin packages import the layers,
-because the server and the SDK depend on those packages. Your plugin imports the
-entries in the table, which name the same functions and classes.
+Hot Updater's packages divide by where their code runs:
+
+| Package                     | What it holds                                                                                                                                                                                                                                     | Imported by                                              |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
+| `@hot-updater/protocol`     | The device-safe, zero-dependency package for what crosses a boundary: the data formats and pure computations the app and the server share, and the contracts between a host and its extensions on the device, such as the client plugin contract. | The app, the server, the CLI, and client plugins         |
+| `@hot-updater/plugin-core`  | The kit that extends the server: the adapter and server plugin contracts and their helpers. It runs wherever the server runs, and depends on `@hot-updater/protocol`.                                                                             | Adapters and server plugins, including Hot Updater's own |
+| `@hot-updater/server`       | The runtime host: `createHotUpdater` and its handlers, with the built-in adapters and plugins it re-exports.                                                                                                                                      | The server definition                                    |
+| `@hot-updater/react-native` | The app's SDK. It imports only `@hot-updater/protocol`, never `@hot-updater/plugin-core` or the server.                                                                                                                                           | The app                                                  |
+
+An adapter or a server plugin you write imports `@hot-updater/plugin-core`, and
+a client plugin imports `@hot-updater/protocol`, as Hot Updater's own plugin
+packages do. A database adapter also builds on the engine kit in
+`@hot-updater/server/database`. `@hot-updater/react-native` re-exports the
+client plugin names for app code.
 
 Then package it for npm with Hot Updater as a peer dependency; see
 [Test and publish](/docs/plugins/publish).
@@ -232,5 +240,5 @@ server with the app's base URL and headers. Pass them to `plugins` in
 `HotUpdater.init` or `HotUpdater.wrap`. The
 [Insights plugin](/docs/react-native-api/insights) reports to the server's
 `insights()` plugin; it is `@hot-updater/plugin-insights/client`, which
-`@hot-updater/react-native/plugins/insights` re-exports. To write one, see
+`@hot-updater/react-native` exports from its root. To write one, see
 [Create a client plugin](/docs/react-native-api/client-plugins).

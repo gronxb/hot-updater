@@ -1,8 +1,0 @@
-{
-  "name": "@hot-updater/react-native/plugins/insights",
-  "private": true,
-  "source": "../../src/plugins/insights/index.ts",
-  "main": "../../lib/commonjs/plugins/insights/index.js",
-  "module": "../../lib/module/plugins/insights/index.js",
-  "types": "../../lib/typescript/commonjs/plugins/insights/index.d.ts"
-}

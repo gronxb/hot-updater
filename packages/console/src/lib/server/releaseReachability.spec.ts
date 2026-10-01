@@ -1,6 +1,6 @@
-import type { Release } from "@hot-updater/core";
 import type { ReleaseCatalogRow, ReleaseRow } from "@hot-updater/plugin-core";
 import { compileReleaseCatalog } from "@hot-updater/plugin-core";
+import type { Release } from "@hot-updater/protocol";
 import { describe, expect, it, vi } from "vitest";
 
 import {

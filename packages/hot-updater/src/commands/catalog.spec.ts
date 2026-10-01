@@ -1,12 +1,12 @@
 import {
-  createReleaseCatalogScopeKey,
-  encodeChannelKey,
-} from "@hot-updater/core";
-import {
   type ConfiguredDatabase,
   ReleaseCatalogMutationError,
   type ReleaseCatalogRow,
 } from "@hot-updater/plugin-core";
+import {
+  createReleaseCatalogScopeKey,
+  encodeChannelKey,
+} from "@hot-updater/protocol";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { testServer } from "../utils/testServer";

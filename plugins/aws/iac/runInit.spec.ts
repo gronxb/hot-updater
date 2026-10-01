@@ -386,7 +386,7 @@ describe("AWS init with the project's server definition", () => {
         baseURL: "https://d111111abcdef8.cloudfront.net",
         clientPlugins: [
           expect.objectContaining({
-            module: "@hot-updater/react-native/plugins/insights",
+            module: "@hot-updater/react-native",
           }),
         ],
       }),

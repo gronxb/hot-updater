@@ -2,8 +2,8 @@ import fs from "fs";
 import path from "path";
 
 import { colors, getCwd, p } from "@hot-updater/cli-tools";
-import type { Platform } from "@hot-updater/core";
 import type { BuildAdapter } from "@hot-updater/plugin-core";
+import type { Platform } from "@hot-updater/protocol";
 
 export const createNativeBuild = async ({
   platform,

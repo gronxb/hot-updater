@@ -1,8 +1,8 @@
 {
-  "name": "@hot-updater/core",
+  "name": "@hot-updater/protocol",
   "version": "1.0.0-rc.20",
   "type": "module",
-  "description": "React Native OTA solution for self-hosted",
+  "description": "The data formats and pure computations that Hot Updater's app and server share",
   "sideEffects": false,
   "main": "./dist/index.cjs",
   "module": "./dist/index.mjs",
@@ -43,6 +43,10 @@
     "access": "public"
   },
   "devDependencies": {
-    "@types/node": "catalog:"
+    "@types/node": "catalog:",
+    "verkit": "catalog:"
+  },
+  "inlinedDependencies": {
+    "verkit": "0.4.0"
   }
 }

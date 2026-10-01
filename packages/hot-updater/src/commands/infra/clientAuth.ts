@@ -53,21 +53,43 @@ const isCondition = (value: string): value is Condition =>
   (CONDITIONS as readonly string[]).includes(value);
 
 /**
- * A code line's client plugin tokens: `{{CLIENT_PLUGIN_IMPORTS}}` becomes an
- * import line per plugin, and `{{CLIENT_PLUGINS}}` their calls; without
- * client plugins, the line goes.
+ * The app's import lines for `HotUpdater` and `clientPlugins`: one line per
+ * module, the SDK's first, so a built-in plugin such as `insights` joins
+ * `HotUpdater`'s import. This module imports no package, since the scaffold's
+ * standalone `verify-server.mjs` bundles it; `renderAppImports` in
+ * `@hot-updater/cli-tools` prints the same lines for init.
+ */
+const appImportLines = (
+  clientPlugins: readonly InfraClientPlugin[],
+): string[] => {
+  const namesByModule = new Map<string, string[]>([
+    ["@hot-updater/react-native", ["HotUpdater"]],
+  ]);
+  for (const { module, name } of clientPlugins) {
+    const names = namesByModule.get(module) ?? [];
+    if (!names.includes(name)) names.push(name);
+    namesByModule.set(module, names);
+  }
+  return [...namesByModule].map(
+    ([module, names]) =>
+      `import { ${names.join(", ")} } from ${JSON.stringify(module)};`,
+  );
+};
+
+/**
+ * A code line's app tokens: `{{APP_IMPORTS}}` becomes the app's import lines,
+ * `HotUpdater` and the client plugins, one per module, and
+ * `{{CLIENT_PLUGINS}}` the plugins' calls; without client plugins, that line
+ * goes.
  */
 const expandClientPlugins = (
   line: string,
   clientPlugins: readonly InfraClientPlugin[],
 ): string[] => {
-  if (line.includes("{{CLIENT_PLUGIN_IMPORTS}}")) {
-    return clientPlugins.map(({ module, name }) =>
+  if (line.includes("{{APP_IMPORTS}}")) {
+    return appImportLines(clientPlugins).map((imports) =>
       // A function inserts the text as it is, `$` included.
-      line.replace(
-        "{{CLIENT_PLUGIN_IMPORTS}}",
-        () => `import { ${name} } from ${JSON.stringify(module)};`,
-      ),
+      line.replace("{{APP_IMPORTS}}", () => imports),
     );
   }
   if (line.includes("{{CLIENT_PLUGINS}}")) {
@@ -89,7 +111,7 @@ const expandClientPlugins = (
  * client routes are public; `{{CREDENTIAL_*}}` names the credential.
  * `<!-- if clientPlugins -->` blocks stay only when the plugins ask an app
  * for client plugins, which `{{CLIENT_PLUGIN_LIST}}` names in prose;
- * `{{CLIENT_PLUGIN_IMPORTS}}` and `{{CLIENT_PLUGINS}}` render code lines.
+ * `{{APP_IMPORTS}}` and `{{CLIENT_PLUGINS}}` render code lines.
  */
 export const renderAgentInstructions = (
   text: string,

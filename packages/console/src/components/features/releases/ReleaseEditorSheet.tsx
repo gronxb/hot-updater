@@ -1,14 +1,14 @@
-import {
-  getPatchBaseBundleId,
-  INVALID_COHORT_ERROR_MESSAGE,
-  isValidCohort,
-  normalizeCohortValue,
-} from "@hot-updater/core";
 import type {
   ChannelRow,
   ReleasePolicyPatch,
   ReleaseRow,
 } from "@hot-updater/plugin-core";
+import {
+  getPatchBaseBundleId,
+  INVALID_COHORT_ERROR_MESSAGE,
+  isValidCohort,
+  normalizeCohortValue,
+} from "@hot-updater/protocol";
 import { AlertTriangle, Download, Plus, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";

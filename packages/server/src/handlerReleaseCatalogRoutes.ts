@@ -1,5 +1,5 @@
-import type { ReleaseCatalog } from "@hot-updater/core";
 import { canonicalizeAppVersion } from "@hot-updater/plugin-core";
+import type { ReleaseCatalog } from "@hot-updater/protocol";
 
 import { requirePlatformParam, requireRouteParam } from "./handlerParameters";
 import type { RouteHandler } from "./handlerTypes";

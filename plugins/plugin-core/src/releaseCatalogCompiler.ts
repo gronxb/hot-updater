@@ -1,4 +1,5 @@
 import {
+  canonicalizeAppVersion,
   getNumericCohortValue,
   getRolledOutNumericCohorts,
   isCustomCohort,
@@ -13,18 +14,20 @@ import {
   type Release,
   type ReleaseCatalogDescriptor,
   type ReleaseStrategy,
-} from "@hot-updater/core";
+} from "@hot-updater/protocol";
 import {
-  coerce,
   compare,
   normalize,
-  normalizeFull,
   parseRange,
   satisfies,
   type SemVerComparator,
 } from "verkit";
 
 import { isUUIDv7 } from "./uuidv7.ts";
+
+// The device canonicalizes its app version with the same function, so it
+// lives in @hot-updater/protocol; plugin-core keeps exporting it.
+export { canonicalizeAppVersion } from "@hot-updater/protocol";
 
 export interface CatalogVersionBound {
   readonly version: string;
@@ -681,11 +684,6 @@ function versionInSegment(
     }
   }
   return true;
-}
-
-export function canonicalizeAppVersion(appVersion: string): string | null {
-  const version = coerce(appVersion);
-  return version ? normalizeFull(version) : null;
 }
 
 export function projectCompiledCatalog(

@@ -1,12 +1,12 @@
-import {
-  isReleaseEligibleForCohort,
-  NUMERIC_COHORT_SIZE,
-} from "@hot-updater/core";
 import type {
   CompiledReleaseCatalog,
   HotUpdaterCoreApi,
   ReleaseRow,
 } from "@hot-updater/plugin-core";
+import {
+  isReleaseEligibleForCohort,
+  NUMERIC_COHORT_SIZE,
+} from "@hot-updater/protocol";
 
 export type ReleaseReachabilityRow = ReleaseRow & {
   readonly currentlyUnreachable: boolean;

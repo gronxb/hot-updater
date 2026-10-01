@@ -276,7 +276,7 @@ before connecting a v1 app:
 | Database/storage `() => plugin` thunks | Pass database and storage objects directly to `createHotUpdater`. Built-in provider factories already return those objects. |
 | `storage` and `database` in `hot-updater.config.ts` | Move them into the server definition, a module that exports `hotUpdater = createHotUpdater({ database, storage, plugins })`, and set `server` in `hot-updater.config.ts` to its path, such as `"./src/hotUpdater.ts"`. For a self-hosted server the CLI reaches over its admin API, set `server: standaloneRepository({ baseUrl, commonHeaders, storage })`. The CLI refuses a config that still lists `database`, `storage`, or `plugins`. |
 | `features.clientAccessKeys` | `apiKeys()` from `@hot-updater/server/plugins/api-keys` in `plugins`. It requires `x-api-key`, or the `headerName` you pass. For public client routes, set `clientAccess: "public"` instead. |
-| `features`, `features.bundles`, `features.updateCheck`, server Insights flags and `queryAccess` | Mount the handler surfaces explicitly. `insights()` from `@hot-updater/server/plugins/insights` in `plugins` serves Insights; without it, the server has no Insights routes, which answer `404`. Apps report with the `insights()` client plugin from `@hot-updater/react-native/plugins/insights`. |
+| `features`, `features.bundles`, `features.updateCheck`, server Insights flags and `queryAccess` | Mount the handler surfaces explicitly. `insights()` from `@hot-updater/server/plugins/insights` in `plugins` serves Insights; without it, the server has no Insights routes, which answer `404`. Apps report with the `insights()` client plugin from `@hot-updater/react-native`. |
 | Server `basePath` | Let the framework own the mount path and use that client root as the app's `baseURL`. |
 | `authorityId`, server `cwd`, runtime request-context parameters | Remove these settings. Catalog identity is automatic; capture credentials, SDK clients and runtime bindings when constructing plugins. Handlers take one `Request`. |
 | `standaloneRepository.baseUrl` pointing at a shared client root | Use the exact admin root, such as `https://example.com/hot-updater/admin`. Remove custom `routes`: the repository speaks the admin API's protocol 2. |
@@ -357,6 +357,7 @@ v0 mutable per-Bundle asset layout or its cleanup fallback.
 
 | Package and removed surface | Replacement |
 | --- | --- |
+| `@hot-updater/core` | `@hot-updater/protocol`, the data formats and pure functions the app and the server share, under its v1 name. |
 | `@hot-updater/aws`: `s3Database` | `dynamoDB`; S3 stores artifacts. |
 | `@hot-updater/aws`: `s3LambdaEdgeStorage` | `s3Storage`. |
 | `@hot-updater/aws`: `withCloudFrontSignedUrl` | `s3Storage({ getDownloadUrl: cloudFrontDownloadUrl(...) })`; see [S3 download URLs](/docs/storage-adapters/aws). |

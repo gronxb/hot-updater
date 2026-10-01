@@ -1,4 +1,4 @@
-import { defineClientPlugin } from "@hot-updater/react-native/client-plugin";
+import { defineClientPlugin } from "@hot-updater/protocol";
 import { describe, expect, it } from "vitest";
 
 import { setupClientPlugin } from "./setupClientPlugins";
@@ -7,8 +7,8 @@ const bundleId = "0199a0c3-6f6e-7c3a-9a3e-1b2c3d4e5f60";
 
 /**
  * A third-party plugin as the client plugin guide writes one: it imports
- * only `@hot-updater/react-native/client-plugin`, which loads neither React
- * Native nor the native module.
+ * only `@hot-updater/protocol`, which loads neither React Native nor the
+ * native module.
  */
 const launchReporter = () =>
   defineClientPlugin({
@@ -31,8 +31,8 @@ const launchReporter = () =>
     },
   });
 
-describe("@hot-updater/react-native/client-plugin", () => {
-  it("runs a plugin that imports only this entry in plain Node", async () => {
+describe("a client plugin that imports @hot-updater/protocol", () => {
+  it("runs in plain Node", async () => {
     const runtime = setupClientPlugin(launchReporter(), {
       platform: "android",
       bundleId,

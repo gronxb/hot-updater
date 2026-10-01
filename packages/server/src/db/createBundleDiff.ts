@@ -4,12 +4,6 @@ import { promisify } from "node:util";
 import { brotliDecompress } from "node:zlib";
 
 import { hdiff } from "@hot-updater/bsdiff";
-import {
-  getAssetBaseStorageUri,
-  getBundlePatch,
-  getBundlePatches,
-  getManifestStorageUri,
-} from "@hot-updater/core";
 import type {
   Bundle,
   ConfiguredDatabase,
@@ -21,6 +15,12 @@ import {
   resolveManifestAssetStorageUri,
   rowToBundle,
 } from "@hot-updater/plugin-core";
+import {
+  getAssetBaseStorageUri,
+  getBundlePatch,
+  getBundlePatches,
+  getManifestStorageUri,
+} from "@hot-updater/protocol";
 
 import { createDatabaseCoreApi } from "../core/api";
 

@@ -1,5 +1,5 @@
-import type { Bundle } from "@hot-updater/core";
 import { createMemoryAdapter } from "@hot-updater/plugin-core/internal";
+import type { Bundle } from "@hot-updater/protocol";
 
 import { createInProcessCoreApi } from "./core/api";
 import { createHotUpdaterHandlers, type HandlerAPI } from "./handler";

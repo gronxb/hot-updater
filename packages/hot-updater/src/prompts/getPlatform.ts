@@ -1,5 +1,5 @@
 import { p } from "@hot-updater/cli-tools";
-import type { Platform } from "@hot-updater/core";
+import type { Platform } from "@hot-updater/protocol";
 
 export const getPlatform = async (message: string) => {
   return await p.select({

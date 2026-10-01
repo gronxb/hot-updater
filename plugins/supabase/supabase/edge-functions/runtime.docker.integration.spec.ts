@@ -14,8 +14,8 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { resolvePackageVersion, transformEnv } from "@hot-updater/cli-tools";
-import type { Bundle } from "@hot-updater/core";
 import { type HotUpdaterCoreApi, rowToBundle } from "@hot-updater/plugin-core";
+import type { Bundle } from "@hot-updater/protocol";
 import { createHotUpdater } from "@hot-updater/server";
 import {
   createDatabaseEngine,
@@ -91,8 +91,8 @@ const ANON_KEY = createLegacyJwt("anon");
 const SERVICE_ROLE_KEY = createLegacyJwt("service_role");
 const REQUIRED_BUILD_ARTIFACTS = [
   {
-    command: "pnpm --filter @hot-updater/core build",
-    path: path.join(WORKSPACE_ROOT, "packages/core/dist/index.mjs"),
+    command: "pnpm --filter @hot-updater/protocol build",
+    path: path.join(WORKSPACE_ROOT, "packages/protocol/dist/index.mjs"),
   },
   {
     command: "pnpm --filter @hot-updater/server build",

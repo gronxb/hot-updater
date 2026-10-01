@@ -1,4 +1,4 @@
-import { INVALID_COHORT_ERROR_MESSAGE } from "@hot-updater/core";
+import { INVALID_COHORT_ERROR_MESSAGE } from "@hot-updater/protocol";
 import { beforeEach, describe, expect, it, type Mock, vi } from "vitest";
 
 const nativeModuleMock = vi.hoisted(() => {

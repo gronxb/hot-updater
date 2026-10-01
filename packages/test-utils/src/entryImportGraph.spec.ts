@@ -69,7 +69,7 @@ const isReactNativeSdk = (specifier: string) =>
   specifier.startsWith("@hot-updater/react-native/");
 
 describe("@hot-updater/test-utils entries", () => {
-  it.each(["index.ts", "node.ts"])(
+  it.each(["index.ts", "node.ts", "react-native.ts"])(
     "keeps the React Native SDK out of %s and its suites",
     (entry) => {
       expect(
@@ -78,11 +78,11 @@ describe("@hot-updater/test-utils entries", () => {
     },
   );
 
-  it("runs client plugins on the SDK's plugin host without Vitest or React Native", () => {
+  it("runs client plugins on protocol's plugin host without Vitest or React Native", () => {
     const graph = collectPackageImports("react-native.ts");
 
     expect(graph.get("setupClientPlugins.ts")).toEqual([
-      "@hot-updater/react-native/plugin-host",
+      "@hot-updater/protocol",
     ]);
     expect(
       importersOf(

@@ -1,4 +1,4 @@
-import type { Bundle } from "@hot-updater/core";
+import type { Bundle } from "@hot-updater/protocol";
 import { describe, expect, it } from "vitest";
 
 import {

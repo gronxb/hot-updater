@@ -31,11 +31,12 @@ for a bundle, and admins read them.
 
 ## Install the packages
 
-The authoring API ships in `@hot-updater/server`. The test harness is in
+The authoring API ships in `@hot-updater/plugin-core`, the kit that extends the
+server, and `@hot-updater/server` runs the plugin. The test harness is in
 `@hot-updater/test-utils`.
 
 ```package-install
-npm install @hot-updater/server
+npm install @hot-updater/server @hot-updater/plugin-core
 ```
 
 ```package-install
@@ -45,10 +46,10 @@ npm install --save-dev @hot-updater/test-utils vitest
 ## Declare the schema
 
 A schema maps model names to tables (`defineTable`) and aggregates
-(`defineAggregate`), both from `@hot-updater/server/plugins`:
+(`defineAggregate`), both from `@hot-updater/plugin-core`:
 
 ```ts title="src/feedback/schema.ts"
-import { defineAggregate, defineTable } from "@hot-updater/server/plugins";
+import { defineAggregate, defineTable } from "@hot-updater/plugin-core";
 
 export const feedbackSchema = {
   threads: defineTable(
@@ -140,11 +141,11 @@ table. Each field has a `type` and these options:
 
 `key` lists the fields that identify a row; they cannot be optional or `json`.
 
-An index is `{ eq, sort, unique?, root? }`. A read binds every `eq` field and
-walks the index in `sort` order, then by the key fields it does not already
-name. `unique: true` means the `eq` values identify at most one row, so the
-index has no `sort` fields and `findOne` can use it. A row whose `eq` or `sort`
-value is null is not in that index. `root` is described in
+An index, an `IndexDefinition`, is `{ eq, sort, unique?, root? }`. A read binds
+every `eq` field and walks the index in `sort` order, then by the key fields it
+does not already name. `unique: true` means the `eq` values identify at most one
+row, so the index has no `sort` fields and `findOne` can use it. A row whose
+`eq` or `sort` value is null is not in that index. `root` is described in
 [Write in a transaction](#write-in-a-transaction).
 
 A derived field is computed from the declared fields on every create and
@@ -195,7 +196,7 @@ same value to another shard row.
 A sketch value is a 1,024-character register string. `addDistinct` adds a
 value to a sketch, `mergeDistinct` merges sketches, and `countDistinct`
 estimates how many values a sketch holds; all three come from
-`@hot-updater/server/plugins`. With `shardBy` set to the counted value, a
+`@hot-updater/plugin-core`. With `shardBy` set to the counted value, a
 repeated value merges into an unchanged sketch and the engine skips the write.
 
 `batched: true` lets a database that bills each write (DynamoDB and
@@ -210,14 +211,15 @@ write. Other databases write batched aggregates in the transaction.
 
 ### Retention
 
-`retention: { field, days }` makes a table's or an aggregate's rows expire
-`days` after the time in `field`, an integer field of epoch milliseconds: a
-declared or derived field of a table, or an identity field of an aggregate,
-such as a bucket's start. A row whose `field` is null never expires. Insights
-keeps raw events and hourly rows for 90 days this way, and daily rows for
-13 months, by default; `insights({ retention: { rawDays, dailyDays } })`
-changes them. The days are a runtime value: the tables and indexes are the
-same for any period, so a plugin may take them as an option.
+`retention: { field, days }`, a `RetentionDefinition`, makes a table's or an
+aggregate's rows expire `days` after the time in `field`, an integer field of
+epoch milliseconds: a declared or derived field of a table, or an identity field
+of an aggregate, such as a bucket's start. A row whose `field` is null never
+expires. Insights keeps raw events and hourly rows for 90 days this way, and
+daily rows for 13 months, by default;
+`insights({ retention: { rawDays, dailyDays } })` changes them. The days are a
+runtime value: the tables and indexes are the same for any period, so a plugin
+may take them as an option.
 
 ```ts
 const events = defineTable(
@@ -262,7 +264,7 @@ and `provides` when it supplies [client authentication](#provide-client-authenti
 import {
   DatabaseConstraintError,
   definePlugin,
-} from "@hot-updater/server/plugins";
+} from "@hot-updater/plugin-core";
 
 import { feedbackSchema } from "./schema";
 
@@ -497,11 +499,14 @@ export const hotUpdater = createHotUpdater({
 ```
 
 `hotUpdater.api.feedback` has the API's types, for example
-`hotUpdater.api.feedback.listOpen(bundleId)`. `POST /feedback` joins the other
-client routes behind `apiKeys()`, and `GET /feedback/threads/:id` joins the
-admin routes. Before the first request, [create the plugin's tables](#create-the-plugins-tables).
-On a managed server, add the plugin to the `plugins` of the `hotUpdater.ts`
-that init wrote, and [redeploy](/docs/managed/server-plugins#redeploy).
+`hotUpdater.api.feedback.listOpen(bundleId)`. `PluginApis` from
+`@hot-updater/plugin-core` names the type of `hotUpdater.api` for a list of
+plugins, and `AnyHotUpdaterPlugin` types any plugin in such a list.
+`POST /feedback` joins the other client routes behind `apiKeys()`, and
+`GET /feedback/threads/:id` joins the admin routes. Before the first request,
+[create the plugin's tables](#create-the-plugins-tables). On a managed server,
+add the plugin to the `plugins` of the `hotUpdater.ts` that init wrote, and
+[redeploy](/docs/managed/server-plugins#redeploy).
 
 ## Write in a transaction
 
@@ -541,11 +546,11 @@ same value fails the commit with `unique`, which is why `open` above catches
 it and reads the winner's thread. Writing a row of a rooted index needs its
 root row, as a child needs its parent.
 
-`transaction` throws these errors from `@hot-updater/server/plugins`:
+`transaction` throws these errors from `@hot-updater/plugin-core`:
 
 | Error | When |
 | --- | --- |
-| `DatabaseConstraintError` | The current state confirms a constraint. `reason` is `exists` (the key exists), `unique` (another row holds a unique value), `not_found` (a referenced parent or root row is missing), `referenced` (a `restrict` reference blocks a delete), or `too_large` (more than the database commits atomically, such as DynamoDB's 100 items). `model` names the table. |
+| `DatabaseConstraintError` | The current state confirms a constraint. `reason`, a `ConstraintReason`, is `exists` (the key exists), `unique` (another row holds a unique value), `not_found` (a referenced parent or root row is missing), `referenced` (a `restrict` reference blocks a delete), or `too_large` (more than the database commits atomically, such as DynamoDB's 100 items). `model` names the table. |
 | `DatabaseConflictError` | Rows it read kept changing through every attempt. |
 | `DatabaseAmbiguousCommitError` | The write may or may not have committed. It is never rerun. |
 | `DatabaseTransactionError` | The handle was misused, or a gauge stayed below zero. |
@@ -705,7 +710,7 @@ A plugin that decides who may use client routes declares
 `provides: { clientAuth: true }` and returns `clientAuth` from `init`:
 
 ```ts title="src/deviceTokens.ts"
-import { definePlugin, defineTable } from "@hot-updater/server/plugins";
+import { definePlugin, defineTable } from "@hot-updater/plugin-core";
 
 const sha256 = async (text: string) =>
   Array.from(
@@ -909,8 +914,8 @@ with your plugin and the packages it imports, into the provider's runtime; see
 every adapter call:
 
 ```ts title="src/feedback/feedback.spec.ts"
+import type { HotUpdaterDatabase } from "@hot-updater/plugin-core";
 import * as engine from "@hot-updater/server/database";
-import type { HotUpdaterDatabase } from "@hot-updater/server/plugins";
 import { createPluginTestHarness } from "@hot-updater/test-utils";
 import { describe, expect, it } from "vitest";
 
@@ -1023,9 +1028,9 @@ The memory database has no schema fence and needs no migration.
 ## Publish the plugin
 
 Export the factory, such as `feedback()`, and its API types from your package,
-and list `@hot-updater/server` in `peerDependencies`: the plugin then catches
-the error classes the project's engine throws. Give the plugin an `id` and
-route paths that name your package, since both must be unique on a server. A
+and list `@hot-updater/plugin-core` in `peerDependencies`: the plugin then
+catches the error classes the project's engine throws. Give the plugin an `id`
+and route paths that name your package, since both must be unique on a server. A
 plugin with a client side ships it from the same package, from a `./client`
 entry beside `./server`, as `@hot-updater/plugin-insights` does; see
 [Ship both sides from one package](/docs/plugins/publish#ship-both-sides-from-one-package)

@@ -1,15 +1,15 @@
 import {
   ARTIFACT_PROTOCOL_VERSION,
+  canonicalizeAppVersion,
   encodeChannelKey,
+  resolveBaseURL,
   type ArtifactInfo,
+  type HotUpdaterBaseURL,
   type ReleaseCatalog,
-} from "@hot-updater/core";
-import { canonicalizeAppVersion } from "@hot-updater/plugin-core";
+} from "@hot-updater/protocol";
 
-import { resolveBaseURL } from "./baseURL";
 import { fetchJSON, FetchJSONResponseError } from "./fetchJSON";
 import { fetchReleaseCatalogWithCache } from "./releaseCatalogCache";
-import type { HotUpdaterBaseURL } from "./types";
 import { InvalidUpdateResponseError } from "./updateError";
 
 export interface ReleaseCatalogRequest {

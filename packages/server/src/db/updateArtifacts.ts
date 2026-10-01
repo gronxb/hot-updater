@@ -1,4 +1,10 @@
 import {
+  getBundleArchiveStorageUri,
+  getManifestAssetDownloadPath,
+  isContentAddressedAssetFileHash,
+  resolveManifestAssetStorageUri,
+} from "@hot-updater/plugin-core";
+import {
   ARTIFACT_PROTOCOL_VERSION,
   getAssetBaseStorageUri,
   getBundlePatch,
@@ -8,13 +14,7 @@ import {
   type ArtifactInfo,
   type ArtifactAsset,
   type Bundle,
-} from "@hot-updater/core";
-import {
-  getBundleArchiveStorageUri,
-  getManifestAssetDownloadPath,
-  isContentAddressedAssetFileHash,
-  resolveManifestAssetStorageUri,
-} from "@hot-updater/plugin-core";
+} from "@hot-updater/protocol";
 
 type BundleManifestAsset = {
   downloadByteSize?: unknown;

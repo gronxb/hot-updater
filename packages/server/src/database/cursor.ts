@@ -1,8 +1,8 @@
+import { DatabaseCursorError } from "@hot-updater/plugin-core";
 import {
   type DatabaseKey,
   isKeyValue,
 } from "@hot-updater/plugin-core/internal";
-import { DatabaseCursorError } from "@hot-updater/plugin-core/server-plugin";
 
 export { DatabaseCursorError };
 
