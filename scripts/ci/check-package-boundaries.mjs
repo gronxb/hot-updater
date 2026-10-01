@@ -56,7 +56,6 @@ const COMPUTED_IMPORTS = new Map([
     "e2e/detox/published.ts",
     "imports a package's published entry as the example app installs it",
   ],
-  ["packages/cli-tools/src/bundleServer.spec.ts", "runs the bundle it wrote"],
   [
     "packages/hot-updater/agent/provision-client-credential.mjs",
     "runs the scaffold's migrate.ts",
@@ -77,15 +76,7 @@ const COMPUTED_IMPORTS = new Map([
     "packages/server/src/adapters/drizzle.spec.ts",
     "loads the schema file it generated",
   ],
-  [
-    "plugins/aws/lambda/runtime.container.integration.spec.ts",
-    "loads the project's own plugin",
-  ],
   ["plugins/expo/src/expoConfig.ts", "loads the app's Expo config packages"],
-  [
-    "plugins/supabase/supabase/edge-functions/runtime.docker.integration.spec.ts",
-    "loads the project's own plugin",
-  ],
 ]);
 
 /**

@@ -186,16 +186,6 @@ class DetoxAppDriver {
     throw new Error(`Missing Detox scenario value: ${key}`);
   }
 
-  async verifyServerPlugins() {
-    const evidence = await this.controlClient.postJson(
-      "verify the server's plugins",
-      "/e2e/verify-server-plugins",
-      {},
-    );
-    console.log(`[detox-server-plugins] ${JSON.stringify(evidence)}`);
-    return evidence;
-  }
-
   async verifyConsoleInsights(sinceMs) {
     const evidence = await this.controlClient.postJson(
       "verify Console Insights",

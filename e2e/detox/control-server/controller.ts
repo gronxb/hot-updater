@@ -52,7 +52,6 @@ import {
 import { inferPatchAssetPathFromStorageUri } from "./patch-storage-path.ts";
 import { resetProviderAfterReady } from "./provider-reset-retry.ts";
 import { buildReleaseCatalogUrl } from "./release-catalog-url.ts";
-import { checkSamplePlugin } from "./sample-plugin-check.ts";
 import {
   readE2eScreenStateSnapshot,
   resetE2eScreenState,
@@ -78,28 +77,12 @@ const {
 const { createUUIDv7After, rowToBundle } = await importPublished<
   typeof import("@hot-updater/plugin-core")
 >("@hot-updater/plugin-core");
-const { createHotUpdater } = await importPublished<
-  typeof import("@hot-updater/server")
->("@hot-updater/server");
+const { assembleServer, loadConfig } = await importPublished<
+  typeof import("@hot-updater/cli-tools")
+>("@hot-updater/cli-tools");
 const { createInsightsModel, createInsightsProvider } = await importPublished<
   typeof import("@hot-updater/server/plugins/insights")
 >("@hot-updater/server/plugins/insights");
-
-/**
- * A server over `database` running `plugins`, as a definition assembles
- * them: what the controller writes and reads in process through.
- */
-const serverOn = (
-  database: ConfiguredDatabase,
-  plugins: readonly AnyHotUpdaterPlugin[] = [],
-) =>
-  createHotUpdater({
-    database,
-    plugins,
-    ...(plugins.some(({ provides }) => provides?.clientAuth)
-      ? {}
-      : { clientAccess: "public" }),
-  } as Parameters<typeof createHotUpdater>[0]);
 
 type Platform = "ios" | "android";
 type BundleProfile = "default" | "multiAssetReplacement" | "sizeAwareLargeDiff";
@@ -1202,55 +1185,38 @@ async function waitForFile(filePath: string, attempts = 360) {
   throw new Error(`Timed out waiting for ${filePath}`);
 }
 
-/** The server the example's config points at: its database, core on it, and the plugins it runs. */
+/** The server the example's config describes: its database, core on it, and the plugins it runs. */
 type ConfiguredServer = {
   readonly core: HotUpdaterCoreApi;
   readonly database: ConfiguredDatabase;
-  readonly plugins: readonly AnyHotUpdaterPlugin[] | undefined;
+  readonly plugins: readonly AnyHotUpdaterPlugin[];
 };
 
 async function withConfiguredDatabase<T>(
   callback: (configured: ConfiguredServer) => Promise<T>,
 ): Promise<T> {
-  const { importServerModule, loadConfig, serverDefinitionOf } =
-    await importPublished<typeof import("@hot-updater/cli-tools")>(
-      "@hot-updater/cli-tools",
-    );
   const originalCwd = process.cwd();
 
   try {
     process.chdir(fixtureSession.exampleDir);
     return await withHotUpdaterControlEnv(async () => {
-      const { server } = await loadConfig(null);
-      if (server === undefined) {
-        throw new Error("The example's hot-updater.config.ts sets no server.");
+      const { database, plugins } = await loadConfig(null);
+      if (database === undefined) {
+        throw new Error(
+          "The example's hot-updater.config.ts sets no database.",
+        );
       }
-      // A server definition's database and plugins, or a self-hosted
-      // server's admin API, whose plugins it runs itself.
-      const definition =
-        typeof server === "string"
-          ? serverDefinitionOf(
-              (await importServerModule(server)).hotUpdater,
-              server,
-            )
-          : undefined;
-      const database = definition?.database ?? (server as ConfiguredDatabase);
       try {
         return await callback({
-          // Core alone, so the plugins' tables, which a redeploy creates,
-          // never gate the fixtures the controller writes.
-          core:
-            definition === undefined
-              ? (database as { readonly core: HotUpdaterCoreApi }).core
-              : serverOn(database).core,
+          // Core alone, so the plugins' tables, which the server's
+          // migrations create, never gate the fixtures the controller
+          // writes. Over standaloneRepository, it is the server's admin API.
+          core: assembleServer({ database }).core,
           database,
-          plugins: definition?.plugins,
+          plugins,
         });
       } finally {
-        // The definition's module is loaded once per process, so every call
-        // shares its database, which stays open for the next one. A
-        // self-hosted server's admin client is this config load's own.
-        if (definition === undefined) await database.dispose?.();
+        await database.dispose?.();
       }
     });
   } finally {
@@ -1260,55 +1226,24 @@ async function withConfiguredDatabase<T>(
 
 /**
  * Insights read in process, as the console does: through the plugins the
- * server runs. Null sends the verification to the server's admin routes.
+ * server runs. Null, over standaloneRepository or without insights(), sends
+ * the verification to the server's admin routes.
  */
 function readInsightsModel({
   database,
   plugins,
 }: ConfiguredServer): InsightsModel | null {
-  try {
-    // Insights alone, so the server's other plugins, whose tables a redeploy
-    // creates, never gate what the verification reads.
-    const { api } = serverOn(
-      database,
-      (plugins ?? []).filter(({ id }) => id === "insights"),
-    ) as { readonly api: Record<string, unknown> };
-    return api.insights === undefined
-      ? null
-      : createInsightsModel(
-          api.insights as Parameters<typeof createInsightsModel>[0],
-        );
-  } catch {
-    // A self-hosted server's database is read over its admin API.
-    return null;
-  }
-}
-
-/**
- * Proves the deployed server runs the example's own plugin: a note written
- * on the server's database through the plugin is what the server's client
- * endpoint answers to the app's credential.
- */
-async function verifyConfiguredServerPlugins() {
-  return withConfiguredDatabase(({ database, plugins }) =>
-    checkSamplePlugin({
-      plugins,
-      write: (samplePlugins, id, text) =>
-        (
-          serverOn(database, samplePlugins as AnyHotUpdaterPlugin[]).api as {
-            readonly sample: {
-              write(id: string, text: string): Promise<void>;
-            };
-          }
-        ).sample.write(id, text),
-      get: (path) =>
-        fetch(`${getControllerReachableAppBaseUrl()}${path}`, {
-          headers: getHotUpdaterClientRequestHeaders(),
-        }),
-      id: `e2e-${fixtureSession.platform}-${randomUUID()}`,
-      wait: () => sleep(E2E_POLL_INTERVAL_MS),
-    }),
-  );
+  // Insights alone, so the server's other plugins, whose tables the server's
+  // migrations create, never gate what the verification reads.
+  const { api } = assembleServer({
+    database,
+    plugins: plugins.filter(({ id }) => id === "insights"),
+  });
+  return api?.insights === undefined
+    ? null
+    : createInsightsModel(
+        api.insights as Parameters<typeof createInsightsModel>[0],
+      );
 }
 
 async function verifyConfiguredConsoleInsights(args: { sinceMs: number }) {
@@ -7075,10 +7010,6 @@ export async function handleWriteSummary(args: {
 
 export async function handleCleanup() {
   return cleanup();
-}
-
-export async function handleVerifyServerPlugins() {
-  return verifyConfiguredServerPlugins();
 }
 
 export async function handleVerifyConsoleInsights(args: { sinceMs: number }) {

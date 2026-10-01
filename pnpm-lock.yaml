@@ -725,9 +725,6 @@ importers:
       '@hot-updater/react-native':
         specifier: workspace:*
         version: link:../../packages/react-native
-      '@hot-updater/server':
-        specifier: workspace:*
-        version: link:../../packages/server
       '@hot-updater/supabase':
         specifier: workspace:*
         version: link:../../plugins/supabase
@@ -803,9 +800,6 @@ importers:
       '@hot-updater/rock':
         specifier: workspace:*
         version: link:../../plugins/rock
-      '@hot-updater/server':
-        specifier: workspace:*
-        version: link:../../packages/server
       '@hot-updater/supabase':
         specifier: workspace:*
         version: link:../../plugins/supabase
@@ -899,6 +893,9 @@ importers:
       '@hot-updater/react-native':
         specifier: workspace:*
         version: link:../../packages/react-native
+      '@hot-updater/server':
+        specifier: workspace:*
+        version: link:../../packages/server
       '@hot-updater/standalone':
         specifier: workspace:*
         version: link:../../plugins/standalone
@@ -995,9 +992,6 @@ importers:
       '@hot-updater/react-native':
         specifier: workspace:*
         version: link:../../packages/react-native
-      '@hot-updater/server':
-        specifier: workspace:*
-        version: link:../../packages/server
       '@hot-updater/supabase':
         specifier: workspace:*
         version: link:../../plugins/supabase
@@ -1097,9 +1091,6 @@ importers:
       '@hot-updater/react-native':
         specifier: workspace:*
         version: link:../../packages/react-native
-      '@hot-updater/server':
-        specifier: workspace:*
-        version: link:../../packages/server
       '@hot-updater/supabase':
         specifier: workspace:*
         version: link:../../plugins/supabase
@@ -1217,9 +1208,6 @@ importers:
       '@hot-updater/firebase':
         specifier: workspace:*
         version: link:../../plugins/firebase
-      '@hot-updater/plugin-core':
-        specifier: workspace:*
-        version: link:../../plugins/plugin-core
       '@hot-updater/react-native':
         specifier: workspace:*
         version: link:../../packages/react-native
