@@ -21,10 +21,12 @@ import {
 import { printBanner } from "@/utils/printBanner";
 
 import {
+  assertInstalledInitProvider,
   INIT_PROVIDER_NAMES,
   INIT_PROVIDER_PACKAGES,
   type InitProvider,
   isInitProvider,
+  loadInitProvider,
   otherServerDefinitionsOf,
 } from "./initProviders";
 
@@ -167,6 +169,8 @@ export const init = async (options: InitOptions = {}) => {
   let choices: Awaited<ReturnType<typeof collectInitChoices>>;
   try {
     choices = await collectInitChoices(options);
+    // A provider package the project already has must match this CLI.
+    await assertInstalledInitProvider(choices.provider);
   } catch (error) {
     if (handleInitError(error)) {
       return;
@@ -232,7 +236,7 @@ export const init = async (options: InitOptions = {}) => {
   }
 
   try {
-    const { initProvider, runInit } = await providerPackage.load();
+    const { initProvider, runInit } = await loadInitProvider(provider);
     if (options.envFile !== undefined) {
       // Before any cloud resource changes, every missing input at once.
       const missingInputs = getMissingInitProviderInputs({

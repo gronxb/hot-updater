@@ -60,8 +60,15 @@ vi.mock("@hot-updater/supabase/init", async (importOriginal) => ({
   runInit: mocks.runSupabaseInit,
 }));
 
+import { packageJsonData } from "../packageJson";
 import { init } from "./init";
-import { otherServerDefinitionsOf } from "./initProviders";
+import {
+  INIT_PROVIDER_PACKAGES,
+  type InitProviderModule,
+  otherServerDefinitionsOf,
+} from "./initProviders";
+
+const { version } = packageJsonData;
 
 describe("init choices", () => {
   beforeEach(() => {
@@ -274,6 +281,51 @@ describe("init choices", () => {
       envFile: ".env.hotupdater",
       otherServerDefinitions: await otherServerDefinitionsOf("aws"),
     });
+  });
+
+  it("stops before editing any file when the installed provider package has no init for this CLI, naming the version to install", async () => {
+    // Given: a provider package from before its one ./init entry, whose
+    // ./init has the provider's definition but no runInit.
+    mocks.readHotUpdaterInitEnv.mockResolvedValue({ env: {}, managedEnv: {} });
+    const { initProvider } = await import("@hot-updater/aws/init");
+    vi.spyOn(INIT_PROVIDER_PACKAGES.aws, "load").mockResolvedValue({
+      initProvider,
+    } as unknown as InitProviderModule);
+
+    // When
+    await init({ build: "bare", provider: "aws" });
+
+    // Then
+    expect(mocks.appendToProjectRootGitignore).not.toHaveBeenCalled();
+    expect(mocks.makeEnv).not.toHaveBeenCalled();
+    expect(mocks.ensureInstallPackages).not.toHaveBeenCalled();
+    expect(mocks.runAwsInit).not.toHaveBeenCalled();
+    expect(process.exitCode).toBe(1);
+    expect(mocks.logError).toHaveBeenCalledWith(
+      expect.stringContaining(
+        `has no init for hot-updater ${version}: its ./init exports no runInit.\nInstall @hot-updater/aws@${version} to match hot-updater ${version}, and run init again.`,
+      ),
+    );
+  });
+
+  it("stops before any resource when the provider package still fails to load once installed, naming the version to install", async () => {
+    // Given: a provider package whose peer is missing, which installing
+    // init's packages does not add.
+    mocks.readHotUpdaterInitEnv.mockResolvedValue({ env: {}, managedEnv: {} });
+    vi.spyOn(INIT_PROVIDER_PACKAGES.aws, "load").mockRejectedValue(
+      new Error("Cannot find package '@aws-sdk/client-s3'"),
+    );
+
+    // When
+    await init({ build: "bare", provider: "aws" });
+
+    // Then: init installed its packages first, which may have added the peer.
+    expect(mocks.ensureInstallPackages).toHaveBeenCalled();
+    expect(mocks.runAwsInit).not.toHaveBeenCalled();
+    expect(process.exitCode).toBe(1);
+    expect(mocks.logError).toHaveBeenCalledWith(
+      `@hot-updater/aws failed to load: Cannot find package '@aws-sdk/client-s3'\nInstall @hot-updater/aws@${version} to match hot-updater ${version}, and run init again.`,
+    );
   });
 
   it("prints actionable provider init errors without rethrowing", async () => {

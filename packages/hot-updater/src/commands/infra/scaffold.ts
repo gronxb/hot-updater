@@ -66,7 +66,10 @@ export interface InfraTemplate {
   upgradeRequirements: string[];
 }
 
-export interface InfraManifest extends Omit<InfraTemplate, "packages"> {
+export interface InfraManifest extends Omit<
+  InfraTemplate,
+  "inputs" | "packages"
+> {
   operation: InfraOperation;
   build?: BuildType;
   packages?: Record<string, string>;
@@ -339,8 +342,10 @@ export async function scaffoldInfra(
         ]),
       ),
     );
+    // The inputs are for env.example and `init --help`, not the manifest.
+    const { inputs: _inputs, ...recorded } = template;
     const manifest: InfraManifest = {
-      ...template,
+      ...recorded,
       operation,
       build,
       files,
