@@ -9,7 +9,7 @@ import {
 import { compareUtf8 } from "../../database/values";
 import type { AggregateBatching } from "../../types/databaseConfig";
 import type { AggregateShape } from "./definitions";
-import type { Engine } from "./engine";
+import type { StorageEngine } from "./engine";
 import { type AggregateChange, recordAggregate } from "./engineAggregates";
 import type { TransactionEngine } from "./engineTransaction";
 import { DatabaseTransactionError } from "./errors";
@@ -329,7 +329,7 @@ export const createAggregateBatches = ({
   batching: { mode = "log", windowMs = WINDOW_MS[mode] },
   now,
 }: {
-  readonly engine: Engine;
+  readonly engine: StorageEngine;
   readonly adapter: DatabaseAdapter;
   readonly schema: ResolvedSchema;
   readonly batching: AggregateBatching;

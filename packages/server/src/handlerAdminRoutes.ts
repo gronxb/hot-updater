@@ -6,8 +6,8 @@ import {
   type KeysetInput,
   type ReleaseFilter,
   type ReleasePolicyPatch,
+  DatabaseRowReferencedError,
 } from "@hot-updater/plugin-core";
-import { DatabaseRowReferencedError } from "@hot-updater/plugin-core/internal";
 import type { Bundle } from "@hot-updater/protocol";
 
 import type { CoreApi } from "./core/api";

@@ -3,8 +3,11 @@ import {
   type StorageAdapter,
   toolingTargetOf,
 } from "@hot-updater/plugin-core";
-import type { ToolingDatabase, ToolingTarget } from "@hot-updater/plugin-core";
-import type { DatabaseAdapter } from "@hot-updater/plugin-core/internal";
+import type {
+  ToolingDatabase,
+  ToolingTarget,
+  DatabaseAdapter,
+} from "@hot-updater/plugin-core";
 
 import {
   assemblePlugins,
@@ -226,14 +229,8 @@ export function createHotUpdater<
   const publicClients = isPublic(
     (options as { readonly clientAccess?: unknown }).clientAccess,
   );
-  const plugins = assemblePlugins(options.plugins ?? [], database.adapter, {
+  const plugins = assemblePlugins(options.plugins ?? [], database, {
     storage: { readStorageText, resolveFileUrl },
-    ...(database.onCachedRoutesChange === undefined
-      ? {}
-      : { onCachedRoutesChange: () => database.onCachedRoutesChange!() }),
-    ...(database.aggregateBatching === undefined
-      ? {}
-      : { batching: database.aggregateBatching }),
   });
   const clientAuth = plugins.clientAuth;
   if (clientAuth !== undefined && publicClients) {

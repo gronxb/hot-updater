@@ -176,7 +176,7 @@ export async function generateStandaloneSQL(options: {
       { createDatabasePluginApis },
       { kyselyAdapter },
     ] = await Promise.all([
-      import("@hot-updater/server/database"),
+      import("@hot-updater/plugin-core"),
       import("@hot-updater/server/db"),
       import("@hot-updater/server/adapters/kysely"),
     ]);

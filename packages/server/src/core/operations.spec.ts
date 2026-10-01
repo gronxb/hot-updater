@@ -3,15 +3,13 @@ import {
   ReleaseManagementError,
   type Bundle,
   type Deployment,
-} from "@hot-updater/plugin-core";
-import {
   createMemoryAdapter,
   DatabaseRowReferencedError,
   type DatabaseAdapter,
-} from "@hot-updater/plugin-core/internal";
+} from "@hot-updater/plugin-core";
+import { createBundleFixture } from "@hot-updater/test-utils";
 import { describe, expect, it } from "vitest";
 
-import { createBundleFixture } from "../../../test-utils/src/databaseTestFixtures";
 import { createDatabaseCoreApi, createInProcessCoreApi } from "./api";
 
 const setup = () => {

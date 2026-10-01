@@ -1,13 +1,11 @@
-import type {
-  KeyValueStore,
-  KvCondition,
-  KvKey,
-} from "@hot-updater/plugin-core";
 import {
   compareUtf8,
   DATABASE_VERSION_COLUMN,
+  type KeyValueStore,
+  type KvCondition,
+  type KvKey,
   type StoredRow,
-} from "@hot-updater/plugin-core/internal";
+} from "@hot-updater/plugin-core";
 
 export interface MemoryKeyValueStoreOptions {
   /** Test-only: the most items one `query` page returns. */

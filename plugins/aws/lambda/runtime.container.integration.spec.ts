@@ -21,14 +21,12 @@ import {
 } from "@aws-sdk/lib-dynamodb";
 import { transformEnv } from "@hot-updater/cli-tools";
 import type { AnyHotUpdaterPlugin } from "@hot-updater/plugin-core";
-import { SETTINGS_TABLE } from "@hot-updater/plugin-core/internal";
+import { SETTINGS_TABLE } from "@hot-updater/plugin-core";
 import type { Bundle } from "@hot-updater/protocol";
 import {
   createHotUpdater,
   type RuntimeHotUpdaterAPI,
 } from "@hot-updater/server";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-
 import {
   assertDockerDaemonAvailable,
   findOpenPort,
@@ -36,7 +34,9 @@ import {
   runCheckedCommand,
   spawnRuntime,
   stopRuntime,
-} from "../../../packages/test-utils/src/runtimeProcess";
+} from "@hot-updater/test-utils/node";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+
 import { buildLambdaFromDefinition } from "../iac/managedLambda";
 import { cloudFrontDownloadUrl } from "../src/cloudFrontDownloadUrl";
 import { dynamoDB, migrateDynamoDB } from "../src/dynamoDB";

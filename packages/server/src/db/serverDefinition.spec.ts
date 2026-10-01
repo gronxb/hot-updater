@@ -1,5 +1,7 @@
-import { createStorageAdapter } from "@hot-updater/plugin-core";
-import { createMemoryAdapter } from "@hot-updater/plugin-core/internal";
+import {
+  createStorageAdapter,
+  createMemoryAdapter,
+} from "@hot-updater/plugin-core";
 import { describe, expect, it } from "vitest";
 
 import { createHotUpdater } from "../createHotUpdaterCore";

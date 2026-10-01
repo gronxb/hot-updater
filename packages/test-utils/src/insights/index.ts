@@ -2,14 +2,10 @@ import type { InsightsModel } from "@hot-updater/plugin-insights/server";
 import { describe } from "vitest";
 
 import type { HttpTestClient } from "../httpTestClient";
-export type {
-  DatabaseTestLifecycle,
-  DatabaseTestState,
-} from "../databaseTestRunner";
-export type { HttpTestClient, HttpTestRequest } from "../httpTestClient";
 import { registerInsightsModelTests } from "./insightsModelTests";
 import { setupInsightsHttpTestSuite } from "./setupInsightsHttpTestSuite";
 
+export { expectInsightsIndex } from "./expectInsightsIndex";
 export { createBundleEventRowFixture } from "./fixtures";
 export { setupInsightsHttpTestSuite } from "./setupInsightsHttpTestSuite";
 export { setupInsightsModelTestSuite } from "./setupInsightsModelTestSuite";

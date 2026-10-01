@@ -11,14 +11,15 @@ import {
   isMultiIndex,
   toolingTargetOf,
   generateEngineSql,
+  quoteSql,
 } from "@hot-updater/plugin-core";
 import type { ToolingDatabase } from "@hot-updater/plugin-core";
-import { quoteSql } from "@hot-updater/plugin-core/internal";
 import {
   setupDatabaseTestSuite,
   startHttpTestServer,
   insightsTestSuite,
 } from "@hot-updater/test-utils";
+import { createBundleFixture } from "@hot-updater/test-utils";
 import { createClient } from "@libsql/client";
 import type { SQL } from "drizzle-orm";
 import { drizzle as libsql } from "drizzle-orm/libsql";
@@ -26,7 +27,6 @@ import { drizzle as pglite } from "drizzle-orm/pglite";
 import { SQLiteSyncDialect } from "drizzle-orm/sqlite-core";
 import { afterAll, describe, expect, it } from "vitest";
 
-import { createBundleFixture } from "../../../test-utils/src/databaseTestFixtures";
 import { createDatabasePluginApis } from "../assembly/databasePlugins";
 import { createInProcessCoreApi } from "../core/api";
 import { createHotUpdater } from "../index";

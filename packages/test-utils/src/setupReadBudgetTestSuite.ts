@@ -1,19 +1,12 @@
-import type { HotUpdaterCoreApi } from "@hot-updater/plugin-core";
-import type {
-  DatabaseAdapter,
-  DatabaseReadCount,
-  PhysicalTable,
-} from "@hot-updater/plugin-core/internal";
 import {
-  createReleaseCatalogScopeKey,
-  encodeChannelKey,
-  type ArtifactInfo,
-  type Bundle,
-  type ReleaseCatalog,
-} from "@hot-updater/protocol";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
-
-import { createBundleFixture } from "./databaseTestFixtures";
+  type DatabaseAdapter,
+  type DatabaseReadCount,
+  type HotUpdaterCoreApi,
+  type PhysicalTable,
+  SETTINGS_TABLE,
+  targetBaseCandidateKey,
+  toolingTargetOf,
+} from "@hot-updater/plugin-core";
 import type {
   BundleEventRow,
   InsightsCountEventsInput,
@@ -24,7 +17,22 @@ import type {
   InsightsGetReleaseActivityInput,
   InsightsGetReleaseActivityResult,
   InsightsListEventsInput,
-} from "./insightsTypes";
+} from "@hot-updater/plugin-insights/server";
+import {
+  createReleaseCatalogScopeKey,
+  encodeChannelKey,
+  type ArtifactInfo,
+  type Bundle,
+  type ReleaseCatalog,
+} from "@hot-updater/protocol";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+
+import {
+  createMeasuredDatabase,
+  type MeasuredDatabase,
+  type MeasuredDatabaseStorage,
+} from "./createMeasuredDatabase";
+import { createBundleFixture } from "./databaseTestFixtures";
 import type { RowsExamined } from "./sqlRowsExamined";
 
 /** Core's API with the client routes' reads, which the public API leaves out. */
@@ -82,58 +90,11 @@ interface ReadBudgetApiKeys {
   }): Promise<{ readonly apiKey: string }>;
 }
 
-/** How core reads bundle manifests and resolves file URLs. */
-export interface ReadBudgetStorage {
-  readonly readStorageText?: (storageUri: string) => Promise<string | null>;
-  readonly resolveFileUrl: (
-    storageUri: string | null,
-  ) => Promise<string | null>;
-}
-
-/** What `createMeasuredDatabase` returns: core and the plugins on one engine in verify mode. */
-export interface ReadBudgetDatabase {
-  readonly core: ReadBudgetCore;
-  readonly api: Readonly<Record<string, unknown>>;
-  readonly clientAuth?: {
-    authenticate(headers: Headers): Promise<boolean>;
-  };
-  measureReads<T>(read: () => Promise<T>): Promise<{
-    readonly result: T;
-    readonly adapter: DatabaseReadCount;
-    readonly engine: { readonly calls: number; readonly rows: number };
-  }>;
-}
-
-/**
- * What the suite takes from `@hot-updater/server`; pass those exports, which
- * keeps test-utils free of a dependency on the server.
- */
-export interface ReadBudgetServer {
-  /** `createMeasuredDatabase` from `@hot-updater/server/db`. */
-  createMeasuredDatabase(
-    adapter: DatabaseAdapter,
-    plugins: readonly unknown[],
-    options: {
-      readonly now: () => number;
-      readonly storage: ReadBudgetStorage;
-    },
-  ): ReadBudgetDatabase;
-  /** `toolingTargetOf` from `@hot-updater/server/database`: core's and the plugins' tables to create. */
-  toolingTargetOf(plugins: readonly unknown[]): {
-    readonly schema: { readonly tables: readonly PhysicalTable[] };
-  };
-  /** `[insights(), apiKeys()]`, the plugins whose reads have budgets. */
-  readonly plugins: readonly unknown[];
-  /** `targetBaseCandidateKey` from `@hot-updater/server/db`. */
-  targetBaseCandidateKey(target: {
-    readonly channel: string;
-    readonly platform: "ios" | "android";
-    readonly fingerprintHash: string | null;
-    readonly appVersion: string | null;
-  }): string | null;
-}
-
 export interface ReadBudgetAdapterContext {
+  /**
+   * Core's tables, those of the plugins the suite measures, and the settings
+   * table, where the retention passes keep their lease.
+   */
   readonly tables: readonly PhysicalTable[];
   /** Test-only: the adapter must fetch at most this many rows per native page. */
   readonly nativePageSize: number;
@@ -141,7 +102,6 @@ export interface ReadBudgetAdapterContext {
 
 export interface ReadBudgetSuiteOptions {
   readonly name: string;
-  readonly server: ReadBudgetServer;
   /** Returns an adapter over freshly created, empty tables. */
   readonly createAdapter: (context: ReadBudgetAdapterContext) => Promise<{
     readonly adapter: DatabaseAdapter;
@@ -264,7 +224,7 @@ const bundleEvents = {
 } as const;
 
 /** The target bundle's manifest, which artifact resolution reads from storage. */
-const storage: ReadBudgetStorage = {
+const storage: MeasuredDatabaseStorage = {
   readStorageText: async (storageUri) =>
     storageUri === createBundleFixture("106").manifestStorageUri
       ? JSON.stringify({
@@ -273,9 +233,7 @@ const storage: ReadBudgetStorage = {
         })
       : null,
   resolveFileUrl: async (storageUri) =>
-    storageUri === null
-      ? null
-      : `https://storage.example.com/${encodeURIComponent(storageUri)}`,
+    `https://storage.example.com/${encodeURIComponent(storageUri)}`,
 };
 
 /**
@@ -284,8 +242,8 @@ const storage: ReadBudgetStorage = {
  * days later; and the day of history before T0, as a production database
  * holds, so a read that scans beyond its window examines more rows.
  */
-const seed = async (database: ReadBudgetDatabase, server: ReadBudgetServer) => {
-  const { core } = database;
+const seed = async (database: MeasuredDatabase) => {
+  const core = database.core as ReadBudgetCore;
   const api = database.api as {
     readonly insights: ReadBudgetInsights;
     readonly apiKeys: ReadBudgetApiKeys;
@@ -336,7 +294,7 @@ const seed = async (database: ReadBudgetDatabase, server: ReadBudgetServer) => {
     productionId,
     nightlyId: (await channel("nightly")).id,
     /** The auto-patch base key of a new production iOS 1.0.0 bundle. */
-    candidateKey: server.targetBaseCandidateKey({
+    candidateKey: targetBaseCandidateKey({
       channel: "production",
       platform: "ios",
       fingerprintHash: null,
@@ -742,29 +700,35 @@ const READ_BUDGETS: readonly ReadBudget[] = [
 ];
 
 /**
- * The read-budget suite (PRD S4) on one backend: core and the built-in
- * plugins in verify mode over the backend's adapter, native pages capped at
- * two rows. Every API in the read-budget list reads exactly its budget at the
- * adapter and at the engine; with `examined`, the database examines no more
- * rows than the adapter read, within the backend's native multipliers.
+ * The read-budget suite (PRD S4) on one backend: core and the server's
+ * built-in plugins on `createMeasuredDatabase` over the backend's adapter,
+ * native pages capped at two rows. Every API in the read-budget list reads
+ * exactly its budget at the adapter and at the engine; with `examined`, the
+ * database examines no more rows than the adapter read, within the backend's
+ * native multipliers. It loads `@hot-updater/server`, an optional peer.
  */
 export const setupReadBudgetTestSuite = (
   options: ReadBudgetSuiteOptions,
 ): void => {
   describe(`${options.name} read budgets`, () => {
     let created: Awaited<ReturnType<ReadBudgetSuiteOptions["createAdapter"]>>;
-    let database: ReadBudgetDatabase;
+    let database: MeasuredDatabase;
     let seeded: Seeded;
     let writes = 0;
 
     beforeAll(async () => {
+      // The server's built-in plugins, whose reads have budgets.
+      const [{ insights }, { apiKeys }] = await Promise.all([
+        import("@hot-updater/server/plugins/insights"),
+        import("@hot-updater/server/plugins/api-keys"),
+      ]);
+      const plugins = [insights(), apiKeys()];
       created = await options.createAdapter({
-        tables: options.server.toolingTargetOf(options.server.plugins).schema
-          .tables,
+        tables: [...toolingTargetOf(plugins).schema.tables, SETTINGS_TABLE],
         nativePageSize: NATIVE_PAGE_SIZE,
       });
       const { adapter } = created;
-      database = options.server.createMeasuredDatabase(
+      database = await createMeasuredDatabase(
         {
           ...adapter,
           write: (ops) => {
@@ -772,10 +736,12 @@ export const setupReadBudgetTestSuite = (
             return adapter.write(ops);
           },
         },
-        options.server.plugins,
+        plugins,
         { now: () => T0 + 10 * DAY, storage },
       );
-      seeded = await seed(database, options.server);
+      // Seeding also passes the schema fence of a fenced adapter, such as
+      // D1's, so no budget pays for it.
+      seeded = await seed(database);
     }, 300_000);
 
     afterAll(async () => {

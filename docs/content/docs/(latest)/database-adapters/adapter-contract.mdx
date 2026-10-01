@@ -7,7 +7,7 @@ icon: FileCode
 ## The interface
 
 Every database adapter hands Hot Updater's storage engine an object that
-implements `DatabaseAdapter` from `@hot-updater/server/database`. The engine
+implements `DatabaseAdapter` from `@hot-updater/plugin-core`. The engine
 sends it point reads, index ranges, and guarded writes, and keeps Releases,
 references, counters, and retries itself. `createSqlAdapter` and `createKvAdapter` implement this contract for
 SQL databases and key-value stores; see

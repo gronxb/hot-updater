@@ -1,8 +1,8 @@
 import type {
   InsightsBundleSelection,
   ReportingOverview,
-} from "../../packages/server/src/plugins/insights/domain.ts";
-import type { InsightsScope } from "../../packages/server/src/plugins/insights/modelTypes.ts";
+} from "../../plugins/insights/src/server/domain.ts";
+import type { InsightsScope } from "../../plugins/insights/src/server/modelTypes.ts";
 
 type InsightsEvent = {
   readonly channel: string;

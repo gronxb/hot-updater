@@ -52,7 +52,6 @@
   },
   "files": [
     "dist",
-    "src",
     "package.json"
   ],
   "license": "SEE LICENSE IN LICENSE",
@@ -78,8 +77,7 @@
     "@prisma/client": "*",
     "drizzle-orm": "*",
     "kysely": "*",
-    "mongodb": "*",
-    "vitest": "^4.0.0"
+    "mongodb": "*"
   },
   "peerDependenciesMeta": {
     "@prisma/client": {
@@ -92,9 +90,6 @@
       "optional": true
     },
     "mongodb": {
-      "optional": true
-    },
-    "vitest": {
       "optional": true
     }
   },
@@ -119,5 +114,10 @@
     "prisma": "catalog:db",
     "uuidv7": "catalog:",
     "wrangler": "^4.69.0"
+  },
+  "nx": {
+    "implicitDependencies": [
+      "!@hot-updater/test-utils"
+    ]
   }
 }

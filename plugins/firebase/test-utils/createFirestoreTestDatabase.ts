@@ -1,4 +1,4 @@
-import { SETTINGS_TABLE } from "@hot-updater/plugin-core/internal";
+import { SETTINGS_TABLE } from "@hot-updater/plugin-core";
 import { getApps, initializeApp } from "firebase-admin/app";
 import {
   getFirestore,

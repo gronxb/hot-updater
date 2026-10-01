@@ -1,8 +1,7 @@
-import { defineTable } from "@hot-updater/plugin-core";
-import { createMemoryAdapter } from "@hot-updater/plugin-core/internal";
+import { defineTable, createMemoryAdapter } from "@hot-updater/plugin-core";
+import { createBundleFixture } from "@hot-updater/test-utils";
 import { describe, expect, it, vi } from "vitest";
 
-import { createBundleFixture } from "../../../test-utils/src/databaseTestFixtures";
 import { createHotUpdater } from "../createHotUpdaterCore";
 import { serverPluginsOf } from "../db";
 import { listHotUpdaterRoutes } from "../handler";

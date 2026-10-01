@@ -1,4 +1,8 @@
+import { createEngine, createMemoryAdapter } from "@hot-updater/plugin-core";
+import { describe, expect, it } from "vitest";
+
 import {
+  API_KEY_HEADER_NAME,
   authenticateApiKey,
   createApiKey,
   createApiKeyManagement,
@@ -6,24 +10,18 @@ import {
   normalizeApiKeyHeaderName,
   provisionApiKey,
   registerApiKey,
-} from "@hot-updater/plugin-api-keys/internal";
-import {
-  createMemoryAdapter,
-  createDatabaseEngine,
-  resolveSchema,
-} from "@hot-updater/plugin-core/internal";
-import { describe, expect, it } from "vitest";
-
-import { apiKeysSchema, createApiKeyModel, API_KEY_HEADER_NAME } from "./index";
+} from "./apiKeys";
+import { apiKeys } from "./index";
+import { createApiKeyModel } from "./model";
 
 /** The api-keys plugin's table model on an empty in-memory database. */
 const createModel = () => {
-  const module = { id: "apiKeys", schema: apiKeysSchema } as const;
+  const plugin = apiKeys();
   return createApiKeyModel(
-    createDatabaseEngine({
-      adapter: createMemoryAdapter(),
-      schema: resolveSchema([module]),
-    }).database(module),
+    createEngine(
+      { name: "memory", adapter: createMemoryAdapter() },
+      { plugins: [plugin] },
+    ).database(plugin),
   );
 };
 

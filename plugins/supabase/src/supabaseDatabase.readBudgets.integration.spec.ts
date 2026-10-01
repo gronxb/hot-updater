@@ -1,9 +1,5 @@
 import { PGlite } from "@electric-sql/pglite";
 import { toolingTargetOf, createSqlAdapter } from "@hot-updater/plugin-core";
-import {
-  createMeasuredDatabase,
-  targetBaseCandidateKey,
-} from "@hot-updater/server/db";
 import { apiKeys } from "@hot-updater/server/plugins/api-keys";
 import { insights } from "@hot-updater/server/plugins/insights";
 import {
@@ -23,12 +19,6 @@ import { SUPABASE_TABLE_PREFIX, supabaseSchemaSql } from "./supabaseSchema";
  */
 setupReadBudgetTestSuite({
   name: "supabase apply RPC (PGlite)",
-  server: {
-    createMeasuredDatabase,
-    toolingTargetOf,
-    plugins: [insights(), apiKeys()],
-    targetBaseCandidateKey,
-  },
   createAdapter: async () => {
     const db = new PGlite();
     await db.exec(

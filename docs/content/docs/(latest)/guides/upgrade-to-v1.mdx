@@ -325,7 +325,7 @@ A custom database provider implements a database adapter: batched `get`,
 index-range `query`, atomic `write` of guarded operations and `fits`. Build it
 on the SQL core (`createSqlAdapter`), the key-value helper (`createKvAdapter`)
 or the contract directly, and return it with
-`createEngineDatabase({ name, adapter })` from `@hot-updater/server/database`.
+`createEngineDatabase({ name, adapter })` from `@hot-updater/plugin-core`.
 The adapter knows nothing about Bundles or Releases: core and its plugins run
 on the storage engine above it and compile Release Catalogs there. This
 replaces the factory/double-curried contract and top-level `getBundleById`,

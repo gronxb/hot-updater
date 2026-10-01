@@ -41,6 +41,7 @@ export interface ReadInput {
   readonly cursor?: string;
 }
 
+/** Reads and the rows (logical rows for aggregates) the engine returned to its callers. */
 export interface EngineReadCount {
   readonly calls: number;
   readonly rows: number;

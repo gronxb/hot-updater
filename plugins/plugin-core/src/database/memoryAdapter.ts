@@ -15,6 +15,7 @@ import {
   matchesQuery,
 } from "./values";
 
+/** `createMemoryAdapter`'s options. */
 export interface MemoryAdapterOptions {
   readonly tablePrefix?: string;
   /** Test-only: the most ops `fits()` accepts. */

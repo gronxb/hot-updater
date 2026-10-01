@@ -74,7 +74,7 @@ it. Each guide builds one and tests it:
 | Kind             | Contract                                                                          | Guide                                                               |
 | ---------------- | --------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
 | Storage adapter  | `createStorageAdapter` from `@hot-updater/plugin-core`                            | [Create a storage adapter](/docs/storage-adapters/custom-storage)   |
-| Database adapter | `createSqlAdapter`, `createKvAdapter`, or a `DatabaseAdapter`, wrapped by `createEngineDatabase` from `@hot-updater/server/database` | [Create a database adapter](/docs/database-adapters/custom-database) |
+| Database adapter | `createSqlAdapter`, `createKvAdapter`, or a `DatabaseAdapter`, wrapped by `createEngineDatabase` from `@hot-updater/plugin-core` | [Create a database adapter](/docs/database-adapters/custom-database) |
 | Server plugin    | `definePlugin` from `@hot-updater/plugin-core`                                    | [Create a server plugin](/docs/custom/server-plugins)               |
 | Client plugin    | `defineClientPlugin` from `@hot-updater/protocol`                                 | [Create a client plugin](/docs/react-native-api/client-plugins)     |
 | Signing adapter  | `BundleSigningAdapter` from `@hot-updater/plugin-core`: `getPublicKey` and `sign` | [Remote Signing](/docs/guides/signing/remote) describes the service protocol |
@@ -85,15 +85,21 @@ Hot Updater's packages divide by where their code runs:
 | Package                     | What it holds                                                                                                                                                                                                                                     | Imported by                                              |
 | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
 | `@hot-updater/protocol`     | The device-safe, zero-dependency package for what crosses a boundary: the data formats and pure computations the app and the server share, and the contracts between a host and its extensions on the device, such as the client plugin contract. | The app, the server, the CLI, and client plugins         |
-| `@hot-updater/plugin-core`  | The kit that extends the server: the adapter and server plugin contracts and their helpers. It runs wherever the server runs, and depends on `@hot-updater/protocol`.                                                                             | Adapters and server plugins, including Hot Updater's own |
+| `@hot-updater/plugin-core`  | The kit that extends the server: the adapter and server plugin contracts and their helpers, and the storage engine they run on. It runs wherever the server runs, and depends on `@hot-updater/protocol`.                                       | Adapters and server plugins, including Hot Updater's own |
 | `@hot-updater/server`       | The runtime host: `createHotUpdater` and its handlers, with the built-in adapters and plugins it re-exports.                                                                                                                                      | The server definition                                    |
 | `@hot-updater/react-native` | The app's SDK. It imports `@hot-updater/protocol` and the built-in Insights client, never `@hot-updater/plugin-core` or the server.                                                                                                               | The app                                                  |
 
 An adapter or a server plugin you write imports `@hot-updater/plugin-core`, and
 a client plugin imports `@hot-updater/protocol`, as Hot Updater's own plugin
-packages do. A database adapter also builds on the engine kit in
-`@hot-updater/server/database`. `@hot-updater/react-native` re-exports the
-client plugin names for app code.
+packages do. A database adapter builds on the engine kit there too.
+`@hot-updater/react-native` re-exports the client plugin names for app code.
+
+Each package's API is its root. A subpath only sets apart a part some projects
+leave out: `@hot-updater/server/adapters/*` holds the Kysely, Drizzle, Prisma
+and MongoDB adapters, `@hot-updater/server/plugins/*` the built-in plugins, and
+an official plugin package has one entry per side. No package has an internal
+entry, and a package uses another only through that package's API. Test
+helpers live in `@hot-updater/test-utils` alone.
 
 Then package it for npm with Hot Updater as a peer dependency; see
 [Test and publish](/docs/plugins/publish).

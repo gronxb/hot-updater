@@ -172,6 +172,10 @@ const project = async (edit?: (text: string) => string) => {
     path.join(packageRoot, "node_modules", "@hot-updater", "server"),
     path.join(root, "node_modules", "@hot-updater", "server"),
   );
+  await fs.symlink(
+    path.join(packageRoot, "node_modules", "@hot-updater", "plugin-core"),
+    path.join(root, "node_modules", "@hot-updater", "plugin-core"),
+  );
   if (edit !== undefined) {
     await fs.writeFile(
       path.join(root, "hotUpdater.ts"),

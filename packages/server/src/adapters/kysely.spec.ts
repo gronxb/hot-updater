@@ -7,20 +7,20 @@ import {
   isMultiIndex,
   coreSchema,
   toolingTargetOf,
+  quoteSql,
 } from "@hot-updater/plugin-core";
 import type { ToolingDatabase } from "@hot-updater/plugin-core";
-import { quoteSql } from "@hot-updater/plugin-core/internal";
 import {
   setupDatabaseTestSuite,
   startHttpTestServer,
   createBundleEventRowFixture,
   insightsTestSuite,
 } from "@hot-updater/test-utils";
+import { createBundleFixture } from "@hot-updater/test-utils";
 import { Kysely, SqliteDialect } from "kysely";
 import { PGliteDialect } from "kysely-pglite-dialect";
 import { describe, expect, it } from "vitest";
 
-import { createBundleFixture } from "../../../test-utils/src/databaseTestFixtures";
 import { createDatabasePluginApis } from "../assembly/databasePlugins";
 import { createInProcessCoreApi } from "../core/api";
 import { createHotUpdater } from "../index";

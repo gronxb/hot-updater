@@ -10,9 +10,9 @@ import {
   createMigrator,
   generateSchema,
 } from "@hot-updater/server/db";
+import { createBundleFixture } from "@hot-updater/test-utils";
 import { beforeEach, expect, it, vi } from "vitest";
 
-import { createBundleFixture } from "../../../packages/test-utils/src/databaseTestFixtures";
 import { d1Database } from "./d1Database";
 import { createD1TestDatabase } from "./d1TestDatabase";
 

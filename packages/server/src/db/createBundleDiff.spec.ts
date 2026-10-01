@@ -9,8 +9,8 @@ import type {
 import {
   createStorageAdapter as createCoreStorageAdapter,
   rowToBundle,
+  createMemoryAdapter,
 } from "@hot-updater/plugin-core";
-import { createMemoryAdapter } from "@hot-updater/plugin-core/internal";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createDatabaseCoreApi } from "../core/api";

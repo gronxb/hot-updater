@@ -38,14 +38,16 @@ export interface AcceptanceRow {
 }
 
 /** The storage engine layer: engine, SQL core, KV helper, and schema fence. */
-const SERVER_DATABASE = "packages/server/src/database/**";
+const SERVER_DATABASE = "plugins/plugin-core/src/engine/database/**";
 /**
- * `hot-updater db` tooling and core's database: migrators, schema
- * generators, and core's schema every provider is fenced and migrated with.
+ * Core's database: migrators, schema generators, and core's schema every
+ * provider is fenced and migrated with.
  */
+const ENGINE_DB = "plugins/plugin-core/src/engine/db/**";
+/** `hot-updater db` tooling that reads a server definition. */
 const DB_TOOLING = "packages/server/src/db/**";
-/** What every provider's database builds on, through `@hot-updater/server/database` and `/db`. */
-const SERVER_SHARED = [SERVER_DATABASE, DB_TOOLING];
+/** What every provider's database builds on, through `@hot-updater/plugin-core`. */
+const SERVER_SHARED = [SERVER_DATABASE, ENGINE_DB, DB_TOOLING];
 /** The provider check the server's SQL adapters share. */
 const SQL_PROVIDERS = "packages/server/src/adapters/sqlProviders.ts";
 
@@ -104,7 +106,7 @@ export const rows: readonly AcceptanceRow[] = [
       "packages/server/src/adapters/kysely.ts",
       "packages/server/src/adapters/kyselyExecutor.ts",
     ],
-    shared: [SERVER_DATABASE, DB_TOOLING, SQL_PROVIDERS],
+    shared: [SERVER_DATABASE, ENGINE_DB, DB_TOOLING, SQL_PROVIDERS],
     budget: 300,
     atomicity: "Transaction + row guards",
     suites: [
@@ -128,7 +130,7 @@ export const rows: readonly AcceptanceRow[] = [
       "packages/server/src/adapters/prisma.ts",
       "packages/server/src/adapters/prismaExecutor.ts",
     ],
-    shared: [SERVER_DATABASE, DB_TOOLING, SQL_PROVIDERS],
+    shared: [SERVER_DATABASE, ENGINE_DB, DB_TOOLING, SQL_PROVIDERS],
     budget: 300,
     atomicity: "`$transaction` + row guards",
     suites: [
@@ -152,7 +154,7 @@ export const rows: readonly AcceptanceRow[] = [
       "packages/server/src/adapters/mongodb.ts",
       "packages/server/src/adapters/mongodbAdapter.ts",
     ],
-    shared: [SERVER_DATABASE, DB_TOOLING],
+    shared: [SERVER_DATABASE, ENGINE_DB, DB_TOOLING],
     budget: 300,
     atomicity: "`withTransaction` + conditional writes",
     suites: [
@@ -176,7 +178,7 @@ export const rows: readonly AcceptanceRow[] = [
       "packages/server/src/adapters/drizzle.ts",
       "packages/server/src/adapters/drizzleExecutor.ts",
     ],
-    shared: [SERVER_DATABASE, DB_TOOLING, SQL_PROVIDERS],
+    shared: [SERVER_DATABASE, ENGINE_DB, DB_TOOLING, SQL_PROVIDERS],
     budget: 300,
     atomicity: "Transaction checked on first use",
     suites: [
@@ -325,9 +327,9 @@ export const rows: readonly AcceptanceRow[] = [
   },
   {
     name: "Shared `sqlAdapter` core",
-    entries: ["packages/server/src/database/sql/sqlAdapter.ts"],
+    entries: ["plugins/plugin-core/src/engine/database/sql/sqlAdapter.ts"],
     // Table DDL is its own module outside the runtime core (decision 38).
-    shared: ["packages/server/src/database/sql/sqlSchema.ts"],
+    shared: ["plugins/plugin-core/src/engine/database/sql/sqlSchema.ts"],
     budget: 500,
     atomicity: "Owns SQL semantics",
     suites: [
@@ -365,7 +367,7 @@ export const rows: readonly AcceptanceRow[] = [
   },
   {
     name: "Shared KV helper",
-    entries: ["packages/server/src/database/kv/kvAdapter.ts"],
+    entries: ["plugins/plugin-core/src/engine/database/kv/kvAdapter.ts"],
     shared: [],
     budget: 400,
     atomicity: "Owns index and unique items",
@@ -388,14 +390,14 @@ export const rows: readonly AcceptanceRow[] = [
     name: "Schema fence",
     // The adapter decorator every provider's database gets from
     // createEngineDatabase: it checks the settings rows before the first read.
-    entries: ["packages/server/src/database/fence.ts"],
+    entries: ["plugins/plugin-core/src/engine/database/fence.ts"],
     shared: [],
     budget: 150,
     atomicity: "Reads the settings rows once; writes nothing",
     suites: [
       {
         project: "unit:default",
-        file: "packages/server/src/database/fence.spec.ts",
+        file: "plugins/plugin-core/src/engine/database/fence.spec.ts",
         describe: "schema fence",
       },
       {
@@ -424,14 +426,14 @@ export const rows: readonly AcceptanceRow[] = [
     // compaction, the memory buffer, and the flush they share (decisions 62
     // and 64). It wraps the engine, a row of its own, through
     // `createDatabaseEngine`.
-    entries: ["packages/server/src/database/aggregateBatching.ts"],
+    entries: ["plugins/plugin-core/src/engine/database/aggregateBatching.ts"],
     shared: [
-      "packages/server/src/database/engine*.ts",
-      "packages/server/src/database/resolveSchema.ts",
-      "packages/server/src/database/definitions.ts",
-      "packages/server/src/database/errors.ts",
+      "plugins/plugin-core/src/engine/database/engine*.ts",
+      "plugins/plugin-core/src/engine/database/resolveSchema.ts",
+      "plugins/plugin-core/src/engine/database/definitions.ts",
+      "plugins/plugin-core/src/engine/database/errors.ts",
       // The schema DSL, which declares the log and lease tables.
-      "packages/server/src/database/schema.ts",
+      "plugins/plugin-core/src/engine/database/schema.ts",
     ],
     budget: 650,
     atomicity:
@@ -439,7 +441,7 @@ export const rows: readonly AcceptanceRow[] = [
     suites: [
       {
         project: "unit:default",
-        file: "packages/server/src/database/aggregateBatching.spec.ts",
+        file: "plugins/plugin-core/src/engine/database/aggregateBatching.spec.ts",
         describe: "aggregate batching",
       },
       {
@@ -470,16 +472,16 @@ export const rows: readonly AcceptanceRow[] = [
     // lease-guarded pass that prunes during writes where no TTL does, with no
     // scheduler. The engine only calls it and drops a gauge change on a row
     // retention already deleted.
-    entries: ["packages/server/src/database/retention.ts"],
+    entries: ["plugins/plugin-core/src/engine/database/retention.ts"],
     // The model shapes it reads are the engine's.
-    shared: ["packages/server/src/database/definitions.ts"],
+    shared: ["plugins/plugin-core/src/engine/database/definitions.ts"],
     budget: 100,
     atomicity:
       "The writer that takes the lease row prunes in batches that recheck each row's expiry; a TTL deletes natively",
     suites: [
       {
         project: "unit:default",
-        file: "packages/server/src/database/retention.spec.ts",
+        file: "plugins/plugin-core/src/engine/database/retention.spec.ts",
         describe: "retention",
       },
     ],
@@ -503,27 +505,27 @@ export const rows: readonly AcceptanceRow[] = [
     // Reads, transactions, and aggregates; schema resolution and validation.
     // Retention is a row of its own that resolveSchema calls.
     entries: [
-      "packages/server/src/database/engine.ts",
-      "packages/server/src/database/resolveSchema.ts",
+      "plugins/plugin-core/src/engine/database/engine.ts",
+      "plugins/plugin-core/src/engine/database/resolveSchema.ts",
     ],
-    shared: ["packages/server/src/database/retention.ts"],
+    shared: ["plugins/plugin-core/src/engine/database/retention.ts"],
     budget: 1500,
     atomicity: "Owns transactions and aggregates",
     // Every row's suites run on the engine; its own fault injection and contention specs:
     suites: [
       {
         project: "unit:default",
-        file: "packages/server/src/database/engineTransaction.spec.ts",
+        file: "plugins/plugin-core/src/engine/database/engineTransaction.spec.ts",
         describe: "engine transactions",
       },
       {
         project: "unit:default",
-        file: "packages/server/src/database/engineAggregates.spec.ts",
+        file: "plugins/plugin-core/src/engine/database/engineAggregates.spec.ts",
         describe: "engine aggregates",
       },
       {
         project: "unit:default",
-        file: "packages/server/src/database/engineReads.spec.ts",
+        file: "plugins/plugin-core/src/engine/database/engineReads.spec.ts",
         describe: "engine reads",
       },
     ],

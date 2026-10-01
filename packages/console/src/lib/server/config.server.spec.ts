@@ -1,7 +1,9 @@
 // @vitest-environment node
 
-import { createStorageAdapter } from "@hot-updater/plugin-core";
-import { createMemoryAdapter } from "@hot-updater/plugin-core/internal";
+import {
+  createStorageAdapter,
+  createMemoryAdapter,
+} from "@hot-updater/plugin-core";
 import { apiKeys } from "@hot-updater/server/plugins/api-keys";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 

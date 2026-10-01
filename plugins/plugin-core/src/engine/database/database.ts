@@ -27,18 +27,20 @@ export type {
 } from "../../serverPlugin/databaseHandle";
 
 import { createAggregateBatches } from "./aggregateBatching";
-import { createEngine, type DatabaseEngineOptions } from "./engine";
+import { createStorageEngine, type DatabaseEngineOptions } from "./engine";
 import type { ReadInput } from "./engineReads";
 import {
   assertOutsideTransaction,
   type TransactionEngine,
 } from "./engineTransaction";
+import type { ReadMeter } from "./readMeter";
 import type { SchemaModule } from "./resolveSchema";
 
 /** The engine plus `database(module)`, which hands a module its typed handle. */
 export const createDatabaseEngine = ({
   batching,
   now = Date.now,
+  meter,
   ...options
 }: DatabaseEngineOptions & {
   /**
@@ -48,14 +50,18 @@ export const createDatabaseEngine = ({
   readonly batching?: AggregateBatching;
   /** The clock batching times its flushes and compactions by. */
   readonly now?: () => number;
+  /** A metered database's meter, which counts what the engine and its batching read. */
+  readonly meter?: ReadMeter;
 }) => {
-  const engine = createEngine(options);
+  const adapter = meter ? meter.wrap(options.adapter) : options.adapter;
+  const engine = createStorageEngine({ ...options, adapter });
   const { reads } = engine;
+  meter?.attach(reads.reads);
   const batches =
     batching &&
     createAggregateBatches({
       engine,
-      adapter: options.adapter,
+      adapter,
       schema: options.schema,
       batching,
       now,

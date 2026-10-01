@@ -11,8 +11,8 @@ import {
   createKvAdapter,
   type PhysicalTable,
   HotUpdaterSchemaMigrationRequiredError,
+  SETTINGS_TABLE,
 } from "@hot-updater/plugin-core";
-import { SETTINGS_TABLE } from "@hot-updater/plugin-core/internal";
 import { createHotUpdater } from "@hot-updater/server";
 import {
   createDatabaseCoreApi,

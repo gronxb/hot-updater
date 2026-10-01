@@ -9,7 +9,11 @@ import {
 
 export type SqlDialect = "postgresql" | "mysql" | "sqlite";
 
-/** Quotes an identifier: backticks on MySQL, double quotes elsewhere. */
+/**
+ * Quotes an identifier: backticks on MySQL, double quotes elsewhere. An ORM
+ * schema generator, or an executor that issues statements of its own, quotes
+ * names as the SQL core does with it, as the Prisma adapter's do.
+ */
 export const quoteSql = (dialect: SqlDialect, name: string) =>
   dialect === "mysql"
     ? `\`${name.replaceAll("`", "``")}\``
@@ -79,6 +83,7 @@ const checkMysqlKey = (
   }
 };
 
+/** A column of a `SqlTableShape`. */
 export interface SqlColumnShape {
   readonly name: string;
   /** The column's DDL type, collation included. */
@@ -87,6 +92,7 @@ export interface SqlColumnShape {
   readonly default?: number;
 }
 
+/** A table as the DDL creates it, which an ORM schema generator renders. */
 export interface SqlTableShape {
   readonly name: string;
   readonly columns: readonly SqlColumnShape[];
@@ -105,7 +111,7 @@ export interface SqlTableShape {
 
 /**
  * Each table as the DDL creates it, for the DDL below and for ORM schema
- * generators: binary collation, one index per declared index, and an index
+ * generators, such as the Drizzle and Prisma adapters': binary collation, one index per declared index, and an index
  * table `<table>__<index>` for each index over a multi-valued field, keyed by
  * every column it holds.
  */

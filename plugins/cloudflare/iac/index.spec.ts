@@ -199,6 +199,10 @@ const editedProject = async (edit: (text: string) => string) => {
     path.join(packageRoot, "node_modules", "@hot-updater", "server"),
     path.join(project, "node_modules", "@hot-updater", "server"),
   );
+  await fs.symlink(
+    path.join(packageRoot, "node_modules", "@hot-updater", "plugin-core"),
+    path.join(project, "node_modules", "@hot-updater", "plugin-core"),
+  );
   await fs.writeFile(
     path.join(project, "hotUpdater.ts"),
     edit(getConfigScaffold("bare").definition.text),
@@ -684,18 +688,13 @@ describe("Cloudflare init discovery", () => {
         text
           .replace(
             'import { createHotUpdater } from "@hot-updater/server";',
-            'import { createHotUpdater } from "@hot-updater/server";\nimport { createMemoryAdapter } from "@hot-updater/plugin-core/internal";',
+            'import { createHotUpdater } from "@hot-updater/server";\nimport { createMemoryAdapter } from "@hot-updater/plugin-core";',
           )
           .replace(
             /database: d1Database\(\{[^}]*\}\),/su,
             'database: { name: "memory", adapter: createMemoryAdapter() },',
           ),
       );
-      await fs.symlink(
-        path.join(packageRoot, "node_modules", "@hot-updater", "plugin-core"),
-        path.join(project, "node_modules", "@hot-updater", "plugin-core"),
-      );
-
       const initialization = runInit({ build: "bare" });
 
       await expect(initialization).rejects.toThrow(

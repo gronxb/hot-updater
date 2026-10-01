@@ -1,26 +1,25 @@
 import {
-  DatabaseQueryError,
-  DatabaseTransactionError,
-  defineAggregate,
-  defineTable,
-} from "@hot-updater/plugin-core";
-import {
-  addDistinct,
-  countDistinct,
-  createMemoryAdapter,
-  type DatabaseAdapter,
-  type WriteOp,
-  type WriteResult,
-  createDatabaseEngine,
-  shardOf,
-  resolveSchema,
-} from "@hot-updater/plugin-core/internal";
-import type { RetryOptions } from "@hot-updater/plugin-core/internal";
-import {
   runContentionHarness,
   withAdapterLatency,
 } from "@hot-updater/test-utils";
 import { describe, expect, it } from "vitest";
+
+import {
+  type DatabaseAdapter,
+  type WriteOp,
+  type WriteResult,
+} from "../../database/adapter";
+import { addDistinct, countDistinct } from "../../database/distinct";
+import { createMemoryAdapter } from "../../database/memoryAdapter";
+import {
+  DatabaseQueryError,
+  DatabaseTransactionError,
+} from "../../serverPlugin/errors";
+import { defineAggregate, defineTable } from "../../serverPlugin/schema";
+import { createDatabaseEngine } from "./database";
+import { shardOf } from "./engineAggregates";
+import type { RetryOptions } from "./engineTransaction";
+import { resolveSchema } from "./resolveSchema";
 
 const installs = defineTable(
   {

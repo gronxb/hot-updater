@@ -1,8 +1,8 @@
 /**
  * The database adapter contract. An adapter implements `get`, `query`, and
  * `write` with its backend's native features and knows nothing about Hot
- * Updater's domain or plugins. Adapter authors import it from the public
- * `@hot-updater/server/database` subpath.
+ * Updater's domain or plugins. Adapter authors import it from
+ * `@hot-updater/plugin-core`.
  */
 
 export type DatabaseJson =
@@ -189,6 +189,11 @@ export interface DatabaseAdapter {
   dispose?(): Promise<void>;
 }
 
+/**
+ * The version column every stored row carries, which a guarded write
+ * compares and bumps. An adapter that is neither SQL nor key-value, such as
+ * the MongoDB adapter, stores and checks it itself.
+ */
 export const DATABASE_VERSION_COLUMN = "_v";
 export const DATABASE_MAX_QUERY_LIMIT = 500;
 export const DATABASE_MAX_MULTI_VALUES = 16;
@@ -197,6 +202,11 @@ export class DatabaseSchemaError extends Error {
   readonly name = "DatabaseSchemaError";
 }
 
+/**
+ * The column `name` of `table`, or a `DatabaseSchemaError`: how an adapter
+ * that is neither SQL nor key-value, such as the MongoDB adapter, reads a
+ * column's type.
+ */
 export const findPhysicalColumn = (
   table: PhysicalTable,
   name: string,
@@ -208,6 +218,11 @@ export const findPhysicalColumn = (
   return column;
 };
 
+/**
+ * The index `name` of `table`, or a `DatabaseSchemaError`: how an adapter
+ * that is neither SQL nor key-value, such as the MongoDB adapter, resolves a
+ * query's `index`.
+ */
 export const findPhysicalIndex = (
   table: PhysicalTable,
   name: string,
@@ -245,7 +260,11 @@ export const expiresAt = (
   return typeof time === "number" ? time + table.retention!.ms : undefined;
 };
 
-/** The primary key of a row, in key-column order. */
+/**
+ * The primary key of a row, in key-column order: what `get` takes for it.
+ * An adapter that is neither SQL nor key-value, such as the MongoDB adapter,
+ * addresses rows by it.
+ */
 export const rowKey = (table: PhysicalTable, row: StoredRow): DatabaseKey =>
   table.key.map((column) => {
     const value = row[column];

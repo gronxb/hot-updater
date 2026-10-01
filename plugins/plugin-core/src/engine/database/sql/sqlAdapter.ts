@@ -55,6 +55,7 @@ export interface SqlExecutor extends SqlConnection {
   batch?(statements: readonly SqlStatement[]): Promise<readonly SqlResult[]>;
 }
 
+/** `createSqlAdapter`'s options. */
 export interface SqlAdapterOptions {
   readonly executor: SqlExecutor;
   /** Prepended to every table name. */

@@ -79,6 +79,10 @@ const project = async (text: string) => {
     path.join(packageRoot, "node_modules", "@hot-updater", "server"),
     path.join(root, "node_modules", "@hot-updater", "server"),
   );
+  await fs.symlink(
+    path.join(packageRoot, "node_modules", "@hot-updater", "plugin-core"),
+    path.join(root, "node_modules", "@hot-updater", "plugin-core"),
+  );
   const definition = path.join(root, "hotUpdater.ts");
   await fs.writeFile(definition, text);
   return definition;

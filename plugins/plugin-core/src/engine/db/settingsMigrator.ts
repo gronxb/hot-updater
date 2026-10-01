@@ -64,7 +64,9 @@ export const refusePreEngineDatabase = (
 /**
  * `hot-updater db migrate` for an ORM that applies the DDL itself (Drizzle,
  * Prisma): it sets what the ORM cannot declare, writes the settings rows, and
- * refuses a v0 or pre-engine database.
+ * refuses a v0 or pre-engine database. The `createMigrator` of an adapter
+ * whose ORM creates the tables returns it, as the Drizzle and Prisma
+ * adapters' do.
  */
 export const createSettingsMigrator = (options: {
   readonly adapterName: string;

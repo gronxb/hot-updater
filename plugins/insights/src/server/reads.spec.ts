@@ -1,15 +1,14 @@
 import {
-  addDistinct,
-  countDistinct,
   createMemoryAdapter,
   type DatabaseAdapter,
+  addDistinct,
+  countDistinct,
   mergeDistinct,
-} from "@hot-updater/plugin-core/internal";
-import * as engine from "@hot-updater/plugin-core/internal";
-import { InsightsBadRequestError } from "@hot-updater/plugin-insights/internal";
+} from "@hot-updater/plugin-core";
 import { createPluginTestHarness } from "@hot-updater/test-utils";
 import { describe, expect, it } from "vitest";
 
+import { InsightsBadRequestError } from "./errors";
 import {
   createInsightsModel,
   insights,
@@ -79,7 +78,7 @@ const metered = (inner: DatabaseAdapter) => {
 
 describe("insights latest events by bundle", () => {
   const setup = () =>
-    createPluginTestHarness(insights(), { engine, now: () => T0 + DAY });
+    createPluginTestHarness(insights(), { now: () => T0 + DAY });
   const halfPast = T0 + 30 * 60_000;
 
   it("counts each latest event once for the overview's predicates, even from a bundle to itself", async () => {
@@ -199,7 +198,6 @@ describe("insights read budgets", () => {
   const setup = async () => {
     const meter = metered(createMemoryAdapter());
     const harness = await createPluginTestHarness(insights(), {
-      engine,
       adapter: meter.adapter,
       now: () => T0 + 30 * DAY,
     });
@@ -377,7 +375,6 @@ describe("insights update failures", () => {
   const setup = async () => {
     const meter = metered(createMemoryAdapter());
     const harness = await createPluginTestHarness(insights(), {
-      engine,
       adapter: meter.adapter,
       now: () => T0 + 30 * DAY,
     });
@@ -690,7 +687,6 @@ describe("insights event list ranges", () => {
   const setup = async () => {
     const trace = traced(createMemoryAdapter());
     const harness = await createPluginTestHarness(insights(), {
-      engine,
       adapter: trace.adapter,
       now: () => before,
     });

@@ -2,7 +2,7 @@ import { spawnSync } from "node:child_process";
 
 import { describe, expect, it, vi } from "vitest";
 
-import { createMemoryAdapter } from "../../plugins/plugin-core/src/internal.ts";
+import { createMemoryAdapter } from "../../plugins/plugin-core/src/index.ts";
 import { createHotUpdater } from "../../packages/server/src/index.ts";
 import { insights } from "../../packages/server/src/plugins/insights/index.ts";
 import {

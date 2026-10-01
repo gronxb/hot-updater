@@ -1,10 +1,10 @@
-import {
-  sqlProviders,
-  type ORMSQLProvider,
-} from "@hot-updater/plugin-core/internal";
+import type { SqlDialect } from "@hot-updater/plugin-core";
+
+/** The dialects Hot Updater's SQL core runs on. */
+const sqlProviders: readonly SqlDialect[] = ["sqlite", "mysql", "postgresql"];
 
 /** The provider an adapter was given, when Hot Updater's SQL core runs on it. */
-export const checkSqlProvider = <TProvider extends ORMSQLProvider>(
+export const checkSqlProvider = <TProvider extends SqlDialect>(
   adapter: string,
   provider: TProvider,
 ): TProvider => {

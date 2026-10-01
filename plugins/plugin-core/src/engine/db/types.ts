@@ -10,6 +10,7 @@ export const providers = [...sqlProviders, ...noSqlProviders] as const;
 export type ORMProvider = (typeof providers)[number];
 export type ORMSQLProvider = (typeof sqlProviders)[number];
 
+/** What a `Migrator`'s migrations take. */
 export interface MigrateOptions {
   mode?: "from-schema" | "from-database";
   updateSettings?: boolean;
@@ -28,6 +29,7 @@ export type MigrationOperation =
   | { type: "custom"; sql: string }
   | { type: "custom"; key: string; value: unknown };
 
+/** A `Migrator`'s planned migration: its operations, its SQL, and how to run it. */
 export interface MigrationResult {
   operations: MigrationOperation[];
   execute: () => Promise<void>;

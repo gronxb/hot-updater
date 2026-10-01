@@ -1,21 +1,8 @@
-import type { AggregateBatching, ModuleSchema } from "@hot-updater/plugin-core";
-import type {
-  DatabaseAdapter,
-  ReadMeasurement,
-} from "@hot-updater/plugin-core/internal";
 import {
-  coreModule,
-  aggregateBatchingModule,
-  createDatabaseEngine,
-  fencedName,
-  SETTINGS_TABLE,
-  withSchemaFence,
-  resolveSchema,
-  validateSchema,
-  pruneDuringWrites,
-  pluginModule,
-  pluginSettings,
-} from "@hot-updater/plugin-core/internal";
+  createEngine,
+  type EngineDatabase,
+  type ModuleSchema,
+} from "@hot-updater/plugin-core";
 
 import { createCoreApi, type CoreApi } from "../core/api";
 import { createCoreReads, type CoreStorage } from "../core/reads";
@@ -40,10 +27,6 @@ export interface AssembledPlugins {
   readonly api: Readonly<Record<string, unknown>>;
   readonly endpoints: readonly MountedEndpoint[];
   readonly clientAuth?: ClientAuth & { readonly plugin: string };
-  /** With `verify`: runs `read` and reports what it read at both boundaries. */
-  readonly measureReads?: <T>(
-    read: () => Promise<T>,
-  ) => Promise<ReadMeasurement<T>>;
   /** Applies batched aggregate changes still pending. */
   readonly flush: () => Promise<void>;
 }
@@ -96,7 +79,7 @@ const checkPlugin = (value: unknown, at: string): PluginShape => {
   if (typeof plugin.id !== "string" || !pattern.test(plugin.id)) {
     fail(`${at} needs an id matching ${pattern.source}.`);
   }
-  if (plugin.id === coreModule.id) {
+  if (plugin.id === "core") {
     fail(`${at} uses the id "core", which is core's own.`);
   }
   checkReservedId(value, at);
@@ -203,27 +186,18 @@ const checkInstance = (plugin: PluginShape, instance: unknown) => {
 
 /**
  * Checks every plugin, runs each `init` once against one engine over the
- * database's adapter, and collects APIs, endpoints, and clientAuth.
- * Core's reads run on the same engine, so plugins read core through `ctx.core`.
+ * database, and collects APIs, endpoints, and clientAuth. Core's reads run
+ * on the same engine, so plugins read core through `ctx.core`.
  */
 export const assemblePlugins = (
   value: unknown,
-  adapter: DatabaseAdapter,
+  database: EngineDatabase,
   {
     now = Date.now,
     storage = { resolveFileUrl: async () => null },
-    verify = false,
-    onCachedRoutesChange,
-    batching,
   }: {
     readonly now?: () => number;
     readonly storage?: CoreStorage;
-    /** Runs the engine in verify mode, which meters reads for `measureReads`. */
-    readonly verify?: boolean;
-    /** The database's CDN purge, which core calls after a catalog write. */
-    readonly onCachedRoutesChange?: () => Promise<void>;
-    /** The database's aggregate batching, which adds its log tables. */
-    readonly batching?: AggregateBatching;
   } = {},
 ): AssembledPlugins => {
   if (!Array.isArray(value))
@@ -238,51 +212,22 @@ export const assemblePlugins = (
   }
   // Tooling prints them; a server checks them at startup like the rest.
   clientPluginsOf(plugins);
-  const modules = plugins.map(pluginModule);
-  // Tooling creates the tables of the plugins a server runs, so their names
-  // need to be free of core's and of each other's, not of anyone else's.
-  if (modules.length > 0) validateSchema([coreModule, ...modules]);
-  // A fenced database also waits for each plugin's settings row.
-  const name = fencedName(adapter);
-  const fenced =
-    name === undefined || plugins.length === 0
-      ? adapter
-      : withSchemaFence(adapter, name, pluginSettings(plugins));
-  const schema = resolveSchema([
-    coreModule,
-    ...modules,
-    ...(batching === undefined ? [] : [aggregateBatchingModule]),
-  ]);
-  // Writes prune expired rows, except where verify measures what each API
-  // reads and writes.
-  const engine = createDatabaseEngine({
-    adapter: verify
-      ? fenced
-      : pruneDuringWrites(fenced, schema.tables, {
-          leaseTable: SETTINGS_TABLE,
-          now,
-        }),
-    schema,
-    verify,
-    ...(batching === undefined ? {} : { batching, now }),
-  });
-  const coreDatabase = engine.database(coreModule);
-  const core = createCoreApi(coreDatabase, storage, {
+  const engine = createEngine(database, { plugins, now });
+  const { onCachedRoutesChange } = database;
+  const core = createCoreApi(engine.core, storage, {
     now,
-    ...(onCachedRoutesChange === undefined ? {} : { onCachedRoutesChange }),
+    ...(onCachedRoutesChange === undefined
+      ? {}
+      : { onCachedRoutesChange: () => onCachedRoutesChange.call(database) }),
   });
-  const reads = createCoreReads(coreDatabase, storage);
+  const reads = createCoreReads(engine.core, storage);
   const api: Record<string, unknown> = {};
   const endpoints: MountedEndpoint[] = [];
   let clientAuth: AssembledPlugins["clientAuth"];
-  plugins.forEach((plugin, position) => {
+  for (const plugin of plugins) {
     const instance = checkInstance(
       plugin,
-      plugin.init({
-        db: engine.database(modules[position]!),
-        core: reads,
-        now,
-      }),
+      plugin.init({ db: engine.database(plugin), core: reads, now }),
     );
     if (instance.clientAuth !== undefined) {
       if (clientAuth !== undefined) {
@@ -299,13 +244,12 @@ export const assemblePlugins = (
     }
     endpoints.push(...instance.endpoints);
     api[plugin.id] = instance.api;
-  });
+  }
   return {
     core,
     api,
     endpoints,
     ...(clientAuth === undefined ? {} : { clientAuth }),
-    ...(verify ? { measureReads: engine.measureReads } : {}),
     flush: engine.flush,
   };
 };

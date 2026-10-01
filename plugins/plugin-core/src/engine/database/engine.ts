@@ -1,10 +1,8 @@
 import { type DatabaseAdapter } from "../../database/adapter";
-import {
-  type DatabaseReadCount,
-  verifyAdapter,
-} from "../../database/verifyAdapter";
-import { createEngineReads, type EngineReadCount } from "./engineReads";
+import { verifyAdapter } from "../../database/verifyAdapter";
+import { createEngineReads } from "./engineReads";
 import { createTransactions, type RetryOptions } from "./engineTransaction";
+import type { ReadMeasurement } from "./readMeter";
 import type { ResolvedSchema } from "./resolveSchema";
 
 export interface DatabaseEngineOptions {
@@ -16,16 +14,8 @@ export interface DatabaseEngineOptions {
   readonly retry?: RetryOptions;
 }
 
-export interface ReadMeasurement<T> {
-  readonly result: T;
-  /** Point reads and rows the adapter returned. */
-  readonly adapter: DatabaseReadCount;
-  /** Calls and rows (logical rows for aggregates) returned to callers. */
-  readonly engine: EngineReadCount;
-}
-
 /** Storage semantics over one adapter, addressed by physical table name. */
-export const createEngine = ({
+export const createStorageEngine = ({
   adapter: given,
   schema,
   maxPageSize,
@@ -58,4 +48,4 @@ export const createEngine = ({
   };
 };
 
-export type Engine = ReturnType<typeof createEngine>;
+export type StorageEngine = ReturnType<typeof createStorageEngine>;

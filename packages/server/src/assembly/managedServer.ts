@@ -1,8 +1,7 @@
 import {
   type AdapterResource,
-  adapterResourceOf,
   createMemoryAdapter,
-} from "@hot-updater/plugin-core/internal";
+} from "@hot-updater/plugin-core";
 
 import type { ClientEndpoint } from "../createHotUpdaterCore";
 import {
@@ -21,7 +20,7 @@ import { HotUpdaterConfigError } from "./configError";
 export const clientEndpointsOf = (
   plugins: readonly unknown[],
 ): readonly ClientEndpoint[] =>
-  assemblePlugins(plugins, createMemoryAdapter())
+  assemblePlugins(plugins, { name: "memory", adapter: createMemoryAdapter() })
     .endpoints.filter((endpoint) => endpoint.access === "client")
     .map(({ plugin, method, path }) => ({ plugin, method, path }));
 
@@ -47,10 +46,10 @@ export interface ManagedServer {
 /** Refuses an adapter that reaches a resource other than the managed server's. */
 const assertSameResource = (
   provider: string,
-  adapter: { readonly name: string },
+  adapter: { readonly name: string; readonly resource?: AdapterResource },
   expected: AdapterResource | undefined,
 ) => {
-  const actual = adapterResourceOf(adapter);
+  const actual = adapter.resource;
   for (const [key, value] of Object.entries(expected ?? {})) {
     const found = actual?.[key];
     if (value === undefined || found === undefined || found === value) {

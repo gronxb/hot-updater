@@ -1,19 +1,17 @@
-import type { AggregateBatching } from "@hot-updater/plugin-core";
 import {
   addDistinct,
+  aggregateBatchingTables,
+  type AggregateBatching,
   countDistinct,
+  createEngine,
   createMemoryAdapter,
   type DatabaseAdapter,
-  type PhysicalTable,
-} from "@hot-updater/plugin-core/internal";
+  type ModuleSchema,
+  toolingTargetOf,
+} from "@hot-updater/plugin-core";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { runContentionHarness } from "./runContentionHarness";
-
-interface Module {
-  readonly id: string;
-  readonly schema: object;
-}
 
 type Row = Readonly<Record<string, unknown>>;
 
@@ -41,27 +39,8 @@ interface Database {
   ): Promise<{ readonly rows: readonly Row[] }>;
 }
 
-/**
- * What the suite takes from `@hot-updater/server/database`; pass that
- * module, which keeps test-utils free of a dependency on the server.
- */
-export interface AggregateBatchingEngine {
-  resolveSchema(modules: readonly Module[]): {
-    readonly tables: readonly PhysicalTable[];
-  };
-  readonly aggregateBatchingModule: Module;
-  createDatabaseEngine(options: {
-    readonly adapter: DatabaseAdapter;
-    readonly schema: never;
-    readonly batching?: AggregateBatching;
-    readonly retry?: { readonly attempts?: number };
-  }): { database(module: Module): unknown; flush(): Promise<void> };
-}
-
 export interface AggregateBatchingSuiteOptions {
   readonly name: string;
-  /** `import * as engine from "@hot-updater/server/database"`. */
-  readonly engine: AggregateBatchingEngine;
   /** Returns an adapter over an empty store; each case calls it once. */
   readonly createAdapter: () => Promise<{
     readonly adapter: DatabaseAdapter;
@@ -75,9 +54,14 @@ const identity = (name: string) => ({
   [name]: { type: "string" as const, maxLength: 16 },
 });
 
-/** A module shaped like `defineTable` and `defineAggregate` build them. */
-const module: Module = {
+/**
+ * A plugin's tables, shaped like `defineTable` and `defineAggregate` build
+ * them, under their own names.
+ */
+const plugin = {
   id: "batching",
+  schemaVersion: "1",
+  namespace: false,
   schema: {
     installs: {
       kind: "table",
@@ -122,8 +106,8 @@ const module: Module = {
       batched: true,
       indexes: { all: { eq: [], sort: ["day"] } },
     },
-  },
-};
+  } as unknown as ModuleSchema,
+} as const;
 
 const RELEASES = ["A", "B", "C"] as const;
 
@@ -193,31 +177,39 @@ const snapshot = async (db: Database) => {
  */
 export const setupAggregateBatchingTestSuite = ({
   name,
-  engine,
   createAdapter,
   oversizedRows,
 }: AggregateBatchingSuiteOptions): void => {
-  const schema = engine.resolveSchema([module, engine.aggregateBatchingModule]);
+  const tables = [
+    ...toolingTargetOf([plugin]).schema.tables,
+    ...aggregateBatchingTables,
+  ];
   const cleanups: (() => Promise<void>)[] = [];
   const store = async () => {
     const { adapter, cleanup } = await createAdapter();
     if (cleanup) cleanups.push(cleanup);
-    await adapter.migrations?.apply(schema.tables);
+    await adapter.migrations?.apply(tables);
     return adapter;
   };
+  /** A server's engine on `adapter`, batching as `batching` says. */
   const server = (adapter: DatabaseAdapter, batching?: AggregateBatching) => {
-    const created = engine.createDatabaseEngine({
-      adapter,
-      schema: schema as never,
-      ...(batching === undefined ? {} : { batching }),
-      retry: { attempts: 64 },
-    });
-    return { db: created.database(module) as Database, flush: created.flush };
+    const engine = createEngine(
+      {
+        name,
+        adapter,
+        ...(batching === undefined ? {} : { aggregateBatching: batching }),
+      },
+      { plugins: [plugin], retry: { attempts: 64 } },
+    );
+    return {
+      db: engine.database(plugin) as unknown as Database,
+      flush: engine.flush,
+    };
   };
   /** The reference: transactional writes on a memory adapter. */
   const expected = async (steps: number) => {
     const memory = createMemoryAdapter();
-    await memory.migrations?.apply(schema.tables);
+    await memory.migrations?.apply(tables);
     const { db } = server(memory);
     for (let step = 0; step < steps; step += 1) await open(db, step);
     return snapshot(db);

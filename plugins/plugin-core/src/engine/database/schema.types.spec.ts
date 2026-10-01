@@ -1,5 +1,6 @@
 import { describe, expectTypeOf, it } from "vitest";
 
+import type { DatabaseJson } from "../../database/adapter";
 import {
   type CheckIndex,
   defineAggregate,
@@ -20,7 +21,7 @@ describe("schema DSL types", () => {
       id: string;
       size: number;
       note: string | null;
-      meta: import("@hot-updater/plugin-core/internal").DatabaseJson;
+      meta: DatabaseJson;
     }>();
   });
 

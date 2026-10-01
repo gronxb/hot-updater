@@ -3,14 +3,13 @@ import {
   DynamoDBClient,
   ListTablesCommand,
 } from "@aws-sdk/client-dynamodb";
-
 import {
   assertDockerDaemonAvailable,
   findOpenPort,
   formatRuntimeLogs,
   spawnRuntime,
   stopRuntime,
-} from "../../../packages/test-utils/src/runtimeProcess";
+} from "@hot-updater/test-utils/node";
 
 const REGION = "us-east-1";
 const IMAGE = "amazon/dynamodb-local:latest";

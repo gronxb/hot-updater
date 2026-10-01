@@ -1,6 +1,7 @@
-import type { DatabaseAdapter } from "../../database/adapter";
+import type { DatabaseAdapter, PhysicalTable } from "../../database/adapter";
 import type { AggregateBatching } from "../../types/databaseConfig";
 import { coreModule, HOT_UPDATER_SCHEMA_VERSION } from "../core/schema";
+import { aggregateBatchingModule } from "../database/aggregateBatching";
 import type { ModelShape } from "../database/definitions";
 import {
   ENGINE_SCHEMA_KEY,
@@ -29,6 +30,15 @@ export const coreTarget: ToolingTarget = {
   schema: coreSchema,
   settings: coreSettings,
 };
+
+/**
+ * The log and lease tables a database with `aggregateBatching` writes
+ * beside core's and the plugins', which a provider's access policy names,
+ * such as the managed AWS server's IAM role.
+ */
+export const aggregateBatchingTables: readonly PhysicalTable[] = resolveSchema([
+  aggregateBatchingModule,
+]).tables;
 
 /** A plugin as the tooling reads it: its id, its tables, and their version. */
 export interface PluginTables {
@@ -89,6 +99,7 @@ export const migrateCoreSchema = (
   return migrateSchema(adapter, name, schema.tables, settings);
 };
 
+/** `createEngineDatabase`'s options. */
 export interface EngineDatabaseOptions {
   readonly name: string;
   readonly adapter: DatabaseAdapter;
@@ -103,6 +114,13 @@ export interface EngineDatabaseOptions {
    * `false` or absent commits them with each transaction.
    */
   readonly aggregateBatching?: AggregateBatching | false;
+  /**
+   * How `hot-updater db migrate` reads the stored settings rows, by key; by
+   * default through the adapter. An adapter whose earlier versions stored
+   * them elsewhere reads them itself, so the migrator refuses a database
+   * from before the storage engine.
+   */
+  readonly readSettings?: () => Promise<ReadonlyMap<string, unknown>>;
 }
 
 /**
@@ -117,6 +135,7 @@ export const createEngineDatabase = ({
   adapter,
   onCachedRoutesChange,
   aggregateBatching,
+  readSettings: readStored,
 }: EngineDatabaseOptions): ToolingDatabase => {
   const fenced = withSchemaFence(adapter, name, coreSettings);
   const createMigrator = ({ schema, settings } = coreTarget) =>
@@ -125,19 +144,21 @@ export const createEngineDatabase = ({
       adapter,
       schema,
       settings,
-      readSettings: async () => {
-        const rows = await readSettings(adapter, Object.keys(settings)).catch(
-          (error: unknown) => {
-            if (isMissingSchemaError(error)) return [];
-            throw error;
-          },
-        );
-        return new Map(
-          rows.flatMap((row) =>
-            row === null ? [] : [[String(row.key), row.value]],
-          ),
-        );
-      },
+      readSettings:
+        readStored ??
+        (async () => {
+          const rows = await readSettings(adapter, Object.keys(settings)).catch(
+            (error: unknown) => {
+              if (isMissingSchemaError(error)) return [];
+              throw error;
+            },
+          );
+          return new Map(
+            rows.flatMap((row) =>
+              row === null ? [] : [[String(row.key), row.value]],
+            ),
+          );
+        }),
     });
   return {
     name,

@@ -23,6 +23,7 @@
     "@hot-updater/bare": "workspace:*",
     "@hot-updater/cloudflare": "workspace:*",
     "@hot-updater/firebase": "workspace:*",
+    "@hot-updater/plugin-core": "workspace:*",
     "@hot-updater/react-native": "workspace:*",
     "@hot-updater/server": "workspace:*",
     "@hot-updater/standalone": "workspace:*",

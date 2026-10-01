@@ -19,7 +19,6 @@ export default defineConfig([
         "@hot-updater/server/plugins/api-keys",
         "@hot-updater/server/plugins/insights",
         "@hot-updater/plugin-core",
-        "@hot-updater/plugin-core/internal",
         "@hot-updater/plugin-api-keys/server",
         "@hot-updater/plugin-insights/server",
         "hono/lambda-edge",

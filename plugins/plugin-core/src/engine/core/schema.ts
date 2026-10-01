@@ -167,6 +167,11 @@ export const coreSchema = {
   bundle_totals: bundleTotals,
 } as const;
 
+/**
+ * Core's tables as the engine types them: the type of `createEngine`'s
+ * `core` handle, which the server's core API is written against. A change to
+ * it is a change to core's schema, which ships with a migration.
+ */
 export type CoreSchema = typeof coreSchema;
 
 /** Core's module: always installed, never a plugin. */

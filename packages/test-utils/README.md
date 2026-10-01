@@ -8,6 +8,13 @@ providers, plugins and example servers run these same suites.
 pnpm add -D @hot-updater/test-utils @hot-updater/server vitest
 ```
 
+It uses the other Hot Updater packages only through their public API, and
+takes them as peer dependencies. `@hot-updater/server` and
+`@hot-updater/plugin-insights` are optional: the database suites load the
+server when they run, and the Insights suites use the plugin's types. The SQL
+test executors of `@hot-updater/test-utils/node` take `pg`, `mysql2` or
+`@electric-sql/pglite`, whichever you test on.
+
 ## Database adapters and providers
 
 Register three suites against a disposable test database:
@@ -17,13 +24,14 @@ Register three suites against a disposable test database:
   and multi-valued indexes, paging under capped native pages, and concurrent
   writers.
 - `setupReadBudgetTestSuite` checks what each read of core and the built-in
-  plugins costs at the adapter, using `createMeasuredDatabase` from
-  `@hot-updater/server/db`. `postgresRowsExamined` and `mysqlRowsExamined` also
-  count the rows a SQL database examined.
+  plugins costs at the adapter, on `createMeasuredDatabase`: `createHotUpdater`
+  over `meterReads({ name, adapter: verifyAdapter(adapter) })` from
+  `@hot-updater/plugin-core`. `postgresRowsExamined` and `mysqlRowsExamined`
+  also count the rows a SQL database examined.
 - `setupDatabaseTestSuite` runs core, Bundles and the Release Catalog contract
   through the admin and client HTTP APIs of `createHotUpdater`, then the suites
   of the server plugins listed in `plugins`, such as the Insights plugin's
-  `insightsTestSuite()` from `@hot-updater/server/plugins/insights/testing`.
+  `insightsTestSuite()`.
 
 Connect your database's lifecycle and the real server:
 
@@ -36,8 +44,9 @@ import {
 } from "@hot-updater/server/plugins/insights";
 
 import {
+  insightsTestSuite,
   setupDatabaseTestSuite,
-  startHttpTestServer, insightsTestSuite,
+  startHttpTestServer,
 } from "@hot-updater/test-utils";
 
 import { migrateMyDatabase, myDatabase } from "./myDatabase";
@@ -111,8 +120,9 @@ skips the cases of the others.
 
 ## Plugins and servers
 
-- `createPluginTestHarness` runs one server plugin the way `createHotUpdater`
-  does, on a memory adapter by default, and measures what each API call reads.
+- `createPluginTestHarness` runs one server plugin on `createEngine` from
+  `@hot-updater/plugin-core`, the engine `createHotUpdater` runs plugins on, on
+  a memory adapter by default, and measures what each API call reads.
 - `setupReleaseCatalogTestSuite` with `createHttpTestClient` tests a running
   server by URL. Use `createHandlerHttpTestClient` inside a Workers Vitest pool.
 - Server processes can import `createReleaseCatalogTestStorage` from

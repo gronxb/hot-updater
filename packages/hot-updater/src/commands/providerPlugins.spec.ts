@@ -1,8 +1,10 @@
 import { plugins as aws } from "@hot-updater/aws";
 import { plugins as cloudflare } from "@hot-updater/cloudflare";
 import { plugins as firebase } from "@hot-updater/firebase";
-import { createEngineDatabase } from "@hot-updater/plugin-core";
-import { createMemoryAdapter } from "@hot-updater/plugin-core/internal";
+import {
+  createEngineDatabase,
+  createMemoryAdapter,
+} from "@hot-updater/plugin-core";
 import {
   clientAuthOf,
   createDatabasePluginApis,

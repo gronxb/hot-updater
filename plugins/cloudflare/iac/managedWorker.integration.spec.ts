@@ -357,6 +357,10 @@ exports.digest = (text) => crypto.createHash("sha256").update(text).digest("hex"
       path.join(packageRoot, "node_modules", "@hot-updater", "server"),
       path.join(project, "node_modules", "@hot-updater", "server"),
     );
+    await fs.symlink(
+      path.join(packageRoot, "node_modules", "@hot-updater", "plugin-core"),
+      path.join(project, "node_modules", "@hot-updater", "plugin-core"),
+    );
 
     // The database as rc.20's init left it: its migration, an app's API
     // key, a release, and an installation's Insights.

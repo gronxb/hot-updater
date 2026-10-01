@@ -6,6 +6,7 @@ import {
   type SqlDialect,
 } from "../database/sql/sqlSchema";
 
+/** `generateEngineSql`'s and `createEngineSqlMigrator`'s options. */
 export interface EngineSqlOptions {
   readonly tablePrefix?: string;
 }

@@ -5,7 +5,6 @@ import {
   parseStorageUri,
   type StorageAdapterWith,
 } from "@hot-updater/plugin-core";
-import { withAdapterResource } from "@hot-updater/plugin-core/internal";
 import {
   getApp,
   getApps,
@@ -119,8 +118,10 @@ export const firebaseStorage = (
       return { deleted: true };
     },
   });
-  return withAdapterResource(adapter, {
-    projectId: config.projectId,
-    storageBucket: config.storageBucket,
+  return Object.assign(adapter, {
+    resource: {
+      projectId: config.projectId,
+      storageBucket: config.storageBucket,
+    },
   });
 };

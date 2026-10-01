@@ -39,7 +39,9 @@
     "!**/__tests__",
     "!**/__fixtures__",
     "!**/__mocks__",
-    "!**/.*"
+    "!**/.*",
+    "!**/*.spec.*",
+    "!**/*.test-utils.*"
   ],
   "scripts": {
     "build": "node ./scripts/sync-sdk-version.mjs run -- bob build",

@@ -1,15 +1,14 @@
 import { DatabaseSync } from "node:sqlite";
 
 import type { HotUpdaterDatabase } from "@hot-updater/plugin-core";
-import { createKvAdapter, createSqlAdapter } from "@hot-updater/plugin-core";
 import {
-  countDistinct,
+  createKvAdapter,
+  createSqlAdapter,
   createMemoryAdapter,
   type DatabaseAdapter,
   type WriteOp,
-} from "@hot-updater/plugin-core/internal";
-import * as engine from "@hot-updater/plugin-core/internal";
-import { DAILY_EVENTS } from "@hot-updater/plugin-insights/internal";
+  countDistinct,
+} from "@hot-updater/plugin-core";
 import {
   createPluginTestHarness,
   createMemoryKeyValueStore,
@@ -24,6 +23,7 @@ import {
   type InsightsSchema,
   type BundleEventRow,
 } from "./index";
+import { DAILY_EVENTS } from "./schema";
 
 const HOUR = 3_600_000;
 const DAY = 86_400_000;
@@ -122,7 +122,6 @@ const identity = (
 describe.each(backends)("insights recordEvent on %s", (_name, adapter) => {
   const setup = async (wrap = (inner: DatabaseAdapter) => inner) => {
     const harness = await createPluginTestHarness(insights(), {
-      engine,
       adapter: wrap(adapter()),
     });
     const db = harness.db as HotUpdaterDatabase<InsightsSchema>;

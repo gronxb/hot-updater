@@ -3,7 +3,7 @@ import type {
   SqlDialect,
   SqlExecutor,
 } from "@hot-updater/plugin-core";
-import { SETTINGS_TABLE, quoteSql } from "@hot-updater/plugin-core/internal";
+import { SETTINGS_TABLE, quoteSql } from "@hot-updater/plugin-core";
 
 /** The members of a Prisma client, or of its transaction client, the executor uses. */
 export interface PrismaRawClient {

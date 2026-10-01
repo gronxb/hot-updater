@@ -9,6 +9,7 @@ import {
   WRITE_GUARD_TABLE,
 } from "@hot-updater/plugin-core";
 import { setupDatabaseAdapterConformanceSuite } from "@hot-updater/test-utils";
+import { createBundleFixture } from "@hot-updater/test-utils";
 import {
   assertDockerComposeAvailable,
   mysqlExecutor,
@@ -20,7 +21,6 @@ import mysql from "mysql2/promise";
 import pg from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { createBundleFixture } from "../../../../test-utils/src/databaseTestFixtures";
 import { createInProcessCoreApi } from "../../core/api";
 
 assertDockerComposeAvailable(

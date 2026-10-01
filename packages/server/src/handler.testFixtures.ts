@@ -1,4 +1,4 @@
-import { createMemoryAdapter } from "@hot-updater/plugin-core/internal";
+import { createMemoryAdapter } from "@hot-updater/plugin-core";
 import type { Bundle } from "@hot-updater/protocol";
 
 import { createInProcessCoreApi } from "./core/api";

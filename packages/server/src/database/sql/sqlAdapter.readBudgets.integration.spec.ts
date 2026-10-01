@@ -16,8 +16,6 @@ import mysql from "mysql2/promise";
 import pg from "pg";
 import { afterAll, beforeAll } from "vitest";
 
-import { readBudgetServer } from "../../readBudgets.testFixtures";
-
 assertDockerComposeAvailable(
   "SQL core read-budget tests need Docker Compose and a running Docker daemon.",
 );
@@ -84,7 +82,6 @@ afterAll(async () => {
 /** The SQL core over a pool; reads are explained on one connection of it. */
 setupReadBudgetTestSuite({
   name: "sql (pooled PostgreSQL)",
-  server: readBudgetServer,
   createAdapter: async ({ tables }) => {
     const session = await postgres.connect();
     const reads = postgresRowsExamined(
@@ -105,7 +102,6 @@ setupReadBudgetTestSuite({
 
 setupReadBudgetTestSuite({
   name: "sql (pooled MySQL)",
-  server: readBudgetServer,
   createAdapter: async ({ tables }) => {
     const session = await mariadb.getConnection();
     const reads = mysqlRowsExamined(

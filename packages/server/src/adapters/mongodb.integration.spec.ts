@@ -5,7 +5,7 @@ import {
   HotUpdaterSchemaMigrationRequiredError,
   toolingTargetOf,
 } from "@hot-updater/plugin-core";
-import type { PhysicalTable } from "@hot-updater/plugin-core/internal";
+import type { PhysicalTable } from "@hot-updater/plugin-core";
 import {
   conformanceExpiring,
   setupDatabaseAdapterConformanceSuite,
@@ -13,12 +13,12 @@ import {
   startHttpTestServer,
   insightsTestSuite,
 } from "@hot-updater/test-utils";
+import { createBundleFixture } from "@hot-updater/test-utils";
 import { assertDockerComposeAvailable } from "@hot-updater/test-utils/node";
 import { execa } from "execa";
 import { MongoClient } from "mongodb";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { createBundleFixture } from "../../../test-utils/src/databaseTestFixtures";
 import { createDatabasePluginApis } from "../assembly/databasePlugins";
 import { createInProcessCoreApi } from "../core/api";
 import { createHotUpdater } from "../index";

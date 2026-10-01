@@ -4,15 +4,12 @@ import {
   isMultiIndex,
   type PhysicalTable,
   WRITE_GUARD_TABLE,
-} from "@hot-updater/plugin-core";
-import {
   SETTINGS_TABLE,
-  settingsStatements,
-} from "@hot-updater/plugin-core/internal";
+} from "@hot-updater/plugin-core";
+// Not the package index: it loads Node-only helpers workerd lacks.
+import { setupDatabaseAdapterConformanceSuite } from "@hot-updater/test-utils";
 import { env } from "cloudflare:test";
 
-// Not the package index: it loads Node-only helpers workerd lacks.
-import { setupDatabaseAdapterConformanceSuite } from "../../../../packages/test-utils/src/setupDatabaseAdapterConformanceSuite";
 import { D1_MAX_OPS } from "../../src/d1Executor";
 import { d1Database } from "../../src/worker";
 
@@ -41,12 +38,16 @@ setupDatabaseAdapterConformanceSuite({
   maxOps: D1_MAX_OPS,
   createAdapter: async ({ tables }) => {
     const created = [...tables, SETTINGS_TABLE, WRITE_GUARD_TABLE];
-    await env.DB.batch(
-      [
-        ...createTableStatements("sqlite", created),
-        ...settingsStatements("sqlite", coreSettings),
-      ].map((sql) => env.DB.prepare(sql)),
-    );
+    await env.DB.batch([
+      ...createTableStatements("sqlite", created).map((sql) =>
+        env.DB.prepare(sql),
+      ),
+      ...Object.entries(coreSettings).map(([key, value]) =>
+        env.DB.prepare(
+          `INSERT INTO "${SETTINGS_TABLE.name}" ("key", "value", "_v") VALUES (?, ?, 0)`,
+        ).bind(key, value),
+      ),
+    ]);
     return {
       adapter: d1Database(env.DB).adapter,
       cleanup: () => drop(created),

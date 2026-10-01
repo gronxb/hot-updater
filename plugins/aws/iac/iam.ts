@@ -4,15 +4,12 @@ import { IAM } from "@aws-sdk/client-iam";
 import { STS } from "@aws-sdk/client-sts";
 import { InitError, p } from "@hot-updater/cli-tools";
 import {
+  aggregateBatchingTables,
   coreTarget,
   type PluginTables,
+  SETTINGS_TABLE,
   toolingTargetOf,
 } from "@hot-updater/plugin-core";
-import {
-  aggregateBatchingModule,
-  resolveSchema,
-  SETTINGS_TABLE,
-} from "@hot-updater/plugin-core/internal";
 
 import { plugins as packagePlugins } from "../src/plugins";
 
@@ -30,7 +27,7 @@ export const dynamoDBLeadingKeys = (
 ): string[] =>
   partitionsOf([
     ...toolingTargetOf(plugins).schema.tables,
-    ...resolveSchema([aggregateBatchingModule]).tables,
+    ...aggregateBatchingTables,
     SETTINGS_TABLE,
   ]);
 
@@ -47,7 +44,7 @@ export const dynamoDBWriteLeadingKeys = (
     ...toolingTargetOf(plugins).schema.tables.filter(
       ({ name }) => !core.has(name),
     ),
-    ...resolveSchema([aggregateBatchingModule]).tables,
+    ...aggregateBatchingTables,
   ]);
 };
 

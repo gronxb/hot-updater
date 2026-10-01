@@ -6,7 +6,6 @@ import {
   type HotUpdaterDatabase,
   type PluginEndpoint,
 } from "@hot-updater/plugin-core";
-import { markOfficial } from "@hot-updater/plugin-core/internal";
 
 import type { BundleEventRow } from "./eventRow";
 import { createInsightsModel } from "./model";
@@ -18,6 +17,7 @@ import type {
   InsightsGetReleaseActivityInput,
   InsightsListEventsInput,
 } from "./modelTypes";
+import { markOfficial } from "./official";
 import { createInsightsProvider } from "./provider";
 import {
   countEvents,
@@ -53,6 +53,7 @@ export type {
   InsightsUpdateFailures,
   InsightsUpdateFailuresInput,
 } from "./reads";
+export { InsightsBadRequestError } from "./errors";
 export { createInsightsModel } from "./model";
 export type * from "./modelTypes";
 export { createInsightsProvider } from "./provider";

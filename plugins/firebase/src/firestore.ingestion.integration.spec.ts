@@ -1,16 +1,12 @@
 import {
   createKvAdapter,
   migrateCoreSchema,
-  toolingTargetOf,
+  type RetryOptions,
+  createEngine,
 } from "@hot-updater/plugin-core";
 import type { CoreReader } from "@hot-updater/plugin-core";
 import {
-  createDatabaseEngine,
-  type RetryOptions,
-} from "@hot-updater/plugin-core/internal";
-import {
   insights,
-  insightsSchema,
   type BundleEventRow,
 } from "@hot-updater/server/plugins/insights";
 import {
@@ -75,15 +71,17 @@ describe("Firestore ingestion", () => {
       store: createFirestoreStore({ firestore, collection }),
     });
     await migrateCoreSchema(adapter, "firestore", [insights()]);
-    const module = { id: "insights", schema: insightsSchema } as const;
+    const plugin = insights();
     const apiOf = (latencyMs: number, retry?: RetryOptions) =>
-      insights().init({
-        db: createDatabaseEngine({
-          adapter:
-            latencyMs > 0 ? withAdapterLatency(adapter, latencyMs) : adapter,
-          schema: toolingTargetOf([insights()]).schema,
-          ...(retry === undefined ? {} : { retry }),
-        }).database(module),
+      plugin.init({
+        db: createEngine(
+          {
+            name: "firebaseDatabase",
+            adapter:
+              latencyMs > 0 ? withAdapterLatency(adapter, latencyMs) : adapter,
+          },
+          { plugins: [plugin], ...(retry === undefined ? {} : { retry }) },
+        ).database(plugin),
         // Insights never reads core.
         core: {} as CoreReader,
         now: Date.now,

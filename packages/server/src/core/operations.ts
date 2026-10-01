@@ -16,8 +16,8 @@ import {
   type ReleaseRow,
   type ReleaseTarget,
   DatabaseConstraintError,
+  DatabaseRowReferencedError,
 } from "@hot-updater/plugin-core";
-import { DatabaseRowReferencedError } from "@hot-updater/plugin-core/internal";
 import {
   createReleaseCatalogScopeKey,
   decodeChannelKey,

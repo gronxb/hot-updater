@@ -1,8 +1,8 @@
 import {
+  coreSchema,
   createMemoryAdapter,
-  resolveSchema,
-} from "@hot-updater/plugin-core/internal";
-import * as engine from "@hot-updater/plugin-core/internal";
+  toolingTargetOf,
+} from "@hot-updater/plugin-core";
 import { createPluginTestHarness } from "@hot-updater/test-utils";
 import { describe, expect, it } from "vitest";
 
@@ -14,15 +14,19 @@ const DAY = 86_400_000;
 const HOUR = 3_600_000;
 const T = Date.UTC(2026, 8, 23, 10);
 
-/** Each table's retention in days, or null where rows are kept. */
+/** The plugin's physical tables, without core's. */
+const tablesOf = (plugin: ReturnType<typeof insights>) =>
+  toolingTargetOf([plugin]).schema.tables.filter(
+    ({ name }) => !coreSchema.tables.some((core) => core.name === name),
+  );
+
+/** Each Insights table's retention in days, or null where rows are kept. */
 const periods = (plugin: ReturnType<typeof insights>) =>
   Object.fromEntries(
-    resolveSchema([{ id: "insights", schema: plugin.schema }]).tables.map(
-      (table) => [
-        table.name,
-        table.retention ? table.retention.ms / DAY : null,
-      ],
-    ),
+    tablesOf(plugin).map((table) => [
+      table.name,
+      table.retention ? table.retention.ms / DAY : null,
+    ]),
   );
 
 describe("insights retention", () => {
@@ -56,9 +60,7 @@ describe("insights retention", () => {
       insights_outcomes: 30,
     });
     const tables = (value: ReturnType<typeof insights>) =>
-      resolveSchema([{ id: "insights", schema: value.schema }]).tables.map(
-        ({ retention: _retention, ...table }) => table,
-      );
+      tablesOf(value).map(({ retention: _retention, ...table }) => table);
     expect(tables(plugin)).toEqual(tables(insights()));
     expect(periods(insights({ retention: { rawDays: 7 } }))).toMatchObject({
       bundle_events: 7,
@@ -101,7 +103,7 @@ describe("insights retention", () => {
   it("reads hourly rows only within the raw period", async () => {
     const harness = await createPluginTestHarness(
       insights({ retention: { rawDays: 30, dailyDays: 60 } }),
-      { engine, adapter: createMemoryAdapter() },
+      { adapter: createMemoryAdapter() },
     );
     harness.setNow(() => T);
 

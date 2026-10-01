@@ -2,6 +2,7 @@ import { PGlite } from "@electric-sql/pglite";
 import { createStorageAdapter } from "@hot-updater/plugin-core";
 import type { Bundle } from "@hot-updater/protocol";
 import { NIL_UUID } from "@hot-updater/protocol";
+import { standaloneRepository } from "@hot-updater/standalone";
 import { Kysely } from "kysely";
 import { PGliteDialect } from "kysely-pglite-dialect";
 import { HttpResponse, http } from "msw";
@@ -9,7 +10,6 @@ import { setupServer } from "msw/node";
 import { uuidv7 } from "uuidv7";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 
-import { standaloneRepository } from "../../../plugins/standalone/src";
 import { kyselyAdapter } from "./adapters/kysely";
 import { createMigrator } from "./db";
 import { createHotUpdater, type RuntimeHotUpdaterAPI } from "./index";

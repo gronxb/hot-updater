@@ -1,4 +1,4 @@
-import { createMemoryAdapter } from "@hot-updater/plugin-core/internal";
+import { createMemoryAdapter } from "@hot-updater/plugin-core";
 
 import type {
   PluginClientCredential,
@@ -207,7 +207,10 @@ export const clientAuthOf = (
 ): ClientAuthSpec | undefined => {
   const found = credentialOf(plugins);
   if (found === undefined) return undefined;
-  const { clientAuth } = assemblePlugins(plugins, createMemoryAdapter());
+  const { clientAuth } = assemblePlugins(plugins, {
+    name: "memory",
+    adapter: createMemoryAdapter(),
+  });
   const { label, header, env } = found.credential;
   return {
     plugin: found.plugin,

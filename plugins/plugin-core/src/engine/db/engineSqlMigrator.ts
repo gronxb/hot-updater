@@ -1,20 +1,18 @@
-import type { SqlExecutor, Migrator } from "@hot-updater/plugin-core";
-import { generateEngineSql } from "@hot-updater/plugin-core";
+import { HOT_UPDATER_SCHEMA_VERSION } from "../core/schema";
+import type { SchemaSettings } from "../database/fence";
+import type { ResolvedSchema } from "../database/resolveSchema";
+import type { SqlExecutor } from "../database/sql/sqlAdapter";
+import { type EngineSqlOptions, generateEngineSql } from "./engineSql";
 import {
-  HOT_UPDATER_SCHEMA_VERSION,
-  type EngineSqlOptions,
   assertSupportedMigrationMode,
   getEmptyMigrationResult,
+} from "./fixedMigratorShared";
+import {
   readStoredSettings,
   refusePreEngineDatabase,
   storedSchemaVersion,
-} from "@hot-updater/plugin-core/internal";
-import type {
-  SchemaSettings,
-  ResolvedSchema,
-  MigrateOptions,
-  MigrationResult,
-} from "@hot-updater/plugin-core/internal";
+} from "./settingsMigrator";
+import type { MigrateOptions, MigrationResult, Migrator } from "./types";
 
 export interface EngineSqlMigratorOptions extends EngineSqlOptions {
   readonly adapterName: string;
@@ -36,7 +34,8 @@ const run = async (executor: SqlExecutor, statements: readonly string[]) => {
 /**
  * `hot-updater db migrate` and `db generate` for an SQL provider on the
  * engine: the generated SQL schema, applied when a settings row is missing or
- * different, and refused on a database from before the engine.
+ * different, and refused on a database from before the engine. A SQL
+ * adapter's `createMigrator` returns it, as `kyselyAdapter`'s does.
  */
 export const createEngineSqlMigrator = (
   options: EngineSqlMigratorOptions,

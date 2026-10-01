@@ -1,10 +1,9 @@
 import { PGlite } from "@electric-sql/pglite";
-import { createSqlAdapter } from "@hot-updater/plugin-core";
 import {
+  createSqlAdapter,
   createMemoryAdapter,
   type DatabaseAdapter,
-} from "@hot-updater/plugin-core/internal";
-import * as engine from "@hot-updater/plugin-core/internal";
+} from "@hot-updater/plugin-core";
 import {
   createPluginTestHarness,
   setupInsightsModelTestSuite,
@@ -35,7 +34,6 @@ const onFreshAdapter = (adapter: () => DatabaseAdapter) => {
     createDatabase: () => stable,
     reset: async () => {
       const harness = await createPluginTestHarness(insights(), {
-        engine,
         adapter: adapter(),
       });
       model = createInsightsModel(harness.api);

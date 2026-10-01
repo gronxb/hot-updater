@@ -1,7 +1,7 @@
+// Not the package index: it loads Node-only helpers workerd lacks.
+import { setupStorageAdapterTestSuite } from "@hot-updater/test-utils";
 import { env } from "cloudflare:test";
 
-// Not the package index: it loads Node-only helpers workerd lacks.
-import { setupStorageAdapterTestSuite } from "../../../../packages/test-utils/src/setupStorageAdapterTestSuite";
 import { r2Storage } from "../../src/worker";
 
 /** Deletes every object below `basePath` from the R2 binding. */

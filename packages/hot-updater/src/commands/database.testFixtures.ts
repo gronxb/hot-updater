@@ -5,11 +5,11 @@ import type {
   EngineDatabase,
   ReleaseRow,
 } from "@hot-updater/plugin-core";
-import { rowToBundle } from "@hot-updater/plugin-core";
 import {
+  rowToBundle,
   createMemoryAdapter,
   type DatabaseAdapter,
-} from "@hot-updater/plugin-core/internal";
+} from "@hot-updater/plugin-core";
 import { createDatabaseCoreApi } from "@hot-updater/server/db";
 import { vi } from "vitest";
 

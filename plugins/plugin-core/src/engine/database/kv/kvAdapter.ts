@@ -109,7 +109,13 @@ export interface KeyValueStore {
 
 const SEPARATOR = "\u0001";
 
-/** Order-preserving text for key values; each value ends in the lowest code point any encoding uses. */
+/**
+ * Order-preserving text for key values; each value ends in the lowest code
+ * point any encoding uses. `createKvAdapter` stores a row as the item with
+ * the table's name as `pk` and its key's text as `sk`, so tooling that
+ * writes a store's items itself, as the AWS setup's settings items do, keys
+ * them with it.
+ */
 export const encodeKvKey = (values: readonly DatabaseKeyValue[]): string =>
   values
     .map((value) => {
@@ -171,6 +177,7 @@ const same = (left: StoredRow, right: StoredRow, columns: readonly string[]) =>
 
 type Planned = { readonly op: KvOp; readonly origin: number };
 
+/** `createKvAdapter`'s options. */
 export interface KvAdapterOptions {
   readonly store: KeyValueStore;
   readonly tablePrefix?: string;

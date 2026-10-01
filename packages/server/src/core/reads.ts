@@ -9,13 +9,14 @@ import {
   type ReleaseFilter,
   type ReleaseRow,
   type CoreReads,
+  parseBaseCandidateKey,
 } from "@hot-updater/plugin-core";
 import type {
   HotUpdaterDatabase,
   ReadRow,
   Page,
+  CoreSchema,
 } from "@hot-updater/plugin-core";
-import type { CoreSchema } from "@hot-updater/plugin-core/internal";
 import {
   ARTIFACT_PROTOCOL_VERSION,
   NIL_UUID,
@@ -29,7 +30,7 @@ import {
   type ReleaseCatalogRequest,
 } from "../db/releaseCatalog";
 import { resolveManifestArtifacts } from "../db/updateArtifacts";
-import { baseBundleIdsOf, parseBaseCandidateKey } from "./baseCandidates";
+import { baseBundleIdsOf } from "./baseCandidates";
 
 export type CoreDatabase = HotUpdaterDatabase<CoreSchema>;
 export type { CoreReads };

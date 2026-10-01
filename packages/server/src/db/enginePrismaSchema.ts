@@ -4,8 +4,8 @@ import {
   sqlTableShapes,
   type SqlColumnShape,
   type SqlTableShape,
-} from "@hot-updater/plugin-core/internal";
-import type { ResolvedSchema } from "@hot-updater/plugin-core/internal";
+} from "@hot-updater/plugin-core";
+import type { ResolvedSchema } from "@hot-updater/plugin-core";
 
 export type PrismaProvider = "postgresql" | "mysql" | "sqlite";
 

@@ -19,12 +19,10 @@ import {
   rowToBundle,
   createSqlAdapter,
   toolingTargetOf,
+  type RetryOptions,
+  createEngine,
 } from "@hot-updater/plugin-core";
 import type { AnyHotUpdaterPlugin, CoreReader } from "@hot-updater/plugin-core";
-import {
-  createDatabaseEngine,
-  type RetryOptions,
-} from "@hot-updater/plugin-core/internal";
 import type { Bundle } from "@hot-updater/protocol";
 import { createHotUpdater } from "@hot-updater/server";
 import {
@@ -35,7 +33,6 @@ import { apiKeys } from "@hot-updater/server/plugins/api-keys";
 import {
   createInsightsModel,
   insights,
-  insightsSchema,
   type BundleEventRow,
 } from "@hot-updater/server/plugins/insights";
 import {
@@ -45,9 +42,6 @@ import {
   withAdapterLatency,
   insightsTestSuite,
 } from "@hot-updater/test-utils";
-import { createClient } from "@supabase/supabase-js";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-
 import {
   assertDockerComposeAvailable,
   findOpenPort,
@@ -55,7 +49,10 @@ import {
   spawnRuntime,
   stopRuntime,
   waitForHttpOk,
-} from "../../../../packages/test-utils/src/runtimeProcess";
+} from "@hot-updater/test-utils/node";
+import { createClient } from "@supabase/supabase-js";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+
 import { getConfigScaffold } from "../../iac/configTemplate";
 import { stageEdgeFunction } from "../../iac/index";
 import { writePluginMigration } from "../../iac/managedEdgeFunction";
@@ -731,15 +728,17 @@ describe.sequential("supabase edge runtime acceptance", () => {
       ),
       tablePrefix: SUPABASE_TABLE_PREFIX,
     });
-    const module = { id: "insights", schema: insightsSchema } as const;
+    const plugin = insights();
     const apiOf = (latencyMs: number, retry?: RetryOptions) =>
-      insights().init({
-        db: createDatabaseEngine({
-          adapter:
-            latencyMs > 0 ? withAdapterLatency(adapter, latencyMs) : adapter,
-          schema: toolingTargetOf([insights()]).schema,
-          ...(retry === undefined ? {} : { retry }),
-        }).database(module),
+      plugin.init({
+        db: createEngine(
+          {
+            name: "supabaseDatabase",
+            adapter:
+              latencyMs > 0 ? withAdapterLatency(adapter, latencyMs) : adapter,
+          },
+          { plugins: [plugin], ...(retry === undefined ? {} : { retry }) },
+        ).database(plugin),
         // Insights never reads core.
         core: {} as CoreReader,
         now: Date.now,

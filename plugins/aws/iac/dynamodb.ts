@@ -10,8 +10,11 @@ import {
   waitUntilTableExists,
 } from "@aws-sdk/client-dynamodb";
 import { InitError } from "@hot-updater/cli-tools";
-import { toolingTargetOf } from "@hot-updater/plugin-core";
-import { encodeKvKey, SETTINGS_TABLE } from "@hot-updater/plugin-core/internal";
+import {
+  encodeKvKey,
+  SETTINGS_TABLE,
+  toolingTargetOf,
+} from "@hot-updater/plugin-core";
 
 import { DYNAMODB_TTL_ATTRIBUTE } from "../src/dynamoDBStore";
 import { plugins } from "../src/plugins";

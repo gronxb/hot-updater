@@ -7,9 +7,9 @@ import type {
   ChannelRow,
   HotUpdaterTransaction,
   TableRow,
+  CoreSchema,
 } from "@hot-updater/plugin-core";
 import { DatabaseConstraintError } from "@hot-updater/plugin-core";
-import type { CoreSchema } from "@hot-updater/plugin-core/internal";
 
 import { toChannelRow, type CoreDatabase } from "./reads";
 

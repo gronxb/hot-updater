@@ -15,8 +15,9 @@ import {
   createKvAdapter,
   type PhysicalTable,
   type WriteOp,
+  SETTINGS_TABLE,
+  encodeKvKey,
 } from "@hot-updater/plugin-core";
-import { encodeKvKey, SETTINGS_TABLE } from "@hot-updater/plugin-core/internal";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { type DynamoDBConfig, dynamoDB } from "./dynamoDB";

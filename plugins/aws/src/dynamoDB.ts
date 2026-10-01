@@ -9,7 +9,6 @@ import {
   migrateCoreSchema,
   type PluginTables,
 } from "@hot-updater/plugin-core";
-import { withAdapterResource } from "@hot-updater/plugin-core/internal";
 
 import { createUpdateRouteInvalidation } from "./cloudFrontInvalidation";
 import { createDynamoDBStore } from "./dynamoDBStore";
@@ -72,8 +71,10 @@ export const dynamoDB = (config: DynamoDBConfig): EngineDatabase => {
       cloudFront?.destroy();
     },
   };
-  return withAdapterResource(database, {
-    region: typeof config.region === "string" ? config.region : undefined,
-    tableName: config.tableName,
+  return Object.assign(database, {
+    resource: {
+      region: typeof config.region === "string" ? config.region : undefined,
+      tableName: config.tableName,
+    },
   });
 };

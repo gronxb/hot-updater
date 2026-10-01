@@ -1,23 +1,23 @@
 import {
-  createSqlAdapter,
   coreTarget,
   createEngineDatabase,
+  createEngineSqlMigrator,
+  createSqlAdapter,
+  type SqlDialect,
+  type ToolingDatabase,
 } from "@hot-updater/plugin-core";
-import type { ToolingDatabase } from "@hot-updater/plugin-core";
-import type { ORMSQLProvider } from "@hot-updater/plugin-core/internal";
 import type { Kysely } from "kysely";
 
-import { createEngineSqlMigrator } from "../db/engineSqlMigrator";
 import { kyselyExecutor } from "./kyselyExecutor";
 import { checkSqlProvider } from "./sqlProviders";
 
 export { kyselyExecutor } from "./kyselyExecutor";
 
-export type { ORMSQLProvider as SQLProvider };
+export type { SqlDialect as SQLProvider };
 
 export interface KyselyAdapterConfig<TDatabase extends object = object> {
   readonly db: Kysely<TDatabase>;
-  readonly provider: ORMSQLProvider;
+  readonly provider: SqlDialect;
 }
 
 /**

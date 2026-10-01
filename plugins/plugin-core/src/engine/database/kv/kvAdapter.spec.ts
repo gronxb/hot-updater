@@ -1,28 +1,27 @@
 import {
-  defineAggregate,
-  defineTable,
-  createKvAdapter,
-  type KeyValueStore,
-  type KvRange,
-} from "@hot-updater/plugin-core";
-import {
-  compareTuples,
-  compareUtf8,
-  DatabaseAdapterContractError,
-  type DatabaseKeyValue,
-  type PhysicalTable,
-  type StoredRow,
-  aggregateBatchingModule,
-  createDatabaseEngine,
-  resolveSchema,
-  encodeKvKey,
-} from "@hot-updater/plugin-core/internal";
-import {
   conformanceCounters,
   conformanceItems,
   createMemoryKeyValueStore,
 } from "@hot-updater/test-utils";
 import { describe, expect, it } from "vitest";
+
+import {
+  type DatabaseKeyValue,
+  type PhysicalTable,
+  type StoredRow,
+} from "../../../database/adapter";
+import { compareUtf8, compareTuples } from "../../../database/values";
+import { DatabaseAdapterContractError } from "../../../database/verifyAdapter";
+import { defineAggregate, defineTable } from "../../../serverPlugin/schema";
+import { aggregateBatchingModule } from "../aggregateBatching";
+import { createDatabaseEngine } from "../database";
+import { resolveSchema } from "../resolveSchema";
+import {
+  createKvAdapter,
+  type KeyValueStore,
+  type KvRange,
+  encodeKvKey,
+} from "./kvAdapter";
 
 const item = (id: string, values: Partial<StoredRow> = {}): StoredRow => ({
   id,

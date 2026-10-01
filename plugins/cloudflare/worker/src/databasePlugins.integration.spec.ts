@@ -15,6 +15,10 @@ import {
   createBundleEventRowFixture,
   insightsTestSuite,
 } from "@hot-updater/test-utils";
+import {
+  createBundleFixture,
+  createBundleRowFixture,
+} from "@hot-updater/test-utils";
 import { env } from "cloudflare:test";
 import {
   afterAll,
@@ -27,10 +31,6 @@ import {
   vi,
 } from "vitest";
 
-import {
-  createBundleFixture,
-  createBundleRowFixture,
-} from "../../../../packages/test-utils/src/databaseTestFixtures";
 import { d1Database } from "../../src/d1Database";
 import { plugins } from "../../src/plugins";
 import { d1Database as d1RuntimeDatabase } from "../../src/worker";

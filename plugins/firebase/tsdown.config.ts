@@ -22,7 +22,6 @@ export default defineConfig([
       alwaysBundle: [
         "@hot-updater/protocol",
         "@hot-updater/plugin-core",
-        "@hot-updater/plugin-core/internal",
         "@hot-updater/plugin-api-keys/server",
         "@hot-updater/plugin-insights/server",
         "@hot-updater/server",

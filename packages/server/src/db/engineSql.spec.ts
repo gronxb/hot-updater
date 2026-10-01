@@ -7,15 +7,13 @@ import {
   createEngineDatabase,
   toolingTargetOf,
   generateEngineSql,
-} from "@hot-updater/plugin-core";
-import {
   sqlTableShapes,
   type SqlTableShape,
-} from "@hot-updater/plugin-core/internal";
+} from "@hot-updater/plugin-core";
+import { createBundleFixture } from "@hot-updater/test-utils";
 import { pgliteExecutor, sqliteExecutor } from "@hot-updater/test-utils/node";
 import { afterAll, describe, expect, it } from "vitest";
 
-import { createBundleFixture } from "../../../test-utils/src/databaseTestFixtures";
 import { createInProcessCoreApi } from "../core/api";
 import { apiKeys } from "../plugins/api-keys";
 import { insights } from "../plugins/insights";

@@ -1,8 +1,11 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { isMultiIndex, toolingTargetOf } from "@hot-updater/plugin-core";
-import { quoteSql } from "@hot-updater/plugin-core/internal";
+import {
+  isMultiIndex,
+  toolingTargetOf,
+  quoteSql,
+} from "@hot-updater/plugin-core";
 import {
   setupDatabaseTestSuite,
   startHttpTestServer,

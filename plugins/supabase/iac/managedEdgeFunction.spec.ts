@@ -148,7 +148,7 @@ describe("the managed Edge Function from a project's server definition", () => {
     expect(code).not.toContain("HotUpdater.BUCKET_NAME");
     // The function's import map vendors the server it runs on.
     expect(code).toMatch(/from\s*"@hot-updater\/server"/u);
-    expect(code).toMatch(/from\s*"@hot-updater\/server\/plugins"/u);
+    expect(code).toMatch(/from\s*"@hot-updater\/plugin-core"/u);
     expect(code).toMatch(/from\s*"@supabase\/supabase-js"/u);
     // None of the machine's paths are deployed: not the project's, the
     // repository's its packages come from, or the home directory, not even
@@ -168,7 +168,7 @@ describe("the managed Edge Function from a project's server definition", () => {
     // from the packages the function's server depends on.
     const { imports } = await resolveEdgeFunctionDenoConfig(functionDir);
     expect(imports["@hot-updater/plugin-core"]).toMatch(
-      /^\.\/.*server.*plugins.*\.m?js$/u,
+      /^\.\/.*plugin-core.*\.m?js$/u,
     );
     await expect(
       fs.access(path.join(functionDir, imports["@hot-updater/plugin-core"]!)),

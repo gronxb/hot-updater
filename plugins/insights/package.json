@@ -8,10 +8,6 @@
       "import": "./dist/client/index.mjs",
       "require": "./dist/client/index.cjs"
     },
-    "./internal": {
-      "import": "./dist/internal.mjs",
-      "require": "./dist/internal.cjs"
-    },
     "./server": {
       "import": "./dist/server/index.mjs",
       "require": "./dist/server/index.cjs"
@@ -41,14 +37,10 @@
     "@hot-updater/protocol": "workspace:*"
   },
   "peerDependencies": {
-    "@hot-updater/plugin-core": "workspace:^",
-    "vitest": "^4.0.0"
+    "@hot-updater/plugin-core": "workspace:^"
   },
   "peerDependenciesMeta": {
     "@hot-updater/plugin-core": {
-      "optional": true
-    },
-    "vitest": {
       "optional": true
     }
   },

@@ -1118,8 +1118,6 @@ describe("resolveEdgeFunctionDenoConfig", () => {
       expect(result.imports).toEqual({
         "@hot-updater/server":
           "./_hot-updater/hot-updater-server/dist/index.mjs",
-        "@hot-updater/server/database":
-          "./_hot-updater/hot-updater-server/dist/database/index.mjs",
         "@hot-updater/server/plugins/api-keys":
           "./_hot-updater/hot-updater-server/dist/plugins/api-keys/index.mjs",
         "@hot-updater/server/plugins/insights":
@@ -1130,8 +1128,6 @@ describe("resolveEdgeFunctionDenoConfig", () => {
           "./_hot-updater/hot-updater-protocol/dist/index.mjs",
         "@hot-updater/plugin-core":
           "./_hot-updater/hot-updater-plugin-core/dist/index.mjs",
-        "@hot-updater/plugin-core/internal":
-          "./_hot-updater/hot-updater-plugin-core/dist/internal.mjs",
         "@hot-updater/plugin-insights/server":
           "./_hot-updater/hot-updater-plugin-insights/dist/server/index.mjs",
         "@hot-updater/plugin-api-keys/server":

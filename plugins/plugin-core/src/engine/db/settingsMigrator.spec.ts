@@ -1,16 +1,12 @@
 import { DatabaseSync } from "node:sqlite";
 
-import {
-  createSqlAdapter,
-  createTableStatements,
-} from "@hot-updater/plugin-core";
-import {
-  checkSchemaFence,
-  SETTINGS_TABLE,
-  createSettingsMigrator,
-} from "@hot-updater/plugin-core/internal";
 import { sqliteExecutor } from "@hot-updater/test-utils/node";
 import { describe, expect, it } from "vitest";
+
+import { SETTINGS_TABLE, checkSchemaFence } from "../database/fence";
+import { createSqlAdapter } from "../database/sql/sqlAdapter";
+import { createTableStatements } from "../database/sql/sqlSchema";
+import { createSettingsMigrator } from "./settingsMigrator";
 
 const settings = { "schema.engine": "1", "schema.core": "1.0.0" };
 

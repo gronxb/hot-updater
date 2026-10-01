@@ -1,12 +1,13 @@
 import {
-  type ApiKeysCliApi,
-  apiKeysCli,
-} from "@hot-updater/plugin-api-keys/internal";
-import { createMemoryAdapter } from "@hot-updater/plugin-core/internal";
+  createEngine,
+  createMemoryAdapter,
+  type CoreReader,
+  type PluginCommand,
+  type PluginCommandUi,
+} from "@hot-updater/plugin-core";
 import { describe, expect, it, vi } from "vitest";
 
-import { createDatabasePluginApis } from "../../assembly/databasePlugins";
-import type { PluginCommand, PluginCommandUi } from "../definePlugin";
+import { type ApiKeysCliApi, apiKeysCli } from "./cli";
 import { apiKeys, type ApiKeyMetadata } from "./index";
 
 /** A UI that keeps what the command writes, unstyled. */
@@ -41,11 +42,19 @@ const command = (name: string): PluginCommand<ApiKeysCliApi> => {
   return found;
 };
 
-/** The apiKeys() plugin's API over a memory adapter, as the CLI assembles it. */
-const assemble = () =>
-  createDatabasePluginApis({ name: "memory", adapter: createMemoryAdapter() }, [
-    apiKeys(),
-  ]).apiKeys;
+/** The apiKeys() plugin's API over a memory adapter, as a server runs it. */
+const assemble = () => {
+  const plugin = apiKeys();
+  const engine = createEngine(
+    { name: "memory", adapter: createMemoryAdapter() },
+    { plugins: [plugin] },
+  );
+  return plugin.init({
+    db: engine.database(plugin),
+    core: {} as CoreReader,
+    now: Date.now,
+  }).api;
+};
 
 describe("apiKeys() CLI commands", () => {
   it("adds `hot-updater api-key` with create, list, and revoke", () => {

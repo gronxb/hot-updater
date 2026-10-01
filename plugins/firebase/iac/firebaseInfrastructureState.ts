@@ -5,11 +5,10 @@ import {
   InitError,
 } from "@hot-updater/cli-tools";
 import {
-  ENGINE_SCHEMA_KEY,
-  ENGINE_SCHEMA_VERSION,
+  coreSettings,
   encodeKvKey,
   SETTINGS_TABLE,
-} from "@hot-updater/plugin-core/internal";
+} from "@hot-updater/plugin-core";
 import {
   applicationDefault,
   cert,
@@ -24,6 +23,9 @@ import {
   FIREBASE_V1_FUNCTION_NAME,
 } from "../src/firebaseInfrastructureNames";
 import { firestoreDocumentId } from "../src/firestoreStore";
+
+/** The settings row of the storage engine's layout, which a setup checks first. */
+const ENGINE_SETTING = "schema.engine";
 
 export type FirebaseInfrastructureState = "fresh" | "incompatible" | "v1";
 
@@ -41,14 +43,14 @@ export const resolveFirebaseInfrastructureState = ({
 }): FirebaseInfrastructureState => {
   if (preEngineData) return "incompatible";
   if (engine === undefined) return "fresh";
-  return engine === ENGINE_SCHEMA_VERSION ? "v1" : "incompatible";
+  return engine === coreSettings[ENGINE_SETTING] ? "v1" : "incompatible";
 };
 
 /** The document holding `schema.engine` in the storage engine's collection. */
 export const firebaseEngineSettingDocumentId = () =>
   firestoreDocumentId({
     pk: SETTINGS_TABLE.name,
-    sk: encodeKvKey([ENGINE_SCHEMA_KEY]),
+    sk: encodeKvKey([ENGINE_SETTING]),
   });
 
 export const assertFirebaseInfrastructureCanInitialize = async ({

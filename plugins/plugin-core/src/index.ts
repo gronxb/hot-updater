@@ -21,7 +21,10 @@ export {
 } from "./databaseErrors";
 export * from "./createStorageKeyBuilder";
 export * from "./createStorageAdapter";
-export { isDatabaseMetadataObject } from "./databaseJsonValue";
+export {
+  isDatabaseJsonObject,
+  isDatabaseMetadataObject,
+} from "./databaseJsonValue";
 export * from "./databaseRows";
 export * from "./filterCompatibleAppVersions";
 export * from "./generateMinBundleId";
@@ -42,11 +45,9 @@ export * from "./uuidv7";
 export {
   definePlugin,
   type AnyHotUpdaterPlugin,
-  type CliFor,
   type ClientAuth,
   type CoreReader,
   type HotUpdaterPlugin,
-  type InstanceFor,
   type PluginApis,
   type PluginCli,
   type PluginClientCredential,
@@ -67,7 +68,6 @@ export {
   defineAggregate,
   defineTable,
   type AggregateDefinition,
-  type CheckIndex,
   type DerivedDefinition,
   type DerivedFields,
   type FieldDefinition,
@@ -119,12 +119,23 @@ export { addDistinct, countDistinct, mergeDistinct } from "./database/distinct";
 export { HotUpdaterConfigError } from "./serverPlugin/configError";
 
 // The database adapter kit: the adapter contract, the SQL and key-value
-// adapters, the storage engine's database, and core's schema.
+// adapters, the storage engine and its databases, and core's schema. Each
+// name is here because the custom-database docs teach it or because an
+// adapter, a provider's tooling, or a plugin outside this package needs it;
+// its JSDoc says which.
+export type { AdapterResource } from "./adapterResource";
+export {
+  type BaseCandidateQuery,
+  type BaseCandidateTarget,
+  parseBaseCandidateKey,
+  targetBaseCandidateKey,
+} from "./baseCandidateKey";
 export {
   type DatabaseAdapter,
   type DatabaseJson,
   type DatabaseKey,
   type DatabaseKeyValue,
+  DATABASE_VERSION_COLUMN,
   DatabaseSchemaError,
   type DatabaseValue,
   type PhysicalColumn,
@@ -139,22 +150,63 @@ export {
   type WriteOp,
   type WriteResult,
   expiresAt,
+  findPhysicalColumn,
+  findPhysicalIndex,
   indexOrderColumns,
+  rowKey,
 } from "./database/adapter";
-export { createMemoryAdapter } from "./database/memoryAdapter";
-export { normalizeStoredRow } from "./database/values";
-export { verifyAdapter } from "./database/verifyAdapter";
-export { HotUpdaterSchemaMigrationRequiredError } from "./engine/database/fence";
+export {
+  type MemoryAdapterOptions,
+  createMemoryAdapter,
+} from "./database/memoryAdapter";
+export {
+  type NormalizeOptions,
+  compareUtf8,
+  normalizeStoredRow,
+} from "./database/values";
+export {
+  DatabaseAdapterContractError,
+  type DatabaseReadCount,
+  type DatabaseReadMeter,
+  type VerifiedDatabaseAdapter,
+  type VerifyAdapterOptions,
+  verifyAdapter,
+} from "./database/verifyAdapter";
+export type { CoreSchema } from "./engine/core/schema";
+export {
+  type Engine,
+  type EngineOptions,
+  createEngine,
+} from "./engine/createEngine";
+export type { EngineReadCount } from "./engine/database/engineReads";
+export type { RetryOptions } from "./engine/database/engineTransaction";
+export {
+  HotUpdaterSchemaMigrationRequiredError,
+  SETTINGS_TABLE,
+  type SchemaSettings,
+} from "./engine/database/fence";
 export {
   type KeyValueStore,
+  type KvAdapterOptions,
   type KvCondition,
   type KvItem,
   type KvKey,
   type KvOp,
   type KvRange,
   createKvAdapter,
+  encodeKvKey,
 } from "./engine/database/kv/kvAdapter";
 export {
+  type MeteredDatabase,
+  type ReadMeasurement,
+  meterReads,
+} from "./engine/database/readMeter";
+export type {
+  ResolvedModel,
+  ResolvedSchema,
+} from "./engine/database/resolveSchema";
+export {
+  type SqlAdapterOptions,
   type SqlConnection,
   type SqlExecutor,
   type SqlResult,
@@ -163,12 +215,18 @@ export {
   createSqlAdapter,
 } from "./engine/database/sql/sqlAdapter";
 export {
+  type SqlColumnShape,
   type SqlDialect,
+  type SqlTableShape,
   createTableStatements,
   isMultiIndex,
+  quoteSql,
+  sqlTableShapes,
 } from "./engine/database/sql/sqlSchema";
 export {
+  type EngineDatabaseOptions,
   type PluginTables,
+  aggregateBatchingTables,
   coreSchema,
   coreSettings,
   coreTarget,
@@ -176,10 +234,20 @@ export {
   migrateCoreSchema,
   toolingTargetOf,
 } from "./engine/db/coreDatabase";
-export { generateEngineSql } from "./engine/db/engineSql";
+export {
+  type EngineSqlOptions,
+  generateEngineSql,
+} from "./engine/db/engineSql";
+export {
+  type EngineSqlMigratorOptions,
+  createEngineSqlMigrator,
+} from "./engine/db/engineSqlMigrator";
 export { writeSchemaSettings } from "./engine/db/schemaSettings";
+export { createSettingsMigrator } from "./engine/db/settingsMigrator";
 export {
   type DatabaseTooling,
+  type MigrateOptions,
+  type MigrationResult,
   type Migrator,
   type SchemaGenerator,
   type ToolingDatabase,

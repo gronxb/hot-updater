@@ -1,4 +1,4 @@
-import { createMemoryAdapter } from "@hot-updater/plugin-core/internal";
+import { createMemoryAdapter } from "@hot-updater/plugin-core";
 
 import { setupDatabaseAdapterConformanceSuite } from "./setupDatabaseAdapterConformanceSuite";
 

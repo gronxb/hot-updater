@@ -1,10 +1,10 @@
-import { type SqlDialect } from "@hot-updater/plugin-core";
 import {
+  type SqlDialect,
   SETTINGS_TABLE,
   sqlTableShapes,
   type SqlTableShape,
-} from "@hot-updater/plugin-core/internal";
-import type { ResolvedSchema } from "@hot-updater/plugin-core/internal";
+} from "@hot-updater/plugin-core";
+import type { ResolvedSchema } from "@hot-updater/plugin-core";
 
 const drizzle = {
   postgresql: { module: "drizzle-orm/pg-core", table: "pgTable" },

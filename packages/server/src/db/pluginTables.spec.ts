@@ -6,8 +6,8 @@ import {
   coreTarget,
   createEngineDatabase,
   toolingTargetOf,
+  createMemoryAdapter,
 } from "@hot-updater/plugin-core";
-import { createMemoryAdapter } from "@hot-updater/plugin-core/internal";
 import { Kysely } from "kysely";
 import { PGliteDialect } from "kysely-pglite-dialect";
 import { describe, expect, it, vi } from "vitest";

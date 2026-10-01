@@ -87,10 +87,17 @@ it("rejects broken providers while the unmodified provider passes the public sui
     await mkdir(path.join(directory, "node_modules/@hot-updater"), {
       recursive: true,
     });
-    for (const name of ["server", "test-utils"]) {
+    for (const [name, location] of [
+      ["server", path.resolve(packageDirectory, "..", "server")],
+      ["test-utils", path.resolve(packageDirectory, "..", "test-utils")],
+      [
+        "plugin-core",
+        path.resolve(packageDirectory, "../../plugins/plugin-core"),
+      ],
+    ]) {
       await symlink(
-        path.resolve(packageDirectory, "..", name),
-        path.join(directory, "node_modules/@hot-updater", name),
+        location!,
+        path.join(directory, "node_modules/@hot-updater", name!),
         "dir",
       );
     }
@@ -103,7 +110,7 @@ it("rejects broken providers while the unmodified provider passes the public sui
         path.join(directory, `${variant.name}.spec.ts`),
         `
         import { createHotUpdater } from "@hot-updater/server";
-        import { createMemoryAdapter } from "@hot-updater/server/database";
+        import { createMemoryAdapter } from "@hot-updater/plugin-core";
         import { createDatabasePluginApis } from "@hot-updater/server/db";
         import { createInsightsModel, insights } from "@hot-updater/server/plugins/insights";
         import { insightsTestSuite } from "@hot-updater/test-utils";

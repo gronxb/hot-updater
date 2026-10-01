@@ -3,13 +3,13 @@ import {
   coreSettings,
   coreTarget,
   createEngineDatabase,
+  createSettingsMigrator,
 } from "@hot-updater/plugin-core";
 import type {
   SchemaGenerator,
+  SqlDialect,
   ToolingDatabase,
 } from "@hot-updater/plugin-core";
-import { createSettingsMigrator } from "@hot-updater/plugin-core/internal";
-import type { ORMSQLProvider } from "@hot-updater/plugin-core/internal";
 
 import { generateDrizzleEngineSchema } from "../db/engineDrizzleSchema";
 import { drizzleExecutor } from "./drizzleExecutor";
@@ -20,7 +20,7 @@ export {
   SUPPORTED_DRIZZLE_DRIVERS,
 } from "./drizzleExecutor";
 
-export type DrizzleProvider = ORMSQLProvider;
+export type DrizzleProvider = SqlDialect;
 
 export interface DrizzleConfig {
   /** A Drizzle database, or a function that returns one on first use. */

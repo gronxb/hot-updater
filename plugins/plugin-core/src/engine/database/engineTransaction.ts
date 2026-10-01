@@ -37,6 +37,10 @@ import type { ResolvedModel, ResolvedSchema } from "./resolveSchema";
 /** A row this attempt read changed while it ran; the attempt reruns. */
 class StaleReadError extends Error {}
 
+/**
+ * How a transaction that conflicts runs again: `createEngine`'s `retry`,
+ * for stores under write contention, with `onRetry` to observe each rerun.
+ */
 export interface RetryOptions {
   readonly attempts?: number;
   readonly baseDelayMs?: number;

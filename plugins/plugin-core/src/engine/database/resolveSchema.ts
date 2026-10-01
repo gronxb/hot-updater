@@ -34,6 +34,7 @@ export interface ResolvedReference {
   readonly counter?: string;
 }
 
+/** A model of a `ResolvedSchema`, with its physical table. */
 export interface ResolvedModel {
   readonly module: string;
   /** The model name as its module declares it. */
@@ -46,6 +47,10 @@ export interface ResolvedModel {
   readonly roots: ReadonlyMap<string, string>;
 }
 
+/**
+ * Modules resolved into physical tables with the engine's columns: a
+ * `ToolingTarget`'s schema, which a schema generator renders.
+ */
 export interface ResolvedSchema {
   /** By physical table name. */
   readonly models: ReadonlyMap<string, ResolvedModel>;

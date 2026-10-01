@@ -1,9 +1,7 @@
-import { defineTable } from "@hot-updater/plugin-core";
-import * as engine from "@hot-updater/plugin-core/internal";
-import { createPluginTestHarness } from "@hot-updater/test-utils";
+import { definePlugin, defineTable } from "@hot-updater/plugin-core";
 import { describe, expect, it } from "vitest";
 
-import { definePlugin } from "./definePlugin";
+import { createPluginTestHarness } from "./createPluginTestHarness";
 
 const notes = definePlugin({
   id: "notes",
@@ -37,10 +35,7 @@ const notes = definePlugin({
 
 describe("plugin test harness", () => {
   it("runs a plugin on a namespaced memory database and measures its reads", async () => {
-    const harness = await createPluginTestHarness(notes, {
-      engine,
-      now: () => 1,
-    });
+    const harness = await createPluginTestHarness(notes, { now: () => 1 });
     await harness.api.add("a", "first");
     harness.setNow(() => 2);
     await harness.api.add("b", "second");

@@ -1,5 +1,4 @@
-import { createMemoryAdapter } from "@hot-updater/plugin-core/internal";
-import { INSIGHTS_ROUTES } from "@hot-updater/plugin-insights/internal";
+import { createMemoryAdapter } from "@hot-updater/plugin-core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createHotUpdater } from "../createHotUpdaterCore";
@@ -30,6 +29,16 @@ const event = {
 
 const request = (path: string, init: RequestInit = {}) =>
   new Request(`https://updates.example.com${path}`, init);
+
+/** The routes `insights()` adds, which a server mounts when plugins hold it. */
+const INSIGHTS_ROUTES = [
+  { access: "client", method: "POST", path: "/events" },
+  { access: "admin", method: "GET", path: "/events" },
+  { access: "admin", method: "GET", path: "/overview" },
+  { access: "admin", method: "GET", path: "/installations" },
+  { access: "admin", method: "GET", path: "/installations/:installId/events" },
+  { access: "admin", method: "GET", path: "/installations/:installId" },
+] as const;
 
 const insightsRoutes = INSIGHTS_ROUTES.map(({ method, path, access }) => ({
   method,

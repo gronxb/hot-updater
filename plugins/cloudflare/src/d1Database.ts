@@ -7,7 +7,6 @@ import type {
   SchemaGenerator,
   ToolingDatabase,
 } from "@hot-updater/plugin-core";
-import { withAdapterResource } from "@hot-updater/plugin-core/internal";
 import Cloudflare from "cloudflare";
 
 import {
@@ -76,8 +75,10 @@ export const d1Database = (config: D1DatabaseConfig): ToolingDatabase => {
       return d1Migration(target);
     }) satisfies SchemaGenerator,
   };
-  return withAdapterResource(database, {
-    accountId: config.accountId,
-    databaseId: config.databaseId,
+  return Object.assign(database, {
+    resource: {
+      accountId: config.accountId,
+      databaseId: config.databaseId,
+    },
   });
 };

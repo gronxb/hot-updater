@@ -39,6 +39,8 @@ jobs:
         run: pnpm lint
       - name: Check integration groups
         run: node scripts/ci/check-integration-groups.mjs
+      - name: Check package boundaries
+        run: node scripts/ci/check-package-boundaries.mjs
 
   unit:
     name: Unit test (${{ matrix.shard }})

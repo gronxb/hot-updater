@@ -1,3 +1,4 @@
+import type { AdapterResource } from "../adapterResource";
 import type { HotUpdaterCoreApi } from "../coreApi";
 import type { DatabaseAdapter } from "../database/adapter";
 import type { StorageAdapter } from "./index";
@@ -44,6 +45,12 @@ export interface EngineDatabase {
   readonly onCachedRoutesChange?: () => Promise<void>;
   /** Batches aggregates declared `batched`; absent, they commit with each transaction. */
   readonly aggregateBatching?: AggregateBatching;
+  /**
+   * The provider resource this database reaches, as its factory was given
+   * it, such as `{ tableName: "hot-updater" }`. A managed server's setup
+   * compares it with the resource it set up.
+   */
+  readonly resource?: AdapterResource;
   dispose?(): Promise<void>;
 }
 

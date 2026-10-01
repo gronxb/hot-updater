@@ -4,7 +4,12 @@ import type {
   StoredRow,
 } from "../../database/adapter";
 
-/** The settings rows migrations write, last, and the fence reads. */
+/**
+ * The settings rows migrations write, last, and the fence reads; retention
+ * passes keep their lease here too. Tooling that creates the tables creates
+ * this one with them: an ORM's schema generator, a provider's setup, and an
+ * access policy that names the tables a server reads.
+ */
 export const SETTINGS_TABLE: PhysicalTable = {
   name: "private_hot_updater_settings",
   columns: [
@@ -57,7 +62,10 @@ export class HotUpdaterSchemaMigrationRequiredError extends Error {
   }
 }
 
-/** Settings keys and the values a process expects, `schema.engine` included. */
+/**
+ * Settings keys and the values a process expects, `schema.engine` included:
+ * a `ToolingTarget`'s settings.
+ */
 export type SchemaSettings = Readonly<Record<string, string>>;
 
 /** Driver codes for a table or column the database lacks. */

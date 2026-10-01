@@ -2,10 +2,11 @@
 
 The kit that extends the Hot Updater server: the storage and database adapter
 contracts and their helpers, such as `createStorageAdapter`, the release
-catalog compiler, and the server plugin authoring API: `definePlugin`, the
-schema DSL, the typed database handle, and the database errors. Adapter and
-server plugin authors import it from here and list it in `peerDependencies`, as
-Hot Updater's own plugin packages do.
+catalog compiler, the server plugin authoring API (`definePlugin`, the schema
+DSL, the typed database handle, and the database errors), and the storage
+engine every database runs on, with `createEngine` and `meterReads`. Adapter
+and server plugin authors import it from here and list it in
+`peerDependencies`, as Hot Updater's own plugin packages do.
 
 ## Boundary with `@hot-updater/protocol`
 
@@ -21,6 +22,12 @@ Hot Updater's own plugin packages do.
   something here, move it to `@hot-updater/protocol` and re-export it from this
   package.
 
-The public API is the package root. `@hot-updater/plugin-core/internal` holds
-what Hot Updater's own packages share, which is not public API; add nothing
-else as a subpath.
+The public API is the package root, and it has no other entry. Hot Updater's
+own packages use it the way any adapter or plugin does: a name another package
+needs is on the root, with a JSDoc line that says why, and everything else stays
+private to this package.
+
+Core's tables are part of that API: `CoreSchema` types the `core` handle of
+`createEngine`, and `coreSchema` and `coreTarget` are what tooling creates. A
+change to core's schema is a release of this package, and it ships with the
+migration that `schema.core` versions.

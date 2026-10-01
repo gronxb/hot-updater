@@ -1,7 +1,7 @@
 // @vitest-environment node
 
 import type { Bundle, HotUpdaterCoreApi } from "@hot-updater/plugin-core";
-import { createMemoryAdapter } from "@hot-updater/plugin-core/internal";
+import { createMemoryAdapter } from "@hot-updater/plugin-core";
 import { createDatabaseCoreApi } from "@hot-updater/server/db";
 import { describe, expect, it, vi } from "vitest";
 

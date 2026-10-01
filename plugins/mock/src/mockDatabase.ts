@@ -2,7 +2,7 @@ import type { EngineDatabase } from "@hot-updater/plugin-core";
 import {
   createMemoryAdapter,
   type DatabaseAdapter,
-} from "@hot-updater/plugin-core/internal";
+} from "@hot-updater/plugin-core";
 
 import { minMax, sleep } from "./util/utils";
 

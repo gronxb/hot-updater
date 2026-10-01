@@ -75,7 +75,7 @@
   "overrides": [
     {
       "files": [
-        "packages/server/src/database/**",
+        "plugins/plugin-core/src/engine/**",
         "packages/server/src/core/**"
       ],
       "rules": {
@@ -164,9 +164,7 @@
                 "group": [
                   "@hot-updater/plugin-core/*",
                   "@hot-updater/server/*",
-                  "@hot-updater/plugin-insights/server",
-                  "@hot-updater/plugin-insights/internal",
-                  "@hot-updater/plugin-insights/testing"
+                  "@hot-updater/plugin-insights/server"
                 ],
                 "message": "React Native, @hot-updater/protocol, and the Insights client run on the device and never import @hot-updater/plugin-core or @hot-updater/server, which run where the server runs. Move device-safe code they need into @hot-updater/protocol."
               }

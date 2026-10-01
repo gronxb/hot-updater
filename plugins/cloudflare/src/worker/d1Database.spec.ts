@@ -1,10 +1,10 @@
 import { createDatabaseCoreApi } from "@hot-updater/server/db";
-import { expect, it } from "vitest";
-
 import {
   createBundleFixture,
   createBundleRowFixture,
-} from "../../../../packages/test-utils/src/databaseTestFixtures";
+} from "@hot-updater/test-utils";
+import { expect, it } from "vitest";
+
 import { createD1TestDatabase } from "../d1TestDatabase";
 import { d1Database } from "./d1Database";
 

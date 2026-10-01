@@ -1,12 +1,13 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { createSqlAdapter } from "@hot-updater/plugin-core";
 import {
-  createDatabaseEngine,
-  resolveSchema,
-} from "@hot-updater/plugin-core/internal";
-import type { RetryOptions } from "@hot-updater/plugin-core/internal";
+  createEngine,
+  createSqlAdapter,
+  type RetryOptions,
+  SETTINGS_TABLE,
+  toolingTargetOf,
+} from "@hot-updater/plugin-core";
 import {
   runContentionHarness,
   withAdapterLatency,
@@ -20,7 +21,7 @@ import pg from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import type { CoreReader } from "../definePlugin";
-import { insights, insightsSchema, type BundleEventRow } from "./index";
+import { insights, type BundleEventRow } from "./index";
 
 assertDockerComposeAvailable(
   "The Insights rollout gate needs Docker Compose and a running Docker daemon.",
@@ -106,21 +107,25 @@ afterAll(async () => {
 
 describe("Insights rollout gate on PostgreSQL", () => {
   it(`records ${INSTALLS} A→B moves at ${RATE_PER_SECOND}/s over ${CONNECTIONS} connections with ${LATENCY_MS} ms latency, with no conflict errors and at most 5% retried`, async () => {
-    const module = { id: "insights", schema: insightsSchema } as const;
-    const schema = resolveSchema([module]);
+    const plugin = insights();
     const sql = createSqlAdapter({
       executor: pgExecutor(pool),
       tablePrefix: `rollout_${Date.now()}_`,
     });
-    await sql.migrations?.apply(schema.tables);
-    const plugin = insights();
+    // The settings table holds the retention passes' lease.
+    await sql.migrations?.apply([
+      ...toolingTargetOf([plugin]).schema.tables,
+      SETTINGS_TABLE,
+    ]);
     const apiOf = (latencyMs: number, retry?: RetryOptions) =>
       plugin.init({
-        db: createDatabaseEngine({
-          adapter: latencyMs > 0 ? withAdapterLatency(sql, latencyMs) : sql,
-          schema,
-          ...(retry === undefined ? {} : { retry }),
-        }).database(module),
+        db: createEngine(
+          {
+            name: "postgres",
+            adapter: latencyMs > 0 ? withAdapterLatency(sql, latencyMs) : sql,
+          },
+          { plugins: [plugin], ...(retry === undefined ? {} : { retry }) },
+        ).database(plugin),
         // Insights never reads core.
         core: {} as CoreReader,
         now: Date.now,

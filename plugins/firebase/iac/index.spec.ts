@@ -225,6 +225,10 @@ const editedProject = async (edit: (text: string) => string) => {
       path.join(packageRoot, "node_modules", "@hot-updater", "server"),
     ],
     [
+      "@hot-updater/plugin-core",
+      path.join(packageRoot, "node_modules", "@hot-updater", "plugin-core"),
+    ],
+    [
       "firebase-admin",
       path.join(packageRoot, "node_modules", "firebase-admin"),
     ],

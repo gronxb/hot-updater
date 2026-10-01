@@ -17,10 +17,15 @@ import {
   matchesQuery,
 } from "./values";
 
+/** What `verifyAdapter` throws when an adapter call breaks the adapter contract. */
 export class DatabaseAdapterContractError extends Error {
   readonly name = "DatabaseAdapterContractError";
 }
 
+/**
+ * Reads at the adapter, as `verifyAdapter` and `meterReads` count them:
+ * what a store that bills by read charges for.
+ */
 export interface DatabaseReadCount {
   /** `get` calls and the keys they asked for, found or not. */
   readonly gets: number;
@@ -30,16 +35,19 @@ export interface DatabaseReadCount {
   readonly rows: number;
 }
 
+/** The read count of a `verifyAdapter` adapter, in total and by table. */
 export interface DatabaseReadMeter {
   total(): DatabaseReadCount;
   byTable(table: string): DatabaseReadCount;
   reset(): void;
 }
 
+/** The adapter `verifyAdapter` returns, with its reads counted. */
 export interface VerifiedDatabaseAdapter extends DatabaseAdapter {
   readonly reads: DatabaseReadMeter;
 }
 
+/** `verifyAdapter`'s options. */
 export interface VerifyAdapterOptions {
   /** After a short page, probe once past its last row to prove the range ended. */
   readonly probeShortPages?: boolean;

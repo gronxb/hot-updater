@@ -3,12 +3,12 @@ import {
   coreSettings,
   coreTarget,
   createEngineDatabase,
+  createSettingsMigrator,
 } from "@hot-updater/plugin-core";
 import type {
   SchemaGenerator,
   ToolingDatabase,
 } from "@hot-updater/plugin-core";
-import { createSettingsMigrator } from "@hot-updater/plugin-core/internal";
 
 import {
   generatePrismaEngineSchema,

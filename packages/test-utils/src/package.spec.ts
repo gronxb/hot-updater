@@ -51,7 +51,19 @@ describe("@hot-updater/test-utils package", () => {
     expect(Object.keys(packageJson.peerDependencies)).not.toContain(
       "@hot-updater/react-native",
     );
-    expect(Object.hasOwn(packageJson, "peerDependenciesMeta")).toBe(false);
+  });
+
+  it("asks for each optional peer only from projects that use its helpers", () => {
+    expect(packageJson.peerDependenciesMeta).toEqual({
+      // Database drivers: the SQL test executors of `/node`.
+      "@electric-sql/pglite": { optional: true },
+      mysql2: { optional: true },
+      pg: { optional: true },
+      // The Insights suites' types.
+      "@hot-updater/plugin-insights": { optional: true },
+      // createMeasuredDatabase and the read budgets, which load it when run.
+      "@hot-updater/server": { optional: true },
+    });
   });
 
   it("publishes only built artifacts and package metadata", () => {
