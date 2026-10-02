@@ -3,7 +3,6 @@ import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-import ts from "typescript";
 import { afterEach, describe, expect, it } from "vitest";
 
 const tempDirs: string[] = [];
@@ -35,20 +34,14 @@ async function runWithExpo(
     new URL("./expoConfig.ts", import.meta.url),
     "utf8",
   );
-  const { outputText } = ts.transpileModule(source, {
-    compilerOptions: {
-      module: ts.ModuleKind.ESNext,
-      target: ts.ScriptTarget.ES2022,
-    },
-  });
-  await writeFile(path.join(cwd, "loader.mjs"), outputText);
+  await writeFile(path.join(cwd, "loader.mts"), source);
   // Use Node's resolver, since Vitest's resolver accepts paths that Node rejects.
   return spawnSync(
     process.execPath,
     [
       "--input-type=module",
       "--eval",
-      'import { getConfig } from "./loader.mjs"; console.log(JSON.stringify(await getConfig("project", { skipSDKVersionRequirement: true })));',
+      'import { getConfig } from "./loader.mts"; console.log(JSON.stringify(await getConfig("project", { skipSDKVersionRequirement: true })));',
     ],
     { cwd, encoding: "utf8" },
   );
