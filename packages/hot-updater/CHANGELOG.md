@@ -1,5 +1,25 @@
 # hot-updater
 
+## 1.0.0-rc.24
+
+### Patch Changes
+
+- cc34295: Resolve Expo config and fingerprint dependencies from the target app with Node's package resolver. Remove Expo config file-path fallbacks, honor evaluated dynamic and platform-specific JavaScript engine settings, and preserve config and dependency errors.
+
+  Resolve React Native metadata through its package manifest and legacy Hermes binaries from the app's dependencies, including hoisted installations.
+
+- c9cfed7: Release the project-scoped Expo, fingerprint, React Native, and Hermes resolution fixes at 1.0.0-rc.24 so projects can install the same RC of every Hot Updater package.
+- Updated dependencies [cc34295]
+- Updated dependencies [c9cfed7]
+  - @hot-updater/cli-tools@1.0.0-rc.24
+  - @hot-updater/android-helper@1.0.0-rc.24
+  - @hot-updater/apple-helper@1.0.0-rc.24
+  - @hot-updater/bsdiff@1.0.0-rc.24
+  - @hot-updater/console@1.0.0-rc.24
+  - @hot-updater/plugin-core@1.0.0-rc.24
+  - @hot-updater/protocol@1.0.0-rc.24
+  - @hot-updater/server@1.0.0-rc.24
+
 ## 1.0.0-rc.23
 
 ### Patch Changes

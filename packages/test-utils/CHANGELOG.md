@@ -1,5 +1,11 @@
 # @hot-updater/test-utils
 
+## 1.0.0-rc.24
+
+### Patch Changes
+
+- c9cfed7: Release the project-scoped Expo, fingerprint, React Native, and Hermes resolution fixes at 1.0.0-rc.24 so projects can install the same RC of every Hot Updater package.
+
 ## 1.0.0-rc.23
 
 ### Patch Changes
