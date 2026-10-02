@@ -1,10 +1,14 @@
 import { getCwd } from "@hot-updater/cli-tools";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   appendFingerprintExtraSources,
   getOtaFingerprintOptions,
 } from "./common";
+
+vi.mock("./dependency", () => ({
+  loadExpoFingerprint: () => import("@expo/fingerprint"),
+}));
 
 const SHARED_SOURCE =
   "packages/hot-updater/src/utils/fingerprint/processExtraSources.ts";

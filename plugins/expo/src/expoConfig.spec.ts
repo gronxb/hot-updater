@@ -19,7 +19,13 @@ async function runWithExpo(
 ) {
   const cwd = await mkdtemp(path.join(os.tmpdir(), "expo-config-resolution-"));
   tempDirs.push(cwd);
-  const expoDir = path.join(cwd, "node_modules/expo");
+  const adapterExpoDir = path.join(cwd, "node_modules/expo");
+  await mkdir(adapterExpoDir, { recursive: true });
+  await writeFile(
+    path.join(adapterExpoDir, "config.js"),
+    'exports.getConfig = () => { throw new Error("Loaded adapter Expo instead of project Expo"); };',
+  );
+  const expoDir = path.join(cwd, "project/node_modules/expo");
   await mkdir(expoDir, { recursive: true });
   await writeFile(
     path.join(expoDir, "package.json"),
@@ -54,7 +60,7 @@ const expo58Exports = {
   "./*": "./*.js",
 };
 
-describe("Expo config resolution in Node", () => {
+describe("Expo config resolution from the target project in Node", () => {
   it.each([
     ["legacy config.js", {}, { "config.js": configModule }],
     ["legacy config directory", {}, { "config/index.js": configModule }],
