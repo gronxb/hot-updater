@@ -10,10 +10,20 @@ const importExpoConfigModule = (specifier: string) =>
 const isMissingModule = (error: unknown, specifier: string): boolean =>
   error instanceof Error &&
   "code" in error &&
-  error.code === "ERR_MODULE_NOT_FOUND" &&
-  error.message.includes(specifier);
+  (error.code === "ERR_MODULE_NOT_FOUND" ||
+    error.code === "ERR_UNSUPPORTED_DIR_IMPORT") &&
+  "url" in error &&
+  typeof error.url === "string" &&
+  error.url.endsWith(`/node_modules/${specifier}`);
 
 const loadExpoConfig = async (): Promise<typeof ExpoConfig> => {
+  try {
+    const module = await importExpoConfigModule("expo/config");
+    return module.getConfig ? (module as typeof ExpoConfig) : module.default!;
+  } catch (error) {
+    if (!isMissingModule(error, "expo/config")) throw error;
+  }
+
   try {
     const module = await importExpoConfigModule("expo/config.js");
     return module.getConfig ? (module as typeof ExpoConfig) : module.default!;
