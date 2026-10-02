@@ -1,5 +1,23 @@
 # hot-updater
 
+## 1.0.0-rc.22
+
+### Minor Changes
+
+- 4e1cb07: `hot-updater app-version` is back. It prints the app version each native project builds, and `--json` prints `{ "android": ..., "ios": ... }`, with `null` for a platform it can't read, for release scripts that pass the version to `deploy -t`. `doctor` still shows the same versions in its native status.
+
+### Patch Changes
+
+- Updated dependencies [c9cfed7]
+  - @hot-updater/android-helper@1.0.0-rc.22
+  - @hot-updater/apple-helper@1.0.0-rc.22
+  - @hot-updater/bsdiff@1.0.0-rc.22
+  - @hot-updater/cli-tools@1.0.0-rc.22
+  - @hot-updater/console@1.0.0-rc.22
+  - @hot-updater/plugin-core@1.0.0-rc.22
+  - @hot-updater/protocol@1.0.0-rc.22
+  - @hot-updater/server@1.0.0-rc.22
+
 ## 1.0.0-rc.21
 
 ### Minor Changes

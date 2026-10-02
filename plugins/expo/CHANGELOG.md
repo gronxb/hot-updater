@@ -1,5 +1,17 @@
 # @hot-updater/expo
 
+## 1.0.0-rc.22
+
+### Patch Changes
+
+- c9cfed7: Released with every Hot Updater package at 1.0.0-rc.22, so a project can install the same RC of each one.
+- Updated dependencies [4e1cb07]
+- Updated dependencies [c9cfed7]
+  - hot-updater@1.0.0-rc.22
+  - @hot-updater/bare@1.0.0-rc.22
+  - @hot-updater/cli-tools@1.0.0-rc.22
+  - @hot-updater/plugin-core@1.0.0-rc.22
+
 ## 1.0.0-rc.21
 
 ### Patch Changes

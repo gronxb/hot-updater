@@ -1,5 +1,11 @@
 # @hot-updater/test-utils
 
+## 1.0.0-rc.22
+
+### Minor Changes
+
+- 54d46fe: `setupStorageAdapterTestSuite` takes `fetchDownloadUrls`. With it, the suite fetches every `http(s)` URL `getDownloadUrl` returns and requires the object's bytes. Set it when the adapter runs against a bucket or emulator whose URLs the test can reach.
+
 ## 1.0.0-rc.21
 
 ### Minor Changes

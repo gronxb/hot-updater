@@ -1,5 +1,11 @@
 # @hot-updater/bsdiff
 
+## 1.0.0-rc.22
+
+### Patch Changes
+
+- c9cfed7: Released with every Hot Updater package at 1.0.0-rc.22, so a project can install the same RC of each one.
+
 ## 1.0.0-rc.21
 
 ### Patch Changes
