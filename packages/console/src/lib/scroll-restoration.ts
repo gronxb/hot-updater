@@ -15,7 +15,7 @@ export const routeScrollRestorationKey = (
   router: Pick<AnyRouter, "getMatchedRoutes">,
   location: ParsedLocation,
 ): string => {
-  const { foundRoute } = router.getMatchedRoutes(location.pathname);
+  const [, , foundRoute] = router.getMatchedRoutes(location.pathname);
   const routeKey = foundRoute?.options.staticData?.scrollRestorationKey;
   return routeKey?.(location) ?? location.state.__TSR_key!;
 };

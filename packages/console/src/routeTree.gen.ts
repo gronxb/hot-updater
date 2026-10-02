@@ -9,22 +9,17 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as InstallationsRouteImport } from './routes/installations'
-import { Route as InsightsRouteImport } from './routes/insights'
-import { Route as ApiKeysRouteImport } from './routes/api-keys'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as ApiKeysRouteImport } from './routes/api-keys'
+import { Route as InsightsRouteImport } from './routes/insights'
+import { Route as InstallationsRouteImport } from './routes/installations'
 import { Route as InsightsDistributionRouteImport } from './routes/insights_.distribution'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
 import { Route as ApiBundlesBundleIdDownloadRouteImport } from './routes/api/bundles/$bundleId/download'
 
-const InstallationsRoute = InstallationsRouteImport.update({
-  id: '/installations',
-  path: '/installations',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const InsightsRoute = InsightsRouteImport.update({
-  id: '/insights',
-  path: '/insights',
+const IndexRoute = IndexRouteImport.update({
+  id: '/',
+  path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiKeysRoute = ApiKeysRouteImport.update({
@@ -32,9 +27,14 @@ const ApiKeysRoute = ApiKeysRouteImport.update({
   path: '/api-keys',
   getParentRoute: () => rootRouteImport,
 } as any)
-const IndexRoute = IndexRouteImport.update({
-  id: '/',
-  path: '/',
+const InsightsRoute = InsightsRouteImport.update({
+  id: '/insights',
+  path: '/insights',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const InstallationsRoute = InstallationsRouteImport.update({
+  id: '/installations',
+  path: '/installations',
   getParentRoute: () => rootRouteImport,
 } as any)
 const InsightsDistributionRoute = InsightsDistributionRouteImport.update({
@@ -124,18 +124,11 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/installations': {
-      id: '/installations'
-      path: '/installations'
-      fullPath: '/installations'
-      preLoaderRoute: typeof InstallationsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/insights': {
-      id: '/insights'
-      path: '/insights'
-      fullPath: '/insights'
-      preLoaderRoute: typeof InsightsRouteImport
+    '/': {
+      id: '/'
+      path: '/'
+      fullPath: '/'
+      preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api-keys': {
@@ -145,11 +138,18 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiKeysRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/': {
-      id: '/'
-      path: '/'
-      fullPath: '/'
-      preLoaderRoute: typeof IndexRouteImport
+    '/insights': {
+      id: '/insights'
+      path: '/insights'
+      fullPath: '/insights'
+      preLoaderRoute: typeof InsightsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/installations': {
+      id: '/installations'
+      path: '/installations'
+      fullPath: '/installations'
+      preLoaderRoute: typeof InstallationsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/insights_/distribution': {
