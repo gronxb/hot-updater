@@ -1,5 +1,36 @@
 # @hot-updater/expo
 
+## 1.0.0-rc.21
+
+### Patch Changes
+
+- c9cfed7: Every package now shares one release candidate version: `hot-updater` and every `@hot-updater/*` package move to the same version, so an app, its server, and the console can pin one version.
+- bb57f25: What fills one slot of a config is now an adapter: storage, build, database, and signing. What you list in `plugins` stays a plugin: server plugins, client plugins, and the Sentry, Datadog, and BugSnag integration plugins that wrap a build adapter.
+  - `@hot-updater/plugin-core`: `StoragePlugin` is `StorageAdapter`, `createStoragePlugin` is `createStorageAdapter`, `StoragePluginWith` is `StorageAdapterWith`, `CreateStoragePluginOptions` is `CreateStorageAdapterOptions`, `BuildPlugin` is `BuildAdapter`, `BuildPluginConfig` is `BuildAdapterConfig`, `BasePluginArgs` is `BuildAdapterArgs`, `BundleSigningPlugin` is `BundleSigningAdapter`, and `DatabasePluginInputError` is `DatabaseAdapterInputError`. There are no aliases.
+  - `@hot-updater/bare`, `@hot-updater/expo`, and `@hot-updater/rock`: their options types are `BareAdapterConfig`, `ExpoAdapterConfig`, and `RockAdapterConfig`.
+  - The CLI, the server, and the console say "storage adapter", "build adapter", "database adapter", and "signing adapter" in their messages, such as `Storage adapter "<name>" does not implement <operation>.` and `No storage adapter for protocol: <protocol>`. `hot-updater init --build <adapter>` names its option accordingly.
+
+  Package names and factory names do not change: `s3Storage()`, `r2Storage()`, `bare()`, `expo()`, `rock()`, `postgres()`, and the rest are configured as before.
+
+- Updated dependencies [c9cfed7]
+- Updated dependencies [5ec6796]
+- Updated dependencies [ab04e15]
+- Updated dependencies [0d8d03b]
+- Updated dependencies [eebe617]
+- Updated dependencies [48cdd14]
+- Updated dependencies [f185d6d]
+- Updated dependencies [ab04e15]
+- Updated dependencies [4d15862]
+- Updated dependencies [b92970f]
+- Updated dependencies [48cdd14]
+- Updated dependencies [049fad1]
+- Updated dependencies [61fcd51]
+- Updated dependencies [bb57f25]
+  - @hot-updater/bare@1.0.0-rc.21
+  - @hot-updater/cli-tools@1.0.0-rc.21
+  - @hot-updater/plugin-core@1.0.0-rc.21
+  - hot-updater@1.0.0-rc.21
+
 ## 1.0.0-rc.17
 
 ### Patch Changes

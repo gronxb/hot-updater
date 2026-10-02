@@ -1,5 +1,22 @@
 # @hot-updater/mock
 
+## 1.0.0-rc.21
+
+### Patch Changes
+
+- Updated dependencies [c9cfed7]
+- Updated dependencies [5ec6796]
+- Updated dependencies [ab04e15]
+- Updated dependencies [f185d6d]
+- Updated dependencies [ab04e15]
+- Updated dependencies [4d15862]
+- Updated dependencies [48cdd14]
+- Updated dependencies [049fad1]
+- Updated dependencies [61fcd51]
+- Updated dependencies [bb57f25]
+  - @hot-updater/protocol@1.0.0-rc.21
+  - @hot-updater/plugin-core@1.0.0-rc.21
+
 ## 1.0.0-rc.17
 
 ### Patch Changes

@@ -1,5 +1,11 @@
 # @hot-updater/bsdiff
 
+## 1.0.0-rc.21
+
+### Patch Changes
+
+- c9cfed7: Every package now shares one release candidate version: `hot-updater` and every `@hot-updater/*` package move to the same version, so an app, its server, and the console can pin one version.
+
 ## 1.0.0-rc.14
 
 ### Patch Changes
