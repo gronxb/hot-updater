@@ -1,5 +1,11 @@
 # @hot-updater/test-utils
 
+## 1.0.0-rc.23
+
+### Patch Changes
+
+- c9cfed7: Release with the Expo SDK 58 config fix at 1.0.0-rc.23 so projects can install the same RC of every Hot Updater package.
+
 ## 1.0.0-rc.22
 
 ### Minor Changes

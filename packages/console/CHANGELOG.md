@@ -1,5 +1,17 @@
 # @hot-updater/console
 
+## 1.0.0-rc.23
+
+### Patch Changes
+
+- c9cfed7: Release with the Expo SDK 58 config fix at 1.0.0-rc.23 so projects can install the same RC of every Hot Updater package.
+- Updated dependencies [c9cfed7]
+  - @hot-updater/bsdiff@1.0.0-rc.23
+  - @hot-updater/cli-tools@1.0.0-rc.23
+  - @hot-updater/plugin-core@1.0.0-rc.23
+  - @hot-updater/protocol@1.0.0-rc.23
+  - @hot-updater/server@1.0.0-rc.23
+
 ## 1.0.0-rc.22
 
 ### Patch Changes
