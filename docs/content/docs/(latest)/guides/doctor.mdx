@@ -123,7 +123,9 @@ directories exist, `doctor` checks:
 
 The native status also shows each platform's app version, the version the
 native project builds (`appVersion` in `details.native.ios` and
-`details.native.android`).
+`details.native.android`). To read only the versions, such as in a release
+script, run `hot-updater app-version --json`, which prints
+`{ "android": ..., "ios": ... }` with `null` for a platform it can't read.
 
 If a required native setting is missing, run the command shown by `doctor`,
 then rebuild the native app.

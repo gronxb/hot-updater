@@ -21,6 +21,7 @@ import {
   portCommandOption,
 } from "@/commandOptions";
 import { handleAgentInfra } from "@/commands/agent/infra";
+import { handleAppVersion } from "@/commands/appVersion";
 import { buildAndroidNative, buildIosNative } from "@/commands/buildNative";
 import { getConsolePort, openConsole } from "@/commands/console";
 import {
@@ -618,6 +619,12 @@ program
 
     await openConsole(port);
   });
+
+program
+  .command("app-version")
+  .description("get the current app version")
+  .option("--json", "output app versions as JSON")
+  .action(handleAppVersion);
 
 // Database migration commands
 const dbCommand = program

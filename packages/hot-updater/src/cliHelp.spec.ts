@@ -109,7 +109,6 @@ describe("CLI bundle mental model", () => {
 
 describe("CLI commands", () => {
   it.each([
-    [["app-version"], "app-version"],
     [["bundle", "preflight", "id"], "preflight"],
     [["bundle", "artifact", "delete", "id"], "artifact"],
     [["db", "catalog", "rebuild"], "catalog"],
@@ -117,6 +116,10 @@ describe("CLI commands", () => {
     const removed = run(...command);
     expect(removed.status).toBe(1);
     expect(removed.stderr).toContain(`unknown command '${unknown}'`);
+  });
+
+  it("prints each platform's app version with app-version", () => {
+    expect(help("app-version")).toContain("--json");
   });
 
   it.each(["channel", "fingerprint"])(
