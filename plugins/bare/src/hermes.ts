@@ -1,8 +1,11 @@
 import fs from "fs";
+import { createRequire } from "node:module";
 import path from "path";
 
 import { getReactNativeMetadatas } from "@hot-updater/cli-tools";
 import { execa } from "execa";
+
+const require = createRequire(import.meta.url);
 
 /**
  * Returns the Hermes OS binary folder name for the current platform.
@@ -98,18 +101,17 @@ export async function getHermesCommand(cwd: string): Promise<string> {
   }
 
   // Prefer hermes-engine if it exists.
-  const hermesEngine = path.join(
-    "node_modules",
-    "hermes-engine",
-    getHermesOSBin(),
-    getHermesOSExe(),
-  );
-  if (fileExists(hermesEngine)) {
-    return hermesEngine;
-  }
+  try {
+    return require.resolve(
+      `hermes-engine/${getHermesOSBin()}/${getHermesOSExe()}`,
+      { paths: [cwd] },
+    );
+  } catch {}
 
   // Otherwise, fallback to hermesvm.
-  return path.join("node_modules", "hermesvm", getHermesOSBin(), "hermes");
+  return require.resolve(`hermesvm/${getHermesOSBin()}/hermes`, {
+    paths: [cwd],
+  });
 }
 
 /**
