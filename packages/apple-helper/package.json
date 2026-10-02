@@ -1,6 +1,6 @@
 {
   "name": "@hot-updater/apple-helper",
-  "version": "1.0.0-rc.20",
+  "version": "1.0.0-rc.21",
   "type": "module",
   "main": "dist/index.cjs",
   "module": "dist/index.mjs",
