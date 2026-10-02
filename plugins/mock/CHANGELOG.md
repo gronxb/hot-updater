@@ -1,5 +1,13 @@
 # @hot-updater/mock
 
+## 1.0.0-rc.24
+
+### Patch Changes
+
+- Updated dependencies [c9cfed7]
+  - @hot-updater/plugin-core@1.0.0-rc.24
+  - @hot-updater/protocol@1.0.0-rc.24
+
 ## 1.0.0-rc.23
 
 ### Patch Changes

@@ -1,5 +1,16 @@
 # @hot-updater/server
 
+## 1.0.0-rc.24
+
+### Patch Changes
+
+- c9cfed7: Release the project-scoped Expo, fingerprint, React Native, and Hermes resolution fixes at 1.0.0-rc.24 so projects can install the same RC of every Hot Updater package.
+- Updated dependencies [c9cfed7]
+  - @hot-updater/plugin-api-keys@1.0.0-rc.24
+  - @hot-updater/plugin-core@1.0.0-rc.24
+  - @hot-updater/plugin-insights@1.0.0-rc.24
+  - @hot-updater/protocol@1.0.0-rc.24
+
 ## 1.0.0-rc.23
 
 ### Patch Changes
