@@ -21,6 +21,8 @@ export interface StorageAdapterTestContext {
   readonly storage: StorageAdapter;
   /** The base path the adapter was created with, when the suite knows it. */
   readonly basePath?: string;
+  /** Whether to fetch `http(s)` download URLs and require the object's bytes. */
+  readonly fetchDownloadUrls?: boolean;
 }
 
 export interface StorageAdapterTestCase {
@@ -408,20 +410,21 @@ const namingCalls = (storage: StorageAdapter): StorageAdapter => {
 const storageCase = <const TOperations extends readonly StorageOperation[]>(
   title: string,
   operations: TOperations,
-  run: (context: {
-    readonly storage: StorageAdapterWith<"put" | "get" | TOperations[number]>;
-    readonly basePath?: string;
-  }) => Promise<void>,
+  run: (
+    context: Omit<StorageAdapterTestContext, "storage"> & {
+      readonly storage: StorageAdapterWith<"put" | "get" | TOperations[number]>;
+    },
+  ) => Promise<void>,
 ): StorageAdapterTestCase => ({
   title,
   operations,
-  run: async ({ storage, basePath }) => {
+  run: async ({ storage, ...context }) => {
     assertStorageOperations(storage, ["put", "get", ...operations]);
     await run({
+      ...context,
       storage: namingCalls(storage) as StorageAdapterWith<
         "put" | "get" | TOperations[number]
       >,
-      basePath,
     });
   },
 });
@@ -772,10 +775,11 @@ export const storageAdapterTestCases: readonly StorageAdapterTestCase[] = [
   storageCase(
     "resolves a download URL for a stored object",
     ["getDownloadUrl"],
-    async ({ storage, basePath }) => {
+    async ({ storage, basePath, fetchDownloadUrls }) => {
       const objects = objectsOf(storage, basePath);
       for (const key of ["download/object.txt", ...SPECIAL_KEYS]) {
-        const storageUri = await objects.put(key, encode(key));
+        const bytes = encode(key);
+        const storageUri = await objects.put(key, bytes);
         const { url } = await storage.getDownloadUrl({ storageUri });
         const label = `getDownloadUrl("${storageUri}") returned "${url}"`;
 
@@ -785,6 +789,15 @@ export const storageAdapterTestCases: readonly StorageAdapterTestCase[] = [
             ["http:", "https:"],
             `${label}; a URL must use http(s)`,
           ).toContain(new URL(url).protocol);
+          if (fetchDownloadUrls) {
+            const response = await fetch(url);
+            expect(response.status, `${label}, which answered`).toBe(200);
+            expectBytes(
+              new Uint8Array(await response.arrayBuffer()),
+              bytes,
+              `${label}, whose download`,
+            );
+          }
           continue;
         }
         // The server's client handler serves /storage/<uri>/<signature>.

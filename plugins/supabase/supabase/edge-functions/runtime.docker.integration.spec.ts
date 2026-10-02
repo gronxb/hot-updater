@@ -34,6 +34,7 @@ import {
 import {
   runContentionHarness,
   setupDatabaseTestSuite,
+  setupStorageAdapterTestSuite,
   startHttpTestServer,
   withAdapterLatency,
   insightsTestSuite,
@@ -57,6 +58,7 @@ import {
   SUPABASE_TABLE_PREFIX,
   supabaseTableNames,
 } from "../../src/supabaseSchema";
+import { supabaseStorage } from "../../src/supabaseStorage";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -462,6 +464,27 @@ describe.sequential("supabase edge runtime acceptance", () => {
           ),
       }),
     ],
+  });
+
+  // supabaseStorage on the stack's Storage API, each case below a base path
+  // of its own, and its signed URLs fetched through the gateway. The stack's
+  // volumes go with it in afterAll.
+  setupStorageAdapterTestSuite({
+    name: "supabaseStorage (Storage API)",
+    fetchDownloadUrls: true,
+    createStorage: async () => {
+      const basePath = `conformance/${crypto.randomUUID()}`;
+      return {
+        storage: supabaseStorage({
+          basePath,
+          bucketName: BUCKET_NAME,
+          supabaseServiceRoleKey: SERVICE_ROLE_KEY,
+          supabaseUrl: gatewayBaseUrl,
+        }),
+        basePath,
+      };
+    },
+    operations: ["put", "get", "getDownloadUrl", "exists", "delete"],
   });
 
   it("returns one canonical Channel row under concurrent inserts", async () => {

@@ -343,11 +343,12 @@ setupStorageAdapterTestSuite({
 });
 ```
 
-| Option          | Meaning                                                                                                                                                                                                                                              |
-| --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `name`          | Names the suite                                                                                                                                                                                                                                      |
-| `createStorage` | Returns `{ storage, basePath?, cleanup? }` over an empty bucket or base path, for each case; `cleanup` runs after the case. With `basePath`, every URI `put` returns must have the key `<basePath>/<key>`.                                           |
-| `operations`    | The operations the adapter implements. The suite fails when one of them, `put`, or `get` is missing, and skips the cases of the others. Add `listObjects` and `deleteObjects` when the adapter [supports storage cleanup](#support-storage-cleanup). |
+| Option              | Meaning                                                                                                                                                                                                                                              |
+| ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `name`              | Names the suite                                                                                                                                                                                                                                      |
+| `createStorage`     | Returns `{ storage, basePath?, cleanup? }` over an empty bucket or base path, for each case; `cleanup` runs after the case. With `basePath`, every URI `put` returns must have the key `<basePath>/<key>`.                                           |
+| `operations`        | The operations the adapter implements. The suite fails when one of them, `put`, or `get` is missing, and skips the cases of the others. Add `listObjects` and `deleteObjects` when the adapter [supports storage cleanup](#support-storage-cleanup). |
+| `fetchDownloadUrls` | Fetches every `http(s)` URL `getDownloadUrl` returns and requires the object's bytes. Set it in a spec against a real bucket or emulator whose URLs the test can reach.                                                                              |
 
 The cases cover the name and protocol; bodies of known, unknown, and zero
 length, each read to the end before `put` resolves; concurrent puts; the
@@ -357,8 +358,9 @@ URI; replacing an object; a failed upload that leaves no object; `null` for a
 missing object or a folder; a `delete` that removes exactly one object and
 succeeds again; a URI of another bucket or protocol, which every operation
 rejects; download URLs that are `http(s)` or the same `/storage/` path on every
-call; keys that `listObjects` returns relative to the base path, with a prefix
-as a folder; and `deleteObjects` deleting exactly the keys it receives.
+call, and with `fetchDownloadUrls`, URLs that serve the object; keys that
+`listObjects` returns relative to the base path, with a prefix as a folder; and
+`deleteObjects` deleting exactly the keys it receives.
 
 Before you publish, run the suite against a real bucket or your provider's
 emulator too. Give each case a base path of its own, and delete what it stored:
