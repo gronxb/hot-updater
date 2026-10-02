@@ -24,7 +24,7 @@ export async function nativeFingerprint(
   options: FingerprintOptions,
 ): Promise<FingerprintResult> {
   const platform = options.platform;
-  const { createFingerprintAsync } = await loadExpoFingerprint();
+  const { createFingerprintAsync } = await loadExpoFingerprint(path);
   return createFingerprintAsync(
     path,
     await getOtaFingerprintOptions(platform, path, options),

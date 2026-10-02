@@ -41,7 +41,7 @@ export async function getOtaFingerprintOptions(
   path: string,
   options: FingerprintOptions,
 ): Promise<OtaFingerprintOptions> {
-  const { SourceSkips } = await loadExpoFingerprint();
+  const { SourceSkips } = await loadExpoFingerprint(path);
 
   return {
     useRNCoreAutolinkingFromExpo: isExpo(),

@@ -1,6 +1,12 @@
+import { createRequire } from "node:module";
+import path from "node:path";
+import { pathToFileURL } from "node:url";
+
 import { getPackageManager } from "../getPackageManager";
 
 export type ExpoFingerprint = typeof import("@expo/fingerprint");
+
+const require = createRequire(import.meta.url);
 
 const PACKAGE_NAME = "@expo/fingerprint";
 const MISSING_DEPENDENCY_ERROR_NAME = "MissingFingerprintDependencyError";
@@ -54,9 +60,14 @@ export const isMissingExpoFingerprintError = (error: unknown) => {
   );
 };
 
-export const loadExpoFingerprint = async (): Promise<ExpoFingerprint> => {
+export const loadExpoFingerprint = async (
+  projectRoot: string,
+): Promise<ExpoFingerprint> => {
+  let modulePath: string;
   try {
-    return await import("@expo/fingerprint");
+    modulePath = require.resolve("@expo/fingerprint", {
+      paths: [path.resolve(projectRoot)],
+    });
   } catch (error) {
     if (isMissingExpoFingerprintError(error)) {
       throw createMissingFingerprintDependencyError();
@@ -64,4 +75,5 @@ export const loadExpoFingerprint = async (): Promise<ExpoFingerprint> => {
 
     throw error;
   }
+  return import(pathToFileURL(modulePath).href) as Promise<ExpoFingerprint>;
 };

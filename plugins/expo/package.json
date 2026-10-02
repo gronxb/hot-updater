@@ -36,6 +36,7 @@
   "devDependencies": {
     "@types/node": "catalog:",
     "execa": "catalog:tools",
+    "expo": "^50.0.0",
     "vitest": "catalog:"
   },
   "exports": {
