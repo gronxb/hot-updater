@@ -7,6 +7,7 @@ import type {
   BuildAdapterArgs,
   BuildAdapter,
   BuildAdapterConfig,
+  Platform,
 } from "@hot-updater/plugin-core";
 import { ExecaError, execa } from "execa";
 import { uuidv7 } from "uuidv7";
@@ -17,7 +18,7 @@ import { runExpoPrebuild } from "./util/prebuild";
 
 interface RunBundleArgs {
   cwd: string;
-  platform: string;
+  platform: Platform;
   buildPath: string;
   sourcemap: boolean;
   resetCache: boolean;
@@ -81,24 +82,14 @@ export const getExpoBundleSigningPublicKey = async (
   };
 };
 
-const isHermesEnabled = (cwd: string, platform: string): boolean => {
-  try {
-    const appJsonPath = path.join(cwd, "app.json");
-    const { expo } = JSON.parse(fs.readFileSync(appJsonPath, "utf-8"));
-
-    const platformJsEngine = expo?.[platform]?.jsEngine;
-    const commonJsEngine = expo?.jsEngine;
-
-    if (platformJsEngine !== undefined) {
-      return platformJsEngine === "hermes";
-    }
-
-    if (commonJsEngine !== undefined) {
-      return commonJsEngine === "hermes";
-    }
-  } catch {}
-
-  return true;
+const isHermesEnabled = async (
+  cwd: string,
+  platform: Platform,
+): Promise<boolean> => {
+  const { exp } = await getConfig(cwd, {
+    skipSDKVersionRequirement: true,
+  });
+  return (exp[platform]?.jsEngine ?? exp.jsEngine ?? "hermes") === "hermes";
 };
 
 const runBundle = async ({
@@ -112,7 +103,7 @@ const runBundle = async ({
   const bundleOutput = path.join(buildPath, `${filename}.bundle`);
   const entryFile = resolveMain(cwd);
   const bundleId = uuidv7();
-  const enableHermes = isHermesEnabled(cwd, platform);
+  const enableHermes = await isHermesEnabled(cwd, platform);
 
   const args = [
     "expo",

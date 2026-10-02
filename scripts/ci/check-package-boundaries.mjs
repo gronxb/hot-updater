@@ -51,6 +51,10 @@ const SERVER_EXPORTS = [
  * which no import of a package names, and a new one needs a deliberate entry.
  */
 const COMPUTED_IMPORTS = new Map([
+  [
+    "packages/hot-updater/src/utils/fingerprint/dependency.ts",
+    "imports the app's resolved @expo/fingerprint public entry",
+  ],
   ["e2e/detox/contracts.spec.ts", "loads e2e's own control server"],
   [
     "e2e/detox/published.ts",
@@ -76,7 +80,6 @@ const COMPUTED_IMPORTS = new Map([
     "packages/server/src/adapters/drizzle.spec.ts",
     "loads the schema file it generated",
   ],
-  ["plugins/expo/src/expoConfig.ts", "loads the app's Expo config packages"],
 ]);
 
 /**

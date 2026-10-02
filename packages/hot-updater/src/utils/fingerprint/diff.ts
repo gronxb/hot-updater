@@ -28,7 +28,8 @@ export async function getFingerprintDiff(
   options: FingerprintOptions,
 ): Promise<FingerprintDiffItem[]> {
   const projectPath = getCwd();
-  const { diffFingerprintChangesAsync } = await loadExpoFingerprint();
+  const { diffFingerprintChangesAsync } =
+    await loadExpoFingerprint(projectPath);
   return await diffFingerprintChangesAsync(
     oldFingerprint as Parameters<
       ExpoFingerprint["diffFingerprintChangesAsync"]
