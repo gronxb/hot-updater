@@ -122,6 +122,10 @@ case, and the `cleanup` it may return runs after the case. `operations` lists
 what the adapter implements: the suite fails when one of them is missing and
 skips the cases of the others.
 
+With `fetchDownloadUrls: true`, the suite downloads every `http(s)` URL
+`getDownloadUrl` returns and requires the object's bytes, for a spec against a
+real bucket or emulator whose URLs the test can reach.
+
 ## Plugins and servers
 
 - `createPluginTestHarness` runs one server plugin on `createEngine` from

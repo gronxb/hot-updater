@@ -7,7 +7,7 @@ import {
   type StorageAdapter,
   type StorageAdapterWith,
 } from "@hot-updater/plugin-core";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { setupStorageAdapterTestSuite } from "./setupStorageAdapterTestSuite";
 import { storageAdapterTestCases } from "./storageAdapterTestCases";
@@ -427,5 +427,67 @@ describe("storage adapter test cases", () => {
     ],
   ])("fail when %s", async (_defect, title, create) => {
     await expect(runCase(title, create())).rejects.toThrow();
+  });
+});
+
+describe("fetchDownloadUrls", () => {
+  const title = "resolves a download URL for a stored object";
+  const testCase = storageAdapterTestCases.find(
+    (candidate) => candidate.title === title,
+  );
+  if (testCase === undefined) throw new Error(`No case "${title}".`);
+
+  /** The reference adapter with an https URL per object, which `serve` answers. */
+  const withUrls = (
+    serve: (storage: MemoryStorage, storageUri: string) => Promise<Response>,
+  ): StorageAdapter => {
+    const storage = memoryStorage({ basePath: "ota" });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) =>
+        serve(storage, decodeURIComponent(new URL(url).pathname.slice(1))),
+      ),
+    );
+    return {
+      ...storage,
+      getDownloadUrl: async ({ storageUri }) => ({
+        url: `https://downloads.test/${encodeURIComponent(storageUri)}`,
+      }),
+    };
+  };
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("passes when every URL serves the object's bytes", async () => {
+    const storage = withUrls(
+      async (storage, storageUri) =>
+        (await storage.get({ storageUri })).response ??
+        new Response(null, { status: 404 }),
+    );
+
+    await testCase.run({ storage, basePath: "ota", fetchDownloadUrls: true });
+    expect(fetch).toHaveBeenCalled();
+  });
+
+  it.each<[string, () => Promise<Response>]>([
+    ["answers 404", async () => new Response(null, { status: 404 })],
+    ["serves other bytes", async () => new Response("other")],
+  ])("fails when a URL %s", async (_defect, serve) => {
+    await expect(
+      testCase.run({
+        storage: withUrls(serve),
+        basePath: "ota",
+        fetchDownloadUrls: true,
+      }),
+    ).rejects.toThrow();
+  });
+
+  it("fetches nothing without it", async () => {
+    const storage = withUrls(async () => new Response(null, { status: 404 }));
+
+    await testCase.run({ storage, basePath: "ota" });
+    expect(fetch).not.toHaveBeenCalled();
   });
 });

@@ -28,6 +28,12 @@ export interface StorageAdapterTestSuiteOptions {
    * it, the suite skips the cases of the operations the adapter lacks.
    */
   readonly operations?: readonly StorageOperation[];
+  /**
+   * Fetches every `http(s)` URL `getDownloadUrl` returns and requires the
+   * object's bytes. Set it when the adapter runs against a bucket or emulator
+   * whose URLs the test can reach.
+   */
+  readonly fetchDownloadUrls?: boolean;
 }
 
 /**
@@ -69,7 +75,11 @@ export const setupStorageAdapterTestSuite = (
           if (declared === undefined && missing.length > 0) {
             context.skip(`${storage.name} lacks ${missing.join(", ")}`);
           }
-          await testCase.run({ storage, basePath });
+          await testCase.run({
+            storage,
+            basePath,
+            fetchDownloadUrls: options.fetchDownloadUrls,
+          });
         } finally {
           await cleanup?.();
         }
