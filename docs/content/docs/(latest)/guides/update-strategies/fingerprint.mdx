@@ -45,12 +45,13 @@ Fingerprint strategy too. Projects using `appVersion` do not need this package.
 App Version is the default strategy. If you explicitly configured it, replace
 that setting with `fingerprint`:
 
-```typescript title="hot-updater.config.ts"
+```typescript title="hot-updater.config.ts (excerpt)"
 import { defineConfig } from "hot-updater";
 
 export default defineConfig({
   updateStrategy: "appVersion", // [!code --]
   updateStrategy: "fingerprint", // [!code ++]
+  // ... build, storage, database, and plugins
 });
 ```
 
@@ -285,7 +286,7 @@ will not be blocked; review the compatibility boundary above before deploying.
 - Multiple Android build variants
 - Non-standard project structure
 
-```typescript title="hot-updater.config.ts"
+```typescript title="hot-updater.config.ts (excerpt)"
 import { defineConfig } from "hot-updater";
 
 export default defineConfig({
@@ -306,6 +307,7 @@ export default defineConfig({
       ],
     },
   },
+  // ... build, storage, database, and plugins
 });
 ```
 

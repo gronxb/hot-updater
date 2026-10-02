@@ -98,11 +98,11 @@ For projects with non-standard structures or iOS app extensions, you can
 configure custom paths for platform-specific configuration files in your
 `hot-updater.config.ts`:
 
-```typescript title="hot-updater.config.ts"
+```typescript title="hot-updater.config.ts (excerpt)"
 import { defineConfig } from "hot-updater";
 
 export default defineConfig({
-  // ... other configurations
+  // ... build, storage, database, plugins, and updateStrategy
   // [!code ++:15]
   platform: {
     ios: {

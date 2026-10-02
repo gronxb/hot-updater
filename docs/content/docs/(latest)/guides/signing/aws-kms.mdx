@@ -66,12 +66,12 @@ Install the optional AWS KMS SDK in the project that runs the deploy command:
 npm install '@aws-sdk/client-kms@^3.1066.0' --save-dev
 ```
 
-```ts title="hot-updater.config.ts"
+```ts title="hot-updater.config.ts (excerpt)"
 import { defineConfig } from "hot-updater";
 import { awsKmsSigning } from "hot-updater/signing"; // [!code ++]
 
 export default defineConfig({
-  // ...other config
+  // ... build, storage, database, plugins, and updateStrategy
   // [!code ++:6]
   signing: awsKmsSigning({
     // A key ARN is an identifier, not a secret. Pin the exact key.

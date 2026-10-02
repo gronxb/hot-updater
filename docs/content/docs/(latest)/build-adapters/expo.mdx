@@ -22,7 +22,7 @@ interface ExpoAdapterConfig {
 
 ## Usage
 
-```typescript title="hot-updater.config.ts"
+```typescript title="hot-updater.config.ts (excerpt)"
 import { expo } from '@hot-updater/expo'; // [!code ++]
 import { defineConfig } from 'hot-updater';
 
@@ -30,7 +30,7 @@ export default defineConfig({
   build: expo({ // [!code ++]
     sourcemap: false // [!code ++]
   }), // [!code ++]
-  // ... other config
+  // ... storage, database, plugins, and updateStrategy
 });
 ```
 

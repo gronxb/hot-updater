@@ -23,7 +23,7 @@ interface RockAdapterConfig {
 
 ## Usage
 
-```typescript title="hot-updater.config.ts"
+```typescript title="hot-updater.config.ts (excerpt)"
 import { rock } from '@hot-updater/rock'; // [!code ++]
 import { defineConfig } from 'hot-updater';
 
@@ -33,7 +33,7 @@ export default defineConfig({
     entryFile: 'index.js', // [!code ++]
     sourcemap: false // [!code ++]
   }), // [!code ++]
-  // ... other config
+  // ... storage, database, plugins, and updateStrategy
 });
 ```
 

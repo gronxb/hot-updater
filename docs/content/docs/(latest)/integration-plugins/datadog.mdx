@@ -69,7 +69,7 @@ Use `withDatadog()` to wrap any compatible build adapter such as bare.
 <Tabs items={['Bare', 'Expo', 'Rock']}>
   <Tab value="Bare">
 
-```ts title="hot-updater.config.ts"
+```ts title="hot-updater.config.ts (excerpt)"
 import { existsSync } from "node:fs";
 import { bare } from "@hot-updater/bare";
 import { withDatadog } from "@hot-updater/datadog-plugin"; // [!code ++]
@@ -96,13 +96,13 @@ export default defineConfig({
       service: "service", // [!code ++]
     }, // [!code ++]
   ), // [!code ++]
-  // .. your other config
+  // ... storage, database, plugins, and updateStrategy
 });
 ```
 </Tab>
 <Tab value="Expo">
 
-```ts title="hot-updater.config.ts"
+```ts title="hot-updater.config.ts (excerpt)"
 import { withDatadog } from "@hot-updater/datadog-plugin"; // [!code ++]
 import { defineConfig } from "hot-updater";
 import { datadogReleaseVersion } from "./datadog-release";
@@ -123,14 +123,14 @@ export default defineConfig({
       service: "service", // [!code ++]
     }, // [!code ++]
   ), // [!code ++]
-  // .. your other config
+  // ... storage, database, plugins, and updateStrategy
 });
 ```
 </Tab>
 
 <Tab value="Rock">
 
-```ts title="hot-updater.config.ts"
+```ts title="hot-updater.config.ts (excerpt)"
 import { withDatadog } from "@hot-updater/datadog-plugin"; // [!code ++]
 import { defineConfig } from "hot-updater";
 import { datadogReleaseVersion } from "./datadog-release";
@@ -151,7 +151,7 @@ export default defineConfig({
       service: "service", // [!code ++]
     }, // [!code ++]
   ), // [!code ++]
-  // .. your other config
+  // ... storage, database, plugins, and updateStrategy
 });
 ```
 

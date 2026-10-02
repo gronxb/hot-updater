@@ -94,7 +94,7 @@ configuration. `createHotUpdater` needs the server's own database and throws
 
 ### Secure example
 
-```typescript title="hot-updater.config.ts"
+```typescript title="hot-updater.config.ts (excerpt)"
 const adminToken = process.env.HOT_UPDATER_ADMIN_TOKEN;
 if (!adminToken) {
   throw new Error("HOT_UPDATER_ADMIN_TOKEN is required");
@@ -114,7 +114,7 @@ the server setup.
 
 ### Alternate authentication
 
-```typescript title="hot-updater.config.ts"
+```typescript title="hot-updater.config.ts (excerpt)"
 database: standaloneRepository({
   baseUrl: process.env.HOT_UPDATER_ADMIN_URL!,
   commonHeaders: {

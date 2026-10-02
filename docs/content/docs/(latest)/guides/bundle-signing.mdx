@@ -178,7 +178,7 @@ required when the same key is already embedded.
 
 For custom native paths, configure `platform`:
 
-```ts title="hot-updater.config.ts"
+```ts title="hot-updater.config.ts (excerpt)"
 import { defineConfig } from "hot-updater";
 
 export default defineConfig({
@@ -194,6 +194,7 @@ export default defineConfig({
       infoPlistPaths: ["ios/MyApp/Info.plist", "ios/MyAppPro/Info.plist"],
     },
   },
+  // ... build, storage, database, plugins, and updateStrategy
 });
 ```
 

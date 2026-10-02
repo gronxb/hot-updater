@@ -15,11 +15,12 @@ explicit version targeting over automated native compatibility checks.
 
 Configure the strategy in your Hot Updater config:
 
-```typescript title="hot-updater.config.ts"
+```typescript title="hot-updater.config.ts (excerpt)"
 import { defineConfig } from "hot-updater";
 
 export default defineConfig({
   updateStrategy: "appVersion", // [!code ++]
+  // ... build, storage, database, and plugins
 });
 ```
 

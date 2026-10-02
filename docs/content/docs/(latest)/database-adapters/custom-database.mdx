@@ -324,7 +324,7 @@ database also carries the migration that `hot-updater db migrate` runs.
 Pass the database to the CLI and the server, with the same plugins. Partial
 configuration:
 
-```ts title="hot-updater.config.ts"
+```ts title="hot-updater.config.ts (excerpt)"
 import { apiKeys } from "@hot-updater/server/plugins/api-keys";
 import { insights } from "@hot-updater/server/plugins/insights";
 import { defineConfig } from "hot-updater";
@@ -332,8 +332,7 @@ import { defineConfig } from "hot-updater";
 import { myDatabase } from "./myDatabase";
 
 export default defineConfig({
-  // build: ...,
-  // storage: ...,
+  // ... build, storage, and updateStrategy
   database: myDatabase({ connectionString: process.env.DATABASE_URL }),
   plugins: [insights(), apiKeys()],
 });

@@ -25,12 +25,21 @@ interface DocumentLink {
   asset: boolean;
 }
 
+interface DocumentCodeBlock {
+  lang: string;
+  /** The `title="..."` of the fence, or "" without one. */
+  title: string;
+  code: string;
+  line: number;
+}
+
 interface DocumentData extends PageData {
   title: string;
   body: string;
   markdown: string;
   anchors: string[];
   links: DocumentLink[];
+  codeBlocks: DocumentCodeBlock[];
 }
 
 type Element = Extract<
@@ -115,6 +124,7 @@ export function parseDocument(raw: string): DocumentData {
   remarkHeading({ generateToc: false })(tree, new VFile(body), () => {});
   const anchors: string[] = [];
   const links: DocumentLink[] = [];
+  const codeBlocks: DocumentCodeBlock[] = [];
   const definitions = new Map<string, string>();
   visit(tree, (node) => {
     if (node.type === "definition") definitions.set(node.identifier, node.url);
@@ -131,6 +141,14 @@ export function parseDocument(raw: string): DocumentData {
     if (node.type === "linkReference" || node.type === "imageReference") {
       const url = definitions.get(node.identifier);
       if (url) links.push({ url, line, asset: node.type === "imageReference" });
+    }
+    if (node.type === "code") {
+      codeBlocks.push({
+        lang: node.lang ?? "",
+        title: node.meta?.match(/title="([^"]*)"/)?.[1] ?? "",
+        code: node.value,
+        line,
+      });
     }
     if (
       node.type === "mdxJsxFlowElement" ||
@@ -151,6 +169,7 @@ export function parseDocument(raw: string): DocumentData {
     markdown: stringify.call(markdownProcessor, tree, undefined),
     anchors,
     links,
+    codeBlocks,
   };
 }
 

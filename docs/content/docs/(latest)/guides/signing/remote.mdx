@@ -39,12 +39,12 @@ rollback policy are not included in the signed message. Enforce those controls
 in the protected deployment workflow and do not share a signer across trust
 boundaries.
 
-```ts title="hot-updater.config.ts"
+```ts title="hot-updater.config.ts (excerpt)"
 import { defineConfig } from "hot-updater";
 import { remoteSigning } from "hot-updater/signing"; // [!code ++]
 
 export default defineConfig({
-  // ...other config
+  // ... build, storage, database, plugins, and updateStrategy
   // [!code ++:3]
   signing: remoteSigning({
     endpoint: "https://signer.example.com",

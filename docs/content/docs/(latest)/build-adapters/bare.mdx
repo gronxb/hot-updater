@@ -24,7 +24,7 @@ interface BareAdapterConfig {
 
 ## Usage
 
-```typescript title="hot-updater.config.ts"
+```typescript title="hot-updater.config.ts (excerpt)"
 import { bare } from '@hot-updater/bare'; // [!code ++]
 import { defineConfig } from 'hot-updater';
 
@@ -34,7 +34,7 @@ export default defineConfig({
     sourcemap: false, // [!code ++]
     entryFile: 'index.js' // [!code ++]
   }), // [!code ++]
-  // ... other config
+  // ... storage, database, plugins, and updateStrategy
 });
 ```
 

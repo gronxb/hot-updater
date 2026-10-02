@@ -30,17 +30,14 @@ Set console options in `hot-updater.config.ts`, along with its `storage`,
 | `console.gitUrl` | Enables commit shortcuts by linking to git commit hashes | -       |
 | `console.port`   | Sets the console server port                             | `1422`  |
 
-```ts title="hot-updater.config.ts"
+```ts title="hot-updater.config.ts (excerpt)"
 import { defineConfig } from "hot-updater";
 
 export default defineConfig({
   console: { // [!code ++]
     port: 3000, // [!code ++]
   }, // [!code ++]
-  build: ...,
-  storage: ...,
-  database: ...,
-  plugins: ...,
+  // ... build, storage, database, plugins, and updateStrategy
 });
 ```
 
@@ -190,13 +187,14 @@ target cohorts. The command previews those defaults before confirmation. A
 
 You can set the git URL in the `hot-updater.config.ts` file.
 
-```ts title="hot-updater.config.ts"
+```ts title="hot-updater.config.ts (excerpt)"
 import { defineConfig } from "hot-updater";
 
 export default defineConfig({
   console: {
     gitUrl: "<your-repo>", // e.g. https://github.com/gronxb/hot-updater // [!code ++]
   },
+  // ... build, storage, database, plugins, and updateStrategy
 });
 ```
 

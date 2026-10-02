@@ -12,7 +12,7 @@ before adding a signer to an existing Hot Updater project.
 Use the built-in local config when you accept responsibility for an exportable
 private key. Enable signing and provide the private key path:
 
-```ts title="hot-updater.config.ts"
+```ts title="hot-updater.config.ts (excerpt)"
 import { defineConfig } from "hot-updater";
 
 export default defineConfig({
@@ -22,7 +22,7 @@ export default defineConfig({
     privateKeyPath:
       process.env.HOT_UPDATER_SIGNING_PRIVATE_KEY_PATH ?? "./keys/private-key.pem",
   },
-  // ...other config
+  // ... build, storage, database, plugins, and updateStrategy
 });
 ```
 

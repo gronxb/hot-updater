@@ -103,7 +103,7 @@ that includes bundle diffing support.
 
 Hermes binary patch optimization is also enabled by default:
 
-```ts title="hot-updater.config.ts"
+```ts title="hot-updater.config.ts (excerpt)"
 import { defineConfig } from "hot-updater";
 
 export default defineConfig({
@@ -111,6 +111,7 @@ export default defineConfig({
     enabled: true,
     maxBaseBundles: 3,
   },
+  // ... build, storage, database, plugins, and updateStrategy
 });
 ```
 

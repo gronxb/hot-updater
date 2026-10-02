@@ -40,6 +40,10 @@ jobs:
         run: pnpm lint
       - name: Check integration groups
         run: node scripts/ci/check-integration-groups.mjs
+      # The docs' own specs. The whole config files the pages show compile
+      # against the packages built above.
+      - name: Docs tests
+        run: pnpm --dir docs test:docs
 
   unit:
     name: Unit test (${{ matrix.shard }})
