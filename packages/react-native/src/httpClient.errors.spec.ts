@@ -106,6 +106,10 @@ describe.each(["catalog", "artifact"] as const)(
       await expect(request(resource, onResponse)).resolves.toMatchObject(
         payload,
       );
+      const fetchMock = vi.mocked(fetch);
+      expect(
+        new Headers(fetchMock.mock.calls[0]![1]?.headers).get("accept"),
+      ).toBe("application/json");
       expect(onResponse).toHaveBeenCalledOnce();
       expect(onResponse).toHaveBeenCalledWith(
         expect.objectContaining({

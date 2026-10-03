@@ -19,8 +19,10 @@ export const fetchUpdateResponse = async ({
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), requestTimeout);
   try {
+    const headers = new Headers(requestHeaders);
+    if (!headers.has("Accept")) headers.set("Accept", "application/json");
     const response = await fetch(url, {
-      headers: { Accept: "application/json", ...requestHeaders },
+      headers,
       signal: controller.signal,
     });
     let body: string | null = null;
