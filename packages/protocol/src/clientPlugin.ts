@@ -166,6 +166,17 @@ export interface UpdateError {
   readonly cause: unknown;
 }
 
+/** A response from the update server's catalog or artifact API. */
+export interface UpdateHttpResponse {
+  readonly resource: "catalog" | "artifact";
+  /** Request path only; authentication headers and query parameters are omitted. */
+  readonly path: string;
+  readonly status: number;
+  /** The response as text, or null if the body could not be read. */
+  readonly body: string | null;
+  readonly bodyTruncated: boolean;
+}
+
 /**
  * Lifecycle hooks a plugin returns from `setup`. Hooks observe: the SDK
  * never waits for one and ignores what it returns, and a hook that throws or
@@ -181,6 +192,8 @@ export interface HotUpdaterClientHooks {
   onBundleDownloaded?(info: BundleDownloadedInfo): void | Promise<void>;
   /** Called when an update check, download, or install fails. */
   onUpdateError?(error: UpdateError): void | Promise<void>;
+  /** Called for every catalog/artifact API response, including 200 and 304. */
+  onHttpResponse?(response: UpdateHttpResponse): void | Promise<void>;
 }
 
 /**

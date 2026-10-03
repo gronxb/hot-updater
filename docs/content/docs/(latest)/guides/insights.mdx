@@ -95,6 +95,7 @@ The plugin reports these outcomes:
 | `UPDATE_APPLIED` | Native app-ready state reports that an OTA transition became active. |
 | `RECOVERED` | Native app-ready state reports recovery from a failed update. |
 | `UPDATE_FAILED` | An update check, download, or install failed, with its stage and reason. A server that does not accept this type answers `400`, and the plugin skips it. |
+| `HTTP_RESPONSE` | Every catalog or artifact API response, including success, cache validation, and server errors. |
 
 The plugin sends `UNCHANGED` at most once a UTC day per installation. A later
 launch or update check that day sends nothing, unless the channel, app
@@ -111,7 +112,7 @@ report that repeats the installation's latest report on the same UTC day, with
 the same channel, platform, app version, bundle, Release, and user, records
 nothing. An `UNCHANGED` report updates the installation's latest report and the
 launch metrics, but the server keeps no event row for it, so event lists show
-downloads, applies, recoveries, and update failures.
+downloads, applies, recoveries, update failures, and HTTP responses.
 
 Reporting is best effort and does not trigger rollback. A report that fails
 with a network error, a timeout, `429`, or a `5xx` is retried in the
@@ -154,6 +155,22 @@ Update the app's Insights plugin, server, and Console to collect and inspect
 original messages and stacks. Existing reports that lack these fields cannot
 recover the original cause; the Console labels those missing diagnostics.
 This addition uses existing event metadata and needs no database migration.
+
+## Inspect HTTP responses
+
+**All events** and installation history include every catalog and artifact API
+response reported by the updated client, including HTTP 200 and 304. Expand
+**Response body** to read the server's JSON or text. Each request has its own
+report; retries reuse the report ID. HTTP records do not change app usage,
+installation state, release activity, or update failure rates.
+
+Bodies are capped at 4 KiB of JSON-encoded text and marked when truncated. Empty
+bodies and bodies that could not be read have different labels. Only request
+paths are recorded; request headers and URL query parameters are omitted.
+These diagnostics cover the update server's catalog and artifact APIs. Native
+binary file downloads and Insights' own reporting requests are not captured.
+Upgrade the server and Console before distributing the new client JavaScript;
+older servers skip HTTP_RESPONSE events. No database migration is required.
 
 ## How the server accepts reports
 

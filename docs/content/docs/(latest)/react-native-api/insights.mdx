@@ -87,6 +87,7 @@ ID. Choose an ID that fits your data policy; see
 | `UPDATE_APPLIED`    | A staged update became active at launch.                                                                                   |
 | `RECOVERED`         | Native crash recovery rolled back a failed update at launch.                                                               |
 | `UPDATE_FAILED`     | An update check, download, or install failed.                                                                              |
+| `HTTP_RESPONSE` | Every catalog and artifact API response, regardless of HTTP status. |
 
 A same-bundle Release adoption, which needs no download, is also reported as
 `UNCHANGED`, with the Release it replaced as `fromReleaseId`.
@@ -115,6 +116,20 @@ is sent again at the next launch or check.
 
 The server applies the same rule, so Console launch counts are daily active
 installations. See [how the server counts reports](/docs/guides/insights#what-the-app-reports).
+
+### HTTP responses
+
+`HTTP_RESPONSE` records each catalog and artifact API response, including 200,
+304, and errors. Its `metadata.httpResponse` contains `resource`, request `path`,
+`status`, raw text `body`, and `bodyTruncated`. Bodies are capped at 4 KiB of
+JSON-encoded text without splitting Unicode. An empty body is `""`; a body that
+could not be read is `null`. Headers and URL query parameters are omitted.
+
+These reports have unique IDs per request, follow the same delivery retries,
+and never change launch deduplication, installation state, or update metrics.
+Older servers that reject HTTP_RESPONSE with 400 are skipped without warnings.
+The Console lists these records in event and installation history. Native file
+downloads, requests with no HTTP response, and telemetry requests are excluded.
 
 ### Update failures
 
@@ -154,6 +169,11 @@ history, and a selection that a newer check replaced are
 the plugin reports none of them.
 
 Console event history shows the original message and an expandable stack trace.
+For failed Release Catalog and artifact API requests, the message includes the
+server's response body as text alongside the HTTP status. JSON error responses
+are kept as JSON text within the same message limit. If the body cannot be read,
+the HTTP status is still reported. These are client-observed errors, not the
+server's internal logs or stack traces unless it returns them in its response.
 Error text is not categorized or redacted; only oversized text is truncated,
 with an ellipsis. Reports from older clients remain readable, but missing error
 text cannot be reconstructed. Upgrade the Insights client, server plugin, and
@@ -225,12 +245,13 @@ field:
 | `userId`                        | The ID from `setUser`; absent without one.                                                                                                                             |
 | `fromBundleId`, `fromReleaseId` | The bundle and Release the app ran before the transition; for `UPDATE_FAILED`, the ones it runs. For `UNCHANGED`, `fromBundleId` is `null`, and `fromReleaseId` is the Release a same-bundle adoption replaced, or `null`. |
 | `toBundleId`, `toReleaseId`     | The bundle and Release the transition moved to; for `UNCHANGED`, the ones the app runs; for `UPDATE_FAILED`, the update's target, or the running bundle for a failed check. `toReleaseId` is `null` without a Release. |
-| `updateStrategy`                | `appVersion` or `fingerprint`; `null` for `UNCHANGED`.                                                                                                                 |
+| `updateStrategy`                | `appVersion` or `fingerprint`; `null` for `UNCHANGED` and `HTTP_RESPONSE`.                                                                                                                 |
 | `metadata`                      | Details by report type, described below; absent for `UNCHANGED` and `UPDATE_APPLIED`.                                                                                 |
 
 | Report              | `metadata`                                                                                                                                                  |
 | ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `UPDATE_DOWNLOADED` | `delivery`: `patch`, `manifest`, or `archive`, as in [`onBundleDownloaded`](/docs/react-native-api/client-plugins#onbundledownloaded); `patchFallback: true` when a patch was tried but a file or the archive was downloaded instead. |
+| `HTTP_RESPONSE`     | `httpResponse`: `resource`, `path`, `status`, `body`, and `bodyTruncated`. Both bundle IDs name the running bundle; Release IDs are `null`. |
 | `RECOVERED`         | `previousProcessExit` when native knows why the previous process exited.                                                                                    |
 | `UPDATE_FAILED`     | `failure`: `stage` and `reason`, plus `errorMessage`, `errorStack`, `resource`, `httpStatus`, `originCode`, `transport`, and `previousProcessExit` when known.                              |
 

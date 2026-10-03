@@ -3,19 +3,44 @@ import {
   Check,
   ChevronDown,
   CircleAlert,
+  Code,
+  Copy,
   Download,
   RotateCcw,
 } from "lucide-react";
 import { useEffect, useState } from "react";
+import { toast } from "sonner";
 
 import { HashValueDisplay } from "@/components/HashValueDisplay";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import {
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyTitle,
+} from "@/components/ui/empty";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from "@/components/ui/sheet";
 import { describeFailure } from "@/lib/insights-failures";
 import type { InsightsEventRow } from "@/lib/insights-view";
+import { cn } from "@/lib/utils";
 
 type EventHistoryRow = InsightsEventRow;
 
 const eventTypes = {
+  HTTP_RESPONSE: {
+    label: "HTTP response",
+    description: "An update server API response.",
+    variant: "secondary",
+    icon: Code,
+  },
   UPDATE_DOWNLOADED: {
     label: "Downloaded",
     description:
@@ -123,7 +148,12 @@ const deliveries: Readonly<Record<string, string>> = {
 const eventNote = (
   event: Pick<
     EventHistoryRow,
-    "type" | "failure" | "delivery" | "patchFallback" | "previousProcessExit"
+    | "type"
+    | "failure"
+    | "delivery"
+    | "patchFallback"
+    | "previousProcessExit"
+    | "httpResponse"
   >,
 ): string | null => {
   if (event.type === "UPDATE_FAILED" && event.failure) {
@@ -141,14 +171,166 @@ const eventNote = (
   return null;
 };
 
-export function EventTypeDetails({
-  event,
-}: {
-  readonly event: Pick<
-    EventHistoryRow,
-    "type" | "failure" | "delivery" | "patchFallback" | "previousProcessExit"
-  >;
-}) {
+type EventDetail = Pick<EventHistoryRow, "type"> & Partial<EventHistoryRow>;
+
+function HttpResponseDetails({ event }: { readonly event: EventDetail }) {
+  const response = event.httpResponse!;
+  const formatter = useInsightsTimeFormat();
+  const status =
+    response.status === 304
+      ? "Not modified"
+      : response.status >= 500
+        ? "Server error"
+        : response.status >= 400
+          ? "Request error"
+          : response.status >= 300
+            ? "Redirect"
+            : "Success";
+  const resource = response.resource === "catalog" ? "Catalog" : "Artifact";
+  const context = [
+    [
+      "App",
+      event.platform &&
+        `${event.platform === "ios" ? "iOS" : "Android"} ${event.appVersion}`,
+    ],
+    ["Channel", event.channel],
+    ["SDK", event.sdkVersion],
+    ["Installation", event.installId],
+  ].filter(([, value]) => value != null);
+  const copyBody = async () => {
+    try {
+      await navigator.clipboard.writeText(response.body!);
+      toast.success("Response body copied");
+    } catch {
+      toast.error("Could not copy the response body");
+    }
+  };
+  return (
+    <div className="flex min-w-0 flex-col items-start gap-2">
+      <Badge
+        variant={response.status >= 400 ? "destructive" : "secondary"}
+        className="gap-1 whitespace-nowrap [&_svg]:size-3"
+      >
+        <Code aria-hidden="true" /> HTTP {response.status}
+      </Badge>
+      <Sheet>
+        <SheetTrigger
+          aria-label={`View ${resource.toLowerCase()} response: HTTP ${response.status}`}
+          render={
+            <Button
+              variant="link"
+              className="h-auto min-h-11 w-full max-w-56 justify-start px-0 text-left whitespace-normal"
+            />
+          }
+        >
+          <span className="flex min-w-0 flex-col gap-1">
+            <span className="text-xs font-normal text-muted-foreground">
+              {resource} · {status}
+            </span>
+            <span
+              className="truncate font-mono text-xs"
+              title={`GET ${response.path}`}
+            >
+              GET {response.path}
+            </span>
+          </span>
+        </SheetTrigger>
+        <SheetContent className="data-[side=right]:w-full data-[side=right]:sm:max-w-2xl">
+          <SheetHeader className="border-b pr-14">
+            <SheetTitle>HTTP response</SheetTitle>
+            <SheetDescription>
+              {resource} · HTTP {response.status} · {status}
+            </SheetDescription>
+          </SheetHeader>
+          <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto p-6">
+            <section
+              aria-label="Request"
+              className="flex min-w-0 flex-col gap-2"
+            >
+              <h3 className="text-sm font-medium">Request</h3>
+              <p className="font-mono text-xs leading-relaxed whitespace-pre-wrap wrap-anywhere">
+                GET {response.path}
+              </p>
+              {event.receivedAtMs != null ? (
+                <div className="text-xs text-muted-foreground">
+                  <EventTimestamp
+                    value={event.receivedAtMs}
+                    formatter={formatter}
+                  />
+                </div>
+              ) : null}
+            </section>
+            <section
+              aria-label="Response body"
+              className="flex min-w-0 flex-col gap-3"
+            >
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <h3 className="text-sm font-medium">Response body</h3>
+                <Button
+                  variant="outline"
+                  className="min-h-11"
+                  disabled={response.body === null || response.body === ""}
+                  onClick={() => void copyBody()}
+                >
+                  <Copy aria-hidden="true" data-icon="inline-start" /> Copy body
+                </Button>
+              </div>
+              {response.bodyTruncated ? (
+                <p className="text-xs text-muted-foreground">
+                  Truncated to the 4 KiB reporting limit. Copy includes only the
+                  stored text.
+                </p>
+              ) : null}
+              {response.body ? (
+                <pre className="rounded-md border bg-muted/30 p-4 font-mono text-xs leading-relaxed whitespace-pre-wrap wrap-anywhere">
+                  {response.body}
+                </pre>
+              ) : (
+                <Empty>
+                  <EmptyHeader>
+                    <EmptyTitle>
+                      {response.body === null
+                        ? "Response body unavailable"
+                        : "Empty response body"}
+                    </EmptyTitle>
+                    <EmptyDescription>
+                      {response.body === null
+                        ? "The client received the HTTP status but could not read the body."
+                        : response.status === 304
+                          ? "The server returned no body. The client can reuse its cached catalog."
+                          : "The server returned no text in this response."}
+                    </EmptyDescription>
+                  </EmptyHeader>
+                </Empty>
+              )}
+            </section>
+            {context.length ? (
+              <section
+                aria-label="Response context"
+                className="flex flex-col gap-3"
+              >
+                <h3 className="text-sm font-medium">Response context</h3>
+                <dl className="grid grid-cols-2 gap-x-6 gap-y-4">
+                  {context.map(([label, value]) => (
+                    <div key={label} className="min-w-0">
+                      <dt className="text-xs text-muted-foreground">{label}</dt>
+                      <dd className="mt-1 text-sm wrap-anywhere">{value}</dd>
+                    </div>
+                  ))}
+                </dl>
+              </section>
+            ) : null}
+          </div>
+        </SheetContent>
+      </Sheet>
+    </div>
+  );
+}
+
+export function EventTypeDetails({ event }: { readonly event: EventDetail }) {
+  if (event.type === "HTTP_RESPONSE" && event.httpResponse) {
+    return <HttpResponseDetails event={event} />;
+  }
   const eventType = eventTypes[event.type];
   const Icon = eventType.icon;
   const note = eventNote(event);
@@ -161,7 +343,13 @@ export function EventTypeDetails({
         <Icon aria-hidden="true" />
         {eventType.label}
       </Badge>
-      <p className="max-w-56 whitespace-pre-wrap wrap-anywhere text-xs text-muted-foreground">
+      <p
+        className={cn(
+          "max-w-56 whitespace-pre-wrap wrap-anywhere text-xs text-muted-foreground",
+          event.type === "UPDATE_FAILED" && "line-clamp-3",
+        )}
+        title={note ?? undefined}
+      >
         {event.type === "UPDATE_FAILED" && note ? note : eventType.description}
       </p>
       {event.type === "UPDATE_FAILED" && event.failure?.errorStack ? (

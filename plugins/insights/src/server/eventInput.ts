@@ -1,4 +1,5 @@
 import { createUUIDv7, isUUIDv7 } from "@hot-updater/plugin-core";
+import type { UpdateHttpResponse } from "@hot-updater/protocol";
 
 import type {
   BundleEventFailureInput,
@@ -157,6 +158,31 @@ function readFailure(value: unknown): BundleEventFailureInput {
   };
 }
 
+function readHttpResponse(value: unknown): UpdateHttpResponse {
+  if (
+    !isRecord(value) ||
+    (value.resource !== "catalog" && value.resource !== "artifact") ||
+    typeof value.path !== "string" ||
+    value.path.length > 1_024 ||
+    !Number.isSafeInteger(value.status) ||
+    (value.status as number) < 100 ||
+    (value.status as number) > 599 ||
+    (value.body !== null &&
+      (typeof value.body !== "string" ||
+        new TextEncoder().encode(JSON.stringify(value.body)).byteLength >
+          4_096)) ||
+    typeof value.bodyTruncated !== "boolean"
+  )
+    throw new InsightsBadRequestError("Invalid HTTP response details");
+  return {
+    resource: value.resource,
+    path: value.path,
+    status: value.status as number,
+    body: value.body as string | null,
+    bodyTruncated: value.bodyTruncated,
+  };
+}
+
 async function readBoundedText(request: Request): Promise<string> {
   const contentLength = request.headers.get("content-length");
   const declaredByteLength = Number(contentLength);
@@ -241,6 +267,16 @@ function requireEvent(payload: unknown): CreateBundleEventRequest {
   };
   const metadata = readMetadata(payload);
   switch (type) {
+    case "HTTP_RESPONSE":
+      if (payload.updateStrategy !== null)
+        throw new InsightsBadRequestError("Invalid HTTP response event shape");
+      return {
+        ...base,
+        type,
+        fromBundleId: requireStringField(payload, "fromBundleId"),
+        updateStrategy: null,
+        metadata: { httpResponse: readHttpResponse(metadata.httpResponse) },
+      };
     case "UPDATE_DOWNLOADED": {
       const delivery = metadata.delivery;
       const read = {
@@ -319,6 +355,18 @@ export function createBundleEventRow(
     update_strategy: input.updateStrategy,
   };
   switch (input.type) {
+    case "HTTP_RESPONSE": {
+      const { bodyTruncated, ...response } = input.metadata.httpResponse;
+      return {
+        ...base,
+        type: input.type,
+        from_bundle_id: input.fromBundleId,
+        metadata: {
+          ...metadata,
+          http_response: { ...response, body_truncated: bodyTruncated },
+        },
+      };
+    }
     case "UPDATE_DOWNLOADED": {
       const { delivery, patchFallback } = input.metadata ?? {};
       return {

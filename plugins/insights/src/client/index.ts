@@ -6,9 +6,10 @@ import {
   type HotUpdaterClientPlugin,
   type UpdateCheckResult,
   type UpdateError,
+  type UpdateHttpResponse,
 } from "@hot-updater/protocol";
 
-import { readErrorDetails } from "./errorDetails";
+import { boundedText, readErrorDetails } from "./errorDetails";
 import { createKeyedUUIDv7, createUUIDv7 } from "./eventId";
 import {
   createInsightsEventSender,
@@ -311,6 +312,31 @@ export const insights = (options: InsightsOptions = {}): InsightsPlugin => {
     enqueue(event === null ? null : { ...event, failureKey });
   };
 
+  const onHttpResponse = (response: UpdateHttpResponse) => {
+    if (context === null) return;
+    const body =
+      response.body === null ? null : boundedText(response.body, 4_096);
+    enqueue(
+      createEvent({
+        type: "HTTP_RESPONSE",
+        channel: context.getChannel(),
+        fromBundleId: context.getBundleId(),
+        fromReleaseId: null,
+        toBundleId: context.getBundleId(),
+        toReleaseId: null,
+        updateStrategy: null,
+        metadata: {
+          httpResponse: {
+            ...response,
+            path: boundedText(response.path, 1_024),
+            body,
+            bodyTruncated: response.bodyTruncated || body !== response.body,
+          },
+        },
+      }),
+    );
+  };
+
   const admit = (body: InsightsEventBody): boolean => {
     const event = pending.get(body);
     if (event === undefined || state === null || context === null) {
@@ -340,6 +366,8 @@ export const insights = (options: InsightsOptions = {}): InsightsPlugin => {
       state.pause(context.now());
       return;
     }
+    // HTTP diagnostics never change launch deduplication or installation state.
+    if (body.type === "HTTP_RESPONSE") return;
     if (event.failureKey !== null) {
       state.recordFailure(event.day, event.failureKey);
     }
@@ -361,7 +389,13 @@ export const insights = (options: InsightsOptions = {}): InsightsPlugin => {
       if (pluginContext.isDebugBuild && options.debug !== true) return;
 
       send = createInsightsEventSender(pluginContext.fetch, { admit, settle });
-      return { onAppReady, onUpdateCheck, onBundleDownloaded, onUpdateError };
+      return {
+        onAppReady,
+        onUpdateCheck,
+        onBundleDownloaded,
+        onUpdateError,
+        onHttpResponse,
+      };
     },
     setUser(user) {
       const userId = normalizeUserId(user);

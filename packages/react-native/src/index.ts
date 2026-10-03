@@ -57,6 +57,7 @@ export {
   type UpdateError,
   type UpdateErrorReason,
   type UpdateErrorStage,
+  type UpdateHttpResponse,
   type UpdateStrategy,
 } from "./clientPlugin";
 // The built-in Insights client plugin, for HotUpdater.init({ plugins }).
@@ -181,7 +182,9 @@ function createHotUpdaterClient() {
       const { baseURL, plugins: _plugins, ...rest } = autoOptions;
       return {
         ...rest,
-        client: createHttpClient(baseURL),
+        client: createHttpClient(baseURL, (response) => {
+          emitAfterAppReady("onHttpResponse", () => response);
+        }),
       };
     }
 
@@ -200,7 +203,9 @@ function createHotUpdaterClient() {
       const { baseURL, plugins: _plugins, ...baseURLRest } = rest;
       return {
         ...baseURLRest,
-        client: createHttpClient(baseURL),
+        client: createHttpClient(baseURL, (response) => {
+          emitAfterAppReady("onHttpResponse", () => response);
+        }),
       };
     }
 

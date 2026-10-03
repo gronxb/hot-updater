@@ -140,6 +140,96 @@ export const setupInsightsHttpTestSuite = (options: {
       }, [1, 1]);
     });
 
+    it("stores successful, cached, and failed HTTP responses without changing installation state or failures", async () => {
+      const client = options.getClient();
+      const installId = `install-${crypto.randomUUID()}`;
+      const channel = `responses-${crypto.randomUUID()}`;
+      const bundleId = "00000000-0000-7000-8000-000000000001";
+      const base = {
+        appVersion: "1.0.0",
+        channel,
+        cohort: "default",
+        fingerprintHash: null,
+        fromReleaseId: null,
+        installId,
+        platform: "ios",
+        toBundleId: bundleId,
+        toReleaseId: null,
+        updateStrategy: null,
+        sdkVersion: "test-sdk",
+      };
+      const launch = await client.client(
+        "/events",
+        jsonRequest("POST", { ...base, type: "UNCHANGED", fromBundleId: null }),
+      );
+      expect(launch.status).toBe(204);
+      await launch.text();
+      for (const status of [200, 304, 503]) {
+        const report = {
+          ...base,
+          eventId: `00000000-0000-7000-8000-${crypto.randomUUID().replaceAll("-", "").slice(0, 12)}`,
+          type: "HTTP_RESPONSE",
+          fromBundleId: bundleId,
+          metadata: {
+            httpResponse: {
+              resource: "catalog",
+              path: "/release-catalogs/app-version/ios/production/1.0.0",
+              status,
+              body: status === 304 ? "" : '{"message":"server reply"}',
+              bodyTruncated: false,
+            },
+          },
+        };
+        for (let attempt = 0; attempt < 2; attempt++) {
+          const response = await client.client(
+            "/events",
+            jsonRequest("POST", report),
+          );
+          expect(response.status).toBe(204);
+          await response.text();
+        }
+      }
+      await expectInsightsIndex(async () => {
+        const page = await client.admin(
+          `/installations/${encodeURIComponent(installId)}/events?limit=10`,
+        );
+        expect(page.status).toBe(200);
+        const { data } = (await page.json()) as {
+          data: {
+            type: string;
+            httpResponse: { status: number; body: string };
+          }[];
+        };
+        expect(data.every(({ type }) => type === "HTTP_RESPONSE")).toBe(true);
+        return data
+          .map(({ httpResponse }) => ({
+            status: httpResponse.status,
+            body: httpResponse.body,
+          }))
+          .sort((a, b) => a.status - b.status);
+      }, [
+        { status: 200, body: '{"message":"server reply"}' },
+        { status: 304, body: "" },
+        { status: 503, body: '{"message":"server reply"}' },
+      ]);
+      const installation = await client.admin(
+        `/installations/${encodeURIComponent(installId)}`,
+      );
+      expect(await installation.json()).toMatchObject({
+        latestStatus: "UNCHANGED",
+        lastKnownBundleId: bundleId,
+      });
+      const now = Date.now();
+      const failures = await client.admin(
+        `/failures?platform=ios&channel=${encodeURIComponent(channel)}&start=${now - 86_400_000}&end=${now + 3_600_000}`,
+      );
+      expect(failures.status).toBe(200);
+      expect(await failures.json()).toMatchObject({
+        failedUpdates: 0,
+        failedInstallations: 0,
+      });
+    });
+
     it("refuses a malformed event", async () => {
       const response = await options
         .getClient()

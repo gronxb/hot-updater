@@ -53,6 +53,14 @@ export type BundleEventFailure = DatabaseJsonObject & {
   readonly previous_process_exit?: string;
 };
 
+export type DatabaseHttpResponse = DatabaseJsonObject & {
+  readonly resource: "catalog" | "artifact";
+  readonly path: string;
+  readonly status: number;
+  readonly body: string | null;
+  readonly body_truncated: boolean;
+};
+
 /** Ancillary report data; queryable identity and lifecycle fields stay on the row. */
 export type DatabaseBundleEventMetadata = DatabaseJsonObject & {
   readonly cohort: string;
@@ -61,6 +69,7 @@ export type DatabaseBundleEventMetadata = DatabaseJsonObject & {
   readonly sdk_version: string | null;
   /** `UPDATE_FAILED`: what failed. */
   readonly failure?: BundleEventFailure;
+  readonly http_response?: DatabaseHttpResponse;
   /** `UPDATE_DOWNLOADED`: how the bundle arrived. */
   readonly delivery?: "patch" | "manifest" | "archive" | "unknown";
   /** `UPDATE_DOWNLOADED`: a patch failed and the full files came instead. */
@@ -93,6 +102,7 @@ export type BundleEventRow = BundleEventRowBase &
     /** An update that failed: `from` is the running bundle, `to` the target (for a check, the running bundle). */
     | { readonly type: "UPDATE_FAILED"; readonly from_bundle_id: string }
     | { readonly type: "UNCHANGED"; readonly from_bundle_id: null }
+    | { readonly type: "HTTP_RESPONSE"; readonly from_bundle_id: string }
   );
 
 const isOptional = (
@@ -102,6 +112,14 @@ const isOptional = (
 ) => !Object.hasOwn(value, key) || valid(value[key]);
 
 const isString = (value: unknown) => typeof value === "string";
+
+const isDatabaseHttpResponse = (value: unknown): boolean =>
+  isDatabaseJsonObject(value) &&
+  (value.resource === "catalog" || value.resource === "artifact") &&
+  isString(value.path) &&
+  Number.isSafeInteger(value.status) &&
+  (value.body === null || isString(value.body)) &&
+  typeof value.body_truncated === "boolean";
 
 /** An `UPDATE_FAILED` report's stored failure: a stage and a reason, and what else the client knew. */
 const isDatabaseBundleEventFailure = (value: unknown): boolean =>
@@ -128,6 +146,7 @@ export const isDatabaseBundleEventMetadata = (
     typeof value.fingerprint_hash === "string") &&
   (value.sdk_version === null || typeof value.sdk_version === "string") &&
   isOptional(value, "failure", isDatabaseBundleEventFailure) &&
+  isOptional(value, "http_response", isDatabaseHttpResponse) &&
   isOptional(value, "delivery", isString) &&
   isOptional(value, "patch_fallback", (flag) => typeof flag === "boolean") &&
   isOptional(value, "previous_process_exit", isString);
@@ -153,7 +172,8 @@ const BUNDLE_EVENT_FIELDS: Readonly<
     value === "UPDATE_APPLIED" ||
     value === "RECOVERED" ||
     value === "UPDATE_FAILED" ||
-    value === "UNCHANGED",
+    value === "UNCHANGED" ||
+    value === "HTTP_RESPONSE",
   install_id: isIdentity,
   user_id: (value) => value === null || isIdentity(value),
   from_bundle_id: isTextOrNull,
@@ -186,6 +206,11 @@ const hasEventInvariants = (row: Readonly<Record<string, unknown>>) =>
       updateStrategyOf(row) === "appVersion") &&
     (row.type !== "UPDATE_FAILED" ||
       (isRecord(row.metadata) && isRecord(row.metadata.failure)))) ||
+  (row.type === "HTTP_RESPONSE" &&
+    typeof row.from_bundle_id === "string" &&
+    updateStrategyOf(row) === null &&
+    isRecord(row.metadata) &&
+    isRecord(row.metadata.http_response)) ||
   (row.type === "UNCHANGED" &&
     row.from_bundle_id === null &&
     updateStrategyOf(row) === null);

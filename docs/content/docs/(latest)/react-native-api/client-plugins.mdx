@@ -72,14 +72,15 @@ export const launchLogger = () =>
 | `onAppReady(result)`       | Once per JavaScript runtime, after native launch verification finishes. |
 | `onUpdateCheck(result)`    | After each update check, and after a same-bundle Release adoption commits. |
 | `onBundleDownloaded(info)` | After the SDK downloads, verifies, and stages a new bundle.              |
+| `onHttpResponse(response)` | After each catalog or artifact HTTP response, including successful and cached responses. |
 | `onUpdateError(error)`     | When an update check, download, or install fails.                        |
 
-Hooks for checks, downloads, and failures always arrive after the
+Hooks for checks, downloads, HTTP responses, and failures always arrive after the
 `onAppReady` of their JavaScript runtime, so a plugin sees the launch first. A
 check that finds nothing calls `onUpdateCheck`; a check that fails calls
 `onUpdateError` instead. `@hot-updater/react-native` exports the event types
 `AppReadyResult`, `UpdateCheckResult`, `BundleDownloadedInfo`, and
-`UpdateError`.
+`UpdateError`, and `UpdateHttpResponse`.
 
 ### `onAppReady`
 
@@ -168,6 +169,16 @@ says how it arrived: `patch` when a bsdiff patch produced a file, `manifest`
 when only the changed files were downloaded, and `archive` for the full
 archive. `patchFallback` is `true` when a patch was tried but the file or the
 archive was downloaded instead.
+
+### `onHttpResponse`
+
+Receives an `UpdateHttpResponse` for every catalog or artifact API response,
+including HTTP 200, 304, and server errors. The event contains `resource`,
+request `path`, `status`, raw text `body`, and `bodyTruncated`. The SDK passes
+an empty body as `""` and an unreadable body as `null`. Request headers and URL
+query parameters are omitted. The Insights plugin bounds stored bodies to
+4 KiB of JSON text and marks truncation. Native file downloads and plugin
+reporting requests do not call this hook.
 
 ### `onUpdateError`
 
@@ -442,7 +453,7 @@ The runtime it returns:
 
 | Member          | Meaning                                                                                                                                                           |
 | --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `hooks`         | `onAppReady`, `onUpdateCheck`, `onBundleDownloaded`, and `onUpdateError`. A call returns without waiting for the hook, as in the app.                             |
+| `hooks`         | `onAppReady`, `onUpdateCheck`, `onBundleDownloaded`, `onUpdateError`, and `onHttpResponse`. A call returns without waiting for the hook, as in the app.                             |
 | `settled()`     | Waits for the hooks called so far and the requests they started. It does not run timers; advance fake timers to reach a retry or a delay.                         |
 | `requests`      | Each `context.fetch` as the server receives it: `url`, `path` after `baseURL`, `method`, lowercase `headers` with `requestHeaders` applied, `body`, and `json()`. |
 | `errors`        | What the SDK reports to `onError`: each `setup` or hook that threw or rejected, with the plugin's error as `cause`.                                               |

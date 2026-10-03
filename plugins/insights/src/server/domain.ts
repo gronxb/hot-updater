@@ -1,3 +1,5 @@
+import type { UpdateHttpResponse } from "@hot-updater/protocol";
+
 import type {
   BundleEventFailure,
   BundleEventFailureReason,
@@ -58,6 +60,12 @@ type Movement = CreateBundleEventRequestBase & {
 };
 
 export type CreateBundleEventRequest =
+  | (CreateBundleEventRequestBase & {
+      readonly type: "HTTP_RESPONSE";
+      readonly fromBundleId: string;
+      readonly updateStrategy: null;
+      readonly metadata: { readonly httpResponse: UpdateHttpResponse };
+    })
   | (Movement & {
       readonly type: "UPDATE_DOWNLOADED";
       readonly metadata?: {
@@ -103,7 +111,8 @@ export type EventHistoryRow = {
     | "UPDATE_APPLIED"
     | "RECOVERED"
     | "UPDATE_FAILED"
-    | "UNCHANGED";
+    | "UNCHANGED"
+    | "HTTP_RESPONSE";
   readonly fromBundleId: string | null;
   readonly toBundleId: string;
   readonly userId: string | null;
@@ -112,6 +121,7 @@ export type EventHistoryRow = {
   readonly channel: string;
   readonly cohort: string;
   readonly receivedAtMs: number;
+  readonly httpResponse?: UpdateHttpResponse;
   /** `UPDATE_FAILED`: where the update failed and why. */
   readonly failure?: BundleEventFailureInput;
   /** `UPDATE_DOWNLOADED`: how the bundle arrived, when the client said. */
@@ -127,7 +137,8 @@ export type InstallationHistoryRow = EventHistoryRow & {
     | "UPDATE_DOWNLOADED"
     | "UPDATE_APPLIED"
     | "RECOVERED"
-    | "UPDATE_FAILED";
+    | "UPDATE_FAILED"
+    | "HTTP_RESPONSE";
   readonly fromBundleId: string;
 };
 

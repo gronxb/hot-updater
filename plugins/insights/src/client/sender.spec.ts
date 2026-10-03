@@ -132,20 +132,23 @@ describe("Insights event delivery", () => {
     );
   });
 
-  it("settles an UPDATE_FAILED event an older server refuses with 400, without retrying", async () => {
-    const { fetchMock } = stubEventsEndpoint(400);
-    const gate = openGate();
-    const send = createInsightsEventSender(fetchMock, gate);
+  it.each(["UPDATE_FAILED", "HTTP_RESPONSE"] as const)(
+    "settles a %s event an older server refuses with 400, without retrying",
+    async (type) => {
+      const { fetchMock } = stubEventsEndpoint(400);
+      const gate = openGate();
+      const send = createInsightsEventSender(fetchMock, gate);
 
-    await send({ ...unchangedEvent(), type: "UPDATE_FAILED" });
-    await vi.runAllTimersAsync();
+      await send({ ...unchangedEvent(), type });
+      await vi.runAllTimersAsync();
 
-    expect(fetchMock).toHaveBeenCalledOnce();
-    expect(gate.settle).toHaveBeenCalledWith(
-      expect.objectContaining({ type: "UPDATE_FAILED" }),
-      "refused",
-    );
-  });
+      expect(fetchMock).toHaveBeenCalledOnce();
+      expect(gate.settle).toHaveBeenCalledWith(
+        expect.objectContaining({ type }),
+        "refused",
+      );
+    },
+  );
 
   it("settles a 404, from a server without Insights, as Insights off without retrying", async () => {
     const { fetchMock } = stubEventsEndpoint(404);

@@ -1,5 +1,12 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  within,
+  waitFor,
+} from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   EventBundleTransition,
@@ -170,6 +177,101 @@ describe("Insights event details", () => {
     ).toBeDefined();
     expect(screen.queryByText("Stack trace")).toBeNull();
   });
+
+  it("opens a server response as literal text and copies its stored body with context", async () => {
+    const body =
+      '<html><script>alert("failure")</script>Upstream unavailable</html>';
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    vi.stubGlobal("navigator", { ...navigator, clipboard: { writeText } });
+    render(
+      <EventTypeDetails
+        event={{
+          type: "HTTP_RESPONSE",
+          platform: "ios",
+          appVersion: "1.6.0",
+          sdkVersion: "1.0.0-rc.29",
+          channel: "production",
+          installId: "device-1",
+          httpResponse: {
+            resource: "catalog",
+            path: "/release-catalogs/app-version/ios/production/1.6.0",
+            status: 503,
+            body,
+            bodyTruncated: true,
+          },
+        }}
+      />,
+    );
+    expect(screen.queryByRole("dialog")).toBeNull();
+    fireEvent.click(
+      screen.getByRole("button", { name: "View catalog response: HTTP 503" }),
+    );
+    const dialog = await screen.findByRole("dialog", { name: "HTTP response" });
+    expect(dialog.querySelector("pre")?.textContent).toBe(body);
+    expect(dialog.querySelector("script")).toBeNull();
+    expect(within(dialog).getByText(/Truncated to the 4 KiB/)).toBeDefined();
+    expect(within(dialog).getByText("iOS 1.6.0")).toBeDefined();
+    expect(within(dialog).getByText("device-1")).toBeDefined();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Copy body" }));
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith(body));
+    vi.unstubAllGlobals();
+  });
+
+  it.each([
+    { status: 200, body: '{"releases":[]}', label: "Success", empty: null },
+    {
+      status: 304,
+      body: "",
+      label: "Not modified",
+      empty: "Empty response body",
+    },
+    {
+      status: 502,
+      body: null,
+      label: "Server error",
+      empty: "Response body unavailable",
+    },
+  ])(
+    "distinguishes HTTP $status and its body availability",
+    async ({ status, body, label, empty }) => {
+      render(
+        <EventTypeDetails
+          event={{
+            type: "HTTP_RESPONSE",
+            httpResponse: {
+              resource: "catalog",
+              path: "/catalog",
+              status,
+              body,
+              bodyTruncated: false,
+            },
+          }}
+        />,
+      );
+      expect(screen.getByText(`Catalog · ${label}`)).toBeDefined();
+      expect(screen.getByText(`HTTP ${status}`).className).toContain(
+        status >= 400 ? "bg-destructive" : "bg-secondary",
+      );
+      fireEvent.click(
+        screen.getByRole("button", {
+          name: `View catalog response: HTTP ${status}`,
+        }),
+      );
+      const dialog = await screen.findByRole("dialog", {
+        name: "HTTP response",
+      });
+      if (empty) {
+        expect(within(dialog).getByText(empty)).toBeDefined();
+        expect(
+          within(dialog)
+            .getByRole("button", { name: "Copy body" })
+            .hasAttribute("disabled"),
+        ).toBe(true);
+      } else {
+        expect(dialog.querySelector("pre")?.textContent).toBe(body);
+      }
+    },
+  );
 
   it("notes how a download arrived and why a crashed process exited", () => {
     const view = render(

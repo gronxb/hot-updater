@@ -140,6 +140,66 @@ describe("insights() client plugin", () => {
     vi.restoreAllMocks();
   });
 
+  it("records every HTTP response without resetting daily launch deduplication", async () => {
+    const app = await launch();
+    app.appReady(unchangedLaunch());
+    await flush();
+    for (const status of [200, 304, 503, 503]) {
+      app.runtime.hooks.onHttpResponse({
+        resource: "catalog",
+        path: "/release-catalogs/app-version/ios/production/1.0.0",
+        status,
+        body: status === 304 ? "" : '{"message":"server response"}',
+        bodyTruncated: false,
+      });
+    }
+    await flush();
+    app.updateCheck({
+      status: "UNCHANGED",
+      channel: "production",
+      bundleId: "bundle-a",
+      releaseId: "release-a",
+      previousReleaseId: "release-a",
+    });
+    await flush();
+    const events = sentEvents();
+    expect(events.filter(({ type }) => type === "UNCHANGED")).toHaveLength(1);
+    const responses = events.filter(({ type }) => type === "HTTP_RESPONSE");
+    expect(
+      responses.map(({ metadata }) => metadata?.httpResponse?.status),
+    ).toEqual([200, 304, 503, 503]);
+    expect(new Set(responses.map(({ eventId }) => eventId)).size).toBe(4);
+    expect(responses[0]?.metadata?.httpResponse?.body).toBe(
+      '{"message":"server response"}',
+    );
+  });
+
+  it("bounds response JSON bytes and distinguishes truncated, empty, and unreadable bodies", async () => {
+    const app = await launch();
+    for (const body of ["한😀".repeat(2_000), "", null]) {
+      app.runtime.hooks.onHttpResponse({
+        resource: "artifact",
+        path: "/artifacts/v1/target/from/current",
+        status: 200,
+        body,
+        bodyTruncated: false,
+      });
+    }
+    await flush();
+    const responses = sentEvents().map(
+      ({ metadata }) => metadata?.httpResponse,
+    );
+    expect(
+      Buffer.byteLength(JSON.stringify(responses[0]?.body)),
+    ).toBeLessThanOrEqual(4_096);
+    expect(responses[0]?.bodyTruncated).toBe(true);
+    expect(responses[0]?.body?.isWellFormed()).toBe(true);
+    expect(responses.slice(1)).toMatchObject([
+      { body: "", bodyTruncated: false },
+      { body: null, bodyTruncated: false },
+    ]);
+  });
+
   it("posts a launch as UNCHANGED with the app's identity", async () => {
     const app = await launch();
 

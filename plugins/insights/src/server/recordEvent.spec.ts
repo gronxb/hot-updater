@@ -458,6 +458,50 @@ describe.each(backends)("insights recordEvent on %s", (_name, adapter) => {
     ]);
   });
 
+  it("keeps HTTP responses in raw history without changing usage, failure counts, or the installation head", async () => {
+    const { api, db, overview, failures, everyEvent } = await setup();
+    await api.recordEvent(unchanged(1));
+    const reports = [200, 304, 503].map((status, index) =>
+      event(index + 2, {
+        type: "HTTP_RESPONSE",
+        received_at_ms: T + index + 1,
+        metadata: {
+          ...event(1).metadata,
+          update_strategy: null,
+          http_response: {
+            resource: "catalog",
+            path: "/release-catalogs/example",
+            status,
+            body: status === 304 ? "" : '{"message":"server reply"}',
+            body_truncated: false,
+          },
+        },
+      }),
+    );
+    for (const report of reports) {
+      await api.recordEvent(report);
+      await api.recordEvent(report);
+    }
+    await expect(
+      db.findOne("bundle_event_heads", { install_id: "install-1" }),
+    ).resolves.toEqual(unchanged(1));
+    await expect(
+      overview(identity({ periodKind: "day" }), day(T), "day"),
+    ).resolves.toMatchObject({ launches: 1 });
+    await expect(failures()).resolves.toEqual([]);
+    await expect(everyEvent()).resolves.toMatchObject([{ events: 3 }]);
+    const range = { beforeReceivedAtMs: T + 10, sinceMs: T, limit: 10 };
+    await expect(
+      api.listEvents({ ...range, filter: { kind: "all" } }),
+    ).resolves.toEqual([...reports].reverse());
+    await expect(
+      api.listEvents({
+        ...range,
+        filter: { kind: "installationMovement", installId: "install-1" },
+      }),
+    ).resolves.toEqual([...reports].reverse());
+  });
+
   it("records an UNCHANGED report as a launch that no event or outcome row keeps", async () => {
     const { api, db, overview, outcomes, everyEvent, byBundle } = await setup();
     await api.recordEvent(unchanged(1));
