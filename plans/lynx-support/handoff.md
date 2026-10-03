@@ -22,10 +22,13 @@ helpers stop passing the obsolete `--no-interactive` flag. The follow-up unit
 run passes 4,999 tests (438 files; 15 skipped), plus E2E and example type checks. See the latest execution/PRD sections.
 The six public matrix cells and the fresh iOS run remain unvalidated.
 
-The six user-local helpers are temporarily saved in stash
-`56bfa058168799bb824fc657b85c2850b7615cfc` while FixCI runs. Restore them with
-`git stash apply --index` after integration finishes. Do not commit them or the
-untracked signing keys. The original pre-merge stash remains retained too.
+The six user-local helpers are restored to their staged state after the build,
+type and unit checks. Their cached patch matches the pre-FixCI backup exactly.
+Retain stash `56bfa058168799bb824fc657b85c2850b7615cfc` as backup; do not reapply it.
+The ongoing integration projects do not import these example helper files.
+Do not commit the helpers or untracked signing keys. A new build/type pass must
+isolate them again because the local-only TypeScript storage helper uses the
+older plugin API. The original pre-merge stash is also retained.
 
 The dashboard is running from exec session 41913 using its existing startup
 script because launchd could not open that script. Do not interrupt its jobs.

@@ -1502,3 +1502,10 @@ At 15:56 KST the original Android run reports seven passed and four failed,
 with 16 scenarios unfinished. Its source remains `b001e4c41d8d`; the new harness
 corrections require a separate fresh job. All 22 GitHub checks on that source
 passed. These are progress counts, not completion of G3.
+
+The six user-local helpers were restored with their staged index after the
+build, type and unit checks. `cmp` confirms their complete cached patch matches
+`/tmp/lynx-local-helpers-before-fixci-20261003.patch` exactly. The remaining
+integration projects do not import these example helpers. Both saved stashes
+remain backups, and signing keys remain untracked. Further build/type runs
+must isolate the local-only helpers again; they are not published PR contents.
