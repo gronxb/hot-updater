@@ -127,7 +127,7 @@ E2E command execution bottlenecks. Compare `providerBottlenecks[*].totalMs`,
 ## Default suite contract
 
 Full-platform `verify` reads
-`e2e/detox/default-scenario-names.json` from the exact checked-out PR commit.
+`e2e/scenario-names.json` from the exact checked-out PR commit.
 Adding a scenario to that manifest automatically includes it in every
 full-platform verification profile. A missing, empty, malformed, or duplicate
 manifest is a verification failure; do not replace it with an agent-side
