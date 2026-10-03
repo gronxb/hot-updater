@@ -12,6 +12,105 @@ const controllerPath = path.join(
 );
 
 describe("Detox remote asset proxy URLs", () => {
+  it("requires exactly one metadata transfer for a Lynx archive and rejects a substituted or repeated file", async () => {
+    const resultsDir = await fs.mkdtemp(
+      path.join(os.tmpdir(), "hot-updater-proxy-preflight-"),
+    );
+    vi.resetModules();
+    vi.stubEnv(
+      "HOT_UPDATER_E2E_APP_BASE_URL",
+      "https://provider.example.com/hot-updater",
+    );
+    vi.stubEnv("HOT_UPDATER_E2E_APP_ID", "com.hotupdater.lynxexample");
+    vi.stubEnv("HOT_UPDATER_E2E_DEVICE_ID", "booted");
+    vi.stubEnv("HOT_UPDATER_E2E_PLATFORM", "ios");
+    vi.stubEnv("HOT_UPDATER_E2E_RESULTS_DIR", resultsDir);
+    vi.stubEnv("PORT", "3107");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        if (String(input).includes("/artifacts/v1/")) {
+          return Response.json({
+            artifactProtocolVersion: 1,
+            archiveUrl: "https://storage.example.com/update.tar.br",
+            manifestUrl: "https://storage.example.com/manifest.json",
+            manifestFileHash: "manifest-hash",
+            assets: Object.fromEntries(
+              ["hot-updater-lynx.json", "pages/detail.bundle"].map((name) => [
+                name,
+                {
+                  fileHash: `hash-${name}`,
+                  file: { url: `https://storage.example.com/${name}` },
+                },
+              ]),
+            ),
+          });
+        }
+        return new Response("downloaded-bytes");
+      }),
+    );
+
+    try {
+      const controller = await import("./control-server/controller.ts");
+      const expected = {
+        archiveRequests: 1,
+        currentBundleId: "current",
+        fileRequests: "archive" as const,
+        maxRequestsPerAsset: 1,
+        patchRequests: 0,
+        targetBundleId: "target",
+      };
+      for (const file of ["pages/detail.bundle", "hot-updater-lynx.json"]) {
+        controller.handleConfigureProxy({ reset: true });
+        const response = await controller.handleProxyUpdateRequest(
+          new Request(
+            "http://localhost:3107/hot-updater/artifacts/v1/target/from/current",
+          ),
+        );
+        const artifact = (await response.json()) as {
+          archiveUrl: string;
+          assets: Record<string, { file: { url: string } }>;
+        };
+        await (
+          await controller.handleProxyRemoteAssetRequest(
+            new Request(artifact.archiveUrl),
+          )
+        ).arrayBuffer();
+        expect(() =>
+          controller.handleAssertBundleArtifactTransfers(expected),
+        ).toThrow("Unexpected Bundle artifact transfers");
+
+        const request = new Request(artifact.assets[file]!.file.url);
+        await (
+          await controller.handleProxyRemoteAssetRequest(request)
+        ).arrayBuffer();
+        if (file === "pages/detail.bundle") {
+          // The total is correct, but the required metadata was not fetched.
+          expect(() =>
+            controller.handleAssertBundleArtifactTransfers(expected),
+          ).toThrow("Unexpected Bundle artifact transfers");
+        } else {
+          expect(
+            controller.handleAssertBundleArtifactTransfers(expected),
+          ).toMatchObject({
+            expectedFilePaths: ["hot-updater-lynx.json"],
+            fileRequests: 1,
+          });
+          await (
+            await controller.handleProxyRemoteAssetRequest(request)
+          ).arrayBuffer();
+          expect(() =>
+            controller.handleAssertBundleArtifactTransfers(expected),
+          ).toThrow("Unexpected Bundle artifact transfers");
+        }
+      }
+    } finally {
+      vi.unstubAllEnvs();
+      vi.unstubAllGlobals();
+      await fs.rm(resultsDir, { force: true, recursive: true });
+    }
+  });
+
   it("does not expose the provider signed URL in the app-visible proxy URL", async () => {
     const controllerSource = await fs.readFile(controllerPath, "utf8");
 

@@ -81,6 +81,8 @@ import {
   captureArtifactSelectionEvidence,
   classifyArtifactSelectionHistory,
   collectManifestDiffLogs,
+  getExpectedArtifactFilePaths,
+  type ArtifactFileTransferMode,
   type ArtifactSelectionEvidence,
 } from "./manifest-diff-assertion.ts";
 import {
@@ -4179,7 +4181,7 @@ function getRemoteTransfer(url: string | null) {
 export function handleAssertBundleArtifactTransfers(input: {
   archiveRequests: number;
   currentBundleId: string;
-  fileRequests: number;
+  fileRequests: number | ArtifactFileTransferMode;
   maxRequestsPerAsset?: number;
   minNetworkAssets?: number;
   patchRequests: number;
@@ -4198,6 +4200,19 @@ export function handleAssertBundleArtifactTransfers(input: {
     });
   }
 
+  const expectedFilePaths =
+    typeof input.fileRequests === "number"
+      ? null
+      : getExpectedArtifactFilePaths({
+          assets: artifact.assets,
+          baseManifest:
+            input.fileRequests === "manifest-diff"
+              ? readBundleManifestSnapshot(input.currentBundleId).value
+              : null,
+          mode: input.fileRequests,
+          preflightAssetPaths: isLynxE2eApp() ? ["hot-updater-lynx.json"] : [],
+        });
+  const expectedFileRequests = expectedFilePaths?.length ?? input.fileRequests;
   const archive = getRemoteTransfer(artifact.archiveUrl);
   const assets = artifact.assets.map((asset) => ({
     file: getRemoteTransfer(asset.fileUrl),
@@ -4228,6 +4243,7 @@ export function handleAssertBundleArtifactTransfers(input: {
     archiveFailuresRemaining,
     assets,
     fileRequests,
+    expectedFilePaths,
     finalFiles,
     networkAssetCount: networkAssets.length,
     patchRequests,
@@ -4248,7 +4264,13 @@ export function handleAssertBundleArtifactTransfers(input: {
     );
   const matches =
     archive.requests === input.archiveRequests &&
-    fileRequests === input.fileRequests &&
+    fileRequests === expectedFileRequests &&
+    (expectedFilePaths === null ||
+      assets.every(
+        (asset) =>
+          asset.file.requests ===
+          (expectedFilePaths.includes(asset.path) ? 1 : 0),
+      )) &&
     patchRequests === input.patchRequests &&
     archiveFailuresRemaining === 0 &&
     (input.minNetworkAssets === undefined ||

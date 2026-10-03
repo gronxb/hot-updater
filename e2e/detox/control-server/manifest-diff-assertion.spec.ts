@@ -6,6 +6,7 @@ import {
   classifyArtifactSelection,
   classifyArtifactSelectionHistory,
   collectManifestDiffLogs,
+  getExpectedArtifactFilePaths,
 } from "./manifest-diff-assertion.ts";
 
 const archivePayload = {
@@ -295,5 +296,116 @@ describe("manifest diff assertion", () => {
     );
     controller.abort(reason);
     await expect(capture).rejects.toBe(reason);
+  });
+});
+
+describe("manifest-derived original-file transfers", () => {
+  const baseManifest = {
+    assets: {
+      "pages/home.bundle": { fileHash: "base-home" },
+      "pages/detail.bundle": { fileHash: "base-detail" },
+      "assets/logo.png": { fileHash: "SAME-IMAGE" },
+      "compatibility.json": { fileHash: "old-runtime-metadata" },
+    },
+  };
+  const assets = [
+    {
+      path: "pages/home.bundle",
+      fileHash: "new-home",
+      patchUrl: "https://artifacts.test/home.patch",
+    },
+    { path: "pages/detail.bundle", fileHash: "new-detail", patchUrl: null },
+    { path: "assets/logo.png", fileHash: "same-image", patchUrl: null },
+    {
+      path: "compatibility.json",
+      fileHash: "new-runtime-metadata",
+      patchUrl: null,
+    },
+  ];
+
+  it("requires changed secondary pages and metadata while reusing unchanged resources", () => {
+    expect(
+      getExpectedArtifactFilePaths({
+        assets,
+        baseManifest,
+        mode: "manifest-diff",
+        preflightAssetPaths: ["compatibility.json"],
+      }),
+    ).toEqual(["compatibility.json", "pages/detail.bundle"]);
+    expect(
+      getExpectedArtifactFilePaths({
+        assets: [
+          ...assets,
+          { path: "assets/new.ttf", fileHash: "new-font", patchUrl: null },
+        ],
+        baseManifest,
+        mode: "manifest-diff",
+        preflightAssetPaths: ["compatibility.json"],
+      }),
+    ).toEqual(["assets/new.ttf", "compatibility.json", "pages/detail.bundle"]);
+  });
+
+  it("preserves the RN zero-original small-patch expectation without a filename convention", () => {
+    expect(
+      getExpectedArtifactFilePaths({
+        assets: [assets[0]!, assets[2]!],
+        baseManifest,
+        mode: "manifest-diff",
+        preflightAssetPaths: [],
+      }),
+    ).toEqual([]);
+  });
+
+  it("counts only checked metadata for successful bulk transfer and changed files after fallback", () => {
+    expect(
+      getExpectedArtifactFilePaths({
+        assets,
+        baseManifest: null,
+        mode: "archive",
+        preflightAssetPaths: ["compatibility.json"],
+      }),
+    ).toEqual(["compatibility.json"]);
+    expect(
+      getExpectedArtifactFilePaths({
+        assets,
+        baseManifest: null,
+        mode: "archive",
+        preflightAssetPaths: [],
+      }),
+    ).toEqual([]);
+    expect(
+      getExpectedArtifactFilePaths({
+        assets,
+        baseManifest,
+        mode: "manifest-diff",
+        preflightAssetPaths: ["compatibility.json"],
+      }),
+    ).toEqual(["compatibility.json", "pages/detail.bundle"]);
+  });
+
+  it("does not infer reusable files or preflight coverage from missing evidence", () => {
+    for (const invalid of [
+      null,
+      {},
+      { assets: [] },
+      { assets: { "pages/home.bundle": { fileHash: null } } },
+    ]) {
+      expect(() =>
+        getExpectedArtifactFilePaths({
+          assets,
+          baseManifest: invalid,
+          mode: "manifest-diff",
+          preflightAssetPaths: [],
+        }),
+      ).toThrow();
+    }
+    expect(() =>
+      getExpectedArtifactFilePaths({
+        assets,
+        baseManifest,
+        mode: "archive",
+        preflightAssetPaths: ["missing-metadata.json"],
+      }),
+    ).toThrow("Required preflight asset");
   });
 });

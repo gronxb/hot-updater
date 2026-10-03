@@ -2156,7 +2156,7 @@ describe("Detox scenario contract", () => {
     ).toMatchObject({
       body: {
         archiveRequests: 0,
-        fileRequests: 0,
+        fileRequests: "manifest-diff",
         maxRequestsPerAsset: 1,
         minNetworkAssets: 1,
         patchRequests: 1,
@@ -2182,7 +2182,7 @@ describe("Detox scenario contract", () => {
     ).toMatchObject({
       body: {
         archiveRequests: 1,
-        fileRequests: 0,
+        fileRequests: "archive",
         maxRequestsPerAsset: 1,
         patchRequests: 0,
         verifyAllAssetHashes: true,
@@ -2197,7 +2197,7 @@ describe("Detox scenario contract", () => {
     ).toMatchObject({
       body: {
         archiveRequests: 1,
-        fileRequests: 1,
+        fileRequests: "manifest-diff",
         maxRequestsPerAsset: 1,
         minNetworkAssets: 2,
         patchRequests: 1,

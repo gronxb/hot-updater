@@ -31,6 +31,51 @@ function isNonEmptyString(value: unknown): value is string {
   return typeof value === "string" && value.trim().length > 0;
 }
 
+export type ArtifactFileTransferMode = "manifest-diff" | "archive";
+
+/** Derive expected original-file transfers independently of observed requests. */
+export function getExpectedArtifactFilePaths(input: {
+  assets: readonly {
+    path: string;
+    fileHash: string;
+    patchUrl: string | null;
+  }[];
+  baseManifest: unknown;
+  mode: ArtifactFileTransferMode;
+  preflightAssetPaths: readonly string[];
+}): string[] {
+  const preflight = new Set(input.preflightAssetPaths);
+  if (
+    [...preflight].some(
+      (path) => !input.assets.some((asset) => asset.path === path),
+    )
+  ) {
+    throw new Error("Required preflight asset is missing from the target");
+  }
+  if (input.mode === "archive") return [...preflight].sort();
+  if (!isRecord(input.baseManifest) || !isRecord(input.baseManifest.assets)) {
+    throw new Error(
+      "A valid native base manifest is required for transfer expectations",
+    );
+  }
+  const base = input.baseManifest.assets;
+  return input.assets
+    .filter((asset) => {
+      const previous = base[asset.path];
+      let reused = false;
+      if (previous !== undefined) {
+        if (!isRecord(previous) || !isNonEmptyString(previous.fileHash)) {
+          throw new Error(`Invalid native base asset: ${asset.path}`);
+        }
+        reused =
+          previous.fileHash.toLowerCase() === asset.fileHash.toLowerCase();
+      }
+      return preflight.has(asset.path) || (!reused && asset.patchUrl === null);
+    })
+    .map((asset) => asset.path)
+    .sort();
+}
+
 function isRenewableUrl(path: readonly string[], key: string) {
   if (path.length === 0) {
     return key === "archiveUrl" || key === "manifestUrl";

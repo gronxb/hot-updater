@@ -299,18 +299,14 @@ app.post("/e2e/assert-bundle-artifact-transfers", async (c) => {
   const payload = (await c.req.json()) as {
     archiveRequests?: number;
     currentBundleId?: string;
-    fileRequests?: number;
+    fileRequests?: number | "manifest-diff" | "archive";
     maxRequestsPerAsset?: number;
     minNetworkAssets?: number;
     patchRequests?: number;
     targetBundleId?: string;
     verifyAllAssetHashes?: boolean;
   };
-  const counts = [
-    payload.archiveRequests,
-    payload.fileRequests,
-    payload.patchRequests,
-  ];
+  const counts = [payload.archiveRequests, payload.patchRequests];
   if (
     !payload.currentBundleId ||
     !payload.targetBundleId ||
@@ -318,6 +314,11 @@ app.post("/e2e/assert-bundle-artifact-transfers", async (c) => {
       (value) =>
         !Number.isSafeInteger(value) || (value !== undefined && value < 0),
     ) ||
+    (payload.fileRequests !== "manifest-diff" &&
+      payload.fileRequests !== "archive" &&
+      (typeof payload.fileRequests !== "number" ||
+        !Number.isSafeInteger(payload.fileRequests) ||
+        payload.fileRequests < 0)) ||
     (payload.maxRequestsPerAsset !== undefined &&
       (!Number.isSafeInteger(payload.maxRequestsPerAsset) ||
         payload.maxRequestsPerAsset < 1)) ||
@@ -328,7 +329,7 @@ app.post("/e2e/assert-bundle-artifact-transfers", async (c) => {
     return c.json(
       {
         error:
-          "bundle ids and non-negative archive, file, and patch request counts are required",
+          "bundle ids, non-negative archive/patch counts, and a file count or manifest-diff/archive mode are required",
       },
       400,
     );
