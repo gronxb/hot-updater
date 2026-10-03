@@ -8,7 +8,7 @@ import { describe, expect, it } from "vitest";
 const repoDir = path.resolve(import.meta.dirname, "../..");
 const detoxDir = path.join(repoDir, "e2e/detox");
 const scenarioDir = path.join(detoxDir, "scenarios");
-const e2eSourceDirectories = ["e2e/detox/"] as const;
+const e2eSourceDirectories = ["e2e/detox/", "e2e/mobile/"] as const;
 const textScenarioFilePattern = /^e2e\/.*\.(?:ya?ml)$/i;
 const legacyHarnessTerms = [
   "DetoxScenarioRuntime",
@@ -67,13 +67,14 @@ function trackedE2eFiles(): readonly string[] {
     .filter((file) => existsSync(path.join(repoDir, file)));
 }
 
-describe("Detox-first source shape", () => {
-  it("keeps active E2E source inside Detox-owned directories", () => {
+describe("E2E source boundaries", () => {
+  it("keeps runner source in its directories beside the capability contract", () => {
     const activeE2eFiles = trackedE2eFiles();
 
     expect(
       activeE2eFiles.filter(
         (file) =>
+          file !== "e2e/runner-contract.json" &&
           !e2eSourceDirectories.some((directory) => file.startsWith(directory)),
       ),
     ).toEqual([]);
