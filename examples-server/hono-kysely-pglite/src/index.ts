@@ -46,6 +46,10 @@ try {
     {
       fetch: app.fetch,
       port,
+      hostname:
+        process.env.HOT_UPDATER_E2E_LOCAL_PROVIDER === "1"
+          ? "127.0.0.1"
+          : undefined,
     },
     (info) => {
       console.log(`

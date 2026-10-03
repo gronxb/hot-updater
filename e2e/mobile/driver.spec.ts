@@ -191,7 +191,7 @@ describe("MobileAppDriver", () => {
     expect(f.calls).toEqual([
       "/e2e/prepare-app-launch",
       "open",
-      "close",
+      "/e2e/terminate-app",
       "/e2e/prepare-app-launch",
       "open",
       "/e2e/reset-local-app-state",
@@ -220,6 +220,27 @@ describe("MobileAppDriver", () => {
     expect(f.app.expectedLaunchFailures).toBe(1);
     f.locator.getAttribute.mockResolvedValue("builtin");
     await f.app.assertText("recovered", "runtime-bundle-id", "builtin");
+  });
+
+  it("terminates externally launched hung apps through the pinned control target without reopening them", async () => {
+    const f = fixture();
+    f.device.closeApp.mockRejectedValue(new Error("no automation session"));
+    await f.app.terminate("stop before hang");
+    await f.app.control("launch hang", "/e2e/launch-startup-hang", {
+      bundleId: "hung",
+    });
+    await f.app.terminate("force-kill hang");
+    expect(f.calls).toEqual([
+      "/e2e/terminate-app",
+      "/e2e/launch-startup-hang",
+      "/e2e/terminate-app",
+    ]);
+    expect(f.device.closeApp).not.toHaveBeenCalled();
+    expect(f.device.openApp).not.toHaveBeenCalled();
+    f.client.postJson.mockRejectedValueOnce(new Error("device offline"));
+    await expect(f.app.terminate("failed kill")).rejects.toThrow(
+      "device offline",
+    );
   });
 
   it("never records an ordinary launch error or unverified recovery as expected", async () => {

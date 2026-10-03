@@ -1,7 +1,7 @@
 import { mkdirSync, renameSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
-import type { JsonObject } from "../detox/control-client.ts";
+import type { JsonObject } from "../shared/control-client.ts";
 
 export interface ScenarioEvidence {
   name: string;

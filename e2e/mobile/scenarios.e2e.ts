@@ -1,8 +1,8 @@
 import { test as mobileTest } from "@e2e-dev/mobile";
 
-import { createControlClient } from "../detox/control-client.ts";
-import type { ControlClient, JsonObject } from "../detox/control-client.ts";
-import { getDetoxScenarioDefinition } from "../detox/scenarios.ts";
+import { createControlClient } from "../shared/control-client.ts";
+import type { ControlClient, JsonObject } from "../shared/control-client.ts";
+import { getScenarioDefinition } from "../shared/scenarios.ts";
 import {
   runAttemptPhase,
   runtimeLaunchArguments,
@@ -76,7 +76,7 @@ test.beforeEach(async ({ device, hotUpdaterAttemptSignal }) => {
   );
 });
 
-test.afterEach(async ({ device }) => {
+test.afterEach(async () => {
   const current = attempt;
   if (!current) return;
   current.controller.abort(new Error("Scenario attempt finished"));
@@ -85,7 +85,12 @@ test.afterEach(async ({ device }) => {
     await current.client.cancelAndDrain({
       timeoutMs: Math.floor(context.cleanupTimeoutMs / 2),
     });
-    await device.closeApp();
+    // The attempt client is aborted after draining. Terminate through the
+    // owned controller's explicit device; SDK disposal closes its session.
+    await createControlClient({
+      baseUrl: context.controlBaseUrl,
+      httpTimeoutMs: Math.floor(context.cleanupTimeoutMs / 2),
+    }).postJson("terminate app after attempt", "/e2e/terminate-app", {});
   } catch (error) {
     writeAttemptRecord(context.resultsDir, "quarantine.json", {
       schemaVersion: 1,
@@ -118,7 +123,7 @@ test.afterEach(async ({ device }) => {
 });
 
 for (const scenarioName of context.scenarioNames) {
-  const scenario = getDetoxScenarioDefinition(scenarioName);
+  const scenario = getScenarioDefinition(scenarioName);
   test(scenarioName, async ({ device, screen }) => {
     const current = attempt;
     if (!current) throw new Error("Scenario setup did not complete");

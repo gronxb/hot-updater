@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 
 import { spawn } from "node:child_process";
+import { realpathSync } from "node:fs";
 import path from "node:path";
 import process from "node:process";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 
 const minBundleId = "00000000-0000-7000-8000-000000000000";
 
@@ -84,12 +85,27 @@ export function createNativeBuildPlan(
   ) {
     throw new Error("iOS --device must be a simulator UDID");
   }
+  const bundlerEnv = {
+    BUNDLE_GEMFILE: path.join(repositoryRoot, "examples/v0.85.0/Gemfile"),
+    BUNDLE_PATH: path.join(repositoryRoot, "examples/v0.85.0/vendor/bundle"),
+    BUNDLE_FROZEN: "1",
+  };
   return [
+    {
+      command: "bundle",
+      args: ["install"],
+      cwd,
+      env: bundlerEnv,
+    },
     {
       command: "bundle",
       args: ["exec", "pod", "install"],
       cwd,
-      env: { RCT_USE_PREBUILT_RNCORE: "1", RCT_USE_RN_DEP: "1" },
+      env: {
+        ...bundlerEnv,
+        RCT_USE_PREBUILT_RNCORE: "1",
+        RCT_USE_RN_DEP: "1",
+      },
     },
     {
       command: "xcodebuild",
@@ -119,16 +135,30 @@ async function runCommand(command: NativeBuildCommand): Promise<number> {
   const child = spawn(command.command, command.args, {
     cwd: command.cwd,
     env: { ...process.env, ...command.env },
+    detached: true,
     stdio: "inherit",
   });
   let interruptedExitCode: number | undefined;
+  let killTimer: ReturnType<typeof setTimeout> | undefined;
+  const stopGroup = (signal: NodeJS.Signals) => {
+    if (!child.pid) return;
+    try {
+      process.kill(-child.pid, signal);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error;
+    }
+  };
+  const cancel = (signal: "SIGINT" | "SIGTERM") => {
+    if (interruptedExitCode !== undefined) return;
+    interruptedExitCode = signal === "SIGINT" ? 130 : 143;
+    stopGroup(signal);
+    killTimer = setTimeout(() => stopGroup("SIGKILL"), 5_000);
+  };
   const interrupt = () => {
-    interruptedExitCode = 130;
-    child.kill("SIGINT");
+    cancel("SIGINT");
   };
   const terminate = () => {
-    interruptedExitCode = 143;
-    child.kill("SIGTERM");
+    cancel("SIGTERM");
   };
   process.on("SIGINT", interrupt);
   process.on("SIGTERM", terminate);
@@ -138,6 +168,9 @@ async function runCommand(command: NativeBuildCommand): Promise<number> {
       child.once("exit", (code) => resolve(interruptedExitCode ?? code ?? 1));
     });
   } finally {
+    clearTimeout(killTimer);
+    // Bundler, Gradle and Xcode can leave compiler children after their wrapper exits.
+    if (interruptedExitCode !== undefined) stopGroup("SIGKILL");
     process.off("SIGINT", interrupt);
     process.off("SIGTERM", terminate);
   }
@@ -169,7 +202,7 @@ async function main(): Promise<number> {
 
 if (
   process.argv[1] &&
-  import.meta.url === pathToFileURL(process.argv[1]).href
+  fileURLToPath(import.meta.url) === realpathSync(process.argv[1])
 ) {
   main().then(
     (code) => {

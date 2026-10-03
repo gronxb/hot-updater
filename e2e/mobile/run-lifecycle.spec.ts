@@ -21,13 +21,13 @@ vi.mock("node:child_process", async (importOriginal) => ({
   execFileSync: vi.fn(() => `${"a".repeat(40)}\n`),
   spawn: mocked.spawn,
 }));
-vi.mock("../detox/scripts/control-server.ts", () => ({
-  buildDetoxControlServerEnv: (_platform: string, env: NodeJS.ProcessEnv) => ({
+vi.mock("../shared/scripts/control-server.ts", () => ({
+  buildControlServerEnv: (_platform: string, env: NodeJS.ProcessEnv) => ({
     ...env,
     HOT_UPDATER_E2E_SERVER_HOST: "127.0.0.1",
     HOT_UPDATER_E2E_APP_ID: "org.example",
   }),
-  startDetoxControlServer: mocked.startServer,
+  startControlServer: mocked.startServer,
 }));
 vi.mock("./android-reverse.ts", () => ({
   acquireAndroidReverses: mocked.acquireReverse,

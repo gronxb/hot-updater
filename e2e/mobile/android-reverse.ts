@@ -69,7 +69,7 @@ function readReverses(output: string): Map<string, string> {
   return mappings;
 }
 
-/** Call before fixture bootstrap, with buildDetoxControlServerEnv's resolved env. */
+/** Call before fixture bootstrap, with buildControlServerEnv's resolved env. */
 export async function acquireAndroidReverses(
   context: MobileContext,
   env: NodeJS.ProcessEnv,

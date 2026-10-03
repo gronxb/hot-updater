@@ -5,5 +5,5 @@
     "allowJs": true,
     "checkJs": false
   },
-  "include": ["./*.ts"]
+  "include": ["./*.ts", "../run.ts", "../local/**/*.ts"]
 }

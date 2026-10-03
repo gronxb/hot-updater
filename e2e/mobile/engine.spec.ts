@@ -37,10 +37,15 @@ test("raw mobile result", async ({screen, hotUpdaterAttemptSignal}) => {
   expect(hotUpdaterAttemptSignal.signal.aborted).toBe(false);
 });
 test("verified expected launch disconnect", async ({device, screen, hotUpdaterAttemptSignal}) => {
+  const controls = [];
   const app = new MobileAppDriver({
     appId:"org.example", platform:"ios", device, screen, signal:hotUpdaterAttemptSignal.signal,
-    client:{postJson:async()=>({verified:true}),runJob:async()=>({}),waitForScreenStateField:async()=>({})},
+    client:{postJson:async(_stage,path)=>{controls.push(path);return {verified:true};},runJob:async()=>({}),waitForScreenStateField:async()=>({})},
   });
+  await app.terminate("stop before external launch");
+  await app.control("external hang launch", "/e2e/launch-startup-hang", {bundleId:"hung"});
+  await app.terminate("stop external hang");
+  expect(controls).toEqual(["/e2e/terminate-app", "/e2e/launch-startup-hang", "/e2e/terminate-app"]);
   await app.launch("crash", {expectCrash:true});
   expect(app.expectedLaunchFailures).toBe(0);
   await app.control("native recovery", "/e2e/wait-for-crash-recovery", {});
@@ -62,7 +67,7 @@ export default {
     name: "mobile", version: "0.9.1", spiVersion: 1, platform: "ios",
     fixtures:{device:(context)=>context.fixture("device", {
       openApp:async()=>{throw new Error("expected process disconnect");},
-      closeApp:async()=>{},openLink:async()=>{},
+      closeApp:async()=>{throw new Error("SDK close cannot select a device after its session ended");},openLink:async()=>{},
     }, {openApp:{kind:"resource",label:(app)=>app},closeApp:{kind:"resource"},openLink:{kind:"resource"}})},
     observe: async () => ({root:{ref:{id:"root",revision:""},children:[]},viewport:{width:100,height:100}}),
     locate: async () => [{ref:{id:"result",revision:""},role:"text",testId:"result",text:"installed  ID r1\\n"}],

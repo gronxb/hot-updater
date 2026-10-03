@@ -20,6 +20,6 @@ export interface MobileContext {
 // Private handoff from run.ts to the SDK child; this is not operator configuration.
 export function readMobileContext(): MobileContext {
   const file = process.env.HOT_UPDATER_E2E_MOBILE_CONTEXT;
-  if (!file) throw new Error("Start mobile tests through pnpm -w e2e:mobile");
+  if (!file) throw new Error("Start mobile tests through pnpm -w e2e");
   return JSON.parse(readFileSync(file, "utf8")) as MobileContext;
 }

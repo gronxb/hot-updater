@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { execFileSync, spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
+import { realpathSync } from "node:fs";
 import fs from "node:fs/promises";
 import { createRequire } from "node:module";
 import net from "node:net";
@@ -8,13 +9,13 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
-  listDetoxScenarioNames,
-  resolveDetoxSuiteScenarioNames,
-} from "../detox/scenarios.ts";
+  listScenarioNames,
+  resolveSuiteScenarioNames,
+} from "../shared/scenarios.ts";
 import {
-  buildDetoxControlServerEnv,
-  startDetoxControlServer,
-} from "../detox/scripts/control-server.ts";
+  buildControlServerEnv,
+  startControlServer,
+} from "../shared/scripts/control-server.ts";
 import { acquireAndroidReverses } from "./android-reverse.ts";
 import type { MobileContext } from "./context.ts";
 import { normalizeMobileResult, writeMobileResult } from "./result.ts";
@@ -72,8 +73,8 @@ export function parseMobileOptions(
     throw new Error("Use either --suite or --scenario, not both");
   const selected = scenarios.length
     ? scenarios
-    : [...resolveDetoxSuiteScenarioNames(values.suite ?? "default")];
-  const known = new Set(listDetoxScenarioNames());
+    : [...resolveSuiteScenarioNames(values.suite ?? "default")];
+  const known = new Set(listScenarioNames());
   if (new Set(selected).size !== selected.length)
     throw new Error("Duplicate scenarios are not allowed");
   for (const name of selected)
@@ -175,12 +176,12 @@ export async function runMobile(
   const options = parseMobileOptions(argv, env);
   if (options.flags.has("--help")) {
     console.log(
-      "pnpm -w e2e:mobile -- --platform ios|android --device <UDID|serial> [--scenario <name>] [--suite default] [--dry-run] [--list]",
+      "pnpm -w e2e -- --prepared --platform ios|android --device <UDID|serial> [--scenario <name>] [--suite default] [--dry-run] [--list]",
     );
     return 0;
   }
   if (options.flags.has("--list")) {
-    console.log(listDetoxScenarioNames().join("\n"));
+    console.log(listScenarioNames().join("\n"));
     return 0;
   }
   if (options.flags.has("--dry-run")) {
@@ -221,7 +222,7 @@ export async function runMobile(
   const platform = options.values.platform as "ios" | "android";
   const deviceId = options.values.device!;
   const controlPort = env.HOT_UPDATER_E2E_CONTROL_PORT ?? (await freePort());
-  const childEnv = buildDetoxControlServerEnv(platform, {
+  const childEnv = buildControlServerEnv(platform, {
     ...env,
     HOT_UPDATER_E2E_CONTROL_PORT: controlPort,
     HOT_UPDATER_E2E_DEVICE_ID: deviceId,
@@ -264,7 +265,7 @@ export async function runMobile(
   const interrupt = () => cancellation.abort(new Error("Mobile run cancelled"));
   process.on("SIGINT", interrupt);
   process.on("SIGTERM", interrupt);
-  let server: Awaited<ReturnType<typeof startDetoxControlServer>> | undefined;
+  let server: Awaited<ReturnType<typeof startControlServer>> | undefined;
   let releaseReverse: (() => Promise<void>) | undefined;
   let exitCode: number | null = null;
   let cleanupStatus: "passed" | "failed" | "unknown" = "unknown";
@@ -272,7 +273,7 @@ export async function runMobile(
   const reportPath = path.join(internalDir, "runner/report.json");
   try {
     await fs.access(context.appPath);
-    server = await startDetoxControlServer(platform, childEnv, {
+    server = await startControlServer(platform, childEnv, {
       detached: true,
       verifyProcess: true,
       signal: cancellation.signal,
@@ -410,7 +411,7 @@ export async function runMobile(
 
 if (
   process.argv[1] &&
-  path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)
+  realpathSync(process.argv[1]) === fileURLToPath(import.meta.url)
 ) {
   try {
     process.exitCode = await runMobile(process.argv.slice(2));

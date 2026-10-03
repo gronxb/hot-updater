@@ -3,17 +3,17 @@ import { setTimeout as sleep } from "node:timers/promises";
 import type { Device, OpenAppOptions } from "@e2e-dev/mobile";
 import type { Locator, Screen } from "e2e";
 
-import type { ControlClient, JsonObject } from "../detox/control-client.ts";
+import type { ControlClient, JsonObject } from "../shared/control-client.ts";
 import type {
-  DetoxAppDriver,
-  DetoxAssertTextOptions,
-  DetoxControlOptions,
-  DetoxLaunchOptions,
-} from "../detox/scenarios/types.ts";
+  ScenarioAppDriver,
+  AssertTextOptions,
+  ControlOptions,
+  LaunchOptions,
+} from "../shared/scenarios/types.ts";
 import {
   E2E_SCREEN_URLS,
   TEST_ID_SCREEN_PATHS,
-} from "../detox/screen-routes/index.js";
+} from "../shared/screen-routes/index.js";
 import { RAW_TEXT_ATTRIBUTE } from "./engine.ts";
 
 const inputFields: Record<string, string> = {
@@ -42,7 +42,7 @@ type DriverOptions = {
     ControlClient,
     "postJson" | "runJob" | "waitForScreenStateField"
   >;
-  readonly device: Pick<Device, "openApp" | "closeApp" | "openLink">;
+  readonly device: Pick<Device, "openApp" | "openLink">;
   readonly screen: Pick<Screen, "getByTestId">;
   readonly appId: string;
   readonly platform: "ios" | "android";
@@ -52,7 +52,7 @@ type DriverOptions = {
   readonly assertionTimeoutMs?: number;
 };
 
-export class MobileAppDriver implements DetoxAppDriver {
+export class MobileAppDriver implements ScenarioAppDriver {
   private readonly values: JsonObject;
   private activeScreenPath?: string;
   private pendingRecovery?: "crash" | "reload";
@@ -71,7 +71,7 @@ export class MobileAppDriver implements DetoxAppDriver {
     stage: string,
     testID: string,
     contains: string | readonly string[],
-    options: DetoxAssertTextOptions = {},
+    options: AssertTextOptions = {},
   ) {
     await this.runStage(stage, async () => {
       const resolved = this.resolve(contains);
@@ -117,7 +117,7 @@ export class MobileAppDriver implements DetoxAppDriver {
     stage: string,
     pathName: string,
     body?: JsonObject,
-    options: DetoxControlOptions = {},
+    options: ControlOptions = {},
   ) {
     await this.runStage(stage, async () => {
       const resolved = this.resolve(body) as JsonObject | undefined;
@@ -155,7 +155,7 @@ export class MobileAppDriver implements DetoxAppDriver {
     });
   }
 
-  async launch(stage: string, options: DetoxLaunchOptions = {}) {
+  async launch(stage: string, options: LaunchOptions = {}) {
     await this.runStage(stage, async () => {
       const launchState = await this.options.client.postJson(
         `${stage}: prepare launch`,
@@ -190,7 +190,11 @@ export class MobileAppDriver implements DetoxAppDriver {
 
   async reload(stage: string) {
     await this.runStage(stage, async () => {
-      await this.options.device.closeApp();
+      await this.options.client.postJson(
+        `${stage}: terminate app`,
+        "/e2e/terminate-app",
+        {},
+      );
       await this.options.client.postJson(
         `${stage}: prepare launch`,
         "/e2e/prepare-app-launch",
@@ -240,7 +244,7 @@ export class MobileAppDriver implements DetoxAppDriver {
 
   async terminate(stage: string) {
     await this.runStage(stage, async () => {
-      await this.options.device.closeApp();
+      await this.options.client.postJson(stage, "/e2e/terminate-app", {});
       this.activeScreenPath = undefined;
     });
   }

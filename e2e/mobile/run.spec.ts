@@ -5,7 +5,7 @@ import { setTimeout as sleep } from "node:timers/promises";
 
 import { describe, expect, it, vi } from "vitest";
 
-import { listDetoxScenarioNames } from "../detox/scenarios.ts";
+import { listScenarioNames } from "../shared/scenarios.ts";
 import { parseMobileOptions, runMobile, runSdkChild } from "./run.ts";
 
 describe("mobile wrapper", () => {
@@ -15,7 +15,7 @@ describe("mobile wrapper", () => {
         ["--platform", "android", "--device", "emulator-5558"],
         {},
       ).scenarios,
-    ).toEqual(listDetoxScenarioNames());
+    ).toEqual(listScenarioNames());
     expect(() =>
       parseMobileOptions(["--platform", "ios", "--device", "iPhone 16"], {}),
     ).toThrow("UDID");
@@ -25,7 +25,7 @@ describe("mobile wrapper", () => {
   });
 
   it("preserves bot comma-separated selection and rejects duplicates or unknown tests", () => {
-    const names = listDetoxScenarioNames().slice(0, 2);
+    const names = listScenarioNames().slice(0, 2);
     const args = ["--", "--platform", "android", "--device", "emulator-5558"];
     expect(
       parseMobileOptions(args, { HOT_UPDATER_E2E_SCENARIOS: names.join(",") })

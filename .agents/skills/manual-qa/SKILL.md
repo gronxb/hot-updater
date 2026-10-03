@@ -1,13 +1,13 @@
 ---
 name: manual-qa
-description: Execute a caller's natural-language HotUpdater QA scenario on `examples/v0.85.0` with profile-scoped infrastructure prepared by `hot-updater-agent` and app interactions driven through `agent-device`. Use for AI-led manual OTA QA rather than the full Detox E2E runner.
+description: Execute a caller's natural-language HotUpdater QA scenario on `examples/v0.85.0` with profile-scoped infrastructure prepared by `hot-updater-agent` and app interactions driven through `agent-device`. Use for AI-led manual OTA QA rather than the full E2E runner.
 ---
 
 # Hot Updater Manual QA
 
 The only required caller input is a natural-language scenario. Accept the
 user's intent directly; never require or reinterpret it as a file name from
-`e2e/detox/scenarios`.
+`e2e/shared/scenarios`.
 
 Always load and follow
 [$hot-updater-agent](../hot-updater-agent/SKILL.md) and
@@ -70,13 +70,13 @@ relevant parts of:
 
 - `examples/v0.85.0/src/e2eApp` for routes, actions, testIDs, and visible
   evidence;
-- `e2e/detox/control-server/routes.ts` for supported control operations;
-- `e2e/detox/detox-app-driver.js` when launch, reload, screen-state wait, crash,
+- `e2e/shared/control-server/routes.ts` for supported control operations;
+- `e2e/mobile/driver.ts` when launch, reload, screen-state wait, crash,
   or Android reattachment semantics matter;
-- `e2e/detox/scenarios` only as optional implementation examples for a similar
+- `e2e/shared/scenarios` only as optional implementation examples for a similar
   step, never as the accepted input vocabulary or an exact script to run.
 
-Do not create a Detox scenario file and do not run Detox.
+Do not create an automated scenario file or run the full E2E suite.
 
 ## Execute With Control APIs And Agent Device
 
@@ -97,7 +97,7 @@ Do not create a Detox scenario file and do not run Detox.
   app, prepare the launch, then reopen it. Use
   `/e2e/reset-local-app-state` only when the user's precondition requires a
   clean local state.
-- For mapped action results, mirror `detox-app-driver.js`: reset the relevant
+- For mapped action results, mirror `driver.ts`: reset the relevant
   `/e2e/screen-state` field to `idle`, perform the UI action, and wait through
   `runtimeConfigUrl` until the field reaches the expected value. Reattach
   Android after external restart or crash-recovery operations when required.
