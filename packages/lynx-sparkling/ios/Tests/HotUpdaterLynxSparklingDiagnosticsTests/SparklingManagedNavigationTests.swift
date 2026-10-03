@@ -222,22 +222,4 @@ final class SparklingManagedNavigationTests: XCTestCase {
         )
     }
 
-    func testPageAdmissionRequiresEverySignalAndTerminatesOnce() {
-        let admission = HotUpdaterSparklingPageAdmission(
-            requiredResources: ["detail.lynx.bundle", "assets/detail.png"]
-        )
-        XCTAssertFalse(admission.observeAppReady())
-        XCTAssertFalse(admission.observeResource("detail.lynx.bundle"))
-        XCTAssertFalse(admission.observeFirstContent())
-        XCTAssertTrue(admission.observeResource("assets/detail.png"))
-        XCTAssertEqual(admission.terminal, .admitted)
-        XCTAssertFalse(admission.finish(.fatal))
-
-        let cancelled = HotUpdaterSparklingPageAdmission(
-            requiredResources: ["detail.lynx.bundle"]
-        )
-        XCTAssertTrue(cancelled.finish(.cancelled))
-        XCTAssertFalse(cancelled.observeAppReady())
-        XCTAssertEqual(cancelled.terminal, .cancelled)
-    }
 }

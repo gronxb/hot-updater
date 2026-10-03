@@ -1,6 +1,6 @@
 {
   "ios": {
-    "hash": "07448fc3426c088c85224cea2235b7006ba479c823bd6f776eb7673cfa67372a",
+    "hash": "b3bc03c32ea12c264e0562d53563f4f055d99ba1e8474a89e93f5c12e43fe1c5",
     "sources": [
       {
         "type": "file",
@@ -74,20 +74,9 @@
         "reasons": [
           "lynx-native-input"
         ],
-        "hash": "6122b027a371ae7ff46e4785e7d492c62c6b8e04c1e045503a9739eaf8794647",
+        "hash": "1a178cb4e2876f269966b44d208adf826d352df716ef4b1456498343d8a993d8",
         "debugInfo": {
-          "byteSize": 13300
-        }
-      },
-      {
-        "type": "file",
-        "filePath": "@hot-updater/lynx-sparkling/ios/Sources/HotUpdaterLynxSparklingCore/SparklingReloadContract.swift",
-        "reasons": [
-          "lynx-native-input"
-        ],
-        "hash": "9d4577bb6f883e3e19ca24e3156a749b413e880ef8e7e0dfc0f87505dcdf2f43",
-        "debugInfo": {
-          "byteSize": 1452
+          "byteSize": 11663
         }
       },
       {
