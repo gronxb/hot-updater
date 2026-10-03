@@ -146,6 +146,7 @@ app.all("/e2e/proxy-url/:targetId", async (c) => {
 
 app.post("/e2e/proxy-control", async (c) => {
   const payload = (await c.req.json()) as {
+    downloadAvailable?: boolean;
     archiveAvailable?: boolean;
     archiveFailureMode?: "corrupt" | "not-found" | null;
     archiveFailures?: number;
@@ -161,6 +162,12 @@ app.post("/e2e/proxy-control", async (c) => {
     replayGeneration?: number | null;
     reset?: boolean;
   };
+  if (
+    payload.downloadAvailable !== undefined &&
+    typeof payload.downloadAvailable !== "boolean"
+  ) {
+    return c.json({ error: "downloadAvailable must be a boolean" }, 400);
+  }
   if (
     payload.archiveAvailable !== undefined &&
     typeof payload.archiveAvailable !== "boolean"
@@ -243,6 +250,7 @@ app.post("/e2e/proxy-state", (c) => c.json(handleProxyState()));
 
 app.post("/e2e/assert-proxy", async (c) => {
   const payload = (await c.req.json()) as {
+    minFailedDownloads?: number;
     artifactFailuresRemaining?: number;
     artifactRequests?: number;
     catalogRequests?: number;
@@ -410,6 +418,7 @@ app.post("/e2e/jobs/deploy-bundle", async (c) => {
     jobId: startDeployBundleJob({
       bundleProfile: payload.bundleProfile,
       channel: payload.channel,
+      crossProvenance: payload.crossProvenance,
       disabled: payload.disabled,
       diffBaseBundleId: payload.diffBaseBundleId,
       forceUpdate: payload.forceUpdate,

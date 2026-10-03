@@ -85,14 +85,7 @@ const runtimeConfigPath = path.join(
   repoDir,
   "examples/v0.85.0/src/e2eRuntimeConfig.ts",
 );
-const androidDownloadServicePath = path.join(
-  repoDir,
-  "packages/react-native/android/src/main/java/com/hotupdater/OkHttpDownloadService.kt",
-);
-const iosDownloadServicePath = path.join(
-  repoDir,
-  "packages/react-native/ios/HotUpdater/Internal/URLSessionDownloadService.swift",
-);
+
 const defaultDetoxScenarioNames = [
   "startup-hang-recovery",
   "release-ota-recovery",
@@ -386,35 +379,34 @@ describe("Detox scenario contract", () => {
     ).toEqual({ artifactRequests: 1, catalogRequests: 1 });
   });
 
-  it("fails every native attempt of the first download before the retry", async () => {
-    // Given: native downloads try a failed request again up to a fixed number
-    // of attempts, the same on Android and iOS.
-    const [androidSource, iosSource] = await Promise.all([
-      fs.readFile(androidDownloadServicePath, "utf8"),
-      fs.readFile(iosDownloadServicePath, "utf8"),
-    ]);
-    const attempts = Number(
-      /const val MAX_ATTEMPTS = (\d+)/.exec(androidSource)?.[1],
-    );
-    expect(attempts).toBeGreaterThan(0);
-    expect(
-      Number(/static let maximumAttempts = (\d+)/.exec(iosSource)?.[1]),
-    ).toBe(attempts);
-
-    // When / Then: the scenario injects one failure per attempt, so the first
-    // install fails and the manual retry of the same generation finds none.
+  it("restores download availability only after observing failure, preserving catalog evidence", async () => {
+    const scenario = "failed-download-same-generation-retry";
     expect(
       await controlStepBody(
-        "failed-download-same-generation-retry",
+        scenario,
         "fail every attempt of the first download",
       ),
-    ).toEqual({ artifactFailures: attempts, reset: true });
+    ).toEqual({ downloadAvailable: false, reset: true });
     expect(
       await controlStepBody(
-        "failed-download-same-generation-retry",
-        "assert retry transport",
+        scenario,
+        "verify the first attempt reached an unavailable download",
       ),
-    ).toEqual({
+    ).toEqual({ minFailedDownloads: 1 });
+    expect(
+      await controlStepBody(
+        scenario,
+        "restore downloads without resetting catalog evidence",
+      ),
+    ).toEqual({ downloadAvailable: true });
+    const stages = await scenarioStages(scenario);
+    expect(
+      stages.indexOf("restore downloads without resetting catalog evidence"),
+    ).toBeGreaterThan(stages.indexOf("assert first download failed"));
+    expect(stages.indexOf("retry same generation download")).toBeGreaterThan(
+      stages.indexOf("restore downloads without resetting catalog evidence"),
+    );
+    expect(await controlStepBody(scenario, "assert retry transport")).toEqual({
       artifactFailuresRemaining: 0,
       artifactRequests: 2,
       catalogRequests: 2,

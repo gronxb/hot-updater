@@ -2084,3 +2084,34 @@ local reuse and individual asset/patch transfer. It retains the native installat
 The separate size-aware selection case remains responsible for proving that a
 cheaper authenticated archive can be selected. Full-archive transfer must not
 silently satisfy the reuse case.
+
+
+## 2026-10-03 download retry boundary and open preflight decision
+
+The same-generation retry scenario must keep asset downloads unavailable until
+the SDK reports the first operation failed, then explicitly restore downloads
+without resetting catalog or request evidence. It must prove an actual asset
+download was rejected and retain the two catalog/two artifact-selection request
+assertions. Framework-specific automatic retry counts must not determine when
+the test's injected outage ends. Existing artifact-selection fault guards remain
+separate from this download-only outage.
+
+The current full preflight contract has an observed cost: native
+`validateSelection` prepares and discards every asset, then `updateBundle`
+prepares those assets again. The size-aware device case records two requests
+per transferred asset. It also reveals that its fixed zero-original-file budget
+assumes RN output and omits Lynx's changed detail bundle and sidecar.
+
+A product decision is pending between (a) authenticating only the manifest and
+Lynx compatibility metadata at check time, then verifying the complete resource
+tree during installation, and (b) retaining complete preflight verification with
+a reusable verified cache. Preserve native authority, signature/hash checks,
+unchanged selection on failure, bounded resources and one transfer per required
+asset. Do not increase the request limit to conceal duplicate downloads. The
+existing public behavior remains until that decision is resolved and tested.
+
+The Sparkling incompatible-runtime case must forward the validated
+`crossProvenance` input from the HTTP control route to the deploy job. A valid
+boolean must select the fixed incompatible runtime ID; checking only malformed
+input does not exercise this boundary. The scenario must reject an ordinary
+compatible deployment before attempting the rejection assertions.

@@ -382,6 +382,35 @@ describe("Detox remote asset proxy URLs", () => {
       expect(await crossProvenanceValidation.json()).toEqual({
         error: "crossProvenance must be a boolean",
       });
+      const deployJob = vi
+        .spyOn(controller, "startDeployBundleJob")
+        .mockReturnValue("incompatible-runtime-job");
+      try {
+        const incompatibleDeploy = await controlRoutes.request(
+          "/e2e/jobs/deploy-bundle",
+          {
+            body: JSON.stringify({
+              channel: "production",
+              crossProvenance: true,
+              marker: "cross-provenance-route-contract",
+              mode: "reset",
+              safeBundleIds: [],
+              targetAppVersion: "1.0.x",
+            }),
+            headers: { "content-type": "application/json" },
+            method: "POST",
+          },
+        );
+        expect(incompatibleDeploy.status).toBe(200);
+        expect(await incompatibleDeploy.json()).toEqual({
+          jobId: "incompatible-runtime-job",
+        });
+        expect(deployJob).toHaveBeenCalledWith(
+          expect.objectContaining({ crossProvenance: true }),
+        );
+      } finally {
+        deployJob.mockRestore();
+      }
 
       const assetResponse = await controller.handleProxyRemoteAssetRequest(
         new Request(assetUrl),
@@ -652,6 +681,37 @@ describe("Detox remote asset proxy URLs", () => {
           await controller.handleProxyRemoteAssetRequest(new Request(patchUrl))
         ).text(),
       ).toBe("patch-bytes");
+
+      controller.handleConfigureProxy({ downloadAvailable: false });
+      expect(() =>
+        controller.handleAssertProxy({ minFailedDownloads: 1 }),
+      ).toThrow("Expected a failed asset download");
+      const descriptorDuringOutage = await controller.handleProxyUpdateRequest(
+        new Request(
+          "http://localhost:3107/hot-updater/artifacts/v1/target/from/current",
+        ),
+      );
+      expect(descriptorDuringOutage.status).toBe(200);
+      const requestsBeforeOutage = controller.handleProxyState().requestCounts;
+      const fetchesBeforeOutage = fetchMock.mock.calls.length;
+      for (const url of [payload.manifestUrl, assetUrl, patchUrl]) {
+        expect(
+          (await controller.handleProxyRemoteAssetRequest(new Request(url)))
+            .status,
+        ).toBe(503);
+      }
+      expect(fetchMock).toHaveBeenCalledTimes(fetchesBeforeOutage);
+      controller.handleAssertProxy({ minFailedDownloads: 3 });
+      controller.handleConfigureProxy({ downloadAvailable: true });
+      expect(controller.handleProxyState().requestCounts).toEqual(
+        requestsBeforeOutage,
+      );
+      expect(controller.handleProxyState().failedDownloads).toBe(3);
+      expect(
+        await (
+          await controller.handleProxyRemoteAssetRequest(new Request(assetUrl))
+        ).text(),
+      ).toBe("asset-bytes");
 
       controller.handleConfigureProxy({
         changedAssetMutation: {

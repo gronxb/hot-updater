@@ -1,0 +1,116 @@
+{
+  "jobId": "job-20261003063230-8gu5jt",
+  "sourceCommit": "b001e4c41d8db1e92c8331f9e205b7e5bc25425a",
+  "scenario": "size-aware-artifact-selection",
+  "acceptancePassed": false,
+  "expected": {
+    "archiveRequests": 0,
+    "currentBundleId": "01a10091-5c72-708c-93fb-181d290fffed",
+    "fileRequests": 0,
+    "maxRequestsPerAsset": 1,
+    "minNetworkAssets": 1,
+    "patchRequests": 1,
+    "targetBundleId": "01a10091-d00f-791c-b4c7-fb16013e6dc7",
+    "verifyAllAssetHashes": true
+  },
+  "observed": {
+    "archive": {
+      "bytes": 0,
+      "requests": 0
+    },
+    "assets": [
+      {
+        "file": {
+          "bytes": 0,
+          "requests": 0
+        },
+        "patch": {
+          "bytes": 0,
+          "requests": 0
+        },
+        "path": "assets/OFL.txt"
+      },
+      {
+        "file": {
+          "bytes": 0,
+          "requests": 0
+        },
+        "patch": {
+          "bytes": 0,
+          "requests": 0
+        },
+        "path": "assets/bootstrap.js"
+      },
+      {
+        "file": {
+          "bytes": 0,
+          "requests": 0
+        },
+        "patch": {
+          "bytes": 0,
+          "requests": 0
+        },
+        "path": "assets/probe.png"
+      },
+      {
+        "file": {
+          "bytes": 0,
+          "requests": 0
+        },
+        "patch": {
+          "bytes": 0,
+          "requests": 0
+        },
+        "path": "assets/probe.ttf"
+      },
+      {
+        "file": {
+          "requests": 2,
+          "bytes": 365150
+        },
+        "patch": {
+          "bytes": 0,
+          "requests": 0
+        },
+        "path": "detail.lynx.bundle"
+      },
+      {
+        "file": {
+          "bytes": 0,
+          "requests": 0
+        },
+        "patch": {
+          "bytes": 0,
+          "requests": 0
+        },
+        "path": "dynamic/component.lynx.bundle"
+      },
+      {
+        "file": {
+          "requests": 2,
+          "bytes": 1406
+        },
+        "patch": {
+          "bytes": 0,
+          "requests": 0
+        },
+        "path": "hot-updater-lynx.json"
+      },
+      {
+        "file": {
+          "bytes": 0,
+          "requests": 0
+        },
+        "patch": {
+          "requests": 2,
+          "bytes": 320
+        },
+        "path": "main.lynx.bundle"
+      }
+    ],
+    "fileRequests": 4,
+    "patchRequests": 2
+  },
+  "rootCause": "Both native validateSelection implementations prepare the complete artifact and discard it; updateBundle then prepares it again. The shared test also assumes a single RN main bundle, omitting changed Lynx detail and metadata files.",
+  "decision": "Pending user preference: authenticated manifest/compatibility metadata at check time with full verification at install, or full preflight with reusable verified cache. Do not relax the per-asset request limit."
+}

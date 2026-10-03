@@ -565,6 +565,8 @@ const remoteAssetTransfers = new Map<
   { requests: number; bytes: number }
 >();
 let artifactFailuresRemaining = 0;
+let downloadAvailable = true;
+let failedDownloads = 0;
 let changedAssetMutation: {
   assetPath: string;
   mode: "corrupt" | "missing";
@@ -4005,6 +4007,8 @@ export function handleProxyState() {
     archiveFailureMode,
     archiveFailuresRemaining,
     artifactFailuresRemaining,
+    downloadAvailable,
+    failedDownloads,
     changedAssetMutation,
     capturedArtifactSelections: [...capturedArtifactSelections],
     capturedCatalogGenerations: Object.fromEntries(
@@ -4039,6 +4043,7 @@ export function handleProxyState() {
 }
 
 export function handleConfigureProxy(input: {
+  downloadAvailable?: boolean;
   archiveAvailable?: boolean;
   archiveFailureMode?: "corrupt" | "not-found" | null;
   archiveFailures?: number;
@@ -4063,10 +4068,15 @@ export function handleConfigureProxy(input: {
     remoteAssetTransfers.clear();
     capturedCatalogResponses.clear();
     artifactFailuresRemaining = 0;
+    downloadAvailable = true;
+    failedDownloads = 0;
     changedAssetMutation = null;
     archiveAvailable = true;
     archiveFailureMode = null;
     archiveFailuresRemaining = 0;
+  }
+  if (input.downloadAvailable !== undefined) {
+    downloadAvailable = input.downloadAvailable;
   }
   if (input.changedAssetMutation !== undefined) {
     changedAssetMutation = input.changedAssetMutation;
@@ -4278,6 +4288,7 @@ export function handleAssertBundleArtifactTransfers(input: {
 }
 
 export function handleAssertProxy(input: {
+  minFailedDownloads?: number;
   artifactFailuresRemaining?: number;
   artifactRequests?: number;
   catalogRequests?: number;
@@ -4286,6 +4297,16 @@ export function handleAssertProxy(input: {
   maxPathCardinality?: number;
 }) {
   const observed = handleProxyState();
+  if (
+    input.minFailedDownloads !== undefined &&
+    failedDownloads < input.minFailedDownloads
+  ) {
+    throw createEndpointError("Expected a failed asset download", {
+      expectedMinimum: input.minFailedDownloads,
+      observed,
+    });
+  }
+
   if (
     input.artifactFailuresRemaining !== undefined &&
     artifactFailuresRemaining !== input.artifactFailuresRemaining
@@ -4487,6 +4508,10 @@ export async function handleProxyRemoteAssetRequest(request: Request) {
   };
   transfer.requests += 1;
   remoteAssetTransfers.set(requestUrl.pathname, transfer);
+  if (!downloadAvailable) {
+    failedDownloads += 1;
+    return new Response("Injected E2E download outage", { status: 503 });
+  }
   if (artifactFailuresRemaining > 0) {
     artifactFailuresRemaining -= 1;
     return new Response("Injected E2E artifact download failure", {

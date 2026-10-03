@@ -1,0 +1,132 @@
+{
+  "jobId": "job-20261003063230-8gu5jt",
+  "sourceCommit": "b001e4c41d8db1e92c8331f9e205b7e5bc25425a",
+  "platform": "android",
+  "profile": "standalone-kysely",
+  "finishedAt": "2026-10-03T07:13:26.238Z",
+  "passed": 20,
+  "failed": 7,
+  "acceptancePassed": false,
+  "results": [
+    {
+      "scenario": "startup-hang-recovery",
+      "status": "failed",
+      "failure": "verify JS hang before first render without crash marker failed with HTTP 500: {\"error\":\"Startup hang was not reached for 01a1007a-8ec5-78f2-b510-e74b23e354c1\"}"
+    },
+    {
+      "scenario": "release-ota-recovery",
+      "status": "passed"
+    },
+    {
+      "scenario": "multi-asset-replacement",
+      "status": "failed",
+      "failure": "assert multi-asset manifest reuse"
+    },
+    {
+      "scenario": "bspatch-builtin-to-diff-ota",
+      "status": "passed"
+    },
+    {
+      "scenario": "bspatch-consecutive-diff-ota",
+      "status": "passed"
+    },
+    {
+      "scenario": "bspatch-disabled-chain-rollback",
+      "status": "failed",
+      "failure": "create chain rollback patch C to B job ab30f182-67ce-4ef9-9c15-068eb1f334aa failed: /Users/gronxb/.local/share/mise/installs/node/24.15.0/bin/node /Users/gronxb/.hot-updater-e2e-bot/worktrees/job-20261003063230-8gu5jt-b001e4c41d8d/packages/hot-updater/dist/index.mjs patch --artifact-id 01a10084-9c9a-72ae-a5d1-1bd5a18491e1 --base-artifact-id 01a10085-1ec2-70d4-a7d3-72ea331b043b --platform android --no-interactive failed with code 1. See /Users/gronxb/.hot-updater-e2e-bot/worktrees/job-20261003063230-8gu5jt-b001e4c41d8d/e2e/results/detox/android/bspatch-disabled-chain-rollback/patch-01a10084-9c9a-72ae-a5d1-1bd5a18491e1-from-01a10085-1ec2-70d4-a7d3-72ea331b043b.log"
+    },
+    {
+      "scenario": "bspatch-manifest-diff-fallback",
+      "status": "failed",
+      "failure": "assert manifest diff fallback"
+    },
+    {
+      "scenario": "runtime-channel-switch-reset",
+      "status": "passed"
+    },
+    {
+      "scenario": "numeric-cohort-rollout",
+      "status": "passed"
+    },
+    {
+      "scenario": "target-cohorts-only",
+      "status": "passed"
+    },
+    {
+      "scenario": "target-cohorts-rollout-interaction",
+      "status": "passed"
+    },
+    {
+      "scenario": "targeted-cohort-switchback",
+      "status": "passed"
+    },
+    {
+      "scenario": "force-update-auto-reload",
+      "status": "passed"
+    },
+    {
+      "scenario": "disabled-bundle-rollback-to-builtin",
+      "status": "passed"
+    },
+    {
+      "scenario": "disabled-bundle-rollback-to-previous-ota",
+      "status": "passed"
+    },
+    {
+      "scenario": "fingerprint-initial-install",
+      "status": "passed"
+    },
+    {
+      "scenario": "catalog-only-no-update",
+      "status": "passed"
+    },
+    {
+      "scenario": "same-bundle-release-adoption",
+      "status": "passed"
+    },
+    {
+      "scenario": "size-aware-artifact-selection",
+      "status": "failed",
+      "failure": "assert size-aware small patch transfer"
+    },
+    {
+      "scenario": "stale-catalog-after-newer-generation",
+      "status": "passed"
+    },
+    {
+      "scenario": "slow-old-artifact-after-newer-install",
+      "status": "passed"
+    },
+    {
+      "scenario": "failed-download-same-generation-retry",
+      "status": "failed",
+      "failure": "retry same generation download: wait updateActionResult observed failed updateActionResult: \"current-channel -> error Update request returned HTTP 503.\""
+    },
+    {
+      "scenario": "republished-crashed-bundle-skipped",
+      "status": "passed"
+    },
+    {
+      "scenario": "crash-then-next-safe-update",
+      "status": "passed"
+    },
+    {
+      "scenario": "runtime-channel-crash-restore",
+      "status": "passed"
+    },
+    {
+      "scenario": "ten-crash-history-safe-bundle",
+      "status": "passed"
+    },
+    {
+      "scenario": "sparkling-multipage-ota",
+      "status": "failed",
+      "failure": "Cross-provenance deploy did not use the fixed test vector"
+    }
+  ],
+  "limitations": [
+    "Recovery reports in this baseline used a synthesized adapter; passing recovery cases require a fresh run with actual native notifyAppReady reports.",
+    "Sparkling multi-page navigation and stack boundary checks completed, but the incompatible target deployment failed its fixed-vector assertion before OTA transition coverage.",
+    "All corrections after b001e4c41 require fresh device execution."
+  ]
+}

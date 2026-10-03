@@ -1506,6 +1506,49 @@ passed. These are progress counts, not completion of G3.
 The six user-local helpers were restored with their staged index after the
 build, type and unit checks. `cmp` confirms their complete cached patch matches
 `/tmp/lynx-local-helpers-before-fixci-20261003.patch` exactly. The remaining
-integration projects do not import these example helpers. Both saved stashes
-remain backups, and signing keys remain untracked. Further build/type runs
-must isolate the local-only helpers again; they are not published PR contents.
+integration projects were initially assumed not to import these example
+helpers, but the PGlite HTTP test starts the example server, which imports the
+restored `db.ts` and its obsolete `createStoragePlugin` helper. That restoration
+was premature: it invalidated the PGlite test's server startup, leaving its 60
+cases unexecuted. The helpers are isolated again with their exact staged patch
+verified by `cmp`, and must remain isolated until the entire integration run
+finishes. Saved stashes remain backups, and signing keys remain untracked.
+These helpers are not published PR contents; the affected integration test must
+be rerun against the committed source.
+
+
+## 2026-10-03 later Android failure diagnosis
+
+The size-aware case fails its small-transfer budget. Native logs show one
+published BSDIFF transaction, but proxy evidence shows every transferred asset
+was fetched twice. Both native `validateSelection` implementations call complete
+preparation and discard it; `updateBundle` prepares again. The scenario also
+expects zero original-file requests even though the Lynx detail template and
+metadata change. See `evidence/shared-e2e-8gu5jt-transfer-failure.json`. The user
+has been asked to choose metadata-only preflight versus full preflight with a
+verified reusable cache. No native behavior or transfer limit was changed yet.
+
+The same-generation retry case fails because three injected errors remain after
+Lynx's single failed attempt. The correction introduces a download-only outage,
+keeps it active until the first operation reports failure, asserts that a real
+asset request failed, and restores download availability while preserving the
+catalog/request evidence. This removes the shared scenario's dependency on RN's
+native retry-count constants. The focused scenario suite passes 85/85 and the
+standalone E2E TypeScript audit passes.
+
+The baseline Android job finished at 16:13 KST with **20 passed and 7 failed
+out of 27**, recorded in `evidence/shared-e2e-8gu5jt-final.json`. The seventh
+failure is the Sparkling cross-provenance fixture: the HTTP route validated
+`crossProvenance` but omitted it when starting the deploy job, producing a
+compatible target. Forwarding the field fixes that boundary. A route regression
+now submits a valid incompatible request and checks the job receives the flag;
+the existing malformed-input rejection remains. The completed navigation and
+stack checks do not establish the later OTA transition phases.
+
+The download outage is also tested against the real proxy handlers: artifact
+selection stays available, manifest/file/patch requests fail without contacting
+storage, and restoring downloads preserves request evidence. The focused proxy,
+shared scenario and Sparkling scenario tests pass **98/98**. All 22 GitHub checks
+on `fa3bd0952` pass; the ordered local integration run still has its unchanged
+Insights performance failure. Neither result substitutes for a new device run
+of the harness corrections.
