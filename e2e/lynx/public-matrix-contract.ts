@@ -62,7 +62,9 @@ export const LYNX_MATRIX_NATIVE_VERSIONS = {
   sparkling: "2.1.0-rc.12",
   lynx: "3.9.0",
   primjs: "3.8.0-alpha.6",
-  hotUpdaterLynx: "1.0.0-rc.14",
+  hotUpdaterLynx: createRequire(import.meta.url)(
+    "@hot-updater/lynx/package.json",
+  ).version as string,
 } as const;
 
 export const LYNX_MATRIX_IOS_SPARKLING_CHECKOUT = {
@@ -308,9 +310,15 @@ export function validateLynxNativeArtifactsReceipt(
       "expected no tracked source changes",
     );
   }
+  const allowedTrackedChanges = sourceIntegrity.allowedTrackedChanges;
   if (
-    JSON.stringify(sourceIntegrity.allowedTrackedChanges) !==
-    JSON.stringify(LYNX_NATIVE_ALLOWED_PREEXISTING_TRACKED_PATHS)
+    !Array.isArray(allowedTrackedChanges) ||
+    new Set(allowedTrackedChanges).size !== allowedTrackedChanges.length ||
+    allowedTrackedChanges.some(
+      (file) =>
+        typeof file !== "string" ||
+        !LYNX_NATIVE_ALLOWED_PREEXISTING_TRACKED_PATHS.includes(file),
+    )
   ) {
     fail(
       "nativeArtifacts.sourceIntegrity.allowedTrackedChanges",

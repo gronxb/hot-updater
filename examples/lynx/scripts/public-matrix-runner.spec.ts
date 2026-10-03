@@ -519,7 +519,7 @@ describe("Lynx public matrix runner", () => {
     ).toThrow("outside visible bounds");
   });
 
-  it("builds the dedicated matrix targets and emits their exact artifact paths", () => {
+  it("emits the dedicated matrix targets, artifact paths and installed SDK version", () => {
     const result = buildNative(["--", "--dry-run", "--target", "matrix"]);
     expect(result.status).toBe(0);
     const encoded = result.stdout
@@ -527,6 +527,11 @@ describe("Lynx public matrix runner", () => {
       .find((line) => line.startsWith("LYNX_NATIVE_ARTIFACTS="));
     expect(encoded).toBeTruthy();
     const receipt = JSON.parse(encoded!.split("=").slice(1).join("="));
+    const sdkVersion = createRequire(import.meta.url)(
+      "@hot-updater/lynx/package.json",
+    ).version;
+    expect(receipt.versions.hotUpdaterLynx).toBe(sdkVersion);
+    expect(LYNX_MATRIX_NATIVE_VERSIONS.hotUpdaterLynx).toBe(sdkVersion);
     expect(receipt).toMatchObject({
       schemaVersion: "lynx-native-artifacts-v2",
       target: "matrix",

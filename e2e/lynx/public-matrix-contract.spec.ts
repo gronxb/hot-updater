@@ -1208,12 +1208,20 @@ describe("Lynx public matrix evidence contract", () => {
     expect(() => validateLynxMatrixCell(cell)).toThrow();
   });
 
-  it("accepts a clean native receipt with no public-key injection", () => {
-    const cell = makeCell();
-    cell.nativeArtifacts = makeNativeArtifacts(["ios"], hash("f"), false);
+  it.each([0, 1])(
+    "accepts a native receipt with %s preserved helpers and no public-key injection",
+    (count) => {
+      const cell = makeCell();
+      cell.nativeArtifacts = makeNativeArtifacts(["ios"], hash("f"), false);
+      cell.nativeArtifacts.sourceIntegrity.allowedTrackedChanges =
+        cell.nativeArtifacts.sourceIntegrity.allowedTrackedChanges.slice(
+          0,
+          count,
+        );
 
-    expect(() => validateLynxMatrixCell(cell)).not.toThrow();
-  });
+      expect(() => validateLynxMatrixCell(cell)).not.toThrow();
+    },
+  );
 
   it.each(["scaffold", "e2e", "matrix"] as const)(
     "accepts the exact %s native config path sets",
@@ -1473,6 +1481,31 @@ describe("Lynx public matrix evidence contract", () => {
         cell.nativeArtifacts.sourceIntegrity.trackedChanges = [
           "examples/lynx/ios/Info.plist",
         ];
+      },
+    ],
+    [
+      "an unapproved tracked source change disguised as a preserved helper",
+      (cell: any) => {
+        cell.nativeArtifacts.sourceIntegrity.allowedTrackedChanges = [
+          "packages/lynx/src/index.ts",
+        ];
+      },
+    ],
+    [
+      "duplicate preserved helper paths",
+      (cell: any) => {
+        const paths =
+          cell.nativeArtifacts.sourceIntegrity.allowedTrackedChanges;
+        cell.nativeArtifacts.sourceIntegrity.allowedTrackedChanges = [
+          paths[0],
+          paths[0],
+        ];
+      },
+    ],
+    [
+      "missing preserved helper provenance",
+      (cell: any) => {
+        delete cell.nativeArtifacts.sourceIntegrity.allowedTrackedChanges;
       },
     ],
     [
