@@ -68,7 +68,6 @@ export default {
         baseBundleId,
         "--platform",
         target.bundle.platform,
-        "--no-interactive",
       ],
       {
         cwd,

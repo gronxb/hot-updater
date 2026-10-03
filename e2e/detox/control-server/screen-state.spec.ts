@@ -66,6 +66,8 @@ describe("E2E screen state control boundary", () => {
         generationEvents: null,
         channelSwitched: null,
         launchStatus: "Current Launch Status: null",
+        nativeLaunchReport: null,
+        startupHangBundleId: null,
         runtimeChannelInput: "beta",
         runtimeScenarioMarker: null,
         stagingBundleId: null,
@@ -241,6 +243,8 @@ describe("E2E screen state control boundary", () => {
       "detailPageTitle",
       "diagnosticReceipt",
       "generationEvents",
+      "nativeLaunchReport",
+      "startupHangBundleId",
     ]) {
       expect(() => handlePatchE2eScreenState({ [field]: false })).toThrow(
         "screen state field must be a string or null",
@@ -263,6 +267,8 @@ describe("E2E screen state control boundary", () => {
       generationEvents: null,
       channelSwitched: null,
       launchStatus: "Current Launch Status: null",
+      nativeLaunchReport: null,
+      startupHangBundleId: null,
       runtimeChannelInput: "beta",
       runtimeScenarioMarker: null,
       stagingBundleId: null,

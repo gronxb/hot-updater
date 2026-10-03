@@ -9,6 +9,7 @@ import {
   handleAssertBundleAssetsStored,
   handleAssertBundlePatchBases,
   handleAssertCrashHistory,
+  handleAssertStartupInterruption,
   handleAssertFirstOtaUsesBuiltInManifest,
   handleAssertLaunchReport,
   handleAssertManifestDiffApplied,
@@ -807,6 +808,19 @@ app.post("/e2e/assert-crash-history", async (c) => {
   }
 
   return c.json(await handleAssertCrashHistory(payload.bundleId));
+});
+
+app.post("/e2e/assert-startup-interruption", async (c) => {
+  const payload = (await c.req.json()) as {
+    bundleId?: string;
+    releaseId?: string;
+  };
+  if (!payload.bundleId || !payload.releaseId) {
+    return c.json({ error: "bundleId and releaseId are required" }, 400);
+  }
+  return c.json(
+    await handleAssertStartupInterruption(payload.bundleId, payload.releaseId),
+  );
 });
 
 app.post("/e2e/lynx-crash-state", (c) => c.json(handleLynxCrashState()));

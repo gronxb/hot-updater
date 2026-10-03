@@ -10,7 +10,9 @@ import {
   lynxStoredExclusions,
   RN_E2E_BUILTIN_BUNDLE_ID,
   synthesizeLynxCrashHistory,
-  synthesizeLynxLaunchReport,
+  readLynxLaunchReport,
+  assertLynxStartupHang,
+  assertLynxStartupInterruption,
   synthesizeLynxMetadata,
 } from "./lynx-store.ts";
 
@@ -214,20 +216,117 @@ describe("Lynx E2E store projection", () => {
       "/data/data/com.hotupdater.lynxexample/files/hot-updater-lynx/scopes/scope-a/artifacts/installations/bundle-1/payload/manifest.json",
       "/data/data/com.hotupdater.lynxexample/files/hot-updater-lynx/scopes/scope-a/artifacts/installations/bundle-1/manifest.json",
     ]);
-    expect(
-      synthesizeLynxLaunchReport({
-        crashedBundleIds: ["bundle-crash"],
-        confirmedBundleId: "bundle-stable",
-        confirmedReleaseId: "release-stable",
-        fromReleaseId: "release-crash",
-        toReleaseId: "release-stable",
-      }),
-    ).toEqual({
-      status: "RECOVERED",
-      fromBundleId: "bundle-crash",
-      toBundleId: "bundle-stable",
-      fromReleaseId: "release-crash",
-      toReleaseId: "release-stable",
-    });
   });
+});
+
+describe("Lynx native recovery evidence", () => {
+  const report = {
+    status: "RECOVERED",
+    transitionId: "transition-1",
+    fromBundleId: "bundle-hang",
+    fromReleaseId: "release-hang",
+    toBundleId: "bundle-stable",
+    toReleaseId: "release-stable",
+  };
+  const screen = {
+    currentBundleId: "bundle-stable",
+    currentReleaseId: "release-stable",
+    nativeLaunchReport: JSON.stringify(report),
+  };
+
+  it("requires a native reply for the current running Bundle and Release", () => {
+    expect(readLynxLaunchReport(screen)).toEqual(report);
+    expect(
+      readLynxLaunchReport({ ...screen, nativeLaunchReport: null }),
+    ).toBeNull();
+    expect(
+      readLynxLaunchReport({ ...screen, nativeLaunchReport: "invalid" }),
+    ).toBeNull();
+    expect(
+      readLynxLaunchReport({ ...screen, currentBundleId: "bundle-new" }),
+    ).toBeNull();
+    expect(
+      readLynxLaunchReport({ ...screen, currentReleaseId: "release-new" }),
+    ).toBeNull();
+    expect(
+      readLynxLaunchReport({
+        ...screen,
+        nativeLaunchReport: JSON.stringify({
+          ...report,
+          transitionId: undefined,
+        }),
+      }),
+    ).toBeNull();
+  });
+
+  it.each(["ios", "android"] as const)(
+    "distinguishes an interrupted Release from a fatal Bundle on %s",
+    (platform) => {
+      const selection = {
+        ...receipt,
+        bundleId: "bundle-hang",
+        releaseId: "release-hang",
+      };
+      const pending = {
+        attemptId: "attempt-1",
+        selection:
+          platform === "ios"
+            ? {
+                receipt: Buffer.from(JSON.stringify(selection)).toString(
+                  "base64",
+                ),
+              }
+            : selection,
+      };
+      const exclusions = (unconfirmed: string[], crashed: string[]) =>
+        platform === "ios"
+          ? { unconfirmedReleaseIds: unconfirmed, crashedBundleIds: crashed }
+          : { unconfirmed, crashed };
+      const journal = { pending, ...exclusions([], []) };
+      expect(() =>
+        assertLynxStartupHang(journal, platform, "bundle-hang"),
+      ).not.toThrow();
+      expect(() =>
+        assertLynxStartupHang(journal, platform, "wrong-bundle"),
+      ).toThrow();
+      expect(() =>
+        assertLynxStartupHang(
+          { ...journal, pending: null },
+          platform,
+          "bundle-hang",
+        ),
+      ).toThrow();
+      expect(() =>
+        assertLynxStartupHang(
+          { ...journal, ...exclusions([], ["bundle-hang"]) },
+          platform,
+          "bundle-hang",
+        ),
+      ).toThrow();
+      expect(() =>
+        assertLynxStartupInterruption(
+          exclusions(["release-hang"], []),
+          platform,
+          "bundle-hang",
+          "release-hang",
+        ),
+      ).not.toThrow();
+      expect(() =>
+        assertLynxStartupInterruption(
+          exclusions([], []),
+          platform,
+          "bundle-hang",
+          "release-hang",
+        ),
+      ).toThrow();
+      expect(() =>
+        assertLynxStartupInterruption(
+          exclusions(["release-hang"], ["bundle-hang"]),
+          platform,
+          "bundle-hang",
+          "release-hang",
+        ),
+      ).toThrow();
+    },
+  );
 });

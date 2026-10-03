@@ -6,7 +6,6 @@ import os from "os";
 import path from "path";
 import { setTimeout as sleep } from "timers/promises";
 import { fileURLToPath } from "url";
-import { brotliDecompressSync } from "zlib";
 
 import type {
   AnyHotUpdaterPlugin,
@@ -69,11 +68,12 @@ import {
   isLynxE2eAppId,
   LYNX_E2E_BUILTIN_BUNDLE_ID,
   lynxAndroidInstalledManifestPaths,
-  lynxCrashedBundleIds,
   lynxStoredExclusions,
   lynxReceipt,
   synthesizeLynxCrashHistory,
-  synthesizeLynxLaunchReport,
+  readLynxLaunchReport,
+  assertLynxStartupHang,
+  assertLynxStartupInterruption,
   synthesizeLynxMetadata,
 } from "./lynx-store.ts";
 import {
@@ -1099,7 +1099,8 @@ async function applyAppScenario({
             ]
           : mode === "hang"
             ? [
-                '  console.log("HotUpdaterE2EStartupHang");',
+                "  const { running } = await HotUpdater.getLaunchInfo();",
+                "  await onStartupHang(running.bundleId);",
                 "  const hangUntil = Date.now() + 600_000;",
                 "  while (Date.now() < hangUntil) {}",
                 "  return true;",
@@ -1532,7 +1533,6 @@ async function createFixtureBundleDiff(input: {
         input.baseBundleId,
         "--platform",
         fixtureSession.platform,
-        "--no-interactive",
       ],
       {
         cwd: fixtureSession.exampleDir,
@@ -1841,17 +1841,6 @@ function findLynxAndroidBundleDir(bundleId: string) {
   return null;
 }
 
-function releaseIdForBundle(bundleId: string | null) {
-  if (!bundleId) {
-    return null;
-  }
-  return (
-    fixtureSession.deployedBundles.findLast(
-      (record) => record.bundleId === bundleId,
-    )?.releaseId ?? null
-  );
-}
-
 function readLynxJournalValue(): Record<string, unknown> | null {
   const scopePath = ensureLynxScopePath();
   if (!scopePath) {
@@ -1917,26 +1906,10 @@ function readLynxSynthesizedSnapshot(
       value: synthesizeLynxCrashHistory(journal, fixtureSession.platform),
     };
   }
-  const confirmed = lynxReceipt(journal, fixtureSession.platform, "confirmed");
-  const confirmedBundleId =
-    typeof confirmed?.bundleId === "string" ? confirmed.bundleId : null;
-  const crashedBundleIds = lynxCrashedBundleIds(
-    journal,
-    fixtureSession.platform,
-  );
-  const report = synthesizeLynxLaunchReport({
-    crashedBundleIds,
-    confirmedBundleId,
-    confirmedReleaseId:
-      typeof confirmed?.releaseId === "string" ? confirmed.releaseId : null,
-    fromReleaseId: releaseIdForBundle(crashedBundleIds.at(-1) ?? null),
-    toReleaseId:
-      (typeof confirmed?.releaseId === "string" ? confirmed.releaseId : null) ??
-      releaseIdForBundle(confirmedBundleId),
-  });
+  const report = readLynxLaunchReport(readE2eScreenStateSnapshot());
   return {
     exists: report !== null,
-    path: journalPath,
+    path: "screen-state.nativeLaunchReport",
     readError: null,
     value: report,
   };
@@ -7131,6 +7104,8 @@ async function assertManifestDiffApplied(args: {
   throw createEndpointError(
     "Timed out waiting for manifest diff install evidence.",
     {
+      archiveInstalled: state.archiveInstalled,
+      archiveFallbackApplied: state.archiveFallbackApplied,
       assetFile: state.assetFile,
       assetPath: state.assetPath,
       bsdiffLogMatched: state.bsdiffApplied,
@@ -7140,6 +7115,7 @@ async function assertManifestDiffApplied(args: {
       expectedHash: state.expectedHash,
       manifest: state.manifest,
       metadataState: state.metadataState,
+      nativeLogsTail: state.nativeLogs.split("\n").slice(-30),
       platform: fixtureSession.platform,
       previousBundleId: args.previousBundleId,
       trackedBundleRecord: state.record,
@@ -7574,11 +7550,23 @@ async function assertLaunchReportState({
       fixtureSession.resultsDir,
       "launch-report-assert.json",
     );
-    if (!writeLynxSnapshotFile("launch-report.json", launchReportPath)) {
-      if (optional) {
-        return {};
-      }
-      throw new Error("launch-report.json is missing");
+    // Native confirmation commits before the app can deliver its reply over
+    // HTTP. Await that observation instead of inferring a report from history.
+    let observed = writeLynxSnapshotFile(
+      "launch-report.json",
+      launchReportPath,
+    );
+    for (
+      let attempt = 0;
+      !observed && !optional && attempt < 40;
+      attempt += 1
+    ) {
+      await sleep(E2E_POLL_INTERVAL_MS);
+      observed = writeLynxSnapshotFile("launch-report.json", launchReportPath);
+    }
+    if (!observed) {
+      if (optional) return {};
+      throw new Error("Native notifyAppReady report was not observed");
     }
     assertLaunchReport(launchReportPath, {
       fromBundleId,
@@ -7985,6 +7973,22 @@ export function handleLynxCrashState() {
   };
 }
 
+export async function handleAssertStartupInterruption(
+  bundleId: string,
+  releaseId: string,
+) {
+  if (!isLynxE2eApp()) return assertCrashHistory(bundleId);
+  const journal = readLynxJournalValue();
+  if (!journal) throw new Error("Lynx native state is unavailable");
+  assertLynxStartupInterruption(
+    journal,
+    fixtureSession.platform,
+    bundleId,
+    releaseId,
+  );
+  return {};
+}
+
 export async function handlePrepareAppLaunch(options?: {
   launchGeneration?: unknown;
 }) {
@@ -8015,6 +8019,24 @@ export async function handleLaunchUninstrumentedApp() {
 }
 
 export async function handleLaunchStartupHang(bundleId: string) {
+  if (isLynxE2eApp()) {
+    await handleLaunchUninstrumentedApp();
+    const deadline = Date.now() + 30_000;
+    while (
+      readE2eScreenStateSnapshot().startupHangBundleId !== bundleId &&
+      Date.now() < deadline
+    ) {
+      await sleep(E2E_POLL_INTERVAL_MS);
+    }
+    if (readE2eScreenStateSnapshot().startupHangBundleId !== bundleId) {
+      throw new Error(`Startup hang was not reached for ${bundleId}`);
+    }
+    const journal = readLynxJournalValue();
+    if (!journal) throw new Error("Lynx native state is unavailable");
+    assertLynxStartupHang(journal, fixtureSession.platform, bundleId);
+    await captureState("startup-hang");
+    return {};
+  }
   const marker = `HotUpdaterE2EStartupHang:${bundleId}`;
   const ios = fixtureSession.platform === "ios";
   const logs = spawn(

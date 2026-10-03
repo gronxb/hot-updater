@@ -50,7 +50,10 @@ export async function loadE2EStartupResources(loaders: {
   }
 }
 
-export async function maybeCrashForE2E(): Promise<boolean> {
+export async function maybeCrashForE2E(
+  onStartupHang: (bundleId: string) => Promise<void>,
+): Promise<boolean> {
+  void onStartupHang;
   /* E2E_CRASH_GUARD_START */
   return false;
   /* E2E_CRASH_GUARD_END */

@@ -1,4 +1,8 @@
-import { HotUpdater, managedResourceUrl } from "@hot-updater/lynx";
+import {
+  HotUpdater,
+  managedResourceUrl,
+  type NotifyAppReadyResult,
+} from "@hot-updater/lynx";
 import { navigate } from "@hot-updater/lynx/navigation";
 import { root, useEffect, useRef, useState } from "@lynx-js/react";
 
@@ -71,6 +75,8 @@ type ScreenState = {
   generationEvents: string | null;
   channelSwitched: string | null;
   launchStatus: string;
+  nativeLaunchReport: string | null;
+  startupHangBundleId: string | null;
   runtimeChannelInput: string;
   runtimeScenarioMarker: string | null;
   stagingBundleId: string | null;
@@ -445,7 +451,10 @@ function App() {
     ]),
   );
 
-  const publishRuntimeSnapshot = async (launchStatusValue?: string) => {
+  const publishRuntimeSnapshot = async (
+    launchStatusValue?: string,
+    nativeReport?: NotifyAppReadyResult,
+  ) => {
     try {
       const snapshot = await readRuntimeSnapshot(HotUpdater);
       setRuntimeSnapshot(snapshot);
@@ -459,6 +468,12 @@ function App() {
             ? null
             : scenarioMarker,
         ...(launchStatusValue ? { launchStatus: launchStatusValue } : {}),
+        ...(nativeReport
+          ? { nativeLaunchReport: JSON.stringify(nativeReport) }
+          : {}),
+        ...(launchStatusValue === "Current Launch Status: STARTING"
+          ? { nativeLaunchReport: null, startupHangBundleId: null }
+          : {}),
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -495,7 +510,12 @@ function App() {
         await publishRuntimeSnapshot("Current Launch Status: STARTING");
         // Inject startup failure before resource warmup can emit diagnostics
         // for a generation that deliberately never confirms readiness.
-        if (await maybeCrashForE2E()) return;
+        if (
+          await maybeCrashForE2E((bundleId) =>
+            patchScreenState({ startupHangBundleId: bundleId }),
+          )
+        )
+          return;
         const ready = await bootstrapRuntimeReady(
           runtimeConfigurationReady,
           async () => {
@@ -517,9 +537,9 @@ function App() {
             });
           },
           async () => {
-            await confirmRuntimeReady(HotUpdater, async (status) => {
+            await confirmRuntimeReady(HotUpdater, async (status, report) => {
               setLaunchStatus(status);
-              await publishRuntimeSnapshot(status);
+              await publishRuntimeSnapshot(status, report);
             });
           },
           ensurePendingActionPoller,

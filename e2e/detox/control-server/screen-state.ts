@@ -14,6 +14,8 @@ export type E2eScreenState = {
   readonly generationEvents: string | null;
   readonly channelSwitched: string | null;
   readonly launchStatus: string;
+  readonly nativeLaunchReport: string | null;
+  readonly startupHangBundleId: string | null;
   readonly runtimeChannelInput: string;
   readonly runtimeScenarioMarker: string | null;
   readonly stagingBundleId: string | null;
@@ -42,6 +44,8 @@ const defaultE2eScreenState = {
   generationEvents: null,
   channelSwitched: null,
   launchStatus: "Current Launch Status: null",
+  nativeLaunchReport: null,
+  startupHangBundleId: null,
   runtimeChannelInput: "beta",
   runtimeScenarioMarker: null,
   stagingBundleId: null,
@@ -130,6 +134,14 @@ const parseScreenStatePatch = (payload: unknown): E2eScreenStatePatch => {
     "runtimeChannelInput",
   );
   const launchStatus = parseOptionalString(payload, "launchStatus");
+  const nativeLaunchReport = parseOptionalNullableString(
+    payload,
+    "nativeLaunchReport",
+  );
+  const startupHangBundleId = parseOptionalNullableString(
+    payload,
+    "startupHangBundleId",
+  );
   const updateActionResult = parseOptionalString(payload, "updateActionResult");
   const cohortInput = parseOptionalCohortInput(payload);
   const currentChannel = parseOptionalNullableString(payload, "currentChannel");
@@ -205,6 +217,8 @@ const parseScreenStatePatch = (payload: unknown): E2eScreenStatePatch => {
     ...(generationEvents === undefined ? {} : { generationEvents }),
     ...(channelSwitched === undefined ? {} : { channelSwitched }),
     ...(launchStatus === undefined ? {} : { launchStatus }),
+    ...(nativeLaunchReport === undefined ? {} : { nativeLaunchReport }),
+    ...(startupHangBundleId === undefined ? {} : { startupHangBundleId }),
     ...(runtimeChannelInput === undefined ? {} : { runtimeChannelInput }),
     ...(runtimeScenarioMarker === undefined ? {} : { runtimeScenarioMarker }),
     ...(stagingBundleId === undefined ? {} : { stagingBundleId }),

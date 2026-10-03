@@ -2058,3 +2058,29 @@ floor to dependency targets as well. This makes the declared floor explicit
 under Xcode 27 without editing dependency source or adding host runtime code.
 The Fresco-only runtime adaptation exception and standard Sparkling structure
 remain unchanged.
+
+
+## 2026-10-03 recovery evidence after the upstream merge
+
+The shared startup-hang scenario must exercise Lynx's own launch contract.
+The injected busy loop reports its actual running Bundle identity through the
+existing E2E control transport immediately before blocking JavaScript. The
+controller also reads the native pending attempt and verifies that neither a
+Release interruption nor a fatal Bundle exclusion has been recorded yet.
+After force termination and cold start, the interrupted Release must be excluded
+without classifying its Bundle bytes as a fatal crash.
+
+Recovery acceptance requires the exact `notifyAppReady()` result, including its
+transition ID and source/target Bundle and Release identities. The E2E app
+transports this native reply without reconstructing it. The controller accepts
+only a report matching the current running identities, and the existing launch
+and runtime generation checks reject retired-context publications. Crash history
+alone is not evidence that a recovery transition was reported. Earlier shared
+passes using a synthesized launch report must be revalidated.
+
+The multi-asset reuse and missing-base-patch fallback cases make the optional
+archive URL unavailable during the target install so that they test verified
+local reuse and individual asset/patch transfer. It retains the native installation event and actual file-hash checks.
+The separate size-aware selection case remains responsible for proving that a
+cheaper authenticated archive can be selected. Full-archive transfer must not
+silently satisfy the reuse case.

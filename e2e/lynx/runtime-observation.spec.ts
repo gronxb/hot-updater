@@ -74,6 +74,27 @@ describe("Lynx E2E runtime observations", () => {
     expect(publish).toHaveBeenCalledOnce();
     expect(publish).toHaveBeenCalledWith(
       "Current Launch Status: UPDATE_APPLIED",
+      { status: "UPDATE_APPLIED" },
+    );
+  });
+
+  it("preserves the native recovery transition identities in the published report", async () => {
+    const report = {
+      status: "RECOVERED" as const,
+      transitionId: "transition-1",
+      fromBundleId: "bundle-hang",
+      fromReleaseId: "release-hang",
+      toBundleId: "bundle-stable",
+      toReleaseId: "release-stable",
+    };
+    const publish = vi.fn().mockResolvedValue(undefined);
+    await confirmRuntimeReady(
+      { notifyAppReady: vi.fn().mockResolvedValue(report) },
+      publish,
+    );
+    expect(publish).toHaveBeenCalledExactlyOnceWith(
+      "Current Launch Status: RECOVERED",
+      report,
     );
   });
 

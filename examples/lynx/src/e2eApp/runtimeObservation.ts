@@ -45,10 +45,10 @@ export type RuntimeSnapshot = Awaited<ReturnType<typeof readRuntimeSnapshot>>;
 
 export async function confirmRuntimeReady(
   client: Pick<typeof HotUpdater, "notifyAppReady">,
-  publish: (status: string) => Promise<void>,
+  publish: (status: string, report: NotifyAppReadyResult) => Promise<void>,
 ): Promise<NotifyAppReadyResult> {
   const result = await client.notifyAppReady();
-  await publish(`Current Launch Status: ${result.status}`);
+  await publish(`Current Launch Status: ${result.status}`, result);
   return result;
 }
 

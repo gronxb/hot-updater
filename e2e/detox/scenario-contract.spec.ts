@@ -2316,6 +2316,7 @@ describe("Detox scenario contract", () => {
       "wait first multi-asset metadata stable",
       "assert first multi-assets stored",
       "deploy second multi-asset bundle",
+      "require individual assets for multi-asset reuse evidence",
       "launch second multi-asset app",
       "install second multi-asset update",
       "wait second multi-asset metadata pending",
@@ -2323,7 +2324,20 @@ describe("Detox scenario contract", () => {
       "wait second multi-asset metadata stable",
       "assert multi-assets replaced",
       "assert multi-asset manifest reuse",
+      "restore optional archive availability",
     ]);
+    expect(
+      await controlStepBody(
+        "multi-asset-replacement",
+        "require individual assets for multi-asset reuse evidence",
+      ),
+    ).toEqual({ archiveAvailable: false });
+    expect(
+      await controlStepBody(
+        "multi-asset-replacement",
+        "restore optional archive availability",
+      ),
+    ).toEqual({ archiveAvailable: true });
     const firstDeploy = await controlStepBody(
       "multi-asset-replacement",
       "deploy first multi-asset bundle",
@@ -2332,6 +2346,14 @@ describe("Detox scenario contract", () => {
       "multi-asset-replacement",
       "deploy second multi-asset bundle",
     );
+    expect(firstDeploy).toMatchObject({
+      bundleProfile: "multiAssetReplacement",
+      safeBundleIds: [],
+    });
+    expect(secondDeploy).toMatchObject({
+      bundleProfile: "multiAssetReplacement",
+      safeBundleIds: ["$firstBundleId"],
+    });
     expect(
       (
         await controlStepBody(
@@ -2529,13 +2551,27 @@ describe("Detox scenario contract", () => {
       "deploy manifest intermediate bundle",
       "deploy manifest fallback bundle",
       "assert manifest fallback patch bases",
+      "require originals when no patch matches the running bundle",
       "launch manifest fallback app",
       "install manifest fallback update",
       "wait manifest fallback metadata pending",
       "reload manifest fallback update",
       "wait manifest fallback metadata stable",
       "assert manifest diff fallback",
+      "restore optional archive availability",
     ]);
+    expect(
+      await controlStepBody(
+        "bspatch-manifest-diff-fallback",
+        "require originals when no patch matches the running bundle",
+      ),
+    ).toEqual({ archiveAvailable: false });
+    expect(
+      await controlStepBody(
+        "bspatch-manifest-diff-fallback",
+        "restore optional archive availability",
+      ),
+    ).toEqual({ archiveAvailable: true });
   });
 
   it("accepts Android manifest fallback evidence when adb cannot hash an existing bundle file", async () => {

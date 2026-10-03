@@ -4,19 +4,34 @@ Updated: 2026-10-03 (Asia/Seoul). The goal remains active and incomplete.
 
 ## Current upstream integration
 
-`origin/next` at `50a9ccc32` has been integrated into the working tree with the
-manifest-v1 protocol, public core API, and complete target asset inventory.
-See the October 3 execution checkpoint and PRD section before using historical
-wire-format assumptions. The merge is committed and pushed as `01606708fcf7`.
-Its build/type/lint/unit and native unit validation passed. GitHub integration
-failures exposed stale read-budget fixtures and Node imports in the server
-root; the current follow-up separates the fingerprint entry, uses portable
-manifest hashing, and corrects Supabase subpath import maps. The follow-up
-passes build (29), types (37), lint, and 4,995 unit tests (15 skipped), plus
-30 focused runtime/read-budget integration cases. Full FixCI is at integration.
-Fresh native artifacts, the 54-scenario job, and six matrix cells remain.
+`origin/next` at `50a9ccc32` is merged and pushed as `01606708fcf7`.
+Follow-up `b001e4c41d8d` restores portable runtime imports, real read-budget
+fixtures and Supabase subpath mappings; all 22 GitHub checks pass. Local ordered
+FixCI passes build (29), types (37), lint and 4,995 units (15 skipped). Its
+integration run is still active in exec session 19168 and has a local load-test
+failure: Insights commits all 6,000 moves without errors, but retries 8.85%
+against a 5% bound. Do not lower the assertion.
+
+Android-only `job-20261003063230-8gu5jt` uses `b001e4c41d8d` and the 27-case
+manifest. At 15:56 KST: seven passed, four failed, 16 unfinished.
+The recovery follow-up repairs startup-hang observation and replaces synthesized recovery
+reports with the real native readiness reply. Earlier recovery passes need
+revalidation. The multi-asset reuse and missing-base-patch fallback cases explicitly disable
+optional archive availability during the target install. Both reverse-patch
+helpers stop passing the obsolete `--no-interactive` flag. The follow-up unit
+run passes 4,999 tests (438 files; 15 skipped), plus E2E and example type checks. See the latest execution/PRD sections.
+The six public matrix cells and the fresh iOS run remain unvalidated.
+
+The six user-local helpers are temporarily saved in stash
+`56bfa058168799bb824fc657b85c2850b7615cfc` while FixCI runs. Restore them with
+`git stash apply --index` after integration finishes. Do not commit them or the
+untracked signing keys. The original pre-merge stash remains retained too.
+
 The dashboard is running from exec session 41913 using its existing startup
 script because launchd could not open that script. Do not interrupt its jobs.
+Only Xcode 27.1 beta is installed; upstream Lynx 3.9 fails on ignored
+`std::future::get()` results. The stable-Xcode versus dependency-upgrade question
+is pending. No new warning suppression or upstream source workaround was added.
 
 ## Workspace and scope
 

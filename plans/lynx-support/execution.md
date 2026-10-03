@@ -1444,3 +1444,61 @@ Xcode is installed. No source patch or new warning suppression was added.
 A toolchain choice is pending: install a compatible stable Xcode alongside it,
 or retain Xcode 27 and review an upstream Lynx/Sparkling upgrade. Preserve
 [the failed shared job and probe evidence](./evidence/shared-e2e-l59i83-build-failure.json).
+
+
+## 2026-10-03 Android restart and native recovery evidence
+
+Follow-up `b001e4c41d8d` is pushed. All 22 GitHub checks pass, including the
+integration aggregate. The local ordered run passes build, types, lint and
+4,995 units, but its Insights rollout load test records 8.85% retried
+transactions against a 5% local limit (6,000 committed, zero errors); other
+local integration work is still running. This local run is not green. Do not
+relax that limit or treat the GitHub result as a local pass.
+
+Android-only `job-20261003063230-8gu5jt` runs 27 scenarios at `b001e4c41d8d`.
+As of 15:46 KST it reports three passed, two failed, one running, and 21 not
+started. The startup-hang failure is an RN-only observation path: it requires
+an RN log tag and a Bundle-suffixed marker absent from the Lynx injection.
+The correction uses the existing generation-checked control transport plus
+actual native pending-attempt evidence. It then verifies an unconfirmed Release
+exclusion after interruption, not a fabricated fatal Bundle history entry.
+
+The prior Lynx report adapter synthesized `RECOVERED` from crash history. It is
+removed in favor of the native `notifyAppReady()` reply, transported by the E2E
+app. Missing, malformed, incomplete or mismatched transition reports fail the
+acceptance path; native confirmation and HTTP publication are allowed to finish
+in that order. The earlier recovery pass from this job needs revalidation.
+
+The multi-asset case installed and confirmed the correct payload hashes but
+failed its no-archive assertion. Its changed originals total 358,062 bytes and
+the authenticated archive is 266,370 bytes; the install makes only two unique
+proxied download requests. The reuse scenario now withholds the optional archive
+URL for the second install, while the separate size-aware scenario retains
+archive-selection coverage. Failure diagnostics now include the native log tail
+and the observed archive flags.
+
+A third Android failure occurs before reverse-patch creation: the runner passes
+`--no-interactive`, which the current public CLI no longer accepts. The CLI
+already defaults to noninteractive mode. Remove the obsolete flag in both the
+shared runner and public matrix reverse-patch helper; retain explicit target,
+base and platform arguments. This is a harness/CLI compatibility failure, not
+evidence of a native rollback failure.
+
+The manifest-original fallback case also selected the optional archive; the
+native `HotUpdaterArchiveInstalled` transaction was captured in
+`evidence/shared-e2e-8gu5jt-interim.json`. The case now withholds the archive URL
+when no patch matches the running Bundle, while retaining file-hash and native
+installation checks. This interim receipt records a failure, not acceptance.
+
+Focused validation after the recovery changes passes 135 tests across six
+files, the standalone E2E type audit, the React/Vue example type checks and
+workspace lint/package boundaries. The updated manifest-fallback scenario
+contract separately passes all 85 cases. An additional direct E2E-file lint
+check identifies upstream's pre-existing unused `getFixtureResetChannels`
+helper; it remains untouched. The full workspace unit rerun passes 4,999 tests across 438 files (15 skipped,
+zero failures; `/tmp/lynx-next-recovery-all-units-20261003.log`).
+
+At 15:56 KST the original Android run reports seven passed and four failed,
+with 16 scenarios unfinished. Its source remains `b001e4c41d8d`; the new harness
+corrections require a separate fresh job. All 22 GitHub checks on that source
+passed. These are progress counts, not completion of G3.

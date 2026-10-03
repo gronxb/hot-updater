@@ -167,6 +167,7 @@ describe("Lynx E2E startup resources", () => {
     await expect(bootstrap).resolves.toBe(true);
     expect(publishMarker).toHaveBeenCalledExactlyOnceWith(
       "Current Launch Status: READY",
+      { status: "READY" },
     );
   });
 

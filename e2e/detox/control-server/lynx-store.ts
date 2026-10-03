@@ -188,26 +188,73 @@ export function synthesizeLynxCrashHistory(
   };
 }
 
-export function synthesizeLynxLaunchReport(args: {
-  readonly crashedBundleIds: readonly string[];
-  readonly confirmedBundleId: string | null;
-  readonly confirmedReleaseId: string | null;
-  readonly fromReleaseId: string | null;
-  readonly toReleaseId: string | null;
+// The app transports the native notifyAppReady reply unchanged. Crash history
+// cannot establish which transition this launch actually completed.
+export function readLynxLaunchReport(screen: {
+  nativeLaunchReport: string | null;
+  currentBundleId: string | null;
+  currentReleaseId: string | null;
 }): Record<string, unknown> | null {
-  const crashedBundleId = args.crashedBundleIds.at(-1) ?? null;
-  if (
-    !crashedBundleId ||
-    !args.confirmedBundleId ||
-    crashedBundleId === args.confirmedBundleId
-  ) {
+  if (!screen.nativeLaunchReport) return null;
+  let report: Record<string, unknown> | null;
+  try {
+    report = asRecord(JSON.parse(screen.nativeLaunchReport));
+  } catch {
     return null;
   }
-  return {
-    status: "RECOVERED",
-    fromBundleId: crashedBundleId,
-    toBundleId: args.confirmedBundleId,
-    fromReleaseId: args.fromReleaseId,
-    toReleaseId: args.toReleaseId ?? args.confirmedReleaseId,
-  };
+  if (!report) return null;
+  if (report.status === "UNCHANGED") return report;
+  if (
+    (report.status !== "RECOVERED" && report.status !== "UPDATE_APPLIED") ||
+    !asString(report.transitionId) ||
+    !asString(report.fromBundleId) ||
+    !asString(report.toBundleId) ||
+    report.toBundleId !== screen.currentBundleId ||
+    (report.toReleaseId ?? null) !== screen.currentReleaseId
+  )
+    return null;
+  return report;
+}
+
+export function assertLynxStartupHang(
+  journal: Record<string, unknown>,
+  platform: "ios" | "android",
+  bundleId: string,
+): void {
+  const pending = asRecord(journal.pending);
+  const selection =
+    platform === "ios"
+      ? decodeLynxIosStoredSelection(pending?.selection)
+      : asRecord(pending?.selection);
+  const exclusions = lynxStoredExclusions(journal, platform);
+  if (
+    !asString(pending?.attemptId) ||
+    selection?.bundleId !== bundleId ||
+    pending?.fatal === true ||
+    !Array.isArray(exclusions.unconfirmedReleaseIds) ||
+    exclusions.unconfirmedReleaseIds.includes(selection?.releaseId) ||
+    !Array.isArray(exclusions.crashedBundleIds) ||
+    exclusions.crashedBundleIds.includes(bundleId)
+  )
+    throw new Error(
+      "Expected an unconfirmed native startup attempt without failure evidence",
+    );
+}
+
+export function assertLynxStartupInterruption(
+  journal: Record<string, unknown>,
+  platform: "ios" | "android",
+  bundleId: string,
+  releaseId: string,
+): void {
+  const exclusions = lynxStoredExclusions(journal, platform);
+  if (
+    !Array.isArray(exclusions.unconfirmedReleaseIds) ||
+    !exclusions.unconfirmedReleaseIds.includes(releaseId) ||
+    !Array.isArray(exclusions.crashedBundleIds) ||
+    exclusions.crashedBundleIds.includes(bundleId)
+  )
+    throw new Error(
+      "Expected an interrupted Release without a fatal Bundle exclusion",
+    );
 }
