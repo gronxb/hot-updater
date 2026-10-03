@@ -72,7 +72,7 @@ describe("local standalone profile", () => {
     expect(localAppConfig("appVersion")).not.toContain("local-admin");
   });
 
-  it("embeds the Android device port and maps it to the allocated host control port", () => {
+  it("uses Android loopback URLs allowed by native cleartext policy and reverse mappings", async () => {
     const profile = createLocalProfile({
       root: "/checkout",
       platform: "android",
@@ -94,6 +94,30 @@ describe("local standalone profile", () => {
       { device: "tcp:4001", host: "tcp:4001" },
       { device: "tcp:3107", host: "tcp:4002" },
     ]);
+    const policy = await fs.readFile(
+      new URL(
+        "../../examples/v0.85.0/android/app/src/main/res/xml/network_security_config.xml",
+        import.meta.url,
+      ),
+      "utf8",
+    );
+    const allowedDomains = [
+      ...policy.matchAll(
+        /<domain-config\s+cleartextTrafficPermitted="true">([\s\S]*?)<\/domain-config>/g,
+      ),
+    ].flatMap(([, config]) =>
+      [...config.matchAll(/<domain(?:\s[^>]*)?>([^<]+)<\/domain>/g)].map(
+        ([, hostname]) => hostname.trim(),
+      ),
+    );
+    for (const key of [
+      "HOT_UPDATER_APP_BASE_URL",
+      "HOT_UPDATER_E2E_RUNTIME_CONFIG_URL",
+    ]) {
+      const url = new URL(profile.env[key]!);
+      expect(url.protocol).toBe("http:");
+      expect(allowedDomains, `${key}: ${url.hostname}`).toContain(url.hostname);
+    }
   });
 
   it("uses the pinned storage image and refuses unpinned or unrelated images", () => {
