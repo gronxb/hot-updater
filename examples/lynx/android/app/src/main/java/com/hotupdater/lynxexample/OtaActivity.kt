@@ -1,22 +1,12 @@
 package com.hotupdater.lynxexample
 
-import android.app.Activity
-import android.os.Bundle
 import com.hotupdater.lynx.LynxHostConfiguration
+import com.hotupdater.lynx.sparkling.HotUpdaterSparklingActivity
 import com.hotupdater.lynx.sparkling.HotUpdaterSparklingConfiguration
-import com.hotupdater.lynx.sparkling.HotUpdaterSparklingHost
 
 /** The scaffold supplies native identity and scope; the library owns Lynx. */
-class OtaActivity : Activity() {
-    private var hotUpdaterHost: HotUpdaterSparklingHost? = null
-
-    override fun onCreate(state: Bundle?) {
-        super.onCreate(state)
-        (lastNonConfigurationInstance as? HotUpdaterSparklingHost)?.let { host ->
-            hotUpdaterHost = host
-            setContentView(host.reattachPrimary(this))
-            return
-        }
+class OtaActivity : HotUpdaterSparklingActivity() {
+    override fun createHotUpdaterConfiguration(): HotUpdaterSparklingConfiguration {
         val embedded = org.json.JSONObject(BuildConfig.LYNX_EMBEDDED_DESCRIPTOR)
         val embeddedBundleId = embedded.getString("bundleId")
         val embeddedManifestHash = embedded.getString("manifestHash")
@@ -24,7 +14,7 @@ class OtaActivity : Activity() {
             packageName,
             android.content.pm.PackageManager.GET_META_DATA,
         ).metaData
-        val configuration = HotUpdaterSparklingConfiguration(
+        return HotUpdaterSparklingConfiguration(
             lynx = LynxHostConfiguration(
                 runtimeId = BuildConfig.LYNX_OTA_COMPATIBILITY_ID,
                 channel = "ota-react",
@@ -47,23 +37,5 @@ class OtaActivity : Activity() {
                 ?.let { mapOf("appBaseURL" to it) }
                 .orEmpty(),
         )
-        val host = HotUpdaterSparklingHost(
-            applicationContext,
-            configuration,
-        )
-        hotUpdaterHost = host
-        setContentView(host.createView(this))
     }
-
-    override fun onDestroy() {
-        if (isChangingConfigurations) {
-            hotUpdaterHost?.primaryActivityDetachedForRecreation(this)
-        } else {
-            hotUpdaterHost?.close()
-        }
-        hotUpdaterHost = null
-        super.onDestroy()
-    }
-
-    override fun onRetainNonConfigurationInstance(): Any? = hotUpdaterHost
 }

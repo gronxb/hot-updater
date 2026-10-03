@@ -44,3 +44,7 @@ before publication.
 Validate TAR framing, checksums, UTF-8 and PAX metadata on both platforms.
 Bind bulk entries to the authenticated manifest's exact file names and sizes
 before writing; use verified original files when logical sizes are unavailable.
+
+Let Android applications provide native configuration through the packaged
+Sparkling primary Activity. Keep host mounting, retention across configuration
+changes, reattachment, and final teardown inside the host package.

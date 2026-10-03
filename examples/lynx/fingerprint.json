@@ -544,7 +544,7 @@
     ]
   },
   "android": {
-    "hash": "f49c847fc1cba85c39fbb8e4f12a23596bf214308fa9ca79b46ea6ed7ba16053",
+    "hash": "0c6acf105b89e0d213b81469a7bc399e6bfb5890dbc8f1f86d71cb6bdcd0a5c9",
     "sources": [
       {
         "type": "file",
@@ -577,6 +577,17 @@
         "hash": "b68b6329864b23673bfb34404e6ba8b84b4cd58209403f45350efaf2456611a8",
         "debugInfo": {
           "byteSize": 480
+        }
+      },
+      {
+        "type": "file",
+        "filePath": "@hot-updater/lynx-sparkling/android/src/main/java/com/hotupdater/lynx/sparkling/HotUpdaterSparklingActivity.kt",
+        "reasons": [
+          "lynx-native-input"
+        ],
+        "hash": "f12e7ac87b8f8b1d6d8601296f748936ee4b37bc7e12fa10cccc69600e03b771",
+        "debugInfo": {
+          "byteSize": 1238
         }
       },
       {
@@ -992,9 +1003,9 @@
         "reasons": [
           "lynx-native-input"
         ],
-        "hash": "f1815b2f83a172f11b62e3d87338c395dbc3e7f8b7cad9e27793c75d6572238e",
+        "hash": "86dffe800cda451c96a9f9ab9123ad58fad7b5abfa7838daa1f21406414484a9",
         "debugInfo": {
-          "byteSize": 2753
+          "byteSize": 1923
         }
       },
       {
