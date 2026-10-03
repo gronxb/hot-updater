@@ -161,9 +161,19 @@ export function EventTypeDetails({
         <Icon aria-hidden="true" />
         {eventType.label}
       </Badge>
-      <p className="max-w-56 whitespace-normal text-xs text-muted-foreground">
+      <p className="max-w-56 whitespace-pre-wrap wrap-anywhere text-xs text-muted-foreground">
         {event.type === "UPDATE_FAILED" && note ? note : eventType.description}
       </p>
+      {event.type === "UPDATE_FAILED" && event.failure?.errorStack ? (
+        <details className="w-full max-w-56 text-xs">
+          <summary className="cursor-pointer text-muted-foreground">
+            Stack trace
+          </summary>
+          <pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap wrap-anywhere font-mono">
+            {event.failure.errorStack}
+          </pre>
+        </details>
+      ) : null}
       {event.type !== "UPDATE_FAILED" && note ? (
         <p className="max-w-56 whitespace-normal text-xs text-muted-foreground">
           {note}

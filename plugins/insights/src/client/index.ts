@@ -8,6 +8,7 @@ import {
   type UpdateError,
 } from "@hot-updater/protocol";
 
+import { readErrorDetails } from "./errorDetails";
 import { createKeyedUUIDv7, createUUIDv7 } from "./eventId";
 import {
   createInsightsEventSender,
@@ -260,7 +261,13 @@ export const insights = (options: InsightsOptions = {}): InsightsPlugin => {
     // and its report would not arrive either.
     if (error.stage === "check" && error.reason === "network") return;
     const targetBundleId = error.targetBundleId ?? error.bundleId;
-    const failureKey = [error.stage, error.reason, targetBundleId].join(" ");
+    const details = readErrorDetails(error.cause);
+    const failureKey = JSON.stringify([
+      error.stage,
+      error.reason,
+      targetBundleId,
+      details.errorMessage ?? null,
+    ]);
     const event = createEvent(
       {
         type: "UPDATE_FAILED",
@@ -274,6 +281,7 @@ export const insights = (options: InsightsOptions = {}): InsightsPlugin => {
           failure: {
             stage: error.stage,
             reason: error.reason,
+            ...details,
             ...(error.resource === undefined
               ? {}
               : { resource: error.resource }),

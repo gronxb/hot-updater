@@ -1,8 +1,9 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 
 import { ConsoleFeatureUnavailable } from "@/components/ConsoleFeatureUnavailable";
 import { AppUsage } from "@/components/features/insights/AppUsage";
+import { FailureReports } from "@/components/features/insights/FailureReports";
 import { InsightsControls } from "@/components/features/insights/InsightsControls";
 import { InsightsOverview } from "@/components/features/insights/InsightsOverview";
 import { InsightsPageHeader } from "@/components/features/insights/InsightsPageHeader";
@@ -27,6 +28,7 @@ export const Route = createFileRoute("/insights")({
 });
 
 function InsightsPage() {
+  const queryClient = useQueryClient();
   const search = Route.useSearch();
   const navigate = Route.useNavigate();
   const retention = useInsightsRetention();
@@ -116,7 +118,23 @@ function InsightsPage() {
           />
           <UpdateFailures
             query={failuresQuery}
-            onRefresh={() => void failuresQuery.refetch()}
+            errors={
+              failuresQuery.data ? (
+                <FailureReports
+                  key={JSON.stringify(bundleInput)}
+                  input={{
+                    ...bundleInput,
+                    beforeReceivedAtMs: failuresQuery.data.endMs,
+                  }}
+                />
+              ) : null
+            }
+            onRefresh={() => {
+              void failuresQuery.refetch();
+              void queryClient.invalidateQueries({
+                queryKey: ["insights", "failure-reports"],
+              });
+            }}
           />
         </div>
       </div>

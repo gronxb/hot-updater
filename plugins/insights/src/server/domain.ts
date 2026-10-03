@@ -19,6 +19,9 @@ export type BundleEventFailureInput = {
   readonly transport?: NonNullable<BundleEventFailure["transport"]>;
   /** The storage origin's error code, such as `ExpiredToken`. */
   readonly originCode?: string;
+  /** Original client error text, bounded to fit the event payload. */
+  readonly errorMessage?: string;
+  readonly errorStack?: string;
   /** Android's `ApplicationExitInfo` reason for the process before this one. */
   readonly previousProcessExit?: string;
 };
@@ -91,6 +94,8 @@ export type CreateBundleEventRequest =
 export type ActiveInstallationWindow = "24h" | "7d" | "30d";
 
 export type EventHistoryRow = {
+  readonly toReleaseId?: string;
+  readonly sdkVersion?: string;
   readonly id: string;
   readonly installId: string;
   readonly type:

@@ -47,6 +47,8 @@ export type BundleEventFailure = DatabaseJsonObject & {
     | "unknown";
   /** The storage origin's error code, such as `ExpiredToken`. */
   readonly origin_code?: string;
+  readonly error_message?: string;
+  readonly error_stack?: string;
   /** Android's `ApplicationExitInfo` reason for the process before this one. */
   readonly previous_process_exit?: string;
 };
@@ -110,6 +112,8 @@ const isDatabaseBundleEventFailure = (value: unknown): boolean =>
   isOptional(value, "http_status", (status) => Number.isSafeInteger(status)) &&
   isOptional(value, "transport", isString) &&
   isOptional(value, "origin_code", isString) &&
+  isOptional(value, "error_message", isString) &&
+  isOptional(value, "error_stack", isString) &&
   isOptional(value, "previous_process_exit", isString);
 
 export const isDatabaseBundleEventMetadata = (

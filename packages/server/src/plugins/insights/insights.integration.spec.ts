@@ -618,6 +618,69 @@ describe("createHotUpdater Insights", () => {
     }
   });
 
+  it("preserves original error text through ingestion and event history", async () => {
+    const hotUpdater = start();
+    const errorMessage = "Release transition rejected: UNSOLICITED_SCOPE";
+    const errorStack = `Error: ${errorMessage}\n    at checkForUpdate (app.js:42:1)`;
+    for (const [index, details] of [
+      { errorMessage, errorStack },
+      {},
+      { errorMessage: { invalid: true }, errorStack: "x".repeat(4_097) },
+    ].entries()) {
+      expect(
+        (
+          await hotUpdater.handlers.client(
+            eventRequest({
+              ...event,
+              installId: `raw-error-${index}`,
+              type: "UPDATE_FAILED",
+              fromBundleId: "bundle-1",
+              updateStrategy: "appVersion",
+              metadata: {
+                failure: {
+                  stage: "check",
+                  reason: "unknown",
+                  resource: "catalog",
+                  ...details,
+                },
+              },
+            }),
+          )
+        ).status,
+      ).toBe(204);
+    }
+    const response = await hotUpdater.handlers.admin(
+      new Request(
+        `https://example.com/events?beforeReceivedAtMs=${Date.now() + 1}`,
+      ),
+    );
+    expect(response.status).toBe(200);
+    const { data } = (await response.json()) as {
+      data: {
+        installId: string;
+        failure: Record<string, unknown>;
+        sdkVersion?: string;
+      }[];
+    };
+    expect(data.every((row) => row.sdkVersion === "2.0.0")).toBe(true);
+    const byInstall = Object.fromEntries(
+      data.map((row) => [row.installId, row.failure]),
+    );
+    expect(byInstall["raw-error-0"]).toEqual({
+      stage: "check",
+      reason: "unknown",
+      resource: "catalog",
+      errorMessage,
+      errorStack,
+    });
+    expect(byInstall["raw-error-1"]).toEqual({
+      stage: "check",
+      reason: "unknown",
+      resource: "catalog",
+    });
+    expect(byInstall["raw-error-2"]).toEqual(byInstall["raw-error-1"]);
+  });
+
   it("keeps how a bundle arrived and why a crashed process exited", async () => {
     const hotUpdater = start();
     const movement = {

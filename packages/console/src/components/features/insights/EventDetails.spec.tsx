@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
@@ -122,6 +122,53 @@ describe("Insights event details", () => {
     );
     expect(screen.getByText("Running")).toBeDefined();
     expect(screen.queryByText("Target")).toBeNull();
+  });
+
+  it("shows the original unknown error and exposes its stack without inventing a category", () => {
+    const message =
+      "Unexpected catalog response: <html>upstream unavailable</html>";
+    const stack = `Error: ${message}\n    at checkForUpdate (app.js:42:1)`;
+    const view = render(
+      <EventTypeDetails
+        event={{
+          type: "UPDATE_FAILED",
+          failure: {
+            stage: "check",
+            reason: "unknown",
+            resource: "catalog",
+            errorMessage: message,
+            errorStack: stack,
+          },
+        }}
+      />,
+    );
+    expect(
+      screen.getByText(`Update check failed: ${message} · catalog`),
+    ).toBeDefined();
+    expect(screen.queryByText(/Unknown reason/)).toBeNull();
+    const disclosure = screen.getByText("Stack trace").closest("details")!;
+    expect(disclosure.open).toBe(false);
+    fireEvent.click(screen.getByText("Stack trace"));
+    expect(disclosure.open).toBe(true);
+    expect(disclosure.querySelector("pre")?.textContent).toBe(stack);
+    view.rerender(
+      <EventTypeDetails
+        event={{
+          type: "UPDATE_FAILED",
+          failure: {
+            stage: "check",
+            reason: "unknown",
+            resource: "catalog",
+          },
+        }}
+      />,
+    );
+    expect(
+      screen.getByText(
+        "Update check failed: The client did not report a detailed cause · catalog",
+      ),
+    ).toBeDefined();
+    expect(screen.queryByText("Stack trace")).toBeNull();
   });
 
   it("notes how a download arrived and why a crashed process exited", () => {

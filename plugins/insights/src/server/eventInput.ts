@@ -126,6 +126,15 @@ function readFailure(value: unknown): BundleEventFailureInput {
   const failure = isRecord(value) ? value : {};
   const httpStatus = failure.httpStatus;
   const originCode = readCode(failure.originCode);
+  const errorMessage =
+    typeof failure.errorMessage === "string" &&
+    failure.errorMessage.length <= 2_048
+      ? failure.errorMessage
+      : undefined;
+  const errorStack =
+    typeof failure.errorStack === "string" && failure.errorStack.length <= 4_096
+      ? failure.errorStack
+      : undefined;
   const previousProcessExit = readCode(failure.previousProcessExit);
   return {
     stage: oneOf(STAGES, failure.stage),
@@ -142,6 +151,8 @@ function readFailure(value: unknown): BundleEventFailureInput {
       ? {}
       : { transport: oneOf(TRANSPORTS, failure.transport) }),
     ...(originCode === undefined ? {} : { originCode }),
+    ...(errorMessage === undefined ? {} : { errorMessage }),
+    ...(errorStack === undefined ? {} : { errorStack }),
     ...(previousProcessExit === undefined ? {} : { previousProcessExit }),
   };
 }
@@ -351,6 +362,12 @@ export function createBundleEventRow(
           failure: {
             stage: failure.stage,
             reason: failure.reason,
+            ...(failure.errorMessage === undefined
+              ? {}
+              : { error_message: failure.errorMessage }),
+            ...(failure.errorStack === undefined
+              ? {}
+              : { error_stack: failure.errorStack }),
             ...(failure.resource === undefined
               ? {}
               : { resource: failure.resource }),

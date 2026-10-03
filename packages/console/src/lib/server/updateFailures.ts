@@ -1,4 +1,6 @@
 import {
+  checkFailureRate,
+  failureRate,
   readUpdateFailuresInput,
   type UpdateFailuresInput,
   type UpdateFailuresReport,
@@ -21,11 +23,43 @@ export async function getUpdateFailuresReport(
           start: Math.max(0, end - recoveryWindows[input.window].durationMs),
           end,
         };
-  const failures = await reads.getUpdateFailures({
+  const scope = {
     platform: input.platform,
     channel: input.channel,
     ...(input.releaseId === undefined ? {} : { releaseId: input.releaseId }),
-    ...(timeRange === undefined ? {} : { timeRange }),
-  });
-  return { ...failures, startMs: timeRange?.start ?? null, endMs: end };
+  };
+  const previousRange =
+    timeRange && timeRange.start >= timeRange.end - timeRange.start
+      ? {
+          start: timeRange.start - (timeRange.end - timeRange.start),
+          end: timeRange.start,
+        }
+      : undefined;
+  const [failures, previous] = await Promise.all([
+    reads.getUpdateFailures({
+      ...scope,
+      ...(timeRange === undefined ? {} : { timeRange }),
+    }),
+    previousRange === undefined
+      ? undefined
+      : reads.getUpdateFailures({ ...scope, timeRange: previousRange }),
+  ]);
+  return {
+    ...failures,
+    startMs: timeRange?.start ?? null,
+    endMs: end,
+    ...(previous === undefined
+      ? {}
+      : {
+          previous: {
+            attemptRate: failureRate(previous),
+            checkRate: previous.checks
+              ? checkFailureRate(previous.checks)
+              : null,
+            complete:
+              previous.coverage.kind === "complete" &&
+              failures.coverage.kind === "complete",
+          },
+        }),
+  };
 }

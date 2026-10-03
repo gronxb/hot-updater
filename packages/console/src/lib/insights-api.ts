@@ -1,11 +1,15 @@
 import type { InsightsEventPageInput } from "@hot-updater/server/plugins/insights";
-import { useQuery } from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 
+import type { FailureReportsInput } from "./insights-errors";
 import {
   readUpdateFailuresInput,
   type UpdateFailuresInput,
 } from "./insights-failures";
-import { getUpdateFailuresRpc } from "./insights-failures-rpc";
+import {
+  getUpdateFailuresRpc,
+  listFailureReportsRpc,
+} from "./insights-failures-rpc";
 import {
   DEFAULT_INSIGHTS_RETENTION,
   type InsightsRetentionDays,
@@ -134,3 +138,17 @@ export const useInsightsRetention = (): InsightsRetentionDays =>
     // A server's periods change only when it restarts.
     staleTime: Infinity,
   }).data ?? DEFAULT_INSIGHTS_RETENTION;
+
+export const useFailureReportsQuery = (
+  input: FailureReportsInput,
+  enabled: boolean,
+) =>
+  useInfiniteQuery({
+    queryKey: ["insights", "failure-reports", input],
+    queryFn: ({ pageParam }) =>
+      listFailureReportsRpc({ data: { ...input, cursor: pageParam } }),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (page) => page.nextCursor ?? undefined,
+    enabled,
+    staleTime: STALE_TIME_MS,
+  });
