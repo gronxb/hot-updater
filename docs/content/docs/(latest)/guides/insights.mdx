@@ -536,3 +536,24 @@ progress. History begins after upgrading to Insights schema 1.3.0 and cannot be
 reconstructed from the old latest-state distribution.
 
 ![Observed bundle share crossing as a new bundle becomes active](/docs/console/insights-bundle-share.jpg)
+
+## Adoption
+
+Release health's **Adoption** tab shows how quickly a bundle spreads after it is
+deployed. Choose it in **Chart bundle**, which lists the releases observed in
+the period, newest deployment first, or open **View adoption** on a bundle's
+Insights card. Choosing a bundle also sets Release health's Release ID, and the
+open tab is kept in the page URL, so a copied link opens the same chart. From a
+bundle, the period is the shortest that covers its deployment: **24h** within a
+day of it, **7d** within a week, and **30d** after that.
+
+The chart shows the bundle's download reports in each interval from the hour
+of deployment, read from the Release ID's UUIDv7 timestamp, and their running
+total. Intervals are hourly for **24h**, six hours for **7d**, and one day for
+**30d**. A bundle deployed before the period counts only the period's
+downloads; the tab then offers the period that covers its deployment.
+Downloads count reports, not distinct installations: an installation that
+downloads the bundle again counts again. The tab reads the hourly counters
+Insights already keeps, so it needs no database migration.
+
+![Adoption of a bundle in the hours after its deployment](/docs/console/insights-adoption.jpg)

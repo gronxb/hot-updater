@@ -329,8 +329,8 @@ describe("insights read budgets", () => {
       launches: 25,
       uniqueUsers: distinct(installs),
       series: [
-        { startMs: T0, launches: 24, failedLaunches: 0 },
-        { startMs: T0 + 2 * DAY, launches: 1, failedLaunches: 0 },
+        { startMs: T0, downloads: 0, launches: 24, failedLaunches: 0 },
+        { startMs: T0 + 2 * DAY, downloads: 0, launches: 1, failedLaunches: 0 },
       ],
     });
     // Whole UTC days: the daily rollups alone.

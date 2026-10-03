@@ -1,4 +1,8 @@
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  keepPreviousData,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 
 import { ConsoleFeatureUnavailable } from "@/components/ConsoleFeatureUnavailable";
@@ -58,6 +62,8 @@ function InsightsPage() {
     queryKey: ["insights", "recovery", bundleInput],
     queryFn: () => getRecoveryReportRpc({ data: bundleInput }),
     staleTime: 30_000,
+    // Choosing a bundle or period keeps the card in place while it loads.
+    placeholderData: keepPreviousData,
   });
   const failuresQuery = useUpdateFailuresQuery(bundleInput);
   return (
@@ -106,6 +112,13 @@ function InsightsPage() {
           <InsightsOverview
             input={bundleInput}
             query={bundleQuery}
+            chart={search.healthChart ?? "share"}
+            onChartChange={(healthChart) =>
+              void navigate({ search: { ...search, healthChart } })
+            }
+            onReleaseChange={(releaseId) =>
+              void navigate({ search: { ...search, releaseId } })
+            }
             onWindowChange={(window) =>
               void navigate({
                 search: {

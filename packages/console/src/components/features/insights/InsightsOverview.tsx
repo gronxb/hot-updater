@@ -24,12 +24,15 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { RecoveryInput, RecoveryReport } from "@/lib/insights-recovery";
+import type { HealthChart } from "@/lib/insights-search";
+import { cn } from "@/lib/utils";
 
 import { BundleDistributionChart } from "./BundleDistributionChart";
 import { EstimatedCount } from "./EstimatedCount";
 import { InsightsErrorAlert } from "./InsightsErrorAlert";
 import { InsightsInfo } from "./InsightsInfo";
 import { InsightsPeriodSelector } from "./InsightsPeriodSelector";
+import { ReleaseAdoptionChart } from "./ReleaseAdoptionChart";
 
 const dates = new Intl.DateTimeFormat("en", {
   month: "short",
@@ -47,9 +50,19 @@ const rate = (report: RecoveryReport): string => {
 function ReleaseHealth({
   report,
   releaseId,
+  window,
+  chart,
+  onChartChange,
+  onReleaseChange,
+  onWindowChange,
 }: {
   readonly report: RecoveryReport;
   readonly releaseId?: string;
+  readonly window: RecoveryInput["window"];
+  readonly onWindowChange: (window: RecoveryInput["window"]) => void;
+  readonly chart: HealthChart;
+  readonly onChartChange: (chart: HealthChart) => void;
+  readonly onReleaseChange: (releaseId: string) => void;
 }) {
   const attempts = report.activeDays + report.failedLaunches;
   const activeInstallations = (
@@ -93,13 +106,20 @@ function ReleaseHealth({
           </div>
         ))}
       </dl>
-      <Tabs defaultValue="share" className="gap-5">
+      <Tabs
+        value={chart}
+        onValueChange={(value) => onChartChange(value as HealthChart)}
+        className="gap-5"
+      >
         <TabsList
           aria-label="Release health chart"
           className="min-h-11 sm:min-h-9"
         >
           <TabsTrigger value="share" className="px-3">
             Bundle share
+          </TabsTrigger>
+          <TabsTrigger value="adoption" className="px-3">
+            Adoption
           </TabsTrigger>
           <TabsTrigger value="failures" className="px-3">
             Launch failures
@@ -109,6 +129,15 @@ function ReleaseHealth({
           <BundleDistributionChart
             history={report.distribution}
             releaseId={releaseId}
+          />
+        </TabsContent>
+        <TabsContent value="adoption">
+          <ReleaseAdoptionChart
+            report={report}
+            releaseId={releaseId}
+            window={window}
+            onReleaseChange={onReleaseChange}
+            onWindowChange={onWindowChange}
           />
         </TabsContent>
         <TabsContent value="failures">
@@ -174,8 +203,15 @@ export function InsightsOverview({
   onWindowChange,
   query,
   onRefresh,
+  chart,
+  onChartChange,
+  onReleaseChange,
 }: {
   readonly input: RecoveryInput;
+  readonly chart: HealthChart;
+  readonly onChartChange: (chart: HealthChart) => void;
+  /** Chooses the Release health release, as the Release ID filter does. */
+  readonly onReleaseChange: (releaseId: string) => void;
   readonly query: {
     readonly data: RecoveryReport | undefined;
     readonly error: Error | null;
@@ -203,12 +239,15 @@ export function InsightsOverview({
                 disabled={query.isFetching}
                 onClick={onRefresh}
               >
-                <RotateCw aria-hidden="true" />
+                <RotateCw
+                  aria-hidden="true"
+                  className={cn(query.isFetching && "motion-safe:animate-spin")}
+                />
               </Button>
             </div>
           </div>
         </CardHeader>
-        <CardContent className="px-6 pb-6">
+        <CardContent aria-busy={query.isFetching} className="px-6 pb-6">
           {query.isPending ? (
             <Skeleton aria-label="Loading release health" className="h-80" />
           ) : query.error ? (
@@ -217,7 +256,15 @@ export function InsightsOverview({
               fallbackTitle="Release health unavailable"
             />
           ) : query.data ? (
-            <ReleaseHealth report={query.data} releaseId={input.releaseId} />
+            <ReleaseHealth
+              report={query.data}
+              releaseId={input.releaseId}
+              window={input.window}
+              onWindowChange={onWindowChange}
+              chart={chart}
+              onChartChange={onChartChange}
+              onReleaseChange={onReleaseChange}
+            />
           ) : null}
         </CardContent>
         <CardFooter className="flex items-center justify-between border-t px-6 py-5">

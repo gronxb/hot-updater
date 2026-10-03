@@ -524,7 +524,17 @@ interface UserSketches {
   readonly field: "launch_users" | "activity_users";
 }
 
-/** Counters, unique users, and a per-UTC-day series over a window. */
+type SeriesPoint = {
+  downloads: number;
+  launches: number;
+  failedLaunches: number;
+};
+
+/**
+ * Counters, unique users, and a series over a window: a point per UTC day
+ * with rows, or, with `intervalMs`, every point of that span from the
+ * window's start.
+ */
 const rangedMetrics = async (
   db: Db,
   parts: Parts,
@@ -532,21 +542,31 @@ const rangedMetrics = async (
   range: InsightsTimeRange,
   days: boolean,
   hour: number,
+  intervalMs?: number,
 ): Promise<ReleaseActivityMetrics> => {
   const [counters, sketches] = await Promise.all([
     counterRows(db, parts, range, days, hour),
     sketchRows(db, users.parts, range, days, hour),
   ]);
-  const series = new Map<
-    number,
-    { launches: number; failedLaunches: number }
-  >();
+  const series = new Map<number, SeriesPoint>();
+  if (intervalMs !== undefined)
+    for (let start = range.start; start < range.end; start += intervalMs)
+      series.set(start, { downloads: 0, launches: 0, failedLaunches: 0 });
   for (const row of counters) {
-    const day = dayFloor(row.bucket_start_ms);
-    const point = series.get(day) ?? { launches: 0, failedLaunches: 0 };
+    const start =
+      intervalMs === undefined
+        ? dayFloor(row.bucket_start_ms)
+        : row.bucket_start_ms -
+          ((row.bucket_start_ms - range.start) % intervalMs);
+    const point = series.get(start) ?? {
+      downloads: 0,
+      launches: 0,
+      failedLaunches: 0,
+    };
+    point.downloads += row.downloads;
     point.launches += row.launches;
     point.failedLaunches += row.failed_launches;
-    series.set(day, point);
+    series.set(start, point);
   }
   const total = (field: "downloads" | "launches" | "failed_launches") =>
     counters.reduce((sum, row) => sum + row[field], 0);
@@ -627,6 +647,7 @@ export const getReleaseActivity = async (
                     input.timeRange,
                     false,
                     kept.hour,
+                    input.intervalMs,
                   ),
           })),
         );

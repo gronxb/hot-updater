@@ -91,9 +91,13 @@ export interface ReleaseActivityMetrics {
   readonly failedLaunches: number;
   /** Omitted for lifetime-only bundle-row reads. */
   readonly uniqueUsers?: number;
-  /** Daily points, present only for period reads. */
+  /**
+   * Points of each UTC day, or of each `intervalMs` from the period's start
+   * on a release read that asks for one; present only for period reads.
+   */
   readonly series?: readonly {
     readonly startMs: number;
+    readonly downloads: number;
     readonly launches: number;
     readonly failedLaunches: number;
   }[];
@@ -103,11 +107,18 @@ export type InsightsGetReleaseActivityInput =
   | {
       readonly releases: readonly ReleaseReference[];
       readonly timeRange?: InsightsTimeRange;
+      /**
+       * Whole hours each series point spans, from `timeRange.start`, with
+       * every point present; omitted, the series has a point per UTC day
+       * with reports. Only with a `timeRange`.
+       */
+      readonly intervalMs?: number;
       readonly scope?: never;
     }
   | {
       readonly scope: InsightsScope;
       readonly timeRange: InsightsTimeRange;
+      readonly intervalMs?: never;
       readonly releases?: never;
     };
 
