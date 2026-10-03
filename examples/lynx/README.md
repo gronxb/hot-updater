@@ -171,9 +171,10 @@ VueLynx and OctaneLynx matrix cells.
 
 ## Delivery and activation behavior
 
-`checkForUpdate()` performs catalog authorization and nonretained native
-compatibility validation. `update.updateBundle()` performs the actual download,
-delta/archive verification, and atomic staging. A selected update becomes active
+`checkForUpdate()` authorizes the catalog selection and authenticates the
+manifest and Lynx compatibility metadata. `update.updateBundle()` reuses matching
+metadata, downloads the remaining artifacts, verifies the full file/resource
+tree and any patches, and atomically stages the selection. A selected update becomes active
 on the next launch or after `HotUpdater.reload()`.
 
 Reload keeps the OS process foregrounded and reconstructs every library-managed
@@ -188,11 +189,8 @@ switch atomically with catalog acceptance. A second cross-channel switch is
 rejected until `HotUpdater.resetChannel()` returns the host to its configured
 default scope.
 
-See the [PRD](../../plans/lynx-support/prd.md),
-[execution ledger](../../plans/lynx-support/execution.md), and
-[current evidence reconciliation](../../plans/lynx-support/evidence/reconciliation-2026-09-13.md)
-for the acceptance status. Historical G1 probe artifacts remain evidence of
-earlier feasibility work, but they are not commands for the production scaffold.
+See [PR #1300](https://github.com/gronxb/hot-updater/pull/1300) for the current
+acceptance status and outstanding verification.
 
 See [third-party notices](./THIRD_PARTY_NOTICES.md) for Sparkling and fixture
 licenses.
