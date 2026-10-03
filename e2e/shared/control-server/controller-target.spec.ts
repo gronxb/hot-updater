@@ -19,6 +19,39 @@ afterEach(() => {
 });
 
 describe("control-server target ownership", () => {
+  it("builds OTA artifacts for the production React runtime despite inherited development settings", async () => {
+    vi.stubEnv("NODE_ENV", "development");
+    vi.stubEnv("BABEL_ENV", "development");
+    vi.stubEnv("HOT_UPDATER_E2E_PLATFORM", "ios");
+    vi.stubEnv("HOT_UPDATER_E2E_APP_ID", "app.example");
+    vi.stubEnv("HOT_UPDATER_E2E_DEVICE_ID", "leased-device");
+    vi.stubEnv("HOT_UPDATER_E2E_RESULTS_DIR", "/unused/results");
+    vi.stubEnv(
+      "HOT_UPDATER_E2E_APP_BASE_URL",
+      "http://127.0.0.1:3009/hot-updater",
+    );
+    const { getHotUpdaterControlEnv } = await import("./controller.ts");
+
+    const childEnv = {
+      ...process.env,
+      ...getHotUpdaterControlEnv({
+        NODE_ENV: "development",
+        BABEL_ENV: "development",
+        HOT_UPDATER_BARE_BUILD_CACHE_KEY: "fixture-bundle",
+      }),
+    };
+
+    expect(childEnv).toMatchObject({
+      NODE_ENV: "production",
+      BABEL_ENV: "production",
+      HOT_UPDATER_CONTROL_BASE_URL: "http://127.0.0.1:3009/hot-updater",
+      HOT_UPDATER_BARE_BUILD_CACHE_KEY: "fixture-bundle",
+    });
+    expect(process.env.NODE_ENV).toBe("development");
+    expect(process.env.BABEL_ENV).toBe("development");
+    expect(jobs.start).not.toHaveBeenCalled();
+  });
+
   it("rejects another device before bootstrap and after the configured target owns a job", async () => {
     vi.stubEnv("HOT_UPDATER_E2E_PLATFORM", "ios");
     vi.stubEnv("HOT_UPDATER_E2E_APP_ID", "app.example");

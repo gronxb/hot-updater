@@ -34,7 +34,8 @@ export function createLocalProfile(options: {
     options.platform === "android" ? 3107 : options.controlPort;
   const env: NodeJS.ProcessEnv = {
     ...options.env,
-    NODE_ENV: "development",
+    NODE_ENV: "production",
+    BABEL_ENV: "production",
     HOT_UPDATER_E2E_LOCAL_PROVIDER: "1",
     PORT: String(options.providerPort),
     TEST_DB_PATH: path.join(options.runDir, "database"),

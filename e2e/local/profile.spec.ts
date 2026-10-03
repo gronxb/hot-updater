@@ -5,6 +5,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { planAndroidReverses } from "../mobile/android-reverse.ts";
+import { createNativeBuildPlan } from "../mobile/build.ts";
 import { buildControlServerEnv } from "../shared/scripts/control-server-env.ts";
 import { preserveFiles } from "./files.ts";
 import {
@@ -29,12 +30,17 @@ describe("local standalone profile", () => {
       storagePassword: "local-storage",
       signingKey: "local-signing",
       env: {
+        NODE_ENV: "development",
+        BABEL_ENV: "development",
+        HOT_UPDATER_E2E_DEVICE_ID: "00000000-0000-0000-0000-000000000001",
         HOT_UPDATER_API_KEY: "cloud-api-key",
         CONTROL_URL: "https://outside.invalid",
         HOT_UPDATER_E2E_ANDROID_BINARY_PATH: "/old.apk",
       },
     });
     expect(profile.env).toMatchObject({
+      NODE_ENV: "production",
+      BABEL_ENV: "production",
       HOT_UPDATER_E2E_LOCAL_PROVIDER: "1",
       TEST_DB_PATH: "/checkout/e2e/results/run/database",
       AWS_S3_ENDPOINT: "http://127.0.0.1:3003",
@@ -45,6 +51,21 @@ describe("local standalone profile", () => {
     expect(profile.env.HOT_UPDATER_API_KEY).toBeUndefined();
     expect(profile.env.CONTROL_URL).toBeUndefined();
     expect(profile.env.HOT_UPDATER_E2E_ANDROID_BINARY_PATH).toBeUndefined();
+    const builds = createNativeBuildPlan(
+      { platform: "ios", dryRun: false },
+      profile.root,
+      profile.env,
+    );
+    for (const build of builds) {
+      expect({ ...profile.env, ...build.env }).toMatchObject({
+        NODE_ENV: "production",
+        BABEL_ENV: "production",
+      });
+    }
+    expect(buildControlServerEnv("ios", profile.env)).toMatchObject({
+      NODE_ENV: "production",
+      BABEL_ENV: "production",
+    });
     const file = localEnvFile(profile.env);
     expect(file).not.toContain("cloud-api-key");
     expect(file).not.toContain("outside.invalid");

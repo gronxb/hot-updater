@@ -73,7 +73,7 @@ export function createNativeBuildPlan(
           `-PMIN_BUNDLE_ID=${minBundleId}`,
         ],
         cwd,
-        env: {},
+        env: { NODE_ENV: "production", BABEL_ENV: "production" },
       },
     ];
   }
@@ -126,7 +126,7 @@ export function createNativeBuildPlan(
         `HOT_UPDATER_MIN_BUNDLE_ID=${minBundleId}`,
       ],
       cwd,
-      env: {},
+      env: { NODE_ENV: "production", BABEL_ENV: "production" },
     },
   ];
 }

@@ -30,7 +30,7 @@ describe("native Release builds", () => {
         "-PMIN_BUNDLE_ID=00000000-0000-7000-8000-000000000000",
       ],
       cwd: "/checkout with spaces/examples/v0.85.0/android",
-      env: {},
+      env: { NODE_ENV: "production", BABEL_ENV: "production" },
     });
   });
 

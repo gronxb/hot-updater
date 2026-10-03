@@ -687,6 +687,7 @@ async function runLoggedCommand(
 
 const RELEASE_BUNDLE_ENV = {
   NODE_ENV: "production",
+  BABEL_ENV: "production",
 } satisfies NodeJS.ProcessEnv;
 
 function stripAnsi(value: string) {
@@ -2986,11 +2987,12 @@ function ensureAndroidControlReverse() {
   logE2eFixture("android control reverse ready", { devicePort, hostPort });
 }
 
-function getHotUpdaterControlEnv(
+export function getHotUpdaterControlEnv(
   env: NodeJS.ProcessEnv | undefined = undefined,
 ) {
   const baseEnv = {
     ...env,
+    ...RELEASE_BUNDLE_ENV,
     HOT_UPDATER_CONTROL_BASE_URL: getControllerReachableAppBaseUrl(),
   } satisfies NodeJS.ProcessEnv;
 
