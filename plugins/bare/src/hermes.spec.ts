@@ -28,7 +28,7 @@ afterEach(async () => {
 });
 
 describe("getHermesCommand project resolution", () => {
-  it.each(["hermes-compiler", "bundled", "hermes-engine", "hermesvm"] as const)(
+  it.each(["hermes-compiler", "bundled"] as const)(
     "resolves %s from the app's hoisted dependencies",
     async (selected) => {
       const root = await fs.mkdtemp(
@@ -96,6 +96,44 @@ describe("getHermesCommand project resolution", () => {
       );
       expect(result.status, result.stderr).toBe(0);
       expect(result.stdout.trim()).toBe(await fs.realpath(binaries[selected]));
+    },
+  );
+
+  it.each(["hermes-engine", "hermesvm"] as const)(
+    "preserves the legacy %s path fallback",
+    async (selected) => {
+      const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "hermes-legacy-"));
+      tempDirs.push(cwd);
+      await writeFile(
+        path.join(cwd, "node_modules/react-native/package.json"),
+        JSON.stringify({ name: "react-native", version: "0.68.0" }),
+      );
+      const binary = path.join(
+        "node_modules",
+        selected,
+        osBin,
+        selected === "hermes-engine" ? executable : "hermes",
+      );
+      if (selected === "hermes-engine") {
+        await writeFile(path.join(cwd, binary));
+        await writeFile(
+          path.join(cwd, "node_modules/hermes-engine/package.json"),
+          JSON.stringify({ name: "hermes-engine", exports: {} }),
+        );
+      }
+
+      // The final hermesvm fallback returns its path even without a binary.
+      const result = spawnSync(
+        process.execPath,
+        [
+          "--input-type=module",
+          "--eval",
+          `import { getHermesCommand } from ${JSON.stringify(new URL("./hermes.ts", import.meta.url).href)}; console.log(await getHermesCommand(${JSON.stringify(cwd)}));`,
+        ],
+        { cwd, encoding: "utf8", env: { ...process.env, NODE_PATH: "" } },
+      );
+      expect(result.status, result.stderr).toBe(0);
+      expect(result.stdout.trim()).toBe(binary);
     },
   );
 });
