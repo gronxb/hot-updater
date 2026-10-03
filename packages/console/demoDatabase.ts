@@ -1069,3 +1069,26 @@ const insightsApi = seeding.api.insights as InsightsApi;
 for (const event of adjustedBundleEvents) {
   await insightsApi.recordEvent(event);
 }
+
+// A stable reporting cohort makes the daily replacement curve visible in the demo.
+const shareDemoNow = Date.now() - 60_000;
+for (const [day, adopted] of [0, 2, 6, 12, 16, 18, 19].entries()) {
+  for (let installation = 0; installation < 20; installation += 1) {
+    const bundle =
+      installation < adopted ? iosProdCorePatchB : iosProdCorePatchA;
+    await insightsApi.recordEvent({
+      ...downloadDemo,
+      id: `019f635e-ffff-7000-8000-${String(day * 20 + installation).padStart(12, "0")}`,
+      type: "UNCHANGED",
+      install_id: `demo-share-${installation}`,
+      user_id: null,
+      app_version: installation < 16 ? "1.4.2" : "1.4.1",
+      from_bundle_id: null,
+      from_release_id: null,
+      to_bundle_id: bundle.id,
+      to_release_id: releaseIdByBundle.get(bundle.id)!,
+      metadata: { ...downloadDemo.metadata, update_strategy: null },
+      received_at_ms: shareDemoNow - (6 - day) * 86_400_000,
+    });
+  }
+}

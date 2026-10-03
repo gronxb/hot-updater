@@ -12,6 +12,8 @@ import type {
   InsightsCountEventsInput,
   InsightsCountLatestEventsInput,
   InsightsFindLatestEventsInput,
+  InsightsGetDistributionHistoryInput,
+  InsightsGetDistributionHistoryResult,
   InsightsGetAppUsageInput,
   InsightsGetAppUsageResult,
   InsightsGetReleaseActivityInput,
@@ -64,6 +66,9 @@ interface ReadBudgetInsights {
   getReleaseActivity(
     input: InsightsGetReleaseActivityInput,
   ): Promise<InsightsGetReleaseActivityResult>;
+  getDistributionHistory(
+    input: InsightsGetDistributionHistoryInput,
+  ): Promise<InsightsGetDistributionHistoryResult>;
   getAppUsage(
     input: InsightsGetAppUsageInput,
   ): Promise<InsightsGetAppUsageResult>;
@@ -595,6 +600,23 @@ const READ_BUDGETS: readonly ReadBudget[] = [
       expect(versions).toEqual([{ name: "1.0.0", installations: 24 }]),
   }),
   budget({
+    api: "daily bundle share: only scoped aggregate shards in the requested days",
+    read: ({ insights }) =>
+      insights.getDistributionHistory({
+        channel: "production",
+        platform: "ios",
+        timeRange: { start: T0, end: T0 + 3 * DAY },
+      }),
+    adapter: reads(0, 0, 1, 15),
+    engine: { calls: 1, rows: 2 },
+    check: ({ points }) =>
+      expect(
+        points.map(({ bundles }) =>
+          bundles.reduce((n, row) => n + row.installations, 0),
+        ),
+      ).toEqual([24, 0, 1]),
+  }),
+  budget({
     api: "update failures of a release over a window: buckets × shards, all used",
     // Day 3's hour 0: no counters, since nothing but failures happened;
     // release-b's failure sketches on the 2 shards of installs 3 and 5; and
@@ -684,8 +706,9 @@ const READ_BUDGETS: readonly ReadBudget[] = [
   }),
   budget({
     api: "record an insights event: 2 dependent rounds of batch gets and 1 write",
-    // The event and install 2's head; then the event's 5 sketch rows, in one
-    // batch get per aggregate: its release's hour and its platform's usage of
+    // The event and install 2's latest and daily heads; then the event's 5
+    // sketch rows, in one batch get per aggregate: its release's hour and
+    // its platform's usage of
     // every app version and of its own by hour, and the usage by day, which
     // keeps its own retention. The head moves within its UTC day, so its
     // gauge rows stay as they are and none is read.
@@ -693,8 +716,8 @@ const READ_BUDGETS: readonly ReadBudget[] = [
       insights.recordEvent(
         eventOf(26, { install_id: "install-2", received_at_ms: T0 + 3 * HOUR }),
       ),
-    adapter: reads(4, 7, 0, 0),
-    engine: { calls: 2, rows: 1 },
+    adapter: reads(5, 8, 0, 0),
+    engine: { calls: 3, rows: 2 },
     writes: 1,
   }),
 ];

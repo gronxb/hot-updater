@@ -40,6 +40,9 @@ Record observations in deployment.json as described in COMMON.md.
     Inspect history, then from worker/ run
     `npx wrangler d1 migrations apply <database-name> --remote`.
     MCP SQL operations must preserve migration names/history as well.
+    Insights 1.3.0 requires the supplied rc.30 migration for daily bundle
+    observations. Coordinate it with the matching Worker as described in the
+    versioned upgrade guide; preserve the initial migration.
   - Verify/record: no pending supplied migrations, expected tables/schema version
     exist, and deployment inputs contain no unresolved placeholders. Record the
     actual applied filenames and database ID, not SQL or credential dumps.

@@ -154,6 +154,25 @@ export interface InsightsGetAppUsageResult {
   readonly measuredAtMs: number;
 }
 
+/** Whole UTC days, at most 31, including the current unfinished day. */
+export interface InsightsGetDistributionHistoryInput extends InsightsScope {
+  readonly timeRange: InsightsTimeRange;
+}
+
+export interface InsightsGetDistributionHistoryResult {
+  readonly coverage: InsightsCoverage;
+  readonly measuredAtMs: number;
+  readonly points: readonly {
+    readonly startMs: number;
+    readonly bundles: readonly {
+      readonly appVersion: string;
+      readonly releaseId: string | null;
+      readonly bundleKind: "release" | "builtin" | "unknown";
+      readonly installations: number;
+    }[];
+  }[];
+}
+
 export interface InsightsModel {
   /**
    * Persist the immutable event once. A private latest-event index, if used,
@@ -190,6 +209,10 @@ export interface InsightsModel {
   getReleaseActivity(
     input: InsightsGetReleaseActivityInput,
   ): Promise<InsightsGetReleaseActivityResult>;
+  /** Daily last-observed running bundles, one per reporting installation. No historical backfill. */
+  getDistributionHistory(
+    input: InsightsGetDistributionHistoryInput,
+  ): Promise<InsightsGetDistributionHistoryResult>;
   /** Read maintained App usage summaries and latest-report distribution. */
   getAppUsage(
     input: InsightsGetAppUsageInput,

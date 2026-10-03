@@ -7,6 +7,13 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { getRecoveryReport } from "./insightsRecovery";
 
+const history = {
+  coverage: { kind: "complete" as const, sinceMs: 0 },
+  points: [],
+  measuredAtMs: 0,
+};
+const getDistributionHistory = vi.fn(async () => history);
+
 const result = {
   coverage: { kind: "complete" as const, sinceMs: 0 },
   data: [
@@ -32,7 +39,10 @@ describe("release health aggregate query", () => {
   it("reads a channel/platform scope directly for the resolved period", async () => {
     const getReleaseActivity = vi.fn(async () => result);
     const report = await getRecoveryReport(
-      { getReleaseActivity } as unknown as InsightsModel,
+      {
+        getReleaseActivity,
+        getDistributionHistory,
+      } as unknown as InsightsModel,
       { platform: "ios", channel: "production", window: "7d" },
       8 * 3_600_000,
     );
@@ -40,6 +50,12 @@ describe("release health aggregate query", () => {
       scope: { platform: "ios", channel: "production" },
       timeRange: { start: 0, end: 8 * 3_600_000 },
     });
+    expect(getDistributionHistory).toHaveBeenCalledWith({
+      platform: "ios",
+      channel: "production",
+      timeRange: { start: 0, end: 86_400_000 },
+    });
+    expect(report.distribution).toBe(history);
     expect(report).toMatchObject({
       downloads: 4,
       activeDays: 9,
@@ -52,7 +68,10 @@ describe("release health aggregate query", () => {
   it("uses an exact release reference for drilldown", async () => {
     const getReleaseActivity = vi.fn(async () => result);
     await getRecoveryReport(
-      { getReleaseActivity } as unknown as InsightsModel,
+      {
+        getReleaseActivity,
+        getDistributionHistory,
+      } as unknown as InsightsModel,
       {
         platform: "android",
         channel: "preview",
@@ -81,7 +100,10 @@ describe("release health aggregate query", () => {
     vi.useFakeTimers({ now });
     const getReleaseActivity = vi.fn(async () => result);
     const report = await getRecoveryReport(
-      { getReleaseActivity } as unknown as InsightsModel,
+      {
+        getReleaseActivity,
+        getDistributionHistory,
+      } as unknown as InsightsModel,
       { platform: "ios", channel: "production", window: "24h" },
       now,
     );

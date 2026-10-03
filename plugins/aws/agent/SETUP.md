@@ -76,7 +76,11 @@ init. reference/ is additional context, not executable provisioning code.
     `aws iam put-role-policy --role-name <role-name> --policy-name <policy-name> --policy-document file://<file>`:
     iam/dynamodb-policy.json → HotUpdaterDynamoDBReadAccess;
     iam/s3-policy.json → HotUpdaterS3ReadAccess;
-    iam/ssm-policy.json → HotUpdaterSSMAccess. In that IAM document,
+    iam/ssm-policy.json → HotUpdaterSSMAccess. For Insights 1.3.0, refresh
+    the DynamoDB policy to include bundle_daily_heads and
+    insights_distribution_history LeadingKeys, including shards. Coordinate
+    the schema-settings update with the runtime using the rc.30 upgrade guide.
+    In that IAM document,
     __HOT_UPDATER_SSM_PARAMETER_PATH__ is the SSM name without its leading slash
     (`hot-updater/v1/<lambda-name>/keypair`); lambda/index.cjs uses the full
     __HOT_UPDATER_SSM_PARAMETER_NAME__ (`/hot-updater/v1/<lambda-name>/keypair`).

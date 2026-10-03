@@ -313,24 +313,25 @@ const SCENARIO = [
 
 /**
  * The most items and write units each event may take in its one transaction
- * (PRD decision 60). A relaunch the same UTC day, on the bundle its head
- * already names, writes nothing.
+ * (PRD decision 60). Daily observations add a head and its history gauge.
+ * A relaunch on the same bundle only advances the daily head and its index
+ * copy so a later-arriving older report cannot change that day's bundle.
  */
 const BUDGETS: Readonly<
   Record<(typeof SCENARIO)[number]["name"], { items: number; wru: number }>
 > = {
-  "First launch": { items: 15, wru: 40 },
-  "Same-hour relaunch": { items: 0, wru: 0 },
-  "Next-hour launch": { items: 0, wru: 0 },
-  UPDATE_DOWNLOADED: { items: 19, wru: 42 },
-  UPDATE_APPLIED: { items: 26, wru: 54 },
-  RECOVERED: { items: 30, wru: 66 },
-  "Relaunch after the recovery": { items: 0, wru: 0 },
+  "First launch": { items: 18, wru: 46 },
+  "Same-hour relaunch": { items: 2, wru: 4 },
+  "Next-hour launch": { items: 2, wru: 4 },
+  UPDATE_DOWNLOADED: { items: 20, wru: 44 },
+  UPDATE_APPLIED: { items: 31, wru: 64 },
+  RECOVERED: { items: 35, wru: 76 },
+  "Relaunch after the recovery": { items: 2, wru: 4 },
   UPDATE_FAILED: { items: 14, wru: 36 },
   "UPDATE_FAILED (check)": { items: 9, wru: 22 },
-  "Next-day launch": { items: 21, wru: 52 },
-  "Launch the day after": { items: 19, wru: 48 },
-  "RECOVERED with an exit reason": { items: 23, wru: 52 },
+  "Next-day launch": { items: 24, wru: 58 },
+  "Launch the day after": { items: 22, wru: 54 },
+  "RECOVERED with an exit reason": { items: 24, wru: 54 },
 };
 
 let local: DynamoDBLocal;

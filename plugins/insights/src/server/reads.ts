@@ -13,6 +13,8 @@ import type {
   InsightsCountEventsInput,
   InsightsCountLatestEventsInput,
   InsightsFindLatestEventsInput,
+  InsightsGetDistributionHistoryInput,
+  InsightsGetDistributionHistoryResult,
   InsightsGetAppUsageInput,
   InsightsGetAppUsageResult,
   InsightsGetReleaseActivityInput,
@@ -1033,5 +1035,44 @@ export const getUpdateFailures = async (
       : {}),
     breakdown,
     recoveries: { failedLaunches: total("failed_launches"), byExitReason },
+  };
+};
+
+/** Reads daily gauges, never raw events or mutable latest-state distribution. */
+export const getDistributionHistory = async (
+  db: Db,
+  input: InsightsGetDistributionHistoryInput,
+  now: () => number,
+  retention: InsightsRetention,
+): Promise<InsightsGetDistributionHistoryResult> => {
+  const at = now();
+  const { start, end } = input.timeRange;
+  const points = new Map<
+    number,
+    InsightsGetDistributionHistoryResult["points"][number]["bundles"][number][]
+  >();
+  for (let day = start; day < end; day += DAY_MS) points.set(day, []);
+  const rows = await drain((page) =>
+    db.findAggregates("insights_distribution_history", {
+      index: "byScope",
+      where: { channel: input.channel, platform: input.platform },
+      range: { gte: start, lt: end },
+      limit: PAGE,
+      ...page,
+    }),
+  );
+  for (const row of rows) {
+    if (row.installations <= 0) continue;
+    points.get(row.bucket_start_ms)!.push({
+      appVersion: row.app_version,
+      releaseId: row.release_id || null,
+      bundleKind: row.bundle_kind as "release" | "builtin" | "unknown",
+      installations: row.installations,
+    });
+  }
+  return {
+    coverage: coverageOf(start, retained(at, retention).day),
+    measuredAtMs: at,
+    points: [...points].map(([startMs, bundles]) => ({ startMs, bundles })),
   };
 };

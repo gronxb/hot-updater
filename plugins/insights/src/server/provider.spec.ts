@@ -84,6 +84,11 @@ const createModel = () => {
         measuredAtMs: 0,
       }),
     ),
+    getDistributionHistory: async () => ({
+      coverage: { kind: "complete" as const, sinceMs: 0 },
+      points: [],
+      measuredAtMs: 0,
+    }),
     getAppUsage: vi.fn<InsightsModel["getAppUsage"]>(async () => ({
       coverage: { kind: "complete", sinceMs: 0 },
       activeInstallations: 0,

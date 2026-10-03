@@ -32,7 +32,11 @@ import {
 } from "../src/supabaseSchema";
 
 const MIGRATIONS = path.resolve("plugins/supabase/supabase/migrations");
-const MIGRATION = path.join(MIGRATIONS, "20260818000000_hot-updater_1.0.0.sql");
+const INITIAL_MIGRATION = "20260818000000_hot-updater_1.0.0.sql";
+const MIGRATION = path.join(
+  MIGRATIONS,
+  "20261003000000_hot-updater_1.0.0-rc.30.sql",
+);
 /** The managed server's tables: core's, and its plugins' (Insights and API keys). */
 const managed = toolingTargetOf(plugins);
 
@@ -63,6 +67,9 @@ const createDatabase = async (before = "") => {
     "CREATE ROLE anon; CREATE ROLE authenticated; CREATE ROLE service_role BYPASSRLS;",
   );
   if (before) await db.exec(before);
+  await db.exec(
+    await fs.readFile(path.join(MIGRATIONS, INITIAL_MIGRATION), "utf8"),
+  );
   await db.exec(await fs.readFile(MIGRATION, "utf8"));
   await db.exec(
     "GRANT ALL ON ALL TABLES IN SCHEMA public TO service_role; SET ROLE service_role;",
@@ -76,14 +83,14 @@ const apply = (db: PGlite, sql: string) =>
   ]);
 
 describe("Supabase schema", () => {
-  it("checks in exactly the generated migration as the only one", async () => {
+  it("checks in the generated additive migration while retaining the initial migration", async () => {
     if (process.env.HOT_UPDATER_UPDATE_SQL === "1") {
       await fs.writeFile(MIGRATION, supabaseSchemaSql(managed));
     }
     const files = (await fs.readdir(MIGRATIONS)).filter((file) =>
       file.endsWith(".sql"),
     );
-    expect(files).toEqual([path.basename(MIGRATION)]);
+    expect(files.sort()).toEqual([INITIAL_MIGRATION, path.basename(MIGRATION)]);
     // Regenerate with HOT_UPDATER_UPDATE_SQL=1 after the schema changes.
     expect(await fs.readFile(MIGRATION, "utf8")).toBe(
       supabaseSchemaSql(managed),

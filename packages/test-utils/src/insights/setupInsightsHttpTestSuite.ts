@@ -84,6 +84,56 @@ export const setupInsightsHttpTestSuite = (options: {
       }, 1);
     });
 
+    it("serves daily observed bundles through the authenticated admin API", async () => {
+      const client = options.getClient();
+      const channel = `share-${crypto.randomUUID()}`;
+      const day = 86_400_000;
+      const start = Math.floor(Date.now() / day) * day;
+      const event = {
+        appVersion: "1.0.0",
+        channel,
+        cohort: "default",
+        fingerprintHash: null,
+        fromBundleId: null,
+        fromReleaseId: null,
+        installId: `share-${crypto.randomUUID()}`,
+        platform: "ios",
+        toBundleId: "00000000-0000-0000-0000-000000000000",
+        toReleaseId: null,
+        type: "UNCHANGED",
+        updateStrategy: null,
+      };
+      const reported = await client.client(
+        "/events",
+        jsonRequest("POST", event),
+      );
+      expect(reported.status).toBe(204);
+      await reported.text();
+      const path = `/distribution-history?platform=ios&channel=${channel}&start=${start}&end=${start + day}`;
+      await expectInsightsIndex(async () => {
+        const response = await client.admin(path);
+        expect(response.status).toBe(200);
+        return ((await response.json()) as { points: unknown[] }).points;
+      }, [
+        {
+          startMs: start,
+          bundles: [
+            {
+              appVersion: "1.0.0",
+              releaseId: null,
+              bundleKind: "builtin",
+              installations: 1,
+            },
+          ],
+        },
+      ]);
+      const invalid = await client.admin(
+        `/distribution-history?platform=ios&channel=${channel}&start=${start}&end=${start + 40 * day}`,
+      );
+      expect(invalid.status).toBe(400);
+      await invalid.text();
+    });
+
     it.each([
       { type: "UNCHANGED", status: 200, body: '{"releases":[]}' },
       { type: "UNCHANGED", status: 304, body: "" },

@@ -12,6 +12,23 @@ vi.mock("@tanstack/react-router", () => ({
 
 const report: RecoveryReport = {
   downloads: 8,
+  distribution: {
+    coverage: { kind: "complete", sinceMs: 0 },
+    measuredAtMs: 86_400_000,
+    points: [
+      {
+        startMs: 0,
+        bundles: [
+          {
+            appVersion: "1.0.0",
+            releaseId: "release-a",
+            bundleKind: "release",
+            installations: 5,
+          },
+        ],
+      },
+    ],
+  },
   activeInstallations: 5,
   activeDays: 20,
   failedLaunches: 2,
@@ -55,9 +72,7 @@ describe("Release health", () => {
     expect(screen.getByText("Failed launches")).toBeDefined();
     // 2 failed launches / (20 active days + 2 failed launches).
     expect(screen.getByText("9.09%")).toBeDefined();
-    expect(
-      screen.getByLabelText("Daily active installations and failed launches"),
-    ).toBeDefined();
+    expect(screen.getByLabelText("Daily observed bundle share")).toBeDefined();
     expect(
       screen.getByRole("button", { name: "About active installations" }),
     ).toBeDefined();
@@ -85,6 +100,7 @@ describe("Release health", () => {
       />,
     );
     expect(screen.getByText("— / No launch reports")).toBeDefined();
+    fireEvent.click(screen.getByRole("tab", { name: "Launch failures" }));
     expect(screen.getByText("No launch reports in this period.")).toBeDefined();
   });
 
