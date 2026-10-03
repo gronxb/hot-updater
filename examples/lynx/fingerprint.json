@@ -1,6 +1,6 @@
 {
   "ios": {
-    "hash": "c222f24a7dd8a9259486d99e2618bdd7ea19696ea45321b44d24adb5f0c3f0f9",
+    "hash": "34d87d70a547fd61c78b8783b3331f3f5bd39caa0a1e31cbb24b32266164e263",
     "sources": [
       {
         "type": "file",
@@ -169,28 +169,6 @@
       },
       {
         "type": "file",
-        "filePath": "@hot-updater/lynx/ios/Sources/HotUpdaterLynxArtifact/DecompressService.swift",
-        "reasons": [
-          "lynx-native-input"
-        ],
-        "hash": "0f1701588018a0b29c906d5e80206493726d77460d6758b49225d48121cd07fb",
-        "debugInfo": {
-          "byteSize": 4502
-        }
-      },
-      {
-        "type": "file",
-        "filePath": "@hot-updater/lynx/ios/Sources/HotUpdaterLynxArtifact/DecompressionStrategy.swift",
-        "reasons": [
-          "lynx-native-input"
-        ],
-        "hash": "e9227f2461c6010d6434803af0502080c7acb30eff794c8c905e4037c8475d50",
-        "debugInfo": {
-          "byteSize": 735
-        }
-      },
-      {
-        "type": "file",
         "filePath": "@hot-updater/lynx/ios/Sources/HotUpdaterLynxArtifact/HashUtils.swift",
         "reasons": [
           "lynx-native-input"
@@ -272,9 +250,9 @@
         "reasons": [
           "lynx-native-input"
         ],
-        "hash": "371819bed820f7fb2efc8c0a06bccb0d246ead8c1745e4f5689b48db820e488d",
+        "hash": "d235e30f7c6c4a4853c958cf0c8221810ec3857216785c1e12133e3d15febf37",
         "debugInfo": {
-          "byteSize": 13674
+          "byteSize": 12589
         }
       },
       {
@@ -305,31 +283,9 @@
         "reasons": [
           "lynx-native-input"
         ],
-        "hash": "991e0d19d52a5c385fa360695bcfecefea5e7d7c6b03fbe63768b0b15567835d",
+        "hash": "852d84e32306d81fef117194493054fdc75009b235fdc7a01e978348d26f4ece",
         "debugInfo": {
-          "byteSize": 18044
-        }
-      },
-      {
-        "type": "file",
-        "filePath": "@hot-updater/lynx/ios/Sources/HotUpdaterLynxArtifact/TarBrDecompressionStrategy.swift",
-        "reasons": [
-          "lynx-native-input"
-        ],
-        "hash": "5f060bee691edca5a037b65ec1e849658c6f8cf7ef17e9c3b3acc038643e1e01",
-        "debugInfo": {
-          "byteSize": 1438
-        }
-      },
-      {
-        "type": "file",
-        "filePath": "@hot-updater/lynx/ios/Sources/HotUpdaterLynxArtifact/TarGzDecompressionStrategy.swift",
-        "reasons": [
-          "lynx-native-input"
-        ],
-        "hash": "f3ff0ce4211b4922f0cbb2b574aef8dd6e77493df79c69c35ba7579c8ff72a6b",
-        "debugInfo": {
-          "byteSize": 2157
+          "byteSize": 15666
         }
       },
       {
@@ -341,17 +297,6 @@
         "hash": "1c158bfe1337f0fa590fc900c4a977903a3e2a33dde94bfc2e90b159311831c3",
         "debugInfo": {
           "byteSize": 20858
-        }
-      },
-      {
-        "type": "file",
-        "filePath": "@hot-updater/lynx/ios/Sources/HotUpdaterLynxArtifact/ZipDecompressionStrategy.swift",
-        "reasons": [
-          "lynx-native-input"
-        ],
-        "hash": "8e1043ddc18d9fb5bd3fe4cbcf5a66c9af608468cb083669e0fcde5d8faaacfe",
-        "debugInfo": {
-          "byteSize": 2006
         }
       },
       {

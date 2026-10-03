@@ -48,3 +48,6 @@ before writing; use verified original files when logical sizes are unavailable.
 Let Android applications provide native configuration through the packaged
 Sparkling primary Activity. Keep host mounting, retention across configuration
 changes, reattachment, and final teardown inside the host package.
+
+Remove the unused copied iOS automatic-format decompression service and its
+strategy/sniffing helpers. Keep the active strict archive and Brotli paths.

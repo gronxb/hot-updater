@@ -67,32 +67,6 @@ public enum StreamingTarArchiveExtractor {
         )
     }
 
-    static func containsTarEntries(file: String, algorithm: CompressedTarAlgorithm) -> Bool {
-        do {
-            return try withTemporaryTarFile { temporaryTarURL in
-                switch algorithm {
-                case .gzip:
-                    try decompressGzipArchive(
-                        from: file,
-                        to: temporaryTarURL.path,
-                        progressHandler: { _ in }
-                    )
-                case .brotli:
-                    try decompressBrotliArchive(
-                        from: file,
-                        to: temporaryTarURL.path,
-                        progressHandler: { _ in }
-                    )
-                }
-
-                return try tarArchiveHasEntries(at: temporaryTarURL.path)
-            }
-        } catch {
-            NSLog("[TarStreamExtractor] Validation failed: \(error.localizedDescription)")
-            return false
-        }
-    }
-
     private static func withTemporaryTarFile<T>(
         directory: URL? = nil,
         perform: (URL) throws -> T
@@ -106,10 +80,6 @@ public enum StreamingTarArchiveExtractor {
         }
 
         return try perform(temporaryTarURL)
-    }
-
-    private static func tarArchiveHasEntries(at tarPath: String) throws -> Bool {
-        try TarArchiveExtractor.containsEntries(at: tarPath)
     }
 
     private static func extractTarArchive(

@@ -21,68 +21,6 @@ public enum TarArchiveExtractor {
         let linkName: String
     }
 
-    public static func containsEntries(at tarPath: String) throws -> Bool {
-        let handle = try FileHandle(forReadingFrom: URL(fileURLWithPath: tarPath))
-
-        defer {
-            try? handle.close()
-        }
-
-        var globalPaxHeaders: [String: String] = [:]
-        var pendingPaxHeaders: [String: String] = [:]
-        var pendingLongPath: String?
-        var pendingLongLink: String?
-
-        while true {
-            let headerBlock = try ArchiveExtractionUtilities.readExactly(from: handle, count: blockSize)
-            guard !isZeroBlock(headerBlock) else {
-                return false
-            }
-
-            let header = try parseHeader(from: headerBlock)
-
-            switch header.typeFlag {
-            case globalPaxHeaderType:
-                let paxData = try readEntryPayloadData(from: handle, size: header.size)
-                globalPaxHeaders.merge(try parsePaxHeaders(from: paxData)) { _, newValue in
-                    newValue
-                }
-
-            case paxHeaderType:
-                let paxData = try readEntryPayloadData(from: handle, size: header.size)
-                pendingPaxHeaders.merge(try parsePaxHeaders(from: paxData)) { _, newValue in
-                    newValue
-                }
-
-            case gnuLongNameType:
-                pendingLongPath = decodeLongPath(from: try readEntryPayloadData(from: handle, size: header.size))
-
-            case gnuLongLinkType:
-                pendingLongLink = decodeLongPath(from: try readEntryPayloadData(from: handle, size: header.size))
-
-            default:
-                let effectiveHeaders = globalPaxHeaders.merging(pendingPaxHeaders) { _, newValue in
-                    newValue
-                }
-                let resolvedPath = pendingLongPath ?? effectiveHeaders["path"] ?? header.path
-                _ = pendingLongLink ?? effectiveHeaders["linkpath"] ?? header.linkName
-
-                defer {
-                    pendingPaxHeaders.removeAll()
-                    pendingLongPath = nil
-                    pendingLongLink = nil
-                }
-
-                if let normalizedPath = ArchiveExtractionUtilities.normalizedRelativePath(from: resolvedPath),
-                   !normalizedPath.isEmpty {
-                    return true
-                }
-
-                try skipEntryPayload(in: handle, size: header.size)
-            }
-        }
-    }
-
     static func extract(
         from tarPath: String,
         to destination: String,
