@@ -15,4 +15,5 @@ export const createInsightsModel = (api: InsightsApi): InsightsModel =>
     countEvents: api.countEvents,
     getReleaseActivity: api.getReleaseActivity,
     getAppUsage: api.getAppUsage,
+    getDistributionHistory: api.getDistributionHistory,
   });

@@ -82,6 +82,10 @@ supply this CLI. Do this before remote provisioning.
     settings to bypass a failed check.
 <!-- end -->
 
+For Insights 1.3.0 upgrades, coordinate the schema-settings migration and Function
+deployment using the rc.30 upgrade guide. Daily observations use the existing
+collection, indexes and TTL policy; no new physical collection is required.
+
 - [ ] **fb.function — Deploy the server**
   - Requires: fb.database-credential.
   - Run: fill project ID in firebase/.firebaserc and region in functions/index.cjs.

@@ -665,6 +665,7 @@ describe("Cloudflare init discovery", () => {
     });
     expect(Object.keys(deployed.migrations ?? {})).toEqual([
       "0001_hot-updater_1.0.0.sql",
+      "0002_hot-updater_1.0.0-rc.30.sql",
     ]);
     expect(deployed.migrations?.["0001_hot-updater_1.0.0.sql"]).toContain(
       "'schema.apiKeys'",

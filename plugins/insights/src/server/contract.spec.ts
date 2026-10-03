@@ -42,6 +42,11 @@ const emptyModel: InsightsModel = {
     data: [],
     measuredAtMs: 0,
   }),
+  getDistributionHistory: async () => ({
+    coverage: { kind: "complete" as const, sinceMs: 0 },
+    points: [],
+    measuredAtMs: 0,
+  }),
   getAppUsage: async () => ({
     coverage: { kind: "complete", sinceMs: 0 },
     activeInstallations: 0,
@@ -74,6 +79,30 @@ describe("public Insights validation", () => {
       ).rejects.toMatchObject({ code: "invalid-data" });
     }
     expect(recordEvent).not.toHaveBeenCalled();
+  });
+
+  it("bounds distribution history to 31 whole UTC days before provider I/O", async () => {
+    const day = 86_400_000;
+    const getDistributionHistory = vi.fn(emptyModel.getDistributionHistory);
+    const model = createModel({ getDistributionHistory });
+    const scope = { channel: "production", platform: "ios" as const };
+    for (const timeRange of [
+      { start: 1, end: day },
+      { start: 0, end: day + 1 },
+      { start: day, end: day },
+      { start: day, end: 0 },
+      { start: 0, end: 32 * day },
+    ]) {
+      await expect(
+        model.getDistributionHistory({ ...scope, timeRange }),
+      ).rejects.toMatchObject({ code: "invalid-query" });
+    }
+    expect(getDistributionHistory).not.toHaveBeenCalled();
+    await model.getDistributionHistory({
+      ...scope,
+      timeRange: { start: 0, end: 31 * day },
+    });
+    expect(getDistributionHistory).toHaveBeenCalledOnce();
   });
 
   it("takes an update failure with what failed, and refuses one without it", async () => {

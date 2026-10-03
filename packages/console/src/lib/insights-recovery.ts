@@ -1,4 +1,7 @@
-import type { InsightsCoverage } from "@hot-updater/server/plugins/insights";
+import type {
+  InsightsCoverage,
+  InsightsGetDistributionHistoryResult,
+} from "@hot-updater/server/plugins/insights";
 
 import type { InsightsWindow } from "./insights-rpc";
 
@@ -11,6 +14,7 @@ export type RecoveryInput = {
 
 export type RecoveryReport = {
   readonly downloads: number;
+  readonly distribution: InsightsGetDistributionHistoryResult;
   /**
    * Distinct installations that reported in the scope and period, or that
    * launched the release; estimated.

@@ -41,6 +41,9 @@ connection, CLI/API or browser can handle missing account-level prerequisites.
     inspect the synchronized history and pending supplied SQL, then
     `npx supabase db push --include-all --yes`.
     MCP migration operations must preserve the same names/history and SQL.
+    Insights 1.3.0 requires the supplied rc.30 migration for daily bundle
+    observations and the updated transaction RPC. Coordinate it with the
+    matching Function using the versioned upgrade guide.
   - Verify/record: supplied migrations are applied, expected tables/schema version
     exist, and the API schema cache can access them. Record applied filenames.
   - Retry: inspect actual schema/history before replaying anything. Only the exact

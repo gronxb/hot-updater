@@ -4,6 +4,7 @@ import {
   type HotUpdaterDatabase,
   type HotUpdaterTransaction,
 } from "@hot-updater/plugin-core";
+import { NIL_UUID } from "@hot-updater/protocol";
 
 import { assertBundleEventRow } from "./contract";
 import type { BundleEventFailure, BundleEventRow } from "./eventRow";
@@ -398,7 +399,10 @@ const countExit = (
   );
 };
 
-const isNewer = (event: Head, head: Head) =>
+const isNewer = (
+  event: Pick<Head, "received_at_ms" | "id">,
+  head: Pick<Head, "received_at_ms" | "id">,
+) =>
   event.received_at_ms !== head.received_at_ms
     ? event.received_at_ms > head.received_at_ms
     : compareUtf8(event.id, head.id) > 0;
@@ -427,13 +431,14 @@ const repeatsHead = (event: BundleEventRow, head: Head) =>
 
 /**
  * Records one event in one transaction: one batch read of the event and its
- * installation's head, one of the gauge and sketch rows it changes, then one
+ * installation's latest and daily heads, then the gauge and sketch rows it
+ * changes and one
  * write. On a database that batches aggregates (DynamoDB, Firestore), the
  * write holds the event's rows and one log row instead, and a compaction
  * reads and writes the aggregate rows. A stored event's id changes nothing
  * when repeated, whichever installation sends it, and neither does the id
  * of the installation's head. An UNCHANGED report that repeats its head on
- * the same UTC day writes nothing at all. An older event still counts in its
+ * the same UTC day only advances its daily observation. An older event counts in its
  * own hour but never replaces the head. An update failure is stored and
  * counted, but changes what no installation runs, so it moves no head.
  */
@@ -443,14 +448,86 @@ export const recordEvent = (
 ): Promise<void> => {
   assertBundleEventRow(event);
   return db.transaction(async (tx) => {
-    const [existing, previous] = await Promise.all([
+    const dailyKey = {
+      install_id: event.install_id,
+      bucket_start_ms: dayOf(event.received_at_ms),
+    };
+    const [existing, previous, daily] = await Promise.all([
       tx.findOne("bundle_events", { id: event.id }),
       tx.findOne("bundle_event_heads", { install_id: event.install_id }),
+      event.type === "UPDATE_FAILED"
+        ? null
+        : tx.findOne("bundle_daily_heads", dailyKey),
     ]);
     // The id is the report's idempotency key: a retry, or any report under
     // an id already stored or already the installation's head, changes
     // nothing, as analytics ingestion drops duplicates.
-    if (existing !== null || previous?.id === event.id) return;
+    if (
+      existing !== null ||
+      previous?.id === event.id ||
+      daily?.id === event.id
+    )
+      return;
+    // Retain the latest daily observation even when activity suppresses a
+    // repeated launch, so an older concurrent report cannot move it backward.
+    // Missing daily heads start here after an upgrade, without backfilling.
+    if (
+      event.type !== "UPDATE_FAILED" &&
+      (daily === null || isNewer(event, daily))
+    ) {
+      const downloaded = event.type === "UPDATE_DOWNLOADED";
+      const releaseId = downloaded
+        ? event.from_release_id
+        : event.to_release_id;
+      const bundleId = downloaded ? event.from_bundle_id : event.to_bundle_id;
+      const next = {
+        ...dailyKey,
+        id: event.id,
+        received_at_ms: event.received_at_ms,
+        channel: event.channel,
+        platform: event.platform as string,
+        app_version: event.app_version,
+        release_id: releaseId ?? "",
+        bundle_kind:
+          bundleId === NIL_UUID
+            ? "builtin"
+            : releaseId === null
+              ? "unknown"
+              : "release",
+      };
+      const count = (head: typeof next, delta: 1 | -1) => {
+        tx.aggregate(
+          "insights_distribution_history",
+          {
+            channel: head.channel,
+            platform: head.platform,
+            app_version: head.app_version,
+            release_id: head.release_id,
+            bundle_kind: head.bundle_kind,
+            bucket_start_ms: head.bucket_start_ms,
+          },
+          { installations: delta },
+          { shardBy: head.install_id },
+        );
+      };
+      if (daily !== null) {
+        if (
+          daily.channel !== next.channel ||
+          daily.platform !== next.platform ||
+          daily.app_version !== next.app_version ||
+          daily.release_id !== next.release_id ||
+          daily.bundle_kind !== next.bundle_kind
+        ) {
+          count(daily, -1);
+          count(next, 1);
+        }
+        const { install_id: _, bucket_start_ms: __, ...fields } = next;
+        tx.update("bundle_daily_heads", daily, fields);
+      } else {
+        tx.create("bundle_daily_heads", next);
+        count(next, 1);
+      }
+    }
     if (previous !== null && repeatsHead(event, previous)) return;
     // An UNCHANGED report is a launch: it counts and moves the head, but no
     // event list shows it, so no event row or outcome row keeps it.

@@ -12,6 +12,8 @@ import type {
   InsightsCountEventsInput,
   InsightsCountLatestEventsInput,
   InsightsFindLatestEventsInput,
+  InsightsGetDistributionHistoryInput,
+  InsightsGetDistributionHistoryResult,
   InsightsGetAppUsageInput,
   InsightsGetAppUsageResult,
   InsightsGetReleaseActivityInput,
@@ -64,6 +66,9 @@ interface ReadBudgetInsights {
   getReleaseActivity(
     input: InsightsGetReleaseActivityInput,
   ): Promise<InsightsGetReleaseActivityResult>;
+  getDistributionHistory(
+    input: InsightsGetDistributionHistoryInput,
+  ): Promise<InsightsGetDistributionHistoryResult>;
   getAppUsage(
     input: InsightsGetAppUsageInput,
   ): Promise<InsightsGetAppUsageResult>;
@@ -593,6 +598,23 @@ const READ_BUDGETS: readonly ReadBudget[] = [
     engine: { calls: 4, rows: 4 },
     check: ({ versions }) =>
       expect(versions).toEqual([{ name: "1.0.0", installations: 24 }]),
+  }),
+  budget({
+    api: "daily bundle share: only scoped aggregate shards in the requested days",
+    read: ({ insights }) =>
+      insights.getDistributionHistory({
+        channel: "production",
+        platform: "ios",
+        timeRange: { start: T0, end: T0 + 3 * DAY },
+      }),
+    adapter: reads(0, 0, 1, 15),
+    engine: { calls: 1, rows: 2 },
+    check: ({ points }) =>
+      expect(
+        points.map(({ bundles }) =>
+          bundles.reduce((n, row) => n + row.installations, 0),
+        ),
+      ).toEqual([24, 0, 1]),
   }),
   budget({
     api: "update failures of a release over a window: buckets × shards, all used",

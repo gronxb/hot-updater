@@ -93,6 +93,11 @@ function renderPage() {
     downloads: 8,
     activeInstallations: 5,
     activeDays: 12,
+    distribution: {
+      coverage: { kind: "complete", sinceMs: 0 },
+      measuredAtMs: 86_400_000,
+      points: [],
+    },
     failedLaunches: 1,
     points: [{ startMs: 0, dailyActiveInstallations: 12, failedLaunches: 1 }],
     startMs: 0,

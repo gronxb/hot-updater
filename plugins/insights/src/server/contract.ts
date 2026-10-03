@@ -336,6 +336,35 @@ export const createValidatedInsightsModel = (
     if (!Array.isArray(result.data)) invalidResult();
     return result;
   },
+  async getDistributionHistory(input) {
+    if (
+      !isRecord(input) ||
+      !hasOnlyKeys(input, ["channel", "platform", "timeRange"]) ||
+      !hasScope(input) ||
+      !isTimeRange(input.timeRange) ||
+      input.timeRange.start % 86_400_000 !== 0 ||
+      input.timeRange.end % 86_400_000 !== 0 ||
+      input.timeRange.end - input.timeRange.start > 31 * 86_400_000
+    )
+      invalidQuery();
+    const result = await model.getDistributionHistory(input);
+    validateAggregateResult(result);
+    if (!Array.isArray(result.points)) invalidResult();
+    for (const point of result.points) {
+      if (!isTimestamp(point.startMs) || !Array.isArray(point.bundles))
+        invalidResult();
+      for (const bundle of point.bundles) {
+        if (
+          !isText(bundle.appVersion) ||
+          (bundle.releaseId !== null && !isText(bundle.releaseId)) ||
+          !["release", "builtin", "unknown"].includes(bundle.bundleKind) ||
+          !isTimestamp(bundle.installations)
+        )
+          invalidResult();
+      }
+    }
+    return result;
+  },
   async getAppUsage(input) {
     if (
       !isRecord(input) ||

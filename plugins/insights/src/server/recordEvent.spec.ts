@@ -486,12 +486,41 @@ describe.each(backends)("insights recordEvent on %s", (_name, adapter) => {
     ).resolves.toEqual([]);
   });
 
-  it("writes nothing for an UNCHANGED report that repeats its head the same UTC day", async () => {
+  it("starts daily history on the first repeated launch after upgrading, without backfilling", async () => {
+    const { api, db } = await setup();
+    // An installation head already exists from the previous server schema.
+    await db.transaction(async (tx) => {
+      tx.create("bundle_event_heads", unchanged(1));
+    });
+    await api.recordEvent(unchanged(2, { received_at_ms: T + HOUR }));
+    const history = await api.getDistributionHistory({
+      platform: "ios",
+      channel: "production",
+      timeRange: { start: day(T) - DAY, end: day(T) + DAY },
+    });
+    expect(history.points).toEqual([
+      { startMs: day(T) - DAY, bundles: [] },
+      {
+        startMs: day(T),
+        bundles: [
+          {
+            appVersion: "1.0.0",
+            releaseId: "release-2",
+            bundleKind: "release",
+            installations: 1,
+          },
+        ],
+      },
+    ]);
+  });
+
+  it("advances the daily observation without counting a repeated launch again", async () => {
     const calls: string[] = [];
     const { api, db, overview } = await setup((inner) => ({
       ...inner,
       write: async (ops: readonly WriteOp[]) => {
-        calls.push("write");
+        // Two read heads may require check-only validation, but no rows change.
+        if (ops.some((op) => op.type !== "check")) calls.push("write");
         return inner.write(ops);
       },
     }));
@@ -500,13 +529,37 @@ describe.each(backends)("insights recordEvent on %s", (_name, adapter) => {
     // Relaunches on the bundle the apply moved to, later that day.
     await api.recordEvent(unchanged(2, { received_at_ms: T + 5 * HOUR }));
     await api.recordEvent(unchanged(3, { received_at_ms: T + 6 * HOUR }));
-    expect(calls).toEqual([]);
+    expect(calls).toEqual(["write", "write"]);
+    await expect(
+      db.findOne("bundle_daily_heads", {
+        install_id: "install-1",
+        bucket_start_ms: day(T),
+      }),
+    ).resolves.toMatchObject({ id: uuid(3), received_at_ms: T + 6 * HOUR });
     await expect(
       db.findOne("bundle_event_heads", { install_id: "install-1" }),
     ).resolves.toMatchObject({ id: uuid(1), type: "UPDATE_APPLIED" });
     await expect(
       overview(identity({ periodKind: "day" }), day(T), "day"),
     ).resolves.toMatchObject({ launches: 1 });
+
+    // A delayed different-bundle report predates the suppressed repeat.
+    await api.recordEvent(
+      event(7, {
+        to_release_id: "release-3",
+        to_bundle_id: "bundle-3",
+        received_at_ms: T + 5.5 * HOUR,
+      }),
+    );
+    await expect(
+      api.getDistributionHistory({
+        platform: "ios",
+        channel: "production",
+        timeRange: { start: day(T), end: day(T) + DAY },
+      }),
+    ).resolves.toMatchObject({
+      points: [{ bundles: [{ releaseId: "release-2", installations: 1 }] }],
+    });
 
     // An UNCHANGED report keeps no event row, so a retry that lands the next
     // UTC day is known by the head's id.
@@ -826,6 +879,8 @@ describe.each(backends)("insights recordEvent on %s", (_name, adapter) => {
     expect(calls).toEqual([
       "get bundle_events",
       "get bundle_event_heads",
+      "get bundle_daily_heads",
+      "get insights_distribution_history",
       "get insights_sketches",
       "get insights_sketches_daily",
       "get insights_distribution",

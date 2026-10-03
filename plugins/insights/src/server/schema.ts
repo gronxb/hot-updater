@@ -298,6 +298,53 @@ const insightsDistribution = (retention: BucketRetention) =>
     },
   );
 
+/** The last running bundle observed per installation and UTC day. */
+const bundleDailyHeads = (retention: BucketRetention) =>
+  defineTable(
+    {
+      install_id: { type: "string", maxLength: 255 },
+      bucket_start_ms: { type: "integer" },
+      id: { type: "string", maxLength: 36 },
+      received_at_ms: { type: "integer" },
+      channel: { type: "string" },
+      platform: { type: "string", maxLength: 16 },
+      app_version: { type: "string" },
+      release_id: { type: "string", maxLength: 36 },
+      bundle_kind: { type: "string", maxLength: 16 },
+    },
+    { key: ["install_id", "bucket_start_ms"], retention },
+  );
+
+/** Daily observations stay in their day when an installation reports again. */
+const insightsDistributionHistory = (retention: BucketRetention) =>
+  defineAggregate(
+    {
+      channel: { type: "string" },
+      platform: { type: "string", maxLength: 16 },
+      app_version: { type: "string" },
+      release_id: { type: "string", maxLength: 36 },
+      bundle_kind: { type: "string", maxLength: 16 },
+      bucket_start_ms: { type: "integer" },
+    },
+    {
+      key: [
+        "channel",
+        "platform",
+        "app_version",
+        "release_id",
+        "bundle_kind",
+        "bucket_start_ms",
+      ],
+      gauges: ["installations"],
+      shards: GAUGE_SHARDS,
+      batched: true,
+      indexes: {
+        byScope: { eq: ["channel", "platform"], sort: ["bucket_start_ms"] },
+      },
+      retention,
+    },
+  );
+
 /** Latest events by the bundle they came from or went to, bucketed like the distribution. */
 const insightsLatestByBundle = (retention: BucketRetention) =>
   defineAggregate(
@@ -398,6 +445,8 @@ export const createInsightsSchema = ({
     insights_overview_lifetime: counters(),
     insights_sketches_lifetime: lifetimeSketches(),
     insights_distribution: insightsDistribution(daily),
+    bundle_daily_heads: bundleDailyHeads(daily),
+    insights_distribution_history: insightsDistributionHistory(daily),
     insights_latest_by_bundle: insightsLatestByBundle(daily),
     insights_outcomes: insightsOutcomes(hourly),
     insights_failures: insightsFailures(hourly),

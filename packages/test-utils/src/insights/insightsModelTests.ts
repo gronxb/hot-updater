@@ -665,6 +665,121 @@ export const registerInsightsModelTests = (
         ]),
       );
     });
+    it("keeps one daily running-bundle observation through updates, recovery, retries, and later days", async () => {
+      const model = state.getDatabase();
+      const day = 86_400_000;
+      const start = Math.floor(Date.now() / day) * day - 3 * day;
+      const a = "00000000-0000-7000-8000-000000008001";
+      const b = "00000000-0000-7000-8000-000000008002";
+      const base = createBundleEventRowFixture("9901", start + 100);
+      const download: BundleEventRow = {
+        ...base,
+        type: "UPDATE_DOWNLOADED",
+        install_id: "daily-one",
+        from_release_id: a,
+        to_release_id: b,
+      };
+      const applied: BundleEventRow = {
+        ...download,
+        type: "UPDATE_APPLIED",
+        id: createBundleEventRowFixture("9902", 0).id,
+        received_at_ms: start + 200,
+      };
+      const read = () =>
+        model.getDistributionHistory({
+          platform: "ios",
+          channel: "production",
+          timeRange: { start, end: start + 3 * day },
+        });
+      await record(model, download);
+      await expectInsightsIndex(
+        async () => (await read()).points[0]!.bundles,
+        [
+          {
+            appVersion: "1.0.0",
+            releaseId: a,
+            bundleKind: "release",
+            installations: 1,
+          },
+        ],
+      );
+      for (const row of [
+        applied,
+        applied,
+        {
+          ...applied,
+          id: createBundleEventRowFixture("9903", 0).id,
+          install_id: "daily-two",
+        },
+      ])
+        await record(model, row);
+      const recovered: BundleEventRow = {
+        ...applied,
+        id: createBundleEventRowFixture("9904", 0).id,
+        type: "RECOVERED",
+        from_release_id: b,
+        to_release_id: a,
+        received_at_ms: start + 300,
+      };
+      await record(model, recovered);
+      await record(model, {
+        ...applied,
+        id: createBundleEventRowFixture("9905", 0).id,
+        received_at_ms: start + day + 100,
+      });
+      // A delayed report cannot replace a newer observation in that same day.
+      await record(model, {
+        ...applied,
+        id: createBundleEventRowFixture("9906", 0).id,
+        received_at_ms: start + 250,
+      });
+      await record(model, {
+        ...applied,
+        id: createBundleEventRowFixture("9907", 0).id,
+        install_id: "other-scope",
+        channel: "preview",
+      });
+      await expectInsightsIndex(async () => {
+        const report = await read();
+        return report.points.map((point) => ({
+          ...point,
+          bundles: [...point.bundles].sort((x, y) =>
+            (x.releaseId ?? "").localeCompare(y.releaseId ?? ""),
+          ),
+        }));
+      }, [
+        {
+          startMs: start,
+          bundles: [
+            {
+              appVersion: "1.0.0",
+              releaseId: a,
+              bundleKind: "release",
+              installations: 1,
+            },
+            {
+              appVersion: "1.0.0",
+              releaseId: b,
+              bundleKind: "release",
+              installations: 1,
+            },
+          ],
+        },
+        {
+          startMs: start + day,
+          bundles: [
+            {
+              appVersion: "1.0.0",
+              releaseId: b,
+              bundleKind: "release",
+              installations: 1,
+            },
+          ],
+        },
+        { startMs: start + 2 * day, bundles: [] },
+      ]);
+    });
+
     it("pages insights events newest first with a stable cursor", async () => {
       const model = state.getDatabase();
       const first = createBundleEventRowFixture("701", 100);

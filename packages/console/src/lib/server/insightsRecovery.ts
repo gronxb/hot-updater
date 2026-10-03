@@ -16,28 +16,40 @@ export async function getRecoveryReport(
   readRecoveryInput(input);
   const end = insightsPeriodEnd(now);
   const start = Math.max(0, end - recoveryWindows[input.window].durationMs);
-  const result = await model.getReleaseActivity(
-    input.releaseId === undefined
-      ? {
-          scope: { platform: input.platform, channel: input.channel },
-          timeRange: { start, end },
-        }
-      : {
-          releases: [
-            {
-              releaseId: input.releaseId,
-              platform: input.platform,
-              channel: input.channel,
-            },
-          ],
-          timeRange: { start, end },
-        },
-  );
+  const dayMs = 86_400_000;
+  const [result, distribution] = await Promise.all([
+    model.getReleaseActivity(
+      input.releaseId === undefined
+        ? {
+            scope: { platform: input.platform, channel: input.channel },
+            timeRange: { start, end },
+          }
+        : {
+            releases: [
+              {
+                releaseId: input.releaseId,
+                platform: input.platform,
+                channel: input.channel,
+              },
+            ],
+            timeRange: { start, end },
+          },
+    ),
+    model.getDistributionHistory({
+      platform: input.platform,
+      channel: input.channel,
+      timeRange: {
+        start: start - (start % dayMs),
+        end: Math.ceil(end / dayMs) * dayMs,
+      },
+    }),
+  ]);
   const metrics = result.data[0]?.metrics;
   // The launches counter counts each installation once per UTC day it
   // launched, so it reads as active days, and per day as daily active
   // installations.
   return {
+    distribution,
     downloads: metrics?.downloads ?? 0,
     activeInstallations: metrics?.uniqueUsers ?? 0,
     activeDays: metrics?.launches ?? 0,

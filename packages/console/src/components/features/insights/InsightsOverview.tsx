@@ -15,9 +15,17 @@ import {
   ChartTooltip,
   ChartTooltipContent,
 } from "@/components/ui/chart";
+import {
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyTitle,
+} from "@/components/ui/empty";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { RecoveryInput, RecoveryReport } from "@/lib/insights-recovery";
 
+import { BundleDistributionChart } from "./BundleDistributionChart";
 import { EstimatedCount } from "./EstimatedCount";
 import { InsightsErrorAlert } from "./InsightsErrorAlert";
 import { InsightsInfo } from "./InsightsInfo";
@@ -36,7 +44,13 @@ const rate = (report: RecoveryReport): string => {
     : `${((report.failedLaunches / attempts) * 100).toFixed(2)}%`;
 };
 
-function ReleaseHealth({ report }: { readonly report: RecoveryReport }) {
+function ReleaseHealth({
+  report,
+  releaseId,
+}: {
+  readonly report: RecoveryReport;
+  readonly releaseId?: string;
+}) {
   const attempts = report.activeDays + report.failedLaunches;
   const activeInstallations = (
     <EstimatedCount value={report.activeInstallations} />
@@ -64,7 +78,7 @@ function ReleaseHealth({ report }: { readonly report: RecoveryReport }) {
                 <InsightsInfo label="About active days">
                   Each installation counts once for each UTC day it launched,
                   and once more on a day an update applies or recovers. The
-                  chart shows each day's daily active installations.
+                  activity totals include these additional reports.
                 </InsightsInfo>
               ) : label === "Crash rate" ? (
                 <InsightsInfo label="About crash rate">
@@ -79,58 +93,78 @@ function ReleaseHealth({ report }: { readonly report: RecoveryReport }) {
           </div>
         ))}
       </dl>
-      {report.points.length === 0 ? (
-        <div className="flex h-56 items-center justify-center text-sm text-muted-foreground">
-          No launch reports in this period.
-        </div>
-      ) : (
-        <ChartContainer
-          aria-label="Daily active installations and failed launches"
-          className="h-64 w-full aspect-auto"
-          config={{
-            dailyActiveInstallations: {
-              label: "Daily active installations",
-              color: "var(--chart-2)",
-            },
-            failedLaunches: {
-              label: "Failed launches",
-              color: "var(--chart-1)",
-            },
-          }}
+      <Tabs defaultValue="share" className="gap-5">
+        <TabsList
+          aria-label="Release health chart"
+          className="min-h-11 sm:min-h-9"
         >
-          <LineChart data={report.points} margin={{ left: -12, right: 12 }}>
-            <CartesianGrid vertical={false} />
-            <XAxis
-              axisLine={false}
-              dataKey="startMs"
-              tickFormatter={(value) => dates.format(value)}
-              tickLine={false}
-            />
-            <YAxis allowDecimals={false} axisLine={false} tickLine={false} />
-            <ChartTooltip
-              content={
-                <ChartTooltipContent
-                  labelFormatter={(_, payload) =>
-                    `${dates.format(payload[0]?.payload.startMs)} · UTC`
+          <TabsTrigger value="share" className="px-3">
+            Bundle share
+          </TabsTrigger>
+          <TabsTrigger value="failures" className="px-3">
+            Launch failures
+          </TabsTrigger>
+        </TabsList>
+        <TabsContent value="share">
+          <BundleDistributionChart
+            history={report.distribution}
+            releaseId={releaseId}
+          />
+        </TabsContent>
+        <TabsContent value="failures">
+          {report.points.length === 0 ? (
+            <Empty className="min-h-64">
+              <EmptyHeader>
+                <EmptyTitle>No launch reports in this period.</EmptyTitle>
+                <EmptyDescription>
+                  Choose a longer period or refresh after an app reports.
+                </EmptyDescription>
+              </EmptyHeader>
+            </Empty>
+          ) : (
+            <ChartContainer
+              aria-label="Daily failed launches"
+              className="h-64 w-full aspect-auto"
+              config={{
+                failedLaunches: {
+                  label: "Failed launches",
+                  color: "var(--chart-1)",
+                },
+              }}
+            >
+              <LineChart data={report.points} margin={{ left: -12, right: 12 }}>
+                <CartesianGrid vertical={false} />
+                <XAxis
+                  axisLine={false}
+                  dataKey="startMs"
+                  tickFormatter={(value) => dates.format(value)}
+                  tickLine={false}
+                />
+                <YAxis
+                  allowDecimals={false}
+                  axisLine={false}
+                  tickLine={false}
+                />
+                <ChartTooltip
+                  content={
+                    <ChartTooltipContent
+                      labelFormatter={(_, payload) =>
+                        `${dates.format(payload[0]?.payload.startMs)} · UTC`
+                      }
+                    />
                   }
                 />
-              }
-            />
-            <Line
-              dataKey="dailyActiveInstallations"
-              stroke="var(--color-dailyActiveInstallations)"
-              strokeWidth={2}
-              isAnimationActive={false}
-            />
-            <Line
-              dataKey="failedLaunches"
-              stroke="var(--color-failedLaunches)"
-              strokeWidth={2}
-              isAnimationActive={false}
-            />
-          </LineChart>
-        </ChartContainer>
-      )}
+                <Line
+                  dataKey="failedLaunches"
+                  stroke="var(--color-failedLaunches)"
+                  strokeWidth={2}
+                  isAnimationActive={false}
+                />
+              </LineChart>
+            </ChartContainer>
+          )}
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }
@@ -183,7 +217,7 @@ export function InsightsOverview({
               fallbackTitle="Release health unavailable"
             />
           ) : query.data ? (
-            <ReleaseHealth report={query.data} />
+            <ReleaseHealth report={query.data} releaseId={input.releaseId} />
           ) : null}
         </CardContent>
         <CardFooter className="flex items-center justify-between border-t px-6 py-5">
