@@ -1,5 +1,17 @@
 # @hot-updater/aws
 
+## 1.0.0-rc.30
+
+### Patch Changes
+
+- 0c884b7: Show daily observed bundle shares in Release health while retaining its scope totals and moving launch failures to a separate chart tab. Count each reporting installation once on its day's last observed running bundle, preserve previous days, and include built-in and unknown bundles in the denominator. Show gaps without observations, the unfinished current day, app-version filtering, and tooltip counts.
+
+  Insights schema 1.3.0 adds daily observation heads and distribution history. Migrate the server and Console together; history begins after upgrade and is not backfilled. The shared model and HTTP conformance suites cover daily replacement and historical preservation, and the versioned infrastructure guide documents each provider's upgrade.
+
+- @hot-updater/server@1.0.0-rc.30
+  - @hot-updater/cli-tools@1.0.0-rc.30
+  - @hot-updater/plugin-core@1.0.0-rc.28
+
 ## 1.0.0-rc.29
 
 ### Patch Changes

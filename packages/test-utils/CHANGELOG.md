@@ -1,5 +1,17 @@
 # @hot-updater/test-utils
 
+## 1.0.0-rc.29
+
+### Patch Changes
+
+- 0c884b7: Show daily observed bundle shares in Release health while retaining its scope totals and moving launch failures to a separate chart tab. Count each reporting installation once on its day's last observed running bundle, preserve previous days, and include built-in and unknown bundles in the denominator. Show gaps without observations, the unfinished current day, app-version filtering, and tooltip counts.
+
+  Insights schema 1.3.0 adds daily observation heads and distribution history. Migrate the server and Console together; history begins after upgrade and is not backfilled. The shared model and HTTP conformance suites cover daily replacement and historical preservation, and the versioned infrastructure guide documents each provider's upgrade.
+
+- 541f0ec: Show how quickly a release spreads after deployment in an Adoption tab of Release health. It charts the chosen release's download reports in each interval from the hour it was deployed, read from the Release ID's UUIDv7 timestamp, and their running total: hourly for 24h, six hours for 7d, and one day for 30d. Choose the release in the tab's Chart bundle list of releases observed in the period, newest deployment first, or with Chart newest bundle; or open View adoption from a bundle's Insights card, which picks the shortest period that covers its deployment. The open Release health tab is kept in the URL, the card stays in place while a new bundle or period loads, and an empty chart offers the period that covers the deployment.
+
+  `getReleaseActivity` takes an optional `intervalMs` of whole hours on a release period read and then returns every series point of that span from the period's start; series points also carry `downloads`. It reads the same hourly counters as before, so no schema change, migration, or write is added. The shared model conformance suite covers the hourly series.
+
 ## 1.0.0-rc.28
 
 ### Patch Changes
