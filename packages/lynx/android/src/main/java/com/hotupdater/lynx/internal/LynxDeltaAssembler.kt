@@ -2,6 +2,7 @@ package com.hotupdater.lynx.internal
 
 import android.util.Log
 import com.hotupdater.lynx.LynxArtifactRequest
+import com.hotupdater.lynx.LynxIncompatibleArtifactException
 import com.hotupdater.lynx.VerifiedLynxInstallation
 import com.hotupdater.lynx.vendor.brotli.dec.BrotliInputStream
 import java.io.File
@@ -18,14 +19,30 @@ internal data class LynxPatchedAssetEvidence(
     val reconstructedFileHash: String,
 )
 
+/** Bounded authenticated bytes only; this does not authorize selection or installation. */
+internal class LynxArtifactMetadata(
+    private val bundleId: String,
+    private val manifestFileHash: String?,
+    private val manifest: ByteArray,
+    private val sidecar: ByteArray,
+    val paths: Set<String>,
+) {
+    fun matches(request: LynxArtifactRequest) =
+        request.bundleId == bundleId && request.manifestFileHash == manifestFileHash
+    fun writeManifest(file: File) = file.writeBytes(manifest)
+    fun writeSidecar(file: File) = file.writeBytes(sidecar)
+}
+
 /** Builds a new manifest tree from a native-owned running installation. Never mutates the base. */
 internal class LynxDeltaAssembler(private val integrity: ArchiveIntegrity, private val downloader: ArchiveDownload) {
-    data class Result(val patchedAssets: List<LynxPatchedAssetEvidence>, val usedArchive: Boolean)
+    data class Result(val patchedAssets: List<LynxPatchedAssetEvidence>, val usedArchive: Boolean, val metadata: LynxArtifactMetadata? = null)
     suspend fun assemble(
         transaction: File,
         payload: File,
         request: LynxArtifactRequest,
         base: VerifiedLynxInstallation?,
+        metadata: LynxArtifactMetadata? = null,
+        metadataOnly: Boolean = false,
         onDownload: (Long) -> Unit,
     ): Result {
         request.validateForPreparation()
@@ -51,7 +68,9 @@ internal class LynxDeltaAssembler(private val integrity: ArchiveIntegrity, priva
         }
         try {
             val manifestFile = File(payload, "manifest.json")
-            download(checkNotNull(request.manifestUrl), manifestFile, ArchiveLimits.MAX_METADATA_BYTES)
+            val cached = metadata?.takeIf { it.matches(request) }
+            if (cached != null) cached.writeManifest(manifestFile)
+            else download(checkNotNull(request.manifestUrl), manifestFile, ArchiveLimits.MAX_METADATA_BYTES)
             integrity.verify(manifestFile, checkNotNull(request.manifestFileHash))
             val manifest = StrictJson.read(manifestFile)
             require(StrictJson.string(manifest, "bundleId") == request.bundleId) { "Manifest Bundle identity mismatch" }
@@ -61,6 +80,7 @@ internal class LynxDeltaAssembler(private val integrity: ArchiveIntegrity, priva
             val targetNamespace = ManagedPathNamespace()
             targetNamespace.file("manifest.json")
             paths.forEach(targetNamespace::file)
+            if ("hot-updater-lynx.json" !in paths) throw LynxIncompatibleArtifactException("Missing Lynx metadata")
             val targetHashes = mutableMapOf<String, String>()
             val targetSignatures = mutableMapOf<String, String?>()
             for (path in paths) {
@@ -109,7 +129,7 @@ internal class LynxDeltaAssembler(private val integrity: ArchiveIntegrity, priva
                 try { verifyHash(ManagedPaths.resolve(checkNotNull(base).directory, path), hash); true }
                 catch (error: Exception) { false }
             }
-            val missing = paths.filter { !verifiedSources[it].equals(targetHashes.getValue(it), ignoreCase = true) }
+            val missing = paths.filter { !(cached != null && it == "hot-updater-lynx.json") && !verifiedSources[it].equals(targetHashes.getValue(it), ignoreCase = true) }
             val costs = missing.map { path ->
                 val original = downloadSizes[path]
                 val patch = changes.getValue(path).patch
@@ -117,7 +137,7 @@ internal class LynxDeltaAssembler(private val integrity: ArchiveIntegrity, priva
                 if (usablePatch) patch?.byteSize?.let { minOf(it, original ?: it) } else original
             }
             val archive = manifest.optJSONObject("archive")
-            if (archive != null && request.archiveUrl != null && missing.size >= 2 && costs.all { it != null }) {
+            if (!metadataOnly && archive != null && request.archiveUrl != null && missing.size >= 2 && costs.all { it != null }) {
                 val archiveSize = byteSize(archive, "downloadByteSize", ArchiveLimits.MAX_ARCHIVE_BYTES)
                 val tarSize = byteSize(archive, "tarByteSize", ArchiveLimits.MAX_TAR_STREAM_BYTES)
                 val archiveHash = archive.optString("downloadFileHash", "")
@@ -154,7 +174,7 @@ internal class LynxDeltaAssembler(private val integrity: ArchiveIntegrity, priva
                 }
             }
             var assembled = manifestFile.length()
-            for (path in paths) {
+            for (path in if (metadataOnly) setOf("hot-updater-lynx.json") else paths) {
                 operationContext.ensureActive()
                 val expectedHash = targetHashes.getValue(path)
                 val signature = targetSignatures[path]
@@ -162,7 +182,9 @@ internal class LynxDeltaAssembler(private val integrity: ArchiveIntegrity, priva
                 check(target.parentFile!!.mkdirs() || target.parentFile!!.isDirectory) { "Cannot create managed asset directory" }
                 val source = if (base != null && path in verifiedSources) ManagedPaths.resolve(base.directory, path) else null
                 val baseHash = verifiedSources[path]
-                if (source != null && baseHash.equals(expectedHash, ignoreCase = true)) {
+                if (cached != null && path == "hot-updater-lynx.json") {
+                    cached.writeSidecar(target)
+                } else if (source != null && baseHash.equals(expectedHash, ignoreCase = true)) {
                     verifyHash(source, expectedHash)
                     source.inputStream().use { input -> copyBounded(input, target, ArchiveLimits.MAX_EXTRACTED_BYTES - assembled) { operationContext.ensureActive() } }
                 } else {
@@ -208,12 +230,14 @@ internal class LynxDeltaAssembler(private val integrity: ArchiveIntegrity, priva
                             download(
                                 file.url,
                                 downloadFile,
+                                limit = if (path == "hot-updater-lynx.json") ArchiveLimits.MAX_METADATA_BYTES else ArchiveLimits.MAX_FILE_BYTES,
                                 allowEmpty = file.compression == null,
                             )
                             downloadSizes[path]?.let { require(downloadFile.length() == it) { "Asset transfer size mismatch" } }
                             downloadHashes[path]?.let { verifyHash(downloadFile, it) }
                             val input: InputStream = if (file.compression == "br") BrotliInputStream(downloadFile.inputStream()) else downloadFile.inputStream()
-                            input.use { copyBounded(it, target, ArchiveLimits.MAX_EXTRACTED_BYTES - assembled) { operationContext.ensureActive() } }
+                            val limit = if (path == "hot-updater-lynx.json") LynxArtifactVerifier.MAX_LYNX_METADATA_BYTES else ArchiveLimits.MAX_EXTRACTED_BYTES - assembled
+                            input.use { copyBounded(it, target, limit) { operationContext.ensureActive() } }
                         } finally { downloadFile.delete() }
                     }
                 }
@@ -222,7 +246,13 @@ internal class LynxDeltaAssembler(private val integrity: ArchiveIntegrity, priva
                 assembled += target.length()
                 require(assembled <= ArchiveLimits.MAX_EXTRACTED_BYTES) { "Assembled artifact exceeds size limit" }
             }
-            return Result(patchedAssets, false)
+            return Result(patchedAssets, false, if (metadataOnly) LynxArtifactMetadata(
+                request.bundleId,
+                request.manifestFileHash,
+                manifestFile.readBytes(),
+                File(payload, "hot-updater-lynx.json").readBytes(),
+                paths,
+            ) else null)
         } finally { scratch.deleteRecursively() }
     }
 

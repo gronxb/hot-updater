@@ -35,3 +35,8 @@ installed native packages from the application rather than the build adapter.
 
 Publish shared native catalog and manifest fixtures from test-utils, excluding
 them from the device SDK install.
+
+Authenticate bounded manifest and Lynx compatibility metadata during update
+checks, then reuse that metadata during full installation. Reauthorize after
+asynchronous checks and preserve full file, patch, and resource verification
+before publication.

@@ -48,34 +48,52 @@ internal class LynxArtifactVerifier(private val config: LynxInstallConfiguration
             }
         }
         require(files == paths + "manifest.json") { "Archive contains unlisted managed files" }
-        try {
-        val metadata = StrictJson.read(ManagedPaths.resolve(trustedRoot, "hot-updater-lynx.json"))
-        val version = metadata.opt("schemaVersion")
-        val schemaOne = when (version) {
-            is BigDecimal -> version.compareTo(BigDecimal.ONE) == 0
-            is Number -> version.toDouble() == 1.0
-            else -> false
-        }
-        if (!schemaOne) throw LynxIncompatibleArtifactException("Unsupported Lynx metadata schema")
-        val bundleId = StrictJson.string(metadata, "bundleId")
-        val platform = StrictJson.string(metadata, "platform")
-        val runtime = StrictJson.string(metadata, "runtimeId")
-        val entry = StrictJson.string(metadata, "entry")
-        require(bundleId == request.bundleId && entry in paths && ManagedPaths.normalize(entry) == entry) { "Invalid Lynx Bundle identity or entry" }
-        require(ManagedPaths.resolve(trustedRoot, entry).let { it.isFile && it.length() > 0 }) { "Lynx entry must be a nonempty regular file" }
-        val pages = pages(metadata, entry, paths, trustedRoot)
-        if (platform != config.platform || runtime != config.runtimeId) throw LynxIncompatibleArtifactException("Native Lynx compatibility mismatch")
+        val metadata = verifyMetadata(trustedRoot, request, paths, verifyPageFiles = true)
         return VerifiedLynxInstallation(
-            bundleId = bundleId,
+            bundleId = request.bundleId,
             directory = trustedRoot,
-            entry = entry,
-            runtimeId = runtime,
+            entry = metadata.entry,
+            runtimeId = metadata.runtimeId,
             manifestHash = HashUtils.calculateSHA256(manifestFile),
             managedFileHashes = fileHashes,
             manifestBacked = manifestBacked,
-            pageEntries = pages.first,
-            pageEssentialResources = pages.second,
+            pageEntries = metadata.pageEntries,
+            pageEssentialResources = metadata.pageEssentialResources,
         )
+    }
+
+    data class Metadata(
+        val entry: String,
+        val runtimeId: String,
+        val pageEntries: List<String>,
+        val pageEssentialResources: List<LynxPageEssentialResources>,
+    )
+
+    fun verifyMetadata(
+        root: File,
+        request: LynxArtifactRequest,
+        paths: Set<String>,
+        verifyPageFiles: Boolean,
+    ): Metadata {
+        try {
+            val file = ManagedPaths.resolve(root, "hot-updater-lynx.json")
+            require(file.length() in 1..MAX_LYNX_METADATA_BYTES) { "Lynx metadata size exceeds limit" }
+            val metadata = StrictJson.read(file)
+            val version = metadata.opt("schemaVersion")
+            val schemaOne = when (version) {
+                is BigDecimal -> version.compareTo(BigDecimal.ONE) == 0
+                is Number -> version.toDouble() == 1.0
+                else -> false
+            }
+            if (!schemaOne) throw LynxIncompatibleArtifactException("Unsupported Lynx metadata schema")
+            val bundleId = StrictJson.string(metadata, "bundleId")
+            val platform = StrictJson.string(metadata, "platform")
+            val runtime = StrictJson.string(metadata, "runtimeId")
+            val entry = StrictJson.string(metadata, "entry")
+            require(bundleId == request.bundleId && entry in paths && ManagedPaths.normalize(entry) == entry) { "Invalid Lynx Bundle identity or entry" }
+            val pages = pages(metadata, entry, paths, root.takeIf { verifyPageFiles })
+            if (platform != config.platform || runtime != config.runtimeId) throw LynxIncompatibleArtifactException("Native Lynx compatibility mismatch")
+            return Metadata(entry, runtime, pages.first, pages.second)
         } catch (error: LynxIncompatibleArtifactException) { throw error }
         catch (error: Exception) { throw LynxIncompatibleArtifactException(error.message ?: "Invalid Lynx metadata") }
     }
@@ -84,7 +102,7 @@ internal class LynxArtifactVerifier(private val config: LynxInstallConfiguration
         metadata: JSONObject,
         mainEntry: String,
         manifestPaths: Set<String>,
-        root: File,
+        root: File?,
     ): Pair<List<String>, List<LynxPageEssentialResources>> {
         val hasEntries = metadata.has("pageEntries")
         val hasResources = metadata.has("pageEssentialResources")
@@ -163,18 +181,19 @@ internal class LynxArtifactVerifier(private val config: LynxInstallConfiguration
     private fun requirePageEntry(
         entry: String,
         manifestPaths: Set<String>,
-        root: File,
+        root: File?,
     ) {
         require(ManagedPaths.normalize(entry) == entry && PAGE_ENTRY.matches(entry)) {
             "Invalid Lynx page entry"
         }
         require(entry in manifestPaths) { "Lynx page entry is not a manifest asset" }
-        require(ManagedPaths.resolve(root, entry).let { it.isFile && it.length() > 0 }) {
+        require(root == null || ManagedPaths.resolve(root, entry).let { it.isFile && it.length() > 0 }) {
             "Lynx page entry must be a nonempty regular file"
         }
     }
 
-    private companion object {
+    companion object {
+        const val MAX_LYNX_METADATA_BYTES = 16L * 1024
         val PAGE_ENTRY = Regex(
             "^(?:[a-z0-9](?:[a-z0-9_-]*[a-z0-9])?/)*" +
                 "[a-z0-9](?:[a-z0-9._-]*[a-z0-9])?\\.lynx\\.bundle$",

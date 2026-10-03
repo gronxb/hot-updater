@@ -991,6 +991,21 @@ public final class LynxController {
     }
     public func validateSelection(guard guardValue: LynxPolicyGuard, receipt: LynxPolicyReceipt,
                                   artifact: LynxArtifactRequest?, context: LynxLaunchContext) async throws {
+        if let artifact {
+            let cacheKey = try reservePreparation(guardValue, receipt, artifact, context)
+            defer { finishPreparation(receipt.bundleId) }
+            do {
+                let paths = try await installer.validateMetadata(artifact)
+                try Task.checkCancellation()
+                try authorizeMetadata(guardValue, receipt, paths, context)
+            } catch {
+                if case LynxArtifactError.incompatible = error, let cacheKey {
+                    try rememberIncompatible(cacheKey)
+                }
+                throw error
+            }
+            return
+        }
         let preparedId = try await prepareSelection(
             guard: guardValue,
             receipt: receipt,
@@ -1001,6 +1016,15 @@ public final class LynxController {
         guard let retained = consumed.preparation else { throw LynxArtifactError.stalePreparation }
         if let prepared = retained.artifact { try installer.discard(prepared) }
         if let error = consumed.contextError { throw error }
+    }
+    private func authorizeMetadata(_ guardValue: LynxPolicyGuard, _ receipt: LynxPolicyReceipt,
+                                   _ paths: Set<String>, _ context: LynxLaunchContext) throws {
+        lock.lock(); defer { lock.unlock() }
+        try validate(context, primaryRequired: true)
+        try authorize(guardValue, receipt)
+        guard configuration.startupResourcePaths.isSubset(of: paths) else {
+            throw LynxArtifactError.invalid("Selected artifact lacks native required startup resources")
+        }
     }
     private func consumeValidation(_ preparedId: String, context: LynxLaunchContext) -> (
         preparation: LynxSelectionPreparation?,

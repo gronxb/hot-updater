@@ -305,24 +305,9 @@ struct VerifiedLynxTree {
             let name = String(filePath.dropFirst(rootPath.count + 1))
             guard values.isRegularFile == true, name == "manifest.json" || files[name] != nil else { throw LynxArtifactError.invalid("Unlisted extracted file: \(name)") }
         }
-        let metadataBytes = try StrictMetadataJSON.read(
-            root.appendingPathComponent("hot-updater-lynx.json"),
-            limit: 16 * 1024
-        )
-        let metadata = try JSONDecoder().decode(
-            LynxMetadata.self,
-            from: metadataBytes
-        )
-        guard metadata.schemaVersion == 1, metadata.bundleId == bundleId,
-              files[metadata.entry] != nil, ArchiveExtractionUtilities.normalizedRelativePath(from: metadata.entry) == metadata.entry,
-              let size = try root.appendingPathComponent(metadata.entry).resourceValues(forKeys: [.fileSizeKey]).fileSize, size > 0 else { throw LynxArtifactError.invalid("Lynx metadata/entry mismatch") }
-        guard metadata.platform == configuration.platform, metadata.runtimeId == configuration.runtimeId else { throw LynxArtifactError.incompatible }
-        let pages = try LynxPageMetadata.parse(
-            metadataBytes,
-            mainEntry: metadata.entry,
-            files: files,
-            root: root
-        )
+        let metadata = try validateMetadata(at: root, bundleId: bundleId, files: files,
+                                            configuration: configuration, verifyPageFiles: true)
+        let pages = metadata.pages
         return Self(
             entry: metadata.entry,
             hasManagedPageMetadata: pages.isPresent,
@@ -332,9 +317,33 @@ struct VerifiedLynxTree {
             files: files
         )
     }
+
+    static func validateMetadata(at root: URL, bundleId: String, files: [String: String],
+                                 configuration: LynxArtifactConfiguration,
+                                 verifyPageFiles: Bool) throws -> (entry: String, pages: LynxPageMetadata.Parsed) {
+        let metadataBytes = try StrictMetadataJSON.read(
+            root.appendingPathComponent("hot-updater-lynx.json"),
+            limit: 16 * 1024
+        )
+        let metadata = try JSONDecoder().decode(
+            LynxMetadata.self,
+            from: metadataBytes
+        )
+        guard metadata.schemaVersion == 1, metadata.bundleId == bundleId,
+              files[metadata.entry] != nil, ArchiveExtractionUtilities.normalizedRelativePath(from: metadata.entry) == metadata.entry else { throw LynxArtifactError.invalid("Lynx metadata/entry mismatch") }
+        guard metadata.platform == configuration.platform, metadata.runtimeId == configuration.runtimeId else { throw LynxArtifactError.incompatible }
+        let pages = try LynxPageMetadata.parse(
+            metadataBytes,
+            mainEntry: metadata.entry,
+            files: files,
+            root: verifyPageFiles ? root : nil
+        )
+        return (metadata.entry, pages)
+    }
+
 }
 
-private enum LynxPageMetadata {
+enum LynxPageMetadata {
     struct Parsed {
         let isPresent: Bool
         let entries: [String]
@@ -349,7 +358,7 @@ private enum LynxPageMetadata {
         _ bytes: Data,
         mainEntry: String,
         files: [String: String],
-        root: URL
+        root: URL?
     ) throws -> Parsed {
         guard let object = try JSONSerialization.jsonObject(with: bytes)
             as? [String: Any] else {
@@ -450,17 +459,20 @@ private enum LynxPageMetadata {
     private static func validatePageEntry(
         _ entry: String,
         files: [String: String],
-        root: URL
+        root: URL?
     ) throws {
         guard ArchiveExtractionUtilities.normalizedRelativePath(from: entry)
                 == entry,
               entry.range(of: pageEntryPattern, options: .regularExpression)
                 != nil,
-              files[entry] != nil,
-              let size = try root.appendingPathComponent(entry)
-                .resourceValues(forKeys: [.fileSizeKey]).fileSize,
-              size > 0 else {
+              files[entry] != nil else {
             throw LynxArtifactError.invalid("Invalid managed page entry")
+        }
+        if let root {
+            guard let size = try root.appendingPathComponent(entry)
+                .resourceValues(forKeys: [.fileSizeKey]).fileSize, size > 0 else {
+                throw LynxArtifactError.invalid("Invalid managed page entry")
+            }
         }
     }
 
@@ -477,6 +489,7 @@ public final class LynxArtifactInstaller {
     private let fetch: LynxArtifactFetch
     private let mutex = NSLock()
     private var prepared: [String: LynxPreparedArtifact] = [:]
+    private var metadataCache: LynxArtifactMetadata?
 
     public convenience init(root: URL, configuration: LynxArtifactConfiguration) throws {
         try self.init(root: root, configuration: configuration) { source, destination, maximumBytes, allowEmpty in
@@ -518,6 +531,7 @@ public final class LynxArtifactInstaller {
         flock(ownerLock, LOCK_UN)
         Darwin.close(ownerLock)
         ownerLock = -1
+        metadataCache = nil
     }
 
     public func prepare(_ request: LynxArtifactRequest, base: LynxInstalledArtifact? = nil) async throws -> LynxPreparedArtifact {
@@ -527,26 +541,17 @@ public final class LynxArtifactInstaller {
     func prepare(_ request: LynxArtifactRequest, base: LynxInstalledArtifact?,
                  releaseId: String?) async throws -> LynxPreparedArtifact {
         try request.validate()
-        let stage = root.appendingPathComponent(".staging/\(UUID().uuidString)")
-        var stageLease: Int32 = -1
+        let (stage, stageLease) = try createStage()
         var retained = false
         defer {
             if !retained {
                 try? FileManager.default.removeItem(at: stage)
-                if stageLease >= 0 {
-                    flock(stageLease, LOCK_UN)
-                    Darwin.close(stageLease)
-                }
+                flock(stageLease, LOCK_UN)
+                Darwin.close(stageLease)
             }
         }
-        try FileManager.default.createDirectory(at: stage, withIntermediateDirectories: false)
-        stageLease = Darwin.open(stage.appendingPathComponent(".lease").path, O_CREAT | O_EXCL | O_RDWR, 0o600)
-        guard stageLease >= 0, flock(stageLease, LOCK_EX | LOCK_NB) == 0 else {
-            if stageLease >= 0 { Darwin.close(stageLease); stageLease = -1 }
-            throw LynxArtifactError.invalid("Cannot acquire preparation lease")
-        }
         let result = try await LynxDelta.prepare(request, base: base, stage: stage,
-                                                 configuration: configuration, fetch: fetch)
+                                                 configuration: configuration, fetch: fetch, metadata: cachedMetadata())
         let assembled = result.tree
         let delivery: LynxArtifactDelivery = result.usedArchive
             ? .archive(baseBundleId: base?.bundleId, releaseId: releaseId)
@@ -562,6 +567,49 @@ public final class LynxArtifactInstaller {
         retain(token)
         retained = true
         return token
+    }
+
+    /// Authenticates bounded metadata without retaining a preparation or installing files.
+    func validateMetadata(_ request: LynxArtifactRequest) async throws -> Set<String> {
+        try request.validate()
+        let (stage, lease) = try createStage()
+        defer {
+            try? FileManager.default.removeItem(at: stage)
+            flock(lease, LOCK_UN)
+            Darwin.close(lease)
+        }
+        let metadata = try await LynxDelta.validateMetadata(
+            request, stage: stage, configuration: configuration, fetch: fetch,
+            metadata: cachedMetadata()
+        )
+        try Task.checkCancellation()
+        try cacheMetadata(metadata)
+        return metadata.paths
+    }
+
+    private func cachedMetadata() -> LynxArtifactMetadata? {
+        mutex.lock(); defer { mutex.unlock() }
+        return metadataCache
+    }
+
+    private func cacheMetadata(_ metadata: LynxArtifactMetadata) throws {
+        mutex.lock(); defer { mutex.unlock() }
+        guard ownerLock >= 0 else { throw LynxArtifactError.stalePreparation }
+        metadataCache = metadata
+    }
+
+    private func createStage() throws -> (URL, Int32) {
+        mutex.lock(); defer { mutex.unlock() }
+        guard ownerLock >= 0 else { throw LynxArtifactError.stalePreparation }
+        let stage = root.appendingPathComponent(".staging/\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: stage, withIntermediateDirectories: false)
+        let lease = Darwin.open(stage.appendingPathComponent(".lease").path, O_CREAT | O_EXCL | O_RDWR, 0o600)
+        guard lease >= 0, flock(lease, LOCK_EX | LOCK_NB) == 0 else {
+            if lease >= 0 { Darwin.close(lease) }
+            try? FileManager.default.removeItem(at: stage)
+            throw LynxArtifactError.invalid("Cannot acquire preparation lease")
+        }
+        return (stage, lease)
     }
 
     private func retain(_ token: LynxPreparedArtifact) {

@@ -19,6 +19,8 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
+import kotlinx.coroutines.async
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -994,6 +996,9 @@ class LynxArtifactInstallerDeltaTest {
                         }.exceptionOrNull()
 
                         assertTrue(error is LynxIncompatibleArtifactException)
+                        assertEquals(1, server.count("/incompatible/manifest"))
+                        assertEquals(1, server.count("/incompatible/hot-updater-lynx.json"))
+                        assertEquals(0, server.count("/incompatible/main.lynx.bundle"))
                         val store = root.resolve("hot-updater-lynx/scopes")
                             .listFiles()!!.single()
                         assertTrue(
@@ -1058,6 +1063,190 @@ class LynxArtifactInstallerDeltaTest {
                 }
             } finally { root.deleteRecursively() }
         }
+    }
+
+    @Test
+    fun metadataCheckDownloadsNoPageOrResourceAndInstallReusesAuthenticatedBytes() = runBlocking {
+        val root = Files.createTempDirectory("lynx-metadata-check-").toFile()
+        try {
+            val target = files(targetId, TARGET_ENTRY) + mapOf(
+                "detail.lynx.bundle" to "detail page".toByteArray(),
+                "assets/probe.png" to "image bytes".toByteArray(),
+            )
+            FixtureServer(emptyMap()).use { server ->
+                val request = LynxArtifactRequest.fromJson(artifact(server, "/target", targetId, manifest(targetId, target), target))
+                val store = root.resolve("store")
+                val installer = LynxArtifactInstaller(store, config())
+                assertEquals(target.keys, installer.validateMetadata(request))
+                assertEquals(1, server.count("/target/manifest"))
+                assertEquals(1, server.count("/target/hot-updater-lynx.json"))
+                for (name in target.keys - "hot-updater-lynx.json") assertEquals(0, server.count("/target/$name"))
+                assertTrue(store.resolve("preparations").listFiles().orEmpty().isEmpty())
+                assertTrue(store.resolve("installations").listFiles().orEmpty().isEmpty())
+
+                val prepared = installer.prepare(request)
+                val installed = installer.commitPrepared(prepared) { publish -> publish() }
+                assertArrayEquals(TARGET_ENTRY, installed.directory.resolve("main.lynx.bundle").readBytes())
+                assertEquals(1, server.count("/target/manifest"))
+                for (name in target.keys) assertEquals("$name must transfer once", 1, server.count("/target/$name"))
+            }
+        } finally { root.deleteRecursively() }
+    }
+
+    @Test
+    fun metadataCheckDefersPageIntegrityButFailedInstallPublishesNothing() = runBlocking {
+        val root = Files.createTempDirectory("lynx-metadata-deferred-").toFile()
+        try {
+            val target = files(targetId, TARGET_ENTRY)
+            FixtureServer(emptyMap()).use { server ->
+                val request = LynxArtifactRequest.fromJson(artifact(server, "/target", targetId, manifest(targetId, target), target))
+                server.publish("/target/main.lynx.bundle", "corrupt".toByteArray())
+                val store = root.resolve("store")
+                val installer = LynxArtifactInstaller(store, config())
+                installer.validateMetadata(request)
+                assertEquals(0, server.count("/target/main.lynx.bundle"))
+                assertTrue(runCatching { installer.prepare(request) }.isFailure)
+                assertTrue(store.resolve("installations").listFiles().orEmpty().isEmpty())
+                assertTrue(store.resolve("preparations").listFiles().orEmpty().isEmpty())
+                assertEquals(1, server.count("/target/hot-updater-lynx.json"))
+            }
+        } finally { root.deleteRecursively() }
+    }
+
+    @Test
+    fun metadataCheckAuthenticatesManifestAndSidecarBeforeTrustingCompatibility() = runBlocking {
+        for (name in listOf("manifest", "hot-updater-lynx.json")) {
+            val root = Files.createTempDirectory("lynx-metadata-tamper-").toFile()
+            try {
+                val target = files(targetId, TARGET_ENTRY)
+                FixtureServer(emptyMap()).use { server ->
+                    val request = LynxArtifactRequest.fromJson(artifact(server, "/target", targetId, manifest(targetId, target), target))
+                    server.publish("/target/$name", "{}".toByteArray())
+                    val installer = LynxArtifactInstaller(root.resolve("store"), config())
+                    assertTrue(runCatching { installer.validateMetadata(request) }.isFailure)
+                    assertEquals(0, server.count("/target/main.lynx.bundle"))
+                    if (name == "manifest") assertEquals(0, server.count("/target/hot-updater-lynx.json"))
+                    assertTrue(root.resolve("store/preparations").listFiles().orEmpty().isEmpty())
+                }
+            } finally { root.deleteRecursively() }
+        }
+    }
+
+    @Test
+    fun metadataCacheIsBoundToTheAuthenticatedManifestNotOnlyTheBundleId() = runBlocking {
+        val root = Files.createTempDirectory("lynx-metadata-identity-").toFile()
+        try {
+            val target = files(targetId, TARGET_ENTRY)
+            val incompatible = target + ("hot-updater-lynx.json" to JSONObject(String(target.getValue("hot-updater-lynx.json")))
+                .put("runtimeId", "different-native-runtime").toString().toByteArray())
+            FixtureServer(emptyMap()).use { server ->
+                val installer = LynxArtifactInstaller(root.resolve("store"), config())
+                installer.validateMetadata(LynxArtifactRequest.fromJson(artifact(server, "/first", targetId, manifest(targetId, target), target)))
+                val next = LynxArtifactRequest.fromJson(artifact(server, "/next", targetId, manifest(targetId, incompatible), incompatible))
+                assertTrue(runCatching { installer.validateMetadata(next) }.exceptionOrNull() is LynxIncompatibleArtifactException)
+                assertEquals(1, server.count("/next/manifest"))
+                assertEquals(1, server.count("/next/hot-updater-lynx.json"))
+                assertEquals(0, server.count("/next/main.lynx.bundle"))
+            }
+        } finally { root.deleteRecursively() }
+    }
+
+    @Test
+    fun cancellingMetadataCheckReleasesItsTemporaryTransaction() = runBlocking {
+        val root = Files.createTempDirectory("lynx-metadata-cancel-").toFile()
+        try {
+            val target = files(targetId, TARGET_ENTRY)
+            FixtureServer(emptyMap(), stalls = setOf("/target/hot-updater-lynx.json")).use { server ->
+                val installer = LynxArtifactInstaller(root.resolve("store"), config())
+                val request = LynxArtifactRequest.fromJson(artifact(server, "/target", targetId, manifest(targetId, target), target))
+                val pending = launch(Dispatchers.IO) { installer.validateMetadata(request) }
+                try { assertTrue(server.await("/target/hot-updater-lynx.json")) }
+                finally { pending.cancelAndJoin() }
+                assertTrue(root.resolve("store/preparations").listFiles().orEmpty().isEmpty())
+                assertEquals(0, server.count("/target/main.lynx.bundle"))
+            }
+        } finally { root.deleteRecursively() }
+    }
+
+    @Test
+    fun metadataValidationReauthorizesAfterDownloadBeforeReturningSuccess() = runBlocking {
+        for (mode in listOf("valid", "changed-cohort", "closed")) {
+            val root = Files.createTempDirectory("lynx-check-authority-").toFile()
+            try {
+                val embeddedRoot = root.resolve("embedded")
+                val embeddedManifest = writeTree(embeddedRoot, baseId, files(baseId, BASE_ENTRY))
+                val embedded = verifier().verify(embeddedRoot, LynxArtifactRequest(baseId, manifestFileHash = embeddedManifest.hash))
+                val binary = root.resolve("binary").apply { writeBytes(byteArrayOf(1, 2, 3)) }
+                val channel = "ota-react"
+                val host = LynxHostConfiguration(runtime, channel, "1.0.0", embeddedRoot.path,
+                    baseId, embeddedManifest.hash, baseId, "1")
+                FixtureServer(emptyMap(), stalls = setOf("/target/hot-updater-lynx.json")).use { server ->
+                    val controller = LynxUpdaterController(root, binary, embedded, host)
+                    try {
+                        val primary = controller.pinPrimary().also { it.firstScreen = true; controller.confirm(it) }
+                        val (guard, selection) = acceptTarget(controller, primary, channel)
+                        val target = files(targetId, TARGET_ENTRY)
+                        val params = JSONObject().put("guard", guard).put("selection", selection)
+                            .put("artifact", artifact(server, "/target", targetId, manifest(targetId, target), target))
+                        val operation = async(Dispatchers.IO) { runCatching { controller.validate(primary, params) } }
+                        assertTrue(server.await("/target/hot-updater-lynx.json"))
+                        if (mode == "changed-cohort") controller.setCohort("2")
+                        if (mode == "closed") controller.close()
+                        val store = root.resolve("hot-updater-lynx/scopes").listFiles()!!.single()
+                        val previousState = store.resolve("state.json").readBytes()
+                        server.release("/target/hot-updater-lynx.json")
+                        val result = withTimeout(5_000) { operation.await() }
+                        assertEquals(mode, mode == "valid", result.isSuccess)
+                        if (mode == "valid") assertTrue(result.getOrThrow().getBoolean("validated"))
+                        assertArrayEquals(previousState, store.resolve("state.json").readBytes())
+                        assertEquals(0, server.count("/target/main.lynx.bundle"))
+                        assertTrue(store.resolve("artifacts/preparations").listFiles().orEmpty().isEmpty())
+                        assertTrue(store.resolve("artifacts/installations").listFiles().orEmpty().isEmpty())
+                    } finally { controller.close() }
+                }
+            } finally { root.deleteRecursively() }
+        }
+    }
+
+    @Test
+    fun metadataValidationRejectsAnOversizedSidecarBeforeDownloadingPages() = runBlocking {
+        val root = Files.createTempDirectory("lynx-check-limit-").toFile()
+        try {
+            val target = files(targetId, TARGET_ENTRY).toMutableMap()
+            target["hot-updater-lynx.json"] = target.getValue("hot-updater-lynx.json") + ByteArray(16 * 1024) { 32 }
+            FixtureServer(emptyMap()).use { server ->
+                val request = LynxArtifactRequest.fromJson(artifact(server, "/target", targetId, manifest(targetId, target), target))
+                val installer = LynxArtifactInstaller(root.resolve("store"), config())
+                assertTrue(runCatching { installer.validateMetadata(request) }.isFailure)
+                assertEquals(0, server.count("/target/main.lynx.bundle"))
+                assertTrue(root.resolve("store/preparations").listFiles().orEmpty().isEmpty())
+            }
+        } finally { root.deleteRecursively() }
+    }
+
+    @Test
+    fun metadataCheckAuthenticatesCompressedSidecarAndReusesExpandedBytes() = runBlocking {
+        val root = Files.createTempDirectory("lynx-check-brotli-").toFile()
+        try {
+            val sidecar = """{"schemaVersion":1,"bundleId":"01900000-0000-7000-8000-000000000021","platform":"android","runtimeId":"android-sparkling-2.1.0-rc.12-lynx-3.9.0-primjs-3.8.0-alpha.6-ota-v2","entry":"main.lynx.bundle"}""".toByteArray()
+            val compressed = Base64.getDecoder().decode("G8cAAIzUYk2Z7qTRttSX2b3gIVKimKQOS9/T4wLFWlRbW8vamgcRH/1gB7veMJ/ykrY28oftwusJjIPsnIqhTAqANrFOZWGIketYaxBAGnBaE7ZzgjiSYhLcFfkwtFNNK0Y0t1yM5fBOD12JRXPZ2rHbGxCxrVcJOB8pL4ugYAGehjZN+AYG")
+            val target = files(targetId, TARGET_ENTRY) + ("hot-updater-lynx.json" to sidecar)
+            FixtureServer(emptyMap()).use { server ->
+                val descriptor = artifact(server, "/target", targetId,
+                    manifest(targetId, target, mapOf("hot-updater-lynx.json" to compressed)), target)
+                descriptor.getJSONObject("assets").getJSONObject("hot-updater-lynx.json")
+                    .getJSONObject("file").put("compression", "br")
+                server.publish("/target/hot-updater-lynx.json", compressed)
+                val installer = LynxArtifactInstaller(root.resolve("store"), config())
+                val request = LynxArtifactRequest.fromJson(descriptor)
+                installer.validateMetadata(request)
+                assertEquals(0, server.count("/target/main.lynx.bundle"))
+                val prepared = installer.prepare(request)
+                val installed = installer.commitPrepared(prepared) { publish -> publish() }
+                assertArrayEquals(sidecar, installed.directory.resolve("hot-updater-lynx.json").readBytes())
+                assertEquals(1, server.count("/target/hot-updater-lynx.json"))
+            }
+        } finally { root.deleteRecursively() }
     }
 
     private fun config() = LynxInstallConfiguration(runtime)
@@ -1215,6 +1404,8 @@ class LynxArtifactInstallerDeltaTest {
         private val socket = ServerSocket(0, 50, InetAddress.getLoopbackAddress())
         private val executor = Executors.newCachedThreadPool()
         private val requests = ConcurrentHashMap<String, CountDownLatch>()
+        private val counts = ConcurrentHashMap<String, AtomicInteger>()
+        private val releases = ConcurrentHashMap<String, CountDownLatch>()
         @Volatile private var closed = false
 
         init {
@@ -1226,8 +1417,9 @@ class LynxArtifactInstallerDeltaTest {
                             val reader = it.getInputStream().bufferedReader()
                             val path = reader.readLine().split(' ')[1]
                             while (!reader.readLine().isNullOrEmpty()) Unit
+                            counts.computeIfAbsent(path) { AtomicInteger() }.incrementAndGet()
                             requests.computeIfAbsent(path) { CountDownLatch(1) }.countDown()
-                            if (path in stalls) Thread.sleep(30_000)
+                            if (path in stalls) releases.computeIfAbsent(path) { CountDownLatch(1) }.await(30, TimeUnit.SECONDS)
                             val body = responses[path]
                             val status = if (body == null) "404 Not Found" else "200 OK"
                             val bytes = body ?: byteArrayOf()
@@ -1243,6 +1435,8 @@ class LynxArtifactInstallerDeltaTest {
 
         fun publish(path: String, bytes: ByteArray) { responses[path] = bytes }
         fun requested(path: String) = requests[path]?.count == 0L
+        fun count(path: String) = counts[path]?.get() ?: 0
+        fun release(path: String) { releases.computeIfAbsent(path) { CountDownLatch(1) }.countDown() }
 
         fun url(path: String) = "http://127.0.0.1:${socket.localPort}$path"
 

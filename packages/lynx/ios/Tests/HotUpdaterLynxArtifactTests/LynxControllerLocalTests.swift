@@ -1386,6 +1386,73 @@ final class LynxControllerLocalTests: XCTestCase {
         XCTAssertEqual(try restarted.getState(restartedContext)["cohort"] as? String, "team-07")
     }
 
+    func testMetadataValidationReauthorizesAfterDownloadWithoutInstallingPages() async throws {
+        for mode in ["valid", "changed-cohort", "closed", "missing-required-resource"] {
+            let root = FileManager.default.temporaryDirectory.appendingPathComponent("lynx-check-\(UUID().uuidString)")
+            defer { try? FileManager.default.removeItem(at: root) }
+            let embedded = root.appendingPathComponent("embedded")
+            let digest = try writeTree(at: embedded, bundleId: embeddedId, marker: "A")
+            let target = root.appendingPathComponent("target")
+            try writeTree(at: target, bundleId: bundleB, marker: "B", managedPages: true)
+            var manifest = try JSONSerialization.jsonObject(with: Data(contentsOf: target.appendingPathComponent("manifest.json"))) as! [String: Any]
+            var assets = manifest["assets"] as! [String: [String: String]]
+            if mode == "missing-required-resource" { assets.removeValue(forKey: "assets/probe.ttf") }
+            manifest["assets"] = assets
+            let manifestBytes = try JSONSerialization.data(withJSONObject: manifest, options: [.sortedKeys])
+            let config = configuration(root: root.appendingPathComponent("store"), embedded: embedded, digest: digest,
+                                       resources: ["assets/probe.ttf"])
+            let started = expectation(description: "Metadata fetch started")
+            let gate = FetchGate()
+            let controller = try LynxController(configuration: config) { source, destination, _, _ in
+                let name = String(source.path.dropFirst())
+                if name == "manifest.json" { try manifestBytes.write(to: destination) }
+                else if name == "hot-updater-lynx.json" {
+                    started.fulfill()
+                    await gate.wait()
+                    try FileManager.default.copyItem(at: target.appendingPathComponent(name), to: destination)
+                } else {
+                    XCTFail("Compatibility check downloaded page/resource: \(name)")
+                    throw LynxArtifactError.invalid("Unexpected page download")
+                }
+            }
+            let context = controller.createContext(primary: true)
+            _ = try controller.begin(context)
+            let current = try snapshot(controller, context, config)
+            let guardValue = try controller.acceptCatalog(try catalogJSON(releases: [(releaseB, bundleB)]),
+                expectedRevision: current.revision,
+                contextHash: LynxCatalogPolicy.contextHash(snapshot: current, scopeKey: scopeKey), context: context)
+            let selected = receipt(releaseId: releaseB, bundleId: bundleB, contextHash: guardValue.selectionContextHash)
+            let request = LynxArtifactRequest(bundleId: bundleB,
+                manifestUrl: URL(string: "https://artifacts.test/manifest.json")!, manifestFileHash: hash(manifestBytes),
+                assets: Dictionary(uniqueKeysWithValues: assets.map { name, asset in
+                    (name, LynxChangedAsset(fileHash: asset["fileHash"]!, file: .init(url: URL(string: "https://artifacts.test/\(name)")!)))
+                }))
+            let operation = Task { try await controller.validateSelection(guard: guardValue, receipt: selected,
+                                                                          artifact: request, context: context) }
+            await fulfillment(of: [started], timeout: 2)
+            if mode == "changed-cohort" { try controller.setCohort("2", context: context) }
+            var replacement: LynxController?
+            if mode == "closed" {
+                try controller.close()
+                replacement = try LynxController(configuration: config)
+                _ = try replacement!.begin(replacement!.createContext(primary: true))
+            }
+            let store = try home(config.root)
+            let journal = store.appendingPathComponent("state.json")
+            let before = try Data(contentsOf: journal)
+            await gate.release()
+            do {
+                try await operation.value
+                XCTAssertEqual(mode, "valid", "Invalidated metadata check succeeded")
+            } catch { XCTAssertNotEqual(mode, "valid", "Valid metadata check failed: \(error)") }
+            XCTAssertEqual(try Data(contentsOf: journal), before)
+            XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: store.appendingPathComponent(".staging").path), [])
+            XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: store.appendingPathComponent("bundles").path), [])
+            try replacement?.close()
+            try controller.close()
+        }
+    }
+
     func testRepeatedValidationDoesNotRetainPreparationCapacity() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("lynx-local-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: root) }

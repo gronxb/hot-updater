@@ -31,6 +31,7 @@ final class LynxDeltaTests: XCTestCase {
             if let maximumBytes { limits[url] = maximumBytes }
             lock.unlock()
         }
+        func count(_ url: URL) -> Int { lock.lock(); defer { lock.unlock() }; return values.filter { $0 == url }.count }
         func contains(_ url: URL) -> Bool { lock.lock(); defer { lock.unlock() }; return values.contains(url) }
         func maximumBytes(for url: URL) -> UInt64? {
             lock.lock(); defer { lock.unlock() }; return limits[url]
@@ -123,6 +124,181 @@ final class LynxDeltaTests: XCTestCase {
             LynxArtifactRequest.self,
             from: JSONSerialization.data(withJSONObject: value, options: [.sortedKeys])
         )
+    }
+
+    private func metadataFiles(runtime: String? = nil) throws -> [String: Data] {
+        let entries = ["detail.lynx.bundle", "main.lynx.bundle"]
+        return [
+            "main.lynx.bundle": Data("main page".utf8),
+            "detail.lynx.bundle": Data("detail page".utf8),
+            "assets/image.png": Data([1, 2, 3]),
+            "hot-updater-lynx.json": try JSONSerialization.data(withJSONObject: [
+                "schemaVersion": 1, "bundleId": targetBundleId,
+                "platform": "ios", "runtimeId": runtime ?? runtimeId,
+                "entry": "main.lynx.bundle", "pageEntries": entries,
+                "pageEssentialResources": entries.map { ["entry": $0, "resources": ["assets/image.png", $0]] },
+            ], options: [.sortedKeys]),
+        ]
+    }
+
+    private func metadataTransfer(_ files: [String: Data], brotliDownloads: [String: Data] = [:]) throws -> (request: LynxArtifactRequest, payloads: [URL: Data]) {
+        let assets = Dictionary(uniqueKeysWithValues: files.map { path, data in
+            var asset: [String: Any] = ["fileHash": hash(data), "byteSize": data.count]
+            if let compressed = brotliDownloads[path] {
+                asset["downloadCompression"] = "br"
+                asset["downloadFileHash"] = hash(compressed)
+                asset["downloadByteSize"] = compressed.count
+            }
+            return (path, asset)
+        })
+        let manifest = try JSONSerialization.data(withJSONObject: [
+            "bundleId": targetBundleId, "assets": assets,
+        ], options: [.sortedKeys])
+        var payloads = Dictionary(uniqueKeysWithValues: files.map { (url($0.key), brotliDownloads[$0.key] ?? $0.value) })
+        payloads[url("manifest")] = manifest
+        return (LynxArtifactRequest(bundleId: targetBundleId,
+            manifestUrl: url("manifest"), manifestFileHash: hash(manifest),
+            assets: Dictionary(uniqueKeysWithValues: files.map { (path, data) in
+                (path, LynxChangedAsset(fileHash: hash(data), file: .init(url: url(path), compression: brotliDownloads[path] == nil ? nil : "br")))
+            })), payloads)
+    }
+
+    func testMetadataCheckDownloadsOnlyManifestAndSidecarThenInstallationReusesThem() async throws {
+        let root = temporaryRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let files = try metadataFiles()
+        let transfer = try metadataTransfer(files)
+        let recorder = FetchRecorder()
+        let installer = try LynxArtifactInstaller(root: root, configuration: .init(runtimeId: runtimeId),
+            fetch: fetcher(transfer.payloads, recorder: recorder))
+        for _ in 0..<2 {
+            let paths = try await installer.validateMetadata(transfer.request)
+            XCTAssertEqual(paths, Set(files.keys))
+        }
+        for name in ["manifest", "hot-updater-lynx.json"] { XCTAssertEqual(recorder.count(url(name)), 1) }
+        for name in ["main.lynx.bundle", "detail.lynx.bundle", "assets/image.png"] { XCTAssertEqual(recorder.count(url(name)), 0) }
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: root.appendingPathComponent(".staging").path), [])
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: root.appendingPathComponent("bundles").path), [])
+        let prepared = try await installer.prepare(transfer.request)
+        let installed = try installer.commit(prepared) { publish in _ = try publish() }
+        XCTAssertEqual(installed.pageEntries, ["detail.lynx.bundle", "main.lynx.bundle"])
+        for name in Array(files.keys) + ["manifest"] { XCTAssertEqual(recorder.count(url(name)), 1, name) }
+    }
+
+    func testMetadataCheckDefersCorruptPageRejectionUntilInstallation() async throws {
+        let root = temporaryRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let transfer = try metadataTransfer(metadataFiles())
+        var payloads = transfer.payloads
+        payloads[url("detail.lynx.bundle")] = Data("tampered".utf8)
+        let recorder = FetchRecorder()
+        let installer = try LynxArtifactInstaller(root: root, configuration: .init(runtimeId: runtimeId),
+            fetch: fetcher(payloads, recorder: recorder))
+        _ = try await installer.validateMetadata(transfer.request)
+        do { _ = try await installer.prepare(transfer.request); XCTFail("Corrupt page was installed") }
+        catch { }
+        XCTAssertEqual(recorder.count(url("hot-updater-lynx.json")), 1)
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: root.appendingPathComponent(".staging").path), [])
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: root.appendingPathComponent("bundles").path), [])
+    }
+
+    func testMetadataCheckRejectsTamperedManifestOrSidecarBeforeDownloadingPages() async throws {
+        for name in ["manifest", "hot-updater-lynx.json"] {
+            let root = temporaryRoot()
+            defer { try? FileManager.default.removeItem(at: root) }
+            let transfer = try metadataTransfer(metadataFiles())
+            var payloads = transfer.payloads
+            payloads[url(name)]!.append(Data(" ".utf8))
+            let recorder = FetchRecorder()
+            let installer = try LynxArtifactInstaller(root: root, configuration: .init(runtimeId: runtimeId),
+                fetch: fetcher(payloads, recorder: recorder))
+            do { _ = try await installer.validateMetadata(transfer.request); XCTFail("Tampered metadata was accepted") }
+            catch { }
+            XCTAssertEqual(recorder.count(url("main.lynx.bundle")), 0)
+            XCTAssertEqual(recorder.count(url("hot-updater-lynx.json")), name == "manifest" ? 0 : 1)
+            XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: root.appendingPathComponent(".staging").path), [])
+        }
+    }
+
+    func testChangedManifestForSameBundleCannotReuseMetadataCache() async throws {
+        let root = temporaryRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let transfer = try metadataTransfer(metadataFiles())
+        let incompatible = try metadataTransfer(metadataFiles(runtime: "different-runtime"))
+        let recorder = FetchRecorder()
+        let validFetch = fetcher(transfer.payloads, recorder: recorder)
+        let invalidFetch = fetcher(incompatible.payloads, recorder: recorder)
+        let installer = try LynxArtifactInstaller(root: root, configuration: .init(runtimeId: runtimeId)) { source, destination, limit, empty in
+            let fetch = recorder.count(self.url("manifest")) == 0 ? validFetch : invalidFetch
+            // The sidecar for the first transfer must come from the same authenticated manifest.
+            if source == self.url("hot-updater-lynx.json"), recorder.count(self.url("manifest")) == 1 {
+                try await validFetch(source, destination, limit, empty)
+            } else { try await fetch(source, destination, limit, empty) }
+        }
+        _ = try await installer.validateMetadata(transfer.request)
+        do { _ = try await installer.validateMetadata(incompatible.request); XCTFail("Stale cache hid incompatibility") }
+        catch { guard case LynxArtifactError.incompatible = error else { return XCTFail("Unexpected error: \(error)") } }
+        XCTAssertEqual(recorder.count(url("manifest")), 2)
+        XCTAssertEqual(recorder.count(url("hot-updater-lynx.json")), 2)
+        XCTAssertEqual(recorder.count(url("main.lynx.bundle")), 0)
+    }
+
+    func testMetadataCheckAuthenticatesCompressedSidecarAndReusesExpandedBytes() async throws {
+        let root = temporaryRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let sidecar = Data(#"{"schemaVersion":1,"bundleId":"01900000-0000-7000-8000-000000000202","platform":"ios","runtimeId":"sparkling-lynx-3.9.0-primjs-ios-delta-tests","entry":"main.lynx.bundle"}"#.utf8)
+        let compressed = Data(base64Encoded: "G6oAgIzUYk2Z7mTRNfLh36sAfNGITh2WPp0cd1BsSypq2cUDoSzMU5aUBPPrHye3THeQCbJzKoYyLQBCRiGEEAR4BBEQQwmFYLAB2nlH2M7paEcN3xv4DO1U0/BOD2kWmaBla8dup3beaUNBn06EggjYhBKSxSkM")!
+        let files = ["main.lynx.bundle": Data("main".utf8), "hot-updater-lynx.json": sidecar]
+        let transfer = try metadataTransfer(files, brotliDownloads: ["hot-updater-lynx.json": compressed])
+        let recorder = FetchRecorder()
+        let installer = try LynxArtifactInstaller(root: root, configuration: .init(runtimeId: runtimeId),
+            fetch: fetcher(transfer.payloads, recorder: recorder))
+        _ = try await installer.validateMetadata(transfer.request)
+        XCTAssertEqual(recorder.count(url("main.lynx.bundle")), 0)
+        let prepared = try await installer.prepare(transfer.request)
+        let installed = try installer.commit(prepared) { publish in _ = try publish() }
+        XCTAssertEqual(try Data(contentsOf: installed.directory.appendingPathComponent("hot-updater-lynx.json")), sidecar)
+        XCTAssertEqual(recorder.count(url("hot-updater-lynx.json")), 1)
+    }
+
+    func testMetadataCheckRejectsOversizedSidecarBeforeDownloadingPages() async throws {
+        let root = temporaryRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        var files = try metadataFiles()
+        files["hot-updater-lynx.json"]!.append(Data(repeating: 32, count: 16 * 1024))
+        let transfer = try metadataTransfer(files)
+        let recorder = FetchRecorder()
+        let installer = try LynxArtifactInstaller(root: root, configuration: .init(runtimeId: runtimeId),
+            fetch: fetcher(transfer.payloads, recorder: recorder))
+        do { _ = try await installer.validateMetadata(transfer.request); XCTFail("Oversized metadata was accepted") }
+        catch { }
+        XCTAssertEqual(recorder.maximumBytes(for: url("hot-updater-lynx.json")), 16 * 1024)
+        XCTAssertEqual(recorder.count(url("main.lynx.bundle")), 0)
+    }
+
+    func testCanceledMetadataCheckRemovesStageAndDoesNotCachePartialMetadata() async throws {
+        let root = temporaryRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let transfer = try metadataTransfer(metadataFiles())
+        let recorder = FetchRecorder()
+        let sidecarStarted = expectation(description: "Sidecar download started")
+        let fetch = fetcher(transfer.payloads, recorder: recorder)
+        let installer = try LynxArtifactInstaller(root: root, configuration: .init(runtimeId: runtimeId)) { source, destination, limit, empty in
+            if source == self.url("hot-updater-lynx.json"), recorder.count(self.url("manifest")) == 1 {
+                sidecarStarted.fulfill()
+                try await Task.sleep(nanoseconds: 10_000_000_000)
+            }
+            try await fetch(source, destination, limit, empty)
+        }
+        let operation = Task { try await installer.validateMetadata(transfer.request) }
+        await fulfillment(of: [sidecarStarted], timeout: 2)
+        operation.cancel()
+        do { _ = try await operation.value; XCTFail("Canceled metadata check succeeded") }
+        catch is CancellationError { }
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: root.appendingPathComponent(".staging").path), [])
+        _ = try await installer.validateMetadata(transfer.request)
+        XCTAssertEqual(recorder.count(url("manifest")), 2)
+        XCTAssertEqual(recorder.count(url("main.lynx.bundle")), 0)
     }
 
     func testBridgeShapedDescriptorsAllowMissingOptionalKeysAndPrepare() async throws {

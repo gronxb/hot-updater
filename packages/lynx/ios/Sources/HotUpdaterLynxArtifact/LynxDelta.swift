@@ -70,6 +70,19 @@ public struct LynxChangedAsset: Codable, Equatable {
     }
 }
 
+/// Verified metadata bytes are bounded and confer no selection authority.
+struct LynxArtifactMetadata {
+    let bundleId: String
+    let manifestFileHash: String?
+    let manifest: Data
+    let sidecar: Data
+    let paths: Set<String>
+
+    func matches(_ request: LynxArtifactRequest) -> Bool {
+        request.bundleId == bundleId && request.manifestFileHash == manifestFileHash
+    }
+}
+
 enum LynxDelta {
     struct PatchedAsset: Equatable {
         let path: String
@@ -85,8 +98,8 @@ enum LynxDelta {
 
     static func prepare(_ request: LynxArtifactRequest, base: LynxInstalledArtifact?, stage: URL,
                         configuration: LynxArtifactConfiguration,
-                        fetch: LynxArtifactFetch) async throws -> Result {
-        guard let manifestURL = request.manifestUrl, let token = request.manifestFileHash, !token.isEmpty,
+                        fetch: LynxArtifactFetch, metadata: LynxArtifactMetadata? = nil) async throws -> Result {
+        guard let token = request.manifestFileHash, !token.isEmpty,
               let changes = request.assets else { throw LynxArtifactError.invalid("Incomplete manifest transfer") }
         // Base authority comes from native state; corrupt local bytes use authenticated originals.
         let source = base.flatMap { base in
@@ -97,39 +110,11 @@ enum LynxDelta {
         try Task.checkCancellation()
         let contents = stage.appendingPathComponent("contents")
         try FileManager.default.createDirectory(at: contents, withIntermediateDirectories: false)
+        let cached = metadata.flatMap { $0.matches(request) ? $0 : nil }
         let manifestFile = contents.appendingPathComponent("manifest.json")
-        try await fetch(manifestURL, manifestFile, UInt64(ArchiveLimits.manifest), false)
-        try ArtifactSignatureVerifier.verifyBundle(fileURL: manifestFile, fileHash: token, publicKeyPEM: configuration.publicKeyPEM).get()
-        let manifest = try JSONDecoder().decode(
-            LynxManifest.self,
-            from: StrictMetadataJSON.read(manifestFile, limit: ArchiveLimits.manifest)
-        )
-        guard manifest.bundleId == request.bundleId, manifest.assets["hot-updater-lynx.json"] != nil,
-              manifest.assets["manifest.json"] == nil, !manifest.assets.isEmpty else {
-            throw LynxArtifactError.invalid("Manifest transfer identity or coverage mismatch")
-        }
-        let paths = ArchiveEntryGuard(reservingManifest: true)
-        for (name, asset) in manifest.assets {
-            try paths.admit(name, size: asset.byteSize ?? 0, directory: false)
-            guard LynxArtifactRequest.isHash(asset.fileHash),
-                  asset.signature == nil || asset.signature?.isEmpty == false else {
-                throw LynxArtifactError.invalid("Invalid target manifest asset")
-            }
-        }
-        guard Set(changes.keys) == Set(manifest.assets.keys) else {
-            throw LynxArtifactError.invalid("Target descriptors do not exactly cover the manifest")
-        }
-        for (name, asset) in manifest.assets {
-            guard changes[name]?.fileHash.caseInsensitiveCompare(asset.fileHash) == .orderedSame,
-                  changes[name]?.file?.compression == asset.downloadCompression,
-                  asset.downloadCompression == nil || asset.downloadCompression == "br",
-                  asset.byteSize.map({ $0 <= ArchiveLimits.file }) ?? true,
-                  asset.downloadByteSize.map({ $0 <= ArchiveLimits.file }) ?? true,
-                  asset.downloadFileHash.map(LynxArtifactRequest.isHash) ?? true else {
-                throw LynxArtifactError.invalid("Target descriptor or transfer metadata differs from manifest")
-            }
-        }
-        let missing = manifest.assets.keys.filter { source?.files[$0]?.caseInsensitiveCompare(manifest.assets[$0]!.fileHash) != .orderedSame }
+        let manifest = try await readManifest(request, contents: contents, configuration: configuration,
+                                              fetch: fetch, metadata: cached)
+        let missing = manifest.assets.keys.filter { !(cached != nil && $0 == "hot-updater-lynx.json") && source?.files[$0]?.caseInsensitiveCompare(manifest.assets[$0]!.fileHash) != .orderedSame }
         let costs: [UInt64?] = missing.map { name in
             let original = manifest.assets[name]!.downloadByteSize
             guard let patch = changes[name]?.patch, patch.baseBundleId == base?.bundleId,
@@ -176,7 +161,9 @@ enum LynxDelta {
             let sourceFile = base?.directory.appendingPathComponent(name)
             let remaining = ArchiveLimits.expanded - total
             let outputLimit = min(remaining, ArchiveLimits.file)
-            if let sourceFile, source?.files[name]?.caseInsensitiveCompare(expected) == .orderedSame,
+            if let cached, name == "hot-updater-lynx.json" {
+                try cached.sidecar.write(to: output)
+            } else if let sourceFile, source?.files[name]?.caseInsensitiveCompare(expected) == .orderedSame,
                HashUtils.verifyHash(fileURL: sourceFile, expectedHash: expected) {
                 try copy(sourceFile, to: output, maximumBytes: outputLimit)
             } else {
@@ -243,6 +230,92 @@ enum LynxDelta {
         }
         let tree = try VerifiedLynxTree.verify(at: contents, bundleId: request.bundleId, manifestToken: token, configuration: configuration)
         return Result(tree: tree, patchedAssets: patchedAssets.sorted { $0.path < $1.path }, usedArchive: false)
+    }
+
+    private static func readManifest(_ request: LynxArtifactRequest, contents: URL,
+                                     configuration: LynxArtifactConfiguration,
+                                     fetch: LynxArtifactFetch, metadata: LynxArtifactMetadata?) async throws -> LynxManifest {
+        guard let manifestURL = request.manifestUrl, let token = request.manifestFileHash, !token.isEmpty,
+              let changes = request.assets else { throw LynxArtifactError.invalid("Incomplete manifest transfer") }
+        let manifestFile = contents.appendingPathComponent("manifest.json")
+        if let metadata, metadata.matches(request) {
+            try metadata.manifest.write(to: manifestFile)
+        } else {
+            try await fetch(manifestURL, manifestFile, UInt64(ArchiveLimits.manifest), false)
+        }
+        try ArtifactSignatureVerifier.verifyBundle(fileURL: manifestFile, fileHash: token, publicKeyPEM: configuration.publicKeyPEM).get()
+        let manifest = try JSONDecoder().decode(
+            LynxManifest.self,
+            from: StrictMetadataJSON.read(manifestFile, limit: ArchiveLimits.manifest)
+        )
+        guard manifest.bundleId == request.bundleId, manifest.assets["hot-updater-lynx.json"] != nil,
+              manifest.assets["manifest.json"] == nil, !manifest.assets.isEmpty else {
+            throw LynxArtifactError.invalid("Manifest transfer identity or coverage mismatch")
+        }
+        let paths = ArchiveEntryGuard(reservingManifest: true)
+        for (name, asset) in manifest.assets {
+            try paths.admit(name, size: asset.byteSize ?? 0, directory: false)
+            guard LynxArtifactRequest.isHash(asset.fileHash),
+                  asset.signature == nil || asset.signature?.isEmpty == false else {
+                throw LynxArtifactError.invalid("Invalid target manifest asset")
+            }
+        }
+        guard Set(changes.keys) == Set(manifest.assets.keys) else {
+            throw LynxArtifactError.invalid("Target descriptors do not exactly cover the manifest")
+        }
+        for (name, asset) in manifest.assets {
+            guard changes[name]?.fileHash.caseInsensitiveCompare(asset.fileHash) == .orderedSame,
+                  changes[name]?.file?.compression == asset.downloadCompression,
+                  asset.downloadCompression == nil || asset.downloadCompression == "br",
+                  asset.byteSize.map({ $0 <= ArchiveLimits.file }) ?? true,
+                  asset.downloadByteSize.map({ $0 <= ArchiveLimits.file }) ?? true,
+                  asset.downloadFileHash.map(LynxArtifactRequest.isHash) ?? true else {
+                throw LynxArtifactError.invalid("Target descriptor or transfer metadata differs from manifest")
+            }
+        }
+        return manifest
+    }
+
+    static func validateMetadata(_ request: LynxArtifactRequest, stage: URL,
+                                 configuration: LynxArtifactConfiguration,
+                                 fetch: LynxArtifactFetch, metadata: LynxArtifactMetadata?) async throws -> LynxArtifactMetadata {
+        let contents = stage.appendingPathComponent("contents")
+        try FileManager.default.createDirectory(at: contents, withIntermediateDirectories: false)
+        let cached = metadata.flatMap { $0.matches(request) ? $0 : nil }
+        let manifest = try await readManifest(request, contents: contents, configuration: configuration,
+                                              fetch: fetch, metadata: cached)
+        let name = "hot-updater-lynx.json"
+        let output = contents.appendingPathComponent(name)
+        let asset = manifest.assets[name]!
+        if let cached {
+            try cached.sidecar.write(to: output)
+        } else {
+            guard let descriptor = request.assets?[name]?.file else { throw LynxArtifactError.invalid("Missing Lynx metadata descriptor") }
+            if descriptor.compression == "br" {
+                let compressed = stage.appendingPathComponent("metadata.br")
+                try await fetch(descriptor.url, compressed, UInt64(ArchiveLimits.manifest), false)
+                try verifyTransfer(compressed, asset: asset)
+                try StreamingTarArchiveExtractor.decompressBrotliFile(from: compressed.path, to: output.path,
+                                                                     maximumOutputBytes: 16 * 1024)
+            } else {
+                try await fetch(descriptor.url, output, 16 * 1024, false)
+                try verifyTransfer(output, asset: asset)
+            }
+        }
+        let bytes = try size(output)
+        guard bytes <= 16 * 1024, asset.byteSize.map({ $0 == bytes }) ?? true else { throw LynxArtifactError.invalid("Lynx metadata size mismatch") }
+        try ArtifactSignatureVerifier.verifyHash(fileURL: output, expectedHash: asset.fileHash).get()
+        if configuration.publicKeyPEM != nil {
+            guard let signature = asset.signature, !signature.isEmpty else { throw SignatureVerificationError.invalidSignatureFormat }
+            try ArtifactSignatureVerifier.verifyHashSignature(fileHash: asset.fileHash, signatureBase64: signature,
+                                                            publicKeyPEM: configuration.publicKeyPEM).get()
+        }
+        _ = try VerifiedLynxTree.validateMetadata(at: contents, bundleId: request.bundleId,
+                                                 files: manifest.assets.mapValues(\.fileHash),
+                                                 configuration: configuration, verifyPageFiles: false)
+        return LynxArtifactMetadata(bundleId: request.bundleId, manifestFileHash: request.manifestFileHash,
+                                    manifest: try Data(contentsOf: contents.appendingPathComponent("manifest.json")),
+                                    sidecar: try Data(contentsOf: output), paths: Set(manifest.assets.keys))
     }
 
     private static func verifyTransfer(_ file: URL, asset: LynxManifest.Asset) throws {

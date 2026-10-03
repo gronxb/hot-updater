@@ -6,6 +6,7 @@ import com.hotupdater.lynx.internal.ArchiveIntegrity
 import com.hotupdater.lynx.internal.ArchiveLimits
 import com.hotupdater.lynx.internal.DurableFiles
 import com.hotupdater.lynx.internal.LynxArtifactVerifier
+import com.hotupdater.lynx.internal.LynxArtifactMetadata
 import com.hotupdater.lynx.internal.LynxDeltaAssembler
 import com.hotupdater.lynx.internal.LynxPatchedAssetEvidence
 import com.hotupdater.lynx.internal.StrictArchive
@@ -119,6 +120,7 @@ class LynxArtifactInstaller internal constructor(
     private val deltaAssembler = LynxDeltaAssembler(integrity, downloader)
     private val transactions = File(root, "preparations")
     private val installations = File(root, "installations")
+    @Volatile private var metadataCache: LynxArtifactMetadata? = null
 
     init {
         DurableFiles.directory(transactions)
@@ -131,6 +133,39 @@ class LynxArtifactInstaller internal constructor(
                     val lease = try { file.channel.tryLock() } catch (_: OverlappingFileLockException) { null }
                     lease?.use { directory.deleteRecursively() }
                 }
+            }
+        }
+    }
+
+    /** Authenticates bounded metadata only. No preparation token or installation is retained. */
+    internal suspend fun validateMetadata(request: LynxArtifactRequest): Set<String> {
+        var transaction: File? = null
+        var lease: PreparationLease? = null
+        try {
+            return withContext(Dispatchers.IO) {
+                request.validateForPreparation()
+                val directory = locked {
+                    File(transactions, UUID.randomUUID().toString()).also { directory ->
+                        check(directory.mkdir()) { "Cannot create metadata validation" }
+                        transaction = directory
+                        val file = RandomAccessFile(File(directory, "lease"), "rw")
+                        lease = PreparationLease(file, file.channel.lock())
+                        File(directory, "bundleId").writeText(request.bundleId)
+                    }
+                }
+                val payload = File(directory, "payload").also { check(it.mkdir()) }
+                val result = deltaAssembler.assemble(
+                    directory, payload, request, null, metadataCache, metadataOnly = true, onDownload = {},
+                )
+                val metadata = checkNotNull(result.metadata)
+                verifier.verifyMetadata(payload, request, metadata.paths, verifyPageFiles = false)
+                coroutineContext.ensureActive()
+                metadataCache = metadata
+                metadata.paths
+            }
+        } finally {
+            withContext(NonCancellable + Dispatchers.IO) {
+                locked { lease?.close(); transaction?.deleteRecursively() }
             }
         }
     }
@@ -157,7 +192,7 @@ class LynxArtifactInstaller internal constructor(
                     }
                 }
                 val payload = File(transaction, "payload").also { check(it.mkdir()) }
-                val assembly = deltaAssembler.assemble(transaction, payload, request, base, onDownload)
+                val assembly = deltaAssembler.assemble(transaction, payload, request, base, metadataCache, onDownload = onDownload)
                 val verified = verifier.verify(payload, request, manifestBacked = true)
                 coroutineContext.ensureActive()
                 PreparedLynxArtifact(

@@ -62,13 +62,15 @@ event listener, or insights option because native cannot supply those values or
 events authoritatively.
 
 `checkForUpdate()` fetches and authorizes a catalog selection, resolves its
-delivery description, and asks native code to validate compatibility. The current
-native implementation downloads and verifies the complete artifact for that
-validation, then discards its temporary preparation. Calling
-`update.updateBundle()` downloads and verifies the artifact again before
-atomically staging that exact selection. The returned update object retains no
-native preparation capacity. Repeated calls to the same closure share one
-installation promise.
+delivery description, and authenticates the manifest and Lynx compatibility
+metadata. This step checks runtime identity, declared pages and resources without
+downloading page bundles, images, fonts, patches, or the archive. Native code keeps
+one bounded metadata snapshot keyed by bundle ID and manifest integrity token.
+`update.updateBundle()` reuses matching metadata, verifies the complete artifact,
+and atomically stages the selection after rechecking authorization. File corruption
+can therefore fail installation even when the metadata check succeeded. The
+returned update object retains no native preparation capacity. Repeated calls to
+the same closure share one installation promise.
 
 Installation changes the next selection and never changes the bytes used by the
 current managed generation. `HotUpdater.reload()` asks the packaged host to

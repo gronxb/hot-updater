@@ -1187,7 +1187,7 @@ class LynxUpdaterController internal constructor(
         checkNotNull(accepted).guard.toJson()
     }
 
-    internal suspend fun prepare(session: LynxLaunchSession, params: JSONObject): JSONObject {
+    internal suspend fun prepare(session: LynxLaunchSession, params: JSONObject, validationOnly: Boolean = false): JSONObject {
         val guard = params.getJSONObject("guard").toString()
         val selected = CatalogPolicy.parseReceipt(params.getJSONObject("selection"))
         val request = params.optJSONObject("artifact")?.let(::artifact)
@@ -1209,7 +1209,9 @@ class LynxUpdaterController internal constructor(
         )
         var bytes: PreparedLynxArtifact? = null
         try {
-            if (request != null) {
+            if (request != null && validationOnly) {
+                installer.validateMetadata(request)
+            } else if (request != null) {
                 bytes = installer.prepare(
                     request,
                     deltaBase,
@@ -1219,6 +1221,7 @@ class LynxUpdaterController internal constructor(
             coroutineContext.ensureActive()
             synchronized(stateLock) {
                 authorize(session, guard, selected)
+                if (validationOnly) return JSONObject().put("validated", true)
                 val id = UUID.randomUUID().toString()
                 Log.i(TAG, "verified-preparation bundle=${selected.bundleId} release=${selected.releaseId}")
                 preparing.remove(reservation)
@@ -1299,16 +1302,7 @@ class LynxUpdaterController internal constructor(
         session: LynxLaunchSession,
         params: JSONObject,
     ): JSONObject {
-        val id = prepare(session, params).getString("preparedId")
-        val prepared = takePreparation(session, id)
-        try {
-            synchronized(stateLock) {
-                authorize(session, prepared.guard, prepared.receipt)
-            }
-            return JSONObject().put("validated", true)
-        } finally {
-            prepared.bytes?.let(installer::discard)
-        }
+        return prepare(session, params, validationOnly = true)
     }
 
     private fun takePreparation(
