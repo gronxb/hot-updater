@@ -1,5 +1,12 @@
 # @hot-updater/server
 
+## 1.0.0-rc.28
+
+### Patch Changes
+
+- Updated dependencies [b412f41]
+  - @hot-updater/plugin-insights@1.0.0-rc.28
+
 ## 1.0.0-rc.27
 
 ### Patch Changes

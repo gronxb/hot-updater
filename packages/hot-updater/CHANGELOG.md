@@ -1,5 +1,16 @@
 # hot-updater
 
+## 1.0.0-rc.28
+
+### Patch Changes
+
+- Updated dependencies [b412f41]
+  - @hot-updater/console@1.0.0-rc.28
+  - @hot-updater/server@1.0.0-rc.28
+  - @hot-updater/cli-tools@1.0.0-rc.28
+  - @hot-updater/android-helper@1.0.0-rc.28
+  - @hot-updater/apple-helper@1.0.0-rc.28
+
 ## 1.0.0-rc.27
 
 ### Patch Changes

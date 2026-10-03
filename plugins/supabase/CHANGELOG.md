@@ -1,5 +1,12 @@
 # @hot-updater/supabase
 
+## 1.0.0-rc.28
+
+### Patch Changes
+
+- @hot-updater/server@1.0.0-rc.28
+  - @hot-updater/cli-tools@1.0.0-rc.28
+
 ## 1.0.0-rc.27
 
 ### Patch Changes
