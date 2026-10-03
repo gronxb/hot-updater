@@ -54,6 +54,7 @@ import { inferPatchAssetPathFromStorageUri } from "./patch-storage-path.ts";
 import { resetProviderAfterReady } from "./provider-reset-retry.ts";
 import { buildReleaseCatalogUrl } from "./release-catalog-url.ts";
 import {
+  prepareE2eStartupCheck,
   readE2eScreenStateSnapshot,
   resetE2eScreenState,
 } from "./screen-state.ts";
@@ -3677,18 +3678,32 @@ export function handleAssertBundleArtifactTransfers(input: {
   return observed;
 }
 
+export class ProxyAssertionError extends Error {
+  constructor(
+    message: string,
+    readonly details: unknown,
+  ) {
+    super(message);
+    this.name = "ProxyAssertionError";
+  }
+}
+
 export function handleAssertProxy(input: {
   artifactFailuresRemaining?: number;
   artifactRequests?: number;
   catalogRequests?: number;
   maxPathCardinality?: number;
 }) {
-  const observed = handleProxyState();
+  const observed = {
+    artifactFailuresRemaining,
+    pathCardinality: proxyPathCounts.size,
+    requestCounts: { ...proxyRequestCounts },
+  };
   if (
     input.artifactFailuresRemaining !== undefined &&
     artifactFailuresRemaining !== input.artifactFailuresRemaining
   ) {
-    throw createEndpointError("Unexpected remaining artifact failures", {
+    throw new ProxyAssertionError("Unexpected remaining artifact failures", {
       expected: input.artifactFailuresRemaining,
       observed,
     });
@@ -3697,7 +3712,7 @@ export function handleAssertProxy(input: {
     input.artifactRequests !== undefined &&
     proxyRequestCounts.artifact !== input.artifactRequests
   ) {
-    throw createEndpointError("Unexpected artifact request count", {
+    throw new ProxyAssertionError("Unexpected artifact request count", {
       expected: input.artifactRequests,
       observed,
     });
@@ -3706,7 +3721,7 @@ export function handleAssertProxy(input: {
     input.catalogRequests !== undefined &&
     proxyRequestCounts.catalog !== input.catalogRequests
   ) {
-    throw createEndpointError("Unexpected catalog request count", {
+    throw new ProxyAssertionError("Unexpected catalog request count", {
       expected: input.catalogRequests,
       observed,
     });
@@ -3715,12 +3730,12 @@ export function handleAssertProxy(input: {
     input.maxPathCardinality !== undefined &&
     proxyPathCounts.size > input.maxPathCardinality
   ) {
-    throw createEndpointError("Proxy path cardinality exceeded", {
+    throw new ProxyAssertionError("Proxy path cardinality exceeded", {
       expectedMaximum: input.maxPathCardinality,
       observed,
     });
   }
-  return observed;
+  return handleProxyState();
 }
 
 export async function handleProxyUpdateRequest(request: Request) {
@@ -5023,7 +5038,7 @@ async function prepareAppLaunch() {
       { allowFailure: true },
     );
     await sleep(E2E_POLL_INTERVAL_MS);
-    return {};
+    return prepareE2eStartupCheck();
   }
 
   if (fixtureSession.platform !== "android") {
@@ -5069,7 +5084,7 @@ async function prepareAppLaunch() {
     androidLaunchLogMarker,
   ]);
 
-  return { alreadyFocused };
+  return { alreadyFocused, ...prepareE2eStartupCheck(alreadyFocused) };
 }
 
 async function bootstrap() {

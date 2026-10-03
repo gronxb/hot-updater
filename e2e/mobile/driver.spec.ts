@@ -29,7 +29,9 @@ function fixture(platform: "ios" | "android" = "ios", assertionTimeoutMs = 0) {
         _body?: Record<string, unknown>,
       ): Promise<Record<string, unknown>> => {
         calls.push(path);
-        return {};
+        return path === "/e2e/prepare-app-launch"
+          ? { startupCheckEpoch: "fixture-epoch" }
+          : {};
       },
     ),
     runJob: vi.fn(
@@ -417,17 +419,103 @@ describe("MobileAppDriver", () => {
     expect(f.calls).toEqual([
       "/e2e/prepare-app-launch",
       "open",
+      "wait-result",
       "/e2e/terminate-app",
       "/e2e/prepare-app-launch",
       "open",
+      "wait-result",
       "/e2e/reset-local-app-state",
+      "/e2e/prepare-app-launch",
       "open",
+      "wait-result",
     ]);
     expect(f.device.openApp).toHaveBeenLastCalledWith("org.example.app", {
       relaunch: true,
       launchArguments: ["-RUNTIME_URL", "http://localhost"],
     });
   });
+
+  it("holds normal launch before proxy reset until the current startup check settles", async () => {
+    const f = fixture();
+    const waiting = Promise.withResolvers<void>();
+    const settled = Promise.withResolvers<Record<string, unknown>>();
+    f.client.waitForScreenStateField.mockImplementationOnce(() => {
+      waiting.resolve();
+      return settled.promise;
+    });
+    const run = (async () => {
+      await f.app.launch("launch retry app");
+      await f.app.control("reset counts", "/e2e/proxy-control", {
+        reset: true,
+      });
+    })();
+    await waiting.promise;
+    expect(f.client.postJson).not.toHaveBeenCalledWith(
+      "reset counts",
+      "/e2e/proxy-control",
+      expect.anything(),
+    );
+    expect(f.client.waitForScreenStateField).toHaveBeenCalledWith(
+      "launch retry app: wait startup check",
+      "startupCheckSettledEpoch",
+      { expectedValue: "fixture-epoch" },
+    );
+    expect(f.screen.getByTestId).not.toHaveBeenCalled();
+    expect(f.iosAlert.get).not.toHaveBeenCalled();
+    settled.resolve({ startupCheckSettledEpoch: "fixture-epoch" });
+    await run;
+    expect(f.client.postJson).toHaveBeenLastCalledWith(
+      "reset counts",
+      "/e2e/proxy-control",
+      { reset: true },
+    );
+  });
+
+  it("preserves the existing startup epoch when Android is already focused", async () => {
+    const f = fixture("android");
+    f.client.postJson.mockResolvedValueOnce({
+      alreadyFocused: true,
+      startupCheckEpoch: "existing-runtime",
+    });
+    await f.app.launch("reuse Android runtime");
+    expect(f.device.openApp).toHaveBeenCalledWith("org.example.app", {
+      relaunch: false,
+    });
+    expect(f.client.waitForScreenStateField).toHaveBeenCalledWith(
+      "reuse Android runtime: wait startup check",
+      "startupCheckSettledEpoch",
+      { expectedValue: "existing-runtime" },
+    );
+  });
+
+  it("propagates a cancelled startup wait without performing a later scenario action", async () => {
+    const f = fixture();
+    f.client.waitForScreenStateField.mockImplementationOnce(async () => {
+      f.controller.abort(new Error("cancelled startup wait"));
+      throw f.controller.signal.reason;
+    });
+    await expect(f.app.launch("normal launch")).rejects.toThrow(
+      "cancelled startup wait",
+    );
+    await expect(
+      f.app.control("late reset", "/e2e/proxy-control", { reset: true }),
+    ).rejects.toThrow("cancelled startup wait");
+    expect(f.client.postJson).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([{ expectCrash: true }, { allowDisconnect: true }])(
+    "does not await startup or inspect UI before native recovery: %j",
+    async (options) => {
+      const f = fixture();
+      await f.app.launch("native recovery", options);
+      expect(f.client.waitForScreenStateField).not.toHaveBeenCalled();
+      expect(f.screen.getByTestId).not.toHaveBeenCalled();
+      expect(f.iosAlert.get).not.toHaveBeenCalled();
+      await expect(
+        f.app.assertText("premature", "runtime-bundle-id", "builtin"),
+      ).rejects.toThrow("Native recovery must be verified");
+    },
+  );
 
   it("waits for crash recovery evidence before a disconnect can lead to UI navigation", async () => {
     const f = fixture();

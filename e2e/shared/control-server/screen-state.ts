@@ -1,9 +1,13 @@
+import { randomUUID } from "node:crypto";
+
 export type E2eScreenState = {
   readonly channelActionResult: string;
   readonly cohortActionResult: string;
   readonly cohortInput: string | null;
   readonly runtimeChannelInput: string;
   readonly updateActionResult: string;
+  readonly startupCheckEpoch: string;
+  readonly startupCheckSettledEpoch: string;
 };
 
 type E2eScreenStatePatch = Partial<E2eScreenState>;
@@ -14,6 +18,8 @@ const defaultE2eScreenState = {
   cohortInput: null,
   runtimeChannelInput: "beta",
   updateActionResult: "idle",
+  startupCheckEpoch: "",
+  startupCheckSettledEpoch: "",
 } as const satisfies E2eScreenState;
 
 let e2eScreenState: E2eScreenState = defaultE2eScreenState;
@@ -67,6 +73,10 @@ const parseScreenStatePatch = (payload: unknown): E2eScreenStatePatch => {
   );
   const updateActionResult = parseOptionalString(payload, "updateActionResult");
   const cohortInput = parseOptionalCohortInput(payload);
+  const startupCheckSettledEpoch = parseOptionalString(
+    payload,
+    "startupCheckSettledEpoch",
+  );
 
   return {
     ...(channelActionResult === undefined ? {} : { channelActionResult }),
@@ -74,10 +84,25 @@ const parseScreenStatePatch = (payload: unknown): E2eScreenStatePatch => {
     ...(cohortInput === undefined ? {} : { cohortInput }),
     ...(runtimeChannelInput === undefined ? {} : { runtimeChannelInput }),
     ...(updateActionResult === undefined ? {} : { updateActionResult }),
+    ...(startupCheckSettledEpoch &&
+    startupCheckSettledEpoch === e2eScreenState.startupCheckEpoch
+      ? { startupCheckSettledEpoch }
+      : {}),
   };
 };
 
 export const readE2eScreenStateSnapshot = () => e2eScreenState;
+
+export const prepareE2eStartupCheck = (alreadyFocused = false) => {
+  if (!alreadyFocused) {
+    e2eScreenState = {
+      ...e2eScreenState,
+      startupCheckEpoch: randomUUID(),
+      startupCheckSettledEpoch: "",
+    };
+  }
+  return { startupCheckEpoch: e2eScreenState.startupCheckEpoch };
+};
 
 export const resetE2eScreenState = () => {
   e2eScreenState = defaultE2eScreenState;

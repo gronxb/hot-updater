@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   handlePatchE2eScreenState,
+  prepareE2eStartupCheck,
   readE2eScreenStateSnapshot,
   resetE2eScreenState,
 } from "./screen-state.ts";
@@ -29,6 +30,8 @@ describe("E2E screen state control boundary", () => {
         cohortInput: null,
         runtimeChannelInput: "beta",
         updateActionResult: "idle",
+        startupCheckEpoch: "",
+        startupCheckSettledEpoch: "",
       },
     });
   });
@@ -46,6 +49,23 @@ describe("E2E screen state control boundary", () => {
       cohortInput: null,
       runtimeChannelInput: "beta",
       updateActionResult: "idle",
+      startupCheckEpoch: "",
+      startupCheckSettledEpoch: "",
     });
+  });
+
+  it("ignores stale startup completion and preserves a focused Android runtime's epoch", () => {
+    resetE2eScreenState();
+    const first = prepareE2eStartupCheck().startupCheckEpoch;
+    handlePatchE2eScreenState({ startupCheckSettledEpoch: first });
+    expect(prepareE2eStartupCheck(true).startupCheckEpoch).toBe(first);
+    expect(readE2eScreenStateSnapshot().startupCheckSettledEpoch).toBe(first);
+
+    const current = prepareE2eStartupCheck().startupCheckEpoch;
+    expect(current).not.toBe(first);
+    handlePatchE2eScreenState({ startupCheckSettledEpoch: first });
+    expect(readE2eScreenStateSnapshot().startupCheckSettledEpoch).toBe("");
+    handlePatchE2eScreenState({ startupCheckSettledEpoch: current });
+    expect(readE2eScreenStateSnapshot().startupCheckSettledEpoch).toBe(current);
   });
 });

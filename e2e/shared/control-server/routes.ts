@@ -37,6 +37,7 @@ import {
   handleWaitForCrashRecovery,
   handleWaitForMetadata,
   handleWriteSummary,
+  ProxyAssertionError,
   startBootstrapJob,
   startCreateRepublishedReleaseJob,
   startDeployBundleJob,
@@ -65,7 +66,7 @@ app.onError((error, c) => {
       details,
       error: message,
     },
-    500,
+    error instanceof ProxyAssertionError ? 422 : 500,
   );
 });
 

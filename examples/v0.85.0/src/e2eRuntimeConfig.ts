@@ -15,6 +15,8 @@ export type E2eScreenState = {
   readonly cohortInput: string | null;
   readonly runtimeChannelInput: string;
   readonly updateActionResult: string;
+  readonly startupCheckEpoch: string;
+  readonly startupCheckSettledEpoch: string;
 };
 
 type E2ELaunchArguments = {
@@ -28,6 +30,8 @@ const defaultE2eScreenState = {
   cohortInput: null,
   runtimeChannelInput: "beta",
   updateActionResult: "idle",
+  startupCheckEpoch: "",
+  startupCheckSettledEpoch: "",
 } as const satisfies E2eScreenState;
 
 const e2eLaunchArguments = LaunchArguments.value<E2ELaunchArguments>();
@@ -97,6 +101,12 @@ const parseScreenState = (payload: unknown): E2eScreenState => {
       payload,
       "updateActionResult",
       defaultE2eScreenState.updateActionResult,
+    ),
+    startupCheckEpoch: stringField(payload, "startupCheckEpoch", ""),
+    startupCheckSettledEpoch: stringField(
+      payload,
+      "startupCheckSettledEpoch",
+      "",
     ),
   };
 };

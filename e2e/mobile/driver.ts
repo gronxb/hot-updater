@@ -187,6 +187,7 @@ export class MobileAppDriver implements ScenarioAppDriver {
         // permitted to hide this disconnect by opening the app again.
         console.log(`[e2e-launch:awaiting-recovery] ${String(error)}`);
       }
+      if (!recovering) await this.waitForStartupCheck(stage, launchState);
     });
   }
 
@@ -197,12 +198,13 @@ export class MobileAppDriver implements ScenarioAppDriver {
         "/e2e/terminate-app",
         {},
       );
-      await this.options.client.postJson(
+      const launchState = await this.options.client.postJson(
         `${stage}: prepare launch`,
         "/e2e/prepare-app-launch",
         {},
       );
       await this.openApp({ relaunch: true });
+      await this.waitForStartupCheck(stage, launchState);
     });
   }
 
@@ -213,7 +215,13 @@ export class MobileAppDriver implements ScenarioAppDriver {
         "/e2e/reset-local-app-state",
         {},
       );
+      const launchState = await this.options.client.postJson(
+        `${stage}: prepare launch`,
+        "/e2e/prepare-app-launch",
+        {},
+      );
       await this.openApp({ relaunch: true });
+      await this.waitForStartupCheck(stage, launchState);
     });
   }
 
@@ -377,6 +385,20 @@ export class MobileAppDriver implements ScenarioAppDriver {
       });
     } while (Date.now() < deadline);
     return remaining();
+  }
+
+  private async waitForStartupCheck(stage: string, launchState: JsonObject) {
+    const epoch = launchState.startupCheckEpoch;
+    if (typeof epoch !== "string" || !epoch) {
+      throw new Error(
+        "Prepare app launch did not return a startup check epoch",
+      );
+    }
+    await this.options.client.waitForScreenStateField(
+      `${stage}: wait startup check`,
+      "startupCheckSettledEpoch",
+      { expectedValue: epoch },
+    );
   }
 
   private async openApp(options: OpenAppOptions) {

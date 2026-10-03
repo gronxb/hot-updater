@@ -5,6 +5,7 @@ import path from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { createNativeBuildPlan } from "./build.ts";
 import type { MobileContext } from "./context.ts";
 import { mobileResultIdentity } from "./result.ts";
 
@@ -215,6 +216,58 @@ describe("mobile wrapper resource lifecycle", () => {
         fs.rm(directory, { recursive: true, force: true }),
       ),
     ]);
+  });
+
+  it.each([
+    ["default", undefined],
+    ["empty", ""],
+    ["relative", "../../../e2e/results/native-build-fixture"],
+    ["absolute", "/isolated/native-build-fixture"],
+  ])(
+    "installs the iOS app produced by the native build with %s derived data",
+    async (_label, derivedDataPath) => {
+      args[args.indexOf("--platform") + 1] = "ios";
+      args[args.indexOf("--device") + 1] =
+        "12345678-1234-1234-1234-1234567890AB";
+      env.HOT_UPDATER_E2E_IOS_DERIVED_DATA_PATH = derivedDataPath;
+      const root = path.resolve(import.meta.dirname, "../..");
+      const xcode = createNativeBuildPlan(
+        { platform: "ios", dryRun: true },
+        root,
+        env,
+      ).find((command) => command.command === "xcodebuild")!;
+      const expectedApp = path.resolve(
+        xcode.cwd,
+        xcode.args[xcode.args.indexOf("-derivedDataPath") + 1]!,
+        "Build/Products/Release-iphonesimulator/HotUpdaterExample.app",
+      );
+      const access = fs.access.bind(fs);
+      vi.spyOn(fs, "access").mockImplementation((file, mode) =>
+        file === expectedApp ? Promise.resolve() : access(file, mode),
+      );
+
+      expect(await runMobile(args, env)).toBe(0);
+
+      const contextPath =
+        mocked.spawn.mock.calls[0]![2].env.HOT_UPDATER_E2E_MOBILE_CONTEXT;
+      const context = JSON.parse(await fs.readFile(contextPath, "utf8"));
+      expect(context.appPath).toBe(expectedApp);
+    },
+  );
+
+  it("prefers an explicit iOS binary over the derived-data output", async () => {
+    args[args.indexOf("--platform") + 1] = "ios";
+    args[args.indexOf("--device") + 1] = "12345678-1234-1234-1234-1234567890AB";
+    env.HOT_UPDATER_E2E_IOS_BINARY_PATH =
+      env.HOT_UPDATER_E2E_ANDROID_BINARY_PATH;
+    env.HOT_UPDATER_E2E_IOS_DERIVED_DATA_PATH = "other-build";
+
+    expect(await runMobile(args, env)).toBe(0);
+
+    const contextPath =
+      mocked.spawn.mock.calls[0]![2].env.HOT_UPDATER_E2E_MOBILE_CONTEXT;
+    const context = JSON.parse(await fs.readFile(contextPath, "utf8"));
+    expect(context.appPath).toBe(env.HOT_UPDATER_E2E_IOS_BINARY_PATH);
   });
 
   it("records cancellation arriving during final control cleanup after SDK success", async () => {

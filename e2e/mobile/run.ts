@@ -244,8 +244,11 @@ export async function runMobile(
       platform === "ios"
         ? (env.HOT_UPDATER_E2E_IOS_BINARY_PATH ??
             path.join(
-              env.HOT_UPDATER_E2E_IOS_DERIVED_DATA_PATH ??
-                "examples/v0.85.0/ios/build",
+              path.resolve(
+                repoDir,
+                "examples/v0.85.0/ios",
+                env.HOT_UPDATER_E2E_IOS_DERIVED_DATA_PATH || "build",
+              ),
               "Build/Products/Release-iphonesimulator/HotUpdaterExample.app",
             ))
         : (env.HOT_UPDATER_E2E_ANDROID_BINARY_PATH ??
