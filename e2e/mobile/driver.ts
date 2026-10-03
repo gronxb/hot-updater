@@ -55,6 +55,7 @@ type DriverOptions = {
 };
 
 export class MobileAppDriver implements ScenarioAppDriver {
+  private readonly options: DriverOptions;
   private readonly values: JsonObject;
   private activeScreenPath?: string;
   private pendingRecovery?: "crash" | "reload";
@@ -65,7 +66,8 @@ export class MobileAppDriver implements ScenarioAppDriver {
     return this.verifiedLaunchFailures;
   }
 
-  constructor(private readonly options: DriverOptions) {
+  constructor(options: DriverOptions) {
+    this.options = options;
     this.values = { ...options.initialValues };
   }
 

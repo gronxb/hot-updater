@@ -3,7 +3,8 @@
   "compilerOptions": {
     "allowImportingTsExtensions": true,
     "allowJs": true,
-    "checkJs": false
+    "checkJs": false,
+    "erasableSyntaxOnly": true
   },
   "include": ["./*.ts", "../run.ts", "../local/**/*.ts"]
 }

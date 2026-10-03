@@ -3679,12 +3679,12 @@ export function handleAssertBundleArtifactTransfers(input: {
 }
 
 export class ProxyAssertionError extends Error {
-  constructor(
-    message: string,
-    readonly details: unknown,
-  ) {
+  readonly details: unknown;
+
+  constructor(message: string, details: unknown) {
     super(message);
     this.name = "ProxyAssertionError";
+    this.details = details;
   }
 }
 
