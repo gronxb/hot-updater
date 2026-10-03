@@ -706,8 +706,9 @@ const READ_BUDGETS: readonly ReadBudget[] = [
   }),
   budget({
     api: "record an insights event: 2 dependent rounds of batch gets and 1 write",
-    // The event and install 2's head; then the event's 5 sketch rows, in one
-    // batch get per aggregate: its release's hour and its platform's usage of
+    // The event and install 2's latest and daily heads; then the event's 5
+    // sketch rows, in one batch get per aggregate: its release's hour and
+    // its platform's usage of
     // every app version and of its own by hour, and the usage by day, which
     // keeps its own retention. The head moves within its UTC day, so its
     // gauge rows stay as they are and none is read.
@@ -715,8 +716,8 @@ const READ_BUDGETS: readonly ReadBudget[] = [
       insights.recordEvent(
         eventOf(26, { install_id: "install-2", received_at_ms: T0 + 3 * HOUR }),
       ),
-    adapter: reads(4, 7, 0, 0),
-    engine: { calls: 2, rows: 1 },
+    adapter: reads(5, 8, 0, 0),
+    engine: { calls: 3, rows: 2 },
     writes: 1,
   }),
 ];
