@@ -1,3 +1,4 @@
+import type { UpdateHttpResponse } from "@hot-updater/protocol";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { HotUpdaterInitOptions, HotUpdaterOptions } from "./wrap";
@@ -13,7 +14,12 @@ const mocks = vi.hoisted(() => {
     addListener: vi.fn(() => () => {}),
     checkForUpdate: vi.fn(async () => null),
     clearCrashHistory: vi.fn(() => true),
-    createHttpClient: vi.fn((baseURL: unknown) => ({ baseURL })),
+    createHttpClient: vi.fn(
+      (
+        baseURL: unknown,
+        _onResponse?: (response: UpdateHttpResponse) => void,
+      ) => ({ baseURL }),
+    ),
     getActiveUpdateState: vi.fn(() => ({
       activeSelection: null,
       highestSeenCatalogs: {},
@@ -114,6 +120,36 @@ describe("HotUpdater client initialization", () => {
     vi.restoreAllMocks();
   });
 
+  it.each(["init", "wrap"] as const)(
+    "forwards HTTP diagnostics after app readiness from %s",
+    async (api) => {
+      const HotUpdater = await importHotUpdater();
+      if (api === "init")
+        HotUpdater.init({ baseURL: "https://updates.example.com" });
+      else
+        HotUpdater.wrap({
+          baseURL: "https://updates.example.com",
+          updateStrategy: "appVersion",
+        });
+      const onResponse = mocks.createHttpClient.mock.calls[0]![1]!;
+      const response: UpdateHttpResponse = {
+        resource: "catalog",
+        path: "/catalog",
+        status: 503,
+        body: "Service unavailable",
+        bodyTruncated: false,
+      };
+      onResponse(response);
+      expect(mocks.emitAfterAppReady).toHaveBeenCalledWith(
+        "onHttpResponse",
+        expect.any(Function),
+      );
+      const payload = mocks.emitAfterAppReady.mock
+        .calls[0]![1] as () => UpdateHttpResponse;
+      expect(payload()).toBe(response);
+    },
+  );
+
   it("exposes the console ID through the existing getter only", async () => {
     const HotUpdater = await importHotUpdater();
 
@@ -135,6 +171,7 @@ describe("HotUpdater client initialization", () => {
 
     expect(mocks.createHttpClient).toHaveBeenCalledWith(
       "https://updates.example.com",
+      expect.any(Function),
     );
     expect(mocks.init).toHaveBeenCalledWith({
       client,
@@ -149,7 +186,10 @@ describe("HotUpdater client initialization", () => {
 
     HotUpdater.init({ baseURL: resolveBaseURL });
 
-    expect(mocks.createHttpClient).toHaveBeenCalledWith(resolveBaseURL);
+    expect(mocks.createHttpClient).toHaveBeenCalledWith(
+      resolveBaseURL,
+      expect.any(Function),
+    );
     expect(resolveBaseURL).not.toHaveBeenCalled();
   });
 

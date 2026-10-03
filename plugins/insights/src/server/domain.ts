@@ -1,3 +1,5 @@
+import type { UpdateHttpResponse } from "@hot-updater/protocol";
+
 import type {
   BundleEventFailure,
   BundleEventFailureReason,
@@ -39,6 +41,7 @@ export type CreateBundleEventRequestBase = {
    * server creates the ID, and a retry counts as another report.
    */
   readonly eventId?: string;
+  readonly metadata?: { readonly httpResponse?: InsightsHttpResponse };
   readonly installId: string;
   readonly toBundleId: string;
   readonly userId?: string;
@@ -112,6 +115,7 @@ export type EventHistoryRow = {
   readonly channel: string;
   readonly cohort: string;
   readonly receivedAtMs: number;
+  readonly httpResponse?: InsightsHttpResponse;
   /** `UPDATE_FAILED`: where the update failed and why. */
   readonly failure?: BundleEventFailureInput;
   /** `UPDATE_DOWNLOADED`: how the bundle arrived, when the client said. */
@@ -131,7 +135,12 @@ export type InstallationHistoryRow = EventHistoryRow & {
   readonly fromBundleId: string;
 };
 
+export type InsightsHttpResponse = UpdateHttpResponse & {
+  readonly receivedAtMs: number;
+};
+
 export type InstallationRow = {
+  readonly httpResponse?: InsightsHttpResponse;
   readonly installId: string;
   readonly userId: string | null;
   readonly lastKnownBundleId: string;

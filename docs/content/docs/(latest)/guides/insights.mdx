@@ -155,6 +155,29 @@ original messages and stacks. Existing reports that lack these fields cannot
 recover the original cause; the Console labels those missing diagnostics.
 This addition uses existing event metadata and needs no database migration.
 
+## Inspect HTTP responses
+
+Existing lifecycle reports can include the most recent catalog or artifact API
+response, including successful, cached, and failed responses. In **All events**,
+installation history, or an installation's latest report, select its HTTP status
+to inspect the request path, original response text, and response timestamp.
+Error investigation also shows the server response beside the client error.
+
+The client keeps one bounded response snapshot locally, scoped to the app version
+and channel, and attaches it only when an existing report is sent. Response
+collection adds no requests, timers, or event records, and does not bypass launch
+or failure deduplication. If the launch report was already sent before the update
+check, that check's response appears on the next eligible report. The response
+timestamp distinguishes that earlier response from the report's receipt time.
+This is a diagnostic snapshot, not a complete request history.
+
+Bodies are capped at 4 KiB of JSON-encoded text and marked when truncated. Empty
+bodies and bodies that could not be read have different labels. Request headers
+and URL query parameters are omitted. Native binary file downloads and Insights'
+own reporting requests are not captured. Older servers ignore the extra metadata;
+upgrade the server and Console to store and inspect it. No database migration is
+required.
+
 ## How the server accepts reports
 
 `POST /events` takes one report as a JSON body of at most 16 KB. Fields the

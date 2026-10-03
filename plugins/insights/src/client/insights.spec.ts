@@ -140,6 +140,121 @@ describe("insights() client plugin", () => {
     vi.restoreAllMocks();
   });
 
+  it("adds no requests for repeated checks and carries the latest response on the next daily launch", async () => {
+    const app = await launch();
+    app.appReady(unchangedLaunch());
+    await flush();
+    for (let index = 0; index < 10; index++) {
+      app.runtime.hooks.onHttpResponse({
+        resource: "catalog",
+        path: "/catalog",
+        status: index === 0 ? 200 : 304,
+        body: index === 0 ? '{"releases":[]}' : "",
+        bodyTruncated: false,
+      });
+      app.updateCheck({
+        status: "UNCHANGED",
+        channel: "production",
+        bundleId: "bundle-a",
+        releaseId: "release-a",
+        previousReleaseId: "release-a",
+      });
+      await flush();
+    }
+    (await launch()).appReady(unchangedLaunch());
+    await flush();
+    expect(sentTypes()).toEqual(["UNCHANGED"]);
+    vi.setSystemTime(MORNING + DAY_MS);
+    (await launch()).appReady(unchangedLaunch());
+    await flush();
+    expect(sentTypes()).toEqual(["UNCHANGED", "UNCHANGED"]);
+    expect(sentEvents()[1]?.metadata?.httpResponse).toEqual({
+      resource: "catalog",
+      path: "/catalog",
+      status: 304,
+      body: "",
+      bodyTruncated: false,
+      receivedAtMs: MORNING,
+    });
+  });
+
+  it("attaches the failing server response without changing duplicate failure reporting", async () => {
+    const app = await launch();
+    for (const body of [
+      '{"requestId":"first","error":"Unavailable"}',
+      '{"requestId":"second","error":"Unavailable"}',
+    ]) {
+      app.runtime.hooks.onHttpResponse({
+        resource: "catalog",
+        path: "/catalog",
+        status: 503,
+        body,
+        bodyTruncated: false,
+      });
+      app.updateError(
+        downloadFailure({
+          stage: "check",
+          reason: "http",
+          resource: "catalog",
+          httpStatus: 503,
+          cause: new Error("Request failed with HTTP 503"),
+        }),
+      );
+      await flush();
+    }
+    expect(sentTypes()).toEqual(["UPDATE_FAILED"]);
+    expect(sentEvents()[0]?.metadata?.httpResponse).toMatchObject({
+      status: 503,
+      body: '{"requestId":"first","error":"Unavailable"}',
+      receivedAtMs: MORNING,
+    });
+  });
+
+  it.each(["한😀".repeat(2_000), "", null])(
+    "bounds a stored body and sends it only with the existing download report",
+    async (body) => {
+      const app = await launch();
+      app.runtime.hooks.onHttpResponse({
+        resource: "artifact",
+        path: "/artifacts/v1/target/from/current",
+        status: 200,
+        body,
+        bodyTruncated: false,
+      });
+      await flush();
+      expect(sent).toHaveLength(0);
+      app.downloaded(download);
+      await flush();
+      expect(sentTypes()).toEqual(["UPDATE_DOWNLOADED"]);
+      const response = sentEvents()[0]?.metadata?.httpResponse;
+      expect(
+        Buffer.byteLength(JSON.stringify(response?.body)),
+      ).toBeLessThanOrEqual(4_096);
+      expect(response?.bodyTruncated).toBe(Boolean(body));
+      if (body) expect(response?.body?.isWellFormed()).toBe(true);
+      else expect(response?.body).toBe(body);
+    },
+  );
+
+  it("does not attach a response from another app version or channel", async () => {
+    const app = await launch();
+    app.runtime.hooks.onHttpResponse({
+      resource: "catalog",
+      path: "/catalog",
+      status: 200,
+      body: "{}",
+      bodyTruncated: false,
+    });
+    app.appReady(unchangedLaunch({ channel: "staging" }));
+    await flush();
+    appVersion = "2.0.0";
+    (await launch()).appReady(unchangedLaunch());
+    await flush();
+    expect(
+      sentEvents().every((event) => event.metadata?.httpResponse === undefined),
+    ).toBe(true);
+  });
+
   it("posts a launch as UNCHANGED with the app's identity", async () => {
     const app = await launch();
 

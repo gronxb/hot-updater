@@ -31,6 +31,7 @@ import {
   type PluginHookPayload,
   type UpdateCheckResult,
   type UpdateError,
+  type UpdateHttpResponse,
 } from "@hot-updater/protocol";
 
 /** A value the test fixes, or reads each time a plugin asks for it. */
@@ -107,6 +108,7 @@ export interface ClientPluginTestHooks {
   onUpdateCheck(result: UpdateCheckResult): void;
   onBundleDownloaded(info: BundleDownloadedInfo): void;
   onUpdateError(error: UpdateError): void;
+  onHttpResponse(response: UpdateHttpResponse): void;
 }
 
 /** One JavaScript runtime with the plugins set up, as after `HotUpdater.init`. */
@@ -360,6 +362,7 @@ export const setupClientPlugins = (
       onUpdateCheck: call("onUpdateCheck"),
       onBundleDownloaded: call("onBundleDownloaded"),
       onUpdateError: call("onUpdateError"),
+      onHttpResponse: call("onHttpResponse"),
     },
     listens: (name) => host.hasPluginHook(name),
     requests,

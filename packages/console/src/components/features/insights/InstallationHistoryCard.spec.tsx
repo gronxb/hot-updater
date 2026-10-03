@@ -1,4 +1,10 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  within,
+} from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { InsightsEventRow } from "@/lib/insights-view";
@@ -60,6 +66,43 @@ describe("InstallationHistoryCard", () => {
     expect(screen.getAllByText("Update applied").length).toBeGreaterThan(0);
     fireEvent.click(screen.getByRole("button", { name: "Next" }));
     expect(onNext).toHaveBeenCalledOnce();
+  });
+
+  it("opens a cached HTTP response from the latest unchanged report without a history event", async () => {
+    render(
+      <InstallationHistoryCard
+        error={null}
+        history={{ data: [], nextCursor: null }}
+        isLoading={false}
+        onNext={vi.fn()}
+        onPrevious={vi.fn()}
+        pageNumber={1}
+        selectedEvent={{
+          ...event,
+          type: "UNCHANGED",
+          httpResponse: {
+            resource: "catalog",
+            path: "/release-catalogs/app-version/ios/production/1.2.3",
+            status: 304,
+            body: "",
+            bodyTruncated: false,
+            receivedAtMs: event.receivedAtMs - 60_000,
+          },
+        }}
+        selectedInstallId="install-1"
+      />,
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "View catalog response: HTTP 304" }),
+    );
+    const dialog = await screen.findByRole("dialog", { name: "HTTP response" });
+    expect(within(dialog).getByText("Empty response body")).toBeDefined();
+    expect(within(dialog).getByText(/reuse its cached catalog/)).toBeDefined();
+    expect(
+      within(dialog)
+        .getByRole("button", { name: "Copy body" })
+        .hasAttribute("disabled"),
+    ).toBe(true);
   });
 
   it("explains an installation with no bundle movement", () => {

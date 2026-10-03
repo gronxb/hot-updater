@@ -1,4 +1,7 @@
-import type { HotUpdaterClientContext } from "@hot-updater/protocol";
+import type {
+  HotUpdaterClientContext,
+  UpdateHttpResponse,
+} from "@hot-updater/protocol";
 
 export type InsightsEventType =
   | "UNCHANGED"
@@ -27,8 +30,14 @@ export interface InsightsEventBody {
   readonly metadata?: InsightsEventMetadata;
 }
 
+export type InsightsHttpResponse = UpdateHttpResponse & {
+  readonly receivedAtMs: number;
+};
+
 /** Details beside an event's fields, by event type. */
 export interface InsightsEventMetadata {
+  /** Most recent response available when this report was created. */
+  readonly httpResponse?: InsightsHttpResponse;
   /** UPDATE_FAILED: where and why the update failed. */
   readonly failure?: {
     readonly stage: "check" | "download" | "install";

@@ -345,6 +345,18 @@ const toFailure = (
 
 /** What a row's metadata adds for its type: a failure, a delivery, an exit reason. */
 const eventDetails = ({ type, metadata }: BundleEventRow) => ({
+  ...(metadata.http_response !== undefined
+    ? {
+        httpResponse: {
+          resource: metadata.http_response.resource,
+          path: metadata.http_response.path,
+          status: metadata.http_response.status,
+          body: metadata.http_response.body,
+          bodyTruncated: metadata.http_response.body_truncated,
+          receivedAtMs: metadata.http_response.received_at_ms,
+        },
+      }
+    : {}),
   ...(type === "UPDATE_FAILED" && metadata.failure !== undefined
     ? { failure: toFailure(metadata.failure) }
     : {}),
@@ -379,6 +391,9 @@ const toEventHistoryRow = (row: BundleEventRow): EventHistoryRow => ({
 });
 
 const toInstallationRow = (row: BundleEventRow): InstallationRow => ({
+  ...(eventDetails(row).httpResponse
+    ? { httpResponse: eventDetails(row).httpResponse }
+    : {}),
   appVersion: row.app_version,
   channel: row.channel,
   cohort: row.metadata.cohort,

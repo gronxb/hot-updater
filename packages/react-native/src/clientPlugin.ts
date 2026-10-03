@@ -13,5 +13,6 @@ export {
   type UpdateErrorResource,
   type UpdateErrorStage,
   type UpdateErrorTransport,
+  type UpdateHttpResponse,
   type UpdateStrategy,
 } from "@hot-updater/protocol";

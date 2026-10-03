@@ -1,7 +1,7 @@
 import { getUtf8ByteLength } from "@hot-updater/protocol";
 
 /** Bound the JSON wire size without rewriting the error text or splitting Unicode. */
-const boundedText = (text: string, maxBytes: number): string => {
+export const boundedText = (text: string, maxBytes: number): string => {
   if (getUtf8ByteLength(JSON.stringify(text)) <= maxBytes) return text;
   let result = "";
   let bytes = 2 + getUtf8ByteLength("…");
