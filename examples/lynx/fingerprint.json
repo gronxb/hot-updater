@@ -1,6 +1,6 @@
 {
   "ios": {
-    "hash": "d884862cf1691c9ab8d15735d285113e6f30de21b4fcf02330c92fbe0a691479",
+    "hash": "07448fc3426c088c85224cea2235b7006ba479c823bd6f776eb7673cfa67372a",
     "sources": [
       {
         "type": "file",
@@ -107,9 +107,9 @@
         "reasons": [
           "lynx-native-input"
         ],
-        "hash": "8cddb4a1e604898a62c6fa9a43c17d42a6ffd783a171b0ee1225bcab31ebf4f2",
+        "hash": "408b526ec14416f6c1905325e228147481873a37a622df1035844e3e119a8724",
         "debugInfo": {
-          "byteSize": 907
+          "byteSize": 902
         }
       },
       {
@@ -118,9 +118,9 @@
         "reasons": [
           "lynx-native-input"
         ],
-        "hash": "79619d51e49572be817dfd13035bf76f5571d11373156cce8e4a464f804aa01b",
+        "hash": "cbcb31d5cbc5770c2bbd5af1a4684367ae00a36ac1c29d73b33c28f42f32302d",
         "debugInfo": {
-          "byteSize": 677
+          "byteSize": 638
         }
       },
       {
@@ -250,9 +250,9 @@
         "reasons": [
           "lynx-native-input"
         ],
-        "hash": "d235e30f7c6c4a4853c958cf0c8221810ec3857216785c1e12133e3d15febf37",
+        "hash": "dba816d357f3c3a96769452749052d37489c9ef053d4c24e48c1ad2ad6dfd263",
         "debugInfo": {
-          "byteSize": 12589
+          "byteSize": 7627
         }
       },
       {
@@ -261,9 +261,9 @@
         "reasons": [
           "lynx-native-input"
         ],
-        "hash": "eaac1eeb742f22a75b04ad6f082f5fd6d9799a0e471a53a7f0fd68e951438b13",
+        "hash": "254357b684e37baa56376d16a841343c1a691019a5363e6e7e1fb632529f881e",
         "debugInfo": {
-          "byteSize": 5841
+          "byteSize": 5067
         }
       },
       {
@@ -286,17 +286,6 @@
         "hash": "852d84e32306d81fef117194493054fdc75009b235fdc7a01e978348d26f4ece",
         "debugInfo": {
           "byteSize": 15666
-        }
-      },
-      {
-        "type": "file",
-        "filePath": "@hot-updater/lynx/ios/Sources/HotUpdaterLynxArtifact/ZipArchiveExtractor.swift",
-        "reasons": [
-          "lynx-native-input"
-        ],
-        "hash": "1c158bfe1337f0fa590fc900c4a977903a3e2a33dde94bfc2e90b159311831c3",
-        "debugInfo": {
-          "byteSize": 20858
         }
       },
       {
@@ -360,9 +349,9 @@
         "reasons": [
           "lynx-native-input"
         ],
-        "hash": "1c1456b46464a2029d0153a533073ac0ac15188c71f658c6d9a16b55a2d2370e",
+        "hash": "a7f0dc1b7c00f016ff7bcc6c9b0906f171d47222e0ebb5b45e0a8b3c967c4044",
         "debugInfo": {
-          "byteSize": 6896
+          "byteSize": 6926
         }
       },
       {

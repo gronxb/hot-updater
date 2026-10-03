@@ -12,7 +12,7 @@ Pod::Spec.new do |s|
   s.source_files = 'Sources/HotUpdaterLynxArtifact/**/*.swift',
                    'Sources/HotUpdaterLynxBsdiff/**/*.{h,mm}'
   s.swift_version = '5.0'
-  s.libraries = 'z', 'compression', 'bz2', 'c++'
+  s.libraries = 'compression', 'bz2', 'c++'
   s.pod_target_xcconfig = { 'CLANG_CXX_LANGUAGE_STANDARD' => 'c++17' }
   s.dependency 'Lynx/Framework', '3.9.0'
   s.frameworks = 'Foundation', 'Security', 'CryptoKit'

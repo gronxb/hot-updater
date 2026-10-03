@@ -134,8 +134,8 @@ PODS:
 
 DEPENDENCIES:
   - HotUpdaterLynxArtifact (from `../../../packages/lynx/ios`)
-  - HotUpdaterLynxSparkling/Core (from `../../../packages/lynx/ios`)
-  - HotUpdaterLynxSparkling/Diagnostics (from `../../../packages/lynx/ios`)
+  - HotUpdaterLynxSparkling/Core (from `../../../packages/lynx-sparkling/ios`)
+  - HotUpdaterLynxSparkling/Diagnostics (from `../../../packages/lynx-sparkling/ios`)
   - Lynx/Framework (= 3.9.0)
   - Lynx/ReleaseResource (= 3.9.0)
   - LynxLibraryRegistry (from `generated/lynx-library`)
@@ -171,7 +171,7 @@ EXTERNAL SOURCES:
   HotUpdaterLynxArtifact:
     :path: "../../../packages/lynx/ios"
   HotUpdaterLynxSparkling:
-    :path: "../../../packages/lynx/ios"
+    :path: "../../../packages/lynx-sparkling/ios"
   LynxLibraryRegistry:
     :path: generated/lynx-library
   Sparkling:
@@ -184,7 +184,7 @@ EXTERNAL SOURCES:
     :path: ".upstream/sparkling/packages/sparkling-method/ios"
 
 SPEC CHECKSUMS:
-  HotUpdaterLynxArtifact: 2af94f191c13da124a59dbd5a4cd83103e532ee3
+  HotUpdaterLynxArtifact: bccef3bc7f1827e722a065229153908f8900653a
   HotUpdaterLynxSparkling: 9ed1dc7d97dfbdb318dbd7291136c625155d0ce7
   libwebp: 02b23773aedb6ff1fd38cec7a77b81414c6842a8
   Lynx: ad5ed649ccf1d761e6697bc5d6d4fa6f30ad13e3
@@ -202,6 +202,6 @@ SPEC CHECKSUMS:
   SparklingMacro: 2358dca825325d1b1055c3adfb79ee3e376b204d
   SparklingMethod: 4c72f641b1798f0c592ce01d8807ac5b3a021bee
 
-PODFILE CHECKSUM: 94f52ff04264c56d5a78cee74b300bb33dc41632
+PODFILE CHECKSUM: 2f035daee0b8ba41224b0efa93daf82f42eb1fcd
 
 COCOAPODS: 1.17.0

@@ -12,7 +12,6 @@ React Native source files, package dependencies and CocoaPods setup remain uncha
 | `HashUtils.swift` | `3f5a9e4b493f778137606e50ce6ccf5b7c8f4cf7bb31226c4d5a86f802e39f8e` |
 | `StreamingTarArchiveExtractor.swift` | `4598d69d9d0d251cb679f6d4402c5ca67af9f28b4ce71ff9ce9998c73534e516` |
 | `TarArchiveExtractor.swift` | `dbad88e282069a42c00fd5a270d34bb14fd71ca26ff816bbe17ab36a4befad4a` |
-| `ZipArchiveExtractor.swift` | `594b3f5f3690e17b1bb24434f0dcc8456ec65d1734db7a0490314f829e3dd1f8` |
 | `SignatureVerifier.swift` | `43b6cc8ef639cdf3e4ab22e45b303c422b9b1274fe98d8f2255565c0eb256003` |
 | `BsdiffPatchBridge.mm` | `8e544d41c02917cd1daf90e349d3c01c1b0140e6d3611f140fc653b90d2c1077` |
 
@@ -20,11 +19,12 @@ The copied cryptographic implementation is named `ArtifactSignatureVerifier` and
 receives an immutable native configuration key explicitly. Its RSA-SHA256 wire
 semantics remain unchanged. React Native's Info.plist/config lookup is excluded.
 Archive extraction gains a strict mode used by `LynxArtifactInstaller`: invalid
-paths, links, duplicates, case aliases, local/central ZIP mismatches and unsupported
-TAR types reject the entire preparation. Entry count and expanded byte limits
-prevent unlimited extraction. ZIP output is checked while inflating; compressed
-TAR output is bounded before extraction. The original permissive mode remains
-available internally for comparison, but the installer always uses strict mode.
+paths, links, duplicates, case aliases and unsupported TAR types reject bulk
+extraction. Entry count and expanded byte limits prevent unlimited extraction.
+Brotli output is bounded before TAR extraction. The installer requires the
+authenticated decoded size and exact file inventory; it does not detect formats
+from archive bytes. If optional bulk transfer fails, manifest-v1 may install
+verified original files instead. The copied ZIP/GZIP paths are not shipped.
 
 `URLSessionDownloadService` was not copied: it owns React Native/global background
 session and persistent download state. `ArtifactDownload` instead gives each
