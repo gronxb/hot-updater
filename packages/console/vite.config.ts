@@ -29,7 +29,7 @@ const config = defineConfig({
     exclude: ["oxc-transform", "@oxc-transform/binding-darwin-arm64"],
   },
   ssr: {
-    noExternal: ["@hot-updater/core", "@hot-updater/mock"],
+    noExternal: ["@hot-updater/protocol", "@hot-updater/mock"],
     external: [
       "@hot-updater/bsdiff",
       "@hot-updater/cli-tools",

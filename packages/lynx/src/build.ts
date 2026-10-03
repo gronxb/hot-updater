@@ -2,9 +2,9 @@ import fs from "node:fs/promises";
 import path from "node:path";
 
 import type {
-  BasePluginArgs,
-  BuildPlugin,
-  BuildPluginConfig,
+  BuildAdapterArgs,
+  BuildAdapter,
+  BuildAdapterConfig,
   NativeFingerprintProvider,
 } from "@hot-updater/plugin-core";
 import {
@@ -49,11 +49,11 @@ export interface LynxPageEssentialResources {
   readonly resources: readonly string[];
 }
 
-export interface LynxPluginConfig extends BuildPluginConfig {
+export interface LynxPluginConfig extends BuildAdapterConfig {
   /** Compile or copy native Lynx output using the app's own toolchain. */
   build: (context: LynxBuildContext) => Promise<LynxBuildOutput>;
   /** Resolve the public key embedded by the native build, or null when unsigned. */
-  getBundleSigningPublicKey?: (context: BasePluginArgs) => Promise<{
+  getBundleSigningPublicKey?: (context: BuildAdapterArgs) => Promise<{
     readonly publicKey: string;
   } | null>;
   /** Override native compatibility fingerprinting for a custom Lynx host. */
@@ -114,7 +114,7 @@ export const lynx =
     getBundleSigningPublicKey,
     outDir = ".hot-updater/lynx",
   }: LynxPluginConfig) =>
-  ({ cwd }: BasePluginArgs): BuildPlugin => ({
+  ({ cwd }: BuildAdapterArgs): BuildAdapter => ({
     name: "lynx",
     nativeBuild: {
       fingerprint: (options) =>

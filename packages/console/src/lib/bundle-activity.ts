@@ -10,12 +10,14 @@ export type BundleActivityInput = Pick<
 
 export type BundleActivityReport = {
   readonly downloads: number;
-  readonly launches: number;
+  /** Each installation once for each UTC day it launched the release. */
+  readonly activeDays: number;
   readonly failedLaunches: number;
   readonly measuredAtMs: number;
-  readonly coverage: import("@hot-updater/plugin-core").InsightsCoverage;
+  readonly coverage: import("@hot-updater/server/plugins/insights").InsightsCoverage;
 };
 
+/** Release activity for bundle rows; mounted only where the console reads it. */
 export function useBundleActivityQuery(inputs: readonly BundleActivityInput[]) {
   const sorted = [...inputs].sort((a, b) =>
     a.releaseId.localeCompare(b.releaseId),

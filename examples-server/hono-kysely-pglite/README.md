@@ -18,9 +18,13 @@ A production-ready Hot Updater server example using:
 
 ## Setup
 
-1. Install the workspace dependencies and enter this package:
+Use Node.js 20.19 or later for native environment-file loading.
+
+1. Install and build the workspace dependencies from the repository root, then
+   enter this package:
 ```bash
 pnpm install
+pnpm -w build
 cd examples-server/hono-kysely-pglite
 ```
 
@@ -66,14 +70,14 @@ credentials are rejected.
 GET /hot-updater/admin/bundles?limit=50
 ```
 
-### Create Bundle
+### Deploy Bundles
 ```bash
-POST /hot-updater/admin/bundles
+POST /hot-updater/admin/releases
 ```
 
-### Delete Bundle
+### Delete Bundles
 ```bash
-DELETE /hot-updater/admin/bundles/:id
+POST /hot-updater/admin/bundles/delete
 ```
 
 ### List Channels

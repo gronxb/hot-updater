@@ -3,6 +3,7 @@ import path from "node:path";
 
 import { parse as parseToml } from "@iarna/toml";
 
+import type { InfraClientAuth } from "../infra/clientAuth";
 import {
   getInfraBuildVariants,
   getInfraFiles,
@@ -36,6 +37,8 @@ export async function readScaffoldFile(root: string, file: string) {
 export async function checkScaffold(infraDir: string): Promise<{
   checks: DoctorCheck[];
   manifest?: InfraManifest;
+  /** The packaged template's client-route policy, which the manifest cannot change. */
+  clientAuth?: InfraClientAuth;
 }> {
   const checks: DoctorCheck[] = [];
   const fail = (
@@ -268,7 +271,7 @@ export async function checkScaffold(infraDir: string): Promise<{
         "INFRA_SUPABASE_FUNCTION",
         "The supplied Edge Function must use a project ID and verify_jwt = false.",
         file,
-        "Configure project_id and [functions.hot-updater-v1]; the runtime authenticates the client x-api-key.",
+        "Configure project_id and [functions.hot-updater-v1]; the runtime authenticates client requests itself.",
       );
     }
   }
@@ -300,6 +303,8 @@ export async function checkScaffold(infraDir: string): Promise<{
         );
       }
     }
+    // Cache keys hold the headers the server's client-route policy reads.
+    const clientHeaders = template.clientAuth?.varyHeaders ?? [];
     for (const policyFile of [
       "cloudfront/cache-policy.json",
       "cloudfront/catalog-cache-policy.json",
@@ -312,15 +317,17 @@ export async function checkScaffold(infraDir: string): Promise<{
       );
       const names = object(headers["Headers"])["Items"];
       if (
-        headers["HeaderBehavior"] !== "whitelist" ||
-        !Array.isArray(names) ||
-        !names.includes("x-api-key")
+        clientHeaders.length > 0 &&
+        (headers["HeaderBehavior"] !== "whitelist" ||
+          !Array.isArray(names) ||
+          clientHeaders.some((name) => !names.includes(name)))
       ) {
+        const listed = clientHeaders.join(", ");
         fail(
           "INFRA_AWS_CACHE_AUTH",
-          "CloudFront cache keys must include x-api-key.",
+          `CloudFront cache keys must include ${listed}.`,
           policyFile,
-          "Restore x-api-key in the cache policy header whitelist.",
+          `Restore ${listed} in the cache policy header whitelist.`,
         );
       }
     }
@@ -365,5 +372,5 @@ export async function checkScaffold(infraDir: string): Promise<{
         "Required files, deployment placeholders and provider configuration checks passed.",
     });
   }
-  return { checks, manifest };
+  return { checks, manifest, clientAuth: template.clientAuth };
 }

@@ -3,50 +3,46 @@ import { createReadStream, createWriteStream } from "node:fs";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { Readable, Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import {
-  createBrotliDecompress,
+  brotliDecompressSync,
   constants as zlibConstants,
   createBrotliCompress,
-  createGunzip,
 } from "node:zlib";
 
+import type { Bundle, StorageAdapterWith } from "@hot-updater/plugin-core";
 import {
-  getManifestFileHash,
-  stripBundleArtifactMetadata,
-} from "@hot-updater/core";
-import type { Bundle, StoragePluginWith } from "@hot-updater/plugin-core";
-import {
-  assertBundleArchiveByteSize,
-  assertBundleArtifactByteSize,
-  assertBundleExpandedByteSize,
-  assertBundleManifestByteSize,
-  assertBundleTarStreamByteSize,
   createBundleStorageKey,
   createStorageRootUriWithPath,
-  detectCompressionFormat,
-  getPortableArtifactPathCollisionKey,
-  getUtf8ByteSize,
   getManifestAssetDownloadPath,
   getManifestAssetStoragePath,
   isContentAddressedAssetFileHash,
-  MAX_BUNDLE_ARCHIVE_ENTRIES,
-  MAX_BUNDLE_ARTIFACT_PATH_UTF8_BYTES,
-  parseStorageUri,
   resolveManifestAssetStorageUri,
+  parseStoredBundleManifest,
+  hasVerifiedDownloadRepresentation,
+  assertBundleArtifactByteSize,
+  assertBundleExpandedByteSize,
+  assertBundleManifestByteSize,
+  MAX_BUNDLE_ARTIFACT_BYTES,
+  MAX_BUNDLE_MANIFEST_BYTES,
 } from "@hot-updater/plugin-core";
-import JSZip from "jszip";
-import * as tar from "tar";
+import {
+  getManifestFileHash,
+  type ManifestArchive,
+  stripBundleArtifactMetadata,
+} from "@hot-updater/protocol";
 
 import { prepareBundleSigning } from "./bundleSigning";
 import { createTarBrTargetFiles } from "./createTarBr";
-import { createTarGzTargetFiles } from "./createTarGz";
-import { createZipTargetFiles } from "./createZip";
 import type { ConfigResponse } from "./loadConfig";
-import { getStorageFileByteSize, putStorageFile } from "./storageFiles";
+import {
+  getStorageFileByteSize,
+  putStorageFile,
+  writeStorageFile,
+  writeStorageResponseFile,
+} from "./storageFiles";
 
-type PromoteStoragePlugin = StoragePluginWith<
+type PromoteStorageAdapter = StorageAdapterWith<
   "get" | "put" | "exists" | "delete"
 >;
 
@@ -55,24 +51,18 @@ const LEGACY_BUNDLE_ERROR =
 const SIGNED_HASH_PREFIX = "sig:";
 const PROMOTE_ASSET_CONCURRENCY = 8;
 
-type ArchiveEntryKind = "directory" | "file";
-
-interface ArchiveEntryDescriptor {
-  kind: ArchiveEntryKind;
-  path: string;
-  size: number;
-}
-
 interface BundleManifest {
   bundleId?: string;
   assets?: Record<string, BundleManifestAsset>;
+  archive?: ManifestArchive;
 }
 
 interface BundleManifestAsset {
+  byteSize?: number;
   downloadByteSize?: number;
-  downloadCompression?: "br" | null;
   downloadFileHash?: string;
   fileHash: string;
+  downloadCompression?: "br" | null;
   signature?: string;
 }
 
@@ -133,117 +123,11 @@ function verifySignedFileHash({
   }
 }
 
-function getArchiveFilename(storageUri: string) {
-  const protocol = new URL(storageUri).protocol.replace(":", "");
-  const { key } = parseStorageUri(storageUri, protocol);
-  const filename = path.posix.basename(key);
-  return filename || "bundle.zip";
-}
-
 const getRelativeStorageDir = (relativePath: string) => {
   const normalized = relativePath.replace(/\\/g, "/");
   const dirname = path.posix.dirname(normalized);
   return dirname === "." ? "" : dirname;
 };
-
-const hasControlCharacter = (value: string) =>
-  [...value].some((character) => {
-    const codePoint = character.codePointAt(0) ?? 0;
-    return codePoint <= 0x1f || codePoint === 0x7f;
-  });
-
-function normalizeArchiveEntryPath(entryPath: string, kind: ArchiveEntryKind) {
-  const normalized =
-    kind === "directory" && entryPath.endsWith("/")
-      ? entryPath.slice(0, -1)
-      : entryPath;
-
-  if (
-    normalized.length === 0 ||
-    normalized.includes("\\") ||
-    normalized.includes(":") ||
-    path.posix.isAbsolute(normalized) ||
-    hasControlCharacter(normalized) ||
-    getUtf8ByteSize(normalized) > MAX_BUNDLE_ARTIFACT_PATH_UTF8_BYTES ||
-    normalized
-      .split("/")
-      .some(
-        (segment) =>
-          segment.length === 0 || segment === "." || segment === "..",
-      )
-  ) {
-    throw new Error(`Invalid archive entry path: ${entryPath}`);
-  }
-
-  return normalized;
-}
-
-function validateArchiveEntries(entries: readonly ArchiveEntryDescriptor[]) {
-  const entriesByKey = new Map<
-    string,
-    { explicit: boolean; kind: ArchiveEntryKind; path: string }
-  >();
-  let expandedByteSize = 0;
-
-  for (const entry of entries) {
-    const normalizedPath = normalizeArchiveEntryPath(entry.path, entry.kind);
-    const segments = normalizedPath.split("/");
-
-    for (let index = 1; index < segments.length; index += 1) {
-      const parentPath = segments.slice(0, index).join("/");
-      const parentKey = getPortableArtifactPathCollisionKey(parentPath);
-      const existingParent = entriesByKey.get(parentKey);
-      if (existingParent?.kind === "file") {
-        throw new Error(
-          `Archive entry path conflicts with file: ${normalizedPath}`,
-        );
-      }
-      if (existingParent && existingParent.path !== parentPath) {
-        throw new Error(`Archive entry path collision: ${normalizedPath}`);
-      }
-      if (!existingParent) {
-        entriesByKey.set(parentKey, {
-          explicit: false,
-          kind: "directory",
-          path: parentPath,
-        });
-      }
-    }
-
-    const key = getPortableArtifactPathCollisionKey(normalizedPath);
-    const existing = entriesByKey.get(key);
-    if (
-      existing?.explicit ||
-      (existing &&
-        (existing.kind !== "directory" || entry.kind !== "directory")) ||
-      (existing && existing.path !== normalizedPath)
-    ) {
-      throw new Error(`Archive entry path collision: ${normalizedPath}`);
-    }
-    entriesByKey.set(key, {
-      explicit: true,
-      kind: entry.kind,
-      path: normalizedPath,
-    });
-
-    if (entry.kind === "file") {
-      assertBundleArtifactByteSize(entry.size, normalizedPath);
-      if (normalizedPath === "manifest.json") {
-        assertBundleManifestByteSize(entry.size);
-      }
-      expandedByteSize += entry.size;
-      assertBundleExpandedByteSize(expandedByteSize);
-    } else if (entry.size !== 0) {
-      throw new Error(`Archive directory has data: ${normalizedPath}`);
-    }
-
-    if (entriesByKey.size > MAX_BUNDLE_ARCHIVE_ENTRIES) {
-      throw new Error(
-        `Bundle archive contains more than ${MAX_BUNDLE_ARCHIVE_ENTRIES} entries`,
-      );
-    }
-  }
-}
 
 function resolvePreparedUploadPath(rootDir: string, assetPath: string) {
   const normalizedAssetPath = assetPath.replaceAll("\\", "/");
@@ -266,8 +150,8 @@ function resolvePreparedUploadPath(rootDir: string, assetPath: string) {
 }
 
 async function prepareManifestAssetUploadFile({
-  assetPath,
   downloadCompression,
+  assetPath,
   sourcePath,
   workDir,
 }: {
@@ -336,43 +220,28 @@ async function prepareManifestAssetUploadTargets({
   );
 
   for (const assetPath of assetPaths) {
-    if (!manifest.assets?.[assetPath]?.fileHash) {
-      throw new Error(`Manifest file hash not found for ${assetPath}`);
-    }
-  }
-
-  if (
-    assetPaths.some(
-      (assetPath) =>
-        manifest.assets?.[assetPath]?.downloadCompression === undefined,
-    )
-  ) {
-    return [];
-  }
-
-  for (const assetPath of assetPaths) {
     const asset = manifest.assets?.[assetPath];
     if (!asset?.fileHash) {
       throw new Error(`Manifest file hash not found for ${assetPath}`);
     }
-    const downloadCompression = asset.downloadCompression;
-    if (downloadCompression === undefined) {
-      return [];
-    }
 
-    const sourcePath = await resolveExtractedFilePath(extractDir, assetPath);
+    if (asset.downloadCompression === undefined)
+      throw new Error(
+        `Manifest asset does not declare downloadCompression: ${assetPath}`,
+      );
+    const sourcePath = resolveExtractedPath(extractDir, assetPath);
     const uploadSourcePath = await prepareManifestAssetUploadFile({
+      downloadCompression: asset.downloadCompression,
       assetPath,
-      downloadCompression,
       sourcePath,
       workDir,
     });
     const downloadByteSize = await getStorageFileByteSize(uploadSourcePath);
     const downloadPath = getManifestAssetDownloadPath(
       assetPath,
-      downloadCompression,
+      asset.downloadCompression ?? null,
     );
-    const usesBrotli = downloadCompression === "br";
+    const usesBrotli = downloadPath !== assetPath;
     const downloadFileHash = usesBrotli
       ? await getFileHash(uploadSourcePath)
       : undefined;
@@ -387,6 +256,7 @@ async function prepareManifestAssetUploadTargets({
 
     const nextAsset: BundleManifestAsset = {
       ...asset,
+      byteSize: (await fs.stat(sourcePath)).size,
       downloadByteSize,
     };
     delete nextAsset.downloadFileHash;
@@ -417,12 +287,8 @@ async function prepareManifestAssetUploadTargets({
   return [...targets.values()];
 }
 
-function resolveExtractedPath(
-  rootDir: string,
-  entryName: string,
-  kind: ArchiveEntryKind = "file",
-) {
-  const normalizedEntryName = normalizeArchiveEntryPath(entryName, kind);
+function resolveExtractedPath(rootDir: string, entryName: string) {
+  const normalizedEntryName = entryName.replaceAll("\\", "/");
   const entryPath = path.resolve(rootDir, normalizedEntryName);
   const relativePath = path.relative(rootDir, entryPath);
 
@@ -431,435 +297,154 @@ function resolveExtractedPath(
     path.isAbsolute(relativePath) ||
     normalizedEntryName.startsWith("/")
   ) {
-    throw new Error(`Invalid archive entry path: ${entryName}`);
+    throw new Error(`Invalid manifest asset path: ${entryName}`);
   }
 
   return entryPath;
 }
 
-async function resolveExtractedFilePath(rootDir: string, entryName: string) {
-  const normalizedEntryName = normalizeArchiveEntryPath(entryName, "file");
-  const segments = normalizedEntryName.split("/");
-  let currentPath = rootDir;
-
-  for (let index = 0; index < segments.length; index += 1) {
-    currentPath = path.join(currentPath, segments[index]!);
-    const entryStat = await fs.lstat(currentPath);
-    if (index === segments.length - 1) {
-      if (!entryStat.isFile()) {
-        throw new Error(`Archive asset is not a regular file: ${entryName}`);
-      }
-    } else if (!entryStat.isDirectory()) {
-      throw new Error(`Archive asset parent is not a directory: ${entryName}`);
-    }
-  }
-
-  return currentPath;
-}
-
-function createByteLimitTransform(assertByteSize: (byteSize: number) => void) {
-  let byteSize = 0;
-  return new Transform({
-    transform(chunk: Buffer, _encoding, callback) {
-      byteSize += chunk.byteLength;
-      try {
-        assertByteSize(byteSize);
-        callback(null, chunk);
-      } catch (error) {
-        callback(error as Error);
-      }
-    },
-  });
-}
-
-async function writeBoundedArchiveResponse(
-  response: Response,
-  filePath: string,
-) {
-  const contentLength = response.headers.get("content-length");
-  if (contentLength !== null) {
-    assertBundleArchiveByteSize(Number(contentLength));
-  }
-
-  await fs.mkdir(path.dirname(filePath), { recursive: true });
-  if (response.body === null) {
-    await fs.writeFile(filePath, new Uint8Array());
-    return;
-  }
-
-  try {
-    await pipeline(
-      Readable.fromWeb(response.body as ReadableStream<Uint8Array>),
-      createByteLimitTransform(assertBundleArchiveByteSize),
-      createWriteStream(filePath),
-    );
-  } catch (error) {
-    await fs.rm(filePath, { force: true });
-    throw error;
-  }
-}
-
-async function downloadArchive(
+async function downloadStorageObject(
   storageUri: string,
-  storagePlugin: PromoteStoragePlugin | null,
-  archivePath: string,
+  storageAdapter: PromoteStorageAdapter | null,
+  outputPath: string,
+  maxBytes = MAX_BUNDLE_ARTIFACT_BYTES,
 ) {
   const protocol = new URL(storageUri).protocol.replace(":", "");
 
-  if (storagePlugin?.protocol === protocol) {
-    const { response } = await storagePlugin.get({ storageUri });
-    if (response === null) {
-      throw new Error(`Storage object not found: ${storageUri}`);
-    }
-    await writeBoundedArchiveResponse(response, archivePath);
+  if (storageAdapter?.protocol === protocol) {
+    await writeStorageFile(storageAdapter, storageUri, outputPath, maxBytes);
     return;
   }
 
   if (protocol === "http" || protocol === "https") {
-    await downloadFromUrl(storageUri, archivePath);
+    await downloadFromUrl(storageUri, outputPath, maxBytes);
     return;
   }
 
-  throw new Error(`No storage plugin for protocol: ${protocol}`);
+  throw new Error(`No storage adapter for protocol: ${protocol}`);
 }
 
-async function downloadFromUrl(fileUrl: string, filePath: string) {
+async function downloadFromUrl(
+  fileUrl: string,
+  filePath: string,
+  maxBytes: number,
+) {
   const response = await fetch(fileUrl);
   if (!response.ok) {
     throw new Error(
-      `Failed to download bundle archive: ${response.statusText}`,
+      `Failed to download storage object: ${response.statusText}`,
     );
   }
 
-  await writeBoundedArchiveResponse(response, filePath);
+  await writeStorageResponseFile(response, filePath, maxBytes);
 }
 
-function readZipCentralDirectory(archive: Buffer) {
-  const minimumEndOffset = Math.max(0, archive.byteLength - 65_557);
-  let endOffset = -1;
-  for (
-    let offset = archive.byteLength - 22;
-    offset >= minimumEndOffset;
-    offset -= 1
-  ) {
-    if (archive.readUInt32LE(offset) === 0x06054b50) {
-      endOffset = offset;
-      break;
-    }
-  }
-  if (endOffset === -1) {
-    throw new Error("Invalid ZIP central directory");
-  }
-
-  const entryCount = archive.readUInt16LE(endOffset + 10);
-  const centralDirectoryOffset = archive.readUInt32LE(endOffset + 16);
-  if (entryCount === 0xffff || centralDirectoryOffset === 0xffffffff) {
-    throw new Error("ZIP64 archives are not supported");
-  }
-
-  const entries: ArchiveEntryDescriptor[] = [];
-  let offset = centralDirectoryOffset;
-  for (let index = 0; index < entryCount; index += 1) {
-    if (
-      offset + 46 > archive.byteLength ||
-      archive.readUInt32LE(offset) !== 0x02014b50
-    ) {
-      throw new Error("Invalid ZIP central directory entry");
-    }
-    const uncompressedSize = archive.readUInt32LE(offset + 24);
-    if (uncompressedSize === 0xffffffff) {
-      throw new Error("ZIP64 entries are not supported");
-    }
-    const filenameLength = archive.readUInt16LE(offset + 28);
-    const extraLength = archive.readUInt16LE(offset + 30);
-    const commentLength = archive.readUInt16LE(offset + 32);
-    const filenameOffset = offset + 46;
-    const nextOffset =
-      filenameOffset + filenameLength + extraLength + commentLength;
-    if (nextOffset > archive.byteLength) {
-      throw new Error("Invalid ZIP central directory entry length");
-    }
-    const entryPath = archive
-      .subarray(filenameOffset, filenameOffset + filenameLength)
-      .toString("utf8");
-    const madeBy = archive.readUInt16LE(offset + 4) >>> 8;
-    const externalAttributes = archive.readUInt32LE(offset + 38);
-    const unixFileType =
-      madeBy === 3 ? (externalAttributes >>> 16) & 0o170000 : 0;
-    const kind: ArchiveEntryKind =
-      entryPath.endsWith("/") || (externalAttributes & 0x10) !== 0
-        ? "directory"
-        : "file";
-    if (
-      (kind === "directory" &&
-        unixFileType !== 0 &&
-        unixFileType !== 0o040000) ||
-      (kind === "file" && unixFileType !== 0 && unixFileType !== 0o100000)
-    ) {
-      throw new Error(`Unsupported ZIP entry type: ${entryPath}`);
-    }
-    entries.push({
-      kind,
-      path: entryPath,
-      size: kind === "directory" ? 0 : uncompressedSize,
-    });
-    offset = nextOffset;
-  }
-
-  return entries;
-}
-
-async function extractZipArchive(archivePath: string, extractDir: string) {
-  const archive = await fs.readFile(archivePath);
-  const descriptors = readZipCentralDirectory(archive);
-  validateArchiveEntries(descriptors);
-  const zip = await JSZip.loadAsync(archive);
-
-  for (const descriptor of descriptors) {
-    const entry = zip.files[descriptor.path];
-    if (!entry || entry.dir !== (descriptor.kind === "directory")) {
-      throw new Error(`ZIP entry metadata mismatch: ${descriptor.path}`);
-    }
-    const outputPath = resolveExtractedPath(
-      extractDir,
-      descriptor.path,
-      descriptor.kind,
-    );
-
-    if (descriptor.kind === "directory") {
-      await fs.mkdir(outputPath, { recursive: true });
-      continue;
-    }
-
-    const data = await entry.async("nodebuffer");
-    if (data.byteLength !== descriptor.size) {
-      throw new Error(`ZIP entry size mismatch: ${descriptor.path}`);
-    }
-    await fs.mkdir(path.dirname(outputPath), { recursive: true });
-    await fs.writeFile(outputPath, data);
-  }
-}
-
-const getTarEntryDescriptor = (entry: {
-  path: string;
-  size: number;
-  type: string;
-}): ArchiveEntryDescriptor => {
-  switch (entry.type) {
-    case "File":
-    case "OldFile":
-      return { kind: "file", path: entry.path, size: entry.size };
-    case "Directory":
-      return { kind: "directory", path: entry.path, size: entry.size };
-    default:
-      throw new Error(`Unsupported TAR entry type: ${entry.type}`);
-  }
-};
-
-async function extractTarArchive(tarPath: string, extractDir: string) {
-  const entries: { path: string; size: number; type: string }[] = [];
-  await tar.list({
-    file: tarPath,
-    onReadEntry(entry) {
-      entries.push({ path: entry.path, size: entry.size, type: entry.type });
-      entry.resume();
-    },
-    strict: true,
-  });
-  validateArchiveEntries(entries.map(getTarEntryDescriptor));
-
-  await tar.extract({
-    cwd: extractDir,
-    file: tarPath,
-    filter(_entryPath, entry) {
-      if (!("path" in entry) || !("type" in entry)) {
-        throw new Error("Invalid TAR archive entry");
-      }
-      getTarEntryDescriptor(entry);
-      return true;
-    },
-    gzip: false,
-    preservePaths: false,
-    strict: true,
-  });
-}
-
-async function decodeTarArchive(
-  archivePath: string,
-  tarPath: string,
-  compression: "br" | "gzip",
-) {
-  await pipeline(
-    createReadStream(archivePath),
-    compression === "br" ? createBrotliDecompress() : createGunzip(),
-    createByteLimitTransform(assertBundleTarStreamByteSize),
-    createWriteStream(tarPath),
+async function downloadManifestAssets({
+  bundle,
+  manifest,
+  outputDir,
+  storageAdapter,
+  workDir,
+}: {
+  bundle: Bundle;
+  manifest: BundleManifest;
+  outputDir: string;
+  storageAdapter: PromoteStorageAdapter;
+  workDir: string;
+}) {
+  const assetPaths = Object.keys(manifest.assets ?? {}).sort((left, right) =>
+    left.localeCompare(right),
   );
-  assertBundleTarStreamByteSize(await getStorageFileByteSize(tarPath));
-}
 
-async function getExtractedTreeEntries(
-  rootDir: string,
-  relativeDir = "",
-): Promise<ArchiveEntryDescriptor[]> {
-  const entries = await fs.readdir(path.join(rootDir, relativeDir), {
-    withFileTypes: true,
-  });
-  const descriptors: ArchiveEntryDescriptor[] = [];
-
-  for (const entry of entries) {
-    const relativePath = path.posix.join(relativeDir, entry.name);
-    const entryPath = path.join(rootDir, relativePath);
-    const entryStat = await fs.lstat(entryPath);
-    if (entryStat.isSymbolicLink()) {
-      throw new Error(`Archive contains a symbolic link: ${relativePath}`);
-    }
-    if (entryStat.isDirectory()) {
-      descriptors.push({ kind: "directory", path: relativePath, size: 0 });
-      descriptors.push(
-        ...(await getExtractedTreeEntries(rootDir, relativePath)),
-      );
-      continue;
-    }
-    if (!entryStat.isFile()) {
-      throw new Error(`Archive contains a non-regular entry: ${relativePath}`);
-    }
-    descriptors.push({
-      kind: "file",
-      path: relativePath,
-      size: entryStat.size,
-    });
-  }
-
-  return descriptors;
-}
-
-async function extractArchive(archivePath: string, extractDir: string) {
-  const { format } = detectCompressionFormat(path.basename(archivePath));
-
-  switch (format) {
-    case "zip":
-      await extractZipArchive(archivePath, extractDir);
-      break;
-    case "tar.gz":
-    case "tar.br":
-      {
-        const tarPath = path.join(extractDir, ".hot-updater-source.tar");
-        try {
-          await decodeTarArchive(
-            archivePath,
-            tarPath,
-            format === "tar.br" ? "br" : "gzip",
-          );
-          await extractTarArchive(tarPath, extractDir);
-        } finally {
-          await fs.rm(tarPath, { force: true });
-        }
+  let expandedByteSize = 0;
+  await runWithConcurrency(
+    assetPaths,
+    PROMOTE_ASSET_CONCURRENCY,
+    async (assetPath) => {
+      const asset = manifest.assets?.[assetPath];
+      if (!asset?.fileHash) {
+        throw new Error(`Manifest file hash not found for ${assetPath}`);
       }
-      break;
-  }
-
-  validateArchiveEntries(await getExtractedTreeEntries(extractDir));
-  return format;
-}
-
-async function getArchiveTargetFiles(bundleDir: string) {
-  const entries = await fs.readdir(bundleDir, { withFileTypes: true });
-  entries.sort((left, right) => left.name.localeCompare(right.name));
-
-  return entries.map((entry) => ({
-    path: path.join(bundleDir, entry.name),
-    name: entry.name,
-  }));
-}
-
-async function createArchiveFromDirectory(
-  sourceDir: string,
-  archivePath: string,
-  format: ReturnType<typeof detectCompressionFormat>["format"],
-) {
-  const targetFiles = await getArchiveTargetFiles(sourceDir);
-
-  switch (format) {
-    case "zip":
-      await createZipTargetFiles({
-        outfile: archivePath,
-        targetFiles,
+      const downloadPath = getManifestAssetDownloadPath(
+        assetPath,
+        asset.downloadCompression ?? null,
+      );
+      const storageUri = resolveManifestAssetStorageUri({
+        assetBaseStorageUri: bundle.assetBaseStorageUri,
+        assetPath: downloadPath,
+        downloadFileHash: asset.downloadFileHash,
+        fileHash: asset.fileHash,
       });
-      return;
-    case "tar.gz":
-      await createTarGzTargetFiles({
-        outfile: archivePath,
-        targetFiles,
-      });
-      return;
-    case "tar.br":
-      await createTarBrTargetFiles({
-        outfile: archivePath,
-        targetFiles,
-      });
-      return;
-  }
+      const transferPath = resolveExtractedPath(
+        workDir,
+        `downloads/${downloadPath}`,
+      );
+      await fs.mkdir(path.dirname(transferPath), { recursive: true });
+      await downloadStorageObject(storageUri, storageAdapter, transferPath);
+      const transferBytes = await fs.readFile(transferPath);
+      if (!hasVerifiedDownloadRepresentation(asset, transferBytes)) {
+        throw new Error(
+          `Manifest download representation mismatch for ${assetPath}`,
+        );
+      }
+
+      const outputPath = resolveExtractedPath(outputDir, assetPath);
+      await fs.mkdir(path.dirname(outputPath), { recursive: true });
+      if (downloadPath === assetPath) {
+        await fs.copyFile(transferPath, outputPath);
+      } else {
+        await fs.writeFile(
+          outputPath,
+          brotliDecompressSync(transferBytes, {
+            maxOutputLength: MAX_BUNDLE_ARTIFACT_BYTES,
+          }),
+        );
+      }
+
+      const actualFileHash = await getFileHash(outputPath);
+      if (actualFileHash !== asset.fileHash.toLowerCase()) {
+        throw new Error(`Manifest file hash mismatch for ${assetPath}`);
+      }
+      const logicalSize = (await fs.stat(outputPath)).size;
+      assertBundleArtifactByteSize(logicalSize, assetPath);
+      expandedByteSize += logicalSize;
+      assertBundleExpandedByteSize(expandedByteSize);
+    },
+  );
 }
 
-async function readCopiedBundleManifest(
-  extractDir: string,
-  nextBundleId: string,
-) {
-  let manifestPath: string;
-
-  try {
-    manifestPath = await resolveExtractedFilePath(extractDir, "manifest.json");
-  } catch {
-    throw new Error(LEGACY_BUNDLE_ERROR);
-  }
-
-  assertBundleManifestByteSize(await getStorageFileByteSize(manifestPath));
-
-  const manifest = JSON.parse(
-    await fs.readFile(manifestPath, "utf8"),
-  ) as BundleManifest;
-
-  manifest.bundleId = nextBundleId;
-
-  return {
-    manifest,
-    manifestPath,
-  };
-}
-
-export async function createCopiedBundleArchive({
+export async function createCopiedBundleArtifacts({
   bundle,
   config,
   nextBundleId,
-  storagePlugin,
+  storageAdapter,
 }: {
   bundle: Bundle;
   config: ConfigResponse;
   nextBundleId: string;
-  storagePlugin: PromoteStoragePlugin;
+  storageAdapter: PromoteStorageAdapter;
 }) {
-  // Re-upload follows deploy.ts after build: repackage, hash/sign, upload.
-  const archiveFilename = getArchiveFilename(bundle.storageUri);
   const workDir = await fs.mkdtemp(
     path.join(os.tmpdir(), "hot-updater-console-promote-"),
   );
-  const sourceArchivePath = path.join(workDir, archiveFilename);
   const extractDir = path.join(workDir, "bundle");
-  const outputArchivePath = path.join(workDir, archiveFilename);
+  const sourceManifestPath = path.join(workDir, "source-manifest.json");
+  const manifestPath = path.join(extractDir, "manifest.json");
   const uploadedStorageUris: string[] = [];
 
   await fs.mkdir(extractDir, { recursive: true });
 
   try {
-    await downloadArchive(bundle.storageUri, storagePlugin, sourceArchivePath);
-    assertBundleArchiveByteSize(
-      await getStorageFileByteSize(sourceArchivePath),
+    await downloadStorageObject(
+      bundle.manifestStorageUri,
+      storageAdapter,
+      sourceManifestPath,
+      MAX_BUNDLE_MANIFEST_BYTES,
     );
-    const actualSourceFileHash = await getFileHash(sourceArchivePath);
+    const actualManifestHash = await getFileHash(sourceManifestPath);
     const signingSession = await prepareBundleSigning(config.signing);
 
-    if (isSignedFileHash(bundle.fileHash)) {
+    if (isSignedFileHash(bundle.manifestFileHash)) {
       if (!signingSession) {
         throw new Error(
           "Cannot copy a signed bundle without enabled bundle signing configuration.",
@@ -867,29 +452,37 @@ export async function createCopiedBundleArchive({
       }
       if (
         !verifySignedFileHash({
-          actualFileHash: actualSourceFileHash,
+          actualFileHash: actualManifestHash,
           publicKey: signingSession.publicKey,
-          signedFileHash: bundle.fileHash,
+          signedFileHash: bundle.manifestFileHash,
         })
       ) {
-        throw new Error("Source bundle signature verification failed.");
+        throw new Error("Source manifest signature verification failed.");
       }
-    } else if (actualSourceFileHash !== bundle.fileHash.toLowerCase()) {
-      throw new Error("Source bundle file hash verification failed.");
+    } else if (actualManifestHash !== bundle.manifestFileHash.toLowerCase()) {
+      throw new Error("Source manifest file hash verification failed.");
     }
 
-    const format = await extractArchive(sourceArchivePath, extractDir);
-
-    const { manifest, manifestPath } = await readCopiedBundleManifest(
-      extractDir,
-      nextBundleId,
-    );
+    const manifest = parseStoredBundleManifest({
+      bundleId: bundle.id,
+      manifestBytes: await fs.readFile(sourceManifestPath),
+      manifestContentHash: actualManifestHash,
+    });
+    if (!manifest) {
+      throw new Error(LEGACY_BUNDLE_ERROR);
+    }
+    await downloadManifestAssets({
+      bundle,
+      manifest,
+      outputDir: extractDir,
+      storageAdapter,
+      workDir,
+    });
+    manifest.bundleId = nextBundleId;
     const assetPaths = Object.keys(manifest.assets ?? {}).sort((left, right) =>
       left.localeCompare(right),
     );
-    const sourceIsSigned = [bundle.fileHash, getManifestFileHash(bundle)]
-      .filter((hash): hash is string => Boolean(hash))
-      .some((hash) => isSignedFileHash(hash));
+    const sourceIsSigned = isSignedFileHash(getManifestFileHash(bundle));
     const manifestHasSignatures = assetPaths.some((assetPath) =>
       Boolean(manifest.assets?.[assetPath]?.signature),
     );
@@ -900,26 +493,22 @@ export async function createCopiedBundleArchive({
       );
     }
 
-    await runWithConcurrency(
-      assetPaths,
-      PROMOTE_ASSET_CONCURRENCY,
-      async (assetPath) => {
-        const asset = manifest.assets?.[assetPath];
-        if (!asset?.fileHash) {
-          throw new Error(`Manifest file hash not found for ${assetPath}`);
-        }
-        const sourcePath = await resolveExtractedFilePath(
-          extractDir,
-          assetPath,
-        );
-        const actualFileHash = await getFileHash(sourcePath);
-        if (actualFileHash !== asset.fileHash.toLowerCase()) {
-          throw new Error(`Manifest file hash mismatch for ${assetPath}`);
-        }
-      },
-    );
-
     if (signingSession) {
+      await runWithConcurrency(
+        assetPaths,
+        PROMOTE_ASSET_CONCURRENCY,
+        async (assetPath) => {
+          const asset = manifest.assets?.[assetPath];
+          if (!asset?.fileHash) {
+            throw new Error(`Manifest file hash not found for ${assetPath}`);
+          }
+          const sourcePath = resolveExtractedPath(extractDir, assetPath);
+          const actualFileHash = await getFileHash(sourcePath);
+          if (actualFileHash !== asset.fileHash.toLowerCase()) {
+            throw new Error(`Manifest file hash mismatch for ${assetPath}`);
+          }
+        },
+      );
       await runWithConcurrency(
         assetPaths,
         PROMOTE_ASSET_CONCURRENCY,
@@ -938,31 +527,36 @@ export async function createCopiedBundleArchive({
       manifest,
       workDir,
     });
+    const archivePath = path.join(workDir, "bundle.tar.br");
+    manifest.archive = await createTarBrTargetFiles({
+      outfile: archivePath,
+      targetFiles: assetPaths.map((name) => ({
+        name,
+        path: resolveExtractedPath(extractDir, name),
+      })),
+    });
     await fs.writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
     assertBundleManifestByteSize(await getStorageFileByteSize(manifestPath));
-    await fs.rm(sourceArchivePath, { force: true });
-    await createArchiveFromDirectory(extractDir, outputArchivePath, format);
-    assertBundleArchiveByteSize(
-      await getStorageFileByteSize(outputArchivePath),
-    );
 
-    const fileHash = await getFileHash(outputArchivePath);
     const manifestHash = await getFileHash(manifestPath);
-    const nextFileHash = signingSession
-      ? `${SIGNED_HASH_PREFIX}${await signingSession.signFileHash(fileHash)}`
-      : fileHash;
     const nextManifestFileHash = signingSession
       ? `${SIGNED_HASH_PREFIX}${await signingSession.signFileHash(manifestHash)}`
       : manifestHash;
 
     const archiveUpload = await putStorageFile(
-      storagePlugin,
+      storageAdapter,
       createBundleStorageKey(nextBundleId),
-      outputArchivePath,
+      archivePath,
     );
     uploadedStorageUris.push(archiveUpload.storageUri);
+    const manifestUpload = await putStorageFile(
+      storageAdapter,
+      createBundleStorageKey(nextBundleId),
+      manifestPath,
+    );
+    uploadedStorageUris.push(manifestUpload.storageUri);
     const assetBaseStorageUri = createStorageRootUriWithPath(
-      archiveUpload.storageUri,
+      manifestUpload.storageUri,
       nextBundleId,
       "assets",
     );
@@ -975,10 +569,10 @@ export async function createCopiedBundleArchive({
         fileHash: assetUploadTarget.fileHash,
       });
 
-      const { exists } = await storagePlugin.exists({ storageUri });
+      const { exists } = await storageAdapter.exists({ storageUri });
       if (!exists) {
         await putStorageFile(
-          storagePlugin,
+          storageAdapter,
           getRelativeStorageDir(assetUploadTarget.storagePath)
             ? `assets/${getRelativeStorageDir(assetUploadTarget.storagePath)}`
             : "assets",
@@ -987,20 +581,10 @@ export async function createCopiedBundleArchive({
       }
     }
 
-    const manifestUpload = await putStorageFile(
-      storagePlugin,
-      createBundleStorageKey(nextBundleId),
-      manifestPath,
-    );
-    uploadedStorageUris.push(manifestUpload.storageUri);
-
     return {
       bundle: {
         ...bundle,
         id: nextBundleId,
-        archiveByteSize: archiveUpload.byteSize,
-        storageUri: archiveUpload.storageUri,
-        fileHash: nextFileHash,
         metadata: {
           ...stripBundleArtifactMetadata(bundle.metadata),
           manifest_content_hash: manifestHash,
@@ -1013,7 +597,7 @@ export async function createCopiedBundleArchive({
       uploadedStorageUris,
     };
   } catch (error) {
-    await deleteUploadedCopy(storagePlugin, uploadedStorageUris);
+    await deleteUploadedCopy(storageAdapter, uploadedStorageUris);
     throw error;
   } finally {
     await fs.rm(workDir, { recursive: true, force: true });
@@ -1021,7 +605,7 @@ export async function createCopiedBundleArchive({
 }
 
 async function deleteUploadedCopy(
-  storagePlugin: PromoteStoragePlugin,
+  storageAdapter: PromoteStorageAdapter,
   storageUris: string[],
 ) {
   if (storageUris.length === 0) {
@@ -1031,10 +615,10 @@ async function deleteUploadedCopy(
   for (const storageUri of new Set(storageUris)) {
     try {
       const protocol = new URL(storageUri).protocol.replace(":", "");
-      if (storagePlugin.protocol === protocol) {
-        await storagePlugin.delete({ storageUri });
+      if (storageAdapter.protocol === protocol) {
+        await storageAdapter.delete({ storageUri });
       } else if (protocol !== "http" && protocol !== "https") {
-        throw new Error(`No storage plugin for protocol: ${protocol}`);
+        throw new Error(`No storage adapter for protocol: ${protocol}`);
       }
     } catch (error) {
       console.error("Failed to delete uploaded bundle copy:", error);

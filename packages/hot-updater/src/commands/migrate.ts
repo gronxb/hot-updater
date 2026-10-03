@@ -1,8 +1,9 @@
-import { p } from "@hot-updater/cli-tools";
-import { createMigrator as createHotUpdaterMigrator } from "@hot-updater/server/db";
+import {
+  createMigrator as createHotUpdaterMigrator,
+  p,
+} from "@hot-updater/cli-tools";
 
 import { ui } from "../utils/cli-ui";
-import { showMigrateUnsupportedError } from "./utils/adapter-strategies";
 import { loadHotUpdater } from "./utils/load-hot-updater";
 
 export interface MigrateOptions {
@@ -191,30 +192,13 @@ export async function migrate(options: MigrateOptions) {
     s.start("Loading configuration and analyzing schema");
 
     // Load hotUpdater instance from config file
-    const { hotUpdater, adapterName } = await loadHotUpdater(configPath);
+    const { hotUpdater } = await loadHotUpdater(configPath);
 
-    // Execute migration based on adapter type
-    switch (adapterName) {
-      case "kysely":
-      case "mongodb":
-        // Use createMigrator to run migrations
-        await migrateWithMigrator(hotUpdater, skipConfirm, s);
-        break;
-
-      case "drizzle":
-      case "prisma":
-        // These adapters have their own migration systems
-        s.stop("Migration not supported");
-        showMigrateUnsupportedError(adapterName);
-        break;
-
-      default:
-        p.log.error(
-          `Unsupported adapter: ${adapterName}. Migration is not supported.`,
-        );
-        process.exit(1);
-        break;
-    }
+    // Every database on the storage engine migrates through its migrator:
+    // drizzle-kit and Prisma apply their tables, so theirs set what the ORM
+    // cannot declare and write the settings rows; any other adapter creates
+    // core's tables and the plugins' tables itself.
+    await migrateWithMigrator(hotUpdater, skipConfirm, s);
   } catch (error) {
     p.log.error("Failed to run migration");
     if (error instanceof Error) {

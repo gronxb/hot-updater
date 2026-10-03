@@ -1,6 +1,16 @@
 // @vitest-environment node
 
+import type {
+  AnyHotUpdaterPlugin,
+  EngineDatabase,
+  HotUpdaterCoreApi,
+} from "@hot-updater/plugin-core";
+import { createMemoryAdapter } from "@hot-updater/plugin-core";
+import { createHotUpdater } from "@hot-updater/server";
+import { insights } from "@hot-updater/server/plugins/insights";
 import { afterEach, describe, expect, it, vi } from "vitest";
+
+import { createConsoleRuntime, requireFeature } from "./server/runtime.server";
 
 const mocks = vi.hoisted(() => ({
   prepare: vi.fn(),
@@ -8,7 +18,12 @@ const mocks = vi.hoisted(() => ({
   activity: vi.fn(),
 }));
 vi.mock("@tanstack/react-start", () => ({
+  // The access middleware runs in the server; these specs call handlers directly.
+  createMiddleware: () => ({ server: () => ({}) }),
   createServerFn: () => ({
+    middleware() {
+      return this;
+    },
     validator() {
       return this;
     },
@@ -32,6 +47,35 @@ import {
   getRecoveryReportRpc,
 } from "./insights-recovery-rpc";
 
+/** The console over `database`, running `plugins` as the server does. */
+const databaseRuntime = (
+  database: EngineDatabase,
+  plugins: readonly AnyHotUpdaterPlugin[] = [],
+) =>
+  createConsoleRuntime({
+    database,
+    plugins,
+    api: createHotUpdater({
+      database,
+      plugins,
+      ...(plugins.some(({ provides }) => provides?.clientAuth)
+        ? {}
+        : { clientAccess: "public" }),
+    } as Parameters<typeof createHotUpdater>[0]).api,
+  });
+
+const memoryDatabase = () => ({
+  name: "memory",
+  adapter: createMemoryAdapter(),
+});
+
+/** A console that runs insights() over its database, and the model it reads. */
+const withInsights = async () => {
+  const runtime = databaseRuntime(memoryDatabase(), [insights()]);
+  mocks.prepare.mockResolvedValue({ runtime });
+  return requireFeature(runtime, "insightsAnalytics");
+};
+
 afterEach(() => vi.resetAllMocks());
 
 describe("recovery report access", () => {
@@ -43,10 +87,7 @@ describe("recovery report access", () => {
   } as const;
 
   it("uses the authenticated console database and preserves the requested ID", async () => {
-    const model = {};
-    mocks.prepare.mockResolvedValue({
-      config: { database: { models: { insights: model } } },
-    });
+    const model = await withInsights();
     mocks.report.mockResolvedValue({ series: [] });
     await expect(getRecoveryReportRpc({ data })).resolves.toEqual({
       series: [],
@@ -67,10 +108,7 @@ describe("bundle activity access", () => {
     { platform: "ios", channel: "production", releaseId: "release-a" },
   ] as const;
   it("authenticates batch requests and uses the console database", async () => {
-    const model = {};
-    mocks.prepare.mockResolvedValue({
-      config: { database: { models: { insights: model } } },
-    });
+    const model = await withInsights();
     mocks.activity.mockResolvedValue({});
     await expect(getBundleActivityRpc({ data: [...data] })).resolves.toEqual(
       {},
@@ -97,4 +135,49 @@ describe("bundle activity access", () => {
     ).toThrow();
     expect(readBundleActivityInput(data)).toEqual(data);
   });
+});
+
+describe("activity the console does not serve", () => {
+  it.each([
+    [
+      "without insights()",
+      databaseRuntime(memoryDatabase()),
+      "without the insights() plugin",
+    ],
+    [
+      "for a self-hosted server that runs insights()",
+      createConsoleRuntime({
+        database: {
+          name: "standalone-repository",
+          core: {} as HotUpdaterCoreApi,
+          fetchAdmin: vi.fn(),
+        },
+        plugins: [insights()],
+      }),
+      "reaches a self-hosted server",
+    ],
+  ])(
+    "is refused %s, before anything is read",
+    async (_case, runtime, message) => {
+      mocks.prepare.mockResolvedValue({ runtime });
+
+      await expect(
+        getRecoveryReportRpc({
+          data: { platform: "ios", channel: "production", window: "7d" },
+        }),
+      ).rejects.toMatchObject({
+        name: "ConsoleFeatureUnavailableError",
+        feature: "insightsAnalytics",
+        status: 404,
+        message: expect.stringContaining(message),
+      });
+      await expect(
+        getBundleActivityRpc({
+          data: [{ platform: "ios", channel: "production", releaseId: "r" }],
+        }),
+      ).rejects.toMatchObject({ feature: "insightsAnalytics" });
+      expect(mocks.report).not.toHaveBeenCalled();
+      expect(mocks.activity).not.toHaveBeenCalled();
+    },
+  );
 });

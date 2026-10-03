@@ -20,7 +20,7 @@ For terminal setup, use [Set up manually](/docs/get-started/basic-usage).
 
 ## Before provisioning
 
-The CLI requires Node 20.19+. The generated client-key helper imports TypeScript
+The CLI requires Node 20.19+. The generated client credential helper imports TypeScript
 and requires Node 22.18+ or Node 24+. Have the agent check this before creating
 remote resources; the helper can use a separate runtime from your app.
 
@@ -44,7 +44,7 @@ selections, it writes the scaffold and returns its absolute paths:
 | Output | Purpose |
 | --- | --- |
 | Provider deployment files | Server runtime, migrations, bindings, indexes and deployment configuration |
-| `app/` | App configuration templates, client-key provisioning and server verification helpers |
+| `app/` | The selected build's app configuration, client-key provisioning and server verification helpers |
 | `env.example` and `ENVIRONMENT.md` | Variable names, purposes, required or conditional status, and where to obtain values |
 | `COMMON.md` and `SETUP.md` | Project discovery, secure access, provider setup, verification and retry instructions |
 | `manifest.json` and `deployment.json` | Target versions/file hashes and a record for pending actions and verified outcomes |
@@ -115,11 +115,15 @@ the complete upgrade path.
 | AWS | Lambda bundle and dependencies, CloudFront specifications, DynamoDB/IAM JSON inputs and SSM references |
 | Firebase | Built Functions project, dependencies, Firebase config, Firestore indexes |
 
-The `app/` directory contains local configuration templates and a client API-key
-helper. `env.example` lists local provider settings; `ENVIRONMENT.md` explains
+The `app/` directory contains `hot-updater.config.ts` for the selected
+`--build`, with the provider's storage, database and `plugins`, and a client
+API-key helper. The helper provisions the key through `hotUpdater.ts` beside
+it (plus `migrate.ts` for Firestore), which stays in the scaffold.
+`env.example` lists local provider settings; `ENVIRONMENT.md` explains
 each variable's purpose, when it is needed and where to obtain it. The JSON
-`environment` field points to that guide. The agent merges applicable settings into
-your app's existing configuration and prepares credentials for future CLI deploys.
+`environment` field points to that guide. The agent merges the config's
+storage, database and `plugins` into your app's existing `hot-updater.config.ts`
+and prepares credentials for future CLI deploys.
 Connecting an MCP server does not automatically provide credentials to the CLI.
 
 The agent configures optional creation or authentication fields only when your setup needs them.
@@ -136,9 +140,10 @@ saves actual resource IDs and dated verification evidence in `verifiedSteps`.
 The agent maintains this record; the CLI does not execute or enforce it.
 Generating a manifest does not mean the target server version has been deployed.
 
-Keep real credentials and key files private. The supplied key helper persists
-the client key before registration and reuses it after an interrupted request.
-Use only the client API key in the app's `x-api-key` header.
+Keep real credentials and key files private. The supplied credential helper
+persists the client credential before registration and reuses it after an
+interrupted request. Use only that client credential in the app's request
+header, `x-api-key` for the managed servers' `apiKeys()`.
 
 ### Provide access securely
 
@@ -225,8 +230,8 @@ npx hot-updater doctor --scope infrastructure --infra-dir <scaffold-path> --json
 For fingerprint updates, use `--fingerprint <fingerprint>` instead of
 `--app-version`. Doctor checks the local scaffold and live server generation/version,
 then the same Release Catalog URL without a key (401) and with the saved key
-(valid 200, or the exact private, no-store empty-catalog 404). It reads keys from
-private local storage and returns sanitized JSON. The existing
+(valid 200, or the empty-catalog 404 marked `x-hot-updater-catalog: none`).
+It reads keys from private local storage and returns sanitized JSON. The existing
 `app/verify-server.mjs` helper remains available and shares doctor's server probe.
 
 Require exit code 0, `success: true`, and the requested
@@ -248,13 +253,14 @@ After setup passes these checks, the agent provides a ready-to-copy configuratio
 like the final output of `hot-updater init`:
 
 ```ts
-import { HotUpdater } from "@hot-updater/react-native";
+import { HotUpdater, insights } from "@hot-updater/react-native";
 
 HotUpdater.init({
   baseURL: "https://your-deployed-update-server",
   requestHeaders: {
     "x-api-key": "<your-registered-client-api-key>",
   },
+  plugins: [insights()],
 });
 ```
 
@@ -262,7 +268,8 @@ The agent replaces these example values with the verified base URL, including
 any Function path, and the actual client key it registered or reused. It shows
 the client key itself, rather than a masked value or a path to its saved file.
 Provider tokens, service-role keys, admin credentials and signing keys remain
-private.
+private. The deployed server runs `insights()`, so the snippet includes the
+[Insights plugin](/docs/react-native-api/insights) that reports to it.
 
 Place initialization at module scope. `HotUpdater.init` does not start an update
 check; the agent also shows `HotUpdater.checkForUpdate` with your app's

@@ -1,67 +1,26 @@
-import {
-  assertStorageOperations,
-  createDatabaseClient,
-  type DatabaseClient,
-  type StoragePluginWith,
-} from "@hot-updater/plugin-core";
+import type { HotUpdaterCoreApi } from "@hot-updater/plugin-core";
 import { getRequest } from "@tanstack/react-start/server";
 
-import type { HotUpdaterConsoleConfig } from "../../index";
 import { requireConsoleAccess } from "./auth.server";
-import { resolveConsoleConfig } from "./console-runtime.server";
-
-type ResolvedConsoleConfig = HotUpdaterConsoleConfig & {
-  readonly console: NonNullable<HotUpdaterConsoleConfig["console"]>;
-};
+import {
+  resolveConsoleConfig,
+  type ResolvedConsoleConfig,
+} from "./console-runtime.server";
+import type { ConsoleRuntime } from "./runtime.server";
 
 let configPromise: Promise<ResolvedConsoleConfig> | null = null;
-let databaseClient: DatabaseClient | null = null;
-let hotUpdater: ReturnType<
-  typeof import("./runtime.server").createRuntimeHotUpdater
-> | null = null;
-let apiKeyStore: ReturnType<
-  typeof import("./runtime.server").createApiKeyStore
-> | null = null;
-let apiKeyStoreResolved = false;
-let storagePluginPromise: Promise<
-  StoragePluginWith<"get" | "put" | "exists" | "delete">
-> | null = null;
+let core: HotUpdaterCoreApi | null = null;
+let runtime: ConsoleRuntime | null = null;
 
 const loadCachedConfig = async (request: Request) => {
   if (!configPromise) {
-    configPromise = resolveConsoleConfig(request)
-      .then((config) => ({
-        ...config,
-        console: config.console ?? {},
-      }))
-      .catch((error) => {
-        configPromise = null;
-        throw error;
-      });
+    configPromise = resolveConsoleConfig(request).catch((error) => {
+      configPromise = null;
+      throw error;
+    });
   }
 
   return configPromise;
-};
-
-const loadCachedStoragePlugin = async (config: ResolvedConsoleConfig) => {
-  if (!storagePluginPromise) {
-    storagePluginPromise = Promise.resolve(config.storage)
-      .then((storagePlugin) => {
-        assertStorageOperations(storagePlugin, [
-          "get",
-          "put",
-          "exists",
-          "delete",
-        ]);
-        return storagePlugin;
-      })
-      .catch((error) => {
-        storagePluginPromise = null;
-        throw error;
-      });
-  }
-
-  return storagePluginPromise;
 };
 
 export const prepareConfig = async (request: Request = getRequest()) => {
@@ -69,30 +28,18 @@ export const prepareConfig = async (request: Request = getRequest()) => {
     await requireConsoleAccess(request);
     const config = await loadCachedConfig(request);
 
-    if (!databaseClient) {
-      databaseClient = createDatabaseClient(config.database);
+    // Bundles, releases, catalogs, and channels: core assembled as the
+    // server's, on the server's own path, or a self-hosted server's admin API.
+    core ??= config.core;
+
+    // The console's features: those of the plugins its config lists.
+    if (!runtime) {
+      const { createConsoleRuntime } = await import("./runtime.server");
+      runtime = createConsoleRuntime(config);
     }
 
-    if (!hotUpdater) {
-      const { createRuntimeHotUpdater } = await import("./runtime.server");
-      hotUpdater = createRuntimeHotUpdater(config);
-    }
-
-    if (!apiKeyStoreResolved) {
-      const { createApiKeyStore } = await import("./runtime.server");
-      apiKeyStore = createApiKeyStore(config);
-      apiKeyStoreResolved = true;
-    }
-
-    const storagePlugin = await loadCachedStoragePlugin(config);
-
-    return {
-      config,
-      databaseClient,
-      hotUpdater,
-      apiKeyStore,
-      storagePlugin,
-    };
+    // Each bundle file is read and deleted with its protocol's storage.
+    return { config, core, runtime, storage: config.storage };
   } catch (error) {
     if (
       !(

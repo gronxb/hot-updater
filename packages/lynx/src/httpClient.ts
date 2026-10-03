@@ -7,14 +7,14 @@ import {
   NUMERIC_COHORT_SIZE,
   type ReleaseCatalog,
   type ReleaseCatalogDescriptor,
-} from "@hot-updater/core";
+} from "@hot-updater/protocol";
 
 import { LynxUpdaterError } from "./native";
 import type {
   HotUpdaterOptions,
   NativeState,
   UpdateArtifact,
-  UpdateChangedAsset,
+  UpdateAsset,
 } from "./types";
 
 const MAX_CATALOG_RESPONSE_BYTES = MAX_COMPILED_CATALOG_BYTES * 2 + 4096;
@@ -212,12 +212,16 @@ function resolveArtifactUrl(baseURL: string, value: unknown): string {
   return url;
 }
 
-function parseChangedAssets(
+function parseAssets(
   baseURL: string,
   value: unknown,
-): Record<string, UpdateChangedAsset> {
-  if (!isObject(value) || Object.keys(value).length > 10_000) {
-    return invalidResponse("Invalid changed asset map.");
+): Record<string, UpdateAsset> {
+  if (
+    !isObject(value) ||
+    Object.keys(value).length === 0 ||
+    Object.keys(value).length > 10_000
+  ) {
+    return invalidResponse("Invalid target asset map.");
   }
   return Object.fromEntries(
     Object.entries(value).map(([assetPath, asset]) => {
@@ -229,46 +233,51 @@ function parseChangedAssets(
           .split("/")
           .some((part) => !part || part === "." || part === "..") ||
         !isObject(asset) ||
-        asset.file === undefined ||
-        asset.patch === undefined ||
+        !isObject(asset.file) ||
         !isHash(asset.fileHash)
       ) {
-        return invalidResponse("Invalid changed asset path or hash.");
+        return invalidResponse("Invalid target asset path or hash.");
       }
-      let file: UpdateChangedAsset["file"] = null;
-      if (asset.file != null) {
+      let file: UpdateAsset["file"];
+      {
         if (
           !isObject(asset.file) ||
-          (asset.file.compression !== null && asset.file.compression !== "br")
+          (asset.file.compression !== undefined &&
+            asset.file.compression !== null &&
+            asset.file.compression !== "br")
         ) {
-          return invalidResponse("Invalid changed asset file descriptor.");
+          return invalidResponse("Invalid target asset file descriptor.");
         }
         file = {
           url: resolveArtifactUrl(baseURL, asset.file.url),
-          compression: asset.file.compression,
+          compression: asset.file.compression ?? null,
         };
       }
-      let patch: UpdateChangedAsset["patch"] = null;
+      let patch: UpdateAsset["patch"] = null;
       if (asset.patch != null) {
         if (
           !isObject(asset.patch) ||
           asset.patch.algorithm !== "bsdiff" ||
           !isUUIDv7(asset.patch.baseBundleId) ||
           !isHash(asset.patch.baseFileHash) ||
-          !isHash(asset.patch.patchFileHash)
+          !isHash(asset.patch.patchFileHash) ||
+          (asset.patch.byteSize !== undefined &&
+            (typeof asset.patch.byteSize !== "number" ||
+              !Number.isSafeInteger(asset.patch.byteSize) ||
+              asset.patch.byteSize <= 0))
         ) {
-          return invalidResponse("Invalid changed asset patch descriptor.");
+          return invalidResponse("Invalid target asset patch descriptor.");
         }
         patch = {
+          ...(asset.patch.byteSize === undefined
+            ? {}
+            : { byteSize: asset.patch.byteSize as number }),
           algorithm: "bsdiff",
           baseBundleId: asset.patch.baseBundleId,
           baseFileHash: asset.patch.baseFileHash,
           patchFileHash: asset.patch.patchFileHash,
           patchUrl: resolveArtifactUrl(baseURL, asset.patch.patchUrl),
         };
-      }
-      if (!file && !patch) {
-        return invalidResponse("A changed asset requires a file or patch.");
       }
       return [assetPath, { fileHash: asset.fileHash, file, patch }];
     }),
@@ -459,66 +468,26 @@ export function createHttpClient(options: HotUpdaterOptions) {
       currentBundleId: string,
     ): Promise<UpdateArtifact> {
       const value = await getJSON(
-        `/artifacts/${encodeURIComponent(bundleId)}/from/${encodeURIComponent(currentBundleId)}`,
+        `/artifacts/v1/${encodeURIComponent(bundleId)}/from/${encodeURIComponent(currentBundleId)}`,
         MAX_UPDATE_ARTIFACT_RESPONSE_BYTES,
       );
-      if (!isObject(value)) {
-        return invalidResponse("Expected an update artifact.");
+      if (!isObject(value) || value.artifactProtocolVersion !== 1) {
+        return invalidResponse("Expected a manifest-v1 artifact.");
       }
-      const artifact = value;
-      let fileUrl: string | null = null;
-      let fileHash: string | null = null;
-      if (artifact.fileUrl != null || artifact.fileHash != null) {
-        if (!isIntegrityToken(artifact.fileHash)) {
-          return invalidResponse("Invalid archive integrity token.");
-        }
-        fileUrl = resolveArtifactUrl(baseURL(), artifact.fileUrl);
-        fileHash = artifact.fileHash;
-      }
-      if (
-        artifact.manifestFileHash != null &&
-        !isIntegrityToken(artifact.manifestFileHash)
-      ) {
+      if (!isIntegrityToken(value.manifestFileHash)) {
         return invalidResponse("Invalid manifest integrity token.");
       }
-      const manifestFileHash =
-        (artifact.manifestFileHash as string | null | undefined) ?? null;
-      let manifestUrl: string | null = null;
-      let changedAssets: Record<string, UpdateChangedAsset> | null = null;
-      if (artifact.manifestUrl != null || artifact.changedAssets != null) {
-        if (!manifestFileHash) {
-          return invalidResponse(
-            "Manifest updates require an integrity token.",
-          );
-        }
-        manifestUrl = resolveArtifactUrl(baseURL(), artifact.manifestUrl);
-        changedAssets = parseChangedAssets(baseURL(), artifact.changedAssets);
-      }
-      if (manifestUrl !== null) {
-        if (manifestFileHash === null || changedAssets === null) {
-          return invalidResponse("Incomplete manifest update.");
-        }
-        return {
-          bundleId,
-          fileUrl: null,
-          fileHash: null,
-          manifestUrl,
-          manifestFileHash,
-          changedAssets,
-        };
-      }
-      if (fileUrl === null || fileHash === null) {
-        return invalidResponse(
-          "An archive or complete manifest update is required.",
-        );
-      }
       return {
+        artifactProtocolVersion: 1,
         bundleId,
-        fileUrl,
-        fileHash,
-        manifestUrl: null,
-        manifestFileHash,
-        changedAssets: null,
+        manifestUrl: resolveArtifactUrl(baseURL(), value.manifestUrl),
+        manifestFileHash: value.manifestFileHash,
+        ...(value.archiveUrl === undefined
+          ? {}
+          : {
+              archiveUrl: resolveArtifactUrl(baseURL(), value.archiveUrl),
+            }),
+        assets: parseAssets(baseURL(), value.assets),
       };
     },
   };

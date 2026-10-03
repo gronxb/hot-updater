@@ -2,385 +2,256 @@ import Foundation
 
 enum TarArchiveExtractor {
     private static let blockSize = 512
-
     private static let regularFileType: UInt8 = 48
     private static let alternateRegularFileType: UInt8 = 0
-    private static let hardLinkType: UInt8 = 49
-    private static let symbolicLinkType: UInt8 = 50
-    private static let directoryType: UInt8 = 53
-    private static let contiguousFileType: UInt8 = 55
-    private static let globalPaxHeaderType: UInt8 = 103
     private static let paxHeaderType: UInt8 = 120
-    private static let gnuLongNameType: UInt8 = 76
-    private static let gnuLongLinkType: UInt8 = 75
+    private static let maximumPaxByteSize = 1024 * 1024
 
     private struct Header {
         let path: String
         let size: UInt64
         let typeFlag: UInt8
-        let linkName: String
-    }
-
-    static func containsEntries(at tarPath: String) throws -> Bool {
-        let handle = try FileHandle(forReadingFrom: URL(fileURLWithPath: tarPath))
-
-        defer {
-            try? handle.close()
-        }
-
-        var globalPaxHeaders: [String: String] = [:]
-        var pendingPaxHeaders: [String: String] = [:]
-        var pendingLongPath: String?
-        var pendingLongLink: String?
-
-        while true {
-            let headerBlock = try ArchiveExtractionUtilities.readExactly(from: handle, count: blockSize)
-            guard !isZeroBlock(headerBlock) else {
-                return false
-            }
-
-            let header = try parseHeader(from: headerBlock)
-
-            switch header.typeFlag {
-            case globalPaxHeaderType:
-                let paxData = try readEntryPayloadData(from: handle, size: header.size)
-                globalPaxHeaders.merge(parsePaxHeaders(from: paxData)) { _, newValue in
-                    newValue
-                }
-
-            case paxHeaderType:
-                let paxData = try readEntryPayloadData(from: handle, size: header.size)
-                pendingPaxHeaders.merge(parsePaxHeaders(from: paxData)) { _, newValue in
-                    newValue
-                }
-
-            case gnuLongNameType:
-                pendingLongPath = decodeLongPath(from: try readEntryPayloadData(from: handle, size: header.size))
-
-            case gnuLongLinkType:
-                pendingLongLink = decodeLongPath(from: try readEntryPayloadData(from: handle, size: header.size))
-
-            default:
-                let effectiveHeaders = globalPaxHeaders.merging(pendingPaxHeaders) { _, newValue in
-                    newValue
-                }
-                let resolvedPath = pendingLongPath ?? effectiveHeaders["path"] ?? header.path
-                _ = pendingLongLink ?? effectiveHeaders["linkpath"] ?? header.linkName
-
-                defer {
-                    pendingPaxHeaders.removeAll()
-                    pendingLongPath = nil
-                    pendingLongLink = nil
-                }
-
-                if let normalizedPath = ArchiveExtractionUtilities.normalizedRelativePath(from: resolvedPath),
-                   !normalizedPath.isEmpty {
-                    return true
-                }
-
-                try skipEntryPayload(in: handle, size: header.size)
-            }
-        }
     }
 
     static func extract(
         from tarPath: String,
         to destination: String,
-        progressHandler: @escaping (Double) -> Void
+        expectedFiles: [String: Int64]
     ) throws {
-        let fileManager = FileManager.default
-        let destinationRoot = URL(fileURLWithPath: destination).standardizedFileURL.path
-        try ArchiveExtractionUtilities.ensureDirectory(at: URL(fileURLWithPath: destinationRoot), fileManager: fileManager)
+        let destinationURL = URL(fileURLWithPath: destination, isDirectory: true)
+        try FileManager.default.createDirectory(
+            at: destinationURL,
+            withIntermediateDirectories: true
+        )
 
-        let tarSize = try archiveFileSize(at: tarPath)
         let handle = try FileHandle(forReadingFrom: URL(fileURLWithPath: tarPath))
+        defer { try? handle.close() }
 
-        defer {
-            try? handle.close()
-        }
-
-        var globalPaxHeaders: [String: String] = [:]
-        var pendingPaxHeaders: [String: String] = [:]
-        var pendingLongPath: String?
-        var pendingLongLink: String?
+        var extractedPaths = Set<String>()
+        var pendingPaxHeaders: [String: String]?
 
         while true {
-            let headerBlock = try ArchiveExtractionUtilities.readExactly(from: handle, count: blockSize)
-            guard !isZeroBlock(headerBlock) else {
-                break
+            let headerBlock = try readExactly(from: handle, count: blockSize)
+            if isZeroBlock(headerBlock) {
+                let secondEndBlock = try readExactly(from: handle, count: blockSize)
+                guard isZeroBlock(secondEndBlock), pendingPaxHeaders == nil else {
+                    throw archiveError(1, "Invalid TAR termination")
+                }
+                try requireZeroPaddingToEnd(handle)
+                guard extractedPaths == Set(expectedFiles.keys) else {
+                    throw archiveError(2, "TAR file set does not match the manifest")
+                }
+                return
             }
 
-            let header = try parseHeader(from: headerBlock)
-
-            switch header.typeFlag {
-            case globalPaxHeaderType:
-                let paxData = try readEntryPayloadData(from: handle, size: header.size)
-                globalPaxHeaders.merge(parsePaxHeaders(from: paxData)) { _, newValue in
-                    newValue
+            let header = try parseHeader(headerBlock)
+            if header.typeFlag == paxHeaderType {
+                guard pendingPaxHeaders == nil,
+                      header.size <= UInt64(maximumPaxByteSize) else {
+                    throw archiveError(3, "Invalid PAX header")
                 }
+                let payload = try readPayload(from: handle, size: header.size)
+                pendingPaxHeaders = try parsePaxHeaders(payload)
+                continue
+            }
 
-            case paxHeaderType:
-                let paxData = try readEntryPayloadData(from: handle, size: header.size)
-                pendingPaxHeaders.merge(parsePaxHeaders(from: paxData)) { _, newValue in
-                    newValue
+            guard header.typeFlag == regularFileType ||
+                    header.typeFlag == alternateRegularFileType else {
+                throw archiveError(4, "Unsupported TAR entry type")
+            }
+
+            let paxHeaders = pendingPaxHeaders ?? [:]
+            pendingPaxHeaders = nil
+            guard paxHeaders["linkpath"] == nil else {
+                throw archiveError(5, "TAR links are not allowed")
+            }
+            let rawPath = paxHeaders["path"] ?? header.path
+            guard FileUtilities.normalizedRelativePath(from: rawPath) == rawPath,
+                  rawPath != "manifest.json",
+                  !extractedPaths.contains(rawPath),
+                  let expectedByteSize = expectedFiles[rawPath],
+                  expectedByteSize >= 0 else {
+                throw archiveError(6, "TAR contains an unsafe, duplicate, or unknown path")
+            }
+
+            let entrySize: UInt64
+            if let paxSize = paxHeaders["size"] {
+                guard let parsedSize = UInt64(paxSize) else {
+                    throw archiveError(7, "Invalid PAX entry size")
                 }
+                entrySize = parsedSize
+            } else {
+                entrySize = header.size
+            }
+            guard entrySize == UInt64(expectedByteSize) else {
+                throw archiveError(8, "TAR entry size does not match the manifest")
+            }
 
-            case gnuLongNameType:
-                pendingLongPath = decodeLongPath(from: try readEntryPayloadData(from: handle, size: header.size))
-
-            case gnuLongLinkType:
-                pendingLongLink = decodeLongPath(from: try readEntryPayloadData(from: handle, size: header.size))
-
-            default:
-                let effectiveHeaders = globalPaxHeaders.merging(pendingPaxHeaders) { _, newValue in
-                    newValue
-                }
-                let resolvedPath = pendingLongPath ?? effectiveHeaders["path"] ?? header.path
-                let resolvedLinkPath = pendingLongLink ?? effectiveHeaders["linkpath"] ?? header.linkName
-
-                defer {
-                    pendingPaxHeaders.removeAll()
-                    pendingLongPath = nil
-                    pendingLongLink = nil
-                }
-
-                try extractEntry(
-                    path: resolvedPath,
-                    typeFlag: header.typeFlag,
-                    size: header.size,
-                    linkPath: resolvedLinkPath,
+            let outputURL = try FileUtilities.fileURL(
+                for: rawPath,
+                destinationRoot: destination
+            )
+            try FileManager.default.createDirectory(
+                at: outputURL.deletingLastPathComponent(),
+                withIntermediateDirectories: true
+            )
+            guard FileManager.default.createFile(atPath: outputURL.path, contents: nil) else {
+                throw archiveError(9, "Failed to create TAR output file")
+            }
+            let output = try FileHandle(forWritingTo: outputURL)
+            do {
+                try copyPayload(
                     from: handle,
-                    to: destinationRoot
+                    size: entrySize,
+                    to: output
                 )
+                try output.close()
+            } catch {
+                try? output.close()
+                try? FileManager.default.removeItem(at: outputURL)
+                throw error
             }
-
-            if tarSize > 0 {
-                let offset = ArchiveExtractionUtilities.currentOffset(for: handle)
-                let progress = min(Double(offset) / Double(tarSize), 1.0)
-                progressHandler(progress)
-            }
-        }
-
-        progressHandler(1.0)
-    }
-
-    private static func extractEntry(
-        path rawPath: String,
-        typeFlag: UInt8,
-        size: UInt64,
-        linkPath: String,
-        from handle: FileHandle,
-        to destinationRoot: String
-    ) throws {
-        guard let relativePath = ArchiveExtractionUtilities.normalizedRelativePath(from: rawPath) else {
-            try skipEntryPayload(in: handle, size: size)
-            return
-        }
-
-        let targetURL = try ArchiveExtractionUtilities.extractionURL(
-            for: relativePath,
-            destinationRoot: destinationRoot
-        )
-
-        switch typeFlag {
-        case directoryType:
-            try ArchiveExtractionUtilities.ensureDirectory(at: targetURL)
-            try skipEntryPayload(in: handle, size: size)
-
-        case regularFileType, alternateRegularFileType, contiguousFileType:
-            let outputHandle = try ArchiveExtractionUtilities.createOutputFile(at: targetURL)
-
-            defer {
-                try? outputHandle.close()
-            }
-
-            try copyEntryPayload(from: handle, size: size, to: outputHandle)
-            try skipPadding(in: handle, size: size)
-
-        case hardLinkType, symbolicLinkType:
-            NSLog("[TarArchiveExtractor] Skipping link entry: \(rawPath) -> \(linkPath)")
-            try skipEntryPayload(in: handle, size: size)
-
-        default:
-            NSLog("[TarArchiveExtractor] Skipping unsupported TAR entry type: \(typeFlag) (\(rawPath))")
-            try skipEntryPayload(in: handle, size: size)
+            try readPadding(from: handle, size: entrySize)
+            extractedPaths.insert(rawPath)
         }
     }
 
-    private static func copyEntryPayload(
-        from handle: FileHandle,
-        size: UInt64,
-        to outputHandle: FileHandle
-    ) throws {
-        var remainingBytes = size
-
-        while remainingBytes > 0 {
-            let chunkSize = Int(min(remainingBytes, UInt64(ArchiveExtractionUtilities.bufferSize)))
-            let chunk = try ArchiveExtractionUtilities.readExactly(from: handle, count: chunkSize)
-            outputHandle.write(chunk)
-            remainingBytes -= UInt64(chunk.count)
+    private static func parseHeader(_ block: Data) throws -> Header {
+        guard block.count == blockSize,
+              Data(block[257..<262]) == Data("ustar".utf8),
+              try verifyChecksum(block) else {
+            throw archiveError(10, "Invalid USTAR header")
         }
-    }
-
-    private static func readEntryPayloadData(from handle: FileHandle, size: UInt64) throws -> Data {
-        guard size > 0 else {
-            return Data()
-        }
-
-        guard size <= UInt64(Int.max) else {
-            throw NSError(
-                domain: "TarArchiveExtractor",
-                code: 3,
-                userInfo: [NSLocalizedDescriptionKey: "TAR payload exceeds supported in-memory size: \(size) bytes"]
-            )
-        }
-
-        let payload = try ArchiveExtractionUtilities.readExactly(from: handle, count: Int(size))
-        try skipPadding(in: handle, size: size)
-        return payload
-    }
-
-    private static func skipEntryPayload(in handle: FileHandle, size: UInt64) throws {
-        try ArchiveExtractionUtilities.skipBytes(size, in: handle)
-        try skipPadding(in: handle, size: size)
-    }
-
-    private static func skipPadding(in handle: FileHandle, size: UInt64) throws {
-        let padding = (UInt64(blockSize) - (size % UInt64(blockSize))) % UInt64(blockSize)
-        try ArchiveExtractionUtilities.skipBytes(padding, in: handle)
-    }
-
-    private static func parseHeader(from block: Data) throws -> Header {
-        guard block.count == blockSize else {
-            throw NSError(
-                domain: "TarArchiveExtractor",
-                code: 1,
-                userInfo: [NSLocalizedDescriptionKey: "Invalid TAR block size: \(block.count)"]
-            )
-        }
-
+        let name = try parseString(block[0..<100])
+        let prefix = try parseString(block[345..<500])
+        let path = prefix.isEmpty ? name : (name.isEmpty ? prefix : "\(prefix)/\(name)")
         return Header(
-            path: parseTarPath(from: block),
-            size: try parseTarNumber(block[124..<136]),
-            typeFlag: block[156],
-            linkName: parseCString(block[157..<257])
+            path: path,
+            size: try parseOctal(block[124..<136]),
+            typeFlag: block[156]
         )
     }
 
-    private static func parseTarPath(from block: Data) -> String {
-        let name = parseCString(block[0..<100])
-        let prefix = parseCString(block[345..<500])
-
-        guard !prefix.isEmpty else {
-            return name
+    private static func verifyChecksum(_ block: Data) throws -> Bool {
+        let expected = try parseOctal(block[148..<156])
+        var actual: UInt64 = 0
+        for index in block.indices {
+            actual += UInt64((148..<156).contains(index) ? 32 : block[index])
         }
-
-        guard !name.isEmpty else {
-            return prefix
-        }
-
-        return "\(prefix)/\(name)"
+        return actual == expected
     }
 
-    private static func parseCString(_ data: Data.SubSequence) -> String {
-        let bytes = data.prefix { $0 != 0 }
-        guard !bytes.isEmpty else {
-            return ""
+    private static func parseOctal(_ bytes: Data.SubSequence) throws -> UInt64 {
+        let value = try parseString(bytes)
+            .trimmingCharacters(in: CharacterSet(charactersIn: " \0"))
+        if value.isEmpty { return 0 }
+        guard value.allSatisfy({ ("0"..."7").contains($0) }),
+              let parsed = UInt64(value, radix: 8) else {
+            throw archiveError(11, "Invalid TAR numeric field")
         }
-
-        if let decoded = String(data: Data(bytes), encoding: .utf8) {
-            return decoded
-        }
-
-        return String(decoding: bytes, as: UTF8.self)
+        return parsed
     }
 
-    private static func parseTarNumber(_ data: Data.SubSequence) throws -> UInt64 {
-        let bytes = [UInt8](data)
-        guard !bytes.allSatisfy({ $0 == 0 || $0 == 32 }) else {
-            return 0
+    private static func parseString(_ bytes: Data.SubSequence) throws -> String {
+        let value = bytes.prefix { $0 != 0 }
+        guard let decoded = String(data: Data(value), encoding: .utf8) else {
+            throw archiveError(12, "Invalid UTF-8 in TAR header")
         }
-
-        if let first = bytes.first, first & 0x80 != 0 {
-            var value: UInt64 = UInt64(first & 0x7F)
-            for byte in bytes.dropFirst() {
-                value = (value << 8) | UInt64(byte)
-            }
-            return value
-        }
-
-        let stringValue = String(bytes: bytes, encoding: .ascii)?
-            .trimmingCharacters(in: CharacterSet(charactersIn: "\0 "))
-
-        guard let stringValue, !stringValue.isEmpty,
-              let parsedValue = UInt64(stringValue, radix: 8) else {
-            throw NSError(
-                domain: "TarArchiveExtractor",
-                code: 2,
-                userInfo: [NSLocalizedDescriptionKey: "Invalid TAR numeric field"]
-            )
-        }
-
-        return parsedValue
+        return decoded
     }
 
-    private static func parsePaxHeaders(from data: Data) -> [String: String] {
+    private static func parsePaxHeaders(_ data: Data) throws -> [String: String] {
         var headers: [String: String] = [:]
-        var index = data.startIndex
-
-        while index < data.endIndex {
-            guard let spaceIndex = data[index...].firstIndex(of: 0x20),
-                  let lengthString = String(data: data[index..<spaceIndex], encoding: .ascii),
-                  let recordLength = Int(lengthString),
-                  recordLength > 0 else {
-                break
+        var offset = 0
+        while offset < data.count {
+            guard let space = data[offset...].firstIndex(of: 0x20),
+                  let lengthText = String(data: data[offset..<space], encoding: .ascii),
+                  let recordLength = Int(lengthText),
+                  recordLength > space - offset + 2 else {
+                throw archiveError(13, "Malformed PAX record")
             }
-
-            let recordEnd = index + recordLength
-            guard recordEnd <= data.endIndex else {
-                break
+            let (end, overflowed) = offset.addingReportingOverflow(recordLength)
+            guard !overflowed, end <= data.count, data[end - 1] == 0x0A else {
+                throw archiveError(13, "Malformed PAX record")
             }
-
-            let recordBodyStart = data.index(after: spaceIndex)
-            let recordBody = data[recordBodyStart..<recordEnd]
-
-            if let newlineIndex = recordBody.lastIndex(of: 0x0A),
-               let separatorIndex = recordBody[..<newlineIndex].firstIndex(of: 0x3D),
-               let key = String(data: recordBody[..<separatorIndex], encoding: .utf8),
-               let value = String(data: recordBody[recordBody.index(after: separatorIndex)..<newlineIndex], encoding: .utf8) {
-                headers[key] = value
+            let bodyStart = space + 1
+            guard let equals = data[bodyStart..<(end - 1)].firstIndex(of: 0x3D),
+                  let key = String(data: data[bodyStart..<equals], encoding: .utf8),
+                  let value = String(data: data[(equals + 1)..<(end - 1)], encoding: .utf8),
+                  !key.isEmpty,
+                  headers[key] == nil else {
+                throw archiveError(13, "Malformed PAX record")
             }
-
-            index = recordEnd
+            headers[key] = value
+            offset = end
         }
-
         return headers
     }
 
-    private static func decodeLongPath(from data: Data) -> String {
-        let trimmedData = data.prefix { $0 != 0 }
-        guard !trimmedData.isEmpty else {
-            return ""
+    private static func copyPayload(
+        from input: FileHandle,
+        size: UInt64,
+        to output: FileHandle
+    ) throws {
+        var remaining = size
+        while remaining > 0 {
+            let count = Int(min(remaining, 64 * 1024))
+            let chunk = try readExactly(from: input, count: count)
+            output.write(chunk)
+            remaining -= UInt64(chunk.count)
         }
+    }
 
-        return String(decoding: trimmedData, as: UTF8.self)
-            .trimmingCharacters(in: .newlines)
+    private static func readPayload(from handle: FileHandle, size: UInt64) throws -> Data {
+        guard size <= UInt64(Int.max) else {
+            throw archiveError(14, "TAR payload is too large")
+        }
+        let payload = try readExactly(from: handle, count: Int(size))
+        try readPadding(from: handle, size: size)
+        return payload
+    }
+
+    private static func readPadding(from handle: FileHandle, size: UInt64) throws {
+        let padding = (UInt64(blockSize) - size % UInt64(blockSize)) % UInt64(blockSize)
+        if padding > 0 {
+            let bytes = try readExactly(from: handle, count: Int(padding))
+            guard bytes.allSatisfy({ $0 == 0 }) else {
+                throw archiveError(15, "Invalid TAR entry padding")
+            }
+        }
+    }
+
+    private static func requireZeroPaddingToEnd(_ handle: FileHandle) throws {
+        while true {
+            let bytes = try FileUtilities.readUpToCount(
+                from: handle,
+                count: blockSize
+            ) ?? Data()
+            if bytes.isEmpty { return }
+            guard bytes.count == blockSize,
+                  bytes.allSatisfy({ $0 == 0 }) else {
+                throw archiveError(16, "TAR contains trailing data")
+            }
+        }
+    }
+
+    private static func readExactly(from handle: FileHandle, count: Int) throws -> Data {
+        guard let data = try FileUtilities.readUpToCount(from: handle, count: count),
+              data.count == count else {
+            throw archiveError(17, "Truncated TAR archive")
+        }
+        return data
     }
 
     private static func isZeroBlock(_ data: Data) -> Bool {
         data.allSatisfy { $0 == 0 }
     }
 
-    private static func archiveFileSize(at path: String) throws -> UInt64 {
-        let attributes = try FileManager.default.attributesOfItem(atPath: path)
-        if let number = attributes[.size] as? NSNumber {
-            return number.uint64Value
-        }
-
-        if let value = attributes[.size] as? UInt64 {
-            return value
-        }
-
-        return 0
+    private static func archiveError(_ code: Int, _ message: String) -> NSError {
+        NSError(
+            domain: "TarArchiveExtractor",
+            code: code,
+            userInfo: [NSLocalizedDescriptionKey: message]
+        )
     }
 }

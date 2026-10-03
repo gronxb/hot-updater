@@ -2,12 +2,14 @@
 
 # Setup
 
-Follow these steps to run [Elysia.js](https://elysiajs.com) under [Node.js](https://nodejs.org):
+Follow these steps to run [Elysia.js](https://elysiajs.com) under [Node.js](https://nodejs.org) 20.19 or later:
 
-1. Install the workspace dependencies and enter this package.
+1. Install and build the workspace dependencies from the repository root, then
+   enter this package.
 
    ```bash
    pnpm install
+   pnpm -w build
    cd examples-server/elysia-drizzle-libsql
    ```
 
@@ -23,11 +25,14 @@ Follow these steps to run [Elysia.js](https://elysiajs.com) under [Node.js](http
    HOT_UPDATER_STORAGE_DOWNLOAD_URL_KEY=replace-with-a-long-random-signing-key
    ```
 
-3. Generate the Drizzle schema and apply it to the local database.
+3. Create the data directory, apply the Drizzle schema, and initialize the
+   settings checked by Hot Updater and Insights.
 
    ```bash
+   mkdir -p data
    pnpm db:generate
    pnpm db:push
+   pnpm exec hot-updater db migrate src/db.ts --yes
    ```
 
 4. Start the development server.

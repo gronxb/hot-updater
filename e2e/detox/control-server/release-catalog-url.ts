@@ -1,5 +1,8 @@
-import { encodeChannelKey } from "../../../packages/core/src/releaseCatalogScope.ts";
-import { canonicalizeAppVersion } from "../../../plugins/plugin-core/src/releaseCatalogCompiler.ts";
+import { importPublished } from "../published.ts";
+
+const { canonicalizeAppVersion, encodeChannelKey } = await importPublished<
+  typeof import("@hot-updater/protocol")
+>("@hot-updater/protocol");
 
 type ReleaseCatalogUrlBaseInput = {
   readonly baseUrl: string;

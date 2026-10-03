@@ -56,21 +56,29 @@ final class ArtifactInstallerTests: XCTestCase {
         XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: root.appendingPathComponent(".staging").path), [])
     }
 
-    func testConfiguredSignatureAndNullableManifestPolicy() async throws {
+    func testConfiguredSignatureRequiresSignedManifest() async throws {
         let key = try publicKey()
         let root = temporaryRoot(); defer { try? FileManager.default.removeItem(at: root) }
         let installer = try LynxArtifactInstaller(root: root, configuration: .init(runtimeId: profile, publicKeyPEM: key))
         let signed = try await receipt("react-ios-signed")
-        XCTAssertNil(signed.manifestFileHash)
+        XCTAssertTrue(signed.manifestFileHash?.hasPrefix("sig:") == true)
         let prepared = try await installer.prepare(signed)
         let installed = try installer.commit(prepared, finalize: { _ = try $0() })
         let original = try Data(contentsOf: installed.directory.appendingPathComponent(installed.entry))
-        do { _ = try await installer.prepare(try await receipt()); XCTFail("Unsigned archive accepted with a configured key") }
+        do { _ = try await installer.prepare(try await receipt()); XCTFail("Unsigned manifest accepted with a configured key") }
         catch let error as SignatureVerificationError { XCTAssertEqual(error.errorCodeString, "UNSIGNED_NOT_ALLOWED") }
-        let plainManifest = LynxArtifactRequest(bundleId: signed.bundleId, fileUrl: signed.fileUrl, fileHash: signed.fileHash, manifestFileHash: installed.manifestDigest)
+        let plainManifest = LynxArtifactRequest(bundleId: signed.bundleId,
+            manifestUrl: signed.manifestUrl,
+            manifestFileHash: installed.manifestDigest,
+            assets: signed.assets,
+            archiveUrl: signed.archiveUrl)
         do { _ = try await installer.prepare(plainManifest); XCTFail("Supplied unsigned manifest token accepted with configured key") }
         catch let error as SignatureVerificationError { XCTAssertEqual(error.errorCodeString, "UNSIGNED_NOT_ALLOWED") }
-        let corruptSignature = LynxArtifactRequest(bundleId: signed.bundleId, fileUrl: signed.fileUrl, fileHash: "sig:AAAA")
+        let corruptSignature = LynxArtifactRequest(bundleId: signed.bundleId,
+            manifestUrl: signed.manifestUrl,
+            manifestFileHash: "sig:AAAA",
+            assets: signed.assets,
+            archiveUrl: signed.archiveUrl)
         do { _ = try await installer.prepare(corruptSignature); XCTFail("Invalid signature accepted") }
         catch let error as SignatureVerificationError { XCTAssertEqual(error.errorCodeString, "SIGNATURE_VERIFICATION_FAILED") }
         XCTAssertEqual(try Data(contentsOf: installed.directory.appendingPathComponent(installed.entry)), original)
@@ -111,11 +119,11 @@ final class ArtifactInstallerTests: XCTestCase {
         }
     }
 
-    func testRealSignedCLITarFormats() async throws {
+    func testRealSignedCLIBulkArchive() async throws {
         let key = try publicKey()
         let root = temporaryRoot(); defer { try? FileManager.default.removeItem(at: root) }
         let installer = try LynxArtifactInstaller(root: root, configuration: .init(runtimeId: profile, publicKeyPEM: key))
-        for name in ["react-ios-B-external2-managed-tar-gz-signed", "react-ios-B-external2-managed-tar-br-signed"] {
+        for name in ["react-ios-B-external2-managed-tar-br-signed"] {
             let request = try await receipt(name)
             let prepared = try await installer.prepare(request)
             let installed = try installer.commit(prepared, finalize: { _ = try $0() })
@@ -126,13 +134,21 @@ final class ArtifactInstallerTests: XCTestCase {
 
     func testInterruptedAndCanceledHTTPPreparationsStayPrivate() async throws {
         let request = try await receipt()
-        let suffix = try XCTUnwrap(request.fileUrl).path.replacingOccurrences(of: "/files/", with: "")
+        let suffix = try XCTUnwrap(request.manifestUrl).path.replacingOccurrences(of: "/files/", with: "")
         let root = temporaryRoot(); defer { try? FileManager.default.removeItem(at: root) }
         let installer = try LynxArtifactInstaller(root: root, configuration: .init(runtimeId: profile))
-        let truncated = LynxArtifactRequest(bundleId: request.bundleId, fileUrl: URL(string: "http://127.0.0.1:18792/qa/truncated/\(suffix)")!, fileHash: request.fileHash)
+        let truncated = LynxArtifactRequest(bundleId: request.bundleId,
+            manifestUrl: URL(string: "http://127.0.0.1:18792/qa/truncated/\(suffix)")!,
+            manifestFileHash: request.manifestFileHash,
+            assets: request.assets,
+            archiveUrl: request.archiveUrl)
         do { _ = try await installer.prepare(truncated); XCTFail("Truncated HTTP body accepted") }
         catch { print("Truncated HTTP rejected: \(error.localizedDescription)") }
-        let slow = LynxArtifactRequest(bundleId: request.bundleId, fileUrl: URL(string: "http://127.0.0.1:18792/qa/slow/\(suffix)")!, fileHash: request.fileHash)
+        let slow = LynxArtifactRequest(bundleId: request.bundleId,
+            manifestUrl: URL(string: "http://127.0.0.1:18792/qa/slow/\(suffix)")!,
+            manifestFileHash: request.manifestFileHash,
+            assets: request.assets,
+            archiveUrl: request.archiveUrl)
         let operation = Task { try await installer.prepare(slow) }
         try await Task.sleep(nanoseconds: 800_000_000)
         operation.cancel()

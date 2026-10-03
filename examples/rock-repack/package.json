@@ -34,7 +34,6 @@
     "@types/react": "^19.1.2",
     "@types/react-test-renderer": "^19.1.0",
     "babel-jest": "^29.6.3",
-    "dotenv": "^16.4.5",
     "eslint": "^8.19.0",
     "flow-remove-types": "^2.279.0",
     "hot-updater": "workspace:*",

@@ -43,25 +43,16 @@ import {
   handleApiKeyList,
   handleApiKeyRevoke,
 } from "./commands/apiKey";
-import { handleArtifactDelete } from "./commands/artifact";
 import {
   handleBundleDelete,
   handleBundleEnablement,
   handleBundleList,
-  handleBundlePreflight,
   handleBundleShow,
   handleBundleUpdate,
 } from "./commands/bundle";
-import {
-  handleCatalogPreflight,
-  handleCatalogRebuild,
-} from "./commands/catalog";
-import { handleChannel, handleSetChannel } from "./commands/channel";
+import { handleSetChannel } from "./commands/channel";
 import { handleDoctor } from "./commands/doctor";
-import {
-  handleCreateFingerprint,
-  handleFingerprint,
-} from "./commands/fingerprint";
+import { handleCreateFingerprint } from "./commands/fingerprint";
 import { generate } from "./commands/generate";
 import { keysExportPublic, keysGenerate, keysRemove } from "./commands/keys";
 import { migrate } from "./commands/migrate";
@@ -89,23 +80,6 @@ const parseRolloutCohortCount = (value: string) => {
     throw new InvalidArgumentError("must be an integer between 0 and 1000");
   }
   return count;
-};
-
-const resolveArtifactIdOption = (
-  artifactId: string | undefined,
-  legacyBundleId: string | undefined,
-  flag: "--artifact-id" | "--base-artifact-id",
-): string => {
-  if (artifactId && legacyBundleId && artifactId !== legacyBundleId) {
-    p.log.error(`Provide only one value for ${flag}.`);
-    process.exit(1);
-  }
-  const value = artifactId ?? legacyBundleId;
-  if (!value) {
-    p.log.error(`Missing required option ${flag} <artifact-id>.`);
-    process.exit(1);
-  }
-  return value;
 };
 
 const program = new Command();
@@ -209,27 +183,34 @@ program
   .option("--channel <channel>", "catalog channel to verify")
   .option("--app-version <version>", "app-version catalog target")
   .option("--fingerprint <hash>", "fingerprint catalog target")
+  .addOption(
+    new Option(
+      "--fix",
+      "run the repairs doctor can do itself, name every file they write, and check again",
+    ).conflicts([
+      "scope",
+      "infraDir",
+      "platform",
+      "channel",
+      "appVersion",
+      "fingerprint",
+    ]),
+  )
   .option("--json", "output machine-readable doctor result")
   .action(handleDoctor);
 
-const fingerprintCommand = program
+program
   .command("fingerprint")
-  .description("Check current fingerprints against fingerprint.json");
-
-fingerprintCommand.action(handleFingerprint);
-
-fingerprintCommand
+  .description("Manage fingerprint.json for the fingerprint update strategy")
   .command("create")
-  .description("Create fingerprint")
+  .description(
+    "Create fingerprint.json and embed its hashes in the native files",
+  )
   .action(handleCreateFingerprint);
 
-const channelCommand = program
+program
   .command("channel")
-  .description("Show and manage native default channels");
-
-channelCommand.action(handleChannel);
-
-channelCommand
+  .description("Manage native default channels")
   .command("set")
   .description(
     "Set the native default channel for Android (BuildConfig) and iOS (Info.plist)",
@@ -237,35 +218,38 @@ channelCommand
   .argument("<channel>", "the channel to set")
   .action(handleSetChannel);
 
+const SERVER_PATH_HELP =
+  "path to the server definition that exports hotUpdater (default: database and plugins in hot-updater.config.ts, else src/hotUpdater.ts or src/db.ts)";
+
 const apiKeyCommand = program.command("api-key").description("Manage API keys");
 
 apiKeyCommand
   .command("create")
   .description("Create an API key")
-  .argument("[configPath]", "path to the config file that exports hotUpdater")
   .requiredOption("--name <name>", "name used to identify the API key")
-  .action((configPath: string | undefined, options: { name: string }) =>
-    handleApiKeyCreate(options.name, { configPath }),
+  .argument("[serverPath]", SERVER_PATH_HELP)
+  .action((serverPath: string | undefined, options: { name: string }) =>
+    handleApiKeyCreate(options.name, { serverPath }),
   );
 
 apiKeyCommand
   .command("list")
   .description("List API keys")
-  .argument("[configPath]", "path to the config file that exports hotUpdater")
   .option("--json", "output API key metadata as JSON")
-  .action((configPath: string | undefined, options: { json?: boolean }) =>
-    handleApiKeyList({ ...options, configPath }),
+  .argument("[serverPath]", SERVER_PATH_HELP)
+  .action((serverPath: string | undefined, options: { json?: boolean }) =>
+    handleApiKeyList({ ...options, serverPath }),
   );
 
 apiKeyCommand
   .command("revoke")
   .description("Revoke an API key")
   .argument("<id>", "API key id")
-  .argument("[configPath]", "path to the config file that exports hotUpdater")
+  .argument("[serverPath]", SERVER_PATH_HELP)
   .option("-y, --yes", "skip confirmation prompt")
   .action(
-    (id: string, configPath: string | undefined, options: { yes?: boolean }) =>
-      handleApiKeyRevoke(id, { ...options, configPath }),
+    (id: string, serverPath: string | undefined, options: { yes?: boolean }) =>
+      handleApiKeyRevoke(id, { ...options, serverPath }),
   );
 
 const bundleCommand = program.command("bundle").description("Manage bundles");
@@ -350,18 +334,12 @@ addBundlePolicyOptions(
     .command("update")
     .description("Update bundle rollout and targeting")
     .argument("<id>", "the ID shown in the console or HotUpdater.getBundleId()")
+    .option(
+      "--dry-run",
+      "validate the update and show the projected catalog without saving",
+    )
     .option("-y, --yes", "skip confirmation prompt"),
 ).action(handleBundleUpdate);
-
-addBundlePolicyOptions(
-  bundleCommand
-    .command("preflight")
-    .description("Validate a bundle update without saving")
-    .argument(
-      "<id>",
-      "the ID shown in the console or HotUpdater.getBundleId()",
-    ),
-).action(handleBundlePreflight);
 
 for (const [name, enabled] of [
   ["enable", true],
@@ -437,19 +415,6 @@ bundleCommand
     ) => handlePromote(sourceReleaseId, options),
   );
 
-const artifactCommand = bundleCommand
-  .command("artifact")
-  .description("Advanced immutable artifact maintenance");
-
-artifactCommand
-  .command("delete")
-  .description("Delete unreferenced artifact records")
-  .argument("<artifact-ids...>", "the artifact ID(s) from Advanced diagnostics")
-  .option("-y, --yes", "skip confirmation prompt")
-  .action((artifactIds: string[], options: { yes?: boolean }) =>
-    handleArtifactDelete(artifactIds, options),
-  );
-
 const storageCommand = program
   .command("storage")
   .description("Manage stored bundle artifacts");
@@ -495,7 +460,7 @@ Examples:
 Only unreferenced bundle objects and shared assets are eligible.
 Protection uses object modification time, not time since bundle deletion.
 Deletion requires exclusive storage access; stop deploy and patch first.
-Object listing and deletion require a capable Storage plugin such as s3Storage.
+Object listing and deletion require a capable Storage adapter such as s3Storage.
 `,
   )
   .action(
@@ -529,10 +494,6 @@ keysCommand
 keysCommand
   .command("export-public")
   .description("Export public key for native configuration")
-  .option(
-    "-i, --input <path>",
-    "path to a legacy private key file (default: configured public signing key)",
-  )
   .option(
     "-p, --print-only",
     "only print the public key without writing to native files",
@@ -614,25 +575,13 @@ program
 program
   .command("patch")
   .description("create patch artifacts for a deployed bundle")
-  .option(
+  .requiredOption(
     "-b, --artifact-id <artifact-id>",
     "target artifact ID from Advanced diagnostics",
   )
-  .option(
+  .requiredOption(
     "--base-artifact-id <artifact-id>",
     "older artifact ID from Advanced diagnostics to use as the patch base",
-  )
-  .addOption(
-    new Option(
-      "--bundle-id <artifact-id>",
-      "deprecated alias for --artifact-id",
-    ).hideHelp(),
-  )
-  .addOption(
-    new Option(
-      "--base-bundle-id <artifact-id>",
-      "deprecated alias for --base-artifact-id",
-    ).hideHelp(),
   )
   .addOption(platformCommandOption)
   .addOption(interactiveCommandOption)
@@ -642,29 +591,11 @@ program
       "specify the channel used to load config",
     ).default(DEFAULT_CHANNEL),
   )
-  .action(async (options) => {
-    if (options.bundleId) {
-      p.log.warn(
-        "--bundle-id is deprecated. Use --artifact-id with an Artifact ID from Advanced diagnostics.",
-      );
-    }
-    if (options.baseBundleId) {
-      p.log.warn(
-        "--base-bundle-id is deprecated. Use --base-artifact-id with an Artifact ID from Advanced diagnostics.",
-      );
-    }
+  .action(async ({ artifactId, baseArtifactId, ...options }) => {
     await createPatch({
       ...options,
-      bundleId: resolveArtifactIdOption(
-        options.artifactId,
-        options.bundleId,
-        "--artifact-id",
-      ),
-      baseBundleId: resolveArtifactIdOption(
-        options.baseArtifactId,
-        options.baseBundleId,
-        "--base-artifact-id",
-      ),
+      bundleId: artifactId,
+      baseBundleId: baseArtifactId,
     } satisfies PatchOptions);
   });
 
@@ -699,7 +630,10 @@ const dbCommand = program
 dbCommand
   .command("migrate")
   .description("Run database migration (creates tables directly in database)")
-  .argument("[configPath]", "path to the config file that exports hotUpdater")
+  .argument(
+    "[configPath]",
+    "path to the server definition that exports hotUpdater (default: src/hotUpdater.ts or src/db.ts)",
+  )
   .option("-y, --yes", "skip confirmation prompt", false)
   .action(async (configPath: string | undefined, options: { yes: boolean }) => {
     await migrate({ configPath: configPath || "", skipConfirm: options.yes });
@@ -711,13 +645,13 @@ dbCommand
   .description("Generate SQL migration file (does not execute)")
   .argument(
     "[configPath]",
-    "path to the config file that exports hotUpdater (not required with --sql)",
+    "path to the server definition that exports hotUpdater (default: src/hotUpdater.ts or src/db.ts; optional with --sql)",
   )
   .argument("[outputDir]", "output directory (default: hot-updater_migrations)")
   .option("-y, --yes", "skip confirmation prompt", false)
   .option(
     "--sql [provider]",
-    "generate standalone SQL file without reading config. Optional provider: postgresql, mysql, sqlite (default: interactive selection)",
+    "generate a standalone SQL file of core's tables and the server's plugins' tables, from the server definition or the plugins in hot-updater.config.ts when found. Optional provider: postgresql, mysql, sqlite (default: interactive selection)",
   )
   .action(
     async (
@@ -726,12 +660,10 @@ dbCommand
       options: { yes: boolean; sql?: string | true },
     ) => {
       const sql = options.sql === true ? true : options.sql || false;
-      const isStandaloneSql = sql !== false;
 
       await generate({
-        configPath: isStandaloneSql ? "" : configPath || "",
-        outputDir:
-          isStandaloneSql && outputDir === undefined ? configPath : outputDir,
+        configPath: configPath || "",
+        outputDir,
         skipConfirm: options.yes,
         sql,
       });
@@ -739,48 +671,23 @@ dbCommand
     },
   );
 
-const catalogCommand = dbCommand
-  .command("catalog")
-  .description("Verify and rebuild compiled Release catalogs");
-
-catalogCommand
-  .command("preflight")
-  .description("Verify catalog projections without writing")
-  .argument(
-    "[scope-keys...]",
-    "specific scope keys; defaults to all Release and Catalog scopes",
-  )
-  .option("--json", "output JSON")
-  .action(handleCatalogPreflight);
-
-catalogCommand
-  .command("rebuild")
-  .description("Create missing or rebuild drifted catalog projections")
-  .argument(
-    "[scope-keys...]",
-    "specific scope keys; defaults to all Release and Catalog scopes",
-  )
-  .option("--json", "output JSON")
-  .option("-y, --yes", "skip confirmation prompt")
-  .action(handleCatalogRebuild);
-
-program
-  .command("build:android")
-  .description("build a new Android native artifact")
-  .addOption(nativeBuildOutputCommandOption)
-  .addOption(interactiveCommandOption)
-  .addOption(nativeBuildSchemeCommandOption)
-  .addOption(
-    new Option(
-      "-m, --message <message>",
-      "Specify a custom message for this deployment. If not provided, the latest git commit message will be used as the deployment message",
-    ),
-  )
-  .action(async (options: Omit<NativeBuildOptions, "platform">) => {
-    await buildAndroidNative(options);
-  });
-
 if (process.env["EXPERIMENTAL"]) {
+  program
+    .command("build:android")
+    .description("build a new Android native artifact")
+    .addOption(nativeBuildOutputCommandOption)
+    .addOption(interactiveCommandOption)
+    .addOption(nativeBuildSchemeCommandOption)
+    .addOption(
+      new Option(
+        "-m, --message <message>",
+        "Specify a custom message for this deployment. If not provided, the latest git commit message will be used as the deployment message",
+      ),
+    )
+    .action(async (options: Omit<NativeBuildOptions, "platform">) => {
+      await buildAndroidNative(options);
+    });
+
   program
     .command("build:ios")
     .description("build a new iOS native artifact")

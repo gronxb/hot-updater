@@ -1,5 +1,11 @@
 import type { ParsedLocation } from "@tanstack/react-router";
 
+import {
+  DEFAULT_EVENT_RANGE,
+  EVENT_RANGES,
+  type EventRange,
+} from "../lib/insights-view";
+
 export type InsightsPaginationState = {
   readonly eventsBack?: readonly string[];
   readonly searchBack?: readonly string[];
@@ -20,14 +26,19 @@ const readTimestamp = (value: unknown): number | undefined =>
     ? value
     : undefined;
 
-export function getInsightsScrollRestorationKey(location: ParsedLocation) {
-  if (location.pathname === "/installations") {
-    const search = validateInstallationsSearch(location.search);
-    if (search.query === undefined && search.installId === undefined) {
-      return `/installations?eventsBefore=${search.eventsBefore ?? "new"}&eventsCursor=${search.eventsCursor ?? "first"}`;
-    }
-  }
-  return location.state.__TSR_key!;
+const readEventRange = (value: unknown): EventRange | undefined =>
+  EVENT_RANGES.find((range) => range === value);
+
+/**
+ * The installations route's scroll-restoration key: every visit to one page
+ * of the event list shares its scroll position, and a lookup keeps its own
+ * for each history entry.
+ */
+export function installationsScrollRestorationKey(location: ParsedLocation) {
+  const search = validateInstallationsSearch(location.search);
+  return search.query === undefined && search.installId === undefined
+    ? `/installations?eventsBefore=${search.eventsBefore ?? "new"}&eventsRange=${search.eventsRange ?? DEFAULT_EVENT_RANGE}&eventsCursor=${search.eventsCursor ?? "first"}`
+    : location.state.__TSR_key!;
 }
 
 export function validateInstallationsSearch(search: Record<string, unknown>) {
@@ -37,6 +48,7 @@ export function validateInstallationsSearch(search: Record<string, unknown>) {
       typeof search.installId === "string" ? search.installId : undefined,
     eventsCursor: readCursor(search.eventsCursor),
     eventsBefore: readTimestamp(search.eventsBefore),
+    eventsRange: readEventRange(search.eventsRange),
     searchCursor: readCursor(search.searchCursor),
     historyCursor: readCursor(search.historyCursor),
     historyBefore: readTimestamp(search.historyBefore),

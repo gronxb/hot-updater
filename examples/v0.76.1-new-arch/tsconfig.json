@@ -1,6 +1,3 @@
 {
-  "extends": "@react-native/typescript-config/tsconfig.json",
-  "compilerOptions": {
-    "types": ["./env.d.ts"]
-  }
+  "extends": "@react-native/typescript-config/tsconfig.json"
 }

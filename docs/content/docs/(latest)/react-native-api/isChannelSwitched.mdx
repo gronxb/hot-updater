@@ -30,18 +30,25 @@ Returns `false` when:
 
 ## Example
 
+After [initializing Hot Updater](/docs/react-native-api/init), check for a
+staging update. This example assumes the build-time default channel is
+`production`.
+
 ```tsx
+import { HotUpdater } from "@hot-updater/react-native";
+
 const updateInfo = await HotUpdater.checkForUpdate({
   updateStrategy: "appVersion",
   channel: "staging", // [!code ++]
 });
 
 if (updateInfo) {
-  await updateInfo.updateBundle();
-  await HotUpdater.reload();
+  const didUpdate = await updateInfo.updateBundle();
+  if (didUpdate) {
+    console.log(HotUpdater.isChannelSwitched()); // true
+    await HotUpdater.reload();
+  }
 }
-
-console.log(HotUpdater.isChannelSwitched()); // true
 ```
 
 ## Related APIs

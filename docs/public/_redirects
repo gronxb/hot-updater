@@ -1,7 +1,112 @@
 # Cloudflare Pages Redirects for Hot Updater Docs
 # Format: <source> <destination> [<status_code>]
 # Status codes: 301 (permanent), 302 (temporary), 308 (permanent, no method change)
+# Specific rules come before the splats that would also match them.
 
 # Redirect root docs to introduction
 /docs /docs/get-started/introduction 302
-/docs/v0 /docs/v0/get-started/introduction 302
+
+# The v0 archive was removed: each v0 page goes to the same page in the
+# current docs, or to /docs when there is none
+/docs/v0 /docs/get-started/introduction 301
+/docs/v0/build-plugins/bare /docs/build-adapters/bare 301
+/docs/v0/build-plugins/expo /docs/build-adapters/expo 301
+/docs/v0/build-plugins/rock /docs/build-adapters/rock 301
+/docs/v0/concepts/automatic-rollback /docs/concepts/automatic-rollback 301
+/docs/v0/concepts/how-it-works /docs/concepts/how-it-works 301
+/docs/v0/concepts/plugin-system /docs/concepts/plugin-system 301
+/docs/v0/custom/cli-configuration /docs/custom/cli-configuration 301
+/docs/v0/custom/database/drizzle /docs/custom/database/drizzle 301
+/docs/v0/custom/database/kysely /docs/custom/database/kysely 301
+/docs/v0/custom/database/mongodb /docs/custom/database/mongodb 301
+/docs/v0/custom/database/prisma /docs/custom/database/prisma 301
+/docs/v0/custom/database/s3 /docs 301
+/docs/v0/custom/database/sql-export /docs/custom/database/sql-export 301
+/docs/v0/custom/frameworks/elysia /docs/custom/frameworks/elysia 301
+/docs/v0/custom/frameworks/express /docs/custom/frameworks/express 301
+/docs/v0/custom/frameworks/hono /docs/custom/frameworks/hono 301
+/docs/v0/custom/hosting/docker /docs/custom/hosting/docker 301
+/docs/v0/custom/hosting/vercel /docs/custom/hosting/vercel 301
+/docs/v0/custom/overview /docs/custom/overview 301
+/docs/v0/custom/quick-start /docs/custom/quick-start 301
+/docs/v0/database-plugins/aws /docs/database-adapters/aws 301
+/docs/v0/database-plugins/cloudflare /docs/database-adapters/cloudflare 301
+/docs/v0/database-plugins/custom-database /docs/database-adapters/custom-database 301
+/docs/v0/database-plugins/firestore /docs/database-adapters/firestore 301
+/docs/v0/database-plugins/standalone /docs/database-adapters/standalone 301
+/docs/v0/database-plugins/supabase /docs/database-adapters/supabase 301
+/docs/v0/get-started/basic-usage /docs/get-started/basic-usage 301
+/docs/v0/get-started/introduction /docs/get-started/introduction 301
+/docs/v0/guides/ai-agents /docs/guides/ai-agents 301
+/docs/v0/guides/bundle-diffing /docs/guides/bundle-diffing 301
+/docs/v0/guides/bundle-signing /docs/guides/bundle-signing 301
+/docs/v0/guides/channel-management /docs/guides/channel-management 301
+/docs/v0/guides/compression /docs/guides/bundle-diffing 301
+/docs/v0/guides/console /docs/guides/console 301
+/docs/v0/guides/custom-update /docs/guides/custom-update 301
+/docs/v0/guides/deploy /docs/guides/deploy 301
+/docs/v0/guides/doctor /docs/guides/doctor 301
+/docs/v0/guides/native-build /docs 301
+/docs/v0/guides/rollout-cohorts /docs/guides/rollout-cohorts 301
+/docs/v0/guides/runtime-channel-switch /docs/guides/runtime-channel-switch 301
+/docs/v0/guides/simulator-test /docs 301
+/docs/v0/guides/storage-cleanup /docs/guides/storage-cleanup 301
+/docs/v0/guides/update-strategies/app-version /docs/guides/update-strategies/app-version 301
+/docs/v0/guides/update-strategies/fingerprint /docs/guides/update-strategies/fingerprint 301
+/docs/v0/integration-plugins/bugsnag /docs/integration-plugins/bugsnag 301
+/docs/v0/integration-plugins/datadog /docs/integration-plugins/datadog 301
+/docs/v0/integration-plugins/sentry /docs/integration-plugins/sentry 301
+/docs/v0/managed/aws /docs/managed/aws 301
+/docs/v0/managed/cloudflare /docs/managed/cloudflare 301
+/docs/v0/managed/firebase /docs/managed/firebase 301
+/docs/v0/managed/supabase /docs/managed/supabase 301
+/docs/v0/policy/app-review /docs/policy/app-review 301
+/docs/v0/policy/security /docs/policy/security 301
+/docs/v0/react-native-api/addListener /docs/react-native-api/addListener 301
+/docs/v0/react-native-api/checkForUpdate /docs/react-native-api/checkForUpdate 301
+/docs/v0/react-native-api/clearCrashHistory /docs/react-native-api/clearCrashHistory 301
+/docs/v0/react-native-api/getAppVersion /docs/react-native-api/getAppVersion 301
+/docs/v0/react-native-api/getChannel /docs/react-native-api/getChannel 301
+/docs/v0/react-native-api/getCohort /docs/react-native-api/getCohort 301
+/docs/v0/react-native-api/getCrashHistory /docs/react-native-api/getCrashHistory 301
+/docs/v0/react-native-api/getDefaultChannel /docs/react-native-api/getDefaultChannel 301
+/docs/v0/react-native-api/init /docs/react-native-api/init 301
+/docs/v0/react-native-api/isChannelSwitched /docs/react-native-api/isChannelSwitched 301
+/docs/v0/react-native-api/isUpdateDownloaded /docs/react-native-api/isUpdateDownloaded 301
+/docs/v0/react-native-api/reload /docs/react-native-api/reload 301
+/docs/v0/react-native-api/resetChannel /docs/react-native-api/resetChannel 301
+/docs/v0/react-native-api/setCohort /docs/react-native-api/setCohort 301
+/docs/v0/react-native-api/setReloadBehavior /docs/react-native-api/setReloadBehavior 301
+/docs/v0/react-native-api/updateBundle /docs/react-native-api/updateBundle 301
+/docs/v0/react-native-api/useHotUpdaterStore /docs/react-native-api/useHotUpdaterStore 301
+/docs/v0/react-native-api/wrap /docs/react-native-api/wrap 301
+/docs/v0/storage-plugins/aws /docs/storage-adapters/aws 301
+/docs/v0/storage-plugins/cloudflare /docs/storage-adapters/cloudflare 301
+/docs/v0/storage-plugins/custom-storage /docs/storage-adapters/custom-storage 301
+/docs/v0/storage-plugins/firebase /docs/storage-adapters/firebase 301
+/docs/v0/storage-plugins/supabase /docs/storage-adapters/supabase 301
+/docs/v0/* /docs 301
+
+# Build, storage, and database plugins are now adapters
+/docs/database-plugins/release-catalog-contract /docs/concepts/release-catalog-contract 301
+/docs/database-plugins/release-catalog-contract.md /docs/concepts/release-catalog-contract.md 301
+/api/markdown/database-plugins/release-catalog-contract.md /api/markdown/concepts/release-catalog-contract.md 301
+/docs/build-plugins/* /docs/build-adapters/:splat 301
+/docs/storage-plugins/* /docs/storage-adapters/:splat 301
+/docs/database-plugins/* /docs/database-adapters/:splat 301
+/api/markdown/build-plugins/* /api/markdown/build-adapters/:splat 301
+/api/markdown/storage-plugins/* /api/markdown/storage-adapters/:splat 301
+/api/markdown/database-plugins/* /api/markdown/database-adapters/:splat 301
+
+# Native Build (alpha) is not ready, so its page is removed
+/docs/guides/native-build /docs 301
+
+# Artifact Compression merged into Bundle Diffing
+/docs/guides/compression /docs/guides/bundle-diffing 301
+/docs/guides/compression.md /docs/guides/bundle-diffing.md 301
+/api/markdown/guides/compression.md /api/markdown/guides/bundle-diffing.md 301
+
+# setUser moved to the Insights client plugin
+/docs/react-native-api/setUser /docs/react-native-api/insights 301
+/docs/react-native-api/setUser.md /docs/react-native-api/insights.md 301
+/api/markdown/react-native-api/setUser.md /api/markdown/react-native-api/insights.md 301

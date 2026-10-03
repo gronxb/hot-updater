@@ -44,9 +44,10 @@ HotUpdater.init({
 });
 ```
 
-Call `init` once at the top level of your app's entry module. It configures access and lifecycle
-reporting; follow [custom update flows](/docs/guides/custom-update) to check,
-download, and apply updates.
+Call `init` once at the top level of your app's entry module. It configures
+access and native launch handling; follow
+[custom update flows](/docs/guides/custom-update) to check, download, and apply
+updates.
 
 Managed providers require a client key. A custom server can deliberately choose
 public client access; follow its [access policy setup](/docs/custom/api-key-authentication).
@@ -65,11 +66,15 @@ out of it. A separate environment filename alone does not prevent exposure.
 
 ## Insights data
 
-Insights reporting is enabled by default. Reports identify the app installation
-and its update state; optional `setUser` fields also send your application's
-user ID and display name. Choose those fields deliberately and clear them on
-logout. Set `insights: false` to disable client reports while retaining native
-app-ready handling and recovery.
+An app sends Insights reports only when it runs the
+[Insights plugin](/docs/react-native-api/insights). Reports identify the app
+installation and its update state; the plugin's optional `setUser` also sends
+your application's user ID. Choose that ID deliberately and clear it on
+logout. Leave the plugin out to send no reports; native app-ready handling and
+recovery run either way.
+
+The installation ID and plugin storage stay on the device, outside device
+backups, so restoring a backup onto another device does not copy them.
 
 See [Insights](/docs/guides/insights) for report contents, identity handling,
 verification, and the limits of reported adoption counts.

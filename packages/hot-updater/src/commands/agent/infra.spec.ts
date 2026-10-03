@@ -86,6 +86,7 @@ describe("published agent infrastructure commands", () => {
           infrastructureGeneration: 1,
         });
         expect(manifest.packages[`@hot-updater/${build}`]).toBeTruthy();
+        expect(manifest.packages).not.toHaveProperty("dotenv");
         for (const other of builds.filter((candidate) => candidate !== build)) {
           expect(manifest.packages[`@hot-updater/${other}`]).toBeUndefined();
         }
@@ -93,13 +94,67 @@ describe("published agent infrastructure commands", () => {
           const content = await readFile(path.join(result.data.output, file));
           expect(createHash("sha256").update(content).digest("hex")).toBe(hash);
         }
-        expect(manifest.files["app/verify-server.mjs"]).toBeTruthy();
-        const config = await readFile(
-          path.join(result.data.output, "app/hot-updater.config.ts"),
-          "utf8",
+        // The config the app merges, the credential script with the server
+        // definition it provisions over, and Firestore's migration.
+        expect(
+          Object.keys(manifest.files)
+            .filter((file) => file.startsWith("app/"))
+            .sort(),
+        ).toEqual([
+          "app/hot-updater.config.ts",
+          "app/hotUpdater.ts",
+          ...(provider === "firebase" ? ["app/migrate.ts"] : []),
+          "app/provision-client-credential.mjs",
+          "app/verify-server.mjs",
+        ]);
+        // A migration tool applies the package's migration, which holds
+        // core's tables and those of the prebuilt server's plugins.
+        const migrations = Object.keys(manifest.files).filter((file) =>
+          /migrations\/[^/]+\.sql$/u.test(file),
         );
+        if (provider === "cloudflare" || provider === "supabase") {
+          expect(migrations).toHaveLength(1);
+          const sql = await readFile(
+            path.join(result.data.output, migrations[0]!),
+            "utf8",
+          );
+          expect(sql).toContain("schema.insights");
+          expect(sql).toContain("schema.apiKeys");
+        } else {
+          expect(migrations).toEqual([]);
+        }
+        const appFile = (file: string) =>
+          readFile(path.join(result.data.output, "app", file), "utf8");
+        const providerImport = new RegExp(
+          `^import \\{[^}]*\\bplugins\\b[^}]*\\} from "@hot-updater/${provider}";$`,
+          "mu",
+        );
+        // The deployed server's storage, database, and plugins, and no
+        // server code.
+        const config = await appFile("hot-updater.config.ts");
         expect(config).toContain(`@hot-updater/${build}`);
-        expect(config).toContain(`@hot-updater/${provider}`);
+        expect(config).toMatch(providerImport);
+        expect(config).toMatch(/^ {2}storage: \w+\(/mu);
+        expect(config).toMatch(/^ {2}database: \w+\(/mu);
+        expect(config).toMatch(/^ {2}plugins,$/mu);
+        expect(config).not.toMatch(
+          /\bserver:|hotUpdater\.ts|@hot-updater\/server/u,
+        );
+        // The credential helper's definition: the same database, storage,
+        // and plugins, without the build or the environment file, which
+        // the script loads first.
+        const definition = await appFile("hotUpdater.ts");
+        expect(definition).toContain(
+          "export const hotUpdater = createHotUpdater({",
+        );
+        expect(definition).toMatch(providerImport);
+        expect(definition).not.toContain(`@hot-updater/${build}`);
+        expect(definition).not.toContain("process.loadEnvFile");
+        const sources = [
+          config,
+          definition,
+          ...(provider === "firebase" ? [await appFile("migrate.ts")] : []),
+        ];
         const environment = await readFile(result.data.environment, "utf8");
         const example = await readFile(
           path.join(result.data.output, "env.example"),
@@ -108,9 +163,29 @@ describe("published agent infrastructure commands", () => {
         const variables = [...example.matchAll(/^([A-Z_0-9]+)=$/gm)].map(
           ([, key]) => key!,
         );
-        for (const [, key] of config.matchAll(/process\.env\.([A-Z_0-9]+)/g))
-          expect(variables).toContain(key);
-        expect(variables).toContain("HOT_UPDATER_API_KEY");
+        for (const source of sources)
+          for (const [, key] of source.matchAll(/process\.env\.([A-Z_0-9]+)/g))
+            expect(variables).toContain(key);
+        // The managed server runs apiKeys(), which sets its client-route policy.
+        expect(manifest.clientAuth).toEqual({
+          plugin: "apiKeys",
+          varyHeaders: ["x-api-key"],
+          credential: {
+            label: "API key",
+            header: "x-api-key",
+            env: "HOT_UPDATER_API_KEY",
+          },
+        });
+        expect(variables).toContain(manifest.clientAuth.credential.env);
+        for (const file of Object.keys(manifest.files).filter((name) =>
+          name.endsWith(".md"),
+        )) {
+          const text = await readFile(
+            path.join(result.data.output, file),
+            "utf8",
+          );
+          expect(text, file).not.toMatch(/\{\{CREDENTIAL_|<!-- (if|else|end)/u);
+        }
         for (const key of variables) {
           const row = environment
             .split("\n")
@@ -310,7 +385,7 @@ describe("published agent infrastructure commands", () => {
 
 describe("deployment artifacts", () => {
   it.each(providers)(
-    "loads the generated %s key config without a build plugin or storage credentials",
+    "loads the generated %s server definition without a build adapter or storage credentials",
     async (provider) => {
       const scaffold = run(
         "setup",
@@ -323,34 +398,34 @@ describe("deployment artifacts", () => {
       const providerRoot = path.join(repoRoot, "plugins", provider);
       for (const name of [
         `@hot-updater/${provider}`,
-        "dotenv",
+        "@hot-updater/server",
         ...(provider === "aws" ? ["@aws-sdk/credential-providers"] : []),
-        ...(provider === "firebase" ? ["firebase-admin"] : []),
+        ...(provider === "firebase"
+          ? ["firebase-admin", "@hot-updater/plugin-core"]
+          : []),
       ]) {
         const target = path.join(cwd, "node_modules", name);
         await mkdir(path.dirname(target), { recursive: true });
         await symlink(
           name === `@hot-updater/${provider}`
             ? providerRoot
-            : path.join(
-                name === "dotenv"
-                  ? path.join(repoRoot, "packages/hot-updater")
-                  : providerRoot,
-                "node_modules",
-                name,
-              ),
+            : path.join(providerRoot, "node_modules", name),
           target,
         );
       }
-      const configUrl = pathToFileURL(
-        path.join(scaffold.output, "app/api-key.config.ts"),
+      const definitionUrl = pathToFileURL(
+        path.join(scaffold.output, "app/hotUpdater.ts"),
+      );
+      const migrationUrl = pathToFileURL(
+        path.join(scaffold.output, "app/migrate.ts"),
       );
       const result = spawnSync(
         process.execPath,
         [
           "--input-type=module",
           "--eval",
-          `const { database } = await import(${JSON.stringify(configUrl.href)}); console.log(Boolean(database.models.apiKeys)); await database.dispose?.();`,
+          // provision-client-credential.mjs's path: the clientAuth plugin's API on the definition's database, and Firestore's migration.
+          `const { hotUpdater } = await import(${JSON.stringify(definitionUrl.href)}); const { plugin } = hotUpdater.clientAuth; console.log(plugin, typeof hotUpdater.api[plugin]); ${provider === "firebase" ? `const { migrate } = await import(${JSON.stringify(migrationUrl.href)}); console.log(typeof migrate, typeof hotUpdater.database.createMigrator);` : ""} await hotUpdater.database.dispose?.();`,
         ],
         {
           cwd,
@@ -367,12 +442,28 @@ describe("deployment artifacts", () => {
             HOT_UPDATER_DYNAMODB_TABLE_NAME: "test-table",
             HOT_UPDATER_CLOUDFRONT_DISTRIBUTION_ID: "test-distribution",
             HOT_UPDATER_FIREBASE_PROJECT_ID: "test-project",
+            // Firebase storage resolves its bucket when the definition loads.
+            HOT_UPDATER_FIREBASE_STORAGE_BUCKET: "test-bucket",
           },
         },
       );
       expect(result.error).toBeUndefined();
       expect(result.status, result.stderr).toBe(0);
-      expect(result.stdout.trim()).toBe("true");
+      expect(result.stdout.trim()).toBe(
+        provider === "firebase"
+          ? "apiKeys object\nfunction function"
+          : "apiKeys object",
+      );
+      if (provider === "firebase") {
+        // Firestore has no migration tooling: the credential script passes
+        // the server definition to migrate.ts, which runs its migrator and
+        // restates none of its database settings.
+        const migration = await readFile(migrationUrl, "utf8");
+        expect(migration).toContain(
+          ".createMigrator(toolingTargetOf(plugins))",
+        );
+        expect(migration).not.toMatch(/firebaseDatabase|HOT_UPDATER_|env/u);
+      }
     },
   );
 
@@ -381,7 +472,7 @@ describe("deployment artifacts", () => {
       pathToFileURL(
         path.resolve(
           import.meta.dirname,
-          "../../../../../plugins/aws/dist/iac/index.mjs",
+          "../../../../../plugins/aws/dist/init/index.mjs",
         ),
       ).href
     );
@@ -397,6 +488,10 @@ describe("deployment artifacts", () => {
       "dynamodb/create-table.json":
         aws.buildDynamoDBCreateTableInput("my-metadata"),
       "dynamodb/enable-pitr.json": aws.buildDynamoDBBackupInput("my-metadata"),
+      "dynamodb/enable-ttl.json":
+        aws.buildDynamoDBTimeToLiveInput("my-metadata"),
+      "dynamodb/schema-settings.json":
+        aws.buildDynamoDBSchemaSettingsInput("my-metadata"),
       "iam/trust-policy.json": aws.LAMBDA_EDGE_TRUST_POLICY,
       "iam/dynamodb-policy.json": aws.buildDynamoDBPolicy(
         "ap-northeast-2",

@@ -1,9 +1,19 @@
-import type { InsightsEventPageInput } from "@hot-updater/server";
+import type { InsightsEventPageInput } from "@hot-updater/server/plugins/insights";
 import { useQuery } from "@tanstack/react-query";
 
 import {
+  readUpdateFailuresInput,
+  type UpdateFailuresInput,
+} from "./insights-failures";
+import { getUpdateFailuresRpc } from "./insights-failures-rpc";
+import {
+  DEFAULT_INSIGHTS_RETENTION,
+  type InsightsRetentionDays,
+} from "./insights-retention";
+import {
   findInsightsInstallationsRpc,
   getInsightsInstallationRpc,
+  getInsightsRetentionRpc,
   getReportingInstallationsRpc,
   listInsightsEventsRpc,
   listInsightsInstallationEventsRpc,
@@ -98,3 +108,29 @@ export const useInsightsInstallationEventsQuery = (
     refetchOnWindowFocus: true,
     staleTime: STALE_TIME_MS,
   });
+
+/** A release's or a channel's update failures; lifetime for a release without a window. */
+export const useUpdateFailuresQuery = (
+  input: UpdateFailuresInput,
+  enabled = true,
+) =>
+  useQuery({
+    queryKey: ["insights", "update-failures", input],
+    queryFn: () =>
+      getUpdateFailuresRpc({ data: readUpdateFailuresInput(input) }),
+    enabled,
+    refetchOnWindowFocus: true,
+    staleTime: STALE_TIME_MS,
+  });
+
+/**
+ * How long the server keeps Insights rows; the defaults until it answers, or
+ * when it does not report them.
+ */
+export const useInsightsRetention = (): InsightsRetentionDays =>
+  useQuery({
+    queryKey: ["insights", "retention"],
+    queryFn: () => getInsightsRetentionRpc(),
+    // A server's periods change only when it restarts.
+    staleTime: Infinity,
+  }).data ?? DEFAULT_INSIGHTS_RETENTION;

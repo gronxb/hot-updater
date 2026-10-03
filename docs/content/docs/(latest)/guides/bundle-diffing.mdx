@@ -2,7 +2,6 @@
 title: "Bundle Diffing"
 description: "Ship smaller OTA updates by reusing unchanged bundle files."
 icon: Diff
-version: 0.31.0
 ---
 
 ## What it is
@@ -12,7 +11,9 @@ of the next OTA bundle it downloads. An OTA bundle is a folder of files.
 
 ```txt
 First OTA update:
-  download archive, or manifest + all target files -> install OTA bundle
+  built-in unchanged files
+  + downloaded changed files
+  -> install OTA bundle
 
 Later OTA update:
   local unchanged files
@@ -25,18 +26,22 @@ What the device downloads depends on what changed:
 
 | When this happens | What the device downloads |
 | --- | --- |
-| First OTA after native install | Archive when it is known to be no larger; otherwise the manifest and all target files |
+| First OTA after native install | Reuse matching built-in files and download the rest |
 | Later OTA, unchanged file | Nothing; the file is copied locally |
 | Later OTA, changed regular asset | Complete new asset file |
 | Later OTA, changed Hermes bundle file | `.bsdiff` patch when available, otherwise the complete new Hermes bundle file |
 
-For example, an update that would otherwise download a 10 MB archive might
-only need to download a 600 KB patch file when the byte-level Hermes changes
-are small.
+These are the per-file transfer rules. After local reuse, the runtime can
+instead download the automatically generated `bundle.tar.br` archive when at
+least two files remain and its transfer-cost comparison favors the archive; see
+[Per-file or archive](#per-file-or-archive).
 
-The archive and patch are different artifacts. Patch size depends on the
-changes between the two bundles; large or widespread changes can produce a
-much larger patch.
+For example, an update with a 10 MB Hermes file might only need to download a
+600 KB patch when the byte-level changes are small.
+
+Patch size depends on the changes between two OTA bundles. Large changes can
+produce a patch larger than the complete Hermes file; the server then omits the
+patch and the client downloads the complete file.
 
 You do not need to change your update-check code or deploy command. After your
 app is using a diff-enabled Hot Updater runtime, new deployments include the
@@ -63,22 +68,12 @@ Regular assets include files such as images and fonts. They are not binary
 patched; if they changed, the complete new asset file is downloaded. The Hermes
 bundle is the only file type that gets the extra `.bsdiff` patch optimization.
 
-### How the server chooses a route
+### How the server describes an update
 
-The server compares the normal manifest route with the compressed archive
-before returning the existing artifact response:
-
-```txt
-diffBytes = exact UTF-8 bytes of the stored target manifest
-  + sum(primary download bytes for changed assets)
-```
-
-An unchanged asset contributes zero bytes. For a changed asset, the primary
-download is a retained patch or, when no patch is retained, the complete served
-file. When both patch and file sizes are known, the patch is retained only when
-it is strictly smaller. Equal sizes use the complete file. If the archive is
-usable and every primary size is known, a `diffBytes` value equal to or larger
-than the archive size selects the archive-only response.
+The artifact endpoint returns protocol v1 with the target manifest and one
+original-file descriptor for every target path. A Hermes descriptor can also
+include a patch for the current OTA bundle. When both sizes are known, the
+server includes the patch only when it is strictly smaller than the original.
 
 `downloadByteSize` in a manifest describes the representation that the device
 actually downloads. For a Brotli asset, that means the compressed payload, not
@@ -87,19 +82,9 @@ SHA-256 of those exact served bytes and identifies their content-addressed
 object; the existing `fileHash` still identifies and verifies the logical
 installed file.
 
-Older manifests can omit this optional download metadata. Raw assets use the
-logical `fileHash` key and do not need `downloadFileHash`. If
-`downloadByteSize` is missing or invalid, a present served-payload hash is
-invalid, or a transformed representation is missing its served-payload hash,
-Hot Updater does not guess or probe storage with `HEAD` requests. It keeps the
-existing manifest-first behavior instead. The estimate covers only the normal
-primary downloads, not a complete-file or archive download that may happen
-after an exceptional patch failure.
-
-This choice is entirely server-side. It does not add a native route, artifact
-response field, or client selection step. The native runtime continues to use
-the archive or manifest descriptor returned by the server and keeps the same
-verification and fallback behavior.
+Raw assets use the logical `fileHash` key and do not need `downloadFileHash`.
+The client always receives the original descriptor, so a missing, corrupt, or
+inapplicable patch falls back to the complete file.
 
 ## How to use it
 
@@ -168,11 +153,10 @@ from:
 - `OTA A` to `OTA C`
 
 This means devices currently on `OTA A` or `OTA B` can download a small patch to
-`OTA C` instead of the complete new Hermes bundle file. Devices that only have
-the base bundle cannot reuse OTA files or apply one of these patches; the server
-chooses between the archive and a manifest containing all target files. Devices
-on an older OTA outside the selected patch bases download the complete new
-Hermes bundle file instead of a patch when the manifest route is selected.
+`OTA C` instead of the complete new Hermes bundle file. A device on the built-in
+bundle reuses matching packaged files and downloads complete files for the rest.
+Devices on an older OTA outside the selected patch bases download the complete
+new Hermes bundle file.
 
 Notes:
 
@@ -202,36 +186,37 @@ npx hot-updater patch -p ios --artifact-id <target-artifact-id> --base-artifact-
 
 Use the artifacts' platform (`ios` or `android`) and add `-c <channel>` if that
 channel selects a different CLI configuration. The target is the newer artifact;
-the base is the artifact installed on devices
-that should use the patch. Public Bundle IDs from deploy or promote are delivery
+the base is the OTA artifact installed on devices that should use the patch.
+Public Bundle IDs from deploy or promote are delivery
 policy IDs and must not be used as Artifact IDs. The patch is recorded in the
-target artifact's `patches` relation; the normal archive remains available.
+target artifact's `patches` relation; the complete target file remains
+available as the fallback.
 Both artifacts must have readable manifests with a changed Hermes bundle at
 the same manifest path. Missing, unchanged or mismatched Hermes inputs cannot
 produce a patch; ordinary assets use file reuse or full-file downloads.
 
 ### During deploy
 
-Hot Updater prepares both the normal delivery path and the diffing data:
+Hot Updater prepares the manifest delivery path:
 
-- Uploads the normal OTA archive.
 - Uploads the manifest and per-file manifest assets.
 - Records manifest and asset storage metadata.
+- Creates `bundle.tar.br` and records its hash and sizes in the manifest.
 - Creates `.bsdiff` patch files for changed Hermes bundles when binary patching
   is enabled.
 
 ### First OTA update
 
-There is no older OTA bundle on the device yet, so Hot Updater cannot copy local
-OTA files or apply a patch. The manifest route therefore counts every target
-file plus the manifest itself. The server uses the same comparison as later
-updates: it selects the archive when the archive is known to be no larger, and
-can otherwise return the complete manifest route. Missing optional size
-metadata keeps the manifest-first behavior.
+There is no older OTA bundle on the device yet. Hot Updater resolves each
+manifest path against the packaged app, verifies the packaged file's hash, and
+copies matches into staging. It downloads the remaining files individually or
+uses the archive when the transfer-cost comparison selects it. Hermes patching
+still starts with a later OTA because a patch from the built-in Hermes file is
+not generated yet.
 
 ### Later OTA updates
 
-After that, updates can be assembled from smaller pieces:
+On the per-file route, later updates can be assembled from smaller pieces:
 
 1. The app reads the new update manifest.
 2. Files that already exist in the current OTA bundle are copied locally.
@@ -240,6 +225,25 @@ After that, updates can be assembled from smaller pieces:
    patch that matches the currently installed OTA bundle.
 5. If the patch matches, the app downloads the patch and applies it to the
    existing Hermes bundle to produce the new Hermes bundle.
+
+### Per-file or archive
+
+Deploy compresses eligible individual files with Brotli and also creates
+`bundle.tar.br` with every target file. The manifest records each file's
+installed hash and, for a compressed file, its download hash and size, plus
+the archive's hash and sizes. There is no setting for compression or the
+archive, and ZIP and `tar.gz` archives are not supported.
+
+With at least two files left to download, the client compares the archive's
+bytes with the per-file transfer, patches included. When every target file
+needs downloading and no patch is offered, it also allows the archive's TAR
+framing and padding, which saves many requests for a complete bundle whose
+files compress poorly. Otherwise the archive must be smaller. Missing or
+invalid sizes keep the per-file route.
+
+Both routes verify the same files and hashes before activating the update. If
+the archive fails, the client discards its extraction and tries the per-file
+plan once, which can transfer more bytes.
 
 ### Verification and fallback
 
@@ -250,21 +254,17 @@ Before using a patched Hermes bundle, the app verifies:
 - the final output hash
 
 If anything does not match, or if the patch cannot be applied, Hot Updater
-downloads the complete new Hermes bundle file when that file URL is available.
-If the changed file cannot be downloaded, or if manifest-driven installation
-cannot be used, it falls back to the normal compressed archive.
+downloads and verifies the complete new Hermes bundle file.
 
 ### Inspect downloaded files
 
 Use `useHotUpdaterStore` when you want to check which files were downloaded
 during a bundle diffing update.
 
-Use `progress` for the overall update progress. Use `details.files` for
-per-file progress during manifest-based diffing.
-
-Per-file details are available only when `artifactType` is `"diff"`. When
-`artifactType` is `"archive"`, the app is downloading one compressed archive, so
-there is no per-file progress list.
+Use `progress` for the overall update progress. Manifest updates use
+`artifactType: "diff"`; `details.files` describes their download entries.
+`completedFilesCount` and `totalFilesCount` count those entries, not the number
+of changed or installed target files.
 
 ```tsx
 import { Text, View } from "react-native";
@@ -279,14 +279,10 @@ function UpdateDownloadProgress() {
     <View>
       <Text>Overall progress: {Math.round(progress * 100)}%</Text>
 
-      {artifactType === "archive" ? (
-        <Text>Downloading the normal OTA archive</Text>
-      ) : null}
-
       {artifactType === "diff" && details ? (
         <View>
           <Text>
-            Changed files: {details.completedFilesCount}/
+            Downloads: {details.completedFilesCount}/
             {details.totalFilesCount}
           </Text>
 
@@ -308,15 +304,18 @@ function UpdateDownloadProgress() {
 }
 ```
 
-In `details.files`, `path` is the final file path inside the OTA bundle.
-`downloadPath` is the artifact that was transferred. They are usually the same,
-but can differ when Hot Updater downloads an intermediate artifact such as a
-`.bsdiff` patch.
+For individual-file downloads, `path` is the final file path inside the OTA
+bundle and `downloadPath` is the transferred artifact. They can differ for an
+intermediate artifact such as a `.bsdiff` patch.
+
+For an archive download, `details.files` contains one entry with both `path`
+and `downloadPath` set to `bundle.tar.br`, and `totalFilesCount` is `1`. That
+entry represents the transport archive, not a file in the installed bundle,
+even when the archive installs many target files.
 
 ## Signing
 
 Bundle diffing works without signing, but signing is recommended. When signing
-is enabled, the archive, manifest, and manifest assets are verified before the
-update is installed.
+is enabled, the manifest and manifest assets are verified before installation.
 
 See [Bundle Signing](/docs/guides/bundle-signing) for setup.

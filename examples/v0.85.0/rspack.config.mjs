@@ -1,3 +1,4 @@
+import './e2e-build-config.cjs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as Repack from '@callstack/repack';

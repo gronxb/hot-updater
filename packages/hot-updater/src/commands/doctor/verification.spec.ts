@@ -257,7 +257,7 @@ describe("doctor infrastructure completion", () => {
   const setup = async () => {
     const scaffold = await prepare();
     await writeFile(
-      path.join(scaffold.output, "app/api-key.local"),
+      path.join(scaffold.output, "app/client-credential.local"),
       "private-client-key",
     );
     const manifest = await readJson(scaffold.manifest);
@@ -271,7 +271,13 @@ describe("doctor infrastructure completion", () => {
         return Response.json({ error: "Unauthorized" }, { status: 401 });
       return Response.json(
         { error: "Not found" },
-        { status: 404, headers: { "cache-control": "private, no-store" } },
+        {
+          status: 404,
+          headers: {
+            "cache-control": "public, max-age=0, s-maxage=5",
+            "x-hot-updater-catalog": "none",
+          },
+        },
       );
     });
     return {
@@ -309,7 +315,7 @@ describe("doctor infrastructure completion", () => {
       if (missing === "URL") options.serverBaseUrl = "";
       if (missing === "channel") options.channel = "";
       if (missing === "key")
-        await rm(path.join(scaffold.output, "app/api-key.local"));
+        await rm(path.join(scaffold.output, "app/client-credential.local"));
       const result = await verifyInfrastructure(options);
       expect(successful(result.checks)).toBe(false);
       expect(result.checks).toContainEqual(

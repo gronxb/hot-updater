@@ -4,7 +4,12 @@ This file provides guidance to Claude Code when working with the plugin-core pac
 
 ## Package Overview
 
-`@hot-updater/plugin-core` is a core utility package that provides shared functionality for storage and database plugins. It contains helper functions, type definitions, and abstractions used by both integration types.
+`@hot-updater/plugin-core` is the public kit that adapter and server plugin authors depend on, including Hot Updater's own adapters and official plugins. It contains the adapter contracts and storage helpers, the storage engine with its KV, SQL and memory kits and core's schema, and server plugin authoring.
+
+- Its root is the whole public API. It has no internal entry or subpath (see the root CLAUDE.md, "Package Boundaries").
+- Every root name is either taught by the docs or implemented by an adapter, and its JSDoc says which.
+- Code that only this package uses stays unexported.
+- `CoreSchema` is public, so a change to core's tables releases this package and comes with a migration.
 
 ## Runtime Compatibility
 
@@ -43,10 +48,28 @@ pnpm test # Uses @cloudflare/vitest-pool-workers
 
 ## Key Components
 
-### Database Plugin Creation
+### Storage Engine and Database Adapter Kit
 
-- `createDatabasePlugin()`: Factory for fixed-model database plugins
-- `createDatabaseClient()`: Shared bundle aggregate client over a database plugin
+- `src/database`: the `DatabaseAdapter` contract, `createMemoryAdapter()`,
+  `verifyAdapter()`, value helpers, and the distinct-count sketches of
+  aggregate `distinct` metrics.
+- `src/engine`: `createEngine(database, { plugins, now })`, the engine
+  `createHotUpdater` runs (core's and the plugins' tables, the schema fence,
+  pruning during writes, aggregate batching), `createEngineDatabase` (whose
+  `retry` tunes transaction reruns for a store), `meterReads` for adapter cost
+  analysis, the KV and SQL kits, the document-store and ORM adapter helpers,
+  and core's schema and migrations. The engine's, fence's and migrators'
+  internals stay unexported.
+
+### Server Plugin Authoring API
+
+- `src/serverPlugin`: `definePlugin` and its CLI metadata (`clientCredential`,
+  `clientPlugin`), the schema DSL, the typed database handle, the explicit
+  `CoreReads` interface, and the errors plugins handle, all from the root.
+  The official plugin packages (`plugins/insights`, `plugins/api-keys`) take
+  this package as a peer, as third-party plugins do. The official-plugin
+  brand is a convention, not an export: each package that needs it keeps a
+  local helper over `Symbol.for("@hot-updater/server/official-plugin")`.
 
 ### Utility Functions
 
@@ -78,6 +101,7 @@ Located in `src/types/`, provides TypeScript interfaces for plugins and core fun
 ### Testing
 
 - Write tests in `.spec.ts` files alongside source files
+- Shared suites, fixtures and test stores come from `@hot-updater/test-utils` (a devDependency); none ship from this package
 - Test edge cases for runtime compatibility
 - Use Vitest for testing
 - Tests should pass in all supported runtimes
@@ -114,8 +138,9 @@ pnpm test
 
 This package is used by:
 
-- Storage plugins (AWS, Cloudflare, Supabase, Firebase, Standalone)
-- Database plugins (PostgreSQL, Cloudflare D1, Supabase)
-- Build plugins (Expo, Bare, Re.Pack, Rock)
+- Storage adapters (AWS, Cloudflare, Supabase, Firebase, Standalone)
+- Database adapters (PostgreSQL, Cloudflare D1, Supabase, DynamoDB, Firestore, and the server's built-in Kysely, Drizzle, Prisma and MongoDB adapters)
+- Build adapters (Expo, Bare, Rock)
+- `@hot-updater/server`, which runs the engine, and the official plugin packages
 
 Changes here may affect multiple plugins across the ecosystem.

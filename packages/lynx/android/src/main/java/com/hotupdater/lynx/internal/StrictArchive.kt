@@ -79,13 +79,14 @@ internal class ManagedPathNamespace {
 }
 
 /** Bounds decoded TAR bytes, including headers, padding, metadata, and end blocks. */
-internal class BoundedTarInput(input: InputStream) : FilterInputStream(input) {
-    private var count = 0L
+internal class BoundedTarInput(input: InputStream, private val maximumBytes: Long = ArchiveLimits.MAX_TAR_STREAM_BYTES) : FilterInputStream(input) {
+    var count = 0L
+        private set
 
     private fun add(size: Int) {
         if (size > 0) {
             count += size
-            require(count <= ArchiveLimits.MAX_TAR_STREAM_BYTES) {
+            require(count <= maximumBytes) {
                 "Decoded TAR stream exceeds limit"
             }
         }
@@ -99,12 +100,12 @@ internal class BoundedTarInput(input: InputStream) : FilterInputStream(input) {
 
 /** Strict policy over the existing TAR decoder and Android's ZIP decoder. */
 internal object StrictArchive {
-    fun extract(archive: File, root: File): Set<String> {
+    fun extract(archive: File, root: File, expectedTarBytes: Long? = null): Set<String> {
         require(archive.length() in 1..ArchiveLimits.MAX_ARCHIVE_BYTES) { "Invalid archive size" }
         require(root.isDirectory && root.list().orEmpty().isEmpty()) { "Extraction requires a new empty directory" }
         val writer = Writer(root)
         val magic = archive.inputStream().use { it.readNBytesCompat(4) }
-        if (magic.contentEquals(byteArrayOf(0x50, 0x4b, 0x03, 0x04))) {
+        if (expectedTarBytes == null && magic.contentEquals(byteArrayOf(0x50, 0x4b, 0x03, 0x04))) {
             rejectZipLinks(archive)
             ZipFile(archive).use { zip ->
                 val entries = zip.entries()
@@ -116,8 +117,9 @@ internal object StrictArchive {
             }
         } else {
             archive.inputStream().buffered().use { input ->
-                val decoded = if (magic.size >= 2 && magic[0] == 0x1f.toByte() && magic[1] == 0x8b.toByte()) GZIPInputStream(input) else BrotliInputStream(input)
-                TarArchiveInputStream(BoundedTarInput(decoded)).use { tar ->
+                val decoded = if (expectedTarBytes == null && magic.size >= 2 && magic[0] == 0x1f.toByte() && magic[1] == 0x8b.toByte()) GZIPInputStream(input) else BrotliInputStream(input)
+                val bounded = BoundedTarInput(decoded, expectedTarBytes ?: ArchiveLimits.MAX_TAR_STREAM_BYTES)
+                TarArchiveInputStream(bounded).use { tar ->
                     while (true) {
                         val entry = tar.getNextEntry() ?: break
                         require(entry.typeFlag == '5' || entry.isFile) { "Archive links and special entries are forbidden" }
@@ -125,6 +127,15 @@ internal object StrictArchive {
                         else { require(!entry.name.endsWith('/')) { "Invalid regular file name" }; writer.file(entry.name, entry.size, tar) }
                     }
                     require(tar.hasEndMarker) { "Truncated TAR archive" }
+                    if (expectedTarBytes != null) {
+                        val tail = ByteArray(8192)
+                        while (true) {
+                            val size = bounded.read(tail)
+                            if (size < 0) break
+                            require((0 until size).all { tail[it] == 0.toByte() }) { "Nonzero trailing TAR bytes" }
+                        }
+                        require(bounded.count == expectedTarBytes) { "Decoded TAR size mismatch" }
+                    }
                 }
             }
         }

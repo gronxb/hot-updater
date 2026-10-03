@@ -9,14 +9,14 @@ import {
 } from "@aws-sdk/client-s3";
 import { Upload } from "@aws-sdk/lib-storage";
 import {
+  createStorageAdapter,
   createStorageDownloadUrl,
   createStorageKeyBuilder,
-  createStoragePlugin,
   createStorageUri,
   parseStorageUri,
+  type StorageAdapter,
+  type StorageAdapterWith,
   type StorageObject,
-  type StoragePlugin,
-  type StoragePluginWith,
 } from "@hot-updater/plugin-core";
 
 import { applyS3RuntimeAwsConfig } from "./runtimeAwsConfig";
@@ -26,13 +26,13 @@ export interface S3StorageConfig extends S3ClientConfig {
   /** Base path where bundles will be stored in the bucket. */
   basePath?: string;
   downloadUrlSigningKey?: string;
-  getDownloadUrl?: StoragePlugin["getDownloadUrl"];
+  getDownloadUrl?: StorageAdapter["getDownloadUrl"];
 }
 
 export type S3StorageConfigWithDownloadUrl = S3StorageConfig &
   (
     | { downloadUrlSigningKey: string }
-    | { getDownloadUrl: NonNullable<StoragePlugin["getDownloadUrl"]> }
+    | { getDownloadUrl: NonNullable<StorageAdapter["getDownloadUrl"]> }
   );
 
 type S3StorageOperations =
@@ -49,13 +49,13 @@ const isObjectNotFoundError = (error: unknown) =>
 
 export function s3Storage(
   config: S3StorageConfigWithDownloadUrl,
-): StoragePluginWith<S3StorageOperations | "getDownloadUrl">;
+): StorageAdapterWith<S3StorageOperations | "getDownloadUrl">;
 export function s3Storage(
   config: S3StorageConfig,
-): StoragePluginWith<S3StorageOperations>;
+): StorageAdapterWith<S3StorageOperations>;
 export function s3Storage(
   config: S3StorageConfig,
-): StoragePluginWith<S3StorageOperations> {
+): StorageAdapterWith<S3StorageOperations> {
   const {
     bucketName,
     basePath,
@@ -80,6 +80,18 @@ export function s3Storage(
     return value ? `${value}/` : "";
   };
 
+  /**
+   * The URI `put` returns for the key, or null for a key no `put` writes,
+   * such as a folder marker that ends in "/".
+   */
+  const getListedStorageUri = (key: string) => {
+    try {
+      return createStorageUri({ bucket: bucketName, key, protocol: "s3" });
+    } catch {
+      return null;
+    }
+  };
+
   const getRelativeKey = (key: string) => {
     if (!normalizedBasePath) {
       return key;
@@ -99,7 +111,7 @@ export function s3Storage(
     return parsed;
   };
 
-  return createStoragePlugin({
+  return createStorageAdapter({
     name: "s3Storage",
     protocol: "s3",
     async listObjects(prefix) {
@@ -119,12 +131,16 @@ export function s3Storage(
           if (!object.Key) {
             continue;
           }
+          const storageUri = getListedStorageUri(object.Key);
+          if (storageUri === null) {
+            continue;
+          }
 
           objects.push({
             key: getRelativeKey(object.Key),
             lastModifiedAt: object.LastModified,
             size: object.Size ?? 0,
-            storageUri: `s3://${bucketName}/${object.Key}`,
+            storageUri,
           });
         }
 

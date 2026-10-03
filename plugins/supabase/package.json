@@ -1,7 +1,7 @@
 {
   "name": "@hot-updater/supabase",
   "type": "module",
-  "version": "1.0.0-rc.14",
+  "version": "1.0.0-rc.27",
   "description": "React Native OTA solution for self-hosted",
   "main": "dist/index.cjs",
   "module": "dist/index.mjs",
@@ -17,18 +17,12 @@
       "require": "./dist/init/index.cjs"
     },
     "./edge": {
-      "types": "./dist/edge.d.cts",
       "import": "./dist/edge.mjs",
       "require": "./dist/edge.cjs"
     },
     "./scaffold": {
       "import": "./supabase/index.ts",
       "require": "./supabase/index.ts"
-    },
-    "./iac": {
-      "types": "./dist/iac/index.d.cts",
-      "import": "./dist/iac/index.mjs",
-      "require": "./dist/iac/index.cjs"
     },
     "./package.json": "./package.json"
   },
@@ -47,6 +41,7 @@
     "sql",
     "supabase",
     "!supabase/.temp",
+    "!**/*.spec.ts",
     "package.json"
   ],
   "scripts": {
@@ -55,7 +50,7 @@
     "make-migrations": "node --experimental-strip-types ./scripts/make-migrations.ts"
   },
   "dependencies": {
-    "@hot-updater/core": "workspace:*",
+    "@hot-updater/protocol": "workspace:*",
     "@hot-updater/plugin-core": "workspace:*",
     "@hot-updater/cli-tools": "workspace:*",
     "@hot-updater/server": "workspace:*",

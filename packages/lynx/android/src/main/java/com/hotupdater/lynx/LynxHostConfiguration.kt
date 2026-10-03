@@ -63,9 +63,7 @@ internal fun loadEmbedded(context: Context, config: LynxHostConfiguration): Veri
         verifyEmbeddedIdentity(manifestBytes, config)
         val request = LynxArtifactRequest(
             config.embeddedBundleId,
-            "native-embedded",
-            "native-embedded",
-            config.embeddedManifestHash,
+            manifestFileHash = config.embeddedManifestHash,
         )
         return LynxArtifactVerifier(
             LynxInstallConfiguration(config.runtimeId),
@@ -102,9 +100,7 @@ internal fun loadEmbedded(context: Context, config: LynxHostConfiguration): Veri
         // The APK is the embedded trust anchor. OTA signing policy applies to downloads.
         val request = LynxArtifactRequest(
             config.embeddedBundleId,
-            "native-embedded",
-            "native-embedded",
-            config.embeddedManifestHash,
+            manifestFileHash = config.embeddedManifestHash,
         )
         return LynxArtifactVerifier(
             LynxInstallConfiguration(config.runtimeId),

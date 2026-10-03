@@ -19,8 +19,8 @@ import { BundleIdDisplay } from "@/components/BundleIdDisplay";
 import { ChannelBadge } from "@/components/ChannelBadge";
 import { EnabledStatusIcon } from "@/components/EnabledStatusIcon";
 import { BundleChildrenPanel } from "@/components/features/bundles/BundleChildrenPanel";
-import { BundleMovementSummary } from "@/components/features/bundles/BundleInsightsSummary";
 import { ChannelManagementDialog } from "@/components/features/channels/ChannelManagementDialog";
+import { useReleaseColumns } from "@/components/features/FeatureSlots";
 import { ReleaseEditorSheet } from "@/components/features/releases/ReleaseEditorSheet";
 import { ReleaseStateBadge } from "@/components/features/releases/ReleaseStateBadge";
 import { HashValueDisplay } from "@/components/HashValueDisplay";
@@ -29,7 +29,6 @@ import { RolloutPercentageBadge } from "@/components/RolloutPercentageBadge";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -56,11 +55,12 @@ import {
   useChannelsQuery,
   useReleasesQuery,
 } from "@/lib/api";
-import { useBundleActivityQuery } from "@/lib/bundle-activity";
 import type { ReleaseListRow } from "@/lib/server/releaseReachability";
 import { cn } from "@/lib/utils";
 
 import {
+  hasReleaseFilters,
+  releaseFilterOf,
   type ReleaseSearch,
   updateReleaseFilters,
   validateReleaseSearch,
@@ -68,9 +68,13 @@ import {
 
 const PAGE_SIZE = 20;
 const platformFilterItems = [
-  { label: "All Platforms", value: "all" },
   { label: "iOS", value: "ios" },
   { label: "Android", value: "android" },
+];
+const statusFilterItems = [
+  { label: "Any Status", value: "all" },
+  { label: "Enabled", value: "enabled" },
+  { label: "Disabled", value: "disabled" },
 ];
 const dateFormatter = new Intl.DateTimeFormat(undefined, {
   dateStyle: "medium",
@@ -98,16 +102,9 @@ function BundleFilterToolbar({
   onManageChannels: () => void;
   search: ReleaseSearch;
 }) {
-  const [targetAppVersion, setTargetAppVersion] = useState(
-    search.targetAppVersion ?? "",
-  );
-  const hasFilters = Boolean(
-    search.bundleId ||
-    search.channelId ||
-    search.enabled !== undefined ||
-    search.platform ||
-    search.targetAppVersion,
-  );
+  const hasFilters = hasReleaseFilters(search);
+  // Releases list by channel and platform together: the index serves that pair.
+  const channelSelected = search.channelId !== undefined;
   const channelFilterItems = [
     { label: "All Channels", value: "all" },
     ...channels.map((channel) => ({
@@ -115,14 +112,6 @@ function BundleFilterToolbar({
       value: channel.id,
     })),
   ];
-  const applyTargetAppVersion = () => {
-    const value = targetAppVersion.trim();
-    onChange({ targetAppVersion: value || undefined });
-  };
-
-  useEffect(() => {
-    setTargetAppVersion(search.targetAppVersion ?? "");
-  }, [search.targetAppVersion]);
 
   return (
     <header className="sticky top-0 z-10 flex shrink-0 flex-wrap items-center gap-2 border-b bg-background px-3 py-3 sm:h-12 sm:flex-nowrap sm:bg-card/70 sm:px-4 sm:py-0 sm:backdrop-blur-sm">
@@ -132,43 +121,6 @@ function BundleFilterToolbar({
         <Filter className="size-3.5" />
         <span className="text-xs font-medium">Filters</span>
       </div>
-      <Select
-        items={platformFilterItems}
-        onValueChange={(value) =>
-          onChange({
-            platform:
-              value === "all" ? undefined : (value as "ios" | "android"),
-          })
-        }
-        value={search.platform ?? "all"}
-      >
-        <SelectTrigger
-          aria-label="Platform"
-          className="h-8 w-[calc(50%-0.25rem)] min-w-[132px] text-xs sm:w-[140px]"
-        >
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectGroup>
-            <SelectItem value="all">All Platforms</SelectItem>
-            <SelectItem value="ios">iOS</SelectItem>
-            <SelectItem value="android">Android</SelectItem>
-          </SelectGroup>
-        </SelectContent>
-      </Select>
-      <Input
-        aria-label="Target app version"
-        className="h-8 w-full min-w-[132px] text-xs sm:w-[160px]"
-        onBlur={applyTargetAppVersion}
-        onChange={(event) => setTargetAppVersion(event.target.value)}
-        onKeyDown={(event) => {
-          if (event.key === "Enter") {
-            applyTargetAppVersion();
-          }
-        }}
-        placeholder="Target version"
-        value={targetAppVersion}
-      />
       <Select
         items={channelFilterItems}
         onValueChange={(value) =>
@@ -195,6 +147,63 @@ function BundleFilterToolbar({
           </SelectGroup>
         </SelectContent>
       </Select>
+      <Select
+        disabled={!channelSelected}
+        items={platformFilterItems}
+        onValueChange={(value) =>
+          onChange({ platform: value === "android" ? "android" : "ios" })
+        }
+        value={search.platform ?? "ios"}
+      >
+        <SelectTrigger
+          aria-label="Platform"
+          className="h-8 w-[calc(50%-0.25rem)] min-w-[132px] text-xs sm:w-[140px]"
+          title={channelSelected ? undefined : "Choose a channel first"}
+        >
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectGroup>
+            <SelectItem value="ios">iOS</SelectItem>
+            <SelectItem value="android">Android</SelectItem>
+          </SelectGroup>
+        </SelectContent>
+      </Select>
+      <Select
+        disabled={!channelSelected && search.scopeKey === undefined}
+        items={statusFilterItems}
+        onValueChange={(value) =>
+          onChange({
+            enabled:
+              value === "enabled"
+                ? true
+                : value === "disabled"
+                  ? false
+                  : undefined,
+          })
+        }
+        value={
+          search.enabled === undefined
+            ? "all"
+            : search.enabled
+              ? "enabled"
+              : "disabled"
+        }
+      >
+        <SelectTrigger
+          aria-label="Status"
+          className="h-8 w-[calc(50%-0.25rem)] min-w-[132px] text-xs sm:w-[140px]"
+        >
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectGroup>
+            <SelectItem value="all">Any Status</SelectItem>
+            <SelectItem value="enabled">Enabled</SelectItem>
+            <SelectItem value="disabled">Disabled</SelectItem>
+          </SelectGroup>
+        </SelectContent>
+      </Select>
       <Button
         aria-label="Manage channels"
         onClick={onManageChannels}
@@ -211,6 +220,19 @@ function BundleFilterToolbar({
             aria-label="Clear artifact filter"
             className="rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             onClick={() => onChange({ bundleId: undefined })}
+            type="button"
+          >
+            <X className="size-3" />
+          </button>
+        </Badge>
+      ) : null}
+      {search.scopeKey ? (
+        <Badge className="max-w-48 gap-1" variant="secondary">
+          Target filter
+          <button
+            aria-label="Clear target filter"
+            className="rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            onClick={() => onChange({ scopeKey: undefined })}
             type="button"
           >
             <X className="size-3" />
@@ -376,13 +398,8 @@ function BundlesPage() {
   const releasesQuery = useReleasesQuery({
     afterReleaseId: search.afterReleaseId,
     beforeReleaseId: search.beforeReleaseId,
-    bundleId: search.bundleId,
-    channelId: search.channelId,
-    enabled: search.enabled,
+    filter: releaseFilterOf(search),
     limit: PAGE_SIZE,
-    page: search.page,
-    platform: search.platform,
-    targetAppVersion: search.targetAppVersion,
   });
   const channelsQuery = useChannelsQuery();
   const channels = channelsQuery.data ?? [];
@@ -396,8 +413,9 @@ function BundlesPage() {
   );
   const patchCountsQuery = useBundleChildCountsQuery(bundleIds);
   const patchCountsByBundleId = patchCountsQuery.data ?? {};
-  const pagination = releasesQuery.data?.pagination;
-  const activityInputs = releases.flatMap((release) => {
+  const nextCursor = releasesQuery.data?.next;
+  const previousCursor = releasesQuery.data?.previous;
+  const slotReleases = releases.flatMap((release) => {
     const channel = channels.find(
       (item) => item.id === release.channel_id,
     )?.name;
@@ -405,10 +423,9 @@ function BundlesPage() {
       ? [{ releaseId: release.id, platform: release.platform, channel }]
       : [];
   });
-  const activityQuery = useBundleActivityQuery(activityInputs);
-  const activityInputsByRelease = new Map(
-    activityInputs.map((input) => [input.releaseId, input]),
-  );
+  // Features add columns, such as release activity where the console reads it.
+  const featureColumns = useReleaseColumns();
+  const columnCount = 10 + featureColumns.length;
   const channelNames = new Map(
     channels.map((channel) => [channel.id, channel.name]),
   );
@@ -437,33 +454,31 @@ function BundlesPage() {
     }
     changeFilters({ bundleId: bundle.id });
   };
-  const currentPage = pagination?.currentPage ?? 1;
-  const startEntry =
-    releases.length === 0 ? 0 : (currentPage - 1) * PAGE_SIZE + 1;
-  const endEntry = startEntry === 0 ? 0 : startEntry + releases.length - 1;
-  const previousPage = currentPage - 1;
-  const firstReleaseId = releases[0]?.id;
-  const lastReleaseId = releases.at(-1)?.id;
-  const previousSearch: ReleaseSearch | null =
-    pagination?.hasPreviousPage && firstReleaseId
-      ? {
-          ...search,
-          afterReleaseId: firstReleaseId,
-          beforeReleaseId: undefined,
-          page: previousPage > 1 ? previousPage : undefined,
-          releaseId: undefined,
-        }
-      : null;
-  const nextSearch: ReleaseSearch | null =
-    pagination?.hasNextPage && lastReleaseId
-      ? {
-          ...search,
-          afterReleaseId: undefined,
-          beforeReleaseId: lastReleaseId,
-          page: currentPage + 1,
-          releaseId: undefined,
-        }
-      : null;
+  // Pages go by key: newer or older than an edge release, never by number.
+  const onLaterPage =
+    search.afterReleaseId !== undefined || search.beforeReleaseId !== undefined;
+  const previousSearch: ReleaseSearch | null = previousCursor
+    ? {
+        ...search,
+        afterReleaseId: previousCursor,
+        beforeReleaseId: undefined,
+        releaseId: undefined,
+      }
+    : null;
+  const nextSearch: ReleaseSearch | null = nextCursor
+    ? {
+        ...search,
+        afterReleaseId: undefined,
+        beforeReleaseId: nextCursor,
+        releaseId: undefined,
+      }
+    : null;
+  const newestSearch: ReleaseSearch = {
+    ...search,
+    afterReleaseId: undefined,
+    beforeReleaseId: undefined,
+    releaseId: undefined,
+  };
 
   return (
     <div className="flex h-svh min-h-0 min-w-0 flex-col">
@@ -570,20 +585,22 @@ function BundlesPage() {
                                     : "—"}
                               </dd>
                             </div>
-                            <div className="col-span-2 rounded-md bg-muted/40 p-3">
-                              <dt className="mb-2 text-muted-foreground">
-                                Insights
-                              </dt>
-                              <dd>
-                                <BundleMovementSummary
-                                  input={activityInputsByRelease.get(
-                                    release.id,
-                                  )}
-                                  report={activityQuery.data?.[release.id]}
-                                  loading={activityQuery.isFetching}
-                                />
-                              </dd>
-                            </div>
+                            {featureColumns.map(({ Cell, feature, label }) => (
+                              <div
+                                className="col-span-2 rounded-md bg-muted/40 p-3"
+                                key={feature}
+                              >
+                                <dt className="mb-2 text-muted-foreground">
+                                  {label}
+                                </dt>
+                                <dd>
+                                  <Cell
+                                    releaseId={release.id}
+                                    releases={slotReleases}
+                                  />
+                                </dd>
+                              </div>
+                            ))}
                             <div className="col-span-2 flex flex-wrap items-center gap-2 rounded-md bg-muted/40 p-3">
                               <ReleaseStateBadge release={release} />
                               {release.should_force_update ? (
@@ -624,13 +641,11 @@ function BundlesPage() {
                   })
                 ) : (
                   <p className="p-8 text-center text-sm text-muted-foreground">
-                    {search.bundleId ||
-                    search.channelId ||
-                    search.enabled !== undefined ||
-                    search.platform ||
-                    search.targetAppVersion
-                      ? "No bundles match these filters."
-                      : "No bundles yet. Deploy an update to see it here."}
+                    {onLaterPage
+                      ? "No more bundles on this side."
+                      : hasReleaseFilters(search)
+                        ? "No bundles match these filters."
+                        : "No bundles yet. Deploy an update to see it here."}
                   </p>
                 )}
               </div>
@@ -646,7 +661,9 @@ function BundlesPage() {
                     <TableHead>Enabled</TableHead>
                     <TableHead>Force update</TableHead>
                     <TableHead>Rollout</TableHead>
-                    <TableHead>Insights</TableHead>
+                    {featureColumns.map(({ feature, label }) => (
+                      <TableHead key={feature}>{label}</TableHead>
+                    ))}
                     <TableHead>Message</TableHead>
                     <TableHead>Created</TableHead>
                   </TableRow>
@@ -655,7 +672,7 @@ function BundlesPage() {
                   {releasesQuery.isPending
                     ? Array.from({ length: 7 }, (_, index) => (
                         <TableRow key={index}>
-                          <TableCell colSpan={11}>
+                          <TableCell colSpan={columnCount}>
                             <Skeleton className="h-8 w-full" />
                           </TableCell>
                         </TableRow>
@@ -812,15 +829,14 @@ function BundlesPage() {
                                   percentage={release.rollout_cohort_count / 10}
                                 />
                               </TableCell>
-                              <TableCell>
-                                <BundleMovementSummary
-                                  input={activityInputsByRelease.get(
-                                    release.id,
-                                  )}
-                                  report={activityQuery.data?.[release.id]}
-                                  loading={activityQuery.isFetching}
-                                />
-                              </TableCell>
+                              {featureColumns.map(({ Cell, feature }) => (
+                                <TableCell key={feature}>
+                                  <Cell
+                                    releaseId={release.id}
+                                    releases={slotReleases}
+                                  />
+                                </TableCell>
+                              ))}
                               <TableCell
                                 className="text-sm text-muted-foreground"
                                 title={release.message ?? undefined}
@@ -842,7 +858,7 @@ function BundlesPage() {
                               <TableRow className="hover:bg-transparent">
                                 <TableCell
                                   className="border-t-0 p-0"
-                                  colSpan={11}
+                                  colSpan={columnCount}
                                 >
                                   <ReleaseBundleChildrenPanel
                                     onDetailClick={openChildBundle}
@@ -859,15 +875,13 @@ function BundlesPage() {
                     <TableRow>
                       <TableCell
                         className="h-40 text-center text-muted-foreground"
-                        colSpan={11}
+                        colSpan={columnCount}
                       >
-                        {search.bundleId ||
-                        search.channelId ||
-                        search.enabled !== undefined ||
-                        search.platform ||
-                        search.targetAppVersion
-                          ? "No bundles match these filters."
-                          : "No bundles yet. Deploy an update to see it here."}
+                        {onLaterPage
+                          ? "No more bundles on this side."
+                          : hasReleaseFilters(search)
+                            ? "No bundles match these filters."
+                            : "No bundles yet. Deploy an update to see it here."}
                       </TableCell>
                     </TableRow>
                   ) : null}
@@ -883,13 +897,23 @@ function BundlesPage() {
             className="flex flex-col gap-3 px-2 sm:flex-row sm:items-center sm:justify-between"
           >
             <p className="text-xs font-medium text-muted-foreground">
-              Showing <span className="text-foreground">{startEntry}</span> to{" "}
-              <span className="text-foreground">{endEntry}</span> entries
+              <span className="text-foreground">{releases.length}</span>{" "}
+              {releases.length === 1 ? "entry" : "entries"}, newest first
             </p>
             <div className="flex flex-wrap items-center gap-3 sm:justify-end">
-              <p className="text-xs font-medium text-muted-foreground">
-                Page <span className="text-foreground">{currentPage}</span>
-              </p>
+              {onLaterPage ? (
+                <Link
+                  className={buttonVariants({
+                    className: "h-8 flex-1 px-3 text-xs sm:flex-none",
+                    size: "sm",
+                    variant: "ghost",
+                  })}
+                  search={newestSearch}
+                  to="/"
+                >
+                  Newest
+                </Link>
+              ) : null}
               {previousSearch ? (
                 <Link
                   className={buttonVariants({
@@ -948,6 +972,7 @@ function BundlesPage() {
         onOpenChange={(open) =>
           !open && go({ ...search, releaseId: undefined }, false)
         }
+        onShowScope={(scopeKey) => changeFilters({ scopeKey })}
         open={Boolean(search.releaseId)}
         releaseId={search.releaseId ?? ""}
       />

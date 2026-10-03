@@ -2,7 +2,6 @@
 title: "Automatic Rollback"
 description: Hot Updater verifies newly installed bundles on first launch and automatically recovers to a working bundle if startup fails.
 icon: ShieldCheck
-version: "0.24.0"
 ---
 
 <a id="in-one-sentence" />
@@ -49,12 +48,23 @@ Typical examples include:
 - a JavaScript error during startup
 - a native crash while the new bundle is loading
 - a fatal error before the first screen appears
+- a JavaScript thread hang followed by the user or OS killing the app before the first render
 
 Native bundle loading starts crash monitoring and marks a launch successful
 when the first React Native content appears. Configure `HotUpdater.init()` at
 module scope to connect update requests and observe or report that native
 launch result. The optional `HotUpdater.wrap()` flow uses the same native
 recovery mechanism.
+
+Before loading an unverified staging bundle, Hot Updater persists a launch-in-progress
+record. The first native content appearance clears it. If it remains on the next
+cold start, Hot Updater rolls back even when no crash marker was written. There is
+no timeout that interrupts a running JavaScript thread: recovery occurs after the
+app restarts. A user or OS termination before the first render also counts as a
+failed launch, even if the bundle would otherwise have finished loading.
+
+This protection requires a native app build containing the updated SDK; an OTA
+bundle alone cannot add it to an already installed native binary.
 
 ## What happens during rollback?
 
@@ -69,8 +79,9 @@ Observe the completed launch through
 [`onNotifyAppReady`](/docs/react-native-api/notifyAppReady) in your `init` or
 `wrap` configuration. A `RECOVERED` result identifies the failed artifact as
 `fromBundleId` and the restored artifact as `toBundleId`, with optional Release
-IDs for each side. [Insights](/docs/guides/insights) reports these outcomes to
-the configured server when client reporting is enabled.
+IDs for each side. The [Insights plugin](/docs/react-native-api/insights)
+reports these outcomes to the configured server for
+[Insights](/docs/guides/insights).
 
 ## Managing crashed bundles
 

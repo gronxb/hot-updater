@@ -4,16 +4,17 @@ import fsp from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 
-import { LYNX_E2E_BUILTIN_BUNDLE_ID } from "../../e2e/lynx/embedded-bundle.ts";
-import { lynx } from "../../packages/lynx/dist/build.mjs";
-import { s3Storage } from "../../plugins/aws/dist/index.mjs";
+import { s3Storage } from "@hot-updater/aws";
+import { lynx } from "@hot-updater/lynx/build";
 import {
   createStorageDownloadUrl,
-  createStoragePlugin,
+  createStorageAdapter,
   createStorageUri,
   parseStorageUri,
-} from "../../plugins/plugin-core/dist/index.mjs";
-import { standaloneRepository } from "../../plugins/standalone/dist/index.mjs";
+} from "@hot-updater/plugin-core";
+import { standaloneRepository } from "@hot-updater/standalone";
+
+import { LYNX_E2E_BUILTIN_BUNDLE_ID } from "../../e2e/lynx/embedded-bundle.ts";
 import { copyE2eFixtures } from "./scripts/copy-e2e-fixtures";
 import { resolveE2eBuildRuntimeId } from "./src/e2eBuildRuntimeId";
 
@@ -43,7 +44,7 @@ function localFsStorage(options: {
   readonly signingKey: string;
 }) {
   const objectPath = (key: string) => path.join(options.directory, key);
-  return createStoragePlugin({
+  return createStorageAdapter({
     name: "local-fs",
     protocol: "storage",
     async put({ key, body, contentType }) {
@@ -158,7 +159,6 @@ export default {
       "ios/run-recovery-probes.mjs",
     ],
   },
-  compressStrategy: "zip",
   signing: {
     enabled: true,
     privateKeyPath: "./keys/private-key.pem",

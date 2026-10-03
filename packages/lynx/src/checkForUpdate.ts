@@ -4,7 +4,7 @@ import {
   encodeChannelKey,
   selectDesiredRelease,
   type PersistedSelectionReceipt,
-} from "@hot-updater/core";
+} from "@hot-updater/protocol";
 
 import { createHttpClient } from "./httpClient";
 import { callNative, LynxUpdaterError, normalizeNativeState } from "./native";
@@ -257,8 +257,9 @@ async function checkForUpdateAttempt(
   return {
     id: desired.releaseId ?? desired.bundleId,
     bundleId: desired.bundleId,
-    fileHash: artifact?.fileHash ?? null,
-    fileUrl: artifact?.fileUrl ?? null,
+    archiveUrl: artifact?.archiveUrl ?? null,
+    manifestUrl: artifact?.manifestUrl ?? null,
+    manifestFileHash: artifact?.manifestFileHash ?? null,
     message: desired.release?.message ?? null,
     releaseId: desired.releaseId,
     rolloutCohortCount: desired.release?.rolloutCohortCount ?? 1000,

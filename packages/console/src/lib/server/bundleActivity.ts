@@ -1,4 +1,7 @@
-import type { InsightsModel, ReleaseReference } from "@hot-updater/plugin-core";
+import type {
+  InsightsModel,
+  ReleaseReference,
+} from "@hot-updater/server/plugins/insights";
 
 import type { BundleActivityInput } from "../bundle-activity";
 
@@ -22,7 +25,7 @@ export async function getBundleActivity(
               item.release.releaseId,
               {
                 downloads: item.metrics.downloads,
-                launches: item.metrics.launches,
+                activeDays: item.metrics.launches,
                 failedLaunches: item.metrics.failedLaunches,
                 measuredAtMs: activity.measuredAtMs,
                 coverage: activity.coverage,

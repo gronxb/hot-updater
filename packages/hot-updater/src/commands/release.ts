@@ -1,18 +1,17 @@
 import { loadConfig, p } from "@hot-updater/cli-tools";
-import {
-  type BundleRepository,
-  deleteRelease,
-  preflightReleasePolicy,
-  type ReleasePolicyPatch,
-  type ReleaseRow,
-  updateReleasePolicy,
+import type {
+  HotUpdaterCoreApi,
+  ReleaseFilter,
+  ReleasePolicyPatch,
+  ReleaseRow,
 } from "@hot-updater/plugin-core";
+
+import { loadServer } from "@/utils/loadServer";
 
 import { ui } from "../utils/cli-ui";
 import { printBanner } from "../utils/printBanner";
 
 const DEFAULT_LIMIT = 20;
-const RELEASE_PAGE_SIZE = 1_000;
 
 export interface ReleaseListOptions {
   readonly bundleId?: string;
@@ -26,6 +25,8 @@ export interface ReleaseListOptions {
 export interface ReleaseUpdateOptions {
   readonly clearMessage?: boolean;
   readonly clearTargetCohorts?: boolean;
+  /** Validates the update and shows the projected catalog without saving. */
+  readonly dryRun?: boolean;
   readonly expectedRevision?: number;
   readonly forceUpdate?: boolean;
   readonly json?: boolean;
@@ -113,29 +114,6 @@ const releaseSummary = (release: ReleaseRow, channelName: string): string =>
     ui.kv("Updated", new Date(release.updated_at_ms).toISOString()),
   ]);
 
-const readScopeReleases = async (
-  database: BundleRepository,
-  scopeKey: string,
-): Promise<readonly ReleaseRow[]> => {
-  const releases: ReleaseRow[] = [];
-  let afterReleaseId: string | undefined;
-  for (;;) {
-    const page = await database.models.releases.findManyByScope({
-      ...(afterReleaseId === undefined ? {} : { afterReleaseId }),
-      consistency: "strong",
-      limit: RELEASE_PAGE_SIZE,
-      scopeKey,
-    });
-    releases.push(...page);
-    if (page.length < RELEASE_PAGE_SIZE) return releases;
-    const nextCursor = page.at(-1)?.id;
-    if (nextCursor === undefined || nextCursor === afterReleaseId) {
-      throw new Error("Bundle pagination did not advance.");
-    }
-    afterReleaseId = nextCursor;
-  }
-};
-
 const releaseDisablePreview = (
   release: ReleaseRow,
   channelName: string,
@@ -152,6 +130,29 @@ const releaseDisablePreview = (
     ),
   ]);
 
+/** A dry run's result: the catalog the update would compile, against its limit. */
+const printUpdatePreview = (
+  result: Awaited<ReturnType<HotUpdaterCoreApi["preflightReleasePolicy"]>>,
+  options: ReleaseUpdateOptions,
+) => {
+  console.log(
+    options.json
+      ? JSON.stringify(result, null, 2)
+      : ui.block("Bundle update dry run (not saved)", [
+          ui.kv("Current bytes", String(result.currentCatalog?.byte_size ?? 0)),
+          ui.kv("Projected bytes", String(result.diagnostics.byteSize)),
+          ui.kv("Maximum bytes", String(256 * 1024)),
+          ui.kv("Descriptors", String(result.diagnostics.descriptorCount)),
+          ui.kv("Intervals", String(result.diagnostics.segmentCount)),
+          ui.kv(
+            "Named cohorts",
+            String(result.diagnostics.distinctTargetCohortCount),
+          ),
+          ui.kv("Next generation", String(result.catalog.generation)),
+        ]),
+  );
+};
+
 const confirmMutation = async (
   message: string,
   yes: boolean | undefined,
@@ -165,31 +166,72 @@ const confirmMutation = async (
   if (p.isCancel(confirmed) || !confirmed) process.exit(2);
 };
 
-const channelNames = async (database: {
-  readonly models: {
-    readonly channels: {
-      list(input: {}): Promise<{
-        readonly channels: readonly {
-          readonly id: string;
-          readonly name: string;
-        }[];
-      }>;
-    };
-  };
-}) =>
+const channelNames = async (core: HotUpdaterCoreApi) =>
   new Map(
-    (await database.models.channels.list({})).channels.map((channel) => [
-      channel.id,
-      channel.name,
-    ]),
+    (await core.listChannels()).map((channel) => [channel.id, channel.name]),
   );
+
+const PAGE = 100;
+
+/**
+ * Newest releases first. Each read goes through the index the narrowest
+ * filters name: a bundle, a channel with its platforms, or every release.
+ * Filters no index serves (a platform alone, a target app version) are
+ * checked here while reading pages, until `limit` releases match.
+ */
+const listReleases = async (
+  core: HotUpdaterCoreApi,
+  options: ReleaseListOptions,
+  channelId: string | undefined,
+): Promise<ReleaseRow[]> => {
+  const limit = options.limit ?? DEFAULT_LIMIT;
+  const matches = (release: ReleaseRow) =>
+    (options.platform === undefined || release.platform === options.platform) &&
+    (channelId === undefined || release.channel_id === channelId) &&
+    (options.targetAppVersion === undefined ||
+      release.target_app_version === options.targetAppVersion);
+  const filters: ReleaseFilter[] =
+    options.bundleId !== undefined
+      ? [{ kind: "bundle", bundleId: options.bundleId }]
+      : channelId === undefined
+        ? [{ kind: "all" }]
+        : (options.platform === undefined
+            ? (["ios", "android"] as const)
+            : [options.platform]
+          ).map((platform) => ({
+            kind: "channelPlatform" as const,
+            channelId,
+            platform,
+          }));
+  const found = await Promise.all(
+    filters.map(async (filter) => {
+      const rows: ReleaseRow[] = [];
+      for (let after: string | undefined; rows.length < limit; ) {
+        const page = await core.listReleases({
+          filter,
+          limit: PAGE,
+          order: "desc",
+          ...(after === undefined ? {} : { after }),
+        });
+        rows.push(...page.filter(matches));
+        if (page.length < PAGE) break;
+        after = page.at(-1)!.id;
+      }
+      return rows;
+    }),
+  );
+  return found
+    .flat()
+    .sort((left, right) => (left.id < right.id ? 1 : -1))
+    .slice(0, limit);
+};
 
 export const handleReleaseList = async (options: ReleaseListOptions = {}) => {
   if (!options.json) printBanner();
-  const config = await loadConfig(null);
-  const database = config.database;
+  const server = await loadServer(await loadConfig(null));
   try {
-    const channels = await channelNames(database);
+    const core = server.core;
+    const channels = await channelNames(core);
     const channelId = options.channel
       ? [...channels].find(([, name]) => name === options.channel)?.[0]
       : undefined;
@@ -197,22 +239,14 @@ export const handleReleaseList = async (options: ReleaseListOptions = {}) => {
       p.log.error(`No channel named ${options.channel}.`);
       process.exit(1);
     }
-    const releases = await database.models.releases.findMany({
-      ...(options.bundleId === undefined ? {} : { bundleId: options.bundleId }),
-      ...(channelId === undefined ? {} : { channelId }),
-      ...(options.platform === undefined ? {} : { platform: options.platform }),
-      ...(options.targetAppVersion === undefined
-        ? {}
-        : { targetAppVersion: options.targetAppVersion }),
-      limit: options.limit ?? DEFAULT_LIMIT,
-    });
+    const releases = await listReleases(core, options, channelId);
     console.log(
       options.json
         ? JSON.stringify(releases, null, 2)
         : releaseTable(releases, channels),
     );
   } finally {
-    await safeDispose(database);
+    await safeDispose(server);
   }
 };
 
@@ -221,12 +255,12 @@ export const handleReleaseShow = async (
   options: { readonly json?: boolean } = {},
 ) => {
   if (!options.json) printBanner();
-  const config = await loadConfig(null);
-  const database = config.database;
+  const server = await loadServer(await loadConfig(null));
   try {
+    const core = server.core;
     const [release, channels] = await Promise.all([
-      database.models.releases.findById(releaseId),
-      channelNames(database),
+      core.getRelease(releaseId),
+      channelNames(core),
     ]);
     if (release === null) {
       p.log.error(`No bundle with ID ${releaseId}.`);
@@ -241,7 +275,7 @@ export const handleReleaseShow = async (
           ),
     );
   } finally {
-    await safeDispose(database);
+    await safeDispose(server);
   }
 };
 
@@ -282,16 +316,24 @@ export const handleReleaseUpdate = async (
     process.exit(1);
   }
   if (!options.json) printBanner();
-  await confirmMutation("Update this bundle?", options.yes);
-  const config = await loadConfig(null);
-  const database = config.database;
+  // A dry run saves nothing, so it needs no confirmation.
+  if (!options.dryRun)
+    await confirmMutation("Update this bundle?", options.yes);
+  const server = await loadServer(await loadConfig(null));
   try {
-    const result = await updateReleasePolicy({
-      database,
-      expectedRevision: options.expectedRevision,
+    const core = server.core;
+    const target = {
+      ...(options.expectedRevision === undefined
+        ? {}
+        : { expectedRevision: options.expectedRevision }),
       patch,
       releaseId,
-    });
+    };
+    if (options.dryRun) {
+      printUpdatePreview(await core.preflightReleasePolicy(target), options);
+      return;
+    }
+    const result = await core.updateReleasePolicy(target);
     console.log(
       options.json
         ? JSON.stringify(result, null, 2)
@@ -301,7 +343,7 @@ export const handleReleaseUpdate = async (
           ]),
     );
   } finally {
-    await safeDispose(database);
+    await safeDispose(server);
   }
 };
 
@@ -315,12 +357,12 @@ export const handleReleaseEnablement = async (
   },
 ) => {
   if (!options.json) printBanner();
-  const config = await loadConfig(null);
-  const database = config.database;
+  const server = await loadServer(await loadConfig(null));
   try {
+    const core = server.core;
     let expectedRevision = options.expectedRevision;
     if (!enabled) {
-      const release = await database.models.releases.findById(releaseId);
+      const release = await core.getRelease(releaseId);
       if (release === null) {
         p.log.error(`No bundle with ID ${releaseId}.`);
         process.exit(1);
@@ -328,18 +370,23 @@ export const handleReleaseEnablement = async (
       expectedRevision ??= release.revision;
 
       if (!options.json) {
-        const [releases, channels] = await Promise.all([
-          readScopeReleases(database, release.scope_key),
-          channelNames(database),
+        // The scope's enabled releases through their index: two tell whether this is the only one.
+        const [enabledReleases, channels] = await Promise.all([
+          core.listReleases({
+            filter: {
+              kind: "scope",
+              scopeKey: release.scope_key,
+              enabled: true,
+            },
+            limit: 2,
+          }),
+          channelNames(core),
         ]);
         p.log.message(
           releaseDisablePreview(
             release,
             channels.get(release.channel_id) ?? release.channel_id,
           ),
-        );
-        const enabledReleases = releases.filter(
-          (candidate) => candidate.enabled,
         );
         if (
           release.enabled &&
@@ -357,9 +404,8 @@ export const handleReleaseEnablement = async (
       `${enabled ? "Enable" : "Disable"} this bundle?`,
       options.yes,
     );
-    const result = await updateReleasePolicy({
-      database,
-      expectedRevision,
+    const result = await core.updateReleasePolicy({
+      ...(expectedRevision === undefined ? {} : { expectedRevision }),
       patch: { enabled },
       releaseId,
     });
@@ -371,44 +417,7 @@ export const handleReleaseEnablement = async (
           ]),
     );
   } finally {
-    await safeDispose(database);
-  }
-};
-
-export const handleReleasePreflight = async (
-  releaseId: string,
-  options: ReleaseUpdateOptions,
-) => {
-  const config = await loadConfig(null);
-  const database = config.database;
-  try {
-    const result = await preflightReleasePolicy({
-      database,
-      expectedRevision: options.expectedRevision,
-      patch: createPolicyPatch(options),
-      releaseId,
-    });
-    console.log(
-      options.json
-        ? JSON.stringify(result, null, 2)
-        : ui.block("Bundle update preflight", [
-            ui.kv(
-              "Current bytes",
-              String(result.currentCatalog?.byte_size ?? 0),
-            ),
-            ui.kv("Projected bytes", String(result.diagnostics.byteSize)),
-            ui.kv("Maximum bytes", String(256 * 1024)),
-            ui.kv("Descriptors", String(result.diagnostics.descriptorCount)),
-            ui.kv("Intervals", String(result.diagnostics.segmentCount)),
-            ui.kv(
-              "Named cohorts",
-              String(result.diagnostics.distinctTargetCohortCount),
-            ),
-            ui.kv("Next generation", String(result.catalog.generation)),
-          ]),
-    );
-  } finally {
-    await safeDispose(database);
+    await safeDispose(server);
   }
 };
 
@@ -425,20 +434,32 @@ export const handleReleaseDelete = async (
     `Permanently delete disabled bundle ${releaseId}?`,
     options.yes,
   );
-  const config = await loadConfig(null);
-  const database = config.database;
+  const server = await loadServer(await loadConfig(null));
   try {
-    const result = await deleteRelease({
-      database,
-      expectedRevision: options.expectedRevision,
+    const core = server.core;
+    // Core deletes the artifact with the last bundle on it.
+    const artifactId = (await core.getRelease(releaseId))?.bundle_id ?? null;
+    const result = await core.deleteRelease({
+      ...(options.expectedRevision === undefined
+        ? {}
+        : { expectedRevision: options.expectedRevision }),
       releaseId,
     });
-    console.log(
-      options.json
-        ? JSON.stringify(result, null, 2)
-        : ui.block("Bundle deleted", [ui.kv("ID", ui.id(releaseId))]),
-    );
+    const deletedArtifactId =
+      artifactId !== null && (await core.getBundle(artifactId)) === null
+        ? artifactId
+        : null;
+    if (options.json) {
+      console.log(JSON.stringify({ ...result, deletedArtifactId }, null, 2));
+      return;
+    }
+    console.log(ui.block("Bundle deleted", [ui.kv("ID", ui.id(releaseId))]));
+    if (deletedArtifactId !== null) {
+      p.log.info(
+        "No other bundle used its files, so their artifact record was deleted too. The stored files stay until `hot-updater storage prune` deletes them.",
+      );
+    }
   } finally {
-    await safeDispose(database);
+    await safeDispose(server);
   }
 };

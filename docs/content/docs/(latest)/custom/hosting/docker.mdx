@@ -2,7 +2,6 @@
 title: "Docker"
 description: Deploy Hot Updater server using Docker containers.
 icon: docker
-version: "v0.22.0"
 ---
 
 ## Prerequisites
@@ -19,7 +18,7 @@ Install required dependencies.
 npm install @hot-updater/server hono @hono/node-server
 ```
 
-Install your chosen storage plugin separately (e.g., `@hot-updater/aws`, `@hot-updater/supabase`, `@hot-updater/firebase`).
+Install your chosen storage adapter separately (e.g., `@hot-updater/aws`, `@hot-updater/supabase`, `@hot-updater/firebase`).
 
 Install Drizzle ORM with PostgreSQL driver.
 
@@ -82,12 +81,14 @@ Create the Hot Updater instance.
 ```typescript title="src/hotUpdater.ts"
 import { createHotUpdater } from "@hot-updater/server";
 import { drizzleAdapter } from "@hot-updater/server/adapters/drizzle";
+import { apiKeys } from "@hot-updater/server/plugins/api-keys";
+import { insights } from "@hot-updater/server/plugins/insights";
 import { s3Storage } from "@hot-updater/aws";
 import { db } from "./drizzle";
 
 export const hotUpdater = createHotUpdater({
   database: drizzleAdapter({ db, provider: "postgresql" }),
-  clientAccess: { type: "api-key" },
+  plugins: [insights(), apiKeys()],
   storage: [
     s3Storage({
       region: "auto",
@@ -168,11 +169,15 @@ export default defineConfig({
 
 ```bash
 npx drizzle-kit push
+npx hot-updater db migrate src/hotUpdater.ts
 ```
 
-Because this server uses `clientAccess: { type: "api-key" }`, also
+`db migrate` writes the settings rows the server checks before its first
+request; until they exist, its handlers answer `503`. Because this server runs
+`apiKeys()`, also
 [create a client API key and configure `x-api-key` in the app](/docs/custom/quick-start#bootstrap-the-schema-and-api-key)
-against this same database before the first update check.
+against this same database before the first update check. `insights()` records
+the app's Insights events.
 
 ## Dockerfile
 
@@ -237,7 +242,14 @@ docker run -p 3000:3000 \
 
 ## Docker Compose
 
-Create `docker-compose.yml` for complete setup with PostgreSQL.
+Create `docker-compose.yml` for complete setup with PostgreSQL. Before the
+first start, export `POSTGRES_PASSWORD` with a long random URL-safe password
+(for example, a value generated with `openssl rand -hex 32`). Save it in your
+secret store and reuse it for later Compose and local schema commands. Compose
+requires this value and uses it for both PostgreSQL and the application.
+The database port binds to the Docker host
+[loopback interface](https://docs.docker.com/engine/network/port-publishing/#publishing-ports)
+for local schema commands.
 
 ```yaml title="docker-compose.yml"
 version: "3.8"
@@ -248,11 +260,11 @@ services:
     environment:
       POSTGRES_DB: hot_updater
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 10s
@@ -264,7 +276,7 @@ services:
     ports:
       - "3000:3000"
     environment:
-      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/hot_updater
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}@postgres:5432/hot_updater
       HOT_UPDATER_ADMIN_TOKEN: replace-with-a-secret
       HOT_UPDATER_STORAGE_DOWNLOAD_URL_KEY: replace-with-a-separate-secret
       R2_ENDPOINT: https://<account-id>.r2.cloudflarestorage.com
@@ -292,11 +304,14 @@ docker compose up -d postgres
 
 Make the same storage settings and a `DATABASE_URL` reachable from your local
 shell available to these commands. For the Compose database above, the local
-hostname is `localhost`, while the application container uses `postgres`.
+hostname is `127.0.0.1`, while the application container uses `postgres`.
+Use the same exported password:
 
 ```bash
+export DATABASE_URL="postgresql://postgres:${POSTGRES_PASSWORD}@127.0.0.1:5432/hot_updater"
 npx hot-updater db generate src/hotUpdater.ts --yes
 npx drizzle-kit push
+npx hot-updater db migrate src/hotUpdater.ts
 ```
 
 Create the [client API key](/docs/custom/api-key-authentication#bootstrap-a-self-hosted-client)
@@ -322,8 +337,8 @@ docker compose down
 
 [Connect the React Native project's CLI](/docs/custom/cli-configuration) to the
 verified deployment URL with `/hot-updater/admin` as its base path. Keep the
-admin token in the deploy environment and match the server's storage plugin
-and bucket configuration.
+admin token in the deploy environment, match the server's storage adapter and
+bucket configuration, and list the server's plugins.
 
 Expose the container through your existing HTTPS ingress before connecting a
 mobile release build. For the app, use the HTTPS client root ending in

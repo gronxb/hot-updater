@@ -21,6 +21,7 @@ data class BundleMetadata(
     val pendingUpdateStrategy: String? = null,
     val pendingTransition: PendingSelectionTransition? = null,
     val verificationPending: Boolean = false,
+    val launchInProgress: Boolean = false,
     val highestSeenCatalogs: Map<String, CatalogHighWater> = emptyMap(),
     val currentSelectionContexts: Map<String, String> = emptyMap(),
     val updatedAt: Long = System.currentTimeMillis(),
@@ -71,6 +72,7 @@ data class BundleMetadata(
                 pendingTransition =
                     json.optJSONObject("pendingTransition")?.let(PendingSelectionTransition::fromJson),
                 verificationPending = json.optBoolean("verificationPending", false),
+                launchInProgress = json.optBoolean("launchInProgress", false),
                 highestSeenCatalogs = highestSeenCatalogs,
                 currentSelectionContexts = currentSelectionContexts,
                 updatedAt = json.optLong("updatedAt", System.currentTimeMillis()),
@@ -121,6 +123,7 @@ data class BundleMetadata(
             put("pendingUpdateStrategy", pendingUpdateStrategy ?: JSONObject.NULL)
             put("pendingTransition", pendingTransition?.toJson() ?: JSONObject.NULL)
             put("verificationPending", verificationPending)
+            put("launchInProgress", launchInProgress)
             put(
                 "highestSeenCatalogs",
                 JSONObject().apply {
@@ -476,21 +479,17 @@ data class LaunchReport(
         }
 }
 
+/**
+ * The persisted install id. See [InstallIdentityService].
+ */
 data class InstallationIdentity(
     val installId: String,
-    val userId: String? = null,
-    val username: String? = null,
 ) {
     companion object {
         private const val TAG = "InstallationIdentity"
-        const val IDENTITY_FILENAME = "identity.json"
+        const val IDENTITY_FILENAME = "install-identity.json"
 
-        fun fromJson(json: JSONObject): InstallationIdentity =
-            InstallationIdentity(
-                installId = json.getString("installId"),
-                userId = json.optNullableString("userId"),
-                username = json.optNullableString("username"),
-            )
+        fun fromJson(json: JSONObject): InstallationIdentity = InstallationIdentity(installId = json.getString("installId"))
 
         fun loadFromFile(file: File): InstallationIdentity? =
             try {
@@ -508,8 +507,6 @@ data class InstallationIdentity(
     fun toJson(): JSONObject =
         JSONObject().apply {
             put("installId", installId)
-            put("userId", userId ?: JSONObject.NULL)
-            put("username", username ?: JSONObject.NULL)
         }
 
     fun saveToFile(file: File): Boolean =

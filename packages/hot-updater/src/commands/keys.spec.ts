@@ -54,7 +54,7 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
   },
 }));
 
-vi.mock("@/utils/configParser/androidParser", () => ({
+vi.mock("../utils/configParser/androidParser", () => ({
   AndroidConfigParser: class {
     exists = mocks.androidExists;
     get = mocks.androidGet;
@@ -62,7 +62,7 @@ vi.mock("@/utils/configParser/androidParser", () => ({
   },
 }));
 
-vi.mock("@/utils/configParser/iosParser", () => ({
+vi.mock("../utils/configParser/iosParser", () => ({
   IosConfigParser: class {
     exists = mocks.iosExists;
     get = mocks.iosGet;
@@ -70,11 +70,11 @@ vi.mock("@/utils/configParser/iosParser", () => ({
   },
 }));
 
-vi.mock("@/utils/git", () => ({
+vi.mock("../utils/git", () => ({
   appendToProjectRootGitignore: vi.fn(),
 }));
 
-vi.mock("@/utils/signing", () => ({
+vi.mock("../utils/signing", () => ({
   generateKeyPair: vi.fn(),
   getPrivateKeyGitignorePath: vi.fn(),
   getPublicKeyFromPrivate: vi.fn(),

@@ -17,12 +17,29 @@ const preflight = vi.fn();
 const promote = vi.fn();
 const update = vi.fn();
 const recovery = vi.fn();
+const failures = vi.fn();
 
-vi.mock("@/components/features/bundles/BundleInsightsSummary", () => ({
+vi.mock("@/components/features/insights/ReleaseActivity", () => ({
   BundleInsightsSummary: (props: unknown) => {
     recovery(props);
     return <div>Activity · 24 hours</div>;
   },
+  ReleaseFailuresSection: (props: unknown) => {
+    failures(props);
+    return <div>Download failures · lifetime</div>;
+  },
+  releaseActivityColumn: { Cell: () => null },
+}));
+
+let insightsAnalytics = true;
+
+vi.mock("@/lib/console-features-api", () => ({
+  useConsoleFeatures: () => ({
+    data: {
+      features: { insights: true, insightsAnalytics, apiKeys: true },
+      remote: false,
+    },
+  }),
 }));
 
 const release = {
@@ -48,11 +65,12 @@ const release = {
 } as ReleaseRow;
 
 const bundle = {
-  fileHash: "bundle-file-hash",
   gitCommitHash: "commit-hash",
   id: "bundle-1",
   platform: "ios",
-  storageUri: "s3://updates/bundle-1",
+  manifestStorageUri: "s3://updates/bundle-1/manifest.json",
+  manifestFileHash: "bundle-manifest-hash",
+  assetBaseStorageUri: "s3://updates/assets",
   patches: [
     {
       baseBundleId: "patch-base-file",
@@ -116,6 +134,8 @@ describe("ReleaseEditorSheet", () => {
   afterEach(cleanup);
 
   beforeEach(() => {
+    insightsAnalytics = true;
+    recovery.mockReset();
     releaseValue = release;
     preflight.mockReset();
     preflight.mockResolvedValue({});
@@ -220,14 +240,14 @@ describe("ReleaseEditorSheet", () => {
       screen.getByRole("button", { name: "Promote to channel" }),
     ).toBeDefined();
     expect(
-      screen.getByRole("button", { name: "Download bundle" }),
+      screen.getByRole("button", { name: "Download manifest" }),
     ).toBeDefined();
     expect(screen.getByText("Metadata")).toBeDefined();
     expect(
       screen.getByRole("heading", { name: "Delivery settings" }),
     ).toBeDefined();
     expect(screen.getAllByText("Target app version").length).toBeGreaterThan(0);
-    expect(screen.getByText("Bundle hash")).toBeDefined();
+    expect(screen.getByText("Manifest hash")).toBeDefined();
     expect(screen.getByText("patch-base-file").closest("details")?.open).toBe(
       false,
     );
@@ -255,7 +275,7 @@ describe("ReleaseEditorSheet", () => {
 
     for (const actionName of [
       "Promote to channel",
-      "Download bundle",
+      "Download manifest",
       "Remove from channel",
     ]) {
       expect(
@@ -298,6 +318,28 @@ describe("ReleaseEditorSheet", () => {
       ).toBeDefined();
     },
   );
+
+  it("leaves release activity out where the console does not read it", () => {
+    insightsAnalytics = false;
+    render(
+      <ReleaseEditorSheet
+        channels={[{ id: "channel-1", name: "production" }]}
+        onOpenChange={vi.fn()}
+        open
+        releaseId={release.id}
+      />,
+    );
+
+    expect(screen.queryByText("Activity · 24 hours")).toBeNull();
+    expect(recovery).not.toHaveBeenCalled();
+    // Insights still serves the release's download failures, as through a
+    // self-hosted server's admin API.
+    expect(screen.getByText("Download failures · lifetime")).toBeDefined();
+    expect(failures).toHaveBeenCalledWith({
+      input: expect.objectContaining({ releaseId: release.id }),
+    });
+    expect(screen.getByText("Delivery settings")).toBeDefined();
+  });
 
   it("restores the main Console cohort preview for gradual rollout", () => {
     releaseValue = { ...release, rollout_cohort_count: 100 };

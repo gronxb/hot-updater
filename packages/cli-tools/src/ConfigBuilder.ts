@@ -2,23 +2,12 @@ export type ImportInfo = {
   pkg: string;
   named?: string[]; // e.g., ['defineConfig']
   defaultOrNamespace?: string; // e.g., '* as admin'
-  sideEffect?: boolean; // e.g., true for "dotenv/config"
+  sideEffect?: boolean;
 };
 
 export type ProviderConfig = {
   imports: ImportInfo[]; // Imports required specifically by this provider part
   configString: string; // The JS code string for storage: ..., database: ...
-};
-
-export type BuildConfig = ProviderConfig;
-
-export type ConfigBuilderScaffold = {
-  imports: ImportInfo[];
-  buildConfigString: string;
-  storageConfigString: string;
-  databaseConfigString: string;
-  intermediateCode: string;
-  text: string;
 };
 
 const normalizeImportInfos = (imports: ImportInfo[]) => {
@@ -106,86 +95,37 @@ export const renderImportStatements = (imports: ImportInfo[]) => {
   return importLines.join("\n");
 };
 
-// Builder Interface
-export interface IConfigBuilder {
-  /** Sets the opaque application integration build configuration. */
-  setBuild(buildConfig: BuildConfig): this;
+export type BuildConfig = ProviderConfig & { clientModule?: string };
 
-  /** Sets the storage configuration and adds its required imports. */
-  setStorage(storageConfig: ProviderConfig): this;
+export type ConfigBuilderScaffold = {
+  imports: ImportInfo[];
+  buildConfigString: string;
+  storageConfigString: string;
+  databaseConfigString: string;
+  pluginsConfigString: string;
+  intermediateCode: string;
+  text: string;
+};
 
-  /** Sets the database configuration and adds its required imports. */
-  setDatabase(databaseConfig: ProviderConfig): this;
-
-  /** Sets the intermediate code block to be placed between imports and defineConfig. */
-  setIntermediateCode(code: string): this;
-
-  /** Assembles and returns the final configuration string. */
-  getResult(): string;
-}
-
-export class ConfigBuilder implements IConfigBuilder {
+/**
+ * Renders the hot-updater.config.ts init writes: the build, the server's
+ * storage, database, and plugins, and the deploy settings.
+ */
+export class ConfigBuilder {
   private buildInfo: BuildConfig | null = null;
   private storageInfo: ProviderConfig | null = null;
   private databaseInfo: ProviderConfig | null = null;
+  private pluginsInfo: ProviderConfig | null = null;
   private intermediateCode = "";
+  private readonly imports: ImportInfo[] = [
+    { pkg: "hot-updater", named: ["defineConfig"] },
+    { pkg: "node:fs", named: ["existsSync"] },
+  ];
 
-  // Internal state to collect and deduplicate imports
-  private collectedImports: Map<
-    string,
-    { named: Set<string>; defaultOrNamespace?: string; sideEffect?: boolean }
-  > = new Map();
-
-  constructor() {
-    // Add common imports needed by almost all configurations by default
-    this.addImport({ pkg: "dotenv", named: ["config"] });
-    this.addImport({ pkg: "hot-updater", named: ["defineConfig"] });
-  }
-
+  /** Adds an import, such as a credentials helper's. */
   public addImport(info: ImportInfo): this {
-    const pkg = info.pkg;
-    const existing = this.collectedImports.get(pkg);
-
-    if (existing) {
-      // Merge named imports
-      if (info.named) {
-        for (const n of info.named) {
-          existing.named.add(n);
-        }
-      }
-      // Update default/namespace or sideEffect if not already set
-      if (info.defaultOrNamespace && !existing.defaultOrNamespace) {
-        existing.defaultOrNamespace = info.defaultOrNamespace;
-      }
-      if (info.sideEffect && !existing.sideEffect) {
-        existing.sideEffect = true; // Mark as side-effect if any part needs it
-      }
-    } else {
-      // Add new entry
-      this.collectedImports.set(pkg, {
-        named: new Set(info.named ?? []),
-        defaultOrNamespace: info.defaultOrNamespace,
-        sideEffect: info.sideEffect ?? false,
-      });
-    }
+    this.imports.push(info);
     return this;
-  }
-
-  private addImports(imports: ImportInfo[]): void {
-    for (const imp of imports) {
-      this.addImport(imp);
-    }
-  }
-
-  private getImportInfos(): ImportInfo[] {
-    return normalizeImportInfos(
-      Array.from(this.collectedImports.entries()).map(([pkg, info]) => ({
-        pkg,
-        named: Array.from(info.named),
-        defaultOrNamespace: info.defaultOrNamespace,
-        sideEffect: info.sideEffect ?? false,
-      })),
-    );
   }
 
   private generateBuildConfigString(): string {
@@ -203,38 +143,33 @@ export class ConfigBuilder implements IConfigBuilder {
       );
     }
     this.buildInfo = buildConfig;
-    this.addImports(buildConfig.imports);
+    this.imports.push(...buildConfig.imports);
     return this;
   }
 
+  /** Sets the storage the CLI uploads to, which the server lists, and its imports. */
   setStorage(storageConfig: ProviderConfig): this {
     this.storageInfo = storageConfig;
-    this.addImports(storageConfig.imports);
-    // Auto-add the modular firebase-admin credential import if firebase is used
-    if (storageConfig.imports.some((imp) => imp.pkg.includes("firebase"))) {
-      this.addImport({
-        pkg: "firebase-admin/app",
-        named: ["applicationDefault"],
-      });
-    }
+    this.imports.push(...storageConfig.imports);
     return this;
   }
 
+  /** Sets the server's database and its imports. */
   setDatabase(databaseConfig: ProviderConfig): this {
     this.databaseInfo = databaseConfig;
-    this.addImports(databaseConfig.imports);
-    // Auto-add the modular firebase-admin credential import if firebase is used
-    if (databaseConfig.imports.some((imp) => imp.pkg.includes("firebase"))) {
-      this.addImport({
-        pkg: "firebase-admin/app",
-        named: ["applicationDefault"],
-      });
-    }
+    this.imports.push(...databaseConfig.imports);
     return this;
   }
 
+  /** Sets the plugins the server runs, such as a provider package's `plugins`. */
+  setPlugins(pluginsConfig: ProviderConfig): this {
+    this.pluginsInfo = pluginsConfig;
+    this.imports.push(...pluginsConfig.imports);
+    return this;
+  }
+
+  /** Sets the code between the environment loading and the config, such as a credentials helper. */
   setIntermediateCode(code: string): this {
-    // Trim whitespace but preserve newlines within the code
     this.intermediateCode = code.trim();
     return this;
   }
@@ -247,36 +182,40 @@ export class ConfigBuilder implements IConfigBuilder {
       throw new Error("Storage config must be set using .setStorage()");
     if (!this.databaseInfo)
       throw new Error("Database config must be set using .setDatabase()");
+    if (!this.pluginsInfo)
+      throw new Error("Plugins config must be set using .setPlugins()");
 
-    const imports = this.getImportInfos();
-    const importStatements = renderImportStatements(imports);
+    const imports = normalizeImportInfos(this.imports);
     const buildConfigString = this.generateBuildConfigString();
-
-    // Assemble the final string
+    const plugins = this.pluginsInfo.configString;
     const text = `
-${importStatements}
+${renderImportStatements(imports)}
 
-config({ path: ".env.hotupdater" });
+if (existsSync(".env.hotupdater")) {
+  process.loadEnvFile(".env.hotupdater");
+}
 
-${this.intermediateCode ? `${this.intermediateCode}\n` : ""}
-export default defineConfig({
+${this.intermediateCode ? `${this.intermediateCode}\n\n` : ""}export default defineConfig({
   build: ${buildConfigString},
   storage: ${this.storageInfo.configString},
   database: ${this.databaseInfo.configString},
+  ${plugins === "plugins" ? "plugins" : `plugins: ${plugins}`},
   updateStrategy: "appVersion", // or "fingerprint"
 });
-`.trim(); // Ensure trailing newline
+`.trim();
 
     return {
       imports,
       buildConfigString,
       storageConfigString: this.storageInfo.configString,
       databaseConfigString: this.databaseInfo.configString,
+      pluginsConfigString: plugins,
       intermediateCode: this.intermediateCode,
       text,
     };
   }
 
+  /** hot-updater.config.ts's text. */
   getResult(): string {
     return this.getScaffold().text;
   }

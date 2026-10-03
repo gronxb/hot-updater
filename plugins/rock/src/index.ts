@@ -3,9 +3,9 @@ import path from "path";
 
 import { log } from "@hot-updater/cli-tools";
 import type {
-  BasePluginArgs,
-  BuildPlugin,
-  BuildPluginConfig,
+  BuildAdapterArgs,
+  BuildAdapter,
+  BuildAdapterConfig,
   NativeFingerprintProvider,
 } from "@hot-updater/plugin-core";
 import {
@@ -77,7 +77,7 @@ const runBundle = async ({
   };
 };
 
-export interface RockPluginConfig extends BuildPluginConfig {
+export interface RockAdapterConfig extends BuildAdapterConfig {
   /** Native fingerprint implementation for the selected Rock host. */
   fingerprint?: NativeFingerprintProvider;
   /**
@@ -100,14 +100,14 @@ export interface RockPluginConfig extends BuildPluginConfig {
 
 export const rock =
   (
-    config: RockPluginConfig = {
+    config: RockAdapterConfig = {
       outDir: "dist",
       sourcemap: false,
       entryFile: "index.js",
       hermes: true,
     },
   ) =>
-  ({ cwd }: BasePluginArgs): BuildPlugin => {
+  ({ cwd }: BuildAdapterArgs): BuildAdapter => {
     const {
       outDir = "dist",
       sourcemap = false,

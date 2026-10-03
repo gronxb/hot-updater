@@ -1,4 +1,8 @@
-import type { ConfigInput, DatabasePlugin } from "@hot-updater/plugin-core";
+import type {
+  AnyHotUpdaterPlugin,
+  ConfiguredDatabase,
+  StorageAdapter,
+} from "@hot-updater/plugin-core";
 
 export type ConsoleAuthProvider = "google" | "github";
 
@@ -19,11 +23,28 @@ export type ConsoleAuthAdapter = Readonly<{
   getProviders(request: Request): Promise<readonly ConsoleAuthProvider[]>;
 }>;
 
-export type HotUpdaterConsoleConfig = Readonly<
-  Omit<Pick<ConfigInput, "console" | "database" | "storage">, "database"> & {
-    database: DatabasePlugin;
-  }
->;
+export type HotUpdaterConsoleConfig = Readonly<{
+  /**
+   * The database your server runs on, such as `dynamoDB(...)`, or
+   * `standaloneRepository(...)`, which reaches a self-hosted server through
+   * its admin API.
+   */
+  database: ConfiguredDatabase;
+  /** The storage your server lists; the console reads bundle files with it. */
+  storage: StorageAdapter;
+  /**
+   * The plugins your server runs, such as the `plugins` a managed provider
+   * package exports or `[insights(), apiKeys()]`. The console runs them over
+   * `database` as the server does, and shows only the built-in features of
+   * the plugins listed. With `standaloneRepository`, they run on the server,
+   * and the console shows the features its admin API serves.
+   */
+  plugins?: readonly AnyHotUpdaterPlugin[];
+  console?: {
+    /** The Git repository whose commits the console links bundles to. */
+    gitUrl?: string;
+  };
+}>;
 
 export type HotUpdaterConsoleConfigSource =
   | HotUpdaterConsoleConfig

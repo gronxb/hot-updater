@@ -1,95 +1,18 @@
-import type { Bundle, Platform } from "@hot-updater/core";
+import type { Bundle, Platform } from "@hot-updater/protocol";
 
-export type { Bundle, Platform } from "@hot-updater/core";
+import type { AnyHotUpdaterPlugin } from "../serverPlugin/definePlugin";
+import type { ConfiguredDatabase } from "./databaseConfig";
+
+export type { Bundle, Platform } from "@hot-updater/protocol";
 
 export * from "./utils";
 export * from "./public";
 
-export interface BasePluginArgs {
+export interface BuildAdapterArgs {
   cwd: string;
 }
 
-export interface PaginationInfo {
-  total: number;
-  hasNextPage: boolean;
-  hasPreviousPage: boolean;
-  currentPage: number;
-  totalPages: number;
-  nextCursor?: string | null;
-  previousCursor?: string | null;
-}
-
-export interface Paginated<TData> {
-  data: TData;
-  pagination: PaginationInfo;
-}
-
-export type PaginatedResult = Paginated<Bundle[]>;
-
-export interface DatabaseBundleIdFilter {
-  eq?: string;
-  gt?: string;
-  gte?: string;
-  lt?: string;
-  lte?: string;
-  in?: string[];
-}
-
-export interface DatabaseBundleQueryWhere {
-  platform?: Platform;
-  id?: DatabaseBundleIdFilter;
-}
-
-export interface DatabaseBundleQueryOrder {
-  field: "id";
-  direction: "asc" | "desc";
-}
-
-export type DatabaseBundleCursor =
-  | {
-      /**
-       * Fetch the next window after this bundle ID.
-       *
-       * This is the preferred pagination mode for bundle-management queries.
-       */
-      after: string;
-      before?: never;
-    }
-  | {
-      after?: never;
-      /**
-       * Fetch the previous window before this bundle ID.
-       *
-       * This is the preferred pagination mode for bundle-management queries.
-       */
-      before: string;
-    };
-
-type DatabaseBundlePaginationOptions =
-  | {
-      /**
-       * Optional page number used by management UIs to keep page boundaries
-       * stable even when new bundles are inserted ahead of the current cursor
-       * window.
-       */
-      page?: number;
-      cursor?: never;
-    }
-  | {
-      page?: never;
-      /**
-       * Preferred cursor-based pagination for bundle-management queries.
-       */
-      cursor?: DatabaseBundleCursor;
-    };
-
-export type DatabaseBundleQueryOptions = {
-  where?: DatabaseBundleQueryWhere;
-  limit: number;
-  orderBy?: DatabaseBundleQueryOrder;
-} & DatabaseBundlePaginationOptions;
-
-export interface BuildPluginConfig {
+export interface BuildAdapterConfig {
   outDir?: string;
 }
 
@@ -168,7 +91,7 @@ export type NativeFingerprintProvider = (
   options: NativeFingerprintOptions,
 ) => Promise<NativeFingerprint>;
 
-export interface BuildPlugin {
+export interface BuildAdapter {
   nativeBuild?: {
     /** Integration-owned development server port used unless explicitly overridden. */
     developmentServerPort?: number;
@@ -190,6 +113,11 @@ export interface BuildPlugin {
     postbuild?: (args: { platform: Platform }) => Promise<void>;
   };
   integration?: {
+    /** Why common doctor repairs must leave generated native files to this integration. */
+    nativeFileRepairBlockReason?: () =>
+      | string
+      | undefined
+      | Promise<string | undefined>;
     /** Run integration-owned project checks before a common CLI operation. */
     beforeCommand?: (args: {
       command: IntegrationCommand;
@@ -441,7 +369,7 @@ export interface StorageDeleteResult {
 }
 
 export interface StorageObject {
-  /** Object key relative to the storage plugin's configured base path. */
+  /** Object key relative to the storage adapter's configured base path. */
   readonly key: string;
   readonly storageUri: string;
   readonly size: number;
@@ -465,7 +393,7 @@ export interface StorageGetDownloadUrlResult {
  * SDK clients, platform bindings, credentials, and local file I/O belong to
  * provider implementations and consumers, never to this interface.
  */
-export interface StoragePlugin {
+export interface StorageAdapter {
   readonly name: string;
   /**
    * Protocol this plugin resolves and stores in database storage URIs.
@@ -491,7 +419,7 @@ export interface StoragePlugin {
   readonly deleteObjects?: (keys: readonly string[]) => Promise<void>;
 }
 
-export interface BundleSigningPlugin {
+export interface BundleSigningAdapter {
   readonly name: string;
   /** Returns the RSA public key used by this provider in SPKI PEM format. */
   readonly getPublicKey: (input?: {
@@ -522,8 +450,8 @@ export type LocalSigningConfig =
       readonly privateKeyPath?: string;
     };
 
-/** Local config or signing plugin. Signing is disabled when omitted. */
-export type SigningConfig = BundleSigningPlugin | LocalSigningConfig;
+/** Local config or signing adapter. Signing is disabled when omitted. */
+export type SigningConfig = BundleSigningAdapter | LocalSigningConfig;
 
 /**
  * Extra fingerprint sources.
@@ -559,18 +487,6 @@ export type ConfigInput = {
    */
   updateStrategy: "fingerprint" | "appVersion";
   /**
-   * The compression strategy used for bundle deployment.
-   *
-   * - `zip`: Standard ZIP compression (default). Fast and widely supported.
-   * - `tar.br`: TAR archive with Brotli compression. Highest compression ratio, smaller bundle size.
-   * - `tar.gz`: TAR archive with Gzip compression. Balanced speed and compression ratio.
-   *
-   * The compression format is determined by the storage plugin used for bundle upload.
-   *
-   * @default "zip"
-   */
-  compressStrategy?: "zip" | "tar.br" | "tar.gz";
-  /**
    * The fingerprint configuration.
    */
   fingerprint?: {
@@ -599,7 +515,7 @@ export type ConfigInput = {
    *
    * When enabled, `hot-updater deploy` tries to prepare binary patches against
    * up to `maxBaseBundles` recent compatible bundles. Patch generation is an
-   * optimization only; archive delivery remains the fallback path.
+   * optimization only; the original manifest asset remains the fallback path.
    *
    * @default { enabled: true, maxBaseBundles: 3 }
    */
@@ -648,9 +564,21 @@ export type ConfigInput = {
    * ```
    */
   signing?: SigningConfig;
-  build: (args: BasePluginArgs) => Promise<BuildPlugin> | BuildPlugin;
-  storage: StoragePlugin;
-  database: import("./database").BundleRepository;
+  build: (args: BuildAdapterArgs) => Promise<BuildAdapter> | BuildAdapter;
+  /** Where the CLI uploads bundles: the same adapter the server lists in its storage. */
+  storage: StorageAdapter;
+  /**
+   * The server's database, which the CLI opens itself, or
+   * `standaloneRepository(...)`, which reaches a self-hosted server through
+   * its admin API.
+   */
+  database: ConfiguredDatabase;
+  /**
+   * The plugins the server runs, as its definition lists them. Over the
+   * server's database the CLI runs them as the server does; with
+   * `standaloneRepository`, they run on the server.
+   */
+  plugins?: readonly AnyHotUpdaterPlugin[];
 };
 
 export interface NativeBuildOptions {

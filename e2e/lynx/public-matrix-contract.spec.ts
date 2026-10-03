@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 
+import { SPARKLING_NAVIGATION_PROVENANCE } from "@hot-updater/lynx/navigationProvenance";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -10,7 +11,6 @@ import {
   expectedRawDetailNativeFailure,
   MISSING_ASSET_RESPONSE_SHA256,
 } from "../../examples/lynx/scripts/public-matrix/raw-detail-rejection.mjs";
-import { SPARKLING_NAVIGATION_PROVENANCE } from "../../packages/lynx/src/navigationProvenance";
 import {
   expectedLynxMatrixCellIds,
   LYNX_MATRIX_ARTIFACT_PATHS,
@@ -336,8 +336,8 @@ function makeDelivery(
     baseBundleId: base.bundleId,
     targetBundleId: target.bundleId,
     archiveFallbackUsed: false,
-    archiveFileHash: null,
-    archiveFileUrl: null,
+    artifactProtocolVersion: 1,
+    archiveUrl: null,
     deliveryArtifactUrl: `https://updates.test/artifacts/${target.bundleId}/from/${base.bundleId}`,
     manifestUrl: `https://updates.test/files/${target.bundleId}/manifest.json`,
     manifestSha256: target.manifestSha256,
@@ -383,8 +383,8 @@ function makeRawDetailRejections(
       nativeInstallErrorMessage: failure.message,
       nativeInstallErrorReceivedAt: "2026-09-14T00:00:00.000Z",
       nativeInstallErrorTransport: "matrix-control-http",
-      archiveFileUrl: null,
-      archiveFileHash: null,
+      artifactProtocolVersion: 1,
+      archiveUrl: null,
       archiveFallbackUsed: false,
       runningBundleId: running.bundleId,
       runningReleaseId: running.releaseId,
@@ -1345,9 +1345,9 @@ describe("Lynx public matrix evidence contract", () => {
       },
     ],
     [
-      "an archive fallback descriptor beside a delta",
+      "a malformed bulk archive URL beside a delta",
       (cell: any) => {
-        cell.phases.deltaB.delivery.archiveFileUrl = "/archive";
+        cell.phases.deltaB.delivery.archiveUrl = "/archive";
       },
     ],
     [

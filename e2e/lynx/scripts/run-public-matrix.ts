@@ -424,7 +424,7 @@ async function deploy({
     path.join(example, "scripts/ota-deploy.mjs"),
     framework,
     platform,
-    "zip",
+    "tar.br",
     fixture,
     "--channel",
     channel,
@@ -1002,7 +1002,7 @@ async function waitForStaleContextRejections(
 
 function changedAssetFile(deployment: any, assetPath: string) {
   const url = new URL(
-    deployment.deliveryArtifactResponse?.changedAssets?.[assetPath]?.file?.url,
+    deployment.deliveryArtifactResponse?.assets?.[assetPath]?.file?.url,
   );
   assert.equal(
     url.origin,
@@ -1035,8 +1035,7 @@ async function rejectRawDetailTarget(
 ) {
   const detail = changedAssetFile(deployment, "detail.lynx.bundle");
   const original = await fsp.readFile(detail.file);
-  assert.equal(deployment.deliveryArtifactResponse?.fileUrl, null);
-  assert.equal(deployment.deliveryArtifactResponse?.fileHash, null);
+  assert.equal(deployment.deliveryArtifactResponse?.artifactProtocolVersion, 1);
   const eventsBefore = adapter.readEvents();
   const generationBefore = eventsBefore.findLast(
     (event: any) => event.event === "generationStarted",
@@ -1155,8 +1154,8 @@ async function rejectRawDetailTarget(
     nativeInstallErrorMessage: nativeInstallFailure.failure.message,
     nativeInstallErrorReceivedAt: nativeInstallFailure.receivedAt,
     nativeInstallErrorTransport: nativeInstallFailure.transport,
-    archiveFileUrl: null,
-    archiveFileHash: null,
+    artifactProtocolVersion: 1,
+    archiveUrl: deployment.deliveryArtifactResponse.archiveUrl ?? null,
     archiveFallbackUsed: false,
     runningBundleId: running.bundleId,
     runningReleaseId: running.releaseId,
@@ -1179,18 +1178,16 @@ async function rejectCrossProvenanceTarget(
 ) {
   assert.equal(deployment.incompatibleRuntimeAllowed, true);
   assert.notEqual(deployment.runtimeId, running.runtimeId);
-  const artifactUrl = deployment.fileUrl;
+  const artifactUrl = deployment.archiveUrl;
   assert.equal(typeof artifactUrl, "string");
   const response = await fetch(
-    `${origin}/hot-updater/artifacts/${deployment.bundleId}/from/${running.bundleId}`,
+    `${origin}/hot-updater/artifacts/v1/${deployment.bundleId}/from/${running.bundleId}`,
   );
   assert.equal(response.status, 200);
   const delivery: any = await response.json();
-  assert.equal(delivery.fileUrl, null);
-  assert.equal(delivery.fileHash, null);
+  assert.equal(delivery.artifactProtocolVersion, 1);
   const manifestUrl = delivery.manifestUrl;
-  const metadataUrl =
-    delivery.changedAssets?.["hot-updater-lynx.json"]?.file?.url;
+  const metadataUrl = delivery.assets?.["hot-updater-lynx.json"]?.file?.url;
   assert.equal(typeof manifestUrl, "string");
   assert.equal(typeof metadataUrl, "string");
   const metadataSha256 = deployment.files["hot-updater-lynx.json"].sha256;

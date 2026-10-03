@@ -87,7 +87,7 @@ export async function packageLynxEmbeddedDirectory(options: {
   const entry = options.entry ?? "main.lynx.bundle";
   const pageEntries = LYNX_E2E_PAGE_ENTRIES;
   const pageEssentialResources = LYNX_E2E_PAGE_ESSENTIAL_RESOURCES;
-  if (!pageEntries.includes(entry)) {
+  if (!pageEntries.some((page) => page === entry)) {
     throw new Error(`Lynx embedded main entry is not a page: ${entry}`);
   }
   for (const pageEntry of pageEntries) {
@@ -177,6 +177,8 @@ export async function validateLynxEmbeddedDirectory(options: {
     metadata.platform !== options.platform ||
     !metadata.runtimeId ||
     !metadata.entry ||
+    !metadata.pageEntries ||
+    !metadata.pageEssentialResources ||
     JSON.stringify(metadata.pageEntries) !==
       JSON.stringify(LYNX_E2E_PAGE_ENTRIES) ||
     JSON.stringify(metadata.pageEssentialResources) !==

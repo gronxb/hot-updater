@@ -7,7 +7,6 @@ import com.hotupdater.lynx.internal.DirectorySyncPlatform
 import com.hotupdater.lynx.internal.DurableFiles
 import com.hotupdater.lynx.internal.LynxArtifactVerifier
 import com.hotupdater.lynx.internal.LynxDeltaAssembler
-import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileDescriptor
 import java.io.IOException
@@ -20,8 +19,6 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
-import java.util.zip.ZipEntry
-import java.util.zip.ZipOutputStream
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -177,26 +174,27 @@ class LynxArtifactInstallerDeltaTest {
                     .put("compression", JSONObject.NULL),
             )
             .put("patch", JSONObject.NULL)
-        val partialArchive = JSONObject()
+        val invalidRequest = JSONObject()
             .put("bundleId", targetId)
-            .put("fileUrl", "https://example.test/archive")
-            .put("fileHash", JSONObject.NULL)
+            .put("archiveUrl", "https://example.test/archive")
+            .put("artifactProtocolVersion", 1)
             .put("manifestUrl", "https://example.test/manifest")
             .put("manifestFileHash", validHash)
-            .put("changedAssets", JSONObject().put("main.lynx.bundle", changed))
+            .put("assets", JSONObject().put("main.lynx.bundle", changed))
 
-        assertThrows(IllegalArgumentException::class.java) {
-            LynxArtifactRequest.fromJson(partialArchive)
+        invalidRequest.put("artifactProtocolVersion", 2)
+        assertThrows(IllegalStateException::class.java) {
+            LynxArtifactRequest.fromJson(invalidRequest)
         }
-        partialArchive.put("fileHash", validHash)
+        invalidRequest.put("artifactProtocolVersion", 1)
         changed.getJSONObject("file").put("compression", "gzip")
         assertThrows(IllegalArgumentException::class.java) {
-            LynxArtifactRequest.fromJson(partialArchive)
+            LynxArtifactRequest.fromJson(invalidRequest)
         }
-        partialArchive.put("fileUrl", "https://example.test:99999/archive")
+        invalidRequest.put("archiveUrl", "https://example.test:99999/archive")
         changed.getJSONObject("file").put("compression", JSONObject.NULL)
         assertThrows(IllegalArgumentException::class.java) {
-            LynxArtifactRequest.fromJson(partialArchive)
+            LynxArtifactRequest.fromJson(invalidRequest)
         }
     }
 
@@ -216,10 +214,11 @@ class LynxArtifactInstallerDeltaTest {
             .put("bundleId", targetId)
             .put("fileUrl", JSONObject.NULL)
             .put("fileHash", JSONObject.NULL)
+            .put("artifactProtocolVersion", 1)
             .put("manifestUrl", "https://example.test/manifest")
             .put("manifestFileHash", hash)
             .put(
-                "changedAssets",
+                "assets",
                 JSONObject()
                     .put("A/x.bin", changed())
                     .put("a/y.bin", changed()),
@@ -237,10 +236,11 @@ class LynxArtifactInstallerDeltaTest {
             .put("bundleId", targetId)
             .put("fileUrl", JSONObject.NULL)
             .put("fileHash", JSONObject.NULL)
+            .put("artifactProtocolVersion", 1)
             .put("manifestUrl", "https://example.test/manifest")
             .put("manifestFileHash", hash)
             .put(
-                "changedAssets",
+                "assets",
                 JSONObject().put(
                     path,
                     JSONObject()
@@ -284,7 +284,8 @@ class LynxArtifactInstallerDeltaTest {
                 )
                 val base = verifier().verify(
                     baseRoot,
-                    LynxArtifactRequest(baseId, null, null, baseManifest.hash),
+                    LynxArtifactRequest(baseId,
+                            manifestFileHash = baseManifest.hash),
                 )
                 val aliases = listOf(
                     "A/x.bin" to "a/y.bin",
@@ -304,14 +305,10 @@ class LynxArtifactInstallerDeltaTest {
                             .apply { mkdir() }
                         val payload = transaction.resolve("payload")
                             .apply { mkdir() }
-                        val request = LynxArtifactRequest(
-                            targetId,
-                            null,
-                            null,
-                            targetManifest.hash,
-                            server.url("/manifest"),
-                            emptyMap(),
-                        )
+                        val request = LynxArtifactRequest(targetId,
+                            manifestUrl = server.url("/manifest"),
+                            manifestFileHash = targetManifest.hash,
+                            assets = placeholderAssets(server))
 
                         val error = runCatching {
                             LynxDeltaAssembler(
@@ -345,7 +342,8 @@ class LynxArtifactInstallerDeltaTest {
                 )
                 val base = verifier().verify(
                     baseRoot,
-                    LynxArtifactRequest(baseId, null, null, baseManifest.hash),
+                    LynxArtifactRequest(baseId,
+                            manifestFileHash = baseManifest.hash),
                 )
                 val assets = JSONObject()
                 repeat(ArchiveLimits.MAX_ENTRIES / 2) { index ->
@@ -362,14 +360,10 @@ class LynxArtifactInstallerDeltaTest {
                 FixtureServer(mapOf("/manifest" to targetManifest)).use { server ->
                     val transaction = root.resolve("transaction").apply { mkdir() }
                     val payload = transaction.resolve("payload").apply { mkdir() }
-                    val request = LynxArtifactRequest(
-                        targetId,
-                        null,
-                        null,
-                        targetManifest.hash,
-                        server.url("/manifest"),
-                        emptyMap(),
-                    )
+                    val request = LynxArtifactRequest(targetId,
+                            manifestUrl = server.url("/manifest"),
+                            manifestFileHash = targetManifest.hash,
+                            assets = placeholderAssets(server))
 
                     val error = runCatching {
                         LynxDeltaAssembler(
@@ -390,7 +384,7 @@ class LynxArtifactInstallerDeltaTest {
         }
 
     @Test
-    fun deltaRequiresExactlyTheAssetsWhoseManifestHashesChanged() = runBlocking {
+    fun manifestRequiresEveryTargetAssetIncludingReusableFiles() = runBlocking {
         val root = Files.createTempDirectory("lynx-delta-change-set-").toFile()
         try {
             val baseFiles = files(baseId, BASE_ENTRY) +
@@ -399,7 +393,8 @@ class LynxArtifactInstallerDeltaTest {
             val baseManifest = writeTree(baseRoot, baseId, baseFiles)
             val base = verifier().verify(
                 baseRoot,
-                LynxArtifactRequest(baseId, null, null, baseManifest.hash),
+                LynxArtifactRequest(baseId,
+                            manifestFileHash = baseManifest.hash),
             )
             val targetFiles = files(targetId, TARGET_ENTRY) +
                 ("assets/unchanged.txt" to "same".toByteArray())
@@ -412,11 +407,12 @@ class LynxArtifactInstallerDeltaTest {
                 val required = mapOf(
                     "main.lynx.bundle" to changed("main.lynx.bundle"),
                     "hot-updater-lynx.json" to changed("hot-updater-lynx.json"),
+                    "assets/unchanged.txt" to changed("assets/unchanged.txt"),
                 )
                 val cases = listOf(
-                    required - "hot-updater-lynx.json",
+                    required - "assets/unchanged.txt",
                     required + (
-                        "assets/unchanged.txt" to
+                        "assets/unlisted.txt" to
                             changed("assets/unchanged.txt")
                         ),
                 )
@@ -426,14 +422,10 @@ class LynxArtifactInstallerDeltaTest {
                         mkdir()
                     }
                     val payload = transaction.resolve("payload").apply { mkdir() }
-                    val request = LynxArtifactRequest(
-                        targetId,
-                        null,
-                        null,
-                        targetManifest.hash,
-                        server.url("/manifest"),
-                        changes,
-                    )
+                    val request = LynxArtifactRequest(targetId,
+                            manifestUrl = server.url("/manifest"),
+                            manifestFileHash = targetManifest.hash,
+                            assets = changes)
 
                     val error = runCatching {
                         LynxDeltaAssembler(
@@ -463,17 +455,14 @@ class LynxArtifactInstallerDeltaTest {
             val baseManifest = writeTree(baseRoot, baseId, baseFiles)
             val base = verifier().verify(
                 baseRoot,
-                LynxArtifactRequest(baseId, null, null, baseManifest.hash),
+                LynxArtifactRequest(baseId,
+                            manifestFileHash = baseManifest.hash),
             )
             FixtureServer(emptyMap(), setOf("/manifest")).use { server ->
-                val request = LynxArtifactRequest(
-                    targetId,
-                    null,
-                    null,
-                    "a".repeat(64),
-                    server.url("/manifest"),
-                    emptyMap(),
-                )
+                val request = LynxArtifactRequest(targetId,
+                            manifestUrl = server.url("/manifest"),
+                            manifestFileHash = "a".repeat(64),
+                            assets = placeholderAssets(server))
                 val store = root.resolve("store")
                 val installer = LynxArtifactInstaller(store, config())
                 val job = launch(Dispatchers.Default) { installer.prepare(request, base) }
@@ -502,7 +491,8 @@ class LynxArtifactInstallerDeltaTest {
                 val baseManifest = writeTree(baseRoot, baseId, baseFiles)
                 val base = verifier().verify(
                     baseRoot,
-                    LynxArtifactRequest(baseId, null, null, baseManifest.hash),
+                    LynxArtifactRequest(baseId,
+                            manifestFileHash = baseManifest.hash),
                 )
                 val targetFiles = files(targetId, TARGET_ENTRY).toMutableMap().apply {
                     put("assets/unchanged.txt", "same".toByteArray())
@@ -510,7 +500,7 @@ class LynxArtifactInstallerDeltaTest {
                     put("assets/br.txt", "probe-brotli-target".toByteArray())
                     put("assets/empty.txt", byteArrayOf())
                 }
-                val targetManifest = manifest(targetId, targetFiles)
+                val targetManifest = manifest(targetId, targetFiles, mapOf("assets/br.txt" to Base64.getDecoder().decode(BROTLI_TARGET)))
                 val patch = Base64.getDecoder().decode(PATCH)
                 FixtureServer(
                     mapOf(
@@ -524,15 +514,13 @@ class LynxArtifactInstallerDeltaTest {
                 ).use { server ->
                     fun file(path: String, compression: String? = null) =
                         LynxChangedFile(server.url(path), compression)
-                    val request = LynxArtifactRequest(
-                        targetId,
-                        null,
-                        null,
-                        targetManifest.hash,
-                        server.url("/manifest"),
-                        mapOf(
+                    val request = LynxArtifactRequest(targetId,
+                            manifestUrl = server.url("/manifest"),
+                            manifestFileHash = targetManifest.hash,
+                            assets = mapOf(
                             "main.lynx.bundle" to LynxChangedAsset(
                                 targetFiles.hash("main.lynx.bundle"),
+                                file = file("/unused-main"),
                                 patch = LynxAssetPatch(
                                     "bsdiff",
                                     baseId,
@@ -540,6 +528,9 @@ class LynxArtifactInstallerDeltaTest {
                                     patch.hash,
                                     server.url("/patch"),
                                 ),
+                            ),
+                            "assets/unchanged.txt" to LynxChangedAsset(
+                                targetFiles.hash("assets/unchanged.txt"), file("/unused-unchanged"),
                             ),
                             "assets/raw.txt" to LynxChangedAsset(
                                 targetFiles.hash("assets/raw.txt"),
@@ -557,8 +548,7 @@ class LynxArtifactInstallerDeltaTest {
                                 targetFiles.hash("hot-updater-lynx.json"),
                                 file("/metadata"),
                             ),
-                        ),
-                    )
+                        ))
                     val installer = LynxArtifactInstaller(root.resolve("store"), config())
                     val prepared = installer.prepare(
                         request,
@@ -566,6 +556,8 @@ class LynxArtifactInstallerDeltaTest {
                         releaseId = targetReleaseId,
                     )
                     assertTrue(prepared.manifestBacked)
+                    assertFalse(server.requested("/unused-main"))
+                    assertFalse(server.requested("/unused-unchanged"))
                     val patched = prepared.patchedAssets.single()
                     assertEquals("main.lynx.bundle", patched.path)
                     assertEquals(patch.hash, patched.patchFileHash)
@@ -625,7 +617,8 @@ class LynxArtifactInstallerDeltaTest {
                     }
                     val later = verifier().verify(
                         installed.directory,
-                        LynxArtifactRequest(targetId, null, null, targetManifest.hash),
+                        LynxArtifactRequest(targetId,
+                            manifestFileHash = targetManifest.hash),
                         manifestBacked = true,
                     )
                     assertTrue(later.manifestBacked)
@@ -636,7 +629,7 @@ class LynxArtifactInstallerDeltaTest {
         }
 
     @Test
-    fun unusablePatchFallsBackToVerifiedArchiveAndKeepsManifestAuthority() =
+    fun unusablePatchFallsBackToVerifiedOriginalAndKeepsManifestAuthority() =
         runBlocking {
             val root = Files.createTempDirectory("lynx-delta-archive-").toFile()
             try {
@@ -645,29 +638,27 @@ class LynxArtifactInstallerDeltaTest {
                 val baseManifest = writeTree(baseRoot, baseId, baseFiles)
                 val base = verifier().verify(
                     baseRoot,
-                    LynxArtifactRequest(baseId, null, null, baseManifest.hash),
+                    LynxArtifactRequest(baseId,
+                            manifestFileHash = baseManifest.hash),
                 )
                 val targetFiles = files(targetId, TARGET_ENTRY)
                 val targetManifest = manifest(targetId, targetFiles)
-                val archive = zip(targetFiles + ("manifest.json" to targetManifest))
                 val invalidPatch = "not-a-bsdiff-patch".toByteArray()
                 FixtureServer(
                     mapOf(
                         "/manifest" to targetManifest,
                         "/patch" to invalidPatch,
-                        "/archive" to archive,
+                        "/original" to TARGET_ENTRY,
                         "/metadata" to targetFiles.getValue("hot-updater-lynx.json"),
                     ),
                 ).use { server ->
-                    val request = LynxArtifactRequest(
-                        targetId,
-                        server.url("/archive"),
-                        archive.hash,
-                        targetManifest.hash,
-                        server.url("/manifest"),
-                        mapOf(
+                    val request = LynxArtifactRequest(targetId,
+                            manifestUrl = server.url("/manifest"),
+                            manifestFileHash = targetManifest.hash,
+                            assets = mapOf(
                             "main.lynx.bundle" to LynxChangedAsset(
                                 targetFiles.hash("main.lynx.bundle"),
+                                file = LynxChangedFile(server.url("/original")),
                                 patch = LynxAssetPatch(
                                     "bsdiff",
                                     baseId,
@@ -681,12 +672,17 @@ class LynxArtifactInstallerDeltaTest {
                                 LynxChangedFile(server.url("/metadata")),
                             ),
                         ),
-                    )
+                            archiveUrl = server.url("/archive"))
                     val installer = LynxArtifactInstaller(root.resolve("store"), config())
                     val prepared = installer.prepare(request, base)
-                    assertFalse(prepared.manifestBacked)
+                    assertTrue(prepared.manifestBacked)
+                    assertFalse(prepared.usedArchive)
+                    assertTrue(prepared.patchedAssets.isEmpty())
+                    assertTrue(server.requested("/patch"))
+                    assertTrue(server.requested("/original"))
+                    assertFalse(server.requested("/archive"))
                     val installed = installer.commitPrepared(prepared) { publish -> publish() }
-                    assertTrue(installed.directory.parentFile.resolve("archive").isFile)
+                    assertFalse(installed.directory.parentFile.resolve("archive").exists())
                     assertArrayEquals(TARGET_ENTRY, installed.directory.resolve("main.lynx.bundle").readBytes())
                 }
             } finally {
@@ -695,7 +691,7 @@ class LynxArtifactInstallerDeltaTest {
         }
 
     @Test
-    fun archiveFallbackRejectsAManifestOutsideThePreservedAuthority() = runBlocking {
+    fun corruptManifestRejectsBeforeAnyArchiveDownload() = runBlocking {
         val root = Files.createTempDirectory("lynx-delta-authority-").toFile()
         try {
             val baseRoot = root.resolve("running")
@@ -703,25 +699,21 @@ class LynxArtifactInstallerDeltaTest {
             val baseManifest = writeTree(baseRoot, baseId, baseFiles)
             val base = verifier().verify(
                 baseRoot,
-                LynxArtifactRequest(baseId, null, null, baseManifest.hash),
+                LynxArtifactRequest(baseId,
+                            manifestFileHash = baseManifest.hash),
             )
             val targetFiles = files(targetId, TARGET_ENTRY)
             val targetManifest = manifest(targetId, targetFiles)
-            val archive = zip(targetFiles + ("manifest.json" to targetManifest))
             FixtureServer(
                 mapOf(
                     "/manifest" to targetManifest,
-                    "/archive" to archive,
                 ),
             ).use { server ->
-                val request = LynxArtifactRequest(
-                    targetId,
-                    server.url("/archive"),
-                    archive.hash,
-                    "f".repeat(64),
-                    server.url("/manifest"),
-                    emptyMap(),
-                )
+                val request = LynxArtifactRequest(targetId,
+                            manifestUrl = server.url("/manifest"),
+                            manifestFileHash = "f".repeat(64),
+                            assets = placeholderAssets(server),
+                            archiveUrl = server.url("/archive"))
                 val store = root.resolve("store")
 
                 assertThrows(IllegalStateException::class.java) {
@@ -729,6 +721,7 @@ class LynxArtifactInstallerDeltaTest {
                         LynxArtifactInstaller(store, config()).prepare(request, base)
                     }
                 }
+                assertFalse(server.requested("/archive"))
                 assertTrue(
                     store.resolve("preparations").listFiles().orEmpty().isEmpty(),
                 )
@@ -778,20 +771,9 @@ class LynxArtifactInstallerDeltaTest {
                 try {
                     val previousFiles = files(baseId, BASE_ENTRY)
                     val previousManifest = manifest(baseId, previousFiles)
-                    val previousArchive = zip(
-                        previousFiles + ("manifest.json" to previousManifest),
-                    )
                     val targetFiles = files(targetId, TARGET_ENTRY)
                     val targetManifest = manifest(targetId, targetFiles)
-                    val targetArchive = zip(
-                        targetFiles + ("manifest.json" to targetManifest),
-                    )
-                    FixtureServer(
-                        mapOf(
-                            "/previous" to previousArchive,
-                            "/target" to targetArchive,
-                        ),
-                    ).use { server ->
+                    FixtureServer(emptyMap()).use { server ->
                         val store = root.resolve("store")
                         val sync = FaultingDirectorySync(fault, "installations")
                         val installer = LynxArtifactInstaller(
@@ -800,21 +782,11 @@ class LynxArtifactInstallerDeltaTest {
                             sync::invoke,
                         )
                         val previous = installer.prepare(
-                            LynxArtifactRequest(
-                                baseId,
-                                server.url("/previous"),
-                                previousArchive.hash,
-                                previousManifest.hash,
-                            ),
+                            LynxArtifactRequest.fromJson(artifact(server, "/previous", baseId, previousManifest, previousFiles)),
                         )
                         installer.commitPrepared(previous) { publish -> publish() }
                         val candidate = installer.prepare(
-                            LynxArtifactRequest(
-                                targetId,
-                                server.url("/target"),
-                                targetArchive.hash,
-                                targetManifest.hash,
-                            ),
+                            LynxArtifactRequest.fromJson(artifact(server, "/target", targetId, targetManifest, targetFiles)),
                         )
                         sync.arm()
 
@@ -857,7 +829,8 @@ class LynxArtifactInstallerDeltaTest {
                 )
                 val embedded = verifier().verify(
                     embeddedRoot,
-                    LynxArtifactRequest(baseId, null, null, embeddedManifest.hash),
+                    LynxArtifactRequest(baseId,
+                            manifestFileHash = embeddedManifest.hash),
                 )
                 val binary = root.resolve("binary").apply {
                     writeBytes(byteArrayOf(1, 2, 3, 4))
@@ -875,10 +848,7 @@ class LynxArtifactInstallerDeltaTest {
                 )
                 val targetFiles = files(targetId, TARGET_ENTRY)
                 val targetManifest = manifest(targetId, targetFiles)
-                val archive = zip(
-                    targetFiles + ("manifest.json" to targetManifest),
-                )
-                FixtureServer(mapOf("/target" to archive)).use { server ->
+                FixtureServer(emptyMap()).use { server ->
                     val controller = LynxUpdaterController(
                         root,
                         binary,
@@ -892,13 +862,7 @@ class LynxArtifactInstallerDeltaTest {
                         }
                         val (guard, selection) =
                             acceptTarget(controller, primary, channel)
-                        val artifact = JSONObject()
-                            .put("bundleId", targetId)
-                            .put("fileUrl", server.url("/target"))
-                            .put("fileHash", archive.hash)
-                            .put("manifestUrl", JSONObject.NULL)
-                            .put("manifestFileHash", targetManifest.hash)
-                            .put("changedAssets", JSONObject.NULL)
+                        val artifact = artifact(server, "/target", targetId, targetManifest, targetFiles)
                         val store = root.resolve("hot-updater-lynx/scopes")
                             .listFiles()!!.single()
                         val stateFile = store.resolve("state.json")
@@ -970,7 +934,8 @@ class LynxArtifactInstallerDeltaTest {
                 )
                 val embedded = verifier().verify(
                     embeddedRoot,
-                    LynxArtifactRequest(baseId, null, null, embeddedManifest.hash),
+                    LynxArtifactRequest(baseId,
+                            manifestFileHash = embeddedManifest.hash),
                 )
                 val binary = root.resolve("binary").apply {
                     writeBytes(byteArrayOf(1, 2, 3, 4))
@@ -1002,11 +967,7 @@ class LynxArtifactInstallerDeltaTest {
                         )
                     }
                 val incompatibleManifest = manifest(targetId, incompatibleFiles)
-                val incompatibleArchive = zip(
-                    incompatibleFiles +
-                        ("manifest.json" to incompatibleManifest),
-                )
-                FixtureServer(mapOf("/incompatible" to incompatibleArchive)).use {
+                FixtureServer(emptyMap()).use {
                     server ->
                     val controller = LynxUpdaterController(
                         root,
@@ -1021,16 +982,7 @@ class LynxArtifactInstallerDeltaTest {
                         }
                         val (guard, selection) =
                             acceptTarget(controller, primary, channel)
-                        val artifact = JSONObject()
-                            .put("bundleId", targetId)
-                            .put("fileUrl", server.url("/incompatible"))
-                            .put("fileHash", incompatibleArchive.hash)
-                            .put("manifestUrl", JSONObject.NULL)
-                            .put(
-                                "manifestFileHash",
-                                incompatibleManifest.hash,
-                            )
-                            .put("changedAssets", JSONObject.NULL)
+                        val artifact = artifact(server, "/incompatible", targetId, incompatibleManifest, incompatibleFiles)
                         val error = runCatching {
                             controller.validate(
                                 primary,
@@ -1061,6 +1013,53 @@ class LynxArtifactInstallerDeltaTest {
             }
         }
 
+    @Test
+    fun authenticatedBulkArchiveAndFallbackKeepTheSameManifestAuthority() = runBlocking {
+        val fixtureFile = generateSequence(File(checkNotNull(System.getProperty("user.dir")))) { it.parentFile }
+            .map { File(it, "packages/lynx/fixtures/manifest-v1-bulk.json") }.first { it.isFile }
+        val fixture = JSONObject(fixtureFile.readText()).getJSONObject("android")
+        val id = fixture.getString("bundleId")
+        val files = fixture.getJSONObject("files").let { values ->
+            values.keys().asSequence().associateWith { Base64.getDecoder().decode(values.getString(it)) }
+        }
+        for (mode in listOf("valid", "corrupt-transfer", "wrong-tar-size", "embedded-manifest", "corrupt-original")) {
+            val root = Files.createTempDirectory("lynx-bulk-$mode-").toFile()
+            try {
+                val bulk = fixture.getJSONObject("archives").getJSONObject(if (mode == "embedded-manifest") "embeddedManifest" else "valid")
+                val archiveBytes = Base64.getDecoder().decode(bulk.getString("bytes"))
+                val manifestObject = JSONObject(manifest(id, files).toString(Charsets.UTF_8))
+                    .put("archive", JSONObject().put("downloadFileHash", archiveBytes.hash)
+                        .put("downloadByteSize", archiveBytes.size)
+                        .put("tarByteSize", bulk.getLong("tarByteSize") + if (mode == "wrong-tar-size") 1 else 0))
+                val manifestBytes = manifestObject.toString().toByteArray()
+                FixtureServer(emptyMap()).use { server ->
+                    val descriptor = artifact(server, "/bundle", id, manifestBytes, files)
+                        .put("archiveUrl", server.url("/archive"))
+                    val broken = mode == "corrupt-transfer" || mode == "corrupt-original"
+                    server.publish("/archive", if (broken) archiveBytes.copyOf().also { it[0] = (it[0].toInt() xor 1).toByte() } else archiveBytes)
+                    if (mode == "corrupt-original") server.publish("/bundle/main.lynx.bundle", ByteArray(files.getValue("main.lynx.bundle").size))
+                    val installer = LynxArtifactInstaller(root, LynxInstallConfiguration(fixture.getString("runtimeId")))
+                    val request = LynxArtifactRequest.fromJson(descriptor)
+                    if (mode == "corrupt-original") {
+                        assertTrue(runCatching { installer.prepare(request) }.isFailure)
+                        assertTrue(server.requested("/bundle/main.lynx.bundle"))
+                        assertTrue(root.resolve("preparations").listFiles().orEmpty().isEmpty())
+                    } else {
+                        val prepared = installer.prepare(request)
+                        assertEquals(mode, mode == "valid", prepared.usedArchive)
+                        val installed = installer.commitPrepared(prepared) { publish -> publish() }
+                        files.forEach { (path, bytes) ->
+                            assertArrayEquals("$mode/$path", bytes, installed.directory.resolve(path).readBytes())
+                            assertEquals("$mode/$path", mode != "valid", server.requested("/bundle/$path"))
+                        }
+                        assertEquals(manifestBytes.hash, installed.manifestHash)
+                    }
+                    assertTrue("$mode must exercise bulk transport", server.requested("/archive"))
+                }
+            } finally { root.deleteRecursively() }
+        }
+    }
+
     private fun config() = LynxInstallConfiguration(runtime)
 
     private fun verifier() = LynxArtifactVerifier(config(), ArchiveIntegrity(null))
@@ -1077,14 +1076,18 @@ class LynxArtifactInstallerDeltaTest {
             .toByteArray(),
     )
 
-    private fun manifest(bundleId: String, files: Map<String, ByteArray>) =
+    private fun manifest(bundleId: String, files: Map<String, ByteArray>, brotliDownloads: Map<String, ByteArray> = emptyMap()) =
         JSONObject()
             .put("bundleId", bundleId)
             .put(
                 "assets",
                 JSONObject().also { assets ->
                     files.forEach { (path, bytes) ->
-                        assets.put(path, JSONObject().put("fileHash", bytes.hash))
+                        assets.put(path, JSONObject().put("fileHash", bytes.hash)
+                            .put("byteSize", bytes.size)
+                            .put("downloadFileHash", (brotliDownloads[path] ?: bytes).hash)
+                            .put("downloadByteSize", (brotliDownloads[path] ?: bytes).size)
+                            .also { if (brotliDownloads.containsKey(path)) it.put("downloadCompression", "br") })
                     }
                 },
             )
@@ -1098,15 +1101,22 @@ class LynxArtifactInstallerDeltaTest {
         return manifest(bundleId, files).also { root.resolve("manifest.json").writeBytes(it) }
     }
 
-    private fun zip(files: Map<String, ByteArray>): ByteArray = ByteArrayOutputStream().use { bytes ->
-        ZipOutputStream(bytes).use { zip ->
-            files.forEach { (path, content) ->
-                zip.putNextEntry(ZipEntry(path))
-                zip.write(content)
-                zip.closeEntry()
-            }
+    private fun placeholderAssets(server: FixtureServer) = mapOf(
+        "main.lynx.bundle" to LynxChangedAsset("a".repeat(64), LynxChangedFile(server.url("/unused"))),
+    )
+
+    private fun artifact(server: FixtureServer, prefix: String, bundleId: String,
+                         manifest: ByteArray, files: Map<String, ByteArray>): JSONObject {
+        server.publish("$prefix/manifest", manifest)
+        val assets = JSONObject()
+        files.forEach { (path, bytes) ->
+            server.publish("$prefix/$path", bytes)
+            assets.put(path, JSONObject().put("fileHash", bytes.hash)
+                .put("file", JSONObject().put("url", server.url("$prefix/$path"))))
         }
-        bytes.toByteArray()
+        return JSONObject().put("artifactProtocolVersion", 1).put("bundleId", bundleId)
+            .put("manifestUrl", server.url("$prefix/manifest"))
+            .put("manifestFileHash", manifest.hash).put("assets", assets)
     }
 
     private val ByteArray.hash: String
@@ -1198,9 +1208,10 @@ class LynxArtifactInstallerDeltaTest {
     }
 
     private class FixtureServer(
-        private val responses: Map<String, ByteArray>,
+        initialResponses: Map<String, ByteArray>,
         private val stalls: Set<String> = emptySet(),
     ) : AutoCloseable {
+        private val responses = ConcurrentHashMap(initialResponses)
         private val socket = ServerSocket(0, 50, InetAddress.getLoopbackAddress())
         private val executor = Executors.newCachedThreadPool()
         private val requests = ConcurrentHashMap<String, CountDownLatch>()
@@ -1229,6 +1240,9 @@ class LynxArtifactInstallerDeltaTest {
                 }
             }
         }
+
+        fun publish(path: String, bytes: ByteArray) { responses[path] = bytes }
+        fun requested(path: String) = requests[path]?.count == 0L
 
         fun url(path: String) = "http://127.0.0.1:${socket.localPort}$path"
 

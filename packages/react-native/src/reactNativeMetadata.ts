@@ -19,9 +19,8 @@ export const getReactNativeMetadatas = (
 ): ReactNativeMetadata => {
   try {
     const require = createRequire(import.meta.url);
-    const packagePath = path.join(
-      require.resolve("react-native", { paths: [cwd] }),
-      "..",
+    const packagePath = path.dirname(
+      require.resolve("react-native/package.json", { paths: [cwd] }),
     );
     const packageJson = JSON.parse(
       fs.readFileSync(path.join(packagePath, "package.json"), "utf-8"),

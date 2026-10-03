@@ -1,7 +1,9 @@
+import { emitAfterAppReady } from "./appReady";
 import {
   type CheckForUpdateOptions,
   checkForUpdate,
   type InternalCheckForUpdateOptions,
+  reportUpdateError,
 } from "./checkForUpdate";
 import { createHttpClient, type HotUpdaterHttpClient } from "./httpClient";
 import {
@@ -27,11 +29,10 @@ import {
   resetChannel,
   setCohort,
   setReloadBehavior,
-  setUser,
+  stageBundle,
   type UpdateParams,
-  updateBundle,
 } from "./native";
-import { reportBundleDownloaded } from "./notifyAppReadyInsights";
+import { configurePlugins } from "./pluginHost";
 import { hotUpdaterStore } from "./store";
 import {
   type AutoUpdateOptions,
@@ -43,6 +44,28 @@ import {
   wrap,
 } from "./wrap";
 
+export {
+  defineClientPlugin,
+  type AppReadyResult,
+  type BundleDownloadedInfo,
+  type HotUpdaterClientContext,
+  type HotUpdaterClientHooks,
+  type HotUpdaterClientPlugin,
+  type HotUpdaterClientStorage,
+  type ReleaseTransitionKind,
+  type UpdateCheckResult,
+  type UpdateError,
+  type UpdateErrorReason,
+  type UpdateErrorStage,
+  type UpdateStrategy,
+} from "./clientPlugin";
+// The built-in Insights client plugin, for HotUpdater.init({ plugins }).
+export {
+  insights,
+  type InsightsOptions,
+  type InsightsPlugin,
+  type InsightsUser,
+} from "@hot-updater/plugin-insights/client";
 export type {
   CustomReloadHandler,
   HotUpdaterEvent,
@@ -54,7 +77,6 @@ export type {
   ActiveUpdateState,
   ReloadBehavior,
   ReloadBehaviorSetting,
-  SetUserParams,
 } from "./native";
 export * from "./store";
 export {
@@ -103,13 +125,11 @@ function createHotUpdaterClient() {
 
   // Global configuration stored from wrap
   const globalConfig: {
-    insights: boolean;
     client: HotUpdaterHttpClient | null;
     requestHeaders?: Record<string, string>;
     requestTimeout?: number;
     onError?: (error: unknown) => void;
   } = {
-    insights: true,
     client: null,
   };
 
@@ -158,10 +178,9 @@ function createHotUpdaterClient() {
     const autoOptions = incoming as AutoUpdateOptions;
 
     if (autoOptions.baseURL) {
-      const { baseURL, ...rest } = autoOptions;
+      const { baseURL, plugins: _plugins, ...rest } = autoOptions;
       return {
         ...rest,
-        insights: rest.insights ?? true,
         client: createHttpClient(baseURL),
       };
     }
@@ -178,10 +197,9 @@ function createHotUpdaterClient() {
       };
 
     if (rest.baseURL) {
-      const { baseURL, ...baseURLRest } = rest;
+      const { baseURL, plugins: _plugins, ...baseURLRest } = rest;
       return {
         ...baseURLRest,
-        insights: baseURLRest.insights ?? true,
         client: createHttpClient(baseURL),
       };
     }
@@ -193,7 +211,13 @@ function createHotUpdaterClient() {
     normalizedOptions: InternalInitOptions | InternalWrapOptions,
     options: HotUpdaterOptions | HotUpdaterInitOptions,
   ) => {
-    globalConfig.insights = normalizedOptions.insights ?? true;
+    // Plugins are set up before init or wrap reads the launch they observe.
+    configurePlugins(options.plugins, {
+      baseURL: options.baseURL,
+      requestHeaders: options.requestHeaders,
+      requestTimeout: options.requestTimeout,
+      onError: options.onError,
+    });
     globalConfig.client = normalizedOptions.client;
     globalConfig.requestHeaders = options.requestHeaders;
     globalConfig.requestTimeout = options.requestTimeout;
@@ -451,7 +475,6 @@ function createHotUpdaterClient() {
 
       const mergedConfig: InternalCheckForUpdateOptions = {
         ...config,
-        insights: globalConfig.insights,
         client,
         requestHeaders: {
           ...globalConfig.requestHeaders,
@@ -469,8 +492,6 @@ function createHotUpdaterClient() {
      *
      * @param {UpdateBundleParams} params - Parameters object required for bundle update
      * @param {string} params.bundleId - The bundle ID of the app
-     * @param {string|null} params.fileUrl - The URL of the zip file
-     *
      * @returns {Promise<boolean>} Whether the update was successful
      *
      * @example
@@ -495,33 +516,52 @@ function createHotUpdaterClient() {
      * ```
      */
     updateBundle: async (params: UpdateParams) => {
-      const client = ensureGlobalClient("updateBundle");
+      ensureGlobalClient("updateBundle");
       const fromBundleId = getBundleId();
       const state = getActiveUpdateState();
       const active = state.activeSelection;
-      const downloaded = await updateBundle(params);
-      if (downloaded && params.fileUrl !== null) {
-        const selection = getActiveUpdateState().activeSelection;
-        await reportBundleDownloaded(
-          { ...globalConfig, client },
-          {
+      const fromReleaseId =
+        active?.bundleId === fromBundleId
+          ? active.releaseId
+          : state.stableSelection?.bundleId === fromBundleId
+            ? state.stableSelection.releaseId
+            : null;
+      const channel = params.channel ?? getChannel();
+      const strategyOf = (scopeKey: string | null | undefined) =>
+        scopeKey?.startsWith("v1:fingerprint:") ? "fingerprint" : "appVersion";
+      let delivery: Awaited<ReturnType<typeof stageBundle>>;
+      try {
+        delivery = await stageBundle(params);
+      } catch (error) {
+        reportUpdateError(error, "download", undefined, {
+          bundleId: fromBundleId,
+          channel,
+          targetBundleId: params.bundleId,
+          targetReleaseId:
+            (params.selection as { releaseId?: string | null } | undefined)
+              ?.releaseId ?? null,
+          updateStrategy: strategyOf(
+            (params.selection as { scopeKey?: string | null } | undefined)
+              ?.scopeKey,
+          ),
+        });
+        throw error;
+      }
+      if (delivery !== null && params.bundleId !== fromBundleId) {
+        emitAfterAppReady("onBundleDownloaded", () => {
+          const selection = getActiveUpdateState().activeSelection;
+          return {
+            channel,
             fromBundleId,
-            fromReleaseId:
-              active?.bundleId === fromBundleId
-                ? active.releaseId
-                : state.stableSelection?.bundleId === fromBundleId
-                  ? state.stableSelection.releaseId
-                  : null,
+            fromReleaseId,
             toBundleId: params.bundleId,
             toReleaseId: selection?.releaseId ?? null,
-            channel: params.channel ?? getChannel(),
-            updateStrategy: selection?.scopeKey?.startsWith("v1:fingerprint:")
-              ? "fingerprint"
-              : "appVersion",
-          },
-        );
+            updateStrategy: strategyOf(selection?.scopeKey),
+            ...delivery,
+          };
+        });
       }
-      return downloaded;
+      return true;
     },
 
     /**
@@ -535,10 +575,8 @@ function createHotUpdaterClient() {
         hotUpdaterStore.setState({
           artifactType: null,
           details: null,
-          downloadedBytes: undefined,
           isUpdateDownloaded: false,
           progress: 0,
-          totalBytes: undefined,
         });
       }
       return ok;
@@ -561,11 +599,6 @@ function createHotUpdaterClient() {
      * Fetches the persisted install id for this app installation.
      */
     getInstallId,
-
-    /**
-     * Persists nullable user identity fields associated with this installation.
-     */
-    setUser,
 
     /**
      * Reads the native launch report for the current process.

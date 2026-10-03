@@ -64,10 +64,12 @@ describe("bundleManifest", () => {
       assets: {
         "assets/logo.png": {
           downloadCompression: null,
+          byteSize: 12,
           fileHash: hash("logo-content"),
         },
         "runtime/main.opaque": {
           downloadCompression: "br",
+          byteSize: 14,
           fileHash: hash("bundle-content"),
         },
       },
@@ -107,6 +109,7 @@ describe("bundleManifest", () => {
       assets: {
         "index.android.bundle": {
           downloadCompression: "br",
+          byteSize: 14,
           fileHash: hash("bundle-content"),
         },
       },
@@ -145,6 +148,7 @@ describe("bundleManifest", () => {
 
     expect(manifest).toEqual(writtenManifest);
     expect(writtenManifest.assets["index.ios.bundle"]).toEqual({
+      byteSize: 14,
       downloadCompression: "br",
       fileHash: expectedHash,
       signature: `signed:${expectedHash}`,

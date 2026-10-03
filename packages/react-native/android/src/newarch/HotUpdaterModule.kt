@@ -26,6 +26,16 @@ class HotUpdaterModule internal constructor(
 
     override fun getName(): String = NAME
 
+    private fun readSafeInteger(
+        map: ReadableMap,
+        key: String,
+    ): Long? {
+        if (!map.hasKey(key) || map.isNull(key)) return null
+        val value = runCatching { map.getDouble(key) }.getOrNull() ?: return null
+        if (!value.isFinite() || value % 1.0 != 0.0) return null
+        return value.toLong().takeIf { it in 0..9_007_199_254_740_991L }
+    }
+
     override fun invalidate() {
         super.invalidate()
         // Cancel all ongoing coroutines when module is destroyed
@@ -37,12 +47,12 @@ class HotUpdaterModule internal constructor(
      */
     private fun getInstance(): HotUpdaterImpl = HotUpdater.getInstance(mReactApplicationContext)
 
-    private fun parseChangedAssets(params: ReadableMap): Map<String, ChangedAssetDescriptor>? {
-        if (!params.hasKey("changedAssets") || params.isNull("changedAssets")) {
+    private fun parseAssets(params: ReadableMap): Map<String, ChangedAssetDescriptor>? {
+        if (!params.hasKey("assets") || params.isNull("assets")) {
             return null
         }
 
-        val changedAssetsMap = params.getMap("changedAssets") ?: return null
+        val changedAssetsMap = params.getMap("assets") ?: return null
         val parsedAssets = linkedMapOf<String, ChangedAssetDescriptor>()
         val iterator = changedAssetsMap.keySetIterator()
 
@@ -58,6 +68,7 @@ class HotUpdaterModule internal constructor(
                     val baseFileHash = patchMap.getString("baseFileHash")
                     val patchFileHash = patchMap.getString("patchFileHash")
                     val patchUrl = patchMap.getString("patchUrl")
+                    val byteSize = readSafeInteger(patchMap, "byteSize")
 
                     if (
                         algorithm != null &&
@@ -72,6 +83,7 @@ class HotUpdaterModule internal constructor(
                             baseFileHash = baseFileHash,
                             patchFileHash = patchFileHash,
                             patchUrl = patchUrl,
+                            byteSize = byteSize,
                         )
                     } else {
                         null
@@ -162,97 +174,112 @@ class HotUpdaterModule internal constructor(
             try {
                 val bundleId = params.getString("bundleId")
                 if (bundleId == null || bundleId.isEmpty()) {
-                    promise.reject("MISSING_BUNDLE_ID", "Missing or empty 'bundleId'")
+                    promise.rejectUpdateBundle(HotUpdaterException.missingBundleId())
                     return@launch
                 }
 
-                val fileUrl = params.getString("fileUrl")
-
-                // Validate fileUrl format if provided
-                if (fileUrl != null && fileUrl.isNotEmpty()) {
+                val manifestUrl = params.getString("manifestUrl")
+                val manifestFileHash = params.getString("manifestFileHash")
+                val assets = parseAssets(params)
+                if (manifestUrl.isNullOrEmpty() || manifestFileHash.isNullOrEmpty() || assets == null) {
+                    promise.rejectUpdateBundle(HotUpdaterException.invalidManifestParams())
+                    return@launch
+                }
+                try {
+                    java.net.URL(manifestUrl)
+                } catch (e: java.net.MalformedURLException) {
+                    promise.rejectUpdateBundle(
+                        HotUpdaterException.invalidFileUrl("manifestUrl", manifestUrl, UpdateFailureResource.MANIFEST),
+                    )
+                    return@launch
+                }
+                val channel = params.getString("channel")
+                val archiveUrl =
+                    if (params.hasKey("archiveUrl") && !params.isNull("archiveUrl")) {
+                        params.getString("archiveUrl")
+                    } else {
+                        null
+                    }
+                if (archiveUrl != null) {
                     try {
-                        java.net.URL(fileUrl)
+                        java.net.URL(archiveUrl)
                     } catch (e: java.net.MalformedURLException) {
-                        promise.reject("INVALID_FILE_URL", "Invalid 'fileUrl' provided: $fileUrl")
+                        promise.rejectUpdateBundle(
+                            HotUpdaterException.invalidFileUrl("archiveUrl", archiveUrl, UpdateFailureResource.ARCHIVE),
+                        )
                         return@launch
                     }
                 }
-
-                val fileHash = params.getString("fileHash")
-                val manifestUrl = params.getString("manifestUrl")
-                val manifestFileHash = params.getString("manifestFileHash")
-                val changedAssets = parseChangedAssets(params)
-                val channel = params.getString("channel")
                 val selection = parseSelection(params)
 
                 val impl = getInstance()
 
-                impl.updateBundle(
-                    bundleId,
-                    fileUrl,
-                    fileHash,
-                    manifestUrl,
-                    manifestFileHash,
-                    changedAssets,
-                    channel,
-                    selection,
-                ) { progress ->
-                    // Post to Main thread for React Native event emission
-                    Handler(Looper.getMainLooper()).post {
-                        try {
-                            val progressParams =
-                                WritableNativeMap().apply {
-                                    putDouble("progress", progress.progress)
-                                    putString("artifactType", progress.artifactType)
-                                    progress.downloadedBytes?.let { putDouble("downloadedBytes", it.toDouble()) }
-                                    progress.totalBytes?.let { putDouble("totalBytes", it.toDouble()) }
-                                    progress.details?.let { details ->
-                                        putMap(
-                                            "details",
-                                            WritableNativeMap().apply {
-                                                putInt("totalFilesCount", details.totalFilesCount)
-                                                putInt("completedFilesCount", details.completedFilesCount)
-                                                putArray(
-                                                    "files",
-                                                    WritableNativeArray().apply {
-                                                        details.files.forEach { file ->
-                                                            pushMap(
-                                                                WritableNativeMap().apply {
-                                                                    putString("path", file.path)
-                                                                    putString("downloadPath", file.downloadPath)
-                                                                    putString("status", file.status)
-                                                                    putDouble("progress", file.progress)
-                                                                    putInt("order", file.order)
-                                                                    file.downloadedBytes?.let {
-                                                                        putDouble(
-                                                                            "downloadedBytes",
-                                                                            it.toDouble(),
-                                                                        )
-                                                                    }
-                                                                    file.totalBytes?.let { putDouble("totalBytes", it.toDouble()) }
-                                                                },
-                                                            )
-                                                        }
-                                                    },
-                                                )
-                                            },
-                                        )
+                val result =
+                    impl.updateBundle(
+                        bundleId,
+                        manifestUrl,
+                        manifestFileHash,
+                        assets,
+                        channel,
+                        selection,
+                        archiveUrl,
+                    ) { progress ->
+                        // Post to Main thread for React Native event emission
+                        Handler(Looper.getMainLooper()).post {
+                            try {
+                                val progressParams =
+                                    WritableNativeMap().apply {
+                                        putDouble("progress", progress.progress)
+                                        putString("artifactType", progress.artifactType)
+                                        progress.details?.let { details ->
+                                            putMap(
+                                                "details",
+                                                WritableNativeMap().apply {
+                                                    putInt("totalFilesCount", details.totalFilesCount)
+                                                    putInt("completedFilesCount", details.completedFilesCount)
+                                                    putArray(
+                                                        "files",
+                                                        WritableNativeArray().apply {
+                                                            details.files.forEach { file ->
+                                                                pushMap(
+                                                                    WritableNativeMap().apply {
+                                                                        putString("path", file.path)
+                                                                        putString("downloadPath", file.downloadPath)
+                                                                        putString("status", file.status)
+                                                                        putDouble("progress", file.progress)
+                                                                        putInt("order", file.order)
+                                                                        file.downloadedBytes?.let {
+                                                                            putDouble(
+                                                                                "downloadedBytes",
+                                                                                it.toDouble(),
+                                                                            )
+                                                                        }
+                                                                        file.totalBytes?.let { putDouble("totalBytes", it.toDouble()) }
+                                                                    },
+                                                                )
+                                                            }
+                                                        },
+                                                    )
+                                                },
+                                            )
+                                        }
                                     }
-                                }
 
-                            this@HotUpdaterModule
-                                .mReactApplicationContext
-                                .getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
-                                ?.emit("onProgress", progressParams)
-                        } catch (e: Exception) {
-                            Log.w("HotUpdater", "Failed to emit progress (bridge may be unavailable): ${e.message}")
+                                this@HotUpdaterModule
+                                    .mReactApplicationContext
+                                    .getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
+                                    ?.emit("onProgress", progressParams)
+                            } catch (e: Exception) {
+                                Log.w("HotUpdater", "Failed to emit progress (bridge may be unavailable): ${e.message}")
+                            }
                         }
                     }
-                }
-                promise.resolve(true)
+                promise.resolve(result.toWritableMap())
             } catch (e: HotUpdaterException) {
-                promise.reject(e.code, e.message)
+                promise.rejectUpdateBundle(e)
             } catch (e: Exception) {
+                // Not an update failure (a stale Release selection, for example),
+                // so the rejection carries no classification.
                 promise.reject("UNKNOWN_ERROR", e.message ?: "An unknown error occurred")
             }
         }
@@ -389,15 +416,13 @@ class HotUpdaterModule internal constructor(
 
     override fun getInstallId(): String = getInstance().getInstallId()
 
-    override fun getUserId(): String? = getInstance().getUserId()
+    override fun getStorageItem(key: String): String? = getInstance().getStorageItem(key)
 
-    override fun getUsername(): String? = getInstance().getUsername()
-
-    override fun setUser(
-        userId: String?,
-        username: String?,
+    override fun setStorageItem(
+        key: String,
+        value: String?,
     ) {
-        getInstance().setUser(userId, username)
+        getInstance().setStorageItem(key, value)
     }
 
     override fun resetChannel(promise: Promise) {

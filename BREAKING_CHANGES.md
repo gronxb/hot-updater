@@ -114,15 +114,18 @@ Additional route and handler changes:
 - `authorityId` is removed from CLI and server configuration. Catalog identity
   is allocated and persisted automatically, with no replacement setting.
 - `HandlerOptions` is removed. The client handler always owns the v1
-  update protocol and Insights ingestion. API key authentication is configured
-  explicitly through the required `clientAccess` policy.
+  update protocol; server plugins add their own routes, such as Insights
+  ingestion with `insights()`. API key authentication comes from the
+  `apiKeys()` server plugin, and a server without a plugin that provides
+  client authentication sets `clientAccess: "public"` explicitly.
 - The unified `createHandler` and `createHotUpdater().handler` surfaces are
   replaced by `createHandlers(...).client/admin` and
   `createHotUpdater().handlers.client/admin`. The client handler owns
-  `/version`, Release Catalog, artifact, storage-download, and Insights-event
-  routes. The admin handler owns Bundle, Release, Release Catalog row, Channel,
-  database-commit, and Insights-query routes. Neither handler matches the
-  other surface.
+  `/version`, Release Catalog, artifact, and storage-download routes, and
+  Insights-event routes with `insights()`. The admin handler owns Bundle,
+  Release, Release Catalog row, Channel, and database-commit routes, and
+  Insights-query routes with `insights()`. Neither handler matches the other
+  surface.
 - Handlers match mount-relative paths, and `basePath` is removed. The framework
   owns the external mount path. Built-in storage paths are relative to the
   client handler and React Native resolves them against its configured
@@ -134,12 +137,13 @@ Additional route and handler changes:
 - `features`, including `features.bundles` and `features.updateCheck`, is
   removed. Explicitly mounting `handlers.admin` is the opt-in for admin routes,
   while mounting `handlers.client` exposes the complete client protocol.
-  Insights ingestion is always available on the client handler and queries
-  are always available on the admin handler, so the server-side Insights flag
-  and `queryAccess` are removed. React Native reporting is enabled by default
-  in both `HotUpdater.init` and `HotUpdater.wrap`; set `insights: false` to
-  send no events. Client authentication moves to the
-  required top-level `clientAccess` policy.
+  The `insights()` server plugin adds Insights ingestion to the client handler
+  and Insights queries to the admin handler, so the server-side Insights flag
+  and `queryAccess` are removed. React Native reports only with the
+  `insights()` client plugin from `@hot-updater/react-native` in `plugins` of
+  `HotUpdater.init` or `HotUpdater.wrap`; an app without it
+  sends no events. Client authentication moves to a server plugin that
+  provides it, such as `apiKeys()`, or the explicit `clientAccess: "public"`.
 - `standaloneRepository.baseUrl` now identifies the exact admin root, such as
   `https://example.com/hot-updater/admin`. Its default and fixed request paths
   are relative (`/bundles`, `/releases`, `/release-catalogs`, `/channels`, and
@@ -150,7 +154,7 @@ Additional route and handler changes:
   `toNodeHandler(hotUpdater.handlers.admin)`, rather than the whole Hot Updater
   object.
 - Runtime bindings and credentials must be captured when constructing the
-  database or storage plugin; handlers no longer accept a provider-specific
+  database or storage adapter; handlers no longer accept a provider-specific
   request context as a second argument.
 - `/version` reports the v1 infrastructure generation. Use `hot-updater doctor`
   against the generated public base URL before shipping the native build.
@@ -168,8 +172,8 @@ app.mount("/hot-updater", hotUpdater.handlers.client);
 
 `HotUpdater.init` and `HotUpdater.wrap` continue to use the client base URL
 (`https://example.com/hot-updater`). Never embed the admin bearer token in the
-React Native app; the `api-key` client policy uses `x-api-key` by default or
-the explicitly configured `headerName`. Local or direct-database Console
+React Native app; `apiKeys()` reads `x-api-key` by default, or the
+`headerName` passed to it. Local or direct-database Console
 operation is unchanged. A Console configured with
 `standaloneRepository` must use the admin root and keep its bearer header on
 the server side; hosted Console user authentication remains a separate layer.
@@ -223,49 +227,52 @@ same public ID used by the Console and `HotUpdater.getBundleId()`.
 | `bundle show/update/enable/disable <bundle-id>`       | The commands remain and accept the public Bundle ID.                                  |
 | `bundle promote <bundle-id>`                         | Use `bundle promote <source-id> --target <channel>`; the target gets a new public ID. |
 | `bundle delete <bundle-ids...>`                      | Delete one disabled public Bundle at a time with `bundle delete <id>`.                |
-| `patch --bundle-id ... --base-bundle-id ...`         | Prefer `--artifact-id` and `--base-artifact-id`; old names remain deprecated aliases. |
+| `patch --bundle-id ... --base-bundle-id ...`         | Use `--artifact-id` and `--base-artifact-id`.                                         |
 | `rollback <channel> [--target <bundle-id>]`          | Disable the exact public ID with `bundle disable <id>`.                               |
-| Direct deletion of immutable bytes                   | Delete referencing public Bundles, then use Advanced `bundle artifact delete`.        |
+| Direct deletion of immutable bytes                   | Delete the public Bundles that use them; the last one deletes the artifact record.    |
 
 The top-level `rollback` command is removed. Bundle mutations now support
-revision preconditions and Catalog preflight. `bundle list --json` and
-`bundle show --json` expose raw internal v1 rows and are not schema-compatible
-with the v0 list wrapper or Bundle DTO. `db catalog preflight` and `db catalog
-rebuild` verify or repair compiled projections.
+revision preconditions, and `bundle update --dry-run` previews a policy change.
+`bundle list --json` and `bundle show --json` expose raw internal v1 rows and
+are not schema-compatible with the v0 list wrapper or Bundle DTO. `doctor`
+checks the compiled projections, and `doctor --fix` rebuilds stale ones.
 
 Self-hosted deployments manage API keys through the same official database
 domain used by managed init and Console:
 
 ```bash
 hot-updater db migrate src/hotUpdater.ts
-hot-updater api-key create src/hotUpdater.ts --name "Mobile app"
+hot-updater api-key create --name "Mobile app" src/hotUpdater.ts
 hot-updater api-key list src/hotUpdater.ts
 hot-updater api-key revoke <api-key-id> src/hotUpdater.ts
 ```
 
+The trailing path names the server file that creates `hotUpdater`. Without it,
+`api-key` uses `database` and `plugins` in `hot-updater.config.ts`.
 `create` prints the plaintext API key exactly once. Only its SHA-256 hash and
-non-secret metadata are persisted. The recommended self-hosted bootstrap sets
-`clientAccess: { type: "api-key" }`, applies the schema, creates the API key,
+non-secret metadata are persisted. The recommended self-hosted bootstrap adds
+`apiKeys()` to the server's `plugins`, applies the schema, creates the API key,
 and passes the printed value to `HotUpdater.init` in
-`requestHeaders: { "x-api-key": apiKey }`. Use
-`clientAccess: { type: "public" }` only as an explicit unauthenticated
-alternative. Rotate a deployed credential by creating a replacement, shipping
-clients with the replacement, and revoking the old API key after the rollout.
+`requestHeaders: { "x-api-key": apiKey }`. Use `clientAccess: "public"`,
+without `apiKeys()`, only as an explicit unauthenticated alternative. Rotate a
+deployed credential by creating a replacement, shipping clients with the
+replacement, and revoking the old API key after the rollout.
 
 Managed AWS, Cloudflare, Firebase, and Supabase init create and register the
 first API key automatically. A rerun reuses the existing
-`HOT_UPDATER_API_KEY`, so managed users do not run the self-hosted
-`hot-updater api-key create` command. Managed React Native setup passes that
+`HOT_UPDATER_API_KEY`. Managed projects manage further keys with the same
+`hot-updater api-key` commands, through the `database` and `plugins` that init
+writes to `hot-updater.config.ts`. Managed React Native setup passes that
 value to `HotUpdater.init` through the `x-api-key` request header.
 
 ## Configuration and server composition
 
-CLI configuration now receives direct plugin objects:
+CLI configuration now receives direct adapter objects:
 
 ```ts
 export default defineConfig({
   build: bare(),
-  storage: storagePlugin,
+  storage: storageAdapter,
   database: bundleRepository,
   updateStrategy: "appVersion",
 });
@@ -274,39 +281,42 @@ export default defineConfig({
 The old `() => plugin` factory thunk is no longer the configuration contract.
 Built-in provider call sites usually retain the source form
 `storage: providerStorage(options)` because provider factories now return the
-plugin object directly.
+adapter object directly.
 
 `createHotUpdater` changes from the v0 runtime-profile API to:
 
 ```ts
 createHotUpdater({
   database,
-  clientAccess: { type: "api-key" },
-  storage: [storagePlugin],
+  storage: [storageAdapter],
+  plugins: [insights(), apiKeys()],
 });
 ```
 
 The returned object exposes in-process API key management through
-`hotUpdater.apiKeys.create`, `hotUpdater.apiKeys.list`, and
-`hotUpdater.apiKeys.revoke`. These operations use the configured direct
-database plugin and are not HTTP routes on either handler.
+`hotUpdater.api.apiKeys.create`, `hotUpdater.api.apiKeys.list`, and
+`hotUpdater.api.apiKeys.revoke`. These operations use the server's database
+and are not HTTP routes on either handler.
 
 The following v0 options are removed or renamed:
 
 - `storages` and deprecated `storagePlugins` become `storage`.
-- Insights ingestion and query routes are always available. React Native
-  clients send automatic events by default from both `HotUpdater.init` and
-  `HotUpdater.wrap`. Set `insights: false` to send no events.
-- `features.clientAccessKeys: true` becomes
-  `clientAccess: { type: "api-key" }`. API-key mode reads `x-api-key` by
-  default. Set `headerName` to use another valid HTTP header; clients must send
-  the same header and Release Catalog responses include it in `Vary`.
+- Insights ingestion and query routes come from the `insights()` server plugin
+  in `plugins`. React Native clients send events only with the `insights()`
+  client plugin in `plugins` of `HotUpdater.init` or `HotUpdater.wrap`.
+- `features.clientAccessKeys: true` becomes the `apiKeys()` server plugin in
+  `plugins`. It reads `x-api-key` by default; pass `apiKeys({ headerName })`
+  to use another valid HTTP header. Clients must send the same header, and
+  Release Catalog responses include it in `Vary`.
 - `features.clientAccessKeys: false` becomes the explicit unauthenticated
-  alternative, `clientAccess: { type: "public" }`.
-- `clientAccess` is required. There is no implicit public or authenticated
-  default. It applies to Release Catalog, artifact, and Insights ingestion
-  routes; `/version`, signed storage downloads, and admin routes are
-  unaffected.
+  alternative, `clientAccess: "public"`, without `apiKeys()`.
+- Client access is explicit: a server runs one plugin that provides client
+  authentication, such as `apiKeys()`, or sets `clientAccess: "public"`.
+  `createHotUpdater` refuses both, neither, and a `clientAccess` object; there
+  is no implicit public or authenticated default. The policy applies to client
+  routes: Release Catalog reads, artifact resolution, Insights ingestion, and
+  other plugins' client routes. `/version`, signed storage downloads, and
+  admin routes are unaffected.
 - Update routes are always present on `handlers.client`.
 - `basePath` is removed. The framework mount and React Native `baseURL` define
   the external client path without duplicating it in `createHotUpdater`.
@@ -335,56 +345,63 @@ Expo config plugin's peer dependencies. Runtime imports remain in
 `@hot-updater/react-native`; only the `app.json` or `app.config.js` plugin entry
 moves.
 
-## Database plugin contract and schema
+## Database adapter contract and schema
 
-The aggregate Bundle database API is replaced by a fixed official-domain
-contract:
+The aggregate Bundle database API is replaced by an engine over a small
+database adapter. A provider's factory returns an `EngineDatabase`,
+`{ name, adapter, dispose? }`, which `hot-updater.config.ts`, the console and
+`createHotUpdater` all take as `database`:
 
 ```ts
-createDatabasePlugin({
-  name,
-  models: {
-    bundles,
-    bundlePatches,
-    releases,
-    releaseCatalogs,
-    channels,
-    insights,
-    apiKeys,
-  },
-  commit,
-  dispose,
-});
+import {
+  createEngineDatabase,
+  createSqlAdapter,
+} from "@hot-updater/plugin-core";
+
+export const myDatabase = (options: MyOptions) =>
+  createEngineDatabase({
+    name: "myDatabase",
+    adapter: createSqlAdapter({ executor: myExecutor(options) }),
+  });
 ```
 
 This breaks custom database providers in the following ways:
 
-- `createDatabasePlugin({ name, factory })` and its double-curried return value
-  are removed.
+- `createDatabasePlugin`, in both its `{ name, factory }` and model forms, is
+  removed, along with its double-curried return value.
 - `getBundleById`, `getBundles`, `getChannels`, optional provider
-  `getUpdateInfo`, `commitBundle`, and `onUnmount` are no longer the top-level
-  provider shape.
+  `getUpdateInfo`, `commitBundle`, and `onUnmount` are no longer the provider
+  shape.
+- A database adapter implements a few guarded operations (get, query, write
+  and fits) through a `SqlExecutor` for `createSqlAdapter`, a
+  `KeyValueStore` for `createKvAdapter`, or the `DatabaseAdapter` contract
+  directly. The engine keeps references, cascades, counters, retries and the
+  schema fence itself, and `verifyAdapter` from `@hot-updater/plugin-core`
+  checks an adapter against the contract.
 - Generic CRUD/query DSLs, provider query languages, runtime contexts, and
   provider-owned update decisions are not public contracts.
-- `commit({ changes, expectations })` is an ordered atomic boundary across the
-  official models. Implementations must roll back all earlier changes on
-  failure and enforce Release revision and Catalog generation expectations.
 - Channels are persistent rows with opaque IDs and exact, case-sensitive names.
   `releases.channel_id` references that identity; Bundle rows no longer own a
   channel. Compatibility writes resolve the legacy `channel` value into the
   Release row.
-- Schema `1.0.0` adds Releases, Release Catalogs, normalized Channels,
-  Insights events, API keys, and Bundle patch relations.
+- Schema `1.0.0` adds Releases, Release Catalogs, normalized Channels, and
+  Bundle patch relations. Insights events and API keys are the tables of the
+  `insights()` and `apiKeys()` plugins, created with the plugins a server
+  lists.
+
+See [Custom database](https://hot-updater.dev/docs/database-adapters/custom-database)
+for the full adapter guide.
 
 `createBlobDatabasePlugin` is removed. Object storage cannot satisfy the atomic
 Release/Catalog contract.
 
-## Storage plugin contract
+## Storage adapter contract
 
-Profiled storage plugins are replaced by one runtime-independent object API:
+Profiled storage plugins are replaced by storage adapters with one
+runtime-independent object API:
 
 ```ts
-createStoragePlugin({
+createStorageAdapter({
   name,
   protocol,
   put,
@@ -399,6 +416,11 @@ Breaking details for custom storage providers:
 
 - `createNodeStoragePlugin`, `createRuntimeStoragePlugin`, and
   `createUniversalStoragePlugin` are removed.
+- The slots a config fills are adapters: `StoragePlugin` is `StorageAdapter`,
+  `createStoragePlugin` is `createStorageAdapter`, `StoragePluginWith` is
+  `StorageAdapterWith`, `BuildPlugin` is `BuildAdapter`, `BasePluginArgs` is
+  `BuildAdapterArgs`, and `BundleSigningPlugin` is `BundleSigningAdapter`.
+  Provider factories such as `s3Storage()` and `bare()` keep their names.
 - `supportedProtocol`, `profiles.node`, `profiles.runtime`, lifecycle hooks,
   runtime contexts, and local file paths are removed from the core boundary.
 - Every single-object operation takes one object and returns one object. `put`
@@ -415,7 +437,7 @@ Breaking details for custom storage providers:
 - Download URL policy belongs to the storage implementation. Server composition
   no longer wraps runtime-specific storage profiles.
 
-See the [custom storage contract](<./docs/content/docs/(latest)/storage-plugins/custom-storage.mdx>)
+See the [custom storage contract](<./docs/content/docs/(latest)/storage-adapters/custom-storage.mdx>)
 for the complete operation requirements.
 
 ## React Native API changes
@@ -448,10 +470,12 @@ toBundleId, ... }`.
 - `onNotifyAppReady` consumers and direct `HotUpdater.notifyAppReady()` callers
   must handle the new discriminated union.
 
-App-ready transition and Bundle adoption reporting use the configured
-`baseURL` and are enabled by default for both `HotUpdater.init` and
-`HotUpdater.wrap`. Set `insights: false` to send nothing. The server routes
-and backing model remain available regardless.
+App-ready transition and Bundle adoption reporting comes from the
+`insights()` client plugin from `@hot-updater/react-native`, passed in
+`plugins` of `HotUpdater.init` or `HotUpdater.wrap`. It uses the
+configured `baseURL`, and an app without it sends nothing. The server's
+Insights routes and tables exist only when the server lists `insights()` in
+its `plugins`.
 
 The deprecated positional `HotUpdater.updateBundle(bundleId, fileUrl)` overload
 is removed. Pass the complete parameter object or call
@@ -461,6 +485,7 @@ is removed. Pass the complete parameter object or call
 
 | Package                          | Removed                                                                       | Replacement                                                                       |
 | -------------------------------- | ----------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| `@hot-updater/core`              | The package, renamed                                                          | `@hot-updater/protocol`, with the same exports                                    |
 | `@hot-updater/aws`               | `s3Database`                                                                  | `dynamoDB`; S3 remains artifact storage only                                      |
 | `@hot-updater/aws`               | `s3LambdaEdgeStorage`                                                         | `s3Storage`                                                                       |
 | `@hot-updater/aws`               | `withCloudFrontSignedUrl`                                                     | Pass `cloudFrontDownloadUrl(...)` as `s3Storage({ getDownloadUrl })`              |
@@ -471,7 +496,7 @@ is removed. Pass the complete parameter object or call
 | `@hot-updater/js`                | `verifyJwtSignedUrl`, `withJwtSignedUrl`                                      | Use provider-owned download URL handling or the server storage handler            |
 | `@hot-updater/js`                | `getUpdateInfo`                                                               | Release Catalog selection on the device and Release disable for rollback          |
 | `@hot-updater/postgres`          | `getUpdateInfo`                                                               | Release Catalog compilation and exact Catalog reads                               |
-| `@hot-updater/plugin-core`       | `createBlobDatabasePlugin` and profiled storage helpers                       | Fixed database models and flat storage plugins described above                    |
+| `@hot-updater/plugin-core`       | `createBlobDatabasePlugin` and profiled storage helpers                       | Fixed database models and flat storage adapters described above                   |
 | `@hot-updater/plugin-core`       | `createRequestUpdateBundleResolver`, `getRequestUpdateBundleSeeds`            | `createRequestBundleResolver` for request-scoped Bundle reads                     |
 
 `s3Storage` also stops creating S3 presigned download URLs implicitly. A server
@@ -494,7 +519,7 @@ transport callbacks, or management write shapes. Those boundaries are fresh in
 v1.
 
 The detailed on-device retention rules are in the
-[v1 compatibility inventory](./docs/release-catalog-v1-compatibility.md).
+[v1 compatibility inventory](https://github.com/gronxb/hot-updater/blob/530cca5dd70615eaa34988f4796cdcc2d9f5c9f2/docs/release-catalog-v1-compatibility.md).
 
 ## Migration checklist
 

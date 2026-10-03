@@ -40,9 +40,10 @@ public struct LynxChangedAsset: Codable, Equatable {
         public let baseFileHash: String
         public let patchFileHash: String
         public let patchUrl: URL
-        public init(algorithm: String = "bsdiff", baseBundleId: String, baseFileHash: String, patchFileHash: String, patchUrl: URL) {
+        public let byteSize: UInt64?
+        public init(algorithm: String = "bsdiff", baseBundleId: String, baseFileHash: String, patchFileHash: String, patchUrl: URL, byteSize: UInt64? = nil) {
             self.algorithm = algorithm; self.baseBundleId = baseBundleId; self.baseFileHash = baseFileHash
-            self.patchFileHash = patchFileHash; self.patchUrl = patchUrl
+            self.patchFileHash = patchFileHash; self.patchUrl = patchUrl; self.byteSize = byteSize
         }
     }
     public let fileHash: String
@@ -79,17 +80,21 @@ enum LynxDelta {
     struct Result {
         let tree: VerifiedLynxTree
         let patchedAssets: [PatchedAsset]
+        let usedArchive: Bool
     }
 
-    static func prepare(_ request: LynxArtifactRequest, base: LynxInstalledArtifact, stage: URL,
+    static func prepare(_ request: LynxArtifactRequest, base: LynxInstalledArtifact?, stage: URL,
                         configuration: LynxArtifactConfiguration,
                         fetch: LynxArtifactFetch) async throws -> Result {
         guard let manifestURL = request.manifestUrl, let token = request.manifestFileHash, !token.isEmpty,
-              let changes = request.changedAssets else { throw LynxArtifactError.invalid("Incomplete manifest transfer") }
-        // Base authority comes from the generation-pinned native selection. Reverify its bytes before reuse.
-        let source = try VerifiedLynxTree.verify(at: base.directory, bundleId: base.bundleId, manifestToken: nil,
-                                                configuration: .init(runtimeId: configuration.runtimeId),
-                                                expectedDigest: base.manifestDigest)
+              let changes = request.assets else { throw LynxArtifactError.invalid("Incomplete manifest transfer") }
+        // Base authority comes from native state; corrupt local bytes use authenticated originals.
+        let source = base.flatMap { base in
+            try? VerifiedLynxTree.verify(at: base.directory, bundleId: base.bundleId, manifestToken: nil,
+                                        configuration: .init(runtimeId: configuration.runtimeId),
+                                        expectedDigest: base.manifestDigest)
+        }
+        try Task.checkCancellation()
         let contents = stage.appendingPathComponent("contents")
         try FileManager.default.createDirectory(at: contents, withIntermediateDirectories: false)
         let manifestFile = contents.appendingPathComponent("manifest.json")
@@ -105,17 +110,61 @@ enum LynxDelta {
         }
         let paths = ArchiveEntryGuard(reservingManifest: true)
         for (name, asset) in manifest.assets {
-            try paths.admit(name, size: 0, directory: false)
+            try paths.admit(name, size: asset.byteSize ?? 0, directory: false)
             guard LynxArtifactRequest.isHash(asset.fileHash),
                   asset.signature == nil || asset.signature?.isEmpty == false else {
                 throw LynxArtifactError.invalid("Invalid target manifest asset")
             }
         }
-        let requiredChanges = Set(manifest.assets.compactMap { name, asset in
-            source.files[name]?.caseInsensitiveCompare(asset.fileHash) == .orderedSame ? nil : name
-        })
-        guard Set(changes.keys) == requiredChanges else {
-            throw LynxArtifactError.invalid("Changed assets do not exactly cover the target manifest")
+        guard Set(changes.keys) == Set(manifest.assets.keys) else {
+            throw LynxArtifactError.invalid("Target descriptors do not exactly cover the manifest")
+        }
+        for (name, asset) in manifest.assets {
+            guard changes[name]?.fileHash.caseInsensitiveCompare(asset.fileHash) == .orderedSame,
+                  changes[name]?.file?.compression == asset.downloadCompression,
+                  asset.downloadCompression == nil || asset.downloadCompression == "br",
+                  asset.byteSize.map({ $0 <= ArchiveLimits.file }) ?? true,
+                  asset.downloadByteSize.map({ $0 <= ArchiveLimits.file }) ?? true,
+                  asset.downloadFileHash.map(LynxArtifactRequest.isHash) ?? true else {
+                throw LynxArtifactError.invalid("Target descriptor or transfer metadata differs from manifest")
+            }
+        }
+        let missing = manifest.assets.keys.filter { source?.files[$0]?.caseInsensitiveCompare(manifest.assets[$0]!.fileHash) != .orderedSame }
+        let costs: [UInt64?] = missing.map { name in
+            let original = manifest.assets[name]!.downloadByteSize
+            guard let patch = changes[name]?.patch, patch.baseBundleId == base?.bundleId,
+                  source?.files[name]?.caseInsensitiveCompare(patch.baseFileHash) == .orderedSame else { return original }
+            return patch.byteSize.map { min($0, original ?? $0) }
+        }
+        if let archive = manifest.archive, let url = request.archiveUrl, missing.count >= 2,
+           costs.allSatisfy({ $0 != nil }), archive.downloadByteSize > 0,
+           archive.downloadByteSize <= ArchiveLimits.archive, archive.tarByteSize > 0,
+           archive.tarByteSize <= ArchiveLimits.tarStream, LynxArtifactRequest.isHash(archive.downloadFileHash),
+           archive.downloadByteSize <= costs.compactMap({ $0 }).reduce(0, +) {
+            let archiveFile = stage.appendingPathComponent("bundle.tar.br")
+            let archiveContents = stage.appendingPathComponent("archive-contents")
+            defer { try? FileManager.default.removeItem(at: archiveFile); try? FileManager.default.removeItem(at: archiveContents) }
+            do {
+                try await fetch(url, archiveFile, archive.downloadByteSize, false)
+                guard try size(archiveFile) == archive.downloadByteSize else { throw LynxArtifactError.invalid("Archive transfer size mismatch") }
+                try ArtifactSignatureVerifier.verifyHash(fileURL: archiveFile, expectedHash: archive.downloadFileHash).get()
+                try StrictArchive.extract(archiveFile, to: archiveContents, expectedTarBytes: archive.tarByteSize)
+                guard !FileManager.default.fileExists(atPath: archiveContents.appendingPathComponent("manifest.json").path) else { throw LynxArtifactError.invalid("Bulk archive contains a manifest") }
+                try FileManager.default.copyItem(at: manifestFile, to: archiveContents.appendingPathComponent("manifest.json"))
+                _ = try VerifiedLynxTree.verify(at: archiveContents, bundleId: request.bundleId, manifestToken: token, configuration: configuration)
+                for name in manifest.assets.keys {
+                    try Task.checkCancellation()
+                    let target = contents.appendingPathComponent(name)
+                    try FileManager.default.createDirectory(at: target.deletingLastPathComponent(), withIntermediateDirectories: true)
+                    try FileManager.default.moveItem(at: archiveContents.appendingPathComponent(name), to: target)
+                }
+                let tree = try VerifiedLynxTree.verify(at: contents, bundleId: request.bundleId, manifestToken: token, configuration: configuration)
+                return Result(tree: tree, patchedAssets: [], usedArchive: true)
+            } catch {
+                try Task.checkCancellation()
+                for name in manifest.assets.keys { try? FileManager.default.removeItem(at: contents.appendingPathComponent(name)) }
+                NSLog("HotUpdaterArchiveDownloadFallback bundleId=%@", request.bundleId)
+            }
         }
         var total = try size(manifestFile)
         var patchedAssets: [PatchedAsset] = []
@@ -124,10 +173,10 @@ enum LynxDelta {
             let expected = manifest.assets[name]!.fileHash
             let output = contents.appendingPathComponent(name)
             try FileManager.default.createDirectory(at: output.deletingLastPathComponent(), withIntermediateDirectories: true)
-            let sourceFile = base.directory.appendingPathComponent(name)
+            let sourceFile = base?.directory.appendingPathComponent(name)
             let remaining = ArchiveLimits.expanded - total
             let outputLimit = min(remaining, ArchiveLimits.file)
-            if source.files[name]?.caseInsensitiveCompare(expected) == .orderedSame,
+            if let sourceFile, source?.files[name]?.caseInsensitiveCompare(expected) == .orderedSame,
                HashUtils.verifyHash(fileURL: sourceFile, expectedHash: expected) {
                 try copy(sourceFile, to: output, maximumBytes: outputLimit)
             } else {
@@ -136,8 +185,8 @@ enum LynxDelta {
                 }
                 var patched = false
                 var patchEvidence: PatchedAsset?
-                if let patch = change.patch, patch.algorithm == "bsdiff", patch.baseBundleId == base.bundleId,
-                   source.files[name]?.caseInsensitiveCompare(patch.baseFileHash) == .orderedSame,
+                if let sourceFile, let patch = change.patch, patch.algorithm == "bsdiff", patch.baseBundleId == base?.bundleId,
+                   source?.files[name]?.caseInsensitiveCompare(patch.baseFileHash) == .orderedSame,
                    HashUtils.verifyHash(fileURL: sourceFile, expectedHash: patch.baseFileHash) {
                     let patchFile = stage.appendingPathComponent("patch-\(UUID().uuidString)")
                     defer { try? FileManager.default.removeItem(at: patchFile) }
@@ -173,7 +222,8 @@ enum LynxDelta {
                     if file.compression == "br" {
                         let compressed = stage.appendingPathComponent("asset-\(UUID().uuidString).br")
                         defer { try? FileManager.default.removeItem(at: compressed) }
-                        try await fetch(file.url, compressed, ArchiveLimits.archive, false)
+                        try await fetch(file.url, compressed, ArchiveLimits.file, false)
+                        try verifyTransfer(compressed, asset: manifest.assets[name]!)
                         try StreamingTarArchiveExtractor.decompressBrotliFile(
                             from: compressed.path,
                             to: output.path,
@@ -181,17 +231,23 @@ enum LynxDelta {
                         )
                     } else {
                         try await fetch(file.url, output, outputLimit, true)
+                        try verifyTransfer(output, asset: manifest.assets[name]!)
                     }
                     try ArtifactSignatureVerifier.verifyHash(fileURL: output, expectedHash: expected).get()
                 }
                 if patched, let patchEvidence { patchedAssets.append(patchEvidence) }
             }
             let bytes = try size(output)
-            guard bytes <= outputLimit else { throw LynxArtifactError.invalid("Manifest transfer expansion limit exceeded") }
+            guard bytes <= outputLimit, manifest.assets[name]!.byteSize.map({ $0 == bytes }) ?? true else { throw LynxArtifactError.invalid("Manifest transfer expansion limit exceeded") }
             total += bytes
         }
         let tree = try VerifiedLynxTree.verify(at: contents, bundleId: request.bundleId, manifestToken: token, configuration: configuration)
-        return Result(tree: tree, patchedAssets: patchedAssets.sorted { $0.path < $1.path })
+        return Result(tree: tree, patchedAssets: patchedAssets.sorted { $0.path < $1.path }, usedArchive: false)
+    }
+
+    private static func verifyTransfer(_ file: URL, asset: LynxManifest.Asset) throws {
+        if let expected = asset.downloadByteSize, try size(file) != expected { throw LynxArtifactError.invalid("Asset transfer size mismatch") }
+        if let hash = asset.downloadFileHash { try ArtifactSignatureVerifier.verifyHash(fileURL: file, expectedHash: hash).get() }
     }
 
     private static func size(_ file: URL) throws -> UInt64 {

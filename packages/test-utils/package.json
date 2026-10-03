@@ -1,7 +1,6 @@
 {
   "name": "@hot-updater/test-utils",
-  "private": true,
-  "version": "1.0.0-rc.14",
+  "version": "1.0.0-rc.27",
   "type": "module",
   "description": "Test utilities for Hot Updater packages",
   "sideEffects": false,
@@ -23,6 +22,16 @@
         "default": "./dist/node.cjs"
       }
     },
+    "./react-native": {
+      "import": {
+        "types": "./dist/react-native.d.mts",
+        "default": "./dist/react-native.mjs"
+      },
+      "require": {
+        "types": "./dist/react-native.d.cts",
+        "default": "./dist/react-native.cjs"
+      }
+    },
     "./package.json": "./package.json"
   },
   "files": [
@@ -37,18 +46,46 @@
   "repository": "https://github.com/gronxb/hot-updater",
   "author": "gronxb <gron1gh1@gmail.com> (https://github.com/gronxb)",
   "peerDependencies": {
-    "@hot-updater/core": "*",
-    "@hot-updater/plugin-core": "*",
+    "@electric-sql/pglite": "*",
+    "@hot-updater/plugin-insights": "workspace:^",
+    "@hot-updater/protocol": "workspace:^",
+    "@hot-updater/plugin-core": "workspace:^",
+    "@hot-updater/server": "workspace:^",
     "execa": "*",
-    "vitest": "*"
+    "mysql2": "*",
+    "pg": "*",
+    "vitest": "^4.0.0"
+  },
+  "peerDependenciesMeta": {
+    "@electric-sql/pglite": {
+      "optional": true
+    },
+    "@hot-updater/plugin-insights": {
+      "optional": true
+    },
+    "@hot-updater/server": {
+      "optional": true
+    },
+    "mysql2": {
+      "optional": true
+    },
+    "pg": {
+      "optional": true
+    }
   },
   "devDependencies": {
-    "@hot-updater/core": "workspace:*",
+    "@electric-sql/pglite": "catalog:db",
+    "@hot-updater/plugin-insights": "workspace:*",
+    "@hot-updater/protocol": "workspace:*",
     "@hot-updater/js": "workspace:*",
     "@hot-updater/plugin-core": "workspace:*",
+    "@hot-updater/server": "workspace:*",
     "@types/node": "catalog:",
+    "@types/pg": "^8.11.10",
     "execa": "catalog:tools",
     "@typescript/native": "npm:typescript@7.0.2",
+    "mysql2": "catalog:db",
+    "pg": "catalog:db",
     "typescript": "npm:@typescript/typescript6@6.0.2",
     "vitest": "catalog:",
     "workspace-tools": "^0.41.7"
@@ -82,5 +119,8 @@
     "run-parallel": "1.2.0",
     "to-regex-range": "5.0.1",
     "workspace-tools": "0.41.7"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

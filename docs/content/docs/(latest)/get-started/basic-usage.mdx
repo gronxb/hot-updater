@@ -22,7 +22,7 @@ workspace directory.
 First [choose infrastructure](/docs/get-started/choose-provider), then follow
 [Install packages](/docs/get-started/installation) to install the
 `@hot-updater/react-native` SDK, `hot-updater` CLI, your selected build
-plugin and provider package. Complete all four package choices before init.
+adapter and provider package. Complete all four package choices before init.
 
 ### Step 2: Initialize your provider
 
@@ -51,7 +51,7 @@ Review the setup result:
 
 | Output | What to verify |
 | --- | --- |
-| `hot-updater.config.ts` | Selected build, storage, database and update strategy |
+| `hot-updater.config.ts` | Selected build, storage, database, the managed server's plugins, and update strategy |
 | `.env.hotupdater` | Local provider settings and registered `HOT_UPDATER_API_KEY`, kept private and ignored |
 | Update server base URL | The actual deployed endpoint, including a provider base path when required |
 | Remote resources | The selected account/project, database and storage match the local config |
@@ -74,14 +74,14 @@ call `checkForUpdate()`, await the selected update's `updateBundle()`, then
 reload at a deliberate point. Initialization alone does not check for updates.
 
 That page also configures the client URL/key, native and OTA build variables,
-build plugin, native loading, compatibility and test channel. The automatic
+build adapter, native loading, compatibility and test channel. The automatic
 wrapper remains an [optional alternative](/docs/get-started/app-setup#optional-automatic-wrapper).
 
 ## Build configuration
 
 The [build configuration](/docs/get-started/app-setup#build-configuration)
 section covers Bare, Rock and Expo. Keep its build setting alongside your
-provider's storage and database settings.
+provider's storage, database and plugins settings.
 
 ## Native code setup
 
@@ -111,8 +111,9 @@ the device. A successful upload alone does not complete onboarding.
 ### Monitor and manage updates
 
 Open the [Console](/docs/guides/console) and verify received
-[Insights](/docs/guides/insights) reports. Insights is enabled by default in the
-SDK; its guide explains reporting and opt-out.
+[Insights](/docs/guides/insights) reports. The app sends them with the
+[Insights plugin](/docs/react-native-api/insights); the guide explains setup
+and verification.
 
 ### Explore advanced features
 

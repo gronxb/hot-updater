@@ -1,6 +1,6 @@
 {
   "name": "@hot-updater/standalone",
-  "version": "1.0.0-rc.14",
+  "version": "1.0.0-rc.27",
   "type": "module",
   "description": "React Native OTA solution for self-hosted",
   "sideEffects": false,
@@ -43,15 +43,21 @@
     "access": "public"
   },
   "dependencies": {
-    "@hot-updater/core": "workspace:*",
+    "@hot-updater/protocol": "workspace:*",
     "@hot-updater/plugin-core": "workspace:*"
   },
   "devDependencies": {
     "mime": "2.6.0",
     "@types/mime": "^2.0.3",
+    "@hot-updater/test-utils": "workspace:*",
     "@types/node": "catalog:",
     "msw": "^2.7.0",
     "verkit": "catalog:",
     "vitest": "catalog:"
+  },
+  "nx": {
+    "implicitDependencies": [
+      "!@hot-updater/test-utils"
+    ]
   }
 }

@@ -24,7 +24,7 @@ const legacyHarnessPattern = new RegExp(
 );
 const controlServerPath = path.join(detoxDir, "control-server/controller.ts");
 const expectedScenarioModuleFiles = [
-  "bspatch-archive-to-diff-ota.ts",
+  "bspatch-builtin-to-diff-ota.ts",
   "bspatch-consecutive-diff-ota.ts",
   "bspatch-disabled-chain-rollback.ts",
   "bspatch-manifest-diff-fallback.ts",
@@ -46,6 +46,7 @@ const expectedScenarioModuleFiles = [
   "size-aware-artifact-selection.ts",
   "slow-old-artifact-after-newer-install.ts",
   "stale-catalog-after-newer-generation.ts",
+  "startup-hang-recovery.ts",
   "target-cohorts-only.ts",
   "target-cohorts-rollout-interaction.ts",
   "targeted-cohort-switchback.ts",

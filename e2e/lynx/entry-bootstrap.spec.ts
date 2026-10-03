@@ -28,7 +28,7 @@ vi.mock("../../examples/lynx/node_modules/@lynx-js/react/jsx-runtime", () => ({
   jsx: element,
   jsxs: element,
 }));
-vi.mock("../../packages/lynx/dist/index.mjs", () => ({
+vi.mock("@hot-updater/lynx", () => ({
   HotUpdater: {
     getLaunchConfiguration: vi.fn(async () => ({
       appBaseURL: "http://127.0.0.1:3014/hot-updater",
@@ -43,7 +43,7 @@ vi.mock("../../packages/lynx/dist/index.mjs", () => ({
     notifyAppReady: vi.fn(async () => ({ status: "READY" })),
   },
 }));
-vi.mock("../../packages/lynx/dist/navigation.mjs", () => ({
+vi.mock("@hot-updater/lynx/navigation", () => ({
   close: vi.fn(),
   navigate: vi.fn(),
 }));
@@ -128,7 +128,7 @@ describe("Lynx E2E page entry bootstrap", () => {
       configurable: true,
       value: fetchState,
     });
-    const { HotUpdater } = await import("../../packages/lynx/dist/index.mjs");
+    const { HotUpdater } = await import("@hot-updater/lynx");
     const effects = await loadEntry("main");
     effects[0]?.();
     await vi.advanceTimersByTimeAsync(2500);

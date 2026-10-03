@@ -1,10 +1,11 @@
 import { createHash } from "node:crypto";
 
+import { SPARKLING_NAVIGATION_PROVENANCE } from "@hot-updater/lynx/navigationProvenance";
+
 import {
   expectedRawDetailNativeFailure,
   MISSING_ASSET_RESPONSE_SHA256,
 } from "../../examples/lynx/scripts/public-matrix/raw-detail-rejection.mjs";
-import { SPARKLING_NAVIGATION_PROVENANCE } from "../../packages/lynx/src/navigationProvenance.ts";
 import {
   validateMatrixRuntimeJournalDiagnostics,
   validateNavigationStackBoundary,
@@ -1340,12 +1341,10 @@ function deltaDelivery(
     }
     return candidate;
   };
-  if (delivery.archiveFileUrl !== null) {
-    fail(`${at}.archiveFileUrl`, "expected no archive descriptor");
-  }
-  if (delivery.archiveFileHash !== null) {
-    fail(`${at}.archiveFileHash`, "expected no archive descriptor");
-  }
+  if (delivery.artifactProtocolVersion !== 1)
+    fail(`${at}.artifactProtocolVersion`, "expected manifest v1");
+  if (delivery.archiveUrl !== null)
+    absoluteUrl(delivery.archiveUrl, `${at}.archiveUrl`);
   absoluteUrl(delivery.deliveryArtifactUrl, `${at}.deliveryArtifactUrl`);
   absoluteUrl(delivery.manifestUrl, `${at}.manifestUrl`);
   const manifestSha256 = hash(delivery.manifestSha256, `${at}.manifestSha256`);
@@ -1564,9 +1563,10 @@ function rawDetailRejections(
         `${itemAt}.responseSha256`,
       );
     }
-    if (item.archiveFileUrl !== null || item.archiveFileHash !== null) {
-      fail(`${itemAt}.archiveFileUrl`, "expected no archive descriptor");
-    }
+    if (item.artifactProtocolVersion !== 1)
+      fail(`${itemAt}.artifactProtocolVersion`, "expected manifest v1");
+    if (item.archiveUrl !== null)
+      absoluteUrl(item.archiveUrl, `${itemAt}.archiveUrl`);
     boolean(item.archiveFallbackUsed, false, `${itemAt}.archiveFallbackUsed`);
     boolean(
       item.rejectedBeforeTransition,

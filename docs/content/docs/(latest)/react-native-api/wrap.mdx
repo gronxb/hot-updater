@@ -31,7 +31,7 @@ wrapper-managed staging/reload. For app-controlled check and apply timing,
 follow the [`init` custom flow](/docs/guides/custom-update).
 
 ```tsx
-import { HotUpdater } from "@hot-updater/react-native"; // [!code ++]
+import { HotUpdater, insights } from "@hot-updater/react-native"; // [!code ++]
 import { View, Text } from "react-native";
 
 function App() {
@@ -46,7 +46,7 @@ export default App; // [!code --]
 export default HotUpdater.wrap({ // [!code ++:9]
   baseURL: "<your-update-server-url>",
   updateStrategy: "appVersion", // or "fingerprint"
-  insights: true,
+  plugins: [insights()],
   // If you need to send request headers, you can use the `requestHeaders` option.
   requestHeaders: {
     "x-api-key": "<your-api-key>",
@@ -54,10 +54,11 @@ export default HotUpdater.wrap({ // [!code ++:9]
 })(App);
 ```
 
-Automatic app-ready transition and Bundle adoption Insights are enabled by
-default. Set `insights: false` to send no Insights events. The server routes
-remain available either way. See [Insights](/docs/guides/insights) for reporting
-and optional user identity.
+The [Insights plugin](/docs/react-native-api/insights) in `plugins` reports
+launches, downloads, and update results to [Insights](/docs/guides/insights).
+Leave it out to send no Insights reports. `plugins` takes any
+[client plugin](/docs/react-native-api/client-plugins); plugin ids must be
+unique.
 
 ### Manual updates
 
@@ -72,13 +73,13 @@ Configure the automatic update flow with `HotUpdater.wrap`.
 
 ### Common options
 
-| Option             | Type                                        | Required | Description                                                 |
-| ------------------ | ------------------------------------------- | -------- | ----------------------------------------------------------- |
-| `baseURL`          | `string \| (() => string \| Promise<string>)` | Yes      | Your client handler URL                                     |
-| `insights`         | `boolean`                                   | No       | Send app-ready and Bundle adoption events (default: true)   |
-| `requestHeaders`   | `Record<string, string>`                    | No       | Custom HTTP headers for update requests                     |
-| `requestTimeout`   | `number`                                    | No       | Request timeout in milliseconds (default: 5000)             |
-| `onNotifyAppReady` | `(result: NotifyAppReadyResult) => void`    | No       | Callback invoked after native launch verification finishes  |
+| Option             | Type                                          | Required | Description                                                                   |
+| ------------------ | --------------------------------------------- | -------- | ----------------------------------------------------------------------------- |
+| `baseURL`          | `string \| (() => string \| Promise<string>)` | Yes      | Your client handler URL                                                       |
+| `plugins`          | `HotUpdaterClientPlugin[]`                    | No       | [Client plugins](/docs/react-native-api/client-plugins), such as `insights()` |
+| `requestHeaders`   | `Record<string, string>`                      | No       | Custom HTTP headers for update requests and plugin requests                   |
+| `requestTimeout`   | `number`                                      | No       | Request timeout in milliseconds (default: 5000)                               |
+| `onNotifyAppReady` | `(result: NotifyAppReadyResult) => void`      | No       | Callback invoked after native launch verification finishes                    |
 
 `baseURL` is the only React Native transport configuration. It may resolve at
 runtime, but every resolved URL must expose the Hot Updater HTTP protocol.
@@ -116,8 +117,7 @@ Props:
 - `progress`: Download progress (0-1, e.g., for a progress bar)
 - `status`: Update state (`CHECK_FOR_UPDATE` or `UPDATING`)
 - `message`: Message from the server, or `null`
-- `artifactType`: `"archive"`, `"diff"`, or `null` before progress starts
-- `downloadedBytes` and `totalBytes`: Archive byte counts, when available
+- `artifactType`: `"diff"` or `null` before progress starts
 - `details`: Per-file diff progress, or `null`
 
 The progress fields have the same shape as
@@ -292,7 +292,7 @@ Example:
 
 ```tsx
 import { HotUpdater } from "@hot-updater/react-native";
-import { Alert } from "react-native";
+import App from "./App";
 
 export default HotUpdater.wrap({
   baseURL: "<your-update-server-url>",
@@ -314,7 +314,7 @@ and resolves the artifact when staging is needed. See
 
 Point `baseURL` at a server exposing the standard Hot Updater HTTP protocol.
 A GraphQL or RPC backend needs an HTTP adapter or proxy for these routes;
-see the [Release Catalog contract](/docs/database-plugins/release-catalog-contract).
+see the [Release Catalog contract](/docs/concepts/release-catalog-contract).
 
 ## Flag behavior
 

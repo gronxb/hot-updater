@@ -1981,3 +1981,67 @@ Each result must identify the source commit, native binary/runtime identity,
 framework, platform, command, and retained evidence. An aggregate test count,
 current README claim, dry run, CI success, or guessed native state cannot replace
 an absent acceptance result.
+
+## 2026-10-03 upstream synchronization decision
+
+The implementation is being reconciled with `origin/next` at
+`50a9ccc32`. This section supersedes earlier wire-format and package-location
+assumptions; it does not waive any integrity, recovery, navigation, or framework
+neutrality acceptance gate.
+
+- Device-safe contracts belong to `@hot-updater/protocol`. Build adapters and
+  server extensions use the public `@hot-updater/plugin-core` API. The common
+  CLI, server, and protocol must not infer Hermes, Metro, React Native, or Expo
+  policy from filenames or installed dependencies. Build adapters declare the
+  exact artifact inventory, download representation, and `patchAssetPath`.
+- Follow the current manifest-v1 delivery contract: `artifactProtocolVersion: 1`,
+  an authenticated manifest, a complete `assets` map, and an optional
+  `archiveUrl`. Every target file has an original descriptor; patches optimize
+  that same authenticated target. Native validates exact manifest coverage,
+  reuses only verified local bytes, and verifies reconstructed files before
+  atomic activation. Bulk transport is `bundle.tar.br`, authenticated by the
+  manifest's archive hash and compressed/decoded sizes. Do not restore removed
+  legacy archive-only response fields or database columns.
+- The previous ZIP/tar.gz matrix is historical evidence. New acceptance must
+  exercise manifest-v1 on the current server and CLI, including real BSDIFF,
+  changed secondary pages, corruption/missing-file rejection, resource graph
+  integrity, and generation-wide runtime recreation. The consumer chooses
+  transport using the authenticated costs; a passing delta case must prove an
+  actual native patch application, rather than infer it from a published patch.
+- Preserve Sparkling's generated application structure. All runtime adaptation
+  remains package-owned. The sole agreed compatibility exception remains the
+  pinned Fresco adapter; retain correct ELF/ZIP 16 KB alignment.
+- Adopt the current server/database engine APIs and keep the prerelease schema
+  generation at `1.0.0`. Shared hosting still uses isolated delivery projects;
+  framework identity is not a new database enum.
+- Adopt the current shared default scenario manifest, excluding only RN legacy
+  metadata migration and adding the Sparkling multi-page OTA scenario. New
+  upstream scenarios must be implemented meaningfully for Lynx, not silently
+  omitted to retain the previous count.
+
+The upstream merge and protocol adaptation require fresh native builds and
+full E2E evidence. Earlier completed or partial runs do not certify the merged
+source. The cancelled September 29 shared run recorded 40 passing scenarios,
+one failure, and eleven without a result; see
+`evidence/shared-e2e-4uc5ag-cancelled.json`.
+
+The `next` core deletion contract supersedes the earlier patch-reference refusal:
+Releases still prevent Bundle deletion; deleting an unreferenced Bundle cascades
+its incoming and outgoing patch rows. Original file descriptors keep surviving
+targets installable. Patch publication must upsert one base atomically without
+losing another concurrently published base. No second prerelease migration or
+framework discriminator is introduced.
+
+An offered `archiveUrl` is permitted in every manifest-v1 response, including a
+response with patches. Delta acceptance must reject evidence of an actual bulk
+installation and require the native patch/reconstruction transaction; absence
+of the optional URL is no longer an acceptance criterion. Corrupt manifest
+bytes must fail before any bulk or file fallback. A failed authenticated bulk
+transfer may retry the originals covered by the same manifest.
+
+The current shared default has 27 scenarios. Lynx excludes only RN legacy
+metadata migration and adds its Sparkling multi-page scenario, retaining 27
+per OS and 54 full-platform results. A first-update reuse result must correlate
+the installed Lynx embedded image/font hashes, the target manifest, zero network
+bytes for reused files, and the final native payload. An RN builtin-index file
+is not an appropriate Lynx proof source.

@@ -17,8 +17,8 @@ custom or manual update flow.
 
 Use the client handler URL and client API key produced by your infrastructure
 setup. For a custom server, follow
-[API key authentication](/docs/custom/api-key-authentication) to configure the
-client access policy and create a key.
+[API key authentication](/docs/custom/api-key-authentication) to add the
+`apiKeys()` plugin and create a key.
 
 ```tsx
 import { HotUpdater } from "@hot-updater/react-native";
@@ -36,16 +36,34 @@ HotUpdater.init({
 
 Point `baseURL` at the client handler root, for example
 `https://example.com/hot-updater`. Never embed the admin bearer token in a
-React Native app. If `clientAccess` uses the `api-key` policy, send only the
-API key using `x-api-key` as shown above.
+React Native app. When the server runs the `apiKeys()` plugin, send only the
+API key, in `x-api-key` as shown above or in the plugin's configured
+`headerName`.
 
-Automatic app-ready transition and Bundle adoption Insights are enabled by
-default. Set `insights: false` to send no Insights events. The server routes
-remain available either way. See [Insights](/docs/guides/insights) for report
-contents, optional user identity, and verification.
+To report launches, downloads, and update results to
+[Insights](/docs/guides/insights), add the
+[Insights plugin](/docs/react-native-api/insights) to `plugins`:
+
+```tsx
+import { HotUpdater } from "@hot-updater/react-native"; // [!code --]
+import { HotUpdater, insights } from "@hot-updater/react-native"; // [!code ++]
+
+HotUpdater.init({
+  baseURL: "<your-update-server-url>",
+  requestHeaders: {
+    "x-api-key": "<your-api-key>",
+  },
+  plugins: [insights()], // [!code ++]
+});
+```
+
+Without it, the app sends no Insights reports. `plugins` takes any
+[client plugin](/docs/react-native-api/client-plugins); plugin ids must be
+unique, and `init` throws when two plugins share one.
 
 `baseURL` can also be resolved at runtime. The function may return a string or
-a promise, and Hot Updater calls it before each update check.
+a promise, and Hot Updater calls it before each update check and plugin
+request.
 
 ```tsx
 HotUpdater.init({
@@ -85,14 +103,14 @@ async function prepareUpdate() {
 
 ## Configuration reference
 
-| Option             | Type                                        | Required | Description                                                      |
-| ------------------ | ------------------------------------------- | -------- | ---------------------------------------------------------------- |
-| `baseURL`          | `string \| (() => string \| Promise<string>)` | Yes      | Your client handler URL or runtime URL function                  |
-| `insights`         | `boolean`                                   | No       | Send app-ready and Bundle adoption events (default: true)        |
-| `requestHeaders`   | `Record<string, string>`                    | No       | Shared headers used by update checks and app-ready notifications |
-| `requestTimeout`   | `number`                                    | No       | Request timeout in milliseconds (default: 5000)                  |
-| `onNotifyAppReady` | `(result: NotifyAppReadyResult) => void`    | No       | Callback invoked after native launch verification finishes       |
-| `onError`          | `(error) => void`                           | No       | Default error handler for initialization and update checks       |
+| Option             | Type                                          | Required | Description                                                                          |
+| ------------------ | --------------------------------------------- | -------- | ------------------------------------------------------------------------------------ |
+| `baseURL`          | `string \| (() => string \| Promise<string>)` | Yes      | Your client handler URL or runtime URL function                                      |
+| `plugins`          | `HotUpdaterClientPlugin[]`                    | No       | [Client plugins](/docs/react-native-api/client-plugins), such as `insights()`        |
+| `requestHeaders`   | `Record<string, string>`                      | No       | Shared headers used by update checks and plugin requests                             |
+| `requestTimeout`   | `number`                                      | No       | Request timeout in milliseconds (default: 5000)                                      |
+| `onNotifyAppReady` | `(result: NotifyAppReadyResult) => void`      | No       | Callback invoked after native launch verification finishes                           |
+| `onError`          | `(error) => void`                             | No       | Default error handler for initialization, update checks, and plugin errors           |
 
 `baseURL` is the only React Native transport configuration. A GraphQL, RPC,
 or other custom backend must expose the Hot Updater HTTP protocol through an
@@ -107,7 +125,7 @@ confirm Insights delivery to the server.
 `HotUpdater.init` for that specific update check.
 
 If the server intentionally uses the unauthenticated
-`clientAccess: { type: "public" }` alternative, omit `x-api-key` from
+`clientAccess: "public"` alternative, omit `x-api-key` from
 `requestHeaders`.
 
 ## Recommended flow

@@ -1,7 +1,7 @@
 import {
   MAX_COMPILED_CATALOG_BYTES,
   MAX_UPDATE_ARTIFACT_RESPONSE_BYTES,
-} from "@hot-updater/core";
+} from "@hot-updater/protocol";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createHttpClient } from "./httpClient";
@@ -41,9 +41,10 @@ const changedAsset = {
   },
 };
 const manifestArtifact = {
+  artifactProtocolVersion: 1,
   manifestUrl: "/storage/manifest.json",
   manifestFileHash: manifestSignature,
-  changedAssets: { "native/entry.bin": changedAsset },
+  assets: { "native/entry.bin": changedAsset },
 };
 const maxResponseBytes = MAX_COMPILED_CATALOG_BYTES * 2 + 4096;
 
@@ -57,11 +58,11 @@ function respond(value: unknown) {
 
 function artifactResponseBody(byteLength: number): string {
   const artifact = {
-    fileUrl: "/storage/archive.zip",
-    fileHash: archiveSignature,
+    artifactProtocolVersion: 1,
+    archiveUrl: "/storage/bundle.tar.br",
     manifestUrl: "/storage/manifest.json",
     manifestFileHash: manifestSignature,
-    changedAssets: {
+    assets: {
       "native/entry.bin": {
         fileHash: "b".repeat(64),
         file: {
@@ -75,9 +76,7 @@ function artifactResponseBody(byteLength: number): string {
   const paddingLength = byteLength - JSON.stringify(artifact).length;
   if (paddingLength < 0)
     throw new Error("Artifact response budget is too low.");
-  artifact.changedAssets["native/entry.bin"].file.url += "x".repeat(
-    paddingLength,
-  );
+  artifact.assets["native/entry.bin"].file.url += "x".repeat(paddingLength);
   const body = JSON.stringify(artifact);
   if (body.length !== byteLength) throw new Error("Invalid artifact fixture.");
   return body;
@@ -167,32 +166,29 @@ describe("Lynx delivery HTTP contract", () => {
 
   it.each([
     [
-      "/storage/bundle.tar.gz",
-      "https://updates.test/api/storage/bundle.tar.gz",
+      "/storage/bundle.tar.br",
+      "https://updates.test/api/storage/bundle.tar.br",
     ],
     [
       "https://objects.test/bundle?signature=value",
       "https://objects.test/bundle?signature=value",
     ],
   ])(
-    "resolves supported archive URL %s without changing signed hashes",
-    async (fileUrl, expected) => {
-      respond({
-        fileUrl,
-        fileHash: archiveSignature,
-        manifestFileHash: manifestSignature,
-      });
+    "resolves the optional archive URL %s without changing manifest authority",
+    async (archiveUrl, expected) => {
+      const fetch = respond({ ...manifestArtifact, archiveUrl });
       const result = await createHttpClient({
         baseURL: "https://updates.test/api",
-      }).resolveArtifact("target", "running");
-      expect(result).toEqual({
-        bundleId: "target",
-        fileUrl: expected,
-        fileHash: archiveSignature,
-        manifestUrl: null,
-        manifestFileHash: manifestSignature,
-        changedAssets: null,
-      });
+      }).resolveArtifact("target", baseBundleId);
+      expect(result.archiveUrl).toBe(expected);
+      expect(result.manifestFileHash).toBe(manifestSignature);
+      expect(result.assets["native/entry.bin"].patch?.baseBundleId).toBe(
+        baseBundleId,
+      );
+      expect(fetch).toHaveBeenCalledWith(
+        `https://updates.test/api/artifacts/v1/target/from/${baseBundleId}`,
+        expect.anything(),
+      );
     },
   );
 
@@ -207,11 +203,11 @@ describe("Lynx delivery HTTP contract", () => {
       baseURL: "https://updates.test",
     }).resolveArtifact("target", baseBundleId);
 
-    expect(result.fileUrl).toBeNull();
+    expect(result).not.toHaveProperty("fileUrl");
     expect(result.manifestUrl).toBe(
       "https://updates.test/storage/manifest.json",
     );
-    expect(result.changedAssets?.["native/entry.bin"]?.file?.url).toMatch(
+    expect(result.assets?.["native/entry.bin"]?.file?.url).toMatch(
       /^https:\/\/objects\.test\/native-entry\?padding=x+$/,
     );
   });
@@ -243,8 +239,8 @@ describe("Lynx delivery HTTP contract", () => {
     "https://objects.test\\@other.test/archive",
     "https://objects.test:65536/archive",
     "https://objects.test/archive\nother",
-  ])("rejects an unsupported artifact URL %s", async (fileUrl) => {
-    respond({ fileUrl, fileHash: "a".repeat(64) });
+  ])("rejects an unsupported artifact URL %s", async (archiveUrl) => {
+    respond({ ...manifestArtifact, archiveUrl });
     await expect(
       createHttpClient({ baseURL: "https://updates.test" }).resolveArtifact(
         "target",
@@ -253,26 +249,25 @@ describe("Lynx delivery HTTP contract", () => {
     ).rejects.toMatchObject({ code: "INVALID_RESPONSE" });
   });
 
-  it("does not invent a manifest hash for an archive-only server response", async () => {
+  it("rejects the removed archive-only response", async () => {
     respond({
       fileUrl: "https://objects.test/archive",
       fileHash: "a".repeat(64),
     });
-    expect(
-      await createHttpClient({
-        baseURL: "https://updates.test",
-      }).resolveArtifact("target", "running"),
-    ).toMatchObject({ manifestFileHash: null });
+    await expect(
+      createHttpClient({ baseURL: "https://updates.test" }).resolveArtifact(
+        "target",
+        baseBundleId,
+      ),
+    ).rejects.toMatchObject({ code: "INVALID_RESPONSE" });
   });
 
   it.each([false, true])(
-    "drops archive fallback when a complete changed-asset update is present (archive=%s)",
+    "preserves the optional archive with the complete manifest inventory (archive=%s)",
     async (withArchive) => {
       respond({
         ...manifestArtifact,
-        ...(withArchive
-          ? { fileUrl: "/storage/archive.zip", fileHash: archiveSignature }
-          : {}),
+        ...(withArchive ? { archiveUrl: "/storage/bundle.tar.br" } : {}),
       });
       // Background scripting does not require a browser URL implementation.
       vi.stubGlobal("URL", undefined);
@@ -282,11 +277,13 @@ describe("Lynx delivery HTTP contract", () => {
         }).resolveArtifact("target", baseBundleId),
       ).resolves.toEqual({
         bundleId: "target",
-        fileUrl: null,
-        fileHash: null,
+        artifactProtocolVersion: 1,
+        ...(withArchive
+          ? { archiveUrl: "https://updates.test/api/storage/bundle.tar.br" }
+          : {}),
         manifestUrl: "https://updates.test/api/storage/manifest.json",
         manifestFileHash: manifestSignature,
-        changedAssets: {
+        assets: {
           "native/entry.bin": {
             ...changedAsset,
             file: {
@@ -299,58 +296,33 @@ describe("Lynx delivery HTTP contract", () => {
     },
   );
 
-  it("accepts the exact server manifest-only DTO with file-only and patch-only assets", async () => {
+  it("requires an original file even when a patch is provided", async () => {
     respond({
-      fileUrl: null,
-      fileHash: null,
-      manifestUrl: "/storage/manifest.json",
-      manifestFileHash: manifestSignature,
-      changedAssets: {
-        "native/file.bin": {
-          fileHash: "d".repeat(64),
-          file: { url: "/storage/file.bin", compression: null },
-          patch: null,
-        },
-        "native/patch.bin": {
-          fileHash: "e".repeat(64),
-          file: null,
-          patch: changedAsset.patch,
-        },
-      },
+      ...manifestArtifact,
+      assets: { "native/entry.bin": { ...changedAsset, file: null } },
     });
-
     await expect(
       createHttpClient({ baseURL: "https://updates.test" }).resolveArtifact(
         "target",
         baseBundleId,
       ),
-    ).resolves.toEqual({
-      bundleId: "target",
-      fileUrl: null,
-      fileHash: null,
-      manifestUrl: "https://updates.test/storage/manifest.json",
-      manifestFileHash: manifestSignature,
-      changedAssets: {
-        "native/file.bin": {
-          fileHash: "d".repeat(64),
-          file: {
-            url: "https://updates.test/storage/file.bin",
-            compression: null,
-          },
-          patch: null,
-        },
-        "native/patch.bin": {
-          fileHash: "e".repeat(64),
-          file: null,
-          patch: changedAsset.patch,
-        },
-      },
-    });
+    ).rejects.toMatchObject({ code: "INVALID_RESPONSE" });
   });
 
   it.each([
-    {},
-    { "native/entry.bin": { ...changedAsset, file: null } },
+    {
+      "native/entry.bin": {
+        fileHash: changedAsset.fileHash,
+        file: changedAsset.file,
+      },
+    },
+    {
+      "native/entry.bin": {
+        ...changedAsset,
+        file: { url: "/storage/raw-entry" },
+        patch: undefined,
+      },
+    },
     {
       "assets/empty.txt": {
         fileHash: "d".repeat(64),
@@ -360,15 +332,13 @@ describe("Lynx delivery HTTP contract", () => {
     },
   ])(
     "accepts manifest updates with reusable or independently downloadable assets: %j",
-    async (changedAssets) => {
-      respond({ ...manifestArtifact, changedAssets });
+    async (assets) => {
+      respond({ ...manifestArtifact, assets });
       const result = await createHttpClient({
         baseURL: "https://updates.test",
       }).resolveArtifact("target", baseBundleId);
-      expect(Object.keys(result.changedAssets!)).toEqual(
-        Object.keys(changedAssets),
-      );
-      expect(result.fileUrl).toBeNull();
+      expect(Object.keys(result.assets!)).toEqual(Object.keys(assets));
+      expect(result).not.toHaveProperty("fileUrl");
     },
   );
 
@@ -386,9 +356,18 @@ describe("Lynx delivery HTTP contract", () => {
     ],
     ["missing manifest hash", { ...manifestArtifact, manifestFileHash: null }],
     ["missing manifest URL", { ...manifestArtifact, manifestUrl: null }],
-    ["missing changed map", { ...manifestArtifact, changedAssets: null }],
-    ["array changed map", { ...manifestArtifact, changedAssets: [] }],
+    ["missing changed map", { ...manifestArtifact, assets: null }],
+    ["array changed map", { ...manifestArtifact, assets: [] }],
     ["no artifact", {}],
+    ["empty target map", { ...manifestArtifact, assets: {} }],
+    [
+      "missing protocol version",
+      { ...manifestArtifact, artifactProtocolVersion: undefined },
+    ],
+    [
+      "unsupported protocol version",
+      { ...manifestArtifact, artifactProtocolVersion: 2 },
+    ],
   ])("rejects %s", async (_name, artifact) => {
     respond(artifact);
     await expect(
@@ -410,16 +389,8 @@ describe("Lynx delivery HTTP contract", () => {
       { fileHash: "b".repeat(64), patch: changedAsset.patch },
     ],
     [
-      "missing explicit patch field",
-      { fileHash: "b".repeat(64), file: changedAsset.file },
-    ],
-    [
       "unsupported file compression",
       { ...changedAsset, file: { ...changedAsset.file, compression: "gzip" } },
-    ],
-    [
-      "missing explicit file compression",
-      { ...changedAsset, file: { url: changedAsset.file.url } },
     ],
     [
       "local file URL",
@@ -465,9 +436,8 @@ describe("Lynx delivery HTTP contract", () => {
     async (_name, asset) => {
       respond({
         ...manifestArtifact,
-        fileUrl: "/storage/archive.zip",
-        fileHash: archiveSignature,
-        changedAssets: { "native/entry.bin": asset },
+        archiveUrl: "/storage/bundle.tar.br",
+        assets: { "native/entry.bin": asset },
       });
       await expect(
         createHttpClient({ baseURL: "https://updates.test" }).resolveArtifact(
@@ -489,7 +459,7 @@ describe("Lynx delivery HTTP contract", () => {
   ])("rejects noncanonical changed asset path %j", async (assetPath) => {
     respond({
       ...manifestArtifact,
-      changedAssets: { [assetPath]: changedAsset },
+      assets: { [assetPath]: changedAsset },
     });
     await expect(
       createHttpClient({ baseURL: "https://updates.test" }).resolveArtifact(

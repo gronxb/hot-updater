@@ -1,24 +1,25 @@
 import {
+  assembleServer,
   colors,
   confirmInitInputPersistence,
   ensureInstallPackages,
-  formatApiKeyNote,
   getHotUpdaterInitInputEnv,
   getInitProviderEnvVars,
   getInitProviderTextPromptValues,
   link,
   makeEnv,
   p,
+  printAppSetup,
+  provisionClientCredential,
+  type ProvisionedClientCredential,
   readHotUpdaterInitEnv,
   type RunInitOptions,
-  transformTemplate,
-  writeHotUpdaterConfig,
+  writeHotUpdaterFiles,
 } from "@hot-updater/cli-tools";
-import type { ApiKeyModel } from "@hot-updater/plugin-core";
-import { provisionApiKey } from "@hot-updater/server";
 import { execa } from "execa";
 
-import { dynamoDB } from "../src/dynamoDB";
+import { dynamoDB, migrateDynamoDB } from "../src/dynamoDB";
+import { plugins } from "../src/plugins";
 import { resolveAwsAuth } from "./awsAuth";
 import { getAwsV1SsmParameterName } from "./awsInfrastructureNames";
 import {
@@ -37,7 +38,7 @@ import { LambdaEdgeDeployer } from "./lambdaEdge";
 import { type AwsRegion, regionLocationMap } from "./regionLocationMap";
 import { S3Manager } from "./s3";
 import { SSMKeyPairManager } from "./ssm";
-import { getConfigScaffold, SOURCE_TEMPLATE } from "./templates";
+import { getConfigScaffold } from "./templates";
 
 const checkIfAwsCliInstalled = async () => {
   try {
@@ -63,18 +64,8 @@ export const prepareDynamoDBDeployment = async (input: {
 }): Promise<void> => {
   const dynamodbManager = new DynamoDBManager(input.region, input.credentials);
   await dynamodbManager.ensureTable(input.tableName);
-};
-
-export const prepareDynamoDBApiKey = async (input: {
-  readonly apiKeys: ApiKeyModel;
-  readonly existingApiKey?: string;
-}): Promise<string> => {
-  const created = await provisionApiKey({
-    apiKeys: input.apiKeys,
-    existingApiKey: input.existingApiKey,
-    name: "AWS init",
-  });
-  return created.apiKey;
+  // The plugin reads nothing until the table's schema settings exist.
+  await migrateDynamoDB(input, plugins);
 };
 
 export const runInit = async ({ build, envFile }: RunInitOptions) => {
@@ -338,20 +329,25 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
     region: bucketRegion,
     tableName: resolvedDynamoDBTableName,
   });
-  const databasePlugin = dynamoDB({
+  const database = dynamoDB({
     credentials,
     region: bucketRegion,
     tableName: resolvedDynamoDBTableName,
   });
-  let apiKey: string;
+  // The managed server, as the function runs it: the package's plugins on the table.
+  const server = assembleServer({ database, plugins });
+  // The app's credential, through the managed server's plugins, on the table they read.
+  let credential: ProvisionedClientCredential | undefined;
   try {
-    apiKey = await prepareDynamoDBApiKey({
-      apiKeys: databasePlugin.models.apiKeys,
-      existingApiKey: providerEnv.HOT_UPDATER_API_KEY,
+    credential = await provisionClientCredential(server, {
+      env: providerEnv,
+      name: "AWS init",
     });
-    await makeEnv({ HOT_UPDATER_API_KEY: apiKey });
+    if (credential !== undefined) {
+      await makeEnv({ [credential.env]: credential.value });
+    }
   } finally {
-    await databasePlugin.dispose?.();
+    await database.dispose?.();
   }
   p.log.info(
     `Using DynamoDB table: ${resolvedDynamoDBTableName} (${bucketRegion})`,
@@ -395,6 +391,7 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
     await cloudFrontManager.createOrUpdateDistribution({
       keyGroupId,
       bucketName,
+      clientHeaders: server.clientAuth?.varyHeaders ?? [],
       distribution: selectedDistribution,
       functionArn,
     });
@@ -407,11 +404,6 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
     distributionId,
     accountId,
   });
-
-  // Create configuration file
-  const configWriteResult = await writeHotUpdaterConfig(
-    getConfigScaffold(build, configAuthMode),
-  );
 
   await makeEnv({
     [AWS_INIT_PROVIDER.inputs.distributionId.envKey]: distributionId,
@@ -429,28 +421,22 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
   }
 
   p.log.success("Generated '.env.hotupdater' file with AWS settings.");
-  if (configWriteResult.status === "created") {
-    p.log.success("Generated 'hot-updater.config.ts' file with AWS settings.");
-  } else if (configWriteResult.status === "merged") {
-    p.log.success("Updated 'hot-updater.config.ts' file with AWS settings.");
-  } else {
-    p.log.warn(
-      `Kept existing 'hot-updater.config.ts' unchanged: ${configWriteResult.reason}`,
-    );
-  }
+  await writeHotUpdaterFiles(getConfigScaffold(build, configAuthMode), {
+    cwd: process.cwd(),
+    settings: "AWS",
+  });
 
-  // Provide API URL for client use (using CloudFront domain)
-  const sourceUrl = `https://${distributionDomain}`;
-  p.note(
-    transformTemplate(SOURCE_TEMPLATE, {
-      apiKey: JSON.stringify(apiKey),
-      source: JSON.stringify(sourceUrl),
-    }),
-  );
-  p.note(formatApiKeyNote(apiKey), "API Key");
-  p.log.message("Store this API key separately in a secure place.");
+  // The app's server URL is the CloudFront domain.
+  printAppSetup({
+    ...(build.clientModule ? { sdkModule: build.clientModule } : {}),
+    baseURL: `https://${distributionDomain}`,
+    ...(credential === undefined ? {} : { credential }),
+    clientPlugins: server.clientPlugins,
+  });
   p.log.message(
-    `Next step: ${link("https://hot-updater.dev/docs/managed/aws#step-4-changeenv-file-optional")}`,
+    `Next step: ${link(
+      "https://hot-updater.dev/docs/managed/aws#step-3-add-hotupdater-to-your-project",
+    )}`,
   );
   p.log.success("Done! 🎉");
 };
@@ -459,6 +445,8 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
 export {
   buildDynamoDBCreateTableInput,
   buildDynamoDBBackupInput,
+  buildDynamoDBSchemaSettingsInput,
+  buildDynamoDBTimeToLiveInput,
 } from "./dynamodb";
 export {
   buildDynamoDBPolicy,
@@ -466,3 +454,6 @@ export {
   buildSsmPolicy,
   LAMBDA_EDGE_TRUST_POLICY,
 } from "./iam";
+
+// What init asks for and checks before `runInit`.
+export { initProvider } from "./init/index";

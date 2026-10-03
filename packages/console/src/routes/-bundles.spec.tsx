@@ -14,10 +14,23 @@ const mocks = vi.hoisted(() => ({
   activity: vi.fn(),
   navigate: vi.fn(),
   search: vi.fn(),
+  insightsAnalytics: true,
 }));
 
 vi.mock("@/lib/bundle-activity", () => ({
   useBundleActivityQuery: mocks.activity,
+}));
+vi.mock("@/lib/console-features-api", () => ({
+  useConsoleFeatures: () => ({
+    data: {
+      features: {
+        insights: true,
+        insightsAnalytics: mocks.insightsAnalytics,
+        apiKeys: true,
+      },
+      remote: false,
+    },
+  }),
 }));
 
 vi.mock("@tanstack/react-router", () => ({
@@ -112,14 +125,7 @@ vi.mock("@/lib/api", () => ({
     ],
   }),
   useReleasesQuery: () => ({
-    data: {
-      data: releases,
-      pagination: {
-        currentPage: 1,
-        hasNextPage: false,
-        hasPreviousPage: false,
-      },
-    },
+    data: { data: releases },
     error: null,
     isError: false,
     isPending: false,
@@ -138,12 +144,18 @@ describe("BundlesPage", () => {
       mocks.isMobile.mockReturnValue(mobile);
       render(<BundlesPage />);
       const summary = screen.getByRole("link", {
-        name: /Downloads 107Known launches 789Known crashes 2/,
+        name: /Downloads 107 Active days 789 Known crashes 2/,
       });
-      expect(within(summary).getByText("Downloads 107")).toBeDefined();
-      expect(within(summary).getByText("Known launches 789")).toBeDefined();
-      expect(within(summary).getByText(/Known crashes 2/)).toBeDefined();
-      expect(within(summary).getByText(/0\.25%/)).toBeDefined();
+      expect(
+        within(summary)
+          .getAllByRole("term")
+          .map((term) => term.textContent),
+      ).toEqual(["Downloads", "Active days", "Known crashes"]);
+      expect(
+        within(summary)
+          .getAllByRole("definition")
+          .map((value) => value.textContent),
+      ).toEqual(["107", "789", "2(0.25%)"]);
       expect(mocks.activity).toHaveBeenCalledWith([
         {
           platform: "ios",
@@ -153,6 +165,34 @@ describe("BundlesPage", () => {
       ]);
     },
   );
+  it.each([false, true])(
+    "leaves release insights out where the console does not read them (mobile: %s)",
+    (mobile) => {
+      mocks.isMobile.mockReturnValue(mobile);
+      mocks.insightsAnalytics = false;
+      render(<BundlesPage />);
+
+      expect(screen.queryByText("Insights")).toBeNull();
+      expect(screen.queryByText(/Downloads/)).toBeNull();
+      expect(
+        screen.queryByLabelText("Release insights unavailable"),
+      ).toBeNull();
+      expect(mocks.activity).not.toHaveBeenCalled();
+      expect(screen.getByText("release-1")).toBeDefined();
+      if (!mobile) {
+        expect(screen.getAllByRole("columnheader")).toHaveLength(10);
+      }
+    },
+  );
+  it("explains active days beside release insights", async () => {
+    render(<BundlesPage />);
+    fireEvent.click(
+      screen.getByRole("button", { name: "About release insight metrics" }),
+    );
+    expect((await screen.findByRole("tooltip")).textContent).toContain(
+      "Active days count each installation once for each UTC day it launched this release.",
+    );
+  });
   it("keeps bundle management usable when activity is unavailable", () => {
     mocks.activity.mockReturnValue({ error: new Error("Offline") });
     render(<BundlesPage />);
@@ -166,7 +206,7 @@ describe("BundlesPage", () => {
       data: {
         "release-1": {
           downloads: 107,
-          launches: 789,
+          activeDays: 789,
           failedLaunches: 2,
           measuredAtMs: Date.UTC(2026, 6, 19),
           coverage: { kind: "complete", sinceMs: 0 },
@@ -176,6 +216,7 @@ describe("BundlesPage", () => {
     releases = [release];
     mocks.isMobile.mockReturnValue(false);
     mocks.search.mockReturnValue({});
+    mocks.insightsAnalytics = true;
     release.currentlyUnreachable = false;
   });
 
@@ -301,25 +342,19 @@ describe("BundlesPage", () => {
     },
   );
 
-  it("keeps the main Console filters and pagination summary", () => {
+  it("filters by the sets the release indexes serve and pages by key", () => {
     render(<BundlesPage />);
 
-    const targetAppVersion = screen.getByLabelText("Target app version");
-    fireEvent.change(targetAppVersion, { target: { value: "1.2.x" } });
-    fireEvent.keyDown(targetAppVersion, { key: "Enter" });
-
-    expect(mocks.navigate).toHaveBeenCalledWith({
-      resetScroll: true,
-      search: { targetAppVersion: "1.2.x" },
-      to: "/",
-    });
+    // Target versions filter only through a scope.
+    expect(screen.queryByLabelText("Target app version")).toBeNull();
     expect(
       screen.getByText((_, node) =>
-        Boolean(node?.textContent === "Showing 1 to 1 entries"),
+        Boolean(node?.textContent === "1 entry, newest first"),
       ),
     ).toBeDefined();
+    expect(screen.queryByText(/^Page /)).toBeNull();
     expect(
-      screen.getByText((_, node) => Boolean(node?.textContent === "Page 1")),
-    ).toBeDefined();
+      screen.getByRole("button", { name: "Next" }).hasAttribute("disabled"),
+    ).toBe(true);
   });
 });

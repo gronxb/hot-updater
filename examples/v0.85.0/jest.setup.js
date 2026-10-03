@@ -34,9 +34,13 @@ jest.mock("@hot-updater/react-native", () => ({
     resetChannel: jest.fn(() => Promise.resolve(true)),
     setCohort: jest.fn(),
     setReloadBehavior: jest.fn(),
-    setUser: jest.fn(),
     wrap: jest.fn(() => (Component) => Component),
   },
+  insights: jest.fn(() => ({
+    id: "insights",
+    setup: jest.fn(),
+    setUser: jest.fn(),
+  })),
   useHotUpdaterStore: jest.fn((selector = (state) => state) =>
     selector(defaultState),
   ),

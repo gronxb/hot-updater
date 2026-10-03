@@ -4,9 +4,10 @@ import path from "path";
 import { compileHermes } from "@hot-updater/bare";
 import { log, readBundleSigningPublicKeyFile } from "@hot-updater/cli-tools";
 import type {
-  BasePluginArgs,
-  BuildPlugin,
-  BuildPluginConfig,
+  BuildAdapterArgs,
+  BuildAdapter,
+  BuildAdapterConfig,
+  Platform,
 } from "@hot-updater/plugin-core";
 import {
   createReactNativeDoctor,
@@ -19,13 +20,16 @@ import { uuidv7 } from "uuidv7";
 
 import { getConfig } from "./expoConfig";
 import { createExpoFingerprint } from "./fingerprint";
-import { validateExpoProject } from "./projectValidation";
+import {
+  getExpoNativeFileRepairBlockReason,
+  validateExpoProject,
+} from "./projectValidation";
 import { resolveMain } from "./resolveMain";
 import { runExpoPrebuild } from "./util/prebuild";
 
 interface RunBundleArgs {
   cwd: string;
-  platform: string;
+  platform: Platform;
   buildPath: string;
   sourcemap: boolean;
   resetCache: boolean;
@@ -89,24 +93,14 @@ export const getExpoBundleSigningPublicKey = async (
   };
 };
 
-const isHermesEnabled = (cwd: string, platform: string): boolean => {
-  try {
-    const appJsonPath = path.join(cwd, "app.json");
-    const { expo } = JSON.parse(fs.readFileSync(appJsonPath, "utf-8"));
-
-    const platformJsEngine = expo?.[platform]?.jsEngine;
-    const commonJsEngine = expo?.jsEngine;
-
-    if (platformJsEngine !== undefined) {
-      return platformJsEngine === "hermes";
-    }
-
-    if (commonJsEngine !== undefined) {
-      return commonJsEngine === "hermes";
-    }
-  } catch {}
-
-  return true;
+const isHermesEnabled = async (
+  cwd: string,
+  platform: Platform,
+): Promise<boolean> => {
+  const { exp } = await getConfig(cwd, {
+    skipSDKVersionRequirement: true,
+  });
+  return (exp[platform]?.jsEngine ?? exp.jsEngine ?? "hermes") === "hermes";
 };
 
 const runBundle = async ({
@@ -120,7 +114,7 @@ const runBundle = async ({
   const bundleOutput = path.join(buildPath, `${filename}.bundle`);
   const entryFile = resolveMain(cwd);
   const bundleId = uuidv7();
-  const enableHermes = isHermesEnabled(cwd, platform);
+  const enableHermes = await isHermesEnabled(cwd, platform);
 
   const args = [
     "expo",
@@ -176,7 +170,7 @@ const runBundle = async ({
   };
 };
 
-export interface ExpoPluginConfig extends BuildPluginConfig {
+export interface ExpoAdapterConfig extends BuildAdapterConfig {
   /**
    * @default false
    * Whether to generate sourcemap for the bundle.
@@ -190,11 +184,13 @@ export interface ExpoPluginConfig extends BuildPluginConfig {
 }
 
 export const expo =
-  (config: ExpoPluginConfig = { outDir: "dist", sourcemap: false }) =>
-  ({ cwd }: BasePluginArgs): BuildPlugin => {
+  (config: ExpoAdapterConfig = { outDir: "dist", sourcemap: false }) =>
+  ({ cwd }: BuildAdapterArgs): BuildAdapter => {
     const { outDir = "dist", sourcemap = false, resetCache = true } = config;
     return {
       integration: {
+        nativeFileRepairBlockReason: () =>
+          getExpoNativeFileRepairBlockReason(cwd),
         beforeCommand: ({ command }) => validateExpoProject({ command, cwd }),
         doctor: createReactNativeDoctor(cwd),
       },

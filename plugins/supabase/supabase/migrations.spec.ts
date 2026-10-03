@@ -2,482 +2,290 @@ import fs from "node:fs/promises";
 import path from "node:path";
 
 import { PGlite } from "@electric-sql/pglite";
-import { describe, expect, it } from "vitest";
+import { createMigrator, generateSchema } from "@hot-updater/cli-tools";
+import {
+  toolingTargetOf,
+  definePlugin,
+  defineTable,
+} from "@hot-updater/plugin-core";
+import { createHotUpdater } from "@hot-updater/server";
+import {
+  createInsightsModel,
+  insights,
+} from "@hot-updater/server/plugins/insights";
+import {
+  setupDatabaseTestSuite,
+  startHttpTestServer,
+  insightsTestSuite,
+} from "@hot-updater/test-utils";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
-import { createBundleEventRowFixture } from "../../../packages/test-utils/src/databaseTestFixtures";
-import { supabaseOverviewPayload } from "../src/supabaseInsightsOverview";
+import { plugins } from "../src/plugins";
+import { supabaseDatabase } from "../src/supabaseDatabase";
+import { toApplyStatement } from "../src/supabaseExecutor";
+import { supabaseDatabase as supabaseToolingDatabase } from "../src/supabaseMigration";
+import {
+  SUPABASE_APPLY_FUNCTION,
+  SUPABASE_SETTINGS_TABLE,
+  supabaseSchemaSql,
+  supabaseTableNames,
+} from "../src/supabaseSchema";
 
-const migrationPath = path.resolve(
-  "plugins/supabase/supabase/migrations/20260818000000_hot-updater_1.0.0.sql",
-);
+const MIGRATIONS = path.resolve("plugins/supabase/supabase/migrations");
+const MIGRATION = path.join(MIGRATIONS, "20260818000000_hot-updater_1.0.0.sql");
+/** The managed server's tables: core's, and its plugins' (Insights and API keys). */
+const managed = toolingTargetOf(plugins);
 
-const readMigrations = async () => {
-  const migrationDirectory = path.resolve(
-    "plugins/supabase/supabase/migrations",
+const state = vi.hoisted(() => ({ db: undefined as PGlite | undefined }));
+
+/** Supabase's client, as PostgREST runs an RPC: one statement, as the service role. */
+vi.mock("@supabase/supabase-js", () => ({
+  createClient: () => ({
+    rpc: async (name: string, args: { readonly p_statements: unknown }) => {
+      try {
+        const result = await state.db!.query<{ result: unknown }>(
+          `SELECT public.${name}($1::jsonb) AS result`,
+          [JSON.stringify(args.p_statements)],
+        );
+        return { data: result.rows[0]!.result, error: null };
+      } catch (error) {
+        const { code, message } = error as { code?: string; message: string };
+        return { data: null, error: { code, message } };
+      }
+    },
+  }),
+}));
+
+/** A Supabase-like database: its three roles, the migration, and the service role's grants. */
+const createDatabase = async (before = "") => {
+  const db = new PGlite();
+  await db.exec(
+    "CREATE ROLE anon; CREATE ROLE authenticated; CREATE ROLE service_role BYPASSRLS;",
   );
-  const migrationFiles = (await fs.readdir(migrationDirectory))
-    .filter((file) => file.endsWith(".sql"))
-    .sort();
-  return Promise.all(
-    migrationFiles.map(async (file) => ({
-      file,
-      sql: await fs.readFile(path.join(migrationDirectory, file), "utf8"),
-    })),
+  if (before) await db.exec(before);
+  await db.exec(await fs.readFile(MIGRATION, "utf8"));
+  await db.exec(
+    "GRANT ALL ON ALL TABLES IN SCHEMA public TO service_role; SET ROLE service_role;",
   );
+  return db;
 };
 
-describe("Supabase v1 schema", () => {
-  it("initializes 1.0.0 and atomically maintains service-role event heads", async () => {
-    const database = new PGlite();
-    const event = createBundleEventRowFixture("9301", 100);
-    const installation = event;
-    try {
-      await database.exec(
-        "CREATE ROLE anon; CREATE ROLE authenticated; CREATE ROLE service_role;",
-      );
-      for (const migration of await readMigrations())
-        await database.exec(migration.sql);
-      expect(
-        (
-          await database.query(
-            "SELECT value FROM public.hot_updater_v1_private_settings WHERE key = 'schema.core'",
-          )
-        ).rows,
-      ).toEqual([{ value: "1.0.0" }]);
-      const record = (row: typeof event) =>
-        database.query(
-          "SELECT public.hot_updater_v1_record_event($1::jsonb, $2::jsonb)",
-          [JSON.stringify(row), JSON.stringify(supabaseOverviewPayload(row))],
-        );
-      await record(event);
-      const reusedId = {
-        ...event,
-        user_id: "duplicate-user",
-        received_at_ms: 200,
-      };
-      await record(reusedId);
-      expect(
-        (
-          await database.query(
-            "SELECT event.* FROM public.hot_updater_v1_bundle_event_heads AS head JOIN public.hot_updater_v1_bundle_events AS event ON event.id = head.id",
-          )
-        ).rows,
-      ).toEqual([installation]);
-      const next = {
-        ...event,
-        id: createBundleEventRowFixture("9302", 200).id,
-        received_at_ms: 200,
-      };
-      await database.exec(`
-        CREATE FUNCTION fail_insights_event() RETURNS trigger LANGUAGE plpgsql AS $$
-        BEGIN RAISE EXCEPTION 'injected event failure'; END; $$;
-        CREATE TRIGGER fail_insights_event BEFORE INSERT ON public.hot_updater_v1_bundle_events
-        FOR EACH ROW EXECUTE FUNCTION fail_insights_event();
-      `);
-      await expect(record(next)).rejects.toThrow("injected event failure");
-      expect(
-        (
-          await database.query(
-            "SELECT id FROM public.hot_updater_v1_bundle_events",
-          )
-        ).rows,
-      ).toEqual([{ id: event.id }]);
-      expect(
-        (
-          await database.query(
-            "SELECT event.* FROM public.hot_updater_v1_bundle_event_heads AS head JOIN public.hot_updater_v1_bundle_events AS event ON event.id = head.id",
-          )
-        ).rows,
-      ).toEqual([installation]);
-      await database.exec(
-        "DROP TRIGGER fail_insights_event ON public.hot_updater_v1_bundle_events",
-      );
-      await database.exec(`
-        CREATE FUNCTION fail_insights_head() RETURNS trigger LANGUAGE plpgsql AS $$
-        BEGIN RAISE EXCEPTION 'injected head failure'; END; $$;
-        CREATE TRIGGER fail_insights_head BEFORE UPDATE ON public.hot_updater_v1_bundle_event_heads
-        FOR EACH ROW EXECUTE FUNCTION fail_insights_head();
-      `);
-      await expect(record(next)).rejects.toThrow("injected head failure");
-      expect(
-        (
-          await database.query(
-            "SELECT id FROM public.hot_updater_v1_bundle_events",
-          )
-        ).rows,
-      ).toEqual([{ id: event.id }]);
-      expect(
-        (
-          await database.query(
-            "SELECT id FROM public.hot_updater_v1_bundle_event_heads",
-          )
-        ).rows,
-      ).toEqual([{ id: event.id }]);
-      await database.exec(
-        "DROP TRIGGER fail_insights_head ON public.hot_updater_v1_bundle_event_heads",
-      );
-      await record(next);
-      await record(next);
-      expect(
-        (
-          await database.query(
-            "SELECT event.* FROM public.hot_updater_v1_bundle_event_heads AS head JOIN public.hot_updater_v1_bundle_events AS event ON event.id = head.id",
-          )
-        ).rows,
-      ).toEqual([next]);
-      expect(
-        (
-          await database.query(
-            "SELECT COUNT(*)::integer AS count FROM public.hot_updater_v1_bundle_events",
-          )
-        ).rows,
-      ).toEqual([{ count: 2 }]);
-      expect(
-        (
-          await database.query(
-            "SELECT has_table_privilege('anon', 'public.hot_updater_v1_bundle_event_heads', 'SELECT') AS allowed",
-          )
-        ).rows,
-      ).toEqual([{ allowed: false }]);
-      expect(
-        (
-          await database.query(
-            "SELECT has_table_privilege('service_role', 'public.hot_updater_v1_bundle_event_heads', 'SELECT') AS allowed",
-          )
-        ).rows,
-      ).toEqual([{ allowed: true }]);
-    } finally {
-      await database.close();
+const apply = (db: PGlite, sql: string) =>
+  db.query(`SELECT public.${SUPABASE_APPLY_FUNCTION}($1::jsonb)`, [
+    JSON.stringify([{ sql, params: [] }]),
+  ]);
+
+describe("Supabase schema", () => {
+  it("checks in exactly the generated migration as the only one", async () => {
+    if (process.env.HOT_UPDATER_UPDATE_SQL === "1") {
+      await fs.writeFile(MIGRATION, supabaseSchemaSql(managed));
     }
+    const files = (await fs.readdir(MIGRATIONS)).filter((file) =>
+      file.endsWith(".sql"),
+    );
+    expect(files).toEqual([path.basename(MIGRATION)]);
+    // Regenerate with HOT_UPDATER_UPDATE_SQL=1 after the schema changes.
+    expect(await fs.readFile(MIGRATION, "utf8")).toBe(
+      supabaseSchemaSql(managed),
+    );
   });
 
-  it("keeps canonical downloaded and applied events behind a minimal head", async () => {
-    const database = new PGlite();
-    try {
-      await database.exec(
-        "CREATE ROLE anon; CREATE ROLE authenticated; CREATE ROLE service_role;",
-      );
-      for (const migration of await readMigrations())
-        await database.exec(migration.sql);
-      const base = createBundleEventRowFixture("9401", 100);
-      const downloaded = {
-        ...base,
-        type: "UPDATE_DOWNLOADED" as const,
-        from_bundle_id: "00000000-0000-7000-8000-000000001001",
-        metadata: { ...base.metadata, update_strategy: "appVersion" as const },
-      };
-      const record = (event: typeof base) =>
-        database.query(
-          "SELECT public.hot_updater_v1_record_event($1::jsonb, $2::jsonb)",
-          [
-            JSON.stringify(event),
-            JSON.stringify(supabaseOverviewPayload(event)),
-          ],
-        );
-      await record(downloaded);
-      await record(downloaded);
-      expect(
-        (
-          await database.query(
-            "SELECT event.* FROM public.hot_updater_v1_bundle_event_heads AS head JOIN public.hot_updater_v1_bundle_events AS event ON event.id = head.id",
-          )
-        ).rows,
-      ).toEqual([downloaded]);
-      const applied = {
-        ...downloaded,
-        id: createBundleEventRowFixture("9402", 200).id,
-        type: "UPDATE_APPLIED" as const,
-        received_at_ms: 200,
-      };
-      await record(applied);
-      await record(downloaded);
-      expect(
-        (
-          await database.query(
-            "SELECT event.* FROM public.hot_updater_v1_bundle_event_heads AS head JOIN public.hot_updater_v1_bundle_events AS event ON event.id = head.id",
-          )
-        ).rows,
-      ).toEqual([applied]);
-      expect(
-        (
-          await database.query(
-            "SELECT COUNT(*)::integer AS count FROM public.hot_updater_v1_bundle_events",
-          )
-        ).rows,
-      ).toEqual([{ count: 2 }]);
-      await expect(
-        database.query(
-          "UPDATE public.hot_updater_v1_bundle_events SET type = 'UNCHANGED'",
-        ),
-      ).rejects.toThrow(/bundle_events_shape_check/);
-    } finally {
-      await database.close();
-    }
-  });
-
-  it("ships a single 1.0.0 initialization migration", async () => {
-    const migrations = await readMigrations();
-    expect(migrations.map(({ file }) => file)).toEqual([
-      "20260818000000_hot-updater_1.0.0.sql",
+  it("creates namespaced tables with row-level security beside a v0 schema it leaves alone", async () => {
+    const db = await createDatabase(`
+      CREATE TABLE public.channels (id text PRIMARY KEY, name text NOT NULL);
+      INSERT INTO public.channels VALUES ('legacy-channel', 'legacy');
+    `);
+    const tables = await db.query<{ name: string; secured: boolean }>(
+      "SELECT tablename AS name, rowsecurity AS secured FROM pg_tables WHERE schemaname = 'public' ORDER BY tablename",
+    );
+    const ours = tables.rows.filter(({ name }) =>
+      name.startsWith("hot_updater_v1_"),
+    );
+    expect(ours.map(({ name }) => name)).toEqual(
+      supabaseTableNames(managed.schema).toSorted(),
+    );
+    expect(ours.every(({ secured }) => secured)).toBe(true);
+    await expect(
+      db.query("SELECT name FROM public.channels"),
+    ).resolves.toMatchObject({ rows: [{ name: "legacy" }] });
+    const settings = await db.query<{ key: string }>(
+      `SELECT key FROM public."${SUPABASE_SETTINGS_TABLE}" ORDER BY key`,
+    );
+    expect(settings.rows.map(({ key }) => key)).toEqual([
+      "schema.apiKeys",
+      "schema.core",
+      "schema.engine",
+      "schema.insights",
     ]);
+    await db.close();
   });
 
-  it("rejects a self-referencing patch through the service RPC", async () => {
-    const database = new PGlite();
-    const bundleId = "00000000-0000-0000-0000-000000000001";
-    try {
-      await database.exec(
-        "CREATE ROLE anon; CREATE ROLE authenticated; CREATE ROLE service_role;",
-      );
-      for (const migration of await readMigrations())
-        await database.exec(migration.sql);
-      await database.query(
-        `INSERT INTO public.hot_updater_v1_bundles (
-          id, platform, file_hash, storage_uri, archive_byte_size, metadata
-        ) VALUES ($1, 'ios', 'hash', 'storage://bundle', 1, '{}'::jsonb)`,
-        [bundleId],
-      );
-      const row = {
-        base_bundle_id: bundleId,
-        base_file_hash: "a".repeat(64),
-        bundle_id: bundleId,
-        byte_size: 1,
-        id: `${bundleId}:${bundleId}`,
-        patch_file_hash: "b".repeat(64),
-        patch_storage_uri: "storage://patch",
-      };
-
-      await expect(
-        database.query(
-          "SELECT public.hot_updater_v1_publish_bundle_patch($1::jsonb)",
-          [JSON.stringify({ position: "primary", row })],
-        ),
-      ).rejects.toThrow("bundle patch id is invalid");
-      await expect(
-        database.query<{ count: number }>(
-          "SELECT COUNT(*)::integer AS count FROM public.hot_updater_v1_bundle_patches",
-        ),
-      ).resolves.toMatchObject({ rows: [{ count: 0 }] });
-    } finally {
-      await database.close();
-    }
-  });
-
-  it("rolls back an oversized patch commit and protects referenced bases", async () => {
-    const database = new PGlite();
-    const ownerId = "00000000-0000-0000-0000-000000000100";
-    const baseIds = Array.from(
-      { length: 25 },
-      (_, index) =>
-        `00000000-0000-0000-0000-${String(index + 101).padStart(12, "0")}`,
+  it("lets only the service role run the apply RPC", async () => {
+    const db = await createDatabase();
+    const privilege = await db.query<Record<string, boolean>>(
+      ["anon", "authenticated", "service_role"]
+        .map(
+          (role) =>
+            `has_function_privilege('${role}', 'public.${SUPABASE_APPLY_FUNCTION}(jsonb)', 'EXECUTE') AS ${role}`,
+        )
+        .join(", ")
+        .replace(/^/u, "SELECT "),
     );
-    const patch = (baseId: string, index: number) => ({
-      base_bundle_id: baseId,
-      base_file_hash: index.toString(16).padStart(64, "a"),
-      bundle_id: ownerId,
-      byte_size: 1,
-      id: `${ownerId}:${baseId}`,
-      order_index: index,
-      patch_file_hash: index.toString(16).padStart(64, "b"),
-      patch_storage_uri: `storage://patch-${index}`,
+    expect(privilege.rows).toEqual([
+      { anon: false, authenticated: false, service_role: true },
+    ]);
+    await db.close();
+  });
+
+  it("refuses anything but the SQL core's statements on Hot Updater tables", async () => {
+    const db = await createDatabase();
+    const bundles = '"hot_updater_v1_bundles"';
+    for (const sql of [
+      "SELECT * FROM pg_authid",
+      'SELECT * FROM "pg_authid"',
+      `SELECT pg_sleep(0) FROM ${bundles}`,
+      `SELECT "pg_sleep"(0) FROM ${bundles}`,
+      `SELECT 'text' FROM ${bundles}`,
+      `SELECT * FROM ${bundles} -- comment`,
+      `SELECT * FROM ${bundles}; DELETE FROM ${bundles}`,
+      `DROP TABLE ${bundles}`,
+      `SELECT * FROM ${bundles} UNION SELECT * FROM ${bundles}`,
+    ]) {
+      await expect(apply(db, sql), sql).rejects.toMatchObject({
+        code: "42501",
+      });
+    }
+    const allowed = toApplyStatement({
+      sql: `SELECT * FROM ${bundles} WHERE ("id" = $1) OR ("id" = $2) ORDER BY "id" DESC LIMIT 5`,
+      params: ["a", "b"],
     });
-    try {
-      await database.exec(
-        "CREATE ROLE anon; CREATE ROLE authenticated; CREATE ROLE service_role;",
-      );
-      for (const migration of await readMigrations())
-        await database.exec(migration.sql);
-      for (const id of [ownerId, ...baseIds]) {
-        await database.query(
-          `INSERT INTO public.hot_updater_v1_bundles (
-            id, platform, file_hash, storage_uri, archive_byte_size, metadata
-          ) VALUES ($1, 'ios', 'hash', 'storage://bundle', 1, '{}'::jsonb)`,
-          [id],
-        );
-      }
-      const commit = (changes: readonly object[]) =>
-        database.query("SELECT public.hot_updater_v1_commit($1::jsonb)", [
-          JSON.stringify({ changes }),
-        ]);
-      const oversizedChanges = baseIds.map((baseId, index) => ({
-        model: "bundlePatches",
-        operation: "insert",
-        row: patch(baseId, index),
-      }));
+    await expect(
+      db.query(`SELECT public.${SUPABASE_APPLY_FUNCTION}($1::jsonb) AS r`, [
+        JSON.stringify([allowed]),
+      ]),
+    ).resolves.toMatchObject({ rows: [{ r: [{ rows: [], changes: 0 }] }] });
+    await db.close();
+  });
 
-      await expect(commit(oversizedChanges)).rejects.toThrow(
-        "bundle patch limit exceeded",
-      );
-      await expect(
-        database.query<{ count: number }>(
-          "SELECT COUNT(*)::integer AS count FROM public.hot_updater_v1_bundle_patches",
+  it("generates a migration that adds a server's plugin tables to the apply RPC", async () => {
+    const notes = definePlugin({
+      id: "notes",
+      schemaVersion: "1",
+      schema: {
+        notes: defineTable(
+          { id: { type: "string" }, text: { type: "string" } },
+          { key: ["id"] },
         ),
-      ).resolves.toMatchObject({ rows: [{ count: 0 }] });
+      },
+      init: ({ db }) => ({
+        api: {
+          add: (id: string, text: string) =>
+            db.transaction(async (tx) => {
+              tx.create("notes", { id, text });
+            }),
+          read: (id: string) => db.findOne("notes", { id }),
+        },
+      }),
+    });
+    const hotUpdater = createHotUpdater({
+      database: supabaseToolingDatabase({
+        supabaseUrl: "https://project.supabase.co",
+        supabaseServiceRoleKey: "service-role-key",
+      }),
+      plugins: [notes],
+      clientAccess: "public",
+    });
+    // The apply RPC runs no DDL, so the schema comes from migration files.
+    expect(() => createMigrator(hotUpdater)).toThrow(
+      "run `hot-updater db generate`",
+    );
+    const migration = generateSchema(hotUpdater, "latest");
+    expect(migration.path).toMatch(
+      /^supabase\/migrations\/\d{14}_hot-updater\.sql$/u,
+    );
 
-      await expect(commit([oversizedChanges[0]!])).resolves.toMatchObject({
-        rows: [{ hot_updater_v1_commit: { committed: true } }],
-      });
-      await expect(
-        commit([
-          {
-            model: "bundles",
-            operation: "delete",
-            where: { id: baseIds[0] },
-          },
-        ]),
-      ).resolves.toMatchObject({
-        rows: [
-          {
-            hot_updater_v1_commit: {
-              committed: false,
-              conflict: { changeIndex: 0, reason: "referenced" },
-            },
-          },
-        ],
-      });
-    } finally {
-      await database.close();
-    }
-  });
-
-  it("creates namespaced tables, RLS, and functions", async () => {
-    const sql = await fs.readFile(migrationPath, "utf8");
-
-    expect(sql).toContain("CREATE TABLE public.hot_updater_v1_channels");
-    expect(sql).toContain("CREATE TABLE public.hot_updater_v1_bundles");
-    expect(sql).toContain("CREATE TABLE public.hot_updater_v1_releases");
-    expect(sql).toContain(
-      "CREATE TABLE public.hot_updater_v1_release_catalogs",
-    );
-    expect(sql).toContain("CREATE TABLE public.hot_updater_v1_bundle_events");
-    expect(sql).not.toContain("bundle_installations");
-    expect(sql).toContain(
-      "CREATE TABLE public.hot_updater_v1_bundle_event_heads",
-    );
-    expect(sql).toContain(
-      "hot_updater_v1_bundle_event_heads(user_id, install_id)",
-    );
-    expect(sql).toContain(
-      "hot_updater_v1_bundle_event_heads(platform, channel, received_at_ms)",
-    );
-    expect(sql).toContain(
-      "CREATE FUNCTION public.hot_updater_v1_record_event(\n  p_event jsonb,\n  p_overview jsonb\n)",
-    );
-    expect(sql).toContain(
-      "hot_updater_v1_bundle_events(install_id, type, received_at_ms, id)",
-    );
-    expect(sql).toContain(
-      "hot_updater_v1_bundle_events(type, platform, channel, from_bundle_id, received_at_ms, id)",
-    );
-    expect(sql).toContain(
-      "hot_updater_v1_bundle_events(type, platform, channel, to_bundle_id, received_at_ms, id)",
-    );
-    expect(sql).toContain("CREATE TABLE public.hot_updater_v1_api_keys");
-    expect(sql).toContain(
-      "ALTER TABLE public.hot_updater_v1_bundles ENABLE ROW LEVEL SECURITY",
-    );
-    expect(sql).toContain(
-      "CREATE FUNCTION public.hot_updater_v1_commit(p_commit jsonb)",
-    );
-    expect(sql).toContain(
-      "CREATE FUNCTION public.hot_updater_v1_delete_channel(p_id text)",
-    );
-    expect(sql).toContain("REVOKE EXECUTE ON FUNCTION");
-    expect(sql).toContain("TO service_role;");
-    expect(sql).toContain("archive_byte_size double precision NOT NULL CHECK");
-    expect(sql).toContain("byte_size double precision NOT NULL CHECK");
-    expect(sql).toContain("archive_byte_size = v_bundle.archive_byte_size");
-    expect(sql).toContain(
-      "patch_file_hash, patch_storage_uri, byte_size, order_index",
-    );
-    expect(sql).toContain("NOTIFY pgrst, 'reload schema'");
-    expect(sql).not.toContain("get_update_info");
-    expect(sql).not.toContain("ALTER TABLE public.bundles ADD COLUMN");
-    expect(sql).not.toContain("WHEN 'insights'");
-    expect(sql).toContain(
-      "CREATE TABLE public.hot_updater_v1_insights_overview",
-    );
-  });
-
-  it("applies beside a v0 schema without modifying v0 data", async () => {
-    const database = new PGlite();
+    const db = await createDatabase();
+    state.db = db;
     try {
-      await database.exec(
-        "CREATE ROLE anon; CREATE ROLE authenticated; CREATE ROLE service_role;",
+      // Its tables come from migration files, which the fix names.
+      await expect(hotUpdater.api.notes.read("n1")).rejects.toThrow(
+        'The tables of plugin "notes" are not migrated on supabaseDatabase: schema setting "schema.notes" is missing; expected "1". Run `hot-updater db generate` and apply the file it writes',
       );
-      await database.exec(`
-        CREATE TABLE public.channels (id text PRIMARY KEY, name text NOT NULL);
-        CREATE TABLE public.bundles (
-          id uuid PRIMARY KEY,
-          target_app_version text NOT NULL
-        );
-        INSERT INTO public.channels (id, name)
-          VALUES ('legacy-channel', 'legacy');
-        INSERT INTO public.bundles (id, target_app_version)
-          VALUES ('00000000-0000-0000-0000-000000000099', '0.85.0');
-      `);
-      for (const migration of await readMigrations()) {
-        await database.exec(migration.sql);
-      }
-
-      const tables = await database.query<{ tablename: string }>(`
-        select tablename from pg_tables
-        where schemaname = 'public'
-        order by tablename
-      `);
-      expect(tables.rows.map(({ tablename }) => tablename)).toEqual(
-        expect.arrayContaining([
-          "hot_updater_v1_bundles",
-          "hot_updater_v1_bundle_events",
-          "hot_updater_v1_bundle_patches",
-          "hot_updater_v1_channels",
-          "hot_updater_v1_api_keys",
-          "hot_updater_v1_private_settings",
-          "hot_updater_v1_release_catalogs",
-          "hot_updater_v1_releases",
-        ]),
+      await db.exec(
+        `RESET ROLE; ${migration.code} GRANT ALL ON ALL TABLES IN SCHEMA public TO service_role; SET ROLE service_role;`,
       );
-
-      await database.exec(`
-        INSERT INTO public.hot_updater_v1_channels (id, name)
-          VALUES ('channel-1', 'production');
-        INSERT INTO public.hot_updater_v1_bundles (
-          id, platform, file_hash, storage_uri, archive_byte_size, metadata
-        ) VALUES (
-          '00000000-0000-0000-0000-000000000001', 'ios', 'hash',
-          'storage://bundle', 3000000001, '{}'::jsonb
-        );
-        INSERT INTO public.hot_updater_v1_bundle_patches (
-          id, bundle_id, base_bundle_id, base_file_hash, patch_file_hash,
-          patch_storage_uri, byte_size
-        ) VALUES (
-          'patch-1', '00000000-0000-0000-0000-000000000001',
-          '00000000-0000-0000-0000-000000000001', 'base-hash', 'patch-hash',
-          'storage://patch', 3000000002
-        );
-      `);
-      const channels = await database.query<{ name: string }>(
-        "SELECT name FROM public.hot_updater_v1_channels",
+      await hotUpdater.api.notes.add("n1", "hello");
+      await expect(hotUpdater.api.notes.read("n1")).resolves.toEqual({
+        id: "n1",
+        text: "hello",
+      });
+      const secured = await db.query<{ secured: boolean }>(
+        "SELECT rowsecurity AS secured FROM pg_tables WHERE tablename = 'hot_updater_v1_notes_notes'",
       );
-      expect(channels.rows).toEqual([{ name: "production" }]);
-      const legacyChannels = await database.query<{ name: string }>(
-        "SELECT name FROM public.channels",
-      );
-      expect(legacyChannels.rows).toEqual([{ name: "legacy" }]);
-      const sizes = await database.query<{
-        archive_byte_size: number;
-        byte_size: number;
-      }>(`
-        SELECT bundle.archive_byte_size, patch.byte_size
-        FROM public.hot_updater_v1_bundles AS bundle
-        JOIN public.hot_updater_v1_bundle_patches AS patch
-          ON patch.bundle_id = bundle.id
-      `);
-      expect(sizes.rows).toEqual([
-        { archive_byte_size: 3_000_000_001, byte_size: 3_000_000_002 },
-      ]);
+      expect(secured.rows).toEqual([{ secured: true }]);
     } finally {
-      await database.close();
+      state.db = undefined;
+      await db.close();
     }
+  });
+});
+
+describe("toApplyStatement", () => {
+  it("reads each value from the jsonb array, typed, and writes a null inline", () => {
+    expect(
+      toApplyStatement({
+        sql: 'UPDATE "t" SET "a" = $1, "b" = $2, "c" = $3, "d" = $4::jsonb, "e" = $5 WHERE "id" = $6',
+        params: [1, 1.5, true, '{"x":1}', null, "id"],
+      }),
+    ).toEqual({
+      sql: 'UPDATE "t" SET "a" = ($1->>0)::bigint, "b" = ($1->>1)::double precision, "c" = ($1->>2)::boolean, "d" = ($1->>3)::jsonb, "e" = NULL WHERE "id" = ($1->>4)',
+      params: [1, 1.5, true, '{"x":1}', "id"],
+    });
+  });
+});
+
+describe("supabaseDatabase over the apply RPC", () => {
+  beforeAll(async () => {
+    state.db = await createDatabase();
+  });
+  afterAll(async () => {
+    await state.db?.close();
+  });
+
+  setupDatabaseTestSuite({
+    createHttpClient: (options) =>
+      startHttpTestServer(
+        createHotUpdater({
+          ...options,
+          plugins: [insights()],
+          clientAccess: "public",
+        }).handlers,
+      ),
+    plugins: [
+      insightsTestSuite({
+        createModel: (database) =>
+          createInsightsModel(
+            createHotUpdater({
+              database,
+              plugins: [insights()],
+              clientAccess: "public",
+            }).api.insights,
+          ),
+      }),
+    ],
+    name: "supabaseDatabase (PGlite, apply RPC)",
+    migrate: () => undefined,
+    createDatabase: () =>
+      supabaseDatabase({
+        supabaseUrl: "https://project.supabase.co",
+        supabaseServiceRoleKey: "service-role-key",
+      }),
+    reset: async () => {
+      const tables = supabaseTableNames(managed.schema)
+        .filter((table) => table !== SUPABASE_SETTINGS_TABLE)
+        .map((table) => `public."${table}"`);
+      await state.db!.exec(`TRUNCATE ${tables.join(", ")} CASCADE`);
+    },
+    dispose: () => undefined,
   });
 });

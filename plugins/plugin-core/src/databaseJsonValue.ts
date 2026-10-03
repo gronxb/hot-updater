@@ -1,6 +1,5 @@
 import type {
   DatabaseBundleMetadata,
-  DatabaseBundleEventMetadata,
   DatabaseJsonObject,
   DatabaseJsonValue,
 } from "./types";
@@ -66,6 +65,12 @@ export const isDatabaseJsonValue = (
   return validate(value);
 };
 
+/**
+ * Whether `value` is a plain object of JSON values a store keeps as they
+ * are: no cycles, accessors, non-finite numbers, or class instances. A
+ * plugin checks a `json` field's value with it before it writes, as
+ * Insights does for an event's metadata.
+ */
 export const isDatabaseJsonObject = (
   value: unknown,
 ): value is DatabaseJsonObject =>
@@ -80,16 +85,3 @@ export const isDatabaseMetadataObject = (
   isDatabaseJsonObject(value) &&
   (!Object.hasOwn(value, "app_version") ||
     typeof value["app_version"] === "string");
-
-export const isDatabaseBundleEventMetadata = (
-  value: unknown,
-): value is DatabaseBundleEventMetadata =>
-  isDatabaseJsonObject(value) &&
-  (value.username === null || typeof value.username === "string") &&
-  typeof value.cohort === "string" &&
-  (value.update_strategy === null ||
-    value.update_strategy === "fingerprint" ||
-    value.update_strategy === "appVersion") &&
-  (value.fingerprint_hash === null ||
-    typeof value.fingerprint_hash === "string") &&
-  (value.sdk_version === null || typeof value.sdk_version === "string");

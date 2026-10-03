@@ -17,11 +17,15 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/components/ui/sidebar", () => ({ SidebarTrigger: () => null }));
 
+vi.mock("@/lib/console-features-api", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/console-features-api")>()),
+  useConsoleFeature: () => true,
+}));
+
 vi.mock("@/lib/insights-api", () => {
   const installation = {
     installId: "install-1",
     userId: "user-1",
-    username: null,
     appVersion: "1.5.0",
     channel: "production",
     platform: "ios",
@@ -50,6 +54,7 @@ vi.mock("@/lib/insights-api", () => {
   });
   return {
     useInsightsEventsQuery: page,
+    useInsightsRetention: () => ({ rawDays: 90, dailyDays: 400 }),
     useInsightsInstallationsQuery: page,
     useInsightsInstallationEventsQuery: page,
     useInsightsInstallationQuery: () => ({
@@ -181,6 +186,41 @@ describe("Insights pagination across browser reloads", () => {
     unmount();
     unmount = await mountPage();
     await expectPage("All events", 1);
+    unmount();
+  });
+
+  it("returns to the first page on a range change, then keeps the range through installation details and reloads", async () => {
+    window.history.replaceState(null, "", "/installations?eventsBefore=100");
+    let unmount = await mountPage();
+    next("All events");
+    await expectPage("All events", 2);
+
+    fireEvent.click(screen.getByRole("tab", { name: "Last 30 days" }));
+    await expectPage("All events", 1);
+    const params = () => new URLSearchParams(window.location.search);
+    const eventsBefore = params().get("eventsBefore");
+    expect(eventsBefore).not.toBe("100");
+    expect(params().get("eventsRange")).toBe("30d");
+    expect(params().has("eventsCursor")).toBe(false);
+
+    next("All events");
+    await expectPage("All events", 2);
+    fireEvent.click(
+      screen.getAllByRole("link", {
+        name: "View history for user-1 (install-1)",
+      })[0],
+    );
+    await expectPage("Installation history", 1);
+
+    unmount();
+    unmount = await mountPage();
+    fireEvent.click(screen.getByRole("button", { name: "Back to all events" }));
+    await expectPage("All events", 2);
+    expect(
+      screen.getByRole("tab", { name: "Last 30 days", selected: true }),
+    ).toBeDefined();
+    expect(params().get("eventsRange")).toBe("30d");
+    expect(params().get("eventsBefore")).toBe(eventsBefore);
     unmount();
   });
 });

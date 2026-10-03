@@ -4,9 +4,9 @@ import path from "path";
 
 import { log } from "@hot-updater/cli-tools";
 import type {
-  BasePluginArgs,
-  BuildPlugin,
-  BuildPluginConfig,
+  BuildAdapterArgs,
+  BuildAdapter,
+  BuildAdapterConfig,
   NativeFingerprintProvider,
 } from "@hot-updater/plugin-core";
 import {
@@ -266,7 +266,7 @@ const runBundle = async ({
   };
 };
 
-export interface BarePluginConfig extends BuildPluginConfig {
+export interface BareAdapterConfig extends BuildAdapterConfig {
   /** Native fingerprint implementation for a non-Expo React Native host. */
   fingerprint?: NativeFingerprintProvider;
   /**
@@ -294,8 +294,8 @@ export interface BarePluginConfig extends BuildPluginConfig {
 }
 
 export const bare =
-  (config: BarePluginConfig) =>
-  ({ cwd }: BasePluginArgs): BuildPlugin => {
+  (config: BareAdapterConfig) =>
+  ({ cwd }: BuildAdapterArgs): BuildAdapter => {
     const {
       outDir = "dist",
       sourcemap = false,

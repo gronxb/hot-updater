@@ -1,13 +1,12 @@
 import path from "path";
 
 import type {
+  AnyHotUpdaterPlugin,
   ConfigInput,
+  ConfiguredDatabase,
   Platform,
   RequiredDeep,
-} from "@hot-updater/plugin-core";
-import {
-  createDatabasePlugin,
-  createStoragePlugin,
+  StorageAdapter,
 } from "@hot-updater/plugin-core";
 import { merge } from "es-toolkit";
 import fg from "fast-glob";
@@ -20,114 +19,6 @@ export type HotUpdaterConfigOptions = {
   platform: Platform;
   channel: string;
 } | null;
-
-const missingDatabase = createDatabasePlugin({
-  name: "missingDatabase",
-  models: {
-    bundles: {
-      findById: async () => {
-        throw new Error("database plugin is required");
-      },
-      findMany: async () => {
-        throw new Error("database plugin is required");
-      },
-      count: async () => {
-        throw new Error("database plugin is required");
-      },
-    },
-    bundlePatches: {
-      findByBundleIds: async () => {
-        throw new Error("database plugin is required");
-      },
-      publish: async () => {
-        throw new Error("database plugin is required");
-      },
-    },
-    releases: {
-      findById: async () => {
-        throw new Error("database plugin is required");
-      },
-      findMany: async () => {
-        throw new Error("database plugin is required");
-      },
-      findManyByScope: async () => {
-        throw new Error("database plugin is required");
-      },
-    },
-    releaseCatalogs: {
-      findByScopeKey: async () => {
-        throw new Error("database plugin is required");
-      },
-      findMany: async () => {
-        throw new Error("database plugin is required");
-      },
-    },
-    channels: {
-      insert: async () => {
-        throw new Error("database plugin is required");
-      },
-      list: async () => {
-        throw new Error("database plugin is required");
-      },
-      delete: async () => {
-        throw new Error("database plugin is required");
-      },
-    },
-    insights: {
-      recordEvent: async () => {
-        throw new Error("database plugin is required");
-      },
-      listEvents: async () => {
-        throw new Error("database plugin is required");
-      },
-      findLatestEvents: async () => {
-        throw new Error("database plugin is required");
-      },
-      countLatestEvents: async () => {
-        throw new Error("database plugin is required");
-      },
-      countEvents: async () => {
-        throw new Error("database plugin is required");
-      },
-      getReleaseActivity: async () => {
-        throw new Error("database plugin is required");
-      },
-      getAppUsage: async () => {
-        throw new Error("database plugin is required");
-      },
-    },
-    apiKeys: {
-      create: async () => {
-        throw new Error("database plugin is required");
-      },
-      findByHash: async () => {
-        throw new Error("database plugin is required");
-      },
-      list: async () => {
-        throw new Error("database plugin is required");
-      },
-      revoke: async () => {
-        throw new Error("database plugin is required");
-      },
-    },
-  },
-  commit: async () => {
-    throw new Error("database plugin is required");
-  },
-});
-
-const missingStorageError = async (): Promise<never> => {
-  throw new Error("storage plugin is required");
-};
-
-const missingStorage = createStoragePlugin({
-  name: "missingStorage",
-  protocol: "missing",
-  put: missingStorageError,
-  get: missingStorageError,
-  exists: missingStorageError,
-  delete: missingStorageError,
-});
 
 const getDefaultPlatformConfig = (): ConfigInput["platform"] => {
   // Find actual Info.plist files in the ios directory
@@ -184,11 +75,10 @@ const getDefaultPlatformConfig = (): ConfigInput["platform"] => {
   };
 };
 
-const getDefaultConfig = (): ConfigInput => {
+const getDefaultConfig = (): Omit<ConfigInput, "database" | "storage"> => {
   return {
     cacheDir: path.join("node_modules", ".hot-updater"),
     updateStrategy: "appVersion",
-    compressStrategy: "zip",
     // `extraSources` is intentionally absent: the deep merge would let this
     // default array clobber a user-supplied platform-scoped object.
     fingerprint: {},
@@ -202,42 +92,53 @@ const getDefaultConfig = (): ConfigInput => {
     platform: getDefaultPlatformConfig(),
     nativeBuild: { android: {}, ios: {} },
     build: () => {
-      throw new Error("build plugin is required");
+      throw new Error("build adapter is required");
     },
-    storage: missingStorage,
-    database: missingDatabase,
+    plugins: [],
   };
 };
 
 export type ConfigResponse = RequiredDeep<
-  Omit<ConfigInput, "database" | "signing" | "storage">
-> &
-  Pick<ConfigInput, "database" | "storage"> & {
-    signing?: ReturnType<typeof normalizeSigningConfig>;
-  };
+  Omit<ConfigInput, "database" | "storage" | "plugins" | "signing">
+> & {
+  /** The server's database, or `standaloneRepository(...)`; absent when the config names none. */
+  database?: ConfiguredDatabase;
+  /** Where the CLI uploads bundles; absent when the config names none. */
+  storage?: StorageAdapter;
+  /** The plugins the server runs; none when the config lists none. */
+  plugins: readonly AnyHotUpdaterPlugin[];
+  signing?: ReturnType<typeof normalizeSigningConfig>;
+};
 
-const mergeConfigSources = (
-  ...sources: Array<ConfigInput | null | undefined>
-) => {
-  const mergedConfig = sources.reduceRight<ConfigInput>(
+type ConfigSource = Partial<ConfigInput> | null | undefined;
+
+const mergeConfigSources = (...sources: ConfigSource[]) => {
+  const mergedConfig = sources.reduceRight<Partial<ConfigInput>>(
     (mergedConfig, source) => merge(mergedConfig, source ?? {}),
-    {} as ConfigInput,
+    {},
   );
 
+  // Taken whole, as the config made them: a deep merge copies objects
+  // without their symbol keys, such as the brand on Hot Updater's own plugins.
   const database = sources.find((source) => source?.database)?.database;
+  const plugins = sources.find((source) => source?.plugins)?.plugins;
   const signing = sources.find((source) => source?.signing)?.signing;
   const storage = sources.find((source) => source?.storage)?.storage;
   return {
     ...mergedConfig,
     ...(database ? { database } : {}),
+    ...(plugins ? { plugins } : {}),
     ...(signing ? { signing } : {}),
     ...(storage ? { storage } : {}),
   };
 };
 
-const getConfigLoaderOptions = (
-  options: HotUpdaterConfigOptions,
-): LoadConfigOptions<ConfigInput> => {
+/** What hot-updater.config exports: the config, or a function of the platform and channel that returns it. */
+type ConfigFileExport =
+  | ConfigInput
+  | ((options: HotUpdaterConfigOptions) => ConfigInput | Promise<ConfigInput>);
+
+const getConfigLoaderOptions = (): LoadConfigOptions<ConfigFileExport> => {
   const cwd = getCwd();
 
   return {
@@ -248,31 +149,66 @@ const getConfigLoaderOptions = (
       {
         files: "hot-updater.config",
         extensions: ["js", "cjs", "ts", "cts", "mjs", "mts"],
-        rewrite: async (config: unknown) => {
-          return typeof config === "function"
-            ? (config as (options: HotUpdaterConfigOptions) => ConfigInput)(
-                options,
-              )
-            : (config as ConfigInput);
-        },
       },
     ],
   };
 };
 
+/** Each load runs the config file again, which creates its adapters again. */
+const loadConfigFile = async (): Promise<ConfigFileExport | undefined> => {
+  const { config } = await loadUnconfig<ConfigFileExport>(
+    getConfigLoaderOptions(),
+  );
+  return config;
+};
+
+const configFor = async (
+  source: ConfigFileExport | undefined,
+  options: HotUpdaterConfigOptions,
+): Promise<ConfigInput | undefined> =>
+  typeof source === "function" ? await source(options) : source;
+
 export const loadConfig = async (
   options: HotUpdaterConfigOptions,
-): Promise<ConfigResponse> => {
-  const { config } = await loadUnconfig<ConfigInput>(
-    getConfigLoaderOptions(options),
-  );
+): Promise<ConfigResponse> =>
+  resolveConfig(await configFor(await loadConfigFile(), options));
 
+/**
+ * hot-updater.config for each of `platforms`, with the file loaded once. A
+ * config object gives every platform the same database, storage, and
+ * plugins; a config function runs once per platform, so the adapters it
+ * creates are that platform's own.
+ */
+export const loadPlatformConfigs = async <TPlatform extends Platform>(
+  platforms: readonly TPlatform[],
+  { channel }: { readonly channel: string },
+): Promise<
+  { readonly platform: TPlatform; readonly config: ConfigResponse }[]
+> => {
+  const source = await loadConfigFile();
+  const configs: { platform: TPlatform; config: ConfigResponse }[] = [];
+  for (const platform of platforms) {
+    configs.push({
+      platform,
+      config: resolveConfig(await configFor(source, { channel, platform })),
+    });
+  }
+  return configs;
+};
+
+const resolveConfig = (config: ConfigInput | undefined): ConfigResponse => {
   for (const key of ["authorityId", "catalogId"]) {
     if (config && Object.hasOwn(config, key)) {
       throw new Error(
         `Remove ${key} from hot-updater.config. Catalog identity is managed internally.`,
       );
     }
+  }
+
+  if (config && Object.hasOwn(config, "compressStrategy")) {
+    throw new Error(
+      "Remove compressStrategy from hot-updater.config. OTA artifacts use manifest files with per-file Brotli compression.",
+    );
   }
 
   const mergedConfig = mergeConfigSources(config, getDefaultConfig());

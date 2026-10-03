@@ -5,11 +5,11 @@ import {
   getJob,
   handleAssertBsdiffPatchApplied,
   handleAssertBundleArtifactSelection,
+  handleAssertBundleArtifactTransfers,
   handleAssertBundleAssetsStored,
   handleAssertBundlePatchBases,
   handleAssertCrashHistory,
-  handleAssertFirstOtaUsesArchive,
-  handleAssertLynxPageInterruptionState,
+  handleAssertFirstOtaUsesBuiltInManifest,
   handleAssertLaunchReport,
   handleAssertManifestDiffApplied,
   handleAssertMetadataActive,
@@ -22,7 +22,8 @@ import {
   handleComputeRolloutSample,
   handleConfigureProxy,
   handleLaunchAndroidCrashApp,
-  handleLynxCrashState,
+  handleLaunchStartupHang,
+  handleLaunchUninstrumentedApp,
   handlePrepareAppLaunch,
   handleProxyRemoteAssetRequest,
   handleProxyState,
@@ -30,6 +31,7 @@ import {
   handleResetLocalAppState,
   handleResetRemoteBundles,
   handleRuntimeConfig,
+  handleLynxCrashState,
   handleSeedCrashHistory,
   handleSeedLegacyMetadata,
   handleVerifyConsoleInsights,
@@ -78,7 +80,7 @@ app.onError((error, c) => {
 });
 
 app.post("/e2e/jobs/bootstrap", async (c) => {
-  return c.json({ jobId: startBootstrapJob() });
+  return c.json({ jobId: startBootstrapJob(await c.req.json()) });
 });
 
 app.post("/e2e/jobs/reset-remote-bundles", async (c) => {
@@ -143,6 +145,9 @@ app.all("/e2e/proxy-url/:targetId", async (c) => {
 
 app.post("/e2e/proxy-control", async (c) => {
   const payload = (await c.req.json()) as {
+    archiveAvailable?: boolean;
+    archiveFailureMode?: "corrupt" | "not-found" | null;
+    archiveFailures?: number;
     artifactDelayMs?: number;
     artifactFailures?: number;
     catalogDelayMs?: number;
@@ -155,6 +160,12 @@ app.post("/e2e/proxy-control", async (c) => {
     replayGeneration?: number | null;
     reset?: boolean;
   };
+  if (
+    payload.archiveAvailable !== undefined &&
+    typeof payload.archiveAvailable !== "boolean"
+  ) {
+    return c.json({ error: "archiveAvailable must be a boolean" }, 400);
+  }
   for (const value of [payload.artifactDelayMs, payload.catalogDelayMs]) {
     if (value !== undefined && (!Number.isFinite(value) || value < 0)) {
       return c.json({ error: "proxy delays must be non-negative" }, 400);
@@ -167,6 +178,27 @@ app.post("/e2e/proxy-control", async (c) => {
   ) {
     return c.json(
       { error: "artifactFailures must be a non-negative integer" },
+      400,
+    );
+  }
+  if (
+    payload.archiveFailures !== undefined &&
+    (!Number.isSafeInteger(payload.archiveFailures) ||
+      payload.archiveFailures < 0)
+  ) {
+    return c.json(
+      { error: "archiveFailures must be a non-negative integer" },
+      400,
+    );
+  }
+  if (
+    payload.archiveFailureMode !== undefined &&
+    payload.archiveFailureMode !== null &&
+    payload.archiveFailureMode !== "corrupt" &&
+    payload.archiveFailureMode !== "not-found"
+  ) {
+    return c.json(
+      { error: "archiveFailureMode must be corrupt, not-found, or null" },
       400,
     );
   }
@@ -187,10 +219,10 @@ app.post("/e2e/proxy-control", async (c) => {
       400,
     );
   }
-  const changedAssetMutation = payload.changedAssetMutation;
+  const { changedAssetMutation, ...proxyOptions } = payload;
   return c.json(
     handleConfigureProxy({
-      ...payload,
+      ...proxyOptions,
       ...(changedAssetMutation
         ? {
             changedAssetMutation: {
@@ -223,17 +255,16 @@ app.post("/e2e/assert-proxy", async (c) => {
 app.post("/e2e/assert-bundle-artifact-selection", async (c) => {
   const payload = (await c.req.json()) as {
     currentBundleId?: string;
+    selection?: "manifest-v1";
     requireArchiveAbsent?: boolean;
     requiredPatchAssetPaths?: string[];
     requiredRawAssetPaths?: string[];
-    selection?: "archive-only" | "manifest-diff";
     targetBundleId?: string;
   };
   if (
     !payload.currentBundleId ||
     !payload.targetBundleId ||
-    (payload.selection !== "archive-only" &&
-      payload.selection !== "manifest-diff")
+    payload.selection !== "manifest-v1"
   ) {
     return c.json(
       {
@@ -255,22 +286,69 @@ app.post("/e2e/assert-bundle-artifact-selection", async (c) => {
   );
 });
 
+app.post("/e2e/assert-bundle-artifact-transfers", async (c) => {
+  const payload = (await c.req.json()) as {
+    archiveRequests?: number;
+    currentBundleId?: string;
+    fileRequests?: number;
+    maxRequestsPerAsset?: number;
+    minNetworkAssets?: number;
+    patchRequests?: number;
+    targetBundleId?: string;
+    verifyAllAssetHashes?: boolean;
+  };
+  const counts = [
+    payload.archiveRequests,
+    payload.fileRequests,
+    payload.patchRequests,
+  ];
+  if (
+    !payload.currentBundleId ||
+    !payload.targetBundleId ||
+    counts.some(
+      (value) =>
+        !Number.isSafeInteger(value) || (value !== undefined && value < 0),
+    ) ||
+    (payload.maxRequestsPerAsset !== undefined &&
+      (!Number.isSafeInteger(payload.maxRequestsPerAsset) ||
+        payload.maxRequestsPerAsset < 1)) ||
+    (payload.minNetworkAssets !== undefined &&
+      (!Number.isSafeInteger(payload.minNetworkAssets) ||
+        payload.minNetworkAssets < 0))
+  ) {
+    return c.json(
+      {
+        error:
+          "bundle ids and non-negative archive, file, and patch request counts are required",
+      },
+      400,
+    );
+  }
+  return c.json(
+    handleAssertBundleArtifactTransfers({
+      archiveRequests: payload.archiveRequests!,
+      currentBundleId: payload.currentBundleId,
+      fileRequests: payload.fileRequests!,
+      maxRequestsPerAsset: payload.maxRequestsPerAsset,
+      minNetworkAssets: payload.minNetworkAssets,
+      patchRequests: payload.patchRequests!,
+      targetBundleId: payload.targetBundleId,
+      verifyAllAssetHashes: payload.verifyAllAssetHashes,
+    }),
+  );
+});
+
 app.post("/e2e/jobs/deploy-bundle", async (c) => {
   const payload = (await c.req.json()) as {
-    bundleProfile?:
-      | "archive300mb"
-      | "default"
-      | "multiAssetReplacement"
-      | "sizeAwareLargeDiff";
+    bundleProfile?: "default" | "multiAssetReplacement" | "sizeAwareLargeDiff";
     channel?: string;
-    compressStrategy?: "tar.br" | "tar.gz" | "zip";
     crossProvenance?: boolean;
     disabled?: boolean;
     diffBaseBundleId?: string;
     forceUpdate?: boolean;
     marker?: string;
     message?: string;
-    mode?: "crash" | "reset";
+    mode?: "crash" | "hang" | "reset";
     patchMaxBaseBundles?: number;
     rollout?: number;
     safeBundleIds?: string[];
@@ -285,32 +363,24 @@ app.post("/e2e/jobs/deploy-bundle", async (c) => {
   if (!payload.marker) {
     return c.json({ error: "marker is required" }, 400);
   }
-  if (payload.mode !== "reset" && payload.mode !== "crash") {
-    return c.json({ error: "mode must be reset or crash" }, 400);
+  if (
+    payload.mode !== "reset" &&
+    payload.mode !== "crash" &&
+    payload.mode !== "hang"
+  ) {
+    return c.json({ error: "mode must be reset, crash, or hang" }, 400);
   }
   if (
     payload.bundleProfile !== undefined &&
     payload.bundleProfile !== "default" &&
-    payload.bundleProfile !== "archive300mb" &&
     payload.bundleProfile !== "multiAssetReplacement" &&
     payload.bundleProfile !== "sizeAwareLargeDiff"
   ) {
     return c.json(
       {
         error:
-          "bundleProfile must be default, archive300mb, multiAssetReplacement, or sizeAwareLargeDiff",
+          "bundleProfile must be default, multiAssetReplacement, or sizeAwareLargeDiff",
       },
-      400,
-    );
-  }
-  if (
-    payload.compressStrategy !== undefined &&
-    payload.compressStrategy !== "tar.br" &&
-    payload.compressStrategy !== "tar.gz" &&
-    payload.compressStrategy !== "zip"
-  ) {
-    return c.json(
-      { error: "compressStrategy must be tar.br, tar.gz, or zip" },
       400,
     );
   }
@@ -339,8 +409,6 @@ app.post("/e2e/jobs/deploy-bundle", async (c) => {
     jobId: startDeployBundleJob({
       bundleProfile: payload.bundleProfile,
       channel: payload.channel,
-      compressStrategy: payload.compressStrategy,
-      crossProvenance: payload.crossProvenance,
       disabled: payload.disabled,
       diffBaseBundleId: payload.diffBaseBundleId,
       forceUpdate: payload.forceUpdate,
@@ -365,7 +433,12 @@ app.post("/e2e/jobs/create-bundle-diff", async (c) => {
   if (!payload.baseBundleId || !payload.bundleId) {
     return c.json({ error: "baseBundleId and bundleId are required" }, 400);
   }
-  return c.json({ jobId: startCreateBundleDiffJob(payload) });
+  return c.json({
+    jobId: startCreateBundleDiffJob({
+      baseBundleId: payload.baseBundleId,
+      bundleId: payload.bundleId,
+    }),
+  });
 });
 
 app.post("/e2e/jobs/create-republished-release", async (c) => {
@@ -579,32 +652,14 @@ app.post("/e2e/assert-bsdiff-patch-applied", async (c) => {
   );
 });
 
-app.post("/e2e/assert-first-ota-uses-archive", async (c) => {
+app.post("/e2e/assert-first-ota-uses-built-in-manifest", async (c) => {
   const payload = (await c.req.json()) as { bundleId?: string };
   if (!payload.bundleId) {
     return c.json({ error: "bundleId is required" }, 400);
   }
 
   return c.json(
-    await handleAssertFirstOtaUsesArchive(payload.bundleId, {
-      signal: c.req.raw.signal,
-    }),
-  );
-});
-
-app.post("/e2e/assert-lynx-page-interruption-state", async (c) => {
-  const payload = (await c.req.json()) as {
-    bundleId?: string;
-    releaseId?: string;
-  };
-  if (!payload.bundleId || !payload.releaseId) {
-    return c.json({ error: "bundleId and releaseId are required" }, 400);
-  }
-  return c.json(
-    handleAssertLynxPageInterruptionState({
-      bundleId: payload.bundleId,
-      releaseId: payload.releaseId,
-    }),
+    await handleAssertFirstOtaUsesBuiltInManifest(payload.bundleId),
   );
 });
 
@@ -758,6 +813,16 @@ app.post("/e2e/lynx-crash-state", (c) => c.json(handleLynxCrashState()));
 
 app.post("/e2e/prepare-app-launch", async (c) => {
   return c.json(await handlePrepareAppLaunch(await c.req.json()));
+});
+
+app.post("/e2e/launch-startup-hang", async (c) => {
+  const payload = (await c.req.json()) as { bundleId?: string };
+  if (!payload.bundleId) return c.json({ error: "bundleId is required" }, 400);
+  return c.json(await handleLaunchStartupHang(payload.bundleId));
+});
+
+app.post("/e2e/launch-uninstrumented-app", async (c) => {
+  return c.json(await handleLaunchUninstrumentedApp());
 });
 
 app.post("/e2e/launch-android-crash-app", async (c) => {

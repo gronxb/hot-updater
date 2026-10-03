@@ -1,17 +1,28 @@
 import {
   authorizeReleaseTransition,
+  canonicalizeAppVersion,
   createReleaseSelectionContextHash,
   encodeChannelKey,
+  type ExpectedReleaseCatalogScope,
+  hasExpectedReleaseCatalogScope,
   selectDesiredRelease,
-  type ArtifactInfo,
   type PersistedSelectionReceipt,
   type ReleaseCatalog,
-} from "@hot-updater/core";
-import { canonicalizeAppVersion } from "@hot-updater/plugin-core";
+} from "@hot-updater/protocol";
 import { Platform } from "react-native";
 
+import {
+  emitAfterAppReady,
+  getPreviousProcessExit,
+  getRunningReleaseId,
+} from "./appReady";
+import type {
+  ReleaseTransitionKind,
+  UpdateErrorResource,
+  UpdateErrorStage,
+} from "./clientPlugin";
 import { HotUpdaterError, StaleReleaseCatalogError } from "./error";
-import type { HotUpdaterHttpClient, HotUpdaterHttpSession } from "./httpClient";
+import type { HotUpdaterHttpClient } from "./httpClient";
 import {
   acceptReleaseCatalog,
   commitReleaseSelection,
@@ -22,20 +33,16 @@ import {
   getCohort,
   getDefaultChannel,
   getFingerprintHash,
-  getInstallId,
   getMinBundleId,
   getCrashHistory,
-  getPersistedUserIdentity,
   isReleaseSelectionCurrent,
   isChannelSwitched,
-  updateBundle,
+  stageBundle,
 } from "./native";
-import { reportBundleDownloaded } from "./notifyAppReadyInsights";
-import {
-  hasExpectedReleaseCatalogScope,
-  type ExpectedReleaseCatalogScope,
-} from "./releaseCatalogCache";
 import { hotUpdaterStore } from "./store";
+import { classifyUpdateError, InvalidUpdateResponseError } from "./updateError";
+
+export type { ReleaseTransitionKind };
 
 export interface CheckForUpdateOptions {
   /**
@@ -61,7 +68,7 @@ export interface CheckForUpdateOptions {
   requestTimeout?: number;
 }
 
-export type CheckForUpdateResult = ArtifactInfo & {
+export type CheckForUpdateResult = {
   readonly id: string;
   readonly message: string | null;
   readonly rolloutCohortCount: number;
@@ -77,14 +84,7 @@ export type CheckForUpdateResult = ArtifactInfo & {
   updateBundle: () => Promise<boolean>;
 };
 
-export type ReleaseTransitionKind =
-  | "INSTALL"
-  | "ADOPT_RELEASE"
-  | "USE_EMBEDDED"
-  | "USE_BUILTIN";
-
 export interface InternalCheckForUpdateOptions extends CheckForUpdateOptions {
-  insights?: boolean;
   client: HotUpdaterHttpClient;
 }
 
@@ -114,7 +114,7 @@ const validateCatalog = (
     !/^sha256:[0-9a-f]{64}$/.test(catalog.catalogHash) ||
     !hasExpectedReleaseCatalogScope(catalog, expectedScope)
   ) {
-    throw new HotUpdaterError("Received an invalid Release catalog");
+    throw new InvalidUpdateResponseError("Received an invalid Release catalog");
   }
 };
 
@@ -122,47 +122,50 @@ const resetProgress = () => {
   hotUpdaterStore.setState({
     artifactType: null,
     details: null,
-    downloadedBytes: undefined,
     isUpdateDownloaded: false,
     progress: 0,
-    totalBytes: undefined,
   });
 };
 
-const notifyUnchangedSelection = async (input: {
-  readonly active: PersistedSelectionReceipt | null;
-  readonly desired: PersistedSelectionReceipt;
-  readonly appVersion: string;
-  readonly cohort: string;
-  readonly fingerprintHash: string | null;
-  readonly platform: "ios" | "android";
-  readonly session: HotUpdaterHttpSession;
-  readonly requestHeaders?: Record<string, string>;
-  readonly requestTimeout?: number;
-}): Promise<void> => {
-  const { userId, username } = getPersistedUserIdentity();
-  try {
-    await input.session.sendInsightsEvent({
-      appVersion: input.appVersion,
-      channel: input.desired.channel,
-      cohort: input.cohort,
-      fingerprintHash: input.fingerprintHash,
-      fromBundleId: null,
-      fromReleaseId: input.active?.releaseId ?? null,
-      installId: getInstallId(),
-      platform: input.platform,
-      requestHeaders: input.requestHeaders,
-      requestTimeout: input.requestTimeout,
-      toBundleId: input.desired.bundleId,
-      toReleaseId: input.desired.releaseId,
-      type: "UNCHANGED",
-      updateStrategy: null,
-      ...(userId === undefined ? {} : { userId }),
-      ...(username === undefined ? {} : { username }),
-    });
-  } catch (error) {
-    console.warn("[HotUpdater] Unchanged selection insights failed:", error);
-  }
+/** The running bundle, the channel checked, and the update's target. */
+type UpdateErrorScope = {
+  readonly channel: string;
+  readonly bundleId: string;
+  readonly updateStrategy: "fingerprint" | "appVersion";
+  readonly targetBundleId?: string;
+  readonly targetReleaseId?: string | null;
+};
+
+/**
+ * Tells plugins why an update failed, when it failed as an update. An error
+ * the SDK's JavaScript raised happened in `stage`, fetching `resource`.
+ */
+export const reportUpdateError = (
+  error: unknown,
+  stage: UpdateErrorStage,
+  resource: UpdateErrorResource | undefined,
+  scope: UpdateErrorScope,
+): void => {
+  emitAfterAppReady("onUpdateError", () => {
+    const classification = classifyUpdateError(error, stage, resource);
+    if (classification === null) return null;
+    const previousProcessExit = getPreviousProcessExit();
+    return {
+      ...classification,
+      ...(previousProcessExit === null ? {} : { previousProcessExit }),
+      channel: scope.channel,
+      bundleId: scope.bundleId,
+      releaseId: getRunningReleaseId(scope.bundleId, getChannel()),
+      updateStrategy: scope.updateStrategy,
+      ...(scope.targetBundleId === undefined
+        ? {}
+        : { targetBundleId: scope.targetBundleId }),
+      ...(scope.targetReleaseId == null
+        ? {}
+        : { targetReleaseId: scope.targetReleaseId }),
+      cause: error,
+    };
+  });
 };
 
 async function checkForReleaseCatalogUpdate(input: {
@@ -213,6 +216,8 @@ async function checkForReleaseCatalogUpdate(input: {
     requestTimeout: options.requestTimeout,
     updateStrategy: options.updateStrategy,
   });
+  // The server says this scope has no catalog yet: no update, not a failure.
+  if (catalog === null) return null;
   validateCatalog(catalog, expectedScope);
   const catalogId = catalog.catalogId;
   const scopeKey = catalog.scopeKey;
@@ -266,7 +271,7 @@ async function checkForReleaseCatalogUpdate(input: {
       scopeKey,
     })
   ) {
-    throw new HotUpdaterError(
+    throw new InvalidUpdateResponseError(
       "Rejected a stale or inconsistent Release catalog",
     );
   }
@@ -330,7 +335,20 @@ async function checkForReleaseCatalogUpdate(input: {
     scopeKey,
     selectionContextHash,
   };
-  const updateBundleForSelection = async (): Promise<boolean> => {
+  const fromReleaseId =
+    active?.bundleId === input.currentBundleId
+      ? active.releaseId
+      : activeState.stableSelection?.bundleId === input.currentBundleId
+        ? activeState.stableSelection.releaseId
+        : null;
+  const errorScope = {
+    bundleId: input.currentBundleId,
+    channel: input.targetChannel,
+    targetBundleId: desired.bundleId,
+    targetReleaseId: desired.releaseId,
+    updateStrategy: options.updateStrategy,
+  };
+  const installSelection = async (): Promise<boolean> => {
     resetProgress();
     if (!isReleaseSelectionCurrent(guard)) {
       throw new StaleReleaseCatalogError();
@@ -341,18 +359,14 @@ async function checkForReleaseCatalogUpdate(input: {
         guard,
         selection: receipt,
       });
-      if (committed && transitionKind === "ADOPT_RELEASE" && options.insights) {
-        await notifyUnchangedSelection({
-          active,
-          appVersion: input.currentAppVersion,
-          cohort: input.cohort,
-          desired: receipt,
-          fingerprintHash: input.fingerprintHash,
-          platform: input.platform,
-          requestHeaders: options.requestHeaders,
-          requestTimeout: options.requestTimeout,
-          session,
-        });
+      if (committed && transitionKind === "ADOPT_RELEASE") {
+        emitAfterAppReady("onUpdateCheck", () => ({
+          status: "UNCHANGED",
+          channel: receipt.channel,
+          bundleId: receipt.bundleId,
+          releaseId: receipt.releaseId,
+          previousReleaseId: active?.releaseId ?? null,
+        }));
       }
       return committed;
     }
@@ -366,49 +380,64 @@ async function checkForReleaseCatalogUpdate(input: {
     if (!isReleaseSelectionCurrent(guard)) {
       throw new StaleReleaseCatalogError();
     }
-    const downloaded = await updateBundle({
+    const delivery = await stageBundle({
+      assets: artifact.assets,
       bundleId: desired.bundleId,
-      changedAssets: artifact.changedAssets ?? null,
       channel: input.targetChannel,
-      fileHash: artifact.fileHash,
-      fileUrl: artifact.fileUrl,
-      manifestFileHash: artifact.manifestFileHash ?? null,
-      manifestUrl: artifact.manifestUrl ?? null,
+      manifestFileHash: artifact.manifestFileHash,
+      manifestUrl: artifact.manifestUrl,
+      ...(artifact.archiveUrl ? { archiveUrl: artifact.archiveUrl } : {}),
       selection: receipt,
       shouldSkipCurrentBundleIdCheck: true,
       status: desired.status,
     });
-    if (downloaded) {
-      await reportBundleDownloaded(options, {
+    if (delivery !== null && desired.bundleId !== input.currentBundleId) {
+      emitAfterAppReady("onBundleDownloaded", () => ({
+        channel: input.targetChannel,
         fromBundleId: input.currentBundleId,
-        fromReleaseId:
-          active?.bundleId === input.currentBundleId
-            ? active.releaseId
-            : activeState.stableSelection?.bundleId === input.currentBundleId
-              ? activeState.stableSelection.releaseId
-              : null,
+        fromReleaseId,
         toBundleId: desired.bundleId,
         toReleaseId: desired.releaseId,
-        channel: input.targetChannel,
         updateStrategy: options.updateStrategy,
-      });
+        ...delivery,
+      }));
     }
-    return downloaded;
+    return true;
+  };
+  const updateBundleForSelection = async (): Promise<boolean> => {
+    try {
+      return await installSelection();
+    } catch (error) {
+      reportUpdateError(error, "download", "artifact", errorScope);
+      throw error;
+    }
   };
 
+  const shouldForceUpdate =
+    transitionKind === "ADOPT_RELEASE"
+      ? false
+      : desired.status === "ROLLBACK"
+        ? true
+        : (release?.shouldForceUpdate ?? false);
+  emitAfterAppReady("onUpdateCheck", () => ({
+    status: "UPDATE_AVAILABLE",
+    channel: input.targetChannel,
+    fromBundleId: input.currentBundleId,
+    fromReleaseId,
+    toBundleId: desired.bundleId,
+    toReleaseId: desired.releaseId,
+    transitionKind,
+    updateStatus: desired.status,
+    shouldForceUpdate,
+    updateStrategy: options.updateStrategy,
+  }));
+
   return {
-    fileHash: null,
-    fileUrl: null,
     id: desired.releaseId ?? desired.bundleId,
     message: release?.message ?? null,
     releaseId: desired.releaseId,
     rolloutCohortCount: release?.rolloutCohortCount ?? 1000,
-    shouldForceUpdate:
-      transitionKind === "ADOPT_RELEASE"
-        ? false
-        : desired.status === "ROLLBACK"
-          ? true
-          : (release?.shouldForceUpdate ?? false),
+    shouldForceUpdate,
     status: desired.status,
     targetCohorts: release?.targetCohorts ? [...release.targetCohorts] : [],
     transitionKind,
@@ -457,7 +486,7 @@ export async function checkForUpdate(
   const fingerprintHash = getFingerprintHash();
 
   try {
-    return await checkForReleaseCatalogUpdate({
+    const result = await checkForReleaseCatalogUpdate({
       cohort,
       currentAppVersion,
       currentBundleId,
@@ -471,7 +500,25 @@ export async function checkForUpdate(
       platform,
       targetChannel,
     });
+    if (result === null) {
+      emitAfterAppReady("onUpdateCheck", () => {
+        const releaseId = getRunningReleaseId(currentBundleId, currentChannel);
+        return {
+          status: "UNCHANGED",
+          channel: currentChannel,
+          bundleId: currentBundleId,
+          releaseId,
+          previousReleaseId: releaseId,
+        };
+      });
+    }
+    return result;
   } catch (error) {
+    reportUpdateError(error, "check", "catalog", {
+      bundleId: currentBundleId,
+      channel: targetChannel,
+      updateStrategy: options.updateStrategy,
+    });
     options.onError?.(error as Error);
     return null;
   }

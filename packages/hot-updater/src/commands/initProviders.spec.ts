@@ -1,7 +1,7 @@
-import { initProvider as awsInitProvider } from "@hot-updater/aws/init";
-import { initProvider as cloudflareInitProvider } from "@hot-updater/cloudflare/init";
-import { initProvider as firebaseInitProvider } from "@hot-updater/firebase/init";
-import { initProvider as supabaseInitProvider } from "@hot-updater/supabase/init";
+import * as awsInit from "@hot-updater/aws/init";
+import * as cloudflareInit from "@hot-updater/cloudflare/init";
+import * as firebaseInit from "@hot-updater/firebase/init";
+import * as supabaseInit from "@hot-updater/supabase/init";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -9,6 +9,13 @@ import {
   INIT_PROVIDER_PACKAGES,
   isInitProvider,
 } from "./initProviders";
+
+const providerInits = {
+  aws: awsInit,
+  cloudflare: cloudflareInit,
+  firebase: firebaseInit,
+  supabase: supabaseInit,
+};
 
 describe("init provider packages", () => {
   it("derives provider guards from the package registry", () => {
@@ -25,22 +32,20 @@ describe("init provider packages", () => {
     expect(isInitProvider(undefined)).toBe(false);
   });
 
-  it("uses each provider package's init definition", () => {
-    // Given
-    const providerPackages = INIT_PROVIDER_PACKAGES;
+  it("loads each provider's whole init from its package's ./init entry", async () => {
+    for (const name of INIT_PROVIDER_NAMES) {
+      const module = await INIT_PROVIDER_PACKAGES[name].load();
 
-    // When
-    const definitions = {
-      aws: providerPackages.aws.definition,
-      cloudflare: providerPackages.cloudflare.definition,
-      firebase: providerPackages.firebase.definition,
-      supabase: providerPackages.supabase.definition,
-    };
+      expect(module.initProvider, name).toBe(providerInits[name].initProvider);
+      expect(module.runInit, name).toBe(providerInits[name].runInit);
+    }
+  });
 
-    // Then
-    expect(definitions.aws).toBe(awsInitProvider);
-    expect(definitions.cloudflare).toBe(cloudflareInitProvider);
-    expect(definitions.firebase).toBe(firebaseInitProvider);
-    expect(definitions.supabase).toBe(supabaseInitProvider);
+  it("names each provider in init's prompt by its package's init label", () => {
+    for (const name of INIT_PROVIDER_NAMES) {
+      expect(INIT_PROVIDER_PACKAGES[name].label, name).toBe(
+        providerInits[name].initProvider.label,
+      );
+    }
   });
 });

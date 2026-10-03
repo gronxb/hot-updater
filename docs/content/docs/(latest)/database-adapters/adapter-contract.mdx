@@ -1,0 +1,235 @@
+---
+title: "Database adapter contract"
+description: The DatabaseAdapter interface every database adapter implements, with the rules for tables, values, reads, guarded writes, write limits, retention, and migrations.
+icon: FileCode
+---
+
+## The interface
+
+Every database adapter hands Hot Updater's storage engine an object that
+implements `DatabaseAdapter` from `@hot-updater/plugin-core`. The engine
+sends it point reads, index ranges, and guarded writes, and keeps Releases,
+references, counters, and retries itself. `createSqlAdapter` and `createKvAdapter` implement this contract for
+SQL databases and key-value stores; see
+[Create a database adapter](/docs/database-adapters/custom-database) for which
+one fits your backend. This page is the contract that every adapter follows.
+
+```ts
+interface DatabaseAdapter {
+  /** Names the adapter in messages, such as "sql:postgresql". */
+  readonly id: string;
+  /** Whether the ops commit atomically in one write. */
+  fits(ops: readonly WriteOp[]): boolean;
+  /** A strongly consistent batch point read, in the order of `keys`. */
+  get(
+    table: PhysicalTable,
+    keys: readonly DatabaseKey[],
+  ): Promise<readonly (StoredRow | null)[]>;
+  /** One index range, up to `request.limit` rows. */
+  query(
+    table: PhysicalTable,
+    request: QueryRequest,
+  ): Promise<readonly StoredRow[]>;
+  /** Applies every op or none. */
+  write(ops: readonly WriteOp[]): Promise<WriteResult>;
+  /**
+   * Deletes rows the engine already recorded as consumed, with their index
+   * entries: without guards and not atomically.
+   */
+  deleteConsumed?(
+    table: PhysicalTable,
+    rows: readonly StoredRow[],
+  ): Promise<void>;
+  /**
+   * Deletes up to `limit` expired rows of a table with retention, oldest
+   * first; left out where the backend expires rows natively.
+   */
+  prune?(table: PhysicalTable, before: number, limit: number): Promise<number>;
+  /** Creates tables; only the migration helpers call it. */
+  readonly migrations?: {
+    apply(tables: readonly PhysicalTable[]): Promise<void>;
+  };
+  dispose?(): Promise<void>;
+}
+```
+
+## Tables and values
+
+Each call names a `PhysicalTable`: its columns, its primary key (a list of
+columns) and its indexes. The table name is logical, and an adapter may add
+its own prefix.
+
+```ts
+interface PhysicalTable {
+  readonly name: string;
+  readonly columns: readonly PhysicalColumn[];
+  readonly key: readonly string[];
+  readonly indexes: readonly PhysicalIndex[];
+  /** Rows expire `ms` after the epoch milliseconds in `column`. */
+  readonly retention?: { readonly column: string; readonly ms: number };
+}
+
+interface PhysicalIndex {
+  readonly name: string;
+  readonly eq: readonly string[];
+  readonly sort: readonly string[];
+  readonly unique?: true;
+}
+```
+
+| Column field | Meaning                                                                                                     |
+| ------------ | ----------------------------------------------------------------------------------------------------------- |
+| `type`       | `string`, `integer` (safe integers), `number` (finite numbers), `boolean`, or `json` (any JSON value)       |
+| `nullable`   | Whether the column holds `null`                                                                             |
+| `maxLength`  | Strings: the longest value in UTF-16 code units; unbounded text when absent                                 |
+| `ascii`      | Strings: ASCII only, so a backend that limits index size (MySQL) can store it in single bytes               |
+| `default`    | A whole number the backend stores when a write leaves the column out; the engine's own columns default to 0 |
+| `multi`      | An array of 1–16 values of `type`, indexable in `eq` only                                                   |
+
+Every table has `_v`, the row version that guards writes. Key and index values
+are strings, numbers or booleans. Rows come back exactly as written: empty,
+long and non-ASCII strings, integers up to `Number.MAX_SAFE_INTEGER`, arrays in
+their order, and nested JSON. `normalizeStoredRow(table, raw, { jsonText })`
+converts what drivers return (int8 as text, `BigInt`, decimals, SQLite 0 and 1,
+JSON as text) to stored values.
+
+## Retention
+
+A table with `retention` expires a row `ms` after the time in its `column`
+(`expiresAt(table, row)`); a null time never expires. An adapter maps it to
+its backend's cheapest mechanism, one of two:
+
+- **A native TTL.** Stamp the expiry on every item the row writes, index
+  copies and unique entries included, and let the backend delete them.
+  Leave `prune` out. The key-value helper passes `expiresAt` on each `KvOp`
+  it puts or creates, and a `KeyValueStore` maps it: DynamoDB to `_ttl` in
+  epoch seconds, Firestore to an `expireAt` timestamp. The MongoDB adapter
+  stamps `_expireAt`, a Date, under a TTL index.
+- **`prune(table, before, limit)`.** Delete up to `limit` rows whose
+  retention column is at or below `before`, oldest first (ties in any
+  order), with their index entries, and resolve to how many went. Recheck the
+  column as you delete, so a row a concurrent write moved past `before`
+  stays. Walk an index that starts with the column, so a prune reads only
+  the rows it deletes: the SQL core uses the first index or key that starts
+  with it and otherwise creates `<table>__retention` on the column and the
+  key. The server calls it during writes, with no scheduler: the write that
+  takes the lease row in the settings table first runs one pass of up to
+  500 rows a table, due hourly, or a minute later while a pass found a full
+  batch.
+
+The engine never deletes an expired row itself, and until the backend does
+a read may still return one. The conformance suite checks `prune` unless
+you pass `retention: "ttl"`.
+
+## Point reads
+
+`get(table, keys)` reads rows by primary key, strongly consistently, in one
+batch. It returns one entry per key in the order of `keys`, with `null` for a
+key that has no row. An empty `keys` returns no rows.
+
+## Index reads
+
+```ts
+interface QueryRequest {
+  readonly index: string;
+  /** One value for each `eq` column of the index, in order. */
+  readonly eq: readonly DatabaseKeyValue[];
+  readonly lower?: QueryBound;
+  readonly upper?: QueryBound;
+  readonly order: "asc" | "desc";
+  /** 1–500 rows. */
+  readonly limit: number;
+}
+
+interface QueryBound {
+  /** A prefix of the index's order columns. */
+  readonly values: readonly DatabaseKeyValue[];
+  readonly inclusive: boolean;
+}
+```
+
+- An index orders rows by its `sort` columns, then by the key columns that
+  neither `eq` nor `sort` names. `indexOrderColumns(table, index)` returns
+  them. Bounds compare a prefix of that tuple, and the engine pages by passing
+  the last row's tuple as an exclusive bound.
+- Strings order by UTF-8 bytes, with no collation: `B` sorts before `a`, and
+  `a ` after `a`. Numbers order numerically, and `false` before `true`.
+- A row with `null` in an index column is not in that index. A multi-valued
+  `eq` column indexes the row under each of its values.
+- A unique index holds at most one row for each `eq` tuple.
+- Return `limit` rows unless the range ends first. When the backend reads in
+  native pages, keep reading them: a result shorter than `limit` means the
+  range has ended. The test suites pass `nativePageSize` to your adapter
+  factory to cap native pages at two rows and check that every page still
+  fills.
+
+## Writes and guards
+
+A write is a list of ops, applied atomically:
+
+| Op          | Applies when                                                                     | Effect                                                                         |
+| ----------- | -------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| `insert`    | no row has the key                                                               | writes `row`, `_v` included                                                    |
+| `patch`     | the row's `_v` is `guard.v`                                                      | writes the columns in `set`, and sets `_v` to `guard.v + 1`                    |
+| `delete`    | the row's `_v` is `guard.v`                                                      | deletes the row                                                                |
+| `increment` | the row exists or `init` is given, and its `_v` is `guard.v` when a guard is set | creates a missing row from `init`, then adds `by` to its columns and 1 to `_v` |
+| `check`     | the row's `_v` is `guard.v`                                                      | writes nothing, but conflicts with any concurrent write to the row             |
+
+A write has at most one op per row, and every guard is checked against the
+rows as they were before the write. An insert or patch fails when it would give
+a unique index a second row with the same values. The engine sends deletes
+first, so a later op in the same write can take a unique value that a delete
+frees. `patch` and `delete` carry `previous`, the row as the engine read it,
+for adapters that keep their own index entries.
+
+`write` resolves to one of three results, and throws only when it cannot tell
+whether the write committed:
+
+| Result                       | When                                                                                                         | The engine                                                                                                                                                              |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `{ ok: true }`               | every op applied                                                                                             | returns                                                                                                                                                                 |
+| `{ ok: false, failedOp }`    | the op at position `failedOp` failed its guard or a unique index, and nothing applied                        | reads that row again: it reports `DatabaseConstraintError` (`exists`, `unique` or `not_found`) when the current state confirms it, and otherwise reruns the transaction |
+| `{ ok: false, retry: true }` | a transient failure: a deadlock, serialization failure, lock timeout, busy database, or transaction conflict | sends the write again after a backoff                                                                                                                                   |
+| thrown error                 | the outcome is unknown, such as a connection lost during commit                                              | reports `DatabaseAmbiguousCommitError` and never sends the write again                                                                                                  |
+
+A `check` guards a row that the transaction read and does not change, so two
+transactions cannot each change what the other read. The SQL core locks the
+row with `SELECT … FOR UPDATE`; on SQLite, `BEGIN IMMEDIATE` locks the whole
+database. The MongoDB adapter increments a field on the row, so a concurrent
+transaction on it conflicts.
+
+## Write limits
+
+`fits(ops)` says whether the ops fit in one atomic write of the backend: its
+limits on ops, items or bytes. The engine asks before every write and refuses
+a transaction that does not fit with `DatabaseConstraintError` `too_large`,
+before anything is sent. Return `true` when the backend has no limit.
+
+## Consumed rows
+
+`deleteConsumed(table, rows)` is optional. The engine calls it for rows it has
+already recorded as consumed, such as the log rows of
+[batched aggregates](/docs/custom/server-plugins#aggregates) after a compaction
+applied them. Delete the rows as read, with their index entries, without
+guards and not atomically: deleting a row twice, or one already gone, is
+harmless. Implement it when the backend bills a plain batch delete less than a
+transactional one, as the DynamoDB and Firestore stores do. Without it, or when
+it throws, the engine deletes the rows through `write`.
+
+## Migrations
+
+`migrations.apply(tables)` creates each table with its indexes. A table that
+exists keeps its rows, so running it twice changes nothing. Only the migration
+tooling calls it: `migrateCoreSchema` and `hot-updater db migrate`. Leave it
+out when other tooling creates the tables, as Supabase's migrations do for its
+RPC, which runs no DDL.
+
+## Check an adapter
+
+`createMemoryAdapter()` implements every rule on this page and is the
+reference. Wrap your adapter in `verifyAdapter(adapter)` while you develop: it
+fails reads that return rows for other keys, rows outside the range or out of
+order, or more than `limit` rows, and writes that touch a row twice or that
+`fits` refuses. `setupDatabaseAdapterConformanceSuite` from
+`@hot-updater/test-utils` checks the rules case by case; see
+[Adapter conformance](/docs/database-adapters/custom-database#adapter-conformance).

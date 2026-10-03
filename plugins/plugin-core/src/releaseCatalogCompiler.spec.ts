@@ -3,11 +3,10 @@ import {
   MAX_COMPILED_CATALOG_BYTES,
   type Release,
   type ReleaseStrategy,
-} from "@hot-updater/core";
+} from "@hot-updater/protocol";
 import { describe, expect, it } from "vitest";
 
 import {
-  canonicalizeAppVersion,
   compileReleaseCatalog,
   projectCompiledCatalog,
   projectCompiledRollbackCatalog,
@@ -66,20 +65,6 @@ function compatibleIds(
     .map(({ id }) => id);
 }
 
-describe("canonicalizeAppVersion", () => {
-  it.each<[string, string | null]>([
-    ["1.2.3", "1.2.3"],
-    ["v1.4", "1.4.0"],
-    ["release-1.2.3", "1.2.3"],
-    ["1.2.3-rc.1+build.7", "1.2.3"],
-    ["2.5.0+build.7", "2.5.0"],
-    ["", null],
-    ["not-a-version", null],
-  ])("canonicalizes %j to %j", (appVersion, expected) => {
-    expect(canonicalizeAppVersion(appVersion)).toBe(expected);
-  });
-});
-
 describe("compileReleaseCatalog", () => {
   it.each([
     "00000000-0000-4000-8000-000000000001",
@@ -111,6 +96,37 @@ describe("compileReleaseCatalog", () => {
           ({ releaseId }) => releaseId,
         ),
       ).toEqual(compatibleIds(releases, appVersion));
+    }
+  });
+
+  it("serves no version in the gap between a range's parts", async () => {
+    for (const targetAppVersion of ["1.2.x || 1.5.x", "1.0.0 || 2.0.0"]) {
+      const releases = [release(1, { targetAppVersion })];
+      const compilation = await compileReleaseCatalog({
+        releases,
+        strategy: "APP_VERSION",
+      });
+
+      for (const appVersion of [
+        "1.0.0",
+        "1.2.3",
+        "1.4.0",
+        "1.5.1",
+        "1.9.0",
+        "2.0.0",
+      ]) {
+        const expected = compatibleIds(releases, appVersion);
+        for (const project of [
+          projectCompiledCatalog,
+          projectCompiledRollbackCatalog,
+        ]) {
+          expect(
+            project(compilation.payload, appVersion).map(
+              ({ releaseId }) => releaseId,
+            ),
+          ).toEqual(expected);
+        }
+      }
     }
   });
 

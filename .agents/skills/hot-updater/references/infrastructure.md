@@ -150,7 +150,7 @@ arbitrary 404 as success. Load the saved client key privately inside the probe
 process without printing it or placing it in command arguments. Missing config
 or skipped checks do not count as success. Doctor does not verify local provider
 storage credentials: follow the scaffold's bounded read/list check using the same
-credential chain as the local storage plugin. Do not substitute an MCP session or
+credential chain as the local storage adapter. Do not substitute an MCP session or
 server runtime credentials, or claim write/OTA verification from read access.
 
 A doctor `fixability: "blocked"` issue needs external context/access beyond local

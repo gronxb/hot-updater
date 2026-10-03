@@ -13,11 +13,19 @@ const accessError = (
     { status: access.status === "unauthenticated" ? 401 : 403 },
   );
 
-export const getConsoleAccess = async (
-  request: Request,
-): Promise<ConsoleAccess> => {
-  const adapter = await getConsoleAuthAdapter();
-  return adapter.getAccess(request);
+// Server function middleware checks access before input, and prepareConfig
+// checks again for its callers: one request asks the adapter once.
+const accessByRequest = new WeakMap<Request, Promise<ConsoleAccess>>();
+
+export const getConsoleAccess = (request: Request): Promise<ConsoleAccess> => {
+  let access = accessByRequest.get(request);
+  if (!access) {
+    access = getConsoleAuthAdapter().then((adapter) =>
+      adapter.getAccess(request),
+    );
+    accessByRequest.set(request, access);
+  }
+  return access;
 };
 
 export const getConsoleAuthProviders = async (

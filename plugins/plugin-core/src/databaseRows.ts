@@ -1,11 +1,15 @@
-import type { Bundle, BundlePatchArtifact, Release } from "@hot-updater/core";
+import type {
+  Bundle,
+  BundlePatchArtifact,
+  Release,
+} from "@hot-updater/protocol";
 import {
   getAssetBaseStorageUri,
   getBundlePatches,
   getManifestFileHash,
   getManifestStorageUri,
   stripBundleArtifactMetadata,
-} from "@hot-updater/core";
+} from "@hot-updater/protocol";
 
 import { bundleMetadataToRow } from "./databaseMetadata";
 import type { BundlePatchRow, BundleRow, ReleaseRow } from "./types";
@@ -92,10 +96,7 @@ export const bundleToRow = (bundle: Bundle): BundleRow => {
   return {
     id: bundle.id,
     platform: bundle.platform,
-    file_hash: bundle.fileHash,
     git_commit_hash: bundle.gitCommitHash,
-    storage_uri: bundle.storageUri,
-    archive_byte_size: bundle.archiveByteSize,
     metadata,
     manifest_storage_uri: getManifestStorageUri(bundle),
     manifest_file_hash: getManifestFileHash(bundle),
@@ -137,10 +138,7 @@ export const rowToBundle = (
   return {
     id: row.id,
     platform: row.platform,
-    fileHash: row.file_hash,
     gitCommitHash: row.git_commit_hash,
-    storageUri: row.storage_uri,
-    archiveByteSize: row.archive_byte_size,
     metadata: stripBundleArtifactMetadata(row.metadata),
     manifestStorageUri: row.manifest_storage_uri,
     manifestFileHash: row.manifest_file_hash,

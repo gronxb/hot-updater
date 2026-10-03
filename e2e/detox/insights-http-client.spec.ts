@@ -2,8 +2,7 @@ import { spawnSync } from "node:child_process";
 
 import { describe, expect, it, vi } from "vitest";
 
-import { createHotUpdater } from "../../packages/server/src/index.ts";
-import { createInMemoryDatabasePlugin } from "../../packages/test-utils/test/inMemoryDatabasePlugin.ts";
+import { importPublished } from "./published.ts";
 import {
   readObservedInsightsEvent,
   verifyConsoleInsights,
@@ -13,6 +12,16 @@ import {
   ConsoleInsightsHttpError,
   createConsoleInsightsHttpClient,
 } from "./insights-http-client.ts";
+
+const { createMemoryAdapter } = await importPublished<
+  typeof import("@hot-updater/plugin-core")
+>("@hot-updater/plugin-core");
+const { createHotUpdater } = await importPublished<
+  typeof import("@hot-updater/server")
+>("@hot-updater/server");
+const { insights } = await importPublished<
+  typeof import("@hot-updater/server/plugins/insights")
+>("@hot-updater/server/plugins/insights");
 
 describe("Detox Insights HTTP client", () => {
   it("loads under the Node strip-types mode used by the Detox control server", () => {
@@ -31,10 +40,10 @@ describe("Detox Insights HTTP client", () => {
   });
 
   it("queries the deployed server when config only has a standalone admin client", async () => {
-    const serverDatabase = createInMemoryDatabasePlugin();
     const deployedServer = createHotUpdater({
-      database: serverDatabase,
-      clientAccess: { type: "public" },
+      database: { name: "memory", adapter: createMemoryAdapter() },
+      plugins: [insights()],
+      clientAccess: "public",
     });
     const fetch = vi.fn<typeof globalThis.fetch>((input, init) => {
       const request = new Request(input, init);
@@ -83,14 +92,15 @@ describe("Detox Insights HTTP client", () => {
     },
   );
 
-  it("traces all three bundle outcomes while recovery moves the latest installation to its destination", async () => {
+  it("traces the stored bundle outcomes while recovery moves the latest installation to its destination", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-09-05T00:00:00Z"));
     try {
       const sinceMs = Date.now();
       const server = createHotUpdater({
-        database: createInMemoryDatabasePlugin(),
-        clientAccess: { type: "public" },
+        database: { name: "memory", adapter: createMemoryAdapter() },
+        plugins: [insights()],
+        clientAccess: "public",
       });
       const client = createConsoleInsightsHttpClient({
         baseUrl: "https://example.com",
@@ -168,14 +178,14 @@ describe("Detox Insights HTTP client", () => {
         observedEvents,
         sinceMs,
       });
+      // The relaunches repeat each move's latest report the same UTC day, so
+      // they record nothing, and no event list or count holds them.
       expect(evidence).toMatchObject({
         reportingInstallations: 1,
         selectedBundleInstallations: 1,
-        eventType: "UNCHANGED",
+        eventType: "RECOVERED",
         outcomes: [
-          { bundleId: "bundle-a", count: 1, outcome: "unchanged" },
           { bundleId: "bundle-b", count: 1, outcome: "recovered" },
-          { bundleId: "bundle-b", count: 1, outcome: "unchanged" },
           { bundleId: "bundle-b", count: 1, outcome: "applied" },
         ],
       });
@@ -189,8 +199,8 @@ describe("Detox Insights HTTP client", () => {
         reportingInstallations: { count: 0 },
         appliedReports: { count: 1 },
         recoveredReports: { count: 1 },
-        unchangedReports: { count: 1 },
       });
+      expect(source.bundle).not.toHaveProperty("unchangedReports");
       const destination = await client.getReportingOverview({
         platform: "ios",
         channel: "production",
@@ -201,7 +211,6 @@ describe("Detox Insights HTTP client", () => {
         reportingInstallations: { count: 1 },
         appliedReports: { count: 0 },
         recoveredReports: { count: 0 },
-        unchangedReports: { count: 1 },
       });
       await expect(
         client.listEvents({

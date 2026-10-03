@@ -4,8 +4,8 @@
 
 Add Lynx OTA support: a framework-independent runtime and build adapter, iOS
 and Android native controllers, and optional packaged Sparkling hosts for
-ReactLynx, VueLynx, and OctaneLynx. Support full archives and verified BSDIFF
-deltas, nonretained compatibility checks, atomic staging and channel changes,
+ReactLynx, VueLynx, and OctaneLynx. Support manifest-v1 delivery with verified BSDIFF patches and optional
+manifest-authenticated tar.br bulk transfer, nonretained compatibility checks, atomic staging and channel changes,
 one-shot launch transition receipts, startup recovery, and in-process recreation
 of every managed Lynx runtime and view. Preserve opaque compiler output through
 portable, manifest-bound artifact declarations, including a 16 KiB Lynx sidecar

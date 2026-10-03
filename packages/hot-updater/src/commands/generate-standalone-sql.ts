@@ -2,6 +2,7 @@ import { access, mkdir, writeFile } from "fs/promises";
 import path from "path";
 
 import { p } from "@hot-updater/cli-tools";
+import type { AnyHotUpdaterPlugin } from "@hot-updater/plugin-core";
 import { Kysely, MysqlDialect, PostgresDialect, SqliteDialect } from "kysely";
 import {
   formatDialect,
@@ -11,6 +12,7 @@ import {
 } from "sql-formatter";
 
 import { ui } from "../utils/cli-ui";
+import { findPluginList } from "./utils/load-hot-updater";
 
 const SUPPORTED_PROVIDERS = ["postgresql", "mysql", "sqlite"] as const;
 type SupportedProvider = (typeof SUPPORTED_PROVIDERS)[number];
@@ -119,36 +121,70 @@ const getProvider = async (
   process.exit(1);
 };
 
+/**
+ * The plugins whose tables the SQL adds to core's: those of the server
+ * definition `configPath` names, else the project's plugin list. None
+ * without one, which it says.
+ */
+const findServerPlugins = async (
+  configPath: string | undefined,
+  cwd: string,
+): Promise<readonly AnyHotUpdaterPlugin[]> => {
+  const failures: string[] = [];
+  const found = await findPluginList(
+    configPath === undefined ? [] : [configPath],
+    cwd,
+    failures,
+  );
+  for (const failure of failures) {
+    p.log.warn(`Could not read plugins from ${failure}`);
+  }
+  if (found === undefined) {
+    p.log.info(
+      "No server definition or plugins in hot-updater.config.ts found, so the SQL holds core's tables only.",
+    );
+    return [];
+  }
+  p.log.info(`Adding the tables of the plugins in ${found.from}.`);
+  return found.plugins;
+};
+
 export async function generateStandaloneSQL(options: {
   outputDir: string;
   skipConfirm: boolean;
   provider?: string;
+  /** The server config whose plugins' tables to add, instead of looking for one. */
+  configPath?: string;
+  cwd?: string;
 }) {
-  const { outputDir, skipConfirm, provider } = options;
+  const {
+    outputDir,
+    skipConfirm,
+    provider,
+    configPath,
+    cwd = process.cwd(),
+  } = options;
 
   try {
     const dbType = await getProvider(provider, skipConfirm);
+    const plugins = await findServerPlugins(configPath, cwd);
     const s = p.spinner();
     s.start("Generating SQL from database schema");
 
     const db = new Kysely<object>({ dialect: createDialect(dbType) });
-    const [{ createHotUpdater }, { createMigrator }, { kyselyAdapter }] =
-      await Promise.all([
-        import("@hot-updater/server"),
-        import("@hot-updater/server/db"),
-        import("@hot-updater/server/adapters/kysely"),
-      ]);
+    const [{ toolingTargetOf }, { kyselyAdapter }] = await Promise.all([
+      import("@hot-updater/plugin-core"),
+      import("@hot-updater/server/adapters/kysely"),
+    ]);
 
     const adapter = kyselyAdapter({
       db,
       provider: dbType,
     });
 
-    const hotUpdater = createHotUpdater({
-      database: adapter,
-      clientAccess: { type: "public" },
-    });
-    const migrator = createMigrator(hotUpdater);
+    // The server checks its plugins as it starts; the SQL only adds their
+    // tables.
+    const migrator = adapter.createMigrator!(toolingTargetOf(plugins));
     const result = await migrator.migrateToLatest({
       mode: "from-schema",
       updateSettings: false,
@@ -158,7 +194,7 @@ export async function generateStandaloneSQL(options: {
 
     if (!result.getSQL) {
       p.log.error(
-        "SQL generation is not supported by the database plugin.\n" +
+        "SQL generation is not supported by the database adapter.\n" +
           "This may indicate a configuration issue.",
       );
       process.exit(1);
@@ -184,7 +220,7 @@ export async function generateStandaloneSQL(options: {
       keywordCase: "upper",
     });
 
-    const absoluteOutputDir = path.resolve(process.cwd(), outputDir);
+    const absoluteOutputDir = path.resolve(cwd, outputDir);
     await mkdir(absoluteOutputDir, { recursive: true });
     const outputPath = path.join(absoluteOutputDir, "hot-updater.sql");
     const outputExists = await access(outputPath)

@@ -1,4 +1,4 @@
-import { makeEnv, writeHotUpdaterConfig } from "@hot-updater/cli-tools";
+import { makeEnv, writeHotUpdaterFiles } from "@hot-updater/cli-tools";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
@@ -41,9 +41,8 @@ vi.mock("@hot-updater/cli-tools", async () => {
         }
       }),
     },
-    writeHotUpdaterConfig: vi.fn().mockResolvedValue({
-      status: "created",
-      path: "hot-updater.config.ts",
+    writeHotUpdaterFiles: vi.fn().mockResolvedValue({
+      config: { status: "created", path: "hot-updater.config.ts" },
     }),
   };
 });
@@ -80,11 +79,24 @@ describe("setEnv", () => {
         preserveKeys: ["GOOGLE_APPLICATION_CREDENTIALS"],
       },
     );
-    expect(vi.mocked(writeHotUpdaterConfig)).toHaveBeenCalledOnce();
-    const scaffold = vi.mocked(writeHotUpdaterConfig).mock.calls[0]?.[0];
+    expect(vi.mocked(writeHotUpdaterFiles)).toHaveBeenCalledOnce();
+    const [scaffold, options] =
+      vi.mocked(writeHotUpdaterFiles).mock.calls[0] ?? [];
+    // The config lists the storage, database, and plugins the function runs,
+    // with the credential helper they read, and names no server code.
+    expect(scaffold?.text).toContain(
+      'import { firebaseDatabase, firebaseStorage, plugins } from "@hot-updater/firebase";\nimport { applicationDefault } from "firebase-admin/app";',
+    );
     expect(scaffold?.text).toContain(
       "// Reuse working application-default credentials (ADC).",
     );
+    expect(scaffold?.text).toContain(
+      "const credential = applicationDefault();",
+    );
+    expect(scaffold?.text).toContain("  plugins,\n");
+    expect(scaffold?.text).not.toContain("createHotUpdater");
+    expect(scaffold?.text).not.toContain("server:");
+    expect(options).toMatchObject({ settings: "Firebase" });
   });
 });
 

@@ -102,8 +102,10 @@ function ChannelStatus() {
 import { HotUpdater } from "@hot-updater/react-native";
 
 async function restoreDefaultChannel() {
-  await HotUpdater.resetChannel();
-  await HotUpdater.reload();
+  if (!HotUpdater.isChannelSwitched()) return;
+
+  const reset = await HotUpdater.resetChannel();
+  if (reset) await HotUpdater.reload();
 }
 ```
 
@@ -128,14 +130,15 @@ async function restoreDefaultChannel() {
 - If a runtime channel switch is already active, `checkForUpdate({ channel: "..." })`
   cannot move directly to a different runtime channel. Call
   `HotUpdater.resetChannel()` before starting another switch.
-- If no runtime channel switch is active, `HotUpdater.resetChannel()` is a no-op.
+- `HotUpdater.resetChannel()` clears downloaded OTA state even on the default
+  channel. After reloading, the app runs its built-in bundle. Guard with
+  `HotUpdater.isChannelSwitched()` if the action should only leave an active
+  switch, as in the example above.
 
 <Callout type="warn">
-  Do not rely on `checkForUpdate({ channel: "<default-channel>" })` to return to
-  the default channel. That call only checks for an update. If there is nothing
-  new to install, the runtime channel switch remains active. Use
-  `HotUpdater.resetChannel()` when you want to fully leave the runtime channel
-  switch.
+  While a runtime switch is active, checking any different channel, including
+  the embedded default channel, rejects before requesting a catalog. Call
+  `HotUpdater.resetChannel()` and reload before checking another channel.
 </Callout>
 
 ## Related APIs

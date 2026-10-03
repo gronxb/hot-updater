@@ -1,5 +1,125 @@
 # @hot-updater/apple-helper
 
+## 1.0.0-rc.27
+
+### Patch Changes
+
+- Improve the readability of Console update failures by grouping check metrics separately, emphasizing nonzero failures, and making stage/reason details easier to scan. Preserve all report data and rate calculations. Prepare all public Hot Updater packages together as 1.0.0-rc.27.
+- Updated dependencies
+  - @hot-updater/cli-tools@1.0.0-rc.27
+  - @hot-updater/plugin-core@1.0.0-rc.27
+
+## 1.0.0-rc.26
+
+### Patch Changes
+
+- c9cfed7: Restore the rc.14 Insights metric layout in bundle rows and details while preserving current data, rates, links, and download failure reporting. Release all public Hot Updater packages together as 1.0.0-rc.26.
+- Updated dependencies [c9cfed7]
+  - @hot-updater/cli-tools@1.0.0-rc.26
+  - @hot-updater/plugin-core@1.0.0-rc.26
+
+## 1.0.0-rc.25
+
+### Patch Changes
+
+- c9cfed7: Release the legacy Hermes fallback correction at 1.0.0-rc.25 with all public Hot Updater packages on the same RC.
+- Updated dependencies [c9cfed7]
+  - @hot-updater/cli-tools@1.0.0-rc.25
+  - @hot-updater/plugin-core@1.0.0-rc.25
+
+## 1.0.0-rc.24
+
+### Patch Changes
+
+- c9cfed7: Release the project-scoped Expo, fingerprint, React Native, and Hermes resolution fixes at 1.0.0-rc.24 so projects can install the same RC of every Hot Updater package.
+- Updated dependencies [cc34295]
+- Updated dependencies [c9cfed7]
+  - @hot-updater/cli-tools@1.0.0-rc.24
+  - @hot-updater/plugin-core@1.0.0-rc.24
+
+## 1.0.0-rc.23
+
+### Patch Changes
+
+- c9cfed7: Release with the Expo SDK 58 config fix at 1.0.0-rc.23 so projects can install the same RC of every Hot Updater package.
+- Updated dependencies [c9cfed7]
+  - @hot-updater/cli-tools@1.0.0-rc.23
+  - @hot-updater/plugin-core@1.0.0-rc.23
+
+## 1.0.0-rc.22
+
+### Patch Changes
+
+- c9cfed7: Released with every Hot Updater package at 1.0.0-rc.22, so a project can install the same RC of each one.
+- Updated dependencies [c9cfed7]
+  - @hot-updater/cli-tools@1.0.0-rc.22
+  - @hot-updater/plugin-core@1.0.0-rc.22
+
+## 1.0.0-rc.21
+
+### Patch Changes
+
+- c9cfed7: Every package now shares one release candidate version: `hot-updater` and every `@hot-updater/*` package move to the same version, so an app, its server, and the console can pin one version.
+- Updated dependencies [c9cfed7]
+- Updated dependencies [ab04e15]
+- Updated dependencies [f185d6d]
+- Updated dependencies [ab04e15]
+- Updated dependencies [4d15862]
+- Updated dependencies [48cdd14]
+- Updated dependencies [049fad1]
+- Updated dependencies [61fcd51]
+- Updated dependencies [bb57f25]
+  - @hot-updater/cli-tools@1.0.0-rc.21
+  - @hot-updater/plugin-core@1.0.0-rc.21
+
+## 1.0.0-rc.17
+
+### Patch Changes
+
+- Updated dependencies [e696e69]
+- Updated dependencies [9cd555b]
+- Updated dependencies [9cd555b]
+- Updated dependencies [9cd555b]
+- Updated dependencies [1ddd5fc]
+- Updated dependencies [9a6715f]
+- Updated dependencies [530cca5]
+  - @hot-updater/plugin-core@1.0.0-rc.17
+  - @hot-updater/cli-tools@1.0.0-rc.17
+
+## 1.0.0-rc.16
+
+### Patch Changes
+
+- Updated dependencies [d482b13]
+- Updated dependencies [d482b13]
+- Updated dependencies [fe03f59]
+- Updated dependencies [8d60f68]
+- Updated dependencies [d482b13]
+- Updated dependencies [2431c0a]
+- Updated dependencies [ad00722]
+- Updated dependencies [d482b13]
+- Updated dependencies [d482b13]
+- Updated dependencies [f6ffb68]
+- Updated dependencies [c68e9f3]
+- Updated dependencies [065c457]
+- Updated dependencies [8a03eb2]
+- Updated dependencies [aee193e]
+- Updated dependencies [228b6c7]
+- Updated dependencies [065c457]
+- Updated dependencies [df31037]
+  - @hot-updater/plugin-core@1.0.0-rc.16
+  - @hot-updater/cli-tools@1.0.0-rc.16
+
+## 1.0.0-rc.15
+
+### Patch Changes
+
+- Updated dependencies [f5fffea]
+- Updated dependencies [79c3eea]
+- Updated dependencies [d99530b]
+  - @hot-updater/plugin-core@1.0.0-rc.15
+  - @hot-updater/cli-tools@1.0.0-rc.15
+
 ## 1.0.0-rc.14
 
 ### Patch Changes

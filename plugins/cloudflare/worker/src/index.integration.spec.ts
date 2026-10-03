@@ -1,17 +1,10 @@
-import {
-  type Bundle,
-  createReleaseCatalogScopeKey,
-  encodeChannelKey,
-} from "@hot-updater/core";
-import {
-  commitReleaseCatalogMutations,
-  createUUIDv7,
-} from "@hot-updater/plugin-core";
-import { createHotUpdater, registerApiKey } from "@hot-updater/server";
+import type { Bundle } from "@hot-updater/protocol";
+import { createHotUpdater } from "@hot-updater/server";
+import { createBundleEventRowFixture } from "@hot-updater/test-utils";
 import { env } from "cloudflare:test";
 import { beforeAll, beforeEach, describe, expect, inject, it } from "vitest";
 
-import { d1Database } from "../../src/worker";
+import { d1Database, plugins } from "../../src/worker";
 import worker, { HOT_UPDATER_BASE_PATH } from "./index";
 
 declare module "vitest" {
@@ -35,88 +28,40 @@ const API_KEY = "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE";
 const toRuntimeBundle = (bundle: Bundle): Bundle => {
   return {
     ...bundle,
-    storageUri: `r2://${env.BUCKET_NAME}/${bundle.id}/bundle.zip`,
+    manifestStorageUri: `r2://${env.BUCKET_NAME}/${bundle.id}/manifest.json`,
+    assetBaseStorageUri: `r2://${env.BUCKET_NAME}/assets`,
   };
 };
 
+/** A server on the test database with the plugins the Worker runs. */
+const createSeedServer = () =>
+  createHotUpdater({ database: d1Database(env.DB), plugins });
+
 const seedBundles = async (bundles: Bundle[]) => {
-  const database = d1Database(env.DB);
-  const seedHotUpdater = createHotUpdater({
-    database,
-    clientAccess: { type: "public" },
-  });
-  for (const bundle of bundles.map(toRuntimeBundle)) {
-    const existing = await seedHotUpdater.getBundleById(bundle.id);
-    if (existing === null) {
-      await seedHotUpdater.insertBundle(bundle);
-    } else {
-      await seedHotUpdater.updateBundleById(bundle.id, bundle);
-    }
-    const channelName = "production";
-    const channelKey = encodeChannelKey(channelName);
-    const channel = (
-      await database.models.channels.insert({
-        row: { id: `channel:${channelKey}`, name: channelName },
-        onConflict: "returnExisting",
-      })
-    ).row;
-    const scopeKey = createReleaseCatalogScopeKey({
-      channelKey,
-      platform: bundle.platform,
-      strategy: "APP_VERSION",
-    });
-    const now = Date.now();
-    const releaseId = createUUIDv7();
-    await commitReleaseCatalogMutations({
-      database,
-      mutations: [
-        {
-          mutation: {
-            operation: "insert",
-            row: {
-              bundle_id: bundle.id,
-              channel_id: channel.id,
-              created_at_ms: now,
-              enabled: true,
-              fingerprint_hash: null,
-              id: releaseId,
-              kind: "BUNDLE",
-              message: "hello",
-              operation: "DEPLOY",
-              platform: bundle.platform,
-              revision: 1,
-              rollout_cohort_count: 1_000,
-              scope_key: scopeKey,
-              should_force_update: false,
-              source_release_id: null,
-              strategy: "APP_VERSION",
-              target_app_version: "1.0",
-              target_cohorts: [],
-              updated_at_ms: now,
-            },
-          },
-          scope: {
-            channelId: channel.id,
-            channelName,
-            fingerprintHash: null,
-            platform: bundle.platform,
-            scopeKey,
-            strategy: "APP_VERSION",
-          },
-          updatedAtMs: now,
+  const { core } = createSeedServer();
+  // A deploy publishes into each scope at most once, so each bundle deploys alone.
+  for (const bundle of bundles) {
+    await core.deploy([
+      {
+        bundle: toRuntimeBundle(bundle),
+        release: {
+          channel: "production",
+          enabled: true,
+          fingerprintHash: null,
+          message: "hello",
+          shouldForceUpdate: false,
+          targetAppVersion: "1.0",
         },
-      ],
-    });
+      },
+    ]);
   }
 };
 
 describe.sequential("cloudflare worker runtime acceptance", () => {
   beforeAll(async () => {
     await env.DB.prepare(inject("prepareSql")).run();
-    const database = d1Database(env.DB);
-    await registerApiKey({
+    await createSeedServer().api.apiKeys.register({
       apiKey: API_KEY,
-      apiKeys: database.models.apiKeys,
       name: "Runtime acceptance",
     });
   });
@@ -127,6 +72,7 @@ describe.sequential("cloudflare worker runtime acceptance", () => {
     await env.DB.prepare("DELETE FROM releases").run();
     await env.DB.prepare("DELETE FROM bundles").run();
     await env.DB.prepare("DELETE FROM channels").run();
+    await env.DB.prepare("DELETE FROM bundle_totals").run();
   });
 
   it("serves unversioned Release Catalog routes from the worker entrypoint", async () => {
@@ -135,10 +81,10 @@ describe.sequential("cloudflare worker runtime acceptance", () => {
       {
         id: "00000000-0000-0000-0000-000000000001",
         platform: "ios",
-        fileHash: "hash",
         gitCommitHash: null,
-        storageUri: "storage://unused",
-        archiveByteSize: 3_000_000_001,
+        manifestStorageUri: "storage://unused/manifest.json",
+        manifestFileHash: "manifest-hash",
+        assetBaseStorageUri: "storage://assets",
       },
     ]);
 
@@ -186,5 +132,51 @@ describe.sequential("cloudflare worker runtime acceptance", () => {
     await expect(response.json()).resolves.toEqual({
       error: "Not found",
     });
+  });
+
+  it("deletes rows past their retention after a write, with no cron trigger", async () => {
+    const day = 86_400_000;
+    const expired = createBundleEventRowFixture("9701", Date.now() - 100 * day);
+    await createSeedServer().api.insights.recordEvent(expired);
+    // The seed servers' writes hold the hourly lease; release it.
+    await env.DB.prepare(
+      "DELETE FROM private_hot_updater_settings WHERE key = 'retention.nextPassAt'",
+    ).run();
+
+    const reported = await worker.fetch(
+      new Request(`${PUBLIC_BASE_URL}/events`, {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-api-key": API_KEY },
+        body: JSON.stringify({
+          appVersion: "1.0",
+          channel: "production",
+          cohort: "default",
+          fingerprintHash: null,
+          fromBundleId: null,
+          fromReleaseId: null,
+          installId: "install-9702",
+          platform: "ios",
+          toBundleId: "00000000-0000-7000-8000-000000009702",
+          toReleaseId: null,
+          type: "UNCHANGED",
+          updateStrategy: null,
+        }),
+      }),
+      env,
+    );
+    expect(reported.status).toBe(204);
+
+    const ids = async (table: string, column: string) =>
+      (
+        await env.DB.prepare(
+          `SELECT ${column} AS id FROM ${table} ORDER BY ${column}`,
+        ).all<{ id: string }>()
+      ).results.map(({ id }) => id);
+    // Events are kept 90 days; an installation's latest event, 13 months.
+    await expect(ids("bundle_events", "id")).resolves.not.toContain(expired.id);
+    await expect(ids("bundle_event_heads", "install_id")).resolves.toEqual([
+      expired.install_id,
+      "install-9702",
+    ]);
   });
 });

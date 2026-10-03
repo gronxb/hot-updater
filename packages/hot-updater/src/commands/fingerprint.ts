@@ -1,12 +1,8 @@
-import fs from "fs";
-import path from "path";
-
-import { getCwd, loadConfig, p } from "@hot-updater/cli-tools";
+import { loadConfig, p } from "@hot-updater/cli-tools";
 
 import {
   createAndInjectFingerprintFiles,
   type FingerprintResult,
-  generateFingerprints,
   isFingerprintEquals,
   readLocalFingerprint,
 } from "@/utils/fingerprint";
@@ -27,73 +23,6 @@ const exitWithFingerprintError = (error: unknown): never => {
 
   console.error(error);
   process.exit(1);
-};
-
-export const handleFingerprint = async () => {
-  const s = p.spinner();
-  s.start("Generating fingerprints");
-
-  let fingerPrintRef: Awaited<ReturnType<typeof generateFingerprints>>;
-  try {
-    fingerPrintRef = await generateFingerprints();
-  } catch (error) {
-    s.error("Fingerprint generation failed");
-    return exitWithFingerprintError(error);
-  }
-
-  s.stop("Fingerprint generated");
-  p.log.message(
-    ui.block("Fingerprint", [
-      ui.kv("iOS", ui.id(fingerPrintRef.ios.hash)),
-      ui.kv("Android", ui.id(fingerPrintRef.android.hash)),
-    ]),
-  );
-
-  const localFingerprintPath = path.join(getCwd(), "fingerprint.json");
-  if (!fs.existsSync(localFingerprintPath)) {
-    return;
-  }
-
-  const readFingerprint = await fs.promises.readFile(
-    localFingerprintPath,
-    "utf-8",
-  );
-  const localFingerprint = JSON.parse(readFingerprint);
-
-  if (localFingerprint.ios.hash !== fingerPrintRef.ios?.hash) {
-    p.log.error(
-      "iOS fingerprint mismatch. Please update using 'hot-updater fingerprint create' command.",
-    );
-
-    try {
-      const diff = getFingerprintDiff(localFingerprint.ios, fingerPrintRef.ios);
-      showFingerprintDiff(diff, "iOS");
-    } catch {
-      p.log.warn("Could not generate fingerprint diff");
-    }
-
-    process.exit(1);
-  }
-
-  if (localFingerprint.android.hash !== fingerPrintRef.android?.hash) {
-    p.log.error(
-      "Android fingerprint mismatch. Please update using 'hot-updater fingerprint create' command.",
-    );
-
-    try {
-      const diff = getFingerprintDiff(
-        localFingerprint.android,
-        fingerPrintRef.android,
-      );
-      showFingerprintDiff(diff, "Android");
-    } catch {
-      p.log.warn("Could not generate fingerprint diff");
-    }
-
-    process.exit(1);
-  }
-
-  p.log.success("Fingerprint matched.");
 };
 
 export const handleCreateFingerprint = async () => {

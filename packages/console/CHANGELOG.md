@@ -1,5 +1,404 @@
 # @hot-updater/console
 
+## 1.0.0-rc.27
+
+### Patch Changes
+
+- Improve the readability of Console update failures by grouping check metrics separately, emphasizing nonzero failures, and making stage/reason details easier to scan. Preserve all report data and rate calculations. Prepare all public Hot Updater packages together as 1.0.0-rc.27.
+- Updated dependencies
+  - @hot-updater/bsdiff@1.0.0-rc.27
+  - @hot-updater/cli-tools@1.0.0-rc.27
+  - @hot-updater/plugin-core@1.0.0-rc.27
+  - @hot-updater/protocol@1.0.0-rc.27
+  - @hot-updater/server@1.0.0-rc.27
+
+## 1.0.0-rc.26
+
+### Patch Changes
+
+- c9cfed7: Restore the rc.14 Insights metric layout in bundle rows and details while preserving current data, rates, links, and download failure reporting. Release all public Hot Updater packages together as 1.0.0-rc.26.
+- Updated dependencies [c9cfed7]
+  - @hot-updater/bsdiff@1.0.0-rc.26
+  - @hot-updater/cli-tools@1.0.0-rc.26
+  - @hot-updater/plugin-core@1.0.0-rc.26
+  - @hot-updater/protocol@1.0.0-rc.26
+  - @hot-updater/server@1.0.0-rc.26
+
+## 1.0.0-rc.25
+
+### Patch Changes
+
+- c9cfed7: Release the legacy Hermes fallback correction at 1.0.0-rc.25 with all public Hot Updater packages on the same RC.
+- Updated dependencies [c9cfed7]
+  - @hot-updater/bsdiff@1.0.0-rc.25
+  - @hot-updater/cli-tools@1.0.0-rc.25
+  - @hot-updater/plugin-core@1.0.0-rc.25
+  - @hot-updater/protocol@1.0.0-rc.25
+  - @hot-updater/server@1.0.0-rc.25
+
+## 1.0.0-rc.24
+
+### Patch Changes
+
+- c9cfed7: Release the project-scoped Expo, fingerprint, React Native, and Hermes resolution fixes at 1.0.0-rc.24 so projects can install the same RC of every Hot Updater package.
+- Updated dependencies [cc34295]
+- Updated dependencies [c9cfed7]
+  - @hot-updater/cli-tools@1.0.0-rc.24
+  - @hot-updater/bsdiff@1.0.0-rc.24
+  - @hot-updater/plugin-core@1.0.0-rc.24
+  - @hot-updater/protocol@1.0.0-rc.24
+  - @hot-updater/server@1.0.0-rc.24
+
+## 1.0.0-rc.23
+
+### Patch Changes
+
+- c9cfed7: Release with the Expo SDK 58 config fix at 1.0.0-rc.23 so projects can install the same RC of every Hot Updater package.
+- Updated dependencies [c9cfed7]
+  - @hot-updater/bsdiff@1.0.0-rc.23
+  - @hot-updater/cli-tools@1.0.0-rc.23
+  - @hot-updater/plugin-core@1.0.0-rc.23
+  - @hot-updater/protocol@1.0.0-rc.23
+  - @hot-updater/server@1.0.0-rc.23
+
+## 1.0.0-rc.22
+
+### Patch Changes
+
+- c9cfed7: Released with every Hot Updater package at 1.0.0-rc.22, so a project can install the same RC of each one.
+- Updated dependencies [c9cfed7]
+  - @hot-updater/bsdiff@1.0.0-rc.22
+  - @hot-updater/cli-tools@1.0.0-rc.22
+  - @hot-updater/plugin-core@1.0.0-rc.22
+  - @hot-updater/protocol@1.0.0-rc.22
+  - @hot-updater/server@1.0.0-rc.22
+
+## 1.0.0-rc.21
+
+### Minor Changes
+
+- ab04e15: `defineConsoleConfig({ database, storage, plugins, console: { gitUrl } })` keeps rc.20's shape, except that `console` takes only `gitUrl`. `console.port` is gone from `console.config.ts`: the console never read it, and its host sets the port. `hot-updater console` still reads `console.port` in `hot-updater.config.ts`. List the server plugins your server runs in `plugins`, such as the `plugins` a managed provider package exports or `[insights(), apiKeys()]`: the console shows only the built-in features of the plugins listed.
+  - The console runs `createHotUpdater` over `database`, `storage`, and `plugins`, as the server does, and writes through its core: a listed plugin whose migration has not run stops a request with an error that names the fix, and writes on SQL databases delete the plugins' expired rows.
+  - With `database: standaloneRepository(...)`, the console takes the features it shows from `plugins` instead of the server's admin `/version`, and reads Insights through the admin API.
+  - The hosted console's Vite plugin reads `console.config.ts` by default, in place of `hot-updater.config.ts`. `hot-updater console` reads the database, storage, and plugins in `hot-updater.config.ts`.
+
+- 049fad1: Tooling reads a server through its definition, the value `createHotUpdater` returns. Beside `core`, `api`, and `handlers`, a definition has public, read-only properties:
+  - `database`;
+  - `storage` and `plugins`, frozen copies of the arrays the definition was created with;
+  - `clientPlugins`;
+  - `clientEndpoints`;
+  - `clientAuth`, which names the plugin that guards client routes and the request headers its decision reads, in lowercase.
+
+  `@hot-updater/server` now exports only its root, `./adapters/*`, `./plugins/insights`, and `./plugins/api-keys`.
+
+  Removed from `@hot-updater/server`. All of these shipped in rc.18:
+  - From `@hot-updater/server/db`:
+    - `createDatabaseCoreApi` and `CoreApi`. Use a definition's `core`, typed `HotUpdaterCoreApi` from `@hot-updater/plugin-core`.
+    - `createDatabasePluginApis`. Use a definition's `api`. In a test that is, for example, `createHotUpdater({ database, plugins, clientAccess: "public" }).api.insights`.
+    - `serverPluginsOf`, `clientPluginsOf`, and `ClientPluginSpec`. Use a definition's `plugins` and `clientPlugins`. A client plugin is typed `PluginClientPlugin` from `@hot-updater/plugin-core`.
+    - `HotUpdaterDBTarget`, with no replacement: tooling takes the definition.
+    - `HOT_UPDATER_SERVER_VERSION`. Import it from the root.
+    - `HotUpdaterSchemaMigrationRequiredError`, `generateEngineSql`, `DatabaseTooling`, `Migrator`, `SchemaGenerator`, `ToolingDatabase`, and `ToolingTarget`. Import them from `@hot-updater/plugin-core`.
+    - `clientAuthOf`, `generateClientCredential`, `provisionClientCredential`, `createMigrator`, `generateSchema`, `generatesSchema`, `ClientAuthSpec`, `ClientCredentialSpec`, and `ProvisionedClientCredential`. Import them from `@hot-updater/cli-tools`, where each takes a definition.
+  - From `@hot-updater/server/diff`: `createBundleDiff`, `CreateBundleDiffDependencies`, `CreateBundleDiffInput`, and `CreateBundleDiffOptions`. There is no public replacement: the `hot-updater` CLI creates bundle diffs itself, and `@hot-updater/server` no longer depends on `@hot-updater/bsdiff`.
+
+  Over a direct database, the CLI and the console run `createHotUpdater` with the database, storage, and plugins in their config. They write through its `core`, the same path the server's own writes take, and call plugins through its `api`:
+  - **Missing plugin migrations.** A command stops before it reads or writes if a plugin's migration has not run. `HotUpdaterSchemaMigrationRequiredError` lists every missing or stale settings row in `settings` and names their plugins in `plugins`. Its message gives the fix for the database:
+    - `hot-updater db migrate`, or `hot-updater db generate` for a database migrated from files, run in the server's project: the `db` commands load the server file and don't read `hot-updater.config.ts`;
+    - on a managed server, rerunning `hot-updater init --provider <provider>`.
+  - **Expired rows on SQL databases.** When a retention pass is due, a write first deletes expired rows from plugins' tables:
+    - The server and the CLI share one lease.
+    - A pass deletes at most 500 rows from each table.
+    - A failed pass, for example one whose credentials cannot delete, logs a warning and the write goes ahead. The pass is due again at once, so the next writer that can delete, such as the server, runs it. The process whose pass failed tries again in a minute.
+  - **Key-value databases** (DynamoDB, Firestore) expire rows themselves, so their writes delete nothing.
+  - **Storage.** Core resolves file URLs through the server's storage. A server over storage that only uploads, as the CLI's is, can still write, and its `core.getArtifactInfo` returns `null`, because it can neither read nor sign a file.
+
+  Other changes:
+  - **`@hot-updater/cli-tools`** adds `serverDefinitionOf` and `isServerDefinition`, which read a definition. Tooling refuses a definition from an older `@hot-updater/server` and says to upgrade it.
+  - **Insights test suite.** `insightsTestSuite`'s `createModel` receives the database as an `EngineDatabase`.
+  - **Managed init** reads the client headers, client plugins, and credential of the provider's plugins from a server it assembles over the database it set up.
+  - **Agent infrastructure scaffolds.** `provision-client-credential.mjs` reads the properties of the scaffold's `app/hotUpdater.ts`, and refuses a clientAuth plugin whose `cli.clientCredential` lacks a label, header, env, `generate`, or `provision`. Firebase's `migrate.ts` imports `toolingTargetOf` from `@hot-updater/plugin-core`, which its app now lists.
+
+### Patch Changes
+
+- c9cfed7: Every package now shares one release candidate version: `hot-updater` and every `@hot-updater/*` package move to the same version, so an app, its server, and the console can pin one version.
+- 5ec6796: CLI commands exist only for user workflows. Checks move into `hot-updater doctor`, which can now repair what it finds with `--fix`, and plumbing commands are removed, with no aliases:
+  - `hot-updater app-version` is removed. `doctor` shows each platform's app version in its native status, as `appVersion` in `--json`.
+  - Bare `hot-updater channel` shows help. `doctor` shows the native default channels, and `channel set` stays.
+  - Bare `hot-updater fingerprint` shows help. Under the fingerprint update strategy, `doctor` compares `fingerprint.json` with the project's fingerprint and reports `FINGERPRINT_JSON_STALE` with the sources that changed, or `FINGERPRINT_GENERATION_FAILED`. `fingerprint create` stays.
+  - `hot-updater db catalog preflight` and `db catalog rebuild` are removed. When `hot-updater.config.ts` sets `database`, `doctor` opens it once per run and checks every scope that has a catalog row or a release:
+    - `RELEASE_CATALOG_STALE` is a catalog that differs from a rebuild from its releases;
+    - `RELEASE_CATALOG_IDENTITY_MISSING` is a scope whose releases have no catalog row, which devices get 404 for. The row must be restored from backup;
+    - `RELEASE_CATALOG_CHECK_FAILED` is a scope core cannot compile, reported beside the other scopes' results;
+    - a database doctor cannot reach is the warning `RELEASE_CATALOGS_UNCHECKED`, never a failure.
+  - `hot-updater bundle preflight` is removed. `bundle update --dry-run` takes the same options and validates the update and shows the projected catalog, without saving or asking.
+  - `hot-updater bundle artifact delete` is removed. Deleting a release deletes its artifact record when no other release uses it, whether the CLI, the console, or the admin API deletes it.
+    - Every patch to or from that artifact goes with it, so a device running the deleted bundle downloads its next update in full.
+    - `bundle delete` says so, and its `--json` output names the artifact in `deletedArtifactId`.
+    - Stored files stay until `storage prune`.
+    - Artifact records that an earlier release candidate's `bundle delete` left behind show up in `doctor` as `UNREFERENCED_ARTIFACTS`. `doctor --fix` deletes them, and `storage prune` then reclaims their files.
+  - `hot-updater patch` no longer takes the hidden `--bundle-id` and `--base-bundle-id` aliases. Use `--artifact-id` and `--base-artifact-id`.
+  - `hot-updater keys export-public` no longer takes `-i, --input <path>`. It exports the configured signing key.
+  - `hot-updater build:android` needs `EXPERIMENTAL`, like `build:ios`, `run:android`, and `run:ios`.
+
+  `hot-updater doctor --fix` runs the repairs doctor can make itself:
+  - it rebuilds stale release catalogs from their releases;
+  - it deletes the artifact records no release uses;
+  - it writes what `fingerprint create` writes, where it differs;
+  - it writes what `keys export-public --yes` writes.
+
+  It names every write, in the output and in `details.fixes`, and checks again.
+
+  It skips native files that `expo prebuild` generates. It never removes a public key: an issue with more than one remedy, such as `ORPHAN_PUBLIC_KEY`, stays report-only. When it wrote a native file, it ends by asking for a native rebuild.
+
+  `@hot-updater/protocol` exports `parseReleaseCatalog`, the check a client runs on a fetched release catalog, with `hasExpectedReleaseCatalogScope`, `ExpectedReleaseCatalogScope`, `MAX_RELEASE_CATALOG_WIRE_BYTES`, and `getUtf8ByteLength`. The React Native update client and doctor's server checks both run it.
+
+  `@hot-updater/test-utils` exports `storeBundles`, which stores bundles with no release through the storage engine.
+
+- d500c97: The Console builds on TanStack Start 1.168.60, with TanStack Router, Router SSR Query, and TanStack Query updated to match. Vercel refuses to deploy TanStack Start 1.168.25 as vulnerable to XSS. The scroll-restoration helper reads the matched route from the router's tuple result.
+- 73f809e: `@hot-updater/server` and `@hot-updater/console` are now licensed under the MIT License with a hosted service attribution condition. A service that offers either of them, or a service built on them, to other people for updating their own apps must show "Powered by hot-updater" with a link where its users can see it. Running them for your own apps, or for apps you build for clients, needs no notice. The Console's sidebar now shows "Powered by hot-updater", and keeping it satisfies the condition. Every other package stays under the MIT License, and versions released before this one keep their MIT License.
+- 4d15862: `@hot-updater/core` is renamed `@hot-updater/protocol`: the device-safe, zero-dependency package for what crosses a boundary, the formats and pure computations the app and the server share and the contracts between a host and its extensions on the device, such as the client plugin contract. `@hot-updater/plugin-core` is the kit that extends the server, with the adapter and server plugin contracts and their helpers: it runs wherever the server runs, and the app never imports it.
+  - Import from `@hot-updater/protocol` where you imported `@hot-updater/core`. Every Hot Updater package that depended on `@hot-updater/core` depends on `@hot-updater/protocol` instead. `@hot-updater/core` stays on npm for 0.x.
+  - `canonicalizeAppVersion` moves to `@hot-updater/protocol`, which bundles the version parsing it uses and has no dependencies. `@hot-updater/plugin-core` exports it as before.
+  - `@hot-updater/react-native` no longer depends on `@hot-updater/plugin-core`: the app imports `@hot-updater/protocol` and the built-in Insights client, never `@hot-updater/plugin-core` or `@hot-updater/server`.
+  - `@hot-updater/plugin-insights` takes `@hot-updater/plugin-core` as an optional peer dependency, which only its `./server` entry needs, and `@hot-updater/plugin-api-keys` as a peer dependency, so an app that installs `@hot-updater/react-native` no longer installs `@hot-updater/plugin-core`. A server gets it through `@hot-updater/server`.
+  - Third-party server plugins and storage, build, and signing adapters import `@hot-updater/plugin-core` and list it in `peerDependencies`; client plugins do the same with `@hot-updater/protocol`. `@hot-updater/plugin-core` now also exports `addDistinct`, `countDistinct`, and `mergeDistinct`, so a plugin imports everything it needs from its root.
+  - Client plugins import `defineClientPlugin` and its types from `@hot-updater/protocol`. `@hot-updater/react-native` still exports them for app code.
+  - The `@hot-updater/react-native/plugins/insights` subpath is removed: import `insights` and its types from `@hot-updater/react-native`, as in `import { HotUpdater, insights } from "@hot-updater/react-native"`. Metro bundles the Insights client into every app, about 4 KB gzipped; it reports nothing until the app adds it to `plugins`. `hot-updater init` and the agent scaffold print that import, and `hot-updater doctor` looks for it.
+  - `@hot-updater/protocol` exports the plugin host the SDK runs client plugins on, for any device SDK to reuse: `createPluginHost`, `pluginStorageKey`, `resolveBaseURL`, `HotUpdaterBaseURL`, and the `PluginHost*` types. `@hot-updater/react-native` has no subpaths, and `@hot-updater/test-utils/react-native` runs client plugins on protocol's host, without `@hot-updater/react-native` as a peer dependency.
+  - `@hot-updater/cli-tools` adds `renderAppImports`, which groups the app's imports by module.
+  - The `@hot-updater/plugin-core` root exports `definePlugin`, the schema DSL, the typed database handle, and the database errors.
+
+- 9dc4baf: The plugin ids `insights` and `apiKeys` belong to Hot Updater's `insights()` and `apiKeys()`, even when a server doesn't run them. `createHotUpdater` refuses any other plugin that takes one of these ids with `HotUpdaterConfigError`, including a copy such as `{ ...insights() }`, so the tooling that reads a server's plugins (the client credential, client plugins, and `hot-updater api-key`) reads Hot Updater's own. The console serves a feature only through Hot Updater's own plugin.
+- 61fcd51: `@hot-updater/server` is the runtime host: its root holds `createHotUpdater`, its types, the handlers and `toNodeHandler`, and its other entries are the built-in adapters (`./adapters/*`) and plugins (`./plugins/insights`, `./plugins/api-keys`). The storage engine, the database adapter kit, and core's schema move to `@hot-updater/plugin-core`, the kit adapters and plugins build on, and test code moves to `@hot-updater/test-utils`.
+  - `@hot-updater/server/database`, `@hot-updater/server/node`, `@hot-updater/server/plugins`, and `@hot-updater/server/plugins/insights/testing` are removed:
+    - Import from `@hot-updater/plugin-core` what you imported from `@hot-updater/server/database` or `@hot-updater/server/plugins`.
+    - Import `toNodeHandler` from `@hot-updater/server`.
+    - Import the Insights suites from `@hot-updater/test-utils`.
+  - From `@hot-updater/server/db`:
+    - `createMeasuredDatabase`, `MeasuredDatabase`, and `MeasuredDatabaseOptions` move to `@hot-updater/test-utils`.
+    - `targetBaseCandidateKey` and `EngineSqlOptions` move to `@hot-updater/plugin-core`, beside `parseBaseCandidateKey`.
+    - `settingsStatements` is private.
+  - `createEngine` now has the signature `createEngine(database, { plugins, now })`. It takes a database as `createEngineDatabase` returns it, and returns `{ core, database(plugin), flush, dispose }`. rc.18's `createEngine({ adapter, schema, maxPageSize, verify, retry })` from `@hot-updater/server/database` is gone. A transaction's retries are the database's `retry` (`createEngineDatabase({ retry })`), and verify mode is `verifyAdapter(adapter)`.
+  - These rc.18 names now exist in no package, because they are the storage engine's internals:
+    - `aggregateBatchingModule`, `CheckIndex`, `checkSchemaFence`, `classifySqlError`, `CliFor`, `compareTuples`, `createDatabaseEngine`;
+    - `DATABASE_MAX_MULTI_VALUES`, `DATABASE_MAX_QUERY_LIMIT`, `DatabaseEngine`, `DatabaseEngineOptions`, `DatabaseTestState`, `DatabaseValueError`;
+    - `ENGINE_SCHEMA_KEY`, `ENGINE_SCHEMA_VERSION`, `InstanceFor`, `isMissingSchemaError`, `MAX_SHARDS`, `migrateSchema`, `normalizeStoredValue`;
+    - `ReadRange`, `ResolvedReference`, `resolveSchema`, `SchemaModule`, `settingsStatements`, `SHARD_COLUMN`, `validateSchema`, `withSchemaFence`.
+  - No package has an internal entry: `@hot-updater/plugin-core/internal`, `@hot-updater/plugin-insights/internal`, and `@hot-updater/plugin-api-keys/internal` are removed, and `@hot-updater/plugin-insights/testing` too. A package uses another only through its public API. `InsightsBadRequestError`, which Insights' API throws for an input it refuses, is exported from `@hot-updater/plugin-insights/server`.
+  - `@hot-updater/plugin-core` exports `createEngine(database, { plugins, now })`, the storage engine as `createHotUpdater` runs it: core's tables and the plugins', the plugins' settings rows behind the schema fence, expired rows pruned during writes, and batched aggregates. `meterReads(database)` meters any database on the engine, a provider's included, for adapter cost analysis. `database.measureReads(read)` reports what a call read at the adapter and at the engine. Aggregate batching's compaction and flush reads during the call count.
+  - An `EngineDatabase` takes an optional `retry`, which `createEngineDatabase` also takes: how a transaction that conflicts with another write runs again, with `onRetry` to observe each rerun. A store many writers contend on can take more attempts.
+  - `MemoryAdapterOptions` keeps only `tablePrefix`.
+  - `@hot-updater/plugin-core` also exports what an adapter, a provider's tooling, or a plugin outside it needs: `SETTINGS_TABLE`, `aggregateBatchingTables`, and `encodeKvKey` for setups and access policies; `createEngineSqlMigrator`, `createSettingsMigrator`, `sqlTableShapes`, and `quoteSql` for ORM adapters; `DATABASE_VERSION_COLUMN`, `rowKey`, `findPhysicalIndex`, and `findPhysicalColumn` for an adapter that is neither SQL nor key-value; `compareUtf8` and `isDatabaseJsonObject` for plugins; the types `verifyAdapter` returns and throws; and the option and tooling types of its public functions. `createEngineDatabase` takes `readSettings` for an adapter that reads stored settings itself.
+  - `CoreSchema`, core's tables as `createEngine`'s `core` handle types them, is part of `@hot-updater/plugin-core`'s API: a change to core's schema releases `@hot-updater/plugin-core` and ships with the migration `schema.core` versions.
+  - `@hot-updater/test-utils` uses the other packages only through their public API. `createMeasuredDatabase(adapter, plugins, { now, storage })` returns a promise of core, the plugins' APIs, their `clientAuth`, and `measureReads`, from `createHotUpdater` over `meterReads({ name, adapter: verifyAdapter(adapter) })`; `now` is the plugins' clock. `setupReadBudgetTestSuite` takes no `server`, and its `createAdapter` gets `SETTINGS_TABLE` among its `tables`. `createPluginTestHarness` and `setupAggregateBatchingTestSuite` run on `createEngine` and take no `engine`; the harness runs no retention passes. It also exports `createMemoryKeyValueStore`, the database fixtures, and the Insights suites, and `@hot-updater/test-utils/node` the SQL test executors and `createD1TestDatabase(db, statements)`, a D1 database over `node:sqlite`. `@hot-updater/server` and `@hot-updater/plugin-insights` are optional peer dependencies.
+  - Published packages leave out specs and test helpers:
+    - `@hot-updater/server` publishes `dist` only.
+    - `@hot-updater/cloudflare`, `@hot-updater/supabase`, and `@hot-updater/react-native` leave their specs out of the source they ship.
+    - `@hot-updater/react-native` also leaves out its Android unit tests.
+    - `@hot-updater/cloudflare`'s D1 test database moves to `@hot-updater/test-utils/node`.
+  - `@hot-updater/postgres` and `@hot-updater/console` import the storage engine kit and the plugin types from `@hot-updater/plugin-core`.
+
+- bb57f25: What fills one slot of a config is now an adapter: storage, build, database, and signing. What you list in `plugins` stays a plugin: server plugins, client plugins, and the Sentry, Datadog, and BugSnag integration plugins that wrap a build adapter.
+  - `@hot-updater/plugin-core`: `StoragePlugin` is `StorageAdapter`, `createStoragePlugin` is `createStorageAdapter`, `StoragePluginWith` is `StorageAdapterWith`, `CreateStoragePluginOptions` is `CreateStorageAdapterOptions`, `BuildPlugin` is `BuildAdapter`, `BuildPluginConfig` is `BuildAdapterConfig`, `BasePluginArgs` is `BuildAdapterArgs`, `BundleSigningPlugin` is `BundleSigningAdapter`, and `DatabasePluginInputError` is `DatabaseAdapterInputError`. There are no aliases.
+  - `@hot-updater/bare`, `@hot-updater/expo`, and `@hot-updater/rock`: their options types are `BareAdapterConfig`, `ExpoAdapterConfig`, and `RockAdapterConfig`.
+  - The CLI, the server, and the console say "storage adapter", "build adapter", "database adapter", and "signing adapter" in their messages, such as `Storage adapter "<name>" does not implement <operation>.` and `No storage adapter for protocol: <protocol>`. `hot-updater init --build <adapter>` names its option accordingly.
+
+  Package names and factory names do not change: `s3Storage()`, `r2Storage()`, `bare()`, `expo()`, `rock()`, `postgres()`, and the rest are configured as before.
+
+- Updated dependencies [c9cfed7]
+- Updated dependencies [5ec6796]
+- Updated dependencies [ab04e15]
+- Updated dependencies [73f809e]
+- Updated dependencies [f185d6d]
+- Updated dependencies [f185d6d]
+- Updated dependencies [ab04e15]
+- Updated dependencies [4d15862]
+- Updated dependencies [9dc4baf]
+- Updated dependencies [48cdd14]
+- Updated dependencies [049fad1]
+- Updated dependencies [0d8d03b]
+- Updated dependencies [61fcd51]
+- Updated dependencies [bb57f25]
+  - @hot-updater/bsdiff@1.0.0-rc.21
+  - @hot-updater/cli-tools@1.0.0-rc.21
+  - @hot-updater/protocol@1.0.0-rc.21
+  - @hot-updater/plugin-core@1.0.0-rc.21
+  - @hot-updater/server@1.0.0-rc.21
+
+## 1.0.0-rc.20
+
+### Patch Changes
+
+- 1ddd5fc: Insights counts launches as daily active installations. Release health shows **Active installations** and **Active days** and charts daily active installations, and each bundle's summary shows **Active days** instead of known launches. The App usage distribution names the UTC day it starts on, since latest reports are counted by UTC day, and **All events** says that launches without an update are not listed.
+- 9a6715f: Each console feature registers what serves it and what it shows: its server API, over the plugin's API or a self-hosted server's admin API, its navigation item, and the columns and sections it adds to the Bundles page and the release editor. Release activity is one of these, shown only where the console reads it, as before. The page for a feature that a self-hosted server's admin API does not serve says so without naming Insights.
+- a084eda: When a self-hosted server answers an Insights read with `404`, `/retention` included, the console shows that the server runs without `insights()`. An installation the server has no reports from still shows as not found.
+- 530cca5: App usage adds a **12m** period, **YAU**, that counts 52 weeks of whole UTC days from the daily totals. The console reads how long the server keeps Insights data, from a self-hosted server's admin API too, with the defaults for a server that does not report it: event lists offer ranges within the raw period, **12m** shows where daily totals cover it, and event lists, installation history, and App usage say how long data is kept.
+- 959ba94: Validate server function input with `validator()` instead of the deprecated `inputValidator()`, so building the console no longer prints a deprecation warning for each function. `@tanstack/react-start` now needs 1.168.25 or later, the first release with `validator()`.
+- b317d49: Insights adds **Update failures** under Release health, for its channel, platform, Release ID, and period: failed updates and the failure rate of update attempts, failed installations, the patch fallback rate, a channel's failed checks and their rate against its active installations, failures by stage and reason with their HTTP statuses, origin codes, transports, and resources, and recoveries by exit reason. The bundle detail shows **Download failures** since the release's first report, with their rate, including through `standaloneRepository`. Event lists and installation history show update failures with their stage and reason, how a download arrived, and why a crashed process exited. Installations show their user ID only.
+- Updated dependencies [e696e69]
+- Updated dependencies [e696e69]
+- Updated dependencies [9574287]
+- Updated dependencies [9cd555b]
+- Updated dependencies [9cd555b]
+- Updated dependencies [9cd555b]
+- Updated dependencies [1ddd5fc]
+- Updated dependencies [9cd555b]
+- Updated dependencies [530cca5]
+- Updated dependencies [b317d49]
+- Updated dependencies [9cd555b]
+- Updated dependencies [9a6715f]
+- Updated dependencies [9a6715f]
+- Updated dependencies [a084eda]
+- Updated dependencies [530cca5]
+- Updated dependencies [b317d49]
+  - @hot-updater/plugin-core@1.0.0-rc.17
+  - @hot-updater/server@1.0.0-rc.18
+  - @hot-updater/cli-tools@1.0.0-rc.17
+
+## 1.0.0-rc.19
+
+### Patch Changes
+
+- 038c804: Check console access before a server function reads its input, so a signed-out request gets 401 instead of a validation error. One request asks the auth adapter once.
+- 038c804: A signed-out visit to Insights, Distribution, Installations, or API keys renders the sign-in page instead of failing the server render. The feature guard no longer keeps its refused read in the query cache, whose 401 Response the render could not serialize.
+- Updated dependencies [038c804]
+  - @hot-updater/server@1.0.0-rc.17
+
+## 1.0.0-rc.18
+
+### Minor Changes
+
+- 8d60f68: Move the console onto core's API: key cursors, indexed filter sets, counters, and a banner when Insights is off.
+  - **Bundles:** the list pages by key, with Previous, Next, and Newest in place of page numbers. Each page reads only its own releases.
+  - **Filters:** the filters are the sets the release indexes serve: a channel with its platform (and status), an artifact, or a target, which is one catalog scope. The platform filter works with a channel, and the target app version filter is replaced by "Show bundles for this target" in a bundle's diagnostics.
+  - **Counters:** patch counts and a bundle's children come from its reference counter and the patches index, not from paging every bundle. Bundle totals come from one counter row.
+  - **Core:** bundles, releases, catalogs, and channels go through core's API: in process on the database's storage engine, or over a self-hosted server's admin API protocol 2. Creating a channel takes its name. A database that is not on the storage engine is refused with a message to upgrade its provider.
+  - **Insights off:** when the server runs without `insights()`, the Insights pages and bundle panels show that Insights is off instead of an error. A self-hosted server is asked through its admin API, which answers 204 with `x-hot-updater-insights: disabled`. The console reads a self-hosted server's events and installations there. Usage and bundle activity need the database config.
+  - **Plugins in the console:** `defineConsoleConfig({ plugins })` and a project's `hotUpdater.plugins.ts`, which `hot-updater console` loads, give the console the plugins the server runs. It assembles them over the database with `createDatabasePluginApis` from `@hot-updater/server/db`, on the server's tables. Without them, Insights and API keys are off.
+  - **API keys:** the console manages keys through the `apiKeys()` plugin's API. It does not manage a self-hosted server's keys.
+  - **`standaloneRepository`:** it has `fetchAdmin(path)`, a GET on the server's admin handler with the repository's headers.
+  - **`@hot-updater/cli-tools`:** it adds `loadHotUpdaterPlugins`.
+
+### Patch Changes
+
+- d482b13: Bundle child counts come from each base bundle's reference counter alone. `HotUpdaterCoreApi` gains `countBundleChildren(ids)`, which reads the bundle rows in one batch and no patches, and admin API protocol 2 gains `GET /bundles/child-counts?ids=...` (1 to 100 IDs) for a standalone server. The console's patch counts use it instead of reading each bundle with its own patches.
+- d482b13: The All events list reads one time range, newest first: the last 24 hours, 7 days (the default), 30 days, or 90 days, ending when the list loads or the range changes. Changing the range returns to the first page, and the URL keeps it. Pages stop at the range start: a range without events, and its last page, say so and offer the next longer range. An empty page after a full one says there are no older events, in All events and in installation history.
+- d482b13: Insights shows unique counts as estimates and reads one period end. DAU, WAU, MAU, the active users per interval, and a release's unique users come from HyperLogLog sketches, so they show as "≈ 1,234" with an Estimated label for hover and screen readers; zero stays exact. App usage and release health now end with the current UTC hour, as the reporting overview does, so a report counts as soon as the server records it instead of after the hour ends.
+- d482b13: The console's Insights on/off check for a self-hosted server asks for one event of the last hour, so it reads at most two days instead of walking up to 90 empty ones.
+- 23a972d: The console shows only the features whose plugins the server runs.
+  - **Navigation:** Insights appears when the server runs `insights()`, and API keys when it runs `apiKeys()`. A feature's page opened without its plugin names the plugin to add and links to the console deployment guide.
+  - **Bundles:** the list's Insights column and the bundle detail's Insights card appear only where the console reads release activity, instead of a "—" or a note.
+  - **`standaloneRepository`:** the console reads the server's plugins once, from its admin `/version`, instead of asking the Insights events route. When the server runs `insights()`, Insights opens on All events with its events and installations; usage, bundle activity, and API keys need the database config. A server on an older `@hot-updater/server` lists no plugins on `/version`, so its console shows neither Insights nor API keys until the server is upgraded.
+  - **Server functions:** every Insights and API key server function checks its feature first, and refuses one the console does not serve with the same not-found error.
+
+- 228b6c7: Remove the legacy database contract. Every database runs on the storage engine, and core, its plugins, and the admin API are the only way to its data. Release candidate databases are recreated, not converted.
+  - **Databases:** a provider returns an `EngineDatabase`, `{ name, adapter, dispose? }`, with `provider`, `createMigrator`, and `generateSchema` for `hot-updater db` where it has them. `createEngineDatabase({ name, adapter })` from `@hot-updater/server/database` puts the adapter behind the schema fence with the built-in settings; `builtInSchema`, `builtInSettings`, and `migrateBuiltInSchema` are the built-in tables, their settings rows, and their migration. `DatabasePlugin`, `createDatabasePlugin`, `createDatabaseClient`, the model and commit types, `commitReleaseCatalogMutation(s)`, and `BundleRepository` are gone.
+  - **`createHotUpdater`:** takes `{ database, storage?, plugins?, clientAccess? }`; `plugins` defaults to none. `clientAccess` is `"public"`, or absent when a plugin provides clientAuth. A `clientAccess` object is a type error whose message names `apiKeys()`, and at startup a `HotUpdaterConfigError` that names it too. The instance is `{ handlers, core, api, adapterName }`: bundle, channel, release, Insights, and API key methods on it are gone; use `core` and the plugins' `api`. `registerApiKey`, `createApiKey`, `provisionApiKey`, and `createHandlers` are no longer exported; the `apiKeys()` plugin's API does the same work.
+  - **Handlers:** client routes read catalogs and artifacts through core. The admin API speaks protocol 2 only: `v=2` is accepted and changes nothing, and `POST /database/commit`, `POST /bundles`, and `DELETE /bundles/:id` are gone (deploy with `POST /releases`, delete with `POST /bundles/delete`). `PATCH /bundles/:id` answers 204. The Insights routes come from `insights()`; without it they answer 204 with `x-hot-updater-insights: disabled`.
+  - **Schema:** generated SQL, Drizzle, and Prisma schemas have no database foreign keys; the engine keeps references. CockroachDB and SQL Server are no longer supported, and `relationMode` is gone. The checked-in Postgres and Supabase SQL is regenerated.
+  - **Providers:** `postgres`, `d1Database`, `supabaseDatabase`, `firebaseDatabase`, and `dynamoDB` return engine databases. `dynamoDB` invalidates the cached update-check routes after a write that changes a Release Catalog.
+  - **`standaloneRepository`:** is `{ name, core, fetchAdmin }` over admin API protocol 2; its protocol 1 reads and custom bundle `routes` are gone.
+  - **`@hot-updater/test-utils`:** `setupDatabaseTestSuite` runs core, bundles, the Release Catalog contract, and Insights through admin API protocol 2 over HTTP, and with `createInsightsModel` the Insights report contract. It replaces `setupDatabasePluginTestSuite` and `setupDatabaseClientTestSuite`. `setupBundleMethodsTestSuite` and `setupReleaseCatalogTestSuite` take `{ getClient }` on protocol 2.
+  - **CLI and console:** they read and write through core only. `hot-updater api-key` manages keys through the config's `apiKeys()` plugin, and the console runs the config's `plugins`: without them, Insights and API keys are off.
+
+- Updated dependencies [152db48]
+- Updated dependencies [23a972d]
+- Updated dependencies [802374f]
+- Updated dependencies [d482b13]
+- Updated dependencies [d482b13]
+- Updated dependencies [d482b13]
+- Updated dependencies [fe03f59]
+- Updated dependencies [8d60f68]
+- Updated dependencies [294c53f]
+- Updated dependencies [d482b13]
+- Updated dependencies [94470aa]
+- Updated dependencies [2431c0a]
+- Updated dependencies [7758a1e]
+- Updated dependencies [7ba867c]
+- Updated dependencies [94b56f3]
+- Updated dependencies [d482b13]
+- Updated dependencies [b3576f2]
+- Updated dependencies [af15ef3]
+- Updated dependencies [aee193e]
+- Updated dependencies [0f670c5]
+- Updated dependencies [ad00722]
+- Updated dependencies [d7df92c]
+- Updated dependencies [d482b13]
+- Updated dependencies [d482b13]
+- Updated dependencies [d482b13]
+- Updated dependencies [d482b13]
+- Updated dependencies [d3a5570]
+- Updated dependencies [d482b13]
+- Updated dependencies [d3a5570]
+- Updated dependencies [f6ffb68]
+- Updated dependencies [d482b13]
+- Updated dependencies [c68e9f3]
+- Updated dependencies [d482b13]
+- Updated dependencies [e542054]
+- Updated dependencies [73b8920]
+- Updated dependencies [065c457]
+- Updated dependencies [8a03eb2]
+- Updated dependencies [ff1e565]
+- Updated dependencies [d482b13]
+- Updated dependencies [aee193e]
+- Updated dependencies [152db48]
+- Updated dependencies [228b6c7]
+- Updated dependencies [eef9466]
+- Updated dependencies [065c457]
+- Updated dependencies [3f30a23]
+- Updated dependencies [065c457]
+- Updated dependencies [754a73e]
+- Updated dependencies [d482b13]
+- Updated dependencies [df31037]
+- Updated dependencies [a6c00ec]
+  - @hot-updater/server@1.0.0-rc.16
+  - @hot-updater/plugin-core@1.0.0-rc.16
+  - @hot-updater/cli-tools@1.0.0-rc.16
+
+## 1.0.0-rc.17
+
+### Minor Changes
+
+- f5fffea: Add atomic Release Insights aggregates, direct release-health and app-usage
+  queries, and the redesigned Insights console without reconstructing metrics from
+  raw event history.
+
+### Patch Changes
+
+- 79c3eea: Use the versioned manifest artifact protocol for every OTA install. Deploys
+  publish a manifest, content-addressed files and one tar.br bulk transport. The
+  native installer reuses byte-identical built-in assets and compares tar.br with
+  the remaining transfer cost. Complete downloads without patches may additionally
+  allow the signed TAR framing overhead to avoid request fanout. Failed archives
+  fall back once to verified original files; failed patches recover per file.
+
+  Remove `compressStrategy`, ZIP/gzip OTA extraction, format detection and archive
+  strategy branches. Archive identity and bounds belong to the signed manifest;
+  Bundle and provider rows stay manifest-based. The unreleased 1.0.0 schema and
+  initial migrations now require manifest metadata directly.
+
+  Validate complete descriptor sets before reuse, recheck cached target files,
+  and retain hash-verified staging files across retries. Download remaining files
+  with a fixed concurrency limit and report only network files in download progress.
+
+  Allow concurrent Supabase deploys to upload the same shared content-addressed
+  asset without failing on an already-existing object.
+
+  Authenticate the versioned artifact endpoint. Preserve installed bundles across
+  promotion failures and interrupted renames, and require durable metadata before
+  activating an OTA. Remove manifestless launch and BUNDLE_ID compatibility paths,
+  unused native progress fields, observers, and unused iOS task-state persistence.
+
+- Updated dependencies [f5fffea]
+- Updated dependencies [79c3eea]
+- Updated dependencies [d99530b]
+- Updated dependencies [39f60f9]
+  - @hot-updater/plugin-core@1.0.0-rc.15
+  - @hot-updater/server@1.0.0-rc.15
+  - @hot-updater/cli-tools@1.0.0-rc.15
+  - @hot-updater/core@1.0.0-rc.15
+
 ## 1.0.0-rc.16
 
 ### Patch Changes

@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 
-import { LYNX_RUNTIME_EVENT_LIMITS } from "../../packages/lynx/src/types.ts";
+import { LYNX_RUNTIME_EVENT_LIMITS } from "@hot-updater/lynx";
 
 const POSITIVE_DECIMAL = /^[1-9][0-9]*$/;
 const SHA256 = /^[0-9a-f]{64}$/;

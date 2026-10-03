@@ -3,10 +3,7 @@ import http from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import {
-  createStorageUri,
-  parseStorageUri,
-} from "../../../plugins/plugin-core/dist/index.mjs";
+import { createStorageUri, parseStorageUri } from "@hot-updater/plugin-core";
 
 // Negative transport controls are separate from the live catalog/storage service.
 const root = fileURLToPath(new URL("../.hot-updater/ota/", import.meta.url));

@@ -17,7 +17,6 @@ const event: InsightsEventRow = {
   toBundleId: "bundle-new",
   type: "UPDATE_APPLIED",
   userId: "user-1",
-  username: null,
 };
 
 describe("InstallationHistoryCard", () => {
@@ -78,5 +77,46 @@ describe("InstallationHistoryCard", () => {
     );
 
     expect(screen.getByText("No bundle changes recorded yet.")).toBeDefined();
+  });
+
+  it("says an empty page after a full one has no older bundle changes", () => {
+    render(
+      <InstallationHistoryCard
+        error={null}
+        history={{ data: [], nextCursor: null }}
+        isLoading={false}
+        onNext={vi.fn()}
+        onPrevious={vi.fn()}
+        pageNumber={2}
+        selectedEvent={event}
+        selectedInstallId="install-1"
+      />,
+    );
+
+    expect(screen.getByText("No older bundle changes.")).toBeDefined();
+    expect(
+      (screen.getByRole("button", { name: "Previous" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(false);
+    expect(
+      (screen.getByRole("button", { name: "Next" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
+  });
+
+  it("says how long the installation's reports are kept", () => {
+    render(
+      <InstallationHistoryCard
+        error={null}
+        history={{ data: [event], nextCursor: null }}
+        isLoading={false}
+        onNext={vi.fn()}
+        onPrevious={vi.fn()}
+        pageNumber={1}
+        selectedEvent={event}
+        selectedInstallId="install-1"
+      />,
+    );
+    expect(screen.getByText(/kept for 90 days/)).toBeDefined();
   });
 });

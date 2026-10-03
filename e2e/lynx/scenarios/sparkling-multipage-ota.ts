@@ -276,10 +276,9 @@ export async function installAndReload(
       "/e2e/assert-bundle-artifact-selection",
       {
         currentBundleId: `$${options.diffBaseBundleKey}`,
-        requireArchiveAbsent: true,
         requiredPatchAssetPaths: ["main.lynx.bundle"],
         requiredRawAssetPaths: ["detail.lynx.bundle"],
-        selection: "manifest-diff",
+        selection: "manifest-v1",
         targetBundleId: `$${bundleKey}`,
       },
     );
@@ -419,10 +418,9 @@ async function rejectInvalidDetailTarget(
     "/e2e/assert-bundle-artifact-selection",
     {
       currentBundleId: running.bundleId,
-      requireArchiveAbsent: true,
       requiredPatchAssetPaths: ["main.lynx.bundle"],
       requiredRawAssetPaths: ["detail.lynx.bundle"],
-      selection: "manifest-diff",
+      selection: "manifest-v1",
       targetBundleId: rejected.bundleId,
     },
   );

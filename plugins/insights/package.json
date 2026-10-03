@@ -1,0 +1,58 @@
+{
+  "name": "@hot-updater/plugin-insights",
+  "type": "module",
+  "version": "1.0.0-rc.27",
+  "description": "Hot Updater's Insights plugin: launch, download, and update failure events, for the server and the React Native app",
+  "exports": {
+    "./client": {
+      "import": "./dist/client/index.mjs",
+      "require": "./dist/client/index.cjs"
+    },
+    "./server": {
+      "import": "./dist/server/index.mjs",
+      "require": "./dist/server/index.cjs"
+    },
+    "./package.json": "./package.json"
+  },
+  "license": "MIT",
+  "repository": "https://github.com/gronxb/hot-updater",
+  "author": "gronxb <gron1gh1@gmail.com> (https://github.com/gronxb)",
+  "bugs": {
+    "url": "https://github.com/gronxb/hot-updater/issues"
+  },
+  "homepage": "https://github.com/gronxb/hot-updater#readme",
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "dist",
+    "client",
+    "package.json"
+  ],
+  "scripts": {
+    "build": "tsdown",
+    "test:type": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@hot-updater/protocol": "workspace:*"
+  },
+  "peerDependencies": {
+    "@hot-updater/plugin-core": "workspace:^"
+  },
+  "peerDependenciesMeta": {
+    "@hot-updater/plugin-core": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@hot-updater/plugin-core": "workspace:*",
+    "@hot-updater/test-utils": "workspace:*",
+    "@types/node": "catalog:",
+    "vitest": "catalog:"
+  },
+  "nx": {
+    "implicitDependencies": [
+      "!@hot-updater/test-utils"
+    ]
+  }
+}

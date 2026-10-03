@@ -2,10 +2,13 @@ import fs from "fs/promises";
 import path from "path";
 import { fileURLToPath } from "url";
 
+import {
+  createHttpTestClient,
+  setupReleaseCatalogTestSuite,
+} from "@hot-updater/test-utils";
 import { setupBundleMethodsTestSuite } from "@hot-updater/test-utils";
 import {
   cleanupServer,
-  createBundleMethodsFromServer,
   createTestDbPath,
   killPort,
   spawnServerProcess,
@@ -24,7 +27,6 @@ describe("Hot Updater Handler Integration Tests (Hono + Drizzle + PGlite)", () =
   let serverProcess: ReturnType<typeof execa> | null = null;
   let baseUrl: string;
   let testDbPath: string;
-  let bundleMethods: ReturnType<typeof createBundleMethodsFromServer>;
   const port = 13582;
 
   beforeAll(async () => {
@@ -61,6 +63,16 @@ describe("Hot Updater Handler Integration Tests (Hono + Drizzle + PGlite)", () =
       env: { TEST_DB_PATH: testDbPath },
     });
 
+    // Write the settings rows the server checks before its first read
+    await execa(
+      "node",
+      [hotUpdaterCli, "db", "migrate", "src/db.ts", "--yes"],
+      {
+        cwd: projectRoot,
+        env: { TEST_DB_PATH: testDbPath },
+      },
+    );
+
     serverProcess = spawnServerProcess({
       serverCommand: ["npx", "tsx", "src/index.ts"],
       port,
@@ -69,24 +81,22 @@ describe("Hot Updater Handler Integration Tests (Hono + Drizzle + PGlite)", () =
     });
 
     await waitForServer(baseUrl, 180); // 180 attempts * 200ms = 36 seconds
-
-    bundleMethods = createBundleMethodsFromServer({
-      baseUrl: `${baseUrl}/hot-updater/admin`,
-    });
   }, 120000);
 
   afterAll(async () => {
     await cleanupServer(baseUrl, serverProcess, testDbPath);
   }, 60000);
 
-  setupBundleMethodsTestSuite({
-    getBundleById: (id) => bundleMethods.getBundleById(id),
-    insertBundle: (bundle) => bundleMethods.insertBundle(bundle),
-    getBundles: (options) => bundleMethods.getBundles(options),
-    updateBundleById: (bundleId, newBundle) =>
-      bundleMethods.updateBundleById(bundleId, newBundle),
-    deleteBundleById: (bundleId) => bundleMethods.deleteBundleById(bundleId),
-  });
+  const getClient = () =>
+    createHttpTestClient({
+      clientBaseUrl: `${baseUrl}/hot-updater`,
+      adminBaseUrl: `${baseUrl}/hot-updater/admin`,
+      adminHeaders: { Authorization: `Bearer ${TEST_ADMIN_AUTH_TOKEN}` },
+    });
+
+  setupBundleMethodsTestSuite({ getClient });
+
+  setupReleaseCatalogTestSuite({ getClient });
 
   it("protects bundle management routes while keeping catalog routes public", async () => {
     const unauthorizedBundles = await fetch(
@@ -109,7 +119,10 @@ describe("Hot Updater Handler Integration Tests (Hono + Drizzle + PGlite)", () =
     expect(authorizedBundles.status).toBe(200);
     expect(version.status).toBe(200);
     expect(updateCheck.status).toBe(404);
-    expect(updateCheck.headers.get("cache-control")).toBe("private, no-store");
+    expect(updateCheck.headers.get("cache-control")).toBe(
+      "public, max-age=0, s-maxage=5",
+    );
+    expect(updateCheck.headers.get("x-hot-updater-catalog")).toBe("none");
     await expect(updateCheck.json()).resolves.toEqual({ error: "Not found" });
   });
 });

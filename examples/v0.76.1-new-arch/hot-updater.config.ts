@@ -1,9 +1,16 @@
+import { existsSync } from "node:fs";
+
 import { bare } from "@hot-updater/bare";
-import { supabaseDatabase, supabaseStorage } from "@hot-updater/supabase";
-import { config } from "dotenv";
+import {
+  plugins,
+  supabaseDatabase,
+  supabaseStorage,
+} from "@hot-updater/supabase";
 import { defineConfig } from "hot-updater";
 
-config({ path: ".env.hotupdater" });
+if (existsSync(".env.hotupdater")) {
+  process.loadEnvFile(".env.hotupdater");
+}
 
 export default defineConfig({
   build: bare({
@@ -18,6 +25,6 @@ export default defineConfig({
     supabaseUrl: process.env.HOT_UPDATER_SUPABASE_URL!,
     supabaseServiceRoleKey: process.env.HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY!,
   }),
+  plugins,
   updateStrategy: "fingerprint",
-  compressStrategy: "zip", // or "tar.br" for better compression
 });

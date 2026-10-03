@@ -1,5 +1,117 @@
 # @hot-updater/mock
 
+## 1.0.0-rc.27
+
+### Patch Changes
+
+- Updated dependencies
+  - @hot-updater/plugin-core@1.0.0-rc.27
+  - @hot-updater/protocol@1.0.0-rc.27
+
+## 1.0.0-rc.26
+
+### Patch Changes
+
+- Updated dependencies [c9cfed7]
+  - @hot-updater/plugin-core@1.0.0-rc.26
+  - @hot-updater/protocol@1.0.0-rc.26
+
+## 1.0.0-rc.25
+
+### Patch Changes
+
+- Updated dependencies [c9cfed7]
+  - @hot-updater/plugin-core@1.0.0-rc.25
+  - @hot-updater/protocol@1.0.0-rc.25
+
+## 1.0.0-rc.24
+
+### Patch Changes
+
+- Updated dependencies [c9cfed7]
+  - @hot-updater/plugin-core@1.0.0-rc.24
+  - @hot-updater/protocol@1.0.0-rc.24
+
+## 1.0.0-rc.23
+
+### Patch Changes
+
+- Updated dependencies [c9cfed7]
+  - @hot-updater/plugin-core@1.0.0-rc.23
+  - @hot-updater/protocol@1.0.0-rc.23
+
+## 1.0.0-rc.22
+
+### Patch Changes
+
+- Updated dependencies [c9cfed7]
+  - @hot-updater/plugin-core@1.0.0-rc.22
+  - @hot-updater/protocol@1.0.0-rc.22
+
+## 1.0.0-rc.21
+
+### Patch Changes
+
+- Updated dependencies [c9cfed7]
+- Updated dependencies [5ec6796]
+- Updated dependencies [ab04e15]
+- Updated dependencies [f185d6d]
+- Updated dependencies [ab04e15]
+- Updated dependencies [4d15862]
+- Updated dependencies [48cdd14]
+- Updated dependencies [049fad1]
+- Updated dependencies [61fcd51]
+- Updated dependencies [bb57f25]
+  - @hot-updater/protocol@1.0.0-rc.21
+  - @hot-updater/plugin-core@1.0.0-rc.21
+
+## 1.0.0-rc.17
+
+### Patch Changes
+
+- Updated dependencies [e696e69]
+- Updated dependencies [1ddd5fc]
+- Updated dependencies [9a6715f]
+- Updated dependencies [530cca5]
+  - @hot-updater/plugin-core@1.0.0-rc.17
+
+## 1.0.0-rc.16
+
+### Minor Changes
+
+- 8a03eb2: Narrow the database provider query contract to the operators Hot Updater uses. `DatabaseWhere` accepts only `eq`, `gt`, `gte`, `lt`, `lte`, and `in`, and conditions are always joined with AND. The `ne`, `not_in`, `contains`, `starts_with`, and `ends_with` operators, the `connector` (`OR`) and `mode` (`insensitive`) fields, and `findMany`'s `distinctOn` are removed from the types, the input validation, and every official provider.
+
+  Custom providers built on `@hot-updater/plugin-core/internal` can delete their implementations of the removed operators. Validation rejects a where condition with any key other than `field`, `operator`, and `value`, and rejects `distinctOn`, instead of ignoring them.
+
+### Patch Changes
+
+- Updated dependencies [d482b13]
+- Updated dependencies [d482b13]
+- Updated dependencies [fe03f59]
+- Updated dependencies [d482b13]
+- Updated dependencies [2431c0a]
+- Updated dependencies [ad00722]
+- Updated dependencies [d482b13]
+- Updated dependencies [d482b13]
+- Updated dependencies [f6ffb68]
+- Updated dependencies [c68e9f3]
+- Updated dependencies [065c457]
+- Updated dependencies [8a03eb2]
+- Updated dependencies [aee193e]
+- Updated dependencies [228b6c7]
+- Updated dependencies [065c457]
+- Updated dependencies [df31037]
+  - @hot-updater/plugin-core@1.0.0-rc.16
+
+## 1.0.0-rc.15
+
+### Patch Changes
+
+- Updated dependencies [f5fffea]
+- Updated dependencies [79c3eea]
+  - @hot-updater/plugin-core@1.0.0-rc.15
+  - @hot-updater/core@1.0.0-rc.15
+
 ## 1.0.0-rc.14
 
 ### Minor Changes

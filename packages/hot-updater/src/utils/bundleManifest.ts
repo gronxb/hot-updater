@@ -1,12 +1,12 @@
 import fs from "fs/promises";
 import path from "path";
 
-import type { BundleManifest } from "@hot-updater/core";
 import {
   assertBundleManifestByteSize,
   type BuildArtifact,
   compareStringsByCodeUnit,
 } from "@hot-updater/plugin-core";
+import type { BundleManifest } from "@hot-updater/protocol";
 
 import { getFileHashFromFile } from "./getFileHash";
 
@@ -92,6 +92,7 @@ export const createBundleManifest = async ({
         return [
           target.name,
           {
+            byteSize: (await fs.stat(target.path)).size,
             downloadCompression: target.downloadCompression,
             fileHash,
             ...(signature ? { signature } : {}),

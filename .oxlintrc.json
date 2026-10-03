@@ -7,6 +7,9 @@
     "react",
     "jsx-a11y"
   ],
+  "jsPlugins": [
+    "./scripts/oxlint/hot-updater.mjs"
+  ],
   "categories": {
     "correctness": "error"
   },
@@ -29,6 +32,7 @@
     "**/.source",
     "**/pages.gen.ts",
     "**/routeTree.gen.ts",
+    "**/__testfixtures__",
     "plugins/aws/runtime-acceptance-*",
     "plugins/firebase/runtime-acceptance-*",
     "plugins/supabase/runtime-acceptance-*"
@@ -73,6 +77,151 @@
     "react/no-array-index-key": "off",
     "unicorn/no-document-cookie": "off",
     "unicorn/no-thenable": "off",
-    "unicorn/prefer-node-protocol": "off"
-  }
+    "unicorn/prefer-node-protocol": "off",
+    "hot-updater/no-filtered-find-many": "error"
+  },
+  "overrides": [
+    {
+      "files": [
+        "plugins/plugin-core/src/engine/**",
+        "packages/server/src/core/**"
+      ],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "paths": [
+              {
+                "name": "typescript",
+                "message": "Use OXC for source analysis; TypeScript is compiler-only."
+              },
+              {
+                "name": "@typescript/native",
+                "message": "Use OXC for source analysis; TypeScript is compiler-only."
+              },
+              {
+                "name": "@typescript/typescript6",
+                "message": "Use OXC for source analysis; TypeScript is compiler-only."
+              }
+            ],
+            "patterns": [
+              {
+                "group": [
+                  "typescript/*",
+                  "@typescript/native/*",
+                  "@typescript/typescript6/*"
+                ],
+                "message": "Use OXC for source analysis; TypeScript is compiler-only."
+              },
+              {
+                "group": [
+                  "**/plugins",
+                  "**/plugins/**",
+                  "@hot-updater/server/plugins",
+                  "@hot-updater/server/plugins/**"
+                ],
+                "message": "Core and the engine never import plugins; plugins depend on them, not the reverse."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": [
+        "packages/react-native/src/**",
+        "packages/protocol/src/**",
+        "plugins/insights/src/client/**"
+      ],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "paths": [
+              {
+                "name": "typescript",
+                "message": "Use OXC for source analysis; TypeScript is compiler-only."
+              },
+              {
+                "name": "@typescript/native",
+                "message": "Use OXC for source analysis; TypeScript is compiler-only."
+              },
+              {
+                "name": "@typescript/typescript6",
+                "message": "Use OXC for source analysis; TypeScript is compiler-only."
+              },
+              {
+                "name": "@hot-updater/plugin-core",
+                "message": "React Native, @hot-updater/protocol, and the Insights client run on the device and never import @hot-updater/plugin-core or @hot-updater/server, which run where the server runs. Move device-safe code they need into @hot-updater/protocol."
+              },
+              {
+                "name": "@hot-updater/server",
+                "message": "React Native, @hot-updater/protocol, and the Insights client run on the device and never import @hot-updater/plugin-core or @hot-updater/server, which run where the server runs. Move device-safe code they need into @hot-updater/protocol."
+              }
+            ],
+            "patterns": [
+              {
+                "group": [
+                  "typescript/*",
+                  "@typescript/native/*",
+                  "@typescript/typescript6/*"
+                ],
+                "message": "Use OXC for source analysis; TypeScript is compiler-only."
+              },
+              {
+                "group": [
+                  "@hot-updater/plugin-core/*",
+                  "@hot-updater/server/*",
+                  "@hot-updater/plugin-insights/server"
+                ],
+                "message": "React Native, @hot-updater/protocol, and the Insights client run on the device and never import @hot-updater/plugin-core or @hot-updater/server, which run where the server runs. Move device-safe code they need into @hot-updater/protocol."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": [
+        "packages/react-native/src/build.ts",
+        "packages/react-native/src/buildFingerprint.ts",
+        "packages/react-native/src/doctor.ts"
+      ],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "paths": [
+              {
+                "name": "typescript",
+                "message": "Use OXC for source analysis; TypeScript is compiler-only."
+              },
+              {
+                "name": "@typescript/native",
+                "message": "Use OXC for source analysis; TypeScript is compiler-only."
+              },
+              {
+                "name": "@typescript/typescript6",
+                "message": "Use OXC for source analysis; TypeScript is compiler-only."
+              },
+              {
+                "name": "@hot-updater/server",
+                "message": "React Native build helpers may use plugin-core; server runtime code stays in the server package."
+              }
+            ],
+            "patterns": [
+              {
+                "group": [
+                  "typescript/*",
+                  "@typescript/native/*",
+                  "@typescript/typescript6/*"
+                ],
+                "message": "Use OXC for source analysis; TypeScript is compiler-only."
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
 }

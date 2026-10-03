@@ -22,16 +22,20 @@ describe("framework-independent Lynx package contract", () => {
       ...Object.keys(manifest.peerDependencies ?? {}),
       ...Object.keys(manifest.optionalDependencies ?? {}),
     ];
-    expect(names).toEqual([
-      "@hot-updater/core",
-      "@hot-updater/plugin-core",
-      "uuidv7",
-      "sparkling-navigation",
-    ]);
+    expect(names.sort()).toEqual(
+      [
+        "@hot-updater/protocol",
+        "@hot-updater/plugin-core",
+        "uuidv7",
+        "sparkling-navigation",
+      ].sort(),
+    );
     expect(manifest.peerDependencies).toEqual({
+      "@hot-updater/plugin-core": "workspace:*",
       "sparkling-navigation": "2.1.0-rc.12",
     });
     expect(manifest.peerDependenciesMeta).toEqual({
+      "@hot-updater/plugin-core": { optional: true },
       "sparkling-navigation": { optional: true },
     });
     expect(names.join(" ")).not.toMatch(/react|vue|octane/i);

@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import path from "path";
 import { fileURLToPath } from "url";
 
@@ -5,15 +6,18 @@ import { PGlite } from "@electric-sql/pglite";
 import { s3Storage } from "@hot-updater/aws";
 import { mockStorage } from "@hot-updater/mock";
 import { createHotUpdater } from "@hot-updater/server";
+import { insights } from "@hot-updater/server/plugins/insights";
 import { kyselyAdapter } from "@hot-updater/server/adapters/kysely";
-import { config } from "dotenv";
 import { Kysely, sql } from "kysely";
 import { PGliteDialect } from "kysely-pglite-dialect";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // Load .env.hotupdater
-config({ path: path.join(__dirname, ".env.hotupdater") });
+const envFilePath = path.join(__dirname, ".env.hotupdater");
+if (existsSync(envFilePath)) {
+  process.loadEnvFile(envFilePath);
+}
 
 // Initialize PGlite with file-based storage for persistence
 // Use TEST_DB_PATH for testing, otherwise use default "data" directory
@@ -32,9 +36,14 @@ export const hotUpdater = createHotUpdater({
     db: kysely,
     provider: "postgresql",
   }),
-  clientAccess: { type: "public" },
+  plugins: [insights()],
+  clientAccess: "public",
   storage: [
-    mockStorage({}),
+    process.env.NODE_ENV === "test"
+      ? (
+          await import("@hot-updater/test-utils/node")
+        ).createReleaseCatalogTestStorage()
+      : mockStorage({}),
     s3Storage({
       region: "auto",
       endpoint: process.env.R2_ENDPOINT,
@@ -63,7 +72,8 @@ export async function resetDecisionFixtures() {
       release_catalogs,
       releases,
       bundles,
-      channels
+      channels,
+      bundle_totals
     CASCADE
   `.execute(kysely);
 }

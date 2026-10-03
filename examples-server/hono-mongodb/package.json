@@ -1,6 +1,9 @@
 {
   "name": "@examples-server/hono-mongodb",
   "private": true,
+  "engines": {
+    "node": ">=20.19.0"
+  },
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/index.ts",
@@ -17,14 +20,13 @@
     "@hono/node-server": "catalog:hono",
     "@hot-updater/aws": "workspace:*",
     "@hot-updater/cloudflare": "workspace:*",
-    "@hot-updater/core": "workspace:*",
+    "@hot-updater/protocol": "workspace:*",
     "@hot-updater/firebase": "workspace:*",
     "@hot-updater/mock": "workspace:*",
     "@hot-updater/server": "workspace:*",
     "@hot-updater/supabase": "workspace:*",
     "@hot-updater/test-utils": "workspace:*",
     "@types/node": "^20.11.17",
-    "dotenv": "^16.6.1",
     "execa": "catalog:tools",
     "firebase-admin": "catalog:firebase",
     "hono": "catalog:hono",

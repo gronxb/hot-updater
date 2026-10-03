@@ -1,14 +1,19 @@
 export const FIREBASE_V1_FUNCTION_NAME = "hot-updater-v1";
 
-export const FIREBASE_V1_COLLECTION_NAMES = {
-  apiKeys: "hot_updater_v1_api_keys",
-  bundleEvents: "hot_updater_v1_bundle_events",
-  insightsLatest: "hot_updater_v1_insights_latest",
-  insightsOverview: "hot_updater_v1_insights_overview",
-  bundlePatches: "hot_updater_v1_bundle_patches",
-  bundles: "hot_updater_v1_bundles",
-  channels: "hot_updater_v1_channels",
-  releaseCatalogs: "hot_updater_v1_release_catalogs",
-  releases: "hot_updater_v1_releases",
-  settings: "hot_updater_v1_private_settings",
-} as const;
+/**
+ * The one collection the storage engine keeps every item in. It namespaces
+ * the data, so item partitions are table names with no prefix.
+ */
+export const FIREBASE_V1_COLLECTION = "hot_updater_v1";
+
+/**
+ * The collections a 1.0 release candidate wrote before the storage engine.
+ * Init reads them only to refuse such a database.
+ */
+export const FIREBASE_PRE_ENGINE_COLLECTIONS = [
+  "hot_updater_v1_private_settings",
+  "hot_updater_v1_bundles",
+  "hot_updater_v1_bundle_patches",
+  "hot_updater_v1_channels",
+  "hot_updater_v1_release_catalogs",
+] as const;

@@ -2,7 +2,6 @@
 title: "Express"
 description: Build a self-hosted Hot Updater server with Express framework.
 icon: express
-version: "v0.22.0"
 ---
 
 ## Installation
@@ -17,13 +16,15 @@ npm install @types/express --save-dev
 ## Setup and security
 
 Set up a [database adapter](/docs/custom/database/drizzle), generate its Hot Updater
-schema, and apply the schema before starting the server.
+schema, and apply the schema before starting the server. Define the
+server in `src/hotUpdater.ts` with `createHotUpdater`, as in the
+[quick start](/docs/custom/quick-start#define-the-server).
 
-The recommended self-hosted client policy uses built-in API key authentication
-for update-check and Insights ingestion routes. Always protect admin routes with
-framework middleware in the same mount chain as the admin handler. Update-check
-routes are usually exposed for React Native clients, but that is a deployment
-choice:
+The recommended self-hosted setup runs the `apiKeys()` plugin, which requires
+an API key on update-check, Insights ingestion, and plugin client routes.
+Always protect admin routes with framework middleware in the same mount chain
+as the admin handler. Update-check routes are usually exposed for React Native
+clients, but that is a deployment choice:
 
 - Client OTA: `/hot-updater/release-catalogs/*`, `/hot-updater/artifacts/*`
 - Optional public diagnostics: `/hot-updater/version`
@@ -35,7 +36,7 @@ token, parses JSON, and uses Express mount-local middleware:
 
 ```typescript title="src/index.ts"
 import express from "express";
-import { toNodeHandler } from "@hot-updater/server/node"; // [!code ++]
+import { toNodeHandler } from "@hot-updater/server"; // [!code ++]
 import { hotUpdater } from "./hotUpdater"; // [!code ++]
 
 const adminToken = process.env.HOT_UPDATER_ADMIN_TOKEN;
@@ -71,7 +72,9 @@ Set your auth token in environment variables:
 HOT_UPDATER_ADMIN_TOKEN=your-secret-auth-token
 ```
 
-Configure the CLI to include the auth token when deploying bundles:
+Configure the CLI to include the auth token when deploying bundles, beside
+the config's storage and plugins; see
+[CLI Configuration](/docs/custom/cli-configuration):
 
 ```typescript title="hot-updater.config.ts (excerpt)"
 import { standaloneRepository } from "@hot-updater/standalone"; // [!code ++]
@@ -83,7 +86,7 @@ if (!adminToken) {
 }
 
 export default defineConfig({
-  // ...
+  // ... build, storage, plugins, and updateStrategy
   database: standaloneRepository({ // [!code ++]
     baseUrl: "http://localhost:3000/hot-updater/admin", // [!code ++]
     commonHeaders: { // [!code ++]
@@ -95,13 +98,17 @@ export default defineConfig({
 
 ## Handler boundaries
 
-Insights ingestion and query capabilities are built in. Client reporting is on
-by default and can be disabled in the mobile SDK. The client API key protects
-catalog reads, artifact resolution and Insights ingestion; it does not
-protect or authorize the admin handler.
+With `insights()` in `plugins`, `handlers.client` accepts Insights events and
+`handlers.admin` serves Insights queries; without it, the server has no such
+routes, and they answer `404`. Apps send reports with the
+[Insights client plugin](/docs/react-native-api/insights).
+[Server plugin](/docs/custom/server-plugins) endpoints mount on the same two
+handlers. The client API key protects catalog reads, artifact resolution,
+Insights ingestion, and plugin client routes; it does not protect or authorize
+the admin handler.
 
 See the [shared handler boundary](/docs/custom/overview#runtime-policy) for route
-groups and the [repository server contract](/docs/database-plugins/standalone#server-contract)
+groups and the [repository server contract](/docs/database-adapters/standalone#server-contract)
 for exact management requests. Keep the framework-specific authentication and
 mount ordering shown above.
 

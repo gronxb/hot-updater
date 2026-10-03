@@ -2,7 +2,6 @@
 title: Custom server overview
 description: Connect Hot Updater to your existing database, server framework and hosting.
 icon: Server
-version: "v0.22.0"
 ---
 
 ## Choose a custom server
@@ -17,17 +16,20 @@ backend, use the matching integration below and keep its established tooling.
 
 ## Architecture
 
-| Part                    | Runs in                            | Responsibility                                                                                 |
-| ----------------------- | ---------------------------------- | ---------------------------------------------------------------------------------------------- |
-| `hot-updater.config.ts` | React Native project or deploy job | Build bundles, upload artifacts and send management requests through `standaloneRepository`.   |
-| `createHotUpdater`      | Server project                     | Compile Release Catalogs and serve client and admin handlers using a direct database provider. |
-| Database adapter        | Server project                     | Persist canonical rows, prepare the schema and commit changes atomically.                      |
-| Storage plugin          | Deploy job and server              | Upload artifacts and resolve their stored locations for downloads.                             |
+| Part                    | Runs in                            | Responsibility                                                                                                         |
+| ----------------------- | ---------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `hot-updater.config.ts` | React Native project or deploy job | Build bundles, upload artifacts and send management requests through `standaloneRepository`, with the server's plugins. |
+| `createHotUpdater`      | Server project                     | Compile Release Catalogs and serve client and admin handlers using a direct database provider.                         |
+| Database adapter        | Server project                     | Persist canonical rows, prepare the schema and commit changes atomically.                                              |
+| Server plugins          | Server project                     | Add Insights, API keys, or your own tables, APIs and routes to `createHotUpdater`.                                     |
+| Storage adapter         | Deploy job and server              | Upload artifacts and resolve their stored locations for downloads.                                                     |
 
-Pass database and storage plugin objects directly to `createHotUpdater` and
+Pass database and storage adapter objects directly to `createHotUpdater` and
 `defineConfig`. Provider factories such as `dynamoDB(options)` return those
 objects. Capture SDK clients, bindings and credentials when constructing each
-plugin; handlers take only a Web `Request`.
+adapter; handlers take only a Web `Request`. List the server's plugins in
+`hot-updater.config.ts` too, as in
+[CLI Configuration](/docs/custom/cli-configuration#mirror-the-server).
 
 The mobile app uses the client base URL and a client API key. The CLI connects
 to the separately protected admin base URL. The admin token and provider
@@ -41,8 +43,8 @@ schema before creating the first API key or serving requests.
 | Adapter                                  | Schema preparation                                                                                           |
 | ---------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
 | [Kysely](/docs/custom/database/kysely)   | Generate SQL for review, then use `hot-updater db migrate`.                                                  |
-| [Drizzle](/docs/custom/database/drizzle) | Generate the Drizzle schema and apply it with Drizzle Kit.                                                   |
-| [Prisma](/docs/custom/database/prisma)   | Generate/merge the Prisma models, regenerate the client and apply the schema with Prisma.                    |
+| [Drizzle](/docs/custom/database/drizzle) | Generate the Drizzle schema, apply it with Drizzle Kit, then use `hot-updater db migrate`.                   |
+| [Prisma](/docs/custom/database/prisma)   | Generate/merge the Prisma models, apply the schema with Prisma, then use `hot-updater db migrate`.           |
 | [MongoDB](/docs/custom/database/mongodb) | Use a replica set or sharded cluster with transactions enabled; apply indexes with `hot-updater db migrate`. |
 
 For database tooling outside an ORM, use [SQL schema export](/docs/custom/database/sql-export).
@@ -62,45 +64,50 @@ prefix, including for signed storage-download URLs resolved against `baseURL`.
 
 ## Runtime policy
 
-Every `createHotUpdater` configuration sets `clientAccess`. Use
-`{ type: "api-key" }` to require a client key for Release Catalogs, artifact
-resolution and Insights ingestion, or explicitly choose `{ type: "public" }`.
+Client routes need exactly one access policy. Add the `apiKeys()` plugin to
+require a client key for Release Catalogs, artifact resolution, Insights
+ingestion and plugin client routes, or explicitly set `clientAccess: "public"`.
+`createHotUpdater` refuses a configuration with neither or both.
 
-| Handler           | Routes and access                                                                                                                                                              |
-| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `handlers.client` | Public `/version`; Release Catalogs, artifacts and `POST /events` follow `clientAccess`; signed storage-download routes are available when the storage provider supports them. |
-| `handlers.admin`  | Bundle, Release, catalog, Channel, database-commit and Insights-query routes. Your framework authenticates every request before mounting this handler.                         |
+| Handler           | Routes and access                                                                                                                                                                                       |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `handlers.client` | Public `/version`; Release Catalogs, artifacts, `POST /events` and plugin client routes follow the client policy; signed storage-download routes are available when the storage provider supports them. |
+| `handlers.admin`  | Bundle, Release, catalog and Channel routes, Insights queries and plugin admin routes. Your framework authenticates every request before mounting this handler.                                         |
 
-Insights is built in. React Native clients report lifecycle events by default
-and can opt out with `HotUpdater.init({ insights: false })`. Client API keys do
-not grant admin or Insights-query access. See [API keys](/docs/custom/api-key-authentication)
-for bootstrap and rotation, and the
-[repository server contract](/docs/database-plugins/standalone#server-contract)
+Insights runs as the `insights()` plugin. React Native apps report to it when
+their `HotUpdater.init` options list the
+[Insights client plugin](/docs/react-native-api/insights) in `plugins`.
+Without the server plugin, the server has no Insights routes, so they answer
+`404`, and apps with the client plugin pause reporting for 24 hours at a time. Client API keys do not grant admin or
+Insights-query access. See [API keys](/docs/custom/api-key-authentication) for
+bootstrap and rotation, [Server Plugins](/docs/custom/server-plugins) to add
+your own tables and routes, and the
+[repository server contract](/docs/database-adapters/standalone#server-contract)
 for the HTTP operations used by the CLI.
 
-## Storage plugins
+## Storage adapters
 
-Use a storage plugin in the CLI and the matching runtime implementation in the
+Use a storage adapter in the CLI and the matching runtime implementation in the
 server's `storage` array. The URI scheme and bucket/key configuration must agree.
 For example, an `s3Storage` deploy configuration needs an `s3Storage` server entry;
 using R2 infrastructure alone does not make `s3://` and `r2://` interchangeable.
 
 A server may retain multiple storage providers when old and new bundles coexist,
-but register at most one plugin per URI scheme. Stored URIs use
-`protocol://bucket/encoded/slash/key`. The matching plugin owns reads, download
+but register at most one adapter per URI scheme. Stored URIs use
+`protocol://bucket/encoded/slash/key`. The matching adapter owns reads, download
 URLs and exact deletion; an unowned HTTP(S) URI can be used directly.
 
-Use [S3](/docs/storage-plugins/aws), [R2](/docs/storage-plugins/cloudflare),
-[Supabase Storage](/docs/storage-plugins/supabase) or
-[Firebase Storage](/docs/storage-plugins/firebase). Custom implementations follow
-the [storage contract](/docs/storage-plugins/custom-storage). Install packages
+Use [S3](/docs/storage-adapters/aws), [R2](/docs/storage-adapters/cloudflare),
+[Supabase Storage](/docs/storage-adapters/supabase) or
+[Firebase Storage](/docs/storage-adapters/firebase). Custom implementations follow
+the [storage contract](/docs/storage-adapters/custom-storage). Install packages
 used by the deployed server as runtime dependencies.
 
 ## CLI configuration
 
 After the server and schema are ready, [connect the React Native project's CLI](/docs/custom/cli-configuration).
-Configure the exact admin mount URL, its authentication headers and the same
-storage location used by the server.
+Configure the exact admin mount URL, its authentication headers, the same
+storage location used by the server, and the server's plugins.
 
 ## Deploy and verify
 

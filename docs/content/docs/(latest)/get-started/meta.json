@@ -5,12 +5,8 @@
   "pages": [
     "introduction",
     "../guides/ai-agents",
-    "basic-usage",
-    "choose-provider",
-    "installation",
-    "app-setup",
+    "manual",
     "test-ota",
-    "../guides/custom-update",
     "../guides/upgrade-to-v1"
   ]
 }

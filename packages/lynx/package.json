@@ -1,6 +1,6 @@
 {
   "name": "@hot-updater/lynx",
-  "version": "1.0.0-rc.14",
+  "version": "1.0.0-rc.27",
   "type": "module",
   "description": "OTA updates for Lynx apps",
   "sideEffects": false,
@@ -41,7 +41,12 @@
     "!**/build",
     "!**/.build",
     "!**/.gradle",
-    "!**/local.properties"
+    "!**/local.properties",
+    "!android/src/test",
+    "!ios/Tests",
+    "!**/*.spec.ts",
+    "!**/*.test.ts",
+    "!**/src/test"
   ],
   "license": "MIT",
   "repository": "https://github.com/gronxb/hot-updater",
@@ -53,21 +58,25 @@
     "test:type": "tsc --noEmit"
   },
   "dependencies": {
-    "@hot-updater/core": "workspace:*",
-    "@hot-updater/plugin-core": "workspace:*",
+    "@hot-updater/protocol": "workspace:*",
     "uuidv7": "catalog:"
   },
   "peerDependencies": {
-    "sparkling-navigation": "2.1.0-rc.12"
+    "sparkling-navigation": "2.1.0-rc.12",
+    "@hot-updater/plugin-core": "workspace:*"
   },
   "peerDependenciesMeta": {
     "sparkling-navigation": {
+      "optional": true
+    },
+    "@hot-updater/plugin-core": {
       "optional": true
     }
   },
   "devDependencies": {
     "@hot-updater/cli-tools": "workspace:*",
     "@types/node": "catalog:",
-    "sparkling-navigation": "2.1.0-rc.12"
+    "sparkling-navigation": "2.1.0-rc.12",
+    "@hot-updater/plugin-core": "workspace:*"
   }
 }

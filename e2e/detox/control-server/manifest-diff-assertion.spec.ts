@@ -6,8 +6,6 @@ import {
   classifyArtifactSelection,
   classifyArtifactSelectionHistory,
   collectManifestDiffLogs,
-  hasLynxFirstOtaArchiveEvidence,
-  isExactLynxFirstOtaArchiveSelection,
 } from "./manifest-diff-assertion.ts";
 
 const archivePayload = {
@@ -17,9 +15,13 @@ const archivePayload = {
 };
 
 const manifestPayload = {
-  changedAssets: {
+  artifactProtocolVersion: 1,
+  assets: {
     "main.bundle": {
-      file: null,
+      file: {
+        url: "https://storage.example.com/main.bundle",
+        compression: null,
+      },
       fileHash: "main-target-hash",
       patch: {
         algorithm: "bsdiff",
@@ -44,8 +46,7 @@ const manifestPayload = {
       patch: null,
     },
   },
-  fileHash: "archive-hash",
-  fileUrl: "https://storage.example.com/archive.zip?signature=one",
+  archiveUrl: "https://storage.example.com/archive.tar.br?signature=one",
   manifestFileHash: "manifest-hash",
   manifestUrl: "https://storage.example.com/manifest.json?signature=one",
   patchAssetPath: "main.bundle",
@@ -59,18 +60,16 @@ function capture(payload: unknown) {
 }
 
 describe("manifest diff assertion", () => {
-  it("skips reuse evidence only for a captured archive-only selection", () => {
-    expect(classifyArtifactSelection(capture(archivePayload))).toBe(
-      "archive-only",
-    );
+  it("rejects archive-only wire metadata instead of skipping native reuse evidence", () => {
+    expect(classifyArtifactSelection(capture(archivePayload))).toBeNull();
   });
 
   it("requires complete manifest-diff evidence before enabling strict reuse checks", () => {
     const manifestDiff = capture(manifestPayload);
-    expect(classifyArtifactSelection(manifestDiff)).toBe("manifest-diff");
+    expect(classifyArtifactSelection(manifestDiff)).toBe("manifest-v1");
     for (const incompletePayload of [
-      { ...manifestPayload, changedAssets: {} },
-      { ...manifestPayload, changedAssets: null },
+      { ...manifestPayload, assets: {} },
+      { ...manifestPayload, assets: null },
       { ...manifestPayload, manifestFileHash: null },
       { ...manifestPayload, manifestUrl: null },
     ]) {
@@ -113,7 +112,7 @@ describe("manifest diff assertion", () => {
       expect(
         classifyArtifactSelection(
           capture({
-            changedAssets: { "asset.bin": asset },
+            assets: { "asset.bin": asset },
             manifestFileHash: "manifest-hash",
             manifestUrl: "https://storage.example.com/manifest.json",
           }),
@@ -125,11 +124,11 @@ describe("manifest diff assertion", () => {
   it("requires every repeated capture to have one consistent classification", () => {
     const archiveOnly = capture(archivePayload);
     const manifestDiff = capture(manifestPayload);
-    expect(classifyArtifactSelectionHistory([archiveOnly, archiveOnly])).toBe(
-      "archive-only",
-    );
+    expect(
+      classifyArtifactSelectionHistory([archiveOnly, archiveOnly]),
+    ).toBeNull();
     expect(classifyArtifactSelectionHistory([manifestDiff, manifestDiff])).toBe(
-      "manifest-diff",
+      "manifest-v1",
     );
     expect(
       classifyArtifactSelectionHistory([archiveOnly, manifestDiff]),
@@ -143,55 +142,51 @@ describe("manifest diff assertion", () => {
     ["manifest hash", (value: any) => (value.manifestFileHash = "other")],
     [
       "asset target hash",
-      (value: any) => (value.changedAssets["metadata.json"].fileHash = "other"),
+      (value: any) => (value.assets["metadata.json"].fileHash = "other"),
     ],
     [
       "asset compression",
       (value: any) =>
-        (value.changedAssets["metadata.json"].downloadCompression = "br"),
+        (value.assets["metadata.json"].downloadCompression = "br"),
     ],
     [
       "asset byte size",
-      (value: any) =>
-        (value.changedAssets["metadata.json"].downloadByteSize = 81),
+      (value: any) => (value.assets["metadata.json"].downloadByteSize = 81),
     ],
     [
       "file hash",
-      (value: any) =>
-        (value.changedAssets["metadata.json"].file.fileHash = "other"),
+      (value: any) => (value.assets["metadata.json"].file.fileHash = "other"),
     ],
     [
       "file compression",
-      (value: any) =>
-        (value.changedAssets["metadata.json"].file.compression = "br"),
+      (value: any) => (value.assets["metadata.json"].file.compression = "br"),
     ],
     [
       "file byte size",
-      (value: any) => (value.changedAssets["metadata.json"].file.byteSize = 71),
+      (value: any) => (value.assets["metadata.json"].file.byteSize = 71),
     ],
     [
       "patch hash",
       (value: any) =>
-        (value.changedAssets["main.bundle"].patch.patchFileHash = "other"),
+        (value.assets["main.bundle"].patch.patchFileHash = "other"),
     ],
     [
       "patch algorithm",
-      (value: any) =>
-        (value.changedAssets["main.bundle"].patch.algorithm = "other"),
+      (value: any) => (value.assets["main.bundle"].patch.algorithm = "other"),
     ],
     [
       "patch base bundle",
       (value: any) =>
-        (value.changedAssets["main.bundle"].patch.baseBundleId = "other"),
+        (value.assets["main.bundle"].patch.baseBundleId = "other"),
     ],
     [
       "patch byte size",
-      (value: any) => (value.changedAssets["main.bundle"].patch.byteSize = 121),
+      (value: any) => (value.assets["main.bundle"].patch.byteSize = 121),
     ],
     [
       "patch target hash",
       (value: any) =>
-        (value.changedAssets["main.bundle"].patch.targetFileHash = "other"),
+        (value.assets["main.bundle"].patch.targetFileHash = "other"),
     ],
     ["patch asset path", (value: any) => (value.patchAssetPath = "other")],
     ["selection identity", (value: any) => (value.selectionId = "other")],
@@ -220,11 +215,11 @@ describe("manifest diff assertion", () => {
 
   it("allows signed URL renewal when immutable selection fields are unchanged", () => {
     const renewed = structuredClone(manifestPayload);
-    renewed.fileUrl = "https://other.example.com/archive?signature=two";
+    renewed.archiveUrl = "https://other.example.com/archive?signature=two";
     renewed.manifestUrl = "https://other.example.com/manifest?signature=two";
-    renewed.changedAssets["metadata.json"].file.url =
+    renewed.assets["metadata.json"].file.url =
       "https://other.example.com/metadata?signature=two";
-    renewed.changedAssets["main.bundle"].patch.patchUrl =
+    renewed.assets["main.bundle"].patch.patchUrl =
       "https://other.example.com/patch?signature=two";
 
     expect(
@@ -232,153 +227,22 @@ describe("manifest diff assertion", () => {
         capture(manifestPayload),
         capture(renewed),
       ]),
-    ).toBe("manifest-diff");
-  });
-
-  it("accepts only one exact immutable archive history for a first Lynx OTA", () => {
-    const builtInBundleId = "00000000-0000-7000-8000-000000000000";
-    const targetBundleId = "019f0000-0000-7000-8000-000000000001";
-    const selection = {
-      ...capture(archivePayload),
-      currentBundleId: builtInBundleId,
-      targetBundleId,
-    };
-    const renewed = {
-      ...capture({
-        ...archivePayload,
-        fileUrl: "https://storage.example.com/archive.zip?signature=two",
-      }),
-      currentBundleId: builtInBundleId,
-      targetBundleId,
-    };
-
-    expect(
-      isExactLynxFirstOtaArchiveSelection({
-        builtInBundleId,
-        selections: [selection, renewed],
-        targetBundleId,
-      }),
-    ).toBe(true);
-
-    for (const selections of [
-      [],
-      [{ ...selection, currentBundleId: "wrong-current" }],
-      [{ ...selection, targetBundleId: "wrong-target" }],
-      [
-        selection,
-        {
-          ...selection,
-          ...capture({ ...archivePayload, fileHash: "changed-hash" }),
-        },
-      ],
-      [
-        selection,
-        {
-          ...capture(manifestPayload),
-          currentBundleId: builtInBundleId,
-          targetBundleId,
-        },
-      ],
-    ]) {
-      expect(
-        isExactLynxFirstOtaArchiveSelection({
-          builtInBundleId,
-          selections,
-          targetBundleId,
-        }),
-      ).toBe(false);
-    }
-  });
-
-  it("requires pending native store proof for the exact Lynx archive target", () => {
-    const builtInBundleId = "00000000-0000-7000-8000-000000000000";
-    const targetBundleId = "019f0000-0000-7000-8000-000000000001";
-    const selection = {
-      ...capture(archivePayload),
-      currentBundleId: builtInBundleId,
-      targetBundleId,
-    };
-    const evidence = {
-      builtInBundleId,
-      bundleFileExists: true,
-      selections: [selection],
-      stableBundleId: null,
-      stagingBundleId: targetBundleId,
-      stagingSelectionBundleId: targetBundleId,
-      targetBundleId,
-      verificationPending: true,
-    };
-
-    expect(hasLynxFirstOtaArchiveEvidence(evidence)).toBe(true);
-    expect(
-      hasLynxFirstOtaArchiveEvidence({
-        ...evidence,
-        bundleFileExists: false,
-      }),
-    ).toBe(false);
-    expect(
-      hasLynxFirstOtaArchiveEvidence({
-        ...evidence,
-        stableBundleId: targetBundleId,
-      }),
-    ).toBe(false);
-    expect(
-      hasLynxFirstOtaArchiveEvidence({
-        ...evidence,
-        stagingBundleId: "wrong-target",
-      }),
-    ).toBe(false);
-    expect(
-      hasLynxFirstOtaArchiveEvidence({
-        ...evidence,
-        stagingSelectionBundleId: "wrong-target",
-      }),
-    ).toBe(false);
-    expect(
-      hasLynxFirstOtaArchiveEvidence({
-        ...evidence,
-        verificationPending: false,
-      }),
-    ).toBe(false);
-  });
-
-  it("rejects the hkmqe0-shaped first OTA state with an unrelated stable Bundle", () => {
-    const builtInBundleId = "00000000-0000-7000-8000-000000000000";
-    const targetBundleId = "019f0000-0000-7000-8000-000000000001";
-
-    expect(
-      hasLynxFirstOtaArchiveEvidence({
-        builtInBundleId,
-        bundleFileExists: true,
-        selections: [
-          {
-            ...capture(archivePayload),
-            currentBundleId: builtInBundleId,
-            targetBundleId,
-          },
-        ],
-        stableBundleId: "unrelated-stable",
-        stagingBundleId: targetBundleId,
-        stagingSelectionBundleId: targetBundleId,
-        targetBundleId,
-        verificationPending: true,
-      }),
-    ).toBe(false);
+    ).toBe("manifest-v1");
   });
 
   it("normalizes object key order while preserving ordered selection fields", () => {
     const reordered = Object.fromEntries(
       Object.entries(manifestPayload).reverse(),
     );
-    reordered.changedAssets = Object.fromEntries(
-      Object.entries(manifestPayload.changedAssets).reverse(),
+    reordered.assets = Object.fromEntries(
+      Object.entries(manifestPayload.assets).reverse(),
     );
     expect(
       classifyArtifactSelectionHistory([
         capture(manifestPayload),
         capture(reordered),
       ]),
-    ).toBe("manifest-diff");
+    ).toBe("manifest-v1");
 
     const ordered = { ...manifestPayload, selectionOrder: ["file", "patch"] };
     expect(

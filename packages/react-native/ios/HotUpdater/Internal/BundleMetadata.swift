@@ -84,6 +84,7 @@ public struct BundleMetadata: Codable {
     var stableSelection: PersistedSelection?
     var stagingSelection: PersistedSelection?
     var verificationPending: Bool
+    var launchInProgress: Bool
     var pendingTransition: PendingBundleTransition?
     var pendingSelectionTransition: PendingSelectionTransition?
     var highestSeenCatalogs: [String: CatalogHighWater]
@@ -98,6 +99,7 @@ public struct BundleMetadata: Codable {
         case stableSelection = "stable_selection"
         case stagingSelection = "staging_selection"
         case verificationPending = "verification_pending"
+        case launchInProgress = "launch_in_progress"
         case pendingTransition = "pending_transition"
         case pendingSelectionTransition = "pending_selection_transition"
         case highestSeenCatalogs = "highest_seen_catalogs"
@@ -113,6 +115,7 @@ public struct BundleMetadata: Codable {
         stableSelection: PersistedSelection? = nil,
         stagingSelection: PersistedSelection? = nil,
         verificationPending: Bool = false,
+        launchInProgress: Bool = false,
         pendingTransition: PendingBundleTransition? = nil,
         pendingSelectionTransition: PendingSelectionTransition? = nil,
         highestSeenCatalogs: [String: CatalogHighWater] = [:],
@@ -126,6 +129,7 @@ public struct BundleMetadata: Codable {
         self.stableSelection = stableSelection
         self.stagingSelection = stagingSelection
         self.verificationPending = verificationPending
+        self.launchInProgress = launchInProgress
         self.pendingTransition = pendingTransition
         self.pendingSelectionTransition = pendingSelectionTransition
         self.highestSeenCatalogs = highestSeenCatalogs
@@ -144,6 +148,7 @@ public struct BundleMetadata: Codable {
         stagingSelection = try values.decodeIfPresent(PersistedSelection.self, forKey: .stagingSelection)
             ?? stagingBundleId.map(PersistedSelection.legacyBundle)
         verificationPending = try values.decodeIfPresent(Bool.self, forKey: .verificationPending) ?? false
+        launchInProgress = try values.decodeIfPresent(Bool.self, forKey: .launchInProgress) ?? false
         pendingTransition = try values.decodeIfPresent(PendingBundleTransition.self, forKey: .pendingTransition)
         pendingSelectionTransition = try values.decodeIfPresent(PendingSelectionTransition.self, forKey: .pendingSelectionTransition)
         highestSeenCatalogs = try values.decodeIfPresent([String: CatalogHighWater].self, forKey: .highestSeenCatalogs) ?? [:]
@@ -378,6 +383,8 @@ public struct LaunchReport: Codable {
     }
 }
 
+/// The random id created once per app installation. It lives in
+/// `NoBackupStorage`, so a device backup never carries it to another device.
 public struct InstallIdentity: Codable {
     static let installIdentityFilename = "install-identity.json"
 
@@ -407,62 +414,10 @@ public struct InstallIdentity: Codable {
             let encoder = JSONEncoder()
             encoder.outputFormatting = .prettyPrinted
             let data = try encoder.encode(self)
-            let directory = file.deletingLastPathComponent()
-            if !FileManager.default.fileExists(atPath: directory.path) {
-                try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-            }
-            try data.write(to: file)
+            try NoBackupStorage.write(data, to: file)
             return true
         } catch {
             print("[InstallIdentity] Failed to save install identity: \(error)")
-            return false
-        }
-    }
-}
-
-public struct UserIdentity: Codable {
-    static let userIdentityFilename = "user-identity.json"
-
-    let userId: String?
-    let username: String?
-
-    init(userId: String?, username: String?) {
-        self.userId = userId
-        self.username = username
-    }
-
-    var isEmpty: Bool {
-        userId == nil && username == nil
-    }
-
-    static func load(from file: URL) -> UserIdentity? {
-        guard FileManager.default.fileExists(atPath: file.path) else {
-            return nil
-        }
-
-        do {
-            let data = try Data(contentsOf: file)
-            let identity = try JSONDecoder().decode(UserIdentity.self, from: data)
-            return identity.isEmpty ? nil : identity
-        } catch {
-            print("[UserIdentity] Failed to load user identity: \(error)")
-            return nil
-        }
-    }
-
-    func save(to file: URL) -> Bool {
-        do {
-            let encoder = JSONEncoder()
-            encoder.outputFormatting = .prettyPrinted
-            let data = try encoder.encode(self)
-            let directory = file.deletingLastPathComponent()
-            if !FileManager.default.fileExists(atPath: directory.path) {
-                try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-            }
-            try data.write(to: file)
-            return true
-        } catch {
-            print("[UserIdentity] Failed to save user identity: \(error)")
             return false
         }
     }

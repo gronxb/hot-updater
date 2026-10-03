@@ -27,7 +27,7 @@ PODS:
   - hermes-engine (250829098.0.10):
     - hermes-engine/Pre-built (= 250829098.0.10)
   - hermes-engine/Pre-built (250829098.0.10)
-  - HotUpdater (0.35.0):
+  - HotUpdater (1.0.0):
     - hermes-engine
     - RCTRequired
     - RCTTypeSafety
@@ -2190,8 +2190,8 @@ EXTERNAL SOURCES:
 SPEC CHECKSUMS:
   callstack-repack: 2d0e744d37013ccc33451e4c797d5dd67eae6e56
   FBLazyVector: 26fd21c75314e101f280d401e97f27d54f3f7064
-  hermes-engine: 850c54bafc2b3e36ec15b2e3e10ce414eb41c538
-  HotUpdater: ddc0704bcf7b69b557ab72f072af2364ab0df34d
+  hermes-engine: 00d4eec6b9a483a5f2309b4c092920b9588d0be7
+  HotUpdater: bab4da2ebf4cf9f9e9b26b9e36d80e1942ac35e6
   JWTDecode: 2eed97c2fa46ccaf3049a787004eedf0be474a87
   RCTDeprecation: c7a2768f905d76ca6d2cfefb26e4349eacbdfca3
   RCTRequired: 5e502c3553cfbed090a991c444448da452fb752e
@@ -2201,7 +2201,7 @@ SPEC CHECKSUMS:
   React: 13cf8451582adb1bb324306e1893b91d1cba28c6
   React-callinvoker: 91e6a605826b684ad2e623811253b4d0c4196bef
   React-Core: 46818de5f211b2a2759ac823b591af8a0a95c2c1
-  React-Core-prebuilt: 96e4b9581422d28d0d524f8e223326a40da23e78
+  React-Core-prebuilt: da6ba4ed1b5f15fda86a194db69b540f5d5b900d
   React-CoreModules: a6a37afee48d4a31ab398640b0795462647d5c67
   React-cxxreact: 2ec3e2f7a8ae9303460d4ba94cde183ea90d64cd
   React-debug: 0d21117b897ce0359c9d2c9dfe952f237476a14a
@@ -2264,7 +2264,7 @@ SPEC CHECKSUMS:
   ReactAppDependencyProvider: 22e2265d86a4e871e5e858f4e7ef1c8d01103680
   ReactCodegen: 9dffa3ec5e4d5d86bbfb62addaef6b486e6460b8
   ReactCommon: a804bb8d1dcf3ecdec3a77eb8bba19b7863bbbdb
-  ReactNativeDependencies: ef8b9b2f00a9fb0772c2a45f85efec053ee806d0
+  ReactNativeDependencies: ae9e6f05e9a26f39de7f05682b6b88fdd783f628
   RNBootSplash: babee2ef72807044d765c75e651896f0ce15a996
   RNScreens: 991cc417cd396602a6cf59a42139e5a9d91462a9
   SwiftyRSA: 8c6dd1ea7db1b8dc4fb517a202f88bb1354bc2c6

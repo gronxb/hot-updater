@@ -1,3 +1,4 @@
+import { parseStorageUri } from "@hot-updater/plugin-core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { supabaseStorage } from "./supabaseStorage";
@@ -86,6 +87,47 @@ describe("supabaseStorage", () => {
     await expect(response?.text()).resolves.toBe("manifest");
   });
 
+  /** supabase-js's error for a download Storage answered with `body`. */
+  const downloadError = (body: object) =>
+    Object.assign(new Error("{}"), {
+      name: "StorageUnknownError",
+      originalError: new Response(JSON.stringify(body), { status: 400 }),
+    });
+
+  it("reads a missing object as a null response", async () => {
+    bucket.download.mockResolvedValue({
+      data: null,
+      error: downloadError({
+        statusCode: "404",
+        error: "not_found",
+        message: "Object not found",
+      }),
+    });
+
+    await expect(
+      createStorage().get({
+        storageUri: "supabase-storage://updates/bundles/missing.json",
+      }),
+    ).resolves.toEqual({ response: null });
+  });
+
+  it("does not read a missing bucket as a missing object", async () => {
+    bucket.download.mockResolvedValue({
+      data: null,
+      error: downloadError({
+        statusCode: "404",
+        error: "Bucket not found",
+        message: "Bucket not found",
+      }),
+    });
+
+    await expect(
+      createStorage().get({
+        storageUri: "supabase-storage://updates/bundles/manifest.json",
+      }),
+    ).rejects.toThrow("Failed to download storage object");
+  });
+
   it("uploads bytes and returns a stable storage URI", async () => {
     bucket.upload.mockResolvedValue({
       data: { fullPath: "updates/bundles/bundle.zip" },
@@ -108,36 +150,74 @@ describe("supabaseStorage", () => {
       {
         cacheControl: "max-age=31536000",
         contentType: "application/zip",
+        upsert: true,
         duplex: "half",
         headers: { "content-length": "6" },
       },
     );
   });
 
-  it("round-trips reserved characters through exact Supabase object keys", async () => {
-    const key = "릴리스 folder/logo@2x #100%/bundle.zip";
-    bucket.upload.mockResolvedValue({
-      data: { fullPath: `updates/${key}` },
-      error: null,
+  it("allows concurrent deployments to upload the same shared asset", async () => {
+    const objects = new Set<string>();
+    bucket.upload.mockImplementation(async (key, _body, options) => {
+      if (objects.has(key) && !options.upsert) {
+        return { error: new Error("The resource already exists") };
+      }
+      objects.add(key);
+      return { error: null };
     });
+    const storage = createStorage();
+    const upload = () =>
+      storage.put({
+        key: "assets/sha256/ab/shared.png",
+        body: new Response("shared asset").body!,
+        contentType: "image/png",
+      });
+
+    const results = await Promise.all([upload(), upload()]);
+
+    expect(objects.size).toBe(1);
+    expect(results[0].storageUri).toBe(results[1].storageUri);
+    expect(bucket.upload).toHaveBeenCalledTimes(2);
+  });
+
+  it("stores characters Storage rejects, `?` and `!` under escaped object names", async () => {
+    bucket.upload.mockResolvedValue({ data: {}, error: null });
     bucket.remove.mockResolvedValue({ data: [], error: null });
+    const names = new Map([
+      [
+        "릴리스 folder/logo@2x #100%/bundle.zip",
+        "!EB!A6!B4!EB!A6!AC!EC!8A!A4 folder/logo@2x !23100!25/bundle.zip",
+      ],
+      ["releases/what?.zip", "releases/what!3F.zip"],
+      ["releases/wow!.zip", "releases/wow!21.zip"],
+      ["releases/wow!21.zip", "releases/wow!2121.zip"],
+      [
+        "releases/1.0.0/(a)_b+c,d;e=f&g$h'i*j:k-l.zip",
+        "releases/1.0.0/(a)_b+c,d;e=f&g$h'i*j:k-l.zip",
+      ],
+    ]);
 
-    const uploaded = await createStorage().put({
-      key,
-      body: new Response("bundle").body!,
-      contentLength: 6,
-      contentType: "application/zip",
-    });
-    expect(uploaded.storageUri).toContain("logo%402x");
-    expect(uploaded.storageUri).not.toContain("#100%");
-    await createStorage().delete({ storageUri: uploaded.storageUri });
+    for (const [key, name] of names) {
+      const uploaded = await createStorage().put({
+        key,
+        body: new Response("bundle").body!,
+        contentLength: 6,
+        contentType: "application/zip",
+      });
+      // The URI keeps the key.
+      expect(parseStorageUri(uploaded.storageUri, "supabase-storage").key).toBe(
+        key,
+      );
+      await createStorage().delete({ storageUri: uploaded.storageUri });
 
-    expect(bucket.upload).toHaveBeenCalledWith(
-      key,
-      expect.any(ReadableStream),
-      expect.any(Object),
-    );
-    expect(bucket.remove).toHaveBeenCalledWith([key]);
+      expect(bucket.upload).toHaveBeenLastCalledWith(
+        name,
+        expect.any(ReadableStream),
+        expect.any(Object),
+      );
+      expect(bucket.remove).toHaveBeenLastCalledWith([name]);
+    }
   });
 
   it("deletes exactly the referenced object", async () => {

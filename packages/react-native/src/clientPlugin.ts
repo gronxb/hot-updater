@@ -1,0 +1,17 @@
+export {
+  defineClientPlugin,
+  type AppReadyResult,
+  type BundleDownloadedInfo,
+  type HotUpdaterClientContext,
+  type HotUpdaterClientHooks,
+  type HotUpdaterClientPlugin,
+  type HotUpdaterClientStorage,
+  type ReleaseTransitionKind,
+  type UpdateCheckResult,
+  type UpdateError,
+  type UpdateErrorReason,
+  type UpdateErrorResource,
+  type UpdateErrorStage,
+  type UpdateErrorTransport,
+  type UpdateStrategy,
+} from "@hot-updater/protocol";

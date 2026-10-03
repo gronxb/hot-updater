@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
 import {
   cp,
   lstat,
@@ -15,7 +16,13 @@ import { createRequire } from "node:module";
 import path from "node:path";
 
 import { ui } from "../../utils/cli-ui";
-import { type InitProvider, INIT_PROVIDER_PACKAGES } from "../initProviders";
+import type { InitProvider } from "../initProviders";
+import {
+  CLIENT_CREDENTIAL_FILE,
+  CLIENT_CREDENTIAL_SCRIPT,
+  type InfraClientAuth,
+  type InfraClientPlugin,
+} from "./clientAuth";
 
 const require = createRequire(import.meta.url);
 const CONFIG_VARIANT_PATTERN = /\.config\.([a-z0-9][a-z0-9._-]*)\.ts$/;
@@ -28,6 +35,14 @@ export interface InfraOptions {
   json?: boolean;
 }
 
+/** An input of a provider's init, without its validation. */
+export interface InfraTemplateInput {
+  envKey: string;
+  help: string;
+  optional?: boolean;
+  requirementHint?: string;
+}
+
 export interface InfraTemplate {
   schemaVersion: 1;
   provider: InitProvider;
@@ -35,12 +50,24 @@ export interface InfraTemplate {
   providerVersion: string;
   serverVersion: string;
   infrastructureGeneration: number;
+  /** The client-route policy of the plugins the server runs. */
+  clientAuth: InfraClientAuth;
+  /** The client plugins an app adds for the plugins the server runs. */
+  clientPlugins: InfraClientPlugin[];
+  /**
+   * The inputs the provider's init reads, recorded when this CLI was built,
+   * since only init installs the provider package.
+   */
+  inputs: InfraTemplateInput[];
   packages: Record<string, string>;
   requiredInputs: Record<string, string | null>;
   upgradeRequirements: string[];
 }
 
-export interface InfraManifest extends Omit<InfraTemplate, "packages"> {
+export interface InfraManifest extends Omit<
+  InfraTemplate,
+  "inputs" | "packages"
+> {
   operation: InfraOperation;
   build?: string;
   packages?: Record<string, string>;
@@ -55,9 +82,11 @@ const EXTRA_INPUT_HELP: Record<string, string> = {
     "Local server-side service-role or secret key; never put it in chat or the app",
   HOT_UPDATER_FIREBASE_STORAGE_BUCKET:
     "Provider-reported default Storage bucket name; do not guess its suffix",
-  HOT_UPDATER_API_KEY:
-    "Client x-api-key; reuse the existing key or provision it after schema setup",
 };
+
+/** The environment guidance for the credential an app sends to client routes. */
+const credentialHelp = ({ credential }: NonNullable<InfraClientAuth>) =>
+  `Client ${credential.label} sent in ${credential.header}; reuse the existing one or run app/${CLIENT_CREDENTIAL_SCRIPT} after schema setup`;
 
 const listFiles = async (root: string, relative = ""): Promise<string[]> => {
   const files: string[] = [];
@@ -93,14 +122,33 @@ const statIfPresent = (target: string) =>
 const readJson = async <T>(file: string): Promise<T> =>
   JSON.parse(await readFile(file, "utf8")) as T;
 
+const infraTemplateSource = (provider: InitProvider) =>
+  path.join(
+    path.dirname(require.resolve("hot-updater/package.json")),
+    "dist/infra-templates",
+    provider,
+  );
+
 export async function readInfraTemplate(provider: InitProvider) {
-  const packageRoot = path.dirname(require.resolve("hot-updater/package.json"));
-  const source = path.join(packageRoot, "dist/infra-templates", provider);
+  const source = infraTemplateSource(provider);
   const template = await readJson<InfraTemplate>(
     path.join(source, "template.json"),
   );
   return { source, template };
 }
+
+/** The inputs `provider`'s init reads, for `init --help`. */
+export const readInfraTemplateInputs = (
+  provider: InitProvider,
+): readonly InfraTemplateInput[] =>
+  (
+    JSON.parse(
+      readFileSync(
+        path.join(infraTemplateSource(provider), "template.json"),
+        "utf8",
+      ),
+    ) as InfraTemplate
+  ).inputs;
 
 export async function getInfraFiles(
   source: string,
@@ -234,16 +282,15 @@ export async function scaffoldInfra(
   const staging = await mkdtemp(
     path.join(path.dirname(output), ".hot-updater-infra-"),
   );
+  const appDir = path.join(staging, "app");
   try {
     await cp(source, staging, { recursive: true });
     if (forAgent) {
       for (const choice of buildVariants) {
-        for (const basename of ["hot-updater.config", "api-key.config"]) {
-          const file = path.join(staging, "app", `${basename}.${choice}.ts`);
-          if (choice === build)
-            await rename(file, path.join(staging, "app", `${basename}.ts`));
-          else await rm(file);
-        }
+        const file = path.join(appDir, `hot-updater.config.${choice}.ts`);
+        if (choice === build)
+          await rename(file, path.join(appDir, "hot-updater.config.ts"));
+        else await rm(file);
       }
     } else {
       for (const file of AGENT_FILES)
@@ -252,27 +299,36 @@ export async function scaffoldInfra(
     await rm(path.join(staging, "template.json"));
     await writeFile(
       path.join(staging, ".gitignore"),
-      "node_modules/\n.env*\n!env.example\napi-key.local\n*.pem\n*.zip\n*.secret\n",
+      `node_modules/\n.env*\n!env.example\n${CLIENT_CREDENTIAL_FILE}\n*.pem\n*.zip\n*.secret\n`,
     );
     if (forAgent) {
-      const configText = await readFile(
-        path.join(staging, "app/hot-updater.config.ts"),
-        "utf8",
+      // Every variable the app's TypeScript reads: the config, the
+      // credential helper's server definition, and Firestore's migration.
+      const appSources = await Promise.all(
+        (await readdir(appDir))
+          .filter((file) => file.endsWith(".ts"))
+          .sort()
+          .map((file) => readFile(path.join(appDir, file), "utf8")),
       );
-      const inputs = Object.values(
-        INIT_PROVIDER_PACKAGES[provider].definition.inputs,
-      );
+      const { clientAuth, inputs } = template;
       const keys = new Set([
         ...inputs.map(({ envKey }) => envKey),
-        ...[...configText.matchAll(/process\.env\.([A-Z_0-9]+)/g)].map(
-          (match) => match[1]!,
+        ...appSources.flatMap((text) =>
+          [...text.matchAll(/process\.env\.([A-Z_0-9]+)/g)].map(
+            (match) => match[1]!,
+          ),
         ),
-        "HOT_UPDATER_API_KEY",
+        ...(clientAuth === null ? [] : [clientAuth.credential.env]),
       ]);
       const envExample = [...keys]
         .map((key) => {
           const input = inputs.find(({ envKey }) => envKey === key);
-          const help = input?.help ?? EXTRA_INPUT_HELP[key];
+          const help =
+            input?.help ??
+            EXTRA_INPUT_HELP[key] ??
+            (clientAuth !== null && key === clientAuth.credential.env
+              ? credentialHelp(clientAuth)
+              : undefined);
           if (!help)
             throw new Error(`Missing environment guidance for ${key}.`);
           return `# ${help}\n${key}=\n`;
@@ -294,8 +350,10 @@ export async function scaffoldInfra(
         ]),
       ),
     );
+    // The inputs are for env.example and `init --help`, not the manifest.
+    const { inputs: _inputs, ...recorded } = template;
     const manifest: InfraManifest = {
-      ...template,
+      ...recorded,
       operation,
       build,
       files,

@@ -1,6 +1,9 @@
 // @vitest-environment node
-import type { InsightsModel } from "@hot-updater/plugin-core";
-import { describe, expect, it, vi } from "vitest";
+import {
+  createInsightsProvider,
+  type InsightsModel,
+} from "@hot-updater/server/plugins/insights";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { getAppUsageReport } from "./insightsUsage";
 
@@ -21,6 +24,10 @@ const aggregate = {
   ],
   measuredAtMs: 100,
 };
+
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 describe("App usage aggregate query", () => {
   it("preserves filters and requests the configured interval without raw events", async () => {
@@ -62,20 +69,80 @@ describe("App usage aggregate query", () => {
     expect(report.truncated).toBe(false);
   });
 
-  it("does not widen usage beyond the current completed hour", async () => {
+  it("ends with the current hour, where the reporting overview ends", async () => {
+    const now = 48 * 3_600_000 + 15 * 60_000;
+    vi.useFakeTimers({ now });
     const getAppUsage = vi.fn(async () => aggregate);
-    await getAppUsageReport(
+    const report = await getAppUsageReport(
       { getAppUsage } as unknown as InsightsModel,
-      { platform: "all", channel: "production", window: "24h" },
-      48 * 3_600_000 + 15 * 60_000,
+      { platform: "ios", channel: "production", window: "24h" },
+      now,
     );
     expect(getAppUsage).toHaveBeenCalledWith(
       expect.objectContaining({
         timeRange: {
-          start: 24 * 3_600_000,
-          end: 48 * 3_600_000,
+          start: 25 * 3_600_000,
+          end: 49 * 3_600_000,
         },
       }),
     );
+    const overview = await createInsightsProvider({
+      countLatestEvents: async () => 0,
+    } as unknown as InsightsModel).getReportingOverview({
+      platform: "ios",
+      channel: "production",
+      window: "24h",
+    });
+    // The usage sketches keep a rolling 24 hours; latest reports, as the
+    // overview counts them, cover the UTC days those hours touch.
+    expect(report).toMatchObject({
+      sinceMs: 25 * 3_600_000,
+      distributionSinceMs: overview.sinceMs,
+      beforeReceivedAtMs: overview.beforeReceivedAtMs,
+    });
+  });
+
+  it("starts the distribution with the UTC day that contains the period's start", async () => {
+    const getAppUsage = vi.fn(async () => aggregate);
+    const report = await getAppUsageReport(
+      { getAppUsage } as unknown as InsightsModel,
+      { platform: "all", channel: "production", window: "24h" },
+      Date.parse("2026-08-12T10:25:00Z"),
+    );
+    expect(getAppUsage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        timeRange: {
+          start: Date.parse("2026-08-11T11:00:00Z"),
+          end: Date.parse("2026-08-12T11:00:00Z"),
+        },
+      }),
+    );
+    expect(report.sinceMs).toBe(Date.parse("2026-08-11T11:00:00Z"));
+    expect(report.distributionSinceMs).toBe(Date.parse("2026-08-11T00:00:00Z"));
+  });
+
+  it("reads 12 months as 52 weeks of whole UTC days, ending with today's", async () => {
+    const getAppUsage = vi.fn(async () => aggregate);
+    const report = await getAppUsageReport(
+      { getAppUsage } as unknown as InsightsModel,
+      { platform: "all", channel: "production", window: "12m" },
+      Date.parse("2026-08-12T10:25:00Z"),
+    );
+    // Day-aligned, so the server reads the daily counts it keeps 13 months.
+    expect(getAppUsage).toHaveBeenCalledWith({
+      platform: "all",
+      channel: "production",
+      timeRange: {
+        start: Date.parse("2025-08-14T00:00:00Z"),
+        end: Date.parse("2026-08-12T11:00:00Z"),
+      },
+      intervalMs: 7 * 86_400_000,
+    });
+    expect(report).toMatchObject({
+      sinceMs: Date.parse("2025-08-14T00:00:00Z"),
+      distributionSinceMs: Date.parse("2025-08-14T00:00:00Z"),
+      intervalMs: 7 * 86_400_000,
+      truncated: false,
+    });
   });
 });

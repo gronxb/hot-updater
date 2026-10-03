@@ -127,7 +127,7 @@ deploys.
 You can use [Docker](/docs/custom/hosting/docker) if containers fit your
 operations, or deploy to a [serverless host](/docs/custom/hosting/vercel).
 The same design leaves room for more providers: implement the
-[database contract](/docs/database-plugins/custom-database) and storage
+[database contract](/docs/database-adapters/custom-database) and storage
 operations, then connect the request handlers to a compatible runtime.
 A new integration still needs implementation and validation, but can reuse
 Hot Updater's OTA logic with that provider's services.

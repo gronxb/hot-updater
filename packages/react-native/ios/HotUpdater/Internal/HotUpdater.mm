@@ -274,8 +274,6 @@ extern "C" void *HotUpdaterCopyMinBundleId(void)
 
 
 // Define Notification names used for observing Swift Core
-NSNotificationName const HotUpdaterDownloadProgressUpdateNotification = @"HotUpdaterDownloadProgressUpdate";
-NSNotificationName const HotUpdaterDownloadDidFinishNotification = @"HotUpdaterDownloadDidFinish";
 NSNotificationName const HotUpdaterUpdateProgressDidChangeNotification = @"HotUpdaterUpdateProgressDidChange";
 
 @interface HotUpdaterRecoverySignalBridge : NSObject
@@ -300,8 +298,6 @@ NSNotificationName const HotUpdaterUpdateProgressDidChangeNotification = @"HotUp
 
 @implementation HotUpdater {
     bool hasListeners;
-    // Keep track of tasks ONLY for removing observers when this ObjC instance is invalidated
-    NSMutableSet<NSURLSessionTask *> *observedTasks; // Changed to NSURLSessionTask for broader compatibility if needed
 }
 
 @synthesize bridge = _bridge;
@@ -314,15 +310,9 @@ NSNotificationName const HotUpdaterUpdateProgressDidChangeNotification = @"HotUp
 - (instancetype)init {
     self = [super init];
     if (self) {
-        observedTasks = [NSMutableSet set];
-
         [[NSNotificationCenter defaultCenter] addObserver:self
                                                  selector:@selector(handleDownloadProgress:)
                                                      name:HotUpdaterUpdateProgressDidChangeNotification
-                                                   object:nil];
-        [[NSNotificationCenter defaultCenter] addObserver:self
-                                                 selector:@selector(handleDownloadCompletion:)
-                                                     name:HotUpdaterDownloadDidFinishNotification
                                                    object:nil];
 
         _lastUpdateTime = 0;
@@ -349,7 +339,6 @@ NSNotificationName const HotUpdaterUpdateProgressDidChangeNotification = @"HotUp
     if (gHotUpdaterBridge == self.bridge) {
         gHotUpdaterBridge = nil;
     }
-    // Swift side should handle KVO observer removal for its tasks
     [super invalidate];
 }
 
@@ -520,14 +509,6 @@ RCT_EXPORT_MODULE();
      }
  }
 
-- (void)handleDownloadCompletion:(NSNotification *)notification {
-      NSURLSessionTask *task = notification.object; // Task that finished
-      RCTLogInfo(@"[HotUpdater.mm] Received download completion notification for task: %@", task.originalRequest.URL);
-      // Swift side handles KVO observer removal internally now when task finishes.
-      // No specific cleanup needed here based on this notification anymore.
-}
-
-
 #pragma mark - React Native Events (Keep as is)
 
 - (NSArray<NSString *> *)supportedEvents {
@@ -594,20 +575,17 @@ RCT_EXPORT_MODULE();
     if (params.bundleId()) {
         paramDict[@"bundleId"] = params.bundleId();
     }
-    if (params.fileUrl()) {
-        paramDict[@"fileUrl"] = params.fileUrl();
-    }
-    if (params.fileHash()) {
-        paramDict[@"fileHash"] = params.fileHash();
-    }
     if (params.manifestUrl()) {
         paramDict[@"manifestUrl"] = params.manifestUrl();
     }
     if (params.manifestFileHash()) {
         paramDict[@"manifestFileHash"] = params.manifestFileHash();
     }
-    if (params.changedAssets()) {
-        paramDict[@"changedAssets"] = params.changedAssets();
+    if (params.archiveUrl()) {
+        paramDict[@"archiveUrl"] = params.archiveUrl();
+    }
+    if (params.assets()) {
+        paramDict[@"assets"] = params.assets();
     }
     if (params.channel()) {
         paramDict[@"channel"] = params.channel();
@@ -682,19 +660,14 @@ RCT_EXPORT_MODULE();
     return [impl getInstallId];
 }
 
-- (NSString * _Nullable)getUserId {
+- (NSString * _Nullable)getStorageItem:(NSString *)key {
     HotUpdaterImpl *impl = [HotUpdater sharedImpl];
-    return [impl getUserId];
+    return [impl getStorageItem:key];
 }
 
-- (NSString * _Nullable)getUsername {
+- (void)setStorageItem:(NSString *)key value:(NSString * _Nullable)value {
     HotUpdaterImpl *impl = [HotUpdater sharedImpl];
-    return [impl getUsername];
-}
-
-- (void)setUser:(NSString * _Nullable)userId username:(NSString * _Nullable)username {
-    HotUpdaterImpl *impl = [HotUpdater sharedImpl];
-    [impl setUser:userId username:username];
+    [impl setStorageItem:key value:value];
 }
 
 - (NSString * _Nullable)getBaseURL {
@@ -852,19 +825,14 @@ RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(getInstallId) {
     return [impl getInstallId];
 }
 
-RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(getUserId) {
+RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(getStorageItem:(NSString *)key) {
     HotUpdaterImpl *impl = [HotUpdater sharedImpl];
-    return [impl getUserId];
+    return [impl getStorageItem:key];
 }
 
-RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(getUsername) {
+RCT_EXPORT_METHOD(setStorageItem:(NSString *)key value:(NSString * _Nullable)value) {
     HotUpdaterImpl *impl = [HotUpdater sharedImpl];
-    return [impl getUsername];
-}
-
-RCT_EXPORT_METHOD(setUser:(NSString * _Nullable)userId username:(NSString * _Nullable)username) {
-    HotUpdaterImpl *impl = [HotUpdater sharedImpl];
-    [impl setUser:userId username:username];
+    [impl setStorageItem:key value:value];
 }
 
 RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(getBaseURL) {

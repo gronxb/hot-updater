@@ -6,6 +6,7 @@ import {
 import { ArrowLeft } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
+import { ConsoleFeatureUnavailable } from "@/components/ConsoleFeatureUnavailable";
 import { EventHistoryCard } from "@/components/features/insights/EventHistoryCard";
 import { InsightsPageHeader } from "@/components/features/insights/InsightsPageHeader";
 import { InstallationHistoryCard } from "@/components/features/insights/InstallationHistoryCard";
@@ -16,16 +17,20 @@ import {
 } from "@/components/features/insights/InstallationPageHeader";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { requireConsoleFeature } from "@/lib/console-features-api";
 import {
   useInsightsEventsQuery,
   useInsightsInstallationEventsQuery,
   useInsightsInstallationQuery,
   useInsightsInstallationsQuery,
+  useInsightsRetention,
 } from "@/lib/insights-api";
+import { formatDays } from "@/lib/insights-retention";
+import { DEFAULT_EVENT_RANGE, eventRangeBounds } from "@/lib/insights-view";
 
 import {
-  getInsightsScrollRestorationKey,
   type InsightsPaginationState,
+  installationsScrollRestorationKey,
   validateInstallationsSearch,
 } from "./-installations-search";
 
@@ -42,13 +47,18 @@ const popCursor = (stack: readonly string[]) => ({
 });
 
 export const Route = createFileRoute("/installations")({
+  beforeLoad: ({ context }) =>
+    requireConsoleFeature(context.queryClient, "insights"),
+  notFoundComponent: ConsoleFeatureUnavailable,
   component: InstallationsPage,
+  staticData: { scrollRestorationKey: installationsScrollRestorationKey },
   validateSearch: validateInstallationsSearch,
 });
 
 function InstallationsPage() {
   const search = Route.useSearch();
   const navigate = Route.useNavigate();
+  const retention = useInsightsRetention();
   const [draftQuery, setDraftQuery] = useState(search.query ?? "");
   const [initialEventsBefore] = useState(freshBefore);
   const [initialHistoryBefore] = useState(freshBefore);
@@ -63,6 +73,7 @@ function InstallationsPage() {
   const hasSelection = search.installId !== undefined;
   const hasLookup = hasSearchQuery || hasSelection;
   const eventsBefore = search.eventsBefore ?? initialEventsBefore;
+  const eventsRange = search.eventsRange ?? DEFAULT_EVENT_RANGE;
   const historyBefore = search.historyBefore ?? initialHistoryBefore;
 
   const updateSearch = (
@@ -102,7 +113,7 @@ function InstallationsPage() {
 
   const events = useInsightsEventsQuery(
     {
-      beforeReceivedAtMs: eventsBefore,
+      ...eventRangeBounds(eventsRange, eventsBefore),
       cursor: search.eventsCursor,
       limit: 20,
     },
@@ -157,7 +168,7 @@ function InstallationsPage() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const scrollEntry = useElementScrollRestoration({
     id: scrollRestorationId,
-    getKey: getInsightsScrollRestorationKey,
+    getKey: installationsScrollRestorationKey,
   });
   useLayoutEffect(() => {
     if (!hasLookup && !events.isLoading && scrollRef.current) {
@@ -233,10 +244,12 @@ function InstallationsPage() {
           ) : null}
           {!hasLookup ? (
             <EventHistoryCard
+              description={`Downloads, applies, recoveries, and update failures, newest first, kept for ${formatDays(retention.rawDays)}. A launch without an update counts in App usage and in its installation's latest report.`}
               error={events.error}
               eventsLocation={{
                 eventsBefore,
                 eventsCursor: search.eventsCursor,
+                eventsRange: search.eventsRange,
               }}
               history={events.data}
               isFetching={events.isFetching}
@@ -261,6 +274,17 @@ function InstallationsPage() {
                   { eventsBack: previous.stack },
                 );
               }}
+              onRangeChange={(range) => {
+                updateSearch(
+                  {
+                    eventsBefore: freshBefore(),
+                    eventsCursor: undefined,
+                    eventsRange: range,
+                  },
+                  false,
+                  { eventsBack: [] },
+                );
+              }}
               onRefresh={() => {
                 updateSearch(
                   {
@@ -272,6 +296,8 @@ function InstallationsPage() {
                 );
               }}
               pageNumber={eventsBack.length + 1}
+              range={eventsRange}
+              rawDays={retention.rawDays}
             >
               {installationLookup}
             </EventHistoryCard>
@@ -364,6 +390,7 @@ function InstallationsPage() {
                   );
                 }}
                 pageNumber={historyBack.length + 1}
+                retention={retention}
                 selectedEvent={selectedEvent}
                 selectedInstallId={search.installId}
               />

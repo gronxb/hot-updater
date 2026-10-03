@@ -1,6 +1,0 @@
-{
-  "title": "Policy",
-  "description": "Security and review policies",
-  "icon": "ShieldCheck",
-  "pages": ["security", "app-review"]
-}

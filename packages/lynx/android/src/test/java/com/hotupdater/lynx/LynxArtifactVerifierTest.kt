@@ -43,7 +43,8 @@ class LynxArtifactVerifierTest {
         val root = Files.createTempDirectory("lynx-verify-").toFile().canonicalFile
         try {
             val digest = writeTree(root)
-            val request = LynxArtifactRequest(bundleId, "native-embedded", "native-embedded", digest)
+            val request = LynxArtifactRequest(bundleId,
+                            manifestFileHash = digest)
             val verifier = LynxArtifactVerifier(LynxInstallConfiguration(runtime), ArchiveIntegrity(null))
             val verified = verifier.verify(root, request)
             assertEquals(bundleId, verified.bundleId)
@@ -340,12 +341,8 @@ class LynxArtifactVerifierTest {
         root.resolve("manifest.json").writeText(manifest.toString())
     }
 
-    private fun request(root: File) = LynxArtifactRequest(
-        bundleId,
-        "native-embedded",
-        "native-embedded",
-        HashUtils.calculateSHA256(root.resolve("manifest.json")),
-    )
+    private fun request(root: File) = LynxArtifactRequest(bundleId,
+                            manifestFileHash = HashUtils.calculateSHA256(root.resolve("manifest.json")))
 
     private fun verifier() = LynxArtifactVerifier(
         LynxInstallConfiguration(runtime),

@@ -40,7 +40,7 @@ class BsdiffPatchTest {
     }
 
     companion object {
-        private const val BSDIFF_PATCH_FIXTURE_BASE64 =
+        const val BSDIFF_PATCH_FIXTURE_BASE64 =
             "RU5EU0xFWS9CU0RJRkY0Mx8AAAAAAAAAQlpoOTFBWSZTWb12MIEAAAB5gEQYAADQYQAIPsXOACAAIo0A0NAaNCgAGgZMgHAtYscVxxRtTt4nmaj70g4gQSF5+T4u5IpwoSF67GEC"
     }
 }

@@ -50,7 +50,8 @@ final class LynxDeltaTests: XCTestCase {
     }
 
     private func makeTree(at directory: URL, bundleId: String,
-                          files input: [String: Data]) throws -> Tree {
+                          files input: [String: Data],
+                          brotliDownloads: [String: Data] = [:]) throws -> Tree {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let metadata = try JSONSerialization.data(withJSONObject: [
             "schemaVersion": 1,
@@ -61,7 +62,7 @@ final class LynxDeltaTests: XCTestCase {
         ], options: [.sortedKeys]) + Data("\n".utf8)
         var files = input
         files["hot-updater-lynx.json"] = metadata
-        var assets: [String: [String: String]] = [:]
+        var assets: [String: [String: Any]] = [:]
         for (path, data) in files {
             let file = directory.appendingPathComponent(path)
             try FileManager.default.createDirectory(
@@ -69,7 +70,10 @@ final class LynxDeltaTests: XCTestCase {
                 withIntermediateDirectories: true
             )
             try data.write(to: file)
-            assets[path] = ["fileHash": hash(data)]
+            assets[path] = ["fileHash": hash(data), "byteSize": data.count,
+                            "downloadFileHash": hash(brotliDownloads[path] ?? data),
+                            "downloadByteSize": (brotliDownloads[path] ?? data).count]
+            if brotliDownloads[path] != nil { assets[path]!["downloadCompression"] = "br" }
         }
         let manifest = try JSONSerialization.data(withJSONObject: [
             "bundleId": bundleId,
@@ -138,12 +142,14 @@ final class LynxDeltaTests: XCTestCase {
         let patchURL = url("bridge-main.patch")
         let metadataURL = url("bridge-metadata")
         let request = try decodeBridgeRequest([
+            "artifactProtocolVersion": 1,
             "bundleId": targetBundleId,
             "manifestFileHash": target.digest,
             "manifestUrl": manifestURL.absoluteString,
-            "changedAssets": [
+            "assets": [
                 "main.lynx.bundle": [
                     "fileHash": hash(target.files["main.lynx.bundle"]!),
+                    "file": ["url": url("unused-main").absoluteString],
                     "patch": [
                         "algorithm": "bsdiff",
                         "baseBundleId": baseBundleId,
@@ -159,9 +165,9 @@ final class LynxDeltaTests: XCTestCase {
             ],
         ])
 
-        XCTAssertNil(request.changedAssets?["main.lynx.bundle"]?.file)
-        XCTAssertNil(request.changedAssets?["hot-updater-lynx.json"]?.patch)
-        XCTAssertNil(request.changedAssets?["hot-updater-lynx.json"]?.file?.compression)
+        XCTAssertNil(request.assets?["main.lynx.bundle"]?.file?.compression)
+        XCTAssertNil(request.assets?["hot-updater-lynx.json"]?.patch)
+        XCTAssertNil(request.assets?["hot-updater-lynx.json"]?.file?.compression)
         XCTAssertNoThrow(try request.validate())
 
         let recorder = FetchRecorder()
@@ -186,18 +192,19 @@ final class LynxDeltaTests: XCTestCase {
 
     func testBridgeShapedDescriptorWithoutFileOrPatchFailsSemanticValidation() throws {
         let request = try decodeBridgeRequest([
+            "artifactProtocolVersion": 1,
             "bundleId": targetBundleId,
             "manifestFileHash": String(repeating: "a", count: 64),
             "manifestUrl": url("bridge-manifest").absoluteString,
-            "changedAssets": [
+            "assets": [
                 "main.lynx.bundle": [
                     "fileHash": String(repeating: "b", count: 64),
                 ],
             ],
         ])
 
-        XCTAssertNil(request.changedAssets?["main.lynx.bundle"]?.file)
-        XCTAssertNil(request.changedAssets?["main.lynx.bundle"]?.patch)
+        XCTAssertNil(request.assets?["main.lynx.bundle"]?.file)
+        XCTAssertNil(request.assets?["main.lynx.bundle"]?.patch)
         XCTAssertThrowsError(try request.validate()) { error in
             XCTAssertEqual(
                 error.localizedDescription,
@@ -230,14 +237,10 @@ final class LynxDeltaTests: XCTestCase {
                     file: .init(url: url(path.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed)!))
                 )
             }
-        let request = LynxArtifactRequest(
-            bundleId: targetBundleId,
-            fileUrl: nil,
-            fileHash: nil,
-            manifestFileHash: hash(manifest),
+        let request = LynxArtifactRequest(bundleId: targetBundleId,
             manifestUrl: manifestURL,
-            changedAssets: changed
-        )
+            manifestFileHash: hash(manifest),
+            assets: changed)
         let stage = root.appendingPathComponent("stage")
         try FileManager.default.createDirectory(at: stage, withIntermediateDirectories: true)
 
@@ -259,30 +262,9 @@ final class LynxDeltaTests: XCTestCase {
         }
     }
 
-    func testArchiveAndDeltaTransfersUseSharedNativeLimits() async throws {
+    func testManifestAndOriginalTransfersUseSharedNativeLimits() async throws {
         let root = temporaryRoot()
         defer { try? FileManager.default.removeItem(at: root) }
-        let archiveURL = url("full-archive")
-        let archiveRecorder = FetchRecorder()
-        let installer = try LynxArtifactInstaller(
-            root: root.appendingPathComponent("store"),
-            configuration: .init(runtimeId: runtimeId),
-            fetch: fetcher([:], recorder: archiveRecorder)
-        )
-        do {
-            _ = try await installer.prepare(
-                LynxArtifactRequest(
-                    bundleId: targetBundleId,
-                    fileUrl: archiveURL,
-                    fileHash: String(repeating: "a", count: 64)
-                )
-            )
-            XCTFail("Expected missing archive fixture")
-        } catch {
-            XCTAssertEqual(archiveRecorder.maximumBytes(for: archiveURL), ArchiveLimits.archive)
-        }
-        installer.close()
-
         let base = try makeTree(
             at: root.appendingPathComponent("base"),
             bundleId: baseBundleId,
@@ -310,14 +292,10 @@ final class LynxDeltaTests: XCTestCase {
         let stage = root.appendingPathComponent("stage-limits")
         try FileManager.default.createDirectory(at: stage, withIntermediateDirectories: true)
         _ = try await LynxDelta.prepare(
-            LynxArtifactRequest(
-                bundleId: targetBundleId,
-                fileUrl: nil,
-                fileHash: nil,
-                manifestFileHash: target.digest,
-                manifestUrl: manifestURL,
-                changedAssets: changes
-            ),
+            LynxArtifactRequest(bundleId: targetBundleId,
+            manifestUrl: manifestURL,
+            manifestFileHash: target.digest,
+            assets: changes),
             base: base.installed,
             stage: stage,
             configuration: .init(runtimeId: runtimeId),
@@ -390,7 +368,8 @@ final class LynxDeltaTests: XCTestCase {
                 "assets/empty.bin": Data(),
                 "assets/brotli.txt": Data("brotli-target-asset".utf8),
                 "assets/fallback.txt": Data("fallback-target".utf8),
-            ]
+            ],
+            brotliDownloads: ["assets/brotli.txt": brotliBytes]
         )
         let manifestURL = url("manifest")
         let patchURL = url("main.patch")
@@ -403,12 +382,17 @@ final class LynxDeltaTests: XCTestCase {
         let changes: [String: LynxChangedAsset] = [
             "main.lynx.bundle": .init(
                 fileHash: hash(target.files["main.lynx.bundle"]!),
+                file: .init(url: url("unused-main")),
                 patch: .init(
                     baseBundleId: baseBundleId,
                     baseFileHash: hash(base.files["main.lynx.bundle"]!),
                     patchFileHash: hash(patchBytes),
                     patchUrl: patchURL
                 )
+            ),
+            "assets/unchanged.bin": .init(
+                fileHash: hash(target.files["assets/unchanged.bin"]!),
+                file: .init(url: url("unused-unchanged"))
             ),
             "assets/empty.bin": .init(
                 fileHash: hash(Data()),
@@ -433,14 +417,10 @@ final class LynxDeltaTests: XCTestCase {
                 file: .init(url: metadataURL)
             ),
         ]
-        let request = LynxArtifactRequest(
-            bundleId: targetBundleId,
-            fileUrl: nil,
-            fileHash: nil,
-            manifestFileHash: target.digest,
+        let request = LynxArtifactRequest(bundleId: targetBundleId,
             manifestUrl: manifestURL,
-            changedAssets: changes
-        )
+            manifestFileHash: target.digest,
+            assets: changes)
         let payloads: [URL: Data] = [
             manifestURL: target.manifest,
             patchURL: patchBytes,
@@ -526,67 +506,37 @@ final class LynxDeltaTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: verified.directory.appendingPathComponent("archive").path))
     }
 
-    func testCorruptManifestFallsBackToAuthorizedArchiveAndKeepsManifestTrustToken() async throws {
+    func testCorruptManifestRejectsBeforeAnyArchiveDownload() async throws {
         let root = temporaryRoot()
         defer { try? FileManager.default.removeItem(at: root) }
-        let base = try makeTree(
-            at: root.appendingPathComponent("base"),
-            bundleId: baseBundleId,
-            files: ["main.lynx.bundle": Data("base".utf8)]
-        )
-        let target = try makeTree(
-            at: root.appendingPathComponent("target"),
-            bundleId: targetBundleId,
-            files: ["main.lynx.bundle": Data("archive-target".utf8)]
-        )
-        let archive = root.appendingPathComponent("target.tar.gz")
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/tar")
-        var environment = ProcessInfo.processInfo.environment
-        environment["COPYFILE_DISABLE"] = "1"
-        process.environment = environment
-        process.arguments = ["--format", "ustar", "-czf", archive.path, "-C", target.directory.path] +
-            (Array(target.files.keys) + ["manifest.json"]).sorted()
-        try process.run()
-        process.waitUntilExit()
-        XCTAssertEqual(process.terminationStatus, 0)
-        let archiveBytes = try Data(contentsOf: archive)
-        let archiveURL = url("archive")
         let manifestURL = url("corrupt-manifest")
-        let payloads = [archiveURL: archiveBytes, manifestURL: Data("corrupt".utf8)]
-        let request = LynxArtifactRequest(
-            bundleId: targetBundleId,
-            fileUrl: archiveURL,
-            fileHash: hash(archiveBytes),
-            manifestFileHash: target.digest,
-            manifestUrl: manifestURL,
-            changedAssets: [:]
-        )
-        let store = root.appendingPathComponent("store")
+        let archiveURL = url("must-not-download-archive")
+        let recorder = FetchRecorder()
         let installer = try LynxArtifactInstaller(
-            root: store,
-            configuration: .init(runtimeId: runtimeId),
-            fetch: fetcher(payloads)
+            root: root, configuration: .init(runtimeId: runtimeId),
+            fetch: fetcher([manifestURL: Data("corrupt".utf8)], recorder: recorder)
         )
-        let wrongToken = LynxArtifactRequest(
-            bundleId: targetBundleId,
-            fileUrl: archiveURL,
-            fileHash: hash(archiveBytes),
-            manifestFileHash: String(repeating: "0", count: 64),
+        let request = LynxArtifactRequest(bundleId: targetBundleId,
             manifestUrl: manifestURL,
-            changedAssets: [:]
-        )
+            manifestFileHash: String(repeating: "0", count: 64),
+            assets: placeholderAssets,
+            archiveUrl: archiveURL)
         do {
-            _ = try await installer.prepare(wrongToken, base: base.installed)
-            XCTFail("Archive fallback discarded the supplied manifest trust token")
-        } catch { }
+            _ = try await installer.prepare(request)
+            XCTFail("Corrupt manifest accepted")
+        } catch let error as SignatureVerificationError {
+            XCTAssertEqual(error.errorCodeString, "FILE_HASH_MISMATCH")
+        }
+        XCTAssertTrue(recorder.contains(manifestURL))
+        XCTAssertFalse(recorder.contains(archiveURL))
         XCTAssertEqual(try FileManager.default.contentsOfDirectory(
-            atPath: store.appendingPathComponent(".staging").path
+            atPath: root.appendingPathComponent(".staging").path
         ), [])
+    }
 
-        let prepared = try await installer.prepare(request, base: base.installed)
-        let installed = try installer.commit(prepared) { publish in _ = try publish() }
-        XCTAssertEqual(try Data(contentsOf: installed.directory.appendingPathComponent(installed.entry)), Data("archive-target".utf8))
+    private var placeholderAssets: [String: LynxChangedAsset] {
+        ["main.lynx.bundle": .init(fileHash: String(repeating: "a", count: 64),
+                                   file: .init(url: url("main")))]
     }
 
     func testCancellationRemovesOwnedPreparationWithoutDownloadingArchiveFallback() async throws {
@@ -607,14 +557,11 @@ final class LynxDeltaTests: XCTestCase {
             }
             throw LynxArtifactError.invalid("Unexpected fallback")
         }
-        let request = LynxArtifactRequest(
-            bundleId: targetBundleId,
-            fileUrl: archiveURL,
-            fileHash: String(repeating: "a", count: 64),
-            manifestFileHash: String(repeating: "b", count: 64),
+        let request = LynxArtifactRequest(bundleId: targetBundleId,
             manifestUrl: manifestURL,
-            changedAssets: [:]
-        )
+            manifestFileHash: String(repeating: "b", count: 64),
+            assets: placeholderAssets,
+            archiveUrl: archiveURL)
         let store = root.appendingPathComponent("store")
         let installer = try LynxArtifactInstaller(
             root: store,
@@ -649,40 +596,29 @@ final class LynxDeltaTests: XCTestCase {
         )
         let manifestURL = url("manifest")
         let requests = [
-            LynxArtifactRequest(
-                bundleId: targetBundleId,
-                fileUrl: url("archive"),
-                fileHash: nil,
-                manifestFileHash: String(repeating: "a", count: 64),
-                manifestUrl: manifestURL,
-                changedAssets: [:]
-            ),
-            LynxArtifactRequest(
-                bundleId: targetBundleId,
-                fileUrl: nil,
-                fileHash: nil,
-                manifestFileHash: String(repeating: "a", count: 64),
-                manifestUrl: manifestURL,
-                changedAssets: [
+            LynxArtifactRequest(bundleId: targetBundleId,
+            manifestUrl: manifestURL,
+            manifestFileHash: String(repeating: "a", count: 64),
+            assets: [:],
+            archiveUrl: url("archive")),
+            LynxArtifactRequest(bundleId: targetBundleId,
+            manifestUrl: manifestURL,
+            manifestFileHash: String(repeating: "a", count: 64),
+            assets: [
                     "../escape": .init(
                         fileHash: String(repeating: "b", count: 64),
                         file: .init(url: url("escape"))
                     ),
-                ]
-            ),
-            LynxArtifactRequest(
-                bundleId: targetBundleId,
-                fileUrl: nil,
-                fileHash: nil,
-                manifestFileHash: String(repeating: "a", count: 64),
-                manifestUrl: manifestURL,
-                changedAssets: [
+                ]),
+            LynxArtifactRequest(bundleId: targetBundleId,
+            manifestUrl: manifestURL,
+            manifestFileHash: String(repeating: "a", count: 64),
+            assets: [
                     "main.lynx.bundle": .init(
                         fileHash: String(repeating: "b", count: 64),
                         file: .init(url: url("main"), compression: "gzip")
                     ),
-                ]
-            ),
+                ]),
         ]
         for request in requests {
             do {
@@ -696,20 +632,74 @@ final class LynxDeltaTests: XCTestCase {
         ), [])
     }
 
-    func testArchiveOnlyRequestMayCarryManifestTrustToken() throws {
+    func testArchiveOnlyRequestIsRejectedEvenWithManifestTrustToken() throws {
         let hash = String(repeating: "a", count: 64)
-        XCTAssertNoThrow(try LynxArtifactRequest(
-            bundleId: targetBundleId,
-            fileUrl: url("archive"),
-            fileHash: hash,
-            manifestFileHash: hash
-        ).validate())
-        XCTAssertThrowsError(try LynxArtifactRequest(
-            bundleId: targetBundleId,
-            fileUrl: nil,
-            fileHash: nil,
-            manifestFileHash: hash
-        ).validate())
+        XCTAssertThrowsError(try LynxArtifactRequest(bundleId: targetBundleId,
+            manifestFileHash: hash,
+            archiveUrl: url("archive")).validate())
+        XCTAssertThrowsError(try LynxArtifactRequest(bundleId: targetBundleId,
+            manifestFileHash: hash).validate())
+    }
+
+    func testAuthenticatedBulkArchiveAndFallbackKeepTheSameManifestAuthority() async throws {
+        let package = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+            .deletingLastPathComponent().deletingLastPathComponent()
+        let fixtures = try JSONSerialization.jsonObject(with: Data(contentsOf: package.appendingPathComponent("fixtures/manifest-v1-bulk.json"))) as! [String: Any]
+        let fixture = fixtures["ios"] as! [String: Any]
+        let id = fixture["bundleId"] as! String
+        let files = (fixture["files"] as! [String: String]).mapValues { Data(base64Encoded: $0)! }
+        for mode in ["valid", "corrupt-transfer", "wrong-tar-size", "embedded-manifest", "corrupt-original"] {
+            let root = temporaryRoot()
+            defer { try? FileManager.default.removeItem(at: root) }
+            let archives = fixture["archives"] as! [String: [String: Any]]
+            let bulk = archives[mode == "embedded-manifest" ? "embeddedManifest" : "valid"]!
+            let archiveBytes = Data(base64Encoded: bulk["bytes"] as! String)!
+            let assets = files.mapValues { bytes in
+                ["fileHash": hash(bytes), "byteSize": bytes.count,
+                 "downloadFileHash": hash(bytes), "downloadByteSize": bytes.count] as [String: Any]
+            }
+            let manifest = try JSONSerialization.data(withJSONObject: [
+                "bundleId": id, "assets": assets,
+                "archive": ["downloadFileHash": hash(archiveBytes), "downloadByteSize": archiveBytes.count,
+                            "tarByteSize": (bulk["tarByteSize"] as! Int) + (mode == "wrong-tar-size" ? 1 : 0)],
+            ], options: [.sortedKeys])
+            let manifestURL = url("bulk-manifest")
+            let archiveURL = url("bulk-archive")
+            let descriptors = files.mapValues { LynxChangedAsset(fileHash: hash($0)) }
+            let originalURLs = Dictionary(uniqueKeysWithValues: files.keys.map { ($0, url("original/" + $0)) })
+            let request = LynxArtifactRequest(bundleId: id, manifestUrl: manifestURL, manifestFileHash: hash(manifest),
+                assets: descriptors.map { name, descriptor in
+                    (name, LynxChangedAsset(fileHash: descriptor.fileHash, file: .init(url: originalURLs[name]!)))
+                }.reduce(into: [:]) { $0[$1.0] = $1.1 }, archiveUrl: archiveURL)
+            var payloads = Dictionary(uniqueKeysWithValues: files.map { (originalURLs[$0.key]!, $0.value) })
+            payloads[manifestURL] = manifest
+            var transferred = archiveBytes
+            if mode == "corrupt-transfer" || mode == "corrupt-original" { transferred[0] ^= 1 }
+            payloads[archiveURL] = transferred
+            if mode == "corrupt-original" { payloads[originalURLs["main.lynx.bundle"]!] = Data(repeating: 0, count: files["main.lynx.bundle"]!.count) }
+            let recorder = FetchRecorder()
+            let installer = try LynxArtifactInstaller(root: root,
+                configuration: .init(runtimeId: fixture["runtimeId"] as! String),
+                fetch: fetcher(payloads, recorder: recorder))
+            if mode == "corrupt-original" {
+                do { _ = try await installer.prepare(request); XCTFail("Corrupt original accepted") }
+                catch let error as SignatureVerificationError { XCTAssertEqual(error.errorCodeString, "FILE_HASH_MISMATCH") }
+                XCTAssertTrue(recorder.contains(originalURLs["main.lynx.bundle"]!))
+                XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: root.appendingPathComponent(".staging").path), [])
+            } else {
+                let prepared = try await installer.prepare(request)
+                if case .archive = prepared.delivery { XCTAssertEqual(mode, "valid") }
+                else { XCTAssertNotEqual(mode, "valid") }
+                let installed = try installer.commit(prepared) { publish in _ = try publish() }
+                for (path, bytes) in files {
+                    XCTAssertEqual(try Data(contentsOf: installed.directory.appendingPathComponent(path)), bytes, "\(mode)/\(path)")
+                    XCTAssertEqual(recorder.contains(originalURLs[path]!), mode != "valid", "\(mode)/\(path)")
+                }
+                XCTAssertEqual(installed.manifestDigest, hash(manifest))
+            }
+            XCTAssertTrue(recorder.contains(archiveURL), "\(mode) must exercise bulk transport")
+            XCTAssertEqual(recorder.maximumBytes(for: archiveURL), UInt64(archiveBytes.count))
+        }
     }
 
     func testWireDescriptorStillRequiresFileHashAndNestedFileURL() throws {
@@ -717,11 +707,10 @@ final class LynxDeltaTests: XCTestCase {
         let complete = """
         {
           "bundleId":"\(targetBundleId)",
-          "fileUrl":null,
-          "fileHash":null,
+          "artifactProtocolVersion":1,
           "manifestUrl":"https://artifacts.test/manifest",
           "manifestFileHash":"\(hash)",
-          "changedAssets":{
+          "assets":{
             "main.lynx.bundle":{
               "fileHash":"\(hash)",
               "file":{"url":"https://artifacts.test/main"},
@@ -739,11 +728,11 @@ final class LynxDeltaTests: XCTestCase {
         var missingFileHashObject = try XCTUnwrap(
             JSONSerialization.jsonObject(with: Data(complete.utf8)) as? [String: Any]
         )
-        var changedAssets = missingFileHashObject["changedAssets"] as! [String: Any]
+        var changedAssets = missingFileHashObject["assets"] as! [String: Any]
         var main = changedAssets["main.lynx.bundle"] as! [String: Any]
         main.removeValue(forKey: "fileHash")
         changedAssets["main.lynx.bundle"] = main
-        missingFileHashObject["changedAssets"] = changedAssets
+        missingFileHashObject["assets"] = changedAssets
         XCTAssertThrowsError(try JSONDecoder().decode(
             LynxArtifactRequest.self,
             from: JSONSerialization.data(withJSONObject: missingFileHashObject)
@@ -752,11 +741,11 @@ final class LynxDeltaTests: XCTestCase {
         var missingURLObject = try XCTUnwrap(
             JSONSerialization.jsonObject(with: Data(complete.utf8)) as? [String: Any]
         )
-        changedAssets = missingURLObject["changedAssets"] as! [String: Any]
+        changedAssets = missingURLObject["assets"] as! [String: Any]
         main = changedAssets["main.lynx.bundle"] as! [String: Any]
         main["file"] = [:]
         changedAssets["main.lynx.bundle"] = main
-        missingURLObject["changedAssets"] = changedAssets
+        missingURLObject["assets"] = changedAssets
         XCTAssertThrowsError(try JSONDecoder().decode(
             LynxArtifactRequest.self,
             from: JSONSerialization.data(withJSONObject: missingURLObject)

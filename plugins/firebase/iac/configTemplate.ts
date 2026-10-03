@@ -43,6 +43,10 @@ const credential = applicationDefault();`.trim(),
     .setBuild(build)
     .setStorage(storageConfig)
     .setDatabase(databaseConfig)
+    .setPlugins({
+      imports: [{ pkg: "@hot-updater/firebase", named: ["plugins"] }],
+      configString: "plugins",
+    })
     .addImport({ pkg: "firebase-admin/app", named: ["applicationDefault"] })
     .setIntermediateCode(
       helperStatements.map((statement) => statement.code.trim()).join("\n\n"),

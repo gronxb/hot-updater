@@ -3,480 +3,319 @@ package com.hotupdater
 import java.io.EOFException
 import java.io.IOException
 import java.io.InputStream
+import java.nio.ByteBuffer
+import java.nio.charset.CodingErrorAction
 
-/**
- * Secure TAR archive input stream for Android API 21+
- * Replaces Apache Commons Compress to avoid java.nio.file dependencies
- */
-class TarArchiveInputStream(
+internal data class TarArchiveEntry(
+    val name: String,
+    val size: Long,
+    val typeFlag: Char,
+) {
+    val isRegularFile: Boolean
+        get() = typeFlag == '0' || typeFlag == '\u0000'
+}
+
+/** Small, strict TAR reader for the deterministic bundle.tar.br transport. */
+internal class TarArchiveInputStream(
     private val input: InputStream,
 ) : InputStream() {
-    private var currentEntry: TarArchiveEntry? = null
-    private var currentEntryBytesRead: Long = 0
-    private var pendingName: String? = null
-
     companion object {
-        private const val TAG = "TarInputStream"
         private const val BLOCK_SIZE = 512
-        private const val NAME_OFFSET = 0
-        private const val NAME_LENGTH = 100
-        private const val MODE_OFFSET = 100
-        private const val SIZE_OFFSET = 124
-        private const val SIZE_LENGTH = 12
-        private const val CHECKSUM_OFFSET = 148
-        private const val CHECKSUM_LENGTH = 8
-        private const val TYPEFLAG_OFFSET = 156
-        private const val LINKNAME_OFFSET = 157
-        private const val LINKNAME_LENGTH = 100
-        private const val MAGIC_OFFSET = 257
-        private const val PREFIX_OFFSET = 345
-        private const val PREFIX_LENGTH = 155
-
-        // Maximum file size: 1GB per file
-        private const val MAX_FILE_SIZE = 1_073_741_824L
+        private const val MAX_EXTENSION_SIZE = 1024 * 1024L
     }
 
-    /**
-     * Get the next TAR entry
-     */
-    fun getNextEntry(): TarArchiveEntry? {
-        // Skip remaining bytes of current entry
-        if (currentEntry != null) {
-            val remaining = currentEntry!!.size - currentEntryBytesRead
-            if (remaining > 0) {
-                skipBytes(remaining)
-            }
-            skipPadding(currentEntry!!.size)
-        }
+    private var currentEntry: TarArchiveEntry? = null
+    private var currentEntryBytesRead = 0L
+    private var pendingPaxHeaders: Map<String, String>? = null
+    private var finished = false
 
-        currentEntryBytesRead = 0
+    fun getNextEntry(): TarArchiveEntry? {
+        if (finished) return null
+        finishCurrentEntry()
 
         while (true) {
-            val headerBytes = readBlock() ?: return null
-
-            // Check for end of archive (all zeros)
-            if (isAllZeros(headerBytes)) {
+            val header = readBlock(required = true)
+            if (header.all { it == 0.toByte() }) {
+                val secondEndBlock = readBlock(required = true)
+                if (!secondEndBlock.all { it == 0.toByte() } || pendingPaxHeaders != null) {
+                    throw IOException("Invalid TAR termination")
+                }
+                consumeTrailingZeroBlocks()
+                finished = true
                 return null
             }
 
-            // Verify header
-            if (!isValidHeader(headerBytes)) {
-                throw IOException("Invalid TAR header")
+            verifyHeader(header)
+            val entry = parseHeader(header)
+            when (entry.typeFlag) {
+                'x' -> {
+                    if (pendingPaxHeaders != null) throw IOException("Consecutive PAX headers are not supported")
+                    pendingPaxHeaders = readPaxHeaders(entry.size)
+                    continue
+                }
+
+                'g' -> {
+                    throw IOException("Global PAX headers are not supported")
+                }
+
+                'L' -> {
+                    throw IOException("GNU long names are not supported")
+                }
             }
 
-            if (!verifyChecksum(headerBytes)) {
-                throw IOException("TAR header checksum verification failed")
-            }
-
-            // Parse header
-            val entry = parseHeader(headerBytes)
-
-            // Handle GNU long filename extension
-            if (entry.typeFlag == 'L') {
-                pendingName = readLongName(entry.size)
-                continue
-            }
-
-            // Handle POSIX PAX extended header
-            if (entry.typeFlag == 'x') {
-                readPaxPath(entry.size)?.let { pendingName = it }
-                continue
-            }
-
-            // Apply extended name if present
-            if (pendingName != null) {
-                entry.name = pendingName!!
-                pendingName = null
-            }
-
-            // Validate entry
-            validateEntry(entry)
-
-            currentEntry = entry
-            return entry
+            val paxHeaders = pendingPaxHeaders.orEmpty()
+            pendingPaxHeaders = null
+            if (paxHeaders.containsKey("linkpath")) throw IOException("TAR links are not allowed")
+            val resolvedEntry =
+                entry.copy(
+                    name = paxHeaders["path"] ?: entry.name,
+                    size = paxHeaders["size"]?.let(::parsePaxSize) ?: entry.size,
+                )
+            currentEntry = resolvedEntry
+            currentEntryBytesRead = 0
+            return resolvedEntry
         }
     }
 
     override fun read(): Int {
-        val b = ByteArray(1)
-        val n = read(b, 0, 1)
-        return if (n <= 0) -1 else b[0].toInt() and 0xFF
+        val byte = ByteArray(1)
+        return if (read(byte, 0, 1) == -1) -1 else byte[0].toInt() and 0xff
     }
 
     override fun read(
-        b: ByteArray,
-        off: Int,
-        len: Int,
+        buffer: ByteArray,
+        offset: Int,
+        length: Int,
     ): Int {
-        if (currentEntry == null) {
-            throw IllegalStateException("No current entry")
-        }
-
-        val remaining = currentEntry!!.size - currentEntryBytesRead
-        if (remaining <= 0) {
-            return -1
-        }
-
-        val toRead = minOf(len.toLong(), remaining).toInt()
-        val bytesRead = input.read(b, off, toRead)
-
-        if (bytesRead > 0) {
-            currentEntryBytesRead += bytesRead
-        }
-
-        return bytesRead
+        val entry = currentEntry ?: throw IllegalStateException("No current TAR entry")
+        val remaining = entry.size - currentEntryBytesRead
+        if (remaining == 0L) return -1
+        val count = input.read(buffer, offset, minOf(length.toLong(), remaining).toInt())
+        if (count < 0) throw EOFException("TAR entry ${entry.name} is truncated")
+        if (count == 0) throw IOException("TAR entry read made no progress")
+        currentEntryBytesRead += count
+        return count
     }
 
-    override fun close() {
-        input.close()
+    private fun finishCurrentEntry() {
+        val entry = currentEntry ?: return
+        skipExactly(entry.size - currentEntryBytesRead)
+        readPadding(entry.size)
+        currentEntry = null
+        currentEntryBytesRead = 0
     }
 
-    /**
-     * Read a 512-byte block from input
-     */
-    private fun readBlock(): ByteArray? {
+    private fun readBlock(required: Boolean): ByteArray {
         val block = ByteArray(BLOCK_SIZE)
         var offset = 0
-
-        while (offset < BLOCK_SIZE) {
-            val n = input.read(block, offset, BLOCK_SIZE - offset)
-            if (n < 0) {
-                return if (offset == 0) null else throw EOFException("Unexpected end of TAR archive")
+        while (offset < block.size) {
+            val count = input.read(block, offset, block.size - offset)
+            if (count < 0) {
+                if (!required && offset == 0) return ByteArray(0)
+                throw EOFException("Unexpected end of TAR archive")
             }
-            offset += n
+            if (count == 0) throw IOException("TAR stream made no progress")
+            offset += count
         }
-
         return block
     }
 
-    /**
-     * Check if block is all zeros
-     */
-    private fun isAllZeros(block: ByteArray): Boolean = block.all { it == 0.toByte() }
-
-    /**
-     * Verify TAR header has valid magic number
-     */
-    private fun isValidHeader(header: ByteArray): Boolean {
-        // Check for "ustar" magic (may have \0 or space after)
-        val magic = String(header, MAGIC_OFFSET, 5, Charsets.US_ASCII)
-        return magic == "ustar"
-    }
-
-    /**
-     * Verify header checksum
-     */
-    private fun verifyChecksum(header: ByteArray): Boolean {
-        val storedChecksum = parseOctal(header, CHECKSUM_OFFSET, CHECKSUM_LENGTH).toInt()
-
-        // Calculate checksums (both signed and unsigned for compatibility)
-        var unsignedSum = 0
-        var signedSum = 0
-
-        for (i in 0 until BLOCK_SIZE) {
-            val value =
-                if (i in CHECKSUM_OFFSET until CHECKSUM_OFFSET + CHECKSUM_LENGTH) {
-                    32 // Space character
-                } else {
-                    header[i].toInt()
-                }
-
-            unsignedSum += value and 0xFF
-            signedSum += value.toByte().toInt()
+    private fun consumeTrailingZeroBlocks() {
+        while (true) {
+            val block = readBlock(required = false)
+            if (block.isEmpty()) return
+            if (!block.all { it == 0.toByte() }) {
+                throw IOException("TAR archive has trailing non-zero data")
+            }
         }
-
-        return storedChecksum == unsignedSum || storedChecksum == signedSum
     }
 
-    /**
-     * Parse TAR header into TarArchiveEntry
-     */
+    private fun verifyHeader(header: ByteArray) {
+        val magic = String(header, 257, 5, Charsets.US_ASCII)
+        if (magic != "ustar") throw IOException("Invalid TAR magic")
+
+        val storedChecksum = parseOctal(header, 148, 8)
+        var unsignedChecksum = 0L
+        var signedChecksum = 0L
+        header.forEachIndexed { index, byte ->
+            val value = if (index in 148 until 156) 32 else byte.toInt()
+            unsignedChecksum += value and 0xff
+            signedChecksum += value.toByte().toInt()
+        }
+        if (storedChecksum != unsignedChecksum && storedChecksum != signedChecksum) {
+            throw IOException("TAR header checksum mismatch")
+        }
+    }
+
     private fun parseHeader(header: ByteArray): TarArchiveEntry {
-        val name = parseString(header, NAME_OFFSET, NAME_LENGTH)
-        val mode = parseOctal(header, MODE_OFFSET, 8).toInt()
-        val size = parseNumeric(header, SIZE_OFFSET, SIZE_LENGTH)
-        val typeFlag = header[TYPEFLAG_OFFSET].toInt().toChar()
-        val linkName = parseString(header, LINKNAME_OFFSET, LINKNAME_LENGTH)
-        val prefix = parseString(header, PREFIX_OFFSET, PREFIX_LENGTH)
-
-        // Combine prefix and name
-        val fullName = if (prefix.isNotEmpty()) "$prefix/$name" else name
-
+        val name = parseString(header, 0, 100)
+        val prefix = parseString(header, 345, 155)
+        val fullName =
+            when {
+                prefix.isEmpty() -> name
+                name.isEmpty() -> prefix
+                else -> "$prefix/$name"
+            }
         return TarArchiveEntry(
             name = fullName,
-            mode = mode,
-            size = size,
-            typeFlag = typeFlag,
-            linkName = linkName,
+            size = parseNumeric(header, 124, 12),
+            typeFlag = header[156].toInt().toChar(),
         )
     }
 
-    /**
-     * Parse string field from header
-     */
     private fun parseString(
         bytes: ByteArray,
         offset: Int,
         length: Int,
     ): String {
         var end = offset
-        while (end < offset + length && bytes[end] != 0.toByte()) {
-            end++
-        }
-        return String(bytes, offset, end - offset, Charsets.UTF_8).trim()
+        while (end < offset + length && bytes[end] != 0.toByte()) end++
+        return decodeUtf8(bytes, offset, end - offset)
     }
 
-    /**
-     * Parse octal number from header field
-     */
+    private fun parseNumeric(
+        bytes: ByteArray,
+        offset: Int,
+        length: Int,
+    ): Long {
+        if ((bytes[offset].toInt() and 0x80) == 0) {
+            return parseOctal(bytes, offset, length)
+        }
+        if ((bytes[offset].toInt() and 0x40) != 0) {
+            throw IOException("Negative TAR sizes are not supported")
+        }
+        var result = 0L
+        for (index in offset until offset + length) {
+            val value = bytes[index].toInt() and 0xff
+            val payload = if (index == offset) value and 0x7f else value
+            if (result > (Long.MAX_VALUE - payload) / 256) {
+                throw IOException("TAR size overflows Long")
+            }
+            result = result * 256 + payload
+        }
+        return result
+    }
+
     private fun parseOctal(
         bytes: ByteArray,
         offset: Int,
         length: Int,
     ): Long {
         var result = 0L
-        var i = offset
-        val end = offset + length
-
-        // Skip leading spaces
-        while (i < end && bytes[i] == ' '.code.toByte()) i++
-
-        // Parse octal digits
-        while (i < end) {
-            val b = bytes[i]
-            if (b == 0.toByte() || b == ' '.code.toByte()) break
-            if (b < '0'.code.toByte() || b > '7'.code.toByte()) {
-                throw IOException("Invalid octal digit: ${b.toInt()}")
+        var started = false
+        for (index in offset until offset + length) {
+            val value = bytes[index]
+            if (!started && (value == 0.toByte() || value == ' '.code.toByte())) continue
+            if (value == 0.toByte() || value == ' '.code.toByte()) break
+            if (value !in '0'.code.toByte()..'7'.code.toByte()) {
+                throw IOException("Invalid TAR octal value")
             }
-            result = result * 8 + (b - '0'.code.toByte())
-            i++
+            started = true
+            val digit = value - '0'.code.toByte()
+            if (result > (Long.MAX_VALUE - digit) / 8) {
+                throw IOException("TAR octal value overflows Long")
+            }
+            result = result * 8 + digit
         }
-
         return result
     }
 
-    /**
-     * Parse numeric field (supports both octal and base-256 encoding)
-     */
-    private fun parseNumeric(
-        bytes: ByteArray,
-        offset: Int,
-        length: Int,
-    ): Long {
-        // Check for base-256 encoding (high bit set)
-        if ((bytes[offset].toInt() and 0x80) != 0) {
-            return parseBase256(bytes, offset, length)
-        }
-        return parseOctal(bytes, offset, length)
-    }
-
-    /**
-     * Parse base-256 encoded number (for files > 8GB)
-     */
-    private fun parseBase256(
-        bytes: ByteArray,
-        offset: Int,
-        length: Int,
-    ): Long {
-        var result = 0L
-
-        // Skip first byte (marker) and read big-endian
-        for (i in 1 until length) {
-            result = (result shl 8) or (bytes[offset + i].toInt() and 0xFF).toLong()
-        }
-
-        return result
-    }
-
-    /**
-     * Read GNU long filename extension
-     */
-    private fun readLongName(size: Long): String {
-        val nameBytes = ByteArray(size.toInt())
+    private fun readPaxHeaders(size: Long): Map<String, String> {
+        val data = readExtension(size)
         var offset = 0
-
-        while (offset < size) {
-            val n = input.read(nameBytes, offset, size.toInt() - offset)
-            if (n < 0) throw EOFException("Unexpected end reading long name")
-            offset += n
-        }
-
-        skipPadding(size)
-
-        // Remove trailing NUL
-        val nameLength =
-            nameBytes
-                .indexOfFirst { it == 0.toByte() }
-                .takeIf { it >= 0 } ?: nameBytes.size
-
-        return String(nameBytes, 0, nameLength, Charsets.UTF_8)
-    }
-
-    /**
-     * Read the path attribute from a POSIX PAX extended header.
-     * Record lengths are measured in bytes and include the length itself.
-     */
-    private fun readPaxPath(size: Long): String? {
-        if (size < 0 || size > MAX_FILE_SIZE) {
-            throw SecurityException("Invalid PAX header size: $size")
-        }
-
-        val data = ByteArray(size.toInt())
-        var bytesRead = 0
-        while (bytesRead < data.size) {
-            val count = input.read(data, bytesRead, data.size - bytesRead)
-            if (count < 0) throw EOFException("Unexpected end reading PAX header")
-            bytesRead += count
-        }
-        skipPadding(size)
-
-        var offset = 0
-        var path: String? = null
+        val headers = linkedMapOf<String, String>()
         while (offset < data.size) {
-            val space = findByte(data, ' '.code.toByte(), offset, data.size)
-            if (space <= offset) throw IOException("Invalid PAX record length")
-
-            val recordLength = parsePaxRecordLength(data, offset, space)
-            if (recordLength <= 0 || recordLength > data.size - offset) {
-                throw IOException("Invalid PAX record length: $recordLength")
-            }
-
-            val recordEnd = offset + recordLength
-            if (recordEnd <= space + 2 || data[recordEnd - 1] != '\n'.code.toByte()) {
-                throw IOException("Invalid PAX record")
-            }
-
-            val valueEnd = recordEnd - 1
-            val equals = findByte(data, '='.code.toByte(), space + 1, valueEnd)
-            if (equals <= space + 1) throw IOException("Invalid PAX record")
-
-            val key =
-                String(
-                    data,
-                    space + 1,
-                    equals - space - 1,
-                    Charsets.UTF_8,
-                )
-            if (key == "path") {
-                path =
-                    String(
-                        data,
-                        equals + 1,
-                        valueEnd - equals - 1,
-                        Charsets.UTF_8,
-                    )
-            }
-
-            offset = recordEnd
-        }
-
-        return path
-    }
-
-    private fun parsePaxRecordLength(
-        bytes: ByteArray,
-        start: Int,
-        end: Int,
-    ): Int {
-        var result = 0
-        for (index in start until end) {
-            val digit = bytes[index].toInt() - '0'.code
-            if (digit !in 0..9 || result > (Int.MAX_VALUE - digit) / 10) {
+            val separator = data.indexOf(' '.code.toByte(), offset)
+            if (separator <= offset) throw IOException("Invalid PAX record length")
+            if ((offset until separator).any { data[it] !in '0'.code.toByte()..'9'.code.toByte() }) {
                 throw IOException("Invalid PAX record length")
             }
-            result = result * 10 + digit
+            val recordLength =
+                String(data, offset, separator - offset, Charsets.US_ASCII).toIntOrNull()
+                    ?: throw IOException("Invalid PAX record length")
+            if (recordLength <= separator - offset + 2 || recordLength > data.size - offset) {
+                throw IOException("Invalid PAX record length")
+            }
+            val recordEnd = offset + recordLength
+            if (data[recordEnd - 1] != '\n'.code.toByte()) throw IOException("Invalid PAX record")
+            val equals = data.indexOf('='.code.toByte(), separator + 1, recordEnd - 1)
+            if (equals <= separator + 1) throw IOException("Invalid PAX record")
+            val key = decodeUtf8(data, separator + 1, equals - separator - 1)
+            if (headers.containsKey(key)) throw IOException("Duplicate PAX key: $key")
+            headers[key] = decodeUtf8(data, equals + 1, recordEnd - equals - 2)
+            offset = recordEnd
         }
-        return result
+        return headers
     }
 
-    private fun findByte(
+    private fun parsePaxSize(value: String): Long {
+        if (value.isEmpty() || value.any { it !in '0'..'9' }) {
+            throw IOException("Invalid PAX entry size")
+        }
+        return value.toLongOrNull() ?: throw IOException("Invalid PAX entry size")
+    }
+
+    private fun decodeUtf8(
         bytes: ByteArray,
+        offset: Int,
+        length: Int,
+    ): String =
+        try {
+            Charsets.UTF_8
+                .newDecoder()
+                .onMalformedInput(CodingErrorAction.REPORT)
+                .onUnmappableCharacter(CodingErrorAction.REPORT)
+                .decode(ByteBuffer.wrap(bytes, offset, length))
+                .toString()
+        } catch (error: Exception) {
+            throw IOException("Invalid UTF-8 in TAR metadata", error)
+        }
+
+    private fun ByteArray.indexOf(
         value: Byte,
         start: Int,
-        end: Int,
+        endExclusive: Int = size,
     ): Int {
-        for (index in start until end) {
-            if (bytes[index] == value) return index
-        }
+        for (index in start until endExclusive) if (this[index] == value) return index
         return -1
     }
 
-    /**
-     * Skip padding to 512-byte boundary
-     */
-    private fun skipPadding(size: Long) {
+    private fun readExtension(size: Long): ByteArray {
+        if (size < 0 || size > MAX_EXTENSION_SIZE) {
+            throw IOException("TAR extension is too large")
+        }
+        val data = ByteArray(size.toInt())
+        readExactly(data)
+        readPadding(size)
+        return data
+    }
+
+    private fun readExactly(buffer: ByteArray) {
+        var offset = 0
+        while (offset < buffer.size) {
+            val count = input.read(buffer, offset, buffer.size - offset)
+            if (count < 0) throw EOFException("Unexpected end of TAR extension")
+            if (count == 0) throw IOException("TAR extension read made no progress")
+            offset += count
+        }
+    }
+
+    private fun readPadding(size: Long) {
         val remainder = size % BLOCK_SIZE
-        if (remainder != 0L) {
-            skipBytes(BLOCK_SIZE - remainder)
-        }
+        if (remainder == 0L) return
+        val padding = ByteArray((BLOCK_SIZE - remainder).toInt())
+        readExactly(padding)
+        if (!padding.all { it == 0.toByte() }) throw IOException("Invalid TAR entry padding")
     }
 
-    /**
-     * Skip specified number of bytes
-     */
-    private fun skipBytes(n: Long) {
-        var remaining = n
+    private fun skipExactly(count: Long) {
+        var remaining = count
         val buffer = ByteArray(8192)
-
         while (remaining > 0) {
-            val toSkip = minOf(buffer.size.toLong(), remaining).toInt()
-            val skipped = input.read(buffer, 0, toSkip)
-            if (skipped < 0) throw EOFException("Unexpected end of stream")
-            remaining -= skipped
+            val read = input.read(buffer, 0, minOf(buffer.size.toLong(), remaining).toInt())
+            if (read < 0) throw EOFException("Unexpected end of TAR archive")
+            if (read == 0) throw IOException("TAR skip made no progress")
+            remaining -= read
         }
     }
-
-    /**
-     * Validate entry for security issues
-     */
-    private fun validateEntry(entry: TarArchiveEntry) {
-        // Check for negative or excessive file size
-        if (entry.size < 0) {
-            throw SecurityException("Negative file size: ${entry.size}")
-        }
-
-        if (entry.size > MAX_FILE_SIZE) {
-            throw SecurityException("File size ${entry.size} exceeds maximum $MAX_FILE_SIZE")
-        }
-
-        // Check for absolute paths
-        if (entry.name.startsWith("/")) {
-            throw SecurityException("Absolute path not allowed: ${entry.name}")
-        }
-
-        // Check for path traversal
-        val normalized = entry.name.replace('\\', '/')
-        if (normalized.contains("../") ||
-            normalized.contains("/..") ||
-            normalized == ".." ||
-            normalized.startsWith("../")
-        ) {
-            throw SecurityException("Path traversal detected: ${entry.name}")
-        }
-
-        // Check for null bytes in filename
-        if (entry.name.contains('\u0000')) {
-            throw SecurityException("Null byte in filename: ${entry.name}")
-        }
-    }
-}
-
-/**
- * TAR archive entry
- */
-data class TarArchiveEntry(
-    var name: String,
-    val mode: Int,
-    val size: Long,
-    val typeFlag: Char,
-    val linkName: String,
-) {
-    val isDirectory: Boolean
-        get() = typeFlag == '5' || name.endsWith('/')
-
-    val isFile: Boolean
-        get() = typeFlag == '0' || typeFlag == '\u0000'
-
-    val isSymbolicLink: Boolean
-        get() = typeFlag == '2'
 }

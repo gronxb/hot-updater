@@ -1278,17 +1278,15 @@ export function normalizeBuild({
 }
 
 export function collectDeltaDelivery(deploymentReceipt, nativeLogs) {
-  assert.equal(deploymentReceipt.deliveryArtifactResponse?.fileUrl, null);
-  assert.equal(deploymentReceipt.deliveryArtifactResponse?.fileHash, null);
+  assert.equal(
+    deploymentReceipt.deliveryArtifactResponse?.artifactProtocolVersion,
+    1,
+  );
   const changed =
-    deploymentReceipt.deliveryArtifactResponse?.changedAssets?.[
-      "main.lynx.bundle"
-    ];
+    deploymentReceipt.deliveryArtifactResponse?.assets?.["main.lynx.bundle"];
   const patch = changed?.patch;
   const rawDetail =
-    deploymentReceipt.deliveryArtifactResponse?.changedAssets?.[
-      "detail.lynx.bundle"
-    ];
+    deploymentReceipt.deliveryArtifactResponse?.assets?.["detail.lynx.bundle"];
   const manifestUrl = deploymentReceipt.deliveryArtifactResponse?.manifestUrl;
   const manifestSha256 =
     deploymentReceipt.deliveryArtifactResponse?.manifestFileHash;
@@ -1304,7 +1302,7 @@ export function collectDeltaDelivery(deploymentReceipt, nativeLogs) {
   assert.match(changed.fileHash, /^[a-f0-9]{64}$/);
   assert.ok(rawDetail?.file?.url);
   assert.match(rawDetail.fileHash, /^[a-f0-9]{64}$/);
-  assert.equal(rawDetail.patch, null);
+  assert.equal(rawDetail.patch, undefined);
   const events = nativeLogs.split(/\r?\n/).flatMap((line) => {
     const marker = "HotUpdaterLynxEvent=";
     const at = line.indexOf(marker);
@@ -1367,6 +1365,12 @@ export function collectDeltaDelivery(deploymentReceipt, nativeLogs) {
     ),
     "Native logs report archive fallback for the delta target",
   );
+  assert.ok(
+    !nativeLogs.includes(
+      `HotUpdaterArchiveInstalled bundleId=${deploymentReceipt.bundleId}`,
+    ),
+    "Native logs report bulk archive installation for the delta target",
+  );
   return {
     transport: "bsdiff",
     algorithm: "bsdiff",
@@ -1374,8 +1378,8 @@ export function collectDeltaDelivery(deploymentReceipt, nativeLogs) {
     baseBundleId: patch.baseBundleId,
     targetBundleId: deploymentReceipt.bundleId,
     archiveFallbackUsed: false,
-    archiveFileHash: deploymentReceipt.deliveryArtifactResponse.fileHash,
-    archiveFileUrl: deploymentReceipt.deliveryArtifactResponse.fileUrl,
+    artifactProtocolVersion: 1,
+    archiveUrl: deploymentReceipt.deliveryArtifactResponse.archiveUrl ?? null,
     deliveryArtifactUrl: deploymentReceipt.deliveryArtifactUrl,
     manifestUrl,
     manifestSha256,

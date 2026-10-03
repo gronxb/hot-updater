@@ -1,29 +1,42 @@
-import type { ArtifactInfo, ReleaseCatalog } from "@hot-updater/core";
+import type { ArtifactInfo, ReleaseCatalog } from "@hot-updater/protocol";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { FetchJSONResponseError } from "./fetchJSON";
 import { createHttpClient } from "./httpClient";
+import { InvalidUpdateResponseError } from "./updateError";
 
-const mocks = vi.hoisted(() => {
-  Reflect.set(globalThis, "HotUpdater", {
-    SDK_VERSION: "test-sdk-version",
-  });
-  return {
-    fetchCatalog: vi.fn(),
-    fetchJSON: vi.fn(),
-  };
-});
+const mocks = vi.hoisted(() => ({
+  fetchCatalog: vi.fn(),
+  fetchJSON: vi.fn(),
+}));
 
 vi.mock("./releaseCatalogCache", () => ({
   fetchReleaseCatalogWithCache: mocks.fetchCatalog,
 }));
 
 vi.mock("./fetchJSON", () => ({
+  FetchJSONResponseError: class FetchJSONResponseError extends Error {
+    constructor(
+      readonly status: number,
+      statusText: string,
+    ) {
+      super(statusText);
+    }
+  },
   fetchJSON: mocks.fetchJSON,
 }));
 
 const artifact: ArtifactInfo = {
-  fileHash: "bundle-hash",
-  fileUrl: "/storage/bundle.zip",
+  artifactProtocolVersion: 1,
+  assets: {
+    "index.ios.bundle": {
+      file: { url: "/storage/index.bundle.br" },
+      fileHash: "bundle-hash",
+    },
+  },
+  manifestFileHash: "manifest-hash",
+  manifestUrl: "/storage/manifest.json",
+  archiveUrl: "/storage/bundle.tar.br",
 };
 
 const catalog: ReleaseCatalog = {
@@ -93,14 +106,24 @@ describe("private HotUpdater HTTP client", () => {
       }),
     ).resolves.toEqual({
       ...artifact,
-      fileUrl: "https://first.example.com/hot-updater/storage/bundle.zip",
+      assets: {
+        "index.ios.bundle": {
+          file: {
+            url: "https://first.example.com/hot-updater/storage/index.bundle.br",
+          },
+          fileHash: "bundle-hash",
+        },
+      },
+      manifestUrl:
+        "https://first.example.com/hot-updater/storage/manifest.json",
+      archiveUrl: "https://first.example.com/hot-updater/storage/bundle.tar.br",
     });
 
     expect(resolveBaseURL).toHaveBeenCalledOnce();
     expect(mocks.fetchJSON).toHaveBeenCalledWith({
       requestHeaders: undefined,
       requestTimeout: undefined,
-      url: "https://first.example.com/hot-updater/artifacts/target/from/current",
+      url: "https://first.example.com/hot-updater/artifacts/v1/target/from/current",
     });
 
     await client.createSession();
@@ -110,7 +133,12 @@ describe("private HotUpdater HTTP client", () => {
   it("rejects non-storage relative artifact URLs", async () => {
     mocks.fetchJSON.mockResolvedValue({
       ...artifact,
-      fileUrl: "/private/bundle.zip",
+      assets: {
+        "index.ios.bundle": {
+          file: { url: "/private/index.bundle.br" },
+          fileHash: "bundle-hash",
+        },
+      },
     });
     const session = await createHttpClient(
       "https://updates.example.com",
@@ -122,6 +150,62 @@ describe("private HotUpdater HTTP client", () => {
         targetBundleId: "target",
       }),
     ).rejects.toThrow("client-relative storage paths");
+  });
+
+  it("rejects a legacy artifact response", async () => {
+    mocks.fetchJSON.mockResolvedValue({
+      fileHash: "archive-hash",
+      fileUrl: "/storage/bundle.zip",
+    });
+    const session = await createHttpClient(
+      "https://updates.example.com",
+    ).createSession();
+
+    await expect(
+      session.resolveArtifact({
+        currentBundleId: "current",
+        targetBundleId: "target",
+      }),
+    ).rejects.toThrow("does not support artifact protocol 1");
+  });
+
+  it("reports an old server without the v1 endpoint explicitly", async () => {
+    mocks.fetchJSON.mockRejectedValue(
+      new FetchJSONResponseError(404, "Not Found"),
+    );
+    const session = await createHttpClient(
+      "https://updates.example.com",
+    ).createSession();
+
+    await expect(
+      session.resolveArtifact({
+        currentBundleId: "current",
+        targetBundleId: "target",
+      }),
+    ).rejects.toThrow("does not support artifact protocol 1");
+  });
+
+  it.each([
+    { label: "a legacy response", response: { fileUrl: "/storage/a.zip" } },
+    {
+      label: "an invalid absolute URL",
+      response: {
+        ...artifact,
+        manifestUrl: "https://",
+      },
+    },
+  ])("marks $label as an invalid update response", async ({ response }) => {
+    mocks.fetchJSON.mockResolvedValue(response);
+    const session = await createHttpClient(
+      "https://updates.example.com",
+    ).createSession();
+
+    await expect(
+      session.resolveArtifact({
+        currentBundleId: "current",
+        targetBundleId: "target",
+      }),
+    ).rejects.toBeInstanceOf(InvalidUpdateResponseError);
   });
 
   it("requires a functional baseURL to resolve to a non-empty string", async () => {

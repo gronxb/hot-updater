@@ -1,7 +1,7 @@
 import {
   MAX_BUNDLE_MANIFEST_BYTES,
   parseStorageDownloadPath,
-  type StoragePluginWith,
+  type StorageAdapter,
 } from "@hot-updater/plugin-core";
 
 import { readBoundedResponseBytes } from "./boundedResponseBody";
@@ -55,34 +55,40 @@ const tokensEqual = (left: string, right: string) => {
 };
 
 export const createStorageAccess = (
-  storagePlugins: StoragePluginWith<"get">[],
+  storageAdapters: readonly StorageAdapter[],
 ) => {
   const protocols = new Set<string>();
-  for (const storage of storagePlugins) {
+  for (const storage of storageAdapters) {
     if (protocols.has(storage.protocol)) {
       throw new Error(
-        `Multiple storage plugins handle protocol: ${storage.protocol}`,
+        `Multiple storage adapters handle protocol: ${storage.protocol}`,
       );
     }
     protocols.add(storage.protocol);
   }
 
   const findStorage = (protocol: string) =>
-    storagePlugins.find((item) => item.protocol === protocol);
+    storageAdapters.find((item) => item.protocol === protocol);
 
   const readStorageResponse = async (
     storageUri: string,
   ): Promise<Response | null> => {
     const protocol = getStorageProtocol(storageUri);
     const storage = findStorage(protocol);
-    if (storage) return (await storage.get({ storageUri })).response;
+    if (storage) {
+      // Storage that only uploads, as the CLI's credentials for a managed
+      // server allow, gives no file: core then resolves no artifacts, and
+      // `handlers` refuses to serve with it.
+      if (!storage.get) return null;
+      return (await storage.get({ storageUri })).response;
+    }
 
     if (isRemoteUrlProtocol(protocol)) {
       const response = await fetch(storageUri);
       return response.ok ? response : null;
     }
 
-    throw new Error(`No storage plugin for protocol: ${protocol}`);
+    throw new Error(`No storage adapter for protocol: ${protocol}`);
   };
 
   const resolveFileUrl = async (
@@ -96,14 +102,11 @@ export const createStorageAccess = (
     const protocol = getStorageProtocol(directRemoteUrl ?? storageUri);
     const storage = findStorage(protocol);
     if (!storage) {
-      if (directRemoteUrl !== null) return directRemoteUrl;
-      throw new Error(`No storage plugin for protocol: ${protocol}`);
+      if (isRemoteUrlProtocol(protocol)) return storageUri;
+      throw new Error(`No storage adapter for protocol: ${protocol}`);
     }
-    if (!storage.getDownloadUrl) {
-      throw new Error(
-        `Storage plugin "${storage.name}" does not implement getDownloadUrl.`,
-      );
-    }
+    // Nor a URL to sign.
+    if (!storage.getDownloadUrl) return null;
     const { url: downloadUrl } = await storage.getDownloadUrl({ storageUri });
     try {
       return assertRemoteUrl(downloadUrl);
@@ -124,7 +127,7 @@ export const createStorageAccess = (
       : null;
   };
 
-  const downloadStorageObject = storagePlugins.some(
+  const downloadStorageObject = storageAdapters.some(
     (storage) => storage.getDownloadUrl !== undefined,
   )
     ? async (
@@ -134,13 +137,13 @@ export const createStorageAccess = (
         const requestedPath = `/storage/${storageUriToken}/${encodedSignature}`;
         const requested = parseStorageDownloadPath(requestedPath);
         if (!requested) return null;
-        let storage: StoragePluginWith<"get"> | undefined;
+        let storage: StorageAdapter | undefined;
         try {
           storage = findStorage(getStorageProtocol(requested.storageUri));
         } catch {
           return null;
         }
-        if (!storage?.getDownloadUrl) return null;
+        if (!storage?.getDownloadUrl || !storage.get) return null;
         const { url: downloadUrl } = await storage.getDownloadUrl({
           storageUri: requested.storageUri,
         });

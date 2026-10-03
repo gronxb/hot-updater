@@ -57,7 +57,7 @@ describe("Lynx E2E suite manifest", () => {
     expect(actual).not.toContain("metadata-v1-migration");
     expect(actual).toEqual(
       expect.arrayContaining([
-        "bspatch-archive-to-diff-ota",
+        "bspatch-builtin-to-diff-ota",
         "bspatch-consecutive-diff-ota",
         "bspatch-disabled-chain-rollback",
         "bspatch-manifest-diff-fallback",
@@ -71,7 +71,7 @@ describe("Lynx E2E suite manifest", () => {
       manifest: sharedDefault.filter(
         (scenario) =>
           scenario !== "metadata-v1-migration" &&
-          scenario !== "bspatch-archive-to-diff-ota",
+          scenario !== "bspatch-builtin-to-diff-ota",
       ),
     },
     {

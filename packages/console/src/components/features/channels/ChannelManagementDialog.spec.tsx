@@ -122,7 +122,7 @@ describe("ChannelManagementDialog", () => {
     cleanup();
   });
 
-  it("creates a channel with returnExisting conflict semantics", async () => {
+  it("creates a channel by its trimmed name", async () => {
     mockCreateChannel.mutateAsync.mockResolvedValue({
       row: { id: "channel-beta", name: "beta" },
       inserted: true,
@@ -135,16 +135,16 @@ describe("ChannelManagementDialog", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "Create" }));
 
+    // The input clears only after the mutation resolves, so wait for it.
     await waitFor(() => {
-      expect(mockCreateChannel.mutateAsync).toHaveBeenCalledWith({
-        row: { id: expect.any(String), name: "beta" },
-        onConflict: "returnExisting",
-      });
+      expect(
+        (screen.getByLabelText("Channel name") as HTMLInputElement).value,
+      ).toBe("");
+    });
+    expect(mockCreateChannel.mutateAsync).toHaveBeenCalledWith({
+      name: "beta",
     });
     expect(mockToastSuccess).toHaveBeenCalledWith("Channel beta created");
-    expect(
-      (screen.getByLabelText("Channel name") as HTMLInputElement).value,
-    ).toBe("");
   });
 
   it("deletes an empty channel after confirmation", async () => {

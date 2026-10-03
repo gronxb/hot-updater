@@ -1,12 +1,13 @@
 ---
 title: "Docker"
 description: "Build and run the Nitro console in a Node container."
+icon: docker
 ---
 
 import { Step, Steps } from "fumadocs-ui/components/steps";
 import { Accordion, Accordions } from "fumadocs-ui/components/accordion";
 
-Complete [Basics](/docs/guides/console-deployment) with Node-compatible plugins first. You also need Docker.
+Complete [Basics](/docs/guides/console-deployment) first, with adapters that run in Node. You also need Docker.
 
 <Steps>
 <Step>
@@ -18,7 +19,7 @@ cp .env.example .env.production
 chmod 600 .env.production
 ```
 
-Fill `.env.production` with the [authentication variables](/docs/guides/console-deployment#set-up-sign-in) and the backend variables used by your plugins. Use plain `KEY=value` entries without wrapping quotes.
+Fill `.env.production` with the [authentication variables](/docs/guides/console-deployment#set-up-sign-in) and the backend variables your `console.config.ts` reads. Use plain `KEY=value` entries without wrapping quotes.
 
 Set `BETTER_AUTH_URL` to your public HTTPS origin and register its OAuth callback. For local testing, use `http://localhost:3000` and a matching callback.
 
@@ -35,7 +36,7 @@ docker build -t hot-updater-console:local .
 
 The image builds the Node server and runs the complete `.output` as a non-root user. Secrets are supplied at startup.
 
-The Dockerfile uses `pnpm-lock.yaml`. If you add plugins, use the pnpm tab in their installation guide to update that lockfile before building.
+The Dockerfile uses `pnpm-lock.yaml`. When you install packages, such as your adapters', use the pnpm tab of their installation guide to update that lockfile before building.
 
 </Step>
 <Step>

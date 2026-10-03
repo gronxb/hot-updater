@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import path from "path";
 
 import { s3Storage } from "@hot-updater/aws";
@@ -5,24 +6,29 @@ import { s3Storage } from "@hot-updater/aws";
 // import admin from "fZrebase-admin";
 import { mockStorage } from "@hot-updater/mock";
 import { createHotUpdater } from "@hot-updater/server";
+import { insights } from "@hot-updater/server/plugins/insights";
 import { mongoAdapter } from "@hot-updater/server/adapters/mongodb";
-import { config } from "dotenv";
 
 import { client, closeDatabase as closeMongo, db } from "./mongodb";
 
 const __dirname = path.dirname(new URL(import.meta.url).pathname);
-config({ path: path.join(__dirname, ".env.hotupdater") });
+const envFilePath = path.join(__dirname, ".env.hotupdater");
+if (existsSync(envFilePath)) {
+  process.loadEnvFile(envFilePath);
+}
 
 // Create Hot Updater instance for CLI
 // Note: MongoDB connection must be established before using this instance
 export const hotUpdater = createHotUpdater({
-  database: mongoAdapter({
-    client,
-    transactions: true,
-  }),
-  clientAccess: { type: "public" },
+  database: mongoAdapter({ client }),
+  plugins: [insights()],
+  clientAccess: "public",
   storage: [
-    mockStorage({}),
+    process.env.NODE_ENV === "test"
+      ? (
+          await import("@hot-updater/test-utils/node")
+        ).createReleaseCatalogTestStorage()
+      : mockStorage({}),
     s3Storage({
       region: "auto",
       endpoint: process.env.R2_ENDPOINT,
@@ -69,6 +75,7 @@ export async function resetDecisionFixtures() {
       "releases",
       "bundles",
       "channels",
+      "bundle_totals",
     ].map((collection) => db.collection(collection).deleteMany({})),
   );
 }

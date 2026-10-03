@@ -1,23 +1,23 @@
-import {
-  getPatchBaseBundleId,
-  INVALID_COHORT_ERROR_MESSAGE,
-  isValidCohort,
-  normalizeCohortValue,
-} from "@hot-updater/core";
 import type {
   ChannelRow,
   ReleasePolicyPatch,
   ReleaseRow,
 } from "@hot-updater/plugin-core";
+import {
+  getPatchBaseBundleId,
+  INVALID_COHORT_ERROR_MESSAGE,
+  isValidCohort,
+  normalizeCohortValue,
+} from "@hot-updater/protocol";
 import { AlertTriangle, Download, Plus, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { normalizeRange } from "verkit";
 
 import { BundleIdDisplay } from "@/components/BundleIdDisplay";
-import { BundleInsightsSummary } from "@/components/features/bundles/BundleInsightsSummary";
 import { BundleMetadata } from "@/components/features/bundles/BundleMetadata";
 import { RolloutCohortsDialog } from "@/components/features/bundles/RolloutCohortsDialog";
+import { ReleaseSections } from "@/components/features/FeatureSlots";
 import { PlatformIcon } from "@/components/PlatformIcon";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
@@ -204,11 +204,14 @@ function RolloutPercentageInput({
 export function ReleaseEditorSheet({
   channels,
   onOpenChange,
+  onShowScope,
   open,
   releaseId,
 }: {
   channels: readonly ChannelRow[];
   onOpenChange: (open: boolean) => void;
+  /** Lists the bundles of this release's catalog scope: its channel, platform, and target kind. */
+  onShowScope?: (scopeKey: string) => void;
   open: boolean;
   releaseId: string;
 }) {
@@ -410,8 +413,8 @@ export function ReleaseEditorSheet({
             {release && draft ? (
               <div className="flex flex-col gap-6 px-4 pb-4 sm:px-6 sm:pb-6">
                 {channelName ? (
-                  <BundleInsightsSummary
-                    input={{
+                  <ReleaseSections
+                    release={{
                       platform: release.platform,
                       channel: channelName,
                       releaseId: release.id,
@@ -624,7 +627,7 @@ export function ReleaseEditorSheet({
                       variant="outline"
                     >
                       <Download data-icon="inline-start" />
-                      Download bundle
+                      Download manifest
                     </Button>
                   ) : null}
                   <Button
@@ -698,6 +701,16 @@ export function ReleaseEditorSheet({
                       <dd className="mt-1 break-all font-mono text-foreground">
                         {release.scope_key}
                       </dd>
+                      {onShowScope ? (
+                        <Button
+                          className="mt-1 h-auto px-0 text-xs"
+                          onClick={() => onShowScope(release.scope_key)}
+                          size="sm"
+                          variant="link"
+                        >
+                          Show bundles for this target
+                        </Button>
+                      ) : null}
                     </div>
                   </dl>
                   {diagnostics.isError ? (

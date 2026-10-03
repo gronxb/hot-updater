@@ -94,7 +94,9 @@ describe("getPublicKeyFromConfig", () => {
 
 describe("withHotUpdater - Test Cases", () => {
   describe("Android", () => {
-    it("escapes signing key newlines in AndroidManifest metadata", async () => {
+    // hot-updater's AndroidConfigParser keeps this value through its
+    // fingerprint and channel rewrites; the CLI's own spec checks that.
+    it("writes the public key into the manifest with its line breaks escaped", async () => {
       const dir = await mkdtemp(path.join(tmpdir(), "hot-updater-expo-mod-"));
       tempDirs.push(dir);
       const { publicKey } = createKeyPair();

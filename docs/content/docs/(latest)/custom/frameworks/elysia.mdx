@@ -2,27 +2,33 @@
 title: "Elysia"
 description: Build a self-hosted Hot Updater server with Elysia framework.
 icon: elysia
-version: "v0.22.0"
 ---
 
 ## Installation
 
-Install Elysia and its bearer token plugin.
+This recipe runs on Node.js. Install Elysia, its Node adapter and bearer token
+plugin.
 
 ```package-install
-npm install elysia @elysiajs/bearer
+npm install elysia @elysiajs/node @elysiajs/bearer
+```
+
+```package-install
+npm install --save-dev tsx
 ```
 
 ## Setup and security
 
 Set up a [database adapter](/docs/custom/database/drizzle), generate its Hot Updater
-schema, and apply the schema before starting the server.
+schema, and apply the schema before starting the server. Define the
+server in `src/hotUpdater.ts` with `createHotUpdater`, as in the
+[quick start](/docs/custom/quick-start#define-the-server).
 
-The recommended self-hosted client policy uses built-in API key authentication
-for update-check and Insights ingestion routes. Always protect admin routes with
-framework middleware scoped to the admin handler. Update-check
-routes are usually exposed for React Native clients, but that is a deployment
-choice:
+The recommended self-hosted setup runs the `apiKeys()` plugin, which requires
+an API key on update-check, Insights ingestion, and plugin client routes.
+Always protect admin routes with framework middleware scoped to the admin
+handler. Update-check routes are usually exposed for React Native clients, but
+that is a deployment choice:
 
 - Client OTA: `/hot-updater/release-catalogs/*`, `/hot-updater/artifacts/*`
 - Optional public diagnostics: `/hot-updater/version`
@@ -34,6 +40,7 @@ token and scopes the authentication hook to an admin sub-app:
 
 ```typescript title="src/index.ts"
 import { Elysia } from "elysia";
+import { node } from "@elysiajs/node";
 import { bearer } from "@elysiajs/bearer"; // [!code ++]
 import { hotUpdater } from "./hotUpdater"; // [!code ++]
 
@@ -51,19 +58,23 @@ const adminApp = new Elysia() // [!code ++]
   }) // [!code ++]
   .mount("/", hotUpdater.handlers.admin); // [!code ++]
 
-new Elysia()
+new Elysia({ adapter: node() })
   .mount("/hot-updater/admin", adminApp) // [!code ++]
   .mount("/hot-updater", hotUpdater.handlers.client) // [!code ++]
   .listen(3000);
 ```
 
-Set your auth token in environment variables:
+Start the server with the database and storage variables available, and export
+your admin token in the same shell:
 
 ```bash
-HOT_UPDATER_ADMIN_TOKEN=your-secret-auth-token
+export HOT_UPDATER_ADMIN_TOKEN=your-secret-auth-token
+npx tsx src/index.ts
 ```
 
-Configure the CLI to include the auth token when deploying bundles:
+Configure the CLI to include the auth token when deploying bundles, beside
+the config's storage and plugins; see
+[CLI Configuration](/docs/custom/cli-configuration):
 
 ```typescript title="hot-updater.config.ts (excerpt)"
 import { standaloneRepository } from "@hot-updater/standalone"; // [!code ++]
@@ -75,7 +86,7 @@ if (!adminToken) {
 }
 
 export default defineConfig({
-  // ...
+  // ... build, storage, plugins, and updateStrategy
   database: standaloneRepository({ // [!code ++]
     baseUrl: "http://localhost:3000/hot-updater/admin", // [!code ++]
     commonHeaders: { // [!code ++]
@@ -87,13 +98,17 @@ export default defineConfig({
 
 ## Handler boundaries
 
-Insights ingestion and query capabilities are built in. Client reporting is on
-by default and can be disabled in the mobile SDK. The client API key protects
-catalog reads, artifact resolution and Insights ingestion; it does not
-protect or authorize the admin handler.
+With `insights()` in `plugins`, `handlers.client` accepts Insights events and
+`handlers.admin` serves Insights queries; without it, the server has no such
+routes, and they answer `404`. Apps send reports with the
+[Insights client plugin](/docs/react-native-api/insights).
+[Server plugin](/docs/custom/server-plugins) endpoints mount on the same two
+handlers. The client API key protects catalog reads, artifact resolution,
+Insights ingestion, and plugin client routes; it does not protect or authorize
+the admin handler.
 
 See the [shared handler boundary](/docs/custom/overview#runtime-policy) for route
-groups and the [repository server contract](/docs/database-plugins/standalone#server-contract)
+groups and the [repository server contract](/docs/database-adapters/standalone#server-contract)
 for exact management requests. Keep the framework-specific authentication and
 mount ordering shown above.
 

@@ -11,7 +11,8 @@ init. reference/ is additional context, not executable provisioning code.
   - Run: verify caller identity, regional S3/DynamoDB resources and any existing
     Lambda/CloudFront deployment. Resolve ambiguous account/region choices. Check
     generation/schema and applicable upgrade files before adopting resources.
-    For legacy infrastructure, use separate table/Lambda/distribution identities.
+    If the generation or schema is incompatible or unknown, stop before mutation
+    and follow COMMON.md's compatibility guidance.
   - Verify/record: accountId, region, resource names and compatible reuse decisions.
     Save intended names before creating anything. S3 may be shared with data/policies preserved.
   - Retry: query the same account/region/names; denied listings do not mean absence.
@@ -24,30 +25,51 @@ init. reference/ is additional context, not executable provisioning code.
   - Retry: query the bucket/location before any repeated creation request.
 
 - [ ] **aws.database — Prepare DynamoDB**
-  - Requires: aws.storage. Fill DYNAMODB_TABLE_NAME in both dynamodb/ JSON files.
-  - Run: inspect an existing table against create-table.json. If absent, use
+  - Requires: aws.storage. Fill DYNAMODB_TABLE_NAME in the four dynamodb/ JSON files.
+  - Run: inspect an existing table against create-table.json and read its schema
+    settings before writing. A populated table must have `schema.engine` = `1`;
+    stop if its schema or settings are incompatible or unknown. If absent, use
     `aws dynamodb create-table --region <region> --cli-input-json file://dynamodb/create-table.json`.
     Wait for ACTIVE, then inspect PITR; when disabled, use
     `aws dynamodb update-continuous-backups --region <region> --cli-input-json file://dynamodb/enable-pitr.json`.
-  - Verify/record: tableName; string pk/sk and gsi1pk/gsi1sk, required GSI with ALL
-    projection, PAY_PER_REQUEST and table/index throughput limits match the JSON;
-    table/GSI are ACTIVE and PITR is enabled. New tables have deletion protection
-    enabled; preserve that setting on reused tables. There is no separate SQL
-    migration for this provider. Reject incompatible tables in place.
-  - Retry: describe the same table/backups and enable PITR only when missing.
+    Inspect TTL with `aws dynamodb describe-time-to-live --region <region> --table-name <table>`;
+    when it is disabled, turn it on for `_ttl`, which retention writes on every
+    item of an expiring row and DynamoDB deletes for free:
+    `aws dynamodb update-time-to-live --region <region> --cli-input-json file://dynamodb/enable-ttl.json`.
+    TTL on another attribute blocks it: stop and ask the user.
+    For a new empty table, write the schema settings the plugin checks before its
+    first read (the migration for this provider; the plugin answers 503 until
+    they exist):
+    `aws dynamodb batch-write-item --region <region> --cli-input-json file://dynamodb/schema-settings.json`.
+  - Verify/record: tableName; string pk/sk keys, no secondary index,
+    PAY_PER_REQUEST and throughput limits match the JSON; the table is ACTIVE, PITR
+    is enabled, TTL is ENABLED (or ENABLING) on `_ttl`, and the items in
+    schema-settings.json exist under
+    pk `private_hot_updater_settings`. New tables have deletion protection
+    enabled; preserve that setting on reused tables. A table with a secondary
+    index, including `hot-updater-update-index`, is incompatible; do not change
+    its schema or settings to make it pass.
+  - Retry: describe the same table/backups/TTL/items; write only what is missing.
 
-- [ ] **aws.client-key — Initialize local access and the client key**
+- [ ] **aws.client-credential — Initialize local access and the client credential**
   - Requires: aws.database. Run this before Lambda deployment, as init does.
-  - Run: follow COMMON.md's Local CLI and client API key steps with the selected
-    table/region and standard AWS credential chain. At this stage leave
+  - Run: follow COMMON.md's Local CLI and client credential steps with the
+    selected table/region and standard AWS credential chain. At this stage leave
     HOT_UPDATER_CLOUDFRONT_DISTRIBUTION_ID unset if no distribution exists yet;
-    it is not needed for key registration. ENVIRONMENT.md explains the inputs.
-  - Verify/record: the supplied helper registers/reuses the saved key in the
-    selected table. Record its private file path, never its contents.
-  - Retry: inspect local access and reuse the same key; do not recreate the table.
+    it is not needed for credential registration. ENVIRONMENT.md explains the inputs.
+<!-- if credential -->
+  - Verify/record: the supplied helper registers/reuses the saved client
+    {{CREDENTIAL_LABEL}} in the selected table. Record its private file path,
+    never its contents.
+  - Retry: inspect local access and reuse the same {{CREDENTIAL_LABEL}}; do not
+    recreate the table.
+<!-- else -->
+  - Verify/record: the local config loads against the selected table.
+  - Retry: inspect local access; do not recreate the table.
+<!-- end -->
 
 - [ ] **aws.iam — Prepare the Lambda execution role**
-  - Requires: aws.client-key. Fill account/region/table/bucket/SSM placeholders in iam/.
+  - Requires: aws.client-credential. Fill account/region/table/bucket/SSM placeholders in iam/.
   - Run: select an installation-specific role and inspect its trust/policies.
     For a new role use `aws iam create-role --role-name <role-name> --assume-role-policy-document file://iam/trust-policy.json`.
     Attach `arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole` if missing. Apply the documents with
@@ -61,6 +83,11 @@ init. reference/ is additional context, not executable provisioning code.
     Preserve unrelated policies.
   - Verify/record: roleName/roleArn; both lambda.amazonaws.com and
     edgelambda.amazonaws.com can assume it; resource ARNs match this installation.
+    The DynamoDB leading-key condition lists each table name and `<table>#*`,
+    as iam/dynamodb-policy.json does, including `aggregate_log_0` to
+    `aggregate_log_7` and `aggregate_lease` for batched Insights totals, and
+    the policy allows BatchWriteItem; a policy with other leading keys denies
+    the storage engine's reads and writes.
   - Retry: retrieve role/policies and allow propagation; reuse the selected role.
 
 - [ ] **aws.signing — Prepare download signing**
@@ -76,7 +103,7 @@ init. reference/ is additional context, not executable provisioning code.
   - Retry: inspect SSM/public-key/group state and reuse the saved pair and IDs.
 
 - [ ] **aws.lambda — Publish the server**
-  - Requires: aws.database, aws.client-key, aws.iam and aws.signing.
+  - Requires: aws.database, aws.client-credential, aws.iam and aws.signing.
   - Run: fill lambda/index.cjs resource inputs, including the public key ID
     (not key group), regional DynamoDB/SSM inputs and bucket. Lambda@Edge uses
     these code inputs, not ordinary environment variables. Install the pinned
@@ -106,7 +133,8 @@ init. reference/ is additional context, not executable provisioning code.
   - Verify/record: oacId, cachePolicyId, catalogCachePolicyId, originRequestPolicyId,
     distributionId, distributionCallerReference and baseUrl. Wait for Deployed;
     verify the selected S3 origin, Lambda version, signed default artifact behavior
-    and API-key-aware API/catalog policies before marking this step complete.
+    and the API/catalog policies, whose cache keys hold the server's client-route
+    headers, before marking this step complete.
   - Retry: query saved IDs/names/CallerReference and current ETag. Do not generate
     a new CallerReference, distribution, policy or key group merely to retry.
 
@@ -114,7 +142,9 @@ init. reference/ is additional context, not executable provisioning code.
   - Requires: aws.distribution.
   - Run: fill HOT_UPDATER_CLOUDFRONT_DISTRIBUTION_ID now that it exists. Complete
     common.verify, common.local and common.report in COMMON.md using the actual
-    distribution URL.
+    distribution URL. Send an authenticated Insights event through that endpoint
+    and confirm it succeeds; an artifact download alone does not verify the
+    DynamoDB write permissions.
   - Verify/record: local config and standard credential chain work; server version,
     generation and catalog authentication pass; check signed artifact access when
     available and report requested app integration separately.

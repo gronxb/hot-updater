@@ -33,6 +33,10 @@ export const getConfigScaffold = (
     new ConfigBuilder()
       .setBuild(build)
       .setStorage(storageConfig)
-      .setDatabase(databaseConfig),
+      .setDatabase(databaseConfig)
+      .setPlugins({
+        imports: [{ pkg: "@hot-updater/cloudflare", named: ["plugins"] }],
+        configString: "plugins",
+      }),
   );
 };

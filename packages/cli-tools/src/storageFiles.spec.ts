@@ -2,7 +2,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-import { createStoragePlugin } from "@hot-updater/plugin-core";
+import { createStorageAdapter } from "@hot-updater/plugin-core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -47,7 +47,7 @@ describe("putStorageFile", () => {
     const { filePath, size } = await createLargeFile();
     let firstChunkSize = 0;
 
-    const storage = createStoragePlugin({
+    const storage = createStorageAdapter({
       name: "streaming-test",
       protocol: "test",
       async put({ body, contentLength, contentType, key }) {
@@ -117,7 +117,7 @@ describe("writeStorageFile", () => {
     const arrayBuffer = vi
       .spyOn(response, "arrayBuffer")
       .mockRejectedValue(new Error("arrayBuffer must not be used"));
-    const storage = createStoragePlugin({
+    const storage = createStorageAdapter({
       name: "streaming-test",
       protocol: "test",
       get: async () => ({ response }),
@@ -136,7 +136,7 @@ describe("writeStorageFile", () => {
     );
     temporaryDirectories.push(directory);
     const filePath = path.join(directory, "empty.bin");
-    const storage = createStoragePlugin({
+    const storage = createStorageAdapter({
       name: "empty-test",
       protocol: "test",
       get: async () => ({ response: new Response(null) }),
@@ -155,7 +155,7 @@ describe("writeStorageFile", () => {
     const filePath = path.join(directory, "partial.bin");
     const streamError = new Error("storage stream failed");
     let pulled = false;
-    const storage = createStoragePlugin({
+    const storage = createStorageAdapter({
       name: "failing-test",
       protocol: "test",
       get: async () => ({

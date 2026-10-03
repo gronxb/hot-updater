@@ -1,6 +1,7 @@
 import { s3Storage } from "@hot-updater/aws";
 import { mockStorage } from "@hot-updater/mock";
 import { createHotUpdater } from "@hot-updater/server";
+import { insights } from "@hot-updater/server/plugins/insights";
 import { prismaAdapter } from "@hot-updater/server/adapters/prisma";
 
 import { prisma } from "./prisma";
@@ -11,9 +12,14 @@ export const hotUpdater = createHotUpdater({
     prisma,
     provider: "postgresql",
   }),
-  clientAccess: { type: "public" },
+  plugins: [insights()],
+  clientAccess: "public",
   storage: [
-    mockStorage({}),
+    process.env.NODE_ENV === "test"
+      ? (
+          await import("@hot-updater/test-utils/node")
+        ).createReleaseCatalogTestStorage()
+      : mockStorage({}),
     s3Storage({
       region: "auto",
       endpoint: process.env.R2_ENDPOINT,
@@ -41,7 +47,8 @@ export async function resetDecisionFixtures() {
       release_catalogs,
       releases,
       bundles,
-      channels
+      channels,
+      bundle_totals
     CASCADE
   `);
 }

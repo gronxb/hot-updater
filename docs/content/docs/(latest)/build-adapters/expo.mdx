@@ -1,0 +1,120 @@
+---
+title: "Expo Adapter"
+description: Build adapter and config plugin for Expo projects. Bundles your app and configures native projects through Expo Prebuild.
+icon: expo
+---
+
+## Installation
+
+```package-install
+npm install @hot-updater/expo --save-dev
+```
+
+## Configuration
+
+```typescript
+interface ExpoAdapterConfig {
+  outDir?: string;      // Output directory (default: "dist")
+  sourcemap?: boolean;  // Generate sourcemaps (default: false)
+  resetCache?: boolean; // Reset Metro cache before bundling (default: true)
+}
+```
+
+## Usage
+
+```typescript title="hot-updater.config.ts"
+import { expo } from '@hot-updater/expo'; // [!code ++]
+import { defineConfig } from 'hot-updater';
+
+export default defineConfig({
+  build: expo({ // [!code ++]
+    sourcemap: false // [!code ++]
+  }), // [!code ++]
+  // ... other config
+});
+```
+
+## Expo configuration
+
+The `@hot-updater/expo` package also provides the Expo config plugin. Add it to
+your `app.json` file:
+
+```jsonc title="app.json"
+{
+  "expo": {
+    "plugins": [
+      [ // [!code ++]
+        "@hot-updater/expo", // [!code ++]
+        { // [!code ++]
+          "channel": "production" // [!code ++]
+        } // [!code ++]
+      ] // [!code ++]
+    ]
+  }
+}
+```
+
+The app config plugin accepts these options:
+
+| Option | Purpose |
+| --- | --- |
+| `channel` | Native update channel. Defaults to `production`. |
+| `publicKeyPath` | Optional path to the signing public key, relative to the Expo project root. Required when bundle signing is enabled. |
+
+For signed updates, add `publicKeyPath: "./keys/public-key.pem"` to this app
+plugin's options. It requires an RSA SPKI PEM public key of at least 2048 bits.
+Prebuild reads only this public file, embeds it in both native apps, and
+includes it in their fingerprints. It does not need the private key or KMS
+credentials. Configure the signer separately in `hot-updater.config.ts`.
+
+See [Expo and EAS signing setup](/docs/guides/bundle-signing#expo-and-eas-build)
+for exporting the public file and releasing the matching native app.
+
+Run prebuild to apply the changes:
+
+```package-install
+npx expo prebuild
+```
+
+## Expo DOM Components (`use dom`)
+
+Expo DOM components need Expo SDK 55 or later and the Babel plugin below. The
+rest of the Expo adapter also works on earlier SDKs.
+
+A DOM component loads its web bundle from the files built into the app. Once
+Hot Updater installs an update, the Babel plugin points each DOM component at
+the update's copy through `overrideUri`, a prop Expo supports from SDK 55
+([expo/expo#40397](https://github.com/expo/expo/pull/40397)). Without an
+installed update, the component keeps its built-in files. The components need
+no code changes.
+
+### Babel plugin
+
+Create `babel.config.js` if your project does not have one:
+
+```package-install
+npx expo customize babel.config.js
+```
+
+Then add the plugin:
+
+```js title="babel.config.js"
+module.exports = function (api) {
+  api.cache(true);
+
+  return {
+    presets: ['babel-preset-expo'],
+    plugins: [
+      '@hot-updater/expo/babel-plugin', // [!code ++]
+    ],
+  };
+};
+```
+
+## Key features
+
+- Uses Expo's `expo export:embed` command
+- Auto-detects Hermes from app.json configuration
+- Supports both managed and bare Expo workflows
+- Compatible with Expo prebuild for native builds
+- Automatically configures bundler based on Expo settings

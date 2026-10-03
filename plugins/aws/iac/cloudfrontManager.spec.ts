@@ -191,6 +191,7 @@ describe("CloudFrontManager", () => {
     await manager.createOrUpdateDistribution({
       keyGroupId: "new-key-group-id",
       bucketName: "hot-updater-storage",
+      clientHeaders: ["x-api-key"],
       functionArn:
         "arn:aws:lambda:us-east-1:123456789012:function:hot-updater:2",
     });
@@ -271,6 +272,79 @@ describe("CloudFrontManager", () => {
     });
   });
 
+  it("updates the policies another init created first when both create them at once", async () => {
+    // Another init creates each policy between this init's list and its
+    // create.
+    const cachePolicyIds = new Map<string, string>();
+    mockCloudFront.listCachePolicies.mockImplementation(async () => ({
+      CachePolicyList: {
+        Items: [...cachePolicyIds].map(([Name, Id]) => ({
+          CachePolicy: { Id, CachePolicyConfig: { Name } },
+        })),
+      },
+    }));
+    mockCloudFront.createCachePolicy.mockImplementation(
+      async ({ CachePolicyConfig }) => {
+        cachePolicyIds.set(
+          CachePolicyConfig.Name,
+          `other-${CachePolicyConfig.Name}`,
+        );
+        throw Object.assign(new Error("already exists"), {
+          name: "CachePolicyAlreadyExists",
+        });
+      },
+    );
+    mockCloudFront.listOriginRequestPolicies.mockResolvedValueOnce({
+      OriginRequestPolicyList: { Items: [] },
+    });
+    mockCloudFront.createOriginRequestPolicy.mockRejectedValueOnce(
+      Object.assign(new Error("already exists"), {
+        name: "OriginRequestPolicyAlreadyExists",
+      }),
+    );
+
+    const manager = new CloudFrontManager("ap-northeast-2", {
+      accessKeyId: "test-access-key",
+      secretAccessKey: "test-secret-key",
+    });
+
+    await manager.createOrUpdateDistribution({
+      keyGroupId: "new-key-group-id",
+      bucketName: "hot-updater-storage",
+      clientHeaders: ["x-api-key"],
+      functionArn:
+        "arn:aws:lambda:us-east-1:123456789012:function:hot-updater:2",
+    });
+
+    // Each cache policy is updated in place, as an existing one is.
+    for (const id of [
+      "other-HotUpdaterOriginCacheControlV2",
+      "other-HotUpdaterReleaseCatalogV1",
+    ]) {
+      expect(mockCloudFront.updateCachePolicy).toHaveBeenCalledWith(
+        expect.objectContaining({ Id: id, IfMatch: "cache-policy-etag" }),
+      );
+    }
+    expect(mockCloudFront.updateDistribution).toHaveBeenCalledWith(
+      expect.objectContaining({
+        DistributionConfig: expect.objectContaining({
+          DefaultCacheBehavior: expect.objectContaining({
+            CachePolicyId: "other-HotUpdaterOriginCacheControlV2",
+          }),
+          CacheBehaviors: expect.objectContaining({
+            Items: expect.arrayContaining([
+              expect.objectContaining({
+                PathPattern: "/release-catalogs/*",
+                CachePolicyId: "other-HotUpdaterReleaseCatalogV1",
+                OriginRequestPolicyId: "origin-request-policy-id",
+              }),
+            ]),
+          }),
+        }),
+      }),
+    );
+  });
+
   it("persists a selected distribution before updating it", async () => {
     mockCloudFront.listCachePolicies.mockResolvedValue({
       CachePolicyList: {
@@ -330,6 +404,7 @@ describe("CloudFrontManager", () => {
       manager.createOrUpdateDistribution({
         keyGroupId: "new-key-group-id",
         bucketName: "hot-updater-storage",
+        clientHeaders: ["x-api-key"],
         functionArn:
           "arn:aws:lambda:us-east-1:123456789012:function:hot-updater:2",
       }),

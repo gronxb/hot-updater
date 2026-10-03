@@ -18,17 +18,12 @@ export default defineConfig([
     failOnWarn: true,
   },
   {
-    entry: ["iac/init/index.ts"],
-    format: ["esm", "cjs"],
-    dts: true,
-    outDir: "dist/init",
-    failOnWarn: true,
-  },
-  {
+    // `./init`: the provider's init, which `hot-updater init` imports once it
+    // has installed this package.
     entry: ["iac/index.ts"],
     format: ["esm", "cjs"],
     dts: true,
-    outDir: "dist/iac",
+    outDir: "dist/init",
     deps: {
       neverBundle: ["@hot-updater/cloudflare"],
     },

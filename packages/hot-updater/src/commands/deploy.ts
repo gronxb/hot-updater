@@ -5,56 +5,50 @@ import { createBrotliCompress, constants as zlibConstants } from "zlib";
 
 import {
   createTarBrTargetFiles,
-  createTarGzTargetFiles,
-  createZipTargetFiles,
   getCwd,
   getStorageFileByteSize,
   HotUpdateDirUtil,
-  loadConfig,
+  type loadConfig,
+  loadPlatformConfigs,
   p,
   prepareBundleSigning,
   putStorageFile,
 } from "@hot-updater/cli-tools";
 import type {
-  BuildPlugin,
+  BuildAdapter,
   BuildArtifact,
-  Bundle,
-  BundleRepository,
-  DatabaseMutationClient,
+  ConfiguredDatabase,
+  HotUpdaterCoreApi,
   Platform,
   ReleaseCatalogMutationResult,
-  StoragePluginWith,
+  StorageAdapter,
+  StorageAdapterWith,
 } from "@hot-updater/plugin-core";
 import {
   assertBundleArchiveByteSize,
-  assertBundleArtifactByteSize,
   assertBundleExpandedByteSize,
   assertBundleTarStreamByteSize,
   assertStorageOperations,
-  compareStringsByCodeUnit,
   createBundleStorageKey,
-  createDatabaseClient,
   createStorageRootUriWithPath,
   createStorageUriWithRelativePath,
   getManifestAssetDownloadPath,
   getManifestAssetStoragePath,
-  getBundleArchiveEntryCount,
-  getMaximumBundleTarStreamByteSize,
   isContentAddressedAssetFileHash,
+  targetBaseCandidateKey,
 } from "@hot-updater/plugin-core";
-import { createBundleDiff } from "@hot-updater/server/db";
 import isPortReachable from "is-port-reachable";
 import open from "open";
-import { normalizeRange, rangesIntersect } from "verkit";
+import { normalizeRange } from "verkit";
 
 import { getPlatform } from "@/prompts/getPlatform";
 import { createSignedFileHash } from "@/signedHashUtils";
 import {
   createBundleManifest,
-  serializeBundleManifest,
   type Manifest,
   writeBundleManifestFile,
 } from "@/utils/bundleManifest";
+import { createBundleDiff } from "@/utils/createBundleDiff";
 import {
   appendFingerprintExtraSources,
   isFingerprintEquals,
@@ -68,6 +62,7 @@ import {
 import { getBundleZipTargets } from "@/utils/getBundleZipTargets";
 import { getFileHashFromFile } from "@/utils/getFileHash";
 import { appendToProjectRootGitignore, getLatestGitCommit } from "@/utils/git";
+import { loadServer, requireStorage } from "@/utils/loadServer";
 import { printBanner } from "@/utils/printBanner";
 import { validateSigningConfig } from "@/utils/signing/validateSigningConfig";
 import { getDefaultTargetAppVersion } from "@/utils/version/getDefaultTargetAppVersion";
@@ -83,7 +78,7 @@ import {
   prepareAndCommitBundles,
 } from "./deployTransaction";
 
-type DeployStoragePlugin = StoragePluginWith<
+type DeployStorageAdapter = StorageAdapterWith<
   "put" | "get" | "exists" | "delete"
 >;
 
@@ -99,6 +94,16 @@ class MultiPlatformDatabaseBoundaryError extends Error {
   constructor() {
     super(
       "Deploying multiple platforms requires a shared database configuration.",
+    );
+  }
+}
+
+class MultiPlatformStorageBoundaryError extends Error {
+  override readonly name = "MultiPlatformStorageBoundaryError";
+
+  constructor() {
+    super(
+      "Deploying multiple platforms requires a shared storage configuration.",
     );
   }
 }
@@ -196,120 +201,64 @@ const formatUploadProgress = (
   return `Uploading ${percent}% (${completed}/${total}${skippedText})`;
 };
 
-const areTargetAppVersionsPatchCompatible = (a: string, b: string): boolean => {
-  const aRange = normalizeRange(a);
-  const bRange = normalizeRange(b);
-
-  if (!aRange || !bRange) {
-    return false;
-  }
-
-  return rangesIntersect(aRange, bRange);
-};
-
-const getPatchBaseBundles = async ({
+/**
+ * Older bundles that enabled releases in the same channel and platform serve
+ * to the new bundle's devices: the same fingerprint, or an app version range
+ * that intersects the target's; newest release first, at most
+ * `maxBaseBundles`. One point read of the scope's Release Catalog.
+ */
+const getPatchBaseBundleIds = async ({
   bundleId,
   channel,
-  database,
-  databasePlugin,
+  core,
   maxBaseBundles,
   platform,
   target,
 }: {
   bundleId: string;
   channel: string;
-  database: DatabaseMutationClient;
-  databasePlugin: BundleRepository;
+  core: HotUpdaterCoreApi;
   maxBaseBundles: number;
   platform: Platform;
   target: {
     appVersion: string | null;
     fingerprintHash: string | null;
   };
-}): Promise<Bundle[]> => {
-  const channelRow = (
-    await databasePlugin.models.channels.list({})
-  ).channels.find(({ name }) => name === channel);
-  if (channelRow === undefined) return [];
-  const pageSize = Math.max(maxBaseBundles * 3, 10);
-  const compatibleBundles: Bundle[] = [];
-  const seenBundleIds = new Set<string>();
-  let beforeReleaseId: string | undefined;
-
-  while (compatibleBundles.length < maxBaseBundles) {
-    const releases = await databasePlugin.models.releases.findMany({
-      ...(beforeReleaseId === undefined ? {} : { beforeReleaseId }),
-      channelId: channelRow.id,
-      enabled: true,
-      limit: pageSize,
-      platform,
-    });
-
-    for (const release of releases) {
-      const releaseIsCompatible = target.fingerprintHash
-        ? release.strategy === "FINGERPRINT" &&
-          release.fingerprint_hash === target.fingerprintHash
-        : target.appVersion !== null &&
-          release.strategy === "APP_VERSION" &&
-          release.target_app_version !== null &&
-          areTargetAppVersionsPatchCompatible(
-            target.appVersion,
-            release.target_app_version,
-          );
-      if (
-        !releaseIsCompatible ||
-        release.kind !== "BUNDLE" ||
-        release.bundle_id === null ||
-        release.bundle_id >= bundleId ||
-        seenBundleIds.has(release.bundle_id)
-      ) {
-        continue;
-      }
-      seenBundleIds.add(release.bundle_id);
-      const bundle = await database.getBundleById(release.bundle_id);
-      if (bundle !== null) compatibleBundles.push(bundle);
-
-      if (compatibleBundles.length >= maxBaseBundles) {
-        break;
-      }
-    }
-
-    if (releases.length < pageSize) break;
-    const nextCursor = releases.at(-1)?.id;
-    if (nextCursor === undefined || nextCursor === beforeReleaseId) break;
-    beforeReleaseId = nextCursor;
-  }
-
-  return compatibleBundles;
+}): Promise<string[]> => {
+  const candidateKey = targetBaseCandidateKey({
+    appVersion: target.appVersion,
+    channel,
+    fingerprintHash: target.fingerprintHash,
+    platform,
+  });
+  if (candidateKey === null) return [];
+  return core.findBaseBundleIds(candidateKey, bundleId, maxBaseBundles);
 };
 
 const createAutoPatches = async ({
   bundleId,
   channel,
-  database,
-  databasePlugin,
+  core,
   maxBaseBundles,
   platform,
-  storagePlugin,
+  storageAdapter,
   target,
 }: {
   bundleId: string;
   channel: string;
-  database: DatabaseMutationClient;
-  databasePlugin: BundleRepository;
+  core: HotUpdaterCoreApi;
   maxBaseBundles: number;
   platform: Platform;
-  storagePlugin: DeployStoragePlugin;
+  storageAdapter: DeployStorageAdapter;
   target: {
     appVersion: string | null;
     fingerprintHash: string | null;
   };
 }) => {
-  const baseBundles = await getPatchBaseBundles({
+  const baseBundleIds = await getPatchBaseBundleIds({
     bundleId,
     channel,
-    database,
-    databasePlugin,
+    core,
     maxBaseBundles,
     platform,
     target,
@@ -317,16 +266,16 @@ const createAutoPatches = async ({
   const failures: { baseBundleId: string; message: string }[] = [];
   let createdCount = 0;
 
-  for (const baseBundle of baseBundles) {
+  for (const baseBundleId of baseBundleIds) {
     try {
       await createBundleDiff(
         {
-          baseBundleId: baseBundle.id,
+          baseBundleId,
           bundleId,
         },
         {
-          databasePlugin,
-          storagePlugin,
+          core,
+          storageAdapter,
         },
         {
           makePrimary: createdCount === 0,
@@ -335,30 +284,17 @@ const createAutoPatches = async ({
       createdCount += 1;
     } catch (error) {
       failures.push({
-        baseBundleId: baseBundle.id,
+        baseBundleId,
         message: error instanceof Error ? error.message : "Unknown patch error",
       });
     }
   }
 
   return {
-    candidateCount: baseBundles.length,
+    candidateCount: baseBundleIds.length,
     createdCount,
     failures,
   };
-};
-
-const getExtensionFromCompressStrategy = (compressStrategy: string) => {
-  switch (compressStrategy) {
-    case "tar.br":
-      return ".tar.br";
-    case "tar.gz":
-      return ".tar.gz";
-    case "zip":
-      return ".zip";
-    default:
-      throw new Error(`Unsupported compress strategy: ${compressStrategy}`);
-  }
 };
 
 const getRelativeStorageDir = (relativePath: string) => {
@@ -494,13 +430,12 @@ const prepareContentAddressedAssetUploadTargets = async ({
         targetFile.name,
         targetFile.downloadCompression,
       );
-      const usesBrotli = targetFile.downloadCompression === "br";
+      const usesBrotli = uploadName !== targetFile.name;
       const preparedPath = await prepareManifestAssetUploadFile({
         outputPath,
         targetFile,
       });
       const downloadByteSize = await getStorageFileByteSize(preparedPath);
-      assertBundleArtifactByteSize(downloadByteSize, targetFile.name);
       const downloadFileHash = usesBrotli
         ? await getFileHashFromFile(preparedPath)
         : undefined;
@@ -524,12 +459,10 @@ const prepareContentAddressedAssetUploadTargets = async ({
         sourcePath: preparedPath,
         storagePath,
       });
-      await fs.promises.chmod(uploadSourcePath, 0o400);
 
       for (const targetName of targetNames) {
         manifest.assets[targetName] = {
           ...manifest.assets[targetName]!,
-          downloadCompression: targetFile.downloadCompression,
           downloadByteSize,
           ...(downloadFileHash ? { downloadFileHash } : {}),
         };
@@ -539,7 +472,7 @@ const prepareContentAddressedAssetUploadTargets = async ({
   );
 
   return [...targets.values()].sort((left, right) =>
-    compareStringsByCodeUnit(left.storagePath, right.storagePath),
+    left.storagePath.localeCompare(right.storagePath),
   );
 };
 
@@ -712,19 +645,22 @@ const getMultiPlatformDeploymentContext = ({
 
 const deployPlatform = async ({
   config,
-  databasePlugin,
+  core,
+  database,
   deferAutoPatches,
-  deferredDatabase,
   options,
   persistDeployment,
   platform,
   platformIndex,
   platformCount,
+  storageAdapter,
 }: {
   config: DeployConfig;
-  databasePlugin: BundleRepository;
+  core: HotUpdaterCoreApi;
+  database: ConfiguredDatabase;
   deferAutoPatches: boolean;
-  deferredDatabase: DatabaseMutationClient;
+  /** Where bundles are uploaded: the config's storage. */
+  storageAdapter: StorageAdapter;
   options: DeployOptions;
   persistDeployment: (input: DeploymentWrite) => Promise<void>;
   platform: Platform;
@@ -748,18 +684,18 @@ const deployPlatform = async ({
     ? normalizePatchMaxBaseBundles(config.patch.maxBaseBundles)
     : 0;
 
-  const [buildPlugin, signingSession] = await Promise.all([
+  const [buildAdapter, signingSession] = await Promise.all([
     config.build({ cwd }),
     prepareBundleSigning(config.signing, { cwd }),
   ]);
-  await runIntegrationCommand(config, "deploy", buildPlugin);
+  await runIntegrationCommand(config, "deploy", buildAdapter);
   const getNativeSigningPublicKey =
-    buildPlugin.nativeBuild?.getBundleSigningPublicKey;
+    buildAdapter.nativeBuild?.getBundleSigningPublicKey;
   const nativeSigningPublicKey = getNativeSigningPublicKey
     ? await getNativeSigningPublicKey()
     : undefined;
   const nativeFingerprintExtraSources =
-    (await buildPlugin.nativeBuild?.getFingerprintExtraSources?.()) ?? [];
+    (await buildAdapter.nativeBuild?.getFingerprintExtraSources?.()) ?? [];
   const fingerprintConfig = {
     ...config.fingerprint,
     extraSources: appendFingerprintExtraSources(
@@ -772,9 +708,6 @@ const deployPlatform = async ({
   const signingValidation = await validateSigningConfig(config, {
     expectedPublicKey: signingSession?.publicKey,
     platform,
-    ...(buildPlugin.nativeBuild?.signingConfigSource === undefined
-      ? {}
-      : { signingConfigSource: buildPlugin.nativeBuild.signingConfigSource }),
     ...(getNativeSigningPublicKey === undefined
       ? {}
       : { nativePublicKey: nativeSigningPublicKey?.publicKey ?? null }),
@@ -828,14 +761,10 @@ const deployPlatform = async ({
       );
       process.exit(1);
     }
-    const newFingerprint = await nativeFingerprint(
-      cwd,
-      {
-        platform,
-        ...fingerprintConfig,
-      },
-      buildPlugin.nativeBuild?.fingerprint,
-    );
+    const newFingerprint = await nativeFingerprint(cwd, {
+      platform,
+      ...fingerprintConfig,
+    });
     const projectFingerprint = await readLocalFingerprint();
     if (!isFingerprintEquals(newFingerprint, projectFingerprint?.[platform])) {
       s.error(
@@ -917,8 +846,8 @@ const deployPlatform = async ({
     options.bundleOutputPath ?? HotUpdateDirUtil.getDefaultOutputPath({ cwd });
 
   let bundleId: string | null = null;
-  let fileHash: string;
   let manifestContentHash: string | null = null;
+  let artifactSnapshotPath: string | null = null;
   let manifestFileHash: string | null = null;
   const platformName = getPlatformName(platform);
   const outputRoot = getBundleOutputRoot({
@@ -927,14 +856,6 @@ const deployPlatform = async ({
     platform,
     multiPlatform,
   });
-
-  const compressStrategy = config.compressStrategy;
-  const bundleExtension = getExtensionFromCompressStrategy(compressStrategy);
-  const bundlePath = path.join(
-    outputRoot,
-    "bundle",
-    `bundle${bundleExtension}`,
-  );
 
   const deploymentContext = [
     `Platform: ${platformName}`,
@@ -957,35 +878,30 @@ const deployPlatform = async ({
     p.note(deploymentContext, deploymentTitle);
   }
 
-  const storagePlugin = config.storage;
-  assertStorageOperations(storagePlugin, ["put", "get", "exists", "delete"]);
-  let archiveWriteStarted = false;
-  let artifactSnapshotPath: string | null = null;
+  assertStorageOperations(storageAdapter, ["put", "get", "exists", "delete"]);
 
   try {
     const taskRef: {
-      buildResult: Awaited<ReturnType<BuildPlugin["build"]>> | null;
+      buildResult: Awaited<ReturnType<BuildAdapter["build"]>> | null;
       assetUploadTargets: PreparedAssetUploadTarget[];
-      archiveByteSize: number | null;
       manifestPath: string | null;
+      archivePath: string | null;
       manifestStorageUri: string | null;
       assetBaseStorageUri: string | null;
-      storageUri: string | null;
     } = {
       buildResult: null,
       assetUploadTargets: [],
-      archiveByteSize: null,
       manifestPath: null,
+      archivePath: null,
       manifestStorageUri: null,
       assetBaseStorageUri: null,
-      storageUri: null,
     };
 
     await p.tasks([
       {
-        title: `📦 Building Bundle (${platformName} • ${buildPlugin.name})`,
+        title: `📦 Building Bundle (${platformName} • ${buildAdapter.name})`,
         task: async () => {
-          taskRef.buildResult = await buildPlugin.build({
+          taskRef.buildResult = await buildAdapter.build({
             platform: platform,
           });
 
@@ -1013,91 +929,40 @@ const deployPlatform = async ({
           const assetUploadTargets =
             await prepareContentAddressedAssetUploadTargets({
               manifest,
-              outputPath: snapshot.path,
+              outputPath: outputRoot,
               targetFiles,
             });
+          const archivePath = path.join(outputRoot, "bundle.tar.br");
+          manifest.archive = await createTarBrTargetFiles({
+            outfile: archivePath,
+            targetFiles,
+          });
           const manifestPath = await writeBundleManifestFile({
             buildPath: snapshot.path,
             manifest,
           });
-          const expandedByteSize =
+
+          assertBundleArchiveByteSize(manifest.archive.downloadByteSize);
+          assertBundleTarStreamByteSize(manifest.archive.tarByteSize);
+          assertBundleExpandedByteSize(
             snapshot.expandedByteSize +
-            Buffer.byteLength(serializeBundleManifest(manifest));
-          assertBundleExpandedByteSize(expandedByteSize);
-          if (compressStrategy !== "zip") {
-            assertBundleTarStreamByteSize(
-              getMaximumBundleTarStreamByteSize(
-                expandedByteSize,
-                getBundleArchiveEntryCount(targetFiles.map(({ name }) => name)),
-              ),
-            );
-          }
+              (await fs.promises.stat(manifestPath)).size,
+          );
           await fs.promises.chmod(manifestPath, 0o400);
           await fs.promises.chmod(snapshot.path, 0o500);
-
-          const bundleTargetFiles = [
-            ...targetFiles,
-            {
-              path: manifestPath,
-              name: "manifest.json",
-            },
-          ];
           taskRef.assetUploadTargets = assetUploadTargets;
           taskRef.manifestPath = manifestPath;
-
-          archiveWriteStarted = true;
-          switch (compressStrategy) {
-            case "tar.br":
-              await createTarBrTargetFiles({
-                outfile: bundlePath,
-                targetFiles: bundleTargetFiles,
-              });
-              break;
-            case "tar.gz":
-              await createTarGzTargetFiles({
-                outfile: bundlePath,
-                targetFiles: bundleTargetFiles,
-              });
-              break;
-            case "zip":
-              await createZipTargetFiles({
-                outfile: bundlePath,
-                targetFiles: bundleTargetFiles,
-              });
-              break;
-            default:
-              throw new Error(
-                `Unsupported compression strategy: ${compressStrategy}`,
-              );
-          }
-          assertBundleArchiveByteSize(await getStorageFileByteSize(bundlePath));
-          fileHash = await getFileHashFromFile(bundlePath);
-
-          // Sign bundle if signing is enabled
-          if (signingSession) {
-            try {
-              const signature = await signingSession.signFileHash(fileHash);
-              // Store signature in signed format (sig:<signature>)
-              // The hash is verified implicitly during signature verification
-              fileHash = createSignedFileHash(signature);
-            } catch (error) {
-              p.log.error(`Signing error: ${(error as Error).message}`);
-              p.log.error(
-                "Ensure the signing provider is available and matches the configured public key",
-              );
-              throw error;
-            }
-          }
+          taskRef.archivePath = archivePath;
 
           manifestContentHash = await getFileHashFromFile(manifestPath);
           manifestFileHash = manifestContentHash;
           if (signingSession) {
             const signature =
-              await signingSession.signFileHash(manifestContentHash);
+              await signingSession.signFileHash(manifestFileHash);
             manifestFileHash = createSignedFileHash(signature);
           }
 
-          return `✅ Build Complete (${buildPlugin.name})`;
+          return `✅ Build Complete (${buildAdapter.name})`;
         },
       },
     ]);
@@ -1115,12 +980,12 @@ const deployPlatform = async ({
 
     await p.tasks([
       {
-        title: `📦 Uploading to Storage (${platformName} • ${storagePlugin.name})`,
+        title: `📦 Uploading to Storage (${platformName} • ${storageAdapter.name})`,
         task: async (message = () => {}) => {
           if (!bundleId) {
             throw new Error("Build did not return an artifact ID");
           }
-          if (!taskRef.manifestPath) {
+          if (!taskRef.manifestPath || !taskRef.archivePath) {
             throw new Error("Manifest path not found");
           }
 
@@ -1141,13 +1006,19 @@ const deployPlatform = async ({
             };
 
             updateUploadProgress();
-            const { byteSize, storageUri } = await putStorageFile(
-              storagePlugin,
+            await putStorageFile(
+              storageAdapter,
               createBundleStorageKey(bundleId),
-              bundlePath,
+              taskRef.archivePath,
             );
-            taskRef.archiveByteSize = byteSize;
-            taskRef.storageUri = storageUri;
+            uploadedStepCount += 1;
+            updateUploadProgress();
+            const manifestUpload = await putStorageFile(
+              storageAdapter,
+              createBundleStorageKey(bundleId),
+              taskRef.manifestPath,
+            );
+            taskRef.manifestStorageUri = manifestUpload.storageUri;
             uploadedStepCount += 1;
             updateUploadProgress();
 
@@ -1155,7 +1026,7 @@ const deployPlatform = async ({
             // directory. The server uses this suffix to derive asset object keys
             // from each manifest asset's transferred or logical file hash.
             taskRef.assetBaseStorageUri = createStorageRootUriWithPath(
-              storageUri,
+              manifestUpload.storageUri,
               bundleId,
               "assets",
             );
@@ -1173,11 +1044,11 @@ const deployPlatform = async ({
                   .filter(Boolean)
                   .join("/");
 
-                if ((await storagePlugin.exists({ storageUri })).exists) {
+                if ((await storageAdapter.exists({ storageUri })).exists) {
                   skippedUploadCount += 1;
                 } else {
                   await putStorageFile(
-                    storagePlugin,
+                    storageAdapter,
                     uploadKey,
                     uploadSourcePath,
                   );
@@ -1186,41 +1057,23 @@ const deployPlatform = async ({
                 updateUploadProgress();
               },
             );
-
-            const manifestUpload = await putStorageFile(
-              storagePlugin,
-              createBundleStorageKey(bundleId),
-              taskRef.manifestPath,
-            );
-            taskRef.manifestStorageUri = manifestUpload.storageUri;
-            uploadedStepCount += 1;
-            updateUploadProgress();
           } catch (e) {
             if (e instanceof Error) {
               p.log.error(e.message);
             }
             throw new Error("Failed to upload bundle to storage");
           }
-          return `✅ Upload Complete (${storagePlugin.name}) • 100%`;
+          return `✅ Upload Complete (${storageAdapter.name}) • 100%`;
         },
       },
       {
-        title: `📦 Updating Database (${platformName} • ${databasePlugin.name})`,
+        title: `📦 Updating Database (${platformName} • ${database.name})`,
         task: async () => {
           if (!bundleId) {
             throw new Error("Build did not return an artifact ID");
           }
-          if (!taskRef.storageUri) {
-            throw new Error("Storage URI not found");
-          }
           if (!manifestFileHash) {
             throw new Error("Manifest file hash not found");
-          }
-          if (!manifestContentHash) {
-            throw new Error("Manifest content hash not found");
-          }
-          if (taskRef.archiveByteSize === null) {
-            throw new Error("Bundle archive byte size not found");
           }
           const appVersion = await getNativeAppVersion(platform);
 
@@ -1228,18 +1081,15 @@ const deployPlatform = async ({
             await persistDeployment({
               bundle: {
                 platform,
-                fileHash,
                 gitCommitHash,
                 id: bundleId,
-                archiveByteSize: taskRef.archiveByteSize,
-                storageUri: taskRef.storageUri,
                 metadata: {
                   ...(appVersion ? { app_version: appVersion } : {}),
-                  manifest_content_hash: manifestContentHash,
+                  manifest_content_hash: manifestContentHash!,
                 },
-                assetBaseStorageUri: taskRef.assetBaseStorageUri,
+                assetBaseStorageUri: taskRef.assetBaseStorageUri!,
                 manifestFileHash,
-                manifestStorageUri: taskRef.manifestStorageUri,
+                manifestStorageUri: taskRef.manifestStorageUri!,
               },
               release: {
                 channel,
@@ -1257,7 +1107,7 @@ const deployPlatform = async ({
             }
             throw e;
           }
-          return `✅ Update Complete (${databasePlugin.name})`;
+          return `✅ Update Complete (${database.name})`;
         },
       },
     ]);
@@ -1287,11 +1137,10 @@ const deployPlatform = async ({
                 patchSummary = await createAutoPatches({
                   bundleId: confirmedBundleId,
                   channel,
-                  database: deferredDatabase,
-                  databasePlugin,
+                  core,
                   maxBaseBundles: maxPatchBaseBundles,
                   platform,
-                  storagePlugin,
+                  storageAdapter,
                   target,
                 });
               } catch (error) {
@@ -1336,9 +1185,6 @@ const deployPlatform = async ({
 
     return { bundleId: confirmedBundleId, platform, runDeferredPatches };
   } catch (e) {
-    if (archiveWriteStarted) {
-      await fs.promises.rm(bundlePath, { force: true });
-    }
     console.error(e);
     throw e;
   } finally {
@@ -1359,23 +1205,36 @@ export const deploy = async (options: DeployOptions): Promise<void> => {
   if (!platforms) {
     return;
   }
-  const platformConfigs = await Promise.all(
-    platforms.map(async (platform) => ({
-      config: await loadConfig({ channel: options.channel, platform }),
-      platform,
-    })),
-  );
+  // One load of the config file: a config object gives every platform the
+  // same adapters, which the checks below compare.
+  const platformConfigs = await loadPlatformConfigs(platforms, {
+    channel: options.channel,
+  });
   const firstPlatformConfig = platformConfigs[0];
   if (!firstPlatformConfig) {
     return;
   }
-  const databasePlugins = [
-    ...new Set(platformConfigs.map(({ config }) => config.database)),
-  ];
-  const databasePlugin = firstPlatformConfig.config.database;
-  const database = createDatabaseClient(databasePlugin);
+  // Every platform deploys through one server, assembled from the first
+  // platform's config, so the configs must share one database. The ones a
+  // refused deploy leaves unused are closed.
+  const databases = new Set(
+    platformConfigs.map(({ config }) => config.database),
+  );
+  if (databases.size > 1) {
+    await Promise.all([...databases].map((database) => database?.dispose?.()));
+    throw new MultiPlatformDatabaseBoundaryError();
+  }
+  // Every platform uploads to that server's storage, so they share it too.
+  if (new Set(platformConfigs.map(({ config }) => config.storage)).size > 1) {
+    await Promise.all([...databases].map((database) => database?.dispose?.()));
+    throw new MultiPlatformStorageBoundaryError();
+  }
+  const server = await loadServer(firstPlatformConfig.config);
+  const database = server.database;
+  const core = server.core;
 
   const deployPlatforms = async (
+    storageAdapter: StorageAdapter,
     persistDeployment: (input: DeploymentWrite) => Promise<void>,
   ): Promise<DeployPlatformResult[]> => {
     const preparedResults: DeployPlatformResult[] = [];
@@ -1385,14 +1244,15 @@ export const deploy = async (options: DeployOptions): Promise<void> => {
     ] of platformConfigs.entries()) {
       const result = await deployPlatform({
         config,
-        databasePlugin,
+        core,
+        database,
         deferAutoPatches: platforms.length > 1,
-        deferredDatabase: database,
         options,
         persistDeployment,
         platform,
         platformCount: platforms.length,
         platformIndex,
+        storageAdapter,
       });
 
       if (!result) {
@@ -1405,10 +1265,11 @@ export const deploy = async (options: DeployOptions): Promise<void> => {
   };
 
   try {
-    if (databasePlugins.length > 1) {
-      throw new MultiPlatformDatabaseBoundaryError();
-    }
+    const storageAdapter = requireStorage(server);
     const rolloutPercentage = normalizeRolloutPercentage(options.rollout);
+    // The schema fence (and a self-hosted server's admin protocol) is
+    // checked before anything is built or uploaded.
+    await core.ready();
 
     if (platforms.length > 1) {
       p.note(
@@ -1426,17 +1287,16 @@ export const deploy = async (options: DeployOptions): Promise<void> => {
     let commitResults: readonly ReleaseCatalogMutationResult[];
     if (platforms.length > 1) {
       const committed = await prepareAndCommitBundles({
-        database: databasePlugin,
-        prepare: deployPlatforms,
+        core,
+        prepare: (persistDeployment) =>
+          deployPlatforms(storageAdapter, persistDeployment),
       });
       preparedResults = committed.results;
       commitResults = committed.commitResults;
     } else {
       const committed: ReleaseCatalogMutationResult[] = [];
-      preparedResults = await deployPlatforms(async (input) => {
-        committed.push(
-          await commitDeployment({ database: databasePlugin, ...input }),
-        );
+      preparedResults = await deployPlatforms(storageAdapter, async (input) => {
+        committed.push(await commitDeployment({ core, ...input }));
       });
       commitResults = committed;
     }
@@ -1482,6 +1342,6 @@ export const deploy = async (options: DeployOptions): Promise<void> => {
       throw error;
     }
   } finally {
-    await Promise.all(databasePlugins.map((plugin) => plugin.dispose?.()));
+    await server.dispose();
   }
 };

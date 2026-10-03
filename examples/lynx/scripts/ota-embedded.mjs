@@ -5,8 +5,9 @@ import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { lynx } from "@hot-updater/lynx/build";
+
 import { LYNX_E2E_BUILTIN_BUNDLE_ID } from "../../../e2e/lynx/embedded-bundle.ts";
-import { lynx } from "../../../packages/lynx/dist/build.mjs";
 import { readSpikePageContract } from "./spike-assets.mjs";
 
 const runtimeIds = {

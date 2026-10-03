@@ -5,7 +5,9 @@ const mocks = vi.hoisted(() => ({
   createTable: vi.fn(),
   describeContinuousBackups: vi.fn(),
   describeTable: vi.fn(),
+  describeTimeToLive: vi.fn(),
   updateContinuousBackups: vi.fn(),
+  updateTimeToLive: vi.fn(),
   waitUntilTableExists: vi.fn(),
 }));
 
@@ -15,13 +17,14 @@ vi.mock("@aws-sdk/client-dynamodb", () => ({
       createTable: mocks.createTable,
       describeContinuousBackups: mocks.describeContinuousBackups,
       describeTable: mocks.describeTable,
+      describeTimeToLive: mocks.describeTimeToLive,
       updateContinuousBackups: mocks.updateContinuousBackups,
+      updateTimeToLive: mocks.updateTimeToLive,
     };
   }),
   waitUntilTableExists: mocks.waitUntilTableExists,
 }));
 
-import { DYNAMODB_UPDATE_INDEX_NAME } from "../src/dynamoDB";
 import { DynamoDBManager } from "./dynamodb";
 
 const compatibleTable = {
@@ -35,22 +38,6 @@ const compatibleTable = {
   AttributeDefinitions: [
     { AttributeName: "pk", AttributeType: "S" },
     { AttributeName: "sk", AttributeType: "S" },
-    { AttributeName: "gsi1pk", AttributeType: "S" },
-    { AttributeName: "gsi1sk", AttributeType: "S" },
-  ],
-  GlobalSecondaryIndexes: [
-    {
-      IndexName: DYNAMODB_UPDATE_INDEX_NAME,
-      KeySchema: [
-        { AttributeName: "gsi1pk", KeyType: "HASH" },
-        { AttributeName: "gsi1sk", KeyType: "RANGE" },
-      ],
-      Projection: { ProjectionType: "ALL" },
-      OnDemandThroughput: {
-        MaxReadRequestUnits: 4_000,
-        MaxWriteRequestUnits: 100,
-      },
-    },
   ],
   KeySchema: [
     { AttributeName: "pk", KeyType: "HASH" },
@@ -69,9 +56,13 @@ describe("DynamoDBManager", () => {
       },
     });
     mocks.updateContinuousBackups.mockResolvedValue({});
+    mocks.describeTimeToLive.mockResolvedValue({
+      TimeToLiveDescription: { TimeToLiveStatus: "DISABLED" },
+    });
+    mocks.updateTimeToLive.mockResolvedValue({});
   });
 
-  it("creates an on-demand metadata table with the update index", async () => {
+  it("creates an on-demand metadata table with no secondary index", async () => {
     // Given
     mocks.describeTable.mockRejectedValue({
       name: "ResourceNotFoundException",
@@ -98,10 +89,10 @@ describe("DynamoDBManager", () => {
           MaxReadRequestUnits: 4_000,
           MaxWriteRequestUnits: 100,
         },
-        GlobalSecondaryIndexes: [
-          expect.objectContaining({ IndexName: DYNAMODB_UPDATE_INDEX_NAME }),
-        ],
       }),
+    );
+    expect(mocks.createTable.mock.calls[0]?.[0]).not.toHaveProperty(
+      "GlobalSecondaryIndexes",
     );
     expect(mocks.updateContinuousBackups).toHaveBeenCalledWith({
       PointInTimeRecoverySpecification: {
@@ -109,9 +100,43 @@ describe("DynamoDBManager", () => {
       },
       TableName: "hot-updater-metadata",
     });
+    expect(mocks.updateTimeToLive).toHaveBeenCalledWith({
+      TableName: "hot-updater-metadata",
+      TimeToLiveSpecification: { AttributeName: "_ttl", Enabled: true },
+    });
   });
 
-  it("reuses a table with the managed key and index schema", async () => {
+  it("turns on TTL for an existing table once, and refuses TTL on another attribute", async () => {
+    mocks.describeTable.mockResolvedValue({ Table: compatibleTable });
+    const manager = new DynamoDBManager("ap-northeast-2", {
+      accessKeyId: "test-access-key",
+      secretAccessKey: "test-secret-key",
+    });
+
+    await manager.ensureTable("hot-updater-metadata");
+    expect(mocks.updateTimeToLive).toHaveBeenCalledTimes(1);
+
+    mocks.describeTimeToLive.mockResolvedValue({
+      TimeToLiveDescription: {
+        AttributeName: "_ttl",
+        TimeToLiveStatus: "ENABLED",
+      },
+    });
+    await manager.ensureTable("hot-updater-metadata");
+    expect(mocks.updateTimeToLive).toHaveBeenCalledTimes(1);
+
+    mocks.describeTimeToLive.mockResolvedValue({
+      TimeToLiveDescription: {
+        AttributeName: "expires",
+        TimeToLiveStatus: "ENABLED",
+      },
+    });
+    await expect(manager.ensureTable("hot-updater-metadata")).rejects.toThrow(
+      'has TTL on "expires", but Hot Updater expires rows by "_ttl"',
+    );
+  });
+
+  it("reuses a table with the managed key schema", async () => {
     // Given
     mocks.describeTable.mockResolvedValue({ Table: compatibleTable });
     const manager = new DynamoDBManager("ap-northeast-2", {
@@ -198,7 +223,7 @@ describe("DynamoDBManager", () => {
         ...compatibleTable,
         AttributeDefinitions: compatibleTable.AttributeDefinitions.map(
           (definition) =>
-            definition.AttributeName === "gsi1sk"
+            definition.AttributeName === "sk"
               ? { ...definition, AttributeType: "N" }
               : definition,
         ),

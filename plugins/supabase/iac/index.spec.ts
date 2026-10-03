@@ -59,9 +59,8 @@ vi.mock("execa", async (importOriginal) => {
 import {
   createSelectedBucket,
   getSupabaseProjectAccess,
-  getSupabaseReactNativeSource,
+  getSupabaseFunctionUrl,
   getLegacySupabaseConfigReference,
-  reportSupabaseApiKey,
   reportSupabaseOriginCatalogReady,
   resolveEdgeFunctionDenoConfig,
   selectBucket,
@@ -115,20 +114,12 @@ describe("Supabase React Native init output", () => {
   });
 
   it("uses the direct Edge Function URL for origin-only catalogs", () => {
-    const source = getSupabaseReactNativeSource({
-      apiKey: "api-key",
-      functionName: "update-server",
-      projectId: "project-ref",
-    });
-
-    expect(source).toContain(
-      'baseURL: "https://project-ref.supabase.co/functions/v1/update-server"',
-    );
-    expect(source).toContain('"x-api-key": "api-key"');
-    expect(source).toContain("HotUpdater.init({");
-    expect(source).not.toContain("HotUpdater.wrap");
-    expect(source).toContain("return null; // Replace with your app root");
-    expect(source).not.toContain("HOT_UPDATER_SUPABASE_CATALOG_CDN_URL");
+    expect(
+      getSupabaseFunctionUrl({
+        functionName: "update-server",
+        projectId: "project-ref",
+      }),
+    ).toBe("https://project-ref.supabase.co/functions/v1/update-server");
   });
 
   it("reports origin-only readiness without CDN remediation warnings", () => {
@@ -141,18 +132,6 @@ describe("Supabase React Native init output", () => {
       "Catalog checks still invoke the Supabase Edge Function.",
     );
     expect(mockCli.p.log.warn).not.toHaveBeenCalled();
-  });
-
-  it("prints API key storage guidance after the API key note", () => {
-    reportSupabaseApiKey("api-key");
-
-    expect(mockCli.p.note).toHaveBeenCalledWith("api-key", "API Key");
-    expect(mockCli.p.log.message).toHaveBeenCalledWith(
-      "Store this API key separately in a secure place.",
-    );
-    expect(mockCli.p.note.mock.invocationCallOrder[0]).toBeLessThan(
-      mockCli.p.log.message.mock.invocationCallOrder[0]!,
-    );
   });
 });
 
@@ -1137,29 +1116,37 @@ describe("resolveEdgeFunctionDenoConfig", () => {
       const result = await resolveEdgeFunctionDenoConfig(targetDir);
 
       expect(result.imports).toEqual({
+        "fast-glob": "npm:fast-glob@3.3.3",
         "@hot-updater/server":
           "./_hot-updater/hot-updater-server/dist/index.mjs",
+        "@hot-updater/server/plugins/api-keys":
+          "./_hot-updater/hot-updater-server/dist/plugins/api-keys/index.mjs",
+        "@hot-updater/server/plugins/insights":
+          "./_hot-updater/hot-updater-server/dist/plugins/insights/index.mjs",
         "@hot-updater/supabase/edge":
           "./_hot-updater/hot-updater-supabase/dist/edge.mjs",
-        "@hot-updater/core": "./_hot-updater/hot-updater-core/dist/index.mjs",
+        "@hot-updater/protocol":
+          "./_hot-updater/hot-updater-protocol/dist/index.mjs",
         "@hot-updater/plugin-core":
           "./_hot-updater/hot-updater-plugin-core/dist/index.mjs",
-        "@hot-updater/plugin-core/internal":
-          "./_hot-updater/hot-updater-plugin-core/dist/internal.mjs",
+        "@hot-updater/plugin-insights/server":
+          "./_hot-updater/hot-updater-plugin-insights/dist/server/index.mjs",
+        "@hot-updater/plugin-api-keys/server":
+          "./_hot-updater/hot-updater-plugin-api-keys/dist/server/index.mjs",
         "@supabase/supabase-js": `npm:@supabase/supabase-js@${resolvePackageVersion(
           "@supabase/supabase-js",
           {
             searchFrom: path.resolve("plugins/supabase"),
           },
         )}`,
-        "fast-glob": `npm:fast-glob@${resolvePackageVersion("fast-glob", {
-          searchFrom: path.resolve("plugins/plugin-core"),
-        })}`,
         mime: `npm:mime@${resolvePackageVersion("mime", {
           searchFrom: path.resolve("plugins/plugin-core"),
         })}`,
         hono: `npm:hono@${resolvePackageVersion("hono", {
           searchFrom: path.resolve("plugins/supabase"),
+        })}`,
+        verkit: `npm:verkit@${resolvePackageVersion("verkit", {
+          searchFrom: path.resolve("packages/server"),
         })}`,
       });
 
@@ -1171,7 +1158,7 @@ describe("resolveEdgeFunctionDenoConfig", () => {
           ),
           "utf8",
         ),
-      ).resolves.toContain("./handler.mjs");
+      ).resolves.toContain("./createHotUpdaterCore.mjs");
 
       await expect(
         fs.readFile(

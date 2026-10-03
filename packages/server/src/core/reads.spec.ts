@@ -1,0 +1,301 @@
+import {
+  compileReleaseCatalog,
+  releaseRowToRelease,
+  type ReleaseRow,
+  type StorageAdapterWith,
+  createEngine,
+  createMemoryAdapter,
+  meterReads,
+  type ReadMeasurement,
+  targetBaseCandidateKey,
+  verifyAdapter,
+} from "@hot-updater/plugin-core";
+import {
+  createReleaseCatalogScopeKey,
+  encodeChannelKey,
+  NIL_UUID,
+} from "@hot-updater/protocol";
+import { createReleaseCatalogTestStorage } from "@hot-updater/test-utils";
+import {
+  createBundlePatchRowFixture,
+  createBundleRowFixture,
+  createReleaseRowFixture,
+} from "@hot-updater/test-utils";
+import { describe, expect, it } from "vitest";
+
+import { createStorageAccess } from "../storageAccess";
+import { createCoreReads } from "./index";
+
+const fixtureMissingId = "01900000-0000-7000-8000-00000000ffff";
+const channel = { id: "channel-production", name: "production" };
+const channelKey = encodeChannelKey("production");
+const scopeKey = createReleaseCatalogScopeKey({
+  channelKey,
+  platform: "ios",
+  strategy: "APP_VERSION",
+});
+const base = createBundleRowFixture("301");
+const target = {
+  ...createBundleRowFixture("302"),
+  asset_base_storage_uri: "storage://test-bucket/assets",
+};
+const patch = {
+  ...createBundlePatchRowFixture("1", target.id, base.id),
+  byte_size: 10,
+};
+const release: ReleaseRow = {
+  ...createReleaseRowFixture("1", target, channel),
+  scope_key: scopeKey,
+};
+
+const setup = async () => {
+  const database = meterReads({
+    name: "memory",
+    adapter: verifyAdapter(createMemoryAdapter()),
+  });
+  const db = createEngine(database).core;
+  const compilation = await compileReleaseCatalog({
+    strategy: "APP_VERSION",
+    releases: [releaseRowToRelease(release)],
+  });
+  await db.transaction(async (tx) => {
+    tx.create("channels", channel);
+    tx.create("bundles", base);
+    tx.create("bundles", target);
+    tx.create("bundle_patches", patch);
+    tx.create("release_catalogs", {
+      scope_key: scopeKey,
+      catalog_id: "01900000-0000-7000-8000-000000000001",
+      strategy: "APP_VERSION",
+      channel_id: channel.id,
+      channel_key: channelKey,
+      platform: "ios",
+      fingerprint_hash: null,
+      generation: 1,
+      payload: compilation.canonicalPayload,
+      catalog_hash: compilation.catalogHash,
+      byte_size: compilation.byteSize,
+      is_tombstone: false,
+      updated_at_ms: 1,
+    });
+    tx.create("releases", release);
+    tx.aggregate("bundle_totals", { platform_key: "*" }, { bundles: 2 });
+    tx.aggregate("bundle_totals", { platform_key: "ios" }, { bundles: 2 });
+  });
+  const { readStorageText, resolveFileUrl } = createStorageAccess([
+    createReleaseCatalogTestStorage() as StorageAdapterWith<"get">,
+  ]);
+  return {
+    database,
+    reads: createCoreReads(db, { readStorageText, resolveFileUrl }),
+  };
+};
+
+describe("core reads", () => {
+  it("answers an update check with one point read of the scope's catalog", async () => {
+    const { database, reads } = await setup();
+    const measured = await database.measureReads(() =>
+      reads.getReleaseCatalog({
+        strategy: "APP_VERSION",
+        platform: "ios",
+        channelKey,
+        appVersion: "1.0.0",
+      }),
+    );
+    // `rows` counts query rows; a point read counts its keys
+    expect(measured.adapter).toEqual({ gets: 1, keys: 1, queries: 0, rows: 0 });
+    expect(measured.engine).toEqual({ calls: 1, rows: 1 });
+    expect(measured.result?.releases.map(({ releaseId }) => releaseId)).toEqual(
+      [release.id],
+    );
+
+    await expect(
+      reads.getReleaseCatalog({
+        strategy: "APP_VERSION",
+        platform: "android",
+        channelKey,
+        appVersion: "1.0.0",
+      }),
+    ).resolves.toBeNull();
+  });
+
+  it("resolves an artifact with one batch read of both bundles and one unique read of their patch", async () => {
+    const { database, reads } = await setup();
+    const measured = await database.measureReads(() =>
+      reads.getArtifactInfo(target.id, base.id, 1),
+    );
+    expect(measured.adapter).toEqual({ gets: 1, keys: 2, queries: 1, rows: 1 });
+    expect(measured.engine).toEqual({ calls: 2, rows: 3 });
+    expect(measured.result).toMatchObject({
+      artifactProtocolVersion: 1,
+      manifestFileHash: target.manifest_file_hash,
+    });
+
+    const full = await database.measureReads(() =>
+      reads.getArtifactInfo(target.id, NIL_UUID, 1),
+    );
+    expect(full.adapter).toEqual({ gets: 1, keys: 1, queries: 0, rows: 0 });
+    await expect(
+      reads.getArtifactInfo(fixtureMissingId, NIL_UUID, 1),
+    ).resolves.toBeNull();
+  });
+
+  it("keeps each read-budget API within its budget at both boundaries", async () => {
+    const { database, reads } = await setup();
+    const targetDetail = { bundle: target, patches: [patch], childCount: 0 };
+    const baseDetail = { bundle: base, patches: [], childCount: 1 };
+    const budgets: {
+      api: string;
+      read: () => Promise<unknown>;
+      result: unknown;
+      adapter: ReadMeasurement<unknown>["adapter"];
+      engine: ReadMeasurement<unknown>["engine"];
+    }[] = [
+      {
+        api: "bundle list page: limit rows + one byBundle query per bundle with patches",
+        read: () =>
+          reads.listBundles({ platform: "ios", order: "desc", limit: 10 }),
+        result: [targetDetail, baseDetail],
+        adapter: { gets: 0, keys: 0, queries: 2, rows: 3 },
+        engine: { calls: 2, rows: 3 },
+      },
+      {
+        api: "bundle total: one counter row",
+        read: () => reads.countBundles("ios"),
+        result: 2,
+        adapter: { gets: 0, keys: 0, queries: 1, rows: 1 },
+        engine: { calls: 1, rows: 1 },
+      },
+      {
+        api: "bundle children: nothing extra, the count is on the row",
+        read: () => reads.getBundle(base.id),
+        result: baseDetail,
+        adapter: { gets: 1, keys: 1, queries: 0, rows: 0 },
+        engine: { calls: 1, rows: 1 },
+      },
+      {
+        api: "release list: limit rows from one index",
+        read: () =>
+          reads.listReleases({
+            filter: {
+              kind: "channelPlatform",
+              channelId: channel.id,
+              platform: "ios",
+              enabled: true,
+            },
+            limit: 10,
+          }),
+        result: [release],
+        adapter: { gets: 0, keys: 0, queries: 1, rows: 1 },
+        engine: { calls: 1, rows: 1 },
+      },
+      {
+        api: "deploy latest release id: byScope descending, limit 1",
+        read: () => reads.latestReleaseId(scopeKey),
+        result: release.id,
+        adapter: { gets: 0, keys: 0, queries: 1, rows: 1 },
+        engine: { calls: 1, rows: 1 },
+      },
+      {
+        api: "channel by name: one read",
+        read: () => reads.findChannelByName("production"),
+        result: channel,
+        adapter: { gets: 0, keys: 0, queries: 1, rows: 1 },
+        engine: { calls: 1, rows: 1 },
+      },
+    ];
+    for (const budget of budgets) {
+      const measured = await database.measureReads(budget.read);
+      expect({ api: budget.api, ...measured }, budget.api).toEqual({
+        api: budget.api,
+        result: budget.result,
+        adapter: budget.adapter,
+        engine: budget.engine,
+      });
+    }
+  });
+
+  it("reads bundles, releases, catalogs, and channels through their indexes", async () => {
+    const { reads } = await setup();
+    await expect(reads.getBundle(target.id)).resolves.toEqual({
+      bundle: target,
+      patches: [patch],
+      childCount: 0,
+    });
+    await expect(reads.getBundle(fixtureMissingId)).resolves.toBeNull();
+    await expect(
+      reads.listPatchesFromBase(base.id, { limit: 10 }),
+    ).resolves.toEqual([patch]);
+    await expect(
+      reads.countBundleChildren([
+        base.id,
+        target.id,
+        base.id,
+        fixtureMissingId,
+      ]),
+    ).resolves.toEqual({ [base.id]: 1, [target.id]: 0, [fixtureMissingId]: 0 });
+    await expect(reads.countBundles()).resolves.toBe(2);
+    await expect(reads.countBundles("android")).resolves.toBe(0);
+    await expect(
+      reads.listBundles({ order: "asc", after: base.id, limit: 10 }),
+    ).resolves.toEqual([{ bundle: target, patches: [patch], childCount: 0 }]);
+
+    for (const filter of [
+      { kind: "all" },
+      { kind: "bundle", bundleId: target.id },
+      { kind: "scope", scopeKey },
+      { kind: "channelPlatform", channelId: channel.id, platform: "ios" },
+    ] as const) {
+      await expect(reads.listReleases({ filter, limit: 10 })).resolves.toEqual([
+        release,
+      ]);
+    }
+    await expect(
+      reads.listReleases({
+        filter: { kind: "scope", scopeKey },
+        after: release.id,
+        limit: 10,
+      }),
+    ).resolves.toEqual([]);
+    await expect(reads.getRelease(release.id)).resolves.toEqual(release);
+    await expect(reads.getReleaseCatalogRow(scopeKey)).resolves.toMatchObject({
+      generation: 1,
+    });
+    await expect(
+      reads.listReleaseCatalogs({ limit: 10 }),
+    ).resolves.toHaveLength(1);
+    await expect(reads.listChannels()).resolves.toEqual([channel]);
+    await expect(reads.findChannelByName("staging")).resolves.toBeNull();
+  });
+
+  it("finds auto-patch bases in one point read of the scope's catalog", async () => {
+    const { database, reads } = await setup();
+    const key = targetBaseCandidateKey({
+      channel: channel.name,
+      platform: "ios",
+      fingerprintHash: null,
+      appVersion: "1.0.x",
+    })!;
+    const found = await database.measureReads(() =>
+      reads.findBaseBundleIds(key, fixtureMissingId, 3),
+    );
+    expect(found.result).toEqual([target.id]);
+    expect(found.adapter).toEqual({ gets: 1, keys: 1, queries: 0, rows: 0 });
+    // only bundles older than the new one, and only ranges that meet its own
+    await expect(reads.findBaseBundleIds(key, target.id, 3)).resolves.toEqual(
+      [],
+    );
+    const other = targetBaseCandidateKey({
+      channel: channel.name,
+      platform: "ios",
+      fingerprintHash: null,
+      appVersion: "1.1.0",
+    })!;
+    await expect(
+      reads.findBaseBundleIds(other, fixtureMissingId, 3),
+    ).resolves.toEqual([]);
+    await expect(
+      reads.findBaseBundleIds("not a key", fixtureMissingId, 3),
+    ).resolves.toEqual([]);
+  });
+});

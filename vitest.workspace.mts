@@ -1,6 +1,19 @@
 import { cloudflareTest } from "@cloudflare/vitest-pool-workers";
 import { defineConfig, defineProject } from "vitest/config";
 
+import {
+  findIntegrationGroup,
+  INTEGRATION_GROUP_ENV,
+  selectIntegrationProjects,
+  startsFirebaseEmulators,
+} from "./scripts/ci/integration-groups.mjs";
+
+// CI runs the integration files in groups (scripts/ci/integration-groups.mjs).
+// Without a group, every integration file runs.
+const integrationGroup = findIntegrationGroup(
+  process.env[INTEGRATION_GROUP_ENV],
+);
+
 const commonExclude = [
   "**/dist/**",
   "**/node_modules/**",
@@ -54,49 +67,60 @@ export default defineConfig({
         },
       }),
       defineProject({
+        resolve: {
+          tsconfigPaths: true,
+        },
         test: {
           name: "unit:console",
           environment: "jsdom",
           include: [
             "packages/console/**/*.spec.ts",
+            "packages/console/**/*.spec.tsx",
             "packages/console/**/*.test.ts",
+            "packages/console/**/*.test.tsx",
           ],
           exclude: [...commonExclude, "**/*.integration.spec.ts"],
-        },
-      }),
-      defineProject({
-        test: {
-          name: "integration:default",
-          environment: "node",
-          include: integrationInclude,
-          exclude: [
-            ...rootExclude,
-            "plugins/cloudflare/**/*.integration.spec.ts",
-            "packages/bsdiff/tests/runtime/*.manual.*",
-          ],
-          fileParallelism: false,
-          globalSetup: ["./plugins/firebase/vitest.global-setup.ts"],
-          maxConcurrency: 1,
-          maxWorkers: 1,
-          pool: "forks",
           hookTimeout: 60000,
           testTimeout: 60000,
         },
       }),
-      defineProject({
-        plugins: [
-          cloudflareTest({
-            wrangler: {
-              configPath: "./plugins/cloudflare/worker/wrangler.test.json",
-            },
-          }),
-        ],
-        test: {
-          name: "integration:cloudflare",
-          include: ["plugins/cloudflare/worker/**/*.integration.spec.ts"],
-          globalSetup: "./plugins/cloudflare/vitest.global-setup.mts",
-        },
-      }),
+      ...selectIntegrationProjects(integrationGroup, [
+        defineProject({
+          test: {
+            name: "integration:default",
+            environment: "node",
+            include: integrationInclude,
+            exclude: [
+              ...rootExclude,
+              "plugins/cloudflare/**/*.integration.spec.ts",
+              "packages/bsdiff/tests/runtime/*.manual.*",
+            ],
+            fileParallelism: false,
+            globalSetup: startsFirebaseEmulators(integrationGroup)
+              ? ["./plugins/firebase/vitest.global-setup.ts"]
+              : [],
+            maxConcurrency: 1,
+            maxWorkers: 1,
+            pool: "forks",
+            hookTimeout: 60000,
+            testTimeout: 60000,
+          },
+        }),
+        defineProject({
+          plugins: [
+            cloudflareTest({
+              wrangler: {
+                configPath: "./plugins/cloudflare/worker/wrangler.test.json",
+              },
+            }),
+          ],
+          test: {
+            name: "integration:cloudflare",
+            include: ["plugins/cloudflare/worker/**/*.integration.spec.ts"],
+            globalSetup: "./plugins/cloudflare/vitest.global-setup.mts",
+          },
+        }),
+      ]),
     ],
   },
 });

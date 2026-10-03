@@ -1,6 +1,6 @@
 {
   "name": "@hot-updater/react-native",
-  "version": "1.0.0-rc.14",
+  "version": "1.0.0-rc.27",
   "description": "React Native OTA solution for self-hosted",
   "source": "./src/index.ts",
   "main": "./lib/commonjs/index.js",
@@ -42,6 +42,7 @@
     "!ios/build",
     "!ios/HotUpdater/Test",
     "!ios/HotUpdater/Package.swift",
+    "!android/src/test",
     "!android/build",
     "!android/gradle",
     "!android/gradlew",
@@ -50,7 +51,9 @@
     "!**/__tests__",
     "!**/__fixtures__",
     "!**/__mocks__",
-    "!**/.*"
+    "!**/.*",
+    "!**/*.spec.*",
+    "!**/*.test-utils.*"
   ],
   "scripts": {
     "build": "node ./scripts/sync-sdk-version.mjs run -- bob build",
@@ -116,7 +119,8 @@
   },
   "peerDependencies": {
     "react": "*",
-    "react-native": "*"
+    "react-native": "*",
+    "@hot-updater/plugin-core": "workspace:*"
   },
   "devDependencies": {
     "@react-native-community/cli": "18.0.0",
@@ -134,12 +138,18 @@
     "react-native": "0.79.1",
     "react-native-builder-bob": "0.41.0",
     "@typescript/native": "npm:typescript@^7.0.2",
-    "typescript": "npm:@typescript/typescript6@^6.0.2"
+    "typescript": "npm:@typescript/typescript6@^6.0.2",
+    "@hot-updater/plugin-core": "workspace:*"
   },
   "dependencies": {
-    "@hot-updater/core": "workspace:*",
-    "@hot-updater/plugin-core": "workspace:*",
+    "@hot-updater/protocol": "workspace:*",
+    "@hot-updater/plugin-insights": "workspace:*",
     "use-sync-external-store": "1.5.0",
     "verkit": "catalog:"
+  },
+  "peerDependenciesMeta": {
+    "@hot-updater/plugin-core": {
+      "optional": true
+    }
   }
 }

@@ -3,9 +3,10 @@ import {
   assertStorageOperations,
   type Platform,
 } from "@hot-updater/plugin-core";
-import { createBundleDiff } from "@hot-updater/server/db";
 
 import { getPlatform } from "@/prompts/getPlatform";
+import { createBundleDiff } from "@/utils/createBundleDiff";
+import { loadServer, requireStorage } from "@/utils/loadServer";
 import { printBanner } from "@/utils/printBanner";
 
 import { ui } from "../utils/cli-ui";
@@ -38,12 +39,12 @@ export const createPatch = async (options: PatchOptions) => {
     return;
   }
 
-  const config = await loadConfig({ channel: options.channel, platform });
-  const databasePlugin = config.database;
-  const storagePlugin = config.storage;
-  assertStorageOperations(storagePlugin, ["get", "put", "delete"]);
-
+  const server = await loadServer(
+    await loadConfig({ channel: options.channel, platform }),
+  );
   try {
+    const storageAdapter = requireStorage(server);
+    assertStorageOperations(storageAdapter, ["get", "put", "delete"]);
     p.note(
       [
         ui.kv("Channel", ui.channel(options.channel)),
@@ -60,8 +61,8 @@ export const createPatch = async (options: PatchOptions) => {
         bundleId: options.bundleId,
       },
       {
-        databasePlugin,
-        storagePlugin,
+        core: server.core,
+        storageAdapter,
       },
       {
         makePrimary: true,
@@ -73,6 +74,6 @@ export const createPatch = async (options: PatchOptions) => {
     console.error(error);
     process.exit(1);
   } finally {
-    await databasePlugin.dispose?.();
+    await server.dispose();
   }
 };

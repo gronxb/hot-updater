@@ -1,41 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { QueryClient } from "@tanstack/react-query";
-import { redirect } from "@tanstack/react-router";
 
 import {
   createApiKeyRpc,
-  getApiKeyCapabilityRpc,
   listApiKeysRpc,
   revokeApiKeyRpc,
 } from "./api-keys-rpc";
 
 export const apiKeyQueryKeys = {
-  capability: ["api-keys", "capability"] as const,
   list: ["api-keys", "list"] as const,
-};
-
-export const getApiKeyCapabilityQueryOptions = () => ({
-  queryKey: apiKeyQueryKeys.capability,
-  queryFn: () => getApiKeyCapabilityRpc(),
-  staleTime: Infinity,
-});
-
-export const useApiKeyCapabilityQuery = () =>
-  useQuery(getApiKeyCapabilityQueryOptions());
-
-export const ensureApiKeyRouteAccess = async (
-  queryClient: QueryClient,
-): Promise<void> => {
-  const capability = await queryClient.ensureQueryData(
-    getApiKeyCapabilityQueryOptions(),
-  );
-  if (!capability.apiKeys) {
-    throw redirect({
-      to: "/",
-      search: {},
-      replace: true,
-    });
-  }
 };
 
 export const useApiKeysQuery = () =>

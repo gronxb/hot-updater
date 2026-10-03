@@ -1,5 +1,3 @@
-import { createHash } from "node:crypto";
-
 import {
   CloudFrontClient,
   CreateInvalidationCommand,
@@ -7,816 +5,247 @@ import {
 } from "@aws-sdk/client-cloudfront";
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import {
+  BatchGetCommand,
   DynamoDBDocumentClient,
-  GetCommand,
-  PutCommand,
-  QueryCommand,
-  ScanCommand,
   TransactWriteCommand,
 } from "@aws-sdk/lib-dynamodb";
 import {
-  bundleToRow,
-  type BundleEventRow,
-  type BundlePatchRow,
-  MAX_BUNDLE_PATCHES,
+  coreSchema,
+  coreSettings,
+  createKvAdapter,
+  type PhysicalTable,
+  type WriteOp,
+  SETTINGS_TABLE,
+  encodeKvKey,
 } from "@hot-updater/plugin-core";
-import { mockClient } from "aws-sdk-client-mock";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
-import {
-  DYNAMODB_INSIGHTS_EVENT_IDS_PARTITION,
-  DYNAMODB_INSIGHTS_INSTALLATIONS_PARTITION,
-  DYNAMODB_UPDATE_INDEX_NAME,
-  createDynamoDBAggregateMutations,
-  dynamoDB,
-  toDynamoDBBundleItem,
-  toDynamoDBPatchItem,
-} from "./dynamoDB";
+import { type DynamoDBConfig, dynamoDB } from "./dynamoDB";
+import { createDynamoDBStore, DYNAMODB_TTL_ATTRIBUTE } from "./dynamoDBStore";
 
-const cloudFront = mockClient(CloudFrontClient);
-const documentClient = mockClient(DynamoDBDocumentClient);
-const productionChannel = {
-  id: "00000000-0000-0000-0000-000000000100",
-  name: "production",
-} as const;
-const cloudFrontInvalidation = (status: string) => ({
-  Id: "invalidation-id",
-  Status: status,
-  CreateTime: new Date(0),
-  InvalidationBatch: {
-    CallerReference: "fixture",
-    Paths: { Quantity: 0, Items: [] },
-  },
-});
-const bundleRow = bundleToRow({
-  id: "00000000-0000-0000-0000-000000000001",
-  platform: "ios",
-  fileHash: "hash",
-  gitCommitHash: null,
-  storageUri: "storage://bundle",
-  archiveByteSize: 3_000_000_001,
-  metadata: {},
-});
+const TABLE_NAME = "hot-updater-metadata";
+const DISTRIBUTION_ID = "distribution-id";
 
-const commitBundle = (plugin: ReturnType<typeof dynamoDB>) =>
-  plugin.commit({
-    changes: [
-      {
-        model: "channels",
-        operation: "insert",
-        row: productionChannel,
-        onConflict: "ignore",
-      },
-      { model: "bundles", operation: "insert", row: bundleRow },
-    ],
-  });
+const config = {
+  cloudfrontDistributionId: DISTRIBUTION_ID,
+  region: "us-east-1",
+  tableName: TABLE_NAME,
+} satisfies DynamoDBConfig;
 
-const insightsEvent = (index: number): BundleEventRow => ({
-  id: `00000000-0000-7000-8000-${String(index).padStart(12, "0")}`,
-  type: "UPDATE_APPLIED",
-  install_id: `install-${index}`,
-  user_id: null,
-  metadata: {
-    username: null,
-    cohort: "0",
-    update_strategy: "appVersion",
-    fingerprint_hash: null,
-    sdk_version: null,
-  },
-  from_release_id: null,
-  from_bundle_id: bundleRow.id,
-  to_release_id: null,
-  to_bundle_id: bundleRow.id,
-  platform: "ios",
-  app_version: "1.0.0",
-  channel: productionChannel.name,
+/** The settings items the schema fence reads before the first write. */
+const settingsItems = Object.entries(coreSettings).map(([key, value]) => ({
+  pk: SETTINGS_TABLE.name,
+  sk: encodeKvKey([key]),
+  key,
+  value,
+  _v: 0,
+}));
 
-  received_at_ms: index,
-});
+/** A Release Catalog insert; DynamoDB is mocked, so only its key matters. */
+const catalogInsert: WriteOp = {
+  type: "insert",
+  table: coreSchema.models.get("release_catalogs")!.table,
+  row: { scope_key: "v1:app-version:ios:cHJvZHVjdGlvbg", _v: 0 },
+};
 
-const insightsInstallation = (
-  index: number,
-  userId: string,
-): BundleEventRow => ({ ...insightsEvent(index), user_id: userId });
+/** DynamoDB holding the schema settings, where every transaction commits. */
+const mockDynamoDB = () =>
+  vi
+    .spyOn(DynamoDBDocumentClient.prototype, "send")
+    .mockImplementation(async (command: unknown) => {
+      if (command instanceof BatchGetCommand) {
+        return { Responses: { [TABLE_NAME]: settingsItems } } as never;
+      }
+      if (command instanceof TransactWriteCommand) return {} as never;
+      throw new Error("Unexpected command");
+    });
 
-describe("dynamoDB CloudFront lifecycle", () => {
-  beforeEach(() => {
-    cloudFront.reset();
-    documentClient.reset();
-    cloudFront.on(CreateInvalidationCommand).resolves({});
-    documentClient.on(GetCommand).resolves({});
-    documentClient.on(PutCommand).resolves({});
-    documentClient.on(QueryCommand).resolves({ Items: [] });
-    documentClient.on(ScanCommand).resolves({ Items: [] });
-    documentClient.on(TransactWriteCommand).resolves({});
-  });
+const mockCloudFront = () =>
+  vi.spyOn(CloudFrontClient.prototype, "send").mockResolvedValue({} as never);
 
+describe("dynamoDB CloudFront invalidation", () => {
   afterEach(() => {
     vi.useRealTimers();
+    vi.restoreAllMocks();
   });
 
-  it("keeps the maximum disjoint patch replacement below 100 actions", async () => {
-    const owner = {
-      ...bundleRow,
-      id: "00000000-0000-0000-0000-000000000900",
-    };
-    const patch = (prefix: string, index: number): BundlePatchRow => {
-      const baseId = `00000000-0000-0000-${prefix}-${String(index).padStart(12, "0")}`;
-      return {
-        id: `${owner.id}:${baseId}`,
-        bundle_id: owner.id,
-        base_bundle_id: baseId,
-        base_file_hash: `${prefix}${index.toString(16)}`.padEnd(64, "a"),
-        patch_file_hash: `${prefix}${index.toString(16)}`.padEnd(64, "b"),
-        patch_storage_uri: `storage://patch-${prefix}-${index}`,
-        byte_size: 1,
-        order_index: index,
-      };
-    };
-    const current = Array.from({ length: MAX_BUNDLE_PATCHES }, (_, index) =>
-      patch("7000", index),
-    );
-    const next = Array.from({ length: MAX_BUNDLE_PATCHES }, (_, index) =>
-      patch("8000", index),
-    );
-    documentClient.on(GetCommand).resolves({
-      Item: toDynamoDBBundleItem(owner, 1, current.length, current.length),
-    });
-    documentClient.on(QueryCommand).resolves({
-      Items: current.map((row) => toDynamoDBPatchItem(row)),
-    });
-    const client = DynamoDBDocumentClient.from(
-      new DynamoDBClient({
-        credentials: { accessKeyId: "test", secretAccessKey: "test" },
-        region: "us-east-1",
-      }),
-    );
-    const mutations = createDynamoDBAggregateMutations({
-      client,
-      tableName: "hot-updater-metadata",
-    });
+  it("gives core a purge that invalidates the update-check routes", async () => {
+    const send = mockCloudFront();
+    const database = dynamoDB(config);
 
-    await expect(
-      mutations.updateBundleWithPatches({
-        bundleId: owner.id,
-        patches: next,
-        update: {},
-      }),
-    ).resolves.toBe(true);
-    expect(
-      documentClient.commandCalls(TransactWriteCommand)[0]?.args[0].input
-        .TransactItems,
-    ).toHaveLength(97);
+    await database.onCachedRoutesChange?.();
 
-    documentClient.resetHistory();
-    await expect(
-      mutations.updateBundleWithPatches({
-        bundleId: owner.id,
-        patches: [...next, patch("8000", MAX_BUNDLE_PATCHES)],
-        update: {},
-      }),
-    ).rejects.toThrow("invalid-data");
-    expect(documentClient.commandCalls(TransactWriteCommand)).toHaveLength(0);
-  });
-
-  it("invalidates cached update checks after a successful commit", async () => {
-    // Given
-    const plugin = dynamoDB({
-      cloudfrontDistributionId: "distribution-id",
-      region: "us-east-1",
-      tableName: "hot-updater-metadata",
-    });
-
-    // When
-    await commitBundle(plugin);
-
-    // Then
-    expect(
-      cloudFront.commandCalls(CreateInvalidationCommand)[0]?.args[0].input,
-    ).toMatchObject({
-      DistributionId: "distribution-id",
-      InvalidationBatch: {
-        Paths: { Items: ["/release-catalogs/*"] },
+    expect(send).toHaveBeenCalledTimes(1);
+    const [command] = send.mock.calls[0]!;
+    expect(command).toBeInstanceOf(CreateInvalidationCommand);
+    expect(command).toMatchObject({
+      input: {
+        DistributionId: DISTRIBUTION_ID,
+        InvalidationBatch: {
+          Paths: { Quantity: 1, Items: ["/release-catalogs/*"] },
+        },
       },
     });
-    expect(cloudFront.commandCalls(GetInvalidationCommand)).toHaveLength(0);
-
-    await plugin.dispose?.();
+    await database.dispose?.();
   });
 
-  it("waits for invalidation completion when configured", async () => {
-    // Given
+  it("leaves the choice of writes to core: a catalog write through the adapter purges nothing", async () => {
+    mockDynamoDB();
+    const send = mockCloudFront();
+    const database = dynamoDB(config);
+
+    await expect(database.adapter.write([catalogInsert])).resolves.toEqual({
+      ok: true,
+    });
+
+    expect(send).not.toHaveBeenCalled();
+    await database.dispose?.();
+  });
+
+  it("has no purge without a distribution", async () => {
+    const send = mockCloudFront();
+    const database = dynamoDB({ region: "us-east-1", tableName: TABLE_NAME });
+
+    expect(database.onCachedRoutesChange).toBeUndefined();
+    expect(send).not.toHaveBeenCalled();
+    await database.dispose?.();
+  });
+
+  it("waits for the invalidation to complete when configured", async () => {
     vi.useFakeTimers();
-    cloudFront.on(CreateInvalidationCommand).resolves({
-      Invalidation: cloudFrontInvalidation("InProgress"),
-    });
-    cloudFront.on(GetInvalidationCommand).resolves({
-      Invalidation: cloudFrontInvalidation("Completed"),
-    });
-    const plugin = dynamoDB({
-      cloudfrontDistributionId: "distribution-id",
-      region: "us-east-1",
-      shouldWaitForInvalidation: true,
-      tableName: "hot-updater-metadata",
-    });
-
-    // When
-    const mutation = commitBundle(plugin);
-    await vi.advanceTimersByTimeAsync(2_000);
-    await mutation;
-
-    // Then
-    expect(cloudFront.commandCalls(GetInvalidationCommand)).toHaveLength(1);
-
-    await plugin.dispose?.();
-  });
-
-  it("uses the database factory naming convention", async () => {
-    // Given
-    const plugin = dynamoDB({
-      region: "us-east-1",
-      tableName: "hot-updater-metadata",
-    });
-
-    // Then
-    expect(plugin.name).toBe("dynamoDB");
-
-    await plugin.dispose?.();
-  });
-
-  it("exposes only the nested official database contract", async () => {
-    const plugin = dynamoDB({
-      region: "us-east-1",
-      tableName: "hot-updater-metadata",
-    });
-
-    expect(plugin.models.bundles).toBeDefined();
-    expect(plugin.models.bundlePatches).toBeDefined();
-    expect(plugin.models.channels).toBeDefined();
-    expect(plugin.models.insights).toBeDefined();
-    expect(plugin.models.apiKeys).toBeDefined();
-    expect(plugin).not.toHaveProperty("queries");
-    expect(typeof plugin.commit).toBe("function");
-    expect(plugin).not.toHaveProperty("bundles");
-    expect(plugin).not.toHaveProperty("bundlePatches");
-    expect(plugin).not.toHaveProperty("insights");
-    expect(plugin).not.toHaveProperty("apiKeys");
-    expect(plugin).not.toHaveProperty("getUpdateInfo");
-    expect(plugin).not.toHaveProperty("componentData");
-    expect(plugin).not.toHaveProperty("create");
-    expect(plugin).not.toHaveProperty("findMany");
-    expect(plugin).not.toHaveProperty("transaction");
-    expect(plugin).not.toHaveProperty("onDatabaseUpdated");
-    expect(plugin).not.toHaveProperty("onUnmount");
-
-    await plugin.dispose?.();
-  });
-
-  it("lists channels from their dedicated partition without scanning", async () => {
-    documentClient.on(QueryCommand).resolves({ Items: [] });
-    const plugin = dynamoDB({
-      region: "us-east-1",
-      tableName: "hot-updater-metadata",
-    });
-
-    await expect(plugin.models.channels.list({})).resolves.toEqual({
-      channels: [],
-    });
-
-    expect(documentClient.commandCalls(QueryCommand)).toHaveLength(1);
-    const query = documentClient.commandCalls(QueryCommand)[0]?.args[0].input;
-    expect(query).toMatchObject({
-      ConsistentRead: true,
-    });
-    expect(query?.KeyConditionExpression).toMatch(/^#\w+ = :\w+$/);
-    expect(Object.values(query?.ExpressionAttributeValues ?? {})).toContain(
-      "channels",
+    const send = mockCloudFront().mockImplementation(
+      async (command: unknown) =>
+        ({
+          Invalidation: {
+            Id: "invalidation-id",
+            Status:
+              command instanceof GetInvalidationCommand
+                ? "Completed"
+                : "InProgress",
+          },
+        }) as never,
     );
-    expect(documentClient.commandCalls(ScanCommand)).toHaveLength(0);
-    await plugin.dispose?.();
+    const database = dynamoDB({ ...config, shouldWaitForInvalidation: true });
+
+    const purge = database.onCachedRoutesChange?.();
+    await vi.advanceTimersByTimeAsync(2_000);
+
+    await expect(purge).resolves.toBeUndefined();
+    expect(send).toHaveBeenCalledTimes(2);
+    expect(send.mock.calls[1]?.[0]).toBeInstanceOf(GetInvalidationCommand);
+    await database.dispose?.();
   });
 
-  it.each([
-    { from_release_id: undefined },
-    { to_release_id: undefined },
-    { from_bundle_id: null },
-    { to_bundle_id: null },
-    { type: "UNCHANGED", from_bundle_id: bundleRow.id, update_strategy: null },
-  ])("rejects an invalid stored Insights row", async (overrides) => {
-    documentClient.on(QueryCommand).resolves({
-      Items: [
-        {
-          pk: "bundle_events",
-          sk: "0000000000000001#event",
-          version: 1,
-          row: { ...insightsEvent(1), ...overrides },
-        },
-      ],
-    });
-    const plugin = dynamoDB({
-      region: "us-east-1",
-      tableName: "hot-updater-metadata",
-    });
+  it("only warns when the invalidation fails", async () => {
+    mockCloudFront().mockRejectedValue(new Error("Access denied"));
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const database = dynamoDB(config);
 
-    await expect(
-      plugin.models.insights.listEvents({
-        filter: { kind: "all" },
-        beforeReceivedAtMs: 2,
-        limit: 1,
+    await expect(database.onCachedRoutesChange?.()).resolves.toBeUndefined();
+
+    expect(warn).toHaveBeenCalledWith(
+      "[hot-updater/aws] CloudFront invalidation failed; continuing without cache invalidation.",
+      { distributionId: DISTRIBUTION_ID, error: "Access denied" },
+    );
+    await database.dispose?.();
+  });
+
+  it("destroys its DynamoDB and CloudFront clients on dispose", async () => {
+    const destroyDynamoDB = vi.spyOn(DynamoDBClient.prototype, "destroy");
+    const destroyCloudFront = vi.spyOn(CloudFrontClient.prototype, "destroy");
+
+    await dynamoDB(config).dispose?.();
+
+    expect(destroyDynamoDB).toHaveBeenCalledTimes(1);
+    expect(destroyCloudFront).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("dynamoDB TTL", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  /** A table whose rows expire a day after `at`, with one index copy. */
+  const expiring: PhysicalTable = {
+    name: "expiring",
+    columns: [
+      { name: "id", type: "string", nullable: false },
+      { name: "grp", type: "string", nullable: false },
+      { name: "at", type: "integer", nullable: false },
+      { name: "hits", type: "integer", nullable: false },
+      { name: "_v", type: "integer", nullable: false },
+    ],
+    key: ["id"],
+    indexes: [{ name: "byGroup", eq: ["grp"], sort: ["at"] }],
+    retention: { column: "at", ms: 86_400_000 },
+  };
+
+  const createAdapter = () =>
+    createKvAdapter({
+      store: createDynamoDBStore({
+        client: new DynamoDBClient({ region: "us-east-1" }),
+        tableName: TABLE_NAME,
       }),
-    ).rejects.toMatchObject({ name: "DynamoDBStoredItemError" });
+    });
 
-    await plugin.dispose?.();
+  it("puts the expiry, in epoch seconds, on the row item and its index copy", async () => {
+    const send = vi
+      .spyOn(DynamoDBDocumentClient.prototype, "send")
+      .mockResolvedValue({} as never);
+    const adapter = createAdapter();
+
+    await adapter.write([
+      {
+        type: "insert",
+        table: expiring,
+        row: { id: "a", grp: "g", at: 1_500, hits: 0, _v: 0 },
+      },
+      {
+        type: "increment",
+        table: { ...expiring, name: "counts", indexes: [] },
+        key: ["c"],
+        by: { hits: 1 },
+        init: { id: "c", grp: "g", at: 2_000, hits: 0, _v: 0 },
+      },
+    ]);
+
+    const [command] = send.mock.calls[0]!;
+    const items = (command as TransactWriteCommand).input.TransactItems!;
+    const puts = items.flatMap((item) => (item.Put ? [item.Put.Item!] : []));
+    expect(puts).toHaveLength(2);
+    // 1,500 ms plus a day, rounded up to a whole second.
+    for (const put of puts) {
+      expect(put[DYNAMODB_TTL_ATTRIBUTE]).toBe(86_402);
+    }
+    const update = items.find((item) => item.Update)!.Update!;
+    expect(update.UpdateExpression).toContain("if_not_exists");
+    expect(Object.values(update.ExpressionAttributeNames!)).toContain(
+      DYNAMODB_TTL_ATTRIBUTE,
+    );
+    expect(Object.values(update.ExpressionAttributeValues!)).toContain(86_402);
   });
 
-  it("preserves explicit null Release ids on a stored Insights row", async () => {
-    const row = insightsEvent(1);
-    documentClient.on(QueryCommand).resolves({
-      Items: [
-        {
-          pk: "bundle_events",
-          sk: "0000000000000001#event",
-          version: 1,
-          row,
-        },
-      ],
-    });
-    const plugin = dynamoDB({
-      region: "us-east-1",
-      tableName: "hot-updater-metadata",
-    });
-
-    await expect(
-      plugin.models.insights.listEvents({
-        filter: { kind: "all" },
-        beforeReceivedAtMs: 2,
-        limit: 1,
-      }),
-    ).resolves.toEqual([row]);
-
-    await plugin.dispose?.();
-  });
-
-  it("uses an exclusive key range after an event cursor without scanning", async () => {
-    const row = insightsEvent(500);
-    documentClient.on(QueryCommand).resolves({
-      Items: [
-        {
-          pk: "bundle_events",
-          sk: "0000000000000500#event",
-          version: 1,
-          row,
-        },
-      ],
-    });
-    const plugin = dynamoDB({
-      region: "us-east-1",
-      tableName: "hot-updater-metadata",
-    });
-
-    await expect(
-      plugin.models.insights.listEvents({
-        filter: { kind: "all" },
-        beforeReceivedAtMs: 600,
-        after: {
-          receivedAtMs: 501,
-          id: insightsEvent(501).id,
-        },
-        limit: 101,
-      }),
-    ).resolves.toEqual([row]);
-
-    const query = documentClient.commandCalls(QueryCommand)[0]?.args[0].input;
-    expect(query).toMatchObject({
-      ConsistentRead: true,
-      Limit: 101,
-      ScanIndexForward: false,
-    });
-    expect(query?.ExpressionAttributeValues).toMatchObject({
-      ":partition": "bundle_events",
-      ":upper": `0000000000000501#${insightsEvent(501).id.slice(0, -1)}0~`,
-    });
-    expect(documentClient.commandCalls(ScanCommand)).toHaveLength(0);
-
-    await plugin.dispose?.();
-  });
-
-  it("continues an event page after DynamoDB's response-size boundary", async () => {
-    const rows = [insightsEvent(3), insightsEvent(2), insightsEvent(1)];
-    const lastEvaluatedKey = {
-      pk: "bundle_events",
-      sk: `0000000000000003#${rows[0]?.id}`,
-    };
-    documentClient
-      .on(QueryCommand)
-      .resolvesOnce({
-        Items: [
+  it("reads a row without its TTL attribute", async () => {
+    vi.spyOn(DynamoDBDocumentClient.prototype, "send").mockResolvedValue({
+      Responses: {
+        [TABLE_NAME]: [
           {
-            ...lastEvaluatedKey,
-            version: 1,
-            row: rows[0],
+            pk: "expiring",
+            sk: encodeKvKey(["a"]),
+            id: "a",
+            grp: "g",
+            at: 1_500,
+            hits: 0,
+            _v: 0,
+            [DYNAMODB_TTL_ATTRIBUTE]: 86_402,
           },
         ],
-        LastEvaluatedKey: lastEvaluatedKey,
-      })
-      .resolvesOnce({
-        Items: rows.slice(1).map((row) => ({
-          pk: "bundle_events",
-          sk: `${String(row.received_at_ms).padStart(16, "0")}#${row.id}`,
-          version: 1,
-          row,
-        })),
-      });
-    const plugin = dynamoDB({
-      region: "us-east-1",
-      tableName: "hot-updater-metadata",
-    });
-
-    await expect(
-      plugin.models.insights.listEvents({
-        filter: { kind: "all" },
-        beforeReceivedAtMs: 4,
-        limit: 3,
-      }),
-    ).resolves.toEqual(rows);
-
-    const queries = documentClient.commandCalls(QueryCommand);
-    expect(queries).toHaveLength(2);
-    expect(queries[1]?.args[0].input).toMatchObject({
-      ExclusiveStartKey: lastEvaluatedKey,
-      Limit: 2,
-    });
-
-    await plugin.dispose?.();
-  });
-
-  it("reads installation movement from the existing secondary index", async () => {
-    const row = insightsEvent(3);
-    documentClient.on(QueryCommand).resolves({
-      Items: [
-        {
-          pk: "bundle_events",
-          sk: "0000000000000003#event",
-          version: 1,
-          row,
-        },
-      ],
-    });
-    const plugin = dynamoDB({
-      region: "us-east-1",
-      tableName: "hot-updater-metadata",
-    });
-
-    await expect(
-      plugin.models.insights.listEvents({
-        filter: {
-          kind: "installationMovement",
-          installId: row.install_id,
-        },
-        beforeReceivedAtMs: 4,
-        limit: 10,
-      }),
-    ).resolves.toEqual([row]);
-
-    expect(
-      documentClient.commandCalls(QueryCommand)[0]?.args[0].input,
-    ).toMatchObject({
-      IndexName: DYNAMODB_UPDATE_INDEX_NAME,
-      Limit: 10,
-      ScanIndexForward: false,
-      ExpressionAttributeValues: {
-        ":partition": `_hot-updater#insights-movement#${row.install_id}`,
-        ":upper": '0000000000000004"~',
       },
-    });
+    } as never);
 
-    await plugin.dispose?.();
-  });
+    const [row] = await createAdapter().get(expiring, [["a"]]);
 
-  it("continues a user page after DynamoDB's response-size boundary", async () => {
-    const userId = "user-1";
-    const partition = `_hot-updater#insights-user#${userId}`;
-    const rows = [
-      insightsInstallation(1, userId),
-      insightsInstallation(2, userId),
-      insightsInstallation(3, userId),
-    ];
-    const toItem = (row: BundleEventRow) => ({
-      pk: partition,
-      sk: row.install_id,
-      order_key: `${String(row.received_at_ms).padStart(16, "0")}#${row.id}`,
-      version: 1,
-      row,
-    });
-    const lastEvaluatedKey = {
-      pk: partition,
-      sk: rows[0]?.install_id,
-    };
-    for (const row of rows) {
-      documentClient
-        .on(GetCommand, {
-          Key: {
-            pk: DYNAMODB_INSIGHTS_INSTALLATIONS_PARTITION,
-            sk: row.install_id,
-          },
-        })
-        .resolves({
-          Item: {
-            ...toItem(row),
-            pk: DYNAMODB_INSIGHTS_INSTALLATIONS_PARTITION,
-          },
-        });
-    }
-    documentClient
-      .on(QueryCommand)
-      .resolvesOnce({
-        Items: [toItem(rows[0]!)],
-        LastEvaluatedKey: lastEvaluatedKey,
-      })
-      .resolvesOnce({ Items: rows.slice(1).map(toItem) });
-    const plugin = dynamoDB({
-      region: "us-east-1",
-      tableName: "hot-updater-metadata",
-    });
-
-    await expect(
-      plugin.models.insights.findLatestEvents({
-        userId,
-        limit: 3,
-      }),
-    ).resolves.toEqual(rows);
-
-    const queries = documentClient.commandCalls(QueryCommand);
-    expect(queries).toHaveLength(2);
-    expect(queries[0]?.args[0].input.ExpressionAttributeNames).toEqual({
-      "#pk": "pk",
-    });
-    expect(queries[1]?.args[0].input).toMatchObject({
-      ExclusiveStartKey: lastEvaluatedKey,
-      Limit: 2,
-    });
-
-    await plugin.dispose?.();
-  });
-
-  it("atomically records the ID, bundle index, latest, user, and compact scope rows", async () => {
-    const previousEvent = { ...insightsEvent(1), user_id: "old-user" };
-    const previous = previousEvent;
-    documentClient
-      .on(GetCommand, {
-        Key: {
-          pk: DYNAMODB_INSIGHTS_INSTALLATIONS_PARTITION,
-          sk: previous.install_id,
-        },
-      })
-      .resolves({
-        Item: {
-          pk: DYNAMODB_INSIGHTS_INSTALLATIONS_PARTITION,
-          sk: previous.install_id,
-          order_key: `0000000000000001#${previous.id}`,
-          version: 1,
-          row: previous,
-        },
-      });
-    const next = {
-      ...insightsEvent(2),
-      install_id: previous.install_id,
-      user_id: "new-user",
-    };
-    const plugin = dynamoDB({
-      region: "us-east-1",
-      tableName: "hot-updater-metadata",
-    });
-
-    await plugin.models.insights.recordEvent({
-      event: next,
-    });
-
-    const transaction =
-      documentClient.commandCalls(TransactWriteCommand)[0]?.args[0].input
-        .TransactItems;
-    expect(transaction).toHaveLength(12);
-    expect(
-      transaction?.filter((item) =>
-        String(item.Put?.Item?.pk).startsWith(
-          "_hot-updater#insights-overview#",
-        ),
-      ),
-    ).toHaveLength(5);
-    expect(
-      transaction?.find((item) =>
-        String(item.Put?.Item?.pk).startsWith("_hot-updater#insights-scope#"),
-      )?.Put?.Item,
-    ).toEqual({
-      pk: expect.stringMatching(/^_hot-updater#insights-scope#[0-9a-f]{64}$/),
-      sk: next.install_id,
-      received_at_ms: next.received_at_ms,
-      type: next.type,
-      from_bundle_id: next.from_bundle_id,
-      to_bundle_id: next.to_bundle_id,
-    });
-    expect(
-      transaction?.find(
-        (item) => item.Put?.Item?.pk === DYNAMODB_INSIGHTS_EVENT_IDS_PARTITION,
-      )?.Put?.Item,
-    ).toEqual({
-      pk: DYNAMODB_INSIGHTS_EVENT_IDS_PARTITION,
-      sk: next.id,
-    });
-    expect(transaction).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          Put: expect.objectContaining({
-            Item: expect.objectContaining({
-              pk: DYNAMODB_INSIGHTS_EVENT_IDS_PARTITION,
-              sk: next.id,
-            }),
-            ConditionExpression: "attribute_not_exists(#pk)",
-          }),
-        }),
-        expect.objectContaining({
-          Delete: expect.objectContaining({
-            Key: {
-              pk: "_hot-updater#insights-user#old-user",
-              sk: previous.install_id,
-            },
-          }),
-        }),
-        expect.objectContaining({
-          Put: expect.objectContaining({
-            Item: expect.objectContaining({
-              pk: "_hot-updater#insights-user#new-user",
-              sk: previous.install_id,
-            }),
-          }),
-        }),
-      ]),
-    );
-
-    await plugin.dispose?.();
-  });
-
-  it("counts every compact scope page with a stable install-ID cursor", async () => {
-    const partition = `_hot-updater#insights-scope#${createHash("sha256")
-      .update(JSON.stringify(["ios", "production"]), "utf8")
-      .digest("hex")}`;
-    const queryMock = documentClient.on(QueryCommand);
-    for (let index = 1; index <= 11; index++) {
-      queryMock.resolvesOnce({
-        Count: 5_000,
-        LastEvaluatedKey: {
-          pk: partition,
-          sk: `active-page-${index}`,
-        },
-      });
-    }
-    queryMock.resolvesOnce({ Count: 1 });
-    const plugin = dynamoDB({
-      region: "us-east-1",
-      tableName: "hot-updater-metadata",
-    });
-
-    await expect(
-      plugin.models.insights.countLatestEvents({
-        platform: "ios",
-        channel: "production",
-        sinceMs: 1_000,
-      }),
-    ).resolves.toBe(55_001);
-
-    const queries = documentClient.commandCalls(QueryCommand);
-    expect(queries).toHaveLength(12);
-    for (const query of queries) {
-      expect(query.args[0].input).toMatchObject({
-        ConsistentRead: true,
-        Select: "COUNT",
-        ExpressionAttributeValues: {
-          ":pk": partition,
-          ":since": 1_000,
-        },
-      });
-    }
-    expect(queries[1]?.args[0].input.ExclusiveStartKey).toEqual({
-      pk: partition,
-      sk: "active-page-1",
-    });
-    expect(documentClient.commandCalls(ScanCommand)).toHaveLength(0);
-
-    await plugin.dispose?.();
-  });
-
-  it("continues native bundle COUNT pages and shares the list range", async () => {
-    const filter = {
-      platform: "ios" as const,
-      channel: "production",
-      type: "RECOVERED" as const,
-      fromBundleId: bundleRow.id,
-    };
-    const partition = `_hot-updater#insights-bundle#${createHash("sha256")
-      .update(
-        JSON.stringify([
-          filter.platform,
-          filter.channel,
-          filter.type,
-          filter.fromBundleId,
-        ]),
-        "utf8",
-      )
-      .digest("hex")}`;
-    const key = { pk: partition, sk: "0000000000000002#event" };
-    documentClient
-      .on(QueryCommand)
-      .resolvesOnce({ Count: 0, LastEvaluatedKey: key })
-      .resolvesOnce({ Count: 4 });
-    const plugin = dynamoDB({
-      region: "us-east-1",
-      tableName: "hot-updater-metadata",
-    });
-    await expect(
-      plugin.models.insights.countEvents({
-        filter,
-        sinceMs: 1,
-        beforeReceivedAtMs: 4,
-      }),
-    ).resolves.toBe(4);
-    const queries = documentClient.commandCalls(QueryCommand);
-    expect(queries).toHaveLength(2);
-    expect(queries[1]?.args[0].input).toMatchObject({
-      ExclusiveStartKey: key,
-      Select: "COUNT",
-    });
-    const countRange = queries[0]?.args[0].input;
-    documentClient.on(QueryCommand).resolves({ Items: [] });
-    await plugin.models.insights.listEvents({
-      filter: { kind: "bundle", ...filter },
-      sinceMs: 1,
-      beforeReceivedAtMs: 4,
-      limit: 10,
-    });
-    const listRange =
-      documentClient.commandCalls(QueryCommand)[2]?.args[0].input;
-    expect(listRange?.KeyConditionExpression).toBe(
-      countRange?.KeyConditionExpression,
-    );
-    expect(listRange?.ExpressionAttributeValues).toEqual(
-      countRange?.ExpressionAttributeValues,
-    );
-    expect(countRange?.ExpressionAttributeValues).toMatchObject({
-      ":partition": partition,
-      ":since": "0000000000000001#",
-    });
-    expect(documentClient.commandCalls(ScanCommand)).toHaveLength(0);
-    await plugin.dispose?.();
-  });
-
-  it("fails a multi-page bundle count instead of returning the earlier partial count", async () => {
-    documentClient
-      .on(QueryCommand)
-      .resolvesOnce({
-        Count: 9,
-        LastEvaluatedKey: { pk: "bundle-range", sk: "next" },
-      })
-      .rejectsOnce(new Error("count query failed"));
-    const plugin = dynamoDB({
-      region: "us-east-1",
-      tableName: "hot-updater-metadata",
-    });
-    await expect(
-      plugin.models.insights.countEvents({
-        filter: {
-          platform: "ios",
-          channel: "production",
-          type: "UPDATE_APPLIED",
-          toBundleId: bundleRow.id,
-        },
-        sinceMs: 0,
-        beforeReceivedAtMs: 100,
-      }),
-    ).rejects.toThrow("count query failed");
-    await plugin.dispose?.();
-  });
-
-  it("records on the initial table without preparing schema metadata", async () => {
-    const plugin = dynamoDB({
-      region: "us-east-1",
-      tableName: "hot-updater-metadata",
-    });
-    const event = insightsEvent(1);
-    await plugin.models.insights.recordEvent({
-      event,
-    });
-
-    expect(
-      documentClient
-        .commandCalls(GetCommand)
-        .map(({ args }) => args[0].input.Key),
-    ).toEqual([
-      { pk: DYNAMODB_INSIGHTS_EVENT_IDS_PARTITION, sk: event.id },
-      { pk: DYNAMODB_INSIGHTS_INSTALLATIONS_PARTITION, sk: event.install_id },
-    ]);
-    expect(documentClient.commandCalls(QueryCommand)).toHaveLength(0);
-    expect(documentClient.commandCalls(PutCommand)).toHaveLength(0);
-    expect(documentClient.commandCalls(TransactWriteCommand)).toHaveLength(1);
-    await plugin.dispose?.();
+    expect(row).toEqual({ id: "a", grp: "g", at: 1_500, hits: 0, _v: 0 });
   });
 });

@@ -9,10 +9,8 @@ import { addListener } from "./native";
 
 export type HotUpdaterState = {
   progress: number;
-  downloadedBytes: number | undefined;
-  totalBytes: number | undefined;
   isUpdateDownloaded: boolean;
-  artifactType: "archive" | "diff" | null;
+  artifactType: "diff" | null;
   details: HotUpdaterDiffProgressDetails | null;
 };
 
@@ -56,8 +54,6 @@ const areDiffDetailsEqual = (
 const areStatesEqual = (left: HotUpdaterState, right: HotUpdaterState) => {
   return (
     left.progress === right.progress &&
-    left.downloadedBytes === right.downloadedBytes &&
-    left.totalBytes === right.totalBytes &&
     left.isUpdateDownloaded === right.isUpdateDownloaded &&
     left.artifactType === right.artifactType &&
     areDiffDetailsEqual(left.details, right.details)
@@ -78,8 +74,6 @@ const normalizeDownloadPath = (value: string | undefined) => {
 const createHotUpdaterStore = () => {
   let state: HotUpdaterState = {
     progress: 0,
-    downloadedBytes: undefined,
-    totalBytes: undefined,
     isUpdateDownloaded: false,
     artifactType: null,
     details: null,
@@ -165,10 +159,6 @@ const createHotUpdaterStore = () => {
       nextState.details = state.details;
     }
 
-    if (nextState.artifactType !== "diff") {
-      nextState.details = null;
-    }
-
     if (areStatesEqual(state, nextState)) {
       return;
     }
@@ -180,19 +170,8 @@ const createHotUpdaterStore = () => {
   const applyProgressEvent = (event: HotUpdaterProgressEvent) => {
     setState({
       artifactType: event.artifactType,
-      details:
-        event.artifactType === "diff"
-          ? normalizeDiffDetails(event.details)
-          : null,
-      downloadedBytes:
-        event.artifactType === "archive"
-          ? normalizeByteCount(event.downloadedBytes)
-          : undefined,
+      details: normalizeDiffDetails(event.details),
       progress: event.progress,
-      totalBytes:
-        event.artifactType === "archive"
-          ? normalizeByteCount(event.totalBytes)
-          : undefined,
     });
   };
 

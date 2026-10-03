@@ -1,6 +1,9 @@
 // @vitest-environment node
-import type { InsightsModel } from "@hot-updater/plugin-core";
-import { describe, expect, it, vi } from "vitest";
+import {
+  createInsightsProvider,
+  type InsightsModel,
+} from "@hot-updater/server/plugins/insights";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { getRecoveryReport } from "./insightsRecovery";
 
@@ -8,6 +11,7 @@ const result = {
   coverage: { kind: "complete" as const, sinceMs: 0 },
   data: [
     {
+      // The model's field names; the report renames them.
       metrics: {
         downloads: 4,
         launches: 9,
@@ -19,6 +23,10 @@ const result = {
   ],
   measuredAtMs: 100,
 };
+
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 describe("release health aggregate query", () => {
   it("reads a channel/platform scope directly for the resolved period", async () => {
@@ -34,9 +42,10 @@ describe("release health aggregate query", () => {
     });
     expect(report).toMatchObject({
       downloads: 4,
-      launches: 9,
+      activeDays: 9,
       failedLaunches: 1,
-      uniqueUsers: 7,
+      activeInstallations: 7,
+      points: [{ startMs: 0, dailyActiveInstallations: 9, failedLaunches: 1 }],
     });
   });
 
@@ -67,19 +76,34 @@ describe("release health aggregate query", () => {
     });
   });
 
-  it("does not widen a rolling window past the current completed hour", async () => {
+  it("ends a rolling window with the current hour, where the reporting overview ends", async () => {
+    const now = 48 * 3_600_000 + 15 * 60_000;
+    vi.useFakeTimers({ now });
     const getReleaseActivity = vi.fn(async () => result);
-    await getRecoveryReport(
+    const report = await getRecoveryReport(
       { getReleaseActivity } as unknown as InsightsModel,
       { platform: "ios", channel: "production", window: "24h" },
-      48 * 3_600_000 + 15 * 60_000,
+      now,
     );
     expect(getReleaseActivity).toHaveBeenCalledWith({
       scope: { platform: "ios", channel: "production" },
       timeRange: {
-        start: 24 * 3_600_000,
-        end: 48 * 3_600_000,
+        start: 25 * 3_600_000,
+        end: 49 * 3_600_000,
       },
+    });
+    const overview = await createInsightsProvider({
+      countLatestEvents: async () => 0,
+    } as unknown as InsightsModel).getReportingOverview({
+      platform: "ios",
+      channel: "production",
+      window: "24h",
+    });
+    // Release health counters keep whole hours, so the period stays a rolling
+    // 24 hours; the overview starts with the UTC day that period reaches into.
+    expect(report).toMatchObject({
+      startMs: 25 * 3_600_000,
+      endMs: overview.beforeReceivedAtMs,
     });
   });
 });

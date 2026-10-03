@@ -40,6 +40,13 @@
     "fast-xml-parser": "5.7.2",
     "plist": "3.1.1",
     "typescript": "5.9.3",
-    "vue-tsc": "3.0.8"
+    "vue-tsc": "3.0.8",
+    "hot-updater": "workspace:*",
+    "@hot-updater/protocol": "workspace:*",
+    "@hot-updater/plugin-core": "workspace:*",
+    "@hot-updater/server": "workspace:*",
+    "@hot-updater/standalone": "workspace:*",
+    "@hot-updater/cli-tools": "workspace:*",
+    "@hot-updater/aws": "workspace:*"
   }
 }

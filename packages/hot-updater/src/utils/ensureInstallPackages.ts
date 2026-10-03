@@ -9,11 +9,11 @@ const ensurePackageVersion = (pkg: string) => {
   return pkg;
 };
 
-export const ensureInstallPackages = async (buildPluginPackages: {
+export const ensureInstallPackages = async (buildAdapterPackages: {
   dependencies: string[];
   devDependencies: string[];
 }) => {
-  await ensureInstall(buildPluginPackages, {
+  await ensureInstall(buildAdapterPackages, {
     versionResolver: ensurePackageVersion,
   });
 };

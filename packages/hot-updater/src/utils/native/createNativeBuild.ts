@@ -2,27 +2,27 @@ import fs from "fs";
 import path from "path";
 
 import { colors, getCwd, p } from "@hot-updater/cli-tools";
-import type { Platform } from "@hot-updater/core";
-import type { BuildPlugin } from "@hot-updater/plugin-core";
+import type { BuildAdapter } from "@hot-updater/plugin-core";
+import type { Platform } from "@hot-updater/protocol";
 
 export const createNativeBuild = async ({
   platform,
   outputPath,
-  buildPlugin,
+  buildAdapter,
   builder,
 }: {
   platform: Platform;
   outputPath: string;
-  buildPlugin: BuildPlugin;
+  buildAdapter: BuildAdapter;
   builder: () => Promise<{ buildDirectory: string; buildArtifactPath: string }>;
 }): Promise<void> => {
   // run prebuild hook
-  await buildPlugin.nativeBuild?.prebuild?.({ platform });
+  await buildAdapter.nativeBuild?.prebuild?.({ platform });
 
   const { buildDirectory } = await builder();
 
   // run postbuild hook
-  await buildPlugin.nativeBuild?.postbuild?.({ platform });
+  await buildAdapter.nativeBuild?.postbuild?.({ platform });
 
   // copy artifacts to outputPath
   await fs.promises.mkdir(outputPath, { recursive: true });

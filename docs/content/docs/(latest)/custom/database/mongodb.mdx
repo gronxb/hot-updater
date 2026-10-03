@@ -2,7 +2,6 @@
 title: "MongoDB"
 description: Build a self-hosted Hot Updater server with MongoDB.
 icon: mongodb
-version: "v0.22.0"
 ---
 
 ## Before you start
@@ -12,10 +11,13 @@ or your existing backend. Make the database and storage environment variables
 available to the server and schema commands. The React Native project's deploy
 configuration is a separate step.
 
-Run MongoDB as a replica set or sharded cluster and set `transactions: true`.
-Release and Release Catalog changes must commit atomically. With transactions
-disabled, commits with revision expectations or multiple changes are rejected,
-so a standalone MongoDB server cannot support the normal deployment workflow.
+Run MongoDB as a replica set or sharded cluster. Hot Updater runs every write
+in a transaction so that each change commits atomically, and a standalone
+MongoDB server cannot run them: its first write fails with
+`MongoTransactionUnsupportedError`. There is no option to write without
+transactions. For local development, a single-node replica set is enough:
+start `mongod` with `--replSet rs0`, then run `rs.initiate()` once in
+`mongosh`.
 
 ## Installation
 
@@ -42,6 +44,9 @@ export const client = new MongoClient(process.env.MONGODB_URI!);
 await client.connect();
 ```
 
+Hot Updater uses the client's default database: the one named in
+`MONGODB_URI`, or `test` when it names none.
+
 ## Hot Updater configuration
 
 Create the Hot Updater instance:
@@ -49,12 +54,14 @@ Create the Hot Updater instance:
 ```typescript title="src/hotUpdater.ts"
 import { createHotUpdater } from "@hot-updater/server";
 import { mongoAdapter } from "@hot-updater/server/adapters/mongodb"; // [!code ++]
+import { apiKeys } from "@hot-updater/server/plugins/api-keys";
+import { insights } from "@hot-updater/server/plugins/insights";
 import { s3Storage } from "@hot-updater/aws";
 import { client } from "./mongodb";
 
 export const hotUpdater = createHotUpdater({
-  database: mongoAdapter({ client, transactions: true }), // [!code ++]
-  clientAccess: { type: "api-key" },
+  database: mongoAdapter({ client }), // [!code ++]
+  plugins: [insights(), apiKeys()],
   storage: [
     s3Storage({
       region: "auto",
@@ -70,23 +77,40 @@ export const hotUpdater = createHotUpdater({
 });
 ```
 
+`mongoAdapter({ client })` takes only the client. It returns an engine database
+with the migrator that `hot-updater db migrate` runs. Each Hot Updater table is
+a collection whose documents use the row's key as `_id`, and each index is
+created as declared. Guarded changes are conditional on a document's version,
+and write conflicts are retried. `insights()` records app events, and
+`apiKeys()` protects the client routes with the `x-api-key` header.
+
 ## Schema generation
 
-Run the database migration to create the MongoDB collection and indexes.
+Run the database migration to create the MongoDB collections and indexes.
 
 ```bash
 npx hot-updater db migrate src/hotUpdater.ts
 ```
 
-This command targets `src/hotUpdater.ts` and creates all Hot Updater
-collections and indexes required by the active database schema.
+This command targets `src/hotUpdater.ts`, creates the collections and indexes
+of core and of the server's [plugins](/docs/custom/server-plugins#create-the-plugins-tables), then writes the
+schema settings. It does nothing when
+the settings are current; run it again after upgrading Hot Updater. It
+refuses a database created by an older Hot Updater schema instead of
+converting it. `hot-updater db generate` does not apply to MongoDB.
+
+The server checks the settings before its first read or write. Until they
+exist, it throws `HotUpdaterSchemaMigrationRequiredError` and its handlers
+answer 503. A running server checks again on its next request, so it recovers
+once the migration has run.
 
 ## CLI configuration
 
 After the schema is applied, [create the client API key](/docs/custom/api-key-authentication#bootstrap-a-self-hosted-client)
 using this same direct server configuration. Then
 [connect the React Native project's CLI](/docs/custom/cli-configuration) to the
-protected admin mount. Its storage configuration must match a server entry.
+protected admin mount. Its storage configuration must match a server entry,
+and its `plugins` must list the server's plugins.
 
 ## API endpoints
 
@@ -94,7 +118,7 @@ The adapter persists data; your framework mounts the HTTP handlers. Continue
 with the [Hono](/docs/custom/frameworks/hono), [Express](/docs/custom/frameworks/express)
 or [Elysia](/docs/custom/frameworks/elysia) recipe. See the
 [handler boundaries](/docs/custom/overview#runtime-policy) and
-[repository contract](/docs/database-plugins/standalone#server-contract) for
+[repository contract](/docs/database-adapters/standalone#server-contract) for
 client and admin access.
 
 Finish with [Set up your app](/docs/get-started/app-setup) and

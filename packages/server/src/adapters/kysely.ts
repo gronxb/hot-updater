@@ -1,137 +1,50 @@
-import { createDatabasePlugin } from "@hot-updater/plugin-core";
 import {
-  createDatabasePluginAdapter,
-  createTransactionDatabasePlugin,
-  publishBundlePatchInTransaction,
-  type DatabasePluginImplementation,
-} from "@hot-updater/plugin-core/internal";
+  coreTarget,
+  createEngineDatabase,
+  createEngineSqlMigrator,
+  createSqlAdapter,
+  type SqlDialect,
+  type ToolingDatabase,
+} from "@hot-updater/plugin-core";
 import type { Kysely } from "kysely";
 
-import { createKyselyMigrator } from "../db/fixedMigrator";
-import type {
-  DatabaseAdapterWithCapabilities,
-  ORMSQLProvider,
-  RelationMode,
-} from "../db/types";
-import { createKyselyCrud, recordKyselyInsights } from "./kyselyCrud";
-import {
-  getKyselyAppUsage,
-  getKyselyReleaseActivity,
-} from "./kyselyInsightsOverview";
+import { kyselyExecutor } from "./kyselyExecutor";
+import { checkSqlProvider } from "./sqlProviders";
 
-export {
-  getKyselyAppUsage,
-  getKyselyReleaseActivity,
-  readKyselyInsightsHead,
-  recordKyselyInsightsOverview,
-} from "./kyselyInsightsOverview";
+export { kyselyExecutor } from "./kyselyExecutor";
 
-type KyselySQLProvider = Exclude<ORMSQLProvider, "mssql">;
-
-export type { RelationMode, KyselySQLProvider as SQLProvider };
+export type { SqlDialect as SQLProvider };
 
 export interface KyselyAdapterConfig<TDatabase extends object = object> {
   readonly db: Kysely<TDatabase>;
-  readonly provider: KyselySQLProvider;
-  readonly relationMode?: RelationMode;
+  readonly provider: SqlDialect;
 }
 
-const createImplementation = <TDatabase extends object>(
-  config: KyselyAdapterConfig<TDatabase>,
-): DatabasePluginImplementation => {
-  const db = config.db;
-  const relationMode = config.relationMode ?? "foreign-keys";
-  const crud = createKyselyCrud(db, config.provider, relationMode);
-  return {
-    ...crud,
-    recordInsights: (input) =>
-      db
-        .transaction()
-        .execute((transaction) =>
-          recordKyselyInsights(transaction, config.provider, input),
-        ),
-    getReleaseActivity: (input) => getKyselyReleaseActivity(db, input),
-    getAppUsage: (input) => getKyselyAppUsage(db, input),
-    deleteChannel: (input) =>
-      db
-        .transaction()
-        .execute((transaction) =>
-          createKyselyCrud(
-            transaction,
-            config.provider,
-            relationMode,
-          ).deleteChannel(input),
-        ),
-    create: (input) =>
-      db
-        .transaction()
-        .execute((transaction) =>
-          createKyselyCrud(transaction, config.provider, relationMode).create(
-            input,
-          ),
-        ),
-    update: (input) =>
-      db
-        .transaction()
-        .execute((transaction) =>
-          createKyselyCrud(transaction, config.provider, relationMode).update(
-            input,
-          ),
-        ),
-    delete: (input) =>
-      db
-        .transaction()
-        .execute((transaction) =>
-          createKyselyCrud(transaction, config.provider, relationMode).delete(
-            input,
-          ),
-        ),
-    publishBundlePatch: (input) => {
-      const transaction = db.transaction();
-      return (
-        config.provider === "sqlite"
-          ? transaction
-          : transaction.setIsolationLevel("serializable")
-      ).execute((transaction) =>
-        publishBundlePatchInTransaction(
-          createTransactionDatabasePlugin(
-            createKyselyCrud(transaction, config.provider, relationMode),
-          ),
-          input,
-        ),
-      );
-    },
-    transaction: (callback) =>
-      db
-        .transaction()
-        .execute((transaction) =>
-          callback(
-            createKyselyCrud(transaction, config.provider, relationMode),
-          ),
-        ),
-  };
-};
-
+/**
+ * Hot Updater's database on a Kysely instance: the storage engine through the
+ * shared SQL core, fenced by the schema settings. `db migrate` and
+ * `db generate --sql` apply the engine's SQL schema.
+ */
 export const kyselyAdapter = <TDatabase extends object>(
   config: KyselyAdapterConfig<TDatabase>,
-): DatabaseAdapterWithCapabilities => {
-  const adapter = createDatabasePluginAdapter(
-    "kysely",
-    createImplementation<TDatabase>(config),
+): ToolingDatabase => {
+  const provider = checkSqlProvider("kyselyAdapter", config.provider);
+  const executor = kyselyExecutor(
+    config.db as unknown as Kysely<object>,
+    provider,
   );
-  const plugin = createDatabasePlugin({
-    name: "kysely",
-    models: adapter.models,
-    commit: adapter.commit,
-  });
-  return Object.assign(plugin, {
-    adapterName: "kysely",
-    provider: config.provider,
-    createMigrator: () =>
-      createKyselyMigrator({
-        db: config.db,
-        provider: config.provider,
-        relationMode: config.relationMode,
+  return {
+    ...createEngineDatabase({
+      name: "kysely",
+      adapter: createSqlAdapter({ executor }),
+    }),
+    provider,
+    createMigrator: ({ schema, settings } = coreTarget) =>
+      createEngineSqlMigrator({
+        adapterName: "kysely",
+        executor,
+        schema,
+        settings,
       }),
-  });
+  };
 };

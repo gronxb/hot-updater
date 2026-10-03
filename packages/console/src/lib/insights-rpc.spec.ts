@@ -1,14 +1,28 @@
 // @vitest-environment node
 
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 
 const mocks = vi.hoisted(() => ({
   getInstallation: vi.fn(),
   pageInstallations: vi.fn(),
+  insightsOn: true,
 }));
 
 vi.mock("@tanstack/react-start", () => ({
+  // The access middleware runs in the server; these specs call handlers directly.
+  createMiddleware: () => ({ server: () => ({}) }),
   createServerFn: () => ({
+    middleware() {
+      return this;
+    },
     validator() {
       return this;
     },
@@ -18,16 +32,34 @@ vi.mock("@tanstack/react-start", () => ({
   }),
 }));
 
+// A self-hosted server's console: Insights reads over its admin API.
 vi.mock("./server/config.server", () => ({
   prepareConfig: async () => ({
-    hotUpdater: {
-      getInstallation: mocks.getInstallation,
-      pageInstallationsByCurrentUserId: mocks.pageInstallations,
+    runtime: {
+      remote: true,
+      features: async () => ({
+        insights: mocks.insightsOn,
+        insightsAnalytics: false,
+        apiKeys: false,
+      }),
+      apis: {
+        insights: {
+          getInstallation: mocks.getInstallation,
+          pageInstallationsByCurrentUserId: mocks.pageInstallations,
+        },
+      },
     },
   }),
 }));
 
-import { findInsightsInstallationsRpc } from "./insights-rpc";
+import {
+  findInsightsInstallationsRpc,
+  listInsightsEventsRpc,
+} from "./insights-rpc";
+
+// The server functions import the runtime module on their first call; load
+// it here, so its import time is not charged to the first test's timeout.
+beforeAll(() => import("./server/runtime.server"), 30_000);
 
 const installation = {
   appVersion: "1.4.2",
@@ -39,8 +71,32 @@ const installation = {
   platform: "ios" as const,
   receivedAtMs: 100,
   userId: "user-1",
-  username: "ada",
 };
+
+describe("Insights reads without insights()", () => {
+  afterEach(() => {
+    mocks.insightsOn = true;
+  });
+
+  it("are refused with the features' 404 before anything is read", async () => {
+    mocks.insightsOn = false;
+
+    await expect(
+      findInsightsInstallationsRpc({
+        data: { identity: "install-1", limit: 20 },
+      }),
+    ).rejects.toMatchObject({
+      name: "ConsoleFeatureUnavailableError",
+      feature: "insights",
+      status: 404,
+    });
+    await expect(
+      listInsightsEventsRpc({ data: { limit: 20 } }),
+    ).rejects.toMatchObject({ feature: "insights" });
+    expect(mocks.getInstallation).not.toHaveBeenCalled();
+    expect(mocks.pageInstallations).not.toHaveBeenCalled();
+  });
+});
 
 describe("findInsightsInstallationsRpc", () => {
   beforeEach(() => vi.clearAllMocks());

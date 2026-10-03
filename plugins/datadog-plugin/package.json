@@ -1,6 +1,6 @@
 {
   "name": "@hot-updater/datadog-plugin",
-  "version": "1.0.0-rc.14",
+  "version": "1.0.0-rc.27",
   "type": "module",
   "description": "React Native OTA solution for self-hosted",
   "sideEffects": false,
@@ -44,7 +44,7 @@
     "access": "public"
   },
   "dependencies": {
-    "@hot-updater/core": "workspace:*",
+    "@hot-updater/protocol": "workspace:*",
     "@hot-updater/plugin-core": "workspace:*",
     "execa": "catalog:tools"
   },

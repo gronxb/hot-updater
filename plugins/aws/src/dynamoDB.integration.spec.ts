@@ -1,738 +1,246 @@
-import { createHash } from "node:crypto";
-
+import {
+  DescribeTimeToLiveCommand,
+  DynamoDBClient,
+} from "@aws-sdk/client-dynamodb";
 import {
   BatchWriteCommand,
-  DeleteCommand,
+  DynamoDBDocumentClient,
   ScanCommand,
-  GetCommand,
-  PutCommand,
-  QueryCommand,
-  type TransactWriteCommandInput,
 } from "@aws-sdk/lib-dynamodb";
 import {
-  type BundleEventRow,
-  createDatabaseClient,
+  createKvAdapter,
+  type PhysicalTable,
+  HotUpdaterSchemaMigrationRequiredError,
+  SETTINGS_TABLE,
 } from "@hot-updater/plugin-core";
-import { setupDatabasePluginTestSuite } from "@hot-updater/test-utils";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-
+import { createHotUpdater } from "@hot-updater/server";
 import {
-  createDynamoDBInsightsTable,
-  DYNAMODB_INSIGHTS_EVENT_IDS_PARTITION,
-  DYNAMODB_INSIGHTS_INSTALLATIONS_PARTITION,
-} from "./dynamoDB";
-import { DynamoDBIntegrationFixture } from "./dynamoDB.integration-fixture";
+  createInsightsModel,
+  insights,
+} from "@hot-updater/server/plugins/insights";
+import {
+  setupDatabaseAdapterConformanceSuite,
+  setupDatabaseTestSuite,
+  startHttpTestServer,
+  insightsTestSuite,
+} from "@hot-updater/test-utils";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-const fixture = new DynamoDBIntegrationFixture();
-const createPlugin = () => fixture.createPlugin();
-const clearTable = () => fixture.reset();
+import { dynamoDB, migrateDynamoDB } from "./dynamoDB";
+import {
+  type DynamoDBLocal,
+  startDynamoDBLocal,
+} from "./dynamoDB.integration-fixture";
+import { createDynamoDBStore, DYNAMODB_TTL_ATTRIBUTE } from "./dynamoDBStore";
 
-const writeItems = async (items: readonly Record<string, unknown>[]) => {
-  for (let offset = 0; offset < items.length; offset += 25) {
-    await fixture.client.send(
-      new BatchWriteCommand({
-        RequestItems: {
-          [fixture.tableName]: items
-            .slice(offset, offset + 25)
-            .map((Item) => ({ PutRequest: { Item } })),
-        },
-      }),
-    );
-  }
-};
-
-const eventSortKey = (event: BundleEventRow) =>
-  `${String(event.received_at_ms).padStart(16, "0")}#${event.id}`;
-
-const insightsEvent = (
-  index: number,
-  input: {
-    readonly installId: string;
-    readonly receivedAtMs: number;
-    readonly type?: BundleEventRow["type"];
-    readonly userId?: string | null;
-  },
-): BundleEventRow => {
-  const type = input.type ?? "UPDATE_APPLIED";
-  const base = {
-    id: `00000000-0000-7000-8000-${String(index).padStart(12, "0")}`,
-    type,
-    install_id: input.installId,
-    user_id: input.userId ?? null,
-    metadata: {
-      username: null,
-      cohort: "0",
-      fingerprint_hash: null,
-      sdk_version: null,
-    },
-    from_release_id: null,
-    to_release_id: null,
-    to_bundle_id: "00000000-0000-0000-0000-000000000002",
-    platform: "ios" as const,
-    app_version: "1.0.0",
-    channel: "production",
-
-    received_at_ms: input.receivedAtMs,
-  };
-  return type === "UNCHANGED"
-    ? {
-        ...base,
-        type,
-        from_bundle_id: null,
-        metadata: { ...base.metadata, update_strategy: null },
-      }
-    : {
-        ...base,
-        type,
-        from_bundle_id: "00000000-0000-0000-0000-000000000001",
-        metadata: { ...base.metadata, update_strategy: "appVersion" },
-      };
-};
-
-beforeAll(() => fixture.start(), 120_000);
-afterAll(() => fixture.stop());
-
-setupDatabasePluginTestSuite({
-  name: "DynamoDB fixed-model database plugin",
-  createPlugin,
-  migrate: () => undefined,
-  reset: clearTable,
-  dispose: () => undefined,
+let local: DynamoDBLocal;
+beforeAll(async () => {
+  local = await startDynamoDBLocal();
+}, 180_000);
+afterAll(async () => {
+  await local?.stop();
 });
 
-describe("DynamoDB aggregate mutations", () => {
-  beforeEach(clearTable);
-
-  it("atomically inserts and replaces bundle patches", async () => {
-    const database = createDatabaseClient(createPlugin());
-    const baseBundle = {
-      id: "00000000-0000-0000-0000-000000000901",
-      platform: "ios",
-      fileHash: "a".repeat(64),
-      gitCommitHash: null,
-      storageUri: "storage://base.zip",
-      archiveByteSize: 3_000_000_001,
-      metadata: {},
-    } as const;
-    const bundle = {
-      ...baseBundle,
-      id: "00000000-0000-0000-0000-000000000902",
-      fileHash: "b".repeat(64),
-      patches: [
-        {
-          baseBundleId: baseBundle.id,
-          baseFileHash: baseBundle.fileHash,
-          patchFileHash: "c".repeat(64),
-          patchStorageUri: "storage://first.patch",
-          byteSize: 3_000_002,
-        },
-      ],
+setupDatabaseAdapterConformanceSuite({
+  name: "key-value (DynamoDB Local)",
+  // 34 conformance inserts are 102 items, over DynamoDB's 100 per transaction.
+  maxOps: 33,
+  // DynamoDB deletes expired items itself, by their `_ttl`.
+  retention: "ttl",
+  createAdapter: async ({ nativePageSize }) => {
+    const tableName = local.tableName();
+    const store = createDynamoDBStore({
+      client: local.client,
+      tableName,
+      nativePageSize,
+    });
+    await store.migrations!.apply();
+    return {
+      adapter: createKvAdapter({ store }),
+      cleanup: async () => {
+        await local.dropTable(tableName);
+      },
     };
-    await database.insertBundle(baseBundle);
+  },
+});
 
-    await database.insertBundle(bundle);
-    await database.updateBundleById(bundle.id, {
-      patches: [
-        {
-          baseBundleId: baseBundle.id,
-          baseFileHash: baseBundle.fileHash,
-          patchFileHash: "d".repeat(64),
-          patchStorageUri: "storage://replacement.patch",
-          byteSize: 3_000_003,
-        },
-      ],
-    });
+describe("dynamoDB store", () => {
+  it("reads no item past an exclusive upper bound, in either order", async () => {
+    const client = new DynamoDBClient(local.config);
+    let itemsRead = 0;
+    client.middlewareStack.add(
+      (next) => async (args) => {
+        const result = await next(args);
+        const output = result.output as { Items?: unknown[] } | undefined;
+        itemsRead += output?.Items?.length ?? 0;
+        return result;
+      },
+      // Outermost, so `output` is the deserialized response.
+      { step: "initialize" },
+    );
+    const tableName = local.tableName();
+    const store = createDynamoDBStore({ client, tableName });
+    await store.migrations!.apply();
+    const sk = (key: string) => `${key}\u0001`;
+    await store.write(
+      ["a", "b", "c"].map((key) => ({
+        key: { pk: "p", sk: sk(key) },
+        type: "put" as const,
+        value: { id: key },
+      })),
+    );
 
-    await expect(database.getBundleById(bundle.id)).resolves.toMatchObject({
-      patches: [
-        {
-          baseBundleId: baseBundle.id,
-          patchFileHash: "d".repeat(64),
-        },
-      ],
-    });
+    for (const order of ["asc", "desc"] as const) {
+      itemsRead = 0;
+      const page = await store.query({
+        pk: "p",
+        gte: sk("a"),
+        lt: sk("c"),
+        lte: "c",
+        order,
+        limit: 10,
+      });
+
+      expect(page.items.map((item) => item.sk)).toEqual(
+        order === "asc" ? [sk("a"), sk("b")] : [sk("b"), sk("a")],
+      );
+      expect(itemsRead).toBe(2);
+    }
+    client.destroy();
+    await local.dropTable(tableName);
   });
 });
 
-describe("DynamoDB Insights", () => {
-  beforeEach(clearTable);
+describe("dynamoDB TTL", () => {
+  it("turns on TTL for `_ttl` and stamps it on every item of an expiring row", async () => {
+    const client = new DynamoDBClient(local.config);
+    const tableName = local.tableName();
+    const store = createDynamoDBStore({ client, tableName });
+    await store.migrations!.apply();
+    // A second migration leaves the enabled TTL as it is.
+    await store.migrations!.apply();
+    const { TimeToLiveDescription } = await client.send(
+      new DescribeTimeToLiveCommand({ TableName: tableName }),
+    );
+    expect(TimeToLiveDescription).toMatchObject({
+      AttributeName: DYNAMODB_TTL_ATTRIBUTE,
+      TimeToLiveStatus: expect.stringMatching(/^ENABL/u),
+    });
 
-  it("rebuilds lost latest and user items from a frozen event export", async () => {
-    const insights = createDynamoDBInsightsTable({
-      client: fixture.client,
-      tableName: fixture.tableName,
-    });
-    const old = insightsEvent(9701, {
-      installId: "replay",
-      receivedAtMs: 100,
-      userId: "old-user",
-    });
-    const latest = insightsEvent(9702, {
-      installId: "replay",
-      receivedAtMs: 200,
-      userId: "new-user",
-    });
-    await insights.recordEvent({ event: latest });
-    await insights.recordEvent({ event: old });
-    const preserved = { pk: "unrelated", sk: "artifact", value: "preserve" };
-    await fixture.client.send(
-      new PutCommand({ TableName: fixture.tableName, Item: preserved }),
+    const expiring: PhysicalTable = {
+      name: "expiring",
+      columns: [
+        { name: "id", type: "string", nullable: false },
+        { name: "grp", type: "string", nullable: false },
+        { name: "at", type: "integer", nullable: false },
+        { name: "_v", type: "integer", nullable: false },
+      ],
+      key: ["id"],
+      indexes: [{ name: "byGroup", eq: ["grp"], sort: ["at"] }],
+      retention: { column: "at", ms: 86_400_000 },
+    };
+    const adapter = createKvAdapter({ store });
+    await adapter.write([
+      {
+        type: "insert",
+        table: expiring,
+        row: { id: "a", grp: "g", at: 1_000, _v: 0 },
+      },
+    ]);
+
+    const { Items = [] } = await DynamoDBDocumentClient.from(client).send(
+      new ScanCommand({ TableName: tableName }),
     );
-    const exported = await insights.listEvents({
-      filter: { kind: "all" },
-      beforeReceivedAtMs: 201,
-      limit: 10,
-    });
-    await fixture.client.send(
-      new DeleteCommand({
-        TableName: fixture.tableName,
-        Key: {
-          pk: DYNAMODB_INSIGHTS_INSTALLATIONS_PARTITION,
-          sk: old.install_id,
-        },
-      }),
-    );
-    await insights.recordEvent({ event: latest });
-    await expect(
-      insights.findLatestEvents({ installId: old.install_id }),
-    ).resolves.toEqual([]);
-    // This disposable fixture has no concurrent writers and fewer than one
-    // native scan page. Production replays into a separately initialized target.
-    const snapshot = await fixture.client.send(
-      new ScanCommand({ TableName: fixture.tableName, ConsistentRead: true }),
-    );
-    expect(snapshot.LastEvaluatedKey).toBeUndefined();
-    for (const item of snapshot.Items ?? []) {
-      if (
-        item.pk === "bundle_events" ||
-        String(item.pk).startsWith("_hot-updater#insights-")
-      ) {
-        await fixture.client.send(
-          new DeleteCommand({
-            TableName: fixture.tableName,
-            Key: { pk: item.pk, sk: item.sk },
+    const stamped = Items.filter((item) => item.pk !== SETTINGS_TABLE.name);
+    // The row and its index copy, in epoch seconds, rounded up.
+    expect(stamped.map((item) => item[DYNAMODB_TTL_ATTRIBUTE])).toEqual([
+      86_401, 86_401,
+    ]);
+    expect(await adapter.get(expiring, [["a"]])).toEqual([
+      { id: "a", grp: "g", at: 1_000, _v: 0 },
+    ]);
+    client.destroy();
+    await local.dropTable(tableName);
+  });
+});
+
+describe("dynamoDB", () => {
+  const tableName = `hot-updater-plugin-${process.pid}`;
+  const config = () => ({ ...local.config, tableName });
+
+  /** Deletes every item but the schema settings, which the database checks first. */
+  const clear = async () => {
+    const documents = DynamoDBDocumentClient.from(local.client);
+    for (let start: Record<string, unknown> | undefined; ; ) {
+      const page = await documents.send(
+        new ScanCommand({
+          TableName: tableName,
+          ProjectionExpression: "pk, sk",
+          ExclusiveStartKey: start,
+        }),
+      );
+      const keys = (page.Items ?? []).filter(
+        ({ pk }) => pk !== SETTINGS_TABLE.name,
+      );
+      for (let at = 0; at < keys.length; at += 25) {
+        await documents.send(
+          new BatchWriteCommand({
+            RequestItems: {
+              [tableName]: keys
+                .slice(at, at + 25)
+                .map(({ pk, sk }) => ({ DeleteRequest: { Key: { pk, sk } } })),
+            },
           }),
         );
       }
+      start = page.LastEvaluatedKey;
+      if (start === undefined) return;
     }
-    for (const event of [...exported, ...exported.toReversed()])
-      await insights.recordEvent({ event });
-    await expect(
-      insights.findLatestEvents({ installId: old.install_id }),
-    ).resolves.toEqual([latest]);
-    await expect(
-      insights.findLatestEvents({ userId: "old-user", limit: 10 }),
-    ).resolves.toEqual([]);
-    await expect(
-      insights.findLatestEvents({ userId: "new-user", limit: 10 }),
-    ).resolves.toEqual([latest]);
-    await expect(
-      insights.listEvents({
-        filter: { kind: "all" },
-        beforeReceivedAtMs: 201,
-        limit: 10,
-      }),
-    ).resolves.toEqual(exported);
-    expect(
-      (
-        await fixture.client.send(
-          new GetCommand({
-            TableName: fixture.tableName,
-            Key: { pk: preserved.pk, sk: preserved.sk },
-            ConsistentRead: true,
-          }),
-        )
-      ).Item,
-    ).toEqual(preserved);
-  });
+  };
 
-  it("rolls back both canonical records when a native transaction condition fails", async () => {
-    const insights = createDynamoDBInsightsTable({
-      client: fixture.client,
-      tableName: fixture.tableName,
-    });
-    const event = insightsEvent(31, { installId: "atomic", receivedAtMs: 100 });
-    const input = { event };
-    const name = "reject-insights-transaction";
-    fixture.client.middlewareStack.add(
-      (next, context) => async (args) => {
-        if (context.commandName === "TransactWriteItemsCommand") {
-          const command = args.input as TransactWriteCommandInput;
-          command.TransactItems = [
-            ...(command.TransactItems ?? []),
-            {
-              ConditionCheck: {
-                TableName: fixture.tableName,
-                Key: { pk: "missing", sk: "guard" },
-                ConditionExpression: "attribute_exists(pk)",
-              },
-            },
-          ];
-        }
-        return next(args);
-      },
-      { name, step: "initialize" },
+  it("serves only after the migration writes the schema settings", async () => {
+    const fenced = { ...local.config, tableName: local.tableName() };
+    const database = dynamoDB(fenced);
+    const core = createHotUpdater({ database, clientAccess: "public" }).core;
+    // No table yet: the fence reads DynamoDB's missing table as a missing schema.
+    await expect(core.listChannels()).rejects.toBeInstanceOf(
+      HotUpdaterSchemaMigrationRequiredError,
     );
-    try {
-      await expect(insights.recordEvent(input)).rejects.toMatchObject({
-        name: "TransactionCanceledException",
-      });
-    } finally {
-      fixture.client.middlewareStack.remove(name);
-    }
-    await expect(
-      insights.listEvents({
-        filter: { kind: "all" },
-        beforeReceivedAtMs: 200,
-        limit: 10,
-      }),
-    ).resolves.toEqual([]);
-    await expect(
-      insights.findLatestEvents({ installId: event.install_id }),
-    ).resolves.toEqual([]);
-    const marker = await fixture.client.send(
-      new GetCommand({
-        TableName: fixture.tableName,
-        Key: { pk: DYNAMODB_INSIGHTS_EVENT_IDS_PARTITION, sk: event.id },
-        ConsistentRead: true,
-      }),
-    );
-    expect(marker.Item).toBeUndefined();
-    await expect(
-      insights.countLatestEvents({
-        platform: "ios",
-        channel: "production",
-        sinceMs: 0,
-      }),
-    ).resolves.toBe(0);
-    await insights.recordEvent(input);
-    await expect(
-      insights.findLatestEvents({ installId: event.install_id }),
-    ).resolves.toEqual([input.event]);
-    await expect(
-      insights.countLatestEvents({
-        platform: "ios",
-        channel: "production",
-        sinceMs: 0,
-      }),
-    ).resolves.toBe(1);
+    await migrateDynamoDB(fenced);
+    await migrateDynamoDB(fenced);
+    await expect(core.listChannels()).resolves.toEqual([]);
+    await database.dispose?.();
   });
 
-  it("moves compact scope membership atomically and ignores duplicate or delayed reports", async () => {
-    const insights = createPlugin().models.insights;
-    const previous = insightsEvent(101, {
-      installId: "scope-movement",
-      receivedAtMs: 100,
-      userId: "old",
-    });
-    await insights.recordEvent({ event: previous });
-    const tied = [102, 103].map((id) => ({
-      ...previous,
-      id: insightsEvent(id, {
-        installId: previous.install_id,
-        receivedAtMs: 200,
-      }).id,
-      received_at_ms: 200,
-      channel: `preview-${id}`,
-      user_id: id === 103 ? null : "old",
-    }));
-    await Promise.all(tied.map((event) => insights.recordEvent({ event })));
-    await insights.recordEvent({
-      event: { ...previous, channel: "duplicate", received_at_ms: 300 },
-    });
-    await insights.recordEvent({
-      event: {
-        ...previous,
-        id: insightsEvent(104, {
-          installId: previous.install_id,
-          receivedAtMs: 50,
-        }).id,
-        received_at_ms: 50,
-      },
-    });
-    await expect(
-      insights.findLatestEvents({ installId: previous.install_id }),
-    ).resolves.toEqual([tied[1]]);
-    await expect(
-      insights.findLatestEvents({ userId: "old", limit: 10 }),
-    ).resolves.toEqual([]);
-    for (const [channel, expected] of [
-      ["production", 0],
-      ["preview-102", 0],
-      ["preview-103", 1],
-      ["duplicate", 0],
-    ] as const)
-      await expect(
-        insights.countLatestEvents({ platform: "ios", channel, sinceMs: 0 }),
-      ).resolves.toBe(expected);
-    await expect(
-      insights.countLatestEvents({
-        platform: "ios",
-        channel: "preview-103",
-        sinceMs: 0,
-        bundle: [
-          {
-            field: "from_bundle_id",
-            value: previous.from_bundle_id!,
-            types: ["UPDATE_APPLIED"],
-          },
-          {
-            field: "to_bundle_id",
-            value: previous.to_bundle_id,
-            types: ["UPDATE_APPLIED"],
-          },
-        ],
+  setupDatabaseTestSuite({
+    name: "dynamoDB (DynamoDB Local)",
+    createHttpClient: (options) =>
+      startHttpTestServer(
+        createHotUpdater({
+          ...options,
+          plugins: [insights()],
+          clientAccess: "public",
+        }).handlers,
+      ),
+    plugins: [
+      insightsTestSuite({
+        createModel: (database) =>
+          createInsightsModel(
+            createHotUpdater({
+              database,
+              plugins: [insights()],
+              clientAccess: "public",
+            }).api.insights,
+          ),
       }),
-    ).resolves.toBe(1);
-  });
-
-  it("keeps native count reads inside the scope as history and other scopes grow", async () => {
-    const insights = createDynamoDBInsightsTable({
-      client: fixture.client,
-      tableName: fixture.tableName,
-    });
-    const events = Array.from({ length: 24 }, (_, index) =>
-      insightsEvent(10_000 + index, {
-        installId: `installation-${index}`,
-        receivedAtMs: 1000,
-      }),
-    );
-    await Promise.all(events.map((event) => insights.recordEvent({ event })));
-    const name = "measure-insights-count-reads";
-    let scanned = 0;
-    let queries = 0;
-    fixture.client.middlewareStack.add(
-      (next, context) => async (args) => {
-        const result = await next(args);
-        if (context.commandName === "QueryCommand") {
-          queries += 1;
-          scanned += Number(Reflect.get(result.output, "ScannedCount"));
-        }
-        return result;
-      },
-      { name, step: "initialize" },
-    );
-    const measure = async () => {
-      scanned = 0;
-      queries = 0;
-      const count = await insights.countLatestEvents({
-        platform: "ios",
-        channel: "production",
-        sinceMs: 500,
-      });
-      return { count, scanned, queries };
-    };
-    try {
-      const before = await measure();
-      const history = Array.from({ length: 240 }, (_, index) => {
-        const event = events[index % events.length]!;
-        return {
-          ...event,
-          id: insightsEvent(20_000 + index, {
-            installId: event.install_id,
-            receivedAtMs: index % 10,
-          }).id,
-          received_at_ms: index % 10,
-        };
-      });
-      await writeItems(
-        history.map((row) => ({
-          pk: "bundle_events",
-          sk: eventSortKey(row),
-          version: 1,
-          row,
-        })),
-      );
-      const afterHistory = await measure();
-      const unrelated = Array.from({ length: 96 }, (_, index) => ({
-        ...insightsEvent(30_000 + index, {
-          installId: `other-${index}`,
-          receivedAtMs: 1000,
-        }),
-        channel: "other",
-      }));
-      const unrelatedScope = `_hot-updater#insights-scope#${createHash("sha256")
-        .update(JSON.stringify(["ios", "other"]), "utf8")
-        .digest("hex")}`;
-      await writeItems(
-        unrelated.flatMap((row) => [
-          {
-            pk: DYNAMODB_INSIGHTS_INSTALLATIONS_PARTITION,
-            sk: row.install_id,
-            order_key: eventSortKey(row),
-            version: 1,
-            row,
-          },
-          {
-            pk: unrelatedScope,
-            sk: row.install_id,
-            received_at_ms: row.received_at_ms,
-            type: row.type,
-            from_bundle_id: row.from_bundle_id,
-            to_bundle_id: row.to_bundle_id,
-          },
-        ]),
-      );
-      const afterScopes = await measure();
-      expect(before).toEqual({
-        count: events.length,
-        scanned: events.length,
-        queries: 1,
-      });
-      expect(afterHistory).toEqual(before);
-      expect(afterScopes).toEqual(before);
-      const oldCount = await fixture.client.send(
-        new QueryCommand({
-          TableName: fixture.tableName,
-          ConsistentRead: true,
-          KeyConditionExpression: "pk = :pk",
-          FilterExpression:
-            "#row.#channel = :channel AND #row.#platform = :platform AND #row.#received >= :since",
-          ExpressionAttributeNames: {
-            "#row": "row",
-            "#channel": "channel",
-            "#platform": "platform",
-            "#received": "received_at_ms",
-          },
-          ExpressionAttributeValues: {
-            ":pk": DYNAMODB_INSIGHTS_INSTALLATIONS_PARTITION,
-            ":channel": "production",
-            ":platform": "ios",
-            ":since": 500,
-          },
-          Select: "COUNT",
-        }),
-      );
-      expect(oldCount.LastEvaluatedKey).toBeUndefined();
-      expect(oldCount.Count).toBe(afterScopes.count);
-      expect(oldCount.ScannedCount).toBe(events.length * 5);
-      console.info(
-        "DynamoDB latest read growth",
-        JSON.stringify({
-          before,
-          afterHistory,
-          afterScopes,
-          globalLatestScanned: oldCount.ScannedCount,
-        }),
-      );
-    } finally {
-      fixture.client.middlewareStack.remove(name);
-    }
-  });
-
-  it("treats retry after an ambiguous committed write as an event-ID no-op", async () => {
-    const insights = createDynamoDBInsightsTable({
-      client: fixture.client,
-      tableName: fixture.tableName,
-    });
-    const event = insightsEvent(41, {
-      installId: "retry",
-      receivedAtMs: 100,
-      userId: "original",
-    });
-    const input = { event };
-    const name = "lose-transaction-response";
-    fixture.client.middlewareStack.add(
-      (next, context) => async (args) => {
-        const result = await next(args);
-        if (context.commandName === "TransactWriteItemsCommand")
-          throw new Error("response lost after commit");
-        return result;
-      },
-      { name, step: "deserialize" },
-    );
-    try {
-      await expect(insights.recordEvent(input)).rejects.toThrow(
-        "response lost after commit",
-      );
-    } finally {
-      fixture.client.middlewareStack.remove(name);
-    }
-    await insights.recordEvent(input);
-    const reused = {
-      ...event,
-      install_id: "other-install",
-      received_at_ms: 500,
-      user_id: "changed",
-    };
-    await insights.recordEvent({
-      event: reused,
-    });
-    await expect(
-      insights.listEvents({
-        filter: { kind: "all" },
-        beforeReceivedAtMs: 1_000,
-        limit: 10,
-      }),
-    ).resolves.toEqual([event]);
-    await expect(
-      insights.findLatestEvents({ installId: event.install_id }),
-    ).resolves.toEqual([input.event]);
-    await expect(
-      insights.findLatestEvents({ installId: reused.install_id }),
-    ).resolves.toEqual([]);
-  });
-
-  it("skips stale user entries and fills the requested result prefix", async () => {
-    const insights = createPlugin().models.insights;
-    const previous = insightsEvent(51, {
-      installId: "a",
-      receivedAtMs: 100,
-      userId: "old",
-    });
-    const current = insightsEvent(52, {
-      installId: "a",
-      receivedAtMs: 200,
-      userId: "new",
-    });
-    const valid = insightsEvent(53, {
-      installId: "b",
-      receivedAtMs: 100,
-      userId: "old",
-    });
-    for (const event of [previous, current, valid])
-      await insights.recordEvent({
-        event,
-      });
-    await fixture.client.send(
-      new PutCommand({
-        TableName: fixture.tableName,
-        Item: {
-          pk: "_hot-updater#insights-user#old",
-          sk: "a",
-          order_key: `0000000000000100#${previous.id}`,
-          version: 1,
-          row: previous,
-        },
-      }),
-    );
-    await expect(
-      insights.findLatestEvents({ userId: "old", limit: 1 }),
-    ).resolves.toEqual([valid]);
-  });
-
-  it("does not count an installation again when its receipt time advances between native pages", async () => {
-    const writer = createPlugin().models.insights;
-    const first = insightsEvent(61, { installId: "a", receivedAtMs: 100 });
-    const second = insightsEvent(62, { installId: "b", receivedAtMs: 100 });
-    for (const event of [first, second])
-      await writer.recordEvent({
-        event,
-      });
-    const insights = createDynamoDBInsightsTable({
-      client: fixture.client,
-      tableName: fixture.tableName,
-    });
-    const name = "one-installation-per-count-page";
-    fixture.client.middlewareStack.add(
-      (next, context) => async (args) => {
-        if (context.commandName === "QueryCommand")
-          Reflect.set(args.input, "Limit", 1);
-        return next(args);
-      },
-      { name, step: "initialize" },
-    );
-    const pause = fixture.pauseNextQuery();
-    try {
-      const count = insights.countLatestEvents({
-        platform: "ios",
-        channel: "production",
-        sinceMs: 0,
-      });
-      await pause.observed;
-      const newer = {
-        ...first,
-        id: insightsEvent(63, { installId: "a", receivedAtMs: 300 }).id,
-        received_at_ms: 300,
-      };
-      await writer.recordEvent({
-        event: newer,
-      });
-      pause.release();
-      await expect(count).resolves.toBe(2);
-    } finally {
-      pause.release();
-      pause.remove();
-      fixture.client.middlewareStack.remove(name);
-    }
-  });
-
-  it("queries initial storage and indexes the first report without a separate initialization step", async () => {
-    const insights = createPlugin().models.insights;
-    const event = insightsEvent(71, {
-      installId: "initial",
-      receivedAtMs: 100,
-    });
-    const installation = event;
-    const query = {
-      filter: {
-        platform: "ios" as const,
-        channel: "production",
-        type: "UPDATE_APPLIED" as const,
-        toBundleId: event.to_bundle_id,
-      },
-      sinceMs: 0,
-      beforeReceivedAtMs: 200,
-    };
-    await expect(insights.countEvents(query)).resolves.toBe(0);
-    await insights.recordEvent({ event });
-    await expect(insights.countEvents(query)).resolves.toBe(1);
-    await expect(
-      insights.findLatestEvents({ installId: event.install_id }),
-    ).resolves.toEqual([installation]);
-    await expect(
-      insights.listEvents({
-        ...query,
-        filter: { kind: "bundle", ...query.filter },
-        limit: 10,
-      }),
-    ).resolves.toEqual([event]);
-  });
-
-  it("records and queries an accepted Unicode channel exceeding the native partition-key size", async () => {
-    const insights = createPlugin().models.insights;
-    const channel = "가".repeat(700);
-    const event = {
-      ...insightsEvent(91, { installId: "unicode-channel", receivedAtMs: 100 }),
-      channel,
-    };
-    expect(new TextEncoder().encode(channel).byteLength).toBeGreaterThan(2_048);
-    await insights.recordEvent({
-      event,
-    });
-    const filter = {
-      platform: "ios" as const,
-      channel,
-      type: "UPDATE_APPLIED" as const,
-      toBundleId: event.to_bundle_id,
-    };
-    const range = { sinceMs: 0, beforeReceivedAtMs: 200 };
-    await expect(insights.countEvents({ filter, ...range })).resolves.toBe(1);
-    await expect(
-      insights.listEvents({
-        filter: { kind: "bundle", ...filter },
-        ...range,
-        limit: 10,
-      }),
-    ).resolves.toEqual([event]);
-    await expect(
-      insights.findLatestEvents({ installId: event.install_id }),
-    ).resolves.toEqual([event]);
-    await expect(
-      insights.countEvents({
-        filter: { ...filter, channel: `${channel}나` },
-        ...range,
-      }),
-    ).resolves.toBe(0);
-    await expect(
-      insights.countLatestEvents({ platform: "ios", channel, sinceMs: 0 }),
-    ).resolves.toBe(1);
-    await expect(
-      insights.countLatestEvents({
-        platform: "ios",
-        channel: `${channel}나`,
-        sinceMs: 0,
-      }),
-    ).resolves.toBe(0);
+    ],
+    createDatabase: () => dynamoDB(config()),
+    migrate: async () => {
+      await migrateDynamoDB(config(), [insights()]);
+    },
+    reset: clear,
+    dispose: async (database) => {
+      await database.dispose?.();
+    },
   });
 });

@@ -2,7 +2,7 @@ import {
   getNumericCohortRolloutPosition,
   NUMERIC_COHORT_SIZE,
   normalizeRolloutCohortCount,
-} from "@hot-updater/core";
+} from "@hot-updater/protocol";
 import { List } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";

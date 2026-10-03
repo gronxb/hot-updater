@@ -1,9 +1,24 @@
 import type {
-  BundleRow,
-  ChannelRow,
-  ReleaseRow,
+  DeployReleasePolicy,
+  EngineDatabase,
+  StorageAdapter,
 } from "@hot-updater/plugin-core";
-import { setupDatabasePluginTestSuite } from "@hot-updater/test-utils";
+import { isMultiIndex, toolingTargetOf } from "@hot-updater/plugin-core";
+import { createHotUpdater } from "@hot-updater/server";
+import {
+  createInsightsModel,
+  insights,
+} from "@hot-updater/server/plugins/insights";
+import {
+  createHandlerHttpTestClient,
+  setupDatabaseTestSuite,
+  createBundleEventRowFixture,
+  insightsTestSuite,
+} from "@hot-updater/test-utils";
+import {
+  createBundleFixture,
+  createBundleRowFixture,
+} from "@hot-updater/test-utils";
 import { env } from "cloudflare:test";
 import {
   afterAll,
@@ -16,8 +31,8 @@ import {
   vi,
 } from "vitest";
 
-import { createBundleEventRowFixture } from "../../../../packages/test-utils/src/databaseTestFixtures";
 import { d1Database } from "../../src/d1Database";
+import { plugins } from "../../src/plugins";
 import { d1Database as d1RuntimeDatabase } from "../../src/worker";
 
 const state = vi.hoisted<{ db: D1Database | undefined }>(() => ({
@@ -90,64 +105,59 @@ vi.mock("cloudflare", () => ({
   },
 }));
 
+/** Every data table of the managed server's migration: each model's table and the index tables of its multi-valued indexes. */
+const dataTables = toolingTargetOf(plugins).schema.tables.flatMap((table) => [
+  table.name,
+  ...table.indexes
+    .filter((index) => isMultiIndex(table, index))
+    .map((index) => `${table.name}__${index.name}`),
+]);
+
+/** Empties every data table; the settings rows stay. */
 const reset = async (): Promise<void> => {
-  await getDb()
-    .prepare(
-      "DELETE FROM insights_overview; DELETE FROM bundle_event_heads; DELETE FROM bundle_events; DELETE FROM api_keys; DELETE FROM bundle_patches; DELETE FROM release_catalogs; DELETE FROM releases; DELETE FROM bundles; DELETE FROM channels;",
-    )
-    .run();
+  await getDb().batch(
+    dataTables.map((name) => getDb().prepare(`DELETE FROM "${name}"`)),
+  );
 };
 
-const createChannelRow = (name: string): ChannelRow => ({
-  id: `channel-${name}`,
-  name,
-});
+/**
+ * A public server with Insights on `database`, as the suite serves it. The
+ * specs here reach core and the Insights API through it.
+ */
+const serve = (options: {
+  readonly database: EngineDatabase;
+  readonly storage?: readonly StorageAdapter[];
+}) =>
+  createHotUpdater({
+    ...options,
+    plugins: [insights()],
+    clientAccess: "public",
+  });
 
-const createBundleRow = (): BundleRow => ({
-  id: "00000000-0000-0000-0000-000000000902",
-  platform: "ios",
-  file_hash: "hash",
-  git_commit_hash: null,
-  storage_uri: "storage://bundle",
-  archive_byte_size: 3_000_000_001,
-  metadata: {},
-  manifest_storage_uri: null,
-  manifest_file_hash: null,
-  asset_base_storage_uri: null,
-});
-
-const createReleaseRow = (
-  channel: ChannelRow,
-  bundle: BundleRow,
-): ReleaseRow => ({
-  id: "00000000-0000-7000-8000-000000000903",
-  revision: 1,
-  scope_key: `v1:test:${channel.name}:ios:app-version`,
-  channel_id: channel.id,
-  platform: bundle.platform,
-  kind: "BUNDLE",
-  bundle_id: bundle.id,
-  strategy: "APP_VERSION",
-  target_app_version: "1.0.0",
-  fingerprint_hash: null,
-  enabled: true,
-  should_force_update: false,
+const release = (channel: string, enabled: boolean): DeployReleasePolicy => ({
+  channel,
+  enabled,
+  fingerprintHash: null,
   message: null,
-  rollout_cohort_count: 1000,
-  target_cohorts: [],
-  operation: "DEPLOY",
-  source_release_id: null,
-  created_at_ms: 100,
-  updated_at_ms: 100,
+  shouldForceUpdate: false,
+  targetAppVersion: "1.0.0",
 });
 
-setupDatabasePluginTestSuite({
-  name: "cloudflare d1 http fixed-model database plugin",
+setupDatabaseTestSuite({
+  createHttpClient: (options) =>
+    createHandlerHttpTestClient(serve(options).handlers),
+  plugins: [
+    insightsTestSuite({
+      createModel: (database: EngineDatabase) =>
+        createInsightsModel(serve({ database }).api.insights),
+    }),
+  ],
+  name: "cloudflare d1 http",
   migrate: async () => {
     state.db = env.DB;
     await getDb().prepare(inject("prepareSql")).run();
   },
-  createPlugin: () =>
+  createDatabase: () =>
     d1Database({
       accountId: "account-id",
       cloudflareApiToken: "api-token",
@@ -157,10 +167,18 @@ setupDatabasePluginTestSuite({
   dispose: () => undefined,
 });
 
-setupDatabasePluginTestSuite({
-  name: "cloudflare worker d1 fixed-model database plugin",
+setupDatabaseTestSuite({
+  createHttpClient: (options) =>
+    createHandlerHttpTestClient(serve(options).handlers),
+  plugins: [
+    insightsTestSuite({
+      createModel: (database: EngineDatabase) =>
+        createInsightsModel(serve({ database }).api.insights),
+    }),
+  ],
+  name: "cloudflare worker d1",
   migrate: () => undefined,
-  createPlugin: () => d1RuntimeDatabase(env.DB),
+  createDatabase: () => d1RuntimeDatabase(env.DB),
   reset,
   dispose: () => {
     state.db = undefined;
@@ -170,7 +188,7 @@ setupDatabasePluginTestSuite({
 describe.each([
   {
     name: "cloudflare d1 http",
-    createPlugin: () =>
+    createDatabase: () =>
       d1Database({
         accountId: "account-id",
         cloudflareApiToken: "api-token",
@@ -179,9 +197,9 @@ describe.each([
   },
   {
     name: "cloudflare worker d1",
-    createPlugin: () => d1RuntimeDatabase(env.DB),
+    createDatabase: () => d1RuntimeDatabase(env.DB),
   },
-])("$name Channel deletion", ({ createPlugin }) => {
+])("$name Channel deletion", ({ createDatabase }) => {
   beforeAll(() => {
     state.db = env.DB;
   });
@@ -195,23 +213,22 @@ describe.each([
   });
 
   it("deletes only empty channels", async () => {
-    const plugin = createPlugin();
-    const channel = createChannelRow("empty");
-    await plugin.models.channels.insert({
-      row: channel,
-      onConflict: "returnExisting",
-    });
+    const { core } = serve({ database: createDatabase() });
+    const channel = await core.ensureChannel("empty");
 
-    await expect(
-      plugin.models.channels.delete({ id: channel.id }),
-    ).resolves.toEqual({ deleted: true });
-    await expect(
-      plugin.models.channels.delete({ id: channel.id }),
-    ).resolves.toEqual({ deleted: false, reason: "not_found" });
+    await expect(core.deleteChannel(channel.id)).resolves.toEqual({
+      deleted: true,
+    });
+    await expect(core.deleteChannel(channel.id)).resolves.toEqual({
+      deleted: false,
+      reason: "not_found",
+    });
   });
 
   it("keeps failed event inserts invisible, then safely retries", async () => {
-    const plugin = createPlugin();
+    const model = createInsightsModel(
+      serve({ database: createDatabase() }).api.insights,
+    );
     const event = createBundleEventRowFixture("9101", 100);
     const input = { event };
     await env.DB.prepare(`
@@ -219,16 +236,15 @@ describe.each([
       BEGIN SELECT RAISE(ABORT, 'injected event failure'); END;
     `).run();
     try {
-      await expect(plugin.models.insights.recordEvent(input)).rejects.toThrow(
-        "injected event failure",
-      );
+      // The engine reports a failed batch as ambiguous, with D1's error as its cause.
+      await expect(model.recordEvent(input)).rejects.toMatchObject({
+        cause: { message: expect.stringContaining("injected event failure") },
+      });
       expect(
         (await env.DB.prepare("SELECT * FROM bundle_events").all()).results,
       ).toEqual([]);
       await expect(
-        plugin.models.insights.findLatestEvents({
-          installId: event.install_id,
-        }),
+        model.findLatestEvents({ installId: event.install_id }),
       ).resolves.toEqual([]);
     } finally {
       await env.DB.prepare("DROP TRIGGER fail_insights_event").run();
@@ -238,9 +254,10 @@ describe.each([
       BEGIN SELECT RAISE(ABORT, 'injected head failure'); END;
     `).run();
     try {
-      await expect(plugin.models.insights.recordEvent(input)).rejects.toThrow(
-        "injected head failure",
-      );
+      // The engine reports a failed batch as ambiguous, with D1's error as its cause.
+      await expect(model.recordEvent(input)).rejects.toMatchObject({
+        cause: { message: expect.stringContaining("injected head failure") },
+      });
       expect(
         (await env.DB.prepare("SELECT * FROM bundle_events").all()).results,
       ).toEqual([]);
@@ -251,94 +268,47 @@ describe.each([
     } finally {
       await env.DB.prepare("DROP TRIGGER fail_insights_head").run();
     }
-    await plugin.models.insights.recordEvent(input);
-    await plugin.models.insights.recordEvent(input);
+    await model.recordEvent(input);
+    await model.recordEvent(input);
     await expect(
-      plugin.models.insights.findLatestEvents({ installId: event.install_id }),
+      model.findLatestEvents({ installId: event.install_id }),
     ).resolves.toEqual([input.event]);
     expect(
       (await env.DB.prepare("SELECT id FROM bundle_events").all()).results,
     ).toEqual([{ id: event.id }]);
   });
 
-  it("rejects direct and committed deletion while a Release references the channel", async () => {
-    const plugin = createPlugin();
-    const channel = createChannelRow("active");
-    const bundle = createBundleRow();
-    const release = createReleaseRow(channel, bundle);
-    await plugin.models.channels.insert({
-      row: channel,
-      onConflict: "returnExisting",
-    });
-    await plugin.commit({
-      changes: [
-        { model: "bundles", operation: "insert", row: bundle },
-        { model: "releases", operation: "insert", row: release },
-      ],
-    });
+  it("refuses to delete a channel while a Release uses it", async () => {
+    const { core } = serve({ database: createDatabase() });
+    const channel = await core.ensureChannel("active");
+    const bundle = createBundleFixture("902");
+    await core.deploy([{ bundle, release: release(channel.name, true) }]);
 
-    await expect(
-      plugin.models.channels.delete({ id: channel.id }),
-    ).resolves.toEqual({ deleted: false, reason: "not_empty" });
-    await expect(
-      plugin.commit({
-        changes: [
-          {
-            model: "channels",
-            operation: "delete",
-            where: { id: channel.id },
-          },
-        ],
-      }),
-    ).resolves.toEqual({
-      committed: false,
-      conflict: { changeIndex: 0, reason: "referenced" },
+    await expect(core.deleteChannel(channel.id)).resolves.toEqual({
+      deleted: false,
+      reason: "not_empty",
     });
-    await expect(plugin.models.bundles.findById(bundle.id)).resolves.toEqual(
-      bundle,
-    );
+    await expect(core.listChannels()).resolves.toEqual([channel]);
+    await expect(core.getBundle(bundle.id)).resolves.toMatchObject({
+      bundle: createBundleRowFixture("902"),
+    });
   });
 
-  it("atomically deletes a Release before deleting its newly empty channel", async () => {
-    const plugin = createPlugin();
-    const channel = createChannelRow("retired");
-    const bundle = createBundleRow();
-    const release = createReleaseRow(channel, bundle);
-    await plugin.models.channels.insert({
-      row: channel,
-      onConflict: "returnExisting",
-    });
-    await plugin.commit({
-      changes: [
-        { model: "bundles", operation: "insert", row: bundle },
-        { model: "releases", operation: "insert", row: release },
-      ],
-    });
+  it("deletes a channel once its last Release is deleted, and the artifact with that Release", async () => {
+    const { core } = serve({ database: createDatabase() });
+    const channel = await core.ensureChannel("retired");
+    const bundle = createBundleFixture("903");
+    const [deployed] = await core.deploy([
+      { bundle, release: release(channel.name, false) },
+    ]);
+    const releaseId = deployed!.release!.id;
 
-    await expect(
-      plugin.commit({
-        changes: [
-          {
-            model: "releases",
-            operation: "delete",
-            where: { id: release.id },
-          },
-          {
-            model: "channels",
-            operation: "delete",
-            where: { id: channel.id },
-          },
-        ],
-      }),
-    ).resolves.toEqual({ committed: true });
-    await expect(
-      plugin.models.releases.findById(release.id),
-    ).resolves.toBeNull();
-    await expect(plugin.models.bundles.findById(bundle.id)).resolves.toEqual(
-      bundle,
-    );
-    await expect(plugin.models.channels.list({})).resolves.toEqual({
-      channels: [],
+    await core.deleteRelease({ releaseId });
+    await expect(core.deleteChannel(channel.id)).resolves.toEqual({
+      deleted: true,
     });
+    await expect(core.getRelease(releaseId)).resolves.toBeNull();
+    await expect(core.getBundle(bundle.id)).resolves.toBeNull();
+    await expect(core.listChannels()).resolves.toEqual([]);
   });
 });

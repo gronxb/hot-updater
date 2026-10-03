@@ -1,5 +1,183 @@
 # @hot-updater/expo
 
+## 1.0.0-rc.27
+
+### Patch Changes
+
+- Improve the readability of Console update failures by grouping check metrics separately, emphasizing nonzero failures, and making stage/reason details easier to scan. Preserve all report data and rate calculations. Prepare all public Hot Updater packages together as 1.0.0-rc.27.
+- Updated dependencies
+  - @hot-updater/bare@1.0.0-rc.27
+  - @hot-updater/cli-tools@1.0.0-rc.27
+  - @hot-updater/plugin-core@1.0.0-rc.27
+  - hot-updater@1.0.0-rc.27
+
+## 1.0.0-rc.26
+
+### Patch Changes
+
+- c9cfed7: Restore the rc.14 Insights metric layout in bundle rows and details while preserving current data, rates, links, and download failure reporting. Release all public Hot Updater packages together as 1.0.0-rc.26.
+- Updated dependencies [c9cfed7]
+  - @hot-updater/bare@1.0.0-rc.26
+  - @hot-updater/cli-tools@1.0.0-rc.26
+  - @hot-updater/plugin-core@1.0.0-rc.26
+  - hot-updater@1.0.0-rc.26
+
+## 1.0.0-rc.25
+
+### Patch Changes
+
+- c9cfed7: Release the legacy Hermes fallback correction at 1.0.0-rc.25 with all public Hot Updater packages on the same RC.
+- Updated dependencies [1bdc12f]
+- Updated dependencies [c9cfed7]
+  - @hot-updater/bare@1.0.0-rc.25
+  - @hot-updater/cli-tools@1.0.0-rc.25
+  - @hot-updater/plugin-core@1.0.0-rc.25
+  - hot-updater@1.0.0-rc.25
+
+## 1.0.0-rc.24
+
+### Patch Changes
+
+- cc34295: Resolve Expo config and fingerprint dependencies from the target app with Node's package resolver. Remove Expo config file-path fallbacks, honor evaluated dynamic and platform-specific JavaScript engine settings, and preserve config and dependency errors.
+
+  Resolve React Native metadata through its package manifest and legacy Hermes binaries from the app's dependencies, including hoisted installations.
+
+- c9cfed7: Release the project-scoped Expo, fingerprint, React Native, and Hermes resolution fixes at 1.0.0-rc.24 so projects can install the same RC of every Hot Updater package.
+- Updated dependencies [cc34295]
+- Updated dependencies [c9cfed7]
+  - @hot-updater/bare@1.0.0-rc.24
+  - @hot-updater/cli-tools@1.0.0-rc.24
+  - hot-updater@1.0.0-rc.24
+  - @hot-updater/plugin-core@1.0.0-rc.24
+
+## 1.0.0-rc.23
+
+### Patch Changes
+
+- 8bef128: Resolve Expo config through its public package export so SDK 58 projects can build and sign OTA updates. Preserve legacy file and directory layouts and propagate errors from inside the config module.
+- Updated dependencies [c9cfed7]
+  - @hot-updater/bare@1.0.0-rc.23
+  - @hot-updater/cli-tools@1.0.0-rc.23
+  - @hot-updater/plugin-core@1.0.0-rc.23
+  - hot-updater@1.0.0-rc.23
+
+## 1.0.0-rc.22
+
+### Patch Changes
+
+- c9cfed7: Released with every Hot Updater package at 1.0.0-rc.22, so a project can install the same RC of each one.
+- Updated dependencies [4e1cb07]
+- Updated dependencies [c9cfed7]
+  - hot-updater@1.0.0-rc.22
+  - @hot-updater/bare@1.0.0-rc.22
+  - @hot-updater/cli-tools@1.0.0-rc.22
+  - @hot-updater/plugin-core@1.0.0-rc.22
+
+## 1.0.0-rc.21
+
+### Patch Changes
+
+- c9cfed7: Every package now shares one release candidate version: `hot-updater` and every `@hot-updater/*` package move to the same version, so an app, its server, and the console can pin one version.
+- bb57f25: What fills one slot of a config is now an adapter: storage, build, database, and signing. What you list in `plugins` stays a plugin: server plugins, client plugins, and the Sentry, Datadog, and BugSnag integration plugins that wrap a build adapter.
+  - `@hot-updater/plugin-core`: `StoragePlugin` is `StorageAdapter`, `createStoragePlugin` is `createStorageAdapter`, `StoragePluginWith` is `StorageAdapterWith`, `CreateStoragePluginOptions` is `CreateStorageAdapterOptions`, `BuildPlugin` is `BuildAdapter`, `BuildPluginConfig` is `BuildAdapterConfig`, `BasePluginArgs` is `BuildAdapterArgs`, `BundleSigningPlugin` is `BundleSigningAdapter`, and `DatabasePluginInputError` is `DatabaseAdapterInputError`. There are no aliases.
+  - `@hot-updater/bare`, `@hot-updater/expo`, and `@hot-updater/rock`: their options types are `BareAdapterConfig`, `ExpoAdapterConfig`, and `RockAdapterConfig`.
+  - The CLI, the server, and the console say "storage adapter", "build adapter", "database adapter", and "signing adapter" in their messages, such as `Storage adapter "<name>" does not implement <operation>.` and `No storage adapter for protocol: <protocol>`. `hot-updater init --build <adapter>` names its option accordingly.
+
+  Package names and factory names do not change: `s3Storage()`, `r2Storage()`, `bare()`, `expo()`, `rock()`, `postgres()`, and the rest are configured as before.
+
+- Updated dependencies [c9cfed7]
+- Updated dependencies [5ec6796]
+- Updated dependencies [ab04e15]
+- Updated dependencies [0d8d03b]
+- Updated dependencies [eebe617]
+- Updated dependencies [48cdd14]
+- Updated dependencies [f185d6d]
+- Updated dependencies [ab04e15]
+- Updated dependencies [4d15862]
+- Updated dependencies [b92970f]
+- Updated dependencies [48cdd14]
+- Updated dependencies [049fad1]
+- Updated dependencies [61fcd51]
+- Updated dependencies [bb57f25]
+  - @hot-updater/bare@1.0.0-rc.21
+  - @hot-updater/cli-tools@1.0.0-rc.21
+  - @hot-updater/plugin-core@1.0.0-rc.21
+  - hot-updater@1.0.0-rc.21
+
+## 1.0.0-rc.17
+
+### Patch Changes
+
+- Updated dependencies [e696e69]
+- Updated dependencies [e696e69]
+- Updated dependencies [9574287]
+- Updated dependencies [a084eda]
+- Updated dependencies [9cd555b]
+- Updated dependencies [9cd555b]
+- Updated dependencies [9cd555b]
+- Updated dependencies [d7f1688]
+- Updated dependencies [1ddd5fc]
+- Updated dependencies [14188a7]
+- Updated dependencies [9cd555b]
+- Updated dependencies [9a6715f]
+- Updated dependencies [530cca5]
+- Updated dependencies [9cd555b]
+- Updated dependencies [530cca5]
+  - @hot-updater/plugin-core@1.0.0-rc.17
+  - hot-updater@1.0.0-rc.20
+  - @hot-updater/cli-tools@1.0.0-rc.17
+  - @hot-updater/bare@1.0.0-rc.17
+
+## 1.0.0-rc.16
+
+### Patch Changes
+
+- Updated dependencies [d482b13]
+- Updated dependencies [d482b13]
+- Updated dependencies [d482b13]
+- Updated dependencies [d482b13]
+- Updated dependencies [fe03f59]
+- Updated dependencies [d482b13]
+- Updated dependencies [8d60f68]
+- Updated dependencies [d482b13]
+- Updated dependencies [2431c0a]
+- Updated dependencies [7ba867c]
+- Updated dependencies [94b56f3]
+- Updated dependencies [ad00722]
+- Updated dependencies [d7df92c]
+- Updated dependencies [d482b13]
+- Updated dependencies [d482b13]
+- Updated dependencies [d482b13]
+- Updated dependencies [f6ffb68]
+- Updated dependencies [c68e9f3]
+- Updated dependencies [e542054]
+- Updated dependencies [065c457]
+- Updated dependencies [8a03eb2]
+- Updated dependencies [d482b13]
+- Updated dependencies [aee193e]
+- Updated dependencies [228b6c7]
+- Updated dependencies [3f30a23]
+- Updated dependencies [065c457]
+- Updated dependencies [df31037]
+  - hot-updater@1.0.0-rc.18
+  - @hot-updater/plugin-core@1.0.0-rc.16
+  - @hot-updater/cli-tools@1.0.0-rc.16
+  - @hot-updater/bare@1.0.0-rc.16
+
+## 1.0.0-rc.15
+
+### Patch Changes
+
+- Updated dependencies [f5fffea]
+- Updated dependencies [88add06]
+- Updated dependencies [79c3eea]
+- Updated dependencies [d99530b]
+- Updated dependencies [39f60f9]
+  - @hot-updater/plugin-core@1.0.0-rc.15
+  - hot-updater@1.0.0-rc.17
+  - @hot-updater/cli-tools@1.0.0-rc.15
+  - @hot-updater/bare@1.0.0-rc.15
+
 ## 1.0.0-rc.14
 
 ### Patch Changes

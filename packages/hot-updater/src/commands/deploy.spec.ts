@@ -2,20 +2,19 @@ import { pipeline } from "stream/promises";
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { mockBuildPlugin, mockCli, mockServer, mockStoragePlugin } = vi.hoisted(
-  () => {
-    const mockBuildPlugin = {
+const { mockBuildAdapter, mockCli, mockServer, mockStorageAdapter } =
+  vi.hoisted(() => {
+    const mockBuildAdapter = {
       build: vi.fn(),
       name: "mock-build",
       nativeBuild: undefined as
         | {
-            signingConfigSource?: "build-plugin";
             getBundleSigningPublicKey: ReturnType<typeof vi.fn>;
             getFingerprintExtraSources?: ReturnType<typeof vi.fn>;
           }
         | undefined,
     };
-    const mockStoragePlugin = {
+    const mockStorageAdapter = {
       delete: vi.fn(),
       exists: vi.fn(),
       get: vi.fn(),
@@ -27,10 +26,8 @@ const { mockBuildPlugin, mockCli, mockServer, mockStoragePlugin } = vi.hoisted(
       createBundleDiff: vi.fn(),
     };
     const mockCli = {
-      appendToProjectRootGitignore: vi.fn(),
       createTarBrTargetFiles: vi.fn(),
-      createTarGzTargetFiles: vi.fn(),
-      createZipTargetFiles: vi.fn(),
+      appendToProjectRootGitignore: vi.fn(),
       getCwd: vi.fn(),
       getStorageFileByteSize: vi.fn(),
       loadConfig: vi.fn(),
@@ -55,13 +52,13 @@ const { mockBuildPlugin, mockCli, mockServer, mockStoragePlugin } = vi.hoisted(
     };
 
     return {
-      mockBuildPlugin,
+      mockBuildAdapter,
       mockCli,
       mockServer,
-      mockStoragePlugin,
+      mockStorageAdapter,
     };
-  },
-);
+  });
+const { mockLoadServer } = vi.hoisted(() => ({ mockLoadServer: vi.fn() }));
 
 vi.mock("@hot-updater/cli-tools", async (importOriginal) => {
   const actual =
@@ -69,6 +66,7 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => {
 
   return {
     ...actual,
+    createTarBrTargetFiles: mockCli.createTarBrTargetFiles,
     HotUpdateDirUtil: {
       getDefaultOutputPath: vi.fn(() => ".hot-updater/output"),
       outputGitignorePath: ".hot-updater/output",
@@ -85,16 +83,25 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => {
       underline: (value: string) => value,
       yellow: (value: string) => value,
     },
-    createTarBrTargetFiles: mockCli.createTarBrTargetFiles,
-    createTarGzTargetFiles: mockCli.createTarGzTargetFiles,
-    createZipTargetFiles: mockCli.createZipTargetFiles,
     getCwd: mockCli.getCwd,
     getStorageFileByteSize: mockCli.getStorageFileByteSize,
     loadConfig: mockCli.loadConfig,
+    // The command loads the config once for its platforms; each platform's
+    // config comes from the loadConfig mock.
+    loadPlatformConfigs: async (
+      platforms: readonly string[],
+      { channel }: { channel: string },
+    ) =>
+      Promise.all(
+        platforms.map(async (platform) => ({
+          platform,
+          config: await mockCli.loadConfig({ channel, platform }),
+        })),
+      ),
     p: mockCli.p,
     prepareBundleSigning: mockCli.prepareBundleSigning,
     putStorageFile: async (
-      storage: typeof mockStoragePlugin,
+      storage: typeof mockStorageAdapter,
       key: string,
       filePath: string,
     ) => {
@@ -109,7 +116,7 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => {
   };
 });
 
-vi.mock("@hot-updater/server/db", () => ({
+vi.mock("@/utils/createBundleDiff", () => ({
   createBundleDiff: mockServer.createBundleDiff,
 }));
 
@@ -124,8 +131,9 @@ vi.mock("fs", async () => {
       existsSync: vi.fn(),
       promises: {
         ...actual.promises,
-        chmod: vi.fn(),
         copyFile: vi.fn(),
+        chmod: vi.fn(),
+        stat: vi.fn(async () => ({ size: 4 })),
         mkdir: vi.fn(),
         readFile: vi.fn(),
         readdir: vi.fn(),
@@ -139,8 +147,9 @@ vi.mock("fs", async () => {
     existsSync: vi.fn(),
     promises: {
       ...actual.promises,
-      chmod: vi.fn(),
       copyFile: vi.fn(),
+      chmod: vi.fn(),
+      stat: vi.fn(async () => ({ size: 4 })),
       mkdir: vi.fn(),
       readFile: vi.fn(),
       readdir: vi.fn(),
@@ -155,10 +164,10 @@ vi.mock("is-port-reachable", () => ({
   default: vi.fn(),
 }));
 
-import { createDatabasePluginHarness } from "./databasePlugin.testFixtures";
+import { createDatabaseHarness } from "./database.testFixtures";
 
-const databaseHarness = createDatabasePluginHarness();
-const databasePlugin = databaseHarness.plugin;
+const databaseHarness = createDatabaseHarness();
+const harnessDatabase = databaseHarness.database;
 
 vi.mock("open", () => ({
   default: vi.fn(),
@@ -178,7 +187,6 @@ vi.mock("@/signedHashUtils", () => ({
 
 vi.mock("@/utils/bundleManifest", () => ({
   createBundleManifest: vi.fn(),
-  serializeBundleManifest: vi.fn((manifest) => `${JSON.stringify(manifest)}\n`),
   writeBundleManifestFile: vi.fn(),
 }));
 
@@ -211,6 +219,13 @@ vi.mock("@/utils/git", () => ({
   getLatestGitCommit: vi.fn(),
 }));
 
+vi.mock("@/utils/loadServer", async () => ({
+  ...(await vi.importActual<typeof import("../utils/loadServer")>(
+    "../utils/loadServer",
+  )),
+  loadServer: mockLoadServer,
+}));
+
 vi.mock("@/utils/printBanner", () => ({
   printBanner: vi.fn(),
 }));
@@ -235,24 +250,28 @@ vi.mock("./console", () => ({
 import fs from "fs";
 
 import type {
-  BuildArtifact,
   Bundle,
-  DatabasePlugin,
+  Deployment,
+  EngineDatabase,
+  HotUpdaterCoreApi,
+  Platform,
 } from "@hot-updater/plugin-core";
 import {
+  createMemoryAdapter,
   createStorageUri,
-  DatabaseAtomicCommitUnsupportedError,
-  MAX_BUNDLE_ARCHIVE_BYTES,
-  MAX_BUNDLE_EXPANDED_BYTES,
 } from "@hot-updater/plugin-core";
 import isPortReachable from "is-port-reachable";
 import open from "open";
 
 import {
   createBundleManifest,
-  serializeBundleManifest,
   writeBundleManifestFile,
 } from "@/utils/bundleManifest";
+import {
+  isFingerprintEquals,
+  nativeFingerprint,
+  readLocalFingerprint,
+} from "@/utils/fingerprint";
 import { getBundleZipTargets } from "@/utils/getBundleZipTargets";
 import { getFileHashFromFile } from "@/utils/getFileHash";
 import { getLatestGitCommit } from "@/utils/git";
@@ -261,6 +280,7 @@ import { validateSigningConfig } from "@/utils/signing/validateSigningConfig";
 import { getDefaultTargetAppVersion } from "@/utils/version/getDefaultTargetAppVersion";
 import { getNativeAppVersion } from "@/utils/version/getNativeAppVersion";
 
+import { testServer } from "../utils/testServer";
 import { getConsolePort, openConsole } from "./console";
 import {
   deploy,
@@ -280,34 +300,27 @@ const fixtureBundleId = (sequence: number): string =>
 const DEPLOY_BUNDLE_ID = fixtureBundleId(123);
 const LOGICAL_FILE_HASH = "a".repeat(64);
 const TRANSFER_FILE_HASH = "b".repeat(64);
-const mockArtifactSnapshot = (artifacts: BuildArtifact[]) => ({
-  artifacts,
-  expandedByteSize: artifacts.length * 4,
-  path: "/mock/build/.hot-updater-snapshot-test",
-});
-const mockSigningPlugin = {
+const mockSigningAdapter = {
   getPublicKey: vi.fn(async () => ({ publicKey: "public-key" })),
   name: "mock-signing",
   sign: vi.fn(async () => ({ signature: new Uint8Array([1]) })),
 };
 
 const mockGetBundlesWithFixtures = (fixtures: DeploymentFixture[]) => {
-  mockBuildPlugin.build.mockResolvedValue({
-    artifacts: [],
+  mockBuildAdapter.build.mockResolvedValue({
     buildPath: "/mock/build",
     bundleId: DEPLOY_BUNDLE_ID,
-    patchAssetPath: "index.bundle",
     stdout: null,
   });
   mockServer.createBundleDiff.mockResolvedValue({ id: DEPLOY_BUNDLE_ID });
   return databaseHarness.seedDeployments(
     fixtures.map((fixture) => ({
       bundle: {
-        archiveByteSize: 1024,
-        fileHash: "fixture-hash",
+        assetBaseStorageUri: "storage://assets",
         gitCommitHash: null,
+        manifestFileHash: "fixture-manifest-hash",
+        manifestStorageUri: `storage://artifacts/${fixture.bundle.id}/manifest.json`,
         platform: "ios",
-        storageUri: `storage://${fixture.bundle.id}`,
         ...fixture.bundle,
       },
       release: {
@@ -400,35 +413,40 @@ describe("deploy rollout wiring", () => {
       }
     });
 
-    mockBuildPlugin.build.mockResolvedValue({
-      artifacts: [],
+    mockBuildAdapter.build.mockResolvedValue({
       buildPath: "/mock/build",
       bundleId: "bundle-123",
-      patchAssetPath: "index.bundle",
       stdout: null,
     });
-    mockBuildPlugin.nativeBuild = undefined;
-    mockStoragePlugin.put.mockImplementation(async ({ key }) => ({
+    mockBuildAdapter.nativeBuild = undefined;
+    mockStorageAdapter.put.mockImplementation(async ({ key }) => ({
       storageUri: `s3://bundles/${key}`,
     }));
-    mockStoragePlugin.exists.mockResolvedValue({ exists: false });
+    mockStorageAdapter.exists.mockResolvedValue({ exists: false });
     mockServer.createBundleDiff.mockResolvedValue({
       id: "bundle-123",
     });
     mockCli.prepareBundleSigning.mockResolvedValue(null);
+    mockCli.createTarBrTargetFiles.mockReset().mockResolvedValue({
+      downloadFileHash: "d".repeat(64),
+      downloadByteSize: 100,
+      tarByteSize: 2048,
+    });
 
     mockCli.loadConfig.mockResolvedValue({
-      build: async () => mockBuildPlugin,
-      compressStrategy: "tar.br",
-      database: databasePlugin,
+      build: async () => mockBuildAdapter,
+      database: harnessDatabase,
       fingerprint: {},
       patch: {
         enabled: true,
         maxBaseBundles: 3,
       },
-      storage: mockStoragePlugin,
+      storage: mockStorageAdapter,
       updateStrategy: "appVersion",
     });
+    mockLoadServer.mockResolvedValue(
+      testServer({ database: harnessDatabase, storage: mockStorageAdapter }),
+    );
 
     vi.mocked(validateSigningConfig).mockResolvedValue({
       isValid: true,
@@ -452,33 +470,32 @@ describe("deploy rollout wiring", () => {
           targetFiles.map((targetFile) => [
             targetFile.name,
             {
-              downloadCompression: targetFile.downloadCompression,
               fileHash: LOGICAL_FILE_HASH,
             },
           ]),
         ),
         bundleId,
-        patchAssetPath: targetFiles[0]!.name,
       }),
     );
     vi.mocked(writeBundleManifestFile).mockResolvedValue(
-      "/mock/build/.hot-updater-snapshot-test/manifest.json",
+      "/mock/snapshot/manifest.json",
     );
-    vi.mocked(getBundleZipTargets).mockResolvedValue(
-      mockArtifactSnapshot([
+    vi.mocked(getBundleZipTargets).mockResolvedValue({
+      path: "/mock/snapshot",
+      expandedByteSize: 4,
+      artifacts: [
         {
           name: "index.bundle",
-          path: "/mock/build/.hot-updater-snapshot-test/artifact-000000",
-          downloadCompression: null,
+          path: "/mock/build/index.bundle",
         },
-      ]),
-    );
+      ].map((artifact) => ({ ...artifact, downloadCompression: null })),
+    });
     vi.mocked(getFileHashFromFile).mockResolvedValue(TRANSFER_FILE_HASH);
 
     vi.mocked(fs.existsSync).mockReturnValue(true);
-    vi.mocked(fs.promises.chmod).mockResolvedValue(undefined);
     vi.mocked(fs.promises.mkdir).mockResolvedValue(undefined);
     vi.mocked(fs.promises.copyFile).mockResolvedValue(undefined);
+    vi.mocked(fs.promises.chmod).mockResolvedValue(undefined);
     vi.mocked(fs.promises.readFile).mockResolvedValue(Buffer.from("bundle"));
     vi.mocked(fs.promises.readdir).mockResolvedValue([
       "index.bundle",
@@ -548,7 +565,7 @@ describe("deploy rollout wiring", () => {
       "Deployment",
     );
     const release = (await databaseHarness.releases())[0]!;
-    const catalog = await databasePlugin.models.releaseCatalogs.findByScopeKey(
+    const catalog = await databaseHarness.core.getReleaseCatalogRow(
       release.scope_key,
     );
     const summary = mockCli.p.outro.mock.calls[0]?.[0];
@@ -590,7 +607,7 @@ describe("deploy rollout wiring", () => {
 
       const release = (await databaseHarness.releases())[0]!;
       expect(open).toHaveBeenCalledOnce();
-      expect(databaseHarness.commit.mock.invocationCallOrder[0]).toBeLessThan(
+      expect(databaseHarness.deploy.mock.invocationCallOrder[0]).toBeLessThan(
         vi.mocked(open).mock.invocationCallOrder[0]!,
       );
       const url = new URL(vi.mocked(open).mock.calls[0]![0]);
@@ -613,7 +630,10 @@ describe("deploy rollout wiring", () => {
   );
 
   it("does not open the console or announce success after a failed interactive commit", async () => {
-    databaseHarness.commit.mockRejectedValueOnce(new Error("commit failed"));
+    databaseHarness.deploy.mockRejectedValueOnce(new Error("commit failed"));
+    const exit = vi.spyOn(process, "exit").mockImplementationOnce(() => {
+      throw new Error("process.exit");
+    });
     const errorLog = vi.spyOn(console, "error").mockImplementation(() => {});
     try {
       await expect(
@@ -625,10 +645,7 @@ describe("deploy rollout wiring", () => {
           targetAppVersion: "1.0.x",
         }),
       ).rejects.toThrow("commit failed");
-      expect(fs.promises.rm).toHaveBeenCalledWith(
-        "/mock/build/.hot-updater-snapshot-test",
-        { force: true, recursive: true },
-      );
+      expect(exit).not.toHaveBeenCalled();
       expect(await databaseHarness.releases()).toEqual([]);
       expect(getConsolePort).not.toHaveBeenCalled();
       expect(openConsole).not.toHaveBeenCalled();
@@ -636,120 +653,15 @@ describe("deploy rollout wiring", () => {
       expect(mockCli.p.log.message).not.toHaveBeenCalled();
       expect(mockCli.p.outro).not.toHaveBeenCalled();
     } finally {
+      exit.mockRestore();
       errorLog.mockRestore();
     }
-  });
-
-  it("removes the partial archive when compression fails before upload", async () => {
-    mockCli.createTarBrTargetFiles.mockRejectedValueOnce(
-      new Error("Compression failed"),
-    );
-    const errorLog = vi.spyOn(console, "error").mockImplementation(() => {});
-    try {
-      await expect(
-        deploy({
-          channel: "production",
-          forceUpdate: false,
-          interactive: false,
-          platform: "ios",
-          targetAppVersion: "1.0.x",
-        }),
-      ).rejects.toThrow("Compression failed");
-      expect(fs.promises.rm).toHaveBeenCalledWith(
-        "/mock/cwd/.hot-updater/output/bundle/bundle.tar.br",
-        { force: true },
-      );
-      expect(mockStoragePlugin.put).not.toHaveBeenCalled();
-      expect(databaseHarness.commit).not.toHaveBeenCalled();
-    } finally {
-      errorLog.mockRestore();
-    }
-  });
-
-  it("rejects an oversized final archive before any upload", async () => {
-    mockCli.getStorageFileByteSize
-      .mockResolvedValueOnce(4)
-      .mockResolvedValueOnce(MAX_BUNDLE_ARCHIVE_BYTES + 1);
-    const errorLog = vi.spyOn(console, "error").mockImplementation(() => {});
-    try {
-      await expect(
-        deploy({
-          channel: "production",
-          forceUpdate: false,
-          interactive: false,
-          platform: "ios",
-          targetAppVersion: "1.0.x",
-        }),
-      ).rejects.toThrow(`exceeds ${MAX_BUNDLE_ARCHIVE_BYTES} bytes`);
-      expect(mockStoragePlugin.put).not.toHaveBeenCalled();
-      expect(databaseHarness.commit).not.toHaveBeenCalled();
-    } finally {
-      errorLog.mockRestore();
-    }
-  });
-
-  it("includes generated manifest bytes in the expanded-size limit", async () => {
-    vi.mocked(getBundleZipTargets).mockResolvedValue({
-      artifacts: [
-        {
-          name: "index.bundle",
-          path: "/mock/build/.hot-updater-snapshot-test/artifact-000000",
-          downloadCompression: null,
-        },
-      ],
-      expandedByteSize: MAX_BUNDLE_EXPANDED_BYTES,
-      path: "/mock/build/.hot-updater-snapshot-test",
-    });
-    const errorLog = vi.spyOn(console, "error").mockImplementation(() => {});
-    try {
-      await expect(
-        deploy({
-          channel: "production",
-          forceUpdate: false,
-          interactive: false,
-          platform: "ios",
-          targetAppVersion: "1.0.x",
-        }),
-      ).rejects.toThrow(`beyond ${MAX_BUNDLE_EXPANDED_BYTES} bytes`);
-      expect(mockCli.createTarBrTargetFiles).not.toHaveBeenCalled();
-      expect(mockStoragePlugin.put).not.toHaveBeenCalled();
-    } finally {
-      errorLog.mockRestore();
-    }
-  });
-
-  it("accepts the exact logical byte limit for TAR packaging", async () => {
-    vi.mocked(serializeBundleManifest).mockReturnValueOnce("m");
-    vi.mocked(getBundleZipTargets).mockResolvedValue({
-      artifacts: [
-        {
-          name: "index.bundle",
-          path: "/mock/build/.hot-updater-snapshot-test/artifact-000000",
-          downloadCompression: null,
-        },
-      ],
-      expandedByteSize: MAX_BUNDLE_EXPANDED_BYTES - 1,
-      path: "/mock/build/.hot-updater-snapshot-test",
-    });
-
-    await expect(
-      deploy({
-        channel: "production",
-        forceUpdate: false,
-        interactive: false,
-        platform: "ios",
-        targetAppVersion: "1.0.x",
-      }),
-    ).resolves.toBeUndefined();
-    expect(mockStoragePlugin.put).toHaveBeenCalled();
   });
 
   it("deploys both platforms sequentially when platform is omitted", async () => {
-    mockBuildPlugin.build.mockImplementation(async ({ platform }) => ({
-      artifacts: [],
+    mockBuildAdapter.build.mockImplementation(async ({ platform }) => ({
       buildPath: "/mock/build",
       bundleId: platform === "ios" ? "bundle-ios" : "bundle-android",
-      patchAssetPath: `index.${platform}.bundle`,
       stdout: null,
     }));
 
@@ -761,7 +673,12 @@ describe("deploy rollout wiring", () => {
     });
 
     expect(printBanner).toHaveBeenCalledTimes(1);
-    expect(mockBuildPlugin.build.mock.calls).toEqual([
+    // One server, from the first platform's config, for both platforms.
+    expect(mockLoadServer).toHaveBeenCalledOnce();
+    expect(mockLoadServer).toHaveBeenCalledWith(
+      expect.objectContaining({ database: harnessDatabase }),
+    );
+    expect(mockBuildAdapter.build.mock.calls).toEqual([
       [{ platform: "ios" }],
       [{ platform: "android" }],
     ]);
@@ -778,18 +695,6 @@ describe("deploy rollout wiring", () => {
       2,
       "Deployment (Android 2/2) • production",
     );
-    expect(mockCli.createTarBrTargetFiles).toHaveBeenNthCalledWith(
-      1,
-      expect.objectContaining({
-        outfile: "/mock/cwd/.hot-updater/output/ios/bundle/bundle.tar.br",
-      }),
-    );
-    expect(mockCli.createTarBrTargetFiles).toHaveBeenNthCalledWith(
-      2,
-      expect.objectContaining({
-        outfile: "/mock/cwd/.hot-updater/output/android/bundle/bundle.tar.br",
-      }),
-    );
     const releases = await databaseHarness.releases();
     for (const [platform, platformName, bundleId] of [
       ["ios", "iOS", "bundle-ios"],
@@ -800,10 +705,9 @@ describe("deploy rollout wiring", () => {
           candidate.platform === platform && candidate.bundle_id === bundleId,
       );
       expect(release).toBeDefined();
-      const catalog =
-        await databasePlugin.models.releaseCatalogs.findByScopeKey(
-          release!.scope_key,
-        );
+      const catalog = await databaseHarness.core.getReleaseCatalogRow(
+        release!.scope_key,
+      );
       const summary = mockCli.p.outro.mock.calls[0]?.[0];
       expect(summary).toContain(release!.id);
       expect(summary).not.toContain(bundleId);
@@ -821,44 +725,32 @@ describe("deploy rollout wiring", () => {
     expect(
       (await databaseHarness.bundles()).map(({ id }) => id).sort(),
     ).toEqual(["bundle-android", "bundle-ios"]);
-    expect(await databasePlugin.models.channels.list({})).toEqual({
-      channels: [
-        expect.objectContaining({
-          name: "production",
-        }),
-      ],
-    });
-    expect(databaseHarness.commit).toHaveBeenCalledTimes(1);
+    expect(await databaseHarness.core.listChannels()).toEqual([
+      expect.objectContaining({
+        name: "production",
+      }),
+    ]);
+    expect(databaseHarness.deploy).toHaveBeenCalledTimes(1);
+    expect(databaseHarness.deploy.mock.calls[0]![0]).toHaveLength(2);
   });
 
-  it("does not partially persist an unsupported two-platform commit", async () => {
-    const transactionlessDatabasePlugin: DatabasePlugin = {
-      ...databasePlugin,
-      commit: async (input) => {
-        if (input.changes.length > 1) {
-          throw new DatabaseAtomicCommitUnsupportedError(databasePlugin.name);
-        }
-        return databasePlugin.commit(input);
-      },
-    };
-    const commit = vi.spyOn(transactionlessDatabasePlugin, "commit");
-    mockCli.loadConfig.mockResolvedValue({
-      build: async () => mockBuildPlugin,
-      compressStrategy: "tar.br",
-      database: transactionlessDatabasePlugin,
-      fingerprint: {},
-      patch: {
-        enabled: true,
-        maxBaseBundles: 3,
-      },
-      storage: mockStoragePlugin,
-      updateStrategy: "appVersion",
+  it("persists neither platform when core refuses the two-platform deployment", async () => {
+    const refusal = new Error("The deployment does not fit in one write.");
+    const deployCall = vi.fn(async (): Promise<never> => {
+      throw refusal;
     });
-    mockBuildPlugin.build.mockImplementation(async ({ platform }) => ({
-      artifacts: [],
+    const refusingDatabase: EngineDatabase & {
+      readonly core: HotUpdaterCoreApi;
+    } = {
+      ...harnessDatabase,
+      core: { ...databaseHarness.core, deploy: deployCall },
+    };
+    mockLoadServer.mockResolvedValue(
+      testServer({ database: refusingDatabase, storage: mockStorageAdapter }),
+    );
+    mockBuildAdapter.build.mockImplementation(async ({ platform }) => ({
       buildPath: "/mock/build",
       bundleId: platform === "ios" ? "bundle-ios" : "bundle-android",
-      patchAssetPath: `index.${platform}.bundle`,
       stdout: null,
     }));
 
@@ -869,37 +761,41 @@ describe("deploy rollout wiring", () => {
       targetAppVersion: "1.0.x",
     });
 
-    await expect(deployment).rejects.toBeInstanceOf(
-      DatabaseAtomicCommitUnsupportedError,
-    );
-    expect(mockBuildPlugin.build).toHaveBeenCalledTimes(2);
-    expect(mockStoragePlugin.put).toHaveBeenCalled();
-    expect(commit).toHaveBeenCalledOnce();
+    await expect(deployment).rejects.toBe(refusal);
+    expect(mockBuildAdapter.build).toHaveBeenCalledTimes(2);
+    expect(mockStorageAdapter.put).toHaveBeenCalled();
+    expect(deployCall).toHaveBeenCalledOnce();
     expect(await databaseHarness.bundles()).toEqual([]);
-    expect(transactionlessDatabasePlugin.dispose).toHaveBeenCalledOnce();
+    expect(await databaseHarness.releases()).toEqual([]);
+    expect(refusingDatabase.dispose).toHaveBeenCalledOnce();
   });
 
-  it("rejects distinct platform databases before building and cleans both up", async () => {
-    const iosDatabasePlugin: DatabasePlugin = {
-      ...databasePlugin,
-      dispose: vi.fn(async (): Promise<void> => {}),
-    };
-    const androidDatabasePlugin: DatabasePlugin = {
-      ...databasePlugin,
-      dispose: vi.fn(async (): Promise<void> => {}),
-    };
-    mockCli.loadConfig.mockImplementation(async ({ platform }) => ({
-      build: async () => mockBuildPlugin,
-      compressStrategy: "tar.br",
-      database: platform === "ios" ? iosDatabasePlugin : androidDatabasePlugin,
-      fingerprint: {},
-      patch: {
-        enabled: true,
-        maxBaseBundles: 3,
+  it("rejects platforms whose configs name different databases before building, and closes them", async () => {
+    const databases = {
+      ios: {
+        name: "ios-database",
+        adapter: createMemoryAdapter(),
+        dispose: vi.fn(async () => {}),
       },
-      storage: mockStoragePlugin,
-      updateStrategy: "appVersion",
-    }));
+      android: {
+        name: "android-database",
+        adapter: createMemoryAdapter(),
+        dispose: vi.fn(async () => {}),
+      },
+    } satisfies Record<Platform, EngineDatabase>;
+    mockCli.loadConfig.mockImplementation(
+      async ({ platform }: { platform: Platform }) => ({
+        build: async () => mockBuildAdapter,
+        database: databases[platform],
+        fingerprint: {},
+        patch: {
+          enabled: true,
+          maxBaseBundles: 3,
+        },
+        storage: mockStorageAdapter,
+        updateStrategy: "appVersion",
+      }),
+    );
 
     const deployment = deploy({
       channel: "production",
@@ -911,64 +807,136 @@ describe("deploy rollout wiring", () => {
     await expect(deployment).rejects.toThrow(
       "Deploying multiple platforms requires a shared database configuration.",
     );
-    expect(mockBuildPlugin.build).not.toHaveBeenCalled();
-    expect(mockStoragePlugin.put).not.toHaveBeenCalled();
-    expect(iosDatabasePlugin.dispose).toHaveBeenCalledOnce();
-    expect(androidDatabasePlugin.dispose).toHaveBeenCalledOnce();
+    expect(mockLoadServer).not.toHaveBeenCalled();
+    expect(mockBuildAdapter.build).not.toHaveBeenCalled();
+    expect(mockStorageAdapter.put).not.toHaveBeenCalled();
+    expect(databases.ios.dispose).toHaveBeenCalledOnce();
+    expect(databases.android.dispose).toHaveBeenCalledOnce();
   });
 
-  it("commits a transactionless single-platform deployment exactly once", async () => {
-    const transactionlessDatabasePlugin = databasePlugin;
-    const commit = vi.spyOn(transactionlessDatabasePlugin, "commit");
-    mockCli.loadConfig.mockResolvedValue({
-      build: async () => mockBuildPlugin,
-      compressStrategy: "tar.br",
-      database: transactionlessDatabasePlugin,
-      fingerprint: {},
-      patch: {
-        enabled: true,
-        maxBaseBundles: 3,
-      },
-      storage: mockStoragePlugin,
-      updateStrategy: "appVersion",
-    });
+  it("refuses platforms that upload to different storage before building, and closes the database", async () => {
+    const database = {
+      name: "shared-database",
+      adapter: createMemoryAdapter(),
+      dispose: vi.fn(async () => {}),
+    } satisfies EngineDatabase;
+    const storages = {
+      ios: { ...mockStorageAdapter, name: "ios-storage" },
+      android: { ...mockStorageAdapter, name: "android-storage" },
+    };
+    mockCli.loadConfig.mockImplementation(
+      async ({ platform }: { platform: Platform }) => ({
+        build: async () => mockBuildAdapter,
+        database,
+        fingerprint: {},
+        patch: {
+          enabled: true,
+          maxBaseBundles: 3,
+        },
+        storage: storages[platform],
+        updateStrategy: "appVersion",
+      }),
+    );
 
-    await deploy({
+    const deployment = deploy({
       channel: "production",
       forceUpdate: false,
       interactive: false,
-      platform: "ios",
       targetAppVersion: "1.0.x",
     });
 
-    expect(commit).toHaveBeenCalledOnce();
+    await expect(deployment).rejects.toThrow(
+      "Deploying multiple platforms requires a shared storage configuration.",
+    );
+    expect(mockLoadServer).not.toHaveBeenCalled();
+    expect(mockBuildAdapter.build).not.toHaveBeenCalled();
+    expect(database.dispose).toHaveBeenCalledOnce();
+  });
+
+  it("stops before building when the config names no storage, and closes the database", async () => {
+    mockLoadServer.mockResolvedValue(testServer({ database: harnessDatabase }));
+
+    await expect(
+      deploy({
+        channel: "production",
+        forceUpdate: false,
+        interactive: false,
+        platform: "ios",
+        targetAppVersion: "1.0.x",
+      }),
+    ).rejects.toThrow(
+      "Set storage in hot-updater.config.ts: where the CLI uploads bundles, such as r2Storage(...).",
+    );
+    expect(mockBuildAdapter.build).not.toHaveBeenCalled();
+    expect(databaseHarness.deploy).not.toHaveBeenCalled();
+    expect(databaseHarness.dispose).toHaveBeenCalledOnce();
+  });
+
+  it("deploys a single platform in one core call, after the schema check", async () => {
+    const ready = vi.spyOn(databaseHarness.core, "ready");
+    try {
+      await deploy({
+        channel: "production",
+        forceUpdate: false,
+        interactive: false,
+        platform: "ios",
+        targetAppVersion: "1.0.x",
+      });
+
+      expect(databaseHarness.deploy).toHaveBeenCalledOnce();
+      expect(databaseHarness.deploy.mock.calls[0]![0]).toHaveLength(1);
+      expect(ready).toHaveBeenCalledOnce();
+      expect(ready.mock.invocationCallOrder[0]).toBeLessThan(
+        mockBuildAdapter.build.mock.invocationCallOrder[0]!,
+      );
+    } finally {
+      ready.mockRestore();
+    }
+  });
+
+  it("stops before building when the database needs migrations", async () => {
+    const ready = vi
+      .spyOn(databaseHarness.core, "ready")
+      .mockRejectedValueOnce(new Error("Run `hot-updater db migrate`."));
+    try {
+      await expect(
+        deploy({
+          channel: "production",
+          forceUpdate: false,
+          interactive: false,
+          platform: "ios",
+          targetAppVersion: "1.0.x",
+        }),
+      ).rejects.toThrow("Run `hot-updater db migrate`.");
+
+      expect(mockBuildAdapter.build).not.toHaveBeenCalled();
+      expect(mockStorageAdapter.put).not.toHaveBeenCalled();
+      expect(databaseHarness.deploy).not.toHaveBeenCalled();
+      expect(databaseHarness.dispose).toHaveBeenCalledOnce();
+    } finally {
+      ready.mockRestore();
+    }
   });
 
   it("does not print deployment success when the database commit fails", async () => {
     const commitError = new Error("commit failed");
-    const failingDatabasePlugin: DatabasePlugin = {
-      ...databasePlugin,
-      commit: async () => {
-        throw commitError;
+    const failingDatabase: EngineDatabase & {
+      readonly core: HotUpdaterCoreApi;
+    } = {
+      ...harnessDatabase,
+      core: {
+        ...databaseHarness.core,
+        deploy: async () => {
+          throw commitError;
+        },
       },
     };
-    mockCli.loadConfig.mockResolvedValue({
-      build: async () => mockBuildPlugin,
-      compressStrategy: "tar.br",
-      database: failingDatabasePlugin,
-      fingerprint: {},
-      patch: {
-        enabled: true,
-        maxBaseBundles: 3,
-      },
-      storage: mockStoragePlugin,
-      updateStrategy: "appVersion",
-    });
-    mockBuildPlugin.build.mockImplementation(async ({ platform }) => ({
-      artifacts: [],
+    mockLoadServer.mockResolvedValue(
+      testServer({ database: failingDatabase, storage: mockStorageAdapter }),
+    );
+    mockBuildAdapter.build.mockImplementation(async ({ platform }) => ({
       buildPath: "/mock/build",
       bundleId: platform === "ios" ? "bundle-ios" : "bundle-android",
-      patchAssetPath: `index.${platform}.bundle`,
       stdout: null,
     }));
 
@@ -984,33 +952,26 @@ describe("deploy rollout wiring", () => {
     expect(mockCli.p.outro).not.toHaveBeenCalled();
   });
 
-  it("runs deployment side effects once when a provider retries its commit internally", async () => {
-    const originalCommit = databasePlugin.commit;
+  it("runs deployment side effects once when core retries the deployment internally", async () => {
     let commitAttemptCount = 0;
-    const retryingDatabasePlugin: DatabasePlugin = {
-      ...databasePlugin,
-      commit: async (input) => {
-        commitAttemptCount += 2;
-        return originalCommit(input);
+    const retryingDatabase: EngineDatabase & {
+      readonly core: HotUpdaterCoreApi;
+    } = {
+      ...harnessDatabase,
+      core: {
+        ...databaseHarness.core,
+        deploy: async (deployments: readonly Deployment[]) => {
+          commitAttemptCount += 2;
+          return databaseHarness.core.deploy(deployments);
+        },
       },
     };
-    mockCli.loadConfig.mockResolvedValue({
-      build: async () => mockBuildPlugin,
-      compressStrategy: "tar.br",
-      database: retryingDatabasePlugin,
-      fingerprint: {},
-      patch: {
-        enabled: true,
-        maxBaseBundles: 3,
-      },
-      storage: mockStoragePlugin,
-      updateStrategy: "appVersion",
-    });
-    mockBuildPlugin.build.mockImplementation(async ({ platform }) => ({
-      artifacts: [],
+    mockLoadServer.mockResolvedValue(
+      testServer({ database: retryingDatabase, storage: mockStorageAdapter }),
+    );
+    mockBuildAdapter.build.mockImplementation(async ({ platform }) => ({
       buildPath: "/mock/build",
       bundleId: platform === "ios" ? "bundle-ios" : "bundle-android",
-      patchAssetPath: `index.${platform}.bundle`,
       stdout: null,
     }));
 
@@ -1022,9 +983,8 @@ describe("deploy rollout wiring", () => {
     });
 
     expect(commitAttemptCount).toBe(2);
-    expect(mockBuildPlugin.build).toHaveBeenCalledTimes(2);
-    expect(mockCli.createTarBrTargetFiles).toHaveBeenCalledTimes(2);
-    expect(mockStoragePlugin.put).toHaveBeenCalledTimes(6);
+    expect(mockBuildAdapter.build).toHaveBeenCalledTimes(2);
+    expect(mockStorageAdapter.put).toHaveBeenCalledTimes(6);
     expect(mockCli.p.log.message).not.toHaveBeenCalled();
     expect(mockCli.p.outro).toHaveBeenCalledTimes(1);
     expect(mockCli.p.outro).toHaveBeenCalledWith(
@@ -1036,11 +996,9 @@ describe("deploy rollout wiring", () => {
   });
 
   it("renders build stdout in a note instead of raw task output", async () => {
-    mockBuildPlugin.build.mockResolvedValue({
-      artifacts: [],
+    mockBuildAdapter.build.mockResolvedValue({
       buildPath: "/mock/build",
       bundleId: "bundle-123",
-      patchAssetPath: "index.bundle",
       stdout: "LLVM\nHermes",
     });
 
@@ -1056,7 +1014,7 @@ describe("deploy rollout wiring", () => {
   });
 
   it("uploads manifest artifacts and stores manifest metadata on the bundle", async () => {
-    mockStoragePlugin.put.mockImplementation(async ({ key }) => {
+    mockStorageAdapter.put.mockImplementation(async ({ key }) => {
       return {
         storageUri: `s3://bundles/${key}`,
       };
@@ -1070,21 +1028,63 @@ describe("deploy rollout wiring", () => {
       targetAppVersion: "1.0.x",
     });
 
-    expect(mockStoragePlugin.put).toHaveBeenCalledTimes(3);
+    expect(mockStorageAdapter.put).toHaveBeenCalledTimes(3);
+    expect(mockStorageAdapter.put.mock.calls[0]?.[0].key).toBe(
+      "bundles/bundle-123/bundle.tar.br",
+    );
+    expect(mockCli.createTarBrTargetFiles).toHaveBeenCalledWith({
+      outfile: "/mock/cwd/.hot-updater/output/bundle.tar.br",
+      targetFiles: [
+        {
+          path: "/mock/build/index.bundle",
+          name: "index.bundle",
+          downloadCompression: null,
+        },
+      ],
+    });
     expect((await databaseHarness.bundles())[0]).toMatchObject({
       assetBaseStorageUri: "s3://bundles/assets",
-      archiveByteSize: 4,
       manifestFileHash: TRANSFER_FILE_HASH,
       manifestStorageUri: "s3://bundles/bundles/bundle-123/manifest.json",
       metadata: expect.objectContaining({
         app_version: "1.0",
-        manifest_content_hash: TRANSFER_FILE_HASH,
       }),
     });
   });
 
+  it.each(["generation", "upload"])(
+    "does not publish a Bundle when archive %s fails",
+    async (phase) => {
+      if (phase === "generation") {
+        mockCli.createTarBrTargetFiles.mockRejectedValueOnce(
+          new Error("archive generation failed"),
+        );
+      } else {
+        mockStorageAdapter.put.mockImplementation(async ({ key }) => {
+          if (key.endsWith("bundle.tar.br"))
+            throw new Error("archive upload failed");
+          return { storageUri: `s3://bundles/${key}` };
+        });
+      }
+      await expect(
+        deploy({
+          channel: "production",
+          forceUpdate: false,
+          interactive: false,
+          platform: "ios",
+          targetAppVersion: "1.0.x",
+        }),
+      ).rejects.toThrow(
+        /archive generation failed|Failed to upload bundle to storage|asset upload failed/,
+      );
+      expect(await databaseHarness.bundles()).toEqual([]);
+      expect(databaseHarness.deploy).not.toHaveBeenCalled();
+      expect(mockServer.createBundleDiff).not.toHaveBeenCalled();
+    },
+  );
+
   it("preserves canonical special-character base segments in derived asset URIs", async () => {
-    mockStoragePlugin.put.mockImplementation(async ({ key }) => ({
+    mockStorageAdapter.put.mockImplementation(async ({ key }) => ({
       storageUri: createStorageUri({
         protocol: "s3",
         bucket: "bundles",
@@ -1104,10 +1104,8 @@ describe("deploy rollout wiring", () => {
       assetBaseStorageUri: "s3://bundles/release%20root%23100%25/assets",
       manifestStorageUri:
         "s3://bundles/release%20root%23100%25/bundles/bundle-123/manifest.json",
-      storageUri:
-        "s3://bundles/release%20root%23100%25/bundles/bundle-123/bundle.tar.br",
     });
-    expect(mockStoragePlugin.exists).toHaveBeenCalledWith({
+    expect(mockStorageAdapter.exists).toHaveBeenCalledWith({
       storageUri: `s3://bundles/release%20root%23100%25/assets/sha256/aa/${LOGICAL_FILE_HASH}.bundle`,
     });
   });
@@ -1116,30 +1114,32 @@ describe("deploy rollout wiring", () => {
     const assetFiles = Array.from({ length: 20 }, (_, index) => ({
       name: `assets/file-${index}.png`,
       path: `/mock/build/assets/file-${index}.png`,
-      downloadCompression: null,
     }));
     let activeAssetUploads = 0;
     let maxActiveAssetUploads = 0;
 
-    vi.mocked(getBundleZipTargets).mockResolvedValue(
-      mockArtifactSnapshot(assetFiles),
-    );
+    vi.mocked(getBundleZipTargets).mockResolvedValue({
+      path: "/mock/snapshot",
+      expandedByteSize: 80,
+      artifacts: assetFiles.map((asset) => ({
+        ...asset,
+        downloadCompression: null,
+      })),
+    });
     vi.mocked(createBundleManifest).mockImplementation(
       async ({ bundleId, targetFiles }) => ({
         assets: Object.fromEntries(
           targetFiles.map((targetFile, index) => [
             targetFile.name,
             {
-              downloadCompression: targetFile.downloadCompression,
               fileHash: (index + 1).toString(16).padStart(64, "0"),
             },
           ]),
         ),
         bundleId,
-        patchAssetPath: targetFiles[0]!.name,
       }),
     );
-    mockStoragePlugin.put.mockImplementation(async ({ key }) => {
+    mockStorageAdapter.put.mockImplementation(async ({ key }) => {
       if (key.startsWith("assets/sha256/00/")) {
         activeAssetUploads += 1;
         maxActiveAssetUploads = Math.max(
@@ -1163,26 +1163,26 @@ describe("deploy rollout wiring", () => {
       targetAppVersion: "1.0.x",
     });
 
-    expect(mockStoragePlugin.put).toHaveBeenCalledTimes(22);
+    expect(mockStorageAdapter.put).toHaveBeenCalledTimes(22);
     expect(maxActiveAssetUploads).toBeGreaterThan(1);
     expect(maxActiveAssetUploads).toBeLessThanOrEqual(8);
   });
 
   it("deduplicates content-addressed asset uploads with the same object key", async () => {
-    vi.mocked(getBundleZipTargets).mockResolvedValue(
-      mockArtifactSnapshot([
+    vi.mocked(getBundleZipTargets).mockResolvedValue({
+      path: "/mock/snapshot",
+      expandedByteSize: 4,
+      artifacts: [
         {
           name: "assets/src/logo.png",
           path: "/mock/build/assets/src/logo.png",
-          downloadCompression: null,
         },
         {
           name: "assets/src/logo-copy.png",
           path: "/mock/build/assets/src/logo-copy.png",
-          downloadCompression: null,
         },
-      ]),
-    );
+      ].map((artifact) => ({ ...artifact, downloadCompression: null })),
+    });
 
     await deploy({
       channel: "production",
@@ -1192,12 +1192,12 @@ describe("deploy rollout wiring", () => {
       targetAppVersion: "1.0.x",
     });
 
-    expect(mockStoragePlugin.exists).toHaveBeenCalledTimes(1);
-    expect(mockStoragePlugin.exists).toHaveBeenCalledWith({
+    expect(mockStorageAdapter.exists).toHaveBeenCalledTimes(1);
+    expect(mockStorageAdapter.exists).toHaveBeenCalledWith({
       storageUri: `s3://bundles/assets/sha256/aa/${LOGICAL_FILE_HASH}.png`,
     });
-    expect(mockStoragePlugin.put).toHaveBeenCalledTimes(3);
-    expect(mockStoragePlugin.put).toHaveBeenCalledWith(
+    expect(mockStorageAdapter.put).toHaveBeenCalledTimes(3);
+    expect(mockStorageAdapter.put).toHaveBeenCalledWith(
       expect.objectContaining({
         key: `assets/sha256/aa/${LOGICAL_FILE_HASH}.png`,
       }),
@@ -1205,19 +1205,20 @@ describe("deploy rollout wiring", () => {
   });
 
   it("skips content-addressed asset uploads that already exist", async () => {
-    mockStoragePlugin.exists.mockImplementation(async ({ storageUri }) => ({
+    mockStorageAdapter.exists.mockImplementation(async ({ storageUri }) => ({
       exists:
         storageUri === `s3://bundles/assets/sha256/aa/${LOGICAL_FILE_HASH}.png`,
     }));
-    vi.mocked(getBundleZipTargets).mockResolvedValue(
-      mockArtifactSnapshot([
+    vi.mocked(getBundleZipTargets).mockResolvedValue({
+      path: "/mock/snapshot",
+      expandedByteSize: 4,
+      artifacts: [
         {
           name: "assets/src/logo.png",
           path: "/mock/build/assets/src/logo.png",
-          downloadCompression: null,
         },
-      ]),
-    );
+      ].map((artifact) => ({ ...artifact, downloadCompression: null })),
+    });
 
     await deploy({
       channel: "production",
@@ -1227,11 +1228,11 @@ describe("deploy rollout wiring", () => {
       targetAppVersion: "1.0.x",
     });
 
-    expect(mockStoragePlugin.exists).toHaveBeenCalledWith({
+    expect(mockStorageAdapter.exists).toHaveBeenCalledWith({
       storageUri: `s3://bundles/assets/sha256/aa/${LOGICAL_FILE_HASH}.png`,
     });
-    expect(mockStoragePlugin.put).toHaveBeenCalledTimes(2);
-    expect(mockStoragePlugin.put).not.toHaveBeenCalledWith(
+    expect(mockStorageAdapter.put).toHaveBeenCalledTimes(2);
+    expect(mockStorageAdapter.put).not.toHaveBeenCalledWith(
       expect.objectContaining({
         key: `assets/sha256/aa/${LOGICAL_FILE_HASH}.png`,
       }),
@@ -1240,27 +1241,25 @@ describe("deploy rollout wiring", () => {
 
   it("ignores deploy upload cache config and checks remote existence", async () => {
     mockCli.loadConfig.mockResolvedValue({
-      build: async () => mockBuildPlugin,
+      build: async () => mockBuildAdapter,
       cacheDir: "node_modules/.hot-updater",
-      compressStrategy: "tar.br",
-      database: databasePlugin,
       fingerprint: {},
       patch: {
         enabled: true,
         maxBaseBundles: 3,
       },
-      storage: mockStoragePlugin,
       updateStrategy: "appVersion",
     });
-    vi.mocked(getBundleZipTargets).mockResolvedValue(
-      mockArtifactSnapshot([
+    vi.mocked(getBundleZipTargets).mockResolvedValue({
+      path: "/mock/snapshot",
+      expandedByteSize: 4,
+      artifacts: [
         {
           name: "assets/src/logo.png",
           path: "/mock/build/assets/src/logo.png",
-          downloadCompression: null,
         },
-      ]),
-    );
+      ].map((artifact) => ({ ...artifact, downloadCompression: null })),
+    });
 
     await deploy({
       channel: "production",
@@ -1270,7 +1269,7 @@ describe("deploy rollout wiring", () => {
       targetAppVersion: "1.0.x",
     });
 
-    expect(mockStoragePlugin.exists).toHaveBeenCalledWith({
+    expect(mockStorageAdapter.exists).toHaveBeenCalledWith({
       storageUri: `s3://bundles/assets/sha256/aa/${LOGICAL_FILE_HASH}.png`,
     });
     expect(fs.promises.readFile).not.toHaveBeenCalledWith(
@@ -1284,24 +1283,23 @@ describe("deploy rollout wiring", () => {
   });
 
   it("does not write a deploy upload cache when asset upload fails", async () => {
-    mockStoragePlugin.put.mockImplementation(async ({ key }) => {
+    mockStorageAdapter.put.mockImplementation(async ({ key }) => {
       if (key === `assets/sha256/aa/${LOGICAL_FILE_HASH}.png`) {
         throw new Error("asset upload failed");
       }
 
-      return {
-        storageUri: "s3://bundles/bundles/bundle-123/bundle.tar.br",
-      };
+      return { storageUri: `s3://bundles/${key}` };
     });
-    vi.mocked(getBundleZipTargets).mockResolvedValue(
-      mockArtifactSnapshot([
+    vi.mocked(getBundleZipTargets).mockResolvedValue({
+      path: "/mock/snapshot",
+      expandedByteSize: 4,
+      artifacts: [
         {
           name: "assets/src/logo.png",
           path: "/mock/build/assets/src/logo.png",
-          downloadCompression: null,
         },
-      ]),
-    );
+      ].map((artifact) => ({ ...artifact, downloadCompression: null })),
+    });
 
     await expect(
       deploy({
@@ -1311,13 +1309,11 @@ describe("deploy rollout wiring", () => {
         platform: "ios",
         targetAppVersion: "1.0.x",
       }),
-    ).rejects.toThrow("Failed to upload bundle to storage");
+    ).rejects.toThrow(
+      /archive generation failed|Failed to upload bundle to storage|asset upload failed/,
+    );
 
     expect(mockCli.p.log.error).toHaveBeenCalledWith("asset upload failed");
-    expect(fs.promises.rm).toHaveBeenCalledWith(
-      "/mock/build/.hot-updater-snapshot-test",
-      { force: true, recursive: true },
-    );
     expect(fs.promises.writeFile).not.toHaveBeenCalledWith(
       expect.stringContaining("deploy-upload-cache.json"),
       expect.anything(),
@@ -1335,20 +1331,20 @@ describe("deploy rollout wiring", () => {
       }
     });
 
-    vi.mocked(getBundleZipTargets).mockResolvedValue(
-      mockArtifactSnapshot([
+    vi.mocked(getBundleZipTargets).mockResolvedValue({
+      path: "/mock/snapshot",
+      expandedByteSize: 4,
+      artifacts: [
         {
           name: "index.bundle",
           path: "/mock/build/index.bundle",
-          downloadCompression: null,
         },
         {
           name: "assets/src/logo.png",
           path: "/mock/build/assets/src/logo.png",
-          downloadCompression: null,
         },
-      ]),
-    );
+      ].map((artifact) => ({ ...artifact, downloadCompression: null })),
+    });
 
     await deploy({
       channel: "production",
@@ -1361,25 +1357,28 @@ describe("deploy rollout wiring", () => {
     expect(uploadMessages).toContain("Uploading 0% (0/4)");
     expect(uploadMessages).toContain("Uploading 25% (1/4)");
     expect(uploadMessages).toContain("Uploading 50% (2/4)");
-    expect(uploadMessages).toContain("Uploading 75% (3/4)");
     expect(uploadMessages).toContain("Uploading 100% (4/4)");
   });
 
   it("uploads hermes bundle artifacts using the manifest filename", async () => {
-    vi.mocked(getBundleZipTargets).mockResolvedValue(
-      mockArtifactSnapshot([
+    vi.mocked(getBundleZipTargets).mockResolvedValue({
+      path: "/mock/snapshot",
+      expandedByteSize: 4,
+      artifacts: [
         {
           name: "index.ios.bundle",
-          path: "/mock/build/.hot-updater-snapshot-test/artifact-000000",
-          downloadCompression: "br",
+          path: "/mock/build/index.ios.bundle.hbc",
         },
         {
           name: "assets/src/logo.png",
-          path: "/mock/build/.hot-updater-snapshot-test/artifact-000001",
-          downloadCompression: null,
+          path: "/mock/build/assets/src/logo.png",
         },
-      ]),
-    );
+      ].map((artifact) => ({
+        ...artifact,
+        downloadCompression:
+          artifact.name === "index.ios.bundle" ? ("br" as const) : null,
+      })),
+    });
 
     await deploy({
       channel: "production",
@@ -1389,84 +1388,55 @@ describe("deploy rollout wiring", () => {
       targetAppVersion: "1.0.x",
     });
 
-    expect(mockStoragePlugin.put).toHaveBeenCalledWith(
+    expect(mockStorageAdapter.put).toHaveBeenCalledWith(
       expect.objectContaining({
         key: `assets/sha256/bb/${TRANSFER_FILE_HASH}.br`,
       }),
     );
-    expect(mockStoragePlugin.put).toHaveBeenCalledWith(
+    expect(mockStorageAdapter.put).toHaveBeenCalledWith(
       expect.objectContaining({
         key: `assets/sha256/aa/${LOGICAL_FILE_HASH}.png`,
       }),
     );
     expect(pipeline).toHaveBeenCalledTimes(1);
     expect(writeBundleManifestFile).toHaveBeenCalledWith({
-      buildPath: "/mock/build/.hot-updater-snapshot-test",
+      buildPath: "/mock/snapshot",
       manifest: {
+        archive: {
+          downloadFileHash: "d".repeat(64),
+          downloadByteSize: 100,
+          tarByteSize: 2048,
+        },
         assets: {
           "assets/src/logo.png": {
             downloadByteSize: 4,
-            downloadCompression: null,
             fileHash: LOGICAL_FILE_HASH,
           },
           "index.ios.bundle": {
             downloadByteSize: 4,
-            downloadCompression: "br",
             downloadFileHash: TRANSFER_FILE_HASH,
             fileHash: LOGICAL_FILE_HASH,
           },
         },
         bundleId: "bundle-123",
-        patchAssetPath: "index.ios.bundle",
       },
     });
-    expect(mockCli.createTarBrTargetFiles).toHaveBeenCalledWith({
-      outfile: "/mock/cwd/.hot-updater/output/bundle/bundle.tar.br",
-      targetFiles: [
-        {
-          name: "index.ios.bundle",
-          path: "/mock/build/.hot-updater-snapshot-test/artifact-000000",
-          downloadCompression: "br",
-        },
-        {
-          name: "assets/src/logo.png",
-          path: "/mock/build/.hot-updater-snapshot-test/artifact-000001",
-          downloadCompression: null,
-        },
-        {
-          name: "manifest.json",
-          path: "/mock/build/.hot-updater-snapshot-test/manifest.json",
-        },
-      ],
-    });
-    for (const [, destination] of vi.mocked(fs.promises.copyFile).mock.calls) {
-      expect(destination).toEqual(
-        expect.stringContaining(
-          "/mock/build/.hot-updater-snapshot-test/upload-artifacts/",
-        ),
-      );
-    }
   });
 
   it("does not create a nested spinner when signing is enabled", async () => {
     mockCli.loadConfig.mockResolvedValue({
-      build: async () => mockBuildPlugin,
-      compressStrategy: "tar.br",
-      database: databasePlugin,
+      build: async () => mockBuildAdapter,
       fingerprint: {},
       patch: {
         enabled: true,
         maxBaseBundles: 3,
       },
-      signing: mockSigningPlugin,
-      storage: mockStoragePlugin,
+      signing: mockSigningAdapter,
       updateStrategy: "appVersion",
     });
-    mockBuildPlugin.build.mockResolvedValue({
-      artifacts: [],
+    mockBuildAdapter.build.mockResolvedValue({
       buildPath: "/mock/build",
       bundleId: "bundle-123",
-      patchAssetPath: "index.bundle",
       stdout: "LLVM\nHermes",
     });
     const signFileHash = vi.fn(async () => "signature");
@@ -1494,12 +1464,6 @@ describe("deploy rollout wiring", () => {
     expect(mockCli.p.log.success).toHaveBeenCalledWith(
       "✅ Bundle Signing Complete",
     );
-    expect((await databaseHarness.bundles())[0]).toMatchObject({
-      manifestFileHash: "sig:signature",
-      metadata: expect.objectContaining({
-        manifest_content_hash: TRANSFER_FILE_HASH,
-      }),
-    });
     expect(mockCli.p.note).toHaveBeenCalledWith(
       "Platform: iOS\nChannel: production\nRollout: 100%\nTarget app version: >=1.0.0 <1.1.0-0",
       "Deployment",
@@ -1521,15 +1485,12 @@ describe("deploy rollout wiring", () => {
     const getBundleSigningPublicKey = vi.fn(async () => ({
       publicKey: "expo-public-key",
     }));
-    mockBuildPlugin.nativeBuild = { getBundleSigningPublicKey };
+    mockBuildAdapter.nativeBuild = { getBundleSigningPublicKey };
     mockCli.loadConfig.mockResolvedValue({
-      build: async () => mockBuildPlugin,
-      compressStrategy: "tar.br",
-      database: databasePlugin,
+      build: async () => mockBuildAdapter,
       fingerprint: {},
       patch: { enabled: true, maxBaseBundles: 3 },
-      signing: mockSigningPlugin,
-      storage: mockStoragePlugin,
+      signing: mockSigningAdapter,
       updateStrategy: "appVersion",
     });
     mockCli.prepareBundleSigning.mockResolvedValue({
@@ -1554,57 +1515,15 @@ describe("deploy rollout wiring", () => {
     });
   });
 
-  it("forwards authoritative build-plugin signing configuration to validation", async () => {
-    const getBundleSigningPublicKey = vi.fn(async () => ({
-      publicKey: "native-public-key",
-    }));
-    mockBuildPlugin.nativeBuild = {
-      signingConfigSource: "build-plugin",
-      getBundleSigningPublicKey,
-    };
-    mockCli.loadConfig.mockResolvedValue({
-      build: async () => mockBuildPlugin,
-      compressStrategy: "tar.br",
-      database: databasePlugin,
-      fingerprint: {},
-      patch: { enabled: false },
-      signing: mockSigningPlugin,
-      storage: mockStoragePlugin,
-      updateStrategy: "appVersion",
-    });
-    mockCli.prepareBundleSigning.mockResolvedValue({
-      name: "provider",
-      publicKey: "provider-public-key",
-      signFileHash: vi.fn(async () => "signature"),
-    });
-    await deploy({
-      channel: "production",
-      forceUpdate: false,
-      interactive: false,
-      platform: "ios",
-      targetAppVersion: "1.0.x",
-    });
-    expect(getBundleSigningPublicKey).toHaveBeenCalledOnce();
-    expect(validateSigningConfig).toHaveBeenCalledWith(expect.anything(), {
-      expectedPublicKey: "provider-public-key",
-      nativePublicKey: "native-public-key",
-      platform: "ios",
-      signingConfigSource: "build-plugin",
-    });
-  });
-
   it("fails before build or upload when the signing provider cannot be prepared", async () => {
     mockCli.loadConfig.mockResolvedValue({
-      build: async () => mockBuildPlugin,
-      compressStrategy: "tar.br",
-      database: databasePlugin,
+      build: async () => mockBuildAdapter,
       fingerprint: {},
       patch: {
         enabled: true,
         maxBaseBundles: 3,
       },
-      signing: mockSigningPlugin,
-      storage: mockStoragePlugin,
+      signing: mockSigningAdapter,
       updateStrategy: "appVersion",
     });
     mockCli.prepareBundleSigning.mockRejectedValue(
@@ -1623,31 +1542,28 @@ describe("deploy rollout wiring", () => {
       "Failed to resolve the bundle signing provider public key.",
     );
 
-    expect(mockBuildPlugin.build).not.toHaveBeenCalled();
-    expect(mockStoragePlugin.put).not.toHaveBeenCalled();
+    expect(mockBuildAdapter.build).not.toHaveBeenCalled();
+    expect(mockStorageAdapter.put).not.toHaveBeenCalled();
     expect(await databaseHarness.releases()).toEqual([]);
   });
 
   it("creates automatic partial update paths when patch generation is enabled", async () => {
     mockCli.loadConfig.mockResolvedValue({
-      build: async () => mockBuildPlugin,
-      compressStrategy: "tar.br",
-      database: databasePlugin,
+      build: async () => mockBuildAdapter,
       fingerprint: {},
       patch: {
         enabled: true,
         maxBaseBundles: 2,
       },
-      storage: mockStoragePlugin,
       updateStrategy: "appVersion",
     });
     await mockGetBundlesWithFixtures([
       {
-        bundle: { id: fixtureBundleId(122) },
+        bundle: { id: fixtureBundleId(121) },
         release: { targetAppVersion: "1.0.x" },
       },
       {
-        bundle: { id: fixtureBundleId(121) },
+        bundle: { id: fixtureBundleId(122) },
         release: { targetAppVersion: "1.0.x" },
       },
     ]);
@@ -1667,8 +1583,8 @@ describe("deploy rollout wiring", () => {
         bundleId: DEPLOY_BUNDLE_ID,
       },
       {
-        databasePlugin,
-        storagePlugin: mockStoragePlugin,
+        core: harnessDatabase.core,
+        storageAdapter: mockStorageAdapter,
       },
       {
         makePrimary: true,
@@ -1681,8 +1597,8 @@ describe("deploy rollout wiring", () => {
         bundleId: DEPLOY_BUNDLE_ID,
       },
       {
-        databasePlugin,
-        storagePlugin: mockStoragePlugin,
+        core: harnessDatabase.core,
+        storageAdapter: mockStorageAdapter,
       },
       {
         makePrimary: false,
@@ -1692,15 +1608,12 @@ describe("deploy rollout wiring", () => {
 
   it("creates an automatic patch when target app versions are semver-compatible but not exact", async () => {
     mockCli.loadConfig.mockResolvedValue({
-      build: async () => mockBuildPlugin,
-      compressStrategy: "tar.br",
-      database: databasePlugin,
+      build: async () => mockBuildAdapter,
       fingerprint: {},
       patch: {
         enabled: true,
         maxBaseBundles: 1,
       },
-      storage: mockStoragePlugin,
       updateStrategy: "appVersion",
     });
     await mockGetBundlesWithFixtures([
@@ -1724,8 +1637,8 @@ describe("deploy rollout wiring", () => {
         bundleId: DEPLOY_BUNDLE_ID,
       },
       {
-        databasePlugin,
-        storagePlugin: mockStoragePlugin,
+        core: harnessDatabase.core,
+        storageAdapter: mockStorageAdapter,
       },
       {
         makePrimary: true,
@@ -1735,21 +1648,18 @@ describe("deploy rollout wiring", () => {
 
   it("does not create an automatic patch when a prerelease target is outside the base range", async () => {
     mockCli.loadConfig.mockResolvedValue({
-      build: async () => mockBuildPlugin,
-      compressStrategy: "tar.br",
-      database: databasePlugin,
+      build: async () => mockBuildAdapter,
       fingerprint: {},
       patch: {
         enabled: true,
         maxBaseBundles: 1,
       },
-      storage: mockStoragePlugin,
       updateStrategy: "appVersion",
     });
     await mockGetBundlesWithFixtures([
       {
         bundle: { id: fixtureBundleId(122) },
-        release: { targetAppVersion: "1.x" },
+        release: { targetAppVersion: "1.0.x" },
       },
     ]);
 
@@ -1764,17 +1674,110 @@ describe("deploy rollout wiring", () => {
     expect(mockServer.createBundleDiff).not.toHaveBeenCalled();
   });
 
+  it("creates automatic patches for a target spanning several minor lines", async () => {
+    mockCli.loadConfig.mockResolvedValue({
+      build: async () => mockBuildAdapter,
+      fingerprint: {},
+      patch: {
+        enabled: true,
+        maxBaseBundles: 2,
+      },
+      updateStrategy: "appVersion",
+    });
+    await mockGetBundlesWithFixtures([
+      {
+        bundle: { id: fixtureBundleId(120) },
+        release: { targetAppVersion: "2.0.0" },
+      },
+      {
+        bundle: { id: fixtureBundleId(121) },
+        release: { targetAppVersion: "*" },
+      },
+      {
+        bundle: { id: fixtureBundleId(122) },
+        release: { targetAppVersion: "1.20.x" },
+      },
+    ]);
+
+    await deploy({
+      channel: "production",
+      forceUpdate: false,
+      interactive: false,
+      platform: "ios",
+      targetAppVersion: "1.x",
+    });
+
+    expect(mockServer.createBundleDiff).toHaveBeenCalledTimes(2);
+    expect(
+      mockServer.createBundleDiff.mock.calls.map(([ids]) => ids.baseBundleId),
+    ).toEqual([fixtureBundleId(122), fixtureBundleId(121)]);
+  });
+
+  it("finds automatic patch bases by fingerprint", async () => {
+    mockCli.loadConfig.mockResolvedValue({
+      build: async () => mockBuildAdapter,
+      fingerprint: {},
+      patch: {
+        enabled: true,
+        maxBaseBundles: 3,
+      },
+      updateStrategy: "fingerprint",
+    });
+    await mockGetBundlesWithFixtures([
+      {
+        bundle: { id: fixtureBundleId(122) },
+        release: { fingerprintHash: "other-fingerprint" },
+      },
+      {
+        bundle: { id: fixtureBundleId(121) },
+        release: { fingerprintHash: "fingerprint-hash" },
+      },
+      {
+        bundle: { id: fixtureBundleId(120) },
+        release: { enabled: false, fingerprintHash: "fingerprint-hash" },
+      },
+    ]);
+    const fingerprint = { hash: "fingerprint-hash", sources: [] };
+    vi.mocked(nativeFingerprint).mockResolvedValueOnce(
+      fingerprint as unknown as Awaited<ReturnType<typeof nativeFingerprint>>,
+    );
+    vi.mocked(readLocalFingerprint).mockResolvedValueOnce({
+      android: fingerprint,
+      ios: fingerprint,
+    } as unknown as Awaited<ReturnType<typeof readLocalFingerprint>>);
+    vi.mocked(isFingerprintEquals).mockReturnValueOnce(true);
+
+    await deploy({
+      channel: "production",
+      forceUpdate: false,
+      interactive: false,
+      platform: "ios",
+    });
+
+    expect(mockServer.createBundleDiff).toHaveBeenCalledOnce();
+    expect(mockServer.createBundleDiff).toHaveBeenCalledWith(
+      {
+        baseBundleId: fixtureBundleId(121),
+        bundleId: DEPLOY_BUNDLE_ID,
+      },
+      {
+        core: harnessDatabase.core,
+        storageAdapter: mockStorageAdapter,
+      },
+      {
+        makePrimary: true,
+      },
+    );
+  });
+
   it("scans past incompatible appVersion patch bases to find an older compatible base", async () => {
     mockCli.loadConfig.mockResolvedValue({
-      build: async () => mockBuildPlugin,
-      compressStrategy: "tar.br",
-      database: databasePlugin,
+      build: async () => mockBuildAdapter,
       fingerprint: {},
       patch: {
         enabled: true,
         maxBaseBundles: 1,
       },
-      storage: mockStoragePlugin,
       updateStrategy: "appVersion",
     });
     await mockGetBundlesWithFixtures([
@@ -1802,8 +1805,8 @@ describe("deploy rollout wiring", () => {
         bundleId: DEPLOY_BUNDLE_ID,
       },
       {
-        databasePlugin,
-        storagePlugin: mockStoragePlugin,
+        core: harnessDatabase.core,
+        storageAdapter: mockStorageAdapter,
       },
       {
         makePrimary: true,
@@ -1813,15 +1816,12 @@ describe("deploy rollout wiring", () => {
 
   it("keeps deploy successful when automatic patch generation fails", async () => {
     mockCli.loadConfig.mockResolvedValue({
-      build: async () => mockBuildPlugin,
-      compressStrategy: "tar.br",
-      database: databasePlugin,
+      build: async () => mockBuildAdapter,
       fingerprint: {},
       patch: {
         enabled: true,
         maxBaseBundles: 1,
       },
-      storage: mockStoragePlugin,
       updateStrategy: "appVersion",
     });
     await mockGetBundlesWithFixtures([

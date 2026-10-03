@@ -15,20 +15,30 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { resolvePackageVersion, transformEnv } from "@hot-updater/cli-tools";
 import {
-  type Bundle,
-  NIL_UUID,
-  createReleaseCatalogScopeKey,
-  encodeChannelKey,
-} from "@hot-updater/core";
-import {
-  commitReleaseCatalogMutations,
-  createDatabaseClient,
-  createUUIDv7,
+  type HotUpdaterCoreApi,
+  rowToBundle,
+  createSqlAdapter,
+  toolingTargetOf,
+  type RetryOptions,
+  createEngine,
 } from "@hot-updater/plugin-core";
-import { createHotUpdater, registerApiKey } from "@hot-updater/server";
-import { createClient } from "@supabase/supabase-js";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-
+import type { CoreReader } from "@hot-updater/plugin-core";
+import type { Bundle } from "@hot-updater/protocol";
+import { createHotUpdater } from "@hot-updater/server";
+import { apiKeys } from "@hot-updater/server/plugins/api-keys";
+import {
+  createInsightsModel,
+  insights,
+  type BundleEventRow,
+} from "@hot-updater/server/plugins/insights";
+import {
+  runContentionHarness,
+  setupDatabaseTestSuite,
+  setupStorageAdapterTestSuite,
+  startHttpTestServer,
+  withAdapterLatency,
+  insightsTestSuite,
+} from "@hot-updater/test-utils";
 import {
   assertDockerComposeAvailable,
   findOpenPort,
@@ -36,9 +46,18 @@ import {
   spawnRuntime,
   stopRuntime,
   waitForHttpOk,
-} from "../../../../packages/test-utils/src/runtimeProcess";
+} from "@hot-updater/test-utils/node";
+import { createClient } from "@supabase/supabase-js";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+
+import { plugins } from "../../src/plugins";
 import { supabaseDatabase } from "../../src/supabaseDatabase";
-import { SUPABASE_V1_TABLE_NAMES } from "../../src/supabaseInfrastructureNames";
+import { supabaseExecutor } from "../../src/supabaseExecutor";
+import {
+  SUPABASE_SETTINGS_TABLE,
+  SUPABASE_TABLE_PREFIX,
+  supabaseTableNames,
+} from "../../src/supabaseSchema";
 import { supabaseStorage } from "../../src/supabaseStorage";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -63,8 +82,8 @@ const ANON_KEY = createLegacyJwt("anon");
 const SERVICE_ROLE_KEY = createLegacyJwt("service_role");
 const REQUIRED_BUILD_ARTIFACTS = [
   {
-    command: "pnpm --filter @hot-updater/core build",
-    path: path.join(WORKSPACE_ROOT, "packages/core/dist/index.mjs"),
+    command: "pnpm --filter @hot-updater/protocol build",
+    path: path.join(WORKSPACE_ROOT, "packages/protocol/dist/index.mjs"),
   },
   {
     command: "pnpm --filter @hot-updater/server build",
@@ -101,82 +120,85 @@ const ensureBuiltArtifacts = async (
 const toRuntimeBundle = (bundle: Bundle): Bundle => {
   return {
     ...bundle,
-    storageUri: `supabase-storage://${BUCKET_NAME}/${bundle.id}/bundle.zip`,
+    manifestStorageUri: `supabase-storage://${BUCKET_NAME}/${bundle.id}/manifest.json`,
+    assetBaseStorageUri: `supabase-storage://${BUCKET_NAME}/assets`,
   };
 };
+
+const assetHashForBundle = (bundleId: string) => `asset-hash-${bundleId}`;
 
 const runtimeBundle = (id: string, overrides: Partial<Bundle> = {}): Bundle =>
   toRuntimeBundle({
     platform: "ios",
-    fileHash: id.replaceAll("-", "").repeat(2),
     gitCommitHash: null,
-    storageUri: "storage://unused",
-    archiveByteSize: 3_000_000_001,
+    manifestStorageUri: "storage://unused/manifest.json",
+    manifestFileHash: `manifest-hash-${id}`,
+    assetBaseStorageUri: "storage://unused/assets",
     ...overrides,
     id,
   });
 
-const seedProductionRelease = async ({
-  bundle,
-  database,
-}: {
-  readonly bundle: Bundle;
-  readonly database: ReturnType<typeof supabaseDatabase>;
-}) => {
-  const channelName = "production";
-  const channelKey = encodeChannelKey(channelName);
-  const channel = (
-    await database.models.channels.insert({
-      row: { id: `channel:${channelKey}`, name: channelName },
-      onConflict: "returnExisting",
-    })
-  ).row;
-  const scopeKey = createReleaseCatalogScopeKey({
-    channelKey,
-    platform: bundle.platform,
-    strategy: "APP_VERSION",
-  });
-  const now = Date.now();
-  await commitReleaseCatalogMutations({
-    database,
-    mutations: [
-      {
-        mutation: {
-          operation: "insert",
-          row: {
-            bundle_id: bundle.id,
-            channel_id: channel.id,
-            created_at_ms: now,
-            enabled: true,
-            fingerprint_hash: null,
-            id: createUUIDv7(),
-            kind: "BUNDLE",
-            message: "hello",
-            operation: "DEPLOY",
-            platform: bundle.platform,
-            revision: 1,
-            rollout_cohort_count: 1_000,
-            scope_key: scopeKey,
-            should_force_update: false,
-            source_release_id: null,
-            strategy: "APP_VERSION",
-            target_app_version: "1.0",
-            target_cohorts: [],
-            updated_at_ms: now,
-          },
-        },
-        scope: {
-          channelId: channel.id,
-          channelName,
-          fingerprintHash: null,
-          platform: bundle.platform,
-          scopeKey,
-          strategy: "APP_VERSION",
-        },
-        updatedAtMs: now,
+/**
+ * PRD D6: B3's rollout moves through the apply RPC, measured and recorded in
+ * https://github.com/gronxb/hot-updater/blob/c08ebf3f657fa8de51c35a8c8ea29966ba54f828/plans/evidence/supabase-ingestion-ceiling.md.
+ * HOT_UPDATER_INGESTION_CEILING=1 runs the whole ladder of rates. The stack
+ * runs in local Docker, so the figures describe this host and setup, not a
+ * Supabase project's limits.
+ */
+const INGESTION_LADDER = process.env.HOT_UPDATER_INGESTION_CEILING === "1";
+const INGESTION_MOVES = INGESTION_LADDER ? 600 : 200;
+const INGESTION_RATES = INGESTION_LADDER ? [50, 100, 200, 400, 800] : [50];
+const INGESTION_WRITERS = 16;
+const INGESTION_LATENCY_MS = 5;
+
+/** Event `n` moves installation `install` onto release `release` on one channel. */
+const rolloutMove = (
+  n: number,
+  install: number,
+  release: "a" | "b",
+  receivedAt: number,
+) =>
+  ({
+    id: `01900000-0000-7000-8000-${String(n).padStart(12, "0")}`,
+    type: "UPDATE_APPLIED",
+    install_id: `install-${install}`,
+    user_id: `user-${install}`,
+    from_release_id: release === "b" ? "release-a" : "release-0",
+    from_bundle_id: release === "b" ? "bundle-a" : "bundle-0",
+    to_release_id: `release-${release}`,
+    to_bundle_id: `bundle-${release}`,
+    platform: "ios",
+    app_version: "1.0.0",
+    channel: "production",
+    metadata: {
+      cohort: "1",
+      update_strategy: "appVersion",
+      fingerprint_hash: null,
+      sdk_version: null,
+    },
+    received_at_ms: receivedAt,
+  }) as BundleEventRow;
+
+/** Writes `bundle` with an enabled production release for app version 1.0. */
+const deployToProduction = (core: HotUpdaterCoreApi, bundle: Bundle) =>
+  core.deploy([
+    {
+      bundle,
+      release: {
+        channel: "production",
+        enabled: true,
+        fingerprintHash: null,
+        message: "hello",
+        shouldForceUpdate: false,
+        targetAppVersion: "1.0",
       },
-    ],
-  });
+    },
+  ]);
+
+/** A stored bundle, in the shape it was deployed in. */
+const storedBundle = async (core: HotUpdaterCoreApi, id: string) => {
+  const detail = await core.getBundle(id);
+  return detail && rowToBundle(detail.bundle, detail.patches);
 };
 
 describe.sequential("supabase edge runtime acceptance", () => {
@@ -189,9 +211,15 @@ describe.sequential("supabase edge runtime acceptance", () => {
   let gatewayBaseUrl = "";
   let edgeRuntime: ReturnType<typeof spawnRuntime> | undefined;
   let database: ReturnType<typeof supabaseDatabase>;
-  let seedHotUpdater: ReturnType<typeof createHotUpdater>;
-  let databaseClient: ReturnType<typeof createDatabaseClient>;
+  let core: HotUpdaterCoreApi;
   let supabaseAdmin: ReturnType<typeof createClient>;
+
+  /** Registers the API key the edge function's client routes accept. */
+  const registerRuntimeApiKey = () =>
+    createHotUpdater({ database, plugins: [apiKeys()] }).api.apiKeys.register({
+      apiKey: API_KEY,
+      name: "Runtime acceptance",
+    });
 
   const runDatabaseSql = (statement: string): void => {
     runCheckedCommand({
@@ -217,6 +245,16 @@ describe.sequential("supabase edge runtime acceptance", () => {
       ],
       cwd: WORKSPACE_ROOT,
     });
+  };
+
+  /** Empties every data table but `keep`, the managed plugins' included; the settings rows stay. */
+  const truncateDataTables = (keep: readonly string[] = []) => {
+    const tables = supabaseTableNames(toolingTargetOf(plugins).schema)
+      .filter(
+        (table) => table !== SUPABASE_SETTINGS_TABLE && !keep.includes(table),
+      )
+      .map((table) => `public."${table}"`);
+    runDatabaseSql(`TRUNCATE ${tables.join(", ")} CASCADE`);
   };
 
   beforeAll(async () => {
@@ -310,24 +348,8 @@ describe.sequential("supabase edge runtime acceptance", () => {
       supabaseUrl: gatewayBaseUrl,
       supabaseServiceRoleKey: SERVICE_ROLE_KEY,
     });
-    await registerApiKey({
-      apiKey: API_KEY,
-      apiKeys: database.models.apiKeys,
-      name: "Runtime acceptance",
-    });
-    databaseClient = createDatabaseClient(database);
-
-    seedHotUpdater = createHotUpdater({
-      database,
-      clientAccess: { type: "public" },
-      storage: [
-        supabaseStorage({
-          supabaseUrl: gatewayBaseUrl,
-          supabaseServiceRoleKey: SERVICE_ROLE_KEY,
-          bucketName: BUCKET_NAME,
-        }),
-      ],
-    });
+    await registerRuntimeApiKey();
+    core = createHotUpdater({ database, clientAccess: "public" }).core;
 
     edgeRuntime = spawnRuntime({
       command: "docker",
@@ -383,19 +405,8 @@ describe.sequential("supabase edge runtime acceptance", () => {
       throw new Error("Supabase admin client was not initialized.");
     }
 
-    for (const [table, key] of [
-      [SUPABASE_V1_TABLE_NAMES.releaseCatalogs, "scope_key"],
-      [SUPABASE_V1_TABLE_NAMES.releases, "id"],
-      [SUPABASE_V1_TABLE_NAMES.bundlePatches, "id"],
-      [SUPABASE_V1_TABLE_NAMES.bundles, "id"],
-      [SUPABASE_V1_TABLE_NAMES.channels, "id"],
-    ] as const) {
-      const { error } = await supabaseAdmin
-        .from(table)
-        .delete()
-        .neq(key, NIL_UUID);
-      if (error) throw error;
-    }
+    // The API key the suite registers last serves the edge function's routes.
+    truncateDataTables([`${SUPABASE_TABLE_PREFIX}api_keys`]);
   });
 
   afterAll(async () => {
@@ -425,37 +436,78 @@ describe.sequential("supabase edge runtime acceptance", () => {
     }
   }, 60_000);
 
+  setupDatabaseTestSuite({
+    name: "Supabase PostgreSQL and PostgREST conformance",
+    createDatabase: () => database,
+    migrate: () => undefined,
+    reset: () => truncateDataTables(),
+    dispose: async () => {
+      await registerRuntimeApiKey();
+    },
+    createHttpClient: (options) =>
+      startHttpTestServer(
+        createHotUpdater({
+          ...options,
+          plugins: [insights()],
+          clientAccess: "public",
+        }).handlers,
+      ),
+    plugins: [
+      insightsTestSuite({
+        createModel: (database) =>
+          createInsightsModel(
+            createHotUpdater({
+              database,
+              plugins: [insights()],
+              clientAccess: "public",
+            }).api.insights,
+          ),
+      }),
+    ],
+  });
+
+  // supabaseStorage on the stack's Storage API, each case below a base path
+  // of its own, and its signed URLs fetched through the gateway. The stack's
+  // volumes go with it in afterAll.
+  setupStorageAdapterTestSuite({
+    name: "supabaseStorage (Storage API)",
+    fetchDownloadUrls: true,
+    createStorage: async () => {
+      const basePath = `conformance/${crypto.randomUUID()}`;
+      return {
+        storage: supabaseStorage({
+          basePath,
+          bucketName: BUCKET_NAME,
+          supabaseServiceRoleKey: SERVICE_ROLE_KEY,
+          supabaseUrl: gatewayBaseUrl,
+        }),
+        basePath,
+      };
+    },
+    operations: ["put", "get", "getDownloadUrl", "exists", "delete"],
+  });
+
   it("returns one canonical Channel row under concurrent inserts", async () => {
-    const database = supabaseDatabase({
-      supabaseUrl: gatewayBaseUrl,
-      supabaseServiceRoleKey: SERVICE_ROLE_KEY,
-    });
+    const core = createHotUpdater({
+      database: supabaseDatabase({
+        supabaseUrl: gatewayBaseUrl,
+        supabaseServiceRoleKey: SERVICE_ROLE_KEY,
+      }),
+      clientAccess: "public",
+    }).core;
     const channelName = "concurrent-channel";
     const results = await Promise.all([
-      database.models.channels.insert({
-        row: {
-          id: "00000000-0000-0000-0000-000000000091",
-          name: channelName,
-        },
-        onConflict: "returnExisting",
-      }),
-      database.models.channels.insert({
-        row: {
-          id: "00000000-0000-0000-0000-000000000092",
-          name: channelName,
-        },
-        onConflict: "returnExisting",
-      }),
+      core.ensureChannel(channelName),
+      core.ensureChannel(channelName),
     ]);
 
-    expect(new Set(results.map(({ row }) => row.id)).size).toBe(1);
-    expect(results.filter(({ inserted }) => inserted)).toHaveLength(1);
+    expect(new Set(results.map(({ id }) => id)).size).toBe(1);
     const stored = await supabaseAdmin
       .from("hot_updater_v1_channels")
       .select("id, name")
       .eq("name", channelName);
     if (stored.error) throw stored.error;
-    expect(stored.data).toEqual([results[0]?.row]);
+    expect(stored.data).toEqual([results[0]]);
   });
 
   it("rolls back a patch-bearing insert when one base bundle is missing", async () => {
@@ -463,29 +515,27 @@ describe.sequential("supabase edge runtime acceptance", () => {
     const owner = {
       ...base,
       id: "00000000-0000-0000-0000-000000000102",
-      fileHash: "a".repeat(64),
+      manifestFileHash: "manifest-hash-owner",
       patches: [
         {
           baseBundleId: base.id,
-          baseFileHash: base.fileHash,
-          patchFileHash: "b".repeat(64),
+          baseFileHash: assetHashForBundle(base.id),
+          patchFileHash: "hash-valid-patch",
           patchStorageUri: "storage://valid-patch",
-          byteSize: 3_000_002,
+          byteSize: 3_000_000_002,
         },
         {
           baseBundleId: "00000000-0000-0000-0000-000000000199",
-          baseFileHash: "c".repeat(64),
-          patchFileHash: "d".repeat(64),
+          baseFileHash: "hash-missing-base",
+          patchFileHash: "hash-invalid-patch",
           patchStorageUri: "storage://invalid-patch",
-          byteSize: 3_000_003,
+          byteSize: 3_000_000_003,
         },
       ],
     } satisfies Bundle;
-    await databaseClient.insertBundle(base);
+    await deployToProduction(core, base);
 
-    await expect(
-      databaseClient.mutate((database) => database.insertBundle(owner)),
-    ).rejects.toBeDefined();
+    await expect(deployToProduction(core, owner)).rejects.toBeDefined();
 
     const ownerResult = await supabaseAdmin
       .from("hot_updater_v1_bundles")
@@ -507,7 +557,7 @@ describe.sequential("supabase edge runtime acceptance", () => {
       [
         "ALTER TABLE public.hot_updater_v1_bundles",
         "ADD COLUMN tenant_tag text NOT NULL DEFAULT 'default-tenant',",
-        "ADD COLUMN file_hash_upper text GENERATED ALWAYS AS (upper(file_hash)) STORED",
+        "ADD COLUMN manifest_file_hash_upper text GENERATED ALWAYS AS (upper(manifest_file_hash)) STORED",
       ].join(" "),
     );
 
@@ -516,34 +566,34 @@ describe.sequential("supabase edge runtime acceptance", () => {
       const owner = {
         ...base,
         id: "00000000-0000-0000-0000-000000000152",
-        fileHash: "a".repeat(64),
+        manifestFileHash: "manifest-hash-owner",
         patches: [
           {
             baseBundleId: base.id,
-            baseFileHash: base.fileHash,
-            patchFileHash: "b".repeat(64),
+            baseFileHash: assetHashForBundle(base.id),
+            patchFileHash: "hash-patch",
             patchStorageUri: "storage://patch",
-            byteSize: 3_000_002,
+            byteSize: 3_000_000_002,
           },
         ],
       } satisfies Bundle;
-      await databaseClient.insertBundle(base);
+      await deployToProduction(core, base);
 
-      await databaseClient.insertBundle(owner);
+      await deployToProduction(core, owner);
 
       const result = await supabaseAdmin
         .from("hot_updater_v1_bundles")
-        .select("tenant_tag, file_hash_upper")
+        .select("tenant_tag, manifest_file_hash_upper")
         .eq("id", owner.id)
         .single();
       if (result.error) throw result.error;
       expect(result.data).toEqual({
         tenant_tag: "default-tenant",
-        file_hash_upper: "A".repeat(64),
+        manifest_file_hash_upper: "MANIFEST-HASH-OWNER",
       });
     } finally {
       runDatabaseSql(
-        "ALTER TABLE public.hot_updater_v1_bundles DROP COLUMN tenant_tag, DROP COLUMN file_hash_upper",
+        "ALTER TABLE public.hot_updater_v1_bundles DROP COLUMN tenant_tag, DROP COLUMN manifest_file_hash_upper",
       );
     }
   });
@@ -565,24 +615,25 @@ describe.sequential("supabase edge runtime acceptance", () => {
       const owner = {
         ...base,
         id: "00000000-0000-0000-0000-000000000552",
-        fileHash: "a".repeat(64),
+        manifestFileHash: "manifest-hash-owner",
         patches: [
           {
             baseBundleId: base.id,
-            baseFileHash: base.fileHash,
-            patchFileHash: "b".repeat(64),
+            baseFileHash: assetHashForBundle(base.id),
+            patchFileHash: "hash-patch",
             patchStorageUri: "storage://patch",
-            byteSize: 3_000_002,
+            byteSize: 3_000_000_002,
           },
         ],
       } satisfies Bundle;
-      await databaseClient.insertBundle(base);
+      await deployToProduction(core, base);
 
-      await databaseClient.insertBundle(owner);
+      await deployToProduction(core, owner);
 
-      await expect(
-        databaseClient.getBundleById(owner.id),
-      ).resolves.toMatchObject({ id: owner.id, patches: owner.patches });
+      await expect(storedBundle(core, owner.id)).resolves.toMatchObject({
+        id: owner.id,
+        patches: owner.patches,
+      });
     } finally {
       runDatabaseSql(
         "DROP FUNCTION public.jsonb_populate_record(public.hot_updater_v1_bundles, jsonb)",
@@ -595,44 +646,40 @@ describe.sequential("supabase edge runtime acceptance", () => {
     const owner = {
       ...base,
       id: "00000000-0000-0000-0000-000000000202",
-      fileHash: "a".repeat(64),
+      manifestFileHash: "manifest-hash-owner",
       gitCommitHash: "before",
       patches: [
         {
           baseBundleId: base.id,
-          baseFileHash: base.fileHash,
-          patchFileHash: "b".repeat(64),
+          baseFileHash: assetHashForBundle(base.id),
+          patchFileHash: "hash-old-patch",
           patchStorageUri: "storage://old-patch",
-          byteSize: 3_000_002,
+          byteSize: 3_000_000_002,
         },
       ],
     } satisfies Bundle;
-    await databaseClient.insertBundle(base);
-    await databaseClient.insertBundle(owner);
+    await deployToProduction(core, base);
+    await deployToProduction(core, owner);
 
     await expect(
-      databaseClient.mutate((database) =>
-        database.updateBundleById(owner.id, {
-          gitCommitHash: "after",
-          patches: [
-            {
-              baseBundleId: "00000000-0000-0000-0000-000000000299",
-              baseFileHash: "c".repeat(64),
-              patchFileHash: "d".repeat(64),
-              patchStorageUri: "storage://invalid-patch",
-              byteSize: 3_000_003,
-            },
-          ],
-        }),
-      ),
+      core.updateBundle(owner.id, {
+        gitCommitHash: "after",
+        patches: [
+          {
+            baseBundleId: "00000000-0000-0000-0000-000000000299",
+            baseFileHash: "hash-missing-base",
+            patchFileHash: "hash-invalid-patch",
+            patchStorageUri: "storage://invalid-patch",
+            byteSize: 3_000_000_003,
+          },
+        ],
+      }),
     ).rejects.toBeDefined();
 
-    await expect(databaseClient.getBundleById(owner.id)).resolves.toMatchObject(
-      {
-        gitCommitHash: "before",
-        patches: owner.patches,
-      },
-    );
+    await expect(storedBundle(core, owner.id)).resolves.toMatchObject({
+      gitCommitHash: "before",
+      patches: owner.patches,
+    });
   });
 
   it("atomically applies explicit nulls and an empty patch list", async () => {
@@ -640,41 +687,36 @@ describe.sequential("supabase edge runtime acceptance", () => {
     const owner = {
       ...base,
       id: "00000000-0000-0000-0000-000000000302",
-      fileHash: "a".repeat(64),
+      manifestFileHash: "manifest-hash-owner",
       gitCommitHash: "before",
       patches: [
         {
           baseBundleId: base.id,
-          baseFileHash: base.fileHash,
-          patchFileHash: "b".repeat(64),
+          baseFileHash: assetHashForBundle(base.id),
+          patchFileHash: "hash-old-patch",
           patchStorageUri: "storage://old-patch",
-          byteSize: 3_000_002,
+          byteSize: 3_000_000_002,
         },
       ],
     } satisfies Bundle;
-    await databaseClient.insertBundle(base);
-    await databaseClient.insertBundle(owner);
+    await deployToProduction(core, base);
+    await deployToProduction(core, owner);
 
-    await databaseClient.mutate((database) =>
-      database.updateBundleById(owner.id, {
-        gitCommitHash: null,
-        patches: [],
-      }),
-    );
+    await core.updateBundle(owner.id, {
+      gitCommitHash: null,
+      patches: [],
+    });
 
-    await expect(databaseClient.getBundleById(owner.id)).resolves.toMatchObject(
-      {
-        gitCommitHash: null,
-        patches: [],
-      },
-    );
+    await expect(storedBundle(core, owner.id)).resolves.toMatchObject({
+      gitCommitHash: null,
+      patches: [],
+    });
   });
 
   it("maps a missing aggregate update to the public not-found error", async () => {
-    const result = databaseClient.updateBundleById(
-      "00000000-0000-0000-0000-000000000401",
-      { patches: [] },
-    );
+    const result = core.updateBundle("00000000-0000-0000-0000-000000000401", {
+      patches: [],
+    });
 
     await expect(result).rejects.toMatchObject({
       name: "DatabaseBundleNotFoundError",
@@ -682,9 +724,9 @@ describe.sequential("supabase edge runtime acceptance", () => {
     });
   });
 
-  it("denies the generic commit RPC to the anonymous role", async () => {
+  it("denies the apply RPC to the anonymous role", async () => {
     const response = await fetch(
-      `${gatewayBaseUrl}/rest/v1/rpc/hot_updater_v1_commit`,
+      `${gatewayBaseUrl}/rest/v1/rpc/hot_updater_v1_apply`,
       {
         method: "POST",
         headers: {
@@ -692,26 +734,119 @@ describe.sequential("supabase edge runtime acceptance", () => {
           Authorization: `Bearer ${ANON_KEY}`,
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ p_commit: { changes: [] } }),
+        body: JSON.stringify({ p_statements: [] }),
       },
     );
 
     expect(response.ok).toBe(false);
   });
 
+  it("records the Insights ingestion ceiling through the apply RPC", async () => {
+    const adapter = createSqlAdapter({
+      executor: supabaseExecutor(
+        createClient(gatewayBaseUrl, SERVICE_ROLE_KEY),
+      ),
+      tablePrefix: SUPABASE_TABLE_PREFIX,
+    });
+    const plugin = insights();
+    const apiOf = (latencyMs: number, retry?: RetryOptions) =>
+      plugin.init({
+        db: createEngine(
+          {
+            name: "supabaseDatabase",
+            adapter:
+              latencyMs > 0 ? withAdapterLatency(adapter, latencyMs) : adapter,
+            ...(retry === undefined ? {} : { retry }),
+          },
+          { plugins: [plugin] },
+        ).database(plugin),
+        // Insights never reads core.
+        core: {} as CoreReader,
+        now: Date.now,
+      }).api;
+    const seeded = apiOf(0, { attempts: 64, baseDelayMs: 1, maxDelayMs: 20 });
+    const start = Date.now() - 2 * 3_600_000;
+    const steps = [];
+    for (const [step, rate] of INGESTION_RATES.entries()) {
+      // Each step moves its own installations, first onto A, then A→B.
+      const first = step * INGESTION_MOVES;
+      const seed = await runContentionHarness({
+        transactions: INGESTION_MOVES,
+        ratePerSecond: 5000,
+        concurrency: 4,
+        run: (i) =>
+          seeded.recordEvent(
+            rolloutMove(2 * first + i, first + i, "a", start + first + i),
+          ),
+      });
+      expect(seed.errors).toEqual({});
+      const retries = { rerun: 0, resend: 0, retriedTransactions: 0 };
+      const api = apiOf(INGESTION_LATENCY_MS, {
+        onRetry: (kind, attempt) => {
+          retries[kind] += 1;
+          if (attempt === 1) retries.retriedTransactions += 1;
+        },
+      });
+      const report = await runContentionHarness({
+        transactions: INGESTION_MOVES,
+        ratePerSecond: rate,
+        concurrency: INGESTION_WRITERS,
+        run: (i) =>
+          api.recordEvent(
+            rolloutMove(
+              2 * first + INGESTION_MOVES + i,
+              first + i,
+              "b",
+              Date.now(),
+            ),
+          ),
+      });
+      steps.push({
+        rate,
+        ...report,
+        ...retries,
+        retried: retries.retriedTransactions / INGESTION_MOVES,
+        achieved: Math.round(report.committed / (report.durationMs / 1000)),
+      });
+    }
+    // The ceiling: the highest rate kept up with, no errors and at most 5% retried.
+    const ceiling = steps
+      .filter(
+        (step) =>
+          Object.keys(step.errors).length === 0 &&
+          step.retried <= 0.05 &&
+          step.achieved >= step.rate * 0.9,
+      )
+      .at(-1)?.rate;
+    console.info(
+      "supabase-ingestion-ceiling",
+      JSON.stringify({
+        writers: INGESTION_WRITERS,
+        latencyMs: INGESTION_LATENCY_MS,
+        ceiling,
+        steps,
+      }),
+    );
+    for (const { committed, errors } of steps) {
+      // Under contention a move may run out of retries, and nothing else fails.
+      const { DatabaseConflictError: conflicts = 0, ...others } = errors;
+      expect(others).toEqual({});
+      expect(committed + conflicts).toBe(INGESTION_MOVES);
+    }
+  }, 600_000);
+
   it("serves unversioned Release Catalog routes from the edge function entrypoint", async () => {
     const bundle = toRuntimeBundle({
       id: "00000000-0000-0000-0000-000000000001",
       platform: "ios",
-      fileHash: "hash",
       gitCommitHash: null,
-      storageUri: "storage://unused",
-      archiveByteSize: 3_000_000_001,
+      manifestStorageUri: "storage://unused/manifest.json",
+      manifestFileHash: "manifest-hash",
+      assetBaseStorageUri: "storage://unused/assets",
     });
 
     await uploadBundleObject(supabaseAdmin, bundle.id);
-    await seedHotUpdater.insertBundle(bundle);
-    await seedProductionRelease({ bundle, database });
+    await deployToProduction(core, bundle);
 
     const unauthorized = await fetch(
       `http://127.0.0.1:${edgePort}${FUNCTION_BASE_PATH}/release-catalogs/app-version/ios/cHJvZHVjdGlvbg/1.0.0`,
@@ -807,7 +942,7 @@ const waitForRestApiReady = async (baseUrl: string, timeoutMs = 90_000) => {
   while (Date.now() < deadline) {
     try {
       const response = await fetch(
-        `${baseUrl}/rest/v1/${SUPABASE_V1_TABLE_NAMES.bundles}?select=id&limit=1`,
+        `${baseUrl}/rest/v1/${SUPABASE_TABLE_PREFIX}bundles?select=id&limit=1`,
         {
           headers: {
             apikey: SERVICE_ROLE_KEY,
@@ -861,9 +996,9 @@ const uploadBundleObject = async (
 ) => {
   await uploadStorageObject(
     supabaseAdmin,
-    `${bundleId}/bundle.zip`,
-    Buffer.from("zip"),
-    "application/zip",
+    `${bundleId}/manifest.json`,
+    JSON.stringify({ bundleId, assets: {} }),
+    "application/json",
   );
 };
 
@@ -962,9 +1097,7 @@ GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO service_role;
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO anon, authenticated, service_role;
 GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA public TO anon, authenticated, service_role;
 
-REVOKE EXECUTE ON FUNCTION public.hot_updater_v1_commit(jsonb)
-  FROM anon, authenticated;
-REVOKE EXECUTE ON FUNCTION public.hot_updater_v1_delete_channel(text)
+REVOKE EXECUTE ON FUNCTION public.hot_updater_v1_apply(jsonb)
   FROM anon, authenticated;
 
 ALTER DEFAULT PRIVILEGES IN SCHEMA public
@@ -1147,6 +1280,17 @@ const writeSupabaseRuntimeFiles = async ({
       "@hot-updater/server": pathToFileURL(
         path.join(WORKSPACE_ROOT, "packages/server/dist/index.mjs"),
       ).href,
+      ...Object.fromEntries(
+        ["api-keys", "insights"].map((plugin) => [
+          `@hot-updater/server/plugins/${plugin}`,
+          pathToFileURL(
+            path.join(
+              WORKSPACE_ROOT,
+              `packages/server/dist/plugins/${plugin}/index.mjs`,
+            ),
+          ).href,
+        ]),
+      ),
       "@hot-updater/supabase/edge": pathToFileURL(
         path.join(runtimeRoot, "hot-updater-supabase-edge.ts"),
       ).href,
@@ -1159,6 +1303,7 @@ const writeSupabaseRuntimeFiles = async ({
   await writeFile(
     path.join(runtimeRoot, "hot-updater-supabase-edge.ts"),
     `
+export { plugins } from ${JSON.stringify(pathToFileURL(path.join(WORKSPACE_ROOT, "plugins/supabase/src/plugins.ts")).href)};
 export { supabaseDatabase } from ${JSON.stringify(pathToFileURL(path.join(WORKSPACE_ROOT, "plugins/supabase/src/supabaseDatabase.ts")).href)};
 export { supabaseEdgeFunctionStorage as supabaseStorage } from ${JSON.stringify(pathToFileURL(path.join(WORKSPACE_ROOT, "plugins/supabase/src/supabaseEdgeFunctionStorage.ts")).href)};
 `.trim(),

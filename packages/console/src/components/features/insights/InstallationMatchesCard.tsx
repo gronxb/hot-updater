@@ -17,7 +17,7 @@ const getLastKnownBundleId = (event: InsightsInstallationViewRow) =>
   event.lastKnownBundleId;
 
 const getUserLabel = (event: InsightsInstallationViewRow) =>
-  event.userId ?? event.username ?? "—";
+  event.userId ?? "—";
 
 export function InstallationMatchesCard({
   error,

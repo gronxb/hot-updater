@@ -1,8 +1,8 @@
-import type { Bundle } from "@hot-updater/core";
-import { stripBundleArtifactMetadata } from "@hot-updater/core";
+import type { Bundle } from "@hot-updater/protocol";
+import { stripBundleArtifactMetadata } from "@hot-updater/protocol";
 
+import { DatabaseAdapterInputError } from "./databaseErrors";
 import { isDatabaseMetadataObject } from "./databaseJsonValue";
-import { DatabasePluginInputError } from "./databasePluginCrudValidationErrors";
 import type { DatabaseBundleMetadata } from "./types";
 
 export const bundleMetadataToRow = (
@@ -11,7 +11,7 @@ export const bundleMetadataToRow = (
   const value = stripBundleArtifactMetadata(metadata);
   if (value === undefined) return {};
   if (!isDatabaseMetadataObject(value)) {
-    throw new DatabasePluginInputError("invalid-data");
+    throw new DatabaseAdapterInputError("invalid-data");
   }
   return value;
 };

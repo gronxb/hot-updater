@@ -15,64 +15,37 @@ public struct LynxArtifactConfiguration {
 
 /// An internal trusted artifact request, not a catalog authorization.
 public struct LynxArtifactRequest: Codable, Equatable {
+    public let artifactProtocolVersion: Int
     public let bundleId: String
-    public let fileUrl: URL?
-    public let fileHash: String?
     public let manifestUrl: URL?
     public let manifestFileHash: String?
-    public let changedAssets: [String: LynxChangedAsset]?
-    public init(bundleId: String, fileUrl: URL?, fileHash: String?, manifestFileHash: String? = nil,
-                manifestUrl: URL? = nil, changedAssets: [String: LynxChangedAsset]? = nil) {
+    public let archiveUrl: URL?
+    public let assets: [String: LynxChangedAsset]?
+    public init(bundleId: String, manifestUrl: URL? = nil, manifestFileHash: String? = nil,
+                assets: [String: LynxChangedAsset]? = nil, archiveUrl: URL? = nil,
+                artifactProtocolVersion: Int = 1) {
         self.bundleId = bundleId
-        self.fileUrl = fileUrl
-        self.fileHash = fileHash
         self.manifestFileHash = manifestFileHash
         self.manifestUrl = manifestUrl
-        self.changedAssets = changedAssets
-    }
-
-    var hasArchive: Bool { fileUrl != nil && fileHash?.isEmpty == false }
-    var hasManifestTransfer: Bool {
-        manifestUrl != nil && manifestFileHash?.isEmpty == false && changedAssets != nil
+        self.assets = assets
+        self.archiveUrl = archiveUrl
+        self.artifactProtocolVersion = artifactProtocolVersion
     }
 
     func validate() throws {
-        guard UUID(uuidString: bundleId) != nil, bundleId == bundleId.lowercased() else {
-            throw LynxArtifactError.invalid("Invalid artifact request")
+        guard artifactProtocolVersion == 1,
+              bundleId.range(of: "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$", options: .regularExpression) != nil,
+              let manifestUrl, let manifestFileHash, Self.isIntegrityToken(manifestFileHash),
+              let assets, !assets.isEmpty else {
+            throw LynxArtifactError.invalid("Incomplete manifest-v1 artifact request")
         }
-        let anyArchiveField = fileUrl != nil || fileHash != nil
-        guard anyArchiveField == hasArchive else {
-            throw LynxArtifactError.invalid("Incomplete archive transfer")
-        }
-        if let fileUrl, let fileHash {
-            try Self.validateRemoteURL(fileUrl)
-            guard Self.isIntegrityToken(fileHash) else {
-                throw LynxArtifactError.invalid("Invalid archive integrity token")
-            }
-        }
-
-        let anyManifestRouteField = manifestUrl != nil || changedAssets != nil
-        guard anyManifestRouteField == hasManifestTransfer else {
-            throw LynxArtifactError.invalid("Incomplete manifest transfer")
-        }
-        if manifestFileHash != nil, !hasManifestTransfer, !hasArchive {
-            throw LynxArtifactError.invalid("Manifest trust token has no transfer")
-        }
-        if let manifestUrl {
-            try Self.validateRemoteURL(manifestUrl)
-        }
-        if let manifestFileHash, !Self.isIntegrityToken(manifestFileHash) {
-            throw LynxArtifactError.invalid("Invalid manifest integrity token")
-        }
-        guard hasArchive || hasManifestTransfer else {
-            throw LynxArtifactError.invalid("Artifact request has no complete transfer")
-        }
-        guard let changedAssets else { return }
+        try Self.validateRemoteURL(manifestUrl)
+        if let archiveUrl { try Self.validateRemoteURL(archiveUrl) }
         let paths = ArchiveEntryGuard(reservingManifest: true)
-        for (path, asset) in changedAssets {
+        for (path, asset) in assets {
             try paths.admit(path, size: 0, directory: false)
             guard path != "manifest.json", Self.isHash(asset.fileHash),
-                  asset.file != nil || asset.patch != nil else {
+                  asset.file != nil else {
                 throw LynxArtifactError.invalid("Invalid changed asset descriptor")
             }
             if let file = asset.file {
@@ -85,7 +58,8 @@ public struct LynxArtifactRequest: Codable, Equatable {
                 try Self.validateRemoteURL(patch.patchUrl)
                 guard patch.algorithm == "bsdiff", UUID(uuidString: patch.baseBundleId) != nil,
                       patch.baseBundleId == patch.baseBundleId.lowercased(),
-                      Self.isHash(patch.baseFileHash), Self.isHash(patch.patchFileHash) else {
+                      Self.isHash(patch.baseFileHash), Self.isHash(patch.patchFileHash),
+                      patch.byteSize.map({ $0 > 0 && $0 <= ArchiveLimits.file }) ?? true else {
                     throw LynxArtifactError.invalid("Invalid patch descriptor")
                 }
             }
@@ -208,7 +182,7 @@ public final class LynxPreparedArtifact {
 }
 
 enum LynxArtifactDelivery {
-    case archive(fallbackBaseBundleId: String?)
+    case archive(baseBundleId: String?, releaseId: String?)
     case manifest(
         baseBundleId: String,
         releaseId: String?,
@@ -261,9 +235,22 @@ private struct LynxMetadata: Decodable {
     let entry: String
 }
 struct LynxManifest: Decodable {
-    struct Asset: Decodable { let fileHash: String; let signature: String? }
+    struct Asset: Decodable {
+        let fileHash: String
+        let signature: String?
+        let byteSize: UInt64?
+        let downloadByteSize: UInt64?
+        let downloadFileHash: String?
+        let downloadCompression: String?
+    }
+    struct Archive: Decodable {
+        let downloadFileHash: String
+        let downloadByteSize: UInt64
+        let tarByteSize: UInt64
+    }
     let bundleId: String
     let assets: [String: Asset]
+    let archive: Archive?
 }
 
 struct VerifiedLynxTree {
@@ -298,6 +285,7 @@ struct VerifiedLynxTree {
                   let fileSize = values.fileSize, fileSize >= 0,
                   file.resolvingSymlinksInPath() == file else { throw LynxArtifactError.invalid("Managed file integrity mismatch: \(name)") }
             try paths.admit(name, size: UInt64(fileSize), directory: false)
+            guard asset.byteSize == nil || asset.byteSize == UInt64(fileSize) else { throw LynxArtifactError.invalid("Managed asset size mismatch") }
             try ArtifactSignatureVerifier.verifyHash(fileURL: file, expectedHash: asset.fileHash).get()
             if configuration.publicKeyPEM != nil {
                 guard let signature = asset.signature, !signature.isEmpty else { throw SignatureVerificationError.invalidSignatureFormat }
@@ -557,48 +545,13 @@ public final class LynxArtifactInstaller {
             if stageLease >= 0 { Darwin.close(stageLease); stageLease = -1 }
             throw LynxArtifactError.invalid("Cannot acquire preparation lease")
         }
-        let contents = stage.appendingPathComponent("contents")
-        var assembled: VerifiedLynxTree?
-        var delivery: LynxArtifactDelivery?
-        if let base, request.hasManifestTransfer {
-            do {
-                let result = try await LynxDelta.prepare(
-                    request,
-                    base: base,
-                    stage: stage,
-                    configuration: configuration,
-                    fetch: fetch
-                )
-                assembled = result.tree
-                delivery = .manifest(
-                    baseBundleId: base.bundleId,
-                    releaseId: releaseId,
-                    patchedAssets: result.patchedAssets
-                )
-            } catch {
-                try Task.checkCancellation()
-                guard request.hasArchive else { throw error }
-                NSLog("Manifest-driven install failed for %@: %@. Falling back to archive", request.bundleId, error.localizedDescription)
-                try? FileManager.default.removeItem(at: contents)
-                delivery = .archive(fallbackBaseBundleId: base.bundleId)
-            }
-        }
-        if assembled == nil {
-            if base == nil, request.hasManifestTransfer {
-                NSLog("Skipping manifest-driven install for %@: no native running base is available. Using archive", request.bundleId)
-            }
-            guard let url = request.fileUrl, let hash = request.fileHash, !hash.isEmpty else { throw LynxArtifactError.invalid("Full archive required without a usable native delta base") }
-            let archive = stage.appendingPathComponent("archive")
-            try await fetch(url, archive, ArchiveLimits.archive, false)
-            try Task.checkCancellation()
-            try ArchiveLimits.checkArchive(archive)
-            try ArtifactSignatureVerifier.verifyBundle(fileURL: archive, fileHash: hash, publicKeyPEM: configuration.publicKeyPEM).get()
-            try StrictArchive.extract(archive, to: contents)
-            assembled = try VerifiedLynxTree.verify(at: contents, bundleId: request.bundleId, manifestToken: request.manifestFileHash, configuration: configuration)
-            if delivery == nil { delivery = .archive(fallbackBaseBundleId: nil) }
-        }
+        let result = try await LynxDelta.prepare(request, base: base, stage: stage,
+                                                 configuration: configuration, fetch: fetch)
+        let assembled = result.tree
+        let delivery: LynxArtifactDelivery = result.usedArchive
+            ? .archive(baseBundleId: base?.bundleId, releaseId: releaseId)
+            : .manifest(baseBundleId: base?.bundleId ?? "none", releaseId: releaseId, patchedAssets: result.patchedAssets)
         try Task.checkCancellation()
-        guard let assembled, let delivery else { throw LynxArtifactError.invalid("Artifact preparation produced no verified tree") }
         let token = LynxPreparedArtifact(
             request: request,
             stage: stage,
@@ -695,14 +648,11 @@ public final class LynxArtifactInstaller {
 
     private func logPublished(_ token: LynxPreparedArtifact) {
         switch token.delivery {
-        case .archive(let fallbackBaseBundleId):
-            os_log("%{public}@", "HotUpdaterArchiveInstalled bundleId=\(token.bundleId)")
-            if let fallbackBaseBundleId {
-                os_log(
-                    "%{public}@",
-                    "HotUpdaterArchiveFallbackApplied bundleId=\(token.bundleId) baseBundleId=\(fallbackBaseBundleId)"
-                )
-            }
+        case .archive(let baseBundleId, let releaseId):
+            let event = LynxInstallEvent.json(event: "HotUpdaterArchiveInstalled",
+                transactionId: token.id, bundleId: token.bundleId, releaseId: releaseId,
+                baseBundleId: baseBundleId ?? "none")
+            os_log("%{public}@", "HotUpdaterArchiveInstalled bundleId=\(token.bundleId) HotUpdaterLynxEvent=\(event)")
         case .manifest(let baseBundleId, let releaseId, let patchedAssets):
             for asset in patchedAssets {
                 let event = LynxInstallEvent.json(

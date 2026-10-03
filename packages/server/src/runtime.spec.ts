@@ -1,69 +1,74 @@
 import {
-  createStoragePlugin,
-  type DatabasePlugin,
+  createStorageAdapter,
   type ConfigInput,
+  coreSettings,
 } from "@hot-updater/plugin-core";
 import { describe, expect, expectTypeOf, it, vi } from "vitest";
 
-import { createInMemoryDatabasePlugin } from "../../test-utils/test/inMemoryDatabasePlugin";
 import packageJson from "../package.json" with { type: "json" };
-import { createHotUpdater } from "./index";
+import { createHotUpdater, HotUpdaterConfigError } from "./index";
 import type {
   ClientAccessPolicy,
   CreateHotUpdaterOptions,
-  HandlerAPI,
+  RuntimeHotUpdaterAPI,
 } from "./index";
 import {
+  createFencedDatabase,
   createRuntimeDatabase,
-  createSchemaManagedDatabase,
 } from "./runtime.testFixtures";
-import { HOT_UPDATER_SCHEMA_VERSION } from "./schema/types";
 import { HOT_UPDATER_SERVER_VERSION } from "./version";
-
-const publicClientAccess = {
-  type: "public",
-} satisfies ClientAccessPolicy;
 
 describe("runtime createHotUpdater", () => {
   it.each(["authorityId", "catalogId"])("rejects a user-supplied %s", (key) => {
     expect(() =>
       createHotUpdater({
-        clientAccess: publicClientAccess,
-        database: createInMemoryDatabasePlugin(),
+        clientAccess: "public",
+        database: createRuntimeDatabase(),
         [key]: "user-controlled",
       }),
     ).toThrow(`Remove ${key}`);
   });
 
-  it("publishes only the supported runtime and database subpaths", () => {
-    const packageExports = packageJson.exports;
-
-    const databaseEntry = packageExports["./db"];
-    const hasRuntimeEntry = Object.hasOwn(packageExports, "./runtime");
-
-    expect(databaseEntry).toBeDefined();
-    expect(hasRuntimeEntry).toBe(false);
+  it("publishes the runtime, the built-in adapters, and the built-in plugins, and no tooling entry", () => {
+    // Tooling reads a server through its definition's properties instead.
+    expect(Object.keys(packageJson.exports).sort()).toEqual([
+      ".",
+      "./adapters/drizzle",
+      "./adapters/kysely",
+      "./adapters/mongodb",
+      "./adapters/prisma",
+      "./package.json",
+      "./plugins/api-keys",
+      "./plugins/insights",
+    ]);
   });
 
-  it("exports runtime-safe handler types from the root entry", () => {
+  it("types the options and the instance without the legacy API", () => {
     expectTypeOf<ConfigInput>().not.toHaveProperty("authorityId");
     expectTypeOf<ConfigInput>().not.toHaveProperty("catalogId");
-    expectTypeOf<HandlerAPI>().toHaveProperty("getBundles");
     expectTypeOf<keyof CreateHotUpdaterOptions>().toEqualTypeOf<
-      "clientAccess" | "database" | "storage"
+      "clientAccess" | "database" | "plugins" | "storage"
     >();
-    expectTypeOf<CreateHotUpdaterOptions>().toHaveProperty("clientAccess");
     expectTypeOf<
       CreateHotUpdaterOptions["clientAccess"]
     >().toEqualTypeOf<ClientAccessPolicy>();
+    expectTypeOf<keyof RuntimeHotUpdaterAPI>().toEqualTypeOf<
+      | "adapterName"
+      | "api"
+      | "clientAuth"
+      | "clientEndpoints"
+      | "clientPlugins"
+      | "core"
+      | "database"
+      | "flush"
+      | "handlers"
+      | "plugins"
+      | "storage"
+    >();
   });
 
-  it("accepts a direct v2 plugin object without exposing maintenance methods", () => {
-    const database: DatabasePlugin = {
-      ...createInMemoryDatabasePlugin(),
-      name: "contextlessTestDatabase",
-    };
-    const storage = createStoragePlugin({
+  it("runs on an engine database, which it exposes as configured rather than as methods", () => {
+    const storage = createStorageAdapter({
       name: "contextlessTestStorage",
       protocol: "s3",
       get: async () => ({ response: null }),
@@ -73,92 +78,110 @@ describe("runtime createHotUpdater", () => {
     });
 
     const hotUpdater = createHotUpdater({
-      clientAccess: publicClientAccess,
-      database,
+      clientAccess: "public",
+      database: createRuntimeDatabase("contextlessTestDatabase"),
       storage: [storage],
     });
 
     expect(hotUpdater.adapterName).toBe("contextlessTestDatabase");
-    expect(hotUpdater.handlers.client).toEqual(expect.any(Function));
-    expect(hotUpdater.handlers.admin).toEqual(expect.any(Function));
-    expect("createMigrator" in hotUpdater).toBe(false);
-    expect("generateSchema" in hotUpdater).toBe(false);
+    // Public client routes: no clientAuth.
+    expect(Object.keys(hotUpdater).sort()).toEqual([
+      "adapterName",
+      "api",
+      "clientEndpoints",
+      "clientPlugins",
+      "core",
+      "database",
+      "flush",
+      "handlers",
+      "plugins",
+      "storage",
+    ]);
     expect(hotUpdater).not.toHaveProperty("authorityId");
-    expect(hotUpdater).not.toHaveProperty("catalogId");
     expectTypeOf(hotUpdater).not.toHaveProperty("createMigrator");
-    expectTypeOf(hotUpdater).not.toHaveProperty("generateSchema");
     expectTypeOf(hotUpdater.handlers.client)
       .parameter(0)
       .toEqualTypeOf<Request>();
   });
 
-  it("rejects access when a managed schema is not initialized", async () => {
+  it("refuses a database that is not on the storage engine", () => {
+    const legacy = { name: "legacy", models: {}, commit: async () => ({}) };
+    const remote = {
+      name: "standalone",
+      core: {},
+      fetchAdmin: async () => new Response(null),
+    };
+
+    for (const database of [legacy, remote, undefined]) {
+      expect(() =>
+        createHotUpdater({
+          clientAccess: "public",
+          database: database as unknown as CreateHotUpdaterOptions["database"],
+        }),
+      ).toThrow(HotUpdaterConfigError);
+    }
+    expect(() =>
+      createHotUpdater({
+        clientAccess: "public",
+        database: remote as unknown as CreateHotUpdaterOptions["database"],
+      }),
+    ).toThrow("standaloneRepository reaches a server's admin API");
+  });
+
+  it("answers 503 until the schema settings are written", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const hotUpdater = createHotUpdater({
+        clientAccess: "public",
+        database: await createFencedDatabase("kysely"),
+      });
+
+      const response = await hotUpdater.handlers.admin(
+        new Request("https://updates.example.com/channels"),
+      );
+
+      expect(response.status).toBe(503);
+      await expect(hotUpdater.core.listChannels()).rejects.toThrow(
+        "Hot Updater schema setting",
+      );
+    } finally {
+      error.mockRestore();
+    }
+  });
+
+  it("serves a fenced database once its settings are written", async () => {
     const hotUpdater = createHotUpdater({
-      clientAccess: publicClientAccess,
-      database: createSchemaManagedDatabase("kysely", undefined),
+      clientAccess: "public",
+      database: await createFencedDatabase("kysely", coreSettings),
     });
 
-    const result = hotUpdater.getBundles({ limit: 10 });
-
-    await expect(result).rejects.toThrow(
-      "Hot Updater database schema is not initialized for kysely.",
-    );
+    await expect(hotUpdater.core.listChannels()).resolves.toEqual([]);
   });
 
   it.each(["s3", "https"])(
-    "rejects registered %s storage without getDownloadUrl",
+    "rejects registered %s storage without getDownloadUrl where the handlers are mounted",
     (protocol) => {
-      const storage = createStoragePlugin({
+      const storage = createStorageAdapter({
         name: "deployOnlyStorage",
         protocol,
         get: async () => ({ response: null }),
       });
+      // Tooling reads the definition, whose storage may only upload.
+      const hotUpdater = createHotUpdater({
+        clientAccess: "public",
+        database: createRuntimeDatabase(),
+        storage: [storage],
+      });
 
-      expect(() =>
-        createHotUpdater({
-          clientAccess: publicClientAccess,
-          database: createRuntimeDatabase(),
-          storage: [storage],
-        }),
-      ).toThrow(
-        'Storage plugin "deployOnlyStorage" does not implement getDownloadUrl.',
+      expect(() => hotUpdater.handlers).toThrow(
+        'Storage adapter "deployOnlyStorage" does not implement getDownloadUrl.',
       );
     },
   );
 
-  it("rejects access when a managed schema is stale", async () => {
-    const hotUpdater = createHotUpdater({
-      clientAccess: publicClientAccess,
-      database: createSchemaManagedDatabase("mongodb", "0.21.0"),
-    });
-
-    const result = hotUpdater.getChannels();
-
-    await expect(result).rejects.toThrow(
-      "Hot Updater v1 cannot migrate schema 0.21.0 in place.",
-    );
-  });
-
-  it("checks a ready managed schema only once", async () => {
-    const database = createSchemaManagedDatabase(
-      "kysely",
-      HOT_UPDATER_SCHEMA_VERSION,
-    );
-    const createMigrator = vi.spyOn(database, "createMigrator");
-    const hotUpdater = createHotUpdater({
-      clientAccess: publicClientAccess,
-      database,
-    });
-
-    await hotUpdater.getChannels();
-    await hotUpdater.getChannels();
-
-    expect(createMigrator).toHaveBeenCalledOnce();
-  });
-
   it("keeps the version route mounted on the client handler", async () => {
     const hotUpdater = createHotUpdater({
-      clientAccess: publicClientAccess,
+      clientAccess: "public",
       database: createRuntimeDatabase(),
     });
 
@@ -168,6 +191,7 @@ describe("runtime createHotUpdater", () => {
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({
+      adminProtocol: 2,
       infrastructureGeneration: 1,
       version: HOT_UPDATER_SERVER_VERSION,
     });
@@ -178,17 +202,26 @@ describe("runtime createHotUpdater", () => {
       createHotUpdater({
         database: createRuntimeDatabase(),
       } as unknown as CreateHotUpdaterOptions),
-    ).toThrow("clientAccess must be an object.");
+    ).toThrow(
+      'Set clientAccess to "public", or add a plugin that provides clientAuth.',
+    );
   });
 
-  it("rejects an unsupported client access policy", () => {
-    expect(() =>
+  it("rejects a clientAccess object, naming what replaced it", () => {
+    const withObject = (clientAccess: unknown) => () =>
       createHotUpdater({
-        clientAccess: {
-          type: "private" as unknown as "public",
-        },
+        clientAccess: clientAccess as ClientAccessPolicy,
         database: createRuntimeDatabase(),
-      }),
-    ).toThrow('clientAccess.type must be either "public" or "api-key".');
+      });
+    const removed =
+      'clientAccess objects were removed in 1.0. Set clientAccess: "public", or add a plugin that provides clientAuth to plugins.';
+
+    expect(withObject({ type: "api-key", headerName: "x-client-key" })).toThrow(
+      removed,
+    );
+    expect(withObject({ type: "public" })).toThrow(removed);
+    expect(withObject("private")).toThrow(
+      'clientAccess must be "public"; to protect client routes, add a plugin that provides clientAuth to plugins.',
+    );
   });
 });

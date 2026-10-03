@@ -1,9 +1,9 @@
 import {
   createStorageDownloadPath,
-  createStoragePlugin,
+  createStorageAdapter,
   createStorageUri,
   parseStorageUri,
-  type StoragePluginWith,
+  type StorageAdapterWith,
 } from "@hot-updater/plugin-core";
 
 interface StoredObject {
@@ -13,7 +13,7 @@ interface StoredObject {
 
 export const mockStorage = (
   _: unknown,
-): StoragePluginWith<
+): StorageAdapterWith<
   "put" | "get" | "getDownloadUrl" | "exists" | "delete"
 > => {
   const objects = new Map<string, StoredObject>();
@@ -28,7 +28,7 @@ export const mockStorage = (
     return parsed;
   };
 
-  return createStoragePlugin({
+  return createStorageAdapter({
     name: "mock",
     protocol: "storage",
     async put({ key, body, contentType }) {

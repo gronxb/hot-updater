@@ -7,7 +7,7 @@
  *
  * Error Classification:
  * - Parameter Validation: Invalid or missing function parameters
- * - Bundle Storage: Errors during download, extraction, and storage
+ * - Bundle Storage: Errors during download, verification, and storage
  * - Signature Verification: Cryptographic verification failures (collapsed to a single public code)
  * - Internal: Platform-specific or unexpected errors
  *
@@ -27,8 +27,7 @@ export enum HotUpdaterErrorCode {
   MISSING_BUNDLE_ID = "MISSING_BUNDLE_ID",
 
   /**
-   * File URL is invalid or malformed.
-   * Thrown when fileUrl parameter cannot be parsed as a valid URL.
+   * Manifest or asset URL is invalid or malformed.
    * @retryable false
    */
   INVALID_FILE_URL = "INVALID_FILE_URL",
@@ -59,24 +58,15 @@ export enum HotUpdaterErrorCode {
   INCOMPLETE_DOWNLOAD = "INCOMPLETE_DOWNLOAD",
 
   /**
-   * Bundle archive format is invalid or corrupted.
-   * Thrown when ZIP file has wrong magic bytes, invalid structure, or unsupported format.
-   * Also thrown for path traversal attempts during extraction.
-   * @retryable false - Indicates corrupted or malicious bundle
-   */
-  EXTRACTION_FORMAT_ERROR = "EXTRACTION_FORMAT_ERROR",
-
-  /**
    * Bundle missing required platform files.
-   * Thrown when extracted bundle doesn't contain index.android.bundle (Android)
+   * Thrown when the staged bundle doesn't contain index.android.bundle (Android)
    * or main.jsbundle (iOS).
    * @retryable false - Indicates incorrectly built bundle
    */
   INVALID_BUNDLE = "INVALID_BUNDLE",
 
   /**
-   * Insufficient disk space for bundle download and extraction.
-   * Thrown when available disk space is less than required (file size * 2).
+   * Insufficient disk space for bundle staging.
    * Error message includes required and available bytes.
    * @retryable false - User must free up disk space
    */

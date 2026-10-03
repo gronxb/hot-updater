@@ -1,4 +1,4 @@
-import type { Bundle } from "@hot-updater/core";
+import type { Bundle } from "@hot-updater/protocol";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -13,10 +13,10 @@ import {
 const createBundle = (id: string): Bundle => ({
   id,
   platform: "ios",
-  fileHash: `hash-${id}`,
   gitCommitHash: null,
-  storageUri: `s3://bucket/${id}.zip`,
-  archiveByteSize: 3_000_000_001,
+  manifestStorageUri: `s3://bucket/${id}/manifest.json`,
+  manifestFileHash: `manifest-hash-${id}`,
+  assetBaseStorageUri: "s3://bucket/assets",
 });
 
 const toRow = (bundle: Bundle): BundleRow => bundleToRow(bundle);

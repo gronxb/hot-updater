@@ -1,3 +1,4 @@
+import { SPARKLING_NAVIGATION_PROVENANCE } from "@hot-updater/lynx/navigationProvenance";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -17,7 +18,6 @@ import {
   resourcePaths,
   validateAttributedDiagnostics,
 } from "../../examples/lynx/scripts/public-matrix/evidence.mjs";
-import { SPARKLING_NAVIGATION_PROVENANCE } from "../../packages/lynx/src/navigationProvenance";
 
 const identity = {
   runtimeId: "runtime",
@@ -462,15 +462,14 @@ describe("Lynx public matrix native event evidence", () => {
       deliveryArtifactUrl:
         "https://example.test/artifacts/bundle-c/from/bundle-b",
       deliveryArtifactResponse: {
-        fileHash: null,
-        fileUrl: null,
+        artifactProtocolVersion: 1,
+        archiveUrl: "https://example.test/bundle.tar.br",
         manifestUrl: "https://example.test/manifest",
         manifestFileHash: "d".repeat(64),
-        changedAssets: {
+        assets: {
           "detail.lynx.bundle": {
             file: { url: "https://example.test/detail" },
             fileHash: build.files["detail.lynx.bundle"].sha256,
-            patch: null,
           },
           "main.lynx.bundle": {
             file: { url: "https://example.test/main" },
@@ -524,12 +523,18 @@ describe("Lynx public matrix native event evidence", () => {
     expect(collectDeltaDelivery(deployment, nativeLogs)).toMatchObject({
       rawDetailAssetPath: "detail.lynx.bundle",
       rawDetailSha256: build.files["detail.lynx.bundle"].sha256,
-      archiveFileHash: null,
-      archiveFileUrl: null,
+      artifactProtocolVersion: 1,
+      archiveUrl: "https://example.test/bundle.tar.br",
       transactionId: "transaction-c",
       patchSha256: patchHash,
       reconstructedSha256: targetHash,
     });
+    expect(() =>
+      collectDeltaDelivery(
+        deployment,
+        nativeLogs + "\nHotUpdaterArchiveInstalled bundleId=bundle-c",
+      ),
+    ).toThrow("bulk archive installation");
     expect(() =>
       collectDeltaDelivery(
         deployment,
@@ -542,8 +547,7 @@ describe("Lynx public matrix native event evidence", () => {
           ...deployment,
           deliveryArtifactResponse: {
             ...deployment.deliveryArtifactResponse,
-            fileHash: "e".repeat(64),
-            fileUrl: "https://example.test/bundle.zip",
+            artifactProtocolVersion: 2,
           },
         },
         nativeLogs,
@@ -555,8 +559,8 @@ describe("Lynx public matrix native event evidence", () => {
           ...deployment,
           deliveryArtifactResponse: {
             ...deployment.deliveryArtifactResponse,
-            changedAssets: {
-              ...deployment.deliveryArtifactResponse.changedAssets,
+            assets: {
+              ...deployment.deliveryArtifactResponse.assets,
               "detail.lynx.bundle": undefined,
             },
           },

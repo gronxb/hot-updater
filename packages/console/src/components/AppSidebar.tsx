@@ -1,15 +1,9 @@
 import { Link, useRouterState } from "@tanstack/react-router";
-import {
-  ChartNoAxesCombined,
-  KeyRound,
-  LogOut,
-  Moon,
-  Package,
-  Sun,
-} from "lucide-react";
-import { useState } from "react";
+import { LogOut, Moon, Package, Sun } from "lucide-react";
+import { type ReactElement, type ReactNode, useState } from "react";
 import { toast } from "sonner";
 
+import { useFeatureUi } from "@/components/features/FeatureSlots";
 import { HotUpdaterLogo } from "@/components/HotUpdaterLogo";
 import { useTheme } from "@/components/ThemeProvider";
 import {
@@ -25,23 +19,59 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from "@/components/ui/sidebar";
-import { useApiKeyCapabilityQuery } from "@/lib/api-keys-api";
+
+type NavigationItem = {
+  readonly label: string;
+  readonly icon: ReactNode;
+  readonly active: boolean;
+  readonly link: ReactElement;
+};
 
 export function AppSidebar({ canSignOut = false }: { canSignOut?: boolean }) {
   const { setOpenMobile } = useSidebar();
   const closeMobileSidebar = () => setOpenMobile(false);
   const [signingOut, setSigningOut] = useState(false);
-  const apiKeyCapability = useApiKeyCapabilityQuery();
+  const featureUi = useFeatureUi();
   const { theme, setTheme } = useTheme();
   const routerState = useRouterState();
   const currentPath = routerState.location.pathname;
 
-  const isBundlesActive = currentPath === "/";
-  const isInsightsActive =
-    currentPath === "/insights" ||
-    currentPath === "/insights/distribution" ||
-    currentPath === "/installations";
-  const isApiKeysActive = currentPath === "/api-keys";
+  const navigation: readonly NavigationItem[] = [
+    {
+      label: "Bundles",
+      icon: <Package />,
+      active: currentPath === "/",
+      link: (
+        <Link
+          to="/"
+          onClick={closeMobileSidebar}
+          search={{
+            afterReleaseId: undefined,
+            beforeReleaseId: undefined,
+            channelId: undefined,
+            enabled: undefined,
+            releaseId: undefined,
+            platform: undefined,
+            bundleId: undefined,
+            scopeKey: undefined,
+          }}
+        />
+      ),
+    },
+    // Each feature that is on adds its item, as the feature registry lists it.
+    ...featureUi.flatMap(({ features, label, navigation }) =>
+      navigation === undefined
+        ? []
+        : [
+            {
+              label,
+              icon: navigation.icon,
+              active: navigation.paths.includes(currentPath),
+              link: navigation.link({ features, onClick: closeMobileSidebar }),
+            },
+          ],
+    ),
+  ];
 
   const signOut = async () => {
     setSigningOut(true);
@@ -72,9 +102,8 @@ export function AppSidebar({ canSignOut = false }: { canSignOut?: boolean }) {
             enabled: undefined,
             releaseId: undefined,
             platform: undefined,
-            targetAppVersion: undefined,
             bundleId: undefined,
-            page: undefined,
+            scopeKey: undefined,
           }}
           className="flex items-center gap-3 p-1 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:p-2"
         >
@@ -95,56 +124,18 @@ export function AppSidebar({ canSignOut = false }: { canSignOut?: boolean }) {
           <SidebarGroupLabel>Navigation</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              <SidebarMenuItem>
-                <SidebarMenuButton
-                  isActive={isBundlesActive}
-                  render={
-                    <Link
-                      to="/"
-                      onClick={closeMobileSidebar}
-                      search={{
-                        afterReleaseId: undefined,
-                        beforeReleaseId: undefined,
-                        channelId: undefined,
-                        enabled: undefined,
-                        releaseId: undefined,
-                        platform: undefined,
-                        targetAppVersion: undefined,
-                        bundleId: undefined,
-                        page: undefined,
-                      }}
-                    />
-                  }
-                  tooltip="Bundles"
-                >
-                  <Package />
-                  <span>Bundles</span>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-              <SidebarMenuItem>
-                <SidebarMenuButton
-                  isActive={isInsightsActive}
-                  render={<Link to="/insights" onClick={closeMobileSidebar} />}
-                  tooltip="Insights"
-                >
-                  <ChartNoAxesCombined />
-                  <span>Insights</span>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-              {apiKeyCapability.data?.apiKeys ? (
-                <SidebarMenuItem>
+              {navigation.map((item) => (
+                <SidebarMenuItem key={item.label}>
                   <SidebarMenuButton
-                    isActive={isApiKeysActive}
-                    render={
-                      <Link to="/api-keys" onClick={closeMobileSidebar} />
-                    }
-                    tooltip="API keys"
+                    isActive={item.active}
+                    render={item.link}
+                    tooltip={item.label}
                   >
-                    <KeyRound />
-                    <span>API keys</span>
+                    {item.icon}
+                    <span>{item.label}</span>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
-              ) : null}
+              ))}
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
@@ -178,6 +169,15 @@ export function AppSidebar({ canSignOut = false }: { canSignOut?: boolean }) {
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
+        {/* The Console's license asks a hosted service to keep this notice. */}
+        <a
+          href="https://hot-updater.dev"
+          target="_blank"
+          rel="noreferrer"
+          className="px-2 pb-1 text-[11px] text-sidebar-foreground/60 hover:text-sidebar-foreground group-data-[collapsible=icon]:hidden"
+        >
+          Powered by hot-updater
+        </a>
       </SidebarFooter>
     </Sidebar>
   );

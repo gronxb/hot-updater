@@ -11,7 +11,8 @@ Record observations in deployment.json as described in COMMON.md.
     ambiguous choices with the user. Before adopting an existing Hot Updater
     Worker, inspect /version and D1 schema; read the applicable upgrade files.
   - Verify/record: accountId and intended resource names are established; any
-    existing endpoint/schema is compatible. Legacy D1/Workers need separate resources.
+    existing endpoint/schema is compatible. Stop on an incompatible or unknown
+    generation/schema before changing resources.
   - Retry: resolve denied/incomplete discovery before treating a resource as absent.
 
 - [ ] **cf.storage — Prepare R2**
@@ -24,6 +25,10 @@ Record observations in deployment.json as described in COMMON.md.
 - [ ] **cf.database — Prepare D1**
   - Requires: cf.account; inspect existing table names before adoption.
   - Run: query/reuse a compatible database or create the selected new database.
+    For an existing namespace, inspect schema and migration history and require
+    `schema.engine` = `1` in `private_hot_updater_settings`. Stop if the schema is
+    incompatible or a recorded migration does not match the actual schema;
+    preserve the database and migration history for investigation.
   - Verify/record: save d1DatabaseId and d1DatabaseName from the provider response.
   - Retry: query the selected account/name; never replace a database to retry.
 
@@ -31,8 +36,7 @@ Record observations in deployment.json as described in COMMON.md.
   - Requires: cf.storage and cf.database.
   - Run: install worker/package.json dependencies in worker/. Fill wrangler.json's
     account, Worker name, D1 ID/name and R2 bucket. Keep DB/BUCKET bindings,
-    BUCKET_NAME, cache settings and compatibility date. Replace %%BUCKET_NAME%%
-    in worker/migrations using the verified bucket name with SQL-safe escaping.
+    BUCKET_NAME, cache settings and compatibility date.
     Inspect history, then from worker/ run
     `npx wrangler d1 migrations apply <database-name> --remote`.
     MCP SQL operations must preserve migration names/history as well.
@@ -59,14 +63,21 @@ Record observations in deployment.json as described in COMMON.md.
     local reference only; artifact download is checked by common.report when available.
   - Retry: reuse the same saved secret and inspect remote state; do not rotate it.
 
-- [ ] **cf.client-key — Prepare local access and register the client key**
+- [ ] **cf.client-credential — Prepare local access and register the client credential**
   - Requires: cf.schema and cf.signing.
-  - Run: complete COMMON.md's Local CLI and client API key steps. ENVIRONMENT.md
-    explains the local D1 API and R2 S3 credentials. Run the supplied key helper
-    from the app directory; do not use a provider token as the client key.
-  - Verify/record: helper registration succeeds with the saved/reused key and
-    local config points to the selected D1/R2. Record only the private key path.
-  - Retry: reuse the persisted key and resources; inspect access errors.
+  - Run: complete COMMON.md's Local CLI and client credential steps.
+    ENVIRONMENT.md explains the local D1 API and R2 S3 credentials. Run the
+    supplied credential helper from the app directory.
+<!-- if credential -->
+    Do not use a provider token as the client {{CREDENTIAL_LABEL}}.
+  - Verify/record: helper registration succeeds with the saved/reused
+    {{CREDENTIAL_LABEL}} and local config points to the selected D1/R2. Record
+    only its private file path.
+  - Retry: reuse the persisted {{CREDENTIAL_LABEL}} and resources; inspect access errors.
+<!-- else -->
+  - Verify/record: local config points to the selected D1/R2.
+  - Retry: reuse the resources; inspect access errors.
+<!-- end -->
 
 - [ ] **cf.complete — Verify and report**
   - Requires: all preceding steps.

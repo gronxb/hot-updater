@@ -1,30 +1,16 @@
-export { createHandlers } from "./handler";
-export type {
-  HandlerAPI,
-  HotUpdaterHandler,
-  HotUpdaterHandlers,
-} from "./handler";
-export { createInsightsProvider } from "./insights/provider";
-export type * from "./insights/domain";
-export type * from "./insights/types";
-export {
-  API_KEY_HEADER_NAME,
-  createApiKey,
-  provisionApiKey,
-  registerApiKey,
-} from "./apiKeys";
-export type {
-  ApiKeyManagementAPI,
-  ApiKeyMetadata,
-  CreatedApiKey,
-} from "./apiKeys";
+export type { HotUpdaterHandler, HotUpdaterHandlers } from "./handler";
 export { createHotUpdater } from "./createHotUpdaterCore";
 export type {
   ClientAccessPolicy,
+  ClientAccessRule,
+  ClientAuthProvider,
+  ClientEndpoint,
   CreateHotUpdaterOptions,
   HotUpdaterAPI,
   RuntimeHotUpdaterAPI,
 } from "./createHotUpdaterCore";
+export { HotUpdaterConfigError } from "./assembly/assemblePlugins";
 export * from "./types";
+export { toNodeHandler } from "./node";
 export { HOT_UPDATER_SERVER_VERSION } from "./version";
 export { HOT_UPDATER_INFRASTRUCTURE_GENERATION } from "./handlerVersionRoutes";

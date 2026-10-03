@@ -12,10 +12,12 @@ This example demonstrates how to use Hot Updater with Express and Prisma.
 
 ## Quick Start
 
+Use Node.js 20.19 or later for native environment-file loading.
+
 ```typescript
 import express from "express";
 import cors from "cors";
-import { toNodeHandler } from "@hot-updater/server/node";
+import { toNodeHandler } from "@hot-updater/server";
 import { hotUpdater } from "./db";
 
 const app = express();
@@ -49,10 +51,11 @@ and Web Standard Request/Response. Send
 
 ## Setup
 
-1. Install dependencies:
+1. Install and build the workspace dependencies from the repository root:
 
 ```bash
 pnpm install
+pnpm -w build
 cd examples-server/express-prisma-sqlite
 ```
 
@@ -63,29 +66,30 @@ cp .env.example src/.env.hotupdater
 # Edit src/.env.hotupdater with your authentication and storage credentials
 ```
 
-3. Generate Prisma schema from Hot Updater:
+3. Generate the client from the checked-in schema before loading `src/db.ts`,
+   then generate the Hot Updater models:
 
 ```bash
+mkdir -p data
+DATABASE_URL=file:../data/prisma.db pnpm exec prisma generate
 pnpm db:generate
 ```
 
-This merges the fixed Hot Updater models directly into
-`prisma/schema.prisma` while preserving application models.
+The first command that loads `src/db.ts` needs the client in
+`src/generated/prisma`. Hot Updater then merges its managed models directly
+into `prisma/schema.prisma` while preserving application models.
 
 4. Apply the schema to the database:
 
 ```bash
-mkdir -p data
-touch data/prisma.db
 DATABASE_URL=file:../data/prisma.db pnpm db:push
+pnpm exec hot-updater db migrate src/db.ts --yes
 ```
 
-For production, use Prisma migrations:
-
-```bash
-DATABASE_URL=file:../data/prisma.db npx prisma migrate dev --name init
-DATABASE_URL=file:../data/prisma.db npx prisma migrate deploy
-```
+`db:push` also regenerates the Prisma client. The final Hot Updater migration
+initializes the core and Insights schema settings checked by the server.
+For a workflow with committed Prisma migrations, see
+[Prisma Workflow for Hot Updater](#prisma-workflow-for-hot-updater).
 
 ## Development
 
@@ -126,24 +130,27 @@ pnpm test
 Prisma uses a different workflow compared to Drizzle or Kysely adapters. The
 Hot Updater CLI manages a generated block inside the existing Prisma schema.
 
-**Step 1: Generate Hot Updater Models**
+**Step 1: Bootstrap the Prisma Client and Generate Hot Updater Models**
+
+On a fresh checkout, generate the client from the checked-in schema before
+`db:generate` imports `src/db.ts`:
 
 ```bash
+mkdir -p data
+DATABASE_URL=file:../data/prisma.db pnpm exec prisma generate
 pnpm db:generate
 ```
 
-This command:
+`pnpm db:generate`:
 
 1. Reads your Hot Updater configuration from `src/db.ts`
-2. Merges the fixed `channels`, `bundles`, `bundle_patches`, `releases`,
-   `release_catalogs`, `bundle_events`, `api_keys`, and
-   `private_hot_updater_settings` models into `prisma/schema.prisma`
+2. Merges the core and configured plugin models into `prisma/schema.prisma`
 3. Preserves application models outside the generated block
 
 **Step 2: Generate Prisma Client**
 
 ```bash
-npx prisma generate
+DATABASE_URL=file:../data/prisma.db pnpm exec prisma generate
 ```
 
 **Step 3: Apply Schema to Database**
@@ -154,12 +161,29 @@ For development (quick sync without migration files):
 DATABASE_URL=file:../data/prisma.db pnpm db:push
 ```
 
-For production (with migration history):
+For a workflow with migration history, create migrations against the local
+development database and commit `prisma/migrations`:
 
 ```bash
-DATABASE_URL=file:../data/prisma.db npx prisma migrate dev --name init
-DATABASE_URL=file:../data/prisma.db npx prisma migrate deploy
+DATABASE_URL=file:../data/prisma.db pnpm exec prisma migrate dev --name init
 ```
+
+Apply those committed migrations to the deployment database with
+`pnpm exec prisma migrate deploy`. Set `DATABASE_URL` to that database's URL.
+
+**Step 4: Initialize Hot Updater Schema Settings**
+
+After `db:push` or `prisma migrate deploy`, run:
+
+```bash
+pnpm exec hot-updater db migrate src/db.ts --yes
+```
+
+This writes the core and Insights schema settings that the server checks before
+serving database requests. This example's `src/prisma.ts` selects
+`data/prisma.db` by default; for another SQLite file, set `TEST_DB_PATH` to its
+absolute path for both this command and the server, and point Prisma's
+`DATABASE_URL` at the same file.
 
 ### Why This Workflow?
 
@@ -167,9 +191,8 @@ Unlike Drizzle (which generates complete TypeScript schema files) or Kysely (whi
 
 1. **Schema merge**: `db generate` maintains the generated models in `prisma/schema.prisma`
 2. **Client generation**: Prisma Client must be generated from the schema
-3. **Database sync**: Use `db push` (dev) or `migrate` (production) to apply changes
-
-This is the standard Prisma workflow and applies to other tools using Prisma (like better-auth).
+3. **Database sync**: Use `db push` (dev) or `migrate deploy` to apply table changes
+4. **Settings migration**: Use `hot-updater db migrate` to initialize schema settings
 
 ## Project Structure
 
@@ -191,9 +214,10 @@ express-server/
 
 ## Notes
 
-- The Prisma adapter uses Hot Updater's DatabasePlugin contract with generated
-  Prisma schema artifacts
+- The Prisma adapter connects Hot Updater's storage engine to Prisma through
+  the shared SQL adapter and generates Prisma schema artifacts
 - Schema generation is handled by Hot Updater CLI (`db generate`)
-- Database migrations use Prisma's built-in migration system
+- Prisma applies table changes; Hot Updater initializes its schema settings
 - The server includes graceful shutdown handlers for SIGTERM/SIGINT
-- Integration tests automatically run schema generation and database push before starting the server
+- Integration tests regenerate the schema and client, push the database schema,
+  and initialize Hot Updater settings before starting the server

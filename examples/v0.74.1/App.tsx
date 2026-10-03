@@ -5,7 +5,11 @@
  * @format
  */
 
-import { HotUpdater, useHotUpdaterStore } from "@hot-updater/react-native";
+import {
+  HotUpdater,
+  insights,
+  useHotUpdaterStore,
+} from "@hot-updater/react-native";
 import React, { useEffect, useState } from "react";
 import {
   Alert,
@@ -134,6 +138,7 @@ function App(): React.JSX.Element {
 export default HotUpdater.wrap({
   baseURL: "http://localhost:3006/hot-updater",
   updateStrategy: "appVersion",
+  plugins: [insights()],
   onNotifyAppReady: (result) => {
     notify.status = result.status;
     notify.crashedBundleId = result.crashedBundleId;

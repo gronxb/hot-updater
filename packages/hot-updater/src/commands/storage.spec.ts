@@ -1,23 +1,29 @@
-import type { Bundle, StorageObject } from "@hot-updater/plugin-core";
+import {
+  bundleToPatchRows,
+  bundleToRow,
+  type Bundle,
+  type ConfiguredDatabase,
+  createMemoryAdapter,
+  type StorageObject,
+} from "@hot-updater/plugin-core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+import { testServer } from "../utils/testServer";
 
 const {
   mockCli,
-  mockDatabasePlugin,
+  mockDatabase,
+  mockLoadServer,
   mockPrintBanner,
   mockStorageNode,
-  mockStoragePlugin,
+  mockStorageAdapter,
 } = vi.hoisted(() => {
-  const mockDatabasePlugin = {
-    appendBundle: vi.fn(),
-    commitBundle: vi.fn(),
-    deleteBundle: vi.fn(),
-    getBundleById: vi.fn(),
-    getBundles: vi.fn(),
-    getChannels: vi.fn(),
+  const mockDatabase = {
+    /** The bundles each core page holds, in order. */
+    bundlePages: vi.fn(),
     name: "mock-database",
     dispose: vi.fn(),
-    updateBundle: vi.fn(),
+    core: { listBundles: vi.fn() },
   };
   const mockStorageNode = {
     delete: vi.fn(),
@@ -27,7 +33,7 @@ const {
     listObjects: vi.fn(),
     put: vi.fn(),
   };
-  const mockStoragePlugin = {
+  const mockStorageAdapter = {
     ...mockStorageNode,
     name: "s3Storage",
     protocol: "s3",
@@ -47,10 +53,11 @@ const {
 
   return {
     mockCli,
-    mockDatabasePlugin,
+    mockDatabase,
+    mockLoadServer: vi.fn(),
     mockPrintBanner: vi.fn(),
     mockStorageNode,
-    mockStoragePlugin,
+    mockStorageAdapter,
   };
 });
 
@@ -64,14 +71,12 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => {
   };
 });
 
-vi.mock("@hot-updater/plugin-core", async (importOriginal) => {
-  const actual =
-    await importOriginal<typeof import("@hot-updater/plugin-core")>();
-  return {
-    ...actual,
-    createDatabaseClient: vi.fn(() => mockDatabasePlugin),
-  };
-});
+vi.mock("@/utils/loadServer", async () => ({
+  ...(await vi.importActual<typeof import("../utils/loadServer")>(
+    "../utils/loadServer",
+  )),
+  loadServer: mockLoadServer,
+}));
 
 vi.mock("@/utils/printBanner", () => ({
   printBanner: mockPrintBanner,
@@ -87,14 +92,12 @@ const DOWNLOAD_HASH = "e".repeat(64);
 const ORPHAN_PATCH_KEY = `bundles/${LIVE_BUNDLE_ID}/patches/${DEAD_BUNDLE_ID}/index.ios.bundle.bsdiff`;
 
 const liveBundle: Bundle = {
-  archiveByteSize: 100,
   assetBaseStorageUri: "s3://bucket/assets",
-  fileHash: "archive-hash",
   gitCommitHash: null,
   id: LIVE_BUNDLE_ID,
+  manifestFileHash: "manifest-hash",
   manifestStorageUri: `s3://bucket/bundles/${LIVE_BUNDLE_ID}/manifest.json`,
   platform: "ios",
-  storageUri: `s3://bucket/bundles/${LIVE_BUNDLE_ID}/bundle.zip`,
 };
 
 const object = (
@@ -108,16 +111,7 @@ const object = (
   storageUri: `s3://bucket/${key}`,
 });
 
-const bundlePage = (bundle: Bundle) => ({
-  data: [bundle],
-  pagination: {
-    currentPage: 1,
-    hasNextPage: false,
-    hasPreviousPage: false,
-    total: 1,
-    totalPages: 1,
-  },
-});
+const bundlePage = (bundle: Bundle): Bundle[] => [bundle];
 
 const liveBundleWithPatch: Bundle = {
   ...liveBundle,
@@ -150,27 +144,33 @@ describe("handleStoragePrune", () => {
   const now = new Date("2026-08-13T00:00:00.000Z");
   const old = new Date(now.getTime() - 2 * 24 * 60 * 60 * 1000);
   const young = new Date(now.getTime() - 60 * 60 * 1000);
+  // A database the server assembles over, whose core the spec stubs:
+  // testServer hands commands `database.core`.
+  const database = Object.assign(mockDatabase, {
+    adapter: createMemoryAdapter(),
+  }) as unknown as ConfiguredDatabase;
 
   beforeEach(() => {
     vi.clearAllMocks();
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(now);
-    mockDatabasePlugin.name = "mock-database";
+    mockDatabase.name = "mock-database";
 
-    mockCli.loadConfig.mockResolvedValue({
-      database: mockDatabasePlugin,
-      storage: mockStoragePlugin,
-    });
-    mockDatabasePlugin.getBundles.mockResolvedValue({
-      data: [liveBundle],
-      pagination: {
-        currentPage: 1,
-        hasNextPage: false,
-        hasPreviousPage: false,
-        total: 1,
-        totalPages: 1,
-      },
-    });
+    mockCli.loadConfig.mockResolvedValue({});
+    mockLoadServer.mockResolvedValue(
+      testServer({ database, storage: mockStorageAdapter }),
+    );
+    // Core's bundle pages, as rows, from the bundles `bundlePages` answers.
+    mockDatabase.core.listBundles.mockImplementation(async (input: unknown) =>
+      ((await mockDatabase.bundlePages(input)) as readonly Bundle[]).map(
+        (bundle) => ({
+          bundle: bundleToRow(bundle),
+          patches: bundleToPatchRows(bundle),
+          childCount: 0,
+        }),
+      ),
+    );
+    mockDatabase.bundlePages.mockResolvedValue([liveBundle]);
     mockStorageNode.get.mockImplementation(async () => ({
       response: new Response(
         JSON.stringify({
@@ -200,8 +200,8 @@ describe("handleStoragePrune", () => {
         `assets/sha256/${YOUNG_ORPHAN_HASH.slice(0, 2)}/${YOUNG_ORPHAN_HASH}.png`,
         young,
       ),
-      object(`bundles/${LIVE_BUNDLE_ID}/bundle.zip`, old),
-      object(`bundles/${DEAD_BUNDLE_ID}/bundle.zip`, old, 40),
+      object(`bundles/${LIVE_BUNDLE_ID}/bundle.tar.br`, old),
+      object(`bundles/${DEAD_BUNDLE_ID}/bundle.tar.br`, old, 40),
       object(`bundles/${LIVE_BUNDLE_ID}/manifest.json`, old),
       object(`bundles/${DEAD_BUNDLE_ID}/manifest.json`, old, 50),
       object("production/ios/1.0.0/update.json", old),
@@ -222,7 +222,7 @@ describe("handleStoragePrune", () => {
     expect(mockStorageNode.deleteObjects).toHaveBeenCalledOnce();
     expect(mockStorageNode.deleteObjects).toHaveBeenCalledWith([
       `assets/sha256/${ORPHAN_HASH.slice(0, 2)}/${ORPHAN_HASH}.png`,
-      `bundles/${DEAD_BUNDLE_ID}/bundle.zip`,
+      `bundles/${DEAD_BUNDLE_ID}/bundle.tar.br`,
       `bundles/${DEAD_BUNDLE_ID}/manifest.json`,
     ]);
     expect(mockCli.p.log.success).toHaveBeenCalledWith(
@@ -238,7 +238,7 @@ describe("handleStoragePrune", () => {
     expect(mockCli.p.log.warn).toHaveBeenCalledWith(
       expect.stringContaining("separate storage basePath"),
     );
-    expect(mockDatabasePlugin.dispose).toHaveBeenCalledOnce();
+    expect(mockDatabase.dispose).toHaveBeenCalledOnce();
   });
 
   it("preserves the exact transferred payload referenced by downloadFileHash", async () => {
@@ -338,9 +338,7 @@ describe("handleStoragePrune", () => {
   });
 
   it("preserves a patch referenced by its live Bundle", async () => {
-    mockDatabasePlugin.getBundles.mockResolvedValue(
-      bundlePage(liveBundleWithPatch),
-    );
+    mockDatabase.bundlePages.mockResolvedValue(bundlePage(liveBundleWithPatch));
     mockStorageNode.listObjects.mockResolvedValue([
       object(ORPHAN_PATCH_KEY, old),
     ]);
@@ -352,7 +350,7 @@ describe("handleStoragePrune", () => {
   });
 
   it("preserves a patch that becomes referenced during the final scan", async () => {
-    mockDatabasePlugin.getBundles
+    mockDatabase.bundlePages
       .mockResolvedValueOnce(bundlePage(liveBundle))
       .mockResolvedValueOnce(bundlePage(liveBundleWithPatch));
     mockStorageNode.listObjects.mockResolvedValue([
@@ -362,7 +360,7 @@ describe("handleStoragePrune", () => {
 
     await handleStoragePrune({ yes: true });
 
-    expect(mockDatabasePlugin.getBundles).toHaveBeenCalledTimes(2);
+    expect(mockDatabase.bundlePages).toHaveBeenCalledTimes(2);
     expect(mockStorageNode.deleteObjects).not.toHaveBeenCalled();
   });
 
@@ -393,14 +391,14 @@ describe("handleStoragePrune", () => {
     expect(output).toContain(
       `assets/sha256/${ORPHAN_HASH.slice(0, 2)}/${ORPHAN_HASH}.png`,
     );
-    expect(output).toContain(`bundles/${DEAD_BUNDLE_ID}/bundle.zip`);
+    expect(output).toContain(`bundles/${DEAD_BUNDLE_ID}/bundle.tar.br`);
     expect(output).toContain(`bundles/${DEAD_BUNDLE_ID}/manifest.json`);
     expect(output).toContain("shared asset");
     expect(output).toContain("bundle data");
     expect(output).toContain("30 B");
     expect(output).toContain(old.toISOString());
     expect(output).not.toContain(YOUNG_ORPHAN_HASH);
-    expect(output).not.toContain(`bundles/${LIVE_BUNDLE_ID}/bundle.zip`);
+    expect(output).not.toContain(`bundles/${LIVE_BUNDLE_ID}/bundle.tar.br`);
     expect(mockCli.p.log.info).toHaveBeenCalledWith(
       expect.stringContaining("Dry run only"),
     );
@@ -442,6 +440,7 @@ describe("handleStoragePrune", () => {
       handleStoragePrune({ dryRun: true, yes: true }),
     ).rejects.toThrow("--dry-run cannot be used with --yes");
     expect(mockCli.loadConfig).not.toHaveBeenCalled();
+    expect(mockLoadServer).not.toHaveBeenCalled();
     expect(mockStorageNode.deleteObjects).not.toHaveBeenCalled();
   });
 
@@ -480,7 +479,7 @@ describe("handleStoragePrune", () => {
     await handleStoragePrune({ yes: true });
 
     expect(mockStorageNode.deleteObjects).toHaveBeenCalledWith([
-      `bundles/${DEAD_BUNDLE_ID}/bundle.zip`,
+      `bundles/${DEAD_BUNDLE_ID}/bundle.tar.br`,
       `bundles/${DEAD_BUNDLE_ID}/manifest.json`,
     ]);
   });
@@ -522,7 +521,7 @@ describe("handleStoragePrune", () => {
     const uuidChannelMetadata = `${DEAD_BUNDLE_ID}/ios/1.0.0/update.json`;
     mockStorageNode.listObjects.mockResolvedValue([
       object(uuidChannelMetadata, old),
-      object(`${DEAD_BUNDLE_ID}/bundle.zip`, old),
+      object(`${DEAD_BUNDLE_ID}/bundle.tar.br`, old),
     ]);
     const { handleStoragePrune } = await import("./storage");
 
@@ -535,21 +534,12 @@ describe("handleStoragePrune", () => {
   });
 
   it("fails closed when the asset base uses another storage protocol", async () => {
-    mockDatabasePlugin.getBundles.mockResolvedValue({
-      data: [
-        {
-          ...liveBundle,
-          assetBaseStorageUri: "https://cdn.example.com/assets",
-        },
-      ],
-      pagination: {
-        currentPage: 1,
-        hasNextPage: false,
-        hasPreviousPage: false,
-        total: 1,
-        totalPages: 1,
+    mockDatabase.bundlePages.mockResolvedValue([
+      {
+        ...liveBundle,
+        assetBaseStorageUri: "https://cdn.example.com/assets",
       },
-    });
+    ]);
     const { handleStoragePrune } = await import("./storage");
 
     await expect(handleStoragePrune({ yes: true })).rejects.toThrow(
@@ -560,21 +550,12 @@ describe("handleStoragePrune", () => {
   });
 
   it("allows an HTTP manifest when shared assets use the configured storage", async () => {
-    mockDatabasePlugin.getBundles.mockResolvedValue({
-      data: [
-        {
-          ...liveBundle,
-          manifestStorageUri: "https://cdn.example.com/manifest.json",
-        },
-      ],
-      pagination: {
-        currentPage: 1,
-        hasNextPage: false,
-        hasPreviousPage: false,
-        total: 1,
-        totalPages: 1,
+    mockDatabase.bundlePages.mockResolvedValue([
+      {
+        ...liveBundle,
+        manifestStorageUri: "https://cdn.example.com/manifest.json",
       },
-    });
+    ]);
     vi.stubGlobal(
       "fetch",
       vi.fn(async () => ({
@@ -643,66 +624,41 @@ describe("handleStoragePrune", () => {
     expect(mockStorageNode.deleteObjects).not.toHaveBeenCalled();
   });
 
-  it("fails closed when the database omits a required next cursor", async () => {
-    mockDatabasePlugin.getBundles.mockResolvedValue({
-      data: [liveBundle],
-      pagination: {
-        currentPage: 1,
-        hasNextPage: true,
-        hasPreviousPage: false,
-        nextCursor: null,
-        total: 10_001,
-        totalPages: 2,
-      },
+  it("reads every bundle in pages by key", async () => {
+    const page = Array.from({ length: 100 }, (_, index) => {
+      const id = `0195a408-8f13-7d9b-8df4-${String(index).padStart(12, "0")}`;
+      return {
+        ...liveBundle,
+        id,
+        manifestStorageUri: `s3://bucket/bundles/${id}/manifest.json`,
+      };
     });
-    const { handleStoragePrune } = await import("./storage");
-
-    await expect(handleStoragePrune({ yes: true })).rejects.toThrow(
-      "cannot provide safe cursor pagination",
-    );
-    expect(mockStorageNode.get).not.toHaveBeenCalled();
-    expect(mockStorageNode.listObjects).not.toHaveBeenCalled();
-    expect(mockStorageNode.deleteObjects).not.toHaveBeenCalled();
-  });
-
-  it("loads standalone references in pages within the server limit", async () => {
-    mockDatabasePlugin.name = "standalone-repository";
-    mockDatabasePlugin.getBundles.mockImplementation(
-      async (options: { cursor?: { after: string }; limit: number }) => {
-        if (options.limit > 100) {
-          throw new Error("limit must be less than or equal to 100");
-        }
-        if (!options.cursor) {
-          return {
-            data: [liveBundle],
-            pagination: {
-              hasNextPage: true,
-              nextCursor: "page-2",
-            },
-          };
-        }
-        return {
-          data: [],
-          pagination: { hasNextPage: false, nextCursor: null },
-        };
-      },
+    mockDatabase.bundlePages
+      .mockResolvedValueOnce(page)
+      .mockResolvedValueOnce([]);
+    mockStorageNode.get.mockImplementation(
+      async ({ storageUri }: { readonly storageUri: string }) => ({
+        response: new Response(
+          JSON.stringify({
+            bundleId: storageUri.split("/").at(-2),
+            assets: {},
+          }),
+        ),
+      }),
     );
     const { handleStoragePrune } = await import("./storage");
 
     await handleStoragePrune({ dryRun: true });
 
-    expect(mockDatabasePlugin.getBundles).toHaveBeenCalledTimes(2);
-    expect(mockDatabasePlugin.getBundles).toHaveBeenNthCalledWith(
-      1,
-      expect.objectContaining({ cursor: undefined, limit: 100 }),
-    );
-    expect(mockDatabasePlugin.getBundles).toHaveBeenNthCalledWith(
-      2,
-      expect.objectContaining({
-        cursor: { after: "page-2" },
-        limit: 100,
-      }),
-    );
+    expect(mockDatabase.core.listBundles).toHaveBeenNthCalledWith(1, {
+      limit: 100,
+      order: "desc",
+    });
+    expect(mockDatabase.core.listBundles).toHaveBeenNthCalledWith(2, {
+      limit: 100,
+      order: "desc",
+      after: page.at(-1)!.id,
+    });
   });
 
   it("aborts before listing or deletion when a live manifest cannot be read", async () => {
@@ -715,26 +671,28 @@ describe("handleStoragePrune", () => {
 
     expect(mockStorageNode.listObjects).not.toHaveBeenCalled();
     expect(mockStorageNode.deleteObjects).not.toHaveBeenCalled();
-    expect(mockDatabasePlugin.dispose).toHaveBeenCalledOnce();
+    expect(mockDatabase.dispose).toHaveBeenCalledOnce();
   });
 
-  it("reports when the configured storage plugin cannot enumerate objects", async () => {
-    mockCli.loadConfig.mockResolvedValue({
-      database: mockDatabasePlugin,
-      storage: {
-        ...mockStoragePlugin,
-        name: "unsupportedStorage",
-        listObjects: undefined,
-      },
-    });
+  it("reports when the configured storage adapter cannot enumerate objects", async () => {
+    mockLoadServer.mockResolvedValue(
+      testServer({
+        database,
+        storage: {
+          ...mockStorageAdapter,
+          name: "unsupportedStorage",
+          listObjects: undefined,
+        },
+      }),
+    );
     const { handleStoragePrune } = await import("./storage");
 
     await expect(handleStoragePrune()).rejects.toThrow(
-      'Storage plugin "unsupportedStorage" does not support storage prune.',
+      'Storage adapter "unsupportedStorage" does not support storage prune.',
     );
 
     expect(mockStorageNode.get).not.toHaveBeenCalled();
     expect(mockStorageNode.deleteObjects).not.toHaveBeenCalled();
-    expect(mockDatabasePlugin.dispose).toHaveBeenCalledOnce();
+    expect(mockDatabase.dispose).toHaveBeenCalledOnce();
   });
 });

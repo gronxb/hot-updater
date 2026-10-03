@@ -1,0 +1,233 @@
+---
+title: "Test and publish"
+description: Package an adapter or a plugin for npm, test it with Hot Updater's suites, and keep it compatible with the apps that install it.
+icon: PackageCheck
+---
+
+## Where adapters and plugins run
+
+An adapter or a plugin is an npm package that exports a factory, such as
+`myStorage(options)`, which returns the object. Hot Updater has no registry or
+allowlist: a project installs the package and passes the object to
+`hot-updater.config.ts`, `createHotUpdater`, or `HotUpdater.init`, as it does
+with the official ones.
+
+| Package                                                     | Its users pass it to                                                                            |
+| ----------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| [Storage adapter](/docs/storage-adapters/custom-storage)    | `storage` in `hot-updater.config.ts`, and the server's `storage` list                           |
+| [Database adapter](/docs/database-adapters/custom-database) | `database` in `hot-updater.config.ts`, `createHotUpdater`, and a deployed Console               |
+| Build adapter                                               | `build` in `hot-updater.config.ts`                                                              |
+| Signing adapter                                             | `signing` in `hot-updater.config.ts`                                                            |
+| [Server plugin](/docs/custom/server-plugins)                | `plugins` in `createHotUpdater`, where the CLI finds its tables, and in `hot-updater.config.ts` |
+| [Client plugin](/docs/react-native-api/client-plugins)      | `plugins` in `HotUpdater.init` or `HotUpdater.wrap`, in the app                                 |
+
+Storage and database adapters and server plugins run on a
+[custom server](/docs/custom/overview). The managed Cloudflare, Supabase, AWS,
+and Firebase servers are prebuilt with their provider's adapters and
+`plugins` list, so a user of one moves to a custom server to add yours. A
+client plugin runs in any app, but routes it calls on the update server need
+a server plugin on that server. Ship a feature that spans both from
+[one package with an entry per side](#ship-both-sides-from-one-package), as
+Hot Updater's own Insights does. The server plugin names the client one in
+[`cli.clientPlugin`](/docs/custom/server-plugins#name-the-apps-client-plugin).
+
+## Package it
+
+```json title="package.json"
+{
+  "name": "hot-updater-adapter-my-storage",
+  "description": "A Hot Updater storage adapter for My Storage.",
+  "version": "1.0.0",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": ["dist"],
+  "keywords": ["hot-updater", "hot-updater-adapter"],
+  "peerDependencies": {
+    "@hot-updater/plugin-core": "^1.0.0"
+  },
+  "devDependencies": {
+    "@hot-updater/plugin-core": "^1.0.0",
+    "vitest": "^4.0.0"
+  }
+}
+```
+
+- Name an adapter `hot-updater-adapter-<name>` and a plugin
+  `hot-updater-plugin-<name>`, or use `@<your-scope>/hot-updater-<name>`. The
+  [trademark policy](https://github.com/gronxb/hot-updater/blob/main/TRADEMARK.md)
+  allows these names, paid packages included. Describe the package as an
+  adapter or a plugin for Hot Updater, and keep it from looking official: the
+  `@hot-updater` scope belongs to the project, the Hot Updater logo may only
+  refer to the project, and a hosted service your package connects to uses
+  your own name.
+- Add the `hot-updater` keyword and `hot-updater-adapter` or
+  `hot-updater-plugin`, so npm search finds the package.
+- Publish ES modules with type declarations. The CLI, the Console, and every
+  server runtime Hot Updater supports load them.
+- Export the factory and its options type. Keep SDK clients, bindings, and
+  credentials in the factory's options, and read secrets from environment
+  variables in the user's project, never in the package.
+- For code that differs by runtime, such as a Node SDK in the CLI and a
+  binding in a Worker, add an entry per runtime that exports the same
+  factory name, as `@hot-updater/cloudflare/worker` does.
+
+## Ship both sides from one package
+
+A feature with a server plugin and a client plugin ships both from one
+package, with an entry per side. Hot Updater's own
+`@hot-updater/plugin-insights` has `./server` and `./client`, which
+`@hot-updater/server/plugins/insights` and the `@hot-updater/react-native` root
+re-export:
+
+```json title="package.json"
+{
+  "name": "@acme/hot-updater-feedback",
+  "version": "1.0.0",
+  "type": "module",
+  "exports": {
+    "./server": {
+      "types": "./dist/server/index.d.ts",
+      "import": "./dist/server/index.js"
+    },
+    "./client": {
+      "types": "./dist/client/index.d.ts",
+      "import": "./dist/client/index.js",
+      "require": "./dist/client/index.cjs"
+    }
+  },
+  "files": ["dist", "client"],
+  "keywords": ["hot-updater", "hot-updater-plugin"],
+  "peerDependencies": {
+    "@hot-updater/plugin-core": "^1.0.0",
+    "@hot-updater/protocol": "^1.0.0"
+  },
+  "peerDependenciesMeta": {
+    "@hot-updater/plugin-core": { "optional": true },
+    "@hot-updater/protocol": { "optional": true }
+  }
+}
+```
+
+```json title="client/package.json"
+{
+  "name": "@acme/hot-updater-feedback/client",
+  "private": true,
+  "main": "../dist/client/index.cjs",
+  "module": "../dist/client/index.js",
+  "types": "../dist/client/index.d.ts"
+}
+```
+
+- The server entry imports `definePlugin` from `@hot-updater/plugin-core`, and
+  the client entry imports `defineClientPlugin` from `@hot-updater/protocol`.
+  Neither imports the other side, so the app never bundles server code.
+- Both peer dependencies are optional: a server project gets
+  `@hot-updater/plugin-core` through `@hot-updater/server`, and an app gets
+  `@hot-updater/protocol` through `@hot-updater/react-native`.
+- `client/package.json` lets Metro resolvers that ignore `exports` find the
+  client entry. Name only files the package publishes in it: Metro takes the
+  first of its `resolverMainFields` the file has and does not fall back, so a
+  `source` field that points at unpublished source breaks apps that list it.
+- Build the client entry as CommonJS too: Jest loads it with `require` in an
+  app's tests.
+- Test each side with its helper; see [Test it](#test-it).
+
+## Declare Hot Updater as a peer dependency
+
+List the Hot Updater packages your package imports in `peerDependencies`, and
+in `devDependencies` for your own tests:
+
+| Package                                 | `peerDependencies`                                                    |
+| --------------------------------------- | --------------------------------------------------------------------- |
+| Storage, build, or signing adapter      | `@hot-updater/plugin-core`                                            |
+| Database adapter                        | `@hot-updater/plugin-core`                                            |
+| Server plugin                           | `@hot-updater/plugin-core`                                            |
+| Client plugin                           | `@hot-updater/protocol`                                               |
+| Server and client plugin in one package | `@hot-updater/plugin-core` and `@hot-updater/protocol`, both optional |
+
+A peer dependency makes your package use the project's copy of each package, the
+one its CLI, server, and Console use. A project gets `@hot-updater/plugin-core`
+through `@hot-updater/server` and `@hot-updater/protocol` through
+`@hot-updater/react-native`, and npm and pnpm resolve your peer dependencies to
+those copies. A second copy breaks at runtime, because Hot Updater checks its
+errors with `instanceof`. A server plugin that catches `DatabaseConstraintError`
+from its own copy misses the one the project's engine throws, and a database
+adapter built on its own copy of `@hot-updater/plugin-core` makes the server
+answer a missing schema with 500 instead of 503.
+
+Set the range to the major version you test against, such as `^1.0.0`, and
+run your tests against each new minor version.
+
+## Test it
+
+| Package          | Test with                                                                                                                                                                                                                                                                   |
+| ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Storage adapter  | `setupStorageAdapterTestSuite` from `@hot-updater/test-utils`, the suite every official storage adapter runs, over a fake client and a real bucket; see [Test the adapter](/docs/storage-adapters/custom-storage#test-the-adapter)                                          |
+| Database adapter | `setupDatabaseAdapterConformanceSuite`, `setupReadBudgetTestSuite`, and `setupDatabaseTestSuite` from `@hot-updater/test-utils`, the suites every official database runs; see [Test the adapter](/docs/database-adapters/custom-database#test-the-adapter)                  |
+| Server plugin    | `createPluginTestHarness` from `@hot-updater/test-utils`, and `createHotUpdater` on a memory database for endpoints; see [Test with the plugin harness](/docs/custom/server-plugins#test-with-the-plugin-harness)                                                           |
+| Client plugin    | `setupClientPlugin` and `setupClientPlugins` from `@hot-updater/test-utils/react-native`, in plain Node under Vitest or Jest; see [Test the plugin](/docs/react-native-api/client-plugins#test-the-plugin). Then a release build of an app against a server with its routes |
+
+Add `@hot-updater/test-utils` to `devDependencies` with `vitest` 4, which it
+takes as a peer dependency. Its database suites run your adapter behind
+`@hot-updater/server`, so a database adapter adds that to `devDependencies`
+too. Its `@hot-updater/test-utils/react-native` entry
+runs client plugins on the plugin host from `@hot-updater/protocol`, so it
+needs no React Native, and runs under Jest as well.
+
+Before a release, install the packed tarball (`npm pack`) in a project and run
+the commands that use the package: `hot-updater deploy` for a storage adapter,
+`hot-updater db migrate` and a deploy for a database adapter, requests to the
+plugin's routes for a server plugin, and a release build of an app for a
+client plugin.
+
+## Keep names stable
+
+Some names are stored in users' databases or shared with other packages.
+Choose them once:
+
+- **Storage adapter `protocol`.** Every stored URI starts with it, and a server
+  registers one storage adapter per protocol. Changing it orphans the stored
+  Bundles.
+- **Server plugin `id`.** It prefixes the plugin's tables and names its API,
+  `hotUpdater.api.<id>`, and each id appears once per server. `core`,
+  `insights`, and `apiKeys` are reserved for Hot Updater. Prefer an id
+  that names your package, such as `acme_feedback`, over a generic one such
+  as `feedback`. Keep the prefix: with `namespace: false` the declared table
+  names must stay clear of core's and every other plugin's.
+- **Server plugin routes.** A route that collides with another plugin's stops
+  the server, and the CLI that lists both, with `HotUpdaterConfigError`. Start
+  paths with your plugin's name, such as `/acme_feedback/threads`.
+- **Client plugin `id`.** It scopes the values the plugin stores on the
+  device, so a new id starts with an empty store, and two plugins with one id
+  make `HotUpdater.init` throw.
+
+A server plugin's `schemaVersion` names its schema. When a release changes the
+schema, change `schemaVersion` and ship the migration users run before
+`hot-updater db migrate` records the new version; see
+[Create the plugin's tables](/docs/custom/server-plugins#create-the-plugins-tables).
+
+## Document it
+
+Your README is where users learn the package. Include:
+
+- the install command, with the Hot Updater packages to install beside it;
+- the factory's options, and which ones are secrets;
+- a partial `hot-updater.config.ts` or `createHotUpdater` configuration that
+  keeps the user's other options;
+- the resources to create first, such as a bucket, a table, or a key;
+- for a server plugin, its routes, its `clientAuth`, the tables
+  `hot-updater db migrate` creates, and that users list it in the server's
+  `createHotUpdater` and in `hot-updater.config.ts`;
+- for a client plugin, the hooks it uses and the data it sends or stores on
+  the device;
+- the Hot Updater versions you test against.
+
+To list the package in these docs, open a pull request in the
+[Hot Updater repository](https://github.com/gronxb/hot-updater) that adds it
+to [Community adapters and plugins](/docs/concepts/plugin-system#community-adapters-and-plugins).
+Hot Updater does not review or maintain community packages.

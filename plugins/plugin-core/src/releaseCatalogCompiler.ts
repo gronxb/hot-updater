@@ -1,4 +1,5 @@
 import {
+  canonicalizeAppVersion,
   getNumericCohortValue,
   getRolledOutNumericCohorts,
   isCustomCohort,
@@ -13,18 +14,20 @@ import {
   type Release,
   type ReleaseCatalogDescriptor,
   type ReleaseStrategy,
-} from "@hot-updater/core";
+} from "@hot-updater/protocol";
 import {
-  coerce,
   compare,
   normalize,
-  normalizeFull,
   parseRange,
   satisfies,
   type SemVerComparator,
 } from "verkit";
 
 import { isUUIDv7 } from "./uuidv7.ts";
+
+// The device canonicalizes its app version with the same function, so it
+// lives in @hot-updater/protocol; plugin-core keeps exporting it.
+export { canonicalizeAppVersion } from "@hot-updater/protocol";
 
 export interface CatalogVersionBound {
   readonly version: string;
@@ -538,24 +541,24 @@ function compileAppVersion(releases: readonly Release[]): {
   const descriptorIndex = new Map(
     retainedReleases.map((release, index) => [release.id, index]),
   );
+  // Merge neighbours before dropping empty segments, so two parts of a
+  // range never merge across the gap between them.
   const segments = mergeSegments(
-    segmentReleases
-      .map(({ segment, retainedIds, rollbackIds }) => ({
-        ...segment,
-        releaseIndexes: releases
-          .filter((release) => retainedIds.has(release.id))
-          .map((release) => descriptorIndex.get(release.id)!)
-          .filter((index) => index !== undefined),
-        rollbackReleaseIndexes: releases
-          .filter((release) => rollbackIds.has(release.id))
-          .map((release) => descriptorIndex.get(release.id)!)
-          .filter((index) => index !== undefined),
-      }))
-      .filter(
-        (segment) =>
-          segment.releaseIndexes.length > 0 ||
-          segment.rollbackReleaseIndexes.length > 0,
-      ),
+    segmentReleases.map(({ segment, retainedIds, rollbackIds }) => ({
+      ...segment,
+      releaseIndexes: releases
+        .filter((release) => retainedIds.has(release.id))
+        .map((release) => descriptorIndex.get(release.id)!)
+        .filter((index) => index !== undefined),
+      rollbackReleaseIndexes: releases
+        .filter((release) => rollbackIds.has(release.id))
+        .map((release) => descriptorIndex.get(release.id)!)
+        .filter((index) => index !== undefined),
+    })),
+  ).filter(
+    (segment) =>
+      segment.releaseIndexes.length > 0 ||
+      segment.rollbackReleaseIndexes.length > 0,
   );
 
   return {
@@ -681,11 +684,6 @@ function versionInSegment(
     }
   }
   return true;
-}
-
-export function canonicalizeAppVersion(appVersion: string): string | null {
-  const version = coerce(appVersion);
-  return version ? normalizeFull(version) : null;
 }
 
 export function projectCompiledCatalog(

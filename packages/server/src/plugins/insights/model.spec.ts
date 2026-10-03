@@ -1,0 +1,63 @@
+import { PGlite } from "@electric-sql/pglite";
+import {
+  createSqlAdapter,
+  createMemoryAdapter,
+  type DatabaseAdapter,
+} from "@hot-updater/plugin-core";
+import {
+  createPluginTestHarness,
+  setupInsightsModelTestSuite,
+} from "@hot-updater/test-utils";
+import { pgliteExecutor } from "@hot-updater/test-utils/node";
+import { afterAll } from "vitest";
+
+import { createInsightsModel, insights, type InsightsModel } from "./index";
+
+/** The plugin's model on a fresh adapter per test, behind one stable model. */
+const onFreshAdapter = (adapter: () => DatabaseAdapter) => {
+  let model: InsightsModel | undefined;
+  const current = () => {
+    if (model === undefined) throw new Error("Insights is reset per test.");
+    return model;
+  };
+  const stable: InsightsModel = {
+    recordEvent: (input) => current().recordEvent(input),
+    listEvents: (input) => current().listEvents(input),
+    findLatestEvents: (input) => current().findLatestEvents(input),
+    countLatestEvents: (input) => current().countLatestEvents(input),
+    countEvents: (input) => current().countEvents(input),
+    getReleaseActivity: (input) => current().getReleaseActivity(input),
+    getAppUsage: (input) => current().getAppUsage(input),
+  };
+  return {
+    migrate: () => undefined,
+    createDatabase: () => stable,
+    reset: async () => {
+      const harness = await createPluginTestHarness(insights(), {
+        adapter: adapter(),
+      });
+      model = createInsightsModel(harness.api);
+    },
+    dispose: () => undefined,
+  };
+};
+
+setupInsightsModelTestSuite({
+  name: "the Insights plugin's model on the memory adapter",
+  ...onFreshAdapter(() => createMemoryAdapter()),
+});
+
+const pglite = new PGlite();
+afterAll(() => pglite.close());
+let resets = 0;
+
+setupInsightsModelTestSuite({
+  name: "the Insights plugin's model on PGlite",
+  ...onFreshAdapter(() => {
+    resets += 1;
+    return createSqlAdapter({
+      executor: pgliteExecutor(pglite),
+      tablePrefix: `t${resets}_`,
+    });
+  }),
+});

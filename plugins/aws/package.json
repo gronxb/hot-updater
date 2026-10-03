@@ -1,7 +1,7 @@
 {
   "name": "@hot-updater/aws",
   "type": "module",
-  "version": "1.0.0-rc.14",
+  "version": "1.0.0-rc.27",
   "description": "React Native OTA solution for self-hosted",
   "main": "dist/index.cjs",
   "module": "dist/index.mjs",
@@ -26,11 +26,6 @@
       "import": "./dist/init/index.mjs",
       "require": "./dist/init/index.cjs"
     },
-    "./iac": {
-      "types": "./dist/iac/index.d.cts",
-      "import": "./dist/iac/index.mjs",
-      "require": "./dist/iac/index.cjs"
-    },
     "./lambda": {
       "require": "./dist/lambda/index.cjs"
     },
@@ -45,7 +40,7 @@
     "test:type": "tsc --noEmit"
   },
   "devDependencies": {
-    "@hot-updater/core": "workspace:*",
+    "@hot-updater/protocol": "workspace:*",
     "@hot-updater/mock": "workspace:*",
     "@hot-updater/test-utils": "workspace:*",
     "@types/aws-lambda": "^8.10.147",

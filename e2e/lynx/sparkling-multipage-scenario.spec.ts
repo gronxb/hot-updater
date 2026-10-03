@@ -52,7 +52,7 @@ describe("shipped Sparkling multi-page orchestration", () => {
     );
   });
 
-  it("requires the real mixed no-archive patch receipt before native reload", async () => {
+  it("requires the real mixed manifest-v1 patch receipt before native reload", async () => {
     const calls: Array<{ kind: string; path?: string; body?: unknown }> = [];
     const app = {
       tap: async () => calls.push({ kind: "tap" }),
@@ -79,10 +79,9 @@ describe("shipped Sparkling multi-page orchestration", () => {
       path: "/e2e/assert-bundle-artifact-selection",
       body: {
         currentBundleId: "$bundleA",
-        requireArchiveAbsent: true,
         requiredPatchAssetPaths: ["main.lynx.bundle"],
         requiredRawAssetPaths: ["detail.lynx.bundle"],
-        selection: "manifest-diff",
+        selection: "manifest-v1",
         targetBundleId: "$bundleB",
       },
     });

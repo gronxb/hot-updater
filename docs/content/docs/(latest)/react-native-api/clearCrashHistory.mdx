@@ -13,10 +13,13 @@ deploy a Release, change delivery policy, download an update, or reload the app.
 ```tsx
 import { HotUpdater } from "@hot-updater/react-native";
 
-const didClear = HotUpdater.clearCrashHistory();
+HotUpdater.clearCrashHistory();
+const remainingArtifacts = HotUpdater.getCrashHistory();
 
-if (didClear) {
-  console.log("Device crash history cleared");
+if (remainingArtifacts.length === 0) {
+  console.log("Device crash history is empty");
+} else {
+  console.error("Crash history still contains rejected artifacts", remainingArtifacts);
 }
 ```
 
@@ -26,7 +29,12 @@ if (didClear) {
 clearCrashHistory(): boolean
 ```
 
-Returns `true` when local history was cleared and `false` if clearing failed.
+On iOS, returns `true` when the cleared history is saved and `false` if saving
+fails. On Android, returns `true` even if saving fails; the return value does not
+confirm that the history was cleared. Read
+[`getCrashHistory()`](/docs/react-native-api/getCrashHistory) afterward when you
+need to confirm that no rejected artifacts remain.
+
 The method is synchronous and does not make a network request.
 
 An artifact that caused a crash can be selected again after clearing history.

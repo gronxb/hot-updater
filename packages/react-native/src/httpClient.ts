@@ -1,14 +1,16 @@
 import {
+  ARTIFACT_PROTOCOL_VERSION,
+  canonicalizeAppVersion,
   encodeChannelKey,
+  resolveBaseURL,
   type ArtifactInfo,
+  type HotUpdaterBaseURL,
   type ReleaseCatalog,
-} from "@hot-updater/core";
-import { canonicalizeAppVersion } from "@hot-updater/plugin-core";
+} from "@hot-updater/protocol";
 
-import { fetchJSON } from "./fetchJSON";
+import { fetchJSON, FetchJSONResponseError } from "./fetchJSON";
 import { fetchReleaseCatalogWithCache } from "./releaseCatalogCache";
-import { HOT_UPDATER_SDK_VERSION } from "./sdkVersion";
-import type { HotUpdaterBaseURL } from "./types";
+import { InvalidUpdateResponseError } from "./updateError";
 
 export interface ReleaseCatalogRequest {
   readonly platform: "ios" | "android";
@@ -27,69 +29,31 @@ export interface ArtifactRequest {
   readonly requestTimeout?: number;
 }
 
-interface InsightsEventCommonParams {
-  readonly installId: string;
-  readonly userId?: string;
-  readonly username?: string;
-  readonly platform: "ios" | "android";
-  readonly appVersion: string;
-  readonly channel: string;
-  readonly cohort: string;
-  readonly fingerprintHash: string | null;
-  readonly fromReleaseId?: string | null;
-  readonly toReleaseId?: string | null;
-  readonly requestHeaders?: Record<string, string>;
-  readonly requestTimeout?: number;
-}
-
-type InsightsTransitionEventParams = InsightsEventCommonParams & {
-  readonly type: "UPDATE_DOWNLOADED" | "UPDATE_APPLIED" | "RECOVERED";
-  readonly fromBundleId: string;
-  readonly toBundleId: string;
-  readonly updateStrategy: "fingerprint" | "appVersion";
-};
-
-type InsightsUnchangedEventParams = InsightsEventCommonParams & {
-  readonly type: "UNCHANGED";
-  readonly fromBundleId: null;
-  readonly toBundleId: string;
-  readonly updateStrategy: null;
-};
-
-export type InsightsEventParams =
-  | InsightsTransitionEventParams
-  | InsightsUnchangedEventParams;
-
 export interface HotUpdaterHttpSession {
+  /** Resolves to null when the server says the scope has no catalog, so no update. */
   fetchReleaseCatalog: (
     params: ReleaseCatalogRequest,
-  ) => Promise<ReleaseCatalog>;
+  ) => Promise<ReleaseCatalog | null>;
   resolveArtifact: (params: ArtifactRequest) => Promise<ArtifactInfo>;
-  sendInsightsEvent: (params: InsightsEventParams) => Promise<void>;
 }
 
 export interface HotUpdaterHttpClient {
   createSession: () => Promise<HotUpdaterHttpSession>;
 }
 
-const resolveBaseURL = async (baseURL: HotUpdaterBaseURL): Promise<string> => {
-  const resolvedBaseURL =
-    typeof baseURL === "function" ? await baseURL() : baseURL;
-
-  if (!resolvedBaseURL) {
-    throw new Error("baseURL function must return a non-empty string");
-  }
-
-  return resolvedBaseURL.replace(/\/+$/, "");
-};
-
 const resolveArtifactUrl = (baseURL: string, value: string): string => {
   if (/^https?:\/\//i.test(value)) {
-    new URL(value);
+    try {
+      new URL(value);
+    } catch (error) {
+      throw new InvalidUpdateResponseError(`Invalid artifact URL: ${value}`, {
+        cause: error,
+      });
+    }
     return value;
   }
   if (!value.startsWith("/storage/")) {
-    throw new Error(
+    throw new InvalidUpdateResponseError(
       "Artifact URLs must be absolute HTTP(S) URLs or client-relative storage paths.",
     );
   }
@@ -101,109 +65,56 @@ const resolveArtifactUrls = (
   info: ArtifactInfo,
 ): ArtifactInfo => ({
   ...info,
-  fileUrl:
-    info.fileUrl === null ? null : resolveArtifactUrl(baseURL, info.fileUrl),
-  ...(info.manifestUrl === undefined
-    ? {}
-    : {
-        manifestUrl:
-          info.manifestUrl === null
-            ? null
-            : resolveArtifactUrl(baseURL, info.manifestUrl),
-      }),
-  ...(info.changedAssets === undefined
-    ? {}
-    : {
-        changedAssets:
-          info.changedAssets === null
-            ? null
-            : Object.fromEntries(
-                Object.entries(info.changedAssets).map(([path, asset]) => [
-                  path,
-                  {
-                    ...asset,
-                    ...(asset.file
-                      ? {
-                          file: {
-                            ...asset.file,
-                            url: resolveArtifactUrl(baseURL, asset.file.url),
-                          },
-                        }
-                      : {}),
-                    ...(asset.patch
-                      ? {
-                          patch: {
-                            ...asset.patch,
-                            patchUrl: resolveArtifactUrl(
-                              baseURL,
-                              asset.patch.patchUrl,
-                            ),
-                          },
-                        }
-                      : {}),
-                  },
-                ]),
-              ),
-      }),
+  manifestUrl: resolveArtifactUrl(baseURL, info.manifestUrl),
+  ...(info.archiveUrl
+    ? { archiveUrl: resolveArtifactUrl(baseURL, info.archiveUrl) }
+    : {}),
+  assets: Object.fromEntries(
+    Object.entries(info.assets).map(([path, asset]) => [
+      path,
+      {
+        ...asset,
+        file: {
+          ...asset.file,
+          url: resolveArtifactUrl(baseURL, asset.file.url),
+        },
+        ...(asset.patch
+          ? {
+              patch: {
+                ...asset.patch,
+                patchUrl: resolveArtifactUrl(baseURL, asset.patch.patchUrl),
+              },
+            }
+          : {}),
+      },
+    ]),
+  ),
 });
 
-const sendInsightsEvent = async (
-  baseURL: string,
-  params: InsightsEventParams,
-): Promise<void> => {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => {
-    controller.abort();
-  }, params.requestTimeout ?? 5000);
-
-  try {
-    const response = await fetch(`${baseURL}/events`, {
-      body: JSON.stringify({
-        appVersion: params.appVersion,
-        channel: params.channel,
-        cohort: params.cohort,
-        fingerprintHash: params.fingerprintHash,
-        fromBundleId: params.fromBundleId,
-        ...(params.fromReleaseId === undefined
-          ? {}
-          : { fromReleaseId: params.fromReleaseId }),
-        installId: params.installId,
-        platform: params.platform,
-        sdkVersion: HOT_UPDATER_SDK_VERSION,
-        toBundleId: params.toBundleId,
-        ...(params.toReleaseId === undefined
-          ? {}
-          : { toReleaseId: params.toReleaseId }),
-        type: params.type,
-        updateStrategy: params.updateStrategy,
-        ...(params.userId != null ? { userId: params.userId } : {}),
-        ...(params.username != null ? { username: params.username } : {}),
-      }),
-      headers: {
-        "Content-Type": "application/json",
-        ...params.requestHeaders,
-      },
-      method: "POST",
-      signal: controller.signal,
-    });
-
-    if (response.status !== 204) {
-      throw new Error(
-        `Expected HTTP 204 from /events, received ${response.status}`,
+const requireArtifactProtocolV1 = (info: ArtifactInfo): ArtifactInfo => {
+  if (
+    info.artifactProtocolVersion !== ARTIFACT_PROTOCOL_VERSION ||
+    !info.assets ||
+    !info.manifestUrl ||
+    !info.manifestFileHash ||
+    (info.archiveUrl !== undefined && typeof info.archiveUrl !== "string")
+  ) {
+    throw new InvalidUpdateResponseError(
+      `Server does not support artifact protocol ${ARTIFACT_PROTOCOL_VERSION}.`,
+    );
+  }
+  for (const asset of Object.values(info.assets)) {
+    if (!asset.file?.url || !asset.fileHash) {
+      throw new InvalidUpdateResponseError(
+        "Artifact protocol 1 requires an original file for every asset.",
       );
     }
-  } catch (error: unknown) {
-    if (error instanceof Error && error.name === "AbortError") {
-      throw new Error("Request timed out");
-    }
-    throw error;
-  } finally {
-    clearTimeout(timeoutId);
   }
+  return info;
 };
 
 const createSession = (baseURL: string): HotUpdaterHttpSession => ({
-  fetchReleaseCatalog: async (params): Promise<ReleaseCatalog> => {
+  fetchReleaseCatalog: async (params): Promise<ReleaseCatalog | null> => {
     const channelKey = encodeChannelKey(params.channel);
     let strategyValue: string;
     if (params.updateStrategy === "fingerprint") {
@@ -241,16 +152,26 @@ const createSession = (baseURL: string): HotUpdaterHttpSession => ({
     });
   },
   resolveArtifact: async (params): Promise<ArtifactInfo> => {
-    const info = await fetchJSON<ArtifactInfo>({
-      requestHeaders: params.requestHeaders,
-      requestTimeout: params.requestTimeout,
-      url: `${baseURL}/artifacts/${encodeURIComponent(
-        params.targetBundleId,
-      )}/from/${encodeURIComponent(params.currentBundleId)}`,
-    });
-    return resolveArtifactUrls(baseURL, info);
+    let info: ArtifactInfo;
+    try {
+      info = await fetchJSON<ArtifactInfo>({
+        requestHeaders: params.requestHeaders,
+        requestTimeout: params.requestTimeout,
+        url: `${baseURL}/artifacts/v1/${encodeURIComponent(
+          params.targetBundleId,
+        )}/from/${encodeURIComponent(params.currentBundleId)}`,
+      });
+    } catch (error) {
+      if (error instanceof FetchJSONResponseError && error.status === 404) {
+        throw new InvalidUpdateResponseError(
+          `Server does not support artifact protocol ${ARTIFACT_PROTOCOL_VERSION}.`,
+          { cause: error },
+        );
+      }
+      throw error;
+    }
+    return resolveArtifactUrls(baseURL, requireArtifactProtocolV1(info));
   },
-  sendInsightsEvent: (params) => sendInsightsEvent(baseURL, params),
 });
 
 /** Creates the private HTTP client used by HotUpdater.init and HotUpdater.wrap. */

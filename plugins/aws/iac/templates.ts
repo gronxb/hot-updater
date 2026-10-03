@@ -92,6 +92,10 @@ const awsOptions = {
     .setBuild(build)
     .setStorage(storageConfig)
     .setDatabase(databaseConfig)
+    .setPlugins({
+      imports: [{ pkg: "@hot-updater/aws", named: ["plugins"] }],
+      configString: "plugins",
+    })
     .setIntermediateCode(
       helperStatements.map((statement) => statement.code.trim()).join("\n\n"),
     );
@@ -122,21 +126,3 @@ export const getConfigTemplate = (
   build: BuildConfig,
   authMode: AwsConfigScaffoldAuthMode,
 ) => getConfigScaffold(build, authMode).text;
-
-export const SOURCE_TEMPLATE = `// Add this to your App.tsx
-import { HotUpdater } from "@hot-updater/react-native";
-
-function App() {
-  return null; // Replace with your app root.
-}
-
-HotUpdater.init({
-  baseURL: %%source%%,
-  requestHeaders: {
-    "x-api-key": %%apiKey%%,
-  },
-});
-
-// Call HotUpdater.checkForUpdate({ updateStrategy: "appVersion" })
-// when your app is ready to check.
-export default App;`;

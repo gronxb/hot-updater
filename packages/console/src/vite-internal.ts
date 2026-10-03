@@ -70,7 +70,7 @@ const createConsoleModulesPlugin = (mode: ConsoleModuleMode): Plugin => {
         );
         configFile = resolveFromRoot(
           root,
-          mode.options.config ?? "hot-updater.config.ts",
+          mode.options.config ?? "console.config.ts",
         );
 
         writeFileIfChanged(
@@ -128,14 +128,27 @@ const createConsoleModulesPlugin = (mode: ConsoleModuleMode): Plugin => {
 
       if (id === resolvedVirtualConfigModuleId) {
         if (mode.type === "local") {
+          // hot-updater.config.ts's database, storage, and plugins, as the
+          // CLI loads them.
           return [
             'import { loadConfig } from "@hot-updater/cli-tools";',
             "export default async () => {",
             "  const config = await loadConfig(null);",
+            "  if (config.database === undefined) {",
+            "    throw new Error(",
+            '      "Set database in hot-updater.config.ts: the database your server runs on, such as d1Database(...), or standaloneRepository({ baseUrl }) to reach a self-hosted server through its admin API.",',
+            "    );",
+            "  }",
+            "  if (config.storage === undefined) {",
+            "    throw new Error(",
+            '      "Set storage in hot-updater.config.ts: where your server stores bundles, which the console reads, such as r2Storage(...).",',
+            "    );",
+            "  }",
             "  return {",
-            "    console: { gitUrl: config.console.gitUrl },",
             "    database: config.database,",
             "    storage: config.storage,",
+            "    plugins: config.plugins,",
+            "    console: { gitUrl: config.console.gitUrl },",
             "  };",
             "};",
           ].join("\n");

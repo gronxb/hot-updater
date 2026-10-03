@@ -5,7 +5,6 @@
   "pages": [
     "overview",
     "quick-start",
-    "database",
     "frameworks",
     "cli-configuration",
     "hosting"

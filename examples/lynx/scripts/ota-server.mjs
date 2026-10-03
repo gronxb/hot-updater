@@ -6,14 +6,15 @@ import path from "node:path";
 import { Readable } from "node:stream";
 import { fileURLToPath } from "node:url";
 
-import { kyselyAdapter } from "../../../packages/server/dist/adapters/kysely.mjs";
-import { createMigrator } from "../../../packages/server/dist/db/index.mjs";
-import { createHotUpdater } from "../../../packages/server/dist/index.mjs";
+import { createMigrator } from "@hot-updater/cli-tools";
 import {
-  createStoragePlugin,
+  createStorageAdapter,
   createStorageUri,
   parseStorageUri,
-} from "../../../plugins/plugin-core/dist/index.mjs";
+} from "@hot-updater/plugin-core";
+import { createHotUpdater } from "@hot-updater/server";
+import { kyselyAdapter } from "@hot-updater/server/adapters/kysely";
+
 import {
   appendSdkInstallFailureEvidence,
   MISSING_ASSET_RESPONSE_BODY,
@@ -65,7 +66,7 @@ const readObject = async (uri) => {
     throw error;
   }
 };
-const storage = createStoragePlugin({
+const storage = createStorageAdapter({
   name: "lynx-local-filesystem",
   protocol,
   async put({ key, body, contentLength }) {
@@ -112,7 +113,7 @@ const database = new Kysely({ dialect: new PGliteDialect(postgres) });
 const hotUpdater = createHotUpdater({
   database: kyselyAdapter({ db: database, provider: "postgresql" }),
   storage: [storage],
-  clientAccess: { type: "public" },
+  clientAccess: "public",
 });
 await (
   await createMigrator(hotUpdater).migrateToLatest({

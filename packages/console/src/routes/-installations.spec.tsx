@@ -39,11 +39,17 @@ vi.mock("@/components/ui/sidebar", () => ({
   SidebarTrigger: () => null,
 }));
 
+vi.mock("@/lib/console-features-api", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/console-features-api")>()),
+  useConsoleFeature: () => true,
+}));
+
 vi.mock("@/lib/insights-api", () => ({
   useInsightsEventsQuery: mocks.events,
   useInsightsInstallationEventsQuery: mocks.history,
   useInsightsInstallationQuery: mocks.installation,
   useInsightsInstallationsQuery: mocks.matches,
+  useInsightsRetention: () => ({ rawDays: 90, dailyDays: 400 }),
 }));
 
 import { Route } from "./installations";
@@ -51,6 +57,9 @@ import { Route } from "./installations";
 const InstallationsPage = (
   Route as unknown as { readonly component: ComponentType }
 ).component;
+
+const DAY_MS = 86_400_000;
+const END = Date.UTC(2026, 6, 18, 12);
 
 const installation = {
   appVersion: "1.4.2",
@@ -62,7 +71,6 @@ const installation = {
   platform: "ios" as const,
   receivedAtMs: Date.UTC(2026, 6, 18, 10),
   userId: "user-1",
-  username: "ada",
 };
 
 const event = (
@@ -80,7 +88,6 @@ const event = (
   toBundleId: "bundle-b",
   type,
   userId: `user-${id}`,
-  username: null,
 });
 
 describe("InstallationsPage", () => {
@@ -120,16 +127,32 @@ describe("InstallationsPage", () => {
   afterEach(() => {
     cleanup();
     vi.clearAllMocks();
+    vi.restoreAllMocks();
   });
 
-  it("opens on 20 filter-free events and advances with an opaque cursor", () => {
+  it("opens on 20 filter-free events of the last 7 days and advances with an opaque cursor", () => {
+    mocks.search.mockReturnValue({ eventsBefore: END });
     render(<InstallationsPage />);
 
     expect(mocks.events).toHaveBeenCalledWith(
-      { beforeReceivedAtMs: 100, cursor: undefined, limit: 20 },
+      {
+        beforeReceivedAtMs: END,
+        cursor: undefined,
+        limit: 20,
+        sinceMs: END - 7 * DAY_MS,
+      },
       true,
     );
+    expect(
+      screen.getByRole("tab", { name: "Last 7 days", selected: true }),
+    ).toBeDefined();
     expect(screen.getByRole("heading", { name: "All events" })).toBeDefined();
+    expect(
+      screen.getByText(
+        "Downloads, applies, recoveries, and update failures, newest first, kept for 90 days. A launch without an update counts in App usage and in its installation's latest report.",
+      ),
+    ).toBeDefined();
+    // Reports stored before launches stopped being events still show.
     for (const label of ["No change", "Update applied", "Recovered"]) {
       expect(screen.getAllByText(label).length).toBeGreaterThan(0);
     }
@@ -144,12 +167,61 @@ describe("InstallationsPage", () => {
     expect(mocks.navigate).toHaveBeenLastCalledWith({
       replace: true,
       search: {
-        eventsBefore: 100,
+        eventsBefore: END,
         eventsCursor: "next-events",
       },
       state: expect.any(Function),
       to: "/installations",
     });
+  });
+
+  it("reads every page of the chosen range from the same fixed end", () => {
+    mocks.search.mockReturnValue({
+      eventsBefore: END,
+      eventsCursor: "events-2",
+      eventsRange: "30d",
+    });
+    render(<InstallationsPage />);
+
+    expect(mocks.events).toHaveBeenCalledWith(
+      {
+        beforeReceivedAtMs: END,
+        cursor: "events-2",
+        limit: 20,
+        sinceMs: END - 30 * DAY_MS,
+      },
+      true,
+    );
+    expect(
+      screen.getByRole("tab", { name: "Last 30 days", selected: true }),
+    ).toBeDefined();
+  });
+
+  it("fixes a new end and returns to the first page when the range changes", () => {
+    const now = END + 60_000;
+    vi.spyOn(Date, "now").mockReturnValue(now);
+    mocks.search.mockReturnValue({
+      eventsBefore: END,
+      eventsCursor: "events-3",
+    });
+    render(<InstallationsPage />);
+
+    fireEvent.click(screen.getByRole("tab", { name: "Last 90 days" }));
+
+    expect(mocks.navigate).toHaveBeenLastCalledWith({
+      replace: false,
+      search: {
+        eventsBefore: now,
+        eventsCursor: undefined,
+        eventsRange: "90d",
+      },
+      state: expect.any(Function),
+      to: "/installations",
+    });
+    const { state } = mocks.navigate.mock.lastCall![0];
+    expect(
+      state({ insightsPagination: { eventsBack: ["", "events-2"] } }),
+    ).toEqual({ insightsPagination: { eventsBack: [] } });
   });
 
   it("performs an exact identity lookup and selects its first installation", async () => {

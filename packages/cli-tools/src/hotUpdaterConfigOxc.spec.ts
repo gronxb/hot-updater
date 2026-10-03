@@ -33,6 +33,10 @@ const createSupabaseScaffold = () =>
   supabaseServiceRoleKey: process.env.HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY!,
 })`,
     },
+    plugins: {
+      imports: [{ pkg: "@hot-updater/supabase", named: ["plugins"] }],
+      configString: "plugins",
+    },
   });
 
 afterEach(async () => {
@@ -121,5 +125,9 @@ export default defineConfig({
     expect(updatedConfig).toContain("satisfies Record<string, boolean>");
     expect(updatedConfig).toContain("// user-owned export note");
     expect(updatedConfig).toContain("custom: customTool(customOptions)");
+    expect(updatedConfig).toContain(
+      "supabaseUrl: process.env.CUSTOM_SUPABASE_URL!",
+    );
+    expect(updatedConfig).toContain("  plugins,\n});");
   });
 });

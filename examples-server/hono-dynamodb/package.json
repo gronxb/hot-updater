@@ -1,6 +1,9 @@
 {
   "name": "@examples-server/hono-dynamodb",
   "private": true,
+  "engines": {
+    "node": ">=20.19.0"
+  },
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/index.ts",
@@ -19,14 +22,13 @@
     "@hot-updater/aws": "workspace:*",
     "@hot-updater/mock": "workspace:*",
     "@hot-updater/server": "workspace:*",
-    "dotenv": "^16.6.1",
     "hono": "catalog:hono"
   },
   "devDependencies": {
     "@aws-sdk/client-dynamodb": "3.1066.0",
     "@aws-sdk/client-s3": "catalog:aws",
     "@aws-sdk/lib-dynamodb": "3.1066.0",
-    "@hot-updater/core": "workspace:*",
+    "@hot-updater/protocol": "workspace:*",
     "@hot-updater/plugin-core": "workspace:*",
     "@hot-updater/standalone": "workspace:*",
     "@hot-updater/test-utils": "workspace:*",

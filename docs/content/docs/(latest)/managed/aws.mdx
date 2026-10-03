@@ -1,6 +1,6 @@
 ---
-title: "AWS DynamoDB + S3 + Lambda@Edge"
-description: "Set up DynamoDB metadata, S3 bundle storage, CloudFront, and Lambda@Edge for Hot Updater."
+title: "AWS Provider"
+description: "Deploy Hot Updater on AWS with DynamoDB, S3, CloudFront, and Lambda@Edge, then connect your app."
 icon: aws
 ---
 
@@ -71,7 +71,7 @@ AccessDenied: User: arn:aws:sts::***:assumed-role/***/*** is not authorized to p
 
 Complete [Install packages](/docs/get-started/installation) in the React
 Native project before running init or an agent scaffold. Install the CLI, React
-Native SDK, and the build plugin that matches your app, then install this provider:
+Native SDK, and the build adapter that matches your app, then install this provider:
 
 ```package-install
 npm install @hot-updater/aws --save-dev
@@ -112,7 +112,7 @@ npx hot-updater init
 <Accordions type="single">
   <Accordion title="Interactive Setup Steps">
 
-1. Choose a build plugin for your project, such as Bare for React Native CLI projects.
+1. Choose a build adapter for your project, such as Bare for React Native CLI projects.
 2. Select AWS + Lambda@Edge as the provider for handling updates.
 3. Select current AWS CLI/default session, a shared AWS profile, account access keys, or an AWS SSO profile
 4. Provide a profile name for shared-profile or SSO mode, or credentials for account/access-key mode
@@ -151,9 +151,8 @@ HOT_UPDATER_API_KEY=your-api-key
 Managed init reuses `HOT_UPDATER_API_KEY` when supplied or creates an API key,
 registers it in DynamoDB, and persists the plaintext value locally. Send this
 API key in the app's `x-api-key` request header. It does not authorize
-management or Insights-query routes. Do not run `hot-updater api-key create`
-for a managed installation; that command bootstraps direct self-hosted
-`createHotUpdater` configurations.
+management or Insights-query routes. To list, add, or revoke keys later, run
+`hot-updater api-key` from the app directory.
 
 If you choose a shared AWS profile or SSO, the generated env file also includes:
 
@@ -176,7 +175,9 @@ HOT_UPDATER_S3_SECRET_ACCESS_KEY=your-secret-access-key
 
 <Callout type="warn">
 
-If you're **not** using the `react-native-dotenv` solution, provider credentials from `.env.hotupdater` will not be included in your app bundle. The API key is the exception: add it explicitly to the app as shown below.
+Keep provider credentials from `.env.hotupdater` in the CLI, CI, or server environment.
+Configure the update server URL and client API key explicitly in the app as shown
+below. Treat both as extractable from the app bundle; never include provider credentials.
 
 See [Security](/docs/policy/security#plugin-token-protection).
 
@@ -186,7 +187,7 @@ See [Security](/docs/policy/security#plugin-token-protection).
 
 Managed AWS init does not create or enable a signing key. The
 [built-in local config](/docs/guides/bundle-signing#local-private-key) works
-without a signing plugin. For non-exportable key custody, use the
+without a signing adapter. For non-exportable key custody, use the
 [AWS KMS signer](/docs/guides/bundle-signing#hardened-aws-kms) from
 `hot-updater/signing`; signing is independent of storage and database choice.
 Embed the chosen public key in a native release before deploying signed
@@ -206,17 +207,18 @@ After provisioning, record these outputs for [Set up your app](/docs/get-started
 
 Use the actual URL returned by deployment. Configure the SDK and native bundle
 loader through [Set up your app](/docs/get-started/app-setup), using the selected
-build plugin and the same update strategy as `hot-updater.config.ts`. Only the
+build adapter and the same update strategy as `hot-updater.config.ts`. Only the
 client API key belongs in the mobile app's build-time configuration; provider
 credentials stay in the deploy environment.
 
 <Callout type="info">
   The managed AWS runtime exposes `/version` publicly. OTA update checks and
   Insights ingestion require `x-api-key: $HOT_UPDATER_API_KEY`, using a key
-  registered or created during init. Internally, Insights is always available
-  and `clientAccess` uses the `api-key` policy; only `handlers.client` is
-  mounted. API keys do not authorize Insights query routes, and bundle
-  management endpoints are not mounted on the public function URL.
+  registered or created during init. Internally, the server runs the
+  `insights()` and `apiKeys()` plugins that `@hot-updater/aws` exports as
+  `plugins`; only `handlers.client` is mounted. API keys do not authorize
+  Insights query routes, and bundle management endpoints are not mounted on
+  the public function URL.
 </Callout>
 
 ## Cost and capacity
@@ -227,34 +229,49 @@ dedicated CloudFront behavior whose cache key contains the canonical path,
 `x-api-key`, and supported content encoding. It excludes SDK version,
 Authorization, cookies, query strings, and installation state. A cold origin
 fill performs one exact DynamoDB catalog read; a warm CloudFront hit skips both
-Lambda@Edge and DynamoDB. Each authenticated Insights event invokes
-Lambda@Edge and writes the immutable event plus the installation's latest-report
-pointer in one DynamoDB transaction. Server-side Insights queries read cursor
-pages or canonical latest-report rows; they do not materialize the raw event
-log.
+Lambda@Edge and DynamoDB. Each authenticated Insights report invokes
+Lambda@Edge. Apps send reports only with the
+[Insights client plugin](/docs/react-native-api/insights): at most one launch
+report a UTC day per installation while nothing changes, plus downloads,
+applies, recoveries, and update failures. An app without the plugin sends
+none. A report the server records is one DynamoDB transaction of 15 to
+30 items, 40 to 66 write request units: the installation's latest-report row,
+the aggregate counters, sketches, and gauges it changes, and, for a download,
+apply, or recovery, the event with its index copies. A launch that repeats the
+installation's latest report on the same UTC day writes nothing; see
+[What Insights writes](/docs/guides/insights#what-insights-writes).
 Review the [DynamoDB pricing model](https://aws.amazon.com/dynamodb/pricing/) and
 [Lambda@Edge pricing](https://aws.amazon.com/lambda/pricing/).
 
 Each API key authorizes OTA selectors and event ingestion, but not
 Insights query or management routes. Managed tables cap on-demand throughput
-at 4,000 reads and 100 writes per second for both the table and update index.
+at 4,000 read request units and 100 write request units per second on one table,
+with no secondary index. These are capacity units, not event counts: event
+throughput depends on the transactional item, index-copy, and aggregate writes.
 The cap is a cost guardrail and can throttle bursts; protect production
 distributions with AWS WAF rate-based rules and configure AWS Budgets for a
-monthly spending threshold. The AWS adapter does not delete Insights data
-automatically. Event history is keyset-paginated. Reporting-installation counts
-read all canonical installation rows, including inactive rows; bundle-outcome
-counts consume the matching indexed range.
+monthly spending threshold. The table's TTL on `_ttl`, which init turns on,
+deletes Insights data past its retention without write cost. Event history is
+keyset-paginated. Reporting overview windows
+start at the UTC day they reach into and end with the current hour. They read
+maintained installation-distribution, latest-by-bundle, and outcome
+aggregates, never raw events or installation heads. Latest-installation counts
+take whole UTC days; a direct event count with partial-hour bounds also reads
+the matching raw events.
 
 Bundle metadata has no fixed bundle, patch, or patch-relationship count limit.
-Each serialized metadata item is limited to 8 KiB. The database maintains counters
-and relation counts in the same transactions as metadata writes. Cursor pages
-and exact/single-owner hydration use targeted key/index reads; owner-index keys
-are hydrated from strongly consistent base-table rows and unprocessed batch keys
-use bounded exponential backoff. Unfiltered totals use the transactionally
-maintained metadata counter. Broad filtered scans paginate through all matching
-metadata and may be throttled by the managed table's throughput cost guardrail.
-DynamoDB's 100-action transaction service limit applies to the complete
-`commit({ changes, expectations })` envelope, including cascade deletions.
+The adapter enforces a 400,000-byte physical-item budget and a 4,000,000-byte,
+100-action transaction budget. These budgets include row and index overhead,
+aggregate updates, and cascade deletions; they are not metadata-only limits.
+The database maintains counters and relation counts in the same transactions as
+metadata writes. Cursor pages and exact/single-owner hydration use targeted
+key/index reads; owner-index keys are hydrated from strongly consistent
+base-table rows. Unprocessed batch keys retry with exponential backoff and no
+internal retry-count or elapsed-time limit, so sustained throttling can continue
+until an external request or runtime timeout. Unfiltered totals use the
+transactionally maintained metadata counter. Broad filtered scans paginate
+through all matching metadata and may be throttled by the managed table's
+throughput cost guardrail.
 
 New tables enable deletion protection. Init validates the billing mode,
 throughput caps, string key types, and index layout before reusing an existing
@@ -277,7 +294,7 @@ at no extra charge; see [invalidation pricing](https://docs.aws.amazon.com/Amazo
 Rerunning init preserves unrelated CloudFront origins/cache behaviors and S3
 bucket-policy statements. Lambda roles and signing keys are isolated by the
 Lambda name and grant access only to the selected bucket, SSM parameter,
-DynamoDB table, and update index. Init provisions these resources through AWS
+and DynamoDB table. Init provisions these resources through AWS
 APIs rather than a CloudFormation stack, so deletion and rollback remain
 operator-managed.
 
@@ -285,53 +302,67 @@ Init checks the selected distribution's `/version` response before writing env
 files or changing AWS resources. Incompatible infrastructure is rejected before
 any mutation.
 
-Without `basePath`, a storage plugin treats the whole bucket as owned by its
+Without `basePath`, a storage adapter treats the whole bucket as owned by its
 configured database. Do not run `hot-updater storage prune --yes` while the
 bucket is also used by another active Hot Updater database. Give each active
 database a distinct `basePath` before using prune.
 
 ## Generated configuration and operations
 
-Init generates `hot-updater.config.ts` with your AWS configuration.
+Init generates `hot-updater.config.ts` with your AWS storage and database, and
+`plugins`: the server plugins the managed Lambda@Edge function runs,
+`insights()` and `apiKeys()`, which `@hot-updater/aws` exports. The CLI and the
+Console reach S3 and DynamoDB through these settings and run the same plugins
+as the function. The managed function runs these official plugins only; to run
+other server plugins, use a [custom server](/docs/custom/overview).
+
+On a rerun, init updates `storage`, `database`, and `plugins` in the existing
+file and keeps your other settings, including a wrapped build such as
+`withSentry(bare())`. When it cannot edit `hot-updater.config.ts`, such as a
+config that a function returns, it leaves the file unchanged and prints the
+`storage`, `database`, and `plugins` lines to add.
 
 If you choose **current AWS CLI/default session**, the generated config uses the
 AWS SDK default provider chain instead of embedding access keys:
 
 ```ts title="hot-updater.config.ts"
+import { dynamoDB, plugins, s3Storage } from "@hot-updater/aws";
 import { bare } from "@hot-updater/bare";
 import { fromNodeProviderChain } from "@aws-sdk/credential-providers";
-import { dynamoDB, s3Storage } from "@hot-updater/aws";
 import { defineConfig } from "hot-updater";
-import { config } from "dotenv";
+import { existsSync } from "node:fs";
 
-config({ path: ".env.hotupdater" });
+if (existsSync(".env.hotupdater")) {
+  process.loadEnvFile(".env.hotupdater");
+}
 
 const awsOptions = {
   region: process.env.HOT_UPDATER_S3_REGION!,
   credentials: fromNodeProviderChain(),
 };
 
-const storageOptions = {
-  ...awsOptions,
-  bucketName: process.env.HOT_UPDATER_S3_BUCKET_NAME!,
-};
-
 export default defineConfig({
   build: bare({ enableHermes: true }),
-  updateStrategy: "appVersion",
-  storage: s3Storage(storageOptions),
+  storage: s3Storage({
+    ...awsOptions,
+    bucketName: process.env.HOT_UPDATER_S3_BUCKET_NAME!,
+  }),
   database: dynamoDB({
     ...awsOptions,
     tableName: process.env.HOT_UPDATER_DYNAMODB_TABLE_NAME!,
-    // prettier-ignore
     cloudfrontDistributionId: process.env.HOT_UPDATER_CLOUDFRONT_DISTRIBUTION_ID!,
   }),
+  plugins,
+  updateStrategy: "appVersion", // or "fingerprint"
 });
 ```
 
 If you choose **shared AWS profile**, `fromNodeProviderChain()` is replaced with
-`fromIni({ profile: process.env.HOT_UPDATER_AWS_PROFILE! })`. SSO uses
-`fromSSO({ profile: process.env.HOT_UPDATER_AWS_PROFILE! })`; only
+`fromIni({ profile: process.env.HOT_UPDATER_AWS_PROFILE! })` from the same
+package. SSO uses `fromSSO({ profile: process.env.HOT_UPDATER_AWS_PROFILE! })`
+from `@aws-sdk/credential-provider-sso`. Init installs the package the config
+imports as a dev dependency: `@aws-sdk/credential-providers` for the default
+session and shared profile, `@aws-sdk/credential-provider-sso` for SSO. Only
 account/access-key mode emits a literal access-key credential block.
 
 ### Replace account access keys (optional)
@@ -359,7 +390,7 @@ HOT_UPDATER_S3_SECRET_ACCESS_KEY=your-secret-access-key
 
 Follow the Expo path in [Set up your app](/docs/get-started/app-setup). It applies
 the config plugin and generates the native integration. For DOM components,
-continue with [Expo DOM components](/docs/build-plugins/expo#expo-dom-components-use-dom).
+continue with [Expo DOM components](/docs/build-adapters/expo#expo-dom-components-use-dom).
 
 ## Step 5: Add native code
 

@@ -20,26 +20,24 @@ export default defineConfig([
     deps: {
       neverBundle: ["firebase-functions", "firebase-admin"],
       alwaysBundle: [
-        "@hot-updater/core",
+        "@hot-updater/protocol",
         "@hot-updater/plugin-core",
-        "@hot-updater/plugin-core/internal",
+        "@hot-updater/plugin-api-keys/server",
+        "@hot-updater/plugin-insights/server",
         "@hot-updater/server",
+        "@hot-updater/server/plugins/api-keys",
+        "@hot-updater/server/plugins/insights",
       ],
     },
     failOnWarn: true,
   },
   {
-    entry: ["iac/init/index.ts"],
-    format: ["esm", "cjs"],
-    dts: true,
-    outDir: "dist/init",
-    failOnWarn: true,
-  },
-  {
+    // `./init`: the provider's init, which `hot-updater init` imports once it
+    // has installed this package.
     entry: ["iac/index.ts"],
     format: ["cjs", "esm"],
     dts: true,
-    outDir: "dist/iac",
+    outDir: "dist/init",
     deps: {
       neverBundle: ["@hot-updater/firebase"],
     },

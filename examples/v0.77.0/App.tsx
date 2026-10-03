@@ -5,8 +5,11 @@
  * @format
  */
 
-import { HOT_UPDATER_SUPABASE_URL } from "@env";
-import { HotUpdater, useHotUpdaterStore } from "@hot-updater/react-native";
+import {
+  HotUpdater,
+  insights,
+  useHotUpdaterStore,
+} from "@hot-updater/react-native";
 import React, { useEffect, useState } from "react";
 import { Button, Image, Modal, SafeAreaView, Text, View } from "react-native";
 
@@ -88,8 +91,10 @@ function App(): React.JSX.Element {
 }
 
 export default HotUpdater.wrap({
-  baseURL: `${HOT_UPDATER_SUPABASE_URL}/functions/v1/update-server`,
+  // Replace with your public update server URL.
+  baseURL: "https://your-project.supabase.co/functions/v1/update-server",
   updateStrategy: "appVersion", // or "fingerprint"
+  plugins: [insights()],
   fallbackComponent: ({ progress, status }) => (
     <Modal transparent visible={true}>
       <View

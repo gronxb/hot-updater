@@ -3,9 +3,27 @@ import { describe, expect, it } from "vitest";
 import {
   createBundleStorageKey,
   createStorageRootUriWithPath,
+  getBundleArchiveStorageUri,
 } from "./bundleStorageLayout";
 
 describe("bundle storage layout", () => {
+  it("resolves the fixed tar.br sibling without corrupting encoded prefixes", () => {
+    expect(
+      getBundleArchiveStorageUri({
+        manifestStorageUri:
+          "s3://bucket/release%20files%23100%25/bundles/bundle-id/manifest.json",
+        bundleId: "bundle-id",
+      }),
+    ).toBe(
+      "s3://bucket/release%20files%23100%25/bundles/bundle-id/bundle.tar.br",
+    );
+    expect(() =>
+      getBundleArchiveStorageUri({
+        manifestStorageUri: "s3://bucket/bundles/other-id/manifest.json",
+        bundleId: "bundle-id",
+      }),
+    ).toThrow();
+  });
   it("stores new bundle artifacts below the bundles namespace", () => {
     expect(createBundleStorageKey("bundle-id")).toBe("bundles/bundle-id");
     expect(createBundleStorageKey("bundle-id", "patches", "base-id")).toBe(

@@ -1,13 +1,13 @@
+import { existsSync } from 'node:fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import * as Repack from '@callstack/repack';
 import rspack from '@rspack/core';
-import { config } from 'dotenv';
 import { SentryDebugIdPlugin } from 'repack-plugin-sentry';
 
-config({
-  path: '.env.hotupdater',
-});
+if (existsSync('.env.hotupdater')) {
+  process.loadEnvFile('.env.hotupdater');
+}
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);

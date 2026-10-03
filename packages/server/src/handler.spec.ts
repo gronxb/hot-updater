@@ -1,13 +1,9 @@
-import type { ReleaseCatalog } from "@hot-updater/core";
+import type { ReleaseCatalog } from "@hot-updater/protocol";
 import { Hono } from "hono";
 import { describe, expect, it, vi } from "vitest";
 
-import {
-  createHandlers,
-  createHotUpdaterHandlers,
-  type HandlerAPI,
-} from "./handler";
-import { createApi } from "./handler.testFixtures";
+import { createHotUpdaterHandlers } from "./handler";
+import { createApi, createHandlers } from "./handler.testFixtures";
 import { HOT_UPDATER_INFRASTRUCTURE_GENERATION } from "./handlerVersionRoutes";
 import { HOT_UPDATER_SERVER_VERSION } from "./version";
 
@@ -18,6 +14,22 @@ describe("createHandlers client routes", () => {
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({
+      adminProtocol: 2,
+      infrastructureGeneration: HOT_UPDATER_INFRASTRUCTURE_GENERATION,
+      version: HOT_UPDATER_SERVER_VERSION,
+    });
+  });
+
+  it("keeps the plugins the server runs off the client /version", async () => {
+    const handler = createHotUpdaterHandlers({
+      api: createApi(),
+      plugins: ["insights", "apiKeys"],
+    }).client;
+
+    const response = await handler(new Request("http://localhost/version"));
+
+    await expect(response.json()).resolves.toEqual({
+      adminProtocol: 2,
       infrastructureGeneration: HOT_UPDATER_INFRASTRUCTURE_GENERATION,
       version: HOT_UPDATER_SERVER_VERSION,
     });
@@ -37,7 +49,8 @@ describe("createHandlers client routes", () => {
   it.each([
     "/v2/release-catalogs/app-version/ios/cHJvZHVjdGlvbg/1.0.0",
     "/v2/artifacts/target-bundle/from/current-bundle",
-  ])("does not expose the version-prefixed route %s", async (path) => {
+    "/artifacts/target-bundle/from/current-bundle",
+  ])("does not expose the unsupported route %s", async (path) => {
     const handler = createHandlers(createApi()).client;
 
     const response = await handler(new Request(`http://localhost${path}`));
@@ -65,13 +78,11 @@ describe("createHandlers client routes", () => {
       schemaVersion: 1,
       scopeKey: "v1:fingerprint:android:cHJvZHVjdGlvbg:fingerprint-123",
     } satisfies ReleaseCatalog;
+    const api = createApi();
     const getReleaseCatalog = vi
-      .fn<NonNullable<HandlerAPI["getReleaseCatalog"]>>()
+      .spyOn(api.core, "getReleaseCatalog")
       .mockResolvedValue(catalog);
-    const handler = createHandlers({
-      ...createApi(),
-      getReleaseCatalog,
-    }).client;
+    const handler = createHandlers(api).client;
     const url =
       "http://localhost/release-catalogs/fingerprint/android/" +
       "cHJvZHVjdGlvbg/fingerprint-123";
@@ -97,75 +108,147 @@ describe("createHandlers client routes", () => {
   });
 
   it("serves client-relative storage paths under a framework mount", async () => {
-    const api = {
-      ...createApi(),
-      getArtifactInfo: vi.fn().mockResolvedValue({
-        changedAssets: {
-          "index.bundle": {
-            file: {
-              url: "/storage/asset-token/asset-signature",
-            },
-            fileHash: "asset-hash",
-            patch: {
-              algorithm: "bsdiff",
-              baseBundleId: "bundle-1",
-              baseFileHash: "base-hash",
-              patchFileHash: "patch-hash",
-              patchUrl: "/storage/patch-token/patch-signature",
-            },
+    const api = createApi();
+    vi.spyOn(api.core, "getArtifactInfo").mockResolvedValue({
+      artifactProtocolVersion: 1,
+      assets: {
+        "index.bundle": {
+          file: {
+            url: "/storage/asset-token/asset-signature",
+          },
+          fileHash: "asset-hash",
+          patch: {
+            algorithm: "bsdiff",
+            baseBundleId: "bundle-1",
+            baseFileHash: "base-hash",
+            patchFileHash: "patch-hash",
+            patchUrl: "/storage/patch-token/patch-signature",
           },
         },
-        fileHash: "archive-hash",
-        fileUrl: "/storage/archive-token/archive-signature",
-        manifestFileHash: "manifest-hash",
-        manifestUrl: "/storage/manifest-token/manifest-signature",
-      }),
-    };
-    const handlers = createHotUpdaterHandlers(
+      },
+      manifestFileHash: "manifest-hash",
+      manifestUrl: "/storage/manifest-token/manifest-signature",
+    });
+    const handlers = createHotUpdaterHandlers({
       api,
-      undefined,
-      undefined,
-      async () => new Response("bundle archive"),
-    );
+      downloadStorageObject: async () => new Response("bundle archive"),
+    });
     const app = new Hono();
     app.mount("/hot-updater", handlers.client);
 
     const response = await app.request(
-      "/hot-updater/artifacts/bundle-2/from/bundle-1",
+      "/hot-updater/artifacts/v1/bundle-2/from/bundle-1",
     );
 
     expect(response.status).toBe(200);
     const info = (await response.json()) as {
-      changedAssets: Record<
+      assets: Record<
         string,
         { file: { url: string }; patch: { patchUrl: string } }
       >;
-      fileUrl: string;
       manifestUrl: string;
     };
     expect(info).toMatchObject({
-      changedAssets: {
+      assets: {
         "index.bundle": {
           file: { url: "/storage/asset-token/asset-signature" },
           patch: { patchUrl: "/storage/patch-token/patch-signature" },
         },
       },
-      fileUrl: "/storage/archive-token/archive-signature",
       manifestUrl: "/storage/manifest-token/manifest-signature",
     });
 
-    const download = await app.request(`/hot-updater${info.fileUrl}`);
+    const download = await app.request(
+      `/hot-updater${info.assets["index.bundle"]!.file.url}`,
+    );
     expect(download.status).toBe(200);
     await expect(download.text()).resolves.toBe("bundle archive");
   });
 
+  it("serves artifact protocol v1 on an explicit route", async () => {
+    const api = createApi();
+    const getArtifactInfo = vi
+      .spyOn(api.core, "getArtifactInfo")
+      .mockResolvedValue({
+        artifactProtocolVersion: 1,
+        assets: {
+          "index.ios.bundle": {
+            file: { url: "/storage/file-token/file-signature" },
+            fileHash: "target-hash",
+          },
+        },
+        manifestFileHash: "manifest-hash",
+        manifestUrl: "/storage/manifest-token/manifest-signature",
+      });
+    const handler = createHandlers(api).client;
+
+    const response = await handler(
+      new Request("http://localhost/artifacts/v1/target/from/current"),
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toBe(
+      "application/vnd.hot-updater.artifact+json; version=1",
+    );
+    await expect(response.json()).resolves.toMatchObject({
+      artifactProtocolVersion: 1,
+      assets: {
+        "index.ios.bundle": {
+          file: { url: "/storage/file-token/file-signature" },
+        },
+      },
+    });
+    expect(getArtifactInfo).toHaveBeenCalledWith("target", "current", 1);
+  });
+
+  it("authenticates artifact protocol v1 before resolving artifacts", async () => {
+    const api = createApi();
+    const getArtifactInfo = vi
+      .spyOn(api.core, "getArtifactInfo")
+      .mockResolvedValue({
+        artifactProtocolVersion: 1,
+        assets: {},
+        manifestFileHash: "manifest-hash",
+        manifestUrl: "/storage/manifest-token/manifest-signature",
+      });
+    const authenticate = vi.fn(async (request: Request) => {
+      const apiKey = request.headers.get("x-api-key");
+      if (apiKey === "unavailable") {
+        throw new Error("credential storage unavailable");
+      }
+      return apiKey === "valid";
+    });
+    const handler = createHotUpdaterHandlers({
+      api,
+      clientPolicy: { authenticate, varyHeaders: ["x-api-key"] },
+    }).client;
+    const url = "http://localhost/artifacts/v1/target/from/current";
+
+    const missing = await handler(new Request(url));
+    const invalid = await handler(
+      new Request(url, { headers: { "x-api-key": "invalid" } }),
+    );
+    const valid = await handler(
+      new Request(url, { headers: { "x-api-key": "valid" } }),
+    );
+    const unavailable = await handler(
+      new Request(url, { headers: { "x-api-key": "unavailable" } }),
+    );
+
+    expect(missing.status).toBe(401);
+    expect(invalid.status).toBe(401);
+    expect(valid.status).toBe(200);
+    expect(unavailable.status).toBe(503);
+    expect(authenticate).toHaveBeenCalledTimes(4);
+    expect(getArtifactInfo).toHaveBeenCalledOnce();
+    expect(getArtifactInfo).toHaveBeenCalledWith("target", "current", 1);
+  });
+
   it("does not expose provider errors from the public client handler", async () => {
-    const api = {
-      ...createApi(),
-      getReleaseCatalog: vi
-        .fn()
-        .mockRejectedValue(new Error("private database connection details")),
-    };
+    const api = createApi();
+    vi.spyOn(api.core, "getReleaseCatalog").mockRejectedValue(
+      new Error("private database connection details"),
+    );
     const consoleError = vi
       .spyOn(console, "error")
       .mockImplementation(() => {});

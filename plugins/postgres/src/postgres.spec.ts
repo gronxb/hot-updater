@@ -2,531 +2,136 @@ import fs from "node:fs/promises";
 import path from "node:path";
 
 import { PGlite } from "@electric-sql/pglite";
-import type {
-  BundleEventRow,
-  BundleRow,
-  ChannelRow,
-  ApiKeyRow,
-  ReleaseRow,
+import {
+  coreSchema,
+  coreSettings,
+  toolingTargetOf,
+  generateEngineSql,
+  HotUpdaterSchemaMigrationRequiredError,
 } from "@hot-updater/plugin-core";
-import { setupDatabasePluginTestSuite } from "@hot-updater/test-utils";
+import { createHotUpdater } from "@hot-updater/server";
+import {
+  createInsightsModel,
+  insights,
+} from "@hot-updater/server/plugins/insights";
+import {
+  setupDatabaseTestSuite,
+  startHttpTestServer,
+  insightsTestSuite,
+} from "@hot-updater/test-utils";
 import { PGliteDialect } from "kysely-pglite-dialect";
 import { describe, expect, it } from "vitest";
 
 import { postgres } from "./postgres";
 
-class PostgresTestStateError extends Error {
-  readonly name = "PostgresTestStateError";
-}
+const SQL_FILE = path.resolve("plugins/postgres/sql/bundles.sql");
+
+/** The checked-in schema: core's shared SQL schema, generated, never hand-edited. */
+const expectedSql = () =>
+  `-- HotUpdater.schema\n\n${generateEngineSql(
+    "postgresql",
+    coreSchema,
+    coreSettings,
+  )
+    .map((statement) => `${statement};`)
+    .join("\n\n")}\n`;
+
+/** What the suite runs: core and the Insights plugin. */
+const target = toolingTargetOf([insights()]);
+
+/** Every data table; the settings rows stay across tests. */
+const dataTables = target.schema.tables
+  .flatMap((table) => [
+    table.name,
+    ...table.indexes
+      .filter((index) =>
+        index.eq.some(
+          (column) => table.columns.find(({ name }) => name === column)?.multi,
+        ),
+      )
+      .map((index) => `${table.name}__${index.name}`),
+  ])
+  .map((name) => `"${name}"`);
 
 let client: PGlite | undefined;
 
-const getClient = (): PGlite => {
-  if (client === undefined) {
-    throw new PostgresTestStateError();
-  }
-  return client;
-};
-
-setupDatabasePluginTestSuite({
-  name: "postgres fixed-model database plugin",
+setupDatabaseTestSuite({
+  createHttpClient: (options) =>
+    startHttpTestServer(
+      createHotUpdater({
+        ...options,
+        plugins: [insights()],
+        clientAccess: "public",
+      }).handlers,
+    ),
+  plugins: [
+    insightsTestSuite({
+      createModel: (database) =>
+        createInsightsModel(
+          createHotUpdater({
+            database,
+            plugins: [insights()],
+            clientAccess: "public",
+          }).api.insights,
+        ),
+    }),
+  ],
+  name: "postgres plugin",
   migrate: async () => {
     client = new PGlite();
-    const schema = await fs.readFile(
-      path.resolve("plugins/postgres/sql/bundles.sql"),
-      "utf8",
+    await client.exec(await fs.readFile(SQL_FILE, "utf8"));
+    // The plugin's tables and settings row, as `hot-updater db migrate` adds them.
+    await client.exec(
+      generateEngineSql("postgresql", target.schema, target.settings).join(
+        ";\n",
+      ),
     );
-    await client.exec(schema);
   },
-  createPlugin: () => postgres({ dialect: new PGliteDialect(getClient()) }),
+  createDatabase: () => postgres({ dialect: new PGliteDialect(client!) }),
   reset: async () => {
-    await getClient().exec(
-      "DELETE FROM insights_overview; DELETE FROM bundle_event_heads; DELETE FROM bundle_events; DELETE FROM api_keys; DELETE FROM bundle_patches; DELETE FROM release_catalogs; DELETE FROM releases; DELETE FROM bundles; DELETE FROM channels;",
-    );
+    await client!.exec(`TRUNCATE ${dataTables.join(", ")} CASCADE`);
   },
-  dispose: async (plugin) => {
-    await plugin.dispose?.();
+  dispose: async (database) => {
+    await database.dispose?.();
     client = undefined;
   },
 });
 
-const createPostgresTestPlugin = async () => {
-  const database = new PGlite();
-  const schema = await fs.readFile(
-    path.resolve("plugins/postgres/sql/bundles.sql"),
-    "utf8",
-  );
-  await database.exec(schema);
-  return {
-    database,
-    plugin: postgres({ dialect: new PGliteDialect(database) }),
-  };
-};
-
-const channelFixture = (name: string, id: string): ChannelRow => ({ id, name });
-
-const bundleFixture = (): BundleRow => ({
-  id: "00000000-0000-0000-0000-000000000701",
-  platform: "ios",
-  file_hash: "file-hash",
-  git_commit_hash: null,
-  storage_uri: "storage://bundles/701.zip",
-  archive_byte_size: 3_000_000_001,
-  metadata: {},
-  manifest_storage_uri: null,
-  manifest_file_hash: null,
-  asset_base_storage_uri: null,
-});
-
-const releaseFixture = (
-  channel: ChannelRow,
-  bundle: BundleRow,
-): ReleaseRow => ({
-  id: "00000000-0000-7000-8000-000000000702",
-  revision: 1,
-  scope_key: `v1:test:${channel.name}:ios:app-version`,
-  channel_id: channel.id,
-  platform: bundle.platform,
-  kind: "BUNDLE",
-  bundle_id: bundle.id,
-  strategy: "APP_VERSION",
-  target_app_version: "1.0.0",
-  fingerprint_hash: null,
-  enabled: true,
-  should_force_update: false,
-  message: null,
-  rollout_cohort_count: 1000,
-  target_cohorts: [],
-  operation: "DEPLOY",
-  source_release_id: null,
-  created_at_ms: 100,
-  updated_at_ms: 100,
-});
-
-const apiKeyFixture = (): ApiKeyRow => ({
-  id: "00000000-0000-0000-0000-000000000901",
-  hash: "channel-delete-race-hash",
-  name: "channel-delete-race",
-  prefix: "hu_test",
-  role: "client",
-  created_at_ms: 100,
-  revoked_at_ms: null,
-});
-
-const insightsEventFixture = (input: {
-  readonly id: string;
-  readonly installId: string;
-  readonly receivedAtMs: number;
-  readonly userId: string;
-}): BundleEventRow => ({
-  id: input.id,
-  type: "UPDATE_APPLIED",
-  install_id: input.installId,
-  user_id: input.userId,
-  metadata: {
-    username: null,
-    cohort: "0",
-    update_strategy: "appVersion",
-    fingerprint_hash: null,
-    sdk_version: null,
-  },
-  from_bundle_id: "00000000-0000-7000-8000-000000001001",
-  from_release_id: null,
-  to_bundle_id: "00000000-0000-7000-8000-000000001002",
-  to_release_id: null,
-  platform: "ios",
-  app_version: "1.0.0",
-  channel: "production",
-
-  received_at_ms: input.receivedAtMs,
-});
-
-describe("PostgreSQL artifact byte-size constraints", () => {
-  it("rejects negative archive and patch sizes at the database boundary", async () => {
-    const { database, plugin } = await createPostgresTestPlugin();
-    const bundle = bundleFixture();
-
-    try {
-      await expect(
-        database.exec(`
-          INSERT INTO bundles (
-            id, platform, file_hash, storage_uri, archive_byte_size, metadata
-          ) VALUES (
-            '${bundle.id}', 'ios', 'hash', 'storage://bundle', -1, '{}'
-          )
-        `),
-      ).rejects.toThrow();
-
-      await plugin.commit({
-        changes: [{ model: "bundles", operation: "insert", row: bundle }],
-      });
-      await expect(
-        database.exec(`
-          INSERT INTO bundle_patches (
-            id, bundle_id, base_bundle_id, base_file_hash, patch_file_hash,
-            patch_storage_uri, byte_size
-          ) VALUES (
-            'patch-invalid-size', '${bundle.id}', '${bundle.id}', 'base-hash',
-            'patch-hash', 'storage://patch', -1
-          )
-        `),
-      ).rejects.toThrow();
-    } finally {
-      await plugin.dispose?.();
+describe("postgres plugin schema", () => {
+  it("checks in exactly the generated SQL schema as its only SQL file", async () => {
+    if (process.env.HOT_UPDATER_UPDATE_SQL === "1") {
+      await fs.writeFile(SQL_FILE, expectedSql());
     }
-  });
-});
-
-describe("PostgreSQL Insights projection", () => {
-  it("initializes schema 1.0.0 from a single SQL file", async () => {
-    const files = await fs.readdir(path.resolve("plugins/postgres/sql"));
+    const files = await fs.readdir(path.dirname(SQL_FILE));
     expect(files.filter((file) => file.endsWith(".sql"))).toEqual([
       "bundles.sql",
     ]);
-    const { database, plugin } = await createPostgresTestPlugin();
+    // Regenerate with HOT_UPDATER_UPDATE_SQL=1 after the schema changes.
+    expect(await fs.readFile(SQL_FILE, "utf8")).toBe(expectedSql());
+  });
+
+  it("refuses a database without the schema settings, then serves once they exist", async () => {
+    const pglite = new PGlite();
+    const database = postgres({ dialect: new PGliteDialect(pglite) });
+    const core = createHotUpdater({ database, clientAccess: "public" }).core;
     try {
+      await expect(core.listChannels()).rejects.toBeInstanceOf(
+        HotUpdaterSchemaMigrationRequiredError,
+      );
+      await pglite.exec(await fs.readFile(SQL_FILE, "utf8"));
+      await expect(core.listChannels()).resolves.toEqual([]);
       expect(
         (
-          await database.query(
-            "SELECT value FROM private_hot_updater_settings WHERE key = 'schema.core'",
+          await pglite.query(
+            "SELECT key, value FROM private_hot_updater_settings ORDER BY key",
           )
         ).rows,
-      ).toEqual([{ value: "1.0.0" }]);
-    } finally {
-      await plugin.dispose?.();
-    }
-  });
-
-  it("counts beyond 50,000 reports and uses the bundle range index for a bounded drill-down", async () => {
-    const { database, plugin } = await createPostgresTestPlugin();
-    const bundleId = "00000000-0000-7000-8000-000000001002";
-    try {
-      await database.exec(`
-        INSERT INTO bundle_events (
-          id, type, install_id, from_bundle_id, to_bundle_id, platform,
-          app_version, channel, metadata, received_at_ms
-        )
-        SELECT ('00000000-0000-7000-8000-' || lpad(n::text, 12, '0'))::uuid,
-          'UPDATE_APPLIED', 'install-scale',
-          '00000000-0000-7000-8000-000000001001'::uuid,
-           '${bundleId}'::uuid, 'ios', '1.0.0', 'production', '{"cohort":"0","update_strategy":"appVersion","username":null,"fingerprint_hash":null,"sdk_version":null}'::jsonb, n
-        FROM generate_series(1, 50001) AS n;
-        ANALYZE bundle_events;
-      `);
-      const filter = {
-        type: "UPDATE_APPLIED",
-        platform: "ios",
-        channel: "production",
-        toBundleId: bundleId,
-      } as const;
-      await expect(
-        plugin.models.insights.countEvents({
-          filter,
-          sinceMs: 0,
-          beforeReceivedAtMs: 50002,
-        }),
-      ).resolves.toBe(50001);
-      const rows = await plugin.models.insights.listEvents({
-        filter: { kind: "bundle", ...filter },
-        sinceMs: 50000,
-        beforeReceivedAtMs: 50002,
-        limit: 101,
-      });
-      expect(rows.map((row) => row.received_at_ms)).toEqual([50001, 50000]);
-      const sparseEvent = {
-        ...insightsEventFixture({
-          id: "00000000-0000-7000-8000-000000050002",
-          installId: "sparse-installation",
-          receivedAtMs: 25000,
-          userId: "sparse-user",
-        }),
-        to_bundle_id: "00000000-0000-7000-8000-000000001003",
-      };
-      await plugin.models.insights.recordEvent({
-        event: sparseEvent,
-      });
-      await database.exec("ANALYZE bundle_events");
-      const plan = await database.query(`
-        EXPLAIN (FORMAT JSON) SELECT * FROM bundle_events
-        WHERE type = 'UPDATE_APPLIED' AND platform = 'ios' AND channel = 'production'
-          AND to_bundle_id = '${sparseEvent.to_bundle_id}' AND received_at_ms >= 0 AND received_at_ms < 50002
-        ORDER BY received_at_ms DESC, id DESC LIMIT 101
-      `);
-      expect(JSON.stringify(plan.rows)).toContain(
-        "bundle_events_to_bundle_idx",
-      );
-      await database.exec("SET enable_seqscan = off");
-      const overviewPlan = await database.query(`
-        EXPLAIN (FORMAT JSON) SELECT * FROM insights_overview
-        WHERE scope_kind = 'distribution' AND channel = 'production'
-          AND period_kind = 'latest'
-          AND bucket_start_ms >= 0 AND bucket_start_ms < 50002
-      `);
-      expect(JSON.stringify(overviewPlan.rows)).toContain(
-        "insights_overview_distribution_time_idx",
-      );
-    } finally {
-      await plugin.dispose?.();
-    }
-  });
-
-  it("keeps failed event inserts absent and permits an idempotent retry", async () => {
-    const { database, plugin } = await createPostgresTestPlugin();
-    const event = insightsEventFixture({
-      id: "00000000-0000-7000-8000-000000002101",
-      installId: "install-atomic",
-      receivedAtMs: 100,
-      userId: "user-before-failure",
-    });
-    const input = { event };
-    try {
-      await database.exec(`
-        CREATE FUNCTION fail_insights_event() RETURNS trigger LANGUAGE plpgsql AS $$
-        BEGIN RAISE EXCEPTION 'injected event failure'; END; $$;
-        CREATE TRIGGER fail_insights_event BEFORE INSERT ON bundle_events
-        FOR EACH ROW EXECUTE FUNCTION fail_insights_event();
-      `);
-      await expect(plugin.models.insights.recordEvent(input)).rejects.toThrow(
-        "injected event failure",
-      );
-      expect(
-        (await database.query("SELECT * FROM bundle_events")).rows,
-      ).toEqual([]);
-      await database.exec("DROP TRIGGER fail_insights_event ON bundle_events");
-      await database.exec(`
-        CREATE FUNCTION fail_insights_head() RETURNS trigger LANGUAGE plpgsql AS $$
-        BEGIN RAISE EXCEPTION 'injected head failure'; END; $$;
-        CREATE TRIGGER fail_insights_head BEFORE INSERT ON bundle_event_heads
-        FOR EACH ROW EXECUTE FUNCTION fail_insights_head();
-      `);
-      await expect(plugin.models.insights.recordEvent(input)).rejects.toThrow(
-        "injected head failure",
-      );
-      expect(
-        (await database.query("SELECT * FROM bundle_events")).rows,
-      ).toEqual([]);
-      expect(
-        (await database.query("SELECT * FROM bundle_event_heads")).rows,
-      ).toEqual([]);
-      await database.exec(
-        "DROP TRIGGER fail_insights_head ON bundle_event_heads",
-      );
-      await plugin.models.insights.recordEvent(input);
-      await plugin.models.insights.recordEvent(input);
-      expect(
-        (await database.query("SELECT id FROM bundle_events")).rows,
-      ).toEqual([{ id: event.id }]);
-      await expect(
-        plugin.models.insights.findLatestEvents({
-          installId: event.install_id,
-        }),
-      ).resolves.toEqual([input.event]);
-    } finally {
-      await plugin.dispose?.();
-    }
-  });
-
-  it("returns the canonical row when concurrent names conflict", async () => {
-    const { plugin } = await createPostgresTestPlugin();
-    const first = channelFixture(
-      "preview",
-      "00000000-0000-0000-0000-000000000001",
-    );
-    const second = {
-      id: "00000000-0000-0000-0000-999999999999",
-      name: first.name,
-    };
-
-    try {
-      const results = await Promise.all([
-        plugin.models.channels.insert({
-          row: first,
-          onConflict: "returnExisting",
-        }),
-        plugin.models.channels.insert({
-          row: second,
-          onConflict: "returnExisting",
-        }),
+      ).toEqual([
+        { key: "schema.core", value: "1.0.0" },
+        { key: "schema.engine", value: "1" },
       ]);
-
-      expect(results[0]?.row).toEqual(results[1]?.row);
-      expect(results.filter(({ inserted }) => inserted)).toHaveLength(1);
-      await expect(plugin.models.channels.list({})).resolves.toEqual({
-        channels: [results[0]!.row],
-      });
     } finally {
-      await plugin.dispose?.();
-    }
-  });
-
-  it("lists persisted empty channels without consulting bundles", async () => {
-    const { plugin } = await createPostgresTestPlugin();
-    const channel = channelFixture(
-      "empty-channel",
-      "00000000-0000-0000-0000-000000000002",
-    );
-
-    try {
-      await plugin.models.channels.insert({
-        row: channel,
-        onConflict: "returnExisting",
-      });
-      const bundle = bundleFixture();
-      await plugin.commit({
-        changes: [{ model: "bundles", operation: "insert", row: bundle }],
-      });
-      await plugin.commit({
-        changes: [
-          {
-            model: "bundles",
-            operation: "delete",
-            where: { id: bundle.id },
-          },
-        ],
-      });
-
-      await expect(plugin.models.channels.list({})).resolves.toEqual({
-        channels: [channel],
-      });
-    } finally {
-      await plugin.dispose?.();
-    }
-  });
-
-  it("deletes an empty channel and reports a missing channel", async () => {
-    const { plugin } = await createPostgresTestPlugin();
-    const channel = channelFixture(
-      "temporary",
-      "00000000-0000-0000-0000-000000000003",
-    );
-
-    try {
-      await plugin.models.channels.insert({
-        row: channel,
-        onConflict: "returnExisting",
-      });
-
-      await expect(
-        plugin.models.channels.delete({ id: channel.id }),
-      ).resolves.toEqual({ deleted: true });
-      await expect(
-        plugin.models.channels.delete({ id: channel.id }),
-      ).resolves.toEqual({ deleted: false, reason: "not_found" });
-    } finally {
-      await plugin.dispose?.();
-    }
-  });
-
-  it("atomically refuses to delete a channel referenced by a Release", async () => {
-    const { plugin } = await createPostgresTestPlugin();
-    const channel = channelFixture(
-      "active",
-      "00000000-0000-0000-0000-000000000004",
-    );
-    const bundle = bundleFixture();
-    const release = releaseFixture(channel, bundle);
-
-    try {
-      await plugin.models.channels.insert({
-        row: channel,
-        onConflict: "returnExisting",
-      });
-      await plugin.commit({
-        changes: [
-          { model: "bundles", operation: "insert", row: bundle },
-          { model: "releases", operation: "insert", row: release },
-        ],
-      });
-
-      await expect(
-        plugin.models.channels.delete({ id: channel.id }),
-      ).resolves.toEqual({ deleted: false, reason: "not_empty" });
-      await expect(
-        plugin.commit({
-          changes: [
-            {
-              model: "releases",
-              operation: "update",
-              where: { id: release.id },
-              update: { enabled: false },
-            },
-            {
-              model: "channels",
-              operation: "delete",
-              where: { id: channel.id },
-            },
-          ],
-        }),
-      ).resolves.toEqual({
-        committed: false,
-        conflict: { changeIndex: 1, reason: "referenced" },
-      });
-      await expect(
-        plugin.models.releases.findById(release.id),
-      ).resolves.toEqual(release);
-      await expect(plugin.models.channels.list({})).resolves.toEqual({
-        channels: [channel],
-      });
-    } finally {
-      await plugin.dispose?.();
-    }
-  });
-
-  it("maps a raced FK rejection and rolls back earlier commit changes", async () => {
-    const { database, plugin } = await createPostgresTestPlugin();
-    const channel = channelFixture(
-      "racing",
-      "00000000-0000-0000-0000-000000000005",
-    );
-    const apiKey = apiKeyFixture();
-
-    try {
-      await plugin.models.channels.insert({
-        row: channel,
-        onConflict: "returnExisting",
-      });
-      await database.exec(`
-        CREATE FUNCTION reject_channel_delete_after_reference_race()
-        RETURNS trigger AS $$
-        BEGIN
-          RAISE foreign_key_violation;
-        END;
-        $$ LANGUAGE plpgsql;
-
-        CREATE TRIGGER channel_delete_reference_race
-        BEFORE DELETE ON channels
-        FOR EACH ROW
-        EXECUTE FUNCTION reject_channel_delete_after_reference_race();
-      `);
-
-      await expect(
-        plugin.commit({
-          changes: [
-            {
-              model: "apiKeys",
-              operation: "insert",
-              row: apiKey,
-              onConflict: "ignore",
-            },
-            {
-              model: "channels",
-              operation: "delete",
-              where: { id: channel.id },
-            },
-          ],
-        }),
-      ).resolves.toEqual({
-        committed: false,
-        conflict: { changeIndex: 1, reason: "referenced" },
-      });
-      await expect(
-        plugin.models.apiKeys.findByHash(apiKey.hash),
-      ).resolves.toBeNull();
-      await expect(plugin.models.channels.list({})).resolves.toEqual({
-        channels: [channel],
-      });
-    } finally {
-      await plugin.dispose?.();
+      await database.dispose?.();
     }
   });
 });

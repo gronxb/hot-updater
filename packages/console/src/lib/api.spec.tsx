@@ -8,25 +8,20 @@ import {
   queryKeys,
   useCreateChannelMutation,
   useDeleteChannelMutation,
-  useDeleteBundleMutation,
-  useDeleteBundlesMutation,
+  useDeleteReleaseMutation,
   useReleasesQuery,
   useUpdateReleaseMutation,
 } from "./api";
 import {
   createChannel as createChannelApi,
   deleteChannel as deleteChannelApi,
-  deleteBundle as deleteBundleApi,
-  deleteBundles as deleteBundlesApi,
+  deleteRelease as deleteReleaseApi,
   getReleases as getReleasesApi,
   updateRelease as updateReleaseApi,
 } from "./api-rpc";
 
 vi.mock("./api-rpc", () => ({
-  createBundle: vi.fn(),
   createChannel: vi.fn(),
-  deleteBundle: vi.fn(),
-  deleteBundles: vi.fn(),
   deleteChannel: vi.fn(),
   deleteRelease: vi.fn(),
   getBundle: vi.fn(),
@@ -46,28 +41,23 @@ vi.mock("./api-rpc", () => ({
 const bundle: Bundle = {
   id: "bundle-001",
   platform: "ios",
-  fileHash: "hash",
   gitCommitHash: null,
-  storageUri: "s3://bucket/bundle.zip",
-  archiveByteSize: 3_000_000_001,
+  manifestStorageUri: "s3://bucket/bundle/manifest.json",
+  manifestFileHash: "manifest-hash",
+  assetBaseStorageUri: "s3://bucket/assets",
 };
-
-const otherBundle: Bundle = {
-  ...bundle,
-  id: "bundle-002",
-  fileHash: "other-hash",
-};
-
-const timeout = (ms: number) =>
-  new Promise((resolve) => {
-    setTimeout(() => resolve("timeout"), ms);
-  });
 
 it("refreshes the active release table before a successful update resolves", async () => {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false, staleTime: Infinity } },
   });
-  const filters = { channelId: "channel-1", platform: "ios" as const };
+  const filters = {
+    filter: {
+      kind: "channelPlatform" as const,
+      channelId: "channel-1",
+      platform: "ios" as const,
+    },
+  };
   const page: Awaited<ReturnType<typeof getReleasesApi>> = {
     data: [
       {
@@ -93,7 +83,6 @@ it("refreshes the active release table before a successful update resolves", asy
         updated_at_ms: 1,
       },
     ],
-    pagination: { currentPage: 1, hasNextPage: false, hasPreviousPage: false },
   };
   queryClient.setQueryData(queryKeys.releases.list(filters), page);
   const refreshedPage = {
@@ -200,12 +189,9 @@ describe("channel mutations", () => {
     };
 
   it("forwards the canonical channel insert and refreshes channel queries", async () => {
-    const input = {
-      row: { id: "channel-beta", name: "beta" },
-      onConflict: "returnExisting" as const,
-    };
+    const input = { name: "beta" };
     vi.mocked(createChannelApi).mockResolvedValue({
-      data: { row: input.row, inserted: true },
+      data: { row: { id: "channel:beta", name: "beta" }, inserted: true },
     });
     const invalidateQueries = vi
       .spyOn(queryClient, "invalidateQueries")
@@ -250,143 +236,11 @@ describe("channel mutations", () => {
   });
 });
 
-describe("useDeleteBundleMutation", () => {
-  let queryClient: QueryClient;
-
-  beforeEach(() => {
-    vi.clearAllMocks();
-    queryClient = new QueryClient({
-      defaultOptions: {
-        mutations: {
-          retry: false,
-        },
-        queries: {
-          retry: false,
-        },
-      },
-    });
-  });
-
-  afterEach(() => {
-    queryClient.clear();
-  });
-
-  it("removes a deleted bundle from cached bundle lists", async () => {
-    vi.mocked(deleteBundleApi).mockResolvedValue({
-      success: true,
-    });
-    const invalidateQueries = vi
-      .spyOn(queryClient, "invalidateQueries")
-      .mockResolvedValue();
-
-    queryClient.setQueryData(queryKeys.bundle(bundle.id), bundle);
-    queryClient.setQueryData(queryKeys.bundles.list({}), {
-      data: [bundle, otherBundle],
-      pagination: {
-        total: 2,
-        hasNextPage: false,
-        hasPreviousPage: false,
-        currentPage: 1,
-        totalPages: 1,
-      },
-    });
-
-    const wrapper = ({ children }: PropsWithChildren) => (
-      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+describe("useDeleteReleaseMutation", () => {
+  it("refreshes the bundle reads, since core deletes an artifact with its last release", async () => {
+    vi.mocked(deleteReleaseApi).mockResolvedValue(
+      {} as Awaited<ReturnType<typeof deleteReleaseApi>>,
     );
-    const { result } = renderHook(() => useDeleteBundleMutation(), {
-      wrapper,
-    });
-
-    await act(async () => {
-      await result.current.mutateAsync({
-        bundleId: bundle.id,
-      });
-    });
-
-    expect(
-      queryClient.getQueryData(queryKeys.bundle(bundle.id)),
-    ).toBeUndefined();
-    expect(queryClient.getQueryData(queryKeys.bundles.list({}))).toEqual({
-      data: [otherBundle],
-      pagination: {
-        total: 2,
-        hasNextPage: false,
-        hasPreviousPage: false,
-        currentPage: 1,
-        totalPages: 1,
-      },
-    });
-    expect(invalidateQueries).toHaveBeenCalledWith({
-      queryKey: queryKeys.bundles.all,
-    });
-    expect(invalidateQueries).toHaveBeenCalledWith({
-      queryKey: queryKeys.bundleChildren.all,
-    });
-  });
-
-  it("does not wait for background invalidations after deleting cached bundle data", async () => {
-    vi.mocked(deleteBundleApi).mockResolvedValue({
-      success: true,
-    });
-    const invalidateQueries = vi
-      .spyOn(queryClient, "invalidateQueries")
-      .mockImplementation(() => new Promise<never>(() => {}));
-
-    queryClient.setQueryData(queryKeys.bundle(bundle.id), bundle);
-    queryClient.setQueryData(queryKeys.bundles.list({}), {
-      data: [bundle, otherBundle],
-      pagination: {
-        total: 2,
-        hasNextPage: false,
-        hasPreviousPage: false,
-        currentPage: 1,
-        totalPages: 1,
-      },
-    });
-
-    const wrapper = ({ children }: PropsWithChildren) => (
-      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
-    );
-    const { result } = renderHook(() => useDeleteBundleMutation(), {
-      wrapper,
-    });
-
-    let mutation: Promise<unknown> | undefined;
-    act(() => {
-      mutation = result.current.mutateAsync({
-        bundleId: bundle.id,
-      });
-    });
-
-    await expect(
-      Promise.race([mutation!.then(() => "resolved"), timeout(20)]),
-    ).resolves.toBe("resolved");
-
-    expect(
-      queryClient.getQueryData(queryKeys.bundle(bundle.id)),
-    ).toBeUndefined();
-    expect(queryClient.getQueryData(queryKeys.bundles.list({}))).toEqual({
-      data: [otherBundle],
-      pagination: {
-        total: 2,
-        hasNextPage: false,
-        hasPreviousPage: false,
-        currentPage: 1,
-        totalPages: 1,
-      },
-    });
-    expect(invalidateQueries).toHaveBeenCalledTimes(2);
-  });
-});
-
-describe("useDeleteBundlesMutation", () => {
-  it("removes the whole batch from artifact caches and invalidates once", async () => {
-    vi.mocked(deleteBundlesApi).mockResolvedValue({
-      success: true,
-      deletedBundleIds: [bundle.id, otherBundle.id],
-      missingBundleIds: [],
-    });
     const queryClient = new QueryClient({
       defaultOptions: {
         mutations: { retry: false },
@@ -396,57 +250,27 @@ describe("useDeleteBundlesMutation", () => {
     const invalidateQueries = vi
       .spyOn(queryClient, "invalidateQueries")
       .mockResolvedValue();
-    const filters = { platform: "ios" as const, limit: "2000" };
-
-    queryClient.setQueryData(queryKeys.bundle(bundle.id), bundle);
-    queryClient.setQueryData(queryKeys.bundle(otherBundle.id), otherBundle);
-    queryClient.setQueryData(queryKeys.bundles.list(filters), {
-      data: [bundle, otherBundle],
-      pagination: {
-        total: 2,
-        hasNextPage: false,
-        hasPreviousPage: false,
-        currentPage: 1,
-        totalPages: 1,
-      },
-    });
-
     const wrapper = ({ children }: PropsWithChildren) => (
       <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
     );
-    const { result } = renderHook(() => useDeleteBundlesMutation(), {
+    const { result } = renderHook(() => useDeleteReleaseMutation(), {
       wrapper,
     });
 
     await act(async () => {
       await result.current.mutateAsync({
-        bundleIds: [bundle.id, otherBundle.id],
+        expectedRevision: 2,
+        releaseId: "release-001",
       });
     });
 
-    expect(
-      queryClient.getQueryData(queryKeys.bundle(bundle.id)),
-    ).toBeUndefined();
-    expect(
-      queryClient.getQueryData(queryKeys.bundle(otherBundle.id)),
-    ).toBeUndefined();
-    expect(queryClient.getQueryData(queryKeys.bundles.list(filters))).toEqual({
-      data: [],
-      pagination: {
-        total: 2,
-        hasNextPage: false,
-        hasPreviousPage: false,
-        currentPage: 1,
-        totalPages: 1,
-      },
-    });
-    expect(invalidateQueries).toHaveBeenCalledTimes(2);
-    expect(invalidateQueries).toHaveBeenCalledWith({
-      queryKey: queryKeys.bundles.all,
-    });
-    expect(invalidateQueries).toHaveBeenCalledWith({
-      queryKey: queryKeys.bundleChildren.all,
-    });
+    for (const queryKey of [
+      queryKeys.bundles.all,
+      ["bundle"],
+      queryKeys.bundleChildren.all,
+    ]) {
+      expect(invalidateQueries).toHaveBeenCalledWith({ queryKey });
+    }
 
     queryClient.clear();
   });

@@ -1,11 +1,14 @@
+import { existsSync } from "node:fs";
 import path from "path";
 
-import { dynamoDB, s3Storage } from "@hot-updater/aws";
+import { dynamoDB, migrateDynamoDB, plugins, s3Storage } from "@hot-updater/aws";
 import { mockStorage } from "@hot-updater/mock";
 import { createHotUpdater } from "@hot-updater/server";
-import { config } from "dotenv";
 
-config({ path: path.resolve(process.cwd(), ".env.hotupdater") });
+const envFilePath = path.resolve(process.cwd(), ".env.hotupdater");
+if (existsSync(envFilePath)) {
+  process.loadEnvFile(envFilePath);
+}
 
 const region = process.env.AWS_REGION ?? "us-east-1";
 const credentials = {
@@ -14,18 +17,28 @@ const credentials = {
 };
 const providerNamespace = process.env.HOT_UPDATER_E2E_PROVIDER_NAMESPACE;
 
-export const database = dynamoDB({
+const dynamoDBConfig = {
   region,
   endpoint: process.env.AWS_DYNAMODB_ENDPOINT ?? "http://localhost:8000",
   credentials,
   tableName: process.env.AWS_DYNAMODB_TABLE_NAME ?? "hot-updater-metadata",
-});
+};
 
+export const database = dynamoDB({ ...dynamoDBConfig });
+
+/** Creates the table when it is missing and writes the schema settings of core and the server's plugins. */
+export const migrateDatabase = () => migrateDynamoDB(dynamoDBConfig, plugins);
+
+// The managed AWS server's plugins: Insights, and API keys on client routes.
 export const hotUpdater = createHotUpdater({
   database,
-  clientAccess: { type: "api-key" },
+  plugins,
   storage: [
-    mockStorage({}),
+    process.env.NODE_ENV === "test"
+      ? (
+          await import("@hot-updater/test-utils/node")
+        ).createReleaseCatalogTestStorage()
+      : mockStorage({}),
     s3Storage({
       region,
       endpoint: process.env.AWS_S3_ENDPOINT ?? "http://localhost:9000",

@@ -1,7 +1,7 @@
 {
   "name": "@hot-updater/cloudflare",
   "type": "module",
-  "version": "1.0.0-rc.14",
+  "version": "1.0.0-rc.27",
   "description": "React Native OTA solution for self-hosted",
   "main": "dist/index.cjs",
   "module": "dist/index.mjs",
@@ -17,18 +17,12 @@
       "require": "./dist/init/index.cjs"
     },
     "./worker": {
-      "types": "./dist/worker/index.d.cts",
       "import": "./dist/worker/index.mjs",
       "require": "./dist/worker/index.cjs",
       "default": "./dist/worker/index.mjs"
     },
     "./worker/config": "./worker/wrangler.json",
     "./worker/wrangler.json": "./worker/wrangler.json",
-    "./iac": {
-      "types": "./dist/iac/index.d.cts",
-      "import": "./dist/iac/index.mjs",
-      "require": "./dist/iac/index.cjs"
-    },
     "./package.json": "./package.json"
   },
   "license": "MIT",
@@ -49,6 +43,8 @@
     "worker/migrations",
     "worker/src",
     "worker/wrangler.json",
+    "!**/*.spec.ts",
+    "!worker/src/testWorker.ts",
     "package.json"
   ],
   "scripts": {
@@ -61,7 +57,7 @@
     "@aws-sdk/client-s3": "catalog:aws",
     "@aws-sdk/lib-storage": "3.1008.0",
     "@hot-updater/cli-tools": "workspace:*",
-    "@hot-updater/core": "workspace:*",
+    "@hot-updater/protocol": "workspace:*",
     "@hot-updater/plugin-core": "workspace:*",
     "@hot-updater/server": "workspace:*",
     "cloudflare": "4.2.0",

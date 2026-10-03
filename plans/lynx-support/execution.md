@@ -1,6 +1,6 @@
 # Lynx implementation goal and execution ledger
 
-Status: active on 2026-09-29. The English PRD includes the approved Fresco-only
+Status: active on 2026-10-03. The English PRD includes the approved Fresco-only
 exception. The final full-platform device gate and six-cell matrix remain open. Read the current
 [handoff and completion plan](./handoff.md) first. Historical G1/G2 observations
 below remain useful evidence but do not establish current acceptance.
@@ -1329,3 +1329,76 @@ the two focused matrix suites pass **112/112**, and targeted formatting/lint
 and diff checks pass. The refreshed iOS fingerprint is
 `3cec7835e41b5684ee038ffbe12e7802b3f85aae7199810412b50b23dc57d4c7`;
 Android remains unchanged. Six pre-existing staged helpers remain byte-identical.
+
+## 2026-10-03 resume against current next
+
+The user resumed work and requested synchronization with `next` before further
+implementation. Fetched `origin/next` at `50a9ccc32` and began a merge into
+`codex/lynx-support` from `4926c92fe`. The merge spans 1,680 upstream files and
+118 textual conflicts, including the new protocol package, storage engine,
+public adapter APIs, and manifest-only delivery. Conflict markers are resolved;
+semantic compatibility remains under test. No E2E has been queued yet.
+
+The six staged local helpers were saved in an isolated staged-only stash and a
+binary patch before merging; the untracked signing keys remain untouched.
+Restore those exact staged bytes after the merge commit. Never include them in
+the PR. Local preservation records are
+`/tmp/lynx-local-helpers-stash-20261003.oid` and
+`/tmp/lynx-preserved-staged-before-next-20261003.patch`.
+
+The current intermediate source builds all 29 workspace projects. Type and unit
+checks are running against the merged APIs; this is not a completed merge or an
+E2E pass. The public six-cell matrix previously reached React/iOS and Vue/iOS at
+`4926c92fe`, before Octane/iOS deployment selected the smaller complete archive.
+Those temporary matrix receipts are no longer present after the interruption;
+retain that as a historical observation, not a newly replayed acceptance proof.
+The durable shared runner logs remain available and record 40 passes plus the
+iOS republished-crash failure before user cancellation. The failed recovery
+selected builtin instead of the expected previous stable OTA.
+
+## 2026-10-03 next integration checkpoint
+
+Merged source under validation: `origin/next` at `50a9ccc3217b846a557cb4534ceb27cbf7df0aa8`
+(101 upstream commits after the previous Lynx head). All text conflicts have
+been resolved; manifest-v1 and the public core APIs replace the obsolete
+archive-only wire format and private database imports. English PRD decisions
+above remain required, including pure OTA core ownership and Sparkling pages.
+
+Verified on the merged working tree:
+
+- `pnpm -w build`: 29 projects passed (`/tmp/lynx-next-build7-20261003.log`).
+- `pnpm -w test:type`: 37 projects passed (`/tmp/lynx-next-types6-20261003.log`).
+- `pnpm -w lint`: formatting, lint and 44 workspace/27 published package
+  boundaries passed (`/tmp/lynx-next-lint2-20261003.log`). Runtime source closure
+  checks prevent the separate Node build entry from entering either device SDK.
+- `pnpm -w test`: 438 files, 4,994 passed, 15 skipped, zero failures
+  (`/tmp/lynx-next-unit5-20261003.log`).
+- Android native unit tests: 153 passed, zero failures
+  (`/tmp/lynx-next-android-unit5-20261003.log`).
+- Swift native suites: 139 executed, 126 passed, 13 HTTP-service-dependent
+  tests skipped, zero failures (`/tmp/lynx-next-swift-tests6-20261003.log`).
+- Public matrix evidence/scenario checks: 115 passed
+  (`/tmp/lynx-next-matrix-tests-20261003.log`).
+- The standalone E2E TypeScript audit passes against the built public exports.
+
+Both native consumers now verify the authenticated full inventory, retain
+original descriptors for patched/reused files, use manifest-authenticated
+transfer representations, and optionally select authenticated tar.br bulk
+transport. Shared real-byte fixtures verify bulk success, corrupt transfer
+fallback, decoded-size mismatch, embedded-manifest rejection and corrupt
+original rejection. Native publication logs identify the transport actually
+used. No device OTA result from this merged source has been recorded yet.
+
+The dashboard was unreachable on port 3131; its launchd log reports inability
+to open the configured startup script. Starting that existing script from this
+session restored the service without changing its code or configuration.
+The last PR job remains the cancelled `job-20260928230647-4uc5ag` (40 passed,
+one failed, eleven unfinished). A fresh 54-scenario job and six-cell matrix
+remain required; these unit/build results do not close G3.
+
+The focused core operation suite also passes all 16 cases, including a new
+concurrent patch-upsert test proving that independent bases and their reference
+counts survive parallel publication (`/tmp/lynx-next-atomic-patch3-20261003.log`).
+The later complete type check still passes all 37 projects, and the standalone
+E2E audit and final lint pass. Native fingerprints were regenerated with the
+public CLI before the merge checkpoint; fresh binaries must use those values.

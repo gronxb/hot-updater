@@ -1,7 +1,17 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
+import { parseEnv } from "node:util";
 
-import { parse as parseEnvironment } from "dotenv";
+import {
+  type ExpectedReleaseCatalogScope,
+  MAX_RELEASE_CATALOG_WIRE_BYTES,
+  parseReleaseCatalog,
+} from "@hot-updater/protocol";
+
+import {
+  CLIENT_CREDENTIAL_FILE,
+  type InfraClientAuth,
+} from "../infra/clientAuth";
 
 class VerificationError extends Error {}
 
@@ -15,13 +25,6 @@ const isObject = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === "object" && !Array.isArray(value);
 const isText = (value: unknown): value is string =>
   typeof value === "string" && value.length > 0;
-// Match the native client's releaseCatalogCache.ts wire validation.
-const maxCatalogWireBytes = 2 * 256 * 1024 + 4 * 1024;
-const isUuidV7 = (value: unknown) =>
-  typeof value === "string" &&
-  /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(
-    value,
-  );
 
 const parseJson = (body: string): unknown => {
   try {
@@ -30,21 +33,6 @@ const parseJson = (body: string): unknown => {
     throw new VerificationError("Server did not return valid JSON.");
   }
 };
-
-const isDescriptor = (value: unknown) =>
-  isObject(value) &&
-  isUuidV7(value["releaseId"]) &&
-  ((value["kind"] === "BUNDLE" && typeof value["bundleId"] === "string") ||
-    (value["kind"] === "EMBEDDED" && value["bundleId"] === null)) &&
-  Number.isSafeInteger(value["rolloutCohortCount"]) &&
-  typeof value["rolloutCohortCount"] === "number" &&
-  value["rolloutCohortCount"] >= 0 &&
-  value["rolloutCohortCount"] <= 1000 &&
-  Array.isArray(value["targetCohorts"]) &&
-  value["targetCohorts"].length <= 100 &&
-  value["targetCohorts"].every((cohort) => typeof cohort === "string") &&
-  typeof value["shouldForceUpdate"] === "boolean" &&
-  (value["message"] === null || typeof value["message"] === "string");
 
 export interface ServerVerificationOptions {
   cwd: string;
@@ -56,6 +44,8 @@ export interface ServerVerificationOptions {
   fingerprint?: string;
   serverVersion: string;
   infrastructureGeneration: number;
+  /** The scaffolded server's client-route policy; null when its client routes are public. */
+  clientAuth: InfraClientAuth;
   fetch?: typeof fetch;
 }
 
@@ -64,7 +54,8 @@ export type ServerVerification =
       status: "verified";
       checks: {
         version: "matches-manifest";
-        anonymousCatalog: 401;
+        /** 401, or "public" when the server takes no client credential. */
+        anonymousCatalog: 401 | "public";
         authenticatedCatalog: number;
         catalog: "empty" | "available";
       };
@@ -82,9 +73,13 @@ export type ServerVerification =
 export async function verifyServer(
   options: ServerVerificationOptions,
 ): Promise<ServerVerification> {
-  const request = async (url: URL, apiKey?: string) => {
+  const { clientAuth } = options;
+  const request = async (url: URL, credential?: string) => {
     const response = await (options.fetch ?? fetch)(url, {
-      headers: apiKey ? { "x-api-key": apiKey } : {},
+      headers:
+        credential && clientAuth
+          ? { [clientAuth.credential.header]: credential }
+          : {},
       redirect: "error",
       signal: AbortSignal.timeout(10_000),
     });
@@ -94,7 +89,7 @@ export async function verifyServer(
     for await (const chunk of response.body ?? []) {
       size += chunk.byteLength;
       requireCheck(
-        size <= maxCatalogWireBytes,
+        size <= MAX_RELEASE_CATALOG_WIRE_BYTES,
         "Server response exceeds the probe limit.",
       );
       body += decoder.decode(chunk, { stream: true });
@@ -134,31 +129,37 @@ export async function verifyServer(
         !baseUrl.hash,
       "Use an HTTP(S) server base URL without credentials, query or fragment.",
     );
-    const environment = parseEnvironment(
-      await readFile(path.join(options.cwd, ".env.hotupdater"), "utf8").catch(
-        (error: NodeJS.ErrnoException) => {
-          if (error.code === "ENOENT") return "";
-          throw error;
-        },
-      ),
-    );
-    const localKey = await readFile(
-      path.join(options.infraDir, "app/api-key.local"),
+    const environmentText = await readFile(
+      path.join(options.cwd, ".env.hotupdater"),
       "utf8",
-    ).catch((error) => {
+    ).catch((error: NodeJS.ErrnoException) => {
       if (error.code === "ENOENT") return "";
       throw error;
     });
-    const savedKey = localKey.trim();
-    const environmentKey = (
-      process.env["HOT_UPDATER_API_KEY"] ?? environment["HOT_UPDATER_API_KEY"]
-    )?.trim();
-    requireCheck(
-      !savedKey || !environmentKey || savedKey === environmentKey,
-      "Saved client keys differ. Resolve the target key before verification.",
-    );
-    const apiKey = environmentKey || savedKey;
-    requireCheck(apiKey, "Store the client key locally before verification.");
+    const environment = parseEnv(environmentText.replace(/^\uFEFF/, ""));
+    let credential: string | undefined;
+    if (clientAuth) {
+      const { env, label } = clientAuth.credential;
+      const saved = (
+        await readFile(
+          path.join(options.infraDir, "app", CLIENT_CREDENTIAL_FILE),
+          "utf8",
+        ).catch((error) => {
+          if (error.code === "ENOENT") return "";
+          throw error;
+        })
+      ).trim();
+      const fromEnvironment = (process.env[env] ?? environment[env])?.trim();
+      requireCheck(
+        !saved || !fromEnvironment || saved === fromEnvironment,
+        `Saved client ${label}s differ. Resolve the target ${label} before verification.`,
+      );
+      credential = fromEnvironment || saved;
+      requireCheck(
+        credential,
+        `Store the client ${label} locally before verification.`,
+      );
+    }
     const strategy = values["app-version"] ? "app-version" : "fingerprint";
     const target = values["app-version"] || values.fingerprint;
     requireCheck(isText(target), "An update target is required.");
@@ -172,9 +173,15 @@ export async function verifyServer(
       "Use the app's canonical channel and version or fingerprint as the catalog target.",
     );
     const channelKey = Buffer.from(values.channel).toString("base64url");
-    const scopeKey = `v1:${strategy}:${values.platform}:${channelKey}${
-      strategy === "fingerprint" ? `:${target}` : ""
-    }`;
+    const expectedScope: ExpectedReleaseCatalogScope =
+      strategy === "fingerprint"
+        ? {
+            channelKey,
+            platform: values.platform,
+            strategy: "FINGERPRINT",
+            fingerprintHash: target,
+          }
+        : { channelKey, platform: values.platform, strategy: "APP_VERSION" };
     const routeUrl = (route: string) => {
       const url = new URL(baseUrl);
       url.pathname = `${url.pathname.replace(/\/+$/, "")}/${route}`;
@@ -197,72 +204,52 @@ export async function verifyServer(
     );
 
     check = "anonymous-catalog";
-    const anonymous = await request(catalogUrl);
-    requireCheck(
-      anonymous.response.status === 401,
-      "The catalog must reject a request without the client key with HTTP 401.",
-    );
+    if (clientAuth) {
+      const anonymous = await request(catalogUrl);
+      requireCheck(
+        anonymous.response.status === 401,
+        `The catalog must reject a request without the client ${clientAuth.credential.label} with HTTP 401.`,
+      );
+    }
 
     check = "authenticated-catalog";
-    const authenticated = await request(catalogUrl, apiKey);
+    // Public client routes answer the catalog without a credential.
+    const authenticated = await request(catalogUrl, credential);
     const catalog = parseJson(authenticated.body);
     const contentType =
       authenticated.response.headers.get("content-type") ?? "";
     const empty = authenticated.response.status === 404;
     if (empty) {
-      const cacheControl = authenticated.response.headers
-        .get("cache-control")
-        ?.toLowerCase()
-        .split(",")
-        .map((directive) => directive.trim());
+      // A scope with no catalog yet answers a cacheable 404 that the server
+      // marks; a 404 without the mark is a wrong URL, not an empty catalog.
       requireCheck(
         /^application\/json(?:;|$)/i.test(contentType) &&
           isObject(catalog) &&
           Object.keys(catalog).length === 1 &&
           catalog["error"] === "Not found" &&
-          cacheControl?.includes("private") &&
-          cacheControl.includes("no-store"),
-        "HTTP 404 must be the private, non-cacheable empty-catalog response.",
+          authenticated.response.headers.get("x-hot-updater-catalog") ===
+            "none",
+        "HTTP 404 must be the empty-catalog response marked x-hot-updater-catalog: none.",
       );
     } else {
+      // The device's update client accepts a catalog through the same
+      // protocol check.
       requireCheck(
         authenticated.response.status === 200 &&
           /^application\/vnd\.hot-updater\.release-catalog\+json;\s*version=1(?:;|$)/i.test(
             contentType,
           ) &&
-          isObject(catalog) &&
-          catalog["schemaVersion"] === 1 &&
-          isText(catalog["catalogId"]) &&
-          typeof catalog["catalogHash"] === "string" &&
-          /^sha256:[0-9a-f]{64}$/.test(catalog["catalogHash"]) &&
-          catalog["scopeKey"] === scopeKey &&
-          Number.isSafeInteger(catalog["generation"]) &&
-          typeof catalog["generation"] === "number" &&
-          catalog["generation"] >= 1 &&
-          catalog["fallbackPolicy"] === "BUILTIN_IF_ACTIVE_INELIGIBLE" &&
-          Array.isArray(catalog["releases"]) &&
-          catalog["releases"].every(isDescriptor) &&
-          (catalog["rollbackReleases"] === undefined ||
-            (Array.isArray(catalog["rollbackReleases"]) &&
-              catalog["rollbackReleases"].every(isDescriptor))) &&
-          new Set(
-            [
-              ...catalog["releases"],
-              ...(catalog["rollbackReleases"] ?? []),
-            ].flatMap((release) =>
-              isObject(release) && Array.isArray(release["targetCohorts"])
-                ? release["targetCohorts"]
-                : [],
-            ),
-          ).size <= 512,
-        "The authenticated request must return a valid release catalog for the requested scope.",
+          parseReleaseCatalog(authenticated.body, expectedScope) !== null,
+        clientAuth
+          ? "The authenticated request must return a valid release catalog for the requested scope."
+          : "The request must return a valid release catalog for the requested scope.",
       );
     }
     return {
       status: "verified",
       checks: {
         version: "matches-manifest",
-        anonymousCatalog: 401,
+        anonymousCatalog: clientAuth ? 401 : "public",
         authenticatedCatalog: authenticated.response.status,
         catalog: empty ? "empty" : "available",
       },

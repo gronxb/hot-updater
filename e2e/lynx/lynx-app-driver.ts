@@ -94,11 +94,12 @@ const INPUT_TEXT_FIELDS: Record<string, string> = {
 
 function androidJournalAdvancedPastSnapshot(
   runtimeJournalUtf8: string,
-  snapshotLatestSequence: string,
+  snapshotLatestSequence: string | null,
 ): boolean {
   try {
     const journal = JSON.parse(runtimeJournalUtf8) as Record<string, unknown>;
     if (
+      snapshotLatestSequence === null ||
       typeof journal.nextSequence !== "string" ||
       !/^[1-9][0-9]*$/.test(journal.nextSequence) ||
       !/^[1-9][0-9]*$/.test(snapshotLatestSequence)

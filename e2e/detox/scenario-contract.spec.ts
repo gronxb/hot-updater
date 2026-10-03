@@ -85,10 +85,19 @@ const runtimeConfigPath = path.join(
   repoDir,
   "examples/v0.85.0/src/e2eRuntimeConfig.ts",
 );
+const androidDownloadServicePath = path.join(
+  repoDir,
+  "packages/react-native/android/src/main/java/com/hotupdater/OkHttpDownloadService.kt",
+);
+const iosDownloadServicePath = path.join(
+  repoDir,
+  "packages/react-native/ios/HotUpdater/Internal/URLSessionDownloadService.swift",
+);
 const defaultDetoxScenarioNames = [
+  "startup-hang-recovery",
   "release-ota-recovery",
   "multi-asset-replacement",
-  "bspatch-archive-to-diff-ota",
+  "bspatch-builtin-to-diff-ota",
   "bspatch-consecutive-diff-ota",
   "bspatch-disabled-chain-rollback",
   "bspatch-manifest-diff-fallback",
@@ -268,10 +277,12 @@ describe("Detox scenario contract", () => {
       ),
     );
 
-    // When / Then: server Insights needs no per-profile flag, while every
-    // profile still declares its client access policy explicitly.
+    // When / Then: every profile runs the insights() plugin and declares its
+    // client access policy explicitly.
     for (const source of sources) {
-      expect(source).toContain("clientAccess: { type:");
+      expect(source).toContain("plugins: [insights()],");
+      expect(source).toContain('clientAccess: "public",');
+      expect(source).not.toContain("clientAccess: { type:");
       expect(source).not.toContain("insights: true");
       expect(source).not.toContain("features:");
     }
@@ -282,7 +293,7 @@ describe("Detox scenario contract", () => {
 
     expect(detoxScenarios).toEqual(defaultDetoxScenarioNames);
     expect(listDetoxScenarioNames()).toEqual(defaultDetoxScenarioNames);
-    expect(new Set(listDetoxScenarioNames()).size).toBe(26);
+    expect(new Set(listDetoxScenarioNames()).size).toBe(27);
   });
 
   it("keeps repeated catalog checks as no-ops while already built-in", async () => {
@@ -373,6 +384,41 @@ describe("Detox scenario contract", () => {
         "assert artifact race transport",
       ),
     ).toEqual({ artifactRequests: 1, catalogRequests: 1 });
+  });
+
+  it("fails every native attempt of the first download before the retry", async () => {
+    // Given: native downloads try a failed request again up to a fixed number
+    // of attempts, the same on Android and iOS.
+    const [androidSource, iosSource] = await Promise.all([
+      fs.readFile(androidDownloadServicePath, "utf8"),
+      fs.readFile(iosDownloadServicePath, "utf8"),
+    ]);
+    const attempts = Number(
+      /const val MAX_ATTEMPTS = (\d+)/.exec(androidSource)?.[1],
+    );
+    expect(attempts).toBeGreaterThan(0);
+    expect(
+      Number(/static let maximumAttempts = (\d+)/.exec(iosSource)?.[1]),
+    ).toBe(attempts);
+
+    // When / Then: the scenario injects one failure per attempt, so the first
+    // install fails and the manual retry of the same generation finds none.
+    expect(
+      await controlStepBody(
+        "failed-download-same-generation-retry",
+        "fail every attempt of the first download",
+      ),
+    ).toEqual({ artifactFailures: attempts, reset: true });
+    expect(
+      await controlStepBody(
+        "failed-download-same-generation-retry",
+        "assert retry transport",
+      ),
+    ).toEqual({
+      artifactFailuresRemaining: 0,
+      artifactRequests: 2,
+      catalogRequests: 2,
+    });
   });
 
   it("uses Detox-owned scenario lookup in the runner", async () => {
@@ -635,43 +681,42 @@ describe("Detox scenario contract", () => {
     );
   });
 
-  it("resolves deployed console IDs to files and keeps artifact cleanup independent of Releases", async () => {
-    const { createDatabasePluginHarness } =
-      await import("../../packages/hot-updater/src/commands/databasePlugin.testFixtures.ts");
-    const { commitDeployment } =
-      await import("../../packages/hot-updater/src/commands/deployTransaction.ts");
-    const { createDatabaseClient, deleteRelease, updateReleasePolicy } =
-      await import("../../plugins/plugin-core/dist/index.mjs");
-    const harness = createDatabasePluginHarness();
+  it("resolves deployed console IDs to files, and deletes a file with its last Release", async () => {
+    const { createMemoryCore } = await import("./memory-core.ts");
+    const { importPublished } = await import("./published.ts");
+    const { rowToBundle } = await importPublished<
+      typeof import("@hot-updater/plugin-core")
+    >("@hot-updater/plugin-core");
+    const harness = createMemoryCore();
     const base = {
-      archiveByteSize: 100,
-      fileHash: "a".repeat(64),
+      assetBaseStorageUri: "storage://assets",
       gitCommitHash: null,
       id: "01900000-0000-7000-8000-000000000001",
+      manifestFileHash: "base-hash",
+      manifestStorageUri: "storage://artifacts/base/manifest.json",
+      metadata: {},
       platform: "ios" as const,
-      storageUri: "storage://artifacts/base.zip",
     };
     const file = {
       ...base,
-      fileHash: "b".repeat(64),
       id: "01900000-0000-7000-8000-000000000002",
-      storageUri: "storage://artifacts/target.zip",
+      manifestFileHash: "target-hash",
+      manifestStorageUri: "storage://artifacts/target/manifest.json",
       patches: [
         {
           baseBundleId: base.id,
-          baseFileHash: base.fileHash,
+          baseFileHash: base.manifestFileHash,
           byteSize: 10,
           patchFileHash: "c".repeat(64),
           patchStorageUri: "storage://patches/target.patch",
         },
       ],
     };
-    harness.setBundles([
+    await harness.setBundles([
       base,
       { ...base, id: "android-file", platform: "android" },
     ]);
-    const { release } = await commitDeployment({
-      database: harness.plugin,
+    const { release } = await harness.deploy({
       bundle: file,
       release: {
         channel: "production",
@@ -701,12 +746,21 @@ describe("Detox scenario contract", () => {
       presets: ["@babel/preset-typescript"],
     })!.code!;
     const controller = new Script(transformed).runInNewContext({
-      createDatabaseClient,
+      rowToBundle,
       fixtureSession: { platform: "ios" },
       logDetoxFixture: () => {},
       withConfiguredDatabase: (
-        callback: (database: typeof harness.plugin) => unknown,
-      ) => callback(harness.plugin),
+        callback: (configured: {
+          core: typeof harness.core;
+          database: typeof harness.database;
+          plugins: undefined;
+        }) => unknown,
+      ) =>
+        callback({
+          core: harness.core,
+          database: harness.database,
+          plugins: undefined,
+        }),
     });
     const buildOutput = ["Release ID", "Bundle ID", "Artifact ID", "Build ID"]
       .map((label) => `│  ${label}: ${file.id}`)
@@ -726,24 +780,17 @@ describe("Detox scenario contract", () => {
       "bundle not found",
     );
 
-    await updateReleasePolicy({
-      database: harness.plugin,
+    await harness.core.updateReleasePolicy({
       releaseId: id,
       patch: { enabled: false },
     });
-    await deleteRelease({ database: harness.plugin, releaseId: id });
+    await harness.core.deleteRelease({ releaseId: id });
     expect(await harness.releases()).toEqual([]);
-    const files = await createDatabaseClient(harness.plugin).getBundles({
-      where: { platform: "ios" },
+    const files = await harness.core.listBundles({
+      platform: "ios",
       limit: 100,
     });
-    expect(
-      files.data.map((bundle: { id: string }) => bundle.id).sort(),
-    ).toEqual([base.id, file.id]);
-    await expect(
-      controller.fetchProviderBundleById(file.id),
-    ).resolves.toMatchObject(file);
-    await createDatabaseClient(harness.plugin).deleteBundleById(file.id);
+    expect(files.map(({ bundle }) => bundle.id)).toEqual([base.id]);
     await expect(controller.fetchProviderBundleById(file.id)).rejects.toThrow(
       "bundle not found",
     );
@@ -758,11 +805,10 @@ describe("Detox scenario contract", () => {
       const minBundleId = "019f0000-0000-7000-8000-000000000000";
       const manifest = { bundleId, assets: {} };
       const modules: Record<string, unknown> = {
-        "@env": { HOT_UPDATER_API_KEY: "" },
+        "../e2eBuildConfig": { HOT_UPDATER_API_KEY: "" },
         "@hot-updater/react-native": {
           HotUpdater: {
             init: () => {},
-            setUser: () => {},
             getAppVersion: () => "1.0.0",
             getBundleId: () => updateId,
             getChannel: () => "production",
@@ -774,6 +820,11 @@ describe("Detox scenario contract", () => {
             getMinBundleId: () => minBundleId,
             isChannelSwitched: () => false,
           },
+          insights: () => ({
+            id: "insights",
+            setup: () => {},
+            setUser: () => {},
+          }),
         },
         "react-native": {},
         valtio: { proxy: (value: unknown) => value },
@@ -812,7 +863,10 @@ describe("Detox scenario contract", () => {
     const source = await fs.readFile(detoxControlServerControllerPath, "utf8");
     const guardFactory = source.slice(
       source.indexOf("  const crashGuardSource ="),
-      source.indexOf("  const deployAssetSource ="),
+      source.indexOf(
+        ': mode !== "reset"',
+        source.indexOf("  const crashGuardSource ="),
+      ),
     );
 
     expect(guardFactory).toContain(
@@ -875,7 +929,7 @@ describe("Detox scenario contract", () => {
     const detoxRuntimeSource = await readDetoxRuntimeSource();
 
     // When: Detox launches or reattaches the app.
-    // Then: every launch goes through launchArgs instead of relying on @env.
+    // Then: every launch receives the runtime configuration through launchArgs.
     expect(detoxRuntimeSource).toContain("function runtimeLaunchArgs()");
     expect(detoxRuntimeSource).toContain("HOT_UPDATER_E2E_RUNTIME_CONFIG_URL");
     expect(detoxRuntimeSource).toContain(
@@ -965,7 +1019,7 @@ describe("Detox scenario contract", () => {
 
     // When: the example app wires HotUpdater.
     // Then: App.tsx imports a runtime helper and the helper gives Detox launch
-    // arguments precedence over react-native-dotenv.
+    // arguments precedence over the public build settings.
     const launchArgumentsIndex = runtimeConfigSource.indexOf(
       "LaunchArguments.value",
     );
@@ -975,9 +1029,18 @@ describe("Detox scenario contract", () => {
 
     expect(exampleAppSource).toContain("./src/e2eApp");
     expect(e2eRuntimeSource).toContain("../e2eRuntimeConfig");
-    expect(e2eRuntimeSource).toContain("insights: true");
-    expect(e2eRuntimeSource).toContain('userId: "detox-e2e"');
-    expect(e2eRuntimeSource).toContain('username: "hot-updater-e2e"');
+    // Console Insights QA needs the Insights client plugin and finds the
+    // installation by this user ID.
+    expect(e2eRuntimeSource).toContain(
+      'import { HotUpdater, insights } from "@hot-updater/react-native";',
+    );
+    expect(e2eRuntimeSource).toContain("plugins: [analytics],");
+    expect(e2eRuntimeSource).toContain(
+      'analytics.setUser({ userId: "detox-e2e" });',
+    );
+    expect(e2eRuntimeSource).not.toContain("insights: true");
+    expect(e2eRuntimeSource).not.toContain("HotUpdater.setUser");
+    expect(e2eRuntimeSource).not.toContain("username");
     expect(exampleAppSource).not.toContain("react-native-launch-arguments");
     expect(exampleAppSource).not.toContain('from "@env"');
     expect(runtimeConfigSource).toContain("react-native-launch-arguments");
@@ -1074,8 +1137,8 @@ describe("Detox scenario contract", () => {
       "multi-asset-replacement: install first multi-asset update",
       "multi-asset-replacement: install second multi-asset update",
       "runtime-channel-switch-reset: install runtime channel update",
-      "bspatch-archive-to-diff-ota: install archive base update",
-      "bspatch-archive-to-diff-ota: install archive diff update",
+      "bspatch-builtin-to-diff-ota: install built-in base update",
+      "bspatch-builtin-to-diff-ota: install built-in diff update",
       "bspatch-consecutive-diff-ota: install diff bundle A",
       "bspatch-consecutive-diff-ota: install diff bundle B",
       "bspatch-consecutive-diff-ota: install diff bundle C",
@@ -1158,9 +1221,9 @@ describe("Detox scenario contract", () => {
 
   it("drives bsdiff and manifest installs through focused action pages", async () => {
     const installStagePairsByScenario = {
-      "bspatch-archive-to-diff-ota": [
-        ["install archive base update", "wait archive base metadata pending"],
-        ["install archive diff update", "wait archive diff metadata pending"],
+      "bspatch-builtin-to-diff-ota": [
+        ["install built-in base update", "wait built-in base metadata pending"],
+        ["install built-in diff update", "wait built-in diff metadata pending"],
       ],
       "bspatch-consecutive-diff-ota": [
         ["install diff bundle A", "wait diff bundle A metadata pending"],
@@ -1684,6 +1747,26 @@ describe("Detox scenario contract", () => {
     expect(clearIosBody).toContain("ios local bundle state reset");
   });
 
+  it("starts each iOS scenario with a new install id and empty plugin storage", async () => {
+    // Given: iOS keeps the install id and client plugin storage in Application
+    // Support, and the Insights plugin skips a same-day launch it already
+    // reported. Android's `pm clear` resets both.
+    const controllerSource = await fs.readFile(
+      detoxControlServerControllerPath,
+      "utf8",
+    );
+    const clearIosBody = controllerSource.slice(
+      controllerSource.indexOf("async function clearIosLocalBundleState"),
+      controllerSource.indexOf("function ensureAndroidFilesDir"),
+    );
+
+    // Then: the local reset clears that directory except the Release Catalog
+    // cache, and fails when the plugin storage survives.
+    expect(clearIosBody).toContain('"Library/Application Support/HotUpdater"');
+    expect(clearIosBody).toContain('entry === "ReleaseCatalogCache"');
+    expect(clearIosBody).toContain('path.join(noBackupDir, "storage.json")');
+  });
+
   it("keeps launch status assertions on dedicated screens", async () => {
     // Given: launch status and directional transition live on short screens.
     const detoxPageSource = await fs.readFile(detoxPagePath, "utf8");
@@ -1990,45 +2073,39 @@ describe("Detox scenario contract", () => {
     expect(calls.some((call) => call.kind === "reload")).toBe(false);
   });
 
-  it("models archive-to-diff OTA install and metadata verification sequence", async () => {
-    const stages = await scenarioStages("bspatch-archive-to-diff-ota");
+  it("models built-in-to-diff OTA install and metadata verification sequence", async () => {
+    const stages = await scenarioStages("bspatch-builtin-to-diff-ota");
 
     // When: the Detox scenario is inspected.
-    // Then: both archive and diff phases include restart, pending, reload, and stable checks.
+    // Then: both manifest phases include restart, pending, reload, and stable checks.
     expect(stages).toEqual([
-      "deploy archive base bundle",
-      "launch archive base app",
-      "install archive base update",
-      "wait archive base metadata pending",
-      "assert first ota uses archive",
-      "reload archive base update",
-      "wait archive base metadata stable",
-      "assert archive base bundle id",
-      "assert archive base marker",
-      "assert archive base stable launch",
+      "deploy built-in base bundle",
+      "make optional archive unavailable for built-in reuse evidence",
+      "launch built-in base app",
+      "install built-in base update",
+      "wait built-in base metadata pending",
+      "assert first ota uses built-in manifest",
+      "restore optional archive availability",
+      "reload built-in base update",
+      "wait built-in base metadata stable",
+      "assert built-in base bundle id",
+      "assert built-in base marker",
+      "assert built-in base stable launch",
       "deploy diff bundle",
-      "assert archive diff bases",
-      "launch archive diff app",
-      "install archive diff update",
-      "wait archive diff metadata pending",
-      "reload archive diff update",
-      "wait archive diff metadata stable",
-      "assert archive diff patch",
-      "assert archive diff bundle id",
-      "assert archive diff marker",
-      "assert archive diff stable launch",
+      "assert built-in diff bases",
+      "launch built-in diff app",
+      "install built-in diff update",
+      "wait built-in diff metadata pending",
+      "reload built-in diff update",
+      "wait built-in diff metadata stable",
+      "assert built-in diff patch",
+      "assert built-in diff bundle id",
+      "assert built-in diff marker",
+      "assert built-in diff stable launch",
     ]);
-    expect(
-      (
-        await controlStepBody(
-          "bspatch-archive-to-diff-ota",
-          "deploy archive base bundle",
-        )
-      ).compressStrategy,
-    ).toBe("tar.gz");
   });
 
-  it("proves size-aware choices at separate Release and Bundle identity layers", async () => {
+  it("proves small-patch selection and bounded corrupt-archive fallback", async () => {
     const scenarioName = "size-aware-artifact-selection";
     const calls = await recordScenarioCalls(scenarioName);
     const deployCalls = calls.filter(
@@ -2036,26 +2113,34 @@ describe("Detox scenario contract", () => {
         call.kind === "control" && call.pathName === "/e2e/jobs/deploy-bundle",
     );
 
-    expect(deployCalls).toHaveLength(3);
+    expect(deployCalls).toHaveLength(4);
     expect(
       await controlStepBody(
         scenarioName,
         "deploy size-aware small diff bundle",
       ),
     ).toMatchObject({
-      compressStrategy: "tar.br",
       diffBaseBundleId: "$sizeAwareBaseBundleId",
       patchMaxBaseBundles: 1,
     });
     expect(
       await controlStepBody(
         scenarioName,
-        "deploy size-aware large diff bundle",
+        "deploy size-aware large success bundle",
       ),
     ).toMatchObject({
       bundleProfile: "sizeAwareLargeDiff",
-      compressStrategy: "tar.br",
       diffBaseBundleId: "$sizeAwareSmallBundleId",
+      patchMaxBaseBundles: 1,
+    });
+    expect(
+      await controlStepBody(
+        scenarioName,
+        "deploy size-aware large fallback bundle",
+      ),
+    ).toMatchObject({
+      bundleProfile: "sizeAwareLargeDiff",
+      diffBaseBundleId: "$sizeAwareLargeSuccessBundleId",
       patchMaxBaseBundles: 1,
     });
     expect(
@@ -2066,7 +2151,7 @@ describe("Detox scenario contract", () => {
     ).toMatchObject({
       body: {
         currentBundleId: "$sizeAwareBaseBundleId",
-        selection: "manifest-diff",
+        selection: "manifest-v1",
         targetBundleId: "$sizeAwareSmallBundleId",
       },
       pathName: "/e2e/assert-bundle-artifact-selection",
@@ -2074,18 +2159,88 @@ describe("Detox scenario contract", () => {
     expect(
       await controlStepDefinition(
         scenarioName,
-        "assert size-aware large archive selection",
+        "assert size-aware small patch transfer",
+      ),
+    ).toMatchObject({
+      body: {
+        archiveRequests: 0,
+        fileRequests: 0,
+        maxRequestsPerAsset: 1,
+        minNetworkAssets: 1,
+        patchRequests: 1,
+        verifyAllAssetHashes: true,
+      },
+      pathName: "/e2e/assert-bundle-artifact-transfers",
+    });
+    expect(
+      await controlStepBody(
+        scenarioName,
+        "reset size-aware large fallback artifact evidence",
+      ),
+    ).toMatchObject({
+      archiveFailureMode: "corrupt",
+      archiveFailures: 1,
+      reset: true,
+    });
+    expect(
+      await controlStepDefinition(
+        scenarioName,
+        "assert successful archive avoids per-file transfers",
+      ),
+    ).toMatchObject({
+      body: {
+        archiveRequests: 1,
+        fileRequests: 0,
+        maxRequestsPerAsset: 1,
+        patchRequests: 0,
+        verifyAllAssetHashes: true,
+      },
+      pathName: "/e2e/assert-bundle-artifact-transfers",
+    });
+    expect(
+      await controlStepDefinition(
+        scenarioName,
+        "assert corrupt archive falls back once per file",
+      ),
+    ).toMatchObject({
+      body: {
+        archiveRequests: 1,
+        fileRequests: 1,
+        maxRequestsPerAsset: 1,
+        minNetworkAssets: 2,
+        patchRequests: 1,
+        verifyAllAssetHashes: true,
+      },
+      pathName: "/e2e/assert-bundle-artifact-transfers",
+    });
+    expect(
+      await controlStepDefinition(
+        scenarioName,
+        "assert size-aware large success manifest selection",
       ),
     ).toMatchObject({
       body: {
         currentBundleId: "$sizeAwareSmallBundleId",
-        selection: "archive-only",
-        targetBundleId: "$sizeAwareLargeBundleId",
+        selection: "manifest-v1",
+        targetBundleId: "$sizeAwareLargeSuccessBundleId",
+      },
+      pathName: "/e2e/assert-bundle-artifact-selection",
+    });
+    expect(
+      await controlStepDefinition(
+        scenarioName,
+        "assert size-aware large fallback manifest selection",
+      ),
+    ).toMatchObject({
+      body: {
+        currentBundleId: "$sizeAwareLargeSuccessBundleId",
+        selection: "manifest-v1",
+        targetBundleId: "$sizeAwareLargeFallbackBundleId",
       },
       pathName: "/e2e/assert-bundle-artifact-selection",
     });
 
-    for (const phase of ["small", "large"] as const) {
+    for (const phase of ["small", "large success", "large fallback"] as const) {
       const releaseAssertionIndex = calls.findIndex(
         (call) =>
           call.kind === "assertText" &&
@@ -2096,8 +2251,7 @@ describe("Detox scenario contract", () => {
       const byteAssertionIndex = calls.findIndex(
         (call) =>
           call.kind === "control" &&
-          call.stage ===
-            `assert size-aware ${phase} ${phase === "small" ? "manifest" : "archive"} selection`,
+          call.stage === `assert size-aware ${phase} manifest selection`,
       );
       const proxyResetIndex = calls.findIndex(
         (call) =>
@@ -2114,7 +2268,7 @@ describe("Detox scenario contract", () => {
 
   it("keeps bsdiff install phases aligned with Maestro metadata-first assertions", async () => {
     expect(
-      await updateActionResultAssertStages("bspatch-archive-to-diff-ota"),
+      await updateActionResultAssertStages("bspatch-builtin-to-diff-ota"),
     ).toEqual([]);
     expect(
       await updateActionResultAssertStages("bspatch-consecutive-diff-ota"),
@@ -2140,10 +2294,10 @@ describe("Detox scenario contract", () => {
     ).toEqual([]);
   });
 
-  it("keeps archive-to-diff on the Detox default bundle profile", async () => {
+  it("keeps built-in-to-diff on the Detox default bundle profile", async () => {
     const deployBody = await controlStepBody(
-      "bspatch-archive-to-diff-ota",
-      "deploy archive base bundle",
+      "bspatch-builtin-to-diff-ota",
+      "deploy built-in base bundle",
     );
     expect(deployBody.bundleProfile).toBeUndefined();
   });
@@ -2178,8 +2332,6 @@ describe("Detox scenario contract", () => {
       "multi-asset-replacement",
       "deploy second multi-asset bundle",
     );
-    expect(firstDeploy.compressStrategy).toBe("tar.br");
-    expect(secondDeploy.compressStrategy).toBe("tar.br");
     expect(
       (
         await controlStepBody(
@@ -2301,10 +2453,12 @@ describe("Detox scenario contract", () => {
     // Then: C and D are both installed as bsdiff updates against stable bases.
     expect(stages).toEqual([
       "deploy diff bundle A",
+      "make optional archive unavailable for built-in reuse evidence",
       "launch diff bundle A app",
       "install diff bundle A",
       "wait diff bundle A metadata pending",
-      "assert diff bundle A uses archive",
+      "assert diff bundle A uses built-in manifest",
+      "restore optional archive availability",
       "reload diff bundle A",
       "wait diff bundle A metadata stable",
       "assert diff bundle A launch",
@@ -2638,18 +2792,20 @@ describe("Detox scenario contract", () => {
       detoxControlServerControllerPath,
       "utf8",
     );
-    const archiveAssertionBody = controllerSource.slice(
-      controllerSource.indexOf("async function assertFirstOtaUsesArchive"),
+    const manifestAssertionBody = controllerSource.slice(
+      controllerSource.indexOf(
+        "async function assertFirstOtaUsesBuiltInManifest",
+      ),
       controllerSource.indexOf("async function assertCrashHistory"),
     );
 
-    expect(archiveAssertionBody).toContain(
+    expect(manifestAssertionBody).toContain(
       "state.metadataState.stagingSelection?.bundleId === args.bundleId",
     );
-    expect(archiveAssertionBody).toContain(
-      "state.metadataState.stableBundleId !== args.bundleId",
+    expect(manifestAssertionBody).toContain(
+      "hasManifestBackedBundleEvidence(state)",
     );
-    expect(archiveAssertionBody).not.toContain(
+    expect(manifestAssertionBody).not.toContain(
       "state.metadataState.stableBundleId === null",
     );
   });
@@ -2989,10 +3145,12 @@ describe("Detox scenario contract", () => {
       "assert chain built-in marker",
       "reset chain local app state",
       "deploy chain bundle A",
+      "make optional archive unavailable for built-in reuse evidence",
       "launch chain bundle A app",
       "install chain bundle A",
       "wait chain bundle A metadata pending",
-      "assert chain bundle A uses archive",
+      "assert chain bundle A uses built-in manifest",
+      "restore optional archive availability",
       "reload chain bundle A",
       "wait chain bundle A metadata stable",
       "assert chain bundle A marker",

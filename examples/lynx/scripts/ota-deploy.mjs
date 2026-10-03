@@ -8,13 +8,9 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 import { brotliDecompressSync } from "node:zlib";
 
-import {
-  encodeChannelKey,
-  isUUIDv7,
-  NIL_UUID,
-} from "../../../packages/core/dist/index.mjs";
-import { createDatabaseClient } from "../../../plugins/plugin-core/dist/index.mjs";
-import { standaloneRepository } from "../../../plugins/standalone/dist/index.mjs";
+import { encodeChannelKey, isUUIDv7, NIL_UUID } from "@hot-updater/protocol";
+import { standaloneRepository } from "@hot-updater/standalone";
+
 import { readSpikePageContract } from "./spike-assets.mjs";
 
 const runtimeIds = {
@@ -41,17 +37,21 @@ const { positionals, values: options } = parseArgs({
     "allow-incompatible-runtime": { type: "boolean" },
   },
 });
-const [framework, platform, format = "zip", fixture = "B-external2-managed"] =
-  positionals;
+const [
+  framework,
+  platform,
+  format = "tar.br",
+  fixture = "B-external2-managed",
+] = positionals;
 if (
   !["react", "vue", "octane"].includes(framework) ||
   !["ios", "android"].includes(platform) ||
-  !["zip", "tar.gz", "tar.br"].includes(format) ||
+  format !== "tar.br" ||
   !/^[A-Za-z0-9-]+$/.test(fixture) ||
   positionals.length > 4
 ) {
   throw new Error(
-    "Usage: node scripts/ota-deploy.mjs <react|vue|octane> <ios|android> [zip|tar.gz|tar.br] [frozen-fixture-name] [--signed] [--patch] [--from-bundle-id <verified-base>] [--bundle-id <embedded-bundle-id>] [--channel <native-channel>] [--runtime-id <native-profile>] [--allow-incompatible-runtime]",
+    "Usage: node scripts/ota-deploy.mjs <react|vue|octane> <ios|android> [tar.br] [frozen-fixture-name] [--signed] [--patch] [--from-bundle-id <verified-base>] [--bundle-id <embedded-bundle-id>] [--channel <native-channel>] [--runtime-id <native-profile>] [--allow-incompatible-runtime]",
   );
 }
 if (options["bundle-id"] !== undefined && !isUUIDv7(options["bundle-id"])) {
@@ -163,7 +163,7 @@ const repository = standaloneRepository({
   baseUrl: `${origin}/hot-updater/admin`,
   commonHeaders,
 });
-const database = createDatabaseClient(repository);
+const core = repository.core;
 const sha256 = (bytes) =>
   crypto.createHash("sha256").update(bytes).digest("hex");
 const verifyToken = (bytes, token) => {
@@ -210,7 +210,6 @@ const token = (await fs.readFile(${JSON.stringify(tokenPath)}, "utf8")).trim();
 const commonHeaders = { authorization: "Bearer " + token };
 export default {
   updateStrategy: "appVersion",
-  compressStrategy: ${JSON.stringify(format)},
   patch: { enabled: ${patchEnabled}, maxBaseBundles: 2 },
   ${signed ? `signing: { enabled: true, privateKeyPath: ${JSON.stringify(privateKeyPath)} },` : ""}
   build: ({ cwd }) => {
@@ -289,10 +288,10 @@ assert.deepEqual(
   })),
   "Lynx build must declare the complete compiler artifact inventory",
 );
-const bundle = await database.getBundleById(build.bundleId);
+const bundle = (await core.getBundle(build.bundleId))?.bundle;
 assert.ok(bundle, "CLI bundle must exist in persisted provider state");
-const releases = await repository.models.releases.findMany({
-  bundleId: build.bundleId,
+const releases = await core.listReleases({
+  filter: { kind: "bundle", bundleId: build.bundleId },
   limit: 10,
 });
 assert.equal(releases.length, 1);
@@ -319,54 +318,40 @@ const waitForCatalogRelease = async () => {
   throw new Error("Timed out waiting for the deployed Release in the catalog");
 };
 const catalog = await waitForCatalogRelease();
-const artifactUrl = `${origin}/hot-updater/artifacts/${bundle.id}/from/${NIL_UUID}`;
+const artifactUrl = `${origin}/hot-updater/artifacts/v1/${bundle.id}/from/${NIL_UUID}`;
 const artifact = await getJson(artifactUrl);
-assert.equal(artifact.fileHash, bundle.fileHash);
-if (artifact.manifestFileHash !== undefined) {
-  assert.equal(artifact.manifestFileHash, bundle.manifestFileHash);
-}
-const download = await fetch(artifact.fileUrl);
+assert.equal(artifact.artifactProtocolVersion, 1);
+assert.equal(artifact.manifestFileHash, bundle.manifestFileHash);
+const manifestDownload = await fetch(artifact.manifestUrl);
+assert.equal(manifestDownload.status, 200);
+const manifestBytes = Buffer.from(await manifestDownload.arrayBuffer());
+verifyToken(manifestBytes, bundle.manifestFileHash);
+const manifest = JSON.parse(manifestBytes.toString());
+assert.ok(artifact.archiveUrl, "The CLI must publish an optional bulk archive");
+const download = await fetch(artifact.archiveUrl);
 assert.equal(download.status, 200);
 const archiveBytes = Buffer.from(await download.arrayBuffer());
-verifyToken(archiveBytes, bundle.fileHash);
-assert.equal(archiveBytes.length, bundle.archiveByteSize);
-const downloadedPath = path.join(project, `downloaded.${format}`);
-await fs.writeFile(downloadedPath, archiveBytes);
+assert.equal(sha256(archiveBytes), manifest.archive.downloadFileHash);
+assert.equal(archiveBytes.length, manifest.archive.downloadByteSize);
+const tarBytes = brotliDecompressSync(archiveBytes);
+assert.equal(tarBytes.length, manifest.archive.tarByteSize);
+const tarPath = path.join(project, "downloaded.tar");
+await fs.writeFile(tarPath, tarBytes);
+const extract = path.join(project, "extracted");
+await fs.mkdir(extract);
 const cliRequire = createRequire(
   new URL("../../../packages/cli-tools/package.json", import.meta.url),
 );
-let archive;
-if (format === "zip") {
-  const zip = await cliRequire("jszip").loadAsync(archiveBytes);
-  archive = Object.fromEntries(
-    await Promise.all(
-      Object.entries(zip.files)
-        .filter(([, file]) => !file.dir)
-        .map(async ([name, file]) => [name, await file.async("nodebuffer")]),
-    ),
-  );
-} else {
-  const extract = path.join(project, "extracted");
-  await fs.mkdir(extract);
-  const tarPath = path.join(project, "downloaded.tar");
-  if (format === "tar.br")
-    await fs.writeFile(tarPath, brotliDecompressSync(archiveBytes));
-  await cliRequire("tar").extract({
-    file: format === "tar.br" ? tarPath : downloadedPath,
-    cwd: extract,
-    gzip: format === "tar.gz",
-  });
-  archive = await collect(extract);
-}
+await cliRequire("tar").extract({ file: tarPath, cwd: extract });
+const archive = await collect(extract);
+assert.ok(
+  !Object.hasOwn(archive, "manifest.json"),
+  "Bulk archives must exclude the manifest",
+);
 assert.deepEqual(
   Object.keys(archive).sort(),
-  [
-    ...Object.keys(sourceFiles),
-    "hot-updater-lynx.json",
-    "manifest.json",
-  ].sort(),
+  [...Object.keys(sourceFiles), "hot-updater-lynx.json"].sort(),
 );
-const manifest = JSON.parse(archive["manifest.json"].toString());
 const metadata = JSON.parse(archive["hot-updater-lynx.json"].toString());
 assert.equal(manifest.bundleId, bundle.id);
 assert.deepEqual(metadata, {
@@ -378,7 +363,7 @@ assert.deepEqual(metadata, {
   pageEssentialResources: essentialResources,
   runtimeId,
 });
-verifyToken(archive["manifest.json"], bundle.manifestFileHash);
+
 assert.deepEqual(
   Object.keys(manifest.assets).sort(),
   [...Object.keys(sourceFiles), "hot-updater-lynx.json"].sort(),
@@ -390,30 +375,39 @@ for (const [name, asset] of Object.entries(manifest.assets)) {
   if (signed) verifyToken(archive[name], `sig:${asset.signature}`);
 }
 assert.deepEqual(
+  Object.keys(artifact.assets).sort(),
+  Object.keys(manifest.assets).sort(),
+);
+for (const [name, descriptor] of Object.entries(artifact.assets)) {
+  assert.equal(descriptor.fileHash, manifest.assets[name].fileHash);
+  const response = await fetch(descriptor.file.url);
+  assert.equal(response.status, 200);
+  const transferred = Buffer.from(await response.arrayBuffer());
+  assert.equal(sha256(transferred), manifest.assets[name].downloadFileHash);
+  assert.equal(transferred.length, manifest.assets[name].downloadByteSize);
+  const logical =
+    descriptor.file.compression === "br"
+      ? brotliDecompressSync(transferred)
+      : transferred;
+  assert.equal(logical.length, manifest.assets[name].byteSize);
+  assert.deepEqual(logical, archive[name]);
+}
+assert.deepEqual(
   await collect(source),
   sourceFiles,
   "Frozen compiler output must remain unchanged",
 );
 const deliveryArtifactUrl = options["from-bundle-id"]
-  ? `${origin}/hot-updater/artifacts/${bundle.id}/from/${options["from-bundle-id"]}`
+  ? `${origin}/hot-updater/artifacts/v1/${bundle.id}/from/${options["from-bundle-id"]}`
   : artifactUrl;
 const deliveryArtifact = options["from-bundle-id"]
   ? await getJson(deliveryArtifactUrl)
   : artifact;
 if (options["from-bundle-id"]) {
-  assert.equal(
-    deliveryArtifact.fileUrl,
-    null,
-    "Delta delivery must not retain an archive fallback URL",
-  );
-  assert.equal(
-    deliveryArtifact.fileHash,
-    null,
-    "Delta delivery must not retain an archive fallback hash",
-  );
+  assert.equal(deliveryArtifact.artifactProtocolVersion, 1);
   assert.equal(deliveryArtifact.manifestFileHash, bundle.manifestFileHash);
   assert.ok(deliveryArtifact.manifestUrl, "Delta delivery needs a manifest");
-  const changedAssets = Object.entries(deliveryArtifact.changedAssets ?? {});
+  const changedAssets = Object.entries(deliveryArtifact.assets ?? {});
   assert.ok(changedAssets.length > 0, "Delta delivery needs changed assets");
   assert.ok(
     changedAssets.some(
@@ -423,8 +417,8 @@ if (options["from-bundle-id"]) {
     ),
     "Delta delivery needs a real BSDIFF patch from the requested base",
   );
-  const main = deliveryArtifact.changedAssets?.["main.lynx.bundle"];
-  const detail = deliveryArtifact.changedAssets?.["detail.lynx.bundle"];
+  const main = deliveryArtifact.assets?.["main.lynx.bundle"];
+  const detail = deliveryArtifact.assets?.["detail.lynx.bundle"];
   assert.equal(main?.patch?.algorithm, "bsdiff");
   assert.equal(main.patch.baseBundleId, options["from-bundle-id"]);
   assert.ok(
@@ -437,7 +431,7 @@ if (options["from-bundle-id"]) {
   );
   assert.equal(
     detail.patch,
-    null,
+    undefined,
     "Detail must be delivered raw in the mixed multi-page transaction",
   );
 }
@@ -456,9 +450,7 @@ const receipt = {
   incompatibleRuntimeAllowed,
   sparklingNavigation,
   channel,
-  fileUrl: artifact.fileUrl,
-  fileHash: artifact.fileHash,
-  manifestFileHash: artifact.manifestFileHash ?? null,
+  ...artifact,
   persistedManifestFileHash: bundle.manifestFileHash,
   artifactResponse: artifact,
   artifactUrl,
@@ -477,10 +469,12 @@ const receipt = {
   logPath,
   invocation: { executable: process.execPath, args, cwd: project },
   files: Object.fromEntries(
-    Object.entries(archive).map(([name, bytes]) => [
-      name,
-      { byteSize: bytes.length, sha256: sha256(bytes) },
-    ]),
+    Object.entries({ ...archive, "manifest.json": manifestBytes }).map(
+      ([name, bytes]) => [
+        name,
+        { byteSize: bytes.length, sha256: sha256(bytes) },
+      ],
+    ),
   ),
 };
 const receipts = path.join(root, "receipts");
@@ -491,7 +485,7 @@ await fs.writeFile(
 );
 const receiptPath = path.join(receipts, `${label}.json`);
 await fs.writeFile(receiptPath, `${JSON.stringify(receipt, null, 2)}\n`);
-if (fixture === "B-external2-managed" && format === "zip")
+if (fixture === "B-external2-managed" && format === "tar.br")
   await fs.writeFile(
     path.join(
       receipts,
@@ -505,8 +499,9 @@ console.log(
       receiptPath,
       bundleId: bundle.id,
       releaseId: release.id,
-      fileUrl: artifact.fileUrl,
-      fileHash: artifact.fileHash,
+      artifactProtocolVersion: artifact.artifactProtocolVersion,
+      archiveUrl: artifact.archiveUrl,
+      manifestUrl: artifact.manifestUrl,
       manifestFileHash: artifact.manifestFileHash ?? null,
       sourceFileCount: Object.keys(sourceFiles).length,
     },

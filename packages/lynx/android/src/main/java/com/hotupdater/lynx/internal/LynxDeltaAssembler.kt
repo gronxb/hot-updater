@@ -20,14 +20,15 @@ internal data class LynxPatchedAssetEvidence(
 
 /** Builds a new manifest tree from a native-owned running installation. Never mutates the base. */
 internal class LynxDeltaAssembler(private val integrity: ArchiveIntegrity, private val downloader: ArchiveDownload) {
+    data class Result(val patchedAssets: List<LynxPatchedAssetEvidence>, val usedArchive: Boolean)
     suspend fun assemble(
         transaction: File,
         payload: File,
         request: LynxArtifactRequest,
-        base: VerifiedLynxInstallation,
+        base: VerifiedLynxInstallation?,
         onDownload: (Long) -> Unit,
-    ): List<LynxPatchedAssetEvidence> {
-        require(request.hasDelta) { "Incomplete manifest delivery descriptor" }
+    ): Result {
+        request.validateForPreparation()
         val operationContext = coroutineContext
         val scratch = File(transaction, "delta-downloads").also { check(it.mkdir()) }
         var downloaded = 0L
@@ -72,33 +73,85 @@ internal class LynxDeltaAssembler(private val integrity: ArchiveIntegrity, priva
                     else it as? String ?: error("Invalid asset signature")
                 }
             }
-            val changes = checkNotNull(request.changedAssets)
-            val baseManifestFile = ManagedPaths.resolve(base.directory, "manifest.json")
-            verifyHash(baseManifestFile, base.manifestHash)
-            val baseManifest = StrictJson.read(baseManifestFile)
-            require(StrictJson.string(baseManifest, "bundleId") == base.bundleId) { "Native base manifest identity changed" }
-            val baseAssets = baseManifest.getJSONObject("assets")
-            val basePaths = baseAssets.keys().asSequence().toSet()
-            val baseNamespace = ManagedPathNamespace()
-            baseNamespace.file("manifest.json")
-            basePaths.forEach(baseNamespace::file)
-            require(basePaths == base.managedPaths) { "Native base manifest paths changed" }
-            val baseHashes = basePaths.associateWith { path ->
-                val hash = StrictJson.string(
-                    baseAssets.optJSONObject(path) ?: error("Invalid base asset"),
-                    "fileHash",
-                )
-                require(hash.matches(HASH)) { "Invalid base asset hash" }
-                require(base.managedFileHashes[path].equals(hash, ignoreCase = true)) {
-                    "Native base manifest hashes changed"
+            val changes = checkNotNull(request.assets)
+            require(changes.keys == paths) { "Target descriptors do not exactly cover the manifest" }
+            val logicalSizes = mutableMapOf<String, Long?>()
+            val downloadSizes = mutableMapOf<String, Long?>()
+            val downloadHashes = mutableMapOf<String, String?>()
+            for (path in paths) {
+                val asset = assets.getJSONObject(path)
+                val descriptor = changes.getValue(path)
+                require(descriptor.fileHash.equals(targetHashes.getValue(path), ignoreCase = true)) { "Target descriptor hash differs from manifest" }
+                val compression = asset.opt("downloadCompression").let { if (it == null || it == JSONObject.NULL) null else it as? String ?: error("Invalid manifest compression") }
+                require(compression == descriptor.file?.compression) { "Download representation differs from manifest" }
+                logicalSizes[path] = byteSize(asset, "byteSize", ArchiveLimits.MAX_FILE_BYTES)
+                downloadSizes[path] = byteSize(asset, "downloadByteSize", ArchiveLimits.MAX_FILE_BYTES)
+                downloadHashes[path] = asset.opt("downloadFileHash").let {
+                    if (it == null || it == JSONObject.NULL) null
+                    else (it as? String)?.also { hash -> require(HASH.matches(hash)) { "Invalid transfer hash" } } ?: error("Invalid transfer hash")
                 }
-                hash
             }
-            val requiredChanges = paths.filterTo(mutableSetOf()) { path ->
-                !baseHashes[path].equals(targetHashes.getValue(path), ignoreCase = true)
+            val baseHashes = try {
+                if (base == null) emptyMap() else {
+                    val file = ManagedPaths.resolve(base.directory, "manifest.json")
+                    verifyHash(file, base.manifestHash)
+                    val manifest = StrictJson.read(file)
+                    require(StrictJson.string(manifest, "bundleId") == base.bundleId) { "Native base manifest identity changed" }
+                    val baseAssets = manifest.getJSONObject("assets")
+                    require(baseAssets.keys().asSequence().toSet() == base.managedPaths) { "Native base paths changed" }
+                    base.managedFileHashes.also { hashes ->
+                        hashes.forEach { (path, hash) -> require(StrictJson.string(baseAssets.getJSONObject(path), "fileHash").equals(hash, ignoreCase = true)) { "Native base hashes changed" } }
+                    }
+                }
+            } catch (error: CancellationException) { throw error }
+              catch (error: Exception) { emptyMap<String, String>() }
+            val verifiedSources = baseHashes.filter { (path, hash) ->
+                try { verifyHash(ManagedPaths.resolve(checkNotNull(base).directory, path), hash); true }
+                catch (error: Exception) { false }
             }
-            require(changes.keys == requiredChanges) {
-                "Changed asset descriptors do not exactly match target changes"
+            val missing = paths.filter { !verifiedSources[it].equals(targetHashes.getValue(it), ignoreCase = true) }
+            val costs = missing.map { path ->
+                val original = downloadSizes[path]
+                val patch = changes.getValue(path).patch
+                val usablePatch = patch != null && patch.baseBundleId == base?.bundleId && verifiedSources[path].equals(patch.baseFileHash, ignoreCase = true)
+                if (usablePatch) patch?.byteSize?.let { minOf(it, original ?: it) } else original
+            }
+            val archive = manifest.optJSONObject("archive")
+            if (archive != null && request.archiveUrl != null && missing.size >= 2 && costs.all { it != null }) {
+                val archiveSize = byteSize(archive, "downloadByteSize", ArchiveLimits.MAX_ARCHIVE_BYTES)
+                val tarSize = byteSize(archive, "tarByteSize", ArchiveLimits.MAX_TAR_STREAM_BYTES)
+                val archiveHash = archive.optString("downloadFileHash", "")
+                if (archiveSize != null && archiveSize > 0 && tarSize != null && tarSize > 0 && HASH.matches(archiveHash) && archiveSize <= costs.filterNotNull().sum()) {
+                    val archiveFile = File(scratch, "bundle.tar.br")
+                    val archivePayload = File(scratch, "archive-payload").also { check(it.mkdir()) }
+                    try {
+                        download(request.archiveUrl, archiveFile, archiveSize)
+                        require(archiveFile.length() == archiveSize) { "Archive transfer size mismatch" }
+                        verifyHash(archiveFile, archiveHash)
+                        require(StrictArchive.extract(archiveFile, archivePayload, tarSize) == paths) { "Archive inventory differs from manifest" }
+                        var total = manifestFile.length()
+                        for (path in paths) {
+                            operationContext.ensureActive()
+                            val file = ManagedPaths.resolve(archivePayload, path)
+                            logicalSizes[path]?.let { require(file.length() == it) { "Archive logical size mismatch" } }
+                            integrity.verifyAsset(file, targetHashes.getValue(path), targetSignatures[path])
+                            total += file.length()
+                            require(total <= ArchiveLimits.MAX_EXTRACTED_BYTES) { "Archive exceeds expanded limit" }
+                        }
+                        for (path in paths) {
+                            val target = ManagedPaths.resolve(payload, path)
+                            check(target.parentFile!!.mkdirs() || target.parentFile!!.isDirectory)
+                            check(ManagedPaths.resolve(archivePayload, path).renameTo(target)) { "Cannot stage archive asset" }
+                        }
+                        return Result(emptyList(), true)
+                    } catch (error: CancellationException) { throw error }
+                      catch (error: Exception) {
+                        operationContext.ensureActive()
+                        // A bulk transport failure falls back to the same authenticated originals.
+                        paths.forEach { ManagedPaths.resolve(payload, it).delete() }
+                        Log.i(TAG, "HotUpdaterArchiveDownloadFallback bundleId=${request.bundleId}")
+                    } finally { archiveFile.delete(); archivePayload.deleteRecursively() }
+                }
             }
             var assembled = manifestFile.length()
             for (path in paths) {
@@ -107,8 +160,8 @@ internal class LynxDeltaAssembler(private val integrity: ArchiveIntegrity, priva
                 val signature = targetSignatures[path]
                 val target = ManagedPaths.resolve(payload, path)
                 check(target.parentFile!!.mkdirs() || target.parentFile!!.isDirectory) { "Cannot create managed asset directory" }
-                val source = if (path in base.managedPaths) ManagedPaths.resolve(base.directory, path) else null
-                val baseHash = baseHashes[path]
+                val source = if (base != null && path in verifiedSources) ManagedPaths.resolve(base.directory, path) else null
+                val baseHash = verifiedSources[path]
                 if (source != null && baseHash.equals(expectedHash, ignoreCase = true)) {
                     verifyHash(source, expectedHash)
                     source.inputStream().use { input -> copyBounded(input, target, ArchiveLimits.MAX_EXTRACTED_BYTES - assembled) { operationContext.ensureActive() } }
@@ -119,7 +172,7 @@ internal class LynxDeltaAssembler(private val integrity: ArchiveIntegrity, priva
                     changed.patch?.let { patch ->
                         try {
                             require(patch.algorithm == "bsdiff") { "Unsupported patch algorithm" }
-                            require(patch.baseBundleId == base.bundleId && source != null && baseHash.equals(patch.baseFileHash, ignoreCase = true)) { "Patch base does not match the native running Bundle" }
+                            require(patch.baseBundleId == base?.bundleId && source != null && baseHash.equals(patch.baseFileHash, ignoreCase = true)) { "Patch base does not match the native running Bundle" }
                             verifyHash(source, patch.baseFileHash)
                             val patchFile = File(scratch, "patch")
                             download(patch.patchUrl, patchFile)
@@ -157,17 +210,26 @@ internal class LynxDeltaAssembler(private val integrity: ArchiveIntegrity, priva
                                 downloadFile,
                                 allowEmpty = file.compression == null,
                             )
+                            downloadSizes[path]?.let { require(downloadFile.length() == it) { "Asset transfer size mismatch" } }
+                            downloadHashes[path]?.let { verifyHash(downloadFile, it) }
                             val input: InputStream = if (file.compression == "br") BrotliInputStream(downloadFile.inputStream()) else downloadFile.inputStream()
                             input.use { copyBounded(it, target, ArchiveLimits.MAX_EXTRACTED_BYTES - assembled) { operationContext.ensureActive() } }
                         } finally { downloadFile.delete() }
                     }
                 }
+                logicalSizes[path]?.let { require(target.length() == it) { "Asset logical size mismatch" } }
                 integrity.verifyAsset(target, expectedHash, signature)
                 assembled += target.length()
                 require(assembled <= ArchiveLimits.MAX_EXTRACTED_BYTES) { "Assembled artifact exceeds size limit" }
             }
-            return patchedAssets
+            return Result(patchedAssets, false)
         } finally { scratch.deleteRecursively() }
+    }
+
+    private fun byteSize(value: JSONObject, key: String, limit: Long): Long? {
+        val raw = value.opt(key) ?: return null
+        require(raw is Number && raw.toDouble() == raw.toLong().toDouble() && raw.toLong() in 0..limit) { "Invalid manifest $key" }
+        return raw.toLong()
     }
 
     private fun copyBounded(input: InputStream, target: File, remaining: Long, checkCancelled: () -> Unit) {

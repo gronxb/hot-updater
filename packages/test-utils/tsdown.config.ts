@@ -17,4 +17,13 @@ export default defineConfig([
     dts: true,
     failOnWarn: true,
   },
+  {
+    // Client plugin tests run under Vitest or Jest, so both formats ship.
+    entry: ["src/react-native.ts"],
+    format: ["esm", "cjs"],
+    outDir: "dist",
+    clean: false,
+    dts: true,
+    failOnWarn: true,
+  },
 ]);

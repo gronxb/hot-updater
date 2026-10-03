@@ -12,21 +12,22 @@ selects only objects that are no longer referenced.
 
 It can remove:
 
-- Orphaned bundle objects under recognized artifact paths:
-  `<artifact-id>/...` and `bundles/<artifact-id>/...`.
+- Orphaned bundle objects under `bundles/<artifact-id>/...`, where the artifact
+  ID is a UUIDv7.
 - Patch objects that are no longer referenced, including orphaned patches under
   a target Bundle that is still live.
 - Unreferenced content-addressed assets under `assets/sha256/...`.
 
 Live bundle objects, referenced patches and assets, recently modified objects,
 objects without a modification timestamp, and unknown files are protected.
+Root-level `<artifact-id>/...` paths are not recognized and remain protected.
 
 <Callout type="info">
   Pruning does not delete live bundle records. Delete records you no longer
   need before pruning their unreferenced objects.
 </Callout>
 
-## Remove bundles, then artifact records
+## Remove bundles
 
 Start by listing the bundles you intend to retire:
 
@@ -42,18 +43,19 @@ npx hot-updater bundle disable <id> --yes
 npx hot-updater bundle delete <id> --yes
 ```
 
-Multiple bundle IDs can reuse the same immutable artifact. Obtain the Artifact
-ID from Advanced diagnostics (or `bundle_id` in `bundle show <id> --json`),
-then delete the artifact record after every referencing bundle is gone:
+Multiple bundle IDs can share one immutable artifact, such as a promoted
+bundle and its source. Deleting the last bundle that uses an artifact deletes
+the artifact's record too, with every patch to or from it, so a device running
+that bundle downloads its next update in full. `bundle delete` says so, and its
+`--json` output names the artifact in `deletedArtifactId`.
 
-```package-install
-npx hot-updater bundle artifact delete <artifact-id> <another-artifact-id> --yes
-```
+`hot-updater doctor` reports artifact records no bundle uses as
+`UNREFERENCED_ARTIFACTS`, and `doctor --fix` deletes them so the prune below can
+reclaim their files.
 
-`bundle artifact delete` is rejected while any bundle ID still references the
-artifact and reports those IDs. A successful delete removes database records
-only. Shared assets, patch objects, and bundle files remain until a
-reference-aware prune confirms that no remaining record uses them.
+A delete removes database records only. Bundle files, patch objects, and shared
+assets remain until a reference-aware prune confirms that no remaining record
+uses them.
 
 ## Preview eligible objects
 
@@ -102,6 +104,6 @@ objects.
 
 Storage pruning currently requires the `listObjects` and `deleteObjects`
 management capabilities provided by `s3Storage`, including AWS S3 and
-S3-compatible services such as Cloudflare R2. Other Storage plugins continue to
+S3-compatible services such as Cloudflare R2. Other Storage adapters continue to
 support deploy and runtime delivery but cannot use `storage prune` until they
 implement those management operations.

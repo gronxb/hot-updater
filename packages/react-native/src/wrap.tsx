@@ -1,11 +1,12 @@
 import React, { useEffect, useState } from "react";
 
+import { handleNotifyAppReady } from "./appReady";
 import { checkForUpdate } from "./checkForUpdate";
 import { useEventCallback } from "./hooks/useEventCallback";
 import { getUpdateId, reload } from "./native";
-import { handleNotifyAppReady, reportNoChange } from "./notifyAppReadyInsights";
 import { useHotUpdaterStore } from "./store";
 import type {
+  HotUpdaterFallbackComponentProps,
   InternalInitOptions,
   InternalWrapOptions,
   UpdateStatus,
@@ -32,11 +33,46 @@ export function wrap(
 ) => React.ComponentType<P> {
   const { reloadOnForceUpdate = true, ...restOptions } = options;
 
+  // Progress is subscribed only where it is rendered or reported, so progress
+  // events don't re-render the wrapped app.
+  const ProgressReporter = ({
+    onProgress,
+  }: {
+    onProgress: (progress: number) => void;
+  }) => {
+    const progress = useHotUpdaterStore((state) => state.progress);
+
+    useEffect(() => {
+      onProgress(progress);
+    }, [progress]);
+
+    return null;
+  };
+
+  const FallbackWithProgress = ({
+    Fallback,
+    status,
+    message,
+  }: {
+    Fallback: React.FC<HotUpdaterFallbackComponentProps>;
+    status: HotUpdaterFallbackComponentProps["status"];
+    message: string | null;
+  }) => {
+    const progressState = useHotUpdaterStore((state) => state);
+
+    return (
+      <Fallback
+        artifactType={progressState.artifactType}
+        details={progressState.details}
+        progress={progressState.progress}
+        status={status}
+        message={message}
+      />
+    );
+  };
+
   return <P extends object>(WrappedComponent: React.ComponentType<P>) => {
     const HotUpdaterHOC: React.FC<P> = (props: P) => {
-      const progressState = useHotUpdaterStore((state) => state);
-      const progress = progressState.progress;
-
       const [message, setMessage] = useState<string | null>(null);
       const [updateStatus, setUpdateStatus] =
         useState<UpdateStatus>("CHECK_FOR_UPDATE");
@@ -45,12 +81,8 @@ export function wrap(
         try {
           setUpdateStatus("CHECK_FOR_UPDATE");
 
-          const readiness = handleNotifyAppReady({
-            ...restOptions,
-            reportUnchanged: false,
-          });
+          const readiness = handleNotifyAppReady(restOptions);
           const updateInfo = await checkForUpdate({
-            insights: restOptions.insights,
             client: restOptions.client,
             updateStrategy: restOptions.updateStrategy,
             requestHeaders: restOptions.requestHeaders,
@@ -58,12 +90,10 @@ export function wrap(
             onError: restOptions.onError,
           });
 
-          const launch = await readiness;
+          await readiness;
           setMessage(updateInfo?.message ?? null);
 
           if (!updateInfo) {
-            if (launch?.status === "UNCHANGED")
-              void reportNoChange(restOptions);
             restOptions.onUpdateProcessCompleted?.({
               status: "UP_TO_DATE",
               shouldForceUpdate: false,
@@ -118,34 +148,33 @@ export function wrap(
         }
       });
 
-      useEffect(() => {
-        restOptions.onProgress?.(progress);
-      }, [progress]);
-
       // Start update check
       useEffect(() => {
         initHotUpdater();
       }, []);
 
-      if (
+      const content =
         restOptions.fallbackComponent &&
-        updateStatus !== "UPDATE_PROCESS_COMPLETED"
-      ) {
-        const Fallback = restOptions.fallbackComponent;
-        return (
-          <Fallback
-            artifactType={progressState.artifactType}
-            details={progressState.details}
-            downloadedBytes={progressState.downloadedBytes}
-            progress={progress}
+        updateStatus !== "UPDATE_PROCESS_COMPLETED" ? (
+          <FallbackWithProgress
+            Fallback={restOptions.fallbackComponent}
             status={updateStatus}
             message={message}
-            totalBytes={progressState.totalBytes}
           />
+        ) : (
+          <WrappedComponent {...props} />
         );
+
+      if (!restOptions.onProgress) {
+        return content;
       }
 
-      return <WrappedComponent {...props} />;
+      return (
+        <>
+          {content}
+          <ProgressReporter onProgress={restOptions.onProgress} />
+        </>
+      );
     };
 
     return HotUpdaterHOC as React.ComponentType<P>;

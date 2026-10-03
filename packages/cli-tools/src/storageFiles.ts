@@ -1,12 +1,12 @@
 import { createReadStream, createWriteStream } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
-import { Readable } from "node:stream";
+import { Readable, Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
 
 import {
   getContentType,
-  type StoragePluginWith,
+  type StorageAdapterWith,
   type StoragePutResult,
 } from "@hot-updater/plugin-core";
 
@@ -19,7 +19,7 @@ export const getStorageFileByteSize = async (filePath: string) => {
 };
 
 export const putStorageFile = async (
-  storage: StoragePluginWith<"put">,
+  storage: StorageAdapterWith<"put">,
   key: string,
   filePath: string,
 ): Promise<StoragePutResult & { byteSize: number }> => {
@@ -40,22 +40,29 @@ export const putStorageFile = async (
 };
 
 export const writeStorageFile = async (
-  storage: StoragePluginWith<"get">,
+  storage: StorageAdapterWith<"get">,
   storageUri: string,
   filePath: string,
+  maxBytes?: number,
 ): Promise<void> => {
   const { response } = await storage.get({ storageUri });
   if (response === null) {
     throw new Error(`Storage object not found: ${storageUri}`);
   }
 
-  await writeStorageResponseFile(response, filePath);
+  await writeStorageResponseFile(response, filePath, maxBytes);
 };
 
 export const writeStorageResponseFile = async (
   response: Response,
   filePath: string,
+  maxBytes = Number.MAX_SAFE_INTEGER,
 ): Promise<void> => {
+  const declaredSize = Number(response.headers.get("content-length"));
+  if (declaredSize > maxBytes) {
+    await response.body?.cancel();
+    throw new Error(`Storage response exceeds the ${maxBytes} byte limit`);
+  }
   await fs.mkdir(path.dirname(filePath), { recursive: true });
   if (response.body === null) {
     await fs.writeFile(filePath, new Uint8Array());
@@ -63,8 +70,20 @@ export const writeStorageResponseFile = async (
   }
 
   try {
+    let downloaded = 0;
     await pipeline(
       Readable.fromWeb(response.body as ReadableStream<Uint8Array>),
+      new Transform({
+        transform(chunk: Buffer, _encoding, callback) {
+          downloaded += chunk.byteLength;
+          callback(
+            downloaded > maxBytes
+              ? new Error(`Storage response exceeds the ${maxBytes} byte limit`)
+              : null,
+            chunk,
+          );
+        },
+      }),
       createWriteStream(filePath),
     );
   } catch (error) {

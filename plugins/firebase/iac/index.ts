@@ -2,8 +2,8 @@ import fs from "fs";
 import path from "path";
 
 import {
+  assembleServer,
   confirmInitInputPersistence,
-  formatApiKeyNote,
   getHotUpdaterInitInputEnv,
   getInitProviderEnvVars,
   HOT_UPDATER_SERVER_PACKAGE_VERSION_ENV,
@@ -11,15 +11,17 @@ import {
   link,
   makeEnv,
   p,
+  printAppSetup,
+  provisionClientCredential,
+  type ProvisionedClientCredential,
   readHotUpdaterInitEnv,
   resolveHotUpdaterServerVersion,
   resolvePackageVersion,
   type RunInitOptions,
   transformEnv,
-  transformTemplate,
 } from "@hot-updater/cli-tools";
-import { provisionApiKey } from "@hot-updater/server";
-import { isEqual, merge, sortBy, uniqWith } from "es-toolkit";
+import type { PluginClientPlugin } from "@hot-updater/plugin-core";
+import { isEqual, sortBy, uniqWith } from "es-toolkit";
 import { ExecaError, execa } from "execa";
 import {
   applicationDefault,
@@ -28,8 +30,12 @@ import {
   getApps,
 } from "firebase-admin/app";
 
-import { firebaseDatabase } from "../src/firebaseDatabase";
+import {
+  firebaseDatabase,
+  migrateFirebaseDatabase,
+} from "../src/firebaseDatabase";
 import { FIREBASE_V1_FUNCTION_NAME } from "../src/firebaseInfrastructureNames";
+import { plugins } from "../src/plugins";
 import { inputFirebaseApplicationCredentials } from "./firebaseApplicationCredentials";
 import {
   assertFirebaseFunctionCanInitialize,
@@ -45,24 +51,6 @@ import { resolveFirebaseRegion } from "./firebaseRegion";
 import { initProvider as FIREBASE_INIT_PROVIDER } from "./init/index";
 import { prepareFirebaseTemplate } from "./prepareTemplate";
 import { createFirebaseProject, initFirebaseUser, setEnv } from "./select";
-
-const SOURCE_TEMPLATE = `// add this to your App.tsx
-import { HotUpdater } from "@hot-updater/react-native";
-
-function App() {
-  return null; // Replace with your app root
-}
-
-HotUpdater.init({
-  baseURL: "%%source%%",
-  requestHeaders: {
-    "x-api-key": %%apiKey%%,
-  },
-});
-
-// Call HotUpdater.checkForUpdate({ updateStrategy: "appVersion" })
-// when your app is ready to check.
-export default App;`;
 
 const getFirebaseRuntimePackageInfo = () => {
   const firebasePackageRoot = path.dirname(
@@ -259,7 +247,11 @@ function normalizeIndex(index: FirebaseIndex) {
   };
 }
 
-const mergeIndexes = (
+/**
+ * The project's indexes plus ours. An override replaces the project's
+ * override for the same field; every other override is kept.
+ */
+export const mergeIndexes = (
   originalIndexes: {
     indexes: FirebaseIndex[];
     fieldOverrides: FieldOverride[];
@@ -270,12 +262,20 @@ const mergeIndexes = (
   const uniqueIndexes = uniqWith(mergedIndexes, (a, b) =>
     isEqual(normalizeIndex(a), normalizeIndex(b)),
   );
+  const replaced = (original: FieldOverride) =>
+    newIndexes.fieldOverrides.some(
+      ({ collectionGroup, fieldPath }) =>
+        collectionGroup === original.collectionGroup &&
+        fieldPath === original.fieldPath,
+    );
   return {
     indexes: uniqueIndexes,
-    fieldOverrides: merge(
-      originalIndexes.fieldOverrides,
-      newIndexes.fieldOverrides,
-    ),
+    fieldOverrides: [
+      ...originalIndexes.fieldOverrides.filter(
+        (original) => !replaced(original),
+      ),
+      ...newIndexes.fieldOverrides,
+    ],
   };
 };
 
@@ -383,10 +383,13 @@ const deployFunctions = async (
 };
 
 const printTemplate = async (
-  apiKey: string,
+  credential: ProvisionedClientCredential | undefined,
   projectId: string,
   region: string,
+  /** The client plugins the app adds for the plugins the function runs. */
+  clientPlugins: readonly PluginClientPlugin[],
   cliEnv?: FirebaseCliEnv,
+  sdkModule?: string,
 ) => {
   try {
     const describedFunction = await execa(
@@ -415,14 +418,12 @@ const printTemplate = async (
       );
     }
 
-    p.note(
-      transformTemplate(SOURCE_TEMPLATE, {
-        apiKey: JSON.stringify(apiKey),
-        source: functionUrl,
-      }),
-    );
-    p.note(formatApiKeyNote(apiKey), "API Key");
-    p.log.message("Store this API key separately in a secure place.");
+    printAppSetup({
+      ...(sdkModule ? { sdkModule } : {}),
+      baseURL: functionUrl,
+      ...(credential === undefined ? {} : { credential }),
+      clientPlugins,
+    });
   } catch (error) {
     if (error instanceof ExecaError) {
       p.log.error(error.stderr || error.stdout || error.message);
@@ -590,22 +591,28 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
       )
     : applicationDefault();
   const existingApps = new Set(getApps());
-  const databasePlugin = firebaseDatabase({
+  const databaseConfig = {
     credential,
     projectId: initializeVariable.projectId,
-  });
-  let apiKey: string;
+  };
+  const database = firebaseDatabase(databaseConfig);
+  // The managed server's plugins over the database init set up, which
+  // assembling it neither reads nor writes.
+  const server = assembleServer({ database, plugins });
+  let clientCredential: ProvisionedClientCredential | undefined;
   try {
-    apiKey = (
-      await provisionApiKey({
-        apiKeys: databasePlugin.models.apiKeys,
-        existingApiKey: initInputEnv.HOT_UPDATER_API_KEY,
-        name: "Firebase init",
-      })
-    ).apiKey;
-    await makeEnv({ HOT_UPDATER_API_KEY: apiKey });
+    // The database reads nothing until the schema settings exist.
+    await migrateFirebaseDatabase(databaseConfig, plugins);
+    // The app's credential, through the managed server's plugins, on the tables they read.
+    clientCredential = await provisionClientCredential(server, {
+      env: initInputEnv,
+      name: "Firebase init",
+    });
+    if (clientCredential !== undefined) {
+      await makeEnv({ [clientCredential.env]: clientCredential.value });
+    }
   } finally {
-    await databasePlugin.dispose?.();
+    await database.dispose?.();
     await Promise.all(
       getApps()
         .filter((app) => !existingApps.has(app))
@@ -699,16 +706,18 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
     process.exit(1);
   }
   await printTemplate(
-    apiKey,
+    clientCredential,
     initializeVariable.projectId,
     currentRegion,
+    server.clientPlugins,
     cliEnv,
+    build.clientModule,
   );
   await removeTmpDir();
 
   p.log.message(
     `Next step: ${link(
-      "https://hot-updater.dev/docs/managed/firebase#step-3-generated-configurations",
+      "https://hot-updater.dev/docs/managed/firebase#step-3-add-hotupdater-to-your-project",
     )}`,
   );
   if (!applicationCredentials) {
@@ -718,3 +727,6 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
   }
   p.log.success("Done! 🎉");
 };
+
+// What init asks for and checks before `runInit`.
+export { initProvider } from "./init/index";

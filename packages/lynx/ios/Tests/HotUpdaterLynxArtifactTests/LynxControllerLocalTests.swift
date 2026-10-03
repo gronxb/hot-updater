@@ -906,11 +906,13 @@ final class LynxControllerLocalTests: XCTestCase {
             bundleId: bundleB,
             contextHash: guardValue.selectionContextHash
         )
-        let request = LynxArtifactRequest(
-            bundleId: bundleB,
-            fileUrl: URL(string: "https://artifacts.test/bundle.tar.gz")!,
-            fileHash: String(repeating: "a", count: 64)
-        )
+        let request = LynxArtifactRequest(bundleId: bundleB,
+            manifestUrl: URL(string: "https://artifacts.test/bundle.tar.gz")!,
+            manifestFileHash: String(repeating: "a", count: 64),
+            assets: ["main.lynx.bundle": .init(
+                fileHash: String(repeating: "b", count: 64),
+                file: .init(url: URL(string: "https://artifacts.test/main")!)
+            )])
         let preparation = Task {
             try await controller.prepareSelection(
                 guard: guardValue,
@@ -1501,11 +1503,13 @@ final class LynxControllerLocalTests: XCTestCase {
         )
         context = controller!.createContext(primary: true)
         _ = try controller!.begin(context)
-        let request = LynxArtifactRequest(
-            bundleId: bundleB,
-            fileUrl: URL(string: "https://artifacts.test/new-incompatible.tar.gz")!,
-            fileHash: String(repeating: "b", count: 64)
-        )
+        let request = LynxArtifactRequest(bundleId: bundleB,
+            manifestUrl: URL(string: "https://artifacts.test/new-incompatible.tar.gz")!,
+            manifestFileHash: String(repeating: "a", count: 64),
+            assets: ["main.lynx.bundle": .init(
+                fileHash: String(repeating: "b", count: 64),
+                file: .init(url: URL(string: "https://artifacts.test/main")!)
+            )])
         do {
             _ = try await controller!.prepareSelection(
                 guard: guardValue,
@@ -1569,11 +1573,13 @@ final class LynxControllerLocalTests: XCTestCase {
             bundleId: bundleB,
             contextHash: guardValue.selectionContextHash
         )
-        let request = LynxArtifactRequest(
-            bundleId: bundleB,
-            fileUrl: URL(string: "https://artifacts.test/incompatible.tar.gz")!,
-            fileHash: String(repeating: "a", count: 64)
-        )
+        let request = LynxArtifactRequest(bundleId: bundleB,
+            manifestUrl: URL(string: "https://artifacts.test/incompatible.tar.gz")!,
+            manifestFileHash: String(repeating: "a", count: 64),
+            assets: ["main.lynx.bundle": .init(
+                fileHash: String(repeating: "b", count: 64),
+                file: .init(url: URL(string: "https://artifacts.test/main")!)
+            )])
         for _ in 0..<20 {
             do {
                 try await controller.validateSelection(

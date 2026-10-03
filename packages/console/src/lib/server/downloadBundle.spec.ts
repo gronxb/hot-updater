@@ -1,67 +1,69 @@
-import { createStoragePlugin } from "@hot-updater/plugin-core";
+import { createStorageAdapter } from "@hot-updater/plugin-core";
 import { describe, expect, it, vi } from "vitest";
 
 import { downloadBundle } from "./downloadBundle";
 
-const createDatabaseClient = (storageUri: string | null) =>
+const createCore = (manifestStorageUri: string) =>
   ({
-    getBundleById: vi.fn(async () => ({
-      id: "bundle-id",
-      storageUri,
+    getBundle: vi.fn(async () => ({
+      bundle: { id: "bundle-id", manifest_storage_uri: manifestStorageUri },
+      patches: [],
+      childCount: 0,
     })),
   }) as never;
 
 describe("downloadBundle", () => {
   it("redirects already-public storage without requiring a plugin URL API", async () => {
     const response = await downloadBundle("bundle-id", {
-      databaseClient: createDatabaseClient(
-        "https://cdn.example.com/bundle.zip",
-      ),
+      core: createCore("https://cdn.example.com/manifest.json"),
+      storage: [],
     });
 
     expect(response.status).toBe(302);
     expect(response.headers.get("location")).toBe(
-      "https://cdn.example.com/bundle.zip",
+      "https://cdn.example.com/manifest.json",
     );
   });
 
   it("streams a custom storage Response through the Console route", async () => {
     const get = vi.fn(async () => ({
-      response: new Response("bundle", {
-        headers: { "content-type": "application/zip" },
+      response: new Response("manifest", {
+        headers: { "content-type": "application/json" },
       }),
     }));
-    const storagePlugin = createStoragePlugin({
+    const storageAdapter = createStorageAdapter({
       name: "r2Storage",
       protocol: "r2",
       get,
     });
 
     const response = await downloadBundle("bundle-id", {
-      databaseClient: createDatabaseClient("r2://updates/bundle.zip"),
-      storagePlugin,
+      core: createCore("r2://updates/bundle/manifest.json"),
+      storage: [storageAdapter],
     });
 
     expect(get).toHaveBeenCalledWith({
-      storageUri: "r2://updates/bundle.zip",
+      storageUri: "r2://updates/bundle/manifest.json",
     });
-    expect(response.headers.get("content-type")).toBe("application/zip");
-    expect(response.headers.get("content-disposition")).toBe("attachment");
-    await expect(response.text()).resolves.toBe("bundle");
+    expect(response.headers.get("content-type")).toBe("application/json");
+    expect(response.headers.get("content-disposition")).toBe(
+      'attachment; filename="manifest.json"',
+    );
+    await expect(response.text()).resolves.toBe("manifest");
   });
 
   it("uses an owning https plugin before redirecting", async () => {
     const storageUri = "https://cdn.example.com/private/bundle.zip";
     const get = vi.fn(async () => ({ response: new Response("private") }));
-    const storagePlugin = createStoragePlugin({
+    const storageAdapter = createStorageAdapter({
       name: "privateHttpsStorage",
       protocol: "https",
       get,
     });
 
     const response = await downloadBundle("bundle-id", {
-      databaseClient: createDatabaseClient(storageUri),
-      storagePlugin,
+      core: createCore(storageUri),
+      storage: [storageAdapter],
     });
 
     expect(response.status).toBe(200);

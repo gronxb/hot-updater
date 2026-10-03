@@ -169,14 +169,10 @@ final class StrictArchiveTests: XCTestCase {
             fileHash: String(repeating: "a", count: 64),
             file: file
         )
-        let request = LynxArtifactRequest(
-            bundleId: "01900000-0000-7000-8000-000000000202",
-            fileUrl: nil,
-            fileHash: nil,
-            manifestFileHash: String(repeating: "b", count: 64),
+        let request = LynxArtifactRequest(bundleId: "01900000-0000-7000-8000-000000000202",
             manifestUrl: URL(string: "https://artifacts.test/manifest")!,
-            changedAssets: ["Straße/x.bin": asset, "strasse/y.bin": asset]
-        )
+            manifestFileHash: String(repeating: "b", count: 64),
+            assets: ["Straße/x.bin": asset, "strasse/y.bin": asset])
 
         XCTAssertThrowsError(try request.validate())
     }
@@ -211,14 +207,10 @@ final class StrictArchiveTests: XCTestCase {
                 )
             )
 
-            let request = LynxArtifactRequest(
-                bundleId: "01900000-0000-7000-8000-000000000202",
-                fileUrl: nil,
-                fileHash: nil,
-                manifestFileHash: String(repeating: "b", count: 64),
-                manifestUrl: URL(string: "https://artifacts.test/manifest")!,
-                changedAssets: [path: asset]
-            )
+            let request = LynxArtifactRequest(bundleId: "01900000-0000-7000-8000-000000000202",
+            manifestUrl: URL(string: "https://artifacts.test/manifest")!,
+            manifestFileHash: String(repeating: "b", count: 64),
+            assets: [path: asset])
             XCTAssertThrowsError(try request.validate())
         }
     }

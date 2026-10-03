@@ -1,6 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 
 import type { BundleActivityInput } from "./bundle-activity";
+import { consoleAccess } from "./console-access";
 import { readRecoveryInput } from "./insights-recovery";
 
 export function readBundleActivityInput(
@@ -16,23 +17,35 @@ export function readBundleActivityInput(
 }
 
 export const getBundleActivityRpc = createServerFn({ method: "GET" })
+  .middleware([consoleAccess])
   .validator(readBundleActivityInput)
   .handler(async ({ data }) => {
-    const [{ prepareConfig }, { getBundleActivity }] = await Promise.all([
-      import("./server/config.server"),
-      import("./server/bundleActivity"),
-    ]);
-    const { config } = await prepareConfig();
-    return getBundleActivity(config.database.models.insights, data);
+    const [{ prepareConfig }, { getBundleActivity }, { requireFeature }] =
+      await Promise.all([
+        import("./server/config.server"),
+        import("./server/bundleActivity"),
+        import("./server/runtime.server"),
+      ]);
+    const { runtime } = await prepareConfig();
+    return getBundleActivity(
+      await requireFeature(runtime, "insightsAnalytics"),
+      data,
+    );
   });
 
 export const getRecoveryReportRpc = createServerFn({ method: "GET" })
+  .middleware([consoleAccess])
   .validator(readRecoveryInput)
   .handler(async ({ data }) => {
-    const [{ prepareConfig }, { getRecoveryReport }] = await Promise.all([
-      import("./server/config.server"),
-      import("./server/insightsRecovery"),
-    ]);
-    const { config } = await prepareConfig();
-    return getRecoveryReport(config.database.models.insights, data);
+    const [{ prepareConfig }, { getRecoveryReport }, { requireFeature }] =
+      await Promise.all([
+        import("./server/config.server"),
+        import("./server/insightsRecovery"),
+        import("./server/runtime.server"),
+      ]);
+    const { runtime } = await prepareConfig();
+    return getRecoveryReport(
+      await requireFeature(runtime, "insightsAnalytics"),
+      data,
+    );
   });

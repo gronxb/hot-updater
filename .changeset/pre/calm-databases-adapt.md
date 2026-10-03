@@ -11,7 +11,7 @@
 "@hot-updater/supabase": minor
 "@hot-updater/cli-tools": minor
 "@hot-updater/console": minor
-"@hot-updater/core": minor
+"@hot-updater/protocol": minor
 "hot-updater": minor
 ---
 

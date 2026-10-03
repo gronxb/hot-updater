@@ -14,30 +14,32 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { transformEnv } from "@hot-updater/cli-tools";
+import type { HotUpdaterCoreApi } from "@hot-updater/plugin-core";
+import type { Bundle } from "@hot-updater/protocol";
+import { createHotUpdater } from "@hot-updater/server";
 import {
-  type Bundle,
-  createReleaseCatalogScopeKey,
-  encodeChannelKey,
-} from "@hot-updater/core";
-import {
-  commitReleaseCatalogMutations,
-  createUUIDv7,
-} from "@hot-updater/plugin-core";
-import { createHotUpdater, registerApiKey } from "@hot-updater/server";
-import { getApps, initializeApp } from "firebase-admin/app";
-import { getFirestore } from "firebase-admin/firestore";
-import { getStorage } from "firebase-admin/storage";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-
+  createInsightsModel,
+  createInsightsProvider,
+  type InsightsProvider,
+} from "@hot-updater/server/plugins/insights";
 import {
   assertCommandAvailable,
   findOpenPort,
   spawnRuntime,
   stopRuntime,
   waitForHttpOk,
-} from "../../../../packages/test-utils/src/runtimeProcess";
-import { firebaseDatabase } from "../../src/firebaseDatabase";
-import { firebaseStorage } from "../../src/firebaseStorage";
+} from "@hot-updater/test-utils/node";
+import { getApps, initializeApp } from "firebase-admin/app";
+import { getFirestore } from "firebase-admin/firestore";
+import { getStorage } from "firebase-admin/storage";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+
+import {
+  firebaseDatabase,
+  migrateFirebaseDatabase,
+} from "../../src/firebaseDatabase";
+import { FIREBASE_V1_COLLECTION } from "../../src/firebaseInfrastructureNames";
+import { plugins } from "../../src/plugins";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -106,72 +108,26 @@ const ensureBuiltArtifacts = async (
 const toRuntimeBundle = (bundle: Bundle, storageBucket: string): Bundle => {
   return {
     ...bundle,
-    storageUri: `gs://${storageBucket}/${bundle.id}/bundle.zip`,
+    manifestStorageUri: `gs://${storageBucket}/${bundle.id}/manifest.json`,
+    assetBaseStorageUri: `gs://${storageBucket}/assets`,
   };
 };
 
-const seedProductionRelease = async ({
-  bundle,
-  database,
-}: {
-  readonly bundle: Bundle;
-  readonly database: ReturnType<typeof firebaseDatabase>;
-}) => {
-  const channelName = "production";
-  const channelKey = encodeChannelKey(channelName);
-  const channel = (
-    await database.models.channels.insert({
-      row: { id: `channel:${channelKey}`, name: channelName },
-      onConflict: "returnExisting",
-    })
-  ).row;
-  const scopeKey = createReleaseCatalogScopeKey({
-    channelKey,
-    platform: bundle.platform,
-    strategy: "APP_VERSION",
-  });
-  const now = Date.now();
-  await commitReleaseCatalogMutations({
-    database,
-    mutations: [
-      {
-        mutation: {
-          operation: "insert",
-          row: {
-            bundle_id: bundle.id,
-            channel_id: channel.id,
-            created_at_ms: now,
-            enabled: true,
-            fingerprint_hash: null,
-            id: createUUIDv7(),
-            kind: "BUNDLE",
-            message: "hello",
-            operation: "DEPLOY",
-            platform: bundle.platform,
-            revision: 1,
-            rollout_cohort_count: 1_000,
-            scope_key: scopeKey,
-            should_force_update: false,
-            source_release_id: null,
-            strategy: "APP_VERSION",
-            target_app_version: "1.0",
-            target_cohorts: [],
-            updated_at_ms: now,
-          },
-        },
-        scope: {
-          channelId: channel.id,
-          channelName,
-          fingerprintHash: null,
-          platform: bundle.platform,
-          scopeKey,
-          strategy: "APP_VERSION",
-        },
-        updatedAtMs: now,
+/** Writes `bundle` with an enabled production release for app version 1.0. */
+const deployToProduction = (core: HotUpdaterCoreApi, bundle: Bundle) =>
+  core.deploy([
+    {
+      bundle,
+      release: {
+        channel: "production",
+        enabled: true,
+        fingerprintHash: null,
+        message: "hello",
+        shouldForceUpdate: false,
+        targetAppVersion: "1.0",
       },
-    ],
-  });
-};
+    },
+  ]);
 
 describe.sequential("firebase functions runtime acceptance", () => {
   const cdnObjects = new Map<string, { body: string; contentType: string }>();
@@ -180,8 +136,8 @@ describe.sequential("firebase functions runtime acceptance", () => {
   let tempRoot: string | undefined;
   let functionsPort = 0;
   let functionsRuntime: ReturnType<typeof spawnRuntime> | undefined;
-  let database: ReturnType<typeof firebaseDatabase>;
-  let seedHotUpdater: ReturnType<typeof createHotUpdater>;
+  let core: HotUpdaterCoreApi;
+  let insightsReads: InsightsProvider;
   const projectId = process.env.GCLOUD_PROJECT ?? "";
   const firestoreHost = process.env.FIRESTORE_EMULATOR_HOST ?? "";
   const storageEmulatorHost = process.env.FIREBASE_STORAGE_EMULATOR_HOST ?? "";
@@ -292,22 +248,19 @@ exec node "${path.join(firebaseFunctionsPackagePath, "lib/bin/firebase-functions
       storageBucket,
     };
 
-    database = firebaseDatabase({ ...adminOptions });
-    await registerApiKey({
+    const database = firebaseDatabase({ ...adminOptions });
+    await migrateFirebaseDatabase({ ...adminOptions }, plugins);
+    // The server the function runs, on the emulator's project: the API key
+    // it authenticates with, and core's writes as the managed config makes them.
+    const server = createHotUpdater({ database, plugins });
+    await server.api.apiKeys.register({
       apiKey: API_KEY,
-      apiKeys: database.models.apiKeys,
       name: "Runtime acceptance",
     });
-    seedHotUpdater = createHotUpdater({
-      database,
-      clientAccess: { type: "public" },
-      storage: [
-        firebaseStorage({
-          ...adminOptions,
-          cdnUrl: cdnBaseUrl,
-        }),
-      ],
-    });
+    core = server.core;
+    insightsReads = createInsightsProvider(
+      createInsightsModel(server.api.insights),
+    );
 
     functionsRuntime = spawnRuntime({
       command: "pnpm",
@@ -348,13 +301,11 @@ exec node "${path.join(firebaseFunctionsPackagePath, "lib/bin/firebase-functions
   beforeEach(async () => {
     cdnObjects.clear();
     await clearStorageBucket(storageBucket);
-    await clearFirestoreCollection("hot_updater_v1_bundle_patches");
-    await clearFirestoreCollection("hot_updater_v1_release_catalogs");
-    await clearFirestoreCollection("hot_updater_v1_releases");
-    await clearFirestoreCollection("hot_updater_v1_bundles");
-    await clearFirestoreCollection("hot_updater_v1_channels");
-    await clearFirestoreCollection("hot_updater_v1_private_settings", (id) =>
-      id.startsWith("channel_id_"),
+    // The schema settings and the API key the function authenticates with stay.
+    await clearFirestoreCollection(FIREBASE_V1_COLLECTION, (pk) =>
+      ["private_hot_updater_settings", "api_keys"].every(
+        (table) => pk !== table && !pk.startsWith(`${table}#`),
+      ),
     );
   });
 
@@ -384,18 +335,14 @@ exec node "${path.join(firebaseFunctionsPackagePath, "lib/bin/firebase-functions
       {
         id: "00000000-0000-0000-0000-000000000001",
         platform: "ios",
-        fileHash: "hash",
         gitCommitHash: null,
-        storageUri: "storage://unused",
-        archiveByteSize: 3_000_000_001,
+        manifestStorageUri: "storage://unused/manifest.json",
+        manifestFileHash: "manifest-hash",
+        assetBaseStorageUri: "storage://assets",
       },
       storageBucket,
     );
-    await seedHotUpdater.insertBundle(bundle);
-    await seedProductionRelease({
-      bundle,
-      database,
-    });
+    await deployToProduction(core, bundle);
 
     const unauthorized = await invokeHandler(
       "/release-catalogs/app-version/ios/cHJvZHVjdGlvbg/1.0.0",
@@ -416,8 +363,7 @@ exec node "${path.join(firebaseFunctionsPackagePath, "lib/bin/firebase-functions
   it("preserves JSON event bodies through the Functions entrypoint", async () => {
     const event = {
       installId: "functions-json-body",
-      userId: "runtime-acceptance",
-      username: "다운로드 확인",
+      userId: "다운로드 확인",
       platform: "ios",
       appVersion: "1.0.0",
       channel: "production",
@@ -437,9 +383,9 @@ exec node "${path.join(firebaseFunctionsPackagePath, "lib/bin/firebase-functions
       });
       expect(response.status).toBe(204);
       await expect(
-        seedHotUpdater.insights.getInstallation({ installId: event.installId }),
+        insightsReads.getInstallation({ installId: event.installId }),
       ).resolves.toMatchObject({
-        username: event.username,
+        userId: event.userId,
         latestStatus: type,
         lastKnownBundleId:
           type === "UPDATE_DOWNLOADED" ? event.fromBundleId : event.toBundleId,
@@ -466,20 +412,17 @@ exec node "${path.join(firebaseFunctionsPackagePath, "lib/bin/firebase-functions
 
 const clearFirestoreCollection = async (
   collectionName: string,
-  matches: (id: string) => boolean = () => true,
+  matches: (pk: string) => boolean,
 ) => {
   const firestore = getFirestore();
-  const snapshot = await firestore.collection(collectionName).get();
-
-  if (snapshot.empty) {
-    return;
+  const doomed = (await firestore.collection(collectionName).get()).docs.filter(
+    (doc) => matches(String(doc.get("pk"))),
+  );
+  for (let at = 0; at < doomed.length; at += 400) {
+    const batch = firestore.batch();
+    for (const doc of doomed.slice(at, at + 400)) batch.delete(doc.ref);
+    await batch.commit();
   }
-
-  const batch = firestore.batch();
-  for (const doc of snapshot.docs) {
-    if (matches(doc.id)) batch.delete(doc.ref);
-  }
-  await batch.commit();
 };
 
 const clearStorageBucket = async (storageBucket: string) => {

@@ -85,7 +85,17 @@ final class ArchiveEntryGuard {
 }
 
 enum StrictArchive {
-    static func extract(_ file: URL, to directory: URL) throws {
+    static func extract(_ file: URL, to directory: URL, expectedTarBytes: UInt64? = nil) throws {
+        if let expectedTarBytes {
+            guard expectedTarBytes > 0, expectedTarBytes <= ArchiveLimits.tarStream else { throw ArchiveLimits.reject("Invalid decoded TAR size") }
+            try ArchiveLimits.checkArchive(file)
+            let tar = directory.deletingLastPathComponent().appendingPathComponent("archive-\(UUID().uuidString).tar")
+            defer { try? FileManager.default.removeItem(at: tar) }
+            try StreamingTarArchiveExtractor.decompressBrotliFile(from: file.path, to: tar.path, maximumOutputBytes: expectedTarBytes)
+            guard UInt64(try tar.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0) == expectedTarBytes else { throw ArchiveLimits.reject("Decoded TAR size mismatch") }
+            try TarArchiveExtractor.extract(from: tar.path, to: directory.path, strict: true, progressHandler: { _ in })
+            return
+        }
         try ArchiveLimits.checkArchive(file)
         let handle = try FileHandle(forReadingFrom: file)
         let prefix = try handle.read(upToCount: 4) ?? Data()

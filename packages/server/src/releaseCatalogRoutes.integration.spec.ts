@@ -1,96 +1,63 @@
-import { encodeChannelKey } from "@hot-updater/core";
-import { commitReleaseCatalogMutation } from "@hot-updater/plugin-core";
+import type { EngineDatabase } from "@hot-updater/plugin-core";
+import { encodeChannelKey } from "@hot-updater/protocol";
 import { describe, expect, it, vi } from "vitest";
 
-import { createInMemoryDatabasePlugin } from "../../test-utils/test/inMemoryDatabasePlugin";
-import { registerApiKey } from "./apiKeys";
 import { createHotUpdater } from "./index";
+import { apiKeys } from "./plugins/api-keys";
+import { createRuntimeDatabase } from "./runtime.testFixtures";
 
 const API_KEY = "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE";
 
 const channelKey = encodeChannelKey("production");
 const scopeKey = `v1:app-version:ios:${channelKey}`;
 
+/** A database with one deployed release in production's app-version scope. */
 const createCatalogDatabase = async () => {
-  const database = createInMemoryDatabasePlugin();
-  const channel = { id: "channel-production", name: "production" };
-  await database.models.channels.insert({
-    onConflict: "returnExisting",
-    row: channel,
-  });
-  const bundleId = "00000000-0000-7001-8000-000000000001";
-  await database.commit({
-    changes: [
-      {
-        model: "bundles",
-        operation: "insert",
-        row: {
-          asset_base_storage_uri: null,
-          archive_byte_size: 3_000_000_001,
-          file_hash: "bundle-hash",
-          git_commit_hash: null,
-          id: bundleId,
-          manifest_file_hash: null,
-          manifest_storage_uri: null,
-          metadata: {},
-          platform: "ios",
-          storage_uri: "storage://bundle.zip",
-        },
-      },
-    ],
-  });
-  await commitReleaseCatalogMutation({
-    database,
-    mutation: {
-      operation: "insert",
-      row: {
-        bundle_id: bundleId,
-        channel_id: channel.id,
-        created_at_ms: 1,
-        enabled: true,
-        fingerprint_hash: null,
-        id: "00000000-0000-7000-8000-000000000001",
-        kind: "BUNDLE",
-        message: "Stable Release",
-        operation: "DEPLOY",
+  const database = createRuntimeDatabase();
+  await createHotUpdater({ database, clientAccess: "public" }).core.deploy([
+    {
+      bundle: {
+        assetBaseStorageUri: "storage://assets",
+        gitCommitHash: null,
+        id: "00000000-0000-7001-8000-000000000001",
+        manifestFileHash: "manifest-hash",
+        manifestStorageUri: "storage://bundle/manifest.json",
+        metadata: {},
         platform: "ios",
-        revision: 1,
-        rollout_cohort_count: 1000,
-        scope_key: scopeKey,
-        should_force_update: false,
-        source_release_id: null,
-        strategy: "APP_VERSION",
-        target_app_version: ">=1.0.0 <2.0.0",
-        target_cohorts: [],
-        updated_at_ms: 1,
+      },
+      release: {
+        channel: "production",
+        enabled: true,
+        fingerprintHash: null,
+        message: "Stable Release",
+        shouldForceUpdate: false,
+        targetAppVersion: ">=1.0.0 <2.0.0",
       },
     },
-    scope: {
-      channelId: channel.id,
-      channelName: channel.name,
-      fingerprintHash: null,
-      platform: "ios",
-      scopeKey,
-      strategy: "APP_VERSION",
-    },
-    updatedAtMs: 1,
-  });
+  ]);
   return database;
+};
+
+/** Counts point reads of catalog rows, the update check's one read. */
+const countCatalogReads = (database: EngineDatabase) => {
+  const get = vi.spyOn(database.adapter, "get");
+  return () =>
+    get.mock.calls.filter(([table]) => table.name === "release_catalogs")
+      .length;
 };
 
 describe("Release catalog routes", () => {
   it("serves persisted Catalog identity without configuration and keeps it across server restarts", async () => {
     const database = await createCatalogDatabase();
-    const storedCatalog =
-      await database.models.releaseCatalogs.findByScopeKey(scopeKey);
+    const storedCatalog = await createHotUpdater({
+      database,
+      clientAccess: "public",
+    }).core.getReleaseCatalogRow(scopeKey);
+    const catalogReads = countCatalogReads(database);
     const hotUpdater = createHotUpdater({
       database,
-      clientAccess: { type: "public" },
+      clientAccess: "public",
     });
-    const catalogRead = vi.spyOn(
-      database.models.releaseCatalogs,
-      "findByScopeKey",
-    );
     const url =
       `https://updates.example.com/release-catalogs/app-version/` +
       `ios/${channelKey}/1.5.0`;
@@ -132,7 +99,7 @@ describe("Release catalog routes", () => {
     );
     expect(revalidated.status).toBe(304);
     expect(await revalidated.text()).toBe("");
-    expect(catalogRead).toHaveBeenCalledOnce();
+    expect(catalogReads()).toBe(1);
 
     const nonCanonicalVersion = await hotUpdater.handlers.client(
       new Request(url.replace("/1.5.0", "/v1.5")),
@@ -141,13 +108,13 @@ describe("Release catalog routes", () => {
     expect(nonCanonicalVersion.headers.get("cache-control")).toBe(
       "private, no-store",
     );
-    expect(catalogRead).toHaveBeenCalledOnce();
+    expect(catalogReads()).toBe(1);
 
     const invalidPlatform = await hotUpdater.handlers.client(
       new Request(url.replace("/ios/", "/windows/")),
     );
     expect(invalidPlatform.status).toBe(400);
-    expect(catalogRead).toHaveBeenCalledOnce();
+    expect(catalogReads()).toBe(1);
 
     const otherChannel = await hotUpdater.handlers.client(
       new Request(
@@ -155,7 +122,11 @@ describe("Release catalog routes", () => {
       ),
     );
     expect(otherChannel.status).toBe(404);
-    expect(catalogRead).toHaveBeenCalledTimes(2);
+    expect(otherChannel.headers.get("cache-control")).toBe(
+      "public, max-age=0, s-maxage=5",
+    );
+    expect(otherChannel.headers.get("x-hot-updater-catalog")).toBe("none");
+    expect(catalogReads()).toBe(2);
 
     const legacyAuthorityPath = await hotUpdater.handlers.client(
       new Request(
@@ -167,28 +138,28 @@ describe("Release catalog routes", () => {
     expect(legacyAuthorityPath.headers.get("cache-control")).toBe(
       "private, no-store",
     );
-    expect(catalogRead).toHaveBeenCalledTimes(2);
-    const commit = vi.spyOn(database, "commit");
+    expect(legacyAuthorityPath.headers.has("x-hot-updater-catalog")).toBe(
+      false,
+    );
+    expect(catalogReads()).toBe(2);
+    const write = vi.spyOn(database.adapter, "write");
     const restarted = createHotUpdater({
       database,
-      clientAccess: { type: "public" },
+      clientAccess: "public",
     });
     const relocated = await restarted.handlers.client(
       new Request(url.replace("updates.example.com", "new.example.com")),
     );
     expect(await relocated.json()).toEqual(body);
-    expect(commit).not.toHaveBeenCalled();
+    expect(write).not.toHaveBeenCalled();
   });
 
   it("singleflights concurrent cold requests into one exact catalog read", async () => {
     const database = await createCatalogDatabase();
-    const catalogRead = vi.spyOn(
-      database.models.releaseCatalogs,
-      "findByScopeKey",
-    );
+    const catalogReads = countCatalogReads(database);
     const hotUpdater = createHotUpdater({
       database,
-      clientAccess: { type: "public" },
+      clientAccess: "public",
     });
     const url =
       `https://updates.example.com/release-catalogs/app-version/` +
@@ -201,23 +172,15 @@ describe("Release catalog routes", () => {
     );
 
     expect(responses.every(({ status }) => status === 200)).toBe(true);
-    expect(catalogRead).toHaveBeenCalledOnce();
+    expect(catalogReads()).toBe(1);
   });
 
   it("varies authenticated catalog responses by the configured header", async () => {
-    const database = await createCatalogDatabase();
-    await registerApiKey({
-      apiKeys: database.models.apiKeys,
-      apiKey: API_KEY,
-      name: "App",
-    });
     const hotUpdater = createHotUpdater({
-      clientAccess: {
-        headerName: "X-Hot-Updater-Key",
-        type: "api-key",
-      },
-      database,
+      database: await createCatalogDatabase(),
+      plugins: [apiKeys({ headerName: "X-Hot-Updater-Key" })],
     });
+    await hotUpdater.api.apiKeys.register({ apiKey: API_KEY, name: "App" });
     const url =
       `https://updates.example.com/release-catalogs/app-version/` +
       `ios/${channelKey}/1.5.0`;

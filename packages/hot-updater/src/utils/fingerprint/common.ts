@@ -33,9 +33,9 @@ export const ensureFingerprintConfig = async (
   }
   let nativeExtraSources = additionalExtraSources;
   if (nativeExtraSources === undefined) {
-    const buildPlugin = await config.build({ cwd: getCwd() });
+    const buildAdapter = await config.build({ cwd: getCwd() });
     nativeExtraSources =
-      (await buildPlugin.nativeBuild?.getFingerprintExtraSources?.()) ?? [];
+      (await buildAdapter.nativeBuild?.getFingerprintExtraSources?.()) ?? [];
   }
   return {
     ...config.fingerprint,

@@ -93,7 +93,7 @@ class PreparedLynxArtifact internal constructor(
     internal val manifestBacked: Boolean,
     internal val baseBundleId: String?,
     internal val patchedAssets: List<LynxPatchedAssetEvidence>,
-    internal val archiveFallback: Boolean,
+    internal val usedArchive: Boolean,
     internal val lease: PreparationLease,
 ) {
     val bundleId: String get() = request.bundleId
@@ -156,58 +156,9 @@ class LynxArtifactInstaller internal constructor(
                         FileOutputStream(File(directory, "bundleId")).use { output -> output.write(request.bundleId.toByteArray()); output.fd.sync() }
                     }
                 }
-                var manifestError: Exception? = null
-                var verified: VerifiedLynxInstallation? = null
-                var patchedAssets = emptyList<LynxPatchedAssetEvidence>()
-                if (request.hasDelta && base != null) {
-                    val payload = File(transaction, "payload").also { check(it.mkdir()) }
-                    try {
-                        patchedAssets = deltaAssembler.assemble(
-                            transaction,
-                            payload,
-                            request,
-                            base,
-                            onDownload,
-                        )
-                        coroutineContext.ensureActive()
-                        verified = verifier.verify(payload, request, manifestBacked = true)
-                    } catch (error: kotlinx.coroutines.CancellationException) {
-                        throw error
-                    } catch (error: Exception) {
-                        manifestError = error
-                        check(payload.deleteRecursively()) {
-                            "Cannot clean failed manifest preparation"
-                        }
-                    }
-                }
-                if (verified == null) {
-                    if (!request.hasArchive) {
-                        throw manifestError ?: IllegalArgumentException(
-                            "Full archive required without a usable native delta base",
-                        )
-                    }
-                    val archive = File(transaction, "archive")
-                    val cachedArchive = File(File(installations, request.bundleId), "archive")
-                    if (cachedArchive.isFile) {
-                        require(cachedArchive.length() in 1..ArchiveLimits.MAX_ARCHIVE_BYTES) {
-                            "Invalid cached archive size"
-                        }
-                        cachedArchive.inputStream().use { input ->
-                            FileOutputStream(archive).use { output ->
-                                input.copyTo(output)
-                                output.fd.sync()
-                            }
-                        }
-                    } else {
-                        downloader.download(checkNotNull(request.fileUrl), archive, onDownload)
-                    }
-                    coroutineContext.ensureActive()
-                    integrity.verify(archive, checkNotNull(request.fileHash))
-                    val payload = File(transaction, "payload").also { check(it.mkdir()) }
-                    StrictArchive.extract(archive, payload)
-                    coroutineContext.ensureActive()
-                    verified = verifier.verify(payload, request)
-                }
+                val payload = File(transaction, "payload").also { check(it.mkdir()) }
+                val assembly = deltaAssembler.assemble(transaction, payload, request, base, onDownload)
+                val verified = verifier.verify(payload, request, manifestBacked = true)
                 coroutineContext.ensureActive()
                 PreparedLynxArtifact(
                     owner,
@@ -218,8 +169,8 @@ class LynxArtifactInstaller internal constructor(
                     checkNotNull(verified).manifestHash,
                     verified.manifestBacked,
                     base?.bundleId,
-                    patchedAssets,
-                    manifestError != null && !verified.manifestBacked,
+                    assembly.patchedAssets,
+                    assembly.usedArchive,
                     checkNotNull(ownedLease),
                 )
             }
@@ -364,15 +315,8 @@ class LynxArtifactInstaller internal constructor(
         directory: File,
         prepared: PreparedLynxArtifact,
     ): VerifiedLynxInstallation {
-        if (prepared.manifestBacked) {
-            require(!prepared.request.manifestFileHash.isNullOrBlank()) {
-                "Manifest-backed installation lost its trust token"
-            }
-        } else {
-            integrity.verify(
-                File(directory, "archive"),
-                checkNotNull(prepared.request.fileHash),
-            )
+        require(!prepared.request.manifestFileHash.isNullOrBlank()) {
+            "Manifest-backed installation lost its trust token"
         }
         return verifier.verify(
             File(directory, "payload"),
@@ -382,8 +326,8 @@ class LynxArtifactInstaller internal constructor(
     }
 
     private fun logPublished(prepared: PreparedLynxArtifact) {
-        if (prepared.manifestBacked) {
-            val baseBundleId = checkNotNull(prepared.baseBundleId)
+        if (!prepared.usedArchive) {
+            val baseBundleId = prepared.baseBundleId ?: "none"
             prepared.patchedAssets.sortedBy { it.path }.forEach { asset ->
                 val event = LynxInstallEvent.json(
                     "HotUpdaterBsdiffPatchApplied",
@@ -406,13 +350,8 @@ class LynxArtifactInstaller internal constructor(
                 "HotUpdaterManifestDiffApplied bundleId=${prepared.bundleId} baseBundleId=$baseBundleId HotUpdaterLynxEvent=$event",
             )
         } else {
-            if (prepared.archiveFallback) {
-                Log.i(
-                    TAG,
-                    "HotUpdaterArchiveFallbackApplied bundleId=${prepared.bundleId} baseBundleId=${prepared.baseBundleId ?: "none"}",
-                )
-            }
-            Log.i(TAG, "HotUpdaterArchiveInstalled bundleId=${prepared.bundleId}")
+            val event = LynxInstallEvent.json("HotUpdaterArchiveInstalled", prepared, prepared.baseBundleId ?: "none")
+            Log.i(TAG, "HotUpdaterArchiveInstalled bundleId=${prepared.bundleId} HotUpdaterLynxEvent=$event")
         }
     }
 

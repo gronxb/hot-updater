@@ -20,10 +20,16 @@ export const failedDownloadSameGenerationRetryScenario: DetoxScenarioDefinition 
         },
       );
       await app.launch("launch retry app");
-      await app.control("fail first artifact download", "/e2e/proxy-control", {
-        artifactFailures: 1,
-        reset: true,
-      });
+      // Native downloads try a 503 three times, so the first install fails
+      // only when every attempt at its manifest fails.
+      await app.control(
+        "fail every attempt of the first download",
+        "/e2e/proxy-control",
+        {
+          artifactFailures: 3,
+          reset: true,
+        },
+      );
       await app.tap(
         "attempt failing download",
         "action-install-current-channel-update",

@@ -1,6 +1,6 @@
-import type { Release } from "@hot-updater/core";
 import type { ReleaseCatalogRow, ReleaseRow } from "@hot-updater/plugin-core";
 import { compileReleaseCatalog } from "@hot-updater/plugin-core";
+import type { Release } from "@hot-updater/protocol";
 import { describe, expect, it, vi } from "vitest";
 
 import {
@@ -128,9 +128,9 @@ describe("Release reachability", () => {
       strategy: "APP_VERSION",
     });
     const row = catalogRow(compilation.canonicalPayload);
-    const findByScopeKey = vi.fn(async () => row);
+    const getReleaseCatalogRow = vi.fn(async () => row);
 
-    const result = await addReleaseReachability({ findByScopeKey }, [
+    const result = await addReleaseReachability({ getReleaseCatalogRow }, [
       releaseRow(latest),
       releaseRow(previous),
     ]);
@@ -144,7 +144,7 @@ describe("Release reachability", () => {
       { currentlyUnreachable: false, id: latest.id },
       { currentlyUnreachable: true, id: previous.id },
     ]);
-    expect(findByScopeKey).toHaveBeenCalledTimes(1);
-    expect(findByScopeKey).toHaveBeenCalledWith("scope-production");
+    expect(getReleaseCatalogRow).toHaveBeenCalledTimes(1);
+    expect(getReleaseCatalogRow).toHaveBeenCalledWith("scope-production");
   });
 });

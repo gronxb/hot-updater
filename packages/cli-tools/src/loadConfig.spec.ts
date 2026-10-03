@@ -3,9 +3,12 @@ import os from "os";
 import path from "path";
 
 import type {
-  BundleSigningPlugin,
+  AnyHotUpdaterPlugin,
+  BundleSigningAdapter,
   ConfigInput,
+  ConfiguredDatabase,
   LocalSigningConfig,
+  StorageAdapter,
 } from "@hot-updater/plugin-core";
 import {
   afterEach,
@@ -31,25 +34,23 @@ describe("ConfigResponse", () => {
       enabled: boolean;
       maxBaseBundles: number;
     }>();
-    expectTypeOf<ConfigResponse["compressStrategy"]>().toEqualTypeOf<
-      "zip" | "tar.br" | "tar.gz"
-    >();
     expectTypeOf<ConfigResponse["console"]["port"]>().toEqualTypeOf<number>();
     expectTypeOf<ConfigResponse["signing"]>().toEqualTypeOf<
-      | BundleSigningPlugin
+      | BundleSigningAdapter
       | Extract<LocalSigningConfig, { enabled: true }>
       | undefined
     >();
 
-    expectTypeOf<ConfigResponse["storage"]["getDownloadUrl"]>().toEqualTypeOf<
-      ConfigInput["storage"]["getDownloadUrl"]
+    expectTypeOf<ConfigResponse["database"]>().toEqualTypeOf<
+      ConfiguredDatabase | undefined
     >();
-    expectTypeOf<ConfigResponse["database"]["dispose"]>().toEqualTypeOf<
-      ConfigInput["database"]["dispose"]
+    expectTypeOf<ConfigResponse["storage"]>().toEqualTypeOf<
+      StorageAdapter | undefined
     >();
-    expect(Reflect.has({} as ConfigResponse["database"], "queries")).toBe(
-      false,
-    );
+    expectTypeOf<ConfigResponse["plugins"]>().toEqualTypeOf<
+      readonly AnyHotUpdaterPlugin[]
+    >();
+    expectTypeOf<ConfigInput>().not.toHaveProperty("server");
   });
 });
 
@@ -86,13 +87,53 @@ describe("loadConfig", () => {
     expect(config).not.toHaveProperty("authorityId");
     expect(config.cacheDir).toBe(path.join("node_modules", ".hot-updater"));
     expect(config.updateStrategy).toBe("appVersion");
-    expect(config.compressStrategy).toBe("zip");
     expect(config.patch.enabled).toBe(true);
     expect(config.patch.maxBaseBundles).toBe(3);
     expect(config.platform.android.androidManifestPaths).toEqual([]);
     expect(config.platform.ios.infoPlistPaths).toEqual([]);
     expect(config.console.port).toBe(1422);
-    expect(typeof config.database).toBe("object");
+    // No placeholder: commands that need them say what to set.
+    expect(config.database).toBeUndefined();
+    expect(config.storage).toBeUndefined();
+    expect(config.plugins).toEqual([]);
+  });
+
+  it("takes the database, storage, and plugins whole, as the config made them", async () => {
+    const official = Symbol.for("@hot-updater/server/official-plugin");
+    const plugin = Object.freeze({
+      id: "insights",
+      schemaVersion: "1",
+      schema: {},
+      init: () => ({ api: {} }),
+      [official]: true,
+    });
+    const settings = {
+      database: Object.freeze({
+        name: "standalone-repository",
+        core: {},
+        fetchAdmin: async () => new Response(),
+      }),
+      storage: Object.freeze({ name: "s3Storage", protocol: "s3" }),
+      plugins: Object.freeze([plugin]),
+    };
+    Reflect.set(globalThis, "__HOT_UPDATER_TEST_SETTINGS__", settings);
+    await writeProjectFile(
+      projectRoot,
+      "hot-updater.config.ts",
+      "export default { ...globalThis.__HOT_UPDATER_TEST_SETTINGS__ };\n",
+    );
+
+    try {
+      const { loadConfig } = await import("./loadConfig");
+      const config = await loadConfig(null);
+
+      expect(config.database).toBe(settings.database);
+      expect(config.storage).toBe(settings.storage);
+      expect(config.plugins).toBe(settings.plugins);
+      expect(Reflect.get(config.plugins[0]!, official)).toBe(true);
+    } finally {
+      Reflect.deleteProperty(globalThis, "__HOT_UPDATER_TEST_SETTINGS__");
+    }
   });
 
   it.each(["authorityId", "catalogId"])(
@@ -108,6 +149,19 @@ describe("loadConfig", () => {
       await expect(loadConfig(null)).rejects.toThrow(`Remove ${key}`);
     },
   );
+
+  it("rejects the removed compressStrategy setting", async () => {
+    await writeProjectFile(
+      projectRoot,
+      "hot-updater.config.ts",
+      "export default { compressStrategy: 'tar.br' };\n",
+    );
+
+    const { loadConfig } = await import("./loadConfig");
+    await expect(loadConfig(null)).rejects.toThrow(
+      "Remove compressStrategy from hot-updater.config",
+    );
+  });
 
   it("allows disabling the local CLI cache", async () => {
     await writeProjectFile(
@@ -142,6 +196,61 @@ describe("loadConfig", () => {
     expect(config.platform.android.androidManifestPaths).toEqual([
       path.join("android", "app", "src", "main", "AndroidManifest.xml"),
     ]);
+  });
+
+  it("loads the file once for several platforms, so a config object gives them the same adapters", async () => {
+    await writeProjectFile(
+      projectRoot,
+      "hot-updater.config.ts",
+      [
+        "globalThis.__HOT_UPDATER_TEST_LOADS__ = (globalThis.__HOT_UPDATER_TEST_LOADS__ ?? 0) + 1;",
+        "export default {",
+        "  database: { name: 'memory', adapter: {} },",
+        "  storage: { name: 'r2Storage', protocol: 'r2' },",
+        "  plugins: [],",
+        "};",
+        "",
+      ].join("\n"),
+    );
+
+    try {
+      const { loadPlatformConfigs } = await import("./loadConfig");
+      const [ios, android] = await loadPlatformConfigs(["ios", "android"], {
+        channel: "production",
+      });
+
+      expect(Reflect.get(globalThis, "__HOT_UPDATER_TEST_LOADS__")).toBe(1);
+      expect(ios!.platform).toBe("ios");
+      expect(android!.platform).toBe("android");
+      expect(android!.config.database).toBe(ios!.config.database);
+      expect(android!.config.storage).toBe(ios!.config.storage);
+      expect(android!.config.plugins).toBe(ios!.config.plugins);
+    } finally {
+      Reflect.deleteProperty(globalThis, "__HOT_UPDATER_TEST_LOADS__");
+    }
+  });
+
+  it("calls a config function once per platform, whose adapters are that platform's own", async () => {
+    await writeProjectFile(
+      projectRoot,
+      "hot-updater.config.ts",
+      [
+        "export default ({ platform, channel }) => ({",
+        "  database: { name: `memory-${platform}-${channel}`, adapter: {} },",
+        "  storage: { name: 'r2Storage', protocol: 'r2' },",
+        "});",
+        "",
+      ].join("\n"),
+    );
+
+    const { loadPlatformConfigs } = await import("./loadConfig");
+    const [ios, android] = await loadPlatformConfigs(["ios", "android"], {
+      channel: "beta",
+    });
+
+    expect(ios!.config.database?.name).toBe("memory-ios-beta");
+    expect(android!.config.database?.name).toBe("memory-android-beta");
+    expect(android!.config.storage).not.toBe(ios!.config.storage);
   });
 
   it("passes null context through to function configs", async () => {
@@ -238,7 +347,7 @@ describe("loadConfig", () => {
     const { loadConfig } = await import("./loadConfig");
 
     await expect(loadConfig(null)).rejects.toThrow(
-      "Bundle signing must be a local key config or signing plugin",
+      "Bundle signing must be a local key config or signing adapter",
     );
   });
 

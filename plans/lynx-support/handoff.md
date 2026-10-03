@@ -1,6 +1,16 @@
 # Lynx support handoff
 
-Updated: 2026-09-29 (Asia/Seoul). The goal remains active and incomplete.
+Updated: 2026-10-03 (Asia/Seoul). The goal remains active and incomplete.
+
+## Current upstream integration
+
+`origin/next` at `50a9ccc32` has been integrated into the working tree with the
+manifest-v1 protocol, public core API, and complete target asset inventory.
+See the October 3 execution checkpoint and PRD section before using historical
+wire-format assumptions. Build/type/lint/unit and native unit validation pass;
+fresh native artifacts, the 54-scenario shared job, and six matrix cells remain.
+The dashboard is running from exec session 41913 using its existing startup
+script because launchd could not open that script. Do not interrupt its jobs.
 
 ## Workspace and scope
 
@@ -10,7 +20,7 @@ Updated: 2026-09-29 (Asia/Seoul). The goal remains active and incomplete.
 - PRD: `plans/lynx-support/prd.md` (English only).
 - Preserve the original `hot-updater2` checkout, all six staged-only local
   helpers and untracked `examples/lynx/keys/`. Commit explicit paths with
-  `git commit --only`; never merge or publish packages.
+  `git commit --only` outside an in-progress merge; never merge the PR or publish packages.
 - Continue directly without subagents. Existing adversarial review remains
   authoritative input; see `adversarial-review.md`.
 
@@ -89,7 +99,7 @@ Do not introduce speculative native code or blind repeated gestures.
 1. Push corrections and keep HEAD fixed while the full shared job creates its
    setup and runner worktrees. Run `hot-updater-agent verify -platform full
    -profile standalone-kysely -env-target examples/lynx/.env.hotupdater`.
-   Require all 26 scenarios per OS; only RN metadata migration is excluded.
+   Require all 27 scenarios per OS; only RN metadata migration is excluded.
 2. Build native matrix artifacts from the same committed source and finish all
    six React/Vue/Octane × iOS/Android cells. Do not edit, reinstall or manually
    interact with devices while matrix execution is live. Failed receipts are

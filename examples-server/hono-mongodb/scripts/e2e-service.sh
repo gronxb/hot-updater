@@ -34,4 +34,4 @@ done
 export TEST_MONGODB_URL="mongodb://localhost:${mongo_port}/hot_updater_${service_port}?replicaSet=rs0&directConnection=true"
 cp .env.hotupdater src/.env.hotupdater
 node ../../packages/hot-updater/dist/index.mjs db migrate src/db.ts --yes
-exec bun src/index.ts
+exec ./node_modules/.bin/tsx src/index.ts

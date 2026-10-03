@@ -1,11 +1,14 @@
+import { existsSync } from "node:fs";
+
 import { bare } from "@hot-updater/bare";
-import { d1Database, r2Storage } from "@hot-updater/cloudflare";
-import { config } from "dotenv";
+import { d1Database, plugins, r2Storage } from "@hot-updater/cloudflare";
 import { defineConfig } from "hot-updater";
 
-config({
-  path: process.env.HOT_UPDATER_E2E_ENV_TARGET_PATH ?? ".env.hotupdater",
-});
+const envFilePath =
+  process.env.HOT_UPDATER_E2E_ENV_TARGET_PATH ?? ".env.hotupdater";
+if (existsSync(envFilePath)) {
+  process.loadEnvFile(envFilePath);
+}
 
 export default defineConfig({
   nativeBuild: {
@@ -51,6 +54,7 @@ export default defineConfig({
     accountId: process.env.HOT_UPDATER_CLOUDFLARE_ACCOUNT_ID!,
     cloudflareApiToken: process.env.HOT_UPDATER_CLOUDFLARE_API_TOKEN!,
   }),
+  plugins,
   fingerprint: {
     debug: true,
   },

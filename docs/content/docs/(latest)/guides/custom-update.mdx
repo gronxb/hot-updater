@@ -66,8 +66,7 @@ It downloads a selected update and restarts immediately for required updates.
 Other downloaded updates take effect on the next app restart.
 
 The returned `update.updateBundle()` helper resolves the artifact and preserves
-the selected transition, including rollback. Use this helper for update checks;
-the result's `fileUrl` and `fileHash` fields are `null`.
+the selected transition, including rollback. Use this helper for update checks.
 
 ## Restart on user confirmation
 
@@ -112,8 +111,8 @@ listeners outside React.
 
 ## Handle errors
 
-Use `init.onError` as the shared error reporter for lifecycle reporting and update
-checks. Use `try/catch` for rejected operations, including downloads and restarts.
+Use `init.onError` as the shared error reporter for lifecycle, plugin, and
+update-check errors. Use `try/catch` for rejected operations, including downloads and restarts.
 A download that returns `false` has not prepared the update; keep the current
 app running and report the failure.
 

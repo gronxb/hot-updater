@@ -29,8 +29,9 @@
     "notifyAppReady",
     "getActiveUpdateState",
     "getInstallId",
-    "setUser",
     "getCrashHistory",
-    "clearCrashHistory"
+    "clearCrashHistory",
+    "---Plugins---",
+    "insights"
   ]
 }

@@ -10,10 +10,11 @@ A deployment creates a Bundle with one ID. The deployment result, Console,
 `HotUpdater.getBundleId()`, and every `hot-updater bundle` command use that
 same ID.
 
-A Bundle's delivery settings include its channel, platform, compatibility
-target, enabled state, rollout, target cohorts, force-update value, and message.
-Changing those settings keeps the same ID. Promoting a Bundle creates a new ID
-in the target channel without uploading the same bytes again.
+A Bundle belongs to a channel, platform, and compatibility scope. Supported
+policy edits keep the same ID: app-version range, enabled state, rollout,
+target cohorts, force-update value, and message. Channel, platform, and
+fingerprint targets cannot be changed with a policy edit. Promoting a Bundle
+creates a new ID in the target channel without uploading the same bytes again.
 
 ```text
 deploy → ID → bundle show/update/enable/disable/delete/promote
@@ -21,21 +22,23 @@ deploy → ID → bundle show/update/enable/disable/delete/promote
 
 ## Infrastructure
 
-- **Storage** holds immutable archives, manifests, assets, and patch objects.
+- **Storage** holds immutable manifests, assets, and patch objects.
 - **Database** holds Bundle delivery settings and internal catalog rows.
 - **Server** serves a shared, cacheable Release Catalog for an app's channel,
   platform, and app-version or fingerprint scope.
 - **Client** selects a compatible Bundle from that catalog using its local
   state, rollout cohort, and target cohorts.
 
-Storage and Database are configured using plugins in `hot-updater.config.ts`.
+Storage and Database are adapters in `hot-updater.config.ts` and in the
+server's `createHotUpdater`; see
+[Adapters and Plugins](/docs/concepts/plugin-system).
 Start with [agent setup](/docs/guides/ai-agents) or
 [manual setup](/docs/get-started/basic-usage), then
 [verify an OTA update](/docs/get-started/test-ota).
 
 Internally, Hot Updater can reuse one immutable artifact across multiple public
 Bundle IDs. This avoids copying uploaded bytes during promotion and lets policy changes
-recompile the delivery catalog without rebuilding the archive. The internal
+recompile the delivery catalog without rebuilding artifact files. The internal
 artifact identity is shown only as **Artifact ID** in Advanced diagnostics and
 artifact commands.
 
@@ -56,8 +59,8 @@ uploaded bytes.
 `HotUpdater.getBundleId()` identifies the selected update and can change before
 downloaded code starts running. Use a visible app change and
 [`getActiveUpdateState()`](/docs/react-native-api/getActiveUpdateState) when
-verifying delivery. See the [Release Catalog contract](/docs/database-plugins/release-catalog-contract)
-when implementing a database plugin or inspecting protocol behavior.
+verifying delivery. See the [Release Catalog contract](/docs/concepts/release-catalog-contract)
+for how catalogs are written and how the client routes answer.
 
 ## Two rollback mechanisms
 

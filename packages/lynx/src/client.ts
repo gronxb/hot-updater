@@ -2,7 +2,7 @@ import {
   INVALID_COHORT_ERROR_MESSAGE,
   isValidCohort,
   normalizeCohortValue,
-} from "@hot-updater/core";
+} from "@hot-updater/protocol";
 
 import { checkForUpdate } from "./checkForUpdate";
 import { callNative, LynxUpdaterError, normalizeNativeState } from "./native";

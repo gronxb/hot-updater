@@ -8,31 +8,17 @@ import { setTimeout as sleep } from "timers/promises";
 import { fileURLToPath } from "url";
 import { brotliDecompressSync } from "zlib";
 
-import {
-  getBundlePatch,
-  getBundlePatches,
-} from "../../../packages/core/src/bundleArtifacts.ts";
-import {
-  createReleaseCatalogScopeKey,
-  decodeChannelKey,
-  encodeChannelKey,
-} from "../../../packages/core/src/releaseCatalogScope.ts";
-import { getRolledOutNumericCohorts } from "../../../packages/core/src/rollout.ts";
-import type { Bundle } from "../../../packages/core/src/types.ts";
-import { createBundleDiff } from "../../../packages/server/dist/db/index.mjs";
-import { createInsightsProvider } from "../../../packages/server/dist/index.mjs";
-import {
-  assertStorageOperations,
-  type InsightsModel,
-  type BundleRepository,
-  createDatabaseClient,
-  createUUIDv7After,
-  commitReleaseCatalogMutation,
-  type BundleRow,
-  type ReleaseCatalogRow,
-  type ReleaseRow,
-  updateReleasePolicy,
-} from "../../../plugins/plugin-core/dist/index.mjs";
+import type {
+  AnyHotUpdaterPlugin,
+  ConfiguredDatabase,
+  DeployReleasePolicy,
+  HotUpdaterCoreApi,
+  ReleaseCatalogRow,
+  ReleaseRow,
+} from "@hot-updater/plugin-core";
+import type { InsightsModel } from "@hot-updater/plugin-insights/server";
+import type { Bundle } from "@hot-updater/protocol";
+
 import { lynxE2eRuntimeId } from "../../lynx/embedded-bundle.ts";
 import {
   createLynxAndroidLaunchConfigurationArguments,
@@ -53,6 +39,7 @@ import {
   PAX_LONG_ASSET_MANIFEST_PATH,
   PAX_LONG_ASSET_RELATIVE_PATH,
 } from "../pax-long-path-fixture.ts";
+import { importPublished, publishedBin } from "../published.ts";
 import { hasActiveInstrumentationForPackage } from "./android-instrumentation.ts";
 import {
   advanceAndroidRestartWait,
@@ -92,11 +79,8 @@ import {
 import {
   captureCommandWithDeadline,
   captureArtifactSelectionEvidence,
-  classifyArtifactSelection,
   classifyArtifactSelectionHistory,
   collectManifestDiffLogs,
-  hasLynxFirstOtaArchiveEvidence,
-  isExactLynxFirstOtaArchiveSelection,
   type ArtifactSelectionEvidence,
 } from "./manifest-diff-assertion.ts";
 import {
@@ -113,14 +97,35 @@ import {
   resetE2eScreenState,
   setE2eScreenStateLaunchGeneration,
 } from "./screen-state.ts";
-import { readPaxPaths } from "./tar-pax.ts";
 import {
   shouldProbeUpdateCheckVisibility,
   validateArtifactInfoVisibility,
 } from "./update-check-visibility.ts";
 
+// Hot Updater's packages through the entries they publish, as the example
+// app installs them.
+const {
+  createReleaseCatalogScopeKey,
+  decodeChannelKey,
+  encodeChannelKey,
+  getBundlePatch,
+  getBundlePatches,
+  getRolledOutNumericCohorts,
+} = await importPublished<typeof import("@hot-updater/protocol")>(
+  "@hot-updater/protocol",
+);
+const { createUUIDv7After, rowToBundle } = await importPublished<
+  typeof import("@hot-updater/plugin-core")
+>("@hot-updater/plugin-core");
+const { assembleServer, loadConfig } = await importPublished<
+  typeof import("@hot-updater/cli-tools")
+>("@hot-updater/cli-tools");
+const { createInsightsModel, createInsightsProvider } = await importPublished<
+  typeof import("@hot-updater/server/plugins/insights")
+>("@hot-updater/server/plugins/insights");
+
 type Platform = "ios" | "android";
-type CompressionStrategy = "tar.br" | "tar.gz" | "zip";
+const BUILT_IN_MIN_BUNDLE_ID_SUFFIX = "7000-8000-000000000000";
 
 type JobResult = Record<string, unknown>;
 
@@ -134,10 +139,9 @@ type JobState = {
   status: "cancelled" | "failed" | "running" | "succeeded";
 };
 
-type DeployMode = "crash" | "reset";
+type DeployMode = "crash" | "hang" | "reset";
 
 type DeployedBundleRecord = {
-  archiveSizeBytes: number | null;
   bundleId: string;
   bundleProfile: BundleProfile;
   channel: string;
@@ -170,8 +174,6 @@ type SessionState = {
   envSourceFile: string;
   exampleDir: string;
   initialMarker: string;
-  largeArchiveAssetBackupPath: string | null;
-  largeArchiveAssetPath: string;
   multiAssetBackupPaths: Record<string, string | null>;
   observedInsightsEvents: ObservedInsightsEvent[];
   platform: Platform;
@@ -184,10 +186,9 @@ type SessionState = {
 };
 
 type DeployBundleRequest = {
+  crossProvenance?: boolean;
   bundleProfile?: BundleProfile;
   channel: string;
-  compressStrategy?: CompressionStrategy;
-  crossProvenance?: boolean;
   disabled?: boolean;
   diffBaseBundleId?: string;
   forceUpdate?: boolean;
@@ -228,10 +229,8 @@ type JsonSnapshot = {
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_DIR = path.resolve(__dirname, "../../..");
-const HOT_UPDATER_CLI_PATH = path.join(
-  REPO_DIR,
-  "packages/hot-updater/dist/index.mjs",
-);
+// The CLI the example app installs, as `npx hot-updater` runs it there.
+const HOT_UPDATER_CLI_PATH = publishedBin("hot-updater");
 const COMMAND_STDIO_DRAIN_GRACE_MS = 500;
 const EXAMPLE_DIR = path.resolve(
   process.env.HOT_UPDATER_E2E_ENV_TARGET_DIR ??
@@ -255,11 +254,13 @@ const BARE_BUILD_CACHE_INPUT_PATHS = [
   "examples/v0.85.0/package.json",
   "examples/v0.85.0/babel.config.js",
   "examples/v0.85.0/metro.config.js",
+  "examples/v0.85.0/rspack.config.mjs",
+  "examples/v0.85.0/e2e-build-config.cjs",
   "examples/v0.85.0/src/e2eApp",
   "examples/v0.85.0/src/e2eRuntimeConfig.ts",
   "examples/v0.85.0/src/test",
   "plugins/bare",
-  "packages/core",
+  "packages/protocol",
   "packages/hot-updater/src/utils/bundleManifest.ts",
   "packages/react-native",
 ];
@@ -284,10 +285,6 @@ const STANDALONE_REPOSITORY_BASE_URL_PATTERN =
   /(standaloneRepository\(\{\s*baseUrl:\s*)["'][^"']+["']/;
 const UPDATE_STRATEGY_CONFIG_PATTERN =
   /updateStrategy:\s*["'](?:appVersion|fingerprint)["']/;
-const COMPRESS_STRATEGY_CONFIG_PATTERN =
-  /compressStrategy:\s*["'](?:tar\.br|tar\.gz|zip)["']/;
-const DEFINE_CONFIG_START_PATTERN =
-  /(export\s+default\s+defineConfig\s*\(\s*\{\s*\n)/;
 const MARKER_PATTERN =
   /export\s+const\s+E2E_SCENARIO_MARKER\s*(?::\s*string)?\s*=\s*["'][^"']*["'];/;
 const BUILT_IN_APP_MARKER = "targeted-qa-detox";
@@ -303,16 +300,6 @@ const DEPLOY_PROCESS_LOCK_DIR_ENV_KEY = "HOT_UPDATER_E2E_DEPLOY_LOCK_DIR";
 const DEFAULT_DEPLOY_MAX_OLD_SPACE_SIZE_MB = 8192;
 const NODE_MAX_OLD_SPACE_SIZE_PATTERN = /^--max-old-space-size(?:=|$)/;
 const NIL_UUID = "00000000-0000-0000-0000-000000000000";
-const LARGE_ARCHIVE_ASSET_RELATIVE_PATH =
-  "src/test/_fixture-archive-300mb-random.bmp";
-const LARGE_ARCHIVE_BMP_WIDTH = 4096;
-const LARGE_ARCHIVE_BMP_HEIGHT = 25600;
-const LARGE_ARCHIVE_BMP_HEADER_SIZE = 54;
-const LARGE_ARCHIVE_BMP_ROW_SIZE = LARGE_ARCHIVE_BMP_WIDTH * 3;
-const LARGE_ARCHIVE_ASSET_SIZE_BYTES =
-  LARGE_ARCHIVE_BMP_HEADER_SIZE +
-  LARGE_ARCHIVE_BMP_ROW_SIZE * LARGE_ARCHIVE_BMP_HEIGHT;
-const LARGE_ARCHIVE_MIN_EXPECTED_SIZE_BYTES = 280 * 1024 * 1024;
 const SIZE_AWARE_LARGE_ASSET_RELATIVE_PATH =
   "src/test/_fixture-size-aware-large-compressible.bmp";
 const SIZE_AWARE_LARGE_BMP_WIDTH = 4096;
@@ -477,7 +464,7 @@ function hashText(value: string) {
 
 const platform = process.env.HOT_UPDATER_E2E_PLATFORM as Platform | undefined;
 const appId = process.env.HOT_UPDATER_E2E_APP_ID;
-const deviceId = process.env.HOT_UPDATER_E2E_DEVICE_ID;
+let deviceId = process.env.HOT_UPDATER_E2E_DEVICE_ID;
 const resultsDir = process.env.HOT_UPDATER_E2E_RESULTS_DIR;
 
 if (!platform || (platform !== "ios" && platform !== "android")) {
@@ -509,11 +496,6 @@ const fixtureSession: SessionState = {
   envSourceFile: HOT_UPDATER_ENV_FILE,
   exampleDir: EXAMPLE_DIR,
   initialMarker: BUILT_IN_APP_MARKER,
-  largeArchiveAssetBackupPath: null,
-  largeArchiveAssetPath: path.join(
-    EXAMPLE_DIR,
-    LARGE_ARCHIVE_ASSET_RELATIVE_PATH,
-  ),
   multiAssetBackupPaths: {},
   observedInsightsEvents: [],
   platform,
@@ -541,8 +523,10 @@ function getFixtureResetChannels() {
 
 const jobs = new Map<string, JobState>();
 const jobAbortControllers = new Map<string, AbortController>();
+type RemoteAssetKind = "archive" | "file" | "manifest" | "patch";
 type RemoteAssetProxyTarget = {
-  readonly assetPath: string | null;
+  readonly assetPath?: string;
+  readonly kind: RemoteAssetKind;
   readonly url: string;
 };
 const remoteAssetProxyTargets = new Map<string, RemoteAssetProxyTarget>();
@@ -553,7 +537,21 @@ type CapturedProxyResponse = {
   readonly statusText: string;
 };
 type CapturedArtifactSelection = ArtifactSelectionEvidence & {
+  readonly archiveUrl: string | null;
+  readonly assets: ReadonlyArray<{
+    fileHash: string;
+    fileUrl: string;
+    patchUrl: string | null;
+    path: string;
+  }>;
+  readonly artifactProtocolVersion: number | null;
+  readonly assetCount: number;
+  readonly assetFileCount: number;
+  readonly assetPatchCount: number;
+  readonly assetsPresent: boolean;
   readonly currentBundleId: string;
+  readonly manifestFileHashPresent: boolean;
+  readonly manifestUrlPresent: boolean;
   readonly targetBundleId: string;
 };
 const proxyRequestCounts = {
@@ -562,12 +560,19 @@ const proxyRequestCounts = {
   legacy: 0,
 };
 const capturedArtifactSelections: CapturedArtifactSelection[] = [];
+const remoteAssetTransfers = new Map<
+  string,
+  { requests: number; bytes: number }
+>();
 let artifactFailuresRemaining = 0;
 let changedAssetMutation: {
   assetPath: string;
   mode: "corrupt" | "missing";
   remaining: number;
 } | null = null;
+let archiveAvailable = true;
+let archiveFailureMode: "corrupt" | "not-found" | null = null;
+let archiveFailuresRemaining = 0;
 const proxyPathCounts = new Map<string, number>();
 const capturedCatalogResponses = new Map<
   string,
@@ -917,59 +922,6 @@ function fillDeterministicPseudoRandomChunk(buffer: Buffer, seed: number) {
   return state;
 }
 
-function createLargeArchiveBmpHeader() {
-  const header = Buffer.alloc(LARGE_ARCHIVE_BMP_HEADER_SIZE);
-  const pixelDataSize = LARGE_ARCHIVE_BMP_ROW_SIZE * LARGE_ARCHIVE_BMP_HEIGHT;
-
-  header.write("BM", 0, "ascii");
-  header.writeUInt32LE(LARGE_ARCHIVE_ASSET_SIZE_BYTES, 2);
-  header.writeUInt32LE(LARGE_ARCHIVE_BMP_HEADER_SIZE, 10);
-  header.writeUInt32LE(40, 14);
-  header.writeInt32LE(LARGE_ARCHIVE_BMP_WIDTH, 18);
-  header.writeInt32LE(LARGE_ARCHIVE_BMP_HEIGHT, 22);
-  header.writeUInt16LE(1, 26);
-  header.writeUInt16LE(24, 28);
-  header.writeUInt32LE(0, 30);
-  header.writeUInt32LE(pixelDataSize, 34);
-  header.writeInt32LE(2835, 38);
-  header.writeInt32LE(2835, 42);
-
-  return header;
-}
-
-async function writeDeterministicBmpFile(filePath: string) {
-  await fsPromises.mkdir(path.dirname(filePath), { recursive: true });
-  const handle = await fsPromises.open(filePath, "w");
-
-  try {
-    const header = createLargeArchiveBmpHeader();
-    await handle.write(header, 0, header.length);
-
-    let remaining = LARGE_ARCHIVE_BMP_ROW_SIZE * LARGE_ARCHIVE_BMP_HEIGHT;
-    let seed = 0x5eed1234;
-
-    while (remaining > 0) {
-      const chunkSize = Math.min(1024 * 1024, remaining);
-      const chunk = Buffer.allocUnsafe(chunkSize);
-      seed = fillDeterministicPseudoRandomChunk(chunk, seed);
-
-      let offset = 0;
-      while (offset < chunk.length) {
-        const { bytesWritten } = await handle.write(
-          chunk,
-          offset,
-          chunk.length - offset,
-        );
-        offset += bytesWritten;
-      }
-
-      remaining -= chunkSize;
-    }
-  } finally {
-    await handle.close();
-  }
-}
-
 function createMultiAssetBmpHeader() {
   const header = Buffer.alloc(MULTI_ASSET_BMP_HEADER_SIZE);
   const pixelDataSize = MULTI_ASSET_BMP_ROW_SIZE * MULTI_ASSET_BMP_HEIGHT;
@@ -1027,10 +979,6 @@ async function ensureMultiAssetFixtures(marker: string) {
 async function restoreGeneratedDeployFixtures() {
   await restoreDeployFixtures([
     {
-      backupPath: fixtureSession.largeArchiveAssetBackupPath,
-      targetPath: fixtureSession.largeArchiveAssetPath,
-    },
-    {
       backupPath: fixtureSession.sizeAwareLargeAssetBackupPath,
       targetPath: fixtureSession.sizeAwareLargeAssetPath,
     },
@@ -1040,31 +988,6 @@ async function restoreGeneratedDeployFixtures() {
       targetPath: path.join(EXAMPLE_DIR, fixture.relativePath),
     })),
   ]);
-}
-
-async function ensureLargeArchiveAsset() {
-  const existingStats = await fsPromises
-    .stat(fixtureSession.largeArchiveAssetPath)
-    .catch(() => null);
-
-  if (
-    existingStats?.isFile() &&
-    existingStats.size === LARGE_ARCHIVE_ASSET_SIZE_BYTES
-  ) {
-    return;
-  }
-
-  if (!fixtureSession.largeArchiveAssetBackupPath) {
-    fixtureSession.largeArchiveAssetBackupPath = await backupFile(
-      fixtureSession.largeArchiveAssetPath,
-    );
-  }
-
-  await writeDeterministicBmpFile(fixtureSession.largeArchiveAssetPath);
-  logDetoxFixture("large archive asset ready", {
-    path: path.relative(REPO_DIR, fixtureSession.largeArchiveAssetPath),
-    sizeBytes: LARGE_ARCHIVE_ASSET_SIZE_BYTES,
-  });
 }
 
 function createSizeAwareLargeBmpHeader() {
@@ -1088,7 +1011,7 @@ function createSizeAwareLargeBmpHeader() {
   return header;
 }
 
-async function ensureSizeAwareLargeAsset() {
+async function ensureSizeAwareLargeAsset(marker: string) {
   if (!fixtureSession.sizeAwareLargeAssetBackupCaptured) {
     fixtureSession.sizeAwareLargeAssetBackupPath = await backupFile(
       fixtureSession.sizeAwareLargeAssetPath,
@@ -1107,11 +1030,19 @@ async function ensureSizeAwareLargeAsset() {
     const header = createSizeAwareLargeBmpHeader();
     await handle.write(header, 0, header.length);
     await handle.truncate(SIZE_AWARE_LARGE_ASSET_SIZE_BYTES);
+    const variantBytes = createHash("sha256").update(marker).digest();
+    await handle.write(
+      variantBytes,
+      0,
+      variantBytes.length,
+      SIZE_AWARE_LARGE_BMP_HEADER_SIZE,
+    );
   } finally {
     await handle.close();
   }
 
   logDetoxFixture("size-aware compressible asset ready", {
+    marker,
     path: path.relative(REPO_DIR, fixtureSession.sizeAwareLargeAssetPath),
     sizeBytes: SIZE_AWARE_LARGE_ASSET_SIZE_BYTES,
   });
@@ -1119,20 +1050,6 @@ async function ensureSizeAwareLargeAsset() {
 
 function resolveBundleProfile(value: BundleProfile | undefined): BundleProfile {
   return value ?? "default";
-}
-
-async function resolveDeployArchivePath(outputPath: string) {
-  const bundleDir = path.join(outputPath, "bundle");
-  const entries = await fsPromises.readdir(bundleDir, { withFileTypes: true });
-  const archiveEntry = entries.find(
-    (entry) => entry.isFile() && entry.name.startsWith("bundle."),
-  );
-
-  if (!archiveEntry) {
-    throw new Error(`Failed to locate deployed archive in ${bundleDir}`);
-  }
-
-  return path.join(bundleDir, archiveEntry.name);
 }
 
 async function applyAppScenario({
@@ -1171,19 +1088,47 @@ async function applyAppScenario({
     );
   }
 
-  const crashGuardSource =
-    mode === "crash"
+  const crashGuardSource = isLynxE2eApp()
+    ? [
+        CRASH_GUARD_START,
+        ...(mode === "crash"
+          ? [
+              '  await callE2eDiagnostic("armNextPageFatalFailure");',
+              '  navigate({path: "detail.lynx.bundle"}, () => undefined);',
+              "  return true;",
+            ]
+          : mode === "hang"
+            ? [
+                '  console.log("HotUpdaterE2EStartupHang");',
+                "  const hangUntil = Date.now() + 600_000;",
+                "  while (Date.now() < hangUntil) {}",
+                "  return true;",
+              ]
+            : ["  return false;"]),
+        CRASH_GUARD_END,
+      ].join("\n")
+    : mode !== "reset"
       ? [
           CRASH_GUARD_START,
-          '  await callE2eDiagnostic("armNextPageFatalFailure");',
-          "  navigate(",
-          '    { path: "detail.lynx.bundle" },',
-          "    () => undefined,",
-          "  );",
-          "  return true;",
+          `  const E2E_SAFE_BUNDLE_IDS = new Set(${JSON.stringify(safeBundleIds, null, 2)});`,
+          `  const E2E_BUILT_IN_MIN_BUNDLE_ID_SUFFIX = ${JSON.stringify(BUILT_IN_MIN_BUNDLE_ID_SUFFIX)};`,
+          "  const E2E_CURRENT_BUNDLE_ID = HotUpdater.getManifest().bundleId;",
+          "  const E2E_IS_BUILT_IN_BUNDLE =",
+          '    typeof E2E_CURRENT_BUNDLE_ID === "string" &&',
+          "    E2E_CURRENT_BUNDLE_ID.endsWith(E2E_BUILT_IN_MIN_BUNDLE_ID_SUFFIX);",
+          "",
+          "  if (!E2E_IS_BUILT_IN_BUNDLE && !E2E_SAFE_BUNDLE_IDS.has(E2E_CURRENT_BUNDLE_ID)) {",
+          ...(mode === "hang"
+            ? [
+                '    console.log("HotUpdaterE2EStartupHang:" + E2E_CURRENT_BUNDLE_ID);',
+                "    const hangUntil = Date.now() + 600_000;",
+                "    while (Date.now() < hangUntil) {}",
+              ]
+            : ['    throw new Error("hot-updater e2e crash bundle");']),
+          "  }",
           `  ${CRASH_GUARD_END}`,
         ].join("\n")
-      : `${CRASH_GUARD_START}\n  return false;\n  ${CRASH_GUARD_END}`;
+      : `${CRASH_GUARD_START}\n  ${CRASH_GUARD_END}`;
   const deployAssetSource = createDeployAssetGuardSource(
     bundleProfile,
     fixtureSession.appId,
@@ -1208,12 +1153,10 @@ async function applyAppScenario({
 }
 
 async function applyDeployConfig({
-  compressStrategy,
   patchEnabled,
   patchMaxBaseBundles,
   strategy,
 }: {
-  compressStrategy?: CompressionStrategy;
   patchEnabled: boolean;
   patchMaxBaseBundles?: number;
   strategy: "appVersion" | "fingerprint";
@@ -1245,25 +1188,7 @@ async function applyDeployConfig({
       ].join("\n")
     : `${AUTO_PATCH_CONFIG_GUARD_START}\n  ${AUTO_PATCH_CONFIG_GUARD_END}`;
 
-  const sourceWithCompressionStrategy = (() => {
-    if (!compressStrategy) {
-      return source;
-    }
-    if (COMPRESS_STRATEGY_CONFIG_PATTERN.test(source)) {
-      return source.replace(
-        COMPRESS_STRATEGY_CONFIG_PATTERN,
-        `compressStrategy: ${JSON.stringify(compressStrategy)}`,
-      );
-    }
-    if (!DEFINE_CONFIG_START_PATTERN.test(source)) {
-      throw new Error("Failed to locate defineConfig for compressStrategy");
-    }
-    return source.replace(
-      DEFINE_CONFIG_START_PATTERN,
-      `$1  compressStrategy: ${JSON.stringify(compressStrategy)},\n`,
-    );
-  })();
-  const sourceWithUpdateStrategy = sourceWithCompressionStrategy.replace(
+  const sourceWithUpdateStrategy = source.replace(
     UPDATE_STRATEGY_CONFIG_PATTERN,
     `updateStrategy: ${JSON.stringify(strategy)}`,
   );
@@ -1293,7 +1218,6 @@ async function applyDeployConfig({
     sourceWithDeployBaseUrl.replace(AUTO_PATCH_CONFIG_PATTERN, autoPatchSource),
   );
   logDetoxFixture("deploy config applied", {
-    compressStrategy: compressStrategy ?? null,
     deployBaseUrl,
     patchEnabled,
     patchMaxBaseBundles: patchMaxBaseBundles ?? null,
@@ -1314,25 +1238,38 @@ async function waitForFile(filePath: string, attempts = 360) {
   throw new Error(`Timed out waiting for ${filePath}`);
 }
 
+/** The server the example's config describes: its database, core on it, and the plugins it runs. */
+type ConfiguredServer = {
+  readonly core: HotUpdaterCoreApi;
+  readonly database: ConfiguredDatabase;
+  readonly plugins: readonly AnyHotUpdaterPlugin[];
+};
+
 async function withConfiguredDatabase<T>(
-  callback: (database: BundleRepository) => Promise<T>,
+  callback: (configured: ConfiguredServer) => Promise<T>,
 ): Promise<T> {
-  const { loadConfig } =
-    (await import("../../../packages/cli-tools/dist/index.mjs")) as {
-      loadConfig: (options: null) => Promise<{
-        database: BundleRepository;
-      }>;
-    };
   const originalCwd = process.cwd();
 
   try {
     process.chdir(fixtureSession.exampleDir);
     return await withHotUpdaterControlEnv(async () => {
-      const config = await loadConfig(null);
+      const { database, plugins } = await loadConfig(null);
+      if (database === undefined) {
+        throw new Error(
+          "The example's hot-updater.config.ts sets no database.",
+        );
+      }
       try {
-        return await callback(config.database);
+        return await callback({
+          // Core alone, so the plugins' tables, which the server's
+          // migrations create, never gate the fixtures the controller
+          // writes. Over standaloneRepository, it is the server's admin API.
+          core: assembleServer({ database }).core,
+          database,
+          plugins,
+        });
       } finally {
-        await config.database.dispose?.();
+        await database.dispose?.();
       }
     });
   } finally {
@@ -1340,26 +1277,31 @@ async function withConfiguredDatabase<T>(
   }
 }
 
-function readInsightsModel(database: BundleRepository): InsightsModel | null {
-  const models: unknown = Reflect.get(database, "models");
-  const insights: unknown =
-    typeof models === "object" && models !== null
-      ? Reflect.get(models, "insights")
-      : undefined;
-  return typeof insights === "object" &&
-    insights !== null &&
-    typeof Reflect.get(insights, "recordEvent") === "function" &&
-    typeof Reflect.get(insights, "listEvents") === "function" &&
-    typeof Reflect.get(insights, "findLatestEvents") === "function" &&
-    typeof Reflect.get(insights, "countLatestEvents") === "function" &&
-    typeof Reflect.get(insights, "countEvents") === "function"
-    ? (insights as InsightsModel)
-    : null;
+/**
+ * Insights read in process, as the console does: through the plugins the
+ * server runs. Null, over standaloneRepository or without insights(), sends
+ * the verification to the server's admin routes.
+ */
+function readInsightsModel({
+  database,
+  plugins,
+}: ConfiguredServer): InsightsModel | null {
+  // Insights alone, so the server's other plugins, whose tables the server's
+  // migrations create, never gate what the verification reads.
+  const { api } = assembleServer({
+    database,
+    plugins: plugins.filter(({ id }) => id === "insights"),
+  });
+  return api?.insights === undefined
+    ? null
+    : createInsightsModel(
+        api.insights as Parameters<typeof createInsightsModel>[0],
+      );
 }
 
 async function verifyConfiguredConsoleInsights(args: { sinceMs: number }) {
-  return withConfiguredDatabase(async (database) => {
-    const insights = readInsightsModel(database);
+  return withConfiguredDatabase(async (configured) => {
+    const insights = readInsightsModel(configured);
     const client = insights
       ? createConsoleInsightsProviderClient(createInsightsProvider(insights))
       : createConsoleInsightsHttpClient({
@@ -1385,19 +1327,22 @@ async function verifyConfiguredConsoleInsights(args: { sinceMs: number }) {
 }
 
 async function fetchProviderBundleById(bundleId: string) {
-  const bundle = await withConfiguredDatabase((database) =>
-    createDatabaseClient(database).getBundleById(bundleId),
+  const detail = await withConfiguredDatabase(({ core }) =>
+    core.getBundle(bundleId),
   );
+  const bundle =
+    detail === null ? null : rowToBundle(detail.bundle, detail.patches);
 
   if (!bundle) {
     throw new Error(`Failed to fetch bundle ${bundleId}: bundle not found`);
   }
 
   logDetoxFixture("provider file details", {
+    assetBaseStorageUri: bundle.assetBaseStorageUri,
     bundleId: bundle.id,
-    fileHash: bundle.fileHash,
+    manifestFileHash: bundle.manifestFileHash,
+    manifestStorageUri: bundle.manifestStorageUri,
     platform: bundle.platform,
-    storageUri: bundle.storageUri,
   });
 
   return bundle;
@@ -1416,13 +1361,10 @@ async function resolveDeployedRelease(
   let lastObserved: ReleaseRow | null = null;
   for (let attempt = 1; attempt <= 30; attempt += 1) {
     const result = await withConfiguredDatabase(
-      async (database): Promise<DeployedRelease | null> => {
-        const channels = await database.models.channels.list({});
-        const channelId = channels.channels.find(
-          (candidate) => candidate.name === channel,
-        )?.id;
+      async ({ core }): Promise<DeployedRelease | null> => {
+        const channelId = (await core.findChannelByName(channel))?.id;
         if (channelId === undefined) return null;
-        const release = await database.models.releases.findById(releaseId);
+        const release = await core.getRelease(releaseId);
         lastObserved = release;
         if (
           release === null ||
@@ -1430,9 +1372,7 @@ async function resolveDeployedRelease(
           release.platform !== fixtureSession.platform
         )
           return null;
-        const catalog = await database.models.releaseCatalogs.findByScopeKey(
-          release.scope_key,
-        );
+        const catalog = await core.getReleaseCatalogRow(release.scope_key);
         return catalog === null
           ? null
           : { catalogId: catalog.catalog_id, catalog, release };
@@ -1449,8 +1389,8 @@ async function resolveDeployedRelease(
 }
 
 async function fetchProviderReleaseById(releaseId: string) {
-  const release = await withConfiguredDatabase((database) =>
-    database.models.releases.findById(releaseId),
+  const release = await withConfiguredDatabase(({ core }) =>
+    core.getRelease(releaseId),
   );
   if (release === null) {
     throw new Error(`No Release with id ${releaseId}.`);
@@ -1462,9 +1402,8 @@ async function patchProviderRelease(
   releaseId: string,
   patch: Omit<PatchReleaseRequest, "releaseId">,
 ) {
-  const result = await withConfiguredDatabase((database) =>
-    updateReleasePolicy({
-      database,
+  const result = await withConfiguredDatabase(({ core }) =>
+    core.updateReleasePolicy({
       patch: {
         enabled: patch.enabled,
         rolloutCohortCount: patch.rolloutCohortCount ?? undefined,
@@ -1581,53 +1520,50 @@ async function createFixtureBundleDiff(input: {
   baseBundleId: string;
   bundleId: string;
 }) {
-  const { loadConfig } =
-    (await import("../../../packages/cli-tools/dist/index.mjs")) as {
-      loadConfig: (options: null) => Promise<{
-        database: BundleRepository;
-        storage: import("../../../plugins/plugin-core/dist/index.mjs").StoragePlugin;
-      }>;
-    };
-  const originalCwd = process.cwd();
-
-  try {
-    process.chdir(fixtureSession.exampleDir);
-    return await withHotUpdaterControlEnv(async () => {
-      const config = await loadConfig(null);
-      try {
-        assertStorageOperations(config.storage, ["delete", "get", "put"]);
-        await createBundleDiff(input, {
-          databasePlugin: config.database,
-          storagePlugin: config.storage,
-        });
-        const diff = await resolveAutoPatchBundleDiff(
-          input.baseBundleId,
-          input.bundleId,
-        );
-        const record = fixtureSession.deployedBundles.find(
-          ({ bundleId }) => bundleId === input.bundleId,
-        );
-        if (record) {
-          record.diffBaseBundleId = diff.baseBundleId;
-          record.diffPatchAssetPath = diff.patchAssetPath;
-          record.patchBaseBundleIds = getBundlePatchBaseBundleIds(
-            await fetchProviderBundleById(input.bundleId),
-          );
-        }
-        return diff;
-      } finally {
-        await config.database.dispose?.();
-      }
-    });
-  } finally {
-    process.chdir(originalCwd);
+  await withHotUpdaterControlEnv(async () => {
+    await runLoggedCommand(
+      process.execPath,
+      [
+        HOT_UPDATER_CLI_PATH,
+        "patch",
+        "--artifact-id",
+        input.bundleId,
+        "--base-artifact-id",
+        input.baseBundleId,
+        "--platform",
+        fixtureSession.platform,
+        "--no-interactive",
+      ],
+      {
+        cwd: fixtureSession.exampleDir,
+        logPath: path.join(
+          fixtureSession.resultsDir,
+          `patch-${input.bundleId}-from-${input.baseBundleId}.log`,
+        ),
+      },
+    );
+  });
+  const diff = await resolveAutoPatchBundleDiff(
+    input.baseBundleId,
+    input.bundleId,
+  );
+  const record = fixtureSession.deployedBundles.find(
+    ({ bundleId }) => bundleId === input.bundleId,
+  );
+  if (record) {
+    record.diffBaseBundleId = diff.baseBundleId;
+    record.diffPatchAssetPath = diff.patchAssetPath;
+    record.patchBaseBundleIds = getBundlePatchBaseBundleIds(
+      await fetchProviderBundleById(input.bundleId),
+    );
   }
+  return diff;
 }
 
 async function clearProviderReleases() {
-  const result = await withConfiguredDatabase((database) =>
+  const result = await withConfiguredDatabase(({ core }) =>
     resetFixtureReleases({
-      database,
+      core,
       namespace: channelNamespace,
       platform: fixtureSession.platform,
     }),
@@ -1829,6 +1765,23 @@ function ensureStorePath() {
 }
 
 function findLynxIosBundleDir(bundleId: string) {
+  if (bundleId === LYNX_E2E_BUILTIN_BUNDLE_ID) {
+    const app = captureCommand("xcrun", [
+      "simctl",
+      "get_app_container",
+      deviceId as string,
+      fixtureSession.appId,
+      "app",
+    ]);
+    for (const relative of ["Embedded/Public/react", "Public/react"]) {
+      const directory = path.join(app, relative);
+      const manifest = readOptionalJsonSnapshot(
+        path.join(directory, "manifest.json"),
+      );
+      if (manifest.value?.bundleId === bundleId) return directory;
+    }
+    return null;
+  }
   const stores = lynxIosStoresDir();
   try {
     for (const scope of fs.readdirSync(stores)) {
@@ -1845,6 +1798,24 @@ function findLynxIosBundleDir(bundleId: string) {
 }
 
 function findLynxAndroidBundleDir(bundleId: string) {
+  if (bundleId === LYNX_E2E_BUILTIN_BUNDLE_ID) {
+    const root = "files/hot-updater-lynx/embedded";
+    for (const digest of listAndroidRunAsEntries(root)) {
+      if (!/^[a-f0-9]{64}$/.test(digest)) continue;
+      const directory = `/data/data/${fixtureSession.appId}/${root}/${digest}`;
+      const { fileBuffer } = readAndroidFileBuffer(
+        `${directory}/manifest.json`,
+      );
+      if (
+        !fileBuffer ||
+        createHash("sha256").update(fileBuffer).digest("hex") !== digest
+      )
+        continue;
+      if (JSON.parse(fileBuffer.toString("utf8")).bundleId === bundleId)
+        return directory;
+    }
+    return null;
+  }
   const scopesRoot = `files/hot-updater-lynx/scopes`;
   for (const scope of listAndroidRunAsEntries(scopesRoot)) {
     for (const manifestPath of lynxAndroidInstalledManifestPaths(
@@ -2016,12 +1987,32 @@ async function clearIosLocalBundleState() {
     force: true,
     recursive: true,
   });
+  // The install id and client plugin storage, such as the Insights plugin's
+  // daily launch report and pause, live outside backups in Application
+  // Support. Clearing them starts each scenario as a new installation, as
+  // `pm clear` does on Android; the Release Catalog cache beside them stays.
+  const noBackupDir = path.join(
+    appDataDir,
+    "Library/Application Support/HotUpdater",
+  );
+  const noBackupEntries = await fsPromises
+    .readdir(noBackupDir)
+    .catch((): string[] => []);
+  for (const entry of noBackupEntries) {
+    if (entry === "ReleaseCatalogCache") continue;
+    await fsPromises.rm(path.join(noBackupDir, entry), {
+      force: true,
+      recursive: true,
+    });
+  }
 
   const stalePaths = [
     path.join(documentsDir, "bundle-store", "metadata.json"),
     path.join(documentsDir, "bundle-store"),
     path.join(documentsDir, "bundle-temp"),
     path.join(documentsDir, "bundle-manifest-temp"),
+    path.join(noBackupDir, "storage.json"),
+    path.join(noBackupDir, "install-identity.json"),
   ];
   for (const stalePath of stalePaths) {
     if (fs.existsSync(stalePath)) {
@@ -2033,6 +2024,7 @@ async function clearIosLocalBundleState() {
   fixtureSession.lynxScopePath = null;
   logDetoxFixture("ios local bundle state reset", {
     documentsDir,
+    noBackupDir,
   });
 }
 
@@ -2133,6 +2125,8 @@ function readAndroidFileBuffer(remotePath: string) {
 
   for (const args of readAttempts) {
     const result = spawnSync("adb", args, {
+      // Final-file assertions also read multi-megabyte Hermes bundles.
+      maxBuffer: 64 * 1024 * 1024,
       stdio: ["ignore", "pipe", "pipe"],
     });
     if (result.status === 0) {
@@ -3251,14 +3245,22 @@ function readMultipleAssetsReplacementEvidence(args: {
   };
 }
 
-function readFirstOtaArchiveState(bundleId: string) {
+function readFirstOtaManifestState(bundleId: string) {
   const diagnostics = readWaitForMetadataDiagnostics();
   const metadataState = getMetadataState(diagnostics.metadata.value);
   const bundleFile = readBundleFileSnapshot(bundleId);
+  const manifest = readBundleManifestSnapshot(bundleId);
+  const assetPath = getPrimaryBundleAssetPath();
+  const expectedHash = getManifestAssetFileHash(manifest, assetPath);
+  const assetFile = readBundleAssetFileHash(bundleId, assetPath);
 
   return {
+    assetFile,
+    assetPath,
     bundleFile,
     diagnostics,
+    expectedHash,
+    manifest,
     metadataState,
   };
 }
@@ -3287,6 +3289,7 @@ function getControllerReachableAppBaseUrl() {
   return url.toString().replace(/\/+$/, "");
 }
 
+/** A page of bundles on the admin API: the provider answers once its database is migrated. */
 function getControllerReachableProviderReadinessUrl({
   limit,
 }: {
@@ -3298,30 +3301,16 @@ function getControllerReachableProviderReadinessUrl({
   }
 
   url.searchParams.set("platform", fixtureSession.platform);
-  url.searchParams.set("enabled", "true");
   url.searchParams.set("limit", String(limit));
   url.hash = "";
   return url.toString();
 }
 
 function getLocalProviderReadinessUrls() {
-  const urls: string[] = [];
-
-  for (const limit of PROVIDER_READY_BUNDLE_LIMITS) {
-    const baseUrl = getControllerReachableProviderReadinessUrl({ limit });
-    if (!baseUrl) {
-      continue;
-    }
-
-    urls.push(baseUrl);
-    for (const channel of getFixtureResetChannels()) {
-      const url = new URL(baseUrl);
-      url.searchParams.set("channel", channel);
-      urls.push(url.toString());
-    }
-  }
-
-  return urls;
+  return PROVIDER_READY_BUNDLE_LIMITS.flatMap((limit) => {
+    const url = getControllerReachableProviderReadinessUrl({ limit });
+    return url === null ? [] : [url];
+  });
 }
 
 function getAndroidControlDevicePort() {
@@ -3686,28 +3675,31 @@ export function handleRuntimeConfig() {
   };
 }
 
-function toAppReachableProxyUrl(url: string, assetPath: string | null = null) {
+function toAppReachableProxyUrl(
+  url: string,
+  metadata: Omit<RemoteAssetProxyTarget, "url">,
+) {
   const targetId = randomUUID();
-  remoteAssetProxyTargets.set(targetId, { assetPath, url });
+  remoteAssetProxyTargets.set(targetId, { ...metadata, url });
   return `${getAppReachableControlBaseUrl()}/e2e/proxy-url/${targetId}`;
 }
 
 function rewriteRemoteAssetUrl(
   value: unknown,
-  assetPath: string | null = null,
+  metadata: Omit<RemoteAssetProxyTarget, "url">,
 ): unknown {
   if (typeof value !== "string") {
     return value;
   }
 
   if (/^https?:\/\//.test(value)) {
-    return toAppReachableProxyUrl(value, assetPath);
+    return toAppReachableProxyUrl(value, metadata);
   }
 
   if (value.startsWith("/storage/")) {
     return toAppReachableProxyUrl(
       `${getControllerReachableAppBaseUrl()}/${value.slice(1)}`,
-      assetPath,
+      metadata,
     );
   }
 
@@ -3720,23 +3712,24 @@ function rewriteUpdateInfoAssetUrls(payload: unknown): unknown {
   }
 
   const updateInfo = payload as {
-    changedAssets?: Record<string, unknown>;
-    fileUrl?: unknown;
+    archiveUrl?: unknown;
+    assets?: Record<string, unknown>;
     manifestUrl?: unknown;
   };
 
   const rewritten: typeof updateInfo = {
     ...updateInfo,
-    fileUrl: rewriteRemoteAssetUrl(updateInfo.fileUrl),
-    manifestUrl: rewriteRemoteAssetUrl(updateInfo.manifestUrl),
+    archiveUrl: rewriteRemoteAssetUrl(updateInfo.archiveUrl, {
+      kind: "archive",
+    }),
+    manifestUrl: rewriteRemoteAssetUrl(updateInfo.manifestUrl, {
+      kind: "manifest",
+    }),
   };
 
-  if (
-    updateInfo.changedAssets &&
-    typeof updateInfo.changedAssets === "object"
-  ) {
-    rewritten.changedAssets = Object.fromEntries(
-      Object.entries(updateInfo.changedAssets).map(([assetPath, asset]) => {
+  if (updateInfo.assets && typeof updateInfo.assets === "object") {
+    rewritten.assets = Object.fromEntries(
+      Object.entries(updateInfo.assets).map(([assetPath, asset]) => {
         if (!asset || typeof asset !== "object") {
           return [assetPath, asset];
         }
@@ -3749,20 +3742,29 @@ function rewriteUpdateInfoAssetUrls(payload: unknown): unknown {
           assetInfo.file && typeof assetInfo.file === "object"
             ? {
                 ...assetInfo.file,
-                url: rewriteRemoteAssetUrl(assetInfo.file.url, assetPath),
+                url: rewriteRemoteAssetUrl(assetInfo.file.url, {
+                  assetPath,
+                  kind: "file",
+                }),
               }
             : assetInfo.file;
         const patch =
           assetInfo.patch && typeof assetInfo.patch === "object"
             ? {
                 ...assetInfo.patch,
-                patchUrl: rewriteRemoteAssetUrl(assetInfo.patch.patchUrl),
+                patchUrl: rewriteRemoteAssetUrl(assetInfo.patch.patchUrl, {
+                  assetPath,
+                  kind: "patch",
+                }),
               }
             : assetInfo.patch;
 
         return [assetPath, { ...assetInfo, file, patch }];
       }),
     );
+  }
+  if (!archiveAvailable) {
+    delete rewritten.archiveUrl;
   }
 
   return rewritten;
@@ -3816,18 +3818,19 @@ function summarizeUpdateInfoPayload(payload: unknown) {
   }
 
   const updateInfo = payload as {
-    changedAssets?: Record<string, unknown> | null;
-    fileUrl?: unknown;
+    archiveUrl?: unknown;
+    artifactProtocolVersion?: unknown;
+    assets?: Record<string, unknown> | null;
     id?: unknown;
     manifestUrl?: unknown;
     status?: unknown;
   };
   const appReachableBaseUrl = getAppReachableControlBaseUrl();
-  const changedAssetEntries =
-    updateInfo.changedAssets && typeof updateInfo.changedAssets === "object"
-      ? Object.values(updateInfo.changedAssets)
+  const assetEntries =
+    updateInfo.assets && typeof updateInfo.assets === "object"
+      ? Object.values(updateInfo.assets)
       : [];
-  const changedAssetUrlCount = changedAssetEntries.filter((asset) => {
+  const assetUrlCount = assetEntries.filter((asset) => {
     if (!asset || typeof asset !== "object") {
       return false;
     }
@@ -3835,7 +3838,7 @@ function summarizeUpdateInfoPayload(payload: unknown) {
     const file = (asset as { file?: { url?: unknown } }).file;
     return typeof file?.url === "string";
   }).length;
-  const proxiedChangedAssetUrlCount = changedAssetEntries.filter((asset) => {
+  const proxiedAssetUrlCount = assetEntries.filter((asset) => {
     if (!asset || typeof asset !== "object") {
       return false;
     }
@@ -3847,24 +3850,25 @@ function summarizeUpdateInfoPayload(payload: unknown) {
   }).length;
 
   return {
-    changedAssetUrlCount,
-    fileUrlPresent: typeof updateInfo.fileUrl === "string",
-    fileUrlProxied:
-      typeof updateInfo.fileUrl === "string" &&
-      updateInfo.fileUrl.startsWith(appReachableBaseUrl),
+    archiveUrlPresent: typeof updateInfo.archiveUrl === "string",
+    archiveUrlProxied:
+      typeof updateInfo.archiveUrl === "string" &&
+      updateInfo.archiveUrl.startsWith(appReachableBaseUrl),
+    artifactProtocolVersion: updateInfo.artifactProtocolVersion ?? null,
+    assetUrlCount,
     id: typeof updateInfo.id === "string" ? updateInfo.id : null,
     manifestUrlPresent: typeof updateInfo.manifestUrl === "string",
     manifestUrlProxied:
       typeof updateInfo.manifestUrl === "string" &&
       updateInfo.manifestUrl.startsWith(appReachableBaseUrl),
-    proxiedChangedAssetUrlCount,
+    proxiedAssetUrlCount,
     status: typeof updateInfo.status === "string" ? updateInfo.status : null,
   };
 }
 
 function captureArtifactSelection(pathname: string, payload: unknown) {
   const match = pathname.match(
-    /^\/hot-updater\/artifacts\/([^/]+)\/from\/([^/]+)\/?$/,
+    /^\/hot-updater\/artifacts\/v1\/([^/]+)\/from\/([^/]+)\/?$/,
   );
   if (!match || !payload || typeof payload !== "object") {
     return;
@@ -3879,12 +3883,76 @@ function captureArtifactSelection(pathname: string, payload: unknown) {
     return;
   }
 
+  const artifact = payload as {
+    archiveUrl?: unknown;
+    artifactProtocolVersion?: unknown;
+    assets?: unknown;
+    manifestFileHash?: unknown;
+    manifestUrl?: unknown;
+  };
+  const assetsPresent =
+    artifact.assets !== undefined && artifact.assets !== null;
+  const assetEntries =
+    assetsPresent &&
+    typeof artifact.assets === "object" &&
+    !Array.isArray(artifact.assets)
+      ? Object.values(artifact.assets as Record<string, unknown>)
+      : [];
+
   const evidence = captureArtifactSelectionEvidence(payload);
   if (!evidence) return;
-
   capturedArtifactSelections.push({
-    currentBundleId,
     ...evidence,
+    archiveUrl:
+      typeof artifact.archiveUrl === "string" ? artifact.archiveUrl : null,
+    assets: Object.entries(
+      (artifact.assets ?? {}) as Record<
+        string,
+        {
+          fileHash?: unknown;
+          file?: { url?: unknown };
+          patch?: { patchUrl?: unknown };
+        }
+      >,
+    ).flatMap(([path, asset]) => {
+      if (
+        typeof asset?.file?.url !== "string" ||
+        typeof asset.fileHash !== "string"
+      )
+        return [];
+      return [
+        {
+          fileHash: asset.fileHash,
+          fileUrl: asset.file.url,
+          patchUrl:
+            typeof asset.patch?.patchUrl === "string"
+              ? asset.patch.patchUrl
+              : null,
+          path,
+        },
+      ];
+    }),
+    artifactProtocolVersion:
+      typeof artifact.artifactProtocolVersion === "number"
+        ? artifact.artifactProtocolVersion
+        : null,
+    assetCount: assetEntries.length,
+    assetFileCount: assetEntries.filter(
+      (entry) =>
+        entry !== null &&
+        typeof entry === "object" &&
+        Reflect.get(entry, "file") !== undefined,
+    ).length,
+    assetPatchCount: assetEntries.filter(
+      (entry) =>
+        entry !== null &&
+        typeof entry === "object" &&
+        Reflect.get(entry, "patch") !== undefined,
+    ).length,
+    assetsPresent,
+    currentBundleId,
+    manifestFileHashPresent: typeof artifact.manifestFileHash === "string",
+    manifestUrlPresent: typeof artifact.manifestUrl === "string",
     targetBundleId,
   });
 }
@@ -3905,7 +3973,7 @@ function recordProxyRequest(
 
 function capturedResponse(response: CapturedProxyResponse) {
   return new Response(response.body, {
-    headers: response.headers,
+    headers: [...response.headers],
     status: response.status,
     statusText: response.statusText,
   });
@@ -3960,6 +4028,9 @@ function captureCatalogResponse(
 
 export function handleProxyState() {
   return {
+    archiveAvailable,
+    archiveFailureMode,
+    archiveFailuresRemaining,
     artifactFailuresRemaining,
     changedAssetMutation,
     capturedArtifactSelections: [...capturedArtifactSelections],
@@ -3977,11 +4048,27 @@ export function handleProxyState() {
     pathCardinality: proxyPathCounts.size,
     pathCounts: Object.fromEntries(proxyPathCounts),
     requestCounts: { ...proxyRequestCounts },
+    remoteTransfers: [...remoteAssetProxyTargets].map(([targetId, target]) => {
+      const proxyPath = `/e2e/proxy-url/${targetId}`;
+      return {
+        assetPath: target.assetPath ?? null,
+        kind: target.kind,
+        proxyPath,
+        ...(remoteAssetTransfers.get(proxyPath) ?? {
+          bytes: 0,
+          requests: 0,
+        }),
+      };
+    }),
+    assetTransfers: Object.fromEntries(remoteAssetTransfers),
     replayCatalogGeneration,
   };
 }
 
 export function handleConfigureProxy(input: {
+  archiveAvailable?: boolean;
+  archiveFailureMode?: "corrupt" | "not-found" | null;
+  archiveFailures?: number;
   artifactDelayMs?: number;
   artifactFailures?: number;
   catalogDelayMs?: number;
@@ -4000,9 +4087,16 @@ export function handleConfigureProxy(input: {
     proxyRequestCounts.legacy = 0;
     proxyPathCounts.clear();
     capturedArtifactSelections.length = 0;
+    remoteAssetTransfers.clear();
     capturedCatalogResponses.clear();
     artifactFailuresRemaining = 0;
     changedAssetMutation = null;
+    archiveAvailable = true;
+    archiveFailureMode = null;
+    archiveFailuresRemaining = 0;
+  }
+  if (input.changedAssetMutation !== undefined) {
+    changedAssetMutation = input.changedAssetMutation;
   }
   if (input.catalogMode !== undefined) catalogProxyMode = input.catalogMode;
   if (input.replayGeneration !== undefined) {
@@ -4017,18 +4111,24 @@ export function handleConfigureProxy(input: {
   if (input.artifactFailures !== undefined) {
     artifactFailuresRemaining = input.artifactFailures;
   }
-  if (input.changedAssetMutation !== undefined) {
-    changedAssetMutation = input.changedAssetMutation;
+  if (input.archiveFailureMode !== undefined) {
+    archiveFailureMode = input.archiveFailureMode;
+  }
+  if (input.archiveFailures !== undefined) {
+    archiveFailuresRemaining = input.archiveFailures;
+  }
+  if (input.archiveAvailable !== undefined) {
+    archiveAvailable = input.archiveAvailable;
   }
   return handleProxyState();
 }
 
 export function handleAssertBundleArtifactSelection(input: {
   currentBundleId: string;
+  selection: "manifest-v1";
   requireArchiveAbsent?: boolean;
-  requiredPatchAssetPaths?: readonly string[];
-  requiredRawAssetPaths?: readonly string[];
-  selection: "archive-only" | "manifest-diff";
+  requiredPatchAssetPaths?: string[];
+  requiredRawAssetPaths?: string[];
   targetBundleId: string;
 }) {
   const observed = capturedArtifactSelections.findLast(
@@ -4043,23 +4143,27 @@ export function handleAssertBundleArtifactSelection(input: {
     });
   }
 
-  if (classifyArtifactSelection(observed) !== input.selection) {
+  const matches =
+    observed.artifactProtocolVersion === 1 &&
+    observed.assetsPresent &&
+    observed.assetCount > 0 &&
+    observed.assetFileCount === observed.assetCount &&
+    observed.manifestFileHashPresent &&
+    observed.manifestUrlPresent;
+  if (!matches) {
     throw createEndpointError("Unexpected Bundle artifact selection", {
       expected: input,
       observed,
     });
   }
-  if (
-    input.requireArchiveAbsent === true &&
-    (observed.fileUrlPresent || observed.fileHashPresent)
-  ) {
+  if (input.requireArchiveAbsent === true && observed.archiveUrl !== null) {
     throw createEndpointError("Delta selection retained an archive fallback", {
       expected: input,
       observed,
     });
   }
   for (const path of input.requiredPatchAssetPaths ?? []) {
-    if (!observed.changedAssetPatchPaths.includes(path)) {
+    if (!observed.assetPatchPaths.includes(path)) {
       throw createEndpointError("Required patched asset was not observed", {
         expected: input,
         observed,
@@ -4067,7 +4171,7 @@ export function handleAssertBundleArtifactSelection(input: {
     }
   }
   for (const path of input.requiredRawAssetPaths ?? []) {
-    if (!observed.rawChangedAssetPaths.includes(path)) {
+    if (!observed.unpatchedAssetPaths.includes(path)) {
       throw createEndpointError("Required raw-only asset was not observed", {
         expected: input,
         observed,
@@ -4079,6 +4183,123 @@ export function handleAssertBundleArtifactSelection(input: {
     ...observed,
     platform: fixtureSession.platform,
     selection: input.selection,
+  });
+  return observed;
+}
+
+function getRemoteTransfer(url: string | null) {
+  if (url === null) return { bytes: 0, requests: 0 };
+  const pathname = new URL(url).pathname;
+  return remoteAssetTransfers.get(pathname) ?? { bytes: 0, requests: 0 };
+}
+
+export function handleAssertBundleArtifactTransfers(input: {
+  archiveRequests: number;
+  currentBundleId: string;
+  fileRequests: number;
+  maxRequestsPerAsset?: number;
+  minNetworkAssets?: number;
+  patchRequests: number;
+  targetBundleId: string;
+  verifyAllAssetHashes?: boolean;
+}) {
+  const artifact = capturedArtifactSelections.findLast(
+    (entry) =>
+      entry.currentBundleId === input.currentBundleId &&
+      entry.targetBundleId === input.targetBundleId,
+  );
+  if (!artifact) {
+    throw createEndpointError("Bundle artifact request was not observed", {
+      expected: input,
+      observed: [...capturedArtifactSelections],
+    });
+  }
+
+  const archive = getRemoteTransfer(artifact.archiveUrl);
+  const assets = artifact.assets.map((asset) => ({
+    file: getRemoteTransfer(asset.fileUrl),
+    patch: getRemoteTransfer(asset.patchUrl),
+    path: asset.path,
+  }));
+  const fileRequests = assets.reduce(
+    (total, asset) => total + asset.file.requests,
+    0,
+  );
+  const patchRequests = assets.reduce(
+    (total, asset) => total + asset.patch.requests,
+    0,
+  );
+  const networkAssets = assets.filter(
+    (asset) => asset.file.requests + asset.patch.requests > 0,
+  );
+  const finalFiles =
+    input.verifyAllAssetHashes === true
+      ? readBundleAssetsStoredEvidence({
+          assetPaths: artifact.assets.map((asset) => asset.path),
+          bundleId: input.targetBundleId,
+        })
+      : null;
+  const observed = {
+    archive,
+    archiveFailureMode,
+    archiveFailuresRemaining,
+    assets,
+    fileRequests,
+    finalFiles,
+    networkAssetCount: networkAssets.length,
+    patchRequests,
+  };
+  const requestsAreBounded =
+    input.maxRequestsPerAsset === undefined ||
+    networkAssets.every(
+      (asset) =>
+        asset.file.requests + asset.patch.requests <=
+        input.maxRequestsPerAsset!,
+    );
+  const transferBytesPresent =
+    (archive.requests === 0 || archive.bytes > 0) &&
+    networkAssets.every(
+      (asset) =>
+        (asset.file.requests === 0 || asset.file.bytes > 0) &&
+        (asset.patch.requests === 0 || asset.patch.bytes > 0),
+    );
+  const matches =
+    archive.requests === input.archiveRequests &&
+    fileRequests === input.fileRequests &&
+    patchRequests === input.patchRequests &&
+    archiveFailuresRemaining === 0 &&
+    (input.minNetworkAssets === undefined ||
+      networkAssets.length >= input.minNetworkAssets) &&
+    requestsAreBounded &&
+    transferBytesPresent &&
+    (finalFiles === null || finalFiles.ok);
+  if (!matches) {
+    throw createEndpointError("Unexpected Bundle artifact transfers", {
+      expected: input,
+      observed,
+    });
+  }
+
+  fs.writeFileSync(
+    path.join(
+      fixtureSession.resultsDir,
+      `artifact-transfers-${input.targetBundleId}.json`,
+    ),
+    JSON.stringify(
+      {
+        currentBundleId: input.currentBundleId,
+        expected: input,
+        observed,
+        platform: fixtureSession.platform,
+        targetBundleId: input.targetBundleId,
+      },
+      null,
+      2,
+    ),
+  );
+  logDetoxFixture("Bundle artifact transfers verified", {
+    ...observed,
+    platform: fixtureSession.platform,
   });
   return observed;
 }
@@ -4237,9 +4458,6 @@ export async function handleProxyUpdateRequest(request: Request) {
     const body = await response.text();
     try {
       const payload = JSON.parse(body);
-      if (requestKind === "artifact" && response.ok) {
-        captureArtifactSelection(requestUrl.pathname, payload);
-      }
       const rewrittenPayload =
         requestKind === "catalog"
           ? rewriteReleaseCatalogScope(
@@ -4247,6 +4465,9 @@ export async function handleProxyUpdateRequest(request: Request) {
               requestUrl.pathname,
             )
           : rewriteUpdateInfoAssetUrls(payload);
+      if (requestKind === "artifact" && response.ok) {
+        captureArtifactSelection(requestUrl.pathname, rewrittenPayload);
+      }
       const rewrittenBody = JSON.stringify(rewrittenPayload);
       if (requestKind === "catalog" && response.ok) {
         captureCatalogResponse(requestUrl.pathname, response, rewrittenBody);
@@ -4287,25 +4508,17 @@ export async function handleProxyRemoteAssetRequest(request: Request) {
   if (!target) {
     return new Response("Missing url", { status: 400 });
   }
+  const transfer = remoteAssetTransfers.get(requestUrl.pathname) ?? {
+    requests: 0,
+    bytes: 0,
+  };
+  transfer.requests += 1;
+  remoteAssetTransfers.set(requestUrl.pathname, transfer);
   if (artifactFailuresRemaining > 0) {
     artifactFailuresRemaining -= 1;
     return new Response("Injected E2E artifact download failure", {
       status: 503,
     });
-  }
-
-  if (
-    changedAssetMutation &&
-    changedAssetMutation.remaining > 0 &&
-    target.assetPath === changedAssetMutation.assetPath
-  ) {
-    changedAssetMutation.remaining -= 1;
-    return changedAssetMutation.mode === "missing"
-      ? new Response("Injected missing changed asset", { status: 404 })
-      : new Response("corrupt changed asset bytes", {
-          headers: { "content-type": "application/octet-stream" },
-          status: 200,
-        });
   }
 
   const targetUrl = new URL(target.url);
@@ -4316,14 +4529,41 @@ export async function handleProxyRemoteAssetRequest(request: Request) {
   const headers = new Headers(request.headers);
   headers.delete("host");
 
-  const response = await fetch(targetUrl, {
-    body:
-      request.method === "GET" || request.method === "HEAD"
-        ? undefined
-        : await request.arrayBuffer(),
-    headers,
-    method: request.method,
-  });
+  let response: Response;
+  if (
+    changedAssetMutation &&
+    changedAssetMutation.remaining > 0 &&
+    target.kind === "file" &&
+    target.assetPath === changedAssetMutation.assetPath
+  ) {
+    changedAssetMutation.remaining -= 1;
+    response =
+      changedAssetMutation.mode === "missing"
+        ? new Response("Injected missing asset", { status: 404 })
+        : new Response("corrupt changed asset bytes", { status: 200 });
+  } else if (
+    target.kind === "archive" &&
+    archiveFailureMode !== null &&
+    archiveFailuresRemaining > 0
+  ) {
+    archiveFailuresRemaining -= 1;
+    response =
+      archiveFailureMode === "not-found"
+        ? new Response("Injected E2E archive 404", { status: 404 })
+        : new Response("corrupt tar.br bytes", {
+            headers: { "content-type": "application/octet-stream" },
+            status: 200,
+          });
+  } else {
+    response = await fetch(targetUrl, {
+      body:
+        request.method === "GET" || request.method === "HEAD"
+          ? undefined
+          : await request.arrayBuffer(),
+      headers,
+      method: request.method,
+    });
+  }
 
   if (artifactResponseDelayMs > 0) await sleep(artifactResponseDelayMs);
 
@@ -4338,7 +4578,15 @@ export async function handleProxyRemoteAssetRequest(request: Request) {
   headersToApp.delete("content-encoding");
   headersToApp.delete("content-length");
 
-  return new Response(response.body, {
+  const observedBody = response.body?.pipeThrough(
+    new TransformStream<Uint8Array, Uint8Array>({
+      transform(chunk, controller) {
+        transfer.bytes += chunk.byteLength;
+        controller.enqueue(chunk);
+      },
+    }),
+  );
+  return new Response(observedBody, {
     headers: headersToApp,
     status: response.status,
     statusText: response.statusText,
@@ -4354,7 +4602,10 @@ function getRemoteAssetProxyTarget(requestUrl: URL) {
     return remoteAssetProxyTargets.get(targetId) ?? null;
   }
 
-  return requestUrl.searchParams.get("url");
+  const legacyTarget = requestUrl.searchParams.get("url");
+  return legacyTarget === null
+    ? null
+    : ({ kind: "file", url: legacyTarget } satisfies RemoteAssetProxyTarget);
 }
 
 function buildCatalogUrl(args: {
@@ -4443,6 +4694,9 @@ async function waitForReleaseCatalogVisibility(args: {
             url,
           });
           if (args.bundleId !== null) {
+            if (args.expectedFileHash === null) {
+              throw new Error("Bundle manifest hash is required");
+            }
             await waitForArtifactResolution({
               bundleId: args.bundleId,
               expectedFileHash: args.expectedFileHash,
@@ -4507,10 +4761,10 @@ async function waitForReleaseCatalogVisibility(args: {
 
 async function waitForArtifactResolution(args: {
   bundleId: string;
-  expectedFileHash: string | null;
+  expectedFileHash: string;
   signal?: AbortSignal;
 }) {
-  const url = `${getControllerReachableAppBaseUrl()}/artifacts/${encodeURIComponent(
+  const url = `${getControllerReachableAppBaseUrl()}/artifacts/v1/${encodeURIComponent(
     args.bundleId,
   )}/from/${NIL_UUID}`;
   const response = await fetch(url, {
@@ -4531,8 +4785,8 @@ async function waitForArtifactResolution(args: {
   );
   if (!validation.ok) {
     throw createEndpointError(
-      validation.reason === "file-hash-mismatch"
-        ? "Artifact resolution returned another file hash"
+      validation.reason === "manifest-file-hash-mismatch"
+        ? "Artifact resolution returned another manifest hash"
         : "Artifact resolution returned invalid ArtifactInfo",
       {
         bundleId: args.bundleId,
@@ -5301,7 +5555,9 @@ function resolveMetadataWaitOption(
   value: number | undefined,
   fallback: number,
 ) {
-  return Number.isInteger(value) && value >= 0 ? value : fallback;
+  return typeof value === "number" && Number.isInteger(value) && value >= 0
+    ? value
+    : fallback;
 }
 
 async function waitForIosMetadataState(
@@ -5651,14 +5907,6 @@ async function bootstrap() {
       fixtureSession.envSourceFile,
     );
   }
-  if (
-    !fixtureSession.largeArchiveAssetBackupPath &&
-    fs.existsSync(fixtureSession.largeArchiveAssetPath)
-  ) {
-    fixtureSession.largeArchiveAssetBackupPath = await backupFile(
-      fixtureSession.largeArchiveAssetPath,
-    );
-  }
   if (!fixtureSession.sizeAwareLargeAssetBackupCaptured) {
     fixtureSession.sizeAwareLargeAssetBackupPath = await backupFile(
       fixtureSession.sizeAwareLargeAssetPath,
@@ -5680,6 +5928,10 @@ async function bootstrap() {
 
   await waitForLocalProviderReady();
   await clearProviderReleasesAfterReadiness();
+  await restoreFile(
+    fixtureSession.sizeAwareLargeAssetBackupPath,
+    fixtureSession.sizeAwareLargeAssetPath,
+  );
   await restoreGeneratedDeployFixtures();
   await restoreFile(
     fixtureSession.configBackupPath,
@@ -5857,22 +6109,17 @@ async function deployFixtureBundle(
     request.diffBaseBundleId !== undefined ||
     request.patchMaxBaseBundles !== undefined;
 
-  if (bundleProfile === "archive300mb") {
-    throwIfAborted(signal);
-    await ensureLargeArchiveAsset();
-  }
   if (bundleProfile === "multiAssetReplacement") {
     throwIfAborted(signal);
     await ensureMultiAssetFixtures(request.marker);
   }
   if (bundleProfile === "sizeAwareLargeDiff") {
     throwIfAborted(signal);
-    await ensureSizeAwareLargeAsset();
+    await ensureSizeAwareLargeAsset(request.marker);
   }
 
   throwIfAborted(signal);
   await applyDeployConfig({
-    compressStrategy: request.compressStrategy,
     patchEnabled,
     patchMaxBaseBundles: request.patchMaxBaseBundles,
     strategy: request.strategy ?? "appVersion",
@@ -6011,71 +6258,20 @@ async function deployFixtureBundle(
     throw new Error(`Deployed update ${releaseId} does not reference a file.`);
   }
 
-  const archiveDetails = await (async () => {
-    try {
-      const archivePath = await resolveDeployArchivePath(deployOutputPath);
-      const archiveStats = await fsPromises.stat(archivePath);
-
-      if (
-        bundleProfile === "multiAssetReplacement" &&
-        request.compressStrategy === "tar.br"
-      ) {
-        const expectedPaxPath =
-          fixtureSession.platform === "ios"
-            ? PAX_LONG_ASSET_MANIFEST_PATH
-            : PAX_LONG_ASSET_ANDROID_MANIFEST_PATH;
-        const paxPaths = readPaxPaths(
-          brotliDecompressSync(await fsPromises.readFile(archivePath)),
-        );
-        if (!paxPaths.includes(expectedPaxPath)) {
-          throw createEndpointError(
-            "Expected multi-asset archive to contain a POSIX PAX path.",
-            { expectedPaxPath, paxPaths },
-          );
-        }
-        logDetoxFixture("PAX archive path verified", {
-          archivePath: path.relative(REPO_DIR, archivePath),
-          expectedPaxPath,
-          platform: fixtureSession.platform,
-        });
-      }
-
-      if (
-        bundleProfile === "archive300mb" &&
-        archiveStats.size < LARGE_ARCHIVE_MIN_EXPECTED_SIZE_BYTES
-      ) {
-        throw new Error(
-          [
-            `Expected archive300mb deploy output to be at least ${LARGE_ARCHIVE_MIN_EXPECTED_SIZE_BYTES} bytes.`,
-            `Observed ${archiveStats.size} bytes at ${archivePath}.`,
-          ].join("\n"),
-        );
-      }
-
-      const deployTiming = {
-        bundleProfile,
-        channel: request.channel,
-        durationMs: deployDurationMs,
-        marker: request.marker,
-        mode: request.mode,
-        platform: fixtureSession.platform,
-      };
-      logDetoxFixture("deploy timing", deployTiming);
-      logDetoxFixture("deploy done", {
-        archivePath: path.relative(REPO_DIR, archivePath),
-        archiveSizeBytes: archiveStats.size,
-        ...deployTiming,
-        logPath: path.relative(REPO_DIR, deployLogPath),
-      });
-
-      return {
-        path: archivePath,
-        sizeBytes: archiveStats.size,
-      };
-    } finally {
-      await fsPromises.rm(deployOutputPath, { force: true, recursive: true });
-    }
-  })();
+  const deployTiming = {
+    bundleProfile,
+    channel: request.channel,
+    durationMs: deployDurationMs,
+    marker: request.marker,
+    mode: request.mode,
+    platform: fixtureSession.platform,
+  };
+  logDetoxFixture("deploy timing", deployTiming);
+  logDetoxFixture("deploy done", {
+    ...deployTiming,
+    logPath: path.relative(REPO_DIR, deployLogPath),
+  });
+  await fsPromises.rm(deployOutputPath, { force: true, recursive: true });
 
   if (request.targetCohorts && request.targetCohorts.length > 0) {
     const updated = await patchProviderRelease(deployed.release.id, {
@@ -6093,7 +6289,7 @@ async function deployFixtureBundle(
       bundleId,
       catalog: deployed.catalog,
       channel: remoteChannel,
-      expectedFileHash: bundle.fileHash,
+      expectedFileHash: bundle.manifestFileHash,
       releaseId: deployed.release.id,
       signal,
     });
@@ -6112,7 +6308,6 @@ async function deployFixtureBundle(
     : null;
 
   fixtureSession.deployedBundles.push({
-    archiveSizeBytes: archiveDetails.sizeBytes,
     bundleId,
     bundleProfile,
     channel: remoteChannel,
@@ -6132,7 +6327,6 @@ async function deployFixtureBundle(
   });
 
   return {
-    archiveSizeBytes: archiveDetails.sizeBytes,
     catalogId: deployed.catalogId,
     bundleId,
     bundleProfile,
@@ -6178,8 +6372,8 @@ async function updateFixtureRelease(
     targetCohorts: request.targetCohorts,
   });
   const release = result.release!;
-  const channel = await withConfiguredDatabase(async (database) =>
-    (await database.models.channels.list({})).channels.find(
+  const channel = await withConfiguredDatabase(async ({ core }) =>
+    (await core.listChannels()).find(
       (candidate) => candidate.id === release.channel_id,
     ),
   );
@@ -6199,7 +6393,8 @@ async function updateFixtureRelease(
     enabled: release.enabled,
     rolloutCohortCount: release.rollout_cohort_count,
     shouldForceUpdate: release.should_force_update,
-    targetCohorts: release.target_cohorts,
+    targetCohorts:
+      release.target_cohorts === null ? null : [...release.target_cohorts],
   });
 
   return {
@@ -6212,7 +6407,25 @@ async function updateFixtureRelease(
     rolloutCohortCount: release.rollout_cohort_count,
     scopeKey: release.scope_key,
     shouldForceUpdate: release.should_force_update,
-    targetCohorts: release.target_cohorts,
+    targetCohorts:
+      release.target_cohorts === null ? null : [...release.target_cohorts],
+  };
+}
+
+/** A deploy's policy for a new release in the same scope as `release`. */
+function deployPolicyOf(
+  release: ReleaseRow,
+  channel: string,
+): DeployReleasePolicy {
+  return {
+    channel,
+    enabled: release.enabled,
+    fingerprintHash: release.fingerprint_hash,
+    message: release.message,
+    rolloutCohortCount: release.rollout_cohort_count,
+    shouldForceUpdate: release.should_force_update,
+    targetAppVersion: release.target_app_version,
+    targetCohorts: [...release.target_cohorts],
   };
 }
 
@@ -6220,61 +6433,29 @@ async function createFixtureRepublishedRelease(input: {
   sourceReleaseId: string;
   bundleId: string;
 }) {
-  const created = await withConfiguredDatabase(async (database) => {
-    const source = await database.models.releases.findById(
-      input.sourceReleaseId,
-    );
+  const created = await withConfiguredDatabase(async ({ core }) => {
+    const source = await core.getRelease(input.sourceReleaseId);
     if (source === null) {
       throw new Error(`Release ${input.sourceReleaseId} was not found.`);
     }
-    const catalog = await database.models.releaseCatalogs.findByScopeKey(
-      source.scope_key,
-    );
-    if (catalog === null) {
-      throw new Error(`Catalog ${source.scope_key} was not found.`);
-    }
-    const channel = (await database.models.channels.list({})).channels.find(
+    const channel = (await core.listChannels()).find(
       (candidate) => candidate.id === source.channel_id,
     );
     if (channel === undefined) {
       throw new Error(`Channel ${source.channel_id} was not found.`);
     }
-    const bundle = await database.models.bundles.findById(input.bundleId);
-    if (bundle === null || bundle.platform !== source.platform) {
+    const bundle = await core.getBundle(input.bundleId);
+    if (bundle === null || bundle.bundle.platform !== source.platform) {
       throw new Error(`Bundle ${input.bundleId} was not found.`);
     }
-    const releases = await database.models.releases.findManyByScope({
-      consistency: "strong",
-      limit: 1_000,
-      scopeKey: source.scope_key,
-    });
-    const updatedAtMs = Date.now();
-    const release: ReleaseRow = {
-      ...source,
-      bundle_id: input.bundleId,
-      created_at_ms: updatedAtMs,
-      enabled: true,
-      id: createUUIDv7After(releases.at(-1)?.id ?? source.id, updatedAtMs),
-      kind: "BUNDLE",
-      operation: "DEPLOY",
-      revision: 1,
-      source_release_id: null,
-      updated_at_ms: updatedAtMs,
-    };
-    const result = await commitReleaseCatalogMutation({
-      database,
-      mutation: { operation: "insert", row: release },
-      scope: {
-        channelId: catalog.channel_id,
-        channelName: channel.name,
-        fingerprintHash: catalog.fingerprint_hash,
-        platform: catalog.platform,
-        scopeKey: catalog.scope_key,
-        strategy: catalog.strategy,
+    // A new release for the stored bundle, in the source's scope.
+    const [result] = await core.deploy([
+      {
+        bundleId: input.bundleId,
+        release: { ...deployPolicyOf(source, channel.name), enabled: true },
       },
-      updatedAtMs,
-    });
-    if (result.release === null) {
+    ]);
+    if (result?.release == null) {
       throw new Error("Republish did not create a Release.");
     }
     return {
@@ -6292,7 +6473,8 @@ async function createFixtureRepublishedRelease(input: {
     expectedFileHash:
       created.release.bundle_id === null
         ? null
-        : (await fetchProviderBundleById(created.release.bundle_id)).fileHash,
+        : (await fetchProviderBundleById(created.release.bundle_id))
+            .manifestFileHash,
     releaseId: created.release.id,
   });
 
@@ -6309,21 +6491,24 @@ async function seedCrashedBundleFrontier(input: {
   count: number;
   sourceReleaseId: string;
 }) {
-  return withConfiguredDatabase(async (database) => {
-    const sourceRelease = await database.models.releases.findById(
-      input.sourceReleaseId,
-    );
+  return withConfiguredDatabase(async ({ core }) => {
+    const sourceRelease = await core.getRelease(input.sourceReleaseId);
     if (sourceRelease?.bundle_id === null || sourceRelease === null) {
       throw new Error(
         `Release ${input.sourceReleaseId} must reference a Bundle.`,
       );
     }
-    const sourceBundle = await database.models.bundles.findById(
-      sourceRelease.bundle_id,
-    );
-    if (sourceBundle === null) {
+    const source = await core.getBundle(sourceRelease.bundle_id);
+    if (source === null) {
       throw new Error(`Bundle ${sourceRelease.bundle_id} was not found.`);
     }
+    const channel = (await core.listChannels()).find(
+      (candidate) => candidate.id === sourceRelease.channel_id,
+    );
+    if (channel === undefined) {
+      throw new Error(`Channel ${sourceRelease.channel_id} was not found.`);
+    }
+    const sourceBundle = rowToBundle(source.bundle, []);
 
     const bundleIds: string[] = [];
     const releaseIds: string[] = [];
@@ -6333,53 +6518,14 @@ async function seedCrashedBundleFrontier(input: {
 
     for (let index = 0; index < input.count; index += 1) {
       const bundleId = createUUIDv7After(bundleIdFloor, baseTimeMs + index);
-      const clone: BundleRow = { ...sourceBundle, id: bundleId };
-      const inserted = await database.commit({
-        changes: [{ model: "bundles", operation: "insert", row: clone }],
-      });
-      if (!inserted.committed) {
-        throw new Error(
-          `Failed to insert crash-frontier Bundle ${bundleId}: ${inserted.conflict.reason}`,
-        );
-      }
-      const releases = await database.models.releases.findManyByScope({
-        consistency: "strong",
-        limit: 1_000,
-        scopeKey: sourceRelease.scope_key,
-      });
-      const release: ReleaseRow = {
-        ...sourceRelease,
-        bundle_id: bundleId,
-        created_at_ms: baseTimeMs + index,
-        id: createUUIDv7After(
-          releases.at(-1)?.id ?? sourceRelease.id,
-          baseTimeMs + index,
-        ),
-        operation: "DEPLOY",
-        revision: 1,
-        source_release_id: null,
-        updated_at_ms: baseTimeMs + index,
-      };
-      const catalog = await database.models.releaseCatalogs.findByScopeKey(
-        sourceRelease.scope_key,
-      );
-      if (catalog === null) {
-        throw new Error(`Catalog ${sourceRelease.scope_key} was not found.`);
-      }
-      const published = await commitReleaseCatalogMutation({
-        database,
-        mutation: { operation: "insert", row: release },
-        scope: {
-          channelId: catalog.channel_id,
-          channelName: decodeChannelKey(catalog.channel_key),
-          fingerprintHash: catalog.fingerprint_hash,
-          platform: catalog.platform,
-          scopeKey: catalog.scope_key,
-          strategy: catalog.strategy,
+      // A copy of the source bundle under a new id, deployed in its scope.
+      const [published] = await core.deploy([
+        {
+          bundle: { ...sourceBundle, id: bundleId, patches: [] },
+          release: deployPolicyOf(sourceRelease, channel.name),
         },
-        updatedAtMs: baseTimeMs + index,
-      });
-      if (published.release === null) {
+      ]);
+      if (published?.release == null) {
         throw new Error("Crash-frontier republish did not create a Release.");
       }
       bundleIds.push(bundleId);
@@ -6497,53 +6643,6 @@ function readBsdiffPatchLogs() {
     .join("\n");
 }
 
-function readFirstOtaArchiveInstallLogs() {
-  if (fixtureSession.platform === "ios") {
-    const event = isLynxE2eApp()
-      ? "HotUpdaterArchiveInstalled"
-      : "Skipping manifest-driven install";
-    return captureCommand(
-      "xcrun",
-      [
-        "simctl",
-        "spawn",
-        deviceId as string,
-        "log",
-        "show",
-        "--style",
-        "compact",
-        "--last",
-        "10m",
-        "--predicate",
-        `eventMessage CONTAINS "${event}"`,
-      ],
-      { allowFailure: true },
-    );
-  }
-
-  const event = isLynxE2eApp()
-    ? "HotUpdaterArchiveInstalled"
-    : "Skipping manifest-driven install";
-  return captureCommand(
-    "adb",
-    [
-      "-s",
-      deviceId as string,
-      "logcat",
-      "-d",
-      "-v",
-      "time",
-      "BundleStorage:D",
-      "HotUpdaterLynx:D",
-      "*:S",
-    ],
-    { allowFailure: true, maxBuffer: 8 * 1024 * 1024 },
-  )
-    .split("\n")
-    .filter((line) => line.includes(event))
-    .join("\n");
-}
-
 function readHotUpdaterNativeLogs() {
   if (fixtureSession.platform === "ios") {
     return captureCommand(
@@ -6589,6 +6688,53 @@ function readHotUpdaterNativeLogs() {
     ],
     { allowFailure: true, maxBuffer: 8 * 1024 * 1024 },
   );
+}
+
+function readFirstOtaArchiveInstallLogs() {
+  if (fixtureSession.platform === "ios") {
+    const event = isLynxE2eApp()
+      ? "HotUpdaterArchiveInstalled"
+      : "Skipping manifest-driven install";
+    return captureCommand(
+      "xcrun",
+      [
+        "simctl",
+        "spawn",
+        deviceId as string,
+        "log",
+        "show",
+        "--style",
+        "compact",
+        "--last",
+        "10m",
+        "--predicate",
+        `eventMessage CONTAINS "${event}"`,
+      ],
+      { allowFailure: true },
+    );
+  }
+
+  const event = isLynxE2eApp()
+    ? "HotUpdaterArchiveInstalled"
+    : "Skipping manifest-driven install";
+  return captureCommand(
+    "adb",
+    [
+      "-s",
+      deviceId as string,
+      "logcat",
+      "-d",
+      "-v",
+      "time",
+      "BundleStorage:D",
+      "HotUpdaterLynx:D",
+      "*:S",
+    ],
+    { allowFailure: true, maxBuffer: 8 * 1024 * 1024 },
+  )
+    .split("\n")
+    .filter((line) => line.includes(event))
+    .join("\n");
 }
 
 async function readManifestDiffInstallLogs(signal?: AbortSignal) {
@@ -6900,7 +7046,7 @@ async function assertBsdiffPatchApplied(args: {
     const logs = readBsdiffPatchLogs();
     if (
       evidence.ok &&
-      "record" in evidence &&
+      evidence.record !== undefined &&
       (isLynxE2eApp()
         ? hasNativeInstallEvent(logs, "HotUpdaterBsdiffPatchApplied", {
             asset: args.assetPath,
@@ -6958,17 +7104,9 @@ async function assertManifestDiffApplied(args: {
     });
   }
   const selection = classifyArtifactSelectionHistory(observed);
-  if (selection === "archive-only") {
-    logDetoxFixture("manifest diff assertion skipped for archive selection", {
-      bundleId: args.bundleId,
-      platform: fixtureSession.platform,
-      previousBundleId: args.previousBundleId,
-    });
-    return { selection, skipped: true };
-  }
-  if (selection !== "manifest-diff") {
+  if (selection !== "manifest-v1") {
     throw createEndpointError("Unexpected Bundle artifact selection", {
-      expected: "archive-only or manifest-diff",
+      expected: "consistent manifest-v1",
       observed,
     });
   }
@@ -6993,7 +7131,6 @@ async function assertManifestDiffApplied(args: {
   throw createEndpointError(
     "Timed out waiting for manifest diff install evidence.",
     {
-      archiveLogMatched: state.archiveInstalled,
       assetFile: state.assetFile,
       assetPath: state.assetPath,
       bsdiffLogMatched: state.bsdiffApplied,
@@ -7002,7 +7139,6 @@ async function assertManifestDiffApplied(args: {
       diagnostics: state.diagnostics,
       expectedHash: state.expectedHash,
       manifest: state.manifest,
-      manifestFallbackLogMatched: state.archiveFallbackApplied,
       metadataState: state.metadataState,
       platform: fixtureSession.platform,
       previousBundleId: args.previousBundleId,
@@ -7011,165 +7147,141 @@ async function assertManifestDiffApplied(args: {
   );
 }
 
-async function assertFirstOtaUsesArchive(args: {
-  bundleId: string;
-  signal?: AbortSignal;
-}) {
-  throwIfAborted(args.signal);
-  if (isLynxE2eApp()) {
-    if (
-      !isExactLynxFirstOtaArchiveSelection({
-        builtInBundleId: LYNX_E2E_BUILTIN_BUNDLE_ID,
-        selections: capturedArtifactSelections,
-        targetBundleId: args.bundleId,
+function readFirstOtaReuseEvidence(bundleId: string) {
+  const index = isLynxE2eApp()
+    ? null
+    : fixtureSession.platform === "ios"
+      ? readOptionalJsonSnapshot(
+          path.join(ensureStorePath(), "builtin-index-v1.json"),
+        )
+      : readAndroidStoreSnapshot(
+          "builtin-index-v1.json",
+          "builtin-index-v1.json",
+        );
+  const locators = index?.value?.locators as
+    | Record<string, unknown>
+    | undefined;
+  const artifact = capturedArtifactSelections.findLast(
+    (entry) => entry.targetBundleId === bundleId,
+  );
+  const assets = artifact?.assets ?? [];
+  const archive = getRemoteTransfer(artifact?.archiveUrl ?? null);
+  // App-local paths stay identical when E2E shards share a symlinked node_modules.
+  const imageSuffix = isLynxE2eApp() ? "assets/probe.png" : "builtin_reuse.png";
+  const fontSuffix = isLynxE2eApp() ? "assets/probe.ttf" : "builtin_reuse.ttf";
+  const builtin = isLynxE2eApp()
+    ? readBundleAssetsStoredEvidence({
+        bundleId: LYNX_E2E_BUILTIN_BUNDLE_ID,
+        assetPaths: assets.map(({ path }) => path),
       })
-    ) {
-      throw createEndpointError("Unexpected first OTA artifact selection", {
-        expected: {
-          currentBundleId: LYNX_E2E_BUILTIN_BUNDLE_ID,
-          selection: "archive-only",
-          targetBundleId: args.bundleId,
-        },
-        observed: [...capturedArtifactSelections],
-      });
-    }
+    : null;
+  const wasReused = (asset: (typeof assets)[number]) =>
+    builtin
+      ? builtin.assets.some(
+          (entry) =>
+            entry.assetPath === asset.path &&
+            entry.ok &&
+            entry.assetFile.fileHash === asset.fileHash,
+        )
+      : typeof locators?.[asset.path] === "string";
+  // A font fixture is required too, so an empty resolver cannot satisfy this assertion.
+  const required = assets.filter(
+    ({ path }) => path.endsWith(imageSuffix) || path.endsWith(fontSuffix),
+  );
+  const reused = assets.filter(wasReused);
+  const evidence = assets.map((asset) => {
+    const { fileUrl, path: assetPath } = asset;
+    const proxyPath = new URL(fileUrl).pathname;
+    const transfer = remoteAssetTransfers.get(proxyPath) ?? {
+      requests: 0,
+      bytes: 0,
+    };
+    return {
+      assetPath,
+      reused: wasReused(asset),
+      observed: proxyPath.startsWith("/e2e/proxy-url/"),
+      ...transfer,
+    };
+  });
+  const finalFiles = readBundleAssetsStoredEvidence({
+    bundleId,
+    assetPaths: assets.map(({ path }) => path),
+  });
+  return {
+    archive,
+    bundleId,
+    platform: fixtureSession.platform,
+    required: required.map(({ path }) => path),
+    evidence,
+    builtin,
+    finalFiles,
+    ok:
+      (builtin
+        ? builtin.manifest.exists && builtin.manifest.readError === null
+        : index?.exists && index.readError === null) &&
+      archive.requests === 0 &&
+      archive.bytes === 0 &&
+      finalFiles.ok &&
+      required.some(({ path }) => path.endsWith(imageSuffix)) &&
+      required.some(({ path }) => path.endsWith(fontSuffix)) &&
+      required.every(({ path }) =>
+        reused.some((asset) => asset.path === path),
+      ) &&
+      evidence.every(
+        (asset) =>
+          asset.observed &&
+          (asset.reused
+            ? asset.requests === 0 && asset.bytes === 0
+            : asset.requests > 0 && asset.bytes > 0),
+      ),
+  };
+}
 
-    for (let attempt = 0; attempt < 40; attempt += 1) {
-      throwIfAborted(args.signal);
-      const state = readFirstOtaArchiveState(args.bundleId);
-      if (
-        hasLynxFirstOtaArchiveEvidence({
-          builtInBundleId: LYNX_E2E_BUILTIN_BUNDLE_ID,
-          bundleFileExists: state.bundleFile.exists,
-          selections: capturedArtifactSelections,
-          stableBundleId: state.metadataState.stableBundleId,
-          stagingBundleId: state.metadataState.stagingBundleId,
-          stagingSelectionBundleId:
-            state.metadataState.stagingSelection?.bundleId ?? null,
-          targetBundleId: args.bundleId,
-          verificationPending: state.metadataState.verificationPending,
-        })
-      ) {
-        logDetoxFixture("first OTA used archive install path", {
-          bundleId: args.bundleId,
-          bundleFilePath: state.bundleFile.path,
-          evidence: "artifact-selection-and-bundle-store",
-          metadataPath: state.diagnostics.metadata.path,
-          platform: fixtureSession.platform,
-        });
-        return {};
-      }
-
-      await abortableSleep(E2E_POLL_INTERVAL_MS, args.signal);
-    }
-
-    throwIfAborted(args.signal);
-    const state = readFirstOtaArchiveState(args.bundleId);
-    throw createEndpointError(
-      "Timed out waiting for first OTA archive install evidence.",
-      {
-        bundleId: args.bundleId,
-        expectedSelection: {
-          currentBundleId: LYNX_E2E_BUILTIN_BUNDLE_ID,
-          selection: "archive-only",
-          targetBundleId: args.bundleId,
-        },
-        expectedState: {
-          bundleFileExists: true,
-          stableBundleId: null,
-          stagingBundleId: args.bundleId,
-          stagingSelectionBundleId: args.bundleId,
-          verificationPending: true,
-        },
-        observedSelection: [...capturedArtifactSelections],
-        observedState: {
-          bundleFile: state.bundleFile,
-          metadata: state.diagnostics.metadata,
-          metadataState: state.metadataState,
-        },
-        platform: fixtureSession.platform,
-      },
-    );
-  }
-
-  const expectedFragments = [
-    "Skipping manifest-driven install",
-    `for ${args.bundleId}`,
-    "no active OTA manifest is available",
-    "Using archive",
-  ];
-
+async function assertFirstOtaUsesBuiltInManifest(args: { bundleId: string }) {
   for (let attempt = 0; attempt < 40; attempt += 1) {
-    throwIfAborted(args.signal);
-    const state = readFirstOtaArchiveState(args.bundleId);
-    const logs = readFirstOtaArchiveInstallLogs();
+    const state = readFirstOtaManifestState(args.bundleId);
     if (
       state.metadataState.stagingBundleId === args.bundleId &&
       state.metadataState.stagingSelection?.bundleId === args.bundleId &&
-      state.metadataState.verificationPending === true &&
-      state.metadataState.stableBundleId !== args.bundleId &&
-      state.bundleFile.exists
+      hasManifestBackedBundleEvidence(state)
     ) {
-      logDetoxFixture("first OTA used archive install path", {
+      const reuse = readFirstOtaReuseEvidence(args.bundleId);
+      if (!reuse.ok) {
+        throw createEndpointError(
+          "First OTA did not reuse byte-identical packaged image/font files without downloads",
+          reuse,
+        );
+      }
+      fs.writeFileSync(
+        path.join(
+          fixtureSession.resultsDir,
+          `builtin-reuse-${args.bundleId}.json`,
+        ),
+        JSON.stringify(reuse, null, 2),
+      );
+      logDetoxFixture("first OTA used built-in manifest", {
+        assetPath: state.assetPath,
         bundleId: args.bundleId,
         bundleFilePath: state.bundleFile.path,
-        evidence: "bundle-store",
+        evidence: "manifest-and-bundle-store",
         metadataPath: state.diagnostics.metadata.path,
         platform: fixtureSession.platform,
       });
       return {};
     }
 
-    if (
-      state.metadataState.stagingBundleId === args.bundleId &&
-      state.metadataState.verificationPending === false &&
-      state.bundleFile.exists
-    ) {
-      logDetoxFixture("first OTA used archive install path", {
-        bundleId: args.bundleId,
-        bundleFilePath: state.bundleFile.path,
-        evidence: "bundle-store-active",
-        metadataPath: state.diagnostics.metadata.path,
-        platform: fixtureSession.platform,
-      });
-      return {};
-    }
-
-    if (includesAllFragments(logs, expectedFragments)) {
-      logDetoxFixture("first OTA used archive install path", {
-        bundleId: args.bundleId,
-        evidence: "native-log",
-        platform: fixtureSession.platform,
-      });
-      return {};
-    }
-
-    await abortableSleep(E2E_POLL_INTERVAL_MS, args.signal);
+    await sleep(E2E_POLL_INTERVAL_MS);
   }
 
-  throwIfAborted(args.signal);
-  const logs = readFirstOtaArchiveInstallLogs();
-  const state = readFirstOtaArchiveState(args.bundleId);
+  const state = readFirstOtaManifestState(args.bundleId);
   throw createEndpointError(
-    "Timed out waiting for first OTA archive install evidence.",
+    "Timed out waiting for first OTA built-in manifest evidence.",
     {
+      assetFile: state.assetFile,
+      assetPath: state.assetPath,
       bundleId: args.bundleId,
-      expectedFragments,
-      expectedState: {
-        bundleFileExists: true,
-        states: [
-          {
-            stableBundleId: "different from the staging Bundle",
-            stagingBundleId: args.bundleId,
-            verificationPending: true,
-          },
-          {
-            stagingBundleId: args.bundleId,
-            verificationPending: false,
-          },
-        ],
-      },
-      logsTail: logs.split("\n").slice(-20),
+      expectedHash: state.expectedHash,
+      manifest: state.manifest,
       observedState: {
         bundleFile: state.bundleFile,
         metadata: state.diagnostics.metadata,
@@ -7596,12 +7708,15 @@ async function cleanup() {
       fixtureSession.envSourceFile,
     );
   }
+  await restoreFile(
+    fixtureSession.sizeAwareLargeAssetBackupPath,
+    fixtureSession.sizeAwareLargeAssetPath,
+  );
   await restoreGeneratedDeployFixtures();
 
   fixtureSession.appBackupPath = null;
   fixtureSession.configBackupPath = null;
   fixtureSession.envBackupPath = null;
-  fixtureSession.largeArchiveAssetBackupPath = null;
   fixtureSession.multiAssetBackupPaths = {};
   fixtureSession.sizeAwareLargeAssetBackupCaptured = false;
   fixtureSession.sizeAwareLargeAssetBackupPath = null;
@@ -7650,7 +7765,15 @@ function createJob(task: (context: JobExecutionContext) => Promise<JobResult>) {
   return jobId;
 }
 
-export function startBootstrapJob() {
+export function startBootstrapJob(input: { deviceId?: string } = {}) {
+  if (input.deviceId && input.deviceId !== deviceId) {
+    if (bootstrapJobId) {
+      throw new Error("Cannot change the device after fixture bootstrap");
+    }
+    // Detox may allocate a clone instead of the configured simulator prototype.
+    deviceId = input.deviceId;
+    logDetoxFixture("using Detox allocated device", { deviceId });
+  }
   if (bootstrapJobId) {
     const job = jobs.get(bootstrapJobId);
     if (job?.status === "running") {
@@ -7767,46 +7890,10 @@ export async function handleAssertBsdiffPatchApplied(args: {
   return assertBsdiffPatchApplied(args);
 }
 
-export async function handleAssertFirstOtaUsesArchive(
+export async function handleAssertFirstOtaUsesBuiltInManifest(
   bundleId: string,
-  options: { signal?: AbortSignal } = {},
 ) {
-  return assertFirstOtaUsesArchive({ bundleId, signal: options.signal });
-}
-
-export function handleAssertLynxPageInterruptionState(input: {
-  bundleId: string;
-  releaseId: string;
-}) {
-  if (!isLynxE2eApp()) {
-    throw new Error("Page interruption state is only available for Lynx E2E");
-  }
-  const state = readLynxJournalValue();
-  if (!state) throw new Error("Lynx native state is missing");
-  const { unconfirmedReleaseIds, crashedBundleIds } = lynxStoredExclusions(
-    state,
-    fixtureSession.platform,
-  );
-  if (
-    !Array.isArray(unconfirmedReleaseIds) ||
-    unconfirmedReleaseIds.filter((value) => value === input.releaseId)
-      .length !== 1
-  ) {
-    throw createEndpointError(
-      "Interrupted page Release was not classified unconfirmed exactly once",
-      { expected: input.releaseId, observed: unconfirmedReleaseIds },
-    );
-  }
-  if (
-    !Array.isArray(crashedBundleIds) ||
-    crashedBundleIds.includes(input.bundleId)
-  ) {
-    throw createEndpointError(
-      "Interrupted page Bundle was incorrectly classified as crashed",
-      { rejected: input.bundleId, observed: crashedBundleIds },
-    );
-  }
-  return { crashedBundleIds, unconfirmedReleaseIds };
+  return assertFirstOtaUsesBuiltInManifest({ bundleId });
 }
 
 export async function handleCaptureState(prefix: string) {
@@ -7909,6 +7996,105 @@ export async function handlePrepareAppLaunch(options?: {
       : null;
   setE2eScreenStateLaunchGeneration(launchGeneration);
   return result;
+}
+
+// Launch without Detox waiting for a JS thread that deliberately never becomes idle.
+export async function handleLaunchUninstrumentedApp() {
+  await prepareAppLaunch();
+  if (fixtureSession.platform === "ios") {
+    captureCommand("xcrun", [
+      "simctl",
+      "launch",
+      deviceId as string,
+      fixtureSession.appId,
+    ]);
+  } else {
+    launchAndroidApp({ explicitActivity: true });
+  }
+  return {};
+}
+
+export async function handleLaunchStartupHang(bundleId: string) {
+  const marker = `HotUpdaterE2EStartupHang:${bundleId}`;
+  const ios = fixtureSession.platform === "ios";
+  const logs = spawn(
+    ios ? "xcrun" : "adb",
+    ios
+      ? [
+          "simctl",
+          "spawn",
+          deviceId as string,
+          "log",
+          "stream",
+          "--level",
+          "debug",
+          "--style",
+          "compact",
+          "--predicate",
+          'eventMessage CONTAINS "HotUpdaterE2EStartupHang:"',
+        ]
+      : [
+          "-s",
+          deviceId as string,
+          "logcat",
+          "-v",
+          "brief",
+          "ReactNativeJS:I",
+          "*:S",
+        ],
+    { stdio: ["ignore", "pipe", "pipe"] },
+  );
+  let output = "";
+  let logError: Error | undefined;
+  logs.on("error", (error) => {
+    logError = error;
+  });
+  logs.stdout.on("data", (chunk) => {
+    output += chunk.toString();
+  });
+  logs.stderr.on("data", (chunk) => {
+    output += chunk.toString();
+  });
+  try {
+    await handleLaunchUninstrumentedApp();
+    const deadline = Date.now() + 30_000;
+    while (!output.includes(marker) && Date.now() < deadline && !logError) {
+      await sleep(E2E_POLL_INTERVAL_MS);
+    }
+    if (logError) throw logError;
+    if (!output.includes(marker)) {
+      throw new Error(`Startup hang was not reached for ${bundleId}`);
+    }
+    const diagnostics = ios
+      ? readIosRecoveryDiagnostics()
+      : readAndroidRecoveryDiagnostics({
+          metadata: "startup-hang-metadata.json",
+          launchReport: "startup-hang-launch-report.json",
+          crashMarker: "startup-hang-crash-marker.json",
+          crashHistory: "startup-hang-crashed-history.json",
+        });
+    const metadata = getMetadataState(diagnostics.metadata.value);
+    if (
+      metadata.stagingBundleId !== bundleId ||
+      metadata.verificationPending !== true ||
+      diagnostics.crashMarker.exists ||
+      diagnostics.crashHistory.exists ||
+      diagnostics.launchReport.exists
+    ) {
+      throw createEndpointError(
+        "Expected an unverified startup hang without crash recovery",
+        diagnostics,
+      );
+    }
+    await captureState("startup-hang");
+    return {};
+  } finally {
+    logs.kill();
+    await fsPromises.writeFile(
+      path.join(fixtureSession.resultsDir, "startup-hang.log"),
+      output,
+    );
+  }
 }
 
 export async function handleLaunchAndroidCrashApp() {

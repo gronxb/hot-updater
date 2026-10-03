@@ -1,10 +1,14 @@
+import { existsSync } from "node:fs";
+
 import { s3Storage } from "@hot-updater/aws";
 import { bare } from "@hot-updater/bare";
+import { insights } from "@hot-updater/server/plugins/insights";
 import { standaloneRepository } from "@hot-updater/standalone";
-import { config } from "dotenv";
 import { defineConfig } from "hot-updater";
 
-config({ path: ".env.hotupdater" });
+if (existsSync(".env.hotupdater")) {
+  process.loadEnvFile(".env.hotupdater");
+}
 
 const adminToken = process.env.HOT_UPDATER_ADMIN_TOKEN;
 if (!adminToken) throw new Error("HOT_UPDATER_ADMIN_TOKEN is required.");
@@ -35,9 +39,10 @@ export default defineConfig({
       Authorization: `Bearer ${adminToken}`,
     },
   }),
+  // The plugins its server, examples-server/hono-mongodb, runs.
+  plugins: [insights()],
   fingerprint: {
     debug: true,
   },
   updateStrategy: "appVersion",
-  compressStrategy: "tar.br",
 });

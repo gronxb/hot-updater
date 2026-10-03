@@ -1,6 +1,6 @@
 ---
 title: "Install packages"
-description: "Install the CLI, SDK, build plugin and provider package before setup."
+description: "Install the CLI, SDK, build adapter and provider package before setup."
 icon: Download
 ---
 
@@ -40,13 +40,13 @@ Install the runtime SDK as an app dependency:
 npm install @hot-updater/react-native
 ```
 
-Install the deployment CLI and environment loader as development dependencies:
+Install the deployment CLI as a development dependency:
 
 ```package-install
-npm install hot-updater dotenv --save-dev
+npm install hot-updater --save-dev
 ```
 
-## Install your build plugin
+## Install your build adapter
 
 Choose the app's build system:
 
@@ -115,7 +115,14 @@ npm install @hot-updater/firebase --save-dev
 
 For a [custom server](/docs/custom/quick-start), follow its database/storage
 package choices and install the required `@hot-updater/*` packages.
-Server dependencies belong in the server workspace when it is separate.
+Server dependencies belong in the server workspace when it is separate. The
+app's `hot-updater.config.ts` lists the server's plugins, and imports the
+official ones from `@hot-updater/server`, so the app workspace installs it as a
+development dependency too:
+
+```package-install
+npm install @hot-updater/server --save-dev
+```
 
 Complete the SDK, CLI, build and provider installations **before** running
 `init` or generating infrastructure so setup uses the packages selected for

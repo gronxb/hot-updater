@@ -136,20 +136,25 @@ limits before publication or execution. Artifact paths and fingerprint inputs
 use locale-independent UTF-16 code-unit ordering so equivalent inputs produce
 the same metadata and hashes on every host.
 
-Delta delivery is manifest-driven. The manifest declares one
+Artifact delivery uses manifest v1: an authenticated manifest, a complete
+`assets` map with an original file for every target path, and an optional
+`archiveUrl`. The manifest declares one
 `patchAssetPath`, and each downloadable asset declares
 `downloadCompression: "br"` or `downloadCompression: null`. Native chooses the
 verified running installation as the base, supports BSDIFF patches, copies only
 manifest-covered unchanged files, verifies the reconstructed target hash, and
-publishes the complete target atomically. A bad or stale patch may use an
-authorized complete-file or archive fallback. Archive fallback is recorded as a
-fallback and is not reported as a successful patch application.
+publishes the complete target atomically. A bad or stale patch uses its verified
+original file. Native may choose a bulk `bundle.tar.br` using authenticated
+transfer costs; its hash, compressed size, decoded TAR size, and exact file
+inventory are verified. A failed bulk transfer falls back to the same original
+files. Manifest verification failure stops installation. Native logs distinguish
+bulk installation from an actual patch application.
 
 The provider-neutral database contract retains at most 24 ordered base patches
 for one target Bundle and publishes replacement patch rows atomically. Deleting
-a Bundle fails with the common referenced-row result while a Release or another
-Bundle's patch still refers to it; built-in providers translate their native
-constraint errors to that same contract.
+a Bundle fails with the common referenced-row result while a Release refers to
+it. Following the 1.0 core lifecycle, deleting an unreferenced Bundle also removes
+patches to and from it; targets remain installable through their original files.
 
 ## Build integration
 

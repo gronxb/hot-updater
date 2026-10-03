@@ -76,8 +76,16 @@ stays subordinate to exact values and actions.
 
 ## 4. Capability and Data States
 
-- Bundles and Insights navigation are always available. Installation history
+- Navigation shows only installed features: Bundles always, Insights when the
+  server runs `insights()`, and API keys when it runs `apiKeys()`. A
+  self-hosted server's admin API serves events but no overview, so there
+  Insights opens on All events and hides Overview. Installation history
   remains a drill-down route under the Insights Events view.
+- A feature route opened without its plugin shows a not-installed state that
+  names the plugin to add and links to the console deployment guide. Inline
+  Insights, the bundle list column and the bundle detail card, is absent
+  where the console does not read release activity; it never stands in with
+  a placeholder or a banner.
 - Data surfaces define loading, empty, success, and genuine error states.
 - Insights language is direct and evidentiary: use Reporting installations,
   Selected bundle installations, Applied reports, Recovered-from reports,
@@ -85,6 +93,11 @@ stays subordinate to exact values and actions.
   install IDs whose latest report falls in the selected 24 hours, 7 days, or 30
   days. Outcome values count accepted reports. Never imply realtime state,
   complete fleet coverage, an exact share, success rate, or rollout completion.
+- Unique counts read from sketches (DAU, WAU, MAU, active users per interval,
+  and Release health's active installations) are estimates, typically within
+  about 3%. Show them with ≈ and an Estimated label for hover and screen
+  readers; zero stays exact. Report, active-day, failed-launch, and
+  latest-state counts are exact.
 
 ## 5. Reusable Primitives
 
@@ -119,21 +132,28 @@ while submitting/loading when relevant, loading, empty, error, and success.
   percentages.
 - **All events:** shared Overview / Events navigation makes event history a
   primary Insights destination. Native links retain page-navigation semantics.
-  The installation route without a search or selected installation shows every
-  recorded event type, newest first, with no reporting-period or bundle filter.
-  The title, refresh action, and compact installation lookup sit inside the list
-  header. The lookup is not an event filter. Event history uses keyset pages and
-  has no total-count claim. Each installation links to its history; returning
-  restores the source event page and scroll position.
+  The installation route without a search or selected installation lists
+  downloads, applies, and recoveries in one time range, newest first, with no
+  bundle filter: the last 24 hours, 7 days (default), 30 days, or 90 days,
+  ending when the list loads or the range changes. Launches without an update
+  are not listed; they appear in App usage and in an installation's latest
+  report, and a one-line description under the title says so. The title, time
+  range, refresh action, and compact installation lookup sit inside the list
+  header. The lookup is not an event filter. Event history uses keyset pages
+  that stop at the range start and has no total-count claim. An empty range
+  and the range start say so and offer the next longer range. Each
+  installation links to its history; returning restores the source event
+  page, range, and scroll position.
   Wide table columns follow time, event, user ID / install ID, app, and bundle.
   Narrow event rows lead with status and time, then identity, app, and bundle;
   this preserves each event's context without hiding columns offscreen. Times
   use YYYY/MM/DD HH:mm:ss in the browser's named time zone, with expandable
   exact UTC values. User IDs lead; shortened install and bundle IDs reveal and
-  copy their full values. UNCHANGED is presented as Activity reported, a neutral activity
-  observation on the current bundle. Applied/adopted events use the semantic
-  success color; recovery uses warning. Text and icons remain present so color
-  is never the only distinction.
+  copy their full values. UNCHANGED, an installation's latest report or an
+  older stored row, is presented as No change, a neutral observation on the
+  current bundle. Applied/adopted events use the semantic success color;
+  recovery uses warning. Text and icons remain present so color is never the
+  only distinction.
 - **Installation history:** the Events lookup accepts a user ID or install
   ID and routes to the installation history drill-down. A user ID may match
   multiple installations; below `lg`, a labeled count and disclosure keep

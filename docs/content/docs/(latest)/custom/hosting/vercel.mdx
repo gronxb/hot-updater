@@ -2,11 +2,11 @@
 title: "Vercel"
 description: Deploy Hot Updater server to Vercel with serverless functions.
 icon: vercel
-version: "v0.22.0"
 ---
 
 ## Prerequisites
 
+- Node.js 20.19 or later
 - Vercel account at [vercel.com](https://vercel.com)
 - A PostgreSQL integration from the [Vercel Marketplace](https://vercel.com/docs/postgres), such as Neon
 - Cloud storage (S3, R2, Supabase, Firebase, or custom)
@@ -19,7 +19,7 @@ Install required dependencies.
 npm install @hot-updater/server hono
 ```
 
-Install your chosen storage plugin separately (e.g., `@hot-updater/aws`, `@hot-updater/supabase`, `@hot-updater/firebase`).
+Install your chosen storage adapter separately (e.g., `@hot-updater/aws`, `@hot-updater/supabase`, `@hot-updater/firebase`).
 
 Install Drizzle ORM with PostgreSQL driver.
 
@@ -28,7 +28,7 @@ npm install drizzle-orm pg
 ```
 
 ```package-install
-npm install -D hot-updater drizzle-kit @types/pg dotenv
+npm install -D hot-updater drizzle-kit @types/pg
 ```
 
 ## Database setup
@@ -37,17 +37,23 @@ Vercel Postgres is no longer available for new projects. Install a current
 Postgres integration from the Marketplace and connect it to the project. This
 example assumes the integration exposes `DATABASE_URL`.
 
-Add the Hot Updater management and storage values to `.env.local` for local
-development, and configure the same names for the Production environment in
-your Vercel project settings:
+Configure `DATABASE_URL` and the following management and storage values in
+your Vercel project settings for both Development and Production. Use each
+environment's database and credentials:
 
-```dotenv title=".env.local"
+```dotenv title="Vercel environment variables"
 HOT_UPDATER_ADMIN_TOKEN=replace-with-a-secret
 HOT_UPDATER_STORAGE_DOWNLOAD_URL_KEY=replace-with-a-separate-secret
 R2_ENDPOINT=https://your-account-id.r2.cloudflarestorage.com
 R2_ACCESS_KEY_ID=your-access-key-id
 R2_SECRET_ACCESS_KEY=your-secret-access-key
 R2_BUCKET_NAME=your-bucket-name
+```
+
+Link the local server project to that Vercel project:
+
+```bash
+npx vercel link
 ```
 
 Create the database connection file with Drizzle's transaction-capable
@@ -72,12 +78,14 @@ Create the Hot Updater instance.
 ```typescript title="src/hotUpdater.ts"
 import { createHotUpdater } from "@hot-updater/server";
 import { drizzleAdapter } from "@hot-updater/server/adapters/drizzle";
+import { apiKeys } from "@hot-updater/server/plugins/api-keys";
+import { insights } from "@hot-updater/server/plugins/insights";
 import { s3Storage } from "@hot-updater/aws";
 import { db } from "./drizzle";
 
 export const hotUpdater = createHotUpdater({
   database: drizzleAdapter({ db, provider: "postgresql" }),
-  clientAccess: { type: "api-key" },
+  plugins: [insights(), apiKeys()],
   storage: [
     s3Storage({
       region: "auto",
@@ -126,22 +134,20 @@ the broader client mount. Omit both to deploy a client-only server.
 
 ## Schema generation
 
-Generate the Drizzle schema for Hot Updater tables. The local command process
-must have `DATABASE_URL` and the storage environment variables above available;
-`hot-updater` does not load `.env.local` automatically.
+Generate the Drizzle schema using the Development environment.
+[`vercel env run`](https://vercel.com/docs/cli/env#running-commands-with-environment-variables)
+provides the selected environment's variables to each command; `hot-updater`
+does not load `.env.local` automatically.
 
 ```bash
-npx hot-updater db generate src/hotUpdater.ts --yes
+npx vercel env run -e development -- npx hot-updater db generate src/hotUpdater.ts --yes
 ```
 
 The command writes `hot-updater-schema.ts` at the project root. Configure
-Drizzle Kit to load Vercel's local environment and apply that schema:
+Drizzle Kit to read the selected database URL and apply that schema:
 
 ```typescript title="drizzle.config.ts"
-import { config } from "dotenv";
 import { defineConfig } from "drizzle-kit";
-
-config({ path: ".env.local" });
 
 export default defineConfig({
   schema: "./hot-updater-schema.ts", // [!code ++]
@@ -153,14 +159,19 @@ export default defineConfig({
 });
 ```
 
+Bootstrap the Development database and create its client API key:
+
 ```bash
-npx vercel env pull .env.local
-npx drizzle-kit push
+npx vercel env run -e development -- npx drizzle-kit push
+npx vercel env run -e development -- npx hot-updater db migrate src/hotUpdater.ts
+npx vercel env run -e development -- npx hot-updater api-key create --name "Development app" src/hotUpdater.ts
 ```
 
-Because this server uses `clientAccess: { type: "api-key" }`, also
-[create a client API key and configure `x-api-key` in the app](/docs/custom/quick-start#bootstrap-the-schema-and-api-key)
-against the target Vercel environment's database before the first update check.
+`db migrate` writes the settings rows the server checks before its first
+request; until they exist, its handlers answer `503`. Save the key printed by
+`api-key create` for the app using this environment, and
+[configure `x-api-key`](/docs/custom/quick-start#bootstrap-the-schema-and-api-key).
+`insights()` records the app's Insights events.
 
 ## Development
 
@@ -174,10 +185,18 @@ The server runs at `http://localhost:3000`.
 
 ## Deploy
 
-Set `HOT_UPDATER_ADMIN_TOKEN`, `HOT_UPDATER_STORAGE_DOWNLOAD_URL_KEY`, `R2_ENDPOINT`, `R2_ACCESS_KEY_ID`,
-`R2_SECRET_ACCESS_KEY`, and `R2_BUCKET_NAME` in the target Vercel environment.
+Before deploying, bootstrap the Production database separately. All three
+commands must use Production variables so the schema, settings and API key
+belong to the same database:
 
-Deploy to Vercel.
+```bash
+npx vercel env run -e production -- npx drizzle-kit push
+npx vercel env run -e production -- npx hot-updater db migrate src/hotUpdater.ts
+npx vercel env run -e production -- npx hot-updater api-key create --name "Production app" src/hotUpdater.ts
+```
+
+Use this Production client key in the app that connects to the deployed server.
+Then deploy:
 
 ```bash
 npx vercel deploy --prod
@@ -189,8 +208,8 @@ Your Hot Updater server will be available at `https://your-project.vercel.app/ho
 
 [Connect the React Native project's CLI](/docs/custom/cli-configuration) to the
 verified deployment URL with `/hot-updater/admin` as its base path. Keep the
-admin token in the deploy environment and match the server's storage plugin
-and bucket configuration.
+admin token in the deploy environment, match the server's storage adapter and
+bucket configuration, and list the server's plugins.
 
 For the mobile app, use the client root ending in `/hot-updater` and its client
 API key through [Set up your app](/docs/get-started/app-setup). Run

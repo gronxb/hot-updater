@@ -5,7 +5,7 @@ import {
   makeEnv,
   MissingInitInputsError,
   p,
-  writeHotUpdaterConfig,
+  writeHotUpdaterFiles,
 } from "@hot-updater/cli-tools";
 import { ExecaError, execa } from "execa";
 
@@ -51,22 +51,10 @@ export const setEnv = async ({
   p.log.success("Firebase credentials have been successfully configured.");
 
   try {
-    const configWriteResult = await writeHotUpdaterConfig(
-      getConfigScaffold(build),
-    );
-    if (configWriteResult.status === "created") {
-      p.log.success(
-        "Configuration file 'hot-updater.config.ts' has been created.",
-      );
-    } else if (configWriteResult.status === "merged") {
-      p.log.success(
-        "Configuration file 'hot-updater.config.ts' has been updated.",
-      );
-    } else {
-      p.log.warn(
-        `Existing 'hot-updater.config.ts' was left unchanged: ${configWriteResult.reason}`,
-      );
-    }
+    await writeHotUpdaterFiles(getConfigScaffold(build), {
+      cwd: process.cwd(),
+      settings: "Firebase",
+    });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     console.error("Error writing configuration file:", message);

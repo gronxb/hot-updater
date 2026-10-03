@@ -1,0 +1,372 @@
+import { DatabaseAdapterInputError, isUUIDv7 } from "@hot-updater/plugin-core";
+
+import {
+  type BundleEventRow,
+  isRecord,
+  validateBundleEventFields,
+} from "./eventRow";
+import type { InsightsEventFilter, InsightsModel } from "./modelTypes";
+
+const encoder = new TextEncoder();
+
+/** Exact UTF-8 byte ordering, without case folding or Unicode normalization. */
+export const compareInsightsText = (left: string, right: string): number => {
+  const a = encoder.encode(left);
+  const b = encoder.encode(right);
+  for (let index = 0; index < Math.min(a.length, b.length); index += 1) {
+    if (a[index] !== b[index]) return a[index]! - b[index]!;
+  }
+  return a.length - b.length;
+};
+
+const isWellFormedText = (value: string): boolean => {
+  for (const character of value) {
+    const point = character.codePointAt(0)!;
+    if (point >= 0xd800 && point <= 0xdfff) return false;
+  }
+  return true;
+};
+
+const isIdentity = (value: unknown): value is string =>
+  typeof value === "string" &&
+  value.length > 0 &&
+  value.length <= 255 &&
+  isWellFormedText(value);
+
+const isText = (value: unknown): value is string =>
+  typeof value === "string" && value.length > 0 && isWellFormedText(value);
+
+const isTimestamp = (value: unknown): value is number =>
+  typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
+
+const isLimit = (value: unknown): value is number =>
+  isTimestamp(value) && value >= 1 && value <= 101;
+
+const hasOnlyKeys = (
+  value: Readonly<Record<string, unknown>>,
+  keys: readonly string[],
+): boolean => Object.keys(value).every((key) => keys.includes(key));
+
+const hasScope = (value: Readonly<Record<string, unknown>>): boolean =>
+  (value.platform === "ios" || value.platform === "android") &&
+  isText(value.channel);
+
+const isBundleFilter = (value: unknown, withKind = false): boolean => {
+  if (!isRecord(value) || !hasScope(value)) return false;
+  const keys = ["platform", "channel", "type", ...(withKind ? ["kind"] : [])];
+  return value.type === "RECOVERED"
+    ? isText(value.fromBundleId) &&
+        hasOnlyKeys(value, [...keys, "fromBundleId"])
+    : (value.type === "UPDATE_DOWNLOADED" ||
+        value.type === "UPDATE_APPLIED" ||
+        value.type === "UPDATE_FAILED") &&
+        isText(value.toBundleId) &&
+        hasOnlyKeys(value, [...keys, "toBundleId"]);
+};
+
+const isEventFilter = (value: unknown): boolean => {
+  if (!isRecord(value)) return false;
+  if (value.kind === "all") return hasOnlyKeys(value, ["kind"]);
+  if (value.kind === "installationMovement") {
+    return (
+      isIdentity(value.installId) && hasOnlyKeys(value, ["kind", "installId"])
+    );
+  }
+  return value.kind === "bundle" && isBundleFilter(value, true);
+};
+
+const validateRow = (
+  model: "bundle_events",
+  row: unknown,
+  result = false,
+): void => {
+  try {
+    validateBundleEventFields(row);
+    if (
+      !isRecord(row) ||
+      typeof row.id !== "string" ||
+      !isUUIDv7(row.id) ||
+      [
+        ...Object.values(row),
+        ...(isRecord(row.metadata) ? Object.values(row.metadata) : []),
+      ].some((value) => typeof value === "string" && !isWellFormedText(value))
+    ) {
+      throw new DatabaseAdapterInputError("invalid-data");
+    }
+  } catch (error) {
+    if (result) throw new DatabaseAdapterInputError("invalid-result");
+    throw error;
+  }
+};
+
+/** Throws `invalid-data` unless `row` is a complete, well-formed bundle event row. */
+export const assertBundleEventRow = (row: unknown): void =>
+  validateRow("bundle_events", row);
+
+/** Downloads, applies, recoveries, and failed updates belong in installation history. */
+export const isInsightsMovementEvent = (
+  event: Pick<BundleEventRow, "type">,
+): boolean =>
+  event.type === "UPDATE_DOWNLOADED" ||
+  event.type === "UPDATE_APPLIED" ||
+  event.type === "RECOVERED" ||
+  event.type === "UPDATE_FAILED";
+
+export const matchesInsightsEventFilter = (
+  event: BundleEventRow,
+  filter: InsightsEventFilter,
+): boolean => {
+  if (filter.kind === "all") return true;
+  if (filter.kind === "installationMovement") {
+    return (
+      event.install_id === filter.installId && isInsightsMovementEvent(event)
+    );
+  }
+  // A failed check's `to_bundle_id` is the running bundle, not a target, so
+  // no bundle filter matches it.
+  return (
+    event.type === filter.type &&
+    event.platform === filter.platform &&
+    event.channel === filter.channel &&
+    (filter.type === "RECOVERED"
+      ? event.from_bundle_id === filter.fromBundleId
+      : event.to_bundle_id === filter.toBundleId &&
+        event.metadata.failure?.stage !== "check")
+  );
+};
+
+const invalidQuery = (): never => {
+  throw new DatabaseAdapterInputError("invalid-query");
+};
+const invalidResult = (): never => {
+  throw new DatabaseAdapterInputError("invalid-result");
+};
+const validateCount = (count: number): number =>
+  isTimestamp(count) ? count : invalidResult();
+
+const isTimeRange = (value: unknown): value is { start: number; end: number } =>
+  isRecord(value) &&
+  hasOnlyKeys(value, ["start", "end"]) &&
+  isTimestamp(value.start) &&
+  isTimestamp(value.end) &&
+  (value.start as number) < (value.end as number);
+
+const isReleaseReference = (value: unknown): boolean =>
+  isRecord(value) &&
+  hasOnlyKeys(value, ["releaseId", "platform", "channel"]) &&
+  isIdentity(value.releaseId) &&
+  hasScope(value);
+
+const validateAggregateResult = (value: unknown): void => {
+  const result = isRecord(value) ? value : invalidResult();
+  if (!isTimestamp(result.measuredAtMs)) invalidResult();
+  const coverage = result.coverage;
+  if (
+    !isRecord(coverage) ||
+    (coverage.kind !== "complete" && coverage.kind !== "partial") ||
+    (coverage.sinceMs !== null && !isTimestamp(coverage.sinceMs))
+  ) {
+    invalidResult();
+  }
+};
+
+/** Validate custom and bundled providers at the same public boundary. */
+export const createValidatedInsightsModel = (
+  model: InsightsModel,
+): InsightsModel => ({
+  async recordEvent(input) {
+    if (!isRecord(input) || !hasOnlyKeys(input, ["event"])) {
+      throw new DatabaseAdapterInputError("invalid-data");
+    }
+    validateRow("bundle_events", input.event);
+    await model.recordEvent(input);
+  },
+  async listEvents(input) {
+    if (
+      !isRecord(input) ||
+      !hasOnlyKeys(input, [
+        "filter",
+        "sinceMs",
+        "beforeReceivedAtMs",
+        "after",
+        "limit",
+      ]) ||
+      !isEventFilter(input.filter) ||
+      !isLimit(input.limit) ||
+      !isTimestamp(input.beforeReceivedAtMs) ||
+      (input.sinceMs !== undefined && !isTimestamp(input.sinceMs))
+    )
+      invalidQuery();
+    const sinceMs = input.sinceMs ?? 0;
+    if (
+      sinceMs > input.beforeReceivedAtMs ||
+      (input.after !== undefined &&
+        (!isRecord(input.after) ||
+          !hasOnlyKeys(input.after, ["receivedAtMs", "id"]) ||
+          !isTimestamp(input.after.receivedAtMs) ||
+          typeof input.after.id !== "string" ||
+          !isUUIDv7(input.after.id) ||
+          input.after.receivedAtMs < sinceMs ||
+          input.after.receivedAtMs >= input.beforeReceivedAtMs))
+    )
+      invalidQuery();
+    const rows = await model.listEvents(input);
+    if (!Array.isArray(rows) || rows.length > input.limit) invalidResult();
+    let previous = input.after;
+    for (const row of rows) {
+      validateRow("bundle_events", row, true);
+      if (
+        row.received_at_ms < sinceMs ||
+        row.received_at_ms >= input.beforeReceivedAtMs ||
+        !matchesInsightsEventFilter(row, input.filter) ||
+        (previous !== undefined &&
+          (row.received_at_ms > previous.receivedAtMs ||
+            (row.received_at_ms === previous.receivedAtMs &&
+              row.id >= previous.id)))
+      )
+        invalidResult();
+      previous = { receivedAtMs: row.received_at_ms, id: row.id };
+    }
+    return rows;
+  },
+  async findLatestEvents(input) {
+    if (!isRecord(input)) invalidQuery();
+    if ("installId" in input) {
+      if (!hasOnlyKeys(input, ["installId"]) || !isIdentity(input.installId))
+        invalidQuery();
+    } else if (
+      !hasOnlyKeys(input, ["userId", "afterInstallId", "limit"]) ||
+      !isIdentity(input.userId) ||
+      !isLimit(input.limit) ||
+      (input.afterInstallId !== undefined && !isIdentity(input.afterInstallId))
+    )
+      invalidQuery();
+    const rows = await model.findLatestEvents(input);
+    if (
+      !Array.isArray(rows) ||
+      rows.length > ("installId" in input ? 1 : input.limit)
+    )
+      invalidResult();
+    let previous = "installId" in input ? undefined : input.afterInstallId;
+    for (const row of rows) {
+      validateRow("bundle_events", row, true);
+      if (
+        "installId" in input
+          ? row.install_id !== input.installId
+          : row.user_id !== input.userId ||
+            (previous !== undefined &&
+              compareInsightsText(row.install_id, previous) <= 0)
+      )
+        invalidResult();
+      previous = row.install_id;
+    }
+    return rows;
+  },
+  async countLatestEvents(input) {
+    if (
+      !isRecord(input) ||
+      !hasOnlyKeys(input, ["platform", "channel", "sinceMs", "bundle"]) ||
+      !hasScope(input) ||
+      !isTimestamp(input.sinceMs) ||
+      (input.bundle !== undefined &&
+        (!Array.isArray(input.bundle) ||
+          input.bundle.length < 1 ||
+          input.bundle.length > 2 ||
+          input.bundle.some(
+            (bundle) =>
+              !isRecord(bundle) ||
+              !hasOnlyKeys(bundle, ["field", "value", "types"]) ||
+              (bundle.field !== "from_bundle_id" &&
+                bundle.field !== "to_bundle_id") ||
+              !isText(bundle.value) ||
+              !Array.isArray(bundle.types) ||
+              bundle.types.length === 0 ||
+              bundle.types.some(
+                (type) =>
+                  ![
+                    "UNCHANGED",
+                    "UPDATE_DOWNLOADED",
+                    "UPDATE_APPLIED",
+                    "RECOVERED",
+                  ].includes(type),
+              ),
+          )))
+    )
+      invalidQuery();
+    return validateCount(await model.countLatestEvents(input));
+  },
+  async countEvents(input) {
+    if (
+      !isRecord(input) ||
+      !hasOnlyKeys(input, ["filter", "sinceMs", "beforeReceivedAtMs"]) ||
+      !isBundleFilter(input.filter) ||
+      !isTimestamp(input.sinceMs) ||
+      !isTimestamp(input.beforeReceivedAtMs) ||
+      input.sinceMs > input.beforeReceivedAtMs
+    )
+      invalidQuery();
+    return validateCount(await model.countEvents(input));
+  },
+  async getReleaseActivity(input) {
+    if (
+      !isRecord(input) ||
+      !hasOnlyKeys(input, ["releases", "scope", "timeRange"])
+    ) {
+      invalidQuery();
+    }
+    const releases = input.releases;
+    const scope = input.scope;
+    const timeRange = input.timeRange;
+    const releaseQuery =
+      Array.isArray(releases) &&
+      releases.length > 0 &&
+      releases.length <= 100 &&
+      releases.every(isReleaseReference) &&
+      scope === undefined &&
+      (timeRange === undefined || isTimeRange(timeRange));
+    const scopeQuery =
+      releases === undefined &&
+      isRecord(scope) &&
+      hasOnlyKeys(scope, ["platform", "channel"]) &&
+      hasScope(scope) &&
+      isTimeRange(timeRange);
+    if (!releaseQuery && !scopeQuery) invalidQuery();
+    const result = await model.getReleaseActivity(input);
+    validateAggregateResult(result);
+    if (!Array.isArray(result.data)) invalidResult();
+    return result;
+  },
+  async getAppUsage(input) {
+    if (
+      !isRecord(input) ||
+      !hasOnlyKeys(input, [
+        "channel",
+        "platform",
+        "appVersion",
+        "timeRange",
+        "intervalMs",
+      ]) ||
+      !isText(input.channel) ||
+      !["all", "ios", "android"].includes(input.platform) ||
+      (input.appVersion !== undefined && !isText(input.appVersion)) ||
+      !isTimeRange(input.timeRange) ||
+      !isTimestamp(input.intervalMs) ||
+      input.intervalMs < 3_600_000
+    ) {
+      invalidQuery();
+    }
+    const result = await model.getAppUsage(input);
+    validateAggregateResult(result);
+    if (
+      !isTimestamp(result.activeInstallations) ||
+      !Array.isArray(result.points) ||
+      !Array.isArray(result.appVersions) ||
+      !Array.isArray(result.versions) ||
+      !Array.isArray(result.platforms) ||
+      !Array.isArray(result.bundleDistribution)
+    ) {
+      invalidResult();
+    }
+    return result;
+  },
+});

@@ -18,11 +18,11 @@ npm install @hot-updater/sentry-plugin --save-dev
 
 ## Step 1: Configure Sentry
 
-<Tabs items={['Metro', 'Re.Pack']}>
-  <Tab value="Metro">
+<Tabs items={['Bare React Native', 'Expo', 'Re.Pack']}>
+  <Tab value="Bare React Native">
     
 
-    Configure Metro following the [Sentry documentation](https://docs.sentry.io/platforms/react-native/manual-setup/metro/).
+    Configure Metro following the [Sentry documentation](https://docs.sentry.io/platforms/react-native/manual-setup/metro/). Keep your existing Metro customizations and apply `withSentryConfig` last.
 
     ```js title="metro.config.js"
     const { getDefaultConfig } = require("@react-native/metro-config");
@@ -31,6 +31,21 @@ npm install @hot-updater/sentry-plugin --save-dev
     const config = getDefaultConfig(__dirname);
     module.exports = withSentryConfig(config); // [!code ++]
     ```
+  </Tab>
+  <Tab value="Expo">
+
+    Use Sentry's Expo configuration so Expo's Metro defaults are preserved:
+
+    ```js title="metro.config.js"
+    const { getSentryExpoConfig } = require("@sentry/react-native/metro");
+
+    const config = getSentryExpoConfig(__dirname);
+    module.exports = config;
+    ```
+
+    Preserve your existing customizations. For a custom transformer, use the
+    `getDefaultConfig` callback described in the
+    [Sentry Metro guide](https://docs.sentry.io/platforms/react-native/manual-setup/metro/#add-a-custom-babel-transformer).
   </Tab>
   <Tab value="Re.Pack">
 
@@ -56,20 +71,22 @@ export default {
 
 
 
-## Step 2: Wrap your build plugin
+## Step 2: Wrap your build adapter
 
-Use `withSentry()` to wrap any compatible build plugin such as bare.
+Use `withSentry()` to wrap any compatible build adapter such as bare.
 
 <Tabs items={['Bare', 'Expo', 'Rock']}>
   <Tab value="Bare">
 
 ```ts title="hot-updater.config.ts"
+import { existsSync } from "node:fs";
 import { bare } from "@hot-updater/bare";
 import { withSentry } from "@hot-updater/sentry-plugin"; // [!code ++]
 import { defineConfig } from "hot-updater";
-import { config } from "dotenv";
 
-config({ path: ".env.hotupdater" });
+if (existsSync(".env.hotupdater")) {
+  process.loadEnvFile(".env.hotupdater");
+}
 
 export default defineConfig({
   build: withSentry( // [!code ++]
@@ -145,8 +162,14 @@ export default defineConfig({
 
 </Tabs>
 
+With a [managed provider](/docs/get-started/choose-provider#set-up-a-provider-preset),
+`hot-updater init` keeps this wrapped build when it updates the storage,
+database, and plugins in `hot-updater.config.ts`.
+
 <Callout title="Automatic Upload">
-`withSentry()` uploads all generated sourcemaps to Sentry during `hot-updater deploy`.
+`withSentry()` uploads one bundle and its sourcemap during `hot-updater deploy`,
+using the Hermes sourcemap when available. Additional bundles or chunk maps,
+such as split Re.Pack output, require separate uploads through Sentry's tooling.
 </Callout>
 
 ## Step 3: Deploy

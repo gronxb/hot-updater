@@ -72,3 +72,49 @@ export function getDiffSummary(diff: FingerprintDiffItem[]): string {
     .map(([op, count]) => `${count} ${op}`)
     .join(", ");
 }
+
+/** A fingerprint diff as the source paths it added, removed, and changed. */
+export interface FingerprintChanges {
+  readonly added: readonly string[];
+  readonly removed: readonly string[];
+  readonly changed: readonly string[];
+}
+
+export function summarizeFingerprintDiff(
+  diff: readonly FingerprintDiffItem[],
+): FingerprintChanges {
+  return {
+    added: diff.flatMap((item) =>
+      item.op === "added" ? [sourcePath(item.addedSource)] : [],
+    ),
+    removed: diff.flatMap((item) =>
+      item.op === "removed" ? [sourcePath(item.removedSource)] : [],
+    ),
+    changed: diff.flatMap((item) =>
+      item.op === "changed" ? [sourcePath(item.beforeSource)] : [],
+    ),
+  };
+}
+
+export function showFingerprintChanges(
+  { added, removed, changed }: FingerprintChanges,
+  platform: string,
+): void {
+  if (added.length + removed.length + changed.length === 0) {
+    return;
+  }
+
+  p.log.info(`${colors.bold(`${platform} Fingerprint Changes:`)}`);
+
+  if (added.length > 0) {
+    p.log.info(`  ${colors.green("Added:")} ${added.join(", ")}`);
+  }
+
+  if (removed.length > 0) {
+    p.log.info(`  ${colors.red("Removed:")} ${removed.join(", ")}`);
+  }
+
+  if (changed.length > 0) {
+    p.log.info(`  ${colors.yellow("Changed:")} ${changed.join(", ")}`);
+  }
+}

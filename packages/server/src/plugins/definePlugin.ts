@@ -1,0 +1,16 @@
+export {
+  definePlugin,
+  type AnyHotUpdaterPlugin,
+  type ClientAuth,
+  type CoreReader,
+  type HotUpdaterPlugin,
+  type PluginApis,
+  type PluginCli,
+  type PluginClientCredential,
+  type PluginClientPlugin,
+  type PluginContext,
+  type PluginEndpoint,
+  type PluginEndpointMethod,
+  type PluginInstance,
+  type PluginProvides,
+} from "@hot-updater/plugin-core";

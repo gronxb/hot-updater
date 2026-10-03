@@ -27,7 +27,7 @@ native app build.
 ## Install the latest stable release
 
 [Install packages](/docs/get-started/installation) lists the CLI, SDK, required
-build/provider plugins and runtime prerequisites.
+build adapter and provider packages and runtime prerequisites.
 
 For an existing v0 app, follow the
 [migration guide](/docs/guides/upgrade-to-v1) before changing the SDK or server.
@@ -45,7 +45,8 @@ Both the agent and manual paths lead to the same verified result:
 4. A JavaScript and asset change arrives through OTA and is visible after the
    app applies it.
 5. You can inspect that update in the Console and verify its rollback behavior
-   and [Insights](/docs/guides/insights) reports when reporting is enabled.
+   and, when the app runs the Insights plugin, its
+   [Insights](/docs/guides/insights) reports.
 
 Server deployment, native launch and OTA application are separate checks. An
 agent should report which passed and any remaining native release steps.

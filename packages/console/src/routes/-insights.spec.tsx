@@ -70,6 +70,7 @@ const reportFor = (input: AppUsageInput): AppUsageReport => {
     bundleDistribution: [],
     activeInstallations: count,
     sinceMs: 0,
+    distributionSinceMs: 0,
     beforeReceivedAtMs: 7_200_000,
     intervalMs: 3_600_000,
     truncated: false,
@@ -90,10 +91,10 @@ const reportFor = (input: AppUsageInput): AppUsageReport => {
 function renderPage() {
   mocks.bundles.mockResolvedValue({
     downloads: 8,
-    uniqueUsers: 5,
-    launches: 12,
+    activeInstallations: 5,
+    activeDays: 12,
     failedLaunches: 1,
-    points: [{ startMs: 0, launches: 12, failedLaunches: 1 }],
+    points: [{ startMs: 0, dailyActiveInstallations: 12, failedLaunches: 1 }],
     startMs: 0,
     endMs: 7_200_000,
     measuredAtMs: 7_200_000,
@@ -300,5 +301,22 @@ describe("Insights dashboard", () => {
         .getByRole("progressbar", { name: "iOS share" })
         .getAttribute("aria-valuetext"),
     ).toBe("5 installations, 100.0%");
+  });
+
+  it("names the UTC day the distribution counts latest reports from", async () => {
+    mocks.usage.mockResolvedValue({
+      ...reportFor({ platform: "all", channel: "production", window: "24h" }),
+      sinceMs: Date.UTC(2026, 8, 29, 11),
+      distributionSinceMs: Date.UTC(2026, 8, 29),
+    });
+    renderPage();
+    await screen.findByRole("progressbar", { name: "2.0.0 share" });
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "How distribution is counted" }),
+    );
+    expect((await screen.findByRole("tooltip")).textContent).toContain(
+      "latest matching report since Sep 29, 00:00 UTC. Latest reports are counted by UTC day.",
+    );
   });
 });

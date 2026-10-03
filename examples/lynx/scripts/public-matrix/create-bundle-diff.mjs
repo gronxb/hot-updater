@@ -1,15 +1,16 @@
 import assert from "node:assert/strict";
+import { execFile } from "node:child_process";
 import fs from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { promisify } from "node:util";
 
-import { isUUIDv7 } from "../../../../packages/core/dist/index.mjs";
-import { createBundleDiff } from "../../../../packages/server/dist/db/index.mjs";
-import {
-  standaloneRepository,
-  standaloneStorage,
-} from "../../../../plugins/standalone/dist/index.mjs";
+import { isUUIDv7 } from "@hot-updater/protocol";
+import { createHotUpdater } from "@hot-updater/server";
+import { standaloneRepository } from "@hot-updater/standalone";
 
+const run = promisify(execFile);
 const example = fileURLToPath(new URL("../../", import.meta.url));
 
 export async function createPublicMatrixBundleDiff({
@@ -25,22 +26,61 @@ export async function createPublicMatrixBundleDiff({
   assert.ok(releaseId.length > 0);
   const token = (await fs.readFile(tokenPath, "utf8")).trim();
   assert.ok(token.length > 0, "The matrix OTA admin token is empty");
-  const commonHeaders = { authorization: `Bearer ${token}` };
-  const databasePlugin = standaloneRepository({
+  const database = standaloneRepository({
     baseUrl: `${origin}/hot-updater/admin`,
-    commonHeaders,
+    commonHeaders: { authorization: `Bearer ${token}` },
   });
-  const storagePlugin = standaloneStorage({
-    baseUrl: `${origin}/storage`,
-    commonHeaders,
-    protocol: "lynx-local",
-  });
-  await createBundleDiff(
-    { baseBundleId, bundleId: targetBundleId },
-    { databasePlugin, storagePlugin },
-    { makePrimary: true },
+  const server = createHotUpdater({ database, clientAccess: "public" });
+  const target = await server.core.getBundle(targetBundleId);
+  assert.ok(
+    target,
+    "The target Bundle must be deployed before patch generation",
   );
-  const deliveryArtifactUrl = `${origin}/hot-updater/artifacts/${targetBundleId}/from/${baseBundleId}`;
+  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "lynx-matrix-patch-"));
+  try {
+    await fs.writeFile(
+      path.join(cwd, "package.json"),
+      '{"private":true,"type":"module"}\n',
+    );
+    await fs.writeFile(
+      path.join(cwd, "hot-updater.config.mjs"),
+      `
+import { standaloneRepository, standaloneStorage } from ${JSON.stringify(import.meta.resolve("@hot-updater/standalone"))};
+const commonHeaders = { authorization: "Bearer " + process.env.LYNX_MATRIX_ADMIN_TOKEN };
+export default {
+  database: standaloneRepository({ baseUrl: ${JSON.stringify(`${origin}/hot-updater/admin`)}, commonHeaders }),
+  storage: standaloneStorage({ baseUrl: ${JSON.stringify(`${origin}/storage`)}, commonHeaders, protocol: "lynx-local" }),
+};
+`,
+    );
+    const cliPackage = fileURLToPath(
+      import.meta.resolve("hot-updater/package.json"),
+    );
+    const { bin } = JSON.parse(await fs.readFile(cliPackage, "utf8"));
+    await run(
+      process.execPath,
+      [
+        path.resolve(path.dirname(cliPackage), bin["hot-updater"]),
+        "patch",
+        "--artifact-id",
+        targetBundleId,
+        "--base-artifact-id",
+        baseBundleId,
+        "--platform",
+        target.bundle.platform,
+        "--no-interactive",
+      ],
+      {
+        cwd,
+        env: { ...process.env, LYNX_MATRIX_ADMIN_TOKEN: token },
+        maxBuffer: 8 * 1024 * 1024,
+      },
+    );
+  } finally {
+    await fs.rm(cwd, { recursive: true, force: true });
+    await database.dispose?.();
+  }
+  const deliveryArtifactUrl = `${origin}/hot-updater/artifacts/v1/${targetBundleId}/from/${baseBundleId}`;
   const response = await fetch(deliveryArtifactUrl);
   assert.equal(
     response.status,
@@ -48,8 +88,12 @@ export async function createPublicMatrixBundleDiff({
     `Reverse delta artifact request failed: ${deliveryArtifactUrl}`,
   );
   const deliveryArtifactResponse = await response.json();
-  assert.equal(deliveryArtifactResponse.fileUrl, null);
-  assert.equal(deliveryArtifactResponse.fileHash, null);
+  assert.equal(deliveryArtifactResponse.artifactProtocolVersion, 1);
+  assert.ok(
+    Object.values(deliveryArtifactResponse.assets).some(
+      (asset) => asset.patch?.baseBundleId === baseBundleId,
+    ),
+  );
   return {
     baseBundleId,
     bundleId: targetBundleId,

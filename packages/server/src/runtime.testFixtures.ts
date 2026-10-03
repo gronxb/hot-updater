@@ -1,71 +1,65 @@
-import type { Bundle } from "@hot-updater/core";
 import type {
-  DatabasePlugin,
-  StoragePlugin,
-  StoragePluginWith,
+  EngineDatabase,
+  StorageAdapter,
+  StorageAdapterWith,
+  SchemaSettings,
 } from "@hot-updater/plugin-core";
-import { createStoragePlugin } from "@hot-updater/plugin-core";
+import {
+  createEngineDatabase,
+  createMemoryAdapter,
+  createStorageAdapter,
+  SETTINGS_TABLE,
+  toolingTargetOf,
+  writeSchemaSettings,
+} from "@hot-updater/plugin-core";
+import type { Bundle } from "@hot-updater/protocol";
 
-import { createInMemoryDatabasePlugin } from "../../test-utils/test/inMemoryDatabasePlugin";
-import type { DatabaseAdapterCapabilities, Migrator } from "./db/types";
+import { apiKeys } from "./plugins/api-keys";
+import { insights } from "./plugins/insights";
 
 export const runtimeBundle: Bundle = {
   id: "00000000-0000-0000-0000-000000000001",
   platform: "ios",
-  fileHash: "hash123",
   gitCommitHash: null,
-  storageUri: "s3://test-bucket/bundles/bundle.zip",
-  archiveByteSize: 3_000_000_001,
+  manifestStorageUri: "s3://test-bucket/bundles/bundle/manifest.json",
+  manifestFileHash: "manifest-hash",
+  assetBaseStorageUri: "s3://test-bucket/assets",
 };
 
 export const createRuntimeStorage = (
-  get: NonNullable<StoragePlugin["get"]> = async () => ({ response: null }),
-  getDownloadUrl?: StoragePlugin["getDownloadUrl"],
-): StoragePluginWith<"get"> =>
-  createStoragePlugin({
+  get: NonNullable<StorageAdapter["get"]> = async () => ({ response: null }),
+  getDownloadUrl?: StorageAdapter["getDownloadUrl"],
+): StorageAdapterWith<"get"> =>
+  createStorageAdapter({
     name: "testStorage",
     protocol: "s3",
     get,
     ...(getDownloadUrl ? { getDownloadUrl } : {}),
   });
 
-const createMigrator = (version: string | undefined): Migrator => ({
-  async getVersion() {
-    return version;
-  },
-  async getNameVariants() {
-    return {};
-  },
-  async next() {
-    return undefined;
-  },
-  async previous() {
-    return undefined;
-  },
-  async up() {
-    throw new Error("not implemented");
-  },
-  async down() {
-    throw new Error("not implemented");
-  },
-  async migrateTo() {
-    throw new Error("not implemented");
-  },
-  async migrateToLatest() {
-    throw new Error("not implemented");
-  },
+/** An in-memory database on the storage engine, without the schema fence. */
+export const createRuntimeDatabase = (
+  name = "testDatabase",
+): EngineDatabase => ({
+  name,
+  adapter: createMemoryAdapter(),
 });
 
-export const createRuntimeDatabase = (): DatabasePlugin => ({
-  ...createInMemoryDatabasePlugin(),
-  name: "testDatabase",
-});
+/** Every table the runtime specs use: core's, Insights', and API keys'. */
+const runtimeTables = toolingTargetOf([insights(), apiKeys()]).schema.tables;
 
-export const createSchemaManagedDatabase = (
-  adapterName: string,
-  version: string | undefined,
-): DatabasePlugin & DatabaseAdapterCapabilities => ({
-  ...createRuntimeDatabase(),
-  adapterName,
-  createMigrator: () => createMigrator(version),
-});
+/**
+ * An in-memory database behind the schema fence, as a provider builds it:
+ * its tables and `settings` rows written first, or none at all.
+ */
+export const createFencedDatabase = async (
+  name: string,
+  settings?: SchemaSettings,
+): Promise<EngineDatabase> => {
+  const adapter = createMemoryAdapter();
+  if (settings !== undefined) {
+    await adapter.migrations!.apply([...runtimeTables, SETTINGS_TABLE]);
+    await writeSchemaSettings(adapter, name, settings);
+  }
+  return createEngineDatabase({ name, adapter });
+};

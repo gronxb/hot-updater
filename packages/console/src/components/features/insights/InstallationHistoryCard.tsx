@@ -2,7 +2,13 @@ import { RefreshCw } from "lucide-react";
 
 import { HashValueDisplay } from "@/components/HashValueDisplay";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -13,6 +19,11 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  DEFAULT_INSIGHTS_RETENTION,
+  formatDays,
+  type InsightsRetentionDays,
+} from "@/lib/insights-retention";
 import type {
   InsightsEventRow,
   InsightsInstallationViewRow,
@@ -29,17 +40,16 @@ import { EventHistoryList } from "./EventHistoryList";
 import { InsightsErrorAlert } from "./InsightsErrorAlert";
 import { InsightsPagination } from "./InsightsPagination";
 
-const getUserLabel = (event: {
-  readonly username: string | null;
-  readonly userId: string | null;
-}) => event.userId ?? event.username ?? "—";
+const getUserLabel = (event: { readonly userId: string | null }) =>
+  event.userId ?? "—";
 
+/** A download or a failed update leaves the installation on the bundle it ran. */
 const getLastKnownBundleId = (
   event: InsightsEventRow | InsightsInstallationViewRow,
 ) =>
   "lastKnownBundleId" in event
     ? event.lastKnownBundleId
-    : event.type === "UPDATE_DOWNLOADED"
+    : event.type === "UPDATE_DOWNLOADED" || event.type === "UPDATE_FAILED"
       ? event.fromBundleId
       : event.toBundleId;
 
@@ -51,6 +61,7 @@ export function InstallationHistoryCard({
   onPrevious,
   onRefresh,
   pageNumber,
+  retention = DEFAULT_INSIGHTS_RETENTION,
   selectedEvent,
   selectedInstallId,
 }: {
@@ -61,6 +72,8 @@ export function InstallationHistoryCard({
   readonly onNext: () => void;
   readonly onPrevious: () => void;
   readonly pageNumber: number;
+  /** How long the server keeps Insights rows. */
+  readonly retention?: InsightsRetentionDays;
   readonly selectedEvent:
     | InsightsEventRow
     | InsightsInstallationViewRow
@@ -93,6 +106,14 @@ export function InstallationHistoryCard({
                   : "Select an installation"}
               </h2>
             </CardTitle>
+            {selectedInstallId !== undefined ? (
+              <CardDescription>
+                Bundle changes and update failures are kept for{" "}
+                {formatDays(retention.rawDays)}; the latest report, for{" "}
+                {formatDays(retention.dailyDays)} after the installation last
+                reports.
+              </CardDescription>
+            ) : null}
           </div>
           {onRefresh && selectedInstallId !== undefined ? (
             <Button
@@ -213,7 +234,7 @@ export function InstallationHistoryCard({
                           />
                         </TableCell>
                         <TableCell>
-                          <EventTypeDetails type={event.type} />
+                          <EventTypeDetails event={event} />
                         </TableCell>
                         <TableCell className="whitespace-normal text-xs">
                           <div className="flex flex-col gap-2">
@@ -247,8 +268,8 @@ export function InstallationHistoryCard({
           ) : (
             <>
               <div className="p-6 text-sm text-muted-foreground">
-                {pageNumber > 1 || history?.nextCursor
-                  ? "No bundle changes on this page."
+                {pageNumber > 1
+                  ? "No older bundle changes."
                   : "No bundle changes recorded yet."}
               </div>
               {history && (pageNumber > 1 || history.nextCursor) ? (

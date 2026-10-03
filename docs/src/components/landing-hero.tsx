@@ -28,7 +28,7 @@ export function LandingHero() {
               </p>
             </div>
 
-            {/* Agent setup */}
+            {/* Setup: with an agent, or with the CLI's interactive init */}
             <div className="relative w-full max-w-md">
               <div className="relative rounded-lg border border-fd-border bg-fd-card/80 backdrop-blur-sm px-3 sm:px-4 py-3 sm:py-4 shadow-lg space-y-3">
                 <div className="space-y-1.5">
@@ -47,6 +47,19 @@ export function LandingHero() {
                     $hot-updater Set up this app and test OTA.
                   </code>
                 </div>
+                <div className="flex items-center gap-3 text-xs text-fd-muted-foreground">
+                  <span className="h-px flex-1 bg-fd-border" />
+                  or
+                  <span className="h-px flex-1 bg-fd-border" />
+                </div>
+                <div className="space-y-1.5">
+                  <p className="text-xs text-fd-muted-foreground">
+                    Terminal, without an agent
+                  </p>
+                  <code className="block text-xs sm:text-sm font-mono text-fd-foreground break-words">
+                    npx hot-updater init
+                  </code>
+                </div>
               </div>
             </div>
 
@@ -54,7 +67,7 @@ export function LandingHero() {
             <div className="flex flex-wrap items-center gap-3 sm:gap-4">
               <Link
                 unstable_prefetchOnView
-                to="/docs/guides/ai-agents"
+                to="/docs/get-started/introduction"
                 className="inline-flex items-center justify-center rounded-lg bg-linear-to-r from-orange-400 to-orange-500 px-5 sm:px-6 py-2.5 sm:py-3 text-sm font-semibold text-white shadow-lg transition-all hover:shadow-orange-500/30 hover:scale-105"
               >
                 Get started

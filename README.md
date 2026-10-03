@@ -77,39 +77,41 @@
   files that already exist on the device, while deploys prepare `.bsdiff`
   patches for changed Hermes bundles by default.
 
-  In practice, a release that would normally ship a 10 MB archive can be
-  delivered as a ~600 KB patch when the Hermes bytecode change is small. The
-  server compares the exact known bytes for the manifest and primary changed
-  files with the archive. When both sizes are known, a patch is preferred only
-  when it is strictly smaller than the complete file, and a total diff equal to
-  or larger than the archive selects the archive path. Unknown size metadata or
-  a missing transformed-file hash preserves the existing manifest-first and
-  runtime fallback behavior without storage probes or a native API change.
+  The server offers individual files, eligible patches, and an optional
+  archive. When patch and complete-file sizes are known and the complete file
+  is available, the server omits patches that are not strictly smaller. The
+  native runtime checks which files it can reuse locally, then chooses between
+  individual downloads and the archive.
+  Archive selection requires at least two network files and compares their
+  planned download sizes, with bounded TAR overhead allowed for a full download
+  without patches. Manifest bytes are not part of that comparison.
 
   See the [Bundle Diffing guide](https://hot-updater.dev/docs/guides/bundle-diffing)
   for the full runtime behavior and fallback rules.
 
 
-  ## Plugin System
+  ## Adapters and Plugins
 
-  Hot Updater provides high extensibility through its plugin system. Each functionality like build, storage, and database is separated into plugins, allowing users to configure them according to their needs.
+  Hot Updater is extensible through adapters and plugins. Build, storage, database, and signing are adapters: pick one for each slot of your config. Server and client plugins add features such as Insights and API keys.
 
-  ### Plugin Types
+  ### Adapters
 
-  - **Build Plugin**: Support for bundlers like Metro, Re.Pack, Expo
-  - **Storage Plugin**: Support for bundle storage like AWS S3, Supabase Storage, Cloudflare R2 Storage
-  - **Database Plugin**: Support for metadata storage like Supabase Database, PostgreSQL, Cloudflare D1
+  - **Build Adapter**: Support for bundlers like Metro, Expo, Rock
+  - **Storage Adapter**: Support for bundle storage like AWS S3, Supabase Storage, Cloudflare R2 Storage
+  - **Database Adapter**: Support for metadata storage like Supabase Database, PostgreSQL, Cloudflare D1
 
   ### Configuration Example
 
   * [Supabase](https://hot-updater.dev/docs/managed/supabase)
   ```tsx
+  import { existsSync } from "node:fs";
   import { bare } from "@hot-updater/bare";
   import { supabaseDatabase, supabaseStorage } from "@hot-updater/supabase";
-  import { config } from "dotenv";
   import { defineConfig } from "hot-updater";
 
-  config({ path: ".env.hotupdater" });
+  if (existsSync(".env.hotupdater")) {
+    process.loadEnvFile(".env.hotupdater");
+  }
 
   export default defineConfig({
     build: bare({ enableHermes: true }),
@@ -128,12 +130,14 @@
 
 * [Cloudflare](https://hot-updater.dev/docs/managed/cloudflare)
 ```tsx
+import { existsSync } from "node:fs";
 import { bare } from "@hot-updater/bare";
 import { d1Database, r2Storage } from "@hot-updater/cloudflare";
-import { config } from "dotenv";
 import { defineConfig } from "hot-updater";
 
-config({ path: ".env.hotupdater" });
+if (existsSync(".env.hotupdater")) {
+  process.loadEnvFile(".env.hotupdater");
+}
 
 export default defineConfig({
   build: bare({ enableHermes: true }),
@@ -156,12 +160,14 @@ export default defineConfig({
 
 * [AWS S3 + Lambda@Edge](https://hot-updater.dev/docs/managed/aws)
 ```tsx
+import { existsSync } from "node:fs";
 import { bare } from "@hot-updater/bare";
 import { dynamoDB, s3Storage } from "@hot-updater/aws";
-import { config } from "dotenv";
 import { defineConfig } from "hot-updater";
 
-config({ path: ".env.hotupdater" });
+if (existsSync(".env.hotupdater")) {
+  process.loadEnvFile(".env.hotupdater");
+}
 
 const awsOptions = {
   region: process.env.HOT_UPDATER_S3_REGION!,
@@ -187,13 +193,15 @@ export default defineConfig({
 
 * [Firebase](https://hot-updater.dev/docs/managed/firebase)
 ```tsx
+import { existsSync } from "node:fs";
 import { bare } from '@hot-updater/bare';
 import {firebaseStorage, firebaseDatabase} from '@hot-updater/firebase';
 import { applicationDefault } from 'firebase-admin/app';
-import { config } from "dotenv";
 import { defineConfig } from "hot-updater";
 
-config({ path: ".env.hotupdater" });
+if (existsSync(".env.hotupdater")) {
+  process.loadEnvFile(".env.hotupdater");
+}
 
 // https://firebase.google.com/docs/admin/setup?hl=en#initialize_the_sdk_in_non-google_environments
 // Check your .env.hotupdater file and add the credentials
@@ -217,3 +225,9 @@ export default defineConfig({
   }),
 });
 ```
+
+## License
+
+Hot Updater is released under the [MIT License](./LICENSE), with one addition for the server and the Console. `@hot-updater/server` and `@hot-updater/console` use the MIT License with a hosted service attribution condition ([server](./packages/server/LICENSE), [Console](./packages/console/LICENSE)). If you offer either of them, or a service built on them, as a hosted service that other people use to update their own apps, you must show "Powered by hot-updater" with a link where that service's users can see it. The Console's sidebar already shows it. Running them for your own apps, or for apps you build for clients, needs no notice.
+
+The "hot-updater" name and logo are covered by the [trademark policy](./TRADEMARK.md).

@@ -9,7 +9,7 @@ const repositoryRoot = path.resolve(
   "../../../..",
 );
 const sourceRoots = [
-  "packages/core/src",
+  "packages/protocol/src",
   "packages/server/src",
   "plugins/plugin-core/src",
   "packages/cli-tools/src",
@@ -69,7 +69,7 @@ describe("neutral package boundary", () => {
   it("uses runtime-neutral package descriptions", async () => {
     const manifests = await Promise.all(
       [
-        "packages/core/package.json",
+        "packages/protocol/package.json",
         "packages/server/package.json",
         "plugins/plugin-core/package.json",
         "packages/cli-tools/package.json",

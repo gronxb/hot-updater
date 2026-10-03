@@ -237,7 +237,17 @@ function journalReceipt(value: unknown, label: string) {
       throw new Error(`${label}.sha256 does not match canonicalUtf8`);
     }
   }
-  return { byteLength, receipt, snapshot };
+  return {
+    byteLength,
+    receipt,
+    snapshot: {
+      ...snapshot,
+      events: snapshot.events,
+      oldestSequence: snapshot.oldestSequence,
+      latestSequence: snapshot.latestSequence,
+      truncated: snapshot.truncated,
+    },
+  };
 }
 
 function expectJournal(

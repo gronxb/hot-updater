@@ -1,0 +1,585 @@
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+import { InsightsBadRequestError } from "./errors";
+import type { BundleEventRow } from "./eventRow";
+import type { InsightsModel } from "./modelTypes";
+import { createInsightsProvider } from "./provider";
+
+const eventId = (index: number) =>
+  `00000000-0000-7000-8000-${String(index).padStart(12, "0")}`;
+
+const HOUR = 3_600_000;
+const DAY = 86_400_000;
+const cutoff = Date.UTC(2026, 8, 20, 9, 30);
+const bundle = {
+  platform: "ios",
+  channel: "production",
+  bundleId: "bundle-after",
+  outcome: "applied",
+} as const;
+
+type TransitionEventRow = Extract<
+  BundleEventRow,
+  { readonly type: "UPDATE_APPLIED" | "RECOVERED" }
+>;
+
+const eventRow = (
+  id: string,
+  receivedAtMs: number,
+  overrides: Partial<TransitionEventRow> = {},
+): TransitionEventRow => ({
+  app_version: "1.0.0",
+  channel: "production",
+  metadata: {
+    cohort: "default",
+    fingerprint_hash: null,
+    sdk_version: "2.0.0",
+    update_strategy: "appVersion",
+  },
+
+  from_bundle_id: "bundle-before",
+  from_release_id: null,
+  id,
+  install_id: "install-1",
+  platform: "ios",
+  received_at_ms: receivedAtMs,
+
+  to_bundle_id: "bundle-after",
+  to_release_id: null,
+  type: "UPDATE_APPLIED",
+
+  user_id: "user-1",
+
+  ...overrides,
+});
+
+const installationRow = (
+  installId: string,
+  overrides: Partial<BundleEventRow> = {},
+): BundleEventRow =>
+  ({
+    ...eventRow(eventId(1), 1_000),
+    type: "UNCHANGED",
+    from_bundle_id: null,
+    metadata: {
+      ...eventRow(eventId(1), 1_000).metadata,
+      update_strategy: null,
+    },
+    install_id: installId,
+    to_bundle_id: "bundle-1",
+    ...overrides,
+  }) as BundleEventRow;
+
+const createModel = () => {
+  const model = {
+    recordEvent: vi.fn<InsightsModel["recordEvent"]>(async () => {}),
+    listEvents: vi.fn<InsightsModel["listEvents"]>(async () => []),
+    findLatestEvents: vi.fn<InsightsModel["findLatestEvents"]>(async () => []),
+    countLatestEvents: vi.fn<InsightsModel["countLatestEvents"]>(async () => 0),
+    countEvents: vi.fn<InsightsModel["countEvents"]>(async () => 0),
+    getReleaseActivity: vi.fn<InsightsModel["getReleaseActivity"]>(
+      async () => ({
+        coverage: { kind: "complete", sinceMs: 0 },
+        data: [],
+        measuredAtMs: 0,
+      }),
+    ),
+    getAppUsage: vi.fn<InsightsModel["getAppUsage"]>(async () => ({
+      coverage: { kind: "complete", sinceMs: 0 },
+      activeInstallations: 0,
+      points: [],
+      appVersions: [],
+      versions: [],
+      platforms: [],
+      bundleDistribution: [],
+      measuredAtMs: 0,
+    })),
+  } satisfies InsightsModel;
+  return { ...model, model };
+};
+
+afterEach(() => {
+  vi.useRealTimers();
+});
+
+describe("createInsightsProvider", () => {
+  it("pages all events with one bounded database call and a strict stable cutoff", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1_000);
+    const fixture = createModel();
+    fixture.listEvents
+      .mockResolvedValueOnce([
+        eventRow(eventId(3), 999),
+        eventRow(eventId(2), 900),
+      ])
+      .mockResolvedValueOnce([eventRow(eventId(1), 800)]);
+    const provider = createInsightsProvider(fixture.model);
+
+    const first = await provider.listEvents({ limit: 2 });
+
+    expect(first.data.map(({ id }) => id)).toEqual([eventId(3), eventId(2)]);
+    expect(first.beforeReceivedAtMs).toBe(1_000);
+    expect(first.nextCursor).not.toBeNull();
+    expect(fixture.listEvents).toHaveBeenNthCalledWith(1, {
+      beforeReceivedAtMs: 1_000,
+      limit: 2,
+      sinceMs: 0,
+      filter: { kind: "all" },
+    });
+
+    const second = await provider.listEvents({
+      cursor: first.nextCursor ?? undefined,
+      limit: 2,
+    });
+
+    expect(second.beforeReceivedAtMs).toBe(1_000);
+    expect(second.nextCursor).toBeNull();
+    expect(fixture.listEvents).toHaveBeenNthCalledWith(2, {
+      after: { id: eventId(2), receivedAtMs: 900 },
+      beforeReceivedAtMs: 1_000,
+      limit: 2,
+      sinceMs: 0,
+      filter: { kind: "all" },
+    });
+  });
+
+  it("reads only `limit` rows, so a full last page is followed by an empty one", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1_000);
+    const fixture = createModel();
+    fixture.listEvents
+      .mockResolvedValueOnce([
+        eventRow(eventId(2), 900),
+        eventRow(eventId(1), 800),
+      ])
+      .mockResolvedValueOnce([]);
+    const provider = createInsightsProvider(fixture.model);
+
+    const first = await provider.listEvents({ limit: 2 });
+    const second = await provider.listEvents({
+      cursor: first.nextCursor ?? undefined,
+      limit: 2,
+    });
+
+    expect(first.nextCursor).not.toBeNull();
+    expect(second).toMatchObject({ data: [], nextCursor: null });
+    expect(fixture.listEvents.mock.calls.map(([input]) => input.limit)).toEqual(
+      [2, 2],
+    );
+  });
+
+  it("lists the 90 days before the cutoff without a start, and all of an installation's history", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(cutoff);
+    const fixture = createModel();
+    const provider = createInsightsProvider(fixture.model);
+
+    await provider.listEvents({});
+    await provider.listEvents({ beforeReceivedAtMs: cutoff - DAY, bundle });
+    await provider.listInstallationEvents({ installId: "install-1" });
+
+    expect(
+      fixture.listEvents.mock.calls.map(([input]) => [
+        input.sinceMs,
+        input.beforeReceivedAtMs,
+      ]),
+    ).toEqual([
+      [cutoff - 90 * DAY, cutoff],
+      [cutoff - 91 * DAY, cutoff - DAY],
+      [0, cutoff],
+    ]);
+  });
+
+  it("answers 400 for a global or bundle range over 90 days, before the database", async () => {
+    const fixture = createModel();
+    const provider = createInsightsProvider(fixture.model);
+    const range = { beforeReceivedAtMs: cutoff, sinceMs: cutoff - 90 * DAY };
+
+    for (const input of [{}, { bundle }]) {
+      await expect(
+        provider.listEvents({ ...input, ...range, sinceMs: range.sinceMs - 1 }),
+      ).rejects.toThrow(
+        new InsightsBadRequestError(
+          "Insights event lists cover at most 90 days: send a sinceMs no more than 90 days before beforeReceivedAtMs.",
+        ),
+      );
+      await provider.listEvents({ ...input, ...range });
+    }
+    await provider.listInstallationEvents({
+      installId: "install-1",
+      beforeReceivedAtMs: cutoff,
+      sinceMs: 0,
+    });
+    expect(
+      fixture.listEvents.mock.calls.map(([input]) => input.sinceMs),
+    ).toEqual([range.sinceMs, range.sinceMs, 0]);
+  });
+
+  it("returns a cursor only after a full page, and keeps the first page's range", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(cutoff);
+    const fixture = createModel();
+    fixture.listEvents
+      .mockResolvedValueOnce([
+        eventRow(eventId(3), cutoff - HOUR),
+        eventRow(eventId(2), cutoff - 30 * DAY),
+      ])
+      .mockResolvedValueOnce([eventRow(eventId(1), cutoff - 60 * DAY)]);
+    const provider = createInsightsProvider(fixture.model);
+
+    const first = await provider.listEvents({ limit: 2 });
+    // Days later, the next page still reads the first page's range.
+    vi.setSystemTime(cutoff + 3 * DAY);
+    const second = await provider.listEvents({
+      cursor: first.nextCursor ?? undefined,
+      limit: 2,
+    });
+
+    expect(
+      JSON.parse(Buffer.from(first.nextCursor!, "base64url").toString("utf8")),
+    ).toEqual({
+      after: { id: eventId(2), receivedAtMs: cutoff - 30 * DAY },
+      beforeReceivedAtMs: cutoff,
+      sinceMs: cutoff - 90 * DAY,
+      kind: "events",
+      filter: { kind: "all" },
+      version: 2,
+    });
+    expect(second).toMatchObject({
+      beforeReceivedAtMs: cutoff,
+      nextCursor: null,
+    });
+    expect(fixture.listEvents).toHaveBeenLastCalledWith({
+      after: { id: eventId(2), receivedAtMs: cutoff - 30 * DAY },
+      beforeReceivedAtMs: cutoff,
+      sinceMs: cutoff - 90 * DAY,
+      filter: { kind: "all" },
+      limit: 2,
+    });
+    // A short page and an empty one end the list.
+    await expect(provider.listEvents({ limit: 2 })).resolves.toMatchObject({
+      data: [],
+      nextCursor: null,
+    });
+  });
+
+  it("rejects the cursors that continued below a window of days", async () => {
+    const fixture = createModel();
+    const provider = createInsightsProvider(fixture.model);
+    const window = {
+      beforeReceivedAtMs: cutoff,
+      kind: "events",
+      filter: { kind: "all" },
+      version: 2,
+    };
+    for (const position of [
+      { olderThanMs: cutoff - 90 * DAY, sinceMs: cutoff - 150 * DAY },
+      { olderThanMs: cutoff - 10 * DAY, sinceMs: cutoff - 30 * DAY },
+    ]) {
+      const cursor = Buffer.from(
+        JSON.stringify({ ...window, ...position }),
+      ).toString("base64url");
+      await expect(provider.listEvents({ cursor })).rejects.toThrow(
+        new InsightsBadRequestError("Invalid Insights cursor."),
+      );
+    }
+    expect(fixture.listEvents).not.toHaveBeenCalled();
+  });
+
+  it("binds event cursors to their filter", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1_000);
+    const fixture = createModel();
+    fixture.listEvents.mockResolvedValue([eventRow(eventId(2), 900)]);
+    const provider = createInsightsProvider(fixture.model);
+    const allEvents = await provider.listEvents({ limit: 1 });
+
+    await expect(
+      provider.listInstallationEvents({
+        cursor: allEvents.nextCursor ?? undefined,
+        installId: "install-1",
+        limit: 1,
+      }),
+    ).rejects.toBeInstanceOf(InsightsBadRequestError);
+    expect(fixture.listEvents).toHaveBeenCalledOnce();
+  });
+
+  it("rejects installation and user IDs longer than the indexed key limit", async () => {
+    const fixture = createModel();
+    const provider = createInsightsProvider(fixture.model);
+    const tooLong = "x".repeat(256);
+
+    await expect(
+      provider.getInstallation({ installId: tooLong }),
+    ).rejects.toBeInstanceOf(InsightsBadRequestError);
+    await expect(
+      provider.listInstallationEvents({ installId: tooLong }),
+    ).rejects.toBeInstanceOf(InsightsBadRequestError);
+    await expect(
+      provider.pageInstallationsByCurrentUserId({ userId: tooLong }),
+    ).rejects.toBeInstanceOf(InsightsBadRequestError);
+    expect(fixture.findLatestEvents).not.toHaveBeenCalled();
+    expect(fixture.listEvents).not.toHaveBeenCalled();
+  });
+
+  it("requests only movement events for one installation", async () => {
+    const fixture = createModel();
+    fixture.listEvents.mockResolvedValue([
+      eventRow(eventId(1), 900, {
+        install_id: "install-2",
+        type: "RECOVERED",
+      }),
+    ]);
+    const provider = createInsightsProvider(fixture.model);
+
+    const result = await provider.listInstallationEvents({
+      beforeReceivedAtMs: 1_000,
+      installId: "install-2",
+      limit: 10,
+    });
+
+    expect(result.data).toEqual([
+      expect.objectContaining({
+        id: eventId(1),
+        installId: "install-2",
+        type: "RECOVERED",
+      }),
+    ]);
+    expect(fixture.listEvents).toHaveBeenCalledWith({
+      beforeReceivedAtMs: 1_000,
+      limit: 10,
+      sinceMs: 0,
+      filter: { kind: "installationMovement", installId: "install-2" },
+    });
+  });
+
+  it("pages exact current user matches and binds the cursor to that user", async () => {
+    const fixture = createModel();
+    fixture.findLatestEvents.mockResolvedValue([
+      installationRow("install-a"),
+      installationRow("install-b"),
+    ]);
+    const provider = createInsightsProvider(fixture.model);
+
+    const page = await provider.pageInstallationsByCurrentUserId({
+      limit: 2,
+      userId: "user-1",
+    });
+
+    expect(page.data.map(({ installId }) => installId)).toEqual([
+      "install-a",
+      "install-b",
+    ]);
+    expect(fixture.findLatestEvents).toHaveBeenCalledWith({
+      limit: 2,
+      userId: "user-1",
+    });
+    await expect(
+      provider.pageInstallationsByCurrentUserId({
+        cursor: page.nextCursor ?? undefined,
+        userId: "user-2",
+      }),
+    ).rejects.toBeInstanceOf(InsightsBadRequestError);
+    expect(fixture.findLatestEvents).toHaveBeenCalledOnce();
+  });
+
+  it("counts one explicit scope and returns independent measurement times", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-12T00:00:00.000Z"));
+    const fixture = createModel();
+    fixture.countLatestEvents.mockResolvedValue(123);
+    const provider = createInsightsProvider(fixture.model);
+    const input = {
+      window: "7d",
+      platform: "ios",
+      channel: "production",
+    } as const;
+    await expect(provider.getReportingOverview(input)).resolves.toEqual({
+      ...input,
+      sinceMs: Date.now() - 7 * 24 * 60 * 60 * 1_000,
+      beforeReceivedAtMs: Date.now(),
+      reportingInstallations: { count: 123, measuredAtMs: Date.now() },
+    });
+    expect(fixture.countLatestEvents).toHaveBeenCalledWith({
+      platform: "ios",
+      channel: "production",
+      sinceMs: Date.now() - 7 * 24 * 60 * 60 * 1_000,
+    });
+    expect(fixture.countEvents).not.toHaveBeenCalled();
+  });
+
+  it("counts from the UTC day the window reaches into to the end of the current hour", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-12T10:25:00.000Z"));
+    const fixture = createModel();
+    fixture.countLatestEvents.mockResolvedValue(4);
+    const provider = createInsightsProvider(fixture.model);
+
+    const overview = await provider.getReportingOverview({
+      window: "24h",
+      platform: "ios",
+      channel: "production",
+    });
+
+    const start = Date.parse("2026-08-11T00:00:00.000Z");
+    expect(overview).toMatchObject({
+      beforeReceivedAtMs: Date.parse("2026-08-12T11:00:00.000Z"),
+      sinceMs: start,
+    });
+    expect(fixture.countLatestEvents).toHaveBeenCalledWith({
+      platform: "ios",
+      channel: "production",
+      sinceMs: start,
+    });
+  });
+
+  it("attributes recovery to the source bundle and reuses its count predicate for drill-down", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-12T00:00:00.000Z"));
+    const fixture = createModel();
+    fixture.countLatestEvents.mockResolvedValueOnce(1).mockResolvedValueOnce(2);
+    fixture.countEvents
+      .mockResolvedValueOnce(7)
+      .mockResolvedValueOnce(5)
+      .mockResolvedValueOnce(3)
+      .mockResolvedValueOnce(2);
+    const provider = createInsightsProvider(fixture.model);
+    const scope = { platform: "ios", channel: "production" } as const;
+    const result = await provider.getReportingOverview({
+      ...scope,
+      window: "24h",
+      bundleId: "B",
+    });
+    expect(result.reportingInstallations.count).toBe(1);
+    // Independent live measurements are never clamped or turned into a share.
+    expect(result.bundle?.reportingInstallations.count).toBe(2);
+    expect(fixture.countLatestEvents).toHaveBeenCalledTimes(2);
+    expect(fixture.countLatestEvents.mock.calls[1]?.[0]).toEqual({
+      ...scope,
+      sinceMs: Date.now() - 24 * 60 * 60 * 1_000,
+      bundle: [
+        { field: "from_bundle_id", value: "B", types: ["UPDATE_DOWNLOADED"] },
+        {
+          field: "to_bundle_id",
+          value: "B",
+          types: ["UNCHANGED", "UPDATE_APPLIED", "RECOVERED"],
+        },
+      ],
+    });
+    expect(result.bundle?.downloadedReports.count).toBe(7);
+    expect(result.bundle?.appliedReports.count).toBe(5);
+    expect(result.bundle?.recoveredReports.count).toBe(3);
+    expect(result.bundle?.failedReports.count).toBe(2);
+    // UNCHANGED reports are kept as no events, so no count or list names them.
+    expect(result.bundle).not.toHaveProperty("unchangedReports");
+    expect(
+      fixture.countEvents.mock.calls.map(([input]) => input.filter),
+    ).toEqual([
+      { ...scope, type: "UPDATE_DOWNLOADED", toBundleId: "B" },
+      { ...scope, type: "UPDATE_APPLIED", toBundleId: "B" },
+      { ...scope, type: "RECOVERED", fromBundleId: "B" },
+      { ...scope, type: "UPDATE_FAILED", toBundleId: "B" },
+    ]);
+    expect(() =>
+      provider.listEvents({
+        bundle: {
+          ...scope,
+          bundleId: "B",
+          outcome: "unchanged" as "applied",
+        },
+      }),
+    ).toThrow(InsightsBadRequestError);
+    await provider.listEvents({
+      bundle: { ...scope, bundleId: "B", outcome: "recovered" },
+      sinceMs: result.sinceMs,
+      beforeReceivedAtMs: result.beforeReceivedAtMs,
+    });
+    const counted = fixture.countEvents.mock.calls[2]![0];
+    expect(fixture.listEvents).toHaveBeenCalledWith({
+      ...counted,
+      filter: { kind: "bundle", ...counted.filter },
+      limit: 50,
+    });
+  });
+
+  it("binds bundle cursors to the outcome, scope, bundle, and both time bounds", async () => {
+    const fixture = createModel();
+    fixture.listEvents.mockResolvedValue([eventRow(eventId(2), 900)]);
+    const provider = createInsightsProvider(fixture.model);
+    const first = await provider.listEvents({
+      bundle,
+      sinceMs: 100,
+      beforeReceivedAtMs: 1_000,
+      limit: 1,
+    });
+    const cursor = first.nextCursor ?? undefined;
+    for (const change of [
+      { bundle: { ...bundle, outcome: "recovered" as const } },
+      { bundle: { ...bundle, channel: "beta" } },
+      { bundle: { ...bundle, bundleId: "another" } },
+      { sinceMs: 101 },
+      { beforeReceivedAtMs: 1_001 },
+    ]) {
+      await expect(
+        provider.listEvents({ bundle, cursor, ...change }),
+      ).rejects.toBeInstanceOf(InsightsBadRequestError);
+    }
+    expect(fixture.listEvents).toHaveBeenCalledOnce();
+  });
+
+  it("rejects forged event keys before they reach the database boundary", async () => {
+    const fixture = createModel();
+    fixture.listEvents.mockResolvedValue([eventRow(eventId(2), 900)]);
+    const provider = createInsightsProvider(fixture.model);
+    const first = await provider.listEvents({
+      sinceMs: 100,
+      beforeReceivedAtMs: 1_000,
+      limit: 1,
+    });
+    const payload = JSON.parse(
+      Buffer.from(first.nextCursor!, "base64url").toString("utf8"),
+    );
+    for (const after of [
+      { id: "invalid", receivedAtMs: 900 },
+      { id: eventId(1), receivedAtMs: 1_000 },
+      { id: eventId(1), receivedAtMs: 99 },
+    ]) {
+      const cursor = Buffer.from(
+        JSON.stringify({ ...payload, after }),
+      ).toString("base64url");
+      await expect(provider.listEvents({ cursor })).rejects.toBeInstanceOf(
+        InsightsBadRequestError,
+      );
+    }
+    expect(fixture.listEvents).toHaveBeenCalledOnce();
+  });
+
+  it("propagates count failures without reporting a partial overview", async () => {
+    const fixture = createModel();
+    fixture.countEvents.mockRejectedValue(new Error("database unavailable"));
+    const provider = createInsightsProvider(fixture.model);
+    await expect(
+      provider.getReportingOverview({
+        platform: "ios",
+        channel: "production",
+        window: "24h",
+        bundleId: "B",
+      }),
+    ).rejects.toThrow("database unavailable");
+  });
+
+  it("uses UTF-8 order when checking exact current-user pages", async () => {
+    const fixture = createModel();
+    fixture.findLatestEvents.mockResolvedValue([
+      installationRow("\uE000"),
+      installationRow("\u{10000}"),
+    ]);
+    const result = await createInsightsProvider(
+      fixture.model,
+    ).pageInstallationsByCurrentUserId({ userId: "user-1" });
+    expect(result.data.map(({ installId }) => installId)).toEqual([
+      "\uE000",
+      "\u{10000}",
+    ]);
+  });
+});

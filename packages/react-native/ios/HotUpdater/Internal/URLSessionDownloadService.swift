@@ -23,27 +23,118 @@ protocol DownloadService {
 }
 
 
-enum DownloadError: Error {
+enum DownloadError: Error, Equatable {
     case incompleteDownload(expected: Int64, actual: Int64)
     case invalidContentLength
+    /// The server answered with a status outside 200-299. `originCode` is the
+    /// `<Code>` of a storage origin's XML error body, when it has one.
+    case httpStatus(Int, originCode: String? = nil)
+
+    /// How much of an error body is searched for a storage origin's code.
+    static let maximumErrorBodyPrefixByteCount = 4 * 1024
+    private static let maximumOriginCodeLength = 64
+
+    /// The failure for an HTTP response outside 200-299, or nil for a
+    /// successful or non-HTTP response. `body` is the saved response body.
+    static func httpStatusError(for response: URLResponse?, body: URL?) -> DownloadError? {
+        guard let httpResponse = response as? HTTPURLResponse,
+              !(200..<300).contains(httpResponse.statusCode) else {
+            return nil
+        }
+        let originCode = body.flatMap { body -> String? in
+            guard let handle = try? FileHandle(forReadingFrom: body) else {
+                return nil
+            }
+            defer { try? handle.close() }
+            let prefix = try? FileUtilities.readUpToCount(
+                from: handle,
+                count: maximumErrorBodyPrefixByteCount
+            )
+            return prefix.flatMap { storageOriginErrorCode(in: $0) }
+        }
+        return .httpStatus(httpResponse.statusCode, originCode: originCode)
+    }
+
+    /// The `<Code>` of an S3, R2, or GCS style `<Error>` document in the
+    /// first 4 KB of `body`, such as "AccessDenied". Nothing else from the
+    /// body is kept, and a code must be 1-64 characters of [A-Za-z0-9._-].
+    static func storageOriginErrorCode(in body: Data) -> String? {
+        let text = String(decoding: body.prefix(maximumErrorBodyPrefixByteCount), as: UTF8.self)
+        guard let errorElement = text.range(of: "<Error"),
+              let codeStart = text.range(of: "<Code>", range: errorElement.upperBound..<text.endIndex),
+              let codeEnd = text.range(of: "</Code>", range: codeStart.upperBound..<text.endIndex) else {
+            return nil
+        }
+        let code = text[codeStart.upperBound..<codeEnd.lowerBound]
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard (1...maximumOriginCodeLength).contains(code.unicodeScalars.count),
+              code.unicodeScalars.allSatisfy(isOriginCodeCharacter) else {
+            return nil
+        }
+        return code
+    }
+
+    private static func isOriginCodeCharacter(_ scalar: Unicode.Scalar) -> Bool {
+        switch scalar {
+        case "A"..."Z", "a"..."z", "0"..."9", ".", "_", "-":
+            return true
+        default:
+            return false
+        }
+    }
 }
 
-// Task state for persistence and recovery
-struct TaskState: Codable {
-    let taskIdentifier: Int
-    let destination: String
-    let bundleId: String
-    let startedAt: TimeInterval
+extension DownloadError {
+    /// Attempts per download that retries, the first one included.
+    static let maximumAttempts = 3
+
+    /// Whether a failed download may succeed if tried again: a network
+    /// failure or timeout, a body that ended early, or a 408, 429, or 5xx
+    /// answer. Another 4xx, a TLS failure, a cancelled task, and a local file
+    /// failure would fail the same way again.
+    static func isRetryable(_ error: Error) -> Bool {
+        if let downloadError = error as? DownloadError {
+            switch downloadError {
+            case .httpStatus(let status, _):
+                return status == 408 || status == 429 || status >= 500
+            case .incompleteDownload:
+                return true
+            case .invalidContentLength:
+                return false
+            }
+        }
+        let nsError = error as NSError
+        guard nsError.domain == NSURLErrorDomain else {
+            return false
+        }
+        switch URLError.Code(rawValue: nsError.code) {
+        case .timedOut,
+             .cannotFindHost,
+             .cannotConnectToHost,
+             .networkConnectionLost,
+             .dnsLookupFailed,
+             .notConnectedToInternet,
+             .cannotLoadFromNetwork,
+             .callIsActive,
+             .dataNotAllowed,
+             .internationalRoamingOff,
+             .backgroundSessionWasDisconnected,
+             .badServerResponse:
+            return true
+        default:
+            return false
+        }
+    }
 }
 
 class URLSessionDownloadService: NSObject, DownloadService {
+    private let stateLock = NSRecursiveLock()
     private var session: URLSession!
     private var backgroundSession: URLSession!
     private var progressHandlers: [URLSessionTask: (DownloadProgress) -> Void] = [:]
     private var completionHandlers: [URLSessionTask: (Result<URL, Error>) -> Void] = [:]
     private var destinations: [URLSessionTask: String] = [:]
     private var fileSizeHandlers: [URLSessionTask: (Int64) -> Void] = [:]
-    private var taskStates: [Int: TaskState] = [:]
 
     override init() {
         super.init()
@@ -61,51 +152,22 @@ class URLSessionDownloadService: NSObject, DownloadService {
             backgroundConfig.sessionSendsLaunchEvents = true
         }
         backgroundSession = URLSession(configuration: backgroundConfig, delegate: self, delegateQueue: nil)
-
-        // Load persisted task states
-        taskStates = loadTaskStates()
-    }
-
-    // MARK: - State Persistence
-
-    private var stateFileURL: URL {
-        let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-        return documentsPath.appendingPathComponent("download-state.json")
-    }
-
-    private func saveTaskState(_ state: TaskState) {
-        taskStates[state.taskIdentifier] = state
-
-        if let data = try? JSONEncoder().encode(taskStates) {
-            try? data.write(to: stateFileURL)
-        }
-    }
-
-    private func loadTaskStates() -> [Int: TaskState] {
-        guard let data = try? Data(contentsOf: stateFileURL),
-              let states = try? JSONDecoder().decode([Int: TaskState].self, from: data) else {
-            return [:]
-        }
-        return states
-    }
-
-    private func removeTaskState(_ taskIdentifier: Int) {
-        taskStates.removeValue(forKey: taskIdentifier)
-
-        if let data = try? JSONEncoder().encode(taskStates) {
-            try? data.write(to: stateFileURL)
-        }
     }
 
     func downloadFile(from url: URL, to destination: String, fileSizeHandler: ((Int64) -> Void)?, progressHandler: @escaping (DownloadProgress) -> Void, completion: @escaping (Result<URL, Error>) -> Void) -> URLSessionDownloadTask? {
+        // UIKit state is read on the main thread before taking the task-state lock.
         // Determine if we should use background session
         #if !os(macOS)
-        let appState = UIApplication.shared.applicationState
+        let appState = Thread.isMainThread
+            ? UIApplication.shared.applicationState
+            : DispatchQueue.main.sync { UIApplication.shared.applicationState }
         let useBackgroundSession = (appState == .background || appState == .inactive)
         #else
         let useBackgroundSession = false
         #endif
 
+        stateLock.lock()
+        defer { stateLock.unlock() }
         let selectedSession = useBackgroundSession ? backgroundSession : session
         let task = selectedSession?.downloadTask(with: url)
 
@@ -120,20 +182,6 @@ class URLSessionDownloadService: NSObject, DownloadService {
             fileSizeHandlers[task] = handler
         }
 
-        // Extract bundleId from destination path (e.g., "bundle-store/{bundleId}/bundle.zip")
-        let bundleId = (destination as NSString).pathComponents
-            .dropFirst()
-            .first(where: { $0 != "bundle-store" }) ?? "unknown"
-
-        // Save task metadata for background recovery
-        let taskState = TaskState(
-            taskIdentifier: task.taskIdentifier,
-            destination: destination,
-            bundleId: bundleId,
-            startedAt: Date().timeIntervalSince1970
-        )
-        saveTaskState(taskState)
-
         task.resume()
         return task
     }
@@ -141,6 +189,8 @@ class URLSessionDownloadService: NSObject, DownloadService {
 
 extension URLSessionDownloadService: URLSessionDownloadDelegate {
     func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didFinishDownloadingTo location: URL) {
+        stateLock.lock()
+        defer { stateLock.unlock() }
         let completion = completionHandlers[downloadTask]
         let destination = destinations[downloadTask]
 
@@ -149,14 +199,18 @@ extension URLSessionDownloadService: URLSessionDownloadDelegate {
             completionHandlers.removeValue(forKey: downloadTask)
             destinations.removeValue(forKey: downloadTask)
             fileSizeHandlers.removeValue(forKey: downloadTask)
-            removeTaskState(downloadTask.taskIdentifier)
-
-            // 다운로드 완료 알림
-            NotificationCenter.default.post(name: .downloadDidFinish, object: downloadTask)
         }
 
         guard let destination = destination else {
             completion?(.failure(NSError(domain: "HotUpdaterError", code: 1, userInfo: [NSLocalizedDescriptionKey: "Destination path not found"])))
+            return
+        }
+
+        // URLSession saves error bodies too, so reject them before they reach verification.
+        if let httpError = DownloadError.httpStatusError(for: downloadTask.response, body: location) {
+            NSLog("[DownloadService] Download failed: \(httpError)")
+            try? FileManager.default.removeItem(at: location)
+            completion?(.failure(httpError))
             return
         }
 
@@ -197,15 +251,14 @@ extension URLSessionDownloadService: URLSessionDownloadDelegate {
     }
     
     func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
+        stateLock.lock()
+        defer { stateLock.unlock() }
         let completion = completionHandlers[task]
         defer {
             progressHandlers.removeValue(forKey: task)
             completionHandlers.removeValue(forKey: task)
             destinations.removeValue(forKey: task)
             fileSizeHandlers.removeValue(forKey: task)
-            removeTaskState(task.taskIdentifier)
-
-            NotificationCenter.default.post(name: .downloadDidFinish, object: task)
         }
 
         if let error = error {
@@ -214,6 +267,8 @@ extension URLSessionDownloadService: URLSessionDownloadDelegate {
     }
     
     func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didWriteData bytesWritten: Int64, totalBytesWritten: Int64, totalBytesExpectedToWrite: Int64) {
+        stateLock.lock()
+        defer { stateLock.unlock() }
         let progressHandler = progressHandlers[downloadTask]
 
         // Call file size handler on first callback when size is known
@@ -232,16 +287,9 @@ extension URLSessionDownloadService: URLSessionDownloadDelegate {
             let progress = Double(totalBytesWritten) / Double(totalBytesExpectedToWrite)
             progressHandler?(DownloadProgress(progress: progress, downloadedBytes: totalBytesWritten, totalBytes: totalBytesExpectedToWrite))
 
-            let progressInfo: [String: Any] = [
-                "progress": progress,
-                "totalBytesReceived": totalBytesWritten,
-                "totalBytesExpected": totalBytesExpectedToWrite
-            ]
-            NotificationCenter.default.post(name: .downloadProgressUpdate, object: downloadTask, userInfo: progressInfo)
         } else {
             progressHandler?(DownloadProgress(progress: 0, downloadedBytes: totalBytesWritten, totalBytes: nil))
 
-            NotificationCenter.default.post(name: .downloadProgressUpdate, object: downloadTask, userInfo: ["progress": 0.0, "totalBytesReceived": 0, "totalBytesExpected": 0])
         }
     }
 }

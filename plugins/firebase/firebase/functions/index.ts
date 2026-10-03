@@ -5,6 +5,7 @@ import { Hono } from "hono";
 
 import { firebaseDatabase } from "../../src/firebaseDatabase";
 import { firebaseStorage } from "../../src/firebaseStorage";
+import { plugins } from "../../src/plugins";
 
 declare global {
   var HotUpdater: {
@@ -29,7 +30,7 @@ const hotUpdater = createHotUpdater({
   database: firebaseDatabase({
     ...adminOptions,
   }),
-  clientAccess: { type: "api-key" },
+  plugins,
   storage: [
     firebaseStorage({
       ...adminOptions,
@@ -66,9 +67,14 @@ const handler = onRequest(
     const honoResponse = await app.fetch(request);
     res.status(honoResponse.status);
     for (const [key, value] of honoResponse.headers.entries()) {
-      res.setHeader(key, value);
+      if (key !== "set-cookie") res.setHeader(key, value);
     }
-    res.send(await honoResponse.text());
+    // Each cookie its own header, which a joined value would merge.
+    const cookies = honoResponse.headers.getSetCookie();
+    if (cookies.length > 0) res.setHeader("set-cookie", cookies);
+    // The bytes as they are: a route may answer with binary data, such as
+    // a storage object the server serves itself.
+    res.send(Buffer.from(await honoResponse.arrayBuffer()));
   },
 );
 

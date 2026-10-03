@@ -1,18 +1,27 @@
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 
+import { ConsoleFeatureUnavailable } from "@/components/ConsoleFeatureUnavailable";
 import { AppUsage } from "@/components/features/insights/AppUsage";
 import { InsightsControls } from "@/components/features/insights/InsightsControls";
 import { InsightsOverview } from "@/components/features/insights/InsightsOverview";
 import { InsightsPageHeader } from "@/components/features/insights/InsightsPageHeader";
+import { UpdateFailures } from "@/components/features/insights/UpdateFailures";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import type { InsightsWindow } from "@/lib/insights-api";
+import { requireConsoleFeature } from "@/lib/console-features-api";
+import {
+  useInsightsRetention,
+  useUpdateFailuresQuery,
+} from "@/lib/insights-api";
 import { getRecoveryReportRpc } from "@/lib/insights-recovery-rpc";
 import { validateInsightsSearch } from "@/lib/insights-search";
-import type { AppUsageScope } from "@/lib/insights-usage";
+import type { AppUsageScope, UsageWindow } from "@/lib/insights-usage";
 import { getAppUsageReportRpc } from "@/lib/insights-usage-rpc";
 
 export const Route = createFileRoute("/insights")({
+  beforeLoad: ({ context }) =>
+    requireConsoleFeature(context.queryClient, "insightsAnalytics"),
+  notFoundComponent: ConsoleFeatureUnavailable,
   component: InsightsPage,
   validateSearch: validateInsightsSearch,
 });
@@ -20,6 +29,7 @@ export const Route = createFileRoute("/insights")({
 function InsightsPage() {
   const search = Route.useSearch();
   const navigate = Route.useNavigate();
+  const retention = useInsightsRetention();
   const usageWindow = search.window ?? "24h";
   const bundleWindow = search.bundleWindow ?? "7d";
   const channel = search.channel ?? search.healthChannel ?? "production";
@@ -28,7 +38,7 @@ function InsightsPage() {
     channel,
     appVersion: search.appVersion,
   };
-  const setUsageWindow = (window: InsightsWindow) =>
+  const setUsageWindow = (window: UsageWindow) =>
     void navigate({ search: { ...search, window } });
   const input = { ...scope, window: usageWindow };
   const bundleInput = {
@@ -47,6 +57,7 @@ function InsightsPage() {
     queryFn: () => getRecoveryReportRpc({ data: bundleInput }),
     staleTime: 30_000,
   });
+  const failuresQuery = useUpdateFailuresQuery(bundleInput);
   return (
     <div className="flex h-svh min-h-0 flex-col">
       <InsightsPageHeader view="overview" overviewSearch={search} />
@@ -88,6 +99,7 @@ function InsightsPage() {
             search={{ ...scope, window: usageWindow, bundleWindow }}
             window={usageWindow}
             onWindowChange={setUsageWindow}
+            retention={retention}
           />
           <InsightsOverview
             input={bundleInput}
@@ -101,6 +113,10 @@ function InsightsPage() {
               })
             }
             onRefresh={() => void bundleQuery.refetch()}
+          />
+          <UpdateFailures
+            query={failuresQuery}
+            onRefresh={() => void failuresQuery.refetch()}
           />
         </div>
       </div>

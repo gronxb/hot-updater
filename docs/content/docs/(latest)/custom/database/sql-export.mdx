@@ -2,12 +2,11 @@
 title: "SQL Export"
 description: Export Hot Updater table schemas as plain SQL.
 icon: FileText
-version: "v0.22.0"
 ---
 
 ## Overview
 
-Export Hot Updater table schemas as plain SQL files without requiring a config file. Use this when you need standalone SQL for manual database setup.
+Export Hot Updater table schemas as plain SQL files for manual database setup. The command generates the SQL without a database connection, but it loads your server's file or `hot-updater.config.ts` to find the server's plugins.
 
 <Callout>
 For ORM-specific schema generation (Drizzle, Prisma, Kysely), see the respective adapter documentation pages.
@@ -26,6 +25,9 @@ You'll be prompted to select:
 - MySQL
 - SQLite
 
+These are the supported databases; MySQL must be 8.0.17 or later. CockroachDB
+and SQL Server are not supported.
+
 ## Direct provider selection
 
 Specify the database dialect directly:
@@ -41,13 +43,37 @@ npx hot-updater db generate --sql mysql
 npx hot-updater db generate --sql sqlite
 ```
 
+## Plugins' tables
+
+The SQL holds core's tables and those of the
+[plugins](/docs/custom/server-plugins#create-the-plugins-tables) your server
+runs, such as `insights()` and `apiKeys()`. The command finds the plugin list
+in the file you name that exports the server's `hotUpdater`, then in `plugins`
+of `hot-updater.config.ts` when it lists any, then in `src/hotUpdater.ts` or
+`src/db.ts`:
+
+```bash
+npx hot-updater db generate src/hotUpdater.ts --sql postgresql
+```
+
+It names the file it read the plugins from. Without one, it says so and
+generates core's tables only. The command imports that file as your server
+does, so a config that opens a database when it is imported, such as a PGlite
+client that creates its data directory, does so here too.
+
 ## Output
 
-The command generates one file, `hot-updater.sql`.
+The command generates one file, `hot-updater.sql`: the SQL that
+`hot-updater db migrate` applies with the Kysely adapter for the same plugins.
 
-The SQL file includes:
-- Hot Updater table definitions
-- Dialect-specific syntax for your selected database
+- The tables and indexes of core and the plugins in your dialect's syntax,
+  with binary string collation and no database foreign keys
+- The settings table and its schema settings rows, `schema.engine`,
+  `schema.core`, and one per plugin, written last
+
+Apply the whole file to a new, empty database. The server checks the settings
+rows before its first read or write, and its handlers answer 503 until they
+exist, so a partly applied file never serves traffic.
 
 ## Preview before saving
 
@@ -65,7 +91,8 @@ The command will:
 
 ## Skip confirmation
 
-Use `--yes` to skip confirmation and overwrite existing files:
+Use `--yes` to skip confirmation and overwrite existing files. Without a
+dialect, `--yes` generates PostgreSQL:
 
 ```bash
 npx hot-updater db generate --sql postgresql --yes

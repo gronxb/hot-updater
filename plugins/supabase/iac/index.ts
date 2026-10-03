@@ -3,6 +3,7 @@ import { createRequire } from "node:module";
 import path from "path";
 
 import {
+  assembleServer,
   confirmInitInputPersistence,
   copyDirToTmp,
   getHotUpdaterInitInputEnv,
@@ -11,18 +12,23 @@ import {
   link,
   makeEnv,
   MissingInitInputsError,
+  moduleSpecifiersOf,
   p,
+  printAppSetup,
+  provisionClientCredential,
+  type ProvisionedClientCredential,
   readHotUpdaterInitEnv,
   type RunInitOptions,
   resolvePackageVersion,
   transformEnv,
-  transformTemplate,
   writeHotUpdaterConfig,
+  writeHotUpdaterFiles,
 } from "@hot-updater/cli-tools";
-import { provisionApiKey } from "@hot-updater/server";
+import type { PluginClientPlugin } from "@hot-updater/plugin-core";
 import { delay } from "es-toolkit";
 import { ExecaError, execa } from "execa";
 
+import { plugins } from "../src/plugins";
 import { supabaseDatabase } from "../src/supabaseDatabase";
 import { getConfigScaffold } from "./configTemplate";
 import {
@@ -68,11 +74,6 @@ const SUPABASE_SCHEMA_READINESS_MAX_ATTEMPTS = 60;
 const SUPABASE_SCHEMA_READINESS_POLL_INTERVAL_MS = 1000;
 const LEGACY_SUPABASE_CATALOG_CDN_URL_ENV_KEY =
   "HOT_UPDATER_SUPABASE_CATALOG_CDN_URL";
-const STATIC_IMPORT_SPECIFIER_PATTERN =
-  /^\s*(?:import|export)\s+(?:type\s+)?(?:[^"'`]+?\s+from\s+)?["']([^"']+)["'];?/gm;
-const DYNAMIC_IMPORT_SPECIFIER_PATTERN =
-  /\bimport\s*\(\s*["']([^"']+)["']\s*\)/g;
-
 export const getLegacySupabaseConfigReference = (configText: string) => {
   if (configText.includes("HOT_UPDATER_SUPABASE_ANON_KEY")) {
     return "HOT_UPDATER_SUPABASE_ANON_KEY";
@@ -119,53 +120,37 @@ const assertSkippedConfigDoesNotUseLegacySupabaseKey = async (
   process.exit(1);
 };
 
-const SOURCE_TEMPLATE = `// add this to your App.tsx
-import { HotUpdater } from "@hot-updater/react-native";
-
-function App() {
-  return null; // Replace with your app root
-}
-
-HotUpdater.init({
-  baseURL: "%%source%%",
-  requestHeaders: {
-    "x-api-key": %%apiKey%%,
-  },
-});
-
-// Call HotUpdater.checkForUpdate({ updateStrategy: "appVersion" })
-// when your app is ready to check.
-export default App;`;
-
-export const getSupabaseReactNativeSource = ({
-  apiKey,
+/** The Edge Function URL an app sets as its baseURL. */
+export const getSupabaseFunctionUrl = ({
   functionName,
   projectId,
 }: {
-  readonly apiKey: string;
   readonly functionName: string;
   readonly projectId: string;
-}): string =>
-  transformTemplate(SOURCE_TEMPLATE, {
-    apiKey: JSON.stringify(apiKey),
-    source: `https://${projectId}.supabase.co/functions/v1/${functionName}`,
-  });
+}): string => `https://${projectId}.supabase.co/functions/v1/${functionName}`;
 
 export const reportSupabaseOriginCatalogReady = () => {
   p.log.success("Release catalog endpoint is ready in origin-only mode.");
   p.log.info("Catalog checks still invoke the Supabase Edge Function.");
 };
 
-export const reportSupabaseApiKey = (apiKey: string) => {
-  p.note(apiKey, "API Key");
-  p.log.message("Store this API key separately in a secure place.");
-};
+/**
+ * Resolves packages as `searchFrom`'s package does, so a package's own
+ * dependencies are found beside it, as pnpm installs them.
+ */
+const requireFrom = (searchFrom: string | undefined) =>
+  searchFrom === undefined
+    ? require
+    : createRequire(path.join(searchFrom, "package.json"));
 
 const resolvePackageExportPath = async (
   packageName: string,
   exportName: string,
+  searchFrom?: string,
 ) => {
-  const packageJsonPath = require.resolve(`${packageName}/package.json`);
+  const packageJsonPath = requireFrom(searchFrom).resolve(
+    `${packageName}/package.json`,
+  );
   const packageJson = JSON.parse(
     await fs.readFile(packageJsonPath, "utf-8"),
   ) as {
@@ -241,19 +226,16 @@ const collectBareImportSpecifiers = async (entryPath: string) => {
     }
 
     visitedFiles.add(currentFile);
+    // Only modules import others; a JSON file imports nothing, and the
+    // parser below would refuse it.
+    if (!/\.[cm]?[jt]sx?$/u.test(currentFile)) {
+      continue;
+    }
     const source = await fs.readFile(currentFile, "utf8");
 
-    const matches = [
-      ...source.matchAll(STATIC_IMPORT_SPECIFIER_PATTERN),
-      ...source.matchAll(DYNAMIC_IMPORT_SPECIFIER_PATTERN),
-    ];
-
-    for (const match of matches) {
-      const specifier = match[1];
-      if (!specifier) {
-        continue;
-      }
-
+    // Parsed rather than pattern-matched, so every import of a vendored
+    // package's files is found however its build writes them.
+    for (const specifier of moduleSpecifiersOf(currentFile, source)) {
       if (specifier.startsWith("./") || specifier.startsWith("../")) {
         const resolvedPath = await resolveLocalModulePath(
           currentFile,
@@ -289,14 +271,23 @@ const prepareVendoredPackageImport = async ({
   targetDir,
   packageName,
   exportName,
+  searchFrom,
 }: {
   targetDir: string;
   packageName: string;
   exportName: string;
+  /** The root of the package that imports it; @hot-updater/supabase's when absent. */
+  searchFrom?: string;
 }) => {
-  const packageJsonPath = require.resolve(`${packageName}/package.json`);
+  const packageJsonPath = requireFrom(searchFrom).resolve(
+    `${packageName}/package.json`,
+  );
   const packageRoot = path.dirname(packageJsonPath);
-  const exportPath = await resolvePackageExportPath(packageName, exportName);
+  const exportPath = await resolvePackageExportPath(
+    packageName,
+    exportName,
+    searchFrom,
+  );
   const relativeExportPath = path
     .relative(packageRoot, exportPath)
     .split(path.sep);
@@ -344,6 +335,16 @@ const resolveBareSpecifierImportTarget = async (
   return `npm:${specifier}@${version}`;
 };
 
+/** A vendored import of one of Hot Updater's packages, by its specifier. */
+const workspaceImport = (importSpecifier: string) => {
+  const [scope, name, ...subpath] = importSpecifier.split("/");
+  return {
+    importSpecifier,
+    packageName: `${scope}/${name}`,
+    exportName: subpath.length === 0 ? "." : `./${subpath.join("/")}`,
+  };
+};
+
 const buildEdgeFunctionImports = async (targetDir: string) => {
   const imports: Record<string, string> = {};
   const vendoredWorkspacePackages = new Map<
@@ -355,10 +356,12 @@ const buildEdgeFunctionImports = async (targetDir: string) => {
     importSpecifier,
     packageName,
     exportName,
+    searchFrom,
   }: {
     importSpecifier: string;
     packageName: string;
     exportName: string;
+    searchFrom?: string;
   }) => {
     const visitKey = `${packageName}:${exportName}`;
     const existingPackage = vendoredWorkspacePackages.get(visitKey);
@@ -370,6 +373,7 @@ const buildEdgeFunctionImports = async (targetDir: string) => {
       targetDir,
       packageName,
       exportName,
+      searchFrom,
     });
     vendoredWorkspacePackages.set(visitKey, vendoredPackage);
 
@@ -385,11 +389,9 @@ const buildEdgeFunctionImports = async (targetDir: string) => {
       }
 
       if (nestedSpecifier.startsWith(WORKSPACE_PACKAGE_PREFIX)) {
-        const [scope, name, ...subpath] = nestedSpecifier.split("/");
         await addWorkspacePackage({
-          importSpecifier: nestedSpecifier,
-          packageName: `${scope}/${name}`,
-          exportName: subpath.length === 0 ? "." : `./${subpath.join("/")}`,
+          ...workspaceImport(nestedSpecifier),
+          searchFrom: vendoredPackage.packageRoot,
         });
         continue;
       }
@@ -707,20 +709,20 @@ export const createSelectedBucket = async (
   return { id: bucket.id, name: bucket.name };
 };
 
-const deployEdgeFunction = async (
-  accessToken: string | undefined,
-  workdir: string,
-  projectId: string,
-  functionName: string,
-  bucketName: string,
-) => {
-  const edgeFunctionsLibPath = path.join(workdir, "supabase", "edge-functions");
-  const edgeFunctionsCodePath = path.join(edgeFunctionsLibPath, "index.ts");
-  const edgeFunctionsCode = transformEnv(edgeFunctionsCodePath, {
-    BUCKET_NAME: bucketName,
-    FUNCTION_NAME: functionName,
-  });
-
+/**
+ * Writes the prebuilt Edge Function to `workdir`'s `supabase/functions`, on
+ * `bucketName` and under `functionName`, with the import map of what it
+ * vendors.
+ */
+const stageEdgeFunction = async ({
+  bucketName,
+  functionName,
+  workdir,
+}: {
+  readonly bucketName: string;
+  readonly functionName: string;
+  readonly workdir: string;
+}) => {
   if (!isSupabaseFunctionName(functionName)) {
     throw new Error("Invalid Supabase Edge Function name.");
   }
@@ -732,14 +734,26 @@ const deployEdgeFunction = async (
     );
   }
   await fs.mkdir(targetDir, { recursive: true });
-  const targetPath = path.join(targetDir, "index.ts");
-  await fs.writeFile(targetPath, edgeFunctionsCode);
+  await fs.writeFile(
+    path.join(targetDir, "index.ts"),
+    transformEnv(path.join(workdir, "supabase", "edge-functions", "index.ts"), {
+      BUCKET_NAME: bucketName,
+      FUNCTION_NAME: functionName,
+    }),
+  );
   const denoConfig = await resolveEdgeFunctionDenoConfig(targetDir);
   await fs.writeFile(
     path.join(targetDir, "deno.json"),
     `${JSON.stringify(denoConfig, null, 2)}\n`,
   );
+};
 
+const deployEdgeFunction = async (
+  accessToken: string | undefined,
+  workdir: string,
+  projectId: string,
+  functionName: string,
+) => {
   await p.tasks([
     {
       title: "Supabase edge function deploy. This may take a few minutes.",
@@ -1061,150 +1075,135 @@ const runInitWithoutCliMetadata = async ({
     process.exit(1);
   }
 
-  if (projectSelection.create) {
-    if (!projectCreationInputs) {
-      throw new Error("Supabase project creation inputs were not resolved.");
-    }
-    project = await managementApi.createProject({
-      databasePassword: dbPassword,
-      name: projectCreationInputs.projectName,
-      organizationSlug: projectCreationInputs.organizationSlug,
-      region: projectCreationInputs.region,
-    });
-    projectAccess = await getSupabaseProjectAccess({
-      accessToken,
-      managementApi,
-      project,
-      waitForProject: true,
-    });
-  }
-  if (!project || !projectAccess) {
-    throw new Error("Failed to resolve the Supabase project.");
-  }
-
-  const resolvedInputs = {
-    ...inputsBeforeProvisioning,
-    projectId: project.id,
-  };
-  const providerEnv = getInitProviderEnvVars({
-    includeConsentInputs: persistCredentialInputs,
-    inputs: resolvedInputs,
-    provider: SUPABASE_INIT_PROVIDER,
-  });
-  const persistDatabasePassword = persistCredentialInputs && dbPassword !== "";
-  if (persistDatabasePassword) {
-    providerEnv[SUPABASE_DATABASE_PASSWORD_PROJECT_ID_ENV_KEY] = project.id;
-  }
-  await makeEnv(providerEnv, ".env.hotupdater", {
-    removeKeys: [
-      LEGACY_SUPABASE_CATALOG_CDN_URL_ENV_KEY,
-      ...(persistDatabasePassword
-        ? []
-        : [databasePasswordKey, SUPABASE_DATABASE_PASSWORD_PROJECT_ID_ENV_KEY]),
-    ],
-  });
-
-  const bucket = await createSelectedBucket(projectAccess.api, bucketSelection);
-  await makeEnv({
-    [SUPABASE_INIT_PROVIDER.inputs.projectId.envKey]: project.id,
-    HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY: projectAccess.serviceRoleApiKey,
-    [SUPABASE_INIT_PROVIDER.inputs.bucketName.envKey]: bucket.name,
-    HOT_UPDATER_SUPABASE_URL: `https://${project.id}.supabase.co`,
-  });
   const scaffoldLibPath = path.dirname(
     path.resolve(require.resolve("@hot-updater/supabase/scaffold")),
   );
-
   const { tmpDir, removeTmpDir } = await copyDirToTmp(
     scaffoldLibPath,
     "supabase",
   );
-
-  const migrationPath = await path.join(tmpDir, "supabase", "migrations");
-  const migrationFiles = await fs.readdir(migrationPath);
-  for (const file of migrationFiles) {
-    if (file.endsWith(".sql")) {
-      const filePath = path.join(migrationPath, file);
-      const content = await fs.readFile(filePath, "utf-8");
-      await fs.writeFile(
-        filePath,
-        transformTemplate(content, {
-          BUCKET_NAME: bucket.name,
-        }),
-      );
-    }
-  }
-
-  await linkSupabase(tmpDir, {
-    accessToken,
-    projectId: project.id,
-    dbPassword,
-  });
-
-  await pushDB(tmpDir, { accessToken, dbPassword });
-  await waitForSupabaseSchemaReady({
-    getInfrastructureState: projectAccess.api.getInfrastructureState,
-  });
-  const databasePlugin = supabaseDatabase({
-    supabaseServiceRoleKey: projectAccess.serviceRoleApiKey,
-    supabaseUrl: `https://${project.id}.supabase.co`,
-  });
-  let apiKey: string;
+  let credential: ProvisionedClientCredential | undefined;
+  let clientPlugins: readonly PluginClientPlugin[] = [];
   try {
-    apiKey = (
-      await provisionApiKey({
-        apiKeys: databasePlugin.models.apiKeys,
-        existingApiKey: initInputEnv.HOT_UPDATER_API_KEY,
+    // Staged first, so a function that cannot be staged stops init before it
+    // creates a project, a bucket, or a table.
+    await stageEdgeFunction({
+      bucketName: bucketSelection.name,
+      functionName,
+      workdir: tmpDir,
+    });
+
+    if (projectSelection.create) {
+      if (!projectCreationInputs) {
+        throw new Error("Supabase project creation inputs were not resolved.");
+      }
+      project = await managementApi.createProject({
+        databasePassword: dbPassword,
+        name: projectCreationInputs.projectName,
+        organizationSlug: projectCreationInputs.organizationSlug,
+        region: projectCreationInputs.region,
+      });
+      projectAccess = await getSupabaseProjectAccess({
+        accessToken,
+        managementApi,
+        project,
+        waitForProject: true,
+      });
+    }
+    if (!project || !projectAccess) {
+      throw new Error("Failed to resolve the Supabase project.");
+    }
+
+    const resolvedInputs = {
+      ...inputsBeforeProvisioning,
+      projectId: project.id,
+    };
+    const providerEnv = getInitProviderEnvVars({
+      includeConsentInputs: persistCredentialInputs,
+      inputs: resolvedInputs,
+      provider: SUPABASE_INIT_PROVIDER,
+    });
+    const persistDatabasePassword =
+      persistCredentialInputs && dbPassword !== "";
+    if (persistDatabasePassword) {
+      providerEnv[SUPABASE_DATABASE_PASSWORD_PROJECT_ID_ENV_KEY] = project.id;
+    }
+    await makeEnv(providerEnv, ".env.hotupdater", {
+      removeKeys: [
+        LEGACY_SUPABASE_CATALOG_CDN_URL_ENV_KEY,
+        ...(persistDatabasePassword
+          ? []
+          : [
+              databasePasswordKey,
+              SUPABASE_DATABASE_PASSWORD_PROJECT_ID_ENV_KEY,
+            ]),
+      ],
+    });
+
+    const bucket = await createSelectedBucket(
+      projectAccess.api,
+      bucketSelection,
+    );
+    await makeEnv({
+      [SUPABASE_INIT_PROVIDER.inputs.projectId.envKey]: project.id,
+      HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY: projectAccess.serviceRoleApiKey,
+      [SUPABASE_INIT_PROVIDER.inputs.bucketName.envKey]: bucket.name,
+      HOT_UPDATER_SUPABASE_URL: `https://${project.id}.supabase.co`,
+    });
+
+    await linkSupabase(tmpDir, {
+      accessToken,
+      projectId: project.id,
+      dbPassword,
+    });
+
+    await pushDB(tmpDir, { accessToken, dbPassword });
+    await waitForSupabaseSchemaReady({
+      getInfrastructureState: projectAccess.api.getInfrastructureState,
+    });
+    const database = supabaseDatabase({
+      supabaseServiceRoleKey: projectAccess.serviceRoleApiKey,
+      supabaseUrl: `https://${project.id}.supabase.co`,
+    });
+    // The managed server's plugins over the project's database, which
+    // assembling neither reads nor writes.
+    const managedServer = assembleServer({ database, plugins });
+    ({ clientPlugins } = managedServer);
+    // The app's credential, through the managed server's plugins, on the tables they read.
+    try {
+      credential = await provisionClientCredential(managedServer, {
+        env: initInputEnv,
         name: "Supabase init",
-      })
-    ).apiKey;
-    await makeEnv({ HOT_UPDATER_API_KEY: apiKey });
+      });
+      if (credential !== undefined) {
+        await makeEnv({ [credential.env]: credential.value });
+      }
+    } finally {
+      await database.dispose?.();
+    }
+    await deployEdgeFunction(accessToken, tmpDir, project.id, functionName);
   } finally {
-    await databasePlugin.dispose?.();
+    await removeTmpDir();
   }
-  await deployEdgeFunction(
-    accessToken,
-    tmpDir,
-    project.id,
-    functionName,
-    bucket.name,
-  );
-
-  await removeTmpDir();
-
-  const configWriteResult = await writeHotUpdaterConfig(
-    getConfigScaffold(build),
-  );
-  await assertSkippedConfigDoesNotUseLegacySupabaseKey(configWriteResult);
 
   p.log.success("Generated '.env.hotupdater' file with Supabase settings.");
-  if (configWriteResult.status === "created") {
-    p.log.success(
-      "Generated 'hot-updater.config.ts' file with Supabase settings.",
-    );
-  } else if (configWriteResult.status === "merged") {
-    p.log.success(
-      "Updated 'hot-updater.config.ts' file with Supabase settings.",
-    );
-  } else {
-    p.log.warn(
-      `Kept existing 'hot-updater.config.ts' unchanged: ${configWriteResult.reason}`,
-    );
-  }
+  const files = await writeHotUpdaterFiles(getConfigScaffold(build), {
+    cwd: process.cwd(),
+    settings: "Supabase",
+  });
+  await assertSkippedConfigDoesNotUseLegacySupabaseKey(files.config);
 
-  p.note(
-    getSupabaseReactNativeSource({
-      apiKey,
-      functionName,
-      projectId: project.id,
-    }),
-  );
-  reportSupabaseApiKey(apiKey);
+  printAppSetup({
+    ...(build.clientModule ? { sdkModule: build.clientModule } : {}),
+    baseURL: getSupabaseFunctionUrl({ functionName, projectId: project.id }),
+    ...(credential === undefined ? {} : { credential }),
+    clientPlugins,
+  });
   reportSupabaseOriginCatalogReady();
 
   p.log.message(
     `Next step: ${link(
-      "https://hot-updater.dev/docs/managed/supabase#step-4-add-hotupdater-to-your-project",
+      "https://hot-updater.dev/docs/managed/supabase#step-3-add-hotupdater-to-your-project",
     )}`,
   );
   p.log.success("Done! 🎉");
@@ -1214,3 +1213,6 @@ export const runInit = (options: RunInitOptions): Promise<void> =>
   withSupabaseCliMetadataCleanup(process.cwd(), () =>
     runInitWithoutCliMetadata(options),
   );
+
+// What init asks for and checks before `runInit`.
+export { initProvider } from "./init/index";

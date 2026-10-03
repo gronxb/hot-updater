@@ -1,6 +1,9 @@
 {
   "name": "@examples-server/elysia-drizzle-libsql",
   "private": true,
+  "engines": {
+    "node": ">=20.19.0"
+  },
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/index.ts",
@@ -16,13 +19,12 @@
   "devDependencies": {
     "@elysiajs/node": "^1.4.5",
     "@hot-updater/aws": "workspace:*",
-    "@hot-updater/core": "workspace:*",
+    "@hot-updater/protocol": "workspace:*",
     "@hot-updater/mock": "workspace:*",
     "@hot-updater/server": "workspace:*",
     "@hot-updater/test-utils": "workspace:*",
     "@libsql/client": "catalog:db",
     "@types/node": "^20.11.17",
-    "dotenv": "^16.6.1",
     "drizzle-orm": "catalog:db",
     "drizzle-kit": "^0.31.6",
     "elysia": "^1.4.28",

@@ -33,6 +33,19 @@ afterEach(() => {
 });
 
 describe("Detox control server environment", () => {
+  it("scopes provider channels to the control port when the runner omits a namespace", () => {
+    const fallback = buildDetoxControlServerEnv("android", {
+      HOT_UPDATER_E2E_CONTROL_PORT: "3109",
+    });
+    const explicit = buildDetoxControlServerEnv("android", {
+      HOT_UPDATER_E2E_CHANNEL_NAMESPACE: "e2e-job-123",
+      HOT_UPDATER_E2E_CONTROL_PORT: "3109",
+    });
+
+    expect(fallback.HOT_UPDATER_E2E_CHANNEL_NAMESPACE).toBe("e2e-3109");
+    expect(explicit.HOT_UPDATER_E2E_CHANNEL_NAMESPACE).toBe("e2e-job-123");
+  });
+
   it("uses a unique iOS DerivedData path for each split control server", () => {
     const first = buildDetoxControlServerEnv("ios", {
       HOT_UPDATER_E2E_CHANNEL_NAMESPACE: "e2e-job-ios-s1",
@@ -165,7 +178,18 @@ describe("Detox control server environment", () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async () =>
-        Response.json({ fileUrl: "https://storage.test/bundle.zip" }),
+        Response.json({
+          artifactProtocolVersion: 1,
+          archiveUrl: "https://storage.test/bundle.tar.br",
+          manifestUrl: "https://storage.test/manifest.json",
+          manifestFileHash: "manifest-hash",
+          assets: {
+            "detail.lynx.bundle": {
+              fileHash: "asset-hash",
+              file: { url: "https://storage.test/detail" },
+            },
+          },
+        }),
       ),
     );
     const { controller, resultsDir } = await loadController("android");
@@ -188,11 +212,11 @@ describe("Detox control server environment", () => {
       });
       const artifactResponse = await controller.handleProxyUpdateRequest(
         new Request(
-          "http://127.0.0.1:3114/hot-updater/artifacts/target/from/current",
+          "http://127.0.0.1:3114/hot-updater/artifacts/v1/target/from/current",
         ),
       );
       await expect(artifactResponse.json()).resolves.toMatchObject({
-        fileUrl: expect.stringMatching(
+        archiveUrl: expect.stringMatching(
           /^http:\/\/127\.0\.0\.1:3114\/e2e\/proxy-url\//,
         ),
       });

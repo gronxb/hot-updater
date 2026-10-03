@@ -23,11 +23,8 @@ it("loads the public server entrypoints without optional database drivers", () =
         import { register } from 'node:module';
         register(${JSON.stringify(`data:text/javascript,${encodeURIComponent(loader)}`)});
         const server = await import(${JSON.stringify(entrypoint("index"))});
-        const node = await import(${JSON.stringify(entrypoint("node"))});
-        const db = await import(${JSON.stringify(entrypoint("db/index"))});
         if (typeof server.createHotUpdater !== 'function' ||
-            typeof node.toNodeHandler !== 'function' ||
-            typeof db.createBundleDiff !== 'function') {
+            typeof server.toNodeHandler !== 'function') {
           throw new Error('Missing public entrypoint exports');
         }
       `,

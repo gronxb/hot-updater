@@ -12,28 +12,36 @@ const mocks = vi.hoisted(() => ({
   functionsDir: "",
   assertFunction: vi.fn(),
   assertInfrastructure: vi.fn(),
-  provisionApiKey: vi.fn(async () => ({
-    apiKey: "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE",
-  })),
+  migrateFirebaseDatabase: vi.fn(),
+  provisionClientCredential: vi.fn(
+    async (
+      _server: unknown,
+      input: { readonly env: Readonly<Record<string, string | undefined>> },
+    ) => ({
+      label: "API key",
+      header: "x-api-key",
+      env: "HOT_UPDATER_API_KEY",
+      value:
+        input.env["HOT_UPDATER_API_KEY"] ??
+        "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE",
+    }),
+  ),
   serviceEnableError: undefined as Error | undefined,
   tmpDir: "",
 }));
 
-vi.mock("@hot-updater/server", async () => {
-  const actual = await vi.importActual<typeof import("@hot-updater/server")>(
-    "@hot-updater/server",
-  );
+vi.mock("../src/firebaseDatabase", async () => {
+  const { createMemoryAdapter } = await vi.importActual<
+    typeof import("@hot-updater/plugin-core")
+  >("@hot-updater/plugin-core");
   return {
-    ...actual,
-    provisionApiKey: mocks.provisionApiKey,
+    firebaseDatabase: vi.fn(() => ({
+      name: "firebaseDatabase",
+      adapter: createMemoryAdapter(),
+    })),
+    migrateFirebaseDatabase: mocks.migrateFirebaseDatabase,
   };
 });
-
-vi.mock("../src/firebaseDatabase", () => ({
-  firebaseDatabase: vi.fn(() => ({
-    models: { apiKeys: {} },
-  })),
-}));
 
 vi.mock("firebase-admin/app", async () => {
   const actual =
@@ -104,6 +112,8 @@ vi.mock("@hot-updater/cli-tools", async () => {
   );
   return {
     ...actual,
+    // The managed server's plugins, over the mocked database.
+    provisionClientCredential: mocks.provisionClientCredential,
     confirmInitInputPersistence: vi.fn(async () => {
       mocks.events.push("consent");
       return true;
@@ -117,6 +127,7 @@ vi.mock("@hot-updater/cli-tools", async () => {
       mocks.events.push("persist");
       return "";
     }),
+    printAppSetup: vi.fn(),
     p: {
       ...actual.p,
       log: {
@@ -181,11 +192,13 @@ vi.mock("./select", () => ({
   setEnv: vi.fn(),
 }));
 
-import { p } from "@hot-updater/cli-tools";
+import { p, printAppSetup } from "@hot-updater/cli-tools";
 import { execa } from "execa";
 
+import { firebaseDatabase } from "../src/firebaseDatabase";
+import { plugins } from "../src/plugins";
 import { runInit } from "./index";
-import { initFirebaseUser } from "./select";
+import { initFirebaseUser, setEnv } from "./select";
 
 const API_KEY = "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE";
 
@@ -290,8 +303,36 @@ describe("Firebase project creation", () => {
         },
       },
     );
-    expect(mocks.provisionApiKey).toHaveBeenCalledWith(
-      expect.objectContaining({ existingApiKey: API_KEY }),
+    // The config init writes is for the build init was given.
+    expect(setEnv).toHaveBeenCalledWith(
+      expect.objectContaining({
+        build: {
+          imports: [{ pkg: "@hot-updater/bare", named: ["bare"] }],
+          configString: "bare({ enableHermes: true })",
+        },
+        projectId: "existing-project",
+      }),
+    );
+    // The first API key, through the provider's plugins over the Firestore
+    // database init set up.
+    const [server, input] = mocks.provisionClientCredential.mock.calls[0]!;
+    expect(server).toMatchObject({
+      database: vi.mocked(firebaseDatabase).mock.results[0]?.value,
+      plugins,
+    });
+    expect(input).toEqual({
+      env: expect.objectContaining({ HOT_UPDATER_API_KEY: API_KEY }),
+      name: "Firebase init",
+    });
+    // The schema settings come first, since the database reads nothing without them.
+    expect(mocks.migrateFirebaseDatabase).toHaveBeenCalledWith(
+      expect.objectContaining({ projectId: "existing-project" }),
+      plugins,
+    );
+    expect(
+      mocks.migrateFirebaseDatabase.mock.invocationCallOrder[0],
+    ).toBeLessThan(
+      mocks.provisionClientCredential.mock.invocationCallOrder[0]!,
     );
     expect(execa).toHaveBeenCalledWith(
       "npx",
@@ -325,19 +366,22 @@ describe("Firebase project creation", () => {
     expect(p.log.message).toHaveBeenCalledWith(
       "Next step: Change GOOGLE_APPLICATION_CREDENTIALS=your-credentials.json in .env.hotupdater",
     );
-    expect(p.note).toHaveBeenCalledWith(
-      expect.stringContaining("return null; // Replace with your app root"),
-    );
-    expect(p.note).toHaveBeenCalledWith(
-      expect.stringContaining(`"x-api-key": "${API_KEY}"`),
-    );
-    expect(p.note).toHaveBeenCalledWith(
-      expect.stringContaining("HotUpdater.checkForUpdate"),
-    );
-    expect(p.note).toHaveBeenCalledWith(API_KEY, "API Key");
-    expect(p.log.message).toHaveBeenCalledWith(
-      "Store this API key separately in a secure place.",
-    );
+    expect(printAppSetup).toHaveBeenCalledWith({
+      baseURL: "https://hot-updater.example.com",
+      credential: {
+        label: "API key",
+        header: "x-api-key",
+        env: "HOT_UPDATER_API_KEY",
+        value: API_KEY,
+      },
+      // The managed server runs insights(), so the app reports to it.
+      clientPlugins: [
+        {
+          module: "@hot-updater/react-native",
+          name: "insights",
+        },
+      ],
+    });
   });
 
   it("blocks an existing v0 project before deployment", async () => {
@@ -400,7 +444,7 @@ describe("Firebase project creation", () => {
         expect.objectContaining({ id: "hot-updater-v1" }),
       ]),
     });
-    expect(mocks.provisionApiKey).not.toHaveBeenCalled();
+    expect(mocks.provisionClientCredential).not.toHaveBeenCalled();
   });
 
   it("reports an actionable error when Firebase still cannot list functions", async () => {
@@ -412,6 +456,6 @@ describe("Firebase project creation", () => {
     );
 
     expect(mocks.assertFunction).not.toHaveBeenCalled();
-    expect(mocks.provisionApiKey).not.toHaveBeenCalled();
+    expect(mocks.provisionClientCredential).not.toHaveBeenCalled();
   });
 });

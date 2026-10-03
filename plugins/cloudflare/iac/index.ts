@@ -1,11 +1,10 @@
 import crypto from "crypto";
-import fs from "fs/promises";
 import path from "path";
 
 import {
+  assembleServer,
   confirmInitInputPersistence,
   copyDirToTmp,
-  formatApiKeyNote,
   getHotUpdaterInitInputEnv,
   getInitProviderEnvVars,
   getInitProviderTextPromptValues,
@@ -13,15 +12,17 @@ import {
   link,
   makeEnv,
   p,
+  printAppSetup,
+  provisionClientCredential,
+  type ProvisionedClientCredential,
   readHotUpdaterInitEnv,
   type RunInitOptions,
-  transformTemplate,
-  writeHotUpdaterConfig,
+  writeHotUpdaterFiles,
 } from "@hot-updater/cli-tools";
-import { provisionApiKey } from "@hot-updater/server";
 import { Cloudflare } from "cloudflare";
 
 import { d1Database } from "../src/d1Database";
+import { plugins } from "../src/plugins";
 import { createWrangler } from "../src/utils/createWrangler";
 import {
   validateCloudflareApiToken,
@@ -49,24 +50,7 @@ import {
 import { inputCloudflareInitSecrets } from "./cloudflareInitSecrets";
 import { getConfigScaffold } from "./configTemplate";
 import { initProvider as CLOUDFLARE_INIT_PROVIDER } from "./init/index";
-
-const SOURCE_TEMPLATE = `// add this to your App.tsx
-import { HotUpdater } from "@hot-updater/react-native";
-
-function App() {
-  return null; // Replace with your app root
-}
-
-HotUpdater.init({
-  baseURL: "%%source%%",
-  requestHeaders: {
-    "x-api-key": %%apiKey%%,
-  },
-});
-
-// Call HotUpdater.checkForUpdate({ updateStrategy: "appVersion" })
-// when your app is ready to check.
-export default App;`;
+import { prepareWorkerDeployment } from "./managedWorker";
 
 const deployWorker = async (
   apiToken: string,
@@ -99,33 +83,11 @@ const deployWorker = async (
   const workerRoot = path.join(tmpDir, "worker");
 
   try {
-    const wranglerConfig = JSON.parse(
-      await fs.readFile(path.join(workerRoot, "wrangler.json"), "utf-8"),
-    );
-
-    wranglerConfig.d1_databases = [
-      {
-        binding: "DB",
-        database_id: d1DatabaseId,
-        database_name: d1DatabaseName,
-      },
-    ];
-
-    wranglerConfig.r2_buckets = [
-      {
-        binding: "BUCKET",
-        bucket_name: r2BucketName,
-      },
-    ];
-
-    wranglerConfig.vars = {
-      BUCKET_NAME: r2BucketName,
-    };
-
-    await fs.writeFile(
-      path.join(workerRoot, "wrangler.json"),
-      JSON.stringify(wranglerConfig, null, 2),
-    );
+    await prepareWorkerDeployment(workerRoot, {
+      d1DatabaseId,
+      d1DatabaseName,
+      r2BucketName,
+    });
 
     const wrangler = await createWrangler({
       stdio: "inherit",
@@ -134,21 +96,6 @@ const deployWorker = async (
       accountId: accountId,
       nonInteractive,
     });
-
-    const migrationPath = await path.join(workerRoot, "migrations");
-    const migrationFiles = await fs.readdir(migrationPath);
-    for (const file of migrationFiles) {
-      if (file.endsWith(".sql")) {
-        const filePath = path.join(migrationPath, file);
-        const content = await fs.readFile(filePath, "utf-8");
-        await fs.writeFile(
-          filePath,
-          transformTemplate(content, {
-            BUCKET_NAME: r2BucketName,
-          }),
-        );
-      }
-    }
 
     await wrangler("d1", "migrations", "apply", d1DatabaseName, "--remote");
 
@@ -704,59 +651,52 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
     workerName,
   });
 
-  const databasePlugin = d1Database({
+  const database = d1Database({
     accountId,
     cloudflareApiToken: apiToken,
     databaseId: selectedD1DatabaseId,
   });
-  let apiKey: string;
+  // The managed server: the package's plugins over the database init set
+  // up, which assembling it neither reads nor writes.
+  const server = assembleServer({ database, plugins });
+  // The app's credential, through the managed server's plugins, on the tables they read.
+  let credential: ProvisionedClientCredential | undefined;
   try {
-    apiKey = (
-      await provisionApiKey({
-        apiKeys: databasePlugin.models.apiKeys,
-        existingApiKey: initInputEnv.HOT_UPDATER_API_KEY,
-        name: "Cloudflare init",
-      })
-    ).apiKey;
-    await makeEnv({ HOT_UPDATER_API_KEY: apiKey });
+    credential = await provisionClientCredential(server, {
+      env: initInputEnv,
+      name: "Cloudflare init",
+    });
+    if (credential !== undefined) {
+      await makeEnv({ [credential.env]: credential.value });
+    }
   } finally {
-    await databasePlugin.dispose?.();
+    await database.dispose?.();
   }
-
-  const configWriteResult = await writeHotUpdaterConfig(
-    getConfigScaffold(build),
-  );
 
   p.log.success("Generated '.env.hotupdater' file with Cloudflare settings.");
-  if (configWriteResult.status === "created") {
-    p.log.success(
-      "Generated 'hot-updater.config.ts' file with Cloudflare settings.",
-    );
-  } else if (configWriteResult.status === "merged") {
-    p.log.success(
-      "Updated 'hot-updater.config.ts' file with Cloudflare settings.",
-    );
-  } else {
-    p.log.warn(
-      `Kept existing 'hot-updater.config.ts' unchanged: ${configWriteResult.reason}`,
-    );
-  }
+  await writeHotUpdaterFiles(getConfigScaffold(build), {
+    cwd,
+    settings: "Cloudflare",
+  });
 
-  if (subdomains.subdomain) {
-    p.note(
-      transformTemplate(SOURCE_TEMPLATE, {
-        apiKey: JSON.stringify(apiKey),
-        source: `https://${workerName}.${subdomains.subdomain}.workers.dev`,
-      }),
-    );
-  }
-  p.note(formatApiKeyNote(apiKey), "API Key");
-  p.log.message("Store this API key separately in a secure place.");
+  printAppSetup({
+    ...(build.clientModule ? { sdkModule: build.clientModule } : {}),
+    ...(subdomains.subdomain
+      ? {
+          baseURL: `https://${workerName}.${subdomains.subdomain}.workers.dev`,
+        }
+      : {}),
+    ...(credential === undefined ? {} : { credential }),
+    clientPlugins: server.clientPlugins,
+  });
 
   p.log.message(
     `Next step: ${link(
-      "https://hot-updater.dev/docs/managed/cloudflare#step-4-add-hotupdater-to-your-project",
+      "https://hot-updater.dev/docs/managed/cloudflare#step-3-add-hotupdater-to-your-project",
     )}`,
   );
   p.log.success("Done! 🎉");
 };
+
+// What init asks for and checks before `runInit`.
+export { initProvider } from "./init/index";

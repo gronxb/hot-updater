@@ -1026,8 +1026,8 @@ public final class LynxController {
         }
         let key = try artifact.map {
             Self.hash(try JSONSerialization.data(withJSONObject: [
-                guardValue.scopeKey, receipt.bundleId, $0.fileHash ?? "cached",
-                $0.manifestFileHash ?? "archive-anchor",
+                guardValue.scopeKey, receipt.bundleId,
+                $0.manifestFileHash ?? "invalid",
             ]))
         }
         if let key, state.incompatibleArtifacts.contains(key) {

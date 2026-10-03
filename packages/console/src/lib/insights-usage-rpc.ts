@@ -1,8 +1,10 @@
 import { createServerFn } from "@tanstack/react-start";
 
+import { consoleAccess } from "./console-access";
 import { readAppUsageInput, type AppUsageInput } from "./insights-usage";
 
 export const getAppUsageReportRpc = createServerFn({ method: "GET" })
+  .middleware([consoleAccess])
   .validator((input: AppUsageInput) => {
     readAppUsageInput(input);
     return {
@@ -13,10 +15,15 @@ export const getAppUsageReportRpc = createServerFn({ method: "GET" })
     };
   })
   .handler(async ({ data }) => {
-    const [{ prepareConfig }, { getAppUsageReport }] = await Promise.all([
-      import("./server/config.server"),
-      import("./server/insightsUsage"),
-    ]);
-    const { config } = await prepareConfig();
-    return getAppUsageReport(config.database.models.insights, data);
+    const [{ prepareConfig }, { getAppUsageReport }, { requireFeature }] =
+      await Promise.all([
+        import("./server/config.server"),
+        import("./server/insightsUsage"),
+        import("./server/runtime.server"),
+      ]);
+    const { runtime } = await prepareConfig();
+    return getAppUsageReport(
+      await requireFeature(runtime, "insightsAnalytics"),
+      data,
+    );
   });

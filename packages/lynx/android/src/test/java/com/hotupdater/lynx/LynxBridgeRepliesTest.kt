@@ -28,20 +28,22 @@ class LynxBridgeRepliesTest {
         val bridgeChangedAsset = JavaOnlyMap.from(
             mapOf(
                 "fileHash" to hash,
+                "file" to JavaOnlyMap.from(mapOf("url" to "https://example.test/file", "compression" to null)),
                 "patch" to patch,
             ),
         )
-        val changedAssets = JavaOnlyMap.from(
+        val assets = JavaOnlyMap.from(
             mapOf("main.lynx.bundle" to bridgeChangedAsset),
         )
         val params = JavaOnlyMap.from(
             mapOf(
                 "bundleId" to bundleId,
+                "artifactProtocolVersion" to 1.0,
                 "fileUrl" to null,
                 "fileHash" to null,
                 "manifestUrl" to "https://example.test/manifest",
                 "manifestFileHash" to hash,
-                "changedAssets" to changedAssets,
+                "assets" to assets,
             ),
         )
         val lossyParams = Proxy.newProxyInstance(
@@ -53,18 +55,18 @@ class LynxBridgeRepliesTest {
         } as ReadableMap
         val json = lynxBridgeJson(lossyParams)
 
-        val changed = json.getJSONObject("changedAssets")
+        val changed = json.getJSONObject("assets")
             .getJSONObject("main.lynx.bundle")
-        assertTrue(!changed.has("file"))
+        assertTrue(changed.getJSONObject("file").isNull("compression"))
         val parsed = LynxArtifactRequest.fromJson(json)
         assertEquals(bundleId, parsed.bundleId)
-        assertNull(parsed.changedAssets?.get("main.lynx.bundle")?.file)
+        assertNull(parsed.assets?.get("main.lynx.bundle")?.file?.compression)
         assertEquals(
             baseBundleId,
-            parsed.changedAssets?.get("main.lynx.bundle")?.patch?.baseBundleId,
+            parsed.assets?.get("main.lynx.bundle")?.patch?.baseBundleId,
         )
 
-        changed.remove("patch")
+        changed.remove("file")
         assertThrows(IllegalArgumentException::class.java) {
             LynxArtifactRequest.fromJson(json)
         }
@@ -72,9 +74,9 @@ class LynxBridgeRepliesTest {
         val rawChanged = JSONObject()
             .put("fileHash", hash)
             .put("file", JSONObject().put("url", "https://example.test/file"))
-        json.getJSONObject("changedAssets").put("main.lynx.bundle", rawChanged)
+        json.getJSONObject("assets").put("main.lynx.bundle", rawChanged)
         val rawParsed = LynxArtifactRequest.fromJson(json)
-            .changedAssets?.get("main.lynx.bundle")
+            .assets?.get("main.lynx.bundle")
         assertNull(rawParsed?.file?.compression)
         assertNull(rawParsed?.patch)
     }

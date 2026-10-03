@@ -1,8 +1,11 @@
 import fs from "fs";
+import { createRequire } from "node:module";
 import path from "path";
 
 import { getReactNativeMetadatas } from "@hot-updater/react-native/build";
 import { execa } from "execa";
+
+const require = createRequire(import.meta.url);
 
 /**
  * Returns the Hermes OS binary folder name for the current platform.

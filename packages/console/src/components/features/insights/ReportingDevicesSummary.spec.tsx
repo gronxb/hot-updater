@@ -80,3 +80,23 @@ it("keeps unknown, zero, and partial counts distinct", () => {
   );
   expect(screen.getByText("≥3")).toBeDefined();
 });
+it("marks a unique count as an estimate, but not zero", () => {
+  const view = render(
+    <ReportingDevicesSummary
+      window="24h"
+      count={1234}
+      isPending={false}
+      partial={false}
+    />,
+  );
+  expect(screen.getByTitle("Estimated").textContent).toBe("≈Estimated 1,234");
+  view.rerender(
+    <ReportingDevicesSummary
+      window="24h"
+      count={0}
+      isPending={false}
+      partial={false}
+    />,
+  );
+  expect(screen.queryByTitle("Estimated")).toBeNull();
+});

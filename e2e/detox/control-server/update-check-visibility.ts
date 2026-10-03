@@ -9,43 +9,34 @@ export type ArtifactInfoVisibilityValidation =
   | { readonly ok: true }
   | { readonly ok: false; readonly reason: "invalid-artifact-info" }
   | {
-      readonly actualFileHash: string | null;
+      readonly actualManifestFileHash: string | null;
       readonly ok: false;
-      readonly reason: "file-hash-mismatch";
+      readonly reason: "manifest-file-hash-mismatch";
     };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function isNullableString(value: unknown): value is string | null {
-  return typeof value === "string" || value === null;
-}
-
 export function validateArtifactInfoVisibility(
   payload: unknown,
-  expectedFileHash: string | null,
+  expectedManifestFileHash: string,
 ): ArtifactInfoVisibilityValidation {
   if (
     !isRecord(payload) ||
-    !isNullableString(payload.fileHash) ||
-    !isNullableString(payload.fileUrl) ||
-    (payload.manifestFileHash !== undefined &&
-      !isNullableString(payload.manifestFileHash)) ||
-    (payload.manifestUrl !== undefined &&
-      !isNullableString(payload.manifestUrl)) ||
-    (payload.changedAssets !== undefined &&
-      payload.changedAssets !== null &&
-      !isRecord(payload.changedAssets))
+    payload.artifactProtocolVersion !== 1 ||
+    typeof payload.manifestFileHash !== "string" ||
+    typeof payload.manifestUrl !== "string" ||
+    !isRecord(payload.assets)
   ) {
     return { ok: false, reason: "invalid-artifact-info" };
   }
 
-  if (payload.fileHash !== expectedFileHash) {
+  if (payload.manifestFileHash !== expectedManifestFileHash) {
     return {
-      actualFileHash: payload.fileHash,
+      actualManifestFileHash: payload.manifestFileHash,
       ok: false,
-      reason: "file-hash-mismatch",
+      reason: "manifest-file-hash-mismatch",
     };
   }
 

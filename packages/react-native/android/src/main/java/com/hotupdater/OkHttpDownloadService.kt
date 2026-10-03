@@ -1,6 +1,7 @@
 package com.hotupdater
 
 import android.util.Log
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
@@ -15,10 +16,11 @@ import okio.Source
 import okio.buffer
 import java.io.File
 import java.io.IOException
-import java.net.SocketTimeoutException
+import java.net.MalformedURLException
 import java.net.URL
-import java.net.UnknownHostException
 import java.util.concurrent.TimeUnit
+import javax.net.ssl.SSLHandshakeException
+import javax.net.ssl.SSLPeerUnverifiedException
 
 /**
  * Exception for incomplete downloads with size information
@@ -27,6 +29,47 @@ class IncompleteDownloadException(
     val expectedSize: Long,
     val actualSize: Long,
 ) : IOException("Download incomplete: received $actualSize bytes, expected $expectedSize bytes")
+
+/**
+ * The server answered with a non-2xx status. [originCode] is the storage
+ * origin's XML error `<Code>` (S3, R2, or GCS style) when the body names one.
+ */
+class HttpStatusException(
+    val statusCode: Int,
+    statusMessage: String,
+    val originCode: String? = null,
+) : Exception("HTTP error $statusCode: $statusMessage")
+
+/** How much of an error body is read to find a storage origin's error code. */
+internal const val MAX_ORIGIN_ERROR_BODY_BYTES = 4 * 1024L
+
+private val ORIGIN_ERROR_CODE = Regex("<Error(?:\\s[^>]*)?>(?:(?!</Error>).)*?<Code>([^<]*)</Code>", RegexOption.DOT_MATCHES_ALL)
+private val ORIGIN_CODE_VALUE = Regex("[A-Za-z0-9._-]{1,64}")
+
+/**
+ * Reads the `<Code>` of a storage origin's XML error, as in
+ * `<Error><Code>AccessDenied</Code>...`, from at most the first 4 KB of
+ * [body]. Only a 1 to 64 character code of letters, digits, `.`, `_`, and `-`
+ * is kept, so no key, resource, or message text is ever returned.
+ */
+internal fun readOriginErrorCode(body: ResponseBody?): String? =
+    try {
+        body?.source()?.let { source ->
+            source.request(MAX_ORIGIN_ERROR_BODY_BYTES)
+            val prefix = source.buffer.readByteArray(minOf(source.buffer.size, MAX_ORIGIN_ERROR_BODY_BYTES))
+            parseOriginErrorCode(String(prefix, Charsets.UTF_8))
+        }
+    } catch (_: Exception) {
+        null
+    }
+
+internal fun parseOriginErrorCode(body: String): String? =
+    ORIGIN_ERROR_CODE
+        .find(body)
+        ?.groupValues
+        ?.get(1)
+        ?.trim()
+        ?.takeIf { ORIGIN_CODE_VALUE.matches(it) }
 
 /**
  * Result wrapper for download operations
@@ -65,6 +108,13 @@ interface DownloadService {
         fileSizeCallback: ((Long) -> Unit)? = null,
         progressCallback: (DownloadProgress) -> Unit,
     ): DownloadResult
+
+    suspend fun downloadFileOnce(
+        fileUrl: URL,
+        destination: File,
+        fileSizeCallback: ((Long) -> Unit)? = null,
+        progressCallback: (DownloadProgress) -> Unit,
+    ): DownloadResult = downloadFile(fileUrl, destination, fileSizeCallback, progressCallback)
 }
 
 /**
@@ -128,12 +178,32 @@ private class ProgressResponseBody(
 }
 
 /**
+ * Whether a failed download may succeed if tried again: a network failure or
+ * timeout, a body that ended early, or a 408, 429, or 5xx answer. Another 4xx,
+ * a TLS certificate failure, a canceled call, and a local storage failure
+ * would fail the same way again.
+ */
+internal fun isRetryableDownloadError(error: Exception): Boolean =
+    when (error) {
+        is HttpStatusException -> error.statusCode == 408 || error.statusCode == 429 || error.statusCode >= 500
+        is LocalStorageException -> false
+        is SSLHandshakeException, is SSLPeerUnverifiedException -> false
+        is MalformedURLException -> false
+        is IOException -> error.message != "Canceled"
+        else -> false
+    }
+
+/**
  * OkHttp-based implementation of DownloadService with resume support
  */
-class OkHttpDownloadService : DownloadService {
+class OkHttpDownloadService internal constructor(
+    private val initialRetryDelayMs: Long,
+) : DownloadService {
+    constructor() : this(INITIAL_RETRY_DELAY_MS)
+
     companion object {
         private const val TAG = "OkHttpDownloadService"
-        private const val MAX_RETRIES = 3
+        internal const val MAX_ATTEMPTS = 3
         private const val INITIAL_RETRY_DELAY_MS = 1000L
         private const val TIMEOUT_SECONDS = 30L
     }
@@ -146,6 +216,12 @@ class OkHttpDownloadService : DownloadService {
             .writeTimeout(TIMEOUT_SECONDS, TimeUnit.SECONDS)
             .build()
 
+    /**
+     * Downloads [fileUrl], trying again after a retryable failure (see
+     * [isRetryableDownloadError]) up to [MAX_ATTEMPTS] attempts in all, 1 and
+     * then 2 seconds apart. The last attempt's result is returned, so a
+     * failure keeps what classified it.
+     */
     override suspend fun downloadFile(
         fileUrl: URL,
         destination: File,
@@ -153,37 +229,50 @@ class OkHttpDownloadService : DownloadService {
         progressCallback: (DownloadProgress) -> Unit,
     ): DownloadResult =
         withContext(Dispatchers.IO) {
-            var attempt = 0
-            var lastException: Exception? = null
-
-            while (attempt < MAX_RETRIES) {
-                try {
-                    return@withContext attemptDownload(
-                        fileUrl,
-                        destination,
-                        fileSizeCallback,
-                        progressCallback,
-                    )
-                } catch (e: Exception) {
-                    lastException = e
-                    attempt++
-
-                    if (attempt < MAX_RETRIES && isRetryableException(e)) {
-                        val delayMs = INITIAL_RETRY_DELAY_MS * (1 shl (attempt - 1))
-                        Log.d(
-                            TAG,
-                            "Download failed (attempt $attempt/$MAX_RETRIES): ${e.message}. Retrying in ${delayMs}ms...",
-                        )
-                        delay(delayMs)
-                    } else {
-                        Log.d(TAG, "Download failed: ${e.message}")
-                        break
-                    }
-                }
+            var attempt = 1
+            var result = attemptOrError(fileUrl, destination, fileSizeCallback, progressCallback)
+            while (
+                result is DownloadResult.Error &&
+                attempt < MAX_ATTEMPTS &&
+                isRetryableDownloadError(result.exception)
+            ) {
+                val delayMs = initialRetryDelayMs * (1 shl (attempt - 1))
+                Log.d(
+                    TAG,
+                    "Download failed (attempt $attempt/$MAX_ATTEMPTS): ${result.exception.message}. Retrying in ${delayMs}ms...",
+                )
+                delay(delayMs)
+                attempt++
+                result = attemptOrError(fileUrl, destination, fileSizeCallback, progressCallback)
             }
-
-            DownloadResult.Error(lastException ?: Exception("Download failed after $MAX_RETRIES attempts"))
+            if (result is DownloadResult.Error) {
+                Log.d(TAG, "Download failed (attempt $attempt/$MAX_ATTEMPTS): ${result.exception.message}")
+            }
+            result
         }
+
+    /** One attempt; an exception a callback threw, such as the disk space check's, is its error. */
+    private suspend fun attemptOrError(
+        fileUrl: URL,
+        destination: File,
+        fileSizeCallback: ((Long) -> Unit)?,
+        progressCallback: (DownloadProgress) -> Unit,
+    ): DownloadResult =
+        try {
+            attemptDownload(fileUrl, destination, fileSizeCallback, progressCallback)
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            DownloadResult.Error(error)
+        }
+
+    /** One attempt with no retry, for a download with a fallback, such as the archive's per-file downloads. */
+    override suspend fun downloadFileOnce(
+        fileUrl: URL,
+        destination: File,
+        fileSizeCallback: ((Long) -> Unit)?,
+        progressCallback: (DownloadProgress) -> Unit,
+    ): DownloadResult = attemptOrError(fileUrl, destination, fileSizeCallback, progressCallback)
 
     private suspend fun attemptDownload(
         fileUrl: URL,
@@ -212,10 +301,10 @@ class OkHttpDownloadService : DownloadService {
             }
 
             if (!response.isSuccessful) {
-                val errorMsg = "HTTP error ${response.code}: ${response.message}"
-                Log.d(TAG, errorMsg)
+                val error = HttpStatusException(response.code, response.message, readOriginErrorCode(response.body))
+                Log.d(TAG, "HTTP error ${response.code}: ${response.message}")
                 response.close()
-                return@withContext DownloadResult.Error(Exception(errorMsg))
+                return@withContext DownloadResult.Error(error)
             }
 
             val body = response.body
@@ -242,9 +331,10 @@ class OkHttpDownloadService : DownloadService {
                         progressCallback.invoke(progress)
                     }
 
-                // Write to file
+                // Write to file. A local write failure surfaces as LocalStorageException,
+                // so it is not mistaken for a network failure.
                 progressBody.source().use { source ->
-                    destination.outputStream().use { output ->
+                    LocalStorageOutputStream.open(destination).use { output ->
                         val buffer = ByteArray(8 * 1024)
                         var bytesRead: Int
 
@@ -290,18 +380,5 @@ class OkHttpDownloadService : DownloadService {
                 }
                 DownloadResult.Error(e)
             }
-        }
-
-    /**
-     * Check if exception is retryable
-     */
-    private fun isRetryableException(e: Exception): Boolean =
-        when (e) {
-            is SocketTimeoutException,
-            is UnknownHostException,
-            is IOException,
-            -> true
-
-            else -> false
         }
 }

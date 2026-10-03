@@ -3,13 +3,23 @@ import crypto from "node:crypto";
 import os from "os";
 import path from "path";
 
-import { getCwd, loadConfig, readPackageUp } from "@hot-updater/cli-tools";
-import type { IntegrationDoctorResult } from "@hot-updater/plugin-core";
+import {
+  assembleServer,
+  p,
+  getCwd,
+  loadConfig,
+  readPackageUp,
+} from "@hot-updater/cli-tools";
+import {
+  createMemoryAdapter,
+  type ConfiguredDatabase,
+  type IntegrationDoctorResult,
+} from "@hot-updater/plugin-core";
 import { HOT_UPDATER_SERVER_VERSION } from "@hot-updater/server";
+import { insights } from "@hot-updater/server/plugins/insights";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { packageJsonData } from "../packageJson";
-import { createDatabasePluginHarness } from "./databasePlugin.testFixtures";
 import {
   areVersionsCompatible,
   checkInfrastructureStatus,
@@ -22,6 +32,9 @@ import {
   isV1InfrastructureRequired,
   resolveVersionEndpoint,
 } from "./doctor";
+import { checkFingerprintJson } from "./doctor/fingerprint";
+import { applyDoctorFixes } from "./doctor/fix";
+import type { DoctorFix, NativeCheckIssue } from "./doctor/issues";
 import { getRequiredUpdateTarget } from "./doctorInfrastructureTargets";
 
 // Exercise the real integration without including RN source in the CLI project.
@@ -33,7 +46,30 @@ const { createReactNativeDoctor } = await vi.importActual<{
 
 vi.mock("../packageJson", () => ({ packageJsonData: { version: "1.0.0" } }));
 
+// Computing a fingerprint hashes the whole project; doctor/fingerprint.spec
+// covers the comparison itself.
+vi.mock("./doctor/fingerprint", () => ({
+  checkFingerprintJson: vi.fn(async () => []),
+}));
+
+vi.mock("../utils/version/getNativeAppVersion", () => ({
+  getNativeAppVersion: vi.fn(async (platform: "ios" | "android") =>
+    platform === "ios" ? "1.2.3" : "1.2.4",
+  ),
+}));
+
+// The repairs write native files; doctor/fix.spec covers them.
+vi.mock("./doctor/fix", () => ({
+  applyDoctorFixes: vi.fn(async () => []),
+}));
+
 vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
+  // The server doctor reads is assembled from the config as the CLI does.
+  assembleServer: (
+    await importOriginal<typeof import("@hot-updater/cli-tools")>()
+  ).assembleServer,
+  colors: (await importOriginal<typeof import("@hot-updater/cli-tools")>())
+    .colors,
   getBundleSigningPublicKey: (
     await importOriginal<typeof import("@hot-updater/cli-tools")>()
   ).getBundleSigningPublicKey,
@@ -60,9 +96,10 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
 }));
 
 const mockGetCwd = getCwd as ReturnType<typeof vi.fn>;
+const mockCheckFingerprintJson = vi.mocked(checkFingerprintJson);
+const mockApplyDoctorFixes = vi.mocked(applyDoctorFixes);
 const mockLoadConfig = loadConfig as ReturnType<typeof vi.fn>;
 const mockReadPackageUp = readPackageUp as ReturnType<typeof vi.fn>;
-const doctorDatabaseHarness = createDatabasePluginHarness();
 
 const createConfig = (overrides: Record<string, unknown> = {}) => ({
   build: async () => ({
@@ -78,7 +115,6 @@ const createConfig = (overrides: Record<string, unknown> = {}) => ({
       androidManifestPaths: [],
     },
   },
-  database: doctorDatabaseHarness.plugin,
   ...overrides,
 });
 
@@ -430,7 +466,7 @@ describe("doctor", () => {
       packageJson: {
         dependencies: {
           "hot-updater": "^0.18.2",
-          "@hot-updater/core": "^0.18.2",
+          "@hot-updater/protocol": "^0.18.2",
           "@hot-updater/react-native": "^0.18.2",
         },
         devDependencies: {
@@ -501,7 +537,7 @@ describe("doctor", () => {
       packageJson: {
         dependencies: {
           "hot-updater": "0.18.2",
-          "@hot-updater/core": "^0.18.2",
+          "@hot-updater/protocol": "^0.18.2",
           "@hot-updater/react-native": "^0.18.2",
         },
         devDependencies: {
@@ -520,7 +556,7 @@ describe("doctor", () => {
       packageJson: {
         dependencies: {
           "hot-updater": "^0.18.2",
-          "@hot-updater/core": "0.18.2",
+          "@hot-updater/protocol": "0.18.2",
           "@hot-updater/react-native": "0.18.2",
         },
         devDependencies: {
@@ -539,7 +575,7 @@ describe("doctor", () => {
       packageJson: {
         dependencies: {
           "hot-updater": "^0.18.2",
-          "@hot-updater/core": "0.17.0",
+          "@hot-updater/protocol": "0.17.0",
           "@hot-updater/react-native": "0.17.0",
         },
         devDependencies: {
@@ -554,7 +590,7 @@ describe("doctor", () => {
       details: {
         hotUpdaterVersion: "^0.18.2",
         installedHotUpdaterPackages: [
-          "@hot-updater/core",
+          "@hot-updater/protocol",
           "@hot-updater/react-native",
         ],
         packageJsonPath: "/mock/cwd/package.json",
@@ -562,7 +598,7 @@ describe("doctor", () => {
           {
             currentVersion: "0.17.0",
             expectedVersion: "^0.18.2",
-            packageName: "@hot-updater/core",
+            packageName: "@hot-updater/protocol",
           },
           {
             currentVersion: "0.17.0",
@@ -580,7 +616,7 @@ describe("doctor", () => {
       packageJson: {
         dependencies: {
           "hot-updater": "^1.0.0",
-          "@hot-updater/core": "1.1.0",
+          "@hot-updater/protocol": "1.1.0",
           "@hot-updater/plugin-react-native": "^1.2.0",
         },
         devDependencies: {
@@ -608,7 +644,7 @@ describe("doctor", () => {
     mockReadPackageUp.mockResolvedValue({
       packageJson: {
         dependencies: {
-          "@hot-updater/core": "1.0.0",
+          "@hot-updater/protocol": "1.0.0",
         },
       },
       path: "/mock/cwd/package.json",
@@ -626,7 +662,7 @@ describe("doctor", () => {
       packageJson: {
         dependencies: {
           "hot-updater": "^1.0.0",
-          "@hot-updater/core": "2.0.0",
+          "@hot-updater/protocol": "2.0.0",
           "@hot-updater/plugin-A": "1.0.1",
         },
         devDependencies: {
@@ -643,13 +679,13 @@ describe("doctor", () => {
         hotUpdaterVersion: "^1.0.0",
         packageJsonPath: "/mock/cwd/package.json",
         installedHotUpdaterPackages: [
-          "@hot-updater/core",
+          "@hot-updater/protocol",
           "@hot-updater/plugin-A",
           "@hot-updater/plugin-B",
         ],
         versionMismatches: [
           {
-            packageName: "@hot-updater/core",
+            packageName: "@hot-updater/protocol",
             currentVersion: "2.0.0",
             expectedVersion: "^1.0.0",
           },
@@ -743,7 +779,7 @@ describe("doctor", () => {
       packageJson: {
         dependencies: {
           "hot-updater": "1.0.0",
-          "@hot-updater/core": "1.0.1",
+          "@hot-updater/protocol": "1.0.1",
         },
       },
       path: "/mock/cwd/package.json",
@@ -978,6 +1014,119 @@ describe("doctor", () => {
             fixability: "blocked",
             commands: ["hot-updater agent infra setup", "hot-updater init"],
           },
+        },
+      },
+    });
+  });
+
+  it.each<[string, () => ConfiguredDatabase]>([
+    [
+      "the server's database",
+      () => ({ name: "memory", adapter: createMemoryAdapter() }),
+    ],
+    [
+      "standaloneRepository",
+      () => ({
+        name: "standalone",
+        // A self-hosted server's admin API, which doctor reads no plugins from.
+        core: assembleServer({
+          database: { name: "memory", adapter: createMemoryAdapter() },
+        }).core,
+        fetchAdmin: vi.fn(async () => {
+          throw new Error("doctor fetched the admin API");
+        }),
+      }),
+    ],
+  ])(
+    "warns about a client plugin the config's plugins need that the app does not add, over %s",
+    async (_database, database) => {
+      const cwd = await createTempProject();
+      tempProjects.push(cwd);
+      mockGetCwd.mockReturnValue(cwd);
+      mockReadPackageUp.mockResolvedValue({
+        packageJson: {
+          dependencies: {
+            "hot-updater": "0.31.0",
+            "@hot-updater/react-native": "0.31.0",
+          },
+        },
+        path: path.join(cwd, "package.json"),
+      });
+      const configured = database();
+      mockLoadConfig.mockResolvedValue(
+        createConfig({ database: configured, plugins: [insights()] }),
+      );
+      await writeFile(
+        path.join(cwd, "src/App.tsx"),
+        'import { HotUpdater } from "@hot-updater/react-native";\n',
+      );
+
+      const result = await doctor();
+
+      expect(result).toMatchObject({
+        success: true,
+        details: {
+          native: {
+            issues: [
+              {
+                type: "warning",
+                platform: "project",
+                code: "MISSING_CLIENT_PLUGIN",
+                message:
+                  "The server runs a plugin whose client plugin insights the app does not add.",
+                resolution:
+                  'Import { insights } from "@hot-updater/react-native" and pass insights() to HotUpdater.init({ plugins }).',
+                fixability: "auto",
+              },
+            ],
+          },
+        },
+      });
+      if ("fetchAdmin" in configured) {
+        expect(configured.fetchAdmin).not.toHaveBeenCalled();
+      }
+    },
+  );
+
+  it("warns that it could not check client plugins when the config's plugins do not assemble", async () => {
+    const cwd = await createTempProject();
+    tempProjects.push(cwd);
+    mockGetCwd.mockReturnValue(cwd);
+    mockReadPackageUp.mockResolvedValue({
+      packageJson: {
+        dependencies: {
+          "hot-updater": "0.31.0",
+          "@hot-updater/react-native": "0.31.0",
+        },
+      },
+      path: path.join(cwd, "package.json"),
+    });
+    mockLoadConfig.mockResolvedValue(
+      createConfig({
+        database: { name: "memory", adapter: createMemoryAdapter() },
+        plugins: [insights(), insights()],
+      }),
+    );
+
+    const result = await doctor();
+
+    expect(result).toMatchObject({
+      success: true,
+      details: {
+        native: {
+          issues: [
+            {
+              type: "warning",
+              platform: "project",
+              code: "CLIENT_PLUGINS_UNCHECKED",
+              message: expect.stringContaining(
+                "Could not read the plugins in hot-updater.config.ts to check the app's client plugins:",
+              ),
+              resolution:
+                "Check that plugins in hot-updater.config.ts load, then rerun doctor.",
+              fixability: "blocked",
+            },
+          ],
         },
       },
     });
@@ -1553,5 +1702,200 @@ describe("doctor", () => {
         ["MISSING_FINGERPRINT_HASH", "MISSING_FINGERPRINT_HASH"],
       );
     }
+  });
+
+  /** A React Native project with both platforms wired to Hot Updater. */
+  const setUpNativeProject = async (
+    updateStrategy: "appVersion" | "fingerprint",
+  ) => {
+    const cwd = await createTempProject();
+    tempProjects.push(cwd);
+    mockGetCwd.mockReturnValue(cwd);
+    mockReadPackageUp.mockResolvedValue({
+      packageJson: {
+        dependencies: {
+          "hot-updater": "0.31.0",
+          "@hot-updater/react-native": "0.31.0",
+        },
+      },
+      path: path.join(cwd, "package.json"),
+    });
+    mockLoadConfig.mockResolvedValue(
+      createConfig({
+        updateStrategy,
+        platform: {
+          ios: { infoPlistPaths: ["ios/App/Info.plist"] },
+          android: {
+            androidManifestPaths: ["android/app/src/main/AndroidManifest.xml"],
+          },
+        },
+      }),
+    );
+    const fingerprint = updateStrategy === "fingerprint";
+    await writeInfoPlist(
+      cwd,
+      fingerprint
+        ? "<key>HOT_UPDATER_FINGERPRINT_HASH</key>\n<string>ios-fingerprint</string>"
+        : "",
+    );
+    await writeFile(
+      path.join(cwd, "ios/App/AppDelegate.swift"),
+      "import HotUpdater\nfunc bundleURL() -> URL? { HotUpdater.bundleURL() }\n",
+    );
+    await writeAndroidManifest(
+      cwd,
+      fingerprint
+        ? '    <meta-data android:name="com.hotupdater.FINGERPRINT_HASH" android:value="android-fingerprint" />'
+        : "",
+    );
+    await writeFile(
+      path.join(
+        cwd,
+        "android/app/src/main/java/com/example/MainApplication.kt",
+      ),
+      "import com.hotupdater.HotUpdater\nval bundle = HotUpdater.getJSBundleFile(applicationContext)\n",
+    );
+    if (fingerprint) {
+      await writeFile(
+        path.join(cwd, "fingerprint.json"),
+        JSON.stringify({
+          ios: { hash: "ios-fingerprint", sources: [] },
+          android: { hash: "android-fingerprint", sources: [] },
+        }),
+      );
+    }
+    return cwd;
+  };
+
+  const staleIos: NativeCheckIssue = {
+    type: "error",
+    platform: "ios",
+    code: "FINGERPRINT_JSON_STALE",
+    message: "The iOS fingerprint changed since fingerprint.json was created.",
+    resolution:
+      "Run `npx hot-updater fingerprint create`, then rebuild the iOS app.",
+    fixability: "command",
+    commands: ["npx hot-updater fingerprint create"],
+    paths: ["fingerprint.json"],
+    changes: { added: [], removed: [], changed: ["ios/App/AppDelegate.swift"] },
+  };
+
+  const fingerprintFix: DoctorFix = {
+    repair: "fingerprint",
+    codes: ["FINGERPRINT_JSON_STALE"],
+    status: "applied",
+    wrote: ["fingerprint.json", "ios/App/Info.plist"],
+    native: true,
+  };
+
+  it("shows each platform's app version in the native status", async () => {
+    await setUpNativeProject("appVersion");
+
+    await expect(doctor()).resolves.toMatchObject({
+      success: true,
+      details: {
+        native: {
+          ios: { appVersion: "1.2.3" },
+          android: { appVersion: "1.2.4" },
+        },
+      },
+    });
+  });
+
+  it("compares fingerprint.json with the project's fingerprint and reports what changed", async () => {
+    await setUpNativeProject("fingerprint");
+    mockCheckFingerprintJson.mockResolvedValueOnce([staleIos]);
+
+    const result = await doctor();
+
+    expect(mockCheckFingerprintJson).toHaveBeenCalledWith(
+      expect.objectContaining({
+        ios: expect.objectContaining({ hash: "ios-fingerprint" }),
+      }),
+      expect.any(Function),
+    );
+    expect(result).toMatchObject({
+      success: false,
+      details: { native: { issues: [staleIos] } },
+    });
+  });
+
+  it("prints the sources that changed under a stale fingerprint.json", async () => {
+    await setUpNativeProject("fingerprint");
+    mockCheckFingerprintJson.mockResolvedValueOnce([staleIos]);
+    const exitSpy = vi.spyOn(process, "exit").mockImplementation(((
+      code?: number,
+    ) => {
+      throw new Error(`process.exit:${code}`);
+    }) as never);
+
+    await handleDoctor({}).catch(() => {});
+
+    expect(p.log.info).toHaveBeenCalledWith(
+      expect.stringContaining("iOS Fingerprint Changes:"),
+    );
+    expect(p.log.info).toHaveBeenCalledWith(
+      expect.stringContaining("ios/App/AppDelegate.swift"),
+    );
+    expect(exitSpy).toHaveBeenCalledWith(1);
+    exitSpy.mockRestore();
+  });
+
+  it("runs --fix's repairs, checks again, and lists every file they wrote", async () => {
+    await setUpNativeProject("fingerprint");
+    mockCheckFingerprintJson
+      .mockResolvedValueOnce([staleIos])
+      .mockResolvedValueOnce([]);
+    mockApplyDoctorFixes.mockResolvedValueOnce([fingerprintFix]);
+
+    const result = await doctor({ fix: true });
+
+    expect(mockApplyDoctorFixes).toHaveBeenCalledWith(
+      [staleIos],
+      expect.objectContaining({ cwd: expect.any(String) }),
+    );
+    expect(mockCheckFingerprintJson).toHaveBeenCalledTimes(2);
+    expect(result).toMatchObject({
+      success: true,
+      details: { fixes: [fingerprintFix], native: { issues: [] } },
+    });
+  });
+
+  it("runs no repair in scoped verification, even when asked to fix", async () => {
+    const result = await doctor({
+      fix: true,
+      scope: "scaffold",
+      infraDir: "/missing/infra",
+    });
+
+    expect(mockApplyDoctorFixes).not.toHaveBeenCalled();
+    expect(result).toMatchObject({ details: { verification: {} } });
+    expect(result).not.toHaveProperty("details.fixes");
+  });
+
+  it("reports no fixes when --fix finds nothing to repair", async () => {
+    await setUpNativeProject("appVersion");
+
+    const result = await doctor({ fix: true });
+
+    expect(mockApplyDoctorFixes).toHaveBeenCalledWith([], expect.anything());
+    expect(result).toMatchObject({ success: true, details: { fixes: [] } });
+  });
+
+  it("ends by asking for a native rebuild when --fix wrote native files", async () => {
+    await setUpNativeProject("fingerprint");
+    mockCheckFingerprintJson
+      .mockResolvedValueOnce([staleIos])
+      .mockResolvedValueOnce([]);
+    mockApplyDoctorFixes.mockResolvedValueOnce([fingerprintFix]);
+
+    await handleDoctor({ fix: true });
+
+    expect(p.log.success).toHaveBeenCalledWith(
+      "Fixed: Recreate fingerprint.json and the native fingerprint hashes.",
+    );
+    expect(p.outro).toHaveBeenLastCalledWith(
+      "Rebuild the native app: doctor --fix changed its native files.",
+    );
   });
 });

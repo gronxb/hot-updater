@@ -2,7 +2,6 @@
 title: "Prisma"
 description: Build a self-hosted Hot Updater server with Prisma ORM.
 icon: prisma
-version: "v0.22.0"
 ---
 
 ## Before you start
@@ -11,6 +10,9 @@ Use this recipe in the server project from the [custom-server quick start](/docs
 or your existing backend. Make the database and storage environment variables
 available to the server and schema commands. The React Native project's deploy
 configuration is a separate step.
+
+`prismaAdapter` supports PostgreSQL, MySQL 8.0.17 or later, and SQLite.
+CockroachDB and SQL Server are not supported.
 
 ## Installation
 
@@ -21,18 +23,19 @@ npm install @hot-updater/server @hot-updater/aws @prisma/client@6.19.3
 ```
 
 ```package-install
-npm install --save-dev hot-updater prisma@6.19.3
+npm install --save-dev hot-updater prisma@6.19.3 dotenv
 ```
 
 Initialize Prisma:
 
 ```bash
-npx prisma@6.19.3 init --datasource-provider sqlite --generator-provider prisma-client-js
+npx prisma@6.19.3 init --datasource-provider sqlite --generator-provider prisma-client-js --output ../src/generated/prisma
 npx prisma generate
 ```
 
-Generate the initial client before creating `src/prisma.ts`; the Hot Updater
-schema command loads that module while preparing the managed models.
+The explicit output generates the client in `src/generated/prisma`. Generate
+it before creating `src/prisma.ts`; the Hot Updater schema command loads that
+module while preparing the managed models.
 
 For other databases, see [Prisma's database documentation](https://www.prisma.io/docs/orm/overview/databases).
 
@@ -41,7 +44,7 @@ For other databases, see [Prisma's database documentation](https://www.prisma.io
 Create a database connection file:
 
 ```typescript title="src/prisma.ts"
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient } from "./generated/prisma";
 
 export const prisma = new PrismaClient();
 ```
@@ -53,12 +56,14 @@ Create the Hot Updater instance:
 ```typescript title="src/hotUpdater.ts"
 import { createHotUpdater } from "@hot-updater/server";
 import { prismaAdapter } from "@hot-updater/server/adapters/prisma"; // [!code ++]
+import { apiKeys } from "@hot-updater/server/plugins/api-keys";
+import { insights } from "@hot-updater/server/plugins/insights";
 import { s3Storage } from "@hot-updater/aws";
 import { prisma } from "./prisma";
 
 export const hotUpdater = createHotUpdater({
   database: prismaAdapter({ prisma, provider: "sqlite" }), // [!code ++]
-  clientAccess: { type: "api-key" },
+  plugins: [insights(), apiKeys()],
   storage: [
     s3Storage({
       region: "auto",
@@ -74,6 +79,13 @@ export const hotUpdater = createHotUpdater({
 });
 ```
 
+`prismaAdapter({ prisma, provider })` takes only these two options. It returns
+an engine database with the schema generator and migrator that
+`hot-updater db` runs. `provider` is `"postgresql"`, `"mysql"` or `"sqlite"`
+and must match the Prisma datasource. The adapter runs Hot Updater's shared SQL core through Prisma's raw
+queries and interactive transactions. `insights()` records app events, and
+`apiKeys()` protects the client routes with the `x-api-key` header.
+
 ## Schema generation
 
 Generate the Prisma schema for Hot Updater tables.
@@ -83,36 +95,47 @@ npx hot-updater db generate src/hotUpdater.ts --yes
 ```
 
 This command creates `prisma/schema.prisma` when it is missing or merges the
-Hot Updater models into the existing schema. Keep the generated models instead
-of replacing them with a handwritten schema.
+Hot Updater models into the existing schema, between the
+`BEGIN HOT-UPDATER MODELS` and `END HOT-UPDATER MODELS` comments. The models
+cover core's tables and those of the server's [plugins](/docs/custom/server-plugins#create-the-plugins-tables). The models
+have keys and named indexes and no relations. Fields whose column starts with
+an underscore get a `hu` prefix and map back to the column, such as `hu_v` to
+`_v`. On MySQL, ASCII key columns are `VarBinary`, which keeps every key within
+InnoDB's limit. Keep the generated models instead of replacing them with a
+handwritten schema.
 
 <Callout>
-  Need to generate SQL without config? See [SQL
+  Need plain SQL to apply yourself? See [SQL
   Export](/docs/custom/database/sql-export) for standalone SQL generation with
   the `--sql` flag.
 </Callout>
 
-Regenerate Prisma Client and apply the merged schema:
+Regenerate Prisma Client, apply the merged schema, then finish the migration:
 
 ```bash
 npx prisma generate
 npx prisma db push
+npx hot-updater db migrate src/hotUpdater.ts --yes
 ```
 
-## Query semantics
+Prisma creates the tables, or `prisma migrate` does when you use migrations.
+`db migrate` then sets the collations Prisma cannot declare on PostgreSQL and
+MySQL, so strings compare by their bytes, and writes the settings rows. It
+asks you to apply the tables first when they are missing, and it refuses a
+database created by an older Hot Updater schema instead of converting it.
 
-Prisma uses backend collations and pattern engines for string filters. The
-adapter therefore rejects explicit insensitive comparisons and pattern values
-containing backend metacharacters before querying Prisma. Explicit sensitive
-mode is available only for PostgreSQL, CockroachDB, and MongoDB; other
-providers reject it instead of silently using their default collation.
+The server checks the settings rows before its first read or write. Until
+they exist, it throws `HotUpdaterSchemaMigrationRequiredError` and its
+handlers answer 503. A running server checks again on its next request. Run
+the same steps again after upgrading Hot Updater.
 
 ## CLI configuration
 
 After the schema is applied, [create the client API key](/docs/custom/api-key-authentication#bootstrap-a-self-hosted-client)
 using this same direct server configuration. Then
 [connect the React Native project's CLI](/docs/custom/cli-configuration) to the
-protected admin mount. Its storage configuration must match a server entry.
+protected admin mount. Its storage configuration must match a server entry,
+and its `plugins` must list the server's plugins.
 
 ## API endpoints
 
@@ -120,7 +143,7 @@ The adapter persists data; your framework mounts the HTTP handlers. Continue
 with the [Hono](/docs/custom/frameworks/hono), [Express](/docs/custom/frameworks/express)
 or [Elysia](/docs/custom/frameworks/elysia) recipe. See the
 [handler boundaries](/docs/custom/overview#runtime-policy) and
-[repository contract](/docs/database-plugins/standalone#server-contract) for
+[repository contract](/docs/database-adapters/standalone#server-contract) for
 client and admin access.
 
 Finish with [Set up your app](/docs/get-started/app-setup) and

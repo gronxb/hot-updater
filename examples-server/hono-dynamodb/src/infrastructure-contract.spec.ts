@@ -18,9 +18,10 @@ describe("standalone-dynamodb local infrastructure contract", () => {
 
     expect(dockerCompose).toContain("amazon/dynamodb-local:");
     expect(dockerCompose).toContain(
-      "image: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z",
+      "image: pgsty/silo:RELEASE.2026-09-16T00-00-00Z",
     );
-    expect(dockerCompose).not.toMatch(/image:\s+minio\/minio/);
+    // Neither Docker Hub nor Quay serves MinIO images any more.
+    expect(dockerCompose).not.toContain("minio/minio");
     expect(dockerCompose).not.toContain("localstack");
     expect(dockerCompose).not.toContain("amazonaws.com");
   });
@@ -31,12 +32,15 @@ describe("standalone-dynamodb local infrastructure contract", () => {
     expect(dbSource).toContain("export const database = dynamoDB({");
     expect(dbSource).toContain("s3Storage({");
     expect(dbSource).toMatch(
-      /createHotUpdater\(\{\n  database,\n  clientAccess: \{ type: "api-key" \},/,
+      /createHotUpdater\(\{\n  database,\n  plugins,\n/,
     );
+    expect(dbSource).toContain(
+      'import { dynamoDB, migrateDynamoDB, plugins, s3Storage } from "@hot-updater/aws";',
+    );
+    expect(dbSource).not.toContain("clientAccess");
     expect(dbSource).not.toContain("insights:");
     expect(dbSource).not.toContain("features:");
     expect(dbSource).not.toContain("routes:");
-    expect(dbSource).not.toContain("plugins:");
     expect(dbSource).toContain(
       'endpoint: process.env.AWS_DYNAMODB_ENDPOINT ?? "http://localhost:8000"',
     );

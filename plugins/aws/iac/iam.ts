@@ -3,19 +3,25 @@ import { createHash } from "node:crypto";
 import { IAM } from "@aws-sdk/client-iam";
 import { STS } from "@aws-sdk/client-sts";
 import { p } from "@hot-updater/cli-tools";
-
 import {
-  DYNAMODB_INSIGHTS_PARTITION,
-  DYNAMODB_INSIGHTS_INSTALLATIONS_PARTITION,
-  DYNAMODB_INSIGHTS_EVENT_IDS_PARTITION,
-  DYNAMODB_INSIGHTS_BUNDLE_PREFIX,
-  DYNAMODB_CHANNEL_NAME_PARTITION,
-  DYNAMODB_CHANNEL_PARTITION,
-  DYNAMODB_API_KEY_HASH_PARTITION,
-  DYNAMODB_API_KEY_PARTITION,
-  DYNAMODB_RELEASE_ID_PARTITION,
-  DYNAMODB_UPDATE_INDEX_NAME,
-} from "../src/dynamoDB";
+  aggregateBatchingTables,
+  SETTINGS_TABLE,
+  toolingTargetOf,
+} from "@hot-updater/plugin-core";
+
+import { plugins } from "../src/plugins";
+
+/**
+ * The partitions the managed server's items use: each table's rows of core
+ * and its plugins, and its index items after `#`, the log and lease tables
+ * of batched aggregates and the settings rows included.
+ */
+export const dynamoDBLeadingKeys = (): string[] =>
+  [
+    ...toolingTargetOf(plugins).schema.tables,
+    ...aggregateBatchingTables,
+    SETTINGS_TABLE,
+  ].flatMap(({ name }) => [name, `${name}#*`]);
 
 export const buildDynamoDBPolicy = (
   region: string,
@@ -27,13 +33,13 @@ export const buildDynamoDBPolicy = (
     Version: "2012-10-17",
     Statement: [
       {
-        Action: ["dynamodb:Query"],
-        Effect: "Allow",
-        Resource: [`${tableArn}/index/${DYNAMODB_UPDATE_INDEX_NAME}`],
-      },
-      {
+        // The key-value store reads with BatchGetItem and Query, writes with
+        // TransactWriteItems, and deletes consumed aggregate log rows with
+        // BatchWriteItem.
         Action: [
           "dynamodb:BatchGetItem",
+          "dynamodb:BatchWriteItem",
+          "dynamodb:ConditionCheckItem",
           "dynamodb:DeleteItem",
           "dynamodb:GetItem",
           "dynamodb:PutItem",
@@ -43,24 +49,7 @@ export const buildDynamoDBPolicy = (
         ],
         Condition: {
           "ForAllValues:StringLike": {
-            "dynamodb:LeadingKeys": [
-              "_hot-updater",
-              "bundles",
-              "bundle_patches",
-              "release-scope#*",
-              "release_catalogs",
-              DYNAMODB_RELEASE_ID_PARTITION,
-              DYNAMODB_CHANNEL_PARTITION,
-              DYNAMODB_CHANNEL_NAME_PARTITION,
-              DYNAMODB_INSIGHTS_PARTITION,
-              DYNAMODB_INSIGHTS_INSTALLATIONS_PARTITION,
-              DYNAMODB_INSIGHTS_EVENT_IDS_PARTITION,
-              `${DYNAMODB_INSIGHTS_BUNDLE_PREFIX}*`,
-              "_hot-updater#insights-user#*",
-              "_hot-updater#insights-scope#*",
-              DYNAMODB_API_KEY_PARTITION,
-              DYNAMODB_API_KEY_HASH_PARTITION,
-            ],
+            "dynamodb:LeadingKeys": dynamoDBLeadingKeys(),
           },
         },
         Effect: "Allow",

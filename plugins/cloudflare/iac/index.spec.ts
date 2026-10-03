@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => {
   const api = {
@@ -71,11 +71,16 @@ const mocks = vi.hoisted(() => {
     log: {
       error: vi.fn(),
       info: vi.fn(),
+      message: vi.fn(),
+      success: vi.fn(),
       warn: vi.fn(),
     },
     makeEnv: vi.fn(),
+    printAppSetup: vi.fn(),
+    provisionClientCredential: vi.fn(),
     readHotUpdaterInitEnv: vi.fn(),
     select: vi.fn(),
+    writeHotUpdaterFiles: vi.fn(),
   };
 });
 
@@ -83,13 +88,14 @@ vi.mock("execa", () => ({
   execa: mocks.execa,
 }));
 
-vi.mock("cloudflare", () => ({
-  Cloudflare: vi.fn(function Cloudflare(options) {
+vi.mock("cloudflare", () => {
+  const Cloudflare = vi.fn(function Cloudflare(options) {
     return options.apiToken === "wrangler-oauth-token"
       ? mocks.api
       : mocks.credentialApi;
-  }),
-}));
+  });
+  return { Cloudflare, default: Cloudflare };
+});
 
 vi.mock("@hot-updater/cli-tools", async (importOriginal) => {
   const actual =
@@ -98,7 +104,11 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => {
   return {
     ...actual,
     confirmInitInputPersistence: mocks.confirmInitInputPersistence,
+    // The managed server's plugins, over the D1 database init set up.
+    provisionClientCredential: mocks.provisionClientCredential,
+    writeHotUpdaterFiles: mocks.writeHotUpdaterFiles,
     makeEnv: mocks.makeEnv,
+    printAppSetup: mocks.printAppSetup,
     p: {
       ...actual.p,
       confirm: mocks.confirm,
@@ -126,10 +136,15 @@ vi.mock("../src/utils/createWrangler", () => ({
   createWrangler: mocks.createWrangler,
 }));
 
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+
 import {
   CloudflareAuthenticationError,
   CloudflareDeploymentError,
 } from "./cloudflareInitErrors";
+import { getConfigScaffold } from "./configTemplate";
 import { runInit } from "./index";
 
 const bareBuild = {
@@ -138,8 +153,17 @@ const bareBuild = {
 };
 
 describe("Cloudflare init discovery", () => {
-  beforeEach(() => {
+  /** Init's working directory, where it stages the Worker it deploys. */
+  let project: string;
+
+  beforeEach(async () => {
     vi.clearAllMocks();
+    project = await fs.mkdtemp(path.join(os.tmpdir(), "hot-updater-cf-"));
+    await fs.writeFile(
+      path.join(project, "package.json"),
+      JSON.stringify({ name: "app" }),
+    );
+    vi.spyOn(process, "cwd").mockReturnValue(project);
     mocks.getWranglerLoginAuthToken.mockReturnValue({
       expiration_time: "2999-01-01T00:00:00.000Z",
       oauth_token: "wrangler-oauth-token",
@@ -190,6 +214,11 @@ describe("Cloudflare init discovery", () => {
       subdomain: "example",
     });
     mocks.createWrangler.mockResolvedValue(vi.fn());
+  });
+
+  afterEach(async () => {
+    vi.restoreAllMocks();
+    await fs.rm(project, { recursive: true, force: true });
   });
 
   it("does not start Wrangler login during env-file replay", async () => {
@@ -563,5 +592,125 @@ describe("Cloudflare init discovery", () => {
     expect(mocks.credentialApi.r2.buckets.list).not.toHaveBeenCalled();
     expect(mocks.select).not.toHaveBeenCalled();
     expect(mocks.confirm).not.toHaveBeenCalled();
+  });
+
+  it("deploys the prebuilt Worker, then gives the app its credential through the package's plugins", async () => {
+    // Given
+    mocks.api.d1.database.list.mockResolvedValue({
+      result: [{ name: "ota", uuid: "database-id" }],
+    });
+    const commands: string[][] = [];
+    const deployed: {
+      config?: Record<string, unknown>;
+      migrations?: Record<string, string>;
+    } = {};
+    const secret = Object.assign(Promise.resolve({}), {
+      stdin: { end: vi.fn() },
+    });
+    mocks.createWrangler.mockImplementation(({ cwd: workerRoot, stdio }) =>
+      stdio === "pipe"
+        ? (...args: string[]) => {
+            commands.push(args);
+            return secret;
+          }
+        : async (...args: string[]) => {
+            commands.push(args);
+            if (args[0] === "deploy") {
+              const migrations = path.join(workerRoot, "migrations");
+              deployed.config = JSON.parse(
+                await fs.readFile(
+                  path.join(workerRoot, "wrangler.json"),
+                  "utf-8",
+                ),
+              );
+              deployed.migrations = Object.fromEntries(
+                await Promise.all(
+                  (await fs.readdir(migrations)).map(async (file) => [
+                    file,
+                    await fs.readFile(path.join(migrations, file), "utf-8"),
+                  ]),
+                ),
+              );
+            }
+            return {};
+          },
+    );
+    const credential = {
+      env: "HOT_UPDATER_API_KEY",
+      header: "x-api-key",
+      label: "API key",
+      value: "app-api-key",
+    };
+    mocks.provisionClientCredential.mockResolvedValue(credential);
+
+    // When
+    await runInit({
+      build: {
+        imports: [{ pkg: "@hot-updater/bare", named: ["bare"] }],
+        configString: "bare({ enableHermes: true })",
+      },
+    });
+
+    // Then
+    expect(commands).toEqual([
+      ["d1", "migrations", "apply", "ota", "--remote"],
+      ["deploy", "--name", "hot-updater"],
+      [
+        "secret",
+        "put",
+        "STORAGE_DOWNLOAD_URL_SIGNING_KEY",
+        "--name",
+        "hot-updater",
+      ],
+    ]);
+    // The prebuilt Worker on the resources init chose, and the package's
+    // migration, which creates the tables of core and the Worker's plugins.
+    expect(deployed.config).toMatchObject({
+      main: "./dist/index.js",
+      d1_databases: [
+        { binding: "DB", database_id: "database-id", database_name: "ota" },
+      ],
+      r2_buckets: [{ binding: "BUCKET", bucket_name: "bundles" }],
+      vars: { BUCKET_NAME: "bundles" },
+    });
+    expect(Object.keys(deployed.migrations ?? {})).toEqual([
+      "0001_hot-updater_1.0.0.sql",
+    ]);
+    expect(deployed.migrations?.["0001_hot-updater_1.0.0.sql"]).toContain(
+      "'schema.apiKeys'",
+    );
+    // The app's credential, through the package's plugins on that database.
+    expect(mocks.provisionClientCredential).toHaveBeenCalledOnce();
+    const [server, input] = mocks.provisionClientCredential.mock.calls[0] as [
+      {
+        readonly database: { readonly name: string };
+        readonly plugins: readonly { readonly id: string }[];
+      },
+      unknown,
+    ];
+    expect(server.database.name).toBe("d1Database");
+    expect(server.plugins.map(({ id }) => id)).toEqual(["insights", "apiKeys"]);
+    expect(input).toEqual({ env: {}, name: "Cloudflare init" });
+    expect(mocks.makeEnv).toHaveBeenLastCalledWith({
+      HOT_UPDATER_API_KEY: "app-api-key",
+    });
+    expect(mocks.writeHotUpdaterFiles).toHaveBeenCalledWith(
+      getConfigScaffold({
+        imports: [{ pkg: "@hot-updater/bare", named: ["bare"] }],
+        configString: "bare({ enableHermes: true })",
+      }),
+      { cwd: project, settings: "Cloudflare" },
+    );
+    expect(mocks.printAppSetup).toHaveBeenCalledWith({
+      baseURL: "https://hot-updater.example.workers.dev",
+      credential,
+      clientPlugins: [
+        { module: "@hot-updater/react-native", name: "insights" },
+      ],
+    });
+    // The staged Worker is gone.
+    await expect(
+      fs.access(path.join(project, ".hot-updater")),
+    ).rejects.toThrow();
   });
 });

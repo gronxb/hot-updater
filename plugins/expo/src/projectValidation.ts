@@ -1,3 +1,4 @@
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 
@@ -66,3 +67,18 @@ export const validateExpoProject = ({
     "Configure the @hot-updater/expo plugin in app.json or app.config, then run `npx expo prebuild`.",
   );
 };
+
+/** Preserve files owned by Expo prebuild unless the app checks its native tree into Git. */
+export const getExpoNativeFileRepairBlockReason = (
+  cwd: string,
+): string | undefined =>
+  usesContinuousNativeGeneration(cwd) &&
+  !["ios", "android"].some(
+    (file) =>
+      spawnSync("git", ["ls-files", "--error-unmatch", "--", file], {
+        cwd,
+        stdio: "ignore",
+      }).status === 0,
+  )
+    ? "This Expo project generates its native files with `expo prebuild`, which would overwrite the repair."
+    : undefined;

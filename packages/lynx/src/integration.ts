@@ -14,6 +14,7 @@ export const initIntegration = {
   dependencies: ["@hot-updater/lynx"],
   devDependencies: ["dotenv"],
   build: {
+    clientModule: "@hot-updater/lynx",
     imports: [
       { pkg: "@hot-updater/lynx/build", named: ["lynx"] },
       { pkg: `./${BUILD_MODULE}`, named: ["createLynxBuild"] },

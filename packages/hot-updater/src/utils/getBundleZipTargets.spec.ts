@@ -122,17 +122,14 @@ describe("getBundleZipTargets", () => {
       patchAssetPath: "runtime/main.opaque",
       targetFiles: snapshot.artifacts,
     });
-    const manifestPath = await writeBundleManifestFile({
+    await writeBundleManifestFile({
       buildPath: snapshot.path,
       manifest,
     });
     const archivePath = path.join(directory, "bundle.tar.br");
     await createTarBrTargetFiles({
       outfile: archivePath,
-      targetFiles: [
-        ...snapshot.artifacts,
-        { path: manifestPath, name: "manifest.json" },
-      ],
+      targetFiles: snapshot.artifacts,
     });
 
     expect(manifest.assets["runtime/main.opaque"]?.fileHash).toBe(

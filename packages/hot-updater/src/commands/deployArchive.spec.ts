@@ -5,12 +5,16 @@ import os from "os";
 import path from "path";
 import { brotliDecompressSync } from "zlib";
 
-import type { BuildPlugin, StoragePluginWith } from "@hot-updater/plugin-core";
+import type {
+  BuildAdapter,
+  StorageAdapterWith,
+} from "@hot-updater/plugin-core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Manifest } from "../utils/bundleManifest";
 import * as fileHash from "../utils/getFileHash";
-import { createDatabasePluginHarness } from "./databasePlugin.testFixtures";
+import { testServer } from "../utils/testServer";
+import { createDatabaseHarness } from "./database.testFixtures";
 import { deploy } from "./deploy";
 
 const { getCwd, loadConfig } = vi.hoisted(() => ({
@@ -25,6 +29,16 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => {
     ...actual,
     getCwd,
     loadConfig,
+    loadPlatformConfigs: async (
+      platforms: readonly string[],
+      { channel }: { channel: string },
+    ) =>
+      Promise.all(
+        platforms.map(async (platform) => ({
+          platform,
+          config: await loadConfig({ channel, platform }),
+        })),
+      ),
     p: {
       ...actual.p,
       isCancel: () => false,
@@ -44,6 +58,7 @@ vi.mock("@/utils/git", () => ({
   appendToProjectRootGitignore: () => false,
   getLatestGitCommit: async () => null,
 }));
+vi.mock("@/utils/createBundleDiff", () => import("../utils/createBundleDiff"));
 vi.mock("@/utils/bundleManifest", () => import("../utils/bundleManifest"));
 vi.mock(
   "@/utils/getBundleZipTargets",
@@ -67,19 +82,21 @@ vi.mock("@/utils/signing/validateSigningConfig", () => ({
   validateSigningConfig: async () => ({ issues: [] }),
 }));
 
+vi.mock("@/utils/loadServer", async () => ({
+  ...(await vi.importActual<typeof import("../utils/loadServer")>(
+    "../utils/loadServer",
+  )),
+  loadServer: async (config: {
+    database: Parameters<typeof testServer>[0]["database"];
+    storage: Parameters<typeof testServer>[0]["storage"];
+  }) => testServer(config),
+}));
+
 // Inspect real CLI archives using its existing ZIP/TAR dependencies. This fixture
 // exercises packaging opaque bytes; it is not native compiler or device evidence.
 const cliRequire = createRequire(
   import.meta.resolve("@hot-updater/cli-tools/package.json"),
 );
-const JSZip = cliRequire("jszip") as {
-  loadAsync(bytes: Buffer): Promise<{
-    files: Record<
-      string,
-      { dir: boolean; async(type: "nodebuffer"): Promise<Buffer> }
-    >;
-  }>;
-};
 const tar = cliRequire("tar") as {
   extract(options: { file: string; cwd: string; gzip: boolean }): Promise<void>;
 };
@@ -95,9 +112,9 @@ const options = {
 };
 
 describe("deploy archive artifact declarations", () => {
-  const database = createDatabasePluginHarness();
+  const database = createDatabaseHarness();
   const uploads = new Map<string, Buffer>();
-  const storage: StoragePluginWith<"put" | "get" | "exists" | "delete"> = {
+  const storage: StorageAdapterWith<"put" | "get" | "exists" | "delete"> = {
     name: "archive-test-storage",
     protocol: "s3",
     put: vi.fn(async ({ key, body }) => {
@@ -110,7 +127,7 @@ describe("deploy archive artifact declarations", () => {
   };
   let directory: string;
   let buildPath: string;
-  let build: BuildPlugin;
+  let build: BuildAdapter;
 
   beforeEach(async () => {
     vi.clearAllMocks();
@@ -148,8 +165,7 @@ describe("deploy archive artifact declarations", () => {
     };
     loadConfig.mockImplementation(async () => ({
       build: async () => build,
-      compressStrategy: "zip",
-      database: database.plugin,
+      database: database.database,
       fingerprint: {},
       patch: { enabled: false },
       storage,
@@ -178,19 +194,6 @@ describe("deploy archive artifact declarations", () => {
       key.endsWith(`/bundle.${extension}`),
     )?.[1];
     expect(uploaded).toBeDefined();
-    if (extension === "zip") {
-      const archive = await JSZip.loadAsync(uploaded!);
-      return Object.fromEntries(
-        await Promise.all(
-          Object.entries(archive.files)
-            .filter(([, file]) => !file.dir)
-            .map(async ([name, file]) => [
-              name,
-              await file.async("nodebuffer"),
-            ]),
-        ),
-      );
-    }
     const archivePath = path.join(directory, "download.tar");
     await fs.writeFile(
       archivePath,
@@ -212,62 +215,48 @@ describe("deploy archive artifact declarations", () => {
     return result;
   };
 
-  it.each(["zip", "tar.gz", "tar.br"])(
-    "uploads a %s archive with all opaque bytes and manifest hashes intact",
-    async (compressStrategy) => {
-      const files = Object.fromEntries(
-        [
-          "entry.bundle",
-          "entry.bundle.hbc",
-          "entry.bundle.map",
-          "async/bootstrap.bundle",
-          "assets/runtime.map",
-          "assets/image.png",
-          "hot-updater-lynx.json",
-        ].map((name, index) => [
-          name,
-          Buffer.from([0, 255, index, ...Buffer.from(name)]),
-        ]),
-      );
-      await writeFiles(files);
-      const config = await loadConfig();
-      loadConfig.mockResolvedValue({ ...config, compressStrategy });
+  it("uploads a manifest-authenticated tar.br containing all declared opaque bytes", async () => {
+    const files = Object.fromEntries(
+      [
+        "entry.bundle",
+        "entry.bundle.hbc",
+        "entry.bundle.map",
+        "async/bootstrap.bundle",
+        "assets/runtime.map",
+        "assets/image.png",
+        "hot-updater-lynx.json",
+      ].map((name, index) => [
+        name,
+        Buffer.from([0, 255, index, ...Buffer.from(name)]),
+      ]),
+    );
+    await writeFiles(files);
 
-      await deploy(options);
+    await deploy(options);
 
-      const archive = await readArchive(compressStrategy);
-      expect(Object.keys(archive).sort()).toEqual(
-        [...Object.keys(files), "manifest.json"].sort(),
-      );
-      const manifest = JSON.parse(
-        archive["manifest.json"]!.toString(),
-      ) as Manifest;
-      expect(manifest.bundleId).toBe(bundleId);
-      expect(Object.keys(manifest.assets).sort()).toEqual(
-        Object.keys(files).sort(),
-      );
-      for (const [name, bytes] of Object.entries(files)) {
-        expect(archive[name]).toEqual(bytes);
-        expect(manifest.assets[name]?.fileHash).toBe(sha256(bytes));
-        expect(await fs.readFile(path.join(buildPath, name))).toEqual(bytes);
-      }
-      expect(
-        [...uploads].find(([key]) => key.endsWith("/manifest.json"))?.[1],
-      ).toEqual(archive["manifest.json"]);
-      const stored = (await database.bundles())[0]!;
-      expect(stored.manifestFileHash).toBe(sha256(archive["manifest.json"]!));
-      expect(stored.metadata?.manifest_content_hash).toBe(
-        sha256(archive["manifest.json"]!),
-      );
-      expect(stored.fileHash).toBe(
-        sha256(
-          [...uploads].find(([key]) =>
-            key.endsWith(`/bundle.${compressStrategy}`),
-          )![1],
-        ),
-      );
-    },
-  );
+    const archive = await readArchive("tar.br");
+    expect(Object.keys(archive).sort()).toEqual(Object.keys(files).sort());
+    const manifestBytes = [...uploads].find(([key]) =>
+      key.endsWith("/manifest.json"),
+    )![1];
+    const manifest = JSON.parse(manifestBytes.toString()) as Manifest;
+    expect(manifest.bundleId).toBe(bundleId);
+    expect(Object.keys(manifest.assets).sort()).toEqual(
+      Object.keys(files).sort(),
+    );
+    for (const [name, bytes] of Object.entries(files)) {
+      expect(archive[name]).toEqual(bytes);
+      expect(manifest.assets[name]?.fileHash).toBe(sha256(bytes));
+      expect(await fs.readFile(path.join(buildPath, name))).toEqual(bytes);
+    }
+    expect(archive).not.toHaveProperty("manifest.json");
+    const stored = (await database.bundles())[0]!;
+    expect(stored.manifestFileHash).toBe(sha256(manifestBytes));
+    expect(stored.metadata?.manifest_content_hash).toBe(sha256(manifestBytes));
+    expect(manifest.archive?.downloadFileHash).toBe(
+      sha256([...uploads].find(([key]) => key.endsWith("/bundle.tar.br"))![1]),
+    );
+  });
 
   it("honors RN-owned Hermes selection declarations", async () => {
     const files = {
@@ -290,11 +279,8 @@ describe("deploy archive artifact declarations", () => {
       stdout: null,
     });
     await deploy(options);
-    const archive = await readArchive("zip");
-    expect(Object.keys(archive).sort()).toEqual([
-      "index.bundle",
-      "manifest.json",
-    ]);
+    const archive = await readArchive("tar.br");
+    expect(Object.keys(archive)).toEqual(["index.bundle"]);
     expect(archive["index.bundle"]).toEqual(files["index.bundle.hbc"]);
   });
 
@@ -305,12 +291,12 @@ describe("deploy archive artifact declarations", () => {
     await deploy(options);
     const archivePath = path.join(
       directory,
-      ".hot-updater/output/bundle/bundle.zip",
+      ".hot-updater/output/bundle.tar.br",
     );
     const previousArchive = await fs.readFile(archivePath);
     uploads.clear();
     vi.mocked(storage.put).mockClear();
-    database.commit.mockClear();
+    database.deploy.mockClear();
     build.build = async () => {
       throw new Error("Compiler failed");
     };
@@ -319,7 +305,7 @@ describe("deploy archive artifact declarations", () => {
 
     expect(await fs.readFile(archivePath)).toEqual(previousArchive);
     expect(storage.put).not.toHaveBeenCalled();
-    expect(database.commit).not.toHaveBeenCalled();
+    expect(database.deploy).not.toHaveBeenCalled();
     expect(console.error).toHaveBeenCalledWith(
       expect.objectContaining({ message: "Compiler failed" }),
     );
@@ -329,7 +315,7 @@ describe("deploy archive artifact declarations", () => {
     await writeFiles({
       "entry.bundle": Buffer.from("snapshot cleanup"),
     });
-    database.commit.mockRejectedValueOnce(new Error("commit failed"));
+    database.deploy.mockRejectedValueOnce(new Error("commit failed"));
 
     await expect(deploy(options)).rejects.toThrow("commit failed");
 
@@ -363,7 +349,7 @@ describe("deploy archive artifact declarations", () => {
       );
       expect(hash).not.toHaveBeenCalled();
       expect(storage.put).not.toHaveBeenCalled();
-      expect(database.commit).not.toHaveBeenCalled();
+      expect(database.deploy).not.toHaveBeenCalled();
       if (kind === "file" || kind === "case-alias")
         expect(await fs.readFile(reserved, "utf8")).toBe("compiler manifest");
     },

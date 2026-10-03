@@ -8,6 +8,7 @@ export const initIntegration = {
   dependencies: ["@hot-updater/react-native"],
   devDependencies: ["dotenv"],
   build: {
+    clientModule: "@hot-updater/react-native",
     imports: [{ pkg: "@hot-updater/rock", named: ["rock"] }],
     configString: "rock()",
   },

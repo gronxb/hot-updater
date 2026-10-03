@@ -21,7 +21,7 @@ npx hot-updater infra scaffold --provider aws
 npx hot-updater infra scaffold --provider firebase
 ```
 
-Only `--provider` is required. No React Native app, build plugin, credentials,
+Only `--provider` is required. No React Native app, build adapter, credentials,
 provider package installation or AI agent is needed to extract the files. The
 command does not authenticate, create resources or deploy.
 
@@ -106,9 +106,10 @@ npx hot-updater doctor --scope infrastructure --infra-dir ./server --json \
 
 Replace the example directory, URL, platform, channel and compatibility target
 with your actual values. Use `--fingerprint <fingerprint>` instead of
-`--app-version` for fingerprint updates. Provide the client key privately through
-`HOT_UPDATER_API_KEY` or `.env.hotupdater` in the command's working directory;
-never put it in command arguments.
+`--app-version` for fingerprint updates. Provide the client credential that the
+manifest's `clientAuth` names privately, through its variable
+(`HOT_UPDATER_API_KEY` for the managed servers' `apiKeys()`) or `.env.hotupdater`
+in the command's working directory; never put it in command arguments.
 
 Require exit code 0 and `success: true` for the requested
 `details.verification.scope`. Read `checks` for failures and `notChecked` for
@@ -121,5 +122,5 @@ contract. Passing these scopes does not certify a native OTA update.
 
 [`hot-updater agent infra setup` and `upgrade`](/docs/guides/agent-infrastructure)
 reuse this extractor. They add provider instructions, app config templates for
-the selected build plugin, client-key and server verification helpers, and a deployment record for
+the selected build adapter, client-key and server verification helpers, and a deployment record for
 resuming work. The server deployment files are shared across all three commands.

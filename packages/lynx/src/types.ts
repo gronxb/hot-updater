@@ -1,7 +1,9 @@
 import type {
+  ArtifactInfo,
+  ArtifactAsset,
   PersistedSelectionReceipt,
   ReleaseCatalog,
-} from "@hot-updater/core";
+} from "@hot-updater/protocol";
 
 export interface HotUpdaterOptions {
   baseURL: string;
@@ -146,8 +148,9 @@ export interface CheckForUpdateResult {
   readonly targetCohorts: string[];
   readonly releaseId: string | null;
   readonly transitionKind: ReleaseTransitionKind;
-  readonly fileUrl: string | null;
-  readonly fileHash: string | null;
+  readonly archiveUrl: string | null;
+  readonly manifestUrl: string | null;
+  readonly manifestFileHash: string | null;
   /**
    * Downloads, verifies, and publishes the selected update. Equivalent to RN
    * `update.updateBundle()`. Never changes this process's bytes.
@@ -197,45 +200,10 @@ export interface AcceptCatalogParams {
   targetChannel: string;
 }
 
-export interface UpdateChangedAsset {
-  fileHash: string;
-  file: {
-    url: string;
-    compression: "br" | null;
-  } | null;
-  patch: {
-    algorithm: "bsdiff";
-    baseBundleId: string;
-    baseFileHash: string;
-    patchFileHash: string;
-    patchUrl: string;
-  } | null;
-}
+export type UpdateAsset = ArtifactAsset;
 
-type ArchiveDelivery = { fileUrl: string; fileHash: string };
-
-type NoArchiveDelivery = { fileUrl: null; fileHash: null };
-
-type ManifestDelivery = {
-  manifestUrl: string;
-  manifestFileHash: string;
-  changedAssets: Record<string, UpdateChangedAsset>;
-};
-
-type NoManifestDelivery = {
-  manifestUrl: null;
-  /** An archive may still authenticate its contained target manifest. */
-  manifestFileHash: string | null;
-  changedAssets: null;
-};
-
-/** Network descriptors only. Native selects and verifies the running patch base. */
-export type UpdateArtifact = {
-  bundleId: string;
-} & (
-  | (ArchiveDelivery & (ManifestDelivery | NoManifestDelivery))
-  | (NoArchiveDelivery & ManifestDelivery)
-);
+/** Native verifies the complete manifest and chooses transport from authenticated costs. */
+export type UpdateArtifact = ArtifactInfo & { bundleId: string };
 
 export interface PrepareSelectionParams {
   guard: SelectionGuard;

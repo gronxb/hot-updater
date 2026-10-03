@@ -4,13 +4,20 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 import {
+  assembleServer,
+  clientAuthOf,
   renderImportStatements,
   resolvePackageVersion,
   transformEnv,
 } from "@hot-updater/cli-tools";
+import { createMemoryAdapter } from "@hot-updater/plugin-core";
 import { HOT_UPDATER_INFRASTRUCTURE_GENERATION } from "@hot-updater/server";
 import { build as buildHelper } from "tsdown";
 
+import {
+  CLIENT_CREDENTIAL_SCRIPT,
+  renderAgentInstructions,
+} from "../src/commands/infra/clientAuth.ts";
 import {
   readInfrastructureUpgradeFiles,
   renderInfrastructureUpgradeIndex,
@@ -66,6 +73,44 @@ const discoverIntegrations = async () => {
   );
 };
 const integrations = await discoverIntegrations();
+/** Indents every line after the first, so a multi-line value nests. */
+const indentFollowingLines = (text, spaces) =>
+  text.replaceAll("\n", `\n${" ".repeat(spaces)}`);
+/**
+ * The credential helper's server definition, which stays in the scaffold:
+ * the config scaffold's database, storage, and plugins, without its build or
+ * deploy settings. provision-client-credential.mjs loads .env.hotupdater
+ * before it.
+ */
+const renderCredentialDefinition = (scaffold, build) => {
+  const imports = [
+    ...scaffold.imports.filter(
+      ({ pkg }) =>
+        pkg !== "hot-updater" &&
+        pkg !== "node:fs" &&
+        !build.imports.some((entry) => entry.pkg === pkg),
+    ),
+    { pkg: "@hot-updater/server", named: ["createHotUpdater"] },
+  ];
+  const helpers = scaffold.helperStatements.map(({ code }) => code.trim());
+  const plugins = scaffold.plugins.initializer;
+  return `${renderImportStatements(imports)}
+
+${helpers.map((code) => `${code}\n\n`).join("")}/**
+ * The deployed server's database, storage, and plugins, on which
+ * provision-client-credential.mjs registers the app's client credential.
+ * It stays in the scaffold: the app's hot-updater.config.ts lists the same
+ * database, storage, and plugins.
+ */
+export const hotUpdater = createHotUpdater({
+  database: ${scaffold.database.initializer},
+  storage: [
+    ${indentFollowingLines(scaffold.storage.initializer, 2)},
+  ],
+  ${plugins === "plugins" ? "plugins" : `plugins: ${plugins}`},
+});
+`;
+};
 const versions = {};
 for (const directory of [
   "packages/hot-updater",
@@ -105,6 +150,8 @@ const runtimeDependencies = async (directory, provider) => {
   return dependencies;
 };
 
+// The probe runs from the app with no package of its own, so protocol's
+// release catalog check, which the device runs too, is bundled into it.
 await buildHelper({
   config: false,
   entry: { "verify-server": path.join(packageRoot, "agent/verify-server.mjs") },
@@ -112,18 +159,39 @@ await buildHelper({
   format: ["esm"],
   dts: false,
   exports: false,
-  deps: { onlyBundle: false },
+  deps: { alwaysBundle: ["@hot-updater/protocol"], onlyBundle: false },
 });
 await rm(outputRoot, { recursive: true, force: true });
 for (const provider of providers) {
   const root = pluginRoot(provider);
   const output = path.join(outputRoot, provider);
   await mkdir(output, { recursive: true });
+  // The plugins the provider's prebuilt server runs set its client-route
+  // policy, which the scaffold provisions, documents, and checks, and name
+  // the client plugins an app adds.
+  const { plugins } = await moduleAt(path.join(root, "src/plugins.ts"));
+  // The prebuilt server's plugins, on a database nothing reads here.
+  const prebuilt = assembleServer({
+    database: { name: "memory", adapter: createMemoryAdapter() },
+    plugins,
+  });
+  const clientAuth = clientAuthOf(prebuilt) ?? null;
+  const { clientPlugins } = prebuilt;
   await cp(path.join(root, "agent"), output, { recursive: true });
-  await cp(
-    path.join(packageRoot, "agent/COMMON.md"),
-    path.join(output, "COMMON.md"),
-  );
+  for (const [source, file] of [
+    ...(await readdir(output))
+      .filter((name) => name.endsWith(".md"))
+      .map((name) => [path.join(output, name), name]),
+    [path.join(packageRoot, "agent/COMMON.md"), "COMMON.md"],
+  ]) {
+    await save(
+      path.join(output, file),
+      renderAgentInstructions(await readFile(source, "utf8"), {
+        clientAuth,
+        clientPlugins,
+      }),
+    );
+  }
   const templateModule = await moduleAt(
     path.join(
       root,
@@ -131,35 +199,57 @@ for (const provider of providers) {
       provider === "aws" ? "templates.ts" : "configTemplate.ts",
     ),
   );
-  for (const integration of integrations) {
-    const build = integration.descriptor.build;
-    const buildId = integration.descriptor.id;
-    const config =
-      provider === "aws"
-        ? templateModule.getConfigScaffold(build, {
-            mode: "local",
-            profile: null,
-          })
-        : templateModule.getConfigScaffold(build);
+  const scaffoldOf = (build) =>
+    provider === "aws"
+      ? templateModule.getConfigScaffold(build, {
+          mode: "local",
+          profile: null,
+        })
+      : templateModule.getConfigScaffold(build);
+  for (const { descriptor } of integrations) {
+    const build = descriptor.id;
     await save(
-      path.join(output, "app", `hot-updater.config.${buildId}.ts`),
-      `${config.text}\n`,
+      path.join(output, "app", `hot-updater.config.${build}.ts`),
+      `${scaffoldOf(descriptor.build).text}\n`,
     );
-    const buildImports = new Set(build.imports.map(({ pkg }) => pkg));
-    const imports = config.imports
-      .filter(({ pkg }) => pkg !== "hot-updater" && !buildImports.has(pkg))
-      .map((info) => ({
-        ...info,
-        named: info.named?.filter((name) => name !== config.storage.callee),
-      }));
+  }
+  // The credential helper's definition holds no build, so one serves every
+  // build's config.
+  await save(
+    path.join(output, "app/hotUpdater.ts"),
+    renderCredentialDefinition(
+      scaffoldOf(integrations[0].descriptor.build),
+      integrations[0].descriptor.build,
+    ),
+  );
+  if (provider === "firebase") {
+    // Firestore has no migration tooling, so the credential script runs the
+    // migrator of the server definition it loaded: core's settings and those
+    // of the definition's plugins, over the definition's own database.
     await save(
-      path.join(output, "app", `api-key.config.${buildId}.ts`),
-      `${renderImportStatements(imports)}\n\nconfig({ path: ".env.hotupdater" });\n\n${config.helperStatements.map(({ code }) => code).join("\n\n")}\n\nexport const database = ${config.database.initializer};\n`,
+      path.join(output, "app/migrate.ts"),
+      `import { toolingTargetOf } from "@hot-updater/plugin-core";
+import type { HotUpdaterAPI } from "@hot-updater/server";
+
+/**
+ * Writes the schema settings of core and the plugins \`hotUpdater\` runs,
+ * which its database checks before its first read.
+ */
+export const migrate = async ({ database, plugins }: HotUpdaterAPI) => {
+  if (database.createMigrator === undefined) {
+    throw new Error(\`The \${database.name} database has no migrator.\`);
+  }
+  const result = await database
+    .createMigrator(toolingTargetOf(plugins))
+    .migrateToLatest({ mode: "from-schema", updateSettings: true });
+  await result.execute();
+};
+`,
     );
   }
   await cp(
-    path.join(packageRoot, "agent/provision-api-key.mjs"),
-    path.join(output, "app/provision-api-key.mjs"),
+    path.join(packageRoot, "agent", CLIENT_CREDENTIAL_SCRIPT),
+    path.join(output, "app", CLIENT_CREDENTIAL_SCRIPT),
   );
 
   await cp(
@@ -215,7 +305,7 @@ for (const provider of providers) {
       }),
     );
     const { resolveEdgeFunctionDenoConfig } = await moduleAt(
-      path.join(root, "dist/iac/index.mjs"),
+      path.join(root, "dist/init/index.mjs"),
     );
     await save(
       path.join(functions, "deno.json"),
@@ -275,18 +365,20 @@ for (const provider of providers) {
     });
     distribution.CallerReference = placeholder("CALLER_REFERENCE");
     await save(path.join(output, "cloudfront/distribution.json"), distribution);
+    // Caches key on the headers the server's client-route policy reads.
+    const clientHeaders = clientAuth?.varyHeaders ?? [];
     await save(path.join(output, "cloudfront/cache-policy.json"), {
-      CachePolicyConfig: cloudfront.HOT_UPDATER_SHARED_CACHE_POLICY_CONFIG,
+      CachePolicyConfig: cloudfront.buildSharedCachePolicyConfig(clientHeaders),
     });
     await save(path.join(output, "cloudfront/catalog-cache-policy.json"), {
       CachePolicyConfig:
-        cloudfront.HOT_UPDATER_RELEASE_CATALOG_CACHE_POLICY_CONFIG,
+        cloudfront.buildReleaseCatalogCachePolicyConfig(clientHeaders),
     });
     await save(path.join(output, "cloudfront/origin-request-policy.json"), {
       OriginRequestPolicyConfig:
-        cloudfront.HOT_UPDATER_ORIGIN_REQUEST_POLICY_CONFIG,
+        cloudfront.buildOriginRequestPolicyConfig(clientHeaders),
     });
-    const awsInputs = await moduleAt(path.join(root, "dist/iac/index.mjs"));
+    const awsInputs = await moduleAt(path.join(root, "dist/init/index.mjs"));
     await save(
       path.join(output, "dynamodb/create-table.json"),
       awsInputs.buildDynamoDBCreateTableInput(
@@ -296,6 +388,18 @@ for (const provider of providers) {
     await save(
       path.join(output, "dynamodb/enable-pitr.json"),
       awsInputs.buildDynamoDBBackupInput(placeholder("DYNAMODB_TABLE_NAME")),
+    );
+    await save(
+      path.join(output, "dynamodb/enable-ttl.json"),
+      awsInputs.buildDynamoDBTimeToLiveInput(
+        placeholder("DYNAMODB_TABLE_NAME"),
+      ),
+    );
+    await save(
+      path.join(output, "dynamodb/schema-settings.json"),
+      awsInputs.buildDynamoDBSchemaSettingsInput(
+        placeholder("DYNAMODB_TABLE_NAME"),
+      ),
     );
     await save(
       path.join(output, "iam/trust-policy.json"),
@@ -329,20 +433,6 @@ for (const provider of providers) {
         await readFile(path.join(root, "iac", file), "utf8"),
       );
     }
-    const dynamodbSource = await readFile(
-      path.join(root, "src/dynamoDB.ts"),
-      "utf8",
-    );
-    await save(
-      path.join(output, "reference/dynamodb-constants.json"),
-      Object.fromEntries(
-        [
-          ...dynamodbSource.matchAll(
-            /export const (DYNAMODB_\w+)\s*=\s*"([^"]+)"/g,
-          ),
-        ].map(([, key, value]) => [key, value]),
-      ),
-    );
     Object.assign(requirements, {
       accountId: null,
       region: null,
@@ -403,17 +493,34 @@ for (const provider of providers) {
   );
   const appPackages = {
     ...versions,
-    dotenv: resolvePackageVersion("dotenv", { searchFrom: packageRoot }),
   };
   if (provider === "aws")
     appPackages["@aws-sdk/credential-providers"] = resolvePackageVersion(
       "@aws-sdk/credential-providers",
       { searchFrom: root },
     );
-  if (provider === "firebase")
+  if (provider === "firebase") {
     appPackages["firebase-admin"] = resolvePackageVersion("firebase-admin", {
       searchFrom: root,
     });
+    // migrate.ts reads the tables the definition's plugins need.
+    appPackages["@hot-updater/plugin-core"] = (
+      await json(path.join(repoRoot, "plugins/plugin-core/package.json"))
+    ).version;
+  }
+  // The inputs the provider's init reads. Scaffold and `init --help` show
+  // them before init has installed the provider package.
+  const { initProvider } = await moduleAt(
+    path.join(root, "dist/init/index.mjs"),
+  );
+  const inputs = Object.values(initProvider.inputs).map(
+    ({ envKey, help, optional, requirementHint }) => ({
+      envKey,
+      help,
+      ...(optional === undefined ? {} : { optional }),
+      ...(requirementHint === undefined ? {} : { requirementHint }),
+    }),
+  );
   await save(path.join(output, "template.json"), {
     schemaVersion: 1,
     provider,
@@ -421,6 +528,9 @@ for (const provider of providers) {
     providerVersion,
     serverVersion: versions["@hot-updater/server"],
     infrastructureGeneration: HOT_UPDATER_INFRASTRUCTURE_GENERATION,
+    clientAuth,
+    clientPlugins,
+    inputs,
     packages: Object.fromEntries(
       Object.entries(appPackages).filter(
         ([name]) =>

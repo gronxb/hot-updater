@@ -1,7 +1,7 @@
 import { loadConfig, p } from "@hot-updater/cli-tools";
-import type { BundleRepository, ReleaseRow } from "@hot-updater/plugin-core";
-import { promoteRelease } from "@hot-updater/plugin-core";
+import type { ReleaseRow } from "@hot-updater/plugin-core";
 
+import { type LoadedServer, loadServer } from "@/utils/loadServer";
 import { printBanner } from "@/utils/printBanner";
 
 import { ui } from "../utils/cli-ui";
@@ -15,9 +15,9 @@ export interface PromoteOptions {
   readonly yes?: boolean;
 }
 
-const safeDispose = async (database: BundleRepository): Promise<void> => {
+const safeDispose = async (server: LoadedServer): Promise<void> => {
   try {
-    await database.dispose?.();
+    await server.dispose();
   } catch (error) {
     p.log.warn(
       `Database cleanup failed: ${(error as Error)?.message ?? String(error)}`,
@@ -58,19 +58,19 @@ export const handlePromote = async (
     process.exit(1);
   }
   const action = options.action ?? "copy";
-  const config = await loadConfig(null);
-  const database = config.database;
+  const server = await loadServer(await loadConfig(null));
   try {
+    const core = server.core;
     const [source, channels] = await Promise.all([
-      database.models.releases.findById(sourceReleaseId),
-      database.models.channels.list({}),
+      core.getRelease(sourceReleaseId),
+      core.listChannels(),
     ]);
     if (source === null) {
       p.log.error(`No bundle with ID ${sourceReleaseId}.`);
       process.exit(1);
     }
     const sourceChannel =
-      channels.channels.find(({ id }) => id === source.channel_id)?.name ??
+      channels.find(({ id }) => id === source.channel_id)?.name ??
       source.channel_id;
     p.log.message(summarizePlan(source, sourceChannel, targetChannel, action));
     if (!options.yes) {
@@ -90,9 +90,8 @@ export const handlePromote = async (
       }
     }
     const result = await withPublicBundleErrors(() =>
-      promoteRelease({
+      core.promoteRelease({
         action,
-        database,
         expectedRevision: source.revision,
         releaseId: source.id,
         targetChannel,
@@ -108,6 +107,6 @@ export const handlePromote = async (
     );
     p.log.info(ui.kv("ID", ui.id(promoted.id)));
   } finally {
-    await safeDispose(database);
+    await safeDispose(server);
   }
 };

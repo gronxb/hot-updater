@@ -1,0 +1,122 @@
+import path from "node:path";
+
+import { createSqlAdapter } from "@hot-updater/plugin-core";
+import {
+  mysqlRowsExamined,
+  postgresRowsExamined,
+  setupReadBudgetTestSuite,
+} from "@hot-updater/test-utils";
+import {
+  assertDockerComposeAvailable,
+  mysqlExecutor,
+  pgExecutor,
+} from "@hot-updater/test-utils/node";
+import { execa } from "execa";
+import mysql from "mysql2/promise";
+import pg from "pg";
+import { afterAll, beforeAll } from "vitest";
+
+assertDockerComposeAvailable(
+  "SQL core read-budget tests need Docker Compose and a running Docker daemon.",
+);
+
+const compose = [
+  "compose",
+  "-f",
+  path.join(import.meta.dirname, "docker-compose.yml"),
+  "-p",
+  "hot-updater-sql-core",
+];
+
+/** Retries `connect` until the server accepts connections. */
+const ready = async (connect: () => Promise<unknown>) => {
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      await connect();
+      return;
+    } catch (error) {
+      if (attempt > 60) throw error;
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+    }
+  }
+};
+
+const MYSQL_URI = "mysql://root:hot_updater@127.0.0.1:53306/hot_updater";
+
+let postgres: pg.Pool;
+let mariadb: mysql.Pool;
+
+beforeAll(async () => {
+  await execa("docker", [...compose, "up", "-d", "--wait"]);
+  postgres = new pg.Pool({
+    connectionString:
+      "postgres://postgres:hot_updater@127.0.0.1:55432/hot_updater",
+    max: 16,
+  });
+  await ready(() => postgres.query("SELECT 1"));
+  // Each row a plan evaluates costs as much as an index entry it reads, as
+  // PostgreSQL's planner settings make it, so a small table plans like a
+  // production-sized one: an index range rather than a primary-key prefix
+  // filtered down to it. Sessions opened after the flush use the new cost.
+  await ready(async () => {
+    const admin = await mysql.createConnection(MYSQL_URI);
+    try {
+      await admin.query(
+        "UPDATE mysql.server_cost SET cost_value = 1 WHERE cost_name = 'row_evaluate_cost'",
+      );
+      await admin.query("FLUSH OPTIMIZER_COSTS");
+    } finally {
+      await admin.end();
+    }
+  });
+  mariadb = mysql.createPool({ uri: MYSQL_URI, connectionLimit: 16 });
+  await ready(() => mariadb.query("SELECT 1"));
+}, 180_000);
+
+afterAll(async () => {
+  await postgres?.end();
+  await mariadb?.end();
+  await execa("docker", [...compose, "down", "-v"]);
+}, 60_000);
+
+/** The SQL core over a pool; reads are explained on one connection of it. */
+setupReadBudgetTestSuite({
+  name: "sql (pooled PostgreSQL)",
+  createAdapter: async ({ tables }) => {
+    const session = await postgres.connect();
+    const reads = postgresRowsExamined(
+      async (sql, params) => (await session.query(sql, [...params])).rows,
+    );
+    const adapter = createSqlAdapter({
+      executor: reads.wrap(pgExecutor(postgres)),
+      tablePrefix: "budget_",
+    });
+    await adapter.migrations!.apply(tables);
+    return {
+      adapter,
+      examined: reads.examined,
+      cleanup: async () => session.release(),
+    };
+  },
+});
+
+setupReadBudgetTestSuite({
+  name: "sql (pooled MySQL)",
+  createAdapter: async ({ tables }) => {
+    const session = await mariadb.getConnection();
+    const reads = mysqlRowsExamined(
+      async (sql, params) =>
+        (await session.query(sql, [...params]))[0] as Record<string, unknown>[],
+    );
+    const adapter = createSqlAdapter({
+      executor: reads.wrap(mysqlExecutor(mariadb)),
+      tablePrefix: "budget_",
+    });
+    await adapter.migrations!.apply(tables);
+    return {
+      adapter,
+      examined: reads.examined,
+      cleanup: async () => session.release(),
+    };
+  },
+});

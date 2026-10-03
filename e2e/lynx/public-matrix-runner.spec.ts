@@ -6,6 +6,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { SPARKLING_NAVIGATION_PROVENANCE } from "@hot-updater/lynx/navigationProvenance";
 import { describe, expect, it, vi } from "vitest";
 
 import {
@@ -30,7 +31,6 @@ import {
   appendSdkInstallFailureEvidence,
   readSdkInstallFailureEvidence,
 } from "../../examples/lynx/scripts/public-matrix/raw-detail-rejection.mjs";
-import { SPARKLING_NAVIGATION_PROVENANCE } from "../../packages/lynx/src/navigationProvenance";
 import {
   LYNX_MATRIX_ANDROID_SPARKLING_ARTIFACTS,
   LYNX_MATRIX_IOS_SPARKLING_CHECKOUT,
@@ -63,11 +63,11 @@ const TestLynxUpdaterError = vi.hoisted(
     },
 );
 
-vi.mock("../../packages/lynx/dist/index.mjs", () => ({
+vi.mock("@hot-updater/lynx", () => ({
   HotUpdater: native,
   LynxUpdaterError: TestLynxUpdaterError,
 }));
-vi.mock("../../packages/lynx/dist/navigation.mjs", () => ({
+vi.mock("@hot-updater/lynx/navigation", () => ({
   navigate: native.navigate,
 }));
 

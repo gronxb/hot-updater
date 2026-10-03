@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { HotUpdaterInitOptions, HotUpdaterOptions } from "./wrap";
 
@@ -31,6 +31,9 @@ const mocks = vi.hoisted(() => {
     getInstallId: vi.fn(() => "install-id"),
     getManifest: vi.fn(() => null),
     getMinBundleId: vi.fn(() => "min-bundle-id"),
+    configurePlugins: vi.fn(),
+    emitAfterAppReady: vi.fn(),
+    reportUpdateError: vi.fn(),
     init: vi.fn(),
     isChannelSwitched: vi.fn(() => false),
     notifyAppReady: vi.fn(() => ({ status: "UNCHANGED" as const })),
@@ -38,8 +41,7 @@ const mocks = vi.hoisted(() => {
     resetChannel: vi.fn(),
     setCohort: vi.fn(),
     setReloadBehavior: vi.fn(),
-    setUser: vi.fn(),
-    updateBundle: vi.fn(),
+    stageBundle: vi.fn(),
     wrap: vi.fn((Component: unknown) => Component),
   };
 });
@@ -52,6 +54,15 @@ vi.mock("./httpClient", () => ({
 
 vi.mock("./checkForUpdate", () => ({
   checkForUpdate: mocks.checkForUpdate,
+  reportUpdateError: mocks.reportUpdateError,
+}));
+
+vi.mock("./pluginHost", () => ({
+  configurePlugins: mocks.configurePlugins,
+}));
+
+vi.mock("./appReady", () => ({
+  emitAfterAppReady: mocks.emitAfterAppReady,
 }));
 
 vi.mock("./native", () => ({
@@ -77,8 +88,7 @@ vi.mock("./native", () => ({
   resetChannel: mocks.resetChannel,
   setCohort: mocks.setCohort,
   setReloadBehavior: mocks.setReloadBehavior,
-  setUser: mocks.setUser,
-  updateBundle: mocks.updateBundle,
+  stageBundle: mocks.stageBundle,
 }));
 
 vi.mock("./wrap", () => ({
@@ -99,6 +109,11 @@ describe("HotUpdater client initialization", () => {
     mocks.wrap.mockImplementation((Component: unknown) => Component);
   });
 
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
   it("exposes the console ID through the existing getter only", async () => {
     const HotUpdater = await importHotUpdater();
 
@@ -113,7 +128,6 @@ describe("HotUpdater client initialization", () => {
     const HotUpdater = await importHotUpdater();
 
     HotUpdater.init({
-      insights: true,
       baseURL: "https://updates.example.com",
       requestHeaders: { Authorization: "Bearer token" },
       requestTimeout: 1000,
@@ -123,7 +137,6 @@ describe("HotUpdater client initialization", () => {
       "https://updates.example.com",
     );
     expect(mocks.init).toHaveBeenCalledWith({
-      insights: true,
       client,
       requestHeaders: { Authorization: "Bearer token" },
       requestTimeout: 1000,
@@ -140,42 +153,130 @@ describe("HotUpdater client initialization", () => {
     expect(resolveBaseURL).not.toHaveBeenCalled();
   });
 
-  it("enables insights by default for init and wrap", async () => {
-    const HotUpdater = await importHotUpdater();
-
-    HotUpdater.init({ baseURL: "https://updates.example.com" });
-    HotUpdater.wrap({
-      baseURL: "https://updates.example.com",
-      updateStrategy: "appVersion",
+  it("sets up plugins with the settings they fetch with, before init reads the launch", async () => {
+    const plugin = { id: "example", setup: vi.fn() };
+    const onError = vi.fn();
+    mocks.init.mockImplementationOnce(() => {
+      expect(mocks.configurePlugins).toHaveBeenCalledOnce();
     });
-
-    expect(mocks.init).toHaveBeenCalledWith(
-      expect.objectContaining({ insights: true }),
-    );
-    expect(mocks.wrap).toHaveBeenCalledWith(
-      expect.objectContaining({ insights: true }),
-    );
-  });
-
-  it("preserves an explicit insights opt-out", async () => {
     const HotUpdater = await importHotUpdater();
 
     HotUpdater.init({
       baseURL: "https://updates.example.com",
-      insights: false,
+      onError,
+      plugins: [plugin],
+      requestHeaders: { "x-api-key": "client-key" },
+      requestTimeout: 1000,
     });
     HotUpdater.wrap({
-      baseURL: "https://updates.example.com",
-      insights: false,
+      baseURL: "https://other.example.com",
+      plugins: [plugin],
       updateStrategy: "appVersion",
     });
 
+    expect(mocks.configurePlugins).toHaveBeenNthCalledWith(1, [plugin], {
+      baseURL: "https://updates.example.com",
+      onError,
+      requestHeaders: { "x-api-key": "client-key" },
+      requestTimeout: 1000,
+    });
+    expect(mocks.configurePlugins).toHaveBeenNthCalledWith(2, [plugin], {
+      baseURL: "https://other.example.com",
+      onError: undefined,
+      requestHeaders: undefined,
+      requestTimeout: undefined,
+    });
     expect(mocks.init).toHaveBeenCalledWith(
-      expect.objectContaining({ insights: false }),
+      expect.not.objectContaining({ plugins: expect.anything() }),
     );
     expect(mocks.wrap).toHaveBeenCalledWith(
-      expect.objectContaining({ insights: false }),
+      expect.not.objectContaining({ plugins: expect.anything() }),
     );
+  });
+
+  it("reports a staged manual download to plugins after the launch", async () => {
+    mocks.stageBundle.mockResolvedValueOnce({
+      delivery: "archive",
+      patchFallback: true,
+    });
+    mocks.getActiveUpdateState.mockReturnValue({
+      activeSelection: {
+        bundleId: "next-bundle-id",
+        channel: "production",
+        kind: "BUNDLE",
+        releaseId: "next-release-id",
+        scopeKey: "v1:fingerprint:project:ios:cHJvZHVjdGlvbg:hash",
+      },
+      highestSeenCatalogs: {},
+      stableSelection: null,
+      verificationPending: true,
+    } as never);
+    const HotUpdater = await importHotUpdater();
+    HotUpdater.init({ baseURL: "https://updates.example.com" });
+
+    await HotUpdater.updateBundle({
+      assets: {},
+      bundleId: "next-bundle-id",
+      manifestFileHash: "manifest-hash",
+      manifestUrl: "https://updates.example.com/manifest.json",
+      status: "UPDATE",
+    });
+
+    expect(mocks.emitAfterAppReady).toHaveBeenCalledOnce();
+    const [name, createPayload] = mocks.emitAfterAppReady.mock.calls[0] as [
+      string,
+      () => unknown,
+    ];
+    expect(name).toBe("onBundleDownloaded");
+    expect(createPayload()).toEqual({
+      channel: "production",
+      fromBundleId: "bundle-id",
+      fromReleaseId: null,
+      toBundleId: "next-bundle-id",
+      toReleaseId: "next-release-id",
+      updateStrategy: "fingerprint",
+      delivery: "archive",
+      patchFallback: true,
+    });
+  });
+
+  it("reports a failed manual download to plugins and rethrows it", async () => {
+    const error = Object.assign(new Error("hash mismatch"), {
+      code: "SIGNATURE_VERIFICATION_FAILED",
+      userInfo: { reason: "hash_mismatch", stage: "download" },
+    });
+    mocks.stageBundle.mockRejectedValueOnce(error);
+    const HotUpdater = await importHotUpdater();
+    HotUpdater.init({ baseURL: "https://updates.example.com" });
+
+    await expect(
+      HotUpdater.updateBundle({
+        assets: {},
+        bundleId: "next-bundle-id",
+        channel: "beta",
+        manifestFileHash: "manifest-hash",
+        manifestUrl: "https://updates.example.com/manifest.json",
+        selection: {
+          releaseId: "next-release-id",
+          scopeKey: "v1:app-version:project:ios:YmV0YQ",
+        },
+        status: "UPDATE",
+      }),
+    ).rejects.toBe(error);
+
+    expect(mocks.reportUpdateError).toHaveBeenCalledWith(
+      error,
+      "download",
+      undefined,
+      {
+        bundleId: "bundle-id",
+        channel: "beta",
+        targetBundleId: "next-bundle-id",
+        targetReleaseId: "next-release-id",
+        updateStrategy: "appVersion",
+      },
+    );
+    expect(mocks.emitAfterAppReady).not.toHaveBeenCalled();
   });
 
   it("requires baseURL and rejects the removed resolver shape", async () => {
@@ -219,13 +320,12 @@ describe("HotUpdater client initialization", () => {
     expect(wrapOptions.updateStrategy).toBe("appVersion");
   });
 
-  it("merges settings and carries the insights gate to checks", async () => {
+  it("merges settings into checks", async () => {
     const client = { createSession: vi.fn() };
     mocks.createHttpClient.mockReturnValue(client as never);
     const checkOnError = vi.fn();
     const HotUpdater = await importHotUpdater();
     HotUpdater.init({
-      insights: true,
       baseURL: "https://updates.example.com",
       requestHeaders: { Authorization: "Bearer token" },
       requestTimeout: 1000,
@@ -238,7 +338,6 @@ describe("HotUpdater client initialization", () => {
     });
 
     expect(mocks.checkForUpdate).toHaveBeenCalledWith({
-      insights: true,
       client,
       onError: checkOnError,
       requestHeaders: {
@@ -256,13 +355,11 @@ describe("HotUpdater client initialization", () => {
     const HotUpdater = await importHotUpdater();
 
     HotUpdater.wrap({
-      insights: true,
       baseURL: "https://updates.example.com",
       updateStrategy: "appVersion",
     });
 
     expect(mocks.wrap).toHaveBeenCalledWith({
-      insights: true,
       client,
       updateStrategy: "appVersion",
     });
@@ -327,15 +424,11 @@ describe("HotUpdater client initialization", () => {
     ).toThrow("requires HotUpdater.wrap() or HotUpdater.init() to be used");
   });
 
-  it("preserves native identity and user APIs", async () => {
+  it("keeps the install id and leaves user identity to the insights plugin", async () => {
     const HotUpdater = await importHotUpdater();
 
     expect(HotUpdater.getInstallId()).toBe("install-id");
     expect(HotUpdater.getMinBundleId()).toBe("min-bundle-id");
-    HotUpdater.setUser({ userId: "user-123", username: "alice" });
-    expect(mocks.setUser).toHaveBeenCalledWith({
-      userId: "user-123",
-      username: "alice",
-    });
+    expect(HotUpdater).not.toHaveProperty("setUser");
   });
 });

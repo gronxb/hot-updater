@@ -1,22 +1,31 @@
-import type { Bundle } from "@hot-updater/core";
 import type {
-  BundleEventRow,
   BundlePatchRow,
   BundleRow,
   ChannelRow,
-  ApiKeyRow,
   ReleaseRow,
 } from "@hot-updater/plugin-core";
+import { getSha256 } from "@hot-updater/plugin-core";
+import type { Bundle } from "@hot-updater/protocol";
 
 const fixtureId = (suffix: string): string =>
   `00000000-0000-7000-8000-${suffix.padStart(12, "0")}`;
 
-const fixtureHash = (suffix: string, fill: "a" | "b" | "c"): string =>
-  `${[...suffix]
-    .map((character) =>
-      (character.codePointAt(0) ?? 0).toString(16).padStart(6, "0"),
-    )
-    .join("")}${fill.repeat(64)}`.slice(0, 64);
+export const fixtureManifestAssets = {
+  "index.ios.bundle": {
+    fileHash: "c".repeat(64),
+    downloadFileHash: "a".repeat(64),
+    downloadByteSize: 1_000,
+    downloadCompression: "br" as const,
+  },
+};
+
+export const createManifestFixture = (suffix: string, archive?: object) =>
+  JSON.stringify({
+    bundleId: fixtureId(suffix),
+    patchAssetPath: "index.ios.bundle",
+    assets: fixtureManifestAssets,
+    ...(archive ? { archive } : {}),
+  });
 
 const channelFixtureSuffix = (name: string): string => {
   let hash = 0;
@@ -37,14 +46,11 @@ export const createBundleRowFixture = (
 ): BundleRow => ({
   id: fixtureId(suffix),
   platform: "ios",
-  file_hash: fixtureHash(suffix, "a"),
   git_commit_hash: null,
-  storage_uri: `storage://bundles/${suffix}.zip`,
-  archive_byte_size: 3_000_000_001,
   metadata: { app_version: suffix },
-  manifest_storage_uri: null,
-  manifest_file_hash: null,
-  asset_base_storage_uri: null,
+  manifest_storage_uri: `storage://bundles/${suffix}/manifest.json`,
+  manifest_file_hash: getSha256(createManifestFixture(suffix)),
+  asset_base_storage_uri: "storage://assets",
 });
 
 export const createBundlePatchRowFixture = (
@@ -53,13 +59,13 @@ export const createBundlePatchRowFixture = (
   baseBundleId: string,
   orderIndex = 0,
 ): BundlePatchRow => ({
-  id: `${bundleId}:${baseBundleId}`,
+  id: `patch-${suffix}`,
   bundle_id: bundleId,
   base_bundle_id: baseBundleId,
-  base_file_hash: fixtureHash(suffix, "b"),
-  patch_file_hash: fixtureHash(suffix, "c"),
+  base_file_hash: `base-hash-${suffix}`,
+  patch_file_hash: `patch-hash-${suffix}`,
   patch_storage_uri: `storage://patches/${suffix}.patch`,
-  byte_size: 3_000_002,
+  byte_size: 3_000_000_002,
   order_index: orderIndex,
 });
 
@@ -89,54 +95,15 @@ export const createReleaseRowFixture = (
   updated_at_ms: Number(suffix),
 });
 
-export const createBundleEventRowFixture = (
-  suffix: string,
-  receivedAtMs: number,
-): Extract<BundleEventRow, { type: "UPDATE_APPLIED" | "RECOVERED" }> => ({
-  id: fixtureId(suffix),
-  type: "UPDATE_APPLIED",
-  install_id: `install-${suffix}`,
-  user_id: null,
-  metadata: {
-    username: null,
-    cohort: "0",
-    update_strategy: "appVersion",
-    fingerprint_hash: null,
-    sdk_version: null,
-  },
-  from_bundle_id: fixtureId(`${Number(suffix) + 1000}`),
-  from_release_id: null,
-  to_bundle_id: fixtureId(`${Number(suffix) + 2000}`),
-  to_release_id: null,
-  platform: "ios",
-  app_version: "1.0.0",
-  channel: "production",
-
-  received_at_ms: receivedAtMs,
-});
-
-export const createApiKeyRowFixture = (
-  suffix: string,
-  createdAtMs: number,
-): ApiKeyRow => ({
-  id: `api-key-${suffix}`,
-  hash: `hash-${suffix}`,
-  name: `API key ${suffix}`,
-  prefix: suffix.padStart(6, "0").slice(0, 6),
-  role: "client",
-  created_at_ms: createdAtMs,
-  revoked_at_ms: null,
-});
-
 export const createBundleFixture = (
   suffix: string,
   _channel = "production",
 ): Bundle => ({
   id: fixtureId(suffix),
   platform: "ios",
-  fileHash: fixtureHash(suffix, "a"),
   gitCommitHash: null,
-  storageUri: `storage://bundles/${suffix}.zip`,
-  archiveByteSize: 3_000_000_001,
   metadata: { app_version: suffix },
+  manifestStorageUri: `storage://bundles/${suffix}/manifest.json`,
+  manifestFileHash: getSha256(createManifestFixture(suffix)),
+  assetBaseStorageUri: "storage://assets",
 });

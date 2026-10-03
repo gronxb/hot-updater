@@ -621,10 +621,6 @@ class LynxUpdaterController internal constructor(
         verified: VerifiedLynxInstallation,
     ) = JSONObject()
         .put("bundleId", value.bundleId)
-        .put(
-            "fileHash",
-            if (verified.manifestBacked) JSONObject.NULL else value.fileHash,
-        )
         .put("manifestFileHash", value.manifestFileHash ?: JSONObject.NULL)
         .put("manifestBacked", verified.manifestBacked)
     private fun installed(value: CatalogPolicy.Receipt): VerifiedLynxInstallation {
@@ -636,24 +632,9 @@ class LynxUpdaterController internal constructor(
             if (it == null || it == JSONObject.NULL) null else it as? String
                 ?: error("Invalid installed manifest token")
         }
-        val manifestBacked = record.optBoolean("manifestBacked", false)
-        val archiveToken = record.opt("fileHash").let {
-            if (it == null || it == JSONObject.NULL) null else it as? String
-                ?: error("Invalid installed archive token")
-        }
-        if (manifestBacked) {
-            require(!manifestToken.isNullOrBlank()) {
-                "Manifest-backed installation lost its trust token"
-            }
-        } else {
-            integrity.verify(File(root, "archive"), checkNotNull(archiveToken))
-        }
-        val request = LynxArtifactRequest(
-            value.bundleId,
-            null,
-            archiveToken,
-            manifestToken,
-        )
+        val manifestBacked = true
+        require(!manifestToken.isNullOrBlank()) { "Installed artifact lost its manifest trust token" }
+        val request = LynxArtifactRequest(value.bundleId, manifestFileHash = manifestToken)
         return LynxArtifactVerifier(
             LynxInstallConfiguration(configuration.runtimeId, configuration.publicKeyPem),
             integrity,
@@ -1210,7 +1191,7 @@ class LynxUpdaterController internal constructor(
         val guard = params.getJSONObject("guard").toString()
         val selected = CatalogPolicy.parseReceipt(params.getJSONObject("selection"))
         val request = params.optJSONObject("artifact")?.let(::artifact)
-        val cacheKey = request?.let { digestString("${it.bundleId}\n${it.fileHash}\n${it.manifestFileHash}") }
+        val cacheKey = request?.let { digestString("${it.bundleId}\n${it.manifestFileHash}") }
         val reservation = UUID.randomUUID().toString()
         var deltaBase: VerifiedLynxInstallation? = null
         synchronized(stateLock) {

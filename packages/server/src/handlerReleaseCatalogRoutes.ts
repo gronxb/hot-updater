@@ -1,13 +1,19 @@
-import type { ReleaseCatalog } from "@hot-updater/core";
 import { canonicalizeAppVersion } from "@hot-updater/plugin-core";
+import type { ReleaseCatalog } from "@hot-updater/protocol";
 
 import { requirePlatformParam, requireRouteParam } from "./handlerParameters";
 import type { RouteHandler } from "./handlerTypes";
 
 const CATALOG_CONTENT_TYPE =
   "application/vnd.hot-updater.release-catalog+json; version=1";
+const ARTIFACT_CONTENT_TYPE =
+  "application/vnd.hot-updater.artifact+json; version=1";
 const ORIGIN_CACHE_TTL_MS = 5_000;
 const ORIGIN_CACHE_MAX_ENTRIES = 128;
+/** Marks the 404 of a scope that has no catalog. */
+const NO_CATALOG_HEADER = "x-hot-updater-catalog";
+/** A shared cache keeps a catalog, or a scope's lack of one, five seconds. */
+const CATALOG_CACHE_CONTROL = "public, max-age=0, s-maxage=5";
 
 const privateNotFound = (): Response =>
   Response.json(
@@ -15,6 +21,26 @@ const privateNotFound = (): Response =>
     {
       status: 404,
       headers: { "cache-control": "private, no-store" },
+    },
+  );
+
+/**
+ * A scope with no catalog yet, such as a store version before its first
+ * OTA release: cached like a catalog, so its update checks don't all reach
+ * the origin, and it holds nothing an API key protects. The header tells it
+ * apart from a 404 for a wrong URL: clients read it as "no update", and
+ * doctor as a live catalog route.
+ */
+const missingCatalog = (): Response =>
+  Response.json(
+    { error: "Not found" },
+    {
+      status: 404,
+      headers: {
+        "cache-control": CATALOG_CACHE_CONTROL,
+        vary: "Accept-Encoding",
+        [NO_CATALOG_HEADER]: "none",
+      },
     },
   );
 
@@ -31,16 +57,15 @@ const responseHash = async (body: string): Promise<string> => {
 const catalogResponse = async (
   catalog: ReleaseCatalog | null,
   request: Request,
-  clientAccessHeaderName: string,
 ): Promise<Response> => {
-  if (catalog === null) return privateNotFound();
+  if (catalog === null) return missingCatalog();
   const body = JSON.stringify(catalog);
   const etag = `"sha256:${await responseHash(body)}"`;
   const headers = {
-    "cache-control": "public, max-age=0, s-maxage=5",
+    "cache-control": CATALOG_CACHE_CONTROL,
     "content-type": CATALOG_CONTENT_TYPE,
     etag,
-    vary: `Accept-Encoding, ${clientAccessHeaderName}`,
+    vary: "Accept-Encoding",
   };
   if (request.headers.get("if-none-match") === etag) {
     return new Response(null, { headers, status: 304 });
@@ -48,9 +73,10 @@ const catalogResponse = async (
   return new Response(body, { headers, status: 200 });
 };
 
-export const createReleaseCatalogRouteHandlers = (
-  clientAccessHeaderName = "x-api-key",
-): Record<string, RouteHandler> => {
+export const createReleaseCatalogRouteHandlers = (): Record<
+  string,
+  RouteHandler
+> => {
   const cache = new Map<
     string,
     { readonly catalog: ReleaseCatalog; readonly expiresAt: number }
@@ -93,8 +119,7 @@ export const createReleaseCatalogRouteHandlers = (
   };
 
   return {
-    appVersionReleaseCatalog: async (params, request, api) => {
-      if (api.getReleaseCatalog === undefined) return privateNotFound();
+    appVersionReleaseCatalog: async (params, request, { core }) => {
       const rawAppVersion = requireRouteParam(params, "appVersion");
       const appVersion = canonicalizeAppVersion(rawAppVersion);
       if (appVersion === null || appVersion !== rawAppVersion) {
@@ -111,15 +136,13 @@ export const createReleaseCatalogRouteHandlers = (
       } as const;
       return catalogResponse(
         await loadCatalog(`app-version:${JSON.stringify(input)}`, () =>
-          api.getReleaseCatalog!(input),
+          core.getReleaseCatalog(input),
         ),
         request,
-        clientAccessHeaderName,
       );
     },
 
-    fingerprintReleaseCatalog: async (params, request, api) => {
-      if (api.getReleaseCatalog === undefined) return privateNotFound();
+    fingerprintReleaseCatalog: async (params, request, { core }) => {
       const input = {
         channelKey: requireRouteParam(params, "channelKey"),
         fingerprintHash: requireRouteParam(params, "fingerprintHash"),
@@ -128,25 +151,24 @@ export const createReleaseCatalogRouteHandlers = (
       } as const;
       return catalogResponse(
         await loadCatalog(`fingerprint:${JSON.stringify(input)}`, () =>
-          api.getReleaseCatalog!(input),
+          core.getReleaseCatalog(input),
         ),
         request,
-        clientAccessHeaderName,
       );
     },
 
-    artifact: async (params, _request, api) => {
-      if (api.getArtifactInfo === undefined) return privateNotFound();
-      const info = await api.getArtifactInfo(
+    artifactV1: async (params, _request, { core }) => {
+      const info = await core.getArtifactInfo(
         requireRouteParam(params, "targetBundleId"),
         requireRouteParam(params, "currentBundleId"),
+        1,
       );
       if (info === null) return privateNotFound();
       return new Response(JSON.stringify(info), {
         status: 200,
         headers: {
           "cache-control": "private, no-store",
-          "content-type": "application/json",
+          "content-type": ARTIFACT_CONTENT_TYPE,
         },
       });
     },

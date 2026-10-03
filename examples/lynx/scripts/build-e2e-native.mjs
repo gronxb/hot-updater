@@ -30,7 +30,7 @@ const {
   validateLynxEmbeddedDirectory,
 } = await import("../../../e2e/lynx/embedded-bundle.ts");
 const { SPARKLING_NAVIGATION_PROVENANCE } =
-  await import("../../../packages/lynx/src/navigationProvenance.ts");
+  await import("@hot-updater/lynx/navigationProvenance");
 
 const exampleDir = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),

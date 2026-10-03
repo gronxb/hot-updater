@@ -23,6 +23,7 @@ data class LynxAssetPatch(
     val baseFileHash: String,
     val patchFileHash: String,
     val patchUrl: String,
+    val byteSize: Long? = null,
 )
 
 data class LynxChangedAsset(
@@ -33,61 +34,35 @@ data class LynxChangedAsset(
 
 data class LynxArtifactRequest(
     val bundleId: String,
-    val fileUrl: String?,
-    val fileHash: String?,
-    val manifestFileHash: String? = null,
     val manifestUrl: String? = null,
-    val changedAssets: Map<String, LynxChangedAsset>? = null,
+    val manifestFileHash: String? = null,
+    val assets: Map<String, LynxChangedAsset>? = null,
+    val archiveUrl: String? = null,
+    val artifactProtocolVersion: Int = 1,
 ) {
-    internal val hasArchive get() = !fileUrl.isNullOrBlank() && !fileHash.isNullOrBlank()
-    internal val hasDelta get() = !manifestUrl.isNullOrBlank() && !manifestFileHash.isNullOrBlank() && changedAssets != null
-
     internal fun validateForPreparation() {
         require(UUID_V7.matches(bundleId)) { "Invalid Bundle ID" }
-        require((fileUrl == null) == (fileHash == null)) {
-            "Incomplete archive delivery descriptor"
+        require(artifactProtocolVersion == 1) { "Unsupported artifact protocol" }
+        require(manifestUrl != null && manifestFileHash != null && !assets.isNullOrEmpty()) {
+            "Incomplete manifest-v1 descriptor"
         }
-        if (fileUrl != null) {
-            requireHttpUrl(fileUrl, "archive")
-            require(isIntegrityToken(checkNotNull(fileHash))) {
-                "Invalid archive integrity token"
-            }
-        }
-        val hasManifestDeliveryField = manifestUrl != null || changedAssets != null
-        if (hasManifestDeliveryField) {
-            require(manifestUrl != null && manifestFileHash != null && changedAssets != null) {
-                "Incomplete manifest delivery descriptor"
-            }
-        }
-        manifestFileHash?.let {
-            require(isIntegrityToken(it)) { "Invalid manifest integrity token" }
-        }
-        if (manifestUrl != null) requireHttpUrl(manifestUrl, "manifest")
-        require(hasArchive || hasDelta) { "Artifact has no complete delivery descriptor" }
-
-        require((changedAssets?.size ?: 0) <= ArchiveLimits.MAX_ENTRIES) {
-            "Too many changed assets"
-        }
-        val changedNamespace = ManagedPathNamespace()
-        changedNamespace.file("manifest.json")
-        changedAssets?.forEach { (path, asset) ->
-            changedNamespace.file(path)
-            require(HASH.matches(asset.fileHash)) { "Invalid changed asset hash" }
-            require(asset.file != null || asset.patch != null) {
-                "Changed asset has no delivery source"
-            }
-            asset.file?.let { file ->
-                require(file.compression == null || file.compression == "br") {
-                    "Unsupported changed asset compression"
-                }
-                requireHttpUrl(file.url, "changed asset")
-            }
+        requireHttpUrl(manifestUrl, "manifest")
+        require(isIntegrityToken(manifestFileHash)) { "Invalid manifest integrity token" }
+        archiveUrl?.let { requireHttpUrl(it, "archive") }
+        require(assets.size <= ArchiveLimits.MAX_ENTRIES) { "Too many target assets" }
+        val namespace = ManagedPathNamespace()
+        namespace.file("manifest.json")
+        assets.forEach { (path, asset) ->
+            namespace.file(path)
+            require(HASH.matches(asset.fileHash)) { "Invalid target asset hash" }
+            val file = requireNotNull(asset.file) { "Every target asset requires an original file" }
+            require(file.compression == null || file.compression == "br") { "Unsupported target asset compression" }
+            requireHttpUrl(file.url, "target asset")
             asset.patch?.let { patch ->
                 require(patch.algorithm == "bsdiff") { "Unsupported patch algorithm" }
                 require(UUID_V7.matches(patch.baseBundleId)) { "Invalid patch base Bundle ID" }
-                require(HASH.matches(patch.baseFileHash) && HASH.matches(patch.patchFileHash)) {
-                    "Invalid patch integrity metadata"
-                }
+                require(HASH.matches(patch.baseFileHash) && HASH.matches(patch.patchFileHash)) { "Invalid patch integrity metadata" }
+                require(patch.byteSize == null || patch.byteSize in 1..ArchiveLimits.MAX_FILE_BYTES) { "Invalid patch size" }
                 requireHttpUrl(patch.patchUrl, "patch")
             }
         }
@@ -128,7 +103,7 @@ data class LynxArtifactRequest(
             fun optionalObject(json: JSONObject, key: String): JSONObject? = json.opt(key).let {
                 if (it == null || it == JSONObject.NULL) null else it as? JSONObject ?: error("Invalid $key")
             }
-            val changes = optionalObject(value, "changedAssets")?.let { assets ->
+            val changes = optionalObject(value, "assets")?.let { assets ->
                 require(assets.length() <= ArchiveLimits.MAX_ENTRIES) { "Too many changed assets" }
                 assets.keys().asSequence().associateWith { path ->
                     val asset = assets.getJSONObject(path)
@@ -142,6 +117,13 @@ data class LynxArtifactRequest(
                             requiredString(it, "baseFileHash"),
                             requiredString(it, "patchFileHash"),
                             requiredString(it, "patchUrl"),
+                            it.opt("byteSize").let { size ->
+                                if (size == null || size == JSONObject.NULL) null
+                                else {
+                                    require(size is Number && size.toDouble() == size.toLong().toDouble()) { "Invalid patch size" }
+                                    size.toLong()
+                                }
+                            },
                         )
                     }
                     LynxChangedAsset(requiredString(asset, "fileHash"), file, patch)
@@ -149,11 +131,11 @@ data class LynxArtifactRequest(
             }
             return LynxArtifactRequest(
                 requiredString(value, "bundleId"),
-                optionalString(value, "fileUrl"),
-                optionalString(value, "fileHash"),
-                optionalString(value, "manifestFileHash"),
-                optionalString(value, "manifestUrl"),
-                changes,
+                manifestUrl = requiredString(value, "manifestUrl"),
+                manifestFileHash = requiredString(value, "manifestFileHash"),
+                assets = changes,
+                archiveUrl = optionalString(value, "archiveUrl"),
+                artifactProtocolVersion = if ((value.opt("artifactProtocolVersion") as? Number)?.toDouble() == 1.0) 1 else error("Unsupported artifact protocol"),
             ).also(LynxArtifactRequest::validateForPreparation)
         }
     }

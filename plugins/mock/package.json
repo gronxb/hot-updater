@@ -2,7 +2,7 @@
   "name": "@hot-updater/mock",
   "private": true,
   "type": "module",
-  "version": "1.0.0-rc.14",
+  "version": "1.0.0-rc.27",
   "description": "React Native OTA solution for self-hosted",
   "main": "./dist/index.cjs",
   "module": "./dist/index.mjs",
@@ -32,11 +32,13 @@
     "test:run": "vitest run"
   },
   "dependencies": {
-    "@hot-updater/core": "workspace:*",
+    "@hot-updater/protocol": "workspace:*",
     "@hot-updater/plugin-core": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "catalog:",
-    "vitest": "catalog:"
+    "vitest": "catalog:",
+    "@hot-updater/server": "workspace:*",
+    "@hot-updater/test-utils": "workspace:*"
   }
 }

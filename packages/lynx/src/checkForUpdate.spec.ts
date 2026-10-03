@@ -5,7 +5,7 @@ import {
   type PersistedSelectionReceipt,
   type ReleaseCatalog,
   type ReleaseCatalogDescriptor,
-} from "@hot-updater/core";
+} from "@hot-updater/protocol";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { HotUpdater } from "./index";
@@ -29,6 +29,18 @@ const scopeKey = createReleaseCatalogScopeKey({
   platform: "android",
   channelKey: encodeChannelKey("production"),
 });
+const artifactResponse = {
+  artifactProtocolVersion: 1,
+  archiveUrl: "/storage/bundle.tar.br",
+  manifestUrl: "/storage/manifest.json",
+  manifestFileHash: "b".repeat(64),
+  assets: {
+    "main.lynx.bundle": {
+      fileHash: "c".repeat(64),
+      file: { url: "/storage/main.lynx.bundle", compression: null },
+    },
+  },
+};
 const catalogHash = `sha256:${"a".repeat(64)}`;
 
 const release = (
@@ -133,12 +145,7 @@ function setup(
     async (url: string) =>
       new Response(
         JSON.stringify(
-          url.includes("/release-catalogs/")
-            ? catalog
-            : {
-                fileUrl: "/storage/archive.tar.gz",
-                fileHash: "b".repeat(64),
-              },
+          url.includes("/release-catalogs/") ? catalog : artifactResponse,
         ),
         { status: 200 },
       ),
@@ -181,11 +188,20 @@ describe("Lynx catalog controller (mock native transport)", () => {
     const second = update!.updateBundle();
     expect(prepared().artifact).toEqual({
       bundleId: B,
-      fileUrl: "https://updates.test/storage/archive.tar.gz",
-      fileHash: "b".repeat(64),
-      manifestUrl: null,
-      manifestFileHash: null,
-      changedAssets: null,
+      artifactProtocolVersion: 1,
+      archiveUrl: "https://updates.test/storage/bundle.tar.br",
+      manifestUrl: "https://updates.test/storage/manifest.json",
+      manifestFileHash: "b".repeat(64),
+      assets: {
+        "main.lynx.bundle": {
+          fileHash: "c".repeat(64),
+          file: {
+            url: "https://updates.test/storage/main.lynx.bundle",
+            compression: null,
+          },
+          patch: null,
+        },
+      },
     });
     expect(prepared().selection.bundleId).toBe(B);
     expect(prepared()).toEqual(validated());
@@ -262,11 +278,11 @@ describe("Lynx catalog controller (mock native transport)", () => {
             String(url).includes("/release-catalogs/")
               ? catalog
               : {
-                  fileUrl: "/storage/archive.tar.gz",
-                  fileHash: "d".repeat(64),
+                  artifactProtocolVersion: 1,
+                  archiveUrl: "/storage/bundle.tar.br",
                   manifestUrl: "/storage/manifest.json",
                   manifestFileHash,
-                  changedAssets: {
+                  assets: {
                     "runtime/main.lynx": {
                       fileHash: "e".repeat(64),
                       file: {
@@ -294,11 +310,11 @@ describe("Lynx catalog controller (mock native transport)", () => {
     expect(native.prepareSelection).not.toHaveBeenCalled();
     expect(validated().artifact).toEqual({
       bundleId: B,
-      fileUrl: null,
-      fileHash: null,
+      artifactProtocolVersion: 1,
+      archiveUrl: "https://updates.test/storage/bundle.tar.br",
       manifestUrl: "https://updates.test/storage/manifest.json",
       manifestFileHash,
-      changedAssets: {
+      assets: {
         "runtime/main.lynx": {
           fileHash: "e".repeat(64),
           file: {
@@ -328,14 +344,17 @@ describe("Lynx catalog controller (mock native transport)", () => {
             String(url).includes("/release-catalogs/")
               ? catalog
               : {
-                  fileUrl: "/storage/archive.tar.gz",
-                  fileHash: "d".repeat(64),
+                  artifactProtocolVersion: 1,
+                  archiveUrl: "/storage/bundle.tar.br",
                   manifestUrl: "/storage/manifest.json",
                   manifestFileHash: "c".repeat(64),
-                  changedAssets: {
+                  assets: {
                     "runtime/main.lynx": {
                       fileHash: "e".repeat(64),
-                      file: { url: "/storage/runtime-main.lynx" },
+                      file: {
+                        url: "/storage/runtime-main.lynx",
+                        compression: "gzip",
+                      },
                       patch: null,
                     },
                   },
@@ -463,13 +482,7 @@ describe("Lynx catalog controller (mock native transport)", () => {
           { status: 200 },
         );
       }
-      return new Response(
-        JSON.stringify({
-          fileUrl: "/storage/archive.tar.gz",
-          fileHash: "b".repeat(64),
-        }),
-        { status: 200 },
-      );
+      return new Response(JSON.stringify(artifactResponse), { status: 200 });
     });
     const update = await updater.checkForUpdate({
       updateStrategy: "appVersion",
@@ -512,10 +525,7 @@ describe("Lynx catalog controller (mock native transport)", () => {
                   fallbackPolicy: "BUILTIN_IF_ACTIVE_INELIGIBLE",
                   releases: [release(releaseC, C)],
                 }
-              : {
-                  fileUrl: "/storage/archive.tar.gz",
-                  fileHash: "b".repeat(64),
-                },
+              : artifactResponse,
           ),
           { status: 200 },
         ),
@@ -572,7 +582,7 @@ describe("Lynx catalog controller (mock native transport)", () => {
     await update!.updateBundle();
     expect(prepared().selection.bundleId).toBe(C);
     expect(fetch.mock.calls[1]![0]).toBe(
-      `https://updates.test/artifacts/${C}/from/${A}`,
+      `https://updates.test/artifacts/v1/${C}/from/${A}`,
     );
     expect((await updater.getLaunchInfo()).next?.bundleId).toBe(B);
   });

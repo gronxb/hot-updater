@@ -1,7 +1,7 @@
 {
   "name": "hot-updater",
   "type": "module",
-  "version": "1.0.0-rc.16",
+  "version": "1.0.0-rc.27",
   "engines": {
     "node": ">=20.19.0"
   },
@@ -28,7 +28,11 @@
     "dist",
     "package.json"
   ],
-  "keywords": ["ota", "over-the-air", "self-hosted"],
+  "keywords": [
+    "ota",
+    "over-the-air",
+    "self-hosted"
+  ],
   "description": "Self-hosted over-the-air application updates",
   "license": "MIT",
   "repository": "https://github.com/gronxb/hot-updater",
@@ -47,9 +51,10 @@
   "dependencies": {
     "@hot-updater/android-helper": "workspace:*",
     "@hot-updater/apple-helper": "workspace:*",
+    "@hot-updater/bsdiff": "workspace:*",
     "@hot-updater/cli-tools": "workspace:*",
     "@hot-updater/console": "workspace:*",
-    "@hot-updater/core": "workspace:*",
+    "@hot-updater/protocol": "workspace:*",
     "@hot-updater/plugin-core": "workspace:*",
     "@hot-updater/server": "workspace:*",
     "@iarna/toml": "2.2.5",
@@ -71,7 +76,6 @@
     "@types/node": "catalog:",
     "@types/plist": "^3.0.5",
     "commander": "^14.0.0",
-    "dotenv": "16.6.1",
     "es-toolkit": "^1.32.0",
     "execa": "catalog:tools",
     "fast-glob": "3.3.3",
@@ -84,15 +88,16 @@
     "sql-formatter": "15.6.10",
     "@typescript/native": "npm:typescript@7.0.2",
     "typescript": "npm:@typescript/typescript6@6.0.2",
-    "verkit": "catalog:"
+    "verkit": "catalog:",
+    "@hot-updater/lynx": "workspace:*"
   },
   "peerDependencies": {
     "@aws-sdk/client-kms": "^3.1066.0",
     "@google-cloud/kms": "^6.0.0",
-    "@hot-updater/aws": "*",
-    "@hot-updater/cloudflare": "*",
-    "@hot-updater/firebase": "*",
-    "@hot-updater/supabase": "*"
+    "@hot-updater/aws": "workspace:^",
+    "@hot-updater/cloudflare": "workspace:^",
+    "@hot-updater/firebase": "workspace:^",
+    "@hot-updater/supabase": "workspace:^"
   },
   "peerDependenciesMeta": {
     "@aws-sdk/client-kms": {
@@ -141,7 +146,6 @@
     "default-browser": "5.5.0",
     "default-browser-id": "5.0.1",
     "define-lazy-prop": "3.0.0",
-    "dotenv": "16.6.1",
     "es-toolkit": "1.47.0",
     "execa": "9.5.2",
     "fast-glob": "3.3.3",
