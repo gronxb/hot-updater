@@ -168,6 +168,50 @@ describe("MobileAppDriver", () => {
     },
   );
 
+  it("verifies the exact app dialog when the pinned native getter reports its Korean scrollbar", async () => {
+    const f = fixture();
+    f.iosAlert.get.mockResolvedValue({
+      title: "수직 스크롤 막대, 1페이지",
+      buttons: ["취소", "열기"],
+    });
+    await f.app.tap("install", "action-install-current-channel-update");
+    expect(f.getByRole).toHaveBeenCalledWith("alert", expect.any(RegExp));
+    const title = f.getByRole.mock.calls[0]![1] as RegExp;
+    expect(title.test("‘HotUpdaterExample’에서 열겠습니까?")).toBe(true);
+    expect(title.test("‘AnotherApp’에서 열겠습니까?")).toBe(false);
+    expect(title.test("수직 스크롤 막대, 1페이지")).toBe(false);
+    expect(f.confirmation.getByRole).toHaveBeenCalledWith("button", "열기");
+    expect(f.openButton.tap).toHaveBeenCalledTimes(1);
+    expect(f.locator.waitFor).not.toHaveBeenCalled();
+  });
+
+  it("never taps another app dialog hidden by the same native scrollbar-title bug", async () => {
+    const f = fixture();
+    f.iosAlert.get.mockResolvedValue({
+      title: "수직 스크롤 막대, 1페이지",
+      buttons: ["취소", "열기"],
+    });
+    f.getByRole.mockImplementation((_role, title) => {
+      // A lazy locator for the real visible dialog cannot resolve this scope.
+      const matches =
+        title instanceof RegExp && title.test("‘AnotherApp’에서 열겠습니까?");
+      return {
+        getByRole: () => ({
+          tap: async () => {
+            if (!matches) throw new Error("No matching expected app alert");
+            await f.openButton.tap();
+          },
+        }),
+      } as unknown as Locator;
+    });
+    await expect(
+      f.app.tap("install", "action-install-current-channel-update"),
+    ).rejects.toThrow("No matching expected app alert");
+    expect(f.openButton.tap).not.toHaveBeenCalled();
+    expect(f.locator.waitFor).not.toHaveBeenCalled();
+    expect(f.device.openApp).not.toHaveBeenCalled();
+  });
+
   it("waits for a delayed action confirmation with native reads only", async () => {
     const f = fixture();
     f.iosAlert.get
