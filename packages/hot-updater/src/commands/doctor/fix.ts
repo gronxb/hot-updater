@@ -4,9 +4,7 @@ import {
   loadConfig,
 } from "@hot-updater/cli-tools";
 
-import { isExpoCNG } from "../../utils/expoDetection";
 import { syncFingerprintFiles } from "../../utils/fingerprint";
-import { isProjectFileTracked } from "../../utils/git";
 import { writePublicKeyToNativeFiles } from "../keys";
 import type { DoctorContext } from "./context";
 import type { DoctorFix, DoctorIssueCode } from "./issues";
@@ -58,7 +56,7 @@ const serverCore = async (context: DoctorContext) => {
 const REPAIRS: readonly {
   readonly repair: DoctorFix["repair"];
   readonly codes: readonly Code[];
-  /** It writes native files, which an Expo prebuild would overwrite. */
+  /** It writes native files governed by the build integration. */
   readonly writesNativeFiles: boolean;
   /** Runs the repair for its issues. */
   readonly run?: (
@@ -157,19 +155,8 @@ const REPAIRS: readonly {
 ];
 
 /**
- * Whether this is an Expo project whose native folders prebuild generates:
- * a write to them would be overwritten by the next `expo prebuild`.
- */
-const prebuildOwnsNativeFiles = (cwd: string): boolean =>
-  isExpoCNG(cwd) &&
-  !["ios", "android"].some((filePath) =>
-    isProjectFileTracked({ cwd, filePath }),
-  );
-
-/**
  * Runs each repair once for the issues it repairs, in order, and reports
- * what each wrote. A repair of native files is skipped on an Expo project
- * whose native folders prebuild generates, and an issue with more than one
+ * what each wrote. A repair of native files is skipped when its integration owns those files, and an issue with more than one
  * remedy is left to the user.
  */
 export const applyDoctorFixes = async (
@@ -177,6 +164,10 @@ export const applyDoctorFixes = async (
   context: DoctorContext,
 ): Promise<DoctorFix[]> => {
   const fixes: DoctorFix[] = [];
+  const config = await loadConfig(null);
+  const adapter = await config.build?.({ cwd: context.cwd });
+  const nativeFileRepairBlockReason =
+    await adapter?.integration?.nativeFileRepairBlockReason?.();
   for (const repair of REPAIRS) {
     const matched = issues.filter(({ code }) => repair.codes.includes(code));
     if (matched.length === 0) continue;
@@ -197,12 +188,8 @@ export const applyDoctorFixes = async (
       );
       continue;
     }
-    if (repair.writesNativeFiles && prebuildOwnsNativeFiles(context.cwd)) {
-      fixes.push(
-        skipped(
-          "This Expo project generates its native files with `expo prebuild`, which would overwrite the repair.",
-        ),
-      );
+    if (repair.writesNativeFiles && nativeFileRepairBlockReason !== undefined) {
+      fixes.push(skipped(nativeFileRepairBlockReason));
       continue;
     }
     try {

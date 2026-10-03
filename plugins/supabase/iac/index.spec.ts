@@ -1116,6 +1116,8 @@ describe("resolveEdgeFunctionDenoConfig", () => {
       const result = await resolveEdgeFunctionDenoConfig(targetDir);
 
       expect(result.imports).toEqual({
+        "@noble/hashes/sha2.js": "npm:@noble/hashes@2.2.0/sha2.js",
+        "@noble/hashes/utils.js": "npm:@noble/hashes@2.2.0/utils.js",
         "@hot-updater/server":
           "./_hot-updater/hot-updater-server/dist/index.mjs",
         "@hot-updater/server/plugins/api-keys":

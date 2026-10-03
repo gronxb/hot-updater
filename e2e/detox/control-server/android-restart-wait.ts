@@ -15,6 +15,36 @@ export function hasNativeRestartEvidenceAfterMarker(
   );
 }
 
+export function hasLynxNativeRestartEvidence(logs: string) {
+  return (
+    logs.includes(ANDROID_NATIVE_RESTART_MESSAGE) ||
+    logs.includes(ANDROID_WATCHDOG_RESTART_MESSAGE)
+  );
+}
+
+export function isLynxManagedRuntimeReplacementReady(observation: {
+  appId: string;
+  bundleId: string | null;
+  expectedBundleId: string;
+  expectedReleaseId: string;
+  expectedRuntimeScenarioMarker: string;
+  focusedPackage: string | null;
+  processId: string;
+  releaseId: string | null;
+  runtimeScenarioMarker: string | null;
+  verificationPending: boolean | null;
+}) {
+  return (
+    observation.bundleId === observation.expectedBundleId &&
+    observation.releaseId === observation.expectedReleaseId &&
+    observation.runtimeScenarioMarker ===
+      observation.expectedRuntimeScenarioMarker &&
+    observation.verificationPending === false &&
+    observation.processId.trim().length > 0 &&
+    observation.focusedPackage === observation.appId
+  );
+}
+
 export function isAndroidRecoveryProcessReady(observation: {
   appId: string;
   focusedPackage: string | null;

@@ -1,5 +1,3 @@
-export type BuildType = "bare" | "rock" | "expo";
-
 export type ImportInfo = {
   pkg: string;
   named?: string[]; // e.g., ['defineConfig']
@@ -97,6 +95,8 @@ export const renderImportStatements = (imports: ImportInfo[]) => {
   return importLines.join("\n");
 };
 
+export type BuildConfig = ProviderConfig & { clientModule?: string };
+
 export type ConfigBuilderScaffold = {
   imports: ImportInfo[];
   buildConfigString: string;
@@ -112,7 +112,7 @@ export type ConfigBuilderScaffold = {
  * storage, database, and plugins, and the deploy settings.
  */
 export class ConfigBuilder {
-  private buildType: BuildType | null = null;
+  private buildInfo: BuildConfig | null = null;
   private storageInfo: ProviderConfig | null = null;
   private databaseInfo: ProviderConfig | null = null;
   private pluginsInfo: ProviderConfig | null = null;
@@ -129,27 +129,21 @@ export class ConfigBuilder {
   }
 
   private generateBuildConfigString(): string {
-    if (!this.buildType)
-      throw new Error("Build type must be set using .setBuildType()");
-    switch (this.buildType) {
-      case "bare":
-        return "bare({ enableHermes: true })";
-      case "rock":
-        return "rock()";
-      case "expo":
-        return "expo()";
-      default:
-        throw new Error(`Invalid build type: ${this.buildType}`);
-    }
+    if (!this.buildInfo)
+      throw new Error("Build config must be set using .setBuild()");
+    return this.buildInfo.configString;
   }
 
-  /** Sets the build type ('bare', 'rock', or 'expo') and its import. */
-  setBuildType(buildType: BuildType): this {
-    this.buildType = buildType;
-    this.imports.push({
-      pkg: `@hot-updater/${buildType}`,
-      named: [buildType],
-    });
+  // --- Public Builder Methods ---
+
+  setBuild(buildConfig: BuildConfig): this {
+    if (this.buildInfo) {
+      console.warn(
+        "Build config is being set multiple times. Overwriting previous value.",
+      );
+    }
+    this.buildInfo = buildConfig;
+    this.imports.push(...buildConfig.imports);
     return this;
   }
 
@@ -181,8 +175,9 @@ export class ConfigBuilder {
   }
 
   getScaffold(): ConfigBuilderScaffold {
-    if (!this.buildType)
-      throw new Error("Build type must be set using .setBuildType()");
+    // Validate required parts are set
+    if (!this.buildInfo)
+      throw new Error("Build config must be set using .setBuild()");
     if (!this.storageInfo)
       throw new Error("Storage config must be set using .setStorage()");
     if (!this.databaseInfo)

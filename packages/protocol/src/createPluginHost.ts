@@ -21,7 +21,7 @@ export interface PluginHostConfig {
 
 /**
  * What plugins read from the app and the device. A device SDK backs it with
- * its native module; `@hot-updater/test-utils/react-native` backs it with
+ * its native module; the SDK test utilities back it with
  * fakes.
  */
 export interface PluginHostEnvironment {

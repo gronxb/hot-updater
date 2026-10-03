@@ -8,10 +8,10 @@ import {
   loadConfig,
   p,
   readPackageUp,
+  resolvePackageVersion,
 } from "@hot-updater/cli-tools";
 import type { PluginClientPlugin } from "@hot-updater/plugin-core";
 import { merge } from "es-toolkit";
-import fg from "fast-glob";
 import {
   findMinimumForRange,
   normalize,
@@ -39,7 +39,6 @@ import {
   type DoctorFix,
   fixesWroteNativeFiles,
   type NativeCheckIssue,
-  type NativePlatform,
   type ReleaseCatalogStatus,
 } from "./doctor/issues";
 import { checkServerData, releaseCatalogsUnchecked } from "./doctor/serverData";
@@ -224,73 +223,8 @@ export function areVersionsCompatible(
   return false;
 }
 
-const toRelativePath = (cwd: string, filePath: string) =>
-  path.relative(cwd, filePath);
-
 const resolveProjectPath = (cwd: string, filePath: string) =>
   path.isAbsolute(filePath) ? filePath : path.join(cwd, filePath);
-
-const findNativeFiles = ({
-  cwd,
-  platform,
-  pattern,
-}: {
-  cwd: string;
-  platform: NativePlatform;
-  pattern: string | string[];
-}) => {
-  const platformRoot = path.join(cwd, platform);
-  if (!fs.existsSync(platformRoot)) {
-    return [];
-  }
-
-  return fg
-    .sync(pattern, {
-      cwd: platformRoot,
-      absolute: true,
-      onlyFiles: true,
-      ignore: [
-        "**/Pods/**",
-        "**/build/**",
-        "**/Build/**",
-        "**/*.app/**",
-        "**/*.xcarchive/**",
-      ],
-    })
-    .map((filePath) => toRelativePath(cwd, filePath))
-    .sort();
-};
-
-const findFirstMatchingFile = async ({
-  cwd,
-  files,
-  patterns,
-}: {
-  cwd: string;
-  files: string[];
-  patterns: RegExp[];
-}) => {
-  for (const filePath of files) {
-    const absolutePath = resolveProjectPath(cwd, filePath);
-    const content = await fs.promises.readFile(absolutePath, "utf-8");
-    if (patterns.some((pattern) => pattern.test(content))) {
-      return filePath;
-    }
-  }
-
-  return null;
-};
-
-/** The version the native project builds, or null when it cannot be read. */
-const readNativeAppVersion = async (
-  platform: NativePlatform,
-): Promise<string | null> => {
-  try {
-    return await getNativeAppVersion(platform);
-  } catch {
-    return null;
-  }
-};
 
 const readLocalFingerprintFile = async (cwd: string) => {
   const fingerprintJsonPath = path.join(cwd, "fingerprint.json");
@@ -355,7 +289,7 @@ const checkIosNativeStatus = async ({
       code: "MISSING_FINGERPRINT_HASH",
       message: "HOT_UPDATER_FINGERPRINT_HASH is missing from Info.plist.",
       resolution:
-        "Run `npx hot-updater fingerprint create` or rebuild through the Expo config plugin.",
+        "Run `npx hot-updater fingerprint create` or rebuild through the selected integration.",
       fixability: "command",
       commands: [...FINGERPRINT_RECOVERY_COMMANDS],
       paths: fingerprintHash?.paths.length ? fingerprintHash.paths : files,
@@ -378,57 +312,13 @@ const checkIosNativeStatus = async ({
     });
   }
 
-  const appDelegateFiles = findNativeFiles({
-    cwd,
-    platform: "ios",
-    pattern: "**/AppDelegate.{swift,mm,m}",
-  });
-
-  let bundleProviderConfigured = false;
-  if (appDelegateFiles.length === 0) {
-    issues.push({
-      type: "error",
-      platform: "ios",
-      code: "APP_DELEGATE_NOT_FOUND",
-      message: "iOS AppDelegate file was not found.",
-      resolution:
-        "Add HotUpdater.bundleURL() to the app's iOS bundleURL provider.",
-      fixability: "auto",
-    });
-  } else {
-    const matchedFile = await findFirstMatchingFile({
-      cwd,
-      files: appDelegateFiles,
-      patterns: [
-        /HotUpdater\.bundleURL\s*\(/,
-        /\[HotUpdater\s+bundleURL(?:WithBundle)?:?/,
-      ],
-    });
-    bundleProviderConfigured = matchedFile !== null;
-
-    if (!bundleProviderConfigured) {
-      issues.push({
-        type: "error",
-        platform: "ios",
-        code: "MISSING_IOS_BUNDLE_PROVIDER",
-        message: "iOS AppDelegate does not use HotUpdater.bundleURL().",
-        resolution:
-          "Replace the release JS bundle URL provider with HotUpdater.bundleURL().",
-        fixability: "auto",
-        paths: appDelegateFiles,
-      });
-    }
-  }
-
-  const appVersion = await readNativeAppVersion("ios");
   return {
     status: {
       detected: true,
-      files: [...files, ...appDelegateFiles],
-      ...(appVersion === null ? {} : { appVersion }),
+      appVersion: (await getNativeAppVersion("ios")) ?? undefined,
+      files,
       channel: channel.value ?? undefined,
       fingerprintHash: fingerprintHash?.value ?? undefined,
-      bundleProviderConfigured,
     },
     issues,
   };
@@ -487,7 +377,7 @@ const checkAndroidNativeStatus = async ({
       message:
         "com.hotupdater.FINGERPRINT_HASH is missing from AndroidManifest.xml.",
       resolution:
-        "Run `npx hot-updater fingerprint create` or rebuild through the Expo config plugin.",
+        "Run `npx hot-updater fingerprint create` or rebuild through the selected integration.",
       fixability: "command",
       commands: [...FINGERPRINT_RECOVERY_COMMANDS],
       paths: fingerprintHash?.paths.length ? fingerprintHash.paths : files,
@@ -510,57 +400,13 @@ const checkAndroidNativeStatus = async ({
     });
   }
 
-  const mainApplicationFiles = findNativeFiles({
-    cwd,
-    platform: "android",
-    pattern: "**/MainApplication.{kt,java}",
-  });
-
-  let bundleProviderConfigured = false;
-  if (mainApplicationFiles.length === 0) {
-    issues.push({
-      type: "error",
-      platform: "android",
-      code: "MAIN_APPLICATION_NOT_FOUND",
-      message: "Android MainApplication file was not found.",
-      resolution:
-        "Add HotUpdater.getJSBundleFile(applicationContext) to the Android host configuration.",
-      fixability: "auto",
-    });
-  } else {
-    const matchedFile = await findFirstMatchingFile({
-      cwd,
-      files: mainApplicationFiles,
-      patterns: [
-        /HotUpdater\s*(?:\.\s*Companion\s*)?\.\s*getJSBundleFile\s*\(/,
-      ],
-    });
-    bundleProviderConfigured = matchedFile !== null;
-
-    if (!bundleProviderConfigured) {
-      issues.push({
-        type: "error",
-        platform: "android",
-        code: "MISSING_ANDROID_BUNDLE_PROVIDER",
-        message:
-          "Android MainApplication does not use HotUpdater.getJSBundleFile().",
-        resolution:
-          "Pass HotUpdater.getJSBundleFile(applicationContext) to React Native's JS bundle provider.",
-        fixability: "auto",
-        paths: mainApplicationFiles,
-      });
-    }
-  }
-
-  const appVersion = await readNativeAppVersion("android");
   return {
     status: {
       detected: true,
-      files: [...files, ...mainApplicationFiles],
-      ...(appVersion === null ? {} : { appVersion }),
+      appVersion: (await getNativeAppVersion("android")) ?? undefined,
+      files,
       channel: channel.value ?? undefined,
       fingerprintHash: fingerprintHash?.value ?? undefined,
-      bundleProviderConfigured,
     },
     issues,
   };
@@ -599,28 +445,36 @@ async function checkNativeStatus({
   cwd: string;
   context: DoctorContext;
 }): Promise<NativeStatus | undefined> {
+  const config = await loadConfig(null);
+  if (typeof config.build !== "function") return undefined;
+  const buildPlugin = await config.build({ cwd });
+  await buildPlugin.integration?.beforeCommand?.({ command: "doctor" });
+  const integration = await buildPlugin.integration?.doctor?.();
+  const getNativeSigningPublicKey =
+    buildPlugin.nativeBuild?.getBundleSigningPublicKey;
+  const nativeSigningPublicKey = getNativeSigningPublicKey
+    ? await getNativeSigningPublicKey()
+    : undefined;
+  const expectedSigningPublicKey =
+    (await getBundleSigningPublicKey(config.signing, { cwd }).catch(
+      () => "invalid configured bundle signing public key",
+    )) ?? undefined;
+  const signingOptions = {
+    expectedPublicKey: expectedSigningPublicKey,
+    ...(buildPlugin.nativeBuild?.signingConfigSource === undefined
+      ? {}
+      : { signingConfigSource: buildPlugin.nativeBuild.signingConfigSource }),
+    ...(getNativeSigningPublicKey === undefined
+      ? {}
+      : { nativePublicKey: nativeSigningPublicKey?.publicKey ?? null }),
+  };
   const hasNativeDirectories =
     fs.existsSync(path.join(cwd, "ios")) ||
     fs.existsSync(path.join(cwd, "android"));
 
   if (!hasNativeDirectories) {
-    const config = await loadConfig(null);
-    const buildAdapter = await config.build({ cwd });
-    const getNativeSigningPublicKey =
-      buildAdapter.nativeBuild?.getBundleSigningPublicKey;
-    if (!getNativeSigningPublicKey) return undefined;
-
-    const [nativeSigningPublicKey, expectedSigningPublicKey] =
-      await Promise.all([
-        getNativeSigningPublicKey(),
-        getBundleSigningPublicKey(config.signing, { cwd }).catch(
-          () => "invalid configured bundle signing public key",
-        ),
-      ]);
-    const signing = await validateSigningConfig(config, {
-      expectedPublicKey: expectedSigningPublicKey ?? undefined,
-      nativePublicKey: nativeSigningPublicKey?.publicKey ?? null,
-    });
+    if (!getNativeSigningPublicKey && !integration) return undefined;
+    const signing = await validateSigningConfig(config, signingOptions);
     const localFingerprint =
       config.updateStrategy === "fingerprint"
         ? await readLocalFingerprintFile(cwd)
@@ -631,6 +485,7 @@ async function checkNativeStatus({
         ? { fingerprintJsonPath: localFingerprint.path }
         : {}),
       issues: [
+        ...(integration?.issues ?? []),
         ...signing.issues.map(toNativeIssue),
         ...(localFingerprint
           ? await checkFingerprintJson(
@@ -642,14 +497,8 @@ async function checkNativeStatus({
     };
   }
 
-  const config = await loadConfig(null);
   const localFingerprint = await readLocalFingerprintFile(cwd);
   const requireFingerprint = config.updateStrategy === "fingerprint";
-  const expectedSigningPublicKey =
-    (await getBundleSigningPublicKey(config.signing, { cwd }).catch(
-      () => "invalid configured bundle signing public key",
-    )) ?? undefined;
-
   const [ios, android, signing] = await Promise.all([
     checkIosNativeStatus({
       cwd,
@@ -663,14 +512,13 @@ async function checkNativeStatus({
       requireFingerprint,
       expectedFingerprintHash: localFingerprint?.value.android?.hash,
     }),
-    validateSigningConfig(config, {
-      expectedPublicKey: expectedSigningPublicKey,
-    }),
+    validateSigningConfig(config, signingOptions),
   ]);
 
-  const issues = [
+  const issues: NativeCheckIssue[] = [
     ...ios.issues,
     ...android.issues,
+    ...(integration?.issues ?? []),
     ...signing.issues.map(toNativeIssue),
   ];
 
@@ -696,11 +544,27 @@ async function checkNativeStatus({
     });
   }
 
+  const mergeIntegrationStatus = (
+    status: NativePlatformStatus | undefined,
+    platform: "ios" | "android",
+  ): NativePlatformStatus | undefined => {
+    const integrationStatus = integration?.platforms?.[platform];
+    if (!status && !integrationStatus) return undefined;
+    return {
+      detected: status?.detected ?? true,
+      appVersion: status?.appVersion,
+      files: [...(status?.files ?? []), ...(integrationStatus?.files ?? [])],
+      channel: status?.channel,
+      fingerprintHash: status?.fingerprintHash,
+      bundleProviderConfigured: integrationStatus?.configured,
+    };
+  };
+
   return {
     updateStrategy: config.updateStrategy,
     fingerprintJsonPath: localFingerprint?.path,
-    ios: ios.status,
-    android: android.status,
+    ios: mergeIntegrationStatus(ios.status, "ios"),
+    android: mergeIntegrationStatus(android.status, "android"),
     issues,
   };
 }
@@ -803,27 +667,38 @@ async function checkProject(
     );
 
     // Check hot-updater version
-    const hotUpdaterVersion = allDependencies["hot-updater"];
+    const hotUpdaterSpecifier = allDependencies["hot-updater"];
 
-    if (!hotUpdaterVersion) {
+    if (!hotUpdaterSpecifier) {
       return {
         success: false,
         error: "hot-updater CLI not found. Please install it first.",
       };
     }
 
+    const dependencyVersion = (specifier: string, packageName: string) =>
+      normalizeRange(specifier)
+        ? specifier
+        : resolvePackageVersion(packageName, {
+            searchFrom: path.dirname(packageJsonPath),
+          });
+    const hotUpdaterVersion = dependencyVersion(
+      hotUpdaterSpecifier,
+      "hot-updater",
+    );
+
     // Find all @hot-updater packages
     const hotUpdaterPackages = Object.keys(allDependencies).filter((key) =>
       key.startsWith("@hot-updater/"),
     );
-    const hasReactNativePackage =
-      allDependencies["@hot-updater/react-native"] !== undefined;
-
     // Check for version mismatches
     const versionMismatches: VersionMismatch[] = [];
 
     for (const packageName of hotUpdaterPackages) {
-      const currentVersion = allDependencies[packageName];
+      const currentSpecifier = allDependencies[packageName];
+      const currentVersion = currentSpecifier
+        ? dependencyVersion(currentSpecifier, packageName)
+        : undefined;
       if (
         hotUpdaterVersion &&
         currentVersion &&
@@ -863,8 +738,8 @@ async function checkProject(
       }
     }
 
-    if (hasReactNativePackage) {
-      details.native = await checkNativeStatus({ cwd, context });
+    details.native = await checkNativeStatus({ cwd, context });
+    {
       const clientPluginIssues = await checkClientPlugins({ cwd, context });
       if (clientPluginIssues.length > 0) {
         details.native = {

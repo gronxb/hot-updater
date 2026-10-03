@@ -4,11 +4,7 @@ import path from "path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import {
-  type BuildType,
-  ConfigBuilder,
-  type ProviderConfig,
-} from "./ConfigBuilder";
+import { ConfigBuilder, type ProviderConfig } from "./ConfigBuilder";
 import {
   createHotUpdaterConfigScaffoldFromBuilder,
   type ManagedHelperStatement,
@@ -16,6 +12,13 @@ import {
   writeHotUpdaterFiles,
 } from "./hotUpdaterConfig";
 import { p } from "./prompts";
+
+type TestBuildName = "bare" | "rock";
+
+const testBuildConfig = (name: TestBuildName): ProviderConfig => ({
+  imports: [{ pkg: `@hot-updater/${name}`, named: [name] }],
+  configString: name === "bare" ? "bare({ enableHermes: true })" : "rock()",
+});
 
 const tempDirs: string[] = [];
 
@@ -27,7 +30,7 @@ const createTempDir = async () => {
   return tempDir;
 };
 
-const createSupabaseScaffold = (build: BuildType) => {
+const createSupabaseScaffold = (build: TestBuildName) => {
   const storage: ProviderConfig = {
     imports: [{ pkg: "@hot-updater/supabase", named: ["supabaseStorage"] }],
     configString: `supabaseStorage({
@@ -46,7 +49,7 @@ const createSupabaseScaffold = (build: BuildType) => {
 
   return createHotUpdaterConfigScaffoldFromBuilder(
     new ConfigBuilder()
-      .setBuildType(build)
+      .setBuild(testBuildConfig(build))
       .setStorage(storage)
       .setDatabase(database)
       .setPlugins({
@@ -57,7 +60,7 @@ const createSupabaseScaffold = (build: BuildType) => {
 };
 
 const createAwsScaffold = (
-  build: BuildType,
+  build: TestBuildName,
   { profile }: { profile: string | null },
 ) => {
   const storage: ProviderConfig = {
@@ -100,7 +103,7 @@ const createAwsScaffold = (
       ];
 
   const builder = new ConfigBuilder()
-    .setBuildType(build)
+    .setBuild(testBuildConfig(build))
     .setStorage(storage)
     .setDatabase(database)
     .setPlugins({
@@ -123,7 +126,7 @@ const createAwsScaffold = (
   });
 };
 
-const createFirebaseScaffold = (build: BuildType) => {
+const createFirebaseScaffold = (build: TestBuildName) => {
   const helperStatements: ManagedHelperStatement[] = [
     {
       name: "credential",
@@ -132,7 +135,7 @@ const createFirebaseScaffold = (build: BuildType) => {
     },
   ];
   const builder = new ConfigBuilder()
-    .setBuildType(build)
+    .setBuild(testBuildConfig(build))
     .setStorage({
       imports: [{ pkg: "@hot-updater/firebase", named: ["firebaseStorage"] }],
       configString: `firebaseStorage({

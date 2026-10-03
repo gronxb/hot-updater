@@ -45,7 +45,14 @@ export interface StoragePruneOptions {
 
 interface BundleManifest {
   bundleId: string;
-  assets: Record<string, { downloadFileHash?: unknown; fileHash: string }>;
+  assets: Record<
+    string,
+    {
+      downloadCompression?: "br" | null;
+      downloadFileHash?: unknown;
+      fileHash: string;
+    }
+  >;
 }
 
 interface BundleStorageReferences {
@@ -166,7 +173,11 @@ function isBundleManifest(
     return false;
   }
 
-  const candidate = value as { assets?: unknown; bundleId?: unknown };
+  const candidate = value as {
+    assets?: unknown;
+    bundleId?: unknown;
+    patchAssetPath?: unknown;
+  };
   if (candidate.bundleId !== bundleId) {
     return false;
   }
@@ -182,6 +193,12 @@ function isBundleManifest(
       typeof asset === "object" &&
       !Array.isArray(asset) &&
       typeof (asset as { fileHash?: unknown }).fileHash === "string" &&
+      (typeof (asset as { downloadCompression?: unknown })
+        .downloadCompression === "undefined" ||
+        (asset as { downloadCompression?: unknown }).downloadCompression ===
+          null ||
+        (asset as { downloadCompression?: unknown }).downloadCompression ===
+          "br") &&
       /^[0-9a-f]{64}$/i.test((asset as { fileHash: string }).fileHash)
     );
   });
@@ -331,7 +348,15 @@ async function collectReferencedAssetUris(
       const manifest = await readManifest(bundle, storageAdapter);
 
       for (const [assetPath, asset] of Object.entries(manifest.assets)) {
-        const downloadPath = getManifestAssetDownloadPath(assetPath);
+        if (asset.downloadCompression === undefined) {
+          throw new Error(
+            `Cannot prune shared assets: bundle ${bundle.id} uses a legacy manifest without explicit download compression.`,
+          );
+        }
+        const downloadPath = getManifestAssetDownloadPath(
+          assetPath,
+          asset.downloadCompression,
+        );
         referencedUris.add(
           normalizeStorageUri(
             resolveManifestAssetStorageUri({

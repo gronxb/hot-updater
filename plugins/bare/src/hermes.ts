@@ -2,8 +2,9 @@ import fs from "fs";
 import { createRequire } from "node:module";
 import path from "path";
 
-import { getReactNativeMetadatas } from "@hot-updater/cli-tools";
 import { execa } from "execa";
+
+import { getReactNativeMetadatas } from "./reactNativeMetadata";
 
 const require = createRequire(import.meta.url);
 

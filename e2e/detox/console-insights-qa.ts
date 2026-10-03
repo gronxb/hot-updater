@@ -11,12 +11,13 @@ type InsightsEvent = {
   readonly installId: string;
   readonly platform: "ios" | "android";
   readonly receivedAtMs: number;
-  readonly toBundleId: string;
+  readonly toBundleId: string | null;
   readonly type:
     | "RECOVERED"
     | "UNCHANGED"
     | "UPDATE_APPLIED"
-    | "UPDATE_DOWNLOADED";
+    | "UPDATE_DOWNLOADED"
+    | "UPDATE_FAILED";
 };
 
 type Installation = {
@@ -287,6 +288,12 @@ export const verifyConsoleInsights = async (
       observedOutcome.type === "RECOVERED"
         ? observedOutcome.fromBundleId!
         : observedOutcome.toBundleId;
+    if (bundleId === null) {
+      throw new ConsoleInsightsQaError(
+        "inconsistent-data",
+        "Observed Insights outcome has no Bundle identity.",
+      );
+    }
     const outcome =
       observedOutcome.type === "RECOVERED"
         ? "recovered"

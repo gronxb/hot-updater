@@ -12,8 +12,10 @@ import type { EnrichedNativeBuildIosScheme } from "./utils/enrichNativeBuildIosS
 
 export const buildIos = async ({
   schemeConfig,
+  podInstallEnvironment,
 }: {
   schemeConfig: EnrichedNativeBuildIosScheme;
+  podInstallEnvironment?: Record<string, string>;
 }): Promise<{ buildDirectory: string; buildArtifactPath: string }> => {
   await assertXcodebuildExist();
   const iosProjectRoot = path.join(getCwd(), "ios");
@@ -41,6 +43,7 @@ export const buildIos = async ({
       configuration: schemeConfig.configuration,
       deviceType: "simulator",
       installPods: schemeConfig.installPods,
+      podInstallEnvironment,
       extraParams: schemeConfig.extraParams,
       useGenericDestination: true,
     });
@@ -65,6 +68,7 @@ export const buildIos = async ({
       extraParams: schemeConfig.extraParams,
       configuration: schemeConfig.configuration,
       installPods: schemeConfig.installPods,
+      podInstallEnvironment,
       logPrefix: `ios-${schemeConfig.hotUpdaterSchemeName}-build-archive`,
     });
 
@@ -138,4 +142,3 @@ const extractAppFromXcarchive = (archivePath: string) => {
 // - Parallel build support for multiple schemes/configurations
 // - Build artifact signing verification
 // - Build size analysis and optimization suggestions
-// - Integration with React Native codegen for new architecture support

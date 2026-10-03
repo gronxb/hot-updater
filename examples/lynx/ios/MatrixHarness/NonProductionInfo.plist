@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+	<dict>
+		<key>NSAppTransportSecurity</key>
+		<dict>
+			<key>NSAllowsLocalNetworking</key>
+			<true/>
+		</dict>
+		<key>HOT_UPDATER_FINGERPRINT_HASH</key>
+		<string>b3bc03c32ea12c264e0562d53563f4f055d99ba1e8474a89e93f5c12e43fe1c5</string>
+	</dict>
+</plist>

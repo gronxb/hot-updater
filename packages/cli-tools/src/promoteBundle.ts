@@ -18,6 +18,13 @@ import {
   getManifestAssetStoragePath,
   isContentAddressedAssetFileHash,
   resolveManifestAssetStorageUri,
+  parseStoredBundleManifest,
+  hasVerifiedDownloadRepresentation,
+  assertBundleArtifactByteSize,
+  assertBundleExpandedByteSize,
+  assertBundleManifestByteSize,
+  MAX_BUNDLE_ARTIFACT_BYTES,
+  MAX_BUNDLE_MANIFEST_BYTES,
 } from "@hot-updater/plugin-core";
 import {
   getManifestFileHash,
@@ -55,6 +62,7 @@ interface BundleManifestAsset {
   downloadByteSize?: number;
   downloadFileHash?: string;
   fileHash: string;
+  downloadCompression?: "br" | null;
   signature?: string;
 }
 
@@ -142,15 +150,19 @@ function resolvePreparedUploadPath(rootDir: string, assetPath: string) {
 }
 
 async function prepareManifestAssetUploadFile({
+  downloadCompression,
   assetPath,
   sourcePath,
   workDir,
 }: {
   assetPath: string;
+  downloadCompression: "br" | null;
   sourcePath: string;
   workDir: string;
 }) {
-  if (getManifestAssetDownloadPath(assetPath) === assetPath) {
+  if (
+    getManifestAssetDownloadPath(assetPath, downloadCompression) === assetPath
+  ) {
     return sourcePath;
   }
 
@@ -213,14 +225,22 @@ async function prepareManifestAssetUploadTargets({
       throw new Error(`Manifest file hash not found for ${assetPath}`);
     }
 
+    if (asset.downloadCompression === undefined)
+      throw new Error(
+        `Manifest asset does not declare downloadCompression: ${assetPath}`,
+      );
     const sourcePath = resolveExtractedPath(extractDir, assetPath);
     const uploadSourcePath = await prepareManifestAssetUploadFile({
+      downloadCompression: asset.downloadCompression,
       assetPath,
       sourcePath,
       workDir,
     });
     const downloadByteSize = await getStorageFileByteSize(uploadSourcePath);
-    const downloadPath = getManifestAssetDownloadPath(assetPath);
+    const downloadPath = getManifestAssetDownloadPath(
+      assetPath,
+      asset.downloadCompression ?? null,
+    );
     const usesBrotli = downloadPath !== assetPath;
     const downloadFileHash = usesBrotli
       ? await getFileHash(uploadSourcePath)
@@ -287,23 +307,28 @@ async function downloadStorageObject(
   storageUri: string,
   storageAdapter: PromoteStorageAdapter | null,
   outputPath: string,
+  maxBytes = MAX_BUNDLE_ARTIFACT_BYTES,
 ) {
   const protocol = new URL(storageUri).protocol.replace(":", "");
 
   if (storageAdapter?.protocol === protocol) {
-    await writeStorageFile(storageAdapter, storageUri, outputPath);
+    await writeStorageFile(storageAdapter, storageUri, outputPath, maxBytes);
     return;
   }
 
   if (protocol === "http" || protocol === "https") {
-    await downloadFromUrl(storageUri, outputPath);
+    await downloadFromUrl(storageUri, outputPath, maxBytes);
     return;
   }
 
   throw new Error(`No storage adapter for protocol: ${protocol}`);
 }
 
-async function downloadFromUrl(fileUrl: string, filePath: string) {
+async function downloadFromUrl(
+  fileUrl: string,
+  filePath: string,
+  maxBytes: number,
+) {
   const response = await fetch(fileUrl);
   if (!response.ok) {
     throw new Error(
@@ -311,7 +336,7 @@ async function downloadFromUrl(fileUrl: string, filePath: string) {
     );
   }
 
-  await writeStorageResponseFile(response, filePath);
+  await writeStorageResponseFile(response, filePath, maxBytes);
 }
 
 async function downloadManifestAssets({
@@ -331,6 +356,7 @@ async function downloadManifestAssets({
     left.localeCompare(right),
   );
 
+  let expandedByteSize = 0;
   await runWithConcurrency(
     assetPaths,
     PROMOTE_ASSET_CONCURRENCY,
@@ -339,7 +365,10 @@ async function downloadManifestAssets({
       if (!asset?.fileHash) {
         throw new Error(`Manifest file hash not found for ${assetPath}`);
       }
-      const downloadPath = getManifestAssetDownloadPath(assetPath);
+      const downloadPath = getManifestAssetDownloadPath(
+        assetPath,
+        asset.downloadCompression ?? null,
+      );
       const storageUri = resolveManifestAssetStorageUri({
         assetBaseStorageUri: bundle.assetBaseStorageUri,
         assetPath: downloadPath,
@@ -352,12 +381,11 @@ async function downloadManifestAssets({
       );
       await fs.mkdir(path.dirname(transferPath), { recursive: true });
       await downloadStorageObject(storageUri, storageAdapter, transferPath);
-
-      if (asset.downloadFileHash) {
-        const actualDownloadHash = await getFileHash(transferPath);
-        if (actualDownloadHash !== asset.downloadFileHash.toLowerCase()) {
-          throw new Error(`Manifest download hash mismatch for ${assetPath}`);
-        }
+      const transferBytes = await fs.readFile(transferPath);
+      if (!hasVerifiedDownloadRepresentation(asset, transferBytes)) {
+        throw new Error(
+          `Manifest download representation mismatch for ${assetPath}`,
+        );
       }
 
       const outputPath = resolveExtractedPath(outputDir, assetPath);
@@ -367,7 +395,9 @@ async function downloadManifestAssets({
       } else {
         await fs.writeFile(
           outputPath,
-          brotliDecompressSync(await fs.readFile(transferPath)),
+          brotliDecompressSync(transferBytes, {
+            maxOutputLength: MAX_BUNDLE_ARTIFACT_BYTES,
+          }),
         );
       }
 
@@ -375,6 +405,10 @@ async function downloadManifestAssets({
       if (actualFileHash !== asset.fileHash.toLowerCase()) {
         throw new Error(`Manifest file hash mismatch for ${assetPath}`);
       }
+      const logicalSize = (await fs.stat(outputPath)).size;
+      assertBundleArtifactByteSize(logicalSize, assetPath);
+      expandedByteSize += logicalSize;
+      assertBundleExpandedByteSize(expandedByteSize);
     },
   );
 }
@@ -405,6 +439,7 @@ export async function createCopiedBundleArtifacts({
       bundle.manifestStorageUri,
       storageAdapter,
       sourceManifestPath,
+      MAX_BUNDLE_MANIFEST_BYTES,
     );
     const actualManifestHash = await getFileHash(sourceManifestPath);
     const signingSession = await prepareBundleSigning(config.signing);
@@ -428,10 +463,12 @@ export async function createCopiedBundleArtifacts({
       throw new Error("Source manifest file hash verification failed.");
     }
 
-    const manifest = JSON.parse(
-      await fs.readFile(sourceManifestPath, "utf8"),
-    ) as BundleManifest;
-    if (!manifest.assets || typeof manifest.assets !== "object") {
+    const manifest = parseStoredBundleManifest({
+      bundleId: bundle.id,
+      manifestBytes: await fs.readFile(sourceManifestPath),
+      manifestContentHash: actualManifestHash,
+    });
+    if (!manifest) {
       throw new Error(LEGACY_BUNDLE_ERROR);
     }
     await downloadManifestAssets({
@@ -499,6 +536,7 @@ export async function createCopiedBundleArtifacts({
       })),
     });
     await fs.writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+    assertBundleManifestByteSize(await getStorageFileByteSize(manifestPath));
 
     const manifestHash = await getFileHash(manifestPath);
     const nextManifestFileHash = signingSession
@@ -547,7 +585,10 @@ export async function createCopiedBundleArtifacts({
       bundle: {
         ...bundle,
         id: nextBundleId,
-        metadata: stripBundleArtifactMetadata(bundle.metadata),
+        metadata: {
+          ...stripBundleArtifactMetadata(bundle.metadata),
+          manifest_content_hash: manifestHash,
+        },
         assetBaseStorageUri,
         patches: [],
         manifestFileHash: nextManifestFileHash,

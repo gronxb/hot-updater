@@ -18,12 +18,10 @@ export interface AppClientPlugin {
 }
 
 interface AppSetup {
+  readonly sdkModule?: string;
   readonly credential?: AppClientCredential;
   readonly clientPlugins?: readonly AppClientPlugin[];
 }
-
-/** The SDK, which exports `HotUpdater` and built-in client plugins such as `insights`. */
-const SDK_MODULE = "@hot-updater/react-native";
 
 /**
  * The app's import lines for `HotUpdater` and `clientPlugins`: one line per
@@ -33,19 +31,25 @@ const SDK_MODULE = "@hot-updater/react-native";
  */
 export const renderAppImports = (
   clientPlugins: readonly AppClientPlugin[],
+  sdkModule?: string,
 ): string[] => {
-  const namesByModule = new Map<string, string[]>([
-    [SDK_MODULE, ["HotUpdater"]],
-  ]);
+  const namesByModule = new Map<string, string[]>(
+    sdkModule ? [[sdkModule, ["HotUpdater"]]] : [],
+  );
   for (const { module, name } of clientPlugins) {
     const names = namesByModule.get(module) ?? [];
     if (!names.includes(name)) names.push(name);
     namesByModule.set(module, names);
   }
-  return [...namesByModule].map(
-    ([module, names]) =>
-      `import { ${names.join(", ")} } from ${JSON.stringify(module)};`,
-  );
+  return [
+    ...(sdkModule
+      ? []
+      : ["// Import HotUpdater from your application integration."]),
+    ...[...namesByModule].map(
+      ([module, names]) =>
+        `import { ${names.join(", ")} } from ${JSON.stringify(module)};`,
+    ),
+  ];
 };
 
 /**
@@ -55,16 +59,13 @@ export const renderAppImports = (
  */
 export const renderAppSetup = ({
   baseURL,
+  sdkModule,
   credential,
   clientPlugins = [],
 }: AppSetup & { readonly baseURL: string }): string =>
   [
-    "// Add this to your App.tsx",
-    ...renderAppImports(clientPlugins),
-    "",
-    "function App() {",
-    "  return null; // Replace with your app root.",
-    "}",
+    "// Add this to your application startup",
+    ...renderAppImports(clientPlugins, sdkModule),
     "",
     "HotUpdater.init({",
     `  baseURL: ${JSON.stringify(baseURL)},`,
@@ -84,7 +85,6 @@ export const renderAppSetup = ({
     "",
     '// Call HotUpdater.checkForUpdate({ updateStrategy: "appVersion" })',
     "// when your app is ready to check.",
-    "export default App;",
   ].join("\n");
 
 /** Prints the App.tsx code, when the URL is known, and the app's credential. */

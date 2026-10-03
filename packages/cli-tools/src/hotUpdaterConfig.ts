@@ -16,7 +16,7 @@ import {
 } from "oxc-parser";
 
 import {
-  type BuildType,
+  type BuildConfig,
   ConfigBuilder,
   type ImportInfo,
   type ProviderConfig,
@@ -37,7 +37,7 @@ export type ManagedHelperStatement = {
 };
 
 export type CreateHotUpdaterConfigScaffoldOptions = {
-  build: BuildType;
+  build: BuildConfig;
   storage: ProviderConfig;
   database: ProviderConfig;
   plugins: ProviderConfig;
@@ -89,11 +89,8 @@ const MANAGED_IMPORT_PACKAGES = new Set([
   "@aws-sdk/credential-provider-sso",
   "@aws-sdk/credential-providers",
   "@hot-updater/aws",
-  "@hot-updater/bare",
   "@hot-updater/cloudflare",
-  "@hot-updater/expo",
   "@hot-updater/firebase",
-  "@hot-updater/rock",
   "@hot-updater/supabase",
 ]);
 const MANAGED_HELPER_NAMES = new Set([
@@ -102,12 +99,6 @@ const MANAGED_HELPER_NAMES = new Set([
   "credential",
   "storageOptions",
 ]);
-const KNOWN_BUILD_CALLEES = new Set(["bare", "expo", "rock"]);
-/** Build adapter packages, whose imports a kept build still needs. */
-const BUILD_IMPORT_PACKAGES = new Set(
-  [...KNOWN_BUILD_CALLEES].map((callee) => `@hot-updater/${callee}`),
-);
-
 type ConfigSource = {
   readonly program: Program;
   readonly text: string;
@@ -297,6 +288,19 @@ const getObjectPropertyName = (property: ObjectPropertyKind): string | null => {
 
   return null;
 };
+
+const isImportedFromHotUpdaterIntegration = (
+  source: ConfigSource,
+  localName: string,
+) =>
+  source.program.body.some(
+    (statement) =>
+      statement.type === "ImportDeclaration" &&
+      statement.source.value.startsWith("@hot-updater/") &&
+      statement.specifiers.some(
+        (specifier) => specifier.local.name === localName,
+      ),
+  );
 
 const isDataProperty = (
   property: ObjectPropertyKind,
@@ -688,7 +692,13 @@ const updateManagedObject = (
 
     let nextInitializerText = getNodeText(next.source, nextProperty.value);
     if (propertyName === "build") {
-      if (!KNOWN_BUILD_CALLEES.has(existingCallee)) {
+      if (
+        !isImportedFromHotUpdaterIntegration(existing.source, existingCallee) ||
+        existingProperty.value.type !== "CallExpression" ||
+        existingProperty.value.arguments.some(
+          (arg) => arg.type !== "ObjectExpression",
+        )
+      ) {
         keptBuild = true;
         continue;
       }
@@ -833,6 +843,18 @@ const keptManagedImports = (
   return { imports, texts };
 };
 
+const isScaffoldBuildImport = (
+  scaffold: HotUpdaterConfigScaffold,
+  pkg: string,
+) =>
+  scaffold.imports.some(
+    (info) =>
+      info.pkg === pkg &&
+      info.named?.some(
+        (name) => name.split(/\s+as\s+/).at(-1) === scaffold.build.callee,
+      ),
+  );
+
 const rebuildImportBlock = (
   source: ConfigSource,
   scaffold: HotUpdaterConfigScaffold,
@@ -848,7 +870,7 @@ const rebuildImportBlock = (
   // Keep environment-loading imports under the existing config's control,
   // and a kept build's adapter import with it.
   const imports = scaffold.imports
-    .filter((info) => !(keptBuild && BUILD_IMPORT_PACKAGES.has(info.pkg)))
+    .filter((info) => !(keptBuild && isScaffoldBuildImport(scaffold, info.pkg)))
     .map((info) =>
       info.pkg === "node:fs"
         ? {
@@ -868,9 +890,25 @@ const rebuildImportBlock = (
     };
   }
 
-  const isPreserved = (declaration: ImportDeclarationNode) =>
-    !MANAGED_IMPORT_PACKAGES.has(declaration.source.value) ||
-    (keptBuild && BUILD_IMPORT_PACKAGES.has(declaration.source.value));
+  const buildProperty = (() => {
+    const config = findDefineConfigObject(source);
+    return config && findManagedProperty(config.objectExpression, "build");
+  })();
+  const existingBuildCallee =
+    buildProperty && getCallCallee(buildProperty.value);
+  const isPreserved = (declaration: ImportDeclarationNode) => {
+    const isBuildImport =
+      isScaffoldBuildImport(scaffold, declaration.source.value) ||
+      declaration.specifiers.some(
+        (specifier) => specifier.local.name === existingBuildCallee,
+      );
+    return (
+      !(
+        MANAGED_IMPORT_PACKAGES.has(declaration.source.value) || isBuildImport
+      ) ||
+      (keptBuild && isBuildImport)
+    );
+  };
   const preservedImportTexts = importDeclarations
     .filter(isPreserved)
     .map((declaration) =>
@@ -1044,7 +1082,7 @@ const mergeHotUpdaterConfigText = (
     const pkg = declaration.source.value;
     if (
       MANAGED_IMPORT_PACKAGES.has(pkg) &&
-      !(nextObject.keptBuild && BUILD_IMPORT_PACKAGES.has(pkg))
+      !(nextObject.keptBuild && isScaffoldBuildImport(scaffold, pkg))
     ) {
       continue;
     }
@@ -1111,7 +1149,7 @@ export const createHotUpdaterConfigScaffold = ({
     .join("\n\n");
 
   const builder = new ConfigBuilder()
-    .setBuildType(build)
+    .setBuild(build)
     .setStorage(storage)
     .setDatabase(database)
     .setPlugins(plugins);
@@ -1221,7 +1259,7 @@ const renderServerSettings = (scaffold: HotUpdaterConfigScaffold) => {
     ({ pkg }) =>
       pkg !== "hot-updater" &&
       pkg !== "node:fs" &&
-      !BUILD_IMPORT_PACKAGES.has(pkg),
+      !isScaffoldBuildImport(scaffold, pkg),
   );
   const plugins = scaffold.plugins.initializer;
   return [

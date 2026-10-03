@@ -75,6 +75,11 @@ export const multiAssetReplacementScenario: DetoxScenarioDefinition = {
         },
       },
     );
+    await app.control(
+      "require individual assets for multi-asset reuse evidence",
+      "/e2e/proxy-control",
+      { archiveAvailable: false },
+    );
     await app.launch("launch second multi-asset app");
     await app.tap(
       "install second multi-asset update",
@@ -119,6 +124,11 @@ export const multiAssetReplacementScenario: DetoxScenarioDefinition = {
         bundleId: "$secondBundleId",
         previousBundleId: "$firstBundleId",
       },
+    );
+    await app.control(
+      "restore optional archive availability",
+      "/e2e/proxy-control",
+      { archiveAvailable: true },
     );
   },
 };

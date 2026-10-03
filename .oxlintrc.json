@@ -1,7 +1,15 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["typescript", "unicorn", "oxc", "react", "jsx-a11y"],
-  "jsPlugins": ["./scripts/oxlint/hot-updater.mjs"],
+  "plugins": [
+    "typescript",
+    "unicorn",
+    "oxc",
+    "react",
+    "jsx-a11y"
+  ],
+  "jsPlugins": [
+    "./scripts/oxlint/hot-updater.mjs"
+  ],
   "categories": {
     "correctness": "error"
   },
@@ -167,6 +175,48 @@
                   "@hot-updater/plugin-insights/server"
                 ],
                 "message": "React Native, @hot-updater/protocol, and the Insights client run on the device and never import @hot-updater/plugin-core or @hot-updater/server, which run where the server runs. Move device-safe code they need into @hot-updater/protocol."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": [
+        "packages/react-native/src/build.ts",
+        "packages/react-native/src/buildFingerprint.ts",
+        "packages/react-native/src/doctor.ts"
+      ],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "paths": [
+              {
+                "name": "typescript",
+                "message": "Use OXC for source analysis; TypeScript is compiler-only."
+              },
+              {
+                "name": "@typescript/native",
+                "message": "Use OXC for source analysis; TypeScript is compiler-only."
+              },
+              {
+                "name": "@typescript/typescript6",
+                "message": "Use OXC for source analysis; TypeScript is compiler-only."
+              },
+              {
+                "name": "@hot-updater/server",
+                "message": "React Native build helpers may use plugin-core; server runtime code stays in the server package."
+              }
+            ],
+            "patterns": [
+              {
+                "group": [
+                  "typescript/*",
+                  "@typescript/native/*",
+                  "@typescript/typescript6/*"
+                ],
+                "message": "Use OXC for source analysis; TypeScript is compiler-only."
               }
             ]
           }

@@ -1,3 +1,4 @@
+import { bsdiff } from "./bsdiff.js";
 import { HdiffError, type HdiffErrorCode } from "./errors.js";
 import { hdiff } from "./hdiff.js";
 import { toUint8Array } from "./internal/bytes.js";
@@ -34,4 +35,4 @@ function loadDenoWasmModule(): WebAssembly.Module {
   }
 }
 
-export { hdiff, HdiffError, type HdiffErrorCode };
+export { bsdiff, hdiff, HdiffError, type HdiffErrorCode };

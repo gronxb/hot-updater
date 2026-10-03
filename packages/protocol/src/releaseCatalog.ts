@@ -87,6 +87,8 @@ export interface ReleaseSelectionInput {
   readonly minimumReleaseId: string;
   readonly cohort: string | null | undefined;
   readonly crashedBundleIds: readonly string[];
+  /** Native-held launch exclusions; other Releases may retry the same Bundle. */
+  readonly unconfirmedReleaseIds?: readonly string[];
 }
 
 export interface ReleaseSelectionContextInput {
@@ -97,6 +99,7 @@ export interface ReleaseSelectionContextInput {
   readonly strategy: ReleaseStrategy;
   readonly strategyValue: string;
   readonly crashedBundleIds: readonly string[];
+  readonly unconfirmedReleaseIds?: readonly string[];
 }
 
 const hashSelectionContext = (value: string): string => {
@@ -120,6 +123,9 @@ export function createReleaseSelectionContextHash(
   const crashedBundleIds = [...new Set(input.crashedBundleIds)]
     .sort()
     .slice(0, MAX_CRASHED_BUNDLES);
+  const unconfirmedReleaseIds = [
+    ...new Set(input.unconfirmedReleaseIds),
+  ].sort();
   const canonical = JSON.stringify({
     activeBundleId: input.activeBundleId ?? null,
     activeReleaseId: input.activeReleaseId ?? null,
@@ -129,6 +135,8 @@ export function createReleaseSelectionContextHash(
     selectorSchemaVersion: RELEASE_CATALOG_SCHEMA_VERSION,
     strategy: input.strategy,
     strategyValue: input.strategyValue,
+    // Keep existing native clients' context hashes unchanged without exclusions.
+    ...(unconfirmedReleaseIds.length > 0 ? { unconfirmedReleaseIds } : {}),
   });
   return hashSelectionContext(canonical);
 }
@@ -173,6 +181,7 @@ export function selectDesiredRelease(
   input: ReleaseSelectionInput,
 ): DesiredRelease | null {
   const crashedBundleIds = new Set(input.crashedBundleIds);
+  const unconfirmedReleaseIds = new Set(input.unconfirmedReleaseIds);
   const activeReleaseId = input.activeReleaseId ?? null;
   const hasActiveBundle = input.currentBundleId !== input.builtInBundleId;
 
@@ -184,6 +193,7 @@ export function selectDesiredRelease(
   } =>
     release.kind === "BUNDLE" &&
     release.bundleId !== null &&
+    !unconfirmedReleaseIds.has(release.releaseId) &&
     !crashedBundleIds.has(release.bundleId) &&
     release.bundleId >= input.minimumReleaseId;
 
@@ -202,7 +212,10 @@ export function selectDesiredRelease(
   });
 
   for (const release of catalog.releases) {
-    if (!isReleaseEligibleForCohort(release, input.cohort)) {
+    if (
+      unconfirmedReleaseIds.has(release.releaseId) ||
+      !isReleaseEligibleForCohort(release, input.cohort)
+    ) {
       continue;
     }
 

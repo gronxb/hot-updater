@@ -72,6 +72,7 @@ describe("renderAgentInstructions", () => {
     const feedback = { module: "feedback-rn", name: "feedback" };
     expect(
       renderAgentInstructions(app, {
+        sdkModule: "@hot-updater/react-native",
         clientAuth: null,
         clientPlugins: [insights, feedback],
       }),
@@ -108,7 +109,7 @@ describe("renderAgentInstructions", () => {
     ).toBe(
       [
         "```ts",
-        'import { HotUpdater } from "@hot-updater/react-native";',
+        "// Import HotUpdater from your application integration.",
         "",
         "HotUpdater.init({",
         '  baseURL: "<verified-base-url>",',

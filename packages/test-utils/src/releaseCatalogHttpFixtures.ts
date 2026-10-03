@@ -1,7 +1,11 @@
 import type { BundleRow, StorageAdapter } from "@hot-updater/plugin-core";
 import type { ArtifactInfo } from "@hot-updater/protocol";
 
-import { createBundleRowFixture } from "./databaseTestFixtures";
+import {
+  createBundleRowFixture,
+  createManifestFixture,
+  fixtureManifestAssets,
+} from "./databaseTestFixtures";
 
 export const releaseCatalogDownloadUrl = (uri: string) =>
   `https://storage.example.com/${encodeURIComponent(uri)}`;
@@ -13,21 +17,13 @@ export const RELEASE_CATALOG_MANIFEST_URIS = {
 };
 export const RELEASE_CATALOG_DOWNLOAD_HASH = "a".repeat(64);
 
-const manifestAssets = {
-  "index.ios.bundle": {
-    fileHash: "target-hbc-hash",
-    downloadFileHash: RELEASE_CATALOG_DOWNLOAD_HASH,
-    downloadByteSize: 1_000,
-  },
-};
-
 export const releaseCatalogArtifact = (bundle: BundleRow): ArtifactInfo => ({
   artifactProtocolVersion: 1,
   manifestUrl: releaseCatalogDownloadUrl(bundle.manifest_storage_uri),
   manifestFileHash: bundle.manifest_file_hash,
   assets: {
     "index.ios.bundle": {
-      fileHash: "target-hbc-hash",
+      fileHash: fixtureManifestAssets["index.ios.bundle"].fileHash,
       file: {
         compression: "br",
         url: releaseCatalogDownloadUrl(
@@ -44,14 +40,10 @@ export const RELEASE_CATALOG_STORAGE_FIXTURES: Readonly<
 > = Object.fromEntries(
   Object.entries(RELEASE_CATALOG_MANIFEST_URIS).map(([size, uri]) => [
     uri,
-    JSON.stringify({
-      bundleId: targetId,
-      assets: manifestAssets,
-      archive: {
-        downloadFileHash: "b".repeat(64),
-        downloadByteSize: size === "small" ? 1 : 10_000,
-        tarByteSize: 20_000,
-      },
+    createManifestFixture("302", {
+      downloadFileHash: "b".repeat(64),
+      downloadByteSize: size === "small" ? 1 : 10_000,
+      tarByteSize: 20_000,
     }),
   ]),
 );
@@ -66,12 +58,7 @@ export const createReleaseCatalogTestStorage = (): StorageAdapter => ({
     )?.[1];
     const body =
       RELEASE_CATALOG_STORAGE_FIXTURES[storageUri] ??
-      (suffix === undefined
-        ? undefined
-        : JSON.stringify({
-            bundleId: createBundleRowFixture(suffix).id,
-            assets: manifestAssets,
-          }));
+      (suffix === undefined ? undefined : createManifestFixture(suffix));
     return { response: body === undefined ? null : new Response(body) };
   },
   async getDownloadUrl({ storageUri }) {

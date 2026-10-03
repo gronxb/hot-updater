@@ -1,0 +1,48 @@
+{
+  "name": "@hot-updater/lynx",
+  "version": "1.0.0-rc.27",
+  "type": "module",
+  "description": "OTA updates for Lynx apps",
+  "sideEffects": false,
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.cts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.cjs"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "android",
+    "ios",
+    "*.podspec",
+    "README.md",
+    "!**/build",
+    "!**/.build",
+    "!**/.gradle",
+    "!**/local.properties",
+    "!android/src/test",
+    "!ios/Tests",
+    "!**/*.spec.ts",
+    "!**/*.test.ts",
+    "!**/src/test"
+  ],
+  "license": "MIT",
+  "repository": "https://github.com/gronxb/hot-updater",
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsdown",
+    "test:type": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@hot-updater/protocol": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:"
+  }
+}

@@ -680,6 +680,7 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
   });
 
   printAppSetup({
+    ...(build.clientModule ? { sdkModule: build.clientModule } : {}),
     ...(subdomains.subdomain
       ? {
           baseURL: `https://${workerName}.${subdomains.subdomain}.workers.dev`,

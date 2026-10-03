@@ -20,24 +20,35 @@ export const failedDownloadSameGenerationRetryScenario: DetoxScenarioDefinition 
         },
       );
       await app.launch("launch retry app");
-      // Native downloads try a 503 three times, so the first install fails
-      // only when every attempt at its manifest fails.
+      // Keep the download unavailable until the SDK reports failure, regardless
+      // of its internal retry policy. Preserve catalog evidence when restoring it.
       await app.control(
         "fail every attempt of the first download",
         "/e2e/proxy-control",
         {
-          artifactFailures: 3,
+          downloadAvailable: false,
           reset: true,
         },
       );
       await app.tap(
         "attempt failing download",
         "action-install-current-channel-update",
+        { allowErrorResult: true },
       );
       await app.assertText(
         "assert first download failed",
         "update-action-result",
         "current-channel -> error",
+      );
+      await app.control(
+        "verify the first attempt reached an unavailable download",
+        "/e2e/assert-proxy",
+        { minFailedDownloads: 1 },
+      );
+      await app.control(
+        "restore downloads without resetting catalog evidence",
+        "/e2e/proxy-control",
+        { downloadAvailable: true },
       );
       await app.tap(
         "retry same generation download",

@@ -32,6 +32,18 @@ describe("renderAppSetup", () => {
     expect(source).not.toContain("HotUpdater.wrap");
   });
 
+  it("uses the selected integration's SDK and leaves selection explicit when absent", () => {
+    expect(
+      renderAppSetup({
+        baseURL: "https://example.com",
+        sdkModule: "@hot-updater/lynx",
+      }),
+    ).toContain('import { HotUpdater } from "@hot-updater/lynx";');
+    expect(renderAppSetup({ baseURL: "https://example.com" })).toContain(
+      "// Import HotUpdater from your application integration.",
+    );
+  });
+
   it("sends no headers to public client routes", () => {
     const source = renderAppSetup({ baseURL: "https://example.com" });
 
@@ -46,6 +58,7 @@ describe("renderAppSetup", () => {
     const source = renderAppSetup({
       baseURL: "https://example.com",
       credential,
+      sdkModule: "@hot-updater/react-native",
       clientPlugins: [
         { module: "@hot-updater/react-native", name: "insights" },
         { module: "feedback-rn", name: "feedback" },
@@ -74,12 +87,17 @@ describe("printAppSetup", () => {
     printAppSetup({
       baseURL: "https://example.com",
       credential,
+      sdkModule: "@hot-updater/react-native",
       clientPlugins: [],
     });
 
     expect(prompts.note).toHaveBeenNthCalledWith(
       1,
-      renderAppSetup({ baseURL: "https://example.com", credential }),
+      renderAppSetup({
+        baseURL: "https://example.com",
+        credential,
+        sdkModule: "@hot-updater/react-native",
+      }),
     );
     expect(prompts.note).toHaveBeenNthCalledWith(
       2,

@@ -33,6 +33,7 @@ export const buildXcodeProject = async ({
   destination = [],
   useGenericDestination = false,
   installPods,
+  podInstallEnvironment,
   extraParams,
 }: {
   sourceDir: string;
@@ -44,12 +45,13 @@ export const buildXcodeProject = async ({
   destination?: IosBuildDestination[];
   useGenericDestination?: boolean;
   installPods?: boolean;
+  podInstallEnvironment?: Record<string, string>;
   extraParams?: string[];
 }): Promise<{ appPath: string; infoPlistPath: string }> => {
   const xcodeProject = await parseXcodeProjectInfo(sourceDir);
 
   if (installPods) {
-    await installPodsIfNeeded(sourceDir);
+    await installPodsIfNeeded(sourceDir, podInstallEnvironment);
   }
 
   const derivedDataPath = await createRandomTmpDir();
@@ -211,16 +213,17 @@ const getBuildSettings = async ({
       WRAPPER_EXTENSION: string;
     };
     target: string;
-  }[] = JSON.parse(buildSettings).filter(
-    ({ target }: { target: string }) =>
-      target !== "React" && target !== "React-Core",
-  );
+  }[] = JSON.parse(buildSettings);
 
   if (settings.length === 0) {
     throw new Error("Failed to get build settings for your project");
   }
 
-  const targetSettings = settings[0].buildSettings;
+  const targetSettings = (
+    settings.find(
+      ({ buildSettings }) => buildSettings.WRAPPER_EXTENSION === "app",
+    ) ?? settings[0]
+  ).buildSettings;
   const wrapperExtension = targetSettings.WRAPPER_EXTENSION;
 
   if (wrapperExtension !== "app" && wrapperExtension !== "framework") {

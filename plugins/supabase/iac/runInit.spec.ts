@@ -195,7 +195,13 @@ describe("Supabase init", () => {
   it("deploys the prebuilt Edge Function on the bucket, with the import map of what it vendors", async () => {
     root = await project();
 
-    await runInit({ build: "bare", envFile: ".env.hotupdater" });
+    await runInit({
+      build: {
+        imports: [{ pkg: "@hot-updater/bare", named: ["bare"] }],
+        configString: "bare({ enableHermes: true })",
+      },
+      envFile: ".env.hotupdater",
+    });
 
     const { index, imports } = deployed.function!;
     expect(index).toContain('"bundles"');
@@ -213,7 +219,13 @@ describe("Supabase init", () => {
   it("pushes the package migrations, including the additive Insights upgrade", async () => {
     root = await project();
 
-    await runInit({ build: "bare", envFile: ".env.hotupdater" });
+    await runInit({
+      build: {
+        imports: [{ pkg: "@hot-updater/bare", named: ["bare"] }],
+        configString: "bare({ enableHermes: true })",
+      },
+      envFile: ".env.hotupdater",
+    });
 
     const directory = path.resolve(
       import.meta.dirname,
@@ -239,7 +251,13 @@ describe("Supabase init", () => {
   it("gives the app its credential and client plugins through the managed server's plugins", async () => {
     root = await project();
 
-    await runInit({ build: "bare", envFile: ".env.hotupdater" });
+    await runInit({
+      build: {
+        imports: [{ pkg: "@hot-updater/bare", named: ["bare"] }],
+        configString: "bare({ enableHermes: true })",
+      },
+      envFile: ".env.hotupdater",
+    });
 
     const [server, input] = mocks.provisionClientCredential.mock.calls[0]!;
     expect(
@@ -264,7 +282,13 @@ describe("Supabase init", () => {
   it("writes hot-updater.config.ts with the provider's plugins, and no server code", async () => {
     root = await project();
 
-    await runInit({ build: "bare", envFile: ".env.hotupdater" });
+    await runInit({
+      build: {
+        imports: [{ pkg: "@hot-updater/bare", named: ["bare"] }],
+        configString: "bare({ enableHermes: true })",
+      },
+      envFile: ".env.hotupdater",
+    });
 
     expect((await fs.readdir(root)).sort()).toEqual([
       "hot-updater.config.ts",
@@ -289,7 +313,13 @@ describe("Supabase init", () => {
     });
 
     await expect(
-      runInit({ build: "bare", envFile: ".env.hotupdater" }),
+      runInit({
+        build: {
+          imports: [{ pkg: "@hot-updater/bare", named: ["bare"] }],
+          configString: "bare({ enableHermes: true })",
+        },
+        envFile: ".env.hotupdater",
+      }),
     ).rejects.toThrow("Invalid Supabase Edge Function name.");
     expect(mocks.makeEnv).not.toHaveBeenCalled();
     expect(mocks.api.createBucket).not.toHaveBeenCalled();

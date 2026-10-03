@@ -25,6 +25,7 @@ const unitInclude = [
   "packages/**/*.test.ts",
   "plugins/**/*.spec.ts",
   "plugins/**/*.test.ts",
+  "examples/lynx/{src,scripts,spike}/**/*.spec.ts",
   "examples-server/**/*.spec.ts",
   "examples-server/**/*.test.ts",
 ];

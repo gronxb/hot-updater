@@ -57,11 +57,25 @@ export default defineConfig({
 
 describe("Firebase managed config scaffold", () => {
   it("keeps the credential helper its storage and database read when init runs again", async () => {
-    const configPath = await configWith(`${getConfigScaffold("bare").text}\n`);
+    const configPath = await configWith(
+      `${getConfigScaffold({ imports: [{ pkg: "@hot-updater/bare", named: ["bare"] }], configString: "bare({ enableHermes: true })" }).text}\n`,
+    );
 
-    await writeHotUpdaterConfig(getConfigScaffold("bare"), configPath);
+    await writeHotUpdaterConfig(
+      getConfigScaffold({
+        imports: [{ pkg: "@hot-updater/bare", named: ["bare"] }],
+        configString: "bare({ enableHermes: true })",
+      }),
+      configPath,
+    );
     const updated = await fs.readFile(configPath, "utf8");
-    await writeHotUpdaterConfig(getConfigScaffold("bare"), configPath);
+    await writeHotUpdaterConfig(
+      getConfigScaffold({
+        imports: [{ pkg: "@hot-updater/bare", named: ["bare"] }],
+        configString: "bare({ enableHermes: true })",
+      }),
+      configPath,
+    );
 
     expect(updated.match(/const credential\s*=/gu)).toHaveLength(1);
     expect(updated).toContain("const credential = applicationDefault();");
@@ -74,7 +88,13 @@ describe("Firebase managed config scaffold", () => {
   it("keeps a project's own credential helper and settings, and lists the plugins", async () => {
     const configPath = await configWith(PROJECT_CONFIG);
 
-    await writeHotUpdaterConfig(getConfigScaffold("bare"), configPath);
+    await writeHotUpdaterConfig(
+      getConfigScaffold({
+        imports: [{ pkg: "@hot-updater/bare", named: ["bare"] }],
+        configString: "bare({ enableHermes: true })",
+      }),
+      configPath,
+    );
 
     const updated = await fs.readFile(configPath, "utf8");
     expect(updated).toContain(

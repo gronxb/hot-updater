@@ -67,6 +67,7 @@ export const slowOldArtifactAfterNewerInstallScenario: DetoxScenarioDefinition =
       await app.tap(
         "apply captured old update",
         "action-apply-captured-update",
+        { allowErrorResult: true },
       );
       await app.assertText(
         "assert old artifact CAS rejected",

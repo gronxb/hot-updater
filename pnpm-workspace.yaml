@@ -18,6 +18,7 @@ allowBuilds:
   '@sentry/cli': true
   aws-sdk: true
   bun: true
+  core-js: false
   deno-bin: true
   detox: true
   dtrace-provider: true

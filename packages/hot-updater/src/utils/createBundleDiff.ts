@@ -1,15 +1,23 @@
 import crypto from "node:crypto";
 import path from "node:path";
-import { promisify } from "node:util";
-import { brotliDecompress } from "node:zlib";
+import { Readable } from "node:stream";
+import { createBrotliDecompress } from "node:zlib";
 
-import { hdiff } from "@hot-updater/bsdiff";
+import { bsdiff } from "@hot-updater/bsdiff";
 import type {
   Bundle,
   HotUpdaterCoreApi,
   StorageAdapterWith,
 } from "@hot-updater/plugin-core";
 import {
+  assertBundleArtifactByteSize,
+  hasExplicitDownloadRepresentation,
+  hasVerifiedDownloadRepresentation,
+  hasVerifiedLogicalAsset,
+  parseStoredBundleManifest,
+  MAX_BUNDLE_ARTIFACT_BYTES,
+  MAX_BUNDLE_MANIFEST_BYTES,
+  MAX_BUNDLE_PATCHES,
   createBundleStorageKey,
   getManifestAssetDownloadPath,
   resolveManifestAssetStorageUri,
@@ -18,22 +26,10 @@ import {
 import {
   getAssetBaseStorageUri,
   getBundlePatch,
-  getBundlePatches,
   getManifestStorageUri,
+  getManifestContentHash,
+  type BundleManifest,
 } from "@hot-updater/protocol";
-
-type BundleManifest = {
-  bundleId: string;
-  assets: Record<
-    string,
-    {
-      downloadByteSize?: unknown;
-      downloadFileHash?: unknown;
-      fileHash: string;
-      signature?: string;
-    }
-  >;
-};
 
 export interface CreateBundleDiffInput {
   baseBundleId: string;
@@ -50,46 +46,10 @@ export interface CreateBundleDiffOptions {
   makePrimary?: boolean;
 }
 
-const HBC_ASSET_PATH_RE = /\.bundle$/;
-const decompressBrotli = promisify(brotliDecompress);
-
-const isBundleManifest = (value: unknown): value is BundleManifest => {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return false;
-  }
-
-  const manifest = value as {
-    bundleId?: unknown;
-    assets?: unknown;
-  };
-
-  if (typeof manifest.bundleId !== "string") {
-    return false;
-  }
-
-  if (!manifest.assets || typeof manifest.assets !== "object") {
-    return false;
-  }
-
-  return Object.values(manifest.assets as Record<string, unknown>).every(
-    (asset) => {
-      if (!asset || typeof asset !== "object" || Array.isArray(asset)) {
-        return false;
-      }
-
-      const manifestAsset = asset as {
-        fileHash?: unknown;
-        signature?: unknown;
-      };
-
-      return (
-        typeof manifestAsset.fileHash === "string" &&
-        (manifestAsset.signature === undefined ||
-          typeof manifestAsset.signature === "string")
-      );
-    },
-  );
-};
+import {
+  readBoundedResponseBytes,
+  ResponseBodyTooLargeError,
+} from "./boundedResponseBody";
 
 const getRelativeStorageDir = (relativePath: string) => {
   const normalized = relativePath.replace(/\\/g, "/");
@@ -97,24 +57,25 @@ const getRelativeStorageDir = (relativePath: string) => {
   return dirname === "." ? "" : dirname;
 };
 
-async function downloadFromUrl(url: string) {
+async function downloadFromUrl(url: string, maxBytes: number) {
   const response = await fetch(url);
   if (!response.ok) {
     throw new Error(`Failed to download storage object: ${response.status}`);
   }
 
-  return new Uint8Array(await response.arrayBuffer());
+  return readBoundedResponseBytes(response, maxBytes);
 }
 
 async function downloadStorageBytes(
   storageUri: string,
   storageAdapter: StorageAdapterWith<"get" | "put" | "delete"> | null,
+  maxBytes: number,
 ) {
   const protocol = new URL(storageUri).protocol.replace(":", "");
 
   if (!storageAdapter || storageAdapter.protocol !== protocol) {
     if (protocol === "http" || protocol === "https") {
-      return downloadFromUrl(storageUri);
+      return downloadFromUrl(storageUri, maxBytes);
     }
     if (!storageAdapter) {
       throw new Error("Storage adapter is not configured");
@@ -126,8 +87,33 @@ async function downloadStorageBytes(
   if (response === null) {
     throw new Error(`Storage object not found: ${storageUri}`);
   }
-  return new Uint8Array(await response.arrayBuffer());
+  return readBoundedResponseBytes(response, maxBytes);
 }
+
+export const decompressBrotliBytes = async (
+  bytes: Uint8Array,
+  maxBytes = MAX_BUNDLE_ARTIFACT_BYTES,
+): Promise<Uint8Array> => {
+  const decompressor = Readable.from([bytes]).pipe(createBrotliDecompress());
+  const chunks: Uint8Array[] = [];
+  let byteLength = 0;
+  for await (const chunk of decompressor) {
+    const value = new Uint8Array(chunk);
+    byteLength += value.byteLength;
+    if (byteLength > maxBytes) {
+      decompressor.destroy();
+      throw new ResponseBodyTooLargeError(maxBytes);
+    }
+    chunks.push(value);
+  }
+  const result = new Uint8Array(byteLength);
+  let offset = 0;
+  for (const chunk of chunks) {
+    result.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return result;
+};
 
 async function fetchManifest(
   bundle: Bundle,
@@ -141,32 +127,27 @@ async function fetchManifest(
   const manifestBytes = await downloadStorageBytes(
     manifestStorageUri,
     storageAdapter,
+    MAX_BUNDLE_MANIFEST_BYTES,
   );
 
-  const payload: unknown = JSON.parse(new TextDecoder().decode(manifestBytes));
-  if (!isBundleManifest(payload)) {
+  const manifest = parseStoredBundleManifest({
+    bundleId: bundle.id,
+    manifestBytes,
+    manifestContentHash: getManifestContentHash(bundle),
+  });
+  if (!manifest) {
     throw new Error(`Invalid manifest payload for bundle ${bundle.id}`);
   }
 
-  return payload;
+  return manifest;
 }
 
-function resolveHbcAssetPath(manifest: BundleManifest) {
-  const candidates = Object.keys(manifest.assets)
-    .sort((left, right) => left.localeCompare(right))
-    .filter((candidate) => HBC_ASSET_PATH_RE.test(candidate));
-
-  const [candidate] = candidates;
-  if (candidate === undefined) {
-    throw new Error("No Hermes bundle asset found in manifest");
+function resolvePatchAssetPath(manifest: BundleManifest) {
+  const assetPath = manifest.patchAssetPath;
+  if (!assetPath || !Object.hasOwn(manifest.assets, assetPath)) {
+    throw new Error("Manifest must name an existing patchAssetPath");
   }
-  if (candidates.length > 1) {
-    throw new Error(
-      `Expected exactly one Hermes bundle asset in manifest, found ${candidates.length}: ${candidates.join(", ")}`,
-    );
-  }
-
-  return candidate;
+  return assetPath;
 }
 
 async function fetchAssetBytes(
@@ -184,56 +165,35 @@ async function fetchAssetBytes(
     throw new Error(`Asset ${assetPath} is missing from manifest`);
   }
 
-  const downloadPath = getManifestAssetDownloadPath(assetPath);
-  if (downloadPath !== assetPath) {
-    const compressedAssetStorageUri = resolveManifestAssetStorageUri({
-      assetBaseStorageUri,
-      assetPath: downloadPath,
-      downloadFileHash: asset.downloadFileHash,
-      fileHash: asset.fileHash,
-    });
-
-    let compressedBytes: Uint8Array | null = null;
-    try {
-      compressedBytes = await downloadStorageBytes(
-        compressedAssetStorageUri,
-        storageAdapter,
-      );
-    } catch (error) {
-      if (!(error instanceof Error)) throw error;
-      compressedBytes = null;
-    }
-
-    if (compressedBytes) {
-      return new Uint8Array(await decompressBrotli(compressedBytes));
-    }
+  if (asset.downloadCompression === undefined) {
+    throw new Error(`Asset ${assetPath} does not declare downloadCompression`);
   }
-
+  const downloadPath = getManifestAssetDownloadPath(
+    assetPath,
+    asset.downloadCompression,
+  );
   const assetStorageUri = resolveManifestAssetStorageUri({
     assetBaseStorageUri,
-    assetPath,
+    assetPath: downloadPath,
+    downloadFileHash: asset.downloadFileHash,
     fileHash: asset.fileHash,
   });
-  return downloadStorageBytes(assetStorageUri, storageAdapter);
-}
-
-function buildNextPatchState({
-  currentBundle,
-  nextPatch,
-  makePrimary,
-}: {
-  currentBundle: Bundle;
-  nextPatch: NonNullable<ReturnType<typeof getBundlePatch>>;
-  makePrimary: boolean;
-}) {
-  const existingPatches = getBundlePatches(currentBundle).filter(
-    (patch) => patch.baseBundleId !== nextPatch.baseBundleId,
+  const bytes = await downloadStorageBytes(
+    assetStorageUri,
+    storageAdapter,
+    MAX_BUNDLE_ARTIFACT_BYTES,
   );
-  const orderedPatches = makePrimary
-    ? [nextPatch, ...existingPatches]
-    : [...existingPatches, nextPatch];
-
-  return orderedPatches;
+  if (!hasVerifiedDownloadRepresentation(asset, bytes)) {
+    throw new Error(`Invalid download representation for asset ${assetPath}`);
+  }
+  const logicalBytes =
+    asset.downloadCompression === "br"
+      ? await decompressBrotliBytes(bytes)
+      : bytes;
+  if (!hasVerifiedLogicalAsset(asset, logicalBytes)) {
+    throw new Error(`Invalid logical bytes for asset ${assetPath}`);
+  }
+  return logicalBytes;
 }
 
 export async function createBundleDiff(
@@ -265,33 +225,47 @@ export async function createBundleDiff(
     throw new Error("Base bundle platform must match the target bundle");
   }
 
-  if (baseBundle.id.localeCompare(targetBundle.id) >= 0) {
-    throw new Error("Base bundle must be older than the target bundle");
+  if (
+    !getBundlePatch(targetBundle, baseBundle.id) &&
+    (targetBundle.patches?.length ?? 0) >= MAX_BUNDLE_PATCHES
+  ) {
+    throw new Error(
+      `Target bundle cannot contain more than ${MAX_BUNDLE_PATCHES} patches`,
+    );
   }
-
   const [baseManifest, targetManifest] = await Promise.all([
     fetchManifest(baseBundle, deps.storageAdapter),
     fetchManifest(targetBundle, deps.storageAdapter),
   ]);
 
-  const baseAssetPath = resolveHbcAssetPath(baseManifest);
-  const targetAssetPath = resolveHbcAssetPath(targetManifest);
+  const baseAssetPath = resolvePatchAssetPath(baseManifest);
+  const targetAssetPath = resolvePatchAssetPath(targetManifest);
 
   if (baseAssetPath !== targetAssetPath) {
-    throw new Error("Base and target Hermes asset paths do not match");
+    throw new Error("Base and target patchAssetPath values do not match");
   }
 
   const baseAssetHash = baseManifest.assets[baseAssetPath]?.fileHash;
   const targetAssetHash = targetManifest.assets[targetAssetPath]?.fileHash;
 
   if (!baseAssetHash || !targetAssetHash) {
-    throw new Error("Hermes asset hash is missing from manifest");
+    throw new Error("Patch asset hash is missing from manifest");
   }
 
   if (baseAssetHash === targetAssetHash) {
-    throw new Error("Hermes bundle is unchanged; no diff patch is required");
+    throw new Error("Patch asset is unchanged; no diff patch is required");
   }
 
+  for (const [assetPath, asset] of [
+    [baseAssetPath, baseManifest.assets[baseAssetPath]],
+    [targetAssetPath, targetManifest.assets[targetAssetPath]],
+  ] as const) {
+    if (!asset || !hasExplicitDownloadRepresentation(asset)) {
+      throw new Error(
+        `Asset ${assetPath} does not declare a verifiable download representation`,
+      );
+    }
+  }
   const [baseBytes, targetBytes] = await Promise.all([
     fetchAssetBytes(
       baseBundle,
@@ -307,13 +281,13 @@ export async function createBundleDiff(
     ),
   ]);
 
-  const patchBytes = await hdiff(baseBytes, targetBytes);
+  const patchBytes = await bsdiff(baseBytes, targetBytes);
+  assertBundleArtifactByteSize(patchBytes.byteLength, targetAssetPath);
   const patchFileHash = crypto
     .createHash("sha256")
     .update(patchBytes)
     .digest("hex");
   const patchFilename = `${path.posix.basename(targetAssetPath)}.bsdiff`;
-  const previousPatch = getBundlePatch(targetBundle, baseBundle.id);
 
   const uploadKey = createBundleStorageKey(
     targetBundle.id,
@@ -342,28 +316,22 @@ export async function createBundleDiff(
     patchFileHash,
     patchStorageUri: patchUpload.storageUri,
   };
-  const patches = buildNextPatchState({
-    currentBundle: targetBundle,
-    nextPatch,
-    makePrimary: options.makePrimary ?? true,
+  await core.updateBundle(targetBundle.id, {
+    upsertPatch: {
+      artifact: nextPatch,
+      position: options.makePrimary === false ? "last" : "first",
+    },
   });
-
-  const updatedBundle: Bundle = {
-    ...targetBundle,
-    patches,
-  };
-  await core.updateBundle(targetBundle.id, { patches });
-
+  const committed = await core.getBundle(targetBundle.id);
+  const updatedBundle =
+    committed && rowToBundle(committed.bundle, committed.patches);
   if (
-    previousPatch?.patchStorageUri &&
-    previousPatch.patchStorageUri !== patchUpload.storageUri
+    !updatedBundle ||
+    getBundlePatch(updatedBundle, baseBundle.id)?.patchStorageUri !==
+      patchUpload.storageUri
   ) {
-    await deps.storageAdapter
-      .delete({ storageUri: previousPatch.patchStorageUri })
-      .catch(() => {
-        return;
-      });
+    throw new Error("Patch publication could not be confirmed");
   }
-
+  // Neither an ambiguous commit nor replacement proves an object is unreferenced.
   return updatedBundle;
 }

@@ -9,6 +9,7 @@ import {
   handleAssertBundleAssetsStored,
   handleAssertBundlePatchBases,
   handleAssertCrashHistory,
+  handleAssertStartupInterruption,
   handleAssertFirstOtaUsesBuiltInManifest,
   handleAssertLaunchReport,
   handleAssertManifestDiffApplied,
@@ -31,6 +32,7 @@ import {
   handleResetLocalAppState,
   handleResetRemoteBundles,
   handleRuntimeConfig,
+  handleLynxCrashState,
   handleSeedCrashHistory,
   handleSeedLegacyMetadata,
   handleVerifyConsoleInsights,
@@ -38,6 +40,7 @@ import {
   handleWaitForMetadata,
   handleWriteSummary,
   startBootstrapJob,
+  startCreateBundleDiffJob,
   startCreateRepublishedReleaseJob,
   startDeployBundleJob,
   startPatchReleaseJob,
@@ -46,7 +49,15 @@ import {
   startWaitForAndroidRestartJob,
   startWaitForMetadataJob,
 } from "./controller.ts";
-import { handlePatchE2eScreenState } from "./screen-state.ts";
+import {
+  handleEnqueuePendingE2eAction,
+  readPendingE2eAction,
+  takePendingE2eAction,
+} from "./pending-action.ts";
+import {
+  handlePatchE2eScreenState,
+  readE2eScreenStateSnapshot,
+} from "./screen-state.ts";
 
 const app = new Hono();
 
@@ -85,6 +96,25 @@ app.post("/e2e/screen-state", async (c) => {
   return c.json(handlePatchE2eScreenState(await c.req.json()));
 });
 
+app.get("/e2e/screen-state", (c) => {
+  return c.json({ screenState: readE2eScreenStateSnapshot() });
+});
+
+app.post("/e2e/pending-action", async (c) => {
+  return c.json(handleEnqueuePendingE2eAction(await c.req.json()));
+});
+
+app.get("/e2e/pending-action", (c) => {
+  const action =
+    c.req.query("take") === "1"
+      ? takePendingE2eAction()
+      : readPendingE2eAction();
+  return c.json({ action });
+});
+app.delete("/e2e/pending-action", (c) => {
+  return c.json({ action: takePendingE2eAction() });
+});
+
 app.post("/e2e/verify-console-insights", async (c) => {
   const payload = (await c.req.json()) as {
     sinceMs?: unknown;
@@ -116,6 +146,7 @@ app.all("/e2e/proxy-url/:targetId", async (c) => {
 
 app.post("/e2e/proxy-control", async (c) => {
   const payload = (await c.req.json()) as {
+    downloadAvailable?: boolean;
     archiveAvailable?: boolean;
     archiveFailureMode?: "corrupt" | "not-found" | null;
     archiveFailures?: number;
@@ -123,9 +154,20 @@ app.post("/e2e/proxy-control", async (c) => {
     artifactFailures?: number;
     catalogDelayMs?: number;
     catalogMode?: "freeze" | "live" | "replay";
+    changedAssetMutation?: {
+      assetPath?: string;
+      mode?: "corrupt" | "missing";
+      remaining?: number;
+    } | null;
     replayGeneration?: number | null;
     reset?: boolean;
   };
+  if (
+    payload.downloadAvailable !== undefined &&
+    typeof payload.downloadAvailable !== "boolean"
+  ) {
+    return c.json({ error: "downloadAvailable must be a boolean" }, 400);
+  }
   if (
     payload.archiveAvailable !== undefined &&
     typeof payload.archiveAvailable !== "boolean"
@@ -168,16 +210,52 @@ app.post("/e2e/proxy-control", async (c) => {
       400,
     );
   }
-  return c.json(handleConfigureProxy(payload));
+  if (
+    payload.changedAssetMutation !== undefined &&
+    payload.changedAssetMutation !== null &&
+    (payload.changedAssetMutation.assetPath !== "detail.lynx.bundle" ||
+      (payload.changedAssetMutation.mode !== "corrupt" &&
+        payload.changedAssetMutation.mode !== "missing") ||
+      !Number.isSafeInteger(payload.changedAssetMutation.remaining) ||
+      payload.changedAssetMutation.remaining! < 1)
+  ) {
+    return c.json(
+      {
+        error:
+          "changedAssetMutation must target detail.lynx.bundle with corrupt or missing mode and a positive integer remaining",
+      },
+      400,
+    );
+  }
+  const { changedAssetMutation, ...proxyOptions } = payload;
+  return c.json(
+    handleConfigureProxy({
+      ...proxyOptions,
+      ...(changedAssetMutation
+        ? {
+            changedAssetMutation: {
+              assetPath: changedAssetMutation.assetPath!,
+              mode: changedAssetMutation.mode!,
+              remaining: changedAssetMutation.remaining!,
+            },
+          }
+        : changedAssetMutation === null
+          ? { changedAssetMutation: null }
+          : {}),
+    }),
+  );
 });
 
 app.post("/e2e/proxy-state", (c) => c.json(handleProxyState()));
 
 app.post("/e2e/assert-proxy", async (c) => {
   const payload = (await c.req.json()) as {
+    minFailedDownloads?: number;
     artifactFailuresRemaining?: number;
     artifactRequests?: number;
     catalogRequests?: number;
+    changedAssetMutationMode?: "corrupt" | "missing" | null;
+    changedAssetMutationRemaining?: number;
     maxPathCardinality?: number;
   };
   return c.json(handleAssertProxy(payload));
@@ -187,6 +265,9 @@ app.post("/e2e/assert-bundle-artifact-selection", async (c) => {
   const payload = (await c.req.json()) as {
     currentBundleId?: string;
     selection?: "manifest-v1";
+    requireArchiveAbsent?: boolean;
+    requiredPatchAssetPaths?: string[];
+    requiredRawAssetPaths?: string[];
     targetBundleId?: string;
   };
   if (
@@ -205,6 +286,9 @@ app.post("/e2e/assert-bundle-artifact-selection", async (c) => {
   return c.json(
     handleAssertBundleArtifactSelection({
       currentBundleId: payload.currentBundleId,
+      requireArchiveAbsent: payload.requireArchiveAbsent,
+      requiredPatchAssetPaths: payload.requiredPatchAssetPaths,
+      requiredRawAssetPaths: payload.requiredRawAssetPaths,
       selection: payload.selection,
       targetBundleId: payload.targetBundleId,
     }),
@@ -215,18 +299,14 @@ app.post("/e2e/assert-bundle-artifact-transfers", async (c) => {
   const payload = (await c.req.json()) as {
     archiveRequests?: number;
     currentBundleId?: string;
-    fileRequests?: number;
+    fileRequests?: number | "manifest-diff" | "archive";
     maxRequestsPerAsset?: number;
     minNetworkAssets?: number;
     patchRequests?: number;
     targetBundleId?: string;
     verifyAllAssetHashes?: boolean;
   };
-  const counts = [
-    payload.archiveRequests,
-    payload.fileRequests,
-    payload.patchRequests,
-  ];
+  const counts = [payload.archiveRequests, payload.patchRequests];
   if (
     !payload.currentBundleId ||
     !payload.targetBundleId ||
@@ -234,6 +314,11 @@ app.post("/e2e/assert-bundle-artifact-transfers", async (c) => {
       (value) =>
         !Number.isSafeInteger(value) || (value !== undefined && value < 0),
     ) ||
+    (payload.fileRequests !== "manifest-diff" &&
+      payload.fileRequests !== "archive" &&
+      (typeof payload.fileRequests !== "number" ||
+        !Number.isSafeInteger(payload.fileRequests) ||
+        payload.fileRequests < 0)) ||
     (payload.maxRequestsPerAsset !== undefined &&
       (!Number.isSafeInteger(payload.maxRequestsPerAsset) ||
         payload.maxRequestsPerAsset < 1)) ||
@@ -244,7 +329,7 @@ app.post("/e2e/assert-bundle-artifact-transfers", async (c) => {
     return c.json(
       {
         error:
-          "bundle ids and non-negative archive, file, and patch request counts are required",
+          "bundle ids, non-negative archive/patch counts, and a file count or manifest-diff/archive mode are required",
       },
       400,
     );
@@ -267,6 +352,7 @@ app.post("/e2e/jobs/deploy-bundle", async (c) => {
   const payload = (await c.req.json()) as {
     bundleProfile?: "default" | "multiAssetReplacement" | "sizeAwareLargeDiff";
     channel?: string;
+    crossProvenance?: boolean;
     disabled?: boolean;
     diffBaseBundleId?: string;
     forceUpdate?: boolean;
@@ -312,6 +398,12 @@ app.post("/e2e/jobs/deploy-bundle", async (c) => {
     return c.json({ error: "targetAppVersion is required" }, 400);
   }
   if (
+    payload.crossProvenance !== undefined &&
+    typeof payload.crossProvenance !== "boolean"
+  ) {
+    return c.json({ error: "crossProvenance must be a boolean" }, 400);
+  }
+  if (
     payload.patchMaxBaseBundles !== undefined &&
     (!Number.isInteger(payload.patchMaxBaseBundles) ||
       payload.patchMaxBaseBundles < 1 ||
@@ -327,6 +419,7 @@ app.post("/e2e/jobs/deploy-bundle", async (c) => {
     jobId: startDeployBundleJob({
       bundleProfile: payload.bundleProfile,
       channel: payload.channel,
+      crossProvenance: payload.crossProvenance,
       disabled: payload.disabled,
       diffBaseBundleId: payload.diffBaseBundleId,
       forceUpdate: payload.forceUpdate,
@@ -339,6 +432,22 @@ app.post("/e2e/jobs/deploy-bundle", async (c) => {
       strategy: payload.strategy,
       targetAppVersion: payload.targetAppVersion,
       targetCohorts: payload.targetCohorts,
+    }),
+  });
+});
+
+app.post("/e2e/jobs/create-bundle-diff", async (c) => {
+  const payload = (await c.req.json()) as {
+    baseBundleId?: string;
+    bundleId?: string;
+  };
+  if (!payload.baseBundleId || !payload.bundleId) {
+    return c.json({ error: "baseBundleId and bundleId are required" }, 400);
+  }
+  return c.json({
+    jobId: startCreateBundleDiffJob({
+      baseBundleId: payload.baseBundleId,
+      bundleId: payload.bundleId,
     }),
   });
 });
@@ -391,7 +500,7 @@ app.post("/e2e/seed-crash-history", async (c) => {
   ) {
     return c.json({ error: "bundleIds must be a string array" }, 400);
   }
-  return c.json(handleSeedCrashHistory(payload.bundleIds));
+  return c.json(await handleSeedCrashHistory(payload.bundleIds));
 });
 
 app.post("/e2e/seed-legacy-metadata", async (c) => {
@@ -438,7 +547,7 @@ app.post("/e2e/jobs/wait-for-metadata", async (c) => {
   const payload = (await c.req.json()) as {
     attempts?: number;
     bundleId?: string;
-    releaseId?: string;
+    releaseId?: string | null;
     recoveredStableBundleId?: string;
     relaunchLimit?: number;
     verificationPending?: boolean;
@@ -468,13 +577,18 @@ app.post("/e2e/jobs/wait-for-android-restart", async (c) => {
   const payload = (await c.req.json()) as {
     bundleId?: string;
     releaseId?: string;
+    runtimeScenarioMarker?: string;
   };
   if (!payload.bundleId || !payload.releaseId) {
     return c.json({ error: "bundleId and releaseId are required" }, 400);
   }
 
   return c.json({
-    jobId: startWaitForAndroidRestartJob(payload.bundleId, payload.releaseId),
+    jobId: startWaitForAndroidRestartJob(
+      payload.bundleId,
+      payload.releaseId,
+      payload.runtimeScenarioMarker,
+    ),
   });
 });
 
@@ -512,7 +626,7 @@ app.post("/e2e/compute-rollout-sample", async (c) => {
 app.post("/e2e/wait-for-metadata", async (c) => {
   const payload = (await c.req.json()) as {
     bundleId?: string;
-    releaseId?: string;
+    releaseId?: string | null;
     verificationPending?: boolean;
   };
   if (!payload.bundleId || typeof payload.verificationPending !== "boolean") {
@@ -533,6 +647,7 @@ app.post("/e2e/assert-bsdiff-patch-applied", async (c) => {
   const payload = (await c.req.json()) as {
     assetPath?: string;
     baseBundleId?: string;
+    bundleId?: string;
   };
 
   if (!payload.baseBundleId) {
@@ -543,6 +658,7 @@ app.post("/e2e/assert-bsdiff-patch-applied", async (c) => {
     await handleAssertBsdiffPatchApplied({
       assetPath: payload.assetPath || "index.ios.bundle",
       baseBundleId: payload.baseBundleId,
+      bundleId: payload.bundleId,
     }),
   );
 });
@@ -609,6 +725,7 @@ app.post("/e2e/assert-manifest-diff-applied", async (c) => {
       allowBsdiff: payload.allowBsdiff,
       bundleId: payload.bundleId,
       previousBundleId: payload.previousBundleId,
+      signal: c.req.raw.signal,
     }),
   );
 });
@@ -703,8 +820,23 @@ app.post("/e2e/assert-crash-history", async (c) => {
   return c.json(await handleAssertCrashHistory(payload.bundleId));
 });
 
+app.post("/e2e/assert-startup-interruption", async (c) => {
+  const payload = (await c.req.json()) as {
+    bundleId?: string;
+    releaseId?: string;
+  };
+  if (!payload.bundleId || !payload.releaseId) {
+    return c.json({ error: "bundleId and releaseId are required" }, 400);
+  }
+  return c.json(
+    await handleAssertStartupInterruption(payload.bundleId, payload.releaseId),
+  );
+});
+
+app.post("/e2e/lynx-crash-state", (c) => c.json(handleLynxCrashState()));
+
 app.post("/e2e/prepare-app-launch", async (c) => {
-  return c.json(await handlePrepareAppLaunch());
+  return c.json(await handlePrepareAppLaunch(await c.req.json()));
 });
 
 app.post("/e2e/launch-startup-hang", async (c) => {

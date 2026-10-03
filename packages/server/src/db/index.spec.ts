@@ -1,4 +1,5 @@
 import { PGlite } from "@electric-sql/pglite";
+import { getSha256 } from "@hot-updater/plugin-core";
 import {
   createStorageAdapter,
   HotUpdaterSchemaMigrationRequiredError,
@@ -400,10 +401,18 @@ describe("server/db hotUpdater (PGlite + Kysely)", async () => {
         bundle.manifestStorageUri,
         JSON.stringify({
           bundleId: bundle.id,
-          assets: { "assets/logo.png": { fileHash: "logo-hash" } },
+          assets: {
+            "assets/logo.png": {
+              fileHash: "a".repeat(64),
+              downloadCompression: null,
+            },
+          },
         }),
       );
 
+      bundle.manifestFileHash = getSha256(
+        String(storageTexts.get(bundle.manifestStorageUri)),
+      );
       await deployBundle(bundle);
 
       const updateInfo = await hotUpdater.core.getArtifactInfo(
@@ -418,7 +427,7 @@ describe("server/db hotUpdater (PGlite + Kysely)", async () => {
       );
     });
 
-    it("returns manifest metadata and hbc patch descriptors", async () => {
+    it("returns manifest metadata and explicit patch descriptors", async () => {
       const currentManifestStorageUri =
         "s3://test-bucket/releases/bundles/00000000-0000-0000-0000-000000000101/manifest.json";
       const nextManifestStorageUri =
@@ -437,7 +446,7 @@ describe("server/db hotUpdater (PGlite + Kysely)", async () => {
         platform: "ios",
         gitCommitHash: null,
         assetBaseStorageUri: "s3://test-bucket/releases/assets",
-        manifestFileHash: "sig:manifest-current",
+        manifestFileHash: "sig:Y3VycmVudA==",
         manifestStorageUri: currentManifestStorageUri,
       };
       const nextBundle: Bundle = {
@@ -445,7 +454,7 @@ describe("server/db hotUpdater (PGlite + Kysely)", async () => {
         platform: "ios",
         gitCommitHash: null,
         assetBaseStorageUri: "s3://test-bucket/releases/assets",
-        manifestFileHash: "sig:manifest-next",
+        manifestFileHash: "sig:bmV4dA==",
         manifestStorageUri: nextManifestStorageUri,
         patches: [
           {
@@ -458,9 +467,9 @@ describe("server/db hotUpdater (PGlite + Kysely)", async () => {
           },
           {
             baseBundleId: currentBundle.id,
-            baseFileHash: "hash-old-bundle",
+            baseFileHash: "b".repeat(64),
             byteSize: 48,
-            patchFileHash: "hash-bsdiff",
+            patchFileHash: "d".repeat(64),
             patchStorageUri:
               "s3://test-bucket/releases/bundles/00000000-0000-0000-0000-000000000102/patches/00000000-0000-0000-0000-000000000101/index.ios.bundle.bsdiff",
           },
@@ -469,12 +478,15 @@ describe("server/db hotUpdater (PGlite + Kysely)", async () => {
       storageTexts.set(
         currentManifestStorageUri,
         JSON.stringify({
+          patchAssetPath: "index.ios.bundle",
           assets: {
             "assets/logo.png": {
-              fileHash: "hash-logo",
+              fileHash: "a".repeat(64),
+              downloadCompression: null,
             },
             "index.ios.bundle": {
-              fileHash: "hash-old-bundle",
+              fileHash: "b".repeat(64),
+              downloadCompression: null,
             },
           },
           bundleId: currentBundle.id,
@@ -483,12 +495,15 @@ describe("server/db hotUpdater (PGlite + Kysely)", async () => {
       storageTexts.set(
         nextManifestStorageUri,
         JSON.stringify({
+          patchAssetPath: "index.ios.bundle",
           assets: {
             "assets/logo.png": {
-              fileHash: "hash-logo",
+              fileHash: "a".repeat(64),
+              downloadCompression: null,
             },
             "index.ios.bundle": {
-              fileHash: "hash-new-bundle",
+              fileHash: "c".repeat(64),
+              downloadCompression: null,
             },
           },
           bundleId: nextBundle.id,
@@ -501,6 +516,16 @@ describe("server/db hotUpdater (PGlite + Kysely)", async () => {
       });
 
       await deployBundle(olderBundle);
+      currentBundle.metadata = {
+        manifest_content_hash: getSha256(
+          String(storageTexts.get(currentManifestStorageUri)),
+        ),
+      };
+      nextBundle.metadata = {
+        manifest_content_hash: getSha256(
+          String(storageTexts.get(nextManifestStorageUri)),
+        ),
+      };
       await deployBundle(currentBundle);
       await deployBundle(nextBundle);
       vi.stubGlobal("fetch", fetchMock);
@@ -513,14 +538,14 @@ describe("server/db hotUpdater (PGlite + Kysely)", async () => {
           assets: {
             "assets/logo.png": {
               file: { url: expect.any(String) },
-              fileHash: "hash-logo",
+              fileHash: "a".repeat(64),
             },
             "index.ios.bundle": {
               file: { url: expect.any(String) },
-              fileHash: "hash-new-bundle",
+              fileHash: "c".repeat(64),
             },
           },
-          manifestFileHash: "sig:manifest-next",
+          manifestFileHash: "sig:bmV4dA==",
           manifestUrl:
             "https://s3.example.com/test-bucket/releases/bundles/00000000-0000-0000-0000-000000000102/manifest.json",
         });

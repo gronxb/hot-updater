@@ -16,8 +16,93 @@ export interface BuildAdapterConfig {
   outDir?: string;
 }
 
+export interface BuildArtifact {
+  /** Source file produced inside buildPath. */
+  path: string;
+  /** Final POSIX path stored in the archive and signed manifest. */
+  name: string;
+  /** Representation used for independently downloadable manifest assets. */
+  downloadCompression: "br" | null;
+}
+
+export type NativeFingerprintSource =
+  | {
+      type: "file" | "dir";
+      filePath: string;
+      reasons: string[];
+      overrideHashKey?: string;
+      hash: string | null;
+      debugInfo?: unknown;
+    }
+  | {
+      type: "contents";
+      id: string;
+      contents: string | Uint8Array;
+      reasons: string[];
+      hash: string | null;
+      debugInfo?: unknown;
+    };
+
+export interface NativeFingerprint {
+  hash: string;
+  sources: NativeFingerprintSource[];
+}
+
+export interface NativeFingerprintOptions {
+  platform: Platform;
+  extraSources?: FingerprintExtraSources;
+  ignorePaths?: string[];
+  debug?: boolean;
+}
+
+export type IntegrationCommand =
+  | "channel:set"
+  | "deploy"
+  | "doctor"
+  | "fingerprint:create"
+  | "keys:export-public"
+  | "keys:remove";
+
+export interface IntegrationDoctorIssue {
+  type: "error" | "warning";
+  platform: Platform | "project";
+  code: string;
+  message: string;
+  resolution: string;
+  fixability: "auto" | "command" | "blocked";
+  commands?: string[];
+  paths?: string[];
+}
+
+export interface IntegrationDoctorResult {
+  issues: IntegrationDoctorIssue[];
+  platforms?: Partial<
+    Record<
+      Platform,
+      {
+        files?: string[];
+        configured?: boolean;
+      }
+    >
+  >;
+}
+
+export type NativeFingerprintProvider = (
+  options: NativeFingerprintOptions,
+) => Promise<NativeFingerprint>;
+
 export interface BuildAdapter {
   nativeBuild?: {
+    /** Integration-owned development server port used unless explicitly overridden. */
+    developmentServerPort?: number;
+    /** Integration-owned environment for CocoaPods installation. */
+    getPodInstallEnvironment?: () =>
+      | Record<string, string>
+      | Promise<Record<string, string>>;
+    /** Fingerprint native inputs using the selected build integration. */
+    fingerprint?: NativeFingerprintProvider;
+    /** Use the plugin's native key resolver instead of RN config discovery. */
+    signingConfigSource?: "build-plugin";
     /** Resolves the public key embedded by the native build configuration. */
     getBundleSigningPublicKey?: () => Promise<{
       readonly publicKey: string;
@@ -27,10 +112,27 @@ export interface BuildAdapter {
     prebuild?: (args: { platform: Platform }) => Promise<void>;
     postbuild?: (args: { platform: Platform }) => Promise<void>;
   };
+  integration?: {
+    /** Why common doctor repairs must leave generated native files to this integration. */
+    nativeFileRepairBlockReason?: () =>
+      | string
+      | undefined
+      | Promise<string | undefined>;
+    /** Run integration-owned project checks before a common CLI operation. */
+    beforeCommand?: (args: {
+      command: IntegrationCommand;
+    }) => Promise<void> | void;
+    /** Inspect integration-owned application wiring without common CLI policy. */
+    doctor?: () => Promise<IntegrationDoctorResult> | IntegrationDoctorResult;
+  };
   build: (args: { platform: Platform }) => Promise<{
     buildPath: string;
     bundleId: string;
     stdout: string | null;
+    /** Complete selected logical artifact inventory. */
+    artifacts: readonly BuildArtifact[];
+    /** Logical artifact selected for binary delta generation. */
+    patchAssetPath: string;
   }>;
   name: string;
 }

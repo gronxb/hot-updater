@@ -13,8 +13,8 @@ import {
 import { ui } from "../utils/cli-ui";
 import { AndroidConfigParser } from "../utils/configParser/androidParser";
 import { IosConfigParser } from "../utils/configParser/iosParser";
-import { warnIfExpoCNG } from "../utils/expoDetection";
 import { appendToProjectRootGitignore } from "../utils/git";
+import { runIntegrationCommand } from "../utils/integration";
 import {
   generateKeyPair,
   getPrivateKeyGitignorePath,
@@ -269,7 +269,7 @@ const formatNativeTarget = (
 /**
  * Export public key for embedding in native configuration.
  * By default, writes the public key to iOS Info.plist and AndroidManifest.xml.
- * Use --output to write an Expo trust-anchor file, or --print-only to display
+ * Use --output to write a native trust-anchor file, or --print-only to display
  * the key without modifying files.
  *
  * The public key is read from the configured signing source.
@@ -316,7 +316,7 @@ export const keysExportPublic = async (
       return;
     }
 
-    warnIfExpoCNG();
+    await runIntegrationCommand(config, "keys:export-public");
 
     const androidManifestPaths =
       config.platform.android.androidManifestPaths ?? [];
@@ -548,6 +548,7 @@ export const removePublicKeyFromNativeFiles = async (
  */
 export const keysRemove = async (options: KeysRemoveOptions = {}) => {
   const config = await loadConfig(null);
+  await runIntegrationCommand(config, "keys:remove");
   const androidManifestPaths =
     config.platform.android.androidManifestPaths ?? [];
 
