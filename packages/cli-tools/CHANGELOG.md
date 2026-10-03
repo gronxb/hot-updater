@@ -1,5 +1,16 @@
 # @hot-updater/cli-tools
 
+## 0.36.17
+
+### Patch Changes
+
+- 20a470d: Read evaluated Expo config through the target app's public expo/config entry when choosing its JavaScript engine. Honor dynamic and platform-specific engine settings and preserve config errors.
+
+  Resolve fingerprint dependencies, React Native metadata, and legacy Hermes binaries from the target app, including hoisted installations.
+
+  - @hot-updater/core@0.36.17
+  - @hot-updater/plugin-core@0.36.17
+
 ## 0.36.16
 
 ### Patch Changes

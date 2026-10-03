@@ -1,5 +1,18 @@
 # @hot-updater/bare
 
+## 0.36.17
+
+### Patch Changes
+
+- ad85fca: Restore the legacy Hermes binary path fallbacks after modern compiler and React Native bundled compiler detection. Check the local hermes-engine binary directly and retain the final hermesvm path without requiring package resolution.
+- 20a470d: Read evaluated Expo config through the target app's public expo/config entry when choosing its JavaScript engine. Honor dynamic and platform-specific engine settings and preserve config errors.
+
+  Resolve fingerprint dependencies, React Native metadata, and legacy Hermes binaries from the target app, including hoisted installations.
+
+- Updated dependencies [20a470d]
+  - @hot-updater/cli-tools@0.36.17
+  - @hot-updater/plugin-core@0.36.17
+
 ## 0.36.16
 
 ### Patch Changes

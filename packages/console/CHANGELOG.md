@@ -1,5 +1,13 @@
 # @hot-updater/console
 
+## 0.36.17
+
+### Patch Changes
+
+- 20a470d: Update TanStack Start to 1.168.60 and matching Router and Query packages to address the XSS vulnerability that blocks Vercel builds.
+  - @hot-updater/bsdiff@0.36.17
+  - @hot-updater/server@0.36.17
+
 ## 0.36.16
 
 ### Patch Changes
