@@ -1,5 +1,11 @@
 # @hot-updater/js
 
+## 1.0.0-rc.25
+
+### Patch Changes
+
+- c9cfed7: Release the legacy Hermes fallback correction at 1.0.0-rc.25 with all public Hot Updater packages on the same RC.
+
 ## 1.0.0-rc.24
 
 ### Patch Changes

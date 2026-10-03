@@ -1,5 +1,15 @@
 # @hot-updater/bare
 
+## 1.0.0-rc.25
+
+### Patch Changes
+
+- 1bdc12f: Restore the legacy Hermes binary path fallbacks after modern compiler and React Native bundled compiler detection. Check the local hermes-engine binary directly and retain the final hermesvm path without requiring package resolution.
+- c9cfed7: Release the legacy Hermes fallback correction at 1.0.0-rc.25 with all public Hot Updater packages on the same RC.
+- Updated dependencies [c9cfed7]
+  - @hot-updater/cli-tools@1.0.0-rc.25
+  - @hot-updater/plugin-core@1.0.0-rc.25
+
 ## 1.0.0-rc.24
 
 ### Patch Changes
