@@ -33,6 +33,7 @@ const report: RecoveryReport = {
   activeDays: 20,
   failedLaunches: 2,
   points: [{ startMs: 0, dailyActiveInstallations: 20, failedLaunches: 2 }],
+  adoption: null,
   startMs: 0,
   endMs: 86_400_000,
   measuredAtMs: 86_400_000,
@@ -102,6 +103,56 @@ describe("Release health", () => {
     expect(screen.getByText("— / No launch reports")).toBeDefined();
     fireEvent.click(screen.getByRole("tab", { name: "Launch failures" }));
     expect(screen.getByText("No launch reports in this period.")).toBeDefined();
+  });
+
+  it("asks for a bundle, then shows its cumulative downloads from deployment", () => {
+    const hour = 3_600_000;
+    const { rerender } = render(
+      <InsightsOverview
+        input={input}
+        onWindowChange={vi.fn()}
+        onRefresh={vi.fn()}
+        query={{
+          data: report,
+          error: null,
+          isPending: false,
+          isFetching: false,
+        }}
+      />,
+    );
+    fireEvent.click(screen.getByRole("tab", { name: "Adoption" }));
+    expect(screen.getByText("Choose a bundle")).toBeDefined();
+    rerender(
+      <InsightsOverview
+        input={{ ...input, releaseId: "release-a" }}
+        onWindowChange={vi.fn()}
+        onRefresh={vi.fn()}
+        query={{
+          data: {
+            ...report,
+            adoption: {
+              deployedAtMs: 13 * hour + 20 * 60_000,
+              intervalMs: 6 * hour,
+              points: [
+                { startMs: 13 * hour, downloads: 4, totalDownloads: 4 },
+                { startMs: 19 * hour, downloads: 2, totalDownloads: 6 },
+              ],
+            },
+          },
+          error: null,
+          isPending: false,
+          isFetching: false,
+        }}
+      />,
+    );
+    expect(
+      screen.getByLabelText("Cumulative downloads of the chosen bundle"),
+    ).toBeDefined();
+    expect(
+      screen.getByText(
+        "6 downloads since deployment · Deployed Jan 1, 13:20 UTC",
+      ),
+    ).toBeDefined();
   });
 
   it("keeps only the report period and refresh actions in the card", () => {

@@ -30,6 +30,7 @@ import { EstimatedCount } from "./EstimatedCount";
 import { InsightsErrorAlert } from "./InsightsErrorAlert";
 import { InsightsInfo } from "./InsightsInfo";
 import { InsightsPeriodSelector } from "./InsightsPeriodSelector";
+import { ReleaseAdoptionChart } from "./ReleaseAdoptionChart";
 
 const dates = new Intl.DateTimeFormat("en", {
   month: "short",
@@ -101,6 +102,9 @@ function ReleaseHealth({
           <TabsTrigger value="share" className="px-3">
             Bundle share
           </TabsTrigger>
+          <TabsTrigger value="adoption" className="px-3">
+            Adoption
+          </TabsTrigger>
           <TabsTrigger value="failures" className="px-3">
             Launch failures
           </TabsTrigger>
@@ -110,6 +114,9 @@ function ReleaseHealth({
             history={report.distribution}
             releaseId={releaseId}
           />
+        </TabsContent>
+        <TabsContent value="adoption">
+          <ReleaseAdoptionChart report={report} />
         </TabsContent>
         <TabsContent value="failures">
           {report.points.length === 0 ? (

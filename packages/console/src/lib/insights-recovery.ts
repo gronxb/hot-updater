@@ -32,10 +32,29 @@ export type RecoveryReport = {
     readonly dailyActiveInstallations: number;
     readonly failedLaunches: number;
   }[];
+  /** The chosen release's downloads over the period; null for a whole scope. */
+  readonly adoption: ReleaseAdoption | null;
   readonly startMs: number;
   readonly endMs: number;
   readonly measuredAtMs: number;
   readonly coverage: InsightsCoverage;
+};
+
+/**
+ * A release's downloads in each interval of the period from its deployment,
+ * and their running total. Downloads count reports, not distinct
+ * installations: one that downloads the release again counts again.
+ */
+export type ReleaseAdoption = {
+  /** From the release ID, a UUIDv7; null when it is not one. */
+  readonly deployedAtMs: number | null;
+  readonly intervalMs: number;
+  readonly points: readonly {
+    readonly startMs: number;
+    readonly downloads: number;
+    /** Downloads in the period up to this interval's end. */
+    readonly totalDownloads: number;
+  }[];
 };
 
 export const recoveryWindows = {

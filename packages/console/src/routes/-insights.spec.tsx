@@ -100,6 +100,7 @@ function renderPage() {
     },
     failedLaunches: 1,
     points: [{ startMs: 0, dailyActiveInstallations: 12, failedLaunches: 1 }],
+    adoption: null,
     startMs: 0,
     endMs: 7_200_000,
     measuredAtMs: 7_200_000,

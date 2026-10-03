@@ -105,6 +105,42 @@ describe("public Insights validation", () => {
     expect(getDistributionHistory).toHaveBeenCalledOnce();
   });
 
+  it("takes a series interval of whole hours on a release period read only", async () => {
+    const hour = 3_600_000;
+    const getReleaseActivity = vi.fn(emptyModel.getReleaseActivity);
+    const model = createModel({ getReleaseActivity });
+    const releases = [
+      {
+        releaseId: "0195f0f0-0000-7000-8000-000000000001",
+        platform: "ios" as const,
+        channel: "production",
+      },
+    ];
+    const timeRange = { start: 0, end: 24 * hour };
+    for (const input of [
+      { releases, intervalMs: hour },
+      { releases, timeRange, intervalMs: 0 },
+      { releases, timeRange, intervalMs: hour / 2 },
+      {
+        releases,
+        timeRange: { start: 0, end: 8_785 * hour },
+        intervalMs: hour,
+      },
+      {
+        scope: { channel: "production", platform: "ios" as const },
+        timeRange,
+        intervalMs: hour,
+      },
+    ]) {
+      await expect(
+        model.getReleaseActivity(input as never),
+      ).rejects.toMatchObject({ code: "invalid-query" });
+    }
+    expect(getReleaseActivity).not.toHaveBeenCalled();
+    await model.getReleaseActivity({ releases, timeRange, intervalMs: hour });
+    expect(getReleaseActivity).toHaveBeenCalledOnce();
+  });
+
   it("takes an update failure with what failed, and refuses one without it", async () => {
     const recordEvent = vi.fn(async () => undefined);
     const model = createModel({ recordEvent });

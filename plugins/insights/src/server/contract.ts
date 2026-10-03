@@ -310,22 +310,32 @@ export const createValidatedInsightsModel = (
   async getReleaseActivity(input) {
     if (
       !isRecord(input) ||
-      !hasOnlyKeys(input, ["releases", "scope", "timeRange"])
+      !hasOnlyKeys(input, ["releases", "scope", "timeRange", "intervalMs"])
     ) {
       invalidQuery();
     }
     const releases = input.releases;
     const scope = input.scope;
     const timeRange = input.timeRange;
+    const intervalMs = input.intervalMs;
     const releaseQuery =
       Array.isArray(releases) &&
       releases.length > 0 &&
       releases.length <= 100 &&
       releases.every(isReleaseReference) &&
       scope === undefined &&
-      (timeRange === undefined || isTimeRange(timeRange));
+      (timeRange === undefined
+        ? intervalMs === undefined
+        : isTimeRange(timeRange) &&
+          (intervalMs === undefined ||
+            (isTimestamp(intervalMs) &&
+              intervalMs > 0 &&
+              intervalMs % 3_600_000 === 0 &&
+              // At most a year of hourly points.
+              (timeRange.end - timeRange.start) / intervalMs <= 8_784)));
     const scopeQuery =
       releases === undefined &&
+      intervalMs === undefined &&
       isRecord(scope) &&
       hasOnlyKeys(scope, ["platform", "channel"]) &&
       hasScope(scope) &&

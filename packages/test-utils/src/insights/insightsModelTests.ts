@@ -640,6 +640,16 @@ export const registerInsightsModelTests = (
         failedLaunches: 1,
         uniqueUsers: 2,
       });
+      const hourly = await model.getReleaseActivity({
+        releases: [releases[1]],
+        timeRange: { start: 0, end: 3 * 3_600_000 },
+        intervalMs: 3_600_000,
+      });
+      expect(hourly.data[0]?.metrics.series).toEqual([
+        { startMs: 0, downloads: 1, launches: 2, failedLaunches: 1 },
+        { startMs: 3_600_000, downloads: 0, launches: 0, failedLaunches: 0 },
+        { startMs: 7_200_000, downloads: 0, launches: 0, failedLaunches: 0 },
+      ]);
       const usage = await model.getAppUsage({
         channel: "production",
         platform: "all",
