@@ -7,4 +7,4 @@
 "@hot-updater/test-utils": patch
 ---
 
-Record every catalog and artifact API response in Insights, including successful and cached responses, with bounded raw response bodies and HTTP status. Show the responses in Console event and installation history without changing usage, update failure rates, or installation state. Preserve server error response bodies in update errors and keep the HTTP status when a body cannot be read.
+Attach the latest catalog or artifact HTTP response to existing Insights reports without adding requests or changing launch/failure deduplication. Preserve successful, cached, and failed response text with a bounded body and its original observation timestamp. Console exposes the response from event and installation details and alongside error investigation. No database migration is required.

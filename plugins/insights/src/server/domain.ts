@@ -41,6 +41,7 @@ export type CreateBundleEventRequestBase = {
    * server creates the ID, and a retry counts as another report.
    */
   readonly eventId?: string;
+  readonly metadata?: { readonly httpResponse?: InsightsHttpResponse };
   readonly installId: string;
   readonly toBundleId: string;
   readonly userId?: string;
@@ -60,12 +61,6 @@ type Movement = CreateBundleEventRequestBase & {
 };
 
 export type CreateBundleEventRequest =
-  | (CreateBundleEventRequestBase & {
-      readonly type: "HTTP_RESPONSE";
-      readonly fromBundleId: string;
-      readonly updateStrategy: null;
-      readonly metadata: { readonly httpResponse: UpdateHttpResponse };
-    })
   | (Movement & {
       readonly type: "UPDATE_DOWNLOADED";
       readonly metadata?: {
@@ -111,8 +106,7 @@ export type EventHistoryRow = {
     | "UPDATE_APPLIED"
     | "RECOVERED"
     | "UPDATE_FAILED"
-    | "UNCHANGED"
-    | "HTTP_RESPONSE";
+    | "UNCHANGED";
   readonly fromBundleId: string | null;
   readonly toBundleId: string;
   readonly userId: string | null;
@@ -121,7 +115,7 @@ export type EventHistoryRow = {
   readonly channel: string;
   readonly cohort: string;
   readonly receivedAtMs: number;
-  readonly httpResponse?: UpdateHttpResponse;
+  readonly httpResponse?: InsightsHttpResponse;
   /** `UPDATE_FAILED`: where the update failed and why. */
   readonly failure?: BundleEventFailureInput;
   /** `UPDATE_DOWNLOADED`: how the bundle arrived, when the client said. */
@@ -137,12 +131,16 @@ export type InstallationHistoryRow = EventHistoryRow & {
     | "UPDATE_DOWNLOADED"
     | "UPDATE_APPLIED"
     | "RECOVERED"
-    | "UPDATE_FAILED"
-    | "HTTP_RESPONSE";
+    | "UPDATE_FAILED";
   readonly fromBundleId: string;
 };
 
+export type InsightsHttpResponse = UpdateHttpResponse & {
+  readonly receivedAtMs: number;
+};
+
 export type InstallationRow = {
+  readonly httpResponse?: InsightsHttpResponse;
   readonly installId: string;
   readonly userId: string | null;
   readonly lastKnownBundleId: string;

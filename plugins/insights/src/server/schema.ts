@@ -37,7 +37,6 @@ const MOVEMENTS = new Set([
   "UPDATE_APPLIED",
   "RECOVERED",
   "UPDATE_FAILED",
-  "HTTP_RESPONSE",
 ]);
 
 /** A failed update check: it names no target bundle, so no bundle list shows it. */
@@ -92,7 +91,7 @@ const bundleEvents = (days: number) =>
           type: "string",
           multi: true,
           compute: (row) =>
-            isFailedCheck(row) || row.type === "HTTP_RESPONSE"
+            isFailedCheck(row)
               ? []
               : [
                   row.type === "RECOVERED" && row.from_bundle_id !== null

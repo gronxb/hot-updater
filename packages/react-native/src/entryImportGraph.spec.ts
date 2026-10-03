@@ -101,6 +101,7 @@ describe("the client plugin names of the root entry", () => {
       "UpdateError",
       "UpdateErrorReason",
       "UpdateErrorStage",
+      "UpdateHttpResponse",
       "UpdateStrategy",
     ]);
     expect(contractNames).toEqual(expect.arrayContaining(rootNames ?? []));

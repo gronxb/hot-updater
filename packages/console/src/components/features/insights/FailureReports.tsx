@@ -44,6 +44,7 @@ import type { InsightsEventRow } from "@/lib/insights-view";
 import {
   EventBundleTransition,
   EventTimestamp,
+  HttpResponseBody,
   useInsightsTimeFormat,
 } from "./EventDetails";
 import { InsightsErrorAlert } from "./InsightsErrorAlert";
@@ -113,6 +114,30 @@ function FailureDetail({ group }: { readonly group: FailureGroup }) {
             <Copy aria-hidden="true" data-icon="inline-start" /> Copy report
           </Button>
         </section>
+        {event.httpResponse ? (
+          <section
+            aria-label="Server response"
+            className="flex min-w-0 flex-col gap-3"
+          >
+            <h3 className="text-sm font-medium">
+              Server response · HTTP {event.httpResponse.status}
+            </h3>
+            <p className="text-xs text-muted-foreground">
+              Most recent response available when this report was created.
+            </p>
+            <p className="font-mono text-xs wrap-anywhere">
+              GET {event.httpResponse.path}
+            </p>
+            <div className="text-xs text-muted-foreground">
+              Response received{" "}
+              <EventTimestamp
+                value={event.httpResponse.receivedAtMs}
+                formatter={formatter}
+              />
+            </div>
+            <HttpResponseBody response={event.httpResponse} />
+          </section>
+        ) : null}
         <section
           aria-label="Stack trace"
           className="flex min-w-0 flex-col gap-2"

@@ -244,7 +244,7 @@ const countOutcome = (
   event: BundleEventRow,
 ) => {
   const shardBy = event.install_id;
-  if (!isFailedCheck(event) && event.type !== "HTTP_RESPONSE") {
+  if (!isFailedCheck(event)) {
     tx.aggregate(
       "insights_outcomes",
       {
@@ -451,11 +451,6 @@ export const recordEvent = (
     // an id already stored or already the installation's head, changes
     // nothing, as analytics ingestion drops duplicates.
     if (existing !== null || previous?.id === event.id) return;
-    if (event.type === "HTTP_RESPONSE") {
-      tx.create("bundle_events", event);
-      countOutcome(tx, event);
-      return;
-    }
     if (previous !== null && repeatsHead(event, previous)) return;
     // An UNCHANGED report is a launch: it counts and moves the head, but no
     // event list shows it, so no event row or outcome row keeps it.

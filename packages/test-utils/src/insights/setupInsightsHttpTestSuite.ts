@@ -84,6 +84,94 @@ export const setupInsightsHttpTestSuite = (options: {
       }, 1);
     });
 
+    it.each([
+      { type: "UNCHANGED", status: 200, body: '{"releases":[]}' },
+      { type: "UNCHANGED", status: 304, body: "" },
+      {
+        type: "UPDATE_FAILED",
+        status: 503,
+        body: '{"error":"Database unavailable"}',
+      },
+      {
+        type: "UPDATE_DOWNLOADED",
+        status: 200,
+        body: '{"artifactProtocolVersion":1}',
+      },
+      { type: "UPDATE_APPLIED", status: 200, body: "{}" },
+      { type: "RECOVERED", status: 502, body: null },
+    ])(
+      "keeps HTTP $status diagnostics on an existing $type report",
+      async ({ type, status, body }) => {
+        const client = options.getClient();
+        const installId = `install-${crypto.randomUUID()}`;
+        const channel = `http-${crypto.randomUUID()}`;
+        const bundleId = "00000000-0000-7000-8000-000000000001";
+        const httpResponse = {
+          resource: "catalog",
+          path: "/release-catalogs/app-version/ios/production/1.0.0",
+          status,
+          body,
+          bodyTruncated: false,
+          receivedAtMs: Date.now() - 1000,
+        };
+        const event = {
+          eventId: "01929f4e-2b7c-7a51-9d3e-5c1f0a6b8e21",
+          type,
+          installId,
+          platform: "ios",
+          appVersion: "1.0.0",
+          channel,
+          cohort: "1",
+          fingerprintHash: null,
+          sdkVersion: "1.0.0",
+          fromBundleId: type === "UNCHANGED" ? null : bundleId,
+          toBundleId: bundleId,
+          fromReleaseId: null,
+          toReleaseId: null,
+          updateStrategy: type === "UNCHANGED" ? null : "appVersion",
+          metadata: {
+            httpResponse,
+            ...(type === "UPDATE_FAILED"
+              ? {
+                  failure: {
+                    stage: "check",
+                    reason: "http",
+                    httpStatus: status,
+                  },
+                }
+              : {}),
+          },
+        };
+        for (let attempt = 0; attempt < 2; attempt++) {
+          const response = await client.client(
+            "/events",
+            jsonRequest("POST", event),
+          );
+          expect(response.status).toBe(204);
+          await response.text();
+        }
+        const installation = await client.admin(
+          `/installations/${encodeURIComponent(installId)}`,
+        );
+        if (type === "UPDATE_FAILED") {
+          // A failed check does not replace the installation's running state.
+          expect(installation.status).toBe(404);
+        } else {
+          expect(await installation.json()).toMatchObject({
+            latestStatus: type,
+            httpResponse,
+          });
+        }
+        const history = await client.admin(
+          `/installations/${encodeURIComponent(installId)}/events`,
+        );
+        const data = ((await history.json()) as { data: unknown[] }).data;
+        expect(data).toHaveLength(type === "UNCHANGED" ? 0 : 1);
+        if (type !== "UNCHANGED")
+          expect(data[0]).toMatchObject({ type, httpResponse });
+      },
+    );
+
     it("records an update failure in installation history and the failures read", async () => {
       const client = options.getClient();
       const installId = `install-${crypto.randomUUID()}`;
@@ -138,96 +226,6 @@ export const setupInsightsHttpTestSuite = (options: {
         };
         return [body.failedUpdates, body.failedInstallations];
       }, [1, 1]);
-    });
-
-    it("stores successful, cached, and failed HTTP responses without changing installation state or failures", async () => {
-      const client = options.getClient();
-      const installId = `install-${crypto.randomUUID()}`;
-      const channel = `responses-${crypto.randomUUID()}`;
-      const bundleId = "00000000-0000-7000-8000-000000000001";
-      const base = {
-        appVersion: "1.0.0",
-        channel,
-        cohort: "default",
-        fingerprintHash: null,
-        fromReleaseId: null,
-        installId,
-        platform: "ios",
-        toBundleId: bundleId,
-        toReleaseId: null,
-        updateStrategy: null,
-        sdkVersion: "test-sdk",
-      };
-      const launch = await client.client(
-        "/events",
-        jsonRequest("POST", { ...base, type: "UNCHANGED", fromBundleId: null }),
-      );
-      expect(launch.status).toBe(204);
-      await launch.text();
-      for (const status of [200, 304, 503]) {
-        const report = {
-          ...base,
-          eventId: `00000000-0000-7000-8000-${crypto.randomUUID().replaceAll("-", "").slice(0, 12)}`,
-          type: "HTTP_RESPONSE",
-          fromBundleId: bundleId,
-          metadata: {
-            httpResponse: {
-              resource: "catalog",
-              path: "/release-catalogs/app-version/ios/production/1.0.0",
-              status,
-              body: status === 304 ? "" : '{"message":"server reply"}',
-              bodyTruncated: false,
-            },
-          },
-        };
-        for (let attempt = 0; attempt < 2; attempt++) {
-          const response = await client.client(
-            "/events",
-            jsonRequest("POST", report),
-          );
-          expect(response.status).toBe(204);
-          await response.text();
-        }
-      }
-      await expectInsightsIndex(async () => {
-        const page = await client.admin(
-          `/installations/${encodeURIComponent(installId)}/events?limit=10`,
-        );
-        expect(page.status).toBe(200);
-        const { data } = (await page.json()) as {
-          data: {
-            type: string;
-            httpResponse: { status: number; body: string };
-          }[];
-        };
-        expect(data.every(({ type }) => type === "HTTP_RESPONSE")).toBe(true);
-        return data
-          .map(({ httpResponse }) => ({
-            status: httpResponse.status,
-            body: httpResponse.body,
-          }))
-          .sort((a, b) => a.status - b.status);
-      }, [
-        { status: 200, body: '{"message":"server reply"}' },
-        { status: 304, body: "" },
-        { status: 503, body: '{"message":"server reply"}' },
-      ]);
-      const installation = await client.admin(
-        `/installations/${encodeURIComponent(installId)}`,
-      );
-      expect(await installation.json()).toMatchObject({
-        latestStatus: "UNCHANGED",
-        lastKnownBundleId: bundleId,
-      });
-      const now = Date.now();
-      const failures = await client.admin(
-        `/failures?platform=ios&channel=${encodeURIComponent(channel)}&start=${now - 86_400_000}&end=${now + 3_600_000}`,
-      );
-      expect(failures.status).toBe(200);
-      expect(await failures.json()).toMatchObject({
-        failedUpdates: 0,
-        failedInstallations: 0,
-      });
     });
 
     it("refuses a malformed event", async () => {

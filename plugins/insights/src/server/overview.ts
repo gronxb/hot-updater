@@ -170,7 +170,7 @@ export const insightsOverviewDeltas = (
       launches: 0,
       failedLaunches: 0,
     });
-  } else if (event.type !== "UPDATE_FAILED" && event.type !== "HTTP_RESPONSE") {
+  } else if (event.type !== "UPDATE_FAILED") {
     // A failed update is no launch. recordEvent counts a failure itself and
     // asks for no deltas of it.
     metric(event.to_release_id, {

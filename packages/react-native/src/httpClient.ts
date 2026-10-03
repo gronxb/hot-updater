@@ -170,7 +170,7 @@ const createSession = (
     } catch (error) {
       if (error instanceof FetchJSONResponseError && error.status === 404) {
         throw new InvalidUpdateResponseError(
-          `Server does not support artifact protocol ${ARTIFACT_PROTOCOL_VERSION}.\n${error.message}`,
+          `Server does not support artifact protocol ${ARTIFACT_PROTOCOL_VERSION}.`,
           { cause: error },
         );
       }

@@ -24,10 +24,9 @@ export class UpdateHttpError extends HotUpdaterError {
   constructor(
     readonly status: number,
     statusText: string,
-    responseBody?: string,
   ) {
     super(
-      `Request failed with HTTP ${status}${statusText ? ` ${statusText}` : ""}${responseBody ? `\n${responseBody}` : ""}`,
+      `Request failed with HTTP ${status}${statusText ? ` ${statusText}` : ""}`,
     );
     this.name = "UpdateHttpError";
   }

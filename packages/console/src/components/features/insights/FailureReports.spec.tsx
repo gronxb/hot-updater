@@ -33,6 +33,14 @@ const event: InsightsEventRow = {
   fromBundleId: "running-bundle",
   toBundleId: "running-bundle",
   receivedAtMs: Date.UTC(2026, 9, 3, 3),
+  httpResponse: {
+    resource: "catalog",
+    path: "/release-catalogs/app-version/ios/production/1.6.0",
+    status: 200,
+    body: '{"releases":null}',
+    bodyTruncated: false,
+    receivedAtMs: Date.UTC(2026, 9, 3, 2, 59),
+  },
   failure: {
     stage: "check",
     reason: "unknown",
@@ -46,6 +54,7 @@ const older = {
   id: "event-2",
   installId: "device-2",
   appVersion: "1.5.0",
+  httpResponse: undefined,
   receivedAtMs: event.receivedAtMs - 86_400_000,
   failure: {
     ...event.failure!,
@@ -92,6 +101,16 @@ describe("error investigation", () => {
       event.failure!.errorStack,
     );
     expect(within(dialog).getByText("iOS 1.6.0")).toBeDefined();
+    const response = within(dialog).getByRole("region", {
+      name: "Server response",
+    });
+    expect(
+      within(response).getByText("Server response · HTTP 200"),
+    ).toBeDefined();
+    expect(
+      within(response).getByText(event.httpResponse!.body!).textContent,
+    ).toBe(event.httpResponse!.body);
+    expect(screen.getAllByRole("dialog")).toHaveLength(1);
     expect(within(dialog).getByText("1.0.0")).toBeDefined();
     const occurrences = within(dialog).getByRole("region", {
       name: "Occurrences",
@@ -101,6 +120,9 @@ describe("error investigation", () => {
       older.failure.errorStack,
     );
     expect(within(dialog).getByText("iOS 1.5.0")).toBeDefined();
+    expect(
+      within(dialog).queryByRole("region", { name: "Server response" }),
+    ).toBeNull();
     expect(within(dialog).getByText("device-2")).toBeDefined();
     expect(
       within(dialog).getByRole("link", { name: "Installation history" }),

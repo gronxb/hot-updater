@@ -160,11 +160,7 @@ const consumeSuccessfulResponse = async (
     return null;
   }
   if (response.status !== 200) {
-    throw new UpdateHttpError(
-      response.status,
-      response.statusText,
-      body ?? undefined,
-    );
+    throw new UpdateHttpError(response.status, response.statusText);
   }
 
   const catalog = parseReleaseCatalog(body!, input.expectedScope);

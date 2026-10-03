@@ -8,7 +8,6 @@ export type InsightsEventType =
   | "UPDATE_DOWNLOADED"
   | "UPDATE_APPLIED"
   | "RECOVERED"
-  | "HTTP_RESPONSE"
   | "UPDATE_FAILED";
 
 /** A `POST /events` body. */
@@ -31,9 +30,14 @@ export interface InsightsEventBody {
   readonly metadata?: InsightsEventMetadata;
 }
 
+export type InsightsHttpResponse = UpdateHttpResponse & {
+  readonly receivedAtMs: number;
+};
+
 /** Details beside an event's fields, by event type. */
 export interface InsightsEventMetadata {
-  readonly httpResponse?: UpdateHttpResponse;
+  /** Most recent response available when this report was created. */
+  readonly httpResponse?: InsightsHttpResponse;
   /** UPDATE_FAILED: where and why the update failed. */
   readonly failure?: {
     readonly stage: "check" | "download" | "install";
@@ -131,10 +135,7 @@ const postInsightsEvent = async (
 
     if (response.status === 204) return "delivered";
     if (response.status === 404) return "disabled";
-    if (
-      response.status === 400 &&
-      (event.type === "UPDATE_FAILED" || event.type === "HTTP_RESPONSE")
-    ) {
+    if (response.status === 400 && event.type === "UPDATE_FAILED") {
       return "refused";
     }
     return {

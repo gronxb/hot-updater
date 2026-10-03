@@ -63,7 +63,7 @@ describe.each(["catalog", "artifact"] as const)(
       await expect(request(resource, onResponse)).rejects.toMatchObject({
         name: "UpdateHttpError",
         status: 503,
-        message: `Request failed with HTTP 503 Service Unavailable\n${body}`,
+        message: "Request failed with HTTP 503 Service Unavailable",
       });
       expect(onResponse).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -158,8 +158,14 @@ describe.each(["catalog", "artifact"] as const)(
         vi.fn().mockResolvedValue(new Response(body, { status: 404 })),
       );
 
-      await expect(request(resource)).rejects.toThrow(
-        `Request failed with HTTP 404\n${body}`,
+      const onResponse = vi.fn();
+      await expect(request(resource, onResponse)).rejects.toThrow(
+        resource === "catalog"
+          ? "Request failed with HTTP 404"
+          : "Server does not support artifact protocol 1.",
+      );
+      expect(onResponse).toHaveBeenCalledWith(
+        expect.objectContaining({ status: 404, body }),
       );
     });
   },

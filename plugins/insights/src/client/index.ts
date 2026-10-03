@@ -120,8 +120,12 @@ export const insights = (options: InsightsOptions = {}): InsightsPlugin => {
     const now = context.now();
     const installId = context.installId;
     const userId = state.readUserId();
+    const response = state.readHttpResponse(movement.channel, appVersion);
     const body: InsightsEventBody = {
       ...movement,
+      ...(response
+        ? { metadata: { ...movement.metadata, httpResponse: response } }
+        : {}),
       eventId: eventId?.(now, installId) ?? createUUIDv7(),
       installId,
       ...(userId === null ? {} : { userId }),
@@ -313,28 +317,18 @@ export const insights = (options: InsightsOptions = {}): InsightsPlugin => {
   };
 
   const onHttpResponse = (response: UpdateHttpResponse) => {
-    if (context === null) return;
+    if (context === null || state === null || context.appVersion === null)
+      return;
     const body =
       response.body === null ? null : boundedText(response.body, 4_096);
-    enqueue(
-      createEvent({
-        type: "HTTP_RESPONSE",
-        channel: context.getChannel(),
-        fromBundleId: context.getBundleId(),
-        fromReleaseId: null,
-        toBundleId: context.getBundleId(),
-        toReleaseId: null,
-        updateStrategy: null,
-        metadata: {
-          httpResponse: {
-            ...response,
-            path: boundedText(response.path, 1_024),
-            body,
-            bodyTruncated: response.bodyTruncated || body !== response.body,
-          },
-        },
-      }),
-    );
+    // Observe locally. Only an existing lifecycle report can send this snapshot.
+    state.recordHttpResponse(context.getChannel(), context.appVersion, {
+      ...response,
+      path: boundedText(response.path, 1_024),
+      body,
+      bodyTruncated: response.bodyTruncated || body !== response.body,
+      receivedAtMs: context.now(),
+    });
   };
 
   const admit = (body: InsightsEventBody): boolean => {
@@ -366,8 +360,6 @@ export const insights = (options: InsightsOptions = {}): InsightsPlugin => {
       state.pause(context.now());
       return;
     }
-    // HTTP diagnostics never change launch deduplication or installation state.
-    if (body.type === "HTTP_RESPONSE") return;
     if (event.failureKey !== null) {
       state.recordFailure(event.day, event.failureKey);
     }

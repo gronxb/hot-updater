@@ -186,7 +186,7 @@ describe("Insights event details", () => {
     render(
       <EventTypeDetails
         event={{
-          type: "HTTP_RESPONSE",
+          type: "UNCHANGED",
           platform: "ios",
           appVersion: "1.6.0",
           sdkVersion: "1.0.0-rc.29",
@@ -198,6 +198,7 @@ describe("Insights event details", () => {
             status: 503,
             body,
             bodyTruncated: true,
+            receivedAtMs: Date.UTC(2026, 9, 3),
           },
         }}
       />,
@@ -237,18 +238,18 @@ describe("Insights event details", () => {
       render(
         <EventTypeDetails
           event={{
-            type: "HTTP_RESPONSE",
+            type: "UNCHANGED",
             httpResponse: {
               resource: "catalog",
               path: "/catalog",
               status,
               body,
               bodyTruncated: false,
+              receivedAtMs: Date.UTC(2026, 9, 3),
             },
           }}
         />,
       );
-      expect(screen.getByText(`Catalog · ${label}`)).toBeDefined();
       expect(screen.getByText(`HTTP ${status}`).className).toContain(
         status >= 400 ? "bg-destructive" : "bg-secondary",
       );
@@ -260,6 +261,12 @@ describe("Insights event details", () => {
       const dialog = await screen.findByRole("dialog", {
         name: "HTTP response",
       });
+      expect(
+        within(dialog).getByText(
+          new RegExp(`Catalog · HTTP ${status} · ${label}`),
+        ),
+      ).toBeDefined();
+      expect(within(dialog).getByText(/Response received/)).toBeDefined();
       if (empty) {
         expect(within(dialog).getByText(empty)).toBeDefined();
         expect(

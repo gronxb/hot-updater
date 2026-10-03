@@ -59,6 +59,7 @@ export type DatabaseHttpResponse = DatabaseJsonObject & {
   readonly status: number;
   readonly body: string | null;
   readonly body_truncated: boolean;
+  readonly received_at_ms: number;
 };
 
 /** Ancillary report data; queryable identity and lifecycle fields stay on the row. */
@@ -102,7 +103,6 @@ export type BundleEventRow = BundleEventRowBase &
     /** An update that failed: `from` is the running bundle, `to` the target (for a check, the running bundle). */
     | { readonly type: "UPDATE_FAILED"; readonly from_bundle_id: string }
     | { readonly type: "UNCHANGED"; readonly from_bundle_id: null }
-    | { readonly type: "HTTP_RESPONSE"; readonly from_bundle_id: string }
   );
 
 const isOptional = (
@@ -119,7 +119,8 @@ const isDatabaseHttpResponse = (value: unknown): boolean =>
   isString(value.path) &&
   Number.isSafeInteger(value.status) &&
   (value.body === null || isString(value.body)) &&
-  typeof value.body_truncated === "boolean";
+  typeof value.body_truncated === "boolean" &&
+  Number.isSafeInteger(value.received_at_ms);
 
 /** An `UPDATE_FAILED` report's stored failure: a stage and a reason, and what else the client knew. */
 const isDatabaseBundleEventFailure = (value: unknown): boolean =>
@@ -172,8 +173,7 @@ const BUNDLE_EVENT_FIELDS: Readonly<
     value === "UPDATE_APPLIED" ||
     value === "RECOVERED" ||
     value === "UPDATE_FAILED" ||
-    value === "UNCHANGED" ||
-    value === "HTTP_RESPONSE",
+    value === "UNCHANGED",
   install_id: isIdentity,
   user_id: (value) => value === null || isIdentity(value),
   from_bundle_id: isTextOrNull,
@@ -206,11 +206,6 @@ const hasEventInvariants = (row: Readonly<Record<string, unknown>>) =>
       updateStrategyOf(row) === "appVersion") &&
     (row.type !== "UPDATE_FAILED" ||
       (isRecord(row.metadata) && isRecord(row.metadata.failure)))) ||
-  (row.type === "HTTP_RESPONSE" &&
-    typeof row.from_bundle_id === "string" &&
-    updateStrategyOf(row) === null &&
-    isRecord(row.metadata) &&
-    isRecord(row.metadata.http_response)) ||
   (row.type === "UNCHANGED" &&
     row.from_bundle_id === null &&
     updateStrategyOf(row) === null);

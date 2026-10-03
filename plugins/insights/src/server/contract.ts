@@ -110,8 +110,7 @@ export const isInsightsMovementEvent = (
   event.type === "UPDATE_DOWNLOADED" ||
   event.type === "UPDATE_APPLIED" ||
   event.type === "RECOVERED" ||
-  event.type === "UPDATE_FAILED" ||
-  event.type === "HTTP_RESPONSE";
+  event.type === "UPDATE_FAILED";
 
 export const matchesInsightsEventFilter = (
   event: BundleEventRow,

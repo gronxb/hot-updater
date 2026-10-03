@@ -11,11 +11,7 @@ export const fetchJSON = async <T>(
     resource: "artifact",
   });
   if (response.status !== 200) {
-    throw new FetchJSONResponseError(
-      response.status,
-      response.statusText,
-      body ?? undefined,
-    );
+    throw new FetchJSONResponseError(response.status, response.statusText);
   }
   return JSON.parse(body!) as T;
 };

@@ -177,7 +177,8 @@ including HTTP 200, 304, and server errors. The event contains `resource`,
 request `path`, `status`, raw text `body`, and `bodyTruncated`. The SDK passes
 an empty body as `""` and an unreadable body as `null`. Request headers and URL
 query parameters are omitted. The Insights plugin bounds stored bodies to
-4 KiB of JSON text and marks truncation. Native file downloads and plugin
+4 KiB of JSON text, marks truncation, and attaches the latest response to its
+next eligible lifecycle report without sending an extra request. Native file downloads and plugin
 reporting requests do not call this hook.
 
 ### `onUpdateError`
