@@ -4,11 +4,12 @@ import { Script } from "node:vm";
 import { transformFileSync } from "@babel/core";
 import { describe, expect, it, vi } from "vitest";
 
-import {
-  INVALID_COHORT_ERROR_MESSAGE,
-  isValidCohort,
-  normalizeCohortValue,
-} from "../../packages/protocol/src/rollout.ts";
+import { importPublished } from "./published.ts";
+
+const { INVALID_COHORT_ERROR_MESSAGE, isValidCohort, normalizeCohortValue } =
+  await importPublished<typeof import("@hot-updater/protocol")>(
+    "@hot-updater/protocol",
+  );
 
 function fixture() {
   let nativeCohort = "123";
