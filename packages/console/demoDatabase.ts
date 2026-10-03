@@ -1070,6 +1070,19 @@ for (const event of adjustedBundleEvents) {
   await insightsApi.recordEvent(event);
 }
 
+// Downloads after the deploy above, so Adoption has a curve from deployment.
+const adoptionDemoNow = Date.now();
+for (let installation = 0; installation < 6; installation += 1) {
+  await insightsApi.recordEvent({
+    ...downloadDemo,
+    id: `019f635e-eeee-7000-8000-${String(installation).padStart(12, "0")}`,
+    type: "UPDATE_DOWNLOADED",
+    install_id: `demo-adoption-${installation}`,
+    metadata: { ...downloadDemo.metadata, delivery: "archive" },
+    received_at_ms: adoptionDemoNow + installation,
+  });
+}
+
 // A stable reporting cohort makes the daily replacement curve visible in the demo.
 const shareDemoNow = Date.now() - 60_000;
 for (const [day, adopted] of [0, 2, 6, 12, 16, 18, 19].entries()) {

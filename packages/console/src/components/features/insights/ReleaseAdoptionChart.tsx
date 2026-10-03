@@ -25,8 +25,8 @@ const times = new Intl.DateTimeFormat("en", {
   timeZone: "UTC",
 });
 const intervalLabel = (intervalMs: number) =>
-  intervalMs % (24 * HOUR) === 0
-    ? `${intervalMs / (24 * HOUR)}-day`
+  intervalMs === 24 * HOUR
+    ? "Daily"
     : intervalMs === HOUR
       ? "Hourly"
       : `${intervalMs / HOUR}-hour`;
@@ -74,8 +74,8 @@ export function ReleaseAdoptionChart({
     );
   }
   const total = adoption.points.at(-1)?.totalDownloads ?? 0;
-  // Each running total is reached at its interval's end, the current one at
-  // the period's end; the curve starts from zero where the first one starts.
+  // Each running total is reached at its interval's end, the current one
+  // when it was measured; the curve starts from zero where the first one starts.
   const first = adoption.points[0];
   const curve =
     first === undefined
@@ -83,7 +83,10 @@ export function ReleaseAdoptionChart({
       : [
           { atMs: first.startMs, downloads: 0, totalDownloads: 0 },
           ...adoption.points.map((point) => ({
-            atMs: Math.min(point.startMs + adoption.intervalMs, report.endMs),
+            atMs: Math.min(
+              point.startMs + adoption.intervalMs,
+              report.measuredAtMs,
+            ),
             downloads: point.downloads,
             totalDownloads: point.totalDownloads,
           })),
