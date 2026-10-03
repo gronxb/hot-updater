@@ -4,7 +4,7 @@ import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import { createRequire } from "node:module";
 import path from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { brotliDecompressSync } from "node:zlib";
 
@@ -154,8 +154,6 @@ const nativeConfigPath = path.join(
     : "android/app/src/main/AndroidManifest.xml",
 );
 const nativeConfigBytes = await fs.readFile(nativeConfigPath);
-const moduleUrl = (relative) =>
-  pathToFileURL(path.join(workspace, relative)).href;
 const tokenPath = path.join(root, "admin-token");
 const token = (await fs.readFile(tokenPath, "utf8")).trim();
 const commonHeaders = { authorization: `Bearer ${token}` };
@@ -204,8 +202,8 @@ const {
 } = await readSpikePageContract(source);
 const config = `import fs from "node:fs/promises";
 import path from "node:path";
-import { lynx } from ${JSON.stringify(moduleUrl("packages/lynx/dist/build.mjs"))};
-import { standaloneRepository, standaloneStorage } from ${JSON.stringify(moduleUrl("plugins/standalone/dist/index.mjs"))};
+import { lynx } from ${JSON.stringify(import.meta.resolve("@hot-updater/lynx-build"))};
+import { standaloneRepository, standaloneStorage } from ${JSON.stringify(import.meta.resolve("@hot-updater/standalone"))};
 const token = (await fs.readFile(${JSON.stringify(tokenPath)}, "utf8")).trim();
 const commonHeaders = { authorization: "Bearer " + token };
 export default {
@@ -321,11 +319,11 @@ const catalog = await waitForCatalogRelease();
 const artifactUrl = `${origin}/hot-updater/artifacts/v1/${bundle.id}/from/${NIL_UUID}`;
 const artifact = await getJson(artifactUrl);
 assert.equal(artifact.artifactProtocolVersion, 1);
-assert.equal(artifact.manifestFileHash, bundle.manifestFileHash);
+assert.equal(artifact.manifestFileHash, bundle.manifest_file_hash);
 const manifestDownload = await fetch(artifact.manifestUrl);
 assert.equal(manifestDownload.status, 200);
 const manifestBytes = Buffer.from(await manifestDownload.arrayBuffer());
-verifyToken(manifestBytes, bundle.manifestFileHash);
+verifyToken(manifestBytes, bundle.manifest_file_hash);
 const manifest = JSON.parse(manifestBytes.toString());
 assert.ok(artifact.archiveUrl, "The CLI must publish an optional bulk archive");
 const download = await fetch(artifact.archiveUrl);
@@ -379,17 +377,23 @@ assert.deepEqual(
   Object.keys(manifest.assets).sort(),
 );
 for (const [name, descriptor] of Object.entries(artifact.assets)) {
-  assert.equal(descriptor.fileHash, manifest.assets[name].fileHash);
+  const asset = manifest.assets[name];
+  assert.equal(descriptor.fileHash, asset.fileHash);
+  assert.equal(descriptor.file.compression ?? null, asset.downloadCompression);
   const response = await fetch(descriptor.file.url);
   assert.equal(response.status, 200);
   const transferred = Buffer.from(await response.arrayBuffer());
-  assert.equal(sha256(transferred), manifest.assets[name].downloadFileHash);
-  assert.equal(transferred.length, manifest.assets[name].downloadByteSize);
+  assert.equal(
+    sha256(transferred),
+    asset.downloadFileHash ??
+      (asset.downloadCompression === null ? asset.fileHash : undefined),
+  );
+  assert.equal(transferred.length, asset.downloadByteSize);
   const logical =
     descriptor.file.compression === "br"
       ? brotliDecompressSync(transferred)
       : transferred;
-  assert.equal(logical.length, manifest.assets[name].byteSize);
+  assert.equal(logical.length, asset.byteSize);
   assert.deepEqual(logical, archive[name]);
 }
 assert.deepEqual(
@@ -405,7 +409,7 @@ const deliveryArtifact = options["from-bundle-id"]
   : artifact;
 if (options["from-bundle-id"]) {
   assert.equal(deliveryArtifact.artifactProtocolVersion, 1);
-  assert.equal(deliveryArtifact.manifestFileHash, bundle.manifestFileHash);
+  assert.equal(deliveryArtifact.manifestFileHash, bundle.manifest_file_hash);
   assert.ok(deliveryArtifact.manifestUrl, "Delta delivery needs a manifest");
   const changedAssets = Object.entries(deliveryArtifact.assets ?? {});
   assert.ok(changedAssets.length > 0, "Delta delivery needs changed assets");
@@ -451,7 +455,7 @@ const receipt = {
   sparklingNavigation,
   channel,
   ...artifact,
-  persistedManifestFileHash: bundle.manifestFileHash,
+  persistedManifestFileHash: bundle.manifest_file_hash,
   artifactResponse: artifact,
   artifactUrl,
   deliveryArtifactResponse: deliveryArtifact,

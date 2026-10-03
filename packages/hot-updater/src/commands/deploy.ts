@@ -708,6 +708,9 @@ const deployPlatform = async ({
   const signingValidation = await validateSigningConfig(config, {
     expectedPublicKey: signingSession?.publicKey,
     platform,
+    ...(buildAdapter.nativeBuild?.signingConfigSource === undefined
+      ? {}
+      : { signingConfigSource: buildAdapter.nativeBuild.signingConfigSource }),
     ...(getNativeSigningPublicKey === undefined
       ? {}
       : { nativePublicKey: nativeSigningPublicKey?.publicKey ?? null }),

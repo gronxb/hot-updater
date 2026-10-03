@@ -11,6 +11,7 @@ const { mockBuildAdapter, mockCli, mockServer, mockStorageAdapter } =
         | {
             getBundleSigningPublicKey: ReturnType<typeof vi.fn>;
             getFingerprintExtraSources?: ReturnType<typeof vi.fn>;
+            signingConfigSource?: "build-plugin";
           }
         | undefined,
     };
@@ -1481,39 +1482,46 @@ describe("deploy rollout wiring", () => {
     expect(signingOrder).toBeGreaterThanOrEqual(0);
   });
 
-  it("validates an Expo CNG trust anchor against the signing provider", async () => {
-    const getBundleSigningPublicKey = vi.fn(async () => ({
-      publicKey: "expo-public-key",
-    }));
-    mockBuildAdapter.nativeBuild = { getBundleSigningPublicKey };
-    mockCli.loadConfig.mockResolvedValue({
-      build: async () => mockBuildAdapter,
-      fingerprint: {},
-      patch: { enabled: true, maxBaseBundles: 3 },
-      signing: mockSigningAdapter,
-      updateStrategy: "appVersion",
-    });
-    mockCli.prepareBundleSigning.mockResolvedValue({
-      name: "provider",
-      publicKey: "provider-public-key",
-      signFileHash: vi.fn(async () => "signature"),
-    });
+  it.each([undefined, "build-plugin"] as const)(
+    "validates the native trust anchor with signing source %s",
+    async (signingConfigSource) => {
+      const getBundleSigningPublicKey = vi.fn(async () => ({
+        publicKey: "expo-public-key",
+      }));
+      mockBuildAdapter.nativeBuild = {
+        getBundleSigningPublicKey,
+        signingConfigSource,
+      };
+      mockCli.loadConfig.mockResolvedValue({
+        build: async () => mockBuildAdapter,
+        fingerprint: {},
+        patch: { enabled: true, maxBaseBundles: 3 },
+        signing: mockSigningAdapter,
+        updateStrategy: "appVersion",
+      });
+      mockCli.prepareBundleSigning.mockResolvedValue({
+        name: "provider",
+        publicKey: "provider-public-key",
+        signFileHash: vi.fn(async () => "signature"),
+      });
 
-    await deploy({
-      channel: "production",
-      forceUpdate: false,
-      interactive: false,
-      platform: "ios",
-      targetAppVersion: "1.0.x",
-    });
+      await deploy({
+        channel: "production",
+        forceUpdate: false,
+        interactive: false,
+        platform: "ios",
+        targetAppVersion: "1.0.x",
+      });
 
-    expect(getBundleSigningPublicKey).toHaveBeenCalledOnce();
-    expect(validateSigningConfig).toHaveBeenCalledWith(expect.anything(), {
-      expectedPublicKey: "provider-public-key",
-      nativePublicKey: "expo-public-key",
-      platform: "ios",
-    });
-  });
+      expect(getBundleSigningPublicKey).toHaveBeenCalledOnce();
+      expect(validateSigningConfig).toHaveBeenCalledWith(expect.anything(), {
+        expectedPublicKey: "provider-public-key",
+        nativePublicKey: "expo-public-key",
+        platform: "ios",
+        ...(signingConfigSource === undefined ? {} : { signingConfigSource }),
+      });
+    },
+  );
 
   it("fails before build or upload when the signing provider cannot be prepared", async () => {
     mockCli.loadConfig.mockResolvedValue({
