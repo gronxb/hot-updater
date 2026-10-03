@@ -1,5 +1,16 @@
 # @hot-updater/react-native
 
+## 0.36.17
+
+### Patch Changes
+
+- d72439d: Escape public key newlines in the Expo Android config plugin so fingerprint and channel commands preserve bundle signature verification. Rerun `expo prebuild` after upgrading to regenerate existing Android manifests.
+- Updated dependencies [20a470d]
+  - @hot-updater/cli-tools@0.36.17
+  - @hot-updater/core@0.36.17
+  - @hot-updater/js@0.36.17
+  - @hot-updater/plugin-core@0.36.17
+
 ## 0.36.16
 
 ### Patch Changes

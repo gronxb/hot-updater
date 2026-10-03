@@ -1,5 +1,12 @@
 # @hot-updater/mock
 
+## 0.36.17
+
+### Patch Changes
+
+- @hot-updater/core@0.36.17
+- @hot-updater/plugin-core@0.36.17
+
 ## 0.36.16
 
 ### Patch Changes

@@ -1,5 +1,14 @@
 # @hot-updater/aws
 
+## 0.36.17
+
+### Patch Changes
+
+- Updated dependencies [20a470d]
+  - @hot-updater/cli-tools@0.36.17
+  - @hot-updater/server@0.36.17
+  - @hot-updater/plugin-core@0.36.17
+
 ## 0.36.16
 
 ### Patch Changes
