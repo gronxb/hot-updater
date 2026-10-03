@@ -144,12 +144,18 @@ describe("BundlesPage", () => {
       mocks.isMobile.mockReturnValue(mobile);
       render(<BundlesPage />);
       const summary = screen.getByRole("link", {
-        name: /Downloads 107Active days 789Known crashes 2/,
+        name: /Downloads 107 Active days 789 Known crashes 2/,
       });
-      expect(within(summary).getByText("Downloads 107")).toBeDefined();
-      expect(within(summary).getByText("Active days 789")).toBeDefined();
-      expect(within(summary).getByText(/Known crashes 2/)).toBeDefined();
-      expect(within(summary).getByText(/0\.25%/)).toBeDefined();
+      expect(
+        within(summary)
+          .getAllByRole("term")
+          .map((term) => term.textContent),
+      ).toEqual(["Downloads", "Active days", "Known crashes"]);
+      expect(
+        within(summary)
+          .getAllByRole("definition")
+          .map((value) => value.textContent),
+      ).toEqual(["107", "789", "2(0.25%)"]);
       expect(mocks.activity).toHaveBeenCalledWith([
         {
           platform: "ios",
