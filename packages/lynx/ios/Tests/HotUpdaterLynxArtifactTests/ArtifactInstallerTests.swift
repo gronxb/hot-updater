@@ -112,22 +112,76 @@ final class ArtifactInstallerTests: XCTestCase {
         guard let origin = ProcessInfo.processInfo.environment["LYNX_ARTIFACT_TEST_ORIGIN"] else { throw XCTSkip("Requires HTTP negative fixtures") }
         let (data, _) = try await URLSession.shared.data(from: URL(string: "\(origin)/files/qa/ios/index.json")!)
         let fixtures = try JSONDecoder().decode([Fixture].self, from: data)
-        XCTAssertGreaterThan(fixtures.count, 20)
+        let expectedRejections = [
+            "duplicate-bundle-key": "Duplicate or invalid metadata JSON key",
+            "duplicate-asset-hash-key": "Duplicate or invalid metadata JSON key",
+            "deep-manifest": "Metadata JSON depth limit exceeded",
+            "oversized-manifest": "Artifact download exceeds limit",
+            "manifest-bundle-mismatch": "Manifest transfer identity or coverage mismatch",
+            "missing-sidecar": "Manifest transfer identity or coverage mismatch",
+            "descriptor-coverage": "Target descriptors do not exactly cover the manifest",
+            "descriptor-hash-mismatch": "Target descriptor or transfer metadata differs from manifest",
+            "duplicate-entry-key": "Duplicate or invalid metadata JSON key",
+            "duplicate-sidecar-bundle-key": "Duplicate or invalid metadata JSON key",
+            "deep-sidecar": "Metadata JSON depth limit exceeded",
+            "oversized-sidecar": "Metadata size/type limit exceeded",
+            "wrong-platform": "INCOMPATIBLE: Lynx platform or runtime identity mismatch",
+            "wrong-runtime": "INCOMPATIBLE: Lynx platform or runtime identity mismatch",
+            "missing-page": "Invalid pageEntries membership",
+            "corrupt-original-after-archive": "File hash verification failed",
+        ]
+        let expectedFallbacks: Set<String> = [
+            "pax-short", "pax-overflow", "path-traversal", "absolute-path", "symlink",
+            "duplicate-entry", "unlisted-entry", "truncated-tar", "bad-checksum",
+            "corrupt-transfer", "unsupported-zip", "unsupported-gzip",
+        ]
+        let expectedNames = Set(expectedRejections.keys).union(expectedFallbacks)
+        XCTAssertEqual(Set(fixtures.map(\.name)), expectedNames)
+        XCTAssertEqual(fixtures.count, expectedNames.count, "Duplicate or missing negative fixture")
         let root = temporaryRoot(); defer { try? FileManager.default.removeItem(at: root) }
         let installer = try LynxArtifactInstaller(root: root, configuration: .init(runtimeId: profile))
         let good = try await installer.prepare(try await receipt())
         let installed = try installer.commit(good, finalize: { _ = try $0() })
-        let original = try Data(contentsOf: installed.directory.appendingPathComponent(installed.entry))
+        let originals = try Dictionary(uniqueKeysWithValues: expectedFiles.union(["manifest.json"]).map {
+            ($0, try Data(contentsOf: installed.directory.appendingPathComponent($0)))
+        })
+        let bundles = root.appendingPathComponent("bundles")
+        let published = try FileManager.default.contentsOfDirectory(atPath: bundles.path).sorted()
+        var rejections: [String: String] = [:]
+        var fallbacks: Set<String> = []
         for fixture in fixtures {
-            do { _ = try await installer.prepare(fixture.request); XCTFail("Accepted negative fixture \(fixture.name)") }
-            catch {
-                print("Rejected \(fixture.name): \(error.localizedDescription)")
-                let expected = ["pax-short": "PAX record", "pax-overflow": "PAX record", "oversized-sidecar": "Metadata size", "oversized-manifest": "Metadata size", "duplicate-entry-key": "Duplicate", "duplicate-bundle-key": "Duplicate", "duplicate-asset-hash-key": "Duplicate", "deep-sidecar": "depth", "zip-count-limit": "entry count", "zip-name-limit": "path length"]
-                if let fragment = expected[fixture.name] { XCTAssertTrue(error.localizedDescription.contains(fragment), "\(fixture.name) failed before its intended validation: \(error)") }
+            do {
+                let prepared = try await installer.prepare(fixture.request)
+                // Only an optional transport may fail open to authenticated originals.
+                // A valid tree alone cannot prove which delivery path was exercised.
+                if case .manifest(_, _, let patchedAssets) = prepared.delivery {
+                    XCTAssertTrue(patchedAssets.isEmpty, fixture.name)
+                    fallbacks.insert(fixture.name)
+                } else {
+                    XCTFail("Malformed bulk was accepted as an archive: \(fixture.name)")
+                }
+                XCTAssertEqual(prepared.tree.files, installed.files, fixture.name)
+                XCTAssertEqual(prepared.tree.pageEntries, installed.pageEntries, fixture.name)
+                let (countsData, response) = try await URLSession.shared.data(from:
+                    URL(string: "\(origin)/negative/\(fixture.name)/requests")!)
+                XCTAssertEqual((response as? HTTPURLResponse)?.statusCode, 200)
+                let counts = try JSONDecoder().decode([String: Int].self, from: countsData)
+                var expectedCounts = Dictionary(uniqueKeysWithValues: expectedFiles.map { ("original/" + $0, 1) })
+                expectedCounts["manifest"] = 1
+                expectedCounts["archive"] = 1
+                XCTAssertEqual(counts, expectedCounts, fixture.name)
+                try installer.discard(prepared)
+            } catch {
+                rejections[fixture.name] = error.localizedDescription
             }
-            XCTAssertEqual(try Data(contentsOf: installed.directory.appendingPathComponent(installed.entry)), original, fixture.name)
+            for (name, bytes) in originals {
+                XCTAssertEqual(try Data(contentsOf: installed.directory.appendingPathComponent(name)), bytes, fixture.name + ": " + name)
+            }
+            XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: bundles.path).sorted(), published, fixture.name)
             XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: root.appendingPathComponent(".staging").path), [], fixture.name)
         }
+        XCTAssertEqual(rejections, expectedRejections, "Each rejection must reach its intended validation")
+        XCTAssertEqual(fallbacks, expectedFallbacks, "Every malformed bulk must use verified originals")
     }
 
     func testRealSignedCLIBulkArchive() async throws {
@@ -146,18 +200,19 @@ final class ArtifactInstallerTests: XCTestCase {
 
     func testInterruptedAndCanceledHTTPPreparationsStayPrivate() async throws {
         let request = try await receipt()
+        let origin = try XCTUnwrap(ProcessInfo.processInfo.environment["LYNX_ARTIFACT_TEST_ORIGIN"])
         let suffix = try XCTUnwrap(request.manifestUrl).path.replacingOccurrences(of: "/files/", with: "")
         let root = temporaryRoot(); defer { try? FileManager.default.removeItem(at: root) }
         let installer = try LynxArtifactInstaller(root: root, configuration: .init(runtimeId: profile))
         let truncated = LynxArtifactRequest(bundleId: request.bundleId,
-            manifestUrl: URL(string: "http://127.0.0.1:18792/qa/truncated/\(suffix)")!,
+            manifestUrl: URL(string: "\(origin)/qa/truncated/\(suffix)")!,
             manifestFileHash: request.manifestFileHash,
             assets: request.assets,
             archiveUrl: request.archiveUrl)
         do { _ = try await installer.prepare(truncated); XCTFail("Truncated HTTP body accepted") }
         catch { print("Truncated HTTP rejected: \(error.localizedDescription)") }
         let slow = LynxArtifactRequest(bundleId: request.bundleId,
-            manifestUrl: URL(string: "http://127.0.0.1:18792/qa/slow/\(suffix)")!,
+            manifestUrl: URL(string: "\(origin)/qa/slow/\(suffix)")!,
             manifestFileHash: request.manifestFileHash,
             assets: request.assets,
             archiveUrl: request.archiveUrl)
