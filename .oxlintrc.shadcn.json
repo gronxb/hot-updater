@@ -1,3 +1,13 @@
 {
-  "jsPlugins": ["@shadcn/lint"]
+  "jsPlugins": ["@shadcn/lint"],
+  "overrides": [
+    {
+      "files": ["packages/console/src/components/features/insights/**/*.tsx"],
+      "rules": {
+        "shadcn/no-raw-colors": "error",
+        "shadcn/no-unknown-classes": "error",
+        "shadcn/require-static-classes": "error"
+      }
+    }
+  ]
 }

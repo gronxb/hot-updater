@@ -1,5 +1,15 @@
 # @hot-updater/postgres
 
+## 1.0.0-rc.26
+
+### Patch Changes
+
+- c9cfed7: Restore the rc.14 Insights metric layout in bundle rows and details while preserving current data, rates, links, and download failure reporting. Release all public Hot Updater packages together as 1.0.0-rc.26.
+- Updated dependencies [c9cfed7]
+  - @hot-updater/plugin-core@1.0.0-rc.26
+  - @hot-updater/protocol@1.0.0-rc.26
+  - @hot-updater/server@1.0.0-rc.26
+
 ## 1.0.0-rc.25
 
 ### Patch Changes

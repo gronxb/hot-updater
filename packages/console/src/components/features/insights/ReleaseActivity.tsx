@@ -1,6 +1,7 @@
 import { Link } from "@tanstack/react-router";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import type {
   BundleActivityInput,
@@ -10,9 +11,16 @@ import { useBundleActivityQuery } from "@/lib/bundle-activity";
 import { useConsoleFeature } from "@/lib/console-features-api";
 import { useUpdateFailuresQuery } from "@/lib/insights-api";
 import { failureRate, formatRate } from "@/lib/insights-failures";
+import { cn } from "@/lib/utils";
 
 import type { ReleaseColumn } from "../FeatureSlots";
 import { InsightsInfo } from "./InsightsInfo";
+
+const activityStats = [
+  { label: "Downloads", field: "downloads", color: "text-primary/85" },
+  { label: "Active days", field: "activeDays", color: "text-success/85" },
+  { label: "Known crashes", field: "failedLaunches", color: "text-warning/85" },
+] as const;
 
 const crashRate = (report: BundleActivityReport): string => {
   const attempts = report.activeDays + report.failedLaunches;
@@ -21,40 +29,92 @@ const crashRate = (report: BundleActivityReport): string => {
     : `${((report.failedLaunches / attempts) * 100).toFixed(2)}%`;
 };
 
+function ReleaseMetricsInfo() {
+  return (
+    <InsightsInfo label="About release insight metrics">
+      Active days count each installation once for each UTC day it launched this
+      release. Known crashes are reported OTA launch failures that triggered
+      recovery. The rate is known crashes divided by active days plus known
+      crashes.
+    </InsightsInfo>
+  );
+}
+
 export function BundleMovementSummary({
   report,
   loading = false,
   input,
+  variant = "inline",
 }: {
   readonly report?: BundleActivityReport;
   readonly loading?: boolean;
   readonly input?: BundleActivityInput;
+  readonly variant?: "inline" | "card";
 }) {
   if (!report) {
     return loading ? (
-      <Skeleton aria-label="Loading release insights" className="h-4 w-40" />
+      <Skeleton
+        aria-label="Loading release insights"
+        className={variant === "card" ? "h-16 w-full" : "h-4 w-40"}
+      />
     ) : (
-      <span aria-label="Release insights unavailable">—</span>
+      <span
+        aria-label="Release insights unavailable"
+        className="text-sm text-muted-foreground"
+      >
+        —
+      </span>
     );
   }
   const metrics = (
-    <span className="flex min-w-[220px] flex-wrap items-baseline gap-x-3 gap-y-1 text-sm">
-      <span>Downloads {report.downloads.toLocaleString()}</span>
-      <span>Active days {report.activeDays.toLocaleString()}</span>
-      <span>
-        Known crashes {report.failedLaunches.toLocaleString()} (
-        {crashRate(report)})
-      </span>
-      {report.coverage.kind === "partial" ? (
-        <span className="text-xs text-muted-foreground">Partial</span>
-      ) : null}
-    </span>
+    <dl
+      className={cn(
+        variant === "card"
+          ? "grid grid-cols-[1fr_1fr_auto] gap-4"
+          : "flex min-w-[220px] flex-wrap items-baseline gap-x-3 gap-y-1",
+      )}
+    >
+      {activityStats.map(({ label, field, color }) => (
+        <div
+          key={field}
+          className={cn(
+            "flex",
+            variant === "card"
+              ? "min-w-0 flex-col gap-1"
+              : "items-baseline gap-1.5 whitespace-nowrap",
+          )}
+        >
+          <dt className="text-xs text-muted-foreground">{label}</dt>
+          <dd
+            className={cn(
+              "flex flex-wrap items-baseline gap-x-1.5 tabular-nums",
+              variant === "card"
+                ? "text-xl font-semibold"
+                : "text-sm font-medium",
+              report[field] > 0 ? color : "text-muted-foreground",
+            )}
+          >
+            {report[field].toLocaleString()}
+            {field === "failedLaunches" ? (
+              <span className="text-xs font-normal text-muted-foreground">
+                ({crashRate(report)})
+              </span>
+            ) : null}
+          </dd>
+        </div>
+      ))}
+    </dl>
   );
   return (
-    <span className="flex items-center gap-1">
+    <div
+      className={cn(
+        "flex",
+        variant === "card" ? "flex-col gap-2" : "items-center gap-1",
+      )}
+    >
       {input ? (
         <Link
-          className="rounded-sm hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="min-w-0 rounded-sm hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           to="/insights"
           search={{
             healthPlatform: input.platform,
@@ -68,13 +128,11 @@ export function BundleMovementSummary({
       ) : (
         metrics
       )}
-      <InsightsInfo label="About release insight metrics">
-        Active days count each installation once for each UTC day it launched
-        this release. Known crashes are reported OTA launch failures that
-        triggered recovery. The rate is known crashes divided by active days
-        plus known crashes.
-      </InsightsInfo>
-    </span>
+      {report.coverage.kind === "partial" ? (
+        <span className="text-xs text-muted-foreground">Partial</span>
+      ) : null}
+      {variant === "inline" ? <ReleaseMetricsInfo /> : null}
+    </div>
   );
 }
 
@@ -91,16 +149,35 @@ export function BundleDownloadFailures({
   });
   const report = query.data;
   return (
-    <span className="flex items-center gap-1 text-sm">
+    <div className="flex items-center gap-1">
       {report ? (
-        <span>
-          Download failures {report.failedUpdates.toLocaleString()} (
-          {formatRate(failureRate(report))})
-        </span>
+        <dl>
+          <div className="flex flex-wrap items-baseline gap-x-1.5">
+            <dt className="text-xs text-muted-foreground">Download failures</dt>
+            <dd
+              className={cn(
+                "flex items-baseline gap-1.5 text-sm font-medium tabular-nums",
+                report.failedUpdates > 0
+                  ? "text-warning/85"
+                  : "text-muted-foreground",
+              )}
+            >
+              {report.failedUpdates.toLocaleString()}
+              <span className="text-xs font-normal text-muted-foreground">
+                ({formatRate(failureRate(report))})
+              </span>
+            </dd>
+          </div>
+        </dl>
       ) : query.isPending ? (
         <Skeleton aria-label="Loading download failures" className="h-4 w-40" />
       ) : (
-        <span aria-label="Download failures unavailable">—</span>
+        <span
+          aria-label="Download failures unavailable"
+          className="text-sm text-muted-foreground"
+        >
+          —
+        </span>
       )}
       <InsightsInfo label="About download failures">
         Reported failures to download or install this release, since its first
@@ -108,7 +185,7 @@ export function BundleDownloadFailures({
         failure rate of update attempts: failures divided by failures plus
         download reports.
       </InsightsInfo>
-    </span>
+    </div>
   );
 }
 
@@ -121,15 +198,18 @@ export function BundleInsightsSummary({
   const query = useBundleActivityQuery([input]);
   return (
     <Card>
-      <CardHeader className="px-4 pt-4 pb-3">
+      <CardHeader className="flex-row items-center justify-between px-4 pt-4 pb-3">
         <CardTitle className="text-sm font-medium">Insights</CardTitle>
+        <ReleaseMetricsInfo />
       </CardHeader>
-      <CardContent className="flex flex-col gap-2 px-4 pb-4">
+      <CardContent className="flex flex-col gap-3 px-4 pb-4">
         <BundleMovementSummary
+          variant="card"
           input={input}
           loading={query.isFetching}
           report={query.data?.[input.releaseId]}
         />
+        <Separator />
         <BundleDownloadFailures input={input} />
       </CardContent>
     </Card>

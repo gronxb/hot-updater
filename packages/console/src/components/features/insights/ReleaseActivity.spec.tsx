@@ -1,8 +1,11 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import type { BundleActivityReport } from "@/lib/bundle-activity";
+
 import {
   BundleInsightsSummary,
+  BundleMovementSummary,
   ReleaseFailuresSection,
 } from "./ReleaseActivity";
 
@@ -38,7 +41,8 @@ describe("release Insights sections", () => {
     const { useUpdateFailuresQuery } = await import("@/lib/insights-api");
     render(<BundleInsightsSummary input={input} />);
     // 12 failure reports over 12 + 36 download reports.
-    expect(screen.getByText("Download failures 12 (25.00%)")).toBeDefined();
+    expect(screen.getByRole("term").textContent).toBe("Download failures");
+    expect(screen.getByRole("definition").textContent).toBe("12(25.00%)");
     expect(useUpdateFailuresQuery).toHaveBeenCalledWith(input);
   });
 
@@ -46,11 +50,34 @@ describe("release Insights sections", () => {
     features.insightsAnalytics = false;
     render(<ReleaseFailuresSection input={input} />);
     expect(screen.getByText("Insights")).toBeDefined();
-    expect(screen.getByText("Download failures 12 (25.00%)")).toBeDefined();
+    expect(screen.getByRole("term").textContent).toBe("Download failures");
+    expect(screen.getByRole("definition").textContent).toBe("12(25.00%)");
   });
 
   it("leaves them to the activity card where the console reads release activity", () => {
     const { container } = render(<ReleaseFailuresSection input={input} />);
     expect(container.textContent).toBe("");
   });
+
+  it.each(["inline", "card"] as const)(
+    "preserves activity counts, crash rate, and partial coverage in the %s layout",
+    (variant) => {
+      const report: BundleActivityReport = {
+        downloads: 1234,
+        activeDays: 98,
+        failedLaunches: 2,
+        measuredAtMs: 0,
+        coverage: { kind: "partial", sinceMs: 0 },
+      };
+      render(<BundleMovementSummary report={report} variant={variant} />);
+
+      expect(
+        screen.getAllByRole("term").map((term) => term.textContent),
+      ).toEqual(["Downloads", "Active days", "Known crashes"]);
+      expect(
+        screen.getAllByRole("definition").map((value) => value.textContent),
+      ).toEqual([report.downloads.toLocaleString(), "98", "2(2.00%)"]);
+      expect(screen.getByText("Partial")).toBeDefined();
+    },
+  );
 });
