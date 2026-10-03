@@ -90,7 +90,7 @@ describe("getHermesCommand project resolution", () => {
         [
           "--input-type=module",
           "--eval",
-          `import { getHermesCommand } from ${JSON.stringify(new URL("./hermes.ts", import.meta.url).href)}; console.log(await getHermesCommand(${JSON.stringify(cwd)}));`,
+          `import { getHermesCommand } from ${JSON.stringify(new URL("../dist/index.mjs", import.meta.url).href)}; console.log(await getHermesCommand(${JSON.stringify(cwd)}));`,
         ],
         { encoding: "utf8", env: { ...process.env, NODE_PATH: "" } },
       );
@@ -128,7 +128,7 @@ describe("getHermesCommand project resolution", () => {
         [
           "--input-type=module",
           "--eval",
-          `import { getHermesCommand } from ${JSON.stringify(new URL("./hermes.ts", import.meta.url).href)}; console.log(await getHermesCommand(${JSON.stringify(cwd)}));`,
+          `import { getHermesCommand } from ${JSON.stringify(new URL("../dist/index.mjs", import.meta.url).href)}; console.log(await getHermesCommand(${JSON.stringify(cwd)}));`,
         ],
         { cwd, encoding: "utf8", env: { ...process.env, NODE_PATH: "" } },
       );

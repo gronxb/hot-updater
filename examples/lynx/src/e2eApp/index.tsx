@@ -3,7 +3,7 @@ import {
   managedResourceUrl,
   type NotifyAppReadyResult,
 } from "@hot-updater/lynx";
-import { navigate } from "@hot-updater/lynx/navigation";
+import { navigate } from "@hot-updater/lynx-sparkling";
 import { root, useEffect, useRef, useState } from "@lynx-js/react";
 
 import {
@@ -27,7 +27,6 @@ import {
   styles,
   type ScreenName,
 } from "./e2eStack";
-import { readGenerationEvents } from "./generationEvents";
 import { readE2eLaunchConfiguration } from "./launchConfiguration";
 import {
   E2E_SCENARIO_MARKER,
@@ -374,9 +373,7 @@ function App() {
       await setUpdateActionResult("stale-authorities -> verified rejected");
     },
     "action-capture-generation-events": async () => {
-      const snapshot = await readGenerationEvents(HotUpdater, {
-        allowTruncated: true,
-      });
+      const snapshot = await HotUpdater.getRuntimeEvents();
       await patchScreenState({ generationEvents: JSON.stringify(snapshot) });
       await setUpdateActionResult(
         `generation-events -> ${snapshot.latestSequence}`,

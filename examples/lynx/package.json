@@ -24,7 +24,8 @@
     "@tanstack/react-router": "1.167.0",
     "sparkling-navigation": "2.1.0-rc.12",
     "url-search-params-polyfill": "8.2.5",
-    "vue-lynx": "0.5.1"
+    "vue-lynx": "0.5.1",
+    "@hot-updater/lynx-sparkling": "workspace:*"
   },
   "devDependencies": {
     "@lynx-js/config-rsbuild-plugin": "0.2.0",
@@ -47,6 +48,8 @@
     "@hot-updater/server": "workspace:*",
     "@hot-updater/standalone": "workspace:*",
     "@hot-updater/cli-tools": "workspace:*",
-    "@hot-updater/aws": "workspace:*"
+    "@hot-updater/aws": "workspace:*",
+    "@hot-updater/lynx-build": "workspace:*",
+    "@lynx-js/runtime-wrapper-webpack-plugin": "0.1.3"
   }
 }

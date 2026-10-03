@@ -7,7 +7,7 @@ PrimJS 3.8.0-alpha.6.
 
 The packaged Sparkling integration temporarily recompiles the pinned Lynx image
 service for Fresco 3.4.0. Its source checksum, API adaptation, and removal
-condition are documented in [the compatibility note](../../../packages/lynx/android-sparkling/fresco-compat/README.md).
+condition are documented in [the compatibility note](../../../packages/lynx-sparkling/android/fresco-compat/README.md).
 Exclude `org.lynxsdk.lynx:lynx-service-image` from the Sparkling dependency as
 shown in the example Gradle files; the package supplies the replacement and
 Fresco dependencies. Keep the standard Sparkling `PoolFactory` initialization.

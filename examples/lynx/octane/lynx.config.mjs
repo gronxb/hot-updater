@@ -2,10 +2,10 @@ import { pluginLynxConfig } from "@lynx-js/config-rsbuild-plugin";
 import { defineConfig } from "@lynx-js/rspeedy";
 import { pluginOctane } from "@octanejs/rspeedy-plugin";
 
-const { compilerPageGraphPlugin, compilerPageResourceEntries } = await import(
-  process.env.HOT_UPDATER_COMPILER_GRAPH_PLUGIN ??
-    new URL("../spike/compiler-page-graph.mjs", import.meta.url).href
-);
+import {
+  compilerPageGraphPlugin,
+  compilerPageResourceEntries,
+} from "../spike/compiler-page-graph.mjs";
 
 const isPublic = process.env.HOT_UPDATER_SPIKE_SDK !== "0";
 const resourceSet =

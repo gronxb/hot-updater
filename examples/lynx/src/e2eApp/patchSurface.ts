@@ -1,5 +1,5 @@
 import { HotUpdater } from "@hot-updater/lynx";
-import { navigate } from "@hot-updater/lynx/navigation";
+import { navigate } from "@hot-updater/lynx-sparkling";
 
 import { callE2eDiagnostic } from "./diagnostics";
 

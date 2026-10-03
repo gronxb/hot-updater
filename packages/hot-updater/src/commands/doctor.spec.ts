@@ -3,6 +3,7 @@ import crypto from "node:crypto";
 import os from "os";
 import path from "path";
 
+import { bare } from "@hot-updater/bare";
 import {
   assembleServer,
   p,
@@ -13,7 +14,6 @@ import {
 import {
   createMemoryAdapter,
   type ConfiguredDatabase,
-  type IntegrationDoctorResult,
 } from "@hot-updater/plugin-core";
 import { HOT_UPDATER_SERVER_VERSION } from "@hot-updater/server";
 import { insights } from "@hot-updater/server/plugins/insights";
@@ -36,13 +36,6 @@ import { checkFingerprintJson } from "./doctor/fingerprint";
 import { applyDoctorFixes } from "./doctor/fix";
 import type { DoctorFix, NativeCheckIssue } from "./doctor/issues";
 import { getRequiredUpdateTarget } from "./doctorInfrastructureTargets";
-
-// Exercise the real integration without including RN source in the CLI project.
-const { createReactNativeDoctor } = await vi.importActual<{
-  createReactNativeDoctor: (
-    cwd: string,
-  ) => () => Promise<IntegrationDoctorResult>;
-}>(path.resolve(import.meta.dirname, "../../../react-native/src/doctor.ts"));
 
 vi.mock("../packageJson", () => ({ packageJsonData: { version: "1.0.0" } }));
 
@@ -125,7 +118,7 @@ const createReactNativeConfig = (
   createConfig({
     build: async () => ({
       build: vi.fn(),
-      integration: { doctor: createReactNativeDoctor(cwd) },
+      integration: bare({ enableHermes: true })({ cwd }).integration,
       name: "react-native-test-build",
     }),
     ...overrides,

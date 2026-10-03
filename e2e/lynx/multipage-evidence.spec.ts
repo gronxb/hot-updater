@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import type { GenerationEventsSnapshot } from "../../examples/lynx/src/e2eApp/generationEvents";
+import type { GenerationEventsSnapshot } from "./generation-events";
 import {
   assertManagedDetailClosed,
   assertManagedDetailPending,

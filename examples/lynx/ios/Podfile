@@ -20,7 +20,8 @@ target 'SparklingGo' do
   use_lynx_library!
   lynx_package = Pod::Executable.execute_command('node', ['-p', 'require.resolve("@hot-updater/lynx/package.json", {paths: [process.argv[1]]})', __dir__]).strip
   pod 'HotUpdaterLynxArtifact', :path => File.join(File.dirname(lynx_package), 'ios')
-  pod 'HotUpdaterLynxSparkling/Core', :path => File.join(File.dirname(lynx_package), 'ios')
+  sparkling_package = Pod::Executable.execute_command('node', ['-p', 'require.resolve("@hot-updater/lynx-sparkling/package.json", {paths: [process.argv[1]]})', __dir__]).strip
+  pod 'HotUpdaterLynxSparkling/Core', :path => File.join(File.dirname(sparkling_package), 'ios')
   pod 'Sparkling', :path => '.upstream/sparkling/packages/sparkling-sdk/ios/Sparkling'
   pod 'SparklingMacro', :path => '.upstream/sparkling/packages/sparkling-sdk/ios/SparklingMacro'
   pod 'SparklingMethod', :path => '.upstream/sparkling/packages/sparkling-method/ios', :subspecs => ['Lynx', 'DIProvider']
@@ -39,7 +40,8 @@ target 'SparklingGoE2E' do
   use_lynx_library!
   lynx_package = Pod::Executable.execute_command('node', ['-p', 'require.resolve("@hot-updater/lynx/package.json", {paths: [process.argv[1]]})', __dir__]).strip
   pod 'HotUpdaterLynxArtifact', :path => File.join(File.dirname(lynx_package), 'ios')
-  pod 'HotUpdaterLynxSparkling/Diagnostics', :path => File.join(File.dirname(lynx_package), 'ios')
+  sparkling_package = Pod::Executable.execute_command('node', ['-p', 'require.resolve("@hot-updater/lynx-sparkling/package.json", {paths: [process.argv[1]]})', __dir__]).strip
+  pod 'HotUpdaterLynxSparkling/Diagnostics', :path => File.join(File.dirname(sparkling_package), 'ios')
   pod 'Sparkling', :path => '.upstream/sparkling/packages/sparkling-sdk/ios/Sparkling'
   pod 'SparklingMacro', :path => '.upstream/sparkling/packages/sparkling-sdk/ios/SparklingMacro'
   pod 'SparklingMethod', :path => '.upstream/sparkling/packages/sparkling-method/ios', :subspecs => ['Lynx', 'DIProvider']
@@ -57,7 +59,8 @@ target 'SparklingMatrixHarness' do
   use_lynx_library!
   lynx_package = Pod::Executable.execute_command('node', ['-p', 'require.resolve("@hot-updater/lynx/package.json", {paths: [process.argv[1]]})', __dir__]).strip
   pod 'HotUpdaterLynxArtifact', :path => File.join(File.dirname(lynx_package), 'ios')
-  pod 'HotUpdaterLynxSparkling/Diagnostics', :path => File.join(File.dirname(lynx_package), 'ios')
+  sparkling_package = Pod::Executable.execute_command('node', ['-p', 'require.resolve("@hot-updater/lynx-sparkling/package.json", {paths: [process.argv[1]]})', __dir__]).strip
+  pod 'HotUpdaterLynxSparkling/Diagnostics', :path => File.join(File.dirname(sparkling_package), 'ios')
   pod 'Sparkling', :path => '.upstream/sparkling/packages/sparkling-sdk/ios/Sparkling'
   pod 'SparklingMacro', :path => '.upstream/sparkling/packages/sparkling-sdk/ios/SparklingMacro'
   pod 'SparklingMethod', :path => '.upstream/sparkling/packages/sparkling-method/ios', :subspecs => ['Lynx', 'DIProvider']
@@ -69,13 +72,4 @@ target 'SparklingMatrixHarness' do
   pod 'Mantle', '2.2.0'
   pod 'SDWebImage', '5.15.5'
   pod 'SDWebImageWebPCoder', '0.11.0'
-end
-
-post_install do |installer|
-  # Lynx 3.9.0 uses GNU array designators; Xcode 26.4 promotes this diagnostic.
-  installer.pods_project.targets.select { |target| target.name == 'Lynx' }.each do |target|
-    target.build_configurations.each do |config|
-      config.build_settings['WARNING_CFLAGS'] = ['$(inherited)', '-Wno-error=c99-designator']
-    end
-  end
 end

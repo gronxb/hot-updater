@@ -3,8 +3,8 @@ import crypto from "node:crypto";
 import type {
   GenerationEvent,
   GenerationEventsSnapshot,
-} from "../../examples/lynx/src/e2eApp/generationEvents.ts";
-import { compareGenerationEventSequence } from "../../examples/lynx/src/e2eApp/generationEvents.ts";
+} from "./generation-events.ts";
+import { compareGenerationEventSequence } from "./generation-events.ts";
 
 const canonical = (value: unknown): string => {
   if (value === null || typeof value !== "object") {

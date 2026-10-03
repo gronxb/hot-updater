@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { GenerationEventsSnapshot } from "../../examples/lynx/src/e2eApp/generationEvents";
+import type { GenerationEventsSnapshot } from "./generation-events";
 import { GenerationEventLedger } from "./generation-event-ledger";
 
 const snapshot = (

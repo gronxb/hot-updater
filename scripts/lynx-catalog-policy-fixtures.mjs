@@ -6,7 +6,7 @@ import {
   createReleaseSelectionContextHash,
   getRolledOutNumericCohorts,
   selectDesiredRelease,
-} from "../packages/core/dist/index.mjs";
+} from "@hot-updater/protocol";
 
 const id = (n) => `01900000-0000-7000-8000-${String(n).padStart(12, "0")}`;
 const embedded = id(1);
@@ -262,7 +262,7 @@ for (const platform of ["ios", "android"])
     });
   }
 const destination = new URL(
-  "../packages/lynx/fixtures/catalog-policy.json",
+  "../packages/test-utils/fixtures/lynx/catalog-policy.json",
   import.meta.url,
 );
 await fs.mkdir(new URL(".", destination), { recursive: true });

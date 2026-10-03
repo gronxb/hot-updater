@@ -2,7 +2,7 @@ import { execFile } from "node:child_process";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { promisify } from "node:util";
+import { parseArgs, promisify } from "node:util";
 
 import { preparePinnedOctane } from "./prepare-octane.mjs";
 import {
@@ -180,15 +180,26 @@ if (
   process.argv[1] &&
   path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)
 ) {
+  const { positionals, values } = parseArgs({
+    allowPositionals: true,
+    options: {
+      "out-dir": { type: "string" },
+      "octane-source": { type: "string" },
+      behavior: { type: "string" },
+      "matrix-stable-font": { type: "boolean", default: false },
+    },
+  });
   const [framework, variant = "A", octaneSource, behavior = "normal"] =
-    process.argv.slice(2);
-  const outDir = path.join(cwd, "dist", framework ?? "unknown");
+    positionals;
+  const outDir =
+    values["out-dir"] ?? path.join(cwd, "dist", framework ?? "unknown");
   const result = await buildPublic({
     framework,
     variant,
-    behavior,
+    behavior: values.behavior ?? behavior,
     outDir,
-    octaneSource,
+    octaneSource: values["octane-source"] ?? octaneSource,
+    matrixStableFont: values["matrix-stable-font"],
   });
   console.log(
     JSON.stringify(

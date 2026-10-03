@@ -644,7 +644,7 @@ final class LynxDeltaTests: XCTestCase {
     func testAuthenticatedBulkArchiveAndFallbackKeepTheSameManifestAuthority() async throws {
         let package = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
             .deletingLastPathComponent().deletingLastPathComponent()
-        let fixtures = try JSONSerialization.jsonObject(with: Data(contentsOf: package.appendingPathComponent("fixtures/manifest-v1-bulk.json"))) as! [String: Any]
+        let fixtures = try JSONSerialization.jsonObject(with: Data(contentsOf: package.deletingLastPathComponent().appendingPathComponent("test-utils/fixtures/lynx/manifest-v1-bulk.json"))) as! [String: Any]
         let fixture = fixtures["ios"] as! [String: Any]
         let id = fixture["bundleId"] as! String
         let files = (fixture["files"] as! [String: String]).mapValues { Data(base64Encoded: $0)! }

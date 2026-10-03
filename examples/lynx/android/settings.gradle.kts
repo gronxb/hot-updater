@@ -10,9 +10,13 @@ val lynxPackage = providers.exec {
 }.standardOutput.asText.get().trim()
 include(":hot-updater-lynx")
 project(":hot-updater-lynx").projectDir = File(File(lynxPackage).parentFile, "android")
+val sparklingPackage = providers.exec {
+    workingDir(settingsDir.parentFile)
+    commandLine("node", "--print", "require.resolve('@hot-updater/lynx-sparkling/package.json')")
+}.standardOutput.asText.get().trim()
 include(":hot-updater-lynx-sparkling")
 project(":hot-updater-lynx-sparkling").projectDir =
-    File(File(lynxPackage).parentFile, "android-sparkling")
+    File(File(sparklingPackage).parentFile, "android")
 include(":hot-updater-lynx-sparkling-diagnostics")
 project(":hot-updater-lynx-sparkling-diagnostics").projectDir =
-    File(File(lynxPackage).parentFile, "android-sparkling/diagnostics")
+    File(File(sparklingPackage).parentFile, "android/diagnostics")

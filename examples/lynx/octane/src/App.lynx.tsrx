@@ -1,7 +1,7 @@
 /** @jsxImportSource @octanejs/lynx/intrinsics */
 import { useEffect, useState } from "octane";
 import { loadDynamicProbe, loadExternalBootstrap, loadProbeFont, probeHttp, readNativeModules } from "@hot-updater/lynx-g1-probe";
-import { navigate } from "@hot-updater/lynx/navigation";
+import { navigate } from "@hot-updater/lynx-sparkling";
 
 import { imageLoaded, imageUrl, resources, startSpike, variant } from "./bridge";
 

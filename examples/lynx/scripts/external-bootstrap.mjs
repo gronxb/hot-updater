@@ -1,20 +1,15 @@
 import { createRequire } from "node:module";
 import path from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
+
+import { RuntimeWrapperWebpackPlugin } from "@lynx-js/runtime-wrapper-webpack-plugin";
 
 const cwd = fileURLToPath(new URL("..", import.meta.url));
 const appRequire = createRequire(path.join(cwd, "package.json"));
-const vueRequire = createRequire(appRequire.resolve("vue-lynx/package.json"));
 const rspeedyRequire = createRequire(
   appRequire.resolve("@lynx-js/rspeedy/package.json"),
 );
 const { rspack } = rspeedyRequire("@rspack/core");
-const wrapperPackage = vueRequire.resolve(
-  "@lynx-js/runtime-wrapper-webpack-plugin/package.json",
-);
-const { RuntimeWrapperWebpackPlugin } = await import(
-  pathToFileURL(path.join(path.dirname(wrapperPackage), "lib/index.js"))
-);
 
 export async function buildExternalBootstrap(outDir, variant) {
   const entry =

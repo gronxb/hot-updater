@@ -7,32 +7,9 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 
-import { buildPublic } from "../../../examples/lynx/scripts/build-public.mjs";
-import { createPublicMatrixBundleDiff } from "../../../examples/lynx/scripts/public-matrix/create-bundle-diff.mjs";
-import { createDeviceAdapter } from "../../../examples/lynx/scripts/public-matrix/device-adapters.mjs";
-import {
-  collectDeltaDelivery,
-  collectFatalPendingDetailLaunch,
-  collectInvalidatedContexts,
-  collectPendingDetailLaunch,
-  collectProcessInterruption,
-  collectReadyLaunch,
-  collectSecondaryFatalFailure,
-  hasCompleteAlreadyRunningDetailEvents,
-  hasCompletePendingDetailEvents,
-  hasCompleteReadyEvents,
-  normalizeBuild,
-  resourcePaths,
-  validateAttributedDiagnostics,
-} from "../../../examples/lynx/scripts/public-matrix/evidence.mjs";
-import {
-  expectedRawDetailNativeFailure,
-  MISSING_ASSET_RESPONSE_SHA256,
-  readSdkInstallFailureEvidence,
-} from "../../../examples/lynx/scripts/public-matrix/raw-detail-rejection.mjs";
-import { validateGenerationEventsSnapshot } from "../../../examples/lynx/src/e2eApp/generationEvents.ts";
 import { lynxE2eRuntimeId } from "../embedded-bundle.ts";
 import { GenerationEventLedger } from "../generation-event-ledger.ts";
+import { validateGenerationEventsSnapshot } from "../generation-events.ts";
 import {
   assertNoManagedResourceEngineErrors,
   findManagedResourceEngineErrorCodes,
@@ -53,6 +30,28 @@ import {
   validateLynxMatrixCell,
   validateLynxMatrixSummary,
 } from "../public-matrix-contract.ts";
+import { createPublicMatrixBundleDiff } from "../public-matrix/create-bundle-diff.mjs";
+import { createDeviceAdapter } from "../public-matrix/device-adapters.mjs";
+import {
+  collectDeltaDelivery,
+  collectFatalPendingDetailLaunch,
+  collectInvalidatedContexts,
+  collectPendingDetailLaunch,
+  collectProcessInterruption,
+  collectReadyLaunch,
+  collectSecondaryFatalFailure,
+  hasCompleteAlreadyRunningDetailEvents,
+  hasCompletePendingDetailEvents,
+  hasCompleteReadyEvents,
+  normalizeBuild,
+  resourcePaths,
+  validateAttributedDiagnostics,
+} from "../public-matrix/evidence.mjs";
+import {
+  expectedRawDetailNativeFailure,
+  MISSING_ASSET_RESPONSE_SHA256,
+  readSdkInstallFailureEvidence,
+} from "../public-matrix/raw-detail-rejection.mjs";
 
 const repo = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -388,14 +387,20 @@ async function compile(
   );
   await fsp.rm(outDir, { recursive: true, force: true });
   await fsp.rm(`${outDir}.build.json`, { force: true });
-  const compilerReceipt = await buildPublic({
+  command(process.execPath, [
+    path.join(example, "scripts/build-public.mjs"),
     framework,
-    outDir,
     variant,
+    "--out-dir",
+    outDir,
+    "--behavior",
     behavior,
-    matrixStableFont: true,
-    octaneSource,
-  });
+    "--matrix-stable-font",
+    ...(octaneSource ? ["--octane-source", octaneSource] : []),
+  ]);
+  const compilerReceipt = JSON.parse(
+    await fsp.readFile(`${outDir}.build.json`, "utf8"),
+  );
   return { fixture, compilerReceipt };
 }
 

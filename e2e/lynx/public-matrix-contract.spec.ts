@@ -1,16 +1,11 @@
 import { createHash } from "node:crypto";
+import { createRequire } from "node:module";
 
-import { SPARKLING_NAVIGATION_PROVENANCE } from "@hot-updater/lynx/navigationProvenance";
+const SPARKLING_NAVIGATION_PROVENANCE = createRequire(import.meta.url)(
+  "@hot-updater/lynx-sparkling/package.json",
+).sparklingNavigation;
 import { describe, expect, it } from "vitest";
 
-import {
-  normalizeBuild,
-  pageEssentialResources,
-} from "../../examples/lynx/scripts/public-matrix/evidence.mjs";
-import {
-  expectedRawDetailNativeFailure,
-  MISSING_ASSET_RESPONSE_SHA256,
-} from "../../examples/lynx/scripts/public-matrix/raw-detail-rejection.mjs";
 import {
   expectedLynxMatrixCellIds,
   LYNX_MATRIX_ARTIFACT_PATHS,
@@ -26,6 +21,14 @@ import {
   validateLynxMatrixSummary,
   validateLynxNativeArtifactsReceipt,
 } from "./public-matrix-contract";
+import {
+  normalizeBuild,
+  pageEssentialResources,
+} from "./public-matrix/evidence.mjs";
+import {
+  expectedRawDetailNativeFailure,
+  MISSING_ASSET_RESPONSE_SHA256,
+} from "./public-matrix/raw-detail-rejection.mjs";
 
 const hash = (value: string) => value.repeat(64).slice(0, 64);
 const commit = "0123456789abcdef0123456789abcdef01234567";
@@ -199,7 +202,7 @@ function makeNativeArtifacts(
             "examples/lynx/android/gradle.properties",
             `examples/lynx/android/${targetDefinition.androidModule}/build.gradle.kts`,
             "packages/lynx/android/build.gradle",
-            "packages/lynx/android-sparkling/build.gradle",
+            "packages/lynx-sparkling/android/build.gradle",
           ];
     const files = {
       ...Object.fromEntries(

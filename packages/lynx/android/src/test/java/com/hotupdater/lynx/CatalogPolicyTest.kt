@@ -44,7 +44,7 @@ class CatalogPolicyTest {
 
     private val vectors: List<JSONObject> by lazy {
         val fixture = generateSequence(File(checkNotNull(System.getProperty("user.dir")))) { it.parentFile }
-            .map { File(it, "packages/lynx/fixtures/catalog-policy.json") }.first { it.isFile }
+            .map { File(it, "packages/test-utils/fixtures/lynx/catalog-policy.json") }.first { it.isFile }
         val cases = JSONArray(fixture.readText())
         (0 until cases.length()).map { cases.getJSONObject(it) }.filter { it.getString("name").startsWith("android/") }
     }

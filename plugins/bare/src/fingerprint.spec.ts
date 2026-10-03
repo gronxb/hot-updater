@@ -7,11 +7,8 @@ const mocks = vi.hoisted(() => ({
   })),
 }));
 
-vi.mock("@hot-updater/react-native/build", () => ({
-  REACT_NATIVE_DEV_SERVER_PORT: 8081,
-  createReactNativeDoctor: vi.fn(),
+vi.mock("./buildFingerprint", () => ({
   createReactNativeFingerprint: mocks.createReactNativeFingerprint,
-  selectReactNativeArtifacts: vi.fn(),
 }));
 
 import { bare } from "./bare";

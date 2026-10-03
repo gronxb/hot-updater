@@ -2,6 +2,7 @@
 import { spawnSync } from "node:child_process";
 import crypto from "node:crypto";
 import fs from "node:fs";
+import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -12,14 +13,14 @@ import {
   assertNativePublicKeyOnlySourceChanges,
   assertNativePublicKeySourceUnchanged,
   nativePublicKeyPaths,
-} from "./native-public-key-integrity.mjs";
+} from "../../../e2e/lynx/native-public-key-integrity.mjs";
 import { resolveProductionAppBaseURL } from "./production-configuration.mjs";
 import { validateProductionEmbeddedBundles } from "./production-embedded-contract.mjs";
 import {
   androidArtifactAppId,
   deterministicArtifactSha256,
   iosArtifactAppId,
-} from "./public-matrix/native-artifact-evidence.mjs";
+} from "../../../e2e/lynx/public-matrix/native-artifact-evidence.mjs";
 
 const {
   LYNX_E2E_BUILTIN_BUNDLE_ID,
@@ -29,8 +30,9 @@ const {
   materializeLynxNativeEmbedded,
   validateLynxEmbeddedDirectory,
 } = await import("../../../e2e/lynx/embedded-bundle.ts");
-const { SPARKLING_NAVIGATION_PROVENANCE } =
-  await import("@hot-updater/lynx/navigationProvenance");
+const SPARKLING_NAVIGATION_PROVENANCE = createRequire(import.meta.url)(
+  "@hot-updater/lynx-sparkling/package.json",
+).sparklingNavigation;
 
 const exampleDir = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -643,7 +645,7 @@ if (!values["dry-run"]) {
             "examples/lynx/android/gradle.properties",
             `examples/lynx/android/${definition.androidModule}/build.gradle.kts`,
             "packages/lynx/android/build.gradle",
-            "packages/lynx/android-sparkling/build.gradle",
+            "packages/lynx-sparkling/android/build.gradle",
             ...publicKeyConfigFiles,
           ],
       nativePublicKeyInjection,

@@ -3,7 +3,7 @@ import {
   LynxUpdaterError,
   type CheckForUpdateResult,
 } from "@hot-updater/lynx";
-import { navigate } from "@hot-updater/lynx/navigation";
+import { navigate } from "@hot-updater/lynx-sparkling";
 
 declare const __SPIKE_VARIANT__: string;
 declare const __SPIKE_BEHAVIOR__: string;

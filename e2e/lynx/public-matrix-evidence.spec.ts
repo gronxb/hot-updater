@@ -1,4 +1,7 @@
-import { SPARKLING_NAVIGATION_PROVENANCE } from "@hot-updater/lynx/navigationProvenance";
+import { createRequire } from "node:module";
+const SPARKLING_NAVIGATION_PROVENANCE = createRequire(import.meta.url)(
+  "@hot-updater/lynx-sparkling/package.json",
+).sparklingNavigation;
 import { describe, expect, it } from "vitest";
 
 import {
@@ -17,7 +20,7 @@ import {
   pageEssentialResources,
   resourcePaths,
   validateAttributedDiagnostics,
-} from "../../examples/lynx/scripts/public-matrix/evidence.mjs";
+} from "./public-matrix/evidence.mjs";
 
 const identity = {
   runtimeId: "runtime",

@@ -1,3 +1,6 @@
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
 import {
   finishSpike,
   validateStandardStreamingPageBundles,
@@ -12,4 +15,14 @@ export async function finishLynxE2eBundle(outDir) {
     resourceSet: "sdk3",
     assetPrefix: "hot-updater:///",
   });
+}
+
+if (
+  process.argv[1] &&
+  path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)
+) {
+  const outDir = process.argv[2];
+  if (!outDir)
+    throw new Error("Usage: node scripts/e2e-assets.mjs <output-directory>");
+  await finishLynxE2eBundle(outDir);
 }

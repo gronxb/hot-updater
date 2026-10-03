@@ -1,16 +1,19 @@
 import { createHash } from "node:crypto";
+import { createRequire } from "node:module";
 
-import { SPARKLING_NAVIGATION_PROVENANCE } from "@hot-updater/lynx/navigationProvenance";
+const SPARKLING_NAVIGATION_PROVENANCE = createRequire(import.meta.url)(
+  "@hot-updater/lynx-sparkling/package.json",
+).sparklingNavigation;
 
-import {
-  expectedRawDetailNativeFailure,
-  MISSING_ASSET_RESPONSE_SHA256,
-} from "../../examples/lynx/scripts/public-matrix/raw-detail-rejection.mjs";
 import {
   validateMatrixRuntimeJournalDiagnostics,
   validateNavigationStackBoundary,
   validateRuntimeEventFieldBoundaryDiagnostics,
 } from "./native-diagnostics-evidence.ts";
+import {
+  expectedRawDetailNativeFailure,
+  MISSING_ASSET_RESPONSE_SHA256,
+} from "./public-matrix/raw-detail-rejection.mjs";
 
 export const LYNX_MATRIX_FRAMEWORKS = ["react", "vue", "octane"] as const;
 export const LYNX_MATRIX_PLATFORMS = ["ios", "android"] as const;
@@ -199,7 +202,7 @@ function nativeConfigPaths(
           "examples/lynx/android/gradle.properties",
           `examples/lynx/android/${definition.androidModule}/build.gradle.kts`,
           "packages/lynx/android/build.gradle",
-          "packages/lynx/android-sparkling/build.gradle",
+          "packages/lynx-sparkling/android/build.gradle",
         ];
   return includesPublicKey
     ? [...base, ...LYNX_NATIVE_PUBLIC_KEY_PATHS[platform]]

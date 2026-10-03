@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { HotUpdater } from "@hot-updater/lynx";
-import { close } from "@hot-updater/lynx/navigation";
+import { close } from "@hot-updater/lynx-sparkling";
 import { onMounted, ref } from "vue-lynx";
 
 import { variant } from "../../spike/bridge";

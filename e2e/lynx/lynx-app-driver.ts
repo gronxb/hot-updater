@@ -2,10 +2,6 @@ import { spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
 
-import {
-  type GenerationEventsSnapshot,
-  validateGenerationEventsSnapshot,
-} from "../../examples/lynx/src/e2eApp/generationEvents.ts";
 import { createControlClient } from "../detox/control-client.ts";
 import type { JsonObject } from "../detox/control-protocol.ts";
 import type {
@@ -23,6 +19,10 @@ import {
   GenerationEventLedger,
   type GenerationEventLedgerReceipt,
 } from "./generation-event-ledger.ts";
+import {
+  type GenerationEventsSnapshot,
+  validateGenerationEventsSnapshot,
+} from "./generation-events.ts";
 import {
   assertNoManagedResourceEngineErrors,
   evaluateRecoverableAndroidFontDiagnosticEligibility,

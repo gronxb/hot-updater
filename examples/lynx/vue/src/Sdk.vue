@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { navigate } from "@hot-updater/lynx/navigation";
+import { navigate } from "@hot-updater/lynx-sparkling";
 import { onMounted, ref } from "vue-lynx";
 
 import {

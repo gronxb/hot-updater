@@ -1,6 +1,6 @@
 import { fileURLToPath } from "node:url";
 
-import { lynx } from "@hot-updater/lynx/build";
+import { lynx } from "@hot-updater/lynx-build";
 
 import { buildPublic } from "./build-public.mjs";
 

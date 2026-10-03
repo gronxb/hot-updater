@@ -2,7 +2,6 @@ const { execFile } = require("node:child_process");
 const fs = require("node:fs/promises");
 const os = require("node:os");
 const path = require("node:path");
-const { pathToFileURL } = require("node:url");
 const { promisify } = require("node:util");
 const { deflateSync } = require("node:zlib");
 
@@ -77,9 +76,8 @@ async function buildResource(kind, variant) {
   );
   try {
     if (kind === "bootstrap") {
-      const { buildExternalBootstrap } = await import(
-        pathToFileURL(path.join(exampleRoot, "scripts/external-bootstrap.mjs"))
-      );
+      const { buildExternalBootstrap } =
+        await import("../scripts/external-bootstrap.mjs");
       await buildExternalBootstrap(temporary, variant);
       return [
         [

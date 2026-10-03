@@ -6,7 +6,7 @@ import { parseArgs } from "node:util";
 
 // Private G1 tooling. This is not a public build API or a CLI deployment test.
 const require = createRequire(
-  new URL("../packages/lynx/package.json", import.meta.url),
+  new URL("../plugins/lynx-build/package.json", import.meta.url),
 );
 const { uuidv7 } = require("uuidv7");
 const { values } = parseArgs({

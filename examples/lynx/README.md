@@ -1,7 +1,7 @@
 # Lynx example and acceptance matrix
 
 This example starts from the official Sparkling application structure and uses
-the packaged `@hot-updater/lynx` host integration. ReactLynx, VueLynx, and
+the packaged `@hot-updater/lynx-sparkling` host integration. ReactLynx, VueLynx, and
 OctaneLynx are equal Lynx-engine targets on iOS and Android.
 
 The repository keeps three native targets per platform:
@@ -16,7 +16,8 @@ The production scaffold contains native identity and embedded-release
 configuration, module registration, and one packaged host/view attachment. Its
 application sources do not implement OTA selection, download, verification,
 recovery, resource loading, crash policy, or restart behavior. Those behaviors
-live in the optional Sparkling integration shipped by `@hot-updater/lynx`.
+live in `@hot-updater/lynx-sparkling`, which uses the framework-neutral
+`@hot-updater/lynx` device SDK.
 
 The matrix targets are separate QA applications. They expose multi-container,
 primary-removal, secondary-failure, stale-context, and diagnostic controls while
@@ -43,8 +44,14 @@ commit or tracked source changes and invokes the real Octane compiler without
 patching the upstream renderer. An absolute prepared checkout path remains an
 optional third argument.
 
+The build command also accepts `--out-dir <absolute-path>` under this example's
+`dist` or `.hot-updater` directory, `--octane-source <absolute-path>`, and
+`--behavior <normal|unconfirmed|detail-unconfirmed>`. The matrix runner uses
+`--matrix-stable-font` to isolate page changes from font changes. A successful
+build publishes its compiler receipt at `<out-dir>.build.json`.
+
 The application compiler owns framework details. The shared
-`@hot-updater/lynx/build` adapter receives only the selected output tree, entry,
+`@hot-updater/lynx-build` adapter receives only the selected output tree, entry,
 platform, and native runtime identity. It preserves portable relative names and
 bytes, creates `hot-updater-lynx.json`, and declares the entry as the manifest's
 delta patch asset.

@@ -1,7 +1,7 @@
 /** @jsxImportSource @octanejs/lynx/intrinsics */
 import { useEffect, useState } from "octane";
 import { loadDynamicProbe, loadExternalBootstrap, loadProbeFont } from "@hot-updater/lynx-g1-probe";
-import { navigate } from "@hot-updater/lynx/navigation";
+import { navigate } from "@hot-updater/lynx-sparkling";
 
 import { verifyNavigationBoundary } from "./navigation-boundary";
 import { captureRuntimeEvents, checkSdkUpdate, imageUrl, installSdkUpdate, installSdkUpdateAndReload, installSdkUpdateWithDetail, reloadSdkWithDetail, resources, sdkImageLoaded, startSdk, variant } from "./sdk-shared";

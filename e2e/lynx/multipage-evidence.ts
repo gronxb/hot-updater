@@ -1,8 +1,8 @@
 import type {
   GenerationEvent,
   GenerationEventsSnapshot,
-} from "../../examples/lynx/src/e2eApp/generationEvents.ts";
-import { compareGenerationEventSequence } from "../../examples/lynx/src/e2eApp/generationEvents.ts";
+} from "./generation-events.ts";
+import { compareGenerationEventSequence } from "./generation-events.ts";
 
 export type ManagedSelection = {
   readonly bundleId: string;

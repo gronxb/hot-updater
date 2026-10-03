@@ -1,8 +1,11 @@
 import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
+import { createRequire } from "node:module";
 import path from "node:path";
 
-import { SPARKLING_NAVIGATION_PROVENANCE } from "@hot-updater/lynx/navigationProvenance";
+const SPARKLING_NAVIGATION_PROVENANCE = createRequire(import.meta.url)(
+  "@hot-updater/lynx-sparkling/package.json",
+).sparklingNavigation;
 import tasm from "@lynx-js/tasm";
 
 export const pageEntries = ["detail.lynx.bundle", "main.lynx.bundle"];

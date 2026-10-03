@@ -6,7 +6,7 @@ final class CatalogPolicyTests: XCTestCase {
     private func vectors() throws -> [[String: Any]] {
         let package = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
             .deletingLastPathComponent().deletingLastPathComponent()
-        let value = try JSONSerialization.jsonObject(with: Data(contentsOf: package.appendingPathComponent("fixtures/catalog-policy.json"))) as! [[String: Any]]
+        let value = try JSONSerialization.jsonObject(with: Data(contentsOf: package.deletingLastPathComponent().appendingPathComponent("test-utils/fixtures/lynx/catalog-policy.json"))) as! [[String: Any]]
         return value.filter { ($0["name"] as! String).hasPrefix("ios/") }
     }
 

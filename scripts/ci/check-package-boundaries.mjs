@@ -9,7 +9,7 @@
  *   package but @hot-updater/test-utils publishes a spec, a test fixture or a
  *   test helper; a published package lists what it publishes in `files`;
  * - @hot-updater/protocol has no dependencies;
- * - @hot-updater/react-native exports its runtime root and Node-only build entry; neither it nor the
+ * - @hot-updater/react-native exports only its root, and neither it nor the
  *   packages it pulls in (dependencies, optional dependencies, and peers that
  *   are not optional) depend on @hot-updater/plugin-core or
  *   @hot-updater/server;
@@ -52,47 +52,7 @@ const SERVER_EXPORTS = [
  */
 const COMPUTED_IMPORTS = new Map([
   [
-    "e2e/lynx/native-public-key-integrity.spec.ts",
-    "loads the unpublished example's native-key attestation helper",
-  ],
-  [
-    "packages/hot-updater/src/commands/init.ts",
-    "loads the selected integration package's public /integration descriptor",
-  ],
-  [
-    "packages/hot-updater/src/commands/doctor.spec.ts",
-    "loads the CLI command under test after mocking its local dependencies",
-  ],
-  [
-    "packages/lynx/src/exampleBuild.spec.ts",
-    "loads build scripts of the unpublished Lynx fixture app",
-  ],
-  [
-    "packages/lynx/src/navigationExample.spec.ts",
-    "loads the unpublished Lynx navigation fixture",
-  ],
-  [
-    "packages/lynx/src/packageContract.spec.ts",
-    "loads the package export targets from its own dist to check device import safety",
-  ],
-  [
-    "examples/lynx/octane/lynx.config.mjs",
-    "loads the pinned local Octane compiler prepared for the example",
-  ],
-  [
-    "examples/lynx/scripts/external-bootstrap.mjs",
-    "loads the configured external page fixture",
-  ],
-  [
-    "examples/lynx/spike/compiler-page-resource-loader.cjs",
-    "loads the Lynx compiler declared by the fixture project",
-  ],
-  [
-    "e2e/detox/control-server/deploy-asset-guard.spec.ts",
-    "loads the generated fixture guard module",
-  ],
-  [
-    "plugins/expo/src/fingerprint.ts",
+    "packages/hot-updater/src/utils/fingerprint/dependency.ts",
     "imports the app's resolved @expo/fingerprint public entry",
   ],
   ["e2e/detox/contracts.spec.ts", "loads e2e's own control server"],
@@ -127,12 +87,7 @@ const COMPUTED_IMPORTS = new Map([
  * no public API serves it. A new one needs a deliberate entry.
  * @type {Map<string, string>}
  */
-const PRIVATE_SOURCE_SPECS = new Map([
-  [
-    "e2e/lynx/native-public-key-integrity.spec.ts",
-    "verifies the CLI's private native-key writers against the example source attestation; these parsers are not public SDK APIs",
-  ],
-]);
+const PRIVATE_SOURCE_SPECS = new Map();
 
 const TEST_UTILS = "@hot-updater/test-utils";
 
@@ -200,7 +155,8 @@ if (server) {
 }
 
 /** Export keys that name test code. */
-const TEST_EXPORT = /(^|\/)(tests?|testing|test-utils|fixtures?|mocks?)(\/|$)/i;
+const TEST_EXPORT =
+  /(^|\/)(tests?|testing|test-utils|fixtures?|mocks?)(\/|$)/i;
 
 // No internal or test exports, in any workspace package.
 for (const pkg of packages) {
@@ -250,16 +206,14 @@ const installed = (/** @type {Package} */ pkg) => {
   ];
 };
 
-// Device imports use the root; the explicit build entry stays in Node tooling.
+// React Native: its root only, and no server code through what it pulls in.
 const reactNative = byName.get("@hot-updater/react-native");
 if (reactNative) {
-  const keys = exportKeys(reactNative).filter(
-    (key) => key !== "./package.json",
-  );
-  if (keys.length !== 2 || !keys.includes(".") || !keys.includes("./build")) {
+  const keys = exportKeys(reactNative).filter((key) => key !== "./package.json");
+  if (keys.length !== 1 || keys[0] !== ".") {
     fail(
       "react-native-root",
-      `@hot-updater/react-native exports ${keys.join(", ")}; only the runtime root and Node-only /build are allowed.`,
+      `@hot-updater/react-native exports ${keys.join(", ")}; an app imports everything from its root.`,
     );
   }
   /** @type {Map<string, string[]>} */
@@ -323,11 +277,7 @@ const patternOf = (/** @type {string} */ glob) => {
 /** @param {string} dir @param {string} base @returns {string[]} */
 const walk = (dir, base = dir) =>
   readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
-    if (
-      entry.name === "node_modules" ||
-      entry.name.startsWith("runtime-acceptance-")
-    )
-      return [];
+    if (entry.name === "node_modules") return [];
     const full = path.join(dir, entry.name);
     return entry.isDirectory()
       ? walk(full, base)
@@ -407,12 +357,7 @@ const SKIP = new Set([
 /** @param {string} dir @returns {string[]} */
 const sources = (dir) =>
   readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
-    if (
-      SKIP.has(entry.name) ||
-      entry.name.startsWith(".") ||
-      entry.name.startsWith("runtime-acceptance-")
-    )
-      return [];
+    if (SKIP.has(entry.name) || entry.name.startsWith(".")) return [];
     const full = path.join(dir, entry.name);
     if (entry.isDirectory()) return sources(full);
     return SOURCE.test(entry.name) ? [full] : [];
@@ -465,43 +410,6 @@ const importsOf = (/** @type {string} */ file, /** @type {string} */ text) => {
   return { specifiers, computed };
 };
 
-// A Node-only build export must never become reachable from a device entry.
-// Follow local re-exports too: a package-level optional peer check cannot catch them.
-for (const name of ["@hot-updater/react-native", "@hot-updater/lynx"]) {
-  const pkg = byName.get(name);
-  if (!pkg) continue;
-  const pending = [path.join(pkg.dir, "src/index.ts")];
-  const visited = new Set();
-  while (pending.length) {
-    const file = pending.pop();
-    if (!file || visited.has(file) || !existsSync(file)) continue;
-    visited.add(file);
-    for (const specifier of importsOf(file, readFileSync(file, "utf8"))
-      .specifiers) {
-      if (
-        specifier.startsWith("node:") ||
-        /^@hot-updater\/(?:plugin-core|server)(?:\/|$)/.test(specifier)
-      ) {
-        fail(
-          "device-source-closure",
-          `${path.relative(root, file)} reaches ${specifier} from ${name}'s device entry.`,
-        );
-      }
-      if (!specifier.startsWith(".")) continue;
-      const target = path
-        .resolve(path.dirname(file), specifier)
-        .replace(/\.jsx?$/, "");
-      const source = [
-        target + ".ts",
-        target + ".tsx",
-        path.join(target, "index.ts"),
-        path.join(target, "index.tsx"),
-      ].find(existsSync);
-      if (source) pending.push(source);
-    }
-  }
-}
-
 /** Importers of each package export, by `name subpath`. */
 /** @type {Map<string, Set<string>>} */
 const importers = new Map();
@@ -533,9 +441,7 @@ for (const pkg of [...packages, ...OUTSIDE]) {
       if (specifier.startsWith(".")) {
         const target = path.resolve(path.dirname(file), specifier);
         const owner = ownerOf(target);
-        const lynxFixture =
-          owner?.name === "@hot-updater/example-lynx" && pkg.name === "e2e";
-        if (owner && owner !== pkg && !privateSource && !lynxFixture) {
+        if (owner && owner !== pkg && !privateSource) {
           fail(
             "public-imports",
             `${at} imports ${specifier}, inside ${owner.name}; import that package's exports by name.`,

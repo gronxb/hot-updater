@@ -28,5 +28,6 @@ dependencies {
 }
 
 tasks.withType(Test).configureEach {
-    inputs.file(file('../fixtures/catalog-policy.json'))
+    inputs.files(file('../../test-utils/fixtures/lynx/catalog-policy.json'),
+        file('../../test-utils/fixtures/lynx/manifest-v1-bulk.json'))
 }

@@ -2,7 +2,6 @@ import { execFile } from "node:child_process";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 
 import { octaneCommit, octaneRepository } from "./prepare-octane.mjs";
@@ -61,7 +60,8 @@ const isSdk = resourceSet.startsWith("sdk");
 const cwd = fileURLToPath(new URL("..", import.meta.url));
 const plugin = path.join(source, "packages/rspeedy-plugin-octane");
 const name = `${variant}${behavior === "normal" ? "" : `-${behavior}`}${resourceSet === "basic" ? "" : `-${resourceSet}`}-managed`;
-const fixture = path.join(plugin, "examples", `hot-updater-g1-${name}`);
+const fixtureRoot = path.join(plugin, "examples", `hot-updater-g1-${name}`);
+const fixture = path.join(fixtureRoot, "octane");
 const exampleOutDir = process.env.HOT_UPDATER_EXAMPLE_OUT_DIR;
 if (exampleOutDir && (!isSdk || !path.isAbsolute(exampleOutDir)))
   throw new Error(
@@ -69,8 +69,9 @@ if (exampleOutDir && (!isSdk || !path.isAbsolute(exampleOutDir)))
   );
 const outDir = exampleOutDir ?? path.join(cwd, ".hot-updater/g1/octane", name);
 try {
-  await fs.rm(fixture, { recursive: true, force: true });
+  await fs.rm(fixtureRoot, { recursive: true, force: true });
   await fs.cp(path.join(cwd, "octane"), fixture, { recursive: true });
+  await fs.symlink(path.join(cwd, "spike"), path.join(fixtureRoot, "spike"));
   await fs.mkdir(path.join(fixture, "node_modules/@hot-updater"), {
     recursive: true,
   });
@@ -80,6 +81,10 @@ try {
   await fs.symlink(
     path.join(cwd, "node_modules/@hot-updater/lynx"),
     path.join(fixture, "node_modules/@hot-updater/lynx"),
+  );
+  await fs.symlink(
+    path.join(cwd, "node_modules/@hot-updater/lynx-sparkling"),
+    path.join(fixture, "node_modules/@hot-updater/lynx-sparkling"),
   );
   await fs.symlink(
     path.join(cwd, "node_modules/@lynx-js/config-rsbuild-plugin"),
@@ -140,9 +145,6 @@ try {
             ? "resources"
             : resourceSet,
         HOT_UPDATER_SPIKE_ASSET_PREFIX: "hot-updater:///",
-        HOT_UPDATER_COMPILER_GRAPH_PLUGIN: pathToFileURL(
-          path.join(cwd, "spike/compiler-page-graph.mjs"),
-        ).href,
       },
       maxBuffer: 10 * 1024 * 1024,
     },
@@ -165,5 +167,5 @@ try {
     ),
   );
 } finally {
-  await fs.rm(fixture, { recursive: true, force: true });
+  await fs.rm(fixtureRoot, { recursive: true, force: true });
 }

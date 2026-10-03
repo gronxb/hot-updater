@@ -9,17 +9,14 @@ import type {
   BuildAdapterConfig,
   Platform,
 } from "@hot-updater/plugin-core";
-import {
-  createReactNativeDoctor,
-  getReactNativePodInstallEnvironment,
-  REACT_NATIVE_DEV_SERVER_PORT,
-  selectReactNativeArtifacts,
-} from "@hot-updater/react-native/build";
 import { ExecaError, execa } from "execa";
 import { uuidv7 } from "uuidv7";
 
+import { selectReactNativeArtifacts } from "./artifacts";
+import { createReactNativeDoctor } from "./doctor";
 import { getConfig } from "./expoConfig";
 import { createExpoFingerprint } from "./fingerprint";
+import { getReactNativePodInstallEnvironment } from "./podInstallEnvironment";
 import {
   getExpoNativeFileRepairBlockReason,
   validateExpoProject,
@@ -195,7 +192,7 @@ export const expo =
         doctor: createReactNativeDoctor(cwd),
       },
       nativeBuild: {
-        developmentServerPort: REACT_NATIVE_DEV_SERVER_PORT,
+        developmentServerPort: 8081,
         getPodInstallEnvironment: () =>
           getReactNativePodInstallEnvironment(cwd),
         fingerprint: (options) => createExpoFingerprint(cwd, options),

@@ -1,5 +1,5 @@
 ---
-"@hot-updater/lynx": patch
+"@hot-updater/lynx-sparkling": patch
 ---
 
 Connect iOS 26 content-pop navigation to the active Sparkling page and reconcile

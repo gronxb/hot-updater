@@ -1,5 +1,8 @@
 ---
 "@hot-updater/lynx": minor
+"@hot-updater/lynx-build": minor
+"@hot-updater/lynx-sparkling": minor
+"@hot-updater/test-utils": patch
 ---
 
 Add Lynx OTA support: a framework-independent runtime and build adapter, iOS
@@ -24,3 +27,11 @@ Adapt the pinned Lynx Android image service to Fresco 3.4 within the optional
 Sparkling package, retaining source integrity and bitmap/animation behavior.
 Use standard application initialization and 16 KB-aligned native packaging.
 Include the adaptation in the native compatibility fingerprint.
+
+Keep the device SDK root-only with protocol as its sole dependency. Ship Node
+build and init tooling in `@hot-updater/lynx-build`, and Sparkling navigation
+and native host integration in `@hot-updater/lynx-sparkling`. Fingerprint the
+installed native packages from the application rather than the build adapter.
+
+Publish shared native catalog and manifest fixtures from test-utils, excluding
+them from the device SDK install.

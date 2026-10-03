@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 
 import type { ConfigResponse } from "@hot-updater/cli-tools";
-import { lynx } from "@hot-updater/lynx/build";
+import { lynx } from "@hot-updater/lynx-build";
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import { validateSigningConfig } from "./validateSigningConfig";

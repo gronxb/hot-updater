@@ -2,7 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { lynx } from "@hot-updater/lynx/build";
+import { lynx } from "@hot-updater/lynx-build";
 
 const [platform, source, entry, runtimeId, pageContractPath] =
   process.argv.slice(2);

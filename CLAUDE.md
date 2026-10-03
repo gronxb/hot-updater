@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Hot Updater is a self-hostable OTA (Over-The-Air) update engine with application integrations for React Native and Lynx. It consists of a monorepo with packages and plugins organized using NX workspace management.
+Hot Updater is a self-hostable OTA (Over-The-Air) update solution for React Native apps, serving as an alternative to CodePush. It consists of a monorepo with packages and plugins organized using NX workspace management.
 
 ## Key Architecture
 
@@ -45,7 +45,7 @@ Every export belongs to exactly one package. `scripts/ci/check-package-boundarie
 - `@hot-updater/server` is the runtime host. Its root is `createHotUpdater`, its types, the handlers, and `toNodeHandler`.
   - Its only subpaths are the built-in adapters (`./adapters/{kysely,drizzle,prisma,mongodb}`) and the built-in plugins (`./plugins/insights`, `./plugins/api-keys`).
   - Tooling reads a server definition only through its public read-only properties.
-- `@hot-updater/react-native` owns React Native runtime and build policy. Device imports use its root, including `insights`; build adapters use the Node-only `/build` entry. `@hot-updater/lynx` owns Lynx runtime policy and exposes its build/navigation integrations separately. Neither device dependency closure includes server or adapter tooling.
+- `@hot-updater/react-native` is the app SDK. Apps import everything from its root, including the built-in `insights` client. It has no subpaths.
   - It imports `@hot-updater/protocol` and the Insights client, never plugin-core or server.
   - Nothing in its install closure pulls plugin-core or server.
 - `@hot-updater/test-utils` holds all test-only code: adapter and plugin test suites, fixtures, `createMeasuredDatabase`, and test stores and executors.

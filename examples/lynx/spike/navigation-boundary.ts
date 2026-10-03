@@ -1,7 +1,7 @@
 import {
   navigate,
   type SparklingNavigateRequest,
-} from "@hot-updater/lynx/navigation";
+} from "@hot-updater/lynx-sparkling";
 
 export const navigationBoundaryVectors = [
   "canonical-options",

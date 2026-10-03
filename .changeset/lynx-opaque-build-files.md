@@ -32,9 +32,10 @@ Manifest-v1 delivery requires authenticated manifests and explicit download
 representations; optional tar.br archives exclude the manifest and use its
 declared transfer hash and sizes.
 
-Move React Native/Hermes artifact selection and default fingerprinting into
-`@hot-updater/react-native`, with the bare and Rock integrations using that
-provider. Move Expo fingerprint source discovery into the Expo integration.
+Keep React Native/Hermes artifact selection, CocoaPods defaults, and native
+diagnostics inside the Bare, Expo, and Rock build adapters. Bare and Rock own
+their default native fingerprints; Expo owns Expo fingerprint source discovery.
+The React Native device SDK exports only its root and has no build-tool peer.
 Build plugins may also own native signing-key discovery. Common Hot Updater,
 server, storage, and promotion code now consume engine-neutral declarations.
 
@@ -42,3 +43,6 @@ Keep the server entry portable across Deno and plain Workers: expose Node.js
 filesystem fingerprint helpers through `@hot-updater/plugin-core/fingerprint`
 and use portable SHA-256 for manifest authentication. Preserve package subpaths
 when generating versioned npm imports for Supabase edge functions.
+
+Resolve init build adapters through their public integration export from the
+application, including third-party ESM and CommonJS packages.

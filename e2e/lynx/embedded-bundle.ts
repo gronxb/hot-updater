@@ -351,9 +351,21 @@ export async function compileLynxE2eEmbedded(options: {
       `rspeedy e2e embed failed: ${result.stderr || result.stdout || result.status}`,
     );
   }
-  const { finishLynxE2eBundle } =
-    await import("../../examples/lynx/scripts/e2e-assets.mjs");
-  await finishLynxE2eBundle(outDir);
+  const assets = spawnSync(
+    process.execPath,
+    ["scripts/e2e-assets.mjs", outDir],
+    {
+      cwd: options.exampleDir,
+      encoding: "utf8",
+      env: compileEnv,
+      maxBuffer: 20 * 1024 * 1024,
+    },
+  );
+  if (assets.status !== 0) {
+    throw new Error(
+      `e2e embed assets failed: ${assets.stderr || assets.stdout || assets.status}`,
+    );
+  }
   await packageLynxEmbeddedDirectory({
     root: outDir,
     platform: options.platform,

@@ -18,7 +18,7 @@ import { kyselyAdapter } from "@hot-updater/server/adapters/kysely";
 import {
   appendSdkInstallFailureEvidence,
   MISSING_ASSET_RESPONSE_BODY,
-} from "./public-matrix/raw-detail-rejection.mjs";
+} from "../../../e2e/lynx/public-matrix/raw-detail-rejection.mjs";
 
 // Task-local service: real persisted PostgreSQL-compatible state and filesystem
 // objects, exposed through the existing Hot Updater repository/client handlers.

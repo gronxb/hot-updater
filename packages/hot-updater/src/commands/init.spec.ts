@@ -1,3 +1,7 @@
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+
 import { InitError } from "@hot-updater/cli-tools";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -71,28 +75,6 @@ vi.mock("@hot-updater/supabase/init", async (importOriginal) => ({
   runInit: mocks.runSupabaseInit,
 }));
 
-vi.mock("@hot-updater/bare/integration", () => ({
-  initIntegration: {
-    schemaVersion: 1,
-    id: "bare",
-    label: "Bare",
-    dependencies: ["@hot-updater/react-native"],
-    devDependencies: ["dotenv"],
-    build: bareBuild,
-  },
-}));
-
-vi.mock("@hot-updater/expo/integration", () => ({
-  initIntegration: {
-    schemaVersion: 1,
-    id: "expo",
-    label: "Expo",
-    dependencies: ["@hot-updater/react-native"],
-    devDependencies: ["dotenv"],
-    build: expoBuild,
-  },
-}));
-
 import { init } from "./init";
 import {
   INIT_PROVIDER_PACKAGES,
@@ -102,7 +84,44 @@ import {
 const { version } = packageJsonData;
 
 describe("init choices", () => {
-  beforeEach(() => {
+  let app: string;
+
+  async function installIntegration(
+    name: string,
+    build: typeof bareBuild,
+    format = "esm",
+  ) {
+    const directory = path.join(app, "node_modules", name);
+    await fs.mkdir(directory, { recursive: true });
+    const descriptor = JSON.stringify({
+      schemaVersion: 1,
+      id: name.split("/").at(-1),
+      label: name,
+      dependencies: ["@hot-updater/react-native"],
+      devDependencies: ["dotenv"],
+      build,
+    });
+    await fs.writeFile(
+      path.join(directory, "package.json"),
+      JSON.stringify({
+        name,
+        exports: {
+          "./integration":
+            format === "esm"
+              ? { import: "./integration.mjs", require: "./unavailable.cjs" }
+              : "./integration.cjs",
+        },
+      }),
+    );
+    await fs.writeFile(
+      path.join(directory, `integration.${format === "esm" ? "mjs" : "cjs"}`),
+      format === "esm"
+        ? `await Promise.resolve(); export const initIntegration = ${descriptor};`
+        : `exports.initIntegration = ${descriptor};`,
+    );
+  }
+
+  beforeEach(async () => {
     vi.clearAllMocks();
     process.exitCode = undefined;
     mocks.ensureInstallPackages.mockResolvedValue(undefined);
@@ -110,12 +129,44 @@ describe("init choices", () => {
     mocks.makeEnv.mockResolvedValue("");
     mocks.runAwsInit.mockResolvedValue(undefined);
     mocks.runSupabaseInit.mockResolvedValue(undefined);
+    app = await fs.mkdtemp(path.join(os.tmpdir(), "hot-updater-init-"));
+    await fs.writeFile(path.join(app, "package.json"), '{"private":true}');
+    await installIntegration("@hot-updater/bare", bareBuild);
+    await installIntegration("@hot-updater/expo", expoBuild);
+    vi.spyOn(process, "cwd").mockReturnValue(app);
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     process.exitCode = undefined;
     vi.restoreAllMocks();
+    await fs.rm(app, { recursive: true, force: true });
   });
+
+  it.each(["esm", "cjs"])(
+    "loads an app-installed third-party %s adapter through its public integration export",
+    async (format) => {
+      const build = {
+        imports: [{ pkg: "@example/build", named: ["custom"] }],
+        configString: "custom()",
+      };
+      await installIntegration("@example/build", build, format);
+      mocks.readHotUpdaterInitEnv.mockResolvedValue({
+        env: {},
+        managedEnv: {},
+      });
+
+      await init({ build: "@example/build", provider: "aws" });
+
+      expect(mocks.runAwsInit).toHaveBeenCalledWith({
+        build,
+        envFile: undefined,
+      });
+      expect(mocks.ensureInstallPackages).toHaveBeenCalledWith({
+        dependencies: [],
+        devDependencies: expect.arrayContaining(["@example/build"]),
+      });
+    },
+  );
 
   it("prompts instead of reusing managed build and provider", async () => {
     // Given

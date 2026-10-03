@@ -1,3 +1,5 @@
+import path from "node:path";
+
 import {
   assertInitIntegrationDescriptor,
   getHotUpdaterEnvValue,
@@ -13,6 +15,7 @@ import {
   type RunInitOptions,
 } from "@hot-updater/cli-tools";
 import { ExecaError } from "execa";
+import { createJiti } from "jiti";
 
 import { ensureInstallPackages } from "@/utils/ensureInstallPackages";
 import {
@@ -193,9 +196,11 @@ export const init = async (options: InitOptions = {}) => {
     process.exit(1);
   }
 
-  const integrationModule = (await import(
-    `${integrationPackage}/integration`
-  )) as { initIntegration?: unknown };
+  // Resolve the installed adapter from the app, including ESM-only adapters.
+  const loader = createJiti(path.join(process.cwd(), "package.json"));
+  const integrationModule = await loader.import<{ initIntegration?: unknown }>(
+    `${integrationPackage}/integration`,
+  );
   assertInitIntegrationDescriptor(integrationModule.initIntegration);
   const integration = integrationModule.initIntegration;
   await ensureInstallPackages({

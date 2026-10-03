@@ -7,73 +7,23 @@ import { describe, expect, it } from "vitest";
 const packageRoot = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
 
 describe("framework-independent Lynx package contract", () => {
-  it("has no required React, Vue, or Octane dependency, peer, or compiler plugin", async () => {
+  it("exports only the device root with no compiler, server, or Sparkling dependency", async () => {
     const manifest = JSON.parse(
       await fs.readFile(path.join(packageRoot, "package.json"), "utf8"),
-    ) as {
-      dependencies?: Record<string, string>;
-      peerDependencies?: Record<string, string>;
-      peerDependenciesMeta?: Record<string, { optional?: boolean }>;
-      optionalDependencies?: Record<string, string>;
-      exports: Record<string, unknown>;
-    };
-    const names = [
-      ...Object.keys(manifest.dependencies ?? {}),
-      ...Object.keys(manifest.peerDependencies ?? {}),
-      ...Object.keys(manifest.optionalDependencies ?? {}),
-    ];
-    expect(names.sort()).toEqual(
-      [
-        "@hot-updater/protocol",
-        "@hot-updater/plugin-core",
-        "uuidv7",
-        "sparkling-navigation",
-      ].sort(),
     );
-    expect(manifest.peerDependencies).toEqual({
-      "@hot-updater/plugin-core": "workspace:*",
-      "sparkling-navigation": "2.1.0-rc.12",
+    expect(manifest.dependencies).toEqual({
+      "@hot-updater/protocol": "workspace:*",
     });
-    expect(manifest.peerDependenciesMeta).toEqual({
-      "@hot-updater/plugin-core": { optional: true },
-      "sparkling-navigation": { optional: true },
-    });
-    expect(names.join(" ")).not.toMatch(/react|vue|octane/i);
-    expect(manifest.exports).toHaveProperty(".");
-    expect(manifest.exports).toHaveProperty("./build");
-    expect(manifest.exports).toHaveProperty("./navigation");
-    expect(manifest.exports).toHaveProperty("./navigationProvenance");
+    expect(manifest.peerDependencies).toBeUndefined();
+    expect(manifest.optionalDependencies).toBeUndefined();
+    expect(Object.keys(manifest.exports).sort()).toEqual([
+      ".",
+      "./package.json",
+    ]);
   });
 
-  it("keeps runtime import inert and reports native-absent failure from the built entry", async () => {
-    const runtime = path.join(packageRoot, "dist/index.mjs");
-    const build = path.join(packageRoot, "dist/build.mjs");
-    const navigation = path.join(packageRoot, "dist/navigation.mjs");
-    const navigationProvenance = path.join(
-      packageRoot,
-      "dist/navigationProvenance.mjs",
-    );
-    expect(await fs.stat(runtime).then((value) => value.isFile())).toBe(true);
-    expect(await fs.stat(build).then((value) => value.isFile())).toBe(true);
-    expect(await fs.stat(navigation).then((value) => value.isFile())).toBe(
-      true,
-    );
-    expect(
-      await fs.stat(navigationProvenance).then((value) => value.isFile()),
-    ).toBe(true);
-    expect(await fs.readFile(runtime, "utf8")).not.toContain(
-      "sparkling-navigation",
-    );
-    expect(await fs.readFile(build, "utf8")).not.toContain(
-      "sparkling-navigation",
-    );
-    expect(await fs.readFile(navigation, "utf8")).toContain(
-      "sparkling-navigation",
-    );
-    expect(await fs.readFile(navigationProvenance, "utf8")).not.toContain(
-      'from "sparkling-navigation"',
-    );
-    const { HotUpdater } = await import(runtime);
+  it("keeps the public runtime import inert and reports a missing native module", async () => {
+    const { HotUpdater } = await import("@hot-updater/lynx");
     HotUpdater.init({ baseURL: "https://updates.test" });
     await expect(HotUpdater.getLaunchInfo()).rejects.toMatchObject({
       code: "NATIVE_MODULE_UNAVAILABLE",
@@ -81,7 +31,5 @@ describe("framework-independent Lynx package contract", () => {
     await expect(HotUpdater.notifyAppReady()).rejects.toMatchObject({
       code: "NATIVE_MODULE_UNAVAILABLE",
     });
-    const { lynx } = await import(build);
-    expect(typeof lynx).toBe("function");
   });
 });

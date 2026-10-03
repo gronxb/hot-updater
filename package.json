@@ -62,7 +62,14 @@
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "npm:@typescript/typescript6@^6.0.2",
     "vitest": "catalog:",
-    "@hot-updater/lynx": "workspace:*"
+    "@hot-updater/lynx": "workspace:*",
+    "@hot-updater/lynx-sparkling": "workspace:*",
+    "@hot-updater/protocol": "workspace:*",
+    "@hot-updater/server": "workspace:*",
+    "@hot-updater/standalone": "workspace:*",
+    "hot-updater": "workspace:*",
+    "fast-xml-parser": "5.7.2",
+    "plist": "^3.1.0"
   },
   "packageManager": "pnpm@11.6.0"
 }

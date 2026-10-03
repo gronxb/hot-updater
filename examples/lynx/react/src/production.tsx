@@ -1,4 +1,4 @@
-import { navigate } from "@hot-updater/lynx/navigation";
+import { navigate } from "@hot-updater/lynx-sparkling";
 import { root, useEffect, useState } from "@lynx-js/react";
 
 import {

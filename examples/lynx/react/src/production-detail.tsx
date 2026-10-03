@@ -1,5 +1,5 @@
 import { HotUpdater } from "@hot-updater/lynx";
-import { close } from "@hot-updater/lynx/navigation";
+import { close } from "@hot-updater/lynx-sparkling";
 import { root, useEffect, useState } from "@lynx-js/react";
 
 import "../../style.css";

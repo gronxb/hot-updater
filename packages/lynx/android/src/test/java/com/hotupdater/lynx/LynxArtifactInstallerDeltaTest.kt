@@ -1016,7 +1016,7 @@ class LynxArtifactInstallerDeltaTest {
     @Test
     fun authenticatedBulkArchiveAndFallbackKeepTheSameManifestAuthority() = runBlocking {
         val fixtureFile = generateSequence(File(checkNotNull(System.getProperty("user.dir")))) { it.parentFile }
-            .map { File(it, "packages/lynx/fixtures/manifest-v1-bulk.json") }.first { it.isFile }
+            .map { File(it, "packages/test-utils/fixtures/lynx/manifest-v1-bulk.json") }.first { it.isFile }
         val fixture = JSONObject(fixtureFile.readText()).getJSONObject("android")
         val id = fixture.getString("bundleId")
         val files = fixture.getJSONObject("files").let { values ->

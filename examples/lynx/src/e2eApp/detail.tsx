@@ -1,8 +1,7 @@
 import { HotUpdater } from "@hot-updater/lynx";
-import { close } from "@hot-updater/lynx/navigation";
+import { close } from "@hot-updater/lynx-sparkling";
 import { root, useEffect, useState } from "@lynx-js/react";
 
-import { readGenerationEvents } from "./generationEvents";
 import { resolveE2eLaunchConfiguration } from "./launchConfiguration";
 import { E2E_SCENARIO_MARKER } from "./patchSurface";
 import { createPendingActionPoller } from "./pendingActionPoller";
@@ -36,9 +35,7 @@ const actionHandlers: Record<string, (text?: string) => Promise<void>> = {
     await closeDetailPage();
   },
   "action-capture-generation-events": async () => {
-    const snapshot = await readGenerationEvents(HotUpdater, {
-      allowTruncated: true,
-    });
+    const snapshot = await HotUpdater.getRuntimeEvents();
     await patchScreenState({
       generationEvents: JSON.stringify(snapshot),
       updateActionResult: `generation-events -> ${snapshot.latestSequence}`,

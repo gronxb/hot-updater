@@ -5,7 +5,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 
 import { s3Storage } from "@hot-updater/aws";
-import { lynx } from "@hot-updater/lynx/build";
+import { lynx } from "@hot-updater/lynx-build";
 import {
   createStorageDownloadUrl,
   createStorageAdapter,

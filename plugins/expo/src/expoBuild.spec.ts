@@ -98,7 +98,19 @@ describe("Expo build engine from evaluated config", () => {
           'module.exports = ({ config }) => ({ ...config, jsEngine: "jsc", android: { jsEngine: "hermes" } });',
       });
 
-      await expo()({ cwd }).build({ platform });
+      const result = await expo()({ cwd }).build({ platform });
+
+      expect(result.patchAssetPath).toBe(`index.${platform}.bundle`);
+      expect(result.artifacts).toEqual([
+        {
+          name: `index.${platform}.bundle`,
+          path: path.join(
+            cwd,
+            `dist/index.${platform}.bundle${enableHermes ? ".hbc" : ""}`,
+          ),
+          downloadCompression: "br",
+        },
+      ]);
 
       expect(mocks.execa).toHaveBeenCalledWith(
         "npx",

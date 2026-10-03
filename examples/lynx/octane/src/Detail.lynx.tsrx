@@ -1,7 +1,7 @@
 /** @jsxImportSource @octanejs/lynx/intrinsics */
 import { useEffect, useState } from "octane";
 import { HotUpdater } from "@hot-updater/lynx";
-import { close } from "@hot-updater/lynx/navigation";
+import { close } from "@hot-updater/lynx-sparkling";
 
 import { variant } from "./bridge";
 

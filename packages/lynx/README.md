@@ -62,12 +62,13 @@ event listener, or insights option because native cannot supply those values or
 events authoritatively.
 
 `checkForUpdate()` fetches and authorizes a catalog selection, resolves its
-delivery description, and asks native code to validate compatibility. It does
-not download or retain an installation preparation. Calling
-`update.updateBundle()` downloads, verifies, and atomically stages that exact
-selection. Dropping the returned update object therefore consumes no native
-preparation capacity. Repeated calls to the same closure share one installation
-promise.
+delivery description, and asks native code to validate compatibility. The current
+native implementation downloads and verifies the complete artifact for that
+validation, then discards its temporary preparation. Calling
+`update.updateBundle()` downloads and verifies the artifact again before
+atomically staging that exact selection. The returned update object retains no
+native preparation capacity. Repeated calls to the same closure share one
+installation promise.
 
 Installation changes the next selection and never changes the bytes used by the
 current managed generation. `HotUpdater.reload()` asks the packaged host to
@@ -158,14 +159,14 @@ patches to and from it; targets remain installable through their original files.
 
 ## Build integration
 
-Use the separate `@hot-updater/lynx/build` entrypoint. The application owns its
+Use the separate `@hot-updater/lynx-build` package. The application owns its
 ReactLynx, VueLynx, or OctaneLynx compiler and writes selected native output into
 the empty attempt directory:
 
 ```ts
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import { lynx, type LynxBuildOutput } from "@hot-updater/lynx/build";
+import { lynx, type LynxBuildOutput } from "@hot-updater/lynx-build";
 
 const build = lynx({
   build: async ({ cwd, platform, bundleId, outDir }) => {
@@ -188,9 +189,10 @@ const build = lynx({
 });
 ```
 
-The compiler output must contain `main.lynx.bundle` and
-`detail.lynx.bundle`. Its dependency graph returns the deterministic page
-allowlist and exact resource closure. For the basic example, that graph is:
+The basic example emits `main.lynx.bundle` and `detail.lynx.bundle`; these names
+are example choices. The compiler must emit each declared `pageEntries` path
+and return the deterministic page allowlist and exact resource closure from its
+dependency graph. For the basic example, that graph is:
 
 ```ts
 const pageEntries = ["detail.lynx.bundle", "main.lynx.bundle"] as const;
@@ -228,15 +230,21 @@ on its own host inputs; a custom host may supply a `fingerprint` provider.
 
 Common Hot Updater packaging consumes these explicit declarations without Lynx
 or React Native filename rules. React Native/Hermes artifact selection lives in
-`@hot-updater/react-native`, while Expo native fingerprint discovery lives in
-the Expo integration.
+the Bare, Expo, and Rock build adapters. Bare and Rock own their native
+fingerprints, while Expo owns Expo fingerprint discovery.
 
 ## Sparkling host
 
-The package contains optional Sparkling integrations for iOS and Android. They
+The optional `@hot-updater/lynx-sparkling` package provides Sparkling integrations
+for iOS and Android. They
 own the Lynx bridge, release-scoped resource loaders, startup observations,
 managed-context identities, recovery, and in-process generation replacement.
 An application supplies native compatibility and embedded-release configuration,
 registers the packaged module, and mounts the packaged host. See the
 [Sparkling example](../../examples/lynx) for the production scaffold and its
 separate nonproduction acceptance harness.
+
+The device SDK exports only its root and depends only on `@hot-updater/protocol`.
+Build tooling and Sparkling dependencies belong to the separate packages above.
+The current ready-made host integration requires Sparkling; a plain LynxView
+host is not yet provided.

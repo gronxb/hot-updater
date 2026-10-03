@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   readGenerationEvents,
   validateGenerationEventsSnapshot,
-} from "../../examples/lynx/src/e2eApp/generationEvents";
+} from "./generation-events";
 
 const event = (sequence: string) => ({
   sequence,

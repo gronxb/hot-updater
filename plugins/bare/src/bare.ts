@@ -9,17 +9,14 @@ import type {
   BuildAdapterConfig,
   NativeFingerprintProvider,
 } from "@hot-updater/plugin-core";
-import {
-  createReactNativeDoctor,
-  getReactNativePodInstallEnvironment,
-  REACT_NATIVE_DEV_SERVER_PORT,
-  createReactNativeFingerprint,
-  selectReactNativeArtifacts,
-} from "@hot-updater/react-native/build";
 import { ExecaError, execa } from "execa";
 import { uuidv7 } from "uuidv7";
 
+import { selectReactNativeArtifacts } from "./artifacts";
+import { createReactNativeFingerprint } from "./buildFingerprint";
+import { createReactNativeDoctor } from "./doctor";
 import { compileHermes } from "./hermes";
+import { getReactNativePodInstallEnvironment } from "./podInstallEnvironment";
 
 interface RunBundleArgs {
   entryFile: string;
@@ -309,7 +306,7 @@ export const bare =
         doctor: createReactNativeDoctor(cwd),
       },
       nativeBuild: {
-        developmentServerPort: REACT_NATIVE_DEV_SERVER_PORT,
+        developmentServerPort: 8081,
         getPodInstallEnvironment: () =>
           getReactNativePodInstallEnvironment(cwd),
         fingerprint: (options) =>

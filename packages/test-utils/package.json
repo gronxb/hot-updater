@@ -32,11 +32,14 @@
         "default": "./dist/react-native.cjs"
       }
     },
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    "./fixtures/lynx/catalog-policy.json": "./fixtures/lynx/catalog-policy.json",
+    "./fixtures/lynx/manifest-v1-bulk.json": "./fixtures/lynx/manifest-v1-bulk.json"
   },
   "files": [
     "dist",
-    "package.json"
+    "package.json",
+    "fixtures/lynx"
   ],
   "license": "MIT",
   "scripts": {
