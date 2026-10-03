@@ -72,9 +72,5 @@ The matrix build consumes the prevalidated React, Vue, and Octane SDK3 A trees
 produced by the public acceptance workflow. They are generated compiler output
 and are not application-owned OTA logic.
 
-The production and matrix iOS simulator schemes currently build successfully.
-The real six-cell device matrix and the current full `hot-updater-agent` run
-remain pending.
-
 See [third-party notices](../THIRD_PARTY_NOTICES.md) for the Sparkling source
 license.
