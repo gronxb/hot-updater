@@ -3,7 +3,11 @@ import XCTest
 @testable import HotUpdaterLynxArtifact
 
 final class ArtifactInstallerTests: XCTestCase {
-    private let profile = "sparkling-c4ce8d2-lynx-3.9.0-primjs-3.8.0-alpha.6-ios-spike-v2"
+    private let profile = "sparkling-c4ce8d2-navigation-2.1.0-rc.12-lynx-3.9.0-primjs-3.8.0-alpha.6-ios-managed-pages-v1"
+    private let expectedFiles: Set<String> = [
+        "assets/OFL.txt", "assets/bootstrap.js", "assets/probe.png", "assets/probe.ttf",
+        "detail.lynx.bundle", "dynamic/component.lynx.bundle", "hot-updater-lynx.json", "main.lynx.bundle",
+    ]
     private func temporaryRoot() -> URL { FileManager.default.temporaryDirectory.appendingPathComponent("lynx-artifact-tests-\(UUID().uuidString)") }
     private func receipt(_ name: String = "react-ios") async throws -> LynxArtifactRequest {
         guard let origin = ProcessInfo.processInfo.environment["LYNX_ARTIFACT_TEST_ORIGIN"] else { throw XCTSkip("Requires task-owned real CLI artifact service") }
@@ -43,7 +47,8 @@ final class ArtifactInstallerTests: XCTestCase {
         }
         XCTAssertEqual(installed.bundleId, request.bundleId)
         XCTAssertEqual(selected, request.bundleId)
-        XCTAssertEqual(installed.files.count, 6)
+        XCTAssertEqual(Set(installed.files.keys), expectedFiles)
+        XCTAssertEqual(installed.pageEntries, ["detail.lynx.bundle", "main.lynx.bundle"])
         XCTAssertThrowsError(try installer.commit(prepared, finalize: { _ = try $0() }))
         let original = try Data(contentsOf: installed.directory.appendingPathComponent(installed.entry))
         async let one = installer.prepare(request)
@@ -88,12 +93,18 @@ final class ArtifactInstallerTests: XCTestCase {
         let root = temporaryRoot(); defer { try? FileManager.default.removeItem(at: root) }
         var installer: LynxArtifactInstaller? = try .init(root: root, configuration: .init(runtimeId: profile))
         XCTAssertThrowsError(try LynxArtifactInstaller(root: root, configuration: .init(runtimeId: profile)))
-        let prepared = try await installer!.prepare(try await receipt())
+        var prepared: LynxPreparedArtifact? = try await installer!.prepare(try await receipt())
         XCTAssertFalse(try FileManager.default.contentsOfDirectory(atPath: root.appendingPathComponent(".staging").path).isEmpty)
-        installer = nil // Equivalent released owner lease; simulator separately tests actual process termination.
+        installer = nil
         let next = try LynxArtifactInstaller(root: root, configuration: .init(runtimeId: profile))
+        // A live preparation retains its own lease across store-owner replacement.
+        XCTAssertFalse(try FileManager.default.contentsOfDirectory(atPath: root.appendingPathComponent(".staging").path).isEmpty)
+        XCTAssertThrowsError(try next.commit(try XCTUnwrap(prepared), finalize: { _ = try $0() }))
+        prepared = nil
+        next.close()
+        let reopened = try LynxArtifactInstaller(root: root, configuration: .init(runtimeId: profile))
+        defer { reopened.close() }
         XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: root.appendingPathComponent(".staging").path), [])
-        XCTAssertThrowsError(try next.commit(prepared, finalize: { _ = try $0() }))
         XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: root.appendingPathComponent("bundles").path), [])
     }
     func testMalformedHTTPArtifactsNeverReplaceConfirmedTree() async throws {
@@ -127,7 +138,8 @@ final class ArtifactInstallerTests: XCTestCase {
             let request = try await receipt(name)
             let prepared = try await installer.prepare(request)
             let installed = try installer.commit(prepared, finalize: { _ = try $0() })
-            XCTAssertEqual(installed.files.count, 6)
+            XCTAssertEqual(Set(installed.files.keys), expectedFiles)
+            XCTAssertEqual(installed.pageEntries, ["detail.lynx.bundle", "main.lynx.bundle"])
             XCTAssertEqual(installed.bundleId, request.bundleId)
         }
     }

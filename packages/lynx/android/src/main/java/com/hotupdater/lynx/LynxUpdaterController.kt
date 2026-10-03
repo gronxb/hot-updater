@@ -54,6 +54,11 @@ class LynxUpdaterController internal constructor(
     private var runningFiles = embedded
     private var runningConfirmed = false
     private var closed = false
+    private var fatalSession: LynxLaunchSession? = null
+    internal val generationFailed: Boolean
+        get() = synchronized(stateLock) {
+            fatalSession != null || store.value.has("generationFailure")
+        }
     private var primary: LynxLaunchSession? = null
     private val members = linkedSetOf<LynxLaunchSession>()
     private var accepted: CatalogPolicy.AcceptedCatalog? = null
@@ -1033,7 +1038,7 @@ class LynxUpdaterController internal constructor(
     }
 
     private fun rejectFailedGeneration() {
-        if (store.value.has("generationFailure")) {
+        if (generationFailed) {
             throw CatalogPolicy.Rejected(
                 "STALE_CONTEXT",
                 "The managed Lynx generation has already failed",
@@ -1333,7 +1338,7 @@ class LynxUpdaterController internal constructor(
             ?.optString("sourceGenerationId")
             ?.takeIf(String::isNotEmpty)
         if (
-            closed || !session.live || session.failed ||
+            closed || generationFailed || !session.live || session.failed ||
             session.controller !== this || session !in members ||
             (primaryOnly && session !== primary) ||
             acceptedSourceGeneration == session.generationId
@@ -1692,6 +1697,7 @@ class LynxUpdaterController internal constructor(
             val managedStartupPending = pending?.opt("transitionId") is String
             if (
                 closed || session !in members || !session.live ||
+                fatalSession != null && fatalSession !== session ||
                 session.isPrimary && session !== primary ||
                 session.isPrimary && runningConfirmed && !allowConfirmed &&
                 !managedStartupPending
@@ -1716,6 +1722,9 @@ class LynxUpdaterController internal constructor(
                 session.failed = true
                 return@synchronized false
             }
+            // A failed journal write can retry this fatal report, never page admission.
+            fatalSession = session
+            members.forEach { it.scheduleReadinessFlush() }
             mutate { next ->
                 if (session.isPrimary && pending != null) {
                     next.put("pending", JSONObject(pending.toString()).put("fatal", true).put("message", message))

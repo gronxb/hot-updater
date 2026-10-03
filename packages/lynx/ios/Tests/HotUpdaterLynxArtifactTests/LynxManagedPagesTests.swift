@@ -8,6 +8,47 @@ final class LynxManagedPagesTests: XCTestCase {
     private let runtimeId =
         "sparkling-c4ce8d2-navigation-2.1.0-rc.12-lynx-3.9.0-primjs-3.8.0-alpha.6-ios-managed-pages-v1"
 
+    func testFatalPersistenceFailureRevokesGenerationUntilTheSameFailureIsRetried() throws {
+        for secondaryFailure in [false, true] {
+            let fixture = try makeFixture()
+            defer { try? FileManager.default.removeItem(at: fixture.root) }
+            let controller = try LynxController(configuration: fixture.configuration)
+            let primary = controller.createContext(primary: true)
+            _ = try controller.begin(primary)
+            let failed = secondaryFailure ? controller.createContext(primary: false) : primary
+            if secondaryFailure {
+                _ = try controller.begin(failed, pageEntry: "detail.lynx.bundle", generationId: controller.attemptId,
+                    stack: [.init(entry: "main.lynx.bundle"), .init(entry: "detail.lynx.bundle")])
+            }
+            var rejectedCallbacks = 0
+            controller.notifyAppReady(primary) { if case .failure = $0 { rejectedCallbacks += 1 } }
+            if secondaryFailure {
+                controller.notifyAppReady(failed) { if case .failure = $0 { rejectedCallbacks += 1 } }
+            }
+            let scope = try XCTUnwrap(FileManager.default.contentsOfDirectory(at: fixture.configuration.root, includingPropertiesForKeys: nil).first)
+            let file = scope.appendingPathComponent("state.json")
+            let original = try Data(contentsOf: file)
+            let backup = file.appendingPathExtension("backup")
+            try FileManager.default.moveItem(at: file, to: backup)
+            try FileManager.default.createDirectory(at: file, withIntermediateDirectories: false)
+            let reportFailure = {
+                secondaryFailure ? try controller.reportPageFailure(failed) : try controller.reportFailure(failed, fatal: true)
+            }
+            XCTAssertThrowsError(try reportFailure())
+            try FileManager.default.removeItem(at: file)
+            try FileManager.default.moveItem(at: backup, to: file)
+            XCTAssertEqual(try Data(contentsOf: file), original)
+            XCTAssertEqual(rejectedCallbacks, secondaryFailure ? 2 : 1)
+            XCTAssertThrowsError(try controller.getState(primary))
+            XCTAssertThrowsError(try controller.observedContent(failed))
+            XCTAssertThrowsError(try controller.begin(controller.createContext(primary: true)))
+            XCTAssertTrue(try reportFailure())
+            XCTAssertNotEqual(try Data(contentsOf: file), original)
+            XCTAssertThrowsError(try controller.getState(primary))
+            try controller.close()
+        }
+    }
+
     func testUnknownPageFailsBeforeAdmissionAndValidPageNeedsAllSignals() throws {
         let fixture = try makeFixture()
         defer { try? FileManager.default.removeItem(at: fixture.root) }
@@ -573,7 +614,7 @@ final class LynxManagedPagesTests: XCTestCase {
         XCTAssertNil(confirmation?.transitionId)
     }
 
-    func testFatalPersistenceFailureDoesNotPoisonInMemoryGeneration() throws {
+    func testFatalPersistenceFailurePreservesPendingPageForRetryWithoutAdmission() throws {
         let fixture = try makeFixture()
         defer { try? FileManager.default.removeItem(at: fixture.root) }
         let controller = try LynxController(configuration: fixture.configuration)
@@ -596,6 +637,7 @@ final class LynxManagedPagesTests: XCTestCase {
         let stateFile = controller.generationEventJournalURL
             .deletingLastPathComponent()
             .appendingPathComponent("state.json")
+        let original = try Data(contentsOf: stateFile)
         try FileManager.default.removeItem(at: stateFile)
         try FileManager.default.createDirectory(
             at: stateFile,
@@ -603,11 +645,16 @@ final class LynxManagedPagesTests: XCTestCase {
         )
 
         XCTAssertThrowsError(try controller.reportPageFailure(detail))
+        XCTAssertThrowsError(try controller.pendingPageAttemptId(detail))
+        XCTAssertThrowsError(try controller.observedContent(detail))
+        try FileManager.default.removeItem(at: stateFile)
+        try original.write(to: stateFile)
         XCTAssertEqual(
-            try controller.pendingPageAttemptId(detail),
+            try journal(fixture.configuration).load().pendingPages?.first?.attemptId,
             pageAttemptId
         )
-        XCTAssertNoThrow(try controller.observedContent(detail))
+        XCTAssertTrue(try controller.reportPageFailure(detail))
+        XCTAssertThrowsError(try controller.getState(primary))
     }
 
     private func pageTerminals(

@@ -2500,6 +2500,9 @@ class LynxUpdaterControllerTest {
             plantNext(root, releaseB, bundleB, "B")
             val controller = controller(root)
             val primary = controller.pinPrimary()
+            var rejectedReadiness = 0
+            primary.notifyReady { if (it.isFailure) rejectedReadiness += 1 }
+            assertEquals(0, rejectedReadiness)
             val stateFile = File(store(root), "state.json")
             val saved = File(root, "saved-fatal-state.json")
             assertTrue(stateFile.renameTo(saved))
@@ -2514,6 +2517,17 @@ class LynxUpdaterControllerTest {
             }
 
             assertFalse(primary.failed)
+            primary.flushReady()
+            assertEquals(1, rejectedReadiness)
+            primary.notifyReady { if (it.isFailure) rejectedReadiness += 1 }
+            assertEquals(2, rejectedReadiness)
+            primary.firstScreen = true
+            assertThrows(CatalogPolicy.Rejected::class.java) {
+                controller.confirm(primary)
+            }
+            assertThrows(CatalogPolicy.Rejected::class.java) {
+                controller.pinSecondary("detail.lynx.bundle", emptyMap(), 1, primary.generationId)
+            }
             assertTrue(controller.fail(primary, "retry"))
             assertTrue(primary.failed)
             assertTrue(journal(root).getJSONObject("pending").getBoolean("fatal"))
@@ -2536,6 +2550,9 @@ class LynxUpdaterControllerTest {
                 1,
                 "generation-a",
             )
+            var rejectedReadiness = 0
+            detail.notifyReady { if (it.isFailure) rejectedReadiness += 1 }
+            assertEquals(0, rejectedReadiness)
             val stateFile = File(store(root), "state.json")
             val saved = File(root, "saved-secondary-fatal-state.json")
             assertTrue(stateFile.renameTo(saved))
@@ -2550,6 +2567,18 @@ class LynxUpdaterControllerTest {
             }
 
             assertFalse(detail.failed)
+            detail.flushReady()
+            assertEquals(1, rejectedReadiness)
+            detail.notifyReady { if (it.isFailure) rejectedReadiness += 1 }
+            primary.notifyReady { if (it.isFailure) rejectedReadiness += 1 }
+            assertEquals(3, rejectedReadiness)
+            detail.firstScreen = true
+            assertThrows(CatalogPolicy.Rejected::class.java) {
+                controller.admitSecondary(detail)
+            }
+            assertThrows(CatalogPolicy.Rejected::class.java) {
+                controller.primaryAdmissionReady(primary)
+            }
             assertEquals(
                 detail.id,
                 journal(root).getJSONObject("pageAttempt")

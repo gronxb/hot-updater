@@ -61,7 +61,7 @@ class LynxLaunchSession internal constructor(
     )
     val entryUrl = "hot-updater:///" + pageEntry
     init {
-        resources.isLive = { live }
+        resources.isLive = { live && !controller.generationFailed }
         resources.onFailure = { message -> notifyFailure(message) }
     }
     private fun notifyFailure(
@@ -248,26 +248,29 @@ class LynxLaunchSession internal constructor(
         return previous
     }
     internal fun notifyReady(callback: (Result<JSONObject>) -> Unit) {
-        if (!live || failed) { callback(Result.failure(CatalogPolicy.Rejected("STALE_CONTEXT", "Context cannot confirm startup"))); return }
+        if (!live || failed || controller.generationFailed) { callback(Result.failure(CatalogPolicy.Rejected("STALE_CONTEXT", "Context cannot confirm startup"))); return }
         secondaryAdmission?.let {
             callback(Result.success(JSONObject(it.toString())))
             return
         }
         ready.add(callback); flushReady()
     }
+    internal fun scheduleReadinessFlush() {
+        handler.post { flushReady() }
+    }
     internal fun flushReady() {
         if (ready.isEmpty()) return
+        val authorized = live && !failed && !controller.generationFailed
         if (
-            live && !failed && (
+            authorized && (
                 !firstScreen || !loadedResources.containsAll(requiredResources) ||
                     readinessGate?.invoke() == false
             )
         ) return
-        if (isPrimary && live && !failed && !controller.primaryAdmissionReady(this)) {
-            return
-        }
-        val callbacks = ready.toList().also { ready.clear() }
         val confirmation = runCatching {
+            if (isPrimary && authorized && !controller.primaryAdmissionReady(this)) {
+                return
+            }
             if (isPrimary) controller.confirm(this)
             else controller.admitSecondary(
                 this,
@@ -276,6 +279,7 @@ class LynxLaunchSession internal constructor(
                 secondaryAdmission = JSONObject(it.toString())
             }
         }
+        val callbacks = ready.toList().also { ready.clear() }
         try {
             confirmation.getOrNull()?.let { confirmedHandler?.invoke(it) }
             callbacks.forEach { callback -> callback(confirmation) }

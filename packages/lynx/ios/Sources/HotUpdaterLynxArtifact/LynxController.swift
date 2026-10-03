@@ -156,6 +156,7 @@ public final class LynxController {
     private var loadedStartupResources: Set<String> = []
     private var contentObserved = false
     private var fatal = false
+    private var fatalContext: LynxLaunchContext?
     private var readinessAuthorityRevoked = false
     private var preparations: [String: LynxSelectionPreparation] = [:]
     private var inFlight = 0
@@ -687,10 +688,22 @@ public final class LynxController {
         return try snapshot()
     }
     private func save(_ next: LynxControllerState) throws { try journal.save(next); state = next }
-    private func validate(_ context: LynxLaunchContext, primaryRequired: Bool = false) throws {
+    private func validate(_ context: LynxLaunchContext, primaryRequired: Bool = false, retryFatal: Bool = false) throws {
         guard context.owner == identity, contexts[ObjectIdentifier(context)] === context, context.active, context.started, !fatal,
               !closed, !readinessAuthorityRevoked,
+              fatalContext == nil || (retryFatal && fatalContext === context),
               !primaryRequired || primary === context else { throw LynxArtifactError.invalid("STALE_CONTEXT: Native launch context has no authority") }
+    }
+
+    private func revokeFatalReadiness(_ context: LynxLaunchContext, deliveries: inout [CallbackDelivery]) {
+        // Durable failure recording may be retried, but this generation cannot become ready again.
+        fatalContext = context
+        let callbacks = readyCallbacks + pageReadyCallbacks.values.flatMap { $0 }
+        readyCallbacks.removeAll()
+        pageReadyCallbacks.removeAll()
+        callbacks.forEach { callback in
+            deliveries.append { callback(.failure(LynxArtifactError.invalid("Native startup failed"))) }
+        }
     }
     public func createContext(primary: Bool) -> LynxLaunchContext {
         lock.lock(); defer { lock.unlock() }
@@ -725,7 +738,7 @@ public final class LynxController {
         lock.lock(); defer { lock.unlock() }
         guard context.owner == identity,
               contexts[ObjectIdentifier(context)] === context,
-              context.active, !context.started, !fatal,
+              context.active, !context.started, !fatal, fatalContext == nil,
               !readinessAuthorityRevoked,
               !generationId.isEmpty,
               stack.last?.entry == pageEntry,
@@ -1459,13 +1472,14 @@ public final class LynxController {
             lock.unlock()
             deliveries.forEach { $0() }
         }
-        try validate(context)
+        try validate(context, retryFatal: true)
         guard !context.primary, !context.pageAdmitted,
               let failedPending = state.pendingPages?.first(where: {
                   $0.contextId == context.id
               }) else {
             return false
         }
+        revokeFatalReadiness(context, deliveries: &deliveries)
         var next = state
         try recordFatalSelectionFailure(in: &next)
         for pending in next.pendingPages ?? [] {
@@ -1488,21 +1502,6 @@ public final class LynxController {
         next.revision = UUID().uuidString
         try save(next)
         fatal = true
-        let callbacks = pageReadyCallbacks.removeValue(
-            forKey: ObjectIdentifier(context)
-        ) ?? []
-        callbacks.forEach { callback in
-            deliveries.append { callback(.failure(LynxArtifactError.invalid(
-                "Native managed page admission failed"
-            ))) }
-        }
-        let primaryCallbacks = readyCallbacks
-        readyCallbacks = []
-        primaryCallbacks.forEach { callback in
-            deliveries.append { callback(.failure(LynxArtifactError.invalid(
-                "Native managed page admission failed"
-            ))) }
-        }
         return true
     }
 
@@ -1690,18 +1689,13 @@ public final class LynxController {
             lock.unlock()
             deliveries.forEach { $0() }
         }
-        try validate(context, primaryRequired: true)
+        try validate(context, primaryRequired: true, retryFatal: true)
         // Errors after startup confirmation are outside the initial rollback window.
         let managedStartupPending = state.pending?.transitionId != nil
         guard knownFatal,
               !runningConfirmed || allowConfirmed || managedStartupPending
         else { return false }
-        let callbacks = readyCallbacks; readyCallbacks = []
-        callbacks.forEach { callback in
-            deliveries.append { callback(.failure(
-                LynxArtifactError.invalid("Native startup failed")
-            )) }
-        }
+        revokeFatalReadiness(context, deliveries: &deliveries)
         var next = state
         try recordFatalSelectionFailure(in: &next)
         try Self.terminalizePendingPages(

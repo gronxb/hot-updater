@@ -3,7 +3,7 @@ import XCTest
 @testable import HotUpdaterLynxArtifact
 
 final class LynxControllerTests: XCTestCase {
-    private let runtime = "sparkling-c4ce8d2-lynx-3.9.0-primjs-3.8.0-alpha.6-ios-spike-v2"
+    private let runtime = "sparkling-c4ce8d2-navigation-2.1.0-rc.12-lynx-3.9.0-primjs-3.8.0-alpha.6-ios-managed-pages-v1"
     private func fixture() async throws -> (URL, LynxControllerConfiguration, Data, LynxArtifactRequest) {
         guard let origin = ProcessInfo.processInfo.environment["LYNX_ARTIFACT_TEST_ORIGIN"],
               let embeddedPath = ProcessInfo.processInfo.environment["LYNX_CONTROLLER_EMBEDDED"] else { throw XCTSkip("Requires frozen native embedded fixture and real CLI service") }
@@ -31,7 +31,13 @@ final class LynxControllerTests: XCTestCase {
             nextSelection: try (state["nextSelection"] as? [String: Any]).map(LynxCatalogPolicy.parseReceipt),
             crashedBundleIds: state["crashedBundleIds"] as! [String], unconfirmedReleaseIds: state["unconfirmedReleaseIds"] as! [String])
     }
+    private func observeResources(_ controller: LynxController, _ context: LynxLaunchContext) throws {
+        for resource in ["assets/bootstrap.js", "assets/probe.png", "assets/probe.ttf", "dynamic/component.lynx.bundle", "main.lynx.bundle"] {
+            try controller.observedResource(resource, context: context)
+        }
+    }
     private func confirm(_ controller: LynxController, _ context: LynxLaunchContext) throws {
+        try observeResources(controller, context)
         try controller.observedContent(context)
         var result: String?
         controller.notifyAppReady(context) { reply in result = try? reply.get().status }
@@ -86,20 +92,26 @@ final class LynxControllerTests: XCTestCase {
         let secondary = controller.createContext(primary: false)
         XCTAssertThrowsError(try controller.begin(secondary))
         let primary = controller.createContext(primary: true)
-        _ = try controller.begin(primary); _ = try controller.begin(secondary)
+        _ = try controller.begin(primary)
+        _ = try controller.begin(secondary, pageEntry: "detail.lynx.bundle", generationId: controller.attemptId,
+            stack: [.init(entry: "main.lynx.bundle"), .init(entry: "detail.lynx.bundle")])
         XCTAssertThrowsError(try controller.begin(controller.createContext(primary: true)))
-        var secondaryRejected = false
-        controller.notifyAppReady(secondary) { if case .failure = $0 { secondaryRejected = true } }
-        XCTAssertTrue(secondaryRejected)
+        var secondaryReady: String?
+        controller.notifyAppReady(secondary) { secondaryReady = try? $0.get().status }
+        XCTAssertNil(secondaryReady)
         var ready: String?
         var primaryFailed = false
         controller.notifyAppReady(primary) { result in ready = try? result.get().status; if case .failure = result { primaryFailed = true } }
         XCTAssertNil(ready)
-        secondaryRejected = false
-        controller.notifyAppReady(secondary) { if case .failure = $0 { secondaryRejected = true } }
-        XCTAssertTrue(secondaryRejected)
         XCTAssertFalse(primaryFailed)
         try controller.observedContent(primary)
+        XCTAssertNil(ready)
+        try observeResources(controller, primary)
+        XCTAssertNil(ready)
+        try controller.observedContent(secondary)
+        XCTAssertNil(secondaryReady)
+        try controller.observedResource("detail.lynx.bundle", context: secondary)
+        XCTAssertEqual(secondaryReady, "PAGE_ADMITTED")
         XCTAssertEqual(ready, "CONFIRMED")
         controller.notifyAppReady(primary) { ready = try? $0.get().status }
         XCTAssertEqual(ready, "ALREADY_CONFIRMED")
@@ -216,6 +228,7 @@ final class LynxControllerTests: XCTestCase {
             controller = nil
             controller = try LynxController(configuration: config)
             context = controller!.createContext(primary: true); _ = try controller!.begin(context)
+            try observeResources(controller!, context)
             let failedRelease = controller!.runningSelection.releaseId!
             let enumerator = FileManager.default.enumerator(at: root, includingPropertiesForKeys: nil)!
             let file = try XCTUnwrap(enumerator.compactMap { $0 as? URL }.first { $0.lastPathComponent == "state.json" })
