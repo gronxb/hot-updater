@@ -37,6 +37,9 @@ export interface InsightsEventMetadata {
     readonly httpStatus?: number;
     readonly transport?: string;
     readonly originCode?: string;
+    /** Original client error text, bounded to fit the event payload. */
+    readonly errorMessage?: string;
+    readonly errorStack?: string;
     readonly previousProcessExit?: string;
   };
   /** UPDATE_DOWNLOADED: how the bundle arrived. */

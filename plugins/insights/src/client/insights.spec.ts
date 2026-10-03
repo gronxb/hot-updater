@@ -426,10 +426,12 @@ describe("insights() client plugin", () => {
         type: "UPDATE_FAILED",
         updateStrategy: "fingerprint",
       });
-      expect(Object.keys(event?.metadata?.failure ?? {}).sort()).toEqual([
-        "reason",
-        "stage",
-      ]);
+      expect(event?.metadata?.failure).toEqual({
+        reason: "hash_mismatch",
+        stage: "download",
+        errorMessage: "hash mismatch",
+        errorStack: expect.stringContaining("Error: hash mismatch"),
+      });
       // A UUIDv7 led by the UTC day, the same on every device for one failure.
       expect(isUUIDv7(event?.eventId)).toBe(true);
       expect(parseInt(event!.eventId.replace(/-/g, "").slice(0, 12), 16)).toBe(
@@ -481,13 +483,60 @@ describe("insights() client plugin", () => {
         expect.objectContaining({
           fromBundleId: "bundle-a",
           metadata: {
-            failure: { httpStatus: 503, reason: "http", stage: "check" },
+            failure: {
+              httpStatus: 503,
+              reason: "http",
+              stage: "check",
+              errorMessage: "check failed",
+              errorStack: expect.stringContaining("Error: check failed"),
+            },
           },
           toBundleId: "bundle-a",
           toReleaseId: null,
           type: "UPDATE_FAILED",
         }),
       ]);
+    });
+
+    it("reports distinct original check errors without requiring a known category", async () => {
+      const app = await launch();
+      for (const message of [
+        "Release transition rejected: UNSOLICITED_SCOPE",
+        "Unexpected native state: 42",
+        "Release transition rejected: UNSOLICITED_SCOPE",
+      ]) {
+        const cause = new Error(message);
+        cause.stack = `Error: ${message}\n    at checkForUpdate (app.js:12:3)`;
+        app.updateError({
+          ...downloadFailure(),
+          stage: "check",
+          reason: "unknown",
+          resource: "catalog",
+          targetBundleId: undefined,
+          targetReleaseId: undefined,
+          cause,
+        });
+        await flush();
+      }
+      expect(sentEvents().map((event) => event.metadata?.failure)).toEqual([
+        {
+          stage: "check",
+          reason: "unknown",
+          resource: "catalog",
+          errorMessage: "Release transition rejected: UNSOLICITED_SCOPE",
+          errorStack:
+            "Error: Release transition rejected: UNSOLICITED_SCOPE\n    at checkForUpdate (app.js:12:3)",
+        },
+        {
+          stage: "check",
+          reason: "unknown",
+          resource: "catalog",
+          errorMessage: "Unexpected native state: 42",
+          errorStack:
+            "Error: Unexpected native state: 42\n    at checkForUpdate (app.js:12:3)",
+        },
+      ]);
+      expect(new Set(sentEvents().map((event) => event.eventId)).size).toBe(2);
     });
 
     it("drops a failure an older server refuses, without retrying, warning, or pausing", async () => {
@@ -580,12 +629,16 @@ describe("insights() client plugin", () => {
           httpStatus: 403,
           originCode: "ExpiredToken",
           previousProcessExit: "ANR",
+          errorMessage: "hash mismatch",
+          errorStack: expect.stringContaining("Error: hash mismatch"),
         },
         {
           stage: "download",
           reason: "network",
           resource: "file",
           transport: "tls",
+          errorMessage: "hash mismatch",
+          errorStack: expect.stringContaining("Error: hash mismatch"),
         },
       ]);
     });

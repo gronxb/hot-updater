@@ -126,14 +126,16 @@ the SDK knows:
 | --------------------- | ------------------------------------------------------------------------------------------------------------------ |
 | `stage`               | `check`: the Release Catalog request. `download`: transferring and verifying files. `install`: patching, extracting, and moving them into place. |
 | `reason`              | `network`, `http`, `invalid_response`, `hash_mismatch`, `signature`, `patch`, `extract`, `storage`, or `unknown`.   |
+| `errorMessage`        | The original error message. JSON-encoded text is capped at 2 KiB. |
+| `errorStack`          | The original stack trace, when available. JSON-encoded text is capped at 4 KiB. |
 | `resource`            | `catalog`, `artifact`, `manifest`, `file`, `patch`, or `archive`.                                                  |
 | `httpStatus`          | The response status of an `http` failure.                                                                          |
 | `originCode`          | The storage origin's error code of an `http` failure, such as `AccessDenied`, `NoSuchKey`, or `ExpiredToken`.      |
 | `transport`           | Why no response arrived: `timeout`, `dns`, `tls`, `connection`, `offline`, or `cancelled`.                        |
 | `previousProcessExit` | Android 11 and later: why the previous main process exited, such as `CRASH` or `LOW_MEMORY`.                      |
 
-- An installation reports each combination of stage, reason, and target
-  bundle at most once per UTC day.
+- An installation reports each combination of stage, reason, target
+  bundle, and error message at most once per UTC day.
 - The report's `eventId` is derived from the installation, the UTC day, and
   that combination, so a server that stores reports by ID keeps a repeated
   failure once.
@@ -150,6 +152,13 @@ A check that finds no Release for its scope, a bundle in the device's crash
 history, and a selection that a newer check replaced are
 [not update failures](/docs/react-native-api/client-plugins#onupdateerror), so
 the plugin reports none of them.
+
+Console event history shows the original message and an expandable stack trace.
+Error text is not categorized or redacted; only oversized text is truncated,
+with an ellipsis. Reports from older clients remain readable, but missing error
+text cannot be reconstructed. Upgrade the Insights client, server plugin, and
+Console to collect and display it. The fields use existing JSON metadata and
+require no database migration.
 
 ## Delivery
 
@@ -223,7 +232,7 @@ field:
 | ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `UPDATE_DOWNLOADED` | `delivery`: `patch`, `manifest`, or `archive`, as in [`onBundleDownloaded`](/docs/react-native-api/client-plugins#onbundledownloaded); `patchFallback: true` when a patch was tried but a file or the archive was downloaded instead. |
 | `RECOVERED`         | `previousProcessExit` when native knows why the previous process exited.                                                                                    |
-| `UPDATE_FAILED`     | `failure`: `stage` and `reason`, plus `resource`, `httpStatus`, `originCode`, `transport`, and `previousProcessExit` when known.                              |
+| `UPDATE_FAILED`     | `failure`: `stage` and `reason`, plus `errorMessage`, `errorStack`, `resource`, `httpStatus`, `originCode`, `transport`, and `previousProcessExit` when known.                              |
 
 See [how the server accepts reports](/docs/guides/insights#how-the-server-accepts-reports)
 for its size limit and status codes.

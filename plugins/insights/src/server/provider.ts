@@ -324,6 +324,12 @@ const toFailure = (
 ): NonNullable<EventHistoryRow["failure"]> => ({
   stage: failure.stage,
   reason: failure.reason,
+  ...(failure.error_message === undefined
+    ? {}
+    : { errorMessage: failure.error_message }),
+  ...(failure.error_stack === undefined
+    ? {}
+    : { errorStack: failure.error_stack }),
   ...(failure.resource === undefined ? {} : { resource: failure.resource }),
   ...(failure.http_status === undefined
     ? {}
