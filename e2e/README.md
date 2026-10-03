@@ -8,9 +8,19 @@ or model credentials.
 ## First local run
 
 Install the Node version in `.node-version`, enable Corepack, and run
-`pnpm install --frozen-lockfile` at the repository root. Start Docker with Linux
-containers enabled. The first run downloads the pinned Silo image from
-`examples-server/hono-dynamodb/docker-compose.yml` and builds the workspace.
+`pnpm install --frozen-lockfile` at the repository root. With mise, first install
+and activate the repository's pinned Node and Ruby versions (zsh):
+
+```sh
+mise trust
+mise install
+eval "$(mise activate zsh)"
+```
+
+Manually installed compatible Node, Ruby and Bundler on `PATH` are also supported.
+Start Docker with Linux containers enabled. The first run downloads the pinned
+Silo image from `examples-server/hono-dynamodb/docker-compose.yml` and builds the
+workspace.
 
 For iOS, use macOS with Xcode, its command-line tools, an installed iOS Simulator
 runtime, Ruby and Bundler compatible with `examples/v0.85.0/Gemfile.lock`.
