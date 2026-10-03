@@ -19,7 +19,7 @@ export type { DetoxPlatform } from "./control-server-env.ts";
 
 type ControlServerHandle = {
   readonly baseUrl: string;
-  readonly stop: () => Promise<void>;
+  readonly stop: (options?: { cleanup?: boolean }) => Promise<void>;
 };
 
 const repoDir = path.resolve(
@@ -40,36 +40,75 @@ async function fetchIgnoringFailure(
   }
 }
 
-async function waitForControlServer(baseUrl: string): Promise<void> {
+async function waitForControlServer(
+  baseUrl: string,
+  child: ChildProcess,
+  options: { verifyProcess?: boolean; signal?: AbortSignal },
+): Promise<void> {
   let lastError = "unknown";
   for (let attempt = 1; attempt <= 90; attempt += 1) {
+    options.signal?.throwIfAborted();
+    if (child.exitCode !== null || child.signalCode !== null) {
+      throw new Error("Control server exited before becoming ready");
+    }
     try {
       const response = await fetch(baseUrl, {
         signal: AbortSignal.timeout(5000),
       });
-      if (response.ok) return;
+      if (response.ok) {
+        if (!options.verifyProcess) return;
+        const health = (await response.json()) as { processId?: number };
+        if (health.processId === child.pid) return;
+      }
       lastError = `HTTP ${response.status}`;
     } catch (error) {
       lastError = error instanceof Error ? error.message : String(error);
     }
-    await sleep(1000);
+    await sleep(1000, undefined, { signal: options.signal });
   }
   throw new Error(
     `Timed out waiting for Detox control server ${baseUrl}: ${lastError}`,
   );
 }
 
-async function stopChild(child: ChildProcess): Promise<void> {
-  child.kill("SIGTERM");
-  await new Promise<void>((resolve) => {
-    child.once("close", () => resolve());
-    setTimeout(() => resolve(), 3000);
+async function stopChild(child: ChildProcess, detached = false): Promise<void> {
+  if (child.exitCode !== null || child.signalCode !== null) return;
+  const signal = (value: NodeJS.Signals) => {
+    if (detached && child.pid) {
+      try {
+        process.kill(-child.pid, value);
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error;
+      }
+    } else child.kill(value);
+  };
+  let forced = false;
+  await new Promise<void>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      forced = true;
+      signal("SIGKILL");
+    }, 3000);
+    child.once("error", (error) => {
+      clearTimeout(timer);
+      reject(error);
+    });
+    child.once("exit", () => {
+      clearTimeout(timer);
+      resolve();
+    });
+    signal("SIGTERM");
   });
+  if (forced) throw new Error("Control server required forced termination");
 }
 
 export async function startDetoxControlServer(
   platform: DetoxPlatform,
   env: NodeJS.ProcessEnv = process.env,
+  options: {
+    detached?: boolean;
+    verifyProcess?: boolean;
+    signal?: AbortSignal;
+  } = {},
 ): Promise<ControlServerHandle> {
   if (env.CONTROL_URL || env.HOT_UPDATER_E2E_CONTROL_BASE_URL) {
     return {
@@ -94,21 +133,29 @@ export async function startDetoxControlServer(
       cwd: repoDir,
       env: serverEnv,
       stdio: "inherit",
+      detached: options.detached,
     },
   );
 
-  await waitForControlServer(controlBaseUrl);
+  try {
+    await waitForControlServer(controlBaseUrl, child, options);
+  } catch (error) {
+    await stopChild(child, options.detached);
+    throw error;
+  }
 
   return {
     baseUrl: controlBaseUrl,
-    stop: async () => {
-      await fetchIgnoringFailure(`${controlBaseUrl}/e2e/cleanup`, {
-        method: "POST",
-      });
+    stop: async (stopOptions) => {
+      if (stopOptions?.cleanup !== false) {
+        await fetchIgnoringFailure(`${controlBaseUrl}/e2e/cleanup`, {
+          method: "POST",
+        });
+      }
       await fetchIgnoringFailure(`${controlBaseUrl}/shutdown`, {
         method: "POST",
       });
-      await stopChild(child);
+      await stopChild(child, options.detached);
     },
   };
 }

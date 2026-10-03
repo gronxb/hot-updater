@@ -32,12 +32,14 @@ import {
   PAX_LONG_ASSET_RELATIVE_PATH,
   PAX_LONG_ASSET_REQUIRE_PATH,
 } from "../pax-long-path-fixture.ts";
+import { importPublished, publishedBin } from "../published.ts";
 import { hasActiveInstrumentationForPackage } from "./android-instrumentation.ts";
 import {
   advanceAndroidRestartWait,
   hasNativeRestartEvidenceAfterMarker,
   isAndroidRecoveryProcessReady,
 } from "./android-restart-wait.ts";
+import { createControlJobs, type JobExecutionContext } from "./control-jobs.ts";
 import {
   createCrashRecoveryArtifactNames,
   getLaunchReportState,
@@ -60,7 +62,6 @@ import {
   shouldProbeUpdateCheckVisibility,
   validateArtifactInfoVisibility,
 } from "./update-check-visibility.ts";
-import { importPublished, publishedBin } from "../published.ts";
 
 // Hot Updater's packages through the entries they publish, as the example
 // app installs them.
@@ -88,16 +89,6 @@ type Platform = "ios" | "android";
 type BundleProfile = "default" | "multiAssetReplacement" | "sizeAwareLargeDiff";
 
 type JobResult = Record<string, unknown>;
-
-type JobExecutionContext = {
-  signal: AbortSignal;
-};
-
-type JobState = {
-  error?: string;
-  result?: JobResult;
-  status: "cancelled" | "failed" | "running" | "succeeded";
-};
 
 type DeployMode = "crash" | "hang" | "reset";
 
@@ -479,8 +470,19 @@ function getFixtureResetChannels() {
   return resolveFixtureResetChannels(channelNamespace);
 }
 
-const jobs = new Map<string, JobState>();
-const jobAbortControllers = new Map<string, AbortController>();
+const jobs = createControlJobs({
+  onError: (jobId, error, cancelled) => {
+    logDetoxFixture(
+      cancelled ? "control job cancelled" : "control job failed",
+      {
+        cause: formatErrorCause(error),
+        error: error instanceof Error ? error.message : String(error),
+        jobId,
+        stack: error instanceof Error ? error.stack : undefined,
+      },
+    );
+  },
+});
 type RemoteAssetKind = "archive" | "file" | "manifest" | "patch";
 type RemoteAssetProxyTarget = {
   readonly assetPath?: string;
@@ -537,21 +539,8 @@ let artifactResponseDelayMs = 0;
 let bootstrapJobId: string | null = null;
 let androidLaunchLogMarker: string | null = null;
 
-function getAbortSignalReason(signal: AbortSignal) {
-  const reason = signal.reason;
-  if (reason instanceof Error) {
-    return reason.message;
-  }
-  if (typeof reason === "string") {
-    return reason;
-  }
-  return "cancelled";
-}
-
 function throwIfAborted(signal?: AbortSignal) {
-  if (signal?.aborted) {
-    throw new Error(`Control job cancelled: ${getAbortSignalReason(signal)}`);
-  }
+  signal?.throwIfAborted();
 }
 
 async function abortableSleep(durationMs: number, signal?: AbortSignal) {
@@ -604,6 +593,7 @@ async function runLoggedCommand(
     env?: NodeJS.ProcessEnv;
     logPath: string;
     signal?: AbortSignal;
+    onInterrupted?: () => void;
   },
 ) {
   throwIfAborted(options.signal);
@@ -624,6 +614,7 @@ async function runLoggedCommand(
       return;
     }
 
+    options.onInterrupted?.();
     try {
       process.kill(-child.pid, "SIGTERM");
     } catch {
@@ -5440,6 +5431,7 @@ async function deployFixtureBundle(
         env: getHotUpdaterControlEnv(cacheEnv),
         logPath: deployLogPath,
         signal,
+        onInterrupted: context?.markQuiescenceUncertain,
       });
       deployDurationMs = Date.now() - deployStartedAt;
       return output;
@@ -6647,45 +6639,7 @@ async function cleanup() {
 }
 
 function createJob(task: (context: JobExecutionContext) => Promise<JobResult>) {
-  const jobId = randomUUID();
-  const abortController = new AbortController();
-  jobAbortControllers.set(jobId, abortController);
-  jobs.set(jobId, { status: "running" });
-
-  void task({ signal: abortController.signal })
-    .then((result) => {
-      if (abortController.signal.aborted) {
-        return;
-      }
-      jobs.set(jobId, { result, status: "succeeded" });
-    })
-    .catch((error: unknown) => {
-      const message =
-        error instanceof Error ? error.message : "Unknown E2E job failure";
-      if (abortController.signal.aborted) {
-        logDetoxFixture("control job cancelled", {
-          error: message,
-          jobId,
-        });
-        const current = jobs.get(jobId);
-        if (current?.status === "running") {
-          jobs.set(jobId, { error: message, status: "cancelled" });
-        }
-        return;
-      }
-      logDetoxFixture("control job failed", {
-        cause: formatErrorCause(error),
-        error: message,
-        jobId,
-        stack: error instanceof Error ? error.stack : undefined,
-      });
-      jobs.set(jobId, { error: message, status: "failed" });
-    })
-    .finally(() => {
-      jobAbortControllers.delete(jobId);
-    });
-
-  return jobId;
+  return jobs.start(task);
 }
 
 export function startBootstrapJob(input: { deviceId?: string } = {}) {
@@ -6761,19 +6715,11 @@ export function getJob(jobId: string) {
 }
 
 export function cancelJob(jobId: string) {
-  const job = jobs.get(jobId);
-  if (!job) {
-    return null;
+  const job = jobs.cancel(jobId);
+  if (job?.status === "running") {
+    logDetoxFixture("control job cancel requested", { jobId });
   }
-  if (job.status !== "running") {
-    return job;
-  }
-
-  const error = "cancelled by control client timeout";
-  jobs.set(jobId, { error, status: "cancelled" });
-  jobAbortControllers.get(jobId)?.abort(new Error(error));
-  logDetoxFixture("control job cancel requested", { jobId });
-  return jobs.get(jobId) ?? null;
+  return job;
 }
 
 export async function handleCaptureBuiltInBundleId() {

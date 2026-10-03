@@ -87,3 +87,7 @@ onlyBuiltDependencies:
   - sharp
   - ssh2
   - workerd
+
+minimumReleaseAgeExclude:
+  - '@e2e-dev/mobile@0.9.1'
+  - e2e@0.16.0

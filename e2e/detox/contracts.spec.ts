@@ -72,132 +72,31 @@ describe("Detox E2E harness contract", () => {
     expect(detoxStat.isDirectory()).toBe(true);
   });
 
-  it("keeps the tracked E2E source surface Detox-first", async () => {
-    const expectedE2eFiles = [
-      "e2e/detox/insights-http-client.spec.ts",
-      "e2e/detox/insights-http-client.ts",
-      "e2e/detox/insights-provider-client.spec.ts",
-      "e2e/detox/insights-provider-client.ts",
-      "e2e/detox/control-server/android-instrumentation.spec.ts",
-      "e2e/detox/control-server/android-instrumentation.ts",
-      "e2e/detox/control-server/android-restart-wait.spec.ts",
-      "e2e/detox/control-server/android-restart-wait.ts",
-      "e2e/detox/control-server/controller.ts",
-      "e2e/detox/control-server/crash-recovery-wait.spec.ts",
-      "e2e/detox/control-server/crash-recovery-wait.ts",
-      "e2e/detox/control-server/deploy-lock-contract.spec.ts",
-      "e2e/detox/control-server/fair-file-lock.ts",
-      "e2e/detox/control-server/fixture-release-reset.spec.ts",
-      "e2e/detox/control-server/fixture-release-reset.ts",
-      "e2e/detox/control-server/index.ts",
-      "e2e/detox/control-server/patch-storage-path.spec.ts",
-      "e2e/detox/control-server/patch-storage-path.ts",
-      "e2e/detox/control-server/provider-reset-retry.spec.ts",
-      "e2e/detox/control-server/provider-reset-retry.ts",
-      "e2e/detox/control-server/routes.ts",
-      "e2e/detox/control-server/screen-state.spec.ts",
-      "e2e/detox/control-server/screen-state.ts",
-      "e2e/detox/control-server/release-catalog-url.spec.ts",
-      "e2e/detox/control-server/release-catalog-url.ts",
-      "e2e/detox/control-server/update-check-visibility.spec.ts",
-      "e2e/detox/control-server/update-check-visibility.ts",
-      "e2e/detox/android-native.spec.ts",
-      "e2e/detox/console-insights-qa.spec.ts",
-      "e2e/detox/console-insights-qa.ts",
-      "e2e/detox/contracts.spec.ts",
-      "e2e/detox/control-client.spec.ts",
-      "e2e/detox/control-client.ts",
-      "e2e/detox/control-protocol.ts",
-      "e2e/detox/control-server-env.spec.ts",
-      "e2e/detox/default-scenario-names.json",
-      "e2e/detox/detox-assertion-contract.spec.ts",
-      "e2e/detox/e2e-environment.spec.ts",
-      "e2e/detox/e2e-navigation-action-routes-contract.spec.ts",
-      "e2e/detox/e2e-navigation-compact-contract.spec.ts",
-      "e2e/detox/e2e-navigation-contract.spec.ts",
-      "e2e/detox/e2e-navigation-stack-contract.spec.ts",
-      "e2e/detox/detox-first-source.spec.ts",
-      "e2e/detox/detox-page.js",
-      "e2e/detox/detox-screen-routes.js",
-      "e2e/detox/jest.config.js",
-      "e2e/detox/memory-core.ts",
-      "e2e/detox/proxy-url-contract.spec.ts",
-      "e2e/detox/pax-long-path-fixture.ts",
-      "e2e/detox/published.spec.ts",
-      "e2e/detox/published.ts",
-      "e2e/detox/recovery-foreground.spec.ts",
-      "e2e/detox/scenario-context.spec.ts",
-      "e2e/detox/scenario-context.ts",
-      "e2e/detox/scenario-contract.spec.ts",
-      "e2e/detox/detox-app-driver.js",
-      "e2e/detox/scenarios.spec.js",
-      "e2e/detox/scenarios.ts",
-      "e2e/detox/scenarios/bspatch-builtin-to-diff-ota.ts",
-      "e2e/detox/scenarios/bspatch-consecutive-diff-ota.ts",
-      "e2e/detox/scenarios/bspatch-disabled-chain-rollback.ts",
-      "e2e/detox/scenarios/bspatch-manifest-diff-fallback.ts",
-      "e2e/detox/scenarios/catalog-only-no-update.ts",
-      "e2e/detox/scenarios/crash-then-next-safe-update.ts",
-      "e2e/detox/scenarios/disabled-bundle-rollback-to-builtin.ts",
-      "e2e/detox/scenarios/disabled-bundle-rollback-to-previous-ota.ts",
-      "e2e/detox/scenarios/failed-download-same-generation-retry.ts",
-      "e2e/detox/scenarios/fingerprint-initial-install.ts",
-      "e2e/detox/scenarios/force-update-auto-reload.ts",
-      "e2e/detox/scenarios/metadata-v1-migration.ts",
-      "e2e/detox/scenarios/multi-asset-replacement.ts",
-      "e2e/detox/scenarios/numeric-cohort-rollout.ts",
-      "e2e/detox/scenarios/release-ota-recovery.ts",
-      "e2e/detox/scenarios/republished-crashed-bundle-skipped.ts",
-      "e2e/detox/scenarios/runtime-channel-crash-restore.ts",
-      "e2e/detox/scenarios/runtime-channel-switch-reset.ts",
-      "e2e/detox/scenarios/same-bundle-release-adoption.ts",
-      "e2e/detox/scenarios/size-aware-artifact-selection.ts",
-      "e2e/detox/scenarios/slow-old-artifact-after-newer-install.ts",
-      "e2e/detox/scenarios/stale-catalog-after-newer-generation.ts",
-      "e2e/detox/scenarios/startup-hang-recovery.ts",
-      "e2e/detox/scenarios/target-cohorts-only.ts",
-      "e2e/detox/scenarios/target-cohorts-rollout-interaction.ts",
-      "e2e/detox/scenarios/targeted-cohort-switchback.ts",
-      "e2e/detox/scenarios/ten-crash-history-safe-bundle.ts",
-      "e2e/detox/scenarios/types.ts",
-      "e2e/detox/screen-routes/action-screen-routes.js",
-      "e2e/detox/screen-routes/index.js",
-      "e2e/detox/screen-routes/input-screen-routes.js",
-      "e2e/detox/screen-routes/ready-screen-routes.js",
-      "e2e/detox/screen-routes/result-screen-routes.js",
-      "e2e/detox/screen-routes/runtime-screen-routes.js",
-      "e2e/detox/screen-routes/status-screen-routes.js",
-      "e2e/detox/scripts/control-server-env.ts",
-      "e2e/detox/scripts/control-server.ts",
-      "e2e/detox/scripts/run.ts",
-    ];
-    const result = spawnSync(
-      "git",
-      ["ls-files", "--cached", "--others", "--exclude-standard", "e2e"],
+  it("advertises coexistence while both runners expose the shared scenario selection", async () => {
+    const contract = JSON.parse(
+      await fs.readFile(path.join(repoDir, "e2e/runner-contract.json"), "utf8"),
+    );
+    expect(contract).toEqual({
+      version: 1,
+      runners: ["detox", "mobile"],
+      resultVersion: 1,
+    });
+    const mobile = spawnSync(
+      process.execPath,
+      [path.join(repoDir, "e2e/mobile/run.ts"), "--list"],
       {
         cwd: repoDir,
         encoding: "utf8",
       },
     );
-    const trackedFiles = (
-      await Promise.all(
-        result.stdout
-          .split("\n")
-          .filter(Boolean)
-          .map(async (file) => {
-            try {
-              await fs.access(path.join(repoDir, file));
-              return file;
-            } catch (error) {
-              if (error instanceof Error) return null;
-              throw error;
-            }
-          }),
-      )
-    ).filter((file) => file !== null);
-
-    expect(result.status).toBe(0);
-    expect(trackedFiles.toSorted()).toEqual(expectedE2eFiles.toSorted());
+    expect(mobile.status, mobile.stderr).toBe(0);
+    expect(mobile.stdout.trim().split("\n")).toEqual(
+      resolveDetoxSuiteScenarioNames("default"),
+    );
+    const detox = runDetoxRunner("--list");
+    expect(detox.status, detox.stderr).toBe(0);
+    for (const name of resolveDetoxSuiteScenarioNames("default"))
+      expect(detox.stdout).toContain(name);
   });
 
   it("includes Detox config files needed by the CLI", async () => {

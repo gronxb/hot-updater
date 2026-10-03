@@ -1,0 +1,150 @@
+import { test as mobileTest } from "@e2e-dev/mobile";
+
+import { createControlClient } from "../detox/control-client.ts";
+import type { ControlClient, JsonObject } from "../detox/control-client.ts";
+import { getDetoxScenarioDefinition } from "../detox/scenarios.ts";
+import {
+  runAttemptPhase,
+  runtimeLaunchArguments,
+  writeAttemptRecord,
+} from "./attempt.ts";
+import type { ScenarioEvidence } from "./attempt.ts";
+import { readMobileContext } from "./context.ts";
+import { MobileAppDriver } from "./driver.ts";
+
+const context = readMobileContext();
+const test = mobileTest.extend<{
+  hotUpdaterAttemptSignal: { signal: AbortSignal };
+}>();
+const evidence: ScenarioEvidence[] = [];
+const cleanupEvidence: { name: string | null; cleanupCompleted: true }[] = [];
+let installed = false;
+let attempt:
+  | {
+      controller: AbortController;
+      signal: AbortSignal;
+      client: ControlClient;
+      bootstrap: JsonObject;
+      name?: string;
+      consoleInsights?: JsonObject;
+      expectedLaunchFailures?: number;
+    }
+  | undefined;
+
+test.beforeEach(async ({ device, hotUpdaterAttemptSignal }) => {
+  const controller = new AbortController();
+  const signal = AbortSignal.any([
+    controller.signal,
+    hotUpdaterAttemptSignal.signal,
+  ]);
+  const client = createControlClient({
+    baseUrl: context.controlBaseUrl,
+    signal,
+    onStageTiming: (timing) =>
+      console.log(`[e2e-stage:timing] ${JSON.stringify(timing)}`),
+  });
+  attempt = { controller, signal, client, bootstrap: {} };
+  const current = attempt;
+  await runAttemptPhase(
+    "setup",
+    context.setupTimeoutMs,
+    controller,
+    signal,
+    async () => {
+      // Suite hooks receive no device fixture in e2e@0.16.0. Installation belongs
+      // to the first attempt, before bootstrap, reset, or any app launch.
+      if (!installed) {
+        await device.installApp(context.appPath, { app: context.appId });
+        installed = true;
+      }
+      current.bootstrap = await client.runJob(
+        "bootstrap",
+        "/e2e/jobs/bootstrap",
+        { deviceId: context.deviceId },
+      );
+      await client.runJob(
+        "reset remote bundles",
+        "/e2e/jobs/reset-remote-bundles",
+        {},
+      );
+      await client.postJson(
+        "reset local app state",
+        "/e2e/reset-local-app-state",
+        {},
+      );
+    },
+  );
+});
+
+test.afterEach(async ({ device }) => {
+  const current = attempt;
+  if (!current) return;
+  current.controller.abort(new Error("Scenario attempt finished"));
+  try {
+    // Leave room inside the SDK hook budget for device/session shutdown.
+    await current.client.cancelAndDrain({
+      timeoutMs: Math.floor(context.cleanupTimeoutMs / 2),
+    });
+    await device.closeApp();
+  } catch (error) {
+    writeAttemptRecord(context.resultsDir, "quarantine.json", {
+      schemaVersion: 1,
+      scenarioName: current.name ?? null,
+      reason: String(error),
+      quarantineRequired: true,
+    });
+    throw error;
+  } finally {
+    attempt = undefined;
+  }
+  cleanupEvidence.push({ name: current.name ?? null, cleanupCompleted: true });
+  writeAttemptRecord(context.resultsDir, "cleanup-evidence.json", {
+    schemaVersion: 1,
+    attempts: cleanupEvidence,
+  });
+  if (current.name && current.consoleInsights) {
+    evidence.push({
+      name: current.name,
+      consoleInsights: current.consoleInsights,
+      expectedLaunchFailures: current.expectedLaunchFailures ?? 0,
+      bodyCompleted: true,
+      cleanupCompleted: true,
+    });
+    writeAttemptRecord(context.resultsDir, "scenario-evidence.json", {
+      schemaVersion: 1,
+      scenarios: evidence,
+    });
+  }
+});
+
+for (const scenarioName of context.scenarioNames) {
+  const scenario = getDetoxScenarioDefinition(scenarioName);
+  test(scenarioName, async ({ device, screen }) => {
+    const current = attempt;
+    if (!current) throw new Error("Scenario setup did not complete");
+    current.name = scenarioName;
+    await runAttemptPhase(
+      "scenario",
+      context.scenarioTimeoutMs,
+      current.controller,
+      current.signal,
+      async () => {
+        const app = new MobileAppDriver({
+          appId: context.appId,
+          client: current.client,
+          device,
+          initialValues: current.bootstrap,
+          launchArguments: runtimeLaunchArguments(context.platform),
+          platform: context.platform,
+          screen,
+          signal: current.signal,
+        });
+        const insightsStartedAtMs = Date.now() - 5_000;
+        await scenario.run(app);
+        current.consoleInsights =
+          await app.verifyConsoleInsights(insightsStartedAtMs);
+        current.expectedLaunchFailures = app.expectedLaunchFailures;
+      },
+    );
+  });
+}

@@ -15,6 +15,7 @@ app.get("/", (c) => {
     service: "Hot Updater E2E Control Server",
     status: "ok",
     version: "1.0.0",
+    processId: process.pid,
   });
 });
 

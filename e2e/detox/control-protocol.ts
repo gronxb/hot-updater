@@ -23,6 +23,7 @@ export type StageTiming = {
 };
 
 export type ControlJobState = {
+  readonly quiescent?: boolean;
   readonly error?: string;
   readonly result?: JsonObject;
   readonly status: "cancelled" | "failed" | "running" | "succeeded";
@@ -121,6 +122,8 @@ export function readJobState(
   }
 
   return {
+    quiescent:
+      typeof source.quiescent === "boolean" ? source.quiescent : undefined,
     error: readStringField(source, "error"),
     result,
     status,

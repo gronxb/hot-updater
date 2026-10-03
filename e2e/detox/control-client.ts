@@ -36,6 +36,7 @@ type ControlClientOptions = {
   readonly pollDelayMs?: (durationMs: number) => Promise<void>;
   readonly pollIntervalMs?: number;
   readonly screenStateTimeoutMs?: number;
+  readonly signal?: AbortSignal;
 };
 
 type ScreenStateWaitOptions = {
@@ -65,7 +66,22 @@ function formatDiagnostic(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+export class ControlDrainError extends Error {
+  readonly quarantineRequired = true;
+
+  constructor(message: string) {
+    super(message);
+    this.name = "ControlDrainError";
+  }
+}
+
 export class ControlClient {
+  private readonly abortController = new AbortController();
+  private readonly signal: AbortSignal;
+  private readonly activeJobs = new Set<string>();
+  private readonly pendingOperations = new Set<Promise<unknown>>();
+  private readonly uncertainRequests: string[] = [];
+  private drainPromise?: Promise<void>;
   private readonly baseUrl: string;
   private readonly fetch: ControlFetch;
   private readonly httpTimeoutMs: number;
@@ -77,6 +93,9 @@ export class ControlClient {
   private readonly screenStateTimeoutMs: number;
 
   constructor(options: ControlClientOptions) {
+    this.signal = options.signal
+      ? AbortSignal.any([options.signal, this.abortController.signal])
+      : this.abortController.signal;
     this.baseUrl = normalizeBaseUrl(options.baseUrl);
     this.fetch = options.fetch ?? defaultFetch;
     this.httpTimeoutMs = options.httpTimeoutMs ?? defaultHttpTimeoutMs;
@@ -108,8 +127,11 @@ export class ControlClient {
       const started = await this.postJsonUntraced(stage, pathName, body);
       const jobId = readStringField(started, "jobId");
       if (!jobId) {
+        this.uncertainRequests.push(`${pathName} did not return a jobId`);
         throw new ControlProtocolError(`${pathName} did not return a jobId`);
       }
+      // Preserve late POST responses even when the scenario body was abandoned.
+      this.activeJobs.add(jobId);
       return this.waitForJobUntraced(stage, jobId);
     });
   }
@@ -124,13 +146,98 @@ export class ControlClient {
     );
   }
 
+  /** Fence this attempt, cancel every accepted job, and verify settled work. */
+  cancelAndDrain(
+    options: { reason?: unknown; timeoutMs?: number } = {},
+  ): Promise<void> {
+    this.abortController.abort(
+      options.reason ?? new Error("Control attempt ended"),
+    );
+    this.drainPromise ??= this.drain(options.timeoutMs ?? 60_000);
+    return this.drainPromise;
+  }
+
+  private async drain(timeoutMs: number): Promise<void> {
+    const controller = new AbortController();
+    const diagnostics: string[] = [];
+    const timer = setTimeout(() => {
+      controller.abort(new Error(`Control drain exceeded ${timeoutMs}ms`));
+    }, timeoutMs);
+    const cancelled = new Set<string>();
+    const drainJobs = async () => {
+      while (this.pendingOperations.size > 0 || this.activeJobs.size > 0) {
+        controller.signal.throwIfAborted();
+        await Promise.all(
+          [...this.activeJobs].map(async (jobId) => {
+            if (!cancelled.has(jobId)) {
+              cancelled.add(jobId);
+              const error = await this.cancelJobUntraced(
+                "drain",
+                jobId,
+                controller.signal,
+              );
+              if (error) diagnostics.push(`cancel ${jobId}: ${error}`);
+            }
+            const pathName = `/e2e/jobs/${jobId}`;
+            const state = readJobState(
+              await this.getJsonUntraced(pathName, controller.signal),
+              pathName,
+            );
+            if (state.status !== "running") {
+              this.activeJobs.delete(jobId);
+              if (state.quiescent !== true) {
+                this.uncertainRequests.push(
+                  `job ${jobId} has no verified quiescence`,
+                );
+              }
+            }
+          }),
+        );
+        if (this.pendingOperations.size > 0 || this.activeJobs.size > 0) {
+          await withAbort(
+            this.pollDelayMs(this.pollIntervalMs),
+            controller.signal,
+          );
+        }
+      }
+      if (this.uncertainRequests.length > 0) {
+        throw new Error(this.uncertainRequests.join("; "));
+      }
+    };
+    try {
+      await withAbort(drainJobs(), controller.signal);
+    } catch (error) {
+      throw new ControlDrainError(
+        [
+          `Control work did not drain safely: ${formatDiagnostic(error)}`,
+          ...diagnostics,
+          `pending operations: ${this.pendingOperations.size}; jobs: ${[...this.activeJobs].join(", ") || "none"}`,
+        ].join("; "),
+      );
+    } finally {
+      clearTimeout(timer);
+      controller.abort();
+    }
+  }
+
   private async runStage<T>(
     stage: string,
     operation: () => Promise<T>,
   ): Promise<T> {
     const startedAtMs = this.nowMs();
     try {
-      const result = await operation();
+      this.signal.throwIfAborted();
+      const pending = operation();
+      this.pendingOperations.add(pending);
+      void pending.then(
+        () => {
+          this.pendingOperations.delete(pending);
+        },
+        () => {
+          this.pendingOperations.delete(pending);
+        },
+      );
+      const result = await withAbort(pending, this.signal);
       this.recordStage(stage, startedAtMs, "succeeded");
       return result;
     } catch (error) {
@@ -163,13 +270,26 @@ export class ControlClient {
     pathName: string,
     body?: JsonObject,
   ): Promise<JsonObject> {
-    const response = await this.fetch(`${this.baseUrl}${pathName}`, {
-      body: body === undefined ? undefined : JSON.stringify(body),
-      headers: { "content-type": "application/json", ...closeConnectionHeader },
-      method: "POST",
-      signal: AbortSignal.timeout(this.httpTimeoutMs),
-    });
-    return readResponseJson(response, pathName, stage);
+    this.signal.throwIfAborted();
+    try {
+      // Do not abort a mutation's HTTP response with the attempt. Its reply is
+      // needed to discover an accepted job and to prove inline work settled.
+      const response = await this.fetch(`${this.baseUrl}${pathName}`, {
+        body: body === undefined ? undefined : JSON.stringify(body),
+        headers: {
+          "content-type": "application/json",
+          ...closeConnectionHeader,
+        },
+        method: "POST",
+        signal: AbortSignal.timeout(this.httpTimeoutMs),
+      });
+      return await readResponseJson(response, pathName, stage);
+    } catch (error) {
+      if (!(error instanceof ControlEndpointError && error.status < 500)) {
+        this.uncertainRequests.push(`${pathName}: ${formatDiagnostic(error)}`);
+      }
+      throw error;
+    }
   }
 
   private async waitForJobUntraced(
@@ -182,6 +302,9 @@ export class ControlClient {
         await this.getJsonUntraced(`/e2e/jobs/${jobId}`),
         `/e2e/jobs/${jobId}`,
       );
+      if (state.status !== "running" && state.quiescent === true) {
+        this.activeJobs.delete(jobId);
+      }
       if (state.status === "succeeded") return state.result ?? {};
       if (state.status === "failed" || state.status === "cancelled") {
         throw new ControlJobError({
@@ -201,7 +324,7 @@ export class ControlClient {
           stage,
         });
       }
-      await this.pollDelayMs(this.pollIntervalMs);
+      await withAbort(this.pollDelayMs(this.pollIntervalMs), this.signal);
     }
   }
 
@@ -237,19 +360,20 @@ export class ControlClient {
           }),
         );
       }
-      await this.pollDelayMs(this.pollIntervalMs);
+      await withAbort(this.pollDelayMs(this.pollIntervalMs), this.signal);
     }
   }
 
   private async cancelJobUntraced(
     stage: string,
     jobId: string,
+    signal?: AbortSignal,
   ): Promise<string | null> {
     try {
       const response = await this.fetch(`${this.baseUrl}/e2e/jobs/${jobId}`, {
         headers: closeConnectionHeader,
         method: "DELETE",
-        signal: AbortSignal.timeout(this.httpTimeoutMs),
+        signal: signal ?? AbortSignal.timeout(this.httpTimeoutMs),
       });
       await readResponseJson(response, `/e2e/jobs/${jobId}`, stage);
       return null;
@@ -258,14 +382,38 @@ export class ControlClient {
     }
   }
 
-  private async getJsonUntraced(pathName: string): Promise<JsonObject> {
+  private async getJsonUntraced(
+    pathName: string,
+    signal: AbortSignal = this.signal,
+  ): Promise<JsonObject> {
+    signal.throwIfAborted();
     const response = await this.fetch(`${this.baseUrl}${pathName}`, {
       headers: closeConnectionHeader,
       method: "GET",
-      signal: AbortSignal.timeout(this.httpTimeoutMs),
+      signal: AbortSignal.any([
+        signal,
+        AbortSignal.timeout(this.httpTimeoutMs),
+      ]),
     });
     return readResponseJson(response, pathName, pathName);
   }
+}
+
+function withAbort<T>(operation: Promise<T>, signal: AbortSignal): Promise<T> {
+  if (signal.aborted) {
+    // The operation may already be running and must still have a rejection handler.
+    void operation.catch(() => {});
+    return Promise.reject(signal.reason);
+  }
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = () => {
+      reject(signal.reason);
+    };
+    signal.addEventListener("abort", onAbort, { once: true });
+    void operation.then(resolve, reject).finally(() => {
+      signal.removeEventListener("abort", onAbort);
+    });
+  });
 }
 
 function formatScreenStateTimeoutMessage(options: {

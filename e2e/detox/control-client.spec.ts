@@ -470,3 +470,151 @@ describe("Detox control client", () => {
     ]);
   });
 });
+
+describe("attempt-owned control drain", () => {
+  it("captures a job created after abort and waits beyond the DELETE acknowledgement", async () => {
+    const creation = Promise.withResolvers<ResponseLike>();
+    const cancellation = Promise.withResolvers<void>();
+    const calls: string[] = [];
+    let terminal = false;
+    const controller = new AbortController();
+    const client = createControlClient({
+      baseUrl: "http://control",
+      signal: controller.signal,
+      pollIntervalMs: 1,
+      fetch: async (url, init) => {
+        calls.push(`${init.method} ${url}`);
+        if (init.method === "POST") return creation.promise;
+        if (init.method === "DELETE") {
+          cancellation.resolve();
+          return jsonResponse(200, { status: "running" });
+        }
+        return jsonResponse(
+          200,
+          terminal
+            ? { status: "cancelled", quiescent: true }
+            : { status: "running" },
+        );
+      },
+    });
+    const operation = client
+      .runJob("deploy", "/e2e/jobs/deploy-bundle")
+      .catch((error) => error);
+    controller.abort(new Error("scenario deadline"));
+    expect((await operation).message).toBe("scenario deadline");
+    let drained = false;
+    const drain = client.cancelAndDrain({ timeoutMs: 1000 }).then(() => {
+      drained = true;
+    });
+    await expect(client.postJson("reset", "/e2e/reset")).rejects.toThrow(
+      "scenario deadline",
+    );
+    creation.resolve(jsonResponse(200, { jobId: "late-job" }));
+    await cancellation.promise;
+    expect(drained).toBe(false);
+    terminal = true;
+    await drain;
+    expect(drained).toBe(true);
+    expect(calls).toContain("DELETE http://control/e2e/jobs/late-job");
+    expect(calls.some((call) => call.endsWith("/e2e/reset"))).toBe(false);
+  });
+
+  it("quarantines rejected cancellation while the server job remains active", async () => {
+    const polling = Promise.withResolvers<void>();
+    const client = createControlClient({
+      baseUrl: "http://control",
+      pollIntervalMs: 1,
+      fetch: async (_url, init) => {
+        if (init.method === "POST")
+          return jsonResponse(200, { jobId: "active" });
+        if (init.method === "DELETE")
+          return jsonResponse(503, { error: "cancel unavailable" });
+        polling.resolve();
+        return jsonResponse(200, { status: "running" });
+      },
+    });
+    const operation = client
+      .runJob("deploy", "/e2e/jobs/deploy-bundle")
+      .catch(() => {});
+    await polling.promise;
+    await expect(
+      client.cancelAndDrain({ timeoutMs: 20 }),
+    ).rejects.toMatchObject({
+      name: "ControlDrainError",
+      quarantineRequired: true,
+      message: expect.stringContaining("cancel unavailable"),
+    });
+    await operation;
+    await expect(client.postJson("reset", "/e2e/reset")).rejects.toThrow();
+  });
+
+  it("waits for an inline mutation response after the scenario body is abandoned", async () => {
+    const mutation = Promise.withResolvers<ResponseLike>();
+    const client = createControlClient({
+      baseUrl: "http://control",
+      pollIntervalMs: 1,
+      fetch: () => mutation.promise,
+    });
+    const operation = client.postJson("reset", "/e2e/reset").catch(() => {});
+    let drained = false;
+    const drain = client.cancelAndDrain({ timeoutMs: 1000 }).then(() => {
+      drained = true;
+    });
+    await operation;
+    expect(drained).toBe(false);
+    mutation.resolve(jsonResponse(200, {}));
+    await drain;
+    expect(drained).toBe(true);
+  });
+
+  it("quarantines a lost creation response because an unknown job may have started", async () => {
+    const client = createControlClient({
+      baseUrl: "http://control",
+      fetch: async () => {
+        throw new Error("socket lost after request accepted");
+      },
+    });
+    await expect(
+      client.runJob("deploy", "/e2e/jobs/deploy-bundle"),
+    ).rejects.toThrow("socket lost");
+    await expect(client.cancelAndDrain()).rejects.toMatchObject({
+      quarantineRequired: true,
+      message: expect.stringContaining("socket lost"),
+    });
+  });
+
+  it.each([undefined, false])(
+    "requires explicit quiescence rather than terminal status (%s)",
+    async (quiescent) => {
+      const polling = Promise.withResolvers<void>();
+      let cancelled = false;
+      const client = createControlClient({
+        baseUrl: "http://control",
+        pollIntervalMs: 1,
+        fetch: async (_url, init) => {
+          if (init.method === "POST")
+            return jsonResponse(200, { jobId: "uncertain" });
+          if (init.method === "DELETE") cancelled = true;
+          polling.resolve();
+          return jsonResponse(
+            200,
+            cancelled
+              ? { status: "cancelled", quiescent }
+              : { status: "running" },
+          );
+        },
+      });
+      const operation = client
+        .runJob("deploy", "/e2e/jobs/deploy-bundle")
+        .catch(() => {});
+      await polling.promise;
+      await expect(
+        client.cancelAndDrain({ timeoutMs: 1000 }),
+      ).rejects.toMatchObject({
+        quarantineRequired: true,
+        message: expect.stringContaining("no verified quiescence"),
+      });
+      await operation;
+    },
+  );
+});
