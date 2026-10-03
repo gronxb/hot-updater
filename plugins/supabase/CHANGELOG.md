@@ -1,5 +1,16 @@
 # @hot-updater/supabase
 
+## 1.0.0-rc.27
+
+### Patch Changes
+
+- Improve the readability of Console update failures by grouping check metrics separately, emphasizing nonzero failures, and making stage/reason details easier to scan. Preserve all report data and rate calculations. Prepare all public Hot Updater packages together as 1.0.0-rc.27.
+- Updated dependencies
+  - @hot-updater/cli-tools@1.0.0-rc.27
+  - @hot-updater/plugin-core@1.0.0-rc.27
+  - @hot-updater/protocol@1.0.0-rc.27
+  - @hot-updater/server@1.0.0-rc.27
+
 ## 1.0.0-rc.26
 
 ### Patch Changes

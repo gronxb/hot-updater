@@ -89,8 +89,11 @@ describe("UpdateFailures", () => {
     // A release has no check metrics.
     expect(within(card).queryByText("Failed checks")).toBeNull();
 
-    const row = within(card).getByText("Download · HTTP error");
+    const row = within(card).getByLabelText("Download · HTTP error", {
+      selector: "summary",
+    });
     fireEvent.click(row);
+    expect(row.closest("details")?.open).toBe(true);
     const details = within(card).getByRole("list", {
       name: "Download · HTTP error details",
     });
@@ -99,13 +102,17 @@ describe("UpdateFailures", () => {
     ).toBeDefined();
     expect(within(details).getByText("HTTP 404")).toBeDefined();
     expect(
-      within(card).getByText("Unknown stage · Unknown reason"),
+      within(card).getByLabelText("Unknown stage · Unknown reason", {
+        selector: "summary",
+      }),
     ).toBeDefined();
     expect(within(card).getByText("75.0%")).toBeDefined();
 
     expect(within(card).getByText("CRASH")).toBeDefined();
     // Recoveries iOS and older Android report no reason for.
     expect(within(card).getByText("Not reported")).toBeDefined();
+    fireEvent.click(row);
+    expect(row.closest("details")?.open).toBe(false);
   });
 
   it("shows a channel's failed checks against its active installations", () => {
@@ -136,5 +143,60 @@ describe("UpdateFailures", () => {
     expect(
       within(card).getByText("No recoveries in this period."),
     ).toBeDefined();
+  });
+
+  it("keeps check-only failures separate from successful updates and unavailable patch rates", () => {
+    render(
+      <UpdateFailures
+        query={query({
+          ...report,
+          failedUpdates: 0,
+          failedInstallations: 0,
+          downloads: 36,
+          patchDownloads: 0,
+          patchFallbacks: 0,
+          checks: {
+            failures: 3,
+            failedInstallations: 3,
+            activeInstallations: 36,
+          },
+          breakdown: [
+            {
+              stage: "check",
+              reason: "unknown",
+              events: 3,
+              details: [
+                {
+                  resource: null,
+                  httpStatus: null,
+                  originCode: null,
+                  transport: null,
+                  events: 3,
+                },
+              ],
+            },
+          ],
+        })}
+        onRefresh={() => {}}
+      />,
+    );
+    const updates = screen.getByRole("region", {
+      name: "Downloads & installs",
+    });
+    const checks = screen.getByRole("region", { name: "Update checks" });
+    expect(within(updates).getByText("0.00")).toBeDefined();
+    expect(within(updates).getByText("—")).toBeDefined();
+    expect(within(checks).getByText("3")).toBeDefined();
+    expect(within(checks).getByText("8.33")).toBeDefined();
+    const table = screen.getByRole("table", {
+      name: "Failures by stage and reason",
+    });
+    fireEvent.click(
+      within(table).getByLabelText("Update check · Unknown reason", {
+        selector: "summary",
+      }),
+    );
+    expect(within(table).getByText("No details reported")).toBeDefined();
+    expect(within(table).getByText("100.0%")).toBeDefined();
   });
 });

@@ -1,5 +1,11 @@
 # @hot-updater/test-utils
 
+## 1.0.0-rc.27
+
+### Patch Changes
+
+- Improve the readability of Console update failures by grouping check metrics separately, emphasizing nonzero failures, and making stage/reason details easier to scan. Preserve all report data and rate calculations. Prepare all public Hot Updater packages together as 1.0.0-rc.27.
+
 ## 1.0.0-rc.26
 
 ### Patch Changes
