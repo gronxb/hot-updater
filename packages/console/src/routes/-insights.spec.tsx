@@ -88,7 +88,9 @@ const reportFor = (input: AppUsageInput): AppUsageReport => {
     ],
   };
 };
-function renderPage() {
+function renderPage(
+  bundles?: (call: { data: { releaseId?: string } }) => Promise<unknown>,
+) {
   mocks.bundles.mockResolvedValue({
     downloads: 8,
     activeInstallations: 5,
@@ -106,6 +108,7 @@ function renderPage() {
     measuredAtMs: 7_200_000,
     coverage: { kind: "complete", sinceMs: 0 },
   });
+  if (bundles) mocks.bundles.mockImplementation(bundles);
   if (!InsightsPage) throw new Error("Insights route component is required");
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -307,6 +310,86 @@ describe("Insights dashboard", () => {
         .getByRole("progressbar", { name: "iOS share" })
         .getAttribute("aria-valuetext"),
     ).toBe("5 installations, 100.0%");
+  });
+
+  it("charts a bundle's adoption from the Adoption tab without leaving the card", async () => {
+    const releaseId = "01a10266-43e1-722b-b58f-2a3a302e4e81";
+    const deployedAtMs = Number.parseInt("01a1026643e1", 16);
+    mocks.usage.mockImplementation(async ({ data }: { data: AppUsageInput }) =>
+      reportFor(data),
+    );
+    renderPage(async ({ data }) => ({
+      downloads: 8,
+      activeInstallations: 5,
+      activeDays: 12,
+      distribution: {
+        coverage: { kind: "complete", sinceMs: 0 },
+        measuredAtMs: deployedAtMs + 7_200_000,
+        points: [
+          {
+            startMs: 0,
+            bundles: [
+              {
+                appVersion: "1.0.0",
+                releaseId,
+                bundleKind: "release",
+                installations: 5,
+              },
+            ],
+          },
+        ],
+      },
+      failedLaunches: 1,
+      points: [],
+      adoption:
+        data.releaseId === undefined
+          ? null
+          : {
+              deployedAtMs,
+              intervalMs: 3_600_000,
+              points: [
+                {
+                  startMs: deployedAtMs - (deployedAtMs % 3_600_000),
+                  downloads: 8,
+                  totalDownloads: 8,
+                },
+              ],
+            },
+      startMs: deployedAtMs - 86_400_000,
+      endMs: deployedAtMs + 7_200_000,
+      measuredAtMs: deployedAtMs + 7_200_000,
+      coverage: { kind: "complete", sinceMs: 0 },
+    }));
+    fireEvent.click(await screen.findByRole("tab", { name: "Adoption" }));
+    expect(mocks.navigate).toHaveBeenLastCalledWith({
+      search: { healthChart: "adoption" },
+    });
+    await selectOption(
+      "Chart bundle",
+      `01a10266…4e81 · ${new Intl.DateTimeFormat("en", {
+        month: "short",
+        day: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+        hourCycle: "h23",
+        timeZone: "UTC",
+      }).format(deployedAtMs)} UTC`,
+    );
+    expect(mocks.navigate).toHaveBeenLastCalledWith({
+      search: { healthChart: "adoption", releaseId },
+    });
+    expect(
+      await screen.findByLabelText("Cumulative downloads of the chosen bundle"),
+    ).toBeDefined();
+    expect(mocks.bundles).toHaveBeenLastCalledWith({
+      data: expect.objectContaining({ releaseId }),
+    });
+    // The tab stays on Adoption while the chosen bundle's report loads.
+    expect(
+      screen
+        .getByRole("tab", { name: "Adoption" })
+        .getAttribute("aria-selected"),
+    ).toBe("true");
   });
 
   it("names the UTC day the distribution counts latest reports from", async () => {

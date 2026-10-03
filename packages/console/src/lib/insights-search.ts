@@ -1,3 +1,6 @@
+import { extractTimestampFromUUIDv7 } from "@hot-updater/plugin-core";
+import { isUUIDv7 } from "@hot-updater/protocol";
+
 import type { InsightsWindow } from "./insights-api";
 import type { AppUsageScope, UsageWindow } from "./insights-usage";
 
@@ -7,6 +10,12 @@ const readText = (value: unknown) =>
     : undefined;
 const readWindow = (value: unknown): InsightsWindow | undefined =>
   value === "24h" || value === "7d" || value === "30d" ? value : undefined;
+/** The Release health chart tab. */
+export type HealthChart = "share" | "adoption" | "failures";
+const readHealthChart = (value: unknown): HealthChart | undefined =>
+  value === "share" || value === "adoption" || value === "failures"
+    ? value
+    : undefined;
 const readUsageWindow = (value: unknown): UsageWindow | undefined =>
   value === "12m" ? value : readWindow(value);
 
@@ -19,6 +28,7 @@ export type InsightsSearch = {
   healthPlatform?: "ios" | "android";
   healthChannel?: string;
   releaseId?: string;
+  healthChart?: HealthChart;
 };
 
 export function validateInsightsSearch(
@@ -41,6 +51,7 @@ export function validateInsightsSearch(
         : undefined,
     healthChannel: readText(search.healthChannel),
     releaseId: readText(search.releaseId),
+    healthChart: readHealthChart(search.healthChart),
   };
 }
 
@@ -55,4 +66,18 @@ export function validateDistributionSearch(search: Record<string, unknown>) {
         ? search.page
         : undefined,
   };
+}
+
+/**
+ * The shortest Release health period that still covers a release's first
+ * hours: 24h within a day of its deployment, 7d within a week, else 30d.
+ */
+export function adoptionWindow(releaseId: string, now = Date.now()) {
+  if (!isUUIDv7(releaseId)) return "7d" as const;
+  const age = now - extractTimestampFromUUIDv7(releaseId);
+  return age <= 86_400_000
+    ? ("24h" as const)
+    : age <= 7 * 86_400_000
+      ? ("7d" as const)
+      : ("30d" as const);
 }

@@ -1,10 +1,29 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { type ReactNode } from "react";
+import { type ComponentProps, type ReactNode, useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { RecoveryReport } from "@/lib/insights-recovery";
 
-import { InsightsOverview } from "./InsightsOverview";
+import { InsightsOverview as Overview } from "./InsightsOverview";
+
+/** The card with its chart tab kept in state, as the route keeps it in the URL. */
+function InsightsOverview(
+  props: Omit<
+    ComponentProps<typeof Overview>,
+    "chart" | "onChartChange" | "onReleaseChange"
+  > & { readonly onReleaseChange?: (releaseId: string) => void },
+) {
+  const [chart, setChart] =
+    useState<ComponentProps<typeof Overview>["chart"]>("share");
+  return (
+    <Overview
+      {...props}
+      chart={chart}
+      onChartChange={setChart}
+      onReleaseChange={props.onReleaseChange ?? vi.fn()}
+    />
+  );
+}
 
 vi.mock("@tanstack/react-router", () => ({
   Link: ({ children }: { children: ReactNode }) => <a href="/">{children}</a>,
@@ -107,11 +126,13 @@ describe("Release health", () => {
 
   it("asks for a bundle, then shows its cumulative downloads from deployment", () => {
     const hour = 3_600_000;
+    const onReleaseChange = vi.fn();
     const { rerender } = render(
       <InsightsOverview
         input={input}
         onWindowChange={vi.fn()}
         onRefresh={vi.fn()}
+        onReleaseChange={onReleaseChange}
         query={{
           data: report,
           error: null,
@@ -121,7 +142,15 @@ describe("Release health", () => {
       />,
     );
     fireEvent.click(screen.getByRole("tab", { name: "Adoption" }));
-    expect(screen.getByText("Choose a bundle")).toBeDefined();
+    expect(screen.getByText("Choose a bundle to chart")).toBeDefined();
+    expect(
+      screen.getByRole("combobox", { name: "Chart bundle" }),
+    ).toBeDefined();
+    // The observed release is one click away.
+    fireEvent.click(
+      screen.getByRole("button", { name: "Chart newest bundle" }),
+    );
+    expect(onReleaseChange).toHaveBeenCalledWith("release-a");
     rerender(
       <InsightsOverview
         input={{ ...input, releaseId: "release-a" }}
@@ -148,11 +177,43 @@ describe("Release health", () => {
     expect(
       screen.getByLabelText("Cumulative downloads of the chosen bundle"),
     ).toBeDefined();
+    expect(screen.getByText("downloads since deployment")).toBeDefined();
     expect(
-      screen.getByText(
-        "6 downloads since deployment · Deployed Jan 1, 13:20 UTC",
-      ),
+      screen.getByText("downloads since deployment").previousSibling
+        ?.textContent,
+    ).toBe("6");
+    expect(screen.getByText("Deployed Jan 1, 13:20 UTC")).toBeDefined();
+  });
+
+  it("offers the period that covers a release deployed before this one", () => {
+    const day = 86_400_000;
+    const onWindowChange = vi.fn();
+    render(
+      <InsightsOverview
+        input={{ ...input, window: "24h", releaseId: "release-a" }}
+        onWindowChange={onWindowChange}
+        onRefresh={vi.fn()}
+        query={{
+          data: {
+            ...report,
+            startMs: 9 * day,
+            endMs: 10 * day,
+            measuredAtMs: 10 * day,
+            adoption: { deployedAtMs: null, intervalMs: day / 24, points: [] },
+          },
+          error: null,
+          isPending: false,
+          isFetching: false,
+        }}
+      />,
+    );
+    fireEvent.click(screen.getByRole("tab", { name: "Adoption" }));
+    expect(
+      screen.getByText("No downloads of this bundle in this period"),
     ).toBeDefined();
+    // "release-a" is no UUIDv7, so 7 days is the period offered.
+    fireEvent.click(screen.getByRole("button", { name: "Show 7 days" }));
+    expect(onWindowChange).toHaveBeenCalledWith("7d");
   });
 
   it("keeps only the report period and refresh actions in the card", () => {
