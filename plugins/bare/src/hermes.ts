@@ -101,17 +101,18 @@ export async function getHermesCommand(cwd: string): Promise<string> {
   }
 
   // Prefer hermes-engine if it exists.
-  try {
-    return require.resolve(
-      `hermes-engine/${getHermesOSBin()}/${getHermesOSExe()}`,
-      { paths: [cwd] },
-    );
-  } catch {}
+  const hermesEngine = path.join(
+    "node_modules",
+    "hermes-engine",
+    getHermesOSBin(),
+    getHermesOSExe(),
+  );
+  if (fileExists(hermesEngine)) {
+    return hermesEngine;
+  }
 
   // Otherwise, fallback to hermesvm.
-  return require.resolve(`hermesvm/${getHermesOSBin()}/hermes`, {
-    paths: [cwd],
-  });
+  return path.join("node_modules", "hermesvm", getHermesOSBin(), "hermes");
 }
 
 /**
