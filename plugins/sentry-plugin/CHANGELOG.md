@@ -1,5 +1,14 @@
 # @hot-updater/sentry-plugin
 
+## 1.0.0-rc.29
+
+### Patch Changes
+
+- Updated dependencies [80bb792]
+  - @hot-updater/protocol@1.0.0-rc.28
+  - @hot-updater/cli-tools@1.0.0-rc.29
+  - @hot-updater/plugin-core@1.0.0-rc.28
+
 ## 1.0.0-rc.28
 
 ### Patch Changes
