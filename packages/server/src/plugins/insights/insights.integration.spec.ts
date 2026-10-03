@@ -656,8 +656,13 @@ describe("createHotUpdater Insights", () => {
     );
     expect(response.status).toBe(200);
     const { data } = (await response.json()) as {
-      data: { installId: string; failure: Record<string, unknown> }[];
+      data: {
+        installId: string;
+        failure: Record<string, unknown>;
+        sdkVersion?: string;
+      }[];
     };
+    expect(data.every((row) => row.sdkVersion === "2.0.0")).toBe(true);
     const byInstall = Object.fromEntries(
       data.map((row) => [row.installId, row.failure]),
     );

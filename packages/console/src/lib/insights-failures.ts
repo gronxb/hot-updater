@@ -22,6 +22,11 @@ export type UpdateFailuresReport = InsightsUpdateFailures & {
   /** Where the period starts, or null since the release's first report. */
   readonly startMs: number | null;
   readonly endMs: number;
+  readonly previous?: {
+    readonly attemptRate: number | null;
+    readonly checkRate: number | null;
+    readonly complete: boolean;
+  };
 };
 
 export function readUpdateFailuresInput(

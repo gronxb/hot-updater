@@ -100,7 +100,7 @@ The plugin sends `UNCHANGED` at most once a UTC day per installation. A later
 launch or update check that day sends nothing, unless the channel, app
 version, bundle, Release, or user ID changed, or a download or failure report
 reached the server in between. Downloads, applies, and recoveries are not
-limited this way. Each update failure, by stage, reason, and target bundle, is
+limited this way. Each update failure, by stage, reason, target bundle, and original error message, is
 reported at most once a UTC day, and a check that failed because the device was
 offline is not reported. See
 [what the plugin reports](/docs/react-native-api/insights#what-it-reports) for
@@ -129,6 +129,31 @@ The Console summarizes these reports in **App usage** and **Release health**.
 Use an installation's event history to check whether a reported download was
 followed by an apply or recovery report. A download count does not tell you how
 many installations are still waiting to apply it.
+
+## Investigate update failures
+
+In **Update failures**, compare the attempt and check failure rates with the
+previous period of the same length. Changes are percentage points; unavailable
+or partial previous data is not treated as zero. Check failures use affected
+installations over active installations, while attempt failures use failed
+reports over failed reports plus completed downloads.
+
+**Errors to investigate** groups reports by their exact original message and
+reported stage, reason, resource, HTTP status, origin code, and transport.
+Select a message to inspect its stack, app and SDK versions, bundle, and
+installation history. Select another occurrence to inspect that report's
+context, or use **Copy report** to share its original fields for debugging.
+
+These groups count only loaded raw reports, not the period's aggregate totals.
+The Console reviews up to 500 recent events per request and offers **Load older
+events** while more remain. The raw-history start is shown, respects retention,
+and never extends beyond 90 days. The app also deduplicates daily failures, so
+report counts are not the number of every exception thrown on devices.
+
+Update the app's Insights plugin, server, and Console to collect and inspect
+original messages and stacks. Existing reports that lack these fields cannot
+recover the original cause; the Console labels those missing diagnostics.
+This addition uses existing event metadata and needs no database migration.
 
 ## How the server accepts reports
 

@@ -87,6 +87,39 @@ function Rate({ value }: { readonly value: number | null }) {
   );
 }
 
+function RateChange({
+  value,
+  previous,
+  complete,
+}: {
+  readonly value: number | null;
+  readonly previous: number | null;
+  readonly complete: boolean;
+}) {
+  if (!complete || value === null || previous === null) {
+    return (
+      <span className="mt-1 block text-xs font-normal text-muted-foreground">
+        Previous period unavailable
+      </span>
+    );
+  }
+  const difference = (value - previous) * 100;
+  const rounded = Number(difference.toFixed(2));
+  return (
+    <span
+      className={cn(
+        "mt-1 block text-xs font-normal",
+        rounded > 0 ? "text-warning" : "text-muted-foreground",
+      )}
+    >
+      {rounded === 0
+        ? "Unchanged"
+        : `${rounded > 0 ? "↑ +" : "↓ "}${rounded.toFixed(2)} pp`}{" "}
+      vs previous period
+    </span>
+  );
+}
+
 /** One stage and reason, and what else its clients knew, most first. */
 function FailureRow({
   failure,
@@ -217,7 +250,13 @@ function Recoveries({
   );
 }
 
-function FailuresReport({ report }: { readonly report: UpdateFailuresReport }) {
+function FailuresReport({
+  report,
+  errors,
+}: {
+  readonly report: UpdateFailuresReport;
+  readonly errors?: ReactNode;
+}) {
   const breakdown = report.breakdown ?? [];
   const total = breakdown.reduce((sum, { events }) => sum + events, 0);
   return (
@@ -242,6 +281,13 @@ function FailuresReport({ report }: { readonly report: UpdateFailuresReport }) {
               info="The failure rate of update attempts: failed download and install reports divided by those plus download reports."
             >
               <Rate value={failureRate(report)} />
+              {report.previous ? (
+                <RateChange
+                  value={failureRate(report)}
+                  previous={report.previous.attemptRate}
+                  complete={report.previous.complete}
+                />
+              ) : null}
             </Metric>
             <Metric
               label="Failed installations"
@@ -279,12 +325,25 @@ function FailuresReport({ report }: { readonly report: UpdateFailuresReport }) {
                 info="Installations whose update check failed, divided by the channel's active installations; both estimated. A check the device could not send while offline is not reported."
               >
                 <Rate value={checkFailureRate(report.checks)} />
+                {report.previous ? (
+                  <RateChange
+                    value={checkFailureRate(report.checks)}
+                    previous={report.previous.checkRate}
+                    complete={report.previous.complete}
+                  />
+                ) : null}
               </Metric>
             </dl>
           </section>
         ) : null}
       </div>
       <Separator />
+      {errors ? (
+        <>
+          {errors}
+          <Separator />
+        </>
+      ) : null}
       <section
         aria-labelledby="failures-by-stage"
         className="flex flex-col gap-3"
@@ -335,9 +394,11 @@ function FailuresReport({ report }: { readonly report: UpdateFailuresReport }) {
  * crashed processes exited.
  */
 export function UpdateFailures({
+  errors,
   query,
   onRefresh,
 }: {
+  readonly errors?: ReactNode;
   readonly query: {
     readonly data: UpdateFailuresReport | undefined;
     readonly error: Error | null;
@@ -363,8 +424,8 @@ export function UpdateFailures({
             </Button>
           </div>
           <CardDescription>
-            Failed checks, downloads, and installs in the selected Release
-            health scope and period.
+            Track failure rates, inspect original errors, and open individual
+            reports in the selected Release health scope and period.
           </CardDescription>
         </CardHeader>
         <CardContent className="px-4 pb-4 sm:px-6 sm:pb-6">
@@ -376,7 +437,7 @@ export function UpdateFailures({
               fallbackTitle="Update failures unavailable"
             />
           ) : query.data ? (
-            <FailuresReport report={query.data} />
+            <FailuresReport report={query.data} errors={errors} />
           ) : null}
         </CardContent>
         {query.data?.coverage.kind === "partial" ? (

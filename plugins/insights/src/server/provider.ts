@@ -360,6 +360,10 @@ const eventDetails = ({ type, metadata }: BundleEventRow) => ({
 });
 
 const toEventHistoryRow = (row: BundleEventRow): EventHistoryRow => ({
+  ...(row.to_release_id == null ? {} : { toReleaseId: row.to_release_id }),
+  ...(row.metadata.sdk_version == null
+    ? {}
+    : { sdkVersion: row.metadata.sdk_version }),
   appVersion: row.app_version,
   channel: row.channel,
   cohort: row.metadata.cohort,

@@ -94,6 +94,8 @@ export type CreateBundleEventRequest =
 export type ActiveInstallationWindow = "24h" | "7d" | "30d";
 
 export type EventHistoryRow = {
+  readonly toReleaseId?: string;
+  readonly sdkVersion?: string;
   readonly id: string;
   readonly installId: string;
   readonly type:
