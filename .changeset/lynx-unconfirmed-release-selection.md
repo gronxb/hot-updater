@@ -1,5 +1,5 @@
 ---
-"@hot-updater/core": minor
+"@hot-updater/protocol": minor
 ---
 
 Allow native clients to exclude unconfirmed Release IDs from update and rollback

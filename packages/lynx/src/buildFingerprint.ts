@@ -4,11 +4,13 @@ import { fileURLToPath } from "node:url";
 
 import {
   compareStringsByCodeUnit,
-  hashFingerprintSourcePath,
   type NativeFingerprint,
   type NativeFingerprintOptions,
-  resolveFingerprintSourcePaths,
 } from "@hot-updater/plugin-core";
+import {
+  hashFingerprintSourcePath,
+  resolveFingerprintSourcePaths,
+} from "@hot-updater/plugin-core/fingerprint";
 
 const GENERATED_PATHS = [
   "**/{.build,.cxx,.git,.gradle,.hot-updater,build,DerivedData,node_modules,Pods}/**",

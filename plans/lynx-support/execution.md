@@ -42,7 +42,7 @@ approved PRD.
 | G0: PRD review           | Complete                                                     | Explicit user instruction to execute the PRD                                             |
 | G1: Native feasibility   | Complete for the packaged host and retained framework probes | Current full-run and matrix receipts remain G3 evidence                                  |
 | G2: Package and examples | Implemented; parent Integration green, current run pending   | Preserve exact commit and release boundaries                                             |
-| G3: OTA and recovery     | Not complete                                                 | Green 52-scenario agent job and six current matrix receipts on unchanged native binaries |
+| G3: OTA and recovery     | Not complete                                                 | Green 54-scenario agent job and six current matrix receipts on unchanged native binaries |
 
 ## Coordination
 
@@ -1402,3 +1402,45 @@ counts survive parallel publication (`/tmp/lynx-next-atomic-patch3-20261003.log`
 The later complete type check still passes all 37 projects, and the standalone
 E2E audit and final lint pass. Native fingerprints were regenerated with the
 public CLI before the merge checkpoint; fresh binaries must use those values.
+
+## 2026-10-03 committed merge and integration follow-up
+
+Merge `01606708fcf76082c65151c8adc22f1eed22cc08` is pushed to PR #1300.
+The six local helpers are restored and staged outside the commit. Five match
+their saved bytes exactly; `db.ts` preserves the local storage branch alongside
+upstream's public API and test storage changes. Signing keys remain untracked.
+
+`job-20261003060833-pdc2yu` stopped before checkout because all three configured
+Android emulators were offline. The existing AVDs were booted without wiping
+data; all report 16,384-byte memory pages. The subsequent full-platform job
+`job-20261003061221-l59i83` used `01606708fcf7`, passed shared setup and Android
+compilation, then failed iOS compilation before any scenario executed. Xcode
+27.1 beta rejects dependency deployment targets below iOS 15. The follow-up
+build command applies the host and SDK's existing iOS 15 floor to all targets.
+Neither job contributes passing E2E scenarios.
+
+GitHub integration checks exposed an invalid shared read-budget fixture: its
+manifest bytes did not match the stored hash, and patch hashes/base manifests
+were placeholders. The fixture now supplies authenticated base/target manifests
+and requires both the original descriptor and selected patch while retaining
+the database read limits. Deno and plain workerd also exposed Node filesystem
+imports through plugin-core's root. Fingerprinting moves to its Node-only
+public entry and manifest hashing uses portable SHA-256. The resulting real
+subpath imports also expose and correct Supabase's npm import-map version
+placement. A fresh ordered FixCI run validates these follow-up changes.
+
+The follow-up passes build (29 projects), types (37 projects), lint/package
+boundaries, and all 4,995 unit tests (438 files; 15 skipped). The ordered run
+is at the integration step; logs are under
+`/tmp/lynx-next-fixci/20261003-152518/`. Focused Deno, plain workerd, and memory
+read-budget integration passes 30/30, including the selected smaller patch.
+The public fingerprint command reports the existing native fingerprints are
+up to date.
+
+The iOS 15 build probe then reaches a separate upstream compile failure:
+Xcode 27.1 beta treats ignored `std::future::get()` results in Lynx 3.9's
+`parallel_parse_task_scheduler.cc` as `-Werror=unused-result`. Only this beta
+Xcode is installed. No source patch or new warning suppression was added.
+A toolchain choice is pending: install a compatible stable Xcode alongside it,
+or retain Xcode 27 and review an upstream Lynx/Sparkling upgrade. Preserve
+[the failed shared job and probe evidence](./evidence/shared-e2e-l59i83-build-failure.json).

@@ -1,5 +1,3 @@
-import path from "node:path";
-
 import {
   findPortableArtifactPathConflict,
   getBundleArchiveEntryCount,
@@ -18,7 +16,7 @@ export const isCanonicalManifestAssetPath = (assetPath: string) =>
   assetPath.length > 0 &&
   !assetPath.includes("\\") &&
   !assetPath.includes(":") &&
-  !path.posix.isAbsolute(assetPath) &&
+  !assetPath.startsWith("/") &&
   !hasControlCharacter(assetPath) &&
   getUtf8ByteSize(assetPath) <= MAX_BUNDLE_ARTIFACT_PATH_UTF8_BYTES &&
   assetPath

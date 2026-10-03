@@ -515,6 +515,8 @@ for (const platform of platforms) {
         "-derivedDataPath",
         derivedDataPath,
         "CODE_SIGNING_ALLOWED=NO",
+        // Build dependencies for the host and Hot Updater SDK's iOS 15 floor.
+        "IPHONEOS_DEPLOYMENT_TARGET=15.0",
         `ARCHS=${iosSimulatorArch}`,
         "ONLY_ACTIVE_ARCH=YES",
         ...(target === "scaffold" && productionAppBaseURL

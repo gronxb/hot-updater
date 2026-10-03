@@ -31,7 +31,6 @@ export {
 export * from "./databaseRows";
 export * from "./deterministicOrder";
 export * from "./filterCompatibleAppVersions";
-export * from "./fingerprintSourcePaths";
 export * from "./generateMinBundleId";
 export * from "./parseStorageUri";
 export * from "./portableArtifactPath";

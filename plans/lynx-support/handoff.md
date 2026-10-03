@@ -7,8 +7,14 @@ Updated: 2026-10-03 (Asia/Seoul). The goal remains active and incomplete.
 `origin/next` at `50a9ccc32` has been integrated into the working tree with the
 manifest-v1 protocol, public core API, and complete target asset inventory.
 See the October 3 execution checkpoint and PRD section before using historical
-wire-format assumptions. Build/type/lint/unit and native unit validation pass;
-fresh native artifacts, the 54-scenario shared job, and six matrix cells remain.
+wire-format assumptions. The merge is committed and pushed as `01606708fcf7`.
+Its build/type/lint/unit and native unit validation passed. GitHub integration
+failures exposed stale read-budget fixtures and Node imports in the server
+root; the current follow-up separates the fingerprint entry, uses portable
+manifest hashing, and corrects Supabase subpath import maps. The follow-up
+passes build (29), types (37), lint, and 4,995 unit tests (15 skipped), plus
+30 focused runtime/read-budget integration cases. Full FixCI is at integration.
+Fresh native artifacts, the 54-scenario job, and six matrix cells remain.
 The dashboard is running from exec session 41913 using its existing startup
 script because launchd could not open that script. Do not interrupt its jobs.
 
@@ -38,6 +44,19 @@ source/checksums/license and native fingerprint coverage. Standard pool setup,
 uncompressed JNI and correct ELF/ZIP 16 KB alignment remain required.
 
 ## Current results
+
+- The merged-source job `job-20261003061221-l59i83` passed setup and Android
+  compilation, then failed before scenarios because Xcode 27.1 beta rejects
+  dependency deployment targets below iOS 15. The build command now propagates
+  the existing host/SDK iOS 15 floor. No device scenario pass is claimed for
+  this merged source. The earlier `pdc2yu` attempt failed with offline devices.
+  The next iOS compile probe reaches upstream ignored-future-result errors
+  under Xcode 27.1 beta. A stable-Xcode versus upstream-dependency-upgrade
+  preference question is pending; no new warning suppression was added.
+- The three configured Android AVDs are now online on 5554/5556/5558 and use
+  16 KB memory pages. The dashboard remains in exec session 41913.
+
+The following results precede the upstream merge and are historical evidence:
 
 - Latest shared full run: `job-20260928211636-6hdwci`, **45/52**, iOS 20/26,
   Android 25/26. Native setup `6dc6352db`; runner checkout `1dcf23cf5`.

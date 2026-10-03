@@ -1,0 +1,31 @@
+{
+  "jobId": "job-20261003061221-l59i83",
+  "commitSha": "01606708fcf76082c65151c8adc22f1eed22cc08",
+  "platform": "full",
+  "profile": "standalone-kysely",
+  "envTarget": "examples/lynx/.env.hotupdater",
+  "status": "failure",
+  "failedStage": "shared-native-build",
+  "passed": false,
+  "scenarios": {
+    "required": 54,
+    "executed": 0,
+    "passed": 0
+  },
+  "sharedSetup": "success",
+  "androidReleaseBuild": "success",
+  "iosReleaseBuild": {
+    "status": "failure",
+    "toolchain": "Xcode 27.1 beta",
+    "exitCode": 65,
+    "cause": "Upstream CocoaPods deployment targets below the toolchain-supported iOS 15 minimum."
+  },
+  "sourceLog": "/Users/gronxb/.hot-updater-e2e-bot/logs/job-20261003061221-l59i83.log",
+  "sourceLogSha256": "36538d589fb508a3287c0450ca9559a547fb128fde47c1ffaa4ce8d903301c1f",
+  "followUp": {
+    "appliesToJobResult": false,
+    "ios15FloorProbe": "Passed deployment-target validation but failed Lynx 3.9 parallel_parse_task_scheduler.cc on ignored nodiscard future results under -Werror.",
+    "newNativeWorkaroundAdded": false
+  },
+  "acceptance": "No device OTA scenarios executed. Android build success is not E2E acceptance."
+}

@@ -1,9 +1,9 @@
-import crypto from "node:crypto";
-
 import type {
   BundleManifest,
   BundleManifestAsset,
 } from "@hot-updater/protocol";
+import { sha256 } from "@noble/hashes/sha2.js";
+import { bytesToHex } from "@noble/hashes/utils.js";
 
 import { MAX_BUNDLE_ARTIFACT_BYTES } from "./bundlePackagingLimits";
 import { isContentAddressedAssetFileHash } from "./contentAddressedAssets";
@@ -16,7 +16,9 @@ const isByteSize = (value: unknown): value is number =>
   value <= MAX_BUNDLE_ARTIFACT_BYTES;
 
 export const getSha256 = (bytes: Uint8Array | string) =>
-  crypto.createHash("sha256").update(bytes).digest("hex");
+  bytesToHex(
+    sha256(typeof bytes === "string" ? new TextEncoder().encode(bytes) : bytes),
+  );
 
 const isBundleManifestAsset = (
   value: unknown,

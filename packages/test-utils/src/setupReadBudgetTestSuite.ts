@@ -32,7 +32,11 @@ import {
   type MeasuredDatabase,
   type MeasuredDatabaseStorage,
 } from "./createMeasuredDatabase";
-import { createBundleFixture } from "./databaseTestFixtures";
+import {
+  createBundleFixture,
+  createManifestFixture,
+  fixtureManifestAssets,
+} from "./databaseTestFixtures";
 import type { RowsExamined } from "./sqlRowsExamined";
 
 /** Core's API with the client routes' reads, which the public API leaves out. */
@@ -132,10 +136,10 @@ const bundleOf = (
   assetBaseStorageUri: "storage://read-budgets/assets",
   patches: bases.map((base) => ({
     baseBundleId: createBundleFixture(base).id,
-    baseFileHash: `base-hash-${base}`,
-    patchFileHash: `patch-hash-${suffix}-${base}`,
+    baseFileHash: fixtureManifestAssets["index.ios.bundle"].fileHash,
+    patchFileHash: "d".repeat(64),
     patchStorageUri: `storage://patches/${suffix}-${base}.patch`,
-    byteSize: 1_000,
+    byteSize: 500,
   })),
 });
 
@@ -223,15 +227,15 @@ const bundleEvents = {
   toBundleId: "bundle-b",
 } as const;
 
-/** The target bundle's manifest, which artifact resolution reads from storage. */
+/** Authenticated manifests for the target and the patch's base bundle. */
 const storage: MeasuredDatabaseStorage = {
-  readStorageText: async (storageUri) =>
-    storageUri === createBundleFixture("106").manifestStorageUri
-      ? JSON.stringify({
-          bundleId: createBundleFixture("106").id,
-          assets: { "index.ios.bundle": { fileHash: "hbc-hash-106" } },
-        })
-      : null,
+  readStorageText: async (storageUri) => {
+    const suffix = ["106", "105"].find(
+      (candidate) =>
+        storageUri === createBundleFixture(candidate).manifestStorageUri,
+    );
+    return suffix ? createManifestFixture(suffix) : null;
+  },
   resolveFileUrl: async (storageUri) =>
     `https://storage.example.com/${encodeURIComponent(storageUri)}`,
 };
@@ -372,6 +376,18 @@ const READ_BUDGETS: readonly ReadBudget[] = [
       expect(artifact).toMatchObject({
         artifactProtocolVersion: 1,
         manifestFileHash: createBundleFixture("106").manifestFileHash,
+        assets: {
+          "index.ios.bundle": {
+            file: { compression: "br", url: expect.any(String) },
+            patch: {
+              algorithm: "bsdiff",
+              baseBundleId: createBundleFixture("105").id,
+              baseFileHash: fixtureManifestAssets["index.ios.bundle"].fileHash,
+              patchFileHash: "d".repeat(64),
+              patchUrl: expect.any(String),
+            },
+          },
+        },
       }),
   }),
   budget({

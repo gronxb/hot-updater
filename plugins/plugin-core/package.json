@@ -12,6 +12,10 @@
       "import": "./dist/index.mjs",
       "require": "./dist/index.cjs"
     },
+    "./fingerprint": {
+      "import": "./dist/fingerprint.mjs",
+      "require": "./dist/fingerprint.cjs"
+    },
     "./package.json": "./package.json"
   },
   "files": [
@@ -35,6 +39,7 @@
   },
   "dependencies": {
     "@hot-updater/protocol": "workspace:*",
+    "@noble/hashes": "2.2.0",
     "es-toolkit": "^1.32.0",
     "fast-glob": "3.3.3",
     "mime": "^4.0.4",

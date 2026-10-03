@@ -2045,3 +2045,16 @@ per OS and 54 full-platform results. A first-update reuse result must correlate
 the installed Lynx embedded image/font hashes, the target manifest, zero network
 bytes for reused files, and the final native payload. An RN builtin-index file
 is not an appropriate Lynx proof source.
+
+The neutral server entry must also run without Node.js compatibility flags in
+Deno and plain Workers. Filesystem fingerprint helpers are build-time Node.js
+code, exported only through `@hot-updater/plugin-core/fingerprint`; the server
+root must not import that entry. Manifest SHA-256 authentication remains
+portable. Supabase import maps must place an npm version before a package
+subpath, preserving imports such as `npm:@noble/hashes@2.2.0/sha2.js`.
+
+Native build commands apply the example and SDK's existing iOS 15 deployment
+floor to dependency targets as well. This makes the declared floor explicit
+under Xcode 27 without editing dependency source or adding host runtime code.
+The Fresco-only runtime adaptation exception and standard Sparkling structure
+remain unchanged.
