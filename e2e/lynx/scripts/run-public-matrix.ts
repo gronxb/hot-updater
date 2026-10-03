@@ -1048,7 +1048,7 @@ async function rejectRawDetailTarget(
   const processBefore = adapter.processId();
   const fallbackMarker = `HotUpdaterArchiveFallbackApplied bundleId=${target.bundleId}`;
   adapter.clickText("Check update");
-  await adapter.waitForText("Update verified and ready to install.");
+  await adapter.waitForText("Update available. Ready to install.");
   const requestsBefore = serverRequests(detail.url);
   const nativeLogsBefore = adapter.readNativeLogs();
   const failureCursor =
@@ -1443,7 +1443,7 @@ async function runCell(
 
   cursor = eventCursor(adapter);
   adapter.clickText("Check update");
-  await adapter.waitForText("Update verified and ready to install.");
+  await adapter.waitForText("Update available. Ready to install.");
   adapter.clickText("Install next launch");
   await adapter.waitForText("Update installed. Close and reopen the app.");
   const bDeltaLogs = adapter.readNativeLogs();
@@ -1512,7 +1512,7 @@ async function runCell(
   const reloadProcess = adapter.processId();
   assert.equal(reloadProcess, processBRetain);
   adapter.clickText("Check update");
-  await adapter.waitForText("Update verified and ready to install.");
+  await adapter.waitForText("Update available. Ready to install.");
   adapter.clickText("Install with detail open");
   const cEvents = await closeReconstructedDetailPage(
     adapter,
@@ -1630,7 +1630,7 @@ async function runCell(
   });
   cursor = eventCursor(adapter);
   adapter.clickText("Check update");
-  await adapter.waitForText("Update verified and ready to install.");
+  await adapter.waitForText("Update available. Ready to install.");
   adapter.clickText("Install and reload");
   await adapter.waitForText("Bundle B ready");
   await openUnconfirmedDetailPage(
@@ -1675,7 +1675,7 @@ async function runCell(
   // Recover embedded A, then select eligible C again for the remaining probes.
   await setReleaseEnabled(confirmedInterruption.releaseId, false);
   adapter.clickText("Check update");
-  await adapter.waitForText("Update verified and ready to install.");
+  await adapter.waitForText("Update available. Ready to install.");
   adapter.clickText("Install and reload");
   await adapter.waitForText("Bundle C ready");
 
@@ -1693,7 +1693,7 @@ async function runCell(
   });
   cursor = eventCursor(adapter);
   adapter.clickText("Check update");
-  await adapter.waitForText("Update verified and ready to install.");
+  await adapter.waitForText("Update available. Ready to install.");
   adapter.clickText("Install and reload");
   await adapter.waitForText("readiness deliberately withheld");
   adapter.clickText("Fail secondary");
@@ -1742,7 +1742,7 @@ async function runCell(
     runtimeId: runtimeId(platform),
   });
   adapter.clickText("Check update");
-  await adapter.waitForText("Update verified and ready to install.");
+  await adapter.waitForText("Update available. Ready to install.");
   adapter.clickText("Install next launch");
   await adapter.waitForText("Update installed. Close and reopen the app.");
   cursor = eventCursor(adapter);
@@ -1799,7 +1799,7 @@ async function runCell(
   cursor = eventCursor(adapter);
   const rollbackProcess = adapter.processId();
   adapter.clickText("Check update");
-  await adapter.waitForText("Update verified and ready to install.");
+  await adapter.waitForText("Update available. Ready to install.");
   adapter.clickText("Install and reload");
   await adapter.waitForText("Bundle B ready");
   const rollbackBEvents = await exerciseDetailPage(
@@ -1829,7 +1829,7 @@ async function runCell(
   }
   cursor = eventCursor(adapter);
   adapter.clickText("Check update");
-  await adapter.waitForText("Update verified and ready to install.");
+  await adapter.waitForText("Update available. Ready to install.");
   adapter.clickText("Install and reload");
   await adapter.waitForText("Bundle A ready");
   const rollbackAEvents = await exerciseDetailPage(
@@ -1853,7 +1853,7 @@ async function runCell(
   await setReleaseEnabled(C.releaseId, true);
   cursor = eventCursor(adapter);
   adapter.clickText("Check update");
-  await adapter.waitForText("Update verified and ready to install.");
+  await adapter.waitForText("Update available. Ready to install.");
   adapter.clickText("Install and reload");
   await adapter.waitForText("Bundle C ready");
   const confirmedFatalBaselineEvents = await exerciseDetailPage(

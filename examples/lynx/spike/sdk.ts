@@ -121,7 +121,7 @@ export async function checkSdkUpdate(
   busy = true;
   prepared = null;
   canInstall(false);
-  status("Checking and preparing update…");
+  status("Checking for an update…");
   try {
     prepared = await HotUpdater.checkForUpdate({
       updateStrategy: "appVersion",
@@ -138,9 +138,7 @@ export async function checkSdkUpdate(
     );
     canInstall(prepared !== null);
     status(
-      prepared
-        ? "Update verified and ready to install."
-        : "No update available.",
+      prepared ? "Update available. Ready to install." : "No update available.",
     );
   } catch (error) {
     status(`Update check failed: ${String(error)}`);
