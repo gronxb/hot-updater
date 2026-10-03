@@ -1,5 +1,11 @@
 # @hot-updater/protocol
 
+## 1.0.0-rc.28
+
+### Patch Changes
+
+- 80bb792: Attach the latest catalog or artifact HTTP response to existing Insights reports without adding requests or changing launch/failure deduplication. Preserve successful, cached, and failed response text with a bounded body and its original observation timestamp. Console exposes the response from event and installation details and alongside error investigation. No database migration is required.
+
 ## 1.0.0-rc.27
 
 ### Patch Changes
