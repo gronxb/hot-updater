@@ -11,10 +11,12 @@ import {
 import type { ScenarioEvidence } from "./attempt.ts";
 import { readMobileContext } from "./context.ts";
 import { MobileAppDriver } from "./driver.ts";
+import type { IosAlert } from "./ios-alert.ts";
 
 const context = readMobileContext();
 const test = mobileTest.extend<{
   hotUpdaterAttemptSignal: { signal: AbortSignal };
+  hotUpdaterIosAlert: { get(): Promise<IosAlert | null> };
 }>();
 const evidence: ScenarioEvidence[] = [];
 const cleanupEvidence: { name: string | null; cleanupCompleted: true }[] = [];
@@ -124,7 +126,7 @@ test.afterEach(async () => {
 
 for (const scenarioName of context.scenarioNames) {
   const scenario = getScenarioDefinition(scenarioName);
-  test(scenarioName, async ({ device, screen }) => {
+  test(scenarioName, async ({ device, screen, hotUpdaterIosAlert }) => {
     const current = attempt;
     if (!current) throw new Error("Scenario setup did not complete");
     current.name = scenarioName;
@@ -138,6 +140,7 @@ for (const scenarioName of context.scenarioNames) {
           appId: context.appId,
           client: current.client,
           device,
+          iosAlert: hotUpdaterIosAlert,
           initialValues: current.bootstrap,
           launchArguments: runtimeLaunchArguments(context.platform),
           platform: context.platform,

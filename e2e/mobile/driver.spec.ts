@@ -1,13 +1,15 @@
-import type { Locator } from "e2e";
+import type { Locator, Screen } from "e2e";
 import { describe, expect, it, vi } from "vitest";
 
 import { MobileAppDriver } from "./driver.ts";
 import { RAW_TEXT_ATTRIBUTE } from "./engine.ts";
+import type { IosAlert } from "./ios-alert.ts";
 
-function fixture() {
+function fixture(platform: "ios" | "android" = "ios", assertionTimeoutMs = 0) {
   const calls: string[] = [];
   const controller = new AbortController();
   const locator = {
+    isVisible: vi.fn(async () => true),
     waitFor: vi.fn(async () => {
       calls.push("visible");
     }),
@@ -40,10 +42,17 @@ function fixture() {
         return {};
       },
     ),
-    waitForScreenStateField: vi.fn(async () => {
-      calls.push("wait-result");
-      return {};
-    }),
+    waitForScreenStateField: vi.fn(
+      async (
+        _stage: string,
+        _field: string,
+        options?: { onPending?: () => Promise<void> },
+      ) => {
+        await options?.onPending?.();
+        calls.push("wait-result");
+        return {};
+      },
+    ),
   };
   const device = {
     closeApp: vi.fn(async () => {
@@ -56,31 +65,56 @@ function fixture() {
       calls.push("link");
     }),
   };
-  const screen = { getByTestId: vi.fn(() => locator as unknown as Locator) };
+  const openButton = {
+    tap: vi.fn(async () => {
+      calls.push("confirm-link");
+    }),
+  };
+  const confirmation = {
+    getByRole: vi.fn(
+      (_role: string, _name: string) => openButton as unknown as Locator,
+    ),
+  };
+  const getByRole = vi.fn(
+    (_role: string, _name: unknown) => confirmation as unknown as Locator,
+  );
+  const screen = {
+    getByTestId: vi.fn(() => locator as unknown as Locator),
+    getByRole: getByRole as Screen["getByRole"],
+  };
+  const iosAlert = { get: vi.fn(async (): Promise<IosAlert | null> => null) };
   const app = new MobileAppDriver({
     appId: "org.example.app",
-    assertionTimeoutMs: 0,
+    assertionTimeoutMs,
     client,
     device,
+    iosAlert,
     initialValues: { builtInBundleId: "builtin" },
     launchArguments: ["-RUNTIME_URL", "http://localhost"],
-    platform: "ios",
+    platform,
     screen,
     signal: controller.signal,
   });
-  return { app, calls, client, controller, device, locator, screen };
+  return {
+    app,
+    calls,
+    client,
+    controller,
+    device,
+    locator,
+    screen,
+    iosAlert,
+    getByRole,
+    confirmation,
+    openButton,
+  };
 }
 
 describe("MobileAppDriver", () => {
   it("resets stale action output, opens its route once and waits without a duplicate tap", async () => {
     const f = fixture();
     await f.app.tap("install", "action-install-current-channel-update");
-    expect(f.calls).toEqual([
-      "/e2e/screen-state",
-      "link",
-      "visible",
-      "wait-result",
-    ]);
+    expect(f.calls).toEqual(["/e2e/screen-state", "link", "wait-result"]);
     expect(f.client.postJson).toHaveBeenCalledWith(
       "install: reset updateActionResult",
       "/e2e/screen-state",
@@ -93,6 +127,154 @@ describe("MobileAppDriver", () => {
     expect(f.locator.tap).not.toHaveBeenCalled();
     await f.app.tap("install again", "action-install-current-channel-update");
     expect(f.device.openLink).toHaveBeenCalledTimes(2);
+  });
+
+  it.each([
+    {
+      title: "‘HotUpdaterExample’에서 열겠습니까?",
+      buttons: ["취소", "열기"],
+      affirmative: "열기",
+    },
+    {
+      title: "Open in “HotUpdaterExample”?",
+      buttons: ["Cancel", "Open"],
+      affirmative: "Open",
+    },
+  ])(
+    "confirms only the expected app dialog without post-action UI reads: $title",
+    async ({ title, buttons, affirmative }) => {
+      const f = fixture();
+      f.iosAlert.get.mockResolvedValue({ title, buttons });
+      f.client.waitForScreenStateField.mockImplementation(
+        async (_stage, _field, options) => {
+          await options?.onPending?.();
+          await options?.onPending?.();
+          return {};
+        },
+      );
+      await f.app.tap("install", "action-install-current-channel-update");
+      expect(f.getByRole).toHaveBeenCalledWith("alert", title);
+      expect(f.confirmation.getByRole).toHaveBeenCalledWith(
+        "button",
+        affirmative,
+      );
+      expect(f.openButton.tap).toHaveBeenCalledTimes(1);
+      expect(f.iosAlert.get).toHaveBeenCalledTimes(1);
+      expect(f.device.openLink).toHaveBeenCalledTimes(1);
+      expect(f.locator.isVisible).not.toHaveBeenCalled();
+      expect(f.locator.waitFor).not.toHaveBeenCalled();
+      expect(f.locator.tap).not.toHaveBeenCalled();
+      expect(f.device.openApp).not.toHaveBeenCalled();
+    },
+  );
+
+  it("waits for a delayed action confirmation with native reads only", async () => {
+    const f = fixture();
+    f.iosAlert.get
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({
+        title: "‘HotUpdaterExample’에서 열겠습니까?",
+        buttons: ["취소", "열기"],
+      });
+    f.client.waitForScreenStateField.mockImplementation(
+      async (_stage, _field, options) => {
+        for (let i = 0; i < 4; i++) await options?.onPending?.();
+        return {};
+      },
+    );
+    await f.app.tap("install", "action-install-current-channel-update");
+    expect(f.iosAlert.get).toHaveBeenCalledTimes(3);
+    expect(f.openButton.tap).toHaveBeenCalledTimes(1);
+    expect(f.locator.isVisible).not.toHaveBeenCalled();
+    expect(f.locator.waitFor).not.toHaveBeenCalled();
+  });
+
+  it("does not inspect alerts after the mapped action result is already terminal", async () => {
+    const f = fixture();
+    f.client.waitForScreenStateField.mockResolvedValue({});
+    await f.app.tap("install", "action-install-current-channel-update");
+    expect(f.iosAlert.get).not.toHaveBeenCalled();
+    expect(f.getByRole).not.toHaveBeenCalled();
+    expect(f.locator.isVisible).not.toHaveBeenCalled();
+    expect(f.locator.waitFor).not.toHaveBeenCalled();
+  });
+
+  it("does not inspect or foreground the app after an action link when no confirmation exists", async () => {
+    const f = fixture();
+    await f.app.tap("install", "action-install-current-channel-update");
+    expect(f.iosAlert.get).toHaveBeenCalledTimes(1);
+    expect(f.getByRole).not.toHaveBeenCalled();
+    expect(f.locator.isVisible).not.toHaveBeenCalled();
+    expect(f.locator.waitFor).not.toHaveBeenCalled();
+    expect(f.device.openApp).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { title: "‘AnotherApp’에서 열겠습니까?", buttons: ["취소", "열기"] },
+    { title: "Open in “AnotherApp”?", buttons: ["Cancel", "Open"] },
+    {
+      title: "“HotUpdaterExample” Would Like to Send You Notifications",
+      buttons: ["Don't Allow", "Allow"],
+    },
+    { title: "‘HotUpdaterExample’에서 열겠습니까?", buttons: ["취소", "허용"] },
+  ])("preserves an unrelated or unsupported alert: $title", async (alert) => {
+    const f = fixture();
+    f.iosAlert.get.mockResolvedValue(alert);
+    await expect(
+      f.app.tap("install", "action-install-current-channel-update"),
+    ).rejects.toThrow("Unexpected iOS alert");
+    expect(f.getByRole).not.toHaveBeenCalled();
+    expect(f.openButton.tap).not.toHaveBeenCalled();
+    expect(f.locator.waitFor).not.toHaveBeenCalled();
+  });
+
+  it("waits for a delayed confirmation during ordinary screen navigation", async () => {
+    const f = fixture("ios", 1_000);
+    f.locator.isVisible.mockResolvedValue(false);
+    f.iosAlert.get.mockResolvedValueOnce(null).mockResolvedValueOnce({
+      title: "‘HotUpdaterExample’에서 열겠습니까?",
+      buttons: ["취소", "열기"],
+    });
+    await f.app.assertText(
+      "read status",
+      "launch-status-result",
+      "UPDATE_APPLIED",
+    );
+    expect(f.iosAlert.get).toHaveBeenCalledTimes(2);
+    expect(f.calls.indexOf("confirm-link")).toBeLessThan(
+      f.calls.indexOf("visible"),
+    );
+  });
+
+  it("skips iOS confirmation handling on Android and while observing native recovery", async () => {
+    const android = fixture("android");
+    await android.app.tap("install", "action-install-current-channel-update");
+    expect(android.iosAlert.get).not.toHaveBeenCalled();
+    const ios = fixture();
+    await ios.app.assertText(
+      "observe",
+      "launch-status-result",
+      "UPDATE_APPLIED",
+      { ensureForeground: false },
+    );
+    expect(ios.iosAlert.get).not.toHaveBeenCalled();
+  });
+
+  it("fences confirmation when teardown aborts during the native query", async () => {
+    const f = fixture();
+    f.iosAlert.get.mockImplementation(async () => {
+      f.controller.abort(new Error("attempt ended"));
+      return {
+        title: "‘HotUpdaterExample’에서 열겠습니까?",
+        buttons: ["취소", "열기"],
+      };
+    });
+    await expect(
+      f.app.tap("install", "action-install-current-channel-update"),
+    ).rejects.toThrow("attempt ended");
+    expect(f.getByRole).not.toHaveBeenCalled();
+    expect(f.openButton.tap).not.toHaveBeenCalled();
   });
 
   it("accepts substring alternatives as OR and preserves exact whitespace", async () => {

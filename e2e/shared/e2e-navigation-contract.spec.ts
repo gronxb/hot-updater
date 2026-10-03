@@ -221,7 +221,7 @@ describe("E2E navigation contract", () => {
     const sharedScreenRoutesSource = await readSharedScreenRoutesSource();
     const openScreenBody = mobileDriverSource.slice(
       mobileDriverSource.indexOf("private async findVisible"),
-      mobileDriverSource.indexOf("private async openApp"),
+      mobileDriverSource.indexOf("private async confirmIosLink"),
     );
 
     expect(mobileDriverSource).toContain("TEST_ID_SCREEN_PATHS");

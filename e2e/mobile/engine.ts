@@ -1,6 +1,9 @@
 import { defineEngine } from "e2e/engine";
 import type { Engine, EngineHandle } from "e2e/engine";
 
+import { readMobileContext } from "./context.ts";
+import { createIosAlertReader } from "./ios-alert.ts";
+
 export const RAW_TEXT_ATTRIBUTE = "hot-updater-raw-text";
 
 // The SDK normalizes textContent/toHaveText. OTA result strings must retain
@@ -15,6 +18,22 @@ export function scenarioEngine(engine: EngineHandle): EngineHandle {
     ...manifest,
     fixtures: {
       ...engine.fixtures,
+      hotUpdaterIosAlert: (context) => {
+        let reader: ReturnType<typeof createIosAlertReader> | undefined;
+        return context.fixture(
+          "hotUpdaterIosAlert",
+          {
+            get: async () => {
+              reader ??= createIosAlertReader(
+                readMobileContext(),
+                () => context.signal,
+              );
+              return reader.get();
+            },
+          },
+          { get: { kind: "resource" } },
+        );
+      },
       hotUpdaterAttemptSignal: (context) =>
         context.fixture(
           "hotUpdaterAttemptSignal",

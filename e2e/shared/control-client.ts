@@ -40,6 +40,7 @@ type ControlClientOptions = {
 };
 
 type ScreenStateWaitOptions = {
+  readonly onPending?: () => Promise<void>;
   readonly expectedValue?: string;
   readonly rejectSubstrings?: readonly string[];
   readonly rejectValues?: readonly string[];
@@ -359,6 +360,11 @@ export class ControlClient {
             timeoutMs,
           }),
         );
+      }
+      if (options.onPending) {
+        this.signal.throwIfAborted();
+        await options.onPending();
+        this.signal.throwIfAborted();
       }
       await withAbort(this.pollDelayMs(this.pollIntervalMs), this.signal);
     }

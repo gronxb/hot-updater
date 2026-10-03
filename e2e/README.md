@@ -70,8 +70,8 @@ signing keys and native metadata. It restores their original contents and
 permissions after success, failure or cancellation. A checkout lock prevents
 two local preparers from editing those files at the same time. It stops only
 its own provider process group and labeled storage container; it does not kill
-services occupying other ports. Native build outputs and dependency caches
-remain available for subsequent runs.
+services occupying other ports. Native build outputs are retained with run
+data; dependency caches can be reused by subsequent runs.
 
 Run data is kept under `e2e/results/local/<run-id>` (ignored by Git): provider
 logs, PGlite data, results, and a protected `originals/manifest.json` backup.

@@ -40,6 +40,7 @@ test("verified expected launch disconnect", async ({device, screen, hotUpdaterAt
   const controls = [];
   const app = new MobileAppDriver({
     appId:"org.example", platform:"ios", device, screen, signal:hotUpdaterAttemptSignal.signal,
+    iosAlert:{get:async()=>null},
     client:{postJson:async(_stage,path)=>{controls.push(path);return {verified:true};},runJob:async()=>({}),waitForScreenStateField:async()=>({})},
   });
   await app.terminate("stop before external launch");

@@ -4,7 +4,9 @@ The runner uses `e2e@0.16.0`, `@e2e-dev/mobile@0.9.1`, and
 `agent-device@0.21.18` to execute the 27 scenarios in
 [`../scenario-names.json`](../scenario-names.json). The shared control server
 prepares OTA fixtures and verifies native recovery and Console Insights.
-No model or agent prompts are used.
+No model or agent prompts are used. iOS app-opening confirmation dialogs are
+recognized in English and Korean; other locales or unrelated prompts fail
+without accepting the dialog.
 
 Use the canonical [`pnpm -w e2e`](../README.md) command for local setup and
 execution. Prepared mode runs against an existing provider profile and an

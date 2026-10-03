@@ -15,6 +15,7 @@ import {
   TEST_ID_SCREEN_PATHS,
 } from "../shared/screen-routes/index.js";
 import { RAW_TEXT_ATTRIBUTE } from "./engine.ts";
+import type { IosAlert } from "./ios-alert.ts";
 
 const inputFields: Record<string, string> = {
   "cohort-input": "cohortInput",
@@ -43,7 +44,8 @@ type DriverOptions = {
     "postJson" | "runJob" | "waitForScreenStateField"
   >;
   readonly device: Pick<Device, "openApp" | "openLink">;
-  readonly screen: Pick<Screen, "getByTestId">;
+  readonly screen: Pick<Screen, "getByTestId" | "getByRole">;
+  readonly iosAlert: { get(): Promise<IosAlert | null> };
   readonly appId: string;
   readonly platform: "ios" | "android";
   readonly signal: AbortSignal;
@@ -225,10 +227,18 @@ export class MobileAppDriver implements ScenarioAppDriver {
           { [field]: "idle" },
         );
         await this.findVisible(testID, true, true);
+        let confirmed = false;
         await this.options.client.waitForScreenStateField(
           `${stage}: wait ${field}`,
           field,
           {
+            ...(this.options.platform === "ios"
+              ? {
+                  onPending: async () => {
+                    if (!confirmed) confirmed = await this.confirmIosLink();
+                  },
+                }
+              : {}),
             rejectValues: ["idle"],
             rejectSubstrings: [" -> checking"],
           },
@@ -288,6 +298,7 @@ export class MobileAppDriver implements ScenarioAppDriver {
       throw new Error("Native recovery must be verified before UI interaction");
     const screenPath =
       (TEST_ID_SCREEN_PATHS as Record<string, string>)[testID] ?? "ready";
+    let openedLink = false;
     if (ensureForeground) {
       if (this.options.platform === "android")
         await this.openApp({ relaunch: false });
@@ -299,16 +310,70 @@ export class MobileAppDriver implements ScenarioAppDriver {
             app: this.options.appId,
           },
         );
+        openedLink = true;
         this.activeScreenPath = screenPath;
       }
     }
     const target = this.options.screen.getByTestId(testID);
+    // Mapped action routes execute on entry. Their control-plane result wait
+    // observes progress without foregrounding an app that may be restarting.
+    if (alwaysOpen) return target;
+    const timeout =
+      openedLink && this.options.platform === "ios"
+        ? await this.waitForIosLink(target)
+        : (this.options.assertionTimeoutMs ?? 30_000);
     this.options.signal.throwIfAborted();
-    await target.waitFor({
-      state: "visible",
-      timeout: this.options.assertionTimeoutMs ?? 30_000,
-    });
+    await target.waitFor({ state: "visible", timeout });
     return target;
+  }
+
+  private async confirmIosLink(): Promise<boolean> {
+    this.options.signal.throwIfAborted();
+    const alert = await this.options.iosAlert.get();
+    this.options.signal.throwIfAborted();
+    if (!alert) return false;
+    // The native getter observes SpringBoard without activating the AUT.
+    // Only these English/Korean app-open dialogs are supported; other prompts
+    // stay visible and fail the scenario instead of granting a permission.
+    const korean = /^[“‘"]HotUpdaterExample[”’"]에서 열겠습니까\?$/.test(
+      alert.title,
+    );
+    const english =
+      /^Open (?:this page )?in [“‘"]HotUpdaterExample[”’"]\?$/.test(
+        alert.title,
+      );
+    const affirmative = korean ? "열기" : "Open";
+    const negative = korean ? "취소" : "Cancel";
+    if (
+      (!korean && !english) ||
+      alert.buttons.length !== 2 ||
+      !alert.buttons.includes(affirmative) ||
+      !alert.buttons.includes(negative)
+    ) {
+      throw new Error(
+        `Unexpected iOS alert blocks the app link: ${alert.title}`,
+      );
+    }
+    await this.options.screen
+      .getByRole("alert", alert.title)
+      .getByRole("button", affirmative)
+      .tap();
+    return true;
+  }
+
+  private async waitForIosLink(target: Locator): Promise<number> {
+    const deadline = Date.now() + (this.options.assertionTimeoutMs ?? 30_000);
+    const remaining = () => Math.max(1, deadline - Date.now());
+    do {
+      this.options.signal.throwIfAborted();
+      if (await this.confirmIosLink()) return remaining();
+      if (await target.isVisible()) return remaining();
+      if (Date.now() >= deadline) break;
+      await sleep(Math.min(100, remaining()), undefined, {
+        signal: this.options.signal,
+      });
+    } while (Date.now() < deadline);
+    return remaining();
   }
 
   private async openApp(options: OpenAppOptions) {
