@@ -35,7 +35,8 @@ The Android build is a debuggable Release APK so the shared recovery checks can
 inspect app-private state with `run-as`. Physical devices are not selected by
 local mode. If exactly one device of the requested platform is already booted,
 `--device` can be omitted. Multiple booted devices require an explicit ID.
-Run one E2E session at a time per OS user; agent-device's daemon is shared.
+Each invocation owns a private agent-device daemon. Reserve the selected device
+for the duration of the run; device ownership is shared across daemons.
 
 To select scenarios or inspect the plan without starting services or accessing
 devices:

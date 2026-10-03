@@ -37,11 +37,25 @@ Cancellation aborts the attempt and drains accepted control jobs before final
 fixture cleanup. Uncertain remote completion produces `quarantine.json` and a
 failed result; the bot blocks conflicting resources pending operator inspection.
 
-Runs require exclusive access to their devices and provider profiles. The
-upstream agent-device daemon is shared within an OS user, so parallel bot/device
-jobs must use a dedicated host or OS user. Worktrees and session names alone do
-not isolate daemon recovery. The local runner leases its prepared profile and
-refuses overlapping ownership.
+Each run also starts its own pinned agent-device daemon in a private temporary
+state directory, verifies its PID/start time, version and HTTP protocol, and
+connects the SDK through authenticated loopback HTTP. Inherited agent-device
+configuration is replaced with this owned transport; its token is never written
+to result artifacts. HTTP transport avoids upstream local-client recovery that
+can affect a different daemon. Shared exact-device ownership claims remain in
+their normal location, so runs still require exclusive devices and provider
+profiles. The local runner leases its prepared profile and refuses overlapping
+ownership.
+
+The daemon uses the internal launcher shipped with agent-device 0.21.18, matching
+the entry used by that version's own SDK. This pinned compatibility contract is
+covered by a startup/health/shutdown test and must be revalidated when upgrading.
+Startup refuses legacy shared XCTestDevices symlinks/backups that upstream would
+otherwise migrate. Apple runner detachment is disabled. Teardown invokes the
+pinned public `daemon stop --state-dir <owned> --clean --json` command, verifies
+its cleanup report, and only falls back to stopping its own process group.
+Unverified or forced cleanup fails the run and preserves private state for
+reconciliation. No global daemon stop or global process-name cleanup is used.
 
 Checks without devices:
 

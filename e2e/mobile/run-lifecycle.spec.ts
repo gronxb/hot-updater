@@ -10,6 +10,8 @@ import { mobileResultIdentity } from "./result.ts";
 
 const mocked = vi.hoisted(() => ({
   spawn: vi.fn(),
+  startDaemon: vi.fn(),
+  stopDaemon: vi.fn(),
   stop: vi.fn(),
   releaseReverse: vi.fn(),
   startServer: vi.fn(),
@@ -28,6 +30,9 @@ vi.mock("../shared/scripts/control-server.ts", () => ({
     HOT_UPDATER_E2E_APP_ID: "org.example",
   }),
   startControlServer: mocked.startServer,
+}));
+vi.mock("./agent-device-daemon.ts", () => ({
+  startOwnedAgentDeviceDaemon: mocked.startDaemon,
 }));
 vi.mock("./android-reverse.ts", () => ({
   acquireAndroidReverses: mocked.acquireReverse,
@@ -121,6 +126,15 @@ describe("mobile wrapper resource lifecycle", () => {
       HOT_UPDATER_E2E_ANDROID_BINARY_PATH: appPath,
     };
     mocked.stop.mockResolvedValue(undefined);
+    mocked.stopDaemon.mockResolvedValue(undefined);
+    mocked.startDaemon.mockImplementation(async (input: NodeJS.ProcessEnv) => ({
+      stop: mocked.stopDaemon,
+      env: {
+        ...input,
+        AGENT_DEVICE_DAEMON_BASE_URL: "http://owned-daemon.invalid",
+        AGENT_DEVICE_DAEMON_AUTH_TOKEN: "fixture-private-token",
+      },
+    }));
     mocked.releaseReverse.mockResolvedValue(undefined);
     mocked.acquireReverse.mockResolvedValue(mocked.releaseReverse);
     mocked.startServer.mockResolvedValue({
@@ -226,6 +240,7 @@ describe("mobile wrapper resource lifecycle", () => {
       "http://owned-control.invalid/e2e/cleanup",
       expect.objectContaining({ method: "POST" }),
     );
+    expect(mocked.stopDaemon).toHaveBeenCalledExactlyOnceWith();
     expect(mocked.releaseReverse).toHaveBeenCalledExactlyOnceWith();
     expect(mocked.stop).toHaveBeenCalledExactlyOnceWith({ cleanup: false });
     expect(process.listenerCount("SIGTERM")).toBe(listeners);
@@ -244,10 +259,53 @@ describe("mobile wrapper resource lifecycle", () => {
         code: "EISDIR",
       });
 
+      expect(mocked.stopDaemon).toHaveBeenCalledExactlyOnceWith();
       expect(mocked.releaseReverse).toHaveBeenCalledExactlyOnceWith();
       expect(mocked.stop).toHaveBeenCalledExactlyOnceWith({ cleanup: false });
       expect(process.listenerCount("SIGTERM")).toBe(listeners);
       if (omitCleanupEvidence) expect(fetchMock).not.toHaveBeenCalled();
     },
   );
+  it("passes the owned remote transport to the SDK and stops it before publishing success", async () => {
+    mocked.stopDaemon.mockImplementation(async () => {
+      await expect(
+        fs.access(path.join(temporary, "results/hot-updater-result.json")),
+      ).rejects.toMatchObject({ code: "ENOENT" });
+    });
+    expect(await runMobile(args, env)).toBe(0);
+    expect(mocked.spawn.mock.calls[0]![2].env).toMatchObject({
+      AGENT_DEVICE_DAEMON_BASE_URL: "http://owned-daemon.invalid",
+      AGENT_DEVICE_DAEMON_AUTH_TOKEN: "fixture-private-token",
+    });
+    expect(mocked.stopDaemon).toHaveBeenCalledExactlyOnceWith();
+    const report = await fs.readFile(
+      path.join(temporary, "results/hot-updater-result.json"),
+      "utf8",
+    );
+    expect(report).not.toContain("fixture-private-token");
+  });
+
+  it("quarantines uncertain daemon shutdown while still releasing its other owned resources", async () => {
+    mocked.stopDaemon.mockRejectedValue(
+      new Error("Owned daemon cleanup is uncertain"),
+    );
+    expect(await runMobile(args, env)).toBe(1);
+    const result = JSON.parse(
+      await fs.readFile(
+        path.join(temporary, "results/hot-updater-result.json"),
+        "utf8",
+      ),
+    );
+    expect(result).toMatchObject({ status: "failed", cleanupStatus: "failed" });
+    const quarantine = JSON.parse(
+      await fs.readFile(
+        path.join(temporary, "results/quarantine.json"),
+        "utf8",
+      ),
+    );
+    expect(quarantine.quarantineRequired).toBe(true);
+    expect(mocked.stopDaemon).toHaveBeenCalledExactlyOnceWith();
+    expect(mocked.releaseReverse).toHaveBeenCalledExactlyOnceWith();
+    expect(mocked.stop).toHaveBeenCalledExactlyOnceWith({ cleanup: false });
+  });
 });

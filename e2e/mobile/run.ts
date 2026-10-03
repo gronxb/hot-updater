@@ -16,6 +16,7 @@ import {
   buildControlServerEnv,
   startControlServer,
 } from "../shared/scripts/control-server.ts";
+import { startOwnedAgentDeviceDaemon } from "./agent-device-daemon.ts";
 import { acquireAndroidReverses } from "./android-reverse.ts";
 import type { MobileContext } from "./context.ts";
 import { normalizeMobileResult, writeMobileResult } from "./result.ts";
@@ -266,6 +267,9 @@ export async function runMobile(
   process.on("SIGINT", interrupt);
   process.on("SIGTERM", interrupt);
   let server: Awaited<ReturnType<typeof startControlServer>> | undefined;
+  let daemon:
+    | Awaited<ReturnType<typeof startOwnedAgentDeviceDaemon>>
+    | undefined;
   let releaseReverse: (() => Promise<void>) | undefined;
   let exitCode: number | null = null;
   let cleanupStatus: "passed" | "failed" | "unknown" = "unknown";
@@ -273,6 +277,7 @@ export async function runMobile(
   const reportPath = path.join(internalDir, "runner/report.json");
   try {
     await fs.access(context.appPath);
+    daemon = await startOwnedAgentDeviceDaemon(childEnv, cancellation.signal);
     server = await startControlServer(platform, childEnv, {
       detached: true,
       verifyProcess: true,
@@ -298,7 +303,7 @@ export async function runMobile(
         "--output",
         path.join(internalDir, "runner"),
       ],
-      { ...childEnv, HOT_UPDATER_E2E_MOBILE_CONTEXT: contextPath },
+      { ...daemon.env, HOT_UPDATER_E2E_MOBILE_CONTEXT: contextPath },
       cancellation.signal,
     );
   } catch (error) {
@@ -347,6 +352,13 @@ export async function runMobile(
       cleanupStatus = "failed";
     } finally {
       // Artifact/report failures must never skip owned resource teardown.
+      try {
+        await daemon?.stop();
+      } catch (error) {
+        errors.push(String(error));
+        cleanupStatus = "failed";
+      }
+      daemon = undefined;
       try {
         await releaseReverse?.();
       } catch (error) {
@@ -397,13 +409,17 @@ export async function runMobile(
         : 1;
   } finally {
     try {
-      await releaseReverse?.();
+      await daemon?.stop();
     } finally {
       try {
-        await server?.stop({ cleanup: false });
+        await releaseReverse?.();
       } finally {
-        process.off("SIGINT", interrupt);
-        process.off("SIGTERM", interrupt);
+        try {
+          await server?.stop({ cleanup: false });
+        } finally {
+          process.off("SIGINT", interrupt);
+          process.off("SIGTERM", interrupt);
+        }
       }
     }
   }
