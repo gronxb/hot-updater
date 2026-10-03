@@ -122,6 +122,7 @@ enum LynxDelta {
             return patch.byteSize.map { min($0, original ?? $0) }
         }
         if let archive = manifest.archive, let url = request.archiveUrl, missing.count >= 2,
+           manifest.assets.values.allSatisfy({ $0.byteSize != nil }),
            costs.allSatisfy({ $0 != nil }), archive.downloadByteSize > 0,
            archive.downloadByteSize <= ArchiveLimits.archive, archive.tarByteSize > 0,
            archive.tarByteSize <= ArchiveLimits.tarStream, LynxArtifactRequest.isHash(archive.downloadFileHash),
@@ -133,7 +134,8 @@ enum LynxDelta {
                 try await fetch(url, archiveFile, archive.downloadByteSize, false)
                 guard try size(archiveFile) == archive.downloadByteSize else { throw LynxArtifactError.invalid("Archive transfer size mismatch") }
                 try ArtifactSignatureVerifier.verifyHash(fileURL: archiveFile, expectedHash: archive.downloadFileHash).get()
-                try StrictArchive.extract(archiveFile, to: archiveContents, expectedTarBytes: archive.tarByteSize)
+                try StrictArchive.extract(archiveFile, to: archiveContents, expectedTarBytes: archive.tarByteSize,
+                    expectedFiles: manifest.assets.mapValues { $0.byteSize! })
                 guard !FileManager.default.fileExists(atPath: archiveContents.appendingPathComponent("manifest.json").path) else { throw LynxArtifactError.invalid("Bulk archive contains a manifest") }
                 try FileManager.default.copyItem(at: manifestFile, to: archiveContents.appendingPathComponent("manifest.json"))
                 _ = try VerifiedLynxTree.verify(at: archiveContents, bundleId: request.bundleId, manifestToken: token, configuration: configuration)

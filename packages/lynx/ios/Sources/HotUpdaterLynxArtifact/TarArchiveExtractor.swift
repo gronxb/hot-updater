@@ -87,6 +87,7 @@ public enum TarArchiveExtractor {
         from tarPath: String,
         to destination: String,
         strict: Bool = false,
+        expectedFiles: [String: UInt64]? = nil,
         progressHandler: @escaping (Double) -> Void
     ) throws {
         let fileManager = FileManager.default
@@ -101,6 +102,8 @@ public enum TarArchiveExtractor {
         }
 
         let entryGuard = ArchiveEntryGuard()
+        var extractedFiles = Set<String>()
+        var hasPendingPaxHeader = false
         var globalPaxHeaders: [String: String] = [:]
         var pendingPaxHeaders: [String: String] = [:]
         var pendingLongPath: String?
@@ -109,6 +112,16 @@ public enum TarArchiveExtractor {
         while true {
             let headerBlock = try ArchiveExtractionUtilities.readExactly(from: handle, count: blockSize)
             guard !isZeroBlock(headerBlock) else {
+                if strict {
+                    let secondEndBlock = try ArchiveExtractionUtilities.readExactly(from: handle, count: blockSize)
+                    guard isZeroBlock(secondEndBlock), !hasPendingPaxHeader else {
+                        throw ArchiveLimits.reject("Invalid TAR termination")
+                    }
+                    try requireZeroPaddingToEnd(handle)
+                    guard expectedFiles.map({ extractedFiles == Set($0.keys) }) ?? true else {
+                        throw ArchiveLimits.reject("Archive inventory differs from manifest")
+                    }
+                }
                 break
             }
 
@@ -119,21 +132,26 @@ public enum TarArchiveExtractor {
             }
             switch header.typeFlag {
             case globalPaxHeaderType:
+                if strict { throw ArchiveLimits.reject("Global PAX headers are not supported") }
                 let paxData = try readEntryPayloadData(from: handle, size: header.size)
                 globalPaxHeaders.merge(try parsePaxHeaders(from: paxData)) { _, newValue in
                     newValue
                 }
 
             case paxHeaderType:
+                if strict && hasPendingPaxHeader { throw ArchiveLimits.reject("Consecutive PAX headers are not supported") }
+                hasPendingPaxHeader = true
                 let paxData = try readEntryPayloadData(from: handle, size: header.size)
                 pendingPaxHeaders.merge(try parsePaxHeaders(from: paxData)) { _, newValue in
                     newValue
                 }
 
             case gnuLongNameType:
+                if strict { throw ArchiveLimits.reject("GNU long names are not supported") }
                 pendingLongPath = decodeLongPath(from: try readEntryPayloadData(from: handle, size: header.size))
 
             case gnuLongLinkType:
+                if strict { throw ArchiveLimits.reject("TAR links are not allowed") }
                 pendingLongLink = decodeLongPath(from: try readEntryPayloadData(from: handle, size: header.size))
 
             default:
@@ -142,26 +160,36 @@ public enum TarArchiveExtractor {
                 }
                 let resolvedPath = pendingLongPath ?? effectiveHeaders["path"] ?? header.path
                 let resolvedLinkPath = pendingLongLink ?? effectiveHeaders["linkpath"] ?? header.linkName
+                let resolvedSize = try effectiveHeaders["size"].map(parsePaxSize) ?? header.size
 
                 defer {
                     pendingPaxHeaders.removeAll()
+                    hasPendingPaxHeader = false
                     pendingLongPath = nil
                     pendingLongLink = nil
                 }
 
                 if strict {
-                    guard [directoryType, regularFileType, alternateRegularFileType, contiguousFileType].contains(header.typeFlag) else { throw ArchiveLimits.reject("Unsupported TAR entry type") }
-                    try entryGuard.admit(resolvedPath, size: header.size, directory: header.typeFlag == directoryType)
+                    guard [directoryType, regularFileType, alternateRegularFileType].contains(header.typeFlag),
+                          effectiveHeaders["linkpath"] == nil,
+                          header.typeFlag != directoryType || resolvedSize == 0 else { throw ArchiveLimits.reject("Unsupported TAR entry type or link") }
+                    if let expectedFiles {
+                        guard header.typeFlag != directoryType, expectedFiles[resolvedPath] == resolvedSize else {
+                            throw ArchiveLimits.reject("Archive entry path or size differs from manifest")
+                        }
+                    }
+                    try entryGuard.admit(resolvedPath, size: resolvedSize, directory: header.typeFlag == directoryType)
                 }
                 try extractEntry(
                     path: resolvedPath,
                     typeFlag: header.typeFlag,
-                    size: header.size,
+                    size: resolvedSize,
                     linkPath: resolvedLinkPath,
                     from: handle,
                     to: destinationRoot,
                     strict: strict
                 )
+                if header.typeFlag != directoryType { extractedFiles.insert(resolvedPath) }
             }
 
             if tarSize > 0 {
@@ -259,7 +287,17 @@ public enum TarArchiveExtractor {
 
     private static func skipPadding(in handle: FileHandle, size: UInt64) throws {
         let padding = (UInt64(blockSize) - (size % UInt64(blockSize))) % UInt64(blockSize)
-        try ArchiveExtractionUtilities.skipBytes(padding, in: handle)
+        let bytes = try ArchiveExtractionUtilities.readExactly(from: handle, count: Int(padding))
+        guard isZeroBlock(bytes) else { throw ArchiveLimits.reject("Invalid TAR entry padding") }
+    }
+
+    private static func requireZeroPaddingToEnd(_ handle: FileHandle) throws {
+        while let bytes = try ArchiveExtractionUtilities.readUpToCount(from: handle, count: blockSize), !bytes.isEmpty {
+            try Task.checkCancellation()
+            guard bytes.count == blockSize, isZeroBlock(bytes) else {
+                throw ArchiveLimits.reject("TAR contains trailing data")
+            }
+        }
     }
 
     private static func parseHeader(from block: Data) throws -> Header {
@@ -271,17 +309,25 @@ public enum TarArchiveExtractor {
             )
         }
 
+        let checksum = try parseTarNumber(block[148..<156])
+        let actual = block.indices.reduce(UInt64(0)) { sum, index in
+            sum + UInt64((148..<156).contains(index) ? 32 : block[index])
+        }
+        guard Data(block[257..<262]) == Data("ustar".utf8), checksum == actual else {
+            throw ArchiveLimits.reject("Invalid USTAR header or checksum")
+        }
+
         return Header(
-            path: parseTarPath(from: block),
+            path: try parseTarPath(from: block),
             size: try parseTarNumber(block[124..<136]),
             typeFlag: block[156],
-            linkName: parseCString(block[157..<257])
+            linkName: try parseCString(block[157..<257])
         )
     }
 
-    private static func parseTarPath(from block: Data) -> String {
-        let name = parseCString(block[0..<100])
-        let prefix = parseCString(block[345..<500])
+    private static func parseTarPath(from block: Data) throws -> String {
+        let name = try parseCString(block[0..<100])
+        let prefix = try parseCString(block[345..<500])
 
         guard !prefix.isEmpty else {
             return name
@@ -294,7 +340,7 @@ public enum TarArchiveExtractor {
         return "\(prefix)/\(name)"
     }
 
-    private static func parseCString(_ data: Data.SubSequence) -> String {
+    private static func parseCString(_ data: Data.SubSequence) throws -> String {
         let bytes = data.prefix { $0 != 0 }
         guard !bytes.isEmpty else {
             return ""
@@ -304,7 +350,7 @@ public enum TarArchiveExtractor {
             return decoded
         }
 
-        return String(decoding: bytes, as: UTF8.self)
+        throw ArchiveLimits.reject("Invalid UTF-8 in TAR header")
     }
 
     private static func parseTarNumber(_ data: Data.SubSequence) throws -> UInt64 {
@@ -314,9 +360,11 @@ public enum TarArchiveExtractor {
         }
 
         if let first = bytes.first, first & 0x80 != 0 {
+            guard first & 0x40 == 0 else { throw ArchiveLimits.reject("Negative TAR size") }
             var value: UInt64 = UInt64(first & 0x7F)
             for byte in bytes.dropFirst() {
-                value = (value << 8) | UInt64(byte)
+                guard value <= (UInt64.max - UInt64(byte)) / 256 else { throw ArchiveLimits.reject("TAR size overflow") }
+                value = value * 256 + UInt64(byte)
             }
             return value
         }
@@ -334,6 +382,12 @@ public enum TarArchiveExtractor {
         }
 
         return parsedValue
+    }
+
+    private static func parsePaxSize(_ value: String) throws -> UInt64 {
+        guard !value.isEmpty, value.utf8.allSatisfy({ (48...57).contains($0) }),
+              let size = UInt64(value) else { throw ArchiveLimits.reject("Invalid PAX entry size") }
+        return size
     }
 
     private static func parsePaxHeaders(from data: Data) throws -> [String: String] {

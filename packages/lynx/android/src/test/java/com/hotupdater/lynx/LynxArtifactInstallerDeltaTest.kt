@@ -1027,7 +1027,7 @@ class LynxArtifactInstallerDeltaTest {
         val files = fixture.getJSONObject("files").let { values ->
             values.keys().asSequence().associateWith { Base64.getDecoder().decode(values.getString(it)) }
         }
-        for (mode in listOf("valid", "corrupt-transfer", "wrong-tar-size", "embedded-manifest", "corrupt-original")) {
+        for (mode in listOf("valid", "corrupt-transfer", "wrong-tar-size", "embedded-manifest", "corrupt-original", "missing-logical-size")) {
             val root = Files.createTempDirectory("lynx-bulk-$mode-").toFile()
             try {
                 val bulk = fixture.getJSONObject("archives").getJSONObject(if (mode == "embedded-manifest") "embeddedManifest" else "valid")
@@ -1036,6 +1036,7 @@ class LynxArtifactInstallerDeltaTest {
                     .put("archive", JSONObject().put("downloadFileHash", archiveBytes.hash)
                         .put("downloadByteSize", archiveBytes.size)
                         .put("tarByteSize", bulk.getLong("tarByteSize") + if (mode == "wrong-tar-size") 1 else 0))
+                if (mode == "missing-logical-size") manifestObject.getJSONObject("assets").getJSONObject("main.lynx.bundle").remove("byteSize")
                 val manifestBytes = manifestObject.toString().toByteArray()
                 FixtureServer(emptyMap()).use { server ->
                     val descriptor = artifact(server, "/bundle", id, manifestBytes, files)
@@ -1059,7 +1060,7 @@ class LynxArtifactInstallerDeltaTest {
                         }
                         assertEquals(manifestBytes.hash, installed.manifestHash)
                     }
-                    assertTrue("$mode must exercise bulk transport", server.requested("/archive"))
+                    assertEquals("$mode bulk eligibility", mode != "missing-logical-size", server.requested("/archive"))
                 }
             } finally { root.deleteRecursively() }
         }

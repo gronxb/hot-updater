@@ -149,7 +149,12 @@ manifest-covered unchanged files, verifies the reconstructed target hash, and
 publishes the complete target atomically. A bad or stale patch uses its verified
 original file. Native may choose a bulk `bundle.tar.br` using authenticated
 transfer costs; its hash, compressed size, decoded TAR size, and exact file
-inventory are verified. A failed bulk transfer falls back to the same original
+inventory are verified. Bulk transfer requires a logical byte size for every
+manifest asset; otherwise installation uses the original files. TAR extraction
+checks each path and size before writing, validates USTAR checksums and padding,
+and requires two complete end blocks. Local PAX path and size records are supported;
+global, dangling, consecutive, duplicate and link metadata are rejected.
+A failed bulk transfer falls back to the same original
 files. Manifest verification failure stops installation. Native logs distinguish
 bulk installation from an actual patch application.
 

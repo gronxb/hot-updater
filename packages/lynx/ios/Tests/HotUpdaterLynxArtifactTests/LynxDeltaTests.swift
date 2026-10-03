@@ -726,9 +726,11 @@ final class LynxDeltaTests: XCTestCase {
         let manifestURL = url("slow-manifest")
         let archiveURL = url("must-not-download-archive")
         let recorder = FetchRecorder()
+        let manifestStarted = expectation(description: "Manifest fetch started")
         let fetch: LynxArtifactFetch = { source, _, _, _ in
             recorder.record(source)
             if source == manifestURL {
+                manifestStarted.fulfill()
                 try await Task.sleep(nanoseconds: 10_000_000_000)
             }
             throw LynxArtifactError.invalid("Unexpected fallback")
@@ -745,7 +747,7 @@ final class LynxDeltaTests: XCTestCase {
             fetch: fetch
         )
         let operation = Task { try await installer.prepare(request, base: base.installed) }
-        try await Task.sleep(nanoseconds: 20_000_000)
+        await fulfillment(of: [manifestStarted], timeout: 5)
         operation.cancel()
         do {
             _ = try await operation.value
@@ -824,16 +826,17 @@ final class LynxDeltaTests: XCTestCase {
         let fixture = fixtures["ios"] as! [String: Any]
         let id = fixture["bundleId"] as! String
         let files = (fixture["files"] as! [String: String]).mapValues { Data(base64Encoded: $0)! }
-        for mode in ["valid", "corrupt-transfer", "wrong-tar-size", "embedded-manifest", "corrupt-original"] {
+        for mode in ["valid", "corrupt-transfer", "wrong-tar-size", "embedded-manifest", "corrupt-original", "missing-logical-size"] {
             let root = temporaryRoot()
             defer { try? FileManager.default.removeItem(at: root) }
             let archives = fixture["archives"] as! [String: [String: Any]]
             let bulk = archives[mode == "embedded-manifest" ? "embeddedManifest" : "valid"]!
             let archiveBytes = Data(base64Encoded: bulk["bytes"] as! String)!
-            let assets = files.mapValues { bytes in
+            var assets = files.mapValues { bytes in
                 ["fileHash": hash(bytes), "byteSize": bytes.count,
                  "downloadFileHash": hash(bytes), "downloadByteSize": bytes.count] as [String: Any]
             }
+            if mode == "missing-logical-size" { assets["main.lynx.bundle"]!.removeValue(forKey: "byteSize") }
             let manifest = try JSONSerialization.data(withJSONObject: [
                 "bundleId": id, "assets": assets,
                 "archive": ["downloadFileHash": hash(archiveBytes), "downloadByteSize": archiveBytes.count,
@@ -873,8 +876,10 @@ final class LynxDeltaTests: XCTestCase {
                 }
                 XCTAssertEqual(installed.manifestDigest, hash(manifest))
             }
-            XCTAssertTrue(recorder.contains(archiveURL), "\(mode) must exercise bulk transport")
-            XCTAssertEqual(recorder.maximumBytes(for: archiveURL), UInt64(archiveBytes.count))
+            XCTAssertEqual(recorder.contains(archiveURL), mode != "missing-logical-size", "\(mode) bulk eligibility")
+            if mode != "missing-logical-size" {
+                XCTAssertEqual(recorder.maximumBytes(for: archiveURL), UInt64(archiveBytes.count))
+            }
         }
     }
 

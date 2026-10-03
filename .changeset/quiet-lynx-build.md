@@ -40,3 +40,7 @@ Authenticate bounded manifest and Lynx compatibility metadata during update
 checks, then reuse that metadata during full installation. Reauthorize after
 asynchronous checks and preserve full file, patch, and resource verification
 before publication.
+
+Validate TAR framing, checksums, UTF-8 and PAX metadata on both platforms.
+Bind bulk entries to the authenticated manifest's exact file names and sizes
+before writing; use verified original files when logical sizes are unavailable.

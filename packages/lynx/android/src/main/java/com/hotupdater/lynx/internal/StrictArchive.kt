@@ -100,10 +100,10 @@ internal class BoundedTarInput(input: InputStream, private val maximumBytes: Lon
 
 /** Strict policy over the existing TAR decoder and Android's ZIP decoder. */
 internal object StrictArchive {
-    fun extract(archive: File, root: File, expectedTarBytes: Long? = null): Set<String> {
+    fun extract(archive: File, root: File, expectedTarBytes: Long? = null, expectedFiles: Map<String, Long>? = null): Set<String> {
         require(archive.length() in 1..ArchiveLimits.MAX_ARCHIVE_BYTES) { "Invalid archive size" }
         require(root.isDirectory && root.list().orEmpty().isEmpty()) { "Extraction requires a new empty directory" }
-        val writer = Writer(root)
+        val writer = Writer(root, expectedFiles)
         val magic = archive.inputStream().use { it.readNBytesCompat(4) }
         if (expectedTarBytes == null && magic.contentEquals(byteArrayOf(0x50, 0x4b, 0x03, 0x04))) {
             rejectZipLinks(archive)
@@ -122,28 +122,22 @@ internal object StrictArchive {
                 TarArchiveInputStream(bounded).use { tar ->
                     while (true) {
                         val entry = tar.getNextEntry() ?: break
-                        require(entry.typeFlag == '5' || entry.isFile) { "Archive links and special entries are forbidden" }
+                        require(entry.typeFlag == '5' || entry.isRegularFile) { "Archive links and special entries are forbidden" }
                         if (entry.typeFlag == '5') { require(entry.size == 0L) { "Directory has content" }; writer.directory(entry.name) }
                         else { require(!entry.name.endsWith('/')) { "Invalid regular file name" }; writer.file(entry.name, entry.size, tar) }
                     }
-                    require(tar.hasEndMarker) { "Truncated TAR archive" }
                     if (expectedTarBytes != null) {
-                        val tail = ByteArray(8192)
-                        while (true) {
-                            val size = bounded.read(tail)
-                            if (size < 0) break
-                            require((0 until size).all { tail[it] == 0.toByte() }) { "Nonzero trailing TAR bytes" }
-                        }
                         require(bounded.count == expectedTarBytes) { "Decoded TAR size mismatch" }
                     }
                 }
             }
         }
         check(writer.files.isNotEmpty()) { "Empty archive" }
+        require(expectedFiles == null || writer.files.toSet() == expectedFiles.keys) { "Archive inventory differs from manifest" }
         return writer.files.toSet()
     }
 
-    private class Writer(private val root: File) {
+    private class Writer(private val root: File, private val expectedFiles: Map<String, Long>?) {
         private val entries = mutableSetOf<String>()
         private val namespace = ManagedPathNamespace()
         val files = mutableSetOf<String>()
@@ -155,9 +149,10 @@ internal object StrictArchive {
             if (directory) namespace.directory(normalized) else namespace.file(normalized)
             return ManagedPaths.resolve(root, normalized)
         }
-        fun directory(name: String) { val target = destination(name, true); check(target.mkdirs() || target.isDirectory) { "Archive directory conflicts with a file" } }
+        fun directory(name: String) { require(expectedFiles == null) { "Bulk archive must contain only manifest files" }; val target = destination(name, true); check(target.mkdirs() || target.isDirectory) { "Archive directory conflicts with a file" } }
         fun file(name: String, expectedSize: Long, input: InputStream, expectedCrc: Long = -1) {
             require(expectedSize in 0..ArchiveLimits.MAX_FILE_BYTES) { "Archive entry exceeds size limit" }
+            require(expectedFiles == null || expectedFiles[name] == expectedSize) { "Archive entry path or size differs from manifest" }
             val target = destination(name, false)
             check(!target.exists()) { "Archive entry conflicts with an existing path" }
             check(target.parentFile!!.mkdirs() || target.parentFile!!.isDirectory) { "Cannot create archive parent" }

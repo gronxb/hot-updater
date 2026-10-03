@@ -10,6 +10,97 @@ final class StrictArchiveTests: XCTestCase {
         ("Straße", "strasse"),
     ]
 
+    func testRejectsMalformedTarTerminationPaddingAndExtensions() throws {
+        let file = tarEntry("entry", payload: Data("data".utf8))
+        let end = Data(repeating: 0, count: 1024)
+        let extended = tarEntry("PaxHeader", type: 120, payload: pax("path", "entry"))
+        var invalidName = file
+        invalidName[0] = 0xff
+        checksum(&invalidName)
+        var badChecksum = file
+        badChecksum[0] = 122
+        var badPadding = file
+        badPadding[516] = 1
+        var trailing = Data(repeating: 0, count: 512)
+        trailing[0] = 1
+        let cases: [(String, Data)] = [
+            ("one end block", file + Data(repeating: 0, count: 512)),
+            ("partial end block", file + Data(repeating: 0, count: 1023)),
+            ("partial trailing block", file + end + Data([0])),
+            ("nonzero trailing block", file + end + trailing),
+            ("nonzero file padding", badPadding + end),
+            ("dangling PAX", file + extended + end),
+            ("empty dangling PAX", file + tarEntry("PaxHeader", type: 120) + end),
+            ("consecutive PAX", extended + extended + file + end),
+            ("global PAX", tarEntry("Global", type: 103, payload: pax("path", "entry")) + file + end),
+            ("GNU long name", tarEntry("LongLink", type: 76, payload: Data("entry\0".utf8)) + file + end),
+            ("duplicate PAX key", tarEntry("PaxHeader", type: 120, payload: pax("path", "entry") + pax("path", "other")) + file + end),
+            ("PAX link", tarEntry("PaxHeader", type: 120, payload: pax("linkpath", "other")) + file + end),
+            ("invalid UTF-8", invalidName + end),
+            ("bad checksum", badChecksum + end),
+        ]
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        for (index, item) in cases.enumerated() {
+            let archive = root.appendingPathComponent("input-\(index).tar")
+            try item.1.write(to: archive)
+            XCTAssertThrowsError(
+                try TarArchiveExtractor.extract(from: archive.path,
+                    to: root.appendingPathComponent("output-\(index)").path,
+                    strict: true, progressHandler: { _ in }),
+                item.0
+            )
+        }
+    }
+
+    func testAppliesPaxPathAndSizeToTheFollowingFileOnly() throws {
+        let name = "pages/" + String(repeating: "nested-", count: 20) + "detail.bundle"
+        let payload = Data("data".utf8)
+        let archive = tarEntry("PaxHeader", type: 120, payload: pax("path", name) + pax("size", "4")) +
+            tarEntry("placeholder", payload: payload, declaredSize: 1) +
+            tarEntry("next", payload: Data("next".utf8)) + Data(repeating: 0, count: 1024)
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let input = root.appendingPathComponent("input.tar")
+        try archive.write(to: input)
+        let output = root.appendingPathComponent("output")
+        try TarArchiveExtractor.extract(from: input.path, to: output.path,
+            strict: true, progressHandler: { _ in })
+        XCTAssertEqual(try Data(contentsOf: output.appendingPathComponent(name)), payload)
+        XCTAssertEqual(try Data(contentsOf: output.appendingPathComponent("next")), Data("next".utf8))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: output.appendingPathComponent("placeholder").path))
+    }
+
+    func testBindsArchivePathsAndSizesToManifestBeforeWriting() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let archive = root.appendingPathComponent("input.tar")
+        try (tarEntry("entry", payload: Data("data".utf8)) + Data(repeating: 0, count: 1024)).write(to: archive)
+        let wrong: [[String: UInt64]] = [["unknown": 4], ["entry": 3], ["entry": 5]]
+        for (index, expected) in wrong.enumerated() {
+            let output = root.appendingPathComponent("output-\(index)")
+            XCTAssertThrowsError(try TarArchiveExtractor.extract(from: archive.path, to: output.path,
+                strict: true, expectedFiles: expected, progressHandler: { _ in }))
+            XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: output.path), [])
+        }
+        XCTAssertThrowsError(try TarArchiveExtractor.extract(from: archive.path,
+            to: root.appendingPathComponent("missing").path, strict: true,
+            expectedFiles: ["entry": 4, "missing": 0], progressHandler: { _ in }))
+        let valid = root.appendingPathComponent("valid")
+        try TarArchiveExtractor.extract(from: archive.path, to: valid.path, strict: true,
+            expectedFiles: ["entry": 4], progressHandler: { _ in })
+        XCTAssertEqual(try Data(contentsOf: valid.appendingPathComponent("entry")), Data("data".utf8))
+
+        try (tarEntry("empty/", type: 53) + Data(repeating: 0, count: 1024)).write(to: archive)
+        let directory = root.appendingPathComponent("directory")
+        XCTAssertThrowsError(try TarArchiveExtractor.extract(from: archive.path, to: directory.path,
+            strict: true, expectedFiles: ["empty": 0], progressHandler: { _ in }))
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: directory.path), [])
+    }
+
     func testPortableCollisionRejectsGreekFinalSigmaAlias() throws {
         let guardValue = ArchiveEntryGuard()
         try guardValue.admit("assets/μέρος.json", size: 1, directory: false)
@@ -360,13 +451,39 @@ final class StrictArchiveTests: XCTestCase {
     private func makeTar(paths: [String]) -> Data {
         var archive = Data()
         for path in paths {
-            var header = Data(repeating: 0, count: 512)
-            header.replaceSubrange(0..<path.utf8.count, with: path.utf8)
-            header[156] = 48
-            archive.append(header)
+            archive.append(tarEntry(path))
         }
         archive.append(Data(repeating: 0, count: 1_024))
         return archive
+    }
+
+    private func tarEntry(_ name: String, type: UInt8 = 48, payload: Data = Data(), declaredSize: Int? = nil) -> Data {
+        var header = Data(repeating: 0, count: 512)
+        header.replaceSubrange(0..<name.utf8.count, with: name.utf8)
+        header[156] = type
+        header.replaceSubrange(257..<262, with: "ustar".utf8)
+        let size = String(declaredSize ?? payload.count, radix: 8)
+        let field = String(repeating: "0", count: 11 - size.count) + size + "\0"
+        header.replaceSubrange(124..<136, with: field.utf8)
+        checksum(&header)
+        return header + payload + Data(repeating: 0, count: (512 - payload.count % 512) % 512)
+    }
+
+    private func checksum(_ bytes: inout Data) {
+        bytes.replaceSubrange(148..<156, with: Data(repeating: 32, count: 8))
+        let sum = bytes.prefix(512).reduce(0) { $0 + Int($1) }
+        let octal = String(sum, radix: 8)
+        let field = String(repeating: "0", count: 6 - octal.count) + octal + "\0 "
+        bytes.replaceSubrange(148..<156, with: field.utf8)
+    }
+
+    private func pax(_ key: String, _ value: String) -> Data {
+        var length = 0
+        while true {
+            let bytes = Data("\(length) \(key)=\(value)\n".utf8)
+            if bytes.count == length { return bytes }
+            length = bytes.count
+        }
     }
 
     private func hash(_ data: Data) -> String {

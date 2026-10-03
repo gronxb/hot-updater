@@ -1,7 +1,106 @@
 {
   "ios": {
-    "hash": "37f032e5e6501747fe2c3e164d5e420edb35a4b90735cea9c00fb0af718c8154",
+    "hash": "c222f24a7dd8a9259486d99e2618bdd7ea19696ea45321b44d24adb5f0c3f0f9",
     "sources": [
+      {
+        "type": "file",
+        "filePath": "@hot-updater/lynx-sparkling/ios/HotUpdaterLynxSparkling.podspec",
+        "reasons": [
+          "lynx-native-input"
+        ],
+        "hash": "348c5e03c4d5fcc2cc66260c9adf8956386b8b05d5d8bc131be83138acd30cf6",
+        "debugInfo": {
+          "byteSize": 1372
+        }
+      },
+      {
+        "type": "file",
+        "filePath": "@hot-updater/lynx-sparkling/ios/Package.swift",
+        "reasons": [
+          "lynx-native-input"
+        ],
+        "hash": "76afcf82d1a1de1982feee2305c6a999099e93a9996da01f48da27572a9cebbc",
+        "debugInfo": {
+          "byteSize": 636
+        }
+      },
+      {
+        "type": "file",
+        "filePath": "@hot-updater/lynx-sparkling/ios/Sources/HotUpdaterLynxSparkling/HotUpdaterSparklingHost.swift",
+        "reasons": [
+          "lynx-native-input"
+        ],
+        "hash": "6f9fbb2bec7fe7f2d08fa2c98681427364500c9fb745ed8f9e48abb22860c9f9",
+        "debugInfo": {
+          "byteSize": 77074
+        }
+      },
+      {
+        "type": "file",
+        "filePath": "@hot-updater/lynx-sparkling/ios/Sources/HotUpdaterLynxSparkling/ManagedPageFailure.swift",
+        "reasons": [
+          "lynx-native-input"
+        ],
+        "hash": "3dda63f8a8b1ea202e5bd7593cc6770cdf3448690e606f33251fac39cac4fc5d",
+        "debugInfo": {
+          "byteSize": 652
+        }
+      },
+      {
+        "type": "file",
+        "filePath": "@hot-updater/lynx-sparkling/ios/Sources/HotUpdaterLynxSparklingCore/GenerationEventLedger.swift",
+        "reasons": [
+          "lynx-native-input"
+        ],
+        "hash": "aa21f77f8d5aa4aa6c4f1c694a37396a5e04821e881066b8b3481578149e1121",
+        "debugInfo": {
+          "byteSize": 30540
+        }
+      },
+      {
+        "type": "file",
+        "filePath": "@hot-updater/lynx-sparkling/ios/Sources/HotUpdaterLynxSparklingCore/SparklingEmbeddedDescriptor.swift",
+        "reasons": [
+          "lynx-native-input"
+        ],
+        "hash": "9d1ee852056e4403fef13c80376d7d72d0c678f9487370e75d1331347e57a83b",
+        "debugInfo": {
+          "byteSize": 1705
+        }
+      },
+      {
+        "type": "file",
+        "filePath": "@hot-updater/lynx-sparkling/ios/Sources/HotUpdaterLynxSparklingCore/SparklingManagedNavigation.swift",
+        "reasons": [
+          "lynx-native-input"
+        ],
+        "hash": "6122b027a371ae7ff46e4785e7d492c62c6b8e04c1e045503a9739eaf8794647",
+        "debugInfo": {
+          "byteSize": 13300
+        }
+      },
+      {
+        "type": "file",
+        "filePath": "@hot-updater/lynx-sparkling/ios/Sources/HotUpdaterLynxSparklingCore/SparklingReloadContract.swift",
+        "reasons": [
+          "lynx-native-input"
+        ],
+        "hash": "9d4577bb6f883e3e19ca24e3156a749b413e880ef8e7e0dfc0f87505dcdf2f43",
+        "debugInfo": {
+          "byteSize": 1452
+        }
+      },
+      {
+        "type": "file",
+        "filePath": "@hot-updater/lynx-sparkling/package.json",
+        "reasons": [
+          "lynx-native-input"
+        ],
+        "hash": "2074f55b54c080f89d894ffb8648426085f614226bf6908409a8e720ef974731",
+        "debugInfo": {
+          "byteSize": 1579
+        }
+      },
       {
         "type": "file",
         "filePath": "@hot-updater/lynx/ios/HotUpdaterLynxArtifact.podspec",
@@ -15,24 +114,13 @@
       },
       {
         "type": "file",
-        "filePath": "@hot-updater/lynx/ios/HotUpdaterLynxSparkling.podspec",
-        "reasons": [
-          "lynx-native-input"
-        ],
-        "hash": "348c5e03c4d5fcc2cc66260c9adf8956386b8b05d5d8bc131be83138acd30cf6",
-        "debugInfo": {
-          "byteSize": 1372
-        }
-      },
-      {
-        "type": "file",
         "filePath": "@hot-updater/lynx/ios/Package.swift",
         "reasons": [
           "lynx-native-input"
         ],
-        "hash": "1ec1856590a30e5599f31ba8ea53694cbc36f664c57da3ba317e41e56b3141b9",
+        "hash": "79619d51e49572be817dfd13035bf76f5571d11373156cce8e4a464f804aa01b",
         "debugInfo": {
-          "byteSize": 1240
+          "byteSize": 677
         }
       },
       {
@@ -129,9 +217,9 @@
         "reasons": [
           "lynx-native-input"
         ],
-        "hash": "d01b9292fc85603372ae059a697ddbc556c1d19003cbd358bff4d52616ffe92a",
+        "hash": "16b52580f46fa288d6f2d8a86ecf4dca87452759b13cc4104254bc3957e7fa30",
         "debugInfo": {
-          "byteSize": 34131
+          "byteSize": 36079
         }
       },
       {
@@ -151,9 +239,9 @@
         "reasons": [
           "lynx-native-input"
         ],
-        "hash": "2d6fa53c5f751771ca1ca5bf50ef4f466d8944a639e792fb1d3b11706a4b4339",
+        "hash": "5bdcc8c93034ac708a4b0873c5e73a1313f495e5d023e313ffe8e4af7e60fa33",
         "debugInfo": {
-          "byteSize": 76799
+          "byteSize": 77960
         }
       },
       {
@@ -173,9 +261,9 @@
         "reasons": [
           "lynx-native-input"
         ],
-        "hash": "eb0eda5f3f374b55133ea0c74cfd9e028c755b17c84f20fb5bfc50287a7883ca",
+        "hash": "23d181356d00a4112fa09cc0f71beb3ca675a3b0be44de1bb85c553aa1415210",
         "debugInfo": {
-          "byteSize": 16431
+          "byteSize": 21246
         }
       },
       {
@@ -195,9 +283,9 @@
         "reasons": [
           "lynx-native-input"
         ],
-        "hash": "eea9ace0429dd870b153cf93dc802b5952e7cbcc306c529a623f670d11888a2e",
+        "hash": "eaac1eeb742f22a75b04ad6f082f5fd6d9799a0e471a53a7f0fd68e951438b13",
         "debugInfo": {
-          "byteSize": 5771
+          "byteSize": 5841
         }
       },
       {
@@ -217,9 +305,9 @@
         "reasons": [
           "lynx-native-input"
         ],
-        "hash": "50f974a39e66e848996c10822ae08ffee8ec5e8dba69307c6a893e91e514144b",
+        "hash": "991e0d19d52a5c385fa360695bcfecefea5e7d7c6b03fbe63768b0b15567835d",
         "debugInfo": {
-          "byteSize": 14709
+          "byteSize": 18044
         }
       },
       {
@@ -290,79 +378,13 @@
       },
       {
         "type": "file",
-        "filePath": "@hot-updater/lynx/ios/Sources/HotUpdaterLynxSparkling/HotUpdaterSparklingHost.swift",
-        "reasons": [
-          "lynx-native-input"
-        ],
-        "hash": "6f9fbb2bec7fe7f2d08fa2c98681427364500c9fb745ed8f9e48abb22860c9f9",
-        "debugInfo": {
-          "byteSize": 77074
-        }
-      },
-      {
-        "type": "file",
-        "filePath": "@hot-updater/lynx/ios/Sources/HotUpdaterLynxSparkling/ManagedPageFailure.swift",
-        "reasons": [
-          "lynx-native-input"
-        ],
-        "hash": "3dda63f8a8b1ea202e5bd7593cc6770cdf3448690e606f33251fac39cac4fc5d",
-        "debugInfo": {
-          "byteSize": 652
-        }
-      },
-      {
-        "type": "file",
-        "filePath": "@hot-updater/lynx/ios/Sources/HotUpdaterLynxSparklingCore/GenerationEventLedger.swift",
-        "reasons": [
-          "lynx-native-input"
-        ],
-        "hash": "aa21f77f8d5aa4aa6c4f1c694a37396a5e04821e881066b8b3481578149e1121",
-        "debugInfo": {
-          "byteSize": 30540
-        }
-      },
-      {
-        "type": "file",
-        "filePath": "@hot-updater/lynx/ios/Sources/HotUpdaterLynxSparklingCore/SparklingEmbeddedDescriptor.swift",
-        "reasons": [
-          "lynx-native-input"
-        ],
-        "hash": "9d1ee852056e4403fef13c80376d7d72d0c678f9487370e75d1331347e57a83b",
-        "debugInfo": {
-          "byteSize": 1705
-        }
-      },
-      {
-        "type": "file",
-        "filePath": "@hot-updater/lynx/ios/Sources/HotUpdaterLynxSparklingCore/SparklingManagedNavigation.swift",
-        "reasons": [
-          "lynx-native-input"
-        ],
-        "hash": "6122b027a371ae7ff46e4785e7d492c62c6b8e04c1e045503a9739eaf8794647",
-        "debugInfo": {
-          "byteSize": 13300
-        }
-      },
-      {
-        "type": "file",
-        "filePath": "@hot-updater/lynx/ios/Sources/HotUpdaterLynxSparklingCore/SparklingReloadContract.swift",
-        "reasons": [
-          "lynx-native-input"
-        ],
-        "hash": "9d4577bb6f883e3e19ca24e3156a749b413e880ef8e7e0dfc0f87505dcdf2f43",
-        "debugInfo": {
-          "byteSize": 1452
-        }
-      },
-      {
-        "type": "file",
         "filePath": "@hot-updater/lynx/package.json",
         "reasons": [
           "lynx-native-input"
         ],
-        "hash": "fc239d6571b3cae9a177e956e5f3130c513672aa74d71eab416a1617b46d97bf",
+        "hash": "d73fce51f99b6163d0b3b44d4c998b93cc7fe91d68323891296ce1a668816afb",
         "debugInfo": {
-          "byteSize": 1957
+          "byteSize": 999
         }
       },
       {
@@ -382,9 +404,9 @@
         "reasons": [
           "lynx-native-input"
         ],
-        "hash": "9d903232276107c32e6661e8452a5c8f14565e4ded295f7d3273f7d2fda14f5b",
+        "hash": "993dce240c37b45b877db75046e6d08ed39f18706f697f43505443e7f8caa986",
         "debugInfo": {
-          "byteSize": 4341
+          "byteSize": 4522
         }
       },
       {
@@ -514,19 +536,19 @@
         "reasons": [
           "lynx-native-input"
         ],
-        "hash": "ccf4b6952c96221e04f153f483a35c17e55536091e4fd8ba6b879fb53224c59e",
+        "hash": "bc6d0eb2de8d09fbe46a30481175dff1baf40d85f8e384b58913dc70d45144af",
         "debugInfo": {
-          "byteSize": 2043
+          "byteSize": 2195
         }
       }
     ]
   },
   "android": {
-    "hash": "663db2367734b1bbeb52419454331781f0621bd6b6fb53d0514ab85635ee2b80",
+    "hash": "f49c847fc1cba85c39fbb8e4f12a23596bf214308fa9ca79b46ea6ed7ba16053",
     "sources": [
       {
         "type": "file",
-        "filePath": "@hot-updater/lynx/android-sparkling/build.gradle",
+        "filePath": "@hot-updater/lynx-sparkling/android/build.gradle",
         "reasons": [
           "lynx-native-input"
         ],
@@ -537,7 +559,7 @@
       },
       {
         "type": "file",
-        "filePath": "@hot-updater/lynx/android-sparkling/fresco-compat.gradle",
+        "filePath": "@hot-updater/lynx-sparkling/android/fresco-compat.gradle",
         "reasons": [
           "lynx-native-input"
         ],
@@ -548,7 +570,7 @@
       },
       {
         "type": "file",
-        "filePath": "@hot-updater/lynx/android-sparkling/src/main/AndroidManifest.xml",
+        "filePath": "@hot-updater/lynx-sparkling/android/src/main/AndroidManifest.xml",
         "reasons": [
           "lynx-native-input"
         ],
@@ -559,7 +581,7 @@
       },
       {
         "type": "file",
-        "filePath": "@hot-updater/lynx/android-sparkling/src/main/java/com/hotupdater/lynx/sparkling/HotUpdaterSparklingHost.kt",
+        "filePath": "@hot-updater/lynx-sparkling/android/src/main/java/com/hotupdater/lynx/sparkling/HotUpdaterSparklingHost.kt",
         "reasons": [
           "lynx-native-input"
         ],
@@ -570,7 +592,7 @@
       },
       {
         "type": "file",
-        "filePath": "@hot-updater/lynx/android-sparkling/src/main/java/com/hotupdater/lynx/sparkling/HotUpdaterSparklingLaunchConfiguration.kt",
+        "filePath": "@hot-updater/lynx-sparkling/android/src/main/java/com/hotupdater/lynx/sparkling/HotUpdaterSparklingLaunchConfiguration.kt",
         "reasons": [
           "lynx-native-input"
         ],
@@ -581,7 +603,7 @@
       },
       {
         "type": "file",
-        "filePath": "@hot-updater/lynx/android-sparkling/src/main/java/com/hotupdater/lynx/sparkling/HotUpdaterSparklingPageActivity.kt",
+        "filePath": "@hot-updater/lynx-sparkling/android/src/main/java/com/hotupdater/lynx/sparkling/HotUpdaterSparklingPageActivity.kt",
         "reasons": [
           "lynx-native-input"
         ],
@@ -592,7 +614,7 @@
       },
       {
         "type": "file",
-        "filePath": "@hot-updater/lynx/android-sparkling/src/main/java/com/hotupdater/lynx/sparkling/ManagedSparklingNavigation.kt",
+        "filePath": "@hot-updater/lynx-sparkling/android/src/main/java/com/hotupdater/lynx/sparkling/ManagedSparklingNavigation.kt",
         "reasons": [
           "lynx-native-input"
         ],
@@ -603,7 +625,7 @@
       },
       {
         "type": "file",
-        "filePath": "@hot-updater/lynx/android-sparkling/src/main/java/com/hotupdater/lynx/sparkling/SparklingGenerationEvents.kt",
+        "filePath": "@hot-updater/lynx-sparkling/android/src/main/java/com/hotupdater/lynx/sparkling/SparklingGenerationEvents.kt",
         "reasons": [
           "lynx-native-input"
         ],
@@ -614,13 +636,24 @@
       },
       {
         "type": "file",
+        "filePath": "@hot-updater/lynx-sparkling/package.json",
+        "reasons": [
+          "lynx-native-input"
+        ],
+        "hash": "2074f55b54c080f89d894ffb8648426085f614226bf6908409a8e720ef974731",
+        "debugInfo": {
+          "byteSize": 1579
+        }
+      },
+      {
+        "type": "file",
         "filePath": "@hot-updater/lynx/android/build.gradle",
         "reasons": [
           "lynx-native-input"
         ],
-        "hash": "6a6445b04bf6c50590ca62fe88655779705591a1f698f76f53621f1def349e7b",
+        "hash": "c46f8a2fbd86cd676e60bad580f57eaa96dd98cf3867db87bfc87c3623c03ddf",
         "debugInfo": {
-          "byteSize": 1254
+          "byteSize": 1344
         }
       },
       {
@@ -684,9 +717,9 @@
         "reasons": [
           "lynx-native-input"
         ],
-        "hash": "65a970d9d6051eb30aaf4ebb1e9b4e54b44d5627d225354b12048aa3009e132d",
+        "hash": "5551ea61966845649d70098a1370db6608a1d90d43d9589d4934406c55874f21",
         "debugInfo": {
-          "byteSize": 16513
+          "byteSize": 18338
         }
       },
       {
@@ -772,9 +805,9 @@
         "reasons": [
           "lynx-native-input"
         ],
-        "hash": "e05f7111df850fb084ae7720e8b72fcdce619c1ad32ff4035e9aae3bda3275c0",
+        "hash": "83789e68bbb8e1945505a104c05fab5b712b912fc179c3479c507a274cc5796f",
         "debugInfo": {
-          "byteSize": 80992
+          "byteSize": 80889
         }
       },
       {
@@ -860,9 +893,9 @@
         "reasons": [
           "lynx-native-input"
         ],
-        "hash": "d2a900e6ff61f2ee4499b36255f83e11a26372f3fc05005572cd295326cbc88d",
+        "hash": "02b5b05a0a89a4e5c3c7f48e6b6186565fb19f9c728dddaf95fd1c6fedfede87",
         "debugInfo": {
-          "byteSize": 9677
+          "byteSize": 10389
         }
       },
       {
@@ -871,9 +904,9 @@
         "reasons": [
           "lynx-native-input"
         ],
-        "hash": "787be197460f4dd54432185eca144d32dca97a8071128beb92d05d5f878998a7",
+        "hash": "5e9788ba25d931bc7b81d389f0de6672f3b2f84366d5f663d6195823be1a2f5e",
         "debugInfo": {
-          "byteSize": 16019
+          "byteSize": 17868
         }
       },
       {
@@ -882,9 +915,9 @@
         "reasons": [
           "lynx-native-input"
         ],
-        "hash": "7901ea5a3dc50180d1715ccd21a93e4b1b0b514b7b52235b70a96004559c5f6f",
+        "hash": "d43346ffcf00de8d506f8b653af7b94813c18a5287f4df85cc50cdb94644880b",
         "debugInfo": {
-          "byteSize": 11234
+          "byteSize": 11285
         }
       },
       {
@@ -904,9 +937,9 @@
         "reasons": [
           "lynx-native-input"
         ],
-        "hash": "27718e8fe2b0cf8afbb92820325ec8d7ea265a68f9202c043d95de3101d36162",
+        "hash": "10f44abaaf18dc4d7aaa0c70fa47e2699d56ba1cef93e10b278b537a116fff1c",
         "debugInfo": {
-          "byteSize": 14289
+          "byteSize": 11708
         }
       },
       {
@@ -915,9 +948,9 @@
         "reasons": [
           "lynx-native-input"
         ],
-        "hash": "fc239d6571b3cae9a177e956e5f3130c513672aa74d71eab416a1617b46d97bf",
+        "hash": "d73fce51f99b6163d0b3b44d4c998b93cc7fe91d68323891296ce1a668816afb",
         "debugInfo": {
-          "byteSize": 1957
+          "byteSize": 999
         }
       },
       {
@@ -1014,9 +1047,9 @@
         "reasons": [
           "lynx-native-input"
         ],
-        "hash": "f5dff96a9d8322ce3cf524a32b067fa8ee38d6648b501c9f430a2c77b1e5f27e",
+        "hash": "71c17ef268efc44d66f70bc74b516c9c6b19561cb4bc6081ba56644a7d71a7d6",
         "debugInfo": {
-          "byteSize": 982
+          "byteSize": 1186
         }
       },
       {
@@ -1025,9 +1058,9 @@
         "reasons": [
           "lynx-native-input"
         ],
-        "hash": "ccf4b6952c96221e04f153f483a35c17e55536091e4fd8ba6b879fb53224c59e",
+        "hash": "bc6d0eb2de8d09fbe46a30481175dff1baf40d85f8e384b58913dc70d45144af",
         "debugInfo": {
-          "byteSize": 2043
+          "byteSize": 2195
         }
       }
     ]

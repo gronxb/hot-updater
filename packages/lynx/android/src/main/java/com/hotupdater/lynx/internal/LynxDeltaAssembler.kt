@@ -137,7 +137,7 @@ internal class LynxDeltaAssembler(private val integrity: ArchiveIntegrity, priva
                 if (usablePatch) patch?.byteSize?.let { minOf(it, original ?: it) } else original
             }
             val archive = manifest.optJSONObject("archive")
-            if (!metadataOnly && archive != null && request.archiveUrl != null && missing.size >= 2 && costs.all { it != null }) {
+            if (!metadataOnly && archive != null && request.archiveUrl != null && missing.size >= 2 && costs.all { it != null } && logicalSizes.values.all { it != null }) {
                 val archiveSize = byteSize(archive, "downloadByteSize", ArchiveLimits.MAX_ARCHIVE_BYTES)
                 val tarSize = byteSize(archive, "tarByteSize", ArchiveLimits.MAX_TAR_STREAM_BYTES)
                 val archiveHash = archive.optString("downloadFileHash", "")
@@ -148,7 +148,7 @@ internal class LynxDeltaAssembler(private val integrity: ArchiveIntegrity, priva
                         download(request.archiveUrl, archiveFile, archiveSize)
                         require(archiveFile.length() == archiveSize) { "Archive transfer size mismatch" }
                         verifyHash(archiveFile, archiveHash)
-                        require(StrictArchive.extract(archiveFile, archivePayload, tarSize) == paths) { "Archive inventory differs from manifest" }
+                        StrictArchive.extract(archiveFile, archivePayload, tarSize, logicalSizes.mapValues { checkNotNull(it.value) })
                         var total = manifestFile.length()
                         for (path in paths) {
                             operationContext.ensureActive()
