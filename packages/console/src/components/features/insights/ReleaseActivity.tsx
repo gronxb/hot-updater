@@ -19,7 +19,7 @@ import { useBundleActivityQuery } from "@/lib/bundle-activity";
 import { useConsoleFeature } from "@/lib/console-features-api";
 import { useUpdateFailuresQuery } from "@/lib/insights-api";
 import { failureRate, formatRate } from "@/lib/insights-failures";
-import { adoptionWindow } from "@/lib/insights-search";
+import { downloadsWindow } from "@/lib/insights-search";
 import { cn } from "@/lib/utils";
 
 import type { ReleaseColumn } from "../FeatureSlots";
@@ -228,13 +228,13 @@ export function BundleInsightsSummary({
           search={{
             healthPlatform: input.platform,
             healthChannel: input.channel,
-            releaseId: input.releaseId,
-            bundleWindow: adoptionWindow(input.releaseId),
-            healthChart: "adoption",
+            bundleWindow: downloadsWindow(input.releaseId),
+            healthChart: "downloads",
+            downloadsFocus: input.releaseId,
           }}
         >
           <ChartLine aria-hidden="true" data-icon="inline-start" />
-          View adoption
+          View downloads
         </Link>
       </CardFooter>
     </Card>

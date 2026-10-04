@@ -19,9 +19,10 @@ import {
   useUpdateFailuresQuery,
 } from "@/lib/insights-api";
 import { getRecoveryReportRpc } from "@/lib/insights-recovery-rpc";
-import { validateInsightsSearch } from "@/lib/insights-search";
+import { downloadsIds, validateInsightsSearch } from "@/lib/insights-search";
 import type { AppUsageScope, UsageWindow } from "@/lib/insights-usage";
 import { getAppUsageReportRpc } from "@/lib/insights-usage-rpc";
+import { useReleaseDownloads } from "@/lib/release-downloads-api";
 
 export const Route = createFileRoute("/insights")({
   beforeLoad: ({ context }) =>
@@ -64,6 +65,16 @@ function InsightsPage() {
     staleTime: 30_000,
     // Choosing a bundle or period keeps the card in place while it loads.
     placeholderData: keepPreviousData,
+  });
+  const chart = search.healthChart ?? "share";
+  // The Downloads tab reads only while it is open.
+  const downloads = useReleaseDownloads({
+    platform: bundleInput.platform,
+    channel,
+    window: bundleWindow,
+    releaseIds: downloadsIds(search.downloads),
+    focusReleaseId: search.downloadsFocus,
+    enabled: chart === "downloads",
   });
   const failuresQuery = useUpdateFailuresQuery(bundleInput);
   return (
@@ -111,14 +122,27 @@ function InsightsPage() {
           />
           <InsightsOverview
             input={bundleInput}
-            query={bundleQuery}
-            chart={search.healthChart ?? "share"}
+            query={{
+              ...bundleQuery,
+              isFetching:
+                bundleQuery.isFetching ||
+                (chart === "downloads" && downloads.isFetching),
+            }}
+            chart={chart}
             onChartChange={(healthChart) =>
               void navigate({ search: { ...search, healthChart } })
             }
-            onReleaseChange={(releaseId) =>
-              void navigate({ search: { ...search, releaseId } })
-            }
+            downloads={{
+              ...downloads,
+              onReleasesChange: (ids) =>
+                void navigate({
+                  search: {
+                    ...search,
+                    downloads: ids?.join(","),
+                    downloadsFocus: undefined,
+                  },
+                }),
+            }}
             onWindowChange={(window) =>
               void navigate({
                 search: {
@@ -127,7 +151,10 @@ function InsightsPage() {
                 },
               })
             }
-            onRefresh={() => void bundleQuery.refetch()}
+            onRefresh={() => {
+              void bundleQuery.refetch();
+              if (chart === "downloads") downloads.refresh();
+            }}
           />
           <UpdateFailures
             query={failuresQuery}

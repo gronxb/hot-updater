@@ -537,23 +537,27 @@ reconstructed from the old latest-state distribution.
 
 ![Observed bundle share crossing as a new bundle becomes active](/docs/console/insights-bundle-share.jpg)
 
-## Adoption
+## Downloads by bundle
 
-Release health's **Adoption** tab shows how quickly a bundle spreads after it is
-deployed. Choose it in **Chart bundle**, which lists the releases observed in
-the period, newest deployment first, or open **View adoption** on a bundle's
-Insights card. Choosing a bundle also sets Release health's Release ID, and the
-open tab is kept in the page URL, so a copied link opens the same chart. From a
-bundle, the period is the shortest that covers its deployment: **24h** within a
-day of it, **7d** within a week, and **30d** after that.
+Release health's **Downloads** tab shows whether a new bundle is taking over.
+Each line is one bundle's download reports in each interval of the period, on
+the same timeline as the other charts: hourly for **24h**, every six hours for
+**7d**, and daily for **30d**. A dashed vertical line marks each deployment in
+the period. After a new bundle is deployed, its downloads rise while the bundle
+it replaced stops being downloaded; a rollout to part of the installations
+keeps both. **Bundle share** answers a different question: which bundle
+reporting installations run each day.
 
-The chart shows the bundle's download reports in each interval from the hour
-of deployment, read from the Release ID's UUIDv7 timestamp, and their running
-total. Intervals are hourly for **24h**, six hours for **7d**, and one day for
-**30d**. A bundle deployed before the period counts only the period's
-downloads; the tab then offers the period that covers its deployment.
-Downloads count reports, not distinct installations: an installation that
-downloads the bundle again counts again. The tab reads the hourly counters
-Insights already keeps, so it needs no database migration.
+The tab starts with the two newest bundle deployments of Release health's
+channel and platform. Remove one with its row's **×**, or choose **Add a bundle**
+from the ten newest deployments; up to four bundles compare at once, and **Show
+the newest 2** returns to the default. The table under the chart lists each
+bundle's deployment time and its downloads in the period; hover or focus a row
+to highlight its line. The choice and the open tab are kept in the page URL. **View downloads**
+on a bundle's Insights card opens the tab with that bundle and the one deployed
+before it. Rollbacks to the built-in bundle are not listed, since they have
+nothing to download. Downloads count reports, not distinct installations. The
+tab reads the download counters Insights already keeps, only while it is open,
+and needs no database migration.
 
-![Adoption of a bundle in the hours after its deployment](/docs/console/insights-adoption.jpg)
+![Downloads of a new bundle taking over from the previous one](/docs/console/insights-downloads.jpg)

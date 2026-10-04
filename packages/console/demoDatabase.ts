@@ -1070,7 +1070,34 @@ for (const event of adjustedBundleEvents) {
   await insightsApi.recordEvent(event);
 }
 
-// Downloads after the deploy above, so Adoption has a curve from deployment.
+// Downloads of the two newest iOS production bundles, so the Downloads tab
+// opens on both: the newest taking over, the one before it fading.
+const [demoNewest, demoPrevious] = [...bundles]
+  .filter(
+    (bundle) => bundle.channel === "production" && bundle.platform === "ios",
+  )
+  .sort((left, right) => right.id.localeCompare(left.id));
+for (const [bundle, count] of [
+  [demoPrevious, 3],
+  [demoNewest, 8],
+] as const) {
+  if (bundle === undefined) continue;
+  for (let installation = 0; installation < count; installation += 1) {
+    await insightsApi.recordEvent({
+      ...downloadDemo,
+      id: `019f635e-eeed-7${bundle === demoNewest ? "1" : "0"}00-8000-${String(installation).padStart(12, "0")}`,
+      type: "UPDATE_DOWNLOADED",
+      install_id: `demo-downloads-${bundle.id}-${installation}`,
+      from_release_id: null,
+      from_bundle_id: "00000000-0000-0000-0000-000000000000",
+      to_release_id: releaseIdByBundle.get(bundle.id) ?? null,
+      to_bundle_id: bundle.id,
+      metadata: { ...downloadDemo.metadata, delivery: "archive" },
+      received_at_ms: Date.now() + installation,
+    });
+  }
+}
+// Downloads of patch B after its deploy.
 const adoptionDemoNow = Date.now();
 for (let installation = 0; installation < 6; installation += 1) {
   await insightsApi.recordEvent({

@@ -583,6 +583,28 @@ const READ_BUDGETS: readonly ReadBudget[] = [
     check: ({ data }) => expect(data[0]!.metrics.launches).toBe(25),
   }),
   budget({
+    api: "release downloads in intervals: the release's counter rows alone",
+    // The release's hour rows in the window, counters only: 6 hour rows
+    // over 25 shard rows. A read in intervals reads no sketches and leaves
+    // out unique users.
+    read: ({ insights }) =>
+      insights.getReleaseActivity({
+        releases: [
+          { releaseId: "release-b", platform: "ios", channel: "production" },
+        ],
+        timeRange: { start: T0, end: T0 + 3 * DAY },
+        intervalMs: DAY,
+      }),
+    adapter: reads(0, 0, 1, 25),
+    engine: { calls: 1, rows: 6 },
+    check: ({ data }) => {
+      expect(data[0]!.metrics.uniqueUsers).toBeUndefined();
+      expect(data[0]!.metrics.series?.map((point) => point.launches)).toEqual([
+        24, 0, 1,
+      ]);
+    },
+  }),
+  budget({
     api: "app usage: nonzero distribution and usage-sketch rows in the window, all used",
     // Every platform merges the iOS and Android usage sketches: iOS's of days
     // 0 and 2 (14 shards and 1). The iOS latest events of days 0 and 2 (14

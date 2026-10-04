@@ -544,9 +544,13 @@ const rangedMetrics = async (
   hour: number,
   intervalMs?: number,
 ): Promise<ReleaseActivityMetrics> => {
+  // A series read in intervals charts counters only: it reads no sketches,
+  // the largest rows, and leaves out unique users.
   const [counters, sketches] = await Promise.all([
     counterRows(db, parts, range, days, hour),
-    sketchRows(db, users.parts, range, days, hour),
+    intervalMs === undefined
+      ? sketchRows(db, users.parts, range, days, hour)
+      : undefined,
   ]);
   const series = new Map<number, SeriesPoint>();
   if (intervalMs !== undefined)
@@ -574,9 +578,13 @@ const rangedMetrics = async (
     downloads: total("downloads"),
     launches: total("launches"),
     failedLaunches: total("failed_launches"),
-    uniqueUsers: countDistinct(
-      mergeDistinct(sketches.map((row) => row[users.field])),
-    ),
+    ...(sketches === undefined
+      ? {}
+      : {
+          uniqueUsers: countDistinct(
+            mergeDistinct(sketches.map((row) => row[users.field])),
+          ),
+        }),
     series: [...series]
       .sort(([left], [right]) => left - right)
       .map(([startMs, point]) => ({ startMs, ...point })),

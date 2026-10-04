@@ -339,6 +339,28 @@ describe("insights read budgets", () => {
       "insights_sketches_daily",
     ]);
 
+    // A release charted in intervals reads its counters alone: no sketches.
+    const charted = await read(() =>
+      api.getReleaseActivity({
+        releases: [
+          { releaseId: "release-b", platform: "ios", channel: "production" },
+        ],
+        timeRange: { start: T0, end: T0 + 3 * DAY },
+        intervalMs: DAY,
+      }),
+    );
+    expect(charted.result.data[0]!.metrics).toEqual({
+      downloads: 0,
+      launches: 25,
+      failedLaunches: 0,
+      series: [
+        { startMs: T0, downloads: 0, launches: 24, failedLaunches: 0 },
+        { startMs: T0 + DAY, downloads: 0, launches: 0, failedLaunches: 0 },
+        { startMs: T0 + 2 * DAY, downloads: 0, launches: 1, failedLaunches: 0 },
+      ],
+    });
+    expect(Object.keys(charted.tables)).toEqual(["insights_overview"]);
+
     const usage = await read(() =>
       api.getAppUsage({
         channel: "production",
