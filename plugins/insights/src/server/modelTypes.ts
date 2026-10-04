@@ -89,7 +89,10 @@ export interface ReleaseActivityMetrics {
   readonly downloads: number;
   readonly launches: number;
   readonly failedLaunches: number;
-  /** Omitted for lifetime-only bundle-row reads. */
+  /**
+   * Omitted for lifetime-only bundle-row reads, and for release reads in
+   * `intervalMs` intervals, which read counters only.
+   */
   readonly uniqueUsers?: number;
   /**
    * Points of each UTC day, or of each `intervalMs` from the period's start
@@ -110,7 +113,8 @@ export type InsightsGetReleaseActivityInput =
       /**
        * Whole hours each series point spans, from `timeRange.start`, with
        * every point present; omitted, the series has a point per UTC day
-       * with reports. Only with a `timeRange`.
+       * with reports. Only with a `timeRange`. A read in intervals reads
+       * counters only, so its metrics leave out `uniqueUsers`.
        */
       readonly intervalMs?: number;
       readonly scope?: never;

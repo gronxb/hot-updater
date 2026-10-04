@@ -32,7 +32,10 @@ import { EstimatedCount } from "./EstimatedCount";
 import { InsightsErrorAlert } from "./InsightsErrorAlert";
 import { InsightsInfo } from "./InsightsInfo";
 import { InsightsPeriodSelector } from "./InsightsPeriodSelector";
-import { ReleaseAdoptionChart } from "./ReleaseAdoptionChart";
+import {
+  type ReleaseDownloadsProps,
+  ReleaseDownloadsChart,
+} from "./ReleaseDownloadsChart";
 
 const dates = new Intl.DateTimeFormat("en", {
   month: "short",
@@ -50,19 +53,17 @@ const rate = (report: RecoveryReport): string => {
 function ReleaseHealth({
   report,
   releaseId,
-  window,
   chart,
   onChartChange,
-  onReleaseChange,
+  downloads,
   onWindowChange,
 }: {
   readonly report: RecoveryReport;
   readonly releaseId?: string;
-  readonly window: RecoveryInput["window"];
   readonly onWindowChange: (window: RecoveryInput["window"]) => void;
   readonly chart: HealthChart;
   readonly onChartChange: (chart: HealthChart) => void;
-  readonly onReleaseChange: (releaseId: string) => void;
+  readonly downloads: ReleaseDownloadsProps;
 }) {
   const attempts = report.activeDays + report.failedLaunches;
   const activeInstallations = (
@@ -118,8 +119,8 @@ function ReleaseHealth({
           <TabsTrigger value="share" className="px-3">
             Bundle share
           </TabsTrigger>
-          <TabsTrigger value="adoption" className="px-3">
-            Adoption
+          <TabsTrigger value="downloads" className="px-3">
+            Downloads
           </TabsTrigger>
           <TabsTrigger value="failures" className="px-3">
             Launch failures
@@ -131,12 +132,9 @@ function ReleaseHealth({
             releaseId={releaseId}
           />
         </TabsContent>
-        <TabsContent value="adoption">
-          <ReleaseAdoptionChart
-            report={report}
-            releaseId={releaseId}
-            window={window}
-            onReleaseChange={onReleaseChange}
+        <TabsContent value="downloads">
+          <ReleaseDownloadsChart
+            {...downloads}
             onWindowChange={onWindowChange}
           />
         </TabsContent>
@@ -205,13 +203,13 @@ export function InsightsOverview({
   onRefresh,
   chart,
   onChartChange,
-  onReleaseChange,
+  downloads,
 }: {
   readonly input: RecoveryInput;
   readonly chart: HealthChart;
   readonly onChartChange: (chart: HealthChart) => void;
-  /** Chooses the Release health release, as the Release ID filter does. */
-  readonly onReleaseChange: (releaseId: string) => void;
+  /** The Downloads tab's bundles and their report. */
+  readonly downloads: ReleaseDownloadsProps;
   readonly query: {
     readonly data: RecoveryReport | undefined;
     readonly error: Error | null;
@@ -259,11 +257,10 @@ export function InsightsOverview({
             <ReleaseHealth
               report={query.data}
               releaseId={input.releaseId}
-              window={input.window}
               onWindowChange={onWindowChange}
               chart={chart}
               onChartChange={onChartChange}
-              onReleaseChange={onReleaseChange}
+              downloads={downloads}
             />
           ) : null}
         </CardContent>

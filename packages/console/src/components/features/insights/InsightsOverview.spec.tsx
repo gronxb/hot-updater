@@ -1,17 +1,82 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  within,
+} from "@testing-library/react";
 import { type ComponentProps, type ReactNode, useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { RecoveryReport } from "@/lib/insights-recovery";
+import type { DownloadsRelease } from "@/lib/release-downloads";
 
 import { InsightsOverview as Overview } from "./InsightsOverview";
+import type { ReleaseDownloadsProps } from "./ReleaseDownloadsChart";
+
+const HOUR = 3_600_000;
+const release = (
+  releaseId: string,
+  deployedAtMs: number,
+  message: string | null,
+): DownloadsRelease => ({
+  releaseId,
+  deployedAtMs,
+  message,
+  targetAppVersion: "1.2.0",
+});
+const newest = release("release-b", 20 * HOUR + 15 * 60_000, "Fix checkout");
+const previous = release("release-a", 2 * HOUR, null);
+const oldest = release("release-old", HOUR, "First release");
+/** Downloads per hour of the period [6h, 30h), from the given hour on. */
+const seriesOf = (releaseId: string, perHour: (hour: number) => number) => {
+  const points = Array.from({ length: 24 }, (_, index) => ({
+    startMs: (6 + index) * HOUR,
+    downloads: perHour(6 + index),
+  }));
+  return {
+    releaseId,
+    measuredAtMs: 30 * HOUR - 30 * 60_000,
+    coverage: { kind: "complete" as const, sinceMs: 0 },
+    points,
+    totalDownloads: points.reduce((sum, point) => sum + point.downloads, 0),
+  };
+};
+const downloads: ReleaseDownloadsProps = {
+  period: {
+    startMs: 6 * HOUR,
+    endMs: 30 * HOUR,
+    durationMs: 24 * HOUR,
+    intervalMs: HOUR,
+  },
+  candidates: [newest, previous, oldest],
+  // The new bundle takes over: its downloads start, the previous one's stop.
+  releases: [
+    {
+      release: newest,
+      series: seriesOf("release-b", (hour) => (hour >= 20 ? 3 : 0)),
+      error: null,
+    },
+    {
+      release: previous,
+      series: seriesOf("release-a", (hour) => (hour < 20 ? 1 : 0)),
+      error: null,
+    },
+  ],
+  isDefault: true,
+  error: null,
+  onReleasesChange: vi.fn(),
+};
 
 /** The card with its chart tab kept in state, as the route keeps it in the URL. */
 function InsightsOverview(
   props: Omit<
     ComponentProps<typeof Overview>,
-    "chart" | "onChartChange" | "onReleaseChange"
-  > & { readonly onReleaseChange?: (releaseId: string) => void },
+    "chart" | "onChartChange" | "downloads"
+  > & {
+    readonly downloads?: Partial<ComponentProps<typeof Overview>["downloads"]>;
+  },
 ) {
   const [chart, setChart] =
     useState<ComponentProps<typeof Overview>["chart"]>("share");
@@ -20,7 +85,7 @@ function InsightsOverview(
       {...props}
       chart={chart}
       onChartChange={setChart}
-      onReleaseChange={props.onReleaseChange ?? vi.fn()}
+      downloads={{ ...downloads, ...props.downloads }}
     />
   );
 }
@@ -52,7 +117,6 @@ const report: RecoveryReport = {
   activeDays: 20,
   failedLaunches: 2,
   points: [{ startMs: 0, dailyActiveInstallations: 20, failedLaunches: 2 }],
-  adoption: null,
   startMs: 0,
   endMs: 86_400_000,
   measuredAtMs: 86_400_000,
@@ -124,15 +188,14 @@ describe("Release health", () => {
     expect(screen.getByText("No launch reports in this period.")).toBeDefined();
   });
 
-  it("asks for a bundle, then shows its cumulative downloads from deployment", () => {
-    const hour = 3_600_000;
-    const onReleaseChange = vi.fn();
+  it("charts the newest bundles on the period's timeline, and adds, removes, and resets them", async () => {
+    const onReleasesChange = vi.fn();
     const { rerender } = render(
       <InsightsOverview
         input={input}
         onWindowChange={vi.fn()}
         onRefresh={vi.fn()}
-        onReleaseChange={onReleaseChange}
+        downloads={{ onReleasesChange }}
         query={{
           data: report,
           error: null,
@@ -141,79 +204,150 @@ describe("Release health", () => {
         }}
       />,
     );
-    fireEvent.click(screen.getByRole("tab", { name: "Adoption" }));
-    expect(screen.getByText("Choose a bundle to chart")).toBeDefined();
+    fireEvent.click(screen.getByRole("tab", { name: "Downloads" }));
     expect(
-      screen.getByRole("combobox", { name: "Chart bundle" }),
+      screen.getByLabelText("Downloads of each bundle per interval"),
     ).toBeDefined();
-    // The observed release is one click away.
+    expect(screen.getByText("Hourly · last 24 hours · UTC")).toBeDefined();
+    const table = screen.getByRole("table", { name: "Compared bundles" });
+    const rows = within(table).getAllByRole("row").slice(1);
+    // The newest first; its message names it, an ID names one without.
+    expect(rows.map((row) => row.textContent)).toEqual([
+      "Fix checkoutDeployed Jan 1, 20:15 UTC · 1.2.030",
+      "release-…se-aDeployed Jan 1, 02:00 UTC · 1.2.014",
+    ]);
+    // The newest bundles need no reset.
+    expect(
+      screen.queryByRole("button", { name: "Show the newest 2" }),
+    ).toBeNull();
+
     fireEvent.click(
-      screen.getByRole("button", { name: "Chart newest bundle" }),
+      screen.getByRole("button", { name: "Remove Fix checkout" }),
     );
-    expect(onReleaseChange).toHaveBeenCalledWith("release-a");
+    expect(onReleasesChange).toHaveBeenLastCalledWith(["release-a"]);
+
+    fireEvent.click(screen.getByRole("combobox", { name: "Add a bundle" }));
+    const option = await screen.findByRole("option", {
+      name: "First release · Jan 1, 01:00 UTC",
+    });
+    await act(async () => {
+      fireEvent.pointerDown(option);
+      fireEvent.click(option);
+    });
+    expect(onReleasesChange).toHaveBeenLastCalledWith([
+      "release-b",
+      "release-a",
+      "release-old",
+    ]);
+
     rerender(
       <InsightsOverview
-        input={{ ...input, releaseId: "release-a" }}
+        input={input}
         onWindowChange={vi.fn()}
         onRefresh={vi.fn()}
+        downloads={{ onReleasesChange, isDefault: false }}
         query={{
-          data: {
-            ...report,
-            adoption: {
-              deployedAtMs: 13 * hour + 20 * 60_000,
-              intervalMs: 6 * hour,
-              points: [
-                { startMs: 13 * hour, downloads: 4, totalDownloads: 4 },
-                { startMs: 19 * hour, downloads: 2, totalDownloads: 6 },
-              ],
-            },
-          },
+          data: report,
           error: null,
           isPending: false,
           isFetching: false,
         }}
       />,
     );
-    expect(
-      screen.getByLabelText("Cumulative downloads of the chosen bundle"),
-    ).toBeDefined();
-    expect(screen.getByText("downloads since deployment")).toBeDefined();
-    expect(
-      screen.getByText("downloads since deployment").previousSibling
-        ?.textContent,
-    ).toBe("6");
-    expect(screen.getByText("Deployed Jan 1, 13:20 UTC")).toBeDefined();
+    fireEvent.click(screen.getByRole("button", { name: "Show the newest 2" }));
+    expect(onReleasesChange).toHaveBeenLastCalledWith(undefined);
   });
 
-  it("offers the period that covers a release deployed before this one", () => {
-    const day = 86_400_000;
+  it("stops adding at four bundles", () => {
+    const more = [3, 4].map((index) => ({
+      release: release(`release-${index}`, index * HOUR, null),
+      series: seriesOf(`release-${index}`, () => 0),
+      error: null,
+    }));
+    render(
+      <InsightsOverview
+        input={input}
+        onWindowChange={vi.fn()}
+        onRefresh={vi.fn()}
+        downloads={{ releases: [...downloads.releases!, ...more] }}
+        query={{
+          data: report,
+          error: null,
+          isPending: false,
+          isFetching: false,
+        }}
+      />,
+    );
+    fireEvent.click(screen.getByRole("tab", { name: "Downloads" }));
+    const add = screen.getByRole("combobox", { name: "Add a bundle" });
+    expect(add.textContent).toContain("Up to 4 bundles");
+    expect(
+      add.hasAttribute("disabled") ||
+        add.getAttribute("data-disabled") !== null,
+    ).toBe(true);
+  });
+
+  it("offers a longer period when the bundles have no downloads in this one", () => {
     const onWindowChange = vi.fn();
     render(
       <InsightsOverview
-        input={{ ...input, window: "24h", releaseId: "release-a" }}
+        input={{ ...input, window: "24h" }}
         onWindowChange={onWindowChange}
         onRefresh={vi.fn()}
+        downloads={{
+          releases: downloads.releases!.map((entry) => ({
+            ...entry,
+            series: seriesOf(entry.release.releaseId, () => 0),
+          })),
+        }}
         query={{
-          data: {
-            ...report,
-            startMs: 9 * day,
-            endMs: 10 * day,
-            measuredAtMs: 10 * day,
-            adoption: { deployedAtMs: null, intervalMs: day / 24, points: [] },
-          },
+          data: report,
           error: null,
           isPending: false,
           isFetching: false,
         }}
       />,
     );
-    fireEvent.click(screen.getByRole("tab", { name: "Adoption" }));
+    fireEvent.click(screen.getByRole("tab", { name: "Downloads" }));
     expect(
-      screen.getByText("No downloads of this bundle in this period"),
+      screen.getByText("No downloads of these bundles in the last 24 hours"),
     ).toBeDefined();
-    // "release-a" is no UUIDv7, so 7 days is the period offered.
     fireEvent.click(screen.getByRole("button", { name: "Show 7 days" }));
     expect(onWindowChange).toHaveBeenCalledWith("7d");
+  });
+
+  it("says when the scope has no bundle deployments, and loads before it knows", () => {
+    const { rerender } = render(
+      <InsightsOverview
+        input={input}
+        onWindowChange={vi.fn()}
+        onRefresh={vi.fn()}
+        downloads={{ releases: undefined, candidates: undefined }}
+        query={{
+          data: report,
+          error: null,
+          isPending: false,
+          isFetching: false,
+        }}
+      />,
+    );
+    fireEvent.click(screen.getByRole("tab", { name: "Downloads" }));
+    expect(screen.getByLabelText("Loading downloads")).toBeDefined();
+    rerender(
+      <InsightsOverview
+        input={input}
+        onWindowChange={vi.fn()}
+        onRefresh={vi.fn()}
+        downloads={{ releases: [], candidates: [] }}
+        query={{
+          data: report,
+          error: null,
+          isPending: false,
+          isFetching: false,
+        }}
+      />,
+    );
+    expect(screen.getByText("No bundles deployed here yet")).toBeDefined();
   });
 
   it("keeps only the report period and refresh actions in the card", () => {

@@ -57,7 +57,7 @@ describe("release Insights sections", () => {
     expect(useUpdateFailuresQuery).toHaveBeenCalledWith(input);
   });
 
-  it("opens the release's adoption over the period that covers its deployment", () => {
+  it("compares the release's downloads with the newest over the period that covers its deployment", () => {
     const hour = 3_600_000;
     vi.useFakeTimers({ now: 30 * 86_400_000 });
     // Deployed 5 hours ago, so the 24h period covers it.
@@ -68,15 +68,17 @@ describe("release Insights sections", () => {
     render(<BundleInsightsSummary input={{ ...input, releaseId }} />);
     vi.useRealTimers();
     const search = new URL(
-      screen.getByRole("link", { name: "View adoption" }).getAttribute("href")!,
+      screen
+        .getByRole("link", { name: "View downloads" })
+        .getAttribute("href")!,
       "http://console",
     ).searchParams;
     expect(Object.fromEntries(search)).toEqual({
       healthPlatform: "ios",
       healthChannel: "production",
-      releaseId,
       bundleWindow: "24h",
-      healthChart: "adoption",
+      healthChart: "downloads",
+      downloadsFocus: releaseId,
     });
   });
 

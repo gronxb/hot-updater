@@ -16,10 +16,16 @@ import type { AppUsageInput, AppUsageReport } from "@/lib/insights-usage";
 const mocks = vi.hoisted(() => ({
   usage: vi.fn(),
   bundles: vi.fn(),
+  downloadsReleases: vi.fn(),
+  downloadsRelease: vi.fn(),
+  downloads: vi.fn(),
   navigate: vi.fn(),
 }));
 vi.mock("@/lib/insights-recovery-rpc", () => ({
   getRecoveryReportRpc: mocks.bundles,
+  listDownloadsReleasesRpc: mocks.downloadsReleases,
+  getDownloadsReleaseRpc: mocks.downloadsRelease,
+  getReleaseDownloadsRpc: mocks.downloads,
 }));
 vi.mock("@/lib/insights-usage-rpc", () => ({
   getAppUsageReportRpc: mocks.usage,
@@ -102,7 +108,6 @@ function renderPage(
     },
     failedLaunches: 1,
     points: [{ startMs: 0, dailyActiveInstallations: 12, failedLaunches: 1 }],
-    adoption: null,
     startMs: 0,
     endMs: 7_200_000,
     measuredAtMs: 7_200_000,
@@ -312,84 +317,153 @@ describe("Insights dashboard", () => {
     ).toBe("5 installations, 100.0%");
   });
 
-  it("charts a bundle's adoption from the Adoption tab without leaving the card", async () => {
-    const releaseId = "01a10266-43e1-722b-b58f-2a3a302e4e81";
-    const deployedAtMs = Number.parseInt("01a1026643e1", 16);
+  it("compares the newest bundles in the Downloads tab, reading each bundle once", async () => {
+    const HOUR = 3_600_000;
+    const release = (releaseId: string, deployedAtMs: number) => ({
+      releaseId,
+      deployedAtMs,
+      message: null,
+      targetAppVersion: "1.0.0",
+    });
     mocks.usage.mockImplementation(async ({ data }: { data: AppUsageInput }) =>
       reportFor(data),
     );
-    renderPage(async ({ data }) => ({
-      downloads: 8,
-      activeInstallations: 5,
-      activeDays: 12,
-      distribution: {
+    mocks.downloadsReleases.mockResolvedValue([
+      release("release-new", 10 * HOUR),
+      release("release-old", 2 * HOUR),
+      release("release-oldest", HOUR),
+    ]);
+    mocks.downloads.mockImplementation(
+      async ({ data }: { data: { releaseId: string; endMs: number } }) => ({
+        releaseId: data.releaseId,
+        measuredAtMs: data.endMs,
         coverage: { kind: "complete", sinceMs: 0 },
-        measuredAtMs: deployedAtMs + 7_200_000,
-        points: [
-          {
-            startMs: 0,
-            bundles: [
-              {
-                appVersion: "1.0.0",
-                releaseId,
-                bundleKind: "release",
-                installations: 5,
-              },
-            ],
-          },
-        ],
-      },
-      failedLaunches: 1,
-      points: [],
-      adoption:
-        data.releaseId === undefined
-          ? null
-          : {
-              deployedAtMs,
-              intervalMs: 3_600_000,
-              points: [
-                {
-                  startMs: deployedAtMs - (deployedAtMs % 3_600_000),
-                  downloads: 8,
-                  totalDownloads: 8,
-                },
-              ],
-            },
-      startMs: deployedAtMs - 86_400_000,
-      endMs: deployedAtMs + 7_200_000,
-      measuredAtMs: deployedAtMs + 7_200_000,
-      coverage: { kind: "complete", sinceMs: 0 },
-    }));
-    fireEvent.click(await screen.findByRole("tab", { name: "Adoption" }));
-    expect(mocks.navigate).toHaveBeenLastCalledWith({
-      search: { healthChart: "adoption" },
-    });
-    await selectOption(
-      "Chart bundle",
-      `01a10266…4e81 · ${new Intl.DateTimeFormat("en", {
-        month: "short",
-        day: "numeric",
-        hour: "2-digit",
-        minute: "2-digit",
-        hourCycle: "h23",
-        timeZone: "UTC",
-      }).format(deployedAtMs)} UTC`,
+        points: [{ startMs: data.endMs - 6 * HOUR, downloads: 3 }],
+        totalDownloads: 3,
+      }),
     );
+    renderPage();
+    // Nothing reads downloads until the tab opens.
+    await screen.findByRole("tab", { name: "Downloads" });
+    expect(mocks.downloadsReleases).not.toHaveBeenCalled();
+    expect(mocks.downloads).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("tab", { name: "Downloads" }));
     expect(mocks.navigate).toHaveBeenLastCalledWith({
-      search: { healthChart: "adoption", releaseId },
+      search: { healthChart: "downloads" },
     });
+    const table = await screen.findByRole("table", {
+      name: "Compared bundles",
+    });
+    await waitFor(() =>
+      expect(within(table).getAllByRole("row")).toHaveLength(3),
+    );
+    expect(mocks.downloadsReleases).toHaveBeenCalledExactlyOnceWith({
+      data: { platform: "ios", channel: "production" },
+    });
+    // The newest two, over the same hours.
     expect(
-      await screen.findByLabelText("Cumulative downloads of the chosen bundle"),
-    ).toBeDefined();
-    expect(mocks.bundles).toHaveBeenLastCalledWith({
-      data: expect.objectContaining({ releaseId }),
+      mocks.downloads.mock.calls.map(([{ data }]) => [
+        data.releaseId,
+        data.window,
+      ]),
+    ).toEqual([
+      ["release-new", "7d"],
+      ["release-old", "7d"],
+    ]);
+    const [first, second] = mocks.downloads.mock.calls.map(
+      ([{ data }]) => data.endMs,
+    );
+    expect(first).toBe(second);
+
+    await selectOption("Add a bundle", "release-…dest · Jan 1, 01:00 UTC");
+    expect(mocks.navigate).toHaveBeenLastCalledWith({
+      search: {
+        healthChart: "downloads",
+        downloads: "release-new,release-old,release-oldest",
+        downloadsFocus: undefined,
+      },
     });
-    // The tab stays on Adoption while the chosen bundle's report loads.
+    await waitFor(() =>
+      expect(
+        within(
+          screen.getByRole("table", { name: "Compared bundles" }),
+        ).getAllByRole("row"),
+      ).toHaveLength(4),
+    );
+    // Adding a bundle reads only it; the bundle list is not read again.
+    expect(mocks.downloads).toHaveBeenCalledTimes(3);
+    expect(mocks.downloads).toHaveBeenLastCalledWith({
+      data: expect.objectContaining({ releaseId: "release-oldest" }),
+    });
+    expect(mocks.downloadsReleases).toHaveBeenCalledOnce();
     expect(
       screen
-        .getByRole("tab", { name: "Adoption" })
+        .getByRole("tab", { name: "Downloads" })
         .getAttribute("aria-selected"),
     ).toBe("true");
+  });
+
+  it("opens a bundle with the one deployed before it, reading past the newest only when needed", async () => {
+    const HOUR = 3_600_000;
+    const release = (releaseId: string, deployedAtMs: number) => ({
+      releaseId,
+      deployedAtMs,
+      message: null,
+      targetAppVersion: "1.0.0",
+    });
+    mocks.usage.mockImplementation(async ({ data }: { data: AppUsageInput }) =>
+      reportFor(data),
+    );
+    mocks.downloadsReleases.mockResolvedValue([
+      release("release-new", 10 * HOUR),
+      release("release-old", 2 * HOUR),
+      release("release-oldest", HOUR),
+    ]);
+    mocks.downloadsRelease.mockResolvedValue({
+      release: release("release-far", HOUR / 2),
+      previous: release("release-before-far", HOUR / 4),
+    });
+    mocks.downloads.mockImplementation(
+      async ({ data }: { data: { releaseId: string; endMs: number } }) => ({
+        releaseId: data.releaseId,
+        measuredAtMs: data.endMs,
+        coverage: { kind: "complete", sinceMs: 0 },
+        points: [],
+        totalDownloads: 0,
+      }),
+    );
+    renderPage();
+    await screen.findByRole("tab", { name: "Downloads" });
+    // As View downloads on a bundle's Insights card links it.
+    act(() =>
+      mocks.navigate({
+        search: { healthChart: "downloads", downloadsFocus: "release-old" },
+      }),
+    );
+    const charted = () =>
+      mocks.downloads.mock.calls.map(([{ data }]) => data.releaseId);
+    await waitFor(() =>
+      expect(charted()).toEqual(["release-old", "release-oldest"]),
+    );
+    // Both among the newest: nothing more to read.
+    expect(mocks.downloadsRelease).not.toHaveBeenCalled();
+
+    act(() =>
+      mocks.navigate({
+        search: { healthChart: "downloads", downloadsFocus: "release-far" },
+      }),
+    );
+    await waitFor(() =>
+      expect(charted().slice(2)).toEqual(["release-far", "release-before-far"]),
+    );
+    expect(mocks.downloadsRelease).toHaveBeenCalledExactlyOnceWith({
+      data: {
+        platform: "ios",
+        channel: "production",
+        releaseId: "release-far",
+        withPrevious: true,
+      },
+    });
   });
 
   it("names the UTC day the distribution counts latest reports from", async () => {
