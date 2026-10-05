@@ -35,7 +35,7 @@ export async function terminateApp(
     if (
       target.platform === "ios" &&
       /domain=NSPOSIXErrorDomain, code=3\b/.test(stderr) &&
-      /No such process/i.test(stderr)
+      /\b(?:No such process|found nothing to terminate)\b/i.test(stderr)
     )
       return;
     throw error;
