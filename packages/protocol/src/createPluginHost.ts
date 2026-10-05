@@ -139,10 +139,11 @@ export const createPluginHost = (
     const abortFromCaller = () => controller.abort();
     if (callerSignal?.aborted) controller.abort();
     callerSignal?.addEventListener("abort", abortFromCaller);
-    const timeoutId = setTimeout(
-      () => controller.abort(),
-      requestTimeout ?? 5000,
-    );
+    let timedOut = false;
+    const timeoutId = setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, requestTimeout ?? 5000);
 
     try {
       return await environment.fetch(url, {
@@ -151,10 +152,11 @@ export const createPluginHost = (
         signal: controller.signal,
       });
     } catch (error: unknown) {
+      // Whatever the fetch rejects with once the timeout aborts it: an
+      // AbortError, or Expo's "fetch failed: FetchRequestCanceledException".
       if (
-        error instanceof Error &&
-        error.name === "AbortError" &&
-        !callerSignal?.aborted
+        !callerSignal?.aborted &&
+        (timedOut || (error instanceof Error && error.name === "AbortError"))
       ) {
         throw new Error("Request timed out");
       }

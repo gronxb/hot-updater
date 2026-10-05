@@ -1,5 +1,13 @@
 # @hot-updater/mock
 
+## 1.0.0-rc.29
+
+### Patch Changes
+
+- Updated dependencies [384a5b6]
+  - @hot-updater/protocol@1.0.0-rc.29
+  - @hot-updater/plugin-core@1.0.0-rc.29
+
 ## 1.0.0-rc.28
 
 ### Patch Changes

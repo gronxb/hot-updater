@@ -107,31 +107,19 @@ describe("published agent infrastructure commands", () => {
           "app/provision-client-credential.mjs",
           "app/verify-server.mjs",
         ]);
-        // Preserve the initial migration and apply the additive Insights upgrade.
+        // A migration tool applies the package's migration, which holds
+        // core's tables and those of the prebuilt server's plugins.
         const migrations = Object.keys(manifest.files).filter((file) =>
           /migrations\/[^/]+\.sql$/u.test(file),
         );
         if (provider === "cloudflare" || provider === "supabase") {
-          expect(migrations.map((file) => path.basename(file)).sort()).toEqual(
-            provider === "cloudflare"
-              ? [
-                  "0001_hot-updater_1.0.0.sql",
-                  "0002_hot-updater_1.0.0-rc.30.sql",
-                ]
-              : [
-                  "20260818000000_hot-updater_1.0.0.sql",
-                  "20261003000000_hot-updater_1.0.0-rc.30.sql",
-                ],
-          );
+          expect(migrations).toHaveLength(1);
           const sql = await readFile(
-            path.join(result.data.output, migrations.sort().at(-1)!),
+            path.join(result.data.output, migrations[0]!),
             "utf8",
           );
           expect(sql).toContain("schema.insights");
           expect(sql).toContain("schema.apiKeys");
-          expect(sql).toContain("bundle_daily_heads");
-          expect(sql).toContain("insights_distribution_history");
-          expect(sql).toContain("1.3.0");
         } else {
           expect(migrations).toEqual([]);
         }

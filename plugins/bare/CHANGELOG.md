@@ -1,5 +1,26 @@
 # @hot-updater/bare
 
+## 1.0.0-rc.32
+
+### Patch Changes
+
+- @hot-updater/cli-tools@1.0.0-rc.32
+  - @hot-updater/plugin-core@1.0.0-rc.29
+
+## 1.0.0-rc.31
+
+### Patch Changes
+
+- @hot-updater/cli-tools@1.0.0-rc.31
+  - @hot-updater/plugin-core@1.0.0-rc.28
+
+## 1.0.0-rc.30
+
+### Patch Changes
+
+- @hot-updater/cli-tools@1.0.0-rc.30
+  - @hot-updater/plugin-core@1.0.0-rc.28
+
 ## 1.0.0-rc.29
 
 ### Patch Changes

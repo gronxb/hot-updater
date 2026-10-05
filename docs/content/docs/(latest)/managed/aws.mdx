@@ -234,8 +234,8 @@ Lambda@Edge. Apps send reports only with the
 [Insights client plugin](/docs/react-native-api/insights): at most one launch
 report a UTC day per installation while nothing changes, plus downloads,
 applies, recoveries, and update failures. An app without the plugin sends
-none. A report the server records is one DynamoDB transaction of 15 to
-30 items, 40 to 66 write request units: the installation's latest-report row,
+none. A report the server records is one DynamoDB transaction of 11 to
+27 items, 30 to 58 write request units: the installation's latest-report row,
 the aggregate counters, sketches, and gauges it changes, and, for a download,
 apply, or recovery, the event with its index copies. A launch that repeats the
 installation's latest report on the same UTC day writes nothing; see

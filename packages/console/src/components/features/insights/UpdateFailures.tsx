@@ -218,7 +218,7 @@ function Recoveries({
         className="flex items-center gap-1 text-sm font-medium"
         id="recoveries-by-exit-reason"
       >
-        Recoveries by exit reason
+        Crashes by exit reason
         <InsightsInfo label="About exit reasons">
           Why the crashed process exited, as Android 11 and later report it: a
           crash, an ANR, or the system or the user closing the app. iOS and
@@ -227,7 +227,7 @@ function Recoveries({
       </h3>
       {reasons.length === 0 ? (
         <p className="text-sm text-muted-foreground">
-          No recoveries in this period.
+          No crashes in this period.
         </p>
       ) : (
         <ul className="flex flex-col gap-1 text-sm">

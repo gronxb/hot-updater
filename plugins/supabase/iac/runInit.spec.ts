@@ -210,28 +210,17 @@ describe("Supabase init", () => {
     await expect(fs.access(path.join(root, ".hot-updater"))).rejects.toThrow();
   });
 
-  it("pushes the package migrations, including the additive Insights upgrade", async () => {
+  it("pushes the package's migration alone, which holds the managed plugins' tables", async () => {
     root = await project();
 
     await runInit({ build: "bare", envFile: ".env.hotupdater" });
 
-    const directory = path.resolve(
-      import.meta.dirname,
-      "../supabase/migrations",
-    );
-    const files = (await fs.readdir(directory)).filter((file) =>
-      file.endsWith(".sql"),
-    );
-    expect(deployed.migrations).toEqual(
-      Object.fromEntries(
-        await Promise.all(
-          files.map(async (file) => [
-            file,
-            await fs.readFile(path.join(directory, file), "utf8"),
-          ]),
-        ),
+    expect(deployed.migrations).toEqual({
+      [MIGRATION]: await fs.readFile(
+        path.resolve(import.meta.dirname, "../supabase/migrations", MIGRATION),
+        "utf-8",
       ),
-    );
+    });
     expect(deployed.migrations![MIGRATION]).toContain("'schema.insights'");
     expect(deployed.migrations![MIGRATION]).toContain("'schema.apiKeys'");
   });

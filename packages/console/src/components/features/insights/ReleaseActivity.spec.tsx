@@ -1,4 +1,5 @@
 import { cleanup, render, screen } from "@testing-library/react";
+import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { BundleActivityReport } from "@/lib/bundle-activity";
@@ -8,6 +9,16 @@ import {
   BundleMovementSummary,
   ReleaseFailuresSection,
 } from "./ReleaseActivity";
+
+vi.mock("@tanstack/react-router", () => ({
+  Link: ({
+    children,
+    search,
+  }: {
+    children: ReactNode;
+    search: Record<string, string>;
+  }) => <a href={`/insights?${new URLSearchParams(search)}`}>{children}</a>,
+}));
 
 const features = vi.hoisted(() => ({ insightsAnalytics: true }));
 
@@ -46,6 +57,29 @@ describe("release Insights sections", () => {
     expect(useUpdateFailuresQuery).toHaveBeenCalledWith(input);
   });
 
+  it("opens Release health on the release and the one before it, over the period that covers its deployment", () => {
+    const hour = 3_600_000;
+    vi.useFakeTimers({ now: 30 * 86_400_000 });
+    // Deployed 5 hours ago, so the 24h period covers it.
+    const deployed = (30 * 86_400_000 - 5 * hour)
+      .toString(16)
+      .padStart(12, "0");
+    const releaseId = `${deployed.slice(0, 8)}-${deployed.slice(8)}-7000-8000-000000000001`;
+    render(<BundleInsightsSummary input={{ ...input, releaseId }} />);
+    vi.useRealTimers();
+    const search = new URL(
+      screen.getByRole("link", { name: "View adoption" }).getAttribute("href")!,
+      "http://console",
+    ).searchParams;
+    expect(Object.fromEntries(search)).toEqual({
+      healthPlatform: "ios",
+      healthChannel: "production",
+      releaseId,
+      bundleWindow: "24h",
+      healthChart: "adoption",
+    });
+  });
+
   it("shows download failures alone where the console reads no release activity", () => {
     features.insightsAnalytics = false;
     render(<ReleaseFailuresSection input={input} />);
@@ -60,14 +94,13 @@ describe("release Insights sections", () => {
   });
 
   it.each(["inline", "card"] as const)(
-    "preserves activity counts, crash rate, and partial coverage in the %s layout",
+    "preserves activity counts and crash rate in the %s layout",
     (variant) => {
       const report: BundleActivityReport = {
         downloads: 1234,
         activeDays: 98,
         failedLaunches: 2,
         measuredAtMs: 0,
-        coverage: { kind: "partial", sinceMs: 0 },
       };
       render(<BundleMovementSummary report={report} variant={variant} />);
 
@@ -77,7 +110,6 @@ describe("release Insights sections", () => {
       expect(
         screen.getAllByRole("definition").map((value) => value.textContent),
       ).toEqual([report.downloads.toLocaleString(), "98", "2(2.00%)"]);
-      expect(screen.getByText("Partial")).toBeDefined();
     },
   );
 });

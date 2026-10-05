@@ -166,9 +166,7 @@ describe("UpdateFailures", () => {
     expect(
       within(card).getByText("No update failures in this period."),
     ).toBeDefined();
-    expect(
-      within(card).getByText("No recoveries in this period."),
-    ).toBeDefined();
+    expect(within(card).getByText("No crashes in this period.")).toBeDefined();
   });
 
   it("keeps check-only failures separate from successful updates and unavailable patch rates", () => {

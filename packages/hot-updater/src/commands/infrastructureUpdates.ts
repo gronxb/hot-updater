@@ -11,10 +11,6 @@ export const INFRASTRUCTURE_UPDATES = [
     note: "HTTP response diagnostics in Insights; runtime and Console upgrade without a database migration",
   },
   {
-    version: "1.0.0-rc.30",
-    note: "Daily observed bundle share; migrate Insights to schema 1.3.0 before upgrading the server and Console",
-  },
-  {
     version: "1.0.0",
     note: "Release Catalog, manifest artifact protocol v1, and storage engine infrastructure generation",
   },

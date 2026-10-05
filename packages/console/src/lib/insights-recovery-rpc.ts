@@ -32,20 +32,3 @@ export const getBundleActivityRpc = createServerFn({ method: "GET" })
       data,
     );
   });
-
-export const getRecoveryReportRpc = createServerFn({ method: "GET" })
-  .middleware([consoleAccess])
-  .validator(readRecoveryInput)
-  .handler(async ({ data }) => {
-    const [{ prepareConfig }, { getRecoveryReport }, { requireFeature }] =
-      await Promise.all([
-        import("./server/config.server"),
-        import("./server/insightsRecovery"),
-        import("./server/runtime.server"),
-      ]);
-    const { runtime } = await prepareConfig();
-    return getRecoveryReport(
-      await requireFeature(runtime, "insightsAnalytics"),
-      data,
-    );
-  });

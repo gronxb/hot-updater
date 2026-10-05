@@ -68,6 +68,21 @@ export interface InsightsCountEventsInput {
   readonly beforeReceivedAtMs: number;
 }
 
+/** One bundle filter's stored events in each interval of a time range. */
+export interface InsightsCountEventSeriesInput {
+  readonly filter: InsightsBundleEventFilter;
+  /** Whole UTC hours, at most 90 days, that a whole number of intervals fill. */
+  readonly timeRange: InsightsTimeRange;
+  /** Whole hours each point spans, from `timeRange.start`. */
+  readonly intervalMs: number;
+}
+
+/** Stored events in [startMs, startMs + intervalMs). */
+export interface InsightsEventSeriesPoint {
+  readonly startMs: number;
+  readonly events: number;
+}
+
 export interface ReleaseReference {
   readonly releaseId: string;
   readonly platform: "ios" | "android";
@@ -85,37 +100,24 @@ export type InsightsCoverage =
   | { readonly kind: "complete"; readonly sinceMs: number }
   | { readonly kind: "partial"; readonly sinceMs: number | null };
 
+/**
+ * A release's counts since its first report, from its lifetime counters,
+ * which are kept.
+ */
 export interface ReleaseActivityMetrics {
   readonly downloads: number;
   readonly launches: number;
   readonly failedLaunches: number;
-  /** Omitted for lifetime-only bundle-row reads. */
-  readonly uniqueUsers?: number;
-  /** Daily points, present only for period reads. */
-  readonly series?: readonly {
-    readonly startMs: number;
-    readonly launches: number;
-    readonly failedLaunches: number;
-  }[];
 }
 
-export type InsightsGetReleaseActivityInput =
-  | {
-      readonly releases: readonly ReleaseReference[];
-      readonly timeRange?: InsightsTimeRange;
-      readonly scope?: never;
-    }
-  | {
-      readonly scope: InsightsScope;
-      readonly timeRange: InsightsTimeRange;
-      readonly releases?: never;
-    };
+export interface InsightsGetReleaseActivityInput {
+  /** 1 to 100 releases. */
+  readonly releases: readonly ReleaseReference[];
+}
 
 export interface InsightsGetReleaseActivityResult {
-  readonly coverage: InsightsCoverage;
   readonly data: readonly {
-    readonly release?: ReleaseReference;
-    readonly scope?: InsightsScope;
+    readonly release: ReleaseReference;
     readonly metrics: ReleaseActivityMetrics;
   }[];
   readonly measuredAtMs: number;
@@ -154,25 +156,6 @@ export interface InsightsGetAppUsageResult {
   readonly measuredAtMs: number;
 }
 
-/** Whole UTC days, at most 31, including the current unfinished day. */
-export interface InsightsGetDistributionHistoryInput extends InsightsScope {
-  readonly timeRange: InsightsTimeRange;
-}
-
-export interface InsightsGetDistributionHistoryResult {
-  readonly coverage: InsightsCoverage;
-  readonly measuredAtMs: number;
-  readonly points: readonly {
-    readonly startMs: number;
-    readonly bundles: readonly {
-      readonly appVersion: string;
-      readonly releaseId: string | null;
-      readonly bundleKind: "release" | "builtin" | "unknown";
-      readonly installations: number;
-    }[];
-  }[];
-}
-
 export interface InsightsModel {
   /**
    * Persist the immutable event once. A private latest-event index, if used,
@@ -205,14 +188,17 @@ export interface InsightsModel {
   countLatestEvents(input: InsightsCountLatestEventsInput): Promise<number>;
   /** Count accepted reports in [sinceMs, beforeReceivedAtMs), across all pages. */
   countEvents(input: InsightsCountEventsInput): Promise<number>;
-  /** Read maintained release/scope summaries without scanning raw events. */
+  /**
+   * A bundle filter's stored events in each interval, every interval
+   * present in order, from the hourly counts that `countEvents` reads.
+   */
+  countEventSeries(
+    input: InsightsCountEventSeriesInput,
+  ): Promise<readonly InsightsEventSeriesPoint[]>;
+  /** Releases' lifetime counters, without scanning raw events. */
   getReleaseActivity(
     input: InsightsGetReleaseActivityInput,
   ): Promise<InsightsGetReleaseActivityResult>;
-  /** Daily last-observed running bundles, one per reporting installation. No historical backfill. */
-  getDistributionHistory(
-    input: InsightsGetDistributionHistoryInput,
-  ): Promise<InsightsGetDistributionHistoryResult>;
   /** Read maintained App usage summaries and latest-report distribution. */
   getAppUsage(
     input: InsightsGetAppUsageInput,

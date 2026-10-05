@@ -17,7 +17,6 @@ export type InsightsOverviewDelta = {
   readonly downloads: number;
   readonly launches: number;
   readonly failedLaunches: number;
-  readonly launchIdentity?: string;
   readonly activityIdentity?: string;
 };
 
@@ -104,7 +103,6 @@ export const insightsOverviewDeltas = (
       InsightsOverviewDelta,
       "downloads" | "launches" | "failedLaunches"
     > & {
-      readonly launchIdentity?: string;
       readonly activityIdentity?: string;
     },
   ) => {
@@ -115,7 +113,6 @@ export const insightsOverviewDeltas = (
       downloads: (previous?.downloads ?? 0) + values.downloads,
       launches: (previous?.launches ?? 0) + values.launches,
       failedLaunches: (previous?.failedLaunches ?? 0) + values.failedLaunches,
-      launchIdentity: previous?.launchIdentity ?? values.launchIdentity,
       activityIdentity: previous?.activityIdentity ?? values.activityIdentity,
     });
   };
@@ -126,7 +123,9 @@ export const insightsOverviewDeltas = (
       "downloads" | "launches" | "failedLaunches"
     >,
   ) => {
-    const launchIdentity = values.launches > 0 ? event.install_id : undefined;
+    // Only a release's lifetime row counts launches: the bundle list reads
+    // them there, and no windowed read sums them.
+    const windowed = { ...values, launches: 0 };
     if (releaseId !== null) {
       for (const [periodKind, start] of [
         ["lifetime", 0],
@@ -144,7 +143,7 @@ export const insightsOverviewDeltas = (
             periodKind,
             bucketStartMs: start,
           },
-          { ...values, ...(periodKind === "hour" ? { launchIdentity } : {}) },
+          periodKind === "lifetime" ? values : windowed,
         );
       }
     }
@@ -160,7 +159,7 @@ export const insightsOverviewDeltas = (
         periodKind: "hour",
         bucketStartMs,
       },
-      { ...values, launchIdentity },
+      windowed,
     );
   };
 

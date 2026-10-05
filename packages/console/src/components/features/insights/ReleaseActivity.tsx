@@ -1,6 +1,14 @@
 import { Link } from "@tanstack/react-router";
+import { ChartLine } from "lucide-react";
 
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { buttonVariants } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import type {
@@ -11,6 +19,7 @@ import { useBundleActivityQuery } from "@/lib/bundle-activity";
 import { useConsoleFeature } from "@/lib/console-features-api";
 import { useUpdateFailuresQuery } from "@/lib/insights-api";
 import { failureRate, formatRate } from "@/lib/insights-failures";
+import { adoptionWindow } from "@/lib/insights-search";
 import { cn } from "@/lib/utils";
 
 import type { ReleaseColumn } from "../FeatureSlots";
@@ -128,9 +137,6 @@ export function BundleMovementSummary({
       ) : (
         metrics
       )}
-      {report.coverage.kind === "partial" ? (
-        <span className="text-xs text-muted-foreground">Partial</span>
-      ) : null}
       {variant === "inline" ? <ReleaseMetricsInfo /> : null}
     </div>
   );
@@ -212,6 +218,22 @@ export function BundleInsightsSummary({
         <Separator />
         <BundleDownloadFailures input={input} />
       </CardContent>
+      <CardFooter className="px-4 pb-4">
+        <Link
+          className={buttonVariants({ variant: "outline", size: "sm" })}
+          to="/insights"
+          search={{
+            healthPlatform: input.platform,
+            healthChannel: input.channel,
+            releaseId: input.releaseId,
+            bundleWindow: adoptionWindow(input.releaseId),
+            healthChart: "adoption",
+          }}
+        >
+          <ChartLine aria-hidden="true" data-icon="inline-start" />
+          View adoption
+        </Link>
+      </CardFooter>
     </Card>
   );
 }

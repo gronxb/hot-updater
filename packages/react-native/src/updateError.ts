@@ -62,6 +62,9 @@ const TRANSPORTS: readonly UpdateErrorTransport[] = [
 ];
 /** An S3, R2, or GCS error code: letters, digits, and punctuation only. */
 const ORIGIN_CODE = /^[A-Za-z0-9._-]{1,64}$/;
+/** Expo's iOS and Android names for a fetch canceled before its response. */
+const EXPO_FETCH_CANCELED =
+  /FetchRequestCanceledException|Fetch request has been canceled|The operation was aborted/;
 
 type Classification = Pick<
   UpdateError,
@@ -143,6 +146,17 @@ export const classifyUpdateError = (
   }
   if (name === "AbortError") {
     return { ...scope, reason: "network", transport: "cancelled" };
+  }
+  // Expo's fetch rejects with "fetch failed: <native exception>" when no
+  // response arrives, and names a canceled request.
+  if (error instanceof Error && error.message.startsWith("fetch failed:")) {
+    return {
+      ...scope,
+      reason: "network",
+      ...(EXPO_FETCH_CANCELED.test(error.message)
+        ? { transport: "cancelled" }
+        : {}),
+    };
   }
   if (name === "TypeError") {
     // fetch rejects with a TypeError when no response arrives, without

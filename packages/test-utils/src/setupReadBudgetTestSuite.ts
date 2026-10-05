@@ -10,10 +10,10 @@ import {
 import type {
   BundleEventRow,
   InsightsCountEventsInput,
+  InsightsCountEventSeriesInput,
   InsightsCountLatestEventsInput,
+  InsightsEventSeriesPoint,
   InsightsFindLatestEventsInput,
-  InsightsGetDistributionHistoryInput,
-  InsightsGetDistributionHistoryResult,
   InsightsGetAppUsageInput,
   InsightsGetAppUsageResult,
   InsightsGetReleaseActivityInput,
@@ -63,12 +63,12 @@ interface ReadBudgetInsights {
   ): Promise<readonly BundleEventRow[]>;
   countLatestEvents(input: InsightsCountLatestEventsInput): Promise<number>;
   countEvents(input: InsightsCountEventsInput): Promise<number>;
+  countEventSeries(
+    input: InsightsCountEventSeriesInput,
+  ): Promise<readonly InsightsEventSeriesPoint[]>;
   getReleaseActivity(
     input: InsightsGetReleaseActivityInput,
   ): Promise<InsightsGetReleaseActivityResult>;
-  getDistributionHistory(
-    input: InsightsGetDistributionHistoryInput,
-  ): Promise<InsightsGetDistributionHistoryResult>;
   getAppUsage(
     input: InsightsGetAppUsageInput,
   ): Promise<InsightsGetAppUsageResult>;
@@ -523,6 +523,21 @@ const READ_BUDGETS: readonly ReadBudget[] = [
     check: (count) => expect(count).toBe(11),
   }),
   budget({
+    api: "countEventSeries: buckets in the window × shards, all used",
+    // The hours with an apply to bundle-b: hours 0–4 of day 0, installs 1–24
+    // on 24 outcome shard rows, and hour 0 of day 2, install 1's on 1.
+    read: ({ insights }) =>
+      insights.countEventSeries({
+        filter: bundleEvents,
+        timeRange: { start: T0, end: T0 + 3 * DAY },
+        intervalMs: DAY,
+      }),
+    adapter: reads(0, 0, 1, 25),
+    engine: { calls: 1, rows: 6 },
+    check: (points) =>
+      expect(points.map(({ events }) => events)).toEqual([24, 0, 1]),
+  }),
+  budget({
     api: "countLatestEvents: buckets in the window × shards, all used",
     // Heads from T0, by UTC day: installs 2–24 on 14 gauge shards of day 0,
     // and install 1's on day 2.
@@ -570,19 +585,6 @@ const READ_BUDGETS: readonly ReadBudget[] = [
     check: ({ data }) => expect(data[0]!.metrics.launches).toBe(25),
   }),
   budget({
-    api: "release activity over a window: buckets × shards, all used",
-    // Day rows of days 0 and 2: counters on 8 shards and 1, sketches on 14
-    // of 16 and 1.
-    read: ({ insights }) =>
-      insights.getReleaseActivity({
-        scope: { platform: "ios", channel: "production" },
-        timeRange: { start: T0, end: T0 + 3 * DAY },
-      }),
-    adapter: reads(0, 0, 2, 24),
-    engine: { calls: 2, rows: 4 },
-    check: ({ data }) => expect(data[0]!.metrics.launches).toBe(25),
-  }),
-  budget({
     api: "app usage: nonzero distribution and usage-sketch rows in the window, all used",
     // Every platform merges the iOS and Android usage sketches: iOS's of days
     // 0 and 2 (14 shards and 1). The iOS latest events of days 0 and 2 (14
@@ -598,23 +600,6 @@ const READ_BUDGETS: readonly ReadBudget[] = [
     engine: { calls: 4, rows: 4 },
     check: ({ versions }) =>
       expect(versions).toEqual([{ name: "1.0.0", installations: 24 }]),
-  }),
-  budget({
-    api: "daily bundle share: only scoped aggregate shards in the requested days",
-    read: ({ insights }) =>
-      insights.getDistributionHistory({
-        channel: "production",
-        platform: "ios",
-        timeRange: { start: T0, end: T0 + 3 * DAY },
-      }),
-    adapter: reads(0, 0, 1, 15),
-    engine: { calls: 1, rows: 2 },
-    check: ({ points }) =>
-      expect(
-        points.map(({ bundles }) =>
-          bundles.reduce((n, row) => n + row.installations, 0),
-        ),
-      ).toEqual([24, 0, 1]),
   }),
   budget({
     api: "update failures of a release over a window: buckets × shards, all used",
@@ -706,18 +691,17 @@ const READ_BUDGETS: readonly ReadBudget[] = [
   }),
   budget({
     api: "record an insights event: 2 dependent rounds of batch gets and 1 write",
-    // The event and install 2's latest and daily heads; then the event's 5
-    // sketch rows, in one batch get per aggregate: its release's hour and
-    // its platform's usage of
-    // every app version and of its own by hour, and the usage by day, which
-    // keeps its own retention. The head moves within its UTC day, so its
-    // gauge rows stay as they are and none is read.
+    // The event and install 2's head; then the event's 4 sketch rows, in one
+    // batch get per aggregate: its platform's usage of every app version and
+    // of its own by hour, and by day, which keeps its own retention. The head
+    // moves within its UTC day, so its gauge rows stay as they are and none
+    // is read.
     read: ({ insights }) =>
       insights.recordEvent(
         eventOf(26, { install_id: "install-2", received_at_ms: T0 + 3 * HOUR }),
       ),
-    adapter: reads(5, 8, 0, 0),
-    engine: { calls: 3, rows: 2 },
+    adapter: reads(4, 6, 0, 0),
+    engine: { calls: 2, rows: 1 },
     writes: 1,
   }),
 ];
