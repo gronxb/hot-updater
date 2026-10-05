@@ -2,6 +2,7 @@ import { Link } from "@tanstack/react-router";
 import { ListIcon, RotateCcw, RotateCw, TriangleAlert, X } from "lucide-react";
 import { useState } from "react";
 
+import { BundleIdDisplay } from "@/components/BundleIdDisplay";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -54,7 +55,6 @@ import type {
 import { cn } from "@/lib/utils";
 
 import {
-  bundleName,
   ComparedBundlesChart,
   formatDeployedAt,
   useSeriesColors,
@@ -102,7 +102,7 @@ export function InsightsOverview({
   onChartChange,
   health,
   onReleasesChange,
-  onShowDetails,
+  onShowCrashes,
   onWindowChange,
 }: {
   readonly input: RecoveryInput;
@@ -111,11 +111,8 @@ export function InsightsOverview({
   readonly health: ReleaseHealthState;
   /** Chooses the bundles to compare; undefined returns to the default. */
   readonly onReleasesChange: (releaseIds?: readonly string[]) => void;
-  /** Opens the failure details of one bundle at its updates or its crashes. */
-  readonly onShowDetails: (
-    releaseId: string,
-    section: "updates" | "crashes",
-  ) => void;
+  /** Opens the crash details of one bundle. */
+  readonly onShowCrashes: (releaseId: string) => void;
   readonly onWindowChange: (window: RecoveryInput["window"]) => void;
 }) {
   const [active, setActive] = useState<string | null>(null);
@@ -358,7 +355,11 @@ export function InsightsOverview({
                 <Alert key={bundle.release.releaseId} variant="destructive">
                   <TriangleAlert aria-hidden="true" />
                   <AlertTitle>
-                    Roll back {bundleName(bundle.release)}
+                    Roll back{" "}
+                    <BundleIdDisplay
+                      bundleId={bundle.release.releaseId}
+                      className="text-sm"
+                    />
                   </AlertTitle>
                   <AlertDescription className="flex flex-col items-start gap-3">
                     It crashed for {percent(bundle.rate)} of the installations
@@ -391,12 +392,7 @@ export function InsightsOverview({
                   <TableRow>
                     <TableHead>Bundle</TableHead>
                     {chart === "adoption" ? (
-                      <>
-                        <TableHead className="text-right">Applied</TableHead>
-                        <TableHead className="text-right">
-                          Update failures
-                        </TableHead>
-                      </>
+                      <TableHead className="text-right">Applied</TableHead>
                     ) : (
                       <>
                         <TableHead className="text-right">Crashes</TableHead>
@@ -425,11 +421,13 @@ export function InsightsOverview({
                       >
                         {/* The bundle cell takes the room left, and wraps in it. */}
                         <TableCell className="w-full max-w-0 whitespace-normal">
-                          <div className="flex min-w-0 items-center gap-3">
+                          <div className="flex min-w-0 items-center gap-2 sm:gap-3">
+                            {/* Narrower on a phone, so a bundle's ID keeps more of the row. */}
                             <svg
                               aria-hidden="true"
-                              className="h-3 w-6 shrink-0"
+                              className="h-3 w-4 shrink-0 sm:w-6"
                               viewBox="0 0 24 12"
+                              preserveAspectRatio="none"
                             >
                               <line
                                 x1="0"
@@ -442,12 +440,10 @@ export function InsightsOverview({
                             </svg>
                             <div className="flex min-w-0 flex-col">
                               <span className="flex min-w-0 items-center gap-2">
-                                <span
-                                  className="line-clamp-2 min-w-0 break-words"
-                                  title={release.releaseId}
-                                >
-                                  {bundleName(release)}
-                                </span>
+                                <BundleIdDisplay
+                                  bundleId={release.releaseId}
+                                  className="min-w-0"
+                                />
                                 {release.enabled ? null : (
                                   <Badge variant="outline">Disabled</Badge>
                                 )}
@@ -463,32 +459,9 @@ export function InsightsOverview({
                           </div>
                         </TableCell>
                         {chart === "adoption" ? (
-                          <>
-                            <TableCell className="text-right font-medium whitespace-nowrap tabular-nums">
-                              {bundle.applied?.total.toLocaleString() ?? "—"}
-                            </TableCell>
-                            <TableCell className="text-right whitespace-nowrap tabular-nums">
-                              {bundle.failed === undefined ? (
-                                "—"
-                              ) : bundle.failed.total === 0 ? (
-                                <span className="text-muted-foreground">0</span>
-                              ) : (
-                                <Button
-                                  variant="link"
-                                  size="sm"
-                                  // Ink, not the accent: an orange count would
-                                  // read as the orange bundle.
-                                  className="h-auto p-0 text-foreground tabular-nums underline decoration-muted-foreground/60 hover:decoration-foreground"
-                                  aria-label={`${bundle.failed.total} update failures of ${bundleName(release)}: view details`}
-                                  onClick={() =>
-                                    onShowDetails(release.releaseId, "updates")
-                                  }
-                                >
-                                  {bundle.failed.total.toLocaleString()}
-                                </Button>
-                              )}
-                            </TableCell>
-                          </>
+                          <TableCell className="text-right font-medium whitespace-nowrap tabular-nums">
+                            {bundle.applied?.total.toLocaleString() ?? "—"}
+                          </TableCell>
                         ) : (
                           <>
                             <TableCell className="text-right whitespace-nowrap tabular-nums">
@@ -503,9 +476,9 @@ export function InsightsOverview({
                                   // Ink, not the accent: an orange count would
                                   // read as the orange bundle.
                                   className="h-auto p-0 text-foreground tabular-nums underline decoration-muted-foreground/60 hover:decoration-foreground"
-                                  aria-label={`${crashes.crashes} crashes of ${bundleName(release)}: view details`}
+                                  aria-label={`${crashes.crashes} crashes of ${release.releaseId}: view details`}
                                   onClick={() =>
-                                    onShowDetails(release.releaseId, "crashes")
+                                    onShowCrashes(release.releaseId)
                                   }
                                 >
                                   {crashes.crashes.toLocaleString()}
@@ -547,7 +520,7 @@ export function InsightsOverview({
                         )}
                         <TableCell>
                           <Button
-                            aria-label={`Remove ${bundleName(release)}`}
+                            aria-label={`Remove ${release.releaseId}`}
                             variant="ghost"
                             size="icon-xs"
                             onClick={() => remove(release.releaseId)}
@@ -565,7 +538,7 @@ export function InsightsOverview({
                   items={Object.fromEntries(
                     addable.map((candidate) => [
                       candidate.releaseId,
-                      `${bundleName(candidate)} · ${formatDeployedAt(candidate.deployedAtMs)}`,
+                      `${candidate.releaseId} · ${formatDeployedAt(candidate.deployedAtMs)}`,
                     ]),
                   )}
                   value={null}
@@ -593,8 +566,13 @@ export function InsightsOverview({
                           key={candidate.releaseId}
                           value={candidate.releaseId}
                         >
-                          {bundleName(candidate)} ·{" "}
-                          {formatDeployedAt(candidate.deployedAtMs)}
+                          <span className="flex min-w-0 flex-col gap-0.5">
+                            <BundleIdDisplay bundleId={candidate.releaseId} />{" "}
+                            <span className="text-xs text-muted-foreground">
+                              Deployed{" "}
+                              {formatDeployedAt(candidate.deployedAtMs)}
+                            </span>
+                          </span>
                         </SelectItem>
                       ))}
                     </SelectGroup>

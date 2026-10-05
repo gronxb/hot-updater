@@ -3,6 +3,7 @@ import { Undo2 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
+import { BundleIdDisplay } from "@/components/BundleIdDisplay";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -19,8 +20,6 @@ import {
   useUpdateReleaseMutation,
 } from "@/lib/api";
 import type { AdoptionRelease } from "@/lib/release-adoption";
-
-import { bundleName } from "./ComparedBundlesChart";
 
 const percent = (rate: number) => `${(rate * 100).toFixed(1)}%`;
 
@@ -46,7 +45,7 @@ export function RollbackButton({
   const preflight = usePreflightReleaseMutation();
   const update = useUpdateReleaseMutation();
   const busy = preflight.isPending || update.isPending;
-  const name = bundleName(release);
+  const id = release.releaseId;
   const rollBack = async () => {
     const input = {
       expectedRevision: release.revision,
@@ -60,7 +59,7 @@ export function RollbackButton({
       await queryClient.invalidateQueries({
         queryKey: ["insights", "adoption-releases"],
       });
-      toast.success(`${name} rolled back`, {
+      toast.success(`${id} rolled back`, {
         description:
           "Installations running it return to the previous enabled bundle on their next update check.",
       });
@@ -88,7 +87,8 @@ export function RollbackButton({
       </Button>
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>Roll back {name}?</AlertDialogTitle>
+          <AlertDialogTitle>Roll back this bundle?</AlertDialogTitle>
+          <BundleIdDisplay bundleId={id} />
           <AlertDialogDescription>
             It crashed for {percent(rate)} of the installations that tried it (
             {crashes.toLocaleString()} of {attempts.toLocaleString()}). Rolling

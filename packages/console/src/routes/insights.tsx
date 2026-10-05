@@ -22,11 +22,8 @@ import type { AppUsageScope, UsageWindow } from "@/lib/insights-usage";
 import { getAppUsageReportRpc } from "@/lib/insights-usage-rpc";
 import { useReleaseHealth } from "@/lib/release-adoption-api";
 
-/** Where each failure detail of a bundle starts on the page. */
-const DETAILS = {
-  updates: "download-install-failures",
-  crashes: "recoveries-by-exit-reason",
-} as const;
+/** Where a bundle's crash details start on the page. */
+const CRASH_DETAILS = "recoveries-by-exit-reason";
 
 export const Route = createFileRoute("/insights")({
   beforeLoad: ({ context }) =>
@@ -128,9 +125,9 @@ function InsightsPage() {
             onReleasesChange={(ids) =>
               void navigate({ search: { ...search, bundles: ids?.join(",") } })
             }
-            onShowDetails={(releaseId, section) => {
+            onShowCrashes={(releaseId) => {
               // Focus the failure details on the bundle and keep the compared
-              // bundles as they are, then scroll to its section.
+              // bundles as they are, then scroll to its crashes.
               void Promise.resolve(
                 navigate({
                   search: {
@@ -143,7 +140,7 @@ function InsightsPage() {
                 }),
               ).then(() =>
                 document
-                  .getElementById(DETAILS[section])
+                  .getElementById(CRASH_DETAILS)
                   ?.scrollIntoView({ block: "start" }),
               );
             }}

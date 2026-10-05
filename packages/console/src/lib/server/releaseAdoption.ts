@@ -27,7 +27,6 @@ const labelOf = (release: ReleaseRow): AdoptionRelease => ({
   releaseId: release.id,
   bundleId: release.bundle_id!,
   deployedAtMs: release.created_at_ms,
-  message: release.message,
   targetAppVersion: release.target_app_version,
   enabled: release.enabled,
   revision: release.revision,

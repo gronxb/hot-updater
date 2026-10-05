@@ -20,7 +20,6 @@ export type AdoptionRelease = {
   readonly releaseId: string;
   readonly bundleId: string;
   readonly deployedAtMs: number;
-  readonly message: string | null;
   readonly targetAppVersion: string | null;
   readonly enabled: boolean;
   readonly revision: number;
@@ -44,7 +43,7 @@ export type AdoptionReleaseResult = {
 };
 
 /** The reports Release health charts per bundle. */
-export type BundleEventType = "UPDATE_APPLIED" | "RECOVERED" | "UPDATE_FAILED";
+export type BundleEventType = "UPDATE_APPLIED" | "RECOVERED";
 
 /** One bundle's reports of one type over the period that ends at `endMs`. */
 export type BundleEventsInput = AdoptionReleasesInput & {
@@ -57,8 +56,8 @@ export type BundleEventsInput = AdoptionReleasesInput & {
 
 /**
  * A bundle's reports of one type in each interval of the period, every
- * interval present: applies to it, recoveries from it, or failed updates to
- * it. They count reports, not distinct installations.
+ * interval present: applies to it or recoveries from it. They count
+ * reports, not distinct installations.
  */
 export type BundleEventsSeries = {
   readonly bundleId: string;
@@ -120,9 +119,7 @@ export function readBundleEventsInput(
     input.endMs <= 0 ||
     input.endMs % HOUR_MS !== 0 ||
     !isText(input.bundleId) ||
-    (input.type !== "UPDATE_APPLIED" &&
-      input.type !== "RECOVERED" &&
-      input.type !== "UPDATE_FAILED")
+    (input.type !== "UPDATE_APPLIED" && input.type !== "RECOVERED")
   )
     invalid();
   return {
