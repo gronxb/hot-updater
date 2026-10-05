@@ -152,8 +152,7 @@ report counts are not the number of every exception thrown on devices.
 
 Update the app's Insights plugin, server, and Console to collect and inspect
 original messages and stacks. Existing reports that lack these fields cannot
-recover the original cause. SDKs before 1.0.0-rc.28 send no message, so the
-Console names the SDK version of such reports and groups them by it.
+recover the original cause; the Console labels those missing diagnostics.
 This addition uses existing event metadata and needs no database migration.
 
 ## Inspect HTTP responses
