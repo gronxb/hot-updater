@@ -17,7 +17,11 @@ export const fetchUpdateResponse = async ({
   onResponse,
 }: UpdateRequest): Promise<{ response: Response; body: string | null }> => {
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), requestTimeout);
+  let timedOut = false;
+  const timeoutId = setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, requestTimeout);
   try {
     const headers = new Headers(requestHeaders);
     if (!headers.has("Accept")) headers.set("Accept", "application/json");
@@ -44,7 +48,9 @@ export const fetchUpdateResponse = async ({
     }
     return { response, body };
   } catch (error: unknown) {
-    if (error instanceof Error && error.name === "AbortError") {
+    // Whatever the fetch rejects with once its timeout aborts it: an
+    // AbortError, or Expo's "fetch failed: FetchRequestCanceledException".
+    if (timedOut || (error instanceof Error && error.name === "AbortError")) {
       throw new Error("Request timed out");
     }
     throw error;

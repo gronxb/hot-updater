@@ -42,6 +42,26 @@ describe("classifyUpdateError", () => {
       expected: { reason: "network", transport: "cancelled" },
     },
     {
+      // As a device on Expo 58 reported it from production.
+      label: "Expo's canceled fetch on iOS",
+      error: new Error(
+        "fetch failed: FetchRequestCanceledException: Fetch request has been canceled (at Expo/NativeResponse.swift:63)",
+      ),
+      expected: { reason: "network", transport: "cancelled" },
+    },
+    {
+      label: "Expo's canceled fetch on Android",
+      error: new Error("fetch failed: Fetch request has been canceled"),
+      expected: { reason: "network", transport: "cancelled" },
+    },
+    {
+      label: "Expo's fetch without a response",
+      error: new Error(
+        "fetch failed: FetchUnknownException: Unknown error (at Expo/NativeResponse.swift:198)",
+      ),
+      expected: { reason: "network" },
+    },
+    {
       label: "an invalid response",
       error: new InvalidUpdateResponseError(
         "Received an invalid Release catalog",

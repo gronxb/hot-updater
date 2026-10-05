@@ -236,6 +236,36 @@ describe("client plugin host", () => {
       await settled;
     });
 
+    it("rejects with Request timed out when Expo's fetch cancels on the timeout", async () => {
+      vi.useFakeTimers();
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(
+          (_input: unknown, init?: RequestInit) =>
+            new Promise((_resolve, reject) => {
+              init?.signal?.addEventListener("abort", () => {
+                reject(
+                  new Error(
+                    "fetch failed: FetchRequestCanceledException: Fetch request has been canceled",
+                  ),
+                );
+              });
+            }),
+        ),
+      );
+      const { configurePlugins } = await importHost();
+      const plugin = capture();
+      configurePlugins([plugin.plugin], {
+        baseURL: "https://updates.example.com",
+        requestTimeout: 2_000,
+      });
+
+      const request = plugin.context().fetch("events");
+      const settled = expect(request).rejects.toThrow("Request timed out");
+      await vi.advanceTimersByTimeAsync(2_000);
+      await settled;
+    });
+
     it("refuses a URL outside baseURL", async () => {
       const { configurePlugins } = await importHost();
       const plugin = capture();

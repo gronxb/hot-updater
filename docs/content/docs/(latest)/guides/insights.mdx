@@ -394,8 +394,8 @@ Release ID, and period:
   fell back to the changed files or the full archive.
 - Without a Release ID, **Failed checks** counts failed update checks, and
   **Check failure rate** divides the installations with one by the channel's
-  active installations. A check a device could not send while offline is not
-  reported.
+  active installations. A check that gets no response, because the device is
+  offline or the request timed out or was cancelled, is not reported.
 - **Failures by stage and reason** lists each stage and reason with its share;
   expand one to see its HTTP statuses, origin codes, transports, and resources.
 - **Crashes by exit reason** splits crash recoveries by the reasons Android

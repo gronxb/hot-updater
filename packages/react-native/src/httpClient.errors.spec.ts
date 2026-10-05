@@ -151,6 +151,29 @@ describe.each(["catalog", "artifact"] as const)(
       },
     );
 
+    it("times out the same way when Expo's fetch cancels on the timeout", async () => {
+      vi.useFakeTimers();
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(
+          (_url: string, options: RequestInit) =>
+            new Promise((_, reject) => {
+              options.signal!.addEventListener("abort", () =>
+                reject(
+                  new Error(
+                    "fetch failed: FetchRequestCanceledException: Fetch request has been canceled (at Expo/NativeResponse.swift:63)",
+                  ),
+                ),
+              );
+            }),
+        ),
+      );
+      const result = request(resource).catch((error: unknown) => error);
+      await vi.runAllTimersAsync();
+
+      expect(await result).toMatchObject({ message: "Request timed out" });
+    });
+
     it("keeps the server's 404 details even when adding compatibility context", async () => {
       const body = '{"error":"Bundle target was not found"}';
       vi.stubGlobal(
