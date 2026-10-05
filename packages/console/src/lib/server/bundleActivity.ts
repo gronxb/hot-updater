@@ -28,7 +28,6 @@ export async function getBundleActivity(
                 activeDays: item.metrics.launches,
                 failedLaunches: item.metrics.failedLaunches,
                 measuredAtMs: activity.measuredAtMs,
-                coverage: activity.coverage,
               },
             ],
           ],

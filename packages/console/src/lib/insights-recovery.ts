@@ -1,60 +1,11 @@
-import type {
-  InsightsCoverage,
-  InsightsGetDistributionHistoryResult,
-} from "@hot-updater/server/plugins/insights";
-
 import type { InsightsWindow } from "./insights-rpc";
 
+/** Release health's scope: its channel, platform, period, and focused release. */
 export type RecoveryInput = {
   readonly platform: "ios" | "android";
   readonly channel: string;
   readonly window: InsightsWindow;
   readonly releaseId?: string;
-};
-
-export type RecoveryReport = {
-  readonly downloads: number;
-  readonly distribution: InsightsGetDistributionHistoryResult;
-  /**
-   * Distinct installations that reported in the scope and period, or that
-   * launched the release; estimated.
-   */
-  readonly activeInstallations: number;
-  /**
-   * Installation-days: each installation once for each UTC day it launched,
-   * and once more on a day an update applied or recovered.
-   */
-  readonly activeDays: number;
-  readonly failedLaunches: number;
-  readonly points: readonly {
-    readonly startMs: number;
-    /** That UTC day's daily active installations. */
-    readonly dailyActiveInstallations: number;
-    readonly failedLaunches: number;
-  }[];
-  /** The chosen release's downloads over the period; null for a whole scope. */
-  readonly adoption: ReleaseAdoption | null;
-  readonly startMs: number;
-  readonly endMs: number;
-  readonly measuredAtMs: number;
-  readonly coverage: InsightsCoverage;
-};
-
-/**
- * A release's downloads in each interval of the period from its deployment,
- * and their running total. Downloads count reports, not distinct
- * installations: one that downloads the release again counts again.
- */
-export type ReleaseAdoption = {
-  /** From the release ID, a UUIDv7; null when it is not one. */
-  readonly deployedAtMs: number | null;
-  readonly intervalMs: number;
-  readonly points: readonly {
-    readonly startMs: number;
-    readonly downloads: number;
-    /** Downloads in the period up to this interval's end. */
-    readonly totalDownloads: number;
-  }[];
 };
 
 export const recoveryWindows = {

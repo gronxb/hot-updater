@@ -1,8 +1,4 @@
-import {
-  keepPreviousData,
-  useQuery,
-  useQueryClient,
-} from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 
 import { ConsoleFeatureUnavailable } from "@/components/ConsoleFeatureUnavailable";
@@ -18,10 +14,19 @@ import {
   useInsightsRetention,
   useUpdateFailuresQuery,
 } from "@/lib/insights-api";
-import { getRecoveryReportRpc } from "@/lib/insights-recovery-rpc";
-import { validateInsightsSearch } from "@/lib/insights-search";
+import {
+  comparedBundleIds,
+  validateInsightsSearch,
+} from "@/lib/insights-search";
 import type { AppUsageScope, UsageWindow } from "@/lib/insights-usage";
 import { getAppUsageReportRpc } from "@/lib/insights-usage-rpc";
+import { useReleaseHealth } from "@/lib/release-adoption-api";
+
+/** Where each failure detail of a bundle starts on the page. */
+const DETAILS = {
+  updates: "download-install-failures",
+  crashes: "recoveries-by-exit-reason",
+} as const;
 
 export const Route = createFileRoute("/insights")({
   beforeLoad: ({ context }) =>
@@ -58,12 +63,14 @@ function InsightsPage() {
     queryFn: () => getAppUsageReportRpc({ data: input }),
     staleTime: 30_000,
   });
-  const bundleQuery = useQuery({
-    queryKey: ["insights", "recovery", bundleInput],
-    queryFn: () => getRecoveryReportRpc({ data: bundleInput }),
-    staleTime: 30_000,
-    // Choosing a bundle or period keeps the card in place while it loads.
-    placeholderData: keepPreviousData,
+  const chart = search.healthChart ?? "adoption";
+  const health = useReleaseHealth({
+    platform: bundleInput.platform,
+    channel,
+    window: bundleWindow,
+    releaseIds: comparedBundleIds(search.bundles),
+    focusReleaseId: search.releaseId,
+    chart,
   });
   const failuresQuery = useUpdateFailuresQuery(bundleInput);
   return (
@@ -85,6 +92,8 @@ function InsightsPage() {
                   healthPlatform: releaseScope.platform,
                   healthChannel: undefined,
                   releaseId: releaseScope.releaseId,
+                  // Bundles chosen in another scope do not carry over.
+                  bundles: undefined,
                 },
               })
             }
@@ -111,14 +120,33 @@ function InsightsPage() {
           />
           <InsightsOverview
             input={bundleInput}
-            query={bundleQuery}
-            chart={search.healthChart ?? "share"}
+            chart={chart}
             onChartChange={(healthChart) =>
               void navigate({ search: { ...search, healthChart } })
             }
-            onReleaseChange={(releaseId) =>
-              void navigate({ search: { ...search, releaseId } })
+            health={health}
+            onReleasesChange={(ids) =>
+              void navigate({ search: { ...search, bundles: ids?.join(",") } })
             }
+            onShowDetails={(releaseId, section) => {
+              // Focus the failure details on the bundle and keep the compared
+              // bundles as they are, then scroll to its section.
+              void Promise.resolve(
+                navigate({
+                  search: {
+                    ...search,
+                    releaseId,
+                    bundles: (health.releases ?? [])
+                      .map(({ release }) => release.releaseId)
+                      .join(","),
+                  },
+                }),
+              ).then(() =>
+                document
+                  .getElementById(DETAILS[section])
+                  ?.scrollIntoView({ block: "start" }),
+              );
+            }}
             onWindowChange={(window) =>
               void navigate({
                 search: {
@@ -127,7 +155,6 @@ function InsightsPage() {
                 },
               })
             }
-            onRefresh={() => void bundleQuery.refetch()}
           />
           <UpdateFailures
             query={failuresQuery}

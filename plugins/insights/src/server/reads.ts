@@ -11,10 +11,10 @@ import type { BundleEventRow } from "./eventRow";
 import type {
   InsightsBundleEventFilter,
   InsightsCountEventsInput,
+  InsightsCountEventSeriesInput,
   InsightsCountLatestEventsInput,
+  InsightsEventSeriesPoint,
   InsightsFindLatestEventsInput,
-  InsightsGetDistributionHistoryInput,
-  InsightsGetDistributionHistoryResult,
   InsightsGetAppUsageInput,
   InsightsGetAppUsageResult,
   InsightsGetReleaseActivityInput,
@@ -284,6 +284,36 @@ export const countEvents = async (
   );
 };
 
+/**
+ * A bundle filter's stored events in each interval of whole hours: one read
+ * of its hourly counts, every interval present.
+ */
+export const countEventSeries = async (
+  db: Db,
+  input: InsightsCountEventSeriesInput,
+): Promise<readonly InsightsEventSeriesPoint[]> => {
+  const { filter, intervalMs } = input;
+  const { start, end } = input.timeRange;
+  const events = Array.from({ length: (end - start) / intervalMs }, () => 0);
+  const hours = await drain((page) =>
+    db.findAggregates("insights_outcomes", {
+      index: "byRef",
+      where: scopeOf(filter),
+      range: { gte: start, lt: end },
+      limit: PAGE,
+      ...page,
+    }),
+  );
+  for (const row of hours) {
+    events[Math.floor((row.bucket_start_ms - start) / intervalMs)]! +=
+      row.events;
+  }
+  return events.map((count, index) => ({
+    startMs: start + index * intervalMs,
+    events: count,
+  }));
+};
+
 type Predicate = {
   readonly field: "from_bundle_id" | "to_bundle_id";
   readonly value: string;
@@ -389,11 +419,8 @@ const retained = (now: number, { rawDays, dailyDays }: InsightsRetention) => ({
  * Whether the rows a window reads still hold all of it; an older start is
  * partial from `oldest`, the first bucket its rows keep.
  */
-const coverageOf = (
-  start: number | undefined,
-  oldest: number,
-): InsightsCoverage =>
-  start === undefined || start >= oldest
+const coverageOf = (start: number, oldest: number): InsightsCoverage =>
+  start >= oldest
     ? { kind: "complete", sinceMs: 0 }
     : { kind: "partial", sinceMs: oldest };
 
@@ -431,7 +458,6 @@ interface CounterRow {
 
 interface SketchRow {
   readonly bucket_start_ms: number;
-  readonly launch_users: string | null;
   readonly activity_users: string | null;
   readonly failed_users: string | null;
 }
@@ -518,71 +544,6 @@ const lifetimeMetrics = async (
   };
 };
 
-/** Where unique users come from: the sketch rows of one identity, and their field. */
-interface UserSketches {
-  readonly parts: Parts;
-  readonly field: "launch_users" | "activity_users";
-}
-
-type SeriesPoint = {
-  downloads: number;
-  launches: number;
-  failedLaunches: number;
-};
-
-/**
- * Counters, unique users, and a series over a window: a point per UTC day
- * with rows, or, with `intervalMs`, every point of that span from the
- * window's start.
- */
-const rangedMetrics = async (
-  db: Db,
-  parts: Parts,
-  users: UserSketches,
-  range: InsightsTimeRange,
-  days: boolean,
-  hour: number,
-  intervalMs?: number,
-): Promise<ReleaseActivityMetrics> => {
-  const [counters, sketches] = await Promise.all([
-    counterRows(db, parts, range, days, hour),
-    sketchRows(db, users.parts, range, days, hour),
-  ]);
-  const series = new Map<number, SeriesPoint>();
-  if (intervalMs !== undefined)
-    for (let start = range.start; start < range.end; start += intervalMs)
-      series.set(start, { downloads: 0, launches: 0, failedLaunches: 0 });
-  for (const row of counters) {
-    const start =
-      intervalMs === undefined
-        ? dayFloor(row.bucket_start_ms)
-        : row.bucket_start_ms -
-          ((row.bucket_start_ms - range.start) % intervalMs);
-    const point = series.get(start) ?? {
-      downloads: 0,
-      launches: 0,
-      failedLaunches: 0,
-    };
-    point.downloads += row.downloads;
-    point.launches += row.launches;
-    point.failedLaunches += row.failed_launches;
-    series.set(start, point);
-  }
-  const total = (field: "downloads" | "launches" | "failed_launches") =>
-    counters.reduce((sum, row) => sum + row[field], 0);
-  return {
-    downloads: total("downloads"),
-    launches: total("launches"),
-    failedLaunches: total("failed_launches"),
-    uniqueUsers: countDistinct(
-      mergeDistinct(sketches.map((row) => row[users.field])),
-    ),
-    series: [...series]
-      .sort(([left], [right]) => left - right)
-      .map(([startMs, point]) => ({ startMs, ...point })),
-  };
-};
-
 /** A channel and platform's usage rows, of every app version or of one. */
 const usageParts = (
   channel: string,
@@ -598,66 +559,20 @@ const usageParts = (
   appVersion: appVersion ?? "",
 });
 
+/** Each release's lifetime counters, which are kept: one logical row apiece. */
 export const getReleaseActivity = async (
   db: Db,
   input: InsightsGetReleaseActivityInput,
   now: () => number,
-  retention: InsightsRetention,
 ): Promise<InsightsGetReleaseActivityResult> => {
-  const at = now();
-  const kept = retained(at, retention);
-  const data =
-    input.scope !== undefined
-      ? [
-          {
-            scope: input.scope,
-            // A channel's unique users are its active installations: its
-            // usage rows count every installation that reported.
-            metrics: await rangedMetrics(
-              db,
-              {
-                scopeKind: "channel",
-                releaseKind: "all",
-                releaseId: "",
-                channel: input.scope.channel,
-                platform: input.scope.platform,
-                appVersionKind: "all",
-                appVersion: "",
-              },
-              {
-                parts: usageParts(input.scope.channel, input.scope.platform),
-                field: "activity_users",
-              },
-              input.timeRange,
-              true,
-              kept.hour,
-            ),
-          },
-        ]
-      : await Promise.all(
-          input.releases.map(async (release) => ({
-            release,
-            metrics:
-              input.timeRange === undefined
-                ? await lifetimeMetrics(db, release)
-                : await rangedMetrics(
-                    db,
-                    releaseParts(release),
-                    { parts: releaseParts(release), field: "launch_users" },
-                    input.timeRange,
-                    false,
-                    kept.hour,
-                    input.intervalMs,
-                  ),
-          })),
-        );
-  // A channel reads daily rows past the raw period; a release, hourly rows.
-  const oldest = kept[input.scope === undefined ? "hour" : "day"];
-  return {
-    coverage: coverageOf(input.timeRange?.start, oldest),
-    data,
-    measuredAtMs: at,
-  };
+  const measuredAtMs = now();
+  const data = await Promise.all(
+    input.releases.map(async (release) => ({
+      release,
+      metrics: await lifetimeMetrics(db, release),
+    })),
+  );
+  return { data, measuredAtMs };
 };
 
 /**
@@ -1056,44 +971,5 @@ export const getUpdateFailures = async (
       : {}),
     breakdown,
     recoveries: { failedLaunches: total("failed_launches"), byExitReason },
-  };
-};
-
-/** Reads daily gauges, never raw events or mutable latest-state distribution. */
-export const getDistributionHistory = async (
-  db: Db,
-  input: InsightsGetDistributionHistoryInput,
-  now: () => number,
-  retention: InsightsRetention,
-): Promise<InsightsGetDistributionHistoryResult> => {
-  const at = now();
-  const { start, end } = input.timeRange;
-  const points = new Map<
-    number,
-    InsightsGetDistributionHistoryResult["points"][number]["bundles"][number][]
-  >();
-  for (let day = start; day < end; day += DAY_MS) points.set(day, []);
-  const rows = await drain((page) =>
-    db.findAggregates("insights_distribution_history", {
-      index: "byScope",
-      where: { channel: input.channel, platform: input.platform },
-      range: { gte: start, lt: end },
-      limit: PAGE,
-      ...page,
-    }),
-  );
-  for (const row of rows) {
-    if (row.installations <= 0) continue;
-    points.get(row.bucket_start_ms)!.push({
-      appVersion: row.app_version,
-      releaseId: row.release_id || null,
-      bundleKind: row.bundle_kind as "release" | "builtin" | "unknown",
-      installations: row.installations,
-    });
-  }
-  return {
-    coverage: coverageOf(start, retained(at, retention).day),
-    measuredAtMs: at,
-    points: [...points].map(([startMs, bundles]) => ({ startMs, bundles })),
   };
 };

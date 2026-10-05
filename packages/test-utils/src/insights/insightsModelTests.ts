@@ -584,7 +584,7 @@ export const registerInsightsModelTests = (
       ).resolves.toBe(0);
     });
 
-    it("maintains idempotent release, scope, usage, and latest-distribution summaries", async () => {
+    it("maintains idempotent release, event series, usage, and latest-distribution summaries", async () => {
       const model = state.getDatabase();
       const releaseA = "00000000-0000-7000-8000-000000008001";
       const releaseB = "00000000-0000-7000-8000-000000008002";
@@ -630,26 +630,38 @@ export const registerInsightsModelTests = (
         { downloads: 0, launches: 1, failedLaunches: 0 },
         { downloads: 1, launches: 2, failedLaunches: 1 },
       ]);
-      const scope = await model.getReleaseActivity({
-        scope: { platform: "ios", channel: "production" },
-        timeRange: { start: 0, end: 3_600_000 },
-      });
-      expect(scope.data[0]?.metrics).toMatchObject({
-        downloads: 1,
-        launches: 3,
-        failedLaunches: 1,
-        uniqueUsers: 2,
-      });
-      const hourly = await model.getReleaseActivity({
-        releases: [releases[1]],
-        timeRange: { start: 0, end: 3 * 3_600_000 },
-        intervalMs: 3_600_000,
-      });
-      expect(hourly.data[0]?.metrics.series).toEqual([
-        { startMs: 0, downloads: 1, launches: 2, failedLaunches: 1 },
-        { startMs: 3_600_000, downloads: 0, launches: 0, failedLaunches: 0 },
-        { startMs: 7_200_000, downloads: 0, launches: 0, failedLaunches: 0 },
-      ]);
+      // A bundle filter's stored events in each hour, every hour present:
+      // the repeated apply counts once.
+      const hourly = (filter: InsightsBundleEventFilter) =>
+        model.countEventSeries({
+          filter,
+          timeRange: { start: 0, end: 3 * 3_600_000 },
+          intervalMs: 3_600_000,
+        });
+      const points = (...counts: number[]) =>
+        counts.map((events, index) => ({
+          startMs: index * 3_600_000,
+          events,
+        }));
+      const scope = { platform: "ios", channel: "production" } as const;
+      await expectInsightsIndex(
+        () =>
+          hourly({
+            ...scope,
+            type: "UPDATE_APPLIED",
+            toBundleId: base.to_bundle_id,
+          }),
+        points(2, 0, 0),
+      );
+      await expectInsightsIndex(
+        () =>
+          hourly({
+            ...scope,
+            type: "RECOVERED",
+            fromBundleId: base.from_bundle_id,
+          }),
+        points(1, 0, 0),
+      );
       const usage = await model.getAppUsage({
         channel: "production",
         platform: "all",
@@ -675,121 +687,6 @@ export const registerInsightsModelTests = (
         ]),
       );
     });
-    it("keeps one daily running-bundle observation through updates, recovery, retries, and later days", async () => {
-      const model = state.getDatabase();
-      const day = 86_400_000;
-      const start = Math.floor(Date.now() / day) * day - 3 * day;
-      const a = "00000000-0000-7000-8000-000000008001";
-      const b = "00000000-0000-7000-8000-000000008002";
-      const base = createBundleEventRowFixture("9901", start + 100);
-      const download: BundleEventRow = {
-        ...base,
-        type: "UPDATE_DOWNLOADED",
-        install_id: "daily-one",
-        from_release_id: a,
-        to_release_id: b,
-      };
-      const applied: BundleEventRow = {
-        ...download,
-        type: "UPDATE_APPLIED",
-        id: createBundleEventRowFixture("9902", 0).id,
-        received_at_ms: start + 200,
-      };
-      const read = () =>
-        model.getDistributionHistory({
-          platform: "ios",
-          channel: "production",
-          timeRange: { start, end: start + 3 * day },
-        });
-      await record(model, download);
-      await expectInsightsIndex(
-        async () => (await read()).points[0]!.bundles,
-        [
-          {
-            appVersion: "1.0.0",
-            releaseId: a,
-            bundleKind: "release",
-            installations: 1,
-          },
-        ],
-      );
-      for (const row of [
-        applied,
-        applied,
-        {
-          ...applied,
-          id: createBundleEventRowFixture("9903", 0).id,
-          install_id: "daily-two",
-        },
-      ])
-        await record(model, row);
-      const recovered: BundleEventRow = {
-        ...applied,
-        id: createBundleEventRowFixture("9904", 0).id,
-        type: "RECOVERED",
-        from_release_id: b,
-        to_release_id: a,
-        received_at_ms: start + 300,
-      };
-      await record(model, recovered);
-      await record(model, {
-        ...applied,
-        id: createBundleEventRowFixture("9905", 0).id,
-        received_at_ms: start + day + 100,
-      });
-      // A delayed report cannot replace a newer observation in that same day.
-      await record(model, {
-        ...applied,
-        id: createBundleEventRowFixture("9906", 0).id,
-        received_at_ms: start + 250,
-      });
-      await record(model, {
-        ...applied,
-        id: createBundleEventRowFixture("9907", 0).id,
-        install_id: "other-scope",
-        channel: "preview",
-      });
-      await expectInsightsIndex(async () => {
-        const report = await read();
-        return report.points.map((point) => ({
-          ...point,
-          bundles: [...point.bundles].sort((x, y) =>
-            (x.releaseId ?? "").localeCompare(y.releaseId ?? ""),
-          ),
-        }));
-      }, [
-        {
-          startMs: start,
-          bundles: [
-            {
-              appVersion: "1.0.0",
-              releaseId: a,
-              bundleKind: "release",
-              installations: 1,
-            },
-            {
-              appVersion: "1.0.0",
-              releaseId: b,
-              bundleKind: "release",
-              installations: 1,
-            },
-          ],
-        },
-        {
-          startMs: start + day,
-          bundles: [
-            {
-              appVersion: "1.0.0",
-              releaseId: b,
-              bundleKind: "release",
-              installations: 1,
-            },
-          ],
-        },
-        { startMs: start + 2 * day, bundles: [] },
-      ]);
-    });
-
     it("pages insights events newest first with a stable cursor", async () => {
       const model = state.getDatabase();
       const first = createBundleEventRowFixture("701", 100);

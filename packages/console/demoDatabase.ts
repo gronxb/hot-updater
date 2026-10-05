@@ -1070,7 +1070,47 @@ for (const event of adjustedBundleEvents) {
   await insightsApi.recordEvent(event);
 }
 
-// Downloads after the deploy above, so Adoption has a curve from deployment.
+// Applies of the two newest iOS production bundles, and a crash of the
+// newest, so Release health opens on both: the newest taking over, the one
+// before it fading.
+const [demoNewest, demoPrevious] = [...bundles]
+  .filter(
+    (bundle) => bundle.channel === "production" && bundle.platform === "ios",
+  )
+  .sort((left, right) => right.id.localeCompare(left.id));
+for (const [bundle, count] of [
+  [demoPrevious, 3],
+  [demoNewest, 8],
+] as const) {
+  if (bundle === undefined) continue;
+  for (let installation = 0; installation < count; installation += 1) {
+    await insightsApi.recordEvent({
+      ...downloadDemo,
+      id: `019f635e-eeed-7${bundle === demoNewest ? "1" : "0"}00-8000-${String(installation).padStart(12, "0")}`,
+      type: "UPDATE_APPLIED",
+      install_id: `demo-adoption-${bundle.id}-${installation}`,
+      from_release_id: null,
+      from_bundle_id: "00000000-0000-0000-0000-000000000000",
+      to_release_id: releaseIdByBundle.get(bundle.id) ?? null,
+      to_bundle_id: bundle.id,
+      received_at_ms: Date.now() + installation,
+    });
+  }
+}
+if (demoNewest !== undefined && demoPrevious !== undefined) {
+  await insightsApi.recordEvent({
+    ...downloadDemo,
+    id: "019f635e-eeec-7000-8000-000000000001",
+    type: "RECOVERED",
+    install_id: "demo-adoption-crash",
+    from_release_id: releaseIdByBundle.get(demoNewest.id) ?? null,
+    from_bundle_id: demoNewest.id,
+    to_release_id: releaseIdByBundle.get(demoPrevious.id) ?? null,
+    to_bundle_id: demoPrevious.id,
+    received_at_ms: Date.now() + 100,
+  });
+}
+// Downloads of patch B after its deploy.
 const adoptionDemoNow = Date.now();
 for (let installation = 0; installation < 6; installation += 1) {
   await insightsApi.recordEvent({

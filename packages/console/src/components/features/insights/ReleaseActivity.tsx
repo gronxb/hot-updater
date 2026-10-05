@@ -137,9 +137,6 @@ export function BundleMovementSummary({
       ) : (
         metrics
       )}
-      {report.coverage.kind === "partial" ? (
-        <span className="text-xs text-muted-foreground">Partial</span>
-      ) : null}
       {variant === "inline" ? <ReleaseMetricsInfo /> : null}
     </div>
   );

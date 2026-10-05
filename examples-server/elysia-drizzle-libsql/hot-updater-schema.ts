@@ -128,7 +128,6 @@ export const bundle_events = sqliteTable("bundle_events", {
   "_v": column("INTEGER")("_v").notNull().default(0),
 }, (table) => [
   primaryKey({ columns: [table["id"]] }),
-  index("bundle_events_recent").on(table["channel"], table["platform"], table["day"], table["received_at_ms"], table["id"]),
   index("bundle_events_movementsByInstall").on(table["movement_install_id"], table["received_at_ms"], table["id"]),
   index("bundle_events_byDay").on(table["day"], table["received_at_ms"], table["id"]),
 ]);
@@ -186,7 +185,6 @@ export const insights_sketches = sqliteTable("insights_sketches", {
   "identity": column("TEXT")("identity").notNull(),
   "bucket_start_ms": column("INTEGER")("bucket_start_ms").notNull(),
   "_shard": column("INTEGER")("_shard").notNull(),
-  "launch_users": column("TEXT")("launch_users"),
   "activity_users": column("TEXT")("activity_users"),
   "failed_users": column("TEXT")("failed_users"),
   "_v": column("INTEGER")("_v").notNull().default(0),
@@ -215,7 +213,6 @@ export const insights_sketches_daily = sqliteTable("insights_sketches_daily", {
   "identity": column("TEXT")("identity").notNull(),
   "bucket_start_ms": column("INTEGER")("bucket_start_ms").notNull(),
   "_shard": column("INTEGER")("_shard").notNull(),
-  "launch_users": column("TEXT")("launch_users"),
   "activity_users": column("TEXT")("activity_users"),
   "failed_users": column("TEXT")("failed_users"),
   "_v": column("INTEGER")("_v").notNull().default(0),

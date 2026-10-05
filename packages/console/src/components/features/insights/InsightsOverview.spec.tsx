@@ -1,240 +1,362 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { type ComponentProps, type ReactNode, useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { RecoveryReport } from "@/lib/insights-recovery";
+import type { AdoptionRelease } from "@/lib/release-adoption";
+import type {
+  ComparedBundle,
+  ReleaseHealthState,
+} from "@/lib/release-adoption-api";
 
 import { InsightsOverview as Overview } from "./InsightsOverview";
 
-/** The card with its chart tab kept in state, as the route keeps it in the URL. */
-function InsightsOverview(
-  props: Omit<
-    ComponentProps<typeof Overview>,
-    "chart" | "onChartChange" | "onReleaseChange"
-  > & { readonly onReleaseChange?: (releaseId: string) => void },
-) {
-  const [chart, setChart] =
-    useState<ComponentProps<typeof Overview>["chart"]>("share");
-  return (
-    <Overview
-      {...props}
-      chart={chart}
-      onChartChange={setChart}
-      onReleaseChange={props.onReleaseChange ?? vi.fn()}
-    />
-  );
-}
-
+const mutations = vi.hoisted(() => ({
+  preflight: vi.fn(async () => ({})),
+  update: vi.fn(async () => ({})),
+}));
+vi.mock("@/lib/api", () => ({
+  usePreflightReleaseMutation: () => ({
+    mutateAsync: mutations.preflight,
+    isPending: false,
+  }),
+  useUpdateReleaseMutation: () => ({
+    mutateAsync: mutations.update,
+    isPending: false,
+  }),
+}));
 vi.mock("@tanstack/react-router", () => ({
   Link: ({ children }: { children: ReactNode }) => <a href="/">{children}</a>,
 }));
 
-const report: RecoveryReport = {
-  downloads: 8,
-  distribution: {
-    coverage: { kind: "complete", sinceMs: 0 },
-    measuredAtMs: 86_400_000,
-    points: [
-      {
-        startMs: 0,
-        bundles: [
-          {
-            appVersion: "1.0.0",
-            releaseId: "release-a",
-            bundleKind: "release",
-            installations: 5,
-          },
-        ],
-      },
-    ],
+const HOUR = 3_600_000;
+const release = (
+  releaseId: string,
+  deployedAtMs: number,
+  message: string | null,
+  overrides: Partial<AdoptionRelease> = {},
+): AdoptionRelease => ({
+  releaseId,
+  bundleId: `bundle-${releaseId}`,
+  deployedAtMs,
+  message,
+  targetAppVersion: "1.2.0",
+  enabled: true,
+  revision: 3,
+  ...overrides,
+});
+const newest = release("release-b", 20 * HOUR + 15 * 60_000, "Fix checkout");
+const previous = release("release-a", 2 * HOUR, null);
+const oldest = release("release-old", HOUR, "First release");
+
+/** Reports of one type per hour of the period [6h, 30h). */
+const seriesOf = (
+  bundleId: string,
+  type: "UPDATE_APPLIED" | "RECOVERED" | "UPDATE_FAILED",
+  perHour: (hour: number) => number,
+) => {
+  const points = Array.from({ length: 24 }, (_, index) => ({
+    startMs: (6 + index) * HOUR,
+    events: perHour(6 + index),
+  }));
+  return {
+    bundleId,
+    type,
+    measuredAtMs: 30 * HOUR - 30 * 60_000,
+    points,
+    total: points.reduce((sum, point) => sum + point.events, 0),
+  };
+};
+// The new bundle takes over: its applies start, the previous one's stop.
+const bundles: readonly ComparedBundle[] = [
+  {
+    release: newest,
+    applied: seriesOf(newest.bundleId, "UPDATE_APPLIED", (hour) =>
+      hour >= 20 ? 3 : 0,
+    ),
+    failed: seriesOf(newest.bundleId, "UPDATE_FAILED", (hour) =>
+      hour === 21 ? 2 : 0,
+    ),
+    recovered: seriesOf(newest.bundleId, "RECOVERED", () => 0),
+    error: null,
   },
-  activeInstallations: 5,
-  activeDays: 20,
-  failedLaunches: 2,
-  points: [{ startMs: 0, dailyActiveInstallations: 20, failedLaunches: 2 }],
-  adoption: null,
-  startMs: 0,
-  endMs: 86_400_000,
-  measuredAtMs: 86_400_000,
-  coverage: { kind: "complete", sinceMs: 0 },
+  {
+    release: previous,
+    applied: seriesOf(previous.bundleId, "UPDATE_APPLIED", (hour) =>
+      hour < 20 ? 1 : 0,
+    ),
+    failed: seriesOf(previous.bundleId, "UPDATE_FAILED", () => 0),
+    recovered: seriesOf(previous.bundleId, "RECOVERED", () => 0),
+    error: null,
+  },
+];
+const health: ReleaseHealthState = {
+  period: {
+    startMs: 6 * HOUR,
+    endMs: 30 * HOUR,
+    durationMs: 24 * HOUR,
+    intervalMs: HOUR,
+  },
+  candidates: [newest, previous, oldest],
+  releases: bundles,
+  isDefault: true,
+  error: null,
+  isFetching: false,
+  refresh: vi.fn(),
 };
 
 const input = {
   platform: "ios",
   channel: "production",
-  window: "7d",
+  window: "24h",
 } as const;
 
-afterEach(cleanup);
+/** The card with its chart kept in state, as the route keeps it in the URL. */
+function Card(
+  props: Partial<Omit<ComponentProps<typeof Overview>, "health" | "chart">> & {
+    readonly health?: Partial<ReleaseHealthState>;
+    readonly chart?: ComponentProps<typeof Overview>["chart"];
+  },
+) {
+  const [chart, setChart] = useState(props.chart ?? "adoption");
+  return (
+    <Overview
+      input={input}
+      onReleasesChange={vi.fn()}
+      onShowDetails={vi.fn()}
+      onWindowChange={vi.fn()}
+      {...props}
+      chart={chart}
+      onChartChange={setChart}
+      health={{ ...health, ...props.health }}
+    />
+  );
+}
+
+const renderCard = (props: ComponentProps<typeof Card> = {}) =>
+  render(
+    <QueryClientProvider client={new QueryClient()}>
+      <Card {...props} />
+    </QueryClientProvider>,
+  );
+
+const rows = () =>
+  within(screen.getByRole("table", { name: "Compared bundles" }))
+    .getAllByRole("row")
+    .slice(1)
+    .map((row) => row.textContent);
+
+afterEach(() => {
+  cleanup();
+  vi.clearAllMocks();
+});
 
 describe("Release health", () => {
-  it("shows the agreed metrics and derives crash rate from launch attempts", async () => {
-    render(
-      <InsightsOverview
-        input={input}
-        onWindowChange={vi.fn()}
-        onRefresh={vi.fn()}
-        query={{
-          data: report,
-          error: null,
-          isPending: false,
-          isFetching: false,
-        }}
-      />,
-    );
-    expect(screen.getByText("Active installations")).toBeDefined();
-    // Active installations come from a sketch, so the value is an estimate.
-    expect(screen.getByTitle("Estimated").textContent).toBe("≈Estimated 5");
+  it("opens on adoption: installations applying each bundle, and its update failures", () => {
+    const onShowDetails = vi.fn();
+    renderCard({ onShowDetails });
     expect(
-      screen.getByText("Active days").closest("div")?.querySelector("dd")
-        ?.textContent,
-    ).toBe("20");
-    expect(screen.getByText("Failed launches")).toBeDefined();
-    // 2 failed launches / (20 active days + 2 failed launches).
-    expect(screen.getByText("9.09%")).toBeDefined();
-    expect(screen.getByLabelText("Daily observed bundle share")).toBeDefined();
+      screen
+        .getByRole("tab", { name: "Adoption" })
+        .getAttribute("aria-selected"),
+    ).toBe("true");
     expect(
-      screen.getByRole("button", { name: "About active installations" }),
+      screen.getByLabelText("Installations applying each bundle per interval"),
     ).toBeDefined();
-    expect(
-      screen.getByRole("button", { name: "About crash rate" }),
-    ).toBeDefined();
-    fireEvent.click(screen.getByRole("button", { name: "About active days" }));
-    expect((await screen.findByRole("tooltip")).textContent).toContain(
-      "once for each UTC day it launched",
-    );
-  });
-
-  it("shows the no-launch state instead of a zero crash rate", () => {
-    render(
-      <InsightsOverview
-        input={input}
-        onWindowChange={vi.fn()}
-        onRefresh={vi.fn()}
-        query={{
-          data: { ...report, activeDays: 0, failedLaunches: 0, points: [] },
-          error: null,
-          isPending: false,
-          isFetching: false,
-        }}
-      />,
-    );
-    expect(screen.getByText("— / No launch reports")).toBeDefined();
-    fireEvent.click(screen.getByRole("tab", { name: "Launch failures" }));
-    expect(screen.getByText("No launch reports in this period.")).toBeDefined();
-  });
-
-  it("asks for a bundle, then shows its cumulative downloads from deployment", () => {
-    const hour = 3_600_000;
-    const onReleaseChange = vi.fn();
-    const { rerender } = render(
-      <InsightsOverview
-        input={input}
-        onWindowChange={vi.fn()}
-        onRefresh={vi.fn()}
-        onReleaseChange={onReleaseChange}
-        query={{
-          data: report,
-          error: null,
-          isPending: false,
-          isFetching: false,
-        }}
-      />,
-    );
-    fireEvent.click(screen.getByRole("tab", { name: "Adoption" }));
-    expect(screen.getByText("Choose a bundle to chart")).toBeDefined();
-    expect(
-      screen.getByRole("combobox", { name: "Chart bundle" }),
-    ).toBeDefined();
-    // The observed release is one click away.
+    expect(screen.getByText("Hourly · last 24 hours · UTC")).toBeDefined();
+    // The newest first; a message names a bundle, an ID one without.
+    expect(rows()).toEqual([
+      "Fix checkoutDeployed Jan 1, 20:15 UTC · 1.2.0302",
+      "release-…se-aDeployed Jan 1, 02:00 UTC · 1.2.0140",
+    ]);
     fireEvent.click(
-      screen.getByRole("button", { name: "Chart newest bundle" }),
+      screen.getByRole("button", {
+        name: "2 update failures of Fix checkout: view details",
+      }),
     );
-    expect(onReleaseChange).toHaveBeenCalledWith("release-a");
-    rerender(
-      <InsightsOverview
-        input={{ ...input, releaseId: "release-a" }}
-        onWindowChange={vi.fn()}
-        onRefresh={vi.fn()}
-        query={{
-          data: {
-            ...report,
-            adoption: {
-              deployedAtMs: 13 * hour + 20 * 60_000,
-              intervalMs: 6 * hour,
-              points: [
-                { startMs: 13 * hour, downloads: 4, totalDownloads: 4 },
-                { startMs: 19 * hour, downloads: 2, totalDownloads: 6 },
-              ],
-            },
-          },
-          error: null,
-          isPending: false,
-          isFetching: false,
-        }}
-      />,
-    );
-    expect(
-      screen.getByLabelText("Cumulative downloads of the chosen bundle"),
-    ).toBeDefined();
-    expect(screen.getByText("downloads since deployment")).toBeDefined();
-    expect(
-      screen.getByText("downloads since deployment").previousSibling
-        ?.textContent,
-    ).toBe("6");
-    expect(screen.getByText("Deployed Jan 1, 13:20 UTC")).toBeDefined();
+    expect(onShowDetails).toHaveBeenCalledWith("release-b", "updates");
   });
 
-  it("offers the period that covers a release deployed before this one", () => {
-    const day = 86_400_000;
-    const onWindowChange = vi.fn();
-    render(
-      <InsightsOverview
-        input={{ ...input, window: "24h", releaseId: "release-a" }}
-        onWindowChange={onWindowChange}
-        onRefresh={vi.fn()}
-        query={{
-          data: {
-            ...report,
-            startMs: 9 * day,
-            endMs: 10 * day,
-            measuredAtMs: 10 * day,
-            adoption: { deployedAtMs: null, intervalMs: day / 24, points: [] },
-          },
-          error: null,
-          isPending: false,
-          isFetching: false,
-        }}
-      />,
+  it("adds, removes, and resets the compared bundles", async () => {
+    const onReleasesChange = vi.fn();
+    const { rerender } = renderCard({ onReleasesChange });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Remove Fix checkout" }),
     );
-    fireEvent.click(screen.getByRole("tab", { name: "Adoption" }));
+    expect(onReleasesChange).toHaveBeenLastCalledWith(["release-a"]);
+
+    fireEvent.click(screen.getByRole("combobox", { name: "Add a bundle" }));
+    const option = await screen.findByRole("option", {
+      name: "First release · Jan 1, 01:00 UTC",
+    });
+    await act(async () => {
+      fireEvent.pointerDown(option);
+      fireEvent.click(option);
+    });
+    expect(onReleasesChange).toHaveBeenLastCalledWith([
+      "release-b",
+      "release-a",
+      "release-old",
+    ]);
+    // The newest bundles need no reset.
     expect(
-      screen.getByText("No downloads of this bundle in this period"),
+      screen.queryByRole("button", { name: "Show the newest 2" }),
+    ).toBeNull();
+
+    rerender(
+      <QueryClientProvider client={new QueryClient()}>
+        <Card
+          onReleasesChange={onReleasesChange}
+          health={{ isDefault: false }}
+        />
+      </QueryClientProvider>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Show the newest 2" }));
+    expect(onReleasesChange).toHaveBeenLastCalledWith(undefined);
+  });
+
+  it("stops adding at four bundles", () => {
+    const more = [3, 4].map((index) => ({
+      ...bundles[1]!,
+      release: release(`release-${index}`, index * HOUR, null),
+    }));
+    renderCard({ health: { releases: [...bundles, ...more] } });
+    const add = screen.getByRole("combobox", { name: "Add a bundle" });
+    expect(add.textContent).toContain("Up to 4 bundles");
+  });
+
+  it("charts crashes and their rate, and calls for no rollback below 20 attempts", () => {
+    const onShowDetails = vi.fn();
+    renderCard({
+      chart: "crashes",
+      onShowDetails,
+      health: {
+        releases: [
+          {
+            ...bundles[0]!,
+            // 1 crash of 9 attempts: 11.1%, too few to act on.
+            applied: seriesOf(newest.bundleId, "UPDATE_APPLIED", (hour) =>
+              hour === 21 ? 8 : 0,
+            ),
+            recovered: seriesOf(newest.bundleId, "RECOVERED", (hour) =>
+              hour === 22 ? 1 : 0,
+            ),
+          },
+          bundles[1]!,
+        ],
+      },
+    });
+    expect(
+      screen.getByLabelText("Crashes of each bundle per interval"),
     ).toBeDefined();
-    // "release-a" is no UUIDv7, so 7 days is the period offered.
+    expect(rows()).toEqual([
+      "Fix checkoutDeployed Jan 1, 20:15 UTC · 1.2.0111.1%",
+      "release-…se-aDeployed Jan 1, 02:00 UTC · 1.2.000.0%",
+    ]);
+    expect(screen.queryByRole("button", { name: "Roll back" })).toBeNull();
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "1 crashes of Fix checkout: view details",
+      }),
+    );
+    expect(onShowDetails).toHaveBeenCalledWith("release-b", "crashes");
+  });
+
+  it("recommends rolling back a bundle that crashes for 5% of 20 attempts, and disables it", async () => {
+    renderCard({
+      chart: "crashes",
+      health: {
+        releases: [
+          {
+            ...bundles[0]!,
+            // 2 crashes of 20 attempts: 10%.
+            applied: seriesOf(newest.bundleId, "UPDATE_APPLIED", (hour) =>
+              hour === 21 ? 18 : 0,
+            ),
+            recovered: seriesOf(newest.bundleId, "RECOVERED", (hour) =>
+              hour === 22 ? 2 : 0,
+            ),
+          },
+          bundles[1]!,
+        ],
+      },
+    });
+    expect(
+      screen.getByRole("tab", { name: "Crashes, rollback recommended" }),
+    ).toBeDefined();
+    const alert = screen.getByRole("alert");
+    expect(alert.textContent).toContain("Roll back Fix checkout");
+    expect(alert.textContent).toContain(
+      "It crashed for 10.0% of the installations that tried it (2 of 20), above 5.0%.",
+    );
+    expect(rows()[0]).toContain("10.0%, rollback recommended");
+
+    fireEvent.click(within(alert).getByRole("button", { name: "Roll back" }));
+    const dialog = await screen.findByRole("alertdialog");
+    expect(within(dialog).getByText("Roll back Fix checkout?")).toBeDefined();
+    await act(async () => {
+      fireEvent.click(
+        within(dialog).getByRole("button", { name: "Roll back" }),
+      );
+    });
+    const disable = {
+      expectedRevision: 3,
+      patch: { enabled: false },
+      releaseId: "release-b",
+    };
+    expect(mutations.preflight).toHaveBeenCalledWith(disable);
+    await waitFor(() => expect(mutations.update).toHaveBeenCalledWith(disable));
+  });
+
+  it("offers a longer period when no installation applied the bundles, and says when nothing crashed", () => {
+    const onWindowChange = vi.fn();
+    const quiet = bundles.map((bundle) => ({
+      ...bundle,
+      applied: seriesOf(bundle.release.bundleId, "UPDATE_APPLIED", () => 0),
+    }));
+    renderCard({ onWindowChange, health: { releases: quiet } });
+    expect(
+      screen.getByText(
+        "No installations applied these bundles in the last 24 hours",
+      ),
+    ).toBeDefined();
     fireEvent.click(screen.getByRole("button", { name: "Show 7 days" }));
     expect(onWindowChange).toHaveBeenCalledWith("7d");
+
+    fireEvent.click(screen.getByRole("tab", { name: "Crashes" }));
+    expect(screen.getByText("No crashes in the last 24 hours")).toBeDefined();
   });
 
-  it("keeps only the report period and refresh actions in the card", () => {
-    const onWindowChange = vi.fn();
-    render(
-      <InsightsOverview
-        input={input}
-        onWindowChange={onWindowChange}
-        onRefresh={vi.fn()}
-        query={{
-          data: report,
-          error: null,
-          isPending: false,
-          isFetching: false,
-        }}
-      />,
+  it("loads, then says when the scope has no bundle deployments", () => {
+    const { rerender } = renderCard({
+      health: { releases: undefined, candidates: undefined },
+    });
+    expect(screen.getByLabelText("Loading release health")).toBeDefined();
+    rerender(
+      <QueryClientProvider client={new QueryClient()}>
+        <Card health={{ releases: [], candidates: [] }} />
+      </QueryClientProvider>,
     );
-    expect(
-      screen.queryByRole("form", { name: "Release health filters" }),
-    ).toBeNull();
-    fireEvent.click(screen.getByRole("tab", { name: "24 hours" }));
-    expect(onWindowChange).toHaveBeenCalledWith("24h");
+    expect(screen.getByText("No bundles deployed here yet")).toBeDefined();
+  });
+
+  it("keeps the period and refresh in the card header", () => {
+    const onWindowChange = vi.fn();
+    const refresh = vi.fn();
+    renderCard({ onWindowChange, health: { refresh } });
+    fireEvent.click(screen.getByRole("tab", { name: "7 days" }));
+    expect(onWindowChange).toHaveBeenCalledWith("7d");
+    fireEvent.click(
+      screen.getByRole("button", { name: "Refresh release health" }),
+    );
+    expect(refresh).toHaveBeenCalled();
   });
 });

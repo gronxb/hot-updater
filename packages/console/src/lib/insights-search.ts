@@ -10,12 +10,10 @@ const readText = (value: unknown) =>
     : undefined;
 const readWindow = (value: unknown): InsightsWindow | undefined =>
   value === "24h" || value === "7d" || value === "30d" ? value : undefined;
-/** The Release health chart tab. */
-export type HealthChart = "share" | "adoption" | "failures";
+/** Release health's chart: whether bundles are applied, or crash. */
+export type HealthChart = "adoption" | "crashes";
 const readHealthChart = (value: unknown): HealthChart | undefined =>
-  value === "share" || value === "adoption" || value === "failures"
-    ? value
-    : undefined;
+  value === "adoption" || value === "crashes" ? value : undefined;
 const readUsageWindow = (value: unknown): UsageWindow | undefined =>
   value === "12m" ? value : readWindow(value);
 
@@ -29,6 +27,11 @@ export type InsightsSearch = {
   healthChannel?: string;
   releaseId?: string;
   healthChart?: HealthChart;
+  /**
+   * Release health's compared bundles, comma-separated release IDs; omitted,
+   * the focused release and the one before it, or the newest two.
+   */
+  bundles?: string;
 };
 
 export function validateInsightsSearch(
@@ -52,6 +55,7 @@ export function validateInsightsSearch(
     healthChannel: readText(search.healthChannel),
     releaseId: readText(search.releaseId),
     healthChart: readHealthChart(search.healthChart),
+    bundles: readText(search.bundles),
   };
 }
 
@@ -81,3 +85,9 @@ export function adoptionWindow(releaseId: string, now = Date.now()) {
       ? ("7d" as const)
       : ("30d" as const);
 }
+
+/** Release health's compared bundles from the `bundles` search value. */
+export const comparedBundleIds = (value: string | undefined) =>
+  value === undefined
+    ? undefined
+    : [...new Set(value.split(",").filter((id) => id.length > 0))];

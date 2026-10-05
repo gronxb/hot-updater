@@ -14,7 +14,7 @@ import { createConsoleRuntime, requireFeature } from "./server/runtime.server";
 
 const mocks = vi.hoisted(() => ({
   prepare: vi.fn(),
-  report: vi.fn(),
+  events: vi.fn(),
   activity: vi.fn(),
 }));
 vi.mock("@tanstack/react-start", () => ({
@@ -33,8 +33,8 @@ vi.mock("@tanstack/react-start", () => ({
   }),
 }));
 vi.mock("./server/config.server", () => ({ prepareConfig: mocks.prepare }));
-vi.mock("./server/insightsRecovery", () => ({
-  getRecoveryReport: mocks.report,
+vi.mock("./server/releaseAdoption", () => ({
+  getBundleEvents: mocks.events,
 }));
 
 vi.mock("./server/bundleActivity", () => ({
@@ -44,8 +44,8 @@ vi.mock("./server/bundleActivity", () => ({
 import {
   getBundleActivityRpc,
   readBundleActivityInput,
-  getRecoveryReportRpc,
 } from "./insights-recovery-rpc";
+import { getBundleEventsRpc } from "./release-adoption-rpc";
 
 /** The console over `database`, running `plugins` as the server does. */
 const databaseRuntime = (
@@ -78,28 +78,30 @@ const withInsights = async () => {
 
 afterEach(() => vi.resetAllMocks());
 
-describe("recovery report access", () => {
+describe("bundle events access", () => {
   const data = {
     platform: "ios",
     channel: "production",
     window: "7d",
-    releaseId: "promoted-id",
+    endMs: 7_200_000,
+    bundleId: "bundle-a",
+    type: "UPDATE_APPLIED",
   } as const;
 
-  it("uses the authenticated console database and preserves the requested ID", async () => {
+  it("reads through the authenticated console's Insights model", async () => {
     const model = await withInsights();
-    mocks.report.mockResolvedValue({ series: [] });
-    await expect(getRecoveryReportRpc({ data })).resolves.toEqual({
-      series: [],
+    mocks.events.mockResolvedValue({ points: [] });
+    await expect(getBundleEventsRpc({ data })).resolves.toEqual({
+      points: [],
     });
-    expect(mocks.report).toHaveBeenCalledWith(model, data);
+    expect(mocks.events).toHaveBeenCalledWith(model, data);
   });
 
-  it("does not read report history when console access is denied", async () => {
+  it("reads nothing when console access is denied", async () => {
     const denied = new Response("Unauthorized", { status: 401 });
     mocks.prepare.mockRejectedValue(denied);
-    await expect(getRecoveryReportRpc({ data })).rejects.toBe(denied);
-    expect(mocks.report).not.toHaveBeenCalled();
+    await expect(getBundleEventsRpc({ data })).rejects.toBe(denied);
+    expect(mocks.events).not.toHaveBeenCalled();
   });
 });
 
@@ -162,8 +164,15 @@ describe("activity the console does not serve", () => {
       mocks.prepare.mockResolvedValue({ runtime });
 
       await expect(
-        getRecoveryReportRpc({
-          data: { platform: "ios", channel: "production", window: "7d" },
+        getBundleEventsRpc({
+          data: {
+            platform: "ios",
+            channel: "production",
+            window: "7d",
+            endMs: 7_200_000,
+            bundleId: "bundle-a",
+            type: "UPDATE_APPLIED",
+          },
         }),
       ).rejects.toMatchObject({
         name: "ConsoleFeatureUnavailableError",
@@ -176,7 +185,7 @@ describe("activity the console does not serve", () => {
           data: [{ platform: "ios", channel: "production", releaseId: "r" }],
         }),
       ).rejects.toMatchObject({ feature: "insightsAnalytics" });
-      expect(mocks.report).not.toHaveBeenCalled();
+      expect(mocks.events).not.toHaveBeenCalled();
       expect(mocks.activity).not.toHaveBeenCalled();
     },
   );
