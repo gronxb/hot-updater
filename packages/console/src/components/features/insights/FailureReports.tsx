@@ -30,6 +30,7 @@ import {
 import { useFailureReportsQuery } from "@/lib/insights-api";
 import {
   groupFailureReports,
+  predatesErrorMessages,
   type FailureGroup,
   type FailureReportsInput,
   type FailureReportsPage,
@@ -50,7 +51,10 @@ import {
 import { InsightsErrorAlert } from "./InsightsErrorAlert";
 
 const messageOf = (event: InsightsEventRow) =>
-  event.failure?.errorMessage || "No error message reported";
+  event.failure?.errorMessage ||
+  (predatesErrorMessages(event.sdkVersion)
+    ? `No error message from SDK ${event.sdkVersion}`
+    : "No error message reported");
 
 function FailureDetail({ group }: { readonly group: FailureGroup }) {
   const [selectedId, setSelectedId] = useState(group.reports[0]!.id);
@@ -102,8 +106,9 @@ function FailureDetail({ group }: { readonly group: FailureGroup }) {
           </h3>
           {!failure.errorMessage ? (
             <p className="text-sm text-muted-foreground">
-              This client did not send the original error. Upgrade the app’s
-              Insights plugin and server to collect details for future failures.
+              {predatesErrorMessages(event.sdkVersion)
+                ? `SDK ${event.sdkVersion} sends no original error; apps send it from SDK 1.0.0-rc.28 on. Update the app’s @hot-updater/react-native to collect it for future failures.`
+                : "This client did not send the original error. Upgrade the app’s Insights plugin and server to collect details for future failures."}
             </p>
           ) : null}
           <Button

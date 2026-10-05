@@ -152,7 +152,8 @@ report counts are not the number of every exception thrown on devices.
 
 Update the app's Insights plugin, server, and Console to collect and inspect
 original messages and stacks. Existing reports that lack these fields cannot
-recover the original cause; the Console labels those missing diagnostics.
+recover the original cause. SDKs before 1.0.0-rc.28 send no message, so the
+Console names the SDK version of such reports and groups them by it.
 This addition uses existing event metadata and needs no database migration.
 
 ## Inspect HTTP responses
@@ -394,8 +395,8 @@ Release ID, and period:
   fell back to the changed files or the full archive.
 - Without a Release ID, **Failed checks** counts failed update checks, and
   **Check failure rate** divides the installations with one by the channel's
-  active installations. A check a device could not send while offline is not
-  reported.
+  active installations. A check that gets no response, because the device is
+  offline or the request timed out or was cancelled, is not reported.
 - **Failures by stage and reason** lists each stage and reason with its share;
   expand one to see its HTTP statuses, origin codes, transports, and resources.
 - **Crashes by exit reason** splits crash recoveries by the reasons Android

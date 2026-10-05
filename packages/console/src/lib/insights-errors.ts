@@ -29,6 +29,20 @@ export function readFailureReportsInput(input: FailureReportsInput) {
   return input;
 }
 
+/** The first SDK, 1.0.0-rc.28, whose failure reports carry the original error. */
+const FIRST_RC_WITH_ERRORS = 28;
+
+/**
+ * Whether reports from this SDK version cannot carry the original error:
+ * an SDK from before 1.0.0-rc.28 sends none.
+ */
+export const predatesErrorMessages = (
+  sdkVersion: string | null | undefined,
+): sdkVersion is string => {
+  const rc = /^1\.0\.0-rc\.(\d+)$/.exec(sdkVersion ?? "");
+  return rc !== null && Number(rc[1]) < FIRST_RC_WITH_ERRORS;
+};
+
 /** Exact text and reported context only; never guess a cause from the message. */
 export function groupFailureReports(events: readonly InsightsEventRow[]) {
   const groups = new Map<string, InsightsEventRow[]>();
@@ -43,6 +57,8 @@ export function groupFailureReports(events: readonly InsightsEventRow[]) {
       f.httpStatus ?? null,
       f.originCode ?? null,
       f.transport ?? null,
+      // Without a message, the SDK that sent none tells reports apart.
+      f.errorMessage ? null : (event.sdkVersion ?? null),
     ]);
     const group = groups.get(key) ?? [];
     group.push(event);

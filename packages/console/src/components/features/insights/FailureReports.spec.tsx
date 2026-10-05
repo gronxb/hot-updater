@@ -191,4 +191,50 @@ describe("error investigation", () => {
       within(dialog).getByText("No stack trace was sent with this report."),
     ).toBeDefined();
   });
+  it("names the SDK that sent no message, and groups its reports by it", async () => {
+    const legacy = (id: string, sdkVersion: string): InsightsEventRow => ({
+      ...event,
+      id,
+      sdkVersion,
+      httpResponse: undefined,
+      failure: { stage: "check", reason: "unknown", resource: "catalog" },
+    });
+    const reports = [
+      legacy("rc23-a", "1.0.0-rc.23"),
+      legacy("rc23-b", "1.0.0-rc.23"),
+      legacy("rc27", "1.0.0-rc.27"),
+    ];
+    // The same failure, told apart by the SDK that sent no message.
+    expect(
+      groupFailureReports(reports).map((group) => group.reports.length),
+    ).toEqual([2, 1]);
+
+    render(
+      <FailureReportsList
+        pages={[{ data: reports, scanned: 3, sinceMs: 0, nextCursor: null }]}
+        error={null}
+        isPending={false}
+        isFetching={false}
+        hasNextPage={false}
+        onLoadMore={vi.fn()}
+        onRefresh={vi.fn()}
+      />,
+    );
+    expect(
+      screen.getByRole("button", {
+        name: /No error message from SDK 1\.0\.0-rc\.27/,
+      }),
+    ).toBeDefined();
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: /No error message from SDK 1\.0\.0-rc\.23/,
+      }),
+    );
+    const dialog = await screen.findByRole("dialog", { name: "Error details" });
+    expect(
+      within(dialog).getByText(
+        /SDK 1\.0\.0-rc\.23 sends no original error; apps send it from SDK 1\.0\.0-rc\.28 on/,
+      ),
+    ).toBeDefined();
+  });
 });
