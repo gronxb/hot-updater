@@ -887,25 +887,25 @@ describe("createHotUpdater Insights", () => {
     vi.setSystemTime(new Date("2026-08-12T10:00:00.000Z"));
     const hotUpdater = start();
     const append = vi.spyOn(hotUpdater.api.insights, "recordEvent");
+    // Launches count in the release's lifetime row.
+    const launch = { ...event, toReleaseId: "release-1" };
     const launches = async () => {
       const {
         data: [activity],
       } = await hotUpdater.api.insights.getReleaseActivity({
-        scope: { platform: "ios", channel: "production" },
-        timeRange: {
-          start: Date.parse("2026-08-12T00:00:00.000Z"),
-          end: Date.parse("2026-08-14T00:00:00.000Z"),
-        },
+        releases: [
+          { releaseId: "release-1", platform: "ios", channel: "production" },
+        ],
       });
       return activity!.metrics.launches;
     };
     const report = {
-      ...event,
+      ...launch,
       eventId: "01987a6e-4c00-7abc-8def-0123456789ab",
     };
 
     // A retry, then relaunches later that day, with and without an ID.
-    for (const body of [report, report, event, event]) {
+    for (const body of [report, report, launch, launch]) {
       expect(
         (await hotUpdater.handlers.client(eventRequest(body))).status,
       ).toBe(204);
@@ -916,7 +916,9 @@ describe("createHotUpdater Insights", () => {
 
     // The next UTC day counts the installation again.
     vi.setSystemTime(new Date("2026-08-13T09:00:00.000Z"));
-    expect((await hotUpdater.handlers.client(eventRequest())).status).toBe(204);
+    expect(
+      (await hotUpdater.handlers.client(eventRequest(launch))).status,
+    ).toBe(204);
     await expect(launches()).resolves.toBe(2);
   });
 

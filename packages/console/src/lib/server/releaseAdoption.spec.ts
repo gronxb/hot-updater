@@ -1,13 +1,14 @@
 // @vitest-environment node
 import type { ReleaseRow } from "@hot-updater/plugin-core";
-import type { InsightsGetReleaseActivityInput } from "@hot-updater/server/plugins/insights";
+import type { InsightsCountEventSeriesInput } from "@hot-updater/server/plugins/insights";
 import { describe, expect, it, vi } from "vitest";
 
+import { crashRateOf, recommendsRollback } from "../release-adoption";
 import {
-  getDownloadsRelease,
-  getReleaseDownloads,
-  listDownloadsReleases,
-} from "./releaseDownloads";
+  getAdoptionRelease,
+  getBundleEvents,
+  listAdoptionReleases,
+} from "./releaseAdoption";
 
 const HOUR = 3_600_000;
 const DAY = 24 * HOUR;
@@ -18,7 +19,7 @@ const row = (
   overrides: Partial<ReleaseRow> = {},
 ): ReleaseRow => ({
   id,
-  revision: 1,
+  revision: 2,
   scope_key: "scope",
   channel_id: "channel-production",
   platform: "ios",
@@ -43,7 +44,7 @@ const row = (
 const releases = [
   row("release-4", 9 * DAY, { message: "Newest" }),
   row("release-embedded", 8 * DAY, { kind: "EMBEDDED", bundle_id: null }),
-  row("release-3", 7 * DAY),
+  row("release-3", 7 * DAY, { enabled: false }),
   row("release-2", 5 * DAY),
 ];
 
@@ -65,10 +66,10 @@ const coreOf = () => ({
   ),
 });
 
-describe("downloads releases", () => {
+describe("Release health bundles", () => {
   it("lists the newest bundle deployments with one read of the releases", async () => {
     const core = coreOf();
-    const listed = await listDownloadsReleases(core, {
+    const listed = await listAdoptionReleases(core, {
       platform: "ios",
       channel: "production",
     });
@@ -81,29 +82,22 @@ describe("downloads releases", () => {
       order: "desc",
       limit: 10,
     });
-    // A rollback to the built-in bundle has nothing to download.
+    // A rollback to the built-in bundle has nothing to apply.
     expect(listed).toEqual([
       {
         releaseId: "release-4",
+        bundleId: "bundle-release-4",
         deployedAtMs: 9 * DAY,
         message: "Newest",
         targetAppVersion: "1.0.0",
+        enabled: true,
+        revision: 2,
       },
-      {
-        releaseId: "release-3",
-        deployedAtMs: 7 * DAY,
-        message: null,
-        targetAppVersion: "1.0.0",
-      },
-      {
-        releaseId: "release-2",
-        deployedAtMs: 5 * DAY,
-        message: null,
-        targetAppVersion: "1.0.0",
-      },
+      expect.objectContaining({ releaseId: "release-3", enabled: false }),
+      expect.objectContaining({ releaseId: "release-2" }),
     ]);
     await expect(
-      listDownloadsReleases(core, { platform: "ios", channel: "beta" }),
+      listAdoptionReleases(core, { platform: "ios", channel: "beta" }),
     ).resolves.toEqual([]);
     expect(core.listReleases).toHaveBeenCalledOnce();
   });
@@ -111,7 +105,7 @@ describe("downloads releases", () => {
   it("names one bundle of the scope, and finds the bundle deployed before it", async () => {
     const core = coreOf();
     await expect(
-      getDownloadsRelease(core, {
+      getAdoptionRelease(core, {
         platform: "ios",
         channel: "production",
         releaseId: "release-3",
@@ -121,7 +115,7 @@ describe("downloads releases", () => {
     });
     expect(core.listReleases).not.toHaveBeenCalled();
 
-    const withPrevious = await getDownloadsRelease(core, {
+    const withPrevious = await getAdoptionRelease(core, {
       platform: "ios",
       channel: "production",
       releaseId: "release-4",
@@ -143,7 +137,7 @@ describe("downloads releases", () => {
     // No other platform's or channel's release, and no rollback.
     for (const releaseId of ["release-android", "release-embedded", "none"])
       await expect(
-        getDownloadsRelease(core, {
+        getAdoptionRelease(core, {
           platform: "ios",
           channel: "production",
           releaseId,
@@ -153,91 +147,113 @@ describe("downloads releases", () => {
   });
 });
 
-describe("release downloads", () => {
+describe("Release health counts", () => {
   const modelOf = () => ({
-    // Three downloads in each interval read.
-    getReleaseActivity: vi.fn(
-      async ({ timeRange, intervalMs }: InsightsGetReleaseActivityInput) => ({
-        coverage: { kind: "complete" as const, sinceMs: 0 },
-        measuredAtMs: 42,
-        data: [
-          {
-            metrics: {
-              downloads: 99,
-              launches: 0,
-              failedLaunches: 0,
-              series: Array.from(
-                { length: (timeRange!.end - timeRange!.start) / intervalMs! },
-                (_, index) => ({
-                  startMs: timeRange!.start + index * intervalMs!,
-                  downloads: 3,
-                  launches: 1,
-                  failedLaunches: 0,
-                }),
-              ),
-            },
-          },
-        ],
-      }),
+    // Three reports in each interval read.
+    countEventSeries: vi.fn(
+      async ({ timeRange, intervalMs }: InsightsCountEventSeriesInput) =>
+        Array.from(
+          { length: (timeRange.end - timeRange.start) / intervalMs },
+          (_, index) => ({
+            startMs: timeRange.start + index * intervalMs,
+            events: 3,
+          }),
+        ),
     ),
   });
 
-  it("reads one bundle's counters in the period's intervals", async () => {
+  it("reads one bundle's applies, failures, or crashes in the period's intervals", async () => {
     const model = modelOf();
-    const series = await getReleaseDownloads(
+    const applied = await getBundleEvents(
       model,
       {
         platform: "ios",
         channel: "production",
         window: "7d",
         endMs: 10 * DAY,
-        releaseId: "release-4",
+        bundleId: "bundle-1",
+        type: "UPDATE_APPLIED",
       },
       10 * DAY - HOUR / 2,
     );
-    expect(model.getReleaseActivity).toHaveBeenCalledExactlyOnceWith({
-      releases: [
-        { releaseId: "release-4", platform: "ios", channel: "production" },
-      ],
+    expect(model.countEventSeries).toHaveBeenCalledExactlyOnceWith({
+      filter: {
+        platform: "ios",
+        channel: "production",
+        type: "UPDATE_APPLIED",
+        toBundleId: "bundle-1",
+      },
       timeRange: { start: 3 * DAY, end: 10 * DAY },
       intervalMs: 6 * HOUR,
     });
-    expect(series).toMatchObject({
-      releaseId: "release-4",
-      measuredAtMs: 42,
-      totalDownloads: 99,
+    expect(applied).toMatchObject({
+      bundleId: "bundle-1",
+      type: "UPDATE_APPLIED",
+      total: 84,
     });
-    expect(series.points).toHaveLength(28);
-    expect(series.points[0]).toEqual({ startMs: 3 * DAY, downloads: 3 });
+    expect(applied.points).toHaveLength(28);
+
+    // A recovery names the bundle it crashed on.
+    await getBundleEvents(model, {
+      platform: "ios",
+      channel: "production",
+      window: "24h",
+      endMs: 10 * DAY,
+      bundleId: "bundle-1",
+      type: "RECOVERED",
+    });
+    expect(model.countEventSeries).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        filter: {
+          platform: "ios",
+          channel: "production",
+          type: "RECOVERED",
+          fromBundleId: "bundle-1",
+        },
+        intervalMs: HOUR,
+      }),
+    );
   });
 
   it("ends no later than the current hour, and takes only the end of an hour", async () => {
     const model = modelOf();
-    await getReleaseDownloads(
+    await getBundleEvents(
       model,
       {
         platform: "ios",
         channel: "production",
         window: "24h",
         endMs: 12 * DAY,
-        releaseId: "release-4",
+        bundleId: "bundle-1",
+        type: "UPDATE_FAILED",
       },
       10 * DAY - HOUR / 2,
     );
-    expect(model.getReleaseActivity).toHaveBeenCalledWith(
+    expect(model.countEventSeries).toHaveBeenCalledWith(
       expect.objectContaining({
         timeRange: { start: 9 * DAY, end: 10 * DAY },
-        intervalMs: HOUR,
       }),
     );
     await expect(
-      getReleaseDownloads(model, {
+      getBundleEvents(model, {
         platform: "ios",
         channel: "production",
         window: "24h",
         endMs: 10 * DAY + 1,
-        releaseId: "release-4",
+        bundleId: "bundle-1",
+        type: "UPDATE_APPLIED",
       }),
     ).rejects.toThrow("Choose a platform, channel, period, and bundle.");
+  });
+
+  it("counts a crash rate over applies and crashes, and recommends a rollback from 5% of 20", () => {
+    expect(crashRateOf(0, 0)).toEqual({ attempts: 0, rate: 0 });
+    expect(crashRateOf(18, 2)).toEqual({ attempts: 20, rate: 0.1 });
+    const enabled = { enabled: true };
+    expect(recommendsRollback(enabled, 19, 1)).toBe(true);
+    // 19 attempts are too few, 4.8% too low, and a disabled bundle is rolled back.
+    expect(recommendsRollback(enabled, 18, 1)).toBe(false);
+    expect(recommendsRollback(enabled, 40, 2)).toBe(false);
+    expect(recommendsRollback({ enabled: false }, 18, 2)).toBe(false);
   });
 });

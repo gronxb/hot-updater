@@ -128,7 +128,6 @@ export const bundle_events = pgTable("bundle_events", {
   "_v": column("bigint")("_v").notNull().default(0),
 }, (table) => [
   primaryKey({ columns: [table["id"]] }),
-  index("bundle_events_recent").on(table["channel"], table["platform"], table["day"], table["received_at_ms"], table["id"]),
   index("bundle_events_movementsByInstall").on(table["movement_install_id"], table["received_at_ms"], table["id"]),
   index("bundle_events_byDay").on(table["day"], table["received_at_ms"], table["id"]),
 ]);
@@ -186,7 +185,6 @@ export const insights_sketches = pgTable("insights_sketches", {
   "identity": column("varchar(32) COLLATE \"C\"")("identity").notNull(),
   "bucket_start_ms": column("bigint")("bucket_start_ms").notNull(),
   "_shard": column("bigint")("_shard").notNull(),
-  "launch_users": column("text COLLATE \"C\"")("launch_users"),
   "activity_users": column("text COLLATE \"C\"")("activity_users"),
   "failed_users": column("text COLLATE \"C\"")("failed_users"),
   "_v": column("bigint")("_v").notNull().default(0),
@@ -215,7 +213,6 @@ export const insights_sketches_daily = pgTable("insights_sketches_daily", {
   "identity": column("varchar(32) COLLATE \"C\"")("identity").notNull(),
   "bucket_start_ms": column("bigint")("bucket_start_ms").notNull(),
   "_shard": column("bigint")("_shard").notNull(),
-  "launch_users": column("text COLLATE \"C\"")("launch_users"),
   "activity_users": column("text COLLATE \"C\"")("activity_users"),
   "failed_users": column("text COLLATE \"C\"")("failed_users"),
   "_v": column("bigint")("_v").notNull().default(0),

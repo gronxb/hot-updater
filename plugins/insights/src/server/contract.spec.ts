@@ -37,16 +37,12 @@ const emptyModel: InsightsModel = {
   findLatestEvents: async () => [],
   countLatestEvents: async () => 0,
   countEvents: async () => 0,
-  getReleaseActivity: async () => ({
-    coverage: { kind: "complete", sinceMs: 0 },
-    data: [],
-    measuredAtMs: 0,
-  }),
-  getDistributionHistory: async () => ({
-    coverage: { kind: "complete" as const, sinceMs: 0 },
-    points: [],
-    measuredAtMs: 0,
-  }),
+  countEventSeries: async ({ timeRange: { start, end }, intervalMs }) =>
+    Array.from({ length: (end - start) / intervalMs }, (_, index) => ({
+      startMs: start + index * intervalMs,
+      events: 0,
+    })),
+  getReleaseActivity: async () => ({ data: [], measuredAtMs: 0 }),
   getAppUsage: async () => ({
     coverage: { kind: "complete", sinceMs: 0 },
     activeInstallations: 0,
@@ -81,55 +77,99 @@ describe("public Insights validation", () => {
     expect(recordEvent).not.toHaveBeenCalled();
   });
 
-  it("bounds distribution history to 31 whole UTC days before provider I/O", async () => {
-    const day = 86_400_000;
-    const getDistributionHistory = vi.fn(emptyModel.getDistributionHistory);
-    const model = createModel({ getDistributionHistory });
-    const scope = { channel: "production", platform: "ios" as const };
-    for (const timeRange of [
-      { start: 1, end: day },
-      { start: 0, end: day + 1 },
-      { start: day, end: day },
-      { start: day, end: 0 },
-      { start: 0, end: 32 * day },
+  it("takes a bundle filter's event series over whole hours in whole intervals of at most 90 days", async () => {
+    const hour = 3_600_000;
+    const day = 24 * hour;
+    const countEventSeries = vi.fn(emptyModel.countEventSeries);
+    const model = createModel({ countEventSeries });
+    const filter = {
+      platform: "ios" as const,
+      channel: "production",
+      type: "UPDATE_APPLIED" as const,
+      toBundleId: "bundle-1",
+    };
+    const timeRange = { start: 0, end: day };
+    for (const input of [
+      { filter, timeRange: { start: 1, end: hour + 1 }, intervalMs: hour },
+      { filter, timeRange: { start: 0, end: hour + 1 }, intervalMs: hour },
+      { filter, timeRange, intervalMs: 0 },
+      { filter, timeRange, intervalMs: hour / 2 },
+      { filter, timeRange, intervalMs: -hour },
+      // A partial last interval.
+      { filter, timeRange: { start: 0, end: 10 * hour }, intervalMs: 3 * hour },
+      { filter, timeRange: { start: 0, end: 91 * day }, intervalMs: day },
+      { filter, timeRange: { start: hour, end: hour }, intervalMs: hour },
+      { filter, timeRange, intervalMs: hour, limit: 10 },
+      // A recovery names the bundle it came from.
+      { filter: { ...filter, type: "RECOVERED" }, timeRange, intervalMs: hour },
     ]) {
       await expect(
-        model.getDistributionHistory({ ...scope, timeRange }),
+        model.countEventSeries(input as never),
       ).rejects.toMatchObject({ code: "invalid-query" });
     }
-    expect(getDistributionHistory).not.toHaveBeenCalled();
-    await model.getDistributionHistory({
-      ...scope,
-      timeRange: { start: 0, end: 31 * day },
-    });
-    expect(getDistributionHistory).toHaveBeenCalledOnce();
+    expect(countEventSeries).not.toHaveBeenCalled();
+    await expect(
+      model.countEventSeries({
+        filter,
+        timeRange: { start: 0, end: 90 * day },
+        intervalMs: day,
+      }),
+    ).resolves.toHaveLength(90);
+    await expect(
+      model.countEventSeries({ filter, timeRange, intervalMs: 6 * hour }),
+    ).resolves.toEqual(
+      [0, 6, 12, 18].map((at) => ({ startMs: at * hour, events: 0 })),
+    );
+    expect(countEventSeries).toHaveBeenCalledTimes(2);
   });
 
-  it("takes a series interval of whole hours on a release period read only", async () => {
+  it("rejects an event series that skips, reorders, or adds to its intervals", async () => {
     const hour = 3_600_000;
-    const getReleaseActivity = vi.fn(emptyModel.getReleaseActivity);
-    const model = createModel({ getReleaseActivity });
-    const releases = [
-      {
-        releaseId: "0195f0f0-0000-7000-8000-000000000001",
+    const input = {
+      filter: {
         platform: "ios" as const,
         channel: "production",
+        type: "UPDATE_APPLIED" as const,
+        toBundleId: "bundle-1",
       },
-    ];
-    const timeRange = { start: 0, end: 24 * hour };
+      timeRange: { start: 0, end: 3 * hour },
+      intervalMs: hour,
+    };
+    const point = (at: number, events = 0) => ({ startMs: at * hour, events });
+    for (const points of [
+      // Skips the second interval.
+      [point(0), point(2)],
+      [point(0), point(2), point(1)],
+      [point(0), point(1), point(2), point(3)],
+      [point(0), point(1), point(2, -1)],
+      [point(0), point(1), { ...point(2), installations: 0 }],
+    ]) {
+      await expect(
+        createModel({
+          countEventSeries: async () => points,
+        }).countEventSeries(input),
+      ).rejects.toMatchObject({ code: "invalid-result" });
+    }
+  });
+
+  it("takes 1 to 100 releases alone, and rejects a result without each release's counts", async () => {
+    const getReleaseActivity = vi.fn(emptyModel.getReleaseActivity);
+    const model = createModel({ getReleaseActivity });
+    const release = {
+      releaseId: "0195f0f0-0000-7000-8000-000000000001",
+      platform: "ios" as const,
+      channel: "production",
+    };
+    const releases = [release];
     for (const input of [
-      { releases, intervalMs: hour },
-      { releases, timeRange, intervalMs: 0 },
-      { releases, timeRange, intervalMs: hour / 2 },
+      { releases: [] },
+      { releases: Array.from({ length: 101 }, () => release) },
+      { releases: [{ ...release, platform: "web" }] },
+      { releases, timeRange: { start: 0, end: 3_600_000 } },
+      { releases, intervalMs: 3_600_000 },
       {
-        releases,
-        timeRange: { start: 0, end: 8_785 * hour },
-        intervalMs: hour,
-      },
-      {
-        scope: { channel: "production", platform: "ios" as const },
-        timeRange,
-        intervalMs: hour,
+        scope: { channel: "production", platform: "ios" },
+        timeRange: { start: 0, end: 3_600_000 },
       },
     ]) {
       await expect(
@@ -137,8 +177,20 @@ describe("public Insights validation", () => {
       ).rejects.toMatchObject({ code: "invalid-query" });
     }
     expect(getReleaseActivity).not.toHaveBeenCalled();
-    await model.getReleaseActivity({ releases, timeRange, intervalMs: hour });
+    await model.getReleaseActivity({ releases });
     expect(getReleaseActivity).toHaveBeenCalledOnce();
+    const metrics = { downloads: 1, launches: 2, failedLaunches: 0 };
+    for (const data of [
+      [{ metrics }],
+      [{ release, metrics: { ...metrics, launches: -1 } }],
+      [{ release, metrics: { downloads: 1, failedLaunches: 0 } }],
+    ]) {
+      await expect(
+        createModel({
+          getReleaseActivity: async () => ({ data, measuredAtMs: 0 }) as never,
+        }).getReleaseActivity({ releases }),
+      ).rejects.toMatchObject({ code: "invalid-result" });
+    }
   });
 
   it("takes an update failure with what failed, and refuses one without it", async () => {

@@ -10,12 +10,10 @@ const readText = (value: unknown) =>
     : undefined;
 const readWindow = (value: unknown): InsightsWindow | undefined =>
   value === "24h" || value === "7d" || value === "30d" ? value : undefined;
-/** The Release health chart tab. */
-export type HealthChart = "share" | "downloads" | "failures";
+/** Release health's chart: whether bundles are applied, or crash. */
+export type HealthChart = "adoption" | "crashes";
 const readHealthChart = (value: unknown): HealthChart | undefined =>
-  value === "share" || value === "downloads" || value === "failures"
-    ? value
-    : undefined;
+  value === "adoption" || value === "crashes" ? value : undefined;
 const readUsageWindow = (value: unknown): UsageWindow | undefined =>
   value === "12m" ? value : readWindow(value);
 
@@ -29,10 +27,11 @@ export type InsightsSearch = {
   healthChannel?: string;
   releaseId?: string;
   healthChart?: HealthChart;
-  /** The Downloads chart's bundles, comma-separated; omitted, the newest. */
-  downloads?: string;
-  /** A bundle the Downloads chart compares with the newest deployments. */
-  downloadsFocus?: string;
+  /**
+   * Release health's compared bundles, comma-separated release IDs; omitted,
+   * the focused release and the one before it, or the newest two.
+   */
+  bundles?: string;
 };
 
 export function validateInsightsSearch(
@@ -56,8 +55,7 @@ export function validateInsightsSearch(
     healthChannel: readText(search.healthChannel),
     releaseId: readText(search.releaseId),
     healthChart: readHealthChart(search.healthChart),
-    downloads: readText(search.downloads),
-    downloadsFocus: readText(search.downloadsFocus),
+    bundles: readText(search.bundles),
   };
 }
 
@@ -78,7 +76,7 @@ export function validateDistributionSearch(search: Record<string, unknown>) {
  * The shortest Release health period that still covers a release's first
  * hours: 24h within a day of its deployment, 7d within a week, else 30d.
  */
-export function downloadsWindow(releaseId: string, now = Date.now()) {
+export function adoptionWindow(releaseId: string, now = Date.now()) {
   if (!isUUIDv7(releaseId)) return "7d" as const;
   const age = now - extractTimestampFromUUIDv7(releaseId);
   return age <= 86_400_000
@@ -88,8 +86,8 @@ export function downloadsWindow(releaseId: string, now = Date.now()) {
       : ("30d" as const);
 }
 
-/** The Downloads chart's bundles from the `downloads` search value. */
-export const downloadsIds = (value: string | undefined) =>
+/** Release health's compared bundles from the `bundles` search value. */
+export const comparedBundleIds = (value: string | undefined) =>
   value === undefined
     ? undefined
     : [...new Set(value.split(",").filter((id) => id.length > 0))];

@@ -3,17 +3,17 @@ import type { InsightsModel } from "@hot-updater/server/plugins/insights";
 
 import { insightsPeriodEnd, recoveryWindows } from "../insights-recovery";
 import {
-  DOWNLOADS_CANDIDATES,
-  type DownloadsRelease,
-  type DownloadsReleaseInput,
-  type DownloadsReleaseResult,
-  type DownloadsReleasesInput,
-  readDownloadsReleaseInput,
-  readDownloadsReleasesInput,
-  readReleaseDownloadsInput,
-  type ReleaseDownloadsInput,
-  type ReleaseDownloadsSeries,
-} from "../release-downloads";
+  ADOPTION_CANDIDATES,
+  type AdoptionRelease,
+  type AdoptionReleaseInput,
+  type AdoptionReleaseResult,
+  type AdoptionReleasesInput,
+  type BundleEventsInput,
+  type BundleEventsSeries,
+  readAdoptionReleaseInput,
+  readAdoptionReleasesInput,
+  readBundleEventsInput,
+} from "../release-adoption";
 
 type ReleaseReads = Pick<
   HotUpdaterCoreApi,
@@ -23,48 +23,52 @@ type ReleaseReads = Pick<
 /** Rows read past a focused release to find the bundle before it. */
 const PREVIOUS_ROWS = 4;
 
-const labelOf = (release: ReleaseRow): DownloadsRelease => ({
+const labelOf = (release: ReleaseRow): AdoptionRelease => ({
   releaseId: release.id,
+  bundleId: release.bundle_id!,
   deployedAtMs: release.created_at_ms,
   message: release.message,
   targetAppVersion: release.target_app_version,
+  enabled: release.enabled,
+  revision: release.revision,
 });
 
-// A rollback to the built-in bundle has nothing to download.
+// A rollback to the built-in bundle has nothing to apply.
 const bundles = (releases: readonly ReleaseRow[]) =>
-  releases.filter((release) => release.kind === "BUNDLE").map(labelOf);
+  releases
+    .filter((release) => release.kind === "BUNDLE" && release.bundle_id)
+    .map(labelOf);
 
 /**
  * The newest bundle deployments of a channel and platform, newest first: one
  * read of the channel and one of its newest releases.
  */
-export async function listDownloadsReleases(
+export async function listAdoptionReleases(
   core: ReleaseReads,
-  input: DownloadsReleasesInput,
-): Promise<readonly DownloadsRelease[]> {
-  const { platform, channel } = readDownloadsReleasesInput(input);
+  input: AdoptionReleasesInput,
+): Promise<readonly AdoptionRelease[]> {
+  const { platform, channel } = readAdoptionReleasesInput(input);
   const row = await core.findChannelByName(channel);
   if (row === null) return [];
   return bundles(
     await core.listReleases({
       filter: { kind: "channelPlatform", channelId: row.id, platform },
       order: "desc",
-      limit: DOWNLOADS_CANDIDATES,
+      limit: ADOPTION_CANDIDATES,
     }),
   );
 }
 
 /**
- * One bundle deployment of the channel and platform, for a chart that names
- * a bundle the newest ones leave out, and with `withPrevious` the bundle
- * deployed before it.
+ * One bundle deployment of the channel and platform, for a focus the newest
+ * ones leave out, and with `withPrevious` the bundle deployed before it.
  */
-export async function getDownloadsRelease(
+export async function getAdoptionRelease(
   core: ReleaseReads,
-  input: DownloadsReleaseInput,
-): Promise<DownloadsReleaseResult> {
+  input: AdoptionReleaseInput,
+): Promise<AdoptionReleaseResult> {
   const { platform, channel, releaseId, withPrevious } =
-    readDownloadsReleaseInput(input);
+    readAdoptionReleaseInput(input);
   const [row, release] = await Promise.all([
     core.findChannelByName(channel),
     core.getRelease(releaseId),
@@ -73,6 +77,7 @@ export async function getDownloadsRelease(
     row === null ||
     release === null ||
     release.kind !== "BUNDLE" ||
+    !release.bundle_id ||
     release.platform !== platform ||
     release.channel_id !== row.id
   )
@@ -89,33 +94,31 @@ export async function getDownloadsRelease(
 }
 
 /**
- * One bundle's download reports in each interval of the period: its counters
- * alone, never its sketches or the release table.
+ * One bundle's reports of one type in each interval of the period: one read
+ * of their hourly counts, never the events or the release table.
  */
-export async function getReleaseDownloads(
-  model: Pick<InsightsModel, "getReleaseActivity">,
-  input: ReleaseDownloadsInput,
+export async function getBundleEvents(
+  model: Pick<InsightsModel, "countEventSeries">,
+  input: BundleEventsInput,
   now = Date.now(),
-): Promise<ReleaseDownloadsSeries> {
-  const { platform, channel, window, endMs, releaseId } =
-    readReleaseDownloadsInput(input);
+): Promise<BundleEventsSeries> {
+  const { platform, channel, window, endMs, bundleId, type } =
+    readBundleEventsInput(input);
   const { durationMs, intervalMs } = recoveryWindows[window];
   const end = Math.min(endMs, insightsPeriodEnd(now));
-  const start = Math.max(0, end - durationMs);
-  const result = await model.getReleaseActivity({
-    releases: [{ releaseId, platform, channel }],
-    timeRange: { start, end },
+  const points = await model.countEventSeries({
+    filter:
+      type === "RECOVERED"
+        ? { platform, channel, type, fromBundleId: bundleId }
+        : { platform, channel, type, toBundleId: bundleId },
+    timeRange: { start: Math.max(0, end - durationMs), end },
     intervalMs,
   });
-  const metrics = result.data[0]?.metrics;
   return {
-    releaseId,
-    measuredAtMs: result.measuredAtMs,
-    coverage: result.coverage,
-    points: (metrics?.series ?? []).map(({ startMs, downloads }) => ({
-      startMs,
-      downloads,
-    })),
-    totalDownloads: metrics?.downloads ?? 0,
+    bundleId,
+    type,
+    measuredAtMs: now,
+    points,
+    total: points.reduce((sum, point) => sum + point.events, 0),
   };
 }

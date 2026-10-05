@@ -57,7 +57,7 @@ describe("release Insights sections", () => {
     expect(useUpdateFailuresQuery).toHaveBeenCalledWith(input);
   });
 
-  it("compares the release's downloads with the newest over the period that covers its deployment", () => {
+  it("opens Release health on the release and the one before it, over the period that covers its deployment", () => {
     const hour = 3_600_000;
     vi.useFakeTimers({ now: 30 * 86_400_000 });
     // Deployed 5 hours ago, so the 24h period covers it.
@@ -68,17 +68,15 @@ describe("release Insights sections", () => {
     render(<BundleInsightsSummary input={{ ...input, releaseId }} />);
     vi.useRealTimers();
     const search = new URL(
-      screen
-        .getByRole("link", { name: "View downloads" })
-        .getAttribute("href")!,
+      screen.getByRole("link", { name: "View adoption" }).getAttribute("href")!,
       "http://console",
     ).searchParams;
     expect(Object.fromEntries(search)).toEqual({
       healthPlatform: "ios",
       healthChannel: "production",
+      releaseId,
       bundleWindow: "24h",
-      healthChart: "downloads",
-      downloadsFocus: releaseId,
+      healthChart: "adoption",
     });
   });
 
@@ -96,14 +94,13 @@ describe("release Insights sections", () => {
   });
 
   it.each(["inline", "card"] as const)(
-    "preserves activity counts, crash rate, and partial coverage in the %s layout",
+    "preserves activity counts and crash rate in the %s layout",
     (variant) => {
       const report: BundleActivityReport = {
         downloads: 1234,
         activeDays: 98,
         failedLaunches: 2,
         measuredAtMs: 0,
-        coverage: { kind: "partial", sinceMs: 0 },
       };
       render(<BundleMovementSummary report={report} variant={variant} />);
 
@@ -113,7 +110,6 @@ describe("release Insights sections", () => {
       expect(
         screen.getAllByRole("definition").map((value) => value.textContent),
       ).toEqual([report.downloads.toLocaleString(), "98", "2(2.00%)"]);
-      expect(screen.getByText("Partial")).toBeDefined();
     },
   );
 });

@@ -209,7 +209,6 @@ describe("BundlesPage", () => {
           activeDays: 789,
           failedLaunches: 2,
           measuredAtMs: Date.UTC(2026, 6, 19),
-          coverage: { kind: "complete", sinceMs: 0 },
         },
       },
     });

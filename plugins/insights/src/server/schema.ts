@@ -101,10 +101,6 @@ const bundleEvents = (days: number) =>
         },
       },
       indexes: {
-        recent: {
-          eq: ["channel", "platform", "day"],
-          sort: ["received_at_ms"],
-        },
         movementsByInstall: {
           eq: ["movement_install_id"],
           sort: ["received_at_ms"],
@@ -177,10 +173,11 @@ const window = { eq: ["identity"], sort: ["bucket_start_ms"] } as const;
 
 /**
  * Counters of one period kind: hourly, daily, or lifetime at bucket 0. A
- * release or channel row counts downloads, launches, and failed launches,
- * and downloads a patch delivered and those that fell back from one. A
- * release's lifetime row counts its failed updates (`failed_updates`), since
- * no breakdown row outlives the raw period; windowed reads sum
+ * release or channel row counts downloads and failed launches, and downloads
+ * a patch delivered and those that fell back from one. Only a release's
+ * lifetime row counts launches, which the bundle list reads and no windowed
+ * read sums. It also counts the release's failed updates (`failed_updates`),
+ * since no breakdown row outlives the raw period; windowed reads sum
  * `insights_failures` instead.
  */
 const counters = (retention?: BucketRetention) =>
@@ -201,14 +198,14 @@ const counters = (retention?: BucketRetention) =>
   });
 
 /**
- * Unique-installation sketches of one period kind. Rows of a failure
- * identity (`failure` and `check` scopes) keep only `failed_users`, so a
- * release's launch rows never grow by a failure's registers.
+ * Unique-installation sketches of one period kind: a usage row's active
+ * installations (`activity_users`), and a `failure` or `check` row's
+ * installations whose update or update check failed (`failed_users`).
  */
 const sketches = (retention: BucketRetention) =>
   defineAggregate(identityFields, {
     key: ["identity", "bucket_start_ms"],
-    distinct: ["launch_users", "activity_users", "failed_users"],
+    distinct: ["activity_users", "failed_users"],
     shards: SKETCH_SHARDS,
     batched: true,
     indexes: { window },
@@ -293,53 +290,6 @@ const insightsDistribution = (retention: BucketRetention) =>
           eq: ["channel", "platform", "app_version"],
           sort: ["bucket_start_ms"],
         },
-      },
-      retention,
-    },
-  );
-
-/** The last running bundle observed per installation and UTC day. */
-const bundleDailyHeads = (retention: BucketRetention) =>
-  defineTable(
-    {
-      install_id: { type: "string", maxLength: 255 },
-      bucket_start_ms: { type: "integer" },
-      id: { type: "string", maxLength: 36 },
-      received_at_ms: { type: "integer" },
-      channel: { type: "string" },
-      platform: { type: "string", maxLength: 16 },
-      app_version: { type: "string" },
-      release_id: { type: "string", maxLength: 36 },
-      bundle_kind: { type: "string", maxLength: 16 },
-    },
-    { key: ["install_id", "bucket_start_ms"], retention },
-  );
-
-/** Daily observations stay in their day when an installation reports again. */
-const insightsDistributionHistory = (retention: BucketRetention) =>
-  defineAggregate(
-    {
-      channel: { type: "string" },
-      platform: { type: "string", maxLength: 16 },
-      app_version: { type: "string" },
-      release_id: { type: "string", maxLength: 36 },
-      bundle_kind: { type: "string", maxLength: 16 },
-      bucket_start_ms: { type: "integer" },
-    },
-    {
-      key: [
-        "channel",
-        "platform",
-        "app_version",
-        "release_id",
-        "bundle_kind",
-        "bucket_start_ms",
-      ],
-      gauges: ["installations"],
-      shards: GAUGE_SHARDS,
-      batched: true,
-      indexes: {
-        byScope: { eq: ["channel", "platform"], sort: ["bucket_start_ms"] },
       },
       retention,
     },
@@ -445,8 +395,6 @@ export const createInsightsSchema = ({
     insights_overview_lifetime: counters(),
     insights_sketches_lifetime: lifetimeSketches(),
     insights_distribution: insightsDistribution(daily),
-    bundle_daily_heads: bundleDailyHeads(daily),
-    insights_distribution_history: insightsDistributionHistory(daily),
     insights_latest_by_bundle: insightsLatestByBundle(daily),
     insights_outcomes: insightsOutcomes(hourly),
     insights_failures: insightsFailures(hourly),

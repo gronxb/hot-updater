@@ -3,11 +3,6 @@ import { createServerFn } from "@tanstack/react-start";
 import type { BundleActivityInput } from "./bundle-activity";
 import { consoleAccess } from "./console-access";
 import { readRecoveryInput } from "./insights-recovery";
-import {
-  readDownloadsReleaseInput,
-  readDownloadsReleasesInput,
-  readReleaseDownloadsInput,
-} from "./release-downloads";
 
 export function readBundleActivityInput(
   inputs: readonly BundleActivityInput[],
@@ -33,64 +28,6 @@ export const getBundleActivityRpc = createServerFn({ method: "GET" })
       ]);
     const { runtime } = await prepareConfig();
     return getBundleActivity(
-      await requireFeature(runtime, "insightsAnalytics"),
-      data,
-    );
-  });
-
-export const getRecoveryReportRpc = createServerFn({ method: "GET" })
-  .middleware([consoleAccess])
-  .validator(readRecoveryInput)
-  .handler(async ({ data }) => {
-    const [{ prepareConfig }, { getRecoveryReport }, { requireFeature }] =
-      await Promise.all([
-        import("./server/config.server"),
-        import("./server/insightsRecovery"),
-        import("./server/runtime.server"),
-      ]);
-    const { runtime } = await prepareConfig();
-    return getRecoveryReport(
-      await requireFeature(runtime, "insightsAnalytics"),
-      data,
-    );
-  });
-
-export const listDownloadsReleasesRpc = createServerFn({ method: "GET" })
-  .middleware([consoleAccess])
-  .validator(readDownloadsReleasesInput)
-  .handler(async ({ data }) => {
-    const [{ prepareConfig }, { listDownloadsReleases }] = await Promise.all([
-      import("./server/config.server"),
-      import("./server/releaseDownloads"),
-    ]);
-    const { core } = await prepareConfig();
-    return listDownloadsReleases(core, data);
-  });
-
-export const getDownloadsReleaseRpc = createServerFn({ method: "GET" })
-  .middleware([consoleAccess])
-  .validator(readDownloadsReleaseInput)
-  .handler(async ({ data }) => {
-    const [{ prepareConfig }, { getDownloadsRelease }] = await Promise.all([
-      import("./server/config.server"),
-      import("./server/releaseDownloads"),
-    ]);
-    const { core } = await prepareConfig();
-    return getDownloadsRelease(core, data);
-  });
-
-export const getReleaseDownloadsRpc = createServerFn({ method: "GET" })
-  .middleware([consoleAccess])
-  .validator(readReleaseDownloadsInput)
-  .handler(async ({ data }) => {
-    const [{ prepareConfig }, { getReleaseDownloads }, { requireFeature }] =
-      await Promise.all([
-        import("./server/config.server"),
-        import("./server/releaseDownloads"),
-        import("./server/runtime.server"),
-      ]);
-    const { runtime } = await prepareConfig();
-    return getReleaseDownloads(
       await requireFeature(runtime, "insightsAnalytics"),
       data,
     );

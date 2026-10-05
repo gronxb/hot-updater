@@ -11,9 +11,9 @@ import type { BundleEventRow } from "./eventRow";
 import { createInsightsModel } from "./model";
 import type {
   InsightsCountEventsInput,
+  InsightsCountEventSeriesInput,
   InsightsCountLatestEventsInput,
   InsightsFindLatestEventsInput,
-  InsightsGetDistributionHistoryInput,
   InsightsGetAppUsageInput,
   InsightsGetReleaseActivityInput,
   InsightsListEventsInput,
@@ -22,9 +22,9 @@ import { markOfficial } from "./official";
 import { createInsightsProvider } from "./provider";
 import {
   countEvents,
+  countEventSeries,
   countLatestEvents,
   findLatestEvents,
-  getDistributionHistory,
   getAppUsage,
   getReleaseActivity,
   getUpdateFailures,
@@ -84,10 +84,10 @@ const createInsightsApi = (
   countLatestEvents: (input: InsightsCountLatestEventsInput) =>
     countLatestEvents(db, input),
   countEvents: (input: InsightsCountEventsInput) => countEvents(db, input),
+  countEventSeries: (input: InsightsCountEventSeriesInput) =>
+    countEventSeries(db, input),
   getReleaseActivity: (input: InsightsGetReleaseActivityInput) =>
-    getReleaseActivity(db, input, now, retention),
-  getDistributionHistory: (input: InsightsGetDistributionHistoryInput) =>
-    getDistributionHistory(db, input, now, retention),
+    getReleaseActivity(db, input, now),
   getAppUsage: (input: InsightsGetAppUsageInput) =>
     getAppUsage(db, input, now, retention),
   /** A release's or a channel's update failures, and their breakdown over a time range. */
@@ -189,8 +189,10 @@ export const insights = (options: InsightsOptions = {}) => {
     id: "insights",
     // Keeps its tables' names: bundle_events, bundle_event_heads, insights_*.
     namespace: false,
-    // Daily observations need their own heads and gauges; migrate before serving.
-    schemaVersion: "1.3.0",
+    // 1.2.0 adds update failures (their counters, sketches, and
+    // breakdown) and drops heads' hour-row compatibility, so a database
+    // migrates before a server serves it.
+    schemaVersion: "1.2.0",
     schema: createInsightsSchema(retention),
     init: ({ db, now }) => {
       const api = createInsightsApi(db, now, retention);
@@ -209,43 +211,6 @@ export const insights = (options: InsightsOptions = {}) => {
           ) => routes[handler](params, request),
         })),
         failuresEndpoint(api),
-        {
-          access: "admin",
-          method: "GET",
-          path: "/distribution-history",
-          handler: async (request) => {
-            const query = new URL(request.url).searchParams;
-            try {
-              const result = await createInsightsModel(
-                api,
-              ).getDistributionHistory({
-                platform: query.get("platform") as "ios" | "android",
-                channel: query.get("channel") ?? "",
-                timeRange: {
-                  start: Number(query.get("start") ?? NaN),
-                  end: Number(query.get("end") ?? NaN),
-                },
-              });
-              return Response.json(result, {
-                headers: { "cache-control": "private, no-store" },
-              });
-            } catch (error) {
-              if (error instanceof DatabaseAdapterInputError)
-                return Response.json(
-                  {
-                    error:
-                      "Choose a platform, channel, and up to 31 whole UTC days.",
-                  },
-                  { status: 400 },
-                );
-              if (!isDatabaseBusyError(error)) throw error;
-              return Response.json(
-                { error: "Service unavailable" },
-                { status: 503, headers: { "retry-after": "5" } },
-              );
-            }
-          },
-        },
         {
           access: "admin",
           method: "GET",

@@ -28,23 +28,21 @@ const dataTables = toolingTargetOf(plugins).schema.tables.flatMap((table) => [
     .map((index) => `${table.name}__${index.name}`),
 ]);
 
-it("ships the initial migration followed by the additive Insights upgrade", () => {
+it("ships a single 1.0.0 initialization migration", () => {
   expect(inject("d1Migrations").map(({ name }) => name)).toEqual([
     "0001_hot-updater_1.0.0.sql",
-    "0002_hot-updater_1.0.0-rc.30.sql",
   ]);
 });
 
 it("creates every table, the batch guard, and the settings the fence checks", async () => {
-  for (const migration of inject("d1Migrations")) {
-    // `exec` runs one statement per line, and a comment line is not one.
-    await env.DB.exec(
-      migration.sql
-        .split("\n")
-        .filter((line) => line.trim() !== "" && !line.startsWith("--"))
-        .join("\n"),
-    );
-  }
+  const [migration] = inject("d1Migrations");
+  // `exec` runs one statement per line, and a comment line is not one.
+  await env.DB.exec(
+    migration!.sql
+      .split("\n")
+      .filter((line) => line.trim() !== "" && !line.startsWith("--"))
+      .join("\n"),
+  );
   const tables = (
     await env.DB.prepare(
       "SELECT name FROM sqlite_schema WHERE type = 'table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '_cf_%'",
@@ -56,10 +54,6 @@ it("creates every table, the batch guard, and the settings the fence checks", as
   const settings = await env.DB.prepare(
     "SELECT key, value FROM private_hot_updater_settings ORDER BY key",
   ).all<{ key: string; value: string }>();
-  expect(settings.results).toContainEqual({
-    key: "schema.insights",
-    value: "1.3.0",
-  });
   expect(settings.results.map(({ key }) => key)).toEqual([
     "schema.apiKeys",
     "schema.core",

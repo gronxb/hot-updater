@@ -19,7 +19,7 @@ import { useBundleActivityQuery } from "@/lib/bundle-activity";
 import { useConsoleFeature } from "@/lib/console-features-api";
 import { useUpdateFailuresQuery } from "@/lib/insights-api";
 import { failureRate, formatRate } from "@/lib/insights-failures";
-import { downloadsWindow } from "@/lib/insights-search";
+import { adoptionWindow } from "@/lib/insights-search";
 import { cn } from "@/lib/utils";
 
 import type { ReleaseColumn } from "../FeatureSlots";
@@ -137,9 +137,6 @@ export function BundleMovementSummary({
       ) : (
         metrics
       )}
-      {report.coverage.kind === "partial" ? (
-        <span className="text-xs text-muted-foreground">Partial</span>
-      ) : null}
       {variant === "inline" ? <ReleaseMetricsInfo /> : null}
     </div>
   );
@@ -228,13 +225,13 @@ export function BundleInsightsSummary({
           search={{
             healthPlatform: input.platform,
             healthChannel: input.channel,
-            bundleWindow: downloadsWindow(input.releaseId),
-            healthChart: "downloads",
-            downloadsFocus: input.releaseId,
+            releaseId: input.releaseId,
+            bundleWindow: adoptionWindow(input.releaseId),
+            healthChart: "adoption",
           }}
         >
           <ChartLine aria-hidden="true" data-icon="inline-start" />
-          View downloads
+          View adoption
         </Link>
       </CardFooter>
     </Card>
