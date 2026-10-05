@@ -29,7 +29,6 @@ const releaseOf = (
   releaseId,
   bundleId: `bundle-${releaseId}`,
   deployedAtMs,
-  message: releaseId,
   targetAppVersion: "1.0.0",
   enabled: true,
   revision: 1,

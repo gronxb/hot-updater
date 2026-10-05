@@ -8,6 +8,7 @@ import {
   YAxis,
 } from "recharts";
 
+import { BundleIdDisplay } from "@/components/BundleIdDisplay";
 import {
   ChartContainer,
   ChartTooltip,
@@ -48,9 +49,6 @@ const clock = new Intl.DateTimeFormat("en", {
 const SERIES = ["--series-1", "--series-2", "--series-3", "--series-4"];
 
 export const formatDeployedAt = (ms: number) => `${times.format(ms)} UTC`;
-const shortId = (id: string) => `${id.slice(0, 8)}…${id.slice(-4)}`;
-export const bundleName = (release: AdoptionRelease) =>
-  release.message?.trim() || shortId(release.releaseId);
 
 /**
  * A color for each bundle that stays with it: a bundle keeps its hue while
@@ -165,7 +163,16 @@ export function ComparedBundlesChart({
   const config = Object.fromEntries(
     lines.map(({ release }, index) => [
       `b${index}`,
-      { label: bundleName(release), color: colorOf(release.releaseId) },
+      {
+        // The ID that names the bundle across the Console.
+        label: (
+          <BundleIdDisplay
+            bundleId={release.releaseId}
+            className="whitespace-nowrap"
+          />
+        ),
+        color: colorOf(release.releaseId),
+      },
     ]),
   );
   return (

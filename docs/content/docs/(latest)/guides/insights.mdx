@@ -401,8 +401,8 @@ Release ID, and period:
 - **Crashes by exit reason** splits crash recoveries by the reasons Android
   reported; **Not reported** covers iOS and older Android.
 
-Release health opens this card on one bundle: select a bundle's update
-failures in **Adoption** or its crashes in **Crashes**.
+Release health opens this card on one bundle: select a bundle's crashes in
+**Crashes**.
 
 The bundle detail's **Download failures** counts the release's failed
 downloads and installs since its first report, with the same rate. On a
@@ -543,9 +543,9 @@ for **7d**, and daily for **30d**. It starts with the two newest bundle
 deployments; with a **Release ID**, it starts with that release and the one
 deployed before it. Remove a bundle with its row's **×**, or choose **Add a
 bundle** from the ten newest deployments; up to four bundles compare at once,
-and **Show the newest 2** returns to the default. Each bundle keeps one color
-in both tabs, a vertical line marks its deployment, and hovering or focusing
-its row highlights its line. Each point counts the interval that ends there, so
+and **Show the newest 2** returns to the default. Each bundle is named by its
+ID, as on the Bundles page, and keeps one color in both tabs; a vertical line
+marks its deployment, and hovering or focusing its row highlights its line. Each point counts the interval that ends there, so
 a bundle's line starts after its deployment. The bundles and the open tab are kept in the page
 URL. Rollbacks to the built-in bundle are not listed, since nothing applies
 them.
@@ -554,7 +554,7 @@ them.
 interval, from their `UPDATE_APPLIED` reports. After a new bundle is deployed,
 its line rises and the bundle it replaced stops being applied; a rollout to
 part of the installations keeps both. Its table shows each bundle's applies
-and **Update failures** in the period.
+in the period; [Update failures](#update-failures) has the failed updates.
 
 **Crashes** counts the launches that crashed on each bundle and recovered to
 the bundle before, from their `RECOVERED` reports. Its table shows each

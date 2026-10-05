@@ -97,7 +97,6 @@ const release = (releaseId: string, deployedAtMs: number) => ({
   releaseId,
   bundleId: `bundle-${releaseId}`,
   deployedAtMs,
-  message: null,
   targetAppVersion: "1.0.0",
   enabled: true,
   revision: 1,
@@ -357,13 +356,10 @@ describe("Insights dashboard", () => {
     expect(mocks.releases).toHaveBeenCalledExactlyOnceWith({
       data: { platform: "ios", channel: "production" },
     });
-    // Adoption reads each bundle's applies and update failures, over the
-    // same hours.
+    // Adoption reads each bundle's applies, over the same hours.
     expect(eventReads().sort()).toEqual([
       "bundle-release-new UPDATE_APPLIED 7d",
-      "bundle-release-new UPDATE_FAILED 7d",
       "bundle-release-old UPDATE_APPLIED 7d",
-      "bundle-release-old UPDATE_FAILED 7d",
     ]);
     expect(
       new Set(mocks.events.mock.calls.map(([{ data }]) => data.endMs)).size,
@@ -374,39 +370,44 @@ describe("Insights dashboard", () => {
     expect(mocks.navigate).toHaveBeenLastCalledWith({
       search: { healthChart: "crashes" },
     });
-    await waitFor(() => expect(mocks.events).toHaveBeenCalledTimes(6));
-    expect(eventReads().slice(4).sort()).toEqual([
+    await waitFor(() => expect(mocks.events).toHaveBeenCalledTimes(4));
+    expect(eventReads().slice(2).sort()).toEqual([
       "bundle-release-new RECOVERED 7d",
       "bundle-release-old RECOVERED 7d",
     ]);
 
     // Adding a bundle reads only it; the bundle list is not read again.
-    await selectOption("Add a bundle", "release-…dest · Jan 1, 01:00 UTC");
+    await selectOption(
+      "Add a bundle",
+      "release-oldest Deployed Jan 1, 01:00 UTC",
+    );
     expect(mocks.navigate).toHaveBeenLastCalledWith({
       search: {
         healthChart: "crashes",
         bundles: "release-new,release-old,release-oldest",
       },
     });
-    await waitFor(() => expect(mocks.events).toHaveBeenCalledTimes(8));
-    expect(eventReads().slice(6).sort()).toEqual([
+    await waitFor(() => expect(mocks.events).toHaveBeenCalledTimes(6));
+    expect(eventReads().slice(4).sort()).toEqual([
       "bundle-release-oldest RECOVERED 7d",
       "bundle-release-oldest UPDATE_APPLIED 7d",
     ]);
     expect(mocks.releases).toHaveBeenCalledOnce();
   });
 
-  it("opens a bundle's failure details on its row, keeping the compared bundles", async () => {
+  it("opens a bundle's crash details on its row, keeping the compared bundles", async () => {
     mocks.usage.mockImplementation(async ({ data }: { data: AppUsageInput }) =>
       reportFor(data),
     );
     renderPage();
-    const failures = await screen.findAllByRole("button", {
-      name: /update failures of .*: view details/,
+    fireEvent.click(await screen.findByRole("tab", { name: "Crashes" }));
+    const crashes = await screen.findAllByRole("button", {
+      name: /crashes of .*: view details/,
     });
-    fireEvent.click(failures[0]!);
+    fireEvent.click(crashes[0]!);
     expect(mocks.navigate).toHaveBeenLastCalledWith({
       search: {
+        healthChart: "crashes",
         releaseId: "release-new",
         bundles: "release-new,release-old",
       },
