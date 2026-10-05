@@ -1,5 +1,19 @@
 # hot-updater
 
+## 1.0.0-rc.32
+
+### Patch Changes
+
+- Updated dependencies [005fc2c]
+- Updated dependencies [384a5b6]
+  - @hot-updater/console@1.0.0-rc.32
+  - @hot-updater/protocol@1.0.0-rc.29
+  - @hot-updater/android-helper@1.0.0-rc.32
+  - @hot-updater/cli-tools@1.0.0-rc.32
+  - @hot-updater/server@1.0.0-rc.32
+  - @hot-updater/plugin-core@1.0.0-rc.29
+  - @hot-updater/apple-helper@1.0.0-rc.32
+
 ## 1.0.0-rc.31
 
 ### Patch Changes

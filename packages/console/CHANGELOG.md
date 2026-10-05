@@ -1,5 +1,16 @@
 # @hot-updater/console
 
+## 1.0.0-rc.32
+
+### Patch Changes
+
+- 005fc2c: Release health names each bundle by its ID, as the Bundles page does, in its table, chart tooltip, bundle picker, and rollback prompt. Adoption shows each bundle's applies alone and no longer reads its update failures; the Update failures card keeps them.
+- Updated dependencies [384a5b6]
+  - @hot-updater/protocol@1.0.0-rc.29
+  - @hot-updater/cli-tools@1.0.0-rc.32
+  - @hot-updater/server@1.0.0-rc.32
+  - @hot-updater/plugin-core@1.0.0-rc.29
+
 ## 1.0.0-rc.31
 
 ### Patch Changes
