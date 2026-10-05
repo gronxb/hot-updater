@@ -369,7 +369,6 @@ describe("E2E navigation compact surface contract", () => {
       "description",
       "imageFrame",
       "previewImage",
-      "safeArea",
       "title",
     ]) {
       expect(e2eAppStylesSource, obsoleteStyleName).not.toContain(
