@@ -18,7 +18,7 @@ import {
 
 /** What each Release health chart reads per bundle. */
 const READS: Record<HealthChart, readonly BundleEventType[]> = {
-  adoption: ["UPDATE_APPLIED", "UPDATE_FAILED"],
+  adoption: ["UPDATE_APPLIED"],
   crashes: ["UPDATE_APPLIED", "RECOVERED"],
 };
 
@@ -27,7 +27,6 @@ export type ComparedBundle = {
   readonly release: AdoptionRelease;
   readonly applied?: BundleEventsSeries;
   readonly recovered?: BundleEventsSeries;
-  readonly failed?: BundleEventsSeries;
   readonly error: Error | null;
 };
 
@@ -191,13 +190,11 @@ export function useReleaseHealth({
     releases: releases?.map((release) => {
       const applied = seriesOf(release.bundleId, "UPDATE_APPLIED");
       const recovered = seriesOf(release.bundleId, "RECOVERED");
-      const failed = seriesOf(release.bundleId, "UPDATE_FAILED");
       return {
         release,
         applied: applied?.data,
         recovered: recovered?.data,
-        failed: failed?.data,
-        error: applied?.error ?? recovered?.error ?? failed?.error ?? null,
+        error: applied?.error ?? recovered?.error ?? null,
       };
     }),
     isDefault: releaseIds === undefined,

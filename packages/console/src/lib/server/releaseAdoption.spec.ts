@@ -88,7 +88,6 @@ describe("Release health bundles", () => {
         releaseId: "release-4",
         bundleId: "bundle-release-4",
         deployedAtMs: 9 * DAY,
-        message: "Newest",
         targetAppVersion: "1.0.0",
         enabled: true,
         revision: 2,
@@ -162,7 +161,7 @@ describe("Release health counts", () => {
     ),
   });
 
-  it("reads one bundle's applies, failures, or crashes in the period's intervals", async () => {
+  it("reads one bundle's applies or crashes in the period's intervals", async () => {
     const model = modelOf();
     const applied = await getBundleEvents(
       model,
@@ -225,7 +224,7 @@ describe("Release health counts", () => {
         window: "24h",
         endMs: 12 * DAY,
         bundleId: "bundle-1",
-        type: "UPDATE_FAILED",
+        type: "RECOVERED",
       },
       10 * DAY - HOUR / 2,
     );
@@ -242,6 +241,17 @@ describe("Release health counts", () => {
         endMs: 10 * DAY + 1,
         bundleId: "bundle-1",
         type: "UPDATE_APPLIED",
+      }),
+    ).rejects.toThrow("Choose a platform, channel, period, and bundle.");
+    // Release health charts applies and recoveries only.
+    await expect(
+      getBundleEvents(model, {
+        platform: "ios",
+        channel: "production",
+        window: "24h",
+        endMs: 10 * DAY,
+        bundleId: "bundle-1",
+        type: "UPDATE_FAILED" as never,
       }),
     ).rejects.toThrow("Choose a platform, channel, period, and bundle.");
   });

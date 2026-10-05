@@ -41,26 +41,24 @@ const HOUR = 3_600_000;
 const release = (
   releaseId: string,
   deployedAtMs: number,
-  message: string | null,
   overrides: Partial<AdoptionRelease> = {},
 ): AdoptionRelease => ({
   releaseId,
   bundleId: `bundle-${releaseId}`,
   deployedAtMs,
-  message,
   targetAppVersion: "1.2.0",
   enabled: true,
   revision: 3,
   ...overrides,
 });
-const newest = release("release-b", 20 * HOUR + 15 * 60_000, "Fix checkout");
-const previous = release("release-a", 2 * HOUR, null);
-const oldest = release("release-old", HOUR, "First release");
+const newest = release("release-b", 20 * HOUR + 15 * 60_000);
+const previous = release("release-a", 2 * HOUR);
+const oldest = release("release-old", HOUR);
 
 /** Reports of one type per hour of the period [6h, 30h). */
 const seriesOf = (
   bundleId: string,
-  type: "UPDATE_APPLIED" | "RECOVERED" | "UPDATE_FAILED",
+  type: "UPDATE_APPLIED" | "RECOVERED",
   perHour: (hour: number) => number,
 ) => {
   const points = Array.from({ length: 24 }, (_, index) => ({
@@ -82,9 +80,6 @@ const bundles: readonly ComparedBundle[] = [
     applied: seriesOf(newest.bundleId, "UPDATE_APPLIED", (hour) =>
       hour >= 20 ? 3 : 0,
     ),
-    failed: seriesOf(newest.bundleId, "UPDATE_FAILED", (hour) =>
-      hour === 21 ? 2 : 0,
-    ),
     recovered: seriesOf(newest.bundleId, "RECOVERED", () => 0),
     error: null,
   },
@@ -93,7 +88,6 @@ const bundles: readonly ComparedBundle[] = [
     applied: seriesOf(previous.bundleId, "UPDATE_APPLIED", (hour) =>
       hour < 20 ? 1 : 0,
     ),
-    failed: seriesOf(previous.bundleId, "UPDATE_FAILED", () => 0),
     recovered: seriesOf(previous.bundleId, "RECOVERED", () => 0),
     error: null,
   },
@@ -131,7 +125,7 @@ function Card(
     <Overview
       input={input}
       onReleasesChange={vi.fn()}
-      onShowDetails={vi.fn()}
+      onShowCrashes={vi.fn()}
       onWindowChange={vi.fn()}
       {...props}
       chart={chart}
@@ -160,9 +154,8 @@ afterEach(() => {
 });
 
 describe("Release health", () => {
-  it("opens on adoption: installations applying each bundle, and its update failures", () => {
-    const onShowDetails = vi.fn();
-    renderCard({ onShowDetails });
+  it("opens on adoption: installations applying each bundle, named by its ID", () => {
+    renderCard();
     expect(
       screen
         .getByRole("tab", { name: "Adoption" })
@@ -172,30 +165,26 @@ describe("Release health", () => {
       screen.getByLabelText("Installations applying each bundle per interval"),
     ).toBeDefined();
     expect(screen.getByText("Hourly · last 24 hours · UTC")).toBeDefined();
-    // The newest first; a message names a bundle, an ID one without.
+    // The newest first, each named by its ID as on the Bundles page, with
+    // its applies alone.
     expect(rows()).toEqual([
-      "Fix checkoutDeployed Jan 1, 20:15 UTC · 1.2.0302",
-      "release-…se-aDeployed Jan 1, 02:00 UTC · 1.2.0140",
+      "release-bDeployed Jan 1, 20:15 UTC · 1.2.030",
+      "release-aDeployed Jan 1, 02:00 UTC · 1.2.014",
     ]);
-    fireEvent.click(
-      screen.getByRole("button", {
-        name: "2 update failures of Fix checkout: view details",
-      }),
-    );
-    expect(onShowDetails).toHaveBeenCalledWith("release-b", "updates");
+    expect(
+      screen.queryByRole("columnheader", { name: "Update failures" }),
+    ).toBeNull();
   });
 
   it("adds, removes, and resets the compared bundles", async () => {
     const onReleasesChange = vi.fn();
     const { rerender } = renderCard({ onReleasesChange });
-    fireEvent.click(
-      screen.getByRole("button", { name: "Remove Fix checkout" }),
-    );
+    fireEvent.click(screen.getByRole("button", { name: "Remove release-b" }));
     expect(onReleasesChange).toHaveBeenLastCalledWith(["release-a"]);
 
     fireEvent.click(screen.getByRole("combobox", { name: "Add a bundle" }));
     const option = await screen.findByRole("option", {
-      name: "First release · Jan 1, 01:00 UTC",
+      name: "release-old Deployed Jan 1, 01:00 UTC",
     });
     await act(async () => {
       fireEvent.pointerDown(option);
@@ -226,7 +215,7 @@ describe("Release health", () => {
   it("stops adding at four bundles", () => {
     const more = [3, 4].map((index) => ({
       ...bundles[1]!,
-      release: release(`release-${index}`, index * HOUR, null),
+      release: release(`release-${index}`, index * HOUR),
     }));
     renderCard({ health: { releases: [...bundles, ...more] } });
     const add = screen.getByRole("combobox", { name: "Add a bundle" });
@@ -234,10 +223,10 @@ describe("Release health", () => {
   });
 
   it("charts crashes and their rate, and calls for no rollback below 20 attempts", () => {
-    const onShowDetails = vi.fn();
+    const onShowCrashes = vi.fn();
     renderCard({
       chart: "crashes",
-      onShowDetails,
+      onShowCrashes,
       health: {
         releases: [
           {
@@ -258,16 +247,16 @@ describe("Release health", () => {
       screen.getByLabelText("Crashes of each bundle per interval"),
     ).toBeDefined();
     expect(rows()).toEqual([
-      "Fix checkoutDeployed Jan 1, 20:15 UTC · 1.2.0111.1%",
-      "release-…se-aDeployed Jan 1, 02:00 UTC · 1.2.000.0%",
+      "release-bDeployed Jan 1, 20:15 UTC · 1.2.0111.1%",
+      "release-aDeployed Jan 1, 02:00 UTC · 1.2.000.0%",
     ]);
     expect(screen.queryByRole("button", { name: "Roll back" })).toBeNull();
     fireEvent.click(
       screen.getByRole("button", {
-        name: "1 crashes of Fix checkout: view details",
+        name: "1 crashes of release-b: view details",
       }),
     );
-    expect(onShowDetails).toHaveBeenCalledWith("release-b", "crashes");
+    expect(onShowCrashes).toHaveBeenCalledWith("release-b");
   });
 
   it("recommends rolling back a bundle that crashes for 5% of 20 attempts, and disables it", async () => {
@@ -293,7 +282,7 @@ describe("Release health", () => {
       screen.getByRole("tab", { name: "Crashes, rollback recommended" }),
     ).toBeDefined();
     const alert = screen.getByRole("alert");
-    expect(alert.textContent).toContain("Roll back Fix checkout");
+    expect(alert.textContent).toContain("Roll back release-b");
     expect(alert.textContent).toContain(
       "It crashed for 10.0% of the installations that tried it (2 of 20), above 5.0%.",
     );
@@ -301,7 +290,8 @@ describe("Release health", () => {
 
     fireEvent.click(within(alert).getByRole("button", { name: "Roll back" }));
     const dialog = await screen.findByRole("alertdialog");
-    expect(within(dialog).getByText("Roll back Fix checkout?")).toBeDefined();
+    expect(within(dialog).getByText("Roll back this bundle?")).toBeDefined();
+    expect(within(dialog).getByText("release-b")).toBeDefined();
     await act(async () => {
       fireEvent.click(
         within(dialog).getByRole("button", { name: "Roll back" }),
