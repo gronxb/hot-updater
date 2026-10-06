@@ -7,7 +7,7 @@ import { setTimeout as sleep } from "node:timers/promises";
 import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
-const pinnedVersion = "0.21.18";
+const pinnedVersion = "0.21.22";
 const startupTimeoutMs = 15_000;
 const shutdownTimeoutMs = 15_000;
 const require = createRequire(import.meta.url);

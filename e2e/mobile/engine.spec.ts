@@ -65,7 +65,7 @@ export default {
   output: "output",
   workers: 1, retries: 0, trace: "off", cache: "off",
   targets: [{name: "ios", engine: scenarioEngine(defineEngine({
-    name: "mobile", version: "0.9.1", spiVersion: 1, platform: "ios",
+    name: "mobile", version: "0.10.0", spiVersion: 1, platform: "ios",
     fixtures:{device:(context)=>context.fixture("device", {
       openApp:async()=>{throw new Error("expected process disconnect");},
       closeApp:async()=>{throw new Error("SDK close cannot select a device after its session ended");},openLink:async()=>{},
