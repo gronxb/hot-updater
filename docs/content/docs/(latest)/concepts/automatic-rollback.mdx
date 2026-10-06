@@ -56,12 +56,19 @@ module scope to connect update requests and observe or report that native
 launch result. The optional `HotUpdater.wrap()` flow uses the same native
 recovery mechanism.
 
-Before loading an unverified staging bundle, Hot Updater persists a launch-in-progress
-record. The first native content appearance clears it. If it remains on the next
-cold start, Hot Updater rolls back even when no crash marker was written. There is
-no timeout that interrupts a running JavaScript thread: recovery occurs after the
-app restarts. A user or OS termination before the first render also counts as a
-failed launch, even if the bundle would otherwise have finished loading.
+When a launch of an unverified staging bundle can show UI, Hot Updater persists a
+launch-in-progress record: on Android when an activity starts, on iOS when the app
+is in the foreground. The first native content appearance clears it. If it remains
+on the next cold start, Hot Updater rolls back even when no crash marker was
+written. There is no timeout that interrupts a running JavaScript thread: recovery
+occurs after the app restarts. A user or OS termination before the first render
+also counts as a failed launch, even if the bundle would otherwise have finished
+loading.
+
+A launch that never shows UI does not count: an Android headless JS task, such as
+a background push message, or an iOS background launch. The staging bundle stays
+pending until a launch that shows UI verifies it or rolls it back. A crash in such
+a launch still rolls back.
 
 This protection requires a native app build containing the updated SDK; an OTA
 bundle alone cannot add it to an already installed native binary.

@@ -221,6 +221,7 @@ struct BundleFileStorageServiceTests {
         let firstLaunch = firstProcess.prepareLaunch(bundle: .main, pendingRecovery: nil)
         try #require(firstLaunch.launchedBundleId == "hung-bundle")
         try #require(firstLaunch.shouldRollbackOnCrash)
+        firstProcess.markLaunchStarted(bundleId: "hung-bundle")
 
         // Repeated lookups in the current process must not consume its own marker.
         #expect(firstProcess.prepareLaunch(bundle: .main, pendingRecovery: nil).launchedBundleId == "hung-bundle")
@@ -284,6 +285,47 @@ struct BundleFileStorageServiceTests {
         #expect(nextLaunch.shouldRollbackOnCrash)
         #expect(!nextProcess.getCrashHistory().contains("staged-bundle"))
         #expect(nextProcess.notifyAppReady()["status"] as? String == "PENDING")
+    }
+
+    @Test
+    func launchStartRecordsOnlyThePendingStagedBundle() throws {
+        let workingDirectory = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(workingDirectory) }
+        let preferences = InMemoryPreferencesService()
+        for bundleId in ["stable-bundle", "staged-bundle"] {
+            let directory = try createBundleDirectory(
+                documentsDirectory: workingDirectory, bundleId: bundleId
+            )
+            try writeBundle(in: directory, bundleFileName: "index.ios.bundle")
+            try writeManifest(in: directory, bundleId: bundleId)
+        }
+        try writeMetadata(
+            documentsDirectory: workingDirectory,
+            BundleMetadata(
+                isolationKey: testIsolationKey,
+                stableBundleId: "stable-bundle",
+                stagingBundleId: "staged-bundle",
+                verificationPending: true
+            )
+        )
+        let process = makeStorageService(
+            documentsDirectory: workingDirectory, preferences: preferences
+        )
+        _ = process.prepareLaunch(bundle: .main, pendingRecovery: nil)
+
+        // The app can enter the foreground after JavaScript staged another
+        // bundle, or after first content already verified this one.
+        process.markLaunchStarted(bundleId: "stable-bundle")
+        #expect(loadMetadata(documentsDirectory: workingDirectory)?.launchInProgress == false)
+        process.markLaunchCompleted(bundleId: "staged-bundle")
+        process.markLaunchStarted(bundleId: "staged-bundle")
+        #expect(loadMetadata(documentsDirectory: workingDirectory)?.launchInProgress == false)
+
+        let nextLaunch = makeStorageService(
+            documentsDirectory: workingDirectory, preferences: preferences
+        ).prepareLaunch(bundle: .main, pendingRecovery: nil)
+        #expect(nextLaunch.launchedBundleId == "staged-bundle")
+        #expect(!nextLaunch.shouldRollbackOnCrash)
     }
 
     @Test

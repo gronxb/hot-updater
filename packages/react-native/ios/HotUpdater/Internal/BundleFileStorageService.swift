@@ -293,6 +293,7 @@ public protocol BundleStorageService {
     func commitReleaseSelection(_ selection: PersistedSelection) -> Bool
 
     // Rollback support
+    func markLaunchStarted(bundleId: String?)
     func markLaunchCompleted(bundleId: String?)
     func notifyAppReady() -> [String: Any]
     func getCrashHistory() -> CrashedHistory
@@ -1991,12 +1992,8 @@ class BundleFileStorageService: BundleStorageService {
             rollbackPendingBundle(stagingBundleId)
         }
         hasPreparedLaunch = true
-        let selection = selectLaunch(bundle: bundle)
-        if selection.shouldRollbackOnCrash, var metadata = loadMetadataOrNull() {
-            metadata.launchInProgress = true
-            _ = saveMetadata(metadata)
-        }
-        return selection
+        // A launch is recorded only once it can show UI (markLaunchStarted).
+        return selectLaunch(bundle: bundle)
     }
     
     // MARK: - Bundle Update
@@ -2784,6 +2781,21 @@ class BundleFileStorageService: BundleStorageService {
                 resource: failureResource
             )))
         }
+    }
+
+    func markLaunchStarted(bundleId: String?) {
+        // Unlike prepareLaunch, this can run while JavaScript stages a newer bundle.
+        releaseStateLock.lock()
+        defer { releaseStateLock.unlock() }
+        guard let bundleId,
+              var metadata = loadMetadataOrNull(),
+              metadata.verificationPending,
+              !metadata.launchInProgress,
+              metadata.stagingBundleId == bundleId else {
+            return
+        }
+        metadata.launchInProgress = true
+        _ = saveMetadata(metadata)
     }
 
     func markLaunchCompleted(bundleId: String?) {
