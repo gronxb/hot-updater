@@ -150,6 +150,33 @@ describe("Lynx mobile SDK integration", () => {
     vi.restoreAllMocks();
   });
 
+  it.each(["ios", "android"] as const)(
+    "terminates an externally launched %s hang through the allocated controller",
+    async (platform) => {
+      const f = fixture(platform);
+      f.device.closeApp.mockRejectedValue(
+        new Error("SDK session ended; device selection is ambiguous"),
+      );
+      await f.driver.terminate("stop before hang");
+      await f.driver.control("launch hang", "/e2e/launch-startup-hang", {
+        bundleId: "hung",
+      });
+      await f.driver.terminate("force-kill hung process");
+      expect(f.fetch.mock.calls.map(([url]) => new URL(url).pathname)).toEqual([
+        "/e2e/terminate-app",
+        "/e2e/launch-startup-hang",
+        "/e2e/terminate-app",
+      ]);
+      expect(f.device.closeApp).not.toHaveBeenCalled();
+      expect(spawnSync).not.toHaveBeenCalled();
+      f.fetch.mockRejectedValueOnce(new Error("Owned device unavailable"));
+      await expect(f.driver.terminate("failed stop")).rejects.toThrow(
+        "Owned device unavailable",
+      );
+      expect(f.device.closeApp).not.toHaveBeenCalled();
+    },
+  );
+
   it("launches with raw SDK arguments containing the current native generation", async () => {
     const f = fixture();
     await f.driver.launch("embedded launch");

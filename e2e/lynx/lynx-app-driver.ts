@@ -43,7 +43,7 @@ import {
 type ControlClient = ReturnType<typeof createControlClient>;
 
 type MobileSession = {
-  readonly device: Pick<Device, "openApp" | "closeApp" | "back">;
+  readonly device: Pick<Device, "openApp" | "back">;
   readonly screen: Pick<Screen, "getByLabel" | "getByText">;
   readonly signal: AbortSignal;
 };
@@ -382,7 +382,10 @@ export class LynxAppDriver implements ScenarioAppDriver {
 
   async terminate(stage: string): Promise<void> {
     await this.runStage(stage, async () => {
-      if (this.mobile) await this.mobile.device.closeApp();
+      // A startup-hang probe launches outside the SDK session. The shared
+      // controller retains the allocated device even after that session ends.
+      if (this.mobile)
+        await this.controlClient.postJson(stage, "/e2e/terminate-app", {});
       else this.terminateApp();
     });
   }
