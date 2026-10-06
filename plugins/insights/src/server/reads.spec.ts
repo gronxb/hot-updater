@@ -332,7 +332,8 @@ describe("insights read budgets", () => {
     );
     expect(lifetime.result.data[0]!.metrics).toEqual({
       downloads: 0,
-      launches: 25,
+      // Every apply report, install-1's second one too.
+      applies: 25,
       failedLaunches: 0,
     });
     expect(Object.keys(lifetime.tables)).toEqual([

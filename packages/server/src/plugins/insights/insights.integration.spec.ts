@@ -882,22 +882,18 @@ describe("createHotUpdater Insights", () => {
     await expect(counts()).resolves.toBe(3);
   });
 
-  it("counts an installation's UNCHANGED reports once a UTC day, retried or repeated", async () => {
+  it("keeps an installation's UNCHANGED reports once a UTC day, retried or repeated", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-08-12T10:00:00.000Z"));
     const hotUpdater = start();
     const append = vi.spyOn(hotUpdater.api.insights, "recordEvent");
-    // Launches count in the release's lifetime row.
     const launch = { ...event, toReleaseId: "release-1" };
-    const launches = async () => {
-      const {
-        data: [activity],
-      } = await hotUpdater.api.insights.getReleaseActivity({
-        releases: [
-          { releaseId: "release-1", platform: "ios", channel: "production" },
-        ],
+    // The installation's latest report, which a repeat that day keeps.
+    const latest = async () => {
+      const [head] = await hotUpdater.api.insights.findLatestEvents({
+        installId: "install-1",
       });
-      return activity!.metrics.launches;
+      return head?.id;
     };
     const report = {
       ...launch,
@@ -912,14 +908,23 @@ describe("createHotUpdater Insights", () => {
       vi.advanceTimersByTime(60 * 60 * 1_000);
     }
     expect(append).toHaveBeenCalledTimes(4);
-    await expect(launches()).resolves.toBe(1);
+    await expect(latest()).resolves.toBe(report.eventId);
 
-    // The next UTC day counts the installation again.
+    // The next UTC day records the installation's launch again.
     vi.setSystemTime(new Date("2026-08-13T09:00:00.000Z"));
     expect(
       (await hotUpdater.handlers.client(eventRequest(launch))).status,
     ).toBe(204);
-    await expect(launches()).resolves.toBe(2);
+    await expect(latest()).resolves.not.toBe(report.eventId);
+    // A launch applies nothing.
+    const {
+      data: [activity],
+    } = await hotUpdater.api.insights.getReleaseActivity({
+      releases: [
+        { releaseId: "release-1", platform: "ios", channel: "production" },
+      ],
+    });
+    expect(activity!.metrics.applies).toBe(0);
   });
 
   it.each([

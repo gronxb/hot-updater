@@ -280,11 +280,12 @@ it reads Insights depends on its `database`:
   admin handler. App usage, Release health, and bundle activity need a direct
   database configuration.
 
-The Bundles list and detail show lifetime **Downloads**, **Active days**, and
+The Bundles list and detail show lifetime **Downloads**, **Applied**, and
 **Known crashes** for each Release ID. These count received download reports,
-each installation once for each UTC day it launched the release, and failed OTA
-launch reports. Known crashes are launch failures that triggered recovery.
-Their rate is known crashes divided by active days plus known crashes. Select
+apply reports, sent when an installation starts running the release, and
+launches that crashed on the release and recovered to the bundle before it.
+Their rate is known crashes divided by applied plus known crashes, as in
+Release health. Select
 the summary, or **View adoption** in the bundle detail, to open
 [Release health](#release-health) on that release and the one deployed before
 it. The bundle detail also shows
@@ -485,16 +486,16 @@ when its totals are written in that transaction, as with
 
 | Report | Items | WRU |
 | --- | --- | --- |
-| First launch of a new installation | 11 | 30 |
+| First launch of a new installation | 10 | 28 |
 | A later launch the same UTC day, on the same bundle | 0 | 0 |
-| First launch of a later UTC day | 15 | 38 |
+| First launch of a later UTC day | 14 | 36 |
 | `UPDATE_DOWNLOADED` | 18 | 40 |
 | `UPDATE_APPLIED` | 21 | 42 |
-| `RECOVERED` | 27 | 58 |
+| `RECOVERED` | 26 | 56 |
 | `UPDATE_FAILED` for a download or install | 13 | 34 |
 | `UPDATE_FAILED` for an update check | 8 | 20 |
 
-A first launch the day after an apply or a recovery takes 17 items and 42 WRU,
+A first launch the day after an apply or a recovery takes 16 items and 40 WRU,
 since it also moves the update's latest-report rows. A recovery that carries
 Android's exit reason writes one item more, and a download's patch counters
 share the items that count it. An update failure moves no latest-report rows.
@@ -503,8 +504,8 @@ apiece; every other item takes 2. A download, apply, recovery, or update
 failure stores its event with its index copies; a launch stores none. Latest-report gauges count each installation in
 the UTC day of its latest report, so they move only when that day or the
 installation's bundle changes. An installation that launches every day
-without updating sends one report and costs about 38 WRU a day, however often
-it launches: 10,000 such installations write about 380,000 WRU a day. On
+without updating sends one report and costs about 36 WRU a day, however often
+it launches: 10,000 such installations write about 360,000 WRU a day. On
 Firestore each item is one document write; SQL databases keep indexes
 themselves, so they write fewer rows.
 
@@ -521,18 +522,18 @@ launches of the day, with one report in ten a download or an apply:
 
 | Reports per second | WRU per report, transactional | Log (default) | Memory |
 | --- | --- | --- | --- |
-| 1 | 39.9 | 10.5 | 11.0 |
-| 10 | 37.3 | 8.1 | 5.5 |
-| 100 | 31.7 | 7.9 | 4.9 |
+| 1 | 38.1 | 10.5 | 10.8 |
+| 10 | 35.5 | 8.1 | 5.5 |
+| 100 | 29.9 | 8.0 | 4.9 |
 
 Each report's own items take 5 WRU of these. The rest is its totals, which fall
-from 27–35 WRU to about 3 WRU in log mode at 10 or more reports per second.
+from 25–33 WRU to about 3 WRU in log mode at 10 or more reports per second.
 See [DynamoDB](/docs/database-adapters/aws#batched-insights-totals) and
 [Firestore](/docs/database-adapters/firestore#batched-insights-totals).
 
 The managed AWS table caps writes at 100 WRU per second. With batching, that is
-about 12 reports per second; with totals in each transaction, about two and a
-half first launches of a day per second. A report the table throttles answers `503`, and
+about 12 reports per second; with totals in each transaction, almost three
+first launches of a day per second. A report the table throttles answers `503`, and
 the plugin sends it again.
 
 ## Release health

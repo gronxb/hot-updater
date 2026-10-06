@@ -105,8 +105,11 @@ export type InsightsCoverage =
  * which are kept.
  */
 export interface ReleaseActivityMetrics {
+  /** Download reports of the release. */
   readonly downloads: number;
-  readonly launches: number;
+  /** Apply reports of the release: installations that started running it. */
+  readonly applies: number;
+  /** Launches that crashed on the release and recovered to the one before. */
   readonly failedLaunches: number;
 }
 

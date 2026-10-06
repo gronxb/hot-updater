@@ -573,7 +573,8 @@ const READ_BUDGETS: readonly ReadBudget[] = [
   }),
   budget({
     api: "release activity: buckets × shards, all used",
-    // One lifetime row on all 8 counter shards: 24 installs launched it.
+    // One lifetime row on all 8 counter shards: 24 installs applied it,
+    // install 1 twice.
     read: ({ insights }) =>
       insights.getReleaseActivity({
         releases: [
@@ -582,7 +583,7 @@ const READ_BUDGETS: readonly ReadBudget[] = [
       }),
     adapter: reads(0, 0, 1, 8),
     engine: { calls: 1, rows: 1 },
-    check: ({ data }) => expect(data[0]!.metrics.launches).toBe(25),
+    check: ({ data }) => expect(data[0]!.metrics.applies).toBe(25),
   }),
   budget({
     api: "app usage: nonzero distribution and usage-sketch rows in the window, all used",

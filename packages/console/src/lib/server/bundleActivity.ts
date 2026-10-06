@@ -25,7 +25,7 @@ export async function getBundleActivity(
               item.release.releaseId,
               {
                 downloads: item.metrics.downloads,
-                activeDays: item.metrics.launches,
+                applied: item.metrics.applies,
                 failedLaunches: item.metrics.failedLaunches,
                 measuredAtMs: activity.measuredAtMs,
               },

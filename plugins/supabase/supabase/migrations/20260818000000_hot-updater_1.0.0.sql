@@ -50,7 +50,7 @@ CREATE INDEX IF NOT EXISTS "hot_updater_v1_bundle_event_heads_byUser" ON "hot_up
 
 CREATE INDEX IF NOT EXISTS "hot_updater_v1_bundle_event_heads__retention" ON "hot_updater_v1_bundle_event_heads" ("received_at_ms", "install_id");
 
-CREATE TABLE IF NOT EXISTS "hot_updater_v1_insights_overview" ("identity" varchar(32) COLLATE "C" NOT NULL, "bucket_start_ms" bigint NOT NULL, "_shard" bigint NOT NULL, "downloads" bigint NOT NULL, "launches" bigint NOT NULL, "failed_launches" bigint NOT NULL, "failed_updates" bigint NOT NULL, "patch_downloads" bigint NOT NULL, "patch_fallbacks" bigint NOT NULL, "_v" bigint NOT NULL DEFAULT 0, PRIMARY KEY ("identity", "bucket_start_ms", "_shard"));
+CREATE TABLE IF NOT EXISTS "hot_updater_v1_insights_overview" ("identity" varchar(32) COLLATE "C" NOT NULL, "bucket_start_ms" bigint NOT NULL, "_shard" bigint NOT NULL, "downloads" bigint NOT NULL, "failed_launches" bigint NOT NULL, "patch_downloads" bigint NOT NULL, "patch_fallbacks" bigint NOT NULL, "_v" bigint NOT NULL DEFAULT 0, PRIMARY KEY ("identity", "bucket_start_ms", "_shard"));
 
 CREATE INDEX IF NOT EXISTS "hot_updater_v1_insights_overview__retention" ON "hot_updater_v1_insights_overview" ("bucket_start_ms", "identity", "_shard");
 
@@ -58,7 +58,7 @@ CREATE TABLE IF NOT EXISTS "hot_updater_v1_insights_sketches" ("identity" varcha
 
 CREATE INDEX IF NOT EXISTS "hot_updater_v1_insights_sketches__retention" ON "hot_updater_v1_insights_sketches" ("bucket_start_ms", "identity", "_shard");
 
-CREATE TABLE IF NOT EXISTS "hot_updater_v1_insights_overview_daily" ("identity" varchar(32) COLLATE "C" NOT NULL, "bucket_start_ms" bigint NOT NULL, "_shard" bigint NOT NULL, "downloads" bigint NOT NULL, "launches" bigint NOT NULL, "failed_launches" bigint NOT NULL, "failed_updates" bigint NOT NULL, "patch_downloads" bigint NOT NULL, "patch_fallbacks" bigint NOT NULL, "_v" bigint NOT NULL DEFAULT 0, PRIMARY KEY ("identity", "bucket_start_ms", "_shard"));
+CREATE TABLE IF NOT EXISTS "hot_updater_v1_insights_overview_daily" ("identity" varchar(32) COLLATE "C" NOT NULL, "bucket_start_ms" bigint NOT NULL, "_shard" bigint NOT NULL, "downloads" bigint NOT NULL, "failed_launches" bigint NOT NULL, "patch_downloads" bigint NOT NULL, "patch_fallbacks" bigint NOT NULL, "_v" bigint NOT NULL DEFAULT 0, PRIMARY KEY ("identity", "bucket_start_ms", "_shard"));
 
 CREATE INDEX IF NOT EXISTS "hot_updater_v1_insights_overview_daily__retention" ON "hot_updater_v1_insights_overview_daily" ("bucket_start_ms", "identity", "_shard");
 
@@ -66,7 +66,7 @@ CREATE TABLE IF NOT EXISTS "hot_updater_v1_insights_sketches_daily" ("identity" 
 
 CREATE INDEX IF NOT EXISTS "hot_updater_v1_insights_sketches_daily__retention" ON "hot_updater_v1_insights_sketches_daily" ("bucket_start_ms", "identity", "_shard");
 
-CREATE TABLE IF NOT EXISTS "hot_updater_v1_insights_overview_lifetime" ("identity" varchar(32) COLLATE "C" NOT NULL, "bucket_start_ms" bigint NOT NULL, "_shard" bigint NOT NULL, "downloads" bigint NOT NULL, "launches" bigint NOT NULL, "failed_launches" bigint NOT NULL, "failed_updates" bigint NOT NULL, "patch_downloads" bigint NOT NULL, "patch_fallbacks" bigint NOT NULL, "_v" bigint NOT NULL DEFAULT 0, PRIMARY KEY ("identity", "bucket_start_ms", "_shard"));
+CREATE TABLE IF NOT EXISTS "hot_updater_v1_insights_overview_lifetime" ("identity" varchar(32) COLLATE "C" NOT NULL, "bucket_start_ms" bigint NOT NULL, "_shard" bigint NOT NULL, "downloads" bigint NOT NULL, "failed_launches" bigint NOT NULL, "patch_downloads" bigint NOT NULL, "patch_fallbacks" bigint NOT NULL, "applies" bigint NOT NULL, "failed_updates" bigint NOT NULL, "_v" bigint NOT NULL DEFAULT 0, PRIMARY KEY ("identity", "bucket_start_ms", "_shard"));
 
 CREATE TABLE IF NOT EXISTS "hot_updater_v1_insights_sketches_lifetime" ("identity" varchar(32) COLLATE "C" NOT NULL, "bucket_start_ms" bigint NOT NULL, "_shard" bigint NOT NULL, "failed_users" text COLLATE "C", "_v" bigint NOT NULL DEFAULT 0, PRIMARY KEY ("identity", "bucket_start_ms", "_shard"));
 
@@ -196,6 +196,6 @@ INSERT INTO "hot_updater_v1_private_hot_updater_settings" ("key", "value", "_v")
 
 INSERT INTO "hot_updater_v1_private_hot_updater_settings" ("key", "value", "_v") VALUES ('schema.core', '1.0.0', 0) ON CONFLICT ("key") DO UPDATE SET "value" = excluded."value";
 
-INSERT INTO "hot_updater_v1_private_hot_updater_settings" ("key", "value", "_v") VALUES ('schema.insights', '1.2.0', 0) ON CONFLICT ("key") DO UPDATE SET "value" = excluded."value";
+INSERT INTO "hot_updater_v1_private_hot_updater_settings" ("key", "value", "_v") VALUES ('schema.insights', '1.4.0', 0) ON CONFLICT ("key") DO UPDATE SET "value" = excluded."value";
 
 INSERT INTO "hot_updater_v1_private_hot_updater_settings" ("key", "value", "_v") VALUES ('schema.apiKeys', '1.0.0', 0) ON CONFLICT ("key") DO UPDATE SET "value" = excluded."value";

@@ -449,9 +449,7 @@ const periodsOf = (range: InsightsTimeRange, days: boolean, hour: number) => {
 interface CounterRow {
   readonly bucket_start_ms: number;
   readonly downloads: number;
-  readonly launches: number;
   readonly failed_launches: number;
-  readonly failed_updates: number;
   readonly patch_downloads: number;
   readonly patch_fallbacks: number;
 }
@@ -539,7 +537,7 @@ const lifetimeMetrics = async (
   ).rows;
   return {
     downloads: lifetime?.downloads ?? 0,
-    launches: lifetime?.launches ?? 0,
+    applies: lifetime?.applies ?? 0,
     failedLaunches: lifetime?.failed_launches ?? 0,
   };
 };
