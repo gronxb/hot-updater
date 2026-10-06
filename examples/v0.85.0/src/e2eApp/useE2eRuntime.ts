@@ -7,6 +7,7 @@ import { useSnapshot } from "valtio";
 import type { E2eScreenState } from "../e2eRuntimeConfig";
 import {
   formatUpdateStoreDownloadPaths,
+  initializeHotUpdater,
   notify,
   readRuntimeSnapshot,
   refreshRuntimeSnapshot,
@@ -118,6 +119,10 @@ export const useE2eRuntimeModel = (scenarioMarker: string): E2eRuntimeModel => {
   const clearCrashHistory = async () => {
     HotUpdater.clearCrashHistory();
     await refresh();
+  };
+
+  const reinitializeHotUpdater = async () => {
+    initializeHotUpdater();
   };
 
   const reloadApp = async () => {
@@ -248,6 +253,7 @@ export const useE2eRuntimeModel = (scenarioMarker: string): E2eRuntimeModel => {
     } fromBundleId=${notifyState.fromBundleId ?? "null"} toReleaseId=${
       notifyState.toReleaseId ?? "null"
     } toBundleId=${notifyState.toBundleId ?? "null"}`,
+    reinitializeHotUpdater,
     reloadApp,
     resetRuntimeChannel,
     restoreInitialCohort,

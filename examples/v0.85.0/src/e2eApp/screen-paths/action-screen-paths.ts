@@ -10,6 +10,7 @@ export const actionScreenPaths = {
   InstallRuntimeChannelUpdateAction:
     "e2e/action/install-runtime-channel-update",
   RefreshRuntimeSnapshotAction: "e2e/action/refresh-runtime-snapshot",
+  ReinitializeHotUpdaterAction: "e2e/action/reinitialize-hot-updater",
   ReloadAppAction: "e2e/action/reload-app",
   ResetRuntimeChannelAction: "e2e/action/reset-runtime-channel",
   RestoreInitialCohortAction: "e2e/action/restore-initial-cohort",

@@ -91,7 +91,11 @@ type BundleProfile = "default" | "multiAssetReplacement" | "sizeAwareLargeDiff";
 
 type JobResult = Record<string, unknown>;
 
-type DeployMode = "crash" | "hang" | "reset";
+// "slow-start" holds JavaScript before the first render, then renders: a healthy
+// bundle that a user can leave before it shows anything.
+type DeployMode = "crash" | "hang" | "reset" | "slow-start";
+
+const SLOW_START_HOLD_MS = 30_000;
 
 type DeployedBundleRecord = {
   bundleId: string;
@@ -1037,10 +1041,10 @@ async function applyAppScenario({
           "    E2E_CURRENT_BUNDLE_ID.endsWith(E2E_BUILT_IN_MIN_BUNDLE_ID_SUFFIX);",
           "",
           "  if (!E2E_IS_BUILT_IN_BUNDLE && !E2E_SAFE_BUNDLE_IDS.has(E2E_CURRENT_BUNDLE_ID)) {",
-          ...(mode === "hang"
+          ...(mode === "hang" || mode === "slow-start"
             ? [
                 '    console.log("HotUpdaterE2EStartupHang:" + E2E_CURRENT_BUNDLE_ID);',
-                "    const hangUntil = Date.now() + 600_000;",
+                `    const hangUntil = Date.now() + ${mode === "hang" ? 600_000 : SLOW_START_HOLD_MS};`,
                 "    while (Date.now() < hangUntil) {}",
               ]
             : ['    throw new Error("hot-updater e2e crash bundle");']),
@@ -2036,19 +2040,47 @@ function assertLaunchReport(
   }
 }
 
+function crashHistoryHolds(
+  history: Record<string, unknown> | null,
+  bundleId: string,
+) {
+  const bundles = Array.isArray(history?.bundles) ? history.bundles : [];
+  return bundles.some((entry) => {
+    if (!entry || typeof entry !== "object") {
+      return false;
+    }
+    return (entry as { bundleId?: string }).bundleId === bundleId;
+  });
+}
+
+// The bundle an unfinished launch left one retry instead of crash history.
+function retryingBundleId(history: Record<string, unknown>) {
+  const interrupted = history.interruptedLaunch;
+  if (!interrupted || typeof interrupted !== "object") {
+    return null;
+  }
+  return (interrupted as { bundleId?: string }).bundleId ?? null;
+}
+
 function assertCrashHistoryContains(filePath: string, bundleId: string) {
   const history = readJson(filePath);
-  const bundles = Array.isArray(history.bundles) ? history.bundles : [];
 
-  if (
-    !bundles.some((entry) => {
-      if (!entry || typeof entry !== "object") {
-        return false;
-      }
-      return (entry as { bundleId?: string }).bundleId === bundleId;
-    })
-  ) {
+  if (!crashHistoryHolds(history, bundleId)) {
     throw new Error(`Crash history is missing bundle ${bundleId}`);
+  }
+  if (retryingBundleId(history) === bundleId) {
+    throw new Error(`Bundle ${bundleId} still waits for its retry`);
+  }
+}
+
+function assertCrashHistoryAwaitsRetry(filePath: string, bundleId: string) {
+  const history = readJson(filePath);
+
+  if (crashHistoryHolds(history, bundleId)) {
+    throw new Error(`Crash history already holds bundle ${bundleId}`);
+  }
+  if (retryingBundleId(history) !== bundleId) {
+    throw new Error(`Bundle ${bundleId} does not wait for its retry`);
   }
 }
 
@@ -6547,7 +6579,7 @@ async function assertLaunchReportState({
   return {};
 }
 
-async function assertCrashHistory(bundleId: string) {
+async function assertCrashHistory(bundleId: string, awaitingRetry: boolean) {
   const crashHistoryPath =
     fixtureSession.platform === "ios"
       ? path.join(ensureStorePath(), "crashed-history.json")
@@ -6560,7 +6592,11 @@ async function assertCrashHistory(bundleId: string) {
     );
   }
 
-  assertCrashHistoryContains(crashHistoryPath, bundleId);
+  if (awaitingRetry) {
+    assertCrashHistoryAwaitsRetry(crashHistoryPath, bundleId);
+  } else {
+    assertCrashHistoryContains(crashHistoryPath, bundleId);
+  }
   return {};
 }
 
@@ -6794,8 +6830,11 @@ export async function handleAssertLaunchReport(
   return assertLaunchReportState(assertion);
 }
 
-export async function handleAssertCrashHistory(bundleId: string) {
-  return assertCrashHistory(bundleId);
+export async function handleAssertCrashHistory(
+  bundleId: string,
+  awaitingRetry = false,
+) {
+  return assertCrashHistory(bundleId, awaitingRetry);
 }
 
 export function handleSeedCrashHistory(bundleIds: readonly string[]) {
@@ -6907,7 +6946,8 @@ export async function handleLaunchStartupHang(bundleId: string) {
       metadata.stagingBundleId !== bundleId ||
       metadata.verificationPending !== true ||
       diagnostics.crashMarker.exists ||
-      diagnostics.crashHistory.exists ||
+      // A retry after an unfinished launch finds its own record there.
+      crashHistoryHolds(diagnostics.crashHistory.value, bundleId) ||
       diagnostics.launchReport.exists
     ) {
       throw createEndpointError(

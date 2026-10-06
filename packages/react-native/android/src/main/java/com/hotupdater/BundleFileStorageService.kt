@@ -168,7 +168,8 @@ interface BundleStorageService {
     fun notifyAppReady(): Map<String, Any?>
 
     /**
-     * Gets the crashed bundle history
+     * Gets the crashed bundle history, plus a bundle that waits for its retry after
+     * an unfinished launch while this process still refuses it (see [InterruptedLaunch])
      * @return CrashedHistory containing crashed bundles
      */
     fun getCrashHistory(): CrashedHistory
@@ -597,6 +598,16 @@ class BundleFileStorageService(
 
     private var hasPreparedLaunch = false
     private var currentLaunchReport: LaunchReport? = null
+
+    // The staged bundle this process launched before its first content. Only that
+    // launch is pending; a bundle staged later waits for the next launch.
+    private var pendingLaunchBundleId: String? = null
+
+    // Crash history is written at first content on the main thread while JS can read it.
+    private val crashedHistoryLock = Any()
+
+    // A bundle waiting for its retry that this process keeps refusing, see InterruptedLaunch.
+    private var retryHeldBundleId: String? = null
 
     @Volatile
     private var activeBundleMetadataSnapshot: ActiveBundleMetadataSnapshot? = null
@@ -1098,7 +1109,14 @@ class BundleFileStorageService(
         )
     }
 
-    private fun rollbackPendingBundle(stagingBundleId: String): Boolean {
+    /**
+     * Rolls back the pending staging bundle. [unfinishedLaunch] means its launch
+     * ended before first content without a crash marker.
+     */
+    private fun rollbackPendingBundle(
+        stagingBundleId: String,
+        unfinishedLaunch: Boolean = false,
+    ): Boolean {
         val metadata = loadMetadataOrNull() ?: return false
         if (metadata.stagingBundleId != stagingBundleId) {
             return false
@@ -1106,9 +1124,7 @@ class BundleFileStorageService(
 
         Log.w(TAG, "Rolling back crashed staging bundle: $stagingBundleId")
 
-        val crashedHistory = loadCrashedHistory()
-        crashedHistory.addEntry(stagingBundleId)
-        saveCrashedHistory(crashedHistory)
+        recordFailedLaunch(stagingBundleId, unfinishedLaunch)
 
         val fallbackBundleId =
             metadata.stableBundleId?.takeIf { candidate ->
@@ -1375,15 +1391,80 @@ class BundleFileStorageService(
 
     private fun saveCrashedHistory(history: CrashedHistory): Boolean = history.saveToFile(getCrashedHistoryFile())
 
-    private fun isBundleInCrashedHistory(bundleId: String): Boolean = loadCrashedHistory().contains(bundleId)
+    private fun isBundleInCrashedHistory(bundleId: String): Boolean = getCrashHistory().contains(bundleId)
 
-    override fun getCrashHistory(): CrashedHistory = loadCrashedHistory()
+    /**
+     * The bundles this device refuses to install: crash history, plus a bundle
+     * waiting for its retry until a process that may retry it.
+     */
+    override fun getCrashHistory(): CrashedHistory =
+        synchronized(crashedHistoryLock) {
+            val history = loadCrashedHistory()
+            val interrupted = history.interruptedLaunch
+            if (interrupted != null &&
+                (!interrupted.retryReady || interrupted.bundleId == retryHeldBundleId) &&
+                !history.contains(interrupted.bundleId)
+            ) {
+                history.bundles.add(CrashedBundleEntry(interrupted.bundleId, crashedAt = System.currentTimeMillis()))
+            }
+            history
+        }
 
     override fun clearCrashHistory(): Boolean {
-        val history = CrashedHistory()
-        saveCrashedHistory(history)
+        synchronized(crashedHistoryLock) {
+            saveCrashedHistory(CrashedHistory())
+            retryHeldBundleId = null
+        }
         Log.d(TAG, "Cleared crash history")
         return true
+    }
+
+    /**
+     * A crash, or a second unfinished launch of the same bundle, adds the bundle to
+     * crash history. A first unfinished launch cannot tell a hang from a user leaving
+     * early, so it leaves the bundle one retry instead.
+     */
+    private fun recordFailedLaunch(
+        bundleId: String,
+        unfinishedLaunch: Boolean,
+    ) {
+        synchronized(crashedHistoryLock) {
+            val history = loadCrashedHistory()
+            val interrupted = history.interruptedLaunch
+            if (unfinishedLaunch && interrupted?.bundleId != bundleId) {
+                Log.w(TAG, "Launch of $bundleId ended before first content; it gets one retry")
+                history.interruptedLaunch = InterruptedLaunch(bundleId)
+                retryHeldBundleId = bundleId
+            } else {
+                history.addEntry(bundleId)
+                if (interrupted?.bundleId == bundleId) {
+                    history.interruptedLaunch = null
+                }
+            }
+            saveCrashedHistory(history)
+        }
+    }
+
+    /**
+     * First content appeared, so the app works again. A bundle waiting for its retry
+     * may be installed from the next process on. This process keeps refusing it, so
+     * the session that recovered never reloads into it. Content from that bundle
+     * verifies it.
+     */
+    private fun readyInterruptedLaunchRetry(currentBundleId: String?) {
+        synchronized(crashedHistoryLock) {
+            val history = loadCrashedHistory()
+            val interrupted = history.interruptedLaunch ?: return
+            if (interrupted.bundleId == currentBundleId) {
+                history.interruptedLaunch = null
+            } else if (interrupted.retryReady) {
+                return
+            } else {
+                history.interruptedLaunch = interrupted.copy(retryReady = true)
+                retryHeldBundleId = interrupted.bundleId
+            }
+            saveCrashedHistory(history)
+        }
     }
 
     override fun markLaunchStarted(launchedBundleId: String?) {
@@ -1401,6 +1482,7 @@ class BundleFileStorageService(
     }
 
     override fun markLaunchCompleted(currentBundleId: String?) {
+        readyInterruptedLaunchRetry(currentBundleId)
         val metadata = loadMetadataOrNull() ?: return
         val stagingBundleId = metadata.stagingBundleId ?: return
         if (!metadata.verificationPending || stagingBundleId != currentBundleId) {
@@ -1438,7 +1520,11 @@ class BundleFileStorageService(
         val report = loadLaunchReport()
         if (report == null) {
             val metadata = loadMetadataOrNull()
-            if (metadata?.verificationPending == true && metadata.stagingBundleId != null) {
+            val launchedBundleId = pendingLaunchBundleId
+            if (launchedBundleId != null &&
+                metadata?.verificationPending == true &&
+                metadata.stagingBundleId == launchedBundleId
+            ) {
                 return mapOf("status" to "PENDING")
             }
             return mapOf("status" to "UNCHANGED")
@@ -1503,13 +1589,14 @@ class BundleFileStorageService(
         if (!hasPreparedLaunch) {
             val metadata = loadMetadataOrNull()
             if (metadata?.verificationPending == true && metadata.launchInProgress) {
-                metadata.stagingBundleId?.let { rollbackPendingBundle(it) }
+                metadata.stagingBundleId?.let { rollbackPendingBundle(it, unfinishedLaunch = true) }
             }
         }
         hasPreparedLaunch = true
 
         // A launch is recorded only once it can show UI (markLaunchStarted).
         val selection = selectLaunch()
+        pendingLaunchBundleId = selection.launchedBundleId.takeIf { selection.shouldRollbackOnCrash }
         Log.d(
             TAG,
             "prepareLaunch: bundleId=${selection.launchedBundleId} shouldRollback=${selection.shouldRollbackOnCrash} url=${selection.bundleUrl}",

@@ -3,6 +3,8 @@ package com.hotupdater
 import android.app.Activity
 import android.app.Application
 import android.os.Bundle
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.ProcessLifecycleOwner
 
 /**
  * Runs an action once this process has a started activity.
@@ -11,9 +13,15 @@ import android.os.Bundle
  * start) loads the bundle with no activity and never renders. Waiting for an
  * activity keeps that launch from counting as one that ended before its first
  * render.
+ *
+ * Android does not replay lifecycle callbacks to a late registration. An
+ * activity that started before this gate existed, as when a brownfield app adds
+ * React Native to an activity already on screen, is read from
+ * [processHasStartedActivity] instead.
  */
 internal class ActivityStartGate(
     private val application: Application?,
+    private val processHasStartedActivity: () -> Boolean = ::hasStartedActivity,
 ) : Application.ActivityLifecycleCallbacks {
     private var startedActivities = 0
     private var pendingAction: (() -> Unit)? = null
@@ -30,7 +38,10 @@ internal class ActivityStartGate(
     fun runWhenActivityStarted(action: (() -> Unit)?) {
         val runNow =
             synchronized(this) {
-                val waits = application != null && startedActivities == 0
+                val waits =
+                    application != null &&
+                        startedActivities == 0 &&
+                        !processHasStartedActivity()
                 pendingAction = action.takeIf { waits }
                 action.takeUnless { waits }
             }
@@ -69,3 +80,15 @@ internal class ActivityStartGate(
 
     override fun onActivityDestroyed(activity: Activity) {}
 }
+
+// ProcessLifecycleOwner observes activities from process start, through the
+// androidx.startup initializer that lifecycle-process registers. It is STARTED
+// while an activity of this process is started, and stays at INITIALIZED when
+// an app removes that initializer, so the gate then waits for the next start.
+private fun hasStartedActivity(): Boolean =
+    runCatching {
+        ProcessLifecycleOwner
+            .get()
+            .lifecycle.currentState
+            .isAtLeast(Lifecycle.State.STARTED)
+    }.getOrDefault(false)

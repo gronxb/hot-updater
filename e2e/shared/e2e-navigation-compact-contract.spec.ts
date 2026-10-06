@@ -482,7 +482,7 @@ describe("E2E navigation compact surface contract", () => {
         "utf8",
       );
       expect(source, fileName).not.toContain("ScrollView");
-      expect(sourceCodeLineCount(source), fileName).toBeLessThanOrEqual(42);
+      expect(sourceCodeLineCount(source), fileName).toBeLessThanOrEqual(44);
     }
   });
 });

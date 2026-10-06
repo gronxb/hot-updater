@@ -87,6 +87,8 @@ const iosDownloadServicePath = path.join(
 const defaultScenarioNames = [
   "startup-hang-recovery",
   "headless-launch-keeps-staged-bundle",
+  "interrupted-launch-retries-bundle",
+  "launch-status-after-session-install",
   "release-ota-recovery",
   "multi-asset-replacement",
   "bspatch-builtin-to-diff-ota",
@@ -275,7 +277,7 @@ describe("E2E scenario contract", () => {
 
     expect(scenarios).toEqual(defaultScenarioNames);
     expect(listScenarioNames()).toEqual(defaultScenarioNames);
-    expect(new Set(listScenarioNames()).size).toBe(28);
+    expect(new Set(listScenarioNames()).size).toBe(30);
   });
 
   it("keeps repeated catalog checks as no-ops while already built-in", async () => {

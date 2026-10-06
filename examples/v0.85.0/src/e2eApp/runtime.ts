@@ -57,24 +57,35 @@ type UpdateProgressDetails = {
 const analytics = insights();
 analytics.setUser({ userId: "detox-e2e" });
 
-HotUpdater.init({
-  plugins: [analytics],
-  baseURL: resolveHotUpdaterBaseURL,
-  requestHeaders: HOT_UPDATER_API_KEY
-    ? { "x-api-key": HOT_UPDATER_API_KEY }
-    : undefined,
-  requestTimeout: 15000,
-  onNotifyAppReady: (result) => {
-    notify.status = result.status;
-    notify.fromBundleId = result.fromBundleId;
-    notify.fromReleaseId = result.fromReleaseId;
-    notify.toBundleId = result.toBundleId;
-    notify.toReleaseId = result.toReleaseId;
-  },
-  onError: (error) => {
-    console.error(error);
-  },
-});
+// Runs at startup, and again from an E2E action as a root that initializes Hot
+// Updater when it mounts does. Each run shows its own read of this launch.
+export const initializeHotUpdater = () => {
+  notify.status = undefined;
+  notify.fromBundleId = undefined;
+  notify.fromReleaseId = undefined;
+  notify.toBundleId = undefined;
+  notify.toReleaseId = undefined;
+  HotUpdater.init({
+    plugins: [analytics],
+    baseURL: resolveHotUpdaterBaseURL,
+    requestHeaders: HOT_UPDATER_API_KEY
+      ? { "x-api-key": HOT_UPDATER_API_KEY }
+      : undefined,
+    requestTimeout: 15000,
+    onNotifyAppReady: (result) => {
+      notify.status = result.status;
+      notify.fromBundleId = result.fromBundleId;
+      notify.fromReleaseId = result.fromReleaseId;
+      notify.toBundleId = result.toBundleId;
+      notify.toReleaseId = result.toReleaseId;
+    },
+    onError: (error) => {
+      console.error(error);
+    },
+  });
+};
+
+initializeHotUpdater();
 
 export const readRuntimeSnapshot = (): RuntimeSnapshot => ({
   activeReleaseId: null,

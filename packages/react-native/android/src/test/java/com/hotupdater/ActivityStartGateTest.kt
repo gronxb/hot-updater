@@ -11,7 +11,7 @@ class ActivityStartGateTest {
     @Test
     fun `headless launch waits for the first activity start`() {
         val application = RecordingApplication()
-        val gate = ActivityStartGate(application)
+        val gate = createGate(application)
         var runs = 0
 
         gate.runWhenActivityStarted { runs += 1 }
@@ -25,7 +25,7 @@ class ActivityStartGateTest {
     @Test
     fun `launch with a started activity runs at once`() {
         val application = RecordingApplication()
-        val gate = ActivityStartGate(application)
+        val gate = createGate(application)
         var runs = 0
 
         application.startActivity()
@@ -36,7 +36,7 @@ class ActivityStartGateTest {
     @Test
     fun `stopped activity waits for the next start`() {
         val application = RecordingApplication()
-        val gate = ActivityStartGate(application)
+        val gate = createGate(application)
         var runs = 0
 
         application.startActivity()
@@ -51,7 +51,7 @@ class ActivityStartGateTest {
     @Test
     fun `stop of an activity started before the gate keeps later starts counted`() {
         val application = RecordingApplication()
-        val gate = ActivityStartGate(application)
+        val gate = createGate(application)
         var runs = 0
 
         application.stopActivity()
@@ -64,7 +64,7 @@ class ActivityStartGateTest {
     @Test
     fun `next launch replaces or cancels the waiting one`() {
         val application = RecordingApplication()
-        val gate = ActivityStartGate(application)
+        val gate = createGate(application)
         val runs = mutableListOf<String>()
 
         gate.runWhenActivityStarted { runs += "first" }
@@ -79,13 +79,30 @@ class ActivityStartGateTest {
     }
 
     @Test
-    fun `runs at once without an application to observe`() {
+    fun `activity started before the gate runs at once`() {
+        // A brownfield app adds React Native to an activity already on screen,
+        // and Android does not replay that start to a late registration.
+        val application = RecordingApplication()
         var runs = 0
 
-        ActivityStartGate(null).runWhenActivityStarted { runs += 1 }
+        createGate(application, startedBefore = true).runWhenActivityStarted { runs += 1 }
 
         assertEquals(1, runs)
     }
+
+    @Test
+    fun `runs at once without an application to observe`() {
+        var runs = 0
+
+        createGate(null).runWhenActivityStarted { runs += 1 }
+
+        assertEquals(1, runs)
+    }
+
+    private fun createGate(
+        application: Application?,
+        startedBefore: Boolean = false,
+    ) = ActivityStartGate(application) { startedBefore }
 
     private inner class RecordingApplication : Application() {
         private val callbacks = mutableListOf<ActivityLifecycleCallbacks>()

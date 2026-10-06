@@ -31,6 +31,10 @@ request. Recorded artifacts are rejected if the device attempts to install
 them again. [`clearCrashHistory()`](/docs/react-native-api/clearCrashHistory)
 clears that rejection history for a controlled retry.
 
+The list also holds an artifact whose launch ended before the first render,
+until a later session retries it once. See
+[automatic rollback](/docs/concepts/automatic-rollback#what-counts-as-a-failed-launch).
+
 Crash detection and app-ready reporting are configured through either
 [`wrap`](/docs/react-native-api/wrap) or [`init`](/docs/react-native-api/init).
 Use one of them, and see [automatic rollback](/docs/concepts/automatic-rollback)
