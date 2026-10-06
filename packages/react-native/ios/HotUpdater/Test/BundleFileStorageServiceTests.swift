@@ -614,6 +614,7 @@ struct BundleFileStorageServiceTests {
             )
         )
 
+        #expect(service.prepareLaunch(bundle: .main, pendingRecovery: nil).launchedBundleId == "next-bundle")
         #expect(service.notifyAppReady()["status"] as? String == "PENDING")
 
         service.markLaunchCompleted(bundleId: "next-bundle")
@@ -623,6 +624,38 @@ struct BundleFileStorageServiceTests {
         #expect(report["fromBundleId"] as? String == "builtin-bundle")
         #expect(report["toBundleId"] as? String == "next-bundle")
         #expect(report["updateStrategy"] as? String == "fingerprint")
+    }
+
+    @Test
+    func bundleStagedAfterThisLaunchLeavesLaunchUnchanged() throws {
+        let workingDirectory = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(workingDirectory) }
+        let preferences = InMemoryPreferencesService()
+        let service = makeStorageService(documentsDirectory: workingDirectory, preferences: preferences)
+        #expect(service.prepareLaunch(bundle: .main, pendingRecovery: nil).launchedBundleId == nil)
+        #expect(service.notifyAppReady()["status"] as? String == "UNCHANGED")
+
+        // A download in this session stages the next launch's bundle.
+        let stagedDirectory = try createBundleDirectory(documentsDirectory: workingDirectory, bundleId: "staged-bundle")
+        try writeBundle(in: stagedDirectory, bundleFileName: "index.ios.bundle")
+        try writeManifest(in: stagedDirectory, bundleId: "staged-bundle")
+        try writeMetadata(
+            documentsDirectory: workingDirectory,
+            BundleMetadata(
+                isolationKey: testIsolationKey,
+                stableBundleId: nil,
+                stagingBundleId: "staged-bundle",
+                verificationPending: true
+            )
+        )
+
+        // A root that mounts again, as HotUpdater.wrap does, reads this launch
+        // again. It must not wait for the staged bundle.
+        #expect(service.notifyAppReady()["status"] as? String == "UNCHANGED")
+
+        let nextProcess = makeStorageService(documentsDirectory: workingDirectory, preferences: preferences)
+        #expect(nextProcess.prepareLaunch(bundle: .main, pendingRecovery: nil).launchedBundleId == "staged-bundle")
+        #expect(nextProcess.notifyAppReady()["status"] as? String == "PENDING")
     }
 
     @Test

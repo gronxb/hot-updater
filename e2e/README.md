@@ -1,6 +1,6 @@
 # End-to-end tests
 
-Run the same 29 OTA and Console Insights scenarios locally and in the E2E bot
+Run the same 30 OTA and Console Insights scenarios locally and in the E2E bot
 with `pnpm -w e2e`. Local mode prepares the example app, a PGlite provider and
 real S3-compatible storage. It requires no provider account, private bot setup,
 or model credentials.

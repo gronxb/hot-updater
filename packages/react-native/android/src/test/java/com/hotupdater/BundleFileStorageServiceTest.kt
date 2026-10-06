@@ -567,6 +567,7 @@ class BundleFileStorageServiceTest {
             ),
         )
 
+        assertEquals(stagingDir.name, service.prepareLaunch(null).launchedBundleId)
         assertEquals(mapOf("status" to "PENDING"), service.notifyAppReady())
 
         service.markLaunchCompleted(stagingDir.name)
@@ -580,6 +581,36 @@ class BundleFileStorageServiceTest {
             ),
             service.notifyAppReady(),
         )
+    }
+
+    @Test
+    fun `a bundle staged after this launch leaves the launch unchanged`() {
+        val rootDir = temporaryFolder.newFolder()
+        val preferences = InMemoryPreferencesService()
+        val service = createService(rootDir, preferences)
+        assertNull(service.prepareLaunch(null).launchedBundleId)
+        assertEquals(mapOf("status" to "UNCHANGED"), service.notifyAppReady())
+
+        // A download in this session stages the next launch's bundle.
+        val stagedDir = createBundleDir(rootDir, "staged-bundle")
+        writeFile(stagedDir, "index.android.bundle")
+        writeManifest(stagedDir, listOf("index.android.bundle"))
+        writeMetadata(
+            rootDir,
+            BundleMetadata(
+                isolationKey = TEST_ISOLATION_KEY,
+                stagingBundleId = stagedDir.name,
+                verificationPending = true,
+            ),
+        )
+
+        // A root that mounts again, as HotUpdater.wrap does after its activity is
+        // recreated, reads this launch again. It must not wait for the staged bundle.
+        assertEquals(mapOf("status" to "UNCHANGED"), service.notifyAppReady())
+
+        val nextProcess = createService(rootDir, preferences)
+        assertEquals(stagedDir.name, nextProcess.prepareLaunch(null).launchedBundleId)
+        assertEquals(mapOf("status" to "PENDING"), nextProcess.notifyAppReady())
     }
 
     @Test

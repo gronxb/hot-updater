@@ -1,7 +1,7 @@
 # Mobile E2E runner
 
 The runner uses `e2e@0.18.0`, `@e2e-dev/mobile@0.10.0`, and
-`agent-device@0.21.22` to execute the 29 scenarios in
+`agent-device@0.21.22` to execute the 30 scenarios in
 [`../scenario-names.json`](../scenario-names.json). The shared control server
 prepares OTA fixtures and verifies native recovery and Console Insights.
 No model or agent prompts are used. iOS app-opening confirmation dialogs are
@@ -20,7 +20,7 @@ pnpm -w e2e -- --prepared --platform android --device <emulator-serial>
 ```
 
 `--list` lists the shared scenarios. `--scenario <name>` selects one and can
-be repeated; `--suite default` selects all 29. `--dry-run` prints the selection
+be repeated; `--suite default` selects all 30. `--dry-run` prints the selection
 without accessing a device. Existing `HOT_UPDATER_E2E_SCENARIOS` comma-separated
 selection and binary-path overrides are supported. `e2e:build --dry-run` prints
 native build commands without building or discovering devices.

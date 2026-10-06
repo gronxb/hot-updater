@@ -14,6 +14,7 @@ import { fingerprintInitialInstallScenario } from "./scenarios/fingerprint-initi
 import { forceUpdateAutoReloadScenario } from "./scenarios/force-update-auto-reload.ts";
 import { headlessLaunchKeepsStagedBundleScenario } from "./scenarios/headless-launch-keeps-staged-bundle.ts";
 import { interruptedLaunchRetriesBundleScenario } from "./scenarios/interrupted-launch-retries-bundle.ts";
+import { launchStatusAfterSessionInstallScenario } from "./scenarios/launch-status-after-session-install.ts";
 import { metadataV1MigrationScenario } from "./scenarios/metadata-v1-migration.ts";
 import { multiAssetReplacementScenario } from "./scenarios/multi-asset-replacement.ts";
 import { numericCohortRolloutScenario } from "./scenarios/numeric-cohort-rollout.ts";
@@ -41,6 +42,7 @@ const registeredScenarios: readonly ScenarioDefinition[] = [
   startupHangRecoveryScenario,
   headlessLaunchKeepsStagedBundleScenario,
   interruptedLaunchRetriesBundleScenario,
+  launchStatusAfterSessionInstallScenario,
   releaseOtaRecoveryScenario,
   multiAssetReplacementScenario,
   bspatchBuiltinToDiffOtaScenario,

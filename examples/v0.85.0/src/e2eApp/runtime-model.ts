@@ -20,6 +20,7 @@ export type E2eRuntimeModel = {
   readonly isUpdateDownloaded: boolean;
   readonly launchStatusText: string;
   readonly launchTransitionText: string;
+  readonly reinitializeHotUpdater: () => Promise<void>;
   readonly reloadApp: () => Promise<void>;
   readonly resetRuntimeChannel: () => Promise<void>;
   readonly restoreInitialCohort: () => Promise<void>;

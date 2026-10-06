@@ -300,6 +300,7 @@ describe("E2E navigation stack contract", () => {
       "launch-transition-route.tsx",
       "ready-route.tsx",
       "refresh-runtime-snapshot-action-route.tsx",
+      "reinitialize-hot-updater-action-route.tsx",
       "reload-app-action-route.tsx",
       "reset-runtime-channel-action-route.tsx",
       "restore-initial-cohort-action-route.tsx",
@@ -321,7 +322,7 @@ describe("E2E navigation stack contract", () => {
     const stackScreens = routeModuleSources.flatMap(
       (source) => source.match(/<Stack\.Screen/g) ?? [],
     );
-    expect(stackScreens).toHaveLength(32);
+    expect(stackScreens).toHaveLength(33);
     expect(e2eAppRoutesSource).not.toContain("routeGroups");
     expect(e2eAppRoutesSource).not.toContain("routeScreens");
     for (const [index, source] of routeModuleSources.entries()) {

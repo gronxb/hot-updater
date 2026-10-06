@@ -113,6 +113,7 @@ describe("E2E navigation action route contract", () => {
       "e2e/action/capture-current-channel-update",
       "e2e/action/install-fingerprint-update",
       "e2e/action/refresh-runtime-snapshot",
+      "e2e/action/reinitialize-hot-updater",
       "e2e/action/reload-app",
       "e2e/action/clear-crash-history",
       "e2e/action/install-current-channel-update",
