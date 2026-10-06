@@ -342,6 +342,7 @@ struct BundleFileStorageServiceTests {
         #expect(recovered.prepareLaunch(bundle: .main, pendingRecovery: nil).launchedBundleId == "stable-bundle")
         #expect(recovered.notifyAppReady()["status"] as? String == "RECOVERED")
         #expect(!loadCrashedHistory(documentsDirectory: workingDirectory).contains("retried-bundle"))
+        #expect(loadCrashedHistory(documentsDirectory: workingDirectory).interruptedLaunch?.bundleId == "retried-bundle")
         // The session that recovered refuses the bundle, even after first content.
         recovered.markLaunchCompleted(bundleId: "stable-bundle")
         #expect(recovered.getCrashHistory().contains("retried-bundle"))
@@ -362,6 +363,7 @@ struct BundleFileStorageServiceTests {
         #expect(next.prepareLaunch(bundle: .main, pendingRecovery: nil).launchedBundleId == "stable-bundle")
         #expect(next.notifyAppReady()["status"] as? String == "RECOVERED")
         #expect(loadCrashedHistory(documentsDirectory: workingDirectory).contains("retried-bundle"))
+        #expect(loadCrashedHistory(documentsDirectory: workingDirectory).interruptedLaunch == nil)
         next.markLaunchCompleted(bundleId: "stable-bundle")
         let later = try makeRetryService(documentsDirectory: workingDirectory, preferences: preferences)
         _ = later.prepareLaunch(bundle: .main, pendingRecovery: nil)
@@ -389,6 +391,7 @@ struct BundleFileStorageServiceTests {
 
         #expect(retryLaunch.notifyAppReady()["status"] as? String == "UPDATE_APPLIED")
         #expect(loadCrashedHistory(documentsDirectory: workingDirectory).bundles.isEmpty)
+        #expect(loadCrashedHistory(documentsDirectory: workingDirectory).interruptedLaunch == nil)
         let next = makeStorageService(documentsDirectory: workingDirectory, preferences: preferences)
             .prepareLaunch(bundle: .main, pendingRecovery: nil)
         #expect(next.launchedBundleId == "retried-bundle")
@@ -433,6 +436,7 @@ struct BundleFileStorageServiceTests {
         // First content of the built-in bundle reports no bundle ID.
         recovered.markLaunchCompleted(bundleId: nil)
 
+        #expect(loadCrashedHistory(documentsDirectory: workingDirectory).interruptedLaunch?.retryReady == true)
         let later = makeStorageService(documentsDirectory: workingDirectory, preferences: preferences)
         _ = later.prepareLaunch(bundle: .main, pendingRecovery: nil)
         #expect(!later.getCrashHistory().contains("retried-bundle"))
@@ -462,6 +466,7 @@ struct BundleFileStorageServiceTests {
 
         #expect(next.launchedBundleId == "stable-bundle")
         #expect(loadCrashedHistory(documentsDirectory: workingDirectory).contains("retried-bundle"))
+        #expect(loadCrashedHistory(documentsDirectory: workingDirectory).interruptedLaunch == nil)
     }
 
     @Test
@@ -476,8 +481,23 @@ struct BundleFileStorageServiceTests {
         #expect(recovered.clearCrashHistory())
 
         #expect(!recovered.getCrashHistory().contains("retried-bundle"))
+        #expect(loadCrashedHistory(documentsDirectory: workingDirectory).interruptedLaunch == nil)
     }
 
+    @Test
+    func malformedRetryRecordKeepsCrashHistory() throws {
+        let workingDirectory = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(workingDirectory) }
+        let storeDirectory = workingDirectory.appendingPathComponent("bundle-store", isDirectory: true)
+        try FileManager.default.createDirectory(at: storeDirectory, withIntermediateDirectories: true)
+        try Data(#"{"bundles":[{"bundleId":"crashed-bundle","crashedAt":1,"crashCount":1}],"maxHistorySize":10,"interruptedLaunch":{}}"#.utf8)
+            .write(to: storeDirectory.appendingPathComponent(CrashedHistory.crashedHistoryFilename))
+
+        let history = makeStorageService(documentsDirectory: workingDirectory).getCrashHistory()
+
+        #expect(history.bundles.map(\.bundleId) == ["crashed-bundle"])
+        #expect(history.interruptedLaunch == nil)
+    }
 
     @Test
     func getBundleIdFallsBackToBuiltInWhileStagingVerificationIsPending() throws {

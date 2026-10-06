@@ -176,6 +176,7 @@ class BundleFileStorageServiceTest {
             assertEquals("stable-bundle", recovered.prepareLaunch(null).launchedBundleId)
             assertEquals("RECOVERED", recovered.notifyAppReady()["status"])
             assertFalse(loadCrashedHistory(rootDir).contains("retried-bundle"))
+            assertEquals(InterruptedLaunch("retried-bundle"), loadCrashedHistory(rootDir).interruptedLaunch)
             // The session that recovered refuses the bundle, even after first content.
             recovered.markLaunchCompleted("stable-bundle")
             assertTrue(recovered.getCrashHistory().contains("retried-bundle"))
@@ -195,6 +196,7 @@ class BundleFileStorageServiceTest {
             assertEquals("stable-bundle", next.prepareLaunch(null).launchedBundleId)
             assertEquals("RECOVERED", next.notifyAppReady()["status"])
             assertTrue(loadCrashedHistory(rootDir).contains("retried-bundle"))
+            assertNull(loadCrashedHistory(rootDir).interruptedLaunch)
             next.markLaunchCompleted("stable-bundle")
             val later = createRetryService(rootDir, preferences)
             later.prepareLaunch(null)
@@ -221,6 +223,7 @@ class BundleFileStorageServiceTest {
 
             assertEquals("UPDATE_APPLIED", retryLaunch.notifyAppReady()["status"])
             assertTrue(loadCrashedHistory(rootDir).bundles.isEmpty())
+            assertNull(loadCrashedHistory(rootDir).interruptedLaunch)
             val next = createRetryService(rootDir, preferences).prepareLaunch(null)
             assertEquals("retried-bundle", next.launchedBundleId)
             assertFalse(next.shouldRollbackOnCrash)
@@ -286,6 +289,7 @@ class BundleFileStorageServiceTest {
 
             assertEquals("stable-bundle", next.launchedBundleId)
             assertTrue(loadCrashedHistory(rootDir).contains("retried-bundle"))
+            assertNull(loadCrashedHistory(rootDir).interruptedLaunch)
         }
 
     @Test
@@ -299,8 +303,21 @@ class BundleFileStorageServiceTest {
         assertTrue(recovered.clearCrashHistory())
 
         assertFalse(recovered.getCrashHistory().contains("retried-bundle"))
+        assertNull(loadCrashedHistory(rootDir).interruptedLaunch)
     }
 
+    @Test
+    fun `malformed retry record keeps crash history`() {
+        val rootDir = temporaryFolder.newFolder()
+        File(bundleStoreDir(rootDir), CrashedHistory.CRASHED_HISTORY_FILENAME).writeText(
+            """{"bundles":[{"bundleId":"crashed-bundle","crashedAt":1}],"maxHistorySize":10,"interruptedLaunch":{}}""",
+        )
+
+        val history = createService(rootDir).getCrashHistory()
+
+        assertEquals(listOf("crashed-bundle"), history.bundles.map { it.bundleId })
+        assertNull(history.interruptedLaunch)
+    }
 
     @Test
     fun `resolveBundleFile uses single manifest bundle at root`() {
