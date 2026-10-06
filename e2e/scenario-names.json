@@ -1,5 +1,6 @@
 [
   "startup-hang-recovery",
+  "headless-launch-keeps-staged-bundle",
   "release-ota-recovery",
   "multi-asset-replacement",
   "bspatch-builtin-to-diff-ota",
