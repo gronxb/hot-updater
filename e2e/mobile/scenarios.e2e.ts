@@ -1,5 +1,7 @@
 import { test as mobileTest } from "@e2e-dev/mobile";
 
+import { LynxAppDriver } from "../lynx/lynx-app-driver.ts";
+import { getLynxScenarioDefinition } from "../lynx/scenarios.ts";
 import { createControlClient } from "../shared/control-client.ts";
 import type { ControlClient, JsonObject } from "../shared/control-client.ts";
 import { getScenarioDefinition } from "../shared/scenarios.ts";
@@ -125,7 +127,6 @@ test.afterEach(async () => {
 });
 
 for (const scenarioName of context.scenarioNames) {
-  const scenario = getScenarioDefinition(scenarioName);
   test(scenarioName, async ({ device, screen, hotUpdaterIosAlert }) => {
     const current = attempt;
     if (!current) throw new Error("Scenario setup did not complete");
@@ -136,6 +137,26 @@ for (const scenarioName of context.scenarioNames) {
       current.controller,
       current.signal,
       async () => {
+        const insightsStartedAtMs = Date.now() - 5_000;
+        if (context.runtime === "lynx") {
+          const app = new LynxAppDriver(
+            current.client,
+            context.platform,
+            process.env,
+            current.bootstrap,
+            { device, screen, signal: current.signal },
+          );
+          await getLynxScenarioDefinition(scenarioName).run(app);
+          current.consoleInsights =
+            await app.verifyConsoleInsights(insightsStartedAtMs);
+          current.expectedLaunchFailures = app.expectedLaunchFailures;
+          writeAttemptRecord(
+            context.resultsDir,
+            `lynx-generation-ledger-${scenarioName}.json`,
+            app.runtimeEventLedgerReceipt(),
+          );
+          return;
+        }
         const app = new MobileAppDriver({
           appId: context.appId,
           client: current.client,
@@ -147,8 +168,7 @@ for (const scenarioName of context.scenarioNames) {
           screen,
           signal: current.signal,
         });
-        const insightsStartedAtMs = Date.now() - 5_000;
-        await scenario.run(app);
+        await getScenarioDefinition(scenarioName).run(app);
         current.consoleInsights =
           await app.verifyConsoleInsights(insightsStartedAtMs);
         current.expectedLaunchFailures = app.expectedLaunchFailures;

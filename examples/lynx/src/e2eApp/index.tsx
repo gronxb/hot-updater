@@ -680,13 +680,21 @@ function App() {
     <scroll-view style={styles.root}>
       <view style={styles.content}>
         {currentScreen !== "Ready" ? (
-          <view bindtap={() => setCurrentScreen("Ready")}>
+          <view
+            accessibility-element
+            accessibility-label="Back"
+            accessibility-traits="button"
+            bindtap={() => setCurrentScreen("Ready")}
+          >
             <text style={styles.back}>Back</text>
           </view>
         ) : null}
         <text style={styles.resultText}>{SCREEN_PATHS[currentScreen]}</text>
         {currentScreen === "Ready" ? (
           <view
+            accessibility-element
+            accessibility-label="Open detail page"
+            accessibility-traits="button"
             style={styles.button}
             bindtap={() => void actions["action-open-detail-page"]?.()}
           >

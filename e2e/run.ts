@@ -7,9 +7,9 @@ import { parseMobileOptions, runMobile } from "./mobile/run.ts";
 
 const repositoryRoot = fileURLToPath(new URL("../", import.meta.url));
 const usage = `Usage: pnpm e2e --platform ios|android [--device <UDID|serial>]
-                [--scenario <name>] [--suite default] [--dry-run] [--list]
+                [--runtime react-native|lynx] [--scenario <name>] [--suite default] [--dry-run] [--list]
 
-Local runs prepare PGlite, local S3 storage, signing keys, and the Release app.
+Local React Native runs prepare PGlite, local S3 storage, signing keys, and the Release app.
 With no --device, exactly one booted device of the selected platform is required.
 --prepared runs the same suite with a caller-provided provider and native build.
 `;
@@ -59,11 +59,17 @@ export async function runE2e(
       "Local E2E uses standalone-kysely. Use --prepared for an externally prepared profile.",
     );
   }
+  if (validated.values.runtime === "lynx") {
+    throw new Error(
+      "Local Lynx native preparation is not integrated yet; use --prepared with a Lynx provider and Release build.",
+    );
+  }
   if (forwarded.includes("--dry-run")) {
     console.log(
       JSON.stringify(
         {
           platform,
+          runtime: validated.values.runtime,
           device: device ?? "one booted device (resolved at execution)",
           profile: "standalone-kysely",
           scenarios: validated.scenarios,

@@ -1,6 +1,10 @@
 import { spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
+import { setTimeout as sleep } from "node:timers/promises";
+
+import type { Device } from "@e2e-dev/mobile";
+import type { Screen } from "e2e";
 
 import { createControlClient } from "../shared/control-client.ts";
 import type { JsonObject } from "../shared/control-protocol.ts";
@@ -31,11 +35,18 @@ import {
 import {
   createLynxAndroidLaunchConfigurationArguments,
   createLynxNativeLaunchConfiguration,
+  HOT_UPDATER_LYNX_ANDROID_LAUNCH_CONFIGURATION_EXTRA,
   HOT_UPDATER_LYNX_IOS_LAUNCH_CONFIGURATION_PREFIX,
   serializeLynxNativeLaunchConfiguration,
 } from "./native-launch-configuration.ts";
 
 type ControlClient = ReturnType<typeof createControlClient>;
+
+type MobileSession = {
+  readonly device: Pick<Device, "openApp" | "closeApp" | "back">;
+  readonly screen: Pick<Screen, "getByRole" | "getByText">;
+  readonly signal: AbortSignal;
+};
 
 type ControlOptions = {
   readonly saveResultAs?: string;
@@ -126,17 +137,26 @@ export class LynxAppDriver implements ScenarioAppDriver {
     ledger: GenerationEventLedgerReceipt;
   }[] = [];
   private stageValues: Record<string, unknown>;
+  private readonly mobile?: MobileSession;
+  private launchFailuresAwaitingRecovery = 0;
+  private verifiedLaunchFailures = 0;
+
+  get expectedLaunchFailures(): number {
+    return this.verifiedLaunchFailures;
+  }
 
   constructor(
     controlClient: ControlClient,
     platform: E2ePlatform,
     env: NodeJS.ProcessEnv,
     initialValues: Record<string, unknown> = {},
+    mobile?: MobileSession,
   ) {
     this.controlClient = controlClient;
     this.platform = platform;
     this.env = env;
     this.stageValues = { ...initialValues };
+    this.mobile = mobile;
   }
 
   async assertText(
@@ -183,7 +203,7 @@ export class LynxAppDriver implements ScenarioAppDriver {
             `${stage} expected ${testID} (${field}) to ${options.exactText === true ? "equal" : "contain"} one of ${JSON.stringify(expectedTexts)}, received ${JSON.stringify(last)}`,
           );
         }
-        await new Promise((resolve) => setTimeout(resolve, 250));
+        await sleep(250, undefined, { signal: this.mobile?.signal });
       }
     });
   }
@@ -275,7 +295,7 @@ export class LynxAppDriver implements ScenarioAppDriver {
               `${stage}: expected native crash classification for ${crashBundleId}; observed ${JSON.stringify(state)}`,
             );
           }
-          await new Promise((resolve) => setTimeout(resolve, 500));
+          await sleep(500, undefined, { signal: this.mobile?.signal });
         }
         const recoveryLaunchGeneration = randomUUID();
         await this.controlClient.postJson(
@@ -288,6 +308,11 @@ export class LynxAppDriver implements ScenarioAppDriver {
       }
       const runtimeScenarioMarker = await this.waitForOverlayReady(stage);
       await this.assertNoManagedResourceErrors(stage, runtimeScenarioMarker);
+      if (options.expectCrash === true) {
+        this.mobile?.signal.throwIfAborted();
+        this.verifiedLaunchFailures += this.launchFailuresAwaitingRecovery;
+        this.launchFailuresAwaitingRecovery = 0;
+      }
     });
   }
 
@@ -357,7 +382,8 @@ export class LynxAppDriver implements ScenarioAppDriver {
 
   async terminate(stage: string): Promise<void> {
     await this.runStage(stage, async () => {
-      this.terminateApp();
+      if (this.mobile) await this.mobile.device.closeApp();
+      else this.terminateApp();
     });
   }
 
@@ -495,11 +521,22 @@ export class LynxAppDriver implements ScenarioAppDriver {
         "/e2e/screen-state",
         { detailPageMarker: null, detailPageTitle: null },
       );
-      await this.controlClient.postJson(
-        `${stage}: request detail page`,
-        "/e2e/pending-action",
-        { testID: "action-open-detail-page" },
-      );
+      if (this.mobile) {
+        this.mobile.signal.throwIfAborted();
+        const back = this.mobile.screen.getByRole("button", "Back");
+        if (await back.isVisible()) {
+          this.mobile.signal.throwIfAborted();
+          await back.tap();
+        }
+        this.mobile.signal.throwIfAborted();
+        await this.mobile.screen.getByRole("button", "Open detail page").tap();
+      } else {
+        await this.controlClient.postJson(
+          `${stage}: request detail page`,
+          "/e2e/pending-action",
+          { testID: "action-open-detail-page" },
+        );
+      }
       await this.controlClient.waitForScreenStateField(
         `${stage}: wait for detail marker`,
         "detailPageMarker",
@@ -510,6 +547,16 @@ export class LynxAppDriver implements ScenarioAppDriver {
         "detailPageTitle",
         { expectedValue: "Second Page" },
       );
+      if (this.mobile) {
+        this.mobile.signal.throwIfAborted();
+        await this.mobile.screen
+          .getByText("Second Page")
+          .waitFor({ state: "visible" });
+        this.mobile.signal.throwIfAborted();
+        await this.mobile.screen
+          .getByText(expectedMarker)
+          .waitFor({ state: "visible" });
+      }
     });
   }
 
@@ -528,11 +575,16 @@ export class LynxAppDriver implements ScenarioAppDriver {
 
   async closeDetailPage(stage: string): Promise<void> {
     await this.runStage(stage, async () => {
-      await this.controlClient.postJson(
-        `${stage}: request detail close`,
-        "/e2e/pending-action",
-        { testID: "action-close-detail-page" },
-      );
+      if (this.mobile) {
+        this.mobile.signal.throwIfAborted();
+        await this.mobile.screen.getByRole("button", "Close detail page").tap();
+      } else {
+        await this.controlClient.postJson(
+          `${stage}: request detail close`,
+          "/e2e/pending-action",
+          { testID: "action-close-detail-page" },
+        );
+      }
       await this.controlClient.waitForScreenStateField(
         `${stage}: wait for detail close`,
         "detailPageMarker",
@@ -543,6 +595,10 @@ export class LynxAppDriver implements ScenarioAppDriver {
 
   async nativeBack(stage: string): Promise<void> {
     await this.runStage(stage, async () => {
+      if (this.mobile) {
+        await this.mobile.device.back();
+        return;
+      }
       if (this.platform === "android") {
         this.runOrThrow("adb", [
           "-s",
@@ -600,7 +656,10 @@ export class LynxAppDriver implements ScenarioAppDriver {
     });
   }
 
-  async verifyConsoleInsights(sinceMs: number): Promise<unknown> {
+  async verifyConsoleInsights(sinceMs: number): Promise<JsonObject> {
+    this.mobile?.signal.throwIfAborted();
+    if (this.launchFailuresAwaitingRecovery !== 0)
+      throw new Error("Native crash recovery evidence is missing");
     return this.controlClient.postJson(
       "verify Console Insights",
       "/e2e/verify-console-insights",
@@ -712,7 +771,8 @@ export class LynxAppDriver implements ScenarioAppDriver {
   private async launchApp(
     options: { expectCrash?: boolean; launchGeneration?: string } = {},
   ): Promise<void> {
-    this.terminateApp();
+    this.mobile?.signal.throwIfAborted();
+    if (!this.mobile) this.terminateApp();
     this.activeLaunchGeneration = options.launchGeneration ?? null;
     if (this.platform === "android") this.beginAndroidLaunchLogCapture();
     const launchConfiguration = serializeLynxNativeLaunchConfiguration(
@@ -723,6 +783,40 @@ export class LynxAppDriver implements ScenarioAppDriver {
         runtimeConfigURL: resolveRuntimeConfigUrl(this.platform, this.env),
       }),
     );
+    if (this.mobile) {
+      this.iosLaunchProcessId = null;
+      try {
+        await this.mobile.device.openApp(this.appId(), {
+          relaunch: true,
+          launchArguments:
+            this.platform === "ios"
+              ? [
+                  "--ota-framework=react",
+                  "--ota-channel=production",
+                  `${HOT_UPDATER_LYNX_IOS_LAUNCH_CONFIGURATION_PREFIX}${launchConfiguration}`,
+                ]
+              : [
+                  "--es",
+                  HOT_UPDATER_LYNX_ANDROID_LAUNCH_CONFIGURATION_EXTRA,
+                  launchConfiguration,
+                ],
+        });
+      } catch (error) {
+        this.mobile.signal.throwIfAborted();
+        if (options.expectCrash !== true) throw error;
+        // The launch caller must prove a new durable crash and successful recovery.
+        this.launchFailuresAwaitingRecovery += 1;
+      }
+      this.mobile.signal.throwIfAborted();
+      if (this.platform === "ios") {
+        this.iosLaunchProcessId = this.readIosAppProcessId();
+        if (this.iosLaunchProcessId === null && options.expectCrash !== true)
+          throw new Error(
+            "The SDK launch did not leave a running iOS app process",
+          );
+      }
+      return;
+    }
     if (this.platform === "ios") {
       this.closeIosAgentDeviceSession(`lynx-e2e-${process.pid}`);
       const output = this.runLaunch(
@@ -880,6 +974,39 @@ export class LynxAppDriver implements ScenarioAppDriver {
     throw new Error(
       `Could not inspect iOS app process ${this.iosLaunchProcessId} while waiting for runtimeScenarioMarker\n${result.text}`,
     );
+  }
+
+  private readIosAppProcessId(): string | null {
+    const container = this.captureCommand("ios-app-container", "xcrun", [
+      "simctl",
+      "get_app_container",
+      this.deviceId(),
+      this.appId(),
+      "app",
+    ]);
+    if (container.status !== 0) throw new Error(container.text);
+    const bundle = container.stdout.trim();
+    const executableName = this.captureCommand(
+      "ios-app-executable",
+      "/usr/libexec/PlistBuddy",
+      ["-c", "Print:CFBundleExecutable", path.join(bundle, "Info.plist")],
+    );
+    if (executableName.status !== 0 || !executableName.stdout.trim())
+      throw new Error(executableName.text);
+    const executable = path.join(bundle, executableName.stdout.trim());
+    // Simulator processes run on the host. The iOS runtime need not ship ps.
+    const processes = this.captureCommand("ios-app-process", "/bin/ps", [
+      "-axo",
+      "pid=,comm=",
+    ]);
+    if (processes.status !== 0) throw new Error(processes.text);
+    const matches = processes.stdout.split("\n").flatMap((line) => {
+      const match = line.trim().match(/^(\d+)\s+(.+)$/);
+      return match?.[2] === executable ? [match[1]!] : [];
+    });
+    if (matches.length > 1)
+      throw new Error("Multiple processes match the launched iOS app");
+    return matches[0] ?? null;
   }
 
   private async assertNoManagedResourceErrors(
@@ -1174,6 +1301,7 @@ Android launch log marker was not found`,
     readonly stdout: string;
     readonly text: string;
   } {
+    this.mobile?.signal.throwIfAborted();
     try {
       const result = spawnSync(command, args, {
         encoding: "utf8",
@@ -1181,6 +1309,7 @@ Android launch log marker was not found`,
         maxBuffer,
         timeout,
       });
+      this.mobile?.signal.throwIfAborted();
       const stdout = result.stdout ?? "";
       const commandError = result.error ? `\n${String(result.error)}` : "";
       const output = `${stdout}${result.stderr ?? ""}${commandError}`;
@@ -1190,6 +1319,7 @@ Android launch log marker was not found`,
         text: `${label} (status ${String(result.status)}): ${output.slice(-64 * 1024)}`,
       };
     } catch (error) {
+      this.mobile?.signal.throwIfAborted();
       return {
         status: null,
         stdout: "",
@@ -1199,6 +1329,7 @@ Android launch log marker was not found`,
   }
 
   private terminateApp(): void {
+    this.mobile?.signal.throwIfAborted();
     if (this.platform === "ios") {
       spawnSync(
         "xcrun",
@@ -1267,10 +1398,13 @@ Android launch log marker was not found`,
   }
 
   private runOrThrow(command: string, args: readonly string[]): string {
+    this.mobile?.signal.throwIfAborted();
     const result = spawnSync(command, args, {
       encoding: "utf8",
       env: this.env,
+      ...(this.mobile ? { timeout: 5000 } : {}),
     });
+    this.mobile?.signal.throwIfAborted();
     if (result.status !== 0) {
       throw new Error(
         `${command} ${args.join(" ")} failed: ${result.stderr || result.stdout || result.status}`,
@@ -1311,9 +1445,11 @@ Android launch log marker was not found`,
     stage: string,
     operation: () => Promise<void>,
   ): Promise<void> {
+    this.mobile?.signal.throwIfAborted();
     console.log(`[lynx-stage:start] ${stage}`);
     try {
       await operation();
+      this.mobile?.signal.throwIfAborted();
       console.log(`[lynx-stage:done] ${stage}`);
     } catch (error) {
       console.log(`[lynx-stage:failed] ${stage}`);

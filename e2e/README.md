@@ -109,6 +109,22 @@ native app; native builds are available through `pnpm -w e2e:build -- --platform
 ios|android`. See [mobile runner details](mobile/README.md) for lifecycle,
 cancellation, evidence and binary-path settings.
 
+Prepared Lynx runs select the same SDK runner with `--runtime lynx`:
+
+```sh
+pnpm -w e2e -- --prepared --runtime lynx --platform android \
+  --device <leased-emulator-serial> --profile standalone-kysely
+```
+
+Supply the Lynx provider environment and a Release artifact built with
+`pnpm -w build:lynx:e2e-native -- --platform android`. The `e2e:lynx:ios` and
+`e2e:lynx:android` commands are aliases for this prepared path. The default
+manifest includes the shared scenarios except RN metadata migration, followed
+by `sparkling-multipage-ota`. Page navigation uses rendered buttons through the
+mobile SDK and retains native generation and resource checks. Local automatic
+preparation currently supports only React Native; the external bot must select
+the mobile runner for Lynx before it can use this path.
+
 Checks that do not access devices:
 
 ```sh

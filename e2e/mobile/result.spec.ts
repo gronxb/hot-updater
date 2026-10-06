@@ -15,6 +15,7 @@ import {
 } from "./result.ts";
 
 const context: MobileContext = {
+  runtime: "react-native",
   platform: "ios",
   deviceId: "dedicated-simulator",
   session: "job-profile-ios",

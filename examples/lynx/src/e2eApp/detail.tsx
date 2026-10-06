@@ -98,7 +98,12 @@ function Detail() {
       <text>{E2E_SCENARIO_MARKER}</text>
       <text>{title ?? "Missing detail title"}</text>
       <text>{status}</text>
-      <view bindtap={() => void closeDetailPage()}>
+      <view
+        accessibility-element
+        accessibility-label="Close detail page"
+        accessibility-traits="button"
+        bindtap={() => void actionHandlers["action-close-detail-page"]?.()}
+      >
         <text>Close detail page</text>
       </view>
     </view>

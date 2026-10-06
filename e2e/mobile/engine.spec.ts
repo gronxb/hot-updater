@@ -108,6 +108,7 @@ export default {
         headSha: report.run.vcs.commit,
         profile: "fixture",
         platform: "ios" as const,
+        runtime: "react-native" as const,
         deviceId: "fixture-device",
         session: "fixture-session",
         resultsDir: temporary,

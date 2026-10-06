@@ -26,6 +26,8 @@ function runDry(args: readonly string[]) {
     [
       "--experimental-strip-types",
       path.join(repoDir, "e2e/lynx/scripts/run.ts"),
+      "--device",
+      "00000000-0000-0000-0000-000000000000",
       "--dry-run",
       ...args,
     ],
@@ -34,11 +36,7 @@ function runDry(args: readonly string[]) {
 }
 
 function plannedScenarios(stdout: string): string[] {
-  return stdout
-    .split("\n")
-    .map((line) => line.trim())
-    .filter((line) => /^\d+\.\s+/.test(line))
-    .map((line) => line.replace(/^\d+\.\s+/, ""));
+  return JSON.parse(stdout).scenarios;
 }
 
 describe("Lynx E2E suite manifest", () => {
@@ -126,6 +124,11 @@ describe("Lynx E2E suite manifest", () => {
   it("dry-run plans the validated Lynx suite", () => {
     const result = runDry(["--platform", "ios"]);
     expect(result.status).toBe(0);
+    expect(JSON.parse(result.stdout)).toMatchObject({
+      runtime: "lynx",
+      workers: 1,
+      retries: 0,
+    });
     expect(plannedScenarios(result.stdout)).toEqual(
       readLynxDefaultScenarioNames(repoDir),
     );
@@ -139,7 +142,7 @@ describe("Lynx E2E suite manifest", () => {
       "lynx-shortcut",
     ]);
     expect(result.status).toBe(1);
-    expect(result.stderr).toContain("Unknown Lynx scenario: lynx-shortcut");
+    expect(result.stderr).toContain("Unknown scenario: lynx-shortcut");
     expect(result.stdout).toBe("");
   });
 });
