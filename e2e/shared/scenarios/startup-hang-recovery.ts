@@ -133,11 +133,20 @@ export const startupHangRecoveryScenario: ScenarioDefinition = {
       "check for updates in the session that recovered",
       "action-install-current-channel-update",
     );
+    // The changed crash history re-adopts the running Release with a fresh
+    // receipt; the hung bundle must not be staged.
     await app.assertText(
-      "the session that recovered keeps the hung bundle out",
+      "the session that recovered re-adopts the stable Release",
       "update-action-result",
-      "current-channel -> no-update",
+      "current-channel -> adopted ID $hangStableReleaseId",
       { exactText: true },
+    );
+    await app.control(
+      "the session that recovered keeps the hung bundle out",
+      "/e2e/assert-metadata-active",
+      {
+        bundleId: "$hangStableBundleId",
+      },
     );
 
     await app.terminate("stop recovered process");
@@ -235,10 +244,17 @@ export const startupHangRecoveryScenario: ScenarioDefinition = {
       "action-install-current-channel-update",
     );
     await app.assertText(
-      "the hung bundle is not installed again",
+      "no update after the second recovery",
       "update-action-result",
       "current-channel -> no-update",
       { exactText: true },
+    );
+    await app.control(
+      "the hung bundle is not installed again",
+      "/e2e/assert-metadata-active",
+      {
+        bundleId: "$hangStableBundleId",
+      },
     );
   },
 };

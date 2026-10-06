@@ -126,11 +126,20 @@ export const interruptedLaunchRetriesBundleScenario: ScenarioDefinition = {
       "check for updates in the session that recovered",
       "action-install-current-channel-update",
     );
+    // The changed crash history re-adopts the running Release with a fresh
+    // receipt; the slow-starting bundle must not be staged.
     await app.assertText(
-      "the session that recovered keeps the bundle out",
+      "the session that recovered re-adopts the stable Release",
       "update-action-result",
-      "current-channel -> no-update",
+      "current-channel -> adopted ID $interruptedStableReleaseId",
       { exactText: true },
+    );
+    await app.control(
+      "the session that recovered keeps the bundle out",
+      "/e2e/assert-metadata-active",
+      {
+        bundleId: "$interruptedStableBundleId",
+      },
     );
 
     await app.terminate("stop the session that recovered");
