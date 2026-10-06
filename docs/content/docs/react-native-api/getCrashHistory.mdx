@@ -37,6 +37,10 @@ export default App;
 
 Returns an array of bundle ID strings. Each ID represents a bundle that failed to load and triggered rollback.
 
+The list also holds a bundle whose launch ended before the first render, until
+a later session retries it once. See
+[automatic rollback](/docs/concepts/automatic-rollback#what-counts-as-a-failed-launch).
+
 ```typescript
 getCrashHistory(): string[]
 ```
