@@ -374,6 +374,9 @@ class BundleFileStorageService: BundleStorageService {
 
     private var hasPreparedLaunch = false
     private var currentLaunchReport: LaunchReport?
+    // The staged bundle this process launched before its first content. Only that
+    // launch is pending; a bundle staged later waits for the next launch.
+    private var pendingLaunchBundleId: String?
     // Crash history is written at first content on the main thread while JavaScript can read it.
     private let crashedHistoryLock = NSLock()
     // A bundle waiting for its retry that this process keeps refusing, see InterruptedLaunch.
@@ -1997,7 +2000,9 @@ class BundleFileStorageService: BundleStorageService {
         }
         hasPreparedLaunch = true
         // A launch is recorded only once it can show UI (markLaunchStarted).
-        return selectLaunch(bundle: bundle)
+        let selection = selectLaunch(bundle: bundle)
+        pendingLaunchBundleId = selection.shouldRollbackOnCrash ? selection.launchedBundleId : nil
+        return selection
     }
     
     // MARK: - Bundle Update
@@ -2835,9 +2840,10 @@ class BundleFileStorageService: BundleStorageService {
 
     func notifyAppReady() -> [String: Any] {
         guard let report = loadLaunchReport() else {
-            if let metadata = loadMetadataOrNull(),
+            if let launchedBundleId = pendingLaunchBundleId,
+               let metadata = loadMetadataOrNull(),
                metadata.verificationPending,
-               metadata.stagingBundleId != nil {
+               metadata.stagingBundleId == launchedBundleId {
                 return ["status": "PENDING"]
             }
             return ["status": LaunchReportStatus.unchanged.rawValue]

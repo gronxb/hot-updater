@@ -81,6 +81,10 @@ The package exports `NotifyAppReadyResult` for your own callback types.
 | `toBundleId` | The artifact identity now in use, including the native build's identifier for a built-in Bundle. |
 | `fromReleaseId`, `toReleaseId` | Optional Release selection IDs. A built-in or retained local Bundle can have no associated Release. |
 
+The result describes the launch of the current process. A Bundle downloaded
+later in the session does not change it; the next launch applies that Bundle
+and reports it.
+
 Bundle fields identify artifacts. Use the optional Release fields when
 correlating a transition with the public update ID in the Console. See
 [`getActiveUpdateState`](/docs/react-native-api/getActiveUpdateState) for the

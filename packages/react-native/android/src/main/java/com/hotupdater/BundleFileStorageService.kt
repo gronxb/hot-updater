@@ -599,6 +599,10 @@ class BundleFileStorageService(
     private var hasPreparedLaunch = false
     private var currentLaunchReport: LaunchReport? = null
 
+    // The staged bundle this process launched before its first content. Only that
+    // launch is pending; a bundle staged later waits for the next launch.
+    private var pendingLaunchBundleId: String? = null
+
     // Crash history is written at first content on the main thread while JS can read it.
     private val crashedHistoryLock = Any()
 
@@ -1516,7 +1520,11 @@ class BundleFileStorageService(
         val report = loadLaunchReport()
         if (report == null) {
             val metadata = loadMetadataOrNull()
-            if (metadata?.verificationPending == true && metadata.stagingBundleId != null) {
+            val launchedBundleId = pendingLaunchBundleId
+            if (launchedBundleId != null &&
+                metadata?.verificationPending == true &&
+                metadata.stagingBundleId == launchedBundleId
+            ) {
                 return mapOf("status" to "PENDING")
             }
             return mapOf("status" to "UNCHANGED")
@@ -1588,6 +1596,7 @@ class BundleFileStorageService(
 
         // A launch is recorded only once it can show UI (markLaunchStarted).
         val selection = selectLaunch()
+        pendingLaunchBundleId = selection.launchedBundleId.takeIf { selection.shouldRollbackOnCrash }
         Log.d(
             TAG,
             "prepareLaunch: bundleId=${selection.launchedBundleId} shouldRollback=${selection.shouldRollbackOnCrash} url=${selection.bundleUrl}",
