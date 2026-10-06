@@ -152,6 +152,12 @@ interface BundleStorageService {
     suspend fun commitReleaseSelection(selection: PersistedSelection): Boolean = false
 
     /**
+     * Records that the current launch of a verification-pending bundle can show UI.
+     * The next process rolls the bundle back unless first content verified it.
+     */
+    fun markLaunchStarted(launchedBundleId: String?)
+
+    /**
      * Marks the current launch as successful after the first content appeared.
      */
     fun markLaunchCompleted(currentBundleId: String?)
@@ -1380,6 +1386,20 @@ class BundleFileStorageService(
         return true
     }
 
+    override fun markLaunchStarted(launchedBundleId: String?) {
+        // Unlike prepareLaunch, this can run while JS stages a newer bundle.
+        synchronized(releaseStateLock) {
+            val metadata = loadMetadataOrNull() ?: return
+            if (!isVerificationPending(metadata) ||
+                metadata.launchInProgress ||
+                metadata.stagingBundleId != launchedBundleId
+            ) {
+                return
+            }
+            saveMetadata(metadata.copy(launchInProgress = true))
+        }
+    }
+
     override fun markLaunchCompleted(currentBundleId: String?) {
         val metadata = loadMetadataOrNull() ?: return
         val stagingBundleId = metadata.stagingBundleId ?: return
@@ -1488,12 +1508,8 @@ class BundleFileStorageService(
         }
         hasPreparedLaunch = true
 
+        // A launch is recorded only once it can show UI (markLaunchStarted).
         val selection = selectLaunch()
-        if (selection.shouldRollbackOnCrash) {
-            loadMetadataOrNull()?.let { metadata ->
-                saveMetadata(metadata.copy(launchInProgress = true))
-            }
-        }
         Log.d(
             TAG,
             "prepareLaunch: bundleId=${selection.launchedBundleId} shouldRollback=${selection.shouldRollbackOnCrash} url=${selection.bundleUrl}",

@@ -1,5 +1,6 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.INTERNET"/>
+    <uses-permission android:name="android.permission.WAKE_LOCK"/>
     <application android:name=".MainApplication" android:label="@string/app_name" android:icon="@mipmap/ic_launcher" android:roundIcon="@mipmap/ic_launcher_round" android:allowBackup="false" android:theme="@style/AppTheme" android:supportsRtl="true" android:networkSecurityConfig="@xml/network_security_config" android:usesCleartextTraffic="true">
         <activity android:name=".MainActivity" android:label="@string/app_name" android:configChanges="keyboard|keyboardHidden|orientation|screenLayout|screenSize|smallestScreenSize|uiMode" android:launchMode="singleTask" android:windowSoftInputMode="adjustResize" android:exported="true" android:theme="@style/BootTheme">
             <intent-filter>
@@ -13,6 +14,8 @@
                 <data android:scheme="hotupdaterexample"/>
             </intent-filter>
         </activity>
+        <receiver android:name=".HeadlessTaskReceiver" android:exported="true"/>
+        <service android:name=".HeadlessTaskService" android:exported="false"/>
         <meta-data android:name="com.hotupdater.FINGERPRINT_HASH" android:value="f949294bd4dbc67f247574e81293451c01bdd609"/>
     </application>
 </manifest>

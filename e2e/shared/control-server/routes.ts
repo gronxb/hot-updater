@@ -21,6 +21,7 @@ import {
   handleCleanup,
   handleComputeRolloutSample,
   handleConfigureProxy,
+  handleLaunchHeadlessTask,
   handleLaunchStartupHang,
   handleLaunchUninstrumentedApp,
   handlePrepareAppLaunch,
@@ -716,6 +717,12 @@ app.post("/e2e/launch-startup-hang", async (c) => {
   const payload = (await c.req.json()) as { bundleId?: string };
   if (!payload.bundleId) return c.json({ error: "bundleId is required" }, 400);
   return c.json(await handleLaunchStartupHang(payload.bundleId));
+});
+
+app.post("/e2e/launch-headless-task", async (c) => {
+  const payload = (await c.req.json()) as { bundleId?: string };
+  if (!payload.bundleId) return c.json({ error: "bundleId is required" }, 400);
+  return c.json(await handleLaunchHeadlessTask(payload.bundleId));
 });
 
 app.post("/e2e/launch-uninstrumented-app", async (c) => {

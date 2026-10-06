@@ -229,6 +229,8 @@ class HotUpdaterImplTest {
             progressCallback: (UpdateProgressPayload) -> Unit,
         ) = UpdateBundleResult(BundleDelivery.MANIFEST, patchFallback = false)
 
+        override fun markLaunchStarted(launchedBundleId: String?) = Unit
+
         override fun markLaunchCompleted(currentBundleId: String?) {
             lastCompletedBundleId = currentBundleId
         }
