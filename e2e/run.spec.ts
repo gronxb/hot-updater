@@ -3,22 +3,21 @@ import { describe, expect, it, vi } from "vitest";
 import { runE2e } from "./run.ts";
 
 describe("shared contributor and bot entry", () => {
-  it.each([[], ["--dry-run"]])(
-    "refuses to prepare the RN app for a local Lynx request (%j)",
-    async (...extra) => {
-      const mobile = vi.fn();
-      const local = vi.fn();
-      await expect(
-        runE2e(
-          ["--platform", "android", "--runtime", "lynx", ...extra],
-          {},
-          { mobile, local },
-        ),
-      ).rejects.toThrow("use --prepared with a Lynx provider");
-      expect(local).not.toHaveBeenCalled();
-      expect(mobile).not.toHaveBeenCalled();
-    },
-  );
+  it("prepares the selected Lynx runtime instead of the RN example", async () => {
+    const mobile = vi.fn();
+    const local = vi.fn().mockResolvedValue(0);
+    const args = ["--platform", "android", "--runtime", "lynx"];
+    await expect(runE2e(args, {}, { mobile, local })).resolves.toBe(0);
+    expect(local).toHaveBeenCalledWith(
+      args,
+      expect.any(String),
+      "android",
+      undefined,
+      {},
+      "lynx",
+    );
+    expect(mobile).not.toHaveBeenCalled();
+  });
 
   it("forwards prepared bot arguments and environment without local preparation", async () => {
     const mobile = vi.fn().mockResolvedValue(17);
@@ -119,6 +118,7 @@ describe("shared contributor and bot entry", () => {
       "android",
       "emulator-5554",
       {},
+      "react-native",
     );
     expect(mobile).not.toHaveBeenCalled();
   });

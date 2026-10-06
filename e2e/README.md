@@ -62,6 +62,19 @@ runs all scenarios. `HOT_UPDATER_E2E_SCENARIOS` also accepts a comma-separated
 selection. Results include the normalized `hot-updater-result.json`, SDK report,
 scenario diagnostics and Console Insights evidence.
 
+Select `--runtime lynx` to prepare `examples/lynx` with its existing Sparkling
+native builder and run the Lynx manifest:
+
+```sh
+pnpm -w e2e -- --runtime lynx --platform android --device <emulator-serial> \
+  --scenario sparkling-multipage-ota
+```
+
+The Lynx builder requires clean tracked source, apart from its verified public
+key export. It retains the committed Lynx config and fingerprint and compiles
+the E2E main/detail page bundles. Use the native prerequisites documented in
+[`examples/lynx`](../examples/lynx/README.md).
+
 ## Local preparation and cleanup
 
 Each invocation allocates loopback ports for the provider, control server and
@@ -72,10 +85,10 @@ provider, so the device does not need a storage-port mapping.
 
 Local preparation creates a new admin token, signing key pair and storage
 credentials. It exports the public key before the native build, installs native
-dependencies, generates the fingerprint, and then compiles the app. The local
+dependencies, generates the RN fingerprint, and then compiles the app. The local
 profile uses the published CLI, standalone repository and S3 storage adapters.
 
-The command temporarily replaces the example's config, environment file,
+The command temporarily replaces the RN example's config, the environment file,
 signing keys and native metadata. It restores their original contents and
 permissions after success, failure or cancellation. A checkout lock prevents
 two local preparers from editing those files at the same time. It stops only
@@ -121,9 +134,8 @@ Supply the Lynx provider environment and a Release artifact built with
 `e2e:lynx:android` commands are aliases for this prepared path. The default
 manifest includes the shared scenarios except RN metadata migration, followed
 by `sparkling-multipage-ota`. Page navigation uses rendered buttons through the
-mobile SDK and retains native generation and resource checks. Local automatic
-preparation currently supports only React Native; the external bot must select
-the mobile runner for Lynx before it can use this path.
+mobile SDK and retains native generation and resource checks. The external bot
+must select the mobile runner for Lynx before it can use this prepared path.
 
 Checks that do not access devices:
 

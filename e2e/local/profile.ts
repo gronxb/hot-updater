@@ -1,10 +1,13 @@
 import path from "node:path";
 
+import { lynxMobileEnvironment, type MobileRuntime } from "../mobile/target.ts";
+
 export type LocalPlatform = "ios" | "android";
 
 export interface LocalProfile {
   root: string;
   platform: LocalPlatform;
+  runtime: MobileRuntime;
   runDir: string;
   appDir: string;
   serverDir: string;
@@ -18,6 +21,7 @@ export interface LocalProfile {
 export function createLocalProfile(options: {
   root: string;
   platform: LocalPlatform;
+  runtime?: MobileRuntime;
   runDir: string;
   id: string;
   providerPort: number;
@@ -28,7 +32,11 @@ export function createLocalProfile(options: {
   signingKey: string;
   env: NodeJS.ProcessEnv;
 }): LocalProfile {
-  const appDir = path.join(options.root, "examples/v0.85.0");
+  const runtime = options.runtime ?? "react-native";
+  const appDir = path.join(
+    options.root,
+    runtime === "lynx" ? "examples/lynx" : "examples/v0.85.0",
+  );
   const providerUrl = `http://127.0.0.1:${options.providerPort}/hot-updater`;
   const runtimePort =
     options.platform === "android" ? 3107 : options.controlPort;
@@ -51,6 +59,7 @@ export function createLocalProfile(options: {
     HOT_UPDATER_E2E_ANDROID_REVERSE_HOST_PORT: String(options.providerPort),
     HOT_UPDATER_E2E_RUNTIME_CONFIG_URL: `http://127.0.0.1:${runtimePort}/e2e/runtime-config`,
     HOT_UPDATER_E2E_ENV_TARGET_PATH: path.join(appDir, ".env.hotupdater"),
+    HOT_UPDATER_E2E_ENV_TARGET_DIR: appDir,
     HOT_UPDATER_E2E_PROVIDER_NAMESPACE: `local/${options.id}`,
     HOT_UPDATER_E2E_CHANNEL_NAMESPACE: `local-${options.id}`,
     HOT_UPDATER_E2E_IOS_DERIVED_DATA_PATH: path.join(options.runDir, "ios"),
@@ -64,6 +73,8 @@ export function createLocalProfile(options: {
   for (const key of [
     "HOT_UPDATER_API_KEY",
     "HOT_UPDATER_E2E_APP_ID",
+    "HOT_UPDATER_E2E_IOS_APP_ID",
+    "HOT_UPDATER_STANDALONE_BASE_URL",
     "CONTROL_URL",
     "HOT_UPDATER_E2E_CONTROL_BASE_URL",
     "HOT_UPDATER_E2E_IOS_BINARY_PATH",
@@ -74,6 +85,7 @@ export function createLocalProfile(options: {
   return {
     root: options.root,
     platform: options.platform,
+    runtime,
     runDir: options.runDir,
     appDir,
     serverDir: path.join(options.root, "examples-server/hono-kysely-pglite"),
@@ -81,7 +93,7 @@ export function createLocalProfile(options: {
     providerPort: options.providerPort,
     controlPort: options.controlPort,
     storagePort: options.storagePort,
-    env,
+    env: runtime === "lynx" ? lynxMobileEnvironment(options.root, env) : env,
   };
 }
 

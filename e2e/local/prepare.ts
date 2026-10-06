@@ -8,8 +8,13 @@ import { setTimeout as sleep } from "node:timers/promises";
 
 import { createNativeBuildPlan } from "../mobile/build.ts";
 import { runMobile } from "../mobile/run.ts";
+import type { MobileRuntime } from "../mobile/target.ts";
 import { publishedBin } from "../shared/published.ts";
-import { localMutableFiles, preserveFiles } from "./files.ts";
+import {
+  localMutableFiles,
+  lynxLocalMutableFiles,
+  preserveFiles,
+} from "./files.ts";
 import {
   createLocalProfile,
   localAppConfig,
@@ -203,6 +208,7 @@ export async function runLocal(
   platform: LocalPlatform,
   requestedDevice: string | undefined,
   env: NodeJS.ProcessEnv,
+  runtime: MobileRuntime = "react-native",
 ): Promise<number> {
   const cancellation = new AbortController();
   const interrupt = () =>
@@ -277,6 +283,7 @@ export async function runLocal(
     profile = createLocalProfile({
       root,
       platform,
+      runtime,
       runDir,
       id,
       providerPort,
@@ -292,7 +299,7 @@ export async function runLocal(
     const cli = publishedBin("hot-updater");
     restoreFiles = await preserveFiles(
       profile.appDir,
-      localMutableFiles,
+      runtime === "lynx" ? lynxLocalMutableFiles : localMutableFiles,
       path.join(runDir, "originals"),
     );
     await fs.rm(path.join(profile.appDir, ".env.hotupdater"), { force: true });
@@ -303,7 +310,8 @@ export async function runLocal(
     );
     await fs.chmod(path.join(profile.appDir, ".env.hotupdater"), 0o600);
     const config = path.join(profile.appDir, "hot-updater.config.ts");
-    await fs.writeFile(config, localAppConfig("fingerprint"));
+    if (runtime === "react-native")
+      await fs.writeFile(config, localAppConfig("fingerprint"));
     const cliCommand = (args: string[], cwd = profile!.appDir) =>
       command(process.execPath, [cli, ...args], cwd, profile!.env);
     const keyDir = path.join(runDir, "keys");
@@ -319,7 +327,7 @@ export async function runLocal(
     await fs.chmod(path.join(profile.appDir, "keys/private-key.pem"), 0o600);
     await cliCommand(["keys", "export-public", "--yes"]);
     const builds = createNativeBuildPlan(
-      { platform, deviceId: device, dryRun: false },
+      { platform, runtime, deviceId: device, dryRun: false },
       root,
       profile.env,
     );
@@ -332,8 +340,12 @@ export async function runLocal(
     // signing key have reached their final state, before compiling the binary.
     for (const build of builds.filter((build) => build.command === "bundle"))
       await runBuild(build);
-    await cliCommand(["fingerprint", "create"]);
-    await fs.writeFile(config, localAppConfig("appVersion"));
+    if (runtime === "react-native") {
+      await cliCommand(["fingerprint", "create"]);
+      await fs.writeFile(config, localAppConfig("appVersion"));
+    }
+    // Lynx's builder binds the artifact to committed source and fingerprint,
+    // allowing only exact public-key injection. Keep its checked-in contract.
     for (const build of builds.filter((build) => build.command !== "bundle"))
       await runBuild(build);
 
