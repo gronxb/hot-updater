@@ -1,5 +1,7 @@
 # @hot-updater/test-utils
 
+## 1.0.0-rc.35
+
 ## 1.0.0-rc.32
 
 ### Patch Changes
