@@ -40,6 +40,7 @@ const expectedScenarioModuleFiles = [
   "fingerprint-initial-install.ts",
   "force-update-auto-reload.ts",
   "headless-launch-keeps-staged-bundle.ts",
+  "interrupted-launch-retries-bundle.ts",
   "metadata-v1-migration.ts",
   "multi-asset-replacement.ts",
   "numeric-cohort-rollout.ts",

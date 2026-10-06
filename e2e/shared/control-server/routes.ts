@@ -274,7 +274,7 @@ app.post("/e2e/jobs/deploy-bundle", async (c) => {
     forceUpdate?: boolean;
     marker?: string;
     message?: string;
-    mode?: "crash" | "hang" | "reset";
+    mode?: "crash" | "hang" | "reset" | "slow-start";
     patchMaxBaseBundles?: number;
     rollout?: number;
     safeBundleIds?: string[];
@@ -292,9 +292,13 @@ app.post("/e2e/jobs/deploy-bundle", async (c) => {
   if (
     payload.mode !== "reset" &&
     payload.mode !== "crash" &&
-    payload.mode !== "hang"
+    payload.mode !== "hang" &&
+    payload.mode !== "slow-start"
   ) {
-    return c.json({ error: "mode must be reset, crash, or hang" }, 400);
+    return c.json(
+      { error: "mode must be reset, crash, hang, or slow-start" },
+      400,
+    );
   }
   if (
     payload.bundleProfile !== undefined &&
@@ -697,12 +701,20 @@ app.post("/e2e/assert-launch-report", async (c) => {
 });
 
 app.post("/e2e/assert-crash-history", async (c) => {
-  const payload = (await c.req.json()) as { bundleId?: string };
+  const payload = (await c.req.json()) as {
+    awaitingRetry?: boolean;
+    bundleId?: string;
+  };
   if (!payload.bundleId) {
     return c.json({ error: "bundleId is required" }, 400);
   }
 
-  return c.json(await handleAssertCrashHistory(payload.bundleId));
+  return c.json(
+    await handleAssertCrashHistory(
+      payload.bundleId,
+      payload.awaitingRetry === true,
+    ),
+  );
 });
 
 app.post("/e2e/prepare-app-launch", async (c) => {

@@ -13,6 +13,7 @@ import { failedDownloadSameGenerationRetryScenario } from "./scenarios/failed-do
 import { fingerprintInitialInstallScenario } from "./scenarios/fingerprint-initial-install.ts";
 import { forceUpdateAutoReloadScenario } from "./scenarios/force-update-auto-reload.ts";
 import { headlessLaunchKeepsStagedBundleScenario } from "./scenarios/headless-launch-keeps-staged-bundle.ts";
+import { interruptedLaunchRetriesBundleScenario } from "./scenarios/interrupted-launch-retries-bundle.ts";
 import { metadataV1MigrationScenario } from "./scenarios/metadata-v1-migration.ts";
 import { multiAssetReplacementScenario } from "./scenarios/multi-asset-replacement.ts";
 import { numericCohortRolloutScenario } from "./scenarios/numeric-cohort-rollout.ts";
@@ -39,6 +40,7 @@ export type {
 const registeredScenarios: readonly ScenarioDefinition[] = [
   startupHangRecoveryScenario,
   headlessLaunchKeepsStagedBundleScenario,
+  interruptedLaunchRetriesBundleScenario,
   releaseOtaRecoveryScenario,
   multiAssetReplacementScenario,
   bspatchBuiltinToDiffOtaScenario,
