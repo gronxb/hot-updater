@@ -94,11 +94,20 @@ function Detail() {
 
   return (
     <view style={{ padding: "24px" }}>
-      <text>Hot Updater E2E detail</text>
-      <text>{E2E_SCENARIO_MARKER}</text>
-      <text>{title ?? "Missing detail title"}</text>
-      <text>{status}</text>
+      <text flatten={false} accessibility-element>
+        Hot Updater E2E detail
+      </text>
+      <text flatten={false} accessibility-element>
+        {E2E_SCENARIO_MARKER}
+      </text>
+      <text flatten={false} accessibility-element>
+        {title ?? "Missing detail title"}
+      </text>
+      <text flatten={false} accessibility-element>
+        {status}
+      </text>
       <view
+        flatten={false}
         accessibility-element
         accessibility-label="Close detail page"
         accessibility-traits="button"

@@ -681,6 +681,7 @@ function App() {
       <view style={styles.content}>
         {currentScreen !== "Ready" ? (
           <view
+            flatten={false}
             accessibility-element
             accessibility-label="Back"
             accessibility-traits="button"
@@ -692,6 +693,7 @@ function App() {
         <text style={styles.resultText}>{SCREEN_PATHS[currentScreen]}</text>
         {currentScreen === "Ready" ? (
           <view
+            flatten={false}
             accessibility-element
             accessibility-label="Open detail page"
             accessibility-traits="button"
