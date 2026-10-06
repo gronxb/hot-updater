@@ -80,7 +80,6 @@ const unchangedLaunch = (
   channel: "production",
   bundleId: "bundle-a",
   releaseId: "release-a",
-  previousProcessExit: null,
   ...overrides,
 });
 
@@ -92,7 +91,6 @@ const appliedLaunch: TransitionLaunch = {
   toBundleId: "bundle-b",
   toReleaseId: "release-b",
   updateStrategy: "appVersion",
-  previousProcessExit: null,
 };
 
 const download: BundleDownloadedInfo = {
@@ -689,7 +687,7 @@ describe("insights() client plugin", () => {
       ]);
     });
 
-    it("says why the previous process exited on a recovery only", async () => {
+    it("sends a recovery and an apply without metadata", async () => {
       const app = await launch();
 
       app.appReady({
@@ -697,20 +695,15 @@ describe("insights() client plugin", () => {
         status: "RECOVERED",
         fromBundleId: "bundle-b",
         toBundleId: "bundle-a",
-        previousProcessExit: "CRASH",
       });
       await flush();
-      (await launch()).appReady({
-        ...appliedLaunch,
-        toBundleId: "bundle-c",
-        previousProcessExit: "USER_REQUESTED",
-      });
+      (await launch()).appReady({ ...appliedLaunch, toBundleId: "bundle-c" });
       await flush();
 
       expect(
         sentEvents().map(({ type, metadata }) => [type, metadata]),
       ).toEqual([
-        ["RECOVERED", { previousProcessExit: "CRASH" }],
+        ["RECOVERED", undefined],
         ["UPDATE_APPLIED", undefined],
       ]);
     });
@@ -724,7 +717,6 @@ describe("insights() client plugin", () => {
           resource: "archive",
           httpStatus: 403,
           originCode: "ExpiredToken",
-          previousProcessExit: "ANR",
         }),
       );
       app.updateError(
@@ -743,7 +735,6 @@ describe("insights() client plugin", () => {
           resource: "archive",
           httpStatus: 403,
           originCode: "ExpiredToken",
-          previousProcessExit: "ANR",
           errorMessage: "hash mismatch",
           errorStack: expect.stringContaining("Error: hash mismatch"),
         },

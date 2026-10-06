@@ -49,8 +49,6 @@ export type BundleEventFailure = DatabaseJsonObject & {
   readonly origin_code?: string;
   readonly error_message?: string;
   readonly error_stack?: string;
-  /** Android's `ApplicationExitInfo` reason for the process before this one. */
-  readonly previous_process_exit?: string;
 };
 
 export type DatabaseHttpResponse = DatabaseJsonObject & {
@@ -75,8 +73,6 @@ export type DatabaseBundleEventMetadata = DatabaseJsonObject & {
   readonly delivery?: "patch" | "manifest" | "archive" | "unknown";
   /** `UPDATE_DOWNLOADED`: a patch failed and the full files came instead. */
   readonly patch_fallback?: boolean;
-  /** `RECOVERED`: Android's `ApplicationExitInfo` reason for the crashed process. */
-  readonly previous_process_exit?: string;
 };
 
 export type BundleEventRowBase = {
@@ -132,8 +128,7 @@ const isDatabaseBundleEventFailure = (value: unknown): boolean =>
   isOptional(value, "transport", isString) &&
   isOptional(value, "origin_code", isString) &&
   isOptional(value, "error_message", isString) &&
-  isOptional(value, "error_stack", isString) &&
-  isOptional(value, "previous_process_exit", isString);
+  isOptional(value, "error_stack", isString);
 
 export const isDatabaseBundleEventMetadata = (
   value: unknown,
@@ -149,8 +144,7 @@ export const isDatabaseBundleEventMetadata = (
   isOptional(value, "failure", isDatabaseBundleEventFailure) &&
   isOptional(value, "http_response", isDatabaseHttpResponse) &&
   isOptional(value, "delivery", isString) &&
-  isOptional(value, "patch_fallback", (flag) => typeof flag === "boolean") &&
-  isOptional(value, "previous_process_exit", isString);
+  isOptional(value, "patch_fallback", (flag) => typeof flag === "boolean");
 
 export const isRecord = (
   value: unknown,

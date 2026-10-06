@@ -75,7 +75,6 @@ describe("client plugin host", () => {
       channel: "production",
       bundleId: "bundle-id",
       releaseId: null,
-      previousProcessExit: null,
     }));
     configurePlugins([], config);
     emitPluginHook("onAppReady", () => ({
@@ -83,7 +82,6 @@ describe("client plugin host", () => {
       channel: "production",
       bundleId: "bundle-id",
       releaseId: null,
-      previousProcessExit: null,
     }));
 
     expect(plugin.setup).toHaveBeenCalledOnce();

@@ -132,7 +132,7 @@ const eventOf = (
           | "UPDATE_FAILED";
         readonly from: "a" | "b";
         readonly to: "a" | "b";
-        /** What the event's metadata adds: a delivery, a failure, an exit reason. */
+        /** What the event's metadata adds: a delivery or a failure. */
         readonly metadata?: Record<string, unknown>;
         /** A failed check targets no release. */
         readonly check?: true;
@@ -186,8 +186,7 @@ const eventOf = (
  * next, a download and its apply two hours later, a recovery the hour after,
  * a relaunch the hour after that, and a launch on each of the next two UTC
  * days: an installation's day once it only launches. Between them, a failed
- * download and a failed update check, which move no head; and last, a
- * recovery that carries Android's exit reason.
+ * download and a failed update check, which move no head.
  */
 const SCENARIO = [
   {
@@ -298,17 +297,6 @@ const SCENARIO = [
         bundle: "a",
       }),
   },
-  {
-    name: "RECOVERED with an exit reason",
-    event: () =>
-      eventOf(D0 + 2 * DAY + 10 * HOUR + 5 * 60_000, {
-        type: "RECOVERED",
-        from: "b",
-        to: "a",
-        // Android 11+: one breakdown row more.
-        metadata: { previous_process_exit: "CRASH" },
-      }),
-  },
 ] as const;
 
 /**
@@ -330,7 +318,6 @@ const BUDGETS: Readonly<
   "UPDATE_FAILED (check)": { items: 8, wru: 20 },
   "Next-day launch": { items: 16, wru: 40 },
   "Launch the day after": { items: 14, wru: 36 },
-  "RECOVERED with an exit reason": { items: 19, wru: 42 },
 };
 
 let local: DynamoDBLocal;

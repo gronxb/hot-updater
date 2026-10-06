@@ -189,11 +189,9 @@ export const insights = (options: InsightsOptions = {}) => {
     id: "insights",
     // Keeps its tables' names: bundle_events, bundle_event_heads, insights_*.
     namespace: false,
-    // 1.4.0 counts a release's applies on its lifetime row, where launches
-    // were, and keeps on hourly and daily rows only the counters their
-    // reads sum, so a database migrates before a server serves it. It skips
-    // 1.3.0, a schema since withdrawn.
-    schemaVersion: "1.4.0",
+    // The 1.0.0 schema, as core's: until 1.0.0 is released, its baseline
+    // changes in place.
+    schemaVersion: "1.0.0",
     schema: createInsightsSchema(retention),
     init: ({ db, now }) => {
       const api = createInsightsApi(db, now, retention);

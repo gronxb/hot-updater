@@ -38,7 +38,7 @@ is what the Insights routes, the Console, and the e2e harness read through:
 | `countEventSeries({ filter, timeRange, intervalMs })`                  | Reports of one bundle outcome in each interval of whole hours, over at most 90 days: the hourly counters `countEvents` reads, every interval present                                              |
 | `getReleaseActivity({ releases })`                                     | Each release's downloads, applies, and failed launches since its first report, from its lifetime counters                                                                                         |
 | `getAppUsage(...)`                                                     | Active installations from sketches, per interval and in total; the latest-report distribution from gauges                                                                                         |
-| `getUpdateFailures(...)`                                               | A release's or a channel's update failures from counters, failed installations from sketches, and over a time range the breakdown by stage, reason, and detail, and recoveries by exit reason   |
+| `getUpdateFailures(...)`                                               | A release's or a channel's update failures from counters, failed installations from sketches, and over a time range the breakdown by stage, reason, and detail                                  |
 
 The server sets each report's receipt time and metadata. The report ID is the
 client's `eventId`, a UUIDv7, when it sends one, so a retried report counts

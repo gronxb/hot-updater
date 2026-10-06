@@ -745,17 +745,6 @@ export interface InsightsUpdateFailures {
   };
   /** Over a time range: failures by stage and reason, most first. */
   readonly breakdown?: readonly InsightsFailureBreakdown[];
-  /**
-   * Over a time range: failed launches, and the recoveries whose crashed
-   * process exited for a reason Android 11+ reported, by reason, most first.
-   */
-  readonly recoveries?: {
-    readonly failedLaunches: number;
-    readonly byExitReason: readonly {
-      readonly exitReason: string;
-      readonly events: number;
-    }[];
-  };
 }
 
 /** The longest period the failures read covers: the console's longest, 30 days. */
@@ -784,7 +773,10 @@ const mostFirst = <T>(counts: Map<string, { value: T; events: number }>) =>
     )
     .map(([, entry]) => entry);
 
-/** Failure rows as their breakdown, and recovery rows as exit reasons. */
+/** The stages a failure row records: where an update failed. */
+const FAILURE_STAGES = new Set(["check", "download", "install", "unknown"]);
+
+/** Failure rows as their breakdown by stage, reason, and detail. */
 const breakdownOf = (
   rows: readonly {
     readonly stage: string;
@@ -801,15 +793,8 @@ const breakdownOf = (
       details: Map<string, { value: string; events: number }>;
     }
   >();
-  const exits = new Map<string, { value: string; events: number }>();
   for (const { stage, reason, detail, events } of rows) {
     if (events <= 0) continue;
-    if (stage === "launch") {
-      const exit = exits.get(reason) ?? { value: reason, events: 0 };
-      exit.events += events;
-      exits.set(reason, exit);
-      continue;
-    }
     const key = JSON.stringify([stage, reason]);
     const entry = failures.get(key) ?? {
       value: { stage, reason },
@@ -822,36 +807,29 @@ const breakdownOf = (
     entry.details.set(detail, known);
     failures.set(key, entry);
   }
-  return {
-    breakdown: mostFirst(failures).map(({ value, events }) => {
-      const { details } = failures.get(
-        JSON.stringify([value.stage, value.reason]),
-      )!;
-      return {
-        ...value,
-        events,
-        details: mostFirst(details).map(({ value: detail, events }) => {
-          const [resource, httpStatus, originCode, transport] = JSON.parse(
-            detail,
-          ) as [string | null, number | null, string | null, string | null];
-          return { resource, httpStatus, originCode, transport, events };
-        }),
-      };
-    }),
-    byExitReason: mostFirst(exits).map(({ value, events }) => ({
-      exitReason: value,
+  return mostFirst(failures).map(({ value, events }) => {
+    const { details } = failures.get(
+      JSON.stringify([value.stage, value.reason]),
+    )!;
+    return {
+      ...value,
       events,
-    })),
-  };
+      details: mostFirst(details).map(({ value: detail, events }) => {
+        const [resource, httpStatus, originCode, transport] = JSON.parse(
+          detail,
+        ) as [string | null, number | null, string | null, string | null];
+        return { resource, httpStatus, originCode, transport, events };
+      }),
+    };
+  });
 };
 
 /**
  * A release's or a channel's update failures. Since a release's first
  * report: its lifetime counters and failed installations. Over a time range
- * of at most 30 days: failures, failed checks, the breakdown by stage,
- * reason, and detail, and recoveries by exit reason, all summed from the
- * breakdown's hourly rows; downloads and failed launches from the counters;
- * failed installations from their sketches. A release reads hourly rows, a
+ * of at most 30 days: failures, failed checks, and the breakdown by stage,
+ * reason, and detail, all summed from the breakdown's hourly rows; downloads
+ * from the counters; failed installations from their sketches. A release reads hourly rows, a
  * channel daily rows past 48 hours like its activity; the breakdown's rows
  * are hourly, so its coverage is the raw period's.
  */
@@ -934,10 +912,12 @@ export const getUpdateFailures = async (
   ]);
   const total = (field: Exclude<keyof CounterRow, "bucket_start_ms">) =>
     counters.reduce((sum, row) => sum + row[field], 0);
-  const scoped =
-    releaseId === undefined
-      ? rows
-      : rows.filter((row) => row.release_id === releaseId);
+  // Only the stages a failure records count: other rows are no failure.
+  const scoped = rows.filter(
+    (row) =>
+      FAILURE_STAGES.has(row.stage) &&
+      (releaseId === undefined || row.release_id === releaseId),
+  );
   // The breakdown's hourly rows hold every failure of the window, so its
   // counts are summed from them rather than kept twice.
   const failuresAt = (counted: (stage: string) => boolean) =>
@@ -945,13 +925,10 @@ export const getUpdateFailures = async (
       (sum, row) => sum + (counted(row.stage) ? Math.max(0, row.events) : 0),
       0,
     );
-  const { breakdown, byExitReason } = breakdownOf(scoped);
   return {
     coverage: coverageOf(timeRange.start, kept.hour),
     measuredAtMs: at,
-    failedUpdates: failuresAt(
-      (stage) => stage !== "check" && stage !== "launch",
-    ),
+    failedUpdates: failuresAt((stage) => stage !== "check"),
     failedInstallations: failed(failures),
     downloads: total("downloads"),
     patchDownloads: total("patch_downloads"),
@@ -967,7 +944,6 @@ export const getUpdateFailures = async (
           },
         }
       : {}),
-    breakdown,
-    recoveries: { failedLaunches: total("failed_launches"), byExitReason },
+    breakdown: breakdownOf(scoped),
   };
 };

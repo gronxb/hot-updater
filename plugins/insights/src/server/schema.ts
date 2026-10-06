@@ -235,14 +235,12 @@ const lifetimeSketches = () =>
   });
 
 /**
- * Update failures by what failed, and recoveries by why the crashed process
- * exited, a row an hour. `release_id` is the failed update's target release,
- * or empty for a failed check or an unknown target, and the recovered
- * release for a recovery. A failure's `stage` and `reason` say where and why
- * it failed, and `detail` what else the client knew, as the JSON array
- * `[resource, httpStatus, originCode, transport]`. A recovery's stage is
- * `launch` and its reason the exit reason, with an empty detail. Every index
- * is in key order, so its counters stay blind increments.
+ * Update failures by what failed, a row an hour. `release_id` is the failed
+ * update's target release, or empty for a failed check or an unknown target.
+ * `stage` and `reason` say where and why it failed, and `detail` what else
+ * the client knew, as the JSON array `[resource, httpStatus, originCode,
+ * transport]`. Every index is in key order, so its counters stay blind
+ * increments.
  */
 const insightsFailures = (retention: BucketRetention) =>
   defineAggregate(

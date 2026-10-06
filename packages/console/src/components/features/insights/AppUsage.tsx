@@ -111,7 +111,6 @@ export function AppUsage({
             count={report?.activeInstallations}
             isPending={query.isPending}
             partial={report?.truncated ?? false}
-            retention={retention}
           />
           {query.isPending ? (
             <Skeleton aria-label="Loading app usage" className="h-48" />
@@ -233,12 +232,9 @@ export function AppUsage({
             Distribution
           </CardTitle>
           <InsightsInfo label="How distribution is counted">
-            Each reporting installation is counted once, using the app version
-            and platform of its latest matching report {distributionPeriod}.
-            Latest reports are counted by UTC day.
-            {report?.truncated
-              ? " Shares reflect only the available history."
-              : ""}
+            Each installation counts once, by its latest report{" "}
+            {distributionPeriod}.
+            {report?.truncated ? " Some history is missing." : ""}
           </InsightsInfo>
         </CardHeader>
         <CardContent className="flex-1">

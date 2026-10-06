@@ -125,7 +125,6 @@ function Card(
     <Overview
       input={input}
       onReleasesChange={vi.fn()}
-      onShowCrashes={vi.fn()}
       onWindowChange={vi.fn()}
       {...props}
       chart={chart}
@@ -223,10 +222,8 @@ describe("Release health", () => {
   });
 
   it("charts crashes and their rate, and calls for no rollback below 20 attempts", () => {
-    const onShowCrashes = vi.fn();
     renderCard({
       chart: "crashes",
-      onShowCrashes,
       health: {
         releases: [
           {
@@ -251,12 +248,8 @@ describe("Release health", () => {
       "release-aDeployed Jan 1, 02:00 UTC · 1.2.000.0%",
     ]);
     expect(screen.queryByRole("button", { name: "Roll back" })).toBeNull();
-    fireEvent.click(
-      screen.getByRole("button", {
-        name: "1 crashes of release-b: view details",
-      }),
-    );
-    expect(onShowCrashes).toHaveBeenCalledWith("release-b");
+    // A crash count is a number, with no details to open.
+    expect(screen.queryByRole("button", { name: /crashes of/ })).toBeNull();
   });
 
   it("recommends rolling back a bundle that crashes for 5% of 20 attempts, and disables it", async () => {

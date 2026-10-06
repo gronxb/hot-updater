@@ -40,7 +40,6 @@ class HotUpdaterImpl {
             )
         this.installIdentity = InstallIdentityService.create(this.context)
         this.keyValueStorage = KeyValueStorageService.create(this.context)
-        PreviousProcessExit.initialize(this.context)
     }
 
     /**
@@ -379,15 +378,7 @@ class HotUpdaterImpl {
         }
     }
 
-    /**
-     * The launch report for this process, with `previousProcessExit` when
-     * Android reports why the previous main process exited.
-     */
-    fun notifyAppReady(): Map<String, Any?> {
-        val report = bundleStorage.notifyAppReady()
-        val previousProcessExit = PreviousProcessExit.get() ?: return report
-        return report + ("previousProcessExit" to previousProcessExit)
-    }
+    fun notifyAppReady(): Map<String, Any?> = bundleStorage.notifyAppReady()
 
     fun acceptReleaseCatalog(
         catalogId: String,

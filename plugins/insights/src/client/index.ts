@@ -215,10 +215,6 @@ export const insights = (options: InsightsOptions = {}): InsightsPlugin => {
         toBundleId: result.toBundleId,
         toReleaseId: result.toReleaseId,
         updateStrategy: result.updateStrategy,
-        // Tells a crash from the system or the user closing the app.
-        ...(result.status === "RECOVERED" && result.previousProcessExit !== null
-          ? { metadata: { previousProcessExit: result.previousProcessExit } }
-          : {}),
       }),
     );
   };
@@ -299,9 +295,6 @@ export const insights = (options: InsightsOptions = {}): InsightsPlugin => {
             ...(error.originCode === undefined
               ? {}
               : { originCode: error.originCode }),
-            ...(error.previousProcessExit === undefined
-              ? {}
-              : { previousProcessExit: error.previousProcessExit }),
           },
         },
       },

@@ -395,25 +395,6 @@ describe("Insights dashboard", () => {
     expect(mocks.releases).toHaveBeenCalledOnce();
   });
 
-  it("opens a bundle's crash details on its row, keeping the compared bundles", async () => {
-    mocks.usage.mockImplementation(async ({ data }: { data: AppUsageInput }) =>
-      reportFor(data),
-    );
-    renderPage();
-    fireEvent.click(await screen.findByRole("tab", { name: "Crashes" }));
-    const crashes = await screen.findAllByRole("button", {
-      name: /crashes of .*: view details/,
-    });
-    fireEvent.click(crashes[0]!);
-    expect(mocks.navigate).toHaveBeenLastCalledWith({
-      search: {
-        healthChart: "crashes",
-        releaseId: "release-new",
-        bundles: "release-new,release-old",
-      },
-    });
-  });
-
   it("names the UTC day the distribution counts latest reports from", async () => {
     mocks.usage.mockResolvedValue({
       ...reportFor({ platform: "all", channel: "production", window: "24h" }),
@@ -427,7 +408,7 @@ describe("Insights dashboard", () => {
       screen.getByRole("button", { name: "How distribution is counted" }),
     );
     expect((await screen.findByRole("tooltip")).textContent).toContain(
-      "latest matching report since Sep 29, 00:00 UTC. Latest reports are counted by UTC day.",
+      "Each installation counts once, by its latest report since Sep 29, 00:00 UTC.",
     );
   });
 });
