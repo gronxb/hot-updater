@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { execFileSync, spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { realpathSync } from "node:fs";
+import { existsSync, readFileSync, realpathSync } from "node:fs";
 import fs from "node:fs/promises";
 import { createRequire } from "node:module";
 import net from "node:net";
@@ -106,6 +106,26 @@ function positiveTimeout(value: string | undefined, fallback: number): number {
   if (!Number.isSafeInteger(result) || result <= 0)
     throw new Error("Scenario timeout must be a positive integer");
   return result;
+}
+
+// The CLI entry the installed e2e package declares in its bin field.
+export function resolveE2eCli(): string {
+  let directory = path.dirname(require.resolve("e2e"));
+  for (;;) {
+    const manifest = path.join(directory, "package.json");
+    if (existsSync(manifest)) {
+      const pkg = JSON.parse(readFileSync(manifest, "utf8")) as {
+        name?: string;
+        bin?: Record<string, string>;
+      };
+      if (pkg.name === "e2e" && pkg.bin?.e2e)
+        return path.resolve(directory, pkg.bin.e2e);
+    }
+    const parent = path.dirname(directory);
+    if (parent === directory)
+      throw new Error("The installed e2e package declares no CLI");
+    directory = parent;
+  }
 }
 
 async function freePort(): Promise<string> {
@@ -256,11 +276,10 @@ export async function runMobile(
     ),
     scenarioNames: options.scenarios,
     controlBaseUrl: `http://${childEnv.HOT_UPDATER_E2E_SERVER_HOST}:${controlPort}`,
-    scenarioTimeoutMs: positiveTimeout(
+    testTimeoutMs: positiveTimeout(
       env.HOT_UPDATER_E2E_TEST_TIMEOUT_MS,
       3_600_000,
     ),
-    setupTimeoutMs: 3_600_000,
     cleanupTimeoutMs: 120_000,
   };
   const contextPath = path.join(internalDir, "context.json");
@@ -287,11 +306,10 @@ export async function runMobile(
       signal: cancellation.signal,
     });
     releaseReverse = await acquireAndroidReverses(context, childEnv);
-    const cli = path.join(path.dirname(require.resolve("e2e")), "cli/bin.js");
     exitCode = await runSdkChild(
       process.execPath,
       [
-        cli,
+        resolveE2eCli(),
         "run",
         "--config",
         "e2e.mobile.config.ts",

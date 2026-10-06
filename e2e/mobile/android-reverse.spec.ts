@@ -18,8 +18,7 @@ const context: MobileContext = {
   appId: "app",
   scenarioNames: [],
   controlBaseUrl: "http://localhost:3112",
-  scenarioTimeoutMs: 1000,
-  setupTimeoutMs: 1000,
+  testTimeoutMs: 1000,
   cleanupTimeoutMs: 1000,
 };
 const env = {

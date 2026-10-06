@@ -23,32 +23,6 @@ export function writeAttemptRecord(
   renameSync(temporary, file);
 }
 
-// The runner may abandon a timed-out body. Fence its later continuations with
-// the same abort signal the control client and app driver use.
-export async function runAttemptPhase<T>(
-  phase: "setup" | "scenario",
-  timeoutMs: number,
-  controller: AbortController,
-  signal: AbortSignal,
-  operation: () => Promise<T>,
-): Promise<T> {
-  signal.throwIfAborted();
-  let rejectAbort: () => void = () => {};
-  const aborted = new Promise<never>((_resolve, reject) => {
-    rejectAbort = () => reject(signal.reason);
-    signal.addEventListener("abort", rejectAbort, { once: true });
-  });
-  const timeout = setTimeout(() => {
-    controller.abort(new Error(`E2E ${phase} timed out after ${timeoutMs}ms`));
-  }, timeoutMs);
-  try {
-    return await Promise.race([operation(), aborted]);
-  } finally {
-    clearTimeout(timeout);
-    signal.removeEventListener("abort", rejectAbort);
-  }
-}
-
 export function runtimeLaunchArguments(
   platform: "ios" | "android",
   env: NodeJS.ProcessEnv = process.env,

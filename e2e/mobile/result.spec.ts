@@ -26,8 +26,7 @@ const context: MobileContext = {
   appId: "example.app",
   scenarioNames: ["production-update", "crash-recovery"],
   controlBaseUrl: "http://127.0.0.1:3107",
-  scenarioTimeoutMs: 100,
-  setupTimeoutMs: 100,
+  testTimeoutMs: 100,
   cleanupTimeoutMs: 100,
 };
 

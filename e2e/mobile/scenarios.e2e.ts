@@ -3,88 +3,75 @@ import { test as mobileTest } from "@e2e-dev/mobile";
 import { createControlClient } from "../shared/control-client.ts";
 import type { ControlClient, JsonObject } from "../shared/control-client.ts";
 import { getScenarioDefinition } from "../shared/scenarios.ts";
-import {
-  runAttemptPhase,
-  runtimeLaunchArguments,
-  writeAttemptRecord,
-} from "./attempt.ts";
+import { writeAttemptRecord } from "./attempt.ts";
 import type { ScenarioEvidence } from "./attempt.ts";
 import { readMobileContext } from "./context.ts";
 import { MobileAppDriver } from "./driver.ts";
-import type { IosAlert } from "./ios-alert.ts";
+import { createIosAlertReader } from "./ios-alert.ts";
 
 const context = readMobileContext();
-const test = mobileTest.extend<{
-  hotUpdaterAttemptSignal: { signal: AbortSignal };
-  hotUpdaterIosAlert: { get(): Promise<IosAlert | null> };
-}>();
 const evidence: ScenarioEvidence[] = [];
 const cleanupEvidence: { name: string | null; cleanupCompleted: true }[] = [];
 let installed = false;
-let attempt:
-  | {
-      controller: AbortController;
-      signal: AbortSignal;
-      client: ControlClient;
-      bootstrap: JsonObject;
-      name?: string;
-      consoleInsights?: JsonObject;
-      expectedLaunchFailures?: number;
-    }
-  | undefined;
 
-test.beforeEach(async ({ device, hotUpdaterAttemptSignal }) => {
-  const controller = new AbortController();
-  const signal = AbortSignal.any([
-    controller.signal,
-    hotUpdaterAttemptSignal.signal,
-  ]);
-  const client = createControlClient({
-    baseUrl: context.controlBaseUrl,
-    signal,
-    onStageTiming: (timing) =>
-      console.log(`[e2e-stage:timing] ${JSON.stringify(timing)}`),
-  });
-  attempt = { controller, signal, client, bootstrap: {} };
-  const current = attempt;
-  await runAttemptPhase(
-    "setup",
-    context.setupTimeoutMs,
-    controller,
-    signal,
-    async () => {
-      // Suite hooks receive no device fixture in e2e@0.18.0. Installation belongs
-      // to the first attempt, before bootstrap, reset, or any app launch.
-      if (!installed) {
-        await device.installApp(context.appPath, { app: context.appId });
-        installed = true;
-      }
-      current.bootstrap = await client.runJob(
-        "bootstrap",
-        "/e2e/jobs/bootstrap",
-        { deviceId: context.deviceId },
-      );
-      await client.runJob(
-        "reset remote bundles",
-        "/e2e/jobs/reset-remote-bundles",
-        {},
-      );
-      await client.postJson(
-        "reset local app state",
-        "/e2e/reset-local-app-state",
-        {},
-      );
-    },
+interface HotUpdaterAttempt {
+  readonly client: ControlClient;
+  readonly controller: AbortController;
+  bootstrap: JsonObject;
+  name?: string;
+  consoleInsights?: JsonObject;
+  expectedLaunchFailures?: number;
+}
+
+const test = mobileTest.extend<{ hotUpdater: HotUpdaterAttempt }>({
+  hotUpdater: async (_fixtures, use) => {
+    // The runner abandons a timed-out body instead of cancelling it. Aborting
+    // here fences its later continuations from the controller and the device.
+    const controller = new AbortController();
+    const client = createControlClient({
+      baseUrl: context.controlBaseUrl,
+      signal: controller.signal,
+      onStageTiming: (timing) =>
+        console.log(`[e2e-stage:timing] ${JSON.stringify(timing)}`),
+    });
+    try {
+      await use({ client, controller, bootstrap: {} });
+    } finally {
+      controller.abort(new Error("Scenario attempt finished"));
+    }
+  },
+});
+
+test.beforeEach(async ({ device, hotUpdater }) => {
+  // The engine installs nothing on its own: the run's build goes on the device
+  // once, before any bootstrap, reset, or app launch.
+  if (!installed) {
+    await device.installApp();
+    installed = true;
+  }
+  hotUpdater.bootstrap = await hotUpdater.client.runJob(
+    "bootstrap",
+    "/e2e/jobs/bootstrap",
+    { deviceId: context.deviceId },
+  );
+  await hotUpdater.client.runJob(
+    "reset remote bundles",
+    "/e2e/jobs/reset-remote-bundles",
+    {},
+  );
+  await hotUpdater.client.postJson(
+    "reset local app state",
+    "/e2e/reset-local-app-state",
+    {},
   );
 });
 
-test.afterEach(async () => {
-  const current = attempt;
-  if (!current) return;
-  current.controller.abort(new Error("Scenario attempt finished"));
+// Runs after a failed setup or body too, before the fixture's teardown.
+test.afterEach(async ({ hotUpdater }) => {
+  hotUpdater.controller.abort(new Error("Scenario attempt finished"));
   try {
     // Leave room inside the SDK hook budget for device/session shutdown.
-    await current.client.cancelAndDrain({
+    await hotUpdater.client.cancelAndDrain({
       timeoutMs: Math.floor(context.cleanupTimeoutMs / 2),
     });
     // The attempt client is aborted after draining. Terminate through the
@@ -96,24 +83,25 @@ test.afterEach(async () => {
   } catch (error) {
     writeAttemptRecord(context.resultsDir, "quarantine.json", {
       schemaVersion: 1,
-      scenarioName: current.name ?? null,
+      scenarioName: hotUpdater.name ?? null,
       reason: String(error),
       quarantineRequired: true,
     });
     throw error;
-  } finally {
-    attempt = undefined;
   }
-  cleanupEvidence.push({ name: current.name ?? null, cleanupCompleted: true });
+  cleanupEvidence.push({
+    name: hotUpdater.name ?? null,
+    cleanupCompleted: true,
+  });
   writeAttemptRecord(context.resultsDir, "cleanup-evidence.json", {
     schemaVersion: 1,
     attempts: cleanupEvidence,
   });
-  if (current.name && current.consoleInsights) {
+  if (hotUpdater.name && hotUpdater.consoleInsights) {
     evidence.push({
-      name: current.name,
-      consoleInsights: current.consoleInsights,
-      expectedLaunchFailures: current.expectedLaunchFailures ?? 0,
+      name: hotUpdater.name,
+      consoleInsights: hotUpdater.consoleInsights,
+      expectedLaunchFailures: hotUpdater.expectedLaunchFailures ?? 0,
       bodyCompleted: true,
       cleanupCompleted: true,
     });
@@ -126,33 +114,26 @@ test.afterEach(async () => {
 
 for (const scenarioName of context.scenarioNames) {
   const scenario = getScenarioDefinition(scenarioName);
-  test(scenarioName, async ({ device, screen, hotUpdaterIosAlert }) => {
-    const current = attempt;
-    if (!current) throw new Error("Scenario setup did not complete");
-    current.name = scenarioName;
-    await runAttemptPhase(
-      "scenario",
-      context.scenarioTimeoutMs,
-      current.controller,
-      current.signal,
-      async () => {
-        const app = new MobileAppDriver({
-          appId: context.appId,
-          client: current.client,
-          device,
-          iosAlert: hotUpdaterIosAlert,
-          initialValues: current.bootstrap,
-          launchArguments: runtimeLaunchArguments(context.platform),
-          platform: context.platform,
-          screen,
-          signal: current.signal,
-        });
-        const insightsStartedAtMs = Date.now() - 5_000;
-        await scenario.run(app);
-        current.consoleInsights =
-          await app.verifyConsoleInsights(insightsStartedAtMs);
-        current.expectedLaunchFailures = app.expectedLaunchFailures;
+  test(scenarioName, async ({ device, screen, hotUpdater }) => {
+    hotUpdater.name = scenarioName;
+    const { signal } = hotUpdater.controller;
+    let iosAlert: ReturnType<typeof createIosAlertReader> | undefined;
+    const app = new MobileAppDriver({
+      appId: context.appId,
+      client: hotUpdater.client,
+      device,
+      iosAlert: {
+        get: () => (iosAlert ??= createIosAlertReader(context, signal)).get(),
       },
-    );
+      initialValues: hotUpdater.bootstrap,
+      platform: context.platform,
+      screen,
+      signal,
+    });
+    const insightsStartedAtMs = Date.now() - 5_000;
+    await scenario.run(app);
+    hotUpdater.consoleInsights =
+      await app.verifyConsoleInsights(insightsStartedAtMs);
+    hotUpdater.expectedLaunchFailures = app.expectedLaunchFailures;
   });
 }
