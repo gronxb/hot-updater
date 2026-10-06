@@ -338,12 +338,9 @@ const toFailure = (
   ...(failure.origin_code === undefined
     ? {}
     : { originCode: failure.origin_code }),
-  ...(failure.previous_process_exit === undefined
-    ? {}
-    : { previousProcessExit: failure.previous_process_exit }),
 });
 
-/** What a row's metadata adds for its type: a failure, a delivery, an exit reason. */
+/** What a row's metadata adds for its type: a failure or a delivery. */
 const eventDetails = ({ type, metadata }: BundleEventRow) => ({
   ...(metadata.http_response !== undefined
     ? {
@@ -365,9 +362,6 @@ const eventDetails = ({ type, metadata }: BundleEventRow) => ({
     : {}),
   ...(type === "UPDATE_DOWNLOADED" && metadata.patch_fallback === true
     ? { patchFallback: true as const }
-    : {}),
-  ...(type === "RECOVERED" && metadata.previous_process_exit !== undefined
-    ? { previousProcessExit: metadata.previous_process_exit }
     : {}),
 });
 

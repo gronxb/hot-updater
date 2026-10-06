@@ -796,7 +796,6 @@ export type LaunchTransition = {
 type RawNotifyAppReadyResult = {
   status?: string;
   crashedBundleId?: string;
-  previousProcessExit?: string;
   fromReleaseId?: string;
   fromBundleId?: string;
   toReleaseId?: string;
@@ -937,20 +936,13 @@ const normalizeNotifyAppReadyResult = (
 export const readNotifyAppReady = (): {
   result: NotifyAppReadyResult;
   transition: LaunchTransition | null;
-  /** Android 11+: why the previous main process exited, when native knows. */
-  previousProcessExit: string | null;
   pending: boolean;
 } => {
   const rawResult = readRawNotifyAppReadyResult();
-  const { previousProcessExit } = rawResult;
 
   return {
     result: normalizeNotifyAppReadyResult(rawResult),
     transition: getLaunchTransition(rawResult),
-    previousProcessExit:
-      typeof previousProcessExit === "string" && previousProcessExit !== ""
-        ? previousProcessExit
-        : null,
     pending: rawResult.status === "PENDING",
   };
 };

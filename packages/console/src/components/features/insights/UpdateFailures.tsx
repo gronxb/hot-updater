@@ -189,67 +189,6 @@ function FailureRow({
   );
 }
 
-function Recoveries({
-  recoveries,
-}: {
-  readonly recoveries: NonNullable<UpdateFailuresReport["recoveries"]>;
-}) {
-  const known = recoveries.byExitReason.reduce(
-    (sum, { events }) => sum + events,
-    0,
-  );
-  const unreported = Math.max(0, recoveries.failedLaunches - known);
-  const reasons = [
-    ...recoveries.byExitReason.map(({ exitReason, events }) => ({
-      name: exitReason,
-      code: true,
-      events,
-    })),
-    ...(unreported > 0
-      ? [{ name: "Not reported", code: false, events: unreported }]
-      : []),
-  ];
-  return (
-    <section
-      aria-labelledby="recoveries-by-exit-reason"
-      className="flex flex-col gap-2"
-    >
-      <h3
-        className="flex items-center gap-1 text-sm font-medium"
-        id="recoveries-by-exit-reason"
-      >
-        Crashes by exit reason
-        <InsightsInfo label="About exit reasons">
-          Why the crashed process exited, as Android 11 and later report it: a
-          crash, an ANR, or the system or the user closing the app. iOS and
-          older Android report none.
-        </InsightsInfo>
-      </h3>
-      {reasons.length === 0 ? (
-        <p className="text-sm text-muted-foreground">
-          No crashes in this period.
-        </p>
-      ) : (
-        <ul className="flex flex-col gap-1 text-sm">
-          {reasons.map(({ name, code, events }) => (
-            <li key={name} className="flex justify-between gap-4">
-              <span className={code ? "font-mono text-xs" : undefined}>
-                {name}
-              </span>
-              <span className="tabular-nums">
-                {events.toLocaleString()}
-                <span className="ml-2 text-muted-foreground">
-                  {share(events, recoveries.failedLaunches)}
-                </span>
-              </span>
-            </li>
-          ))}
-        </ul>
-      )}
-    </section>
-  );
-}
-
 function FailuresReport({
   report,
   errors,
@@ -278,7 +217,7 @@ function FailuresReport({
             <Metric
               label="Attempt failure rate"
               attention={report.failedUpdates > 0}
-              info="The failure rate of update attempts: failed download and install reports divided by those plus download reports."
+              info="Share of update attempts that failed: failures ÷ (failures + downloads)."
             >
               <Rate value={failureRate(report)} />
               {report.previous ? (
@@ -292,13 +231,13 @@ function FailuresReport({
             <Metric
               label="Failed installations"
               attention={report.failedInstallations > 0}
-              info="Distinct installations with a failed download or install, estimated: typically within about 3%. A client reports each failure at most once a UTC day."
+              info="Installations with a failed download or install, estimated within about 3%."
             >
               <EstimatedCount value={report.failedInstallations} />
             </Metric>
             <Metric
               label="Patch fallback rate"
-              info="Of the downloads that tried a patch, the share that fell back to the changed files or the full archive."
+              info="Share of patch downloads that fell back to full files."
             >
               <Rate value={patchFallbackRate(report)} />
             </Metric>
@@ -322,7 +261,7 @@ function FailuresReport({
               <Metric
                 label="Check failure rate"
                 attention={report.checks.failedInstallations > 0}
-                info="Installations whose update check failed, divided by the channel's active installations; both estimated. A check the device could not send while offline is not reported."
+                info="Installations whose update check failed ÷ active installations. Offline checks aren't reported."
               >
                 <Rate value={checkFailureRate(report.checks)} />
                 {report.previous ? (
@@ -378,20 +317,13 @@ function FailuresReport({
           </Table>
         )}
       </section>
-      {report.recoveries ? (
-        <>
-          <Separator />
-          <Recoveries recoveries={report.recoveries} />
-        </>
-      ) : null}
     </div>
   );
 }
 
 /**
- * Update failures for Release health's scope and period: counts, rates, the
- * stage and reason breakdown with what else the clients knew, and why
- * crashed processes exited.
+ * Update failures for Release health's scope and period: counts, rates, and
+ * the stage and reason breakdown with what else the clients knew.
  */
 export function UpdateFailures({
   errors,

@@ -43,10 +43,9 @@ const crashRate = (report: BundleActivityReport): string => {
 function ReleaseMetricsInfo() {
   return (
     <InsightsInfo label="About release insight metrics">
-      Applied counts apply reports, sent when an installation starts running
-      this release. Known crashes are launches that crashed on it and recovered
-      to the bundle before. The rate is known crashes divided by applied plus
-      known crashes, as in Release health.
+      Applied: installations that started running this bundle. Known crashes:
+      launches that crashed on it and rolled back. Crash rate = crashes ÷
+      (applied + crashes).
     </InsightsInfo>
   );
 }
@@ -188,10 +187,8 @@ export function BundleDownloadFailures({
         </span>
       )}
       <InsightsInfo label="About download failures">
-        Reported failures to download or install this release, since its first
-        report; each client reports one at most once a UTC day. The rate is the
-        failure rate of update attempts: failures divided by failures plus
-        download reports.
+        Failed downloads or installs of this bundle, at most one per
+        installation a day. Rate = failures ÷ (failures + downloads).
       </InsightsInfo>
     </div>
   );

@@ -1,6 +1,6 @@
 {
   "name": "@hot-updater/server",
-  "version": "1.0.0-rc.33",
+  "version": "1.0.0-rc.34",
   "type": "module",
   "description": "Runtime-neutral OTA server for self-hosted applications",
   "sideEffects": false,

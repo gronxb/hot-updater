@@ -199,11 +199,9 @@ function DistributionPage() {
               <div className="flex items-center justify-between gap-2">
                 <CardTitle>Bundles by app version</CardTitle>
                 <InsightsInfo label="How bundle distribution is counted">
-                  Each installation counts once by its latest matching report{" "}
-                  {distributionPeriod}. Latest reports are counted by UTC day.
-                  Share is within its app version. Unknown bundle means no
-                  deployment ID was observed for the reported file. These counts
-                  describe reporting installations, not all installed devices.
+                  Each installation counts once, by its latest report{" "}
+                  {distributionPeriod}. Shares are within each app version.
+                  Unknown bundle: the report had no deployment ID.
                 </InsightsInfo>
               </div>
               <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">

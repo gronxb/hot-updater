@@ -44,7 +44,6 @@ describe("a client plugin that imports @hot-updater/protocol", () => {
       channel: "production",
       bundleId,
       releaseId: null,
-      previousProcessExit: null,
     });
     await runtime.settled();
 

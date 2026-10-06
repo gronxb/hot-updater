@@ -316,9 +316,9 @@ function BundleEntry({
       ) : null}
       {release.currentlyUnreachable ? (
         <span
-          aria-label="Currently unreachable. No catalog segment or cohort selects this bundle first."
+          aria-label="Unreachable: no device gets this bundle with the current delivery settings."
           className="inline-flex shrink-0 items-center gap-1 text-xs text-muted-foreground"
-          title="No catalog segment or cohort selects this bundle first with the current delivery settings."
+          title="No device gets this bundle with the current delivery settings."
         >
           <CircleOff className="size-3.5" />
           Unreachable

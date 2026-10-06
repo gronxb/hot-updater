@@ -22,7 +22,6 @@ const launch: AppReadyResult = {
   channel: "production",
   bundleId: "bundle-a",
   releaseId: "release-a",
-  previousProcessExit: null,
 };
 
 const failure: UpdateError = {

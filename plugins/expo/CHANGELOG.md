@@ -1,5 +1,15 @@
 # @hot-updater/expo
 
+## 1.0.0-rc.34
+
+### Patch Changes
+
+- Updated dependencies [48241d4]
+  - hot-updater@1.0.0-rc.34
+  - @hot-updater/cli-tools@1.0.0-rc.34
+  - @hot-updater/plugin-core@1.0.0-rc.30
+  - @hot-updater/bare@1.0.0-rc.34
+
 ## 1.0.0-rc.33
 
 ### Patch Changes

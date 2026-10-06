@@ -447,7 +447,7 @@ describe("insights update failures", () => {
         metadata,
       );
     }
-    // Two recoveries from release-b, one with an exit reason.
+    // Two recoveries from release-b.
     const recovered = {
       type: "RECOVERED",
       from_release_id: "release-b",
@@ -455,9 +455,7 @@ describe("insights update failures", () => {
       to_release_id: "release-a",
       to_bundle_id: "bundle-a",
     } as const;
-    await record(10, 9, T0 + 7 * HOUR, recovered, {
-      previous_process_exit: "CRASH",
-    });
+    await record(10, 9, T0 + 7 * HOUR, recovered);
     await record(11, 10, T0 + 7 * HOUR, recovered);
     const read = async <T>(call: () => Promise<T>) => {
       meter.rows.clear();
@@ -467,7 +465,7 @@ describe("insights update failures", () => {
         tables: Object.keys(Object.fromEntries(meter.rows)),
       };
     };
-    return { api: harness.api, read };
+    return { api: harness.api, db: harness.db, read };
   };
   const scope = { platform: "ios", channel: "production" } as const;
 
@@ -544,15 +542,42 @@ describe("insights update failures", () => {
           ],
         },
       ],
-      recoveries: {
-        failedLaunches: 2,
-        byExitReason: [{ exitReason: "CRASH", events: 1 }],
-      },
     });
     expect(failures.tables.toSorted()).toEqual([
       "insights_failures",
       "insights_overview",
       "insights_sketches",
+    ]);
+  });
+
+  it("counts only the stages a failure records", async () => {
+    const { api, db } = await setup();
+    // A breakdown row of another stage, as recoveries' exit reasons once were.
+    await db.transaction(async (tx) => {
+      tx.aggregate(
+        "insights_failures",
+        {
+          ...scope,
+          bucket_start_ms: T0 + 7 * HOUR,
+          release_id: "release-b",
+          stage: "launch",
+          reason: "CRASH",
+          detail: "",
+        },
+        { events: 1 },
+        { shardBy: "install-9" },
+      );
+    });
+    const failures = await api.getUpdateFailures({
+      ...scope,
+      releaseId: "release-b",
+      timeRange: { start: T0, end: T0 + 2 * DAY },
+    });
+    expect(failures.failedUpdates).toBe(5);
+    expect(failures.breakdown!.map(({ stage }) => stage)).toEqual([
+      "download",
+      "download",
+      "install",
     ]);
   });
 
@@ -585,7 +610,6 @@ describe("insights update failures", () => {
           "install-10",
         ]),
       },
-      recoveries: { failedLaunches: 2 },
     });
     expect(
       failures.result.breakdown!.map(({ stage, reason, events }) => [

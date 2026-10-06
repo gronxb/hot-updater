@@ -369,32 +369,6 @@ const countFailure = (
   );
 };
 
-/**
- * A recovery's exit reason, which Android 11+ reports, in the breakdown of
- * the release whose launch failed: stage `launch`, the reason as its reason.
- */
-const countExit = (
-  tx: HotUpdaterTransaction<InsightsSchema>,
-  event: BundleEventRow,
-) => {
-  const exit = event.metadata.previous_process_exit;
-  if (event.type !== "RECOVERED" || exit === undefined) return;
-  tx.aggregate(
-    "insights_failures",
-    {
-      platform: event.platform,
-      channel: event.channel,
-      bucket_start_ms: hourOf(event.received_at_ms),
-      release_id: event.from_release_id ?? "",
-      stage: "launch",
-      reason: exit,
-      detail: "",
-    },
-    { events: 1 },
-    { shardBy: event.install_id },
-  );
-};
-
 const isNewer = (event: Head, head: Head) =>
   event.received_at_ms !== head.received_at_ms
     ? event.received_at_ms > head.received_at_ms
@@ -460,7 +434,6 @@ export const recordEvent = (
       return;
     }
     countEvent(tx, event);
-    countExit(tx, event);
     if (previous !== null && !isNewer(event, previous)) return;
     if (previous === null) {
       tx.create("bundle_event_heads", event);

@@ -107,7 +107,7 @@ const TRANSPORTS = [
 ] as const;
 const DELIVERIES = ["patch", "manifest", "archive"] as const;
 
-/** A storage error code or an Android exit reason: letters, digits, and `._-`. */
+/** A storage error code: letters, digits, and `._-`. */
 const CODE = /^[A-Za-z0-9._-]{1,64}$/;
 const readCode = (value: unknown): string | undefined =>
   typeof value === "string" && CODE.test(value) ? value : undefined;
@@ -136,7 +136,6 @@ function readFailure(value: unknown): BundleEventFailureInput {
     typeof failure.errorStack === "string" && failure.errorStack.length <= 4_096
       ? failure.errorStack
       : undefined;
-  const previousProcessExit = readCode(failure.previousProcessExit);
   return {
     stage: oneOf(STAGES, failure.stage),
     reason: oneOf(REASONS, failure.reason),
@@ -154,7 +153,6 @@ function readFailure(value: unknown): BundleEventFailureInput {
     ...(originCode === undefined ? {} : { originCode }),
     ...(errorMessage === undefined ? {} : { errorMessage }),
     ...(errorStack === undefined ? {} : { errorStack }),
-    ...(previousProcessExit === undefined ? {} : { previousProcessExit }),
   };
 }
 
@@ -291,17 +289,8 @@ function requireEvent(payload: unknown): CreateBundleEventRequest {
       };
     }
     case "UPDATE_APPLIED":
+    case "RECOVERED":
       return { ...movement(), type };
-    case "RECOVERED": {
-      const previousProcessExit = readCode(metadata.previousProcessExit);
-      return {
-        ...movement(),
-        type,
-        ...(previousProcessExit === undefined
-          ? {}
-          : { metadata: { ...httpMetadata, previousProcessExit } }),
-      };
-    }
     case "UPDATE_FAILED":
       return {
         ...movement(),
@@ -381,24 +370,13 @@ export function createBundleEventRow(
       };
     }
     case "UPDATE_APPLIED":
+    case "RECOVERED":
       return {
         ...base,
         from_bundle_id: input.fromBundleId,
         type: input.type,
         metadata,
       };
-    case "RECOVERED": {
-      const exit = input.metadata?.previousProcessExit;
-      return {
-        ...base,
-        from_bundle_id: input.fromBundleId,
-        type: input.type,
-        metadata: {
-          ...metadata,
-          ...(exit === undefined ? {} : { previous_process_exit: exit }),
-        },
-      };
-    }
     case "UPDATE_FAILED": {
       const { failure } = input.metadata;
       return {
@@ -428,9 +406,6 @@ export function createBundleEventRow(
             ...(failure.originCode === undefined
               ? {}
               : { origin_code: failure.originCode }),
-            ...(failure.previousProcessExit === undefined
-              ? {}
-              : { previous_process_exit: failure.previousProcessExit }),
           },
         },
       };
