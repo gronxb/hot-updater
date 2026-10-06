@@ -48,12 +48,12 @@ function successfulReport(context: MobileContext) {
       status: "passed",
       exitCode: 0,
       vcs: { commit: context.headSha },
-      runner: { name: "e2e", version: "0.16.0" },
+      runner: { name: "e2e", version: "0.18.0" },
       targets: [
         {
           id: context.platform,
           platform: context.platform,
-          engine: { name: "mobile", version: "0.9.1" },
+          engine: { name: "mobile", version: "0.10.0" },
         },
       ],
       serialGroups: [],

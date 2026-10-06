@@ -348,7 +348,7 @@ export class MobileAppDriver implements ScenarioAppDriver {
     // Only these English/Korean app-open dialogs are supported; other prompts
     // stay visible and fail the scenario instead of granting a permission.
     const koreanTitle = /^[“‘"]HotUpdaterExample[”’"]에서 열겠습니까\?$/;
-    // agent-device0.21.18's preferredAlertTitle filters scroll-bar labels in
+    // agent-device0.21.22's preferredAlertTitle filters scroll-bar labels in
     // English only. Its Korean descendant label is not the alert's root name;
     // prove the expected app against the exact root locator before tapping.
     const reportedScrollBar = alert.title === "수직 스크롤 막대, 1페이지";
