@@ -6,6 +6,12 @@
       "sourceType": "github",
       "computedHash": "b622860f79a380aca4705bcb78fcc309ff17b89bdca23695a9e4acff7f074660"
     },
+    "e2e": {
+      "source": "tester-army/e2e",
+      "sourceType": "github",
+      "skillPath": "skills/e2e/SKILL.md",
+      "computedHash": "0ff4dfa69e58f911fc25df0ae9d8d367e3a0c44543cef7787724e718a06a9845"
+    },
     "frontend-design": {
       "source": "anthropics/skills",
       "sourceType": "github",
