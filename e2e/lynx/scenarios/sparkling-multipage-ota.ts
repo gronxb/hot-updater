@@ -990,7 +990,7 @@ export const sparklingMultipageOtaScenario = {
     });
     await app.control(
       "multi-page pre-confirm interruption: prove unconfirmed not crashed",
-      "/e2e/assert-lynx-page-interruption-state",
+      "/e2e/assert-startup-interruption",
       { bundleId: "$bundleB", releaseId: "$releaseBPending" },
     );
     const recoveredServerA = assertManagedReconstructedStack(
@@ -1030,7 +1030,7 @@ export const sparklingMultipageOtaScenario = {
     });
     await app.control(
       "multi-page confirmed interruption: prove unconfirmed not crashed",
-      "/e2e/assert-lynx-page-interruption-state",
+      "/e2e/assert-startup-interruption",
       { bundleId: "$bundleA", releaseId: "$releaseA" },
     );
     const confirmedInterruptionRecovery = assertManagedReconstructedStack(
