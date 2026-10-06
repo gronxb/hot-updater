@@ -60,6 +60,12 @@ no timeout that interrupts a running JavaScript thread: recovery occurs after th
 app restarts. A user or OS termination before the first render also counts as a
 failed launch, even if the bundle would otherwise have finished loading.
 
+Such a launch cannot tell a hang from a user leaving early, so the first one
+leaves the bundle one retry instead of adding it to crash history. The session
+that recovered does not install it again; a later session can. If that launch
+ends before the first render too, or the bundle crashes, it goes into crash
+history.
+
 This protection requires a native app build containing the updated SDK; an OTA
 bundle alone cannot add it to an already installed native binary.
 
@@ -70,7 +76,8 @@ When rollback happens, Hot Updater:
 - stops using the failed staging bundle
 - restores the previous stable bundle when one exists
 - falls back to the embedded bundle when there is no stable OTA fallback
-- records the failed bundle in crash history
+- records the failed bundle in crash history, unless its first unfinished launch
+  leaves it one retry
 
 This lets users reopen the app normally instead of hitting the same startup failure again.
 
@@ -120,7 +127,7 @@ Only clear crash history after fixing the underlying issue. Otherwise the same b
 
 ### Crash History Blocking
 
-When a bundle fails startup, Hot Updater adds that exact bundle ID to crash history and blocks it from being applied again. This prevents repeated crash loops from the same broken deployment.
+When a bundle crashes during startup, or a second launch of it ends before the first render, Hot Updater adds that exact bundle ID to crash history and blocks it from being applied again. This prevents repeated crash loops from the same broken deployment.
 
 To deploy a fixed version:
 

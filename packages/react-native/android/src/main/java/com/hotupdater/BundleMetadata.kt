@@ -130,11 +130,47 @@ data class CrashedBundleEntry(
 }
 
 /**
+ * A bundle whose launch ended before first content without a crash, waiting
+ * for its one retry. Such a launch cannot tell a hang from a user leaving
+ * early, so the bundle is offered again instead of entering crash history.
+ * A second unfinished launch of it adds it there.
+ *
+ * [retryReady] turns true once a later launch shows content. The retry
+ * starts with the next process, so the session that recovered never reloads
+ * into the same bundle.
+ */
+data class InterruptedLaunch(
+    val bundleId: String,
+    val retryReady: Boolean = false,
+) {
+    companion object {
+        fun fromJson(json: JSONObject): InterruptedLaunch? =
+            if (json.isNull("bundleId")) {
+                null
+            } else {
+                json.getString("bundleId").takeIf { it.isNotEmpty() }?.let { bundleId ->
+                    InterruptedLaunch(
+                        bundleId = bundleId,
+                        retryReady = json.optBoolean("retryReady", false),
+                    )
+                }
+            }
+    }
+
+    fun toJson(): JSONObject =
+        JSONObject().apply {
+            put("bundleId", bundleId)
+            put("retryReady", retryReady)
+        }
+}
+
+/**
  * History of crashed bundles
  */
 data class CrashedHistory(
     val bundles: MutableList<CrashedBundleEntry> = mutableListOf(),
     val maxHistorySize: Int = DEFAULT_MAX_HISTORY_SIZE,
+    var interruptedLaunch: InterruptedLaunch? = null,
 ) {
     companion object {
         private const val TAG = "CrashedHistory"
@@ -150,6 +186,7 @@ data class CrashedHistory(
             return CrashedHistory(
                 bundles = bundles,
                 maxHistorySize = json.optInt("maxHistorySize", DEFAULT_MAX_HISTORY_SIZE),
+                interruptedLaunch = json.optJSONObject("interruptedLaunch")?.let(InterruptedLaunch::fromJson),
             )
         }
 
@@ -175,6 +212,7 @@ data class CrashedHistory(
             bundles.forEach { bundlesArray.put(it.toJson()) }
             put("bundles", bundlesArray)
             put("maxHistorySize", maxHistorySize)
+            interruptedLaunch?.let { put("interruptedLaunch", it.toJson()) }
         }
 
     fun saveToFile(file: File): Boolean =
@@ -222,6 +260,7 @@ data class CrashedHistory(
 
     fun clear() {
         bundles.clear()
+        interruptedLaunch = null
     }
 }
 
