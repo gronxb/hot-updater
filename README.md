@@ -226,6 +226,14 @@ export default defineConfig({
 });
 ```
 
+## End-to-end tests
+
+Contributors can run `pnpm -w e2e -- --platform ios` or the Android equivalent
+with a local simulator or emulator. The command prepares local PGlite and S3
+services and runs the same OTA scenarios used by the E2E bot, without cloud
+accounts. See the [E2E guide](./e2e/README.md) for toolchain prerequisites,
+device selection, and cleanup.
+
 ## License
 
 Hot Updater is released under the [MIT License](./LICENSE), with one addition for the server and the Console. `@hot-updater/server` and `@hot-updater/console` use the MIT License with a hosted service attribution condition ([server](./packages/server/LICENSE), [Console](./packages/console/LICENSE)). If you offer either of them, or a service built on them, as a hosted service that other people use to update their own apps, you must show "Powered by hot-updater" with a link where that service's users can see it. The Console's sidebar already shows it. Running them for your own apps, or for apps you build for clients, needs no notice.

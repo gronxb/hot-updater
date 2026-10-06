@@ -1,0 +1,10 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "allowImportingTsExtensions": true,
+    "allowJs": true,
+    "checkJs": false,
+    "erasableSyntaxOnly": true
+  },
+  "include": ["./*.ts", "../run.ts", "../local/**/*.ts"]
+}

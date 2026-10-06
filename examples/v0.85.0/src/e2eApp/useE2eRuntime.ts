@@ -16,6 +16,7 @@ import {
   persistScreenState,
   readPersistedScreenState,
 } from "./screen-state-persistence";
+import { runStartupUpdateCheck } from "./startup-check";
 import { useCapturedUpdateActions } from "./useCapturedUpdateActions";
 
 const DEFAULT_ACTION_RESULT = "idle";
@@ -102,17 +103,7 @@ export const useE2eRuntimeModel = (scenarioMarker: string): E2eRuntimeModel => {
 
   useEffect(() => {
     let active = true;
-    void (async () => {
-      try {
-        const updateInfo = await HotUpdater.checkForUpdate({
-          updateStrategy: "appVersion",
-        });
-        if (!active || !updateInfo?.shouldForceUpdate) return;
-        if (await updateInfo.updateBundle()) await HotUpdater.reload();
-      } catch (error) {
-        console.error(error);
-      }
-    })();
+    void runStartupUpdateCheck(() => active);
     return () => {
       active = false;
     };
@@ -217,7 +208,6 @@ export const useE2eRuntimeModel = (scenarioMarker: string): E2eRuntimeModel => {
   };
 
   const updateCohortInput = (nextCohort: string) => {
-    HotUpdater.setCohort(nextCohort);
     setCohortInputStateAndRef(nextCohort);
     void persistScreenState({ cohortInput: nextCohort });
   };

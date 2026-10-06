@@ -55,9 +55,9 @@ const COMPUTED_IMPORTS = new Map([
     "packages/hot-updater/src/utils/fingerprint/dependency.ts",
     "imports the app's resolved @expo/fingerprint public entry",
   ],
-  ["e2e/detox/contracts.spec.ts", "loads e2e's own control server"],
+  ["e2e/shared/contracts.spec.ts", "loads e2e's own control server"],
   [
-    "e2e/detox/published.ts",
+    "e2e/shared/published.ts",
     "imports a package's published entry as the example app installs it",
   ],
   [

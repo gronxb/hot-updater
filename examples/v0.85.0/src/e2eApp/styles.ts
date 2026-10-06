@@ -43,4 +43,7 @@ export const styles = StyleSheet.create({
     lineHeight: 19,
     marginTop: 8,
   },
+  safeArea: {
+    flex: 1,
+  },
 });

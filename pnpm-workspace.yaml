@@ -19,8 +19,6 @@ allowBuilds:
   aws-sdk: true
   bun: true
   deno-bin: true
-  detox: true
-  dtrace-provider: true
   esbuild: true
   msw: true
   nx: true
@@ -76,8 +74,6 @@ onlyBuiltDependencies:
   - core-js-pure
   - cpu-features
   - deno-bin
-  - detox
-  - dtrace-provider
   - esbuild
   - msw
   - nx
@@ -87,3 +83,7 @@ onlyBuiltDependencies:
   - sharp
   - ssh2
   - workerd
+
+minimumReleaseAgeExclude:
+  - '@e2e-dev/mobile@0.9.1'
+  - e2e@0.16.0
