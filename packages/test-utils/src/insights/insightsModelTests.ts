@@ -626,9 +626,11 @@ export const registerInsightsModelTests = (
       const lifetime = await model.getReleaseActivity({
         releases,
       });
+      // Two installations applied B, and its repeated report counts once;
+      // the recovery back to A crashed on B and applies nothing.
       expect(lifetime.data.map(({ metrics }) => metrics)).toEqual([
-        { downloads: 0, launches: 1, failedLaunches: 0 },
-        { downloads: 1, launches: 2, failedLaunches: 1 },
+        { downloads: 0, applies: 0, failedLaunches: 0 },
+        { downloads: 1, applies: 2, failedLaunches: 1 },
       ]);
       // A bundle filter's stored events in each hour, every hour present:
       // the repeated apply counts once.

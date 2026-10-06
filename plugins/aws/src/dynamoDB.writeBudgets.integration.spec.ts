@@ -319,18 +319,18 @@ const SCENARIO = [
 const BUDGETS: Readonly<
   Record<(typeof SCENARIO)[number]["name"], { items: number; wru: number }>
 > = {
-  "First launch": { items: 11, wru: 30 },
+  "First launch": { items: 10, wru: 28 },
   "Same-hour relaunch": { items: 0, wru: 0 },
   "Next-hour launch": { items: 0, wru: 0 },
   UPDATE_DOWNLOADED: { items: 18, wru: 40 },
   UPDATE_APPLIED: { items: 21, wru: 42 },
-  RECOVERED: { items: 27, wru: 58 },
+  RECOVERED: { items: 26, wru: 56 },
   "Relaunch after the recovery": { items: 0, wru: 0 },
   UPDATE_FAILED: { items: 13, wru: 34 },
   "UPDATE_FAILED (check)": { items: 8, wru: 20 },
-  "Next-day launch": { items: 17, wru: 42 },
-  "Launch the day after": { items: 15, wru: 38 },
-  "RECOVERED with an exit reason": { items: 20, wru: 44 },
+  "Next-day launch": { items: 16, wru: 40 },
+  "Launch the day after": { items: 14, wru: 36 },
+  "RECOVERED with an exit reason": { items: 19, wru: 42 },
 };
 
 let local: DynamoDBLocal;

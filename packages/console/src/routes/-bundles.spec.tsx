@@ -144,18 +144,19 @@ describe("BundlesPage", () => {
       mocks.isMobile.mockReturnValue(mobile);
       render(<BundlesPage />);
       const summary = screen.getByRole("link", {
-        name: /Downloads 107 Active days 789 Known crashes 2/,
+        name: /Downloads 107 Applied 98 Known crashes 2/,
       });
       expect(
         within(summary)
           .getAllByRole("term")
           .map((term) => term.textContent),
-      ).toEqual(["Downloads", "Active days", "Known crashes"]);
+      ).toEqual(["Downloads", "Applied", "Known crashes"]);
       expect(
         within(summary)
           .getAllByRole("definition")
           .map((value) => value.textContent),
-      ).toEqual(["107", "789", "2(0.25%)"]);
+        // Crashes over applies plus crashes: 2 of 98 + 2.
+      ).toEqual(["107", "98", "2(2.00%)"]);
       expect(mocks.activity).toHaveBeenCalledWith([
         {
           platform: "ios",
@@ -184,13 +185,13 @@ describe("BundlesPage", () => {
       }
     },
   );
-  it("explains active days beside release insights", async () => {
+  it("explains applied beside release insights", async () => {
     render(<BundlesPage />);
     fireEvent.click(
       screen.getByRole("button", { name: "About release insight metrics" }),
     );
     expect((await screen.findByRole("tooltip")).textContent).toContain(
-      "Active days count each installation once for each UTC day it launched this release.",
+      "Applied counts apply reports, sent when an installation starts running this release.",
     );
   });
   it("keeps bundle management usable when activity is unavailable", () => {
@@ -206,7 +207,7 @@ describe("BundlesPage", () => {
       data: {
         "release-1": {
           downloads: 107,
-          activeDays: 789,
+          applied: 98,
           failedLaunches: 2,
           measuredAtMs: Date.UTC(2026, 6, 19),
         },

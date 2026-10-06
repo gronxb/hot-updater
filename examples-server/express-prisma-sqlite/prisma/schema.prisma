@@ -168,9 +168,7 @@ model insights_overview {
   bucket_start_ms BigInt
   hu_shard BigInt @map("_shard")
   downloads BigInt
-  launches BigInt
   failed_launches BigInt
-  failed_updates BigInt
   patch_downloads BigInt
   patch_fallbacks BigInt
   hu_v BigInt @default(0) @map("_v")
@@ -192,9 +190,7 @@ model insights_overview_daily {
   bucket_start_ms BigInt
   hu_shard BigInt @map("_shard")
   downloads BigInt
-  launches BigInt
   failed_launches BigInt
-  failed_updates BigInt
   patch_downloads BigInt
   patch_fallbacks BigInt
   hu_v BigInt @default(0) @map("_v")
@@ -216,11 +212,11 @@ model insights_overview_lifetime {
   bucket_start_ms BigInt
   hu_shard BigInt @map("_shard")
   downloads BigInt
-  launches BigInt
   failed_launches BigInt
-  failed_updates BigInt
   patch_downloads BigInt
   patch_fallbacks BigInt
+  applies BigInt
+  failed_updates BigInt
   hu_v BigInt @default(0) @map("_v")
   @@id([identity, bucket_start_ms, hu_shard])
 }

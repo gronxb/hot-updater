@@ -26,39 +26,60 @@ const event = (type: BundleEventRow["type"]): BundleEventRow =>
   }) as BundleEventRow;
 
 describe("Insights overview event contributions", () => {
-  it("attributes recovery failure to the source and readiness to the destination", () => {
-    const rows = insightsOverviewDeltas(event("RECOVERED"));
-    const lifetime = rows.filter(
+  const releaseRows = (type: BundleEventRow["type"]) =>
+    insightsOverviewDeltas(event(type)).filter(
+      ({ identity }) => identity.scopeKind !== "usage",
+    );
+
+  it("counts a recovery's crash on the bundle it left, and no apply on the one it returned to", () => {
+    const lifetime = releaseRows("RECOVERED").filter(
       ({ identity }) =>
         identity.scopeKind === "release" && identity.periodKind === "lifetime",
     );
-    expect(lifetime).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          identity: expect.objectContaining({ releaseId: "source-release" }),
-          failedLaunches: 1,
-          launches: 0,
-        }),
-        expect.objectContaining({
-          identity: expect.objectContaining({
-            releaseId: "destination-release",
-          }),
-          failedLaunches: 0,
-          launches: 1,
-        }),
-      ]),
-    );
+    expect(lifetime).toEqual([
+      expect.objectContaining({
+        identity: expect.objectContaining({ releaseId: "source-release" }),
+        failedLaunches: 1,
+        applies: 0,
+      }),
+    ]);
   });
 
-  it("counts downloads without treating them as launches", () => {
-    const lifetime = insightsOverviewDeltas(event("UPDATE_DOWNLOADED")).find(
+  it("counts an apply on its release's lifetime row only", () => {
+    const rows = releaseRows("UPDATE_APPLIED");
+    expect(
+      rows.map(({ identity, applies }) => [
+        identity.scopeKind,
+        identity.periodKind,
+        applies,
+      ]),
+    ).toEqual([
+      ["release", "lifetime", 1],
+      ["release", "hour", 0],
+      ["channel", "hour", 0],
+    ]);
+  });
+
+  it("counts downloads without treating them as applies", () => {
+    const lifetime = releaseRows("UPDATE_DOWNLOADED").find(
       ({ identity }) =>
         identity.scopeKind === "release" && identity.periodKind === "lifetime",
     );
     expect(lifetime).toMatchObject({
       downloads: 1,
-      launches: 0,
+      applies: 0,
       failedLaunches: 0,
     });
+  });
+
+  it("changes no release or channel counter for a launch report", () => {
+    expect(releaseRows("UNCHANGED")).toEqual([]);
+    // Its installation still counts as active in usage.
+    expect(
+      insightsOverviewDeltas(event("UNCHANGED")).every(
+        ({ identity, activityIdentity }) =>
+          identity.scopeKind === "usage" && activityIdentity === "install-a",
+      ),
+    ).toBe(true);
   });
 });

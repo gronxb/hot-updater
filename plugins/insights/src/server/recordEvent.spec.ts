@@ -151,20 +151,22 @@ describe.each(backends)("insights recordEvent on %s", (_name, adapter) => {
       bucket: number,
       period: keyof typeof sketches = "hour",
     ) => (await db.findAggregates(sketches[period], at(key, bucket))).rows[0];
-    /** A release's launches: only its lifetime row counts them. */
-    const launches = async (releaseId: string) =>
+    /** A release's applies: only its lifetime row counts them. */
+    const applies = async (releaseId: string) =>
       (
-        await overview(
-          identity({
-            scopeKind: "release",
-            releaseKind: "specific",
-            releaseId,
-            periodKind: "lifetime",
-          }),
-          0,
-          "lifetime",
+        await db.findAggregates(
+          "insights_overview_lifetime",
+          at(
+            identity({
+              scopeKind: "release",
+              releaseKind: "specific",
+              releaseId,
+              periodKind: "lifetime",
+            }),
+            0,
+          ),
         )
-      )?.launches;
+      ).rows[0]?.applies ?? 0;
     const distribution = async () =>
       (
         await db.findAggregates("insights_distribution", {
@@ -242,7 +244,7 @@ describe.each(backends)("insights recordEvent on %s", (_name, adapter) => {
       db,
       overview,
       sketch,
-      launches,
+      applies,
       distribution,
       byBundle,
       outcomes,
@@ -307,11 +309,11 @@ describe.each(backends)("insights recordEvent on %s", (_name, adapter) => {
       releaseKind: "specific",
       releaseId: "release-2",
     } as const;
-    // A launch counts in its release's lifetime row alone: no hour, day, or
+    // An apply counts in its release's lifetime row alone: no hour, day, or
     // channel row counts it, and no release or channel row keeps a sketch.
     await expect(
       overview(identity({ ...release, periodKind: "lifetime" }), 0, "lifetime"),
-    ).resolves.toMatchObject({ downloads: 0, launches: 1, failed_launches: 0 });
+    ).resolves.toMatchObject({ downloads: 0, applies: 1, failed_launches: 0 });
     const releaseHour = identity({ ...release, periodKind: "hour" });
     await expect(overview(releaseHour, hour(T))).resolves.toBeUndefined();
     await expect(sketch(releaseHour, hour(T))).resolves.toBeUndefined();
@@ -468,8 +470,8 @@ describe.each(backends)("insights recordEvent on %s", (_name, adapter) => {
     ]);
   });
 
-  it("records an UNCHANGED report as a launch that no event or outcome row keeps", async () => {
-    const { api, db, launches, outcomes, everyEvent, byBundle } = await setup();
+  it("records an UNCHANGED report as a launch that no event, outcome, or release counter keeps", async () => {
+    const { api, db, applies, outcomes, everyEvent, byBundle } = await setup();
     await api.recordEvent(unchanged(1));
 
     await expect(db.findOne("bundle_events", { id: uuid(1) })).resolves.toBe(
@@ -480,7 +482,8 @@ describe.each(backends)("insights recordEvent on %s", (_name, adapter) => {
     ).resolves.toEqual(unchanged(1));
     await expect(outcomes("UNCHANGED", "to:bundle-2")).resolves.toEqual([]);
     await expect(everyEvent()).resolves.toEqual([]);
-    await expect(launches("release-2")).resolves.toBe(1);
+    // A launch keeps running its bundle: it applies nothing.
+    await expect(applies("release-2")).resolves.toBe(0);
     await expect(
       byBundle("to_bundle_id", "bundle-2", "UNCHANGED"),
     ).resolves.toMatchObject([{ bucket_start_ms: day(T), installations: 1 }]);
@@ -496,7 +499,7 @@ describe.each(backends)("insights recordEvent on %s", (_name, adapter) => {
 
   it("writes nothing for an UNCHANGED report that repeats its head the same UTC day", async () => {
     const calls: string[] = [];
-    const { api, db, launches } = await setup((inner) => ({
+    const { api, db, applies } = await setup((inner) => ({
       ...inner,
       write: async (ops: readonly WriteOp[]) => {
         calls.push("write");
@@ -512,19 +515,23 @@ describe.each(backends)("insights recordEvent on %s", (_name, adapter) => {
     await expect(
       db.findOne("bundle_event_heads", { install_id: "install-1" }),
     ).resolves.toMatchObject({ id: uuid(1), type: "UPDATE_APPLIED" });
-    await expect(launches("release-2")).resolves.toBe(1);
+    await expect(applies("release-2")).resolves.toBe(1);
 
     // An UNCHANGED report keeps no event row, so a retry that lands the next
     // UTC day is known by the head's id.
     await api.recordEvent(unchanged(4, { received_at_ms: T + DAY }));
+    await expect(
+      db.findOne("bundle_event_heads", { install_id: "install-1" }),
+    ).resolves.toMatchObject({ id: uuid(4), type: "UNCHANGED" });
     calls.length = 0;
     await api.recordEvent(unchanged(4, { received_at_ms: T + 2 * DAY }));
     expect(calls).toEqual([]);
-    await expect(launches("release-2")).resolves.toBe(2);
+    // The apply counted once; launches since add nothing.
+    await expect(applies("release-2")).resolves.toBe(1);
   });
 
   it("records an UNCHANGED report again for a new UTC day, bundle, user, or a download's head", async () => {
-    const { api, db, launches } = await setup();
+    const { api, db, applies } = await setup();
     const head = () =>
       db.findOne("bundle_event_heads", { install_id: "install-1" });
 
@@ -535,8 +542,6 @@ describe.each(backends)("insights recordEvent on %s", (_name, adapter) => {
       unchanged(3, { to_bundle_id: "bundle-3", to_release_id: "release-3" }),
     );
     await expect(head()).resolves.toMatchObject({ id: uuid(3) });
-    await expect(launches("release-2")).resolves.toBe(2);
-    await expect(launches("release-3")).resolves.toBe(1);
 
     // A download's head still runs the bundle it came from.
     await api.recordEvent(
@@ -566,8 +571,9 @@ describe.each(backends)("insights recordEvent on %s", (_name, adapter) => {
       }),
     );
     await expect(head()).resolves.toMatchObject({ id: uuid(6) });
-    // At T + 2 hours on the downloaded bundle, and again the next UTC day.
-    await expect(launches("release-4")).resolves.toBe(2);
+    // Launches, even on a bundle that was downloaded, apply nothing.
+    for (const releaseId of ["release-2", "release-3", "release-4"])
+      await expect(applies(releaseId)).resolves.toBe(0);
   });
 
   it("records an update failure for its target release and channel, and moves no head", async () => {
@@ -621,7 +627,7 @@ describe.each(backends)("insights recordEvent on %s", (_name, adapter) => {
     // breakdown's hourly rows.
     await expect(
       overview(identity({ ...release, periodKind: "lifetime" }), 0, "lifetime"),
-    ).resolves.toMatchObject({ failed_updates: 1, launches: 0 });
+    ).resolves.toMatchObject({ failed_updates: 1, applies: 0 });
     await expect(
       overview(identity({ ...release, periodKind: "hour" }), hour(T)),
     ).resolves.toBeUndefined();

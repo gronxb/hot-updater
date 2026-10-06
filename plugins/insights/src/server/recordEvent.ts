@@ -200,7 +200,7 @@ const countEvent = (
       };
       const counters: {
         downloads?: number;
-        launches?: number;
+        applies?: number;
         failed_launches?: number;
         patch_downloads?: number;
         patch_fallbacks?: number;
@@ -208,7 +208,7 @@ const countEvent = (
         ...Object.fromEntries(
           [
             ["downloads", delta.downloads],
-            ["launches", delta.launches],
+            ["applies", delta.applies],
             ["failed_launches", delta.failedLaunches],
           ].filter(([, value]) => value !== 0),
         ),

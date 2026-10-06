@@ -179,10 +179,10 @@ describe("public Insights validation", () => {
     expect(getReleaseActivity).not.toHaveBeenCalled();
     await model.getReleaseActivity({ releases });
     expect(getReleaseActivity).toHaveBeenCalledOnce();
-    const metrics = { downloads: 1, launches: 2, failedLaunches: 0 };
+    const metrics = { downloads: 1, applies: 2, failedLaunches: 0 };
     for (const data of [
       [{ metrics }],
-      [{ release, metrics: { ...metrics, launches: -1 } }],
+      [{ release, metrics: { ...metrics, applies: -1 } }],
       [{ release, metrics: { downloads: 1, failedLaunches: 0 } }],
     ]) {
       await expect(

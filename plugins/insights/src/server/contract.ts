@@ -364,7 +364,7 @@ export const createValidatedInsightsModel = (
           !isReleaseReference(item.release) ||
           !isRecord(item.metrics) ||
           !isTimestamp(item.metrics.downloads) ||
-          !isTimestamp(item.metrics.launches) ||
+          !isTimestamp(item.metrics.applies) ||
           !isTimestamp(item.metrics.failedLaunches),
       )
     )

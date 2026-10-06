@@ -98,7 +98,7 @@ describe("release Insights sections", () => {
     (variant) => {
       const report: BundleActivityReport = {
         downloads: 1234,
-        activeDays: 98,
+        applied: 98,
         failedLaunches: 2,
         measuredAtMs: 0,
       };
@@ -106,7 +106,7 @@ describe("release Insights sections", () => {
 
       expect(
         screen.getAllByRole("term").map((term) => term.textContent),
-      ).toEqual(["Downloads", "Active days", "Known crashes"]);
+      ).toEqual(["Downloads", "Applied", "Known crashes"]);
       expect(
         screen.getAllByRole("definition").map((value) => value.textContent),
       ).toEqual([report.downloads.toLocaleString(), "98", "2(2.00%)"]);

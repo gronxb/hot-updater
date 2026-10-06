@@ -171,30 +171,42 @@ const identityFields = {
 } as const;
 const window = { eq: ["identity"], sort: ["bucket_start_ms"] } as const;
 
+/** What a release or channel row counts in every period kind. */
+const WINDOW_COUNTERS = [
+  "downloads",
+  "failed_launches",
+  "patch_downloads",
+  "patch_fallbacks",
+] as const;
+
 /**
- * Counters of one period kind: hourly, daily, or lifetime at bucket 0. A
- * release or channel row counts downloads and failed launches, and downloads
- * a patch delivered and those that fell back from one. Only a release's
- * lifetime row counts launches, which the bundle list reads and no windowed
- * read sums. It also counts the release's failed updates (`failed_updates`),
- * since no breakdown row outlives the raw period; windowed reads sum
- * `insights_failures` instead.
+ * Hourly or daily counters: a release or channel row counts downloads,
+ * launches that crashed and recovered (`failed_launches`), and downloads a
+ * patch delivered and those that fell back from one.
  */
-const counters = (retention?: BucketRetention) =>
+const counters = (retention: BucketRetention) =>
   defineAggregate(identityFields, {
     key: ["identity", "bucket_start_ms"],
-    counters: [
-      "downloads",
-      "launches",
-      "failed_launches",
-      "failed_updates",
-      "patch_downloads",
-      "patch_fallbacks",
-    ],
+    counters: WINDOW_COUNTERS,
     shards: COUNTER_SHARDS,
     batched: true,
     indexes: { window },
-    ...(retention === undefined ? {} : { retention }),
+    retention,
+  });
+
+/**
+ * A release's counters since its first report, at bucket 0: the windowed
+ * counters, its applies, which the bundle list reads, and its failed updates
+ * (`failed_updates`), since no breakdown row outlives the raw period; windowed
+ * reads sum `insights_failures` instead.
+ */
+const lifetimeCounters = () =>
+  defineAggregate(identityFields, {
+    key: ["identity", "bucket_start_ms"],
+    counters: [...WINDOW_COUNTERS, "applies", "failed_updates"],
+    shards: COUNTER_SHARDS,
+    batched: true,
+    indexes: { window },
   });
 
 /**
@@ -392,7 +404,7 @@ export const createInsightsSchema = ({
     insights_overview_daily: counters(daily),
     insights_sketches_daily: sketches(daily),
     /** A release's counters since its first event, and its failed installations: kept. */
-    insights_overview_lifetime: counters(),
+    insights_overview_lifetime: lifetimeCounters(),
     insights_sketches_lifetime: lifetimeSketches(),
     insights_distribution: insightsDistribution(daily),
     insights_latest_by_bundle: insightsLatestByBundle(daily),
