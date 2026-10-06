@@ -72,6 +72,15 @@ function readEventId(
   return value;
 }
 
+/**
+ * The native build's built-in bundle ID: a bundle ID's length at most, and
+ * left out when it is missing or malformed, so the report still records.
+ */
+const readMinBundleId = (value: unknown): string | null =>
+  typeof value === "string" && value.length > 0 && value.length <= 36
+    ? value
+    : null;
+
 /** One value of an open set: any other value reads as `unknown`. */
 const oneOf = <const T extends string>(
   values: readonly T[],
@@ -257,6 +266,7 @@ function requireEvent(payload: unknown): CreateBundleEventRequest {
       payload.sdkVersion === undefined
         ? null
         : requireNullableStringField(payload, "sdkVersion"),
+    minBundleId: readMinBundleId(payload.minBundleId),
     fromReleaseId: requireNullableStringField(payload, "fromReleaseId"),
     toReleaseId: requireNullableStringField(payload, "toReleaseId"),
   };
@@ -353,6 +363,7 @@ export function createBundleEventRow(
     cohort: input.cohort,
     fingerprint_hash: input.fingerprintHash,
     sdk_version: input.sdkVersion ?? null,
+    ...(input.minBundleId ? { min_bundle_id: input.minBundleId } : {}),
     update_strategy: input.updateStrategy,
   };
   switch (input.type) {

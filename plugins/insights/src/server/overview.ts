@@ -1,14 +1,14 @@
 import type { BundleEventRow } from "./eventRow";
 
 export type InsightsOverviewIdentity = {
-  readonly scopeKind: "release" | "channel" | "usage" | "distribution";
-  readonly releaseKind: "all" | "specific" | "embedded";
+  readonly scopeKind: "release" | "channel" | "usage";
+  readonly releaseKind: "all" | "specific";
   readonly releaseId: string;
   readonly channel: string;
   readonly platform: "all" | "ios" | "android";
   readonly appVersionKind: "all" | "specific";
   readonly appVersion: string;
-  readonly periodKind: "lifetime" | "hour" | "latest";
+  readonly periodKind: "lifetime" | "hour";
   readonly bucketStartMs: number;
 };
 
@@ -67,30 +67,6 @@ export const insightsOverviewValues = (identity: InsightsOverviewIdentity) => ({
 
 const hour = (value: number): number =>
   Math.floor(value / 3_600_000) * 3_600_000;
-
-export const currentInsightsReleaseId = (
-  event: BundleEventRow,
-): string | null =>
-  event.type === "UPDATE_DOWNLOADED"
-    ? event.from_release_id
-    : event.to_release_id;
-
-export const insightsDistributionIdentity = (
-  event: BundleEventRow,
-): InsightsOverviewIdentity => {
-  const releaseId = currentInsightsReleaseId(event);
-  return {
-    scopeKind: "distribution",
-    releaseKind: releaseId === null ? "embedded" : "specific",
-    releaseId: releaseId ?? "",
-    channel: event.channel,
-    platform: event.platform,
-    appVersionKind: "specific",
-    appVersion: event.app_version,
-    periodKind: "latest",
-    bucketStartMs: hour(event.received_at_ms),
-  };
-};
 
 export const insightsOverviewDeltas = (
   event: BundleEventRow,

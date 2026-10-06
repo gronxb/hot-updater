@@ -358,6 +358,98 @@ describe.each(backends)("insights recordEvent on %s", (_name, adapter) => {
     }
   });
 
+  it("counts an installation on its native build's built-in bundle apart from an unknown one", async () => {
+    const { api, db, distribution } = await setup();
+    const builtin = uuid(900);
+    /** A report from a native build that ships `builtin`. */
+    const from = (row: BundleEventRow, minBundleId?: string) =>
+      ({
+        ...row,
+        metadata: {
+          ...row.metadata,
+          ...(minBundleId === undefined ? {} : { min_bundle_id: minBundleId }),
+        },
+      }) as BundleEventRow;
+    const launch = (n: number, install: string, bundle: string, at = T) =>
+      unchanged(n, {
+        install_id: install,
+        to_release_id: null,
+        to_bundle_id: bundle,
+        received_at_ms: at,
+      });
+    /**
+     * Installations by the release they run, and by that and the built-in
+     * bundle for those that run it, summed over days.
+     */
+    const counts = async () => {
+      const sums = new Map<string, number>();
+      const add = (key: string, installations: number) =>
+        sums.set(key, (sums.get(key) ?? 0) + installations);
+      for (const row of await distribution()) {
+        add(row.release_id, row.latest_installations);
+      }
+      const builtins = await db.findAggregates(
+        "insights_builtin_distribution",
+        {
+          index: "byScope",
+          where: { channel: "production", platform: "ios" },
+          limit: 100,
+        },
+      );
+      for (const row of builtins.rows) {
+        add(
+          `${row.release_id}|${row.builtin_bundle_id}`,
+          row.latest_installations,
+        );
+      }
+      return Object.fromEntries(
+        [...sums].filter(([, installations]) => installations !== 0),
+      );
+    };
+
+    // The built-in bundle, another bundle without a release, and an SDK
+    // that does not say which bundle its build ships.
+    await api.recordEvent(from(launch(1, "install-1", builtin), builtin));
+    await api.recordEvent(from(launch(2, "install-2", "bundle-9"), builtin));
+    await api.recordEvent(from(launch(3, "install-3", builtin)));
+    await expect(counts()).resolves.toEqual({ "": 3, [`|${builtin}`]: 1 });
+
+    // A download leaves the installation on the built-in bundle; the apply
+    // moves it to the release.
+    await api.recordEvent(
+      from(
+        event(4, {
+          type: "UPDATE_DOWNLOADED",
+          from_release_id: null,
+          from_bundle_id: builtin,
+          received_at_ms: T + HOUR,
+        }),
+        builtin,
+      ),
+    );
+    await expect(counts()).resolves.toMatchObject({ [`|${builtin}`]: 1 });
+    await api.recordEvent(
+      from(
+        event(5, {
+          from_release_id: null,
+          from_bundle_id: builtin,
+          received_at_ms: T + 2 * HOUR,
+        }),
+        builtin,
+      ),
+    );
+    // The head stored without the built-in bundle ID is taken back from the
+    // row that counted it once the next day's report says it.
+    await api.recordEvent(
+      from(launch(6, "install-3", builtin, T + DAY), builtin),
+    );
+    await expect(counts()).resolves.toEqual({
+      "release-2": 1,
+      "": 2,
+      [`|${builtin}`]: 1,
+    });
+  });
+
   it("keys an event by the one bundle its bundle filter reads", async () => {
     const { api, db } = await setup();
     await api.recordEvent(event(1));

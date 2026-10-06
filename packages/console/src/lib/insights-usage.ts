@@ -15,6 +15,8 @@ export type BundleDistribution = {
   readonly appVersion: string;
   readonly platform: "ios" | "android";
   readonly releaseId: string | null;
+  /** The native build's built-in bundle, when the installations run it. */
+  readonly builtinBundleId: string | null;
   readonly installations: number;
 };
 

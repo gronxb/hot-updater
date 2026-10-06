@@ -275,6 +275,7 @@ describe("insights() client plugin", () => {
       fromBundleId: null,
       fromReleaseId: null,
       installId: "install-id",
+      minBundleId: "00000000-0000-0000-0000-000000000000",
       platform: "ios",
       sdkVersion: "test-sdk-version",
       toBundleId: "bundle-a",

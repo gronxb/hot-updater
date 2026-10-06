@@ -2,7 +2,9 @@ import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { ArrowLeft, ArrowUpRight, RotateCw } from "lucide-react";
 
+import { BundleIdDisplay } from "@/components/BundleIdDisplay";
 import { ConsoleFeatureUnavailable } from "@/components/ConsoleFeatureUnavailable";
+import { BuiltinBundleBadge } from "@/components/features/insights/BuiltinBundle";
 import { InsightsErrorAlert } from "@/components/features/insights/InsightsErrorAlert";
 import { InsightsInfo } from "@/components/features/insights/InsightsInfo";
 import { InsightsPageHeader } from "@/components/features/insights/InsightsPageHeader";
@@ -42,6 +44,7 @@ import {
   validateDistributionSearch,
   validateInsightsSearch,
 } from "@/lib/insights-search";
+import type { BundleDistribution } from "@/lib/insights-usage";
 import { getAppUsageReportRpc } from "@/lib/insights-usage-rpc";
 
 const PAGE_SIZE = 20;
@@ -50,6 +53,24 @@ const dates = new Intl.DateTimeFormat("en", {
   day: "numeric",
   timeZone: "UTC",
 });
+
+/** How a distribution row's bundle reads aloud. */
+const bundleName = (row: BundleDistribution): string =>
+  row.releaseId ??
+  (row.builtinBundleId
+    ? `Built-in app ${row.builtinBundleId}`
+    : "Unknown bundle");
+
+/** The bundle an app version's native build shipped, by its ID. */
+function BuiltinBundle({ bundleId }: { readonly bundleId: string }) {
+  return (
+    <div className="flex min-h-11 min-w-0 flex-wrap items-center gap-2 md:min-h-9">
+      <BuiltinBundleBadge />
+      <BundleIdDisplay bundleId={bundleId} className="text-muted-foreground" />
+    </div>
+  );
+}
+
 export const Route = createFileRoute("/insights_/distribution")({
   beforeLoad: ({ context }) =>
     requireConsoleFeature(context.queryClient, "insightsAnalytics"),
@@ -201,7 +222,8 @@ function DistributionPage() {
                 <InsightsInfo label="How bundle distribution is counted">
                   Each installation counts once, by its latest report{" "}
                   {distributionPeriod}. Shares are within each app version.
-                  Unknown bundle: the report had no deployment ID.
+                  Built-in app: the bundle the native build shipped, by its ID.
+                  Unknown bundle: no deployment and no built-in bundle ID.
                 </InsightsInfo>
               </div>
               <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
@@ -295,6 +317,7 @@ function DistributionPage() {
                               row.appVersion,
                               row.platform,
                               row.releaseId,
+                              row.builtinBundleId,
                             ])}
                             className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-3 px-1 py-4 md:grid-cols-[8rem_minmax(0,1fr)_7rem_7rem] md:px-3"
                           >
@@ -329,11 +352,14 @@ function DistributionPage() {
                                     className="size-3.5 shrink-0"
                                   />
                                 </Link>
-                              ) : (
+                              ) : row.builtinBundleId ? null : (
                                 <span className="text-sm text-muted-foreground">
                                   Unknown bundle
                                 </span>
                               )}
+                              {row.builtinBundleId ? (
+                                <BuiltinBundle bundleId={row.builtinBundleId} />
+                              ) : null}
                             </div>
                             <div className="col-start-2 row-start-1 text-right md:col-auto md:row-auto">
                               <span className="text-sm font-medium tabular-nums">
@@ -351,7 +377,7 @@ function DistributionPage() {
                                 {share.toFixed(1)}%
                               </span>
                               <Progress
-                                aria-label={`${row.releaseId ?? "Unknown bundle"} share in ${row.appVersion} on ${row.platform}`}
+                                aria-label={`${bundleName(row)} share in ${row.appVersion} on ${row.platform}`}
                                 value={share}
                               />
                             </div>

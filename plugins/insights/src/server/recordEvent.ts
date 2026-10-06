@@ -6,7 +6,11 @@ import {
 } from "@hot-updater/plugin-core";
 
 import { assertBundleEventRow } from "./contract";
-import type { BundleEventFailure, BundleEventRow } from "./eventRow";
+import {
+  type BundleEventFailure,
+  type BundleEventRow,
+  runningBuiltinBundleId,
+} from "./eventRow";
 import {
   insightsKey,
   insightsOverviewDeltas,
@@ -35,6 +39,7 @@ interface Head {
   readonly to_release_id: string | null;
   readonly to_bundle_id: string;
   readonly app_version: string;
+  readonly metadata: unknown;
 }
 
 const hourOf = (ms: number) => ms - (ms % HOUR_MS);
@@ -66,9 +71,11 @@ export const insightsIdentity = (identity: InsightsIdentityParts): string =>
   });
 
 /**
- * The bucket a head's gauges count it in, the UTC day of its event, and the
- * release its distribution row names: the one it runs, which a download
- * leaves at its source.
+ * The bucket a head's gauges count it in, the UTC day of its event, and what
+ * its distribution row names: the release it runs, which a download leaves
+ * at its source, and the built-in bundle, when it runs the native build's.
+ * A head stored without the built-in bundle ID counts in no built-in row, so
+ * taking it back moves none.
  */
 const gaugeSlot = (head: Head) => ({
   bucket: dayOf(head.received_at_ms),
@@ -76,6 +83,7 @@ const gaugeSlot = (head: Head) => ({
     head.type === "UPDATE_DOWNLOADED"
       ? head.from_release_id
       : head.to_release_id,
+  builtinBundleId: runningBuiltinBundleId(head),
 });
 
 /**
@@ -90,15 +98,16 @@ export const bundlePairKey = (from: string, to: string): string =>
   insightsKey(`${from.length}:${from}${to.length}:${to}`);
 
 /**
- * Moves a head's gauges: the distribution row, one row per bundle it
- * references, and its pair; -1 takes back the head an event replaces.
+ * Moves a head's gauges: the distribution row, and the built-in one when it
+ * runs its build's built-in bundle, one row per bundle it references, and
+ * its pair; -1 takes back the head an event replaces.
  */
 const countHead = (
   tx: HotUpdaterTransaction<InsightsSchema>,
   head: Head,
   delta: 1 | -1,
 ) => {
-  const { bucket, releaseId } = gaugeSlot(head);
+  const { bucket, releaseId, builtinBundleId } = gaugeSlot(head);
   const shardBy = head.install_id;
   tx.aggregate(
     "insights_distribution",
@@ -112,6 +121,21 @@ const countHead = (
     { latest_installations: delta },
     { shardBy },
   );
+  if (builtinBundleId !== null) {
+    tx.aggregate(
+      "insights_builtin_distribution",
+      {
+        channel: head.channel,
+        platform: head.platform,
+        app_version: head.app_version,
+        release_id: releaseId ?? "",
+        builtin_bundle_id: builtinBundleId,
+        bucket_start_ms: bucket,
+      },
+      { latest_installations: delta },
+      { shardBy },
+    );
+  }
   for (const field of ["from_bundle_id", "to_bundle_id"] as const) {
     const bundleId = head[field];
     if (bundleId === null) continue;

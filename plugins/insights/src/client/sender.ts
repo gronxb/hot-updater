@@ -22,6 +22,8 @@ export interface InsightsEventBody {
   readonly cohort: string;
   readonly fingerprintHash: string | null;
   readonly sdkVersion: string;
+  /** The native build's built-in bundle ID. */
+  readonly minBundleId: string;
   readonly fromBundleId: string | null;
   readonly fromReleaseId: string | null;
   readonly toBundleId: string;

@@ -258,6 +258,23 @@ export const insights_distribution = pgTable("insights_distribution", {
   index("insights_distribution__retention").on(table["bucket_start_ms"], table["channel"], table["platform"], table["app_version"], table["release_id"], table["_shard"]),
 ]);
 
+export const insights_builtin_distribution = pgTable("insights_builtin_distribution", {
+  "channel": column("text COLLATE \"C\"")("channel").notNull(),
+  "platform": column("varchar(16) COLLATE \"C\"")("platform").notNull(),
+  "app_version": column("text COLLATE \"C\"")("app_version").notNull(),
+  "release_id": column("varchar(36) COLLATE \"C\"")("release_id").notNull(),
+  "builtin_bundle_id": column("varchar(36) COLLATE \"C\"")("builtin_bundle_id").notNull(),
+  "bucket_start_ms": column("bigint")("bucket_start_ms").notNull(),
+  "_shard": column("bigint")("_shard").notNull(),
+  "latest_installations": column("bigint")("latest_installations").notNull(),
+  "_v": column("bigint")("_v").notNull().default(0),
+}, (table) => [
+  primaryKey({ columns: [table["channel"], table["platform"], table["app_version"], table["release_id"], table["builtin_bundle_id"], table["bucket_start_ms"], table["_shard"]] }),
+  index("insights_builtin_distribution_byScope").on(table["channel"], table["platform"], table["bucket_start_ms"], table["app_version"], table["release_id"], table["builtin_bundle_id"], table["_shard"]),
+  index("insights_builtin_distribution_byVersion").on(table["channel"], table["platform"], table["app_version"], table["bucket_start_ms"], table["release_id"], table["builtin_bundle_id"], table["_shard"]),
+  index("insights_builtin_distribution__retention").on(table["bucket_start_ms"], table["channel"], table["platform"], table["app_version"], table["release_id"], table["builtin_bundle_id"], table["_shard"]),
+]);
+
 export const insights_latest_by_bundle = pgTable("insights_latest_by_bundle", {
   "platform": column("varchar(16) COLLATE \"C\"")("platform").notNull(),
   "channel": column("text COLLATE \"C\"")("channel").notNull(),

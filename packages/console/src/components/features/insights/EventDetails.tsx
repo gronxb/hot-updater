@@ -30,6 +30,8 @@ import {
 import { describeFailure } from "@/lib/insights-failures";
 import type { InsightsEventRow } from "@/lib/insights-view";
 
+import { BuiltinBundleBadge, isBuiltinBundle } from "./BuiltinBundle";
+
 type EventHistoryRow = InsightsEventRow;
 
 const eventTypes = {
@@ -348,7 +350,7 @@ export function EventBundleTransition({
 }: {
   readonly event: Pick<
     EventHistoryRow,
-    "type" | "fromBundleId" | "toBundleId" | "failure"
+    "type" | "fromBundleId" | "toBundleId" | "failure" | "minBundleId"
   >;
   readonly touch?: boolean;
 }) {
@@ -368,11 +370,14 @@ export function EventBundleTransition({
           <dt className="text-muted-foreground">
             {downloaded || failed ? "Running" : "From"}
           </dt>
-          <dd>
+          <dd className="flex min-w-0 flex-wrap items-center gap-2">
             <HashValueDisplay
               value={event.fromBundleId}
               buttonClassName={touch ? "min-h-11 px-3" : undefined}
             />
+            {isBuiltinBundle(event.fromBundleId, event.minBundleId) ? (
+              <BuiltinBundleBadge />
+            ) : null}
           </dd>
         </>
       ) : null}
@@ -387,11 +392,14 @@ export function EventBundleTransition({
                   ? "To"
                   : "Current"}
           </dt>
-          <dd>
+          <dd className="flex min-w-0 flex-wrap items-center gap-2">
             <HashValueDisplay
               value={event.toBundleId}
               buttonClassName={touch ? "min-h-11 px-3" : undefined}
             />
+            {isBuiltinBundle(event.toBundleId, event.minBundleId) ? (
+              <BuiltinBundleBadge />
+            ) : null}
           </dd>
         </>
       ) : null}

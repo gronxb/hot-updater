@@ -63,6 +63,12 @@ export interface ClientPluginTestOptions {
   readonly isDebugBuild?: boolean;
   /** The running bundle. Default: `00000000-0000-0000-0000-000000000000`. */
   readonly bundleId?: TestValue<string>;
+  /**
+   * The native build's built-in bundle. Default:
+   * `00000000-0000-0000-0000-000000000000`, so the default bundle is the
+   * built-in one.
+   */
+  readonly minBundleId?: string;
   /** Default: `production`. */
   readonly channel?: TestValue<string>;
   /** Default: `1`. */
@@ -323,6 +329,8 @@ export const setupClientPlugins = (
       read(options.installId ?? "00000000-0000-4000-8000-000000000000"),
     getAppVersion: () =>
       read(options.appVersion === undefined ? "1.0.0" : options.appVersion),
+    getMinBundleId: () =>
+      options.minBundleId ?? "00000000-0000-0000-0000-000000000000",
     getBundleId: () =>
       read(options.bundleId ?? "00000000-0000-0000-0000-000000000000"),
     getChannel: () => read(options.channel ?? "production"),

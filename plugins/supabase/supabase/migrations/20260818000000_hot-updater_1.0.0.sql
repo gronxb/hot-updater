@@ -78,6 +78,14 @@ CREATE INDEX IF NOT EXISTS "hot_updater_v1_insights_distribution_byVersion" ON "
 
 CREATE INDEX IF NOT EXISTS "hot_updater_v1_insights_distribution__retention" ON "hot_updater_v1_insights_distribution" ("bucket_start_ms", "channel", "platform", "app_version", "release_id", "_shard");
 
+CREATE TABLE IF NOT EXISTS "hot_updater_v1_insights_builtin_distribution" ("channel" text COLLATE "C" NOT NULL, "platform" varchar(16) COLLATE "C" NOT NULL, "app_version" text COLLATE "C" NOT NULL, "release_id" varchar(36) COLLATE "C" NOT NULL, "builtin_bundle_id" varchar(36) COLLATE "C" NOT NULL, "bucket_start_ms" bigint NOT NULL, "_shard" bigint NOT NULL, "latest_installations" bigint NOT NULL, "_v" bigint NOT NULL DEFAULT 0, PRIMARY KEY ("channel", "platform", "app_version", "release_id", "builtin_bundle_id", "bucket_start_ms", "_shard"));
+
+CREATE INDEX IF NOT EXISTS "hot_updater_v1_insights_builtin_distribution_byScope" ON "hot_updater_v1_insights_builtin_distribution" ("channel", "platform", "bucket_start_ms", "app_version", "release_id", "builtin_bundle_id", "_shard");
+
+CREATE INDEX IF NOT EXISTS "hot_updater_v1_insights_builtin_distribution_byVersion" ON "hot_updater_v1_insights_builtin_distribution" ("channel", "platform", "app_version", "bucket_start_ms", "release_id", "builtin_bundle_id", "_shard");
+
+CREATE INDEX IF NOT EXISTS "hot_updater_v1_insights_builtin_distribution__retention" ON "hot_updater_v1_insights_builtin_distribution" ("bucket_start_ms", "channel", "platform", "app_version", "release_id", "builtin_bundle_id", "_shard");
+
 CREATE TABLE IF NOT EXISTS "hot_updater_v1_insights_latest_by_bundle" ("platform" varchar(16) COLLATE "C" NOT NULL, "channel" text COLLATE "C" NOT NULL, "bundle_field" varchar(16) COLLATE "C" NOT NULL, "bundle_id" varchar(36) COLLATE "C" NOT NULL, "type" varchar(32) COLLATE "C" NOT NULL, "bucket_start_ms" bigint NOT NULL, "_shard" bigint NOT NULL, "installations" bigint NOT NULL, "_v" bigint NOT NULL DEFAULT 0, PRIMARY KEY ("platform", "channel", "bundle_field", "bundle_id", "type", "bucket_start_ms", "_shard"));
 
 CREATE INDEX IF NOT EXISTS "hot_updater_v1_insights_latest_by_bundle__retention" ON "hot_updater_v1_insights_latest_by_bundle" ("bucket_start_ms", "platform", "channel", "bundle_field", "bundle_id", "type", "_shard");
@@ -130,6 +138,8 @@ ALTER TABLE "hot_updater_v1_insights_sketches_lifetime" ENABLE ROW LEVEL SECURIT
 
 ALTER TABLE "hot_updater_v1_insights_distribution" ENABLE ROW LEVEL SECURITY;
 
+ALTER TABLE "hot_updater_v1_insights_builtin_distribution" ENABLE ROW LEVEL SECURITY;
+
 ALTER TABLE "hot_updater_v1_insights_latest_by_bundle" ENABLE ROW LEVEL SECURITY;
 
 ALTER TABLE "hot_updater_v1_insights_outcomes" ENABLE ROW LEVEL SECURITY;
@@ -161,7 +171,7 @@ BEGIN
   FOR item IN SELECT value FROM jsonb_array_elements(p_statements) LOOP
     statement := item->>'sql';
     FOR target IN SELECT (regexp_matches(statement, '(?:FROM|INTO|UPDATE|JOIN) "([^"]+)"', 'g'))[1] LOOP
-      IF NOT target = ANY (ARRAY['hot_updater_v1_bundles', 'hot_updater_v1_bundle_patches', 'hot_updater_v1_releases', 'hot_updater_v1_release_catalogs', 'hot_updater_v1_channels', 'hot_updater_v1_bundle_totals', 'hot_updater_v1_bundle_events', 'hot_updater_v1_bundle_events__byBundle', 'hot_updater_v1_bundle_event_heads', 'hot_updater_v1_insights_overview', 'hot_updater_v1_insights_sketches', 'hot_updater_v1_insights_overview_daily', 'hot_updater_v1_insights_sketches_daily', 'hot_updater_v1_insights_overview_lifetime', 'hot_updater_v1_insights_sketches_lifetime', 'hot_updater_v1_insights_distribution', 'hot_updater_v1_insights_latest_by_bundle', 'hot_updater_v1_insights_outcomes', 'hot_updater_v1_insights_failures', 'hot_updater_v1_api_keys', 'hot_updater_v1_private_hot_updater_settings', 'hot_updater_v1__hu_write']) THEN
+      IF NOT target = ANY (ARRAY['hot_updater_v1_bundles', 'hot_updater_v1_bundle_patches', 'hot_updater_v1_releases', 'hot_updater_v1_release_catalogs', 'hot_updater_v1_channels', 'hot_updater_v1_bundle_totals', 'hot_updater_v1_bundle_events', 'hot_updater_v1_bundle_events__byBundle', 'hot_updater_v1_bundle_event_heads', 'hot_updater_v1_insights_overview', 'hot_updater_v1_insights_sketches', 'hot_updater_v1_insights_overview_daily', 'hot_updater_v1_insights_sketches_daily', 'hot_updater_v1_insights_overview_lifetime', 'hot_updater_v1_insights_sketches_lifetime', 'hot_updater_v1_insights_distribution', 'hot_updater_v1_insights_builtin_distribution', 'hot_updater_v1_insights_latest_by_bundle', 'hot_updater_v1_insights_outcomes', 'hot_updater_v1_insights_failures', 'hot_updater_v1_api_keys', 'hot_updater_v1_private_hot_updater_settings', 'hot_updater_v1__hu_write']) THEN
         RAISE EXCEPTION 'hot_updater_v1_apply: % is not a Hot Updater table', target USING ERRCODE = '42501';
       END IF;
     END LOOP;

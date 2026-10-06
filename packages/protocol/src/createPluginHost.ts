@@ -31,6 +31,7 @@ export interface PluginHostEnvironment {
   readonly sdkVersion: string;
   getInstallId(): string;
   getAppVersion(): string | null;
+  getMinBundleId(): string;
   getBundleId(): string;
   getChannel(): string;
   getCohort(): string;
@@ -215,6 +216,9 @@ export const createPluginHost = (
     },
     get sdkVersion() {
       return environment.sdkVersion;
+    },
+    get minBundleId() {
+      return environment.getMinBundleId();
     },
     isDebugBuild: environment.isDebugBuild,
     getBundleId: () => environment.getBundleId(),
