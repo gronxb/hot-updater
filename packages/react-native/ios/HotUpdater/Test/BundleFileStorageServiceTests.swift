@@ -247,6 +247,46 @@ struct BundleFileStorageServiceTests {
     }
 
     @Test
+    func backgroundStagingLaunchStaysPendingOnNextLaunch() throws {
+        let workingDirectory = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(workingDirectory) }
+        let preferences = InMemoryPreferencesService()
+        for bundleId in ["stable-bundle", "staged-bundle"] {
+            let directory = try createBundleDirectory(
+                documentsDirectory: workingDirectory, bundleId: bundleId
+            )
+            try writeBundle(in: directory, bundleFileName: "index.ios.bundle")
+            try writeManifest(in: directory, bundleId: bundleId)
+        }
+        try writeMetadata(
+            documentsDirectory: workingDirectory,
+            BundleMetadata(
+                isolationKey: testIsolationKey,
+                stableBundleId: "stable-bundle",
+                stagingBundleId: "staged-bundle",
+                verificationPending: true
+            )
+        )
+        // Issue #1468: a background launch (a silent push) prepares the launch,
+        // but its root may render nothing, so content never appears.
+        let backgroundLaunch = makeStorageService(
+            documentsDirectory: workingDirectory, preferences: preferences
+        ).prepareLaunch(bundle: .main, pendingRecovery: nil)
+        try #require(backgroundLaunch.launchedBundleId == "staged-bundle")
+        try #require(backgroundLaunch.shouldRollbackOnCrash)
+
+        // The system terminates the suspended app, then the user opens it.
+        let nextProcess = makeStorageService(
+            documentsDirectory: workingDirectory, preferences: preferences
+        )
+        let nextLaunch = nextProcess.prepareLaunch(bundle: .main, pendingRecovery: nil)
+        #expect(nextLaunch.launchedBundleId == "staged-bundle")
+        #expect(nextLaunch.shouldRollbackOnCrash)
+        #expect(!nextProcess.getCrashHistory().contains("staged-bundle"))
+        #expect(nextProcess.notifyAppReady()["status"] as? String == "PENDING")
+    }
+
+    @Test
     func getBundleIdFallsBackToBuiltInWhileStagingVerificationIsPending() throws {
         let workingDirectory = try makeWorkingDirectory()
         defer {

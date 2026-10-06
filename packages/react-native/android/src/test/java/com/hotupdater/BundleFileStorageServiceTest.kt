@@ -95,6 +95,39 @@ class BundleFileStorageServiceTest {
     }
 
     @Test
+    fun `headless staging launch stays pending on the next cold start`() {
+        val rootDir = temporaryFolder.newFolder()
+        val preferences = InMemoryPreferencesService()
+        listOf("stable-bundle", "staged-bundle").forEach { bundleId ->
+            val directory = createBundleDir(rootDir, bundleId)
+            writeFile(directory, "index.android.bundle")
+            writeManifest(directory, listOf("index.android.bundle"))
+        }
+        writeMetadata(
+            rootDir,
+            BundleMetadata(
+                isolationKey = TEST_ISOLATION_KEY,
+                stableBundleId = "stable-bundle",
+                stagingBundleId = "staged-bundle",
+                verificationPending = true,
+            ),
+        )
+        // Issue #1468: a headless JS task (a background FCM message) prepares the
+        // launch without an activity, so first content never appears.
+        val headlessLaunch = createService(rootDir, preferences).prepareLaunch(null)
+        assertEquals("staged-bundle", headlessLaunch.launchedBundleId)
+        assertTrue(headlessLaunch.shouldRollbackOnCrash)
+
+        // The OS reclaims the cached process, then the user opens the app.
+        val nextProcess = createService(rootDir, preferences)
+        val nextLaunch = nextProcess.prepareLaunch(null)
+        assertEquals("staged-bundle", nextLaunch.launchedBundleId)
+        assertTrue(nextLaunch.shouldRollbackOnCrash)
+        assertFalse(nextProcess.getCrashHistory().contains("staged-bundle"))
+        assertEquals("PENDING", nextProcess.notifyAppReady()["status"])
+    }
+
+    @Test
     fun `resolveBundleFile uses single manifest bundle at root`() {
         val rootDir = temporaryFolder.newFolder("root-manifest-bundle")
         val service = createService(rootDir)
