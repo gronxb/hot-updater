@@ -57,7 +57,8 @@ launch result. The optional `HotUpdater.wrap()` flow uses the same native
 recovery mechanism.
 
 When a launch of an unverified staging bundle can show UI, Hot Updater persists a
-launch-in-progress record: on Android when an activity starts, on iOS when the app
+launch-in-progress record: on Android once the process has a started activity,
+including one that was on screen before React Native loaded, on iOS when the app
 is in the foreground. The first native content appearance clears it. If it remains
 on the next cold start, Hot Updater rolls back even when no crash marker was
 written. There is no timeout that interrupts a running JavaScript thread: recovery
