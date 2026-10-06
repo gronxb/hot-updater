@@ -1,5 +1,12 @@
 # @hot-updater/react-native
 
+## 1.0.0-rc.33
+
+### Patch Changes
+
+- Updated dependencies [9fe6dfd]
+  - @hot-updater/plugin-insights@1.0.0-rc.33
+
 ## 1.0.0-rc.32
 
 ### Patch Changes
