@@ -297,6 +297,8 @@ describe("MobileAppDriver", () => {
     const android = fixture("android");
     await android.app.tap("install", "action-install-current-channel-update");
     expect(android.iosAlert.get).not.toHaveBeenCalled();
+    expect(android.device.openApp).not.toHaveBeenCalled();
+    expect(android.calls).toEqual(["/e2e/screen-state", "link", "wait-result"]);
     const ios = fixture();
     await ios.app.assertText(
       "observe",
@@ -305,6 +307,50 @@ describe("MobileAppDriver", () => {
       { ensureForeground: false },
     );
     expect(ios.iosAlert.get).not.toHaveBeenCalled();
+  });
+
+  it("uses the Android route link to foreground while retaining foreground-only same-route reads", async () => {
+    const f = fixture("android");
+    await f.app.assertText(
+      "read status",
+      "launch-status-result",
+      "UPDATE_APPLIED",
+    );
+    expect(f.device.openApp).not.toHaveBeenCalled();
+    expect(f.device.openLink).toHaveBeenCalledExactlyOnceWith(
+      "hotupdaterexample://e2e/launch-status",
+      { app: "org.example.app" },
+    );
+    expect(f.calls).toEqual(["link", "visible"]);
+    expect(f.locator.getAttribute).toHaveBeenCalledExactlyOnceWith(
+      RAW_TEXT_ATTRIBUTE,
+    );
+
+    await f.app.assertText(
+      "read status again",
+      "launch-status-result",
+      "UPDATE_APPLIED",
+    );
+    expect(f.device.openApp).toHaveBeenCalledExactlyOnceWith(
+      "org.example.app",
+      { relaunch: false },
+    );
+    expect(f.device.openLink).toHaveBeenCalledTimes(1);
+    expect(f.calls).toEqual(["link", "visible", "open", "visible"]);
+    expect(f.locator.getAttribute).toHaveBeenCalledTimes(2);
+  });
+
+  it("propagates Android route failures without reopening the app or reading UI", async () => {
+    const f = fixture("android");
+    const error = new Error("route could not be opened");
+    f.device.openLink.mockRejectedValueOnce(error);
+    await expect(
+      f.app.assertText("read status", "launch-status-result", "UPDATE_APPLIED"),
+    ).rejects.toBe(error);
+    expect(f.device.openLink).toHaveBeenCalledTimes(1);
+    expect(f.device.openApp).not.toHaveBeenCalled();
+    expect(f.locator.waitFor).not.toHaveBeenCalled();
+    expect(f.locator.getAttribute).not.toHaveBeenCalled();
   });
 
   it("fences confirmation when teardown aborts during the native query", async () => {
@@ -517,24 +563,32 @@ describe("MobileAppDriver", () => {
     },
   );
 
-  it("waits for crash recovery evidence before a disconnect can lead to UI navigation", async () => {
-    const f = fixture();
-    f.device.openApp.mockRejectedValueOnce(new Error("app disconnected"));
-    await f.app.launch("crash", { expectCrash: true });
-    expect(f.app.expectedLaunchFailures).toBe(0);
-    await expect(
-      f.app.assertText("premature", "runtime-bundle-id", "builtin"),
-    ).rejects.toThrow("Native recovery must be verified");
-    expect(f.device.openLink).not.toHaveBeenCalled();
-    await f.app.control("native recovery", "/e2e/wait-for-crash-recovery", {
-      crashedBundleId: "bad",
-      stableBundleId: "builtin",
-    });
-    expect(f.device.openApp).toHaveBeenCalledTimes(1);
-    expect(f.app.expectedLaunchFailures).toBe(1);
-    f.locator.getAttribute.mockResolvedValue("builtin");
-    await f.app.assertText("recovered", "runtime-bundle-id", "builtin");
-  });
+  it.each(["ios", "android"] as const)(
+    "waits for %s crash recovery evidence before a disconnect can lead to UI navigation",
+    async (platform) => {
+      const f = fixture(platform);
+      f.device.openApp.mockRejectedValueOnce(new Error("app disconnected"));
+      await f.app.launch("crash", { expectCrash: true });
+      expect(f.app.expectedLaunchFailures).toBe(0);
+      await expect(
+        f.app.assertText("premature", "runtime-bundle-id", "builtin"),
+      ).rejects.toThrow("Native recovery must be verified");
+      expect(f.device.openLink).not.toHaveBeenCalled();
+      await f.app.control("native recovery", "/e2e/wait-for-crash-recovery", {
+        crashedBundleId: "bad",
+        stableBundleId: "builtin",
+      });
+      expect(f.device.openApp).toHaveBeenCalledTimes(1);
+      expect(f.app.expectedLaunchFailures).toBe(1);
+      f.locator.getAttribute.mockResolvedValue("builtin");
+      await f.app.assertText("recovered", "runtime-bundle-id", "builtin");
+      expect(f.device.openApp).toHaveBeenCalledTimes(1);
+      expect(f.device.openLink).toHaveBeenCalledExactlyOnceWith(
+        "hotupdaterexample://e2e/runtime-bundle",
+        { app: "org.example.app" },
+      );
+    },
+  );
 
   it("terminates externally launched hung apps through the pinned control target without reopening them", async () => {
     const f = fixture();

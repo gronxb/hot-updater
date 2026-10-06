@@ -172,6 +172,57 @@ describe("private agent-device daemon", () => {
     });
   }, 30_000);
 
+  it("keeps a second private daemon usable after its peer shuts down", async () => {
+    const first = await startOwnedAgentDeviceDaemon(
+      process.env,
+      new AbortController().signal,
+    );
+    let second:
+      | Awaited<ReturnType<typeof startOwnedAgentDeviceDaemon>>
+      | undefined;
+    try {
+      second = await startOwnedAgentDeviceDaemon(
+        process.env,
+        new AbortController().signal,
+      );
+      expect(first.pid).not.toBe(second.pid);
+      expect(first.stateDir).not.toBe(second.stateDir);
+      expect(first.baseUrl).not.toBe(second.baseUrl);
+      const registrationPath = path.join(second.stateDir, "daemon.json");
+      const before = JSON.parse(await fs.readFile(registrationPath, "utf8"));
+      const healthBefore = await (
+        await fetch(`${second.baseUrl}/health`)
+      ).json();
+
+      await first.stop();
+
+      await expect(fs.stat(first.stateDir)).rejects.toMatchObject({
+        code: "ENOENT",
+      });
+      const after = JSON.parse(await fs.readFile(registrationPath, "utf8"));
+      expect(after.pid).toBe(before.pid);
+      expect(after.processStartTime).toBe(before.processStartTime);
+      expect(await (await fetch(`${second.baseUrl}/health`)).json()).toEqual(
+        healthBefore,
+      );
+      const installation = await resolvePinnedAgentDevice();
+      const listed = await promisify(execFile)(
+        process.execPath,
+        [installation.cli, "session", "list", "--json"],
+        { env: second.env, timeout: 5000, encoding: "utf8" },
+      );
+      expect(JSON.parse(listed.stdout)).toMatchObject({
+        success: true,
+        data: { sessions: [] },
+      });
+    } finally {
+      await Promise.all([first.stop(), second?.stop()]);
+    }
+    await expect(fs.stat(second!.stateDir)).rejects.toMatchObject({
+      code: "ENOENT",
+    });
+  }, 60_000);
+
   it("cleans its started daemon when cancellation arrives during the health check", async () => {
     const controller = new AbortController();
     const originalFetch = globalThis.fetch;

@@ -310,9 +310,11 @@ export class MobileAppDriver implements ScenarioAppDriver {
       (TEST_ID_SCREEN_PATHS as Record<string, string>)[testID] ?? "ready";
     let openedLink = false;
     if (ensureForeground) {
-      if (this.options.platform === "android")
+      const opensRoute = alwaysOpen || this.activeScreenPath !== screenPath;
+      // An app-bound Android link already brings the selected app forward.
+      if (this.options.platform === "android" && !opensRoute)
         await this.openApp({ relaunch: false });
-      if (alwaysOpen || this.activeScreenPath !== screenPath) {
+      if (opensRoute) {
         this.options.signal.throwIfAborted();
         await this.options.device.openLink(
           (E2E_SCREEN_URLS as Record<string, string>)[screenPath],
