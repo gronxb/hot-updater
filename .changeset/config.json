@@ -4,7 +4,7 @@
   "commit": false,
   "ignore": ["hot-updater-docs", "@examples/*", "@examples-server/*"],
   "linked": [],
-  "fixed": [],
+  "fixed": [["hot-updater", "@hot-updater/*"]],
   "access": "public",
   "privatePackages": { "version": true, "tag": false },
   "baseBranch": "next",
