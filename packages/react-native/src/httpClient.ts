@@ -6,6 +6,7 @@ import {
   type ArtifactInfo,
   type HotUpdaterBaseURL,
   type ReleaseCatalog,
+  type UpdateHttpResponse,
 } from "@hot-updater/protocol";
 
 import { fetchJSON, FetchJSONResponseError } from "./fetchJSON";
@@ -113,7 +114,10 @@ const requireArtifactProtocolV1 = (info: ArtifactInfo): ArtifactInfo => {
   return info;
 };
 
-const createSession = (baseURL: string): HotUpdaterHttpSession => ({
+const createSession = (
+  baseURL: string,
+  onResponse?: (response: UpdateHttpResponse) => void,
+): HotUpdaterHttpSession => ({
   fetchReleaseCatalog: async (params): Promise<ReleaseCatalog | null> => {
     const channelKey = encodeChannelKey(params.channel);
     let strategyValue: string;
@@ -133,6 +137,7 @@ const createSession = (baseURL: string): HotUpdaterHttpSession => ({
 
     return fetchReleaseCatalogWithCache({
       baseURL,
+      ...(onResponse ? { onResponse } : {}),
       expectedScope:
         params.updateStrategy === "fingerprint"
           ? {
@@ -155,6 +160,7 @@ const createSession = (baseURL: string): HotUpdaterHttpSession => ({
     let info: ArtifactInfo;
     try {
       info = await fetchJSON<ArtifactInfo>({
+        ...(onResponse ? { onResponse } : {}),
         requestHeaders: params.requestHeaders,
         requestTimeout: params.requestTimeout,
         url: `${baseURL}/artifacts/v1/${encodeURIComponent(
@@ -177,6 +183,8 @@ const createSession = (baseURL: string): HotUpdaterHttpSession => ({
 /** Creates the private HTTP client used by HotUpdater.init and HotUpdater.wrap. */
 export const createHttpClient = (
   baseURL: HotUpdaterBaseURL,
+  onResponse?: (response: UpdateHttpResponse) => void,
 ): HotUpdaterHttpClient => ({
-  createSession: async () => createSession(await resolveBaseURL(baseURL)),
+  createSession: async () =>
+    createSession(await resolveBaseURL(baseURL), onResponse),
 });

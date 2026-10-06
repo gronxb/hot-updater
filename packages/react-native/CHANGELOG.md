@@ -1,5 +1,52 @@
 # @hot-updater/react-native
 
+## 1.0.0-rc.33
+
+### Patch Changes
+
+- Updated dependencies [9fe6dfd]
+  - @hot-updater/plugin-insights@1.0.0-rc.33
+
+## 1.0.0-rc.32
+
+### Patch Changes
+
+- 384a5b6: Report a request that the SDK's timeout cuts off as `Request timed out` under Expo's fetch too, which rejects it with `fetch failed: FetchRequestCanceledException` instead of an `AbortError`: update failures now classify it as a network timeout, so an update check that times out is no longer reported as an unknown failure, and the same holds for client plugin requests. Expo's other fetch failures without a response classify as network errors.
+- Updated dependencies [384a5b6]
+  - @hot-updater/protocol@1.0.0-rc.29
+  - @hot-updater/plugin-insights@1.0.0-rc.32
+
+## 1.0.0-rc.31
+
+### Patch Changes
+
+- Updated dependencies [d846556]
+  - @hot-updater/plugin-insights@1.0.0-rc.31
+
+## 1.0.0-rc.30
+
+### Patch Changes
+
+- Updated dependencies [0c884b7]
+- Updated dependencies [541f0ec]
+  - @hot-updater/plugin-insights@1.0.0-rc.30
+
+## 1.0.0-rc.29
+
+### Patch Changes
+
+- 80bb792: Attach the latest catalog or artifact HTTP response to existing Insights reports without adding requests or changing launch/failure deduplication. Preserve successful, cached, and failed response text with a bounded body and its original observation timestamp. Console exposes the response from event and installation details and alongside error investigation. No database migration is required.
+- Updated dependencies [80bb792]
+  - @hot-updater/protocol@1.0.0-rc.28
+  - @hot-updater/plugin-insights@1.0.0-rc.29
+
+## 1.0.0-rc.28
+
+### Patch Changes
+
+- Updated dependencies [b412f41]
+  - @hot-updater/plugin-insights@1.0.0-rc.28
+
 ## 1.0.0-rc.27
 
 ### Patch Changes

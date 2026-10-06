@@ -15,9 +15,8 @@ export type InsightsOverviewIdentity = {
 export type InsightsOverviewDelta = {
   readonly identity: InsightsOverviewIdentity;
   readonly downloads: number;
-  readonly launches: number;
+  readonly applies: number;
   readonly failedLaunches: number;
-  readonly launchIdentity?: string;
   readonly activityIdentity?: string;
 };
 
@@ -102,9 +101,8 @@ export const insightsOverviewDeltas = (
     identity: InsightsOverviewIdentity,
     values: Pick<
       InsightsOverviewDelta,
-      "downloads" | "launches" | "failedLaunches"
+      "downloads" | "applies" | "failedLaunches"
     > & {
-      readonly launchIdentity?: string;
       readonly activityIdentity?: string;
     },
   ) => {
@@ -113,9 +111,8 @@ export const insightsOverviewDeltas = (
     counters.set(key, {
       identity,
       downloads: (previous?.downloads ?? 0) + values.downloads,
-      launches: (previous?.launches ?? 0) + values.launches,
+      applies: (previous?.applies ?? 0) + values.applies,
       failedLaunches: (previous?.failedLaunches ?? 0) + values.failedLaunches,
-      launchIdentity: previous?.launchIdentity ?? values.launchIdentity,
       activityIdentity: previous?.activityIdentity ?? values.activityIdentity,
     });
   };
@@ -123,10 +120,12 @@ export const insightsOverviewDeltas = (
     releaseId: string | null,
     values: Pick<
       InsightsOverviewDelta,
-      "downloads" | "launches" | "failedLaunches"
+      "downloads" | "applies" | "failedLaunches"
     >,
   ) => {
-    const launchIdentity = values.launches > 0 ? event.install_id : undefined;
+    // Only a release's lifetime row counts applies: the bundle list reads
+    // them there, and no windowed read sums them.
+    const windowed = { ...values, applies: 0 };
     if (releaseId !== null) {
       for (const [periodKind, start] of [
         ["lifetime", 0],
@@ -144,7 +143,7 @@ export const insightsOverviewDeltas = (
             periodKind,
             bucketStartMs: start,
           },
-          { ...values, ...(periodKind === "hour" ? { launchIdentity } : {}) },
+          periodKind === "lifetime" ? values : windowed,
         );
       }
     }
@@ -160,31 +159,32 @@ export const insightsOverviewDeltas = (
         periodKind: "hour",
         bucketStartMs,
       },
-      { ...values, launchIdentity },
+      windowed,
     );
   };
 
+  // A launch report changes no release's counters: the installation only
+  // keeps running its bundle. A failed update is counted by recordEvent itself.
   if (event.type === "UPDATE_DOWNLOADED") {
     metric(event.to_release_id, {
       downloads: 1,
-      launches: 0,
+      applies: 0,
       failedLaunches: 0,
     });
-  } else if (event.type !== "UPDATE_FAILED") {
-    // A failed update is no launch. recordEvent counts a failure itself and
-    // asks for no deltas of it.
+  } else if (event.type === "UPDATE_APPLIED") {
     metric(event.to_release_id, {
       downloads: 0,
-      launches: 1,
+      applies: 1,
       failedLaunches: 0,
     });
-    if (event.type === "RECOVERED") {
-      metric(event.from_release_id, {
-        downloads: 0,
-        launches: 0,
-        failedLaunches: 1,
-      });
-    }
+  } else if (event.type === "RECOVERED") {
+    // The launch crashed on the bundle it left; returning to the one before
+    // is no apply.
+    metric(event.from_release_id, {
+      downloads: 0,
+      applies: 0,
+      failedLaunches: 1,
+    });
   }
 
   for (const platform of [event.platform, "all"] as const) {
@@ -203,7 +203,7 @@ export const insightsOverviewDeltas = (
         },
         {
           downloads: 0,
-          launches: 0,
+          applies: 0,
           failedLaunches: 0,
           activityIdentity: event.install_id,
         },

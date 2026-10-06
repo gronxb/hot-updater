@@ -97,24 +97,29 @@ describe("Release Catalog persistent cache", () => {
   });
 
   it("persists a validated 200 and reuses it across resolver instances on 304", async () => {
+    const onResponse = vi.fn();
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(response(200, JSON.stringify(catalog), '"v1"'))
       .mockResolvedValueOnce(response(304));
     vi.stubGlobal("fetch", fetchMock);
 
-    await expect(fetchReleaseCatalogWithCache(input())).resolves.toEqual(
-      catalog,
-    );
+    await expect(
+      fetchReleaseCatalogWithCache(input({ onResponse })),
+    ).resolves.toEqual(catalog);
     expect(nativeMocks.write).toHaveBeenCalledOnce();
 
     const parseSpy = vi.spyOn(JSON, "parse");
-    await expect(fetchReleaseCatalogWithCache(input())).resolves.toEqual(
-      catalog,
-    );
+    await expect(
+      fetchReleaseCatalogWithCache(input({ onResponse })),
+    ).resolves.toEqual(catalog);
     expect(requestHeadersAt(fetchMock, 1).get("if-none-match")).toBe('"v1"');
     expect(parseSpy).not.toHaveBeenCalled();
     expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(onResponse.mock.calls.map(([response]) => response.status)).toEqual([
+      200, 304,
+    ]);
+    expect(onResponse.mock.calls[1]?.[0].body).toBe("");
   });
 
   it("repairs an invalid cache after an unsatisfiable 304 with one unconditional request", async () => {

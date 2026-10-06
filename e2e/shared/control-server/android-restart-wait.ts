@@ -1,0 +1,77 @@
+const ANDROID_NATIVE_RESTART_MESSAGE =
+  "Started restart trampoline to apply update bundle";
+const ANDROID_WATCHDOG_RESTART_MESSAGE =
+  "Recovery watchdog detected crash marker, relaunching app";
+
+export function hasNativeRestartEvidenceAfterMarker(
+  logs: string,
+  marker: string,
+) {
+  const markerIndex = logs.lastIndexOf(marker);
+  return (
+    markerIndex >= 0 &&
+    (logs.indexOf(ANDROID_NATIVE_RESTART_MESSAGE, markerIndex) > markerIndex ||
+      logs.indexOf(ANDROID_WATCHDOG_RESTART_MESSAGE, markerIndex) > markerIndex)
+  );
+}
+
+export function hasLynxNativeRestartEvidence(logs: string) {
+  return (
+    logs.includes(ANDROID_NATIVE_RESTART_MESSAGE) ||
+    logs.includes(ANDROID_WATCHDOG_RESTART_MESSAGE)
+  );
+}
+
+export function isLynxManagedRuntimeReplacementReady(observation: {
+  appId: string;
+  bundleId: string | null;
+  expectedBundleId: string;
+  expectedReleaseId: string;
+  expectedRuntimeScenarioMarker: string;
+  focusedPackage: string | null;
+  processId: string;
+  releaseId: string | null;
+  runtimeScenarioMarker: string | null;
+  verificationPending: boolean | null;
+}) {
+  return (
+    observation.bundleId === observation.expectedBundleId &&
+    observation.releaseId === observation.expectedReleaseId &&
+    observation.runtimeScenarioMarker ===
+      observation.expectedRuntimeScenarioMarker &&
+    observation.verificationPending === false &&
+    observation.processId.trim().length > 0 &&
+    observation.focusedPackage === observation.appId
+  );
+}
+
+export function isAndroidRecoveryProcessReady(observation: {
+  appId: string;
+  focusedPackage: string | null;
+  hasNativeRestartEvidence: boolean;
+  processId: string;
+}) {
+  return (
+    observation.hasNativeRestartEvidence &&
+    observation.processId.trim().length > 0 &&
+    observation.focusedPackage === observation.appId
+  );
+}
+
+export function advanceAndroidRestartWait(
+  state: { clearedObservations: number },
+  observation: {
+    hasNativeRestartEvidence: boolean;
+    hasTargetStaging: boolean;
+    processReady: boolean;
+  },
+) {
+  const countsAsCleared =
+    observation.hasNativeRestartEvidence &&
+    observation.hasTargetStaging &&
+    observation.processReady;
+
+  return {
+    clearedObservations: countsAsCleared ? state.clearedObservations + 1 : 0,
+  };
+}

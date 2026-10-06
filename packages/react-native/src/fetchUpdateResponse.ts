@@ -1,0 +1,60 @@
+import type { UpdateHttpResponse } from "@hot-updater/protocol";
+
+export interface UpdateRequest {
+  readonly url: string;
+  readonly resource: UpdateHttpResponse["resource"];
+  readonly requestHeaders?: Record<string, string>;
+  readonly requestTimeout?: number;
+  readonly onResponse?: (response: UpdateHttpResponse) => void;
+}
+
+/** Read once for parsing and diagnostics, under the same request timeout. */
+export const fetchUpdateResponse = async ({
+  url,
+  resource,
+  requestHeaders,
+  requestTimeout = 5000,
+  onResponse,
+}: UpdateRequest): Promise<{ response: Response; body: string | null }> => {
+  const controller = new AbortController();
+  let timedOut = false;
+  const timeoutId = setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, requestTimeout);
+  try {
+    const headers = new Headers(requestHeaders);
+    if (!headers.has("Accept")) headers.set("Accept", "application/json");
+    const response = await fetch(url, {
+      headers,
+      signal: controller.signal,
+    });
+    let body: string | null = null;
+    try {
+      body = await response.text();
+    } catch (error) {
+      // A broken error body must not hide an HTTP error already received.
+      if (response.status === 200) throw error;
+    } finally {
+      onResponse?.({
+        resource,
+        // React Native URL implementations do not all expose pathname.
+        path:
+          url.replace(/^https?:\/\/[^/?#]*/i, "").split(/[?#]/, 1)[0] || "/",
+        status: response.status,
+        body,
+        bodyTruncated: false,
+      });
+    }
+    return { response, body };
+  } catch (error: unknown) {
+    // Whatever the fetch rejects with once its timeout aborts it: an
+    // AbortError, or Expo's "fetch failed: FetchRequestCanceledException".
+    if (timedOut || (error instanceof Error && error.name === "AbortError")) {
+      throw new Error("Request timed out");
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+};

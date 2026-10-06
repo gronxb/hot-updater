@@ -2,18 +2,18 @@ import { spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
 
-import { createControlClient } from "../detox/control-client.ts";
-import type { JsonObject } from "../detox/control-protocol.ts";
+import { createControlClient } from "../shared/control-client.ts";
+import type { JsonObject } from "../shared/control-protocol.ts";
 import type {
-  DetoxAppDriver,
-  DetoxLaunchOptions,
-  DetoxTapOptions,
-} from "../detox/scenarios/types.ts";
+  ScenarioAppDriver,
+  LaunchOptions,
+  TapOptions,
+} from "../shared/scenarios/types.ts";
 import {
-  type DetoxPlatform,
+  type E2ePlatform,
   resolveAppBaseUrl,
   resolveRuntimeConfigUrl,
-} from "../detox/scripts/control-server-env.ts";
+} from "../shared/scripts/control-server-env.ts";
 import type { AndroidRuntimeJournalEvidence } from "./android-runtime-journal.ts";
 import {
   GenerationEventLedger,
@@ -112,9 +112,9 @@ function androidJournalAdvancedPastSnapshot(
   }
 }
 
-export class LynxAppDriver implements DetoxAppDriver {
+export class LynxAppDriver implements ScenarioAppDriver {
   private readonly controlClient: ControlClient;
-  private readonly platform: DetoxPlatform;
+  private readonly platform: E2ePlatform;
   private readonly env: NodeJS.ProcessEnv;
   private androidLaunchLogMarker: string | null = null;
   private activeLaunchGeneration: string | null = null;
@@ -129,7 +129,7 @@ export class LynxAppDriver implements DetoxAppDriver {
 
   constructor(
     controlClient: ControlClient,
-    platform: DetoxPlatform,
+    platform: E2ePlatform,
     env: NodeJS.ProcessEnv,
     initialValues: Record<string, unknown> = {},
   ) {
@@ -226,7 +226,7 @@ export class LynxAppDriver implements DetoxAppDriver {
     });
   }
 
-  async launch(stage: string, options: DetoxLaunchOptions = {}): Promise<void> {
+  async launch(stage: string, options: LaunchOptions = {}): Promise<void> {
     await this.runStage(stage, async () => {
       const launchGeneration = randomUUID();
       await this.controlClient.postJson(
@@ -320,7 +320,7 @@ export class LynxAppDriver implements DetoxAppDriver {
   async tap(
     stage: string,
     testID: string,
-    options: DetoxTapOptions = {},
+    options: TapOptions = {},
   ): Promise<void> {
     await this.runStage(stage, async () => {
       const actionResultField = ACTION_RESULT_FIELDS[testID];
@@ -452,7 +452,7 @@ export class LynxAppDriver implements DetoxAppDriver {
     return receipt;
   }
 
-  get platformName(): DetoxPlatform {
+  get platformName(): E2ePlatform {
     return this.platform;
   }
 
@@ -628,8 +628,9 @@ export class LynxAppDriver implements DetoxAppDriver {
       );
     }
     return (
-      this.env.HOT_UPDATER_E2E_ANDROID_SERIAL ??
       this.env.HOT_UPDATER_E2E_DEVICE_ID ??
+      this.env.HOT_UPDATER_E2E_ANDROID_SERIAL ??
+      this.env.ANDROID_SERIAL ??
       "emulator-5554"
     );
   }

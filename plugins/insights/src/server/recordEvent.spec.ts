@@ -151,6 +151,22 @@ describe.each(backends)("insights recordEvent on %s", (_name, adapter) => {
       bucket: number,
       period: keyof typeof sketches = "hour",
     ) => (await db.findAggregates(sketches[period], at(key, bucket))).rows[0];
+    /** A release's applies: only its lifetime row counts them. */
+    const applies = async (releaseId: string) =>
+      (
+        await db.findAggregates(
+          "insights_overview_lifetime",
+          at(
+            identity({
+              scopeKind: "release",
+              releaseKind: "specific",
+              releaseId,
+              periodKind: "lifetime",
+            }),
+            0,
+          ),
+        )
+      ).rows[0]?.applies ?? 0;
     const distribution = async () =>
       (
         await db.findAggregates("insights_distribution", {
@@ -228,6 +244,7 @@ describe.each(backends)("insights recordEvent on %s", (_name, adapter) => {
       db,
       overview,
       sketch,
+      applies,
       distribution,
       byBundle,
       outcomes,
@@ -287,31 +304,26 @@ describe.each(backends)("insights recordEvent on %s", (_name, adapter) => {
       { ...DAILY_EVENTS, bucket_start_ms: T - (T % DAY), events: 1 },
     ]);
 
-    const release = { scopeKind: "release", releaseKind: "specific" } as const;
-    const counters = { downloads: 0, launches: 1, failed_launches: 0 };
+    const release = {
+      scopeKind: "release",
+      releaseKind: "specific",
+      releaseId: "release-2",
+    } as const;
+    // An apply counts in its release's lifetime row alone: no hour, day, or
+    // channel row counts it, and no release or channel row keeps a sketch.
     await expect(
-      overview(
-        identity({
-          ...release,
-          releaseId: "release-2",
-          periodKind: "lifetime",
-        }),
-        0,
-        "lifetime",
-      ),
-    ).resolves.toMatchObject(counters);
-    const releaseHour = await sketch(
-      identity({ ...release, releaseId: "release-2", periodKind: "hour" }),
-      hour(T),
-    );
-    expect(countDistinct(releaseHour!.launch_users)).toBe(1);
+      overview(identity({ ...release, periodKind: "lifetime" }), 0, "lifetime"),
+    ).resolves.toMatchObject({ downloads: 0, applies: 1, failed_launches: 0 });
+    const releaseHour = identity({ ...release, periodKind: "hour" });
+    await expect(overview(releaseHour, hour(T))).resolves.toBeUndefined();
+    await expect(sketch(releaseHour, hour(T))).resolves.toBeUndefined();
     for (const [periodKind, bucket] of [
       ["hour", hour(T)],
       ["day", T - (T % DAY)],
     ] as const) {
       await expect(
         overview(identity({ periodKind }), bucket, periodKind),
-      ).resolves.toMatchObject(counters);
+      ).resolves.toBeUndefined();
       // A channel's active installations come from its usage rows.
       await expect(
         sketch(identity({ periodKind }), bucket, periodKind),
@@ -458,8 +470,8 @@ describe.each(backends)("insights recordEvent on %s", (_name, adapter) => {
     ]);
   });
 
-  it("records an UNCHANGED report as a launch that no event or outcome row keeps", async () => {
-    const { api, db, overview, outcomes, everyEvent, byBundle } = await setup();
+  it("records an UNCHANGED report as a launch that no event, outcome, or release counter keeps", async () => {
+    const { api, db, applies, outcomes, everyEvent, byBundle } = await setup();
     await api.recordEvent(unchanged(1));
 
     await expect(db.findOne("bundle_events", { id: uuid(1) })).resolves.toBe(
@@ -470,9 +482,8 @@ describe.each(backends)("insights recordEvent on %s", (_name, adapter) => {
     ).resolves.toEqual(unchanged(1));
     await expect(outcomes("UNCHANGED", "to:bundle-2")).resolves.toEqual([]);
     await expect(everyEvent()).resolves.toEqual([]);
-    await expect(
-      overview(identity({ periodKind: "day" }), day(T), "day"),
-    ).resolves.toMatchObject({ launches: 1 });
+    // A launch keeps running its bundle: it applies nothing.
+    await expect(applies("release-2")).resolves.toBe(0);
     await expect(
       byBundle("to_bundle_id", "bundle-2", "UNCHANGED"),
     ).resolves.toMatchObject([{ bucket_start_ms: day(T), installations: 1 }]);
@@ -488,7 +499,7 @@ describe.each(backends)("insights recordEvent on %s", (_name, adapter) => {
 
   it("writes nothing for an UNCHANGED report that repeats its head the same UTC day", async () => {
     const calls: string[] = [];
-    const { api, db, overview } = await setup((inner) => ({
+    const { api, db, applies } = await setup((inner) => ({
       ...inner,
       write: async (ops: readonly WriteOp[]) => {
         calls.push("write");
@@ -504,28 +515,25 @@ describe.each(backends)("insights recordEvent on %s", (_name, adapter) => {
     await expect(
       db.findOne("bundle_event_heads", { install_id: "install-1" }),
     ).resolves.toMatchObject({ id: uuid(1), type: "UPDATE_APPLIED" });
-    await expect(
-      overview(identity({ periodKind: "day" }), day(T), "day"),
-    ).resolves.toMatchObject({ launches: 1 });
+    await expect(applies("release-2")).resolves.toBe(1);
 
     // An UNCHANGED report keeps no event row, so a retry that lands the next
     // UTC day is known by the head's id.
     await api.recordEvent(unchanged(4, { received_at_ms: T + DAY }));
+    await expect(
+      db.findOne("bundle_event_heads", { install_id: "install-1" }),
+    ).resolves.toMatchObject({ id: uuid(4), type: "UNCHANGED" });
     calls.length = 0;
     await api.recordEvent(unchanged(4, { received_at_ms: T + 2 * DAY }));
     expect(calls).toEqual([]);
-    await expect(
-      overview(identity({ periodKind: "day" }), day(T + 2 * DAY), "day"),
-    ).resolves.toBeUndefined();
+    // The apply counted once; launches since add nothing.
+    await expect(applies("release-2")).resolves.toBe(1);
   });
 
   it("records an UNCHANGED report again for a new UTC day, bundle, user, or a download's head", async () => {
-    const { api, db, overview } = await setup();
+    const { api, db, applies } = await setup();
     const head = () =>
       db.findOne("bundle_event_heads", { install_id: "install-1" });
-    const launches = async (bucket: number) =>
-      (await overview(identity({ periodKind: "day" }), bucket, "day"))
-        ?.launches;
 
     await api.recordEvent(unchanged(1));
     await api.recordEvent(unchanged(2, { user_id: "user-2" }));
@@ -534,7 +542,6 @@ describe.each(backends)("insights recordEvent on %s", (_name, adapter) => {
       unchanged(3, { to_bundle_id: "bundle-3", to_release_id: "release-3" }),
     );
     await expect(head()).resolves.toMatchObject({ id: uuid(3) });
-    await expect(launches(day(T))).resolves.toBe(3);
 
     // A download's head still runs the bundle it came from.
     await api.recordEvent(
@@ -564,7 +571,9 @@ describe.each(backends)("insights recordEvent on %s", (_name, adapter) => {
       }),
     );
     await expect(head()).resolves.toMatchObject({ id: uuid(6) });
-    await expect(launches(day(T + DAY))).resolves.toBe(1);
+    // Launches, even on a bundle that was downloaded, apply nothing.
+    for (const releaseId of ["release-2", "release-3", "release-4"])
+      await expect(applies(releaseId)).resolves.toBe(0);
   });
 
   it("records an update failure for its target release and channel, and moves no head", async () => {
@@ -618,7 +627,7 @@ describe.each(backends)("insights recordEvent on %s", (_name, adapter) => {
     // breakdown's hourly rows.
     await expect(
       overview(identity({ ...release, periodKind: "lifetime" }), 0, "lifetime"),
-    ).resolves.toMatchObject({ failed_updates: 1, launches: 0 });
+    ).resolves.toMatchObject({ failed_updates: 1, applies: 0 });
     await expect(
       overview(identity({ ...release, periodKind: "hour" }), hour(T)),
     ).resolves.toBeUndefined();
@@ -638,11 +647,12 @@ describe.each(backends)("insights recordEvent on %s", (_name, adapter) => {
       ["hour", hour(T)],
       ["day", day(T)],
     ] as const) {
-      // A failure is no launch, and no counter: the channel's launch is the
-      // apply's.
+      // A failure is no launch, and no counter: the channel's rows count
+      // neither it nor the apply's launch, which its release's lifetime row
+      // counts.
       await expect(
         overview(identity({ periodKind }), bucket, periodKind),
-      ).resolves.toMatchObject({ failed_updates: 0, launches: 1 });
+      ).resolves.toBeUndefined();
       await expect(
         failedUsers(
           identity({ scopeKind: "failure", periodKind }),

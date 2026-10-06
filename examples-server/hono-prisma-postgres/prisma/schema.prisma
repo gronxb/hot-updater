@@ -124,7 +124,6 @@ model bundle_events {
   bundle_ref Json?
   hu_v BigInt @default(0) @map("_v")
   @@id([id])
-  @@index([channel, platform, day, received_at_ms, id], map: "bundle_events_recent")
   @@index([movement_install_id, received_at_ms, id], map: "bundle_events_movementsByInstall")
   @@index([day, received_at_ms, id], map: "bundle_events_byDay")
 }
@@ -162,9 +161,7 @@ model insights_overview {
   bucket_start_ms BigInt
   hu_shard BigInt @map("_shard")
   downloads BigInt
-  launches BigInt
   failed_launches BigInt
-  failed_updates BigInt
   patch_downloads BigInt
   patch_fallbacks BigInt
   hu_v BigInt @default(0) @map("_v")
@@ -175,7 +172,6 @@ model insights_sketches {
   identity String @db.VarChar(32)
   bucket_start_ms BigInt
   hu_shard BigInt @map("_shard")
-  launch_users String?
   activity_users String?
   failed_users String?
   hu_v BigInt @default(0) @map("_v")
@@ -187,9 +183,7 @@ model insights_overview_daily {
   bucket_start_ms BigInt
   hu_shard BigInt @map("_shard")
   downloads BigInt
-  launches BigInt
   failed_launches BigInt
-  failed_updates BigInt
   patch_downloads BigInt
   patch_fallbacks BigInt
   hu_v BigInt @default(0) @map("_v")
@@ -200,7 +194,6 @@ model insights_sketches_daily {
   identity String @db.VarChar(32)
   bucket_start_ms BigInt
   hu_shard BigInt @map("_shard")
-  launch_users String?
   activity_users String?
   failed_users String?
   hu_v BigInt @default(0) @map("_v")
@@ -212,11 +205,11 @@ model insights_overview_lifetime {
   bucket_start_ms BigInt
   hu_shard BigInt @map("_shard")
   downloads BigInt
-  launches BigInt
   failed_launches BigInt
-  failed_updates BigInt
   patch_downloads BigInt
   patch_fallbacks BigInt
+  applies BigInt
+  failed_updates BigInt
   hu_v BigInt @default(0) @map("_v")
   @@id([identity, bucket_start_ms, hu_shard])
 }

@@ -6,8 +6,8 @@ import { PGlite } from "@electric-sql/pglite";
 import { s3Storage } from "@hot-updater/aws";
 import { mockStorage } from "@hot-updater/mock";
 import { createHotUpdater } from "@hot-updater/server";
-import { insights } from "@hot-updater/server/plugins/insights";
 import { kyselyAdapter } from "@hot-updater/server/adapters/kysely";
+import { insights } from "@hot-updater/server/plugins/insights";
 import { Kysely, sql } from "kysely";
 import { PGliteDialect } from "kysely-pglite-dialect";
 
@@ -15,7 +15,8 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // Load .env.hotupdater
 const envFilePath = path.join(__dirname, ".env.hotupdater");
-if (existsSync(envFilePath)) {
+const localProvider = process.env.HOT_UPDATER_E2E_LOCAL_PROVIDER === "1";
+if (!localProvider && existsSync(envFilePath)) {
   process.loadEnvFile(envFilePath);
 }
 
@@ -45,13 +46,27 @@ export const hotUpdater = createHotUpdater({
         ).createReleaseCatalogTestStorage()
       : mockStorage({}),
     s3Storage({
-      region: "auto",
-      endpoint: process.env.R2_ENDPOINT,
+      region: localProvider ? process.env.AWS_REGION : "auto",
+      endpoint: localProvider
+        ? process.env.AWS_S3_ENDPOINT
+        : process.env.R2_ENDPOINT,
       credentials: {
-        accessKeyId: process.env.R2_ACCESS_KEY_ID!,
-        secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
+        accessKeyId: localProvider
+          ? process.env.AWS_ACCESS_KEY_ID!
+          : process.env.R2_ACCESS_KEY_ID!,
+        secretAccessKey: localProvider
+          ? process.env.AWS_SECRET_ACCESS_KEY!
+          : process.env.R2_SECRET_ACCESS_KEY!,
       },
-      bucketName: process.env.R2_BUCKET_NAME!,
+      bucketName: localProvider
+        ? process.env.AWS_S3_METADATA_BUCKET!
+        : process.env.R2_BUCKET_NAME!,
+      ...(localProvider
+        ? {
+            basePath: process.env.HOT_UPDATER_E2E_PROVIDER_NAMESPACE,
+            forcePathStyle: true,
+          }
+        : {}),
       downloadUrlSigningKey:
         process.env.HOT_UPDATER_STORAGE_DOWNLOAD_URL_KEY ??
         "development-storage-download-url-key",

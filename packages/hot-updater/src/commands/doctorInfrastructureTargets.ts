@@ -61,6 +61,7 @@ const getRequiredTarget = ({
 
   return (
     requiredTarget ??
+    targets.find((target) => !isPrerelease(target.version)) ??
     getTargetAt({
       index: 0,
       label: "UPDATE_TARGETS",

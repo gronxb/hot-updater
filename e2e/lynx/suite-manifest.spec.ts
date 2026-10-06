@@ -17,10 +17,7 @@ const repoDir = path.resolve(
   "../..",
 );
 const sharedDefault = JSON.parse(
-  readFileSync(
-    path.join(repoDir, "e2e/detox/default-scenario-names.json"),
-    "utf8",
-  ),
+  readFileSync(path.join(repoDir, "e2e/scenario-names.json"), "utf8"),
 ) as string[];
 
 function runDry(args: readonly string[]) {

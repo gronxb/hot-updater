@@ -172,11 +172,10 @@ const patchCounters = (event: BundleEventRow) =>
 
 /**
  * Counters and sketches for one event: release, channel, and usage rows, with
- * day rollups for channel and usage. Usage rows are written for the event's
- * platform only, since a read for every platform merges the ios and android
- * sketches; a channel's active installations come from its usage rows, so
- * channel rows keep no sketch of their own. A download's patch counters go
- * in the rows that count it.
+ * day rollups for channel and usage. Only usage rows keep a sketch, of active
+ * installations, and only for the event's platform, since a read for every
+ * platform merges the ios and android sketches. A download's patch counters
+ * go in the rows that count it.
  */
 const countEvent = (
   tx: HotUpdaterTransaction<InsightsSchema>,
@@ -201,7 +200,7 @@ const countEvent = (
       };
       const counters: {
         downloads?: number;
-        launches?: number;
+        applies?: number;
         failed_launches?: number;
         patch_downloads?: number;
         patch_fallbacks?: number;
@@ -209,7 +208,7 @@ const countEvent = (
         ...Object.fromEntries(
           [
             ["downloads", delta.downloads],
-            ["launches", delta.launches],
+            ["applies", delta.applies],
             ["failed_launches", delta.failedLaunches],
           ].filter(([, value]) => value !== 0),
         ),
@@ -218,18 +217,16 @@ const countEvent = (
       if (Object.keys(counters).length > 0) {
         tx.aggregate(models.counters, key, counters, { shardBy });
       }
-      const sketches = {
-        ...(delta.launchIdentity === undefined || parts.scopeKind === "channel"
-          ? {}
-          : { launch_users: addDistinct(null, delta.launchIdentity) }),
-        ...(delta.activityIdentity === undefined
-          ? {}
-          : {
-              activity_users: addDistinct(null, delta.activityIdentity),
-            }),
-      };
-      if (models.sketches !== undefined && Object.keys(sketches).length > 0) {
-        tx.aggregate(models.sketches, key, sketches, { shardBy });
+      if (
+        models.sketches !== undefined &&
+        delta.activityIdentity !== undefined
+      ) {
+        tx.aggregate(
+          models.sketches,
+          key,
+          { activity_users: addDistinct(null, delta.activityIdentity) },
+          { shardBy },
+        );
       }
     }
   }

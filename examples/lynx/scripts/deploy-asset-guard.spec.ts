@@ -7,9 +7,9 @@ import { describe, expect, it } from "vitest";
 import {
   type BundleProfile,
   createDeployAssetGuardSource,
-} from "../../../e2e/detox/control-server/deploy-asset-guard.ts";
-import { restoreDeployFixtures } from "../../../e2e/detox/control-server/deploy-fixture-reset.ts";
-import { PAX_LONG_ASSET_REQUIRE_PATH } from "../../../e2e/detox/pax-long-path-fixture.ts";
+} from "../../../e2e/shared/control-server/deploy-asset-guard.ts";
+import { restoreDeployFixtures } from "../../../e2e/shared/control-server/deploy-fixture-reset.ts";
+import { PAX_LONG_ASSET_REQUIRE_PATH } from "../../../e2e/shared/pax-long-path-fixture.ts";
 import { copyE2eFixtures } from "./copy-e2e-fixtures.ts";
 
 const assetProfiles = [

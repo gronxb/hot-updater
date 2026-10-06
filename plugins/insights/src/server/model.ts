@@ -13,6 +13,7 @@ export const createInsightsModel = (api: InsightsApi): InsightsModel =>
     findLatestEvents: api.findLatestEvents,
     countLatestEvents: api.countLatestEvents,
     countEvents: api.countEvents,
+    countEventSeries: api.countEventSeries,
     getReleaseActivity: api.getReleaseActivity,
     getAppUsage: api.getAppUsage,
   });

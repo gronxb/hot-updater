@@ -1,3 +1,5 @@
+import type { UpdateHttpResponse } from "@hot-updater/protocol";
+
 import type {
   BundleEventFailure,
   BundleEventFailureReason,
@@ -19,6 +21,9 @@ export type BundleEventFailureInput = {
   readonly transport?: NonNullable<BundleEventFailure["transport"]>;
   /** The storage origin's error code, such as `ExpiredToken`. */
   readonly originCode?: string;
+  /** Original client error text, bounded to fit the event payload. */
+  readonly errorMessage?: string;
+  readonly errorStack?: string;
   /** Android's `ApplicationExitInfo` reason for the process before this one. */
   readonly previousProcessExit?: string;
 };
@@ -36,6 +41,7 @@ export type CreateBundleEventRequestBase = {
    * server creates the ID, and a retry counts as another report.
    */
   readonly eventId?: string;
+  readonly metadata?: { readonly httpResponse?: InsightsHttpResponse };
   readonly installId: string;
   readonly toBundleId: string;
   readonly userId?: string;
@@ -91,6 +97,8 @@ export type CreateBundleEventRequest =
 export type ActiveInstallationWindow = "24h" | "7d" | "30d";
 
 export type EventHistoryRow = {
+  readonly toReleaseId?: string;
+  readonly sdkVersion?: string;
   readonly id: string;
   readonly installId: string;
   readonly type:
@@ -107,6 +115,7 @@ export type EventHistoryRow = {
   readonly channel: string;
   readonly cohort: string;
   readonly receivedAtMs: number;
+  readonly httpResponse?: InsightsHttpResponse;
   /** `UPDATE_FAILED`: where the update failed and why. */
   readonly failure?: BundleEventFailureInput;
   /** `UPDATE_DOWNLOADED`: how the bundle arrived, when the client said. */
@@ -126,7 +135,12 @@ export type InstallationHistoryRow = EventHistoryRow & {
   readonly fromBundleId: string;
 };
 
+export type InsightsHttpResponse = UpdateHttpResponse & {
+  readonly receivedAtMs: number;
+};
+
 export type InstallationRow = {
+  readonly httpResponse?: InsightsHttpResponse;
   readonly installId: string;
   readonly userId: string | null;
   readonly lastKnownBundleId: string;

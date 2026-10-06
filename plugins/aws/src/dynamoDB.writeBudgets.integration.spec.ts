@@ -319,18 +319,18 @@ const SCENARIO = [
 const BUDGETS: Readonly<
   Record<(typeof SCENARIO)[number]["name"], { items: number; wru: number }>
 > = {
-  "First launch": { items: 15, wru: 40 },
+  "First launch": { items: 10, wru: 28 },
   "Same-hour relaunch": { items: 0, wru: 0 },
   "Next-hour launch": { items: 0, wru: 0 },
-  UPDATE_DOWNLOADED: { items: 19, wru: 42 },
-  UPDATE_APPLIED: { items: 26, wru: 54 },
-  RECOVERED: { items: 30, wru: 66 },
+  UPDATE_DOWNLOADED: { items: 18, wru: 40 },
+  UPDATE_APPLIED: { items: 21, wru: 42 },
+  RECOVERED: { items: 26, wru: 56 },
   "Relaunch after the recovery": { items: 0, wru: 0 },
-  UPDATE_FAILED: { items: 14, wru: 36 },
-  "UPDATE_FAILED (check)": { items: 9, wru: 22 },
-  "Next-day launch": { items: 21, wru: 52 },
-  "Launch the day after": { items: 19, wru: 48 },
-  "RECOVERED with an exit reason": { items: 23, wru: 52 },
+  UPDATE_FAILED: { items: 13, wru: 34 },
+  "UPDATE_FAILED (check)": { items: 8, wru: 20 },
+  "Next-day launch": { items: 16, wru: 40 },
+  "Launch the day after": { items: 14, wru: 36 },
+  "RECOVERED with an exit reason": { items: 19, wru: 42 },
 };
 
 let local: DynamoDBLocal;
@@ -401,7 +401,10 @@ describe("Insights write budgets on DynamoDB Local", () => {
 /**
  * Batched aggregates (PRD decision 59 (5)): the aggregate write units an
  * event costs, transactional against batched, over 60 simulated seconds at a
- * steady rate. Each event is a returning installation's first launch of the
+ * steady rate. Batching is held to a budget per event, not a ratio to the
+ * transactional cost: a ratio would fail when that cost itself falls, as it
+ * did when the daily heads, hourly launches, and release launch sketches
+ * stopped being written. Each event is a returning installation's first launch of the
  * UTC day, or one in 20 a download and one in 20 an apply, across ios and
  * android. Log mode compacts on its 60-second window; memory mode flushes
  * every 15 simulated seconds, as its timer would. With
@@ -414,6 +417,10 @@ describe("Insights write budgets on DynamoDB Local", () => {
 const BATCHED_RATES =
   process.env.HOT_UPDATER_WRITE_BUDGET_RATES === "1" ? [1, 10, 100] : [10];
 const BATCHED_SECONDS = 60;
+/** Aggregate write units an event may cost in log mode at 10/s and above. */
+const LOG_AGGREGATE_WRU = 3.5;
+/** Aggregate write units an event may cost in memory mode at 10/s and above. */
+const MEMORY_AGGREGATE_WRU = 1;
 const MEMORY_WINDOW_MS = 15_000;
 
 type Mode = "transaction" | "log" | "memory";
@@ -608,7 +615,7 @@ const measureBatching = async (mode: Mode, rate: number) => {
 };
 
 describe("Insights write budgets with batched aggregates on DynamoDB Local", () => {
-  it("cuts an event's aggregate write units at least tenfold at 10 events a second and above", async () => {
+  it("keeps an event's batched aggregate write units within budget at 10 events a second and above", async () => {
     const rows = [];
     for (const rate of BATCHED_RATES) {
       const runs = [];
@@ -629,13 +636,18 @@ describe("Insights write budgets with batched aggregates on DynamoDB Local", () 
         (typeof runs)[number],
       ];
       if (rate < 10) continue;
-      expect(log.aggregateWru * 10, `log at ${rate}/s`).toBeLessThanOrEqual(
+      // Log mode pays about 3 units for each event's log put and delete; a
+      // flush from memory, a fraction of one.
+      expect(log.aggregateWru, `log at ${rate}/s`).toBeLessThanOrEqual(
+        LOG_AGGREGATE_WRU,
+      );
+      expect(memory.aggregateWru, `memory at ${rate}/s`).toBeLessThanOrEqual(
+        MEMORY_AGGREGATE_WRU,
+      );
+      // Batching still saves most of what a transaction writes.
+      expect(log.aggregateWru * 5, `log at ${rate}/s`).toBeLessThanOrEqual(
         transaction.aggregateWru,
       );
-      expect(
-        memory.aggregateWru * 10,
-        `memory at ${rate}/s`,
-      ).toBeLessThanOrEqual(transaction.aggregateWru);
     }
     console.table(rows);
   }, 1_800_000);

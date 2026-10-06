@@ -4,15 +4,16 @@ import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 
-import { createControlClient } from "../../detox/control-client.ts";
+import { createControlClient } from "../../shared/control-client.ts";
 import {
-  listDetoxSuiteNames,
-  resolveDetoxSuiteScenarioNames,
-} from "../../detox/scenarios.ts";
+  listSuiteNames,
+  resolveSuiteScenarioNames,
+} from "../../shared/scenarios.ts";
 import {
-  type DetoxPlatform,
-  startDetoxControlServer,
-} from "../../detox/scripts/control-server.ts";
+  buildChildEnv,
+  type E2ePlatform,
+  startControlServer,
+} from "../control-server.ts";
 import { LynxAppDriver } from "../lynx-app-driver.ts";
 import {
   runScenarioBatch,
@@ -35,7 +36,7 @@ type RunOptions = {
   readonly dryRun: boolean;
   readonly help: boolean;
   readonly list: boolean;
-  readonly platforms: readonly DetoxPlatform[];
+  readonly platforms: readonly E2ePlatform[];
   readonly scenarioInputs: readonly string[];
   readonly suiteName: string;
   readonly suiteNameExplicitlySet: boolean;
@@ -53,7 +54,7 @@ function getRequiredArgValue(
   return value;
 }
 
-function resolvePlatforms(value: string): readonly DetoxPlatform[] {
+function resolvePlatforms(value: string): readonly E2ePlatform[] {
   if (value === "all") {
     return supportedPlatforms;
   }
@@ -72,7 +73,7 @@ function parseScenarioEnv(): readonly string[] {
 
 function parseArgs(argv: readonly string[]): RunOptions {
   const scenarioInputs = [...parseScenarioEnv()];
-  let platforms: readonly DetoxPlatform[] = supportedPlatforms;
+  let platforms: readonly E2ePlatform[] = supportedPlatforms;
   let dryRun = false;
   let help = false;
   let list = false;
@@ -150,7 +151,7 @@ function printCatalog(): void {
       "Lynx E2E",
       "",
       "Suites:",
-      ...listDetoxSuiteNames().map((suiteName) => `  - ${suiteName}`),
+      ...listSuiteNames().map((suiteName) => `  - ${suiteName}`),
       "",
       "Default suite order:",
       ...defaultSuite.map((scenario, index) => `  ${index + 1}. ${scenario}`),
@@ -166,7 +167,7 @@ function resolveScenarioNames(options: RunOptions): readonly string[] {
     if (options.suiteName === "default") {
       return readLynxDefaultScenarioNames(repoDir);
     }
-    return resolveDetoxSuiteScenarioNames(options.suiteName);
+    return resolveSuiteScenarioNames(options.suiteName);
   }
 
   const availableScenarios = new Set(listLynxScenarioNames());
@@ -179,7 +180,7 @@ function resolveScenarioNames(options: RunOptions): readonly string[] {
 }
 
 function formatRunPlan(
-  platforms: readonly DetoxPlatform[],
+  platforms: readonly E2ePlatform[],
   scenarios: readonly string[],
 ): string {
   return [
@@ -191,11 +192,11 @@ function formatRunPlan(
   ].join("\n");
 }
 
-function lynxChildEnv(platform: DetoxPlatform): NodeJS.ProcessEnv {
+function lynxChildEnv(platform: E2ePlatform): NodeJS.ProcessEnv {
   const exampleDir =
     process.env.HOT_UPDATER_E2E_ENV_TARGET_DIR ??
     path.join(repoDir, "examples/lynx");
-  return {
+  return buildChildEnv(platform, {
     ...process.env,
     HOT_UPDATER_E2E_ENV_TARGET_DIR: exampleDir,
     HOT_UPDATER_E2E_PLATFORM: platform,
@@ -203,7 +204,7 @@ function lynxChildEnv(platform: DetoxPlatform): NodeJS.ProcessEnv {
       process.env.HOT_UPDATER_E2E_APP_ID ?? "com.hotupdater.lynxexample",
     HOT_UPDATER_E2E_IOS_APP_ID:
       process.env.HOT_UPDATER_E2E_IOS_APP_ID ?? "com.hotupdater.lynxexample",
-  };
+  });
 }
 
 async function executeScenario({
@@ -276,7 +277,7 @@ async function run(options: RunOptions): Promise<number> {
           error: console.error,
           executeScenario,
           log: console.log,
-          startControlServer: startDetoxControlServer,
+          startControlServer: startControlServer,
         },
       ),
     );

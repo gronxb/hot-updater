@@ -22,6 +22,11 @@ export type UpdateFailuresReport = InsightsUpdateFailures & {
   /** Where the period starts, or null since the release's first report. */
   readonly startMs: number | null;
   readonly endMs: number;
+  readonly previous?: {
+    readonly attemptRate: number | null;
+    readonly checkRate: number | null;
+    readonly complete: boolean;
+  };
 };
 
 export function readUpdateFailuresInput(
@@ -122,8 +127,14 @@ export const failureDetailParts = (detail: {
 /** An update failure as one line: where, why, and what else the client knew. */
 export const describeFailure = (
   failure: NonNullable<InsightsEventRow["failure"]>,
-): string =>
-  [
-    `${failureStageLabel(failure.stage)} failed: ${failureReasonLabel(failure.reason)}`,
+): string => {
+  const message =
+    failure.errorMessage ||
+    (failure.reason === "unknown"
+      ? "The client did not report a detailed cause"
+      : failureReasonLabel(failure.reason));
+  return [
+    `${failureStageLabel(failure.stage)} failed: ${message}`,
     ...failureDetailParts(failure),
   ].join(" · ");
+};

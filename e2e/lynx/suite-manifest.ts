@@ -55,7 +55,7 @@ export function readLynxDefaultScenarioNames(
   const readJson = (relativePath: string): unknown =>
     JSON.parse(readFileSync(path.join(repoDir, relativePath), "utf8"));
   return validateLynxScenarioManifest(
-    readJson("e2e/detox/default-scenario-names.json"),
+    readJson("e2e/scenario-names.json"),
     readJson("e2e/lynx/default-scenario-names.json"),
   );
 }

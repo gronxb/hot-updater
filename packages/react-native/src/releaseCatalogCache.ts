@@ -6,6 +6,7 @@ import {
   type ReleaseCatalog,
 } from "@hot-updater/protocol";
 
+import { fetchUpdateResponse, type UpdateRequest } from "./fetchUpdateResponse";
 import { InvalidUpdateResponseError, UpdateHttpError } from "./updateError";
 
 const CACHE_FORMAT_VERSION = "1";
@@ -50,6 +51,7 @@ type FetchReleaseCatalogInput = {
   readonly requestHeaders?: Record<string, string>;
   readonly requestTimeout?: number;
   readonly url: string;
+  readonly onResponse?: UpdateRequest["onResponse"];
 };
 
 const isValidETag = (value: string | null): value is string =>
@@ -113,36 +115,24 @@ export const createReleaseCatalogCachePartition = (
     version: 2,
   });
 
-const fetchCatalogResponse = async (
+const isEmptyCatalogResponse = (response: Response) =>
+  response.status === 404 &&
+  response.headers.get("x-hot-updater-catalog")?.trim().toLowerCase() ===
+    "none";
+
+const fetchCatalogResponse = (
   input: FetchReleaseCatalogInput,
   etag?: string,
-): Promise<Response> => {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(
-    () => controller.abort(),
-    input.requestTimeout ?? 5000,
-  );
-
-  try {
-    const headers = new Headers(input.requestHeaders);
-    headers.set("Accept", "application/json");
-    if (etag === undefined) {
-      headers.delete("If-None-Match");
-    } else {
-      headers.set("If-None-Match", etag);
-    }
-    return await fetch(input.url, {
-      headers,
-      signal: controller.signal,
-    });
-  } catch (error: unknown) {
-    if (error instanceof Error && error.name === "AbortError") {
-      throw new Error("Request timed out");
-    }
-    throw error;
-  } finally {
-    clearTimeout(timeoutId);
-  }
+) => {
+  const headers = new Headers(input.requestHeaders);
+  headers.set("Accept", "application/json");
+  if (etag === undefined) headers.delete("If-None-Match");
+  else headers.set("If-None-Match", etag);
+  return fetchUpdateResponse({
+    ...input,
+    resource: "catalog",
+    requestHeaders: Object.fromEntries(headers.entries()),
+  });
 };
 
 const readValidatedCache = async (
@@ -160,25 +150,20 @@ const readValidatedCache = async (
 };
 
 const consumeSuccessfulResponse = async (
-  response: Response,
+  { response, body }: Awaited<ReturnType<typeof fetchCatalogResponse>>,
   input: FetchReleaseCatalogInput,
   partition: string,
 ): Promise<ReleaseCatalog | null> => {
   // The server marks the 404 of a scope that has no catalog yet: no update,
   // not a failure. Any other 404 is a wrong baseURL or route.
-  if (
-    response.status === 404 &&
-    response.headers.get("x-hot-updater-catalog")?.trim().toLowerCase() ===
-      "none"
-  ) {
+  if (isEmptyCatalogResponse(response)) {
     return null;
   }
   if (response.status !== 200) {
     throw new UpdateHttpError(response.status, response.statusText);
   }
 
-  const body = await response.text();
-  const catalog = parseReleaseCatalog(body, input.expectedScope);
+  const catalog = parseReleaseCatalog(body!, input.expectedScope);
   if (catalog === null) {
     await removeNativeReleaseCatalogCache(partition);
     throw new InvalidUpdateResponseError("Received an invalid Release catalog");
@@ -186,7 +171,7 @@ const consumeSuccessfulResponse = async (
 
   const etag = response.headers.get("etag");
   if (isValidETag(etag)) {
-    const serialized = serializeCache(etag, body);
+    const serialized = serializeCache(etag, body!);
     if (getUtf8ByteLength(serialized) > MAX_RELEASE_CATALOG_CACHE_ENTRY_BYTES) {
       await removeNativeReleaseCatalogCache(partition);
       return catalog;
@@ -216,7 +201,7 @@ export const fetchReleaseCatalogWithCache = async (
   const cached = await readValidatedCache(partition, input.expectedScope);
   const response = await fetchCatalogResponse(input, cached?.etag);
 
-  if (response.status === 304) {
+  if (response.response.status === 304) {
     if (cached !== null) return cached.catalog;
 
     const repairResponse = await fetchCatalogResponse(input);

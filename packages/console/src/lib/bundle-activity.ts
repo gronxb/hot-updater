@@ -10,11 +10,10 @@ export type BundleActivityInput = Pick<
 
 export type BundleActivityReport = {
   readonly downloads: number;
-  /** Each installation once for each UTC day it launched the release. */
-  readonly activeDays: number;
+  /** Apply reports: installations that started running the release. */
+  readonly applied: number;
   readonly failedLaunches: number;
   readonly measuredAtMs: number;
-  readonly coverage: import("@hot-updater/server/plugins/insights").InsightsCoverage;
 };
 
 /** Release activity for bundle rows; mounted only where the console reads it. */

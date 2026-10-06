@@ -1,5 +1,65 @@
 # @hot-updater/server
 
+## 1.0.0-rc.33
+
+### Patch Changes
+
+- 9fe6dfd: Count each release's applies instead of its active days. A release's lifetime counters count its `UPDATE_APPLIED` reports in `applies`, where they counted each installation once for each UTC day it launched the release, and `getReleaseActivity` returns `applies` instead of `launches`. A launch report changes no release or channel counter, and a recovery counts only the crash on the bundle it left, not an apply of the bundle it returned to. The Bundles list and detail show **Applied** instead of **Active days**, and rate known crashes over applied plus known crashes, as Release health does. Hourly and daily counters drop `launches` and `failed_updates`, which no read summed, and a daily launcher costs about 36 DynamoDB write units a day instead of 38.
+
+  The Insights schema moves to 1.4.0 in the 1.0.0 baseline. A server, a Console, and a database on different Insights schemas refuse each other, so migrate the database and upgrade both together. On SQL databases, drop the `launches` and `failed_updates` columns of `insights_overview` and `insights_overview_daily`, and rename `launches` on `insights_overview_lifetime` to `applies`, set to 0 (Supabase prefixes these tables with `hot_updater_v1_`); Drizzle and Prisma projects regenerate their schema with `hot-updater db generate` and migrate it. Then set the `schema.insights` setting to `1.4.0`; DynamoDB, Firestore, and MongoDB need only the setting. Applied counts the apply reports received from then on, since the old counts included days an installation only relaunched.
+
+- Updated dependencies [9fe6dfd]
+  - @hot-updater/plugin-insights@1.0.0-rc.33
+  - @hot-updater/plugin-core@1.0.0-rc.29
+
+## 1.0.0-rc.32
+
+### Patch Changes
+
+- Updated dependencies [384a5b6]
+  - @hot-updater/protocol@1.0.0-rc.29
+  - @hot-updater/plugin-insights@1.0.0-rc.32
+  - @hot-updater/plugin-core@1.0.0-rc.29
+  - @hot-updater/plugin-api-keys@1.0.0-rc.27
+
+## 1.0.0-rc.31
+
+### Patch Changes
+
+- d846556: Rebuild Release health around one question: is a newly deployed bundle taking over, and is it crashing? It follows the two newest bundle deployments of the channel and platform, or a focused release and the one deployed before it, on the card's timeline (hourly for 24h, every six hours for 7d, daily for 30d), with each deployment marked and one color per bundle. Add a bundle from the ten newest deployments, up to four, or remove one; the choice and the tab are kept in the URL. **Adoption** charts the installations that applied each bundle, with its update failures; **Crashes** charts the launches that crashed on each bundle and recovered, with its crash rate, and recommends rolling a bundle back once it crashes for 5% of at least 20 installations that tried it. **Roll back** disables its release, as the bundle details do. A bundle's update failures or crashes open the Failures details on it, and View adoption on a bundle opens Release health on it.
+
+  Remove what the old Release health used: the Bundle share chart and its daily observation heads, the Downloads and Adoption tabs, the metrics row, and the Launch failures tab. Insights drops `getDistributionHistory`, the `bundle_daily_heads` and `insights_distribution_history` tables, the per-report daily head writes, the per-hour release launch sketches, launches on hourly and daily rows (a release keeps its lifetime count), and the unread recent-events index; a repeated launch on the same UTC day writes nothing again, and a daily launcher costs about 38 DynamoDB write units a day instead of 58. `getReleaseActivity` reads lifetime release counts only, without `coverage`. The DynamoDB batching gate holds each event's batched aggregate writes to a budget instead of a ratio to the now cheaper transactional writes. It adds `countEventSeries`, a bundle filter's event counts per interval read from the hourly counts it already keeps. The Insights schema returns to the 1.0.0 baseline, version 1.2.0, without the 1.0.0-rc.30 migrations. Upgrade the Console and the plugin together: a 1.0.0-rc.30 Console cannot read Release health from this plugin. A database already migrated to 1.0.0-rc.30 records Insights 1.3.0, which this server refuses: set its `schema.insights` setting back to `1.2.0`, and on SQL databases drop the `bundle_daily_heads` and `insights_distribution_history` tables.
+
+- Updated dependencies [d846556]
+  - @hot-updater/plugin-insights@1.0.0-rc.31
+  - @hot-updater/plugin-core@1.0.0-rc.28
+
+## 1.0.0-rc.30
+
+### Patch Changes
+
+- Updated dependencies [0c884b7]
+- Updated dependencies [541f0ec]
+  - @hot-updater/plugin-insights@1.0.0-rc.30
+  - @hot-updater/plugin-core@1.0.0-rc.28
+
+## 1.0.0-rc.29
+
+### Patch Changes
+
+- Updated dependencies [80bb792]
+  - @hot-updater/protocol@1.0.0-rc.28
+  - @hot-updater/plugin-insights@1.0.0-rc.29
+  - @hot-updater/plugin-core@1.0.0-rc.28
+  - @hot-updater/plugin-api-keys@1.0.0-rc.27
+
+## 1.0.0-rc.28
+
+### Patch Changes
+
+- Updated dependencies [b412f41]
+  - @hot-updater/plugin-insights@1.0.0-rc.28
+
 ## 1.0.0-rc.27
 
 ### Patch Changes

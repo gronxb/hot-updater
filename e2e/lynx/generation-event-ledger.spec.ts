@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import type { GenerationEventsSnapshot } from "./generation-events";
 import { GenerationEventLedger } from "./generation-event-ledger";
+import type { GenerationEventsSnapshot } from "./generation-events";
 
 const snapshot = (
   first: number,

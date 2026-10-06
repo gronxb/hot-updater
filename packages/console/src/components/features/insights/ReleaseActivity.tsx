@@ -1,6 +1,14 @@
 import { Link } from "@tanstack/react-router";
+import { ChartLine } from "lucide-react";
 
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { buttonVariants } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import type {
@@ -11,6 +19,7 @@ import { useBundleActivityQuery } from "@/lib/bundle-activity";
 import { useConsoleFeature } from "@/lib/console-features-api";
 import { useUpdateFailuresQuery } from "@/lib/insights-api";
 import { failureRate, formatRate } from "@/lib/insights-failures";
+import { adoptionWindow } from "@/lib/insights-search";
 import { cn } from "@/lib/utils";
 
 import type { ReleaseColumn } from "../FeatureSlots";
@@ -18,12 +27,14 @@ import { InsightsInfo } from "./InsightsInfo";
 
 const activityStats = [
   { label: "Downloads", field: "downloads", color: "text-primary/85" },
-  { label: "Active days", field: "activeDays", color: "text-success/85" },
+  { label: "Applied", field: "applied", color: "text-success/85" },
   { label: "Known crashes", field: "failedLaunches", color: "text-warning/85" },
 ] as const;
 
+// As Release health rates crashes: over applies plus crashes, since an
+// installation that crashes may never report its apply.
 const crashRate = (report: BundleActivityReport): string => {
-  const attempts = report.activeDays + report.failedLaunches;
+  const attempts = report.applied + report.failedLaunches;
   return attempts === 0
     ? "—"
     : `${((report.failedLaunches / attempts) * 100).toFixed(2)}%`;
@@ -32,10 +43,10 @@ const crashRate = (report: BundleActivityReport): string => {
 function ReleaseMetricsInfo() {
   return (
     <InsightsInfo label="About release insight metrics">
-      Active days count each installation once for each UTC day it launched this
-      release. Known crashes are reported OTA launch failures that triggered
-      recovery. The rate is known crashes divided by active days plus known
-      crashes.
+      Applied counts apply reports, sent when an installation starts running
+      this release. Known crashes are launches that crashed on it and recovered
+      to the bundle before. The rate is known crashes divided by applied plus
+      known crashes, as in Release health.
     </InsightsInfo>
   );
 }
@@ -128,9 +139,6 @@ export function BundleMovementSummary({
       ) : (
         metrics
       )}
-      {report.coverage.kind === "partial" ? (
-        <span className="text-xs text-muted-foreground">Partial</span>
-      ) : null}
       {variant === "inline" ? <ReleaseMetricsInfo /> : null}
     </div>
   );
@@ -212,6 +220,22 @@ export function BundleInsightsSummary({
         <Separator />
         <BundleDownloadFailures input={input} />
       </CardContent>
+      <CardFooter className="px-4 pb-4">
+        <Link
+          className={buttonVariants({ variant: "outline", size: "sm" })}
+          to="/insights"
+          search={{
+            healthPlatform: input.platform,
+            healthChannel: input.channel,
+            releaseId: input.releaseId,
+            bundleWindow: adoptionWindow(input.releaseId),
+            healthChart: "adoption",
+          }}
+        >
+          <ChartLine aria-hidden="true" data-icon="inline-start" />
+          View adoption
+        </Link>
+      </CardFooter>
     </Card>
   );
 }
@@ -262,7 +286,7 @@ function ReleaseActivityCell({
   );
 }
 
-/** The Bundles page's Insights column: each release's downloads, active days, and crashes. */
+/** The Bundles page's Insights column: each release's downloads, applies, and known crashes. */
 export const releaseActivityColumn: ReleaseColumn = {
   Cell: ReleaseActivityCell,
 };

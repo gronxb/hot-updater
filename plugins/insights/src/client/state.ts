@@ -1,5 +1,7 @@
 import type { HotUpdaterClientStorage } from "@hot-updater/protocol";
 
+import type { InsightsHttpResponse } from "./sender";
+
 const DAY_MS = 24 * 60 * 60 * 1000;
 /** A day's failure keys kept, so a failing app cannot grow its storage. */
 const MAX_FAILURE_KEYS = 32;
@@ -163,6 +165,50 @@ export const createInsightsState = (storage: HotUpdaterClientStorage) => {
         "failures",
         JSON.stringify({ day, keys: [...keys, key].slice(-MAX_FAILURE_KEYS) }),
       );
+    },
+
+    readHttpResponse(
+      channel: string,
+      appVersion: string,
+    ): InsightsHttpResponse | undefined {
+      try {
+        const saved: unknown = JSON.parse(read("httpResponse") ?? "null");
+        if (
+          !isRecord(saved) ||
+          saved.channel !== channel ||
+          saved.appVersion !== appVersion ||
+          !isRecord(saved.response)
+        )
+          return undefined;
+        const response = saved.response;
+        if (
+          (response.resource !== "catalog" &&
+            response.resource !== "artifact") ||
+          typeof response.path !== "string" ||
+          response.path.length > 1_024 ||
+          typeof response.status !== "number" ||
+          !Number.isInteger(response.status) ||
+          response.status < 100 ||
+          response.status > 599 ||
+          !isNullableString(response.body) ||
+          JSON.stringify(response.body).length > 4_096 ||
+          typeof response.bodyTruncated !== "boolean" ||
+          typeof response.receivedAtMs !== "number" ||
+          !Number.isSafeInteger(response.receivedAtMs) ||
+          response.receivedAtMs < 0
+        )
+          return undefined;
+        return response as unknown as InsightsHttpResponse;
+      } catch {
+        return undefined;
+      }
+    },
+    recordHttpResponse(
+      channel: string,
+      appVersion: string,
+      response: InsightsHttpResponse,
+    ) {
+      write("httpResponse", JSON.stringify({ channel, appVersion, response }));
     },
 
     readUserId(): string | null {

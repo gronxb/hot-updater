@@ -101,10 +101,6 @@ const bundleEvents = (days: number) =>
         },
       },
       indexes: {
-        recent: {
-          eq: ["channel", "platform", "day"],
-          sort: ["received_at_ms"],
-        },
         movementsByInstall: {
           eq: ["movement_install_id"],
           sort: ["received_at_ms"],
@@ -175,40 +171,53 @@ const identityFields = {
 } as const;
 const window = { eq: ["identity"], sort: ["bucket_start_ms"] } as const;
 
+/** What a release or channel row counts in every period kind. */
+const WINDOW_COUNTERS = [
+  "downloads",
+  "failed_launches",
+  "patch_downloads",
+  "patch_fallbacks",
+] as const;
+
 /**
- * Counters of one period kind: hourly, daily, or lifetime at bucket 0. A
- * release or channel row counts downloads, launches, and failed launches,
- * and downloads a patch delivered and those that fell back from one. A
- * release's lifetime row counts its failed updates (`failed_updates`), since
- * no breakdown row outlives the raw period; windowed reads sum
- * `insights_failures` instead.
+ * Hourly or daily counters: a release or channel row counts downloads,
+ * launches that crashed and recovered (`failed_launches`), and downloads a
+ * patch delivered and those that fell back from one.
  */
-const counters = (retention?: BucketRetention) =>
+const counters = (retention: BucketRetention) =>
   defineAggregate(identityFields, {
     key: ["identity", "bucket_start_ms"],
-    counters: [
-      "downloads",
-      "launches",
-      "failed_launches",
-      "failed_updates",
-      "patch_downloads",
-      "patch_fallbacks",
-    ],
+    counters: WINDOW_COUNTERS,
     shards: COUNTER_SHARDS,
     batched: true,
     indexes: { window },
-    ...(retention === undefined ? {} : { retention }),
+    retention,
   });
 
 /**
- * Unique-installation sketches of one period kind. Rows of a failure
- * identity (`failure` and `check` scopes) keep only `failed_users`, so a
- * release's launch rows never grow by a failure's registers.
+ * A release's counters since its first report, at bucket 0: the windowed
+ * counters, its applies, which the bundle list reads, and its failed updates
+ * (`failed_updates`), since no breakdown row outlives the raw period; windowed
+ * reads sum `insights_failures` instead.
+ */
+const lifetimeCounters = () =>
+  defineAggregate(identityFields, {
+    key: ["identity", "bucket_start_ms"],
+    counters: [...WINDOW_COUNTERS, "applies", "failed_updates"],
+    shards: COUNTER_SHARDS,
+    batched: true,
+    indexes: { window },
+  });
+
+/**
+ * Unique-installation sketches of one period kind: a usage row's active
+ * installations (`activity_users`), and a `failure` or `check` row's
+ * installations whose update or update check failed (`failed_users`).
  */
 const sketches = (retention: BucketRetention) =>
   defineAggregate(identityFields, {
     key: ["identity", "bucket_start_ms"],
-    distinct: ["launch_users", "activity_users", "failed_users"],
+    distinct: ["activity_users", "failed_users"],
     shards: SKETCH_SHARDS,
     batched: true,
     indexes: { window },
@@ -395,7 +404,7 @@ export const createInsightsSchema = ({
     insights_overview_daily: counters(daily),
     insights_sketches_daily: sketches(daily),
     /** A release's counters since its first event, and its failed installations: kept. */
-    insights_overview_lifetime: counters(),
+    insights_overview_lifetime: lifetimeCounters(),
     insights_sketches_lifetime: lifetimeSketches(),
     insights_distribution: insightsDistribution(daily),
     insights_latest_by_bundle: insightsLatestByBundle(daily),

@@ -1,8 +1,9 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 
 import { ConsoleFeatureUnavailable } from "@/components/ConsoleFeatureUnavailable";
 import { AppUsage } from "@/components/features/insights/AppUsage";
+import { FailureReports } from "@/components/features/insights/FailureReports";
 import { InsightsControls } from "@/components/features/insights/InsightsControls";
 import { InsightsOverview } from "@/components/features/insights/InsightsOverview";
 import { InsightsPageHeader } from "@/components/features/insights/InsightsPageHeader";
@@ -13,10 +14,16 @@ import {
   useInsightsRetention,
   useUpdateFailuresQuery,
 } from "@/lib/insights-api";
-import { getRecoveryReportRpc } from "@/lib/insights-recovery-rpc";
-import { validateInsightsSearch } from "@/lib/insights-search";
+import {
+  comparedBundleIds,
+  validateInsightsSearch,
+} from "@/lib/insights-search";
 import type { AppUsageScope, UsageWindow } from "@/lib/insights-usage";
 import { getAppUsageReportRpc } from "@/lib/insights-usage-rpc";
+import { useReleaseHealth } from "@/lib/release-adoption-api";
+
+/** Where a bundle's crash details start on the page. */
+const CRASH_DETAILS = "recoveries-by-exit-reason";
 
 export const Route = createFileRoute("/insights")({
   beforeLoad: ({ context }) =>
@@ -27,6 +34,7 @@ export const Route = createFileRoute("/insights")({
 });
 
 function InsightsPage() {
+  const queryClient = useQueryClient();
   const search = Route.useSearch();
   const navigate = Route.useNavigate();
   const retention = useInsightsRetention();
@@ -52,10 +60,14 @@ function InsightsPage() {
     queryFn: () => getAppUsageReportRpc({ data: input }),
     staleTime: 30_000,
   });
-  const bundleQuery = useQuery({
-    queryKey: ["insights", "recovery", bundleInput],
-    queryFn: () => getRecoveryReportRpc({ data: bundleInput }),
-    staleTime: 30_000,
+  const chart = search.healthChart ?? "adoption";
+  const health = useReleaseHealth({
+    platform: bundleInput.platform,
+    channel,
+    window: bundleWindow,
+    releaseIds: comparedBundleIds(search.bundles),
+    focusReleaseId: search.releaseId,
+    chart,
   });
   const failuresQuery = useUpdateFailuresQuery(bundleInput);
   return (
@@ -77,6 +89,8 @@ function InsightsPage() {
                   healthPlatform: releaseScope.platform,
                   healthChannel: undefined,
                   releaseId: releaseScope.releaseId,
+                  // Bundles chosen in another scope do not carry over.
+                  bundles: undefined,
                 },
               })
             }
@@ -103,7 +117,33 @@ function InsightsPage() {
           />
           <InsightsOverview
             input={bundleInput}
-            query={bundleQuery}
+            chart={chart}
+            onChartChange={(healthChart) =>
+              void navigate({ search: { ...search, healthChart } })
+            }
+            health={health}
+            onReleasesChange={(ids) =>
+              void navigate({ search: { ...search, bundles: ids?.join(",") } })
+            }
+            onShowCrashes={(releaseId) => {
+              // Focus the failure details on the bundle and keep the compared
+              // bundles as they are, then scroll to its crashes.
+              void Promise.resolve(
+                navigate({
+                  search: {
+                    ...search,
+                    releaseId,
+                    bundles: (health.releases ?? [])
+                      .map(({ release }) => release.releaseId)
+                      .join(","),
+                  },
+                }),
+              ).then(() =>
+                document
+                  .getElementById(CRASH_DETAILS)
+                  ?.scrollIntoView({ block: "start" }),
+              );
+            }}
             onWindowChange={(window) =>
               void navigate({
                 search: {
@@ -112,11 +152,26 @@ function InsightsPage() {
                 },
               })
             }
-            onRefresh={() => void bundleQuery.refetch()}
           />
           <UpdateFailures
             query={failuresQuery}
-            onRefresh={() => void failuresQuery.refetch()}
+            errors={
+              failuresQuery.data ? (
+                <FailureReports
+                  key={JSON.stringify(bundleInput)}
+                  input={{
+                    ...bundleInput,
+                    beforeReceivedAtMs: failuresQuery.data.endMs,
+                  }}
+                />
+              ) : null
+            }
+            onRefresh={() => {
+              void failuresQuery.refetch();
+              void queryClient.invalidateQueries({
+                queryKey: ["insights", "failure-reports"],
+              });
+            }}
           />
         </div>
       </div>

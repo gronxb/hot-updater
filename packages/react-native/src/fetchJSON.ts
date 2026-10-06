@@ -1,37 +1,17 @@
+import { fetchUpdateResponse, type UpdateRequest } from "./fetchUpdateResponse";
 import { UpdateHttpError } from "./updateError";
 
 export class FetchJSONResponseError extends UpdateHttpError {}
 
-export const fetchJSON = async <T>({
-  url,
-  requestHeaders,
-  requestTimeout = 5000,
-}: {
-  url: string;
-  requestHeaders?: Record<string, string>;
-  requestTimeout?: number;
-}): Promise<T> => {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), requestTimeout);
-
-  try {
-    const response = await fetch(url, {
-      headers: {
-        Accept: "application/json",
-        ...requestHeaders,
-      },
-      signal: controller.signal,
-    });
-    if (response.status !== 200) {
-      throw new FetchJSONResponseError(response.status, response.statusText);
-    }
-    return (await response.json()) as T;
-  } catch (error: unknown) {
-    if (error instanceof Error && error.name === "AbortError") {
-      throw new Error("Request timed out");
-    }
-    throw error;
-  } finally {
-    clearTimeout(timeoutId);
+export const fetchJSON = async <T>(
+  input: Omit<UpdateRequest, "resource">,
+): Promise<T> => {
+  const { response, body } = await fetchUpdateResponse({
+    ...input,
+    resource: "artifact",
+  });
+  if (response.status !== 200) {
+    throw new FetchJSONResponseError(response.status, response.statusText);
   }
+  return JSON.parse(body!) as T;
 };

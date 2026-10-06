@@ -100,7 +100,7 @@ The plugin sends `UNCHANGED` at most once a UTC day per installation. A later
 launch or update check that day sends nothing, unless the channel, app
 version, bundle, Release, or user ID changed, or a download or failure report
 reached the server in between. Downloads, applies, and recoveries are not
-limited this way. Each update failure, by stage, reason, and target bundle, is
+limited this way. Each update failure, by stage, reason, target bundle, and original error message, is
 reported at most once a UTC day, and a check that failed because the device was
 offline is not reported. See
 [what the plugin reports](/docs/react-native-api/insights#what-it-reports) for
@@ -129,6 +129,54 @@ The Console summarizes these reports in **App usage** and **Release health**.
 Use an installation's event history to check whether a reported download was
 followed by an apply or recovery report. A download count does not tell you how
 many installations are still waiting to apply it.
+
+## Investigate update failures
+
+In **Update failures**, compare the attempt and check failure rates with the
+previous period of the same length. Changes are percentage points; unavailable
+or partial previous data is not treated as zero. Check failures use affected
+installations over active installations, while attempt failures use failed
+reports over failed reports plus completed downloads.
+
+**Errors to investigate** groups reports by their exact original message and
+reported stage, reason, resource, HTTP status, origin code, and transport.
+Select a message to inspect its stack, app and SDK versions, bundle, and
+installation history. Select another occurrence to inspect that report's
+context, or use **Copy report** to share its original fields for debugging.
+
+These groups count only loaded raw reports, not the period's aggregate totals.
+The Console reviews up to 500 recent events per request and offers **Load older
+events** while more remain. The raw-history start is shown, respects retention,
+and never extends beyond 90 days. The app also deduplicates daily failures, so
+report counts are not the number of every exception thrown on devices.
+
+Update the app's Insights plugin, server, and Console to collect and inspect
+original messages and stacks. Existing reports that lack these fields cannot
+recover the original cause; the Console labels those missing diagnostics.
+This addition uses existing event metadata and needs no database migration.
+
+## Inspect HTTP responses
+
+Existing lifecycle reports can include the most recent catalog or artifact API
+response, including successful, cached, and failed responses. In **All events**,
+installation history, or an installation's latest report, select its HTTP status
+to inspect the request path, original response text, and response timestamp.
+Error investigation also shows the server response beside the client error.
+
+The client keeps one bounded response snapshot locally, scoped to the app version
+and channel, and attaches it only when an existing report is sent. Response
+collection adds no requests, timers, or event records, and does not bypass launch
+or failure deduplication. If the launch report was already sent before the update
+check, that check's response appears on the next eligible report. The response
+timestamp distinguishes that earlier response from the report's receipt time.
+This is a diagnostic snapshot, not a complete request history.
+
+Bodies are capped at 4 KiB of JSON-encoded text and marked when truncated. Empty
+bodies and bodies that could not be read have different labels. Request headers
+and URL query parameters are omitted. Native binary file downloads and Insights'
+own reporting requests are not captured. Older servers ignore the extra metadata;
+upgrade the server and Console to store and inspect it. No database migration is
+required.
 
 ## How the server accepts reports
 
@@ -232,12 +280,15 @@ it reads Insights depends on its `database`:
   admin handler. App usage, Release health, and bundle activity need a direct
   database configuration.
 
-The Bundles list and detail show lifetime **Downloads**, **Active days**, and
+The Bundles list and detail show lifetime **Downloads**, **Applied**, and
 **Known crashes** for each Release ID. These count received download reports,
-each installation once for each UTC day it launched the release, and failed OTA
-launch reports. Known crashes are launch failures that triggered recovery.
-Their rate is known crashes divided by active days plus known crashes. Select
-the summary to open Release health for that ID. The bundle detail also shows
+apply reports, sent when an installation starts running the release, and
+launches that crashed on the release and recovered to the bundle before it.
+Their rate is known crashes divided by applied plus known crashes, as in
+Release health. Select
+the summary, or **View adoption** in the bundle detail, to open
+[Release health](#release-health) on that release and the one deployed before
+it. The bundle detail also shows
 **Download failures** since the release's first report, with their rate; see
 [Update failures](#update-failures).
 
@@ -247,8 +298,9 @@ and **7d**. Each card has its own **24h**, **7d**, or **30d** period selector,
 and App usage also offers **12m**.
 
 Choose a **Channel** for both cards. **Usage platform** and **App version**
-filter App usage; **Health platform** and the optional **Release ID** filter
-Release health. Choose **Apply filters** to update the reports.
+filter App usage; **Health platform** filters Release health and Update
+failures, and the optional **Release ID** focuses both on one release. Choose
+**Apply filters** to update the reports.
 
 App usage shows one metric for the selected period: **DAU** for the last 24
 hours, **WAU** for the last 7 days, **MAU** for the last 30 days, or **YAU** for
@@ -277,17 +329,9 @@ Period and filter selections survive navigation back to the overview.
 
 ![Bundle distribution by app version with sample data](/docs/console/insights-distribution.png)
 
-**Release health** shows **Active installations**, **Active days**, **Failed
-launches**, and **Crash rate** for the selected channel, health platform, and
-period. Leave **Release ID** empty to include the whole scope, or enter one ID
-to inspect that release. **Active installations** estimates the distinct
-installations that reported in the scope, or that launched the selected
-release. Launches count as daily active installations: **Active days** count
-each installation once for each UTC day it launched, and once more on a day an
-update applies or recovers. **Crash rate** is reported OTA launch failures
-divided by active days plus failed launches in the same scope and period. The
-chart shows daily active installations and failed launches. These period
-totals are separate from the lifetime counters in the Bundles list and detail.
+**Release health** follows bundle deployments after they ship: whether
+installations apply them, and whether they crash. See
+[Release health](#release-health).
 
 Open **All events** in the header, or **Event history** on Release health, to
 browse downloads, applies, recoveries, and update failures from newest to
@@ -304,9 +348,7 @@ default, now) when `sinceMs` is left out, and answers `400` for a longer
 range. The server also counts reports per day, so a list skips quiet days
 instead of reading each one.
 
-These counts reflect received reports, not the full installed population.
-Release health includes reports without a known Release ID when no ID filter
-is set; selecting an ID limits it to reports attributed to that release. Every
+These counts reflect received reports, not the full installed population. Every
 overview period ends with the current UTC hour, so a report counts as soon as
 the server records it, and a chart's last interval is still filling. The Console reads
 hourly and daily totals that the server updates as it records each report; it
@@ -316,8 +358,7 @@ read applies pending batches first. A Console that cannot write to the database,
 such as one with read-only credentials, shows totals that can leave out up to
 one batching window of the latest reports, a minute by default. DAU, WAU, MAU, active users per interval, and active
 installations are estimates from HyperLogLog sketches, typically within about
-3%, and show with **≈**. Report counts, active days, and distributions are
-exact.
+3%, and show with **≈**. Report counts and distributions are exact.
 
 ## Update failures
 
@@ -354,12 +395,15 @@ Release ID, and period:
   fell back to the changed files or the full archive.
 - Without a Release ID, **Failed checks** counts failed update checks, and
   **Check failure rate** divides the installations with one by the channel's
-  active installations. A check a device could not send while offline is not
-  reported.
+  active installations. A check that gets no response, because the device is
+  offline or the request timed out or was cancelled, is not reported.
 - **Failures by stage and reason** lists each stage and reason with its share;
   expand one to see its HTTP statuses, origin codes, transports, and resources.
-- **Recoveries by exit reason** splits failed launches by the reasons Android
+- **Crashes by exit reason** splits crash recoveries by the reasons Android
   reported; **Not reported** covers iOS and older Android.
+
+Release health opens this card on one bundle: select a bundle's crashes in
+**Crashes**.
 
 The bundle detail's **Download failures** counts the release's failed
 downloads and installs since its first report, with the same rate. On a
@@ -442,26 +486,26 @@ when its totals are written in that transaction, as with
 
 | Report | Items | WRU |
 | --- | --- | --- |
-| First launch of a new installation | 15 | 40 |
+| First launch of a new installation | 10 | 28 |
 | A later launch the same UTC day, on the same bundle | 0 | 0 |
-| First launch of a later UTC day | 19 | 48 |
-| `UPDATE_DOWNLOADED` | 19 | 42 |
-| `UPDATE_APPLIED` | 26 | 54 |
-| `RECOVERED` | 30 | 66 |
-| `UPDATE_FAILED` for a download or install | 14 | 36 |
-| `UPDATE_FAILED` for an update check | 9 | 22 |
+| First launch of a later UTC day | 14 | 36 |
+| `UPDATE_DOWNLOADED` | 18 | 40 |
+| `UPDATE_APPLIED` | 21 | 42 |
+| `RECOVERED` | 26 | 56 |
+| `UPDATE_FAILED` for a download or install | 13 | 34 |
+| `UPDATE_FAILED` for an update check | 8 | 20 |
 
-A first launch the day after an apply or a recovery takes 21 items and 52 WRU,
+A first launch the day after an apply or a recovery takes 16 items and 40 WRU,
 since it also moves the update's latest-report rows. A recovery that carries
 Android's exit reason writes one item more, and a download's patch counters
 share the items that count it. An update failure moves no latest-report rows.
-Up to five items of a report are HyperLogLog sketches of about 1 KB, at 4 WRU
+Up to four items of a report are HyperLogLog sketches of about 1 KB, at 4 WRU
 apiece; every other item takes 2. A download, apply, recovery, or update
 failure stores its event with its index copies; a launch stores none. Latest-report gauges count each installation in
 the UTC day of its latest report, so they move only when that day or the
 installation's bundle changes. An installation that launches every day
-without updating sends one report and costs about 48 WRU a day, however often
-it launches: 10,000 such installations write about 480,000 WRU a day. On
+without updating sends one report and costs about 36 WRU a day, however often
+it launches: 10,000 such installations write about 360,000 WRU a day. On
 Firestore each item is one document write; SQL databases keep indexes
 themselves, so they write fewer rows.
 
@@ -478,16 +522,53 @@ launches of the day, with one report in ten a download or an apply:
 
 | Reports per second | WRU per report, transactional | Log (default) | Memory |
 | --- | --- | --- | --- |
-| 1 | 49.6 | 11.1 | 12.7 |
-| 10 | 46.4 | 8.4 | 5.8 |
-| 100 | 39.7 | 8.2 | 5.1 |
+| 1 | 38.1 | 10.5 | 10.8 |
+| 10 | 35.5 | 8.1 | 5.5 |
+| 100 | 29.9 | 8.0 | 4.9 |
 
 Each report's own items take 5 WRU of these. The rest is its totals, which fall
-from 35–45 WRU to about 3 WRU in log mode at 10 or more reports per second.
+from 25–33 WRU to about 3 WRU in log mode at 10 or more reports per second.
 See [DynamoDB](/docs/database-adapters/aws#batched-insights-totals) and
 [Firestore](/docs/database-adapters/firestore#batched-insights-totals).
 
 The managed AWS table caps writes at 100 WRU per second. With batching, that is
-about 12 reports per second; with totals in each transaction, about two first
-launches of a day per second. A report the table throttles answers `503`, and
+about 12 reports per second; with totals in each transaction, almost three
+first launches of a day per second. A report the table throttles answers `503`, and
 the plugin sends it again.
+
+## Release health
+
+Release health follows bundle deployments of a channel and health platform
+after they ship, on the card's timeline: hourly for **24h**, every six hours
+for **7d**, and daily for **30d**. It starts with the two newest bundle
+deployments; with a **Release ID**, it starts with that release and the one
+deployed before it. Remove a bundle with its row's **×**, or choose **Add a
+bundle** from the ten newest deployments; up to four bundles compare at once,
+and **Show the newest 2** returns to the default. Each bundle is named by its
+ID, as on the Bundles page, and keeps one color in both tabs; a vertical line
+marks its deployment, and hovering or focusing its row highlights its line. Each point counts the interval that ends there, so
+a bundle's line starts after its deployment. The bundles and the open tab are kept in the page
+URL. Rollbacks to the built-in bundle are not listed, since nothing applies
+them.
+
+**Adoption** counts the installations that applied each bundle in each
+interval, from their `UPDATE_APPLIED` reports. After a new bundle is deployed,
+its line rises and the bundle it replaced stops being applied; a rollout to
+part of the installations keeps both. Its table shows each bundle's applies
+in the period; [Update failures](#update-failures) has the failed updates.
+
+**Crashes** counts the launches that crashed on each bundle and recovered to
+the bundle before, from their `RECOVERED` reports. Its table shows each
+bundle's crashes and **Crash rate**: crashes divided by applies plus crashes,
+since an installation that crashes may never report the apply. When a bundle
+crashes for **5%** of the installations that tried it, once at least 20 did,
+Release health recommends rolling it back. **Roll back** disables its release,
+as its bundle details do, so installations running it return to the previous
+enabled bundle on their next update check; enable it again there to undo.
+
+Applies and crashes count reports, not distinct installations. Release health
+reads the hourly counts the server keeps for event lists, one bundle and
+report type at a time, so adding a bundle reads only that bundle; it needs no
+database migration.
+
+![Release health comparing a new bundle with the one it replaced, with sample data](/docs/console/insights-release-health.jpg)

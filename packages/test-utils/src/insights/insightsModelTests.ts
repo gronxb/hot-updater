@@ -584,7 +584,7 @@ export const registerInsightsModelTests = (
       ).resolves.toBe(0);
     });
 
-    it("maintains idempotent release, scope, usage, and latest-distribution summaries", async () => {
+    it("maintains idempotent release, event series, usage, and latest-distribution summaries", async () => {
       const model = state.getDatabase();
       const releaseA = "00000000-0000-7000-8000-000000008001";
       const releaseB = "00000000-0000-7000-8000-000000008002";
@@ -626,20 +626,44 @@ export const registerInsightsModelTests = (
       const lifetime = await model.getReleaseActivity({
         releases,
       });
+      // Two installations applied B, and its repeated report counts once;
+      // the recovery back to A crashed on B and applies nothing.
       expect(lifetime.data.map(({ metrics }) => metrics)).toEqual([
-        { downloads: 0, launches: 1, failedLaunches: 0 },
-        { downloads: 1, launches: 2, failedLaunches: 1 },
+        { downloads: 0, applies: 0, failedLaunches: 0 },
+        { downloads: 1, applies: 2, failedLaunches: 1 },
       ]);
-      const scope = await model.getReleaseActivity({
-        scope: { platform: "ios", channel: "production" },
-        timeRange: { start: 0, end: 3_600_000 },
-      });
-      expect(scope.data[0]?.metrics).toMatchObject({
-        downloads: 1,
-        launches: 3,
-        failedLaunches: 1,
-        uniqueUsers: 2,
-      });
+      // A bundle filter's stored events in each hour, every hour present:
+      // the repeated apply counts once.
+      const hourly = (filter: InsightsBundleEventFilter) =>
+        model.countEventSeries({
+          filter,
+          timeRange: { start: 0, end: 3 * 3_600_000 },
+          intervalMs: 3_600_000,
+        });
+      const points = (...counts: number[]) =>
+        counts.map((events, index) => ({
+          startMs: index * 3_600_000,
+          events,
+        }));
+      const scope = { platform: "ios", channel: "production" } as const;
+      await expectInsightsIndex(
+        () =>
+          hourly({
+            ...scope,
+            type: "UPDATE_APPLIED",
+            toBundleId: base.to_bundle_id,
+          }),
+        points(2, 0, 0),
+      );
+      await expectInsightsIndex(
+        () =>
+          hourly({
+            ...scope,
+            type: "RECOVERED",
+            fromBundleId: base.from_bundle_id,
+          }),
+        points(1, 0, 0),
+      );
       const usage = await model.getAppUsage({
         channel: "production",
         platform: "all",

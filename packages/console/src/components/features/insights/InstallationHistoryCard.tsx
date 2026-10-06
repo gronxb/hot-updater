@@ -34,6 +34,7 @@ import {
   EventBundleTransition,
   EventTimestamp,
   EventTypeDetails,
+  HttpResponseDetails,
   useInsightsTimeFormat,
 } from "./EventDetails";
 import { EventHistoryList } from "./EventHistoryList";
@@ -181,6 +182,11 @@ export function InstallationHistoryCard({
                   </div>
                 ) : null}
               </dl>
+              {selectedEvent.httpResponse ? (
+                <div className="mt-4">
+                  <HttpResponseDetails event={selectedEvent} />
+                </div>
+              ) : null}
             </section>
             <Separator />
           </>

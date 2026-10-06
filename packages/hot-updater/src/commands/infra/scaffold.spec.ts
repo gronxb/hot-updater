@@ -5,6 +5,8 @@ import path from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
+import { INFRASTRUCTURE_UPDATES } from "../infrastructureUpdates";
+
 const cliPath = path.resolve(import.meta.dirname, "../../../dist/index.mjs");
 let cwd: string;
 const json = async (file: string) => JSON.parse(await readFile(file, "utf8"));
@@ -53,10 +55,16 @@ describe("public infrastructure scaffolding", () => {
       expect(await readFile(scaffold.upgradeGuide, "utf8")).toContain(
         "./1.0.0.md",
       );
-      expect(scaffold.upgradeFiles[0]).toMatchObject({ version: "1.0.0" });
-      expect(await readFile(scaffold.upgradeFiles[0].path, "utf8")).toContain(
-        "# 1.0.0",
-      );
+      expect(
+        scaffold.upgradeFiles.map(
+          ({ version }: { version: string }) => version,
+        ),
+      ).toEqual(INFRASTRUCTURE_UPDATES.map(({ version }) => version));
+      for (const file of scaffold.upgradeFiles) {
+        expect(await readFile(file.path, "utf8")).toContain(
+          `# ${file.version}`,
+        );
+      }
       for (const operation of ["setup", "upgrade"]) {
         const agentResult = run(
           "agent",

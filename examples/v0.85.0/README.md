@@ -102,7 +102,7 @@ The Metro and Re.Pack configs use Node's built-in environment loader to read `.e
 (or `HOT_UPDATER_E2E_ENV_TARGET_PATH`) and generates `src/e2eBuildConfig.js`.
 Only the public app URL, runtime-config URL and client API key are included.
 Provider credentials are never copied into this file. Restart the bundler after
-changing these settings. Detox launch arguments override the bundled URLs.
+changing these settings. Native launch arguments override the bundled URLs.
 
 This build configuration supports the E2E test harness and manual recovery
 launches. For application setup, configure the public update server URL

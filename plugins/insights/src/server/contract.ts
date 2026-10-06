@@ -307,33 +307,68 @@ export const createValidatedInsightsModel = (
       invalidQuery();
     return validateCount(await model.countEvents(input));
   },
+  async countEventSeries(input) {
+    if (
+      !isRecord(input) ||
+      !hasOnlyKeys(input, ["filter", "timeRange", "intervalMs"]) ||
+      !isBundleFilter(input.filter) ||
+      !isTimeRange(input.timeRange) ||
+      !isTimestamp(input.intervalMs)
+    )
+      invalidQuery();
+    const { start, end } = input.timeRange;
+    const { intervalMs } = input;
+    if (
+      intervalMs === 0 ||
+      intervalMs % 3_600_000 !== 0 ||
+      start % 3_600_000 !== 0 ||
+      (end - start) % intervalMs !== 0 ||
+      // At most 90 days, like an event list's range: a literal, since
+      // provider.ts, which defines that range, imports this module.
+      end - start > 90 * 86_400_000
+    )
+      invalidQuery();
+    const points = await model.countEventSeries(input);
+    if (
+      !Array.isArray(points) ||
+      points.length !== (end - start) / intervalMs ||
+      points.some(
+        (point, index) =>
+          !isRecord(point) ||
+          !hasOnlyKeys(point, ["startMs", "events"]) ||
+          point.startMs !== start + index * intervalMs ||
+          !isTimestamp(point.events),
+      )
+    )
+      invalidResult();
+    return points;
+  },
   async getReleaseActivity(input) {
     if (
       !isRecord(input) ||
-      !hasOnlyKeys(input, ["releases", "scope", "timeRange"])
-    ) {
+      !hasOnlyKeys(input, ["releases"]) ||
+      !Array.isArray(input.releases) ||
+      input.releases.length < 1 ||
+      input.releases.length > 100 ||
+      !input.releases.every(isReleaseReference)
+    )
       invalidQuery();
-    }
-    const releases = input.releases;
-    const scope = input.scope;
-    const timeRange = input.timeRange;
-    const releaseQuery =
-      Array.isArray(releases) &&
-      releases.length > 0 &&
-      releases.length <= 100 &&
-      releases.every(isReleaseReference) &&
-      scope === undefined &&
-      (timeRange === undefined || isTimeRange(timeRange));
-    const scopeQuery =
-      releases === undefined &&
-      isRecord(scope) &&
-      hasOnlyKeys(scope, ["platform", "channel"]) &&
-      hasScope(scope) &&
-      isTimeRange(timeRange);
-    if (!releaseQuery && !scopeQuery) invalidQuery();
     const result = await model.getReleaseActivity(input);
-    validateAggregateResult(result);
-    if (!Array.isArray(result.data)) invalidResult();
+    if (
+      !isRecord(result) ||
+      !isTimestamp(result.measuredAtMs) ||
+      !Array.isArray(result.data) ||
+      result.data.some(
+        (item) =>
+          !isRecord(item) ||
+          !isReleaseReference(item.release) ||
+          !isRecord(item.metrics) ||
+          !isTimestamp(item.metrics.downloads) ||
+          !isTimestamp(item.metrics.applies) ||
+          !isTimestamp(item.metrics.failedLaunches),
+      )
+    )
+      invalidResult();
     return result;
   },
   async getAppUsage(input) {

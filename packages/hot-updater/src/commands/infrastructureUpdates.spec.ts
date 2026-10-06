@@ -23,7 +23,9 @@ describe("infrastructure upgrade requirements", () => {
   });
 
   it("links to the v0-to-v1 guide preserving cutover and provider reuse boundaries", async () => {
-    const first = (await readUpdates())[0]!;
+    const first = (await readUpdates()).find(
+      ({ version }) => version === "1.0.0",
+    )!;
     expect(first.version).toBe("1.0.0");
     expect(first.content).toContain(
       "https://hot-updater.dev/docs/guides/upgrade-to-v1",

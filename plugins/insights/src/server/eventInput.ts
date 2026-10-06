@@ -2,6 +2,7 @@ import { createUUIDv7, isUUIDv7 } from "@hot-updater/plugin-core";
 
 import type {
   BundleEventFailureInput,
+  InsightsHttpResponse,
   CreateBundleEventRequest,
   CreateBundleEventRequestBase,
 } from "./domain";
@@ -126,6 +127,15 @@ function readFailure(value: unknown): BundleEventFailureInput {
   const failure = isRecord(value) ? value : {};
   const httpStatus = failure.httpStatus;
   const originCode = readCode(failure.originCode);
+  const errorMessage =
+    typeof failure.errorMessage === "string" &&
+    failure.errorMessage.length <= 2_048
+      ? failure.errorMessage
+      : undefined;
+  const errorStack =
+    typeof failure.errorStack === "string" && failure.errorStack.length <= 4_096
+      ? failure.errorStack
+      : undefined;
   const previousProcessExit = readCode(failure.previousProcessExit);
   return {
     stage: oneOf(STAGES, failure.stage),
@@ -142,7 +152,37 @@ function readFailure(value: unknown): BundleEventFailureInput {
       ? {}
       : { transport: oneOf(TRANSPORTS, failure.transport) }),
     ...(originCode === undefined ? {} : { originCode }),
+    ...(errorMessage === undefined ? {} : { errorMessage }),
+    ...(errorStack === undefined ? {} : { errorStack }),
     ...(previousProcessExit === undefined ? {} : { previousProcessExit }),
+  };
+}
+
+function readHttpResponse(value: unknown): InsightsHttpResponse {
+  if (
+    !isRecord(value) ||
+    (value.resource !== "catalog" && value.resource !== "artifact") ||
+    typeof value.path !== "string" ||
+    value.path.length > 1_024 ||
+    !Number.isSafeInteger(value.status) ||
+    (value.status as number) < 100 ||
+    (value.status as number) > 599 ||
+    (value.body !== null &&
+      (typeof value.body !== "string" ||
+        new TextEncoder().encode(JSON.stringify(value.body)).byteLength >
+          4_096)) ||
+    typeof value.bodyTruncated !== "boolean" ||
+    !Number.isSafeInteger(value.receivedAtMs) ||
+    (value.receivedAtMs as number) < 0
+  )
+    throw new InsightsBadRequestError("Invalid HTTP response details");
+  return {
+    resource: value.resource,
+    path: value.path,
+    status: value.status as number,
+    body: value.body as string | null,
+    bodyTruncated: value.bodyTruncated,
+    receivedAtMs: value.receivedAtMs as number,
   };
 }
 
@@ -197,7 +237,13 @@ function requireEvent(payload: unknown): CreateBundleEventRequest {
     throw new InsightsBadRequestError("Invalid event field: platform");
   }
   const eventId = readEventId(payload);
+  const metadata = readMetadata(payload);
+  const httpMetadata =
+    metadata.httpResponse === undefined
+      ? {}
+      : { httpResponse: readHttpResponse(metadata.httpResponse) };
   const base: CreateBundleEventRequestBase = {
+    ...(metadata.httpResponse === undefined ? {} : { metadata: httpMetadata }),
     ...(eventId === undefined ? {} : { eventId }),
     installId: requireIdentityField(payload, "installId"),
     toBundleId: requireStringField(payload, "toBundleId"),
@@ -228,11 +274,11 @@ function requireEvent(payload: unknown): CreateBundleEventRequest {
       updateStrategy,
     } as const;
   };
-  const metadata = readMetadata(payload);
   switch (type) {
     case "UPDATE_DOWNLOADED": {
       const delivery = metadata.delivery;
       const read = {
+        ...httpMetadata,
         ...(delivery == null ? {} : { delivery: oneOf(DELIVERIES, delivery) }),
         ...(metadata.patchFallback === true
           ? { patchFallback: true as const }
@@ -253,14 +299,14 @@ function requireEvent(payload: unknown): CreateBundleEventRequest {
         type,
         ...(previousProcessExit === undefined
           ? {}
-          : { metadata: { previousProcessExit } }),
+          : { metadata: { ...httpMetadata, previousProcessExit } }),
       };
     }
     case "UPDATE_FAILED":
       return {
         ...movement(),
         type,
-        metadata: { failure: readFailure(metadata.failure) },
+        metadata: { ...httpMetadata, failure: readFailure(metadata.failure) },
       };
     case "UNCHANGED":
       if (payload.fromBundleId !== null || payload.updateStrategy !== null) {
@@ -301,7 +347,20 @@ export function createBundleEventRow(
     to_release_id: input.toReleaseId,
     user_id: input.userId ?? null,
   };
+  const response = input.metadata?.httpResponse;
   const metadata = {
+    ...(response
+      ? {
+          http_response: {
+            resource: response.resource,
+            path: response.path,
+            status: response.status,
+            body: response.body,
+            body_truncated: response.bodyTruncated,
+            received_at_ms: response.receivedAtMs,
+          },
+        }
+      : {}),
     cohort: input.cohort,
     fingerprint_hash: input.fingerprintHash,
     sdk_version: input.sdkVersion ?? null,
@@ -351,6 +410,12 @@ export function createBundleEventRow(
           failure: {
             stage: failure.stage,
             reason: failure.reason,
+            ...(failure.errorMessage === undefined
+              ? {}
+              : { error_message: failure.errorMessage }),
+            ...(failure.errorStack === undefined
+              ? {}
+              : { error_stack: failure.errorStack }),
             ...(failure.resource === undefined
               ? {}
               : { resource: failure.resource }),

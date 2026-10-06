@@ -115,6 +115,32 @@ describe("UpdateFailures", () => {
     expect(row.closest("details")?.open).toBe(false);
   });
 
+  it("shows a rising failure rate in percentage points and keeps investigation immediately below it", () => {
+    render(
+      <UpdateFailures
+        query={query({
+          ...report,
+          previous: { attemptRate: 0.1, checkRate: null, complete: true },
+        })}
+        onRefresh={() => {}}
+        errors={
+          <section aria-label="Error investigation">Original errors</section>
+        }
+      />,
+    );
+    expect(screen.getByText("↑ +20.77 pp vs previous period")).toBeDefined();
+    const investigation = screen.getByRole("region", {
+      name: "Error investigation",
+    });
+    const breakdown = screen.getByRole("table", {
+      name: "Failures by stage and reason",
+    });
+    expect(
+      investigation.compareDocumentPosition(breakdown) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
   it("shows a channel's failed checks against its active installations", () => {
     render(
       <UpdateFailures
@@ -140,9 +166,7 @@ describe("UpdateFailures", () => {
     expect(
       within(card).getByText("No update failures in this period."),
     ).toBeDefined();
-    expect(
-      within(card).getByText("No recoveries in this period."),
-    ).toBeDefined();
+    expect(within(card).getByText("No crashes in this period.")).toBeDefined();
   });
 
   it("keeps check-only failures separate from successful updates and unavailable patch rates", () => {

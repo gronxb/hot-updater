@@ -6,8 +6,10 @@ import {
   type HotUpdaterClientPlugin,
   type UpdateCheckResult,
   type UpdateError,
+  type UpdateHttpResponse,
 } from "@hot-updater/protocol";
 
+import { boundedText, readErrorDetails } from "./errorDetails";
 import { createKeyedUUIDv7, createUUIDv7 } from "./eventId";
 import {
   createInsightsEventSender,
@@ -118,8 +120,12 @@ export const insights = (options: InsightsOptions = {}): InsightsPlugin => {
     const now = context.now();
     const installId = context.installId;
     const userId = state.readUserId();
+    const response = state.readHttpResponse(movement.channel, appVersion);
     const body: InsightsEventBody = {
       ...movement,
+      ...(response
+        ? { metadata: { ...movement.metadata, httpResponse: response } }
+        : {}),
       eventId: eventId?.(now, installId) ?? createUUIDv7(),
       installId,
       ...(userId === null ? {} : { userId }),
@@ -260,7 +266,13 @@ export const insights = (options: InsightsOptions = {}): InsightsPlugin => {
     // and its report would not arrive either.
     if (error.stage === "check" && error.reason === "network") return;
     const targetBundleId = error.targetBundleId ?? error.bundleId;
-    const failureKey = [error.stage, error.reason, targetBundleId].join(" ");
+    const details = readErrorDetails(error.cause);
+    const failureKey = JSON.stringify([
+      error.stage,
+      error.reason,
+      targetBundleId,
+      details.errorMessage ?? null,
+    ]);
     const event = createEvent(
       {
         type: "UPDATE_FAILED",
@@ -274,6 +286,7 @@ export const insights = (options: InsightsOptions = {}): InsightsPlugin => {
           failure: {
             stage: error.stage,
             reason: error.reason,
+            ...details,
             ...(error.resource === undefined
               ? {}
               : { resource: error.resource }),
@@ -301,6 +314,21 @@ export const insights = (options: InsightsOptions = {}): InsightsPlugin => {
         ),
     );
     enqueue(event === null ? null : { ...event, failureKey });
+  };
+
+  const onHttpResponse = (response: UpdateHttpResponse) => {
+    if (context === null || state === null || context.appVersion === null)
+      return;
+    const body =
+      response.body === null ? null : boundedText(response.body, 4_096);
+    // Observe locally. Only an existing lifecycle report can send this snapshot.
+    state.recordHttpResponse(context.getChannel(), context.appVersion, {
+      ...response,
+      path: boundedText(response.path, 1_024),
+      body,
+      bodyTruncated: response.bodyTruncated || body !== response.body,
+      receivedAtMs: context.now(),
+    });
   };
 
   const admit = (body: InsightsEventBody): boolean => {
@@ -353,7 +381,13 @@ export const insights = (options: InsightsOptions = {}): InsightsPlugin => {
       if (pluginContext.isDebugBuild && options.debug !== true) return;
 
       send = createInsightsEventSender(pluginContext.fetch, { admit, settle });
-      return { onAppReady, onUpdateCheck, onBundleDownloaded, onUpdateError };
+      return {
+        onAppReady,
+        onUpdateCheck,
+        onBundleDownloaded,
+        onUpdateError,
+        onHttpResponse,
+      };
     },
     setUser(user) {
       const userId = normalizeUserId(user);

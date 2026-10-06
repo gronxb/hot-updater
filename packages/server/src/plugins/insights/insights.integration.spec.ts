@@ -618,6 +618,69 @@ describe("createHotUpdater Insights", () => {
     }
   });
 
+  it("preserves original error text through ingestion and event history", async () => {
+    const hotUpdater = start();
+    const errorMessage = "Release transition rejected: UNSOLICITED_SCOPE";
+    const errorStack = `Error: ${errorMessage}\n    at checkForUpdate (app.js:42:1)`;
+    for (const [index, details] of [
+      { errorMessage, errorStack },
+      {},
+      { errorMessage: { invalid: true }, errorStack: "x".repeat(4_097) },
+    ].entries()) {
+      expect(
+        (
+          await hotUpdater.handlers.client(
+            eventRequest({
+              ...event,
+              installId: `raw-error-${index}`,
+              type: "UPDATE_FAILED",
+              fromBundleId: "bundle-1",
+              updateStrategy: "appVersion",
+              metadata: {
+                failure: {
+                  stage: "check",
+                  reason: "unknown",
+                  resource: "catalog",
+                  ...details,
+                },
+              },
+            }),
+          )
+        ).status,
+      ).toBe(204);
+    }
+    const response = await hotUpdater.handlers.admin(
+      new Request(
+        `https://example.com/events?beforeReceivedAtMs=${Date.now() + 1}`,
+      ),
+    );
+    expect(response.status).toBe(200);
+    const { data } = (await response.json()) as {
+      data: {
+        installId: string;
+        failure: Record<string, unknown>;
+        sdkVersion?: string;
+      }[];
+    };
+    expect(data.every((row) => row.sdkVersion === "2.0.0")).toBe(true);
+    const byInstall = Object.fromEntries(
+      data.map((row) => [row.installId, row.failure]),
+    );
+    expect(byInstall["raw-error-0"]).toEqual({
+      stage: "check",
+      reason: "unknown",
+      resource: "catalog",
+      errorMessage,
+      errorStack,
+    });
+    expect(byInstall["raw-error-1"]).toEqual({
+      stage: "check",
+      reason: "unknown",
+      resource: "catalog",
+    });
+    expect(byInstall["raw-error-2"]).toEqual(byInstall["raw-error-1"]);
+  });
+
   it("keeps how a bundle arrived and why a crashed process exited", async () => {
     const hotUpdater = start();
     const movement = {
@@ -819,42 +882,49 @@ describe("createHotUpdater Insights", () => {
     await expect(counts()).resolves.toBe(3);
   });
 
-  it("counts an installation's UNCHANGED reports once a UTC day, retried or repeated", async () => {
+  it("keeps an installation's UNCHANGED reports once a UTC day, retried or repeated", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-08-12T10:00:00.000Z"));
     const hotUpdater = start();
     const append = vi.spyOn(hotUpdater.api.insights, "recordEvent");
-    const launches = async () => {
-      const {
-        data: [activity],
-      } = await hotUpdater.api.insights.getReleaseActivity({
-        scope: { platform: "ios", channel: "production" },
-        timeRange: {
-          start: Date.parse("2026-08-12T00:00:00.000Z"),
-          end: Date.parse("2026-08-14T00:00:00.000Z"),
-        },
+    const launch = { ...event, toReleaseId: "release-1" };
+    // The installation's latest report, which a repeat that day keeps.
+    const latest = async () => {
+      const [head] = await hotUpdater.api.insights.findLatestEvents({
+        installId: "install-1",
       });
-      return activity!.metrics.launches;
+      return head?.id;
     };
     const report = {
-      ...event,
+      ...launch,
       eventId: "01987a6e-4c00-7abc-8def-0123456789ab",
     };
 
     // A retry, then relaunches later that day, with and without an ID.
-    for (const body of [report, report, event, event]) {
+    for (const body of [report, report, launch, launch]) {
       expect(
         (await hotUpdater.handlers.client(eventRequest(body))).status,
       ).toBe(204);
       vi.advanceTimersByTime(60 * 60 * 1_000);
     }
     expect(append).toHaveBeenCalledTimes(4);
-    await expect(launches()).resolves.toBe(1);
+    await expect(latest()).resolves.toBe(report.eventId);
 
-    // The next UTC day counts the installation again.
+    // The next UTC day records the installation's launch again.
     vi.setSystemTime(new Date("2026-08-13T09:00:00.000Z"));
-    expect((await hotUpdater.handlers.client(eventRequest())).status).toBe(204);
-    await expect(launches()).resolves.toBe(2);
+    expect(
+      (await hotUpdater.handlers.client(eventRequest(launch))).status,
+    ).toBe(204);
+    await expect(latest()).resolves.not.toBe(report.eventId);
+    // A launch applies nothing.
+    const {
+      data: [activity],
+    } = await hotUpdater.api.insights.getReleaseActivity({
+      releases: [
+        { releaseId: "release-1", platform: "ios", channel: "production" },
+      ],
+    });
+    expect(activity!.metrics.applies).toBe(0);
   });
 
   it.each([

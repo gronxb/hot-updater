@@ -38,8 +38,6 @@ CREATE TABLE IF NOT EXISTS "bundle_totals" ("platform_key" TEXT NOT NULL, "_shar
 
 CREATE TABLE IF NOT EXISTS "bundle_events" ("id" TEXT NOT NULL, "type" TEXT NOT NULL, "install_id" TEXT NOT NULL, "user_id" TEXT, "from_release_id" TEXT, "from_bundle_id" TEXT, "to_release_id" TEXT, "to_bundle_id" TEXT NOT NULL, "platform" TEXT NOT NULL, "app_version" TEXT NOT NULL, "channel" TEXT NOT NULL, "metadata" TEXT NOT NULL, "received_at_ms" INTEGER NOT NULL, "day" INTEGER, "movement_install_id" TEXT, "bundle_ref" TEXT, "_v" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY ("id"));
 
-CREATE INDEX IF NOT EXISTS "bundle_events_recent" ON "bundle_events" ("channel", "platform", "day", "received_at_ms", "id");
-
 CREATE INDEX IF NOT EXISTS "bundle_events_movementsByInstall" ON "bundle_events" ("movement_install_id", "received_at_ms", "id");
 
 CREATE TABLE IF NOT EXISTS "bundle_events__byBundle" ("platform" TEXT NOT NULL, "channel" TEXT NOT NULL, "type" TEXT NOT NULL, "bundle_ref" TEXT NOT NULL, "day" INTEGER NOT NULL, "received_at_ms" INTEGER NOT NULL, "id" TEXT NOT NULL, PRIMARY KEY ("platform", "channel", "type", "bundle_ref", "day", "received_at_ms", "id"));
@@ -52,23 +50,23 @@ CREATE INDEX IF NOT EXISTS "bundle_event_heads_byUser" ON "bundle_event_heads" (
 
 CREATE INDEX IF NOT EXISTS "bundle_event_heads__retention" ON "bundle_event_heads" ("received_at_ms", "install_id");
 
-CREATE TABLE IF NOT EXISTS "insights_overview" ("identity" TEXT NOT NULL, "bucket_start_ms" INTEGER NOT NULL, "_shard" INTEGER NOT NULL, "downloads" INTEGER NOT NULL, "launches" INTEGER NOT NULL, "failed_launches" INTEGER NOT NULL, "failed_updates" INTEGER NOT NULL, "patch_downloads" INTEGER NOT NULL, "patch_fallbacks" INTEGER NOT NULL, "_v" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY ("identity", "bucket_start_ms", "_shard"));
+CREATE TABLE IF NOT EXISTS "insights_overview" ("identity" TEXT NOT NULL, "bucket_start_ms" INTEGER NOT NULL, "_shard" INTEGER NOT NULL, "downloads" INTEGER NOT NULL, "failed_launches" INTEGER NOT NULL, "patch_downloads" INTEGER NOT NULL, "patch_fallbacks" INTEGER NOT NULL, "_v" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY ("identity", "bucket_start_ms", "_shard"));
 
 CREATE INDEX IF NOT EXISTS "insights_overview__retention" ON "insights_overview" ("bucket_start_ms", "identity", "_shard");
 
-CREATE TABLE IF NOT EXISTS "insights_sketches" ("identity" TEXT NOT NULL, "bucket_start_ms" INTEGER NOT NULL, "_shard" INTEGER NOT NULL, "launch_users" TEXT, "activity_users" TEXT, "failed_users" TEXT, "_v" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY ("identity", "bucket_start_ms", "_shard"));
+CREATE TABLE IF NOT EXISTS "insights_sketches" ("identity" TEXT NOT NULL, "bucket_start_ms" INTEGER NOT NULL, "_shard" INTEGER NOT NULL, "activity_users" TEXT, "failed_users" TEXT, "_v" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY ("identity", "bucket_start_ms", "_shard"));
 
 CREATE INDEX IF NOT EXISTS "insights_sketches__retention" ON "insights_sketches" ("bucket_start_ms", "identity", "_shard");
 
-CREATE TABLE IF NOT EXISTS "insights_overview_daily" ("identity" TEXT NOT NULL, "bucket_start_ms" INTEGER NOT NULL, "_shard" INTEGER NOT NULL, "downloads" INTEGER NOT NULL, "launches" INTEGER NOT NULL, "failed_launches" INTEGER NOT NULL, "failed_updates" INTEGER NOT NULL, "patch_downloads" INTEGER NOT NULL, "patch_fallbacks" INTEGER NOT NULL, "_v" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY ("identity", "bucket_start_ms", "_shard"));
+CREATE TABLE IF NOT EXISTS "insights_overview_daily" ("identity" TEXT NOT NULL, "bucket_start_ms" INTEGER NOT NULL, "_shard" INTEGER NOT NULL, "downloads" INTEGER NOT NULL, "failed_launches" INTEGER NOT NULL, "patch_downloads" INTEGER NOT NULL, "patch_fallbacks" INTEGER NOT NULL, "_v" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY ("identity", "bucket_start_ms", "_shard"));
 
 CREATE INDEX IF NOT EXISTS "insights_overview_daily__retention" ON "insights_overview_daily" ("bucket_start_ms", "identity", "_shard");
 
-CREATE TABLE IF NOT EXISTS "insights_sketches_daily" ("identity" TEXT NOT NULL, "bucket_start_ms" INTEGER NOT NULL, "_shard" INTEGER NOT NULL, "launch_users" TEXT, "activity_users" TEXT, "failed_users" TEXT, "_v" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY ("identity", "bucket_start_ms", "_shard"));
+CREATE TABLE IF NOT EXISTS "insights_sketches_daily" ("identity" TEXT NOT NULL, "bucket_start_ms" INTEGER NOT NULL, "_shard" INTEGER NOT NULL, "activity_users" TEXT, "failed_users" TEXT, "_v" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY ("identity", "bucket_start_ms", "_shard"));
 
 CREATE INDEX IF NOT EXISTS "insights_sketches_daily__retention" ON "insights_sketches_daily" ("bucket_start_ms", "identity", "_shard");
 
-CREATE TABLE IF NOT EXISTS "insights_overview_lifetime" ("identity" TEXT NOT NULL, "bucket_start_ms" INTEGER NOT NULL, "_shard" INTEGER NOT NULL, "downloads" INTEGER NOT NULL, "launches" INTEGER NOT NULL, "failed_launches" INTEGER NOT NULL, "failed_updates" INTEGER NOT NULL, "patch_downloads" INTEGER NOT NULL, "patch_fallbacks" INTEGER NOT NULL, "_v" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY ("identity", "bucket_start_ms", "_shard"));
+CREATE TABLE IF NOT EXISTS "insights_overview_lifetime" ("identity" TEXT NOT NULL, "bucket_start_ms" INTEGER NOT NULL, "_shard" INTEGER NOT NULL, "downloads" INTEGER NOT NULL, "failed_launches" INTEGER NOT NULL, "patch_downloads" INTEGER NOT NULL, "patch_fallbacks" INTEGER NOT NULL, "applies" INTEGER NOT NULL, "failed_updates" INTEGER NOT NULL, "_v" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY ("identity", "bucket_start_ms", "_shard"));
 
 CREATE TABLE IF NOT EXISTS "insights_sketches_lifetime" ("identity" TEXT NOT NULL, "bucket_start_ms" INTEGER NOT NULL, "_shard" INTEGER NOT NULL, "failed_users" TEXT, "_v" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY ("identity", "bucket_start_ms", "_shard"));
 
@@ -104,6 +102,6 @@ INSERT INTO "private_hot_updater_settings" ("key", "value", "_v") VALUES ('schem
 
 INSERT INTO "private_hot_updater_settings" ("key", "value", "_v") VALUES ('schema.core', '1.0.0', 0) ON CONFLICT ("key") DO UPDATE SET "value" = excluded."value";
 
-INSERT INTO "private_hot_updater_settings" ("key", "value", "_v") VALUES ('schema.insights', '1.2.0', 0) ON CONFLICT ("key") DO UPDATE SET "value" = excluded."value";
+INSERT INTO "private_hot_updater_settings" ("key", "value", "_v") VALUES ('schema.insights', '1.4.0', 0) ON CONFLICT ("key") DO UPDATE SET "value" = excluded."value";
 
 INSERT INTO "private_hot_updater_settings" ("key", "value", "_v") VALUES ('schema.apiKeys', '1.0.0', 0) ON CONFLICT ("key") DO UPDATE SET "value" = excluded."value";

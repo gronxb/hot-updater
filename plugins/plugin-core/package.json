@@ -1,6 +1,6 @@
 {
   "name": "@hot-updater/plugin-core",
-  "version": "1.0.0-rc.27",
+  "version": "1.0.0-rc.29",
   "type": "module",
   "description": "Engine-neutral plugin contracts for Hot Updater",
   "sideEffects": false,

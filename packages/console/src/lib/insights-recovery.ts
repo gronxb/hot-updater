@@ -1,37 +1,11 @@
-import type { InsightsCoverage } from "@hot-updater/server/plugins/insights";
-
 import type { InsightsWindow } from "./insights-rpc";
 
+/** Release health's scope: its channel, platform, period, and focused release. */
 export type RecoveryInput = {
   readonly platform: "ios" | "android";
   readonly channel: string;
   readonly window: InsightsWindow;
   readonly releaseId?: string;
-};
-
-export type RecoveryReport = {
-  readonly downloads: number;
-  /**
-   * Distinct installations that reported in the scope and period, or that
-   * launched the release; estimated.
-   */
-  readonly activeInstallations: number;
-  /**
-   * Installation-days: each installation once for each UTC day it launched,
-   * and once more on a day an update applied or recovered.
-   */
-  readonly activeDays: number;
-  readonly failedLaunches: number;
-  readonly points: readonly {
-    readonly startMs: number;
-    /** That UTC day's daily active installations. */
-    readonly dailyActiveInstallations: number;
-    readonly failedLaunches: number;
-  }[];
-  readonly startMs: number;
-  readonly endMs: number;
-  readonly measuredAtMs: number;
-  readonly coverage: InsightsCoverage;
 };
 
 export const recoveryWindows = {

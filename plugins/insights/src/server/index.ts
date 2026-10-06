@@ -11,6 +11,7 @@ import type { BundleEventRow } from "./eventRow";
 import { createInsightsModel } from "./model";
 import type {
   InsightsCountEventsInput,
+  InsightsCountEventSeriesInput,
   InsightsCountLatestEventsInput,
   InsightsFindLatestEventsInput,
   InsightsGetAppUsageInput,
@@ -21,6 +22,7 @@ import { markOfficial } from "./official";
 import { createInsightsProvider } from "./provider";
 import {
   countEvents,
+  countEventSeries,
   countLatestEvents,
   findLatestEvents,
   getAppUsage,
@@ -82,8 +84,10 @@ const createInsightsApi = (
   countLatestEvents: (input: InsightsCountLatestEventsInput) =>
     countLatestEvents(db, input),
   countEvents: (input: InsightsCountEventsInput) => countEvents(db, input),
+  countEventSeries: (input: InsightsCountEventSeriesInput) =>
+    countEventSeries(db, input),
   getReleaseActivity: (input: InsightsGetReleaseActivityInput) =>
-    getReleaseActivity(db, input, now, retention),
+    getReleaseActivity(db, input, now),
   getAppUsage: (input: InsightsGetAppUsageInput) =>
     getAppUsage(db, input, now, retention),
   /** A release's or a channel's update failures, and their breakdown over a time range. */
@@ -185,10 +189,11 @@ export const insights = (options: InsightsOptions = {}) => {
     id: "insights",
     // Keeps its tables' names: bundle_events, bundle_event_heads, insights_*.
     namespace: false,
-    // 1.2.0 adds update failures (their counters, sketches, and
-    // breakdown) and drops heads' hour-row compatibility, so a database
-    // migrates before a server serves it.
-    schemaVersion: "1.2.0",
+    // 1.4.0 counts a release's applies on its lifetime row, where launches
+    // were, and keeps on hourly and daily rows only the counters their
+    // reads sum, so a database migrates before a server serves it. It skips
+    // 1.3.0, a schema since withdrawn.
+    schemaVersion: "1.4.0",
     schema: createInsightsSchema(retention),
     init: ({ db, now }) => {
       const api = createInsightsApi(db, now, retention);

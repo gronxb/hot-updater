@@ -2,7 +2,7 @@ import { spawnSync } from "node:child_process";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { createControlClient } from "../detox/control-client.ts";
+import { createControlClient } from "../shared/control-client.ts";
 import { LynxAppDriver } from "./lynx-app-driver.ts";
 
 vi.mock("node:child_process", () => ({ spawnSync: vi.fn() }));
@@ -687,6 +687,53 @@ describe("Lynx app installation", () => {
   beforeEach(() => {
     vi.mocked(spawnSync).mockReset();
   });
+
+  it.each([
+    [
+      {
+        HOT_UPDATER_E2E_DEVICE_ID: "emulator-5560",
+        HOT_UPDATER_E2E_ANDROID_SERIAL: "emulator-5554",
+      },
+      "emulator-5560",
+    ],
+    [{ ANDROID_SERIAL: "emulator-5558" }, "emulator-5558"],
+  ])(
+    "installs and uninstalls only on the selected Android device %#",
+    (selection, serial) => {
+      vi.mocked(spawnSync).mockReturnValue({ status: 0 } as ReturnType<
+        typeof spawnSync
+      >);
+      const client = createControlClient({
+        baseUrl: "http://control.test",
+        fetch: vi.fn(),
+      });
+      const driver = new LynxAppDriver(client, "android", {
+        ...selection,
+        HOT_UPDATER_E2E_ANDROID_BINARY_PATH: "/tmp/lynx.apk",
+      });
+      driver.ensureInstalled();
+      driver.uninstallApp();
+      expect(
+        vi
+          .mocked(spawnSync)
+          .mock.calls.map(([command, args]) => [command, args]),
+      ).toEqual([
+        ["adb", ["-s", serial, "install", "-r", "/tmp/lynx.apk"]],
+        [
+          "adb",
+          [
+            "-s",
+            serial,
+            "shell",
+            "am",
+            "force-stop",
+            "com.hotupdater.lynxexample",
+          ],
+        ],
+        ["adb", ["-s", serial, "uninstall", "com.hotupdater.lynxexample"]],
+      ]);
+    },
+  );
 
   it("boots an iOS simulator before installing the shared native binary", () => {
     vi.mocked(spawnSync).mockReturnValue({ status: 0 } as ReturnType<

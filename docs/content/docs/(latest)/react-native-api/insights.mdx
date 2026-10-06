@@ -116,6 +116,24 @@ is sent again at the next launch or check.
 The server applies the same rule, so Console launch counts are daily active
 installations. See [how the server counts reports](/docs/guides/insights#what-the-app-reports).
 
+### HTTP responses
+
+The plugin stores the most recent catalog or artifact response locally and adds
+it to the next eligible lifecycle report as `metadata.httpResponse`. This applies
+to 200, 304, and error responses alike. No extra request or event is sent, and
+existing launch and failure deduplication stays unchanged. A response received
+after a launch report was sent waits for the next eligible report, possibly a
+later launch. Only the latest response is retained, within the same app version
+and channel; this is not a full request log.
+
+The snapshot contains `resource`, request `path`, `status`, raw text `body`,
+`bodyTruncated`, and `receivedAtMs` (the response observation time). Bodies are
+capped at 4 KiB of JSON-encoded text without splitting Unicode. An empty body is
+`""`; a body that could not be read is `null`. Headers and URL query parameters
+are omitted. Earlier servers ignore the extra metadata without refusing the
+existing report. Native file downloads, requests with no HTTP response, and
+telemetry requests are excluded.
+
 ### Update failures
 
 `UPDATE_FAILED` says where and why an update failed. It carries the
@@ -126,14 +144,16 @@ the SDK knows:
 | --------------------- | ------------------------------------------------------------------------------------------------------------------ |
 | `stage`               | `check`: the Release Catalog request. `download`: transferring and verifying files. `install`: patching, extracting, and moving them into place. |
 | `reason`              | `network`, `http`, `invalid_response`, `hash_mismatch`, `signature`, `patch`, `extract`, `storage`, or `unknown`.   |
+| `errorMessage`        | The original error message. JSON-encoded text is capped at 2 KiB. |
+| `errorStack`          | The original stack trace, when available. JSON-encoded text is capped at 4 KiB. |
 | `resource`            | `catalog`, `artifact`, `manifest`, `file`, `patch`, or `archive`.                                                  |
 | `httpStatus`          | The response status of an `http` failure.                                                                          |
 | `originCode`          | The storage origin's error code of an `http` failure, such as `AccessDenied`, `NoSuchKey`, or `ExpiredToken`.      |
 | `transport`           | Why no response arrived: `timeout`, `dns`, `tls`, `connection`, `offline`, or `cancelled`.                        |
 | `previousProcessExit` | Android 11 and later: why the previous main process exited, such as `CRASH` or `LOW_MEMORY`.                      |
 
-- An installation reports each combination of stage, reason, and target
-  bundle at most once per UTC day.
+- An installation reports each combination of stage, reason, target
+  bundle, and error message at most once per UTC day.
 - The report's `eventId` is derived from the installation, the UTC day, and
   that combination, so a server that stores reports by ID keeps a repeated
   failure once.
@@ -150,6 +170,19 @@ A check that finds no Release for its scope, a bundle in the device's crash
 history, and a selection that a newer check replaced are
 [not update failures](/docs/react-native-api/client-plugins#onupdateerror), so
 the plugin reports none of them.
+
+Console event history shows the original message and an expandable stack trace.
+For Release Catalog and artifact API requests, `metadata.httpResponse` carries
+the latest HTTP status and response body separately from the error message.
+JSON responses remain JSON text, bounded to 4 KiB. If the body cannot be read,
+the HTTP status is still available. This snapshot is attached to an existing
+report; it does not create an additional event or bypass failure deduplication. These are client-observed errors, not the
+server's internal logs or stack traces unless it returns them in its response.
+Error text is not categorized or redacted; only oversized text is truncated,
+with an ellipsis. Reports from older clients remain readable, but missing error
+text cannot be reconstructed. Upgrade the Insights client, server plugin, and
+Console to collect and display it. The fields use existing JSON metadata and
+require no database migration.
 
 ## Delivery
 
@@ -217,13 +250,13 @@ field:
 | `fromBundleId`, `fromReleaseId` | The bundle and Release the app ran before the transition; for `UPDATE_FAILED`, the ones it runs. For `UNCHANGED`, `fromBundleId` is `null`, and `fromReleaseId` is the Release a same-bundle adoption replaced, or `null`. |
 | `toBundleId`, `toReleaseId`     | The bundle and Release the transition moved to; for `UNCHANGED`, the ones the app runs; for `UPDATE_FAILED`, the update's target, or the running bundle for a failed check. `toReleaseId` is `null` without a Release. |
 | `updateStrategy`                | `appVersion` or `fingerprint`; `null` for `UNCHANGED`.                                                                                                                 |
-| `metadata`                      | Details by report type, described below; absent for `UNCHANGED` and `UPDATE_APPLIED`.                                                                                 |
+| `metadata`                      | Optional `httpResponse` snapshot for any report, plus details by report type below.                                                                                 |
 
 | Report              | `metadata`                                                                                                                                                  |
 | ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `UPDATE_DOWNLOADED` | `delivery`: `patch`, `manifest`, or `archive`, as in [`onBundleDownloaded`](/docs/react-native-api/client-plugins#onbundledownloaded); `patchFallback: true` when a patch was tried but a file or the archive was downloaded instead. |
 | `RECOVERED`         | `previousProcessExit` when native knows why the previous process exited.                                                                                    |
-| `UPDATE_FAILED`     | `failure`: `stage` and `reason`, plus `resource`, `httpStatus`, `originCode`, `transport`, and `previousProcessExit` when known.                              |
+| `UPDATE_FAILED`     | `failure`: `stage` and `reason`, plus `errorMessage`, `errorStack`, `resource`, `httpStatus`, `originCode`, `transport`, and `previousProcessExit` when known.                              |
 
 See [how the server accepts reports](/docs/guides/insights#how-the-server-accepts-reports)
 for its size limit and status codes.

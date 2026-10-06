@@ -34,6 +34,44 @@ describe("update failures report", () => {
     });
   });
 
+  it("compares equal adjacent periods without treating missing prior traffic as zero", async () => {
+    const getUpdateFailures = vi
+      .fn()
+      .mockResolvedValueOnce(failures)
+      .mockResolvedValueOnce({
+        ...failures,
+        failedUpdates: 0,
+        downloads: 0,
+        coverage: { kind: "partial", sinceMs: null },
+      });
+    const report = await getUpdateFailuresReport(
+      { getUpdateFailures },
+      { platform: "ios", channel: "production", window: "24h" },
+      60 * HOUR,
+    );
+    expect(getUpdateFailures.mock.calls).toEqual([
+      [
+        {
+          platform: "ios",
+          channel: "production",
+          timeRange: { start: 36 * HOUR, end: 60 * HOUR },
+        },
+      ],
+      [
+        {
+          platform: "ios",
+          channel: "production",
+          timeRange: { start: 12 * HOUR, end: 36 * HOUR },
+        },
+      ],
+    ]);
+    expect(report.previous).toEqual({
+      attemptRate: null,
+      checkRate: null,
+      complete: false,
+    });
+  });
+
   it("reads a release since its first report without a window, and needs one for a channel", async () => {
     const getUpdateFailures = vi.fn(async () => failures);
     const report = await getUpdateFailuresReport(

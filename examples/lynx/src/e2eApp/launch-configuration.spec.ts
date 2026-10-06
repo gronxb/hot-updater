@@ -6,14 +6,14 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it, vi } from "vitest";
 
 import {
-  resolveAppBaseUrl,
-  resolveRuntimeConfigUrl,
-} from "../../../../e2e/detox/scripts/control-server-env";
-import {
   createLynxAndroidLaunchConfigurationArguments,
   createLynxNativeLaunchConfiguration,
   serializeLynxNativeLaunchConfiguration,
 } from "../../../../e2e/lynx/native-launch-configuration";
+import {
+  resolveAppBaseUrl,
+  resolveRuntimeConfigUrl,
+} from "../../../../e2e/shared/scripts/control-server-env";
 import {
   readE2eLaunchConfiguration,
   resolveE2eLaunchConfiguration,

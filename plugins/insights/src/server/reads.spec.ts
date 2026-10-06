@@ -272,6 +272,26 @@ describe("insights read budgets", () => {
     expect(counted.result).toBe(11);
     expect(Object.keys(counted.tables)).toEqual(["insights_outcomes"]);
 
+    // The same hourly counts in intervals, every interval present.
+    const series = await read(() =>
+      api.countEventSeries({
+        filter: {
+          platform: "ios",
+          channel: "production",
+          type: "UPDATE_APPLIED",
+          toBundleId: "bundle-b",
+        },
+        timeRange: { start: T0, end: T0 + 3 * DAY },
+        intervalMs: DAY,
+      }),
+    );
+    expect(series.result).toEqual([
+      { startMs: T0, events: 24 },
+      { startMs: T0 + DAY, events: 0 },
+      { startMs: T0 + 2 * DAY, events: 1 },
+    ]);
+    expect(Object.keys(series.tables)).toEqual(["insights_outcomes"]);
+
     const latest = await read(() =>
       api.countLatestEvents({
         platform: "ios",
@@ -301,7 +321,7 @@ describe("insights read budgets", () => {
     expect(Object.keys(byBundle.tables)).toEqual(["insights_latest_by_bundle"]);
   });
 
-  it("reads release activity and app usage from counters, sketches, and gauges only", async () => {
+  it("reads release activity from lifetime counters, and app usage from sketches and gauges only", async () => {
     const { api, read } = await setup();
     const lifetime = await read(() =>
       api.getReleaseActivity({
@@ -312,31 +332,12 @@ describe("insights read budgets", () => {
     );
     expect(lifetime.result.data[0]!.metrics).toEqual({
       downloads: 0,
-      launches: 25,
+      // Every apply report, install-1's second one too.
+      applies: 25,
       failedLaunches: 0,
     });
     expect(Object.keys(lifetime.tables)).toEqual([
       "insights_overview_lifetime",
-    ]);
-
-    const scope = await read(() =>
-      api.getReleaseActivity({
-        scope: { platform: "ios", channel: "production" },
-        timeRange: { start: T0, end: T0 + 3 * DAY },
-      }),
-    );
-    expect(scope.result.data[0]!.metrics).toMatchObject({
-      launches: 25,
-      uniqueUsers: distinct(installs),
-      series: [
-        { startMs: T0, launches: 24, failedLaunches: 0 },
-        { startMs: T0 + 2 * DAY, launches: 1, failedLaunches: 0 },
-      ],
-    });
-    // Whole UTC days: the daily rollups alone.
-    expect(Object.keys(scope.tables).toSorted()).toEqual([
-      "insights_overview_daily",
-      "insights_sketches_daily",
     ]);
 
     const usage = await read(() =>

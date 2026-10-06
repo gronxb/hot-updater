@@ -47,8 +47,19 @@ export type BundleEventFailure = DatabaseJsonObject & {
     | "unknown";
   /** The storage origin's error code, such as `ExpiredToken`. */
   readonly origin_code?: string;
+  readonly error_message?: string;
+  readonly error_stack?: string;
   /** Android's `ApplicationExitInfo` reason for the process before this one. */
   readonly previous_process_exit?: string;
+};
+
+export type DatabaseHttpResponse = DatabaseJsonObject & {
+  readonly resource: "catalog" | "artifact";
+  readonly path: string;
+  readonly status: number;
+  readonly body: string | null;
+  readonly body_truncated: boolean;
+  readonly received_at_ms: number;
 };
 
 /** Ancillary report data; queryable identity and lifecycle fields stay on the row. */
@@ -59,6 +70,7 @@ export type DatabaseBundleEventMetadata = DatabaseJsonObject & {
   readonly sdk_version: string | null;
   /** `UPDATE_FAILED`: what failed. */
   readonly failure?: BundleEventFailure;
+  readonly http_response?: DatabaseHttpResponse;
   /** `UPDATE_DOWNLOADED`: how the bundle arrived. */
   readonly delivery?: "patch" | "manifest" | "archive" | "unknown";
   /** `UPDATE_DOWNLOADED`: a patch failed and the full files came instead. */
@@ -101,6 +113,15 @@ const isOptional = (
 
 const isString = (value: unknown) => typeof value === "string";
 
+const isDatabaseHttpResponse = (value: unknown): boolean =>
+  isDatabaseJsonObject(value) &&
+  (value.resource === "catalog" || value.resource === "artifact") &&
+  isString(value.path) &&
+  Number.isSafeInteger(value.status) &&
+  (value.body === null || isString(value.body)) &&
+  typeof value.body_truncated === "boolean" &&
+  Number.isSafeInteger(value.received_at_ms);
+
 /** An `UPDATE_FAILED` report's stored failure: a stage and a reason, and what else the client knew. */
 const isDatabaseBundleEventFailure = (value: unknown): boolean =>
   isDatabaseJsonObject(value) &&
@@ -110,6 +131,8 @@ const isDatabaseBundleEventFailure = (value: unknown): boolean =>
   isOptional(value, "http_status", (status) => Number.isSafeInteger(status)) &&
   isOptional(value, "transport", isString) &&
   isOptional(value, "origin_code", isString) &&
+  isOptional(value, "error_message", isString) &&
+  isOptional(value, "error_stack", isString) &&
   isOptional(value, "previous_process_exit", isString);
 
 export const isDatabaseBundleEventMetadata = (
@@ -124,6 +147,7 @@ export const isDatabaseBundleEventMetadata = (
     typeof value.fingerprint_hash === "string") &&
   (value.sdk_version === null || typeof value.sdk_version === "string") &&
   isOptional(value, "failure", isDatabaseBundleEventFailure) &&
+  isOptional(value, "http_response", isDatabaseHttpResponse) &&
   isOptional(value, "delivery", isString) &&
   isOptional(value, "patch_fallback", (flag) => typeof flag === "boolean") &&
   isOptional(value, "previous_process_exit", isString);

@@ -1,6 +1,6 @@
 import path from "node:path";
 
-import type { DetoxPlatform } from "../detox/scripts/control-server.ts";
+import type { E2ePlatform } from "../shared/scripts/control-server.ts";
 
 type ControlServerHandle = {
   readonly baseUrl: string;
@@ -10,7 +10,7 @@ type ControlServerHandle = {
 export type ScenarioExecution = {
   readonly controlServer: ControlServerHandle;
   readonly env: NodeJS.ProcessEnv;
-  readonly platform: DetoxPlatform;
+  readonly platform: E2ePlatform;
   readonly scenarioName: string;
 };
 
@@ -19,14 +19,14 @@ type ScenarioRunnerDependencies = {
   readonly executeScenario: (execution: ScenarioExecution) => Promise<void>;
   readonly log: (message: string) => void;
   readonly startControlServer: (
-    platform: DetoxPlatform,
+    platform: E2ePlatform,
     env: NodeJS.ProcessEnv,
   ) => Promise<ControlServerHandle>;
 };
 
 type ScenarioRunnerOptions = {
   readonly env: NodeJS.ProcessEnv;
-  readonly platform: DetoxPlatform;
+  readonly platform: E2ePlatform;
   readonly resultsRoot: string;
   readonly scenarios: readonly string[];
 };
