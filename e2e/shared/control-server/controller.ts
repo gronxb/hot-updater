@@ -6944,6 +6944,7 @@ export async function handleLaunchHeadlessTask(bundleId: string) {
       "logcat",
       "-v",
       "brief",
+      "HotUpdaterE2E:I",
       "ReactNativeJS:I",
       "*:S",
     ],
@@ -6960,9 +6961,16 @@ export async function handleLaunchHeadlessTask(bundleId: string) {
   logs.stderr.on("data", (chunk) => {
     output += chunk.toString();
   });
+  // logcat replays its buffer first; only lines after this one are this run's.
+  const startMarker = `HotUpdaterE2EHeadlessStart:${randomUUID()}`;
+  const currentRun = () => {
+    const start = output.lastIndexOf(startMarker);
+    return start < 0 ? "" : output.slice(start);
+  };
   try {
     ensureAndroidReverse();
     ensureAndroidControlReverse();
+    adb("shell", "log", "-t", "HotUpdaterE2E", startMarker);
     // A high-priority push grants this allowlist, so its receiver can start a
     // service while the app is in the background.
     adb(
@@ -6985,11 +6993,16 @@ export async function handleLaunchHeadlessTask(bundleId: string) {
     // The example reads launch arguments at module scope, and that module
     // waits up to 20 seconds for an activity that a headless task never has.
     const deadline = Date.now() + 60_000;
-    while (!output.includes(marker) && Date.now() < deadline && !logError) {
+    while (
+      !currentRun().includes(marker) &&
+      Date.now() < deadline &&
+      !logError
+    ) {
       await sleep(E2E_POLL_INTERVAL_MS);
     }
     if (logError) throw logError;
-    const pid = new RegExp(`\\((\\s*\\d+)\\): ${marker}`).exec(output)?.[1];
+    const run = currentRun();
+    const pid = new RegExp(`\\((\\s*\\d+)\\): ${marker}`).exec(run)?.[1];
     if (!pid) {
       throw new Error(`Headless task did not run bundle ${bundleId}`);
     }
@@ -7001,7 +7014,7 @@ export async function handleLaunchHeadlessTask(bundleId: string) {
     });
     const metadata = getMetadataState(diagnostics.metadata.value);
     if (
-      output.includes(`(${pid}): Running "`) ||
+      run.includes(`(${pid}): Running "`) ||
       metadata.stagingBundleId !== bundleId ||
       metadata.verificationPending !== true ||
       diagnostics.crashMarker.exists ||
