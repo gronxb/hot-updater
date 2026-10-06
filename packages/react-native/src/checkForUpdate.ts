@@ -11,11 +11,7 @@ import {
 } from "@hot-updater/protocol";
 import { Platform } from "react-native";
 
-import {
-  emitAfterAppReady,
-  getPreviousProcessExit,
-  getRunningReleaseId,
-} from "./appReady";
+import { emitAfterAppReady, getRunningReleaseId } from "./appReady";
 import type {
   ReleaseTransitionKind,
   UpdateErrorResource,
@@ -149,10 +145,8 @@ export const reportUpdateError = (
   emitAfterAppReady("onUpdateError", () => {
     const classification = classifyUpdateError(error, stage, resource);
     if (classification === null) return null;
-    const previousProcessExit = getPreviousProcessExit();
     return {
       ...classification,
-      ...(previousProcessExit === null ? {} : { previousProcessExit }),
       channel: scope.channel,
       bundleId: scope.bundleId,
       releaseId: getRunningReleaseId(scope.bundleId, getChannel()),

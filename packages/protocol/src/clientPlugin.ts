@@ -18,7 +18,7 @@ export type ReleaseTransitionKind =
   | "USE_BUILTIN";
 
 /** The launch outcome native reports once per JavaScript runtime. */
-export type AppReadyResult = (
+export type AppReadyResult =
   | {
       /** No update was applied or recovered at this launch. */
       readonly status: "UNCHANGED";
@@ -40,17 +40,7 @@ export type AppReadyResult = (
       readonly toBundleId: string;
       readonly toReleaseId: string | null;
       readonly updateStrategy: UpdateStrategy;
-    }
-) & {
-  /**
-   * Android 11+: why the app's previous main process exited, the
-   * `ApplicationExitInfo` reason without its `REASON_` prefix, such as
-   * `CRASH`, `ANR`, `LOW_MEMORY`, or `USER_REQUESTED`. Null on iOS and on
-   * older Android. It tells a crash from the system or the user closing the
-   * app.
-   */
-  readonly previousProcessExit: string | null;
-};
+    };
 
 /** What an update check found. */
 export type UpdateCheckResult =
@@ -151,8 +141,6 @@ export interface UpdateError {
   readonly originCode?: string;
   /** Why no response arrived, for a `network` failure, when the SDK knows. */
   readonly transport?: UpdateErrorTransport;
-  /** Android 11+: why the previous main process exited (see `AppReadyResult`). */
-  readonly previousProcessExit?: string;
   /** The bundle the update targeted; absent for the check stage. */
   readonly targetBundleId?: string;
   /** The Release the update targeted, when it names one. */

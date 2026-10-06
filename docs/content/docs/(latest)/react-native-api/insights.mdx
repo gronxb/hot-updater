@@ -150,7 +150,6 @@ the SDK knows:
 | `httpStatus`          | The response status of an `http` failure.                                                                          |
 | `originCode`          | The storage origin's error code of an `http` failure, such as `AccessDenied`, `NoSuchKey`, or `ExpiredToken`.      |
 | `transport`           | Why no response arrived: `timeout`, `dns`, `tls`, `connection`, `offline`, or `cancelled`.                        |
-| `previousProcessExit` | Android 11 and later: why the previous main process exited, such as `CRASH` or `LOW_MEMORY`.                      |
 
 - An installation reports each combination of stage, reason, target
   bundle, and error message at most once per UTC day.
@@ -255,8 +254,7 @@ field:
 | Report              | `metadata`                                                                                                                                                  |
 | ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `UPDATE_DOWNLOADED` | `delivery`: `patch`, `manifest`, or `archive`, as in [`onBundleDownloaded`](/docs/react-native-api/client-plugins#onbundledownloaded); `patchFallback: true` when a patch was tried but a file or the archive was downloaded instead. |
-| `RECOVERED`         | `previousProcessExit` when native knows why the previous process exited.                                                                                    |
-| `UPDATE_FAILED`     | `failure`: `stage` and `reason`, plus `errorMessage`, `errorStack`, `resource`, `httpStatus`, `originCode`, `transport`, and `previousProcessExit` when known.                              |
+| `UPDATE_FAILED`     | `failure`: `stage` and `reason`, plus `errorMessage`, `errorStack`, `resource`, `httpStatus`, `originCode`, and `transport` when known.                              |
 
 See [how the server accepts reports](/docs/guides/insights#how-the-server-accepts-reports)
 for its size limit and status codes.

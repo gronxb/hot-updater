@@ -790,31 +790,11 @@ describe.each(backends)("insights recordEvent on %s", (_name, adapter) => {
     ).resolves.toMatchObject(counted);
   });
 
-  it("keeps a recovery's exit reason in the breakdown of the release that failed to launch", async () => {
+  it("keeps no failure breakdown row for a recovery", async () => {
     const { api, failures } = await setup();
-    await api.recordEvent(
-      event(1, {
-        type: "RECOVERED",
-        metadata: { ...event(1).metadata, previous_process_exit: "CRASH" },
-      } as Partial<BundleEventRow>),
-    );
-    // A recovery without one, as on iOS, has no row.
-    await api.recordEvent(
-      event(2, { type: "RECOVERED", install_id: "install-2" }),
-    );
+    await api.recordEvent(event(1, { type: "RECOVERED" }));
 
-    await expect(failures()).resolves.toEqual([
-      {
-        platform: "ios",
-        channel: "production",
-        bucket_start_ms: hour(T),
-        release_id: "release-1",
-        stage: "launch",
-        reason: "CRASH",
-        detail: "",
-        events: 1,
-      },
-    ]);
+    await expect(failures()).resolves.toEqual([]);
   });
 
   it("reads the event and head in one round, gauge and sketch rows in a second, and writes once", async () => {

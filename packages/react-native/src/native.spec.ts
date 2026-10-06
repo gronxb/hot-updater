@@ -248,7 +248,6 @@ describe("notifyAppReady", () => {
       toBundleId: "bundle-122",
     });
     expect(readNotifyAppReady()).toEqual({
-      previousProcessExit: null,
       transition: {
         fromBundleId: "bundle-123",
         fromReleaseId: null,
@@ -278,7 +277,6 @@ describe("notifyAppReady", () => {
 
     expect(notifyAppReady()).toEqual({ status: "UNCHANGED" });
     expect(readNotifyAppReady()).toEqual({
-      previousProcessExit: null,
       transition: null,
       pending: false,
       result: { status: "UNCHANGED" },
@@ -294,7 +292,6 @@ describe("notifyAppReady", () => {
 
     expect(notifyAppReady()).toEqual({ status: "UNCHANGED" });
     expect(readNotifyAppReady()).toEqual({
-      previousProcessExit: null,
       transition: null,
       pending: false,
       result: { status: "UNCHANGED" },
@@ -308,7 +305,6 @@ describe("notifyAppReady", () => {
 
     expect(notifyAppReady()).toEqual({ status: "UNCHANGED" });
     expect(readNotifyAppReady()).toEqual({
-      previousProcessExit: null,
       transition: null,
       pending: false,
       result: { status: "UNCHANGED" },
@@ -322,7 +318,6 @@ describe("notifyAppReady", () => {
 
     expect(notifyAppReady()).toEqual({ status: "UNCHANGED" });
     expect(readNotifyAppReady()).toEqual({
-      previousProcessExit: null,
       transition: null,
       pending: true,
       result: { status: "UNCHANGED" },
@@ -731,22 +726,6 @@ describe("notifyAppReady", () => {
     // Now native reports it: this runtime already staged it.
     await expect(stageBundle(params)).resolves.toBeNull();
     expect(nativeModuleMock.updateBundle).toHaveBeenCalledTimes(2);
-  });
-
-  it("passes on why the previous process exited from the launch report", async () => {
-    nativeModuleMock.notifyAppReady.mockReturnValue({
-      previousProcessExit: "LOW_MEMORY",
-      status: "UNCHANGED",
-    });
-
-    const { readNotifyAppReady } = await import("./native");
-
-    expect(readNotifyAppReady()).toEqual({
-      previousProcessExit: "LOW_MEMORY",
-      transition: null,
-      pending: false,
-      result: { status: "UNCHANGED" },
-    });
   });
 
   it("invalidates cached bundle getters after resetChannel succeeds", async () => {

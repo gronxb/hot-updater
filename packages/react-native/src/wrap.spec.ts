@@ -35,7 +35,6 @@ const mocks = vi.hoisted(() => {
     readNotifyAppReady: vi.fn<
       () => {
         transition: LaunchTransition | null;
-        previousProcessExit: string | null;
         pending: boolean;
         result: NotifyAppReadyResult;
       }
@@ -137,7 +136,6 @@ describe("HotUpdater wrap initialization", () => {
       channel: "production",
       bundleId: "bundle-id",
       releaseId: null,
-      previousProcessExit: null,
     });
     expect(mocks.checkForUpdate).toHaveBeenCalledWith({
       client,

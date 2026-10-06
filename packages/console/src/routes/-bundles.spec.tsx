@@ -191,7 +191,7 @@ describe("BundlesPage", () => {
       screen.getByRole("button", { name: "About release insight metrics" }),
     );
     expect((await screen.findByRole("tooltip")).textContent).toContain(
-      "Applied counts apply reports, sent when an installation starts running this release.",
+      "Applied: installations that started running this bundle.",
     );
   });
   it("keeps bundle management usable when activity is unavailable", () => {
@@ -284,7 +284,7 @@ describe("BundlesPage", () => {
     expect(row.className).toContain("hover:saturate-100");
     expect(row.className).toContain("motion-reduce:transition-none");
     expect(state.getAttribute("title")).toBe(
-      "No catalog segment or cohort selects this bundle first with the current delivery settings.",
+      "No device gets this bundle with the current delivery settings.",
     );
   });
 

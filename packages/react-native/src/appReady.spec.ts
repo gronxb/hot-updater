@@ -146,7 +146,6 @@ describe("app-ready reporting to plugins", () => {
             channel: "production",
             bundleId: "bundle-id",
             releaseId: expected,
-            previousProcessExit: null,
           } satisfies AppReadyResult,
         ],
       ]);
@@ -190,7 +189,6 @@ describe("app-ready reporting to plugins", () => {
             toBundleId: "bundle-b",
             toReleaseId: "release-b",
             updateStrategy: "fingerprint",
-            previousProcessExit: null,
           },
         ],
       ]);
@@ -333,49 +331,6 @@ describe("app-ready reporting to plugins", () => {
       "onAppReady",
       "onBundleDownloaded",
     ]);
-  });
-
-  it("passes on why the previous process exited, and keeps it for later events", async () => {
-    stubNotifyFrame();
-    mocks.readNotifyAppReady.mockReturnValue(
-      createNotifyReadResult(
-        {
-          status: "RECOVERED",
-          fromBundleId: "bundle-b",
-          toBundleId: "bundle-a",
-        },
-        {
-          type: "RECOVERED",
-          fromBundleId: "bundle-b",
-          fromReleaseId: null,
-          toBundleId: "bundle-a",
-          toReleaseId: null,
-          updateStrategy: "appVersion",
-        },
-        false,
-        "CRASH_NATIVE",
-      ),
-    );
-    const { events, plugin } = recordingPlugin();
-    await configure([plugin]);
-    const { getPreviousProcessExit, handleNotifyAppReady } =
-      await import("./appReady");
-    expect(getPreviousProcessExit()).toBeNull();
-
-    const readiness = handleNotifyAppReady({});
-    await vi.runOnlyPendingTimersAsync();
-    await readiness;
-
-    expect(events).toEqual([
-      [
-        "onAppReady",
-        expect.objectContaining({
-          status: "RECOVERED",
-          previousProcessExit: "CRASH_NATIVE",
-        }),
-      ],
-    ]);
-    expect(getPreviousProcessExit()).toBe("CRASH_NATIVE");
   });
 
   it("builds no event when no plugin listens", async () => {

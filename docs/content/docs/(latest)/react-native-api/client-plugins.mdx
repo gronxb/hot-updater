@@ -85,7 +85,7 @@ check that finds nothing calls `onUpdateCheck`; a check that fails calls
 ### `onAppReady`
 
 ```ts
-type AppReadyResult = (
+type AppReadyResult =
   | {
       status: "UNCHANGED";
       channel: string;
@@ -100,21 +100,12 @@ type AppReadyResult = (
       toBundleId: string;
       toReleaseId: string | null;
       updateStrategy: "fingerprint" | "appVersion";
-    }
-) & {
-  previousProcessExit: string | null;
-};
+    };
 ```
 
 `UPDATE_APPLIED` means a staged update became active at this launch.
 `RECOVERED` means native crash recovery rolled a failed update back:
 `fromBundleId` is the failed bundle and `toBundleId` the one restored.
-
-`previousProcessExit` says why the app's previous main process exited, on
-Android 11 and later: the `ApplicationExitInfo` reason without its `REASON_`
-prefix, such as `CRASH`, `CRASH_NATIVE`, `ANR`, `LOW_MEMORY`, or
-`USER_REQUESTED`. It tells a crash from the system or the user closing the
-app. It is `null` on iOS and older Android.
 
 ### `onUpdateCheck`
 
@@ -191,7 +182,6 @@ interface UpdateError {
   httpStatus?: number;
   originCode?: string;
   transport?: "timeout" | "dns" | "tls" | "connection" | "offline" | "cancelled";
-  previousProcessExit?: string;
   targetBundleId?: string; // Absent for the check stage.
   targetReleaseId?: string;
   channel: string;
@@ -210,7 +200,6 @@ interface UpdateError {
 | `httpStatus`          | The response status of an `http` failure.                                                                                                                              |
 | `originCode`          | The storage origin's XML error `<Code>` when an `http` failure's body names one, such as `AccessDenied`, `NoSuchKey`, or `ExpiredToken`. It tells an expired signed URL from a missing file. |
 | `transport`           | Why no response arrived, for a `network` failure, when the SDK knows: `timeout`, `dns`, `tls`, `connection`, `offline`, or `cancelled`.                                |
-| `previousProcessExit` | Android 11 and later: why the previous main process exited, as in `onAppReady`.                                                                                        |
 
 The app also receives the error: `checkForUpdate` passes it to `onError`, and
 `updateBundle` rejects with it.

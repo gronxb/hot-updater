@@ -24,8 +24,6 @@ export type BundleEventFailureInput = {
   /** Original client error text, bounded to fit the event payload. */
   readonly errorMessage?: string;
   readonly errorStack?: string;
-  /** Android's `ApplicationExitInfo` reason for the process before this one. */
-  readonly previousProcessExit?: string;
 };
 
 /**
@@ -72,14 +70,7 @@ export type CreateBundleEventRequest =
         readonly patchFallback?: true;
       };
     })
-  | (Movement & { readonly type: "UPDATE_APPLIED" })
-  | (Movement & {
-      readonly type: "RECOVERED";
-      readonly metadata?: {
-        /** Android's `ApplicationExitInfo` reason for the crashed process. */
-        readonly previousProcessExit?: string;
-      };
-    })
+  | (Movement & { readonly type: "UPDATE_APPLIED" | "RECOVERED" })
   | (Movement & {
       /**
        * An update check, download, or install that failed: `fromBundleId`
@@ -122,8 +113,6 @@ export type EventHistoryRow = {
   readonly delivery?: NonNullable<DatabaseBundleEventMetadata["delivery"]>;
   /** `UPDATE_DOWNLOADED`: a patch failed, and the files or the archive came instead. */
   readonly patchFallback?: true;
-  /** `RECOVERED`: Android's reason the crashed process exited. */
-  readonly previousProcessExit?: string;
 };
 
 export type InstallationHistoryRow = EventHistoryRow & {

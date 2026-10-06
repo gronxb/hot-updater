@@ -280,8 +280,8 @@ describe("Insights event details", () => {
     },
   );
 
-  it("notes how a download arrived and why a crashed process exited", () => {
-    const view = render(
+  it("notes how a download arrived", () => {
+    render(
       <EventTypeDetails
         event={{
           type: "UPDATE_DOWNLOADED",
@@ -292,15 +292,6 @@ describe("Insights event details", () => {
     );
     expect(
       screen.getByText("The patch failed. The full archive was downloaded."),
-    ).toBeDefined();
-
-    view.rerender(
-      <EventTypeDetails
-        event={{ type: "RECOVERED", previousProcessExit: "ANR" }}
-      />,
-    );
-    expect(
-      screen.getByText("The crashed process exited with ANR."),
     ).toBeDefined();
   });
 

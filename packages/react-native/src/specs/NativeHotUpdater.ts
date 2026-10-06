@@ -114,13 +114,6 @@ export interface Spec extends TurboModule {
     toBundleId?: string;
     updateStrategy?: "fingerprint" | "appVersion";
     crashedBundleId?: string;
-    /**
-     * Android 11+: why the app's previous main process exited, the
-     * `ApplicationExitInfo` reason without its `REASON_` prefix (for
-     * example "CRASH", "ANR", "LOW_MEMORY", "USER_REQUESTED"), read once
-     * when the process starts. Absent on iOS and older Android.
-     */
-    previousProcessExit?: string;
   };
 
   /**

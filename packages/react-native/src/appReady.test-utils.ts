@@ -6,15 +6,12 @@ export const createNotifyReadResult = (
   result: NotifyAppReadyResult = { status: "UNCHANGED" },
   transition: LaunchTransition | null = null,
   pending = false,
-  previousProcessExit: string | null = null,
 ): {
   transition: LaunchTransition | null;
-  previousProcessExit: string | null;
   pending: boolean;
   result: NotifyAppReadyResult;
 } => ({
   transition,
-  previousProcessExit,
   pending,
   result,
 });

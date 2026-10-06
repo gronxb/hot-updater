@@ -24,11 +24,6 @@ type RequestAnimationFrame = (callback: (timestamp: number) => void) => number;
 let didEmitAppReady = false;
 /** Settles once this runtime's launch was read, whether it was reported or failed. */
 let appReadyRead: Promise<unknown> | null = null;
-/** Why the previous main process exited, read with this runtime's launch. */
-let previousProcessExit: string | null = null;
-
-/** Android 11+: why the app's previous main process exited, once the launch was read. */
-export const getPreviousProcessExit = (): string | null => previousProcessExit;
 
 const waitForNextFrame = () =>
   new Promise<void>((resolve) => {
@@ -75,7 +70,6 @@ const toAppReadyResult = (
       channel,
       bundleId,
       releaseId: getRunningReleaseId(bundleId, channel),
-      previousProcessExit,
     };
   }
   // Native persists the transition with every applied or recovered launch;
@@ -89,7 +83,6 @@ const toAppReadyResult = (
     toBundleId: transition.toBundleId,
     toReleaseId: transition.toReleaseId,
     updateStrategy: transition.updateStrategy,
-    previousProcessExit,
   };
 };
 
@@ -104,7 +97,6 @@ const notifyAppReady = async (
     } while (nativeReadResult.pending);
 
     const { result, transition } = nativeReadResult;
-    previousProcessExit = nativeReadResult.previousProcessExit;
     if (!didEmitAppReady) {
       didEmitAppReady = true;
       emitPluginHook("onAppReady", () => toAppReadyResult(result, transition));

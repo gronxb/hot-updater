@@ -58,10 +58,6 @@ const report: UpdateFailuresReport = {
       ],
     },
   ],
-  recoveries: {
-    failedLaunches: 5,
-    byExitReason: [{ exitReason: "CRASH", events: 3 }],
-  },
 };
 
 const query = (data: UpdateFailuresReport) => ({
@@ -74,7 +70,7 @@ const query = (data: UpdateFailuresReport) => ({
 describe("UpdateFailures", () => {
   afterEach(cleanup);
 
-  it("shows counts, rates, the breakdown with what failed, and exit reasons", () => {
+  it("shows counts, rates, and the breakdown with what failed", () => {
     render(<UpdateFailures query={query(report)} onRefresh={() => {}} />);
     const card = screen.getByRole("region", { name: "Update failures" });
     const metric = (label: string) =>
@@ -107,10 +103,7 @@ describe("UpdateFailures", () => {
       }),
     ).toBeDefined();
     expect(within(card).getByText("75.0%")).toBeDefined();
-
-    expect(within(card).getByText("CRASH")).toBeDefined();
-    // Recoveries iOS and older Android report no reason for.
-    expect(within(card).getByText("Not reported")).toBeDefined();
+    expect(within(card).queryByText(/exit reason/i)).toBeNull();
     fireEvent.click(row);
     expect(row.closest("details")?.open).toBe(false);
   });
@@ -152,7 +145,6 @@ describe("UpdateFailures", () => {
             failedInstallations: 2,
             activeInstallations: 8,
           },
-          recoveries: { failedLaunches: 0, byExitReason: [] },
         })}
         onRefresh={() => {}}
       />,
@@ -166,7 +158,6 @@ describe("UpdateFailures", () => {
     expect(
       within(card).getByText("No update failures in this period."),
     ).toBeDefined();
-    expect(within(card).getByText("No crashes in this period.")).toBeDefined();
   });
 
   it("keeps check-only failures separate from successful updates and unavailable patch rates", () => {

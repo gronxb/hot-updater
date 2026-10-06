@@ -188,7 +188,7 @@ describe("Distribution details", () => {
       }),
     );
     expect((await screen.findByRole("tooltip")).textContent).toContain(
-      "Each installation counts once by its latest matching report since Sep 29, 00:00 UTC. Latest reports are counted by UTC day.",
+      "Each installation counts once, by its latest report since Sep 29, 00:00 UTC.",
     );
   });
   it("drops malformed URL values without losing independent periods or version text", () => {

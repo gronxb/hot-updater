@@ -49,14 +49,11 @@ export interface InsightsEventMetadata {
     /** Original client error text, bounded to fit the event payload. */
     readonly errorMessage?: string;
     readonly errorStack?: string;
-    readonly previousProcessExit?: string;
   };
   /** UPDATE_DOWNLOADED: how the bundle arrived. */
   readonly delivery?: "patch" | "manifest" | "archive";
   /** UPDATE_DOWNLOADED: a patch was tried, but a file or the archive came instead. */
   readonly patchFallback?: true;
-  /** RECOVERED: why the previous main process exited, on Android 11+. */
-  readonly previousProcessExit?: string;
 }
 
 /** How the server answered one event. */

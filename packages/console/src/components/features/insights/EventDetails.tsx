@@ -136,16 +136,11 @@ const deliveries: Readonly<Record<string, string>> = {
   archive: "The full archive was downloaded.",
 };
 
-/** What the event's report added: where an update failed, how a bundle arrived, why a process exited. */
+/** What the event's report added: where an update failed, or how a bundle arrived. */
 const eventNote = (
   event: Pick<
     EventHistoryRow,
-    | "type"
-    | "failure"
-    | "delivery"
-    | "patchFallback"
-    | "previousProcessExit"
-    | "httpResponse"
+    "type" | "failure" | "delivery" | "patchFallback" | "httpResponse"
   >,
 ): string | null => {
   if (event.type === "UPDATE_FAILED" && event.failure) {
@@ -156,9 +151,6 @@ const eventNote = (
     return event.patchFallback
       ? `The patch failed. ${delivered ?? ""}`.trim()
       : delivered;
-  }
-  if (event.type === "RECOVERED" && event.previousProcessExit) {
-    return `The crashed process exited with ${event.previousProcessExit}.`;
   }
   return null;
 };

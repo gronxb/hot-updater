@@ -564,7 +564,6 @@ describe("createHotUpdater Insights", () => {
         reason: "storage",
         httpStatus: "403",
         originCode: "not a code",
-        previousProcessExit: "x".repeat(65),
       },
     });
 
@@ -681,7 +680,7 @@ describe("createHotUpdater Insights", () => {
     expect(byInstall["raw-error-2"]).toEqual(byInstall["raw-error-1"]);
   });
 
-  it("keeps how a bundle arrived and why a crashed process exited", async () => {
+  it("keeps how a bundle arrived, and ignores what an older SDK still sends about a recovery", async () => {
     const hotUpdater = start();
     const movement = {
       ...event,
@@ -697,6 +696,7 @@ describe("createHotUpdater Insights", () => {
         metadata: { delivery: "archive", patchFallback: true },
       },
       {
+        // An SDK that still says why the crashed process exited.
         ...movement,
         type: "RECOVERED",
         installId: "install-2",
@@ -728,9 +728,8 @@ describe("createHotUpdater Insights", () => {
       delivery: "archive",
       patchFallback: true,
     });
-    expect(byInstall["install-2"]).toMatchObject({
-      previousProcessExit: "CRASH_NATIVE",
-    });
+    expect(byInstall["install-2"]).toMatchObject({ type: "RECOVERED" });
+    expect(byInstall["install-2"]).not.toHaveProperty("previousProcessExit");
     expect(byInstall["install-3"]).toMatchObject({ delivery: "unknown" });
     expect(byInstall["install-3"]).not.toHaveProperty("patchFallback");
   });
@@ -790,7 +789,6 @@ describe("createHotUpdater Insights", () => {
           ],
         },
       ],
-      recoveries: { failedLaunches: 0, byExitReason: [] },
     });
     await expect(
       (

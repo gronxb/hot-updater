@@ -102,7 +102,6 @@ export function InsightsOverview({
   onChartChange,
   health,
   onReleasesChange,
-  onShowCrashes,
   onWindowChange,
 }: {
   readonly input: RecoveryInput;
@@ -111,8 +110,6 @@ export function InsightsOverview({
   readonly health: ReleaseHealthState;
   /** Chooses the bundles to compare; undefined returns to the default. */
   readonly onReleasesChange: (releaseIds?: readonly string[]) => void;
-  /** Opens the crash details of one bundle. */
-  readonly onShowCrashes: (releaseId: string) => void;
   readonly onWindowChange: (window: RecoveryInput["window"]) => void;
 }) {
   const [active, setActive] = useState<string | null>(null);
@@ -162,10 +159,8 @@ export function InsightsOverview({
         <div className="flex items-center gap-1 text-sm font-medium">
           Installations applying each bundle
           <InsightsInfo label="About adoption">
-            Update applied reports of each bundle in each interval: the
-            installations that started running it. After a new bundle is
-            deployed, its line rises and the bundle it replaced stops being
-            applied. Reports are counted, not distinct installations.
+            Installations that started running each bundle, per interval. An
+            installation that applies it again counts again.
           </InsightsInfo>
         </div>
         <p className="text-xs text-muted-foreground">
@@ -178,11 +173,10 @@ export function InsightsOverview({
         <div className="flex items-center gap-1 text-sm font-medium">
           Crashes after each deployment
           <InsightsInfo label="About crashes">
-            Recovered reports of each bundle in each interval: launches that
-            crashed on it and went back to the bundle before. The crash rate is
-            crashes divided by applies plus crashes. Release health recommends a
-            rollback at {percent(CRASH_RATE_THRESHOLD)} once at least{" "}
-            {CRASH_MIN_ATTEMPTS} installations tried the bundle.
+            Launches that crashed on a bundle and rolled back to the one before.
+            Crash rate = crashes ÷ (applies + crashes). A rollback is suggested
+            at {percent(CRASH_RATE_THRESHOLD)} once {CRASH_MIN_ATTEMPTS}{" "}
+            installations tried it.
           </InsightsInfo>
         </div>
         <p className="text-xs text-muted-foreground">
@@ -470,19 +464,7 @@ export function InsightsOverview({
                               ) : crashes.crashes === 0 ? (
                                 <span className="text-muted-foreground">0</span>
                               ) : (
-                                <Button
-                                  variant="link"
-                                  size="sm"
-                                  // Ink, not the accent: an orange count would
-                                  // read as the orange bundle.
-                                  className="h-auto p-0 text-foreground tabular-nums underline decoration-muted-foreground/60 hover:decoration-foreground"
-                                  aria-label={`${crashes.crashes} crashes of ${release.releaseId}: view details`}
-                                  onClick={() =>
-                                    onShowCrashes(release.releaseId)
-                                  }
-                                >
-                                  {crashes.crashes.toLocaleString()}
-                                </Button>
+                                crashes.crashes.toLocaleString()
                               )}
                             </TableCell>
                             <TableCell className="text-right whitespace-nowrap tabular-nums">
