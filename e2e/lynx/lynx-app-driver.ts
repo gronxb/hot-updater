@@ -44,7 +44,7 @@ type ControlClient = ReturnType<typeof createControlClient>;
 
 type MobileSession = {
   readonly device: Pick<Device, "openApp" | "closeApp" | "back">;
-  readonly screen: Pick<Screen, "getByRole" | "getByText">;
+  readonly screen: Pick<Screen, "getByLabel" | "getByText">;
   readonly signal: AbortSignal;
 };
 
@@ -523,13 +523,16 @@ export class LynxAppDriver implements ScenarioAppDriver {
       );
       if (this.mobile) {
         this.mobile.signal.throwIfAborted();
-        const back = this.mobile.screen.getByRole("button", "Back");
+        // Lynx Android exposes labeled views without a native button role.
+        const back = this.mobile.screen.getByLabel("Back", { exact: true });
         if (await back.isVisible()) {
           this.mobile.signal.throwIfAborted();
           await back.tap();
         }
         this.mobile.signal.throwIfAborted();
-        await this.mobile.screen.getByRole("button", "Open detail page").tap();
+        await this.mobile.screen
+          .getByLabel("Open detail page", { exact: true })
+          .tap();
       } else {
         await this.controlClient.postJson(
           `${stage}: request detail page`,
@@ -577,7 +580,9 @@ export class LynxAppDriver implements ScenarioAppDriver {
     await this.runStage(stage, async () => {
       if (this.mobile) {
         this.mobile.signal.throwIfAborted();
-        await this.mobile.screen.getByRole("button", "Close detail page").tap();
+        await this.mobile.screen
+          .getByLabel("Close detail page", { exact: true })
+          .tap();
       } else {
         await this.controlClient.postJson(
           `${stage}: request detail close`,

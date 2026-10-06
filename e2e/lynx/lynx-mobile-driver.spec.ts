@@ -89,7 +89,7 @@ function fixture(platform: "ios" | "android" = "android") {
   };
   const visible = vi.fn(async () => {});
   const screen = {
-    getByRole: vi.fn<Screen["getByRole"]>((_role, name) => {
+    getByLabel: vi.fn<Screen["getByLabel"]>((name) => {
       if (name === "Back") return back as unknown as Locator;
       if (name === "Open detail page") return open as unknown as Locator;
       if (name === "Close detail page") return close as unknown as Locator;
@@ -187,11 +187,17 @@ describe("Lynx mobile SDK integration", () => {
   it("opens and closes the page through rendered buttons and retains native observation waits", async () => {
     const f = fixture();
     await f.driver.openDetailPage("open second bundle", "page-A");
+    expect(f.screen.getByLabel).toHaveBeenCalledWith("Open detail page", {
+      exact: true,
+    });
     expect(f.open.tap).toHaveBeenCalledOnce();
     expect(f.screen.getByText).toHaveBeenCalledWith("Second Page");
     expect(f.screen.getByText).toHaveBeenCalledWith("page-A");
     expect(f.visible).toHaveBeenCalledTimes(2);
     await f.driver.closeDetailPage("close second bundle");
+    expect(f.screen.getByLabel).toHaveBeenCalledWith("Close detail page", {
+      exact: true,
+    });
     expect(f.close.tap).toHaveBeenCalledOnce();
     expect(
       f.fetch.mock.calls.some(([url]) => url.endsWith("/e2e/pending-action")),
