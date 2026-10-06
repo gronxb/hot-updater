@@ -588,6 +588,7 @@ let catalogResponseDelayMs = 0;
 let artifactResponseDelayMs = 0;
 let bootstrapJobId: string | null = null;
 let androidLaunchLogMarker: string | null = null;
+let automaticForceUpdate: boolean | null = null;
 
 function throwIfAborted(signal?: AbortSignal) {
   signal?.throwIfAborted();
@@ -3635,12 +3636,23 @@ function rewriteProxiedUpdatePath(pathname: string) {
 export function handleRuntimeConfig() {
   return {
     automaticForceUpdate:
+      automaticForceUpdate ??
       process.env.HOT_UPDATER_E2E_SCENARIO_NAME === "force-update-auto-reload",
     baseURL: `${getAppReachableControlBaseUrl()}/hot-updater`,
     channelNamespace,
     screenState: readE2eScreenStateSnapshot(),
     updateServerBaseURL: fixtureSession.appBaseUrl,
   };
+}
+
+export function handleRuntimeConfigUpdate(input: {
+  automaticForceUpdate?: unknown;
+}) {
+  if (typeof input.automaticForceUpdate !== "boolean") {
+    throw new Error("automaticForceUpdate must be a boolean");
+  }
+  automaticForceUpdate = input.automaticForceUpdate;
+  return handleRuntimeConfig();
 }
 
 function toAppReachableProxyUrl(

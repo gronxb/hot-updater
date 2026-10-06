@@ -22,6 +22,7 @@ import {
   handleCleanup,
   handleComputeRolloutSample,
   handleConfigureProxy,
+  handleRuntimeConfigUpdate,
   handleLaunchStartupHang,
   handleLaunchUninstrumentedApp,
   handlePrepareAppLaunch,
@@ -91,6 +92,10 @@ app.post("/e2e/jobs/reset-remote-bundles", async (c) => {
 
 app.get("/e2e/runtime-config", (c) => {
   return c.json(handleRuntimeConfig());
+});
+
+app.post("/e2e/runtime-config", async (c) => {
+  return c.json(handleRuntimeConfigUpdate(await c.req.json()));
 });
 
 app.post("/e2e/screen-state", async (c) => {

@@ -210,6 +210,18 @@ describe("E2E control server environment", () => {
       expect(controller.handleRuntimeConfig()).toMatchObject({
         automaticForceUpdate: true,
       });
+      // One mobile suite reuses its controller across normal, forced and normal
+      // launches. An old process-level scenario name must not leak between them.
+      for (const enabled of [false, true, false]) {
+        controller.handleRuntimeConfigUpdate({ automaticForceUpdate: enabled });
+        expect(controller.handleRuntimeConfig().automaticForceUpdate).toBe(
+          enabled,
+        );
+      }
+      expect(() =>
+        controller.handleRuntimeConfigUpdate({ automaticForceUpdate: "true" }),
+      ).toThrow("must be a boolean");
+      expect(controller.handleRuntimeConfig().automaticForceUpdate).toBe(false);
       const artifactResponse = await controller.handleProxyUpdateRequest(
         new Request(
           "http://127.0.0.1:3114/hot-updater/artifacts/v1/target/from/current",

@@ -137,6 +137,13 @@ for (const scenarioName of context.scenarioNames) {
       current.controller,
       current.signal,
       async () => {
+        // The shared controller outlives each scenario; process environment
+        // cannot select runtime behavior for individual attempts.
+        await current.client.postJson(
+          "configure scenario runtime",
+          "/e2e/runtime-config",
+          { automaticForceUpdate: scenarioName === "force-update-auto-reload" },
+        );
         const insightsStartedAtMs = Date.now() - 5_000;
         if (context.runtime === "lynx") {
           const app = new LynxAppDriver(
