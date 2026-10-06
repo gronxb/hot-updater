@@ -1,5 +1,18 @@
 # @hot-updater/react-native
 
+## 1.0.0-rc.36
+
+### Patch Changes
+
+- c527bb2: Report installations on the built-in bundle. A client plugin's context has `minBundleId`, the ID of the bundle the native build ships, and the Insights client sends it with each report. Insights counts an installation that runs its build's built-in bundle again in the new `insights_builtin_distribution` gauge, by the release it runs and the bundle's ID, and `getAppUsage` returns `builtinBundleId` with each `bundleDistribution` row. The Console's **Distribution** shows **Built-in app** with the bundle ID under its app version, where it showed **Unknown bundle**, and event and installation details mark the built-in bundle. Reports from SDKs that do not send `minBundleId` count as before.
+
+  The Insights schema version stays 1.0.0 while the 1.0.0 baseline gains the `insights_builtin_distribution` table; existing tables don't change. On SQL databases, create it as the baseline does (Supabase prefixes it with `hot_updater_v1_` and enables row level security); Drizzle and Prisma projects regenerate their schema with `hot-updater db generate` and migrate it. On AWS the DynamoDB policy allows the new partition: rerun `hot-updater init`. Firestore and MongoDB need no change. Installations count in it from their first report after the upgrade.
+
+- c527bb2: Read the iOS built-in bundle ID from the `HOT_UPDATER_MIN_BUNDLE_ID` build setting. The CLI passes that setting to `xcodebuild` and adds the `$(HOT_UPDATER_MIN_BUNDLE_ID)` slot to `Info.plist`, as Android takes `-PMIN_BUNDLE_ID`, but the native module read `HOT_UPDATER_BUILD_TIMESTAMP`, so iOS always fell back to the time `HotUpdater.mm` was compiled. A value that is not a UUID is ignored with a warning, and an unset build setting still falls back to the compile time. Requires rebuilding the native app.
+- Updated dependencies [c527bb2]
+  - @hot-updater/protocol@1.0.0-rc.36
+  - @hot-updater/plugin-insights@1.0.0-rc.36
+
 ## 1.0.0-rc.35
 
 ### Patch Changes

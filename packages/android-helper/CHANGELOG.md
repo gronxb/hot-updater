@@ -1,5 +1,14 @@
 # @hot-updater/android-helper
 
+## 1.0.0-rc.36
+
+### Patch Changes
+
+- Updated dependencies [c527bb2]
+  - @hot-updater/protocol@1.0.0-rc.36
+  - @hot-updater/cli-tools@1.0.0-rc.36
+  - @hot-updater/plugin-core@1.0.0-rc.36
+
 ## 1.0.0-rc.35
 
 ### Patch Changes
