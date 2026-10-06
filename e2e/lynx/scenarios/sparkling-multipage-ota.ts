@@ -1134,6 +1134,19 @@ export const sparklingMultipageOtaScenario = {
       "multi-page pre-confirm fatal: accept managed transition",
       "action-reload-with-pending-detail",
     );
+    // Acceptance precedes the failed B runtime and its replacement A runtime.
+    // Wait for recovery before a retiring context can consume the snapshot request.
+    await app.control(
+      "multi-page pre-confirm fatal: wait for native recovery",
+      "/e2e/wait-for-crash-recovery",
+      { crashedBundleId: "$bundleB", stableBundleId: "$bundleA" },
+    );
+    await app.assertText(
+      "multi-page pre-confirm fatal: wait for recovered runtime",
+      "runtime-scenario-marker",
+      markerA,
+      { exactText: true },
+    );
     const preConfirmFatalEvents = await app.captureGenerationEvents(
       "multi-page pre-confirm fatal: capture transition failure and recovery",
     );
