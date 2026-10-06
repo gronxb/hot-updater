@@ -1,5 +1,16 @@
 # @hot-updater/react-native
 
+## 0.36.18
+
+### Patch Changes
+
+- 0a65054: Keep a pending bundle when a launch never shows UI. An Android headless JS task, such as a background push message, and an iOS background launch no longer record an unfinished launch, so the next launch no longer rolls a healthy bundle back and reports `RECOVERED`. A launch is recorded once an activity has started on Android, including one that was on screen before React Native loaded, and when the app is in the foreground on iOS. Requires rebuilding the native app.
+- 350dfa9: Give a bundle one retry after a launch that ends before the first render without a crash, such as a user leaving during the splash screen. The next start still rolls back and reports `RECOVERED`, but the bundle no longer goes into crash history at once: the session that recovered does not install it again, and a later session retries it. A second unfinished launch, or a crash, adds it to crash history as before. Requires rebuilding the native app.
+  - @hot-updater/cli-tools@0.36.18
+  - @hot-updater/core@0.36.18
+  - @hot-updater/js@0.36.18
+  - @hot-updater/plugin-core@0.36.18
+
 ## 0.36.17
 
 ### Patch Changes
