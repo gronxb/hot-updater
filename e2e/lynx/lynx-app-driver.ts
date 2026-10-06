@@ -297,14 +297,18 @@ export class LynxAppDriver implements ScenarioAppDriver {
           }
           await sleep(500, undefined, { signal: this.mobile?.signal });
         }
-        const recoveryLaunchGeneration = randomUUID();
-        await this.controlClient.postJson(
-          `${stage}: prepare recovery launch`,
-          "/e2e/prepare-app-launch",
-          { launchGeneration: recoveryLaunchGeneration },
-        );
-        await this.clearOverlayMarker(stage, recoveryLaunchGeneration);
-        await this.launchApp({ launchGeneration: recoveryLaunchGeneration });
+        // The managed host recreates the failed runtime and page stack. A
+        // second SDK relaunch would kill that recovery before its pages confirm.
+        if (!this.mobile) {
+          const recoveryLaunchGeneration = randomUUID();
+          await this.controlClient.postJson(
+            `${stage}: prepare recovery launch`,
+            "/e2e/prepare-app-launch",
+            { launchGeneration: recoveryLaunchGeneration },
+          );
+          await this.clearOverlayMarker(stage, recoveryLaunchGeneration);
+          await this.launchApp({ launchGeneration: recoveryLaunchGeneration });
+        }
       }
       const runtimeScenarioMarker = await this.waitForOverlayReady(stage);
       await this.assertNoManagedResourceErrors(stage, runtimeScenarioMarker);

@@ -298,16 +298,26 @@ describe("Lynx mobile SDK integration", () => {
     );
   });
 
-  it("counts an expected SDK disconnect only after durable crash and recovery evidence", async () => {
-    const f = fixture();
-    f.device.openApp.mockImplementationOnce(async () => {
-      f.journal.crashedBundleIds.push("candidate");
-      throw new Error("app crashed while opening");
-    });
-    await f.driver.launch("candidate crash", { expectCrash: true });
-    expect(f.device.openApp).toHaveBeenCalledTimes(2);
-    expect(f.driver.expectedLaunchFailures).toBe(1);
-  });
+  it.each(["ios", "android"] as const)(
+    "waits for %s managed recovery without killing its unconfirmed pages",
+    async (platform) => {
+      const f = fixture(platform);
+      f.setIosProcesses("77 /container/SparklingGoE2E.app/LynxExecutable\n");
+      f.device.openApp.mockImplementationOnce(async () => {
+        f.journal.crashedBundleIds.push("candidate");
+        f.state.runtimeScenarioMarker = "recovered-stable";
+        throw new Error("failed runtime disconnected while opening");
+      });
+      await f.driver.launch("candidate crash", { expectCrash: true });
+      expect(f.device.openApp).toHaveBeenCalledOnce();
+      expect(
+        f.fetch.mock.calls.filter(([url]) =>
+          url.endsWith("/e2e/prepare-app-launch"),
+        ),
+      ).toHaveLength(1);
+      expect(f.driver.expectedLaunchFailures).toBe(1);
+    },
+  );
 
   it("does not accept an SDK error as proof that native crash recovery happened", async () => {
     const f = fixture();
