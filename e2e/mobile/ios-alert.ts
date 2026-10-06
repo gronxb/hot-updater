@@ -14,7 +14,7 @@ export function createIosAlertReader(
       const signal = readSignal();
       signal.throwIfAborted();
       try {
-        // SDK0.9.1 uses <session>-<worker slot>; this runner fixes workers=1.
+        // SDK 0.10.0 uses <session>-<worker slot>; this runner fixes workers=1.
         // alert get is a presented-surface query, unlike app snapshots which
         // can activate a background AUT. The pinned SDK bounds the native
         // getter at 10s and its RPC at 90s; private daemon teardown drains it.

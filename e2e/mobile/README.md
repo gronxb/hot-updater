@@ -1,7 +1,7 @@
 # Mobile E2E runner
 
-The runner uses `e2e@0.16.0`, `@e2e-dev/mobile@0.9.1`, and
-`agent-device@0.21.18` to execute the 29 scenarios in
+The runner uses `e2e@0.18.0`, `@e2e-dev/mobile@0.10.0`, and
+`agent-device@0.21.22` to execute the 29 scenarios in
 [`../scenario-names.json`](../scenario-names.json). The shared control server
 prepares OTA fixtures and verifies native recovery and Console Insights.
 No model or agent prompts are used. iOS app-opening confirmation dialogs are
@@ -49,7 +49,7 @@ their normal location, so runs still require exclusive devices and provider
 profiles. The local runner leases its prepared profile and refuses overlapping
 ownership.
 
-The daemon uses the internal launcher shipped with agent-device 0.21.18, matching
+The daemon uses the internal launcher shipped with agent-device 0.21.22, matching
 the entry used by that version's own SDK. This pinned compatibility contract is
 covered by a startup/health/shutdown test and must be revalidated when upgrading.
 Startup refuses legacy shared XCTestDevices symlinks/backups that upstream would

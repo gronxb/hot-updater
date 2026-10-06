@@ -21,7 +21,7 @@ const owner = {
 };
 const registration = {
   ...owner,
-  version: "0.21.18",
+  version: "0.21.22",
   transport: "http",
   httpPort: 43123,
   token: "a".repeat(48),
@@ -160,7 +160,7 @@ describe("private agent-device daemon", () => {
       const response = await fetch(`${daemon.baseUrl}/health`);
       expect(await response.json()).toMatchObject({
         service: "agent-device-daemon",
-        version: "0.21.18",
+        version: "0.21.22",
         rpcProtocolVersion: 2,
       });
     } finally {

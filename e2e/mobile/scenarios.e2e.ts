@@ -53,7 +53,7 @@ test.beforeEach(async ({ device, hotUpdaterAttemptSignal }) => {
     controller,
     signal,
     async () => {
-      // Suite hooks receive no device fixture in e2e@0.16.0. Installation belongs
+      // Suite hooks receive no device fixture in e2e@0.18.0. Installation belongs
       // to the first attempt, before bootstrap, reset, or any app launch.
       if (!installed) {
         await device.installApp(context.appPath, { app: context.appId });
