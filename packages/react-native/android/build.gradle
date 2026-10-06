@@ -146,6 +146,9 @@ dependencies {
   }
   implementation "org.jetbrains.kotlin:kotlin-stdlib:$kotlin_version"
   implementation "androidx.lifecycle:lifecycle-runtime-ktx:2.6.1"
+  // ProcessLifecycleOwner, for an activity that started before Hot Updater was created.
+  // React Native's AppCompat already brings it at runtime.
+  implementation "androidx.lifecycle:lifecycle-process:2.6.1"
   implementation "org.jetbrains.kotlinx:kotlinx-coroutines-core:1.7.3"
   implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3"
   implementation "org.apache.commons:commons-compress:1.27.1"

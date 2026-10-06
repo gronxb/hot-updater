@@ -55,6 +55,7 @@ struct BundleFileStorageServiceTests {
         let firstLaunch = firstProcess.prepareLaunch(bundle: .main, pendingRecovery: nil)
         try #require(firstLaunch.launchedBundleId == "hung-bundle")
         try #require(firstLaunch.shouldRollbackOnCrash)
+        firstProcess.markLaunchStarted(bundleId: "hung-bundle")
 
         // Repeated lookups in the current process must not consume its own marker.
         #expect(firstProcess.prepareLaunch(bundle: .main, pendingRecovery: nil).launchedBundleId == "hung-bundle")
@@ -78,6 +79,87 @@ struct BundleFileStorageServiceTests {
             documentsDirectory: workingDirectory, preferences: preferences
         )
         #expect(thirdProcess.prepareLaunch(bundle: .main, pendingRecovery: nil).launchedBundleId == nextLaunch.launchedBundleId)
+    }
+
+    @Test
+    func backgroundStagingLaunchStaysPendingOnNextLaunch() throws {
+        let workingDirectory = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(workingDirectory) }
+        let preferences = InMemoryPreferencesService()
+        for bundleId in ["stable-bundle", "staged-bundle"] {
+            let directory = try createBundleDirectory(
+                documentsDirectory: workingDirectory, bundleId: bundleId
+            )
+            try writeBundle(in: directory, bundleFileName: "index.ios.bundle")
+            try writeManifest(in: directory, bundleId: bundleId)
+        }
+        try writeMetadata(
+            documentsDirectory: workingDirectory,
+            BundleMetadata(
+                isolationKey: testIsolationKey,
+                stableBundleId: "stable-bundle",
+                stagingBundleId: "staged-bundle",
+                verificationPending: true
+            )
+        )
+        // Issue #1468: a background launch (a silent push) prepares the launch,
+        // but its root may render nothing, so content never appears.
+        let backgroundLaunch = makeStorageService(
+            documentsDirectory: workingDirectory, preferences: preferences
+        ).prepareLaunch(bundle: .main, pendingRecovery: nil)
+        try #require(backgroundLaunch.launchedBundleId == "staged-bundle")
+        try #require(backgroundLaunch.shouldRollbackOnCrash)
+
+        // The system terminates the suspended app, then the user opens it.
+        let nextProcess = makeStorageService(
+            documentsDirectory: workingDirectory, preferences: preferences
+        )
+        let nextLaunch = nextProcess.prepareLaunch(bundle: .main, pendingRecovery: nil)
+        #expect(nextLaunch.launchedBundleId == "staged-bundle")
+        #expect(nextLaunch.shouldRollbackOnCrash)
+        #expect(!nextProcess.getCrashHistory().contains("staged-bundle"))
+        #expect(nextProcess.notifyAppReady()["status"] as? String == "STABLE")
+    }
+
+    @Test
+    func launchStartRecordsOnlyThePendingStagedBundle() throws {
+        let workingDirectory = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(workingDirectory) }
+        let preferences = InMemoryPreferencesService()
+        for bundleId in ["stable-bundle", "staged-bundle"] {
+            let directory = try createBundleDirectory(
+                documentsDirectory: workingDirectory, bundleId: bundleId
+            )
+            try writeBundle(in: directory, bundleFileName: "index.ios.bundle")
+            try writeManifest(in: directory, bundleId: bundleId)
+        }
+        try writeMetadata(
+            documentsDirectory: workingDirectory,
+            BundleMetadata(
+                isolationKey: testIsolationKey,
+                stableBundleId: "stable-bundle",
+                stagingBundleId: "staged-bundle",
+                verificationPending: true
+            )
+        )
+        let process = makeStorageService(
+            documentsDirectory: workingDirectory, preferences: preferences
+        )
+        _ = process.prepareLaunch(bundle: .main, pendingRecovery: nil)
+
+        // The app can enter the foreground after JavaScript staged another
+        // bundle, or after first content already verified this one.
+        process.markLaunchStarted(bundleId: "stable-bundle")
+        #expect(loadMetadata(documentsDirectory: workingDirectory)?.launchInProgress == false)
+        process.markLaunchCompleted(bundleId: "staged-bundle")
+        process.markLaunchStarted(bundleId: "staged-bundle")
+        #expect(loadMetadata(documentsDirectory: workingDirectory)?.launchInProgress == false)
+
+        let nextLaunch = makeStorageService(
+            documentsDirectory: workingDirectory, preferences: preferences
+        ).prepareLaunch(bundle: .main, pendingRecovery: nil)
+        #expect(nextLaunch.launchedBundleId == "staged-bundle")
+        #expect(!nextLaunch.shouldRollbackOnCrash)
     }
 
     // Issue #1469: a launch that ends before first content without a crash
@@ -107,8 +189,9 @@ struct BundleFileStorageServiceTests {
         try stageRetriedBundle(documentsDirectory: workingDirectory)
 
         // The retry ends before first content too: now crash history keeps it.
-        #expect(makeStorageService(documentsDirectory: workingDirectory, preferences: preferences)
-            .prepareLaunch(bundle: .main, pendingRecovery: nil).launchedBundleId == "retried-bundle")
+        let retryLaunch = makeStorageService(documentsDirectory: workingDirectory, preferences: preferences)
+        #expect(retryLaunch.prepareLaunch(bundle: .main, pendingRecovery: nil).launchedBundleId == "retried-bundle")
+        retryLaunch.markLaunchStarted(bundleId: "retried-bundle")
         let next = makeStorageService(documentsDirectory: workingDirectory, preferences: preferences)
         #expect(next.prepareLaunch(bundle: .main, pendingRecovery: nil).launchedBundleId == "stable-bundle")
         #expect(next.notifyAppReady()["status"] as? String == "RECOVERED")
@@ -633,6 +716,15 @@ private func writeMetadata(
     #expect(metadata.save(to: metadataURL))
 }
 
+private func loadMetadata(documentsDirectory: URL) -> BundleMetadata? {
+    BundleMetadata.load(
+        from: documentsDirectory
+            .appendingPathComponent("bundle-store", isDirectory: true)
+            .appendingPathComponent(BundleMetadata.metadataFilename),
+        expectedIsolationKey: testIsolationKey
+    )
+}
+
 private func loadCrashedHistory(documentsDirectory: URL) -> CrashedHistory {
     CrashedHistory.load(from: documentsDirectory
         .appendingPathComponent("bundle-store", isDirectory: true)
@@ -662,6 +754,7 @@ private func leaveUnfinishedLaunch(
     )
     let launch = makeStorageService(documentsDirectory: documentsDirectory, preferences: preferences)
     try #require(launch.prepareLaunch(bundle: .main, pendingRecovery: nil).launchedBundleId == "retried-bundle")
+    launch.markLaunchStarted(bundleId: "retried-bundle")
 }
 
 /// What an install of retried-bundle over the recovered stable bundle leaves.

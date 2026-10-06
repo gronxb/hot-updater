@@ -277,6 +277,7 @@ public protocol BundleStorageService {
     func updateBundle(bundleId: String, fileUrl: URL?, fileHash: String?, manifestUrl: URL?, manifestFileHash: String?, changedAssets: [String: ChangedAssetDescriptor]?, progressHandler: @escaping (UpdateProgressPayload) -> Void, completion: @escaping (Result<Bool, Error>) -> Void)
 
     // Rollback support
+    func markLaunchStarted(bundleId: String?)
     func markLaunchCompleted(bundleId: String?)
     func notifyAppReady() -> [String: Any]
     func getCrashHistory() -> CrashedHistory
@@ -355,6 +356,9 @@ class BundleFileStorageService: BundleStorageService {
     private let crashedHistoryLock = NSLock()
     // A bundle waiting for its retry that this process keeps refusing, see InterruptedLaunch.
     private var retryHeldBundleId: String?
+    // markLaunchStarted can run when the app enters the foreground while JavaScript
+    // stages a newer bundle; both read and rewrite metadata.
+    private let stagingMetadataLock = NSLock()
     private let activeBundleMetadataLock = NSLock()
     private var activeBundleMetadataSnapshot: ActiveBundleMetadataSnapshot?
 
@@ -1624,12 +1628,8 @@ class BundleFileStorageService: BundleStorageService {
             rollbackPendingBundle(stagingBundleId, unfinishedLaunch: true)
         }
         hasPreparedLaunch = true
-        let selection = selectLaunch(bundle: bundle)
-        if selection.shouldRollbackOnCrash, var metadata = loadMetadataOrNull() {
-            metadata.launchInProgress = true
-            _ = saveMetadata(metadata)
-        }
-        return selection
+        // A launch is recorded only once it can show UI (markLaunchStarted).
+        return selectLaunch(bundle: bundle)
     }
     
     // MARK: - Bundle Update
@@ -1702,9 +1702,7 @@ class BundleFileStorageService: BundleStorageService {
                         let setResult = self.setBundleURL(localPath: bundlePath)
                         switch setResult {
                         case .success:
-                            let currentMetadata = self.loadMetadataOrNull() ?? self.createInitialMetadata()
-                            let updatedMetadata = self.prepareMetadataForNewStagingBundle(currentMetadata, bundleId: bundleId)
-                            let _ = self.saveMetadata(updatedMetadata)
+                            let updatedMetadata = self.saveNewStagingMetadata(bundleId)
                             NSLog("[BundleStorage] Set staging bundle (cached): \(bundleId), verificationPending: true")
 
                             self.emitArchiveProgress(
@@ -2134,9 +2132,7 @@ class BundleFileStorageService: BundleStorageService {
                 )
                 switch self.setBundleURL(localPath: finalBundlePath) {
                 case .success:
-                    let currentMetadata = self.loadMetadataOrNull() ?? self.createInitialMetadata()
-                    let updatedMetadata = self.prepareMetadataForNewStagingBundle(currentMetadata, bundleId: bundleId)
-                    let _ = self.saveMetadata(updatedMetadata)
+                    let updatedMetadata = self.saveNewStagingMetadata(bundleId)
                     self.cleanupTemporaryFiles([tempDirectory])
                     self.scheduleCleanupOldBundles(
                         bundleIdsToKeep: [currentBundleId, updatedMetadata.stableBundleId, bundleId].compactMap { $0 }
@@ -2472,9 +2468,7 @@ class BundleFileStorageService: BundleStorageService {
                         NSLog("[BundleStorage] Successfully set bundle URL: \(finalBundlePath)")
 
                         // 13) Set staging metadata for rollback support
-                        let currentMetadata = self.loadMetadataOrNull() ?? self.createInitialMetadata()
-                        let updatedMetadata = self.prepareMetadataForNewStagingBundle(currentMetadata, bundleId: bundleId)
-                        let _ = self.saveMetadata(updatedMetadata)
+                        let updatedMetadata = self.saveNewStagingMetadata(bundleId)
                         NSLog("[BundleStorage] Set staging bundle: \(bundleId), verificationPending: true")
 
                         // 14) Clean up the temporary directory
@@ -2545,6 +2539,29 @@ class BundleFileStorageService: BundleStorageService {
     /**
      * Marks the current launch as successful after the first content appeared.
      */
+    private func saveNewStagingMetadata(_ bundleId: String) -> BundleMetadata {
+        stagingMetadataLock.lock()
+        defer { stagingMetadataLock.unlock() }
+        let currentMetadata = loadMetadataOrNull() ?? createInitialMetadata()
+        let updatedMetadata = prepareMetadataForNewStagingBundle(currentMetadata, bundleId: bundleId)
+        _ = saveMetadata(updatedMetadata)
+        return updatedMetadata
+    }
+
+    func markLaunchStarted(bundleId: String?) {
+        stagingMetadataLock.lock()
+        defer { stagingMetadataLock.unlock() }
+        guard let bundleId,
+              var metadata = loadMetadataOrNull(),
+              metadata.verificationPending,
+              !metadata.launchInProgress,
+              metadata.stagingBundleId == bundleId else {
+            return
+        }
+        metadata.launchInProgress = true
+        _ = saveMetadata(metadata)
+    }
+
     func markLaunchCompleted(bundleId: String?) {
         // Before the guard: content from the built-in bundle (nil) also counts.
         readyInterruptedLaunchRetry(bundleId)

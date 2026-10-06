@@ -1,6 +1,7 @@
 package com.hotupdater
 
 import android.app.ActivityOptions
+import android.app.Application
 import android.content.Context
 import android.content.Intent
 import android.os.Process
@@ -16,6 +17,7 @@ class HotUpdaterImpl {
     private val bundleStorage: BundleStorageService
     private val preferences: PreferencesService
     private val recoveryManager: HotUpdaterRecoveryManager
+    private val activityStartGate: ActivityStartGate
     private var currentLaunchSelection: LaunchSelection? = null
 
     /**
@@ -29,6 +31,7 @@ class HotUpdaterImpl {
         this.context = context.applicationContext
         this.bundleStorage = bundleStorage
         this.preferences = preferences
+        this.activityStartGate = ActivityStartGate(this.context as? Application)
         this.recoveryManager = HotUpdaterRecoveryManager(this.context)
     }
 
@@ -439,6 +442,16 @@ class HotUpdaterImpl {
 
         val pendingRecovery = recoveryManager.consumePendingCrashRecovery()
         val selection = bundleStorage.prepareLaunch(pendingRecovery)
+        // A headless JS task, such as a background push, loads the bundle without
+        // an activity and never renders. Only a launch with an activity may leave
+        // an unfinished launch for the next process to roll back.
+        activityStartGate.runWhenActivityStarted(
+            if (selection.shouldRollbackOnCrash) {
+                { bundleStorage.markLaunchStarted(selection.launchedBundleId) }
+            } else {
+                null
+            },
+        )
         recoveryManager.startMonitoring(
             bundleId = selection.launchedBundleId,
             shouldRollback = selection.shouldRollbackOnCrash,
