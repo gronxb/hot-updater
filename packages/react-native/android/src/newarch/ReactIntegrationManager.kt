@@ -5,12 +5,10 @@ import android.util.Log
 import com.facebook.react.ReactApplication
 import com.facebook.react.ReactHost
 import com.facebook.react.ReactInstanceEventListener
-import com.facebook.react.bridge.JSBundleLoader
 import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReactContext
 import com.facebook.react.common.LifecycleState
 import kotlinx.coroutines.suspendCancellableCoroutine
-import java.lang.reflect.Field
 import kotlin.coroutines.resume
 
 class ReactIntegrationManager(
@@ -89,7 +87,7 @@ class ReactIntegrationManager(
 
     /**
      * Sets the JS bundle.
-     * Priority: ReactHostHolder (if set) > application.reactHost > reactNativeHost
+     * Priority: ReactHostHolder (if set) > application.reactHost > the bridge (React Native 0.81 and older)
      * @param bundleURL The bundle URL to set
      */
     public fun setJSBundle(bundleURL: String) {
@@ -115,19 +113,8 @@ class ReactIntegrationManager(
                 return
             }
 
-            // 4. Fallback to old architecture (reactNativeHost)
-            @Suppress("DEPRECATION")
-            val instanceManager = application.reactNativeHost.reactInstanceManager
-            val bundleLoader: JSBundleLoader? = this.getJSBundlerLoader(bundleURL)
-            val bundleLoaderField: Field =
-                instanceManager::class.java.getDeclaredField("mBundleLoader")
-            bundleLoaderField.isAccessible = true
-
-            if (bundleLoader != null) {
-                bundleLoaderField.set(instanceManager, bundleLoader)
-            } else {
-                bundleLoaderField.set(instanceManager, null)
-            }
+            // 4. Fall back to the bridge, which React Native 0.81 and older can run
+            BridgeReactInstance.setJSBundle(application, getJSBundlerLoader(bundleURL))
         } catch (e: Exception) {
             Log.d("HotUpdater", "Failed to setJSBundle: ${e.message}")
         }
@@ -135,7 +122,7 @@ class ReactIntegrationManager(
 
     /**
      * Reload the React Native application.
-     * Priority: ReactHostHolder (if set) > application.reactHost > reactNativeHost
+     * Priority: ReactHostHolder (if set) > application.reactHost > the bridge (React Native 0.81 and older)
      */
     public suspend fun reload() {
         try {
@@ -160,21 +147,8 @@ class ReactIntegrationManager(
                 return
             }
 
-            // 4. Fallback to old architecture (reactNativeHost)
-            @Suppress("DEPRECATION")
-            val reactNativeHost = application.reactNativeHost
-            try {
-                reactNativeHost.reactInstanceManager.recreateReactContextInBackground()
-            } catch (e: Exception) {
-                val currentActivity = reactNativeHost.reactInstanceManager.currentReactContext?.currentActivity
-                if (currentActivity == null) {
-                    return
-                }
-
-                currentActivity.runOnUiThread {
-                    currentActivity.recreate()
-                }
-            }
+            // 4. Fall back to the bridge, which React Native 0.81 and older can run
+            BridgeReactInstance.reload(application)
         } catch (e: Exception) {
             Log.d("HotUpdater", "Failed to reload: ${e.message}")
         }
