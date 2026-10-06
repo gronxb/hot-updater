@@ -67,7 +67,10 @@ public final class HotUpdaterLynxModuleContext {
 @objc public final class HotUpdaterLynx: NSObject, LynxModule {
     public static var name: String { "HotUpdaterLynx" }
     public static var methodLookup: [String: String] {
-        ["getState": NSStringFromSelector(#selector(getState(_:))),
+        ["getPluginInfo": NSStringFromSelector(#selector(getPluginInfo)),
+         "getPluginStorageItem": NSStringFromSelector(#selector(getPluginStorageItem(_:))),
+         "setPluginStorageItem": NSStringFromSelector(#selector(setPluginStorageItem(_:value:))),
+         "getState": NSStringFromSelector(#selector(getState(_:))),
          "getLaunchConfiguration": NSStringFromSelector(#selector(getLaunchConfiguration(_:))),
          "getRuntimeEvents": NSStringFromSelector(#selector(getRuntimeEvents(_:))),
          "acceptCatalog": NSStringFromSelector(#selector(acceptCatalog(_:callback:))),
@@ -97,6 +100,33 @@ public final class HotUpdaterLynxModuleContext {
         else if error.localizedDescription.hasPrefix("STALE_CONTEXT:") { code = "CONTEXT_REJECTED" }
         else { code = "NATIVE_ERROR" }
         callback?(["ok": false, "error": ["code": code, "message": error.localizedDescription]])
+    }
+    private func pluginReply(_ operation: () throws -> Any) -> [String: Any] {
+        do {
+            _ = try bound()
+            return ["ok": true, "data": try operation()]
+        } catch {
+            return ["ok": false, "error": ["code": "PLUGIN_STORAGE_ERROR", "message": error.localizedDescription]]
+        }
+    }
+    @objc public func getPluginInfo() -> [String: Any] {
+        pluginReply {
+            #if DEBUG
+            let debug = true
+            #else
+            let debug = false
+            #endif
+            return ["installId": try LynxClientStorage.applicationStorage().installId(), "isDebugBuild": debug]
+        }
+    }
+    @objc public func getPluginStorageItem(_ key: String) -> [String: Any] {
+        pluginReply { try LynxClientStorage.applicationStorage().get(key) as Any? ?? NSNull() }
+    }
+    @objc public func setPluginStorageItem(_ key: String, value: String?) -> [String: Any] {
+        pluginReply {
+            try LynxClientStorage.applicationStorage().set(key, value: value)
+            return true
+        }
     }
     private func selectionParameters(_ params: [String: Any]) throws -> (
         guardValue: LynxPolicyGuard,

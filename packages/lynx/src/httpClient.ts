@@ -6,6 +6,7 @@ import {
   MAX_UPDATE_ARTIFACT_RESPONSE_BYTES,
   NUMERIC_COHORT_SIZE,
   type ReleaseCatalog,
+  type UpdateHttpResponse,
   type ReleaseCatalogDescriptor,
 } from "@hot-updater/protocol";
 
@@ -353,7 +354,11 @@ function validateCatalog(
   return catalog as ReleaseCatalog;
 }
 
-export function createHttpClient(options: HotUpdaterOptions) {
+export function createHttpClient(
+  options: HotUpdaterOptions & {
+    onHttpResponse?: (response: UpdateHttpResponse) => void;
+  },
+) {
   const baseURL = () => {
     const url = options.baseURL.replace(/\/+$/, "");
     if (!/^https?:\/\//i.test(url)) {
@@ -400,17 +405,32 @@ export function createHttpClient(options: HotUpdaterOptions) {
         fetch(`${baseURL()}${path}`, request),
         timeoutPromise,
       ]);
-      if (response.status !== 200) {
-        cancelBody(response.body);
-        throw new LynxUpdaterError(
-          "HTTP_ERROR",
-          `Update request returned HTTP ${response.status}.`,
-        );
+      const resource = path.startsWith("/release-catalogs/")
+        ? "catalog"
+        : "artifact";
+      let body: string | null = null;
+      try {
+        if (response.status !== 200) {
+          cancelBody(response.body);
+          throw new LynxUpdaterError(
+            "HTTP_ERROR",
+            `Update request returned HTTP ${response.status}.`,
+            { reason: "http", resource, httpStatus: response.status },
+          );
+        }
+        body = await Promise.race([
+          readBoundedBody(response, maxResponseBytes, controller.signal),
+          timeoutPromise,
+        ]);
+      } finally {
+        options.onHttpResponse?.({
+          resource,
+          path,
+          status: response.status,
+          body: body?.slice(0, 4096) ?? null,
+          bodyTruncated: body !== null && body.length > 4096,
+        });
       }
-      const body = await Promise.race([
-        readBoundedBody(response, maxResponseBytes, controller.signal),
-        timeoutPromise,
-      ]);
       try {
         return JSON.parse(body) as unknown;
       } catch {

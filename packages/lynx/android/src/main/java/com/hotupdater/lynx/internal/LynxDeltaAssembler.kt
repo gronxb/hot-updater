@@ -35,7 +35,7 @@ internal class LynxArtifactMetadata(
 
 /** Builds a new manifest tree from a native-owned running installation. Never mutates the base. */
 internal class LynxDeltaAssembler(private val integrity: ArchiveIntegrity, private val downloader: ArchiveDownload) {
-    data class Result(val patchedAssets: List<LynxPatchedAssetEvidence>, val usedArchive: Boolean, val metadata: LynxArtifactMetadata? = null)
+    data class Result(val patchedAssets: List<LynxPatchedAssetEvidence>, val usedArchive: Boolean, val metadata: LynxArtifactMetadata? = null, val patchFallback: Boolean = false)
     suspend fun assemble(
         transaction: File,
         payload: File,
@@ -50,6 +50,7 @@ internal class LynxDeltaAssembler(private val integrity: ArchiveIntegrity, priva
         val scratch = File(transaction, "delta-downloads").also { check(it.mkdir()) }
         var downloaded = 0L
         val patchedAssets = mutableListOf<LynxPatchedAssetEvidence>()
+        var patchFallback = false
         suspend fun download(
             url: String,
             destination: File,
@@ -215,6 +216,7 @@ internal class LynxDeltaAssembler(private val integrity: ArchiveIntegrity, priva
                         } catch (error: CancellationException) { throw error }
                         catch (error: Exception) {
                             operationContext.ensureActive()
+                            patchFallback = true
                             target.delete()
                             Log.i(
                                 TAG,
@@ -252,7 +254,7 @@ internal class LynxDeltaAssembler(private val integrity: ArchiveIntegrity, priva
                 manifestFile.readBytes(),
                 File(payload, "hot-updater-lynx.json").readBytes(),
                 paths,
-            ) else null)
+            ) else null, patchFallback)
         } finally { scratch.deleteRecursively() }
     }
 

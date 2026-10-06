@@ -809,6 +809,9 @@ importers:
       '@hot-updater/lynx-sparkling':
         specifier: workspace:*
         version: link:../../packages/lynx-sparkling
+      '@hot-updater/plugin-insights':
+        specifier: workspace:*
+        version: link:../../plugins/insights
       '@lynx-js/react':
         specifier: 0.116.5
         version: 0.116.5(@lynx-js/types@3.7.0)(@types/react@18.3.20)

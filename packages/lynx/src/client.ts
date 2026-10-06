@@ -2,10 +2,12 @@ import {
   INVALID_COHORT_ERROR_MESSAGE,
   isValidCohort,
   normalizeCohortValue,
+  type UpdateError,
 } from "@hot-updater/protocol";
 
 import { checkForUpdate } from "./checkForUpdate";
 import { callNative, LynxUpdaterError, normalizeNativeState } from "./native";
+import { createLynxPluginHost } from "./pluginHost";
 import { LYNX_RUNTIME_EVENT_LIMITS } from "./types";
 import type {
   ActiveUpdateSelection,
@@ -392,6 +394,58 @@ function createHotUpdaterClient() {
   };
   let snapshot: NativeState | null = null;
   let customReload: CustomReloadHandler | null = null;
+  let pluginOptions: HotUpdaterInitOptions | undefined;
+  let pluginsConfigured = false;
+  let didEmitAppReady = false;
+  const plugins = createLynxPluginHost(() => requireSnapshot((state) => state));
+  const observeState = (state: NativeState) => {
+    snapshot = normalizeNativeState(state);
+    if (!pluginsConfigured && pluginOptions) {
+      plugins.configurePlugins(pluginOptions.plugins, {
+        ...pluginOptions,
+        onError: pluginOptions.onError
+          ? (error) =>
+              pluginOptions?.onError?.(
+                error instanceof Error ? error : new Error(String(error)),
+              )
+          : undefined,
+      });
+      pluginsConfigured = true;
+    }
+  };
+  const reportUpdateError = (
+    error: unknown,
+    state: NativeState,
+    strategy: CheckForUpdateOptions["updateStrategy"],
+    stage: UpdateError["stage"],
+    target?: { bundleId: string; releaseId: string | null },
+  ) => {
+    plugins.emitPluginHook("onUpdateError", () => ({
+      stage,
+      reason:
+        error instanceof LynxUpdaterError && error.code === "INVALID_RESPONSE"
+          ? "invalid_response"
+          : error instanceof LynxUpdaterError &&
+              error.code === "REQUEST_TIMEOUT"
+            ? "network"
+            : "unknown",
+      ...(error instanceof LynxUpdaterError && error.code === "REQUEST_TIMEOUT"
+        ? { transport: "timeout" as const }
+        : {}),
+      ...(error instanceof LynxUpdaterError ? error.details : {}),
+      ...(target
+        ? {
+            targetBundleId: target.bundleId,
+            ...(target.releaseId ? { targetReleaseId: target.releaseId } : {}),
+          }
+        : {}),
+      channel: state.channel,
+      bundleId: state.runningSelection.bundleId,
+      releaseId: state.runningSelection.releaseId,
+      updateStrategy: strategy,
+      cause: error,
+    }));
+  };
 
   const ensureClient = (methodName: string): HotUpdaterOptions => {
     if (!config.client) throw missingInit(methodName);
@@ -400,8 +454,8 @@ function createHotUpdaterClient() {
 
   const refreshState = async () => {
     const next = await callNative<NativeState>("getState");
-    snapshot = normalizeNativeState(next);
-    return snapshot;
+    observeState(next);
+    return snapshot!;
   };
 
   const requireSnapshot = <T>(read: (state: NativeState) => T): T => {
@@ -442,6 +496,8 @@ function createHotUpdaterClient() {
     },
 
     init: (options: HotUpdaterInitOptions): void => {
+      pluginOptions = options;
+      pluginsConfigured = false;
       config.onError = options.onError;
       config.client = {
         baseURL: options.baseURL,
@@ -458,6 +514,52 @@ function createHotUpdaterClient() {
         const result = await checkForUpdate({
           ...options,
           client,
+          onState: observeState,
+          onHttpResponse: (response) =>
+            plugins.emitPluginHook("onHttpResponse", () => response),
+          onInstallError: (error, state, target, stage) =>
+            reportUpdateError(
+              error,
+              state,
+              options.updateStrategy,
+              stage,
+              target,
+            ),
+          onStaged: (state, selection, staged) => {
+            if (staged.status === "ADOPTED") {
+              plugins.emitPluginHook("onUpdateCheck", () => ({
+                status: "UNCHANGED",
+                channel: selection.channel,
+                bundleId: selection.bundleId,
+                releaseId: selection.releaseId,
+                previousReleaseId: state.runningSelection.releaseId,
+              }));
+            } else if (staged.delivery !== undefined) {
+              plugins.emitPluginHook("onBundleDownloaded", () => {
+                if (
+                  !["patch", "manifest", "archive"].includes(
+                    staged.delivery!,
+                  ) ||
+                  typeof staged.patchFallback !== "boolean"
+                ) {
+                  throw new LynxUpdaterError(
+                    "INVALID_NATIVE_REPLY",
+                    "Native download receipt is invalid.",
+                  );
+                }
+                return {
+                  channel: selection.channel,
+                  fromBundleId: state.runningSelection.bundleId,
+                  fromReleaseId: state.runningSelection.releaseId,
+                  toBundleId: selection.bundleId,
+                  toReleaseId: selection.releaseId,
+                  updateStrategy: options.updateStrategy,
+                  delivery: staged.delivery!,
+                  patchFallback: staged.patchFallback,
+                };
+              });
+            }
+          },
           requestHeaders: {
             ...client.requestHeaders,
             ...options.requestHeaders,
@@ -465,7 +567,29 @@ function createHotUpdaterClient() {
           requestTimeout: options.requestTimeout ?? client.requestTimeout,
           onError: options.onError ?? config.onError,
         });
-        await refreshState();
+        const state = await refreshState();
+        plugins.emitPluginHook("onUpdateCheck", () =>
+          result
+            ? {
+                status: "UPDATE_AVAILABLE",
+                channel: options.channel || state.channel,
+                fromBundleId: state.runningSelection.bundleId,
+                fromReleaseId: state.runningSelection.releaseId,
+                toBundleId: result.bundleId,
+                toReleaseId: result.releaseId,
+                transitionKind: result.transitionKind,
+                updateStatus: result.status,
+                shouldForceUpdate: result.shouldForceUpdate,
+                updateStrategy: options.updateStrategy,
+              }
+            : {
+                status: "UNCHANGED",
+                channel: state.channel,
+                bundleId: state.runningSelection.bundleId,
+                releaseId: state.runningSelection.releaseId,
+                previousReleaseId: state.runningSelection.releaseId,
+              },
+        );
         if (!result) return null;
         return {
           ...result,
@@ -476,6 +600,8 @@ function createHotUpdaterClient() {
           },
         };
       } catch (error) {
+        if (snapshot)
+          reportUpdateError(error, snapshot, options.updateStrategy, "check");
         (options.onError ?? config.onError)?.(error as Error);
         throw error;
       }
@@ -521,6 +647,36 @@ function createHotUpdaterClient() {
           "INVALID_NATIVE_REPLY",
           "Native readiness returned an invalid launch transition receipt.",
         );
+      }
+      if (!didEmitAppReady) {
+        didEmitAppReady = true;
+        plugins.emitPluginHook("onAppReady", () => {
+          if (transition === null || transition.kind === "UNCHANGED")
+            return {
+              status: "UNCHANGED",
+              channel: after.channel,
+              bundleId: after.runningSelection.bundleId,
+              releaseId: after.runningSelection.releaseId,
+            };
+          if (
+            transition.updateStrategy !== "appVersion" &&
+            transition.updateStrategy !== "fingerprint"
+          ) {
+            throw new LynxUpdaterError(
+              "INVALID_NATIVE_REPLY",
+              "Native launch transition has no update strategy.",
+            );
+          }
+          return {
+            status: transition.kind,
+            channel: transition.to.channel,
+            fromBundleId: transition.from.bundleId,
+            fromReleaseId: transition.from.releaseId,
+            toBundleId: transition.to.bundleId,
+            toReleaseId: transition.to.releaseId,
+            updateStrategy: transition.updateStrategy,
+          };
+        });
       }
       if (transition === null) return { status: "UNCHANGED" };
       const acceptedTransitionId = transitionId as string;

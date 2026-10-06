@@ -1,6 +1,8 @@
 package com.hotupdater.lynx
 
 import android.content.Context
+import android.content.pm.ApplicationInfo
+import java.io.File
 import android.os.Handler
 import android.os.Looper
 import com.lynx.jsbridge.LynxMethod
@@ -18,6 +20,27 @@ import org.json.JSONObject
 
 /** Framework-independent background native bridge; never accepts context or attempt IDs. */
 class HotUpdaterLynxModule(context: Context) : LynxModule(context) {
+    private val clientStorage by lazy {
+        LynxClientStorage(File(mContext.applicationContext.noBackupFilesDir, "hot-updater-lynx"))
+    }
+    @LynxMethod fun getPluginInfo(): JavaOnlyMap = pluginReply {
+        JSONObject().put("installId", clientStorage.installId())
+            .put("isDebugBuild", mContext.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0)
+    }
+    @LynxMethod fun getPluginStorageItem(key: String): JavaOnlyMap = pluginReply {
+        clientStorage.get(key) ?: JSONObject.NULL
+    }
+    @LynxMethod fun setPluginStorageItem(key: String, value: String?): JavaOnlyMap = pluginReply {
+        clientStorage.set(key, value)
+        true
+    }
+    private fun pluginReply(operation: () -> Any): JavaOnlyMap = toMap(
+        runCatching(operation).fold(
+            { JSONObject().put("ok", true).put("data", it) },
+            { JSONObject().put("ok", false).put("error", JSONObject()
+                .put("code", "PLUGIN_STORAGE_ERROR").put("message", it.message ?: "Plugin storage failed")) },
+        ),
+    )
     @LynxMethod fun getState(callback: Callback) = call(callback) { session -> session.controller.state(session) }
     @LynxMethod fun getLaunchConfiguration(callback: Callback) {
         Handler(Looper.getMainLooper()).post {

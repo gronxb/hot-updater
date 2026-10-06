@@ -20,3 +20,16 @@ export type {
   SelectionSummary,
   TransitionAcceptance,
 } from "./types";
+
+export { defineClientPlugin } from "@hot-updater/protocol";
+export type {
+  AppReadyResult,
+  BundleDownloadedInfo,
+  HotUpdaterClientContext,
+  HotUpdaterClientHooks,
+  HotUpdaterClientPlugin,
+  HotUpdaterClientStorage,
+  UpdateCheckResult,
+  UpdateError,
+  UpdateHttpResponse,
+} from "@hot-updater/protocol";

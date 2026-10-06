@@ -680,6 +680,7 @@ class LynxArtifactInstallerDeltaTest {
                     assertTrue(prepared.manifestBacked)
                     assertFalse(prepared.usedArchive)
                     assertTrue(prepared.patchedAssets.isEmpty())
+                    assertTrue(prepared.patchFallback)
                     assertTrue(server.requested("/patch"))
                     assertTrue(server.requested("/original"))
                     assertFalse(server.requested("/archive"))

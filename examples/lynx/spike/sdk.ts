@@ -4,6 +4,7 @@ import {
   type CheckForUpdateResult,
 } from "@hot-updater/lynx";
 import { navigate } from "@hot-updater/lynx-sparkling";
+import { insights } from "@hot-updater/plugin-insights/client";
 
 declare const __SPIKE_VARIANT__: string;
 declare const __SPIKE_BEHAVIOR__: string;
@@ -52,6 +53,7 @@ export async function startSdk(
         launchConfiguration.appBaseURL ?? "http://localhost:3007/hot-updater",
       );
       HotUpdater.init({
+        plugins: [insights()],
         baseURL:
           launchConfiguration.appBaseURL ?? "http://localhost:3007/hot-updater",
       });

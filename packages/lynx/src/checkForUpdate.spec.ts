@@ -912,3 +912,105 @@ describe("Lynx catalog controller (mock native transport)", () => {
     });
   });
 });
+
+describe("Lynx plugin update observations", () => {
+  it.each(["patch", "manifest", "archive"] as const)(
+    "reports native %s delivery once after staging, with real HTTP observations",
+    async (delivery) => {
+      const { updater, native } = setup();
+      Object.assign(native, {
+        getPluginInfo: () => ({
+          ok: true,
+          data: { installId: "installation", isDebugBuild: false },
+        }),
+      });
+      const downloaded = vi.fn();
+      const response = vi.fn();
+      updater.init({
+        baseURL: "https://updates.test",
+        plugins: [
+          {
+            id: "observer",
+            setup: () => ({
+              onBundleDownloaded: downloaded,
+              onHttpResponse: response,
+            }),
+          },
+        ],
+      });
+      native.stageSelection.mockImplementation((_params, callback) =>
+        callback({
+          ok: true,
+          data: {
+            status: "STAGED",
+            requiresRestart: true,
+            delivery,
+            patchFallback: delivery === "manifest",
+          },
+        }),
+      );
+      const update = await updater.checkForUpdate({
+        updateStrategy: "appVersion",
+      });
+      expect(downloaded).not.toHaveBeenCalled();
+      expect(response.mock.calls.map(([event]) => event.resource)).toEqual([
+        "catalog",
+        "artifact",
+      ]);
+      await Promise.all([update!.updateBundle(), update!.updateBundle()]);
+      expect(downloaded).toHaveBeenCalledExactlyOnceWith({
+        channel: "production",
+        fromBundleId: A,
+        fromReleaseId: null,
+        toBundleId: B,
+        toReleaseId: releaseB,
+        updateStrategy: "appVersion",
+        delivery,
+        patchFallback: delivery === "manifest",
+      });
+    },
+  );
+
+  it("reports a failed native installation once and never reports a download", async () => {
+    const { updater, native } = setup();
+    Object.assign(native, {
+      getPluginInfo: () => ({
+        ok: true,
+        data: { installId: "installation", isDebugBuild: false },
+      }),
+    });
+    const failed = vi.fn();
+    const downloaded = vi.fn();
+    updater.init({
+      baseURL: "https://updates.test",
+      plugins: [
+        {
+          id: "observer",
+          setup: () => ({
+            onUpdateError: failed,
+            onBundleDownloaded: downloaded,
+          }),
+        },
+      ],
+    });
+    native.stageSelection.mockImplementation((_params, callback) =>
+      callback({
+        ok: false,
+        error: { code: "STORAGE_ERROR", message: "disk full" },
+      }),
+    );
+    const update = await updater.checkForUpdate({
+      updateStrategy: "appVersion",
+    });
+    await expect(update!.updateBundle()).rejects.toThrow("disk full");
+    await expect(update!.updateBundle()).rejects.toThrow("disk full");
+    expect(failed).toHaveBeenCalledOnce();
+    expect(failed.mock.calls[0]![0]).toMatchObject({
+      stage: "install",
+      bundleId: A,
+      targetBundleId: B,
+      targetReleaseId: releaseB,
+    });
+    expect(downloaded).not.toHaveBeenCalled();
+  });
+});

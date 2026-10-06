@@ -1288,6 +1288,13 @@ class LynxUpdaterController internal constructor(
             if (adoption) running = selected
             runtimeChannel = selected.channel
             result = JSONObject().put("status", if (adoption) "ADOPTED" else "STAGED").put("requiresRestart", !adoption)
+            prepared.bytes?.let { bytes ->
+                result!!.put("delivery", when {
+                    bytes.usedArchive -> "archive"
+                    bytes.patchedAssets.isNotEmpty() -> "patch"
+                    else -> "manifest"
+                }).put("patchFallback", bytes.patchFallback)
+            }
             Log.i(TAG, "selection-${if (adoption) "adopted" else "staged"} bundle=${selected.bundleId} release=${selected.releaseId} running=${running.bundleId}")
         }
         val staged = try {
@@ -1456,6 +1463,7 @@ class LynxUpdaterController internal constructor(
             .put("channel", receipt.channel)
         return JSONObject()
             .put("kind", kind)
+            .put("updateStrategy", if ((if (kind == "RECOVERED") from.scopeKey else to.scopeKey)?.startsWith("v1:fingerprint:") == true) "fingerprint" else "appVersion")
             .put(
                 "from",
                 summary(from),

@@ -94,6 +94,7 @@ enum LynxDelta {
         let tree: VerifiedLynxTree
         let patchedAssets: [PatchedAsset]
         let usedArchive: Bool
+        let patchFallback: Bool
     }
 
     static func prepare(_ request: LynxArtifactRequest, base: LynxInstalledArtifact?, stage: URL,
@@ -146,7 +147,7 @@ enum LynxDelta {
                     try FileManager.default.moveItem(at: archiveContents.appendingPathComponent(name), to: target)
                 }
                 let tree = try VerifiedLynxTree.verify(at: contents, bundleId: request.bundleId, manifestToken: token, configuration: configuration)
-                return Result(tree: tree, patchedAssets: [], usedArchive: true)
+                return Result(tree: tree, patchedAssets: [], usedArchive: true, patchFallback: false)
             } catch {
                 try Task.checkCancellation()
                 for name in manifest.assets.keys { try? FileManager.default.removeItem(at: contents.appendingPathComponent(name)) }
@@ -155,6 +156,7 @@ enum LynxDelta {
         }
         var total = try size(manifestFile)
         var patchedAssets: [PatchedAsset] = []
+        var patchFallback = false
         for name in manifest.assets.keys.sorted() {
             try Task.checkCancellation()
             let expected = manifest.assets[name]!.fileHash
@@ -202,6 +204,7 @@ enum LynxDelta {
                         }
                         try Task.checkCancellation()
                     } catch { try Task.checkCancellation() }
+                    if !patched { patchFallback = true }
                 }
                 if !patched {
                     try? FileManager.default.removeItem(at: output)
@@ -231,7 +234,7 @@ enum LynxDelta {
             total += bytes
         }
         let tree = try VerifiedLynxTree.verify(at: contents, bundleId: request.bundleId, manifestToken: token, configuration: configuration)
-        return Result(tree: tree, patchedAssets: patchedAssets.sorted { $0.path < $1.path }, usedArchive: false)
+        return Result(tree: tree, patchedAssets: patchedAssets.sorted { $0.path < $1.path }, usedArchive: false, patchFallback: patchFallback)
     }
 
     private static func readManifest(_ request: LynxArtifactRequest, contents: URL,

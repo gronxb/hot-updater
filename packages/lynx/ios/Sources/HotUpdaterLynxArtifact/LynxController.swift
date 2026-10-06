@@ -99,7 +99,8 @@ public struct LynxLaunchTransition {
     public let from: LynxPolicyReceipt
     public let to: LynxPolicyReceipt
     var dictionary: [String: Any] {
-        ["kind": kind, "from": Self.summary(from), "to": Self.summary(to)]
+        ["kind": kind, "from": Self.summary(from), "to": Self.summary(to),
+         "updateStrategy": (kind == "RECOVERED" ? from.scopeKey : to.scopeKey)?.hasPrefix("v1:fingerprint:") == true ? "fingerprint" : "appVersion"]
     }
     private static func summary(_ receipt: LynxPolicyReceipt) -> [String: Any] {
         ["kind": receipt.kind, "releaseId": receipt.releaseId as Any? ?? NSNull(),
@@ -1161,7 +1162,15 @@ public final class LynxController {
             if value.receipt.bundleId != configuration.embeddedBundleId { _ = try installer.inspectInstalled(bundleId: value.receipt.bundleId, expectedManifestDigest: value.digest) }
             try publishState()
         }
-        return ["status": adopt ? "ADOPTED" : "STAGED", "requiresRestart": !adopt]
+        var result: [String: Any] = ["status": adopt ? "ADOPTED" : "STAGED", "requiresRestart": !adopt]
+        if let artifact = value.artifact {
+            switch artifact.delivery {
+            case .archive: result["delivery"] = "archive"
+            case .manifest(_, _, let patchedAssets): result["delivery"] = patchedAssets.isEmpty ? "manifest" : "patch"
+            }
+            result["patchFallback"] = artifact.patchFallback
+        }
+        return result
     }
     private func cleanupUnusedArtifacts() throws {
         var retained = Set([runningSelection.bundleId] + preparations.values.map { $0.receipt.bundleId } + Array(inFlightBundles.keys))

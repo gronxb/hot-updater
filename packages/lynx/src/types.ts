@@ -1,5 +1,6 @@
 import type {
   ArtifactInfo,
+  HotUpdaterClientPlugin,
   ArtifactAsset,
   PersistedSelectionReceipt,
   ReleaseCatalog,
@@ -13,6 +14,7 @@ export interface HotUpdaterOptions {
 
 export type HotUpdaterInitOptions = HotUpdaterOptions & {
   onError?: (error: Error) => void;
+  plugins?: readonly HotUpdaterClientPlugin[];
 };
 
 export interface CheckForUpdateOptions {
@@ -86,6 +88,8 @@ export type LaunchConfiguration = Readonly<Record<string, string>>;
 export interface InstallResult {
   status: "STAGED" | "ADOPTED";
   requiresRestart: boolean;
+  delivery?: "patch" | "manifest" | "archive";
+  patchFallback?: boolean;
 }
 
 export interface TransitionAcceptance {
@@ -98,6 +102,7 @@ export interface ResetChannelResult extends TransitionAcceptance {
 }
 
 export interface LaunchTransitionReceipt {
+  updateStrategy?: "appVersion" | "fingerprint";
   kind: "UPDATE_APPLIED" | "RECOVERED" | "UNCHANGED";
   from: SelectionSummary;
   to: SelectionSummary;
@@ -219,6 +224,9 @@ type Callback<T> = (reply: NativeReply<T>) => void;
 
 /** Methods are called only from Lynx background scripting. */
 export interface HotUpdaterLynxNative {
+  getPluginInfo(): NativeReply<{ installId: string; isDebugBuild: boolean }>;
+  getPluginStorageItem(key: string): NativeReply<string | null>;
+  setPluginStorageItem(key: string, value: string | null): NativeReply<boolean>;
   getState(callback: Callback<NativeState>): void;
   getLaunchConfiguration(callback: Callback<LaunchConfiguration>): void;
   getRuntimeEvents(callback: Callback<RuntimeEventsSnapshot>): void;

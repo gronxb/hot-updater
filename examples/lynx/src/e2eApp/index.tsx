@@ -27,6 +27,7 @@ import {
   styles,
   type ScreenName,
 } from "./e2eStack";
+import { analytics } from "./insights";
 import { readE2eLaunchConfiguration } from "./launchConfiguration";
 import {
   E2E_SCENARIO_MARKER,
@@ -769,6 +770,7 @@ const configureE2eRuntime = async (): Promise<boolean> => {
     "/pending-action",
   );
   HotUpdater.init({
+    plugins: [analytics],
     baseURL: await resolveAppBaseURL(),
     requestTimeout: 15000,
   });

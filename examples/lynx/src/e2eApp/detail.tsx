@@ -2,6 +2,7 @@ import { HotUpdater } from "@hot-updater/lynx";
 import { close } from "@hot-updater/lynx-sparkling";
 import { root, useEffect, useState } from "@lynx-js/react";
 
+import { analytics } from "./insights";
 import { resolveE2eLaunchConfiguration } from "./launchConfiguration";
 import { E2E_SCENARIO_MARKER } from "./patchSurface";
 import { createPendingActionPoller } from "./pendingActionPoller";
@@ -65,7 +66,11 @@ const configure = async () => {
     /\/screen-state$/,
     "/pending-action",
   );
-  HotUpdater.init({ baseURL: endpoints.appBaseURL, requestTimeout: 15_000 });
+  HotUpdater.init({
+    plugins: [analytics],
+    baseURL: endpoints.appBaseURL,
+    requestTimeout: 15_000,
+  });
   return typeof native.title === "string" ? native.title : null;
 };
 

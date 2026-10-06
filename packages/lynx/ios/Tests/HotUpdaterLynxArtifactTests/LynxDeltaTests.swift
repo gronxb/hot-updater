@@ -622,6 +622,7 @@ final class LynxDeltaTests: XCTestCase {
         }
         XCTAssertEqual(deliveredBase, baseBundleId)
         XCTAssertEqual(releaseId, targetReleaseId)
+        XCTAssertTrue(prepared.patchFallback)
         let patched = try XCTUnwrap(patchedAssets.first { $0.path == "main.lynx.bundle" })
         XCTAssertEqual(patched.patchFileHash, hash(patchBytes))
         XCTAssertEqual(

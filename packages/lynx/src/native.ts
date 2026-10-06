@@ -1,3 +1,5 @@
+import type { UpdateError } from "@hot-updater/protocol";
+
 import type { HotUpdaterLynxNative, NativeReply, NativeState } from "./types";
 
 declare const NativeModules:
@@ -9,6 +11,10 @@ export class LynxUpdaterError extends Error {
   constructor(
     readonly code: string,
     message: string,
+    readonly details?: Pick<
+      UpdateError,
+      "reason" | "resource" | "httpStatus" | "transport"
+    >,
   ) {
     super(message);
     this.name = "LynxUpdaterError";
@@ -96,4 +102,37 @@ export function callNative<T>(
       params === undefined ? [callback] : [params, callback],
     );
   });
+}
+
+/** Lynx's synchronous native methods are used only for small plugin metadata. */
+export function callPluginNative<T>(
+  method: "getPluginInfo" | "getPluginStorageItem" | "setPluginStorageItem",
+  ...args: (string | null)[]
+): T {
+  const module =
+    typeof NativeModules === "undefined"
+      ? undefined
+      : NativeModules?.HotUpdaterLynx;
+  const operation = module?.[method];
+  if (typeof operation !== "function") {
+    throw new LynxUpdaterError(
+      "NATIVE_MODULE_UNAVAILABLE",
+      `HotUpdaterLynx.${method} is unavailable.`,
+    );
+  }
+  const reply = (
+    operation as (...args: (string | null)[]) => NativeReply<T>
+  ).apply(module, args);
+  if (reply?.ok === true) return reply.data;
+  if (
+    reply?.ok === false &&
+    typeof reply.error?.code === "string" &&
+    typeof reply.error.message === "string"
+  ) {
+    throw new LynxUpdaterError(reply.error.code, reply.error.message);
+  }
+  throw new LynxUpdaterError(
+    "INVALID_NATIVE_REPLY",
+    `HotUpdaterLynx.${method} returned an invalid reply.`,
+  );
 }

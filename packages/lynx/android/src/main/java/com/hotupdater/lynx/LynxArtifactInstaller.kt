@@ -95,6 +95,7 @@ class PreparedLynxArtifact internal constructor(
     internal val baseBundleId: String?,
     internal val patchedAssets: List<LynxPatchedAssetEvidence>,
     internal val usedArchive: Boolean,
+    internal val patchFallback: Boolean,
     internal val lease: PreparationLease,
 ) {
     val bundleId: String get() = request.bundleId
@@ -206,6 +207,7 @@ class LynxArtifactInstaller internal constructor(
                     base?.bundleId,
                     assembly.patchedAssets,
                     assembly.usedArchive,
+                    assembly.patchFallback,
                     checkNotNull(ownedLease),
                 )
             }

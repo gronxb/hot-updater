@@ -147,6 +147,12 @@ describe("Lynx E2E page entry bootstrap", () => {
     expect(HotUpdater.init).toHaveBeenCalledExactlyOnceWith({
       baseURL: "http://127.0.0.1:3114/hot-updater",
       requestTimeout: 15000,
+      plugins: [
+        expect.objectContaining({
+          id: "insights",
+          setup: expect.any(Function),
+        }),
+      ],
     });
     expect(
       fetchState.mock.calls.some(([url]) => url.includes("/pending-action")),

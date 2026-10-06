@@ -1,4 +1,5 @@
 import { HotUpdater, type CheckForUpdateResult } from "@hot-updater/lynx";
+import { insights } from "@hot-updater/plugin-insights/client";
 
 const assetPrefix = "hot-updater:///";
 
@@ -51,7 +52,7 @@ export async function startProductionSdk(
   try {
     const launchConfiguration = await HotUpdater.getLaunchConfiguration();
     const baseURL = launchConfiguration.appBaseURL;
-    if (baseURL) HotUpdater.init({ baseURL });
+    if (baseURL) HotUpdater.init({ plugins: [insights()], baseURL });
     if (!imageReady) {
       await new Promise<void>((resolve) => {
         completeImage = resolve;

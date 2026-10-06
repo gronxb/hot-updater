@@ -160,12 +160,14 @@ public final class LynxPreparedArtifact {
     fileprivate let stage: URL
     let tree: VerifiedLynxTree
     let delivery: LynxArtifactDelivery
+    let patchFallback: Bool
     private let leaseLock = NSLock()
     private var stageLease: Int32
     fileprivate init(request: LynxArtifactRequest, stage: URL, tree: VerifiedLynxTree,
-                     delivery: LynxArtifactDelivery, stageLease: Int32) {
+                     delivery: LynxArtifactDelivery, patchFallback: Bool, stageLease: Int32) {
         self.request = request; self.stage = stage; self.tree = tree
         self.delivery = delivery
+        self.patchFallback = patchFallback
         self.stageLease = stageLease
         bundleId = request.bundleId; entry = tree.entry
     }
@@ -562,6 +564,7 @@ public final class LynxArtifactInstaller {
             stage: stage,
             tree: assembled,
             delivery: delivery,
+            patchFallback: result.patchFallback,
             stageLease: stageLease
         )
         retain(token)

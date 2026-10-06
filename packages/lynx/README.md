@@ -45,7 +45,27 @@ once cannot enforce the allocation bound. The packaged native integrations
 support this contract on Lynx 3.9.
 
 `init()` accepts the update server URL, optional request headers and timeout, and
-an optional error callback. The public runtime surface is:
+an optional error callback, and client `plugins`. Plugins use the framework-neutral
+`@hot-updater/protocol` contract, also exported from this package. Setup runs
+once native state is available. Hooks observe readiness, checks, staged downloads,
+errors, and HTTP responses; the updater does not await their results. Only the
+primary page reports app readiness. Plugin storage and installation identity
+persist across OTA generations and stay outside device backups.
+
+For example, install `@hot-updater/plugin-insights` and configure it in the primary
+page (the server must also enable Insights):
+
+```ts
+import { HotUpdater } from "@hot-updater/lynx";
+import { insights } from "@hot-updater/plugin-insights/client";
+
+HotUpdater.init({
+  baseURL: "https://updates.example.com/hot-updater",
+  plugins: [insights()],
+});
+```
+
+The public runtime surface is:
 
 - lifecycle: `init`, `checkForUpdate`, the returned update's `updateBundle`,
   `notifyAppReady`, `getLaunchInfo`, `reload`, and

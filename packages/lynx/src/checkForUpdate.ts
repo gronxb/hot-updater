@@ -4,6 +4,7 @@ import {
   encodeChannelKey,
   selectDesiredRelease,
   type PersistedSelectionReceipt,
+  type UpdateHttpResponse,
 } from "@hot-updater/protocol";
 
 import { createHttpClient } from "./httpClient";
@@ -31,6 +32,19 @@ function sameReceipt(
 
 export interface InternalCheckForUpdateOptions extends CheckForUpdateOptions {
   client: HotUpdaterOptions;
+  onState?: (state: NativeState) => void;
+  onHttpResponse?: (response: UpdateHttpResponse) => void;
+  onStaged?: (
+    state: NativeState,
+    selection: PersistedSelectionReceipt,
+    result: InstallResult,
+  ) => void;
+  onInstallError?: (
+    error: unknown,
+    state: NativeState,
+    selection: PersistedSelectionReceipt,
+    stage: "download" | "install",
+  ) => void;
 }
 
 export async function checkForUpdate(
@@ -69,6 +83,7 @@ async function checkForUpdateAttempt(
     );
   }
   const state = normalizeNativeState(await callNative<NativeState>("getState"));
+  options.onState?.(state);
   const explicitChannel = options.channel || undefined;
   const targetChannel = explicitChannel ?? state.channel;
   const explicitScopeSwitch = targetChannel !== state.channel;
@@ -80,6 +95,7 @@ async function checkForUpdateAttempt(
     );
   }
   const http = createHttpClient({
+    onHttpResponse: options.onHttpResponse,
     ...options.client,
     requestHeaders: {
       ...options.client.requestHeaders,
@@ -230,22 +246,36 @@ async function checkForUpdateAttempt(
   }
   let installation: Promise<boolean> | undefined;
   const prepareAndInstall = async (): Promise<boolean> => {
-    // A declined update retains no native preparation. Once requested, native
-    // prepares and immediately consumes the token by staging the same receipt.
-    const prepared = await callNative<{ preparedId: string }>(
-      "prepareSelection",
-      preparation,
-    );
-    if (typeof prepared?.preparedId !== "string" || !prepared.preparedId) {
-      throw new LynxUpdaterError(
-        "INVALID_NATIVE_REPLY",
-        "Native preparation did not return a prepared selection token.",
+    let stage: "download" | "install" = "download";
+    try {
+      // A declined update retains no native preparation. Once requested, native
+      // prepares and immediately consumes the token by staging the same receipt.
+      const prepared = await callNative<{ preparedId: string }>(
+        "prepareSelection",
+        preparation,
       );
+      if (typeof prepared?.preparedId !== "string" || !prepared.preparedId) {
+        throw new LynxUpdaterError(
+          "INVALID_NATIVE_REPLY",
+          "Native preparation did not return a prepared selection token.",
+        );
+      }
+      stage = "install";
+      const result = await callNative<InstallResult>("stageSelection", {
+        preparedId: prepared.preparedId,
+      });
+      if (result.status !== "STAGED" && result.status !== "ADOPTED") {
+        throw new LynxUpdaterError(
+          "INVALID_NATIVE_REPLY",
+          "Native staging did not confirm the selected update.",
+        );
+      }
+      options.onStaged?.(state, selection, result);
+      return true;
+    } catch (error) {
+      options.onInstallError?.(error, state, selection, stage);
+      throw error;
     }
-    const result = await callNative<InstallResult>("stageSelection", {
-      preparedId: prepared.preparedId,
-    });
-    return result.status === "STAGED" || result.status === "ADOPTED";
   };
   const transitionKind: ReleaseTransitionKind = canRequestAdoption
     ? "ADOPT_RELEASE"
