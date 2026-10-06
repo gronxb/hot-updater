@@ -7,9 +7,23 @@ import { AppRegistry } from 'react-native';
 import App from './App';
 import { name as appName } from './app.json';
 
-AppRegistry.registerComponent(appName, () => App);
-// E2E: HeadlessTaskService runs this without an activity, the way messaging
-// libraries run JS for a background push.
-AppRegistry.registerHeadlessTask('HotUpdaterE2EHeadlessTask', () => async () => {
+// E2E: a launch without UI runs the staged bundle but renders nothing. Android
+// runs a headless task through HeadlessTaskService. iOS passes isHeadless when
+// a silent push launches the app in the background, as React Native Firebase
+// does.
+const logHeadlessLaunch = () => {
   console.log(`HotUpdaterE2EHeadlessTask:${HotUpdater.getManifest().bundleId}`);
+};
+
+function HeadlessCheck({ isHeadless }) {
+  if (isHeadless) {
+    logHeadlessLaunch();
+    return null;
+  }
+  return <App />;
+}
+
+AppRegistry.registerComponent(appName, () => HeadlessCheck);
+AppRegistry.registerHeadlessTask('HotUpdaterE2EHeadlessTask', () => async () => {
+  logHeadlessLaunch();
 });
