@@ -258,6 +258,23 @@ export const insights_distribution = sqliteTable("insights_distribution", {
   index("insights_distribution__retention").on(table["bucket_start_ms"], table["channel"], table["platform"], table["app_version"], table["release_id"], table["_shard"]),
 ]);
 
+export const insights_builtin_distribution = sqliteTable("insights_builtin_distribution", {
+  "channel": column("TEXT")("channel").notNull(),
+  "platform": column("TEXT")("platform").notNull(),
+  "app_version": column("TEXT")("app_version").notNull(),
+  "release_id": column("TEXT")("release_id").notNull(),
+  "builtin_bundle_id": column("TEXT")("builtin_bundle_id").notNull(),
+  "bucket_start_ms": column("INTEGER")("bucket_start_ms").notNull(),
+  "_shard": column("INTEGER")("_shard").notNull(),
+  "latest_installations": column("INTEGER")("latest_installations").notNull(),
+  "_v": column("INTEGER")("_v").notNull().default(0),
+}, (table) => [
+  primaryKey({ columns: [table["channel"], table["platform"], table["app_version"], table["release_id"], table["builtin_bundle_id"], table["bucket_start_ms"], table["_shard"]] }),
+  index("insights_builtin_distribution_byScope").on(table["channel"], table["platform"], table["bucket_start_ms"], table["app_version"], table["release_id"], table["builtin_bundle_id"], table["_shard"]),
+  index("insights_builtin_distribution_byVersion").on(table["channel"], table["platform"], table["app_version"], table["bucket_start_ms"], table["release_id"], table["builtin_bundle_id"], table["_shard"]),
+  index("insights_builtin_distribution__retention").on(table["bucket_start_ms"], table["channel"], table["platform"], table["app_version"], table["release_id"], table["builtin_bundle_id"], table["_shard"]),
+]);
+
 export const insights_latest_by_bundle = sqliteTable("insights_latest_by_bundle", {
   "platform": column("TEXT")("platform").notNull(),
   "channel": column("TEXT")("channel").notNull(),

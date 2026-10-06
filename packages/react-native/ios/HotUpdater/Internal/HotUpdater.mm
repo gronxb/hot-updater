@@ -213,31 +213,28 @@ extern "C" NSString *HotUpdaterGetMinBundleId(void)
 #if DEBUG
     uuid = @"00000000-0000-0000-0000-000000000000";
 #else
-    // Step 1: Try to read HOT_UPDATER_BUILD_TIMESTAMP from Info.plist
-    NSDictionary *infoDictionary = [[NSBundle mainBundle] infoDictionary];
-    NSString *customValue = infoDictionary[@"HOT_UPDATER_BUILD_TIMESTAMP"];
-
-    // Step 2: If custom value exists and is not empty
-    if (customValue && customValue.length > 0 && ![customValue isEqualToString:@"$(HOT_UPDATER_BUILD_TIMESTAMP)"]) {
-      // Check if it's a timestamp (pure digits) or UUID
-      NSCharacterSet *nonDigits = [[NSCharacterSet decimalDigitCharacterSet] invertedSet];
-      BOOL isTimestamp = ([customValue rangeOfCharacterFromSet:nonDigits].location == NSNotFound);
-
-      if (isTimestamp) {
-        // Convert timestamp (milliseconds) to UUID v7
-        uint64_t timestampMs = [customValue longLongValue];
-        uuid = [HotUpdater generateUUIDv7FromTimestamp:timestampMs];
-        RCTLogInfo(@"[HotUpdater.mm] Using timestamp %@ as MIN_BUNDLE_ID: %@", customValue, uuid);
-      } else {
-        // Use as UUID directly
-        uuid = customValue;
-        RCTLogInfo(@"[HotUpdater.mm] Using custom MIN_BUNDLE_ID from Info.plist: %@", uuid);
+    // Step 1: Use the HOT_UPDATER_MIN_BUNDLE_ID build setting, which the
+    // hot-updater CLI passes to xcodebuild and the Info.plist slot it adds
+    // (`$(HOT_UPDATER_MIN_BUNDLE_ID)`) carries into the app, as Android
+    // takes -PMIN_BUNDLE_ID.
+    NSString *customValue = [[NSBundle mainBundle] objectForInfoDictionaryKey:@"HOT_UPDATER_MIN_BUNDLE_ID"];
+    if ([customValue isKindOfClass:[NSString class]]) {
+      NSString *trimmed = [customValue stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+      // An unset build setting leaves the slot empty or unexpanded; anything
+      // but a UUID falls back to the compile time below.
+      NSUUID *parsed = trimmed.length > 0 ? [[NSUUID alloc] initWithUUIDString:trimmed] : nil;
+      if (parsed) {
+        uuid = parsed.UUIDString.lowercaseString;
+        RCTLogInfo(@"[HotUpdater.mm] Using MIN_BUNDLE_ID from the HOT_UPDATER_MIN_BUNDLE_ID build setting: %@", uuid);
+        return;
       }
-      return;
+      if (trimmed.length > 0 && ![trimmed isEqualToString:@"$(HOT_UPDATER_MIN_BUNDLE_ID)"]) {
+        RCTLogWarn(@"[HotUpdater.mm] Ignoring HOT_UPDATER_MIN_BUNDLE_ID %@: not a UUID", trimmed);
+      }
     }
 
-    // Step 3: Fallback to default logic (26-hour subtraction)
-    RCTLogInfo(@"[HotUpdater.mm] No custom MIN_BUNDLE_ID found, using default calculation");
+    // Step 2: Fall back to the compile time (26-hour subtraction)
+    RCTLogInfo(@"[HotUpdater.mm] No HOT_UPDATER_MIN_BUNDLE_ID build setting, using the compile time");
 
     NSString *compileDateStr = [NSString stringWithFormat:@"%s %s", __DATE__, __TIME__];
     NSDateFormatter *formatter = [[NSDateFormatter alloc] init];

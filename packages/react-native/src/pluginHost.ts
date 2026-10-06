@@ -8,6 +8,7 @@ import {
   getCohort,
   getFingerprintHash,
   getInstallId,
+  getMinBundleId,
   getStorageItem,
   setStorageItem,
 } from "./native";
@@ -35,6 +36,7 @@ export const {
   },
   getInstallId: () => getInstallId(),
   getAppVersion: () => getAppVersion(),
+  getMinBundleId: () => getMinBundleId(),
   getBundleId: () => getBundleId(),
   getChannel: () => getChannel(),
   getCohort: () => getCohort(),

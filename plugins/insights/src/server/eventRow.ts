@@ -66,6 +66,8 @@ export type DatabaseBundleEventMetadata = DatabaseJsonObject & {
   readonly update_strategy: "fingerprint" | "appVersion" | null;
   readonly fingerprint_hash: string | null;
   readonly sdk_version: string | null;
+  /** The native build's built-in bundle ID, when the SDK reports it. */
+  readonly min_bundle_id?: string;
   /** `UPDATE_FAILED`: what failed. */
   readonly failure?: BundleEventFailure;
   readonly http_response?: DatabaseHttpResponse;
@@ -141,6 +143,7 @@ export const isDatabaseBundleEventMetadata = (
   (value.fingerprint_hash === null ||
     typeof value.fingerprint_hash === "string") &&
   (value.sdk_version === null || typeof value.sdk_version === "string") &&
+  isOptional(value, "min_bundle_id", isString) &&
   isOptional(value, "failure", isDatabaseBundleEventFailure) &&
   isOptional(value, "http_response", isDatabaseHttpResponse) &&
   isOptional(value, "delivery", isString) &&
@@ -150,6 +153,24 @@ export const isRecord = (
   value: unknown,
 ): value is Readonly<Record<string, unknown>> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
+
+/**
+ * The built-in bundle a report says its installation runs: the running
+ * bundle, which a download leaves at its source, when it is the native
+ * build's built-in bundle, whatever Release selected it. Null for any other
+ * bundle, and for a report without the build's built-in bundle ID.
+ */
+export const runningBuiltinBundleId = (row: {
+  readonly type: string;
+  readonly from_bundle_id: string | null;
+  readonly to_bundle_id: string;
+  readonly metadata: unknown;
+}): string | null => {
+  const running =
+    row.type === "UPDATE_DOWNLOADED" ? row.from_bundle_id : row.to_bundle_id;
+  const builtin = isRecord(row.metadata) ? row.metadata.min_bundle_id : null;
+  return typeof builtin === "string" && running === builtin ? builtin : null;
+};
 
 const isIdentity = (value: unknown): value is string =>
   typeof value === "string" && value.length > 0 && value.length <= 255;

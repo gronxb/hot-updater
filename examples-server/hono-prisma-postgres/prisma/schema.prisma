@@ -235,6 +235,21 @@ model insights_distribution {
   @@index([channel, platform, app_version, bucket_start_ms, release_id, hu_shard], map: "insights_distribution_byVersion")
   @@index([bucket_start_ms, channel, platform, app_version, release_id, hu_shard], map: "insights_distribution__retention")
 }
+model insights_builtin_distribution {
+  channel String
+  platform String @db.VarChar(16)
+  app_version String
+  release_id String @db.VarChar(36)
+  builtin_bundle_id String @db.VarChar(36)
+  bucket_start_ms BigInt
+  hu_shard BigInt @map("_shard")
+  latest_installations BigInt
+  hu_v BigInt @default(0) @map("_v")
+  @@id([channel, platform, app_version, release_id, builtin_bundle_id, bucket_start_ms, hu_shard])
+  @@index([channel, platform, bucket_start_ms, app_version, release_id, builtin_bundle_id, hu_shard], map: "insights_builtin_distribution_byScope")
+  @@index([channel, platform, app_version, bucket_start_ms, release_id, builtin_bundle_id, hu_shard], map: "insights_builtin_distribution_byVersion")
+  @@index([bucket_start_ms, channel, platform, app_version, release_id, builtin_bundle_id, hu_shard], map: "insights_builtin_distribution__retention")
+}
 model insights_latest_by_bundle {
   platform String @db.VarChar(16)
   channel String

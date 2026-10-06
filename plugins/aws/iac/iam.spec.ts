@@ -118,6 +118,8 @@ describe("IAMManager DynamoDB access", () => {
               "insights_sketches_lifetime#*",
               "insights_distribution",
               "insights_distribution#*",
+              "insights_builtin_distribution",
+              "insights_builtin_distribution#*",
               "insights_latest_by_bundle",
               "insights_latest_by_bundle#*",
               "insights_outcomes",

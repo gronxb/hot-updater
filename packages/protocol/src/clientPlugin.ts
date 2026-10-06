@@ -208,6 +208,11 @@ export interface HotUpdaterClientContext {
   /** The native app version, or null when the native build has none. */
   readonly appVersion: string | null;
   readonly sdkVersion: string;
+  /**
+   * The bundle ID of the bundle the native build ships (`MIN_BUNDLE_ID`).
+   * `getBundleId()` returns it while the app runs that built-in bundle.
+   */
+  readonly minBundleId: string;
   /** Whether this is a debug build (`__DEV__`). */
   readonly isDebugBuild: boolean;
   /** The bundle native reports as current. */

@@ -134,6 +134,7 @@ export const insights = (options: InsightsOptions = {}): InsightsPlugin => {
       cohort: context.getCohort(),
       fingerprintHash: context.getFingerprintHash(),
       sdkVersion: context.sdkVersion,
+      minBundleId: context.minBundleId,
     };
     const day = utcDay(now);
     return {

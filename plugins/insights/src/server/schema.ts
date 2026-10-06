@@ -305,6 +305,44 @@ const insightsDistribution = (retention: BucketRetention) =>
     },
   );
 
+/**
+ * The installations of `insights_distribution` that run their native build's
+ * built-in bundle, by its ID (`builtin_bundle_id`), within the same rows:
+ * reads move them out of the row of their release, or of no release.
+ */
+const insightsBuiltinDistribution = (retention: BucketRetention) =>
+  defineAggregate(
+    {
+      channel: { type: "string" },
+      platform: { type: "string", maxLength: 16 },
+      app_version: { type: "string" },
+      release_id: { type: "string", maxLength: 36 },
+      builtin_bundle_id: { type: "string", maxLength: 36 },
+      bucket_start_ms: { type: "integer" },
+    },
+    {
+      key: [
+        "channel",
+        "platform",
+        "app_version",
+        "release_id",
+        "builtin_bundle_id",
+        "bucket_start_ms",
+      ],
+      gauges: ["latest_installations"],
+      shards: GAUGE_SHARDS,
+      batched: true,
+      indexes: {
+        byScope: { eq: ["channel", "platform"], sort: ["bucket_start_ms"] },
+        byVersion: {
+          eq: ["channel", "platform", "app_version"],
+          sort: ["bucket_start_ms"],
+        },
+      },
+      retention,
+    },
+  );
+
 /** Latest events by the bundle they came from or went to, bucketed like the distribution. */
 const insightsLatestByBundle = (retention: BucketRetention) =>
   defineAggregate(
@@ -405,6 +443,7 @@ export const createInsightsSchema = ({
     insights_overview_lifetime: lifetimeCounters(),
     insights_sketches_lifetime: lifetimeSketches(),
     insights_distribution: insightsDistribution(daily),
+    insights_builtin_distribution: insightsBuiltinDistribution(daily),
     insights_latest_by_bundle: insightsLatestByBundle(daily),
     insights_outcomes: insightsOutcomes(hourly),
     insights_failures: insightsFailures(hourly),

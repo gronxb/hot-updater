@@ -370,6 +370,9 @@ const toEventHistoryRow = (row: BundleEventRow): EventHistoryRow => ({
   ...(row.metadata.sdk_version == null
     ? {}
     : { sdkVersion: row.metadata.sdk_version }),
+  ...(row.metadata.min_bundle_id === undefined
+    ? {}
+    : { minBundleId: row.metadata.min_bundle_id }),
   appVersion: row.app_version,
   channel: row.channel,
   cohort: row.metadata.cohort,
@@ -388,6 +391,9 @@ const toInstallationRow = (row: BundleEventRow): InstallationRow => ({
   ...(eventDetails(row).httpResponse
     ? { httpResponse: eventDetails(row).httpResponse }
     : {}),
+  ...(row.metadata.min_bundle_id === undefined
+    ? {}
+    : { minBundleId: row.metadata.min_bundle_id }),
   appVersion: row.app_version,
   channel: row.channel,
   cohort: row.metadata.cohort,
