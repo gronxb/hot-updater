@@ -99,6 +99,12 @@ interface BundleStorageService {
     )
 
     /**
+     * Records that the current launch of a verification-pending bundle can show UI.
+     * The next process rolls the bundle back unless first content verified it.
+     */
+    fun markLaunchStarted(launchedBundleId: String?)
+
+    /**
      * Marks the current launch as successful after the first content appeared.
      */
     fun markLaunchCompleted(currentBundleId: String?)
@@ -491,6 +497,10 @@ class BundleFileStorageService(
 
     // Crash history is written at first content on the main thread while JS can read it.
     private val crashedHistoryLock = Any()
+
+    // markLaunchStarted runs at an activity start, which can come while JS stages a
+    // newer bundle; both read and rewrite metadata.
+    private val stagingMetadataLock = Any()
 
     // A bundle waiting for its retry that this process keeps refusing, see InterruptedLaunch.
     private var retryHeldBundleId: String? = null
@@ -1122,6 +1132,25 @@ class BundleFileStorageService(
         }
     }
 
+    private fun saveNewStagingMetadata(bundleId: String): BundleMetadata =
+        synchronized(stagingMetadataLock) {
+            val currentMetadata = loadMetadataOrNull() ?: createInitialMetadata()
+            prepareMetadataForNewStagingBundle(currentMetadata, bundleId).also { saveMetadata(it) }
+        }
+
+    override fun markLaunchStarted(launchedBundleId: String?) {
+        synchronized(stagingMetadataLock) {
+            val metadata = loadMetadataOrNull() ?: return
+            if (!isVerificationPending(metadata) ||
+                metadata.launchInProgress ||
+                metadata.stagingBundleId != launchedBundleId
+            ) {
+                return
+            }
+            saveMetadata(metadata.copy(launchInProgress = true))
+        }
+    }
+
     override fun markLaunchCompleted(currentBundleId: String?) {
         readyInterruptedLaunchRetry(currentBundleId)
         val metadata = loadMetadataOrNull() ?: return
@@ -1198,12 +1227,8 @@ class BundleFileStorageService(
         }
         hasPreparedLaunch = true
 
+        // A launch is recorded only once it can show UI (markLaunchStarted).
         val selection = selectLaunch()
-        if (selection.shouldRollbackOnCrash) {
-            loadMetadataOrNull()?.let { metadata ->
-                saveMetadata(metadata.copy(launchInProgress = true))
-            }
-        }
         Log.d(
             TAG,
             "prepareLaunch: bundleId=${selection.launchedBundleId} shouldRollback=${selection.shouldRollbackOnCrash} url=${selection.bundleUrl}",
@@ -1282,9 +1307,7 @@ class BundleFileStorageService(
                 finalBundleDir.setLastModified(System.currentTimeMillis())
 
                 // Update metadata: set as staging
-                val currentMetadata = loadMetadataOrNull() ?: createInitialMetadata()
-                val updatedMetadata = prepareMetadataForNewStagingBundle(currentMetadata, bundleId)
-                saveMetadata(updatedMetadata)
+                val updatedMetadata = saveNewStagingMetadata(bundleId)
 
                 // Set bundle URL for backwards compatibility
                 setBundleURL(existingBundleFile.absolutePath)
@@ -1515,9 +1538,7 @@ class BundleFileStorageService(
                     Log.d(TAG, "Setting bundle as staging: $bundlePath")
 
                     // Update metadata: set new bundle as staging
-                    val currentMetadata = loadMetadataOrNull() ?: createInitialMetadata()
-                    val updatedMetadata = prepareMetadataForNewStagingBundle(currentMetadata, bundleId)
-                    saveMetadata(updatedMetadata)
+                    val updatedMetadata = saveNewStagingMetadata(bundleId)
 
                     // Also update HotUpdaterBundleURL for backwards compatibility
                     // This will point to the staging bundle that will be loaded
@@ -1878,9 +1899,7 @@ class BundleFileStorageService(
 
             finalBundleDir.setLastModified(System.currentTimeMillis())
 
-            val currentMetadata = loadMetadataOrNull() ?: createInitialMetadata()
-            val updatedMetadata = prepareMetadataForNewStagingBundle(currentMetadata, bundleId)
-            saveMetadata(updatedMetadata)
+            val updatedMetadata = saveNewStagingMetadata(bundleId)
             setBundleURL(finalIndexFile.absolutePath)
 
             tempDir.deleteRecursively()

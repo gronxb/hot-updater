@@ -68,6 +68,7 @@ class BundleFileStorageServiceTest {
         val firstLaunch = firstProcess.prepareLaunch(null)
         assertEquals("hung-bundle", firstLaunch.launchedBundleId)
         assertTrue(firstLaunch.shouldRollbackOnCrash)
+        firstProcess.markLaunchStarted("hung-bundle")
 
         assertEquals("hung-bundle", firstProcess.prepareLaunch(null).launchedBundleId)
         assertFalse(firstProcess.getCrashHistory().contains("hung-bundle"))
@@ -86,6 +87,73 @@ class BundleFileStorageServiceTest {
         }
         val thirdProcess = createService(rootDir, preferences)
         assertEquals(nextLaunch.launchedBundleId, thirdProcess.prepareLaunch(null).launchedBundleId)
+    }
+
+    @Test
+    fun `headless staging launch stays pending on the next cold start`() {
+        val rootDir = temporaryFolder.newFolder()
+        val preferences = InMemoryPreferencesService()
+        listOf("stable-bundle", "staged-bundle").forEach { bundleId ->
+            val directory = createBundleDir(rootDir, bundleId)
+            writeFile(directory, "index.android.bundle")
+            writeManifest(directory, listOf("index.android.bundle"))
+        }
+        writeMetadata(
+            rootDir,
+            BundleMetadata(
+                isolationKey = TEST_ISOLATION_KEY,
+                stableBundleId = "stable-bundle",
+                stagingBundleId = "staged-bundle",
+                verificationPending = true,
+            ),
+        )
+        // Issue #1468: a headless JS task (a background FCM message) prepares the
+        // launch without an activity, so first content never appears.
+        val headlessLaunch = createService(rootDir, preferences).prepareLaunch(null)
+        assertEquals("staged-bundle", headlessLaunch.launchedBundleId)
+        assertTrue(headlessLaunch.shouldRollbackOnCrash)
+
+        // The OS reclaims the cached process, then the user opens the app.
+        val nextProcess = createService(rootDir, preferences)
+        val nextLaunch = nextProcess.prepareLaunch(null)
+        assertEquals("staged-bundle", nextLaunch.launchedBundleId)
+        assertTrue(nextLaunch.shouldRollbackOnCrash)
+        assertFalse(nextProcess.getCrashHistory().contains("staged-bundle"))
+        assertEquals("STABLE", nextProcess.notifyAppReady()["status"])
+    }
+
+    @Test
+    fun `launch start records only the pending staged bundle`() {
+        val rootDir = temporaryFolder.newFolder()
+        val preferences = InMemoryPreferencesService()
+        listOf("stable-bundle", "staged-bundle").forEach { bundleId ->
+            val directory = createBundleDir(rootDir, bundleId)
+            writeFile(directory, "index.android.bundle")
+            writeManifest(directory, listOf("index.android.bundle"))
+        }
+        writeMetadata(
+            rootDir,
+            BundleMetadata(
+                isolationKey = TEST_ISOLATION_KEY,
+                stableBundleId = "stable-bundle",
+                stagingBundleId = "staged-bundle",
+                verificationPending = true,
+            ),
+        )
+        val process = createService(rootDir, preferences)
+        process.prepareLaunch(null)
+
+        // The activity can start after JS staged another bundle, or after first
+        // content already verified this one.
+        process.markLaunchStarted("stable-bundle")
+        assertFalse(loadMetadata(rootDir)!!.launchInProgress)
+        process.markLaunchCompleted("staged-bundle")
+        process.markLaunchStarted("staged-bundle")
+        assertFalse(loadMetadata(rootDir)!!.launchInProgress)
+
+        val nextLaunch = createService(rootDir, preferences).prepareLaunch(null)
+        assertEquals("staged-bundle", nextLaunch.launchedBundleId)
+        assertFalse(nextLaunch.shouldRollbackOnCrash)
     }
 
     // Issue #1469: a launch that ends before first content without a crash marker
@@ -115,7 +183,9 @@ class BundleFileStorageServiceTest {
             stageRetriedBundle(rootDir)
 
             // The retry ends before first content too: now crash history keeps it.
-            assertEquals("retried-bundle", createService(rootDir, preferences).prepareLaunch(null).launchedBundleId)
+            val retryLaunch = createService(rootDir, preferences)
+            assertEquals("retried-bundle", retryLaunch.prepareLaunch(null).launchedBundleId)
+            retryLaunch.markLaunchStarted("retried-bundle")
             val next = createService(rootDir, preferences)
             assertEquals("stable-bundle", next.prepareLaunch(null).launchedBundleId)
             assertEquals("RECOVERED", next.notifyAppReady()["status"])
@@ -631,7 +701,9 @@ class BundleFileStorageServiceTest {
                 verificationPending = true,
             ),
         )
-        assertEquals("retried-bundle", createService(rootDir, preferences).prepareLaunch(null).launchedBundleId)
+        val launch = createService(rootDir, preferences)
+        assertEquals("retried-bundle", launch.prepareLaunch(null).launchedBundleId)
+        launch.markLaunchStarted("retried-bundle")
     }
 
     // What an install of retried-bundle over the recovered stable bundle leaves.

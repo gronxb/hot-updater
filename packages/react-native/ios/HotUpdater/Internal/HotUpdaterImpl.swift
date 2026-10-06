@@ -1,5 +1,6 @@
 import Foundation
 import React
+import UIKit
 
 private func hotUpdaterUncaughtExceptionHandler(_ exception: NSException) {
     HotUpdaterRecoveryManager.shared.handleUncaughtException(exception)
@@ -35,6 +36,7 @@ private func hotUpdaterPerformRecoveryReload() -> Bool {
     private let cohortService: CohortService
     private let recoveryManager: HotUpdaterRecoveryManager
     private var currentLaunchSelection: LaunchSelection?
+    private var launchStartObservers: [NSObjectProtocol] = []
 
     private static let DEFAULT_CHANNEL = "production"
     private static let CHANNEL_STORAGE_KEY = "HotUpdaterChannel"
@@ -482,11 +484,48 @@ private func hotUpdaterPerformRecoveryReload() -> Bool {
 
         let pendingRecovery = recoveryManager.consumePendingCrashRecovery()
         let selection = bundleStorage.prepareLaunch(bundle: bundle, pendingRecovery: pendingRecovery)
+        markLaunchStartedInForeground(selection)
         recoveryManager.startMonitoring(bundleId: selection.launchedBundleId, shouldRollback: selection.shouldRollbackOnCrash) { [weak self] launchedBundleId in
             self?.bundleStorage.markLaunchCompleted(bundleId: launchedBundleId)
         }
         currentLaunchSelection = selection
         return selection
+    }
+
+    // A background launch, such as a silent push, may never render. Only a
+    // launch in the foreground may leave an unfinished launch for the next
+    // process to roll back.
+    private func markLaunchStartedInForeground(_ selection: LaunchSelection) {
+        let bundleId = selection.shouldRollbackOnCrash ? selection.launchedBundleId : nil
+        let mark = { [weak self] in
+            guard let self else { return }
+            self.removeLaunchStartObservers()
+            guard let bundleId else { return }
+            guard UIApplication.shared.applicationState == .background else {
+                self.bundleStorage.markLaunchStarted(bundleId: bundleId)
+                return
+            }
+            self.launchStartObservers = [
+                UIApplication.willEnterForegroundNotification,
+                UIApplication.didBecomeActiveNotification,
+            ].map { name in
+                NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                    self?.removeLaunchStartObservers()
+                    self?.bundleStorage.markLaunchStarted(bundleId: bundleId)
+                }
+            }
+        }
+        // UIApplication is read on the main thread.
+        if Thread.isMainThread {
+            mark()
+        } else {
+            DispatchQueue.main.async(execute: mark)
+        }
+    }
+
+    private func removeLaunchStartObservers() {
+        launchStartObservers.forEach { NotificationCenter.default.removeObserver($0) }
+        launchStartObservers = []
     }
 }
 
