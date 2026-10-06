@@ -1,5 +1,11 @@
 # @hot-updater/plugin-insights
 
+## 1.0.0-rc.35
+
+### Patch Changes
+
+- @hot-updater/protocol@1.0.0-rc.35
+
 ## 1.0.0-rc.34
 
 ### Patch Changes

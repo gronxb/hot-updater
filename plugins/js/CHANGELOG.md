@@ -1,5 +1,7 @@
 # @hot-updater/js
 
+## 1.0.0-rc.35
+
 ## 1.0.0-rc.27
 
 ### Patch Changes

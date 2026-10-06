@@ -1,5 +1,17 @@
 # @hot-updater/react-native
 
+## 1.0.0-rc.35
+
+### Patch Changes
+
+- 52ac89a: Build the Android library for the New Architecture unless the app sets `newArchEnabled=false`, and read that setting from the library project. React Native 0.82 and later run only the New Architecture and set it to `true` there, so an app that still has `newArchEnabled=false` in `gradle.properties`, or has no such line, no longer gets the old architecture build, whose crash recovery asked the app for a `ReactNativeHost` that throws when the app has none. `ReactNativeHost` code now builds only for the React Native versions that use it: the old architecture, and the bridge that React Native 0.81 and older can run the New Architecture on. Builds for React Native 0.82 and later no longer compile against `ReactNativeHost`, which React Native deprecates for removal. An app on React Native 0.81 or older that runs the old architecture keeps `newArchEnabled=false` in `gradle.properties`, as its template has. Requires rebuilding the native app.
+- 52ac89a: Record a launch on Android when React Native loads inside an activity that was already started, as in a brownfield app that adds React Native to a screen on display. Android does not replay that activity start, so such a launch was never recorded, and a staged bundle that hung there was not rolled back on the next start. Requires rebuilding the native app.
+- ff87aed: Keep a pending bundle when a launch never shows UI. An Android headless JS task, such as a background push message, and an iOS background launch no longer record an unfinished launch, so the next launch no longer rolls a healthy bundle back, adds it to crash history, and reports `RECOVERED`. A launch is recorded when an activity starts on Android, and when the app is in the foreground on iOS. Requires rebuilding the native app.
+- 52ac89a: Give a bundle one retry after a launch that ends before the first render without a crash, such as a user leaving during the splash screen. The next start still rolls back and reports `RECOVERED`, but the bundle no longer goes into crash history at once: the session that recovered does not install it again, and a later session retries it. A second unfinished launch, or a crash, adds it to crash history as before. Requires rebuilding the native app.
+- 52ac89a: Keep a session's launch result final when an update downloads during that session. A root wrapped with `HotUpdater.wrap` that mounts again in the same process, for example after Android recreates its activity, no longer stays on its `fallbackComponent` waiting for the downloaded bundle, and `onNotifyAppReady` is called again with `UNCHANGED`. The next launch still applies the downloaded bundle. Requires rebuilding the native app.
+- @hot-updater/protocol@1.0.0-rc.35
+  - @hot-updater/plugin-insights@1.0.0-rc.35
+
 ## 1.0.0-rc.34
 
 ### Patch Changes
