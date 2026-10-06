@@ -6926,28 +6926,41 @@ export async function handleLaunchStartupHang(bundleId: string) {
   }
 }
 
-// Android loads the bundle for a headless JS task in a process without an
-// activity, as messaging libraries do for a background push. iOS has no
-// headless task, and a simulator cannot launch an app into the background.
+// Run the staged bundle in a launch that never shows UI, as a background push
+// does. Android runs a headless JS task through HeadlessJsTaskService while the
+// app has no activity. On iOS a silent push launches the app in the
+// background, and the example renders nothing for that launch.
 export async function handleLaunchHeadlessTask(bundleId: string) {
-  if (fixtureSession.platform !== "android") {
-    return {};
-  }
+  const ios = fixtureSession.platform === "ios";
   const marker = `HotUpdaterE2EHeadlessTask:${bundleId}`;
   const adb = (...args: string[]) =>
     captureCommand("adb", ["-s", deviceId as string, ...args]);
   const logs = spawn(
-    "adb",
-    [
-      "-s",
-      deviceId as string,
-      "logcat",
-      "-v",
-      "brief",
-      "HotUpdaterE2E:I",
-      "ReactNativeJS:I",
-      "*:S",
-    ],
+    ios ? "xcrun" : "adb",
+    ios
+      ? [
+          "simctl",
+          "spawn",
+          deviceId as string,
+          "log",
+          "stream",
+          "--level",
+          "debug",
+          "--style",
+          "compact",
+          "--predicate",
+          'eventMessage CONTAINS "HotUpdaterE2EHeadlessTask:"',
+        ]
+      : [
+          "-s",
+          deviceId as string,
+          "logcat",
+          "-v",
+          "brief",
+          "HotUpdaterE2E:I",
+          "ReactNativeJS:I",
+          "*:S",
+        ],
     { stdio: ["ignore", "pipe", "pipe"] },
   );
   let output = "";
@@ -6961,67 +6974,93 @@ export async function handleLaunchHeadlessTask(bundleId: string) {
   logs.stderr.on("data", (chunk) => {
     output += chunk.toString();
   });
+  const waitForOutput = async (text: () => string, deadline: number) => {
+    while (!text() && Date.now() < deadline && !logError) {
+      await sleep(E2E_POLL_INTERVAL_MS);
+    }
+    if (logError) throw logError;
+  };
   // logcat replays its buffer first; only lines after this one are this run's.
+  // log stream shows only entries logged after it attached.
   const startMarker = `HotUpdaterE2EHeadlessStart:${randomUUID()}`;
   const currentRun = () => {
+    if (ios) return output;
     const start = output.lastIndexOf(startMarker);
     return start < 0 ? "" : output.slice(start);
   };
   try {
-    ensureAndroidReverse();
-    ensureAndroidControlReverse();
-    adb("shell", "log", "-t", "HotUpdaterE2E", startMarker);
-    // A high-priority push grants this allowlist, so its receiver can start a
-    // service while the app is in the background.
-    adb(
-      "shell",
-      "cmd",
-      "deviceidle",
-      "tempwhitelist",
-      "-d",
-      "60000",
-      fixtureSession.appId,
-    );
-    adb(
-      "shell",
-      "am",
-      "broadcast",
-      "--include-stopped-packages",
-      "-n",
-      `${fixtureSession.appId}/.HeadlessTaskReceiver`,
-    );
-    // The example reads launch arguments at module scope, and that module
-    // waits up to 20 seconds for an activity that a headless task never has.
-    const deadline = Date.now() + 60_000;
-    while (
-      !currentRun().includes(marker) &&
-      Date.now() < deadline &&
-      !logError
-    ) {
-      await sleep(E2E_POLL_INTERVAL_MS);
+    if (ios) {
+      await waitForOutput(
+        () => (output.includes("Filtering the log data") ? output : ""),
+        Date.now() + 10_000,
+      );
+      const payloadPath = writeResultDiagnosticFile(
+        "headless-task-push.json",
+        JSON.stringify({ aps: { "content-available": 1 } }),
+      );
+      captureCommand("xcrun", [
+        "simctl",
+        "push",
+        deviceId as string,
+        fixtureSession.appId,
+        payloadPath,
+      ]);
+    } else {
+      ensureAndroidReverse();
+      ensureAndroidControlReverse();
+      adb("shell", "log", "-t", "HotUpdaterE2E", startMarker);
+      // A high-priority push grants this allowlist, so its receiver can start
+      // a service while the app is in the background.
+      adb(
+        "shell",
+        "cmd",
+        "deviceidle",
+        "tempwhitelist",
+        "-d",
+        "60000",
+        fixtureSession.appId,
+      );
+      adb(
+        "shell",
+        "am",
+        "broadcast",
+        "--include-stopped-packages",
+        "-n",
+        `${fixtureSession.appId}/.HeadlessTaskReceiver`,
+      );
     }
-    if (logError) throw logError;
+    // The example reads launch arguments at module scope, and that module
+    // waits up to 20 seconds for an Android activity that never starts.
+    await waitForOutput(
+      () => (currentRun().includes(marker) ? currentRun() : ""),
+      Date.now() + 60_000,
+    );
     const run = currentRun();
-    const pid = new RegExp(`\\((\\s*\\d+)\\): ${marker}`).exec(run)?.[1];
-    if (!pid) {
+    if (!run.includes(marker)) {
       throw new Error(`Headless task did not run bundle ${bundleId}`);
     }
-    const diagnostics = readAndroidRecoveryDiagnostics({
-      metadata: "headless-task-metadata.json",
-      launchReport: "headless-task-launch-report.json",
-      crashMarker: "headless-task-crash-marker.json",
-      crashHistory: "headless-task-crashed-history.json",
-    });
+    // The Android process that ran the task must not have started the app.
+    const pid = ios
+      ? null
+      : new RegExp(`\\((\\s*\\d+)\\): ${marker}`).exec(run)?.[1];
+    const diagnostics = ios
+      ? readIosRecoveryDiagnostics()
+      : readAndroidRecoveryDiagnostics({
+          metadata: "headless-task-metadata.json",
+          launchReport: "headless-task-launch-report.json",
+          crashMarker: "headless-task-crash-marker.json",
+          crashHistory: "headless-task-crashed-history.json",
+        });
     const metadata = getMetadataState(diagnostics.metadata.value);
     if (
-      run.includes(`(${pid}): Running "`) ||
+      (!ios && (!pid || run.includes(`(${pid}): Running "`))) ||
       metadata.stagingBundleId !== bundleId ||
       metadata.verificationPending !== true ||
       diagnostics.crashMarker.exists ||
       diagnostics.crashHistory.exists
     ) {
       throw createEndpointError(
-        "Expected a headless task without a surface or crash recovery",
+        "Expected a launch without UI and without crash recovery",
         diagnostics,
       );
     }

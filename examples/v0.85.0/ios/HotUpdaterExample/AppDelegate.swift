@@ -25,9 +25,12 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 
     window = UIWindow(frame: UIScreen.main.bounds)
 
+    // E2E: a silent push launches the app in the background. Like React Native
+    // Firebase, tell the root so it renders nothing for that launch.
     factory.startReactNative(
       withModuleName: "HotUpdaterExample",
       in: window,
+      initialProperties: ["isHeadless": application.applicationState == .background],
       launchOptions: launchOptions
     )
 
