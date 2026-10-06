@@ -162,6 +162,146 @@ class BundleFileStorageServiceTest {
         assertFalse(nextLaunch.shouldRollbackOnCrash)
     }
 
+    // Issue #1469: a launch that ends before first content without a crash marker
+    // may be a user leaving early rather than a hang.
+    @Test
+    fun `unfinished launch retries the bundle once before crash history`() =
+        runBlocking {
+            val rootDir = temporaryFolder.newFolder()
+            val preferences = InMemoryPreferencesService()
+            leaveUnfinishedLaunch(rootDir, preferences)
+
+            // The next process still rolls back at once and reports RECOVERED.
+            val recovered = createRetryService(rootDir, preferences)
+            assertEquals("stable-bundle", recovered.prepareLaunch(null).launchedBundleId)
+            assertEquals("RECOVERED", recovered.notifyAppReady()["status"])
+            assertFalse(loadCrashedHistory(rootDir).contains("retried-bundle"))
+            // The session that recovered refuses the bundle, even after first content.
+            recovered.markLaunchCompleted("stable-bundle")
+            assertTrue(recovered.getCrashHistory().contains("retried-bundle"))
+            assertUpdateFailure(installRetriedBundle(recovered, rootDir), "BUNDLE_IN_CRASHED_HISTORY", null)
+
+            // A later process installs it again.
+            val retrying = createRetryService(rootDir, preferences)
+            assertEquals("stable-bundle", retrying.prepareLaunch(null).launchedBundleId)
+            assertFalse(retrying.getCrashHistory().contains("retried-bundle"))
+            assertNull(installRetriedBundle(retrying, rootDir))
+
+            // The retry ends before first content too: now crash history keeps it.
+            val retryLaunch = createRetryService(rootDir, preferences)
+            assertEquals("retried-bundle", retryLaunch.prepareLaunch(null).launchedBundleId)
+            retryLaunch.markLaunchStarted("retried-bundle")
+            val next = createRetryService(rootDir, preferences)
+            assertEquals("stable-bundle", next.prepareLaunch(null).launchedBundleId)
+            assertEquals("RECOVERED", next.notifyAppReady()["status"])
+            assertTrue(loadCrashedHistory(rootDir).contains("retried-bundle"))
+            next.markLaunchCompleted("stable-bundle")
+            val later = createRetryService(rootDir, preferences)
+            later.prepareLaunch(null)
+            assertUpdateFailure(installRetriedBundle(later, rootDir), "BUNDLE_IN_CRASHED_HISTORY", null)
+        }
+
+    @Test
+    fun `retried bundle that reaches first content is verified`() =
+        runBlocking {
+            val rootDir = temporaryFolder.newFolder()
+            val preferences = InMemoryPreferencesService()
+            leaveUnfinishedLaunch(rootDir, preferences)
+            val recovered = createRetryService(rootDir, preferences)
+            recovered.prepareLaunch(null)
+            recovered.markLaunchCompleted("stable-bundle")
+            val retrying = createRetryService(rootDir, preferences)
+            retrying.prepareLaunch(null)
+            assertNull(installRetriedBundle(retrying, rootDir))
+
+            val retryLaunch = createRetryService(rootDir, preferences)
+            assertEquals("retried-bundle", retryLaunch.prepareLaunch(null).launchedBundleId)
+            retryLaunch.markLaunchStarted("retried-bundle")
+            retryLaunch.markLaunchCompleted("retried-bundle")
+
+            assertEquals("UPDATE_APPLIED", retryLaunch.notifyAppReady()["status"])
+            assertTrue(loadCrashedHistory(rootDir).bundles.isEmpty())
+            val next = createRetryService(rootDir, preferences).prepareLaunch(null)
+            assertEquals("retried-bundle", next.launchedBundleId)
+            assertFalse(next.shouldRollbackOnCrash)
+        }
+
+    @Test
+    fun `retry waits for a session that showed content`() {
+        val rootDir = temporaryFolder.newFolder()
+        val preferences = InMemoryPreferencesService()
+        leaveUnfinishedLaunch(rootDir, preferences)
+
+        // A headless process consumes the unfinished launch and never renders.
+        val headless = createRetryService(rootDir, preferences)
+        assertEquals("stable-bundle", headless.prepareLaunch(null).launchedBundleId)
+        assertTrue(headless.getCrashHistory().contains("retried-bundle"))
+
+        // The user's next open is the first session that recovered.
+        val opened = createRetryService(rootDir, preferences)
+        opened.prepareLaunch(null)
+        assertTrue(opened.getCrashHistory().contains("retried-bundle"))
+        opened.markLaunchCompleted("stable-bundle")
+        assertTrue(opened.getCrashHistory().contains("retried-bundle"))
+
+        val later = createRetryService(rootDir, preferences)
+        later.prepareLaunch(null)
+        assertFalse(later.getCrashHistory().contains("retried-bundle"))
+    }
+
+    @Test
+    fun `retry readies after content from the built-in bundle`() {
+        val rootDir = temporaryFolder.newFolder()
+        val preferences = InMemoryPreferencesService()
+        leaveUnfinishedLaunch(rootDir, preferences, stableBundleId = null)
+        val recovered = createRetryService(rootDir, preferences)
+        assertNull(recovered.prepareLaunch(null).launchedBundleId)
+
+        // First content of the built-in bundle reports no bundle ID.
+        recovered.markLaunchCompleted(null)
+
+        val later = createRetryService(rootDir, preferences)
+        later.prepareLaunch(null)
+        assertFalse(later.getCrashHistory().contains("retried-bundle"))
+    }
+
+    @Test
+    fun `crash of a retried bundle adds it to crash history`() =
+        runBlocking {
+            val rootDir = temporaryFolder.newFolder()
+            val preferences = InMemoryPreferencesService()
+            leaveUnfinishedLaunch(rootDir, preferences)
+            val recovered = createRetryService(rootDir, preferences)
+            recovered.prepareLaunch(null)
+            recovered.markLaunchCompleted("stable-bundle")
+            val retrying = createRetryService(rootDir, preferences)
+            retrying.prepareLaunch(null)
+            assertNull(installRetriedBundle(retrying, rootDir))
+            assertEquals("retried-bundle", createRetryService(rootDir, preferences).prepareLaunch(null).launchedBundleId)
+
+            // That launch crashed before first content and left a crash marker.
+            val next =
+                createRetryService(rootDir, preferences)
+                    .prepareLaunch(PendingCrashRecovery(launchedBundleId = "retried-bundle", shouldRollback = true))
+
+            assertEquals("stable-bundle", next.launchedBundleId)
+            assertTrue(loadCrashedHistory(rootDir).contains("retried-bundle"))
+        }
+
+    @Test
+    fun `clearing crash history drops a waiting retry`() {
+        val rootDir = temporaryFolder.newFolder()
+        val preferences = InMemoryPreferencesService()
+        leaveUnfinishedLaunch(rootDir, preferences)
+        val recovered = createRetryService(rootDir, preferences)
+        recovered.prepareLaunch(null)
+
+        assertTrue(recovered.clearCrashHistory())
+
+        assertFalse(recovered.getCrashHistory().contains("retried-bundle"))
+    }
+
+
     @Test
     fun `resolveBundleFile uses single manifest bundle at root`() {
         val rootDir = temporaryFolder.newFolder("root-manifest-bundle")
@@ -2035,6 +2175,80 @@ class BundleFileStorageServiceTest {
             TEST_ISOLATION_KEY,
         )
 
+    private fun loadCrashedHistory(rootDir: File): CrashedHistory =
+        CrashedHistory.loadFromFile(File(bundleStoreDir(rootDir), CrashedHistory.CRASHED_HISTORY_FILENAME))
+
+    // Stages retried-bundle over stable-bundle, or over the built-in bundle, and
+    // leaves a launch of it that could show UI but ended before first content.
+    private fun leaveUnfinishedLaunch(
+        rootDir: File,
+        preferences: InMemoryPreferencesService,
+        stableBundleId: String? = "stable-bundle",
+    ) {
+        listOfNotNull(stableBundleId, "retried-bundle").forEach { bundleId ->
+            val directory = createBundleDir(rootDir, bundleId)
+            writeFile(directory, "index.android.bundle")
+            writeManifest(directory, listOf("index.android.bundle"))
+        }
+        writeMetadata(
+            rootDir,
+            BundleMetadata(
+                isolationKey = TEST_ISOLATION_KEY,
+                stableBundleId = stableBundleId,
+                stagingBundleId = "retried-bundle",
+                verificationPending = true,
+            ),
+        )
+        val launch = createService(rootDir, preferences)
+        assertEquals("retried-bundle", launch.prepareLaunch(null).launchedBundleId)
+        launch.markLaunchStarted("retried-bundle")
+    }
+
+    // A process whose update check can download retried-bundle again.
+    private fun createRetryService(
+        rootDir: File,
+        preferences: InMemoryPreferencesService,
+    ): BundleFileStorageService =
+        createService(
+            rootDir,
+            preferences,
+            downloadService =
+                MappingDownloadService(
+                    mapOf(
+                        MANIFEST_URL to retriedBundleManifest(rootDir),
+                        BUNDLE_URL to RETRIED_BUNDLE_CONTENT,
+                    ),
+                ),
+            builtInAssetResolver = MappingBuiltInAssetResolver(emptyMap()),
+        )
+
+    private fun retriedBundleManifest(rootDir: File): String =
+        manifestJson(
+            "retried-bundle",
+            mapOf("index.android.bundle" to sha256(rootDir, RETRIED_BUNDLE_CONTENT)),
+        )
+
+    private suspend fun installRetriedBundle(
+        service: BundleFileStorageService,
+        rootDir: File,
+    ): Throwable? =
+        runCatching {
+            service.updateBundle(
+                bundleId = "retried-bundle",
+                manifestUrl = MANIFEST_URL,
+                manifestFileHash = sha256(rootDir, retriedBundleManifest(rootDir)),
+                assets =
+                    mapOf(
+                        "index.android.bundle" to
+                            ChangedAssetDescriptor(
+                                fileUrl = BUNDLE_URL,
+                                fileHash = sha256(rootDir, RETRIED_BUNDLE_CONTENT),
+                            ),
+                    ),
+                progressCallback = {},
+            )
+        }.exceptionOrNull()
+
     private fun writeFile(
         rootDir: File,
         relativePath: String,
@@ -2295,6 +2509,7 @@ class BundleFileStorageServiceTest {
         private const val ARCHIVE_URL = "https://example.com/bundle.tar.br"
         private const val BUNDLE_URL = "https://example.com/index.android.bundle"
         private const val BUNDLE_CONTENT = "bundle"
+        private const val RETRIED_BUNDLE_CONTENT = "retried-bundle"
         private const val PATCH_URL = "https://example.com/index.android.bundle.bsdiff"
 
         // The base and output of BsdiffPatchTest.BSDIFF_PATCH_FIXTURE_BASE64.

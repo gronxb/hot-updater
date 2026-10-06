@@ -328,6 +328,157 @@ struct BundleFileStorageServiceTests {
         #expect(!nextLaunch.shouldRollbackOnCrash)
     }
 
+    // Issue #1469: a launch that ends before first content without a crash
+    // marker may be a user leaving early rather than a hang.
+    @Test
+    func unfinishedLaunchRetriesBundleOnceBeforeCrashHistory() throws {
+        let workingDirectory = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(workingDirectory) }
+        let preferences = InMemoryPreferencesService()
+        try leaveUnfinishedLaunch(documentsDirectory: workingDirectory, preferences: preferences)
+
+        // The next process still rolls back at once and reports RECOVERED.
+        let recovered = try makeRetryService(documentsDirectory: workingDirectory, preferences: preferences)
+        #expect(recovered.prepareLaunch(bundle: .main, pendingRecovery: nil).launchedBundleId == "stable-bundle")
+        #expect(recovered.notifyAppReady()["status"] as? String == "RECOVERED")
+        #expect(!loadCrashedHistory(documentsDirectory: workingDirectory).contains("retried-bundle"))
+        // The session that recovered refuses the bundle, even after first content.
+        recovered.markLaunchCompleted(bundleId: "stable-bundle")
+        #expect(recovered.getCrashHistory().contains("retried-bundle"))
+        #expect(baseErrorCode(of: try installRetriedBundle(recovered, documentsDirectory: workingDirectory))
+            == "BUNDLE_IN_CRASHED_HISTORY")
+
+        // A later process installs it again.
+        let retrying = try makeRetryService(documentsDirectory: workingDirectory, preferences: preferences)
+        #expect(retrying.prepareLaunch(bundle: .main, pendingRecovery: nil).launchedBundleId == "stable-bundle")
+        #expect(!retrying.getCrashHistory().contains("retried-bundle"))
+        #expect((try? installRetriedBundle(retrying, documentsDirectory: workingDirectory).get()) != nil)
+
+        // The retry ends before first content too: now crash history keeps it.
+        let retryLaunch = try makeRetryService(documentsDirectory: workingDirectory, preferences: preferences)
+        #expect(retryLaunch.prepareLaunch(bundle: .main, pendingRecovery: nil).launchedBundleId == "retried-bundle")
+        retryLaunch.markLaunchStarted(bundleId: "retried-bundle")
+        let next = try makeRetryService(documentsDirectory: workingDirectory, preferences: preferences)
+        #expect(next.prepareLaunch(bundle: .main, pendingRecovery: nil).launchedBundleId == "stable-bundle")
+        #expect(next.notifyAppReady()["status"] as? String == "RECOVERED")
+        #expect(loadCrashedHistory(documentsDirectory: workingDirectory).contains("retried-bundle"))
+        next.markLaunchCompleted(bundleId: "stable-bundle")
+        let later = try makeRetryService(documentsDirectory: workingDirectory, preferences: preferences)
+        _ = later.prepareLaunch(bundle: .main, pendingRecovery: nil)
+        #expect(baseErrorCode(of: try installRetriedBundle(later, documentsDirectory: workingDirectory))
+            == "BUNDLE_IN_CRASHED_HISTORY")
+    }
+
+    @Test
+    func retriedBundleThatReachesFirstContentIsVerified() throws {
+        let workingDirectory = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(workingDirectory) }
+        let preferences = InMemoryPreferencesService()
+        try leaveUnfinishedLaunch(documentsDirectory: workingDirectory, preferences: preferences)
+        let recovered = try makeRetryService(documentsDirectory: workingDirectory, preferences: preferences)
+        _ = recovered.prepareLaunch(bundle: .main, pendingRecovery: nil)
+        recovered.markLaunchCompleted(bundleId: "stable-bundle")
+        let retrying = try makeRetryService(documentsDirectory: workingDirectory, preferences: preferences)
+        _ = retrying.prepareLaunch(bundle: .main, pendingRecovery: nil)
+        #expect((try? installRetriedBundle(retrying, documentsDirectory: workingDirectory).get()) != nil)
+
+        let retryLaunch = try makeRetryService(documentsDirectory: workingDirectory, preferences: preferences)
+        #expect(retryLaunch.prepareLaunch(bundle: .main, pendingRecovery: nil).launchedBundleId == "retried-bundle")
+        retryLaunch.markLaunchStarted(bundleId: "retried-bundle")
+        retryLaunch.markLaunchCompleted(bundleId: "retried-bundle")
+
+        #expect(retryLaunch.notifyAppReady()["status"] as? String == "UPDATE_APPLIED")
+        #expect(loadCrashedHistory(documentsDirectory: workingDirectory).bundles.isEmpty)
+        let next = makeStorageService(documentsDirectory: workingDirectory, preferences: preferences)
+            .prepareLaunch(bundle: .main, pendingRecovery: nil)
+        #expect(next.launchedBundleId == "retried-bundle")
+        #expect(!next.shouldRollbackOnCrash)
+    }
+
+    @Test
+    func retryWaitsForSessionThatShowedContent() throws {
+        let workingDirectory = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(workingDirectory) }
+        let preferences = InMemoryPreferencesService()
+        try leaveUnfinishedLaunch(documentsDirectory: workingDirectory, preferences: preferences)
+
+        // A background launch consumes the unfinished launch and never renders.
+        let background = makeStorageService(documentsDirectory: workingDirectory, preferences: preferences)
+        #expect(background.prepareLaunch(bundle: .main, pendingRecovery: nil).launchedBundleId == "stable-bundle")
+        #expect(background.getCrashHistory().contains("retried-bundle"))
+
+        // The user's next open is the first session that recovered.
+        let opened = makeStorageService(documentsDirectory: workingDirectory, preferences: preferences)
+        _ = opened.prepareLaunch(bundle: .main, pendingRecovery: nil)
+        #expect(opened.getCrashHistory().contains("retried-bundle"))
+        opened.markLaunchCompleted(bundleId: "stable-bundle")
+        #expect(opened.getCrashHistory().contains("retried-bundle"))
+
+        let later = makeStorageService(documentsDirectory: workingDirectory, preferences: preferences)
+        _ = later.prepareLaunch(bundle: .main, pendingRecovery: nil)
+        #expect(!later.getCrashHistory().contains("retried-bundle"))
+    }
+
+    @Test
+    func retryReadiesAfterContentFromBuiltInBundle() throws {
+        let workingDirectory = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(workingDirectory) }
+        let preferences = InMemoryPreferencesService()
+        try leaveUnfinishedLaunch(
+            documentsDirectory: workingDirectory, preferences: preferences, stableBundleId: nil
+        )
+        let recovered = makeStorageService(documentsDirectory: workingDirectory, preferences: preferences)
+        #expect(recovered.prepareLaunch(bundle: .main, pendingRecovery: nil).launchedBundleId == nil)
+
+        // First content of the built-in bundle reports no bundle ID.
+        recovered.markLaunchCompleted(bundleId: nil)
+
+        let later = makeStorageService(documentsDirectory: workingDirectory, preferences: preferences)
+        _ = later.prepareLaunch(bundle: .main, pendingRecovery: nil)
+        #expect(!later.getCrashHistory().contains("retried-bundle"))
+    }
+
+    @Test
+    func crashOfRetriedBundleAddsItToCrashHistory() throws {
+        let workingDirectory = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(workingDirectory) }
+        let preferences = InMemoryPreferencesService()
+        try leaveUnfinishedLaunch(documentsDirectory: workingDirectory, preferences: preferences)
+        let recovered = try makeRetryService(documentsDirectory: workingDirectory, preferences: preferences)
+        _ = recovered.prepareLaunch(bundle: .main, pendingRecovery: nil)
+        recovered.markLaunchCompleted(bundleId: "stable-bundle")
+        let retrying = try makeRetryService(documentsDirectory: workingDirectory, preferences: preferences)
+        _ = retrying.prepareLaunch(bundle: .main, pendingRecovery: nil)
+        #expect((try? installRetriedBundle(retrying, documentsDirectory: workingDirectory).get()) != nil)
+        #expect(makeStorageService(documentsDirectory: workingDirectory, preferences: preferences)
+            .prepareLaunch(bundle: .main, pendingRecovery: nil).launchedBundleId == "retried-bundle")
+
+        // That launch crashed before first content and left a crash marker.
+        let next = makeStorageService(documentsDirectory: workingDirectory, preferences: preferences)
+            .prepareLaunch(
+                bundle: .main,
+                pendingRecovery: PendingCrashRecovery(launchedBundleId: "retried-bundle", shouldRollback: true)
+            )
+
+        #expect(next.launchedBundleId == "stable-bundle")
+        #expect(loadCrashedHistory(documentsDirectory: workingDirectory).contains("retried-bundle"))
+    }
+
+    @Test
+    func clearingCrashHistoryDropsWaitingRetry() throws {
+        let workingDirectory = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(workingDirectory) }
+        let preferences = InMemoryPreferencesService()
+        try leaveUnfinishedLaunch(documentsDirectory: workingDirectory, preferences: preferences)
+        let recovered = makeStorageService(documentsDirectory: workingDirectory, preferences: preferences)
+        _ = recovered.prepareLaunch(bundle: .main, pendingRecovery: nil)
+
+        #expect(recovered.clearCrashHistory())
+
+        #expect(!recovered.getCrashHistory().contains("retried-bundle"))
+    }
+
+
     @Test
     func getBundleIdFallsBackToBuiltInWhileStagingVerificationIsPending() throws {
         let workingDirectory = try makeWorkingDirectory()
@@ -2604,6 +2755,85 @@ private func loadMetadata(documentsDirectory: URL) -> BundleMetadata? {
     return BundleMetadata.load(
         from: metadataURL,
         expectedIsolationKey: testIsolationKey
+    )
+}
+
+private func loadCrashedHistory(documentsDirectory: URL) -> CrashedHistory {
+    CrashedHistory.load(from: documentsDirectory
+        .appendingPathComponent("bundle-store", isDirectory: true)
+        .appendingPathComponent(CrashedHistory.crashedHistoryFilename))
+}
+
+private let retriedBundleBytes = Data("retried-bundle".utf8)
+private let retriedManifestURL = URL(string: "https://example.com/manifest.json")!
+private let retriedFileURL = URL(string: "https://example.com/index.ios.bundle")!
+
+/// Stages retried-bundle over stable-bundle, or over the built-in bundle, and
+/// leaves a launch of it that could show UI but ended before first content.
+private func leaveUnfinishedLaunch(
+    documentsDirectory: URL,
+    preferences: PreferencesService,
+    stableBundleId: String? = "stable-bundle"
+) throws {
+    for bundleId in [stableBundleId, "retried-bundle"].compactMap({ $0 }) {
+        let directory = try createBundleDirectory(documentsDirectory: documentsDirectory, bundleId: bundleId)
+        try writeBundle(in: directory, bundleFileName: "index.ios.bundle")
+        try writeManifest(in: directory, bundleId: bundleId)
+    }
+    try writeMetadata(
+        documentsDirectory: documentsDirectory,
+        BundleMetadata(
+            isolationKey: testIsolationKey,
+            stableBundleId: stableBundleId,
+            stagingBundleId: "retried-bundle",
+            verificationPending: true
+        )
+    )
+    let launch = makeStorageService(documentsDirectory: documentsDirectory, preferences: preferences)
+    try #require(launch.prepareLaunch(bundle: .main, pendingRecovery: nil).launchedBundleId == "retried-bundle")
+    launch.markLaunchStarted(bundleId: "retried-bundle")
+}
+
+/// A process whose update check can download retried-bundle again.
+private func makeRetryService(documentsDirectory: URL, preferences: PreferencesService) throws -> BundleFileStorageService {
+    makeStorageService(
+        documentsDirectory: documentsDirectory,
+        preferences: preferences,
+        downloadService: MappingDownloadService(contents: [
+            retriedManifestURL: try retriedBundleManifest(in: documentsDirectory),
+            retriedFileURL: retriedBundleBytes,
+        ]),
+        builtInAssetResolver: MappingBuiltInAssetResolver(contents: [:])
+    )
+}
+
+// Sorted keys: the served manifest must match the hash the install checks.
+private func retriedBundleManifest(in directory: URL) throws -> Data {
+    try JSONSerialization.data(
+        withJSONObject: [
+            "bundleId": "retried-bundle",
+            "assets": [
+                "index.ios.bundle": ["fileHash": try #require(sha256(retriedBundleBytes, in: directory))],
+            ],
+        ],
+        options: [.sortedKeys]
+    )
+}
+
+private func installRetriedBundle(
+    _ service: BundleFileStorageService,
+    documentsDirectory: URL
+) throws -> Result<UpdateDelivery, Error> {
+    let manifest = try retriedBundleManifest(in: documentsDirectory)
+    return updateBundle(
+        service,
+        bundleId: "retried-bundle",
+        manifestURL: retriedManifestURL,
+        manifestHash: try #require(sha256(manifest, in: documentsDirectory)),
+        assets: ["index.ios.bundle": ChangedAssetDescriptor(
+            fileUrl: retriedFileURL,
+            fileHash: try #require(sha256(retriedBundleBytes, in: documentsDirectory))
+        )]
     )
 }
 
