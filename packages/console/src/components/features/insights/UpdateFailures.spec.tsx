@@ -73,17 +73,28 @@ describe("UpdateFailures", () => {
   it("shows counts, rates, and the breakdown with what failed", () => {
     render(<UpdateFailures query={query(report)} onRefresh={() => {}} />);
     const card = screen.getByRole("region", { name: "Update failures" });
-    const metric = (label: string) =>
-      within(card).getByText(label).closest("div")!.querySelector("dd")!
-        .textContent;
-    expect(metric("Failed updates")).toBe("4");
-    // The failure rate of update attempts: 4 failure reports over 4 + 9
-    // download reports.
-    expect(metric("Attempt failure rate")).toBe("30.77%");
+    const updates = within(card).getByRole("region", {
+      name: "Downloads & installs",
+    });
+    // One headline: 4 failure reports over 4 + 9 download reports, then the
+    // failures and installations behind it.
+    expect(updates.textContent).toContain("30.77%");
+    expect(updates.textContent).toContain("of update attempts failed");
+    expect(updates.textContent).toContain(
+      "4 failures · ≈Estimated 3 installations",
+    );
     // 1 fallback of 4 patch attempts.
-    expect(metric("Patch fallback rate")).toBe("25.00%");
-    // A release has no check metrics.
-    expect(within(card).queryByText("Failed checks")).toBeNull();
+    expect(
+      within(updates).getByText(
+        "1 of 4 patch downloads fell back to the full archive",
+      ),
+    ).toBeDefined();
+    // A release has no check metrics, and no change before a whole previous
+    // period was recorded.
+    expect(
+      within(card).queryByRole("region", { name: "Update checks" }),
+    ).toBeNull();
+    expect(within(card).queryByText(/previous period/)).toBeNull();
 
     const row = within(card).getByLabelText("Download · HTTP error", {
       selector: "summary",
@@ -98,7 +109,7 @@ describe("UpdateFailures", () => {
     ).toBeDefined();
     expect(within(details).getByText("HTTP 404")).toBeDefined();
     expect(
-      within(card).getByLabelText("Unknown stage · Unknown reason", {
+      within(card).getByLabelText("Unknown stage · No reason reported", {
         selector: "summary",
       }),
     ).toBeDefined();
@@ -149,12 +160,13 @@ describe("UpdateFailures", () => {
         onRefresh={() => {}}
       />,
     );
+    const checks = screen.getByRole("region", { name: "Update checks" });
+    // 2 installations with a failed check of 8 active ones.
+    expect(checks.textContent).toContain("25.00%");
+    expect(checks.textContent).toContain(
+      "6 failures · ≈Estimated 2 installations",
+    );
     const card = screen.getByRole("region", { name: "Update failures" });
-    const metric = (label: string) =>
-      within(card).getByText(label).closest("div")!.querySelector("dd")!
-        .textContent;
-    expect(metric("Failed checks")).toBe("6");
-    expect(metric("Check failure rate")).toBe("25.00%");
     expect(
       within(card).getByText("No update failures in this period."),
     ).toBeDefined();
@@ -200,14 +212,24 @@ describe("UpdateFailures", () => {
     });
     const checks = screen.getByRole("region", { name: "Update checks" });
     expect(within(updates).getByText("0.00")).toBeDefined();
-    expect(within(updates).getByText("—")).toBeDefined();
-    expect(within(checks).getByText("3")).toBeDefined();
+    expect(updates.textContent).toContain("0 failures · 0 installations");
+    // No patch was tried, so no patch line.
+    expect(within(updates).queryByText(/patch downloads/)).toBeNull();
     expect(within(checks).getByText("8.33")).toBeDefined();
+    expect(checks.textContent).toContain(
+      "3 failures · ≈Estimated 3 installations",
+    );
+    // Most failures report no reason: the card says why.
+    expect(
+      screen.getByText(
+        "Most report no reason: an SDK that doesn't classify failures reports every failed check, offline ones included.",
+      ),
+    ).toBeDefined();
     const table = screen.getByRole("table", {
       name: "Failures by stage and reason",
     });
     fireEvent.click(
-      within(table).getByLabelText("Update check · Unknown reason", {
+      within(table).getByLabelText("Update check · No reason reported", {
         selector: "summary",
       }),
     );
