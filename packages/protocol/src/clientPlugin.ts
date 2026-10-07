@@ -250,8 +250,8 @@ export interface HotUpdaterClientPlugin<
    */
   readonly id: TId;
   /**
-   * Called once per plugin object, when `HotUpdater.init` first configures
-   * the runtime with it.
+   * Called once for each plugin host it is configured in. The React Native
+   * SDK creates a host for each instance `HotUpdater.init` returns.
    */
   setup(context: HotUpdaterClientContext): HotUpdaterClientSetup<TApi> | void;
 }

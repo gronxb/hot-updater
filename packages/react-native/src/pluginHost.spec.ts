@@ -26,7 +26,8 @@ const mocks = vi.hoisted(() => {
 
 vi.mock("./native", () => mocks);
 
-const importHost = () => import("./pluginHost");
+const importHost = async () =>
+  (await import("./pluginHost")).createAppPluginHost();
 
 const capture = (id = "example") => {
   let context!: HotUpdaterClientContext;

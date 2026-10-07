@@ -59,10 +59,10 @@ export const launchLogger = () =>
   [storage](#store-values-on-the-device), and names the plugin's API on the
   instance, so it cannot be one of the instance's own members, such as
   `reload`.
-- `setup(context)` runs once per plugin object, when `init` first receives it,
-  and returns `{ hooks, api }`, either of them, or nothing. Passing the same
-  object to a later `init` keeps its hooks and its API; a plugin left out of a
-  later call stops receiving events.
+- `setup(context)` runs once for each instance, when `init` creates the
+  instance, and returns `{ hooks, api }`, either of them, or nothing. Each
+  instance has its own plugins: the same plugin object passed to two `init`
+  calls is set up twice, with hooks and an API for each instance.
 - `api` is what the app calls. `init` puts it on the instance it returns, under
   the plugin's id, as `insights()` adds `hotUpdater.insights` and
   `remoteConfig()` adds `hotUpdater.remoteConfig`. Its type follows from

@@ -7,6 +7,7 @@ import {
 } from "@hot-updater/protocol";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import type { LaunchReporter } from "./appReady";
 import type { HotUpdaterClientHooks } from "./clientPlugin";
 import type { HotUpdaterHttpClient } from "./httpClient";
 import { InvalidUpdateResponseError, UpdateHttpError } from "./updateError";
@@ -112,11 +113,17 @@ type PluginEvent = {
   ];
 }[keyof HotUpdaterClientHooks];
 
+/** The checking instance's plugin hooks; a test that records them sets it. */
+let emit: LaunchReporter["emit"] = () => {};
+
 /** Records what checks report to plugins, in order. */
 const recordPluginEvents = async () => {
-  const { configurePlugins } = await import("./pluginHost");
+  const { createAppPluginHost } = await import("./pluginHost");
+  const { createLaunchReporter } = await import("./appReady");
+  const host = createAppPluginHost();
+  emit = createLaunchReporter(host).emit;
   const events: PluginEvent[] = [];
-  configurePlugins(
+  host.configurePlugins(
     [
       {
         id: "recorder",
@@ -144,6 +151,7 @@ describe("checkForUpdate Release catalog protocol", () => {
   beforeEach(() => {
     vi.resetModules();
     vi.clearAllMocks();
+    emit = () => {};
     vi.stubGlobal("__DEV__", false);
     mocks.acceptReleaseCatalog.mockReturnValue(true);
     mocks.getActiveUpdateState.mockReturnValue({
@@ -175,6 +183,7 @@ describe("checkForUpdate Release catalog protocol", () => {
         }),
     );
     const update = await checkForUpdate({
+      emit,
       client,
       updateStrategy: "appVersion",
     });
@@ -227,6 +236,7 @@ describe("checkForUpdate Release catalog protocol", () => {
       else
         mocks.stageBundle.mockRejectedValueOnce(new Error("download failed"));
       const update = await checkForUpdate({
+        emit,
         client,
         updateStrategy: "appVersion",
       });
@@ -240,6 +250,7 @@ describe("checkForUpdate Release catalog protocol", () => {
     const { client, fetchReleaseCatalog, resolveArtifact } = createClient();
 
     const result = await checkForUpdate({
+      emit,
       client,
       updateStrategy: "appVersion",
     });
@@ -313,6 +324,7 @@ describe("checkForUpdate Release catalog protocol", () => {
     const { client, resolveArtifact } = createClient(forceCatalog);
 
     const result = await checkForUpdate({
+      emit,
       client,
       updateStrategy: "appVersion",
     });
@@ -359,6 +371,7 @@ describe("checkForUpdate Release catalog protocol", () => {
     const { client } = createClient();
 
     const result = await checkForUpdate({
+      emit,
       client,
       updateStrategy: "appVersion",
     });
@@ -405,6 +418,7 @@ describe("checkForUpdate Release catalog protocol", () => {
     const { client } = createClient(betaCatalog);
 
     const result = await checkForUpdate({
+      emit,
       channel: betaChannel,
       client,
       updateStrategy: "appVersion",
@@ -441,6 +455,7 @@ describe("checkForUpdate Release catalog protocol", () => {
     const { client, resolveArtifact } = createClient();
 
     const result = await checkForUpdate({
+      emit,
       client,
       updateStrategy: "appVersion",
     });
@@ -476,6 +491,7 @@ describe("checkForUpdate Release catalog protocol", () => {
     const { checkForUpdate } = await import("./checkForUpdate");
     const { client } = createClient();
     const result = await checkForUpdate({
+      emit,
       client,
       updateStrategy: "appVersion",
     });
@@ -521,6 +537,7 @@ describe("checkForUpdate Release catalog protocol", () => {
     const { client } = createClient(catalog);
 
     const result = await checkForUpdate({
+      emit,
       client,
       updateStrategy: "appVersion",
     });
@@ -574,6 +591,7 @@ describe("checkForUpdate Release catalog protocol", () => {
     const { client } = createClient(catalog);
 
     const result = await checkForUpdate({
+      emit,
       client,
       updateStrategy: "appVersion",
     });
@@ -618,6 +636,7 @@ describe("checkForUpdate Release catalog protocol", () => {
       );
 
       const result = await checkForUpdate({
+        emit,
         client,
         updateStrategy: "appVersion",
       });
@@ -652,7 +671,7 @@ describe("checkForUpdate Release catalog protocol", () => {
     );
 
     await expect(
-      checkForUpdate({ client, updateStrategy: "appVersion" }),
+      checkForUpdate({ emit, client, updateStrategy: "appVersion" }),
     ).resolves.toBeNull();
     expect(mocks.commitReleaseSelection).not.toHaveBeenCalled();
   });
@@ -664,7 +683,7 @@ describe("checkForUpdate Release catalog protocol", () => {
     const { client, resolveArtifact } = createClient();
 
     await expect(
-      checkForUpdate({ client, onError, updateStrategy: "appVersion" }),
+      checkForUpdate({ emit, client, onError, updateStrategy: "appVersion" }),
     ).resolves.toBeNull();
 
     expect(onError).toHaveBeenCalledWith(
@@ -686,7 +705,7 @@ describe("checkForUpdate Release catalog protocol", () => {
     const { client } = createClient(createCatalog({ scopeKey: wrongScope }));
 
     await expect(
-      checkForUpdate({ client, onError, updateStrategy: "appVersion" }),
+      checkForUpdate({ emit, client, onError, updateStrategy: "appVersion" }),
     ).resolves.toBeNull();
 
     expect(onError).toHaveBeenCalledWith(
@@ -726,7 +745,7 @@ describe("checkForUpdate Release catalog protocol", () => {
     const { client } = createClient();
 
     await expect(
-      checkForUpdate({ client, onError, updateStrategy: "appVersion" }),
+      checkForUpdate({ emit, client, onError, updateStrategy: "appVersion" }),
     ).resolves.toBeNull();
 
     expect(onError).toHaveBeenCalledWith(
@@ -745,7 +764,7 @@ describe("checkForUpdate Release catalog protocol", () => {
     );
 
     await expect(
-      checkForUpdate({ client, updateStrategy: "appVersion" }),
+      checkForUpdate({ emit, client, updateStrategy: "appVersion" }),
     ).resolves.toBeNull();
 
     expect(events).toEqual([
@@ -770,7 +789,7 @@ describe("checkForUpdate Release catalog protocol", () => {
     fetchReleaseCatalog.mockResolvedValueOnce(null as never);
 
     await expect(
-      checkForUpdate({ client, onError, updateStrategy: "appVersion" }),
+      checkForUpdate({ emit, client, onError, updateStrategy: "appVersion" }),
     ).resolves.toBeNull();
 
     expect(onError).not.toHaveBeenCalled();
@@ -818,7 +837,7 @@ describe("checkForUpdate Release catalog protocol", () => {
     fetchReleaseCatalog.mockRejectedValueOnce(cause);
 
     await expect(
-      checkForUpdate({ client, updateStrategy: "appVersion" }),
+      checkForUpdate({ emit, client, updateStrategy: "appVersion" }),
     ).resolves.toBeNull();
 
     expect(events).toEqual([
@@ -915,6 +934,7 @@ describe("checkForUpdate Release catalog protocol", () => {
       const { client, resolveArtifact } = createClient();
       fail(resolveArtifact);
       const result = await checkForUpdate({
+        emit,
         client,
         updateStrategy: "appVersion",
       });
@@ -956,6 +976,7 @@ describe("checkForUpdate Release catalog protocol", () => {
     const events = await recordPluginEvents();
     const { client } = createClient();
     const result = await checkForUpdate({
+      emit,
       client,
       updateStrategy: "appVersion",
     });

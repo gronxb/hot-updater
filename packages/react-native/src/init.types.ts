@@ -1,6 +1,5 @@
 import type { HotUpdaterClientPlugin } from "./clientPlugin";
 import type { HotUpdaterError } from "./error";
-import type { HotUpdaterHttpClient } from "./httpClient";
 import type { NotifyAppReadyResult } from "./native";
 import type { HotUpdaterBaseURL } from "./types";
 
@@ -10,10 +9,10 @@ export interface HotUpdaterInitOptions<
 > {
   /**
    * Client plugins, such as `insights()` and `remoteConfig()` from
-   * `@hot-updater/react-native`. Each plugin's `setup` runs once; its hooks
-   * observe launches, update checks, downloads, and update failures, and its
-   * API is on the instance `init` returns, under the plugin's id. Plugin ids
-   * must be unique.
+   * `@hot-updater/react-native`. Each plugin's `setup` runs once for the
+   * instance `init` returns; its hooks observe that instance's launch,
+   * update checks, downloads, and update failures, and its API is on the
+   * instance, under the plugin's id. Plugin ids must be unique.
    */
   plugins?: TPlugins;
   /** Base URL of a server exposing the Hot Updater v1 client HTTP protocol. */
@@ -23,11 +22,3 @@ export interface HotUpdaterInitOptions<
   onNotifyAppReady?: (result: NotifyAppReadyResult) => void;
   onError?: (error: HotUpdaterError | Error | unknown) => void;
 }
-
-export type InternalInitOptions = {
-  client: HotUpdaterHttpClient;
-  requestHeaders?: Record<string, string>;
-  requestTimeout?: number;
-  onNotifyAppReady?: (result: NotifyAppReadyResult) => void;
-  onError?: (error: HotUpdaterError | Error | unknown) => void;
-};

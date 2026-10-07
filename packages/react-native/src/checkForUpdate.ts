@@ -11,7 +11,7 @@ import {
 } from "@hot-updater/protocol";
 import { Platform } from "react-native";
 
-import { emitAfterAppReady, getRunningReleaseId } from "./appReady";
+import { getRunningReleaseId, type LaunchReporter } from "./appReady";
 import type {
   ReleaseTransitionKind,
   UpdateErrorResource,
@@ -81,6 +81,8 @@ export type CheckForUpdateResult = {
 
 export interface InternalCheckForUpdateOptions extends CheckForUpdateOptions {
   client: HotUpdaterHttpClient;
+  /** Calls the checking instance's plugin hooks. */
+  emit: LaunchReporter["emit"];
 }
 
 const sameReceipt = (
@@ -136,12 +138,13 @@ type UpdateErrorScope = {
  * the SDK's JavaScript raised happened in `stage`, fetching `resource`.
  */
 export const reportUpdateError = (
+  emit: LaunchReporter["emit"],
   error: unknown,
   stage: UpdateErrorStage,
   resource: UpdateErrorResource | undefined,
   scope: UpdateErrorScope,
 ): void => {
-  emitAfterAppReady("onUpdateError", () => {
+  emit("onUpdateError", () => {
     const classification = classifyUpdateError(error, stage, resource);
     if (classification === null) return null;
     return {
@@ -353,7 +356,7 @@ async function checkForReleaseCatalogUpdate(input: {
         selection: receipt,
       });
       if (committed && transitionKind === "ADOPT_RELEASE") {
-        emitAfterAppReady("onUpdateCheck", () => ({
+        options.emit("onUpdateCheck", () => ({
           status: "UNCHANGED",
           channel: receipt.channel,
           bundleId: receipt.bundleId,
@@ -385,7 +388,7 @@ async function checkForReleaseCatalogUpdate(input: {
       status: desired.status,
     });
     if (delivery !== null && desired.bundleId !== input.currentBundleId) {
-      emitAfterAppReady("onBundleDownloaded", () => ({
+      options.emit("onBundleDownloaded", () => ({
         channel: input.targetChannel,
         fromBundleId: input.currentBundleId,
         fromReleaseId,
@@ -401,7 +404,13 @@ async function checkForReleaseCatalogUpdate(input: {
     try {
       return await installSelection();
     } catch (error) {
-      reportUpdateError(error, "download", "artifact", errorScope);
+      reportUpdateError(
+        options.emit,
+        error,
+        "download",
+        "artifact",
+        errorScope,
+      );
       throw error;
     }
   };
@@ -412,7 +421,7 @@ async function checkForReleaseCatalogUpdate(input: {
       : desired.status === "ROLLBACK"
         ? true
         : (release?.shouldForceUpdate ?? false);
-  emitAfterAppReady("onUpdateCheck", () => ({
+  options.emit("onUpdateCheck", () => ({
     status: "UPDATE_AVAILABLE",
     channel: input.targetChannel,
     fromBundleId: input.currentBundleId,
@@ -494,7 +503,7 @@ export async function checkForUpdate(
       targetChannel,
     });
     if (result === null) {
-      emitAfterAppReady("onUpdateCheck", () => {
+      options.emit("onUpdateCheck", () => {
         const releaseId = getRunningReleaseId(currentBundleId, currentChannel);
         return {
           status: "UNCHANGED",
@@ -507,7 +516,7 @@ export async function checkForUpdate(
     }
     return result;
   } catch (error) {
-    reportUpdateError(error, "check", "catalog", {
+    reportUpdateError(options.emit, error, "check", "catalog", {
       bundleId: currentBundleId,
       channel: targetChannel,
       updateStrategy: options.updateStrategy,

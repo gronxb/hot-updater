@@ -407,8 +407,8 @@ export default hotUpdater.wrap({ // [!code ++]
 
 An app that checks from its own flow instead keeps `init` and calls
 `hotUpdater.checkForUpdate()`, as the
-[custom update flow](/docs/guides/custom-update) shows. Calling `init` again
-replaces the configuration, so keep the one call in its own module.
+[custom update flow](/docs/guides/custom-update) shows. Each `init` call
+creates an independent instance, so keep the one call in its own module.
 
 Remove `resolver`, client `authorityId`, `HotUpdaterResolver`, resolver helper
 types and `createDefaultResolver`. A custom GraphQL/RPC backend must expose the

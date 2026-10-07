@@ -101,8 +101,8 @@ export default function App() {
 ```
 
 Export your component normally. You do not need an effect, a readiness flag or
-an `onNotifyAppReady` callback for setup. Calling `init` again replaces the
-configuration, so keep the one call in `src/hotUpdater.ts`.
+an `onNotifyAppReady` callback for setup. Each `init` call creates a separate
+instance with its own plugins, so keep the one call in `src/hotUpdater.ts`.
 [Client plugins](/docs/react-native-api/init#use-the-instance-init-returns)
 add their APIs to the same instance.
 

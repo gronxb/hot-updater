@@ -280,6 +280,31 @@ describe("hotUpdater.wrap", () => {
     });
   });
 
+  it("gives each instance its own plugins, each told of the launch once", async () => {
+    const { HotUpdater } = await import("./index");
+    const first = vi.fn();
+    const second = vi.fn();
+
+    HotUpdater.init({
+      baseURL: "https://updates.example.com",
+      plugins: [
+        { id: "recorder", setup: () => ({ hooks: { onAppReady: first } }) },
+      ],
+    });
+    HotUpdater.init({
+      baseURL: "https://other.example.com",
+      plugins: [
+        { id: "recorder", setup: () => ({ hooks: { onAppReady: second } }) },
+      ],
+    });
+
+    await waitFor(() => {
+      expect(first).toHaveBeenCalledOnce();
+      expect(second).toHaveBeenCalledOnce();
+    });
+    expect(mocks.readNotifyAppReady).toHaveBeenCalledTimes(2);
+  });
+
   it("has init defer reading the launch to the next frame", async () => {
     vi.useFakeTimers();
 

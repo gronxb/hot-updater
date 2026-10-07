@@ -1,4 +1,4 @@
-import { emitAfterAppReady } from "./appReady";
+import { createLaunchReporter, type LaunchReporter } from "./appReady";
 import {
   type CheckForUpdateOptions,
   checkForUpdate,
@@ -6,11 +6,7 @@ import {
 } from "./checkForUpdate";
 import type { ClientPluginApis, HotUpdaterClientPlugin } from "./clientPlugin";
 import { createHttpClient, type HotUpdaterHttpClient } from "./httpClient";
-import {
-  type HotUpdaterInitOptions,
-  init,
-  type InternalInitOptions,
-} from "./init";
+import type { HotUpdaterInitOptions } from "./init.types";
 import {
   addListener,
   getPublicActiveUpdateState,
@@ -37,7 +33,7 @@ import {
   stageBundle,
   type UpdateParams,
 } from "./native";
-import { configurePlugins } from "./pluginHost";
+import { createAppPluginHost } from "./pluginHost";
 import { hotUpdaterStore } from "./store";
 import { type HotUpdaterWrapOptions, wrap } from "./wrap";
 
@@ -100,7 +96,7 @@ export {
   isSignatureVerificationError,
   type SignatureVerificationFailure,
 } from "./types";
-export type { HotUpdaterInitOptions } from "./init";
+export type { HotUpdaterInitOptions } from "./init.types";
 export type {
   HotUpdaterFallbackComponentProps,
   HotUpdaterWrapOptions,
@@ -125,20 +121,6 @@ const registerGlobalGetBaseURL = () => {
 // Call registration immediately on module load
 registerGlobalGetBaseURL();
 
-/** The configuration of the latest `HotUpdater.init`, which every instance reads. */
-interface ClientConfig {
-  readonly client: HotUpdaterHttpClient;
-  readonly requestHeaders?: Record<string, string>;
-  readonly requestTimeout?: number;
-  readonly onError?: (error: unknown) => void;
-  /** Settles once `init` has read this launch. */
-  readonly appReady: Promise<unknown>;
-}
-
-// HotUpdater.init sets this before it returns an instance, so an instance's
-// methods always find it. A later init replaces it for every instance.
-let latest: ClientConfig;
-
 const createMissingNetworkConfigError = () =>
   new Error(
     `[HotUpdater] baseURL must be provided.\n\n` +
@@ -149,40 +131,8 @@ const createMissingNetworkConfigError = () =>
       `See https://hot-updater.dev/docs/react-native-api/init`,
   );
 
-const normalizeInitOptions = (
-  options: HotUpdaterInitOptions,
-): InternalInitOptions => {
-  const { updateMode: _updateMode, ...rest } =
-    options as HotUpdaterInitOptions & {
-      updateMode?: unknown;
-    };
-
-  if (rest.baseURL) {
-    const { baseURL, plugins: _plugins, ...baseURLRest } = rest;
-    return {
-      ...baseURLRest,
-      client: createHttpClient(baseURL, (response) => {
-        emitAfterAppReady("onHttpResponse", () => response);
-      }),
-    };
-  }
-
-  throw createMissingNetworkConfigError();
-};
-
-const checkForUpdateWithConfig = (options: CheckForUpdateOptions) =>
-  checkForUpdate({
-    ...options,
-    client: latest.client,
-    requestHeaders: {
-      ...latest.requestHeaders,
-      ...options.requestHeaders,
-    },
-    requestTimeout: options.requestTimeout ?? latest.requestTimeout,
-    onError: options.onError ?? latest.onError,
-  });
-
-const core = {
+/** The methods that read or change native state, the same on every instance. */
+const nativeMethods = {
   /**
    * Reloads the app.
    */
@@ -308,114 +258,6 @@ const core = {
   addListener,
 
   /**
-   * Checks for an update, with the server and request settings of
-   * `HotUpdater.init`.
-   *
-   * @param {Object} config - Update check configuration
-   * @param {string} [config.channel] - Optional channel override for this update check
-   * @param {Record<string, string>} [config.requestHeaders] - Request headers
-   *
-   * @returns {Promise<CheckForUpdateResult | null>} Update information or null if up to date
-   *
-   * @example
-   * ```ts
-   * const updateInfo = await hotUpdater.checkForUpdate({
-   *   updateStrategy: "appVersion",
-   *   requestHeaders: {
-   *     "x-api-key": "<your-api-key>",
-   *   },
-   * });
-   *
-   * if (!updateInfo) {
-   *   console.log("App is up to date");
-   *   return;
-   * }
-   *
-   * await updateInfo.updateBundle();
-   * if (updateInfo.shouldForceUpdate) {
-   *   await hotUpdater.reload();
-   * }
-   * ```
-   */
-  checkForUpdate: checkForUpdateWithConfig,
-
-  /**
-   * Updates the bundle of the app.
-   *
-   * @param {UpdateBundleParams} params - Parameters object required for bundle update
-   * @param {string} params.bundleId - The bundle ID of the app
-   * @returns {Promise<boolean>} Whether the update was successful
-   *
-   * @example
-   * ```ts
-   * const updateInfo = await hotUpdater.checkForUpdate({
-   *   updateStrategy: "appVersion",
-   *   requestHeaders: {
-   *     "x-api-key": "<your-api-key>",
-   *   },
-   * });
-   *
-   * if (!updateInfo) {
-   *   return {
-   *     status: "UP_TO_DATE",
-   *   };
-   * }
-   *
-   * await updateInfo.updateBundle();
-   * if (updateInfo.shouldForceUpdate) {
-   *   await hotUpdater.reload();
-   * }
-   * ```
-   */
-  updateBundle: async (params: UpdateParams) => {
-    const fromBundleId = getBundleId();
-    const state = getActiveUpdateState();
-    const active = state.activeSelection;
-    const fromReleaseId =
-      active?.bundleId === fromBundleId
-        ? active.releaseId
-        : state.stableSelection?.bundleId === fromBundleId
-          ? state.stableSelection.releaseId
-          : null;
-    const channel = params.channel ?? getChannel();
-    const strategyOf = (scopeKey: string | null | undefined) =>
-      scopeKey?.startsWith("v1:fingerprint:") ? "fingerprint" : "appVersion";
-    let delivery: Awaited<ReturnType<typeof stageBundle>>;
-    try {
-      delivery = await stageBundle(params);
-    } catch (error) {
-      reportUpdateError(error, "download", undefined, {
-        bundleId: fromBundleId,
-        channel,
-        targetBundleId: params.bundleId,
-        targetReleaseId:
-          (params.selection as { releaseId?: string | null } | undefined)
-            ?.releaseId ?? null,
-        updateStrategy: strategyOf(
-          (params.selection as { scopeKey?: string | null } | undefined)
-            ?.scopeKey,
-        ),
-      });
-      throw error;
-    }
-    if (delivery !== null && params.bundleId !== fromBundleId) {
-      emitAfterAppReady("onBundleDownloaded", () => {
-        const selection = getActiveUpdateState().activeSelection;
-        return {
-          channel,
-          fromBundleId,
-          fromReleaseId,
-          toBundleId: params.bundleId,
-          toReleaseId: selection?.releaseId ?? null,
-          updateStrategy: strategyOf(selection?.scopeKey),
-          ...delivery,
-        };
-      });
-    }
-    return true;
-  },
-
-  /**
    * Clears the runtime channel override and restores the original bundle.
    *
    * @returns {Promise<boolean>} Resolves with true if reset was successful
@@ -485,40 +327,166 @@ const core = {
   clearCrashHistory,
 };
 
-const instanceMethods = {
-  ...core,
+/** What an instance's own methods use: its server, settings, and launch. */
+interface InstanceConfig {
+  readonly client: HotUpdaterHttpClient;
+  readonly requestHeaders?: Record<string, string>;
+  readonly requestTimeout?: number;
+  readonly onError?: (error: unknown) => void;
+  readonly launch: LaunchReporter;
+}
 
-  /**
-   * Wraps the app's root: when it mounts, it checks for an update with the
-   * configuration of `HotUpdater.init`, downloads one, and reloads for a
-   * forced update. A `fallbackComponent` replaces the root until the check
-   * and a forced update finish.
-   *
-   * @example
-   * ```tsx
-   * export default hotUpdater.wrap({
-   *   updateStrategy: "appVersion",
-   *   fallbackComponent: ({ progress }) => <Splash progress={progress} />,
-   * })(App);
-   * ```
-   */
-  wrap: (options: HotUpdaterWrapOptions) =>
-    wrap({
+/** The methods that use the instance's own configuration and plugins. */
+const createConfiguredMethods = (config: InstanceConfig) => {
+  const check = (options: CheckForUpdateOptions) =>
+    checkForUpdate({
       ...options,
-      checkForUpdate: checkForUpdateWithConfig,
-      appReady: () => latest.appReady,
-      onError: (error) => latest.onError?.(error),
-    }),
+      client: config.client,
+      emit: config.launch.emit,
+      requestHeaders: {
+        ...config.requestHeaders,
+        ...options.requestHeaders,
+      },
+      requestTimeout: options.requestTimeout ?? config.requestTimeout,
+      onError: options.onError ?? config.onError,
+    });
+
+  return {
+    /**
+     * Checks for an update, with this instance's server and request
+     * settings.
+     *
+     * @param {Object} config - Update check configuration
+     * @param {string} [config.channel] - Optional channel override for this update check
+     * @param {Record<string, string>} [config.requestHeaders] - Request headers
+     *
+     * @returns {Promise<CheckForUpdateResult | null>} Update information or null if up to date
+     *
+     * @example
+     * ```ts
+     * const updateInfo = await hotUpdater.checkForUpdate({
+     *   updateStrategy: "appVersion",
+     *   requestHeaders: {
+     *     "x-api-key": "<your-api-key>",
+     *   },
+     * });
+     *
+     * if (!updateInfo) {
+     *   console.log("App is up to date");
+     *   return;
+     * }
+     *
+     * await updateInfo.updateBundle();
+     * if (updateInfo.shouldForceUpdate) {
+     *   await hotUpdater.reload();
+     * }
+     * ```
+     */
+    checkForUpdate: check,
+
+    /**
+     * Updates the bundle of the app.
+     *
+     * @param {UpdateBundleParams} params - Parameters object required for bundle update
+     * @param {string} params.bundleId - The bundle ID of the app
+     * @returns {Promise<boolean>} Whether the update was successful
+     *
+     * @example
+     * ```ts
+     * const updateInfo = await hotUpdater.checkForUpdate({
+     *   updateStrategy: "appVersion",
+     *   requestHeaders: {
+     *     "x-api-key": "<your-api-key>",
+     *   },
+     * });
+     *
+     * if (!updateInfo) {
+     *   return {
+     *     status: "UP_TO_DATE",
+     *   };
+     * }
+     *
+     * await updateInfo.updateBundle();
+     * if (updateInfo.shouldForceUpdate) {
+     *   await hotUpdater.reload();
+     * }
+     * ```
+     */
+    updateBundle: async (params: UpdateParams) => {
+      const fromBundleId = getBundleId();
+      const state = getActiveUpdateState();
+      const active = state.activeSelection;
+      const fromReleaseId =
+        active?.bundleId === fromBundleId
+          ? active.releaseId
+          : state.stableSelection?.bundleId === fromBundleId
+            ? state.stableSelection.releaseId
+            : null;
+      const channel = params.channel ?? getChannel();
+      const strategyOf = (scopeKey: string | null | undefined) =>
+        scopeKey?.startsWith("v1:fingerprint:") ? "fingerprint" : "appVersion";
+      let delivery: Awaited<ReturnType<typeof stageBundle>>;
+      try {
+        delivery = await stageBundle(params);
+      } catch (error) {
+        reportUpdateError(config.launch.emit, error, "download", undefined, {
+          bundleId: fromBundleId,
+          channel,
+          targetBundleId: params.bundleId,
+          targetReleaseId:
+            (params.selection as { releaseId?: string | null } | undefined)
+              ?.releaseId ?? null,
+          updateStrategy: strategyOf(
+            (params.selection as { scopeKey?: string | null } | undefined)
+              ?.scopeKey,
+          ),
+        });
+        throw error;
+      }
+      if (delivery !== null && params.bundleId !== fromBundleId) {
+        config.launch.emit("onBundleDownloaded", () => {
+          const selection = getActiveUpdateState().activeSelection;
+          return {
+            channel,
+            fromBundleId,
+            fromReleaseId,
+            toBundleId: params.bundleId,
+            toReleaseId: selection?.releaseId ?? null,
+            updateStrategy: strategyOf(selection?.scopeKey),
+            ...delivery,
+          };
+        });
+      }
+      return true;
+    },
+
+    /**
+     * Wraps the app's root: when it mounts, it checks for an update with
+     * this instance's configuration, downloads one, and reloads for a
+     * forced update. A `fallbackComponent` replaces the root until the
+     * check and a forced update finish.
+     *
+     * @example
+     * ```tsx
+     * export default hotUpdater.wrap({
+     *   updateStrategy: "appVersion",
+     *   fallbackComponent: ({ progress }) => <Splash progress={progress} />,
+     * })(App);
+     * ```
+     */
+    wrap: (options: HotUpdaterWrapOptions) =>
+      wrap({
+        ...options,
+        checkForUpdate: check,
+        appReady: () => config.launch.appReady,
+        onError: (error) => config.onError?.(error),
+      }),
+  };
 };
 
-/** Names a plugin id cannot take: the instance's own members, and `init`. */
-const reservedIds: ReadonlySet<string> = new Set([
-  ...Object.keys(instanceMethods),
-  "init",
-]);
-
 /** The methods of every instance `HotUpdater.init` returns. */
-export type HotUpdaterCore = typeof instanceMethods;
+export type HotUpdaterCore = typeof nativeMethods &
+  ReturnType<typeof createConfiguredMethods>;
 
 /**
  * The instance `HotUpdater.init` returns: HotUpdater's methods, and each
@@ -530,10 +498,10 @@ export type HotUpdaterInstance<
 
 export const HotUpdater = {
   /**
-   * Initializes HotUpdater: the update server, its request settings, and
-   * the client plugins. Call it once, at the top level of a module, and
-   * export the instance it returns. Calling it again replaces the
-   * configuration.
+   * Creates the app's HotUpdater instance: the update server, its request
+   * settings, and the client plugins. Each call returns an independent
+   * instance with its own configuration and plugins, so create one, at the
+   * top level of a module, and export it.
    *
    * The instance has every HotUpdater method, such as `wrap`,
    * `checkForUpdate`, and `reload`, and each plugin's API under the
@@ -554,8 +522,32 @@ export const HotUpdater = {
   >(
     options: HotUpdaterInitOptions<TPlugins>,
   ): HotUpdaterInstance<TPlugins> => {
-    const normalizedOptions = normalizeInitOptions(options);
-    for (const plugin of options.plugins ?? []) {
+    const {
+      baseURL,
+      plugins,
+      requestHeaders,
+      requestTimeout,
+      onError,
+      onNotifyAppReady,
+    } = options;
+    if (!baseURL) throw createMissingNetworkConfigError();
+
+    const host = createAppPluginHost();
+    const launch = createLaunchReporter(host);
+    const instance = {
+      ...nativeMethods,
+      ...createConfiguredMethods({
+        client: createHttpClient(baseURL, (response) => {
+          launch.emit("onHttpResponse", () => response);
+        }),
+        requestHeaders,
+        requestTimeout,
+        onError,
+        launch,
+      }),
+    };
+    const reservedIds = new Set([...Object.keys(instance), "init"]);
+    for (const plugin of plugins ?? []) {
       if (reservedIds.has(plugin.id)) {
         throw new Error(
           `[HotUpdater] A plugin cannot use the id "${plugin.id}": the HotUpdater instance has its own "${plugin.id}".`,
@@ -563,22 +555,16 @@ export const HotUpdater = {
       }
     }
 
-    // Plugins are set up before init reads the launch they observe.
-    const apis = configurePlugins(options.plugins, {
-      baseURL: options.baseURL,
-      requestHeaders: options.requestHeaders,
-      requestTimeout: options.requestTimeout,
-      onError: options.onError,
+    // Plugins are set up before the instance reads the launch they observe.
+    const apis = host.configurePlugins(plugins, {
+      baseURL,
+      requestHeaders,
+      requestTimeout,
+      onError,
     });
-    latest = {
-      client: normalizedOptions.client,
-      requestHeaders: options.requestHeaders,
-      requestTimeout: options.requestTimeout,
-      onError: options.onError,
-      appReady: init(normalizedOptions),
-    };
+    void launch.read({ onNotifyAppReady, onError });
     return Object.freeze({
-      ...instanceMethods,
+      ...instance,
       ...apis,
     }) as HotUpdaterInstance<TPlugins>;
   },

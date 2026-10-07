@@ -457,8 +457,9 @@ escape hatch for replacing only part of the protocol.
 Every other method moves to that instance: call `HotUpdater.init` once at the
 top level of a module, export the instance, and call `hotUpdater.<method>`
 instead of `HotUpdater.<method>`, such as `hotUpdater.checkForUpdate()` and
-`hotUpdater.reload()`. Calling `init` again replaces the configuration for
-every instance.
+`hotUpdater.reload()`. Each `init` call returns an independent instance with
+its own configuration, plugins, and launch report, and nothing is configured
+globally, so create one instance per app.
 
 `HotUpdater.wrap` becomes `hotUpdater.wrap`, which takes only the update flow:
 `updateStrategy`, `fallbackComponent`, `onProgress`, `reloadOnForceUpdate`, and

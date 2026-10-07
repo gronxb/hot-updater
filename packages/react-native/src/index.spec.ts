@@ -1,7 +1,7 @@
 import type { UpdateHttpResponse } from "@hot-updater/protocol";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { HotUpdaterInitOptions } from "./init";
+import type { HotUpdaterInitOptions } from "./init.types";
 
 const mocks = vi.hoisted(() => {
   (
@@ -38,9 +38,11 @@ const mocks = vi.hoisted(() => {
     getManifest: vi.fn(() => null),
     getMinBundleId: vi.fn(() => "min-bundle-id"),
     configurePlugins: vi.fn(),
-    emitAfterAppReady: vi.fn(),
+    createAppPluginHost: vi.fn(),
+    createLaunchReporter: vi.fn(),
+    emit: vi.fn(),
+    readLaunch: vi.fn(),
     reportUpdateError: vi.fn(),
-    init: vi.fn(),
     isChannelSwitched: vi.fn(() => false),
     notifyAppReady: vi.fn(() => ({ status: "UNCHANGED" as const })),
     reload: vi.fn(),
@@ -63,11 +65,11 @@ vi.mock("./checkForUpdate", () => ({
 }));
 
 vi.mock("./pluginHost", () => ({
-  configurePlugins: mocks.configurePlugins,
+  createAppPluginHost: mocks.createAppPluginHost,
 }));
 
 vi.mock("./appReady", () => ({
-  emitAfterAppReady: mocks.emitAfterAppReady,
+  createLaunchReporter: mocks.createLaunchReporter,
 }));
 
 vi.mock("./native", () => ({
@@ -96,10 +98,6 @@ vi.mock("./native", () => ({
   stageBundle: mocks.stageBundle,
 }));
 
-vi.mock("./init", () => ({
-  init: mocks.init,
-}));
-
 const importHotUpdater = async () => (await import("./index")).HotUpdater;
 
 describe("HotUpdater client initialization", () => {
@@ -110,6 +108,15 @@ describe("HotUpdater client initialization", () => {
       baseURL,
     }));
     mocks.checkForUpdate.mockResolvedValue(null);
+    mocks.configurePlugins.mockReturnValue({});
+    mocks.createAppPluginHost.mockImplementation(() => ({
+      configurePlugins: mocks.configurePlugins,
+    }));
+    mocks.createLaunchReporter.mockImplementation(() => ({
+      read: mocks.readLaunch,
+      appReady: Promise.resolve(),
+      emit: mocks.emit,
+    }));
   });
 
   afterEach(() => {
@@ -129,12 +136,11 @@ describe("HotUpdater client initialization", () => {
       bodyTruncated: false,
     };
     onResponse(response);
-    expect(mocks.emitAfterAppReady).toHaveBeenCalledWith(
+    expect(mocks.emit).toHaveBeenCalledWith(
       "onHttpResponse",
       expect.any(Function),
     );
-    const payload = mocks.emitAfterAppReady.mock
-      .calls[0]![1] as () => UpdateHttpResponse;
+    const payload = mocks.emit.mock.calls[0]![1] as () => UpdateHttpResponse;
     expect(payload()).toBe(response);
   });
 
@@ -232,10 +238,9 @@ describe("HotUpdater client initialization", () => {
       "https://updates.example.com",
       expect.any(Function),
     );
-    expect(mocks.init).toHaveBeenCalledWith({
-      client,
-      requestHeaders: { Authorization: "Bearer token" },
-      requestTimeout: 1000,
+    expect(mocks.readLaunch).toHaveBeenCalledExactlyOnceWith({
+      onError: undefined,
+      onNotifyAppReady: undefined,
     });
   });
 
@@ -255,7 +260,7 @@ describe("HotUpdater client initialization", () => {
   it("sets up plugins with the settings they fetch with, before init reads the launch", async () => {
     const plugin = { id: "example", setup: vi.fn() };
     const onError = vi.fn();
-    mocks.init.mockImplementationOnce(() => {
+    mocks.readLaunch.mockImplementationOnce(() => {
       expect(mocks.configurePlugins).toHaveBeenCalledOnce();
     });
     const HotUpdater = await importHotUpdater();
@@ -284,9 +289,11 @@ describe("HotUpdater client initialization", () => {
       requestHeaders: undefined,
       requestTimeout: undefined,
     });
-    expect(mocks.init).toHaveBeenCalledWith(
-      expect.not.objectContaining({ plugins: expect.anything() }),
-    );
+    expect(mocks.createAppPluginHost).toHaveBeenCalledTimes(2);
+    expect(mocks.readLaunch).toHaveBeenNthCalledWith(1, {
+      onError,
+      onNotifyAppReady: undefined,
+    });
   });
 
   it("reports a staged manual download to plugins after the launch", async () => {
@@ -319,8 +326,8 @@ describe("HotUpdater client initialization", () => {
       status: "UPDATE",
     });
 
-    expect(mocks.emitAfterAppReady).toHaveBeenCalledOnce();
-    const [name, createPayload] = mocks.emitAfterAppReady.mock.calls[0] as [
+    expect(mocks.emit).toHaveBeenCalledOnce();
+    const [name, createPayload] = mocks.emit.mock.calls[0] as [
       string,
       () => unknown,
     ];
@@ -364,6 +371,7 @@ describe("HotUpdater client initialization", () => {
     ).rejects.toBe(error);
 
     expect(mocks.reportUpdateError).toHaveBeenCalledWith(
+      mocks.emit,
       error,
       "download",
       undefined,
@@ -375,7 +383,7 @@ describe("HotUpdater client initialization", () => {
         updateStrategy: "appVersion",
       },
     );
-    expect(mocks.emitAfterAppReady).not.toHaveBeenCalled();
+    expect(mocks.emit).not.toHaveBeenCalled();
   });
 
   it("requires baseURL and rejects the removed resolver shape", async () => {
@@ -387,7 +395,7 @@ describe("HotUpdater client initialization", () => {
     expect(() => HotUpdater.init({ resolver: {} } as never)).toThrow(
       "baseURL must be provided",
     );
-    expect(mocks.init).not.toHaveBeenCalled();
+    expect(mocks.createAppPluginHost).not.toHaveBeenCalled();
   });
 
   it("types init with baseURL but no resolver or catalogId", () => {
@@ -437,6 +445,7 @@ describe("HotUpdater client initialization", () => {
 
     expect(mocks.checkForUpdate).toHaveBeenCalledWith({
       client,
+      emit: mocks.emit,
       onError: checkOnError,
       requestHeaders: {
         Authorization: "Bearer token",
@@ -447,7 +456,7 @@ describe("HotUpdater client initialization", () => {
     });
   });
 
-  it("replaces the configuration for every instance when init runs again", async () => {
+  it("keeps each instance's own configuration and plugins when init runs again", async () => {
     const first = { createSession: vi.fn() };
     const second = { createSession: vi.fn() };
     mocks.createHttpClient
@@ -455,25 +464,37 @@ describe("HotUpdater client initialization", () => {
       .mockReturnValueOnce(second as never);
     const onError = vi.fn();
     const HotUpdater = await importHotUpdater();
-    const hotUpdater = HotUpdater.init({
+    const firstInstance = HotUpdater.init({
       baseURL: "https://updates.example.com",
       requestHeaders: { Authorization: "Bearer first" },
     });
-    HotUpdater.init({
+    const secondInstance = HotUpdater.init({
       baseURL: "https://other.example.com",
       onError,
       requestTimeout: 1000,
     });
 
-    await hotUpdater.checkForUpdate({ updateStrategy: "appVersion" });
+    await firstInstance.checkForUpdate({ updateStrategy: "appVersion" });
+    await secondInstance.checkForUpdate({ updateStrategy: "fingerprint" });
 
-    expect(mocks.checkForUpdate).toHaveBeenCalledWith({
+    expect(mocks.checkForUpdate).toHaveBeenNthCalledWith(1, {
+      client: first,
+      emit: mocks.emit,
+      onError: undefined,
+      requestHeaders: { Authorization: "Bearer first" },
+      requestTimeout: undefined,
+      updateStrategy: "appVersion",
+    });
+    expect(mocks.checkForUpdate).toHaveBeenNthCalledWith(2, {
       client: second,
+      emit: mocks.emit,
       onError,
       requestHeaders: {},
       requestTimeout: 1000,
-      updateStrategy: "appVersion",
+      updateStrategy: "fingerprint",
     });
+    expect(mocks.createAppPluginHost).toHaveBeenCalledTimes(2);
+    expect(mocks.createLaunchReporter).toHaveBeenCalledTimes(2);
   });
 
   it("keeps the install id and leaves user identity to the insights plugin", async () => {
