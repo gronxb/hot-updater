@@ -20,6 +20,7 @@ const featureSet = (
     insights: false,
     insightsAnalytics: false,
     apiKeys: false,
+    remoteConfig: false,
     ...features,
   },
   remote,

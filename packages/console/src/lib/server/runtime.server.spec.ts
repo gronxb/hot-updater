@@ -13,6 +13,7 @@ import {
   insights,
   type BundleEventRow,
 } from "@hot-updater/server/plugins/insights";
+import { remoteConfig } from "@hot-updater/server/plugins/remote-config";
 import { describe, expect, it, vi } from "vitest";
 
 import { ConsoleFeatureUnavailableError } from "../console-features";
@@ -92,13 +93,18 @@ describe("createConsoleRuntime over the database", () => {
 
   it("serves the features of the plugins it runs, as the server does", async () => {
     const database = engineDatabase();
-    const runtime = databaseRuntime(database, [insights(), apiKeys()]);
+    const runtime = databaseRuntime(database, [
+      insights(),
+      apiKeys(),
+      remoteConfig(),
+    ]);
 
     expect(runtime.remote).toBe(false);
     await expect(runtime.features()).resolves.toEqual({
       insights: true,
       insightsAnalytics: true,
       apiKeys: true,
+      remoteConfig: true,
     });
     const model = await requireFeature(runtime, "insightsAnalytics");
     await model.recordEvent({
@@ -117,6 +123,28 @@ describe("createConsoleRuntime over the database", () => {
     ).resolves.toEqual([
       expect.objectContaining({ id: created.record.id, name: "Console" }),
     ]);
+
+    const config = await requireFeature(runtime, "remoteConfig");
+    await expect(
+      config.publish({ template: { parameters: {} }, baseVersion: 0 }),
+    ).resolves.toMatchObject({ status: "published" });
+    await expect(
+      config.publish({
+        template: { parameters: { x: { valueType: "COLOR" } } },
+        baseVersion: 1,
+      }),
+    ).resolves.toMatchObject({
+      status: "invalid",
+      issues: [{ path: "parameters.x.valueType" }],
+    });
+    // The server's remoteConfig() reads the template the console published.
+    await expect(
+      createHotUpdater({
+        database,
+        plugins: [remoteConfig()],
+        clientAccess: "public",
+      }).api.remoteConfig.getActive(),
+    ).resolves.toMatchObject({ version: 1 });
   });
 
   it("reads a release's update failures through the plugin's API", async () => {
@@ -163,6 +191,7 @@ describe("createConsoleRuntime over the database", () => {
       insights: false,
       insightsAnalytics: false,
       apiKeys: true,
+      remoteConfig: false,
     });
     await expect(requireFeature(runtime, "insights")).rejects.toEqual(
       refused("insights", "without the insights() plugin"),
@@ -180,6 +209,7 @@ describe("createConsoleRuntime over the database", () => {
       insights: false,
       insightsAnalytics: false,
       apiKeys: false,
+      remoteConfig: false,
     });
     await expect(requireFeature(runtime, "apiKeys")).rejects.toEqual(
       refused("apiKeys", "without the apiKeys() plugin"),
@@ -194,7 +224,7 @@ describe("createConsoleRuntime for a self-hosted server", () => {
     );
     const runtime = createConsoleRuntime({
       database: remoteDatabase(fetchAdmin),
-      plugins: [insights(), apiKeys()],
+      plugins: [insights(), apiKeys(), remoteConfig()],
     });
 
     expect(runtime.remote).toBe(true);
@@ -202,6 +232,7 @@ describe("createConsoleRuntime for a self-hosted server", () => {
       insights: true,
       insightsAnalytics: false,
       apiKeys: false,
+      remoteConfig: true,
     });
     expect(fetchAdmin).not.toHaveBeenCalled();
     const reads = await requireFeature(runtime, "insights");
@@ -231,6 +262,7 @@ describe("createConsoleRuntime for a self-hosted server", () => {
         insights: false,
         insightsAnalytics: false,
         apiKeys: false,
+        remoteConfig: false,
       });
       await expect(requireFeature(runtime, "insights")).rejects.toEqual(
         refused("insights", "without the insights() plugin"),

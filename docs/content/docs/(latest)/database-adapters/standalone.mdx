@@ -79,8 +79,10 @@ Every admin path is fixed relative to `baseUrl`. The repository is
 
 - `core` is core's API for Bundles, Releases, Release Catalogs and Channels,
   sent over the admin API. The CLI's commands and the Console use it.
-- `fetchAdmin(path)` sends a GET to the admin handler with the same headers.
-  The Console reads the server's Insights through it.
+- `fetchAdmin(path, init?)` sends a request to the admin handler with the
+  same headers: a GET, unless `init` names another method, with `init`'s
+  headers added. The Console reads the server's Insights and edits its
+  Remote Config through it.
 
 Before its first request, `core` reads `GET /version` from the admin handler.
 A server that reports an `adminProtocol` below 2, or none, fails with a
