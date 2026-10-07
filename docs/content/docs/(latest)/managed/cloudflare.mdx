@@ -237,8 +237,8 @@ Before reusing a populated database:
 
 2. Compare the Hot Updater definitions with the installed package's
    `node_modules/@hot-updater/cloudflare/worker/migrations/0001_hot-updater_1.0.0.sql`,
-   the schema of core, Insights, and API keys. If the settings and
-   migration-history tables exist, inspect them too:
+   the schema of core, Insights, API keys, and Remote Config. If the settings
+   and migration-history tables exist, inspect them too:
 
    ```bash
    npx wrangler d1 execute <database-name> --remote \
