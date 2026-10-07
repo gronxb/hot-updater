@@ -842,8 +842,15 @@ describe.each(backends)("insights recordEvent on %s", (_name, adapter) => {
       launches: 1,
       crashes: 0,
     });
+    // The download series holds the one download, in the hour of the apply
+    // that implied it; the late report adds none.
     await expect(outcomes("UPDATE_DOWNLOADED", "to:bundle-2")).resolves.toEqual(
-      [],
+      [
+        expect.objectContaining({
+          bucket_start_ms: T + HOUR - ((T + HOUR) % HOUR),
+          events: 1,
+        }),
+      ],
     );
     // A late apply of the bundle already running counts nothing either.
     await api.recordEvent(event(4, { received_at_ms: T + 3 * HOUR }));
@@ -853,6 +860,37 @@ describe.each(backends)("insights recordEvent on %s", (_name, adapter) => {
     await expect(lifetime("release-2")).resolves.toMatchObject({
       launches: 1,
     });
+  });
+
+  it("counts the download a crash implied in the download hour of the bundle it crashed on", async () => {
+    const { api, db, lifetime, outcomes } = await setup();
+    await api.recordEvent(unchanged(1, { to_bundle_id: "bundle-1" }));
+    // No download or apply report of bundle-2 came before the crash on it.
+    await api.recordEvent(
+      event(2, {
+        type: "RECOVERED",
+        from_release_id: "release-2",
+        from_bundle_id: "bundle-2",
+        to_release_id: "release-1",
+        to_bundle_id: "bundle-1",
+        received_at_ms: T + HOUR,
+      }),
+    );
+    await expect(
+      db.findOne("bundle_events", { id: uuid(2) }),
+    ).resolves.toMatchObject({ metadata: { implied_download: true } });
+    await expect(lifetime("release-2")).resolves.toEqual({
+      downloads: 1,
+      launches: 0,
+      crashes: 1,
+    });
+    const hourOfCrash = T + HOUR - ((T + HOUR) % HOUR);
+    await expect(outcomes("UPDATE_DOWNLOADED", "to:bundle-2")).resolves.toEqual(
+      [expect.objectContaining({ bucket_start_ms: hourOfCrash, events: 1 })],
+    );
+    await expect(outcomes("RECOVERED", "from:bundle-2")).resolves.toEqual([
+      expect.objectContaining({ bucket_start_ms: hourOfCrash, events: 1 }),
+    ]);
   });
 
   it("keeps no row for a launch report made before the apply its installation already reported", async () => {

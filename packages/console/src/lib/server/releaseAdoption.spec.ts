@@ -161,7 +161,7 @@ describe("Release health counts", () => {
     ),
   });
 
-  it("reads one bundle's launches or crashes in the period's intervals", async () => {
+  it("reads one bundle's downloads, launches, or crashes in the period's intervals", async () => {
     const model = modelOf();
     const launched = await getBundleEvents(
       model,
@@ -197,6 +197,29 @@ describe("Release health counts", () => {
     });
     expect(launched.points).toHaveLength(28);
     expect(launched.points[0]).toMatchObject({ events: 6 });
+
+    // Downloads are one series: the bundle's download hours, which count
+    // the downloads a launch or crash implied too.
+    model.countEventSeries.mockClear();
+    const downloaded = await getBundleEvents(model, {
+      platform: "ios",
+      channel: "production",
+      window: "7d",
+      endMs: 10 * DAY,
+      bundleId: "bundle-1",
+      type: "DOWNLOADED",
+    });
+    expect(model.countEventSeries).toHaveBeenCalledExactlyOnceWith({
+      filter: {
+        platform: "ios",
+        channel: "production",
+        type: "UPDATE_DOWNLOADED",
+        toBundleId: "bundle-1",
+      },
+      timeRange: { start: 3 * DAY, end: 10 * DAY },
+      intervalMs: 6 * HOUR,
+    });
+    expect(downloaded).toMatchObject({ type: "DOWNLOADED", total: 84 });
 
     // A recovery names the bundle it crashed on.
     await getBundleEvents(model, {
@@ -249,7 +272,7 @@ describe("Release health counts", () => {
         type: "LAUNCHED",
       }),
     ).rejects.toThrow("Choose a platform, channel, period, and bundle.");
-    // Release health charts launches and recoveries only.
+    // Release health charts downloads, launches, and recoveries only.
     await expect(
       getBundleEvents(model, {
         platform: "ios",

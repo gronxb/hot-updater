@@ -118,15 +118,6 @@ function InsightsPage() {
             onChartChange={(healthChart) =>
               void navigate({ search: { ...search, healthChart } })
             }
-            total={search.adoptionTotal ?? "interval"}
-            onTotalChange={(total) =>
-              void navigate({
-                search: {
-                  ...search,
-                  adoptionTotal: total === "cumulative" ? total : undefined,
-                },
-              })
-            }
             health={health}
             onReleasesChange={(ids) =>
               void navigate({ search: { ...search, bundles: ids?.join(",") } })

@@ -96,10 +96,12 @@ export async function getAdoptionRelease(
 }
 
 /**
- * One bundle's reports of one type in each interval of the period, from
- * their hourly counts, never the events or the release table. Launches add
- * two series: apply reports, and the kept UNCHANGED reports that moved an
- * installation to the bundle with no apply report.
+ * One bundle's counts of one type in each interval of the period, from
+ * their hourly counts, never the events or the release table. Downloads are
+ * the bundle's download hours, which count the downloads a launch or crash
+ * implied too. Launches add two series: apply reports, and the kept
+ * UNCHANGED reports that moved an installation to the bundle with no apply
+ * report.
  */
 export async function getBundleEvents(
   model: Pick<InsightsModel, "countEventSeries">,
@@ -116,25 +118,32 @@ export async function getBundleEvents(
   const points =
     type === "RECOVERED"
       ? await series({ platform, channel, type, fromBundleId: bundleId })
-      : await Promise.all([
-          series({
+      : type === "DOWNLOADED"
+        ? await series({
             platform,
             channel,
-            type: "UPDATE_APPLIED",
+            type: "UPDATE_DOWNLOADED",
             toBundleId: bundleId,
-          }),
-          series({
-            platform,
-            channel,
-            type: "UNCHANGED",
-            toBundleId: bundleId,
-          }),
-        ]).then(([applied, moved]) =>
-          applied.map((point, index) => ({
-            startMs: point.startMs,
-            events: point.events + (moved[index]?.events ?? 0),
-          })),
-        );
+          })
+        : await Promise.all([
+            series({
+              platform,
+              channel,
+              type: "UPDATE_APPLIED",
+              toBundleId: bundleId,
+            }),
+            series({
+              platform,
+              channel,
+              type: "UNCHANGED",
+              toBundleId: bundleId,
+            }),
+          ]).then(([applied, moved]) =>
+            applied.map((point, index) => ({
+              startMs: point.startMs,
+              events: point.events + (moved[index]?.events ?? 0),
+            })),
+          );
   return {
     bundleId,
     type,

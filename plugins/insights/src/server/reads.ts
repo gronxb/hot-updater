@@ -255,7 +255,11 @@ const countRaw = async (
   return total;
 };
 
-/** Whole hours from outcome counters; the partial hours at either edge from raw events. */
+/**
+ * Whole hours from outcome counters; the partial hours at either edge from
+ * raw events. A download filter's whole hours count the downloads a launch
+ * or crash implied too, which its raw events do not hold.
+ */
 export const countEvents = async (
   db: Db,
   input: InsightsCountEventsInput,
@@ -281,8 +285,9 @@ export const countEvents = async (
 };
 
 /**
- * A bundle filter's stored events in each interval of whole hours: one read
- * of its hourly counts, every interval present.
+ * A bundle filter's stored events in each interval of whole hours, and for a
+ * download filter the downloads a launch or crash implied: one read of its
+ * hourly counts, every interval present.
  */
 export const countEventSeries = async (
   db: Db,

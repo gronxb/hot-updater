@@ -356,9 +356,12 @@ describe("Insights dashboard", () => {
     expect(mocks.releases).toHaveBeenCalledExactlyOnceWith({
       data: { platform: "ios", channel: "production" },
     });
-    // Adoption reads each bundle's launches, over the same hours.
+    // Adoption reads each bundle's downloads and launches, over the same
+    // hours.
     expect(eventReads().sort()).toEqual([
+      "bundle-release-new DOWNLOADED 7d",
       "bundle-release-new LAUNCHED 7d",
+      "bundle-release-old DOWNLOADED 7d",
       "bundle-release-old LAUNCHED 7d",
     ]);
     expect(
@@ -370,8 +373,8 @@ describe("Insights dashboard", () => {
     expect(mocks.navigate).toHaveBeenLastCalledWith({
       search: { healthChart: "crashes" },
     });
-    await waitFor(() => expect(mocks.events).toHaveBeenCalledTimes(4));
-    expect(eventReads().slice(2).sort()).toEqual([
+    await waitFor(() => expect(mocks.events).toHaveBeenCalledTimes(6));
+    expect(eventReads().slice(4).sort()).toEqual([
       "bundle-release-new RECOVERED 7d",
       "bundle-release-old RECOVERED 7d",
     ]);
@@ -387,8 +390,8 @@ describe("Insights dashboard", () => {
         bundles: "release-new,release-old,release-oldest",
       },
     });
-    await waitFor(() => expect(mocks.events).toHaveBeenCalledTimes(6));
-    expect(eventReads().slice(4).sort()).toEqual([
+    await waitFor(() => expect(mocks.events).toHaveBeenCalledTimes(8));
+    expect(eventReads().slice(6).sort()).toEqual([
       "bundle-release-oldest LAUNCHED 7d",
       "bundle-release-oldest RECOVERED 7d",
     ]);

@@ -213,6 +213,10 @@ export type ReportingOverview = InsightsScope & {
   readonly bundle?: {
     readonly bundleId: string;
     readonly reportingInstallations: InsightsCountMeasurement;
+    /**
+     * Download reports of the bundle, and in whole hours the downloads a
+     * launch or crash implied when its download report never arrived.
+     */
     readonly downloadedReports: InsightsCountMeasurement;
     readonly appliedReports: InsightsCountMeasurement;
     readonly recoveredReports: InsightsCountMeasurement;
