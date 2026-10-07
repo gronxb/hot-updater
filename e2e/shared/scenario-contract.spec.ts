@@ -683,17 +683,17 @@ describe("E2E scenario contract", () => {
             init: () => ({
               insights: { setUser: () => {} },
               remoteConfig: {},
+              getAppVersion: () => "1.0.0",
+              getBundleId: () => updateId,
+              getChannel: () => "production",
+              getCohort: () => "123",
+              getCrashHistory: () => [],
+              getDefaultChannel: () => "production",
+              getFingerprintHash: () => null,
+              getManifest: () => manifest,
+              getMinBundleId: () => minBundleId,
+              isChannelSwitched: () => false,
             }),
-            getAppVersion: () => "1.0.0",
-            getBundleId: () => updateId,
-            getChannel: () => "production",
-            getCohort: () => "123",
-            getCrashHistory: () => [],
-            getDefaultChannel: () => "production",
-            getFingerprintHash: () => null,
-            getManifest: () => manifest,
-            getMinBundleId: () => minBundleId,
-            isChannelSwitched: () => false,
           },
           insights: () => ({ id: "insights", setup: () => {} }),
           remoteConfig: () => ({ id: "remoteConfig", setup: () => {} }),
@@ -755,7 +755,7 @@ describe("E2E scenario contract", () => {
       const guard = new Script(guardSource);
       const runGuard = () =>
         guard.runInNewContext({
-          HotUpdater: {
+          hotUpdater: {
             getBundleId: () => updateId,
             getManifest: () => ({ bundleId }),
           },
@@ -836,6 +836,8 @@ describe("E2E scenario contract", () => {
     );
     expect(e2eRuntimeSource).not.toContain("insights: true");
     expect(e2eRuntimeSource).not.toContain("HotUpdater.setUser");
+    // HotUpdater has only init; the app calls the instance it returns.
+    expect(e2eRuntimeSource).not.toMatch(/HotUpdater\.(?!init\b)/);
     expect(e2eRuntimeSource).not.toContain("username");
     expect(exampleAppSource).not.toContain("react-native-launch-arguments");
     expect(exampleAppSource).not.toContain('from "@env"');

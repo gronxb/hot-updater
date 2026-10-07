@@ -3,6 +3,7 @@ import type { InternalInitOptions } from "./init.types";
 
 export type { HotUpdaterInitOptions, InternalInitOptions } from "./init.types";
 
-export function init(options: InternalInitOptions): void {
-  void handleNotifyAppReady(options);
+/** Reads this launch; the promise settles once it is read, and never rejects. */
+export function init(options: InternalInitOptions): Promise<unknown> {
+  return handleNotifyAppReady(options);
 }

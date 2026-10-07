@@ -11,7 +11,7 @@ import {
   useHotUpdaterStore,
 } from "@hot-updater/react-native";
 import React, { useEffect, useState } from "react";
-import { Button, Image, SafeAreaView, Text } from "react-native";
+import { Button, Image, Modal, SafeAreaView, Text, View } from "react-native";
 
 export const extractFormatDateFromUUIDv7 = (uuid: string) => {
   const timestampHex = uuid.split("-").join("").slice(0, 12);
@@ -28,46 +28,28 @@ export const extractFormatDateFromUUIDv7 = (uuid: string) => {
   return `${year}/${month}/${day} ${hours}:${minutes}:${seconds}`;
 };
 
-HotUpdater.init({
+export const hotUpdater = HotUpdater.init({
   // Replace with your public update server URL.
   baseURL: "https://your-project.supabase.co/functions/v1/update-server",
   plugins: [insights()],
 });
 
-/** Checks once per launch as the app mounts; a forced update restarts it. */
-const checkForUpdate = async () => {
-  try {
-    const update = await HotUpdater.checkForUpdate({
-      updateStrategy: "appVersion",
-    });
-    if (!update) return;
-    await update.updateBundle();
-    if (update.shouldForceUpdate) await HotUpdater.reload();
-  } catch (error) {
-    console.error("Hot Updater:", error);
-  }
-};
-
 function App(): React.JSX.Element {
-  useEffect(() => {
-    void checkForUpdate();
-  }, []);
-
   const [bundleId, setBundleId] = useState<string | null>(null);
 
   useEffect(() => {
-    const bundleId = HotUpdater.getBundleId();
+    const bundleId = hotUpdater.getBundleId();
     setBundleId(bundleId);
   }, []);
 
   const progress = useHotUpdaterStore((state) => state.progress);
   return (
     <SafeAreaView>
-      <Text>Babel {HotUpdater.getBundleId()}</Text>
-      <Text>Channel "{HotUpdater.getChannel()}"</Text>
-      <Text>App Version "{HotUpdater.getAppVersion()}"</Text>
+      <Text>Babel {hotUpdater.getBundleId()}</Text>
+      <Text>Channel "{hotUpdater.getChannel()}"</Text>
+      <Text>App Version "{hotUpdater.getAppVersion()}"</Text>
 
-      <Text>{extractFormatDateFromUUIDv7(HotUpdater.getBundleId())}</Text>
+      <Text>{extractFormatDateFromUUIDv7(hotUpdater.getBundleId())}</Text>
       <Text
         style={{
           marginVertical: 20,
@@ -109,9 +91,36 @@ function App(): React.JSX.Element {
         // source={require("./src/test/_image.png")}
       />
 
-      <Button title="Reload" onPress={() => HotUpdater.reload()} />
+      <Button title="Reload" onPress={() => hotUpdater.reload()} />
     </SafeAreaView>
   );
 }
 
-export default App;
+export default hotUpdater.wrap({
+  updateStrategy: "appVersion", // or "fingerprint"
+  fallbackComponent: ({ progress, status }) => (
+    <Modal transparent visible={true}>
+      <View
+        style={{
+          flex: 1,
+          padding: 20,
+          borderRadius: 10,
+          justifyContent: "center",
+          alignItems: "center",
+          backgroundColor: "rgba(0, 0, 0, 0.5)",
+        }}
+      >
+        {/* You can put a splash image here. */}
+
+        <Text style={{ color: "white", fontSize: 20, fontWeight: "bold" }}>
+          {status === "UPDATING" ? "Updating..." : "Checking for Update..."}
+        </Text>
+        {progress > 0 ? (
+          <Text style={{ color: "white", fontSize: 20, fontWeight: "bold" }}>
+            {Math.round(progress * 100)}%
+          </Text>
+        ) : null}
+      </View>
+    </Modal>
+  ),
+})(App);

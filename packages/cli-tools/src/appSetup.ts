@@ -51,7 +51,8 @@ export const renderAppImports = (
 /**
  * The App.tsx code init prints: `HotUpdater.init` with the server's URL,
  * the header that carries the client credential when the server takes one,
- * and the client plugins the server's plugins ask for.
+ * and the client plugins the server's plugins ask for, and the instance's
+ * `wrap` around the app's root.
  */
 export const renderAppSetup = ({
   baseURL,
@@ -66,7 +67,7 @@ export const renderAppSetup = ({
     "  return null; // Replace with your app root.",
     "}",
     "",
-    "HotUpdater.init({",
+    "export const hotUpdater = HotUpdater.init({",
     `  baseURL: ${JSON.stringify(baseURL)},`,
     ...(credential === undefined
       ? []
@@ -82,9 +83,9 @@ export const renderAppSetup = ({
         ]),
     "});",
     "",
-    '// Call HotUpdater.checkForUpdate({ updateStrategy: "appVersion" })',
-    "// when your app is ready to check.",
-    "export default App;",
+    "// Checks for an update when App mounts. For your own flow, call",
+    "// hotUpdater.checkForUpdate() instead.",
+    'export default hotUpdater.wrap({ updateStrategy: "appVersion" })(App);',
   ].join("\n");
 
 /** Prints the App.tsx code, when the URL is known, and the app's credential. */

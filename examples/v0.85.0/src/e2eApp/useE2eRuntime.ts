@@ -1,4 +1,4 @@
-import { HotUpdater, useHotUpdaterStore } from "@hot-updater/react-native";
+import { useHotUpdaterStore } from "@hot-updater/react-native";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Alert } from "react-native";
 import BootSplash from "react-native-bootsplash";
@@ -7,6 +7,7 @@ import { useSnapshot } from "valtio";
 import type { E2eScreenState } from "../e2eRuntimeConfig";
 import {
   formatUpdateStoreDownloadPaths,
+  hotUpdater,
   initializeHotUpdater,
   notify,
   readRuntimeSnapshot,
@@ -27,7 +28,7 @@ const DEFAULT_RUNTIME_CHANNEL_INPUT = "beta";
 export const useE2eRuntimeModel = (scenarioMarker: string): E2eRuntimeModel => {
   const notifyState = useSnapshot(notify);
   const progressState = useHotUpdaterStore((state) => state);
-  const [initialCohort] = useState(() => HotUpdater.getCohort());
+  const [initialCohort] = useState(() => hotUpdater.getCohort());
   const [runtimeChannelInput, setRuntimeChannelInputState] = useState(
     DEFAULT_RUNTIME_CHANNEL_INPUT,
   );
@@ -120,7 +121,7 @@ export const useE2eRuntimeModel = (scenarioMarker: string): E2eRuntimeModel => {
     useRemoteConfigActions({ setUpdateActionResult });
 
   const clearCrashHistory = async () => {
-    HotUpdater.clearCrashHistory();
+    hotUpdater.clearCrashHistory();
     await refresh();
   };
 
@@ -130,7 +131,7 @@ export const useE2eRuntimeModel = (scenarioMarker: string): E2eRuntimeModel => {
 
   const reloadApp = async () => {
     try {
-      await HotUpdater.reload();
+      await hotUpdater.reload();
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "Failed to reload app";
@@ -145,7 +146,7 @@ export const useE2eRuntimeModel = (scenarioMarker: string): E2eRuntimeModel => {
   }: InstallUpdateInput) => {
     try {
       await setUpdateActionResult(`${actionLabel} -> checking`);
-      const updateInfo = await HotUpdater.checkForUpdate({
+      const updateInfo = await hotUpdater.checkForUpdate({
         updateStrategy: strategy,
         ...(channel ? { channel } : {}),
       });
@@ -197,7 +198,7 @@ export const useE2eRuntimeModel = (scenarioMarker: string): E2eRuntimeModel => {
 
   const resetRuntimeChannel = async () => {
     try {
-      const didReset = await HotUpdater.resetChannel();
+      const didReset = await hotUpdater.resetChannel();
       await refresh();
       await setChannelActionResult(`reset -> ${String(didReset)}`);
     } catch (error) {
@@ -208,8 +209,8 @@ export const useE2eRuntimeModel = (scenarioMarker: string): E2eRuntimeModel => {
   };
 
   const applyCohortValue = async (nextCohort: string) => {
-    HotUpdater.setCohort(nextCohort);
-    const appliedCohort = HotUpdater.getCohort();
+    hotUpdater.setCohort(nextCohort);
+    const appliedCohort = hotUpdater.getCohort();
     await setCohortInput(appliedCohort);
     await setCohortActionResult(`set -> ${appliedCohort}`);
     await refresh();
@@ -235,7 +236,7 @@ export const useE2eRuntimeModel = (scenarioMarker: string): E2eRuntimeModel => {
 
   const restoreInitialCohort = async () => {
     await applyCohortValue(initialCohort);
-    await setCohortActionResult(`restore -> ${HotUpdater.getCohort()}`);
+    await setCohortActionResult(`restore -> ${hotUpdater.getCohort()}`);
   };
 
   return {

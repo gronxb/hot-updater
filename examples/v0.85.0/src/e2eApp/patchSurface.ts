@@ -1,9 +1,10 @@
-import { HotUpdater } from "@hot-updater/react-native";
 import { Image } from "react-native";
+
+import { hotUpdater } from "./runtime";
 
 export const E2E_SCENARIO_MARKER = "targeted-qa-detox";
 
-void HotUpdater;
+void hotUpdater;
 void Image;
 
 export function maybeCrashForE2E(): void {

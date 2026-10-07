@@ -31,8 +31,8 @@ function fixture() {
     exports,
     console: { error: logError },
     require: (name: string) => {
-      if (name === "@hot-updater/react-native")
-        return { HotUpdater: { checkForUpdate, reload } };
+      if (name === "./runtime")
+        return { hotUpdater: { checkForUpdate, reload } };
       if (name === "../e2eRuntimeConfig") return { readE2eRuntimeConfig };
       if (name === "./screen-state-persistence") return { persistScreenState };
       throw new Error(`Unexpected dependency: ${name}`);

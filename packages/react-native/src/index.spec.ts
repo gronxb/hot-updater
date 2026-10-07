@@ -151,12 +151,12 @@ describe("HotUpdater client initialization", () => {
 
     expect(hotUpdater.example).toBe(api);
     expect(hotUpdater.getChannel()).toBe("production");
-    expect(hotUpdater.checkForUpdate).toBe(HotUpdater.checkForUpdate);
+    expect(hotUpdater.wrap).toBeTypeOf("function");
     expect(hotUpdater).not.toHaveProperty("init");
     expect(Object.isFrozen(hotUpdater)).toBe(true);
   });
 
-  it.each(["reload", "checkForUpdate", "init"])(
+  it.each(["reload", "checkForUpdate", "wrap", "init"])(
     "refuses a plugin id the instance has, %s, before setting plugins up",
     async (id) => {
       const HotUpdater = await importHotUpdater();
@@ -200,18 +200,21 @@ describe("HotUpdater client initialization", () => {
     expect(assertTypes).toBeTypeOf("function");
   });
 
-  it("has no wrap: init is the one way to configure the client", async () => {
+  it("has only init: every method is on the instance it returns", async () => {
     const HotUpdater = await importHotUpdater();
 
-    expect(HotUpdater).not.toHaveProperty("wrap");
+    expect(Object.keys(HotUpdater)).toEqual(["init"]);
   });
 
   it("exposes the console ID through the existing getter only", async () => {
     const HotUpdater = await importHotUpdater();
+    const hotUpdater = HotUpdater.init({
+      baseURL: "https://updates.example.com",
+    });
 
-    expect(HotUpdater.getBundleId()).toBe("release-id");
-    expect(HotUpdater).not.toHaveProperty("getReleaseId");
-    expect(HotUpdater).not.toHaveProperty("getUpdateId");
+    expect(hotUpdater.getBundleId()).toBe("release-id");
+    expect(hotUpdater).not.toHaveProperty("getReleaseId");
+    expect(hotUpdater).not.toHaveProperty("getUpdateId");
   });
 
   it("initializes a private HTTP client from the required baseURL", async () => {
@@ -304,9 +307,11 @@ describe("HotUpdater client initialization", () => {
       verificationPending: true,
     } as never);
     const HotUpdater = await importHotUpdater();
-    HotUpdater.init({ baseURL: "https://updates.example.com" });
+    const hotUpdater = HotUpdater.init({
+      baseURL: "https://updates.example.com",
+    });
 
-    await HotUpdater.updateBundle({
+    await hotUpdater.updateBundle({
       assets: {},
       bundleId: "next-bundle-id",
       manifestFileHash: "manifest-hash",
@@ -339,10 +344,12 @@ describe("HotUpdater client initialization", () => {
     });
     mocks.stageBundle.mockRejectedValueOnce(error);
     const HotUpdater = await importHotUpdater();
-    HotUpdater.init({ baseURL: "https://updates.example.com" });
+    const hotUpdater = HotUpdater.init({
+      baseURL: "https://updates.example.com",
+    });
 
     await expect(
-      HotUpdater.updateBundle({
+      hotUpdater.updateBundle({
         assets: {},
         bundleId: "next-bundle-id",
         channel: "beta",
@@ -416,13 +423,13 @@ describe("HotUpdater client initialization", () => {
     mocks.createHttpClient.mockReturnValue(client as never);
     const checkOnError = vi.fn();
     const HotUpdater = await importHotUpdater();
-    HotUpdater.init({
+    const hotUpdater = HotUpdater.init({
       baseURL: "https://updates.example.com",
       requestHeaders: { Authorization: "Bearer token" },
       requestTimeout: 1000,
     });
 
-    await HotUpdater.checkForUpdate({
+    await hotUpdater.checkForUpdate({
       onError: checkOnError,
       requestHeaders: { "X-Runtime": "secondary" },
       updateStrategy: "appVersion",
@@ -440,19 +447,43 @@ describe("HotUpdater client initialization", () => {
     });
   });
 
-  it("requires initialization before manual update APIs", async () => {
+  it("replaces the configuration for every instance when init runs again", async () => {
+    const first = { createSession: vi.fn() };
+    const second = { createSession: vi.fn() };
+    mocks.createHttpClient
+      .mockReturnValueOnce(first as never)
+      .mockReturnValueOnce(second as never);
+    const onError = vi.fn();
     const HotUpdater = await importHotUpdater();
+    const hotUpdater = HotUpdater.init({
+      baseURL: "https://updates.example.com",
+      requestHeaders: { Authorization: "Bearer first" },
+    });
+    HotUpdater.init({
+      baseURL: "https://other.example.com",
+      onError,
+      requestTimeout: 1000,
+    });
 
-    expect(() =>
-      HotUpdater.checkForUpdate({ updateStrategy: "appVersion" }),
-    ).toThrow("requires HotUpdater.init() to be called first");
+    await hotUpdater.checkForUpdate({ updateStrategy: "appVersion" });
+
+    expect(mocks.checkForUpdate).toHaveBeenCalledWith({
+      client: second,
+      onError,
+      requestHeaders: {},
+      requestTimeout: 1000,
+      updateStrategy: "appVersion",
+    });
   });
 
   it("keeps the install id and leaves user identity to the insights plugin", async () => {
     const HotUpdater = await importHotUpdater();
+    const hotUpdater = HotUpdater.init({
+      baseURL: "https://updates.example.com",
+    });
 
-    expect(HotUpdater.getInstallId()).toBe("install-id");
-    expect(HotUpdater.getMinBundleId()).toBe("min-bundle-id");
-    expect(HotUpdater).not.toHaveProperty("setUser");
+    expect(hotUpdater.getInstallId()).toBe("install-id");
+    expect(hotUpdater.getMinBundleId()).toBe("min-bundle-id");
+    expect(hotUpdater).not.toHaveProperty("setUser");
   });
 });

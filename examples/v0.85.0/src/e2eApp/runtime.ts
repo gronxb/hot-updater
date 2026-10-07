@@ -37,7 +37,7 @@ export type RuntimeSnapshot = {
   readonly generation: number | null;
   readonly highWater: string;
   readonly isChannelSwitched: boolean;
-  readonly manifest: ReturnType<typeof HotUpdater.getManifest>;
+  readonly manifest: ReturnType<typeof hotUpdater.getManifest>;
   readonly minBundleId: string;
   readonly scopeKey: string | null;
   readonly selectionContextHash: string | null;
@@ -100,20 +100,20 @@ export const e2eRemoteConfig = hotUpdater.remoteConfig;
 
 export const readRuntimeSnapshot = (): RuntimeSnapshot => ({
   activeReleaseId: null,
-  appVersion: HotUpdater.getAppVersion(),
+  appVersion: hotUpdater.getAppVersion(),
   catalogId: null,
   baseURL: fallbackHotUpdaterBaseURL,
-  bundleId: HotUpdater.getManifest().bundleId,
-  channel: HotUpdater.getChannel(),
-  cohort: HotUpdater.getCohort(),
-  crashHistory: HotUpdater.getCrashHistory(),
-  defaultChannel: HotUpdater.getDefaultChannel(),
-  fingerprintHash: HotUpdater.getFingerprintHash(),
+  bundleId: hotUpdater.getManifest().bundleId,
+  channel: hotUpdater.getChannel(),
+  cohort: hotUpdater.getCohort(),
+  crashHistory: hotUpdater.getCrashHistory(),
+  defaultChannel: hotUpdater.getDefaultChannel(),
+  fingerprintHash: hotUpdater.getFingerprintHash(),
   generation: null,
   highWater: "{}",
-  isChannelSwitched: HotUpdater.isChannelSwitched(),
-  manifest: HotUpdater.getManifest(),
-  minBundleId: HotUpdater.getMinBundleId(),
+  isChannelSwitched: hotUpdater.isChannelSwitched(),
+  manifest: hotUpdater.getManifest(),
+  minBundleId: hotUpdater.getMinBundleId(),
   scopeKey: null,
   selectionContextHash: null,
   selectionKind: null,

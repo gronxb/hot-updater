@@ -74,7 +74,7 @@ export type CheckForUpdateResult = {
   readonly transitionKind?: ReleaseTransitionKind;
   /**
    * Updates the bundle.
-   * This method is equivalent to `HotUpdater.updateBundle()` but with all required arguments pre-filled.
+   * This method is equivalent to `hotUpdater.updateBundle()` but with all required arguments pre-filled.
    */
   updateBundle: () => Promise<boolean>;
 };
@@ -470,7 +470,7 @@ export async function checkForUpdate(
 
   if (isSwitched && explicitChannel && explicitChannel !== currentChannel) {
     const error = new HotUpdaterError(
-      `Runtime channel is already switched to "${currentChannel}". Call HotUpdater.resetChannel() before checking "${explicitChannel}".`,
+      `Runtime channel is already switched to "${currentChannel}". Call hotUpdater.resetChannel() before checking "${explicitChannel}".`,
     );
     options.onError?.(error);
     throw error;

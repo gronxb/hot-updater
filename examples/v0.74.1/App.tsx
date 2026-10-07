@@ -11,7 +11,15 @@ import {
   useHotUpdaterStore,
 } from "@hot-updater/react-native";
 import React, { useEffect, useState } from "react";
-import { Alert, Button, Image, SafeAreaView, Text } from "react-native";
+import {
+  Alert,
+  Button,
+  Image,
+  Modal,
+  SafeAreaView,
+  Text,
+  View,
+} from "react-native";
 import { proxy, useSnapshot } from "valtio";
 
 const notify = proxy<{
@@ -34,50 +42,39 @@ export const extractFormatDateFromUUIDv7 = (uuid: string) => {
   return `${year}/${month}/${day} ${hours}:${minutes}:${seconds}`;
 };
 
-HotUpdater.init({
+export const hotUpdater = HotUpdater.init({
   baseURL: "http://localhost:3006/hot-updater",
   plugins: [insights()],
   onNotifyAppReady: (result) => {
     notify.status = result.status;
     notify.crashedBundleId = result.crashedBundleId;
   },
+  onError: (error) => {
+    if (error instanceof Error) {
+      Alert.alert("Error", error.message);
+    } else {
+      Alert.alert("Error", "An unknown error occurred");
+    }
+  },
 });
 
-/** Checks once per launch as the app mounts; a forced update restarts it. */
-const checkForUpdate = async () => {
-  try {
-    const update = await HotUpdater.checkForUpdate({
-      updateStrategy: "appVersion",
-    });
-    if (!update) return;
-    await update.updateBundle();
-    if (update.shouldForceUpdate) await HotUpdater.reload();
-  } catch (error) {
-    console.error("Hot Updater:", error);
-  }
-};
-
 function App(): React.JSX.Element {
-  useEffect(() => {
-    void checkForUpdate();
-  }, []);
-
   const state = useSnapshot(notify);
   const [bundleId, setBundleId] = useState<string | null>(null);
 
   useEffect(() => {
-    const bundleId = HotUpdater.getBundleId();
+    const bundleId = hotUpdater.getBundleId();
     setBundleId(bundleId);
   }, []);
 
   const progress = useHotUpdaterStore((state) => state.progress);
   return (
     <SafeAreaView>
-      <Text>Babel {HotUpdater.getBundleId()}</Text>
-      <Text>Channel "{HotUpdater.getChannel()}"</Text>
-      <Text>App Version "{HotUpdater.getAppVersion()}"</Text>
+      <Text>Babel {hotUpdater.getBundleId()}</Text>
+      <Text>Channel "{hotUpdater.getChannel()}"</Text>
+      <Text>App Version "{hotUpdater.getAppVersion()}"</Text>
 
-      <Text>{extractFormatDateFromUUIDv7(HotUpdater.getBundleId())}</Text>
+      <Text>{extractFormatDateFromUUIDv7(hotUpdater.getBundleId())}</Text>
       <Text
         style={{
           marginVertical: 20,
@@ -120,7 +117,7 @@ function App(): React.JSX.Element {
       >
         Crash History:
       </Text>
-      {HotUpdater.getCrashHistory().map((crash) => (
+      {hotUpdater.getCrashHistory().map((crash) => (
         <Text
           key={crash}
           style={{
@@ -145,13 +142,40 @@ function App(): React.JSX.Element {
 
       <Text>{JSON.stringify(state, null, 2)}</Text>
 
-      <Button title="Reload" onPress={() => HotUpdater.reload()} />
+      <Button title="Reload" onPress={() => hotUpdater.reload()} />
       <Button
         title="Clear Crash History"
-        onPress={() => HotUpdater.clearCrashHistory()}
+        onPress={() => hotUpdater.clearCrashHistory()}
       />
     </SafeAreaView>
   );
 }
 
-export default App;
+export default hotUpdater.wrap({
+  updateStrategy: "appVersion",
+  fallbackComponent: ({ progress, status }) => (
+    <Modal transparent visible={true}>
+      <View
+        style={{
+          flex: 1,
+          padding: 20,
+          borderRadius: 10,
+          justifyContent: "center",
+          alignItems: "center",
+          backgroundColor: "rgba(0, 0, 0, 0.5)",
+        }}
+      >
+        {/* You can put a splash image here. */}
+
+        <Text style={{ color: "white", fontSize: 20, fontWeight: "bold" }}>
+          {status === "UPDATING" ? "Updating..." : "Checking for Update..."}
+        </Text>
+        {progress > 0 ? (
+          <Text style={{ color: "white", fontSize: 20, fontWeight: "bold" }}>
+            {Math.round(progress * 100)}%
+          </Text>
+        ) : null}
+      </View>
+    </Modal>
+  ),
+})(App);
