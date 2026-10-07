@@ -58,6 +58,7 @@ describe("CloudFrontManager", () => {
     oacId: "existing-oac-id",
     originRequestPolicyId: "existing-origin-request-policy-id",
     releaseCatalogCachePolicyId: "existing-release-catalog-cache-policy-id",
+    remoteConfigCachePolicyId: "existing-remote-config-cache-policy-id",
     sharedCachePolicyId: "existing-shared-cache-policy-id",
   });
   const mockMatchingDistribution = ({

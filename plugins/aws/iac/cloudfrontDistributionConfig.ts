@@ -500,6 +500,7 @@ export const buildDistributionConfig = (options: {
   oacId: string;
   originRequestPolicyId: string;
   releaseCatalogCachePolicyId: string;
+  remoteConfigCachePolicyId: string;
   sharedCachePolicyId: string;
 }): DistributionConfig =>
   sanitizeDistributionConfig({
