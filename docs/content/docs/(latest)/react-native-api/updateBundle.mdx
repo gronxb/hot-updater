@@ -11,14 +11,14 @@ does not reload the currently running React Native runtime.
 ```tsx
 import { HotUpdater } from "@hot-updater/react-native";
 
-HotUpdater.init({
+export const hotUpdater = HotUpdater.init({
   baseURL: "<your-update-server-url>",
   requestHeaders: { "x-api-key": "<client-api-key>" },
   onError: (error) => console.error("Hot Updater:", error),
 });
 
 async function stageAppUpdate() {
-  const updateInfo = await HotUpdater.checkForUpdate({
+  const updateInfo = await hotUpdater.checkForUpdate({
     updateStrategy: "appVersion",
   });
 
@@ -26,7 +26,7 @@ async function stageAppUpdate() {
 
   const didUpdate = await updateInfo.updateBundle();
   if (didUpdate && updateInfo.shouldForceUpdate) {
-    await HotUpdater.reload();
+    await hotUpdater.reload();
   }
 }
 ```
@@ -52,7 +52,7 @@ and complete original file. A patch failure falls back to the original file.
 The staged directory is committed atomically only after every target hash is
 verified.
 
-`updateBundle` never reloads the app by itself. Call `HotUpdater.reload()` to
+`updateBundle` never reloads the app by itself. Call `hotUpdater.reload()` to
 start the staged transition immediately.
 
 For built-in or embedded Catalog transitions, use the helper returned by

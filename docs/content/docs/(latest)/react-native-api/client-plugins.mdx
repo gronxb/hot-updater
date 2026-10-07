@@ -250,7 +250,7 @@ Errors from a plugin's API, such as a failed request, reach whoever called it.
 | `sdkVersion`             | The version of `@hot-updater/react-native`.                                                                         |
 | `minBundleId`            | The ID of the bundle the native build ships. `getBundleId()` returns it while the app runs that built-in bundle.    |
 | `isDebugBuild`           | `true` in a debug build, where `__DEV__` is `true`.                                                                 |
-| `getBundleId()`          | The bundle native reports as current. This is an artifact ID, not the update ID that `HotUpdater.getBundleId()` returns. |
+| `getBundleId()`          | The bundle native reports as current. This is an artifact ID, not the update ID that `hotUpdater.getBundleId()` returns. |
 | `getChannel()`           | The effective channel.                                                                                              |
 | `getCohort()`            | The rollout cohort.                                                                                                 |
 | `getFingerprintHash()`   | The native fingerprint, or `null`.                                                                                  |

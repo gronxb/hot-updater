@@ -1,19 +1,20 @@
 ---
 title: "getCohort"
-description: "The `HotUpdater.getCohort()` function returns the persisted cohort used for rollout decisions."
+description: "The `hotUpdater.getCohort()` function returns the persisted cohort used for rollout decisions."
 icon: Users
 ---
 
 ## Usage
 
-Use `HotUpdater.getCohort()` to read the current device's cohort.
+Use `hotUpdater.getCohort()` to read the current device's cohort.
 
 ```tsx
-import { HotUpdater } from "@hot-updater/react-native";
 import { Text } from "react-native";
 
+import { hotUpdater } from "./hotUpdater";
+
 function CohortStatus() {
-  return <Text>Current cohort: {HotUpdater.getCohort()}</Text>;
+  return <Text>Current cohort: {hotUpdater.getCohort()}</Text>;
 }
 ```
 
@@ -24,7 +25,7 @@ function CohortStatus() {
   cohort once and persists it before returning.
 - Numeric cohorts are in the range `1..1000`.
 - Custom cohorts such as `qa` or `dogfood` may also be returned if the app has
-  previously called `HotUpdater.setCohort()`.
+  previously called `hotUpdater.setCohort()`.
 
 ## When to use
 
@@ -34,5 +35,5 @@ function CohortStatus() {
 
 ## Related APIs
 
-- [`HotUpdater.setCohort()`](/docs/react-native-api/setCohort)
+- [`hotUpdater.setCohort()`](/docs/react-native-api/setCohort)
 - [Rollout & Cohorts](/docs/guides/rollout-cohorts)

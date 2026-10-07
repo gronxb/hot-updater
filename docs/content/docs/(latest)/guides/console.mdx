@@ -60,7 +60,7 @@ the same list as
 ## Usage
 
 The Bundles list and its detail sheet show an **ID** that matches
-[`HotUpdater.getBundleId()`](/docs/react-native-api/getBundleId) on the device.
+[`hotUpdater.getBundleId()`](/docs/react-native-api/getBundleId) on the device.
 Promoted updates have their own IDs even when they reuse the same files.
 
 Start the local console:
@@ -175,7 +175,7 @@ confirming.
 
 Setting a bundle's `shouldForceUpdate` value to `true` marks it for immediate
 application when selected. In the [custom update flow](/docs/guides/custom-update),
-check `shouldForceUpdate` and call `HotUpdater.reload()` after a successful
+check `shouldForceUpdate` and call `hotUpdater.reload()` after a successful
 download.
 
 <img src={"/docs/console/force_update.png"} />

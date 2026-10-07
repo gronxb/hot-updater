@@ -16,7 +16,7 @@ callback when you need to observe the launch result:
 ```tsx
 import { HotUpdater } from "@hot-updater/react-native";
 
-HotUpdater.init({
+export const hotUpdater = HotUpdater.init({
   baseURL: "<your-update-server-url>",
   requestHeaders: {
     "x-api-key": "<client-api-key>",
@@ -42,7 +42,7 @@ You do not need a separate `notifyAppReady()` call to enable lifecycle handling 
 
 ## Return value
 
-`HotUpdater.notifyAppReady()` is a synchronous read of the native launch report
+`hotUpdater.notifyAppReady()` is a synchronous read of the native launch report
 for the current process. It returns the same public result type used by
 `onNotifyAppReady`:
 
@@ -90,7 +90,7 @@ selection and artifact distinction.
 ## Read directly for diagnostics
 
 ```tsx
-const result = HotUpdater.notifyAppReady();
+const result = hotUpdater.notifyAppReady();
 
 if (result.status === "RECOVERED") {
   console.log("Failed artifact:", result.fromBundleId);

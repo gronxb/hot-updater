@@ -1,25 +1,25 @@
 ---
 title: "init"
-description: "`HotUpdater.init` configures the update server, its request settings, and the app's client plugins."
+description: "`HotUpdater.init` configures the update server, its request settings, and the app's client plugins, and returns the app's HotUpdater instance."
 icon: Settings2
 ---
 
 ## Usage
 
-Call `HotUpdater.init` at the top level of your app entry module, outside React
-components and effects. It configures the update server and handles native
-startup verification internally. Call `HotUpdater.checkForUpdate()` separately
-when your app should check for updates.
+Call `HotUpdater.init` once, at the top level of a module, outside React
+components and effects. It configures the update server and the client
+plugins, handles native startup verification, and returns the app's
+HotUpdater instance. Export the instance: every HotUpdater method is on it.
 
 Use the client handler URL and client API key produced by your infrastructure
 setup. For a custom server, follow
 [API key authentication](/docs/custom/api-key-authentication) to add the
 `apiKeys()` plugin and create a key.
 
-```tsx
+```tsx title="src/hotUpdater.ts"
 import { HotUpdater } from "@hot-updater/react-native";
 
-HotUpdater.init({
+export const hotUpdater = HotUpdater.init({
   baseURL: "<your-update-server-url>",
   requestHeaders: {
     "x-api-key": "<your-api-key>",
@@ -29,6 +29,27 @@ HotUpdater.init({
   },
 });
 ```
+
+`init` does not check for updates. Wrap the app's root with
+[`hotUpdater.wrap`](/docs/react-native-api/wrap) to check when it mounts, or
+call [`hotUpdater.checkForUpdate()`](/docs/react-native-api/checkForUpdate)
+from your own [update flow](/docs/guides/custom-update):
+
+```tsx title="App.tsx"
+import { hotUpdater } from "./src/hotUpdater";
+
+function App() {
+  return null; // Your app's root.
+}
+
+export default hotUpdater.wrap({
+  updateStrategy: "appVersion", // or "fingerprint"
+})(App);
+```
+
+Calling `init` again replaces the configuration, and every instance uses the
+new one. Keep the one call in its own module, at the top level, so it runs
+once per app start.
 
 Point `baseURL` at the client handler root, for example
 `https://example.com/hot-updater`. Never embed the admin bearer token in a
@@ -40,11 +61,11 @@ To report launches, downloads, and update results to
 [Insights](/docs/guides/insights), add the
 [Insights plugin](/docs/react-native-api/insights) to `plugins`:
 
-```tsx
+```tsx title="src/hotUpdater.ts"
 import { HotUpdater } from "@hot-updater/react-native"; // [!code --]
 import { HotUpdater, insights } from "@hot-updater/react-native"; // [!code ++]
 
-HotUpdater.init({
+export const hotUpdater = HotUpdater.init({
   baseURL: "<your-update-server-url>",
   requestHeaders: {
     "x-api-key": "<your-api-key>",
@@ -59,11 +80,11 @@ unique, and `init` throws when two plugins share one.
 
 ## Use the instance init returns
 
-`init` returns the app's HotUpdater instance. It has HotUpdater's methods, such
-as `checkForUpdate` and `reload`, and each plugin's API under the plugin's id:
-`remoteConfig()` adds `hotUpdater.remoteConfig`, and `insights()` adds
-`hotUpdater.insights`. Export the instance from the module that calls `init`,
-and import it where the app reads a plugin:
+`init` returns the app's HotUpdater instance. It has every HotUpdater method,
+such as `wrap`, `checkForUpdate`, and `reload`, and each plugin's API under
+the plugin's id: `remoteConfig()` adds `hotUpdater.remoteConfig`, and
+`insights()` adds `hotUpdater.insights`. Import the instance wherever the app
+uses HotUpdater:
 
 ```tsx title="src/hotUpdater.ts"
 import { HotUpdater, insights, remoteConfig } from "@hot-updater/react-native";
@@ -85,6 +106,7 @@ import { hotUpdater } from "./hotUpdater";
 
 hotUpdater.insights.setUser({ userId: "user-123" });
 const title = hotUpdater.remoteConfig.getString("welcome_message");
+const channel = hotUpdater.getChannel();
 ```
 
 A plugin's API exists only on the instance, once `init` has set the plugin up,
@@ -97,40 +119,11 @@ the instance's own members, such as `reload`.
 a promise, and Hot Updater calls it before each update check and plugin
 request.
 
-```tsx
-HotUpdater.init({
+```tsx title="src/hotUpdater.ts"
+export const hotUpdater = HotUpdater.init({
   baseURL: "<your-update-server-url>", // [!code --]
   baseURL: () => getUpdateServerURL(), // [!code ++]
 });
-```
-
-After initialization, call `HotUpdater.checkForUpdate()` wherever your runtime
-or app state says it is safe to check.
-
-```tsx
-async function prepareUpdate() {
-  try {
-    const update = await HotUpdater.checkForUpdate({
-      updateStrategy: "appVersion",
-    });
-
-    if (!update) {
-      return;
-    }
-
-    const downloaded = await update.updateBundle();
-
-    if (!downloaded) {
-      throw new Error("Could not prepare the update");
-    }
-
-    if (update.shouldForceUpdate) {
-      await HotUpdater.reload();
-    }
-  } catch (error) {
-    console.error("Could not prepare update:", error);
-  }
-}
 ```
 
 ## Configuration reference
@@ -142,7 +135,7 @@ async function prepareUpdate() {
 | `requestHeaders`   | `Record<string, string>`                      | No       | Shared headers used by update checks and plugin requests                             |
 | `requestTimeout`   | `number`                                      | No       | Request timeout in milliseconds (default: 5000)                                      |
 | `onNotifyAppReady` | `(result: NotifyAppReadyResult) => void`      | No       | Callback invoked after native launch verification finishes                           |
-| `onError`          | `(error) => void`                             | No       | Default error handler for initialization, update checks, and plugin errors           |
+| `onError`          | `(error) => void`                             | No       | Default error handler for initialization, `wrap`, update checks, and plugin errors   |
 
 `baseURL` is the only React Native transport configuration. A GraphQL, RPC,
 or other custom backend must expose the Hot Updater HTTP protocol through an
@@ -153,7 +146,7 @@ for the `UNCHANGED`, `UPDATE_APPLIED`, and `RECOVERED` result shapes and a
 callback example. A callback result describes local native state; it does not
 confirm Insights delivery to the server.
 
-`HotUpdater.checkForUpdate({ onError })` overrides the `onError` handler from
+`hotUpdater.checkForUpdate({ onError })` overrides the `onError` handler from
 `HotUpdater.init` for that specific update check.
 
 If the server intentionally uses the unauthenticated
@@ -162,12 +155,15 @@ If the server intentionally uses the unauthenticated
 
 ## Recommended flow
 
-Initialize once at module scope, then call `HotUpdater.checkForUpdate` from the
-point where your app should check. No effect, readiness state or
+Call `init` once in its own module, such as `src/hotUpdater.ts`, export the
+instance, and import it wherever the app uses HotUpdater. Wrap the root with
+`hotUpdater.wrap` for a check at startup, or call `hotUpdater.checkForUpdate`
+from the point where your app should check. No effect, readiness state or
 `onNotifyAppReady` callback is required. Use that callback only when your app
 needs to observe the native startup result.
 
 ## Related
 
-- [`HotUpdater.checkForUpdate()`](/docs/react-native-api/checkForUpdate)
+- [`hotUpdater.wrap`](/docs/react-native-api/wrap)
+- [`hotUpdater.checkForUpdate()`](/docs/react-native-api/checkForUpdate)
 - [Custom Update](/docs/guides/custom-update)

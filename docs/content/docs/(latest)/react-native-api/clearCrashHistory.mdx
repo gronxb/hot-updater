@@ -6,15 +6,15 @@ icon: Eraser
 
 ## Usage
 
-Use `HotUpdater.clearCrashHistory()` when testing a previously rejected
+Use `hotUpdater.clearCrashHistory()` when testing a previously rejected
 artifact again. Clearing history only changes the current device: it does not
 deploy a Release, change delivery policy, download an update, or reload the app.
 
 ```tsx
-import { HotUpdater } from "@hot-updater/react-native";
+import { hotUpdater } from "./hotUpdater";
 
-HotUpdater.clearCrashHistory();
-const remainingArtifacts = HotUpdater.getCrashHistory();
+hotUpdater.clearCrashHistory();
+const remainingArtifacts = hotUpdater.getCrashHistory();
 
 if (remainingArtifacts.length === 0) {
   console.log("Device crash history is empty");

@@ -55,11 +55,11 @@ Pass `insights()` from `@hot-updater/react-native` to `plugins` in
 [`HotUpdater.init`](/docs/react-native-api/init). Configure the client handler
 URL and the client API key from your infrastructure setup:
 
-```tsx title="App.tsx"
+```tsx title="src/hotUpdater.ts"
 import { HotUpdater } from "@hot-updater/react-native"; // [!code --]
 import { HotUpdater, insights } from "@hot-updater/react-native"; // [!code ++]
 
-HotUpdater.init({
+export const hotUpdater = HotUpdater.init({
   baseURL: "<your-update-server-url>",
   requestHeaders: {
     "x-api-key": "<client-api-key>",
@@ -68,10 +68,11 @@ HotUpdater.init({
 });
 ```
 
-Call `init` once at the top level of your app's entry module. It configures
-reporting without starting an update check; use
-[custom update flows](/docs/guides/custom-update) to check, download, and apply
-updates at your chosen time. If your custom server intentionally uses
+Call `init` once, at the top level of its own module, and export the instance
+it returns. It configures reporting without starting an update check; use
+[`hotUpdater.wrap`](/docs/react-native-api/wrap) or a
+[custom update flow](/docs/guides/custom-update) to check, download, and apply
+updates. If your custom server intentionally uses
 `clientAccess: "public"` instead of `apiKeys()`, omit the client-key header.
 See [API key authentication](/docs/custom/api-key-authentication).
 
@@ -209,7 +210,7 @@ creates the ID, and a retry counts as another report.
 
 ## Identify an installation
 
-Read [`HotUpdater.getInstallId()`](/docs/react-native-api/getInstallId) in a
+Read [`hotUpdater.getInstallId()`](/docs/react-native-api/getInstallId) in a
 support log or debug screen. This random ID identifies one installation; it is
 independent of the signed-in user.
 
@@ -218,7 +219,8 @@ Optionally attach your application's user ID with the plugin's
 `HotUpdater.init` returns. Call it from your sign-in flow:
 
 ```ts
-// `hotUpdater` is the instance HotUpdater.init returned.
+import { hotUpdater } from "./hotUpdater";
+
 hotUpdater.insights.setUser({ userId: "user-123" });
 
 // On logout, clear the user attached to later reports.

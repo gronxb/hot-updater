@@ -15,7 +15,7 @@ download and stage the selected update.
 import { HotUpdater } from "@hot-updater/react-native";
 
 // Configure the client once at module scope
-HotUpdater.init({
+export const hotUpdater = HotUpdater.init({
   baseURL: "<your-update-server-url>",
   requestHeaders: {
     "x-api-key": "<client-api-key>",
@@ -25,7 +25,7 @@ HotUpdater.init({
 
 async function checkForAppUpdate() {
   try {
-    const updateInfo = await HotUpdater.checkForUpdate({
+    const updateInfo = await hotUpdater.checkForUpdate({
       updateStrategy: "appVersion",
     });
 
@@ -41,7 +41,7 @@ async function checkForAppUpdate() {
     }
 
     if (updateInfo.shouldForceUpdate) {
-      await HotUpdater.reload();
+      await hotUpdater.reload();
     }
   } catch (error) {
     console.error("Could not prepare update:", error);
@@ -53,12 +53,12 @@ async function checkForAppUpdate() {
 
 ## Initialize before checking
 
-Configure `HotUpdater.init()` once at module scope before calling
-`checkForUpdate`. This connects update requests and client plugins to your
-server without starting a check. See
-[custom update flows](/docs/guides/custom-update) for a complete integration.
-Calling `checkForUpdate` before `init` throws an error with configuration
-instructions.
+`checkForUpdate` is a method of the instance `HotUpdater.init()` returns, so
+the client is configured before any check. Call `init` once at module scope; it
+connects update requests and client plugins to your server without starting a
+check. See [custom update flows](/docs/guides/custom-update) for a complete
+integration, or [`hotUpdater.wrap`](/docs/react-native-api/wrap) to check when
+the app's root mounts.
 
 ## Parameters
 

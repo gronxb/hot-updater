@@ -126,7 +126,7 @@ machine or server.
 For an Expo app using public environment variables, the resulting setup can
 look like this:
 
-```tsx title="App.tsx"
+```tsx title="src/hotUpdater.ts"
 import { HotUpdater } from "@hot-updater/react-native";
 
 const baseURL = process.env.EXPO_PUBLIC_HOT_UPDATER_BASE_URL;
@@ -137,7 +137,7 @@ if (!baseURL || !clientApiKey) {
   throw new Error("Missing Hot Updater URL or client API key");
 }
 
-HotUpdater.init({
+export const hotUpdater = HotUpdater.init({
   baseURL,
   // [!code ++:3]
   requestHeaders: {
@@ -373,40 +373,42 @@ upload storage does not need a download URL resolver.
 
 ## Update app lifecycle handlers
 
-`HotUpdater.wrap` is removed. Call `HotUpdater.init` once at module scope,
-export the root component directly, and check for updates where the app
-chooses, as the [custom update flow](/docs/guides/custom-update) shows. A check
-when the root mounts does what `wrap` did:
+`HotUpdater` keeps only `init`, which returns the app's HotUpdater instance.
+Every other method is on that instance: call `init` once at the top level of a
+module, export the instance, and replace each `HotUpdater.<method>` call with
+`hotUpdater.<method>`, such as `hotUpdater.checkForUpdate()` and
+`hotUpdater.getBundleId()`.
 
-```tsx title="App.tsx"
+`wrap` is on the instance too, and takes only the update flow:
+`updateStrategy`, `fallbackComponent`, `onProgress`, `reloadOnForceUpdate`,
+and `onUpdateProcessCompleted`. Move `baseURL`, `requestHeaders`,
+`requestTimeout`, `plugins`, `onError`, and `onNotifyAppReady` to
+`HotUpdater.init`:
+
+```tsx title="src/hotUpdater.ts"
 import { HotUpdater } from "@hot-updater/react-native";
-import { useEffect } from "react";
 
-export default HotUpdater.wrap({ // [!code --:4]
+export const hotUpdater = HotUpdater.init({
   baseURL: "<your-update-server-url>",
-  updateStrategy: "appVersion",
-})(App);
-HotUpdater.init({ baseURL: "<your-update-server-url>" }); // [!code ++]
-
-function App() {
-  useEffect(() => { // [!code ++:9]
-    HotUpdater.checkForUpdate({ updateStrategy: "appVersion" })
-      .then(async (update) => {
-        if (!update) return;
-        await update.updateBundle();
-        if (update.shouldForceUpdate) await HotUpdater.reload();
-      })
-      .catch((error) => console.error("Hot Updater:", error));
-  }, []);
-  // ...
-}
-
-export default App; // [!code ++]
+});
 ```
 
-A `fallbackComponent` becomes your own loading UI, which reads download
-progress from [`useHotUpdaterStore`](/docs/react-native-api/useHotUpdaterStore);
-`onUpdateProcessCompleted` becomes code after `updateBundle()` resolves.
+```tsx title="App.tsx"
+import { HotUpdater } from "@hot-updater/react-native"; // [!code --]
+import { hotUpdater } from "./src/hotUpdater"; // [!code ++]
+
+export default HotUpdater.wrap({ // [!code --]
+export default hotUpdater.wrap({ // [!code ++]
+  baseURL: "<your-update-server-url>", // [!code --]
+  updateStrategy: "appVersion",
+  fallbackComponent: Splash,
+})(App);
+```
+
+An app that checks from its own flow instead keeps `init` and calls
+`hotUpdater.checkForUpdate()`, as the
+[custom update flow](/docs/guides/custom-update) shows. Calling `init` again
+replaces the configuration, so keep the one call in its own module.
 
 Remove `resolver`, client `authorityId`, `HotUpdaterResolver`, resolver helper
 types and `createDefaultResolver`. A custom GraphQL/RPC backend must expose the
@@ -432,7 +434,7 @@ to the [direct API](/docs/react-native-api/updateBundle).
 ## Update deployment automation
 
 The public CLI keeps the v0 Bundle workflow. The ID printed by deploy is the
-same ID shown in the Console and returned by `HotUpdater.getBundleId()`:
+same ID shown in the Console and returned by `hotUpdater.getBundleId()`:
 
 | v0 command or assumption | v1 command or meaning |
 | --- | --- |

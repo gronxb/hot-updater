@@ -14,11 +14,13 @@ individual download entries.
 
 `progress` is a number from `0` to `1`. `isUpdateDownloaded` becomes `true`
 when the update has finished downloading and can be applied with
-`HotUpdater.reload()`.
+`hotUpdater.reload()`.
 
 ```tsx
-import { HotUpdater, useHotUpdaterStore } from "@hot-updater/react-native";
+import { useHotUpdaterStore } from "@hot-updater/react-native";
 import { Button, Text, View } from "react-native";
+
+import { hotUpdater } from "./hotUpdater";
 
 function App() {
   const { progress, isUpdateDownloaded } = useHotUpdaterStore();
@@ -28,7 +30,7 @@ function App() {
       <Text>{Math.round(progress * 100)}%</Text>
       <Button
         title="Reload"
-        onPress={() => HotUpdater.reload()}
+        onPress={() => hotUpdater.reload()}
         disabled={!isUpdateDownloaded}
       />
     </View>
@@ -78,8 +80,10 @@ function UpdateProgress() {
 Pass a selector when a component only needs one field from the store.
 
 ```tsx
-import { HotUpdater, useHotUpdaterStore } from "@hot-updater/react-native";
+import { useHotUpdaterStore } from "@hot-updater/react-native";
 import { Button, Text } from "react-native";
+
+import { hotUpdater } from "./hotUpdater";
 
 function ProgressDisplay() {
   const progress = useHotUpdaterStore((state) => state.progress);
@@ -95,7 +99,7 @@ function UpdateButton() {
   return (
     <Button
       title="Reload"
-      onPress={() => HotUpdater.reload()}
+      onPress={() => hotUpdater.reload()}
       disabled={!isUpdateDownloaded}
     />
   );

@@ -1,6 +1,6 @@
 ---
 title: "getChannel"
-description: "The `HotUpdater.getChannel()` function returns the app's current effective channel."
+description: "The `hotUpdater.getChannel()` function returns the app's current effective channel."
 icon: Radio
 ---
 
@@ -12,16 +12,17 @@ see [Runtime Channel Switch](/docs/guides/runtime-channel-switch).
 
 ## Usage
 
-Use `HotUpdater.getChannel()` to read the app's current channel.
+Use `hotUpdater.getChannel()` to read the app's current channel.
 
 ### Example
 
 ```tsx
-import { HotUpdater } from "@hot-updater/react-native";
 import { Text, View } from "react-native";
 
+import { hotUpdater } from "./hotUpdater";
+
 export default function App() {
-  const channel = HotUpdater.getChannel();
+  const channel = hotUpdater.getChannel();
 
   return (
     <View>
@@ -33,13 +34,13 @@ export default function App() {
 
 ## Behavior
 
-- If no runtime channel switch is active, `HotUpdater.getChannel()` returns the build-time channel.
-- If a bundle from another channel has been applied at runtime, `HotUpdater.getChannel()` returns that switched channel.
+- If no runtime channel switch is active, `hotUpdater.getChannel()` returns the build-time channel.
+- If a bundle from another channel has been applied at runtime, `hotUpdater.getChannel()` returns that switched channel.
 - If no channel is configured, the default is `production`.
 - The build-time default channel is written into native project files by
   [`hot-updater channel set`](/docs/guides/channel-management).
-- Use [`HotUpdater.getDefaultChannel()`](/docs/react-native-api/getDefaultChannel) when you need the embedded default channel regardless of runtime channel switch state.
-- You can restore the original channel with [`HotUpdater.resetChannel()`](/docs/react-native-api/resetChannel).
+- Use [`hotUpdater.getDefaultChannel()`](/docs/react-native-api/getDefaultChannel) when you need the embedded default channel regardless of runtime channel switch state.
+- You can restore the original channel with [`hotUpdater.resetChannel()`](/docs/react-native-api/resetChannel).
 
 ## Runtime example
 
@@ -48,7 +49,7 @@ apply a transition to another channel as part of your
 [custom update flow](/docs/guides/custom-update):
 
 ```tsx
-const updateInfo = await HotUpdater.checkForUpdate({
+const updateInfo = await hotUpdater.checkForUpdate({
   updateStrategy: "appVersion",
   channel: "beta", // [!code ++]
 });
@@ -56,14 +57,14 @@ const updateInfo = await HotUpdater.checkForUpdate({
 if (updateInfo) {
   const didUpdate = await updateInfo.updateBundle();
   if (didUpdate) {
-    await HotUpdater.reload();
+    await hotUpdater.reload();
   }
 }
 ```
 
 ## Related APIs
 
-- [`HotUpdater.checkForUpdate()`](/docs/react-native-api/checkForUpdate)
-- [`HotUpdater.getDefaultChannel()`](/docs/react-native-api/getDefaultChannel)
-- [`HotUpdater.isChannelSwitched()`](/docs/react-native-api/isChannelSwitched)
-- [`HotUpdater.resetChannel()`](/docs/react-native-api/resetChannel)
+- [`hotUpdater.checkForUpdate()`](/docs/react-native-api/checkForUpdate)
+- [`hotUpdater.getDefaultChannel()`](/docs/react-native-api/getDefaultChannel)
+- [`hotUpdater.isChannelSwitched()`](/docs/react-native-api/isChannelSwitched)
+- [`hotUpdater.resetChannel()`](/docs/react-native-api/resetChannel)

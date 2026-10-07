@@ -186,7 +186,7 @@ or `production`.
 
 ## Check the Current Channel
 
-Use `HotUpdater.getChannel()` in your UI to confirm that the app is using the
+Use `hotUpdater.getChannel()` in your UI to confirm that the app is using the
 intended channel.
 
 ### Example Usage
@@ -195,20 +195,24 @@ Keep the `baseURL` and client key from [App setup](/docs/get-started/app-setup).
 Managed providers require this client key; provider and admin credentials stay
 out of the app.
 
-```tsx title="App.tsx"
+```tsx title="src/hotUpdater.ts"
 import { HotUpdater } from "@hot-updater/react-native";
-import { Text, View } from "react-native";
 
-// Call once from your app's ready/bootstrap path.
-HotUpdater.init({
+export const hotUpdater = HotUpdater.init({
   baseURL: "<your-update-server-url>",
   requestHeaders: {
     "x-api-key": "<your-client-api-key>",
   },
 });
+```
+
+```tsx title="App.tsx"
+import { Text, View } from "react-native";
+
+import { hotUpdater } from "./src/hotUpdater";
 
 export default function App() {
-  const channel = HotUpdater.getChannel();
+  const channel = hotUpdater.getChannel();
 
   return (
     <View>
@@ -216,11 +220,10 @@ export default function App() {
     </View>
   );
 }
-
 ```
 
 `init` configures the client without checking for updates. Call
-`HotUpdater.checkForUpdate({ updateStrategy: "appVersion" })` when your app is
+`hotUpdater.checkForUpdate({ updateStrategy: "appVersion" })` when your app is
 ready, then download and apply through the
 [custom update flow](/docs/guides/custom-update).
 
@@ -230,7 +233,7 @@ ready, then download and apply through the
 - Changing that default channel requires a rebuild.
 - `hot-updater deploy -c <channel>` should match the channel you want the app to
   receive updates from.
-- `HotUpdater.getChannel()` returns the effective channel, which may differ at
+- `hotUpdater.getChannel()` returns the effective channel, which may differ at
   runtime if a runtime channel switch is active.
 - If you need temporary runtime switching, use
   [Runtime Channel Switch](/docs/guides/runtime-channel-switch).

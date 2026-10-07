@@ -32,10 +32,10 @@ for publisher verification.
 Use the client key produced by your infrastructure setup. Keep provider and
 admin credentials in separate configuration:
 
-```tsx title="App.tsx"
+```tsx title="src/hotUpdater.ts"
 import { HotUpdater } from "@hot-updater/react-native";
 
-HotUpdater.init({
+export const hotUpdater = HotUpdater.init({
   baseURL: "<your-update-server-url>",
   // [!code ++:3]
   requestHeaders: {
@@ -44,8 +44,8 @@ HotUpdater.init({
 });
 ```
 
-Call `init` once at the top level of your app's entry module. It configures
-access and native launch handling; follow
+Call `init` once, at the top level of its own module, and export the instance
+it returns. It configures access and native launch handling; follow
 [custom update flows](/docs/guides/custom-update) to check, download, and apply
 updates.
 

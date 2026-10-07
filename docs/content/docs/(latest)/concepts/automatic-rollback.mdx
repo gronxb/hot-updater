@@ -105,10 +105,10 @@ Returns the artifact IDs that were marked as failed and rolled back. These match
 **Artifact ID** in the console's Advanced diagnostics.
 
 ```tsx
-import { HotUpdater } from "@hot-updater/react-native";
+import { hotUpdater } from "./hotUpdater";
 
 function checkCrashedBundles() {
-  const crashedBundles = HotUpdater.getCrashHistory();
+  const crashedBundles = hotUpdater.getCrashHistory();
 
   if (crashedBundles.length > 0) {
     console.log("Crashed bundles:", crashedBundles);
@@ -128,10 +128,10 @@ You can use this to:
 Clears the crash history so a previously failed artifact ID can be retried.
 
 ```tsx
-import { HotUpdater } from "@hot-updater/react-native";
+import { hotUpdater } from "./hotUpdater";
 
 async function retryFailedBundle() {
-  HotUpdater.clearCrashHistory();
+  hotUpdater.clearCrashHistory();
   console.log("Crash history cleared");
 }
 ```

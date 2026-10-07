@@ -69,9 +69,9 @@ installed binaries no longer depend on them.
 ### Step 4: Initialize your application
 
 Follow [Connect your app](/docs/get-started/app-setup#configure-the-update-client)
-for the complete `HotUpdater.init()` flow: initialize at module scope,
-call `checkForUpdate()`, await the selected update's `updateBundle()`, then
-reload at a deliberate point. Initialization alone does not check for updates.
+for the complete `HotUpdater.init()` flow: initialize once at module scope and
+export the instance it returns, call `hotUpdater.checkForUpdate()`, await the
+selected update's `updateBundle()`, then reload at a deliberate point. Initialization alone does not check for updates.
 
 That page also configures the client URL/key, native and OTA build variables,
 build adapter, native loading, compatibility and test channel.

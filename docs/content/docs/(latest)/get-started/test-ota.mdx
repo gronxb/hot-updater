@@ -140,7 +140,7 @@ Return to the same installed Release app:
 
 After the restart, compare the screen's **Update ID** with the ID from
 deployment. The example reads it with
-[`HotUpdater.getBundleId()`](/docs/react-native-api/getBundleId).
+[`hotUpdater.getBundleId()`](/docs/react-native-api/getBundleId).
 Keep the visible screen change as proof too: an ID can change when an update is
 staged, before its JavaScript is running.
 
@@ -193,6 +193,6 @@ You can now explore [update timing](/docs/guides/custom-update),
 | New ID, old screen | Wait for the download and restart to finish; check app logs if the restart fails |
 | New screen disappears after restart | Check [startup errors and crash history](/docs/react-native-api/getCrashHistory) |
 
-`HotUpdater.init()` configures the client at module scope. The button starts the
-check, download and restart. Keep the sample's shared error reporter so request,
+`HotUpdater.init()` configures the client at module scope and returns the
+instance the button uses. The button starts the check, download and restart. Keep the sample's shared error reporter so request,
 download and restart failures are visible.

@@ -11,11 +11,11 @@ icon: CheckCircle
 - Resets to `false` automatically when a new download starts.
 
 ```tsx
-import { HotUpdater } from "@hot-updater/react-native";
+import { hotUpdater } from "./hotUpdater";
 
 async function maybeApplyUpdate() {
-  if (HotUpdater.isUpdateDownloaded()) {
-    await HotUpdater.reload();
+  if (hotUpdater.isUpdateDownloaded()) {
+    await hotUpdater.reload();
   }
 }
 ```
@@ -25,16 +25,16 @@ async function maybeApplyUpdate() {
 If a bundle has already finished downloading in this session, you can skip `checkForUpdate()` and just prompt the user to reload.
 
 ```tsx
-import { HotUpdater } from "@hot-updater/react-native";
+import { hotUpdater } from "./hotUpdater";
 
 async function checkAndUpdate() {
   // Avoid network call if an update is already downloaded and awaiting reload
-  if (HotUpdater.isUpdateDownloaded()) {
+  if (hotUpdater.isUpdateDownloaded()) {
     // e.g., show a "Restart to update" CTA or reload immediately
     return;
   }
 
-  const updateInfo = await HotUpdater.checkForUpdate({
+  const updateInfo = await hotUpdater.checkForUpdate({
     updateStrategy: "appVersion", // or "fingerprint"
     // requestHeaders: { "x-api-key": "<your-api-key>" },
   });
@@ -45,7 +45,7 @@ async function checkAndUpdate() {
   if (!ok) return;
 
   if (updateInfo.shouldForceUpdate) {
-    await HotUpdater.reload();
+    await hotUpdater.reload();
   }
 }
 ```
@@ -57,8 +57,10 @@ async function checkAndUpdate() {
 - Use this when you need to decide whether to show a "Restart to update" UI or trigger a controlled reload.
 
 ```tsx
-import { HotUpdater, useHotUpdaterStore } from "@hot-updater/react-native";
+import { useHotUpdaterStore } from "@hot-updater/react-native";
 import { Button } from "react-native";
+
+import { hotUpdater } from "./hotUpdater";
 
 export function UpdateButton() {
   const { progress, isUpdateDownloaded } = useHotUpdaterStore();
@@ -69,7 +71,7 @@ export function UpdateButton() {
           ? "Restart to update"
           : `Updating... ${Math.round(progress * 100)}%`
       }
-      onPress={() => HotUpdater.reload()}
+      onPress={() => hotUpdater.reload()}
       disabled={!isUpdateDownloaded}
     />
   );
