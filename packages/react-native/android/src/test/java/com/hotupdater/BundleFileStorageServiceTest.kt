@@ -604,8 +604,8 @@ class BundleFileStorageServiceTest {
             ),
         )
 
-        // A root that mounts again, as HotUpdater.wrap does after its activity is
-        // recreated, reads this launch again. It must not wait for the staged bundle.
+        // A root that mounts again after its activity is recreated reads this
+        // launch again. It must not wait for the staged bundle.
         assertEquals(mapOf("status" to "UNCHANGED"), service.notifyAppReady())
 
         val nextProcess = createService(rootDir, preferences)

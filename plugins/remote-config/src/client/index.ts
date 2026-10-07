@@ -70,7 +70,7 @@ export interface RemoteConfigPlugin<
   readonly id: "remoteConfig";
   /**
    * A parameter's active value. Reads are synchronous: after
-   * `HotUpdater.init` or `HotUpdater.wrap` they return the values the app
+   * `HotUpdater.init` they return the values the app
    * activated last, stored on the device, and before that the defaults.
    */
   getValue(key: RemoteConfigKey<TDefaults>): RemoteConfigValue;
@@ -179,7 +179,7 @@ const deviceContext = (
  * Remote Config for the app: in-app defaults, values a server running the
  * `remoteConfig()` plugin picks for this device, and a fetch and activate
  * step between them. Add it to
- * `HotUpdater.init` or `HotUpdater.wrap`'s `plugins`; it fetches from the
+ * `HotUpdater.init`'s `plugins`; it fetches from the
  * `baseURL`, request headers, and timeout configured there.
  *
  * @example
@@ -329,7 +329,7 @@ export const remoteConfig = <
     if (context === null) {
       return Promise.reject(
         new Error(
-          "[HotUpdater] remoteConfig fetches only after HotUpdater.init or HotUpdater.wrap sets it up with plugins: [config].",
+          "[HotUpdater] remoteConfig fetches only after HotUpdater.init sets it up with plugins: [config].",
         ),
       );
     }

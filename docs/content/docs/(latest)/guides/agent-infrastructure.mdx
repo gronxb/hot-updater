@@ -273,8 +273,7 @@ private. The deployed server runs `insights()`, so the snippet includes the
 
 Place initialization at module scope. `HotUpdater.init` does not start an update
 check; the agent also shows `HotUpdater.checkForUpdate` with your app's
-`appVersion` or `fingerprint` strategy. Preserve existing initialization options
-and use only one initialization API if the app already uses `HotUpdater.wrap`.
+`appVersion` or `fingerprint` strategy. Preserve existing initialization options.
 Infrastructure-only setup includes this snippet and identifies app integration
 and native OTA verification as remaining work.
 

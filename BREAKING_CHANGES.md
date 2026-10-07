@@ -141,8 +141,7 @@ Additional route and handler changes:
   and Insights queries to the admin handler, so the server-side Insights flag
   and `queryAccess` are removed. React Native reports only with the
   `insights()` client plugin from `@hot-updater/react-native` in `plugins` of
-  `HotUpdater.init` or `HotUpdater.wrap`; an app without it
-  sends no events. Client authentication moves to a server plugin that
+  `HotUpdater.init`; an app without it sends no events. Client authentication moves to a server plugin that
   provides it, such as `apiKeys()`, or the explicit `clientAccess: "public"`.
 - `standaloneRepository.baseUrl` now identifies the exact admin root, such as
   `https://example.com/hot-updater/admin`. Its default and fixed request paths
@@ -170,7 +169,7 @@ app.mount("/hot-updater/admin", hotUpdater.handlers.admin);
 app.mount("/hot-updater", hotUpdater.handlers.client);
 ```
 
-`HotUpdater.init` and `HotUpdater.wrap` continue to use the client base URL
+`HotUpdater.init` continues to use the client base URL
 (`https://example.com/hot-updater`). Never embed the admin bearer token in the
 React Native app; `apiKeys()` reads `x-api-key` by default, or the
 `headerName` passed to it. Local or direct-database Console
@@ -303,7 +302,7 @@ The following v0 options are removed or renamed:
 - `storages` and deprecated `storagePlugins` become `storage`.
 - Insights ingestion and query routes come from the `insights()` server plugin
   in `plugins`. React Native clients send events only with the `insights()`
-  client plugin in `plugins` of `HotUpdater.init` or `HotUpdater.wrap`.
+  client plugin in `plugins` of `HotUpdater.init`.
 - `features.clientAccessKeys: true` becomes the `apiKeys()` server plugin in
   `plugins`. It reads `x-api-key` by default; pass `apiKeys({ headerName })`
   to use another valid HTTP header. Clients must send the same header, and
@@ -442,8 +441,7 @@ for the complete operation requirements.
 
 ## React Native API changes
 
-`HotUpdater.init` and `HotUpdater.wrap` now accept `baseURL` as their only
-network source. The `resolver` and client-side `authorityId` options,
+`HotUpdater.init` now accepts `baseURL` as its only network source. The `resolver` and client-side `authorityId` options,
 `HotUpdaterResolver`, its parameter/result helper types, and
 `createDefaultResolver` are removed. Existing `baseURL` configuration remains
 valid only when it points to a v1 client handler. Catalog client paths contain no
@@ -455,9 +453,15 @@ artifact, Insights-event, and `/version` HTTP protocol through an adapter or
 proxy, then pass that endpoint as `baseURL`. There is no React Native callback
 escape hatch for replacing only part of the protocol.
 
-Do not configure `HotUpdater.init` and `HotUpdater.wrap` in the same app. Mixed
-usage now reports a one-time `console.error`. Use `init + checkForUpdate` for a
-custom or manual flow, or use `wrap` for the automatic HOC flow.
+`HotUpdater.wrap` is removed, with its `fallbackComponent`, `onProgress`,
+`reloadOnForceUpdate`, and `onUpdateProcessCompleted` options and the
+`HotUpdaterOptions`, `HotUpdaterFallbackComponentProps`, and
+`RunUpdateProcessResponse` types. Call `HotUpdater.init` once at module scope,
+export the root component directly, and check for updates with
+`HotUpdater.checkForUpdate()`, as the
+[custom update guide](<./docs/content/docs/(latest)/guides/custom-update.mdx>)
+shows. `useHotUpdaterStore` still reports download progress for a loading
+screen.
 
 `NotifyAppReadyResult` changes shape:
 
@@ -472,7 +476,7 @@ toBundleId, ... }`.
 
 App-ready transition and Bundle adoption reporting comes from the
 `insights()` client plugin from `@hot-updater/react-native`, passed in
-`plugins` of `HotUpdater.init` or `HotUpdater.wrap`. It uses the
+`plugins` of `HotUpdater.init`. It uses the
 configured `baseURL`, and an app without it sends nothing. The server's
 Insights routes and tables exist only when the server lists `insights()` in
 its `plugins`.
@@ -528,7 +532,8 @@ The detailed on-device retention rules are in the
 3. Scaffold fresh v1 infrastructure. For self-hosted providers, create schema
    `1.0.0` on an empty database; do not point v1 tooling at a v0 database.
 4. Update custom database/storage providers, server options, removed imports,
-   CLI automation, and app-ready result handling.
+   CLI automation, and app-ready result handling. Replace `HotUpdater.wrap`
+   with `HotUpdater.init` and `HotUpdater.checkForUpdate()`.
 5. If signing is enabled, configure a local or provider signer and a separate
    native trust anchor. Check their public-key match and plan a native-first
    rollout if the signing key changes.

@@ -94,7 +94,7 @@ export default function App() {
 
 Keep `init` at module scope and export your component normally. It returns
 `void`; you do not need an effect, a readiness flag or an `onNotifyAppReady`
-callback for setup. Do not combine it with `wrap`.
+callback for setup.
 
 The `onError` handler in `init` reports lifecycle and update-check errors.
 The button's `try/catch` handles rejected operations, including download and
@@ -177,13 +177,6 @@ received server reports are separate checks; confirm both after your first OTA.
 Use the [update store](/docs/react-native-api/useHotUpdaterStore) to render
 progress within your own UI. Your update flow can defer reload until navigation
 is idle or the user has saved their work.
-
-### Optional automatic wrapper
-
-[`HotUpdater.wrap()`](/docs/react-native-api/wrap) remains supported when you
-want its automatic launch check and update behavior. Use that wrapper instead
-of the `init` flow above, preserving the same URL, client key and strategy.
-Do not initialize with both APIs.
 
 ## Build configuration
 

@@ -10,8 +10,7 @@ icon: SlidersHorizontal
 that `@hot-updater/react-native` exports from its root, from
 `@hot-updater/plugin-remote-config`, so there is nothing extra to install.
 Create it once, at module scope, with your in-app defaults, and pass it to
-`plugins` in [`HotUpdater.init`](/docs/react-native-api/init) or
-[`HotUpdater.wrap`](/docs/react-native-api/wrap):
+`plugins` in [`HotUpdater.init`](/docs/react-native-api/init):
 
 ```ts title="src/remoteConfig.ts"
 import { remoteConfig } from "@hot-updater/react-native";
@@ -34,7 +33,7 @@ HotUpdater.init({
 ```
 
 The plugin requests `GET /remote-config` under `baseURL`, with the
-`requestHeaders` and `requestTimeout` of `init` or `wrap`. The server answers
+`requestHeaders` and `requestTimeout` of `init`. The server answers
 when it runs the `remoteConfig()`
 [server plugin](/docs/guides/remote-config#turn-on-the-server-plugin); the
 managed AWS, Cloudflare, Firebase, and Supabase servers run it. See the
@@ -76,7 +75,7 @@ when that is not a number. `asBoolean()` is `true` for `1`, `true`, `t`, `yes`,
 `y`, and `on`, in any case, and `false` otherwise. A JSON parameter arrives as
 its text, for `JSON.parse(config.getString(key))`.
 
-Before `init` or `wrap` sets the plugin up, reads return `defaults`. Setting
+Before `init` sets the plugin up, reads return `defaults`. Setting
 it up loads the values the app activated at an earlier launch from the
 device, so the first render after `init` already reads them.
 
@@ -106,7 +105,7 @@ answer's `ETag`, so an unchanged answer costs a `304`.
 
 `fetch()` rejects, and the active values stay, when:
 
-- the plugin is not set up yet: call it after `init` or `wrap`;
+- the plugin is not set up yet: call it after `init`;
 - the request fails or times out;
 - the server answers `404`, because it runs without the `remoteConfig()`
   server plugin, or any other error status;

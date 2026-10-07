@@ -45,7 +45,6 @@ export interface CheckForUpdateOptions {
    * Update strategy
    * - "fingerprint": Use fingerprint hash to check for updates
    * - "appVersion": Use app version to check for updates
-   * - Can override the strategy set in HotUpdater.wrap()
    */
   updateStrategy: "appVersion" | "fingerprint";
 

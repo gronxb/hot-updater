@@ -1,6 +1,6 @@
 ---
 title: "init"
-description: "`HotUpdater.init` initializes HotUpdater for manual update flows without wrapping a React component."
+description: "`HotUpdater.init` configures the update server, its request settings, and the app's client plugins."
 icon: Settings2
 ---
 
@@ -10,10 +10,6 @@ Call `HotUpdater.init` at the top level of your app entry module, outside React
 components and effects. It configures the update server and handles native
 startup verification internally. Call `HotUpdater.checkForUpdate()` separately
 when your app should check for updates.
-
-Do not use `HotUpdater.init` and `HotUpdater.wrap` in the same app. Hot Updater
-reports mixed usage with `console.error`. Use `init + checkForUpdate` for a
-custom or manual update flow.
 
 Use the client handler URL and client API key produced by your infrastructure
 setup. For a custom server, follow
@@ -137,6 +133,5 @@ only when your app needs to observe the native startup result.
 
 ## Related
 
-- [`HotUpdater.wrap()`](/docs/react-native-api/wrap)
 - [`HotUpdater.checkForUpdate()`](/docs/react-native-api/checkForUpdate)
 - [Custom Update](/docs/guides/custom-update)

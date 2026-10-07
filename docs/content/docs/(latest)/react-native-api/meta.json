@@ -6,7 +6,6 @@
     "index",
     "---Configure---",
     "init",
-    "wrap",
     "---Update---",
     "checkForUpdate",
     "updateBundle",

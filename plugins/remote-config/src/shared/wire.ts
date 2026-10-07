@@ -1,7 +1,7 @@
 /**
  * The exchange between the app's `remoteConfig()` client plugin and the
  * `remoteConfig()` server plugin: `GET /remote-config`, relative to the
- * `baseURL` the app passes to `HotUpdater.init` or `HotUpdater.wrap`. The app
+ * `baseURL` the app passes to `HotUpdater.init`. The app
  * sends what conditions read as query parameters, and the server answers the
  * values the published template gives them. Both sides import this module,
  * which imports nothing, so the app's bundle never reaches server code.

@@ -71,9 +71,7 @@ HotUpdater.init({
 Call `init` once at the top level of your app's entry module. It configures
 reporting without starting an update check; use
 [custom update flows](/docs/guides/custom-update) to check, download, and apply
-updates at your chosen time. The optional automatic
-[`wrap`](/docs/react-native-api/wrap) flow takes the same `plugins` option. Use
-one configuration API per app. If your custom server intentionally uses
+updates at your chosen time. If your custom server intentionally uses
 `clientAccess: "public"` instead of `apiKeys()`, omit the client-key header.
 See [API key authentication](/docs/custom/api-key-authentication).
 
@@ -269,7 +267,7 @@ not an applied-update check. Combine the running app's visible change with the
 app-ready outcome and the server's received report.
 
 If an expected report is absent, check that the app passes the Insights plugin
-to `init` or `wrap` (a debug build also needs `insights({ debug: true })`), the
+to `init` (a debug build also needs `insights({ debug: true })`), the
 app reached readiness, the server runs `insights()`, and the handler URL and
 client header match the deployed server. Inspect app logs for Insights
 warnings. An app that reported to a server without `insights()` waits up to 24

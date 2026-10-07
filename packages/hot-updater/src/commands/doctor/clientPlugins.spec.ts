@@ -53,7 +53,7 @@ describe("importsClientPlugin", () => {
 describe("findMissingClientPlugins", () => {
   it("finds the client plugins no app source imports, past node_modules and native code", async () => {
     const withInsights = await project({
-      "src/App.tsx": `import { HotUpdater } from "@hot-updater/react-native";\nimport { insights } from "${INSIGHTS.module}";\n\nexport default HotUpdater.wrap({ plugins: [insights()] })(App);\n`,
+      "src/App.tsx": `import { HotUpdater } from "@hot-updater/react-native";\nimport { insights } from "${INSIGHTS.module}";\n\nHotUpdater.init({ baseURL, plugins: [insights()] });\n`,
     });
     const without = await project({
       "src/App.tsx":

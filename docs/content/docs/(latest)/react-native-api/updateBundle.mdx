@@ -53,8 +53,7 @@ The staged directory is committed atomically only after every target hash is
 verified.
 
 `updateBundle` never reloads the app by itself. Call `HotUpdater.reload()` to
-start the staged transition immediately. The automatic `HotUpdater.wrap` flow
-handles force updates separately.
+start the staged transition immediately.
 
 For built-in or embedded Catalog transitions, use the helper returned by
 `checkForUpdate()`; those transitions do not require a fabricated manifest

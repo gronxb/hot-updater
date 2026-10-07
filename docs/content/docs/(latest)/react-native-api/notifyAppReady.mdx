@@ -7,9 +7,8 @@ icon: ClipboardCheck
 ## Observe the launch outcome
 
 Use `onNotifyAppReady` in your chosen configuration API to observe the native
-launch result. Both [`init`](/docs/react-native-api/init) and
-[`wrap`](/docs/react-native-api/wrap) wait until native launch verification has
-finished before invoking this callback.
+launch result. [`init`](/docs/react-native-api/init) waits until native launch
+verification has finished before invoking this callback.
 
 For a custom update flow, configure `init` at module scope. Add this optional
 callback when you need to observe the launch result:
@@ -38,9 +37,7 @@ HotUpdater.init({
 });
 ```
 
-For the automatic update flow, put the same callback in `HotUpdater.wrap`.
-Use one configuration API per app. You do not need a separate
-`notifyAppReady()` call to enable lifecycle handling or the
+You do not need a separate `notifyAppReady()` call to enable lifecycle handling or the
 [Insights plugin](/docs/react-native-api/insights).
 
 ## Return value

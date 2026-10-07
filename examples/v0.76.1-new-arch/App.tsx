@@ -11,7 +11,7 @@ import {
   useHotUpdaterStore,
 } from "@hot-updater/react-native";
 import React, { useEffect, useState } from "react";
-import { Button, Image, Modal, SafeAreaView, Text, View } from "react-native";
+import { Button, Image, SafeAreaView, Text } from "react-native";
 
 export const extractFormatDateFromUUIDv7 = (uuid: string) => {
   const timestampHex = uuid.split("-").join("").slice(0, 12);
@@ -28,7 +28,31 @@ export const extractFormatDateFromUUIDv7 = (uuid: string) => {
   return `${year}/${month}/${day} ${hours}:${minutes}:${seconds}`;
 };
 
+HotUpdater.init({
+  // Replace with your public update server URL.
+  baseURL: "https://your-project.supabase.co/functions/v1/update-server",
+  plugins: [insights()],
+});
+
+/** Checks once per launch as the app mounts; a forced update restarts it. */
+const checkForUpdate = async () => {
+  try {
+    const update = await HotUpdater.checkForUpdate({
+      updateStrategy: "appVersion",
+    });
+    if (!update) return;
+    await update.updateBundle();
+    if (update.shouldForceUpdate) await HotUpdater.reload();
+  } catch (error) {
+    console.error("Hot Updater:", error);
+  }
+};
+
 function App(): React.JSX.Element {
+  useEffect(() => {
+    void checkForUpdate();
+  }, []);
+
   const [bundleId, setBundleId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -90,34 +114,4 @@ function App(): React.JSX.Element {
   );
 }
 
-export default HotUpdater.wrap({
-  // Replace with your public update server URL.
-  baseURL: "https://your-project.supabase.co/functions/v1/update-server",
-  updateStrategy: "appVersion", // or "fingerprint"
-  plugins: [insights()],
-  fallbackComponent: ({ progress, status }) => (
-    <Modal transparent visible={true}>
-      <View
-        style={{
-          flex: 1,
-          padding: 20,
-          borderRadius: 10,
-          justifyContent: "center",
-          alignItems: "center",
-          backgroundColor: "rgba(0, 0, 0, 0.5)",
-        }}
-      >
-        {/* You can put a splash image here. */}
-
-        <Text style={{ color: "white", fontSize: 20, fontWeight: "bold" }}>
-          {status === "UPDATING" ? "Updating..." : "Checking for Update..."}
-        </Text>
-        {progress > 0 ? (
-          <Text style={{ color: "white", fontSize: 20, fontWeight: "bold" }}>
-            {Math.round(progress * 100)}%
-          </Text>
-        ) : null}
-      </View>
-    </Modal>
-  ),
-})(App);
+export default App;

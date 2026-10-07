@@ -172,7 +172,7 @@ command or generated files alone do not prove that a remote step is complete.
 ## App integration
 
 When the requested setup includes app integration, connect the verified base URL
-to the existing HotUpdater.init or HotUpdater.wrap call.
+to the existing HotUpdater.init call.
 <!-- if credential -->
 Send the saved client {{CREDENTIAL_LABEL}} in its {{CREDENTIAL_HEADER}} request
 header.

@@ -271,7 +271,7 @@ describe("remoteConfig() client plugin", () => {
     expect(config.getString("welcome")).toBe("Hey");
   });
 
-  it("fetches only once HotUpdater.init or wrap set the plugin up", async () => {
+  it("fetches only once HotUpdater.init set the plugin up", async () => {
     const config = remoteConfig();
     await expect(config.fetch()).rejects.toThrow("only after HotUpdater.init");
     expect(await config.activate()).toBe(false);

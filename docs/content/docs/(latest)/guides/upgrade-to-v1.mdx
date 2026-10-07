@@ -111,8 +111,8 @@ want to serve from their source artifacts; v0 policy is not backfilled.
 
 ### 3. Update the app URL, client key and build environment
 
-Update the app's `HotUpdater.init()` or `HotUpdater.wrap()` configuration to use
-the v1 server base URL. For example, replace a v0 URL ending in
+Update the app's `HotUpdater.init()` configuration to use the v1 server base
+URL. For example, replace a v0 URL ending in
 `/api/check-update` with the new v1 base URL. The SDK appends the Release Catalog
 and artifact routes itself. Preserve any base path required by your provider
 or custom server.
@@ -373,10 +373,40 @@ upload storage does not need a download URL resolver.
 
 ## Update app lifecycle handlers
 
-Use `HotUpdater.init` with the [custom update flow](/docs/guides/custom-update),
-or keep `HotUpdater.wrap` for automatic startup updates. Do not configure both;
-mixed usage reports a one-time `console.error`. Replace any old
-`wrap({ updateMode: "manual" })` integration with `init + checkForUpdate`.
+`HotUpdater.wrap` is removed. Call `HotUpdater.init` once at module scope,
+export the root component directly, and check for updates where the app
+chooses, as the [custom update flow](/docs/guides/custom-update) shows. A check
+when the root mounts does what `wrap` did:
+
+```tsx title="App.tsx"
+import { HotUpdater } from "@hot-updater/react-native";
+import { useEffect } from "react";
+
+export default HotUpdater.wrap({ // [!code --:4]
+  baseURL: "<your-update-server-url>",
+  updateStrategy: "appVersion",
+})(App);
+HotUpdater.init({ baseURL: "<your-update-server-url>" }); // [!code ++]
+
+function App() {
+  useEffect(() => { // [!code ++:9]
+    HotUpdater.checkForUpdate({ updateStrategy: "appVersion" })
+      .then(async (update) => {
+        if (!update) return;
+        await update.updateBundle();
+        if (update.shouldForceUpdate) await HotUpdater.reload();
+      })
+      .catch((error) => console.error("Hot Updater:", error));
+  }, []);
+  // ...
+}
+
+export default App; // [!code ++]
+```
+
+A `fallbackComponent` becomes your own loading UI, which reads download
+progress from [`useHotUpdaterStore`](/docs/react-native-api/useHotUpdaterStore);
+`onUpdateProcessCompleted` becomes code after `updateBundle()` resolves.
 
 Remove `resolver`, client `authorityId`, `HotUpdaterResolver`, resolver helper
 types and `createDefaultResolver`. A custom GraphQL/RPC backend must expose the
@@ -392,8 +422,7 @@ before reading transition fields.
 
 To report to Insights, add the
 [Insights client plugin](/docs/react-native-api/insights) to `plugins` in
-`HotUpdater.init` or `HotUpdater.wrap`. An app without it sends no Insights
-reports.
+`HotUpdater.init`. An app without it sends no Insights reports.
 
 The positional `updateBundle(bundleId, fileUrl)` overload is removed. Prefer
 `updateInfo.updateBundle()` from `checkForUpdate`, which resolves the selected

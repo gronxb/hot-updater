@@ -11,7 +11,7 @@ export type PluginHookPayload<K extends PluginHookName> = Parameters<
   NonNullable<HotUpdaterClientHooks[K]>
 >[0];
 
-/** The init or wrap settings plugins see through their context. */
+/** The init settings plugins see through their context. */
 export interface PluginHostConfig {
   readonly baseURL: HotUpdaterBaseURL;
   readonly requestHeaders?: Record<string, string>;
@@ -43,9 +43,8 @@ export interface PluginHostEnvironment {
 
 export interface PluginHost {
   /**
-   * Sets up the plugins of an init or wrap call. A plugin passed to an
-   * earlier call keeps its hooks, and a plugin left out stops receiving
-   * events.
+   * Sets up the plugins of an init call. A plugin passed to an earlier
+   * call keeps its hooks, and a plugin left out stops receiving events.
    */
   configurePlugins(
     plugins: readonly HotUpdaterClientPlugin[] | undefined,
@@ -120,7 +119,7 @@ export const createPluginHost = (
   ): Promise<Response> => {
     if (config === null) {
       throw new Error(
-        "[HotUpdater] Plugins can fetch only after init or wrap.",
+        "[HotUpdater] Plugins can fetch only after HotUpdater.init.",
       );
     }
     if (/^[a-z][a-z\d+.-]*:/i.test(path) || path.startsWith("//")) {

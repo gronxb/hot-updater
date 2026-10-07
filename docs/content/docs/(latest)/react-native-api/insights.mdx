@@ -11,8 +11,7 @@ icon: Activity
 `@hot-updater/plugin-insights`, so there is nothing extra to install. Metro
 bundles it into every app, about 4 KB gzipped, but it reports nothing until the
 app adds it to `plugins`. Create it once, at module scope, and pass it to
-`plugins` in [`HotUpdater.init`](/docs/react-native-api/init) or
-[`HotUpdater.wrap`](/docs/react-native-api/wrap):
+`plugins` in [`HotUpdater.init`](/docs/react-native-api/init):
 
 ```ts title="src/analytics.ts"
 import { insights } from "@hot-updater/react-native";
@@ -35,7 +34,7 @@ HotUpdater.init({
 ```
 
 The plugin sends each report to `POST /events` under `baseURL`, with the
-`requestHeaders` and `requestTimeout` of `init` or `wrap`. The server stores
+`requestHeaders` and `requestTimeout` of `init`. The server stores
 reports when it runs the `insights()`
 [server plugin](/docs/guides/insights#turn-on-the-server-plugin); the managed
 AWS, Cloudflare, Firebase, and Supabase servers run it. See the
@@ -91,8 +90,7 @@ ID. Choose an ID that fits your data policy; see
 A same-bundle Release adoption, which needs no download, is also reported as
 `UNCHANGED`, with the Release it replaced as `fromReleaseId`.
 
-`init` and `wrap` report the launch once native launch verification finishes.
-In the `wrap` flow, it goes out before the result of the startup check.
+`init` reports the launch once native launch verification finishes.
 Reports of checks, downloads, and failures always follow the launch report of
 their JavaScript runtime.
 

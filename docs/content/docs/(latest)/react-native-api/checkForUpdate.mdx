@@ -57,11 +57,8 @@ Configure `HotUpdater.init()` once at module scope before calling
 `checkForUpdate`. This connects update requests and client plugins to your
 server without starting a check. See
 [custom update flows](/docs/guides/custom-update) for a complete integration.
-
-The optional [`HotUpdater.wrap`](/docs/react-native-api/wrap) flow also
-configures the client and performs its own automatic startup check. Choose
-one configuration API. Calling `checkForUpdate` before either API throws an
-error with configuration instructions.
+Calling `checkForUpdate` before `init` throws an error with configuration
+instructions.
 
 ## Parameters
 
@@ -75,8 +72,8 @@ error with configuration instructions.
 | `requestTimeout` | `number`                          | ❌       | Request timeout in milliseconds (default: 5000).            |
 | `onError`        | `(error: Error) => void`          | ❌       | Called when a check fails, including failures that return `null`. |
 
-The update source is always from `HotUpdater.init()` or `HotUpdater.wrap()`; it
-cannot be overridden in `checkForUpdate`.
+The update source is always from `HotUpdater.init()`; it cannot be overridden
+in `checkForUpdate`.
 
 A requested channel switch is persisted only after the returned update applies
 successfully. If a different runtime channel is already active, call

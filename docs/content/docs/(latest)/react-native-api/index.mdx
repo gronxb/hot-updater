@@ -11,17 +11,14 @@ app integration and first OTA, start with [app integration](/docs/get-started/ap
 
 ## Configure the app
 
-Start with `init` to control check timing and update UI in your app. `wrap` is
-an optional alternative for an automatic startup flow. Use one configuration
-API per app:
+Start with `init`, which configures the update server and its
+[client plugins](#extend-with-plugins), such as the Insights and Remote Config
+plugins, without starting an update check. Your app then chooses when to check,
+download, and reload:
 
 | API | Use it to |
 | --- | --- |
-| [`init`](/docs/react-native-api/init) | Configure a custom flow and its plugins without starting an update check. |
-| [`wrap`](/docs/react-native-api/wrap) | Optionally check automatically at startup, stage standard updates, and reload force updates by default. |
-
-Both take [client plugins](#extend-with-plugins), such as the Insights and
-Remote Config plugins.
+| [`init`](/docs/react-native-api/init) | Configure the update server, request settings, and client plugins once at module scope. |
 
 ## Check, stage, and reload
 

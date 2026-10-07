@@ -79,7 +79,7 @@
 /docs/v0/react-native-api/setReloadBehavior /docs/react-native-api/setReloadBehavior 301
 /docs/v0/react-native-api/updateBundle /docs/react-native-api/updateBundle 301
 /docs/v0/react-native-api/useHotUpdaterStore /docs/react-native-api/useHotUpdaterStore 301
-/docs/v0/react-native-api/wrap /docs/react-native-api/wrap 301
+/docs/v0/react-native-api/wrap /docs/react-native-api/init 301
 /docs/v0/storage-plugins/aws /docs/storage-adapters/aws 301
 /docs/v0/storage-plugins/cloudflare /docs/storage-adapters/cloudflare 301
 /docs/v0/storage-plugins/custom-storage /docs/storage-adapters/custom-storage 301
@@ -105,6 +105,11 @@
 /docs/guides/compression /docs/guides/bundle-diffing 301
 /docs/guides/compression.md /docs/guides/bundle-diffing.md 301
 /api/markdown/guides/compression.md /api/markdown/guides/bundle-diffing.md 301
+
+# wrap was removed: init and checkForUpdate replace it
+/docs/react-native-api/wrap /docs/react-native-api/init 301
+/docs/react-native-api/wrap.md /docs/react-native-api/init.md 301
+/api/markdown/react-native-api/wrap.md /api/markdown/react-native-api/init.md 301
 
 # setUser moved to the Insights client plugin
 /docs/react-native-api/setUser /docs/react-native-api/insights 301

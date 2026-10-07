@@ -7,6 +7,11 @@ import {
 } from "./checkForUpdate";
 import { createHttpClient, type HotUpdaterHttpClient } from "./httpClient";
 import {
+  type HotUpdaterInitOptions,
+  init,
+  type InternalInitOptions,
+} from "./init";
+import {
   addListener,
   getPublicActiveUpdateState,
   getActiveUpdateState,
@@ -34,15 +39,6 @@ import {
 } from "./native";
 import { configurePlugins } from "./pluginHost";
 import { hotUpdaterStore } from "./store";
-import {
-  type AutoUpdateOptions,
-  type HotUpdaterInitOptions,
-  type HotUpdaterOptions,
-  init,
-  type InternalInitOptions,
-  type InternalWrapOptions,
-  wrap,
-} from "./wrap";
 
 export {
   defineClientPlugin,
@@ -98,12 +94,7 @@ export {
   isSignatureVerificationError,
   type SignatureVerificationFailure,
 } from "./types";
-export type {
-  HotUpdaterFallbackComponentProps,
-  HotUpdaterInitOptions,
-  HotUpdaterOptions,
-  RunUpdateProcessResponse,
-} from "./wrap";
+export type { HotUpdaterInitOptions } from "./init";
 
 /**
  * Register getBaseURL to global objects for use without imports.
@@ -123,20 +114,12 @@ const registerGlobalGetBaseURL = () => {
 // Call registration immediately on module load
 registerGlobalGetBaseURL();
 
-type HotUpdaterWrap = {
-  (options: AutoUpdateOptions): ReturnType<typeof wrap>;
-  (options: HotUpdaterOptions): ReturnType<typeof wrap>;
-};
-
 /**
  * Creates a HotUpdater client instance with all update management methods.
  * This function is called once on module initialization to create a singleton instance.
  */
 function createHotUpdaterClient() {
-  let configurationAPI: "init" | "wrap" | null = null;
-  let mixedConfigurationReported = false;
-
-  // Global configuration stored from wrap
+  // Global configuration stored from init
   const globalConfig: {
     client: HotUpdaterHttpClient | null;
     requestHeaders?: Record<string, string>;
@@ -146,62 +129,15 @@ function createHotUpdaterClient() {
     client: null,
   };
 
-  const createMissingNetworkConfigError = (apiName: "init" | "wrap") => {
-    if (apiName === "init") {
-      return new Error(
-        `[HotUpdater] baseURL must be provided.\n\n` +
-          `Configure HotUpdater before calling update APIs with the standard baseURL setup:\n\n` +
-          `  HotUpdater.init({\n` +
-          `    baseURL: "<your-update-server-url>",\n` +
-          `  });\n\n` +
-          `For manual update flows, visit: https://hot-updater.dev/docs/guides/custom-update`,
-      );
-    }
-
-    const baseURLExample =
-      `  export default HotUpdater.wrap({\n` +
-      `    baseURL: "<your-update-server-url>",\n` +
-      `    updateStrategy: "appVersion"\n` +
-      `  })(App);\n\n`;
-
-    return new Error(
+  const createMissingNetworkConfigError = () =>
+    new Error(
       `[HotUpdater] baseURL must be provided.\n\n` +
-        `Configure HotUpdater.wrap with the standard baseURL setup:\n\n` +
-        baseURLExample +
-        `For manual update flows, use HotUpdater.init() and visit: ` +
-        `https://hot-updater.dev/docs/guides/custom-update`,
+        `Configure HotUpdater before calling update APIs with the standard baseURL setup:\n\n` +
+        `  HotUpdater.init({\n` +
+        `    baseURL: "<your-update-server-url>",\n` +
+        `  });\n\n` +
+        `For update flows, visit: https://hot-updater.dev/docs/guides/custom-update`,
     );
-  };
-
-  const normalizeOptions = (
-    options: HotUpdaterOptions,
-  ): InternalWrapOptions => {
-    const incoming = options as HotUpdaterOptions & {
-      updateMode?: unknown;
-    };
-    if (incoming.updateMode === "manual") {
-      throw new Error(
-        '[HotUpdater] HotUpdater.wrap({ updateMode: "manual" }) was removed. ' +
-          "Call HotUpdater.init({ ... }) instead, export your root component " +
-          "directly, and use HotUpdater.checkForUpdate(...) for the manual " +
-          "update flow. See https://hot-updater.dev/docs/guides/custom-update",
-      );
-    }
-
-    const autoOptions = incoming as AutoUpdateOptions;
-
-    if (autoOptions.baseURL) {
-      const { baseURL, plugins: _plugins, ...rest } = autoOptions;
-      return {
-        ...rest,
-        client: createHttpClient(baseURL, (response) => {
-          emitAfterAppReady("onHttpResponse", () => response);
-        }),
-      };
-    }
-
-    throw createMissingNetworkConfigError("wrap");
-  };
 
   const normalizeInitOptions = (
     options: HotUpdaterInitOptions,
@@ -221,14 +157,14 @@ function createHotUpdaterClient() {
       };
     }
 
-    throw createMissingNetworkConfigError("init");
+    throw createMissingNetworkConfigError();
   };
 
   const configureGlobal = (
-    normalizedOptions: InternalInitOptions | InternalWrapOptions,
-    options: HotUpdaterOptions | HotUpdaterInitOptions,
+    normalizedOptions: InternalInitOptions,
+    options: HotUpdaterInitOptions,
   ) => {
-    // Plugins are set up before init or wrap reads the launch they observe.
+    // Plugins are set up before init reads the launch they observe.
     configurePlugins(options.plugins, {
       baseURL: options.baseURL,
       requestHeaders: options.requestHeaders,
@@ -241,38 +177,15 @@ function createHotUpdaterClient() {
     globalConfig.onError = options.onError;
   };
 
-  const reportMixedConfiguration = (nextAPI: "init" | "wrap") => {
-    if (
-      configurationAPI !== null &&
-      configurationAPI !== nextAPI &&
-      !mixedConfigurationReported
-    ) {
-      mixedConfigurationReported = true;
-      console.error(
-        "[HotUpdater] HotUpdater.init() and HotUpdater.wrap() must not be used together. " +
-          "For custom or manual update flows, use HotUpdater.init() with " +
-          "HotUpdater.checkForUpdate(). For the automatic HOC flow, use " +
-          "HotUpdater.wrap().",
-      );
-    }
-    configurationAPI ??= nextAPI;
-  };
-
   const ensureGlobalClient = (methodName: string) => {
     if (!globalConfig.client) {
       throw new Error(
-        `[HotUpdater] ${methodName} requires HotUpdater.wrap() or HotUpdater.init() to be used.\n\n` +
+        `[HotUpdater] ${methodName} requires HotUpdater.init() to be called first.\n\n` +
           `To fix this issue, configure HotUpdater before calling ${methodName}:\n\n` +
-          `Option 1: With HotUpdater.wrap()\n` +
-          `  export default HotUpdater.wrap({\n` +
-          `    baseURL: "<your-update-server-url>",\n` +
-          `    updateStrategy: "appVersion"\n` +
-          `  })(App);\n\n` +
-          `Option 2: With HotUpdater.init() for custom runtimes\n` +
           `  HotUpdater.init({\n` +
           `    baseURL: "<your-update-server-url>",\n` +
           `  });\n\n` +
-          `For manual update flows, visit: https://hot-updater.dev/docs/guides/custom-update`,
+          `For update flows, visit: https://hot-updater.dev/docs/guides/custom-update`,
       );
     }
     return globalConfig.client;
@@ -280,41 +193,9 @@ function createHotUpdaterClient() {
 
   return {
     /**
-     * `HotUpdater.wrap` checks for updates at the entry point, and if there is a bundle to update, it downloads the bundle and applies the update strategy.
-     *
-     * @param {object} options - Configuration options
-     * @param {string} options.source - Update server URL
-     * @param {object} [options.requestHeaders] - Request headers
-     * @param {React.ComponentType} [options.fallbackComponent] - Component to display during updates
-     * @param {boolean} [options.reloadOnForceUpdate=true] - Whether to automatically reload the app on force updates
-     * @param {Function} [options.onUpdateProcessCompleted] - Callback after update process completes
-     * @param {Function} [options.onProgress] - Callback to track bundle download progress
-     * @returns {Function} Higher-order component that wraps the app component
-     *
-     * @example
-     * ```tsx
-     * export default HotUpdater.wrap({
-     *   baseURL: "<your-update-server-url>",
-     *   updateStrategy: "appVersion",
-     *   requestHeaders: {
-     *     "x-api-key": "<your-api-key>",
-     *   },
-     * })(App);
-     * ```
-     */
-    wrap: (options: HotUpdaterOptions) => {
-      const normalizedOptions = normalizeOptions(options);
-      reportMixedConfiguration("wrap");
-      configureGlobal(normalizedOptions, options);
-
-      return wrap(normalizedOptions);
-    },
-
-    /**
-     * Initializes HotUpdater without wrapping a React component.
-     *
-     * Use this for manual update flows in runtimes where a root component HOC
-     * is not convenient. Use this instead of wrapping the root component.
+     * Initializes HotUpdater: the update server, its request settings, and
+     * the client plugins. Call it once at module scope, then check for
+     * updates with `HotUpdater.checkForUpdate()`.
      *
      * @example
      * ```tsx
@@ -328,7 +209,6 @@ function createHotUpdaterClient() {
     init: (options: HotUpdaterInitOptions): void => {
       const normalizedOptions = normalizeInitOptions(options);
 
-      reportMixedConfiguration("init");
       configureGlobal(normalizedOptions, options);
 
       init(normalizedOptions);
@@ -652,11 +532,4 @@ function createHotUpdaterClient() {
   };
 }
 
-type HotUpdaterClient = Omit<
-  ReturnType<typeof createHotUpdaterClient>,
-  "wrap"
-> & {
-  wrap: HotUpdaterWrap;
-};
-
-export const HotUpdater: HotUpdaterClient = createHotUpdaterClient();
+export const HotUpdater = createHotUpdaterClient();

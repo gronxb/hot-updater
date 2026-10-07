@@ -229,8 +229,8 @@ export interface HotUpdaterClientPlugin {
   /** Unique among an app's plugins; two plugins with one id throw at init. */
   readonly id: string;
   /**
-   * Called once, when `HotUpdater.init` or `HotUpdater.wrap` first
-   * configures the runtime with this plugin.
+   * Called once, when `HotUpdater.init` first configures the runtime with
+   * this plugin.
    */
   setup(context: HotUpdaterClientContext): HotUpdaterClientHooks | void;
 }

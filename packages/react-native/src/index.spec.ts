@@ -1,7 +1,7 @@
 import type { UpdateHttpResponse } from "@hot-updater/protocol";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { HotUpdaterInitOptions, HotUpdaterOptions } from "./wrap";
+import type { HotUpdaterInitOptions } from "./init";
 
 const mocks = vi.hoisted(() => {
   (
@@ -48,7 +48,6 @@ const mocks = vi.hoisted(() => {
     setCohort: vi.fn(),
     setReloadBehavior: vi.fn(),
     stageBundle: vi.fn(),
-    wrap: vi.fn((Component: unknown) => Component),
   };
 });
 
@@ -97,9 +96,8 @@ vi.mock("./native", () => ({
   stageBundle: mocks.stageBundle,
 }));
 
-vi.mock("./wrap", () => ({
+vi.mock("./init", () => ({
   init: mocks.init,
-  wrap: mocks.wrap,
 }));
 
 const importHotUpdater = async () => (await import("./index")).HotUpdater;
@@ -112,7 +110,6 @@ describe("HotUpdater client initialization", () => {
       baseURL,
     }));
     mocks.checkForUpdate.mockResolvedValue(null);
-    mocks.wrap.mockImplementation((Component: unknown) => Component);
   });
 
   afterEach(() => {
@@ -120,35 +117,32 @@ describe("HotUpdater client initialization", () => {
     vi.restoreAllMocks();
   });
 
-  it.each(["init", "wrap"] as const)(
-    "forwards HTTP diagnostics after app readiness from %s",
-    async (api) => {
-      const HotUpdater = await importHotUpdater();
-      if (api === "init")
-        HotUpdater.init({ baseURL: "https://updates.example.com" });
-      else
-        HotUpdater.wrap({
-          baseURL: "https://updates.example.com",
-          updateStrategy: "appVersion",
-        });
-      const onResponse = mocks.createHttpClient.mock.calls[0]![1]!;
-      const response: UpdateHttpResponse = {
-        resource: "catalog",
-        path: "/catalog",
-        status: 503,
-        body: "Service unavailable",
-        bodyTruncated: false,
-      };
-      onResponse(response);
-      expect(mocks.emitAfterAppReady).toHaveBeenCalledWith(
-        "onHttpResponse",
-        expect.any(Function),
-      );
-      const payload = mocks.emitAfterAppReady.mock
-        .calls[0]![1] as () => UpdateHttpResponse;
-      expect(payload()).toBe(response);
-    },
-  );
+  it("forwards HTTP diagnostics after app readiness", async () => {
+    const HotUpdater = await importHotUpdater();
+    HotUpdater.init({ baseURL: "https://updates.example.com" });
+    const onResponse = mocks.createHttpClient.mock.calls[0]![1]!;
+    const response: UpdateHttpResponse = {
+      resource: "catalog",
+      path: "/catalog",
+      status: 503,
+      body: "Service unavailable",
+      bodyTruncated: false,
+    };
+    onResponse(response);
+    expect(mocks.emitAfterAppReady).toHaveBeenCalledWith(
+      "onHttpResponse",
+      expect.any(Function),
+    );
+    const payload = mocks.emitAfterAppReady.mock
+      .calls[0]![1] as () => UpdateHttpResponse;
+    expect(payload()).toBe(response);
+  });
+
+  it("has no wrap: init is the one way to configure the client", async () => {
+    const HotUpdater = await importHotUpdater();
+
+    expect(HotUpdater).not.toHaveProperty("wrap");
+  });
 
   it("exposes the console ID through the existing getter only", async () => {
     const HotUpdater = await importHotUpdater();
@@ -208,10 +202,9 @@ describe("HotUpdater client initialization", () => {
       requestHeaders: { "x-api-key": "client-key" },
       requestTimeout: 1000,
     });
-    HotUpdater.wrap({
+    HotUpdater.init({
       baseURL: "https://other.example.com",
       plugins: [plugin],
-      updateStrategy: "appVersion",
     });
 
     expect(mocks.configurePlugins).toHaveBeenNthCalledWith(1, [plugin], {
@@ -227,9 +220,6 @@ describe("HotUpdater client initialization", () => {
       requestTimeout: undefined,
     });
     expect(mocks.init).toHaveBeenCalledWith(
-      expect.not.objectContaining({ plugins: expect.anything() }),
-    );
-    expect(mocks.wrap).toHaveBeenCalledWith(
       expect.not.objectContaining({ plugins: expect.anything() }),
     );
   });
@@ -331,14 +321,13 @@ describe("HotUpdater client initialization", () => {
     expect(mocks.init).not.toHaveBeenCalled();
   });
 
-  it("types init and wrap with baseURL but no resolver or catalogId", () => {
+  it("types init with baseURL but no resolver or catalogId", () => {
     const initOptions = {
       baseURL: "https://updates.example.com",
     } satisfies HotUpdaterInitOptions;
-    const wrapOptions = {
+    const resolvedOptions = {
       baseURL: async () => "https://updates.example.com",
-      updateStrategy: "appVersion",
-    } satisfies HotUpdaterOptions;
+    } satisfies HotUpdaterInitOptions;
 
     const assertRemovedInputsStayRejected = () => {
       // @ts-expect-error baseURL is required
@@ -357,7 +346,7 @@ describe("HotUpdater client initialization", () => {
 
     expect(assertRemovedInputsStayRejected).toBeTypeOf("function");
     expect(initOptions.baseURL).toBe("https://updates.example.com");
-    expect(wrapOptions.updateStrategy).toBe("appVersion");
+    expect(resolvedOptions.baseURL).toBeTypeOf("function");
   });
 
   it("merges settings into checks", async () => {
@@ -389,79 +378,12 @@ describe("HotUpdater client initialization", () => {
     });
   });
 
-  it("normalizes wrap with the same private client contract", async () => {
-    const client = { createSession: vi.fn() };
-    mocks.createHttpClient.mockReturnValue(client as never);
-    const HotUpdater = await importHotUpdater();
-
-    HotUpdater.wrap({
-      baseURL: "https://updates.example.com",
-      updateStrategy: "appVersion",
-    });
-
-    expect(mocks.wrap).toHaveBeenCalledWith({
-      client,
-      updateStrategy: "appVersion",
-    });
-  });
-
-  it.each([
-    ["init", "wrap"],
-    ["wrap", "init"],
-  ] as const)(
-    "reports %s and %s mixed usage exactly once",
-    async (first, second) => {
-      const consoleError = vi
-        .spyOn(console, "error")
-        .mockImplementation(() => undefined);
-      const HotUpdater = await importHotUpdater();
-      const configure = (api: "init" | "wrap") => {
-        if (api === "init") {
-          HotUpdater.init({ baseURL: "https://updates.example.com" });
-          return;
-        }
-        HotUpdater.wrap({
-          baseURL: "https://updates.example.com",
-          updateStrategy: "appVersion",
-        });
-      };
-
-      configure(first);
-      configure(second);
-      configure(second);
-
-      expect(consoleError).toHaveBeenCalledOnce();
-      expect(consoleError).toHaveBeenCalledWith(
-        expect.stringContaining(
-          "HotUpdater.init() and HotUpdater.wrap() must not be used together",
-        ),
-      );
-      expect(consoleError).toHaveBeenCalledWith(
-        expect.stringContaining(
-          "use HotUpdater.init() with HotUpdater.checkForUpdate()",
-        ),
-      );
-      consoleError.mockRestore();
-    },
-  );
-
-  it("rejects removed manual wrap options", async () => {
-    const HotUpdater = await importHotUpdater();
-
-    expect(() =>
-      HotUpdater.wrap({
-        baseURL: "https://updates.example.com",
-        updateMode: "manual",
-      } as never),
-    ).toThrow('HotUpdater.wrap({ updateMode: "manual" }) was removed');
-  });
-
   it("requires initialization before manual update APIs", async () => {
     const HotUpdater = await importHotUpdater();
 
     expect(() =>
       HotUpdater.checkForUpdate({ updateStrategy: "appVersion" }),
-    ).toThrow("requires HotUpdater.wrap() or HotUpdater.init() to be used");
+    ).toThrow("requires HotUpdater.init() to be called first");
   });
 
   it("keeps the install id and leaves user identity to the insights plugin", async () => {

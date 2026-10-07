@@ -15,8 +15,7 @@ app's base URL and headers, and keep small values on the device. The built-in
 contract;
 [server plugins](/docs/custom/server-plugins) extend the server side.
 
-Pass plugins to `plugins` in [`HotUpdater.init`](/docs/react-native-api/init)
-or [`HotUpdater.wrap`](/docs/react-native-api/wrap):
+Pass plugins to `plugins` in [`HotUpdater.init`](/docs/react-native-api/init):
 
 ```tsx title="App.tsx (excerpt)"
 HotUpdater.init({
@@ -52,12 +51,12 @@ export const launchLogger = () =>
   });
 ```
 
-- `id` is a non-empty string, unique among the app's plugins; `init` and
-  `wrap` throw when two plugins share one. It also scopes the plugin's
+- `id` is a non-empty string, unique among the app's plugins; `init` throws
+  when two plugins share one. It also scopes the plugin's
   [storage](#store-values-on-the-device).
-- `setup(context)` runs once per plugin object, when `init` or `wrap` first
+- `setup(context)` runs once per plugin object, when `init` first
   receives it, and returns the plugin's hooks, or nothing. Passing the same
-  object to a later `init` or `wrap` keeps its hooks; a plugin left out of a
+  object to a later `init` keeps its hooks; a plugin left out of a
   later call stops receiving events.
 - A plugin object can carry its own methods, as `insights()` does with
   `setUser` and `remoteConfig()` with its reads and fetches.
@@ -224,7 +223,7 @@ Hooks observe the update flow and cannot delay or change it:
 - The SDK calls a hook without waiting for it and ignores what it returns. An
   `async` hook runs in the background.
 - A hook that throws or rejects, or a `setup` that throws, is passed to the
-  `onError` of `init` or `wrap` as an `Error` whose `cause` is the thrown
+  `onError` of `init` as an `Error` whose `cause` is the thrown
   value, or logged with `console.warn` when there is no `onError`. The update
   continues, and a plugin whose `setup` threw gets no hooks.
 
@@ -263,7 +262,7 @@ sends the configured `requestHeaders`, with headers from the `RequestInit`
 taking precedence, and rejects with `Request timed out` once the configured
 `requestTimeout` passes, 5000 ms by default. An absolute URL rejects with a
 `TypeError`. A plugin gets its context in `setup`, so a plugin method called
-before `HotUpdater.init` or `wrap` has no `fetch` yet.
+before `HotUpdater.init` has no `fetch` yet.
 
 A route for the plugin lives in a [server plugin](/docs/custom/server-plugins)
 on the same server. On `handlers.client`, it sits behind the same client-route

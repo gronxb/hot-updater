@@ -59,8 +59,7 @@ management on the admin handler.
 ## Add the client plugin
 
 Create the plugin once, at module scope, with your in-app defaults, and pass
-it to `plugins` in [`HotUpdater.init`](/docs/react-native-api/init) or
-[`HotUpdater.wrap`](/docs/react-native-api/wrap). It fetches from the
+it to `plugins` in [`HotUpdater.init`](/docs/react-native-api/init). It fetches from the
 `baseURL`, `requestHeaders`, and `requestTimeout` you configure there, so it
 needs no URL or key of its own:
 
@@ -92,7 +91,7 @@ config.fetchAndActivate().catch(() => {
 });
 ```
 
-Reads are synchronous. Right after `init` or `wrap`, `config.getString(...)`
+Reads are synchronous. Right after `init`, `config.getString(...)`
 returns the values the app activated last, stored on the device, and before
 that the defaults:
 
