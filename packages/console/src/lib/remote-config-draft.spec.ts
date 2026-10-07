@@ -42,7 +42,11 @@ describe("draft edits", () => {
       valueType: "STRING",
       defaultValue: { useInAppDefault: true },
     });
-    expect(Object.keys(added.parameters)).toEqual(["welcome", "limit", "theme"]);
+    expect(Object.keys(added.parameters)).toEqual([
+      "welcome",
+      "limit",
+      "theme",
+    ]);
 
     const renamed = upsertParameter(added, "welcome", "greeting", {
       valueType: "STRING",
@@ -99,10 +103,15 @@ describe("draft edits", () => {
 
   it("summarizes what a publish changes", () => {
     const draft = moveCondition(
-      upsertParameter(removeParameter(template, "limit"), "welcome", "welcome", {
-        valueType: "STRING",
-        defaultValue: { value: "Hey" },
-      }),
+      upsertParameter(
+        removeParameter(template, "limit"),
+        "welcome",
+        "welcome",
+        {
+          valueType: "STRING",
+          defaultValue: { value: "Hey" },
+        },
+      ),
       0,
       1,
     );

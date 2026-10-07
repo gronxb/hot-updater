@@ -108,7 +108,10 @@ export function PreviewCard({
                 id={`${id}-platform`}
               >
                 <SelectValue>
-                  <PlatformIcon className="size-3.5" platform={device.platform} />
+                  <PlatformIcon
+                    className="size-3.5"
+                    platform={device.platform}
+                  />
                   {device.platform === "ios" ? "iOS" : "Android"}
                 </SelectValue>
               </SelectTrigger>
@@ -196,9 +199,10 @@ export function PreviewCard({
             className="divide-y rounded-lg border"
           >
             {keys.map((key) => {
-              const result = preview.data.status === "ok"
-                ? preview.data.parameters[key]
-                : undefined;
+              const result =
+                preview.data.status === "ok"
+                  ? preview.data.parameters[key]
+                  : undefined;
               return (
                 <div
                   className="grid gap-1 px-3 py-2.5 sm:grid-cols-[minmax(0,14rem)_minmax(0,1fr)_auto] sm:items-center sm:gap-3"
@@ -221,8 +225,8 @@ export function PreviewCard({
                     )}
                   </dd>
                   <dd>
-                    {result?.condition === undefined ? null : result.condition ===
-                      null ? (
+                    {result?.condition ===
+                    undefined ? null : result.condition === null ? (
                       <Badge variant="outline">Default value</Badge>
                     ) : (
                       <Badge variant="secondary">{result.condition}</Badge>

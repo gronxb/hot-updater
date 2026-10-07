@@ -135,9 +135,9 @@ export function ParametersCard({
   readonly onRemoveParameter: (key: string) => void;
   readonly onAddCondition: (condition: RemoteConfigCondition) => void;
 }) {
-  const [editing, setEditing] = useState<{ readonly key: string | null } | null>(
-    null,
-  );
+  const [editing, setEditing] = useState<{
+    readonly key: string | null;
+  } | null>(null);
   const [filter, setFilter] = useState("");
   const keys = Object.keys(template.parameters);
   const shown = keys.filter((key) =>
@@ -226,9 +226,7 @@ export function ParametersCard({
         onOpenChange={(open) => {
           if (!open) setEditing(null);
         }}
-        onSave={(key, parameter) =>
-          onSaveParameter(editingKey, key, parameter)
-        }
+        onSave={(key, parameter) => onSaveParameter(editingKey, key, parameter)}
         open={editing !== null}
         parameter={
           editingKey === null ? null : (template.parameters[editingKey] ?? null)

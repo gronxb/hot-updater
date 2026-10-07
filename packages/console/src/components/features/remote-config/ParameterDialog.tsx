@@ -39,7 +39,11 @@ import {
 } from "@/lib/remote-config-draft";
 
 import { ConditionDialog } from "./ConditionDialog";
-import { initialValueText, parameterValueError, ValueInput } from "./ValueInput";
+import {
+  initialValueText,
+  parameterValueError,
+  ValueInput,
+} from "./ValueInput";
 
 const VALUE_TYPES = Object.keys(VALUE_TYPE_LABELS) as RemoteConfigValueType[];
 
@@ -86,7 +90,7 @@ export function ParameterDialog({
 }) {
   return (
     <Dialog onOpenChange={onOpenChange} open={open}>
-      <DialogContent className="max-h-[calc(100svh-2rem)] overflow-y-auto sm:max-w-2xl">
+      <DialogContent className="max-h-[calc(100svh-2rem)] overflow-y-auto data-nested-dialog-open:after:absolute data-nested-dialog-open:after:inset-0 data-nested-dialog-open:after:rounded-xl data-nested-dialog-open:after:bg-background/70 sm:max-w-2xl">
         {open ? (
           <ParameterForm
             conditions={conditions}
@@ -128,9 +132,7 @@ function ParameterForm({
   const [valueType, setValueType] = useState<RemoteConfigValueType>(
     parameter?.valueType ?? "STRING",
   );
-  const [description, setDescription] = useState(
-    parameter?.description ?? "",
-  );
+  const [description, setDescription] = useState(parameter?.description ?? "");
   const [defaultValue, setDefaultValue] = useState<RemoteConfigParameterValue>(
     parameter?.defaultValue ?? { value: "" },
   );
@@ -194,186 +196,191 @@ function ParameterForm({
 
   return (
     <>
-    <form className="flex flex-col gap-4" noValidate onSubmit={submit}>
-      <DialogHeader>
-        <DialogTitle>
-          {parameterKey === null ? "Add parameter" : "Edit parameter"}
-        </DialogTitle>
-        <DialogDescription>
-          The app reads it with{" "}
-          <code className="font-mono">
-            config.{READ_METHODS[valueType]}("{key.trim() || "key"}")
-          </code>
-          .
-        </DialogDescription>
-      </DialogHeader>
-      <FieldGroup>
-        <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_11rem]">
-          <Field data-invalid={(submitted && keyError !== null) || undefined}>
-            <FieldLabel htmlFor={`${id}-key`}>Key</FieldLabel>
-            <Input
-              autoComplete="off"
-              autoFocus={parameterKey === null}
-              className="min-h-11 font-mono sm:min-h-9"
-              id={`${id}-key`}
-              maxLength={257}
-              onChange={(event) => setKey(event.target.value)}
-              placeholder="welcome_message"
-              spellCheck={false}
-              value={key}
-            />
-            <FieldError>{submitted ? keyError : null}</FieldError>
-          </Field>
-          <Field>
-            <FieldLabel htmlFor={`${id}-type`}>Type</FieldLabel>
-            <Select
-              items={VALUE_TYPE_LABELS}
-              onValueChange={(value) => {
-                if (value !== null) changeType(value as RemoteConfigValueType);
-              }}
-              value={valueType}
-            >
-              <SelectTrigger
-                className="min-h-11 w-full sm:min-h-9"
-                id={`${id}-type`}
-              >
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectGroup>
-                  {VALUE_TYPES.map((type) => (
-                    <SelectItem key={type} value={type}>
-                      {VALUE_TYPE_LABELS[type]}
-                    </SelectItem>
-                  ))}
-                </SelectGroup>
-              </SelectContent>
-            </Select>
-          </Field>
-        </div>
-        <Field data-invalid={description.length > 256 || undefined}>
-          <FieldLabel htmlFor={`${id}-description`}>Description</FieldLabel>
-          <Input
-            autoComplete="off"
-            className="min-h-11 sm:min-h-9"
-            id={`${id}-description`}
-            onChange={(event) => setDescription(event.target.value)}
-            placeholder="Optional: what the app does with it"
-            value={description}
-          />
-          <FieldError>
-            {description.length > 256 ? "Use 256 characters or fewer." : null}
-          </FieldError>
-        </Field>
-        <ValueInput
-          id={`${id}-default`}
-          label="Default value"
-          onChange={setDefaultValue}
-          showErrors={submitted}
-          value={defaultValue}
-          valueType={valueType}
-        />
-        <FieldSet>
-          <FieldLegend variant="label">Conditional values</FieldLegend>
-          <FieldDescription>
-            Devices that match a condition get its value. When several match,
-            the first in the Conditions list wins.
-          </FieldDescription>
-          {valued.length > 0 ? (
-            <ul className="flex flex-col gap-3">
-              {valued.map((condition) => (
-                <li className="rounded-lg border p-3" key={condition.name}>
-                  <div className="mb-2 flex items-start justify-between gap-2">
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-medium">
-                        {condition.name}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        {condition.rules.map(describeRule).join(" · ")}
-                      </p>
-                    </div>
-                    <Button
-                      aria-label={`Remove the value for ${condition.name}`}
-                      className="size-11 sm:size-7"
-                      onClick={() => {
-                        const { [condition.name]: _removed, ...rest } =
-                          conditionalValues;
-                        setConditionalValues(rest);
-                      }}
-                      size="icon-sm"
-                      type="button"
-                      variant="ghost"
-                    >
-                      <Trash2 />
-                    </Button>
-                  </div>
-                  <ValueInput
-                    id={`${id}-${condition.name}`}
-                    label={`Value for ${condition.name}`}
-                    onChange={(value) =>
-                      setConditionalValues({
-                        ...conditionalValues,
-                        [condition.name]: value,
-                      })
-                    }
-                    showErrors={submitted}
-                    value={conditionalValues[condition.name]!}
-                    valueType={valueType}
-                  />
-                </li>
-              ))}
-            </ul>
-          ) : null}
-          <div className="flex flex-wrap gap-2">
-            {unvalued.length > 0 ? (
+      <form className="flex flex-col gap-4" noValidate onSubmit={submit}>
+        <DialogHeader>
+          <DialogTitle>
+            {parameterKey === null ? "Add parameter" : "Edit parameter"}
+          </DialogTitle>
+          <DialogDescription>
+            The app reads it with{" "}
+            <code className="font-mono">
+              config.{READ_METHODS[valueType]}("{key.trim() || "key"}")
+            </code>
+            .
+          </DialogDescription>
+        </DialogHeader>
+        <FieldGroup>
+          <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_11rem]">
+            <Field data-invalid={(submitted && keyError !== null) || undefined}>
+              <FieldLabel htmlFor={`${id}-key`}>Key</FieldLabel>
+              <Input
+                autoComplete="off"
+                className="min-h-11 font-mono sm:min-h-9"
+                id={`${id}-key`}
+                maxLength={257}
+                onChange={(event) => setKey(event.target.value)}
+                placeholder="welcome_message"
+                spellCheck={false}
+                value={key}
+              />
+              <FieldError>{submitted ? keyError : null}</FieldError>
+            </Field>
+            <Field>
+              <FieldLabel htmlFor={`${id}-type`}>Type</FieldLabel>
               <Select
-                items={Object.fromEntries(
-                  unvalued.map(({ name }) => [name, name]),
-                )}
+                items={VALUE_TYPE_LABELS}
                 onValueChange={(value) => {
-                  if (value !== null) addValueFor(value);
+                  if (value !== null)
+                    changeType(value as RemoteConfigValueType);
                 }}
-                value={null}
+                value={valueType}
               >
                 <SelectTrigger
-                  aria-label="Add a value for a condition"
-                  className="min-h-11 w-full sm:min-h-9 sm:w-64"
+                  className="min-h-11 w-full sm:min-h-9"
+                  id={`${id}-type`}
                 >
-                  <Plus aria-hidden="true" className="size-3.5" />
-                  <SelectValue placeholder="Add a value for a condition" />
+                  <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectGroup>
-                    {unvalued.map(({ name }) => (
-                      <SelectItem key={name} value={name}>
-                        {name}
+                    {VALUE_TYPES.map((type) => (
+                      <SelectItem key={type} value={type}>
+                        {VALUE_TYPE_LABELS[type]}
                       </SelectItem>
                     ))}
                   </SelectGroup>
                 </SelectContent>
               </Select>
-            ) : null}
-            <Button
-              className="min-h-11 sm:min-h-7"
-              onClick={() => setAddingCondition(true)}
-              type="button"
-              variant="outline"
-            >
-              <Plus data-icon="inline-start" />
-              New condition
-            </Button>
+            </Field>
           </div>
-        </FieldSet>
-      </FieldGroup>
-      <DialogFooter>
-        <Button onClick={onCancel} type="button" variant="outline">
-          Cancel
-        </Button>
-        <Button type="submit">
-          {parameterKey === null ? "Add parameter" : "Save parameter"}
-        </Button>
-      </DialogFooter>
-    </form>
+          <Field data-invalid={description.length > 256 || undefined}>
+            <FieldLabel htmlFor={`${id}-description`}>Description</FieldLabel>
+            <Input
+              autoComplete="off"
+              className="min-h-11 sm:min-h-9"
+              id={`${id}-description`}
+              onChange={(event) => setDescription(event.target.value)}
+              placeholder="Optional: what the app does with it"
+              value={description}
+            />
+            <FieldError>
+              {description.length > 256 ? "Use 256 characters or fewer." : null}
+            </FieldError>
+          </Field>
+          <ValueInput
+            id={`${id}-default`}
+            label="Default value"
+            onChange={setDefaultValue}
+            showErrors={submitted}
+            value={defaultValue}
+            valueType={valueType}
+          />
+          <FieldSet>
+            <FieldLegend variant="label">Conditional values</FieldLegend>
+            <FieldDescription>
+              Devices that match a condition get its value. When several match,
+              the first in the Conditions list wins.
+            </FieldDescription>
+            {valued.length > 0 ? (
+              <ul className="flex flex-col gap-3">
+                {valued.map((condition) => (
+                  <li className="rounded-lg border p-3" key={condition.name}>
+                    <div className="mb-2 flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium">
+                          {condition.name}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {condition.rules.map(describeRule).join(" · ")}
+                        </p>
+                      </div>
+                      <Button
+                        aria-label={`Remove the value for ${condition.name}`}
+                        className="size-11 sm:size-7"
+                        onClick={() => {
+                          const { [condition.name]: _removed, ...rest } =
+                            conditionalValues;
+                          setConditionalValues(rest);
+                        }}
+                        size="icon-sm"
+                        type="button"
+                        variant="ghost"
+                      >
+                        <Trash2 />
+                      </Button>
+                    </div>
+                    <ValueInput
+                      id={`${id}-${condition.name}`}
+                      label={
+                        <>
+                          Value
+                          <span className="sr-only"> for {condition.name}</span>
+                        </>
+                      }
+                      onChange={(value) =>
+                        setConditionalValues({
+                          ...conditionalValues,
+                          [condition.name]: value,
+                        })
+                      }
+                      showErrors={submitted}
+                      value={conditionalValues[condition.name]!}
+                      valueType={valueType}
+                    />
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+            <div className="flex flex-wrap gap-2">
+              {unvalued.length > 0 ? (
+                <Select
+                  items={Object.fromEntries(
+                    unvalued.map(({ name }) => [name, name]),
+                  )}
+                  onValueChange={(value) => {
+                    if (value !== null) addValueFor(value);
+                  }}
+                  value={null}
+                >
+                  <SelectTrigger
+                    aria-label="Add a value for a condition"
+                    className="min-h-11 w-full sm:min-h-9 sm:w-64"
+                  >
+                    <Plus aria-hidden="true" className="size-3.5" />
+                    <SelectValue placeholder="Add a value for a condition" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectGroup>
+                      {unvalued.map(({ name }) => (
+                        <SelectItem key={name} value={name}>
+                          {name}
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
+                  </SelectContent>
+                </Select>
+              ) : null}
+              <Button
+                className="min-h-11 sm:min-h-7"
+                onClick={() => setAddingCondition(true)}
+                type="button"
+                variant="outline"
+              >
+                <Plus data-icon="inline-start" />
+                New condition
+              </Button>
+            </div>
+          </FieldSet>
+        </FieldGroup>
+        <DialogFooter>
+          <Button onClick={onCancel} type="button" variant="outline">
+            Cancel
+          </Button>
+          <Button type="submit">
+            {parameterKey === null ? "Add parameter" : "Save parameter"}
+          </Button>
+        </DialogFooter>
+      </form>
       <ConditionDialog
         condition={null}
         onOpenChange={setAddingCondition}

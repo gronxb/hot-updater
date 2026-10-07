@@ -106,7 +106,9 @@ describe("RemoteConfigPage", () => {
     expect(await screen.findByText("No parameters")).toBeDefined();
     expect(screen.getByText("Nothing published yet")).toBeDefined();
 
-    fireEvent.click(screen.getAllByRole("button", { name: "Add parameter" })[1]!);
+    fireEvent.click(
+      screen.getAllByRole("button", { name: "Add parameter" })[1]!,
+    );
     const dialog = lastDialog();
     fireEvent.change(dialog.getByLabelText("Key"), {
       target: { value: "welcome_message" },
@@ -175,7 +177,9 @@ describe("RemoteConfigPage", () => {
     fireEvent.change(lastDialog().getByLabelText("Key"), {
       target: { value: "banner" },
     });
-    fireEvent.click(lastDialog().getByRole("button", { name: "New condition" }));
+    fireEvent.click(
+      lastDialog().getByRole("button", { name: "New condition" }),
+    );
 
     const condition = lastDialog();
     fireEvent.change(condition.getByLabelText("Name"), {
@@ -193,9 +197,7 @@ describe("RemoteConfigPage", () => {
     const list = within(screen.getByRole("list", { name: "Parameters" }));
     expect(list.getByText("iOS users")).toBeDefined();
     expect(list.getByText("Hello, iOS")).toBeDefined();
-    expect(
-      screen.getByRole("tab", { name: /Conditions\s*1/u }),
-    ).toBeDefined();
+    expect(screen.getByRole("tab", { name: /Conditions\s*1/u })).toBeDefined();
   });
 
   it("offers to load or publish over a version someone else published meanwhile", async () => {
@@ -208,7 +210,9 @@ describe("RemoteConfigPage", () => {
       baseVersion: 0,
     });
     renderPage();
-    const list = within(await screen.findByRole("list", { name: "Parameters" }));
+    const list = within(
+      await screen.findByRole("list", { name: "Parameters" }),
+    );
     fireEvent.click(list.getByRole("button", { name: "Delete theme" }));
 
     // Another editor publishes version 2 before this one does.
@@ -242,13 +246,17 @@ describe("RemoteConfigPage", () => {
       baseVersion: 0,
     });
     renderPage();
-    const list = within(await screen.findByRole("list", { name: "Parameters" }));
+    const list = within(
+      await screen.findByRole("list", { name: "Parameters" }),
+    );
     fireEvent.click(list.getByRole("button", { name: "Delete theme" }));
     expect(screen.getByText("No parameters")).toBeDefined();
 
     fireEvent.click(screen.getByRole("button", { name: "Discard" }));
     expect(screen.getByText("theme")).toBeDefined();
-    expect(screen.queryByRole("button", { name: "Publish changes" })).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "Publish changes" }),
+    ).toBeNull();
   });
 
   it("keeps the open view in the route", async () => {

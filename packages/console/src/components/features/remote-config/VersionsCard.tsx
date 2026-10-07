@@ -281,7 +281,10 @@ export function VersionsCard({
                   variant="outline"
                 >
                   {versions.isFetchingNextPage ? (
-                    <Loader2 className="animate-spin" data-icon="inline-start" />
+                    <Loader2
+                      className="animate-spin"
+                      data-icon="inline-start"
+                    />
                   ) : null}
                   Load older versions
                 </Button>
@@ -304,7 +307,9 @@ export function VersionsCard({
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Roll back to version {restoring}?</AlertDialogTitle>
+            <AlertDialogTitle>
+              Roll back to version {restoring}?
+            </AlertDialogTitle>
             <AlertDialogDescription>
               Version {activeVersion + 1} will publish a copy of version{" "}
               {restoring}, and devices get its values on their next fetch.

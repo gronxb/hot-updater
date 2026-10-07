@@ -81,7 +81,9 @@ export const removeParameter = (
 ): RemoteConfigTemplate => ({
   ...template,
   parameters: Object.fromEntries(
-    Object.entries(template.parameters).filter(([existing]) => existing !== key),
+    Object.entries(template.parameters).filter(
+      ([existing]) => existing !== key,
+    ),
   ),
 });
 
@@ -168,7 +170,9 @@ export const parametersUsing = (
   name: string,
 ): string[] =>
   Object.entries(template.parameters)
-    .filter(([, parameter]) => parameter.conditionalValues?.[name] !== undefined)
+    .filter(
+      ([, parameter]) => parameter.conditionalValues?.[name] !== undefined,
+    )
     .map(([key]) => key);
 
 const listText = (values: readonly string[], limit = 3): string =>

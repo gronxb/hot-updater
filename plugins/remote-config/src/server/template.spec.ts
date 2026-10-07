@@ -81,7 +81,10 @@ describe("validateRemoteConfigTemplate", () => {
       issuesOf({
         conditions: [
           { name: "A", rules: [] },
-          { name: "A", rules: [{ type: "percent", seed: "s", from: 20, to: 10 }] },
+          {
+            name: "A",
+            rules: [{ type: "percent", seed: "s", from: 20, to: 10 }],
+          },
           { name: "B", rules: [{ type: "appVersion", range: "not a range" }] },
           { name: "C", rules: [{ type: "platform", platforms: ["web"] }] },
         ],
@@ -141,7 +144,9 @@ describe("validateRemoteConfigTemplate", () => {
       parameters: {
         big: {
           valueType: "STRING",
-          defaultValue: { value: "x".repeat(REMOTE_CONFIG_MAX_TEMPLATE_LENGTH) },
+          defaultValue: {
+            value: "x".repeat(REMOTE_CONFIG_MAX_TEMPLATE_LENGTH),
+          },
         },
       },
     });
@@ -198,7 +203,9 @@ describe("evaluateRemoteConfig", () => {
           },
         },
       };
-      return Array.from({ length: 1000 }, (_, index) => String(index + 1)).filter(
+      return Array.from({ length: 1000 }, (_, index) =>
+        String(index + 1),
+      ).filter(
         (cohort) =>
           resolveRemoteConfigValues(rollout, { cohort }).on === "true",
       );

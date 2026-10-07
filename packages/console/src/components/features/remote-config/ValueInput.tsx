@@ -1,4 +1,5 @@
 import { Braces } from "lucide-react";
+import type { ReactNode } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Field, FieldError, FieldLabel } from "@/components/ui/field";
@@ -42,7 +43,8 @@ export function ValueInput({
   showErrors,
 }: {
   readonly id: string;
-  readonly label: string;
+  /** The visible label; it names the toggle group too when that is text. */
+  readonly label: ReactNode;
   readonly valueType: RemoteConfigValueType;
   readonly value: RemoteConfigParameterValue;
   readonly onChange: (value: RemoteConfigParameterValue) => void;
@@ -57,10 +59,13 @@ export function ValueInput({
   return (
     <Field data-invalid={error !== null || undefined}>
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <FieldLabel htmlFor={id}>{label}</FieldLabel>
-        <label className="flex min-h-11 items-center gap-2 text-xs text-muted-foreground sm:min-h-0">
+        <FieldLabel htmlFor={id} id={`${id}-label`}>
+          {label}
+        </FieldLabel>
+        <div className="flex min-h-11 items-center gap-2 text-xs text-muted-foreground sm:min-h-0">
           <Switch
             checked={inAppDefault}
+            id={`${id}-in-app-default`}
             onCheckedChange={(checked) =>
               onChange(
                 checked
@@ -69,8 +74,8 @@ export function ValueInput({
               )
             }
           />
-          Use in-app default
-        </label>
+          <label htmlFor={`${id}-in-app-default`}>Use in-app default</label>
+        </div>
       </div>
       {inAppDefault ? (
         <p
@@ -82,7 +87,7 @@ export function ValueInput({
         </p>
       ) : valueType === "BOOLEAN" ? (
         <ToggleGroup
-          aria-label={label}
+          aria-labelledby={`${id}-label`}
           id={id}
           onValueChange={(values) => {
             const [next] = values as string[];

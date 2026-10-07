@@ -119,7 +119,9 @@ export class RemoteConfigValidationError extends Error {
       `The Remote Config template is invalid: ${issues
         .slice(0, 3)
         .map(({ path, message }) => (path ? `${path}: ${message}` : message))
-        .join("; ")}${issues.length > 3 ? ` (and ${issues.length - 3} more)` : ""}`,
+        .join(
+          "; ",
+        )}${issues.length > 3 ? ` (and ${issues.length - 3} more)` : ""}`,
     );
   }
 }
@@ -256,10 +258,7 @@ export const validateRemoteConfigTemplate = (
       );
       const valueType = raw.valueType;
       if (typeof valueType !== "string" || !VALUE_TYPES.has(valueType)) {
-        issue(
-          `${path}.valueType`,
-          "must be STRING, NUMBER, BOOLEAN, or JSON.",
-        );
+        issue(`${path}.valueType`, "must be STRING, NUMBER, BOOLEAN, or JSON.");
         continue;
       }
       const type = valueType as RemoteConfigValueType;
@@ -291,12 +290,8 @@ export const validateRemoteConfigTemplate = (
         }
         return { value: value.value };
       };
-      const defaultValue = readValue(
-        raw.defaultValue,
-        `${path}.defaultValue`,
-      );
-      const conditionalValues: Record<string, RemoteConfigParameterValue> =
-        {};
+      const defaultValue = readValue(raw.defaultValue, `${path}.defaultValue`);
+      const conditionalValues: Record<string, RemoteConfigParameterValue> = {};
       if (raw.conditionalValues !== undefined) {
         if (!isRecord(raw.conditionalValues)) {
           issue(
@@ -384,15 +379,14 @@ const textList = (
   return list;
 };
 
-const RULE_FIELDS: Readonly<Record<RemoteConfigRuleType, readonly string[]>> =
-  {
-    platform: ["type", "platforms"],
-    channel: ["type", "channels"],
-    appVersion: ["type", "range"],
-    cohort: ["type", "cohorts"],
-    percent: ["type", "seed", "from", "to"],
-    fingerprint: ["type", "hashes"],
-  };
+const RULE_FIELDS: Readonly<Record<RemoteConfigRuleType, readonly string[]>> = {
+  platform: ["type", "platforms"],
+  channel: ["type", "channels"],
+  appVersion: ["type", "range"],
+  cohort: ["type", "cohorts"],
+  percent: ["type", "seed", "from", "to"],
+  fingerprint: ["type", "hashes"],
+};
 
 const validateRules = (
   value: unknown,
@@ -476,10 +470,7 @@ const validateRules = (
       case "percent": {
         const { seed, from, to } = raw;
         if (typeof seed !== "string" || !SEED_PATTERN.test(seed)) {
-          issue(
-            `${rulePath}.seed`,
-            "must be 1-64 letters, digits, _, and -.",
-          );
+          issue(`${rulePath}.seed`, "must be 1-64 letters, digits, _, and -.");
           return;
         }
         // Tenths of a percent: one numeric cohort each.

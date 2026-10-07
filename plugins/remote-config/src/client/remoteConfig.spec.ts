@@ -69,9 +69,11 @@ describe("remoteConfig() client plugin", () => {
 
     const missing = config.getValue("unknown");
     expect(missing.getSource()).toBe("static");
-    expect([missing.asString(), missing.asNumber(), missing.asBoolean()]).toEqual(
-      ["", 0, false],
-    );
+    expect([
+      missing.asString(),
+      missing.asNumber(),
+      missing.asBoolean(),
+    ]).toEqual(["", 0, false]);
     expect(config.lastFetchStatus).toBe("no-fetch-yet");
     expect(config.fetchTimeMillis).toBe(-1);
     expect(config.activeVersion).toBe(0);
@@ -213,7 +215,11 @@ describe("remoteConfig() client plugin", () => {
   it("shares one request between concurrent fetches", async () => {
     const { config } = launch({ minimumFetchIntervalMs: 0 });
     responses.push(() => values({ version: 1, values: {} }));
-    await Promise.all([config.fetch(), config.fetch(), config.fetchAndActivate()]);
+    await Promise.all([
+      config.fetch(),
+      config.fetch(),
+      config.fetchAndActivate(),
+    ]);
     expect(requests).toHaveLength(1);
   });
 

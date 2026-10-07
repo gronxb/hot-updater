@@ -39,7 +39,11 @@ import { VersionsCard } from "./VersionsCard";
 
 dayjs.extend(relativeTime);
 
-export type RemoteConfigTab = "parameters" | "conditions" | "preview" | "versions";
+export type RemoteConfigTab =
+  | "parameters"
+  | "conditions"
+  | "preview"
+  | "versions";
 
 export const REMOTE_CONFIG_TABS: readonly RemoteConfigTab[] = [
   "parameters",
@@ -86,7 +90,9 @@ export function RemoteConfigPage({
     return () => window.removeEventListener("beforeunload", warn);
   }, [dirty]);
 
-  const edit = (change: (template: RemoteConfigTemplate) => RemoteConfigTemplate) => {
+  const edit = (
+    change: (template: RemoteConfigTemplate) => RemoteConfigTemplate,
+  ) => {
     if (published === undefined || template === undefined) return;
     setDraft({
       baseVersion: draft?.baseVersion ?? published.version,
@@ -95,7 +101,8 @@ export function RemoteConfigPage({
   };
 
   const counts = {
-    parameters: template === undefined ? null : Object.keys(template.parameters).length,
+    parameters:
+      template === undefined ? null : Object.keys(template.parameters).length,
     conditions: template?.conditions.length ?? null,
   };
 
@@ -207,7 +214,7 @@ export function RemoteConfigPage({
           >
             <TabsList
               aria-label="Remote Config views"
-              className="h-auto w-full justify-start overflow-x-auto sm:w-fit"
+              className="max-w-full group-data-horizontal/tabs:h-auto"
             >
               {(
                 [
@@ -245,7 +252,9 @@ export function RemoteConfigPage({
                 <TabsContent value="parameters">
                   <ParametersCard
                     onAddCondition={(condition) =>
-                      edit((current) => upsertCondition(current, null, condition))
+                      edit((current) =>
+                        upsertCondition(current, null, condition),
+                      )
                     }
                     onRemoveParameter={(key) =>
                       edit((current) => removeParameter(current, key))

@@ -343,7 +343,9 @@ function ConditionForm({
     onSave({
       name: name.trim(),
       rules: rules.map((rule) =>
-        rule.type === "appVersion" ? { ...rule, range: rule.range.trim() } : rule,
+        rule.type === "appVersion"
+          ? { ...rule, range: rule.range.trim() }
+          : rule,
       ),
     });
   };
@@ -415,7 +417,9 @@ function ConditionForm({
                     rule={rule}
                   />
                   <FieldDescription>{RULE_HINTS[rule.type]}</FieldDescription>
-                  <FieldError>{submitted ? ruleErrors[index] : null}</FieldError>
+                  <FieldError>
+                    {submitted ? ruleErrors[index] : null}
+                  </FieldError>
                 </Field>
               </li>
             ))}

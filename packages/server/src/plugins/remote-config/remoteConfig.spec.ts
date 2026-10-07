@@ -43,7 +43,8 @@ const start = async () => {
     plugins: [apiKeys(), remoteConfig()],
   });
   await hotUpdater.api.apiKeys.register({ apiKey: API_KEY, name: "App" });
-  const route = (handler: (request: Request) => Promise<Response>) =>
+  const route =
+    (handler: (request: Request) => Promise<Response>) =>
     (path: string, init: RequestInit = {}) =>
       handler(new Request(mounted(path), init));
   return {

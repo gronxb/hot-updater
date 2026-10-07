@@ -6,7 +6,6 @@ import {
   type InsightsApi,
   type InsightsModel,
 } from "@hot-updater/server/plugins/insights";
-
 import type { RemoteConfigApi } from "@hot-updater/server/plugins/remote-config";
 
 import type { ConsoleFeature } from "../console-features";

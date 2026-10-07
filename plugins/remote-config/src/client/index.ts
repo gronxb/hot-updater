@@ -228,7 +228,7 @@ export const remoteConfig = <
 
   const notify = () => {
     snapshot = null;
-    for (const listener of [...listeners]) {
+    for (const listener of listeners) {
       try {
         listener();
       } catch (error) {

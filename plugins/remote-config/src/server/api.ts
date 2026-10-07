@@ -153,7 +153,11 @@ export const createRemoteConfigApi = ({
   const readActive = async (): Promise<RemoteConfigActive> => {
     const row = await db.findOne("remote_config_active", { id: ACTIVE_ID });
     return row === null
-      ? { version: 0, template: EMPTY_REMOTE_CONFIG_TEMPLATE, updatedAtMs: null }
+      ? {
+          version: 0,
+          template: EMPTY_REMOTE_CONFIG_TEMPLATE,
+          updatedAtMs: null,
+        }
       : {
           version: row.version,
           template: fromColumn(row.template),

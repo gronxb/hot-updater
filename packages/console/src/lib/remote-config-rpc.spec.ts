@@ -83,7 +83,9 @@ const remoteRuntime = (serverPlugins = [remoteConfig()]) => {
     clientAccess: "public",
   });
   const fetchAdmin = vi.fn((path: string, init?: RequestInit) =>
-    server.handlers.admin(new Request(`https://admin.example.com${path}`, init)),
+    server.handlers.admin(
+      new Request(`https://admin.example.com${path}`, init),
+    ),
   );
   return {
     server,
@@ -177,7 +179,9 @@ describe("previewRemoteConfigRpc", () => {
       }),
     ).resolves.toMatchObject({ status: "invalid" });
     await expect(
-      previewRemoteConfigRpc({ data: { template, context: { platform: "web" } } }),
+      previewRemoteConfigRpc({
+        data: { template, context: { platform: "web" } },
+      }),
     ).rejects.toThrow("platform");
   });
 });

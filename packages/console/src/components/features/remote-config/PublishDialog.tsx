@@ -118,9 +118,7 @@ export function PublishDialog({
         onPublished();
       }
     } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : "Unable to publish",
-      );
+      toast.error(error instanceof Error ? error.message : "Unable to publish");
     }
   };
 
@@ -132,8 +130,7 @@ export function PublishDialog({
             <DialogTitle>Publish changes</DialogTitle>
             <DialogDescription>
               This becomes version {baseVersion + 1}. Devices get its values on
-              their next fetch; earlier versions stay available to roll back
-              to.
+              their next fetch; earlier versions stay available to roll back to.
             </DialogDescription>
           </DialogHeader>
           <div className="flex flex-col gap-3 rounded-lg border p-3">
