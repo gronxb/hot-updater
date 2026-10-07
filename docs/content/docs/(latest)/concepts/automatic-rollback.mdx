@@ -13,7 +13,7 @@ Automatic rollback prevents a bad OTA bundle from trapping users in a crash loop
 Hot Updater first launches a newly installed bundle in a temporary state, keeping the last known-good bundle as a fallback. It treats the new bundle as safe after startup succeeds.
 
 For a custom update flow, call [`HotUpdater.init()`](/docs/react-native-api/init)
-once at the top level of your app's entry module. The SDK waits for native
+once at the top level of its own module, such as `src/hotUpdater.ts`. The SDK waits for native
 launch verification internally; your app chooses when to check and stage updates.
 
 ## Core mechanism

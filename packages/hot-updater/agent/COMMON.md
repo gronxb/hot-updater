@@ -304,8 +304,9 @@ separate validation result.
     ```
 <!-- end -->
 
-    Explain that init runs once, at the top level of a module, and does not
-    check for updates by itself.
+    Explain that this belongs in its own module, such as `src/hotUpdater.ts`,
+    that init runs once at its top level and returns the instance the app
+    imports, and that it does not check for updates by itself.
 <!-- if clientPlugins -->
     Without its client plugins, the app sends the server's plugins nothing.
 <!-- end -->

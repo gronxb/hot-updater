@@ -116,7 +116,7 @@ existing `Bugsnag.start` options, retaining the rest of your configuration:
 ```tsx title="App.tsx"
 import Bugsnag from "@bugsnag/react-native";
 
-import { hotUpdater } from "./hotUpdater";
+import { hotUpdater } from "./src/hotUpdater"; // [!code ++]
 
 Bugsnag.start({
   // Keep your existing BugSnag options.

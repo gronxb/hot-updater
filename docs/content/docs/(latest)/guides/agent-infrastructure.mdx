@@ -271,8 +271,8 @@ Provider tokens, service-role keys, admin credentials and signing keys remain
 private. The deployed server runs `insights()`, so the snippet includes the
 [Insights plugin](/docs/react-native-api/insights) that reports to it.
 
-Place initialization at module scope, once. `HotUpdater.init` does not start an
-update check; the agent also shows `hotUpdater.wrap` around the app's root, or
+Place initialization once, at the top level of its own module such as
+`src/hotUpdater.ts`. `HotUpdater.init` does not start an update check; the agent also shows `hotUpdater.wrap` around the app's root, or
 `hotUpdater.checkForUpdate` in your own flow, with your app's `appVersion` or
 `fingerprint` strategy. Preserve existing initialization options.
 Infrastructure-only setup includes this snippet and identifies app integration

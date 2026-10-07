@@ -249,6 +249,43 @@ describe("insights() client plugin", () => {
     ).toBe(true);
   });
 
+  it("keeps each instance's reports on its own server when one plugin object is set up twice", async () => {
+    const plugin = insights();
+    const runtimeFor = (baseURL: string) =>
+      setupClientPlugin(plugin, {
+        baseURL,
+        respond: (request) => {
+          sent.push(request);
+          return new Response(null, { status: 204 });
+        },
+        storage: createTestStorage(),
+        installId,
+        appVersion,
+        sdkVersion: "test-sdk-version",
+        isDebugBuild,
+        bundleId: "bundle-a",
+        channel: "production",
+        cohort: "123",
+        fingerprintHash: "fingerprint-hash",
+      });
+    const first = runtimeFor("https://first.example.com");
+    const second = runtimeFor("https://second.example.com");
+
+    first.hooks.onAppReady?.(unchangedLaunch());
+    await flush();
+    second.hooks.onAppReady?.(unchangedLaunch({ releaseId: "release-b" }));
+    await flush();
+
+    expect(sent.map((request) => request.url)).toEqual([
+      "https://first.example.com/events",
+      "https://second.example.com/events",
+    ]);
+    expect(sentEvents().map(({ toReleaseId }) => toReleaseId)).toEqual([
+      "release-a",
+      "release-b",
+    ]);
+  });
+
   it("posts a launch as UNCHANGED with the app's identity", async () => {
     const app = await launch();
 

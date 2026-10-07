@@ -95,7 +95,21 @@ const normalizeUserId = (user: InsightsUser | null): string | null => {
  * hotUpdater.insights.setUser({ userId: "user-123" });
  * ```
  */
-export const insights = (options: InsightsOptions = {}): InsightsPlugin => {
+export const insights = (options: InsightsOptions = {}): InsightsPlugin =>
+  defineClientPlugin({
+    id: "insights",
+    setup: (pluginContext) => setUpInsights(options, pluginContext),
+  });
+
+/**
+ * One instance's Insights: its context, device state, and delivery queue,
+ * created by each `setup`, so a plugin object set up by two instances keeps
+ * their reports apart.
+ */
+const setUpInsights = (
+  options: InsightsOptions,
+  pluginContext: HotUpdaterClientContext,
+) => {
   let context: HotUpdaterClientContext | null = null;
   let state: InsightsState | null = null;
   /** A download in this runtime: a later no-change report would hide it. */
@@ -362,31 +376,26 @@ export const insights = (options: InsightsOptions = {}): InsightsPlugin => {
     else state.forgetReport();
   };
 
-  return defineClientPlugin({
-    id: "insights",
-    setup(pluginContext) {
-      context = pluginContext;
-      const pluginState = createInsightsState(pluginContext.storage);
-      state = pluginState;
-      const api: InsightsClient = Object.freeze({
-        setUser: (user: InsightsUser | null) => {
-          pluginState.writeUserId(normalizeUserId(user));
-        },
-      });
-      // A debug build keeps the user, but reports nothing.
-      if (pluginContext.isDebugBuild && options.debug !== true) return { api };
-
-      send = createInsightsEventSender(pluginContext.fetch, { admit, settle });
-      return {
-        api,
-        hooks: {
-          onAppReady,
-          onUpdateCheck,
-          onBundleDownloaded,
-          onUpdateError,
-          onHttpResponse,
-        },
-      };
+  context = pluginContext;
+  const pluginState = createInsightsState(pluginContext.storage);
+  state = pluginState;
+  const api: InsightsClient = Object.freeze({
+    setUser: (user: InsightsUser | null) => {
+      pluginState.writeUserId(normalizeUserId(user));
     },
   });
+  // A debug build keeps the user, but reports nothing.
+  if (pluginContext.isDebugBuild && options.debug !== true) return { api };
+
+  send = createInsightsEventSender(pluginContext.fetch, { admit, settle });
+  return {
+    api,
+    hooks: {
+      onAppReady,
+      onUpdateCheck,
+      onBundleDownloaded,
+      onUpdateError,
+      onHttpResponse,
+    },
+  };
 };

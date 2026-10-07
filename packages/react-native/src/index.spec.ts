@@ -463,6 +463,19 @@ describe("HotUpdater client initialization", () => {
       .mockReturnValueOnce(first as never)
       .mockReturnValueOnce(second as never);
     const onError = vi.fn();
+    const firstEmit = vi.fn();
+    const secondEmit = vi.fn();
+    mocks.createLaunchReporter
+      .mockReturnValueOnce({
+        read: mocks.readLaunch,
+        appReady: Promise.resolve(),
+        emit: firstEmit,
+      })
+      .mockReturnValueOnce({
+        read: mocks.readLaunch,
+        appReady: Promise.resolve(),
+        emit: secondEmit,
+      });
     const HotUpdater = await importHotUpdater();
     const firstInstance = HotUpdater.init({
       baseURL: "https://updates.example.com",
@@ -479,7 +492,7 @@ describe("HotUpdater client initialization", () => {
 
     expect(mocks.checkForUpdate).toHaveBeenNthCalledWith(1, {
       client: first,
-      emit: mocks.emit,
+      emit: firstEmit,
       onError: undefined,
       requestHeaders: { Authorization: "Bearer first" },
       requestTimeout: undefined,
@@ -487,7 +500,7 @@ describe("HotUpdater client initialization", () => {
     });
     expect(mocks.checkForUpdate).toHaveBeenNthCalledWith(2, {
       client: second,
-      emit: mocks.emit,
+      emit: secondEmit,
       onError,
       requestHeaders: {},
       requestTimeout: 1000,

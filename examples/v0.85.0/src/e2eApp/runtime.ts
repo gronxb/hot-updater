@@ -53,7 +53,8 @@ type UpdateProgressDetails = {
   }[];
 };
 
-// One plugin object per runtime: init again keeps its state and its API.
+// The plugins every init here sets up; each instance init returns sets them up
+// again, with its own state and API.
 const analytics = insights();
 // The Remote Config scenario's parameters, with the defaults the app ships.
 // It fetches every time it is asked, so a scenario never waits out an interval.

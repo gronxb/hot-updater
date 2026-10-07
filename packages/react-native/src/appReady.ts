@@ -109,7 +109,7 @@ const notifyAppReady = async (
 export interface LaunchReporter {
   /**
    * Reads this launch once native finalizes it and reports it to the
-   * plugins, once. It never rejects.
+   * plugins, once. It rejects only if `onError` throws.
    */
   read(
     options: NotifyAppReadyOptions,
