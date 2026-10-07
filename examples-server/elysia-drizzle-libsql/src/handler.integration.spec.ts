@@ -133,9 +133,13 @@ describe("Hot Updater Handler Integration Tests (Elysia)", () => {
       },
       received_at_ms: 100,
     };
+    // The next apply moves the installation to another bundle; one of the
+    // bundle it already runs would be late and move no head.
     const next = {
       ...previous,
       id: "00000000-0000-7000-8000-000000009881",
+      from_bundle_id: previous.to_bundle_id,
+      to_bundle_id: "00000000-0000-7000-8000-000000009882",
       received_at_ms: 200,
     };
     await insights.recordEvent({ event: previous });
