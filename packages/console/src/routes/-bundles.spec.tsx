@@ -250,6 +250,36 @@ describe("BundlesPage", () => {
     });
   });
 
+  it("opens a Bundle from anywhere on its mobile card, except the card's controls", () => {
+    mocks.isMobile.mockReturnValue(true);
+    render(<BundlesPage />);
+    const card = screen.getByRole("article", { name: "Bundle release-1" });
+
+    fireEvent.click(within(card).getByText("Platform"));
+
+    expect(mocks.navigate).toHaveBeenCalledWith({
+      resetScroll: false,
+      search: { releaseId: "release-1" },
+      to: "/",
+    });
+
+    mocks.navigate.mockClear();
+    const insights = within(card).getByRole("link", {
+      name: /Downloaded 107 Launched 98 Crashed 2/,
+    });
+    // jsdom can't follow a link; the card must still leave it alone.
+    insights.addEventListener("click", (event) => event.preventDefault());
+    fireEvent.click(insights);
+    fireEvent.click(
+      within(card).getByRole("button", {
+        name: "Show advanced artifact diagnostics",
+      }),
+    );
+
+    expect(mocks.navigate).not.toHaveBeenCalled();
+    expect(screen.getByText("Advanced artifact diagnostics")).toBeDefined();
+  });
+
   it("keeps a default Bundle row focused on delivery decisions", () => {
     render(<BundlesPage />);
     const row = screen.getByRole("row", {

@@ -13,7 +13,7 @@ import {
   Tags,
   X,
 } from "lucide-react";
-import { Fragment, useEffect, useState } from "react";
+import { Fragment, type MouseEvent, useEffect, useState } from "react";
 
 import { BundleIdDisplay } from "@/components/BundleIdDisplay";
 import { ChannelBadge } from "@/components/ChannelBadge";
@@ -83,6 +83,21 @@ const dateFormatter = new Intl.DateTimeFormat(undefined, {
 const tableDateFormatter = new Intl.DateTimeFormat(undefined, {
   dateStyle: "medium",
 });
+
+/**
+ * Opens a bundle from a click anywhere on its row or card, except on a
+ * control inside it, which keeps its own action.
+ */
+const openOutsideControls =
+  (open: () => void) => (event: MouseEvent<HTMLElement>) => {
+    if (
+      event.target instanceof Element &&
+      event.target.closest("button, a, input, select, textarea")
+    ) {
+      return;
+    }
+    open();
+  };
 
 export const Route = createFileRoute("/")({
   component: BundlesPage,
@@ -527,12 +542,23 @@ function BundlesPage() {
 
                     return (
                       <Fragment key={release.id}>
+                        {/* The ID button opens it for keyboards and screen
+                            readers; a tap anywhere else on the card does too. */}
                         <article
+                          aria-label={`Bundle ${release.id}`}
                           className={cn(
-                            "flex flex-col gap-4 border-b p-4 last:border-b-0",
+                            "flex cursor-pointer touch-manipulation flex-col gap-4 border-b p-4 transition-[background-color,filter] last:border-b-0 hover:bg-muted/10 active:bg-muted/20 motion-reduce:transition-none data-[state=selected]:bg-muted/15",
                             release.currentlyUnreachable &&
-                              "bg-muted/35 saturate-50 transition-[background-color,filter] focus-within:saturate-100 motion-reduce:transition-none",
+                              "bg-muted/35 saturate-50 hover:bg-muted/50 hover:saturate-100 focus-within:saturate-100",
                             isExpanded && "border-b-0 bg-primary/5",
+                          )}
+                          data-state={
+                            search.releaseId === release.id
+                              ? "selected"
+                              : undefined
+                          }
+                          onClick={openOutsideControls(() =>
+                            go({ ...search, releaseId: release.id }, false),
                           )}
                         >
                           <div className="flex items-start justify-between gap-3">
@@ -703,17 +729,9 @@ function BundlesPage() {
                                   ? "selected"
                                   : undefined
                               }
-                              onClick={(event) => {
-                                if (
-                                  event.target instanceof Element &&
-                                  event.target.closest(
-                                    "button, a, input, select, textarea",
-                                  )
-                                ) {
-                                  return;
-                                }
-                                go({ ...search, releaseId: release.id }, false);
-                              }}
+                              onClick={openOutsideControls(() =>
+                                go({ ...search, releaseId: release.id }, false),
+                              )}
                               onKeyDown={(event) => {
                                 if (
                                   event.target !== event.currentTarget ||
