@@ -149,11 +149,11 @@ describe("InstallationsPage", () => {
     expect(screen.getByRole("heading", { name: "All events" })).toBeDefined();
     expect(
       screen.getByText(
-        "Downloads, applies, recoveries, update failures, and launches that changed what an installation runs, newest first, kept for 90 days. A launch that changes nothing counts in App usage and in its installation's latest report.",
+        "Downloads, launches, crashes, update failures, and other changes to what an installation runs, newest first, kept for 90 days. Launches that change nothing aren't listed.",
       ),
     ).toBeDefined();
     // Launch reports older servers stored for every launch still show.
-    for (const label of ["Launch", "Update applied", "Recovered"]) {
+    for (const label of ["Launch", "Launched", "Crashed"]) {
       expect(screen.getAllByText(label).length).toBeGreaterThan(0);
     }
 

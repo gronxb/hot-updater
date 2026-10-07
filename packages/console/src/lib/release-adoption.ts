@@ -43,11 +43,12 @@ export type AdoptionReleaseResult = {
 };
 
 /**
- * The reports Release health charts per bundle: launches (apply reports, and
- * the kept reports that moved an installation to the bundle with no apply
- * report) and recoveries.
+ * What Release health charts per bundle: downloads (download reports, and
+ * the downloads a launch or crash implied when its download report never
+ * arrived), launches (apply reports, and the kept reports that moved an
+ * installation to the bundle with no apply report), and recoveries.
  */
-export type BundleEventType = "LAUNCHED" | "RECOVERED";
+export type BundleEventType = "DOWNLOADED" | "LAUNCHED" | "RECOVERED";
 
 /** One bundle's reports of one type over the period that ends at `endMs`. */
 export type BundleEventsInput = AdoptionReleasesInput & {
@@ -59,10 +60,10 @@ export type BundleEventsInput = AdoptionReleasesInput & {
 };
 
 /**
- * A bundle's reports of one type in each interval of the period, every
- * interval present: launches of it or recoveries from it. Each counts an
- * installation once when it first reports running the bundle, or crashing
- * on it; one that comes back to the bundle counts again.
+ * A bundle's counts of one type in each interval of the period, every
+ * interval present: downloads of it, launches of it, or recoveries from it.
+ * Each counts an installation once when it downloads the bundle, first
+ * reports running it, or crashes on it; one that comes back counts again.
  */
 export type BundleEventsSeries = {
   readonly bundleId: string;
@@ -124,7 +125,9 @@ export function readBundleEventsInput(
     input.endMs <= 0 ||
     input.endMs % HOUR_MS !== 0 ||
     !isText(input.bundleId) ||
-    (input.type !== "LAUNCHED" && input.type !== "RECOVERED")
+    (input.type !== "DOWNLOADED" &&
+      input.type !== "LAUNCHED" &&
+      input.type !== "RECOVERED")
   )
     invalid();
   return {
@@ -138,21 +141,21 @@ export function readBundleEventsInput(
 
 /**
  * Of the installations that tried a bundle, the share whose launch crashed
- * and recovered: an installation that crashes may never report the apply,
- * so attempts count both.
+ * and rolled back: one that crashes never reports a launch, so attempts
+ * count both.
  */
-export const crashRateOf = (applied: number, recovered: number) => {
-  const attempts = applied + recovered;
+export const crashRateOf = (launched: number, recovered: number) => {
+  const attempts = launched + recovered;
   return { attempts, rate: attempts === 0 ? 0 : recovered / attempts };
 };
 
 /** Whether a bundle's crashes call for rolling it back. */
 export const recommendsRollback = (
   release: Pick<AdoptionRelease, "enabled">,
-  applied: number,
+  launched: number,
   recovered: number,
 ) => {
-  const { attempts, rate } = crashRateOf(applied, recovered);
+  const { attempts, rate } = crashRateOf(launched, recovered);
   return (
     release.enabled &&
     attempts >= CRASH_MIN_ATTEMPTS &&

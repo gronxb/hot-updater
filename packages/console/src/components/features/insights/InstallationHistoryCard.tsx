@@ -181,7 +181,7 @@ export function InstallationHistoryCard({
                 {pendingBundleId ? (
                   <div className="col-span-2 min-w-0">
                     <dt className="text-xs text-muted-foreground">
-                      Downloaded · Pending apply
+                      Downloaded · Not launched yet
                     </dt>
                     <dd className="mt-1 text-xs">
                       <HashValueDisplay value={pendingBundleId} />
