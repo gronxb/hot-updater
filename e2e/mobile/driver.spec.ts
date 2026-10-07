@@ -43,10 +43,12 @@ function fixture(platform: "ios" | "android" = "ios") {
         calls.push("visible");
       }),
       toHaveText: vi.fn(async (expected: string) => {
+        calls.push("text");
         if (locator.text !== expected)
           throw new Error(`expected text ${expected}, got ${locator.text}`);
       }),
       toContainText: vi.fn(async (expected: string | RegExp) => {
+        calls.push("text");
         const found =
           typeof expected === "string"
             ? locator.text.includes(expected)
@@ -79,13 +81,13 @@ function fixture(platform: "ios" | "android" = "ios") {
         return {};
       },
     ),
+    // An action route reports progress as soon as the app has opened it.
+    readScreenStateField: vi.fn(
+      async (_field: string): Promise<string | undefined> =>
+        "current-channel -> checking",
+    ),
     waitForScreenStateField: vi.fn(
-      async (
-        _stage: string,
-        _field: string,
-        options?: { onPending?: () => Promise<void> },
-      ) => {
-        await options?.onPending?.();
+      async (_stage: string, _field: string, _options?: object) => {
         calls.push("wait-result");
         return {};
       },
@@ -179,14 +181,8 @@ describe("MobileAppDriver", () => {
     "confirms only the expected app dialog without post-action UI reads: $title",
     async ({ title, buttons, affirmative }) => {
       const f = fixture();
+      f.client.readScreenStateField.mockResolvedValue("idle");
       f.iosAlert.get.mockResolvedValue({ title, buttons });
-      f.client.waitForScreenStateField.mockImplementation(
-        async (_stage, _field, options) => {
-          await options?.onPending?.();
-          await options?.onPending?.();
-          return {};
-        },
-      );
       await f.app.tap("install", "action-install-current-channel-update");
       expect(f.getByRole).toHaveBeenCalledWith("alert", title);
       expect(f.confirmation.getByRole).toHaveBeenCalledWith(
@@ -205,6 +201,7 @@ describe("MobileAppDriver", () => {
 
   it("verifies the exact app dialog when the pinned native getter reports its Korean scrollbar", async () => {
     const f = fixture();
+    f.client.readScreenStateField.mockResolvedValue("idle");
     f.iosAlert.get.mockResolvedValue({
       title: "수직 스크롤 막대, 1페이지",
       buttons: ["취소", "열기"],
@@ -222,6 +219,7 @@ describe("MobileAppDriver", () => {
 
   it("never taps another app dialog hidden by the same native scrollbar-title bug", async () => {
     const f = fixture();
+    f.client.readScreenStateField.mockResolvedValue("idle");
     f.iosAlert.get.mockResolvedValue({
       title: "수직 스크롤 막대, 1페이지",
       buttons: ["취소", "열기"],
@@ -249,6 +247,7 @@ describe("MobileAppDriver", () => {
 
   it("waits for a delayed action confirmation with native reads only", async () => {
     const f = fixture();
+    f.client.readScreenStateField.mockResolvedValue("idle");
     f.iosAlert.get
       .mockResolvedValueOnce(null)
       .mockResolvedValueOnce(null)
@@ -256,12 +255,6 @@ describe("MobileAppDriver", () => {
         title: "‘HotUpdaterExample’에서 열겠습니까?",
         buttons: ["취소", "열기"],
       });
-    f.client.waitForScreenStateField.mockImplementation(
-      async (_stage, _field, options) => {
-        for (let i = 0; i < 4; i++) await options?.onPending?.();
-        return {};
-      },
-    );
     await f.app.tap("install", "action-install-current-channel-update");
     expect(f.iosAlert.get).toHaveBeenCalledTimes(3);
     expect(f.openButton.tap).toHaveBeenCalledTimes(1);
@@ -269,10 +262,12 @@ describe("MobileAppDriver", () => {
     expect(f.locator.matchers.toBeVisible).not.toHaveBeenCalled();
   });
 
-  it("does not inspect alerts after the mapped action result is already terminal", async () => {
+  it("does not inspect alerts once the action route has started", async () => {
     const f = fixture();
-    f.client.waitForScreenStateField.mockResolvedValue({});
     await f.app.tap("install", "action-install-current-channel-update");
+    expect(f.client.readScreenStateField).toHaveBeenCalledExactlyOnceWith(
+      "updateActionResult",
+    );
     expect(f.iosAlert.get).not.toHaveBeenCalled();
     expect(f.getByRole).not.toHaveBeenCalled();
     expect(f.locator.isVisible).not.toHaveBeenCalled();
@@ -281,6 +276,7 @@ describe("MobileAppDriver", () => {
 
   it("does not inspect or foreground the app after an action link when no confirmation exists", async () => {
     const f = fixture();
+    f.client.readScreenStateField.mockResolvedValueOnce("idle");
     await f.app.tap("install", "action-install-current-channel-update");
     expect(f.iosAlert.get).toHaveBeenCalledTimes(1);
     expect(f.getByRole).not.toHaveBeenCalled();
@@ -299,6 +295,7 @@ describe("MobileAppDriver", () => {
     { title: "‘HotUpdaterExample’에서 열겠습니까?", buttons: ["취소", "허용"] },
   ])("preserves an unrelated or unsupported alert: $title", async (alert) => {
     const f = fixture();
+    f.client.readScreenStateField.mockResolvedValue("idle");
     f.iosAlert.get.mockResolvedValue(alert);
     await expect(
       f.app.tap("install", "action-install-current-channel-update"),
@@ -322,12 +319,13 @@ describe("MobileAppDriver", () => {
     );
     expect(f.iosAlert.get).toHaveBeenCalledTimes(2);
     expect(f.calls.indexOf("confirm-link")).toBeLessThan(
-      f.calls.indexOf("visible"),
+      f.calls.indexOf("text"),
     );
   });
 
   it("accepts the app-link dialog once, after a navigation poll that only reads", async () => {
     const f = fixture();
+    pollSettled.mockClear();
     f.locator.isVisible.mockResolvedValue(false);
     f.iosAlert.get.mockResolvedValueOnce(null).mockResolvedValueOnce({
       title: "Open in “HotUpdaterExample”?",
@@ -339,13 +337,15 @@ describe("MobileAppDriver", () => {
       "UPDATE_APPLIED",
     );
     expect(f.openButton.tap).toHaveBeenCalledTimes(1);
-    expect(pollSettled.mock.invocationCallOrder.at(-1)).toBeLessThan(
+    expect(pollSettled).toHaveBeenCalledTimes(1);
+    expect(pollSettled.mock.invocationCallOrder[0]).toBeLessThan(
       f.openButton.tap.mock.invocationCallOrder[0]!,
     );
   });
 
   it("refuses an unexpected alert during screen navigation at once", async () => {
     const f = fixture();
+    f.locator.isVisible.mockResolvedValue(false);
     f.iosAlert.get.mockResolvedValue({
       title: "“HotUpdaterExample” Would Like to Send You Notifications",
       buttons: ["Don't Allow", "Allow"],
@@ -355,13 +355,26 @@ describe("MobileAppDriver", () => {
     ).rejects.toThrow("Unexpected iOS alert");
     expect(f.iosAlert.get).toHaveBeenCalledTimes(1);
     expect(f.getByRole).not.toHaveBeenCalled();
-    expect(f.locator.matchers.toBeVisible).not.toHaveBeenCalled();
+    expect(f.locator.matchers.toContainText).not.toHaveBeenCalled();
+  });
+
+  it("rethrows a read error from the iOS route wait at once", async () => {
+    const f = fixture();
+    const ambiguous = new Error("LOCATOR_AMBIGUOUS");
+    f.locator.isVisible.mockRejectedValue(ambiguous);
+    await expect(
+      f.app.assertText("read status", "launch-status-result", "UPDATE_APPLIED"),
+    ).rejects.toBe(ambiguous);
+    expect(f.locator.isVisible).toHaveBeenCalledTimes(1);
+    expect(f.iosAlert.get).not.toHaveBeenCalled();
+    expect(f.locator.matchers.toContainText).not.toHaveBeenCalled();
   });
 
   it("skips iOS confirmation handling on Android and while observing native recovery", async () => {
     const android = fixture("android");
     await android.app.tap("install", "action-install-current-channel-update");
     expect(android.iosAlert.get).not.toHaveBeenCalled();
+    expect(android.client.readScreenStateField).not.toHaveBeenCalled();
     expect(android.device.openApp).not.toHaveBeenCalled();
     expect(android.calls).toEqual(["/e2e/screen-state", "link", "wait-result"]);
     const ios = fixture();
@@ -386,7 +399,7 @@ describe("MobileAppDriver", () => {
       "hotupdaterexample://e2e/launch-status",
       { app: "org.example.app" },
     );
-    expect(f.calls).toEqual(["link", "visible"]);
+    expect(f.calls).toEqual(["link", "text"]);
     expect(f.locator.matchers.toContainText).toHaveBeenCalledExactlyOnceWith(
       "UPDATE_APPLIED",
     );
@@ -401,7 +414,7 @@ describe("MobileAppDriver", () => {
       { relaunch: false },
     );
     expect(f.device.openLink).toHaveBeenCalledTimes(1);
-    expect(f.calls).toEqual(["link", "visible", "open", "visible"]);
+    expect(f.calls).toEqual(["link", "text", "open", "text"]);
     expect(f.locator.matchers.toContainText).toHaveBeenCalledTimes(2);
   });
 
@@ -420,6 +433,7 @@ describe("MobileAppDriver", () => {
 
   it("fences confirmation when teardown aborts during the native query", async () => {
     const f = fixture();
+    f.client.readScreenStateField.mockResolvedValue("idle");
     f.iosAlert.get.mockImplementation(async () => {
       f.controller.abort(new Error("attempt ended"));
       return {
@@ -452,6 +466,15 @@ describe("MobileAppDriver", () => {
     const literal = f.locator.matchers.toContainText.mock.calls[1]![0];
     expect((literal as RegExp).test("axb")).toBe(false);
     expect((literal as RegExp).test("c")).toBe(false);
+    // Alternatives are normalized like the text they are matched against.
+    f.locator.text = "Status: A";
+    await f.app.assertText("spaced", "launch-status-result", [
+      "Status:  A\n",
+      "Status: B",
+    ]);
+    await expect(
+      f.app.assertText("nothing expected", "launch-status-result", []),
+    ).rejects.toThrow("at least one expected value");
     f.locator.text = "current-channel -> installed ID other";
     await expect(
       f.app.assertText(
@@ -481,9 +504,15 @@ describe("MobileAppDriver", () => {
       new Error("LOCATOR_AMBIGUOUS"),
     );
     await expect(
+      f.app.typeText("cohort", "cohort-input", "qa"),
+    ).rejects.toThrow("LOCATOR_AMBIGUOUS");
+    expect(f.locator.fill).not.toHaveBeenCalled();
+    f.locator.matchers.toContainText.mockRejectedValue(
+      new Error("LOCATOR_AMBIGUOUS"),
+    );
+    await expect(
       f.app.assertText("status", "runtime-bundle-id", "builtin"),
     ).rejects.toThrow("LOCATOR_AMBIGUOUS");
-    expect(f.locator.matchers.toContainText).not.toHaveBeenCalled();
   });
 
   it("resolves nested placeholders and saved aliases without stringifying typed values", async () => {
@@ -687,6 +716,21 @@ describe("MobileAppDriver", () => {
     f.client.postJson.mockRejectedValueOnce(new Error("device offline"));
     await expect(f.app.terminate("failed kill")).rejects.toThrow(
       "device offline",
+    );
+  });
+
+  it("rethrows a launch the runner cancelled instead of awaiting recovery", async () => {
+    const f = fixture();
+    const cancelled = Object.assign(new Error("device.openApp cancelled"), {
+      code: "CANCELLED",
+    });
+    f.device.openApp.mockRejectedValueOnce(cancelled);
+    await expect(f.app.launch("crash", { expectCrash: true })).rejects.toBe(
+      cancelled,
+    );
+    expect(f.app.expectedLaunchFailures).toBe(0);
+    await expect(f.app.verifyConsoleInsights(0)).rejects.toThrow(
+      "Native recovery evidence is missing",
     );
   });
 

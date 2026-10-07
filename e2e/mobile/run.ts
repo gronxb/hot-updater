@@ -18,6 +18,7 @@ import {
 } from "../shared/scripts/control-server.ts";
 import { startOwnedAgentDeviceDaemon } from "./agent-device-daemon.ts";
 import { acquireAndroidReverses } from "./android-reverse.ts";
+import { collectAttemptEvidence } from "./attempt.ts";
 import type { MobileContext } from "./context.ts";
 import { normalizeMobileResult, writeMobileResult } from "./result.ts";
 
@@ -335,15 +336,23 @@ export async function runMobile(
     const receipt = await readOptionalJson(
       path.join(resultsDir, "sdk-report.json"),
     );
-    const evidence = await readOptionalJson(
-      path.join(resultsDir, "scenario-evidence.json"),
-    );
-    const cleanupEvidence = await readOptionalJson(
-      path.join(resultsDir, "cleanup-evidence.json"),
-    );
-    let quarantine = await readOptionalJson(
-      path.join(resultsDir, "quarantine.json"),
-    );
+    // Each attempt's teardown filed its own records; gather them here.
+    const {
+      evidence,
+      cleanupEvidence,
+      quarantine: attemptQuarantine,
+    } = collectAttemptEvidence(resultsDir);
+    for (const [name, record] of [
+      ["scenario-evidence.json", evidence],
+      ["cleanup-evidence.json", cleanupEvidence],
+    ] as const) {
+      if (record)
+        await fs.writeFile(
+          path.join(resultsDir, name),
+          `${JSON.stringify(record, null, 2)}\n`,
+        );
+    }
+    let quarantine: unknown = attemptQuarantine;
     const inputs = {
       report,
       receipt,
@@ -402,11 +411,12 @@ export async function runMobile(
         reason: "Could not prove complete mobile teardown",
         quarantineRequired: true,
       };
+    }
+    if (quarantine !== undefined)
       await fs.writeFile(
         path.join(resultsDir, "quarantine.json"),
         JSON.stringify(quarantine),
       );
-    }
     if (report)
       await fs.writeFile(
         path.join(resultsDir, "runner-report.json"),

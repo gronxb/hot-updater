@@ -19,29 +19,47 @@ add `agent.*` steps.
   app.
 - [`scenarios.e2e.ts`](scenarios.e2e.ts) registers one test per selected
   scenario. A `hotUpdater` fixture (`test.extend`) owns each attempt's control
-  client and abort signal. `beforeEach` installs the build once per device,
-  then bootstraps and resets the fixtures; `afterEach` drains control jobs,
-  stops the app, and records cleanup and Console Insights evidence, after a
-  failure too.
+  client. `beforeEach` installs the build once, then bootstraps and resets the
+  fixtures. The fixture's teardown runs after the hooks and the body, failed
+  or not: it drains control jobs, stops the app, and files the attempt's
+  records, cleanup proof always and Console Insights when the body finished.
+- When the SDK `timeout` abandons a body, the body's next SDK step fails as
+  `CANCELLED`. The driver never takes that for an expected launch disconnect,
+  and the fixture's teardown fences the control client.
 - [`driver.ts`](driver.ts) runs the shared scenario steps with `screen`
-  locators, `device.openApp` and `device.openLink`, and `expect` matchers:
-  `toBeVisible`, `toHaveText` for exact results, and `toContainText` for
-  alternatives. Text compares as the SDK normalizes it, trimmed with runs of
-  whitespace collapsed. Nothing sleeps or polls by hand: an iOS route that may
-  ask to open the app waits with `expect.poll`.
+  locators, `device.openApp`, `device.openLink`, and `expect` matchers:
+  `toHaveText` for exact results, `toContainText` for alternatives, and
+  `toBeVisible` before input. Text compares as the SDK normalizes it, trimmed
+  with runs of whitespace collapsed, and alternatives are normalized the same
+  way. An iOS route that may ask to open the app waits with `expect.poll` over
+  the route's own progress and the system alert, accepts only the expected
+  app-open dialog once the poll ends, and fails at once on any other alert or
+  read error. Results the app publishes to the control server are read with
+  the control client's screen-state wait.
 - The one direct agent-device call is [`ios-alert.ts`](ios-alert.ts). It reads
   the iOS system alert's title and buttons, which `device.alert()` cannot
-  report, so the driver accepts only the expected app-open dialog.
+  report.
 
 `HOT_UPDATER_E2E_TEST_TIMEOUT_MS` sets the SDK `timeout` of one scenario
-attempt, bootstrap and reset included (default one hour). Each run writes the
-SDK's `report.json`, `summary.md`, and one Markdown page per failed scenario to
-`e2e/results/mobile/<id>/runner/`, with failure screenshots and screen dumps
-under its `artifacts/`.
+attempt, the first install, bootstrap, and reset included (default one hour).
+Each run writes the SDK's `report.json`, `summary.md`, and one Markdown page
+per failed scenario to `e2e/results/mobile/<id>/runner/`, with failure
+screenshots and screen dumps under its `artifacts/`.
 
 Agents editing this suite should load the [`e2e` skill](../../.agents/skills/e2e/SKILL.md).
 It tracks the latest e2e release; `pnpm exec e2e guide <topic>` prints the guide
 for the pinned version.
+
+### Responsibilities
+
+- **e2e** runs the selected scenarios on the leased device, drives it, and
+  records steps and failure evidence.
+- **This runner** owns the run's control server, agent-device daemon, Android
+  reverse mappings, and results, and turns the SDK report into
+  `hot-updater-result.json`.
+- **The bot** leases devices and provider profiles, provisions worktrees,
+  builds and caches the native app, runs iOS and Android as separate jobs,
+  archives artifacts, and quarantines devices after an uncertain run.
 
 ## Running
 

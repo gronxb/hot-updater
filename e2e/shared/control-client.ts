@@ -40,7 +40,6 @@ type ControlClientOptions = {
 };
 
 type ScreenStateWaitOptions = {
-  readonly onPending?: () => Promise<void>;
   readonly expectedValue?: string;
   readonly rejectSubstrings?: readonly string[];
   readonly rejectValues?: readonly string[];
@@ -145,6 +144,11 @@ export class ControlClient {
     return this.runStage(stage, () =>
       this.waitForScreenStateFieldUntraced(stage, fieldName, options),
     );
+  }
+
+  /** One read of a screen state field the app published, for a caller's own poll. */
+  async readScreenStateField(fieldName: string): Promise<string | undefined> {
+    return readStringField(await this.readScreenState(), fieldName);
   }
 
   /** Fence this attempt, cancel every accepted job, and verify settled work. */
@@ -338,14 +342,7 @@ export class ControlClient {
     const deadlineMs = this.nowMs() + timeoutMs;
     let lastObserved: string | undefined;
     for (;;) {
-      const runtimeConfig = await this.getJsonUntraced("/e2e/runtime-config");
-      const screenState = runtimeConfig.screenState;
-      if (!isJsonObject(screenState)) {
-        throw new ControlProtocolError(
-          "/e2e/runtime-config returned non-object screenState",
-        );
-      }
-      const value = readStringField(screenState, fieldName);
+      const value = readStringField(await this.readScreenState(), fieldName);
       lastObserved = value;
       if (value !== undefined && isAcceptedScreenStateValue(value, options)) {
         return { [fieldName]: value };
@@ -361,13 +358,19 @@ export class ControlClient {
           }),
         );
       }
-      if (options.onPending) {
-        this.signal.throwIfAborted();
-        await options.onPending();
-        this.signal.throwIfAborted();
-      }
       await withAbort(this.pollDelayMs(this.pollIntervalMs), this.signal);
     }
+  }
+
+  private async readScreenState(): Promise<JsonObject> {
+    const runtimeConfig = await this.getJsonUntraced("/e2e/runtime-config");
+    const screenState = runtimeConfig.screenState;
+    if (!isJsonObject(screenState)) {
+      throw new ControlProtocolError(
+        "/e2e/runtime-config returned non-object screenState",
+      );
+    }
+    return screenState;
   }
 
   private async cancelJobUntraced(

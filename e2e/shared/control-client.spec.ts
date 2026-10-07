@@ -161,117 +161,31 @@ describe("E2E control client", () => {
     ]);
   });
 
-  it("polls pending action handling from the first wait and stops on terminal success", async () => {
-    const onPending = vi.fn(async () => {});
-    const values = [
-      "idle",
-      "current-channel -> checking",
-      "current-channel -> installed bundle",
-    ];
-    const client = createControlClient({
-      baseUrl: "http://127.0.0.1:3010",
-      fetch: async () =>
-        jsonResponse(200, {
-          screenState: { updateActionResult: values.shift() },
-        }),
-      pollDelayMs: async () => {},
-    });
-    await expect(
-      client.waitForScreenStateField("install", "updateActionResult", {
-        rejectValues: ["idle"],
-        rejectSubstrings: [" -> checking"],
-        onPending,
-      }),
-    ).resolves.toEqual({
-      updateActionResult: "current-channel -> installed bundle",
-    });
-    expect(onPending).toHaveBeenCalledTimes(2);
-    const ready = createControlClient({
-      baseUrl: "http://127.0.0.1:3010",
-      fetch: async () =>
-        jsonResponse(200, { screenState: { updateActionResult: "installed" } }),
-    });
-    await ready.waitForScreenStateField(
-      "already installed",
-      "updateActionResult",
-      { onPending },
-    );
-    expect(onPending).toHaveBeenCalledTimes(2);
-  });
-
-  it("propagates pending-handler errors and aborts before the next poll", async () => {
-    const controller = new AbortController();
+  it("reads one screen state field per call for a caller's own poll", async () => {
     const fetch = vi.fn(async () =>
-      jsonResponse(200, { screenState: { updateActionResult: "idle" } }),
+      jsonResponse(200, {
+        screenState: { updateActionResult: "current-channel -> checking" },
+      }),
     );
     const client = createControlClient({
       baseUrl: "http://127.0.0.1:3010",
       fetch,
-      signal: controller.signal,
-      pollDelayMs: async () => {},
     });
     await expect(
-      client.waitForScreenStateField("install", "updateActionResult", {
-        rejectValues: ["idle"],
-        onPending: async () => {
-          throw new Error("unrelated system alert");
-        },
-      }),
-    ).rejects.toThrow("unrelated system alert");
-    expect(fetch).toHaveBeenCalledTimes(1);
-    await expect(
-      client.waitForScreenStateField("install", "updateActionResult", {
-        rejectValues: ["idle"],
-        onPending: async () => {
-          controller.abort(new Error("attempt ended"));
-        },
-      }),
-    ).rejects.toThrow("attempt ended");
-    expect(fetch).toHaveBeenCalledTimes(2);
-  });
-
-  it("drains an in-flight pending handler after the scenario is cancelled", async () => {
-    const controller = new AbortController();
-    let entered!: () => void;
-    let finish!: () => void;
-    const enteredPromise = new Promise<void>((resolve) => {
-      entered = resolve;
-    });
-    const handlerPromise = new Promise<void>((resolve) => {
-      finish = resolve;
-    });
-    const client = createControlClient({
-      baseUrl: "http://127.0.0.1:3010",
-      signal: controller.signal,
-      pollIntervalMs: 1,
-      fetch: async () =>
-        jsonResponse(200, { screenState: { updateActionResult: "idle" } }),
-    });
-    const waiting = client.waitForScreenStateField(
-      "install",
-      "updateActionResult",
-      {
-        rejectValues: ["idle"],
-        onPending: async () => {
-          entered();
-          await handlerPromise;
-        },
-      },
+      client.readScreenStateField("updateActionResult"),
+    ).resolves.toBe("current-channel -> checking");
+    await expect(client.readScreenStateField("missing")).resolves.toBe(
+      undefined,
     );
-    await enteredPromise;
-    controller.abort(new Error("attempt ended"));
-    await expect(waiting).rejects.toThrow("attempt ended");
-    let drained = false;
-    const drain = client.cancelAndDrain({ timeoutMs: 500 }).then(() => {
-      drained = true;
+    expect(fetch).toHaveBeenCalledTimes(2);
+    const malformed = createControlClient({
+      baseUrl: "http://127.0.0.1:3010",
+      fetch: async () => jsonResponse(200, { screenState: "idle" }),
     });
-    await Promise.resolve();
-    expect(drained).toBe(false);
-    finish();
-    await drain;
-    expect(drained).toBe(true);
+    await expect(
+      malformed.readScreenStateField("updateActionResult"),
+    ).rejects.toThrow("non-object screenState");
   });
-
   it("waits for screen state fields without rerunning the action", async () => {
     // Given: Android action taps continue asynchronously after E2E returns from tap().
     const calls: string[] = [];
