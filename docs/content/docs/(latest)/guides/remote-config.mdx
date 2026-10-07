@@ -29,9 +29,7 @@ so there is nothing extra to install:
 ## Turn on the server plugin
 
 The managed AWS, Cloudflare, Firebase, and Supabase servers run
-`remoteConfig()`, and their migrations create its tables. A managed server set
-up before it existed gets them when you run
-`hot-updater init --provider <provider>` again.
+`remoteConfig()`, and their initialization schema creates its tables.
 
 A custom server lists it in `createHotUpdater`, and the app's
 `hot-updater.config.ts` lists it in `plugins` too, so the CLI and the Console
