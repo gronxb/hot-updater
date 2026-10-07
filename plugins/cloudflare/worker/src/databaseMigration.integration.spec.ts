@@ -4,6 +4,7 @@ import {
   createInsightsModel,
   insights,
 } from "@hot-updater/server/plugins/insights";
+import { remoteConfig } from "@hot-updater/server/plugins/remote-config";
 import { createBundleEventRowFixture } from "@hot-updater/test-utils";
 import { env } from "cloudflare:test";
 import { expect, inject, it } from "vitest";
@@ -59,7 +60,42 @@ it("creates every table, the batch guard, and the settings the fence checks", as
     "schema.core",
     "schema.engine",
     "schema.insights",
+    "schema.remoteConfig",
   ]);
+});
+
+it("publishes a Remote Config template and serves it from the initialized D1 schema", async () => {
+  const api = createHotUpdater({
+    database: d1Database(env.DB),
+    plugins: [remoteConfig()],
+    clientAccess: "public",
+  }).api.remoteConfig;
+  const template = {
+    conditions: [
+      {
+        name: "Android",
+        rules: [{ type: "platform", platforms: ["android"] }],
+      },
+    ],
+    parameters: {
+      greeting: {
+        valueType: "STRING",
+        defaultValue: { value: "Hi" },
+        conditionalValues: { Android: { value: "Hi, Android" } },
+      },
+    },
+  };
+  await expect(
+    api.publish({ template, baseVersion: 0 }),
+  ).resolves.toMatchObject({ status: "published", version: { version: 1 } });
+  await expect(api.getActive()).resolves.toMatchObject({
+    version: 1,
+    template,
+  });
+  await expect(api.resolve({ platform: "android" })).resolves.toEqual({
+    version: 1,
+    values: { greeting: "Hi, Android" },
+  });
 });
 
 it("returns canonical downloaded and applied events from the initialized D1 schema", async () => {
