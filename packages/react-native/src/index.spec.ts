@@ -162,6 +162,24 @@ describe("HotUpdater client initialization", () => {
     expect(Object.isFrozen(hotUpdater)).toBe(true);
   });
 
+  it("keeps the API of a plugin whose id is __proto__ as the instance's own property", async () => {
+    const api = { read: vi.fn() };
+    mocks.configurePlugins.mockReturnValueOnce(
+      Object.fromEntries([["__proto__", api]]),
+    );
+    const HotUpdater = await importHotUpdater();
+
+    const hotUpdater = HotUpdater.init({
+      baseURL: "https://updates.example.com",
+      plugins: [{ id: "__proto__", setup: () => ({ api }) }],
+    });
+
+    expect(
+      Object.getOwnPropertyDescriptor(hotUpdater, "__proto__")?.value,
+    ).toBe(api);
+    expect(Object.getPrototypeOf(hotUpdater)).toBe(Object.prototype);
+  });
+
   it.each(["reload", "checkForUpdate", "wrap", "init"])(
     "refuses a plugin id the instance has, %s, before setting plugins up",
     async (id) => {
