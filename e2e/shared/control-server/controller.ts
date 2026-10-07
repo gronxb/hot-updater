@@ -191,28 +191,6 @@ const E2E_PATCH_SOURCE_FILE = path.join(
 );
 const HOT_UPDATER_ENV_FILE = path.join(EXAMPLE_DIR, ".env.hotupdater");
 const HOT_UPDATER_CONFIG_FILE = path.join(EXAMPLE_DIR, "hot-updater.config.ts");
-const BARE_BUILD_CACHE_VERSION = 1;
-const BARE_BUILD_CACHE_LOCK_STALE_MS = 45 * 60 * 1000;
-const BARE_BUILD_CACHE_LOCK_WAIT_MS = 500;
-const BARE_BUILD_CACHE_INPUT_PATHS = [
-  "package.json",
-  "pnpm-lock.yaml",
-  "examples/v0.85.0/.env.hotupdater",
-  "examples/v0.85.0/App.tsx",
-  "examples/v0.85.0/index.js",
-  "examples/v0.85.0/package.json",
-  "examples/v0.85.0/babel.config.js",
-  "examples/v0.85.0/metro.config.js",
-  "examples/v0.85.0/rspack.config.mjs",
-  "examples/v0.85.0/e2e-build-config.cjs",
-  "examples/v0.85.0/src/e2eApp",
-  "examples/v0.85.0/src/e2eRuntimeConfig.ts",
-  "examples/v0.85.0/src/test",
-  "plugins/bare",
-  "packages/protocol",
-  "packages/hot-updater/src/utils/bundleManifest.ts",
-  "packages/react-native",
-];
 const BUILT_IN_MIN_BUNDLE_ID_SUFFIX = "7000-8000-000000000000";
 const SIGNING_PRIVATE_KEY_RELATIVE_PATH = "keys/private-key.pem";
 const EMPTY_CRASH_HISTORY = {
@@ -411,10 +389,6 @@ function formatErrorCause(error: unknown) {
   }
 
   return String(cause);
-}
-
-function hashText(value: string) {
-  return createHash("sha256").update(value).digest("hex");
 }
 
 const platform = process.env.HOT_UPDATER_E2E_PLATFORM as Platform | undefined;
@@ -711,15 +685,6 @@ function extractDeployReleaseId(output: string) {
   return match?.[1] ?? null;
 }
 
-function bareBuildCacheRoot() {
-  const cacheDir = process.env.HOT_UPDATER_E2E_BARE_BUILD_CACHE_DIR;
-  if (!cacheDir) {
-    return null;
-  }
-
-  return path.resolve(REPO_DIR, cacheDir);
-}
-
 function deployProcessLockRoot() {
   const lockDir = process.env[DEPLOY_PROCESS_LOCK_DIR_ENV_KEY];
   if (lockDir) {
@@ -731,61 +696,6 @@ function deployProcessLockRoot() {
     .digest("hex")
     .slice(0, 16);
   return path.join(os.tmpdir(), "hot-updater-e2e-deploy-lock", worktreeHash);
-}
-
-function readGitTrackedInputFiles(inputPaths: string[]) {
-  const output = captureCommand(
-    "git",
-    ["ls-files", "-z", "--", ...inputPaths],
-    {
-      cwd: REPO_DIR,
-      maxBuffer: 32 * 1024 * 1024,
-    },
-  );
-
-  return output.split("\0").filter(Boolean).sort();
-}
-
-function readCacheInputFiles(inputPaths: string[]) {
-  const files = new Set(readGitTrackedInputFiles(inputPaths));
-  for (const relativePath of inputPaths) {
-    const absolutePath = path.join(REPO_DIR, relativePath);
-    if (fs.existsSync(absolutePath) && fs.statSync(absolutePath).isFile()) {
-      files.add(relativePath);
-    }
-  }
-
-  return [...files].sort();
-}
-
-function hashCacheInputFiles(inputPaths: string[]) {
-  const hash = createHash("sha256");
-  for (const relativePath of readCacheInputFiles(inputPaths)) {
-    const absolutePath = path.join(REPO_DIR, relativePath);
-    if (!fs.existsSync(absolutePath) || !fs.statSync(absolutePath).isFile()) {
-      continue;
-    }
-
-    hash.update(relativePath);
-    hash.update("\0");
-    hash.update(fs.readFileSync(absolutePath));
-    hash.update("\0");
-  }
-
-  return hash.digest("hex");
-}
-
-function hashBareBuildInputs() {
-  return hashCacheInputFiles(BARE_BUILD_CACHE_INPUT_PATHS);
-}
-
-function bareBuildConfigFingerprint() {
-  const source = fs.existsSync(HOT_UPDATER_CONFIG_FILE)
-    ? fs.readFileSync(HOT_UPDATER_CONFIG_FILE, "utf8")
-    : "";
-  const match = source.match(BARE_BUILD_INLINE_PATTERN);
-
-  return hashText(match?.[0] ?? "missing");
 }
 
 async function exportNativePublicKeyFromSigningKey() {
@@ -3020,11 +2930,8 @@ function ensureAndroidControlReverse() {
   logE2eFixture("android control reverse ready", { devicePort, hostPort });
 }
 
-export function getHotUpdaterControlEnv(
-  env: NodeJS.ProcessEnv | undefined = undefined,
-) {
+export function getHotUpdaterControlEnv() {
   const baseEnv = {
-    ...env,
     ...RELEASE_BUNDLE_ENV,
     HOT_UPDATER_CONTROL_BASE_URL: getControllerReachableAppBaseUrl(),
   } satisfies NodeJS.ProcessEnv;
@@ -5196,142 +5103,6 @@ async function captureBuiltInBundleId() {
   return { builtInBundleId };
 }
 
-function bareBuildCacheEnv({
-  bundleProfile,
-  request,
-}: {
-  bundleProfile: BundleProfile;
-  request: DeployBundleRequest;
-}) {
-  const cacheRoot = bareBuildCacheRoot();
-  if (!cacheRoot) {
-    return undefined;
-  }
-
-  const cacheKey = hashText(
-    JSON.stringify({
-      bundleProfile,
-      cacheVersion: BARE_BUILD_CACHE_VERSION,
-      configHash: bareBuildConfigFingerprint(),
-      inputHash: hashBareBuildInputs(),
-      marker: request.marker,
-      mode: request.mode,
-      platform: fixtureSession.platform,
-      safeBundleIds: request.safeBundleIds,
-    }),
-  );
-
-  return {
-    HOT_UPDATER_BARE_BUILD_CACHE_DIR: cacheRoot,
-    HOT_UPDATER_BARE_BUILD_CACHE_KEY: cacheKey,
-  };
-}
-
-function isProcessRunning(pid: number) {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-async function acquireBareBuildCacheLock(
-  env: NodeJS.ProcessEnv | undefined,
-  signal?: AbortSignal,
-) {
-  const cacheDir = env?.HOT_UPDATER_BARE_BUILD_CACHE_DIR;
-  const cacheKey = env?.HOT_UPDATER_BARE_BUILD_CACHE_KEY;
-  if (!cacheDir || !cacheKey) {
-    return null;
-  }
-
-  const lockRoot = path.join(cacheDir, ".locks");
-  const lockPath = path.join(lockRoot, `${cacheKey}.lock`);
-  await fsPromises.mkdir(lockRoot, { recursive: true });
-  let loggedWait = false;
-
-  const readOwner = async () => {
-    try {
-      return JSON.parse(
-        await fsPromises.readFile(path.join(lockPath, "owner.json"), "utf8"),
-      ) as { pid?: unknown; platform?: unknown; startedAt?: unknown };
-    } catch {
-      return null;
-    }
-  };
-
-  const isOwnerAlive = (owner: Awaited<ReturnType<typeof readOwner>>) => {
-    if (
-      !owner ||
-      typeof owner.pid !== "number" ||
-      !Number.isInteger(owner.pid)
-    ) {
-      return true;
-    }
-
-    return isProcessRunning(owner.pid);
-  };
-
-  while (true) {
-    throwIfAborted(signal);
-    try {
-      await fsPromises.mkdir(lockPath);
-      await fsPromises.writeFile(
-        path.join(lockPath, "owner.json"),
-        JSON.stringify(
-          {
-            pid: process.pid,
-            platform: fixtureSession.platform,
-            startedAt: new Date().toISOString(),
-          },
-          null,
-          2,
-        ),
-      );
-      logE2eFixture("bare build cache lock acquired", { cacheKey });
-      return lockPath;
-    } catch (error) {
-      if (
-        !error ||
-        typeof error !== "object" ||
-        !("code" in error) ||
-        error.code !== "EEXIST"
-      ) {
-        throw error;
-      }
-
-      const stats = await fsPromises.stat(lockPath).catch(() => null);
-      const ageMs = stats ? Date.now() - stats.mtimeMs : 0;
-      const owner = await readOwner();
-      if (!isOwnerAlive(owner)) {
-        logE2eFixture("bare build cache lock owner exited; removing", {
-          cacheKey,
-          owner,
-        });
-        await fsPromises.rm(lockPath, { force: true, recursive: true });
-        loggedWait = false;
-        continue;
-      }
-
-      if (stats && ageMs > BARE_BUILD_CACHE_LOCK_STALE_MS) {
-        logE2eFixture("bare build cache lock stale; removing", {
-          ageMs,
-          cacheKey,
-        });
-        await fsPromises.rm(lockPath, { force: true, recursive: true });
-        continue;
-      }
-
-      if (!loggedWait) {
-        logE2eFixture("bare build cache lock waiting", { cacheKey });
-        loggedWait = true;
-      }
-      await abortableSleep(BARE_BUILD_CACHE_LOCK_WAIT_MS, signal);
-    }
-  }
-}
-
 async function deployFixtureBundle(
   request: DeployBundleRequest,
   context?: JobExecutionContext,
@@ -5403,7 +5174,6 @@ async function deployFixtureBundle(
   );
   logE2eFixture("deploy start", {
     bundleProfile,
-    bareBuildCache: Boolean(bareBuildCacheRoot()),
     channel: request.channel,
     channelNamespace,
     command: `node ${args.join(" ")}`,
@@ -5414,7 +5184,6 @@ async function deployFixtureBundle(
     remoteChannel,
     targetAppVersion: request.targetAppVersion,
   });
-  const cacheEnv = bareBuildCacheEnv({ bundleProfile, request });
   const deployProcessLock = await acquireFairFileLock({
     capacity: DEPLOY_LOCK_CAPACITY,
     lockRoot: deployProcessLockRoot(),
@@ -5436,22 +5205,18 @@ async function deployFixtureBundle(
     },
     ownerLabel: fixtureSession.platform,
     signal,
-    staleMs: BARE_BUILD_CACHE_LOCK_STALE_MS,
-    waitIntervalMs: BARE_BUILD_CACHE_LOCK_WAIT_MS,
   });
   logE2eFixture("deploy process lock acquired", {
     lockPath: deployProcessLock.lockPath,
     platform: fixtureSession.platform,
   });
-  let bareBuildLockPath: string | null = null;
   let deployDurationMs = 0;
   const deployOutput = await (async () => {
     try {
-      bareBuildLockPath = await acquireBareBuildCacheLock(cacheEnv, signal);
       const deployStartedAt = Date.now();
       const output = await runLoggedCommand("node", args, {
         cwd: fixtureSession.exampleDir,
-        env: getHotUpdaterControlEnv(cacheEnv),
+        env: getHotUpdaterControlEnv(),
         logPath: deployLogPath,
         signal,
         onInterrupted: context?.markQuiescenceUncertain,
@@ -5459,12 +5224,6 @@ async function deployFixtureBundle(
       deployDurationMs = Date.now() - deployStartedAt;
       return output;
     } finally {
-      if (bareBuildLockPath) {
-        await fsPromises.rm(bareBuildLockPath, {
-          force: true,
-          recursive: true,
-        });
-      }
       await deployProcessLock.release();
     }
   })();
