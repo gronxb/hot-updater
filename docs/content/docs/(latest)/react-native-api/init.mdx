@@ -50,8 +50,7 @@ export default hotUpdater.wrap({
 Each call returns an independent instance with its own configuration and
 plugins; nothing is configured globally. Create one instance per app: keep the
 call in its own module, at the top level, so it runs once per app start. Two
-instances each read the launch and each report it through their own plugins,
-so two instances with `insights()` report a launch twice.
+instances each read the launch and report it through their own plugins.
 
 Point `baseURL` at the client handler root, for example
 `https://example.com/hot-updater`. Never embed the admin bearer token in a
