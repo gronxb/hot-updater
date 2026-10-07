@@ -1,0 +1,156 @@
+---
+title: "Remote Config Plugin"
+description: "Read values your server's Remote Config picks for this device, synchronously, with in-app defaults and a fetch and activate step, using the built-in `remoteConfig()` client plugin."
+icon: SlidersHorizontal
+---
+
+## Add the plugin
+
+`remoteConfig()` is a [client plugin](/docs/react-native-api/client-plugins)
+that `@hot-updater/react-native` exports from its root, from
+`@hot-updater/plugin-remote-config`, so there is nothing extra to install.
+Create it once, at module scope, with your in-app defaults, and pass it to
+`plugins` in [`HotUpdater.init`](/docs/react-native-api/init) or
+[`HotUpdater.wrap`](/docs/react-native-api/wrap):
+
+```ts title="src/remoteConfig.ts"
+import { remoteConfig } from "@hot-updater/react-native";
+
+export const config = remoteConfig({
+  defaults: { welcome_message: "Welcome back", max_items: 20 },
+});
+```
+
+```tsx title="App.tsx"
+import { HotUpdater } from "@hot-updater/react-native";
+
+import { config } from "./src/remoteConfig";
+
+HotUpdater.init({
+  baseURL: "<your-update-server-url>",
+  requestHeaders: { "x-api-key": "<your-api-key>" },
+  plugins: [config], // [!code ++]
+});
+```
+
+The plugin requests `GET /remote-config` under `baseURL`, with the
+`requestHeaders` and `requestTimeout` of `init` or `wrap`. The server answers
+when it runs the `remoteConfig()`
+[server plugin](/docs/guides/remote-config#turn-on-the-server-plugin); the
+managed AWS, Cloudflare, Firebase, and Supabase servers run it. See the
+[Remote Config guide](/docs/guides/remote-config) to edit and publish values
+in the Console.
+
+## Options
+
+| Option                   | Type                                          | Default    | Description                                                                                                  |
+| ------------------------ | --------------------------------------------- | ---------- | ------------------------------------------------------------------------------------------------------------ |
+| `defaults`               | `Record<string, string \| number \| boolean>` | `{}`       | Values the app reads until it activates fetched ones, and for parameters the template leaves to the app.      |
+| `minimumFetchIntervalMs` | `number`                                      | `43200000` | The shortest time between fetches that reach the server: 12 hours, as in Firebase. `0` fetches every time.   |
+
+The keys of `defaults` type the keys the read methods suggest; any other key
+is accepted too.
+
+## Read values
+
+Every read is synchronous:
+
+| Method | Returns |
+| --- | --- |
+| `getValue(key)` | A `RemoteConfigValue` with `asString()`, `asNumber()`, `asBoolean()`, and `getSource()`. |
+| `getString(key)` | `getValue(key).asString()` |
+| `getNumber(key)` | `getValue(key).asNumber()` |
+| `getBoolean(key)` | `getValue(key).asBoolean()` |
+| `getAll()` | Every key that `defaults` or the active values have, as `RemoteConfigValue`s. |
+
+A value comes from the first of these that has its key:
+
+| `getSource()` | Where the value comes from |
+| --- | --- |
+| `"remote"` | The values the app activated, fetched from the server. |
+| `"default"` | `defaults`. |
+| `"static"` | Neither: `asString()` is `""`, `asNumber()` is `0`, and `asBoolean()` is `false`. |
+
+Values travel as text, as in Firebase. `asNumber()` is `Number(text)`, or `0`
+when that is not a number. `asBoolean()` is `true` for `1`, `true`, `t`, `yes`,
+`y`, and `on`, in any case, and `false` otherwise. A JSON parameter arrives as
+its text, for `JSON.parse(config.getString(key))`.
+
+Before `init` or `wrap` sets the plugin up, reads return `defaults`. Setting
+it up loads the values the app activated at an earlier launch from the
+device, so the first render after `init` already reads them.
+
+## Fetch and activate
+
+| Method | Does |
+| --- | --- |
+| `fetch()` | Fetches this device's values and keeps them for `activate`. The values the app reads do not change. |
+| `activate()` | Makes the fetched values the ones reads return. Resolves `true` when they replaced other values, `false` when nothing changed. |
+| `fetchAndActivate()` | `fetch()`, then `activate()`. |
+
+```ts
+// Apply as soon as they arrive:
+config.fetchAndActivate().catch(() => {});
+
+// Or apply at the next launch: activate what the last launch fetched,
+// then fetch for the next one.
+await config.activate();
+config.fetch().catch(() => {});
+```
+
+A fetch within `minimumFetchIntervalMs` of the last successful one keeps the
+values fetched last and sends nothing, unless the app's channel, native
+version, cohort, or fingerprint changed since: then it always asks the server.
+Calls made while a fetch is running share it. The plugin revalidates with the
+answer's `ETag`, so an unchanged answer costs a `304`.
+
+`fetch()` rejects, and the active values stay, when:
+
+- the plugin is not set up yet: call it after `init` or `wrap`;
+- the request fails or times out;
+- the server answers `404`, because it runs without the `remoteConfig()`
+  server plugin, or any other error status;
+- the answer is not Remote Config values.
+
+Fetched and activated values are stored on the device with the plugin's
+[storage](/docs/react-native-api/client-plugins#store-values-on-the-device), outside device
+backups, and survive restarts and OTA updates. Fetching works in debug builds
+too.
+
+## Status
+
+| Property | Value |
+| --- | --- |
+| `lastFetchStatus` | `"no-fetch-yet"`, `"success"`, `"failure"`, or `"throttle"`, when the server answered `429`. |
+| `fetchTimeMillis` | When the last successful fetch ended, in milliseconds since the epoch, or `-1`. |
+| `activeVersion` | The template version the active values come from, or `0`. |
+
+Both fetch fields persist across launches.
+
+## Re-render on activation
+
+`subscribe(listener)` calls `listener` whenever the active values change:
+when setup loads the values an earlier launch activated, and when
+`activate()` replaces them. It returns a function that stops it.
+`getAll()` returns the same object until then, so it works with React's
+`useSyncExternalStore`:
+
+```tsx title="src/useRemoteConfig.ts"
+import { useSyncExternalStore } from "react";
+
+import { config } from "./remoteConfig";
+
+export const useRemoteConfig = () =>
+  useSyncExternalStore(config.subscribe, config.getAll);
+```
+
+```tsx
+const values = useRemoteConfig();
+return <Text>{values.welcome_message?.asString()}</Text>;
+```
+
+## Types
+
+`@hot-updater/react-native` exports `RemoteConfigPlugin`, `RemoteConfigOptions`,
+`RemoteConfigValue`, `RemoteConfigValueSource`, `RemoteConfigFetchStatus`,
+`RemoteConfigDefaults`, `RemoteConfigDefaultValue`, and `RemoteConfigKey`.

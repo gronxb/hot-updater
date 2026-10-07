@@ -76,7 +76,7 @@ Configure the automatic update flow with `HotUpdater.wrap`.
 | Option             | Type                                          | Required | Description                                                                   |
 | ------------------ | --------------------------------------------- | -------- | ----------------------------------------------------------------------------- |
 | `baseURL`          | `string \| (() => string \| Promise<string>)` | Yes      | Your client handler URL                                                       |
-| `plugins`          | `HotUpdaterClientPlugin[]`                    | No       | [Client plugins](/docs/react-native-api/client-plugins), such as `insights()` |
+| `plugins`          | `HotUpdaterClientPlugin[]`                    | No       | [Client plugins](/docs/react-native-api/client-plugins), such as `insights()` and `remoteConfig()` |
 | `requestHeaders`   | `Record<string, string>`                      | No       | Custom HTTP headers for update requests and plugin requests                   |
 | `requestTimeout`   | `number`                                      | No       | Request timeout in milliseconds (default: 5000)                               |
 | `onNotifyAppReady` | `(result: NotifyAppReadyResult) => void`      | No       | Callback invoked after native launch verification finishes                    |

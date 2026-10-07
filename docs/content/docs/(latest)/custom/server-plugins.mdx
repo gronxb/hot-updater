@@ -123,7 +123,8 @@ field names start with a lowercase letter and use lowercase letters, digits,
 and `_`; index names start with a letter and use letters, digits, and `_`.
 
 A plugin that sets `namespace: false` keeps its declared table names instead,
-as `insights()` and `apiKeys()` do for `bundle_events` and `api_keys`. It then
+as `insights()`, `apiKeys()`, and `remoteConfig()` do for `bundle_events`,
+`api_keys`, and `remote_config_versions`. It then
 owns collisions: startup refuses a table name that core or another plugin the
 server runs already takes.
 
@@ -463,13 +464,14 @@ export const feedback = () =>
 
 - `id` names the plugin's API and prefixes its tables. A plugin id uses
   lowercase letters, digits, and `_`, starting with a letter, and each id
-  appears once per server. `core` is reserved. `insights` and `apiKeys`
-  belong to Hot Updater's `insights()` and `apiKeys()`: any other plugin that
+  appears once per server. `core` is reserved. `insights`, `apiKeys`, and
+  `remoteConfig` belong to Hot Updater's `insights()`, `apiKeys()`, and
+  `remoteConfig()`: any other plugin that
   takes one, even a copy such as `{ ...insights() }`, stops the server or the
   CLI with `HotUpdaterConfigError`.
 - `namespace: false`, optional, keeps the table names as `schema` declares
   them, without the id prefix. Only such a plugin's id may also use uppercase
-  letters, as `apiKeys` does.
+  letters, as `apiKeys` and `remoteConfig` do.
 - `schemaVersion` is a string that names the version of `schema`; see
   [Create the plugin's tables](#create-the-plugins-tables).
 - `init` runs once, synchronously, when `createHotUpdater` starts. It returns

@@ -172,10 +172,10 @@ describe("createHotUpdater with remoteConfig()", () => {
       rollbackSource: 1,
     });
 
-    const versions = await (await admin("/remote-config/versions")).json();
-    expect(
-      versions.versions.map(({ version }: { version: number }) => version),
-    ).toEqual([3, 2, 1]);
+    const page = (await (await admin("/remote-config/versions")).json()) as {
+      versions: { version: number }[];
+    };
+    expect(page.versions.map(({ version }) => version)).toEqual([3, 2, 1]);
     expect(
       await (await admin("/remote-config/versions/3")).json(),
     ).toMatchObject({ version: 3, template });

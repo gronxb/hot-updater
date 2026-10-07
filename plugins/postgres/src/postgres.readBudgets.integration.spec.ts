@@ -10,6 +10,7 @@ import {
 import { kyselyExecutor } from "@hot-updater/server/adapters/kysely";
 import { apiKeys } from "@hot-updater/server/plugins/api-keys";
 import { insights } from "@hot-updater/server/plugins/insights";
+import { remoteConfig } from "@hot-updater/server/plugins/remote-config";
 import {
   postgresRowsExamined,
   setupReadBudgetTestSuite,
@@ -17,7 +18,7 @@ import {
 import { Kysely } from "kysely";
 import { PGliteDialect } from "kysely-pglite-dialect";
 
-const plugins = [insights(), apiKeys()];
+const plugins = [insights(), apiKeys(), remoteConfig()];
 
 /**
  * `postgres({ dialect })`'s composition without its schema fence: the SQL

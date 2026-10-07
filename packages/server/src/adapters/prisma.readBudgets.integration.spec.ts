@@ -7,12 +7,13 @@ import {
 
 import { apiKeys } from "../plugins/api-keys";
 import { insights } from "../plugins/insights";
+import { remoteConfig } from "../plugins/remote-config";
 import { prismaAdapter } from "./prisma";
 import { prismaExecutor } from "./prismaExecutor";
 import { pglitePrisma, prismaPushSql } from "./prismaTestClients";
 
 /** Core's tables and those of the plugins the suite measures. */
-const target = toolingTargetOf([insights(), apiKeys()]);
+const target = toolingTargetOf([insights(), apiKeys(), remoteConfig()]);
 
 /**
  * `prismaAdapter`'s composition without its schema fence: the SQL core over

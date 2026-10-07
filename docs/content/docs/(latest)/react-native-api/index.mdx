@@ -20,7 +20,8 @@ API per app:
 | [`init`](/docs/react-native-api/init) | Configure a custom flow and its plugins without starting an update check. |
 | [`wrap`](/docs/react-native-api/wrap) | Optionally check automatically at startup, stage standard updates, and reload force updates by default. |
 
-Both take [client plugins](#extend-with-plugins), such as the Insights plugin.
+Both take [client plugins](#extend-with-plugins), such as the Insights and
+Remote Config plugins.
 
 ## Check, stage, and reload
 
@@ -77,4 +78,5 @@ See [Insights](/docs/guides/insights) for reporting limits and
 | API | Use it to |
 | --- | --- |
 | [`insights`](/docs/react-native-api/insights) | Report launches, downloads, applies, recoveries, and update failures to Insights, optionally with your app's user ID. |
+| [`remoteConfig`](/docs/react-native-api/remote-config) | Read values your server's Remote Config picks for the device, synchronously, with in-app defaults. |
 | [`defineClientPlugin`](/docs/react-native-api/client-plugins) | Write a plugin that observes the update lifecycle and sends data to your server. Plugins import it from `@hot-updater/protocol`. |

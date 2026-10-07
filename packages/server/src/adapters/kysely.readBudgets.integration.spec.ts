@@ -9,6 +9,7 @@ import { PGliteDialect } from "kysely-pglite-dialect";
 
 import { apiKeys } from "../plugins/api-keys";
 import { insights } from "../plugins/insights";
+import { remoteConfig } from "../plugins/remote-config";
 import { kyselyAdapter } from "./kysely";
 import { kyselyExecutor } from "./kyselyExecutor";
 
@@ -22,7 +23,7 @@ setupReadBudgetTestSuite({
   createAdapter: async () => {
     const client = new PGlite();
     const db = new Kysely<object>({ dialect: new PGliteDialect(client) });
-    const target = toolingTargetOf([insights(), apiKeys()]);
+    const target = toolingTargetOf([insights(), apiKeys(), remoteConfig()]);
     const migrator = kyselyAdapter({ db, provider: "postgresql" })
       .createMigrator!(target);
     await (await migrator.migrateToLatest()).execute();

@@ -1,0 +1,257 @@
+---
+title: "Remote Config"
+description: "Change app behavior without a new bundle: parameters with in-app defaults, conditions that pick values per device, and versions you publish and roll back."
+icon: SlidersHorizontal
+---
+
+## What Remote Config does
+
+Remote Config changes values your app reads, such as a greeting, a list size,
+or whether a new checkout shows, without a new native build or OTA bundle. It
+follows [Firebase Remote Config](https://firebase.google.com/docs/remote-config):
+
+- The app defines **in-app defaults** and reads values synchronously.
+- A **template** on the server holds **parameters**, each with a default value
+  and values for **conditions**, such as a channel, a platform, an app version
+  range, or a share of installs.
+- The app **fetches** the values the server picks for it, then **activates**
+  them when it is ready to use them.
+- Every publish is a **version** you can view and roll back to.
+
+It has two halves, both from `@hot-updater/plugin-remote-config`, which
+`@hot-updater/server` and `@hot-updater/react-native` depend on and re-export,
+so there is nothing extra to install:
+
+- the `remoteConfig()` [server plugin](/docs/custom/server-plugins) stores
+  templates and answers devices;
+- the [`remoteConfig()` client plugin](/docs/react-native-api/remote-config)
+  fetches and keeps values in the app.
+
+## Turn on the server plugin
+
+The managed AWS, Cloudflare, Firebase, and Supabase servers run
+`remoteConfig()`, and their migrations create its tables. A managed server set
+up before it existed gets them when you run
+`hot-updater init --provider <provider>` again.
+
+A custom server lists it in `createHotUpdater`, and the app's
+`hot-updater.config.ts` lists it in `plugins` too, so the CLI and the Console
+know the server runs it:
+
+```ts title="src/hotUpdater.ts (excerpt)"
+import { createHotUpdater } from "@hot-updater/server";
+import { apiKeys } from "@hot-updater/server/plugins/api-keys";
+import { insights } from "@hot-updater/server/plugins/insights";
+import { remoteConfig } from "@hot-updater/server/plugins/remote-config"; // [!code ++]
+
+export const hotUpdater = createHotUpdater({
+  database,
+  plugins: [insights(), apiKeys(), remoteConfig()], // [!code ++]
+});
+```
+
+Then run `hot-updater db migrate` (or `db generate`) in the server's project to
+create the `remote_config_active` and `remote_config_versions` tables. See
+[mirror the server](/docs/custom/cli-configuration#mirror-the-server) for the
+config side.
+
+`remoteConfig()` serves `GET /remote-config` on the client handler, behind the
+same client-route policy as update checks, such as `apiKeys()`, and template
+management on the admin handler.
+
+## Add the client plugin
+
+Create the plugin once, at module scope, with your in-app defaults, and pass
+it to `plugins` in [`HotUpdater.init`](/docs/react-native-api/init) or
+[`HotUpdater.wrap`](/docs/react-native-api/wrap). It fetches from the
+`baseURL`, `requestHeaders`, and `requestTimeout` you configure there, so it
+needs no URL or key of its own:
+
+```ts title="src/remoteConfig.ts"
+import { remoteConfig } from "@hot-updater/react-native";
+
+export const config = remoteConfig({
+  defaults: {
+    welcome_message: "Welcome back",
+    max_items: 20,
+    new_checkout: false,
+  },
+});
+```
+
+```tsx title="App.tsx"
+import { HotUpdater } from "@hot-updater/react-native";
+
+import { config } from "./src/remoteConfig";
+
+HotUpdater.init({
+  baseURL: "<your-update-server-url>",
+  requestHeaders: { "x-api-key": "<client-api-key>" },
+  plugins: [config], // [!code ++]
+});
+
+config.fetchAndActivate().catch(() => {
+  // Offline or unreachable: the app keeps its last active values.
+});
+```
+
+Reads are synchronous. Right after `init` or `wrap`, `config.getString(...)`
+returns the values the app activated last, stored on the device, and before
+that the defaults:
+
+```tsx
+const title = config.getString("welcome_message");
+const showNewCheckout = config.getBoolean("new_checkout");
+```
+
+The [plugin reference](/docs/react-native-api/remote-config) covers every
+method, how text becomes numbers and booleans, and re-rendering on activation.
+
+## Choose when new values apply
+
+`fetch()` stores the values the server picks, and `activate()` makes them the
+ones reads return. Splitting them lets you choose when the app changes, with
+one of Firebase's loading strategies:
+
+| Strategy | Code | The app changes |
+| --- | --- | --- |
+| Apply on load | `config.fetchAndActivate()` without waiting | As soon as the fetch ends, possibly while the user looks at the screen. |
+| Wait behind a loading screen | `await config.fetchAndActivate()` before showing the screen | Before the first screen, at the cost of a network round trip. |
+| Apply at the next launch | `await config.activate(); config.fetch();` at startup | At the next launch: this launch activates what the last one fetched. |
+
+The last one never changes values mid-session and never waits for the network,
+which suits values that change layouts.
+
+A fetch within `minimumFetchIntervalMs` of the last one, 12 hours by default as
+in Firebase, keeps the values fetched last without a request, unless the app's
+channel, version, cohort, or fingerprint changed since.
+
+## Edit parameters and conditions
+
+Open **Remote Config** in the [Console](/docs/guides/console). Edits form a
+draft until you publish them:
+
+- **Parameters** have a key, a type (String, Number, Boolean, or JSON), a
+  default value, and a value per condition. Either value can be **Use in-app
+  default**: devices then keep the value from `defaults`. The type only checks
+  values in the Console; devices receive every value as text, as in Firebase.
+- **Conditions** have a name and rules that a device must all match. Their
+  order is their priority: when several conditions that a parameter has values
+  for match a device, the first one in the list decides.
+- **Preview** shows what a device gets: enter a platform, channel, app version,
+  cohort, and fingerprint, and each parameter shows its value and the
+  condition that chose it.
+
+A rule tests one thing:
+
+| Rule | A device matches when |
+| --- | --- |
+| Platform | It runs on one of the platforms. |
+| Channel | Its [channel](/docs/guides/channel-management) is one of the channels. |
+| App version | Its native app version satisfies a semver range, such as `>=1.4.0` or `2.x`, as release targets do. |
+| Percentage of installs | Its numeric [cohort](/docs/guides/rollout-cohorts) falls in a range, such as 0–10%, of the 1,000 cohorts shuffled by the rule's seed. |
+| Cohort | Its cohort is one of the numbers or custom cohort names. |
+| Fingerprint | Its native build's fingerprint is one of the hashes. |
+
+Percentages build on cohorts, so they are stable per installation and need no
+user ID. Rules with the same seed pick from the same order: `0–10%` and
+`10–20%` never share an installation, and widening `0–10%` to `0–25%` keeps
+the first 10%. A new seed picks other installations. Custom cohorts match only
+a Cohort rule, never a percentage, as in rollouts.
+
+## Publish and roll back
+
+**Publish changes** shows what the draft adds, changes, and removes, and
+publishes it as the next version with an optional description. Devices get
+its values on their next fetch. If someone else published while you edited,
+the Console says so and lets you load their version or publish yours after it.
+
+**Versions** lists every publish, newest first. **View** shows a version's
+template as JSON, and **Roll back** publishes a copy of it as a new version, so
+the history keeps both.
+
+A server or script can do the same through `hotUpdater.api.remoteConfig`:
+
+```ts title="scripts/publish-remote-config.ts"
+import { hotUpdater } from "../src/hotUpdater";
+
+const { version, template } = await hotUpdater.api.remoteConfig.getActive();
+const result = await hotUpdater.api.remoteConfig.publish({
+  baseVersion: version,
+  description: "Longer list on iOS",
+  template: {
+    ...template,
+    parameters: {
+      ...template.parameters,
+      max_items: { valueType: "NUMBER", defaultValue: { value: "30" } },
+    },
+  },
+});
+if (result.status === "conflict") {
+  throw new Error(`Version ${result.currentVersion} was published first.`);
+}
+```
+
+`publish` validates the template and throws `RemoteConfigValidationError`,
+with every problem in `issues`, for an invalid one. It answers `conflict` when
+the active version is no longer `baseVersion`. `rollback`, `listVersions`, and
+`getVersion` cover the history, and `resolve(context)` returns what a device
+with that context receives.
+
+A self-hosted server's admin handler serves the same operations, which the
+Console uses over [`standaloneRepository`](/docs/database-adapters/standalone):
+
+| Route | Does |
+| --- | --- |
+| `GET /remote-config/template` | The active template and its version. |
+| `PUT /remote-config/template` | Publishes `{ template, baseVersion, description? }`: `200` with the version, `409` with `currentVersion`, or `400` with `issues`. |
+| `GET /remote-config/versions?limit&cursor` | A page of versions, newest first. |
+| `GET /remote-config/versions/:version` | One version with its template. |
+| `POST /remote-config/versions/:version/rollback` | Publishes a copy of the version, from `{ baseVersion }`. |
+
+## How devices get values
+
+The client plugin requests `GET /remote-config` under `baseURL` with the
+device's platform, app version, channel, cohort, and fingerprint as query
+parameters. The server evaluates the conditions and answers only the values,
+`{ "version": 3, "values": { "welcome_message": "Welcome back" } }`; a
+parameter whose value is the in-app default is left out. Conditions and other
+devices' values never reach the app.
+
+- The answer depends only on the query, so it is cacheable: like the Release
+  Catalog, it carries `cache-control: public, max-age=0, s-maxage=5` and an
+  `ETag`, and varies by the client-route policy's headers. The plugin sends
+  `If-None-Match`, and an unchanged answer is a `304`.
+- Each server reads the active template with one keyed read and reuses it for
+  5 seconds, so a publish reaches devices within seconds plus any shared-cache
+  time.
+- A server without `remoteConfig()` answers `404`, and `fetch()` rejects; the
+  app keeps its active values.
+
+## Limits
+
+| Limit | Value |
+| --- | --- |
+| Template size | 60,000 characters of JSON, so a device can store its values. |
+| Parameters | 2,000. Keys start with a letter or `_` and use up to 256 letters, digits, and `_`. |
+| Conditions | 500, with unique names of up to 100 characters. |
+| Rule values | 100 per rule; channel, cohort, and fingerprint values of up to 128 characters. |
+| Percentages | From 0 to 100 in steps of 0.1, one numeric cohort each. |
+| Descriptions | 256 characters, for parameters and versions. |
+
+## Compared with Firebase Remote Config
+
+| | Firebase Remote Config | Hot Updater Remote Config |
+| --- | --- | --- |
+| Reads | `getValue`, `getString`, `getNumber`, `getBoolean`, `getAll`, synchronous | The same methods, synchronous |
+| Value sources | `static`, `default`, `remote` | The same |
+| Fetching | `fetch`, `activate`, `fetchAndActivate`, minimum fetch interval of 12 hours | The same |
+| Where conditions run | On Google's servers | On your update server |
+| Conditions | App, platform, version, country, language, user property, user in random percentile, and more | Platform, channel, app version, cohort, percentage of installs, and fingerprint |
+| Versions | Kept with rollback | Kept with rollback |
+| Real-time updates | `onConfigUpdated` | No; values change on the next fetch. `subscribe` reports activations. |
+| A/B testing and personalization | Yes | No |
+| Hosting | Firebase | Your server, or a managed Hot Updater server |
+
+Remote Config values travel to every matching device, so keep secrets such as
+API keys out of them.

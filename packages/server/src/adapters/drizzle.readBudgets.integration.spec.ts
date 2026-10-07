@@ -12,6 +12,7 @@ import { drizzle } from "drizzle-orm/pglite";
 
 import { apiKeys } from "../plugins/api-keys";
 import { insights } from "../plugins/insights";
+import { remoteConfig } from "../plugins/remote-config";
 import { drizzleExecutor } from "./drizzleExecutor";
 
 /**
@@ -26,8 +27,8 @@ setupReadBudgetTestSuite({
     await client.exec(
       generateEngineSql(
         "postgresql",
-        toolingTargetOf([insights(), apiKeys()]).schema,
-        toolingTargetOf([insights(), apiKeys()]).settings,
+        toolingTargetOf([insights(), apiKeys(), remoteConfig()]).schema,
+        toolingTargetOf([insights(), apiKeys(), remoteConfig()]).settings,
       ).join(";\n"),
     );
     const reads = postgresRowsExamined(

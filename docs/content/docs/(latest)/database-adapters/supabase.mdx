@@ -33,7 +33,8 @@ npx supabase db push
 ```
 
 The migration creates the tables of core and of the managed Edge Function's
-plugins, Insights and API keys, under the `hot_updater_v1_` prefix, with
+plugins, Insights, API keys, and Remote Config, under the `hot_updater_v1_`
+prefix, with
 row-level security on every table, the write guard table, and the
 `hot_updater_v1_apply` function, then writes the schema settings rows last.
 

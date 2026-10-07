@@ -10,7 +10,9 @@ A client plugin runs in the app next to the SDK. It is told about the launch
 outcome, each update check, each staged download, and each failed check,
 download, or install. It can send requests to your update server with the
 app's base URL and headers, and keep small values on the device. The built-in
-[Insights plugin](/docs/react-native-api/insights) uses the same contract;
+[Insights](/docs/react-native-api/insights) and
+[Remote Config](/docs/react-native-api/remote-config) plugins use the same
+contract;
 [server plugins](/docs/custom/server-plugins) extend the server side.
 
 Pass plugins to `plugins` in [`HotUpdater.init`](/docs/react-native-api/init)
@@ -58,7 +60,7 @@ export const launchLogger = () =>
   object to a later `init` or `wrap` keeps its hooks; a plugin left out of a
   later call stops receiving events.
 - A plugin object can carry its own methods, as `insights()` does with
-  `setUser`.
+  `setUser` and `remoteConfig()` with its reads and fetches.
 - Import `defineClientPlugin` and the plugin types from
   `@hot-updater/protocol`. It loads neither React Native nor the native
   module, so the plugin's [tests](#test-the-plugin) run in plain Node. The app
@@ -483,6 +485,7 @@ server plugin ships from the same package, from a `./client` entry beside
 ## Related
 
 - [Insights Plugin](/docs/react-native-api/insights)
+- [Remote Config Plugin](/docs/react-native-api/remote-config)
 - [Server Plugins](/docs/custom/server-plugins)
 - [Test and publish a plugin](/docs/plugins/publish)
 - [`HotUpdater.init`](/docs/react-native-api/init)

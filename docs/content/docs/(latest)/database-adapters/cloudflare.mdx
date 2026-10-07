@@ -37,7 +37,8 @@ npx wrangler d1 execute <database-name> --remote \
 The same SQL ships as the Worker migration
 `worker/migrations/0001_hot-updater_1.0.0.sql`, which managed setup applies
 with `wrangler d1 migrations apply`. It creates the tables and indexes of core
-and of the managed Worker's plugins, Insights and API keys, and the `_hu_write`
+and of the managed Worker's plugins, Insights, API keys, and Remote Config, and
+the `_hu_write`
 table that batch writes use, then writes the schema settings rows last.
 
 A Worker that runs other

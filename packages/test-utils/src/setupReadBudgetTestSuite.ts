@@ -89,6 +89,41 @@ interface ReadBudgetInsights {
   }>;
 }
 
+/** The `remoteConfig()` API the budgets call, typed here, so test-utils needs no peer on its package. */
+interface ReadBudgetRemoteConfig {
+  publish(input: {
+    readonly template: unknown;
+    readonly baseVersion: number;
+    readonly description?: string;
+  }): Promise<{ readonly status: string }>;
+  listVersions(input: {
+    readonly limit: number;
+  }): Promise<{ readonly versions: readonly { readonly version: number }[] }>;
+  resolve(context: {
+    readonly platform?: "ios" | "android";
+    readonly channel?: string;
+    readonly appVersion?: string;
+    readonly cohort?: string;
+  }): Promise<{
+    readonly version: number;
+    readonly values: Readonly<Record<string, string>>;
+  }>;
+}
+
+/** A published template: a greeting that beta devices get another value of. */
+const remoteConfigTemplate = (greeting: string) => ({
+  conditions: [
+    { name: "Beta", rules: [{ type: "channel", channels: ["beta"] }] },
+  ],
+  parameters: {
+    greeting: {
+      valueType: "STRING",
+      defaultValue: { value: greeting },
+      conditionalValues: { Beta: { value: `${greeting}, tester` } },
+    },
+  },
+});
+
 interface ReadBudgetApiKeys {
   create(input: {
     readonly name: string;
@@ -253,6 +288,7 @@ const seed = async (database: MeasuredDatabase) => {
   const api = database.api as {
     readonly insights: ReadBudgetInsights;
     readonly apiKeys: ReadBudgetApiKeys;
+    readonly remoteConfig: ReadBudgetRemoteConfig;
   };
   for (const name of ["staging", "beta", "canary", "nightly"]) {
     await core.ensureChannel(name);
@@ -306,12 +342,20 @@ const seed = async (database: MeasuredDatabase) => {
   await api.insights.recordEvent(failureOf(1, 3));
   await api.insights.recordEvent(failureOf(2, 5));
   await api.insights.recordEvent(failureOf(3, 7, true));
+  // Three Remote Config versions; the last is active.
+  for (const [baseVersion, greeting] of ["Hi", "Hello", "Hey"].entries()) {
+    await api.remoteConfig.publish({
+      template: remoteConfigTemplate(greeting),
+      baseVersion,
+    });
+  }
   const channel = (name: string) =>
     core.findChannelByName(name).then((found) => found!);
   const productionId = (await channel("production")).id;
   return {
     core,
     insights: api.insights,
+    remoteConfig: api.remoteConfig,
     clientAuth: database.clientAuth,
     apiKey,
     productionId,
@@ -380,6 +424,29 @@ const READ_BUDGETS: readonly ReadBudget[] = [
     adapter: reads(1, 1, 1, 1),
     engine: { calls: 2, rows: 2 },
     check: (catalog) => expect(catalog?.releases).toHaveLength(4),
+  }),
+  budget({
+    // The fetch's first read on this server; later ones within five seconds
+    // read nothing, which the plugin's own spec pins.
+    api: "remote config fetch: 1 point read of the active template",
+    read: ({ remoteConfig }) =>
+      remoteConfig.resolve({ platform: "ios", channel: "beta" }),
+    adapter: reads(1, 1, 0, 0),
+    engine: { calls: 1, rows: 1 },
+    check: (resolved) =>
+      expect(resolved).toEqual({
+        version: 3,
+        values: { greeting: "Hey, tester" },
+      }),
+  }),
+  budget({
+    api: "remote config versions page: limit rows from one query",
+    read: ({ remoteConfig }) => remoteConfig.listVersions({ limit: 2 }),
+    adapter: reads(0, 0, 1, 2),
+    engine: { calls: 1, rows: 2 },
+    returned: (page) => page.versions.length,
+    check: (page) =>
+      expect(page.versions.map(({ version }) => version)).toEqual([3, 2]),
   }),
   budget({
     api: "artifact resolution: 1 batch get of 2 bundles and 1 unique patch read",
@@ -753,11 +820,14 @@ export const setupReadBudgetTestSuite = (
 
     beforeAll(async () => {
       // The server's built-in plugins, whose reads have budgets.
-      const [{ insights }, { apiKeys }] = await Promise.all([
-        import("@hot-updater/server/plugins/insights"),
-        import("@hot-updater/server/plugins/api-keys"),
-      ]);
-      const plugins = [insights(), apiKeys()];
+      const [{ insights }, { apiKeys }, { remoteConfig }] = await Promise.all(
+        [
+          import("@hot-updater/server/plugins/insights"),
+          import("@hot-updater/server/plugins/api-keys"),
+          import("@hot-updater/server/plugins/remote-config"),
+        ],
+      );
+      const plugins = [insights(), apiKeys(), remoteConfig()];
       created = await options.createAdapter({
         tables: [...toolingTargetOf(plugins).schema.tables, SETTINGS_TABLE],
         nativePageSize: NATIVE_PAGE_SIZE,
