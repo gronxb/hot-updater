@@ -285,6 +285,7 @@ describe("E2E navigation stack contract", () => {
     );
     expect(groupedRouteModuleFiles).toEqual([]);
     expect(routeModuleFiles).toEqual([
+      "activate-remote-config-action-route.tsx",
       "apply-captured-update-action-route.tsx",
       "apply-cohort-input-action-route.tsx",
       "capture-current-channel-update-action-route.tsx",
@@ -293,6 +294,7 @@ describe("E2E navigation stack contract", () => {
       "cohort-action-result-route.tsx",
       "cohort-input-route.tsx",
       "crash-history-count-route.tsx",
+      "fetch-remote-config-action-route.tsx",
       "install-current-channel-update-action-route.tsx",
       "install-fingerprint-update-action-route.tsx",
       "install-runtime-channel-update-action-route.tsx",
@@ -314,6 +316,7 @@ describe("E2E navigation stack contract", () => {
       "runtime-large-asset-route.tsx",
       "runtime-marker-route.tsx",
       "runtime-release-state-route.tsx",
+      "runtime-remote-config-route.tsx",
       "set-cohort-qa-action-route.tsx",
       "update-action-result-route.tsx",
       "update-store-download-paths-route.tsx",
@@ -322,7 +325,7 @@ describe("E2E navigation stack contract", () => {
     const stackScreens = routeModuleSources.flatMap(
       (source) => source.match(/<Stack\.Screen/g) ?? [],
     );
-    expect(stackScreens).toHaveLength(33);
+    expect(stackScreens).toHaveLength(36);
     expect(e2eAppRoutesSource).not.toContain("routeGroups");
     expect(e2eAppRoutesSource).not.toContain("routeScreens");
     for (const [index, source] of routeModuleSources.entries()) {

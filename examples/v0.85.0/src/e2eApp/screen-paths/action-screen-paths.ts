@@ -1,9 +1,11 @@
 export const actionScreenPaths = {
+  ActivateRemoteConfigAction: "e2e/action/activate-remote-config",
   ApplyCapturedUpdateAction: "e2e/action/apply-captured-update",
   ApplyCohortInputAction: "e2e/action/apply-cohort-input",
   CaptureCurrentChannelUpdateAction:
     "e2e/action/capture-current-channel-update",
   ClearCrashHistoryAction: "e2e/action/clear-crash-history",
+  FetchRemoteConfigAction: "e2e/action/fetch-remote-config",
   InstallCurrentChannelUpdateAction:
     "e2e/action/install-current-channel-update",
   InstallFingerprintUpdateAction: "e2e/action/install-fingerprint-update",

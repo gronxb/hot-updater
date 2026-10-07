@@ -28,5 +28,6 @@
   "crash-then-next-safe-update",
   "runtime-channel-crash-restore",
   "metadata-v1-migration",
-  "ten-crash-history-safe-bundle"
+  "ten-crash-history-safe-bundle",
+  "remote-config-fetch-activate"
 ]

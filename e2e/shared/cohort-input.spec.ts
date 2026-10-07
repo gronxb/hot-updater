@@ -72,6 +72,8 @@ function fixture() {
       if (name === "./startup-check") return {};
       if (name === "./useCapturedUpdateActions")
         return { useCapturedUpdateActions: () => ({}) };
+      if (name === "./useRemoteConfigActions")
+        return { useRemoteConfigActions: () => ({}) };
       throw new Error(`Unexpected dependency: ${name}`);
     },
   });

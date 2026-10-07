@@ -19,6 +19,7 @@ import { metadataV1MigrationScenario } from "./scenarios/metadata-v1-migration.t
 import { multiAssetReplacementScenario } from "./scenarios/multi-asset-replacement.ts";
 import { numericCohortRolloutScenario } from "./scenarios/numeric-cohort-rollout.ts";
 import { releaseOtaRecoveryScenario } from "./scenarios/release-ota-recovery.ts";
+import { remoteConfigFetchActivateScenario } from "./scenarios/remote-config-fetch-activate.ts";
 import { republishedCrashedBundleSkippedScenario } from "./scenarios/republished-crashed-bundle-skipped.ts";
 import { runtimeChannelCrashRestoreScenario } from "./scenarios/runtime-channel-crash-restore.ts";
 import { runtimeChannelSwitchResetScenario } from "./scenarios/runtime-channel-switch-reset.ts";
@@ -69,6 +70,7 @@ const registeredScenarios: readonly ScenarioDefinition[] = [
   runtimeChannelCrashRestoreScenario,
   metadataV1MigrationScenario,
   tenCrashHistorySafeBundleScenario,
+  remoteConfigFetchActivateScenario,
 ];
 
 const scenarioByName = new Map(

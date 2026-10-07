@@ -28,8 +28,10 @@ import {
   handleProxyRemoteAssetRequest,
   handleProxyState,
   handleProxyUpdateRequest,
+  handlePublishRemoteConfig,
   handleResetLocalAppState,
   handleResetRemoteBundles,
+  handleRollbackRemoteConfig,
   handleRuntimeConfig,
   handleSeedCrashHistory,
   handleSeedLegacyMetadata,
@@ -102,6 +104,32 @@ app.post("/e2e/verify-console-insights", async (c) => {
       sinceMs: payload.sinceMs,
     }),
   );
+});
+
+app.post("/e2e/publish-remote-config", async (c) => {
+  const payload = (await c.req.json()) as {
+    template?: unknown;
+    description?: unknown;
+  };
+  if (typeof payload.template !== "object" || payload.template === null) {
+    return c.json({ error: "template is required" }, 400);
+  }
+  return c.json(
+    await handlePublishRemoteConfig({
+      template: payload.template,
+      ...(typeof payload.description === "string"
+        ? { description: payload.description }
+        : {}),
+    }),
+  );
+});
+
+app.post("/e2e/rollback-remote-config", async (c) => {
+  const payload = (await c.req.json()) as { version?: unknown };
+  if (typeof payload.version !== "number") {
+    return c.json({ error: "version is required" }, 400);
+  }
+  return c.json(await handleRollbackRemoteConfig({ version: payload.version }));
 });
 
 app.all("/hot-updater/*", async (c) => {

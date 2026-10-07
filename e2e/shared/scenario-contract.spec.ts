@@ -115,6 +115,7 @@ const defaultScenarioNames = [
   "runtime-channel-crash-restore",
   "metadata-v1-migration",
   "ten-crash-history-safe-bundle",
+  "remote-config-fetch-activate",
 ] as const;
 const standaloneDatabaseProfileSources = [
   "examples-server/elysia-drizzle-libsql/src/db.ts",
@@ -252,19 +253,20 @@ async function controlStepDefinition(
 }
 
 describe("E2E scenario contract", () => {
-  it("keeps Console Insights enabled for every standalone database profile", async () => {
+  it("keeps Console Insights and Remote Config enabled for every standalone database profile", async () => {
     // Given: Console Insights is an acceptance checkpoint after each device
-    // scenario and every standalone adapter implements the insights model.
+    // scenario, every standalone adapter implements the insights model, and
+    // the Remote Config scenario publishes through the server's admin routes.
     const sources = await Promise.all(
       standaloneDatabaseProfileSources.map((sourcePath) =>
         fs.readFile(sourcePath, "utf8"),
       ),
     );
 
-    // When / Then: every profile runs the insights() plugin and declares its
-    // client access policy explicitly.
+    // When / Then: every profile runs the insights() and remoteConfig()
+    // plugins and declares its client access policy explicitly.
     for (const source of sources) {
-      expect(source).toContain("plugins: [insights()],");
+      expect(source).toContain("plugins: [insights(), remoteConfig()],");
       expect(source).toContain('clientAccess: "public",');
       expect(source).not.toContain("clientAccess: { type:");
       expect(source).not.toContain("insights: true");
@@ -277,7 +279,7 @@ describe("E2E scenario contract", () => {
 
     expect(scenarios).toEqual(defaultScenarioNames);
     expect(listScenarioNames()).toEqual(defaultScenarioNames);
-    expect(new Set(listScenarioNames()).size).toBe(30);
+    expect(new Set(listScenarioNames()).size).toBe(31);
   });
 
   it("keeps repeated catalog checks as no-ops while already built-in", async () => {
@@ -695,6 +697,7 @@ describe("E2E scenario contract", () => {
             setup: () => {},
             setUser: () => {},
           }),
+          remoteConfig: () => ({ id: "remoteConfig", setup: () => {} }),
         },
         "react-native": {},
         valtio: { proxy: (value: unknown) => value },
@@ -819,9 +822,12 @@ describe("E2E scenario contract", () => {
     // Console Insights QA needs the Insights client plugin and finds the
     // installation by this user ID.
     expect(e2eRuntimeSource).toContain(
-      'import { HotUpdater, insights } from "@hot-updater/react-native";',
+      'import { HotUpdater, insights, remoteConfig } from "@hot-updater/react-native";',
     );
-    expect(e2eRuntimeSource).toContain("plugins: [analytics],");
+    // The Remote Config scenario reads its values through this plugin.
+    expect(e2eRuntimeSource).toContain(
+      "plugins: [analytics, e2eRemoteConfig],",
+    );
     expect(e2eRuntimeSource).toContain(
       'analytics.setUser({ userId: "detox-e2e" });',
     );

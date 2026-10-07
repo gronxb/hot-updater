@@ -53,6 +53,7 @@ import {
 import { inferPatchAssetPathFromStorageUri } from "./patch-storage-path.ts";
 import { resetProviderAfterReady } from "./provider-reset-retry.ts";
 import { buildReleaseCatalogUrl } from "./release-catalog-url.ts";
+import { createRemoteConfigAdminClient } from "./remote-config-admin.ts";
 import {
   prepareE2eStartupCheck,
   readE2eScreenStateSnapshot,
@@ -6887,4 +6888,30 @@ export async function handleCleanup() {
 
 export async function handleVerifyConsoleInsights(args: { sinceMs: number }) {
   return verifyConfiguredConsoleInsights(args);
+}
+
+/** Remote Config's admin routes on the server the app updates from. */
+function remoteConfigAdmin() {
+  return createRemoteConfigAdminClient({
+    baseUrl: `${getControllerReachableAppBaseUrl()}/admin`,
+    headers: getHotUpdaterAdminHeaders(),
+  });
+}
+
+export async function handlePublishRemoteConfig(args: {
+  template: unknown;
+  description?: string;
+}) {
+  const remoteConfigVersion = await remoteConfigAdmin().publish(args);
+  logE2eFixture("remote config published", { remoteConfigVersion });
+  return { remoteConfigVersion };
+}
+
+export async function handleRollbackRemoteConfig(args: { version: number }) {
+  const remoteConfigVersion = await remoteConfigAdmin().rollback(args.version);
+  logE2eFixture("remote config rolled back", {
+    remoteConfigVersion,
+    source: args.version,
+  });
+  return { remoteConfigVersion };
 }

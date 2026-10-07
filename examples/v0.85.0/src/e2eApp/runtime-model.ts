@@ -7,12 +7,14 @@ export type InstallUpdateInput = {
 };
 
 export type E2eRuntimeModel = {
+  readonly activateRemoteConfig: () => Promise<void>;
   readonly applyCohortInput: () => Promise<void>;
   readonly channelActionResult: string;
   readonly clearCrashHistory: () => Promise<void>;
   readonly captureCurrentChannelUpdate: () => Promise<void>;
   readonly cohortActionResult: string;
   readonly cohortInput: string;
+  readonly fetchRemoteConfig: () => Promise<void>;
   readonly initialCohort: string;
   readonly installRuntimeChannelUpdate: () => Promise<void>;
   readonly applyCapturedUpdate: () => Promise<void>;
@@ -22,6 +24,7 @@ export type E2eRuntimeModel = {
   readonly launchTransitionText: string;
   readonly reinitializeHotUpdater: () => Promise<void>;
   readonly reloadApp: () => Promise<void>;
+  readonly remoteConfigText: string;
   readonly resetRuntimeChannel: () => Promise<void>;
   readonly restoreInitialCohort: () => Promise<void>;
   readonly runtimeChannelInput: string;

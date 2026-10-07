@@ -46,6 +46,7 @@ const expectedScenarioModuleFiles = [
   "multi-asset-replacement.ts",
   "numeric-cohort-rollout.ts",
   "release-ota-recovery.ts",
+  "remote-config-fetch-activate.ts",
   "republished-crashed-bundle-skipped.ts",
   "runtime-channel-crash-restore.ts",
   "runtime-channel-switch-reset.ts",

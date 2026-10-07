@@ -2,7 +2,7 @@ import type {
   CatalogHighWater,
   PersistedSelectionReceipt,
 } from "@hot-updater/protocol";
-import { HotUpdater, insights } from "@hot-updater/react-native";
+import { HotUpdater, insights, remoteConfig } from "@hot-updater/react-native";
 import { TurboModuleRegistry, type TurboModule } from "react-native";
 import { proxy } from "valtio";
 
@@ -57,6 +57,13 @@ type UpdateProgressDetails = {
 const analytics = insights();
 analytics.setUser({ userId: "detox-e2e" });
 
+// The Remote Config scenario's parameters, with the defaults the app ships.
+// It fetches every time it is asked, so a scenario never waits out an interval.
+export const e2eRemoteConfig = remoteConfig({
+  defaults: { e2e_flag: true, e2e_limit: 1, e2e_message: "in-app default" },
+  minimumFetchIntervalMs: 0,
+});
+
 // Runs at startup, and again from an E2E action as a root that initializes Hot
 // Updater when it mounts does. Each run shows its own read of this launch.
 export const initializeHotUpdater = () => {
@@ -66,7 +73,7 @@ export const initializeHotUpdater = () => {
   notify.toBundleId = undefined;
   notify.toReleaseId = undefined;
   HotUpdater.init({
-    plugins: [analytics],
+    plugins: [analytics, e2eRemoteConfig],
     baseURL: resolveHotUpdaterBaseURL,
     requestHeaders: HOT_UPDATER_API_KEY
       ? { "x-api-key": HOT_UPDATER_API_KEY }

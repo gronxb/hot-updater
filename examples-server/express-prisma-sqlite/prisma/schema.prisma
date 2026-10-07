@@ -296,6 +296,24 @@ model insights_failures {
   @@id([platform, channel, bucket_start_ms, release_id, stage, reason, detail, hu_shard])
   @@index([bucket_start_ms, platform, channel, release_id, stage, reason, detail, hu_shard], map: "insights_failures__retention")
 }
+model remote_config_active {
+  id String
+  version BigInt
+  template String
+  updated_at_ms BigInt
+  hu_v BigInt @default(0) @map("_v")
+  @@id([id])
+}
+model remote_config_versions {
+  version BigInt
+  template String
+  description String?
+  update_type String
+  rollback_source BigInt?
+  created_at_ms BigInt
+  hu_v BigInt @default(0) @map("_v")
+  @@id([version])
+}
 model private_hot_updater_settings {
   key String
   value String
