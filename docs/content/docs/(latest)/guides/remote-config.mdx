@@ -90,9 +90,9 @@ hotUpdater.remoteConfig
 ```
 
 Reads are synchronous. As soon as `init` returns,
-`hotUpdater.remoteConfig.getString(...)` returns the values the app activated
-last, stored on the device, and before any, the defaults. Its keys come from
-`defaults`:
+`hotUpdater.remoteConfig.getString(...)` returns the value the app activated
+last, stored on the device, else the key's default, else `null`. Keys declared
+in `defaults` read without `null`:
 
 ```tsx
 import { hotUpdater } from "./hotUpdater";

@@ -19,10 +19,10 @@ export type RemoteConfigDefaults = Readonly<
 >;
 
 /**
- * Where a value comes from: `remote` from the activated template, `default`
- * from the in-app defaults, `static` when neither has the key.
+ * Where a value comes from: `remote` from the activated values, `default`
+ * from the in-app defaults. A key neither has reads as `null`.
  */
-export type RemoteConfigValueSource = "static" | "default" | "remote";
+export type RemoteConfigValueSource = "default" | "remote";
 
 /**
  * How the last fetch ended: `throttle` when the server asked the app to
@@ -36,17 +36,20 @@ export type RemoteConfigFetchStatus =
 
 /** A parameter's value, read as the type the app expects. */
 export interface RemoteConfigValue {
-  /** The text; `""` for a static value. */
+  /** The text, `""` included. */
   asString(): string;
-  /** The text as a number; 0 for a static value or text that is not a number. */
+  /** The text as a number, `0` included; 0 for text that is not a number. */
   asNumber(): number;
-  /** Whether the text is `1`, `true`, `t`, `yes`, `y`, or `on`, in any case; false for a static value. */
+  /** Whether the text is `1`, `true`, `t`, `yes`, `y`, or `on`, in any case. */
   asBoolean(): boolean;
   getSource(): RemoteConfigValueSource;
 }
 
+/** No defaults: every key may read as `null`. */
+type NoDefaults = Record<never, never>;
+
 export interface RemoteConfigOptions<
-  TDefaults extends RemoteConfigDefaults = RemoteConfigDefaults,
+  TDefaults extends RemoteConfigDefaults = NoDefaults,
 > {
   /** Values the app uses until it activates fetched ones, and for keys the template leaves to it. */
   readonly defaults?: TDefaults;
@@ -65,21 +68,40 @@ export type RemoteConfigKey<TDefaults> =
   | (string & {});
 
 /**
+ * What a read of `TKey` returns: `T` for a key `defaults` declares, which
+ * always has a value, and `T | null` for any other key.
+ */
+export type RemoteConfigRead<
+  TDefaults,
+  TKey extends string,
+  T,
+> = TKey extends keyof TDefaults ? T : T | null;
+
+/**
  * Remote Config on the instance `HotUpdater.init` returns, as
  * `hotUpdater.remoteConfig`.
  */
 export interface RemoteConfigClient<
-  TDefaults extends RemoteConfigDefaults = RemoteConfigDefaults,
+  TDefaults extends RemoteConfigDefaults = NoDefaults,
 > {
   /**
-   * A parameter's active value. Reads are synchronous: they return the
-   * values the app activated last, which `init` loads from the device, and
-   * before any, the defaults.
+   * A parameter's value: the active remote value, else the in-app default,
+   * else `null`. Reads are synchronous; `init` loads the values the app
+   * activated last from the device. `false`, `0`, and `""` are values, not
+   * missing ones.
    */
-  getValue(key: RemoteConfigKey<TDefaults>): RemoteConfigValue;
-  getString(key: RemoteConfigKey<TDefaults>): string;
-  getNumber(key: RemoteConfigKey<TDefaults>): number;
-  getBoolean(key: RemoteConfigKey<TDefaults>): boolean;
+  getValue<TKey extends RemoteConfigKey<TDefaults>>(
+    key: TKey,
+  ): RemoteConfigRead<TDefaults, TKey, RemoteConfigValue>;
+  getString<TKey extends RemoteConfigKey<TDefaults>>(
+    key: TKey,
+  ): RemoteConfigRead<TDefaults, TKey, string>;
+  getNumber<TKey extends RemoteConfigKey<TDefaults>>(
+    key: TKey,
+  ): RemoteConfigRead<TDefaults, TKey, number>;
+  getBoolean<TKey extends RemoteConfigKey<TDefaults>>(
+    key: TKey,
+  ): RemoteConfigRead<TDefaults, TKey, boolean>;
   /**
    * Every key the defaults or the active values have. The object stays the
    * same until the values change, so it suits `useSyncExternalStore`.
@@ -105,7 +127,7 @@ export interface RemoteConfigClient<
 
 /** The `remoteConfig()` plugin: it adds `hotUpdater.remoteConfig`. */
 export type RemoteConfigPlugin<
-  TDefaults extends RemoteConfigDefaults = RemoteConfigDefaults,
+  TDefaults extends RemoteConfigDefaults = NoDefaults,
 > = HotUpdaterClientPlugin<"remoteConfig", RemoteConfigClient<TDefaults>>;
 
 const DEFAULT_MINIMUM_FETCH_INTERVAL_MS = 12 * 60 * 60 * 1000;
@@ -132,18 +154,14 @@ const createValue = (
   source: RemoteConfigValueSource,
 ): RemoteConfigValue =>
   Object.freeze({
-    asString: () => (source === "static" ? "" : text),
+    asString: () => text,
     asNumber: () => {
-      if (source === "static") return 0;
       const number = Number(text);
       return Number.isNaN(number) ? 0 : number;
     },
-    asBoolean: () =>
-      source !== "static" && BOOLEAN_TRUTHY_VALUES.has(text.toLowerCase()),
+    asBoolean: () => BOOLEAN_TRUTHY_VALUES.has(text.toLowerCase()),
     getSource: () => source,
   });
-
-const STATIC_VALUE = createValue("", "static");
 
 const parseStored = <T extends StoredValues>(
   text: string | null,
@@ -207,7 +225,7 @@ const deviceContext = (
  * ```
  */
 export const remoteConfig = <
-  const TDefaults extends RemoteConfigDefaults = RemoteConfigDefaults,
+  const TDefaults extends RemoteConfigDefaults = NoDefaults,
 >(
   options: RemoteConfigOptions<TDefaults> = {},
 ): RemoteConfigPlugin<TDefaults> => {
@@ -299,13 +317,12 @@ const createRemoteConfigClient = <TDefaults extends RemoteConfigDefaults>(
     store(LAST_FETCH_STATUS_KEY, status);
   };
 
-  const getValue = (key: string): RemoteConfigValue => {
+  // The active remote value, else the in-app default, else null.
+  const getValue = (key: string): RemoteConfigValue | null => {
     const remote = ownEntry(active?.values, key);
     if (remote !== undefined) return createValue(remote, "remote");
     const fallback = ownEntry(defaults, key);
-    return fallback === undefined
-      ? STATIC_VALUE
-      : createValue(fallback, "default");
+    return fallback === undefined ? null : createValue(fallback, "default");
   };
 
   const fetchFromServer = async (): Promise<void> => {
@@ -394,11 +411,13 @@ const createRemoteConfigClient = <TDefaults extends RemoteConfigDefaults>(
     return true;
   };
 
-  return Object.freeze({
+  // One implementation serves every key; the read types, non-null for keys
+  // `defaults` declares, hold because every such key has a default value.
+  const client = Object.freeze({
     getValue,
-    getString: (key: string) => getValue(key).asString(),
-    getNumber: (key: string) => getValue(key).asNumber(),
-    getBoolean: (key: string) => getValue(key).asBoolean(),
+    getString: (key: string) => getValue(key)?.asString() ?? null,
+    getNumber: (key: string) => getValue(key)?.asNumber() ?? null,
+    getBoolean: (key: string) => getValue(key)?.asBoolean() ?? null,
     getAll: () => {
       snapshot ??= Object.freeze(
         Object.fromEntries(
@@ -407,7 +426,7 @@ const createRemoteConfigClient = <TDefaults extends RemoteConfigDefaults>(
               ...Object.keys(defaults),
               ...Object.keys(active?.values ?? {}),
             ]),
-          ].map((key) => [key, getValue(key)]),
+          ].map((key) => [key, getValue(key)!]),
         ),
       );
       return snapshot;
@@ -430,4 +449,5 @@ const createRemoteConfigClient = <TDefaults extends RemoteConfigDefaults>(
       };
     },
   });
+  return client as unknown as RemoteConfigClient<TDefaults>;
 };

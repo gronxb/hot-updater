@@ -208,9 +208,11 @@ function ParameterForm({
           <DialogDescription>
             The app reads it with{" "}
             <code className="font-mono">
-              config.{READ_METHODS[valueType]}("{key.trim() || "key"}")
+              hotUpdater.remoteConfig.{READ_METHODS[valueType]}("
+              {key.trim() || "key"}")
             </code>
-            .
+            , which is null when neither the server nor the app's defaults have
+            a value.
           </DialogDescription>
         </DialogHeader>
         <FieldGroup>
