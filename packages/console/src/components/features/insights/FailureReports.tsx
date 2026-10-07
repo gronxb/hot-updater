@@ -40,6 +40,7 @@ import {
   failureStageLabel,
 } from "@/lib/insights-failures";
 import type { InsightsEventRow } from "@/lib/insights-view";
+import { cn } from "@/lib/utils";
 
 import {
   EventBundleTransition,
@@ -97,7 +98,12 @@ function FailureDetail({ group }: { readonly group: FailureGroup }) {
             {failureStageLabel(failure.stage)} ·{" "}
             {failureReasonLabel(failure.reason)}
           </p>
-          <h3 className="font-mono text-sm leading-relaxed whitespace-pre-wrap wrap-anywhere">
+          <h3
+            className={cn(
+              "text-sm leading-relaxed whitespace-pre-wrap wrap-anywhere",
+              failure.errorMessage ? "font-mono" : "text-muted-foreground",
+            )}
+          >
             {messageOf(event)}
           </h3>
           {!failure.errorMessage ? (
@@ -301,7 +307,14 @@ export function FailureReportsList({
                             }
                           >
                             <span className="flex min-w-0 flex-col gap-1">
-                              <span className="line-clamp-2 font-mono text-xs leading-relaxed wrap-anywhere">
+                              <span
+                                className={cn(
+                                  "line-clamp-2 text-xs leading-relaxed wrap-anywhere",
+                                  latest.failure?.errorMessage
+                                    ? "font-mono"
+                                    : "text-muted-foreground",
+                                )}
+                              >
                                 {messageOf(latest)}
                               </span>
                               <span className="text-xs font-normal text-muted-foreground">
