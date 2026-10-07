@@ -601,7 +601,7 @@ describe("E2E scenario contract", () => {
     const helpers = [
       source.slice(
         source.indexOf("function stripAnsi("),
-        source.indexOf("function bareBuildCacheRoot("),
+        source.indexOf("function deployProcessLockRoot("),
       ),
       source.slice(
         source.indexOf("async function fetchProviderBundleById("),

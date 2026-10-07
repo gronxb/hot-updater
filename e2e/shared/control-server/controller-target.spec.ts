@@ -32,20 +32,12 @@ describe("control-server target ownership", () => {
     );
     const { getHotUpdaterControlEnv } = await import("./controller.ts");
 
-    const childEnv = {
-      ...process.env,
-      ...getHotUpdaterControlEnv({
-        NODE_ENV: "development",
-        BABEL_ENV: "development",
-        HOT_UPDATER_BARE_BUILD_CACHE_KEY: "fixture-bundle",
-      }),
-    };
+    const childEnv = { ...process.env, ...getHotUpdaterControlEnv() };
 
     expect(childEnv).toMatchObject({
       NODE_ENV: "production",
       BABEL_ENV: "production",
       HOT_UPDATER_CONTROL_BASE_URL: "http://127.0.0.1:3009/hot-updater",
-      HOT_UPDATER_BARE_BUILD_CACHE_KEY: "fixture-bundle",
     });
     expect(process.env.NODE_ENV).toBe("development");
     expect(process.env.BABEL_ENV).toBe("development");
