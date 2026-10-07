@@ -20,6 +20,18 @@ describe("createHandlers client routes", () => {
     });
   });
 
+  it("lets no cache keep /version, which tooling reads right after a deploy", async () => {
+    const handlers = createHandlers(createApi());
+
+    const client = await handlers.client(
+      new Request("http://localhost/version"),
+    );
+    const admin = await handlers.admin(new Request("http://localhost/version"));
+
+    expect(client.headers.get("cache-control")).toBe("no-store");
+    expect(admin.headers.get("cache-control")).toBe("private, no-store");
+  });
+
   it("keeps the plugins the server runs off the client /version", async () => {
     const handler = createHotUpdaterHandlers({
       api: createApi(),

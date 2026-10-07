@@ -643,6 +643,8 @@ An endpoint is `{ method, path, access, handler }`:
 - `access: "client"` mounts the route on `handlers.client`, behind the
   client-route policy: the plugin that provides `clientAuth`, or
   `clientAccess: "public"`. Cacheable responses vary by the policy's headers.
+  A response without `Cache-Control` is sent with `cache-control: no-store`;
+  set `Cache-Control` yourself to let a shared cache keep it.
 - `access: "admin"` mounts it on `handlers.admin`, which your framework
   authenticates. Responses are marked `cache-control: private, no-store`.
 - `handler(request, params)` returns a `Response`. A thrown error answers 500,

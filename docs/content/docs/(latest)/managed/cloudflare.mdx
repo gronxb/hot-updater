@@ -268,7 +268,9 @@ This is Cloudflare's cache in front of Worker execution, not
 `caches.default` inside the Worker. Successful catalog responses use a
 five-second shared TTL and vary by `x-api-key` and content encoding. Confirm
 `CF-Cache-Status: HIT` when validating a warm request; response headers alone
-do not prove that Worker and D1 execution were skipped.
+do not prove that Worker and D1 execution were skipped. `/version` and any
+other response that sets no `Cache-Control` answer with `no-store`, since this
+cache keeps a `200` without `Cache-Control` for two hours.
 
 ## Step 4: If you use Expo, add the config plugin
 

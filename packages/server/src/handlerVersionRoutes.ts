@@ -7,7 +7,8 @@ export const HOT_UPDATER_INFRASTRUCTURE_GENERATION = 1;
 /**
  * `/version` on both mounts. The admin mount also lists the ids of the
  * plugins the server runs, sorted; apps never learn which plugins a server
- * runs.
+ * runs. No cache keeps it: tooling reads it right after a deploy, when a
+ * kept answer would name the previous version.
  */
 export const createVersionRouteHandlers = (
   plugins: readonly string[] = [],
@@ -18,8 +19,9 @@ export const createVersionRouteHandlers = (
     version: HOT_UPDATER_SERVER_VERSION,
   };
   const adminVersion = { ...version, plugins: [...plugins].sort() };
+  const noStore = { headers: { "cache-control": "no-store" } };
   return {
-    version: async () => Response.json(version),
-    adminVersion: async () => Response.json(adminVersion),
+    version: async () => Response.json(version, noStore),
+    adminVersion: async () => Response.json(adminVersion, noStore),
   };
 };

@@ -204,6 +204,57 @@ describe("createHotUpdater with plugins", () => {
     expect(response.headers.get("vary")).toBeNull();
   });
 
+  it("sends a client answer that states no cache policy with no-store, and keeps one that does", async () => {
+    const pages = definePlugin({
+      id: "pages",
+      schemaVersion: "1",
+      schema: {},
+      init: () => ({
+        api: {},
+        endpoints: [
+          {
+            method: "GET",
+            path: "/pages/plain",
+            access: "client",
+            handler: async () => Response.json({ ok: true }),
+          },
+          {
+            method: "GET",
+            path: "/pages/moved",
+            access: "client",
+            // Response.redirect's headers are immutable, so the server
+            // answers with a copy.
+            handler: async () =>
+              Response.redirect("https://updates.example.com/pages/plain", 302),
+          },
+        ],
+      }),
+    });
+    const hotUpdater = createHotUpdater({
+      database: database(),
+      plugins: [notes, pages],
+      clientAccess: "public",
+    });
+    await hotUpdater.api.notes.add("n1", "hello");
+    const client = (path: string) =>
+      hotUpdater.handlers.client(
+        new Request(`https://updates.example.com${path}`),
+      );
+
+    const plain = await client("/pages/plain");
+    expect(plain.headers.get("cache-control")).toBe("no-store");
+    await expect(plain.json()).resolves.toEqual({ ok: true });
+    const moved = await client("/pages/moved");
+    expect(moved.status).toBe(302);
+    expect(moved.headers.get("location")).toBe(
+      "https://updates.example.com/pages/plain",
+    );
+    expect(moved.headers.get("cache-control")).toBe("no-store");
+    expect((await client("/notes/n1")).headers.get("cache-control")).toBe(
+      "public, max-age=60",
+    );
+  });
+
   it("purges the database's cached client routes after core writes a Release Catalog, not after a plugin write", async () => {
     const onCachedRoutesChange = vi.fn(async () => undefined);
     const hotUpdater = createHotUpdater({

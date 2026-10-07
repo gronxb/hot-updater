@@ -20,9 +20,10 @@ export type {
   HotUpdaterHandlers,
 } from "./handlerTypes";
 
-const withPrivateNoStore = (response: Response): Response => {
+/** A copy with `cache-control` set, since a handler's headers may be immutable. */
+const withCacheControl = (response: Response, value: string): Response => {
   const headers = new Headers(response.headers);
-  headers.set("cache-control", "private, no-store");
+  headers.set("cache-control", value);
   return new Response(response.body, {
     headers,
     status: response.status,
@@ -132,8 +133,16 @@ const createRequestHandler =
         return errorResponse("Handler not found", 500);
       }
       const response = await handler(match.params, request, api);
-      if (privateResponses) return withPrivateNoStore(response);
-      return guarded ? withVary(response, clientPolicy.varyHeaders) : response;
+      if (privateResponses) {
+        return withCacheControl(response, "private, no-store");
+      }
+      // A response that states no cache policy is never stored: a cache in
+      // front of the server would apply its own heuristic, as Cloudflare's
+      // Worker cache keeps a 200 without Cache-Control for two hours.
+      const stated = response.headers.has("cache-control")
+        ? response
+        : withCacheControl(response, "no-store");
+      return guarded ? withVary(stated, clientPolicy.varyHeaders) : stated;
     } catch (error) {
       if (error instanceof HandlerBadRequestError) {
         return errorResponse(error.message, 400);
