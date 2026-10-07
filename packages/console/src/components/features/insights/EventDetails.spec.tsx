@@ -363,6 +363,32 @@ describe("Insights event details", () => {
       expect(screen.getByText(label)).toBeDefined();
     }
     expect(screen.getByText("From production to beta.")).toBeDefined();
+
+    // A kept launch says which report it stands in for: the restart's, which
+    // the event lists name Launched.
+    view.rerender(
+      <EventTypeDetails
+        event={{
+          type: "UNCHANGED",
+          appVersion: "1.6.1",
+          channel: "production",
+          change: {
+            kinds: ["bundle"],
+            previous: {
+              bundleId: "bundle-a",
+              releaseId: "release-a",
+              appVersion: "1.6.1",
+              channel: "production",
+            },
+          },
+        }}
+      />,
+    );
+    expect(
+      screen.getByText(
+        "Seen running this bundle; the report of the restart into it never arrived.",
+      ),
+    ).toBeDefined();
   });
 
   it("shows the bundle a kept launch report moved from, and notes late and implied reports", () => {

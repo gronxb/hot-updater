@@ -109,7 +109,7 @@ const changeTypeOf = (
     return {
       label: "Launched",
       description:
-        "Reported running this bundle; its launch report never arrived.",
+        "Seen running this bundle; the report of the restart into it never arrived.",
       variant: "success",
       icon: Check,
     };
