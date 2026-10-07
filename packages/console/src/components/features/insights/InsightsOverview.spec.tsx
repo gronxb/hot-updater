@@ -58,7 +58,7 @@ const oldest = release("release-old", HOUR);
 /** Reports of one type per hour of the period [6h, 30h). */
 const seriesOf = (
   bundleId: string,
-  type: "UPDATE_APPLIED" | "RECOVERED",
+  type: "LAUNCHED" | "RECOVERED",
   perHour: (hour: number) => number,
 ) => {
   const points = Array.from({ length: 24 }, (_, index) => ({
@@ -77,7 +77,7 @@ const seriesOf = (
 const bundles: readonly ComparedBundle[] = [
   {
     release: newest,
-    applied: seriesOf(newest.bundleId, "UPDATE_APPLIED", (hour) =>
+    launched: seriesOf(newest.bundleId, "LAUNCHED", (hour) =>
       hour >= 20 ? 3 : 0,
     ),
     recovered: seriesOf(newest.bundleId, "RECOVERED", () => 0),
@@ -85,7 +85,7 @@ const bundles: readonly ComparedBundle[] = [
   },
   {
     release: previous,
-    applied: seriesOf(previous.bundleId, "UPDATE_APPLIED", (hour) =>
+    launched: seriesOf(previous.bundleId, "LAUNCHED", (hour) =>
       hour < 20 ? 1 : 0,
     ),
     recovered: seriesOf(previous.bundleId, "RECOVERED", () => 0),
@@ -153,7 +153,7 @@ afterEach(() => {
 });
 
 describe("Release health", () => {
-  it("opens on adoption: installations applying each bundle, named by its ID", () => {
+  it("opens on adoption: installations launching each bundle, named by its ID", () => {
     renderCard();
     expect(
       screen
@@ -161,7 +161,7 @@ describe("Release health", () => {
         .getAttribute("aria-selected"),
     ).toBe("true");
     expect(
-      screen.getByLabelText("Installations applying each bundle per interval"),
+      screen.getByLabelText("Installations launching each bundle per interval"),
     ).toBeDefined();
     expect(screen.getByText("Hourly · last 24 hours · UTC")).toBeDefined();
     // The newest first, each named by its ID as on the Bundles page, with
@@ -173,6 +173,32 @@ describe("Release health", () => {
     expect(
       screen.queryByRole("columnheader", { name: "Update failures" }),
     ).toBeNull();
+  });
+
+  it("switches adoption to a running total, which the bundle's launches end on", () => {
+    const onTotalChange = vi.fn();
+    const view = renderCard({ onTotalChange });
+    fireEvent.click(screen.getByRole("tab", { name: "Cumulative" }));
+    expect(onTotalChange).toHaveBeenLastCalledWith("cumulative");
+
+    view.rerender(
+      <QueryClientProvider client={new QueryClient()}>
+        <Card onTotalChange={onTotalChange} total="cumulative" />
+      </QueryClientProvider>,
+    );
+    expect(
+      screen.getByLabelText(
+        "Installations launching each bundle, running total",
+      ),
+    ).toBeDefined();
+    expect(
+      screen.getByText("Running total · last 24 hours · UTC"),
+    ).toBeDefined();
+    // The table keeps each bundle's launches over the period.
+    expect(rows()).toEqual([
+      "release-bDeployed Jan 1, 20:15 UTC · 1.2.030",
+      "release-aDeployed Jan 1, 02:00 UTC · 1.2.014",
+    ]);
   });
 
   it("adds, removes, and resets the compared bundles", async () => {
@@ -229,7 +255,7 @@ describe("Release health", () => {
           {
             ...bundles[0]!,
             // 1 crash of 9 attempts: 11.1%, too few to act on.
-            applied: seriesOf(newest.bundleId, "UPDATE_APPLIED", (hour) =>
+            launched: seriesOf(newest.bundleId, "LAUNCHED", (hour) =>
               hour === 21 ? 8 : 0,
             ),
             recovered: seriesOf(newest.bundleId, "RECOVERED", (hour) =>
@@ -260,7 +286,7 @@ describe("Release health", () => {
           {
             ...bundles[0]!,
             // 2 crashes of 20 attempts: 10%.
-            applied: seriesOf(newest.bundleId, "UPDATE_APPLIED", (hour) =>
+            launched: seriesOf(newest.bundleId, "LAUNCHED", (hour) =>
               hour === 21 ? 18 : 0,
             ),
             recovered: seriesOf(newest.bundleId, "RECOVERED", (hour) =>
@@ -299,16 +325,16 @@ describe("Release health", () => {
     await waitFor(() => expect(mutations.update).toHaveBeenCalledWith(disable));
   });
 
-  it("offers a longer period when no installation applied the bundles, and says when nothing crashed", () => {
+  it("offers a longer period when no installation launched the bundles, and says when nothing crashed", () => {
     const onWindowChange = vi.fn();
     const quiet = bundles.map((bundle) => ({
       ...bundle,
-      applied: seriesOf(bundle.release.bundleId, "UPDATE_APPLIED", () => 0),
+      launched: seriesOf(bundle.release.bundleId, "LAUNCHED", () => 0),
     }));
     renderCard({ onWindowChange, health: { releases: quiet } });
     expect(
       screen.getByText(
-        "No installations applied these bundles in the last 24 hours",
+        "No installation launched these bundles in the last 24 hours",
       ),
     ).toBeDefined();
     fireEvent.click(screen.getByRole("button", { name: "Show 7 days" }));

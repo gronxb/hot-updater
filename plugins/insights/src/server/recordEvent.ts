@@ -1,12 +1,16 @@
 import {
   addDistinct,
   compareUtf8,
+  extractTimestampFromUUIDv7,
   type HotUpdaterDatabase,
   type HotUpdaterTransaction,
+  isUUIDv7,
 } from "@hot-updater/plugin-core";
 
 import { assertBundleEventRow } from "./contract";
 import {
+  type BundleEventChange,
+  type BundleEventChangeKind,
   type BundleEventFailure,
   type BundleEventRow,
   runningBuiltinBundleId,
@@ -18,11 +22,12 @@ import {
   type InsightsOverviewIdentity,
 } from "./overview";
 import {
+  bundleRefsOf,
   DAILY_EVENTS,
   DAY_MS,
   HOUR_MS,
-  isFailedCheck,
   type InsightsSchema,
+  isLaunch,
 } from "./schema";
 
 /** The head columns `countHead` and `repeatsHead` read. */
@@ -257,25 +262,22 @@ const countEvent = (
 };
 
 /**
- * A stored event's outcome rows: its bundle filter's hour, which a failed
- * check has none of, and every stored event's UTC day.
+ * A stored event's outcome rows: its bundle filter's hour, when it has one
+ * (`bundleRefsOf`), and every stored event's UTC day.
  */
 const countOutcome = (
   tx: HotUpdaterTransaction<InsightsSchema>,
   event: BundleEventRow,
 ) => {
   const shardBy = event.install_id;
-  if (!isFailedCheck(event)) {
+  for (const bundleRef of bundleRefsOf(event)) {
     tx.aggregate(
       "insights_outcomes",
       {
         platform: event.platform,
         channel: event.channel,
         type: event.type,
-        bundle_ref:
-          event.type === "RECOVERED"
-            ? `from:${event.from_bundle_id}`
-            : `to:${event.to_bundle_id}`,
+        bundle_ref: bundleRef,
         bucket_start_ms: hourOf(event.received_at_ms),
       },
       { events: 1 },
@@ -398,6 +400,150 @@ const isNewer = (event: Head, head: Head) =>
     ? event.received_at_ms > head.received_at_ms
     : compareUtf8(event.id, head.id) > 0;
 
+/** What a head says its installation runs: a download leaves it at the source. */
+const runningOf = (head: Head) =>
+  head.type === "UPDATE_DOWNLOADED"
+    ? { bundle_id: head.from_bundle_id!, release_id: head.from_release_id }
+    : { bundle_id: head.to_bundle_id, release_id: head.to_release_id };
+
+/** The native build a report or head came from, when its SDK says. */
+const minBundleIdOf = (row: { readonly metadata: unknown }) =>
+  (row.metadata as { min_bundle_id?: string } | null)?.min_bundle_id;
+
+/** When the client made a report, from the UUIDv7 it gave it. */
+const madeAt = (id: string) =>
+  isUUIDv7(id) ? extractTimestampFromUUIDv7(id) : null;
+
+/**
+ * A report that arrived after its installation moved past it: a download or
+ * an apply of the bundle the head already runs, or an UNCHANGED report of the
+ * bundle an apply head left, made before that apply. A reload can cut one
+ * runtime's report short and deliver it after the next runtime's. It stays
+ * in history but moves and counts nothing.
+ */
+const isLate = (event: BundleEventRow, head: Head | null): boolean => {
+  if (head === null) return false;
+  if (event.type === "UPDATE_DOWNLOADED" || event.type === "UPDATE_APPLIED") {
+    return event.to_bundle_id === runningOf(head).bundle_id;
+  }
+  if (
+    event.type === "UNCHANGED" &&
+    head.type === "UPDATE_APPLIED" &&
+    event.to_bundle_id === head.from_bundle_id
+  ) {
+    const made = madeAt(event.id);
+    const applied = madeAt(head.id);
+    return made !== null && applied !== null && made < applied;
+  }
+  return false;
+};
+
+/**
+ * What an UNCHANGED report changes against its installation's head: the
+ * running bundle or release, the app version, the channel, or the native
+ * build (when both name it), with the head's values before it; `first_seen`
+ * when the installation has no head. A report the head already answers, one
+ * older than the head, a user switch and any other event type change
+ * nothing, so no row keeps them.
+ */
+const changeOf = (
+  event: BundleEventRow,
+  head: Head | null,
+): BundleEventChange | null => {
+  if (event.type !== "UNCHANGED") return null;
+  if (head === null) return { kinds: ["first_seen"], previous: null };
+  if (!isNewer(event, head)) return null;
+  const running = runningOf(head);
+  const build = minBundleIdOf(event);
+  const headBuild = minBundleIdOf(head);
+  const kinds: BundleEventChangeKind[] = [];
+  if (event.to_bundle_id !== running.bundle_id) kinds.push("bundle");
+  if (event.to_release_id !== running.release_id) kinds.push("release");
+  if (event.app_version !== head.app_version) kinds.push("app_version");
+  if (event.channel !== head.channel) kinds.push("channel");
+  if (build !== undefined && headBuild !== undefined && build !== headBuild) {
+    kinds.push("native_build");
+  }
+  return kinds.length === 0
+    ? null
+    : {
+        kinds,
+        previous: {
+          bundle_id: running.bundle_id,
+          release_id: running.release_id,
+          app_version: head.app_version,
+          channel: head.channel,
+          ...(headBuild === undefined ? {} : { min_bundle_id: headBuild }),
+        },
+      };
+};
+
+/**
+ * Whether a launch or a crash comes with no download report for its target:
+ * its head shows neither that download nor the target already running. The
+ * native build's built-in bundle is never downloaded, and without a head the
+ * server knows nothing of the installation's past, so it implies nothing.
+ */
+const impliesDownload = (event: BundleEventRow, head: Head | null): boolean => {
+  const target =
+    event.type === "RECOVERED"
+      ? { bundle: event.from_bundle_id, release: event.from_release_id }
+      : isLaunch(event)
+        ? { bundle: event.to_bundle_id, release: event.to_release_id }
+        : null;
+  if (
+    target === null ||
+    target.release === null ||
+    target.bundle === minBundleIdOf(event)
+  ) {
+    return false;
+  }
+  if (head === null) return false;
+  if (
+    head.type === "UPDATE_DOWNLOADED" &&
+    head.to_bundle_id === target.bundle
+  ) {
+    return false;
+  }
+  return runningOf(head).bundle_id !== target.bundle;
+};
+
+/**
+ * The event as recorded, with what only the server sets: what a kept
+ * UNCHANGED report changed, a late report's flag, and a download its launch
+ * or crash implied.
+ */
+const recordedOf = (
+  event: BundleEventRow,
+  head: Head | null,
+): { readonly recorded: BundleEventRow; readonly late: boolean } => {
+  const {
+    change: _change,
+    late: _late,
+    implied_download: _implied,
+    ...metadata
+  } = event.metadata;
+  const reported = { ...event, metadata } as BundleEventRow;
+  const late = isLate(reported, head);
+  const change = late ? null : changeOf(reported, head);
+  const withChange = (
+    change === null
+      ? reported
+      : { ...reported, metadata: { ...metadata, change } }
+  ) as BundleEventRow;
+  const recorded = (
+    late && reported.type !== "UNCHANGED"
+      ? { ...reported, metadata: { ...metadata, late: true } }
+      : !late && impliesDownload(withChange, head)
+        ? {
+            ...withChange,
+            metadata: { ...withChange.metadata, implied_download: true },
+          }
+        : withChange
+  ) as BundleEventRow;
+  return { recorded, late };
+};
+
 /** What an UNCHANGED report must share with its installation's head to repeat it. */
 const REPEATED_FIELDS = [
   "channel",
@@ -447,25 +593,31 @@ export const recordEvent = (
     // nothing, as analytics ingestion drops duplicates.
     if (existing !== null || previous?.id === event.id) return;
     if (previous !== null && repeatsHead(event, previous)) return;
-    // An UNCHANGED report is a launch: it counts and moves the head, but no
-    // event list shows it, so no event row or outcome row keeps it.
-    if (event.type !== "UNCHANGED") {
-      tx.create("bundle_events", event);
-      countOutcome(tx, event);
+    // An UNCHANGED report is a launch: it counts and moves the head. A row
+    // keeps it only when it changes what the installation runs, or is the
+    // installation's first report, so installation history and All Events
+    // show each change once. A late report moves no head.
+    const { recorded, late } = recordedOf(event, previous);
+    if (
+      recorded.type !== "UNCHANGED" ||
+      (recorded.metadata.change !== undefined && !late)
+    ) {
+      tx.create("bundle_events", recorded);
+      countOutcome(tx, recorded);
     }
-    if (event.type === "UPDATE_FAILED") {
-      countFailure(tx, event);
+    if (recorded.type === "UPDATE_FAILED") {
+      countFailure(tx, recorded);
       return;
     }
-    countEvent(tx, event);
-    if (previous !== null && !isNewer(event, previous)) return;
+    countEvent(tx, recorded);
+    if (previous !== null && (late || !isNewer(recorded, previous))) return;
     if (previous === null) {
-      tx.create("bundle_event_heads", event);
+      tx.create("bundle_event_heads", recorded);
     } else {
-      const { install_id: _, ...fields } = event;
+      const { install_id: _, ...fields } = recorded;
       countHead(tx, previous, -1);
       tx.update("bundle_event_heads", previous, fields);
     }
-    countHead(tx, event, 1);
+    countHead(tx, recorded, 1);
   });
 };

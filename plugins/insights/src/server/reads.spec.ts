@@ -202,8 +202,23 @@ describe("insights read budgets", () => {
       now: () => T0 + 30 * DAY,
     });
     for (let n = 1; n <= 24; n += 1) await harness.api.recordEvent(event(n));
+    // install-1 goes back to bundle-a on day 2, then applies bundle-b again:
+    // a return counts again.
     await harness.api.recordEvent(
-      event(25, { install_id: "install-1", received_at_ms: T0 + 2 * DAY }),
+      event(26, {
+        install_id: "install-1",
+        from_release_id: "release-b",
+        from_bundle_id: "bundle-b",
+        to_release_id: "release-a",
+        to_bundle_id: "bundle-a",
+        received_at_ms: T0 + 2 * DAY,
+      }),
+    );
+    await harness.api.recordEvent(
+      event(25, {
+        install_id: "install-1",
+        received_at_ms: T0 + 2 * DAY + HOUR,
+      }),
     );
     meter.rows.clear();
     const read = async <T>(call: () => Promise<T>) => {
@@ -331,8 +346,9 @@ describe("insights read budgets", () => {
       }),
     );
     expect(lifetime.result.data[0]!.metrics).toEqual({
-      downloads: 0,
-      // Every apply report, install-1's second one too.
+      // install-1's return came with no download report: it implied one.
+      downloads: 1,
+      // Every launch, install-1's return to it too.
       applies: 25,
       failedLaunches: 0,
     });

@@ -1070,9 +1070,10 @@ for (const event of adjustedBundleEvents) {
   await insightsApi.recordEvent(event);
 }
 
-// Applies of the two newest iOS production bundles, and a crash of the
+// Launches of the two newest iOS production bundles, and a crash of the
 // newest, so Release health opens on both: the newest taking over, the one
-// before it fading.
+// before it fading. Each installation downloads its bundle first, so a
+// bundle's downloads are its launches and crashes.
 const [demoNewest, demoPrevious] = [...bundles]
   .filter(
     (bundle) => bundle.channel === "production" && bundle.platform === "ios",
@@ -1084,29 +1085,48 @@ for (const [bundle, count] of [
 ] as const) {
   if (bundle === undefined) continue;
   for (let installation = 0; installation < count; installation += 1) {
-    await insightsApi.recordEvent({
-      ...downloadDemo,
-      id: `019f635e-eeed-7${bundle === demoNewest ? "1" : "0"}00-8000-${String(installation).padStart(12, "0")}`,
-      type: "UPDATE_APPLIED",
-      install_id: `demo-adoption-${bundle.id}-${installation}`,
-      from_release_id: null,
-      from_bundle_id: "00000000-0000-0000-0000-000000000000",
-      to_release_id: releaseIdByBundle.get(bundle.id) ?? null,
-      to_bundle_id: bundle.id,
-      received_at_ms: Date.now() + installation,
-    });
+    const reportedAt = Date.now() + installation;
+    for (const [type, idPrefix, receivedAtMs] of [
+      ["UPDATE_DOWNLOADED", "eeea", reportedAt - 60_000],
+      ["UPDATE_APPLIED", "eeed", reportedAt],
+    ] as const) {
+      await insightsApi.recordEvent({
+        ...downloadDemo,
+        id: `019f635e-${idPrefix}-7${bundle === demoNewest ? "1" : "0"}00-8000-${String(installation).padStart(12, "0")}`,
+        type,
+        install_id: `demo-adoption-${bundle.id}-${installation}`,
+        from_release_id: null,
+        from_bundle_id: "00000000-0000-0000-0000-000000000000",
+        to_release_id: releaseIdByBundle.get(bundle.id) ?? null,
+        to_bundle_id: bundle.id,
+        received_at_ms: receivedAtMs,
+      });
+    }
   }
 }
 if (demoNewest !== undefined && demoPrevious !== undefined) {
-  await insightsApi.recordEvent({
+  const crash = {
     ...downloadDemo,
+    install_id: "demo-adoption-crash",
+    from_release_id: releaseIdByBundle.get(demoPrevious.id) ?? null,
+    from_bundle_id: demoPrevious.id,
+    to_release_id: releaseIdByBundle.get(demoNewest.id) ?? null,
+    to_bundle_id: demoNewest.id,
+  };
+  await insightsApi.recordEvent({
+    ...crash,
+    id: "019f635e-eeec-7000-8000-000000000000",
+    type: "UPDATE_DOWNLOADED",
+    received_at_ms: Date.now() + 50,
+  });
+  await insightsApi.recordEvent({
+    ...crash,
     id: "019f635e-eeec-7000-8000-000000000001",
     type: "RECOVERED",
-    install_id: "demo-adoption-crash",
-    from_release_id: releaseIdByBundle.get(demoNewest.id) ?? null,
-    from_bundle_id: demoNewest.id,
-    to_release_id: releaseIdByBundle.get(demoPrevious.id) ?? null,
-    to_bundle_id: demoPrevious.id,
+    from_release_id: crash.to_release_id,
+    from_bundle_id: crash.to_bundle_id,
+    to_release_id: crash.from_release_id,
+    to_bundle_id: crash.from_bundle_id,
     received_at_ms: Date.now() + 100,
   });
 }
@@ -1147,7 +1167,8 @@ for (const [day, adopted] of [0, 2, 6, 12, 16, 18, 19].entries()) {
 }
 
 // Installations still on the bundle their native build shipped, which each
-// report names as `min_bundle_id`, and one that moved from it to patch B.
+// report names as `min_bundle_id`, and one that downloads patch B and moves
+// to it.
 const builtinDemoNow = Date.now() - 30_000;
 const builtinBundleIds = {
   "1.4.2": "019f2a00-0000-7000-8000-000000000000",
@@ -1176,19 +1197,24 @@ for (const [index, appVersion] of (
     received_at_ms: builtinDemoNow + index,
   });
 }
-await insightsApi.recordEvent({
-  ...downloadDemo,
-  id: "019f635e-bbbc-7000-8000-000000000001",
-  type: "UPDATE_APPLIED",
-  install_id: "demo-builtin-applied",
-  user_id: "demo-builtin",
-  from_release_id: null,
-  from_bundle_id: builtinBundleIds["1.4.2"],
-  to_release_id: releaseIdByBundle.get(iosProdCorePatchB.id) ?? null,
-  to_bundle_id: iosProdCorePatchB.id,
-  metadata: {
-    ...downloadDemo.metadata,
-    min_bundle_id: builtinBundleIds["1.4.2"],
-  },
-  received_at_ms: builtinDemoNow + 10,
-});
+for (const [type, index] of [
+  ["UPDATE_DOWNLOADED", 0],
+  ["UPDATE_APPLIED", 1],
+] as const) {
+  await insightsApi.recordEvent({
+    ...downloadDemo,
+    id: `019f635e-bbbc-7000-8000-00000000000${index}`,
+    type,
+    install_id: "demo-builtin-applied",
+    user_id: "demo-builtin",
+    from_release_id: null,
+    from_bundle_id: builtinBundleIds["1.4.2"],
+    to_release_id: releaseIdByBundle.get(iosProdCorePatchB.id) ?? null,
+    to_bundle_id: iosProdCorePatchB.id,
+    metadata: {
+      ...downloadDemo.metadata,
+      min_bundle_id: builtinBundleIds["1.4.2"],
+    },
+    received_at_ms: builtinDemoNow + 9 + index,
+  });
+}

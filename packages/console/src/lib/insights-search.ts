@@ -10,10 +10,12 @@ const readText = (value: unknown) =>
     : undefined;
 const readWindow = (value: unknown): InsightsWindow | undefined =>
   value === "24h" || value === "7d" || value === "30d" ? value : undefined;
-/** Release health's chart: whether bundles are applied, or crash. */
+/** Release health's chart: whether bundles are launched, or crash. */
 export type HealthChart = "adoption" | "crashes";
 const readHealthChart = (value: unknown): HealthChart | undefined =>
   value === "adoption" || value === "crashes" ? value : undefined;
+/** Adoption's counts: each interval's (the default), or the running total. */
+export type AdoptionTotal = "interval" | "cumulative";
 const readUsageWindow = (value: unknown): UsageWindow | undefined =>
   value === "12m" ? value : readWindow(value);
 
@@ -27,6 +29,8 @@ export type InsightsSearch = {
   healthChannel?: string;
   releaseId?: string;
   healthChart?: HealthChart;
+  /** Adoption as a running total; omitted, each interval's count. */
+  adoptionTotal?: "cumulative";
   /**
    * Release health's compared bundles, comma-separated release IDs; omitted,
    * the focused release and the one before it, or the newest two.
@@ -55,6 +59,8 @@ export function validateInsightsSearch(
     healthChannel: readText(search.healthChannel),
     releaseId: readText(search.releaseId),
     healthChart: readHealthChart(search.healthChart),
+    adoptionTotal:
+      search.adoptionTotal === "cumulative" ? "cumulative" : undefined,
     bundles: readText(search.bundles),
   };
 }

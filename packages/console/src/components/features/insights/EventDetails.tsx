@@ -1,11 +1,14 @@
 import {
   Activity,
+  ArrowRightLeft,
   Check,
   ChevronDown,
   CircleAlert,
   Copy,
   Download,
   RotateCcw,
+  Smartphone,
+  Sparkles,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -61,12 +64,89 @@ const eventTypes = {
     icon: CircleAlert,
   },
   UNCHANGED: {
-    label: "No change",
-    description: "No download or apply was reported at this point.",
+    label: "Launch",
+    description: "The app launched; the report changed nothing.",
     variant: "secondary",
     icon: Activity,
   },
 } as const;
+
+type EventType = {
+  readonly label: string;
+  readonly description: string;
+  readonly variant: (typeof eventTypes)[keyof typeof eventTypes]["variant"];
+  readonly icon: (typeof eventTypes)[keyof typeof eventTypes]["icon"];
+};
+
+/**
+ * A kept UNCHANGED report, named by what it changed: an installation first
+ * seen, an App Store update, a launch with no apply report, an adopted
+ * release, or a channel switch.
+ */
+const changeTypeOf = (
+  event: Pick<EventHistoryRow, "change" | "appVersion" | "channel">,
+): EventType => {
+  const { kinds = [], previous } = event.change ?? {};
+  if (kinds.includes("first_seen")) {
+    return {
+      label: "First seen",
+      description: "The installation's first report to this server.",
+      variant: "secondary",
+      icon: Sparkles,
+    };
+  }
+  if (kinds.includes("app_version") || kinds.includes("native_build")) {
+    return {
+      label: "App updated",
+      description:
+        previous && previous.appVersion !== event.appVersion
+          ? `From app ${previous.appVersion} to ${event.appVersion}.`
+          : "A new build of the same app version.",
+      variant: "secondary",
+      icon: Smartphone,
+    };
+  }
+  if (kinds.includes("bundle")) {
+    return {
+      label: "Launched",
+      description:
+        "It reported running this bundle; no apply report came for it.",
+      variant: "success",
+      icon: Check,
+    };
+  }
+  if (kinds.includes("release")) {
+    return {
+      label: "Release adopted",
+      description: "The bundle it runs now ships under another release.",
+      variant: "secondary",
+      icon: ArrowRightLeft,
+    };
+  }
+  if (kinds.includes("channel")) {
+    return {
+      label: "Channel changed",
+      description: previous
+        ? `From ${previous.channel} to ${event.channel}.`
+        : "It reports on another channel.",
+      variant: "secondary",
+      icon: ArrowRightLeft,
+    };
+  }
+  return eventTypes.UNCHANGED;
+};
+
+/** How the console names an event's type. */
+const eventTypeOf = (
+  event: Pick<EventHistoryRow, "type"> & Partial<EventHistoryRow>,
+): EventType =>
+  event.type === "UNCHANGED" && event.change
+    ? changeTypeOf({
+        change: event.change,
+        appVersion: event.appVersion ?? "",
+        channel: event.channel ?? "",
+      })
+    : eventTypes[event.type];
 
 export function useInsightsTimeFormat() {
   const [timeZone, setTimeZone] = useState("UTC");
@@ -142,9 +222,21 @@ const deliveries: Readonly<Record<string, string>> = {
 const eventNote = (
   event: Pick<
     EventHistoryRow,
-    "type" | "failure" | "delivery" | "patchFallback" | "httpResponse"
+    | "type"
+    | "failure"
+    | "delivery"
+    | "patchFallback"
+    | "httpResponse"
+    | "late"
+    | "impliedDownload"
   >,
 ): string | null => {
+  if (event.late) {
+    return "It arrived after the installation already ran this bundle, so it counted nothing.";
+  }
+  if (event.impliedDownload) {
+    return "Its download report never arrived; the download counted with it.";
+  }
   if (event.type === "UPDATE_FAILED" && event.failure) {
     return describeFailure(event.failure);
   }
@@ -309,7 +401,7 @@ export function HttpResponseDetails({
 }
 
 export function EventTypeDetails({ event }: { readonly event: EventDetail }) {
-  const eventType = eventTypes[event.type];
+  const eventType = eventTypeOf(event);
   const Icon = eventType.icon;
   const note = eventNote(event);
   return (
@@ -351,31 +443,44 @@ export function EventBundleTransition({
   readonly event: Pick<
     EventHistoryRow,
     "type" | "fromBundleId" | "toBundleId" | "failure" | "minBundleId"
-  >;
+  > &
+    Partial<Pick<EventHistoryRow, "change">>;
   readonly touch?: boolean;
 }) {
   const downloaded = event.type === "UPDATE_DOWNLOADED";
   const failed = event.type === "UPDATE_FAILED";
   // A failed check targets no bundle: it names the one running.
   const targeted = !failed || event.failure?.stage !== "check";
+  // A kept UNCHANGED report that moved bundles names the one before it.
+  const moved =
+    event.type === "UNCHANGED" &&
+    event.change?.kinds.includes("bundle") === true &&
+    event.change.previous !== undefined;
+  const fromBundleId = moved
+    ? event.change!.previous!.bundleId
+    : event.fromBundleId;
   const changed =
     downloaded ||
     failed ||
+    moved ||
     event.type === "UPDATE_APPLIED" ||
     event.type === "RECOVERED";
   return (
     <dl className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-2 gap-y-2">
-      {event.fromBundleId && changed ? (
+      {fromBundleId && changed ? (
         <>
           <dt className="text-muted-foreground">
             {downloaded || failed ? "Running" : "From"}
           </dt>
           <dd className="flex min-w-0 flex-wrap items-center gap-2">
             <HashValueDisplay
-              value={event.fromBundleId}
+              value={fromBundleId}
               buttonClassName={touch ? "min-h-11 px-3" : undefined}
             />
-            {isBuiltinBundle(event.fromBundleId, event.minBundleId) ? (
+            {isBuiltinBundle(
+              fromBundleId,
+              moved ? event.change!.previous!.minBundleId : event.minBundleId,
+            ) ? (
               <BuiltinBundleBadge />
             ) : null}
           </dd>

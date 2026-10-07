@@ -242,10 +242,11 @@ const storage: MeasuredDatabaseStorage = {
 };
 
 /**
- * Core's bundles, releases, channels, and a client API key, and 25 Insights
+ * Core's bundles, releases, channels, and a client API key, and 26 Insights
  * events: installs 1–24 ten minutes apart from T0, then install 1 again two
- * days later; and the day of history before T0, as a production database
- * holds, so a read that scans beyond its window examines more rows.
+ * days later, back on bundle-a and then on bundle-b; and the day of history
+ * before T0, as a production database holds, so a read that scans beyond its
+ * window examines more rows.
  */
 const seed = async (database: MeasuredDatabase) => {
   const core = database.core as ReadBudgetCore;
@@ -279,8 +280,25 @@ const seed = async (database: MeasuredDatabase) => {
   await deploy(bundleOf("092"), "staging");
   const { apiKey } = await api.apiKeys.create({ name: "Read budgets" });
   for (let n = 1; n <= 24; n += 1) await api.insights.recordEvent(eventOf(n));
+  // Install 1 leaves bundle-b before it applies it again: an apply of the
+  // bundle an installation already runs is a late report, which counts
+  // nothing.
   await api.insights.recordEvent(
-    eventOf(25, { install_id: "install-1", received_at_ms: T0 + 2 * DAY }),
+    eventOf(25, {
+      install_id: "install-1",
+      from_release_id: "release-b",
+      from_bundle_id: "bundle-b",
+      to_release_id: "release-a",
+      to_bundle_id: "bundle-a",
+      received_at_ms: T0 + 2 * DAY,
+    }),
+  );
+  await api.insights.recordEvent(
+    eventOf(26, {
+      install_id: "install-1",
+      user_id: "user-odd",
+      received_at_ms: T0 + 2 * DAY + 10 * 60_000,
+    }),
   );
   for (let n = 1; n <= 72; n += 1) {
     await api.insights.recordEvent(historyOf(n));
@@ -463,7 +481,7 @@ const READ_BUDGETS: readonly ReadBudget[] = [
   }),
   budget({
     api: "list events across a gap: limit rows, one empty day, and one outcome row",
-    // Day 2 holds event 25 and day 1 nothing, so one outcome row, hour 4 of
+    // Day 2 holds event 26 and day 1 nothing, so one outcome row, hour 4 of
     // day 0, names the day below it: a query for its newest shard row and a
     // batch get of the 7 others. Day 0 then holds the other four.
     read: ({ insights }) =>
@@ -693,16 +711,24 @@ const READ_BUDGETS: readonly ReadBudget[] = [
   }),
   budget({
     api: "record an insights event: 2 dependent rounds of batch gets and 1 write",
-    // The event and install 2's head; then the event's 4 sketch rows, in one
-    // batch get per aggregate: its platform's usage of every app version and
-    // of its own by hour, and by day, which keeps its own retention. The head
-    // moves within its UTC day, so its gauge rows stay as they are and none
-    // is read.
+    // The event and install 2's head; then, in one batch get per aggregate,
+    // the event's 4 sketch rows (its platform's usage of every app version
+    // and of its own by hour, and by day, which keeps its own retention) and
+    // the gauge rows its head leaves and enters as it moves on to bundle-c:
+    // 2 of the distribution, and 6 by bundle, for its from, to and pair.
     read: ({ insights }) =>
       insights.recordEvent(
-        eventOf(26, { install_id: "install-2", received_at_ms: T0 + 3 * HOUR }),
+        eventOf(27, {
+          install_id: "install-2",
+          user_id: "user-even",
+          from_release_id: "release-b",
+          from_bundle_id: "bundle-b",
+          to_release_id: "release-c",
+          to_bundle_id: "bundle-c",
+          received_at_ms: T0 + 3 * HOUR,
+        }),
       ),
-    adapter: reads(4, 6, 0, 0),
+    adapter: reads(6, 14, 0, 0),
     engine: { calls: 2, rows: 1 },
     writes: 1,
   }),

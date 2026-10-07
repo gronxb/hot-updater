@@ -161,9 +161,9 @@ describe("Release health counts", () => {
     ),
   });
 
-  it("reads one bundle's applies or crashes in the period's intervals", async () => {
+  it("reads one bundle's launches or crashes in the period's intervals", async () => {
     const model = modelOf();
-    const applied = await getBundleEvents(
+    const launched = await getBundleEvents(
       model,
       {
         platform: "ios",
@@ -171,26 +171,32 @@ describe("Release health counts", () => {
         window: "7d",
         endMs: 10 * DAY,
         bundleId: "bundle-1",
-        type: "UPDATE_APPLIED",
+        type: "LAUNCHED",
       },
       10 * DAY - HOUR / 2,
     );
-    expect(model.countEventSeries).toHaveBeenCalledExactlyOnceWith({
-      filter: {
-        platform: "ios",
-        channel: "production",
-        type: "UPDATE_APPLIED",
-        toBundleId: "bundle-1",
-      },
-      timeRange: { start: 3 * DAY, end: 10 * DAY },
-      intervalMs: 6 * HOUR,
-    });
-    expect(applied).toMatchObject({
+    // Launches add two series: apply reports, and the kept reports that
+    // moved an installation to the bundle with no apply report.
+    expect(model.countEventSeries).toHaveBeenCalledTimes(2);
+    for (const type of ["UPDATE_APPLIED", "UNCHANGED"]) {
+      expect(model.countEventSeries).toHaveBeenCalledWith({
+        filter: {
+          platform: "ios",
+          channel: "production",
+          type,
+          toBundleId: "bundle-1",
+        },
+        timeRange: { start: 3 * DAY, end: 10 * DAY },
+        intervalMs: 6 * HOUR,
+      });
+    }
+    expect(launched).toMatchObject({
       bundleId: "bundle-1",
-      type: "UPDATE_APPLIED",
-      total: 84,
+      type: "LAUNCHED",
+      total: 168,
     });
-    expect(applied.points).toHaveLength(28);
+    expect(launched.points).toHaveLength(28);
+    expect(launched.points[0]).toMatchObject({ events: 6 });
 
     // A recovery names the bundle it crashed on.
     await getBundleEvents(model, {
@@ -240,10 +246,10 @@ describe("Release health counts", () => {
         window: "24h",
         endMs: 10 * DAY + 1,
         bundleId: "bundle-1",
-        type: "UPDATE_APPLIED",
+        type: "LAUNCHED",
       }),
     ).rejects.toThrow("Choose a platform, channel, period, and bundle.");
-    // Release health charts applies and recoveries only.
+    // Release health charts launches and recoveries only.
     await expect(
       getBundleEvents(model, {
         platform: "ios",

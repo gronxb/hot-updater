@@ -12,13 +12,18 @@ export interface InsightsScope {
 
 /**
  * Raw event predicates; recovery is attributed to the source bundle. An
- * UNCHANGED report is kept as no event, so no filter names it.
+ * UNCHANGED filter matches the kept rows that moved an installation to the
+ * bundle without an apply report.
  */
 export type InsightsBundleEventFilter = InsightsScope &
   (
     | { readonly type: "RECOVERED"; readonly fromBundleId: string }
     | {
-        readonly type: "UPDATE_DOWNLOADED" | "UPDATE_APPLIED" | "UPDATE_FAILED";
+        readonly type:
+          | "UPDATE_DOWNLOADED"
+          | "UPDATE_APPLIED"
+          | "UPDATE_FAILED"
+          | "UNCHANGED";
         readonly toBundleId: string;
       }
   );

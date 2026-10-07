@@ -230,6 +230,7 @@ describe("ReleaseEditorSheet", () => {
         platform: "ios",
         channel: "production",
         releaseId: "release-1",
+        builtIn: false,
       },
     });
 

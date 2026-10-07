@@ -39,8 +39,9 @@ import {
 } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { RecoveryInput } from "@/lib/insights-recovery";
-import type { HealthChart } from "@/lib/insights-search";
+import type { AdoptionTotal, HealthChart } from "@/lib/insights-search";
 import {
+  type BundleEventsSeries,
   CRASH_MIN_ATTEMPTS,
   CRASH_RATE_THRESHOLD,
   crashRateOf,
@@ -77,29 +78,44 @@ const cadenceOf = (intervalMs: number) =>
       : `Every ${intervalMs / HOUR} hours`;
 
 /** A bundle's crash numbers over the period, once both counts are read. */
-const crashesOf = ({ release, applied, recovered }: ComparedBundle) =>
-  applied === undefined || recovered === undefined
+const crashesOf = ({ release, launched, recovered }: ComparedBundle) =>
+  launched === undefined || recovered === undefined
     ? undefined
     : {
         crashes: recovered.total,
-        ...crashRateOf(applied.total, recovered.total),
+        ...crashRateOf(launched.total, recovered.total),
         recommended: recommendsRollback(
           release,
-          applied.total,
+          launched.total,
           recovered.total,
         ),
       };
 
+/** Each interval's count, or the running total up to it. */
+const totalsOf = (
+  points: BundleEventsSeries["points"] | undefined,
+  cumulative: boolean,
+) => {
+  if (points === undefined || !cumulative) return points;
+  let sum = 0;
+  return points.map((point) => {
+    sum += point.events;
+    return { ...point, events: sum };
+  });
+};
+
 /**
  * Release health: how the newest bundles fare after their deployment, on
- * one timeline. Adoption shows installations applying each bundle; Crashes
- * shows them crashing back from it, and offers a rollback when a bundle
- * crashes for too many of them.
+ * one timeline. Adoption shows installations launching each bundle, per
+ * interval or as a running total; Crashes shows them crashing back from it,
+ * and offers a rollback when a bundle crashes for too many of them.
  */
 export function InsightsOverview({
   input,
   chart,
   onChartChange,
+  total = "interval",
+  onTotalChange,
   health,
   onReleasesChange,
   onWindowChange,
@@ -107,6 +123,9 @@ export function InsightsOverview({
   readonly input: RecoveryInput;
   readonly chart: HealthChart;
   readonly onChartChange: (chart: HealthChart) => void;
+  /** Adoption's counts: each interval's, or the running total. */
+  readonly total?: AdoptionTotal;
+  readonly onTotalChange?: (total: AdoptionTotal) => void;
   readonly health: ReleaseHealthState;
   /** Chooses the bundles to compare; undefined returns to the default. */
   readonly onReleasesChange: (releaseIds?: readonly string[]) => void;
@@ -137,7 +156,8 @@ export function InsightsOverview({
     </Button>
   );
   const seriesOf = (bundle: ComparedBundle) =>
-    chart === "adoption" ? bundle.applied : bundle.recovered;
+    chart === "adoption" ? bundle.launched : bundle.recovered;
+  const cumulative = chart === "adoption" && total === "cumulative";
   const loaded = (releases ?? []).filter(
     (bundle) => seriesOf(bundle) !== undefined,
   );
@@ -155,18 +175,39 @@ export function InsightsOverview({
 
   const heading =
     chart === "adoption" ? (
-      <div className="flex flex-col gap-1">
-        <div className="flex items-center gap-1 text-sm font-medium">
-          Installations applying each bundle
-          <InsightsInfo label="About adoption">
-            Installations that started running each bundle, per interval. An
-            installation that applies it again counts again.
-          </InsightsInfo>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="flex flex-col gap-1">
+          <div className="flex items-center gap-1 text-sm font-medium">
+            Installations launching each bundle
+            <InsightsInfo label="About adoption">
+              Installations that reported running each bundle, once each: at its
+              apply report, or at its first report on the bundle when the apply
+              report never arrived. One that comes back counts again.
+            </InsightsInfo>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            {cumulative ? "Running total" : cadenceOf(period.intervalMs)} · last{" "}
+            {lengthOf(period.durationMs)} · UTC
+          </p>
         </div>
-        <p className="text-xs text-muted-foreground">
-          {cadenceOf(period.intervalMs)} · last {lengthOf(period.durationMs)} ·
-          UTC
-        </p>
+        {onTotalChange ? (
+          <Tabs
+            value={total}
+            onValueChange={(value) => onTotalChange(value as AdoptionTotal)}
+          >
+            <TabsList
+              aria-label="Adoption counts"
+              className="min-h-11 sm:min-h-9"
+            >
+              <TabsTrigger value="interval" className="px-3">
+                Per interval
+              </TabsTrigger>
+              <TabsTrigger value="cumulative" className="px-3">
+                Cumulative
+              </TabsTrigger>
+            </TabsList>
+          </Tabs>
+        ) : null}
       </div>
     ) : (
       <div className="flex flex-col gap-1">
@@ -174,7 +215,7 @@ export function InsightsOverview({
           Crashes after each deployment
           <InsightsInfo label="About crashes">
             Launches that crashed on a bundle and rolled back to the one before.
-            Crash rate = crashes ÷ (applies + crashes). A rollback is suggested
+            Crash rate = crashes ÷ (launches + crashes). A rollback is suggested
             at {percent(CRASH_RATE_THRESHOLD)} once {CRASH_MIN_ATTEMPTS}{" "}
             installations tried it.
           </InsightsInfo>
@@ -227,7 +268,7 @@ export function InsightsOverview({
         <Empty className="min-h-48">
           <EmptyHeader>
             <EmptyTitle>
-              No installations applied these bundles in the last{" "}
+              No installation launched these bundles in the last{" "}
               {lengthOf(period.durationMs)}
             </EmptyTitle>
             <EmptyDescription>
@@ -266,14 +307,16 @@ export function InsightsOverview({
         period={period}
         lines={releases.map((bundle) => ({
           release: bundle.release,
-          points: seriesOf(bundle)?.points,
+          points: totalsOf(seriesOf(bundle)?.points, cumulative),
           measuredAtMs: seriesOf(bundle)?.measuredAtMs,
         }))}
         colorOf={colorOf}
         active={active}
         label={
           chart === "adoption"
-            ? "Installations applying each bundle per interval"
+            ? cumulative
+              ? "Installations launching each bundle, running total"
+              : "Installations launching each bundle per interval"
             : "Crashes of each bundle per interval"
         }
       />
@@ -386,7 +429,7 @@ export function InsightsOverview({
                   <TableRow>
                     <TableHead>Bundle</TableHead>
                     {chart === "adoption" ? (
-                      <TableHead className="text-right">Applied</TableHead>
+                      <TableHead className="text-right">Launched</TableHead>
                     ) : (
                       <>
                         <TableHead className="text-right">Crashes</TableHead>
@@ -454,7 +497,7 @@ export function InsightsOverview({
                         </TableCell>
                         {chart === "adoption" ? (
                           <TableCell className="text-right font-medium whitespace-nowrap tabular-nums">
-                            {bundle.applied?.total.toLocaleString() ?? "—"}
+                            {bundle.launched?.total.toLocaleString() ?? "—"}
                           </TableCell>
                         ) : (
                           <>

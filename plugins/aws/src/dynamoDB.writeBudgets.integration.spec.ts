@@ -297,6 +297,16 @@ const SCENARIO = [
         bundle: "a",
       }),
   },
+  {
+    // The installation runs bundle b, and its apply report never came: the
+    // launch that says so is kept, and launches b's release.
+    name: "Launch on another bundle without an apply report",
+    event: () =>
+      eventOf(D0 + 3 * DAY + 9 * HOUR + 5 * 60_000, {
+        type: "UNCHANGED",
+        bundle: "b",
+      }),
+  },
 ] as const;
 
 /**
@@ -307,7 +317,7 @@ const SCENARIO = [
 const BUDGETS: Readonly<
   Record<(typeof SCENARIO)[number]["name"], { items: number; wru: number }>
 > = {
-  "First launch": { items: 10, wru: 28 },
+  "First launch": { items: 14, wru: 36 },
   "Same-hour relaunch": { items: 0, wru: 0 },
   "Next-hour launch": { items: 0, wru: 0 },
   UPDATE_DOWNLOADED: { items: 18, wru: 40 },
@@ -318,6 +328,7 @@ const BUDGETS: Readonly<
   "UPDATE_FAILED (check)": { items: 8, wru: 20 },
   "Next-day launch": { items: 16, wru: 40 },
   "Launch the day after": { items: 14, wru: 36 },
+  "Launch on another bundle without an apply report": { items: 21, wru: 50 },
 };
 
 let local: DynamoDBLocal;

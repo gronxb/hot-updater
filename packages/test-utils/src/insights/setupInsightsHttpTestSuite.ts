@@ -166,9 +166,16 @@ export const setupInsightsHttpTestSuite = (options: {
           `/installations/${encodeURIComponent(installId)}/events`,
         );
         const data = ((await history.json()) as { data: unknown[] }).data;
-        expect(data).toHaveLength(type === "UNCHANGED" ? 0 : 1);
-        if (type !== "UNCHANGED")
-          expect(data[0]).toMatchObject({ type, httpResponse });
+        // An installation's first report is kept, an UNCHANGED one as the
+        // installation first seen.
+        expect(data).toHaveLength(1);
+        expect(data[0]).toMatchObject({
+          type,
+          httpResponse,
+          ...(type === "UNCHANGED"
+            ? { change: { kinds: ["first_seen"] } }
+            : {}),
+        });
       },
     );
 
