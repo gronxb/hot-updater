@@ -101,7 +101,15 @@ export const useRollbackRemoteConfigMutation = () => {
 /** A device's view of the draft, kept on screen while the next one loads. */
 export const useRemoteConfigPreviewQuery = (input: {
   readonly template: RemoteConfigTemplate;
-  readonly context: Readonly<Record<string, string>>;
+  /** The device's fields, and `now` to evaluate at a chosen time. */
+  readonly context: {
+    readonly platform?: string;
+    readonly channel?: string;
+    readonly appVersion?: string;
+    readonly cohort?: string;
+    readonly fingerprintHash?: string;
+    readonly now?: number;
+  };
 }) =>
   useQuery({
     queryKey: remoteConfigQueryKeys.preview(input),

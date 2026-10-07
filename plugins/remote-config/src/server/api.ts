@@ -85,7 +85,10 @@ export interface RemoteConfigApi {
   }): Promise<RemoteConfigVersionsPage>;
   /** One version with its template, or null. */
   getVersion(version: number): Promise<RemoteConfigVersionDetail | null>;
-  /** What a device with this context receives from `GET /remote-config`. */
+  /**
+   * What a device with this context receives from `GET /remote-config`, at
+   * `context.now` or, without it, now.
+   */
   resolve(
     context: RemoteConfigEvaluationContext,
   ): Promise<RemoteConfigFetchResponse>;
@@ -322,7 +325,10 @@ export const createRemoteConfigApi = ({
       const active = await servedActive();
       return {
         version: active.version,
-        values: resolveRemoteConfigValues(active.template, context),
+        values: resolveRemoteConfigValues(active.template, {
+          ...context,
+          now: context.now ?? now(),
+        }),
       };
     },
   };

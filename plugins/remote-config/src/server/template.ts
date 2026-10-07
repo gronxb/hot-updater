@@ -58,7 +58,12 @@ export type RemoteConfigRule =
       readonly from: number;
       readonly to: number;
     }
-  | { readonly type: "fingerprint"; readonly hashes: readonly string[] };
+  | { readonly type: "fingerprint"; readonly hashes: readonly string[] }
+  /**
+   * While the server's clock is in `[from, to)`: ISO 8601 date-times in UTC,
+   * either of them open. A device gets the change at its next fetch.
+   */
+  | { readonly type: "dateTime"; readonly from?: string; readonly to?: string };
 
 export type RemoteConfigRuleType = RemoteConfigRule["type"];
 
@@ -96,6 +101,9 @@ const MAX_RULE_TEXT_LENGTH = 128;
 
 const PARAMETER_KEY_PATTERN = /^[A-Za-z_][A-Za-z0-9_]{0,255}$/u;
 const SEED_PATTERN = /^[A-Za-z0-9_-]{1,64}$/u;
+/** A date-time with its time zone, so it names one instant. */
+const DATE_TIME_PATTERN =
+  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,3})?)?(?:Z|[+-]\d{2}:\d{2})$/u;
 const VALUE_TYPES: ReadonlySet<string> = new Set([
   "STRING",
   "NUMBER",
@@ -392,6 +400,7 @@ const RULE_FIELDS: Readonly<Record<RemoteConfigRuleType, readonly string[]>> = {
   cohort: ["type", "cohorts"],
   percent: ["type", "seed", "from", "to"],
   fingerprint: ["type", "hashes"],
+  dateTime: ["type", "from", "to"],
 };
 
 const validateRules = (
@@ -415,7 +424,7 @@ const validateRules = (
     if (fields === undefined) {
       issue(
         `${rulePath}.type`,
-        "must be platform, channel, appVersion, cohort, percent, or fingerprint.",
+        "must be platform, channel, appVersion, cohort, percent, fingerprint, or dateTime.",
       );
       return;
     }
@@ -506,6 +515,43 @@ const validateRules = (
         rules.push({ type, hashes });
         return;
       }
+      case "dateTime": {
+        // Stored in UTC, so every server and the Console read one instant.
+        const instant = (field: "from" | "to"): string | undefined | null => {
+          const value = raw[field];
+          if (value === undefined) return undefined;
+          const ms = typeof value === "string" ? Date.parse(value) : Number.NaN;
+          if (
+            typeof value !== "string" ||
+            !DATE_TIME_PATTERN.test(value) ||
+            !Number.isFinite(ms)
+          ) {
+            issue(
+              `${rulePath}.${field}`,
+              "must be an ISO 8601 date-time with a time zone, such as 2026-10-08T10:00:00Z.",
+            );
+            return null;
+          }
+          return new Date(ms).toISOString();
+        };
+        const from = instant("from");
+        const to = instant("to");
+        if (from === null || to === null) return;
+        if (from === undefined && to === undefined) {
+          issue(rulePath, "takes from, to, or both.");
+          return;
+        }
+        if (from !== undefined && to !== undefined && from >= to) {
+          issue(rulePath, "takes a from before its to.");
+          return;
+        }
+        rules.push({
+          type,
+          ...(from === undefined ? {} : { from }),
+          ...(to === undefined ? {} : { to }),
+        });
+        return;
+      }
     }
   });
   return rules;
@@ -516,7 +562,13 @@ export type RemoteConfigEvaluationContext = Partial<
   Readonly<{
     [K in keyof RemoteConfigDeviceContext]: RemoteConfigDeviceContext[K] | null;
   }>
->;
+> & {
+  /**
+   * When to evaluate, in ms since the epoch. The server uses its own clock;
+   * a `dateTime` rule never matches without it.
+   */
+  readonly now?: number;
+};
 
 /** Whether one rule matches a device. */
 export const matchesRemoteConfigRule = (
@@ -560,6 +612,12 @@ export const matchesRemoteConfigRule = (
       return (
         typeof context.fingerprintHash === "string" &&
         rule.hashes.includes(context.fingerprintHash)
+      );
+    case "dateTime":
+      return (
+        typeof context.now === "number" &&
+        (rule.from === undefined || context.now >= Date.parse(rule.from)) &&
+        (rule.to === undefined || context.now < Date.parse(rule.to))
       );
   }
 };

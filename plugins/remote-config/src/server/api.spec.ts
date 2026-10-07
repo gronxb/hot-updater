@@ -187,6 +187,35 @@ describe("remoteConfig() API", () => {
     });
   });
 
+  it("resolves date-time rules on the server's clock, and at a time the caller asks", async () => {
+    const { api, advance } = await start();
+    await api.publish({
+      template: {
+        conditions: [
+          {
+            name: "Soon",
+            rules: [{ type: "dateTime", from: "1970-01-01T00:00:02Z" }],
+          },
+        ],
+        parameters: {
+          banner: {
+            valueType: "STRING",
+            defaultValue: { value: "before" },
+            conditionalValues: { Soon: { value: "after" } },
+          },
+        },
+      },
+      baseVersion: 0,
+    });
+
+    expect((await api.resolve({})).values).toEqual({ banner: "before" });
+    advance(1_000);
+    expect((await api.resolve({})).values).toEqual({ banner: "after" });
+    expect((await api.resolve({ now: 0 })).values).toEqual({
+      banner: "before",
+    });
+  });
+
   it("never caches a template a fetch read before a publish on this server", async () => {
     const { db } = await createPluginTestHarness(remoteConfig());
     let release: (() => void) | null = null;

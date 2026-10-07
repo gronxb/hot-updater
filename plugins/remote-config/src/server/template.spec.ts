@@ -178,7 +178,7 @@ describe("validateRemoteConfigTemplate", () => {
       {
         path: "conditions[0].rules[0].type",
         message:
-          "must be platform, channel, appVersion, cohort, percent, or fingerprint.",
+          "must be platform, channel, appVersion, cohort, percent, fingerprint, or dateTime.",
       },
     ]);
   });
@@ -203,6 +203,61 @@ describe("validateRemoteConfigTemplate", () => {
       valueType: "STRING",
       defaultValue: { value: "" },
     });
+  });
+
+  it("stores date-times in UTC, and refuses ones without a time zone or a range", () => {
+    expect(
+      validateRemoteConfigTemplate({
+        conditions: [
+          {
+            name: "Sale",
+            rules: [
+              {
+                type: "dateTime",
+                from: "2026-10-08T19:00:00+09:00",
+                to: "2026-10-09T10:00Z",
+              },
+            ],
+          },
+          {
+            name: "After",
+            rules: [{ type: "dateTime", from: "2026-10-08T10:00:00.5Z" }],
+          },
+        ],
+      }).conditions.map(({ rules }) => rules[0]),
+    ).toEqual([
+      {
+        type: "dateTime",
+        from: "2026-10-08T10:00:00.000Z",
+        to: "2026-10-09T10:00:00.000Z",
+      },
+      { type: "dateTime", from: "2026-10-08T10:00:00.500Z" },
+    ]);
+    expect(
+      issuesOf({
+        conditions: [
+          {
+            name: "Local",
+            rules: [{ type: "dateTime", from: "2026-10-08T10:00" }],
+          },
+          { name: "Open", rules: [{ type: "dateTime" }] },
+          {
+            name: "Backwards",
+            rules: [
+              {
+                type: "dateTime",
+                from: "2026-10-09T00:00:00Z",
+                to: "2026-10-08T00:00:00Z",
+              },
+            ],
+          },
+        ],
+      }).map(({ path }) => path),
+    ).toEqual([
+      "conditions[0].rules[0].from",
+      "conditions[1].rules[0]",
+      "conditions[2].rules[0]",
+    ]);
   });
 
   it("caps a template's JSON so a device can store its values", () => {
@@ -293,6 +348,45 @@ describe("evaluateRemoteConfig", () => {
     expect(widened.map(Number).toSorted((a, b) => a - b)).toEqual(
       getRolledOutNumericCohorts("rollout", 250),
     );
+  });
+
+  it("matches a date-time range on the clock it is given, ends open or not", () => {
+    const scheduled: RemoteConfigTemplate = {
+      conditions: [
+        {
+          name: "Sale",
+          rules: [
+            {
+              type: "dateTime",
+              from: "2026-10-08T10:00:00.000Z",
+              to: "2026-10-09T10:00:00.000Z",
+            },
+          ],
+        },
+        {
+          name: "Later",
+          rules: [{ type: "dateTime", from: "2026-10-09T10:00:00.000Z" }],
+        },
+      ],
+      parameters: {
+        banner: {
+          valueType: "STRING",
+          defaultValue: { value: "none" },
+          conditionalValues: {
+            Sale: { value: "sale" },
+            Later: { value: "later" },
+          },
+        },
+      },
+    };
+    const at = (iso: string) =>
+      resolveRemoteConfigValues(scheduled, { now: Date.parse(iso) }).banner;
+    expect(at("2026-10-08T09:59:59.999Z")).toBe("none");
+    expect(at("2026-10-08T10:00:00.000Z")).toBe("sale");
+    expect(at("2026-10-09T09:59:59.999Z")).toBe("sale");
+    expect(at("2026-10-09T10:00:00.000Z")).toBe("later");
+    // A context without a clock matches no date-time rule.
+    expect(resolveRemoteConfigValues(scheduled, {}).banner).toBe("none");
   });
 
   it("matches custom cohorts only by name, never by percentage", () => {

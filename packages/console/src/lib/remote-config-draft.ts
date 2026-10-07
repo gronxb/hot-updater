@@ -46,6 +46,7 @@ export const RULE_TYPE_LABELS: Readonly<Record<RemoteConfigRuleType, string>> =
     percent: "Percentage of installs",
     cohort: "Cohort",
     fingerprint: "Fingerprint",
+    dateTime: "Date and time",
   };
 
 /**
@@ -196,6 +197,27 @@ const listText = (values: readonly string[], limit = 3): string =>
 const percentText = (value: number) =>
   Number.isInteger(value) ? String(value) : value.toFixed(1);
 
+const dateTimeText = (iso: string) =>
+  new Intl.DateTimeFormat(undefined, {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(new Date(iso));
+
+/** An instant as a `datetime-local` input shows it, in the viewer's time zone. */
+export const toLocalDateTimeInput = (iso: string | undefined): string => {
+  if (iso === undefined) return "";
+  const date = new Date(iso);
+  const pad = (value: number) => String(value).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+};
+
+/** A `datetime-local` input's value, in the viewer's time zone, as a UTC instant. */
+export const fromLocalDateTimeInput = (value: string): string | undefined => {
+  if (value.length === 0) return undefined;
+  const ms = new Date(value).getTime();
+  return Number.isFinite(ms) ? new Date(ms).toISOString() : undefined;
+};
+
 /** A rule in a few words, such as `Channel is beta, qa`. */
 export const describeRule = (rule: RemoteConfigRule): string => {
   switch (rule.type) {
@@ -219,6 +241,12 @@ export const describeRule = (rule: RemoteConfigRule): string => {
       return `Fingerprint is ${listText(
         rule.hashes.map((hash) => hash.slice(0, 8)),
       )}`;
+    case "dateTime":
+      return rule.from !== undefined && rule.to !== undefined
+        ? `${dateTimeText(rule.from)} – ${dateTimeText(rule.to)}`
+        : rule.from !== undefined
+          ? `From ${dateTimeText(rule.from)}`
+          : `Until ${dateTimeText(rule.to ?? "")}`;
   }
 };
 
@@ -365,6 +393,15 @@ export const ruleError = (rule: RemoteConfigRule): string | null => {
         : null;
     case "fingerprint":
       return rule.hashes.length === 0 ? "Enter a fingerprint." : null;
+    case "dateTime":
+      if (rule.from === undefined && rule.to === undefined) {
+        return "Choose a start, an end, or both.";
+      }
+      return rule.from !== undefined &&
+        rule.to !== undefined &&
+        rule.from >= rule.to
+        ? "End after the start."
+        : null;
   }
 };
 
@@ -383,5 +420,11 @@ export const createRule = (type: RemoteConfigRuleType): RemoteConfigRule => {
       return { type, seed: createSeed(), from: 0, to: 10 };
     case "fingerprint":
       return { type, hashes: [] };
+    case "dateTime": {
+      // The start of the next hour, a time worth editing rather than now.
+      const next = new Date();
+      next.setMinutes(60, 0, 0);
+      return { type, from: next.toISOString() };
+    }
   }
 };
