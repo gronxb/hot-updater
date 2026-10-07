@@ -300,9 +300,7 @@ describe("Insights event details", () => {
       <EventTypeDetails event={{ type: "UPDATE_APPLIED" }} />,
     );
     expect(screen.getByText("Launched")).toBeDefined();
-    expect(screen.getByText("Launched").className).toContain(
-      "text-success",
-    );
+    expect(screen.getByText("Launched").className).toContain("text-success");
 
     view.rerender(<EventTypeDetails event={{ type: "RECOVERED" }} />);
     expect(screen.getByText("Crashed")).toBeDefined();

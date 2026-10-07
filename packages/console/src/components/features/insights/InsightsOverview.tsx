@@ -323,7 +323,7 @@ export function InsightsOverview({
         names={
           chart === "adoption"
             ? { solid: "Launched", dashed: "Downloaded" }
-            : { solid: "Crashes" }
+            : { solid: "Crashed" }
         }
         label={
           chart === "adoption"
@@ -446,7 +446,7 @@ export function InsightsOverview({
                       </>
                     ) : (
                       <>
-                        <TableHead className="text-right">Crashes</TableHead>
+                        <TableHead className="text-right">Crashed</TableHead>
                         <TableHead className="text-right">Crash rate</TableHead>
                       </>
                     )}

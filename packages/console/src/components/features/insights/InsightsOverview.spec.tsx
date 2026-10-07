@@ -288,6 +288,12 @@ describe("Release health", () => {
     expect(
       screen.getByLabelText("Crashes of each bundle per interval"),
     ).toBeDefined();
+    // Named as the bundle's activity names it.
+    expect(
+      within(screen.getByRole("table", { name: "Compared bundles" }))
+        .getAllByRole("columnheader")
+        .map((header) => header.textContent),
+    ).toEqual(["Bundle", "Crashed", "Crash rate", "Remove"]);
     expect(rows()).toEqual([
       "release-bDeployed Jan 1, 20:15 UTC · 1.2.0111.1%",
       "release-aDeployed Jan 1, 02:00 UTC · 1.2.000.0%",

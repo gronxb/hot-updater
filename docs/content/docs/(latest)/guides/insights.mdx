@@ -589,9 +589,10 @@ counts the Bundles list keeps since the release's first report;
 installations run a bundle now is in [Distribution](#read-the-console).
 
 **Crashes** counts the launches that crashed on each bundle and recovered to
-the bundle before, from their `RECOVERED` reports. Its table shows each
-bundle's crashes and **Crash rate**: crashes divided by launches plus crashes,
-since an installation that crashes never reports running the bundle. When a bundle
+the bundle before, from their `RECOVERED` reports. Its table shows how many
+installations **Crashed** on each bundle and its **Crash rate**: crashed
+divided by launched plus crashed, since an installation that crashes never
+reports running the bundle. When a bundle
 crashes for **5%** of the installations that tried it, once at least 20 did,
 Release health recommends rolling it back. **Roll back** disables its release,
 as its bundle details do, so installations running it return to the previous
