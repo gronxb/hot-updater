@@ -64,14 +64,17 @@ export type RemoteConfigKey<TDefaults> =
   | (keyof TDefaults & string)
   | (string & {});
 
-export interface RemoteConfigPlugin<
+/**
+ * Remote Config on the instance `HotUpdater.init` returns, as
+ * `hotUpdater.remoteConfig`.
+ */
+export interface RemoteConfigClient<
   TDefaults extends RemoteConfigDefaults = RemoteConfigDefaults,
-> extends HotUpdaterClientPlugin {
-  readonly id: "remoteConfig";
+> {
   /**
-   * A parameter's active value. Reads are synchronous: after
-   * `HotUpdater.init` they return the values the app
-   * activated last, stored on the device, and before that the defaults.
+   * A parameter's active value. Reads are synchronous: they return the
+   * values the app activated last, which `init` loads from the device, and
+   * before any, the defaults.
    */
   getValue(key: RemoteConfigKey<TDefaults>): RemoteConfigValue;
   getString(key: RemoteConfigKey<TDefaults>): string;
@@ -101,6 +104,11 @@ export interface RemoteConfigPlugin<
   /** Calls `listener` whenever the active values change; returns the unsubscribe. */
   subscribe(listener: () => void): () => void;
 }
+
+/** The `remoteConfig()` plugin: it adds `hotUpdater.remoteConfig`. */
+export type RemoteConfigPlugin<
+  TDefaults extends RemoteConfigDefaults = RemoteConfigDefaults,
+> = HotUpdaterClientPlugin<"remoteConfig", RemoteConfigClient<TDefaults>>;
 
 const DEFAULT_MINIMUM_FETCH_INTERVAL_MS = 12 * 60 * 60 * 1000;
 const BOOLEAN_TRUTHY_VALUES = new Set(["1", "true", "t", "yes", "y", "on"]);
@@ -178,22 +186,23 @@ const deviceContext = (
 /**
  * Remote Config for the app: in-app defaults, values a server running the
  * `remoteConfig()` plugin picks for this device, and a fetch and activate
- * step between them. Add it to
- * `HotUpdater.init`'s `plugins`; it fetches from the
- * `baseURL`, request headers, and timeout configured there.
+ * step between them. Add it to `HotUpdater.init`'s `plugins`, and read it
+ * from the instance `init` returns, as `hotUpdater.remoteConfig`. It fetches
+ * from the `baseURL`, request headers, and timeout configured there.
  *
  * @example
  * ```ts
  * import { HotUpdater, remoteConfig } from "@hot-updater/react-native";
  *
- * export const config = remoteConfig({
- *   defaults: { welcome_message: "Welcome", max_items: 20 },
+ * export const hotUpdater = HotUpdater.init({
+ *   baseURL,
+ *   plugins: [
+ *     remoteConfig({ defaults: { welcome_message: "Welcome", max_items: 20 } }),
+ *   ],
  * });
  *
- * HotUpdater.init({ baseURL, plugins: [config] });
- * config.fetchAndActivate().catch(() => {});
- *
- * config.getString("welcome_message");
+ * hotUpdater.remoteConfig.fetchAndActivate().catch(() => {});
+ * hotUpdater.remoteConfig.getString("welcome_message");
  * ```
  */
 export const remoteConfig = <
@@ -218,11 +227,46 @@ export const remoteConfig = <
       String(value),
     ]),
   );
+  return defineClientPlugin({
+    id: "remoteConfig",
+    setup: (context) => ({
+      api: createRemoteConfigClient<TDefaults>(context, {
+        defaults,
+        minimumFetchIntervalMs,
+      }),
+    }),
+  });
+};
 
-  let context: HotUpdaterClientContext | null = null;
-  let active: StoredValues | null = null;
-  let fetched: StoredFetch | null = null;
-  let lastFetchStatus: RemoteConfigFetchStatus = "no-fetch-yet";
+/** The client a plugin's `setup` creates, over the values stored on the device. */
+const createRemoteConfigClient = <TDefaults extends RemoteConfigDefaults>(
+  context: HotUpdaterClientContext,
+  {
+    defaults,
+    minimumFetchIntervalMs,
+  }: {
+    readonly defaults: Readonly<Record<string, string>>;
+    readonly minimumFetchIntervalMs: number;
+  },
+): RemoteConfigClient<TDefaults> => {
+  // Read synchronously, so the first render after init has the values the
+  // app activated at an earlier launch.
+  let active = parseStored<StoredValues>(
+    context.storage.get(ACTIVE_KEY),
+    () => true,
+  );
+  let fetched = parseStored<StoredFetch>(
+    context.storage.get(FETCHED_KEY),
+    (record) =>
+      typeof record.context === "string" &&
+      typeof record.fetchedAtMs === "number",
+  );
+  const storedStatus = context.storage.get(LAST_FETCH_STATUS_KEY);
+  let lastFetchStatus: RemoteConfigFetchStatus = isFetchStatus(storedStatus)
+    ? storedStatus
+    : fetched === null
+      ? "no-fetch-yet"
+      : "success";
   let inFlight: Promise<void> | null = null;
   let snapshot: Readonly<Record<string, RemoteConfigValue>> | null = null;
   const listeners = new Set<() => void>();
@@ -239,7 +283,6 @@ export const remoteConfig = <
   };
 
   const store = (key: string, value: string | null) => {
-    if (context === null) return;
     try {
       context.storage.set(key, value);
     } catch (error) {
@@ -264,21 +307,19 @@ export const remoteConfig = <
       : createValue(fallback, "default");
   };
 
-  const fetchFromServer = async (
-    pluginContext: HotUpdaterClientContext,
-  ): Promise<void> => {
-    const device = deviceContext(pluginContext);
+  const fetchFromServer = async (): Promise<void> => {
+    const device = deviceContext(context);
     const contextKey = JSON.stringify(device);
     if (
       fetched !== null &&
       fetched.context === contextKey &&
-      pluginContext.now() - fetched.fetchedAtMs < minimumFetchIntervalMs
+      context.now() - fetched.fetchedAtMs < minimumFetchIntervalMs
     ) {
       return;
     }
     let response: Response;
     try {
-      response = await pluginContext.fetch(remoteConfigRequestPath(device), {
+      response = await context.fetch(remoteConfigRequestPath(device), {
         headers:
           fetched === null || fetched.etag === null
             ? {}
@@ -290,7 +331,7 @@ export const remoteConfig = <
         cause: error,
       });
     }
-    const fetchedAtMs = pluginContext.now();
+    const fetchedAtMs = context.now();
     if (response.status === 304 && fetched !== null) {
       fetched = { ...fetched, context: contextKey, fetchedAtMs };
       store(FETCHED_KEY, JSON.stringify(fetched));
@@ -326,14 +367,7 @@ export const remoteConfig = <
   };
 
   const fetchValues = (): Promise<void> => {
-    if (context === null) {
-      return Promise.reject(
-        new Error(
-          "[HotUpdater] remoteConfig fetches only after HotUpdater.init sets it up with plugins: [config].",
-        ),
-      );
-    }
-    inFlight ??= fetchFromServer(context).finally(() => {
+    inFlight ??= fetchFromServer().finally(() => {
       inFlight = null;
     });
     return inFlight;
@@ -359,32 +393,11 @@ export const remoteConfig = <
     return true;
   };
 
-  const plugin: RemoteConfigPlugin<TDefaults> = {
-    id: "remoteConfig",
-    setup(pluginContext) {
-      context = pluginContext;
-      active = parseStored<StoredValues>(
-        pluginContext.storage.get(ACTIVE_KEY),
-        () => true,
-      );
-      fetched = parseStored<StoredFetch>(
-        pluginContext.storage.get(FETCHED_KEY),
-        (record) =>
-          typeof record.context === "string" &&
-          typeof record.fetchedAtMs === "number",
-      );
-      const status = pluginContext.storage.get(LAST_FETCH_STATUS_KEY);
-      lastFetchStatus = isFetchStatus(status)
-        ? status
-        : fetched === null
-          ? "no-fetch-yet"
-          : "success";
-      if (active !== null) notify();
-    },
+  return Object.freeze({
     getValue,
-    getString: (key) => getValue(key).asString(),
-    getNumber: (key) => getValue(key).asNumber(),
-    getBoolean: (key) => getValue(key).asBoolean(),
+    getString: (key: string) => getValue(key).asString(),
+    getNumber: (key: string) => getValue(key).asNumber(),
+    getBoolean: (key: string) => getValue(key).asBoolean(),
     getAll: () => {
       snapshot ??= Object.freeze(
         Object.fromEntries(
@@ -413,12 +426,11 @@ export const remoteConfig = <
     get activeVersion() {
       return active?.version ?? 0;
     },
-    subscribe(listener) {
+    subscribe: (listener: () => void) => {
       listeners.add(listener);
       return () => {
         listeners.delete(listener);
       };
     },
-  };
-  return defineClientPlugin(plugin);
+  });
 };

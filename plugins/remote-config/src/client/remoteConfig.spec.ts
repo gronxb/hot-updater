@@ -3,6 +3,7 @@ import {
   type ClientPluginTestStorage,
   createTestStorage,
   setupClientPlugin,
+  setupClientPlugins,
 } from "@hot-updater/test-utils/react-native";
 import { beforeEach, describe, expect, it } from "vitest";
 
@@ -28,8 +29,7 @@ const values = (
 const launch = <const T extends Record<string, string | number | boolean>>(
   options: RemoteConfigOptions<T> = {},
 ) => {
-  const config = remoteConfig(options);
-  const runtime = setupClientPlugin(config, {
+  const runtime = setupClientPlugin(remoteConfig(options), {
     baseURL: "https://updates.example.com/hot-updater",
     requestHeaders: { "x-api-key": "client-key" },
     respond: (request) => {
@@ -46,7 +46,8 @@ const launch = <const T extends Record<string, string | number | boolean>>(
     fingerprintHash: "fp",
     now: () => clock,
   });
-  return { config, runtime };
+  // What `hotUpdater.remoteConfig` is on the instance init returns.
+  return { config: runtime.api, runtime };
 };
 
 beforeEach(() => {
@@ -58,8 +59,8 @@ beforeEach(() => {
 });
 
 describe("remoteConfig() client plugin", () => {
-  it("reads the in-app defaults synchronously, before and after init, until values are activated", () => {
-    const config = remoteConfig({
+  it("reads the in-app defaults synchronously after init, until values are activated", () => {
+    const { config } = launch({
       defaults: { welcome: "Hi", max_items: 20, dark_mode: true },
     });
     expect(config.getString("welcome")).toBe("Hi");
@@ -159,17 +160,15 @@ describe("remoteConfig() client plugin", () => {
     responses.push(() => values({ version: 4, values: { welcome: "Hey" } }));
     await first.config.fetchAndActivate();
 
-    const relaunch = remoteConfig({ defaults: { welcome: "Hi" } });
-    expect(relaunch.getString("welcome")).toBe("Hi");
-    const notified: string[] = [];
-    relaunch.subscribe(() => notified.push(relaunch.getString("welcome")));
-    setupClientPlugin(relaunch, { storage, now: () => clock });
+    const relaunch = setupClientPlugin(
+      remoteConfig({ defaults: { welcome: "Hi" } }),
+      { storage, now: () => clock },
+    ).api;
 
     expect(relaunch.getString("welcome")).toBe("Hey");
     expect(relaunch.activeVersion).toBe(4);
     expect(relaunch.lastFetchStatus).toBe("success");
     expect(relaunch.fetchTimeMillis).toBe(clock);
-    expect(notified).toEqual(["Hey"]);
   });
 
   it("stages a fetch for the next launch without changing what the app reads now", async () => {
@@ -271,10 +270,13 @@ describe("remoteConfig() client plugin", () => {
     expect(config.getString("welcome")).toBe("Hey");
   });
 
-  it("fetches only once HotUpdater.init set the plugin up", async () => {
-    const config = remoteConfig();
-    await expect(config.fetch()).rejects.toThrow("only after HotUpdater.init");
-    expect(await config.activate()).toBe(false);
+  it("has its API only on the instance init returns, not on the plugin", () => {
+    const plugin = remoteConfig({ defaults: { welcome: "Hi" } });
+    expect(Object.keys(plugin).toSorted()).toEqual(["id", "setup"]);
+    expect(setupClientPlugin(plugin).api.getString("welcome")).toBe("Hi");
+    // Among other plugins, it is the API under the plugin's id.
+    const runtime = setupClientPlugins([plugin]);
+    expect(runtime.apis.remoteConfig.getString("welcome")).toBe("Hi");
   });
 
   it("refuses a negative minimum fetch interval", () => {

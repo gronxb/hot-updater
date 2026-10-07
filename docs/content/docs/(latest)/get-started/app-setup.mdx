@@ -92,9 +92,11 @@ export default function App() {
 }
 ```
 
-Keep `init` at module scope and export your component normally. It returns
-`void`; you do not need an effect, a readiness flag or an `onNotifyAppReady`
-callback for setup.
+Keep `init` at module scope and export your component normally. You do not need
+an effect, a readiness flag or an `onNotifyAppReady` callback for setup. `init`
+returns the app's HotUpdater instance, where
+[client plugins](/docs/react-native-api/init#use-the-instance-init-returns)
+add their APIs.
 
 The `onError` handler in `init` reports lifecycle and update-check errors.
 The button's `try/catch` handles rejected operations, including download and

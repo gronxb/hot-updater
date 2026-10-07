@@ -53,13 +53,11 @@ type UpdateProgressDetails = {
   }[];
 };
 
-// Console Insights QA looks installations up by this user ID.
+// One plugin object per runtime: init again keeps its state and its API.
 const analytics = insights();
-analytics.setUser({ userId: "detox-e2e" });
-
 // The Remote Config scenario's parameters, with the defaults the app ships.
 // It fetches every time it is asked, so a scenario never waits out an interval.
-export const e2eRemoteConfig = remoteConfig({
+const remoteConfigPlugin = remoteConfig({
   defaults: { e2e_flag: true, e2e_limit: 1, e2e_message: "in-app default" },
   minimumFetchIntervalMs: 0,
 });
@@ -72,8 +70,8 @@ export const initializeHotUpdater = () => {
   notify.fromReleaseId = undefined;
   notify.toBundleId = undefined;
   notify.toReleaseId = undefined;
-  HotUpdater.init({
-    plugins: [analytics, e2eRemoteConfig],
+  return HotUpdater.init({
+    plugins: [analytics, remoteConfigPlugin],
     baseURL: resolveHotUpdaterBaseURL,
     requestHeaders: HOT_UPDATER_API_KEY
       ? { "x-api-key": HOT_UPDATER_API_KEY }
@@ -92,7 +90,13 @@ export const initializeHotUpdater = () => {
   });
 };
 
-initializeHotUpdater();
+export const hotUpdater = initializeHotUpdater();
+
+// Console Insights QA looks installations up by this user ID.
+hotUpdater.insights.setUser({ userId: "detox-e2e" });
+
+// The Remote Config scenario reads its values through this plugin.
+export const e2eRemoteConfig = hotUpdater.remoteConfig;
 
 export const readRuntimeSnapshot = (): RuntimeSnapshot => ({
   activeReleaseId: null,

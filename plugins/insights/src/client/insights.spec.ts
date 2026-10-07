@@ -34,13 +34,8 @@ const sentTypes = () => sentEvents().map(({ type }) => type);
 const disabledResponse = () => new Response(null, { status: 404 });
 
 /** Starts a JavaScript runtime with the plugin on the test's device. */
-const launch = async (
-  options: InsightsOptions = {},
-  beforeInit?: (plugin: ReturnType<typeof insights>) => void,
-) => {
-  const plugin = insights(options);
-  beforeInit?.(plugin);
-  const runtime = setupClientPlugin(plugin, {
+const launch = async (options: InsightsOptions = {}) => {
+  const runtime = setupClientPlugin(insights(options), {
     baseURL: "https://updates.example.com/hot-updater",
     requestHeaders: { "x-api-key": "client-key" },
     respond: (request) => {
@@ -61,7 +56,8 @@ const launch = async (
     fingerprintHash: "fingerprint-hash",
   });
   return {
-    plugin,
+    // What `hotUpdater.insights` is on the instance init returns.
+    insights: runtime.api,
     runtime,
     appReady: runtime.hooks.onAppReady,
     updateCheck: runtime.hooks.onUpdateCheck,
@@ -327,7 +323,7 @@ describe("insights() client plugin", () => {
       await flush();
 
       const app = await launch();
-      app.plugin.setUser({ userId: "user-1" });
+      app.insights.setUser({ userId: "user-1" });
       app.appReady(unchangedLaunch());
       await flush();
 
@@ -793,17 +789,17 @@ describe("insights() client plugin", () => {
   });
 
   describe("user", () => {
-    it("attaches a user set before init and keeps it across launches", async () => {
-      (await launch({}, (plugin) => plugin.setUser({ userId: 42 }))).appReady(
-        unchangedLaunch(),
-      );
+    it("attaches the user and keeps it across launches", async () => {
+      const first = await launch();
+      first.insights.setUser({ userId: 42 });
+      first.appReady(unchangedLaunch());
       await flush();
 
       (await launch()).appReady(appliedLaunch);
       await flush();
 
       const app = await launch();
-      app.plugin.setUser(null);
+      app.insights.setUser(null);
       app.appReady(unchangedLaunch({ bundleId: "bundle-c" }));
       await flush();
 
@@ -832,6 +828,8 @@ describe("insights() client plugin", () => {
       isDebugBuild = true;
       const app = await launch(debug === undefined ? {} : { debug });
 
+      // App code calls setUser in every build.
+      app.insights.setUser({ userId: "user-1" });
       app.appReady(unchangedLaunch());
       await flush();
 

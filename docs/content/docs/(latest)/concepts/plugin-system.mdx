@@ -244,7 +244,9 @@ reaches people through its API and its routes.
 Client plugins run in the React Native app. They observe launches, update
 checks, downloads, and update failures, and can send requests to the update
 server with the app's base URL and headers. Pass them to `plugins` in
-`HotUpdater.init`. The
+`HotUpdater.init`, which returns the app's HotUpdater instance with each
+plugin's API under the plugin's id, as the server's `hotUpdater.api` holds
+server plugins' APIs. The
 [Insights plugin](/docs/react-native-api/insights) reports to the server's
 `insights()` plugin; it is `@hot-updater/plugin-insights/client`, which
 `@hot-updater/react-native` exports from its root. The

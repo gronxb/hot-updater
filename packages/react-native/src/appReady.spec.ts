@@ -53,7 +53,7 @@ const recordingPlugin = (
   const events: unknown[] = [];
   const plugin: HotUpdaterClientPlugin = {
     id: "recorder",
-    setup: () => hooks(events),
+    setup: () => ({ hooks: hooks(events) }),
   };
   return { events, plugin };
 };
@@ -267,16 +267,20 @@ describe("app-ready reporting to plugins", () => {
     const throwing: HotUpdaterClientPlugin = {
       id: "throwing",
       setup: () => ({
-        onAppReady: () => {
-          throw new Error("hook failed");
+        hooks: {
+          onAppReady: () => {
+            throw new Error("hook failed");
+          },
         },
       }),
     };
     const rejecting: HotUpdaterClientPlugin = {
       id: "rejecting",
       setup: () => ({
-        onAppReady: async () => {
-          throw new Error("hook rejected");
+        hooks: {
+          onAppReady: async () => {
+            throw new Error("hook rejected");
+          },
         },
       }),
     };

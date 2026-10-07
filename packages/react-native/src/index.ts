@@ -5,6 +5,7 @@ import {
   type InternalCheckForUpdateOptions,
   reportUpdateError,
 } from "./checkForUpdate";
+import type { ClientPluginApis, HotUpdaterClientPlugin } from "./clientPlugin";
 import { createHttpClient, type HotUpdaterHttpClient } from "./httpClient";
 import {
   type HotUpdaterInitOptions,
@@ -44,9 +45,12 @@ export {
   defineClientPlugin,
   type AppReadyResult,
   type BundleDownloadedInfo,
+  type ClientPluginApi,
+  type ClientPluginApis,
   type HotUpdaterClientContext,
   type HotUpdaterClientHooks,
   type HotUpdaterClientPlugin,
+  type HotUpdaterClientSetup,
   type HotUpdaterClientStorage,
   type ReleaseTransitionKind,
   type UpdateCheckResult,
@@ -59,6 +63,7 @@ export {
 // The built-in Insights client plugin, for HotUpdater.init({ plugins }).
 export {
   insights,
+  type InsightsClient,
   type InsightsOptions,
   type InsightsPlugin,
   type InsightsUser,
@@ -66,6 +71,7 @@ export {
 // The built-in Remote Config client plugin, for HotUpdater.init({ plugins }).
 export {
   remoteConfig,
+  type RemoteConfigClient,
   type RemoteConfigDefaults,
   type RemoteConfigDefaultValue,
   type RemoteConfigFetchStatus,
@@ -163,9 +169,9 @@ function createHotUpdaterClient() {
   const configureGlobal = (
     normalizedOptions: InternalInitOptions,
     options: HotUpdaterInitOptions,
-  ) => {
+  ): Readonly<Record<string, unknown>> => {
     // Plugins are set up before init reads the launch they observe.
-    configurePlugins(options.plugins, {
+    const apis = configurePlugins(options.plugins, {
       baseURL: options.baseURL,
       requestHeaders: options.requestHeaders,
       requestTimeout: options.requestTimeout,
@@ -175,6 +181,7 @@ function createHotUpdaterClient() {
     globalConfig.requestHeaders = options.requestHeaders;
     globalConfig.requestTimeout = options.requestTimeout;
     globalConfig.onError = options.onError;
+    return apis;
   };
 
   const ensureGlobalClient = (methodName: string) => {
@@ -191,29 +198,7 @@ function createHotUpdaterClient() {
     return globalConfig.client;
   };
 
-  return {
-    /**
-     * Initializes HotUpdater: the update server, its request settings, and
-     * the client plugins. Call it once at module scope, then check for
-     * updates with `HotUpdater.checkForUpdate()`.
-     *
-     * @example
-     * ```tsx
-     * HotUpdater.init({
-     *   baseURL: "<your-update-server-url>",
-     * });
-     *
-     * export default App;
-     * ```
-     */
-    init: (options: HotUpdaterInitOptions): void => {
-      const normalizedOptions = normalizeInitOptions(options);
-
-      configureGlobal(normalizedOptions, options);
-
-      init(normalizedOptions);
-    },
-
+  const core = {
     /**
      * Reloads the app.
      */
@@ -530,6 +515,75 @@ function createHotUpdaterClient() {
      */
     clearCrashHistory,
   };
+
+  /** Names a plugin id cannot take: the instance's own members, and `init`. */
+  const reservedIds: ReadonlySet<string> = new Set([
+    ...Object.keys(core),
+    "init",
+  ]);
+
+  return {
+    ...core,
+
+    /**
+     * Initializes HotUpdater: the update server, its request settings, and
+     * the client plugins. Call it once at module scope, then check for
+     * updates with `HotUpdater.checkForUpdate()`.
+     *
+     * It returns the app's HotUpdater instance: HotUpdater's methods, and
+     * each plugin's API under the plugin's id, such as
+     * `hotUpdater.remoteConfig` for `remoteConfig()`. A plugin's API exists
+     * only on the instance, once `init` has set the plugin up.
+     *
+     * @example
+     * ```tsx
+     * export const hotUpdater = HotUpdater.init({
+     *   baseURL: "<your-update-server-url>",
+     *   plugins: [remoteConfig({ defaults: { welcome_message: "Hi" } })],
+     * });
+     *
+     * hotUpdater.remoteConfig.getString("welcome_message");
+     * ```
+     */
+    init: <
+      const TPlugins extends readonly HotUpdaterClientPlugin[] = readonly [],
+    >(
+      options: HotUpdaterInitOptions<TPlugins>,
+    ): HotUpdaterInstanceOf<typeof core, TPlugins> => {
+      const normalizedOptions = normalizeInitOptions(options);
+      for (const plugin of options.plugins ?? []) {
+        if (reservedIds.has(plugin.id)) {
+          throw new Error(
+            `[HotUpdater] A plugin cannot use the id "${plugin.id}": the HotUpdater instance has its own "${plugin.id}".`,
+          );
+        }
+      }
+
+      const apis = configureGlobal(normalizedOptions, options);
+
+      init(normalizedOptions);
+      return Object.freeze({ ...core, ...apis }) as HotUpdaterInstanceOf<
+        typeof core,
+        TPlugins
+      >;
+    },
+  };
 }
 
+type HotUpdaterInstanceOf<
+  TCore,
+  TPlugins extends readonly HotUpdaterClientPlugin[],
+> = Readonly<TCore> & ClientPluginApis<TPlugins>;
+
 export const HotUpdater = createHotUpdaterClient();
+
+/** HotUpdater's own methods, which every instance `HotUpdater.init` returns has. */
+export type HotUpdaterCore = Omit<typeof HotUpdater, "init">;
+
+/**
+ * The instance `HotUpdater.init` returns: HotUpdater's methods, and each
+ * plugin's API under the plugin's id.
+ */
+export type HotUpdaterInstance<
+  TPlugins extends readonly HotUpdaterClientPlugin[] = readonly [],
+> = Readonly<HotUpdaterCore> & ClientPluginApis<TPlugins>;

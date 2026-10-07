@@ -59,9 +59,8 @@ describe("createHotUpdater with remoteConfig()", () => {
     const { hotUpdater } = await start();
     await hotUpdater.api.remoteConfig.publish({ template, baseVersion: 0 });
 
-    const run = (device: { platform: "ios" | "android"; channel: string }) => {
-      const config = remoteConfigClient({ defaults: { max_items: 10 } });
-      setupClientPlugin(config, {
+    const run = (device: { platform: "ios" | "android"; channel: string }) =>
+      setupClientPlugin(remoteConfigClient({ defaults: { max_items: 10 } }), {
         baseURL: BASE_URL,
         requestHeaders: { "x-api-key": API_KEY },
         respond: (request) =>
@@ -72,9 +71,7 @@ describe("createHotUpdater with remoteConfig()", () => {
             }),
           ),
         ...device,
-      });
-      return config;
-    };
+      }).api;
 
     const ios = run({ platform: "ios", channel: "beta" });
     expect(await ios.fetchAndActivate()).toBe(true);

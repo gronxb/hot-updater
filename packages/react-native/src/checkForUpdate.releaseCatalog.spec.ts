@@ -121,14 +121,16 @@ const recordPluginEvents = async () => {
       {
         id: "recorder",
         setup: () => ({
-          onUpdateCheck: (result) => {
-            events.push(["onUpdateCheck", result]);
-          },
-          onBundleDownloaded: (info) => {
-            events.push(["onBundleDownloaded", info]);
-          },
-          onUpdateError: (error) => {
-            events.push(["onUpdateError", error]);
+          hooks: {
+            onUpdateCheck: (result) => {
+              events.push(["onUpdateCheck", result]);
+            },
+            onBundleDownloaded: (info) => {
+              events.push(["onBundleDownloaded", info]);
+            },
+            onUpdateError: (error) => {
+              events.push(["onUpdateError", error]);
+            },
           },
         }),
       },

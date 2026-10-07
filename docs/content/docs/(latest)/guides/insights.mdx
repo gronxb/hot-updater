@@ -214,21 +214,21 @@ support log or debug screen. This random ID identifies one installation; it is
 independent of the signed-in user.
 
 Optionally attach your application's user ID with the plugin's
-[`setUser`](/docs/react-native-api/insights#set-the-user). Keep the plugin
-object that you pass to `plugins`, then call it from your sign-in flow:
+[`setUser`](/docs/react-native-api/insights#set-the-user), on the instance
+`HotUpdater.init` returns. Call it from your sign-in flow:
 
 ```ts
-// `analytics` is the insights() plugin passed to HotUpdater.init.
-analytics.setUser({ userId: "user-123" });
+// `hotUpdater` is the instance HotUpdater.init returned.
+hotUpdater.insights.setUser({ userId: "user-123" });
 
 // On logout, clear the user attached to later reports.
-analytics.setUser(null);
+hotUpdater.insights.setUser(null);
 ```
 
 These calls illustrate separate login and logout actions. `setUser` persists
-the ID on the device for later reports; it does not send a report by itself. It
-works before `HotUpdater.init`, so the first report of a restored session can
-carry it.
+the ID on the device for later reports; it does not send a report by itself.
+The launch report waits for native launch verification, so a session restored
+right after `init` is attached to the first report.
 
 In **Insights → All events**, search by **User ID or installation ID**, then
 select an installation to inspect its latest report and apply/recovery history.

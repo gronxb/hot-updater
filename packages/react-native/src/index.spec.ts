@@ -138,6 +138,68 @@ describe("HotUpdater client initialization", () => {
     expect(payload()).toBe(response);
   });
 
+  it("returns an instance of HotUpdater's methods with each plugin's API under its id", async () => {
+    const api = { getString: vi.fn(() => "Hi") };
+    mocks.configurePlugins.mockReturnValueOnce({ example: api });
+    const HotUpdater = await importHotUpdater();
+    const plugin = { id: "example", setup: () => ({ api }) };
+
+    const hotUpdater = HotUpdater.init({
+      baseURL: "https://updates.example.com",
+      plugins: [plugin],
+    });
+
+    expect(hotUpdater.example).toBe(api);
+    expect(hotUpdater.getChannel()).toBe("production");
+    expect(hotUpdater.checkForUpdate).toBe(HotUpdater.checkForUpdate);
+    expect(hotUpdater).not.toHaveProperty("init");
+    expect(Object.isFrozen(hotUpdater)).toBe(true);
+  });
+
+  it.each(["reload", "checkForUpdate", "init"])(
+    "refuses a plugin id the instance has, %s, before setting plugins up",
+    async (id) => {
+      const HotUpdater = await importHotUpdater();
+
+      expect(() =>
+        HotUpdater.init({
+          baseURL: "https://updates.example.com",
+          plugins: [{ id, setup: () => {} }],
+        }),
+      ).toThrow(`A plugin cannot use the id "${id}"`);
+      expect(mocks.configurePlugins).not.toHaveBeenCalled();
+    },
+  );
+
+  it("types each plugin's API on the instance from the plugins passed", () => {
+    const assertTypes = (
+      HotUpdater: typeof import("./index").HotUpdater,
+      remoteConfig: typeof import("./index").remoteConfig,
+      insights: typeof import("./index").insights,
+    ) => {
+      const hotUpdater = HotUpdater.init({
+        baseURL: "https://updates.example.com",
+        plugins: [
+          insights(),
+          remoteConfig({ defaults: { welcome: "Hi", max_items: 20 } }),
+          { id: "hooksOnly", setup: () => ({ hooks: {} }) },
+        ],
+      });
+      const welcome: string = hotUpdater.remoteConfig.getString("welcome");
+      hotUpdater.insights.setUser({ userId: "user-1" });
+      // @ts-expect-error a plugin without an API adds no key
+      void hotUpdater.hooksOnly;
+
+      const bare = HotUpdater.init({ baseURL: "https://updates.example.com" });
+      // @ts-expect-error no plugin, no plugin API
+      void bare.remoteConfig;
+      void bare.reload;
+      void welcome;
+    };
+
+    expect(assertTypes).toBeTypeOf("function");
+  });
+
   it("has no wrap: init is the one way to configure the client", async () => {
     const HotUpdater = await importHotUpdater();
 

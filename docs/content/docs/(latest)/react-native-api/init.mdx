@@ -57,6 +57,42 @@ Without it, the app sends no Insights reports. `plugins` takes any
 [client plugin](/docs/react-native-api/client-plugins); plugin ids must be
 unique, and `init` throws when two plugins share one.
 
+## Use the instance init returns
+
+`init` returns the app's HotUpdater instance. It has HotUpdater's methods, such
+as `checkForUpdate` and `reload`, and each plugin's API under the plugin's id:
+`remoteConfig()` adds `hotUpdater.remoteConfig`, and `insights()` adds
+`hotUpdater.insights`. Export the instance from the module that calls `init`,
+and import it where the app reads a plugin:
+
+```tsx title="src/hotUpdater.ts"
+import { HotUpdater, insights, remoteConfig } from "@hot-updater/react-native";
+
+export const hotUpdater = HotUpdater.init({
+  baseURL: "<your-update-server-url>",
+  requestHeaders: {
+    "x-api-key": "<your-api-key>",
+  },
+  plugins: [
+    insights(),
+    remoteConfig({ defaults: { welcome_message: "Welcome back" } }),
+  ],
+});
+```
+
+```tsx title="src/Welcome.tsx"
+import { hotUpdater } from "./hotUpdater";
+
+hotUpdater.insights.setUser({ userId: "user-123" });
+const title = hotUpdater.remoteConfig.getString("welcome_message");
+```
+
+A plugin's API exists only on the instance, once `init` has set the plugin up,
+and its types follow from `plugins`: `hotUpdater.remoteConfig` knows the keys
+of its `defaults`. Annotating the list as `HotUpdaterClientPlugin[]` drops
+those types, so let TypeScript infer it. A plugin cannot use the name of one of
+the instance's own members, such as `reload`.
+
 `baseURL` can also be resolved at runtime. The function may return a string or
 a promise, and Hot Updater calls it before each update check and plugin
 request.
@@ -127,9 +163,9 @@ If the server intentionally uses the unauthenticated
 ## Recommended flow
 
 Initialize once at module scope, then call `HotUpdater.checkForUpdate` from the
-point where your app should check. Initialization returns `void`; no effect,
-readiness state or `onNotifyAppReady` callback is required. Use that callback
-only when your app needs to observe the native startup result.
+point where your app should check. No effect, readiness state or
+`onNotifyAppReady` callback is required. Use that callback only when your app
+needs to observe the native startup result.
 
 ## Related
 

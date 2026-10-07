@@ -38,15 +38,17 @@ export interface InsightsUser {
   readonly userId: string | number;
 }
 
-export interface InsightsPlugin extends HotUpdaterClientPlugin {
-  readonly id: "insights";
+/** Insights on the instance `HotUpdater.init` returns, as `hotUpdater.insights`. */
+export interface InsightsClient {
   /**
    * Attaches the signed-in user's id to later reports, or clears it with
-   * `null`. It persists on the device, sends nothing by itself, and can be
-   * called before `HotUpdater.init`.
+   * `null`. It persists on the device and sends nothing by itself.
    */
   setUser(user: InsightsUser | null): void;
 }
+
+/** The `insights()` plugin: it adds `hotUpdater.insights`. */
+export type InsightsPlugin = HotUpdaterClientPlugin<"insights", InsightsClient>;
 
 type Movement = Pick<
   InsightsEventBody,
@@ -89,16 +91,13 @@ const normalizeUserId = (user: InsightsUser | null): string | null => {
  * ```ts
  * import { HotUpdater, insights } from "@hot-updater/react-native";
  *
- * const analytics = insights();
- * HotUpdater.init({ baseURL, plugins: [analytics] });
- * analytics.setUser({ userId: "user-123" });
+ * export const hotUpdater = HotUpdater.init({ baseURL, plugins: [insights()] });
+ * hotUpdater.insights.setUser({ userId: "user-123" });
  * ```
  */
 export const insights = (options: InsightsOptions = {}): InsightsPlugin => {
   let context: HotUpdaterClientContext | null = null;
   let state: InsightsState | null = null;
-  /** A user set before setup, applied once the plugin has storage. */
-  let pendingUser: { readonly userId: string | null } | null = null;
   /** A download in this runtime: a later no-change report would hide it. */
   let didDownload = false;
   let lastDownloadedSelection: string | null = null;
@@ -367,29 +366,27 @@ export const insights = (options: InsightsOptions = {}): InsightsPlugin => {
     id: "insights",
     setup(pluginContext) {
       context = pluginContext;
-      state = createInsightsState(pluginContext.storage);
-      if (pendingUser !== null) {
-        state.writeUserId(pendingUser.userId);
-        pendingUser = null;
-      }
-      if (pluginContext.isDebugBuild && options.debug !== true) return;
+      const pluginState = createInsightsState(pluginContext.storage);
+      state = pluginState;
+      const api: InsightsClient = Object.freeze({
+        setUser: (user: InsightsUser | null) => {
+          pluginState.writeUserId(normalizeUserId(user));
+        },
+      });
+      // A debug build keeps the user, but reports nothing.
+      if (pluginContext.isDebugBuild && options.debug !== true) return { api };
 
       send = createInsightsEventSender(pluginContext.fetch, { admit, settle });
       return {
-        onAppReady,
-        onUpdateCheck,
-        onBundleDownloaded,
-        onUpdateError,
-        onHttpResponse,
+        api,
+        hooks: {
+          onAppReady,
+          onUpdateCheck,
+          onBundleDownloaded,
+          onUpdateError,
+          onHttpResponse,
+        },
       };
-    },
-    setUser(user) {
-      const userId = normalizeUserId(user);
-      if (state === null) {
-        pendingUser = { userId };
-        return;
-      }
-      state.writeUserId(userId);
     },
   });
 };

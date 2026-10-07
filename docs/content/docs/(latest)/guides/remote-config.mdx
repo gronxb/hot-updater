@@ -58,46 +58,44 @@ management on the admin handler.
 
 ## Add the client plugin
 
-Create the plugin once, at module scope, with your in-app defaults, and pass
-it to `plugins` in [`HotUpdater.init`](/docs/react-native-api/init). It fetches from the
+Add `remoteConfig()` with your in-app defaults to `plugins` in
+[`HotUpdater.init`](/docs/react-native-api/init), and read it from the
+instance `init` returns, as `hotUpdater.remoteConfig`. It fetches from the
 `baseURL`, `requestHeaders`, and `requestTimeout` you configure there, so it
 needs no URL or key of its own:
 
-```ts title="src/remoteConfig.ts"
-import { remoteConfig } from "@hot-updater/react-native";
+```ts title="src/hotUpdater.ts"
+import { HotUpdater, remoteConfig } from "@hot-updater/react-native";
 
-export const config = remoteConfig({
-  defaults: {
-    welcome_message: "Welcome back",
-    max_items: 20,
-    new_checkout: false,
-  },
-});
-```
-
-```tsx title="App.tsx"
-import { HotUpdater } from "@hot-updater/react-native";
-
-import { config } from "./src/remoteConfig";
-
-HotUpdater.init({
+export const hotUpdater = HotUpdater.init({
   baseURL: "<your-update-server-url>",
   requestHeaders: { "x-api-key": "<client-api-key>" },
-  plugins: [config], // [!code ++]
+  plugins: [
+    remoteConfig({ // [!code ++:7]
+      defaults: {
+        welcome_message: "Welcome back",
+        max_items: 20,
+        new_checkout: false,
+      },
+    }),
+  ],
 });
 
-config.fetchAndActivate().catch(() => {
+hotUpdater.remoteConfig.fetchAndActivate().catch(() => {
   // Offline or unreachable: the app keeps its last active values.
 });
 ```
 
-Reads are synchronous. Right after `init`, `config.getString(...)`
-returns the values the app activated last, stored on the device, and before
-that the defaults:
+Reads are synchronous. As soon as `init` returns,
+`hotUpdater.remoteConfig.getString(...)` returns the values the app activated
+last, stored on the device, and before any, the defaults. Its keys come from
+`defaults`:
 
 ```tsx
-const title = config.getString("welcome_message");
-const showNewCheckout = config.getBoolean("new_checkout");
+import { hotUpdater } from "./hotUpdater";
+
+const title = hotUpdater.remoteConfig.getString("welcome_message");
+const showNewCheckout = hotUpdater.remoteConfig.getBoolean("new_checkout");
 ```
 
 The [plugin reference](/docs/react-native-api/remote-config) covers every
@@ -110,9 +108,9 @@ ones reads return. Splitting them lets you choose when the app changes:
 
 | Strategy | Code | The app changes |
 | --- | --- | --- |
-| Apply on load | `config.fetchAndActivate()` without waiting | As soon as the fetch ends, possibly while the user looks at the screen. |
-| Wait behind a loading screen | `await config.fetchAndActivate()` before showing the screen | Before the first screen, at the cost of a network round trip. |
-| Apply at the next launch | `await config.activate(); config.fetch();` at startup | At the next launch: this launch activates what the last one fetched. |
+| Apply on load | `fetchAndActivate()` without waiting | As soon as the fetch ends, possibly while the user looks at the screen. |
+| Wait behind a loading screen | `await fetchAndActivate()` before showing the screen | Before the first screen, at the cost of a network round trip. |
+| Apply at the next launch | `await activate(); fetch();` at startup | At the next launch: this launch activates what the last one fetched. |
 
 The last one never changes values mid-session and never waits for the network,
 which suits values that change layouts.

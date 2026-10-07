@@ -680,7 +680,10 @@ describe("E2E scenario contract", () => {
         "../e2eBuildConfig": { HOT_UPDATER_API_KEY: "" },
         "@hot-updater/react-native": {
           HotUpdater: {
-            init: () => {},
+            init: () => ({
+              insights: { setUser: () => {} },
+              remoteConfig: {},
+            }),
             getAppVersion: () => "1.0.0",
             getBundleId: () => updateId,
             getChannel: () => "production",
@@ -692,11 +695,7 @@ describe("E2E scenario contract", () => {
             getMinBundleId: () => minBundleId,
             isChannelSwitched: () => false,
           },
-          insights: () => ({
-            id: "insights",
-            setup: () => {},
-            setUser: () => {},
-          }),
+          insights: () => ({ id: "insights", setup: () => {} }),
           remoteConfig: () => ({ id: "remoteConfig", setup: () => {} }),
         },
         "react-native": {},
@@ -824,12 +823,16 @@ describe("E2E scenario contract", () => {
     expect(e2eRuntimeSource).toContain(
       'import { HotUpdater, insights, remoteConfig } from "@hot-updater/react-native";',
     );
-    // The Remote Config scenario reads its values through this plugin.
+    // The Remote Config scenario reads its values through this plugin, on the
+    // instance init returns.
     expect(e2eRuntimeSource).toContain(
-      "plugins: [analytics, e2eRemoteConfig],",
+      "plugins: [analytics, remoteConfigPlugin],",
     );
     expect(e2eRuntimeSource).toContain(
-      'analytics.setUser({ userId: "detox-e2e" });',
+      "export const e2eRemoteConfig = hotUpdater.remoteConfig;",
+    );
+    expect(e2eRuntimeSource).toContain(
+      'hotUpdater.insights.setUser({ userId: "detox-e2e" });',
     );
     expect(e2eRuntimeSource).not.toContain("insights: true");
     expect(e2eRuntimeSource).not.toContain("HotUpdater.setUser");

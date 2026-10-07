@@ -72,8 +72,12 @@ See [Insights](/docs/guides/insights) for reporting limits and
 
 ## Extend with plugins
 
+Plugins go in `init`'s `plugins`, and each plugin's API is on the
+[instance `init` returns](/docs/react-native-api/init#use-the-instance-init-returns),
+such as `hotUpdater.remoteConfig`:
+
 | API | Use it to |
 | --- | --- |
 | [`insights`](/docs/react-native-api/insights) | Report launches, downloads, applies, recoveries, and update failures to Insights, optionally with your app's user ID. |
 | [`remoteConfig`](/docs/react-native-api/remote-config) | Read values your server's Remote Config picks for the device, synchronously, with in-app defaults. |
-| [`defineClientPlugin`](/docs/react-native-api/client-plugins) | Write a plugin that observes the update lifecycle and sends data to your server. Plugins import it from `@hot-updater/protocol`. |
+| [`defineClientPlugin`](/docs/react-native-api/client-plugins) | Write a plugin that observes the update lifecycle, sends data to your server, and adds an API to the instance. Plugins import it from `@hot-updater/protocol`. |

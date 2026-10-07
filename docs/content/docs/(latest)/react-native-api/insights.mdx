@@ -10,26 +10,18 @@ icon: Activity
 `@hot-updater/react-native` exports from its root, from
 `@hot-updater/plugin-insights`, so there is nothing extra to install. Metro
 bundles it into every app, about 4 KB gzipped, but it reports nothing until the
-app adds it to `plugins`. Create it once, at module scope, and pass it to
-`plugins` in [`HotUpdater.init`](/docs/react-native-api/init):
+app adds it to `plugins` in [`HotUpdater.init`](/docs/react-native-api/init),
+which then has `hotUpdater.insights` on the instance it returns:
 
-```ts title="src/analytics.ts"
-import { insights } from "@hot-updater/react-native";
+```ts title="src/hotUpdater.ts"
+import { HotUpdater, insights } from "@hot-updater/react-native";
 
-export const analytics = insights();
-```
-
-```tsx title="App.tsx"
-import { HotUpdater } from "@hot-updater/react-native";
-
-import { analytics } from "./src/analytics";
-
-HotUpdater.init({
+export const hotUpdater = HotUpdater.init({
   baseURL: "<your-update-server-url>",
   requestHeaders: {
     "x-api-key": "<your-api-key>",
   },
-  plugins: [analytics], // [!code ++]
+  plugins: [insights()], // [!code ++]
 });
 ```
 
@@ -56,20 +48,20 @@ production Insights. To test reporting from one, create the plugin with
 Attach your app's ID for the signed-in user to later reports:
 
 ```ts
-import { analytics } from "./analytics";
+import { hotUpdater } from "./hotUpdater";
 
 // After sign-in, or when the app restores a session:
-analytics.setUser({ userId: "user-123" });
+hotUpdater.insights.setUser({ userId: "user-123" });
 
 // On sign-out:
-analytics.setUser(null);
+hotUpdater.insights.setUser(null);
 ```
 
 `setUser` stores the ID on the device, and every later report carries it as
 `userId` until `setUser(null)` clears it. A number becomes a string, and
 surrounding whitespace is trimmed; an empty ID clears the user. The call sends
-nothing by itself and works before `HotUpdater.init`, so a session restored at
-startup can be attached to the first report. A new user counts as a change for
+nothing by itself. The launch report waits for native launch verification, so
+a session restored right after `init` is attached to the first report. A new user counts as a change for
 [launch reports](#launch-reports). The
 [installation ID](/docs/react-native-api/getInstallId) stays the same.
 

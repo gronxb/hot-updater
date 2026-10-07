@@ -166,10 +166,10 @@ export interface UpdateHttpResponse {
 }
 
 /**
- * Lifecycle hooks a plugin returns from `setup`. Hooks observe: the SDK
- * never waits for one and ignores what it returns, and a hook that throws or
- * rejects is reported through `onError`, or a console warning without one,
- * so a plugin can never delay or change an update.
+ * Lifecycle hooks a plugin returns from `setup` as `hooks`. Hooks observe:
+ * the SDK never waits for one and ignores what it returns, and a hook that
+ * throws or rejects is reported through `onError`, or a console warning
+ * without one, so a plugin can never delay or change an update.
  */
 export interface HotUpdaterClientHooks {
   /** Called once per JavaScript runtime, after native reports the launch. */
@@ -225,15 +225,56 @@ export interface HotUpdaterClientContext {
   now(): number;
 }
 
-export interface HotUpdaterClientPlugin {
-  /** Unique among an app's plugins; two plugins with one id throw at init. */
-  readonly id: string;
-  /**
-   * Called once, when `HotUpdater.init` first configures the runtime with
-   * this plugin.
-   */
-  setup(context: HotUpdaterClientContext): HotUpdaterClientHooks | void;
+/**
+ * What a plugin's `setup` returns: the hooks it observes the SDK with, and
+ * the API `HotUpdater.init` puts on the instance it returns, under the
+ * plugin's id, as `hotUpdater.<id>`.
+ */
+export interface HotUpdaterClientSetup<TApi = unknown> {
+  readonly hooks?: HotUpdaterClientHooks;
+  readonly api?: TApi;
 }
+
+/**
+ * A client plugin with the id `TId` and the API `TApi` it adds to the
+ * instance `HotUpdater.init` returns.
+ */
+export interface HotUpdaterClientPlugin<
+  TId extends string = string,
+  TApi = unknown,
+> {
+  /**
+   * Unique among an app's plugins; two plugins with one id throw at init.
+   * It names the plugin's API on the instance, so it cannot be the name of
+   * one of the instance's own methods.
+   */
+  readonly id: TId;
+  /**
+   * Called once per plugin object, when `HotUpdater.init` first configures
+   * the runtime with it.
+   */
+  setup(context: HotUpdaterClientContext): HotUpdaterClientSetup<TApi> | void;
+}
+
+type SetupResult<P> = P extends {
+  setup(context: HotUpdaterClientContext): infer R;
+}
+  ? Exclude<R, void | undefined>
+  : never;
+
+/** The API a plugin's `setup` returns, or `never` for a plugin without one. */
+export type ClientPluginApi<P> = "api" extends keyof SetupResult<P>
+  ? Exclude<SetupResult<P>["api" & keyof SetupResult<P>], undefined>
+  : never;
+
+/** The plugins' APIs by plugin id, as the instance `HotUpdater.init` returns has them. */
+export type ClientPluginApis<
+  TPlugins extends readonly HotUpdaterClientPlugin[],
+> = {
+  readonly [P in TPlugins[number] as [ClientPluginApi<P>] extends [never]
+    ? never
+    : P["id"]]: ClientPluginApi<P>;
+};
 
 /** Declares a client plugin; built-in and third-party plugins use the same contract. */
 export const defineClientPlugin = <const P extends HotUpdaterClientPlugin>(

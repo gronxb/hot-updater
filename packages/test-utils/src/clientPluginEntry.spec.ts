@@ -15,17 +15,19 @@ const launchReporter = () =>
     id: "acme-launch-reporter",
     setup(context) {
       return {
-        async onAppReady(result) {
-          context.storage.set("lastStatus", result.status);
-          await context.fetch("acme/launches", {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({
-              status: result.status,
-              bundleId: context.getBundleId(),
-              platform: context.platform,
-            }),
-          });
+        hooks: {
+          async onAppReady(result) {
+            context.storage.set("lastStatus", result.status);
+            await context.fetch("acme/launches", {
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({
+                status: result.status,
+                bundleId: context.getBundleId(),
+                platform: context.platform,
+              }),
+            });
+          },
         },
       };
     },
