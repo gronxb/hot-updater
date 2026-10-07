@@ -89,9 +89,27 @@ function VersionDialog({
         </DialogHeader>
         {detail.isLoading ? (
           <Skeleton className="h-48 w-full" />
+        ) : detail.isError ? (
+          <Alert variant="destructive">
+            <AlertTriangle />
+            <AlertTitle>This version couldn't be loaded</AlertTitle>
+            <AlertDescription>
+              Check the connection and try again.
+            </AlertDescription>
+            <AlertAction>
+              <Button
+                onClick={() => void detail.refetch()}
+                size="xs"
+                variant="outline"
+              >
+                <RefreshCw data-icon="inline-start" />
+                Retry
+              </Button>
+            </AlertAction>
+          </Alert>
         ) : json === null ? (
           <p className="text-sm text-muted-foreground">
-            This version could not be read.
+            Version {version} no longer exists.
           </p>
         ) : (
           <div className="flex min-h-0 flex-col gap-2">
@@ -250,6 +268,7 @@ export function VersionsCard({
                   </div>
                   <div className="flex gap-1 md:justify-end">
                     <Button
+                      aria-label={`View version ${row.version}`}
                       className="min-h-11 md:min-h-7"
                       onClick={() => setViewing(row.version)}
                       size="sm"
@@ -259,6 +278,7 @@ export function VersionsCard({
                       View
                     </Button>
                     <Button
+                      aria-label={`Roll back to version ${row.version}`}
                       className="min-h-11 md:min-h-7"
                       disabled={row.version === activeVersion}
                       onClick={() => setRestoring(row.version)}

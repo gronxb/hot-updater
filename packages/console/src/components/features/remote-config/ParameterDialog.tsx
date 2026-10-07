@@ -361,7 +361,7 @@ function ParameterForm({
                 </Select>
               ) : null}
               <Button
-                className="min-h-11 sm:min-h-7"
+                className="min-h-11 sm:min-h-9"
                 onClick={() => setAddingCondition(true)}
                 type="button"
                 variant="outline"

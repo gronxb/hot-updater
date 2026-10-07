@@ -25,7 +25,11 @@ setupReadBudgetTestSuite({
     await db.exec(
       "CREATE ROLE anon; CREATE ROLE authenticated; CREATE ROLE service_role BYPASSRLS;",
     );
-    await db.exec(supabaseSchemaSql(toolingTargetOf([insights(), apiKeys(), remoteConfig()])));
+    await db.exec(
+      supabaseSchemaSql(
+        toolingTargetOf([insights(), apiKeys(), remoteConfig()]),
+      ),
+    );
     await db.exec(
       "GRANT ALL ON ALL TABLES IN SCHEMA public TO service_role; SET ROLE service_role;",
     );

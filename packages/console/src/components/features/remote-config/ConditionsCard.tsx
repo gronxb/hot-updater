@@ -164,6 +164,7 @@ export function ConditionsCard({
                       <ArrowDown />
                     </Button>
                     <Button
+                      aria-label={`Edit ${condition.name}`}
                       className="min-h-11 md:min-h-7"
                       onClick={() => setEditing({ name: condition.name })}
                       size="sm"

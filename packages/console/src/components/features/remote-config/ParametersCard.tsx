@@ -97,6 +97,7 @@ function ParameterRow({
       </dl>
       <div className="flex gap-1 md:justify-end">
         <Button
+          aria-label={`Edit ${parameterKey}`}
           className="min-h-11 md:min-h-7"
           onClick={onEdit}
           size="sm"
