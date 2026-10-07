@@ -64,8 +64,9 @@ one from `defaults`. `false`, `0`, and `""` are values: a read returns them as
 they are, never `null`.
 
 A key `defaults` declares always has a value, so its reads are typed without
-`null`; any other key is typed `T | null`. Give that one a fallback where you
-read it:
+`null`; any other key is typed `T | null`. Defaults typed as a map of any
+string, such as `RemoteConfigDefaults`, declare no key, so pass the object
+literal for typed keys. Give a nullable read a fallback where you read it:
 
 ```ts
 const config = hotUpdater.remoteConfig;

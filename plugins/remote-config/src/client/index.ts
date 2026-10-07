@@ -69,13 +69,18 @@ export type RemoteConfigKey<TDefaults> =
 
 /**
  * What a read of `TKey` returns: `T` for a key `defaults` declares, which
- * always has a value, and `T | null` for any other key.
+ * always has a value, and `T | null` for any other key. Defaults typed as
+ * a map of any string, such as `RemoteConfigDefaults`, declare no key.
  */
 export type RemoteConfigRead<
   TDefaults,
   TKey extends string,
   T,
-> = TKey extends keyof TDefaults ? T : T | null;
+> = string extends keyof TDefaults
+  ? T | null
+  : TKey extends keyof TDefaults
+    ? T
+    : T | null;
 
 /**
  * Remote Config on the instance `HotUpdater.init` returns, as

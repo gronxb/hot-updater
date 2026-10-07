@@ -274,17 +274,18 @@ export const createPluginHost = (
     }
 
     config = nextConfig;
-    const apis: Record<string, unknown> = {};
+    const apis: [string, unknown][] = [];
     activePlugins = (plugins ?? []).map((plugin) => {
       let setUp = setUpPlugins.get(plugin);
       if (setUp === undefined) {
         setUp = setUpPlugin(plugin);
         setUpPlugins.set(plugin, setUp);
       }
-      if (setUp.api !== undefined) apis[plugin.id] = setUp.api;
+      if (setUp.api !== undefined) apis.push([plugin.id, setUp.api]);
       return { plugin, hooks: setUp.hooks };
     });
-    return Object.freeze(apis);
+    // Own properties for every id: assigning `__proto__` would set the prototype.
+    return Object.freeze(Object.fromEntries(apis));
   };
 
   const hasPluginHook: PluginHost["hasPluginHook"] = (name) =>

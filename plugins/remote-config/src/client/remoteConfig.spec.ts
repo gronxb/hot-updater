@@ -9,6 +9,7 @@ import { beforeEach, describe, expect, expectTypeOf, it } from "vitest";
 
 import {
   remoteConfig,
+  type RemoteConfigDefaults,
   type RemoteConfigOptions,
   type RemoteConfigValue,
 } from "./index";
@@ -154,6 +155,16 @@ describe("remoteConfig() client plugin", () => {
     const bare = setupClientPlugin(remoteConfig(), { storage }).api;
     expectTypeOf(bare.getString("welcome")).toEqualTypeOf<string | null>();
     expect(bare.getString("welcome")).toBeNull();
+
+    // Defaults typed as a map of any string declare no key either.
+    const defaults: RemoteConfigDefaults = { welcome: "Hi" };
+    const widened = setupClientPlugin(remoteConfig({ defaults }), {
+      storage,
+    }).api;
+    expectTypeOf(widened.getString("welcome")).toEqualTypeOf<string | null>();
+    expectTypeOf(widened.getNumber("missing")).toEqualTypeOf<number | null>();
+    expect(widened.getString("welcome")).toBe("Hi");
+    expect(widened.getString("missing")).toBeNull();
   });
 
   it("fetches from the init baseURL with its headers and the device's context", async () => {

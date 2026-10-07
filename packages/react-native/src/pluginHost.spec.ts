@@ -111,6 +111,22 @@ describe("client plugin host", () => {
     expect(withApi.setup).toHaveBeenCalledOnce();
   });
 
+  it("keeps the API of a plugin whose id is __proto__ as its own property", async () => {
+    const { configurePlugins } = await importHost();
+    const api = { read: () => "value" };
+
+    const apis = configurePlugins(
+      [{ id: "__proto__", setup: () => ({ api }) }],
+      { baseURL: "https://updates.example.com" },
+    );
+
+    expect(Object.getOwnPropertyDescriptor(apis, "__proto__")?.value).toBe(api);
+    expect(Object.getPrototypeOf(apis)).toBe(Object.prototype);
+    expect(
+      Object.getOwnPropertyDescriptor({ ...apis }, "__proto__")?.value,
+    ).toBe(api);
+  });
+
   it("reports a setup that returns its hooks without { hooks }", async () => {
     const onError = vi.fn();
     const { configurePlugins } = await importHost();
