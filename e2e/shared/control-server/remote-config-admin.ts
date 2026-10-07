@@ -21,17 +21,20 @@ type RemoteConfigAdminClientOptions = {
   readonly fetch?: typeof globalThis.fetch;
 };
 
+// Fields, not parameter properties: Node runs this file by stripping types.
 export class RemoteConfigAdminError extends Error {
   readonly name = "RemoteConfigAdminError";
+  readonly status: number;
+  readonly url: string;
+  readonly body: unknown;
 
-  constructor(
-    readonly status: number,
-    readonly url: string,
-    readonly body: unknown,
-  ) {
+  constructor(status: number, url: string, body: unknown) {
     super(
       `Remote Config admin route ${url} returned HTTP ${status}: ${JSON.stringify(body)}`,
     );
+    this.status = status;
+    this.url = url;
+    this.body = body;
   }
 }
 
