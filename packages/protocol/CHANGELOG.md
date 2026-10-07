@@ -1,5 +1,7 @@
 # @hot-updater/protocol
 
+## 1.0.0-rc.37
+
 ## 1.0.0-rc.36
 
 ### Patch Changes

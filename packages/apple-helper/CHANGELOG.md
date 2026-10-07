@@ -1,5 +1,12 @@
 # @hot-updater/apple-helper
 
+## 1.0.0-rc.37
+
+### Patch Changes
+
+- @hot-updater/cli-tools@1.0.0-rc.37
+  - @hot-updater/plugin-core@1.0.0-rc.37
+
 ## 1.0.0-rc.36
 
 ### Patch Changes
