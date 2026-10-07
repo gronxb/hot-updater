@@ -107,9 +107,10 @@ export type DatabaseBundleEventMetadata = DatabaseJsonObject & {
   /** A kept `UNCHANGED` row: what it changed, which the server sets. */
   readonly change?: BundleEventChange;
   /**
-   * A download or apply that arrived after its installation already ran its
-   * target, as when a reload cut the first runtime's report short: the
-   * server keeps it in history, but it moves and counts nothing.
+   * A download or apply of a target its installation already ran, as when
+   * a reload cut the first runtime's report short, or a download that
+   * repeats the pending one: the server keeps it in history, but it moves
+   * and counts nothing.
    */
   readonly late?: true;
   /**

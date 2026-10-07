@@ -141,7 +141,7 @@ export type EventHistoryRow = {
   readonly patchFallback?: true;
   /** `UNCHANGED`: what the report changed, the reason it was kept. */
   readonly change?: EventHistoryChange;
-  /** A download or apply that arrived after its target already ran: it counted nothing. */
+  /** A download or apply of a target already run or already downloaded: it counted nothing. */
   readonly late?: true;
   /** A launch or crash whose download report never arrived, counted with it. */
   readonly impliedDownload?: true;

@@ -301,8 +301,9 @@ The Bundles list and detail show lifetime **Downloaded**, **Launched**, and
 - **Crashed**: crashed on it and recovered to the bundle before.
 
 A launch or crash whose download report never arrived counts that download
-too. A download or apply that arrives after its installation already ran the
-bundle counts nothing. Once every installation restarts, Downloaded equals
+too. A download or apply of a bundle its installation already ran, a repeat
+of the download it already reported, and a launch report made before its latest
+report count nothing. Once every installation restarts, Downloaded equals
 Launched plus Crashed; the bundle detail shows the downloads not launched yet,
 waiting for a restart or passed over for a newer bundle. An installation that
 comes back to a release counts again. A release of the built-in bundle shows

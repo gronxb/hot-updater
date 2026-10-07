@@ -396,7 +396,7 @@ describe("Insights event details", () => {
     expect(screen.getByText("To")).toBeDefined();
     expect(
       screen.getByText(
-        "It arrived after the installation already ran this bundle, so it counted nothing.",
+        "Counted nothing: the installation had already downloaded or run this bundle.",
       ),
     ).toBeDefined();
     expect(

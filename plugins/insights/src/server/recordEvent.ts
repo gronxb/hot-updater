@@ -415,25 +415,33 @@ const madeAt = (id: string) =>
   isUUIDv7(id) ? extractTimestampFromUUIDv7(id) : null;
 
 /**
- * A report that arrived after its installation moved past it: a download or
- * an apply of the bundle the head already runs, or an UNCHANGED report of the
- * bundle an apply head left, made before that apply. A reload can cut one
- * runtime's report short and deliver it after the next runtime's. It stays
- * in history but moves and counts nothing.
+ * A report its installation already moved past, which stays in history but
+ * moves and counts nothing:
+ * - a download or an apply of the bundle the head already runs, or a
+ *   download that repeats the head's pending one, from the same bundle to
+ *   the same bundle: the installation's download or launch already counted;
+ * - an UNCHANGED report made, by its UUIDv7, before the head's report, even
+ *   after a later report replaced the apply it preceded: a reload can cut
+ *   one runtime's report short and deliver it after the next runtime's.
+ *
+ * Report IDs are made on the device, so a device whose clock jumps back has
+ * its launch reports judged late until its clock passes its latest report.
  */
 const isLate = (event: BundleEventRow, head: Head | null): boolean => {
   if (head === null) return false;
   if (event.type === "UPDATE_DOWNLOADED" || event.type === "UPDATE_APPLIED") {
-    return event.to_bundle_id === runningOf(head).bundle_id;
+    return (
+      event.to_bundle_id === runningOf(head).bundle_id ||
+      (event.type === "UPDATE_DOWNLOADED" &&
+        head.type === "UPDATE_DOWNLOADED" &&
+        event.from_bundle_id === head.from_bundle_id &&
+        event.to_bundle_id === head.to_bundle_id)
+    );
   }
-  if (
-    event.type === "UNCHANGED" &&
-    head.type === "UPDATE_APPLIED" &&
-    event.to_bundle_id === head.from_bundle_id
-  ) {
+  if (event.type === "UNCHANGED") {
     const made = madeAt(event.id);
-    const applied = madeAt(head.id);
-    return made !== null && applied !== null && made < applied;
+    const latest = madeAt(head.id);
+    return made !== null && latest !== null && made < latest;
   }
   return false;
 };
