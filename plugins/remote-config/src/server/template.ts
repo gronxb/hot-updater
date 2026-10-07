@@ -11,7 +11,7 @@ import type { RemoteConfigDeviceContext } from "../shared/wire";
 
 /**
  * How the Console edits a parameter's value and checks it before a publish.
- * Devices receive every value as text, as in Firebase Remote Config.
+ * Devices receive every value as text.
  */
 export type RemoteConfigValueType = "STRING" | "NUMBER" | "BOOLEAN" | "JSON";
 
@@ -69,8 +69,7 @@ export interface RemoteConfigCondition {
 }
 
 /**
- * Everything Remote Config serves, published as a whole and versioned, as
- * a Firebase Remote Config template is.
+ * Everything Remote Config serves, published as a whole and versioned.
  */
 export interface RemoteConfigTemplate {
   /** In priority order: the first one that matches decides a parameter's value. */

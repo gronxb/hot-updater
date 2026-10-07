@@ -46,7 +46,7 @@ in the Console.
 | Option                   | Type                                          | Default    | Description                                                                                                  |
 | ------------------------ | --------------------------------------------- | ---------- | ------------------------------------------------------------------------------------------------------------ |
 | `defaults`               | `Record<string, string \| number \| boolean>` | `{}`       | Values the app reads until it activates fetched ones, and for parameters the template leaves to the app.      |
-| `minimumFetchIntervalMs` | `number`                                      | `43200000` | The shortest time between fetches that reach the server: 12 hours, as in Firebase. `0` fetches every time.   |
+| `minimumFetchIntervalMs` | `number`                                      | `43200000` | The shortest time between fetches that reach the server: 12 hours. `0` fetches every time.                    |
 
 The keys of `defaults` type the keys the read methods suggest; any other key
 is accepted too.
@@ -71,7 +71,7 @@ A value comes from the first of these that has its key:
 | `"default"` | `defaults`. |
 | `"static"` | Neither: `asString()` is `""`, `asNumber()` is `0`, and `asBoolean()` is `false`. |
 
-Values travel as text, as in Firebase. `asNumber()` is `Number(text)`, or `0`
+Values travel as text. `asNumber()` is `Number(text)`, or `0`
 when that is not a number. `asBoolean()` is `true` for `1`, `true`, `t`, `yes`,
 `y`, and `on`, in any case, and `false` otherwise. A JSON parameter arrives as
 its text, for `JSON.parse(config.getString(key))`.

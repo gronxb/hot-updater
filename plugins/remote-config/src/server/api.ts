@@ -44,8 +44,8 @@ export interface RemoteConfigActive {
 
 /**
  * How a publish or a rollback ended: `conflict` when another publish moved
- * the active version past `baseVersion` first, as Firebase's ETag check
- * refuses a stale template.
+ * the active version past `baseVersion` first, so a stale edit never
+ * replaces a newer template.
  */
 export type RemoteConfigPublishResult =
   | { readonly status: "published"; readonly version: RemoteConfigVersion }

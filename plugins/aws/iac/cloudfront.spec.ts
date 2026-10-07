@@ -7,6 +7,7 @@ import {
   buildDistributionConfigOverrides,
   buildOriginRequestPolicyConfig,
   buildReleaseCatalogCachePolicyConfig,
+  buildRemoteConfigCachePolicyConfig,
   buildSharedCachePolicyConfig,
 } from "./cloudfrontDistributionConfig";
 
@@ -18,6 +19,7 @@ const baseOptions = {
   oacId: "origin-access-control-id",
   originRequestPolicyId: "origin-request-policy-id",
   releaseCatalogCachePolicyId: "release-catalog-cache-policy-id",
+  remoteConfigCachePolicyId: "remote-config-cache-policy-id",
   sharedCachePolicyId: "shared-cache-policy-id",
 };
 
@@ -68,10 +70,30 @@ describe("buildDistributionConfigOverrides", () => {
     });
   });
 
+  it("keys Remote Config answers on every query string, the client credential, and the encoding", () => {
+    expect(buildRemoteConfigCachePolicyConfig(["x-api-key"])).toMatchObject({
+      Name: "HotUpdaterRemoteConfigV1",
+      DefaultTTL: 0,
+      MaxTTL: 5,
+      MinTTL: 0,
+      ParametersInCacheKeyAndForwardedToOrigin: {
+        EnableAcceptEncodingBrotli: true,
+        EnableAcceptEncodingGzip: true,
+        HeadersConfig: {
+          HeaderBehavior: "whitelist",
+          Headers: { Quantity: 1, Items: ["x-api-key"] },
+        },
+        CookiesConfig: { CookieBehavior: "none" },
+        QueryStringsConfig: { QueryStringBehavior: "all" },
+      },
+    });
+  });
+
   it("keys caches on no header when client routes are public", () => {
     for (const config of [
       buildSharedCachePolicyConfig([]),
       buildReleaseCatalogCachePolicyConfig([]),
+      buildRemoteConfigCachePolicyConfig([]),
     ]) {
       expect(
         config.ParametersInCacheKeyAndForwardedToOrigin?.HeadersConfig,
@@ -87,9 +109,10 @@ describe("buildDistributionConfigOverrides", () => {
     const overrides = buildDistributionConfigOverrides(baseOptions);
     const defaultBehavior = overrides.DefaultCacheBehavior;
     const behaviorItems = overrides.CacheBehaviors.Items ?? [];
-    const [catalogBehavior, cachedEndpointBehavior] = behaviorItems;
+    const [catalogBehavior, remoteConfigBehavior, cachedEndpointBehavior] =
+      behaviorItems;
 
-    if (!catalogBehavior || !cachedEndpointBehavior) {
+    if (!catalogBehavior || !remoteConfigBehavior || !cachedEndpointBehavior) {
       throw new Error("Expected cache behaviors to be generated");
     }
 
@@ -110,12 +133,20 @@ describe("buildDistributionConfigOverrides", () => {
 
     expect(behaviorItems.map(({ PathPattern }) => PathPattern)).toEqual([
       "/release-catalogs/*",
+      "/remote-config",
       "/events",
       "/artifacts/*",
       "/version",
     ]);
     expect(catalogBehavior.CachePolicyId).toBe(
       baseOptions.releaseCatalogCachePolicyId,
+    );
+    // Remote Config answers per device query, so its own policy keys on it.
+    expect(remoteConfigBehavior.CachePolicyId).toBe(
+      baseOptions.remoteConfigCachePolicyId,
+    );
+    expect(remoteConfigBehavior.LambdaFunctionAssociations).toEqual(
+      cachedEndpointBehavior.LambdaFunctionAssociations,
     );
     expect(cachedEndpointBehavior.CachePolicyId).toBe(
       baseOptions.sharedCachePolicyId,
@@ -374,6 +405,7 @@ describe("buildDistributionConfigOverrides", () => {
       existingOriginId,
       existingOriginId,
       existingOriginId,
+      existingOriginId,
     ]);
   });
 
@@ -416,6 +448,7 @@ describe("buildDistributionConfigOverrides", () => {
     ).toEqual([
       "/api/*",
       "/release-catalogs/*",
+      "/remote-config",
       "/events",
       "/artifacts/*",
       "/version",
@@ -475,6 +508,7 @@ describe("buildDistributionConfigOverrides", () => {
       "/custom/private/*",
       "/api/*",
       "/release-catalogs/*",
+      "/remote-config",
       "/events",
       "/artifacts/*",
       "/version",
@@ -548,6 +582,7 @@ describe("buildDistributionConfigOverrides", () => {
       "/*.js",
       "/api/*",
       "/release-catalogs/*",
+      "/remote-config",
       "/events",
       "/artifacts/*",
       "/version",

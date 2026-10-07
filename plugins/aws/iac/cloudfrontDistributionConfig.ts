@@ -67,6 +67,30 @@ export const buildReleaseCatalogCachePolicyConfig = (
   },
 });
 
+/**
+ * Remote Config answers depend on the device's query (platform, channel,
+ * app version, cohort, fingerprint), so the cache key holds every query
+ * string, beside the client credential, for the five seconds the origin
+ * allows.
+ */
+export const buildRemoteConfigCachePolicyConfig = (
+  clientHeaders: readonly string[],
+): CachePolicyConfig => ({
+  Name: "HotUpdaterRemoteConfigV1",
+  Comment:
+    "Cache Remote Config answers by device query, client credential, and encoding",
+  DefaultTTL: 0,
+  MaxTTL: 5,
+  MinTTL: 0,
+  ParametersInCacheKeyAndForwardedToOrigin: {
+    EnableAcceptEncodingBrotli: true,
+    EnableAcceptEncodingGzip: true,
+    HeadersConfig: headersConfig(clientHeaders),
+    CookiesConfig: { CookieBehavior: "none" },
+    QueryStringsConfig: { QueryStringBehavior: "all" },
+  },
+});
+
 export const buildOriginRequestPolicyConfig = (
   clientHeaders: readonly string[],
 ): OriginRequestPolicyConfig => ({
@@ -135,6 +159,11 @@ export const HOT_UPDATER_CACHE_BEHAVIOR_PATHS = [
 
 export const HOT_UPDATER_RELEASE_CATALOG_BEHAVIOR_PATHS = [
   "/release-catalogs/*",
+] as const;
+
+/** Devices' Remote Config fetches, which answer per query. */
+export const HOT_UPDATER_REMOTE_CONFIG_BEHAVIOR_PATHS = [
+  "/remote-config",
 ] as const;
 
 const omitLegacyCacheFields = <
@@ -361,6 +390,7 @@ export const buildDistributionConfigOverrides = (options: {
   oacId: string;
   originRequestPolicyId: string;
   releaseCatalogCachePolicyId: string;
+  remoteConfigCachePolicyId: string;
   sharedCachePolicyId: string;
 }): DistributionConfigOverrides => ({
   Origins: {
@@ -381,6 +411,7 @@ export const buildDistributionConfigOverrides = (options: {
   CacheBehaviors: {
     Quantity:
       HOT_UPDATER_RELEASE_CATALOG_BEHAVIOR_PATHS.length +
+      HOT_UPDATER_REMOTE_CONFIG_BEHAVIOR_PATHS.length +
       HOT_UPDATER_CACHE_BEHAVIOR_PATHS.length,
     Items: [
       ...HOT_UPDATER_RELEASE_CATALOG_BEHAVIOR_PATHS.map((pathPattern) =>
@@ -390,6 +421,15 @@ export const buildDistributionConfigOverrides = (options: {
           originRequestPolicyId: options.originRequestPolicyId,
           pathPattern,
           sharedCachePolicyId: options.releaseCatalogCachePolicyId,
+        }),
+      ),
+      ...HOT_UPDATER_REMOTE_CONFIG_BEHAVIOR_PATHS.map((pathPattern) =>
+        buildCacheBehavior({
+          bucketName: options.bucketName,
+          functionArn: options.functionArn,
+          originRequestPolicyId: options.originRequestPolicyId,
+          pathPattern,
+          sharedCachePolicyId: options.remoteConfigCachePolicyId,
         }),
       ),
       ...HOT_UPDATER_CACHE_BEHAVIOR_PATHS.map((pathPattern) =>

@@ -7,8 +7,7 @@ icon: SlidersHorizontal
 ## What Remote Config does
 
 Remote Config changes values your app reads, such as a greeting, a list size,
-or whether a new checkout shows, without a new native build or OTA bundle. It
-follows [Firebase Remote Config](https://firebase.google.com/docs/remote-config):
+or whether a new checkout shows, without a new native build or OTA bundle:
 
 - The app defines **in-app defaults** and reads values synchronously.
 - A **template** on the server holds **parameters**, each with a default value
@@ -110,8 +109,7 @@ method, how text becomes numbers and booleans, and re-rendering on activation.
 ## Choose when new values apply
 
 `fetch()` stores the values the server picks, and `activate()` makes them the
-ones reads return. Splitting them lets you choose when the app changes, with
-one of Firebase's loading strategies:
+ones reads return. Splitting them lets you choose when the app changes:
 
 | Strategy | Code | The app changes |
 | --- | --- | --- |
@@ -122,9 +120,9 @@ one of Firebase's loading strategies:
 The last one never changes values mid-session and never waits for the network,
 which suits values that change layouts.
 
-A fetch within `minimumFetchIntervalMs` of the last one, 12 hours by default as
-in Firebase, keeps the values fetched last without a request, unless the app's
-channel, version, cohort, or fingerprint changed since.
+A fetch within `minimumFetchIntervalMs` of the last one, 12 hours by default,
+keeps the values fetched last without a request, unless the app's channel,
+version, cohort, or fingerprint changed since.
 
 ## Edit parameters and conditions
 
@@ -134,7 +132,7 @@ draft until you publish them:
 - **Parameters** have a key, a type (String, Number, Boolean, or JSON), a
   default value, and a value per condition. Either value can be **Use in-app
   default**: devices then keep the value from `defaults`. The type only checks
-  values in the Console; devices receive every value as text, as in Firebase.
+  values in the Console; devices receive every value as text.
 - **Conditions** have a name and rules that a device must all match. Their
   order is their priority: when several conditions that a parameter has values
   for match a device, the first one in the list decides.
@@ -239,19 +237,14 @@ devices' values never reach the app.
 | Percentages | From 0 to 100 in steps of 0.1, one numeric cohort each. |
 | Descriptions | 256 characters, for parameters and versions. |
 
-## Compared with Firebase Remote Config
+## What it does not do
 
-| | Firebase Remote Config | Hot Updater Remote Config |
-| --- | --- | --- |
-| Reads | `getValue`, `getString`, `getNumber`, `getBoolean`, `getAll`, synchronous | The same methods, synchronous |
-| Value sources | `static`, `default`, `remote` | The same |
-| Fetching | `fetch`, `activate`, `fetchAndActivate`, minimum fetch interval of 12 hours | The same |
-| Where conditions run | On Google's servers | On your update server |
-| Conditions | App, platform, version, country, language, user property, user in random percentile, and more | Platform, channel, app version, cohort, percentage of installs, and fingerprint |
-| Versions | Kept with rollback | Kept with rollback |
-| Real-time updates | `onConfigUpdated` | No; values change on the next fetch. `subscribe` reports activations. |
-| A/B testing and personalization | Yes | No |
-| Hosting | Firebase | Your server, or a managed Hot Updater server |
+- **Real-time updates:** values change on the app's next fetch;
+  [`subscribe`](/docs/react-native-api/remote-config#re-render-on-activation)
+  reports activations, not server changes.
+- **A/B tests and personalization:** conditions match a device's platform,
+  channel, app version, cohort, share of installs, and fingerprint; there are
+  no user properties, countries, or languages.
 
 Remote Config values travel to every matching device, so keep secrets such as
 API keys out of them.

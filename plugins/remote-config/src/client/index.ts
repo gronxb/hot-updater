@@ -10,7 +10,7 @@ import {
   remoteConfigRequestPath,
 } from "../shared/wire";
 
-/** An in-app default value, as Firebase Remote Config's `defaultConfig` takes it. */
+/** An in-app default value: text, a number, or a boolean. */
 export type RemoteConfigDefaultValue = string | number | boolean;
 
 export type RemoteConfigDefaults = Readonly<
@@ -51,9 +51,9 @@ export interface RemoteConfigOptions<
   readonly defaults?: TDefaults;
   /**
    * The shortest time between fetches that reach the server; a fetch
-   * sooner keeps the values fetched last. Defaults to 12 hours, as Firebase
-   * Remote Config does. A fetch always reaches the server after the app's
-   * channel, version, cohort, or fingerprint changes.
+   * sooner keeps the values fetched last. Defaults to 12 hours. A fetch
+   * always reaches the server after the app's channel, version, cohort, or
+   * fingerprint changes.
    */
   readonly minimumFetchIntervalMs?: number;
 }
@@ -175,9 +175,9 @@ const deviceContext = (
 });
 
 /**
- * Remote Config for the app, modelled on Firebase Remote Config: in-app
- * defaults, values a server running the `remoteConfig()` plugin picks for
- * this device, and a fetch and activate step between them. Add it to
+ * Remote Config for the app: in-app defaults, values a server running the
+ * `remoteConfig()` plugin picks for this device, and a fetch and activate
+ * step between them. Add it to
  * `HotUpdater.init` or `HotUpdater.wrap`'s `plugins`; it fetches from the
  * `baseURL`, request headers, and timeout configured there.
  *

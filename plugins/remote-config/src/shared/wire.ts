@@ -56,9 +56,8 @@ export interface RemoteConfigFetchResponse {
   /** The published template version the values come from; 0 before the first publish. */
   readonly version: number;
   /**
-   * Each parameter's value for this device, as text, as Firebase Remote
-   * Config sends values. A parameter whose value is the app's own default is
-   * left out.
+   * Each parameter's value for this device, as text. A parameter whose
+   * value is the app's own default is left out.
    */
   readonly values: Readonly<Record<string, string>>;
 }

@@ -284,11 +284,14 @@ New distributions use `PriceClass_All` to preserve worldwide OTA latency. The
 Release-catalog behavior honors the server's five-second shared TTL. Catalog
 authentication failures, missing rows, and server errors are private and are
 not cached. Cache identity uses only the API key and content encoding.
+The `/remote-config` behavior honors the same five-second TTL, and its cache
+identity adds the query string, which carries the device's platform, channel,
+app version, cohort, and fingerprint.
 
 If regional reach matters less than transfer price, change the distribution price
 class in AWS after init; later init runs preserve that setting. Init invalidates
-only `/version`, `/events`, `/release-catalogs/*`, and `/artifacts/*`, leaving
-immutable bundle caches warm.
+only `/version`, `/events`, `/release-catalogs/*`, `/remote-config`, and
+`/artifacts/*`, leaving immutable bundle caches warm.
 CloudFront provides the first 1,000 invalidation paths per account each month
 at no extra charge; see [invalidation pricing](https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/PayingForInvalidation.html).
 

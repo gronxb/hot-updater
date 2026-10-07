@@ -205,7 +205,7 @@ describe("remoteConfig() client plugin", () => {
     expect(requests).toHaveLength(3);
   });
 
-  it("waits 12 hours between fetches by default, as Firebase does", async () => {
+  it("waits 12 hours between fetches by default", async () => {
     const { config } = launch();
     responses.push(() => values({ version: 1, values: {} }));
     await config.fetch();

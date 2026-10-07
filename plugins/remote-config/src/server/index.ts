@@ -43,10 +43,10 @@ export type {
 
 /**
  * Remote Config: parameters whose values the server picks per device by
- * conditions, published as versioned templates, as Firebase Remote Config
- * does. Devices fetch their values from `GET /remote-config` with the
- * `remoteConfig()` client plugin; the Console and `hotUpdater.api.remoteConfig`
- * edit, publish, and roll back templates.
+ * conditions, published as versioned templates. Devices fetch their values
+ * from `GET /remote-config` with the `remoteConfig()` client plugin; the
+ * Console and `hotUpdater.api.remoteConfig` edit, publish, and roll back
+ * templates.
  */
 export const remoteConfig = () => {
   const plugin = definePlugin({

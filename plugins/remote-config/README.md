@@ -1,10 +1,9 @@
 # @hot-updater/plugin-remote-config
 
-Hot Updater's Remote Config plugin, modelled on Firebase Remote Config. The
-server plugin stores versioned templates of parameters and conditions, and
-answers each device with the values its conditions pick; the client plugin
-fetches those values in the app and reads them synchronously, over in-app
-defaults.
+Hot Updater's Remote Config plugin. The server plugin stores versioned
+templates of parameters and conditions, and answers each device with the
+values its conditions pick; the client plugin fetches those values in the app
+and reads them synchronously, over in-app defaults.
 
 You don't install it on its own. `@hot-updater/server` and
 `@hot-updater/react-native` depend on it and re-export it:

@@ -32,7 +32,7 @@ export const parameterValueError = (
 
 /**
  * Edits one value of a parameter, by its type, with the option to leave the
- * app's in-app default in place, as Firebase Remote Config offers.
+ * app's in-app default in place.
  */
 export function ValueInput({
   id,
