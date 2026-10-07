@@ -31,18 +31,24 @@ export const REMOTE_CONFIG_QUERY = {
   fingerprintHash: "fingerprintHash",
 } as const satisfies Record<keyof RemoteConfigDeviceContext, string>;
 
-/** `GET /remote-config?…`, with a field left out when it is null. */
+/**
+ * `GET /remote-config?…`, with a field left out when it is null. It encodes
+ * the query itself, since React Native's `URLSearchParams` throws on `set`.
+ */
 export const remoteConfigRequestPath = (
   context: RemoteConfigDeviceContext,
 ): string => {
-  const query = new URLSearchParams();
-  for (const field of Object.keys(REMOTE_CONFIG_QUERY) as Array<
-    keyof RemoteConfigDeviceContext
-  >) {
+  const query = (
+    Object.keys(REMOTE_CONFIG_QUERY) as Array<keyof RemoteConfigDeviceContext>
+  ).flatMap((field) => {
     const value = context[field];
-    if (value !== null) query.set(REMOTE_CONFIG_QUERY[field], value);
-  }
-  return `${REMOTE_CONFIG_PATH}?${query.toString()}`;
+    return value === null
+      ? []
+      : [
+          `${encodeURIComponent(REMOTE_CONFIG_QUERY[field])}=${encodeURIComponent(value)}`,
+        ];
+  });
+  return `${REMOTE_CONFIG_PATH}?${query.join("&")}`;
 };
 
 /** The body of a `200` from `GET /remote-config`. */

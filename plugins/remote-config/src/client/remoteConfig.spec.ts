@@ -96,6 +96,25 @@ describe("remoteConfig() client plugin", () => {
     expect(config.fetchTimeMillis).toBe(clock);
   });
 
+  it("builds its request without the URL APIs React Native lacks", async () => {
+    // React Native's URLSearchParams throws on everything but append.
+    const original = globalThis.URLSearchParams;
+    globalThis.URLSearchParams = class {
+      constructor() {
+        throw new Error("URLSearchParams is not implemented");
+      }
+    } as unknown as typeof URLSearchParams;
+    try {
+      channel = "beta & qa";
+      const { config } = launch();
+      responses.push(() => values({ version: 1, values: {} }));
+      await config.fetch();
+    } finally {
+      globalThis.URLSearchParams = original;
+    }
+    expect(requests[0]!.url).toContain("channel=beta%20%26%20qa&cohort=42");
+  });
+
   it("keeps fetched values for activate, which makes them the synchronous reads", async () => {
     const { config } = launch({ defaults: { welcome: "Hi", limit: 5 } });
     const changes: number[] = [];
