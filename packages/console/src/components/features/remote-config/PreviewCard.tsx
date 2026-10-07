@@ -21,6 +21,12 @@ import {
 import { Field, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupButton,
+  InputGroupInput,
+} from "@/components/ui/input-group";
+import {
   Select,
   SelectContent,
   SelectGroup,
@@ -98,12 +104,12 @@ export function PreviewCard({
         </CardTitle>
         <CardDescription className="text-xs">
           {isDraft
-            ? "The values this device would get once your changes are published."
-            : "The values this device gets from the active version."}
+            ? "The values this device would get once your changes are published, now or at the time you pick."
+            : "The values this device gets from the active version, now or at the time you pick."}
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-4 p-4 sm:p-6">
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
           <Field>
             <FieldLabel htmlFor={`${id}-platform`}>Platform</FieldLabel>
             <Select
@@ -163,14 +169,27 @@ export function PreviewCard({
             </Field>
           ))}
           <Field>
-            <FieldLabel htmlFor={`${id}-at`}>At</FieldLabel>
-            <Input
-              className="min-h-11 text-base tabular-nums sm:min-h-9 sm:text-xs"
-              id={`${id}-at`}
-              onChange={(event) => set("at", event.target.value)}
-              type="datetime-local"
-              value={device.at}
-            />
+            <FieldLabel htmlFor={`${id}-at`}>Time</FieldLabel>
+            <InputGroup className="h-11 sm:h-9">
+              <InputGroupInput
+                className="h-11 text-base tabular-nums sm:h-9 sm:text-xs"
+                id={`${id}-at`}
+                onChange={(event) => set("at", event.target.value)}
+                type="datetime-local"
+                value={device.at}
+              />
+              {device.at.length === 0 ? null : (
+                <InputGroupAddon align="inline-end">
+                  <InputGroupButton
+                    className="min-h-11 sm:min-h-6"
+                    onClick={() => set("at", "")}
+                    size="xs"
+                  >
+                    Now
+                  </InputGroupButton>
+                </InputGroupAddon>
+              )}
+            </InputGroup>
           </Field>
         </div>
         {keys.length === 0 ? (

@@ -30,7 +30,6 @@ import {
 } from "@/components/ui/select";
 import {
   conditionalValueFor,
-  describeRule,
   parameterKeyError,
   type RemoteConfigCondition,
   type RemoteConfigParameter,
@@ -40,6 +39,8 @@ import {
 } from "@/lib/remote-config-draft";
 
 import { ConditionDialog } from "./ConditionDialog";
+import { RuleSummary } from "./RuleSummary";
+import { useDateTimeText } from "./useDateTimeText";
 import {
   initialValueText,
   parameterValueError,
@@ -129,6 +130,7 @@ function ParameterForm({
   readonly onAddCondition: (condition: RemoteConfigCondition) => void;
 }) {
   const id = useId();
+  const { dateTimeText } = useDateTimeText();
   const [key, setKey] = useState(parameterKey ?? "");
   const [valueType, setValueType] = useState<RemoteConfigValueType>(
     parameter?.valueType ?? "STRING",
@@ -296,9 +298,10 @@ function ParameterForm({
                         <p className="truncate text-sm font-medium">
                           {condition.name}
                         </p>
-                        <p className="text-xs text-muted-foreground">
-                          {condition.rules.map(describeRule).join(" · ")}
-                        </p>
+                        <RuleSummary
+                          condition={condition}
+                          dateTimeText={dateTimeText}
+                        />
                       </div>
                       <Button
                         aria-label={`Remove the value for ${condition.name}`}

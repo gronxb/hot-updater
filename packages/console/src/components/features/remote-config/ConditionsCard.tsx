@@ -35,13 +35,14 @@ import {
   EmptyTitle,
 } from "@/components/ui/empty";
 import {
-  describeRule,
   parametersUsing,
   type RemoteConfigCondition,
   type RemoteConfigTemplate,
 } from "@/lib/remote-config-draft";
 
 import { ConditionDialog } from "./ConditionDialog";
+import { RuleSummary } from "./RuleSummary";
+import { useDateTimeText } from "./useDateTimeText";
 
 /** The draft's conditions in priority order: the first match decides a value. */
 export function ConditionsCard({
@@ -62,6 +63,7 @@ export function ConditionsCard({
     readonly name: string | null;
   } | null>(null);
   const [removing, setRemoving] = useState<string | null>(null);
+  const { dateTimeText } = useDateTimeText();
   const { conditions } = template;
   const editingName = editing?.name ?? null;
   const removingUsers =
@@ -133,9 +135,10 @@ export function ConditionsCard({
                     <p className="truncate text-sm font-medium">
                       {condition.name}
                     </p>
-                    <p className="text-xs text-muted-foreground">
-                      {condition.rules.map(describeRule).join(" · ")}
-                    </p>
+                    <RuleSummary
+                      condition={condition}
+                      dateTimeText={dateTimeText}
+                    />
                     <p className="mt-1 text-xs text-muted-foreground">
                       {users.length === 0
                         ? "No parameter uses it yet"

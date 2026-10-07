@@ -1,4 +1,4 @@
-import { Plus, RefreshCw, Trash2 } from "lucide-react";
+import { Plus, RefreshCw, Trash2, X } from "lucide-react";
 import { type FormEvent, useId, useState } from "react";
 
 import { PlatformIcon } from "@/components/PlatformIcon";
@@ -22,6 +22,12 @@ import {
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupButton,
+  InputGroupInput,
+} from "@/components/ui/input-group";
+import {
   Select,
   SelectContent,
   SelectGroup,
@@ -36,6 +42,7 @@ import {
   conditionNameError,
   createRule,
   createSeed,
+  endPresets,
   fromLocalDateTimeInput,
   RULE_TYPE_LABELS,
   type RemoteConfigCondition,
@@ -43,8 +50,12 @@ import {
   type RemoteConfigRuleType,
   ruleError,
   splitList,
+  startPresets,
+  suggestConditionName,
   toLocalDateTimeInput,
 } from "@/lib/remote-config-draft";
+
+import { useDateTimeText } from "./useDateTimeText";
 
 const RULE_TYPES = Object.keys(RULE_TYPE_LABELS) as RemoteConfigRuleType[];
 
@@ -93,6 +104,65 @@ function ListInput({
       placeholder={placeholder}
       value={text}
     />
+  );
+}
+
+/** One end of a date and time rule: a picker, a clear button, and quick choices. */
+function DateTimeField({
+  id,
+  label,
+  value,
+  presets,
+  onChange,
+}: {
+  readonly id: string;
+  readonly label: string;
+  readonly value: string | undefined;
+  readonly presets: readonly { readonly label: string; readonly iso: string }[];
+  readonly onChange: (value: string | undefined) => void;
+}) {
+  return (
+    <Field>
+      <FieldLabel htmlFor={id}>{label}</FieldLabel>
+      <InputGroup className="h-11 sm:h-9">
+        <InputGroupInput
+          className="h-11 tabular-nums sm:h-9"
+          id={id}
+          onChange={(event) =>
+            onChange(fromLocalDateTimeInput(event.target.value))
+          }
+          type="datetime-local"
+          value={toLocalDateTimeInput(value)}
+        />
+        {value === undefined ? null : (
+          <InputGroupAddon align="inline-end">
+            <InputGroupButton
+              aria-label={`Clear ${label.toLowerCase()}`}
+              className="size-11 sm:size-5"
+              onClick={() => onChange(undefined)}
+              size="icon-xs"
+            >
+              <X />
+            </InputGroupButton>
+          </InputGroupAddon>
+        )}
+      </InputGroup>
+      <div className="flex flex-wrap gap-1.5">
+        {presets.map((preset) => (
+          <Button
+            aria-pressed={preset.iso === value}
+            className="min-h-11 sm:min-h-6"
+            key={preset.label}
+            onClick={() => onChange(preset.iso)}
+            size="xs"
+            type="button"
+            variant={preset.iso === value ? "secondary" : "outline"}
+          >
+            {preset.label}
+          </Button>
+        ))}
+      </div>
+    </Field>
   );
 }
 
@@ -262,33 +332,26 @@ function RuleFields({
         />
       );
     case "dateTime": {
-      const change = (field: "from" | "to", value: string) => {
+      const change = (field: "from" | "to", instant: string | undefined) => {
         const { [field]: _previous, ...rest } = rule;
-        const instant = fromLocalDateTimeInput(value);
         onChange(instant === undefined ? rest : { ...rest, [field]: instant });
       };
       return (
-        <div className="grid gap-2 sm:grid-cols-2">
-          <Field>
-            <FieldLabel htmlFor={`${id}-starts`}>Starts</FieldLabel>
-            <Input
-              className="min-h-11 tabular-nums sm:min-h-9"
-              id={`${id}-starts`}
-              onChange={(event) => change("from", event.target.value)}
-              type="datetime-local"
-              value={toLocalDateTimeInput(rule.from)}
-            />
-          </Field>
-          <Field>
-            <FieldLabel htmlFor={`${id}-ends`}>Ends</FieldLabel>
-            <Input
-              className="min-h-11 tabular-nums sm:min-h-9"
-              id={`${id}-ends`}
-              onChange={(event) => change("to", event.target.value)}
-              type="datetime-local"
-              value={toLocalDateTimeInput(rule.to)}
-            />
-          </Field>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <DateTimeField
+            id={`${id}-from`}
+            label="From"
+            onChange={(instant) => change("from", instant)}
+            presets={startPresets()}
+            value={rule.from}
+          />
+          <DateTimeField
+            id={`${id}-until`}
+            label="Until"
+            onChange={(instant) => change("to", instant)}
+            presets={endPresets(rule.from)}
+            value={rule.to}
+          />
         </div>
       );
     }
@@ -304,7 +367,8 @@ const RULE_HINTS: Readonly<Record<RemoteConfigRuleType, string>> = {
     "Installs whose numeric cohort lands in this share. Rules with one seed split the same order, so 0–10 and 10–20 never overlap.",
   cohort: "Numeric cohorts from 1 to 1000, or custom cohort names.",
   fingerprint: "Native builds with any of these fingerprints.",
-  dateTime: `While the server's clock is in this range, in your time zone (${Intl.DateTimeFormat().resolvedOptions().timeZone}). Leave an end empty to keep it open. A device gets the change at its next fetch.`,
+  dateTime:
+    "Leave either end empty to keep it open. Devices get the change at their next fetch.",
 };
 
 /** Adds or edits a condition: a name and the rules a device must all match. */
@@ -353,12 +417,16 @@ function ConditionForm({
   readonly onCancel: () => void;
 }) {
   const id = useId();
+  const { dateTimeText, timeZone } = useDateTimeText();
   const [name, setName] = useState(condition?.name ?? "");
   const [rules, setRules] = useState<RemoteConfigRule[]>(
     condition === null ? [createRule("platform")] : [...condition.rules],
   );
   const [submitted, setSubmitted] = useState(false);
-  const nameError = conditionNameError(name, takenNames);
+  // An empty name saves as the rules in a few words.
+  const suggestedName = suggestConditionName(rules, takenNames, dateTimeText);
+  const savedName = name.trim().length === 0 ? suggestedName : name;
+  const nameError = conditionNameError(savedName, takenNames);
   const ruleErrors = rules.map(ruleError);
   const unused = RULE_TYPES.filter(
     (type) => !rules.some((rule) => rule.type === type),
@@ -375,7 +443,7 @@ function ConditionForm({
     setSubmitted(true);
     if (invalid) return;
     onSave({
-      name: name.trim(),
+      name: savedName.trim(),
       rules: rules.map((rule) =>
         rule.type === "appVersion"
           ? { ...rule, range: rule.range.trim() }
@@ -403,9 +471,12 @@ function ConditionForm({
             id={`${id}-name`}
             maxLength={101}
             onChange={(event) => setName(event.target.value)}
-            placeholder="Beta testers on iOS"
+            placeholder={suggestedName || "Beta testers on iOS"}
             value={name}
           />
+          <FieldDescription>
+            Optional: without one, it is named after its rules.
+          </FieldDescription>
           <FieldError>{submitted ? nameError : null}</FieldError>
         </Field>
         <FieldSet>
@@ -450,7 +521,11 @@ function ConditionForm({
                     }
                     rule={rule}
                   />
-                  <FieldDescription>{RULE_HINTS[rule.type]}</FieldDescription>
+                  <FieldDescription>
+                    {rule.type === "dateTime"
+                      ? `In your time zone, ${timeZone}. ${RULE_HINTS.dateTime}`
+                      : RULE_HINTS[rule.type]}
+                  </FieldDescription>
                   <FieldError>
                     {submitted ? ruleErrors[index] : null}
                   </FieldError>

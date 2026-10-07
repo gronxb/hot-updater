@@ -5,6 +5,10 @@ import { describe, expect, it } from "vitest";
 import {
   conditionalValueFor,
   conditionNameError,
+  createDateTimeText,
+  endPresets,
+  startPresets,
+  suggestConditionName,
   fromLocalDateTimeInput,
   toLocalDateTimeInput,
   createRule,
@@ -183,11 +187,7 @@ describe("rule text", () => {
       "10–20% of installs",
       "Fingerprint is abcdef01",
     ]);
-    const shown = (iso: string) =>
-      new Intl.DateTimeFormat(undefined, {
-        dateStyle: "medium",
-        timeStyle: "short",
-      }).format(new Date(iso));
+    // In UTC by default, as the server renders; a viewer's zone on request.
     const from = "2026-10-08T10:00:00.000Z";
     const to = "2026-10-09T10:00:00.000Z";
     expect(
@@ -197,10 +197,16 @@ describe("rule text", () => {
         { type: "dateTime", to },
       ].map((rule) => describeRule(rule as never)),
     ).toEqual([
-      `${shown(from)} – ${shown(to)}`,
-      `From ${shown(from)}`,
-      `Until ${shown(to)}`,
+      "From Oct 8, 2026, 10:00 UTC until Oct 9, 2026, 10:00 UTC",
+      "From Oct 8, 2026, 10:00 UTC",
+      "Until Oct 9, 2026, 10:00 UTC",
     ]);
+    expect(
+      describeRule(
+        { type: "dateTime", from },
+        createDateTimeText("Asia/Seoul"),
+      ),
+    ).toBe("From Oct 8, 2026, 19:00 GMT+9");
   });
 });
 
@@ -246,6 +252,45 @@ describe("inline checks", () => {
         to: "2026-10-08T00:00:00.000Z",
       }),
     ).toBe("End after the start.");
+  });
+
+  it("offers quick starts and ends counted from the start, or from now", () => {
+    const now = new Date(2026, 9, 8, 14, 25, 30);
+    expect(
+      startPresets(now).map(({ label, iso }) => [label, new Date(iso)]),
+    ).toEqual([
+      ["Now", new Date(2026, 9, 8, 14, 25)],
+      ["Next hour", new Date(2026, 9, 8, 15, 0)],
+      ["Tomorrow 09:00", new Date(2026, 9, 9, 9, 0)],
+    ]);
+    const start = new Date(2026, 9, 8, 15, 0).toISOString();
+    expect(
+      endPresets(start, now).map(({ label, iso }) => [label, new Date(iso)]),
+    ).toEqual([
+      ["+1 day", new Date(2026, 9, 9, 15, 0)],
+      ["+1 week", new Date(2026, 9, 15, 15, 0)],
+    ]);
+    expect(new Date(endPresets(undefined, now)[0]!.iso)).toEqual(
+      new Date(2026, 9, 9, 14, 25),
+    );
+  });
+
+  it("names a condition after its rules, apart from the names in use", () => {
+    const rules = [{ type: "channel", channels: ["beta"] }] as const;
+    expect(suggestConditionName(rules, [])).toBe("Channel is beta");
+    expect(suggestConditionName(rules, ["Channel is beta"])).toBe(
+      "Channel is beta (2)",
+    );
+    expect(
+      suggestConditionName(rules, ["Channel is beta", "Channel is beta (2)"]),
+    ).toBe("Channel is beta (3)");
+    expect(suggestConditionName([], [])).toBe("");
+    const long = suggestConditionName(
+      [{ type: "channel", channels: ["c".repeat(120)] }],
+      [],
+    );
+    expect(long).toHaveLength(100);
+    expect(long.endsWith("…")).toBe(true);
   });
 
   it("shows instants in the viewer's time zone and stores them in UTC", () => {

@@ -197,11 +197,63 @@ const listText = (values: readonly string[], limit = 3): string =>
 const percentText = (value: number) =>
   Number.isInteger(value) ? String(value) : value.toFixed(1);
 
-const dateTimeText = (iso: string) =>
-  new Intl.DateTimeFormat(undefined, {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(new Date(iso));
+/** Formats an instant for the page, such as `Oct 8, 2026, 10:00 GMT+9`. */
+export type DateTimeText = (iso: string) => string;
+
+/** Dates in English with their offset, as Insights shows them. */
+export const createDateTimeText = (timeZone: string): DateTimeText => {
+  const format = new Intl.DateTimeFormat("en", {
+    timeZone,
+    // "UTC" for UTC, an offset such as "GMT+9" for any other zone.
+    timeZoneName: timeZone === "UTC" ? "short" : "shortOffset",
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  });
+  return (iso) => format.format(new Date(iso));
+};
+
+/** The server renders in UTC; the page switches to the viewer's zone once mounted. */
+const UTC_DATE_TIME_TEXT = createDateTimeText("UTC");
+
+/** The quick choices for a rule's start, as UTC instants. */
+export const startPresets = (
+  now: Date = new Date(),
+): readonly { readonly label: string; readonly iso: string }[] => {
+  const nextHour = new Date(now);
+  nextHour.setMinutes(60, 0, 0);
+  const tomorrow = new Date(now);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  tomorrow.setHours(9, 0, 0, 0);
+  const minute = new Date(now);
+  minute.setSeconds(0, 0);
+  return [
+    { label: "Now", iso: minute.toISOString() },
+    { label: "Next hour", iso: nextHour.toISOString() },
+    { label: "Tomorrow 09:00", iso: tomorrow.toISOString() },
+  ];
+};
+
+/** The quick choices for a rule's end, counted from its start or from now. */
+export const endPresets = (
+  from: string | undefined,
+  now: Date = new Date(),
+): readonly { readonly label: string; readonly iso: string }[] => {
+  const start = from === undefined ? now : new Date(from);
+  const after = (days: number) => {
+    const end = new Date(start);
+    end.setDate(end.getDate() + days);
+    end.setSeconds(0, 0);
+    return end.toISOString();
+  };
+  return [
+    { label: "+1 day", iso: after(1) },
+    { label: "+1 week", iso: after(7) },
+  ];
+};
 
 /** An instant as a `datetime-local` input shows it, in the viewer's time zone. */
 export const toLocalDateTimeInput = (iso: string | undefined): string => {
@@ -219,7 +271,10 @@ export const fromLocalDateTimeInput = (value: string): string | undefined => {
 };
 
 /** A rule in a few words, such as `Channel is beta, qa`. */
-export const describeRule = (rule: RemoteConfigRule): string => {
+export const describeRule = (
+  rule: RemoteConfigRule,
+  dateTimeText: DateTimeText = UTC_DATE_TIME_TEXT,
+): string => {
   switch (rule.type) {
     case "platform":
       return `Platform is ${listText(
@@ -243,7 +298,7 @@ export const describeRule = (rule: RemoteConfigRule): string => {
       )}`;
     case "dateTime":
       return rule.from !== undefined && rule.to !== undefined
-        ? `${dateTimeText(rule.from)} – ${dateTimeText(rule.to)}`
+        ? `From ${dateTimeText(rule.from)} until ${dateTimeText(rule.to)}`
         : rule.from !== undefined
           ? `From ${dateTimeText(rule.from)}`
           : `Until ${dateTimeText(rule.to ?? "")}`;
@@ -349,6 +404,27 @@ export const valueTextError = (
   return null;
 };
 
+/**
+ * A name for a condition saved without one: its rules in a few words, kept
+ * within 100 characters and apart from the names in use.
+ */
+export const suggestConditionName = (
+  rules: readonly RemoteConfigRule[],
+  taken: readonly string[],
+  dateTimeText?: DateTimeText,
+): string => {
+  const text = rules
+    .map((rule) => describeRule(rule, dateTimeText))
+    .join(" · ");
+  const base = text.length <= 100 ? text : `${text.slice(0, 99).trimEnd()}…`;
+  if (base.length === 0 || !taken.includes(base)) return base;
+  for (let copy = 2; ; copy += 1) {
+    const suffix = ` (${copy})`;
+    const name = `${base.slice(0, 100 - suffix.length)}${suffix}`;
+    if (!taken.includes(name)) return name;
+  }
+};
+
 /** Why a condition name cannot be used, or null. */
 export const conditionNameError = (
   name: string,
@@ -420,11 +496,8 @@ export const createRule = (type: RemoteConfigRuleType): RemoteConfigRule => {
       return { type, seed: createSeed(), from: 0, to: 10 };
     case "fingerprint":
       return { type, hashes: [] };
-    case "dateTime": {
+    case "dateTime":
       // The start of the next hour, a time worth editing rather than now.
-      const next = new Date();
-      next.setMinutes(60, 0, 0);
-      return { type, from: next.toISOString() };
-    }
+      return { type, from: startPresets()[1]!.iso };
   }
 };
