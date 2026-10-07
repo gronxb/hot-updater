@@ -35,6 +35,16 @@ const day = (ms: number) => ms - (ms % DAY);
 const uuid = (n: number) =>
   `00000000-0000-7000-8000-${String(n).padStart(12, "0")}`;
 
+/** A UUIDv7 report ID made, by the device's clock, at `ms`. */
+const madeId = (ms: number, n: number) =>
+  `${ms
+    .toString(16)
+    .padStart(12, "0")
+    .replace(
+      /^(.{8})(.{4})$/,
+      "$1-$2",
+    )}-7000-8000-${String(n).padStart(12, "0")}`;
+
 const event = (
   n: number,
   overrides: Partial<BundleEventRow> = {},
@@ -847,14 +857,7 @@ describe.each(backends)("insights recordEvent on %s", (_name, adapter) => {
 
   it("keeps no row for a launch report made before the apply its installation already reported", async () => {
     const { api, db } = await setup();
-    const made = (ms: number, n: number) =>
-      `${ms
-        .toString(16)
-        .padStart(12, "0")
-        .replace(
-          /^(.{8})(.{4})$/,
-          "$1-$2",
-        )}-7000-8000-${String(n).padStart(12, "0")}`;
+    const made = madeId;
     const applied = event(1, { id: made(2_000_000_000_000, 1) });
     await api.recordEvent(applied);
     // Made before the apply by the runtime that ran bundle-1, delivered
@@ -873,6 +876,102 @@ describe.each(backends)("insights recordEvent on %s", (_name, adapter) => {
     await expect(
       db.findOne("bundle_event_heads", { install_id: "install-1" }),
     ).resolves.toMatchObject({ id: applied.id });
+  });
+
+  it.each([
+    ["a user switch", { user_id: "user-2" }, 0],
+    ["the next day's launch", {}, DAY],
+  ] as const)(
+    "keeps a launch report made before the apply late after %s replaced the apply head",
+    async (_case, fields, later) => {
+      const { api, db, lifetime, byBundle } = await setup();
+      const applyMs = 2_000_000_000_000;
+      // Apply bundle-1 → bundle-2.
+      await api.recordEvent(event(1, { id: madeId(applyMs, 1) }));
+      // A later report on bundle-2 replaces the apply head and keeps no row.
+      const later_ = unchanged(2, {
+        id: madeId(applyMs + 60_000 + later, 2),
+        to_bundle_id: "bundle-2",
+        to_release_id: "release-2",
+        received_at_ms: T + HOUR + later,
+        ...fields,
+      });
+      await api.recordEvent(later_);
+      const head = () =>
+        db.findOne("bundle_event_heads", { install_id: "install-1" });
+      await expect(head()).resolves.toMatchObject({ id: later_.id });
+      const gauges = async () => [
+        ...(await byBundle("to_bundle_id", "bundle-1", "UNCHANGED")),
+        ...(await byBundle("to_bundle_id", "bundle-2", "UNCHANGED")),
+        ...(await byBundle("to_bundle_id", "bundle-2", "UPDATE_APPLIED")),
+      ];
+      const before = await gauges();
+      // Made on bundle-1 before the apply, delivered last.
+      const stale = unchanged(3, {
+        id: madeId(applyMs - 1_000, 3),
+        to_bundle_id: "bundle-1",
+        to_release_id: "release-1",
+        received_at_ms: T + 2 * HOUR + later,
+      });
+      await api.recordEvent(stale);
+      await expect(
+        db.findOne("bundle_events", { id: stale.id }),
+      ).resolves.toBeNull();
+      await expect(head()).resolves.toMatchObject({ id: later_.id });
+      await expect(lifetime("release-1")).resolves.toEqual({
+        downloads: 0,
+        launches: 0,
+        crashes: 0,
+      });
+      await expect(lifetime("release-2")).resolves.toEqual({
+        downloads: 0,
+        launches: 1,
+        crashes: 0,
+      });
+      await expect(gauges()).resolves.toEqual(before);
+    },
+  );
+
+  it("counts a download reported twice before its launch once, and implies none at the launch", async () => {
+    const { api, db, lifetime, outcomes } = await setup();
+    const download = (n: number, madeMs: number, receivedAtMs: number) =>
+      event(n, {
+        type: "UPDATE_DOWNLOADED",
+        id: madeId(madeMs, n),
+        received_at_ms: receivedAtMs,
+      });
+    const first = download(1, 2_000_000_000_000, T);
+    const again = download(2, 2_000_000_060_000, T + HOUR);
+    await api.recordEvent(first);
+    await api.recordEvent(again);
+    await expect(
+      db.findOne("bundle_events", { id: again.id }),
+    ).resolves.toMatchObject({ metadata: { late: true }, bundle_ref: [] });
+    await expect(
+      db.findOne("bundle_event_heads", { install_id: "install-1" }),
+    ).resolves.toMatchObject({ id: first.id });
+    await expect(lifetime("release-2")).resolves.toEqual({
+      downloads: 1,
+      launches: 0,
+      crashes: 0,
+    });
+
+    const applied = event(3, {
+      id: madeId(2_000_000_120_000, 3),
+      received_at_ms: T + 2 * HOUR,
+    });
+    await api.recordEvent(applied);
+    const row = await db.findOne("bundle_events", { id: applied.id });
+    expect(row?.metadata).not.toHaveProperty("implied_download");
+    await expect(lifetime("release-2")).resolves.toEqual({
+      downloads: 1,
+      launches: 1,
+      crashes: 0,
+    });
+    // One download hour: the first report's.
+    await expect(outcomes("UPDATE_DOWNLOADED", "to:bundle-2")).resolves.toEqual(
+      [expect.objectContaining({ events: 1 })],
+    );
   });
 
   it("launches a release with no implied download when it runs the native build's built-in bundle, and keeps a native build change", async () => {
