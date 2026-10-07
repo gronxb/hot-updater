@@ -106,10 +106,13 @@ no launch. A first report, a Release change of the running bundle, and a move
 under no Release are not launches.
 
 A reload can deliver one runtime's report after the next runtime's. A download
-or apply whose target the head already runs, and an `UNCHANGED` of the bundle
-an apply head left that the client made before that apply (by its UUIDv7), are
-late: a download or apply is stored with `metadata.late` and moves and counts
-nothing; such an `UNCHANGED` keeps no row. A launch or crash whose head shows
+or apply whose target the head already runs, a download that repeats the
+head's pending one (same source and target), and an `UNCHANGED` the client made
+(by its UUIDv7) before the head's report, even after a later report replaced
+the apply it preceded, are late: a download or apply is stored with
+`metadata.late` and moves and counts nothing; such an `UNCHANGED` keeps no row.
+Report IDs are made on the device, so a device whose clock jumps back has its
+launch reports judged late until its clock passes its latest report. A launch or crash whose head shows
 neither the target's download nor the target running counts that download too,
 with `metadata.implied_download`, unless the target is the native build's
 built-in bundle. It counts in the release's counters and, in the hour of that

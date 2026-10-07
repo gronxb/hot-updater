@@ -231,7 +231,7 @@ const eventNote = (
   >,
 ): string | null => {
   if (event.late) {
-    return "It arrived after the installation already ran this bundle, so it counted nothing.";
+    return "Counted nothing: the installation had already downloaded or run this bundle.";
   }
   if (event.impliedDownload) {
     return "Its download report never arrived; the download counted with it.";
