@@ -5,6 +5,8 @@ import { describe, expect, it } from "vitest";
 import {
   conditionalValueFor,
   conditionNameError,
+  fromLocalDateTimeInput,
+  toLocalDateTimeInput,
   createRule,
   describeRule,
   isSameTemplate,
@@ -181,6 +183,24 @@ describe("rule text", () => {
       "10–20% of installs",
       "Fingerprint is abcdef01",
     ]);
+    const shown = (iso: string) =>
+      new Intl.DateTimeFormat(undefined, {
+        dateStyle: "medium",
+        timeStyle: "short",
+      }).format(new Date(iso));
+    const from = "2026-10-08T10:00:00.000Z";
+    const to = "2026-10-09T10:00:00.000Z";
+    expect(
+      [
+        { type: "dateTime", from, to },
+        { type: "dateTime", from },
+        { type: "dateTime", to },
+      ].map((rule) => describeRule(rule as never)),
+    ).toEqual([
+      `${shown(from)} – ${shown(to)}`,
+      `From ${shown(from)}`,
+      `Until ${shown(to)}`,
+    ]);
   });
 });
 
@@ -213,6 +233,28 @@ describe("inline checks", () => {
       "0 to 100",
     );
     expect(ruleError({ ...percent, to: 10.05 } as never)).toContain("0.1");
+
+    const dateTime = createRule("dateTime") as { from?: string };
+    expect(Date.parse(dateTime.from!)).toBeGreaterThan(Date.now());
+    expect(new Date(dateTime.from!).getMinutes()).toBe(0);
+    expect(ruleError(dateTime as never)).toBeNull();
+    expect(ruleError({ type: "dateTime" })).toContain("start, an end");
+    expect(
+      ruleError({
+        type: "dateTime",
+        from: "2026-10-09T00:00:00.000Z",
+        to: "2026-10-08T00:00:00.000Z",
+      }),
+    ).toBe("End after the start.");
+  });
+
+  it("shows instants in the viewer's time zone and stores them in UTC", () => {
+    const instant = "2026-10-08T10:30:00.000Z";
+    const local = toLocalDateTimeInput(instant);
+    expect(local).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/u);
+    expect(fromLocalDateTimeInput(local)).toBe(instant);
+    expect(toLocalDateTimeInput(undefined)).toBe("");
+    expect(fromLocalDateTimeInput("")).toBeUndefined();
   });
 
   it("splits lists on commas and lines", () => {

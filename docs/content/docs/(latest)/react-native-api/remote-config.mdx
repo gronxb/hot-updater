@@ -47,23 +47,34 @@ suggest; any other key is accepted too.
 
 ## Read values
 
-Every read on `hotUpdater.remoteConfig` is synchronous:
+Every read on `hotUpdater.remoteConfig` is synchronous, and returns the first
+of these that has the key: the active remote value, then the in-app default,
+then `null`.
 
 | Method | Returns |
 | --- | --- |
-| `getValue(key)` | A `RemoteConfigValue` with `asString()`, `asNumber()`, `asBoolean()`, and `getSource()`. |
-| `getString(key)` | `getValue(key).asString()` |
-| `getNumber(key)` | `getValue(key).asNumber()` |
-| `getBoolean(key)` | `getValue(key).asBoolean()` |
+| `getValue(key)` | A `RemoteConfigValue` with `asString()`, `asNumber()`, `asBoolean()`, and `getSource()`, or `null`. |
+| `getString(key)` | `getValue(key)?.asString() ?? null` |
+| `getNumber(key)` | `getValue(key)?.asNumber() ?? null` |
+| `getBoolean(key)` | `getValue(key)?.asBoolean() ?? null` |
 | `getAll()` | Every key that `defaults` or the active values have, as `RemoteConfigValue`s. |
 
-A value comes from the first of these that has its key:
+`getSource()` is `"remote"` for a value the app activated and `"default"` for
+one from `defaults`. `false`, `0`, and `""` are values: a read returns them as
+they are, never `null`.
 
-| `getSource()` | Where the value comes from |
-| --- | --- |
-| `"remote"` | The values the app activated, fetched from the server. |
-| `"default"` | `defaults`. |
-| `"static"` | Neither: `asString()` is `""`, `asNumber()` is `0`, and `asBoolean()` is `false`. |
+A key `defaults` declares always has a value, so its reads are typed without
+`null`; any other key is typed `T | null`. Give that one a fallback where you
+read it:
+
+```ts
+const config = hotUpdater.remoteConfig;
+config.getNumber("max_items"); // number: max_items is in defaults
+config.getString("promo_code") ?? ""; // string | null without the fallback
+```
+
+When a later version leaves a key to the app, its reads return the default
+again, or `null` without one.
 
 Values travel as text. `asNumber()` is `Number(text)`, or `0`
 when that is not a number. `asBoolean()` is `true` for `1`, `true`, `t`, `yes`,

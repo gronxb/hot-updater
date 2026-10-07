@@ -114,9 +114,17 @@ const parsePreview = (
   ) {
     throw new TypeError('platform must be "ios" or "android".');
   }
+  const now = field(raw, "now");
+  if (now !== undefined && (typeof now !== "number" || !Number.isFinite(now))) {
+    throw new TypeError("now must be a time in milliseconds since the epoch.");
+  }
   return {
     template: field(input, "template"),
-    context: context as RemoteConfigEvaluationContext,
+    // Without a time, the preview evaluates at the server's clock, as devices do.
+    context: {
+      ...(context as RemoteConfigEvaluationContext),
+      now: now ?? Date.now(),
+    },
   };
 };
 

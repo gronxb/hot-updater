@@ -30,7 +30,10 @@ import {
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useRemoteConfigPreviewQuery } from "@/lib/remote-config-api";
-import type { RemoteConfigTemplate } from "@/lib/remote-config-draft";
+import {
+  fromLocalDateTimeInput,
+  type RemoteConfigTemplate,
+} from "@/lib/remote-config-draft";
 
 interface PreviewDevice {
   readonly platform: "ios" | "android";
@@ -38,6 +41,8 @@ interface PreviewDevice {
   readonly appVersion: string;
   readonly cohort: string;
   readonly fingerprintHash: string;
+  /** A `datetime-local` value in the viewer's time zone; empty for now. */
+  readonly at: string;
 }
 
 const INITIAL_DEVICE: PreviewDevice = {
@@ -46,6 +51,7 @@ const INITIAL_DEVICE: PreviewDevice = {
   appVersion: "1.0.0",
   cohort: "1",
   fingerprintHash: "",
+  at: "",
 };
 
 /** The device after typing pauses, so each keystroke does not ask the server. */
@@ -70,9 +76,15 @@ export function PreviewCard({
   const id = useId();
   const [device, setDevice] = useState(INITIAL_DEVICE);
   const settled = useSettled(device);
+  const { at, ...deviceContext } = settled;
+  const atInstant = fromLocalDateTimeInput(at);
   const preview = useRemoteConfigPreviewQuery({
     template,
-    context: { ...settled },
+    context: {
+      ...deviceContext,
+      // Without a time, the server evaluates at its own clock.
+      ...(atInstant === undefined ? {} : { now: Date.parse(atInstant) }),
+    },
   });
   const keys = Object.keys(template.parameters);
   const set = (field: keyof PreviewDevice, value: string) =>
@@ -91,7 +103,7 @@ export function PreviewCard({
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-4 p-4 sm:p-6">
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           <Field>
             <FieldLabel htmlFor={`${id}-platform`}>Platform</FieldLabel>
             <Select
@@ -150,6 +162,16 @@ export function PreviewCard({
               />
             </Field>
           ))}
+          <Field>
+            <FieldLabel htmlFor={`${id}-at`}>At</FieldLabel>
+            <Input
+              className="min-h-11 text-base tabular-nums sm:min-h-9 sm:text-xs"
+              id={`${id}-at`}
+              onChange={(event) => set("at", event.target.value)}
+              type="datetime-local"
+              value={device.at}
+            />
+          </Field>
         </div>
         {keys.length === 0 ? (
           <Empty className="border py-8">

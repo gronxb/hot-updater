@@ -36,12 +36,14 @@ import {
   conditionNameError,
   createRule,
   createSeed,
+  fromLocalDateTimeInput,
   RULE_TYPE_LABELS,
   type RemoteConfigCondition,
   type RemoteConfigRule,
   type RemoteConfigRuleType,
   ruleError,
   splitList,
+  toLocalDateTimeInput,
 } from "@/lib/remote-config-draft";
 
 const RULE_TYPES = Object.keys(RULE_TYPE_LABELS) as RemoteConfigRuleType[];
@@ -259,6 +261,37 @@ function RuleFields({
           values={rule.hashes}
         />
       );
+    case "dateTime": {
+      const change = (field: "from" | "to", value: string) => {
+        const { [field]: _previous, ...rest } = rule;
+        const instant = fromLocalDateTimeInput(value);
+        onChange(instant === undefined ? rest : { ...rest, [field]: instant });
+      };
+      return (
+        <div className="grid gap-2 sm:grid-cols-2">
+          <Field>
+            <FieldLabel htmlFor={`${id}-starts`}>Starts</FieldLabel>
+            <Input
+              className="min-h-11 tabular-nums sm:min-h-9"
+              id={`${id}-starts`}
+              onChange={(event) => change("from", event.target.value)}
+              type="datetime-local"
+              value={toLocalDateTimeInput(rule.from)}
+            />
+          </Field>
+          <Field>
+            <FieldLabel htmlFor={`${id}-ends`}>Ends</FieldLabel>
+            <Input
+              className="min-h-11 tabular-nums sm:min-h-9"
+              id={`${id}-ends`}
+              onChange={(event) => change("to", event.target.value)}
+              type="datetime-local"
+              value={toLocalDateTimeInput(rule.to)}
+            />
+          </Field>
+        </div>
+      );
+    }
   }
 }
 
@@ -271,6 +304,7 @@ const RULE_HINTS: Readonly<Record<RemoteConfigRuleType, string>> = {
     "Installs whose numeric cohort lands in this share. Rules with one seed split the same order, so 0–10 and 10–20 never overlap.",
   cohort: "Numeric cohorts from 1 to 1000, or custom cohort names.",
   fingerprint: "Native builds with any of these fingerprints.",
+  dateTime: `While the server's clock is in this range, in your time zone (${Intl.DateTimeFormat().resolvedOptions().timeZone}). Leave an end empty to keep it open. A device gets the change at its next fetch.`,
 };
 
 /** Adds or edits a condition: a name and the rules a device must all match. */

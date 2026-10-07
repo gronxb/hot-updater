@@ -25,6 +25,23 @@ describe("Remote Config routes", () => {
     ).rejects.toBe(fault);
   });
 
+  it("leaves the clock to the server: a device cannot send the time", async () => {
+    let seen: unknown;
+    const endpoint = createRemoteConfigEndpoints({
+      resolve: async (context) => {
+        seen = context;
+        return { version: 0, values: {} };
+      },
+    } as RemoteConfigApi).find(({ path }) => path === "/remote-config")!;
+    await endpoint.handler(
+      new Request(
+        "https://updates.example.com/remote-config?platform=ios&now=0",
+      ),
+      {},
+    );
+    expect(seen).not.toHaveProperty("now");
+  });
+
   it("answers a device context it cannot evaluate with 400", async () => {
     const endpoint = createRemoteConfigEndpoints({} as RemoteConfigApi).find(
       ({ path }) => path === "/remote-config",

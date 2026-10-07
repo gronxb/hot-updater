@@ -184,6 +184,45 @@ describe("previewRemoteConfigRpc", () => {
       }),
     ).rejects.toThrow("platform");
   });
+
+  it("evaluates a date-time rule at the time asked, or at the server's clock", async () => {
+    mocks.prepare.mockResolvedValue({ runtime: localRuntime() });
+    const scheduled = {
+      conditions: [
+        {
+          name: "Launch",
+          rules: [{ type: "dateTime", from: "2026-10-08T10:00:00Z" }],
+        },
+      ],
+      parameters: {
+        banner: {
+          valueType: "STRING",
+          defaultValue: { value: "soon" },
+          conditionalValues: { Launch: { value: "live" } },
+        },
+      },
+    };
+    const at = async (now?: number) =>
+      (
+        (await previewRemoteConfigRpc({
+          data: {
+            template: scheduled,
+            context: now === undefined ? {} : { now },
+          },
+        })) as { parameters: Record<string, { value: string | null }> }
+      ).parameters.banner!.value;
+
+    expect(await at(Date.parse("2026-10-08T09:00:00Z"))).toBe("soon");
+    expect(await at(Date.parse("2026-10-08T10:00:00Z"))).toBe("live");
+    expect(await at()).toBe(
+      Date.now() >= Date.parse("2026-10-08T10:00:00Z") ? "live" : "soon",
+    );
+    await expect(
+      previewRemoteConfigRpc({
+        data: { template: scheduled, context: { now: "today" } },
+      }),
+    ).rejects.toThrow("now");
+  });
 });
 
 describe("Remote Config RPC access", () => {

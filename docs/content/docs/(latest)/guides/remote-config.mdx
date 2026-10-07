@@ -90,9 +90,9 @@ hotUpdater.remoteConfig
 ```
 
 Reads are synchronous. As soon as `init` returns,
-`hotUpdater.remoteConfig.getString(...)` returns the values the app activated
-last, stored on the device, and before any, the defaults. Its keys come from
-`defaults`:
+`hotUpdater.remoteConfig.getString(...)` returns the value the app activated
+last, stored on the device, else the key's default, else `null`. Keys declared
+in `defaults` read without `null`:
 
 ```tsx
 import { hotUpdater } from "./hotUpdater";
@@ -148,6 +148,7 @@ A rule tests one thing:
 | Percentage of installs | Its numeric [cohort](/docs/guides/rollout-cohorts) falls in a range, such as 0–10%, of the 1,000 cohorts shuffled by the rule's seed. |
 | Cohort | Its cohort is one of the numbers or custom cohort names. |
 | Fingerprint | Its native build's fingerprint is one of the hashes. |
+| Date and time | The server's clock is in a range, such as from Oct 8, 10:00 to Oct 9, 10:00, either end open. |
 
 Percentages build on cohorts, so they are stable per installation and need no
 user ID. Rules with the same seed pick from the same order: `0–10%` and
@@ -171,6 +172,18 @@ a Cohort rule, never a percentage, as in rollouts.
 To undo a step, narrow the range or roll back to an earlier version. Narrowing
 removes the installations past the new end of the range, since the order
 never changes.
+
+### Schedule a value
+
+A **Date and time** rule switches a value without anyone publishing at that
+moment: publish a condition from the start time, or until the end time, ahead
+of it. The Console takes times in your time zone and stores them in UTC, and
+**Preview** takes a time to check the schedule.
+
+The server evaluates the rule with its own clock when a device fetches, so a
+device gets the change at its first fetch after the start. With the default
+12-hour `minimumFetchIntervalMs`, that can be up to 12 hours later; lower it
+for a value that must switch close to on time.
 
 ## Publish and roll back
 
@@ -260,8 +273,9 @@ devices' values never reach the app.
   [`subscribe`](/docs/react-native-api/remote-config#re-render-on-activation)
   reports activations, not server changes.
 - **A/B tests and personalization:** conditions match a device's platform,
-  channel, app version, cohort, share of installs, and fingerprint; there are
-  no user properties, countries, or languages.
+  channel, app version, cohort, share of installs, and fingerprint, and the
+  server's date and time; there are no user properties, countries, or
+  languages.
 
 Remote Config values travel to every matching device, so keep secrets such as
 API keys out of them.

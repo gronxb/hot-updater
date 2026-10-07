@@ -5,9 +5,13 @@ import {
   setupClientPlugin,
   setupClientPlugins,
 } from "@hot-updater/test-utils/react-native";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, expectTypeOf, it } from "vitest";
 
-import { remoteConfig, type RemoteConfigOptions } from "./index";
+import {
+  remoteConfig,
+  type RemoteConfigOptions,
+  type RemoteConfigValue,
+} from "./index";
 
 const HOUR_MS = 3_600_000;
 
@@ -67,17 +71,89 @@ describe("remoteConfig() client plugin", () => {
     expect(config.getNumber("max_items")).toBe(20);
     expect(config.getBoolean("dark_mode")).toBe(true);
     expect(config.getValue("welcome").getSource()).toBe("default");
-
-    const missing = config.getValue("unknown");
-    expect(missing.getSource()).toBe("static");
-    expect([
-      missing.asString(),
-      missing.asNumber(),
-      missing.asBoolean(),
-    ]).toEqual(["", 0, false]);
     expect(config.lastFetchStatus).toBe("no-fetch-yet");
     expect(config.fetchTimeMillis).toBe(-1);
     expect(config.activeVersion).toBe(0);
+  });
+
+  it("reads null for a key neither the active values nor the defaults have", () => {
+    const { config } = launch({ defaults: { welcome: "Hi" } });
+    expect(config.getValue("unknown")).toBeNull();
+    expect(config.getString("unknown")).toBeNull();
+    expect(config.getNumber("unknown")).toBeNull();
+    expect(config.getBoolean("unknown")).toBeNull();
+  });
+
+  it("reads the active remote value over the default, and the default again once the template drops the key", async () => {
+    const { config } = launch({
+      defaults: { welcome: "Hi" },
+      minimumFetchIntervalMs: 0,
+    });
+    responses.push(() =>
+      values({ version: 1, values: { welcome: "Hey", promo: "50%" } }),
+    );
+    await config.fetch();
+    await config.activate();
+    expect(config.getString("welcome")).toBe("Hey");
+    expect(config.getValue("welcome").getSource()).toBe("remote");
+    expect(config.getString("promo")).toBe("50%");
+
+    // Version 2 leaves both keys to the app.
+    responses.push(() => values({ version: 2, values: {} }));
+    await config.fetch();
+    await config.activate();
+    expect(config.getString("welcome")).toBe("Hi");
+    expect(config.getValue("welcome").getSource()).toBe("default");
+    expect(config.getString("promo")).toBeNull();
+  });
+
+  it("keeps false, 0, and empty text as values, from the defaults and from the server", async () => {
+    const { config } = launch({
+      defaults: { flag: false, count: 0, label: "" },
+      minimumFetchIntervalMs: 0,
+    });
+    expect([
+      config.getBoolean("flag"),
+      config.getNumber("count"),
+      config.getString("label"),
+    ]).toEqual([false, 0, ""]);
+    expect(config.getValue("label").getSource()).toBe("default");
+
+    responses.push(() =>
+      values({
+        version: 1,
+        values: { remoteFlag: "false", remoteCount: "0", remoteLabel: "" },
+      }),
+    );
+    await config.fetch();
+    await config.activate();
+    expect([
+      config.getBoolean("remoteFlag"),
+      config.getNumber("remoteCount"),
+      config.getString("remoteLabel"),
+    ]).toEqual([false, 0, ""]);
+    expect(config.getValue("remoteLabel")?.getSource()).toBe("remote");
+  });
+
+  it("types a defaults key's reads as non-null, and any other key's as nullable", () => {
+    const { config } = launch({
+      defaults: { welcome: "Hi", count: 1, on: true },
+    });
+    expectTypeOf(config.getString("welcome")).toEqualTypeOf<string>();
+    expectTypeOf(config.getNumber("count")).toEqualTypeOf<number>();
+    expectTypeOf(config.getBoolean("on")).toEqualTypeOf<boolean>();
+    expectTypeOf(config.getString("other")).toEqualTypeOf<string | null>();
+    expectTypeOf(
+      config.getValue("other"),
+    ).toEqualTypeOf<RemoteConfigValue | null>();
+
+    const key: string = "welcome";
+    expectTypeOf(config.getString(key)).toEqualTypeOf<string | null>();
+
+    // remoteConfig() without defaults declares no key.
+    const bare = setupClientPlugin(remoteConfig(), { storage }).api;
+    expectTypeOf(bare.getString("welcome")).toEqualTypeOf<string | null>();
+    expect(bare.getString("welcome")).toBeNull();
   });
 
   it("fetches from the init baseURL with its headers and the device's context", async () => {
@@ -292,8 +368,8 @@ describe("remoteConfig() client plugin", () => {
 
   it("reads keys that Object.prototype also has as the template's or the defaults'", async () => {
     const { config } = launch({ defaults: { constructor: "in-app" } });
-    expect(config.getValue("toString").getSource()).toBe("static");
-    expect(config.getBoolean("valueOf")).toBe(false);
+    expect(config.getValue("toString")).toBeNull();
+    expect(config.getBoolean("valueOf")).toBeNull();
     expect(config.getValue("constructor").getSource()).toBe("default");
 
     responses.push(() =>
@@ -306,7 +382,7 @@ describe("remoteConfig() client plugin", () => {
     await config.activate();
     expect(config.getString("constructor")).toBe("remote");
     expect(config.getBoolean("hasOwnProperty")).toBe(true);
-    expect(config.getValue("toString").getSource()).toBe("static");
+    expect(config.getValue("toString")).toBeNull();
   });
 
   it("ignores stored values it cannot read", () => {
