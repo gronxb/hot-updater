@@ -1,6 +1,8 @@
+import { DatabaseConstraintError } from "@hot-updater/plugin-core";
 import { createPluginTestHarness } from "@hot-updater/test-utils";
 import { describe, expect, it } from "vitest";
 
+import { createRemoteConfigApi, RemoteConfigInputError } from "./api";
 import { remoteConfig } from "./index";
 import type { RemoteConfigTemplate } from "./template";
 import { RemoteConfigValidationError } from "./template";
@@ -111,7 +113,7 @@ describe("remoteConfig() API", () => {
     ).rejects.toBeInstanceOf(RemoteConfigValidationError);
     await expect(
       api.publish({ template: {}, baseVersion: -1 }),
-    ).rejects.toThrow("baseVersion");
+    ).rejects.toThrow(RemoteConfigInputError);
     expect((await api.getActive()).version).toBe(0);
   });
 
@@ -156,7 +158,9 @@ describe("remoteConfig() API", () => {
       template: greeting("v3"),
     });
     expect(await api.getVersion(42)).toBeNull();
-    await expect(api.listVersions({ limit: 0 })).rejects.toThrow("limit");
+    await expect(api.listVersions({ limit: 0 })).rejects.toThrow(
+      RemoteConfigInputError,
+    );
   });
 
   it("answers a device's fetch with one keyed read, then from memory for five seconds", async () => {
@@ -181,5 +185,59 @@ describe("remoteConfig() API", () => {
     expect((await api.resolve({ platform: "ios" })).values).toEqual({
       greeting: "Yo from iOS",
     });
+  });
+
+  it("never caches a template a fetch read before a publish on this server", async () => {
+    const { db } = await createPluginTestHarness(remoteConfig());
+    let release: (() => void) | null = null;
+    // Holds the fetch's read of the active row until the test releases it.
+    const held = new Proxy(db, {
+      get: (target, key) =>
+        key === "findOne"
+          ? async (...args: Parameters<typeof db.findOne>) => {
+              const row = await target.findOne(...args);
+              if (release === null) {
+                await new Promise<void>((resolve) => {
+                  release = resolve;
+                });
+              }
+              return row;
+            }
+          : Reflect.get(target, key),
+    });
+    const api = createRemoteConfigApi({ db: held, now: () => 1_000 });
+    release = () => {};
+    await api.publish({ template: greeting("Old"), baseVersion: 0 });
+    release = null;
+
+    const stale = api.resolve({ platform: "ios" });
+    await api.publish({ template: greeting("New"), baseVersion: 1 });
+    release!();
+    expect((await stale).values).toEqual({ greeting: "Old from iOS" });
+
+    release = () => {};
+    expect((await api.resolve({ platform: "ios" })).values).toEqual({
+      greeting: "New from iOS",
+    });
+  });
+
+  it("reports a conflict only for another publish's rows, and rethrows other constraint errors", async () => {
+    const failing = (reason: "exists" | "too_large") =>
+      createRemoteConfigApi({
+        db: {
+          findOne: async () => null,
+          transaction: async () => {
+            throw new DatabaseConstraintError(reason, "remote_config_versions");
+          },
+        } as never,
+        now: () => 1_000,
+      });
+
+    await expect(
+      failing("exists").publish({ template: {}, baseVersion: 0 }),
+    ).resolves.toEqual({ status: "conflict", currentVersion: 0 });
+    await expect(
+      failing("too_large").publish({ template: {}, baseVersion: 0 }),
+    ).rejects.toMatchObject({ reason: "too_large" });
   });
 });

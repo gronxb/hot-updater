@@ -1,4 +1,5 @@
 import {
+  DatabaseCursorError,
   isDatabaseBusyError,
   type PluginEndpoint,
 } from "@hot-updater/plugin-core";
@@ -8,7 +9,7 @@ import {
   REMOTE_CONFIG_QUERY,
   type RemoteConfigDeviceContext,
 } from "../shared/wire";
-import type { RemoteConfigApi } from "./api";
+import { type RemoteConfigApi, RemoteConfigInputError } from "./api";
 import {
   type RemoteConfigEvaluationContext,
   RemoteConfigValidationError,
@@ -39,7 +40,11 @@ const run = async (operation: () => Promise<Response>): Promise<Response> => {
     if (error instanceof RemoteConfigValidationError) {
       return json({ error: error.message, issues: error.issues }, 400);
     }
-    if (error instanceof BadRequestError || error instanceof TypeError) {
+    if (
+      error instanceof BadRequestError ||
+      error instanceof RemoteConfigInputError ||
+      error instanceof DatabaseCursorError
+    ) {
       return json({ error: error.message }, 400);
     }
     if (isDatabaseBusyError(error)) {

@@ -29,6 +29,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
+  conditionalValueFor,
   describeRule,
   parameterKeyError,
   type RemoteConfigCondition,
@@ -133,6 +134,8 @@ function ParameterForm({
     parameter?.valueType ?? "STRING",
   );
   const [description, setDescription] = useState(parameter?.description ?? "");
+  // Saved trimmed, as the server stores it.
+  const descriptionTooLong = description.trim().length > 256;
   const [defaultValue, setDefaultValue] = useState<RemoteConfigParameterValue>(
     parameter?.defaultValue ?? { value: "" },
   );
@@ -144,14 +147,14 @@ function ParameterForm({
 
   const keyError = parameterKeyError(key.trim(), takenKeys);
   const valued = conditions.filter(
-    ({ name }) => conditionalValues[name] !== undefined,
+    ({ name }) => conditionalValueFor(conditionalValues, name) !== undefined,
   );
   const unvalued = conditions.filter(
-    ({ name }) => conditionalValues[name] === undefined,
+    ({ name }) => conditionalValueFor(conditionalValues, name) === undefined,
   );
   const invalid =
     keyError !== null ||
-    description.length > 256 ||
+    descriptionTooLong ||
     [defaultValue, ...Object.values(conditionalValues)].some(
       (value) => parameterValueError(valueType, value) !== null,
     );
@@ -180,9 +183,10 @@ function ParameterForm({
     setSubmitted(true);
     if (invalid) return;
     const kept = Object.fromEntries(
-      conditions
-        .filter(({ name }) => conditionalValues[name] !== undefined)
-        .map(({ name }) => [name, conditionalValues[name]!]),
+      valued.map(({ name }) => [
+        name,
+        conditionalValueFor(conditionalValues, name)!,
+      ]),
     );
     onSave(key.trim(), {
       valueType,
@@ -253,7 +257,7 @@ function ParameterForm({
               </Select>
             </Field>
           </div>
-          <Field data-invalid={description.length > 256 || undefined}>
+          <Field data-invalid={descriptionTooLong || undefined}>
             <FieldLabel htmlFor={`${id}-description`}>Description</FieldLabel>
             <Input
               autoComplete="off"
@@ -264,7 +268,7 @@ function ParameterForm({
               value={description}
             />
             <FieldError>
-              {description.length > 256 ? "Use 256 characters or fewer." : null}
+              {descriptionTooLong ? "Use 256 characters or fewer." : null}
             </FieldError>
           </Field>
           <ValueInput
@@ -324,7 +328,9 @@ function ParameterForm({
                         })
                       }
                       showErrors={submitted}
-                      value={conditionalValues[condition.name]!}
+                      value={
+                        conditionalValueFor(conditionalValues, condition.name)!
+                      }
                       valueType={valueType}
                     />
                   </li>

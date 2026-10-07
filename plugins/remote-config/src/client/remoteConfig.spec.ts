@@ -283,6 +283,24 @@ describe("remoteConfig() client plugin", () => {
     );
   });
 
+  it("reads keys that Object.prototype also has as the template's or the defaults'", async () => {
+    const { config } = launch({ defaults: { constructor: "in-app" } });
+    expect(config.getValue("toString").getSource()).toBe("static");
+    expect(config.getBoolean("valueOf")).toBe(false);
+    expect(config.getValue("constructor").getSource()).toBe("default");
+
+    responses.push(() =>
+      values({
+        version: 1,
+        values: { constructor: "remote", hasOwnProperty: "yes" },
+      }),
+    );
+    await config.fetchAndActivate();
+    expect(config.getString("constructor")).toBe("remote");
+    expect(config.getBoolean("hasOwnProperty")).toBe(true);
+    expect(config.getValue("toString").getSource()).toBe("static");
+  });
+
   it("ignores stored values it cannot read", () => {
     storage.set("remoteConfig", "active", "{not json");
     storage.set("remoteConfig", "fetched", JSON.stringify({ version: 1 }));

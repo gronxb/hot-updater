@@ -3,6 +3,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  conditionalValueFor,
   conditionNameError,
   createRule,
   describeRule,
@@ -127,6 +128,35 @@ describe("draft edits", () => {
     });
     expect(isSameTemplate(template, { ...template })).toBe(true);
     expect(isSameTemplate(template, draft)).toBe(false);
+  });
+
+  it("treats names Object.prototype also has as the template's own", () => {
+    const named = upsertCondition(template, null, {
+      name: "constructor",
+      rules: [{ type: "platform", platforms: ["android"] }],
+    });
+    expect(parametersUsing(named, "constructor")).toEqual([]);
+    expect(
+      conditionalValueFor(
+        template.parameters.welcome!.conditionalValues,
+        "toString",
+      ),
+    ).toBeUndefined();
+
+    const draft = upsertParameter(
+      removeParameter(named, "limit"),
+      null,
+      "toString",
+      { valueType: "STRING", defaultValue: { value: "" } },
+    );
+    expect(summarizeChanges(named, draft).parameters).toEqual({
+      added: ["toString"],
+      changed: [],
+      removed: ["limit"],
+    });
+    expect(
+      summarizeChanges(draft, removeParameter(draft, "toString")).parameters,
+    ).toEqual({ added: [], changed: [], removed: ["toString"] });
   });
 });
 

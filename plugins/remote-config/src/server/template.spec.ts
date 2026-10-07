@@ -139,6 +139,71 @@ describe("validateRemoteConfigTemplate", () => {
     ).toEqual(["conditions[0].rules[0]", "conditions[1].rules[0].channel"]);
   });
 
+  it("keeps keys and condition names that Object.prototype also has", () => {
+    // Parsed, as a request body is, so `__proto__` is an own key.
+    const parsed = JSON.parse(`{
+      "conditions": [
+        { "name": "constructor", "rules": [{ "type": "platform", "platforms": ["ios"] }] },
+        { "name": "__proto__", "rules": [{ "type": "platform", "platforms": ["ios"] }] }
+      ],
+      "parameters": {
+        "__proto__": {
+          "valueType": "STRING",
+          "defaultValue": { "value": "own" },
+          "conditionalValues": { "__proto__": { "value": "own on iOS" } }
+        },
+        "toString": { "valueType": "STRING", "defaultValue": { "value": "text" } }
+      }
+    }`);
+    const valid = validateRemoteConfigTemplate(parsed);
+    expect(Object.keys(valid.parameters)).toEqual(["__proto__", "toString"]);
+    expect(Object.getPrototypeOf(valid.parameters)).toBe(Object.prototype);
+    expect(JSON.parse(JSON.stringify(valid))).toEqual(parsed);
+    // `constructor` matches first, but neither parameter has a value for it.
+    expect(evaluateRemoteConfig(valid, { platform: "ios" })).toEqual(
+      JSON.parse(`{
+        "__proto__": { "value": "own on iOS", "condition": "__proto__" },
+        "toString": { "value": "text", "condition": null }
+      }`),
+    );
+  });
+
+  it("reports a rule type that Object.prototype has as unknown", () => {
+    expect(
+      issuesOf({
+        conditions: [{ name: "Odd", rules: [{ type: "constructor" }] }],
+      }),
+    ).toEqual([
+      {
+        path: "conditions[0].rules[0].type",
+        message:
+          "must be platform, channel, appVersion, cohort, percent, or fingerprint.",
+      },
+    ]);
+  });
+
+  it("stores a parameter's description trimmed, and drops a blank one", () => {
+    const parameters = validateRemoteConfigTemplate({
+      parameters: {
+        a: {
+          valueType: "STRING",
+          defaultValue: { value: "" },
+          description: `  ${"d".repeat(256)}\n`,
+        },
+        b: {
+          valueType: "STRING",
+          defaultValue: { value: "" },
+          description: "   ",
+        },
+      },
+    }).parameters;
+    expect(parameters.a!.description).toBe("d".repeat(256));
+    expect(parameters.b).toEqual({
+      valueType: "STRING",
+      defaultValue: { value: "" },
+    });
+  });
+
   it("caps a template's JSON so a device can store its values", () => {
     const issues = issuesOf({
       parameters: {

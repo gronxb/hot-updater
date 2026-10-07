@@ -7,6 +7,7 @@ import {
 } from "@hot-updater/protocol";
 import { isValidRange } from "verkit";
 
+import { ownEntry } from "../shared/ownEntry";
 import type { RemoteConfigDeviceContext } from "../shared/wire";
 
 /**
@@ -225,7 +226,8 @@ export const validateRemoteConfigTemplate = (
     });
   }
 
-  const parameters: Record<string, RemoteConfigParameter> = {};
+  // Built from entries: assigning `__proto__` would set the prototype instead.
+  const parameters: [string, RemoteConfigParameter][] = [];
   const rawParameters = input.parameters ?? {};
   if (!isRecord(rawParameters)) {
     issue("parameters", "must be an object keyed by parameter.");
@@ -290,7 +292,7 @@ export const validateRemoteConfigTemplate = (
         return { value: value.value };
       };
       const defaultValue = readValue(raw.defaultValue, `${path}.defaultValue`);
-      const conditionalValues: Record<string, RemoteConfigParameterValue> = {};
+      const conditionalValues: [string, RemoteConfigParameterValue][] = [];
       if (raw.conditionalValues !== undefined) {
         if (!isRecord(raw.conditionalValues)) {
           issue(
@@ -307,39 +309,44 @@ export const validateRemoteConfigTemplate = (
               continue;
             }
             const read = readValue(value, valuePath);
-            if (read !== null) conditionalValues[conditionName] = read;
+            if (read !== null) conditionalValues.push([conditionName, read]);
           }
         }
       }
       let description: string | undefined;
-      if (raw.description !== undefined && raw.description !== "") {
-        if (
-          typeof raw.description !== "string" ||
-          raw.description.length > MAX_DESCRIPTION_LENGTH
-        ) {
+      if (raw.description !== undefined) {
+        const text =
+          typeof raw.description === "string" ? raw.description.trim() : null;
+        if (text === null || text.length > MAX_DESCRIPTION_LENGTH) {
           issue(
             `${path}.description`,
             `must be text of up to ${MAX_DESCRIPTION_LENGTH} characters.`,
           );
-        } else {
-          description = raw.description;
+        } else if (text.length > 0) {
+          description = text;
         }
       }
       if (defaultValue !== null) {
-        parameters[key] = {
-          valueType: type,
-          defaultValue,
-          ...(Object.keys(conditionalValues).length === 0
-            ? {}
-            : { conditionalValues }),
-          ...(description === undefined ? {} : { description }),
-        };
+        parameters.push([
+          key,
+          {
+            valueType: type,
+            defaultValue,
+            ...(conditionalValues.length === 0
+              ? {}
+              : { conditionalValues: Object.fromEntries(conditionalValues) }),
+            ...(description === undefined ? {} : { description }),
+          },
+        ]);
       }
     }
   }
 
   if (issues.length > 0) throw new RemoteConfigValidationError(issues);
-  const template: RemoteConfigTemplate = { conditions, parameters };
+  const template: RemoteConfigTemplate = {
+    conditions,
+    parameters: Object.fromEntries(parameters),
+  };
   const length = JSON.stringify(template).length;
   if (length > REMOTE_CONFIG_MAX_TEMPLATE_LENGTH) {
     throw new RemoteConfigValidationError([
@@ -404,7 +411,7 @@ const validateRules = (
       return;
     }
     const type = raw.type as RemoteConfigRuleType;
-    const fields = RULE_FIELDS[type];
+    const fields = ownEntry(RULE_FIELDS, type);
     if (fields === undefined) {
       issue(
         `${rulePath}.type`,
@@ -584,21 +591,26 @@ export const evaluateRemoteConfig = (
   const matched = template.conditions
     .filter((condition) => matchesRemoteConfigCondition(condition, context))
     .map(({ name }) => name);
-  const result: Record<string, RemoteConfigEvaluatedParameter> = {};
-  for (const [key, parameter] of Object.entries(template.parameters)) {
-    const condition = matched.find(
-      (name) => parameter.conditionalValues?.[name] !== undefined,
-    );
-    const chosen =
-      condition === undefined
-        ? parameter.defaultValue
-        : parameter.conditionalValues![condition]!;
-    result[key] = {
-      value: "value" in chosen ? chosen.value : null,
-      condition: condition ?? null,
-    };
-  }
-  return result;
+  return Object.fromEntries(
+    Object.entries(template.parameters).map(
+      ([key, parameter]): [string, RemoteConfigEvaluatedParameter] => {
+        let condition: string | null = null;
+        let chosen = parameter.defaultValue;
+        for (const name of matched) {
+          const value = ownEntry(parameter.conditionalValues, name);
+          if (value !== undefined) {
+            condition = name;
+            chosen = value;
+            break;
+          }
+        }
+        return [
+          key,
+          { value: "value" in chosen ? chosen.value : null, condition },
+        ];
+      },
+    ),
+  );
 };
 
 /** The values a device receives: each parameter's text, without in-app defaults. */
@@ -606,11 +618,10 @@ export const resolveRemoteConfigValues = (
   template: RemoteConfigTemplate,
   context: RemoteConfigEvaluationContext,
 ): Record<string, string> => {
-  const values: Record<string, string> = {};
-  for (const [key, { value }] of Object.entries(
-    evaluateRemoteConfig(template, context),
-  )) {
-    if (value !== null) values[key] = value;
-  }
-  return values;
+  return Object.fromEntries(
+    Object.entries(evaluateRemoteConfig(template, context)).flatMap(
+      ([key, { value }]): [string, string][] =>
+        value === null ? [] : [[key, value]],
+    ),
+  );
 };

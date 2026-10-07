@@ -5,13 +5,14 @@ import { markOfficial } from "./official";
 import { createRemoteConfigEndpoints } from "./routes";
 import { remoteConfigSchema } from "./schema";
 
-export type {
-  RemoteConfigActive,
-  RemoteConfigApi,
-  RemoteConfigPublishResult,
-  RemoteConfigVersion,
-  RemoteConfigVersionDetail,
-  RemoteConfigVersionsPage,
+export {
+  type RemoteConfigActive,
+  type RemoteConfigApi,
+  RemoteConfigInputError,
+  type RemoteConfigPublishResult,
+  type RemoteConfigVersion,
+  type RemoteConfigVersionDetail,
+  type RemoteConfigVersionsPage,
 } from "./api";
 export { remoteConfigSchema, type RemoteConfigSchema } from "./schema";
 export {

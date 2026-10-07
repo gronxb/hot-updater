@@ -5,6 +5,7 @@ import {
   type RemoteConfigPublishResult,
   type RemoteConfigTemplateIssue,
   RemoteConfigValidationError,
+  type RemoteConfigVersion,
   type RemoteConfigVersionDetail,
   type RemoteConfigVersionsPage,
 } from "@hot-updater/server/plugins/remote-config";
@@ -59,11 +60,26 @@ export const createLocalRemoteConfig = (
 const readBody = async (response: Response): Promise<unknown> =>
   response.json().catch(() => null);
 
+const field = (body: unknown, name: string): unknown =>
+  typeof body === "object" && body !== null
+    ? Reflect.get(body, name)
+    : undefined;
+
+/** A published version's record, as a publish or a rollback answers it. */
+const isPublishedVersion = (body: unknown): body is RemoteConfigVersion => {
+  const version = field(body, "version");
+  const updateType = field(body, "updateType");
+  return (
+    typeof version === "number" &&
+    Number.isSafeInteger(version) &&
+    version > 0 &&
+    (updateType === "PUBLISH" || updateType === "ROLLBACK") &&
+    typeof field(body, "createdAtMs") === "number"
+  );
+};
+
 const errorText = (body: unknown): string | undefined => {
-  const error =
-    typeof body === "object" && body !== null
-      ? Reflect.get(body, "error")
-      : undefined;
+  const error = field(body, "error");
   return typeof error === "string" ? error : undefined;
 };
 
@@ -111,22 +127,27 @@ export const createAdminRemoteConfig = (
     path: string,
     result: { status: number; body: unknown },
   ): ConsolePublishResult => {
-    if (result.status === 409) {
-      return {
-        status: "conflict",
-        currentVersion: Number(
-          Reflect.get(result.body as object, "currentVersion"),
-        ),
-      };
+    const currentVersion = field(result.body, "currentVersion");
+    if (
+      result.status === 409 &&
+      typeof currentVersion === "number" &&
+      Number.isSafeInteger(currentVersion)
+    ) {
+      return { status: "conflict", currentVersion };
     }
-    if (result.status === 400) {
-      const issues = Reflect.get(result.body as object, "issues");
-      if (Array.isArray(issues)) return { status: "invalid", issues };
+    const issues = field(result.body, "issues");
+    if (result.status === 400 && Array.isArray(issues)) {
+      return { status: "invalid", issues };
     }
-    return {
-      status: "published",
-      version: expectOk(path, result),
-    } as ConsolePublishResult;
+    const version = expectOk<unknown>(path, result);
+    // Anything else, such as the active template a server that ignores the
+    // method answers, published nothing.
+    if (!isPublishedVersion(version)) {
+      throw new Error(
+        `The server answered ${path} without the version it published.`,
+      );
+    }
+    return { status: "published", version };
   };
 
   return {

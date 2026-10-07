@@ -48,6 +48,18 @@ export const RULE_TYPE_LABELS: Readonly<Record<RemoteConfigRuleType, string>> =
     fingerprint: "Fingerprint",
   };
 
+/**
+ * A parameter's value for a condition. Condition names come from users, so
+ * `constructor` must name theirs, never Object.prototype's.
+ */
+export const conditionalValueFor = (
+  values: Readonly<Record<string, RemoteConfigParameterValue>> | undefined,
+  name: string,
+): RemoteConfigParameterValue | undefined =>
+  values !== undefined && Object.hasOwn(values, name)
+    ? values[name]
+    : undefined;
+
 /** Whether two templates publish the same thing. */
 export const isSameTemplate = (
   left: RemoteConfigTemplate,
@@ -171,7 +183,8 @@ export const parametersUsing = (
 ): string[] =>
   Object.entries(template.parameters)
     .filter(
-      ([, parameter]) => parameter.conditionalValues?.[name] !== undefined,
+      ([, parameter]) =>
+        conditionalValueFor(parameter.conditionalValues, name) !== undefined,
     )
     .map(([key]) => key);
 
@@ -236,12 +249,13 @@ const diffKeys = <T>(
   base: Readonly<Record<string, T>>,
   draft: Readonly<Record<string, T>>,
 ): TemplateChanges => ({
-  added: Object.keys(draft).filter((key) => !(key in base)),
+  added: Object.keys(draft).filter((key) => !Object.hasOwn(base, key)),
   changed: Object.keys(draft).filter(
     (key) =>
-      key in base && JSON.stringify(base[key]) !== JSON.stringify(draft[key]),
+      Object.hasOwn(base, key) &&
+      JSON.stringify(base[key]) !== JSON.stringify(draft[key]),
   ),
-  removed: Object.keys(base).filter((key) => !(key in draft)),
+  removed: Object.keys(base).filter((key) => !Object.hasOwn(draft, key)),
 });
 
 /** What a publish changes, for the publish dialog. */

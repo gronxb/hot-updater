@@ -182,4 +182,31 @@ describe("createHotUpdater with remoteConfig()", () => {
     expect((await admin("/remote-config/versions/9")).status).toBe(404);
     expect((await admin("/remote-config/versions/x")).status).toBe(400);
   });
+
+  it("answers a request it refuses with 400", async () => {
+    const { admin } = await start();
+    const errorOf = async (response: Response) => ({
+      status: response.status,
+      body: await response.json(),
+    });
+
+    expect(
+      await errorOf(
+        await admin("/remote-config/template", {
+          method: "PUT",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ template: {}, baseVersion: -1 }),
+        }),
+      ),
+    ).toEqual({
+      status: 400,
+      body: { error: "baseVersion must be a non-negative integer." },
+    });
+    expect(
+      await errorOf(await admin("/remote-config/versions?limit=500")),
+    ).toMatchObject({ status: 400 });
+    expect(
+      await errorOf(await admin("/remote-config/versions?cursor=not-a-cursor")),
+    ).toMatchObject({ status: 400 });
+  });
 });

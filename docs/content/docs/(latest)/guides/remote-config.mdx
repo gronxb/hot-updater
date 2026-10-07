@@ -191,8 +191,10 @@ if (result.status === "conflict") {
 ```
 
 `publish` validates the template and throws `RemoteConfigValidationError`,
-with every problem in `issues`, for an invalid one. It answers `conflict` when
-the active version is no longer `baseVersion`. `rollback`, `listVersions`, and
+with every problem in `issues`, for an invalid one, and
+`RemoteConfigInputError`, a `TypeError`, for an argument it refuses, such as a
+negative `baseVersion`. It answers `conflict` when the active version is no
+longer `baseVersion`. `rollback`, `listVersions`, and
 `getVersion` cover the history, and `resolve(context)` returns what a device
 with that context receives.
 

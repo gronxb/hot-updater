@@ -91,14 +91,22 @@ export interface RemoteConfigApi {
   ): Promise<RemoteConfigFetchResponse>;
 }
 
+/**
+ * An argument the API refuses, such as a negative `baseVersion`; the admin
+ * routes answer it with `400`.
+ */
+export class RemoteConfigInputError extends TypeError {
+  override readonly name = "RemoteConfigInputError";
+}
+
 const normalizeDescription = (description: unknown): string | null => {
   if (description === undefined || description === null) return null;
   if (typeof description !== "string") {
-    throw new TypeError("A version description is text.");
+    throw new RemoteConfigInputError("A version description is text.");
   }
   const trimmed = description.trim();
   if (trimmed.length > MAX_DESCRIPTION_LENGTH) {
-    throw new TypeError(
+    throw new RemoteConfigInputError(
       `A version description holds up to ${MAX_DESCRIPTION_LENGTH} characters.`,
     );
   }
@@ -107,7 +115,7 @@ const normalizeDescription = (description: unknown): string | null => {
 
 const requireVersionNumber = (value: unknown, name: string): number => {
   if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0) {
-    throw new TypeError(`${name} must be a non-negative integer.`);
+    throw new RemoteConfigInputError(`${name} must be a non-negative integer.`);
   }
   return value;
 };
@@ -149,6 +157,9 @@ export const createRemoteConfigApi = ({
     readonly expiresAt: number;
   } | null = null;
   let loading: Promise<RemoteConfigActive> | null = null;
+  // Bumped by every publish here, so a read that started before it never
+  // caches the template it replaced.
+  let generation = 0;
 
   const readActive = async (): Promise<RemoteConfigActive> => {
     const row = await db.findOne("remote_config_active", { id: ACTIVE_ID });
@@ -170,15 +181,20 @@ export const createRemoteConfigApi = ({
     if (cached !== null && cached.expiresAt > now()) {
       return Promise.resolve(cached.active);
     }
-    loading ??= readActive()
+    if (loading !== null) return loading;
+    const started = generation;
+    const read: Promise<RemoteConfigActive> = readActive()
       .then((active) => {
-        cached = { active, expiresAt: now() + ACTIVE_CACHE_TTL_MS };
+        if (generation === started) {
+          cached = { active, expiresAt: now() + ACTIVE_CACHE_TTL_MS };
+        }
         return active;
       })
       .finally(() => {
-        loading = null;
+        if (loading === read) loading = null;
       });
-    return loading;
+    loading = read;
+    return read;
   };
 
   const commit = async (input: {
@@ -225,11 +241,18 @@ export const createRemoteConfigApi = ({
       });
     try {
       const result = await attempt();
-      if (result.status === "published") cached = null;
+      if (result.status === "published") {
+        generation += 1;
+        cached = null;
+        loading = null;
+      }
       return result;
     } catch (error) {
       // Another publish created the same version or the first active row.
-      if (error instanceof DatabaseConstraintError) {
+      if (
+        error instanceof DatabaseConstraintError &&
+        (error.reason === "exists" || error.reason === "unique")
+      ) {
         return {
           status: "conflict",
           currentVersion: (await readActive()).version,
@@ -268,7 +291,7 @@ export const createRemoteConfigApi = ({
         limit < 1 ||
         limit > MAX_VERSIONS_PAGE
       ) {
-        throw new TypeError(
+        throw new RemoteConfigInputError(
           `limit must be an integer from 1 to ${MAX_VERSIONS_PAGE}.`,
         );
       }

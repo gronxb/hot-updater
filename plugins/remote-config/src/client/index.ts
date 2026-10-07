@@ -4,6 +4,7 @@ import {
   type HotUpdaterClientPlugin,
 } from "@hot-updater/protocol";
 
+import { ownEntry } from "../shared/ownEntry";
 import {
   parseRemoteConfigFetchResponse,
   type RemoteConfigDeviceContext,
@@ -255,9 +256,9 @@ export const remoteConfig = <
   };
 
   const getValue = (key: string): RemoteConfigValue => {
-    const remote = active?.values[key];
+    const remote = ownEntry(active?.values, key);
     if (remote !== undefined) return createValue(remote, "remote");
-    const fallback = defaults[key];
+    const fallback = ownEntry(defaults, key);
     return fallback === undefined
       ? STATIC_VALUE
       : createValue(fallback, "default");

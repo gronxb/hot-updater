@@ -18,6 +18,7 @@ import {
   InputGroupInput,
 } from "@/components/ui/input-group";
 import {
+  conditionalValueFor,
   describeValue,
   type RemoteConfigCondition,
   type RemoteConfigParameter,
@@ -54,7 +55,8 @@ function ParameterRow({
 }) {
   // In priority order, as devices resolve them.
   const conditional = conditions.filter(
-    ({ name }) => parameter.conditionalValues?.[name] !== undefined,
+    ({ name }) =>
+      conditionalValueFor(parameter.conditionalValues, name) !== undefined,
   );
   return (
     <li className="grid gap-3 px-4 py-3 sm:px-6 md:grid-cols-[minmax(0,15rem)_minmax(0,1fr)_auto] md:items-start">
@@ -81,7 +83,9 @@ function ParameterRow({
             </dt>
             <dd className="min-w-0">
               <ValueText
-                text={describeValue(parameter.conditionalValues![name]!)}
+                text={describeValue(
+                  conditionalValueFor(parameter.conditionalValues, name)!,
+                )}
               />
             </dd>
           </div>
