@@ -1031,6 +1031,11 @@ export const registerInsightsModelTests = (
           to_release_id: releaseA,
           to_bundle_id: bundleA,
         }),
+        // A download reported twice before its launch counts once.
+        launch("i6", 1_000, bundleA),
+        download("i6", 2_000),
+        download("i6", 2_500),
+        apply("i6", 3_000),
       ];
       for (const row of rows) await record(model, row);
       const scope = { platform: "ios", channel: "production" } as const;
@@ -1042,7 +1047,7 @@ export const registerInsightsModelTests = (
           releases: [{ releaseId: releaseB, ...scope }],
         })
       ).data;
-      expect(metrics).toEqual({ downloads: 5, applies: 4, failedLaunches: 1 });
+      expect(metrics).toEqual({ downloads: 6, applies: 5, failedLaunches: 1 });
       // The launches a bundle's chart adds equal its release's.
       await expectInsightsIndex(
         async () =>
