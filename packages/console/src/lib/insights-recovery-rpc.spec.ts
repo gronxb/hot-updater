@@ -85,7 +85,7 @@ describe("bundle events access", () => {
     window: "7d",
     endMs: 7_200_000,
     bundleId: "bundle-a",
-    type: "UPDATE_APPLIED",
+    type: "LAUNCHED",
   } as const;
 
   it("reads through the authenticated console's Insights model", async () => {
@@ -171,7 +171,7 @@ describe("activity the console does not serve", () => {
             window: "7d",
             endMs: 7_200_000,
             bundleId: "bundle-a",
-            type: "UPDATE_APPLIED",
+            type: "LAUNCHED",
           },
         }),
       ).rejects.toMatchObject({

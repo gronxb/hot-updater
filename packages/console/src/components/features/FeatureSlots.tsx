@@ -15,6 +15,8 @@ export interface ReleaseSlotInput {
   readonly releaseId: string;
   readonly platform: "ios" | "android";
   readonly channel: string;
+  /** The release runs the native build's built-in bundle, which nothing downloads. */
+  readonly builtIn?: boolean;
 }
 
 /**

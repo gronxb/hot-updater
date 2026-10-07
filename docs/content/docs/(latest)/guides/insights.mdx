@@ -110,8 +110,20 @@ The server counts an installation's `UNCHANGED` reports once a UTC day. A
 report that repeats the installation's latest report on the same UTC day, with
 the same channel, platform, app version, bundle, Release, and user, records
 nothing. An `UNCHANGED` report updates the installation's latest report and the
-launch metrics, but the server keeps no event row for it, so event lists show
-downloads, applies, recoveries, and update failures.
+launch metrics. The server keeps it as an event only when it changes what the
+installation runs, compared with that latest report:
+
+| Change | Event list label |
+| --- | --- |
+| The installation's first report to this server | **First seen** |
+| A new app version or native build | **App updated** |
+| Another bundle, with no apply report for it | **Launched** |
+| Another Release of the bundle it already runs | **Release adopted** |
+| Another channel | **Channel changed** |
+
+A user switch moves only the latest report. Event lists therefore show
+downloads, applies, recoveries, update failures, and these changes, each once.
+A launch that changes nothing is not listed.
 
 Reporting is best effort and does not trigger rollback. A report that fails
 with a network error, a timeout, `429`, or a `5xx` is retried in the
@@ -280,12 +292,22 @@ it reads Insights depends on its `database`:
   admin handler. App usage, Release health, and bundle activity need a direct
   database configuration.
 
-The Bundles list and detail show lifetime **Downloads**, **Applied**, and
-**Known crashes** for each Release ID. These count received download reports,
-apply reports, sent when an installation starts running the release, and
-launches that crashed on the release and recovered to the bundle before it.
-Their rate is known crashes divided by applied plus known crashes, as in
-Release health. Select
+The Bundles list and detail show lifetime **Downloaded**, **Launched**, and
+**Crashed** for each Release ID, counting installations once each:
+
+- **Downloaded**: got the release's bundle.
+- **Launched**: reported running it, at its apply report or, when that report
+  never arrived, at its first report on the bundle.
+- **Crashed**: crashed on it and recovered to the bundle before.
+
+A launch or crash whose download report never arrived counts that download
+too. A download or apply that arrives after its installation already ran the
+bundle counts nothing. Once every installation restarts, Downloaded equals
+Launched plus Crashed; the bundle detail shows the downloads not launched yet,
+waiting for a restart or passed over for a newer bundle. An installation that
+comes back to a release counts again. A release of the built-in bundle shows
+no downloads, since it ships with the app. The crash rate is crashed divided
+by launched plus crashed, as in Release health. Select
 the summary, or **View adoption** in the bundle detail, to open
 [Release health](#release-health) on that release and the one deployed before
 it. The bundle detail also shows
@@ -308,8 +330,8 @@ the last 12 months. Each counts unique app installations with at least one
 matching activity report in that window. The 24h, 7d, and 30d windows roll by
 the hour; 12m covers 52 weeks of whole UTC days, ending with today, because
 hourly totals are kept for 90 days and daily totals for 13 months. Multiple installations belonging to the same person count
-separately. All event types count, including **No change**, as do reports
-without a known bundle ID. Hover over, focus, or tap the metric's info icon to
+separately. All reports count, including launches that change nothing, as do
+reports without a known bundle ID. Hover over, focus, or tap the metric's info icon to
 see its definition.
 
 The usage chart counts unique reporting installations in each interval: hourly
@@ -338,12 +360,12 @@ installations apply them, and whether they crash. See
 [Release health](#release-health).
 
 Open **All events** in the header, or **Event history** on Release health, to
-browse downloads, applies, recoveries, and update failures from newest to
-oldest, 20 per page.
+browse downloads, applies, recoveries, update failures, and the launches that
+changed what an installation runs, from newest to oldest, 20 per page.
 The Console starts with **7d**; select **30d** or **90d** for older reports.
-Paging stops at the start of the selected range. A launch without an update is
-not listed: it counts in App usage and Release health and shows as its
-installation's latest report.
+Paging stops at the start of the selected range. A launch that changes nothing
+is not listed: it counts in App usage and shows as its installation's latest
+report.
 
 Like other analytics tools, event lists show raw reports only inside a time
 range of at most 90 days: the admin `GET /events` route takes `sinceMs` and
@@ -484,7 +506,7 @@ when its totals are written in that transaction, as with
 
 | Report | Items | WRU |
 | --- | --- | --- |
-| First launch of a new installation | 10 | 28 |
+| First launch of a new installation | 14 | 36 |
 | A later launch the same UTC day, on the same bundle | 0 | 0 |
 | First launch of a later UTC day | 14 | 36 |
 | `UPDATE_DOWNLOADED` | 18 | 40 |
@@ -492,13 +514,16 @@ when its totals are written in that transaction, as with
 | `RECOVERED` | 26 | 56 |
 | `UPDATE_FAILED` for a download or install | 13 | 34 |
 | `UPDATE_FAILED` for an update check | 8 | 20 |
+| A launch on another bundle, with no apply report for it | 21 | 50 |
 
 A first launch the day after an apply or a recovery takes 16 items and 40 WRU,
 since it also moves the update's latest-report rows. A download's patch
 counters share the items that count it. An update failure moves no latest-report rows.
 Up to four items of a report are HyperLogLog sketches of about 1 KB, at 4 WRU
 apiece; every other item takes 2. A download, apply, recovery, or update
-failure stores its event with its index copies; a launch stores none. Latest-report gauges count each installation in
+failure stores its event with its index copies; a launch stores one only when
+it changes what the installation runs, so a daily launch on the same bundle
+stores none. Latest-report gauges count each installation in
 the UTC day of its latest report, so they move only when that day or the
 installation's bundle changes. An installation that launches every day
 without updating sends one report and costs about 36 WRU a day, however often
@@ -545,19 +570,23 @@ and **Show the newest 2** returns to the default. Each bundle is named by its
 ID, as on the Bundles page, and keeps one color in both tabs; a vertical line
 marks its deployment, and hovering or focusing its row highlights its line. Each point counts the interval that ends there, so
 a bundle's line starts after its deployment. The bundles and the open tab are kept in the page
-URL. Rollbacks to the built-in bundle are not listed, since nothing applies
-them.
+URL. Rollbacks to the built-in bundle are not listed, since nothing downloads
+them; the Bundles list counts their launches.
 
-**Adoption** counts the installations that applied each bundle in each
-interval, from their `UPDATE_APPLIED` reports. After a new bundle is deployed,
-its line rises and the bundle it replaced stops being applied; a rollout to
-part of the installations keeps both. Its table shows each bundle's applies
-in the period; [Update failures](#update-failures) has the failed updates.
+**Adoption** counts the installations that launched each bundle in each
+interval: their `UPDATE_APPLIED` reports, and the reports that first showed
+them running the bundle when no apply report came. **Per interval** shows each
+interval's launches; **Cumulative** adds them up, so a line ends at its
+bundle's launches in the period. After a new bundle is deployed, its line rises
+and the bundle it replaced stops being launched; a rollout to part of the
+installations keeps both. Its table shows each bundle's launches in the period;
+[Update failures](#update-failures) has the failed updates. How many
+installations run a bundle now is in [Distribution](#read-the-console).
 
 **Crashes** counts the launches that crashed on each bundle and recovered to
 the bundle before, from their `RECOVERED` reports. Its table shows each
-bundle's crashes and **Crash rate**: crashes divided by applies plus crashes,
-since an installation that crashes may never report the apply. When a bundle
+bundle's crashes and **Crash rate**: crashes divided by launches plus crashes,
+since an installation that crashes never reports running the bundle. When a bundle
 crashes for **5%** of the installations that tried it, once at least 20 did,
 Release health recommends rolling it back. **Roll back** disables its release,
 as its bundle details do, so installations running it return to the previous
@@ -567,9 +596,10 @@ crashed, use a crash reporter with an
 [integration plugin](/docs/integration-plugins/sentry), which uploads each OTA
 bundle's source maps.
 
-Applies and crashes count reports, not distinct installations. Release health
-reads the hourly counts the server keeps for event lists, one bundle and
-report type at a time, so adding a bundle reads only that bundle; it needs no
-database migration.
+Launches and crashes count each installation once per bundle it starts or
+crashes on; one that comes back counts again. Release health reads the hourly
+counts the server keeps for event lists, one bundle and report type at a time,
+so adding a bundle reads only that bundle, and its launches read two counts:
+apply reports and kept launch reports. It needs no database migration.
 
 ![Release health comparing a new bundle with the one it replaced, with sample data](/docs/console/insights-release-health.jpg)

@@ -106,7 +106,7 @@ describe("createHotUpdater Insights", () => {
     ).toBe(400);
   });
 
-  it("keeps an UNCHANGED report as the installation's latest event, not a listed event, and serves the lean Insights views", async () => {
+  it("lists an installation's first UNCHANGED report once, as first seen, keeps it as the latest event, and serves the lean Insights views", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-08-12T00:00:00.000Z"));
     const receivedAtMs = Date.now();
@@ -139,11 +139,18 @@ describe("createHotUpdater Insights", () => {
         type: "UNCHANGED",
       }),
     );
-    // A launch without an update is no event of its own.
+    // The installation's first report is listed once, as first seen.
     expect(events.status).toBe(200);
     await expect(events.json()).resolves.toEqual({
       beforeReceivedAtMs: expect.any(Number),
-      data: [],
+      data: [
+        expect.objectContaining({
+          type: "UNCHANGED",
+          installId: "install-1",
+          toBundleId: "bundle-1",
+          change: { kinds: ["first_seen"] },
+        }),
+      ],
       nextCursor: null,
     });
     expect(installation.status).toBe(200);
@@ -871,13 +878,23 @@ describe("createHotUpdater Insights", () => {
       ).status,
     ).toBe(404);
 
-    // Without an ID the server creates one, so each report counts.
+    // Without an ID the server creates one, so each report is its own
+    // event. Both are late: install-1 already runs bundle-1, so they count
+    // nothing.
     for (let attempt = 0; attempt < 2; attempt += 1) {
       expect(
         (await hotUpdater.handlers.client(eventRequest(applied))).status,
       ).toBe(204);
     }
-    await expect(counts()).resolves.toBe(3);
+    const listed = await hotUpdater.handlers.admin(
+      new Request(
+        `https://example.com/events?beforeReceivedAtMs=${Date.now() + 1}`,
+      ),
+    );
+    expect(
+      ((await listed.json()) as { readonly data: readonly unknown[] }).data,
+    ).toHaveLength(3);
+    await expect(counts()).resolves.toBe(1);
   });
 
   it("keeps an installation's UNCHANGED reports once a UTC day, retried or repeated", async () => {

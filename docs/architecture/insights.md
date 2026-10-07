@@ -30,13 +30,13 @@ is what the Insights routes, the Console, and the e2e harness read through:
 
 | Method                                                                 | What the plugin does                                                                                                                                                                              |
 | ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `recordEvent({ event })`                                               | One transaction: store the event, move the installation's head when the event is newer (an update failure moves none), and update counters, gauges, and sketches. A repeated ID changes nothing, whichever installation sends it |
+| `recordEvent({ event })`                                               | One transaction: store the event (an `UNCHANGED` only when it changes what its installation runs), move the installation's head when the event is newer and not late (an update failure moves none), and update counters, gauges, and sketches. A repeated ID changes nothing, whichever installation sends it |
 | `listEvents({ filter, sinceMs, beforeReceivedAtMs, after, limit })`    | Newest-first global, installation-movement, or bundle-outcome history                                                                                                                             |
 | `findLatestEvents({ installId } or { userId, afterInstallId, limit })` | An installation's head, or a user's installations in install ID order                                                                                                                             |
 | `countLatestEvents({ platform, channel, sinceMs, bundle })`            | Heads in the window: gauges for whole hours, heads for a partial first hour                                                                                                                       |
 | `countEvents({ filter, sinceMs, beforeReceivedAtMs })`                 | Reports of one bundle outcome: hourly counters, raw events for partial hours at either edge                                                                                                       |
 | `countEventSeries({ filter, timeRange, intervalMs })`                  | Reports of one bundle outcome in each interval of whole hours, over at most 90 days: the hourly counters `countEvents` reads, every interval present                                              |
-| `getReleaseActivity({ releases })`                                     | Each release's downloads, applies, and failed launches since its first report, from its lifetime counters                                                                                         |
+| `getReleaseActivity({ releases })`                                     | Each release's downloads, launches (`applies`), and failed launches since its first report, from its lifetime counters                                                                                         |
 | `getAppUsage(...)`                                                     | Active installations from sketches, per interval and in total; the latest-report distribution from gauges                                                                                         |
 | `getUpdateFailures(...)`                                               | A release's or a channel's update failures from counters, failed installations from sketches, and over a time range the breakdown by stage, reason, and detail                                  |
 
@@ -73,7 +73,57 @@ method is `listEvents`; exact installation lookup takes `{ installId }`.
 
 Recovery from B to A contributes a recovered-from report to B, while the latest
 installation response names A. Selecting another Release for the same running
-files is `UNCHANGED`; it does not count as applying a bundle.
+files is `UNCHANGED`, kept as a release adoption; it launches no bundle.
+
+### What All Events records
+
+All Events is the log of what changed for each installation, not the source
+of every count. Each count names where it comes from:
+
+| Count | Source |
+| --- | --- |
+| Downloads, launches, crashes of a release | Lifetime counters, written with each event |
+| Events per bundle and interval (Release health) | Hourly outcome counters, written with each stored event |
+| What an installation runs now, and when it last reported | Its head, kept 400 days after its last report |
+| Active installations (DAU, WAU, MAU) | HyperLogLog sketches, about 3% error |
+| Distribution by app version, Release, built-in bundle | Gauges over heads |
+
+`recordEvent` stores every download, apply, recovery, and update failure. It
+stores an `UNCHANGED` report only when it changes what its installation runs,
+compared with the head's running state (a download head still runs `from_*`):
+the installation's first report (`first_seen`), another bundle, another
+Release, another app version or native build (`min_bundle_id`, when both name
+one), or another channel. A user switch moves only the head. A report older
+than the head changes nothing. `metadata.change` names what changed and the
+head's values before it.
+
+A launch (`isLaunch`) is an `UPDATE_APPLIED`, or a kept `UNCHANGED` that moved
+the installation to another bundle under a non-null Release. One rule counts
+it everywhere: the Release's lifetime `applies`, the `on:<bundle>` outcome key,
+and the bundle filter `{ type: "UNCHANGED", toBundleId }`. The `on:` key is
+new, so `UNCHANGED` rows that older servers kept for every launch count as
+no launch. A first report, a Release change of the running bundle, and a move
+under no Release are not launches.
+
+A reload can deliver one runtime's report after the next runtime's. A download
+or apply whose target the head already runs, and an `UNCHANGED` of the bundle
+an apply head left that the client made before that apply (by its UUIDv7), are
+late: a download or apply is stored with `metadata.late` and moves and counts
+nothing; such an `UNCHANGED` keeps no row. A launch or crash whose head shows
+neither the target's download nor the target running counts that download too,
+with `metadata.implied_download`, unless the target is the native build's
+built-in bundle. A launch or crash with no head implies nothing, since the
+server knows nothing of that installation's past; an installation's first
+report is almost always an `UNCHANGED` (`first_seen`), which creates its head.
+So for installations with a head, a release's downloads cover their launches
+and crashes: Downloaded ≥ Launched + Crashed. The difference is the downloads
+not launched yet, waiting for a restart or passed over for a newer bundle.
+
+A launch that changes nothing keeps no row: an event row and its outcome
+counters for every daily launch would nearly double a launch's writes on
+DynamoDB and D1, add billed TTL deletes on Firestore, and fill a 10 GB D1
+database with 90 days of launches at around 140,000 daily active
+installations. Heads, sketches, and gauges already count those launches.
 
 Counts describe reports received by the server, not all devices or unique
 update attempts. Offline devices and failed sends are absent. Independent live
@@ -165,4 +215,4 @@ Bundle JSON conventions. SDK request and Console response formats are unchanged.
 
 The single unreleased 1.0.0 initialization defines the physical layout. This
 optimization changes neither the canonical event schema nor the public database
-specification. See the [storage decision and measurements](./insights-event-storage-decision.md).
+specification.

@@ -16,6 +16,7 @@ import {
 import { sqliteExecutor } from "@hot-updater/test-utils/node";
 import { describe, expect, it } from "vitest";
 
+import { matchesInsightsEventFilter } from "./contract";
 import {
   insights,
   insightsIdentity,
@@ -23,7 +24,7 @@ import {
   type InsightsSchema,
   type BundleEventRow,
 } from "./index";
-import { DAILY_EVENTS } from "./schema";
+import { bundleRefsOf, DAILY_EVENTS, isLaunch } from "./schema";
 
 const HOUR = 3_600_000;
 const DAY = 86_400_000;
@@ -151,9 +152,9 @@ describe.each(backends)("insights recordEvent on %s", (_name, adapter) => {
       bucket: number,
       period: keyof typeof sketches = "hour",
     ) => (await db.findAggregates(sketches[period], at(key, bucket))).rows[0];
-    /** A release's applies: only its lifetime row counts them. */
-    const applies = async (releaseId: string) =>
-      (
+    /** A release's lifetime counters: downloads, launches, crashes. */
+    const lifetime = async (releaseId: string) => {
+      const row = (
         await db.findAggregates(
           "insights_overview_lifetime",
           at(
@@ -166,7 +167,16 @@ describe.each(backends)("insights recordEvent on %s", (_name, adapter) => {
             0,
           ),
         )
-      ).rows[0]?.applies ?? 0;
+      ).rows[0];
+      return {
+        downloads: row?.downloads ?? 0,
+        launches: row?.applies ?? 0,
+        crashes: row?.failed_launches ?? 0,
+      };
+    };
+    /** A release's applies: only its lifetime row counts them. */
+    const applies = async (releaseId: string) =>
+      (await lifetime(releaseId)).launches;
     const distribution = async () =>
       (
         await db.findAggregates("insights_distribution", {
@@ -245,6 +255,7 @@ describe.each(backends)("insights recordEvent on %s", (_name, adapter) => {
       overview,
       sketch,
       applies,
+      lifetime,
       distribution,
       byBundle,
       outcomes,
@@ -509,7 +520,15 @@ describe.each(backends)("insights recordEvent on %s", (_name, adapter) => {
         received_at_ms: T + 2 * HOUR,
       }),
     );
-    await api.recordEvent(event(3, { received_at_ms: T + HOUR }));
+    // An older apply of another bundle counts in its own hour but keeps the
+    // newer head.
+    await api.recordEvent(
+      event(3, {
+        to_release_id: "release-4",
+        to_bundle_id: "bundle-4",
+        received_at_ms: T + HOUR,
+      }),
+    );
 
     await expect(
       db.findOne("bundle_event_heads", { install_id: "install-1" }),
@@ -534,18 +553,27 @@ describe.each(backends)("insights recordEvent on %s", (_name, adapter) => {
     ).resolves.toMatchObject([{ installations: 1 }]);
     await expect(
       outcomes("UPDATE_APPLIED", "to:bundle-2"),
-    ).resolves.toMatchObject([
-      { bucket_start_ms: hour(T), events: 1 },
-      { bucket_start_ms: hour(T + HOUR), events: 1 },
-    ]);
+    ).resolves.toMatchObject([{ bucket_start_ms: hour(T), events: 1 }]);
+    await expect(
+      outcomes("UPDATE_APPLIED", "to:bundle-4"),
+    ).resolves.toMatchObject([{ bucket_start_ms: hour(T + HOUR), events: 1 }]);
 
-    await api.recordEvent(event(4, { received_at_ms: T + 2 * HOUR }));
+    // The apply of the downloaded bundle ties the head's time and wins on id.
+    await api.recordEvent(
+      event(4, {
+        from_release_id: "release-2",
+        from_bundle_id: "bundle-2",
+        to_release_id: "release-3",
+        to_bundle_id: "bundle-3",
+        received_at_ms: T + 2 * HOUR,
+      }),
+    );
     await expect(
       db.findOne("bundle_event_heads", { install_id: "install-1" }),
     ).resolves.toMatchObject({ id: uuid(4), type: "UPDATE_APPLIED" });
     await expect(distribution()).resolves.toMatchObject([
       {
-        release_id: "release-2",
+        release_id: "release-3",
         bucket_start_ms: day(T),
         latest_installations: 1,
       },
@@ -562,19 +590,31 @@ describe.each(backends)("insights recordEvent on %s", (_name, adapter) => {
     ]);
   });
 
-  it("records an UNCHANGED report as a launch that no event, outcome, or release counter keeps", async () => {
+  it("keeps an installation's first UNCHANGED report as first seen, which launches nothing", async () => {
     const { api, db, applies, outcomes, everyEvent, byBundle } = await setup();
     await api.recordEvent(unchanged(1));
+    const firstSeen = {
+      ...unchanged(1),
+      metadata: {
+        ...unchanged(1).metadata,
+        change: { kinds: ["first_seen"], previous: null },
+      },
+    } as BundleEventRow;
 
-    await expect(db.findOne("bundle_events", { id: uuid(1) })).resolves.toBe(
-      null,
-    );
+    await expect(
+      db.findOne("bundle_events", { id: uuid(1) }),
+    ).resolves.toMatchObject({
+      ...firstSeen,
+      movement_install_id: "install-1",
+      bundle_ref: [],
+    });
     await expect(
       db.findOne("bundle_event_heads", { install_id: "install-1" }),
-    ).resolves.toEqual(unchanged(1));
+    ).resolves.toEqual(firstSeen);
+    // The installation is new to the server, not known to have launched
+    // anything: no bundle list and no release counter count it.
     await expect(outcomes("UNCHANGED", "to:bundle-2")).resolves.toEqual([]);
-    await expect(everyEvent()).resolves.toEqual([]);
-    // A launch keeps running its bundle: it applies nothing.
+    await expect(everyEvent()).resolves.toMatchObject([{ events: 1 }]);
     await expect(applies("release-2")).resolves.toBe(0);
     await expect(
       byBundle("to_bundle_id", "bundle-2", "UNCHANGED"),
@@ -586,7 +626,7 @@ describe.each(backends)("insights recordEvent on %s", (_name, adapter) => {
         beforeReceivedAtMs: day(T) + DAY,
         limit: 10,
       }),
-    ).resolves.toEqual([]);
+    ).resolves.toEqual([firstSeen]);
   });
 
   it("writes nothing for an UNCHANGED report that repeats its head the same UTC day", async () => {
@@ -609,8 +649,8 @@ describe.each(backends)("insights recordEvent on %s", (_name, adapter) => {
     ).resolves.toMatchObject({ id: uuid(1), type: "UPDATE_APPLIED" });
     await expect(applies("release-2")).resolves.toBe(1);
 
-    // An UNCHANGED report keeps no event row, so a retry that lands the next
-    // UTC day is known by the head's id.
+    // An UNCHANGED report that changes nothing keeps no event row, so a
+    // retry that lands the next UTC day is known by the head's id.
     await api.recordEvent(unchanged(4, { received_at_ms: T + DAY }));
     await expect(
       db.findOne("bundle_event_heads", { install_id: "install-1" }),
@@ -622,18 +662,46 @@ describe.each(backends)("insights recordEvent on %s", (_name, adapter) => {
     await expect(applies("release-2")).resolves.toBe(1);
   });
 
-  it("records an UNCHANGED report again for a new UTC day, bundle, user, or a download's head", async () => {
-    const { api, db, applies } = await setup();
+  it("records an UNCHANGED report again for a new UTC day, bundle, user, or a download's head, keeping a row only for a change", async () => {
+    const { api, db, applies, outcomes } = await setup();
     const head = () =>
       db.findOne("bundle_event_heads", { install_id: "install-1" });
+    const kept = async (n: number) =>
+      (
+        (await db.findOne("bundle_events", { id: uuid(n) }))?.metadata as
+          | { change?: unknown }
+          | undefined
+      )?.change ?? null;
 
     await api.recordEvent(unchanged(1));
+    await expect(kept(1)).resolves.toEqual({
+      kinds: ["first_seen"],
+      previous: null,
+    });
+    // A user switch moves the head; what the installation runs is the same.
     await api.recordEvent(unchanged(2, { user_id: "user-2" }));
     await expect(head()).resolves.toMatchObject({ id: uuid(2) });
+    await expect(kept(2)).resolves.toBeNull();
+    // A release the installation reports running without an apply report:
+    // the report that says so launched it.
     await api.recordEvent(
       unchanged(3, { to_bundle_id: "bundle-3", to_release_id: "release-3" }),
     );
     await expect(head()).resolves.toMatchObject({ id: uuid(3) });
+    await expect(kept(3)).resolves.toEqual({
+      kinds: ["bundle", "release"],
+      previous: {
+        bundle_id: "bundle-2",
+        release_id: "release-2",
+        app_version: "1.0.0",
+        channel: "production",
+      },
+    });
+    // Launches go under their own key, which no older UNCHANGED row used.
+    await expect(outcomes("UNCHANGED", "on:bundle-3")).resolves.toMatchObject([
+      { bucket_start_ms: hour(T), events: 1 },
+    ]);
+    await expect(outcomes("UNCHANGED", "to:bundle-3")).resolves.toEqual([]);
 
     // A download's head still runs the bundle it came from.
     await api.recordEvent(
@@ -654,6 +722,11 @@ describe.each(backends)("insights recordEvent on %s", (_name, adapter) => {
       }),
     );
     await expect(head()).resolves.toMatchObject({ id: uuid(5) });
+    // The apply report of the downloaded bundle never came: this one did.
+    await expect(kept(5)).resolves.toMatchObject({
+      kinds: ["bundle", "release"],
+      previous: { bundle_id: "bundle-3", release_id: "release-3" },
+    });
 
     await api.recordEvent(
       unchanged(6, {
@@ -663,9 +736,210 @@ describe.each(backends)("insights recordEvent on %s", (_name, adapter) => {
       }),
     );
     await expect(head()).resolves.toMatchObject({ id: uuid(6) });
-    // Launches, even on a bundle that was downloaded, apply nothing.
-    for (const releaseId of ["release-2", "release-3", "release-4"])
-      await expect(applies(releaseId)).resolves.toBe(0);
+    await expect(kept(6)).resolves.toBeNull();
+    // Each release counts the launch the report that first ran it made.
+    await expect(applies("release-2")).resolves.toBe(0);
+    await expect(applies("release-3")).resolves.toBe(1);
+    await expect(applies("release-4")).resolves.toBe(1);
+  });
+
+  it("keeps an UNCHANGED report for an app version, channel, or release change, and none for an older report", async () => {
+    const { api, db, applies, outcomes } = await setup();
+    const kept = async (n: number) =>
+      (
+        (await db.findOne("bundle_events", { id: uuid(n) }))?.metadata as
+          | { change?: unknown }
+          | undefined
+      )?.change ?? null;
+    await api.recordEvent(event(1));
+    // An App Store update: a new app version on its own built-in bundle.
+    await api.recordEvent(
+      unchanged(2, {
+        app_version: "1.1.0",
+        to_bundle_id: "builtin-1.1.0",
+        to_release_id: null,
+        received_at_ms: T + HOUR,
+      }),
+    );
+    await expect(kept(2)).resolves.toEqual({
+      kinds: ["bundle", "release", "app_version"],
+      previous: {
+        bundle_id: "bundle-2",
+        release_id: "release-2",
+        app_version: "1.0.0",
+        channel: "production",
+      },
+    });
+    // Moving to a built-in bundle with no release launched no release.
+    await expect(outcomes("UNCHANGED", "on:builtin-1.1.0")).resolves.toEqual(
+      [],
+    );
+    // A release adopted for the bundle already running: no bundle changed,
+    // so it is no launch.
+    await api.recordEvent(
+      unchanged(3, {
+        app_version: "1.1.0",
+        to_bundle_id: "builtin-1.1.0",
+        to_release_id: "release-embedded",
+        received_at_ms: T + 2 * HOUR,
+      }),
+    );
+    await expect(kept(3)).resolves.toMatchObject({ kinds: ["release"] });
+    await expect(applies("release-embedded")).resolves.toBe(0);
+    // A channel switch.
+    await api.recordEvent(
+      unchanged(4, {
+        app_version: "1.1.0",
+        to_bundle_id: "builtin-1.1.0",
+        to_release_id: "release-embedded",
+        channel: "beta",
+        received_at_ms: T + 3 * HOUR,
+      }),
+    );
+    await expect(kept(4)).resolves.toMatchObject({ kinds: ["channel"] });
+    // A report older than the head can't say what changed since.
+    await api.recordEvent(
+      unchanged(5, { to_bundle_id: "bundle-9", received_at_ms: T - HOUR }),
+    );
+    await expect(kept(5)).resolves.toBeNull();
+    await expect(
+      db.findOne("bundle_event_heads", { install_id: "install-1" }),
+    ).resolves.toMatchObject({ id: uuid(4) });
+  });
+
+  it("counts a forced update's download once when its report lands after the apply, and moves no head with it", async () => {
+    const { api, db, lifetime, outcomes } = await setup();
+    const head = () =>
+      db.findOne("bundle_event_heads", { install_id: "install-1" });
+    await api.recordEvent(unchanged(1, { to_bundle_id: "bundle-1" }));
+    // The reload after a forced update cut the download report short; the
+    // next runtime's apply arrives first.
+    await api.recordEvent(event(2, { received_at_ms: T + HOUR }));
+    await expect(
+      db.findOne("bundle_events", { id: uuid(2) }),
+    ).resolves.toMatchObject({ metadata: { implied_download: true } });
+    const download = event(3, {
+      type: "UPDATE_DOWNLOADED",
+      received_at_ms: T + 2 * HOUR,
+    });
+    await api.recordEvent(download);
+    await expect(
+      db.findOne("bundle_events", { id: uuid(3) }),
+    ).resolves.toMatchObject({ metadata: { late: true }, bundle_ref: [] });
+    await expect(head()).resolves.toMatchObject({ id: uuid(2) });
+    await expect(lifetime("release-2")).resolves.toEqual({
+      downloads: 1,
+      launches: 1,
+      crashes: 0,
+    });
+    await expect(outcomes("UPDATE_DOWNLOADED", "to:bundle-2")).resolves.toEqual(
+      [],
+    );
+    // A late apply of the bundle already running counts nothing either.
+    await api.recordEvent(event(4, { received_at_ms: T + 3 * HOUR }));
+    await expect(
+      db.findOne("bundle_events", { id: uuid(4) }),
+    ).resolves.toMatchObject({ metadata: { late: true } });
+    await expect(lifetime("release-2")).resolves.toMatchObject({
+      launches: 1,
+    });
+  });
+
+  it("keeps no row for a launch report made before the apply its installation already reported", async () => {
+    const { api, db } = await setup();
+    const made = (ms: number, n: number) =>
+      `${ms
+        .toString(16)
+        .padStart(12, "0")
+        .replace(
+          /^(.{8})(.{4})$/,
+          "$1-$2",
+        )}-7000-8000-${String(n).padStart(12, "0")}`;
+    const applied = event(1, { id: made(2_000_000_000_000, 1) });
+    await api.recordEvent(applied);
+    // Made before the apply by the runtime that ran bundle-1, delivered
+    // after it.
+    await api.recordEvent(
+      unchanged(2, {
+        id: made(1_999_999_999_000, 2),
+        to_bundle_id: "bundle-1",
+        to_release_id: "release-1",
+        received_at_ms: T + HOUR,
+      }),
+    );
+    await expect(
+      db.findOne("bundle_events", { id: made(1_999_999_999_000, 2) }),
+    ).resolves.toBeNull();
+    await expect(
+      db.findOne("bundle_event_heads", { install_id: "install-1" }),
+    ).resolves.toMatchObject({ id: applied.id });
+  });
+
+  it("launches a release with no implied download when it runs the native build's built-in bundle, and keeps a native build change", async () => {
+    const { api, db, lifetime } = await setup();
+    const build = (minBundleId: string) => ({
+      ...unchanged(0).metadata,
+      min_bundle_id: minBundleId,
+    });
+    await api.recordEvent(
+      event(1, {
+        metadata: { ...event(1).metadata, min_bundle_id: "builtin-a" },
+      } as Partial<BundleEventRow>),
+    );
+    // A rollback to the built-in bundle, released as its own release.
+    await api.recordEvent(
+      unchanged(2, {
+        to_bundle_id: "builtin-a",
+        to_release_id: "release-embedded",
+        metadata: build("builtin-a"),
+        received_at_ms: T + HOUR,
+      }),
+    );
+    await expect(lifetime("release-embedded")).resolves.toEqual({
+      downloads: 0,
+      launches: 1,
+      crashes: 0,
+    });
+    // An App Store build of the same version, still running that release.
+    // Its SDK reports the same fields again only the next UTC day.
+    await api.recordEvent(
+      unchanged(3, {
+        to_bundle_id: "builtin-a",
+        to_release_id: "release-embedded",
+        metadata: build("builtin-b"),
+        received_at_ms: T + DAY,
+      }),
+    );
+    await expect(
+      db.findOne("bundle_events", { id: uuid(3) }),
+    ).resolves.toMatchObject({
+      metadata: {
+        change: {
+          kinds: ["native_build"],
+          previous: { min_bundle_id: "builtin-a" },
+        },
+      },
+    });
+  });
+
+  it("counts no UNCHANGED row kept before launches had their own key", () => {
+    const older = {
+      ...unchanged(1),
+      to_bundle_id: "bundle-2",
+    } as BundleEventRow;
+    // Rows older RCs kept for every launch carry no change, so no bundle
+    // filter, outcome series, or counter reads them as launches.
+    expect(bundleRefsOf(older)).toEqual([]);
+    expect(
+      matchesInsightsEventFilter(older, {
+        kind: "bundle",
+        platform: "ios",
+        channel: "production",
+        type: "UNCHANGED",
+        toBundleId: "bundle-2",
+      }),
+    ).toBe(false);
+    expect(isLaunch(older)).toBe(false);
   });
 
   it("records an update failure for its target release and channel, and moves no head", async () => {
@@ -919,10 +1193,14 @@ describe.each(backends)("insights recordEvent on %s", (_name, adapter) => {
   it("serializes events per installation and keeps gauges exact under concurrency", async () => {
     const { api, db, distribution } = await setup();
     const installs = ["a", "b", "c", "d"];
+    // Each step applies its own bundle, so none arrives for a bundle its
+    // installation already runs.
     const events = installs.flatMap((install, position) =>
       [0, 1, 2].map((step) =>
         event(position * 10 + step + 1, {
           install_id: `install-${install}`,
+          to_release_id: `release-${install}-${step}`,
+          to_bundle_id: `bundle-${install}-${step}`,
           received_at_ms: T + ((step * 7 + position) % 3) * HOUR,
         }),
       ),

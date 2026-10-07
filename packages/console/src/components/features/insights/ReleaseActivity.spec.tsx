@@ -98,7 +98,7 @@ describe("release Insights sections", () => {
     (variant) => {
       const report: BundleActivityReport = {
         downloads: 1234,
-        applied: 98,
+        launched: 98,
         failedLaunches: 2,
         measuredAtMs: 0,
       };
@@ -106,10 +106,43 @@ describe("release Insights sections", () => {
 
       expect(
         screen.getAllByRole("term").map((term) => term.textContent),
-      ).toEqual(["Downloads", "Applied", "Known crashes"]);
+      ).toEqual(["Downloaded", "Launched", "Crashed"]);
       expect(
         screen.getAllByRole("definition").map((value) => value.textContent),
       ).toEqual([report.downloads.toLocaleString(), "98", "2(2.00%)"]);
     },
   );
+
+  it("shows no download count for a release of the built-in bundle, and names downloads not launched yet", () => {
+    const report: BundleActivityReport = {
+      downloads: 120,
+      launched: 98,
+      failedLaunches: 2,
+      measuredAtMs: 0,
+    };
+    const view = render(
+      <BundleMovementSummary report={report} variant="card" />,
+    );
+    expect(
+      screen.getByText(
+        "20 downloaded but not launched yet: waiting for a restart, or passed over for a newer bundle.",
+      ),
+    ).toBeDefined();
+    view.rerender(
+      <BundleMovementSummary
+        report={{ ...report, downloads: 0 }}
+        variant="card"
+        input={{
+          releaseId: "release-embedded",
+          platform: "ios",
+          channel: "production",
+          builtIn: true,
+        }}
+      />,
+    );
+    expect(
+      screen.getByTitle("The built-in bundle is never downloaded"),
+    ).toBeDefined();
+    expect(screen.queryByText(/not launched yet/)).toBeNull();
+  });
 });

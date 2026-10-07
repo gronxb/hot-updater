@@ -420,7 +420,14 @@ function BundlesPage() {
       (item) => item.id === release.channel_id,
     )?.name;
     return channel
-      ? [{ releaseId: release.id, platform: release.platform, channel }]
+      ? [
+          {
+            releaseId: release.id,
+            platform: release.platform,
+            channel,
+            builtIn: !release.bundle_id,
+          },
+        ]
       : [];
   });
   // Features add columns, such as release activity where the console reads it.
@@ -607,7 +614,7 @@ function BundlesPage() {
                                 <Badge variant="secondary">Force update</Badge>
                               ) : null}
                             </div>
-                            <div className="col-span-2 grid gap-2 rounded-md border bg-background/80 p-3">
+                            <div className="col-span-2 grid grid-cols-1 gap-2 rounded-md border bg-background/80 p-3">
                               <div className="flex items-start justify-between gap-3">
                                 <dt className="text-muted-foreground">
                                   Target

@@ -42,8 +42,12 @@ export type AdoptionReleaseResult = {
   readonly previous?: AdoptionRelease | null;
 };
 
-/** The reports Release health charts per bundle. */
-export type BundleEventType = "UPDATE_APPLIED" | "RECOVERED";
+/**
+ * The reports Release health charts per bundle: launches (apply reports, and
+ * the kept reports that moved an installation to the bundle with no apply
+ * report) and recoveries.
+ */
+export type BundleEventType = "LAUNCHED" | "RECOVERED";
 
 /** One bundle's reports of one type over the period that ends at `endMs`. */
 export type BundleEventsInput = AdoptionReleasesInput & {
@@ -56,8 +60,9 @@ export type BundleEventsInput = AdoptionReleasesInput & {
 
 /**
  * A bundle's reports of one type in each interval of the period, every
- * interval present: applies to it or recoveries from it. They count
- * reports, not distinct installations.
+ * interval present: launches of it or recoveries from it. Each counts an
+ * installation once when it first reports running the bundle, or crashing
+ * on it; one that comes back to the bundle counts again.
  */
 export type BundleEventsSeries = {
   readonly bundleId: string;
@@ -119,7 +124,7 @@ export function readBundleEventsInput(
     input.endMs <= 0 ||
     input.endMs % HOUR_MS !== 0 ||
     !isText(input.bundleId) ||
-    (input.type !== "UPDATE_APPLIED" && input.type !== "RECOVERED")
+    (input.type !== "LAUNCHED" && input.type !== "RECOVERED")
   )
     invalid();
   return {

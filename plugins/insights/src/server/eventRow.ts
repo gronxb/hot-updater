@@ -60,6 +60,35 @@ export type DatabaseHttpResponse = DatabaseJsonObject & {
   readonly received_at_ms: number;
 };
 
+/** What a kept UNCHANGED row changed against its installation's head. */
+export type BundleEventChangeKind =
+  | "first_seen"
+  | "bundle"
+  | "release"
+  | "app_version"
+  | "channel"
+  | "native_build";
+
+/**
+ * An UNCHANGED report the server keeps: what it changed against its
+ * installation's head, and the running values the head held before it. A
+ * report from an installation without a head is `first_seen` alone, with no
+ * previous values: the installation is new to this server, not necessarily
+ * to its device.
+ */
+export type BundleEventChange = DatabaseJsonObject & {
+  readonly kinds: BundleEventChangeKind[];
+  readonly previous:
+    | (DatabaseJsonObject & {
+        readonly bundle_id: string;
+        readonly release_id: string | null;
+        readonly app_version: string;
+        readonly channel: string;
+        readonly min_bundle_id?: string;
+      })
+    | null;
+};
+
 /** Ancillary report data; queryable identity and lifecycle fields stay on the row. */
 export type DatabaseBundleEventMetadata = DatabaseJsonObject & {
   readonly cohort: string;
@@ -75,6 +104,19 @@ export type DatabaseBundleEventMetadata = DatabaseJsonObject & {
   readonly delivery?: "patch" | "manifest" | "archive" | "unknown";
   /** `UPDATE_DOWNLOADED`: a patch failed and the full files came instead. */
   readonly patch_fallback?: boolean;
+  /** A kept `UNCHANGED` row: what it changed, which the server sets. */
+  readonly change?: BundleEventChange;
+  /**
+   * A download or apply that arrived after its installation already ran its
+   * target, as when a reload cut the first runtime's report short: the
+   * server keeps it in history, but it moves and counts nothing.
+   */
+  readonly late?: true;
+  /**
+   * A launch or crash of a bundle whose download report never arrived: the
+   * server counted that download with it.
+   */
+  readonly implied_download?: true;
 };
 
 export type BundleEventRowBase = {
@@ -102,6 +144,29 @@ export type BundleEventRow = BundleEventRowBase &
     | { readonly type: "UPDATE_FAILED"; readonly from_bundle_id: string }
     | { readonly type: "UNCHANGED"; readonly from_bundle_id: null }
   );
+
+const CHANGE_KINDS: ReadonlySet<unknown> = new Set<BundleEventChangeKind>([
+  "first_seen",
+  "bundle",
+  "release",
+  "app_version",
+  "channel",
+  "native_build",
+]);
+
+const isBundleEventChange = (value: unknown): boolean =>
+  isDatabaseJsonObject(value) &&
+  Array.isArray(value.kinds) &&
+  value.kinds.length > 0 &&
+  value.kinds.every((kind) => CHANGE_KINDS.has(kind)) &&
+  (value.previous === null ||
+    (isDatabaseJsonObject(value.previous) &&
+      typeof value.previous.bundle_id === "string" &&
+      (value.previous.release_id === null ||
+        typeof value.previous.release_id === "string") &&
+      typeof value.previous.app_version === "string" &&
+      typeof value.previous.channel === "string" &&
+      isOptional(value.previous, "min_bundle_id", isString)));
 
 const isOptional = (
   value: Readonly<Record<string, unknown>>,
@@ -147,7 +212,10 @@ export const isDatabaseBundleEventMetadata = (
   isOptional(value, "failure", isDatabaseBundleEventFailure) &&
   isOptional(value, "http_response", isDatabaseHttpResponse) &&
   isOptional(value, "delivery", isString) &&
-  isOptional(value, "patch_fallback", (flag) => typeof flag === "boolean");
+  isOptional(value, "patch_fallback", (flag) => typeof flag === "boolean") &&
+  isOptional(value, "change", isBundleEventChange) &&
+  isOptional(value, "late", (flag) => flag === true) &&
+  isOptional(value, "implied_download", (flag) => flag === true);
 
 export const isRecord = (
   value: unknown,
@@ -203,6 +271,9 @@ const BUNDLE_EVENT_FIELDS: Readonly<
     typeof value === "number" && Number.isSafeInteger(value) && value >= 0,
 };
 
+const hasMetadata = (row: Readonly<Record<string, unknown>>, key: string) =>
+  isRecord(row.metadata) && Object.hasOwn(row.metadata, key);
+
 const updateStrategyOf = (row: Readonly<Record<string, unknown>>) =>
   isRecord(row.metadata) ? row.metadata.update_strategy : undefined;
 
@@ -220,8 +291,18 @@ const hasEventInvariants = (row: Readonly<Record<string, unknown>>) =>
     (updateStrategyOf(row) === "fingerprint" ||
       updateStrategyOf(row) === "appVersion") &&
     (row.type !== "UPDATE_FAILED" ||
-      (isRecord(row.metadata) && isRecord(row.metadata.failure)))) ||
+      (isRecord(row.metadata) && isRecord(row.metadata.failure))) &&
+    // Only a kept UNCHANGED row says what changed; only a download or an
+    // apply arrives late; only a launch or a crash implies a download.
+    !hasMetadata(row, "change") &&
+    (!hasMetadata(row, "late") ||
+      row.type === "UPDATE_DOWNLOADED" ||
+      row.type === "UPDATE_APPLIED") &&
+    (!hasMetadata(row, "implied_download") ||
+      row.type === "UPDATE_APPLIED" ||
+      row.type === "RECOVERED")) ||
   (row.type === "UNCHANGED" &&
+    !hasMetadata(row, "late") &&
     row.from_bundle_id === null &&
     updateStrategyOf(row) === null);
 

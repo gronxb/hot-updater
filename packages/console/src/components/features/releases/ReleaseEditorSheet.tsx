@@ -418,6 +418,7 @@ export function ReleaseEditorSheet({
                       platform: release.platform,
                       channel: channelName,
                       releaseId: release.id,
+                      builtIn: !release.bundle_id,
                     }}
                   />
                 ) : null}

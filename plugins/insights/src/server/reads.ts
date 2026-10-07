@@ -33,6 +33,7 @@ import {
   type InsightsIdentityParts,
 } from "./recordEvent";
 import {
+  bundleRefOfFilter,
   DAILY_EVENTS,
   DAY_MS,
   HOUR_MS,
@@ -96,16 +97,11 @@ const toEvent = (row: Readonly<Record<string, unknown>>): BundleEventRow =>
     EVENT_FIELDS.map((field) => [field, row[field]]),
   ) as unknown as BundleEventRow;
 
-const bundleRef = (filter: InsightsBundleEventFilter) =>
-  filter.type === "RECOVERED"
-    ? `from:${filter.fromBundleId}`
-    : `to:${filter.toBundleId}`;
-
 const scopeOf = (filter: InsightsBundleEventFilter) => ({
   platform: filter.platform,
   channel: filter.channel,
   type: filter.type,
-  bundle_ref: bundleRef(filter),
+  bundle_ref: bundleRefOfFilter(filter),
 });
 
 /** One UTC day of a global or bundle list, newest first. */
