@@ -81,9 +81,12 @@ export const hotUpdater = HotUpdater.init({
   ],
 });
 
-hotUpdater.remoteConfig.fetchAndActivate().catch(() => {
-  // Offline or unreachable: the app keeps its last active values.
-});
+hotUpdater.remoteConfig
+  .fetch()
+  .then(() => hotUpdater.remoteConfig.activate())
+  .catch(() => {
+    // Offline or unreachable: the app keeps its last active values.
+  });
 ```
 
 Reads are synchronous. As soon as `init` returns,
@@ -108,8 +111,8 @@ ones reads return. Splitting them lets you choose when the app changes:
 
 | Strategy | Code | The app changes |
 | --- | --- | --- |
-| Apply on load | `fetchAndActivate()` without waiting | As soon as the fetch ends, possibly while the user looks at the screen. |
-| Wait behind a loading screen | `await fetchAndActivate()` before showing the screen | Before the first screen, at the cost of a network round trip. |
+| Apply on load | `fetch().then(() => activate())` without waiting | As soon as the fetch ends, possibly while the user looks at the screen. |
+| Wait behind a loading screen | `await fetch(); await activate();` before showing the screen | Before the first screen, at the cost of a network round trip. |
 | Apply at the next launch | `await activate(); fetch();` at startup | At the next launch: this launch activates what the last one fetched. |
 
 The last one never changes values mid-session and never waits for the network,
@@ -151,6 +154,23 @@ user ID. Rules with the same seed pick from the same order: `0–10%` and
 `10–20%` never share an installation, and widening `0–10%` to `0–25%` keeps
 the first 10%. A new seed picks other installations. Custom cohorts match only
 a Cohort rule, never a percentage, as in rollouts.
+
+### Roll out a value gradually
+
+1. Add a condition with a **Percentage of installs** rule from 0% to a small
+   share, such as 5%, and give the parameter its new value for that
+   condition. List it after conditions that must win, such as a QA cohort.
+2. Publish. Installations in that share get the new value on their next fetch;
+   the rest keep the default value.
+3. Widen the range, to 25%, 50%, and then 100%, and publish each step. Each
+   step keeps the installations already in it, because the seed stays the same.
+4. To try the value on a device first, put it in a numeric cohort the rule
+   matches with [`HotUpdater.setCohort`](/docs/react-native-api/setCohort),
+   or add a Cohort rule for a custom cohort such as `qa`.
+
+To undo a step, narrow the range or roll back to an earlier version. Narrowing
+removes the installations past the new end of the range, since the order
+never changes.
 
 ## Publish and roll back
 

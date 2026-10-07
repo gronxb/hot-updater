@@ -74,14 +74,16 @@ describe("createHotUpdater with remoteConfig()", () => {
       }).api;
 
     const ios = run({ platform: "ios", channel: "beta" });
-    expect(await ios.fetchAndActivate()).toBe(true);
+    await ios.fetch();
+    expect(await ios.activate()).toBe(true);
     expect(ios.getString("welcome")).toBe("Welcome");
     expect(ios.getValue("max_items").getSource()).toBe("default");
     expect(ios.getNumber("max_items")).toBe(10);
     expect(ios.activeVersion).toBe(1);
 
     const android = run({ platform: "android", channel: "beta" });
-    await android.fetchAndActivate();
+    await android.fetch();
+    await android.activate();
     expect(android.getString("welcome")).toBe("Welcome, tester");
   });
 
