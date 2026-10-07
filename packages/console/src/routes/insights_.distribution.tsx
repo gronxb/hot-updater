@@ -58,7 +58,7 @@ const dates = new Intl.DateTimeFormat("en", {
 const bundleName = (row: BundleDistribution): string =>
   row.releaseId ??
   (row.builtinBundleId
-    ? `Built-in app ${row.builtinBundleId}`
+    ? `Built-in bundle ${row.builtinBundleId}`
     : "Unknown bundle");
 
 /** The bundle an app version's native build shipped, by its ID. */
@@ -222,8 +222,8 @@ function DistributionPage() {
                 <InsightsInfo label="How bundle distribution is counted">
                   Each installation counts once, by its latest report{" "}
                   {distributionPeriod}. Shares are within each app version.
-                  Built-in app: the bundle the native build shipped, by its ID.
-                  Unknown bundle: no deployment and no built-in bundle ID.
+                  Built-in bundle: the bundle the native build shipped, by its
+                  ID. Unknown bundle: no deployment and no built-in bundle ID.
                 </InsightsInfo>
               </div>
               <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">

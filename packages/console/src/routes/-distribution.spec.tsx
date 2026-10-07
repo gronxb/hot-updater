@@ -200,13 +200,13 @@ describe("Distribution details", () => {
       name: "Bundle distribution",
     });
     const [running, adopted, unknown] = within(list).getAllByRole("listitem");
-    expect(within(running!).getByText("Built-in app")).toBeDefined();
+    expect(within(running!).getByText("Built-in bundle")).toBeDefined();
     expect(within(running!).getByText(builtin)).toBeDefined();
     expect(within(running!).queryByRole("link")).toBeNull();
     expect(within(running!).queryByText("Unknown bundle")).toBeNull();
     expect(
       within(running!).getByRole("progressbar", {
-        name: `Built-in app ${builtin} share in 1.0.0 on ios`,
+        name: `Built-in bundle ${builtin} share in 1.0.0 on ios`,
       }),
     ).toBeDefined();
     // A release that selected the built-in bundle links to it and still says so.
@@ -215,9 +215,9 @@ describe("Distribution details", () => {
         name: "Review bundle release-rollback for app version 1.0.0",
       }),
     ).toBeDefined();
-    expect(within(adopted!).getByText("Built-in app")).toBeDefined();
+    expect(within(adopted!).getByText("Built-in bundle")).toBeDefined();
     expect(within(unknown!).getByText("Unknown bundle")).toBeDefined();
-    expect(within(unknown!).queryByText("Built-in app")).toBeNull();
+    expect(within(unknown!).queryByText("Built-in bundle")).toBeNull();
   });
   it("keeps retry and empty states usable and labels partial counts", async () => {
     mocks.usage.mockRejectedValueOnce(new Error("Offline"));

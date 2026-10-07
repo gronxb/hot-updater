@@ -320,7 +320,7 @@ function BundleEntry({
         <BundleIdDisplay bundleId={release.id} fullOnMobile />
         {!release.bundle_id ? (
           <span className="inline-flex items-center gap-1.5 text-sm">
-            <RotateCcw className="size-3.5" /> Built-in app
+            <RotateCcw className="size-3.5" /> Built-in bundle
           </span>
         ) : null}
       </button>

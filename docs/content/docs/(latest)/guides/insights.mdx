@@ -347,12 +347,14 @@ first day; the Console shows that date.
 Select an app version in **Distribution**, or choose **View distribution**, to
 see its bundle IDs, platforms, active installation counts, and share within each
 app version. The detail view keeps the overview's reporting scope, supports
-20 rows per page, and links each known ID to its bundle details. **Built-in app**
+20 rows per page, and links each known ID to its bundle details. **Built-in bundle**
 shows installations that run the bundle their native build shipped, by its ID
 (`MIN_BUNDLE_ID`), under that build's app version; a deployment that selected
 the built-in bundle shows its ID with the same mark. **Unknown bundle** accounts
 for the remaining installations without an observed deployment ID. Event and
-installation details mark the built-in bundle the same way.
+installation details mark the built-in bundle the same way, including from an
+SDK that doesn't report `MIN_BUNDLE_ID`: a built-in bundle's ID is its build
+time with the random bits zeroed, which no deployed bundle's ID has.
 Period and filter selections survive navigation back to the overview.
 
 ![Bundle distribution by app version with sample data](/docs/console/insights-distribution.png)
