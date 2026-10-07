@@ -1,14 +1,33 @@
-import { mkdirSync, renameSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  renameSync,
+  writeFileSync,
+} from "node:fs";
 import path from "node:path";
 
 import type { JsonObject } from "../shared/control-client.ts";
 
-export interface ScenarioEvidence {
-  name: string;
-  consoleInsights: JsonObject;
-  expectedLaunchFailures: number;
-  bodyCompleted: true;
+// Workers run attempts in parallel, so each attempt files its own records and
+// the runner gathers them once the SDK has exited.
+const ATTEMPTS_DIR = "attempts";
+
+/** What one attempt's teardown proved: cleanup always, Console Insights when the body finished. */
+export interface AttemptRecord {
+  schemaVersion: 1;
+  name: string | null;
   cleanupCompleted: true;
+  consoleInsights?: JsonObject;
+  expectedLaunchFailures?: number;
+}
+
+export interface QuarantineRecord {
+  schemaVersion: 1;
+  scenarioName: string | null;
+  reason: string;
+  quarantineRequired: true;
 }
 
 export function writeAttemptRecord(
@@ -23,30 +42,69 @@ export function writeAttemptRecord(
   renameSync(temporary, file);
 }
 
-// The runner may abandon a timed-out body. Fence its later continuations with
-// the same abort signal the control client and app driver use.
-export async function runAttemptPhase<T>(
-  phase: "setup" | "scenario",
-  timeoutMs: number,
-  controller: AbortController,
-  signal: AbortSignal,
-  operation: () => Promise<T>,
-): Promise<T> {
-  signal.throwIfAborted();
-  let rejectAbort: () => void = () => {};
-  const aborted = new Promise<never>((_resolve, reject) => {
-    rejectAbort = () => reject(signal.reason);
-    signal.addEventListener("abort", rejectAbort, { once: true });
-  });
-  const timeout = setTimeout(() => {
-    controller.abort(new Error(`E2E ${phase} timed out after ${timeoutMs}ms`));
-  }, timeoutMs);
-  try {
-    return await Promise.race([operation(), aborted]);
-  } finally {
-    clearTimeout(timeout);
-    signal.removeEventListener("abort", rejectAbort);
+export function recordAttempt(
+  resultsDir: string,
+  key: string,
+  record: AttemptRecord,
+) {
+  writeAttemptRecord(
+    path.join(resultsDir, ATTEMPTS_DIR),
+    `${key}.json`,
+    record,
+  );
+}
+
+export function recordQuarantine(
+  resultsDir: string,
+  key: string,
+  record: QuarantineRecord,
+) {
+  writeAttemptRecord(
+    path.join(resultsDir, ATTEMPTS_DIR),
+    `${key}.quarantine.json`,
+    record,
+  );
+}
+
+/**
+ * Every attempt's records, in the shapes result.ts reads: undefined when no
+ * attempt filed one, so a run that never reached a teardown still lacks proof.
+ */
+export function collectAttemptEvidence(resultsDir: string) {
+  const dir = path.join(resultsDir, ATTEMPTS_DIR);
+  if (!existsSync(dir)) return {};
+  const records: AttemptRecord[] = [];
+  let quarantine: QuarantineRecord | undefined;
+  for (const file of readdirSync(dir).sort()) {
+    if (!file.endsWith(".json")) continue;
+    const value = JSON.parse(readFileSync(path.join(dir, file), "utf8"));
+    if (file.endsWith(".quarantine.json")) quarantine ??= value;
+    else records.push(value);
   }
+  return {
+    cleanupEvidence: {
+      schemaVersion: 1,
+      attempts: records.map(({ name }) => ({ name, cleanupCompleted: true })),
+    },
+    evidence: {
+      schemaVersion: 1,
+      scenarios: records.flatMap(
+        ({ name, consoleInsights, expectedLaunchFailures }) =>
+          name && consoleInsights
+            ? [
+                {
+                  name,
+                  consoleInsights,
+                  expectedLaunchFailures: expectedLaunchFailures ?? 0,
+                  bodyCompleted: true,
+                  cleanupCompleted: true,
+                },
+              ]
+            : [],
+      ),
+    },
+    quarantine,
+  };
 }
 
 export function runtimeLaunchArguments(

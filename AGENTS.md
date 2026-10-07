@@ -21,6 +21,7 @@
 ## Skill Usage
 
 - Do not use the `hot-updater` skill when developing this repository. That skill is intended for Hot Updater library users who need setup, deployment, diagnostics, and OTA operation guidance, not for maintainers changing the library code itself.
+- Use the `e2e` skill when writing or debugging `e2e/mobile`. The suite is deterministic: use `screen` locators, `device`, and `expect` matchers, and never add `agent.*` steps, `agents`, a model, or the replay cache. The skill tracks the latest e2e release; `pnpm exec e2e guide <topic>` prints the guide for the pinned version.
 
 ## Coding Style & Naming
 

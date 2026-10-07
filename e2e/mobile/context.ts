@@ -12,8 +12,8 @@ export interface MobileContext {
   appId: string;
   scenarioNames: string[];
   controlBaseUrl: string;
-  scenarioTimeoutMs: number;
-  setupTimeoutMs: number;
+  /** The SDK `timeout`: bootstrap, reset, and the scenario body together. */
+  testTimeoutMs: number;
   cleanupTimeoutMs: number;
 }
 

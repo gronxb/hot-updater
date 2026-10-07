@@ -1,158 +1,126 @@
+import { randomUUID } from "node:crypto";
+
 import { test as mobileTest } from "@e2e-dev/mobile";
 
 import { createControlClient } from "../shared/control-client.ts";
 import type { ControlClient, JsonObject } from "../shared/control-client.ts";
 import { getScenarioDefinition } from "../shared/scenarios.ts";
-import {
-  runAttemptPhase,
-  runtimeLaunchArguments,
-  writeAttemptRecord,
-} from "./attempt.ts";
-import type { ScenarioEvidence } from "./attempt.ts";
+import { recordAttempt, recordQuarantine } from "./attempt.ts";
 import { readMobileContext } from "./context.ts";
 import { MobileAppDriver } from "./driver.ts";
-import type { IosAlert } from "./ios-alert.ts";
+import { createIosAlertReader } from "./ios-alert.ts";
 
 const context = readMobileContext();
-const test = mobileTest.extend<{
-  hotUpdaterAttemptSignal: { signal: AbortSignal };
-  hotUpdaterIosAlert: { get(): Promise<IosAlert | null> };
-}>();
-const evidence: ScenarioEvidence[] = [];
-const cleanupEvidence: { name: string | null; cleanupCompleted: true }[] = [];
 let installed = false;
-let attempt:
-  | {
-      controller: AbortController;
-      signal: AbortSignal;
-      client: ControlClient;
-      bootstrap: JsonObject;
-      name?: string;
-      consoleInsights?: JsonObject;
-      expectedLaunchFailures?: number;
-    }
-  | undefined;
 
-test.beforeEach(async ({ device, hotUpdaterAttemptSignal }) => {
-  const controller = new AbortController();
-  const signal = AbortSignal.any([
-    controller.signal,
-    hotUpdaterAttemptSignal.signal,
-  ]);
-  const client = createControlClient({
-    baseUrl: context.controlBaseUrl,
-    signal,
-    onStageTiming: (timing) =>
-      console.log(`[e2e-stage:timing] ${JSON.stringify(timing)}`),
-  });
-  attempt = { controller, signal, client, bootstrap: {} };
-  const current = attempt;
-  await runAttemptPhase(
-    "setup",
-    context.setupTimeoutMs,
-    controller,
-    signal,
-    async () => {
-      // Suite hooks receive no device fixture in e2e@0.18.0. Installation belongs
-      // to the first attempt, before bootstrap, reset, or any app launch.
-      if (!installed) {
-        await device.installApp(context.appPath, { app: context.appId });
-        installed = true;
-      }
-      current.bootstrap = await client.runJob(
-        "bootstrap",
-        "/e2e/jobs/bootstrap",
-        { deviceId: context.deviceId },
-      );
-      await client.runJob(
-        "reset remote bundles",
-        "/e2e/jobs/reset-remote-bundles",
-        {},
-      );
-      await client.postJson(
-        "reset local app state",
-        "/e2e/reset-local-app-state",
-        {},
-      );
-    },
-  );
-});
+interface HotUpdaterAttempt {
+  readonly client: ControlClient;
+  readonly signal: AbortSignal;
+  name?: string;
+  bootstrap: JsonObject;
+  consoleInsights?: JsonObject;
+  expectedLaunchFailures?: number;
+}
 
-test.afterEach(async () => {
-  const current = attempt;
-  if (!current) return;
-  current.controller.abort(new Error("Scenario attempt finished"));
+async function finishAttempt(attempt: HotUpdaterAttempt) {
+  const key = attempt.name ?? randomUUID();
   try {
-    // Leave room inside the SDK hook budget for device/session shutdown.
-    await current.client.cancelAndDrain({
+    // Leave room inside the SDK teardown budget for device/session shutdown.
+    await attempt.client.cancelAndDrain({
       timeoutMs: Math.floor(context.cleanupTimeoutMs / 2),
     });
-    // The attempt client is aborted after draining. Terminate through the
+    // The attempt client is fenced after draining. Terminate through the
     // owned controller's explicit device; SDK disposal closes its session.
     await createControlClient({
       baseUrl: context.controlBaseUrl,
       httpTimeoutMs: Math.floor(context.cleanupTimeoutMs / 2),
     }).postJson("terminate app after attempt", "/e2e/terminate-app", {});
   } catch (error) {
-    writeAttemptRecord(context.resultsDir, "quarantine.json", {
+    recordQuarantine(context.resultsDir, key, {
       schemaVersion: 1,
-      scenarioName: current.name ?? null,
+      scenarioName: attempt.name ?? null,
       reason: String(error),
       quarantineRequired: true,
     });
     throw error;
-  } finally {
-    attempt = undefined;
   }
-  cleanupEvidence.push({ name: current.name ?? null, cleanupCompleted: true });
-  writeAttemptRecord(context.resultsDir, "cleanup-evidence.json", {
+  recordAttempt(context.resultsDir, key, {
     schemaVersion: 1,
-    attempts: cleanupEvidence,
+    name: attempt.name ?? null,
+    cleanupCompleted: true,
+    ...(attempt.consoleInsights
+      ? {
+          consoleInsights: attempt.consoleInsights,
+          expectedLaunchFailures: attempt.expectedLaunchFailures ?? 0,
+        }
+      : {}),
   });
-  if (current.name && current.consoleInsights) {
-    evidence.push({
-      name: current.name,
-      consoleInsights: current.consoleInsights,
-      expectedLaunchFailures: current.expectedLaunchFailures ?? 0,
-      bodyCompleted: true,
-      cleanupCompleted: true,
-    });
-    writeAttemptRecord(context.resultsDir, "scenario-evidence.json", {
-      schemaVersion: 1,
-      scenarios: evidence,
-    });
+}
+
+const test = mobileTest.extend<{ hotUpdater: HotUpdaterAttempt }>({
+  hotUpdater: async (_fixtures, use) => {
+    // A timeout abandons the body; its next SDK step fails as CANCELLED, and
+    // aborting here once it is torn down fences its control-plane calls.
+    const controller = new AbortController();
+    const attempt: HotUpdaterAttempt = {
+      client: createControlClient({
+        baseUrl: context.controlBaseUrl,
+        signal: controller.signal,
+        onStageTiming: (timing) =>
+          console.log(`[e2e-stage:timing] ${JSON.stringify(timing)}`),
+      }),
+      signal: controller.signal,
+      bootstrap: {},
+    };
+    await use(attempt);
+    // Runs after the hooks and the body, whether or not they failed.
+    controller.abort(new Error("Scenario attempt finished"));
+    await finishAttempt(attempt);
+  },
+});
+
+test.beforeEach(async ({ device, hotUpdater }) => {
+  // The engine installs nothing on its own: the run's build goes on the device
+  // once, before any bootstrap, reset, or app launch.
+  if (!installed) {
+    await device.installApp();
+    installed = true;
   }
+  hotUpdater.bootstrap = await hotUpdater.client.runJob(
+    "bootstrap",
+    "/e2e/jobs/bootstrap",
+    { deviceId: context.deviceId },
+  );
+  await hotUpdater.client.runJob(
+    "reset remote bundles",
+    "/e2e/jobs/reset-remote-bundles",
+    {},
+  );
+  await hotUpdater.client.postJson(
+    "reset local app state",
+    "/e2e/reset-local-app-state",
+    {},
+  );
 });
 
 for (const scenarioName of context.scenarioNames) {
   const scenario = getScenarioDefinition(scenarioName);
-  test(scenarioName, async ({ device, screen, hotUpdaterIosAlert }) => {
-    const current = attempt;
-    if (!current) throw new Error("Scenario setup did not complete");
-    current.name = scenarioName;
-    await runAttemptPhase(
-      "scenario",
-      context.scenarioTimeoutMs,
-      current.controller,
-      current.signal,
-      async () => {
-        const app = new MobileAppDriver({
-          appId: context.appId,
-          client: current.client,
-          device,
-          iosAlert: hotUpdaterIosAlert,
-          initialValues: current.bootstrap,
-          launchArguments: runtimeLaunchArguments(context.platform),
-          platform: context.platform,
-          screen,
-          signal: current.signal,
-        });
-        const insightsStartedAtMs = Date.now() - 5_000;
-        await scenario.run(app);
-        current.consoleInsights =
-          await app.verifyConsoleInsights(insightsStartedAtMs);
-        current.expectedLaunchFailures = app.expectedLaunchFailures;
-      },
-    );
+  test(scenarioName, async ({ device, screen, hotUpdater }) => {
+    hotUpdater.name = scenarioName;
+    const app = new MobileAppDriver({
+      appId: context.appId,
+      client: hotUpdater.client,
+      device,
+      iosAlert: createIosAlertReader(context, hotUpdater.signal),
+      initialValues: hotUpdater.bootstrap,
+      platform: context.platform,
+      screen,
+      signal: hotUpdater.signal,
+    });
+    const insightsStartedAtMs = Date.now() - 5_000;
+    await scenario.run(app);
+    hotUpdater.consoleInsights =
+      await app.verifyConsoleInsights(insightsStartedAtMs);
+    hotUpdater.expectedLaunchFailures = app.expectedLaunchFailures;
   });
 }

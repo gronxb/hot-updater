@@ -1,6 +1,5 @@
-import { setTimeout as sleep } from "node:timers/promises";
-
 import type { Device, OpenAppOptions } from "@e2e-dev/mobile";
+import { expect } from "e2e";
 import type { Locator, Screen } from "e2e";
 
 import type { ControlClient, JsonObject } from "../shared/control-client.ts";
@@ -14,7 +13,6 @@ import {
   E2E_SCREEN_URLS,
   TEST_ID_SCREEN_PATHS,
 } from "../shared/screen-routes/index.js";
-import { RAW_TEXT_ATTRIBUTE } from "./engine.ts";
 import type { IosAlert } from "./ios-alert.ts";
 
 const inputFields: Record<string, string> = {
@@ -38,10 +36,38 @@ const resultFields: Record<string, string> = {
   "update-action-result": "updateActionResult",
 };
 
+// An action route has started once its result leaves idle; the control
+// client's own screen-state wait then allows a minute for the result.
+const ROUTE_START_TIMEOUT_MS = 60_000;
+
+// Scenarios list alternatives a result may contain; any one satisfies them.
+// Each is normalized the way the SDK normalizes the text it is matched against.
+function containsAnyOf(texts: readonly string[]): string | RegExp {
+  const normalized = texts.map((text) => text.replace(/\s+/gu, " ").trim());
+  if (normalized.length === 0)
+    throw new Error("A text assertion needs at least one expected value");
+  if (normalized.length === 1) return normalized[0]!;
+  return new RegExp(
+    normalized
+      .map((text) => text.replace(/[$()*+.?[\\\]^{|}]/g, "\\$&"))
+      .join("|"),
+  );
+}
+
+// The runner cancels an attempt's SDK steps with this code on a timeout or an
+// interrupt; such a step says nothing about the app.
+function isCancelledStep(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    (error as { code?: unknown }).code === "CANCELLED"
+  );
+}
+
 type DriverOptions = {
   readonly client: Pick<
     ControlClient,
-    "postJson" | "runJob" | "waitForScreenStateField"
+    "postJson" | "readScreenStateField" | "runJob" | "waitForScreenStateField"
   >;
   readonly device: Pick<Device, "openApp" | "openLink">;
   readonly screen: Pick<Screen, "getByTestId" | "getByRole">;
@@ -49,9 +75,7 @@ type DriverOptions = {
   readonly appId: string;
   readonly platform: "ios" | "android";
   readonly signal: AbortSignal;
-  readonly launchArguments?: readonly string[];
   readonly initialValues?: JsonObject;
-  readonly assertionTimeoutMs?: number;
 };
 
 export class MobileAppDriver implements ScenarioAppDriver {
@@ -94,26 +118,13 @@ export class MobileAppDriver implements ScenarioAppDriver {
           },
         );
       }
-      const target = await this.findVisible(testID, options.ensureForeground);
-      const timeoutMs = this.options.assertionTimeoutMs ?? 30_000;
-      const deadline = Date.now() + timeoutMs;
-      let actual: string | null;
-      do {
-        this.options.signal.throwIfAborted();
-        actual = await target.getAttribute(RAW_TEXT_ATTRIBUTE);
-        if (
-          actual !== null &&
-          (options.exactText
-            ? actual === expected[0]
-            : expected.some((text) => actual!.includes(text)))
-        )
-          return;
-        if (Date.now() >= deadline) break;
-        await sleep(100, undefined, { signal: this.options.signal });
-      } while (Date.now() <= deadline);
-      throw new Error(
-        `${stage} expected ${testID} ${options.exactText ? "to equal" : "to contain one of"} ${JSON.stringify(expected)}, received ${JSON.stringify(actual)}`,
-      );
+      const target = await this.openScreen(testID, options.ensureForeground);
+      this.options.signal.throwIfAborted();
+      // The matcher waits up to config.assertionTimeout for one visible node
+      // with the text, so no separate visibility check runs first.
+      await (options.exactText
+        ? expect(target).toHaveText(expected[0]!)
+        : expect(target).toContainText(containsAnyOf(expected)));
     });
   }
 
@@ -183,7 +194,7 @@ export class MobileAppDriver implements ScenarioAppDriver {
         });
       } catch (error) {
         this.options.signal.throwIfAborted();
-        if (!recovering) throw error;
+        if (!recovering || isCancelledStep(error)) throw error;
         this.pendingLaunchFailure = true;
         // The next control assertions must establish recovery; no UI action is
         // permitted to hide this disconnect by opening the app again.
@@ -236,22 +247,17 @@ export class MobileAppDriver implements ScenarioAppDriver {
           "/e2e/screen-state",
           { [field]: "idle" },
         );
-        await this.findVisible(testID, true, true);
-        let confirmed = false;
+        await this.openScreen(testID, true, true);
+        if (this.options.platform === "ios") {
+          await this.acceptAppLinkUntil(async () => {
+            const value = await this.options.client.readScreenStateField(field);
+            return value !== undefined && value !== "idle";
+          }, ROUTE_START_TIMEOUT_MS);
+        }
         await this.options.client.waitForScreenStateField(
           `${stage}: wait ${field}`,
           field,
-          {
-            ...(this.options.platform === "ios"
-              ? {
-                  onPending: async () => {
-                    if (!confirmed) confirmed = await this.confirmIosLink();
-                  },
-                }
-              : {}),
-            rejectValues: ["idle"],
-            rejectSubstrings: [" -> checking"],
-          },
+          { rejectValues: ["idle"], rejectSubstrings: [" -> checking"] },
         );
         return;
       }
@@ -298,7 +304,16 @@ export class MobileAppDriver implements ScenarioAppDriver {
     return evidence;
   }
 
-  private async findVisible(
+  private async findVisible(testID: string): Promise<Locator> {
+    const target = await this.openScreen(testID);
+    this.options.signal.throwIfAborted();
+    await expect(target).toBeVisible();
+    return target;
+  }
+
+  // Brings the screen that shows testID forward and returns a locator for its
+  // visible node, without waiting for it.
+  private async openScreen(
     testID: string,
     ensureForeground = true,
     alwaysOpen = false,
@@ -326,24 +341,52 @@ export class MobileAppDriver implements ScenarioAppDriver {
         this.activeScreenPath = screenPath;
       }
     }
-    const target = this.options.screen.getByTestId(testID);
+    const target = this.options.screen.getByTestId(testID, { visible: true });
     // Mapped action routes execute on entry. Their control-plane result wait
     // observes progress without foregrounding an app that may be restarting.
     if (alwaysOpen) return target;
-    const timeout =
-      openedLink && this.options.platform === "ios"
-        ? await this.waitForIosLink(target)
-        : (this.options.assertionTimeoutMs ?? 30_000);
-    this.options.signal.throwIfAborted();
-    await target.waitFor({ state: "visible", timeout });
+    if (openedLink && this.options.platform === "ios")
+      await this.acceptAppLinkUntil(() => target.isVisible());
     return target;
   }
 
-  private async confirmIosLink(): Promise<boolean> {
+  // iOS may ask to open a route in the app first. The poll only reads
+  // (whether the route got through, else the system alert) so no step fails
+  // and recovers inside it. A read that throws ends the poll and is rethrown
+  // as is; the expected dialog is accepted once, after the poll, and any
+  // other alert fails at once.
+  private async acceptAppLinkUntil(
+    routed: () => Promise<boolean>,
+    timeout?: number,
+  ) {
+    let outcome = null as { alert?: IosAlert; error?: unknown } | null;
+    await expect
+      .poll(
+        async () => {
+          try {
+            this.options.signal.throwIfAborted();
+            if (await routed()) outcome = {};
+            else {
+              const alert = await this.options.iosAlert.get();
+              if (alert) outcome = { alert };
+            }
+          } catch (error) {
+            outcome = { error };
+          }
+          return outcome !== null;
+        },
+        {
+          ...(timeout === undefined ? {} : { timeout }),
+          message: "the iOS route neither opened nor asked to open the app",
+        },
+      )
+      .toBe(true);
     this.options.signal.throwIfAborted();
-    const alert = await this.options.iosAlert.get();
-    this.options.signal.throwIfAborted();
-    if (!alert) return false;
+    if (outcome?.error !== undefined) throw outcome.error;
+    if (outcome?.alert) await this.acceptAppLinkAlert(outcome.alert);
+  }
+
+  private async acceptAppLinkAlert(alert: IosAlert) {
     // The native getter observes SpringBoard without activating the AUT.
     // Only these English/Korean app-open dialogs are supported; other prompts
     // stay visible and fail the scenario instead of granting a permission.
@@ -373,22 +416,6 @@ export class MobileAppDriver implements ScenarioAppDriver {
       .getByRole("alert", reportedScrollBar ? koreanTitle : alert.title)
       .getByRole("button", affirmative)
       .tap();
-    return true;
-  }
-
-  private async waitForIosLink(target: Locator): Promise<number> {
-    const deadline = Date.now() + (this.options.assertionTimeoutMs ?? 30_000);
-    const remaining = () => Math.max(1, deadline - Date.now());
-    do {
-      this.options.signal.throwIfAborted();
-      if (await this.confirmIosLink()) return remaining();
-      if (await target.isVisible()) return remaining();
-      if (Date.now() >= deadline) break;
-      await sleep(Math.min(100, remaining()), undefined, {
-        signal: this.options.signal,
-      });
-    } while (Date.now() < deadline);
-    return remaining();
   }
 
   private async waitForStartupCheck(stage: string, launchState: JsonObject) {
@@ -408,12 +435,8 @@ export class MobileAppDriver implements ScenarioAppDriver {
   private async openApp(options: OpenAppOptions) {
     this.options.signal.throwIfAborted();
     if (options.relaunch) this.activeScreenPath = undefined;
-    await this.options.device.openApp(this.options.appId, {
-      ...options,
-      ...(options.relaunch
-        ? { launchArguments: this.options.launchArguments }
-        : {}),
-    });
+    // A relaunch of the pinned app carries the target's launchArguments.
+    await this.options.device.openApp(this.options.appId, options);
   }
 
   private resolve(value: unknown): unknown {

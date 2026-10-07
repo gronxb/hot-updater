@@ -6,12 +6,11 @@ export type IosAlert = { title: string; buttons: string[] };
 
 export function createIosAlertReader(
   target: Pick<MobileContext, "session" | "deviceId">,
-  readSignal: () => AbortSignal,
+  signal: AbortSignal,
   client = createAgentDeviceClient({ session: `${target.session}-0` }),
 ) {
   return {
     async get(): Promise<IosAlert | null> {
-      const signal = readSignal();
       signal.throwIfAborted();
       try {
         // SDK 0.10.0 uses <session>-<worker slot>; this runner fixes workers=1.
