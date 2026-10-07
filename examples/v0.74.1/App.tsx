@@ -24,7 +24,8 @@ import { proxy, useSnapshot } from "valtio";
 
 const notify = proxy<{
   status?: string;
-  crashedBundleId?: string;
+  fromBundleId?: string;
+  toBundleId?: string;
 }>({});
 
 export const extractFormatDateFromUUIDv7 = (uuid: string) => {
@@ -47,7 +48,10 @@ export const hotUpdater = HotUpdater.init({
   plugins: [insights()],
   onNotifyAppReady: (result) => {
     notify.status = result.status;
-    notify.crashedBundleId = result.crashedBundleId;
+    if (result.status !== "UNCHANGED") {
+      notify.fromBundleId = result.fromBundleId;
+      notify.toBundleId = result.toBundleId;
+    }
   },
   onError: (error) => {
     if (error instanceof Error) {
