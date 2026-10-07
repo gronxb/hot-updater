@@ -80,6 +80,44 @@ describe("release Insights sections", () => {
     });
   });
 
+  it("opens Release health from a bundle row's summary over the same period as View adoption", () => {
+    const hour = 3_600_000;
+    vi.useFakeTimers({ now: 30 * 86_400_000 });
+    const releaseOf = (ageMs: number) => {
+      const deployed = (30 * 86_400_000 - ageMs).toString(16).padStart(12, "0");
+      return `${deployed.slice(0, 8)}-${deployed.slice(8)}-7000-8000-000000000001`;
+    };
+    const report: BundleActivityReport = {
+      downloads: 3,
+      launched: 2,
+      failedLaunches: 0,
+      measuredAtMs: 0,
+    };
+    const windowOf = () =>
+      new URL(
+        screen.getByRole("link").getAttribute("href")!,
+        "http://console",
+      ).searchParams.get("bundleWindow");
+    const view = render(
+      <BundleMovementSummary
+        report={report}
+        variant="inline"
+        input={{ ...input, releaseId: releaseOf(5 * hour) }}
+      />,
+    );
+    // Deployed 5 hours ago: 24 hours holds its first hours.
+    expect(windowOf()).toBe("24h");
+    view.rerender(
+      <BundleMovementSummary
+        report={report}
+        variant="inline"
+        input={{ ...input, releaseId: releaseOf(3 * 24 * hour) }}
+      />,
+    );
+    vi.useRealTimers();
+    expect(windowOf()).toBe("7d");
+  });
+
   it("shows download failures alone where the console reads no release activity", () => {
     features.insightsAnalytics = false;
     render(<ReleaseFailuresSection input={input} />);

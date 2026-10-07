@@ -311,13 +311,14 @@ no downloads, since it ships with the app. The crash rate is crashed divided
 by launched plus crashed, as in Release health. Select
 the summary, or **View adoption** in the bundle detail, to open
 [Release health](#release-health) on that release and the one deployed before
-it. The bundle detail also shows
+it, over the shortest period that covers the release's deployment: **24h**
+within a day of it, **7d** within a week, else **30d**. The bundle detail also shows
 **Download failures** since the release's first report, with their rate; see
 [Update failures](#update-failures).
 
 Insights opens on the `production` channel. **App usage** starts with
 **All platforms** and a 24-hour period; **Release health** starts with **iOS**
-and **7d**. Each card has its own **24h**, **7d**, or **30d** period selector,
+and **24h**. Each card has its own **24h**, **7d**, or **30d** period selector,
 and App usage also offers **12m**.
 
 Choose a **Channel** for both cards. **Usage platform** and **App version**
@@ -346,12 +347,14 @@ first day; the Console shows that date.
 Select an app version in **Distribution**, or choose **View distribution**, to
 see its bundle IDs, platforms, active installation counts, and share within each
 app version. The detail view keeps the overview's reporting scope, supports
-20 rows per page, and links each known ID to its bundle details. **Built-in app**
+20 rows per page, and links each known ID to its bundle details. **Built-in bundle**
 shows installations that run the bundle their native build shipped, by its ID
 (`MIN_BUNDLE_ID`), under that build's app version; a deployment that selected
 the built-in bundle shows its ID with the same mark. **Unknown bundle** accounts
 for the remaining installations without an observed deployment ID. Event and
-installation details mark the built-in bundle the same way.
+installation details mark the built-in bundle the same way, including from an
+SDK that doesn't report `MIN_BUNDLE_ID`: a built-in bundle's ID is its build
+time with the random bits zeroed, which no deployed bundle's ID has.
 Period and filter selections survive navigation back to the overview.
 
 ![Bundle distribution by app version with sample data](/docs/console/insights-distribution.png)
@@ -409,22 +412,25 @@ its stage and reason. A failed check names the running bundle instead of a
 target, so it counts for its channel and appears in no bundle's list.
 
 In the Console, **Update failures** follows Release health's channel, platform,
-Release ID, and period:
+Release ID, and period. Each kind of failure shows one rate, then its failure
+reports and the installations they came from, estimated:
 
-- **Failed updates** counts failed downloads and installs. A client reports a
-  failure at most once a UTC day for each stage, reason, and target bundle.
-- **Attempt failure rate** is the failure rate of update attempts: failed
-  updates divided by themselves plus download reports.
-- **Failed installations** estimates the distinct installations with such a
-  failure.
-- **Patch fallback rate** is the share of downloads that tried a patch and
-  fell back to the changed files or the full archive.
-- Without a Release ID, **Failed checks** counts failed update checks, and
-  **Check failure rate** divides the installations with one by the channel's
-  active installations. A check that gets no response, because the device is
-  offline or the request timed out or was cancelled, is not reported.
+- **Downloads & installs** is the share of update attempts that failed: failed
+  downloads and installs divided by themselves plus download reports. A client
+  reports a failure at most once a UTC day for each stage, reason, and target
+  bundle. When downloads tried a patch, a line says how many fell back to the
+  changed files or the full archive.
+- Without a Release ID, **Update checks** is the share of the channel's active
+  installations with a failed update check. A check that gets no response,
+  because the device is offline or the request timed out or was cancelled, is
+  not reported.
+- A rate shows its change from the previous period once a whole previous
+  period was recorded.
 - **Failures by stage and reason** lists each stage and reason with its share;
   expand one to see its HTTP statuses, origin codes, transports, and resources.
+  A failure whose client classified none reads **No reason reported**. Such a
+  client reports every failed check, offline ones included, so when these are
+  most of the failures, the card says so.
 
 The bundle detail's **Download failures** counts the release's failed
 downloads and installs since its first report, with the same rate. On a

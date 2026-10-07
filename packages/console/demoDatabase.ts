@@ -1197,6 +1197,22 @@ for (const [index, appVersion] of (
     received_at_ms: builtinDemoNow + index,
   });
 }
+// One on an SDK that reports no min_bundle_id: the Console still marks its
+// bundle as built in, by the shape of the bundle's ID.
+await insightsApi.recordEvent({
+  ...downloadDemo,
+  id: "019f635e-bbbd-7000-8000-000000000001",
+  type: "UNCHANGED",
+  install_id: "demo-builtin-unreported",
+  user_id: null,
+  app_version: "1.4.1",
+  from_bundle_id: null,
+  from_release_id: null,
+  to_bundle_id: builtinBundleIds["1.4.1"],
+  to_release_id: null,
+  metadata: { ...downloadDemo.metadata, update_strategy: null },
+  received_at_ms: builtinDemoNow + 5,
+});
 for (const [type, index] of [
   ["UPDATE_DOWNLOADED", 0],
   ["UPDATE_APPLIED", 1],

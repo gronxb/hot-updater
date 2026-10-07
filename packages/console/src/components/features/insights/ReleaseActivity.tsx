@@ -143,7 +143,7 @@ export function BundleMovementSummary({
             healthPlatform: input.platform,
             healthChannel: input.channel,
             releaseId: input.releaseId,
-            bundleWindow: "7d",
+            bundleWindow: adoptionWindow(input.releaseId),
           }}
         >
           {metrics}

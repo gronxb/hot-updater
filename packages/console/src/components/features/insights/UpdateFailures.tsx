@@ -28,7 +28,6 @@ import {
   failureStageLabel,
   formatRate,
   type InsightsFailureBreakdown,
-  patchFallbackRate,
   type UpdateFailuresReport,
 } from "@/lib/insights-failures";
 import { cn } from "@/lib/utils";
@@ -40,36 +39,65 @@ import { InsightsInfo } from "./InsightsInfo";
 const share = (events: number, total: number) =>
   total === 0 ? "—" : `${((events / total) * 100).toFixed(1)}%`;
 
-function Metric({
-  label,
+/**
+ * One kind of failure: its rate as the headline, then how many failures and
+ * installations it holds.
+ */
+function FailureSummary({
+  id,
+  title,
   info,
-  attention = false,
+  rate,
+  of,
+  failures,
+  installations,
+  previous,
   children,
 }: {
-  readonly label: string;
-  readonly info?: ReactNode;
-  readonly attention?: boolean;
-  readonly children: ReactNode;
+  readonly id: string;
+  readonly title: string;
+  readonly info: string;
+  readonly rate: number | null;
+  /** What the rate is a share of. */
+  readonly of: string;
+  readonly failures: number;
+  readonly installations: number;
+  readonly previous?: {
+    readonly rate: number | null;
+    readonly complete: boolean;
+  };
+  readonly children?: ReactNode;
 }) {
   return (
-    <div className="flex min-w-0 flex-col gap-1">
-      <dt className="flex min-h-11 items-center gap-1 text-xs text-muted-foreground sm:min-h-7">
-        {label}
-        {info ? (
-          <InsightsInfo label={`About ${label.toLowerCase()}`}>
-            {info}
-          </InsightsInfo>
-        ) : null}
-      </dt>
-      <dd
-        className={cn(
-          "text-2xl font-semibold tracking-tight tabular-nums",
-          attention && "text-warning",
-        )}
+    <section aria-labelledby={id} className="flex min-w-0 flex-col gap-1">
+      <h3
+        id={id}
+        className="flex min-h-11 items-center gap-1 text-sm font-medium sm:min-h-7"
       >
-        {children}
-      </dd>
-    </div>
+        {title}
+        <InsightsInfo label={`About ${title.toLowerCase()}`}>
+          {info}
+        </InsightsInfo>
+      </h3>
+      <p className="text-3xl font-semibold tracking-tight tabular-nums">
+        <Rate value={rate} />
+      </p>
+      <p className="text-xs text-muted-foreground">{of}</p>
+      {previous ? (
+        <RateChange
+          value={rate}
+          previous={previous.rate}
+          complete={previous.complete}
+        />
+      ) : null}
+      <p className="mt-2 text-sm text-muted-foreground tabular-nums">
+        {failures.toLocaleString()} {failures === 1 ? "failure" : "failures"}
+        {" · "}
+        <EstimatedCount value={installations} />{" "}
+        {installations === 1 ? "installation" : "installations"}
+      </p>
+      {children}
+    </section>
   );
 }
 
@@ -96,13 +124,8 @@ function RateChange({
   readonly previous: number | null;
   readonly complete: boolean;
 }) {
-  if (!complete || value === null || previous === null) {
-    return (
-      <span className="mt-1 block text-xs font-normal text-muted-foreground">
-        Previous period unavailable
-      </span>
-    );
-  }
+  // No change to show before a whole previous period was recorded.
+  if (!complete || value === null || previous === null) return null;
   const difference = (value - previous) * 100;
   const rounded = Number(difference.toFixed(2));
   return (
@@ -198,82 +221,52 @@ function FailuresReport({
 }) {
   const breakdown = report.breakdown ?? [];
   const total = breakdown.reduce((sum, { events }) => sum + events, 0);
+  const unreasoned = breakdown
+    .filter(({ reason }) => reason === "unknown")
+    .reduce((sum, { events }) => sum + events, 0);
+  const patchAttempts = report.patchDownloads + report.patchFallbacks;
   return (
     <div className="flex flex-col gap-8">
-      <div
-        className={cn("grid gap-6", report.checks && "lg:grid-cols-[2fr_1fr]")}
-      >
-        <section
-          aria-labelledby="download-install-failures"
-          className="flex min-w-0 flex-col gap-3"
+      <div className={cn("grid gap-6", report.checks && "sm:grid-cols-2")}>
+        <FailureSummary
+          id="download-install-failures"
+          title="Downloads & installs"
+          info="Failed downloads and installs ÷ those plus successful downloads."
+          rate={failureRate(report)}
+          of="of update attempts failed"
+          failures={report.failedUpdates}
+          installations={report.failedInstallations}
+          previous={
+            report.previous && {
+              rate: report.previous.attemptRate,
+              complete: report.previous.complete,
+            }
+          }
         >
-          <h3 id="download-install-failures" className="text-sm font-medium">
-            Downloads &amp; installs
-          </h3>
-          <dl className="grid grid-cols-2 gap-x-6 gap-y-4">
-            <Metric label="Failed updates" attention={report.failedUpdates > 0}>
-              {report.failedUpdates.toLocaleString()}
-            </Metric>
-            <Metric
-              label="Attempt failure rate"
-              attention={report.failedUpdates > 0}
-              info="Share of update attempts that failed: failures ÷ (failures + downloads)."
-            >
-              <Rate value={failureRate(report)} />
-              {report.previous ? (
-                <RateChange
-                  value={failureRate(report)}
-                  previous={report.previous.attemptRate}
-                  complete={report.previous.complete}
-                />
-              ) : null}
-            </Metric>
-            <Metric
-              label="Failed installations"
-              attention={report.failedInstallations > 0}
-              info="Installations with a failed download or install, estimated within about 3%."
-            >
-              <EstimatedCount value={report.failedInstallations} />
-            </Metric>
-            <Metric
-              label="Patch fallback rate"
-              info="Share of patch downloads that fell back to full files."
-            >
-              <Rate value={patchFallbackRate(report)} />
-            </Metric>
-          </dl>
-        </section>
+          {patchAttempts > 0 ? (
+            <p className="text-sm text-muted-foreground tabular-nums">
+              {report.patchFallbacks.toLocaleString()} of{" "}
+              {patchAttempts.toLocaleString()} patch downloads fell back to the
+              full archive
+            </p>
+          ) : null}
+        </FailureSummary>
         {report.checks ? (
-          <section
-            aria-labelledby="update-check-failures"
-            className="flex min-w-0 flex-col gap-3 rounded-lg bg-muted/30 p-4 lg:p-6"
-          >
-            <h3 id="update-check-failures" className="text-sm font-medium">
-              Update checks
-            </h3>
-            <dl className="grid grid-cols-2 gap-4 lg:grid-cols-1">
-              <Metric
-                label="Failed checks"
-                attention={report.checks.failures > 0}
-              >
-                {report.checks.failures.toLocaleString()}
-              </Metric>
-              <Metric
-                label="Check failure rate"
-                attention={report.checks.failedInstallations > 0}
-                info="Installations whose update check failed ÷ active installations. Offline checks aren't reported."
-              >
-                <Rate value={checkFailureRate(report.checks)} />
-                {report.previous ? (
-                  <RateChange
-                    value={checkFailureRate(report.checks)}
-                    previous={report.previous.checkRate}
-                    complete={report.previous.complete}
-                  />
-                ) : null}
-              </Metric>
-            </dl>
-          </section>
+          <FailureSummary
+            id="update-check-failures"
+            title="Update checks"
+            info="Installations whose update check failed ÷ active installations. A check that fails offline isn't reported."
+            rate={checkFailureRate(report.checks)}
+            of="of active installations had a check fail"
+            failures={report.checks.failures}
+            installations={report.checks.failedInstallations}
+            previous={
+              report.previous && {
+                rate: report.previous.checkRate,
+                complete: report.previous.complete,
+              }
+            }
+          />
         ) : null}
       </div>
       <Separator />
@@ -290,6 +283,12 @@ function FailuresReport({
         <h3 className="text-sm font-medium" id="failures-by-stage">
           Failures by stage and reason
         </h3>
+        {unreasoned * 2 > total ? (
+          <p className="text-sm text-muted-foreground">
+            Most report no reason: an SDK that doesn&apos;t classify failures
+            reports every failed check, offline ones included.
+          </p>
+        ) : null}
         {breakdown.length === 0 ? (
           <p className="text-sm text-muted-foreground">
             No update failures in this period.

@@ -65,17 +65,6 @@ export const failureRate = ({
     ? null
     : failedUpdates / (failedUpdates + downloads);
 
-/** Of the downloads that tried a patch, the share that fell back to files or the archive. */
-export const patchFallbackRate = ({
-  patchDownloads,
-  patchFallbacks,
-}: Pick<InsightsUpdateFailures, "patchDownloads" | "patchFallbacks">):
-  | number
-  | null =>
-  patchDownloads + patchFallbacks === 0
-    ? null
-    : patchFallbacks / (patchDownloads + patchFallbacks);
-
 /** Installations whose update check failed, over the active ones; estimates, so at most 100%. */
 export const checkFailureRate = ({
   failedInstallations,
@@ -103,6 +92,7 @@ const REASONS: Readonly<Record<string, string>> = {
   patch: "Patch",
   extract: "Extract",
   storage: "Storage",
+  unknown: "No reason reported",
 };
 
 export const failureStageLabel = (stage: string): string =>

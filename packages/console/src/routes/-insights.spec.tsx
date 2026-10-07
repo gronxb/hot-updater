@@ -167,17 +167,19 @@ describe("Insights dashboard", () => {
         ).getByText("3"),
       ).toBeDefined(),
     );
+    // Both cards start on 24 hours.
     expect(
       screen.getAllByRole("tab", { name: "24 hours", selected: true }),
-    ).toHaveLength(1);
+    ).toHaveLength(2);
+    expect(eventReads()).toContain("bundle-release-new LAUNCHED 24h");
     fireEvent.click(
       within(screen.getByRole("region", { name: "Release health" })).getByRole(
         "tab",
-        { name: "24 hours" },
+        { name: "7 days" },
       ),
     );
     await waitFor(() =>
-      expect(eventReads()).toContain("bundle-release-new LAUNCHED 24h"),
+      expect(eventReads()).toContain("bundle-release-new LAUNCHED 7d"),
     );
     expect(mocks.usage).toHaveBeenCalledTimes(1);
     expect(
@@ -205,7 +207,7 @@ describe("Insights dashboard", () => {
     expect(
       within(screen.getByRole("region", { name: "Release health" })).getByRole(
         "tab",
-        { name: "24 hours", selected: true },
+        { name: "7 days", selected: true },
       ),
     ).toBeDefined();
     expect(mocks.releases).toHaveBeenCalledOnce();
@@ -259,8 +261,8 @@ describe("Insights dashboard", () => {
     await waitFor(() =>
       expect(eventReads()).toEqual(
         expect.arrayContaining([
-          "bundle-release-a LAUNCHED 24h",
-          "bundle-release-before-a LAUNCHED 24h",
+          "bundle-release-a LAUNCHED 7d",
+          "bundle-release-before-a LAUNCHED 7d",
         ]),
       ),
     );
@@ -359,10 +361,10 @@ describe("Insights dashboard", () => {
     // Adoption reads each bundle's downloads and launches, over the same
     // hours.
     expect(eventReads().sort()).toEqual([
-      "bundle-release-new DOWNLOADED 7d",
-      "bundle-release-new LAUNCHED 7d",
-      "bundle-release-old DOWNLOADED 7d",
-      "bundle-release-old LAUNCHED 7d",
+      "bundle-release-new DOWNLOADED 24h",
+      "bundle-release-new LAUNCHED 24h",
+      "bundle-release-old DOWNLOADED 24h",
+      "bundle-release-old LAUNCHED 24h",
     ]);
     expect(
       new Set(mocks.events.mock.calls.map(([{ data }]) => data.endMs)).size,
@@ -375,8 +377,8 @@ describe("Insights dashboard", () => {
     });
     await waitFor(() => expect(mocks.events).toHaveBeenCalledTimes(6));
     expect(eventReads().slice(4).sort()).toEqual([
-      "bundle-release-new RECOVERED 7d",
-      "bundle-release-old RECOVERED 7d",
+      "bundle-release-new RECOVERED 24h",
+      "bundle-release-old RECOVERED 24h",
     ]);
 
     // Adding a bundle reads only it; the bundle list is not read again.
@@ -392,8 +394,8 @@ describe("Insights dashboard", () => {
     });
     await waitFor(() => expect(mocks.events).toHaveBeenCalledTimes(8));
     expect(eventReads().slice(6).sort()).toEqual([
-      "bundle-release-oldest LAUNCHED 7d",
-      "bundle-release-oldest RECOVERED 7d",
+      "bundle-release-oldest LAUNCHED 24h",
+      "bundle-release-oldest RECOVERED 24h",
     ]);
     expect(mocks.releases).toHaveBeenCalledOnce();
   });
