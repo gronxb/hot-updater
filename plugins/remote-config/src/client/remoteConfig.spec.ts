@@ -148,7 +148,8 @@ describe("remoteConfig() client plugin", () => {
     const before = config.getAll();
     expect(config.getAll()).toBe(before);
     responses.push(() => values({ version: 1, values: { welcome: "Hey" } }));
-    await config.fetchAndActivate();
+    await config.fetch();
+    await config.activate();
     const after = config.getAll();
     expect(after).not.toBe(before);
     expect(config.getAll()).toBe(after);
@@ -158,7 +159,8 @@ describe("remoteConfig() client plugin", () => {
   it("reads the values activated at an earlier launch synchronously right after setup", async () => {
     const first = launch({ defaults: { welcome: "Hi" } });
     responses.push(() => values({ version: 4, values: { welcome: "Hey" } }));
-    await first.config.fetchAndActivate();
+    await first.config.fetch();
+    await first.config.activate();
 
     const relaunch = setupClientPlugin(
       remoteConfig({ defaults: { welcome: "Hi" } }),
@@ -220,11 +222,13 @@ describe("remoteConfig() client plugin", () => {
   it("revalidates with the fetched ETag and keeps the values on a 304", async () => {
     const { config } = launch({ minimumFetchIntervalMs: 0 });
     responses.push(() => values({ version: 5, values: { a: "x" } }, '"abc"'));
-    await config.fetchAndActivate();
+    await config.fetch();
+    await config.activate();
 
     clock += 1_000;
     responses.push(() => new Response(null, { status: 304 }));
-    expect(await config.fetchAndActivate()).toBe(false);
+    await config.fetch();
+    expect(await config.activate()).toBe(false);
     expect(requests[1]!.headers["if-none-match"]).toBe('"abc"');
     expect(config.getString("a")).toBe("x");
     expect(config.fetchTimeMillis).toBe(clock);
@@ -236,7 +240,7 @@ describe("remoteConfig() client plugin", () => {
     await Promise.all([
       config.fetch(),
       config.fetch(),
-      config.fetchAndActivate(),
+      config.fetch().then(() => config.activate()),
     ]);
     expect(requests).toHaveLength(1);
   });
@@ -247,7 +251,8 @@ describe("remoteConfig() client plugin", () => {
       minimumFetchIntervalMs: 0,
     });
     responses.push(() => values({ version: 1, values: { welcome: "Hey" } }));
-    await config.fetchAndActivate();
+    await config.fetch();
+    await config.activate();
 
     responses.push(() => new Response(null, { status: 404 }));
     await expect(config.fetch()).rejects.toThrow(
@@ -297,7 +302,8 @@ describe("remoteConfig() client plugin", () => {
         values: { constructor: "remote", hasOwnProperty: "yes" },
       }),
     );
-    await config.fetchAndActivate();
+    await config.fetch();
+    await config.activate();
     expect(config.getString("constructor")).toBe("remote");
     expect(config.getBoolean("hasOwnProperty")).toBe(true);
     expect(config.getValue("toString").getSource()).toBe("static");

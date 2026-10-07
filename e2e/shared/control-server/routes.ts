@@ -19,6 +19,7 @@ import {
   handleCaptureBuiltInBundleId,
   handleCaptureState,
   handleCleanup,
+  handleComputeRemoteConfigRolloutSample,
   handleComputeRolloutSample,
   handleConfigureProxy,
   handleLaunchHeadlessTask,
@@ -541,6 +542,33 @@ app.post("/e2e/compute-rollout-sample", async (c) => {
   }
 
   return c.json(await handleComputeRolloutSample(payload.releaseId));
+});
+
+app.post("/e2e/compute-remote-config-rollout-sample", async (c) => {
+  const payload = (await c.req.json()) as {
+    seed?: string;
+    percent?: number;
+    widenedPercent?: number;
+  };
+  if (
+    typeof payload.seed !== "string" ||
+    typeof payload.percent !== "number" ||
+    typeof payload.widenedPercent !== "number" ||
+    payload.widenedPercent <= payload.percent
+  ) {
+    return c.json(
+      { error: "seed, percent, and a larger widenedPercent are required" },
+      400,
+    );
+  }
+
+  return c.json(
+    await handleComputeRemoteConfigRolloutSample({
+      seed: payload.seed,
+      percent: payload.percent,
+      widenedPercent: payload.widenedPercent,
+    }),
+  );
 });
 
 app.post("/e2e/wait-for-metadata", async (c) => {

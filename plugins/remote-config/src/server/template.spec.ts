@@ -1,3 +1,4 @@
+import { getRolledOutNumericCohorts } from "@hot-updater/protocol";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -284,6 +285,14 @@ describe("evaluateRemoteConfig", () => {
     expect(share(0, 10, "other")).not.toEqual(first);
     expect(share(0, 100)).toHaveLength(1000);
     expect(share(0, 0.1)).toHaveLength(1);
+
+    // Widening keeps the installations already in, as a bundle rollout of
+    // the same share and seed picks them.
+    const widened = share(0, 25);
+    expect(first.every((cohort) => widened.includes(cohort))).toBe(true);
+    expect(widened.map(Number).toSorted((a, b) => a - b)).toEqual(
+      getRolledOutNumericCohorts("rollout", 250),
+    );
   });
 
   it("matches custom cohorts only by name, never by percentage", () => {

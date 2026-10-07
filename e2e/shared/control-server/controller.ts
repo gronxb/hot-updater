@@ -5544,6 +5544,47 @@ async function computeRolloutSample(releaseId: string) {
   };
 }
 
+/**
+ * Cohorts for a Remote Config percentage rule with `seed`: one inside
+ * `[0, percent)`, one that only `[0, widenedPercent)` adds, and one outside
+ * both. The rule shuffles the numeric cohorts as a rollout does.
+ */
+function computeRemoteConfigRolloutSample(args: {
+  seed: string;
+  percent: number;
+  widenedPercent: number;
+}) {
+  const included = getRolledOutNumericCohorts(
+    args.seed,
+    Math.round(args.percent * 10),
+  );
+  const widened = getRolledOutNumericCohorts(
+    args.seed,
+    Math.round(args.widenedPercent * 10),
+  );
+  const includedSet = new Set(included);
+  const widenedSet = new Set(widened);
+  const widenedCohort = widened.find((cohort) => !includedSet.has(cohort));
+  const excludedCohort = Array.from(
+    { length: 1000 },
+    (_, index) => index + 1,
+  ).find((cohort) => !widenedSet.has(cohort));
+  if (
+    included[0] === undefined ||
+    widenedCohort === undefined ||
+    excludedCohort === undefined
+  ) {
+    throw new Error(
+      `No Remote Config rollout sample for ${args.percent}% and ${args.widenedPercent}% of seed ${args.seed}`,
+    );
+  }
+  return {
+    includedCohort: String(included[0]),
+    widenedCohort: String(widenedCohort),
+    excludedCohort: String(excludedCohort),
+  };
+}
+
 async function waitForMetadata(
   bundleId: string,
   verificationPending: boolean,
@@ -6510,6 +6551,14 @@ export async function handleCaptureBuiltInBundleId() {
 
 export async function handleComputeRolloutSample(releaseId: string) {
   return computeRolloutSample(releaseId);
+}
+
+export async function handleComputeRemoteConfigRolloutSample(args: {
+  seed: string;
+  percent: number;
+  widenedPercent: number;
+}) {
+  return computeRemoteConfigRolloutSample(args);
 }
 
 export async function handleWaitForMetadata(
