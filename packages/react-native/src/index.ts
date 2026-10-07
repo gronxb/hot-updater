@@ -67,6 +67,18 @@ export {
   type InsightsPlugin,
   type InsightsUser,
 } from "@hot-updater/plugin-insights/client";
+// The built-in Remote Config client plugin, for HotUpdater.init({ plugins }).
+export {
+  remoteConfig,
+  type RemoteConfigDefaults,
+  type RemoteConfigDefaultValue,
+  type RemoteConfigFetchStatus,
+  type RemoteConfigKey,
+  type RemoteConfigOptions,
+  type RemoteConfigPlugin,
+  type RemoteConfigValue,
+  type RemoteConfigValueSource,
+} from "@hot-updater/plugin-remote-config/client";
 export type {
   CustomReloadHandler,
   HotUpdaterEvent,

@@ -40,6 +40,7 @@ describe("runtime createHotUpdater", () => {
       "./package.json",
       "./plugins/api-keys",
       "./plugins/insights",
+      "./plugins/remote-config",
     ]);
   });
 

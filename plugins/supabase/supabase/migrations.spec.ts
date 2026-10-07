@@ -116,6 +116,7 @@ describe("Supabase schema", () => {
       "schema.core",
       "schema.engine",
       "schema.insights",
+      "schema.remoteConfig",
     ]);
     await db.close();
   });

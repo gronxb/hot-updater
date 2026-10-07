@@ -233,7 +233,7 @@ describe("Supabase init", () => {
     const [server, input] = mocks.provisionClientCredential.mock.calls[0]!;
     expect(
       (server as { plugins: { id: string }[] }).plugins.map(({ id }) => id),
-    ).toEqual(["insights", "apiKeys"]);
+    ).toEqual(["insights", "apiKeys", "remoteConfig"]);
     expect((server as { api: Record<string, unknown> }).api).toHaveProperty(
       "apiKeys",
     );
