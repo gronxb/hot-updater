@@ -18,6 +18,7 @@ const mocks = vi.hoisted(() => {
     getCohort: vi.fn(() => "123"),
     getFingerprintHash: vi.fn<() => string | null>(() => null),
     getInstallId: vi.fn(() => "install-id"),
+    getMinBundleId: vi.fn(() => "min-bundle-id"),
     getStorageItem: vi.fn<(key: string) => string | null>(() => null),
     setStorageItem: vi.fn<(key: string, value: string | null) => void>(),
   };
@@ -162,6 +163,7 @@ describe("client plugin host", () => {
       fingerprintHash: context.getFingerprintHash(),
       installId: context.installId,
       isDebugBuild: context.isDebugBuild,
+      minBundleId: context.minBundleId,
       now: context.now(),
       platform: context.platform,
       sdkVersion: context.sdkVersion,
@@ -173,6 +175,7 @@ describe("client plugin host", () => {
       fingerprintHash: null,
       installId: "install-id",
       isDebugBuild: true,
+      minBundleId: "min-bundle-id",
       now: 1_700_000_000_000,
       platform: "android",
       sdkVersion: "test-sdk-version",

@@ -49,6 +49,12 @@ export type CreateBundleEventRequestBase = {
   readonly cohort: string;
   readonly fingerprintHash: string | null;
   readonly sdkVersion?: string | null;
+  /**
+   * The bundle ID the native build ships as its built-in bundle. A report
+   * whose running bundle is this one, with no Release, runs the built-in
+   * bundle. Older SDKs leave it out.
+   */
+  readonly minBundleId?: string | null;
   readonly fromReleaseId: string | null;
   readonly toReleaseId: string | null;
 };
@@ -90,6 +96,8 @@ export type ActiveInstallationWindow = "24h" | "7d" | "30d";
 export type EventHistoryRow = {
   readonly toReleaseId?: string;
   readonly sdkVersion?: string;
+  /** The native build's built-in bundle ID, when the SDK reported it. */
+  readonly minBundleId?: string;
   readonly id: string;
   readonly installId: string;
   readonly type:
@@ -130,6 +138,8 @@ export type InsightsHttpResponse = UpdateHttpResponse & {
 
 export type InstallationRow = {
   readonly httpResponse?: InsightsHttpResponse;
+  /** The native build's built-in bundle ID, when the SDK reported it. */
+  readonly minBundleId?: string;
   readonly installId: string;
   readonly userId: string | null;
   readonly lastKnownBundleId: string;

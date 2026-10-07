@@ -589,7 +589,8 @@ const READ_BUDGETS: readonly ReadBudget[] = [
     api: "app usage: nonzero distribution and usage-sketch rows in the window, all used",
     // Every platform merges the iOS and Android usage sketches: iOS's of days
     // 0 and 2 (14 shards and 1). The iOS latest events of days 0 and 2 (14
-    // gauge shards and 1); none on Android.
+    // gauge shards and 1); none on Android. Each platform also reads the
+    // built-in bundle gauge, which no installation here runs.
     read: ({ insights }) =>
       insights.getAppUsage({
         channel: "production",
@@ -597,8 +598,8 @@ const READ_BUDGETS: readonly ReadBudget[] = [
         timeRange: { start: T0, end: T0 + 3 * DAY },
         intervalMs: DAY,
       }),
-    adapter: reads(0, 0, 4, 30),
-    engine: { calls: 4, rows: 4 },
+    adapter: reads(0, 0, 6, 30),
+    engine: { calls: 6, rows: 4 },
     check: ({ versions }) =>
       expect(versions).toEqual([{ name: "1.0.0", installations: 24 }]),
   }),

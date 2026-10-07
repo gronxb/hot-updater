@@ -153,7 +153,10 @@ export interface InsightsGetAppUsageResult {
   readonly bundleDistribution: readonly {
     readonly appVersion: string;
     readonly platform: "ios" | "android";
+    /** The release the installations run; null for none. */
     readonly releaseId: string | null;
+    /** The native build's built-in bundle, when they run it. */
+    readonly builtinBundleId: string | null;
     readonly installations: number;
   }[];
   readonly measuredAtMs: number;

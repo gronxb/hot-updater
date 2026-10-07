@@ -366,6 +366,7 @@ describe("insights read budgets", () => {
       ],
     });
     expect(Object.keys(usage.tables).toSorted()).toEqual([
+      "insights_builtin_distribution",
       "insights_distribution",
       "insights_sketches_daily",
     ]);

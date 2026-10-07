@@ -678,16 +678,74 @@ export const registerInsightsModelTests = (
             appVersion: "1.0.0",
             platform: "ios",
             releaseId: releaseA,
+            builtinBundleId: null,
             installations: 1,
           },
           {
             appVersion: "1.0.0",
             platform: "ios",
             releaseId: releaseB,
+            builtinBundleId: null,
             installations: 1,
           },
         ]),
       );
+    });
+    it("distributes installations on their native build's built-in bundle by its ID", async () => {
+      const model = state.getDatabase();
+      const channel = "builtin-distribution";
+      const launch = (
+        suffix: string,
+        bundleId: string,
+        minBundleId: string,
+      ): BundleEventRow => {
+        const base = createBundleEventRowFixture(suffix, 1_000);
+        return {
+          ...base,
+          type: "UNCHANGED",
+          channel,
+          from_bundle_id: null,
+          to_bundle_id: bundleId,
+          metadata: {
+            ...base.metadata,
+            update_strategy: null,
+            min_bundle_id: minBundleId,
+          },
+        };
+      };
+      const builtin = createBundleEventRowFixture("9901", 0).id;
+      await record(model, launch("9902", builtin, builtin));
+      await record(model, launch("9903", builtin, builtin));
+      // A bundle without a release that is not the build's own is unknown.
+      await record(
+        model,
+        launch("9904", createBundleEventRowFixture("9905", 0).id, builtin),
+      );
+      const usage = await model.getAppUsage({
+        channel,
+        platform: "ios",
+        timeRange: { start: 0, end: 3_600_000 },
+        intervalMs: 3_600_000,
+      });
+      expect(usage.bundleDistribution).toEqual(
+        expect.arrayContaining([
+          {
+            appVersion: "1.0.0",
+            platform: "ios",
+            releaseId: null,
+            builtinBundleId: builtin,
+            installations: 2,
+          },
+          {
+            appVersion: "1.0.0",
+            platform: "ios",
+            releaseId: null,
+            builtinBundleId: null,
+            installations: 1,
+          },
+        ]),
+      );
+      expect(usage.bundleDistribution).toHaveLength(2);
     });
     it("pages insights events newest first with a stable cursor", async () => {
       const model = state.getDatabase();

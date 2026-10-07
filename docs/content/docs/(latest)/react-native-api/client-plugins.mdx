@@ -240,6 +240,7 @@ called them.
 | `platform`               | `"ios"` or `"android"`.                                                                                             |
 | `appVersion`             | The native app version, or `null` when the build has none.                                                          |
 | `sdkVersion`             | The version of `@hot-updater/react-native`.                                                                         |
+| `minBundleId`            | The ID of the bundle the native build ships. `getBundleId()` returns it while the app runs that built-in bundle.    |
 | `isDebugBuild`           | `true` in a debug build, where `__DEV__` is `true`.                                                                 |
 | `getBundleId()`          | The bundle native reports as current. This is an artifact ID, not the update ID that `HotUpdater.getBundleId()` returns. |
 | `getChannel()`           | The effective channel.                                                                                              |
@@ -458,6 +459,7 @@ The options set up the server and the device:
 - `baseURL`, `requestHeaders`, and `requestTimeout` are the ones `init` takes.
 - The device's values have fixed defaults: `installId`, `platform` (`ios`),
   `appVersion` (`1.0.0`), `sdkVersion`, `isDebugBuild` (`false`), `bundleId`,
+  `minBundleId` (the same as `bundleId`, so the app runs its built-in bundle),
   `channel` (`production`), `cohort` (`1`), `fingerprintHash` (`null`), and
   `now` (`Date.now`, so fake timers move it). `installId`, `appVersion`,
   `bundleId`, `channel`, `cohort`, and `fingerprintHash` also take a function,

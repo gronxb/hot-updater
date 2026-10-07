@@ -1145,3 +1145,50 @@ for (const [day, adopted] of [0, 2, 6, 12, 16, 18, 19].entries()) {
     });
   }
 }
+
+// Installations still on the bundle their native build shipped, which each
+// report names as `min_bundle_id`, and one that moved from it to patch B.
+const builtinDemoNow = Date.now() - 30_000;
+const builtinBundleIds = {
+  "1.4.2": "019f2a00-0000-7000-8000-000000000000",
+  "1.4.1": "019e8c00-0000-7000-8000-000000000000",
+} as const;
+for (const [index, appVersion] of (
+  ["1.4.2", "1.4.2", "1.4.2", "1.4.1", "1.4.1"] as const
+).entries()) {
+  const builtin = builtinBundleIds[appVersion];
+  await insightsApi.recordEvent({
+    ...downloadDemo,
+    id: `019f635e-bbbb-7000-8000-${String(index).padStart(12, "0")}`,
+    type: "UNCHANGED",
+    install_id: `demo-builtin-${index}`,
+    user_id: null,
+    app_version: appVersion,
+    from_bundle_id: null,
+    from_release_id: null,
+    to_bundle_id: builtin,
+    to_release_id: null,
+    metadata: {
+      ...downloadDemo.metadata,
+      update_strategy: null,
+      min_bundle_id: builtin,
+    },
+    received_at_ms: builtinDemoNow + index,
+  });
+}
+await insightsApi.recordEvent({
+  ...downloadDemo,
+  id: "019f635e-bbbc-7000-8000-000000000001",
+  type: "UPDATE_APPLIED",
+  install_id: "demo-builtin-applied",
+  user_id: "demo-builtin",
+  from_release_id: null,
+  from_bundle_id: builtinBundleIds["1.4.2"],
+  to_release_id: releaseIdByBundle.get(iosProdCorePatchB.id) ?? null,
+  to_bundle_id: iosProdCorePatchB.id,
+  metadata: {
+    ...downloadDemo.metadata,
+    min_bundle_id: builtinBundleIds["1.4.2"],
+  },
+  received_at_ms: builtinDemoNow + 10,
+});

@@ -78,6 +78,14 @@ CREATE INDEX IF NOT EXISTS "insights_distribution_byVersion" ON "insights_distri
 
 CREATE INDEX IF NOT EXISTS "insights_distribution__retention" ON "insights_distribution" ("bucket_start_ms", "channel", "platform", "app_version", "release_id", "_shard");
 
+CREATE TABLE IF NOT EXISTS "insights_builtin_distribution" ("channel" TEXT NOT NULL, "platform" TEXT NOT NULL, "app_version" TEXT NOT NULL, "release_id" TEXT NOT NULL, "builtin_bundle_id" TEXT NOT NULL, "bucket_start_ms" INTEGER NOT NULL, "_shard" INTEGER NOT NULL, "latest_installations" INTEGER NOT NULL, "_v" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY ("channel", "platform", "app_version", "release_id", "builtin_bundle_id", "bucket_start_ms", "_shard"));
+
+CREATE INDEX IF NOT EXISTS "insights_builtin_distribution_byScope" ON "insights_builtin_distribution" ("channel", "platform", "bucket_start_ms", "app_version", "release_id", "builtin_bundle_id", "_shard");
+
+CREATE INDEX IF NOT EXISTS "insights_builtin_distribution_byVersion" ON "insights_builtin_distribution" ("channel", "platform", "app_version", "bucket_start_ms", "release_id", "builtin_bundle_id", "_shard");
+
+CREATE INDEX IF NOT EXISTS "insights_builtin_distribution__retention" ON "insights_builtin_distribution" ("bucket_start_ms", "channel", "platform", "app_version", "release_id", "builtin_bundle_id", "_shard");
+
 CREATE TABLE IF NOT EXISTS "insights_latest_by_bundle" ("platform" TEXT NOT NULL, "channel" TEXT NOT NULL, "bundle_field" TEXT NOT NULL, "bundle_id" TEXT NOT NULL, "type" TEXT NOT NULL, "bucket_start_ms" INTEGER NOT NULL, "_shard" INTEGER NOT NULL, "installations" INTEGER NOT NULL, "_v" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY ("platform", "channel", "bundle_field", "bundle_id", "type", "bucket_start_ms", "_shard"));
 
 CREATE INDEX IF NOT EXISTS "insights_latest_by_bundle__retention" ON "insights_latest_by_bundle" ("bucket_start_ms", "platform", "channel", "bundle_field", "bundle_id", "type", "_shard");
