@@ -62,6 +62,41 @@ describe("Release health chart", () => {
     expect(curve.at(-1)).toMatchObject({ endMs: END, b0: 0 });
   });
 
+  it("adds a bundle's dashed count beside its solid one, with the same gaps", () => {
+    const deployedAtMs = END - 12 * HOUR + 17 * 60_000;
+    const curve = curveOf(periodOf(7 * DAY, 6 * HOUR), [
+      {
+        release: releaseOf("new", deployedAtMs),
+        points: [{ startMs: END - 12 * HOUR, events: 3 }],
+        dashed: [
+          { startMs: END - 12 * HOUR, events: 5 },
+          { startMs: END - 6 * HOUR, events: 1 },
+        ],
+        measuredAtMs: END - HOUR / 2,
+      },
+      // Its downloads still load: no dashed count yet.
+      {
+        release: releaseOf("old", 0),
+        points: [],
+        dashed: undefined,
+        measuredAtMs: END,
+      },
+      // A line without a dashed count, as Crashes draws: no `d` key.
+      { release: releaseOf("crashes", 0), points: [], measuredAtMs: END },
+    ]);
+    expect(curve.at(-3)).toMatchObject({ b0: null, d0: null });
+    expect(curve.at(-2)).toEqual({
+      startMs: END - 12 * HOUR,
+      endMs: END - 6 * HOUR,
+      b0: 3,
+      d0: 5,
+      b1: 0,
+      d1: null,
+      b2: 0,
+    });
+    expect(curve.at(-1)).toMatchObject({ b0: 0, d0: 1 });
+  });
+
   it("ticks on whole UTC times, so a date names its midnight", () => {
     expect(ticksOf(periodOf(DAY, HOUR))).toEqual(
       [12, 16, 20, 24, 28].map((hour) => Date.UTC(2026, 9, 4, hour)),

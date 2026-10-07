@@ -74,11 +74,16 @@ export function useSeriesColors(releaseIds: readonly string[]) {
 
 type Period = ReleaseHealthState["period"];
 
+type Points =
+  | readonly { readonly startMs: number; readonly events: number }[]
+  | undefined;
+
 type ChartLine = {
   readonly release: AdoptionRelease;
-  readonly points:
-    | readonly { readonly startMs: number; readonly events: number }[]
-    | undefined;
+  /** The bundle's counts, drawn solid. */
+  readonly points: Points;
+  /** Another count of the bundle, drawn dashed in its hue: its downloads. */
+  readonly dashed?: Points;
   readonly measuredAtMs: number | undefined;
 };
 
@@ -90,8 +95,9 @@ export const spanOf = (startMs: number, endMs: number) =>
 
 /**
  * One row per interval of the period, at the interval's end, with each
- * bundle's count as `b<index>`: none before the interval it was deployed in,
- * and none while its counts load.
+ * bundle's count as `b<index>` and its dashed count, when it has one, as
+ * `d<index>`: none before the interval it was deployed in, and none while
+ * its counts load.
  */
 export const curveOf = (period: Period, lines: readonly ChartLine[]) =>
   Array.from(
@@ -99,14 +105,18 @@ export const curveOf = (period: Period, lines: readonly ChartLine[]) =>
     (_, interval) => {
       const startMs = period.startMs + interval * period.intervalMs;
       const endMs = startMs + period.intervalMs;
+      const countOf = (release: AdoptionRelease, points: Points) =>
+        points === undefined || endMs <= release.deployedAtMs
+          ? null
+          : (points.find((point) => point.startMs === startMs)?.events ?? 0);
       return Object.fromEntries([
         ["startMs", startMs],
         ["endMs", endMs],
-        ...lines.map(({ release, points }, index) => [
-          `b${index}`,
-          points === undefined || endMs <= release.deployedAtMs
-            ? null
-            : (points.find((point) => point.startMs === startMs)?.events ?? 0),
+        ...lines.flatMap((line, index) => [
+          [`b${index}`, countOf(line.release, line.points)],
+          ...("dashed" in line
+            ? [[`d${index}`, countOf(line.release, line.dashed)]]
+            : []),
         ]),
       ]) as { startMs: number; endMs: number } & Record<string, number | null>;
     },
@@ -135,9 +145,10 @@ export const ticksOf = (period: Period) => {
 };
 
 /**
- * Each bundle's reports per interval of the period on one timeline, with its
- * deployment marked. A count sits at the end of its interval, so a line starts
- * after its deployment, with the interval it was deployed in.
+ * Each bundle's counts per interval of the period on one timeline, with its
+ * deployment marked: a solid line, and a dashed one in its hue when the
+ * bundle has a second count. A count sits at the end of its interval, so a
+ * line starts after its deployment, with the interval it was deployed in.
  */
 export function ComparedBundlesChart({
   period,
@@ -145,12 +156,15 @@ export function ComparedBundlesChart({
   colorOf,
   active,
   label,
+  names,
 }: {
   readonly period: Period;
   readonly lines: readonly ChartLine[];
   readonly colorOf: (releaseId: string) => string;
   readonly active: string | null;
   readonly label: string;
+  /** What the solid and dashed lines count, as the tooltip names them. */
+  readonly names?: { readonly solid?: string; readonly dashed?: string };
 }) {
   const measuredAtMs = Math.max(
     0,
@@ -160,21 +174,62 @@ export function ComparedBundlesChart({
   const ticks = ticksOf(period);
   const tick = (value: number) =>
     period.intervalMs === HOUR ? times.format(value) : dates.format(value);
+  // The ID that names the bundle across the Console, and what the line counts.
+  const labelOf = (release: AdoptionRelease, name: string | undefined) => (
+    <span className="flex items-center gap-1.5 whitespace-nowrap">
+      <BundleIdDisplay
+        bundleId={release.releaseId}
+        className="whitespace-nowrap"
+      />
+      {name ? <span className="text-muted-foreground">{name}</span> : null}
+    </span>
+  );
   const config = Object.fromEntries(
-    lines.map(({ release }, index) => [
-      `b${index}`,
-      {
-        // The ID that names the bundle across the Console.
-        label: (
-          <BundleIdDisplay
-            bundleId={release.releaseId}
-            className="whitespace-nowrap"
-          />
-        ),
-        color: colorOf(release.releaseId),
-      },
+    lines.flatMap((line, index) => [
+      [
+        `b${index}`,
+        {
+          label: labelOf(line.release, names?.solid),
+          color: colorOf(line.release.releaseId),
+        },
+      ],
+      ...("dashed" in line
+        ? [
+            [
+              `d${index}`,
+              {
+                label: labelOf(line.release, names?.dashed),
+                color: colorOf(line.release.releaseId),
+              },
+            ],
+          ]
+        : []),
     ]),
   );
+  // A point with no neighbour, as the first hour after a deployment, draws
+  // no line: mark it, hollow on a dashed line.
+  const isolated =
+    (key: string, color: string, hollow: boolean) =>
+    ({ cx, cy, index: at }: DotProps) => {
+      const value = curve[at]?.[key];
+      return value == null ||
+        cx == null ||
+        cy == null ||
+        curve[at - 1]?.[key] != null ||
+        curve[at + 1]?.[key] != null ? (
+        <g key={`${key}-${at}`} />
+      ) : (
+        <circle
+          key={`${key}-${at}`}
+          cx={cx}
+          cy={cy}
+          r={4}
+          fill={hollow ? "var(--background)" : color}
+          stroke={color}
+          strokeWidth={hollow ? 2 : 0}
+        />
+      );
+    };
   return (
     <ChartContainer
       aria-label={label}
@@ -221,42 +276,34 @@ export function ComparedBundlesChart({
             />
           ) : null,
         )}
-        {lines.map(({ release }, index) => (
-          <Line
-            key={release.releaseId}
-            dataKey={`b${index}`}
-            type="linear"
-            stroke={`var(--color-b${index})`}
-            strokeWidth={active === release.releaseId ? 3 : 2}
-            strokeOpacity={
-              active === null || active === release.releaseId ? 1 : 0.25
-            }
-            // A point with no neighbour, as the first hour after a
-            // deployment, draws no line: mark it.
-            dot={({ cx, cy, index: at }: DotProps) => {
-              const key = `b${index}`;
-              const value = curve[at]?.[key];
-              return value == null ||
-                cx == null ||
-                cy == null ||
-                curve[at - 1]?.[key] != null ||
-                curve[at + 1]?.[key] != null ? (
-                <g key={`${key}-${at}`} />
-              ) : (
-                <circle
-                  key={`${key}-${at}`}
-                  cx={cx}
-                  cy={cy}
-                  r={4}
-                  fill={colorOf(release.releaseId)}
-                />
-              );
-            }}
-            activeDot={{ r: 4 }}
-            connectNulls={false}
-            isAnimationActive={false}
-          />
-        ))}
+        {lines.flatMap((line, index) =>
+          // The dashed line first: the tooltip lists it first, and the solid one
+          // draws over it where they meet.
+          ([...("dashed" in line ? ["d"] : []), "b"] as const).map((kind) => {
+            const { releaseId } = line.release;
+            return (
+              <Line
+                key={`${kind}-${releaseId}`}
+                dataKey={`${kind}${index}`}
+                type="linear"
+                stroke={`var(--color-${kind}${index})`}
+                strokeDasharray={kind === "d" ? "6 4" : undefined}
+                strokeWidth={active === releaseId ? 3 : 2}
+                strokeOpacity={
+                  active === null || active === releaseId ? 1 : 0.25
+                }
+                dot={isolated(
+                  `${kind}${index}`,
+                  colorOf(releaseId),
+                  kind === "d",
+                )}
+                activeDot={{ r: 4 }}
+                connectNulls={false}
+                isAnimationActive={false}
+              />
+            );
+          }),
+        )}
       </LineChart>
     </ChartContainer>
   );

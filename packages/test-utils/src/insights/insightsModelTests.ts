@@ -967,7 +967,7 @@ export const registerInsightsModelTests = (
       ]);
     });
 
-    it("counts each launch and download once, so a bundle's launches match its release and its downloads cover launches and crashes", async () => {
+    it("counts each launch and download once, so a bundle's launch and download series match its release, and its downloads cover launches and crashes", async () => {
       const model = state.getDatabase();
       const day = 86_400_000;
       const releaseA = "00000000-0000-7000-8000-000000009b01";
@@ -1054,8 +1054,9 @@ export const registerInsightsModelTests = (
           (await count({ ...scope, type: "UNCHANGED", toBundleId: bundleB })),
         metrics!.applies,
       );
-      // Downloads: the stored download rows and the downloads launches and
-      // crashes implied; the late one counts nothing.
+      // The download series counts the stored download rows and the
+      // downloads launches and crashes implied, so it equals the release's
+      // downloads; the late one counts nothing.
       const listed = await model.listEvents({
         filter: { kind: "all" },
         ...range,
@@ -1067,7 +1068,7 @@ export const registerInsightsModelTests = (
       await expectInsightsIndex(
         () =>
           count({ ...scope, type: "UPDATE_DOWNLOADED", toBundleId: bundleB }),
-        metrics!.downloads - implied,
+        metrics!.downloads,
       );
       expect(implied).toBe(2);
       expect(metrics!.downloads).toBeGreaterThanOrEqual(

@@ -47,9 +47,8 @@ const notLaunched = (report: BundleActivityReport) =>
 function ReleaseMetricsInfo() {
   return (
     <InsightsInfo label="About release insight metrics">
-      Installations, counted once each. Downloaded: got this bundle. Launched:
-      reported running it. Crashed: crashed on it and rolled back. Crash rate =
-      crashed ÷ (launched + crashed). Once all restart, Downloaded = Launched +
+      Downloaded: got this bundle. Launched: ran it. Crashed: crashed on it and
+      rolled back. Once every installation restarts, Downloaded = Launched +
       Crashed.
     </InsightsInfo>
   );

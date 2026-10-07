@@ -83,7 +83,7 @@ of every count. Each count names where it comes from:
 | Count | Source |
 | --- | --- |
 | Downloads, launches, crashes of a release | Lifetime counters, written with each event |
-| Events per bundle and interval (Release health) | Hourly outcome counters, written with each stored event |
+| Events per bundle and interval (Release health) | Hourly outcome counters, written with each stored event and each implied download |
 | What an installation runs now, and when it last reported | Its head, kept 400 days after its last report |
 | Active installations (DAU, WAU, MAU) | HyperLogLog sketches, about 3% error |
 | Distribution by app version, Release, built-in bundle | Gauges over heads |
@@ -112,7 +112,10 @@ late: a download or apply is stored with `metadata.late` and moves and counts
 nothing; such an `UNCHANGED` keeps no row. A launch or crash whose head shows
 neither the target's download nor the target running counts that download too,
 with `metadata.implied_download`, unless the target is the native build's
-built-in bundle. A launch or crash with no head implies nothing, since the
+built-in bundle. It counts in the release's counters and, in the hour of that
+launch or crash, in the target's `UPDATE_DOWNLOADED` outcome counter, so a
+bundle's download series equals its release's downloads; the launch or crash
+is its row, so that counter can exceed the download rows its hour holds. A launch or crash with no head implies nothing, since the
 server knows nothing of that installation's past; an installation's first
 report is almost always an `UNCHANGED` (`first_seen`), which creates its head.
 So for installations with a head, a release's downloads cover their launches

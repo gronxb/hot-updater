@@ -192,7 +192,7 @@ describe("BundlesPage", () => {
       screen.getByRole("button", { name: "About release insight metrics" }),
     );
     expect((await screen.findByRole("tooltip")).textContent).toContain(
-      "Launched: reported running it.",
+      "Launched: ran it.",
     );
   });
   it("keeps bundle management usable when activity is unavailable", () => {

@@ -57,7 +57,7 @@ describe("Insights event details", () => {
     expect(screen.getByText("Downloaded")).toBeDefined();
     expect(screen.getByText("Running")).toBeDefined();
     expect(screen.getByText("Pending")).toBeDefined();
-    expect(screen.getByText(/Waiting for the app to restart/)).toBeDefined();
+    expect(screen.getByText(/It launches when the app restarts/)).toBeDefined();
   });
 
   it("shows no change without implying a file transition", () => {
@@ -299,14 +299,14 @@ describe("Insights event details", () => {
     const view = render(
       <EventTypeDetails event={{ type: "UPDATE_APPLIED" }} />,
     );
-    expect(screen.getByText("Update applied")).toBeDefined();
-    expect(screen.getByText("Update applied").className).toContain(
+    expect(screen.getByText("Launched")).toBeDefined();
+    expect(screen.getByText("Launched").className).toContain(
       "text-success",
     );
 
     view.rerender(<EventTypeDetails event={{ type: "RECOVERED" }} />);
-    expect(screen.getByText("Recovered")).toBeDefined();
-    expect(screen.getByText("Recovered").className).toContain("text-warning");
+    expect(screen.getByText("Crashed")).toBeDefined();
+    expect(screen.getByText("Crashed").className).toContain("text-warning");
 
     view.rerender(<EventTypeDetails event={{ type: "UNCHANGED" }} />);
     expect(screen.getByText("Launch")).toBeDefined();

@@ -40,20 +40,19 @@ type EventHistoryRow = InsightsEventRow;
 const eventTypes = {
   UPDATE_DOWNLOADED: {
     label: "Downloaded",
-    description:
-      "Download complete. Waiting for the app to restart and apply it.",
+    description: "Downloaded. It launches when the app restarts.",
     variant: "default",
     icon: Download,
   },
   UPDATE_APPLIED: {
-    label: "Update applied",
-    description: "The app started using the downloaded update.",
+    label: "Launched",
+    description: "The app restarted into the downloaded bundle.",
     variant: "success",
     icon: Check,
   },
   RECOVERED: {
-    label: "Recovered",
-    description: "Recovered from a crashed bundle.",
+    label: "Crashed",
+    description: "Crashed on the bundle and rolled back.",
     variant: "warning",
     icon: RotateCcw,
   },
@@ -110,7 +109,7 @@ const changeTypeOf = (
     return {
       label: "Launched",
       description:
-        "It reported running this bundle; no apply report came for it.",
+        "Reported running this bundle; its launch report never arrived.",
       variant: "success",
       icon: Check,
     };

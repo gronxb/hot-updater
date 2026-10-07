@@ -22,6 +22,7 @@ import {
   type InsightsOverviewIdentity,
 } from "./overview";
 import {
+  bundleRefOfFilter,
   bundleRefsOf,
   DAILY_EVENTS,
   DAY_MS,
@@ -263,25 +264,40 @@ const countEvent = (
 
 /**
  * A stored event's outcome rows: its bundle filter's hour, when it has one
- * (`bundleRefsOf`), and every stored event's UTC day.
+ * (`bundleRefsOf`), and every stored event's UTC day. A download that a
+ * launch or crash implied counts in its bundle's download hour too, in the
+ * hour of that launch or crash, so the download series covers what the
+ * release's downloads count; the launch or crash is its row.
  */
 const countOutcome = (
   tx: HotUpdaterTransaction<InsightsSchema>,
   event: BundleEventRow,
 ) => {
   const shardBy = event.install_id;
-  for (const bundleRef of bundleRefsOf(event)) {
+  const hour = (type: string, bundleRef: string) =>
     tx.aggregate(
       "insights_outcomes",
       {
         platform: event.platform,
         channel: event.channel,
-        type: event.type,
+        type,
         bundle_ref: bundleRef,
         bucket_start_ms: hourOf(event.received_at_ms),
       },
       { events: 1 },
       { shardBy },
+    );
+  for (const bundleRef of bundleRefsOf(event)) hour(event.type, bundleRef);
+  if (event.metadata.implied_download === true) {
+    hour(
+      "UPDATE_DOWNLOADED",
+      bundleRefOfFilter({
+        type: "UPDATE_DOWNLOADED",
+        toBundleId:
+          event.type === "RECOVERED"
+            ? event.from_bundle_id!
+            : event.to_bundle_id,
+      }),
     );
   }
   // The global event list reads only the days this row counts: a gap costs
