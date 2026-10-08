@@ -114,9 +114,11 @@ start the interval, so the next call asks the server again.
 
 Each fetch that reaches the server is a request your update server answers,
 so the interval caps them at two a day per device by default.
-`fetch({ force: true })` asks the server within the interval, for the moments
-that need fresh values, such as pull to refresh or a return to the app; each
-forced fetch is a request, a `304` when nothing changed.
+`fetch({ force: true })` asks the server within the interval, for a moment the
+user asks for fresh values, such as pull to refresh. Each forced fetch is a
+request, a `304` when nothing changed, so a call that runs on every return to
+the app should force only when `fetchedAtMs` is old enough, as the guide's
+[kill switch](/docs/guides/remote-config#turn-a-feature-off-quickly) does.
 
 `fetch()` rejects, and the active values stay, when:
 

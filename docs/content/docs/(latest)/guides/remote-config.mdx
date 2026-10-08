@@ -127,30 +127,40 @@ a `304` when nothing changed, so the interval is what bounds that traffic.
 ### Turn a feature off quickly
 
 For a kill switch, keep the feature's parameter in `defaults` with the value
-that turns it on, fetch and activate at launch, and force a fetch whenever the
-app comes back to the foreground:
+that turns it on. At launch and whenever the app comes back to the foreground,
+fetch and activate, forcing past the interval only once the values are 10
+minutes old:
 
 ```ts title="src/remoteConfigRefresh.ts"
 import { AppState } from "react-native";
 
 import { hotUpdater } from "./hotUpdater";
 
-const refresh = (force: boolean) =>
-  hotUpdater.remoteConfig
+const FRESH_FOR_MS = 10 * 60 * 1000;
+
+const refresh = () => {
+  const { fetchedAtMs } = hotUpdater.remoteConfig;
+  const force =
+    fetchedAtMs === null || Date.now() - fetchedAtMs >= FRESH_FOR_MS;
+  return hotUpdater.remoteConfig
     .fetch({ force })
     .then(() => hotUpdater.remoteConfig.activate())
     .catch(() => {});
+};
 
-refresh(false);
+refresh();
 AppState.addEventListener("change", (state) => {
-  if (state === "active") refresh(true);
+  if (state === "active") refresh();
 });
 ```
 
-Publish `false` for it, and devices turn the feature off the next time they
-return to the app. Each return is then a request, a `304` while nothing
-changed, so force only where a change must land quickly; to undo a bad bundle
-itself, [roll it back](/docs/guides/console#rollback) instead.
+Publish `false` for it, and devices turn the feature off the first time they
+open or return to the app 10 minutes after their last fetch. A user who
+switches apps all day sends at most one request every 10 minutes, a `304`
+while nothing changed. Without a check like this, keep `force` for a moment
+the user asks for fresh values, such as pull to refresh, since every forced
+fetch is a request. To undo a bad bundle itself,
+[roll it back](/docs/guides/console#rollback) instead.
 
 ## Edit parameters and conditions
 
