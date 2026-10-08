@@ -125,6 +125,12 @@ export interface RemoteConfigClient<
   fetch(options?: RemoteConfigFetchOptions): Promise<void>;
   /** Makes the fetched values active; true when they replaced other values. */
   activate(): Promise<boolean>;
+  /**
+   * `fetch(options)`, then `activate()`, for an app that applies new values
+   * as soon as they arrive. Resolves as `activate` does; rejects as `fetch`
+   * does, and the active values stay.
+   */
+  fetchAndActivate(options?: RemoteConfigFetchOptions): Promise<boolean>;
   readonly lastFetchStatus: RemoteConfigFetchStatus;
   /** When the last successful fetch ended, in ms since the epoch; `null` before one. */
   readonly fetchedAtMs: number | null;
@@ -226,10 +232,7 @@ const deviceContext = (
  *   ],
  * });
  *
- * hotUpdater.remoteConfig
- *   .fetch()
- *   .then(() => hotUpdater.remoteConfig.activate())
- *   .catch(() => {});
+ * hotUpdater.remoteConfig.fetchAndActivate().catch(() => {});
  * hotUpdater.remoteConfig.getString("welcome_message");
  * ```
  */
@@ -447,6 +450,10 @@ const createRemoteConfigClient = <TDefaults extends RemoteConfigDefaults>(
     },
     fetch: (options?: RemoteConfigFetchOptions) => fetchValues(options),
     activate,
+    fetchAndActivate: async (options?: RemoteConfigFetchOptions) => {
+      await fetchValues(options);
+      return activate();
+    },
     get lastFetchStatus() {
       return lastFetchStatus;
     },

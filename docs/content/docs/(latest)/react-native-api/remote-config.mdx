@@ -91,13 +91,11 @@ device before it returns, so the first render already reads them.
 | --- | --- |
 | `fetch(options?)` | Fetches this device's values and keeps them for `activate`. The values the app reads do not change. `{ force: true }` asks the server within `minimumFetchIntervalMs`. |
 | `activate()` | Makes the fetched values the ones reads return. Resolves `true` when they replaced other values, `false` when nothing changed. |
+| `fetchAndActivate(options?)` | `fetch(options)`, then `activate()`. Resolves as `activate()` does, and rejects as `fetch()` does, keeping the active values. |
 
 ```ts
 // Apply as soon as they arrive:
-hotUpdater.remoteConfig
-  .fetch()
-  .then(() => hotUpdater.remoteConfig.activate())
-  .catch(() => {});
+hotUpdater.remoteConfig.fetchAndActivate().catch(() => {});
 
 // Or apply at the next launch: activate what the last launch fetched,
 // then fetch for the next one.

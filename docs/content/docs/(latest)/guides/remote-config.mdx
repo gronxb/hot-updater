@@ -81,12 +81,9 @@ export const hotUpdater = HotUpdater.init({
   ],
 });
 
-hotUpdater.remoteConfig
-  .fetch()
-  .then(() => hotUpdater.remoteConfig.activate())
-  .catch(() => {
-    // Offline or unreachable: the app keeps its last active values.
-  });
+hotUpdater.remoteConfig.fetchAndActivate().catch(() => {
+  // Offline or unreachable: the app keeps its last active values.
+});
 ```
 
 Reads are synchronous. As soon as `init` returns,
@@ -106,13 +103,14 @@ method, how text becomes numbers and booleans, and re-rendering on activation.
 
 ## Choose when new values apply
 
-`fetch()` stores the values the server picks, and `activate()` makes them the
-ones reads return. Splitting them lets you choose when the app changes:
+`fetch()` stores the values the server picks, `activate()` makes them the
+ones reads return, and `fetchAndActivate()` does one after the other. Calling
+them apart lets you choose when the app changes:
 
 | Strategy | Code | The app changes |
 | --- | --- | --- |
-| Apply on load | `fetch().then(() => activate())` without waiting | As soon as the fetch ends, possibly while the user looks at the screen. |
-| Wait behind a loading screen | `await fetch(); await activate();` before showing the screen | Before the first screen, at the cost of a network round trip. |
+| Apply on load | `fetchAndActivate()` without waiting | As soon as the fetch ends, possibly while the user looks at the screen. |
+| Wait behind a loading screen | `await fetchAndActivate()` before showing the screen | Before the first screen, at the cost of a network round trip. |
 | Apply at the next launch | `await activate(); fetch();` at startup | At the next launch: this launch activates what the last one fetched. |
 
 The last one never changes values mid-session and never waits for the network,
@@ -142,10 +140,7 @@ const refresh = () => {
   const { fetchedAtMs } = hotUpdater.remoteConfig;
   const force =
     fetchedAtMs === null || Date.now() - fetchedAtMs >= FRESH_FOR_MS;
-  return hotUpdater.remoteConfig
-    .fetch({ force })
-    .then(() => hotUpdater.remoteConfig.activate())
-    .catch(() => {});
+  return hotUpdater.remoteConfig.fetchAndActivate({ force }).catch(() => {});
 };
 
 refresh();

@@ -360,6 +360,30 @@ describe("remoteConfig() client plugin", () => {
     expect(config.fetchedAtMs).toBe(clock);
   });
 
+  it("fetches, then activates, in one call", async () => {
+    const { config } = launch({ defaults: { welcome: "Hi" } });
+    responses.push(() => values({ version: 1, values: { welcome: "Hey" } }));
+    await expect(config.fetchAndActivate()).resolves.toBe(true);
+    expect(config.getString("welcome")).toBe("Hey");
+    expect(config.activeVersion).toBe(1);
+
+    // Within the interval: no request, and nothing new to activate.
+    await expect(config.fetchAndActivate()).resolves.toBe(false);
+    expect(requests).toHaveLength(1);
+
+    clock += HOUR_MS;
+    responses.push(() => values({ version: 2, values: { welcome: "Yo" } }));
+    await expect(config.fetchAndActivate({ force: true })).resolves.toBe(true);
+    expect(config.getString("welcome")).toBe("Yo");
+
+    // A failed fetch rejects, and the active values stay.
+    responses.push(() => new Response(null, { status: 500 }));
+    await expect(config.fetchAndActivate({ force: true })).rejects.toThrow(
+      "HTTP 500",
+    );
+    expect(config.getString("welcome")).toBe("Yo");
+  });
+
   it("shares one request between concurrent fetches", async () => {
     const { config } = launch({ minimumFetchIntervalMs: 0 });
     responses.push(() => values({ version: 1, values: {} }));
