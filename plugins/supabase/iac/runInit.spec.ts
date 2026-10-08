@@ -103,7 +103,7 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => {
 import { runInit } from "./index";
 import { inputSupabaseDeploymentInputs } from "./supabaseInitInputs";
 
-const MIGRATION = "20260818000000_hot-updater_1.0.0.sql";
+const MIGRATION = "0001_hot-updater_1.0.0.sql";
 const CREDENTIAL = {
   label: "API key",
   header: "x-api-key",
