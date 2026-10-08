@@ -293,11 +293,11 @@ describe("remoteConfig() client plugin", () => {
     expect(requests).toHaveLength(3);
   });
 
-  it("waits 1 hour between fetches by default", async () => {
+  it("waits 12 hours between fetches by default", async () => {
     const { config } = launch();
     responses.push(() => values({ version: 1, values: {} }));
     await config.fetch();
-    clock += HOUR_MS - 1;
+    clock += 12 * HOUR_MS - 1;
     await config.fetch();
     expect(requests).toHaveLength(1);
     clock += 1;
@@ -321,11 +321,36 @@ describe("remoteConfig() client plugin", () => {
     expect(config.fetchedAtMs).toBe(clock);
   });
 
+  it("asks the server within the interval when a fetch is forced", async () => {
+    const { config } = launch();
+    responses.push(() => values({ version: 1, values: { a: "x" } }, '"v1"'));
+    await config.fetch();
+    clock += HOUR_MS;
+    await config.fetch();
+    expect(requests).toHaveLength(1);
+
+    responses.push(() => new Response(null, { status: 304 }));
+    await config.fetch({ force: true });
+    expect(requests).toHaveLength(2);
+    expect(requests[1]!.headers["if-none-match"]).toBe('"v1"');
+    expect(config.fetchedAtMs).toBe(clock);
+
+    // A forced fetch joins one already on its way, which is a request too.
+    responses.push(() => values({ version: 2, values: { a: "y" } }));
+    await Promise.all([
+      config.fetch({ force: true }),
+      config.fetch({ force: true }),
+    ]);
+    expect(requests).toHaveLength(3);
+    await config.activate();
+    expect(config.getString("a")).toBe("y");
+  });
+
   it("retries at the next fetch after a failure, which does not start the interval", async () => {
     const { config } = launch();
     responses.push(() => values({ version: 1, values: {} }));
     await config.fetch();
-    clock += HOUR_MS;
+    clock += 12 * HOUR_MS;
     responses.push(() => new Response(null, { status: 503 }));
     await expect(config.fetch()).rejects.toThrow("HTTP 503");
     responses.push(() => values({ version: 2, values: {} }));

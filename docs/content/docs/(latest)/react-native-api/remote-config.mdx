@@ -40,7 +40,7 @@ in the Console.
 | Option                   | Type                                          | Default    | Description                                                                                                  |
 | ------------------------ | --------------------------------------------- | ---------- | ------------------------------------------------------------------------------------------------------------ |
 | `defaults`               | `Record<string, string \| number \| boolean>` | `{}`       | Values the app reads until it activates fetched ones, and for parameters the template leaves to the app.      |
-| `minimumFetchIntervalMs` | `number`                                      | `3600000`  | The shortest time between fetches that reach the server: 1 hour. `0` fetches every time.                      |
+| `minimumFetchIntervalMs` | `number`                                      | `43200000` | The shortest time between fetches that reach the server: 12 hours. `0` fetches every time.                    |
 
 The keys of `defaults` type the keys `hotUpdater.remoteConfig`'s read methods
 suggest; any other key is accepted too.
@@ -89,7 +89,7 @@ device before it returns, so the first render already reads them.
 
 | Method | Does |
 | --- | --- |
-| `fetch()` | Fetches this device's values and keeps them for `activate`. The values the app reads do not change. |
+| `fetch(options?)` | Fetches this device's values and keeps them for `activate`. The values the app reads do not change. `{ force: true }` asks the server within `minimumFetchIntervalMs`. |
 | `activate()` | Makes the fetched values the ones reads return. Resolves `true` when they replaced other values, `false` when nothing changed. |
 
 ```ts
@@ -113,8 +113,10 @@ answer's `ETag`, so an unchanged answer costs a `304`. A failed fetch does not
 start the interval, so the next call asks the server again.
 
 Each fetch that reaches the server is a request your update server answers,
-so the interval caps them at one an hour per device by default. Lower it for
-values that must change sooner, at the cost of more requests.
+so the interval caps them at two a day per device by default.
+`fetch({ force: true })` asks the server within the interval, for the moments
+that need fresh values, such as pull to refresh or a return to the app; each
+forced fetch is a request, a `304` when nothing changed.
 
 `fetch()` rejects, and the active values stay, when:
 
@@ -167,4 +169,5 @@ return <Text>{values.welcome_message?.asString()}</Text>;
 `@hot-updater/react-native` exports `RemoteConfigClient`, the type of
 `hotUpdater.remoteConfig`, `RemoteConfigPlugin`, `RemoteConfigOptions`,
 `RemoteConfigValue`, `RemoteConfigValueSource`, `RemoteConfigFetchStatus`,
+`RemoteConfigFetchOptions`,
 `RemoteConfigDefaults`, `RemoteConfigDefaultValue`, and `RemoteConfigKey`.

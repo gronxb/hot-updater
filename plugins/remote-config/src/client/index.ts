@@ -48,11 +48,20 @@ export interface RemoteConfigOptions<
   readonly defaults?: TDefaults;
   /**
    * The shortest time between fetches that reach the server; a fetch
-   * sooner keeps the values fetched last. Defaults to 1 hour. A fetch
+   * sooner keeps the values fetched last. Defaults to 12 hours. A fetch
    * always reaches the server after the app's channel, version, cohort, or
    * fingerprint changes.
    */
   readonly minimumFetchIntervalMs?: number;
+}
+
+export interface RemoteConfigFetchOptions {
+  /**
+   * Asks the server even within `minimumFetchIntervalMs`, for a moment that
+   * needs fresh values, such as pull to refresh. Each one is a request (a
+   * `304` when nothing changed).
+   */
+  readonly force?: boolean;
 }
 
 /** A defaults key, with any other key still accepted. */
@@ -108,10 +117,12 @@ export interface RemoteConfigClient<
   /**
    * Fetches this device's values from `GET /remote-config` on the
    * `baseURL` the app configured, with its request headers, and keeps them
-   * for `activate`; active values do not change. Rejects when the server
+   * for `activate`; active values do not change. Within
+   * `minimumFetchIntervalMs` of the last successful fetch it keeps those
+   * values without a request, unless `force` is set. Rejects when the server
    * cannot be reached or runs without the `remoteConfig()` plugin.
    */
-  fetch(): Promise<void>;
+  fetch(options?: RemoteConfigFetchOptions): Promise<void>;
   /** Makes the fetched values active; true when they replaced other values. */
   activate(): Promise<boolean>;
   readonly lastFetchStatus: RemoteConfigFetchStatus;
@@ -128,7 +139,7 @@ export type RemoteConfigPlugin<
   TDefaults extends RemoteConfigDefaults = NoDefaults,
 > = HotUpdaterClientPlugin<"remoteConfig", RemoteConfigClient<TDefaults>>;
 
-const DEFAULT_MINIMUM_FETCH_INTERVAL_MS = 60 * 60 * 1000;
+const DEFAULT_MINIMUM_FETCH_INTERVAL_MS = 12 * 60 * 60 * 1000;
 const BOOLEAN_TRUTHY_VALUES = new Set(["1", "true", "t", "yes", "y", "on"]);
 const FETCHED_KEY = "fetched";
 const ACTIVE_KEY = "active";
@@ -323,16 +334,10 @@ const createRemoteConfigClient = <TDefaults extends RemoteConfigDefaults>(
     return fallback === undefined ? null : createValue(fallback, "default");
   };
 
-  const fetchFromServer = async (): Promise<void> => {
-    const device = deviceContext(context);
+  const fetchFromServer = async (
+    device: RemoteConfigDeviceContext,
+  ): Promise<void> => {
     const contextKey = JSON.stringify(device);
-    if (
-      fetched !== null &&
-      fetched.context === contextKey &&
-      context.now() - fetched.fetchedAtMs < minimumFetchIntervalMs
-    ) {
-      return;
-    }
     let response: Response;
     try {
       response = await context.fetch(remoteConfigRequestPath(device), {
@@ -382,8 +387,19 @@ const createRemoteConfigClient = <TDefaults extends RemoteConfigDefaults>(
     setStatus("success");
   };
 
-  const fetchValues = (): Promise<void> => {
-    inFlight ??= fetchFromServer().finally(() => {
+  // Checked before joining a running fetch, so every shared one is a request.
+  const fetchValues = (options?: RemoteConfigFetchOptions): Promise<void> => {
+    const device = deviceContext(context);
+    if (
+      options?.force !== true &&
+      inFlight === null &&
+      fetched !== null &&
+      fetched.context === JSON.stringify(device) &&
+      context.now() - fetched.fetchedAtMs < minimumFetchIntervalMs
+    ) {
+      return Promise.resolve();
+    }
+    inFlight ??= fetchFromServer(device).finally(() => {
       inFlight = null;
     });
     return inFlight;
@@ -429,7 +445,7 @@ const createRemoteConfigClient = <TDefaults extends RemoteConfigDefaults>(
       );
       return snapshot;
     },
-    fetch: fetchValues,
+    fetch: (options?: RemoteConfigFetchOptions) => fetchValues(options),
     activate,
     get lastFetchStatus() {
       return lastFetchStatus;

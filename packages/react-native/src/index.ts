@@ -70,6 +70,7 @@ export {
   type RemoteConfigClient,
   type RemoteConfigDefaults,
   type RemoteConfigDefaultValue,
+  type RemoteConfigFetchOptions,
   type RemoteConfigFetchStatus,
   type RemoteConfigKey,
   type RemoteConfigOptions,
