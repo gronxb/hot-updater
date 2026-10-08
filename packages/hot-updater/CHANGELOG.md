@@ -1,5 +1,21 @@
 # hot-updater
 
+## 1.0.0-rc.41
+
+### Patch Changes
+
+- Updated dependencies [545f059]
+- Updated dependencies [545f059]
+- Updated dependencies [545f059]
+  - @hot-updater/protocol@1.0.0-rc.41
+  - @hot-updater/server@1.0.0-rc.41
+  - @hot-updater/console@1.0.0-rc.41
+  - @hot-updater/plugin-core@1.0.0-rc.41
+  - @hot-updater/android-helper@1.0.0-rc.41
+  - @hot-updater/cli-tools@1.0.0-rc.41
+  - @hot-updater/apple-helper@1.0.0-rc.41
+  - @hot-updater/bsdiff@1.0.0-rc.41
+
 ## 1.0.0-rc.40
 
 ### Patch Changes

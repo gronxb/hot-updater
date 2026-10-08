@@ -1,7 +1,7 @@
 {
   "name": "@hot-updater/plugin-remote-config",
   "type": "module",
-  "version": "1.0.0-rc.38",
+  "version": "1.0.0-rc.41",
   "description": "Hot Updater's Remote Config plugin: parameters, conditions, and versioned templates on the server, and values the React Native app reads",
   "exports": {
     "./client": {
